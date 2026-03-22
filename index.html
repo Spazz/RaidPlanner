@@ -1,0 +1,2379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Planner — TBC Raid Group Builder</title>
+<meta name="description" content="Optimize your TBC raid groups for maximum buff coverage. Drag-and-drop party builder with totem, aura, and buff planning for 10 and 25-man raids.">
+<meta name="theme-color" content="#0d0e12">
+<meta property="og:title" content="Party Planner — TBC Raid Group Builder">
+<meta property="og:description" content="Optimize your TBC raid groups for maximum buff coverage. Drag-and-drop party builder with totem, aura, and buff planning.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9733;</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ========================================
+   PARTY PLANNER WEB — TBC Raid Builder
+   Dark atmospheric gaming-tool UI
+   ======================================== */
+:root {
+  --bg-deepest: #0d0e12;
+  --bg-frame: #14161c;
+  --bg-panel: #1a1d26;
+  --bg-card: #1e2230;
+  --bg-card-hover: #232839;
+  --bg-slot: #161923;
+  --bg-input: #111318;
+  --border-subtle: #2a2e3d;
+  --border-medium: #353a4d;
+  --border-accent: #4a4228;
+  --border-glow: rgba(212, 175, 55, 0.15);
+  --accent-gold: #d4af37;
+  --accent-gold-dim: #a8882c;
+  --accent-gold-glow: rgba(212, 175, 55, 0.25);
+  --accent-gold-bright: #f0d060;
+  --text-primary: #e2ddd5;
+  --text-secondary: #9a9590;
+  --text-muted: #8a8580;
+  --text-heading: #f0e6d3;
+  --btn-primary-bg: linear-gradient(180deg, #c4992e 0%, #8a6b1f 100%);
+  --btn-primary-hover: linear-gradient(180deg, #d4a938 0%, #9a7b2f 100%);
+  --btn-secondary-bg: linear-gradient(180deg, #2a2e3d 0%, #1e2230 100%);
+  --btn-secondary-hover: linear-gradient(180deg, #353a4d 0%, #282d3d 100%);
+  --class-warrior: #C69B6D;
+  --class-paladin: #F48CBA;
+  --class-hunter: #AAD372;
+  --class-rogue: #FFF468;
+  --class-priest: #d0d0d0;
+  --class-shaman: #0070DD;
+  --class-mage: #3FC7EB;
+  --class-warlock: #8788EE;
+  --class-druid: #FF7C0A;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #08090c;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 8px 16px;
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 800px 600px at 30% 20%, rgba(212,175,55,0.03) 0%, transparent 70%),
+    radial-gradient(ellipse 600px 800px at 70% 80%, rgba(0,112,221,0.02) 0%, transparent 70%),
+    radial-gradient(ellipse 1200px 1200px at 50% 50%, rgba(30,34,48,0.5) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Main frame ── */
+.addon-frame {
+  position: relative; z-index: 1;
+  width: min(1080px, 100%);
+  background: var(--bg-frame);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.5), 0 4px 24px rgba(0,0,0,0.6), 0 0 80px rgba(212,175,55,0.03);
+  overflow: hidden;
+}
+.addon-frame::after {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(212,175,55,0.06);
+  pointer-events: none;
+}
+
+/* ── Title bar ── */
+.title-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-1) var(--sp-4);
+  background: linear-gradient(180deg, #1a1d26 0%, var(--bg-frame) 100%);
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+}
+.title-bar h1 {
+  font-family: 'Cinzel', serif; font-size: 13px; font-weight: 600;
+  color: var(--accent-gold); letter-spacing: 1.5px; text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(212,175,55,0.2);
+}
+.title-left { display: flex; align-items: center; gap: var(--sp-2); }
+.title-diamond {
+  width: 8px; height: 8px; background: var(--accent-gold-dim);
+  transform: rotate(45deg); opacity: 0.5;
+}
+
+/* ── Toolbar ── */
+.toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-1) var(--sp-4);
+  background: var(--bg-deepest);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.mode-tabs {
+  display: flex; gap: 2px;
+  background: var(--bg-slot);
+  border-radius: var(--radius-md); padding: 2px;
+  border: 1px solid var(--border-subtle);
+}
+.mode-tab {
+  padding: var(--sp-1) var(--sp-4);
+  border: none; background: transparent;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500;
+  cursor: pointer; border-radius: var(--radius-sm);
+  transition: all 0.2s ease; letter-spacing: 0.3px;
+}
+.mode-tab:hover { color: var(--text-secondary); }
+.mode-tab.active {
+  background: linear-gradient(180deg, #2a2e3d 0%, #1e2230 100%);
+  color: var(--accent-gold);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.raid-selector { display: flex; align-items: center; gap: var(--sp-2); }
+.raid-selector label {
+  font-size: 11px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500;
+}
+.raid-dropdown {
+  padding: var(--sp-1) var(--sp-3); padding-right: var(--sp-6);
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235e5a55'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center;
+  transition: border-color 0.15s ease;
+}
+.raid-dropdown:hover { border-color: var(--border-medium); }
+.raid-dropdown:focus { outline: none; border-color: var(--accent-gold-dim); box-shadow: 0 0 0 1px var(--accent-gold-glow); }
+.raid-dropdown option { background: var(--bg-panel); color: var(--text-primary); }
+
+/* ── Roster bar ── */
+.roster-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-1) var(--sp-4);
+  background: rgba(26,29,38,0.5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.roster-left { display: flex; align-items: center; gap: var(--sp-3); }
+.roster-label {
+  font-size: 11px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500;
+}
+.roster-name {
+  font-size: 12px; color: var(--text-primary); font-weight: 500;
+  padding: 2px var(--sp-2);
+  background: var(--bg-slot); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.roster-actions { display: flex; gap: var(--sp-1); }
+.roster-btn {
+  padding: 2px var(--sp-2);
+  background: transparent; border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted); font-size: 11px; cursor: pointer;
+  font-family: 'Inter', sans-serif; transition: all 0.15s ease;
+}
+.roster-btn:hover { border-color: var(--border-medium); color: var(--text-secondary); }
+
+/* ── Group grid ── */
+.groups-container {
+  padding: var(--sp-2) var(--sp-3);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}
+/* When exactly 5 groups: 3 on top, 2 centered on bottom */
+.groups-container.groups-5 {
+  grid-template-columns: repeat(6, 1fr);
+}
+.groups-container.groups-5 .group-card:nth-child(1),
+.groups-container.groups-5 .group-card:nth-child(2),
+.groups-container.groups-5 .group-card:nth-child(3) {
+  grid-column: span 2;
+}
+.groups-container.groups-5 .group-card:nth-child(4) {
+  grid-column: 2 / span 2;
+}
+.groups-container.groups-5 .group-card:nth-child(5) {
+  grid-column: 4 / span 2;
+}
+.groups-container.groups-5 .raid-dps-bar {
+  grid-column: 1 / -1;
+}
+.group-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.group-card:hover {
+  border-color: var(--border-medium);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+}
+.group-card.drag-over {
+  border-color: var(--accent-gold-dim);
+  box-shadow: 0 0 12px var(--accent-gold-glow);
+}
+.group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 3px var(--sp-2);
+  background: linear-gradient(180deg, rgba(42,46,61,0.6) 0%, rgba(30,34,48,0.3) 100%);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.group-header h3 {
+  font-size: 11px; font-weight: 600;
+  color: var(--text-heading); letter-spacing: 0.5px;
+}
+.group-role-tag {
+  font-size: 9px; color: var(--text-muted);
+  background: var(--bg-slot);
+  padding: 1px var(--sp-1); border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  letter-spacing: 0.3px; text-transform: uppercase; font-weight: 500;
+}
+
+/* ── Player slots ── */
+.player-list { padding: 1px 0; }
+.player-slot {
+  display: flex; align-items: center;
+  padding: 2px var(--sp-2); gap: var(--sp-1);
+  cursor: grab; transition: background 0.1s ease;
+  border-left: 2px solid transparent;
+  min-height: 24px;
+}
+.player-slot:hover {
+  background: var(--bg-card-hover);
+  border-left-color: var(--accent-gold-dim);
+}
+.player-slot:active { cursor: grabbing; }
+.player-slot.dragging { opacity: 0.3; }
+.player-slot.drag-target {
+  background: rgba(212,175,55,0.08);
+  border-left-color: var(--accent-gold);
+}
+.role-icon {
+  width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; flex-shrink: 0;
+  border-radius: 3px; line-height: 1;
+}
+.role-tank { color: #5b9bd5; background: rgba(91,155,213,0.1); }
+.role-healer { color: #5bbd5b; background: rgba(91,189,91,0.1); }
+.role-dps { color: #d45b5b; background: rgba(212,91,91,0.1); }
+.player-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.player-name {
+  font-size: 11px; font-weight: 600; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+.player-spec { font-size: 9px; color: var(--text-muted); line-height: 1.2; }
+.empty-slot { opacity: 0.3; font-style: italic; cursor: default; }
+.empty-slot .player-name { color: var(--text-muted); font-weight: 400; }
+.drag-handle {
+  display: flex; flex-direction: column; gap: 2px;
+  opacity: 0; transition: opacity 0.15s ease;
+  flex-shrink: 0; padding: 2px;
+}
+.player-slot:hover .drag-handle { opacity: 0.4; }
+.drag-dot-row { display: flex; gap: 2px; }
+.drag-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); }
+
+/* ── Buff bar ── */
+.buff-bar {
+  display: flex; align-items: center; gap: 3px;
+  padding: 3px var(--sp-2);
+  background: rgba(13,14,18,0.4);
+  border-top: 1px solid var(--border-subtle);
+  min-height: 28px; flex-wrap: wrap;
+}
+.buff-bar-label {
+  font-size: 8px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  font-weight: 600; flex-shrink: 0; margin-right: 2px;
+}
+.group-dps {
+  font-size: 9px; color: var(--accent-gold-dim);
+  font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.raid-dps-bar {
+  display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  padding: 3px var(--sp-2);
+  background: linear-gradient(180deg, rgba(42,46,61,0.5) 0%, rgba(30,34,48,0.3) 100%);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+}
+.raid-dps-bar .raid-dps-label {
+  font-size: 9px; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.5px; font-weight: 600;
+}
+.raid-dps-bar .raid-dps-value {
+  font-size: 13px; color: var(--accent-gold); font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.buff-icon {
+  width: 24px; height: 24px;
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; font-weight: 700; letter-spacing: 0.2px;
+  border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+  cursor: default; position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  flex-shrink: 0;
+}
+.buff-icon img {
+  width: 100%; height: 100%; object-fit: cover;
+  display: block; border-radius: var(--radius-sm);
+}
+/* Abbreviation text — hidden when image loads, visible as fallback */
+.buff-icon .buff-label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; font-weight: 700;
+  color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+}
+/* When image is present, hide label by default, show on hover */
+.buff-icon.has-icon .buff-label {
+  background: rgba(0,0,0,0.45);
+  opacity: 0; transition: opacity 0.15s ease;
+}
+.buff-icon.has-icon:hover .buff-label { opacity: 1; }
+.buff-icon:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+  z-index: 2;
+}
+.buff-tooltip {
+  display: none;
+  position: absolute; bottom: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-deepest); color: var(--text-primary);
+  padding: 5px 8px; border-radius: var(--radius-sm);
+  font-size: 10px; white-space: nowrap;
+  border: 1px solid var(--border-medium);
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  z-index: 10; letter-spacing: 0;
+}
+.buff-tooltip .tt-name { font-weight: 600; color: var(--accent-gold); }
+.buff-tooltip .tt-source { font-weight: 500; font-size: 9px; margin-top: 1px; }
+.buff-icon:hover .buff-tooltip { display: block; }
+.buff-icon.swappable { cursor: pointer; }
+.buff-icon.swappable::after {
+  content: ''; position: absolute; bottom: -2px; right: -2px;
+  width: 6px; height: 6px; background: var(--accent-gold);
+  border-radius: 50%; border: 1px solid var(--bg-deepest);
+  z-index: 3;
+}
+.buff-icon.overridden { outline: 1px solid var(--accent-gold); outline-offset: 1px; }
+
+.buff-picker-overlay {
+  position: fixed; inset: 0; z-index: 99; background: transparent;
+}
+.buff-picker {
+  position: absolute;
+  background: var(--bg-deepest); border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 4px;
+  z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  min-width: 170px;
+}
+.buff-picker-title {
+  font-size: 9px; color: var(--text-muted); padding: 2px 6px 4px;
+  border-bottom: 1px solid var(--border-subtle); margin-bottom: 2px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.buff-picker-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 3px; cursor: pointer;
+  font-size: 11px; color: var(--text-primary);
+  transition: background 0.1s;
+}
+.buff-picker-item:hover { background: rgba(255,255,255,0.08); }
+.buff-picker-item.active { background: rgba(255,215,0,0.1); }
+.buff-picker-item img { width: 18px; height: 18px; border-radius: 3px; flex-shrink: 0; }
+.buff-picker-item .picker-buff-name { flex: 1; }
+.buff-picker-item .picker-check { color: var(--accent-gold); font-size: 12px; }
+.buff-picker-reset {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 3px; cursor: pointer;
+  font-size: 10px; color: var(--text-muted); font-style: italic;
+  border-top: 1px solid var(--border-subtle); margin-top: 2px;
+}
+.buff-picker-reset:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+
+.manual-changes-section {
+  display: none;
+  max-width: 1400px; margin: var(--sp-3) auto 0; padding: 12px 16px;
+  background: var(--bg-card); border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+}
+.manual-changes-section h3 {
+  font-size: 13px; font-weight: 600; color: var(--accent-gold);
+  margin: 0 0 8px;
+}
+.manual-changes-section ul { list-style: none; padding: 0; margin: 0; }
+.manual-changes-section li {
+  font-size: 12px; padding: 6px 0; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 4px;
+}
+.manual-changes-section li + li { border-top: 1px solid var(--border-subtle); }
+.manual-changes-section .change-arrow { color: var(--text-muted); margin: 0 2px; }
+.manual-changes-section .change-buff { color: var(--text-primary); font-weight: 500; }
+.manual-changes-section .change-remove {
+  margin-left: auto; cursor: pointer; color: var(--text-muted);
+  font-size: 16px; padding: 0 4px; line-height: 1;
+}
+.manual-changes-section .change-remove:hover { color: #ff6666; }
+.buff-wf  { background: linear-gradient(135deg, #0070DD 0%, #004a94 100%); color: #cce0ff; }
+.buff-goa { background: linear-gradient(135deg, #69CCF0 0%, #3a8ab0 100%); color: #e0f5ff; }
+.buff-woa { background: linear-gradient(135deg, #9482C9 0%, #5e4f8a 100%); color: #e8e0ff; }
+.buff-tow { background: linear-gradient(135deg, #FF7C0A 0%, #b35500 100%); color: #ffe0c0; }
+.buff-dev { background: linear-gradient(135deg, #FFD100 0%, #b39200 100%); color: #fff5cc; }
+.buff-conc { background: linear-gradient(135deg, #FFF468 0%, #b3aa48 100%); color: #333; }
+.buff-ret { background: linear-gradient(135deg, #d94d4d 0%, #8a3030 100%); color: #ffd0d0; }
+.buff-lotp { background: linear-gradient(135deg, #AAD372 0%, #6d8a48 100%); color: #f0ffe0; }
+.buff-moon { background: linear-gradient(135deg, #a08cd8 0%, #6b5a9e 100%); color: #e8e0ff; }
+.buff-tsa { background: linear-gradient(135deg, #7ab350 0%, #4d7030 100%); color: #e8ffd0; }
+.buff-bp { background: linear-gradient(135deg, #8788EE 0%, #5555aa 100%); color: #e0e0ff; }
+.buff-sw { background: linear-gradient(135deg, #664099 0%, #402060 100%); color: #d8c0f0; }
+.buff-ms { background: linear-gradient(135deg, #2288cc 0%, #155580 100%); color: #c0e5ff; }
+.buff-mt { background: linear-gradient(135deg, #004F8A 0%, #003055 100%); color: #a0d0f0; }
+.buff-soe { background: linear-gradient(135deg, #996633 0%, #664420 100%); color: #ffe0c0; }
+.no-buffs { font-size: 10px; color: var(--text-muted); font-style: italic; opacity: 0.5; }
+
+/* ── Action bar ── */
+.action-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-1) var(--sp-4);
+  background: var(--bg-deepest);
+  border-top: 1px solid var(--border-subtle);
+}
+.action-left, .action-right { display: flex; gap: var(--sp-2); align-items: center; }
+.btn {
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s ease;
+  letter-spacing: 0.3px; display: flex; align-items: center;
+  gap: var(--sp-2); white-space: nowrap;
+}
+.btn-primary {
+  background: var(--btn-primary-bg); color: #1a1200;
+  border-color: var(--accent-gold-dim);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.15);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+.btn-primary:hover {
+  background: var(--btn-primary-hover);
+  box-shadow: 0 2px 8px rgba(212,175,55,0.2), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.btn-secondary {
+  background: var(--btn-secondary-bg); color: var(--text-primary);
+  border-color: var(--border-subtle);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.btn-secondary:hover {
+  background: var(--btn-secondary-hover); border-color: var(--border-medium);
+}
+
+/* ── Status bar ── */
+.status-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-1) var(--sp-4);
+  background: rgba(13,14,18,0.6);
+  border-top: 1px solid rgba(42,46,61,0.5);
+  font-size: 10px; color: var(--text-muted);
+}
+.status-left { display: flex; align-items: center; gap: var(--sp-2); }
+.status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #4a8; box-shadow: 0 0 6px rgba(68,170,136,0.4);
+}
+.status-right { opacity: 0.6; }
+
+/* ── Import modal ── */
+.import-overlay {
+  display: none; position: absolute; inset: 0;
+  background: rgba(8,9,12,0.85); z-index: 10;
+  justify-content: center; align-items: center;
+  backdrop-filter: blur(4px);
+}
+.import-overlay.visible { display: flex; }
+.import-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-6); width: 440px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.import-modal h3 {
+  font-family: 'Cinzel', serif; font-size: 14px;
+  color: var(--accent-gold); margin-bottom: var(--sp-3); letter-spacing: 1px;
+}
+.import-modal p {
+  font-size: 11px; color: var(--text-secondary);
+  margin-bottom: var(--sp-3); line-height: 1.5;
+}
+.import-textarea {
+  width: 100%; height: 140px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace; font-size: 11px;
+  padding: var(--sp-3); resize: none;
+  margin-bottom: var(--sp-3);
+  transition: border-color 0.15s ease;
+}
+.import-textarea:focus { outline: none; border-color: var(--accent-gold-dim); }
+.import-textarea::placeholder { color: var(--text-muted); }
+.import-buttons { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+
+/* ── Save/Load modal ── */
+.save-overlay {
+  display: none; position: absolute; inset: 0;
+  background: rgba(8,9,12,0.85); z-index: 10;
+  justify-content: center; align-items: center;
+  backdrop-filter: blur(4px);
+}
+.save-overlay.visible { display: flex; }
+.save-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-6); width: 380px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.save-modal h3 {
+  font-family: 'Cinzel', serif; font-size: 14px;
+  color: var(--accent-gold); margin-bottom: var(--sp-3); letter-spacing: 1px;
+}
+.save-input {
+  width: 100%; padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-input); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  margin-bottom: var(--sp-3);
+}
+.save-input:focus { outline: none; border-color: var(--accent-gold-dim); }
+.saved-roster-list { margin-bottom: var(--sp-3); max-height: 200px; overflow-y: auto; }
+.saved-roster-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); margin-bottom: var(--sp-1);
+  cursor: pointer; transition: all 0.15s ease;
+}
+.saved-roster-item:hover { border-color: var(--accent-gold-dim); background: var(--bg-card-hover); }
+.saved-roster-item .roster-item-name { font-size: 12px; color: var(--text-primary); }
+.saved-roster-item .roster-item-meta { font-size: 10px; color: var(--text-muted); }
+.saved-roster-item .roster-item-delete {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 14px; padding: 0 4px;
+  transition: color 0.15s ease;
+}
+.saved-roster-item .roster-item-delete:hover { color: #e05555; }
+
+/* ── Notification toast ── */
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--bg-panel); border: 1px solid var(--accent-gold-dim);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--text-primary); font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  z-index: 100; opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+.toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+/* ── Drag ghost ── */
+.drag-ghost {
+  position: fixed; pointer-events: none; z-index: 1000;
+  background: rgba(212,175,55,0.15);
+  border: 1px solid var(--accent-gold-dim);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1) var(--sp-3);
+  font-size: 12px; font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  display: none;
+}
+
+/* ── Accessibility ── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1100px) {
+  .addon-frame { border-radius: 0; }
+  .addon-frame::after { border-radius: 0; }
+  body { padding: 0; }
+}
+@media (max-width: 900px) {
+  .groups-container { grid-template-columns: repeat(2, 1fr); }
+  .groups-container.groups-5 { grid-template-columns: repeat(2, 1fr); }
+  .groups-container.groups-5 .group-card:nth-child(1),
+  .groups-container.groups-5 .group-card:nth-child(2),
+  .groups-container.groups-5 .group-card:nth-child(3),
+  .groups-container.groups-5 .group-card:nth-child(4),
+  .groups-container.groups-5 .group-card:nth-child(5) { grid-column: span 1; }
+  .toolbar { flex-wrap: wrap; gap: var(--sp-1); }
+  .roster-bar { flex-wrap: wrap; gap: var(--sp-1); }
+  .roster-actions { flex-wrap: wrap; }
+}
+@media (max-width: 600px) {
+  .groups-container,
+  .groups-container.groups-5 { grid-template-columns: 1fr; }
+  .title-bar { padding: var(--sp-1) var(--sp-2); }
+  .title-bar h1 { font-size: 11px; }
+  .toolbar { padding: var(--sp-1) var(--sp-2); }
+  .roster-bar { padding: var(--sp-1) var(--sp-2); }
+  .action-bar { flex-wrap: wrap; gap: var(--sp-1); padding: var(--sp-1) var(--sp-2); }
+  .groups-container { padding: var(--sp-2); }
+  .status-bar { flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--sp-1) var(--sp-2); }
+  .import-modal { width: calc(100vw - 32px); min-width: auto; }
+  .save-modal { width: calc(100vw - 32px); min-width: auto; }
+  .manual-changes-section { margin: var(--sp-2) var(--sp-2) 0; }
+  .buff-bar { gap: 2px; }
+}
+</style>
+</head>
+<body>
+
+<div class="addon-frame" id="app">
+  <div class="title-bar">
+    <div class="title-left">
+      <div class="title-diamond"></div>
+      <h1>Party Planner</h1>
+    </div>
+    <span style="font-size:10px; color:var(--text-muted);">Web Edition</span>
+  </div>
+
+  <div class="toolbar">
+    <div class="mode-tabs">
+      <button class="mode-tab active" data-tab="plan">Plan Mode</button>
+    </div>
+    <div class="raid-selector">
+      <label for="raid-select">Raid</label>
+      <select class="raid-dropdown" id="raid-select" aria-label="Select raid instance"></select>
+    </div>
+  </div>
+
+  <div class="roster-bar">
+    <div class="roster-left">
+      <span class="roster-label">Roster</span>
+      <span class="roster-name" id="roster-name">No Roster Loaded</span>
+    </div>
+    <div class="roster-actions">
+      <button class="roster-btn" id="btn-save" aria-label="Save current roster">Save</button>
+      <button class="roster-btn" id="btn-load" aria-label="Load a saved roster">Load</button>
+      <button class="roster-btn" id="btn-copy-addon" aria-label="Copy roster as addon string to clipboard">Copy Addon String</button>
+      <button class="roster-btn" id="btn-export-json" aria-label="Export roster as JSON file">Export JSON</button>
+      <button class="roster-btn" id="btn-copy-json" aria-label="Copy roster JSON to clipboard">Copy JSON</button>
+    </div>
+  </div>
+
+  <div class="groups-container" id="groups-container"></div>
+
+  <div class="manual-changes-section" id="manual-changes"></div>
+
+  <div class="action-bar">
+    <div class="action-left">
+      <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition">&#9733; Optimize</button>
+      <select class="raid-dropdown" id="optimize-mode" aria-label="Optimizer strategy">
+        <option value="balanced" selected>Balanced</option>
+        <option value="strict">Strict</option>
+        <option value="relaxed">Relaxed</option>
+      </select>
+      <button class="btn btn-secondary" id="btn-clear" aria-label="Clear all players and groups">Clear All</button>
+    </div>
+    <div class="action-right">
+      <button class="btn btn-secondary" id="btn-import" aria-label="Import roster from JSON or URL">Import Roster</button>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-left">
+      <span class="status-dot"></span>
+      <span id="status-text" aria-live="polite">Ready — import a roster to begin</span>
+    </div>
+    <div class="status-right">Party Planner Web &middot; v1.0</div>
+  </div>
+
+  <!-- Import modal -->
+  <div class="import-overlay" id="import-overlay" role="dialog" aria-modal="true" aria-labelledby="import-heading">
+    <div class="import-modal">
+      <h3 id="import-heading">Import Roster</h3>
+      <p>Paste JSON data from raid-helper.dev below. The tool will parse player names, classes, and specs to populate the planner.</p>
+      <label for="import-textarea" class="sr-only">Roster data</label>
+      <textarea class="import-textarea" id="import-textarea" placeholder='Paste JSON, a raid-helper URL, or a PP: addon string'></textarea>
+      <div class="import-buttons">
+        <button class="btn btn-secondary" id="btn-cancel-import">Cancel</button>
+        <button class="btn btn-primary" id="btn-do-import">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save modal -->
+  <div class="save-overlay" id="save-overlay" role="dialog" aria-modal="true">
+    <div class="save-modal" id="save-modal">
+      <!-- Content injected by JS -->
+    </div>
+  </div>
+</div>
+
+<div class="drag-ghost" id="drag-ghost"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================================================================
+   PARTY PLANNER WEB — Full TBC Raid Group Builder
+   Ported from the WoW addon Lua codebase
+   ================================================================ */
+
+// ── UTILITIES ───────────────────────────────────────────────────
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+let _uid = 0;
+function nextUid() { return 'p' + (++_uid); }
+
+// ── CONFIG ──────────────────────────────────────────────────────
+const Config = {
+  ClassColors: {
+    WARRIOR: '#C69B6D', PALADIN: '#F48CBA', HUNTER: '#AAD372',
+    ROGUE: '#FFF468', PRIEST: '#d0d0d0', SHAMAN: '#0070DD',
+    MAGE: '#3FC7EB', WARLOCK: '#8788EE', DRUID: '#FF7C0A',
+  },
+
+  Roles: { TANK:'tank', HEALER:'healer', MELEE_DPS:'melee_dps', RANGED_DPS:'ranged_dps', CASTER_DPS:'caster_dps' },
+
+  Specs: {
+    WARRIOR: { 1:{name:'Arms',role:'melee_dps'},2:{name:'Fury',role:'melee_dps'},3:{name:'Protection',role:'tank'} },
+    PALADIN: { 1:{name:'Holy',role:'healer'},2:{name:'Protection',role:'tank'},3:{name:'Retribution',role:'melee_dps'} },
+    HUNTER:  { 1:{name:'Beast Mastery',role:'ranged_dps'},2:{name:'Marksmanship',role:'ranged_dps'},3:{name:'Survival',role:'ranged_dps'} },
+    ROGUE:   { 1:{name:'Assassination',role:'melee_dps'},2:{name:'Combat',role:'melee_dps'},3:{name:'Subtlety',role:'melee_dps'} },
+    PRIEST:  { 1:{name:'Discipline',role:'healer'},2:{name:'Holy',role:'healer'},3:{name:'Shadow',role:'caster_dps'} },
+    SHAMAN:  { 1:{name:'Elemental',role:'caster_dps'},2:{name:'Enhancement',role:'melee_dps'},3:{name:'Restoration',role:'healer'} },
+    MAGE:    { 1:{name:'Arcane',role:'caster_dps'},2:{name:'Fire',role:'caster_dps'},3:{name:'Frost',role:'caster_dps'} },
+    WARLOCK: { 1:{name:'Affliction',role:'caster_dps'},2:{name:'Demonology',role:'caster_dps'},3:{name:'Destruction',role:'caster_dps'} },
+    DRUID:   { 1:{name:'Balance',role:'caster_dps'},2:{name:'Feral',role:'melee_dps'},3:{name:'Restoration',role:'healer'} },
+  },
+
+  Buffs: {
+    WINDFURY:          { name:'Windfury Totem',       sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:100 },
+    GRACE_OF_AIR:      { name:'Grace of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['melee_dps','ranged_dps'], priority:60 },
+    WRATH_OF_AIR:      { name:'Wrath of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['caster_dps','healer'], priority:85 },
+    TOTEM_OF_WRATH:    { name:'Totem of Wrath',       sourceClass:'SHAMAN', sourceSpec:'Elemental', benefitsRoles:['caster_dps'], priority:80 },
+    MANA_SPRING:       { name:'Mana Spring Totem',    sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:50 },
+    MANA_TIDE:         { name:'Mana Tide Totem',      sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70 },
+    STRENGTH_OF_EARTH: { name:'Strength of Earth',    sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55 },
+    DEVOTION_AURA:     { name:'Devotion Aura',        sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75 },
+    CONCENTRATION_AURA:{ name:'Concentration Aura',   sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:65 },
+    RETRIBUTION_AURA:  { name:'Retribution Aura',     sourceClass:'PALADIN', benefitsRoles:['tank'], priority:30 },
+    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',   sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps'], priority:78 },
+    MOONKIN_AURA:      { name:'Moonkin Aura',         sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['caster_dps'], priority:72 },
+    TRUESHOT_AURA:     { name:'Trueshot Aura',        sourceClass:'HUNTER', benefitsRoles:['melee_dps','ranged_dps'], priority:55 },
+    FEROCIOUS_INSP:    { name:'Ferocious Inspiration',sourceClass:'HUNTER', sourceSpec:'Beast Mastery', benefitsRoles:['melee_dps','ranged_dps','caster_dps'], priority:58 },
+    BLOOD_PACT:        { name:'Blood Pact',           sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40 },
+    SHADOW_WEAVING:    { name:'Shadow Weaving',       sourceClass:'PRIEST', sourceSpec:'Shadow', benefitsRoles:['caster_dps'], priority:68 },
+  },
+
+  BuffAbbreviations: {
+    WINDFURY:'WF', GRACE_OF_AIR:'GoA', WRATH_OF_AIR:'WoA', TOTEM_OF_WRATH:'ToW',
+    MANA_SPRING:'MS', MANA_TIDE:'MT', STRENGTH_OF_EARTH:'SoE',
+    DEVOTION_AURA:'Dev', CONCENTRATION_AURA:'Conc', RETRIBUTION_AURA:'Ret',
+    LEADER_OF_THE_PACK:'LotP', MOONKIN_AURA:'Moon', TRUESHOT_AURA:'TSA', FEROCIOUS_INSP:'FI',
+    BLOOD_PACT:'BP', SHADOW_WEAVING:'SW',
+  },
+
+  BuffCSSClass: {
+    WINDFURY:'buff-wf', GRACE_OF_AIR:'buff-goa', WRATH_OF_AIR:'buff-woa', TOTEM_OF_WRATH:'buff-tow',
+    MANA_SPRING:'buff-ms', MANA_TIDE:'buff-mt', STRENGTH_OF_EARTH:'buff-soe',
+    DEVOTION_AURA:'buff-dev', CONCENTRATION_AURA:'buff-conc', RETRIBUTION_AURA:'buff-ret',
+    LEADER_OF_THE_PACK:'buff-lotp', MOONKIN_AURA:'buff-moon', TRUESHOT_AURA:'buff-tsa', FEROCIOUS_INSP:'buff-fi',
+    BLOOD_PACT:'buff-bp', SHADOW_WEAVING:'buff-sw',
+  },
+
+  // Wowhead CDN icon filenames for each buff
+  BuffIcons: {
+    WINDFURY:           'spell_nature_windfury',
+    GRACE_OF_AIR:       'spell_nature_invisibilitytotem',
+    WRATH_OF_AIR:       'spell_nature_slowingtotem',
+    TOTEM_OF_WRATH:     'spell_fire_totemofwrath',
+    MANA_SPRING:        'spell_nature_manaregentotem',
+    MANA_TIDE:          'spell_frost_summonwaterelemental',
+    STRENGTH_OF_EARTH:  'spell_nature_earthbindtotem',
+    DEVOTION_AURA:      'spell_holy_devotionaura',
+    CONCENTRATION_AURA: 'spell_holy_mindsooth',
+    RETRIBUTION_AURA:   'spell_holy_auraoflight',
+    LEADER_OF_THE_PACK: 'spell_nature_unyeildingstamina',
+    MOONKIN_AURA:       'spell_nature_starfall',
+    TRUESHOT_AURA:      'ability_trueshot',
+    FEROCIOUS_INSP:     'ability_hunter_ferociousinspiration',
+    BLOOD_PACT:         'spell_shadow_bloodboil',
+    SHADOW_WEAVING:     'spell_shadow_blackplague',
+  },
+  BuffIconURL(id) {
+    const icon = this.BuffIcons[id];
+    return icon ? `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg` : '';
+  },
+
+  Raids: {
+    kara:  { name:'Karazhan',            size:10, groups:2 },
+    za:    { name:"Zul'Aman",            size:10, groups:2 },
+    gruul: { name:"Gruul's Lair",        size:25, groups:5 },
+    mag:   { name:"Magtheridon's Lair",  size:25, groups:5 },
+    ssc:   { name:'Serpentshrine Cavern',size:25, groups:5 },
+    tk:    { name:'Tempest Keep',        size:25, groups:5 },
+    hyjal: { name:'Hyjal Summit',        size:25, groups:5 },
+    bt:    { name:'Black Temple',        size:25, groups:5 },
+    swp:   { name:'Sunwell Plateau',     size:25, groups:5 },
+  },
+  RaidOrder: ['kara','za','gruul','mag','ssc','tk','hyjal','bt','swp'],
+
+  RaidHelperClassMap: {
+    Hunter:'HUNTER', Druid:'DRUID', Warrior:'WARRIOR', Priest:'PRIEST',
+    Mage:'MAGE', Shaman:'SHAMAN', Paladin:'PALADIN', Rogue:'ROGUE', Warlock:'WARLOCK',
+    Tank:null, Bench:null,
+  },
+
+  RaidHelperSpecMap: {
+    Arms:        {class:'WARRIOR',spec:'Arms',      role:'melee_dps'},
+    Fury:        {class:'WARRIOR',spec:'Fury',       role:'melee_dps'},
+    Protection:  {class:'WARRIOR',spec:'Protection', role:'tank'},
+    Holy1:       {class:'PALADIN',spec:'Holy',       role:'healer'},
+    Protection1: {class:'PALADIN',spec:'Protection', role:'tank'},
+    Retribution: {class:'PALADIN',spec:'Retribution',role:'melee_dps'},
+    Beastmastery:{class:'HUNTER', spec:'Beast Mastery',role:'ranged_dps'},
+    Marksmanship:{class:'HUNTER', spec:'Marksmanship',role:'ranged_dps'},
+    Survival:    {class:'HUNTER', spec:'Survival',    role:'ranged_dps'},
+    Assassination:{class:'ROGUE',spec:'Assassination',role:'melee_dps'},
+    Combat:      {class:'ROGUE', spec:'Combat',       role:'melee_dps'},
+    Subtlety:    {class:'ROGUE', spec:'Subtlety',     role:'melee_dps'},
+    Discipline:  {class:'PRIEST',spec:'Discipline',   role:'healer'},
+    Holy:        {class:'PRIEST',spec:'Holy',          role:'healer'},
+    Shadow:      {class:'PRIEST',spec:'Shadow',        role:'caster_dps'},
+    Smite:       {class:'PRIEST',spec:'Discipline',    role:'caster_dps'},
+    Elemental:   {class:'SHAMAN',spec:'Elemental',     role:'caster_dps'},
+    Enhancement: {class:'SHAMAN',spec:'Enhancement',   role:'melee_dps'},
+    Restoration1:{class:'SHAMAN',spec:'Restoration',   role:'healer'},
+    Restoration: {class:'DRUID', spec:'Restoration',   role:'healer'},
+    Arcane:      {class:'MAGE',  spec:'Arcane',        role:'caster_dps'},
+    Fire:        {class:'MAGE',  spec:'Fire',          role:'caster_dps'},
+    Frost:       {class:'MAGE',  spec:'Frost',         role:'caster_dps'},
+    Affliction:  {class:'WARLOCK',spec:'Affliction',   role:'caster_dps'},
+    Demonology:  {class:'WARLOCK',spec:'Demonology',   role:'caster_dps'},
+    Destruction: {class:'WARLOCK',spec:'Destruction',   role:'caster_dps'},
+    Balance:     {class:'DRUID', spec:'Balance',        role:'caster_dps'},
+    Feral:       {class:'DRUID', spec:'Feral',          role:'melee_dps'},
+    Guardian:    {class:'DRUID', spec:'Feral',          role:'tank'},
+    Dreamstate:  {class:'DRUID', spec:'Balance',        role:'healer'},
+  },
+};
+
+// ── TOTEM / AURA EXCLUSIVITY (from Optimizer.lua) ──
+const TOTEM_ELEMENTS = {
+  WINDFURY:'air', GRACE_OF_AIR:'air', WRATH_OF_AIR:'air',
+  TOTEM_OF_WRATH:'fire', MANA_SPRING:'water', MANA_TIDE:'water',
+  STRENGTH_OF_EARTH:'earth',
+};
+const PALADIN_AURAS = { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true };
+const BEST_AIR_TOTEM = { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'WRATH_OF_AIR', healer:'WRATH_OF_AIR' };
+const BEST_PALADIN_AURA = { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' };
+
+// ── STATE ───────────────────────────────────────────────────────
+const State = {
+  roster: [],
+  groups: [],
+  selectedRaid: 'bt',
+  rosterName: 'No Roster Loaded',
+  optimizerMode: 'balanced', // 'strict' | 'balanced' | 'relaxed'
+  buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
+};
+
+// ── IMPORT ──────────────────────────────────────────────────────
+const Import = {
+  importRaidHelper(jsonStr) {
+    let data;
+    try { data = JSON.parse(jsonStr); } catch(e) { return { success:false, error:'Invalid JSON: '+e.message }; }
+    if (!data.slots || !Array.isArray(data.slots)) return { success:false, error:"No 'slots' array found in JSON" };
+
+    let maxGroup = 0;
+    for (const slot of data.slots) {
+      if (slot.groupNumber && slot.groupNumber > maxGroup) maxGroup = slot.groupNumber;
+    }
+    if (maxGroup === 0) return { success:false, error:'No groups found in data' };
+
+    const roster = [];
+    const groups = [];
+    for (let i = 0; i < maxGroup; i++) groups.push([]);
+
+    for (const slot of data.slots) {
+      const specInfo = Config.RaidHelperSpecMap[slot.specName];
+      let classFile = null, specName = slot.specName || 'Unknown', role = 'melee_dps';
+
+      if (specInfo) {
+        classFile = specInfo.class;
+        specName = specInfo.spec;
+        role = specInfo.role;
+      } else {
+        classFile = Config.RaidHelperClassMap[slot.className] || null;
+      }
+
+      if (slot.className === 'Tank') {
+        role = 'tank';
+        if (specInfo) classFile = specInfo.class;
+      }
+      if (slot.className === 'Bench' && specInfo) {
+        classFile = specInfo.class;
+      }
+
+      if (classFile) {
+        const player = {
+          uid: nextUid(),
+          name: slot.name || ('Unknown-' + (slot.slotNumber || 0)),
+          class: classFile,
+          spec: specName,
+          role: role,
+          groupNumber: slot.groupNumber,
+          imported: true,
+        };
+        roster.push(player);
+        const g = slot.groupNumber;
+        if (g >= 1 && g <= maxGroup) groups[g-1].push(player);
+      }
+    }
+
+    // Auto-detect raid
+    const totalPlayers = roster.length;
+    if (totalPlayers <= 10) {
+      for (const key of Config.RaidOrder) {
+        if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; }
+      }
+    }
+
+    State.roster = roster;
+    State.groups = groups;
+    return { success:true, playerCount:roster.length, groupCount:maxGroup };
+  },
+
+  // Compact addon-friendly export string
+  // Format: PP:1:raid:G1name.class.spec.role,name.class.spec.role:G2...:G3...
+  // Class/spec/role use short codes to keep the string small.
+  classCode: {
+    WARRIOR:'WR', PALADIN:'PA', HUNTER:'HU', ROGUE:'RO',
+    PRIEST:'PR', SHAMAN:'SH', MAGE:'MA', WARLOCK:'WL', DRUID:'DR',
+  },
+  specCode: {
+    Protection:'Prot', Retribution:'Ret', Holy:'Holy',
+    Arms:'Arms', Fury:'Fury',
+    'Beast Mastery':'BM', Marksmanship:'MM', Survival:'SV',
+    Combat:'Com', Assassination:'Ass', Subtlety:'Sub',
+    Shadow:'Shad', Discipline:'Disc',
+    Enhancement:'Enh', Elemental:'Ele', Restoration:'Rest',
+    Arcane:'Arc', Fire:'Fire', Frost:'Fro',
+    Destruction:'Dest', Affliction:'Aff', Demonology:'Demo',
+    Balance:'Bal', Feral:'Fer',
+  },
+  roleCode: { tank:'T', healer:'H', melee_dps:'M', ranged_dps:'R', caster_dps:'C' },
+
+  exportAddonString() {
+    const cc = this.classCode;
+    const sc = this.specCode;
+    const rc = this.roleCode;
+    const parts = ['PP', '1', State.selectedRaid];
+    for (const g of State.groups) {
+      const players = g.map(p => {
+        const c = cc[p.class] || p.class;
+        const s = sc[p.spec] || p.spec;
+        const r = rc[p.role] || p.role;
+        return `${p.name}.${c}.${s}.${r}`;
+      });
+      parts.push(players.join(','));
+    }
+    return parts.join(':');
+  },
+
+  importAddonString(str) {
+    // Reverse lookup maps
+    const ccRev = {}; for (const [k,v] of Object.entries(this.classCode)) ccRev[v] = k;
+    const scRev = {}; for (const [k,v] of Object.entries(this.specCode)) scRev[v] = k;
+    const rcRev = {}; for (const [k,v] of Object.entries(this.roleCode)) rcRev[v] = k;
+
+    const parts = str.split(':');
+    if (parts[0] !== 'PP') return { success:false, error:'Not a Party Planner export string' };
+    const version = parts[1];
+    if (version !== '1') return { success:false, error:'Unknown export version: ' + version };
+    const raid = parts[2];
+    if (!Config.Raids[raid]) return { success:false, error:'Unknown raid: ' + raid };
+
+    State.selectedRaid = raid;
+    const raidInfo = Config.Raids[raid];
+    const numGroups = raidInfo.groups;
+    const roster = [];
+    const groups = [];
+    for (let i = 0; i < numGroups; i++) groups.push([]);
+
+    for (let gi = 0; gi < numGroups && (gi + 3) < parts.length; gi++) {
+      const groupStr = parts[gi + 3];
+      if (!groupStr) continue;
+      const playerStrs = groupStr.split(',');
+      for (const ps of playerStrs) {
+        const [name, cCode, sCode, rCode] = ps.split('.');
+        if (!name) continue;
+        const player = {
+          uid: nextUid(),
+          name,
+          class: ccRev[cCode] || cCode,
+          spec: scRev[sCode] || sCode,
+          role: rcRev[rCode] || rCode,
+          groupNumber: gi + 1,
+          imported: true,
+        };
+        roster.push(player);
+        groups[gi].push(player);
+      }
+    }
+
+    State.roster = roster;
+    State.groups = groups;
+    return { success:true, playerCount:roster.length, groupCount:numGroups };
+  },
+
+  exportRoster(name) {
+    return {
+      name: name || State.rosterName || 'Unnamed',
+      raid: State.selectedRaid,
+      timestamp: Date.now(),
+      players: State.roster.map(p => ({
+        name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
+      })),
+    };
+  },
+
+  loadRoster(data) {
+    if (!data || !data.players) return false;
+    if (data.raid) State.selectedRaid = data.raid;
+
+    const raidInfo = Config.Raids[State.selectedRaid];
+    const numGroups = raidInfo ? raidInfo.groups : 5;
+
+    const roster = [];
+    const groups = [];
+    for (let i = 0; i < numGroups; i++) groups.push([]);
+
+    for (const p of data.players) {
+      const player = { uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber, imported:true };
+      roster.push(player);
+      const g = player.groupNumber;
+      if (g >= 1 && g <= numGroups) groups[g-1].push(player);
+    }
+    State.roster = roster;
+    State.groups = groups;
+    State.rosterName = data.name || 'Loaded Roster';
+    return true;
+  },
+};
+
+// ── OPTIMIZER ────────────────────────────────────────────────────
+// Modes: strict (max buff concentration), balanced (spread buffs),
+//        relaxed (simple role grouping)
+const Optimizer = {
+  optimize() {
+    const raidInfo = Config.Raids[State.selectedRaid];
+    const numGroups = raidInfo ? raidInfo.groups : 5;
+    const max = 5;
+    const mode = State.optimizerMode || 'balanced';
+
+    const pool = [];
+    for (const group of State.groups) {
+      for (const player of group) pool.push(player);
+    }
+    if (pool.length === 0) return;
+
+    const groups = [];
+    for (let i = 0; i < numGroups; i++) groups.push([]);
+
+    // Extract buff providers (used by strict + balanced)
+    const providers = {
+      enhShamans:    this.extractFromPool(pool, 'SHAMAN', 'Enhancement'),
+      eleShamans:    this.extractFromPool(pool, 'SHAMAN', 'Elemental'),
+      restoShamans:  this.extractFromPool(pool, 'SHAMAN', 'Restoration'),
+      feralDruids:   this.extractFromPool(pool, 'DRUID',  'Feral'),
+      boomkins:      this.extractFromPool(pool, 'DRUID',  'Balance'),
+      shadowPriests: this.extractFromPool(pool, 'PRIEST', 'Shadow'),
+      bmHunters:     this.extractFromPool(pool, 'HUNTER', 'Beast Mastery'),
+    };
+
+    // Classify remaining by role
+    const roles = { tanks:[], healers:[], meleeDPS:[], rangedDPS:[], casterDPS:[] };
+    for (const p of pool) {
+      if (p.role === 'tank') roles.tanks.push(p);
+      else if (p.role === 'healer') roles.healers.push(p);
+      else if (p.role === 'melee_dps') roles.meleeDPS.push(p);
+      else if (p.role === 'ranged_dps') roles.rangedDPS.push(p);
+      else if (p.role === 'caster_dps') roles.casterDPS.push(p);
+      else roles.meleeDPS.push(p);
+    }
+
+    if (mode === 'relaxed') {
+      this.buildRelaxed(groups, roles, providers, max);
+    } else if (numGroups >= 5) {
+      if (mode === 'strict') this.build25ManStrict(groups, roles, providers, max);
+      else this.build25ManBalanced(groups, roles, providers, max);
+    } else {
+      this.build10Man(groups, roles, providers, max);
+    }
+
+    for (let gi = 0; gi < groups.length; gi++) {
+      for (const p of groups[gi]) p.groupNumber = gi + 1;
+    }
+    State.groups = groups;
+    State.roster = groups.flat();
+  },
+
+  // ── STRICT MODE ──────────────────────────────────────────────
+  // Max buff concentration: melee gets everything, casters may get nothing.
+  build25ManStrict(groups, r, prov, max) {
+    let gi = 0;
+    const cur = () => groups[gi];
+    const advance = () => { while (gi < groups.length && groups[gi].length >= max) gi++; };
+
+    // TANKS — prefer ele shaman for WF (save enhance for melee DPS)
+    this.addFromPool(cur(), r.tanks, r.tanks.length, max); advance();
+    if (prov.eleShamans.length > 0) this.addFromPool(cur(), prov.eleShamans, 1, max);
+    else if (prov.enhShamans.length > 0) this.addFromPool(cur(), prov.enhShamans, 1, max);
+    this.addFromPool(cur(), prov.feralDruids, 1, max);
+    this.addFromPool(cur(), r.meleeDPS, max - cur().length, max); advance();
+
+    // MELEE — seed with enhance shaman + BM hunter
+    while (r.meleeDPS.length > 0 && gi < groups.length) {
+      const g = cur();
+      if (prov.enhShamans.length > 0) this.addFromPool(g, prov.enhShamans, 1, max);
+      this.addFromPool(g, prov.feralDruids, prov.feralDruids.length, max);
+      if (prov.bmHunters.length > 0) this.addFromPool(g, prov.bmHunters, 1, max);
+      this.addFromPool(g, r.meleeDPS, max - g.length, max); advance();
+      if (r.meleeDPS.length === 0) break;
+    }
+    if (prov.bmHunters.length > 0 && groups[0].length < max) {
+      this.addFromPool(groups[0], prov.bmHunters, 1, max);
+    }
+
+    // CASTERS — shadow priest + ele shaman first group
+    if (r.casterDPS.length > 0 || r.rangedDPS.length > 0 || prov.shadowPriests.length > 0 || prov.boomkins.length > 0 || prov.eleShamans.length > 0) {
+      const g = cur();
+      this.addFromPool(g, prov.shadowPriests, 1, max);
+      if (prov.eleShamans.length > 0) this.addFromPool(g, prov.eleShamans, 1, max);
+      this.addFromPool(g, r.casterDPS, max - g.length, max);
+      this.addFromPool(g, r.rangedDPS, max - g.length, max); advance();
+    }
+    while ((r.casterDPS.length > 0 || r.rangedDPS.length > 0) && gi < groups.length) {
+      const g = cur();
+      this.addFromPool(g, prov.boomkins, 1, max);
+      if (prov.eleShamans.length > 0) this.addFromPool(g, prov.eleShamans, 1, max);
+      this.addFromPool(g, r.casterDPS, max - g.length, max);
+      this.addFromPool(g, r.rangedDPS, max - g.length, max); advance();
+    }
+
+    // HEALERS — seed with resto shaman
+    while (r.healers.length > 0 && gi < groups.length) {
+      const g = cur();
+      if (prov.restoShamans.length > 0) this.addFromPool(g, prov.restoShamans, 1, max);
+      this.addFromPool(g, r.healers, max - g.length, max); advance();
+    }
+
+    this.placeOverflow(groups, max, r, prov);
+  },
+
+  // ── BALANCED MODE ────────────────────────────────────────────
+  // Spreads buff providers across groups so no group is a buff desert.
+  // Key differences from strict:
+  //   1. Tanks don't consume a shaman — tanks share group with healers
+  //   2. Ele shamans go to caster groups (not tanks)
+  //   3. Remaining shamans/providers are distributed round-robin to groups
+  //      that have none, rather than stacking on melee
+  build25ManBalanced(groups, r, prov, max) {
+    // Phase 1: Build role-based groups first (tanks+healers, melee, casters)
+    // then distribute buff providers across them.
+
+    let gi = 0;
+    const cur = () => groups[gi];
+    const advance = () => { while (gi < groups.length && groups[gi].length >= max) gi++; };
+
+    // MELEE GROUP(S) — seed with enhance shaman + feral druid + BM hunter
+    // Melee groups go first so they get their core buffs
+    while (r.meleeDPS.length > 0 && gi < groups.length) {
+      const g = cur();
+      if (prov.enhShamans.length > 0) this.addFromPool(g, prov.enhShamans, 1, max);
+      this.addFromPool(g, prov.feralDruids, 1, max);
+      if (prov.bmHunters.length > 0) this.addFromPool(g, prov.bmHunters, 1, max);
+      this.addFromPool(g, r.meleeDPS, max - g.length, max);
+      advance();
+      if (r.meleeDPS.length === 0) break;
+    }
+    const meleeGroupEnd = gi;
+    // Force casters into a fresh group even if last melee group isn't full
+    if (gi < groups.length && groups[gi].length > 0) gi++;
+
+    // CASTER GROUP(S) — seed with ele shaman + shadow priest + boomkin
+    // Each caster group gets a buff provider before we pack in DPS
+    const casterStart = gi;
+    if (r.casterDPS.length > 0 || r.rangedDPS.length > 0 || prov.shadowPriests.length > 0 || prov.boomkins.length > 0 || prov.eleShamans.length > 0) {
+      // First caster group: shadow priest + ele shaman
+      const g = cur();
+      this.addFromPool(g, prov.shadowPriests, 1, max);
+      if (prov.eleShamans.length > 0) this.addFromPool(g, prov.eleShamans, 1, max);
+      this.addFromPool(g, r.casterDPS, max - g.length, max);
+      this.addFromPool(g, r.rangedDPS, max - g.length, max);
+      advance();
+    }
+    // Additional caster groups: seed with boomkin or remaining ele shaman
+    while ((r.casterDPS.length > 0 || r.rangedDPS.length > 0) && gi < groups.length) {
+      const g = cur();
+      if (prov.boomkins.length > 0) this.addFromPool(g, prov.boomkins, 1, max);
+      else if (prov.eleShamans.length > 0) this.addFromPool(g, prov.eleShamans, 1, max);
+      this.addFromPool(g, r.casterDPS, max - g.length, max);
+      this.addFromPool(g, r.rangedDPS, max - g.length, max);
+      advance();
+    }
+    const casterGroupEnd = gi;
+
+    // TANK + HEALER GROUP — tanks share a group with healers + resto shaman
+    // This frees up shaman slots for DPS groups
+    if (r.tanks.length > 0 || r.healers.length > 0) {
+      const g = cur();
+      this.addFromPool(g, r.tanks, r.tanks.length, max);
+      if (prov.restoShamans.length > 0) this.addFromPool(g, prov.restoShamans, 1, max);
+      this.addFromPool(g, r.healers, max - g.length, max);
+      advance();
+    }
+
+    // OVERFLOW HEALER GROUP if healers remain
+    while (r.healers.length > 0 && gi < groups.length) {
+      const g = cur();
+      if (prov.restoShamans.length > 0) this.addFromPool(g, prov.restoShamans, 1, max);
+      this.addFromPool(g, r.healers, max - g.length, max);
+      advance();
+    }
+
+    // Phase 2: Distribute remaining buff providers to groups that have none.
+    // Collect all leftover providers into a single pool.
+    const leftover = [
+      ...prov.enhShamans, ...prov.eleShamans, ...prov.restoShamans,
+      ...prov.feralDruids, ...prov.boomkins, ...prov.shadowPriests, ...prov.bmHunters
+    ];
+    // Clear the provider arrays (they've been consumed)
+    prov.enhShamans.length = 0; prov.eleShamans.length = 0; prov.restoShamans.length = 0;
+    prov.feralDruids.length = 0; prov.boomkins.length = 0; prov.shadowPriests.length = 0; prov.bmHunters.length = 0;
+
+    // Find groups with no shaman/buff provider and fill them first
+    if (leftover.length > 0) {
+      // Sort: prioritize groups with the most DPS players but no buff providers
+      const groupsNeedingBuffs = [];
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        const hasShaman = g.some(p => p.class === 'SHAMAN');
+        const hasDruid = g.some(p => (p.spec === 'Feral' || p.spec === 'Balance') && p.class === 'DRUID');
+        const hasSP = g.some(p => p.class === 'PRIEST' && p.spec === 'Shadow');
+        const hasBM = g.some(p => p.class === 'HUNTER' && p.spec === 'Beast Mastery');
+        if (!hasShaman && !hasDruid && !hasSP && !hasBM && g.length < max) {
+          groupsNeedingBuffs.push(i);
+        }
+      }
+      // Distribute leftover providers round-robin to buff-starved groups
+      for (const gIdx of groupsNeedingBuffs) {
+        if (leftover.length === 0) break;
+        if (groups[gIdx].length < max) groups[gIdx].push(leftover.shift());
+      }
+      // Any remaining leftover goes to any group with space
+      while (leftover.length > 0) {
+        let placed = false;
+        for (const g of groups) {
+          if (g.length < max) { g.push(leftover.shift()); placed = true; break; }
+        }
+        if (!placed) break;
+      }
+    }
+
+    // Place any remaining role-based overflow
+    this.placeOverflow(groups, max, r, prov);
+  },
+
+  // ── RELAXED MODE ─────────────────────────────────────────────
+  // Simple role-based grouping with no special buff provider logic.
+  // Just puts tanks together, melee together, casters together, healers together.
+  buildRelaxed(groups, r, prov, max) {
+    // Dump all providers back into role pools
+    for (const p of prov.enhShamans) r.meleeDPS.push(p);
+    for (const p of prov.eleShamans) r.casterDPS.push(p);
+    for (const p of prov.restoShamans) r.healers.push(p);
+    for (const p of prov.feralDruids) r.meleeDPS.push(p);
+    for (const p of prov.boomkins) r.casterDPS.push(p);
+    for (const p of prov.shadowPriests) r.casterDPS.push(p);
+    for (const p of prov.bmHunters) r.rangedDPS.push(p);
+    prov.enhShamans.length = 0; prov.eleShamans.length = 0; prov.restoShamans.length = 0;
+    prov.feralDruids.length = 0; prov.boomkins.length = 0; prov.shadowPriests.length = 0; prov.bmHunters.length = 0;
+
+    // Fill groups by role: tanks → melee → casters → ranged → healers
+    const allPlayers = [...r.tanks, ...r.meleeDPS, ...r.casterDPS, ...r.rangedDPS, ...r.healers];
+    r.tanks.length = 0; r.meleeDPS.length = 0; r.casterDPS.length = 0; r.rangedDPS.length = 0; r.healers.length = 0;
+
+    let gi = 0;
+    for (const p of allPlayers) {
+      if (groups[gi].length >= max) gi++;
+      if (gi >= groups.length) break;
+      groups[gi].push(p);
+    }
+  },
+
+  // ── 10-MAN (shared across modes) ────────────────────────────
+  build10Man(groups, r, prov, max) {
+    const g1 = groups[0];
+    this.addFromPool(g1, r.tanks, 2, max);
+    if (prov.enhShamans.length > 0) this.addFromPool(g1, prov.enhShamans, 1, max);
+    this.addFromPool(g1, prov.feralDruids, 1, max);
+    this.addFromPool(g1, prov.bmHunters, 1, max);
+    this.addFromPool(g1, r.meleeDPS, max - g1.length, max);
+    this.addFromPool(g1, r.healers, max - g1.length, max);
+
+    const g2 = groups[1];
+    if (prov.eleShamans.length > 0) this.addFromPool(g2, prov.eleShamans, 1, max);
+    else if (prov.restoShamans.length > 0) this.addFromPool(g2, prov.restoShamans, 1, max);
+    this.addFromPool(g2, prov.boomkins, 1, max);
+    this.addFromPool(g2, prov.shadowPriests, 1, max);
+    this.addFromPool(g2, r.casterDPS, max - g2.length, max);
+    this.addFromPool(g2, r.healers, max - g2.length, max);
+    this.addFromPool(g2, r.rangedDPS, max - g2.length, max);
+
+    this.placeOverflow(groups, max, r, prov);
+  },
+
+  // ── UTILITIES ────────────────────────────────────────────────
+  placeOverflow(groups, max, r, prov) {
+    const allPools = [
+      r.tanks, r.healers, r.meleeDPS, r.rangedDPS, r.casterDPS,
+      prov.enhShamans, prov.eleShamans, prov.restoShamans,
+      prov.feralDruids, prov.boomkins, prov.shadowPriests, prov.bmHunters
+    ];
+    for (const pool of allPools) {
+      while (pool.length > 0) {
+        let placed = false;
+        for (const g of groups) {
+          if (g.length < max) { g.push(pool.shift()); placed = true; break; }
+        }
+        if (!placed) break;
+      }
+    }
+  },
+
+  extractFromPool(pool, classFile, specName) {
+    const extracted = [];
+    for (let i = pool.length - 1; i >= 0; i--) {
+      if (pool[i].class === classFile && pool[i].spec === specName) {
+        extracted.push(pool.splice(i, 1)[0]);
+      }
+    }
+    return extracted;
+  },
+
+  addFromPool(group, pool, count, max) {
+    let added = 0;
+    while (added < count && pool.length > 0 && group.length < max) {
+      group.push(pool.shift());
+      added++;
+    }
+    return added;
+  },
+};
+
+// ── BUFF CALCULATOR (from Optimizer.lua GetGroupBuffs) ──────────
+function getGroupBuffs(players, groupIndex) {
+  const buffList = [];
+  const passiveAdded = new Set(); // prevent duplicate passive buffs
+  const usedAuras = new Set(); // prevent duplicate paladin auras in auto-assign
+
+  // Determine dominant role
+  const roleCounts = {};
+  for (const p of players) roleCounts[p.role] = (roleCounts[p.role] || 0) + 1;
+  let dominantRole = 'melee_dps', maxCount = 0;
+  for (const [role, count] of Object.entries(roleCounts)) {
+    if (count > maxCount) { maxCount = count; dominantRole = role; }
+  }
+
+  for (const player of players) {
+    if (player.class === 'SHAMAN') {
+      // Each shaman provides one totem per element
+      const shamanTotems = {}; // element → { buffId, isOverride }
+
+      // Check for overrides first
+      if (groupIndex !== undefined) {
+        for (const element of ['air', 'fire', 'water', 'earth']) {
+          const key = `${groupIndex}:${player.uid}:${element}`;
+          const ov = State.buffOverrides[key];
+          if (ov && Config.Buffs[ov.buffId]) {
+            shamanTotems[element] = { buffId: ov.buffId, isOverride: true };
+          }
+        }
+      }
+
+      // Auto-select remaining elements
+      for (const [buffId, buff] of Object.entries(Config.Buffs)) {
+        if (buff.sourceClass !== 'SHAMAN') continue;
+        if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
+        const element = TOTEM_ELEMENTS[buffId];
+        if (!element) continue;
+        if (shamanTotems[element]?.isOverride) continue;
+
+        if (!shamanTotems[element]) {
+          shamanTotems[element] = { buffId };
+        } else {
+          const bestForRole = BEST_AIR_TOTEM[dominantRole];
+          if (element === 'air' && buffId === bestForRole) {
+            shamanTotems[element] = { buffId };
+          } else if (element === 'water' && buffId === 'MANA_TIDE') {
+            shamanTotems[element] = { buffId };
+          }
+        }
+      }
+
+      for (const [, entry] of Object.entries(shamanTotems)) {
+        const buff = Config.Buffs[entry.buffId];
+        if (buff) buffList.push({ id: entry.buffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: !!entry.isOverride });
+      }
+
+    } else if (player.class === 'PALADIN') {
+      // Each paladin provides one aura — avoid duplicating auras already assigned
+      let auraBuffId, isOverride = false;
+
+      if (groupIndex !== undefined) {
+        const key = `${groupIndex}:${player.uid}:aura`;
+        const ov = State.buffOverrides[key];
+        if (ov && Config.Buffs[ov.buffId]) {
+          auraBuffId = ov.buffId;
+          isOverride = true;
+        }
+      }
+
+      if (!auraBuffId) {
+        // Pick best available aura not already used by another paladin
+        const preferred = BEST_PALADIN_AURA[dominantRole] || 'DEVOTION_AURA';
+        if (!usedAuras.has(preferred)) {
+          auraBuffId = preferred;
+        } else {
+          // Pick the highest-priority aura not yet taken
+          const allAuras = Object.keys(PALADIN_AURAS)
+            .filter(id => !usedAuras.has(id))
+            .sort((a, b) => (Config.Buffs[b]?.priority || 0) - (Config.Buffs[a]?.priority || 0));
+          auraBuffId = allAuras[0] || preferred; // fallback if all taken
+        }
+      }
+
+      usedAuras.add(auraBuffId);
+      const buff = Config.Buffs[auraBuffId];
+      if (buff) buffList.push({ id: auraBuffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride });
+
+    } else {
+      // Passive buffs — one per unique buff type in the group
+      for (const [buffId, buff] of Object.entries(Config.Buffs)) {
+        if (player.class !== buff.sourceClass) continue;
+        if (buff.sourceSpec && player.spec !== buff.sourceSpec) continue;
+        if (TOTEM_ELEMENTS[buffId] || PALADIN_AURAS[buffId]) continue;
+        if (passiveAdded.has(buffId)) continue;
+        passiveAdded.add(buffId);
+        buffList.push({ id: buffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: false });
+      }
+    }
+  }
+
+  buffList.sort((a, b) => b.buff.priority - a.buff.priority);
+  return buffList;
+}
+
+// ── DPS MODEL ───────────────────────────────────────────────────
+// Approximate TBC base DPS per spec and buff multipliers for estimation.
+const DpsModel = {
+  baseDPS: {
+    'PALADIN:Protection':400, 'WARRIOR:Protection':350, 'DRUID:Feral':700,
+    'ROGUE:Combat':1200, 'ROGUE:Assassination':1100, 'ROGUE:Subtlety':900,
+    'WARRIOR:Fury':1100, 'WARRIOR:Arms':1000,
+    'PALADIN:Retribution':900, 'SHAMAN:Enhancement':1000,
+    'HUNTER:Beast Mastery':1050, 'HUNTER:Marksmanship':1000, 'HUNTER:Survival':950,
+    'MAGE:Arcane':1150, 'MAGE:Fire':1100, 'MAGE:Frost':950,
+    'WARLOCK:Destruction':1100, 'WARLOCK:Affliction':1050, 'WARLOCK:Demonology':900,
+    'PRIEST:Shadow':950, 'DRUID:Balance':850, 'SHAMAN:Elemental':900,
+    'PALADIN:Holy':50, 'PRIEST:Holy':50, 'PRIEST:Discipline':50,
+    'DRUID:Restoration':50, 'SHAMAN:Restoration':50,
+  },
+  buffMult: {
+    WINDFURY:0.08, GRACE_OF_AIR:0.03, WRATH_OF_AIR:0.05,
+    TOTEM_OF_WRATH:0.04, MANA_SPRING:0.01, MANA_TIDE:0.005,
+    STRENGTH_OF_EARTH:0.03, LEADER_OF_THE_PACK:0.05, MOONKIN_AURA:0.05,
+    TRUESHOT_AURA:0.02, FEROCIOUS_INSP:0.03, BLOOD_PACT:0.005,
+    SHADOW_WEAVING:0.06, UNLEASHED_RAGE:0.04,
+    DEVOTION_AURA:0.005, RETRIBUTION_AURA:0.01,
+    CONCENTRATION_AURA:0.005, SANCTITY_AURA:0.02,
+  },
+
+  calcGroupDPS(group, groupIndex) {
+    const buffs = getGroupBuffs(group, groupIndex);
+    let total = 0;
+    for (const player of group) {
+      const key = player.class + ':' + player.spec;
+      const base = this.baseDPS[key] || 200;
+      let mult = 1.0;
+      const seen = new Set();
+      for (const b of buffs) {
+        if (seen.has(b.id)) continue; // don't double-count same buff from multiple providers
+        seen.add(b.id);
+        const buff = Config.Buffs[b.id];
+        if (buff && buff.benefitsRoles.includes(player.role)) {
+          mult += (this.buffMult[b.id] || 0);
+        }
+      }
+      total += base * mult;
+    }
+    return Math.round(total);
+  },
+
+  calcRaidDPS(groups) {
+    let total = 0;
+    const perGroup = [];
+    for (let i = 0; i < groups.length; i++) {
+      const dps = groups[i].length > 0 ? this.calcGroupDPS(groups[i], i) : 0;
+      perGroup.push(dps);
+      total += dps;
+    }
+    return { total, perGroup };
+  },
+};
+
+// ── UI RENDERING ────────────────────────────────────────────────
+function initRaidDropdown() {
+  const sel = document.getElementById('raid-select');
+  sel.innerHTML = '';
+  for (const key of Config.RaidOrder) {
+    const r = Config.Raids[key];
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = `${r.name} (${r.size})`;
+    if (key === State.selectedRaid) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.addEventListener('change', () => {
+    State.selectedRaid = sel.value;
+    initGroups();
+    renderGroups();
+  });
+}
+
+function initGroups() {
+  const raidInfo = Config.Raids[State.selectedRaid];
+  const numGroups = raidInfo ? raidInfo.groups : 5;
+  while (State.groups.length < numGroups) State.groups.push([]);
+  while (State.groups.length > numGroups) {
+    const overflow = State.groups.pop();
+    for (const p of overflow) {
+      for (let i = 0; i < State.groups.length; i++) {
+        if (State.groups[i].length < 5) { State.groups[i].push(p); p.groupNumber = i + 1; break; }
+      }
+    }
+  }
+}
+
+function getRoleIcon(role) {
+  if (role === 'tank') return '<span class="role-icon role-tank">&#9781;</span>';
+  if (role === 'healer') return '<span class="role-icon role-healer">&#10010;</span>';
+  return '<span class="role-icon role-dps">&#9876;</span>';
+}
+
+function getDragHandle() {
+  return '<div class="drag-handle"><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div></div>';
+}
+
+function getDominantRoleLabel(players) {
+  const roleCounts = {};
+  for (const p of players) roleCounts[p.role] = (roleCounts[p.role] || 0) + 1;
+  let best = '', max = 0;
+  for (const [role, count] of Object.entries(roleCounts)) {
+    if (count > max) { max = count; best = role; }
+  }
+  const labels = { tank:'TANK', healer:'HEALER', melee_dps:'MELEE', ranged_dps:'RANGED', caster_dps:'CASTER' };
+  return labels[best] || '';
+}
+
+function sortTankGroupFirst() {
+  if (State.groups.length <= 1) return;
+  // Find the group whose dominant role is 'tank'
+  let tankIdx = -1;
+  for (let i = 0; i < State.groups.length; i++) {
+    if (getDominantRoleLabel(State.groups[i] || []) === 'TANK') { tankIdx = i; break; }
+  }
+  if (tankIdx > 0) {
+    // Move tank group to index 0, shift others down
+    const tankGroup = State.groups.splice(tankIdx, 1)[0];
+    State.groups.unshift(tankGroup);
+    // Update groupNumber on all players
+    for (let i = 0; i < State.groups.length; i++) {
+      for (const p of (State.groups[i] || [])) p.groupNumber = i + 1;
+    }
+    // Remap any buff overrides that reference the old indices
+    const newOverrides = {};
+    for (const [key, val] of Object.entries(State.buffOverrides)) {
+      const parts = key.split(':');
+      let gi = parseInt(parts[0]);
+      const rest = parts.slice(1).join(':');
+      if (gi === tankIdx) gi = 0;
+      else if (gi < tankIdx) gi = gi + 1;
+      newOverrides[`${gi}:${rest}`] = val;
+    }
+    State.buffOverrides = newOverrides;
+  }
+}
+
+function renderGroups() {
+  // Ensure the tank group is always Group 1
+  sortTankGroupFirst();
+
+  const container = document.getElementById('groups-container');
+  container.innerHTML = '';
+
+  const raidInfo = Config.Raids[State.selectedRaid];
+  const numGroups = raidInfo ? raidInfo.groups : 5;
+
+  // Apply grid layout class based on group count
+  container.className = 'groups-container';
+  if (numGroups === 5) container.classList.add('groups-5');
+
+  for (let gi = 0; gi < numGroups; gi++) {
+    const players = State.groups[gi] || [];
+    const buffList = getGroupBuffs(players, gi);
+    const roleLabel = getDominantRoleLabel(players);
+
+    let slotsHTML = '';
+    for (let si = 0; si < 5; si++) {
+      if (si < players.length) {
+        const p = players[si];
+        const color = Config.ClassColors[p.class] || 'var(--text-primary)';
+        const displayName = (p.name || 'Unknown').split('-')[0];
+        const specClass = p.spec ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '')) : '';
+        slotsHTML += `<div class="player-slot" draggable="true" data-group="${gi}" data-slot="${si}">
+          ${getRoleIcon(p.role)}
+          <div class="player-info">
+            <span class="player-name" style="color:${color}">${esc(displayName)}</span>
+            <span class="player-spec">${esc(specClass)}</span>
+          </div>
+          ${getDragHandle()}
+        </div>`;
+      } else {
+        slotsHTML += `<div class="player-slot empty-slot" data-group="${gi}" data-slot="${si}">
+          <span class="role-icon" style="opacity:0.3;">&#8226;</span>
+          <div class="player-info"><span class="player-name">Empty Slot</span></div>
+        </div>`;
+      }
+    }
+
+    let buffsHTML = '<span class="buff-bar-label">Buffs</span>';
+    if (buffList.length === 0) {
+      buffsHTML += '<span class="no-buffs">No buffs</span>';
+    } else {
+      for (const b of buffList) {
+        const abbr = Config.BuffAbbreviations[b.id] || b.id;
+        const css = Config.BuffCSSClass[b.id] || '';
+        const from = b.sourceName ? b.sourceName.split('-')[0] : '';
+        const sourceColor = b.sourceClass ? (Config.ClassColors[b.sourceClass] || 'var(--text-secondary)') : 'var(--text-secondary)';
+        const iconUrl = Config.BuffIconURL(b.id);
+        const hasIcon = iconUrl ? ' has-icon' : '';
+        const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy" class="buff-img">` : '';
+        const tooltipHTML = `<div class="buff-tooltip"><div class="tt-name">${esc(b.buff.name)}</div>${from ? `<div class="tt-source"><span style="color:${sourceColor}">${esc(from)}</span></div>` : ''}</div>`;
+        const isSwappable = !!(TOTEM_ELEMENTS[b.id] || PALADIN_AURAS[b.id]);
+        const swapClass = isSwappable ? ' swappable' : '';
+        const overrideClass = b.isOverride ? ' overridden' : '';
+        const dataAttrs = isSwappable ? ` data-buff-id="${esc(b.id)}" data-group="${gi}" data-uid="${esc(b.sourceUid)}" data-source="${esc(b.sourceName)}" data-class="${esc(b.sourceClass)}" data-spec="${esc(b.sourceSpec || '')}"` : '';
+        buffsHTML += `<div class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${dataAttrs}>${imgTag}<span class="buff-label">${abbr}</span>${tooltipHTML}</div>`;
+      }
+    }
+
+    const groupDPS = players.length > 0 ? DpsModel.calcGroupDPS(players, gi) : 0;
+
+    container.innerHTML += `<div class="group-card" data-group="${gi}">
+      <div class="group-header">
+        <h3>Group ${gi+1}</h3>
+        <div style="display:flex;align-items:center;gap:var(--sp-2);">
+          <span class="group-dps">${groupDPS > 0 ? groupDPS.toLocaleString() + ' DPS' : ''}</span>
+          <span class="group-role-tag">${roleLabel}</span>
+        </div>
+      </div>
+      <div class="player-list">${slotsHTML}</div>
+      <div class="buff-bar">${buffsHTML}</div>
+    </div>`;
+  }
+
+  // Raid total DPS bar
+  if (State.roster.length > 0) {
+    const raid = DpsModel.calcRaidDPS(State.groups);
+    container.innerHTML += `<div class="raid-dps-bar">
+      <span class="raid-dps-label">Estimated Raid DPS</span>
+      <span class="raid-dps-value">${raid.total.toLocaleString()}</span>
+    </div>`;
+  }
+
+  // Attach error handlers on buff images (CSP-safe, replaces inline onerror)
+  container.querySelectorAll('.buff-img').forEach(img => {
+    img.addEventListener('error', () => {
+      img.parentElement.classList.remove('has-icon');
+      img.remove();
+    });
+  });
+
+  updateStatus();
+  cleanupOverrides();
+  renderManualChanges();
+
+  // Update dropdown
+  document.getElementById('raid-select').value = State.selectedRaid;
+  document.getElementById('roster-name').textContent = State.rosterName;
+}
+
+function updateStatus() {
+  const total = State.roster.length;
+  const raidInfo = Config.Raids[State.selectedRaid];
+  const max = raidInfo ? raidInfo.size : 25;
+  document.getElementById('status-text').textContent = total > 0
+    ? `${total}/${max} players loaded`
+    : 'Ready — import a roster to begin';
+}
+
+// ── DRAG & DROP (event delegation — attached once) ──────────────
+let dragData = null;
+
+(function initDragDrop() {
+  const container = document.getElementById('groups-container');
+  const ghost = document.getElementById('drag-ghost');
+
+  container.addEventListener('dragstart', e => {
+    const slot = e.target.closest('.player-slot[draggable="true"]');
+    if (!slot) return;
+    const gi = parseInt(slot.dataset.group);
+    const si = parseInt(slot.dataset.slot);
+    dragData = { group: gi, slot: si };
+    slot.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    const img = new Image(); img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+    e.dataTransfer.setDragImage(img, 0, 0);
+    const p = State.groups[gi][si];
+    if (p) {
+      ghost.textContent = p.name.split('-')[0];
+      ghost.style.color = Config.ClassColors[p.class] || 'var(--text-primary)';
+      ghost.style.display = 'block';
+    }
+  });
+
+  container.addEventListener('drag', e => {
+    if (e.clientX > 0) {
+      ghost.style.left = (e.clientX + 12) + 'px';
+      ghost.style.top = (e.clientY - 10) + 'px';
+    }
+  });
+
+  container.addEventListener('dragend', e => {
+    const slot = e.target.closest('.player-slot');
+    if (slot) slot.classList.remove('dragging');
+    ghost.style.display = 'none';
+    dragData = null;
+    container.querySelectorAll('.drag-target').forEach(s => s.classList.remove('drag-target'));
+    container.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
+  });
+
+  container.addEventListener('dragover', e => {
+    const slot = e.target.closest('.player-slot');
+    if (!slot) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    slot.classList.add('drag-target');
+    const card = slot.closest('.group-card');
+    if (card) card.classList.add('drag-over');
+  });
+
+  container.addEventListener('dragleave', e => {
+    const slot = e.target.closest('.player-slot');
+    if (!slot) return;
+    slot.classList.remove('drag-target');
+    const card = slot.closest('.group-card');
+    if (card && !card.querySelector('.drag-target')) card.classList.remove('drag-over');
+  });
+
+  container.addEventListener('drop', e => {
+    const slot = e.target.closest('.player-slot');
+    if (!slot || !dragData) return;
+    e.preventDefault();
+
+    const srcG = dragData.group, srcS = dragData.slot;
+    const tgtG = parseInt(slot.dataset.group), tgtS = parseInt(slot.dataset.slot);
+
+    if (srcG === tgtG && srcS === tgtS) return;
+
+    const srcPlayer = State.groups[srcG][srcS] || null;
+    const tgtPlayer = State.groups[tgtG][tgtS] || null;
+
+    if (srcPlayer && !tgtPlayer) {
+      State.groups[srcG].splice(srcS, 1);
+      if (tgtS >= State.groups[tgtG].length) State.groups[tgtG].push(srcPlayer);
+      else State.groups[tgtG].splice(tgtS, 0, srcPlayer);
+      srcPlayer.groupNumber = tgtG + 1;
+    } else if (srcPlayer && tgtPlayer) {
+      State.groups[srcG][srcS] = tgtPlayer;
+      State.groups[tgtG][tgtS] = srcPlayer;
+      srcPlayer.groupNumber = tgtG + 1;
+      tgtPlayer.groupNumber = srcG + 1;
+    }
+
+    renderGroups();
+  });
+
+  // ── Touch drag-and-drop support ──
+  let touchDrag = null;
+
+  container.addEventListener('touchstart', e => {
+    const slot = e.target.closest('.player-slot[draggable="true"]');
+    if (!slot) return;
+    const gi = parseInt(slot.dataset.group);
+    const si = parseInt(slot.dataset.slot);
+    const p = State.groups[gi]?.[si];
+    if (!p) return;
+    touchDrag = { group: gi, slot: si, el: slot };
+    slot.classList.add('dragging');
+    ghost.textContent = p.name.split('-')[0];
+    ghost.style.color = Config.ClassColors[p.class] || 'var(--text-primary)';
+    ghost.style.display = 'block';
+  }, { passive: true });
+
+  container.addEventListener('touchmove', e => {
+    if (!touchDrag) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    ghost.style.left = (touch.clientX + 12) + 'px';
+    ghost.style.top = (touch.clientY - 10) + 'px';
+    // Highlight target
+    container.querySelectorAll('.drag-target').forEach(s => s.classList.remove('drag-target'));
+    container.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (el) {
+      const target = el.closest('.player-slot');
+      if (target) {
+        target.classList.add('drag-target');
+        const card = target.closest('.group-card');
+        if (card) card.classList.add('drag-over');
+      }
+    }
+  }, { passive: false });
+
+  container.addEventListener('touchend', e => {
+    if (!touchDrag) return;
+    ghost.style.display = 'none';
+    touchDrag.el.classList.remove('dragging');
+    container.querySelectorAll('.drag-target').forEach(s => s.classList.remove('drag-target'));
+    container.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
+
+    const touch = e.changedTouches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const target = el ? el.closest('.player-slot') : null;
+
+    if (target) {
+      const srcG = touchDrag.group, srcS = touchDrag.slot;
+      const tgtG = parseInt(target.dataset.group), tgtS = parseInt(target.dataset.slot);
+
+      if (!(srcG === tgtG && srcS === tgtS)) {
+        const srcPlayer = State.groups[srcG][srcS] || null;
+        const tgtPlayer = State.groups[tgtG]?.[tgtS] || null;
+
+        if (srcPlayer && !tgtPlayer) {
+          State.groups[srcG].splice(srcS, 1);
+          if (tgtS >= State.groups[tgtG].length) State.groups[tgtG].push(srcPlayer);
+          else State.groups[tgtG].splice(tgtS, 0, srcPlayer);
+          srcPlayer.groupNumber = tgtG + 1;
+        } else if (srcPlayer && tgtPlayer) {
+          State.groups[srcG][srcS] = tgtPlayer;
+          State.groups[tgtG][tgtS] = srcPlayer;
+          srcPlayer.groupNumber = tgtG + 1;
+          tgtPlayer.groupNumber = srcG + 1;
+        }
+        renderGroups();
+      }
+    }
+    touchDrag = null;
+  });
+})();
+
+// ── BUFF OVERRIDE SYSTEM ────────────────────────────────────────
+function cleanupOverrides() {
+  for (const key of Object.keys(State.buffOverrides)) {
+    const parts = key.split(':');
+    const gi = parseInt(parts[0]);
+    const uid = parts[1];
+    const group = State.groups[gi] || [];
+    if (!group.find(p => p.uid === uid)) {
+      delete State.buffOverrides[key];
+    }
+  }
+}
+
+function getSwappableBuffs(buffId, playerClass, playerSpec) {
+  const element = TOTEM_ELEMENTS[buffId];
+  const isAura = PALADIN_AURAS[buffId];
+  if (!element && !isAura) return [];
+
+  const alternatives = [];
+  if (element) {
+    for (const [id, el] of Object.entries(TOTEM_ELEMENTS)) {
+      if (el !== element) continue;
+      const buff = Config.Buffs[id];
+      if (!buff) continue;
+      if (buff.sourceClass !== playerClass) continue;
+      if (buff.sourceSpec && buff.sourceSpec !== playerSpec) continue;
+      alternatives.push({ id, buff });
+    }
+  } else if (isAura) {
+    for (const id of Object.keys(PALADIN_AURAS)) {
+      const buff = Config.Buffs[id];
+      if (!buff) continue;
+      alternatives.push({ id, buff });
+    }
+  }
+  return alternatives;
+}
+
+function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sourceClass, sourceSpec) {
+  // Close any existing picker
+  closeBuffPicker();
+
+  const alts = getSwappableBuffs(buffId, sourceClass, sourceSpec);
+  if (alts.length <= 1) return; // Nothing to swap to
+
+  const element = TOTEM_ELEMENTS[buffId];
+  const category = element || 'aura';
+  const overrideKey = `${groupIndex}:${sourceUid}:${category}`;
+
+  // Build picker HTML
+  let pickerHTML = `<div class="buff-picker-title">Choose ${element ? element + ' totem' : 'aura'}</div>`;
+  for (const alt of alts) {
+    const isActive = alt.id === buffId;
+    const iconUrl = Config.BuffIconURL(alt.id);
+    const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${alt.buff.name}">` : '';
+    pickerHTML += `<div class="buff-picker-item${isActive ? ' active' : ''}" data-pick-id="${alt.id}">
+      ${imgTag}<span class="picker-buff-name">${esc(alt.buff.name)}</span>${isActive ? '<span class="picker-check">&#10003;</span>' : ''}
+    </div>`;
+  }
+  // Reset option if overridden
+  if (State.buffOverrides[overrideKey]) {
+    pickerHTML += `<div class="buff-picker-reset" data-pick-reset="true">Reset to default</div>`;
+  }
+
+  // Create overlay to catch outside clicks
+  const overlay = document.createElement('div');
+  overlay.className = 'buff-picker-overlay';
+  overlay.addEventListener('click', closeBuffPicker);
+  document.body.appendChild(overlay);
+
+  // Create picker element positioned above the buff icon
+  const picker = document.createElement('div');
+  picker.className = 'buff-picker';
+  picker.id = 'active-buff-picker';
+  picker.innerHTML = pickerHTML;
+  document.body.appendChild(picker);
+
+  // Position above the icon
+  const rect = buffIcon.getBoundingClientRect();
+  picker.style.left = (rect.left + rect.width / 2 - picker.offsetWidth / 2) + 'px';
+  picker.style.top = (rect.top - picker.offsetHeight - 6 + window.scrollY) + 'px';
+
+  // Handle picks
+  picker.querySelectorAll('.buff-picker-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pickId = item.dataset.pickId;
+      if (pickId === buffId && !State.buffOverrides[overrideKey]) {
+        closeBuffPicker();
+        return; // Already the default, no change
+      }
+      // Preserve the original default buff (before any overrides)
+      const existingOriginal = State.buffOverrides[overrideKey]?.originalBuffId || buffId;
+      if (pickId === existingOriginal) {
+        // Picking the default — just remove the override
+        delete State.buffOverrides[overrideKey];
+      } else {
+        State.buffOverrides[overrideKey] = { buffId: pickId, originalBuffId: existingOriginal };
+      }
+      closeBuffPicker();
+      renderGroups();
+    });
+  });
+
+  const resetBtn = picker.querySelector('.buff-picker-reset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      delete State.buffOverrides[overrideKey];
+      closeBuffPicker();
+      renderGroups();
+    });
+  }
+}
+
+function closeBuffPicker() {
+  const existing = document.getElementById('active-buff-picker');
+  if (existing) existing.remove();
+  const overlay = document.querySelector('.buff-picker-overlay');
+  if (overlay) overlay.remove();
+}
+
+// Buff picker delegation — attached once
+(function initBuffPickers() {
+  document.getElementById('groups-container').addEventListener('click', e => {
+    const icon = e.target.closest('.buff-icon.swappable');
+    if (!icon) return;
+    e.stopPropagation();
+    const buffId = icon.dataset.buffId;
+    const gi = parseInt(icon.dataset.group);
+    const sourceUid = icon.dataset.uid;
+    const sourceName = icon.dataset.source;
+    const sourceClass = icon.dataset.class;
+    const sourceSpec = icon.dataset.spec;
+    showBuffPicker(icon, buffId, gi, sourceUid, sourceName, sourceClass, sourceSpec);
+  });
+})();
+
+function renderManualChanges() {
+  const container = document.getElementById('manual-changes');
+  const entries = Object.entries(State.buffOverrides);
+
+  if (entries.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'block';
+  let html = '<h3>&#9888; Manual Changes Required</h3><ul>';
+
+  for (const [key, override] of entries) {
+    const parts = key.split(':');
+    const gi = parseInt(parts[0]);
+    const uid = parts[1];
+    const toBuff = Config.Buffs[override.buffId];
+    const fromBuff = Config.Buffs[override.originalBuffId];
+    if (!toBuff || !fromBuff) continue;
+
+    // Find player by uid for name and class color
+    const group = State.groups[gi] || [];
+    const player = group.find(p => p.uid === uid);
+    const displayName = player ? player.name.split('-')[0] : 'Unknown';
+    const color = player ? (Config.ClassColors[player.class] || 'var(--text-primary)') : 'var(--text-primary)';
+
+    html += `<li>
+      <span style="color:${color};font-weight:600;">${esc(displayName)}</span>
+      <span>(Group ${gi + 1})</span>
+      <span class="change-arrow">&#8594;</span>
+      <span>Use <span class="change-buff">${esc(toBuff.name)}</span> instead of <span class="change-buff">${esc(fromBuff.name)}</span></span>
+      <span class="change-remove" data-override-key="${esc(key)}" title="Remove override">&times;</span>
+    </li>`;
+  }
+  html += '</ul>';
+  container.innerHTML = html;
+
+  // Wire up remove buttons
+  container.querySelectorAll('.change-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      delete State.buffOverrides[btn.dataset.overrideKey];
+      renderGroups();
+    });
+  });
+}
+
+// ── TOAST NOTIFICATION ──────────────────────────────────────────
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('visible');
+  setTimeout(() => toast.classList.remove('visible'), 2500);
+}
+
+// ── LOCAL STORAGE ───────────────────────────────────────────────
+function getSavedRosters() {
+  try { return JSON.parse(localStorage.getItem('pp_rosters') || '{}'); }
+  catch { return {}; }
+}
+function saveRosterToStorage(name, data) {
+  const rosters = getSavedRosters();
+  rosters[name] = data;
+  localStorage.setItem('pp_rosters', JSON.stringify(rosters));
+}
+function deleteRosterFromStorage(name) {
+  const rosters = getSavedRosters();
+  delete rosters[name];
+  localStorage.setItem('pp_rosters', JSON.stringify(rosters));
+}
+
+// ── MODAL: SAVE ─────────────────────────────────────────────────
+function showSaveModal() {
+  const modal = document.getElementById('save-modal');
+  const overlay = document.getElementById('save-overlay');
+
+  const defaultName = State.rosterName !== 'No Roster Loaded' ? State.rosterName :
+    'Raid ' + new Date().toLocaleDateString();
+
+  modal.innerHTML = `
+    <h3>Save Roster</h3>
+    <input class="save-input" id="save-name-input" type="text" value="${esc(defaultName)}" placeholder="Roster name...">
+    <div class="import-buttons">
+      <button class="btn btn-secondary" id="btn-cancel-save">Cancel</button>
+      <button class="btn btn-primary" id="btn-do-save">Save</button>
+    </div>`;
+
+  overlay.classList.add('visible');
+
+  document.getElementById('btn-cancel-save').onclick = () => overlay.classList.remove('visible');
+  document.getElementById('btn-do-save').onclick = () => {
+    const name = document.getElementById('save-name-input').value.trim();
+    if (!name) return;
+    const data = Import.exportRoster(name);
+    saveRosterToStorage(name, data);
+    State.rosterName = name;
+    overlay.classList.remove('visible');
+    showToast(`Roster "${name}" saved`);
+    renderGroups();
+  };
+  overlay.onclick = e => { if (e.target === overlay) overlay.classList.remove('visible'); };
+
+  document.getElementById('save-name-input').focus();
+  document.getElementById('save-name-input').select();
+}
+
+// ── MODAL: LOAD ─────────────────────────────────────────────────
+function showLoadModal() {
+  const modal = document.getElementById('save-modal');
+  const overlay = document.getElementById('save-overlay');
+  const rosters = getSavedRosters();
+  const names = Object.keys(rosters);
+
+  let listHTML = '';
+  if (names.length === 0) {
+    listHTML = '<p style="font-size:11px;color:var(--text-muted);text-align:center;padding:16px;">No saved rosters yet</p>';
+  } else {
+    for (const name of names) {
+      const r = rosters[name];
+      const count = r.players ? r.players.length : 0;
+      const raid = r.raid ? (Config.Raids[r.raid]?.name || r.raid) : '';
+      listHTML += `<div class="saved-roster-item" data-name="${esc(name)}">
+        <div><span class="roster-item-name">${esc(name)}</span><br><span class="roster-item-meta">${count} players — ${esc(raid)}</span></div>
+        <button class="roster-item-delete" data-delete="${esc(name)}" title="Delete">&times;</button>
+      </div>`;
+    }
+  }
+
+  modal.innerHTML = `
+    <h3>Load Roster</h3>
+    <div class="saved-roster-list">${listHTML}</div>
+    <div class="import-buttons">
+      <button class="btn btn-secondary" id="btn-cancel-load">Close</button>
+    </div>`;
+
+  overlay.classList.add('visible');
+
+  document.getElementById('btn-cancel-load').onclick = () => overlay.classList.remove('visible');
+  overlay.onclick = e => { if (e.target === overlay) overlay.classList.remove('visible'); };
+
+  modal.querySelectorAll('.saved-roster-item').forEach(item => {
+    item.addEventListener('click', e => {
+      if (e.target.dataset.delete) return;
+      const name = item.dataset.name;
+      const data = rosters[name];
+      if (Import.loadRoster(data)) {
+        overlay.classList.remove('visible');
+        initGroups();
+        renderGroups();
+        showToast(`Loaded "${name}"`);
+      }
+    });
+  });
+
+  modal.querySelectorAll('.roster-item-delete').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.delete;
+      deleteRosterFromStorage(name);
+      showLoadModal(); // re-render
+      showToast(`Deleted "${name}"`);
+    });
+  });
+}
+
+// ── IMPORT MODAL ────────────────────────────────────────────────
+document.getElementById('btn-import').addEventListener('click', () => {
+  document.getElementById('import-overlay').classList.add('visible');
+  document.getElementById('import-textarea').value = '';
+  document.getElementById('import-textarea').focus();
+});
+document.getElementById('btn-cancel-import').addEventListener('click', () => {
+  document.getElementById('import-overlay').classList.remove('visible');
+});
+document.getElementById('import-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('visible');
+});
+document.getElementById('btn-do-import').addEventListener('click', async () => {
+  const text = document.getElementById('import-textarea').value.trim();
+  if (!text) return;
+
+  // Detect addon string input (starts with PP:)
+  if (text.startsWith('PP:')) {
+    const result = Import.importAddonString(text);
+    if (result.success) {
+      State.rosterName = 'Imported Roster';
+      document.getElementById('import-overlay').classList.remove('visible');
+      document.getElementById('raid-select').value = State.selectedRaid;
+      initGroups();
+      renderGroups();
+      showToast(`Imported ${result.playerCount} players from addon string`);
+    } else {
+      showToast('Import failed: ' + result.error);
+    }
+    return;
+  }
+
+  let jsonStr = text;
+
+  // Detect URL input — fetch the JSON first
+  if (text.startsWith('http://') || text.startsWith('https://')) {
+    let url = text;
+    // Normalize: if they paste the website URL, convert to API URL
+    // e.g. https://raid-helper.dev/event/1234 → https://raid-helper.dev/api/raidplan/1234
+    const eventMatch = url.match(/raid-helper\.dev\/event\/(\d+)/);
+    if (eventMatch) url = `https://raid-helper.dev/api/raidplan/${eventMatch[1]}`;
+
+    showToast('Fetching roster from URL...');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    try {
+      const resp = await fetch(url, { signal: controller.signal, mode: 'cors', credentials: 'omit' });
+      clearTimeout(timeoutId);
+      if (!resp.ok) { showToast(`Fetch failed: HTTP ${resp.status}`); return; }
+      jsonStr = await resp.text();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        showToast('Request timed out — try again or paste the JSON directly');
+      } else if (err instanceof TypeError) {
+        showToast('Network error — the server may not allow direct browser requests. Try pasting the JSON instead.');
+      } else {
+        showToast('Fetch failed: ' + err.message);
+      }
+      return;
+    }
+  }
+
+  const result = Import.importRaidHelper(jsonStr);
+  if (result.success) {
+    State.rosterName = 'Imported Roster';
+    document.getElementById('import-overlay').classList.remove('visible');
+    document.getElementById('raid-select').value = State.selectedRaid;
+    initGroups();
+    renderGroups();
+    showToast(`Imported ${result.playerCount} players into ${result.groupCount} groups`);
+  } else {
+    showToast('Import failed: ' + result.error);
+  }
+});
+
+// ── ACTION BUTTONS ──────────────────────────────────────────────
+document.getElementById('optimize-mode').addEventListener('change', (e) => {
+  State.optimizerMode = e.target.value;
+});
+document.getElementById('btn-optimize').addEventListener('click', () => {
+  if (State.roster.length === 0) { showToast('Import a roster first'); return; }
+  if (Object.keys(State.buffOverrides).length > 0) {
+    if (!confirm('This will clear your manual buff changes. Continue?')) return;
+  }
+  State.optimizerMode = document.getElementById('optimize-mode').value;
+  State.buffOverrides = {};
+  Optimizer.optimize();
+  renderGroups();
+  showToast('Optimization complete!');
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  State.roster = [];
+  State.groups = [];
+  State.rosterName = 'No Roster Loaded';
+  State.buffOverrides = {};
+  initGroups();
+  renderGroups();
+  showToast('Cleared');
+});
+
+document.getElementById('btn-save').addEventListener('click', showSaveModal);
+document.getElementById('btn-load').addEventListener('click', showLoadModal);
+
+document.getElementById('btn-copy-addon').addEventListener('click', () => {
+  if (State.roster.length === 0) { showToast('No roster to export'); return; }
+  const str = Import.exportAddonString();
+  navigator.clipboard.writeText(str)
+    .then(() => showToast('Addon string copied to clipboard'))
+    .catch(() => showToast('Copy failed'));
+});
+
+document.getElementById('btn-export-json').addEventListener('click', () => {
+  if (State.roster.length === 0) { showToast('No roster to export'); return; }
+  const data = Import.exportRoster(State.rosterName);
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (State.rosterName || 'roster') + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Exported JSON file');
+});
+
+document.getElementById('btn-copy-json').addEventListener('click', () => {
+  if (State.roster.length === 0) { showToast('No roster to copy'); return; }
+  const data = Import.exportRoster(State.rosterName);
+  navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+    .then(() => showToast('JSON copied to clipboard'))
+    .catch(() => showToast('Copy failed'));
+});
+
+// ── INITIALIZE ──────────────────────────────────────────────────
+initRaidDropdown();
+initGroups();
+renderGroups();
+
+// ── EXPOSE FOR TESTING ──────────────────────────────────────────
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Config, Import, Optimizer, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, DpsModel };
+}
+// Also expose on window for browser-based tests
+window.PP = { Config, Import, Optimizer, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA };
+</script>
+</body>
+</html>
