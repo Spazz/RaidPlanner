@@ -1515,17 +1515,18 @@ function getGroupBuffs(players, groupIndex) {
 // ── DPS MODEL ───────────────────────────────────────────────────
 // Approximate TBC base DPS per spec and buff multipliers for estimation.
 const DpsModel = {
+  // T4 base DPS (unbuffed estimates from Gruul log data, 2026-03-23)
   baseDPS: {
-    'PALADIN:Protection':400, 'WARRIOR:Protection':350, 'DRUID:Feral':700,
-    'ROGUE:Combat':1200, 'ROGUE:Assassination':1100, 'ROGUE:Subtlety':900,
-    'WARRIOR:Fury':1100, 'WARRIOR:Arms':1000,
-    'PALADIN:Retribution':900, 'SHAMAN:Enhancement':1000,
-    'HUNTER:Beast Mastery':1050, 'HUNTER:Marksmanship':1000, 'HUNTER:Survival':950,
-    'MAGE:Arcane':1150, 'MAGE:Fire':1100, 'MAGE:Frost':950,
-    'WARLOCK:Destruction':1100, 'WARLOCK:Affliction':1050, 'WARLOCK:Demonology':900,
-    'PRIEST:Shadow':950, 'DRUID:Balance':850, 'SHAMAN:Elemental':900,
-    'PALADIN:Holy':50, 'PRIEST:Holy':50, 'PRIEST:Discipline':50,
-    'DRUID:Restoration':50, 'SHAMAN:Restoration':50,
+    'PALADIN:Protection':465, 'WARRIOR:Protection':350, 'DRUID:Feral':385,
+    'ROGUE:Combat':685, 'ROGUE:Assassination':630, 'ROGUE:Subtlety':515,
+    'WARRIOR:Fury':610, 'WARRIOR:Arms':555,
+    'PALADIN:Retribution':630, 'SHAMAN:Enhancement':605,
+    'HUNTER:Beast Mastery':880, 'HUNTER:Marksmanship':840, 'HUNTER:Survival':795,
+    'MAGE:Arcane':790, 'MAGE:Fire':755, 'MAGE:Frost':650,
+    'WARLOCK:Destruction':710, 'WARLOCK:Affliction':875, 'WARLOCK:Demonology':580,
+    'PRIEST:Shadow':640, 'DRUID:Balance':445, 'SHAMAN:Elemental':760,
+    'PALADIN:Holy':5, 'PRIEST:Holy':5, 'PRIEST:Discipline':5,
+    'DRUID:Restoration':5, 'SHAMAN:Restoration':5,
   },
   buffMult: {
     WINDFURY:0.08, GRACE_OF_AIR:0.03, WRATH_OF_AIR:0.05,
