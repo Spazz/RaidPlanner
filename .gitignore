@@ -1,0 +1,4 @@
+# Only track index.html
+*
+!.gitignore
+!index.html
