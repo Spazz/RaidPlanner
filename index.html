@@ -672,6 +672,7 @@ body::before {
   <div class="toolbar">
     <div class="mode-tabs">
       <button class="mode-tab active" data-tab="plan">Plan Mode</button>
+      <button class="mode-tab" data-tab="ideal">Ideal Comp</button>
     </div>
     <div class="raid-selector">
       <label for="raid-select">Raid</label>
@@ -912,6 +913,7 @@ const State = {
   rosterName: 'No Roster Loaded',
   optimizerMode: 'balanced', // 'strict' | 'balanced' | 'relaxed'
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
+  activeTab: 'plan', // 'plan' | 'ideal'
 };
 
 // ── IMPORT ──────────────────────────────────────────────────────
@@ -1126,6 +1128,8 @@ const Optimizer = {
       boomkins:      this.extractFromPool(pool, 'DRUID',  'Balance'),
       shadowPriests: this.extractFromPool(pool, 'PRIEST', 'Shadow'),
       bmHunters:     this.extractFromPool(pool, 'HUNTER', 'Beast Mastery'),
+      destroLocks:   this.extractFromPool(pool, 'WARLOCK', 'Destruction'),
+      affLocks:      this.extractFromPool(pool, 'WARLOCK', 'Affliction'),
     };
 
     // Classify remaining by role
@@ -1156,169 +1160,138 @@ const Optimizer = {
   },
 
   // ── STRICT MODE ──────────────────────────────────────────────
-  // Max buff concentration: melee gets everything, casters may get nothing.
+  // Follows the reference TBC ideal comp as closely as possible:
+  // G1/G2: Melee (Feral + Shaman/WF + physical DPS)
+  // G3: Caster support (Resto Shaman + SPriest + casters + healer)
+  // G4: Caster DPS (Ele Shaman + Boomkin + Destro Locks)
+  // G5: Healer/Tank (tanks + healers + Resto Shaman + Aff Lock)
   build25ManStrict(groups, r, prov, max) {
-    let gi = 0;
-    const cur = () => groups[gi];
-    const advance = () => { while (gi < groups.length && groups[gi].length >= max) gi++; };
+    // Helper: pick best available shaman for WF (prefer Enh, any can drop WF)
+    const pickWFShaman = () => {
+      if (prov.enhShamans.length > 0) return prov.enhShamans.shift();
+      if (prov.eleShamans.length > 0) return prov.eleShamans.shift();
+      if (prov.restoShamans.length > 0) return prov.restoShamans.shift();
+      return null;
+    };
 
-    // TANKS — prefer ele shaman for WF (save enhance for melee DPS)
-    this.addFromPool(cur(), r.tanks, r.tanks.length, max); advance();
-    if (prov.eleShamans.length > 0) this.addFromPool(cur(), prov.eleShamans, 1, max);
-    else if (prov.enhShamans.length > 0) this.addFromPool(cur(), prov.enhShamans, 1, max);
-    this.addFromPool(cur(), prov.feralDruids, 1, max);
-    this.addFromPool(cur(), r.meleeDPS, max - cur().length, max); advance();
+    // === MELEE GROUP 1 ===
+    const g1 = groups[0];
+    this.addFromPool(g1, prov.feralDruids, 1, max);
+    const wf1 = pickWFShaman();
+    if (wf1) g1.push(wf1);
+    this.addFromPool(g1, prov.bmHunters, 1, max);
+    this.addFromPool(g1, r.meleeDPS, max - g1.length, max);
+    this.addFromPool(g1, r.rangedDPS, max - g1.length, max);
 
-    // MELEE — seed with enhance shaman + BM hunter
-    while (r.meleeDPS.length > 0 && gi < groups.length) {
-      const g = cur();
-      if (prov.enhShamans.length > 0) this.addFromPool(g, prov.enhShamans, 1, max);
-      this.addFromPool(g, prov.feralDruids, prov.feralDruids.length, max);
-      if (prov.bmHunters.length > 0) this.addFromPool(g, prov.bmHunters, 1, max);
-      this.addFromPool(g, r.meleeDPS, max - g.length, max); advance();
-      if (r.meleeDPS.length === 0) break;
-    }
-    if (prov.bmHunters.length > 0 && groups[0].length < max) {
-      this.addFromPool(groups[0], prov.bmHunters, 1, max);
-    }
+    // === MELEE GROUP 2 ===
+    const g2 = groups[1];
+    this.addFromPool(g2, prov.feralDruids, 1, max);
+    const wf2 = pickWFShaman();
+    if (wf2) g2.push(wf2);
+    this.addFromPool(g2, prov.bmHunters, 1, max);
+    this.addFromPool(g2, r.rangedDPS, 1, max);
+    this.addFromPool(g2, r.meleeDPS, max - g2.length, max);
+    this.addFromPool(g2, r.rangedDPS, max - g2.length, max);
 
-    // CASTERS — shadow priest + ele shaman first group
-    if (r.casterDPS.length > 0 || r.rangedDPS.length > 0 || prov.shadowPriests.length > 0 || prov.boomkins.length > 0 || prov.eleShamans.length > 0) {
-      const g = cur();
-      this.addFromPool(g, prov.shadowPriests, 1, max);
-      if (prov.eleShamans.length > 0) this.addFromPool(g, prov.eleShamans, 1, max);
-      this.addFromPool(g, r.casterDPS, max - g.length, max);
-      this.addFromPool(g, r.rangedDPS, max - g.length, max); advance();
-    }
-    while ((r.casterDPS.length > 0 || r.rangedDPS.length > 0) && gi < groups.length) {
-      const g = cur();
-      this.addFromPool(g, prov.boomkins, 1, max);
-      if (prov.eleShamans.length > 0) this.addFromPool(g, prov.eleShamans, 1, max);
-      this.addFromPool(g, r.casterDPS, max - g.length, max);
-      this.addFromPool(g, r.rangedDPS, max - g.length, max); advance();
-    }
+    // === CASTER SUPPORT GROUP (G3) ===
+    // Resto Shaman (Mana Tide + WoA) + Shadow Priest + casters + 1 healer
+    const g3 = groups[2];
+    this.addFromPool(g3, prov.restoShamans, 1, max);
+    this.addFromPool(g3, prov.shadowPriests, 1, max);
+    const g3HealerSlots = r.healers.length > 0 ? 1 : 0;
+    this.addFromPool(g3, r.casterDPS, max - g3.length - g3HealerSlots, max);
+    this.addFromPool(g3, r.healers, 1, max);
+    this.addFromPool(g3, r.casterDPS, max - g3.length, max);
+    this.addFromPool(g3, r.rangedDPS, max - g3.length, max);
 
-    // HEALERS — seed with resto shaman
-    while (r.healers.length > 0 && gi < groups.length) {
-      const g = cur();
-      if (prov.restoShamans.length > 0) this.addFromPool(g, prov.restoShamans, 1, max);
-      this.addFromPool(g, r.healers, max - g.length, max); advance();
-    }
+    // === CASTER DPS GROUP (G4) ===
+    // Ele Shaman (ToW + WoA) + Boomkin (Moonkin Aura) + Destro Locks (fill with casters)
+    const g4 = groups[3];
+    this.addFromPool(g4, prov.eleShamans, 1, max);
+    this.addFromPool(g4, prov.boomkins, 1, max);
+    this.addFromPool(g4, prov.destroLocks, max - g4.length, max);
+    this.addFromPool(g4, r.casterDPS, max - g4.length, max);
+    this.addFromPool(g4, r.rangedDPS, max - g4.length, max);
+
+    // === HEALER/TANK GROUP (G5) ===
+    // Tanks + Resto Shaman + Healers + Aff Warlock
+    const g5 = groups[4];
+    this.addFromPool(g5, r.tanks, r.tanks.length, max);
+    this.addFromPool(g5, prov.restoShamans, 1, max);
+    const affSlot = prov.affLocks.length > 0 ? 1 : 0;
+    this.addFromPool(g5, r.healers, max - g5.length - affSlot, max);
+    this.addFromPool(g5, prov.affLocks, 1, max);
+    this.addFromPool(g5, r.healers, max - g5.length, max);
 
     this.placeOverflow(groups, max, r, prov);
   },
 
   // ── BALANCED MODE ────────────────────────────────────────────
-  // Spreads buff providers across groups so no group is a buff desert.
-  // Key differences from strict:
-  //   1. Tanks don't consume a shaman — tanks share group with healers
-  //   2. Ele shamans go to caster groups (not tanks)
-  //   3. Remaining shamans/providers are distributed round-robin to groups
-  //      that have none, rather than stacking on melee
+  // Follows the reference TBC ideal comp pattern with graceful degradation:
+  // G1/G2: Melee (Feral + Shaman/WF + BM Hunter + physical DPS)
+  // G3: Caster support (Resto Shaman/Mana Tide + SPriest + casters + healer)
+  // G4: Caster DPS (Ele Shaman/ToW + Boomkin + Destro Locks or casters)
+  // G5: Healer/Tank (tanks + Resto Shaman + healers + Aff Lock)
   build25ManBalanced(groups, r, prov, max) {
-    // Phase 1: Build role-based groups first (tanks+healers, melee, casters)
-    // then distribute buff providers across them.
+    // Helper: pick best available shaman for WF (prefer Enh, any can drop WF)
+    const pickWFShaman = () => {
+      if (prov.enhShamans.length > 0) return prov.enhShamans.shift();
+      if (prov.eleShamans.length > 0) return prov.eleShamans.shift();
+      if (prov.restoShamans.length > 0) return prov.restoShamans.shift();
+      return null;
+    };
 
-    let gi = 0;
-    const cur = () => groups[gi];
-    const advance = () => { while (gi < groups.length && groups[gi].length >= max) gi++; };
+    // === MELEE GROUP 1 ===
+    // Feral (LotP) + Shaman (WF) + BM Hunter (FI/TSA) + melee DPS
+    const g1 = groups[0];
+    this.addFromPool(g1, prov.feralDruids, 1, max);
+    const wf1 = pickWFShaman();
+    if (wf1) g1.push(wf1);
+    this.addFromPool(g1, prov.bmHunters, 1, max);
+    this.addFromPool(g1, r.meleeDPS, max - g1.length, max);
+    this.addFromPool(g1, r.rangedDPS, max - g1.length, max);
 
-    // MELEE GROUP(S) — seed with enhance shaman + feral druid + BM hunter
-    // Melee groups go first so they get their core buffs
-    while (r.meleeDPS.length > 0 && gi < groups.length) {
-      const g = cur();
-      if (prov.enhShamans.length > 0) this.addFromPool(g, prov.enhShamans, 1, max);
-      this.addFromPool(g, prov.feralDruids, 1, max);
-      if (prov.bmHunters.length > 0) this.addFromPool(g, prov.bmHunters, 1, max);
-      this.addFromPool(g, r.meleeDPS, max - g.length, max);
-      advance();
-      if (r.meleeDPS.length === 0) break;
-    }
-    const meleeGroupEnd = gi;
-    // Force casters into a fresh group even if last melee group isn't full
-    if (gi < groups.length && groups[gi].length > 0) gi++;
+    // === MELEE GROUP 2 ===
+    // Feral (LotP) + Shaman (WF) + Hunter + melee DPS
+    const g2 = groups[1];
+    this.addFromPool(g2, prov.feralDruids, 1, max);
+    const wf2 = pickWFShaman();
+    if (wf2) g2.push(wf2);
+    this.addFromPool(g2, prov.bmHunters, 1, max);
+    this.addFromPool(g2, r.rangedDPS, 1, max);
+    this.addFromPool(g2, r.meleeDPS, max - g2.length, max);
+    this.addFromPool(g2, r.rangedDPS, max - g2.length, max);
 
-    // CASTER GROUP(S) — seed with ele shaman + shadow priest + boomkin
-    // Each caster group gets a buff provider before we pack in DPS
-    const casterStart = gi;
-    if (r.casterDPS.length > 0 || r.rangedDPS.length > 0 || prov.shadowPriests.length > 0 || prov.boomkins.length > 0 || prov.eleShamans.length > 0) {
-      // First caster group: shadow priest + ele shaman
-      const g = cur();
-      this.addFromPool(g, prov.shadowPriests, 1, max);
-      if (prov.eleShamans.length > 0) this.addFromPool(g, prov.eleShamans, 1, max);
-      this.addFromPool(g, r.casterDPS, max - g.length, max);
-      this.addFromPool(g, r.rangedDPS, max - g.length, max);
-      advance();
-    }
-    // Additional caster groups: seed with boomkin or remaining ele shaman
-    while ((r.casterDPS.length > 0 || r.rangedDPS.length > 0) && gi < groups.length) {
-      const g = cur();
-      if (prov.boomkins.length > 0) this.addFromPool(g, prov.boomkins, 1, max);
-      else if (prov.eleShamans.length > 0) this.addFromPool(g, prov.eleShamans, 1, max);
-      this.addFromPool(g, r.casterDPS, max - g.length, max);
-      this.addFromPool(g, r.rangedDPS, max - g.length, max);
-      advance();
-    }
-    const casterGroupEnd = gi;
+    // === CASTER SUPPORT GROUP (G3) ===
+    // Resto Shaman (Mana Tide/WoA for mana sustain) + Shadow Priest + casters + 1 healer
+    const g3 = groups[2];
+    this.addFromPool(g3, prov.restoShamans, 1, max);
+    this.addFromPool(g3, prov.shadowPriests, 1, max);
+    const g3HealerSlots = r.healers.length > 0 ? 1 : 0;
+    this.addFromPool(g3, r.casterDPS, max - g3.length - g3HealerSlots, max);
+    this.addFromPool(g3, r.healers, 1, max);
+    this.addFromPool(g3, r.casterDPS, max - g3.length, max);
+    this.addFromPool(g3, r.rangedDPS, max - g3.length, max);
 
-    // TANK + HEALER GROUP — tanks share a group with healers + resto shaman
-    // This frees up shaman slots for DPS groups
-    if (r.tanks.length > 0 || r.healers.length > 0) {
-      const g = cur();
-      this.addFromPool(g, r.tanks, r.tanks.length, max);
-      if (prov.restoShamans.length > 0) this.addFromPool(g, prov.restoShamans, 1, max);
-      this.addFromPool(g, r.healers, max - g.length, max);
-      advance();
-    }
+    // === CASTER DPS GROUP (G4) ===
+    // Ele Shaman (ToW/WoA) + Boomkin (Moonkin Aura) + Destro Locks (fill with casters)
+    const g4 = groups[3];
+    this.addFromPool(g4, prov.eleShamans, 1, max);
+    this.addFromPool(g4, prov.boomkins, 1, max);
+    this.addFromPool(g4, prov.destroLocks, max - g4.length, max);
+    this.addFromPool(g4, r.casterDPS, max - g4.length, max);
+    this.addFromPool(g4, r.rangedDPS, max - g4.length, max);
 
-    // OVERFLOW HEALER GROUP if healers remain
-    while (r.healers.length > 0 && gi < groups.length) {
-      const g = cur();
-      if (prov.restoShamans.length > 0) this.addFromPool(g, prov.restoShamans, 1, max);
-      this.addFromPool(g, r.healers, max - g.length, max);
-      advance();
-    }
+    // === HEALER/TANK GROUP (G5) ===
+    // Tanks + Resto Shaman (Mana Tide) + Healers + Aff Warlock
+    const g5 = groups[4];
+    this.addFromPool(g5, r.tanks, r.tanks.length, max);
+    this.addFromPool(g5, prov.restoShamans, 1, max);
+    const affSlot = prov.affLocks.length > 0 ? 1 : 0;
+    this.addFromPool(g5, r.healers, max - g5.length - affSlot, max);
+    this.addFromPool(g5, prov.affLocks, 1, max);
+    this.addFromPool(g5, r.healers, max - g5.length, max);
 
-    // Phase 2: Distribute remaining buff providers to groups that have none.
-    // Collect all leftover providers into a single pool.
-    const leftover = [
-      ...prov.enhShamans, ...prov.eleShamans, ...prov.restoShamans,
-      ...prov.feralDruids, ...prov.boomkins, ...prov.shadowPriests, ...prov.bmHunters
-    ];
-    // Clear the provider arrays (they've been consumed)
-    prov.enhShamans.length = 0; prov.eleShamans.length = 0; prov.restoShamans.length = 0;
-    prov.feralDruids.length = 0; prov.boomkins.length = 0; prov.shadowPriests.length = 0; prov.bmHunters.length = 0;
-
-    // Find groups with no shaman/buff provider and fill them first
-    if (leftover.length > 0) {
-      // Sort: prioritize groups with the most DPS players but no buff providers
-      const groupsNeedingBuffs = [];
-      for (let i = 0; i < groups.length; i++) {
-        const g = groups[i];
-        const hasShaman = g.some(p => p.class === 'SHAMAN');
-        const hasDruid = g.some(p => (p.spec === 'Feral' || p.spec === 'Balance') && p.class === 'DRUID');
-        const hasSP = g.some(p => p.class === 'PRIEST' && p.spec === 'Shadow');
-        const hasBM = g.some(p => p.class === 'HUNTER' && p.spec === 'Beast Mastery');
-        if (!hasShaman && !hasDruid && !hasSP && !hasBM && g.length < max) {
-          groupsNeedingBuffs.push(i);
-        }
-      }
-      // Distribute leftover providers round-robin to buff-starved groups
-      for (const gIdx of groupsNeedingBuffs) {
-        if (leftover.length === 0) break;
-        if (groups[gIdx].length < max) groups[gIdx].push(leftover.shift());
-      }
-      // Any remaining leftover goes to any group with space
-      while (leftover.length > 0) {
-        let placed = false;
-        for (const g of groups) {
-          if (g.length < max) { g.push(leftover.shift()); placed = true; break; }
-        }
-        if (!placed) break;
-      }
-    }
-
-    // Place any remaining role-based overflow
     this.placeOverflow(groups, max, r, prov);
   },
 
@@ -1334,8 +1307,11 @@ const Optimizer = {
     for (const p of prov.boomkins) r.casterDPS.push(p);
     for (const p of prov.shadowPriests) r.casterDPS.push(p);
     for (const p of prov.bmHunters) r.rangedDPS.push(p);
+    for (const p of prov.destroLocks) r.casterDPS.push(p);
+    for (const p of prov.affLocks) r.casterDPS.push(p);
     prov.enhShamans.length = 0; prov.eleShamans.length = 0; prov.restoShamans.length = 0;
     prov.feralDruids.length = 0; prov.boomkins.length = 0; prov.shadowPriests.length = 0; prov.bmHunters.length = 0;
+    prov.destroLocks.length = 0; prov.affLocks.length = 0;
 
     // Fill groups by role: tanks → melee → casters → ranged → healers
     const allPlayers = [...r.tanks, ...r.meleeDPS, ...r.casterDPS, ...r.rangedDPS, ...r.healers];
@@ -1350,22 +1326,39 @@ const Optimizer = {
   },
 
   // ── 10-MAN (shared across modes) ────────────────────────────
+  // G1: Tanks + Shaman(WF) + Feral(LotP) + melee DPS + healer
+  // G2: Casters + Ele/Resto Shaman + caster DPS + healer
   build10Man(groups, r, prov, max) {
+    // Helper: pick best available shaman for WF
+    const pickWFShaman = () => {
+      if (prov.enhShamans.length > 0) return prov.enhShamans.shift();
+      if (prov.eleShamans.length > 0) return prov.eleShamans.shift();
+      if (prov.restoShamans.length > 0) return prov.restoShamans.shift();
+      return null;
+    };
+
+    // G1: Melee/Tank group
     const g1 = groups[0];
     this.addFromPool(g1, r.tanks, 2, max);
-    if (prov.enhShamans.length > 0) this.addFromPool(g1, prov.enhShamans, 1, max);
     this.addFromPool(g1, prov.feralDruids, 1, max);
+    const wf = pickWFShaman();
+    if (wf) g1.push(wf);
     this.addFromPool(g1, prov.bmHunters, 1, max);
+    this.addFromPool(g1, r.meleeDPS, max - g1.length - 1, max);
+    this.addFromPool(g1, r.healers, 1, max);
     this.addFromPool(g1, r.meleeDPS, max - g1.length, max);
-    this.addFromPool(g1, r.healers, max - g1.length, max);
+    this.addFromPool(g1, r.rangedDPS, max - g1.length, max);
 
+    // G2: Caster group
     const g2 = groups[1];
     if (prov.eleShamans.length > 0) this.addFromPool(g2, prov.eleShamans, 1, max);
     else if (prov.restoShamans.length > 0) this.addFromPool(g2, prov.restoShamans, 1, max);
     this.addFromPool(g2, prov.boomkins, 1, max);
     this.addFromPool(g2, prov.shadowPriests, 1, max);
+    this.addFromPool(g2, prov.destroLocks, max - g2.length - 1, max);
+    this.addFromPool(g2, r.casterDPS, max - g2.length - 1, max);
+    this.addFromPool(g2, r.healers, 1, max);
     this.addFromPool(g2, r.casterDPS, max - g2.length, max);
-    this.addFromPool(g2, r.healers, max - g2.length, max);
     this.addFromPool(g2, r.rangedDPS, max - g2.length, max);
 
     this.placeOverflow(groups, max, r, prov);
@@ -1376,7 +1369,8 @@ const Optimizer = {
     const allPools = [
       r.tanks, r.healers, r.meleeDPS, r.rangedDPS, r.casterDPS,
       prov.enhShamans, prov.eleShamans, prov.restoShamans,
-      prov.feralDruids, prov.boomkins, prov.shadowPriests, prov.bmHunters
+      prov.feralDruids, prov.boomkins, prov.shadowPriests, prov.bmHunters,
+      prov.destroLocks, prov.affLocks,
     ];
     for (const pool of allPools) {
       while (pool.length > 0) {
@@ -1585,8 +1579,12 @@ function initRaidDropdown() {
   }
   sel.addEventListener('change', () => {
     State.selectedRaid = sel.value;
-    initGroups();
-    renderGroups();
+    if (State.activeTab === 'ideal') {
+      renderIdealComp();
+    } else {
+      initGroups();
+      renderGroups();
+    }
   });
 }
 
@@ -2364,6 +2362,220 @@ document.getElementById('btn-copy-json').addEventListener('click', () => {
     .catch(() => showToast('Copy failed'));
 });
 
+// ── IDEAL COMP MODULE ────────────────────────────────────────────
+const IdealComp = {
+  // 25-man: 2 tanks, 5 healers, 18 DPS — optimized for buff synergies
+  // 10-man: 2 tanks, 2 healers, 6 DPS
+  generate(raidKey) {
+    const raidInfo = Config.Raids[raidKey];
+    if (!raidInfo) return [];
+    return raidInfo.size === 10 ? this.build10Man() : this.build25Man();
+  },
+
+  makePlayer(cls, spec, role) {
+    const specData = Object.values(Config.Specs[cls] || {}).find(s => s.name === spec);
+    return {
+      uid: nextUid(),
+      name: spec + ' ' + cls.charAt(0) + cls.slice(1).toLowerCase(),
+      class: cls,
+      spec: spec,
+      role: role || (specData ? specData.role : 'melee_dps'),
+      imported: false,
+    };
+  },
+
+  build25Man() {
+    // Reference: classic TBC ideal 25-man comp
+    // 1T + 5H + 19DPS (Ferals flex tank as needed)
+    const groups = [
+      // Group 1: Melee — LotP + WF + physical DPS
+      [
+        this.makePlayer('DRUID', 'Feral', 'melee_dps'),        // LotP, flex tank
+        this.makePlayer('SHAMAN', 'Enhancement', 'melee_dps'), // WF + SoE
+        this.makePlayer('PALADIN', 'Retribution', 'melee_dps'),
+        this.makePlayer('WARRIOR', 'Arms', 'melee_dps'),
+        this.makePlayer('HUNTER', 'Beast Mastery', 'ranged_dps'), // FI + TSA
+      ],
+      // Group 2: Melee — LotP + WF + physical DPS
+      [
+        this.makePlayer('DRUID', 'Feral', 'melee_dps'),        // LotP, flex tank
+        this.makePlayer('SHAMAN', 'Enhancement', 'melee_dps'), // WF + SoE
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('WARRIOR', 'Fury', 'melee_dps'),
+        this.makePlayer('HUNTER', 'Survival', 'ranged_dps'),
+      ],
+      // Group 3: Casters — Mana Tide + Shadow Weaving + healer support
+      [
+        this.makePlayer('MAGE', 'Arcane', 'caster_dps'),
+        this.makePlayer('MAGE', 'Arcane', 'caster_dps'),
+        this.makePlayer('SHAMAN', 'Restoration', 'healer'),    // Mana Tide + WoA
+        this.makePlayer('PRIEST', 'Shadow', 'caster_dps'),     // Shadow Weaving
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+      ],
+      // Group 4: Casters — ToW + Moonkin Aura + Warlock stack
+      [
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('SHAMAN', 'Elemental', 'caster_dps'),  // WoA + ToW
+        this.makePlayer('DRUID', 'Balance', 'caster_dps'),     // Moonkin Aura
+      ],
+      // Group 5: Healers + Tank
+      [
+        this.makePlayer('PALADIN', 'Holy', 'healer'),
+        this.makePlayer('SHAMAN', 'Restoration', 'healer'),    // Mana Tide
+        this.makePlayer('DRUID', 'Restoration', 'healer'),
+        this.makePlayer('PALADIN', 'Protection', 'tank'),
+        this.makePlayer('WARLOCK', 'Affliction', 'caster_dps'),
+      ],
+    ];
+
+    for (let gi = 0; gi < groups.length; gi++) {
+      for (const p of groups[gi]) p.groupNumber = gi + 1;
+    }
+    return groups;
+  },
+
+  build10Man() {
+    // 2 tanks, 2 healers, 6 DPS
+    const groups = [
+      // Group 1: Tanks + Melee + Shaman
+      [
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('DRUID', 'Feral', 'tank'),           // LotP
+        this.makePlayer('SHAMAN', 'Enhancement', 'melee_dps'), // WF + SoE
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('PALADIN', 'Holy', 'healer'),        // Devotion Aura
+      ],
+      // Group 2: Casters + Healer
+      [
+        this.makePlayer('SHAMAN', 'Elemental', 'caster_dps'),  // WoA + ToW
+        this.makePlayer('WARLOCK', 'Affliction', 'caster_dps'),
+        this.makePlayer('MAGE', 'Arcane', 'caster_dps'),
+        this.makePlayer('HUNTER', 'Beast Mastery', 'ranged_dps'), // FI
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+      ],
+    ];
+    for (let gi = 0; gi < groups.length; gi++) {
+      for (const p of groups[gi]) p.groupNumber = gi + 1;
+    }
+    return groups;
+  },
+};
+
+// ── TAB SWITCHING ───────────────────────────────────────────────
+function switchTab(tab) {
+  State.activeTab = tab;
+
+  // Update tab button styles
+  document.querySelectorAll('.mode-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  // Show/hide plan-mode-only elements
+  const planOnly = ['roster-bar', 'manual-changes', 'action-bar'].map(
+    cls => document.querySelector('.' + cls)
+  ).filter(Boolean);
+  for (const el of planOnly) {
+    el.style.display = tab === 'plan' ? '' : 'none';
+  }
+
+  if (tab === 'ideal') {
+    renderIdealComp();
+  } else {
+    renderGroups();
+  }
+}
+
+function renderIdealComp() {
+  const container = document.getElementById('groups-container');
+  container.innerHTML = '';
+
+  const raidInfo = Config.Raids[State.selectedRaid];
+  const groups = IdealComp.generate(State.selectedRaid);
+  const numGroups = groups.length;
+
+  container.className = 'groups-container';
+  if (numGroups === 5) container.classList.add('groups-5');
+
+  for (let gi = 0; gi < numGroups; gi++) {
+    const players = groups[gi] || [];
+    const buffList = getGroupBuffs(players, gi);
+    const roleLabel = getDominantRoleLabel(players);
+
+    let slotsHTML = '';
+    for (let si = 0; si < 5; si++) {
+      if (si < players.length) {
+        const p = players[si];
+        const color = Config.ClassColors[p.class] || 'var(--text-primary)';
+        const specLabel = p.spec + ' ' + p.class.charAt(0) + p.class.slice(1).toLowerCase();
+        slotsHTML += `<div class="player-slot" data-group="${gi}" data-slot="${si}">
+          ${getRoleIcon(p.role)}
+          <div class="player-info">
+            <span class="player-name" style="color:${color}">${esc(specLabel)}</span>
+          </div>
+        </div>`;
+      } else {
+        slotsHTML += `<div class="player-slot empty-slot" data-group="${gi}" data-slot="${si}">
+          <span class="role-icon" style="opacity:0.3;">&#8226;</span>
+          <div class="player-info"><span class="player-name">Empty Slot</span></div>
+        </div>`;
+      }
+    }
+
+    let buffsHTML = '<span class="buff-bar-label">Buffs</span>';
+    if (buffList.length === 0) {
+      buffsHTML += '<span class="no-buffs">No buffs</span>';
+    } else {
+      for (const b of buffList) {
+        const abbr = Config.BuffAbbreviations[b.id] || b.id;
+        const css = Config.BuffCSSClass[b.id] || '';
+        const iconUrl = Config.BuffIconURL(b.id);
+        const hasIcon = iconUrl ? ' has-icon' : '';
+        const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy" class="buff-img">` : '';
+        const tooltipHTML = `<div class="buff-tooltip"><div class="tt-name">${esc(b.buff.name)}</div></div>`;
+        buffsHTML += `<div class="buff-icon ${css}${hasIcon}">${imgTag}<span class="buff-label">${abbr}</span>${tooltipHTML}</div>`;
+      }
+    }
+
+    const groupDPS = players.length > 0 ? DpsModel.calcGroupDPS(players, gi) : 0;
+
+    container.innerHTML += `<div class="group-card" data-group="${gi}">
+      <div class="group-header">
+        <h3>Group ${gi+1}</h3>
+        <div style="display:flex;align-items:center;gap:var(--sp-2);">
+          <span class="group-dps">${groupDPS > 0 ? groupDPS.toLocaleString() + ' DPS' : ''}</span>
+          <span class="group-role-tag">${roleLabel}</span>
+        </div>
+      </div>
+      <div class="player-list">${slotsHTML}</div>
+      <div class="buff-bar">${buffsHTML}</div>
+    </div>`;
+  }
+
+  // Raid total DPS
+  const raid = DpsModel.calcRaidDPS(groups);
+  container.innerHTML += `<div class="raid-dps-bar">
+    <span class="raid-dps-label">Estimated Raid DPS (Ideal Comp)</span>
+    <span class="raid-dps-value">${raid.total.toLocaleString()}</span>
+  </div>`;
+
+  // Attach error handlers on buff images
+  container.querySelectorAll('.buff-img').forEach(img => {
+    img.addEventListener('error', () => {
+      img.parentElement.classList.remove('has-icon');
+      img.remove();
+    });
+  });
+
+  document.getElementById('status-text').textContent = `Ideal ${raidInfo.size}-man comp — ${raidInfo.name}`;
+}
+
+// Wire tab clicks
+document.querySelectorAll('.mode-tab').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
 // ── INITIALIZE ──────────────────────────────────────────────────
 initRaidDropdown();
 initGroups();
@@ -2371,10 +2583,10 @@ renderGroups();
 
 // ── EXPOSE FOR TESTING ──────────────────────────────────────────
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Config, Import, Optimizer, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, DpsModel };
+  module.exports = { Config, Import, Optimizer, IdealComp, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, DpsModel };
 }
 // Also expose on window for browser-based tests
-window.PP = { Config, Import, Optimizer, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA };
+window.PP = { Config, Import, Optimizer, IdealComp, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA };
 </script>
 </body>
 </html>
