@@ -358,21 +358,20 @@ body::before {
   box-shadow: 0 3px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
   z-index: 2;
 }
-.buff-tooltip {
+#buff-tooltip-portal {
   display: none;
-  position: absolute; bottom: calc(100% + 6px); left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
   background: var(--bg-deepest); color: var(--text-primary);
-  padding: 5px 8px; border-radius: var(--radius-sm);
-  font-size: 10px; white-space: nowrap;
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  font-size: 10px; white-space: normal; width: 220px;
   border: 1px solid var(--border-medium);
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-  z-index: 10; letter-spacing: 0;
+  z-index: 9999; letter-spacing: 0;
 }
-.buff-tooltip .tt-name { font-weight: 600; color: var(--accent-gold); }
-.buff-tooltip .tt-source { font-weight: 500; font-size: 9px; margin-top: 1px; }
-.buff-icon:hover .buff-tooltip { display: block; }
+#buff-tooltip-portal .tt-name { font-weight: 600; color: var(--accent-gold); margin-bottom: 3px; }
+#buff-tooltip-portal .tt-desc { color: var(--text-secondary); font-size: 10px; line-height: 1.4; margin-bottom: 3px; }
+#buff-tooltip-portal .tt-source { font-weight: 500; font-size: 9px; margin-top: 2px; color: var(--text-muted); }
 .buff-icon.swappable { cursor: pointer; }
 .buff-icon.swappable::after {
   content: ''; position: absolute; bottom: -2px; right: -2px;
@@ -704,11 +703,13 @@ body::before {
       <select class="raid-dropdown" id="optimize-mode" aria-label="Optimizer strategy">
         <option value="balanced" selected>Balanced</option>
         <option value="strict">Strict</option>
+        <option value="tank_prio">Tank Prio</option>
         <option value="relaxed">Relaxed</option>
       </select>
       <button class="btn btn-secondary" id="btn-clear" aria-label="Clear all players and groups">Clear All</button>
     </div>
     <div class="action-right">
+      <button class="btn btn-secondary" id="btn-random" aria-label="Generate a random roster">&#127922; Random</button>
       <button class="btn btn-secondary" id="btn-import" aria-label="Import roster from JSON or URL">Import Roster</button>
     </div>
   </div>
@@ -784,38 +785,42 @@ const Config = {
   },
 
   Buffs: {
-    WINDFURY:          { name:'Windfury Totem',       sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:100 },
-    GRACE_OF_AIR:      { name:'Grace of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['melee_dps','ranged_dps'], priority:60 },
-    WRATH_OF_AIR:      { name:'Wrath of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['caster_dps','healer'], priority:85 },
-    TOTEM_OF_WRATH:    { name:'Totem of Wrath',       sourceClass:'SHAMAN', sourceSpec:'Elemental', benefitsRoles:['caster_dps'], priority:80 },
-    MANA_SPRING:       { name:'Mana Spring Totem',    sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:50 },
-    MANA_TIDE:         { name:'Mana Tide Totem',      sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70 },
-    STRENGTH_OF_EARTH: { name:'Strength of Earth',    sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55 },
-    DEVOTION_AURA:     { name:'Devotion Aura',        sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75 },
-    CONCENTRATION_AURA:{ name:'Concentration Aura',   sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:65 },
-    RETRIBUTION_AURA:  { name:'Retribution Aura',     sourceClass:'PALADIN', benefitsRoles:['tank'], priority:30 },
-    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',   sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps'], priority:78 },
-    MOONKIN_AURA:      { name:'Moonkin Aura',         sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['caster_dps'], priority:72 },
-    TRUESHOT_AURA:     { name:'Trueshot Aura',        sourceClass:'HUNTER', benefitsRoles:['melee_dps','ranged_dps'], priority:55 },
-    FEROCIOUS_INSP:    { name:'Ferocious Inspiration',sourceClass:'HUNTER', sourceSpec:'Beast Mastery', benefitsRoles:['melee_dps','ranged_dps','caster_dps'], priority:58 },
-    BLOOD_PACT:        { name:'Blood Pact',           sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40 },
-    SHADOW_WEAVING:    { name:'Shadow Weaving',       sourceClass:'PRIEST', sourceSpec:'Shadow', benefitsRoles:['caster_dps'], priority:68 },
+    WINDFURY:          { name:'Windfury Totem',       sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Enchants nearby party members\' main-hand weapons with wind, granting each hit a 20% chance to trigger an extra attack with bonus AP.' },
+    GRACE_OF_AIR:      { name:'Grace of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by 77.' },
+    WRATH_OF_AIR:      { name:'Wrath of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['caster_dps','healer'], priority:85, desc:'Increases spell power of nearby party members by 101.' },
+    TOTEM_OF_WRATH:    { name:'Totem of Wrath',       sourceClass:'SHAMAN', sourceSpec:'Elemental', benefitsRoles:['caster_dps'], priority:80, desc:'Increases spell critical strike chance of nearby party members by 3% and increases spell power by 120.' },
+    MANA_SPRING:       { name:'Mana Spring Totem',    sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:{healer:58, caster_dps:48}, desc:'Restores 20 mana every 2 seconds to nearby party members.' },
+    MANA_TIDE:         { name:'Mana Tide Totem',      sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70, desc:'Restores 24% of total mana to nearby party members over 12 seconds.' },
+    STRENGTH_OF_EARTH: { name:'Strength of Earth',    sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55, desc:'Increases strength of nearby party members by 86.' },
+    DEVOTION_AURA:     { name:'Devotion Aura',        sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by 861.' },
+    CONCENTRATION_AURA:{ name:'Concentration Aura',   sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Reduces the duration of silence and interrupt effects by 30% and gives 35% resistance to pushback while casting.' },
+    RETRIBUTION_AURA:  { name:'Retribution Aura',     sourceClass:'PALADIN', benefitsRoles:['tank'], priority:30, desc:'Causes 26 Holy damage to any enemy that strikes nearby party members.' },
+    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',   sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:78, tank:65}, desc:'Increases melee and ranged critical strike chance of nearby party members by 5%.' },
+    MOONKIN_AURA:      { name:'Moonkin Aura',         sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['caster_dps'], priority:72, desc:'Increases spell critical strike chance of nearby party members by 5%.' },
+    TRUESHOT_AURA:     { name:'Trueshot Aura',        sourceClass:'HUNTER', sourceSpec:'Marksmanship', benefitsRoles:['melee_dps','ranged_dps'], priority:62, desc:'Increases attack power of nearby party members by 125.' },
+    FEROCIOUS_INSP:    { name:'Ferocious Inspiration',sourceClass:'HUNTER', sourceSpec:'Beast Mastery', benefitsRoles:['melee_dps','ranged_dps','caster_dps'], priority:58, desc:'When your pet scores a critical hit, all party members gain 3% increased damage for 10 seconds.' },
+    TREE_OF_LIFE:      { name:'Tree of Life',          sourceClass:'DRUID', sourceSpec:'Restoration', benefitsRoles:['tank','healer','melee_dps','ranged_dps','caster_dps'], priority:{tank:90, healer:10, melee_dps:10, ranged_dps:10, caster_dps:10}, desc:'Increases healing received by nearby party members by 25% of the Druid\'s spirit.' },
+    UNLEASHED_RAGE:    { name:'Unleashed Rage',        sourceClass:'SHAMAN', sourceSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:88, tank:60}, desc:'Increases melee attack power of nearby party members by 10% after landing a melee critical strike.' },
+    BATTLE_SHOUT:      { name:'Battle Shout',          sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members by 305 for 2 minutes.' },
+    BLOOD_PACT:        { name:'Blood Pact',           sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases max health of nearby party members by 1330.' },
+    VAMPIRIC_TOUCH:    { name:'Vampiric Touch',       sourceClass:'PRIEST', sourceSpec:'Shadow', benefitsRoles:['healer','caster_dps'], priority:{caster_dps:75, healer:55}, desc:'Restores mana to nearby party members equal to 5% of Shadow damage dealt.' },
+    SHADOW_WEAVING:    { name:'Shadow Weaving',       sourceClass:'PRIEST', sourceSpec:'Shadow', benefitsRoles:['caster_dps'], priority:68, desc:'Shadow damage spells have a 100% chance to cause the target to be vulnerable to Shadow damage, increasing Shadow damage taken by 10%.' },
   },
 
   BuffAbbreviations: {
     WINDFURY:'WF', GRACE_OF_AIR:'GoA', WRATH_OF_AIR:'WoA', TOTEM_OF_WRATH:'ToW',
     MANA_SPRING:'MS', MANA_TIDE:'MT', STRENGTH_OF_EARTH:'SoE',
     DEVOTION_AURA:'Dev', CONCENTRATION_AURA:'Conc', RETRIBUTION_AURA:'Ret',
-    LEADER_OF_THE_PACK:'LotP', MOONKIN_AURA:'Moon', TRUESHOT_AURA:'TSA', FEROCIOUS_INSP:'FI',
-    BLOOD_PACT:'BP', SHADOW_WEAVING:'SW',
+    LEADER_OF_THE_PACK:'LotP', MOONKIN_AURA:'Moon', TREE_OF_LIFE:'ToL', TRUESHOT_AURA:'TSA', FEROCIOUS_INSP:'FI',
+    UNLEASHED_RAGE:'UR', BATTLE_SHOUT:'BS', BLOOD_PACT:'BP', VAMPIRIC_TOUCH:'VT', SHADOW_WEAVING:'SW',
   },
 
   BuffCSSClass: {
     WINDFURY:'buff-wf', GRACE_OF_AIR:'buff-goa', WRATH_OF_AIR:'buff-woa', TOTEM_OF_WRATH:'buff-tow',
     MANA_SPRING:'buff-ms', MANA_TIDE:'buff-mt', STRENGTH_OF_EARTH:'buff-soe',
     DEVOTION_AURA:'buff-dev', CONCENTRATION_AURA:'buff-conc', RETRIBUTION_AURA:'buff-ret',
-    LEADER_OF_THE_PACK:'buff-lotp', MOONKIN_AURA:'buff-moon', TRUESHOT_AURA:'buff-tsa', FEROCIOUS_INSP:'buff-fi',
-    BLOOD_PACT:'buff-bp', SHADOW_WEAVING:'buff-sw',
+    LEADER_OF_THE_PACK:'buff-lotp', MOONKIN_AURA:'buff-moon', TREE_OF_LIFE:'buff-tol', TRUESHOT_AURA:'buff-tsa', FEROCIOUS_INSP:'buff-fi',
+    UNLEASHED_RAGE:'buff-ur', BATTLE_SHOUT:'buff-bs', BLOOD_PACT:'buff-bp', VAMPIRIC_TOUCH:'buff-vt', SHADOW_WEAVING:'buff-sw',
   },
 
   // Wowhead CDN icon filenames for each buff
@@ -832,6 +837,10 @@ const Config = {
     RETRIBUTION_AURA:   'spell_holy_auraoflight',
     LEADER_OF_THE_PACK: 'spell_nature_unyeildingstamina',
     MOONKIN_AURA:       'spell_nature_starfall',
+    TREE_OF_LIFE:       'ability_druid_treeoflife',
+    UNLEASHED_RAGE:     'spell_nature_unleashedrage',
+    BATTLE_SHOUT:       'ability_warrior_battleshout',
+    VAMPIRIC_TOUCH:     'spell_holy_stoicism',
     TRUESHOT_AURA:      'ability_trueshot',
     FEROCIOUS_INSP:     'ability_hunter_ferociousinspiration',
     BLOOD_PACT:         'spell_shadow_bloodboil',
@@ -904,6 +913,16 @@ const TOTEM_ELEMENTS = {
 const PALADIN_AURAS = { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true };
 const BEST_AIR_TOTEM = { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'WRATH_OF_AIR', healer:'WRATH_OF_AIR' };
 const BEST_PALADIN_AURA = { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' };
+
+function getBuffPriority(buff, role) {
+  if (!buff) return 0;
+  if (typeof buff.priority === 'number') return buff.priority;
+  if (typeof buff.priority === 'object') {
+    if (role && buff.priority[role] != null) return buff.priority[role];
+    return Math.max(...Object.values(buff.priority));
+  }
+  return 0;
+}
 
 // ── STATE ───────────────────────────────────────────────────────
 const State = {
@@ -1100,13 +1119,146 @@ const Import = {
   },
 };
 
+// ── RANDOM ROSTER GENERATOR ──────────────────────────────────────
+
+const RandomRoster = {
+  // Specs grouped by role for quick lookup
+  _specsByRole: null,
+
+  _buildSpecsByRole() {
+    if (this._specsByRole) return this._specsByRole;
+    const byRole = { tank: [], healer: [], melee_dps: [], ranged_dps: [], caster_dps: [] };
+    for (const [cls, specs] of Object.entries(Config.Specs)) {
+      for (const [, spec] of Object.entries(specs)) {
+        byRole[spec.role].push({ class: cls, spec: spec.name, role: spec.role });
+      }
+    }
+    this._specsByRole = byRole;
+    return byRole;
+  },
+
+  _pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; },
+
+  _shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  },
+
+  _randomName(usedNames) {
+    const syllables = ['Tha','Mor','Kel','Zar','Gor','Ven','Ash','Dra','Lor','Fen',
+      'Bri','Nox','Syl','Kor','Tal','Myr','Vor','Gal','Ren','Ula','Kae','Ori','Zan',
+      'Thi','Nym','Eld','Rho','Isa','Val','Hel','Sar','Mal','Dun','Tor','Ari','Fyn'];
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const len = 2 + Math.floor(Math.random() * 2); // 2-3 syllables
+      let name = '';
+      for (let i = 0; i < len; i++) name += (i === 0 ? this._pick(syllables) : this._pick(syllables).toLowerCase());
+      if (!usedNames.has(name)) { usedNames.add(name); return name; }
+    }
+    return 'Player' + Math.floor(Math.random() * 9999);
+  },
+
+  generate() {
+    const raidInfo = Config.Raids[State.selectedRaid];
+    const size = raidInfo ? raidInfo.size : 25;
+    const numGroups = raidInfo ? raidInfo.groups : 5;
+
+    const tanks = (size === 10) ? 2 : 2;
+    const healers = (size === 10) ? 2 : 5;
+    const dps = size - tanks - healers;
+
+    const byRole = this._buildSpecsByRole();
+    const roster = [];
+    const usedNames = new Set();
+
+    const makePlayer = (specInfo) => ({
+      uid: nextUid(),
+      name: this._randomName(usedNames),
+      class: specInfo.class,
+      spec: specInfo.spec,
+      role: specInfo.role,
+      groupNumber: 0,
+      imported: true,
+    });
+
+    // Tanks
+    for (let i = 0; i < tanks; i++) roster.push(makePlayer(this._pick(byRole.tank)));
+
+    // Healers
+    for (let i = 0; i < healers; i++) roster.push(makePlayer(this._pick(byRole.healer)));
+
+    // DPS — split roughly half melee, half ranged/caster
+    const meleeCount = Math.floor(dps / 2);
+    const rangedCount = dps - meleeCount;
+    for (let i = 0; i < meleeCount; i++) roster.push(makePlayer(this._pick(byRole.melee_dps)));
+    for (let i = 0; i < rangedCount; i++) {
+      // Mix ranged_dps and caster_dps
+      const pool = [...byRole.ranged_dps, ...byRole.caster_dps];
+      roster.push(makePlayer(this._pick(pool)));
+    }
+
+    // Shuffle and distribute into groups
+    this._shuffle(roster);
+    const groups = [];
+    for (let i = 0; i < numGroups; i++) groups.push([]);
+    for (let i = 0; i < roster.length; i++) {
+      const gi = i % numGroups;
+      roster[i].groupNumber = gi + 1;
+      groups[gi].push(roster[i]);
+    }
+
+    State.roster = roster;
+    State.groups = groups;
+    State.rosterName = 'Random ' + size + '-man Roster';
+    State.buffOverrides = {};
+  },
+};
+
 // ── OPTIMIZER ────────────────────────────────────────────────────
-// Modes: strict (max buff concentration), balanced (spread buffs),
-//        relaxed (simple role grouping)
+// Constraint-based scorer: places each player in the group where
+// they add the most buff value, respecting uniqueness and role fit.
+
+const MODE_WEIGHTS = {
+  strict:    { buff: 1.0, roleMatch: 30, roleMismatch: 10, balance: 1 },
+  balanced:  { buff: 0.7, roleMatch: 50, roleMismatch: 30, balance: 3 },
+  tank_prio: { buff: 0.7, roleMatch: 50, roleMismatch: 30, balance: 3 },
+  relaxed:   { buff: 0.1, roleMatch: 100, roleMismatch: 80, balance: 5 },
+};
+
+// When a group already has buff X, class:spec Y gets a bonus to join that group
+const BUFF_AFFINITIES = [
+  { buff: 'VAMPIRIC_TOUCH',    class: 'MAGE',    spec: 'Arcane',       bonus: 80 },
+  { buff: 'WRATH_OF_AIR',      class: 'MAGE',    spec: 'Arcane',       bonus: 80 },
+  { buff: 'MOONKIN_AURA',      class: 'WARLOCK', spec: 'Destruction',  bonus: 80 },
+  { buff: 'SHADOW_WEAVING',    class: 'WARLOCK', spec: 'Destruction',  bonus: 80 },
+  { buff: 'WINDFURY',          class: 'ROGUE',   spec: 'Combat',       bonus: 60 },
+  { buff: 'WINDFURY',          class: 'WARRIOR', spec: 'Fury',         bonus: 60 },
+  { buff: 'LEADER_OF_THE_PACK',class: 'ROGUE',   spec: 'Combat',       bonus: 50 },
+  { buff: 'LEADER_OF_THE_PACK',class: 'WARRIOR', spec: 'Fury',         bonus: 50 },
+];
+
+// Buffs that get boosted priority in the tank group for tank_prio mode
+const TANK_PRIO_BOOSTS = {
+  TREE_OF_LIFE: 120,
+  VAMPIRIC_TOUCH: 95,
+  SHADOW_WEAVING: 40,
+};
+
+const ROLE_COMPAT = {
+  tank:       ['melee_dps', 'healer'],
+  healer:     ['tank', 'caster_dps'],
+  melee_dps:  ['tank', 'ranged_dps'],
+  ranged_dps: ['melee_dps', 'caster_dps'],
+  caster_dps: ['healer', 'ranged_dps'],
+};
+
 const Optimizer = {
   optimize() {
     const raidInfo = Config.Raids[State.selectedRaid];
     const numGroups = raidInfo ? raidInfo.groups : 5;
+    const raidSize = raidInfo ? raidInfo.size : 25;
     const max = 5;
     const mode = State.optimizerMode || 'balanced';
 
@@ -1119,37 +1271,15 @@ const Optimizer = {
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
 
-    // Extract buff providers (used by strict + balanced)
-    const providers = {
-      enhShamans:    this.extractFromPool(pool, 'SHAMAN', 'Enhancement'),
-      eleShamans:    this.extractFromPool(pool, 'SHAMAN', 'Elemental'),
-      restoShamans:  this.extractFromPool(pool, 'SHAMAN', 'Restoration'),
-      feralDruids:   this.extractFromPool(pool, 'DRUID',  'Feral'),
-      boomkins:      this.extractFromPool(pool, 'DRUID',  'Balance'),
-      shadowPriests: this.extractFromPool(pool, 'PRIEST', 'Shadow'),
-      bmHunters:     this.extractFromPool(pool, 'HUNTER', 'Beast Mastery'),
-      destroLocks:   this.extractFromPool(pool, 'WARLOCK', 'Destruction'),
-      affLocks:      this.extractFromPool(pool, 'WARLOCK', 'Affliction'),
-    };
+    // Phase 1: Seed groups with role identities
+    this.seedGroups(pool, groups, numGroups, raidSize, max);
 
-    // Classify remaining by role
-    const roles = { tanks:[], healers:[], meleeDPS:[], rangedDPS:[], casterDPS:[] };
-    for (const p of pool) {
-      if (p.role === 'tank') roles.tanks.push(p);
-      else if (p.role === 'healer') roles.healers.push(p);
-      else if (p.role === 'melee_dps') roles.meleeDPS.push(p);
-      else if (p.role === 'ranged_dps') roles.rangedDPS.push(p);
-      else if (p.role === 'caster_dps') roles.casterDPS.push(p);
-      else roles.meleeDPS.push(p);
-    }
+    // Phase 2: Greedy scored placement of remaining players
+    this.greedyPlace(pool, groups, max, mode);
 
-    if (mode === 'relaxed') {
-      this.buildRelaxed(groups, roles, providers, max);
-    } else if (numGroups >= 5) {
-      if (mode === 'strict') this.build25ManStrict(groups, roles, providers, max);
-      else this.build25ManBalanced(groups, roles, providers, max);
-    } else {
-      this.build10Man(groups, roles, providers, max);
+    // Phase 3: Swap refinement (skip for relaxed)
+    if (mode !== 'relaxed') {
+      this.refineSwaps(groups, max, mode);
     }
 
     for (let gi = 0; gi < groups.length; gi++) {
@@ -1159,230 +1289,271 @@ const Optimizer = {
     State.roster = groups.flat();
   },
 
-  // ── STRICT MODE ──────────────────────────────────────────────
-  // Follows the reference TBC ideal comp as closely as possible:
-  // G1/G2: Melee (Feral + Shaman/WF + physical DPS)
-  // G3: Caster support (Resto Shaman + SPriest + casters + healer)
-  // G4: Caster DPS (Ele Shaman + Boomkin + Destro Locks)
-  // G5: Healer/Tank (tanks + healers + Resto Shaman + Aff Lock)
-  build25ManStrict(groups, r, prov, max) {
-    // Helper: pick best available shaman for WF (prefer Enh, any can drop WF)
-    const pickWFShaman = () => {
-      if (prov.enhShamans.length > 0) return prov.enhShamans.shift();
-      if (prov.eleShamans.length > 0) return prov.eleShamans.shift();
-      if (prov.restoShamans.length > 0) return prov.restoShamans.shift();
-      return null;
-    };
-
-    // === MELEE GROUP 1 ===
-    const g1 = groups[0];
-    this.addFromPool(g1, prov.feralDruids, 1, max);
-    const wf1 = pickWFShaman();
-    if (wf1) g1.push(wf1);
-    this.addFromPool(g1, prov.bmHunters, 1, max);
-    this.addFromPool(g1, r.meleeDPS, max - g1.length, max);
-    this.addFromPool(g1, r.rangedDPS, max - g1.length, max);
-
-    // === MELEE GROUP 2 ===
-    const g2 = groups[1];
-    this.addFromPool(g2, prov.feralDruids, 1, max);
-    const wf2 = pickWFShaman();
-    if (wf2) g2.push(wf2);
-    this.addFromPool(g2, prov.bmHunters, 1, max);
-    this.addFromPool(g2, r.rangedDPS, 1, max);
-    this.addFromPool(g2, r.meleeDPS, max - g2.length, max);
-    this.addFromPool(g2, r.rangedDPS, max - g2.length, max);
-
-    // === CASTER SUPPORT GROUP (G3) ===
-    // Resto Shaman (Mana Tide + WoA) + Shadow Priest + casters + 1 healer
-    const g3 = groups[2];
-    this.addFromPool(g3, prov.restoShamans, 1, max);
-    this.addFromPool(g3, prov.shadowPriests, 1, max);
-    const g3HealerSlots = r.healers.length > 0 ? 1 : 0;
-    this.addFromPool(g3, r.casterDPS, max - g3.length - g3HealerSlots, max);
-    this.addFromPool(g3, r.healers, 1, max);
-    this.addFromPool(g3, r.casterDPS, max - g3.length, max);
-    this.addFromPool(g3, r.rangedDPS, max - g3.length, max);
-
-    // === CASTER DPS GROUP (G4) ===
-    // Ele Shaman (ToW + WoA) + Boomkin (Moonkin Aura) + Destro Locks (fill with casters)
-    const g4 = groups[3];
-    this.addFromPool(g4, prov.eleShamans, 1, max);
-    this.addFromPool(g4, prov.boomkins, 1, max);
-    this.addFromPool(g4, prov.destroLocks, max - g4.length, max);
-    this.addFromPool(g4, r.casterDPS, max - g4.length, max);
-    this.addFromPool(g4, r.rangedDPS, max - g4.length, max);
-
-    // === HEALER/TANK GROUP (G5) ===
-    // Tanks + Resto Shaman + Healers + Aff Warlock
-    const g5 = groups[4];
-    this.addFromPool(g5, r.tanks, r.tanks.length, max);
-    this.addFromPool(g5, prov.restoShamans, 1, max);
-    const affSlot = prov.affLocks.length > 0 ? 1 : 0;
-    this.addFromPool(g5, r.healers, max - g5.length - affSlot, max);
-    this.addFromPool(g5, prov.affLocks, 1, max);
-    this.addFromPool(g5, r.healers, max - g5.length, max);
-
-    this.placeOverflow(groups, max, r, prov);
-  },
-
-  // ── BALANCED MODE ────────────────────────────────────────────
-  // Follows the reference TBC ideal comp pattern with graceful degradation:
-  // G1/G2: Melee (Feral + Shaman/WF + BM Hunter + physical DPS)
-  // G3: Caster support (Resto Shaman/Mana Tide + SPriest + casters + healer)
-  // G4: Caster DPS (Ele Shaman/ToW + Boomkin + Destro Locks or casters)
-  // G5: Healer/Tank (tanks + Resto Shaman + healers + Aff Lock)
-  build25ManBalanced(groups, r, prov, max) {
-    // Helper: pick best available shaman for WF (prefer Enh, any can drop WF)
-    const pickWFShaman = () => {
-      if (prov.enhShamans.length > 0) return prov.enhShamans.shift();
-      if (prov.eleShamans.length > 0) return prov.eleShamans.shift();
-      if (prov.restoShamans.length > 0) return prov.restoShamans.shift();
-      return null;
-    };
-
-    // === MELEE GROUP 1 ===
-    // Feral (LotP) + Shaman (WF) + BM Hunter (FI/TSA) + melee DPS
-    const g1 = groups[0];
-    this.addFromPool(g1, prov.feralDruids, 1, max);
-    const wf1 = pickWFShaman();
-    if (wf1) g1.push(wf1);
-    this.addFromPool(g1, prov.bmHunters, 1, max);
-    this.addFromPool(g1, r.meleeDPS, max - g1.length, max);
-    this.addFromPool(g1, r.rangedDPS, max - g1.length, max);
-
-    // === MELEE GROUP 2 ===
-    // Feral (LotP) + Shaman (WF) + Hunter + melee DPS
-    const g2 = groups[1];
-    this.addFromPool(g2, prov.feralDruids, 1, max);
-    const wf2 = pickWFShaman();
-    if (wf2) g2.push(wf2);
-    this.addFromPool(g2, prov.bmHunters, 1, max);
-    this.addFromPool(g2, r.rangedDPS, 1, max);
-    this.addFromPool(g2, r.meleeDPS, max - g2.length, max);
-    this.addFromPool(g2, r.rangedDPS, max - g2.length, max);
-
-    // === CASTER SUPPORT GROUP (G3) ===
-    // Resto Shaman (Mana Tide/WoA for mana sustain) + Shadow Priest + casters + 1 healer
-    const g3 = groups[2];
-    this.addFromPool(g3, prov.restoShamans, 1, max);
-    this.addFromPool(g3, prov.shadowPriests, 1, max);
-    const g3HealerSlots = r.healers.length > 0 ? 1 : 0;
-    this.addFromPool(g3, r.casterDPS, max - g3.length - g3HealerSlots, max);
-    this.addFromPool(g3, r.healers, 1, max);
-    this.addFromPool(g3, r.casterDPS, max - g3.length, max);
-    this.addFromPool(g3, r.rangedDPS, max - g3.length, max);
-
-    // === CASTER DPS GROUP (G4) ===
-    // Ele Shaman (ToW/WoA) + Boomkin (Moonkin Aura) + Destro Locks (fill with casters)
-    const g4 = groups[3];
-    this.addFromPool(g4, prov.eleShamans, 1, max);
-    this.addFromPool(g4, prov.boomkins, 1, max);
-    this.addFromPool(g4, prov.destroLocks, max - g4.length, max);
-    this.addFromPool(g4, r.casterDPS, max - g4.length, max);
-    this.addFromPool(g4, r.rangedDPS, max - g4.length, max);
-
-    // === HEALER/TANK GROUP (G5) ===
-    // Tanks + Resto Shaman (Mana Tide) + Healers + Aff Warlock
-    const g5 = groups[4];
-    this.addFromPool(g5, r.tanks, r.tanks.length, max);
-    this.addFromPool(g5, prov.restoShamans, 1, max);
-    const affSlot = prov.affLocks.length > 0 ? 1 : 0;
-    this.addFromPool(g5, r.healers, max - g5.length - affSlot, max);
-    this.addFromPool(g5, prov.affLocks, 1, max);
-    this.addFromPool(g5, r.healers, max - g5.length, max);
-
-    this.placeOverflow(groups, max, r, prov);
-  },
-
-  // ── RELAXED MODE ─────────────────────────────────────────────
-  // Simple role-based grouping with no special buff provider logic.
-  // Just puts tanks together, melee together, casters together, healers together.
-  buildRelaxed(groups, r, prov, max) {
-    // Dump all providers back into role pools
-    for (const p of prov.enhShamans) r.meleeDPS.push(p);
-    for (const p of prov.eleShamans) r.casterDPS.push(p);
-    for (const p of prov.restoShamans) r.healers.push(p);
-    for (const p of prov.feralDruids) r.meleeDPS.push(p);
-    for (const p of prov.boomkins) r.casterDPS.push(p);
-    for (const p of prov.shadowPriests) r.casterDPS.push(p);
-    for (const p of prov.bmHunters) r.rangedDPS.push(p);
-    for (const p of prov.destroLocks) r.casterDPS.push(p);
-    for (const p of prov.affLocks) r.casterDPS.push(p);
-    prov.enhShamans.length = 0; prov.eleShamans.length = 0; prov.restoShamans.length = 0;
-    prov.feralDruids.length = 0; prov.boomkins.length = 0; prov.shadowPriests.length = 0; prov.bmHunters.length = 0;
-    prov.destroLocks.length = 0; prov.affLocks.length = 0;
-
-    // Fill groups by role: tanks → melee → casters → ranged → healers
-    const allPlayers = [...r.tanks, ...r.meleeDPS, ...r.casterDPS, ...r.rangedDPS, ...r.healers];
-    r.tanks.length = 0; r.meleeDPS.length = 0; r.casterDPS.length = 0; r.rangedDPS.length = 0; r.healers.length = 0;
-
-    let gi = 0;
-    for (const p of allPlayers) {
-      if (groups[gi].length >= max) gi++;
-      if (gi >= groups.length) break;
-      groups[gi].push(p);
+  // ── PHASE 1: SEED GROUPS ─────────────────────────────────────
+  seedGroups(pool, groups, numGroups, raidSize, max) {
+    if (numGroups >= 5) {
+      groups._roleIdentities = ['melee_dps', 'melee_dps', 'caster_dps', 'caster_dps', 'tank'];
+    } else {
+      groups._roleIdentities = ['melee_dps', 'caster_dps'];
     }
-  },
 
-  // ── 10-MAN (shared across modes) ────────────────────────────
-  // G1: Tanks + Shaman(WF) + Feral(LotP) + melee DPS + healer
-  // G2: Casters + Ele/Resto Shaman + caster DPS + healer
-  build10Man(groups, r, prov, max) {
-    // Helper: pick best available shaman for WF
-    const pickWFShaman = () => {
-      if (prov.enhShamans.length > 0) return prov.enhShamans.shift();
-      if (prov.eleShamans.length > 0) return prov.eleShamans.shift();
-      if (prov.restoShamans.length > 0) return prov.restoShamans.shift();
-      return null;
-    };
-
-    // G1: Melee/Tank group
-    const g1 = groups[0];
-    this.addFromPool(g1, r.tanks, 2, max);
-    this.addFromPool(g1, prov.feralDruids, 1, max);
-    const wf = pickWFShaman();
-    if (wf) g1.push(wf);
-    this.addFromPool(g1, prov.bmHunters, 1, max);
-    this.addFromPool(g1, r.meleeDPS, max - g1.length - 1, max);
-    this.addFromPool(g1, r.healers, 1, max);
-    this.addFromPool(g1, r.meleeDPS, max - g1.length, max);
-    this.addFromPool(g1, r.rangedDPS, max - g1.length, max);
-
-    // G2: Caster group
-    const g2 = groups[1];
-    if (prov.eleShamans.length > 0) this.addFromPool(g2, prov.eleShamans, 1, max);
-    else if (prov.restoShamans.length > 0) this.addFromPool(g2, prov.restoShamans, 1, max);
-    this.addFromPool(g2, prov.boomkins, 1, max);
-    this.addFromPool(g2, prov.shadowPriests, 1, max);
-    this.addFromPool(g2, prov.destroLocks, max - g2.length - 1, max);
-    this.addFromPool(g2, r.casterDPS, max - g2.length - 1, max);
-    this.addFromPool(g2, r.healers, 1, max);
-    this.addFromPool(g2, r.casterDPS, max - g2.length, max);
-    this.addFromPool(g2, r.rangedDPS, max - g2.length, max);
-
-    this.placeOverflow(groups, max, r, prov);
-  },
-
-  // ── UTILITIES ────────────────────────────────────────────────
-  placeOverflow(groups, max, r, prov) {
-    const allPools = [
-      r.tanks, r.healers, r.meleeDPS, r.rangedDPS, r.casterDPS,
-      prov.enhShamans, prov.eleShamans, prov.restoShamans,
-      prov.feralDruids, prov.boomkins, prov.shadowPriests, prov.bmHunters,
-      prov.destroLocks, prov.affLocks,
-    ];
-    for (const pool of allPools) {
-      while (pool.length > 0) {
-        let placed = false;
-        for (const g of groups) {
-          if (g.length < max) { g.push(pool.shift()); placed = true; break; }
-        }
-        if (!placed) break;
+    // Seed minimum tanks (2) into the tank-identity group; let scorer place extras
+    const tankIdx = groups._roleIdentities.indexOf('tank');
+    const targetIdx = tankIdx >= 0 ? tankIdx : 0;
+    const minTanks = 2;
+    let seeded = 0;
+    for (let i = pool.length - 1; i >= 0; i--) {
+      if (seeded >= minTanks) break;
+      if (pool[i].role === 'tank' && groups[targetIdx].length < max) {
+        groups[targetIdx].push(pool.splice(i, 1)[0]);
+        seeded++;
       }
     }
   },
 
+  // ── PHASE 2: GREEDY PLACEMENT ────────────────────────────────
+  greedyPlace(pool, groups, max, mode) {
+    while (pool.length > 0) {
+      let bestScore = -Infinity;
+      let bestPlayerIdx = -1;
+      let bestGroupIdx = -1;
+
+      for (let pi = 0; pi < pool.length; pi++) {
+        for (let gi = 0; gi < groups.length; gi++) {
+          if (groups[gi].length >= max) continue;
+          const score = this.scorePlayerInGroup(pool[pi], groups[gi], gi, groups, mode);
+          if (score > bestScore) {
+            bestScore = score;
+            bestPlayerIdx = pi;
+            bestGroupIdx = gi;
+          }
+        }
+      }
+
+      // No group has space — stop placing
+      if (bestGroupIdx < 0) break;
+
+      groups[bestGroupIdx].push(pool.splice(bestPlayerIdx, 1)[0]);
+    }
+  },
+
+  // ── SCORING FUNCTION ─────────────────────────────────────────
+  scorePlayerInGroup(player, group, gi, groups, mode) {
+    const w = MODE_WEIGHTS[mode] || MODE_WEIGHTS.balanced;
+    const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
+    const effectiveRole = this.getDominantRole(group) || roleIdentity;
+    let score = 0;
+
+    // Component 1: New buff value
+    const existingBuffs = this.getGroupBuffState(group, effectiveRole);
+    const playerBuffs = this.getPlayerBuffs(player);
+
+    const isTankGroup = roleIdentity === 'tank' || (groups._roleIdentities && !groups._roleIdentities.includes('tank') && gi === 0);
+
+    for (const pb of playerBuffs) {
+      let buffPrio = getBuffPriority(pb.buff, effectiveRole);
+      if (buffPrio === 0) continue;
+
+      // Tank Prio mode: boost specific buffs in the tank group
+      const isBoosted = mode === 'tank_prio' && isTankGroup && TANK_PRIO_BOOSTS[pb.id];
+      if (isBoosted) {
+        buffPrio = TANK_PRIO_BOOSTS[pb.id];
+      }
+
+      // Skip buffs that don't benefit anyone in this group's role context
+      // (unless boosted by tank_prio mode)
+      const bRatio = isBoosted ? 1.0 : this.beneficiaryRatio(pb.buff, group, player);
+      if (bRatio === 0) continue;
+
+      // Check if this buff is already provided
+      if (TOTEM_ELEMENTS[pb.id]) {
+        const element = TOTEM_ELEMENTS[pb.id];
+        const existing = existingBuffs.totemElements[element];
+        if (existing) {
+          const existingPrio = getBuffPriority(existing.buff, effectiveRole);
+          const delta = buffPrio - existingPrio;
+          if (delta > 0) score += delta * w.buff;
+        } else {
+          score += buffPrio * w.buff * bRatio;
+        }
+      } else if (PALADIN_AURAS[pb.id]) {
+        if (!existingBuffs.auras.has(pb.id)) {
+          score += buffPrio * w.buff * bRatio;
+        }
+      } else {
+        if (!existingBuffs.passives.has(pb.id)) {
+          score += buffPrio * w.buff * bRatio;
+        }
+      }
+    }
+
+    // Component 2: Buff affinity — bonus for joining a group that has synergistic buffs
+    const allExisting = new Set([
+      ...Object.values(existingBuffs.totemElements).map(e => e.id),
+      ...existingBuffs.auras,
+      ...existingBuffs.passives,
+    ]);
+    for (const aff of BUFF_AFFINITIES) {
+      if (player.class === aff.class && player.spec === aff.spec && allExisting.has(aff.buff)) {
+        score += aff.bonus;
+      }
+    }
+
+    // Component 3: Role affinity
+    if (player.role === roleIdentity || player.role === effectiveRole) {
+      score += w.roleMatch;
+    } else if (ROLE_COMPAT[player.role] && ROLE_COMPAT[player.role].includes(roleIdentity)) {
+      score += w.roleMatch * 0.5;
+    } else {
+      score -= w.roleMismatch;
+    }
+
+    // Component 4: Group balance (prefer emptier groups)
+    score += (5 - group.length) * w.balance;
+
+    return score;
+  },
+
+  // Fraction of group members (including the candidate) that benefit from this buff
+  beneficiaryRatio(buff, group, candidate) {
+    let count = 0;
+    const total = group.length + 1;
+    for (const p of group) {
+      if (buff.benefitsRoles && buff.benefitsRoles.includes(p.role)) count++;
+    }
+    if (buff.benefitsRoles && buff.benefitsRoles.includes(candidate.role)) count++;
+    return total > 0 ? count / total : 0;
+  },
+
+  // What buffs can this player's class/spec provide?
+  getPlayerBuffs(player) {
+    const result = [];
+    for (const [buffId, buff] of Object.entries(Config.Buffs)) {
+      if (buff.sourceClass !== player.class) continue;
+      if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
+      result.push({ id: buffId, buff });
+    }
+    return result;
+  },
+
+  // Fast snapshot of what buffs a group currently has
+  getGroupBuffState(group, role) {
+    const state = { totemElements: {}, auras: new Set(), passives: new Set() };
+    for (const player of group) {
+      for (const [buffId, buff] of Object.entries(Config.Buffs)) {
+        if (buff.sourceClass !== player.class) continue;
+        if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
+
+        if (TOTEM_ELEMENTS[buffId]) {
+          const element = TOTEM_ELEMENTS[buffId];
+          const existing = state.totemElements[element];
+          if (!existing || getBuffPriority(buff, role) > getBuffPriority(existing.buff, role)) {
+            state.totemElements[element] = { id: buffId, buff };
+          }
+        } else if (PALADIN_AURAS[buffId]) {
+          state.auras.add(buffId);
+        } else {
+          state.passives.add(buffId);
+        }
+      }
+    }
+    return state;
+  },
+
+  getDominantRole(group) {
+    if (group.length === 0) return null;
+    const counts = {};
+    for (const p of group) {
+      counts[p.role] = (counts[p.role] || 0) + 1;
+    }
+    let best = null, bestCount = 0;
+    for (const [role, count] of Object.entries(counts)) {
+      if (count > bestCount) { bestCount = count; best = role; }
+    }
+    return best;
+  },
+
+  // ── PHASE 3: SWAP REFINEMENT ─────────────────────────────────
+  refineSwaps(groups, max, mode) {
+    const SWAP_THRESHOLD = 5;
+    for (let iter = 0; iter < 3; iter++) {
+      let improved = false;
+      for (let gi = 0; gi < groups.length; gi++) {
+        for (let gj = gi + 1; gj < groups.length; gj++) {
+          for (let pi = 0; pi < groups[gi].length; pi++) {
+            // Never swap seeded tanks out of the tank-identity group
+            const giIsTank = groups._roleIdentities && groups._roleIdentities[gi] === 'tank';
+            if (groups[gi][pi].role === 'tank' && giIsTank) continue;
+            for (let pj = 0; pj < groups[gj].length; pj++) {
+              const gjIsTank = groups._roleIdentities && groups._roleIdentities[gj] === 'tank';
+              if (groups[gj][pj].role === 'tank' && gjIsTank) continue;
+              const currentScore = this.totalGroupScore(groups[gi], gi, groups, mode)
+                                 + this.totalGroupScore(groups[gj], gj, groups, mode);
+
+              // Tentatively swap
+              const tmp = groups[gi][pi];
+              groups[gi][pi] = groups[gj][pj];
+              groups[gj][pj] = tmp;
+
+              const newScore = this.totalGroupScore(groups[gi], gi, groups, mode)
+                             + this.totalGroupScore(groups[gj], gj, groups, mode);
+
+              if (newScore > currentScore + SWAP_THRESHOLD) {
+                improved = true;
+              } else {
+                // Revert swap
+                groups[gj][pj] = groups[gi][pi];
+                groups[gi][pi] = tmp;
+              }
+            }
+          }
+        }
+      }
+      if (!improved) break;
+    }
+  },
+
+  totalGroupScore(group, gi, groups, mode) {
+    const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
+    const effectiveRole = roleIdentity;
+    const buffState = this.getGroupBuffState(group, effectiveRole);
+    let score = 0;
+
+    // Score from totem buffs
+    for (const [, entry] of Object.entries(buffState.totemElements)) {
+      const prio = getBuffPriority(entry.buff, effectiveRole);
+      const beneficiaries = group.filter(p => entry.buff.benefitsRoles && entry.buff.benefitsRoles.includes(p.role)).length;
+      score += prio * (beneficiaries / Math.max(group.length, 1));
+    }
+
+    // Score from auras
+    for (const auraId of buffState.auras) {
+      const buff = Config.Buffs[auraId];
+      if (!buff) continue;
+      const prio = getBuffPriority(buff, effectiveRole);
+      const beneficiaries = group.filter(p => buff.benefitsRoles && buff.benefitsRoles.includes(p.role)).length;
+      score += prio * (beneficiaries / Math.max(group.length, 1));
+    }
+
+    // Score from passive buffs
+    for (const passiveId of buffState.passives) {
+      const buff = Config.Buffs[passiveId];
+      if (!buff) continue;
+      const prio = getBuffPriority(buff, effectiveRole);
+      const beneficiaries = group.filter(p => buff.benefitsRoles && buff.benefitsRoles.includes(p.role)).length;
+      score += prio * (beneficiaries / Math.max(group.length, 1));
+    }
+
+    // Role cohesion bonus
+    const w = MODE_WEIGHTS[mode] || MODE_WEIGHTS.balanced;
+    for (const p of group) {
+      if (p.role === roleIdentity) score += w.roleMatch * 0.1;
+    }
+
+    return score;
+  },
+
+  // ── UTILITIES (kept from old optimizer) ──────────────────────
   extractFromPool(pool, classFile, specName) {
     const extracted = [];
     for (let i = pool.length - 1; i >= 0; i--) {
@@ -1480,7 +1651,7 @@ function getGroupBuffs(players, groupIndex) {
           // Pick the highest-priority aura not yet taken
           const allAuras = Object.keys(PALADIN_AURAS)
             .filter(id => !usedAuras.has(id))
-            .sort((a, b) => (Config.Buffs[b]?.priority || 0) - (Config.Buffs[a]?.priority || 0));
+            .sort((a, b) => getBuffPriority(Config.Buffs[b], dominantRole) - getBuffPriority(Config.Buffs[a], dominantRole));
           auraBuffId = allAuras[0] || preferred; // fallback if all taken
         }
       }
@@ -1502,7 +1673,7 @@ function getGroupBuffs(players, groupIndex) {
     }
   }
 
-  buffList.sort((a, b) => b.buff.priority - a.buff.priority);
+  buffList.sort((a, b) => getBuffPriority(b.buff, dominantRole) - getBuffPriority(a.buff, dominantRole));
   return buffList;
 }
 
@@ -1706,12 +1877,12 @@ function renderGroups() {
         const iconUrl = Config.BuffIconURL(b.id);
         const hasIcon = iconUrl ? ' has-icon' : '';
         const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy" class="buff-img">` : '';
-        const tooltipHTML = `<div class="buff-tooltip"><div class="tt-name">${esc(b.buff.name)}</div>${from ? `<div class="tt-source"><span style="color:${sourceColor}">${esc(from)}</span></div>` : ''}</div>`;
         const isSwappable = !!(TOTEM_ELEMENTS[b.id] || PALADIN_AURAS[b.id]);
         const swapClass = isSwappable ? ' swappable' : '';
         const overrideClass = b.isOverride ? ' overridden' : '';
         const dataAttrs = isSwappable ? ` data-buff-id="${esc(b.id)}" data-group="${gi}" data-uid="${esc(b.sourceUid)}" data-source="${esc(b.sourceName)}" data-class="${esc(b.sourceClass)}" data-spec="${esc(b.sourceSpec || '')}"` : '';
-        buffsHTML += `<div class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${dataAttrs}>${imgTag}<span class="buff-label">${abbr}</span>${tooltipHTML}</div>`;
+        const ttAttrs = ` data-tt-name="${esc(b.buff.name)}" data-tt-desc="${esc(b.buff.desc || '')}" data-tt-source="${esc(from)}" data-tt-source-color="${sourceColor}"`;
+        buffsHTML += `<div class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${dataAttrs}${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></div>`;
       }
     }
 
@@ -2330,6 +2501,12 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   showToast('Cleared');
 });
 
+document.getElementById('btn-random').addEventListener('click', () => {
+  RandomRoster.generate();
+  renderGroups();
+  showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
+});
+
 document.getElementById('btn-save').addEventListener('click', showSaveModal);
 document.getElementById('btn-load').addEventListener('click', showLoadModal);
 
@@ -2582,11 +2759,55 @@ initGroups();
 renderGroups();
 
 // ── EXPOSE FOR TESTING ──────────────────────────────────────────
+// ── BUFF TOOLTIP PORTAL ─────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  const portal = document.getElementById('buff-tooltip-portal');
+  if (!portal) return;
+
+  document.addEventListener('mouseover', function(e) {
+    const icon = e.target.closest('.buff-icon[data-tt-name]');
+    if (!icon) return;
+
+    const name = icon.getAttribute('data-tt-name');
+    const desc = icon.getAttribute('data-tt-desc');
+    const source = icon.getAttribute('data-tt-source');
+    const sourceColor = icon.getAttribute('data-tt-source-color');
+
+    let html = `<div class="tt-name">${name}</div>`;
+    if (desc) html += `<div class="tt-desc">${desc}</div>`;
+    if (source) html += `<div class="tt-source"><span style="color:${sourceColor}">${source}</span></div>`;
+
+    portal.innerHTML = html;
+    portal.style.display = 'block';
+
+    const rect = icon.getBoundingClientRect();
+    let left = rect.left + rect.width / 2 - 110;
+    let top = rect.top - portal.offsetHeight - 8;
+
+    // Keep within viewport
+    if (left < 4) left = 4;
+    if (left + 220 > window.innerWidth) left = window.innerWidth - 224;
+    if (top < 4) { top = rect.bottom + 8; }
+
+    portal.style.left = left + 'px';
+    portal.style.top = top + 'px';
+  });
+
+  document.addEventListener('mouseout', function(e) {
+    const icon = e.target.closest('.buff-icon[data-tt-name]');
+    if (!icon) return;
+    const related = e.relatedTarget;
+    if (related && icon.contains(related)) return;
+    portal.style.display = 'none';
+  });
+});
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Config, Import, Optimizer, IdealComp, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, DpsModel };
+  module.exports = { Config, Import, Optimizer, IdealComp, getGroupBuffs, getBuffPriority, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, DpsModel };
 }
 // Also expose on window for browser-based tests
 window.PP = { Config, Import, Optimizer, IdealComp, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA };
 </script>
+<div id="buff-tooltip-portal"></div>
 </body>
 </html>
