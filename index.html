@@ -1525,6 +1525,13 @@ const Optimizer = {
       this.refineSwaps(groups, max, mode);
     }
 
+    // Phase 3b: Guest optimization — the tank group is filled last by the
+    // greedy phase (it's the least attractive), so its leftover DPS guests
+    // are near-arbitrary. Re-audit them with a zero swap threshold: any
+    // strictly better guest choice is taken, even ones too small for
+    // refineSwaps' churn threshold.
+    this.optimizeTankGuests(groups, mode);
+
     // Phase 4: De-isolation — always runs, every mode. A player who benefits
     // from nobody in their group (e.g. the lone melee DPS in an otherwise
     // all-caster/healer group) is worse than a small buff-score inefficiency,
@@ -1562,17 +1569,12 @@ const Optimizer = {
       }
     }
 
-    // Seed one healer into EVERY group up front (tank group included — it
-    // always needs healing support). There is no 'healer' role identity, so
-    // without this, healers were left entirely to buff-value scoring — which
-    // let them pile into one group and starve the others of healing.
-    // groupScore()'s healer-coverage term keeps later phases from undoing it.
-    for (let gi = 0; gi < numGroups; gi++) {
-      if (groups[gi].length >= max) continue;
-      const healerIdx = pool.findIndex(p => p.role === 'healer');
-      if (healerIdx === -1) break;
-      groups[gi].push(pool.splice(healerIdx, 1)[0]);
-    }
+    // Healers are NOT seeded per group. In TBC healing is cross-group — a
+    // healer's party placement is purely a buff decision (reference comp:
+    // both melee groups have zero healers; surplus healers ride with the
+    // tanks). groupScore()'s tank-group healer pull and each healer's own
+    // buff synergies (Resto Shaman → casters for Mana Tide/WoA, Resto
+    // Druid → tanks for ToL) drive their placement instead.
   },
 
   // ── PHASE 2: GREEDY MARGINAL-GAIN PLACEMENT ──────────────────
@@ -1690,21 +1692,34 @@ const Optimizer = {
     const bmCount = group.reduce((n, p) => n + (p.class === 'HUNTER' && p.spec === 'Beast Mastery' ? 1 : 0), 0);
     if (bmCount > 1) score += (bmCount - 1) * buffValue('FEROCIOUS_INSP');
 
-    // Healer coverage — strong first-healer bonus so refinement phases never
-    // strip a group's only healer; the tank group in tank_mit mode also
-    // values a second and third healer highly.
-    const healerBonus = (isTank && mode === 'tank_mit')
-      ? [0, 50, 80, 92, 96]
-      : [0, 50, 62, 64, 64];
-    score += healerBonus[Math.min(healerCount, 4)] * cfg.structure;
+    // Structural placement rules (from the user's reference TBC comp):
+    //  - Healers gravitate to the tank group. Healing is cross-group in TBC,
+    //    so a healer in a DPS group displaces a DPS from a buffed slot for no
+    //    healing gain — unless the healer's own buffs earn the spot (a Resto
+    //    Shaman's Mana Tide/WoA in a caster group easily outbids this pull).
+    //  - DPS guests in the tank group pay a penalty that only genuine
+    //    synergy can override (an Enh Shaman + Fury Warrior Windfury pack
+    //    riding with the tanks is fine; a lone Rogue receiving nothing
+    //    there is not).
+    if (isTank) {
+      score += Math.min(healerCount, 3) * 10 * cfg.structure;
+      for (const p of group) {
+        if (p.role === 'melee_dps' || p.role === 'caster_dps') score -= 12 * cfg.structure;
+      }
+    }
 
     // Role cohesion — DPS members clustered with their group's identity.
-    // Healers and tanks are governed by coverage/seeding, not cohesion.
-    for (const p of group) {
-      if (p.role === 'healer' || p.role === 'tank') continue;
-      if (p.role === roleIdentity) score += 12 * cfg.cohesion;
-      else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) score += 6 * cfg.cohesion;
-      else score -= 12 * cfg.cohesion;
+    // Ranged DPS (hunters) count as full members of melee groups: they
+    // bring FI/TSA to the physical party and receive LotP/GoA/UR there
+    // (reference comp rule: BM/Surv hunters ride in the melee groups).
+    if (roleIdentity !== 'tank') {
+      for (const p of group) {
+        if (p.role === 'healer' || p.role === 'tank') continue;
+        const matches = p.role === roleIdentity || (roleIdentity === 'melee_dps' && p.role === 'ranged_dps');
+        if (matches) score += 12 * cfg.cohesion;
+        else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) score += 6 * cfg.cohesion;
+        else score -= 12 * cfg.cohesion;
+      }
     }
 
     // Spreading pressure — convex penalty so the marginal cost of joining a
@@ -1756,6 +1771,49 @@ const Optimizer = {
     }
   },
 
+  // ── PHASE 3b: TANK-GROUP GUEST OPTIMIZATION ──────────────────
+  // For each DPS guest in the tank group, try swapping with every non-tank,
+  // non-sole-healer member of every other group; take any strictly positive
+  // improvement. Repeats until stable (bounded).
+  optimizeTankGuests(groups, mode) {
+    const ids = groups._roleIdentities;
+    if (!ids) return;
+    const tIdx = ids.indexOf('tank');
+    if (tIdx < 0) return;
+    for (let iter = 0; iter < 4; iter++) {
+      let improved = false;
+      for (let pi = 0; pi < groups[tIdx].length; pi++) {
+        const guest = groups[tIdx][pi];
+        if (!guest.role.endsWith('dps')) continue;
+        let bestGain = 0.5, bestGj = -1, bestPj = -1;
+        for (let gj = 0; gj < groups.length; gj++) {
+          if (gj === tIdx) continue;
+          for (let pj = 0; pj < groups[gj].length; pj++) {
+            const q = groups[gj][pj];
+            if (q.role === 'tank') continue;
+            const before = this.groupScore(groups[tIdx], tIdx, groups, mode)
+                         + this.groupScore(groups[gj], gj, groups, mode);
+            groups[tIdx][pi] = q;
+            groups[gj][pj] = guest;
+            const after = this.groupScore(groups[tIdx], tIdx, groups, mode)
+                        + this.groupScore(groups[gj], gj, groups, mode);
+            groups[gj][pj] = q;
+            groups[tIdx][pi] = guest;
+            const gain = after - before;
+            if (gain > bestGain) { bestGain = gain; bestGj = gj; bestPj = pj; }
+          }
+        }
+        if (bestGj >= 0) {
+          const q = groups[bestGj][bestPj];
+          groups[bestGj][bestPj] = guest;
+          groups[tIdx][pi] = q;
+          improved = true;
+        }
+      }
+      if (!improved) break;
+    }
+  },
+
   // ── PHASE 4: DE-ISOLATION ─────────────────────────────────────
   // Finds any melee_dps/caster_dps player with zero role-compatible peers in
   // their own group and swaps them for an opposite-family player elsewhere —
@@ -1763,8 +1821,8 @@ const Optimizer = {
   // melee-heavy group, etc.), since that swap fixes both sides at once.
   deIsolate(groups) {
     const family = role =>
-      (role === 'melee_dps' || role === 'tank') ? 'melee' :
-      (role === 'caster_dps' || role === 'healer' || role === 'ranged_dps') ? 'caster' :
+      (role === 'melee_dps' || role === 'tank' || role === 'ranged_dps') ? 'melee' :
+      (role === 'caster_dps' || role === 'healer') ? 'caster' :
       null;
 
     // A single pass can fix one isolated player by pulling their swap
@@ -1789,11 +1847,9 @@ const Optimizer = {
             for (let pj = 0; pj < groups[gj].length; pj++) {
               const q = groups[gj][pj];
 
-              // Invariants outrank fixing DPS isolation: never pull a tank
-              // out of the tank-identity group, and never strip a group of
-              // its only healer.
+              // Invariant outranks fixing DPS isolation: never pull a tank
+              // out of the tank-identity group.
               if (q.role === 'tank' && this.isTankGroup(gj, groups)) continue;
-              if (q.role === 'healer' && groups[gj].reduce((n, x) => n + (x.role === 'healer' ? 1 : 0), 0) <= 1) continue;
 
               // p only needs gj to already have OTHER pFam members before q
               // leaves — q's own family is irrelevant to whether this fixes
