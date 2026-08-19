@@ -736,9 +736,9 @@ body::before {
         <div class="action-left">
           <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition">&#9733; Optimize</button>
           <select class="raid-dropdown" id="optimize-mode" aria-label="Optimizer strategy">
-            <option value="balanced" selected>Balanced</option>
-            <option value="strict">Strict</option>
-            <option value="tank_prio">Tank Prio</option>
+            <option value="max_dps" selected>Max DPS</option>
+            <option value="tank_mit">Tank Mitigation</option>
+            <option value="balanced">Balanced</option>
             <option value="relaxed">Relaxed</option>
           </select>
           <button class="btn btn-secondary" id="btn-clear" aria-label="Clear all players and groups">Clear All</button>
@@ -1052,7 +1052,7 @@ const State = {
   groups: [],
   selectedRaid: 'bt',
   rosterName: 'No Roster Loaded',
-  optimizerMode: 'balanced', // 'strict' | 'balanced' | 'relaxed'
+  optimizerMode: 'max_dps', // 'max_dps' | 'tank_mit' | 'balanced' | 'relaxed'
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
   activeTab: 'plan', // 'plan' | 'ideal'
 };
@@ -1396,34 +1396,98 @@ const RandomRoster = {
 };
 
 // ── OPTIMIZER ────────────────────────────────────────────────────
-// Constraint-based scorer: places each player in the group where
-// they add the most buff value, respecting uniqueness and role fit.
+// Received-value scorer: the objective is what each group member RECEIVES
+// from the party buffs present in their group (per-spec DPS weights, and
+// per-tank-class mitigation weights for the tank group), plus structural
+// terms (healer coverage, role cohesion, spreading pressure). All phases
+// (greedy placement, swap refinement, de-isolation) share one groupScore().
 
-const MODE_WEIGHTS = {
-  strict:    { buff: 1.0, roleMatch: 30, roleMismatch: 10, balance: 1 },
-  balanced:  { buff: 0.7, roleMatch: 50, roleMismatch: 55, balance: 3 },
-  tank_prio: { buff: 0.7, roleMatch: 50, roleMismatch: 55, balance: 3 },
-  relaxed:   { buff: 0.1, roleMatch: 100, roleMismatch: 80, balance: 5 },
+// Mode weights over the objective components:
+//   dps       — party-buff DPS value received by members (DPS_VALUE)
+//   mit       — mitigation value of buffs reaching tanks in the tank group (MIT_VALUE)
+//   structure — healer coverage + spreading pressure
+//   cohesion  — role-family clustering around each group's identity
+const MODE_CONFIG = {
+  max_dps:  { dps: 1.0, mit: 0.25, structure: 0.7, cohesion: 0.4 },
+  tank_mit: { dps: 0.7, mit: 1.2,  structure: 1.0, cohesion: 0.4 },
+  balanced: { dps: 0.7, mit: 0.5,  structure: 1.0, cohesion: 1.0 },
+  relaxed:  { dps: 0.2, mit: 0.3,  structure: 1.0, cohesion: 1.5 },
 };
 
-// When a group already has buff X, class:spec Y gets a bonus to join that group
-const BUFF_AFFINITIES = [
-  { buff: 'VAMPIRIC_TOUCH',    class: 'MAGE',    spec: 'Arcane',       bonus: 80 },
-  { buff: 'WRATH_OF_AIR',      class: 'MAGE',    spec: 'Arcane',       bonus: 80 },
-  { buff: 'MOONKIN_AURA',      class: 'WARLOCK', spec: 'Destruction',  bonus: 80 },
-  { buff: 'SHADOW_WEAVING',    class: 'WARLOCK', spec: 'Destruction',  bonus: 80 },
-  { buff: 'WINDFURY',          class: 'ROGUE',   spec: 'Combat',       bonus: 60 },
-  { buff: 'WINDFURY',          class: 'WARRIOR', spec: 'Fury',         bonus: 60 },
-  { buff: 'LEADER_OF_THE_PACK',class: 'ROGUE',   spec: 'Combat',       bonus: 50 },
-  { buff: 'LEADER_OF_THE_PACK',class: 'WARRIOR', spec: 'Fury',         bonus: 50 },
-];
-
-// Buffs that get boosted priority in the tank group for tank_prio mode
-const TANK_PRIO_BOOSTS = {
-  TREE_OF_LIFE: 120,
-  VAMPIRIC_TOUCH: 95,
-  SHADOW_WEAVING: 40,
+// ── SYNERGY MODEL (researched TBC party-buff values) ──
+// DPS_VALUE[buffId] — estimated % DPS gain for a RECEIVING player, resolved
+// key ('CLASS:Spec') → class → role → 0. Sources: Wowhead TBC spell data,
+// Warcraft Tavern totem/class guides, Icy Veins raid composition guide.
+// Notable modeling choices:
+//  - Windfury: Ret > Fury > Arms > Rogues (main-hand only). Feral druids get
+//    NOTHING from WF (weapon imbues don't work in forms) — hence the 0 key.
+//    Hunters don't benefit either (melee-weapon imbue; role table omits ranged).
+//  - Ferocious Inspiration is 3% damage for the whole party, any role.
+//  - Vampiric Touch is a party mana battery: locks/arcane mages value it most.
+const DPS_VALUE = {
+  WINDFURY:           { key: { 'PALADIN:Retribution': 12, 'WARRIOR:Fury': 11, 'WARRIOR:Arms': 10, 'SHAMAN:Enhancement': 9, 'ROGUE:Combat': 8, 'ROGUE:Assassination': 8, 'ROGUE:Subtlety': 8, 'DRUID:Feral': 0 }, role: { melee_dps: 8, tank: 3 } },
+  GRACE_OF_AIR:       { key: { 'DRUID:Feral': 4 }, role: { melee_dps: 2, ranged_dps: 3, tank: 2 } },
+  WRATH_OF_AIR:       { role: { caster_dps: 4, healer: 2 } },
+  TOTEM_OF_WRATH:     { role: { caster_dps: 6, healer: 1 } },
+  STRENGTH_OF_EARTH:  { role: { melee_dps: 2, tank: 2 } },
+  MANA_SPRING:        { role: { healer: 2, caster_dps: 1 } },
+  MANA_TIDE:          { role: { healer: 4 } },
+  DEVOTION_AURA:      { role: {} },
+  CONCENTRATION_AURA: { role: { healer: 2, caster_dps: 1 } },
+  RETRIBUTION_AURA:   { role: { melee_dps: 1, tank: 1 } },
+  LEADER_OF_THE_PACK: { role: { melee_dps: 5, ranged_dps: 5, tank: 2 } },
+  MOONKIN_AURA:       { role: { caster_dps: 5 } },
+  TREE_OF_LIFE:       { role: { healer: 1 } },
+  TRUESHOT_AURA:      { role: { melee_dps: 3, ranged_dps: 4 } },
+  FEROCIOUS_INSP:     { role: { melee_dps: 3, ranged_dps: 3, caster_dps: 3, tank: 1 } },
+  UNLEASHED_RAGE:     { role: { melee_dps: 5, ranged_dps: 4, tank: 2 } },
+  BATTLE_SHOUT:       { role: { melee_dps: 3, ranged_dps: 2, tank: 2 } },
+  BLOOD_PACT:         { role: { tank: 1 } },
+  VAMPIRIC_TOUCH:     { key: { 'MAGE:Arcane': 7 }, class: { WARLOCK: 6, MAGE: 6 }, role: { caster_dps: 4, healer: 3 } },
 };
+
+// MIT_VALUE[buffId] — survivability value for a TANK receiving the buff,
+// keyed per tank class:spec ('*' = any tank). Researched priorities:
+//  - Prot Warrior: armor (Devotion, ~5-7% phys DR) + block value (SoE)
+//  - Prot Paladin: armor + dodge (Grace of Air — primary avoidance)
+//  - Feral Druid: agility scaling (GoA) + Imp LotP heal; low Devotion value
+//    (high base armor), zero Windfury (no weapon imbues in forms)
+//  - Tree of Life (+25% healing received, party-only) is huge for any tank
+const MIT_VALUE = {
+  DEVOTION_AURA:      { 'WARRIOR:Protection': 10, 'PALADIN:Protection': 10, 'DRUID:Feral': 5 },
+  GRACE_OF_AIR:       { 'WARRIOR:Protection': 4, 'PALADIN:Protection': 7, 'DRUID:Feral': 9 },
+  BLOOD_PACT:         { '*': 6 },
+  TREE_OF_LIFE:       { '*': 12 },
+  STRENGTH_OF_EARTH:  { 'WARRIOR:Protection': 5, 'PALADIN:Protection': 2, 'DRUID:Feral': 3 },
+  LEADER_OF_THE_PACK: { 'DRUID:Feral': 6, '*': 2 },
+  WINDFURY:           { 'WARRIOR:Protection': 4, 'PALADIN:Protection': 1, 'DRUID:Feral': 0 },
+  BATTLE_SHOUT:       { '*': 2 },
+  RETRIBUTION_AURA:   { '*': 1 },
+};
+
+// Healer-sustain buffs: extra value in the tank group per healer present
+// (capped at 2) — Mana Tide/Spring keep tank healers casting, VT feeds
+// their mana, Concentration Aura protects their casts.
+const SUSTAIN_VALUE = { MANA_SPRING: 3, MANA_TIDE: 5, VAMPIRIC_TOUCH: 3, CONCENTRATION_AURA: 3 };
+
+function dpsValueFor(buffId, player) {
+  const v = DPS_VALUE[buffId];
+  if (!v) return 0;
+  const key = player.class + ':' + player.spec;
+  if (v.key && v.key[key] != null) return v.key[key];
+  if (v.class && v.class[player.class] != null) return v.class[player.class];
+  if (v.role && v.role[player.role] != null) return v.role[player.role];
+  return 0;
+}
+
+function mitValueFor(buffId, tank) {
+  const v = MIT_VALUE[buffId];
+  if (!v) return 0;
+  const key = tank.class + ':' + tank.spec;
+  if (v[key] != null) return v[key];
+  if (v['*'] != null) return v['*'];
+  return 0;
+}
 
 const ROLE_COMPAT = {
   tank:       ['melee_dps', 'healer'],
@@ -1439,7 +1503,7 @@ const Optimizer = {
     const numGroups = raidInfo ? raidInfo.groups : 5;
     const raidSize = raidInfo ? raidInfo.size : 25;
     const max = 5;
-    const mode = State.optimizerMode || 'balanced';
+    const mode = State.optimizerMode || 'max_dps';
 
     const pool = [];
     for (const group of State.groups) {
@@ -1451,9 +1515,9 @@ const Optimizer = {
     for (let i = 0; i < numGroups; i++) groups.push([]);
 
     // Phase 1: Seed groups with role identities
-    this.seedGroups(pool, groups, numGroups, raidSize, max);
+    this.seedGroups(pool, groups, numGroups, raidSize, max, mode);
 
-    // Phase 2: Greedy scored placement of remaining players
+    // Phase 2: Greedy marginal-gain placement of remaining players
     this.greedyPlace(pool, groups, max, mode);
 
     // Phase 3: Swap refinement (skip for relaxed)
@@ -1476,17 +1540,19 @@ const Optimizer = {
   },
 
   // ── PHASE 1: SEED GROUPS ─────────────────────────────────────
-  seedGroups(pool, groups, numGroups, raidSize, max) {
+  seedGroups(pool, groups, numGroups, raidSize, max, mode) {
     if (numGroups >= 5) {
       groups._roleIdentities = ['melee_dps', 'melee_dps', 'caster_dps', 'caster_dps', 'tank'];
     } else {
       groups._roleIdentities = ['melee_dps', 'caster_dps'];
     }
 
-    // Seed minimum tanks (2) into the tank-identity group; let scorer place extras
+    // Seed tanks into the tank-identity group; tank_mit consolidates all of
+    // them (up to 3) there so mitigation buffs cover every tank, other modes
+    // seed the minimum 2 and let the scorer place extras (OT groups).
     const tankIdx = groups._roleIdentities.indexOf('tank');
     const targetIdx = tankIdx >= 0 ? tankIdx : 0;
-    const minTanks = 2;
+    const minTanks = mode === 'tank_mit' ? 3 : 2;
     let seeded = 0;
     for (let i = pool.length - 1; i >= 0; i--) {
       if (seeded >= minTanks) break;
@@ -1496,13 +1562,12 @@ const Optimizer = {
       }
     }
 
-    // Seed one healer into every non-tank group up front. There is no
-    // 'healer' role identity in _roleIdentities, so without this, healers
-    // were left entirely to buff-value scoring — which let them either pile
-    // into a single group (starving the others of healing) or land in a
-    // melee/caster group they have no buff synergy with at all.
+    // Seed one healer into EVERY group up front (tank group included — it
+    // always needs healing support). There is no 'healer' role identity, so
+    // without this, healers were left entirely to buff-value scoring — which
+    // let them pile into one group and starve the others of healing.
+    // groupScore()'s healer-coverage term keeps later phases from undoing it.
     for (let gi = 0; gi < numGroups; gi++) {
-      if (gi === targetIdx) continue;
       if (groups[gi].length >= max) continue;
       const healerIdx = pool.findIndex(p => p.role === 'healer');
       if (healerIdx === -1) break;
@@ -1510,19 +1575,26 @@ const Optimizer = {
     }
   },
 
-  // ── PHASE 2: GREEDY PLACEMENT ────────────────────────────────
+  // ── PHASE 2: GREEDY MARGINAL-GAIN PLACEMENT ──────────────────
+  // Each step places the (player, group) pair with the highest marginal
+  // groupScore gain. Because groupScore measures what members RECEIVE, this
+  // both attracts buffers to groups that want their buffs and attracts
+  // beneficiaries to groups that already have the buffs.
   greedyPlace(pool, groups, max, mode) {
     while (pool.length > 0) {
-      let bestScore = -Infinity;
+      let bestGain = -Infinity;
       let bestPlayerIdx = -1;
       let bestGroupIdx = -1;
 
-      for (let pi = 0; pi < pool.length; pi++) {
-        for (let gi = 0; gi < groups.length; gi++) {
-          if (groups[gi].length >= max) continue;
-          const score = this.scorePlayerInGroup(pool[pi], groups[gi], gi, groups, mode);
-          if (score > bestScore) {
-            bestScore = score;
+      for (let gi = 0; gi < groups.length; gi++) {
+        if (groups[gi].length >= max) continue;
+        const base = this.groupScore(groups[gi], gi, groups, mode);
+        for (let pi = 0; pi < pool.length; pi++) {
+          groups[gi].push(pool[pi]);
+          const gain = this.groupScore(groups[gi], gi, groups, mode) - base;
+          groups[gi].pop();
+          if (gain > bestGain) {
+            bestGain = gain;
             bestPlayerIdx = pi;
             bestGroupIdx = gi;
           }
@@ -1536,161 +1608,138 @@ const Optimizer = {
     }
   },
 
-  // ── SCORING FUNCTION ─────────────────────────────────────────
-  scorePlayerInGroup(player, group, gi, groups, mode) {
-    const w = MODE_WEIGHTS[mode] || MODE_WEIGHTS.balanced;
-    const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
-    // Score against the group's intended structural identity, not whoever
-    // happens to be seeded in it already — using getDominantRole(group) here
-    // meant a single seeded healer (dominant role of a 1-player group is
-    // trivially that player's own role) flipped a "melee_dps" group's
-    // effective role to "healer" for scoring purposes, making it magnetic
-    // for more healers/casters instead of melee. totalGroupScore() (used by
-    // swap refinement) already scores against roleIdentity directly; this
-    // keeps both phases consistent.
-    const effectiveRole = roleIdentity;
-    let score = 0;
+  // ── SCORING ──────────────────────────────────────────────────
+  isTankGroup(gi, groups) {
+    const ids = groups._roleIdentities;
+    if (!ids) return gi === 0;
+    const t = ids.indexOf('tank');
+    return t >= 0 ? gi === t : gi === 0;
+  },
 
-    // Component 1: New buff value
-    const existingBuffs = this.getGroupBuffState(group, effectiveRole);
-    const playerBuffs = this.getPlayerBuffs(player);
-
-    const isTankGroup = roleIdentity === 'tank' || (groups._roleIdentities && !groups._roleIdentities.includes('tank') && gi === 0);
-
-    for (const pb of playerBuffs) {
-      let buffPrio = getBuffPriority(pb.buff, effectiveRole);
-      if (buffPrio === 0) continue;
-
-      // Tank Prio mode: boost specific buffs in the tank group
-      const isBoosted = mode === 'tank_prio' && isTankGroup && TANK_PRIO_BOOSTS[pb.id];
-      if (isBoosted) {
-        buffPrio = TANK_PRIO_BOOSTS[pb.id];
-      }
-
-      // Skip buffs that don't benefit anyone in this group's role context
-      // (unless boosted by tank_prio mode)
-      const bRatio = isBoosted ? 1.0 : this.beneficiaryRatio(pb.buff, group, player);
-      if (bRatio === 0) continue;
-
-      // Check if this buff is already provided
-      if (TOTEM_ELEMENTS[pb.id]) {
-        const element = TOTEM_ELEMENTS[pb.id];
-        const existing = existingBuffs.totemElements[element];
-        if (existing) {
-          const existingPrio = getBuffPriority(existing.buff, effectiveRole);
-          const delta = buffPrio - existingPrio;
-          if (delta > 0) score += delta * w.buff;
-        } else {
-          score += buffPrio * w.buff * bRatio;
+  // Buffs the group actually gets: passives deduped, one totem per element
+  // per shaman (chosen by group value — models totem assignments/twisting),
+  // one distinct aura per paladin (best available by group value).
+  resolveGroupBuffs(group, valueFn) {
+    const chosen = new Set();
+    const usedAuras = new Set();
+    for (const p of group) {
+      if (p.class === 'SHAMAN') {
+        const byElement = {};
+        for (const [id, buff] of Object.entries(Config.Buffs)) {
+          if (buff.sourceClass !== 'SHAMAN') continue;
+          if (buff.sourceSpec && buff.sourceSpec !== p.spec) continue;
+          const el = TOTEM_ELEMENTS[id];
+          if (el) (byElement[el] = byElement[el] || []).push(id);
+          else chosen.add(id); // shaman passives (e.g. Unleashed Rage)
         }
-      } else if (PALADIN_AURAS[pb.id]) {
-        if (!existingBuffs.auras.has(pb.id)) {
-          score += buffPrio * w.buff * bRatio;
+        for (const el of Object.keys(byElement)) {
+          let best = null, bestV = 0;
+          for (const id of byElement[el]) {
+            if (chosen.has(id)) continue; // another shaman already provides it
+            const v = valueFn(id);
+            if (v > bestV) { bestV = v; best = id; }
+          }
+          if (best) chosen.add(best);
         }
+      } else if (p.class === 'PALADIN') {
+        let best = null, bestV = -1;
+        for (const id of Object.keys(PALADIN_AURAS)) {
+          if (usedAuras.has(id)) continue;
+          const v = valueFn(id);
+          if (v > bestV) { bestV = v; best = id; }
+        }
+        if (best) { usedAuras.add(best); chosen.add(best); }
       } else {
-        if (!existingBuffs.passives.has(pb.id)) {
-          score += buffPrio * w.buff * bRatio;
+        for (const [id, buff] of Object.entries(Config.Buffs)) {
+          if (buff.sourceClass !== p.class) continue;
+          if (buff.sourceSpec && buff.sourceSpec !== p.spec) continue;
+          if (TOTEM_ELEMENTS[id] || PALADIN_AURAS[id]) continue;
+          chosen.add(id);
         }
       }
     }
+    return chosen;
+  },
 
-    // Component 2: Buff affinity — bonus for joining a group that has synergistic buffs
-    const allExisting = new Set([
-      ...Object.values(existingBuffs.totemElements).map(e => e.id),
-      ...existingBuffs.auras,
-      ...existingBuffs.passives,
-    ]);
-    for (const aff of BUFF_AFFINITIES) {
-      if (player.class === aff.class && player.spec === aff.spec && allExisting.has(aff.buff)) {
-        score += aff.bonus;
+  // The single objective all phases share. Higher = better group.
+  groupScore(group, gi, groups, mode) {
+    const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
+    const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
+    const isTank = this.isTankGroup(gi, groups);
+    const healerCount = group.reduce((n, p) => n + (p.role === 'healer' ? 1 : 0), 0);
+    const tanks = group.filter(p => p.role === 'tank');
+
+    // Value of one buff to this group = summed received DPS value, plus
+    // mitigation + healer-sustain value when it reaches the tank group.
+    const buffValue = (id) => {
+      let v = 0;
+      for (const m of group) v += dpsValueFor(id, m) * cfg.dps;
+      if (isTank) {
+        for (const t of tanks) v += mitValueFor(id, t) * cfg.mit;
+        if (SUSTAIN_VALUE[id]) v += SUSTAIN_VALUE[id] * Math.min(healerCount, 2) * cfg.mit;
       }
+      return v;
+    };
+
+    let score = 0;
+    for (const id of this.resolveGroupBuffs(group, buffValue)) score += buffValue(id);
+
+    // Ferocious Inspiration stacks multiplicatively per BM Hunter (1.03^n) —
+    // the only party buff that does. resolveGroupBuffs dedupes it like any
+    // passive, so credit each additional BM hunter's copy here.
+    const bmCount = group.reduce((n, p) => n + (p.class === 'HUNTER' && p.spec === 'Beast Mastery' ? 1 : 0), 0);
+    if (bmCount > 1) score += (bmCount - 1) * buffValue('FEROCIOUS_INSP');
+
+    // Healer coverage — strong first-healer bonus so refinement phases never
+    // strip a group's only healer; the tank group in tank_mit mode also
+    // values a second and third healer highly.
+    const healerBonus = (isTank && mode === 'tank_mit')
+      ? [0, 50, 80, 92, 96]
+      : [0, 50, 62, 64, 64];
+    score += healerBonus[Math.min(healerCount, 4)] * cfg.structure;
+
+    // Role cohesion — DPS members clustered with their group's identity.
+    // Healers and tanks are governed by coverage/seeding, not cohesion.
+    for (const p of group) {
+      if (p.role === 'healer' || p.role === 'tank') continue;
+      if (p.role === roleIdentity) score += 12 * cfg.cohesion;
+      else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) score += 6 * cfg.cohesion;
+      else score -= 12 * cfg.cohesion;
     }
 
-    // Component 3: Role affinity
-    if (player.role === roleIdentity || player.role === effectiveRole) {
-      score += w.roleMatch;
-    } else if (ROLE_COMPAT[player.role] && ROLE_COMPAT[player.role].includes(roleIdentity)) {
-      score += w.roleMatch * 0.5;
-    } else {
-      score -= w.roleMismatch;
-    }
-
-    // Component 4: Group balance (prefer emptier groups)
-    score += (5 - group.length) * w.balance;
+    // Spreading pressure — convex penalty so the marginal cost of joining a
+    // fuller group is higher, nudging placement toward emptier groups when
+    // synergy gains are comparable.
+    score -= 0.8 * group.length * group.length * cfg.structure;
 
     return score;
   },
 
-  // Fraction of group members (including the candidate) that benefit from this buff
-  beneficiaryRatio(buff, group, candidate) {
-    let count = 0;
-    const total = group.length + 1;
-    for (const p of group) {
-      if (buff.benefitsRoles && buff.benefitsRoles.includes(p.role)) count++;
-    }
-    if (buff.benefitsRoles && buff.benefitsRoles.includes(candidate.role)) count++;
-    return total > 0 ? count / total : 0;
-  },
-
-  // What buffs can this player's class/spec provide?
-  getPlayerBuffs(player) {
-    const result = [];
-    for (const [buffId, buff] of Object.entries(Config.Buffs)) {
-      if (buff.sourceClass !== player.class) continue;
-      if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
-      result.push({ id: buffId, buff });
-    }
-    return result;
-  },
-
-  // Fast snapshot of what buffs a group currently has
-  getGroupBuffState(group, role) {
-    const state = { totemElements: {}, auras: new Set(), passives: new Set() };
-    for (const player of group) {
-      for (const [buffId, buff] of Object.entries(Config.Buffs)) {
-        if (buff.sourceClass !== player.class) continue;
-        if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
-
-        if (TOTEM_ELEMENTS[buffId]) {
-          const element = TOTEM_ELEMENTS[buffId];
-          const existing = state.totemElements[element];
-          if (!existing || getBuffPriority(buff, role) > getBuffPriority(existing.buff, role)) {
-            state.totemElements[element] = { id: buffId, buff };
-          }
-        } else if (PALADIN_AURAS[buffId]) {
-          state.auras.add(buffId);
-        } else {
-          state.passives.add(buffId);
-        }
-      }
-    }
-    return state;
-  },
-
   // ── PHASE 3: SWAP REFINEMENT ─────────────────────────────────
+  // Hill-climbs pairwise swaps against the same groupScore() objective the
+  // greedy phase used, so refinement can never "improve" toward a different
+  // goal than placement optimized for.
   refineSwaps(groups, max, mode) {
-    const SWAP_THRESHOLD = 5;
-    for (let iter = 0; iter < 3; iter++) {
+    const SWAP_THRESHOLD = 3;
+    for (let iter = 0; iter < 4; iter++) {
       let improved = false;
       for (let gi = 0; gi < groups.length; gi++) {
         for (let gj = gi + 1; gj < groups.length; gj++) {
           for (let pi = 0; pi < groups[gi].length; pi++) {
             // Never swap seeded tanks out of the tank-identity group
-            const giIsTank = groups._roleIdentities && groups._roleIdentities[gi] === 'tank';
-            if (groups[gi][pi].role === 'tank' && giIsTank) continue;
+            if (groups[gi][pi].role === 'tank' && this.isTankGroup(gi, groups)) continue;
             for (let pj = 0; pj < groups[gj].length; pj++) {
-              const gjIsTank = groups._roleIdentities && groups._roleIdentities[gj] === 'tank';
-              if (groups[gj][pj].role === 'tank' && gjIsTank) continue;
-              const currentScore = this.totalGroupScore(groups[gi], gi, groups, mode)
-                                 + this.totalGroupScore(groups[gj], gj, groups, mode);
+              if (groups[gj][pj].role === 'tank' && this.isTankGroup(gj, groups)) continue;
+              const currentScore = this.groupScore(groups[gi], gi, groups, mode)
+                                 + this.groupScore(groups[gj], gj, groups, mode);
 
               // Tentatively swap
               const tmp = groups[gi][pi];
               groups[gi][pi] = groups[gj][pj];
               groups[gj][pj] = tmp;
 
-              const newScore = this.totalGroupScore(groups[gi], gi, groups, mode)
-                             + this.totalGroupScore(groups[gj], gj, groups, mode);
+              const newScore = this.groupScore(groups[gi], gi, groups, mode)
+                             + this.groupScore(groups[gj], gj, groups, mode);
 
               if (newScore > currentScore + SWAP_THRESHOLD) {
                 improved = true;
@@ -1705,54 +1754,6 @@ const Optimizer = {
       }
       if (!improved) break;
     }
-  },
-
-  totalGroupScore(group, gi, groups, mode) {
-    const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
-    const effectiveRole = roleIdentity;
-    const buffState = this.getGroupBuffState(group, effectiveRole);
-    let score = 0;
-
-    // Score from totem buffs
-    for (const [, entry] of Object.entries(buffState.totemElements)) {
-      const prio = getBuffPriority(entry.buff, effectiveRole);
-      const beneficiaries = group.filter(p => entry.buff.benefitsRoles && entry.buff.benefitsRoles.includes(p.role)).length;
-      score += prio * (beneficiaries / Math.max(group.length, 1));
-    }
-
-    // Score from auras
-    for (const auraId of buffState.auras) {
-      const buff = Config.Buffs[auraId];
-      if (!buff) continue;
-      const prio = getBuffPriority(buff, effectiveRole);
-      const beneficiaries = group.filter(p => buff.benefitsRoles && buff.benefitsRoles.includes(p.role)).length;
-      score += prio * (beneficiaries / Math.max(group.length, 1));
-    }
-
-    // Score from passive buffs
-    for (const passiveId of buffState.passives) {
-      const buff = Config.Buffs[passiveId];
-      if (!buff) continue;
-      const prio = getBuffPriority(buff, effectiveRole);
-      const beneficiaries = group.filter(p => buff.benefitsRoles && buff.benefitsRoles.includes(p.role)).length;
-      score += prio * (beneficiaries / Math.max(group.length, 1));
-    }
-
-    // Role cohesion — mirrors scorePlayerInGroup's role-fit weighting (same
-    // ROLE_COMPAT table, scaled down) so swap refinement can't undo good
-    // role placement just to chase a slightly higher raw buff density.
-    const w = MODE_WEIGHTS[mode] || MODE_WEIGHTS.balanced;
-    for (const p of group) {
-      if (p.role === roleIdentity) {
-        score += w.roleMatch * 0.1;
-      } else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) {
-        score += w.roleMatch * 0.05;
-      } else {
-        score -= w.roleMismatch * 0.1;
-      }
-    }
-
-    return score;
   },
 
   // ── PHASE 4: DE-ISOLATION ─────────────────────────────────────
@@ -1787,6 +1788,12 @@ const Optimizer = {
             if (gj === gi) continue;
             for (let pj = 0; pj < groups[gj].length; pj++) {
               const q = groups[gj][pj];
+
+              // Invariants outrank fixing DPS isolation: never pull a tank
+              // out of the tank-identity group, and never strip a group of
+              // its only healer.
+              if (q.role === 'tank' && this.isTankGroup(gj, groups)) continue;
+              if (q.role === 'healer' && groups[gj].reduce((n, x) => n + (x.role === 'healer' ? 1 : 0), 0) <= 1) continue;
 
               // p only needs gj to already have OTHER pFam members before q
               // leaves — q's own family is irrelevant to whether this fixes
@@ -1824,26 +1831,6 @@ const Optimizer = {
 
       if (!swapped) break;
     }
-  },
-
-  // ── UTILITIES (kept from old optimizer) ──────────────────────
-  extractFromPool(pool, classFile, specName) {
-    const extracted = [];
-    for (let i = pool.length - 1; i >= 0; i--) {
-      if (pool[i].class === classFile && pool[i].spec === specName) {
-        extracted.push(pool.splice(i, 1)[0]);
-      }
-    }
-    return extracted;
-  },
-
-  addFromPool(group, pool, count, max) {
-    let added = 0;
-    while (added < count && pool.length > 0 && group.length < max) {
-      group.push(pool.shift());
-      added++;
-    }
-    return added;
   },
 };
 
@@ -2020,15 +2007,26 @@ function getDominantRoleLabel(players) {
 
 function sortTankGroupFirst() {
   if (State.groups.length <= 1) return;
-  // Find the group whose dominant role is 'tank'
+  // Prefer the optimizer's structural identity (authoritative, tie-proof);
+  // fall back to dominant-role detection for imported/manual rosters.
   let tankIdx = -1;
-  for (let i = 0; i < State.groups.length; i++) {
-    if (getDominantRoleLabel(State.groups[i] || []) === 'TANK') { tankIdx = i; break; }
+  const ids = State.groups._roleIdentities;
+  if (ids) tankIdx = ids.indexOf('tank');
+  if (tankIdx < 0) {
+    for (let i = 0; i < State.groups.length; i++) {
+      if (getDominantRoleLabel(State.groups[i] || []) === 'TANK') { tankIdx = i; break; }
+    }
   }
   if (tankIdx > 0) {
     // Move tank group to index 0, shift others down
     const tankGroup = State.groups.splice(tankIdx, 1)[0];
     State.groups.unshift(tankGroup);
+    // Keep the identity list aligned with the new order (splice() on the
+    // array doesn't move the custom _roleIdentities property's entries)
+    if (ids) {
+      ids.splice(tankIdx, 1);
+      ids.unshift('tank');
+    }
     // Update groupNumber on all players
     for (let i = 0; i < State.groups.length; i++) {
       for (const p of (State.groups[i] || [])) p.groupNumber = i + 1;
