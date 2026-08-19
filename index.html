@@ -85,6 +85,7 @@ body::before {
   border-radius: var(--radius-lg);
   box-shadow: 0 0 0 1px rgba(0,0,0,0.5), 0 4px 24px rgba(0,0,0,0.6), 0 0 80px rgba(212,175,55,0.03);
   overflow: hidden;
+  zoom: 1.5;
 }
 .addon-frame::after {
   content: '';
@@ -189,6 +190,53 @@ body::before {
 }
 .roster-btn:hover { border-color: var(--border-medium); color: var(--text-secondary); }
 
+/* ── App body (main column + buff sidebar) ── */
+.app-body { display: flex; align-items: flex-start; }
+.main-column { flex: 1; min-width: 0; }
+
+.buff-sidebar {
+  width: 240px; flex-shrink: 0;
+  padding: var(--sp-2);
+  background: rgba(13,14,18,0.4);
+  border-left: 1px solid var(--border-subtle);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+}
+.buff-sidebar-title {
+  font-size: 9px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+  margin-bottom: 4px;
+}
+.buff-row-list { display: flex; flex-direction: column; gap: 1px; }
+.buff-row {
+  display: flex; align-items: center; gap: 5px;
+  padding: 1px 3px; border-radius: 3px;
+  opacity: 0.35; filter: grayscale(0.6);
+  transition: opacity 0.15s ease, filter 0.15s ease, background 0.15s ease;
+}
+.buff-row.covered {
+  opacity: 1; filter: none;
+  background: rgba(212,175,55,0.1);
+}
+.buff-row-icon {
+  width: 14px; height: 14px; flex-shrink: 0;
+  border-radius: 3px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 6px; font-weight: 700; color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.buff-row-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.buff-row-name {
+  font-size: 10px; font-weight: 600; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1 1 auto; min-width: 24px;
+}
+.buff-row-warn { font-size: 9px; color: var(--accent-gold-dim); flex-shrink: 0; cursor: help; }
+.buff-row-source {
+  font-size: 9px; font-weight: 500; flex: 0 1 auto; margin-left: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 78px;
+}
+
 /* ── Group grid ── */
 .groups-container {
   padding: var(--sp-2) var(--sp-3);
@@ -210,9 +258,6 @@ body::before {
 }
 .groups-container.groups-5 .group-card:nth-child(5) {
   grid-column: 4 / span 2;
-}
-.groups-container.groups-5 .raid-dps-bar {
-  grid-column: 1 / -1;
 }
 .group-card {
   background: var(--bg-card);
@@ -305,24 +350,6 @@ body::before {
   font-size: 8px; color: var(--text-muted);
   text-transform: uppercase; letter-spacing: 0.5px;
   font-weight: 600; flex-shrink: 0; margin-right: 2px;
-}
-.group-dps {
-  font-size: 9px; color: var(--accent-gold-dim);
-  font-weight: 600; font-variant-numeric: tabular-nums;
-}
-.raid-dps-bar {
-  display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
-  padding: 3px var(--sp-2);
-  background: linear-gradient(180deg, rgba(42,46,61,0.5) 0%, rgba(30,34,48,0.3) 100%);
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
-}
-.raid-dps-bar .raid-dps-label {
-  font-size: 9px; color: var(--text-muted); text-transform: uppercase;
-  letter-spacing: 0.5px; font-weight: 600;
-}
-.raid-dps-bar .raid-dps-value {
-  font-size: 13px; color: var(--accent-gold); font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 .buff-icon {
   width: 24px; height: 24px;
@@ -629,6 +656,12 @@ body::before {
   body { padding: 0; }
 }
 @media (max-width: 900px) {
+  .app-body { flex-direction: column; }
+  .buff-sidebar {
+    width: 100%; border-left: none; border-top: 1px solid var(--border-subtle);
+    flex-direction: row;
+  }
+  .buff-sidebar-section { flex: 1; min-width: 0; }
   .groups-container { grid-template-columns: repeat(2, 1fr); }
   .groups-container.groups-5 { grid-template-columns: repeat(2, 1fr); }
   .groups-container.groups-5 .group-card:nth-child(1),
@@ -693,25 +726,40 @@ body::before {
     </div>
   </div>
 
-  <div class="groups-container" id="groups-container"></div>
+  <div class="app-body">
+    <div class="main-column">
+      <div class="groups-container" id="groups-container"></div>
 
-  <div class="manual-changes-section" id="manual-changes"></div>
+      <div class="manual-changes-section" id="manual-changes"></div>
 
-  <div class="action-bar">
-    <div class="action-left">
-      <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition">&#9733; Optimize</button>
-      <select class="raid-dropdown" id="optimize-mode" aria-label="Optimizer strategy">
-        <option value="balanced" selected>Balanced</option>
-        <option value="strict">Strict</option>
-        <option value="tank_prio">Tank Prio</option>
-        <option value="relaxed">Relaxed</option>
-      </select>
-      <button class="btn btn-secondary" id="btn-clear" aria-label="Clear all players and groups">Clear All</button>
+      <div class="action-bar">
+        <div class="action-left">
+          <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition">&#9733; Optimize</button>
+          <select class="raid-dropdown" id="optimize-mode" aria-label="Optimizer strategy">
+            <option value="balanced" selected>Balanced</option>
+            <option value="strict">Strict</option>
+            <option value="tank_prio">Tank Prio</option>
+            <option value="relaxed">Relaxed</option>
+          </select>
+          <button class="btn btn-secondary" id="btn-clear" aria-label="Clear all players and groups">Clear All</button>
+        </div>
+        <div class="action-right">
+          <button class="btn btn-secondary" id="btn-random" aria-label="Generate a random roster">&#127922; Random</button>
+          <button class="btn btn-secondary" id="btn-import" aria-label="Import roster from JSON or URL">Import Roster</button>
+        </div>
+      </div>
     </div>
-    <div class="action-right">
-      <button class="btn btn-secondary" id="btn-random" aria-label="Generate a random roster">&#127922; Random</button>
-      <button class="btn btn-secondary" id="btn-import" aria-label="Import roster from JSON or URL">Import Roster</button>
-    </div>
+
+    <aside class="buff-sidebar">
+      <div class="buff-sidebar-section">
+        <h4 class="buff-sidebar-title">Buffs</h4>
+        <div class="buff-row-list" id="buff-catalog-buffs"></div>
+      </div>
+      <div class="buff-sidebar-section">
+        <h4 class="buff-sidebar-title">Debuffs</h4>
+        <div class="buff-row-list" id="buff-catalog-debuffs"></div>
+      </div>
+    </aside>
   </div>
 
   <div class="status-bar">
@@ -804,7 +852,6 @@ const Config = {
     BATTLE_SHOUT:      { name:'Battle Shout',          sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members by 305 for 2 minutes.' },
     BLOOD_PACT:        { name:'Blood Pact',           sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases max health of nearby party members by 1330.' },
     VAMPIRIC_TOUCH:    { name:'Vampiric Touch',       sourceClass:'PRIEST', sourceSpec:'Shadow', benefitsRoles:['healer','caster_dps'], priority:{caster_dps:75, healer:55}, desc:'Restores mana to nearby party members equal to 5% of Shadow damage dealt.' },
-    SHADOW_WEAVING:    { name:'Shadow Weaving',       sourceClass:'PRIEST', sourceSpec:'Shadow', benefitsRoles:['caster_dps'], priority:68, desc:'Shadow damage spells have a 100% chance to cause the target to be vulnerable to Shadow damage, increasing Shadow damage taken by 10%.' },
   },
 
   BuffAbbreviations: {
@@ -812,7 +859,7 @@ const Config = {
     MANA_SPRING:'MS', MANA_TIDE:'MT', STRENGTH_OF_EARTH:'SoE',
     DEVOTION_AURA:'Dev', CONCENTRATION_AURA:'Conc', RETRIBUTION_AURA:'Ret',
     LEADER_OF_THE_PACK:'LotP', MOONKIN_AURA:'Moon', TREE_OF_LIFE:'ToL', TRUESHOT_AURA:'TSA', FEROCIOUS_INSP:'FI',
-    UNLEASHED_RAGE:'UR', BATTLE_SHOUT:'BS', BLOOD_PACT:'BP', VAMPIRIC_TOUCH:'VT', SHADOW_WEAVING:'SW',
+    UNLEASHED_RAGE:'UR', BATTLE_SHOUT:'BS', BLOOD_PACT:'BP', VAMPIRIC_TOUCH:'VT',
   },
 
   BuffCSSClass: {
@@ -820,7 +867,7 @@ const Config = {
     MANA_SPRING:'buff-ms', MANA_TIDE:'buff-mt', STRENGTH_OF_EARTH:'buff-soe',
     DEVOTION_AURA:'buff-dev', CONCENTRATION_AURA:'buff-conc', RETRIBUTION_AURA:'buff-ret',
     LEADER_OF_THE_PACK:'buff-lotp', MOONKIN_AURA:'buff-moon', TREE_OF_LIFE:'buff-tol', TRUESHOT_AURA:'buff-tsa', FEROCIOUS_INSP:'buff-fi',
-    UNLEASHED_RAGE:'buff-ur', BATTLE_SHOUT:'buff-bs', BLOOD_PACT:'buff-bp', VAMPIRIC_TOUCH:'buff-vt', SHADOW_WEAVING:'buff-sw',
+    UNLEASHED_RAGE:'buff-ur', BATTLE_SHOUT:'buff-bs', BLOOD_PACT:'buff-bp', VAMPIRIC_TOUCH:'buff-vt',
   },
 
   // Wowhead CDN icon filenames for each buff
@@ -844,10 +891,85 @@ const Config = {
     TRUESHOT_AURA:      'ability_trueshot',
     FEROCIOUS_INSP:     'ability_hunter_ferociousinspiration',
     BLOOD_PACT:         'spell_shadow_bloodboil',
-    SHADOW_WEAVING:     'spell_shadow_blackplague',
   },
   BuffIconURL(id) {
     const icon = this.BuffIcons[id];
+    return icon ? `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg` : '';
+  },
+
+  // ── Raid debuffs (applied to enemy targets, not the raid) ──
+  // family/competesWith/supersededBy model non-stacking debuff slots — see
+  // https://www.warcrafttavern.com/tbc/guides/warlock-curses/ and
+  // https://www.warcrafttavern.com/tbc/guides/rogue-expose-armor/ for the mechanics.
+  Debuffs: {
+    JUDGEMENT_CRUSADER:  { name:'Judgement of the Crusader', sourceClass:'PALADIN', sourceSpec:'Retribution', desc:'Attackers have a 3% increased chance to critically hit the target, which also takes 219 increased Holy damage.' },
+    JUDGEMENT_LIGHT:      { name:'Judgement of Light',        sourceClass:'PALADIN', desc:'Melee attackers have a chance to heal themselves for 95 health.' },
+    JUDGEMENT_WISDOM:     { name:'Judgement of Wisdom',       sourceClass:'PALADIN', desc:'Attacks and spells against the target have a chance to restore 74 mana.' },
+    SUNDER_ARMOR:         { name:'Sunder Armor',              sourceClass:'WARRIOR', desc:'Reduces the target\'s armor by up to 2600 (5 stacks).', competesWith:['EXPOSE_ARMOR'] },
+    DEMORALIZING_SHOUT:   { name:'Demoralizing Shout',        sourceClass:'WARRIOR', desc:'Reduces the target\'s melee attack power by 300 (420 with Improved Demoralizing Shout).', competesWith:['DEMORALIZING_ROAR','CURSE_WEAKNESS'] },
+    THUNDER_CLAP:         { name:'Thunder Clap',              sourceClass:'WARRIOR', desc:'Reduces the target\'s attack speed by 10% (20% with Improved Thunder Clap).' },
+    BLOOD_FRENZY:         { name:'Blood Frenzy',              sourceClass:'WARRIOR', sourceSpec:'Arms', desc:'Increases Physical damage taken by the target by 4%.' },
+    EXPOSE_ARMOR:         { name:'Expose Armor',              sourceClass:'ROGUE', desc:'Reduces the target\'s armor by 2050 (3075 with Improved Expose Armor).', competesWith:['SUNDER_ARMOR'] },
+    HEMORRHAGE:           { name:'Hemorrhage',                sourceClass:'ROGUE', sourceSpec:'Subtlety', desc:'Increases Physical damage taken by the target by 42, for 10 charges.' },
+    FAERIE_FIRE_BALANCE:  { name:'Faerie Fire',                sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s armor by 610 and, with Improved Faerie Fire, gives attackers +3% chance to hit.' },
+    FAERIE_FIRE_FERAL:    { name:'Faerie Fire (Feral)',        sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s armor by 610.', supersededBy:'FAERIE_FIRE_BALANCE' },
+    MANGLE:               { name:'Mangle',                     sourceClass:'DRUID', sourceSpec:'Feral', desc:'Increases damage taken from bleed effects by 30%.' },
+    DEMORALIZING_ROAR:    { name:'Demoralizing Roar',          sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s melee attack power by 232.', competesWith:['DEMORALIZING_SHOUT','CURSE_WEAKNESS'] },
+    INSECT_SWARM:         { name:'Insect Swarm',               sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s chance to hit by 2%.' },
+    CURSE_ELEMENTS:       { name:'Curse of the Elements',      sourceClass:'WARLOCK', desc:'Reduces resistance to Fire/Frost/Shadow by 88 and increases Arcane/Fire/Frost/Shadow damage taken by 10%.', competesWith:['CURSE_RECKLESSNESS','CURSE_WEAKNESS'] },
+    CURSE_RECKLESSNESS:   { name:'Curse of Recklessness',      sourceClass:'WARLOCK', desc:'Increases melee attack power by 135 but reduces armor by 800.', competesWith:['CURSE_ELEMENTS','CURSE_WEAKNESS'] },
+    CURSE_WEAKNESS:       { name:'Curse of Weakness',          sourceClass:'WARLOCK', desc:'Reduces the target\'s melee attack power by 350.', competesWith:['CURSE_ELEMENTS','CURSE_RECKLESSNESS','DEMORALIZING_SHOUT','DEMORALIZING_ROAR'] },
+    SHADOW_EMBRACE:       { name:'Shadow Embrace',             sourceClass:'WARLOCK', sourceSpec:'Affliction', desc:'Reduces the target\'s Physical damage dealt by 5%.' },
+    IMPROVED_SHADOW_BOLT: { name:'Improved Shadow Bolt',       sourceClass:'WARLOCK', sourceSpec:'Destruction', desc:'Increases Shadow damage taken by the target by 20%, for 5 charges.' },
+    WINTERS_CHILL:        { name:'Winter\'s Chill',            sourceClass:'MAGE', sourceSpec:'Frost', desc:'Increases the target\'s chance to be critically hit by Frost spells by 10%.' },
+    IMPROVED_SCORCH:      { name:'Improved Scorch',            sourceClass:'MAGE', sourceSpec:'Fire', desc:'Increases Fire damage taken by the target by 15%.' },
+    SHADOW_WEAVING:       { name:'Shadow Weaving',             sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Increases Shadow damage taken by the target by 10%.' },
+    MISERY:               { name:'Misery',                     sourceClass:'PRIEST', sourceSpec:'Discipline', desc:'Increases Spell damage taken by the target by 5%.' },
+    VAMPIRIC_EMBRACE:     { name:'Vampiric Embrace',           sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Heals the caster\'s party for 15% of the Priest\'s damage dealt to the target.' },
+    STORMSTRIKE:          { name:'Stormstrike',                sourceClass:'SHAMAN', sourceSpec:'Enhancement', desc:'Increases Nature damage taken by the target by 20%, for 2 charges.' },
+    SCORPID_STING:        { name:'Scorpid Sting',              sourceClass:'HUNTER', desc:'Reduces the target\'s chance to hit with melee/ranged attacks by 5%.' },
+    HUNTERS_MARK:         { name:'Hunter\'s Mark',              sourceClass:'HUNTER', sourceSpec:'Marksmanship', desc:'Grants attackers 110 increased melee/ranged attack power against the target.' },
+    EXPOSE_WEAKNESS:      { name:'Expose Weakness',            sourceClass:'HUNTER', sourceSpec:'Survival', desc:'Grants attackers bonus attack power equal to 25% of the Hunter\'s Agility.' },
+  },
+
+  DebuffAbbreviations: {
+    JUDGEMENT_CRUSADER:'JotC', JUDGEMENT_LIGHT:'JoL', JUDGEMENT_WISDOM:'JoW',
+    SUNDER_ARMOR:'Sun', DEMORALIZING_SHOUT:'DS', THUNDER_CLAP:'TC', BLOOD_FRENZY:'BF',
+    EXPOSE_ARMOR:'EA', HEMORRHAGE:'Hem',
+    FAERIE_FIRE_BALANCE:'FF', FAERIE_FIRE_FERAL:'FF', MANGLE:'Man', DEMORALIZING_ROAR:'DR', INSECT_SWARM:'IS',
+    CURSE_ELEMENTS:'CoE', CURSE_RECKLESSNESS:'CoR', CURSE_WEAKNESS:'CoW', SHADOW_EMBRACE:'SE', IMPROVED_SHADOW_BOLT:'ISB',
+    WINTERS_CHILL:'WC', IMPROVED_SCORCH:'Scorch',
+    SHADOW_WEAVING:'SW', MISERY:'Mis', VAMPIRIC_EMBRACE:'VE',
+    STORMSTRIKE:'SS',
+    SCORPID_STING:'Scorp', HUNTERS_MARK:'HM', EXPOSE_WEAKNESS:'EW',
+  },
+
+  // Best-effort Wowhead CDN icon slugs — entries left blank fall back to the text
+  // abbreviation above (same graceful-degradation pattern as BuffIconURL).
+  DebuffIcons: {
+    JUDGEMENT_CRUSADER: 'spell_holy_holysmite',
+    JUDGEMENT_LIGHT:    'spell_holy_sealoflight',
+    JUDGEMENT_WISDOM:   'spell_holy_sealofwisdom',
+    SUNDER_ARMOR:       'ability_warrior_sunder',
+    DEMORALIZING_SHOUT: 'ability_warrior_warcry',
+    THUNDER_CLAP:       'spell_nature_thunderclap',
+    BLOOD_FRENZY:       'ability_warrior_bloodfrenzy',
+    EXPOSE_ARMOR:       'ability_rogue_exposearmor',
+    HEMORRHAGE:         'ability_rogue_hemorrhage',
+    FAERIE_FIRE_BALANCE:'spell_nature_faeriefire',
+    FAERIE_FIRE_FERAL:  'spell_nature_faeriefire',
+    MANGLE:             'ability_druid_mangle2',
+    DEMORALIZING_ROAR:  'ability_druid_demoralizingroar',
+    INSECT_SWARM:       'spell_nature_insectswarm',
+    CURSE_ELEMENTS:     'spell_shadow_chilltouch',
+    CURSE_RECKLESSNESS: 'spell_shadow_unholystrength',
+    SHADOW_EMBRACE:     'spell_shadow_shadowembrace',
+    IMPROVED_SHADOW_BOLT:'spell_shadow_shadowbolt',
+    SHADOW_WEAVING:     'spell_shadow_blackplague',
+    STORMSTRIKE:        'ability_shaman_stormstrike',
+  },
+  DebuffIconURL(id) {
+    const icon = this.DebuffIcons[id];
     return icon ? `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg` : '';
   },
 
@@ -940,8 +1062,39 @@ const Import = {
   importRaidHelper(jsonStr) {
     let data;
     try { data = JSON.parse(jsonStr); } catch(e) { return { success:false, error:'Invalid JSON: '+e.message }; }
-    if (!data.slots || !Array.isArray(data.slots)) return { success:false, error:"No 'slots' array found in JSON" };
+    if (Array.isArray(data.slots)) return this._importRaidHelperSlots(data);
+    if (Array.isArray(data.signUps)) return this._importRaidHelperSignUps(data);
+    return { success:false, error:"No 'slots' or 'signUps' array found in JSON" };
+  },
 
+  // Resolve a Raid-Helper slot/signup entry (className + specName) to a class/spec/role.
+  // Shared by both export shapes below — they use the same field names per entry.
+  _resolveRaidHelperEntry(entry) {
+    const specInfo = Config.RaidHelperSpecMap[entry.specName];
+    let classFile = null, specName = entry.specName || 'Unknown', role = 'melee_dps';
+
+    if (specInfo) {
+      classFile = specInfo.class;
+      specName = specInfo.spec;
+      role = specInfo.role;
+    } else {
+      classFile = Config.RaidHelperClassMap[entry.className] || null;
+    }
+
+    if (entry.className === 'Tank') {
+      role = 'tank';
+      if (specInfo) classFile = specInfo.class;
+    }
+    if (entry.className === 'Bench' && specInfo) {
+      classFile = specInfo.class;
+    }
+
+    return { classFile, specName, role };
+  },
+
+  // Format 1: a "slots" export that already carries per-player groupNumber
+  // (e.g. an exported raid composition).
+  _importRaidHelperSlots(data) {
     let maxGroup = 0;
     for (const slot of data.slots) {
       if (slot.groupNumber && slot.groupNumber > maxGroup) maxGroup = slot.groupNumber;
@@ -953,25 +1106,7 @@ const Import = {
     for (let i = 0; i < maxGroup; i++) groups.push([]);
 
     for (const slot of data.slots) {
-      const specInfo = Config.RaidHelperSpecMap[slot.specName];
-      let classFile = null, specName = slot.specName || 'Unknown', role = 'melee_dps';
-
-      if (specInfo) {
-        classFile = specInfo.class;
-        specName = specInfo.spec;
-        role = specInfo.role;
-      } else {
-        classFile = Config.RaidHelperClassMap[slot.className] || null;
-      }
-
-      if (slot.className === 'Tank') {
-        role = 'tank';
-        if (specInfo) classFile = specInfo.class;
-      }
-      if (slot.className === 'Bench' && specInfo) {
-        classFile = specInfo.class;
-      }
-
+      const { classFile, specName, role } = this._resolveRaidHelperEntry(slot);
       if (classFile) {
         const player = {
           uid: nextUid(),
@@ -989,8 +1124,7 @@ const Import = {
     }
 
     // Auto-detect raid
-    const totalPlayers = roster.length;
-    if (totalPlayers <= 10) {
+    if (roster.length <= 10) {
       for (const key of Config.RaidOrder) {
         if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; }
       }
@@ -999,6 +1133,51 @@ const Import = {
     State.roster = roster;
     State.groups = groups;
     return { success:true, playerCount:roster.length, groupCount:maxGroup };
+  },
+
+  // Format 2: the raid-helper.dev/api/raidplan/{id} "signUps" export — the
+  // event sign-up roster, with no group placement at all (players haven't
+  // been put into parties yet). Seed groups round-robin, then hand off to
+  // the Optimizer to place everyone properly.
+  _importRaidHelperSignUps(data) {
+    const roster = [];
+    for (const signUp of data.signUps) {
+      const { classFile, specName, role } = this._resolveRaidHelperEntry(signUp);
+      if (classFile) {
+        roster.push({
+          uid: nextUid(),
+          name: signUp.name || ('Unknown-' + (signUp.id || roster.length)),
+          class: classFile,
+          spec: specName,
+          role: role,
+          imported: true,
+        });
+      }
+    }
+    if (roster.length === 0) return { success:false, error:'No valid players found in sign-ups' };
+
+    // Auto-detect raid
+    if (roster.length <= 10) {
+      for (const key of Config.RaidOrder) {
+        if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; }
+      }
+    }
+
+    const raidInfo = Config.Raids[State.selectedRaid];
+    const numGroups = raidInfo ? raidInfo.groups : 5;
+    const groups = [];
+    for (let i = 0; i < numGroups; i++) groups.push([]);
+    roster.forEach((p, i) => {
+      const gi = i % numGroups;
+      p.groupNumber = gi + 1;
+      groups[gi].push(p);
+    });
+
+    State.roster = roster;
+    State.groups = groups;
+    Optimizer.optimize();
+
+    return { success:true, playerCount:roster.length, groupCount:numGroups, wasUnassigned:true };
   },
 
   // Compact addon-friendly export string
@@ -1222,8 +1401,8 @@ const RandomRoster = {
 
 const MODE_WEIGHTS = {
   strict:    { buff: 1.0, roleMatch: 30, roleMismatch: 10, balance: 1 },
-  balanced:  { buff: 0.7, roleMatch: 50, roleMismatch: 30, balance: 3 },
-  tank_prio: { buff: 0.7, roleMatch: 50, roleMismatch: 30, balance: 3 },
+  balanced:  { buff: 0.7, roleMatch: 50, roleMismatch: 55, balance: 3 },
+  tank_prio: { buff: 0.7, roleMatch: 50, roleMismatch: 55, balance: 3 },
   relaxed:   { buff: 0.1, roleMatch: 100, roleMismatch: 80, balance: 5 },
 };
 
@@ -1282,6 +1461,13 @@ const Optimizer = {
       this.refineSwaps(groups, max, mode);
     }
 
+    // Phase 4: De-isolation — always runs, every mode. A player who benefits
+    // from nobody in their group (e.g. the lone melee DPS in an otherwise
+    // all-caster/healer group) is worse than a small buff-score inefficiency,
+    // but refineSwaps only takes a swap that clears SWAP_THRESHOLD, so an
+    // isolated player can survive it if no single swap scores well enough.
+    this.deIsolate(groups);
+
     for (let gi = 0; gi < groups.length; gi++) {
       for (const p of groups[gi]) p.groupNumber = gi + 1;
     }
@@ -1308,6 +1494,19 @@ const Optimizer = {
         groups[targetIdx].push(pool.splice(i, 1)[0]);
         seeded++;
       }
+    }
+
+    // Seed one healer into every non-tank group up front. There is no
+    // 'healer' role identity in _roleIdentities, so without this, healers
+    // were left entirely to buff-value scoring — which let them either pile
+    // into a single group (starving the others of healing) or land in a
+    // melee/caster group they have no buff synergy with at all.
+    for (let gi = 0; gi < numGroups; gi++) {
+      if (gi === targetIdx) continue;
+      if (groups[gi].length >= max) continue;
+      const healerIdx = pool.findIndex(p => p.role === 'healer');
+      if (healerIdx === -1) break;
+      groups[gi].push(pool.splice(healerIdx, 1)[0]);
     }
   },
 
@@ -1341,7 +1540,15 @@ const Optimizer = {
   scorePlayerInGroup(player, group, gi, groups, mode) {
     const w = MODE_WEIGHTS[mode] || MODE_WEIGHTS.balanced;
     const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
-    const effectiveRole = this.getDominantRole(group) || roleIdentity;
+    // Score against the group's intended structural identity, not whoever
+    // happens to be seeded in it already — using getDominantRole(group) here
+    // meant a single seeded healer (dominant role of a 1-player group is
+    // trivially that player's own role) flipped a "melee_dps" group's
+    // effective role to "healer" for scoring purposes, making it magnetic
+    // for more healers/casters instead of melee. totalGroupScore() (used by
+    // swap refinement) already scores against roleIdentity directly; this
+    // keeps both phases consistent.
+    const effectiveRole = roleIdentity;
     let score = 0;
 
     // Component 1: New buff value
@@ -1460,19 +1667,6 @@ const Optimizer = {
     return state;
   },
 
-  getDominantRole(group) {
-    if (group.length === 0) return null;
-    const counts = {};
-    for (const p of group) {
-      counts[p.role] = (counts[p.role] || 0) + 1;
-    }
-    let best = null, bestCount = 0;
-    for (const [role, count] of Object.entries(counts)) {
-      if (count > bestCount) { bestCount = count; best = role; }
-    }
-    return best;
-  },
-
   // ── PHASE 3: SWAP REFINEMENT ─────────────────────────────────
   refineSwaps(groups, max, mode) {
     const SWAP_THRESHOLD = 5;
@@ -1544,13 +1738,92 @@ const Optimizer = {
       score += prio * (beneficiaries / Math.max(group.length, 1));
     }
 
-    // Role cohesion bonus
+    // Role cohesion — mirrors scorePlayerInGroup's role-fit weighting (same
+    // ROLE_COMPAT table, scaled down) so swap refinement can't undo good
+    // role placement just to chase a slightly higher raw buff density.
     const w = MODE_WEIGHTS[mode] || MODE_WEIGHTS.balanced;
     for (const p of group) {
-      if (p.role === roleIdentity) score += w.roleMatch * 0.1;
+      if (p.role === roleIdentity) {
+        score += w.roleMatch * 0.1;
+      } else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) {
+        score += w.roleMatch * 0.05;
+      } else {
+        score -= w.roleMismatch * 0.1;
+      }
     }
 
     return score;
+  },
+
+  // ── PHASE 4: DE-ISOLATION ─────────────────────────────────────
+  // Finds any melee_dps/caster_dps player with zero role-compatible peers in
+  // their own group and swaps them for an opposite-family player elsewhere —
+  // preferring a partner who is themselves mismatched (a caster stuck in a
+  // melee-heavy group, etc.), since that swap fixes both sides at once.
+  deIsolate(groups) {
+    const family = role =>
+      (role === 'melee_dps' || role === 'tank') ? 'melee' :
+      (role === 'caster_dps' || role === 'healer' || role === 'ranged_dps') ? 'caster' :
+      null;
+
+    // A single pass can fix one isolated player by pulling their swap
+    // partner out of ITS group — which can leave a different player newly
+    // isolated (or not notice one uncovered earlier in the same pass, since
+    // groups already scanned aren't revisited). Iterate to a fixed point,
+    // same as refineSwaps, capped so a pathological roster can't loop forever.
+    for (let iter = 0; iter < 6; iter++) {
+      let swapped = false;
+
+      for (let gi = 0; gi < groups.length; gi++) {
+        for (let pi = 0; pi < groups[gi].length; pi++) {
+          const p = groups[gi][pi];
+          if (p.role !== 'melee_dps' && p.role !== 'caster_dps') continue;
+          const pFam = family(p.role);
+          const hasPeer = groups[gi].some((x, xi) => xi !== pi && family(x.role) === pFam);
+          if (hasPeer) continue;
+
+          let bestGj = -1, bestPj = -1, bestScore = -Infinity;
+          for (let gj = 0; gj < groups.length; gj++) {
+            if (gj === gi) continue;
+            for (let pj = 0; pj < groups[gj].length; pj++) {
+              const q = groups[gj][pj];
+
+              // p only needs gj to already have OTHER pFam members before q
+              // leaves — q's own family is irrelevant to whether this fixes
+              // p. (A same-family q works too: pulling one melee out of a
+              // group that has three, to rescue an isolated melee elsewhere,
+              // is exactly as valid as trading with an opposite-family q.)
+              const gjWithoutQ = groups[gj].filter((x, xj) => xj !== pj);
+              const pHasPeerAfter = gjWithoutQ.some(x => family(x.role) === pFam);
+              if (!pHasPeerAfter) continue; // must actually resolve p's isolation
+
+              // Prefer swaps that don't just relocate the isolation onto q.
+              // Check q's family against gi's OTHER members only (excluding
+              // p, who is leaving) — q trivially "matches itself", so q must
+              // never be included in the set it's being checked against.
+              const qFam = family(q.role);
+              let qOk = true;
+              if (q.role === 'melee_dps' || q.role === 'caster_dps') {
+                const giWithoutP = groups[gi].filter((x, xi) => xi !== pi);
+                qOk = giWithoutP.some(x => family(x.role) === qFam);
+              }
+
+              const score = qOk ? 2 : 1;
+              if (score > bestScore) { bestScore = score; bestGj = gj; bestPj = pj; }
+            }
+          }
+
+          if (bestGj >= 0) {
+            const tmp = groups[gi][pi];
+            groups[gi][pi] = groups[bestGj][bestPj];
+            groups[bestGj][bestPj] = tmp;
+            swapped = true;
+          }
+        }
+      }
+
+      if (!swapped) break;
+    }
   },
 
   // ── UTILITIES (kept from old optimizer) ──────────────────────
@@ -1629,6 +1902,16 @@ function getGroupBuffs(players, groupIndex) {
         if (buff) buffList.push({ id: entry.buffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: !!entry.isOverride });
       }
 
+      // Non-totem Shaman passives (e.g. Unleashed Rage) — one per unique buff type
+      for (const [buffId, buff] of Object.entries(Config.Buffs)) {
+        if (buff.sourceClass !== 'SHAMAN') continue;
+        if (TOTEM_ELEMENTS[buffId]) continue;
+        if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
+        if (passiveAdded.has(buffId)) continue;
+        passiveAdded.add(buffId);
+        buffList.push({ id: buffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: false });
+      }
+
     } else if (player.class === 'PALADIN') {
       // Each paladin provides one aura — avoid duplicating auras already assigned
       let auraBuffId, isOverride = false;
@@ -1676,65 +1959,6 @@ function getGroupBuffs(players, groupIndex) {
   buffList.sort((a, b) => getBuffPriority(b.buff, dominantRole) - getBuffPriority(a.buff, dominantRole));
   return buffList;
 }
-
-// ── DPS MODEL ───────────────────────────────────────────────────
-// Approximate TBC base DPS per spec and buff multipliers for estimation.
-const DpsModel = {
-  // T4 base DPS (unbuffed estimates from Gruul log data, 2026-03-23)
-  baseDPS: {
-    'PALADIN:Protection':465, 'WARRIOR:Protection':350, 'DRUID:Feral':385,
-    'ROGUE:Combat':685, 'ROGUE:Assassination':630, 'ROGUE:Subtlety':515,
-    'WARRIOR:Fury':610, 'WARRIOR:Arms':555,
-    'PALADIN:Retribution':630, 'SHAMAN:Enhancement':605,
-    'HUNTER:Beast Mastery':880, 'HUNTER:Marksmanship':840, 'HUNTER:Survival':795,
-    'MAGE:Arcane':790, 'MAGE:Fire':755, 'MAGE:Frost':650,
-    'WARLOCK:Destruction':710, 'WARLOCK:Affliction':875, 'WARLOCK:Demonology':580,
-    'PRIEST:Shadow':640, 'DRUID:Balance':445, 'SHAMAN:Elemental':760,
-    'PALADIN:Holy':5, 'PRIEST:Holy':5, 'PRIEST:Discipline':5,
-    'DRUID:Restoration':5, 'SHAMAN:Restoration':5,
-  },
-  buffMult: {
-    WINDFURY:0.08, GRACE_OF_AIR:0.03, WRATH_OF_AIR:0.05,
-    TOTEM_OF_WRATH:0.04, MANA_SPRING:0.01, MANA_TIDE:0.005,
-    STRENGTH_OF_EARTH:0.03, LEADER_OF_THE_PACK:0.05, MOONKIN_AURA:0.05,
-    TRUESHOT_AURA:0.02, FEROCIOUS_INSP:0.03, BLOOD_PACT:0.005,
-    SHADOW_WEAVING:0.06, UNLEASHED_RAGE:0.04,
-    DEVOTION_AURA:0.005, RETRIBUTION_AURA:0.01,
-    CONCENTRATION_AURA:0.005, SANCTITY_AURA:0.02,
-  },
-
-  calcGroupDPS(group, groupIndex) {
-    const buffs = getGroupBuffs(group, groupIndex);
-    let total = 0;
-    for (const player of group) {
-      const key = player.class + ':' + player.spec;
-      const base = this.baseDPS[key] || 200;
-      let mult = 1.0;
-      const seen = new Set();
-      for (const b of buffs) {
-        if (seen.has(b.id)) continue; // don't double-count same buff from multiple providers
-        seen.add(b.id);
-        const buff = Config.Buffs[b.id];
-        if (buff && buff.benefitsRoles.includes(player.role)) {
-          mult += (this.buffMult[b.id] || 0);
-        }
-      }
-      total += base * mult;
-    }
-    return Math.round(total);
-  },
-
-  calcRaidDPS(groups) {
-    let total = 0;
-    const perGroup = [];
-    for (let i = 0; i < groups.length; i++) {
-      const dps = groups[i].length > 0 ? this.calcGroupDPS(groups[i], i) : 0;
-      perGroup.push(dps);
-      total += dps;
-    }
-    return { total, perGroup };
-  },
-};
 
 // ── UI RENDERING ────────────────────────────────────────────────
 function initRaidDropdown() {
@@ -1837,9 +2061,12 @@ function renderGroups() {
   container.className = 'groups-container';
   if (numGroups === 5) container.classList.add('groups-5');
 
+  const coveredBuffIds = new Set();
+
   for (let gi = 0; gi < numGroups; gi++) {
     const players = State.groups[gi] || [];
     const buffList = getGroupBuffs(players, gi);
+    buffList.forEach(b => coveredBuffIds.add(b.id));
     const roleLabel = getDominantRoleLabel(players);
 
     let slotsHTML = '';
@@ -1886,27 +2113,15 @@ function renderGroups() {
       }
     }
 
-    const groupDPS = players.length > 0 ? DpsModel.calcGroupDPS(players, gi) : 0;
-
     container.innerHTML += `<div class="group-card" data-group="${gi}">
       <div class="group-header">
         <h3>Group ${gi+1}</h3>
         <div style="display:flex;align-items:center;gap:var(--sp-2);">
-          <span class="group-dps">${groupDPS > 0 ? groupDPS.toLocaleString() + ' DPS' : ''}</span>
           <span class="group-role-tag">${roleLabel}</span>
         </div>
       </div>
       <div class="player-list">${slotsHTML}</div>
       <div class="buff-bar">${buffsHTML}</div>
-    </div>`;
-  }
-
-  // Raid total DPS bar
-  if (State.roster.length > 0) {
-    const raid = DpsModel.calcRaidDPS(State.groups);
-    container.innerHTML += `<div class="raid-dps-bar">
-      <span class="raid-dps-label">Estimated Raid DPS</span>
-      <span class="raid-dps-value">${raid.total.toLocaleString()}</span>
     </div>`;
   }
 
@@ -1918,6 +2133,9 @@ function renderGroups() {
     });
   });
 
+  const coveredDebuffIds = getRaidDebuffCoverage(State.groups);
+  renderBuffCatalog(coveredBuffIds, coveredDebuffIds);
+
   updateStatus();
   cleanupOverrides();
   renderManualChanges();
@@ -1925,6 +2143,65 @@ function renderGroups() {
   // Update dropdown
   document.getElementById('raid-select').value = State.selectedRaid;
   document.getElementById('roster-name').textContent = State.rosterName;
+}
+
+// Debuffs aren't part of getGroupBuffs (they're applied to the enemy, not the
+// raid) — a class/spec anywhere in an assigned group is enough to "cover" one.
+function getRaidDebuffCoverage(groups) {
+  const players = groups.flat();
+  const covered = new Set();
+  for (const id of Object.keys(Config.Debuffs)) {
+    const d = Config.Debuffs[id];
+    const has = players.some(p => p.class === d.sourceClass && (!d.sourceSpec || p.spec === d.sourceSpec));
+    if (has) covered.add(id);
+  }
+  return covered;
+}
+
+function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
+  renderBuffRowList('buff-catalog-buffs', Config.Buffs, Config.BuffAbbreviations, id => Config.BuffIconURL(id), coveredBuffIds);
+  renderBuffRowList('buff-catalog-debuffs', Config.Debuffs, Config.DebuffAbbreviations, id => Config.DebuffIconURL(id), coveredDebuffIds);
+}
+
+function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  let html = '';
+  for (const id of Object.keys(dataset)) {
+    const entry = dataset[id];
+    const iconUrl = iconUrlFn(id);
+    const abbr = abbrMap[id] || id;
+    const imgTag = iconUrl
+      ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy">`
+      : esc(abbr);
+    const sourceClassLabel = entry.sourceClass
+      ? entry.sourceClass.charAt(0) + entry.sourceClass.slice(1).toLowerCase()
+      : '';
+    const sourceSpec = entry.sourceSpec || entry.preferSpec || '';
+    const sourceLabel = sourceSpec ? `${sourceSpec} ${sourceClassLabel}` : sourceClassLabel;
+    const sourceColor = entry.sourceClass ? (Config.ClassColors[entry.sourceClass] || 'var(--text-secondary)') : 'var(--text-secondary)';
+    const isCovered = coveredIds.has(id);
+
+    let tooltip = entry.desc || '';
+    let warnBadge = '';
+    if (entry.supersededBy) {
+      const winner = dataset[entry.supersededBy];
+      const winnerName = winner ? winner.name : entry.supersededBy;
+      tooltip += ` Shares a debuff slot with ${winnerName}, which is strictly better.`;
+      warnBadge = ` <span class="buff-row-warn" title="Superseded by ${esc(winnerName)}">&#9888;</span>`;
+    } else if (entry.competesWith && entry.competesWith.length) {
+      const names = entry.competesWith.map(cid => (dataset[cid] ? dataset[cid].name : cid)).join(', ');
+      tooltip += ` Mutually exclusive with: ${names}.`;
+    }
+
+    html += `<div class="buff-row${isCovered ? ' covered' : ''}" title="${esc(tooltip)}">
+      <div class="buff-row-icon">${imgTag}</div>
+      <span class="buff-row-name">${esc(entry.name)}</span>${warnBadge}
+      <span class="buff-row-source" style="color:${sourceColor}">${esc(sourceLabel)}</span>
+    </div>`;
+  }
+  container.innerHTML = html;
 }
 
 function updateStatus() {
@@ -2019,6 +2296,13 @@ let dragData = null;
       srcPlayer.groupNumber = tgtG + 1;
       tgtPlayer.groupNumber = srcG + 1;
     }
+
+    // renderGroups() below rebuilds groups-container, which destroys the
+    // dragged element before the browser can dispatch 'dragend' on it — so
+    // it never bubbles up to the container's dragend listener and the ghost
+    // is left stuck on screen. Clean up here instead of relying on that.
+    ghost.style.display = 'none';
+    dragData = null;
 
     renderGroups();
   });
@@ -2469,7 +2753,9 @@ document.getElementById('btn-do-import').addEventListener('click', async () => {
     document.getElementById('raid-select').value = State.selectedRaid;
     initGroups();
     renderGroups();
-    showToast(`Imported ${result.playerCount} players into ${result.groupCount} groups`);
+    showToast(result.wasUnassigned
+      ? `Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups`
+      : `Imported ${result.playerCount} players into ${result.groupCount} groups`);
   } else {
     showToast('Import failed: ' + result.error);
   }
@@ -2675,9 +2961,12 @@ function renderIdealComp() {
   container.className = 'groups-container';
   if (numGroups === 5) container.classList.add('groups-5');
 
+  const coveredBuffIds = new Set();
+
   for (let gi = 0; gi < numGroups; gi++) {
     const players = groups[gi] || [];
     const buffList = getGroupBuffs(players, gi);
+    buffList.forEach(b => coveredBuffIds.add(b.id));
     const roleLabel = getDominantRoleLabel(players);
 
     let slotsHTML = '';
@@ -2710,18 +2999,15 @@ function renderIdealComp() {
         const iconUrl = Config.BuffIconURL(b.id);
         const hasIcon = iconUrl ? ' has-icon' : '';
         const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy" class="buff-img">` : '';
-        const tooltipHTML = `<div class="buff-tooltip"><div class="tt-name">${esc(b.buff.name)}</div></div>`;
-        buffsHTML += `<div class="buff-icon ${css}${hasIcon}">${imgTag}<span class="buff-label">${abbr}</span>${tooltipHTML}</div>`;
+        const ttAttrs = ` data-tt-name="${esc(b.buff.name)}" data-tt-desc="${esc(b.buff.desc || '')}"`;
+        buffsHTML += `<div class="buff-icon ${css}${hasIcon}"${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></div>`;
       }
     }
-
-    const groupDPS = players.length > 0 ? DpsModel.calcGroupDPS(players, gi) : 0;
 
     container.innerHTML += `<div class="group-card" data-group="${gi}">
       <div class="group-header">
         <h3>Group ${gi+1}</h3>
         <div style="display:flex;align-items:center;gap:var(--sp-2);">
-          <span class="group-dps">${groupDPS > 0 ? groupDPS.toLocaleString() + ' DPS' : ''}</span>
           <span class="group-role-tag">${roleLabel}</span>
         </div>
       </div>
@@ -2730,13 +3016,6 @@ function renderIdealComp() {
     </div>`;
   }
 
-  // Raid total DPS
-  const raid = DpsModel.calcRaidDPS(groups);
-  container.innerHTML += `<div class="raid-dps-bar">
-    <span class="raid-dps-label">Estimated Raid DPS (Ideal Comp)</span>
-    <span class="raid-dps-value">${raid.total.toLocaleString()}</span>
-  </div>`;
-
   // Attach error handlers on buff images
   container.querySelectorAll('.buff-img').forEach(img => {
     img.addEventListener('error', () => {
@@ -2744,6 +3023,9 @@ function renderIdealComp() {
       img.remove();
     });
   });
+
+  const coveredDebuffIds = getRaidDebuffCoverage(groups);
+  renderBuffCatalog(coveredBuffIds, coveredDebuffIds);
 
   document.getElementById('status-text').textContent = `Ideal ${raidInfo.size}-man comp — ${raidInfo.name}`;
 }
@@ -2803,7 +3085,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Config, Import, Optimizer, IdealComp, getGroupBuffs, getBuffPriority, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, DpsModel };
+  module.exports = { Config, Import, Optimizer, IdealComp, getGroupBuffs, getBuffPriority, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA };
 }
 // Also expose on window for browser-based tests
 window.PP = { Config, Import, Optimizer, IdealComp, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA };
