@@ -442,6 +442,104 @@ body::before {
 }
 .buff-picker-reset:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
 
+/* ── Bench panel ── */
+.bench-section {
+  display: none;
+  max-width: 1400px; margin: var(--sp-3) auto 0; padding: 10px 14px;
+  background: var(--bg-card); border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s, background 0.15s;
+}
+.bench-section.drag-over {
+  border-color: var(--accent-gold);
+  background: rgba(255,215,0,0.05);
+}
+.bench-header {
+  display: flex; align-items: baseline; gap: var(--sp-2);
+  margin-bottom: 8px;
+}
+.bench-header h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-secondary); margin: 0;
+}
+.bench-count {
+  display: inline-block; min-width: 16px; padding: 0 5px;
+  background: var(--bg-deepest); border: 1px solid var(--border-subtle);
+  border-radius: 8px; font-size: 10px; color: var(--text-muted);
+  text-align: center;
+}
+.bench-hint { font-size: 10px; color: var(--text-muted); font-style: italic; }
+.bench-list {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+}
+.bench-slot { opacity: 0.75; }
+.bench-slot:hover { opacity: 1; }
+
+@media (max-width: 900px) {
+  .bench-list { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .bench-list { grid-template-columns: 1fr; }
+}
+
+/* ── Player editor popover ── */
+.player-editor-overlay { position: fixed; inset: 0; z-index: 99; background: transparent; }
+.player-editor {
+  position: absolute;
+  background: var(--bg-deepest); border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm); padding: 10px;
+  z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  width: 220px;
+}
+.player-editor-title {
+  font-size: 9px; color: var(--text-muted); padding: 0 0 6px;
+  border-bottom: 1px solid var(--border-subtle); margin-bottom: 8px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.player-editor-field {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+  font-size: 11px; color: var(--text-secondary);
+}
+.player-editor-field > span { width: 42px; flex-shrink: 0; }
+.player-editor-field input,
+.player-editor-field select {
+  flex: 1; min-width: 0;
+  background: var(--bg-card); color: var(--text-primary);
+  border: 1px solid var(--border-subtle); border-radius: 3px;
+  padding: 4px 6px; font-size: 11px; font-family: inherit;
+}
+.player-editor-field input:focus,
+.player-editor-field select:focus { outline: none; border-color: var(--accent-gold); }
+.player-editor-role {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; color: var(--text-muted); margin: 6px 0 2px;
+}
+.player-editor-error {
+  display: none; font-size: 10px; color: #ff6b6b;
+  margin: 4px 0 2px; line-height: 1.3;
+}
+.player-editor-actions {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.pe-actions-right { display: flex; gap: 6px; }
+.pe-btn {
+  background: var(--bg-card); color: var(--text-secondary);
+  border: 1px solid var(--border-subtle); border-radius: 3px;
+  padding: 4px 9px; font-size: 10px; font-family: inherit; cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.pe-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+.pe-btn-primary {
+  background: rgba(255,215,0,0.12); color: var(--accent-gold);
+  border-color: rgba(255,215,0,0.35);
+}
+.pe-btn-primary:hover { background: rgba(255,215,0,0.2); color: var(--accent-gold); }
+.pe-btn-danger { color: #ff8080; border-color: rgba(255,110,110,0.3); }
+.pe-btn-danger:hover { background: rgba(255,80,80,0.12); color: #ff9d9d; }
+
+
 .manual-changes-section {
   display: none;
   max-width: 1400px; margin: var(--sp-3) auto 0; padding: 12px 16px;
@@ -729,6 +827,8 @@ body::before {
   <div class="app-body">
     <div class="main-column">
       <div class="groups-container" id="groups-container"></div>
+
+      <div class="bench-section" id="bench-section"></div>
 
       <div class="manual-changes-section" id="manual-changes"></div>
 
@@ -1050,6 +1150,7 @@ function getBuffPriority(buff, role) {
 const State = {
   roster: [],
   groups: [],
+  bench: [], // players not assigned to a group (groupNumber 0); never touched by the Optimizer
   selectedRaid: 'bt',
   rosterName: 'No Roster Loaded',
   optimizerMode: 'max_dps', // 'max_dps' | 'tank_mit' | 'balanced' | 'relaxed'
@@ -1065,6 +1166,17 @@ const Import = {
     if (Array.isArray(data.slots)) return this._importRaidHelperSlots(data);
     if (Array.isArray(data.signUps)) return this._importRaidHelperSignUps(data);
     return { success:false, error:"No 'slots' or 'signUps' array found in JSON" };
+  },
+
+  // Raid-Helper uses the className field to carry non-raider sign-up categories.
+  // Tentative/Bench players are real people with a real spec who just aren't slotted,
+  // so they land on the bench; Absence entries carry no spec at all and aren't coming,
+  // so they're skipped outright.
+  _categorizeRaidHelperEntry(entry) {
+    const cn = entry && entry.className;
+    if (cn === 'Absence') return 'skip';
+    if (cn === 'Tentative' || cn === 'Bench') return 'bench';
+    return 'raider';
   },
 
   // Resolve a Raid-Helper slot/signup entry (className + specName) to a class/spec/role.
@@ -1102,25 +1214,33 @@ const Import = {
     if (maxGroup === 0) return { success:false, error:'No groups found in data' };
 
     const roster = [];
+    const bench = [];
     const groups = [];
+    let skipped = 0;
     for (let i = 0; i < maxGroup; i++) groups.push([]);
 
     for (const slot of data.slots) {
+      const category = this._categorizeRaidHelperEntry(slot);
+      if (category === 'skip') { skipped++; continue; }
+
       const { classFile, specName, role } = this._resolveRaidHelperEntry(slot);
-      if (classFile) {
-        const player = {
-          uid: nextUid(),
-          name: slot.name || ('Unknown-' + (slot.slotNumber || 0)),
-          class: classFile,
-          spec: specName,
-          role: role,
-          groupNumber: slot.groupNumber,
-          imported: true,
-        };
-        roster.push(player);
-        const g = slot.groupNumber;
-        if (g >= 1 && g <= maxGroup) groups[g-1].push(player);
-      }
+      if (!classFile) { skipped++; continue; }
+
+      const player = {
+        uid: nextUid(),
+        name: slot.name || ('Unknown-' + (slot.slotNumber || 0)),
+        class: classFile,
+        spec: specName,
+        role: role,
+        groupNumber: category === 'bench' ? 0 : slot.groupNumber,
+        imported: true,
+      };
+
+      if (category === 'bench') { bench.push(player); continue; }
+
+      roster.push(player);
+      const g = slot.groupNumber;
+      if (g >= 1 && g <= maxGroup) groups[g-1].push(player);
     }
 
     // Auto-detect raid
@@ -1132,7 +1252,9 @@ const Import = {
 
     State.roster = roster;
     State.groups = groups;
-    return { success:true, playerCount:roster.length, groupCount:maxGroup };
+    State.bench = bench;
+    return { success:true, playerCount:roster.length, groupCount:maxGroup,
+             benchCount:bench.length, skippedCount:skipped };
   },
 
   // Format 2: the raid-helper.dev/api/raidplan/{id} "signUps" export — the
@@ -1141,18 +1263,25 @@ const Import = {
   // the Optimizer to place everyone properly.
   _importRaidHelperSignUps(data) {
     const roster = [];
+    const bench = [];
+    let skipped = 0;
     for (const signUp of data.signUps) {
+      const category = this._categorizeRaidHelperEntry(signUp);
+      if (category === 'skip') { skipped++; continue; }
+
       const { classFile, specName, role } = this._resolveRaidHelperEntry(signUp);
-      if (classFile) {
-        roster.push({
-          uid: nextUid(),
-          name: signUp.name || ('Unknown-' + (signUp.id || roster.length)),
-          class: classFile,
-          spec: specName,
-          role: role,
-          imported: true,
-        });
-      }
+      if (!classFile) { skipped++; continue; }
+
+      const player = {
+        uid: nextUid(),
+        name: signUp.name || ('Unknown-' + (signUp.id || roster.length)),
+        class: classFile,
+        spec: specName,
+        role: role,
+        imported: true,
+      };
+      if (category === 'bench') { player.groupNumber = 0; bench.push(player); }
+      else roster.push(player);
     }
     if (roster.length === 0) return { success:false, error:'No valid players found in sign-ups' };
 
@@ -1175,9 +1304,11 @@ const Import = {
 
     State.roster = roster;
     State.groups = groups;
+    State.bench = bench;
     Optimizer.optimize();
 
-    return { success:true, playerCount:roster.length, groupCount:numGroups, wasUnassigned:true };
+    return { success:true, playerCount:roster.length, groupCount:numGroups, wasUnassigned:true,
+             benchCount:bench.length, skippedCount:skipped };
   },
 
   // Compact addon-friendly export string
@@ -1271,6 +1402,9 @@ const Import = {
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
       })),
+      bench: (State.bench || []).map(p => ({
+        name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:0,
+      })),
     };
   },
 
@@ -1291,6 +1425,10 @@ const Import = {
       const g = player.groupNumber;
       if (g >= 1 && g <= numGroups) groups[g-1].push(player);
     }
+    State.bench = (data.bench || []).map(p => ({
+      uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role,
+      groupNumber: 0, imported: true,
+    }));
     State.roster = roster;
     State.groups = groups;
     State.rosterName = data.name || 'Loaded Roster';
@@ -1391,6 +1529,7 @@ const RandomRoster = {
     State.roster = roster;
     State.groups = groups;
     State.rosterName = 'Random ' + size + '-man Roster';
+    State.bench = [];
     State.buffOverrides = {};
   },
 };
@@ -2003,6 +2142,174 @@ function getGroupBuffs(players, groupIndex) {
   return buffList;
 }
 
+// ── ROSTER EDITING ─────────────────────────────────
+// Manual edits to the plan: change a player's class/spec, add a player to a group,
+// bench a player, bring one back, or delete a benched player for good.
+//
+// Two invariants hold after every operation here:
+//   - State.roster is exactly the assigned players (State.groups flattened). The bench
+//     is deliberately NOT part of it, because Optimizer.optimize() overwrites roster
+//     with groups.flat() and would otherwise erase the bench on every optimize run.
+//   - A player's role is always derived from their spec, never set by hand, so the
+//     optimizer can never score a player against a role their spec doesn't have.
+const RosterEdit = {
+  MAX_GROUP_SIZE: 5,
+
+  // Display order for the class dropdown.
+  ClassList: ['WARRIOR','PALADIN','HUNTER','ROGUE','PRIEST','SHAMAN','MAGE','WARLOCK','DRUID'],
+
+  ClassLabel(classFile) {
+    if (!classFile) return '';
+    return classFile.charAt(0) + classFile.slice(1).toLowerCase();
+  },
+
+  // [{ name, role }] for a class, in Config.Specs order.
+  SpecsForClass(classFile) {
+    const specs = Config.Specs[classFile];
+    if (!specs) return [];
+    return Object.keys(specs)
+      .sort((a,b) => Number(a) - Number(b))
+      .map(k => ({ name: specs[k].name, role: specs[k].role }));
+  },
+
+  RoleForSpec(classFile, specName) {
+    const specs = Config.Specs[classFile];
+    if (!specs) return null;
+    for (const k of Object.keys(specs)) {
+      if (specs[k].name === specName) return specs[k].role;
+    }
+    return null;
+  },
+
+  // State.roster mirrors the group assignments; the bench is tracked separately.
+  syncRoster() {
+    State.roster = (State.groups || []).flat();
+    return State.roster;
+  },
+
+  FindPlayer(uid) {
+    if (!uid) return null;
+    for (let gi = 0; gi < (State.groups || []).length; gi++) {
+      const slot = (State.groups[gi] || []).findIndex(p => p.uid === uid);
+      if (slot !== -1) return { player: State.groups[gi][slot], groupIdx: gi, slot, benched: false };
+    }
+    const bi = (State.bench || []).findIndex(p => p.uid === uid);
+    if (bi !== -1) return { player: State.bench[bi], groupIdx: null, slot: bi, benched: true };
+    return null;
+  },
+
+  // A buff override is keyed "groupIdx:playerName:element|aura". Changing a player's
+  // spec or class can invalidate the totem/aura they were overridden to provide, so
+  // drop their overrides rather than leave a stale one pointing at a buff they no
+  // longer have. Name-keyed, matching the existing override scheme.
+  ClearOverridesFor(playerName) {
+    if (!playerName || !State.buffOverrides) return 0;
+    let cleared = 0;
+    for (const key of Object.keys(State.buffOverrides)) {
+      const parts = key.split(':');
+      if (parts[1] === playerName) { delete State.buffOverrides[key]; cleared++; }
+    }
+    return cleared;
+  },
+
+  // Change name/class/spec on an existing player. Role follows the new spec.
+  UpdatePlayer(uid, changes) {
+    if (!uid || !changes) return { success:false, error:'Nothing to update' };
+    const found = this.FindPlayer(uid);
+    if (!found) return { success:false, error:'Player not found' };
+
+    const player = found.player;
+    const classFile = changes.class || player.class;
+    const specName = changes.spec || player.spec;
+    const role = this.RoleForSpec(classFile, specName);
+    if (!role) return { success:false, error:'Unknown spec "' + specName + '" for ' + this.ClassLabel(classFile) };
+
+    const name = (changes.name != null ? String(changes.name).trim() : player.name);
+    if (!name) return { success:false, error:'Name cannot be empty' };
+
+    const specChanged = (player.class !== classFile) || (player.spec !== specName);
+    const oldName = player.name;
+
+    player.name = name;
+    player.class = classFile;
+    player.spec = specName;
+    player.role = role;
+
+    if (specChanged || name !== oldName) this.ClearOverridesFor(oldName);
+    this.syncRoster();
+    return { success:true, player };
+  },
+
+  AddPlayer(groupIdx, spec) {
+    if (!spec) return { success:false, error:'No player details given' };
+    const groups = State.groups || [];
+    if (!(groupIdx >= 0 && groupIdx < groups.length)) return { success:false, error:'Invalid group' };
+    if (!groups[groupIdx]) groups[groupIdx] = [];
+    if (groups[groupIdx].length >= this.MAX_GROUP_SIZE) return { success:false, error:'Group ' + (groupIdx+1) + ' is full' };
+
+    const name = String(spec.name || '').trim();
+    if (!name) return { success:false, error:'Name cannot be empty' };
+    const role = this.RoleForSpec(spec.class, spec.spec);
+    if (!role) return { success:false, error:'Unknown spec "' + spec.spec + '" for ' + this.ClassLabel(spec.class) };
+
+    const player = {
+      uid: nextUid(),
+      name,
+      class: spec.class,
+      spec: spec.spec,
+      role,
+      groupNumber: groupIdx + 1,
+      imported: false,
+    };
+    groups[groupIdx].push(player);
+    this.syncRoster();
+    return { success:true, player };
+  },
+
+  // Group -> bench. Non-destructive: the player stays in State.bench and can be dragged back.
+  BenchPlayer(uid) {
+    const found = this.FindPlayer(uid);
+    if (!found) return { success:false, error:'Player not found' };
+    if (found.benched) return { success:false, error:'Player is already benched' };
+
+    State.groups[found.groupIdx].splice(found.slot, 1);
+    found.player.groupNumber = 0;
+    if (!State.bench) State.bench = [];
+    State.bench.push(found.player);
+    this.ClearOverridesFor(found.player.name);
+    this.syncRoster();
+    return { success:true, player: found.player };
+  },
+
+  // Bench -> group.
+  UnbenchPlayer(uid, groupIdx) {
+    const found = this.FindPlayer(uid);
+    if (!found) return { success:false, error:'Player not found' };
+    if (!found.benched) return { success:false, error:'Player is not benched' };
+    const groups = State.groups || [];
+    if (!(groupIdx >= 0 && groupIdx < groups.length)) return { success:false, error:'Invalid group' };
+    if (!groups[groupIdx]) groups[groupIdx] = [];
+    if (groups[groupIdx].length >= this.MAX_GROUP_SIZE) return { success:false, error:'Group ' + (groupIdx+1) + ' is full' };
+
+    State.bench.splice(found.slot, 1);
+    found.player.groupNumber = groupIdx + 1;
+    groups[groupIdx].push(found.player);
+    this.syncRoster();
+    return { success:true, player: found.player };
+  },
+
+  // Permanent removal, from wherever the player currently sits.
+  DeletePlayer(uid) {
+    const found = this.FindPlayer(uid);
+    if (!found) return { success:false, error:'Player not found' };
+    if (found.benched) State.bench.splice(found.slot, 1);
+    else State.groups[found.groupIdx].splice(found.slot, 1);
+    this.ClearOverridesFor(found.player.name);
+    this.syncRoster();
+    return { success:true, player: found.player };
+  },
+};
+
 // ── UI RENDERING ────────────────────────────────────────────────
 function initRaidDropdown() {
   const sel = document.getElementById('raid-select');
@@ -2191,6 +2498,7 @@ function renderGroups() {
   renderBuffCatalog(coveredBuffIds, coveredDebuffIds);
 
   updateStatus();
+  renderBench();
   cleanupOverrides();
   renderManualChanges();
 
@@ -2262,8 +2570,10 @@ function updateStatus() {
   const total = State.roster.length;
   const raidInfo = Config.Raids[State.selectedRaid];
   const max = raidInfo ? raidInfo.size : 25;
+  const benched = (State.bench || []).length;
+  const benchNote = benched > 0 ? ` · ${benched} benched` : '';
   document.getElementById('status-text').textContent = total > 0
-    ? `${total}/${max} players loaded`
+    ? `${total}/${max} players loaded${benchNote}`
     : 'Ready — import a roster to begin';
 }
 
@@ -2331,8 +2641,22 @@ let dragData = null;
     if (!slot || !dragData) return;
     e.preventDefault();
 
+    const tgtGroupIdx = parseInt(slot.dataset.group);
+
+    // Dragged off the bench and into a group.
+    if (dragData.group === 'bench') {
+      const uid = dragData.uid;
+      ghost.style.display = 'none';
+      dragData = null;
+      const result = RosterEdit.UnbenchPlayer(uid, tgtGroupIdx);
+      if (!result.success) { showToast(result.error); return; }
+      renderGroups();
+      showToast(`${result.player.name} joined group ${tgtGroupIdx + 1}`);
+      return;
+    }
+
     const srcG = dragData.group, srcS = dragData.slot;
-    const tgtG = parseInt(slot.dataset.group), tgtS = parseInt(slot.dataset.slot);
+    const tgtG = tgtGroupIdx, tgtS = parseInt(slot.dataset.slot);
 
     if (srcG === tgtG && srcS === tgtS) return;
 
@@ -2573,6 +2897,291 @@ function closeBuffPicker() {
   });
 })();
 
+// ── BENCH PANEL ─────────────────────────────────────────────────
+// Players who are in the roster but not slotted into a party. The Optimizer
+// never sees them; they sit here until dragged back in or deleted.
+function renderBench() {
+  const section = document.getElementById('bench-section');
+  if (!section) return;
+
+  const bench = State.bench || [];
+  if (bench.length === 0) {
+    section.style.display = 'none';
+    section.innerHTML = '';
+    return;
+  }
+
+  section.style.display = State.activeTab === 'plan' ? 'block' : 'none';
+
+  let slotsHTML = '';
+  for (let bi = 0; bi < bench.length; bi++) {
+    const p = bench[bi];
+    const color = Config.ClassColors[p.class] || 'var(--text-primary)';
+    const displayName = (p.name || 'Unknown').split('-')[0];
+    const specClass = p.spec
+      ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : ''))
+      : '';
+    slotsHTML += `<div class="player-slot bench-slot" draggable="true" data-bench-slot="${bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
+      ${getRoleIcon(p.role)}
+      <div class="player-info">
+        <span class="player-name" style="color:${color}">${esc(displayName)}</span>
+        <span class="player-spec">${esc(specClass)}</span>
+      </div>
+      ${getDragHandle()}
+    </div>`;
+  }
+
+  section.innerHTML = `<div class="bench-header">
+      <h3>Bench <span class="bench-count">${bench.length}</span></h3>
+      <span class="bench-hint">Drag into a group to bring someone in</span>
+    </div>
+    <div class="bench-list" id="bench-list">${slotsHTML}</div>`;
+}
+
+// ── PLAYER EDITOR POPOVER ───────────────────────────────────────
+const ROLE_LABELS = {
+  tank: 'Tank', healer: 'Healer',
+  melee_dps: 'Melee DPS', ranged_dps: 'Ranged DPS', caster_dps: 'Caster DPS',
+};
+
+// Opened by clicking a player slot (edit) or an empty slot (add). Follows the
+// same anchored-popover pattern as the buff picker.
+function closePlayerEditor() {
+  const existing = document.getElementById('active-player-editor');
+  if (existing) existing.remove();
+  const overlay = document.querySelector('.player-editor-overlay');
+  if (overlay) overlay.remove();
+}
+
+// opts: { uid } to edit an existing player, or { groupIdx } to add a new one.
+function showPlayerEditor(anchorEl, opts) {
+  closePlayerEditor();
+  closeBuffPicker();
+
+  const isAdd = !opts.uid;
+  const found = isAdd ? null : RosterEdit.FindPlayer(opts.uid);
+  if (!isAdd && !found) return;
+
+  const player = found ? found.player : null;
+  const benched = !!(found && found.benched);
+  const curClass = player ? player.class : 'WARRIOR';
+  const curSpec = player ? player.spec : RosterEdit.SpecsForClass('WARRIOR')[0].name;
+  const curName = player ? (player.name || '') : '';
+
+  const classOptions = RosterEdit.ClassList.map(c =>
+    `<option value="${c}"${c === curClass ? ' selected' : ''}>${esc(RosterEdit.ClassLabel(c))}</option>`
+  ).join('');
+  const specOptions = RosterEdit.SpecsForClass(curClass).map(sp =>
+    `<option value="${esc(sp.name)}"${sp.name === curSpec ? ' selected' : ''}>${esc(sp.name)}</option>`
+  ).join('');
+
+  const title = isAdd
+    ? 'Add player to group ' + (opts.groupIdx + 1)
+    : (benched ? 'Edit benched player' : 'Edit player');
+
+  // A benched player is deleted outright; an assigned player is only benched.
+  const removeLabel = isAdd ? '' : (benched ? 'Delete' : 'Bench');
+  const removeTitle = benched
+    ? 'Remove this player from the roster for good'
+    : 'Move this player to the bench';
+
+  const editor = document.createElement('div');
+  editor.className = 'player-editor';
+  editor.id = 'active-player-editor';
+  editor.innerHTML = `
+    <div class="player-editor-title">${esc(title)}</div>
+    <label class="player-editor-field">
+      <span>Name</span>
+      <input type="text" id="pe-name" value="${esc(curName)}" maxlength="32" autocomplete="off" spellcheck="false">
+    </label>
+    <label class="player-editor-field">
+      <span>Class</span>
+      <select id="pe-class">${classOptions}</select>
+    </label>
+    <label class="player-editor-field">
+      <span>Spec</span>
+      <select id="pe-spec">${specOptions}</select>
+    </label>
+    <div class="player-editor-role" id="pe-role"></div>
+    <div class="player-editor-error" id="pe-error"></div>
+    <div class="player-editor-actions">
+      ${removeLabel ? `<button type="button" class="pe-btn pe-btn-danger" id="pe-remove" title="${esc(removeTitle)}">${esc(removeLabel)}</button>` : '<span></span>'}
+      <div class="pe-actions-right">
+        <button type="button" class="pe-btn" id="pe-cancel">Cancel</button>
+        <button type="button" class="pe-btn pe-btn-primary" id="pe-save">${isAdd ? 'Add' : 'Save'}</button>
+      </div>
+    </div>`;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'player-editor-overlay';
+  overlay.addEventListener('click', closePlayerEditor);
+  document.body.appendChild(overlay);
+  document.body.appendChild(editor);
+
+  // Anchor below the slot, flipping above when it would run off the viewport.
+  const rect = anchorEl.getBoundingClientRect();
+  const h = editor.offsetHeight;
+  let top = rect.bottom + 6 + window.scrollY;
+  if (rect.bottom + h + 12 > window.innerHeight) {
+    top = Math.max(window.scrollY + 8, rect.top - h - 6 + window.scrollY);
+  }
+  let left = rect.left + window.scrollX;
+  const overflowX = (left - window.scrollX) + editor.offsetWidth + 12 - window.innerWidth;
+  if (overflowX > 0) left -= overflowX;
+  editor.style.top = top + 'px';
+  editor.style.left = Math.max(window.scrollX + 8, left) + 'px';
+
+  const nameInput = editor.querySelector('#pe-name');
+  const classSel = editor.querySelector('#pe-class');
+  const specSel = editor.querySelector('#pe-spec');
+  const roleEl = editor.querySelector('#pe-role');
+  const errorEl = editor.querySelector('#pe-error');
+
+  function refreshRole() {
+    const role = RosterEdit.RoleForSpec(classSel.value, specSel.value);
+    roleEl.innerHTML = role
+      ? `${getRoleIcon(role)}<span>Role: ${esc(ROLE_LABELS[role] || role)}</span>`
+      : '';
+  }
+
+  // Class change repopulates specs, since specs are class-specific.
+  classSel.addEventListener('change', () => {
+    const specs = RosterEdit.SpecsForClass(classSel.value);
+    specSel.innerHTML = specs.map(sp => `<option value="${esc(sp.name)}">${esc(sp.name)}</option>`).join('');
+    refreshRole();
+  });
+  specSel.addEventListener('change', refreshRole);
+  refreshRole();
+
+  function showError(msg) { errorEl.textContent = msg; errorEl.style.display = 'block'; }
+
+  function commit() {
+    const changes = { name: nameInput.value, class: classSel.value, spec: specSel.value };
+    const result = isAdd
+      ? RosterEdit.AddPlayer(opts.groupIdx, changes)
+      : RosterEdit.UpdatePlayer(opts.uid, changes);
+
+    if (!result.success) { showError(result.error); return; }
+    closePlayerEditor();
+    renderGroups();
+    showToast(isAdd ? `Added ${result.player.name}` : `Updated ${result.player.name}`);
+  }
+
+  editor.querySelector('#pe-save').addEventListener('click', commit);
+  editor.querySelector('#pe-cancel').addEventListener('click', closePlayerEditor);
+  nameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+  });
+
+  const removeBtn = editor.querySelector('#pe-remove');
+  if (removeBtn) {
+    removeBtn.addEventListener('click', () => {
+      const result = benched ? RosterEdit.DeletePlayer(opts.uid) : RosterEdit.BenchPlayer(opts.uid);
+      if (!result.success) { showError(result.error); return; }
+      closePlayerEditor();
+      renderGroups();
+      showToast(benched ? `Removed ${result.player.name}` : `Benched ${result.player.name}`);
+    });
+  }
+
+  nameInput.focus();
+  nameInput.select();
+}
+
+// Escape closes the editor, matching the modals elsewhere in the app.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closePlayerEditor();
+});
+
+// Player editor delegation — attached once. Clicking a slot opens the editor;
+// the buff-icon handler stops propagation, so buff clicks never reach this.
+(function initPlayerEditor() {
+  document.getElementById('groups-container').addEventListener('click', e => {
+    if (e.target.closest('.buff-icon')) return;
+    const slot = e.target.closest('.player-slot');
+    if (!slot) return;
+    const gi = parseInt(slot.dataset.group);
+    const si = parseInt(slot.dataset.slot);
+    if (isNaN(gi)) return;
+    const player = (State.groups[gi] || [])[si];
+    if (player) showPlayerEditor(slot, { uid: player.uid });
+    else showPlayerEditor(slot, { groupIdx: gi });
+  });
+
+  document.getElementById('bench-section').addEventListener('click', e => {
+    const slot = e.target.closest('.bench-slot');
+    if (!slot) return;
+    const uid = slot.dataset.uid;
+    if (uid) showPlayerEditor(slot, { uid });
+  });
+})();
+
+// ── BENCH DRAG & DROP ───────────────────────────────────────────
+// Shares the `dragData` object with the group drag handlers above; a bench
+// source is marked with group === 'bench' so each side can tell them apart.
+(function initBenchDragDrop() {
+  const section = document.getElementById('bench-section');
+  const ghost = document.getElementById('drag-ghost');
+
+  section.addEventListener('dragstart', e => {
+    const slot = e.target.closest('.bench-slot[draggable="true"]');
+    if (!slot) return;
+    const bi = parseInt(slot.dataset.benchSlot);
+    const p = (State.bench || [])[bi];
+    if (!p) return;
+    dragData = { group: 'bench', slot: bi, uid: p.uid };
+    slot.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    const img = new Image(); img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+    e.dataTransfer.setDragImage(img, 0, 0);
+    ghost.textContent = p.name.split('-')[0];
+    ghost.style.color = Config.ClassColors[p.class] || 'var(--text-primary)';
+    ghost.style.display = 'block';
+  });
+
+  section.addEventListener('drag', e => {
+    if (e.clientX > 0) {
+      ghost.style.left = (e.clientX + 12) + 'px';
+      ghost.style.top = (e.clientY - 10) + 'px';
+    }
+  });
+
+  section.addEventListener('dragend', e => {
+    const slot = e.target.closest('.bench-slot');
+    if (slot) slot.classList.remove('dragging');
+    ghost.style.display = 'none';
+    dragData = null;
+    section.classList.remove('drag-over');
+  });
+
+  // Dropping anywhere on the bench panel benches the dragged group member.
+  section.addEventListener('dragover', e => {
+    if (!dragData || dragData.group === 'bench') return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    section.classList.add('drag-over');
+  });
+
+  section.addEventListener('dragleave', e => {
+    if (!section.contains(e.relatedTarget)) section.classList.remove('drag-over');
+  });
+
+  section.addEventListener('drop', e => {
+    if (!dragData || dragData.group === 'bench') return;
+    e.preventDefault();
+    section.classList.remove('drag-over');
+    const player = (State.groups[dragData.group] || [])[dragData.slot];
+    ghost.style.display = 'none';
+    const uid = player && player.uid;
+    dragData = null;
+    if (!uid) return;
+    const result = RosterEdit.BenchPlayer(uid);
+    if (!result.success) { showToast(result.error); return; }
+    renderGroups();
+    showToast(`Benched ${result.player.name}`);
+  });
+})();
+
 function renderManualChanges() {
   const container = document.getElementById('manual-changes');
   const entries = Object.entries(State.buffOverrides);
@@ -2807,9 +3416,15 @@ document.getElementById('btn-do-import').addEventListener('click', async () => {
     document.getElementById('raid-select').value = State.selectedRaid;
     initGroups();
     renderGroups();
+    // Tentative/Bench sign-ups are parked on the bench and Absences are dropped,
+    // so report all three counts rather than silently losing people.
+    const extra = [];
+    if (result.benchCount) extra.push(`${result.benchCount} benched`);
+    if (result.skippedCount) extra.push(`${result.skippedCount} skipped`);
+    const suffix = extra.length ? ` (${extra.join(', ')})` : '';
     showToast(result.wasUnassigned
-      ? `Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups`
-      : `Imported ${result.playerCount} players into ${result.groupCount} groups`);
+      ? `Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups${suffix}`
+      : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}`);
   } else {
     showToast('Import failed: ' + result.error);
   }
@@ -2834,6 +3449,7 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
 document.getElementById('btn-clear').addEventListener('click', () => {
   State.roster = [];
   State.groups = [];
+  State.bench = [];
   State.rosterName = 'No Roster Loaded';
   State.buffOverrides = {};
   initGroups();
@@ -2990,7 +3606,7 @@ function switchTab(tab) {
   });
 
   // Show/hide plan-mode-only elements
-  const planOnly = ['roster-bar', 'manual-changes', 'action-bar'].map(
+  const planOnly = ['roster-bar', 'manual-changes', 'action-bar', 'bench-section'].map(
     cls => document.querySelector('.' + cls)
   ).filter(Boolean);
   for (const el of planOnly) {
