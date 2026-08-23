@@ -224,6 +224,7 @@ body::before {
   font-size: 6px; font-weight: 700; color: #fff;
   border: 1px solid rgba(255,255,255,0.15);
 }
+.buff-row-icon { cursor: help; }
 .buff-row-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .buff-row-name {
   font-size: 10px; font-weight: 600; color: var(--text-primary);
@@ -389,16 +390,16 @@ body::before {
   display: none;
   position: fixed;
   background: var(--bg-deepest); color: var(--text-primary);
-  padding: 6px 10px; border-radius: var(--radius-sm);
-  font-size: 10px; white-space: normal; width: 220px;
+  padding: 9px 12px; border-radius: var(--radius-sm);
+  font-size: 12px; white-space: normal; width: 280px;
   border: 1px solid var(--border-medium);
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
   z-index: 9999; letter-spacing: 0;
 }
-#buff-tooltip-portal .tt-name { font-weight: 600; color: var(--accent-gold); margin-bottom: 3px; }
-#buff-tooltip-portal .tt-desc { color: var(--text-secondary); font-size: 10px; line-height: 1.4; margin-bottom: 3px; }
-#buff-tooltip-portal .tt-source { font-weight: 500; font-size: 9px; margin-top: 2px; color: var(--text-muted); }
+#buff-tooltip-portal .tt-name { font-weight: 600; font-size: 13px; color: var(--accent-gold); margin-bottom: 4px; }
+#buff-tooltip-portal .tt-desc { color: var(--text-secondary); font-size: 12px; line-height: 1.5; margin-bottom: 4px; }
+#buff-tooltip-portal .tt-source { font-weight: 500; font-size: 11px; margin-top: 3px; color: var(--text-muted); }
 .buff-icon.swappable { cursor: pointer; }
 .buff-icon.swappable::after {
   content: ''; position: absolute; bottom: -2px; right: -2px;
@@ -2557,8 +2558,13 @@ function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds)
       tooltip += ` Mutually exclusive with: ${names}.`;
     }
 
-    html += `<div class="buff-row${isCovered ? ' covered' : ''}" title="${esc(tooltip)}">
-      <div class="buff-row-icon">${imgTag}</div>
+    const statusLabel = isCovered ? 'Covered by this raid' : 'Not covered';
+    const sourceLine = sourceLabel ? `${sourceLabel} - ${statusLabel}` : statusLabel;
+    const ttAttrs = ` data-tt-name="${esc(entry.name)}" data-tt-desc="${esc(tooltip.trim())}"`
+      + ` data-tt-source="${esc(sourceLine)}" data-tt-source-color="${sourceColor}"`;
+
+    html += `<div class="buff-row${isCovered ? ' covered' : ''}">
+      <div class="buff-row-icon"${ttAttrs}>${imgTag}</div>
       <span class="buff-row-name">${esc(entry.name)}</span>${warnBadge}
       <span class="buff-row-source" style="color:${sourceColor}">${esc(sourceLabel)}</span>
     </div>`;
@@ -3717,7 +3723,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (!portal) return;
 
   document.addEventListener('mouseover', function(e) {
-    const icon = e.target.closest('.buff-icon[data-tt-name]');
+    const icon = e.target.closest('[data-tt-name]');
     if (!icon) return;
 
     const name = icon.getAttribute('data-tt-name');
@@ -3733,12 +3739,13 @@ document.addEventListener('DOMContentLoaded', function() {
     portal.style.display = 'block';
 
     const rect = icon.getBoundingClientRect();
-    let left = rect.left + rect.width / 2 - 110;
+    const width = portal.offsetWidth;
+    let left = rect.left + rect.width / 2 - width / 2;
     let top = rect.top - portal.offsetHeight - 8;
 
     // Keep within viewport
     if (left < 4) left = 4;
-    if (left + 220 > window.innerWidth) left = window.innerWidth - 224;
+    if (left + width > window.innerWidth) left = window.innerWidth - width - 4;
     if (top < 4) { top = rect.bottom + 8; }
 
     portal.style.left = left + 'px';
@@ -3746,7 +3753,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   document.addEventListener('mouseout', function(e) {
-    const icon = e.target.closest('.buff-icon[data-tt-name]');
+    const icon = e.target.closest('[data-tt-name]');
     if (!icon) return;
     const related = e.relatedTarget;
     if (related && icon.contains(related)) return;
