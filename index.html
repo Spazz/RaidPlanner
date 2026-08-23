@@ -819,6 +819,7 @@ body::before {
     <div class="roster-actions">
       <button class="roster-btn" id="btn-save" aria-label="Save current roster">Save</button>
       <button class="roster-btn" id="btn-load" aria-label="Load a saved roster">Load</button>
+      <button class="roster-btn" id="btn-share" aria-label="Copy a shareable link to this layout">Share Link</button>
       <button class="roster-btn" id="btn-copy-addon" aria-label="Copy roster as addon string to clipboard">Copy Addon String</button>
       <button class="roster-btn" id="btn-export-json" aria-label="Export roster as JSON file">Export JSON</button>
       <button class="roster-btn" id="btn-copy-json" aria-label="Copy roster JSON to clipboard">Copy JSON</button>
@@ -1148,12 +1149,16 @@ function getBuffPriority(buff, role) {
 }
 
 // ── STATE ───────────────────────────────────────────────────────
+// Placeholder shown while the planner is empty. It is a UI label, not a real
+// roster name, so it must never travel in an export or a share link.
+const NO_ROSTER_NAME = 'No Roster Loaded';
+
 const State = {
   roster: [],
   groups: [],
   bench: [], // players not assigned to a group (groupNumber 0); never touched by the Optimizer
   selectedRaid: 'bt',
-  rosterName: 'No Roster Loaded',
+  rosterName: NO_ROSTER_NAME,
   optimizerMode: 'max_dps', // 'max_dps' | 'tank_mit' | 'balanced' | 'relaxed'
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
   activeTab: 'plan', // 'plan' | 'ideal'
@@ -1349,15 +1354,119 @@ const Import = {
     return parts.join(':');
   },
 
+  // v2 adds the two things the addon string drops: roster name and bench.
+  // Layout: PP:2:<raid>:<encodedName>:<bench>:<group1>:<group2>:...
+  // The addon still reads v1, so exportAddonString() is left alone.
+  exportShareString() {
+    const cc = this.classCode, sc = this.specCode, rc = this.roleCode;
+    const encode = list => list.map(p =>
+      `${p.name}.${cc[p.class] || p.class}.${sc[p.spec] || p.spec}.${rc[p.role] || p.role}`
+    ).join(',');
+
+    const name = State.rosterName === NO_ROSTER_NAME ? '' : (State.rosterName || '');
+    const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
+    for (const g of State.groups) parts.push(encode(g));
+    return parts.join(':');
+  },
+
+  // Base64url so the payload survives a URL fragment untouched (no +, / or =).
+  encodeSharePayload(str) {
+    if (!str) return '';
+    const b64 = btoa(unescape(encodeURIComponent(str)));
+    return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  },
+
+  decodeSharePayload(code) {
+    if (!code) return null;
+    if (!/^[A-Za-z0-9_-]+$/.test(code)) return null;
+    try {
+      const b64 = code.replace(/-/g, '+').replace(/_/g, '/');
+      return decodeURIComponent(escape(atob(b64)));
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Shared by the v1 and v2 readers: "Name.CC.SS.R,Name.CC.SS.R" -> player objects
+  _parsePlayerList(listStr, groupNumber) {
+    const ccRev = {}; for (const [k,v] of Object.entries(this.classCode)) ccRev[v] = k;
+    const scRev = {}; for (const [k,v] of Object.entries(this.specCode)) scRev[v] = k;
+    const rcRev = {}; for (const [k,v] of Object.entries(this.roleCode)) rcRev[v] = k;
+
+    const players = [];
+    if (!listStr) return players;
+    for (const ps of listStr.split(',')) {
+      const [name, cCode, sCode, rCode] = ps.split('.');
+      if (!name) continue;
+      players.push({
+        name,
+        class: ccRev[cCode] || cCode,
+        spec: scRev[sCode] || sCode,
+        role: rcRev[rCode] || rCode,
+        groupNumber,
+      });
+    }
+    return players;
+  },
+
+  // Reads a v2 share string into the shape loadRoster() already understands.
+  // Parsing never touches State, so a damaged link cannot wreck a live layout.
+  _parseShareString(parts) {
+    if (parts.length < 6) return { success:false, error:'Share link is incomplete' };
+    const raid = parts[2];
+    if (!Config.Raids[raid]) return { success:false, error:'Unknown raid: ' + raid };
+
+    let name = '';
+    try { name = decodeURIComponent(parts[3] || ''); }
+    catch (e) { return { success:false, error:'Share link is damaged' }; }
+
+    const bench = this._parsePlayerList(parts[4], 0);
+    const players = [];
+    const numGroups = Config.Raids[raid].groups;
+    for (let gi = 0; gi < numGroups && (gi + 5) < parts.length; gi++) {
+      players.push(...this._parsePlayerList(parts[gi + 5], gi + 1));
+    }
+    if (players.length === 0 && bench.length === 0) {
+      return { success:false, error:'Share link contains no players' };
+    }
+
+    return {
+      success: true,
+      name: name || 'Shared Roster',
+      playerCount: players.length,
+      groupCount: numGroups,
+      data: { name: name || 'Shared Roster', raid, players, bench },
+    };
+  },
+
+  // What does this link hold? Answers without loading it, so the user can be
+  // asked before their current layout is replaced.
+  previewShareString(str) {
+    const parts = String(str || '').trim().split(':');
+    if (parts[0] !== 'PP') return { success:false, error:'Not a Party Planner share link' };
+    if (parts[1] !== '2') return { success:false, error:'Unknown share version: ' + parts[1] };
+    const parsed = this._parseShareString(parts);
+    if (!parsed.success) return parsed;
+    return { success:true, name:parsed.name, playerCount:parsed.playerCount };
+  },
+
+  _importShareString(parts) {
+    const parsed = this._parseShareString(parts);
+    if (!parsed.success) return parsed;
+    this.loadRoster(parsed.data);
+    return { success:true, playerCount:parsed.playerCount, groupCount:parsed.groupCount, name:State.rosterName };
+  },
+
   importAddonString(str) {
     // Reverse lookup maps
     const ccRev = {}; for (const [k,v] of Object.entries(this.classCode)) ccRev[v] = k;
     const scRev = {}; for (const [k,v] of Object.entries(this.specCode)) scRev[v] = k;
     const rcRev = {}; for (const [k,v] of Object.entries(this.roleCode)) rcRev[v] = k;
 
-    const parts = str.split(':');
+    const parts = String(str || '').trim().split(':');
     if (parts[0] !== 'PP') return { success:false, error:'Not a Party Planner export string' };
     const version = parts[1];
+    if (version === '2') return this._importShareString(parts);
     if (version !== '1') return { success:false, error:'Unknown export version: ' + version };
     const raid = parts[2];
     if (!Config.Raids[raid]) return { success:false, error:'Unknown raid: ' + raid };
@@ -3263,7 +3372,7 @@ function showSaveModal() {
   const modal = document.getElementById('save-modal');
   const overlay = document.getElementById('save-overlay');
 
-  const defaultName = State.rosterName !== 'No Roster Loaded' ? State.rosterName :
+  const defaultName = State.rosterName !== NO_ROSTER_NAME ? State.rosterName :
     'Raid ' + new Date().toLocaleDateString();
 
   modal.innerHTML = `
@@ -3456,7 +3565,7 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   State.roster = [];
   State.groups = [];
   State.bench = [];
-  State.rosterName = 'No Roster Loaded';
+  State.rosterName = NO_ROSTER_NAME;
   State.buffOverrides = {};
   initGroups();
   renderGroups();
@@ -3471,6 +3580,48 @@ document.getElementById('btn-random').addEventListener('click', () => {
 
 document.getElementById('btn-save').addEventListener('click', showSaveModal);
 document.getElementById('btn-load').addEventListener('click', showLoadModal);
+
+// ── SHARE LINK ──────────────────────────────────────────────────
+// The whole layout rides in the URL fragment, so there is no server and
+// no expiry. Fragments are never sent to the host, which keeps rosters
+// out of Vercel's logs.
+function buildShareUrl() {
+  const code = Import.encodeSharePayload(Import.exportShareString());
+  return window.location.origin + window.location.pathname + '#r=' + code;
+}
+
+function loadFromShareLink() {
+  const hash = window.location.hash || '';
+  if (!hash.startsWith('#r=')) return;
+
+  // Strip the fragment first, so a refresh (or a declined prompt) never re-fires.
+  history.replaceState(null, '', window.location.origin + window.location.pathname);
+
+  const str = Import.decodeSharePayload(hash.slice(3));
+  if (!str) { showToast('That share link is invalid or damaged'); return; }
+
+  const preview = Import.previewShareString(str);
+  if (!preview.success) { showToast(preview.error || 'That share link is invalid or damaged'); return; }
+
+  const hasWork = State.roster.length > 0 || (State.bench || []).length > 0;
+  if (hasWork && !confirm(`Load shared raid "${preview.name}"? This replaces your current layout.`)) return;
+
+  const res = Import.importAddonString(str);
+  if (!res.success) { showToast(res.error || 'That share link is invalid or damaged'); return; }
+
+  renderGroups();
+  showToast(`Loaded shared raid "${State.rosterName}" (${res.playerCount} players)`);
+}
+
+document.getElementById('btn-share').addEventListener('click', () => {
+  if (State.roster.length === 0 && (State.bench || []).length === 0) {
+    showToast('No roster to share');
+    return;
+  }
+  navigator.clipboard.writeText(buildShareUrl())
+    .then(() => showToast('Share link copied to clipboard'))
+    .catch(() => showToast('Copy failed'));
+});
 
 document.getElementById('btn-copy-addon').addEventListener('click', () => {
   if (State.roster.length === 0) { showToast('No roster to export'); return; }
@@ -3715,6 +3866,7 @@ document.querySelectorAll('.mode-tab').forEach(btn => {
 initRaidDropdown();
 initGroups();
 renderGroups();
+loadFromShareLink();
 
 // ── EXPOSE FOR TESTING ──────────────────────────────────────────
 // ── BUFF TOOLTIP PORTAL ─────────────────────────────────────────
@@ -3762,10 +3914,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Config, Import, Optimizer, IdealComp, getGroupBuffs, getBuffPriority, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA };
+  module.exports = { Config, Import, Optimizer, IdealComp, getGroupBuffs, getBuffPriority, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
 }
 // Also expose on window for browser-based tests
-window.PP = { Config, Import, Optimizer, IdealComp, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA };
+window.PP = { Config, Import, Optimizer, IdealComp, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
 </script>
 <div id="buff-tooltip-portal"></div>
 </body>
