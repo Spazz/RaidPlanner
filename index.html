@@ -1685,7 +1685,8 @@ const MODE_CONFIG = {
 //    NOTHING from WF (weapon imbues don't work in forms) — hence the 0 key.
 //    Hunters don't benefit either (melee-weapon imbue; role table omits ranged).
 //  - Ferocious Inspiration is 3% damage for the whole party, any role.
-//  - Vampiric Touch is a party mana battery: locks/arcane mages value it most.
+//  - Vampiric Touch is a party mana battery: locks/arcane mages value it most;
+//    a Holy Priest spamming Circle of Healing is the healer that wants it.
 const DPS_VALUE = {
   WINDFURY:           { key: { 'PALADIN:Retribution': 12, 'WARRIOR:Fury': 11, 'WARRIOR:Arms': 10, 'SHAMAN:Enhancement': 9, 'ROGUE:Combat': 8, 'ROGUE:Assassination': 8, 'ROGUE:Subtlety': 8, 'DRUID:Feral': 0 }, role: { melee_dps: 8, tank: 3 } },
   GRACE_OF_AIR:       { key: { 'DRUID:Feral': 4 }, role: { melee_dps: 2, ranged_dps: 3, tank: 2 } },
@@ -1706,7 +1707,7 @@ const DPS_VALUE = {
   UNLEASHED_RAGE:     { role: { melee_dps: 5, ranged_dps: 4, tank: 2 } },
   BATTLE_SHOUT:       { role: { melee_dps: 3, ranged_dps: 2, tank: 2 } },
   BLOOD_PACT:         { role: { tank: 1 } },
-  VAMPIRIC_TOUCH:     { key: { 'MAGE:Arcane': 7 }, class: { WARLOCK: 6, MAGE: 6 }, role: { caster_dps: 4, healer: 3 } },
+  VAMPIRIC_TOUCH:     { key: { 'MAGE:Arcane': 7, 'PRIEST:Holy': 6 }, class: { WARLOCK: 6, MAGE: 6 }, role: { caster_dps: 4, healer: 3 } },
 };
 
 // MIT_VALUE[buffId] — survivability value for a TANK receiving the buff,
@@ -1835,9 +1836,11 @@ const Optimizer = {
     // starved while other groups sit full; single-player moves into open
     // slots fix that. Alternate until neither neighbourhood improves.
     if (mode !== 'relaxed') {
-      for (let round = 0; round < 4; round++) {
+      for (let round = 0; round < 6; round++) {
         this.refineSwaps(groups, max, mode);
-        if (!this.refineMoves(groups, max, mode)) break;
+        const moved = this.refineMoves(groups, max, mode);
+        const exchanged = this.refinePairExchanges(groups, mode);
+        if (!moved && !exchanged) break;
       }
     }
 
@@ -2002,12 +2005,16 @@ const Optimizer = {
     // mitigation + healer-sustain value when it reaches the tank group.
     // Mitigation counts for a tank wherever they sit — an off-tank in a
     // melee group still takes hits, so Devotion/GoA/SoE reaching them matter.
-    // Healer-sustain value is only meaningful in the healer/tank group.
+    // Healer-sustain value is only meaningful in the healer/tank group, and
+    // it is a healing-structure concern (keeping the tank healers casting),
+    // not a mitigation one — so it scales with the structure weight. This is
+    // what keeps a lone Resto Shaman with the tank healers instead of chasing
+    // Mana Tide value in a mage group.
     const buffValue = (id) => {
       let v = 0;
       for (const m of group) v += dpsValueFor(id, m) * cfg.dps;
       for (const t of tanks) v += mitValueFor(id, t) * cfg.mit;
-      if (isTank && SUSTAIN_VALUE[id]) v += SUSTAIN_VALUE[id] * Math.min(healerCount, 2) * cfg.mit;
+      if (isTank && SUSTAIN_VALUE[id]) v += SUSTAIN_VALUE[id] * Math.min(healerCount, 2) * cfg.structure;
       return v;
     };
 
@@ -2075,7 +2082,7 @@ const Optimizer = {
   // greedy phase used, so refinement can never "improve" toward a different
   // goal than placement optimized for.
   refineSwaps(groups, max, mode) {
-    const SWAP_THRESHOLD = 3;
+    const SWAP_THRESHOLD = 0.5;
     for (let iter = 0; iter < 4; iter++) {
       let improved = false;
       for (let gi = 0; gi < groups.length; gi++) {
@@ -2109,6 +2116,51 @@ const Optimizer = {
       }
       if (!improved) break;
     }
+  },
+
+  // ── PHASE 3c: 2-FOR-2 EXCHANGES ──────────────────────────────
+  // Trades two players from one group for two from another. Catches
+  // rebalances a single swap can't reach because each half looks worse on
+  // its own (e.g. Ele Shaman out to the warlocks AND a Holy Priest in with
+  // the Shadow Priest). Only the two groups involved change, so the delta
+  // is just their two scores. Returns true if anything changed.
+  refinePairExchanges(groups, mode) {
+    const THRESHOLD = 0.5;
+    let changedAny = false;
+    for (let iter = 0; iter < 10; iter++) {
+      let best = null, bestGain = THRESHOLD;
+      for (let gi = 0; gi < groups.length; gi++) {
+        for (let gj = gi + 1; gj < groups.length; gj++) {
+          const A = groups[gi], B = groups[gj];
+          if (A.length < 2 || B.length < 2) continue;
+          const before = this.groupScore(A, gi, groups, mode) + this.groupScore(B, gj, groups, mode);
+          for (let a1 = 0; a1 < A.length; a1++) {
+            if (this.isPinned(A[a1], gi, groups)) continue;
+            for (let a2 = a1 + 1; a2 < A.length; a2++) {
+              if (this.isPinned(A[a2], gi, groups)) continue;
+              for (let b1 = 0; b1 < B.length; b1++) {
+                if (this.isPinned(B[b1], gj, groups)) continue;
+                for (let b2 = b1 + 1; b2 < B.length; b2++) {
+                  if (this.isPinned(B[b2], gj, groups)) continue;
+                  const pa1 = A[a1], pa2 = A[a2], pb1 = B[b1], pb2 = B[b2];
+                  A[a1] = pb1; A[a2] = pb2; B[b1] = pa1; B[b2] = pa2;
+                  const gain = this.groupScore(A, gi, groups, mode) + this.groupScore(B, gj, groups, mode) - before;
+                  A[a1] = pa1; A[a2] = pa2; B[b1] = pb1; B[b2] = pb2;
+                  if (gain > bestGain) { bestGain = gain; best = { gi, gj, a1, a2, b1, b2 }; }
+                }
+              }
+            }
+          }
+        }
+      }
+      if (!best) break;
+      const { gi, gj, a1, a2, b1, b2 } = best;
+      const A = groups[gi], B = groups[gj];
+      const pa1 = A[a1], pa2 = A[a2];
+      A[a1] = B[b1]; A[a2] = B[b2]; B[b1] = pa1; B[b2] = pa2;
+      changedAny = true;
+    }
+    return changedAny;
   },
 
   // ── PHASE 3a: MOVE REFINEMENT ────────────────────────────────
