@@ -1134,6 +1134,26 @@ const State = {
   activeTab: 'plan', // 'plan' | 'ideal'
 };
 
+// ── RAID CAPACITY ───────────────────────────────────────────────
+// A raid template only has room for numGroups x 5. Anyone past that — extra
+// groups, or a sixth player in a group — is moved onto the bench rather than
+// silently dropped, so nobody vanishes on import or when switching raids.
+// Returns the number of players benched.
+function enforceRaidCapacity(groups, bench, numGroups, maxPerGroup = 5) {
+  const overflow = [];
+  while (groups.length > numGroups) overflow.push(...groups.pop());
+  for (const group of groups) {
+    while (group.length > maxPerGroup) overflow.push(group.pop());
+  }
+  let benched = 0;
+  for (const p of overflow) {
+    const gi = groups.findIndex(g => g.length < maxPerGroup);
+    if (gi >= 0) { groups[gi].push(p); p.groupNumber = gi + 1; }
+    else { p.groupNumber = 0; bench.push(p); benched++; }
+  }
+  return benched;
+}
+
 // ── IMPORT ──────────────────────────────────────────────────────
 const Import = {
   importRaidHelper(jsonStr) {
@@ -1226,11 +1246,15 @@ const Import = {
       }
     }
 
-    State.roster = roster;
+    // Keep the plan's own group layout here; initGroups() folds it into the
+    // selected raid's template and benches anyone who no longer fits.
+    const overflow = enforceRaidCapacity(groups, bench, groups.length);
+
+    State.roster = groups.flat();
     State.groups = groups;
     State.bench = bench;
-    return { success:true, playerCount:roster.length, groupCount:maxGroup,
-             benchCount:bench.length, skippedCount:skipped };
+    return { success:true, playerCount:State.roster.length, groupCount:maxGroup,
+             benchCount:bench.length, skippedCount:skipped, overflowCount:overflow };
   },
 
   // Format 2: the raid-helper.dev/api/raidplan/{id} "signUps" export — the
@@ -1270,6 +1294,12 @@ const Import = {
 
     const raidInfo = Config.Raids[State.selectedRaid];
     const numGroups = raidInfo ? raidInfo.groups : 5;
+    const capacity = numGroups * 5;
+    let overflow = 0;
+    if (roster.length > capacity) {
+      // Sign-up order decides who makes the cut; the rest wait on the bench.
+      for (const p of roster.splice(capacity)) { p.groupNumber = 0; bench.push(p); overflow++; }
+    }
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
     roster.forEach((p, i) => {
@@ -1284,7 +1314,7 @@ const Import = {
     Optimizer.optimize();
 
     return { success:true, playerCount:roster.length, groupCount:numGroups, wasUnassigned:true,
-             benchCount:bench.length, skippedCount:skipped };
+             benchCount:bench.length, skippedCount:skipped, overflowCount:overflow };
   },
 
   // Compact addon-friendly export string
@@ -1738,6 +1768,13 @@ const Optimizer = {
 
     // Phase 2: Greedy marginal-gain placement of remaining players
     this.greedyPlace(pool, groups, max, mode);
+
+    // Over capacity (more players than numGroups x 5): bench the leftovers
+    // instead of dropping them from the roster.
+    if (pool.length > 0) {
+      if (!State.bench) State.bench = [];
+      for (const p of pool.splice(0)) { p.groupNumber = 0; State.bench.push(p); }
+    }
 
     // Phase 3: Swap refinement (skip for relaxed)
     if (mode !== 'relaxed') {
@@ -2407,24 +2444,28 @@ function initRaidDropdown() {
     if (State.activeTab === 'ideal') {
       renderIdealComp();
     } else {
-      initGroups();
+      const benched = initGroups();
       renderGroups();
+      const raidInfo = Config.Raids[State.selectedRaid];
+      if (benched > 0) showToast(`${benched} player${benched === 1 ? '' : 's'} benched — the ${raidInfo ? raidInfo.size : 25}-man raid is full`);
     }
   });
 }
 
+// Fits State.groups to the selected raid's template. Extra groups are folded
+// into open seats; whoever still does not fit is benched, never dropped.
+// Returns how many players were benched.
 function initGroups() {
   const raidInfo = Config.Raids[State.selectedRaid];
   const numGroups = raidInfo ? raidInfo.groups : 5;
-  while (State.groups.length < numGroups) State.groups.push([]);
-  while (State.groups.length > numGroups) {
-    const overflow = State.groups.pop();
-    for (const p of overflow) {
-      for (let i = 0; i < State.groups.length; i++) {
-        if (State.groups[i].length < 5) { State.groups[i].push(p); p.groupNumber = i + 1; break; }
-      }
-    }
+  if (!State.bench) State.bench = [];
+  let benched = 0;
+  if (State.groups.length > numGroups) {
+    benched = enforceRaidCapacity(State.groups, State.bench, numGroups);
+    State.roster = State.groups.flat();
   }
+  while (State.groups.length < numGroups) State.groups.push([]);
+  return benched;
 }
 
 function getRoleIcon(role) {
@@ -3511,12 +3552,14 @@ document.getElementById('btn-do-import').addEventListener('click', async () => {
     State.rosterName = 'Imported Roster';
     document.getElementById('import-overlay').classList.remove('visible');
     document.getElementById('raid-select').value = State.selectedRaid;
-    initGroups();
+    const foldBenched = initGroups();
     renderGroups();
     // Tentative/Bench sign-ups are parked on the bench and Absences are dropped,
     // so report all three counts rather than silently losing people.
+    const overflow = (result.overflowCount || 0) + foldBenched;
     const extra = [];
-    if (result.benchCount) extra.push(`${result.benchCount} benched`);
+    if (overflow) extra.push(`${overflow} over the raid size, benched`);
+    else if (result.benchCount) extra.push(`${result.benchCount} benched`);
     if (result.skippedCount) extra.push(`${result.skippedCount} skipped`);
     const suffix = extra.length ? ` (${extra.join(', ')})` : '';
     showToast(result.wasUnassigned
