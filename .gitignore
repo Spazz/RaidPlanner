@@ -1,4 +1,5 @@
-# Only track index.html
+# Only track index.html (and the legacy UI backup)
 *
 !.gitignore
 !index.html
+!index_legacy_ui.html
