@@ -551,6 +551,7 @@ body {
 .buff-dev { background: #8f7a1a; color: #fff5cc; }
 .buff-conc { background: #b3aa48; color: #1b1d1f; }
 .buff-ret { background: #8a3030; color: #ffd0d0; }
+.buff-sanc { background: #c9a227; color: #1b1d1f; }
 .buff-lotp { background: #6d8a48; color: #f0ffe0; }
 .buff-moon { background: #6b5a9e; color: #e8e0ff; }
 .buff-tsa { background: #4d7030; color: #e8ffd0; }
@@ -915,6 +916,7 @@ const Config = {
     DEVOTION_AURA:     { name:'Devotion Aura',        sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by 861.' },
     CONCENTRATION_AURA:{ name:'Concentration Aura',   sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Reduces the duration of silence and interrupt effects by 30% and gives 35% resistance to pushback while casting.' },
     RETRIBUTION_AURA:  { name:'Retribution Aura',     sourceClass:'PALADIN', benefitsRoles:['tank'], priority:30, desc:'Causes 26 Holy damage to any enemy that strikes nearby party members.' },
+    SANCTITY_AURA:     { name:'Sanctity Aura',        sourceClass:'PALADIN', sourceSpec:'Retribution', benefitsRoles:['melee_dps','ranged_dps','caster_dps','tank'], priority:{melee_dps:80, ranged_dps:80, caster_dps:80, tank:40}, desc:'Increases Holy damage done by party members by 10%. Improved Sanctity Aura also increases all damage done by party members by 2%.' },
     LEADER_OF_THE_PACK:{ name:'Leader of the Pack',   sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:78, tank:65}, desc:'Increases melee and ranged critical strike chance of nearby party members by 5%.' },
     MOONKIN_AURA:      { name:'Moonkin Aura',         sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['caster_dps'], priority:72, desc:'Increases spell critical strike chance of nearby party members by 5%.' },
     TRUESHOT_AURA:     { name:'Trueshot Aura',        sourceClass:'HUNTER', sourceSpec:'Marksmanship', benefitsRoles:['melee_dps','ranged_dps'], priority:62, desc:'Increases attack power of nearby party members by 125.' },
@@ -929,7 +931,7 @@ const Config = {
   BuffAbbreviations: {
     WINDFURY:'WF', GRACE_OF_AIR:'GoA', WRATH_OF_AIR:'WoA', TOTEM_OF_WRATH:'ToW',
     MANA_SPRING:'MS', MANA_TIDE:'MT', STRENGTH_OF_EARTH:'SoE',
-    DEVOTION_AURA:'Dev', CONCENTRATION_AURA:'Conc', RETRIBUTION_AURA:'Ret',
+    DEVOTION_AURA:'Dev', CONCENTRATION_AURA:'Conc', RETRIBUTION_AURA:'Ret', SANCTITY_AURA:'Sanc',
     LEADER_OF_THE_PACK:'LotP', MOONKIN_AURA:'Moon', TREE_OF_LIFE:'ToL', TRUESHOT_AURA:'TSA', FEROCIOUS_INSP:'FI',
     UNLEASHED_RAGE:'UR', BATTLE_SHOUT:'BS', BLOOD_PACT:'BP', VAMPIRIC_TOUCH:'VT',
   },
@@ -937,7 +939,7 @@ const Config = {
   BuffCSSClass: {
     WINDFURY:'buff-wf', GRACE_OF_AIR:'buff-goa', WRATH_OF_AIR:'buff-woa', TOTEM_OF_WRATH:'buff-tow',
     MANA_SPRING:'buff-ms', MANA_TIDE:'buff-mt', STRENGTH_OF_EARTH:'buff-soe',
-    DEVOTION_AURA:'buff-dev', CONCENTRATION_AURA:'buff-conc', RETRIBUTION_AURA:'buff-ret',
+    DEVOTION_AURA:'buff-dev', CONCENTRATION_AURA:'buff-conc', RETRIBUTION_AURA:'buff-ret', SANCTITY_AURA:'buff-sanc',
     LEADER_OF_THE_PACK:'buff-lotp', MOONKIN_AURA:'buff-moon', TREE_OF_LIFE:'buff-tol', TRUESHOT_AURA:'buff-tsa', FEROCIOUS_INSP:'buff-fi',
     UNLEASHED_RAGE:'buff-ur', BATTLE_SHOUT:'buff-bs', BLOOD_PACT:'buff-bp', VAMPIRIC_TOUCH:'buff-vt',
   },
@@ -954,6 +956,7 @@ const Config = {
     DEVOTION_AURA:      'spell_holy_devotionaura',
     CONCENTRATION_AURA: 'spell_holy_mindsooth',
     RETRIBUTION_AURA:   'spell_holy_auraoflight',
+    SANCTITY_AURA:      'spell_holy_mindvision',
     LEADER_OF_THE_PACK: 'spell_nature_unyeildingstamina',
     MOONKIN_AURA:       'spell_nature_starfall',
     TREE_OF_LIFE:       'ability_druid_treeoflife',
@@ -1104,7 +1107,15 @@ const TOTEM_ELEMENTS = {
   TOTEM_OF_WRATH:'fire', MANA_SPRING:'water', MANA_TIDE:'water',
   STRENGTH_OF_EARTH:'earth',
 };
-const PALADIN_AURAS = { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true };
+const PALADIN_AURAS = { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true, SANCTITY_AURA:true };
+
+// Auras a given paladin can actually run (Sanctity Aura is Retribution-only).
+function paladinAurasFor(player) {
+  return Object.keys(PALADIN_AURAS).filter(id => {
+    const b = Config.Buffs[id];
+    return !b || !b.sourceSpec || b.sourceSpec === player.spec;
+  });
+}
 const BEST_AIR_TOTEM = { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'WRATH_OF_AIR', healer:'WRATH_OF_AIR' };
 const BEST_PALADIN_AURA = { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' };
 
@@ -1664,9 +1675,11 @@ const MODE_CONFIG = {
 };
 
 // ── SYNERGY MODEL (researched TBC party-buff values) ──
-// DPS_VALUE[buffId] — estimated % DPS gain for a RECEIVING player, resolved
-// key ('CLASS:Spec') → class → role → 0. Sources: Wowhead TBC spell data,
-// Warcraft Tavern totem/class guides, Icy Veins raid composition guide.
+// DPS_VALUE[buffId] — tier value of a buff to the RECEIVING player (relative
+// scale, NOT a measured % gain), resolved key ('CLASS:Spec') → class → role
+// → 0. Ordering cross-checked against Lokgol's TBC synergy sheet (0-4 tiers;
+// see tasks/research-synergy-sheet.md): WF is the top tier, ToW / Moonkin /
+// LotP / FI the next, WoA / SoE / GoA / UR / Sanctity below that.
 // Notable modeling choices:
 //  - Windfury: Ret > Fury > Arms > Rogues (main-hand only). Feral druids get
 //    NOTHING from WF (weapon imbues don't work in forms) — hence the 0 key.
@@ -1677,15 +1690,16 @@ const DPS_VALUE = {
   WINDFURY:           { key: { 'PALADIN:Retribution': 12, 'WARRIOR:Fury': 11, 'WARRIOR:Arms': 10, 'SHAMAN:Enhancement': 9, 'ROGUE:Combat': 8, 'ROGUE:Assassination': 8, 'ROGUE:Subtlety': 8, 'DRUID:Feral': 0 }, role: { melee_dps: 8, tank: 3 } },
   GRACE_OF_AIR:       { key: { 'DRUID:Feral': 4 }, role: { melee_dps: 2, ranged_dps: 3, tank: 2 } },
   WRATH_OF_AIR:       { role: { caster_dps: 4, healer: 2 } },
-  TOTEM_OF_WRATH:     { role: { caster_dps: 6, healer: 1 } },
+  TOTEM_OF_WRATH:     { key: { 'WARLOCK:Destruction': 8 }, role: { caster_dps: 6, healer: 1 } },
   STRENGTH_OF_EARTH:  { role: { melee_dps: 2, tank: 2 } },
-  MANA_SPRING:        { role: { healer: 2, caster_dps: 1 } },
-  MANA_TIDE:          { role: { healer: 4 } },
+  MANA_SPRING:        { key: { 'MAGE:Arcane': 3 }, role: { healer: 2, caster_dps: 1 } },
+  MANA_TIDE:          { key: { 'MAGE:Arcane': 5 }, role: { healer: 4 } },
   DEVOTION_AURA:      { role: {} },
   CONCENTRATION_AURA: { role: { healer: 2, caster_dps: 1 } },
   RETRIBUTION_AURA:   { role: { melee_dps: 1, tank: 1 } },
+  SANCTITY_AURA:      { role: { melee_dps: 2, ranged_dps: 2, caster_dps: 2, tank: 1 } },
   LEADER_OF_THE_PACK: { role: { melee_dps: 5, ranged_dps: 5, tank: 2 } },
-  MOONKIN_AURA:       { role: { caster_dps: 5 } },
+  MOONKIN_AURA:       { key: { 'WARLOCK:Destruction': 7 }, role: { caster_dps: 5 } },
   TREE_OF_LIFE:       { role: { healer: 1 } },
   TRUESHOT_AURA:      { role: { melee_dps: 3, ranged_dps: 4 } },
   FEROCIOUS_INSP:     { role: { melee_dps: 3, ranged_dps: 3, caster_dps: 3, tank: 1 } },
@@ -1698,13 +1712,15 @@ const DPS_VALUE = {
 // MIT_VALUE[buffId] — survivability value for a TANK receiving the buff,
 // keyed per tank class:spec ('*' = any tank). Researched priorities:
 //  - Prot Warrior: armor (Devotion, ~5-7% phys DR) + block value (SoE)
-//  - Prot Paladin: armor + dodge (Grace of Air — primary avoidance)
+//  - Prot Paladin: armor + dodge (Grace of Air) + spell power (Wrath of Air
+//    feeds Holy Shield / Consecration threat; worth more to them than WF)
 //  - Feral Druid: agility scaling (GoA) + Imp LotP heal; low Devotion value
 //    (high base armor), zero Windfury (no weapon imbues in forms)
 //  - Tree of Life (+25% healing received, party-only) is huge for any tank
 const MIT_VALUE = {
   DEVOTION_AURA:      { 'WARRIOR:Protection': 10, 'PALADIN:Protection': 10, 'DRUID:Feral': 5 },
   GRACE_OF_AIR:       { 'WARRIOR:Protection': 4, 'PALADIN:Protection': 7, 'DRUID:Feral': 9 },
+  WRATH_OF_AIR:       { 'PALADIN:Protection': 5 },
   BLOOD_PACT:         { '*': 6 },
   TREE_OF_LIFE:       { '*': 12 },
   STRENGTH_OF_EARTH:  { 'WARRIOR:Protection': 5, 'PALADIN:Protection': 2, 'DRUID:Feral': 3 },
@@ -1719,14 +1735,41 @@ const MIT_VALUE = {
 // their mana, Concentration Aura protects their casts.
 const SUSTAIN_VALUE = { MANA_SPRING: 3, MANA_TIDE: 5, VAMPIRIC_TOUCH: 3, CONCENTRATION_AURA: 3 };
 
+// DPS_WEIGHT['CLASS:Spec'] — the recipient's expected DPS output relative to
+// the raid's top spec (1.0). A party buff is worth what it multiplies: the
+// same tier on a 950-DPS hunter beats it on a 500-DPS boomkin, so a top DPS
+// is placed where THEY get buffed before their buff goes to a weaker group.
+// Calibrated from a live Gruul log (PartyPlannerWeb/gruul_dps_data.txt):
+// Aff ~1000, BM ~950/880, Arcane ~930/880/760, Destro ~930/810/640,
+// Combat ~900/740, Ele ~870, Fury ~730, Enh ~730, Ret ~630, Boomkin ~510,
+// Prot Pal ~470, Feral tank ~460. Unlogged specs are placed by class analogy.
+const DPS_WEIGHT = {
+  'WARLOCK:Affliction': 1.0, 'HUNTER:Beast Mastery': 1.0, 'MAGE:Arcane': 0.95,
+  'WARLOCK:Destruction': 0.9, 'ROGUE:Combat': 0.9, 'SHAMAN:Elemental': 0.9,
+  'HUNTER:Marksmanship': 0.9, 'HUNTER:Survival': 0.85, 'ROGUE:Assassination': 0.85,
+  'ROGUE:Subtlety': 0.8, 'MAGE:Fire': 0.85, 'MAGE:Frost': 0.8, 'WARLOCK:Demonology': 0.85,
+  'PRIEST:Shadow': 0.8, 'WARRIOR:Fury': 0.8, 'WARRIOR:Arms': 0.8, 'SHAMAN:Enhancement': 0.8,
+  'PALADIN:Retribution': 0.7, 'DRUID:Balance': 0.6, 'DRUID:Feral': 0.6,
+  'PALADIN:Protection': 0.5, 'WARRIOR:Protection': 0.5,
+};
+const DPS_WEIGHT_BY_ROLE = { melee_dps: 0.8, ranged_dps: 0.9, caster_dps: 0.85, tank: 0.5, healer: 1.0 };
+
+function dpsWeightFor(player) {
+  const w = DPS_WEIGHT[player.class + ':' + player.spec];
+  if (w != null) return w;
+  const r = DPS_WEIGHT_BY_ROLE[player.role];
+  return r != null ? r : 0.8;
+}
+
 function dpsValueFor(buffId, player) {
   const v = DPS_VALUE[buffId];
   if (!v) return 0;
   const key = player.class + ':' + player.spec;
-  if (v.key && v.key[key] != null) return v.key[key];
-  if (v.class && v.class[player.class] != null) return v.class[player.class];
-  if (v.role && v.role[player.role] != null) return v.role[player.role];
-  return 0;
+  let base = 0;
+  if (v.key && v.key[key] != null) base = v.key[key];
+  else if (v.class && v.class[player.class] != null) base = v.class[player.class];
+  else if (v.role && v.role[player.role] != null) base = v.role[player.role];
+  return base * dpsWeightFor(player);
 }
 
 function mitValueFor(buffId, tank) {
@@ -1760,6 +1803,17 @@ const Optimizer = {
     }
     if (pool.length === 0) return;
 
+    // Canonical order. Greedy placement and swap refinement break ties by
+    // iteration order, so the result must not depend on how the board
+    // happened to be arranged before the click — otherwise every Optimize
+    // lands in a different local optimum and the second click reshuffles
+    // a layout the first one just produced.
+    pool.sort((a, b) => {
+      const ka = a.role + '|' + a.class + '|' + a.spec + '|' + (a.name || '');
+      const kb = b.role + '|' + b.class + '|' + b.spec + '|' + (b.name || '');
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
 
@@ -1776,9 +1830,15 @@ const Optimizer = {
       for (const p of pool.splice(0)) { p.groupNumber = 0; State.bench.push(p); }
     }
 
-    // Phase 3: Swap refinement (skip for relaxed)
+    // Phase 3: Refinement (skip for relaxed). Pairwise swaps alone cannot
+    // change group sizes, so a group the greedy phase filled last stays
+    // starved while other groups sit full; single-player moves into open
+    // slots fix that. Alternate until neither neighbourhood improves.
     if (mode !== 'relaxed') {
-      this.refineSwaps(groups, max, mode);
+      for (let round = 0; round < 4; round++) {
+        this.refineSwaps(groups, max, mode);
+        if (!this.refineMoves(groups, max, mode)) break;
+      }
     }
 
     // Phase 3b: Guest optimization — the tank group is filled last by the
@@ -1810,19 +1870,22 @@ const Optimizer = {
       groups._roleIdentities = ['melee_dps', 'caster_dps'];
     }
 
-    // Seed tanks into the tank-identity group; tank_mit consolidates all of
-    // them (up to 3) there so mitigation buffs cover every tank, other modes
-    // seed the minimum 2 and let the scorer place extras (OT groups).
+    // Seed the healer/tank group with ONE anchor tank (reference comp: only
+    // the Prot Paladin rides with the healers). Every other tank is placed
+    // by the scorer like anyone else — a Feral tank is still that melee
+    // group's Leader of the Pack, a spare Prot tank lands where its aura and
+    // the totems it receives are worth most. tank_mit consolidates up to 3
+    // tanks here so mitigation buffs cover all of them.
     const tankIdx = groups._roleIdentities.indexOf('tank');
     const targetIdx = tankIdx >= 0 ? tankIdx : 0;
-    const minTanks = mode === 'tank_mit' ? 3 : 2;
-    let seeded = 0;
-    for (let i = pool.length - 1; i >= 0; i--) {
-      if (seeded >= minTanks) break;
-      if (pool[i].role === 'tank' && groups[targetIdx].length < max) {
-        groups[targetIdx].push(pool.splice(i, 1)[0]);
-        seeded++;
-      }
+    const minTanks = mode === 'tank_mit' ? 3 : 1;
+    const anchorRank = p => p.class === 'PALADIN' ? 0 : p.class === 'WARRIOR' ? 1 : 2;
+    const tanks = pool.filter(p => p.role === 'tank').sort((a, b) => anchorRank(a) - anchorRank(b));
+    groups._anchors = new Set();
+    for (const t of tanks.slice(0, minTanks)) {
+      if (groups[targetIdx].length >= max) break;
+      groups[targetIdx].push(pool.splice(pool.indexOf(t), 1)[0]);
+      groups._anchors.add(t);
     }
 
     // Healers are NOT seeded per group. In TBC healing is cross-group — a
@@ -1867,6 +1930,14 @@ const Optimizer = {
   },
 
   // ── SCORING ──────────────────────────────────────────────────
+  // Only the seeded anchor tank(s) are pinned to the healer/tank group. Any
+  // other tank that drifts in during placement is a regular member the
+  // refinement phases may move out again (a Feral tank belongs with melee).
+  isPinned(player, gi, groups) {
+    if (player.role !== 'tank' || !this.isTankGroup(gi, groups)) return false;
+    return groups._anchors ? groups._anchors.has(player) : true;
+  },
+
   isTankGroup(gi, groups) {
     const ids = groups._roleIdentities;
     if (!ids) return gi === 0;
@@ -1901,7 +1972,7 @@ const Optimizer = {
         }
       } else if (p.class === 'PALADIN') {
         let best = null, bestV = -1;
-        for (const id of Object.keys(PALADIN_AURAS)) {
+        for (const id of paladinAurasFor(p)) {
           if (usedAuras.has(id)) continue;
           const v = valueFn(id);
           if (v > bestV) { bestV = v; best = id; }
@@ -1929,13 +2000,14 @@ const Optimizer = {
 
     // Value of one buff to this group = summed received DPS value, plus
     // mitigation + healer-sustain value when it reaches the tank group.
+    // Mitigation counts for a tank wherever they sit — an off-tank in a
+    // melee group still takes hits, so Devotion/GoA/SoE reaching them matter.
+    // Healer-sustain value is only meaningful in the healer/tank group.
     const buffValue = (id) => {
       let v = 0;
       for (const m of group) v += dpsValueFor(id, m) * cfg.dps;
-      if (isTank) {
-        for (const t of tanks) v += mitValueFor(id, t) * cfg.mit;
-        if (SUSTAIN_VALUE[id]) v += SUSTAIN_VALUE[id] * Math.min(healerCount, 2) * cfg.mit;
-      }
+      for (const t of tanks) v += mitValueFor(id, t) * cfg.mit;
+      if (isTank && SUSTAIN_VALUE[id]) v += SUSTAIN_VALUE[id] * Math.min(healerCount, 2) * cfg.mit;
       return v;
     };
 
@@ -1946,7 +2018,7 @@ const Optimizer = {
     // the only party buff that does. resolveGroupBuffs dedupes it like any
     // passive, so credit each additional BM hunter's copy here.
     const bmCount = group.reduce((n, p) => n + (p.class === 'HUNTER' && p.spec === 'Beast Mastery' ? 1 : 0), 0);
-    if (bmCount > 1) score += (bmCount - 1) * buffValue('FEROCIOUS_INSP');
+    if (bmCount > 1) score += (bmCount - 1) * buffValue('FEROCIOUS_INSP') * 0.5;
 
     // Structural placement rules (from the user's reference TBC comp):
     //  - Healers gravitate to the tank group. Healing is cross-group in TBC,
@@ -1961,6 +2033,18 @@ const Optimizer = {
       score += Math.min(healerCount, 3) * 10 * cfg.structure;
       for (const p of group) {
         if (p.role === 'melee_dps' || p.role === 'caster_dps') score -= 12 * cfg.structure;
+      }
+    }
+
+    // Windfury coverage — a melee group without any shaman is a melee group
+    // without Windfury. Each melee DPS there pays roughly what a mid-value WF
+    // would have given them, so a Resto or Ele shaman is drawn to the melee
+    // group that has nobody to drop it (reference comp rule 1: any shaman
+    // drops WF for melee), and melee spread across shaman-covered groups
+    // instead of piling into the one Enhancement group.
+    if (roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')) {
+      for (const p of group) {
+        if (p.role === 'melee_dps') score -= 6 * dpsWeightFor(p) * cfg.structure;
       }
     }
 
@@ -1997,10 +2081,10 @@ const Optimizer = {
       for (let gi = 0; gi < groups.length; gi++) {
         for (let gj = gi + 1; gj < groups.length; gj++) {
           for (let pi = 0; pi < groups[gi].length; pi++) {
-            // Never swap seeded tanks out of the tank-identity group
-            if (groups[gi][pi].role === 'tank' && this.isTankGroup(gi, groups)) continue;
+            // Never swap the anchor tank out of the tank-identity group
+            if (this.isPinned(groups[gi][pi], gi, groups)) continue;
             for (let pj = 0; pj < groups[gj].length; pj++) {
-              if (groups[gj][pj].role === 'tank' && this.isTankGroup(gj, groups)) continue;
+              if (this.isPinned(groups[gj][pj], gj, groups)) continue;
               const currentScore = this.groupScore(groups[gi], gi, groups, mode)
                                  + this.groupScore(groups[gj], gj, groups, mode);
 
@@ -2027,6 +2111,41 @@ const Optimizer = {
     }
   },
 
+  // ── PHASE 3a: MOVE REFINEMENT ────────────────────────────────
+  // Hill-climbs single-player moves into open slots against the total of
+  // groupScore() over all groups. Returns true if anything moved.
+  refineMoves(groups, max, mode) {
+    const total = () => {
+      let s = 0;
+      for (let gi = 0; gi < groups.length; gi++) s += this.groupScore(groups[gi], gi, groups, mode);
+      return s;
+    };
+    let movedAny = false;
+    for (let iter = 0; iter < 25; iter++) {
+      let bestGain = 0.5, bestGi = -1, bestPi = -1, bestGj = -1;
+      const before = total();
+      for (let gi = 0; gi < groups.length; gi++) {
+        for (let pi = 0; pi < groups[gi].length; pi++) {
+          const p = groups[gi][pi];
+          if (this.isPinned(p, gi, groups)) continue;
+          for (let gj = 0; gj < groups.length; gj++) {
+            if (gj === gi || groups[gj].length >= max) continue;
+            groups[gi].splice(pi, 1);
+            groups[gj].push(p);
+            const gain = total() - before;
+            groups[gj].pop();
+            groups[gi].splice(pi, 0, p);
+            if (gain > bestGain) { bestGain = gain; bestGi = gi; bestPi = pi; bestGj = gj; }
+          }
+        }
+      }
+      if (bestGi < 0) break;
+      groups[bestGj].push(groups[bestGi].splice(bestPi, 1)[0]);
+      movedAny = true;
+    }
+    return movedAny;
+  },
+
   // ── PHASE 3b: TANK-GROUP GUEST OPTIMIZATION ──────────────────
   // For each DPS guest in the tank group, try swapping with every non-tank,
   // non-sole-healer member of every other group; take any strictly positive
@@ -2040,7 +2159,7 @@ const Optimizer = {
       let improved = false;
       for (let pi = 0; pi < groups[tIdx].length; pi++) {
         const guest = groups[tIdx][pi];
-        if (!guest.role.endsWith('dps')) continue;
+        if (guest.role === 'healer' || this.isPinned(guest, tIdx, groups)) continue;
         let bestGain = 0.5, bestGj = -1, bestPj = -1;
         for (let gj = 0; gj < groups.length; gj++) {
           if (gj === tIdx) continue;
@@ -2105,7 +2224,7 @@ const Optimizer = {
 
               // Invariant outranks fixing DPS isolation: never pull a tank
               // out of the tank-identity group.
-              if (q.role === 'tank' && this.isTankGroup(gj, groups)) continue;
+              if (this.isPinned(q, gj, groups)) continue;
 
               // p only needs gj to already have OTHER pFam members before q
               // leaves — q's own family is irrelevant to whether this fixes
@@ -2225,13 +2344,21 @@ function getGroupBuffs(players, groupIndex) {
       }
 
       if (!auraBuffId) {
-        // Pick best available aura not already used by another paladin
-        const preferred = BEST_PALADIN_AURA[dominantRole] || 'DEVOTION_AURA';
-        if (!usedAuras.has(preferred)) {
+        // Pick best available aura not already used by another paladin.
+        // A Retribution paladin runs Sanctity Aura (2% party damage) and a
+        // Protection paladin runs Devotion on themselves; otherwise the
+        // group's dominant role decides. Taken auras fall through.
+        const candidates = paladinAurasFor(player);
+        const SPEC_AURA = { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA' };
+        const specPick = SPEC_AURA[player.spec];
+        const preferred = (specPick && !usedAuras.has(specPick))
+          ? specPick
+          : (BEST_PALADIN_AURA[dominantRole] || 'DEVOTION_AURA');
+        if (candidates.includes(preferred) && !usedAuras.has(preferred)) {
           auraBuffId = preferred;
         } else {
           // Pick the highest-priority aura not yet taken
-          const allAuras = Object.keys(PALADIN_AURAS)
+          const allAuras = candidates
             .filter(id => !usedAuras.has(id))
             .sort((a, b) => getBuffPriority(Config.Buffs[b], dominantRole) - getBuffPriority(Config.Buffs[a], dominantRole));
           auraBuffId = allAuras[0] || preferred; // fallback if all taken
