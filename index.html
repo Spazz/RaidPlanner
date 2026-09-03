@@ -253,7 +253,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .summary-divider { width: 1px; height: 16px; background: var(--border-medium); }
 .summary-chip { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-secondary); }
 .summary-chip b { font-family: var(--font-cond); font-size: 14px; color: var(--text-primary); }
-.summary-chip .role-icon { width: 12px; height: 12px; font-size: 9px; }
+.summary-chip .role-icon { width: 12px; height: 12px; font-size: 9px; box-shadow: none; background: none; }
+.summary-chip .role-icon img { filter: grayscale(0.7) brightness(0.9); opacity: 0.55; transition: filter .15s, opacity .15s; }
+.summary-chip:hover .role-icon img { filter: none; opacity: 1; }
 .summary-chip.bench { color: var(--text-muted); margin-left: auto; }
 .summary-chip.bench b { color: var(--accent-gold); }
 
@@ -531,9 +533,10 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   font-size: 11px; flex-shrink: 0;
   border-radius: 2px; line-height: 1;
 }
-.role-tank { color: #5b9bd5; background: rgba(91,155,213,0.12); }
-.role-healer { color: #5bbd5b; background: rgba(91,189,91,0.12); }
-.role-dps { color: #d45b5b; background: rgba(212,91,91,0.12); }
+.role-icon img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 2px; }
+.role-tank { color: #5b9bd5; background: rgba(91,155,213,0.12); box-shadow: 0 0 0 1px rgba(91,155,213,0.55); }
+.role-healer { color: #5bbd5b; background: rgba(91,189,91,0.12); box-shadow: 0 0 0 1px rgba(91,189,91,0.55); }
+.role-dps { color: #d45b5b; background: rgba(212,91,91,0.12); box-shadow: 0 0 0 1px rgba(212,91,91,0.55); }
 .player-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .player-name {
   font-size: 11px; font-weight: 600; line-height: 1.2;
@@ -3319,10 +3322,43 @@ function initGroups() {
   return benched;
 }
 
+// Role markers use in-game spell icons from the same Wowhead CDN as the buff
+// icons. Player rows use one shared DPS marker for melee / ranged / caster;
+// the summary bar asks for 'melee' and 'ranged' explicitly to split its counts.
+const ROLE_ICONS = {
+  tank:   { cls: 'role-tank',   icon: 'ability_warrior_defensivestance', label: 'Tank' },
+  healer: { cls: 'role-healer', icon: 'spell_holy_renew',                label: 'Healer' },
+  dps:    { cls: 'role-dps',    icon: 'ability_warrior_offensivestance', label: 'DPS' },
+  melee:  { cls: 'role-dps',    icon: 'ability_warrior_offensivestance', label: 'Melee DPS' },
+  ranged: { cls: 'role-dps',    icon: 'inv_weapon_bow_07',               label: 'Ranged DPS' },
+};
 function getRoleIcon(role) {
-  if (role === 'tank') return '<span class="role-icon role-tank">&#9781;</span>';
-  if (role === 'healer') return '<span class="role-icon role-healer">&#10010;</span>';
-  return '<span class="role-icon role-dps">&#9876;</span>';
+  const r = ROLE_ICONS[role] || ROLE_ICONS.dps;
+  const src = `https://wow.zamimg.com/images/wow/icons/small/${r.icon}.jpg`;
+  return `<span class="role-icon ${r.cls}" title="${r.label}"><img src="${src}" alt="${r.label}" loading="lazy"></span>`;
+}
+
+// Player rows show the TBC talent-tree icon for the player's spec, falling
+// back to the class crest when the spec is unknown. Icon names are Wowhead's.
+const SPEC_ICONS = {
+  WARRIOR: { Arms:'ability_rogue_eviscerate', Fury:'ability_warrior_innerrage', Protection:'ability_warrior_defensivestance' },
+  PALADIN: { Holy:'spell_holy_holybolt', Protection:'spell_holy_devotionaura', Retribution:'spell_holy_auraoflight' },
+  HUNTER:  { 'Beast Mastery':'ability_hunter_beasttaming', Marksmanship:'ability_marksmanship', Survival:'ability_hunter_swiftstrike' },
+  ROGUE:   { Assassination:'ability_rogue_eviscerate', Combat:'ability_backstab', Subtlety:'ability_stealth' },
+  PRIEST:  { Discipline:'spell_holy_wordfortitude', Holy:'spell_holy_holybolt', Shadow:'spell_shadow_shadowwordpain' },
+  SHAMAN:  { Elemental:'spell_nature_lightning', Enhancement:'spell_nature_lightningshield', Restoration:'spell_nature_magicimmunity' },
+  MAGE:    { Arcane:'spell_holy_magicalsentry', Fire:'spell_fire_firebolt02', Frost:'spell_frost_frostbolt02' },
+  WARLOCK: { Affliction:'spell_shadow_deathcoil', Demonology:'spell_shadow_metamorphosis', Destruction:'spell_shadow_rainoffire' },
+  DRUID:   { Balance:'spell_nature_starfall', Feral:'ability_racial_bearform', Restoration:'spell_nature_healingtouch' },
+};
+function getSpecIcon(p) {
+  const cls = (p.class || '').toUpperCase();
+  const icon = (SPEC_ICONS[cls] && SPEC_ICONS[cls][p.spec]) || (cls ? 'classicon_' + cls.toLowerCase() : null);
+  if (!icon) return getRoleIcon(p.role);
+  const roleCls = p.role === 'tank' ? 'role-tank' : p.role === 'healer' ? 'role-healer' : 'role-dps';
+  const label = p.spec ? `${p.spec} ${cls.charAt(0) + cls.slice(1).toLowerCase()}` : cls;
+  const src = `https://wow.zamimg.com/images/wow/icons/small/${icon}.jpg`;
+  return `<span class="role-icon spec-icon ${roleCls}"><img src="${src}" alt="${label}" loading="lazy"></span>`;
 }
 
 function getDragHandle() {
@@ -3410,7 +3446,7 @@ function renderGroups() {
         const displayName = (p.name || 'Unknown').split('-')[0];
         const specClass = p.spec ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '')) : '';
         slotsHTML += `<div class="player-slot" draggable="true" data-group="${gi}" data-slot="${si}">
-          ${getRoleIcon(p.role)}
+          ${getSpecIcon(p)}
           <div class="player-info">
             <span class="player-name" style="color:${color}">${esc(displayName)}</span>
             <span class="player-spec">${esc(specClass)}</span>
@@ -3644,8 +3680,8 @@ function renderSummaryBar() {
     <span class="summary-divider"></span>
     ${chip('tank', 'Tanks', counts.tank)}
     ${chip('healer', 'Healers', counts.healer)}
-    ${chip('melee_dps', 'Melee', counts.melee_dps)}
-    ${chip('ranged_dps', 'Ranged', counts.ranged)}
+    ${chip('melee', 'Melee', counts.melee_dps)}
+    ${chip('ranged', 'Ranged', counts.ranged)}
     <span class="summary-chip bench"><b>${benched}</b> Benched</span>`;
 }
 
@@ -4005,7 +4041,7 @@ function renderBench() {
       ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : ''))
       : '';
     slotsHTML += `<div class="player-slot bench-slot" draggable="true" data-bench-slot="${bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
-      ${getRoleIcon(p.role)}
+      ${getSpecIcon(p)}
       <div class="player-info">
         <span class="player-name" style="color:${color}">${esc(displayName)}</span>
         <span class="player-spec">${esc(specClass)}</span>
@@ -4987,7 +5023,7 @@ function renderIdealComp() {
         const color = Config.ClassColors[p.class] || 'var(--text-primary)';
         const specLabel = p.spec + ' ' + p.class.charAt(0) + p.class.slice(1).toLowerCase();
         slotsHTML += `<div class="player-slot" data-group="${gi}" data-slot="${si}">
-          ${getRoleIcon(p.role)}
+          ${getSpecIcon(p)}
           <div class="player-info">
             <span class="player-name" style="color:${color}">${esc(specLabel)}</span>
           </div>
