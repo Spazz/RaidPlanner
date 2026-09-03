@@ -1098,6 +1098,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
       <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and use the Paste JSON tab.</p></details>
       <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick Karazhan or Zul'Aman from the raid dropdown and the planner switches to two groups with 10-man tank and healer floors.</p></details>
       <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
+      <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you.</p></details>
     </div>
   </section>
 
@@ -1133,6 +1134,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
           <button class="roster-btn" id="btn-export-menu" aria-haspopup="true" aria-expanded="false" aria-label="Export options">Export &#9662;</button>
           <div class="export-menu-list" role="menu">
             <button class="roster-btn" id="btn-copy-addon" role="menuitem" aria-label="Copy roster as addon string to clipboard">Copy Addon String</button>
+            <button class="roster-btn" id="btn-copy-mrt" role="menuitem" aria-label="Copy roster as an MRT Raid Groups import string to clipboard">Copy MRT String</button>
             <button class="roster-btn" id="btn-export-json" role="menuitem" aria-label="Export roster as JSON file">Export JSON</button>
             <button class="roster-btn" id="btn-copy-json" role="menuitem" aria-label="Copy roster JSON to clipboard">Copy JSON</button>
           </div>
@@ -1729,6 +1731,45 @@ const Import = {
       parts.push(players.join(','));
     }
     return parts.join(':');
+  },
+
+  // ── MRT (Method Raid Tools) Raid Groups export ──
+  // MRT > Raid Groups > Import > "From ExRT export string" accepts:
+  //   "MRTRGR" + "0" (plain) | "1" (deflated) + encodeForPrint(payload)
+  // where payload is "0," followed by MRT's own table-text serialisation of a
+  // 40-slot array: slot = (group-1)*5 + position, value = character name.
+  // We always emit the plain "0" variant so no Deflate port is needed; MRT's
+  // TextToTable parses explicit [n]="name" entries, so empty slots are skipped.
+  MRT_PRINT_ALPHABET: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789()',
+
+  // Port of LibDeflate:EncodeForPrint (the WeakAuras 6-bit printable codec).
+  // Three input bytes become four alphabet characters, little-endian, LSB first.
+  encodeForPrint(str) {
+    const bytes = new TextEncoder().encode(str);
+    const alpha = this.MRT_PRINT_ALPHABET;
+    const out = [];
+    let i = 0;
+    for (; i + 3 <= bytes.length; i += 3) {
+      let cache = bytes[i] + bytes[i + 1] * 256 + bytes[i + 2] * 65536;
+      for (let k = 0; k < 4; k++) { out.push(alpha[cache % 64]); cache = Math.floor(cache / 64); }
+    }
+    let cache = 0, bits = 0;
+    for (; i < bytes.length; i++) { cache += bytes[i] * Math.pow(2, bits); bits += 8; }
+    while (bits > 0) { out.push(alpha[cache % 64]); cache = Math.floor(cache / 64); bits -= 6; }
+    return out.join('');
+  },
+
+  exportMrtString() {
+    const entries = [];
+    State.groups.forEach((group, gi) => {
+      group.slice(0, 5).forEach((p, pi) => {
+        if (!p || !p.name) return;
+        const name = String(p.name).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        entries.push(`[${gi * 5 + pi + 1}]="${name}"`);
+      });
+    });
+    const payload = '0,{' + entries.join(',') + '}';
+    return 'MRTRGR0' + this.encodeForPrint(payload);
   },
 
   // v2 adds the two things the addon string drops: roster name and bench.
@@ -4763,6 +4804,14 @@ document.getElementById('btn-copy-addon').addEventListener('click', () => {
   const str = Import.exportAddonString();
   navigator.clipboard.writeText(str)
     .then(() => showToast('Addon string copied to clipboard'))
+    .catch(() => showToast('Copy failed'));
+});
+
+document.getElementById('btn-copy-mrt').addEventListener('click', () => {
+  if (State.roster.length === 0) { showToast('No roster to export'); return; }
+  const str = Import.exportMrtString();
+  navigator.clipboard.writeText(str)
+    .then(() => showToast('MRT string copied. In MRT: Raid Groups > Import > "From ExRT export string"'))
     .catch(() => showToast('Copy failed'));
 });
 
