@@ -59,6 +59,7 @@
   --radius-sm: 0; --radius-md: 0; --radius-lg: 0;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   background: #131416;
   display: flex;
@@ -71,15 +72,190 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   LANDING VIEW (import + marketing)
+   ══════════════════════════════════════════════════════════════ */
+.landing {
+  width: min(1080px, 100%);
+  padding: 24px 0 48px;
+  display: flex; flex-direction: column; gap: 28px;
+}
+.landing-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 4px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.landing-brand { display: flex; align-items: baseline; gap: 10px; }
+.landing-brand h1 {
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.14em;
+  font-size: 22px; font-weight: 700; color: var(--text-primary);
+}
+.landing-brand span {
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 12px; color: var(--accent-gold);
+}
+.landing-nav-links { display: flex; gap: 20px; align-items: center; }
+.landing-nav-links a {
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 12px; color: var(--text-muted); text-decoration: none;
+}
+.landing-nav-links a:hover { color: var(--text-primary); }
+
+.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 32px; align-items: start; }
+.hero-copy { padding-top: 12px; }
+.hero-kicker {
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.16em;
+  font-size: 12px; color: var(--accent-gold); margin-bottom: 12px;
+}
+.hero h2 {
+  font-family: var(--font-cond); font-weight: 700; text-transform: uppercase;
+  font-size: clamp(34px, 4.6vw, 52px); line-height: 0.98; letter-spacing: 0.02em;
+  color: var(--text-primary); margin-bottom: 16px;
+}
+.hero h2 em { font-style: normal; color: var(--accent-gold); }
+.hero p { font-size: 16px; line-height: 1.55; color: var(--text-secondary); max-width: 46ch; }
+.hero-points { list-style: none; margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+.hero-points li { font-size: 14px; color: var(--text-secondary); display: flex; gap: 10px; align-items: baseline; }
+.hero-points li::before { content: ''; width: 6px; height: 6px; background: var(--accent-gold); flex-shrink: 0; transform: translateY(-2px); }
+
+/* Import card */
+.import-card {
+  background: var(--bg-card); border: 1px solid var(--border-medium);
+  display: flex; flex-direction: column;
+}
+.import-tabs { display: flex; border-bottom: 1px solid var(--border-medium); }
+.import-tab {
+  flex: 1; padding: 12px 8px; background: transparent; border: none; cursor: pointer;
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 12px; font-weight: 600; color: var(--text-muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.import-tab:hover { color: var(--text-primary); }
+.import-tab.active { color: var(--accent-gold); border-bottom-color: var(--accent-gold); }
+.import-pane { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.import-pane p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.import-pane code { font-size: 11.5px; color: var(--text-muted); font-family: Consolas, 'Courier New', monospace; }
+.import-hints { display: flex; flex-direction: column; gap: 2px; }
+.import-field {
+  width: 100%; padding: 11px 12px;
+  background: var(--bg-input); border: 1px solid var(--border-strong); color: var(--text-primary);
+  font-family: var(--font-body); font-size: 14px;
+}
+.import-field:focus { outline: none; border-color: var(--accent-gold); }
+textarea.import-field { min-height: 130px; resize: vertical; font-family: Consolas, 'Courier New', monospace; font-size: 12px; }
+.import-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.btn-lg { padding: 11px 18px; font-size: 13px; }
+.import-status { font-size: 12px; color: var(--text-muted); min-height: 16px; }
+.import-status.error { color: var(--accent-red); }
+.saved-list { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; }
+.saved-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 12px; background: var(--bg-slot); border: 1px solid var(--border-subtle);
+  cursor: pointer; text-align: left; color: var(--text-primary); font-family: var(--font-body);
+}
+.saved-item:hover { background: var(--bg-card-hover); border-color: var(--border-strong); }
+.saved-item-name { font-size: 13px; font-weight: 600; }
+.saved-item-meta { font-size: 11px; color: var(--text-muted); }
+.saved-empty { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
+.import-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 18px; border-top: 1px solid var(--border-subtle); background: var(--bg-panel);
+}
+.import-foot span { font-size: 11.5px; color: var(--text-muted); }
+.link-btn {
+  background: none; border: none; cursor: pointer; padding: 0;
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 12px; color: var(--accent-gold);
+}
+.link-btn:hover { color: var(--accent-gold-bright); text-decoration: underline; }
+.resume-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 18px; background: rgba(224,181,61,0.08); border: 1px solid var(--border-accent);
+}
+.resume-banner strong { color: var(--accent-gold-bright); }
+.resume-banner span { font-size: 13px; color: var(--text-secondary); }
+
+/* Sections */
+.landing-section { display: flex; flex-direction: column; gap: 16px; }
+.section-title {
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 13px; color: var(--accent-gold); font-weight: 600;
+  display: flex; align-items: center; gap: 12px;
+}
+.section-title::after { content: ''; flex: 1; height: 1px; background: var(--border-medium); }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.step {
+  padding: 18px; background: var(--bg-card); border: 1px solid var(--border-subtle);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.step-num {
+  font-family: var(--font-cond); font-size: 30px; font-weight: 700; color: var(--accent-gold); line-height: 1;
+}
+.step h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 15px; color: var(--text-primary); }
+.step p { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.feature {
+  padding: 16px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--accent-gold-dim);
+}
+.feature h3 { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.feature p { font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+.faq { display: flex; flex-direction: column; gap: 6px; }
+.faq details { background: var(--bg-panel); border: 1px solid var(--border-subtle); }
+.faq summary {
+  cursor: pointer; padding: 12px 16px; font-size: 14px; font-weight: 600; color: var(--text-primary);
+  list-style: none; display: flex; justify-content: space-between; align-items: center;
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: '+'; color: var(--accent-gold); font-size: 18px; line-height: 1; }
+.faq details[open] summary::after { content: '\2013'; }
+.faq details p { padding: 0 16px 14px; font-size: 13px; line-height: 1.55; color: var(--text-secondary); }
+.landing-footer {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding-top: 16px; border-top: 1px solid var(--border-subtle);
+  font-size: 11.5px; color: var(--text-faint);
+}
+@media (max-width: 900px) {
+  .hero { grid-template-columns: 1fr; }
+  .steps, .features { grid-template-columns: 1fr; }
+  .landing-nav-links { display: none; }
+}
+
 /* ── Main frame ── */
 .addon-frame {
   position: relative; z-index: 1;
   width: min(1080px, 100%);
   background: var(--bg-frame);
   border: 1px solid var(--border-subtle);
-  overflow: hidden;
+  overflow: clip; /* clip, not hidden: hidden makes the frame a scroll root and kills the sticky summary bar */
   zoom: 1.5;
 }
+.back-link {
+  background: none; border: none; cursor: pointer; padding: 0 var(--sp-2) 0 0;
+  margin-right: var(--sp-2); border-right: 1px solid var(--border-medium);
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 11px; color: var(--text-muted); line-height: 1;
+}
+.back-link:hover { color: var(--accent-gold); }
+
+/* ── Sticky raid summary bar ── */
+.summary-bar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap;
+  padding: 6px var(--sp-4);
+  background: var(--bg-deepest);
+  border-bottom: 1px solid var(--border-medium);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+}
+.summary-main { font-size: 12px; color: var(--text-secondary); display: flex; align-items: baseline; gap: 4px; }
+.summary-main b { font-family: var(--font-cond); font-size: 16px; color: var(--text-primary); letter-spacing: 0.04em; }
+.summary-main.over b { color: var(--accent-red); }
+.summary-divider { width: 1px; height: 16px; background: var(--border-medium); }
+.summary-chip { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-secondary); }
+.summary-chip b { font-family: var(--font-cond); font-size: 14px; color: var(--text-primary); }
+.summary-chip .role-icon { width: 12px; height: 12px; font-size: 9px; }
+.summary-chip.bench { color: var(--text-muted); margin-left: auto; }
+.summary-chip.bench b { color: var(--accent-gold); }
 
 /* ── Condensed label helper ── */
 .cond, .mode-tab, .roster-btn, .btn, .buff-sidebar-title, .buff-sidebar-sub,
@@ -196,8 +372,48 @@ body {
   padding: var(--sp-3) var(--sp-2);
   background: var(--bg-panel);
   border-left: 1px solid var(--border-subtle);
-  display: flex; flex-direction: column; gap: var(--sp-4);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  transition: width 0.15s ease;
 }
+.buff-sidebar.collapsed { width: 132px; }
+.buff-sidebar.collapsed .sidebar-body { display: none; }
+.sidebar-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  width: 100%; padding: 4px 3px; background: none; border: none; cursor: pointer;
+  border-bottom: 1px solid var(--border-medium);
+}
+.sidebar-toggle-label {
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 12px; color: var(--accent-gold); font-weight: 600;
+}
+.sidebar-chevron { color: var(--text-muted); font-size: 11px; transition: transform 0.15s ease; }
+.buff-sidebar.collapsed .sidebar-chevron { transform: rotate(-90deg); }
+.sidebar-toggle:hover .sidebar-toggle-label { color: var(--accent-gold-bright); }
+.sidebar-summary { display: flex; flex-direction: column; gap: 3px; padding: 0 3px; }
+.sidebar-summary-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--text-secondary); }
+.sidebar-summary-row b { font-family: var(--font-cond); font-size: 13px; color: var(--text-primary); letter-spacing: 0.04em; }
+.sidebar-summary-row.missing { color: var(--accent-red); }
+.sidebar-summary-row.missing b { color: var(--accent-red); }
+.sidebar-summary-row.missing.zero { color: var(--text-muted); }
+.sidebar-summary-row.missing.zero b { color: var(--text-muted); }
+.sidebar-body { display: flex; flex-direction: column; gap: var(--sp-4); }
+
+/* Missing-buff insight line under a missing row */
+.buff-row-insight {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 1px 3px 5px 23px; margin-top: -2px;
+  font-size: 9.5px; color: var(--text-muted); line-height: 1.3;
+}
+.buff-row-insight .insight-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.buff-row-insight .insight-who { font-weight: 600; }
+.buff-row-insight.none .insight-text { color: var(--text-faint); font-style: italic; }
+.insight-btn {
+  flex-shrink: 0; cursor: pointer;
+  padding: 2px 6px; background: transparent; border: 1px solid var(--accent-gold-dim);
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: 9px; font-weight: 600; color: var(--accent-gold); line-height: 1.2;
+}
+.insight-btn:hover { background: var(--accent-gold); color: #151618; }
 .buff-sidebar-title {
   display: flex; align-items: baseline; gap: var(--sp-2);
   font-size: 12px; color: var(--accent-gold); font-weight: 600;
@@ -725,10 +941,11 @@ body {
 }
 @media (max-width: 900px) {
   .app-body { flex-direction: column; }
-  .buff-sidebar {
+  .buff-sidebar, .buff-sidebar.collapsed {
     width: 100%; border-left: none; border-top: 1px solid var(--border-subtle);
-    flex-direction: row;
   }
+  .sidebar-summary { flex-direction: row; gap: var(--sp-4); }
+  .sidebar-body { flex-direction: row; }
   .buff-sidebar-section { flex: 1; min-width: 0; }
   .groups-container { grid-template-columns: repeat(2, 1fr); }
   .groups-container.groups-5 { grid-template-columns: repeat(2, 1fr); }
@@ -759,9 +976,133 @@ body {
 </head>
 <body>
 
-<div class="addon-frame" id="app">
+<div class="landing" id="landing-view">
+  <nav class="landing-nav" aria-label="Site">
+    <div class="landing-brand"><h1>Party Planner</h1><span>TBC Raid Group Builder</span></div>
+    <div class="landing-nav-links">
+      <a href="#how-it-works">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-copy">
+      <div class="hero-kicker">Burning Crusade Classic &middot; 10 and 25-man</div>
+      <h2>Optimal raid groups <em>in one click.</em></h2>
+      <p>Import your Raid-Helper sign-ups and get five parties built around Windfury, Leader of the Pack, totems, auras and every other party-scoped buff. No spreadsheet, no login, nothing uploaded.</p>
+      <ul class="hero-points">
+        <li>Tank and healer floors are seated first; extra sign-ups are benched by value, not by who clicked first.</li>
+        <li>Every missing buff tells you who could provide it and fixes it in one click.</li>
+        <li>Drag to fine-tune, then copy straight into the Party Planner addon.</li>
+      </ul>
+    </div>
+
+    <div class="import-card" id="import-card">
+      <div class="import-tabs" role="tablist">
+        <button type="button" class="import-tab active" role="tab" data-pane="url" aria-selected="true">Load from URL</button>
+        <button type="button" class="import-tab" role="tab" data-pane="paste" aria-selected="false">Paste JSON</button>
+        <button type="button" class="import-tab" role="tab" data-pane="saved" aria-selected="false">Saved rosters</button>
+      </div>
+
+      <div class="resume-banner" id="resume-banner" hidden>
+        <span>You have <strong id="resume-summary"></strong> loaded.</span>
+        <button type="button" class="btn btn-primary" id="btn-resume">Back to planner</button>
+      </div>
+
+      <div class="import-pane" data-pane="url">
+        <p>Paste a Raid-Helper event link, API link, or just the event ID.</p>
+        <div class="import-hints">
+          <code>https://raid-helper.dev/event/&lt;id&gt;</code>
+          <code>https://raid-helper.dev/api/raidplan/&lt;id&gt;</code>
+          <code>&lt;id&gt;</code>
+        </div>
+        <label for="landing-url" class="sr-only">Raid-Helper event link or ID</label>
+        <input type="text" class="import-field" id="landing-url" placeholder="https://raid-helper.dev/event/... or event ID" autocomplete="off" spellcheck="false">
+        <div class="import-actions">
+          <button type="button" class="btn btn-primary btn-lg" id="btn-landing-url">Load sign-ups</button>
+          <span class="import-status" id="landing-status-url"></span>
+        </div>
+      </div>
+
+      <div class="import-pane" data-pane="paste" hidden>
+        <p>Paste the JSON from a Raid-Helper export, or a <code>PP:</code> string from the addon or a share link.</p>
+        <label for="landing-paste" class="sr-only">Roster data</label>
+        <textarea class="import-field" id="landing-paste" placeholder='{"signUps": [...]}  or  PP:2:bt:...' spellcheck="false"></textarea>
+        <div class="import-actions">
+          <button type="button" class="btn btn-primary btn-lg" id="btn-landing-paste">Import roster</button>
+          <span class="import-status" id="landing-status-paste"></span>
+        </div>
+      </div>
+
+      <div class="import-pane" data-pane="saved" hidden>
+        <p>Rosters you saved in this browser.</p>
+        <div class="saved-list" id="landing-saved-list"></div>
+      </div>
+
+      <div class="import-foot">
+        <span>No roster handy?</span>
+        <button type="button" class="link-btn" id="btn-landing-random">Generate a random 25-man</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="landing-section" id="how-it-works">
+    <div class="section-title">How it works</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Import</h3>
+        <p>Load sign-ups straight from a Raid-Helper event, paste the JSON, or reopen a roster you saved. Tentative and bench sign-ups land on the bench; absences are skipped.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Optimize</h3>
+        <p>The optimizer scores what every player receives in a party, seats your tanks and healers first, and places everyone where they gain the most. Max DPS, tank mitigation, or balanced.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Export</h3>
+        <p>Review buff coverage, drag anyone you want moved, then copy the addon string, download JSON, or share a link that carries the whole layout.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="landing-section" id="features">
+    <div class="section-title">Everything you need to run an optimized raid</div>
+    <div class="features">
+      <div class="feature"><h3>Raid-Helper integration</h3><p>Paste an event URL or ID and the sign-ups are fetched for you. Class and spec are resolved from the sign-up, including Tank and Bench categories.</p></div>
+      <div class="feature"><h3>Buff and totem optimization</h3><p>Windfury, Leader of the Pack, Sanctity Aura, Moonkin Aura, Mana Tide, Unleashed Rage and more, weighted by who receives them and how much DPS they add.</p></div>
+      <div class="feature"><h3>Role floors and a smart bench</h3><p>More sign-ups than seats? Tanks and healers are guaranteed first, then DPS compete on value. Nobody is dropped; they wait on the bench.</p></div>
+      <div class="feature"><h3>Actionable buff coverage</h3><p>Every missing buff or debuff says whether a benched player provides it, a seated shaman or paladin could switch to it, or nobody in the roster can. One click fixes it.</p></div>
+      <div class="feature"><h3>Drag, drop and override</h3><p>Move players between groups, swap in from the bench, edit a spec, or pick a different totem or aura for any shaman or paladin.</p></div>
+      <div class="feature"><h3>Addon export and share links</h3><p>Copy the layout into the Party Planner addon, download JSON, or send a link. Share links live in the URL itself, so nothing is stored on a server.</p></div>
+    </div>
+  </section>
+
+  <section class="landing-section" id="faq">
+    <div class="section-title">Frequently asked questions</div>
+    <div class="faq">
+      <details><summary>Is Party Planner free?</summary><p>Yes. There is no account, no login and no paid tier. Everything runs in your browser.</p></details>
+      <details><summary>Where does my roster data go?</summary><p>Nowhere. Sign-ups are fetched by your browser directly from Raid-Helper and never touch our server. Saved rosters live in your browser's local storage, and share links carry the layout in the URL fragment, which browsers never send to the host.</p></details>
+      <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive: Windfury for melee, Wrath of Air and Moonkin Aura for casters, Devotion and Tree of Life for tanks, and so on, weighted by each recipient's role and DPS. The optimizer seeds a tank group, guarantees the raid's tank and healer minimums, then places and refines everyone else for the highest total.</p></details>
+      <details><summary>What happens when more people sign up than the raid holds?</summary><p>Tanks and healers are seated up to the raid's floor first. The remaining seats go to whoever adds the most; everyone else is placed on the bench, where the coverage panel can swap them in with one click.</p></details>
+      <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and use the Paste JSON tab.</p></details>
+      <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick Karazhan or Zul'Aman from the raid dropdown and the planner switches to two groups with 10-man tank and healer floors.</p></details>
+      <details><summary>How do I get the layout into the game?</summary><p>Use Export, then Copy Addon String, and paste it into the Party Planner addon's import box in-game. JSON export and share links are there too.</p></details>
+    </div>
+  </section>
+
+  <footer class="landing-footer">
+    <span>Party Planner Web &middot; a TBC raid group builder</span>
+    <span>Built for raid leaders who would rather pull than sort.</span>
+  </footer>
+</div>
+
+<div class="addon-frame" id="app" hidden>
   <div class="title-bar">
     <div class="title-left">
+      <button type="button" class="back-link" id="btn-back-import" aria-label="Back to import">&larr; Import</button>
       <h1>Party Planner</h1>
     </div>
     <span class="title-edition">Web Edition</span>
@@ -813,6 +1154,8 @@ body {
     </div>
   </div>
 
+  <div class="summary-bar" id="summary-bar" aria-live="polite"></div>
+
   <div class="app-body">
     <div class="main-column">
       <div class="groups-container" id="groups-container"></div>
@@ -822,14 +1165,21 @@ body {
       <div class="manual-changes-section" id="manual-changes"></div>
     </div>
 
-    <aside class="buff-sidebar">
-      <div class="buff-sidebar-section">
-        <h4 class="buff-sidebar-title">Buffs <span class="buff-sidebar-count" id="buff-count-buffs"></span></h4>
-        <div class="buff-row-list" id="buff-catalog-buffs"></div>
-      </div>
-      <div class="buff-sidebar-section">
-        <h4 class="buff-sidebar-title">Debuffs <span class="buff-sidebar-count" id="buff-count-debuffs"></span></h4>
-        <div class="buff-row-list" id="buff-catalog-debuffs"></div>
+    <aside class="buff-sidebar collapsed" id="buff-sidebar">
+      <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-expanded="false" aria-controls="sidebar-body">
+        <span class="sidebar-toggle-label">Coverage</span>
+        <span class="sidebar-chevron" aria-hidden="true">&#9662;</span>
+      </button>
+      <div class="sidebar-summary" id="sidebar-summary"></div>
+      <div class="sidebar-body" id="sidebar-body">
+        <div class="buff-sidebar-section">
+          <h4 class="buff-sidebar-title">Buffs <span class="buff-sidebar-count" id="buff-count-buffs"></span></h4>
+          <div class="buff-row-list" id="buff-catalog-buffs"></div>
+        </div>
+        <div class="buff-sidebar-section">
+          <h4 class="buff-sidebar-title">Debuffs <span class="buff-sidebar-count" id="buff-count-debuffs"></span></h4>
+          <div class="buff-row-list" id="buff-catalog-debuffs"></div>
+        </div>
       </div>
     </aside>
   </div>
@@ -1061,6 +1411,14 @@ const Config = {
   },
   RaidOrder: ['kara','za','gruul','mag','ssc','tk','hyjal','bt','swp'],
 
+  // Minimum tanks and healers a raid of this size must seat before DPS
+  // compete for the remaining seats. Only consulted when more players signed
+  // up than the raid holds.
+  RaidFloors: {
+    10: { tank: 2, healer: 3 },
+    25: { tank: 2, healer: 6 },
+  },
+
   RaidHelperClassMap: {
     Hunter:'HUNTER', Druid:'DRUID', Warrior:'WARRIOR', Priest:'PRIEST',
     Mage:'MAGE', Shaman:'SHAMAN', Paladin:'PALADIN', Rogue:'ROGUE', Warlock:'WARLOCK',
@@ -1143,6 +1501,7 @@ const State = {
   optimizerMode: 'max_dps', // 'max_dps' | 'tank_mit' | 'balanced' | 'relaxed'
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
   activeTab: 'plan', // 'plan' | 'ideal'
+  view: 'landing', // 'landing' | 'app'
 };
 
 // ── RAID CAPACITY ───────────────────────────────────────────────
@@ -1305,12 +1664,9 @@ const Import = {
 
     const raidInfo = Config.Raids[State.selectedRaid];
     const numGroups = raidInfo ? raidInfo.groups : 5;
-    const capacity = numGroups * 5;
-    let overflow = 0;
-    if (roster.length > capacity) {
-      // Sign-up order decides who makes the cut; the rest wait on the bench.
-      for (const p of roster.splice(capacity)) { p.groupNumber = 0; bench.push(p); overflow++; }
-    }
+    // Every primary sign-up goes to the optimizer, even past capacity: it
+    // seats the raid's tank/healer floors first and then whoever adds the
+    // most, benching the rest. Sign-up order never decides who sits.
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
     roster.forEach((p, i) => {
@@ -1322,10 +1678,12 @@ const Import = {
     State.roster = roster;
     State.groups = groups;
     State.bench = bench;
+    const benchBefore = bench.length;
     Optimizer.optimize();
+    const overflow = State.bench.length - benchBefore;
 
-    return { success:true, playerCount:roster.length, groupCount:numGroups, wasUnassigned:true,
-             benchCount:bench.length, skippedCount:skipped, overflowCount:overflow };
+    return { success:true, playerCount:State.roster.length, groupCount:numGroups, wasUnassigned:true,
+             benchCount:State.bench.length, skippedCount:skipped, overflowCount:overflow };
   },
 
   // Compact addon-friendly export string
@@ -1821,6 +2179,21 @@ const Optimizer = {
     // Phase 1: Seed groups with role identities
     this.seedGroups(pool, groups, numGroups, raidSize, max, mode);
 
+    // Phase 1b: Role floors. When more players are in the pool than the raid
+    // holds, the raid's minimum tanks and healers get a seat before DPS
+    // compete for the rest, so a late-signing healer is never benched behind
+    // a twelfth mage. Within a role the greedy scorer still picks who sits.
+    const capacity = numGroups * max;
+    const seatedCount = () => groups.reduce((n, g) => n + g.length, 0);
+    if (seatedCount() + pool.length > capacity) {
+      const floors = this.floorsFor(raidSize);
+      for (const role of ['tank', 'healer']) {
+        const have = groups.flat().filter(p => p.role === role).length;
+        const need = Math.max(0, (floors[role] || 0) - have);
+        if (need > 0) this.greedyPlace(pool, groups, max, mode, { eligible: p => p.role === role, limit: need });
+      }
+    }
+
     // Phase 2: Greedy marginal-gain placement of remaining players
     this.greedyPlace(pool, groups, max, mode);
 
@@ -1865,6 +2238,13 @@ const Optimizer = {
     State.roster = groups.flat();
   },
 
+  // Minimum tanks/healers for a raid size (see Config.RaidFloors).
+  floorsFor(raidSize) {
+    const exact = Config.RaidFloors[raidSize];
+    if (exact) return exact;
+    return raidSize <= 10 ? Config.RaidFloors[10] : Config.RaidFloors[25];
+  },
+
   // ── PHASE 1: SEED GROUPS ─────────────────────────────────────
   seedGroups(pool, groups, numGroups, raidSize, max, mode) {
     if (numGroups >= 5) {
@@ -1904,8 +2284,14 @@ const Optimizer = {
   // groupScore gain. Because groupScore measures what members RECEIVE, this
   // both attracts buffers to groups that want their buffs and attracts
   // beneficiaries to groups that already have the buffs.
-  greedyPlace(pool, groups, max, mode) {
-    while (pool.length > 0) {
+  // opts.eligible restricts which pool members may be placed this pass;
+  // opts.limit caps how many are placed. Both are used by the role-floor
+  // pass; the general pass leaves them undefined.
+  greedyPlace(pool, groups, max, mode, opts) {
+    const eligible = (opts && opts.eligible) || (() => true);
+    const limit = (opts && opts.limit != null) ? opts.limit : Infinity;
+    let placed = 0;
+    while (pool.length > 0 && placed < limit) {
       let bestGain = -Infinity;
       let bestPlayerIdx = -1;
       let bestGroupIdx = -1;
@@ -1914,6 +2300,7 @@ const Optimizer = {
         if (groups[gi].length >= max) continue;
         const base = this.groupScore(groups[gi], gi, groups, mode);
         for (let pi = 0; pi < pool.length; pi++) {
+          if (!eligible(pool[pi])) continue;
           groups[gi].push(pool[pi]);
           const gain = this.groupScore(groups[gi], gi, groups, mode) - base;
           groups[gi].pop();
@@ -1925,10 +2312,11 @@ const Optimizer = {
         }
       }
 
-      // No group has space — stop placing
+      // No group has space (or no eligible player left) — stop placing
       if (bestGroupIdx < 0) break;
 
       groups[bestGroupIdx].push(pool.splice(bestPlayerIdx, 1)[0]);
+      placed++;
     }
   },
 
@@ -2438,6 +2826,76 @@ function getGroupBuffs(players, groupIndex) {
   return buffList;
 }
 
+// ── RAID COVERAGE + MISSING-BUFF INSIGHTS ──────────────────────
+// Debuffs aren't part of getGroupBuffs (they're applied to the enemy, not the
+// raid) — a class/spec anywhere in an assigned group is enough to "cover" one.
+function getRaidDebuffCoverage(groups) {
+  const players = groups.flat();
+  const covered = new Set();
+  for (const id of Object.keys(Config.Debuffs)) {
+    const d = Config.Debuffs[id];
+    const has = players.some(p => p.class === d.sourceClass && (!d.sourceSpec || p.spec === d.sourceSpec));
+    if (has) covered.add(id);
+  }
+  return covered;
+}
+
+function getRaidBuffCoverage(groups) {
+  const covered = new Set();
+  groups.forEach((g, gi) => getGroupBuffs(g, gi).forEach(b => covered.add(b.id)));
+  return covered;
+}
+
+function canProvideBuff(entry, player) {
+  if (!entry || !player) return false;
+  if (player.class !== entry.sourceClass) return false;
+  if (entry.sourceSpec && player.spec !== entry.sourceSpec) return false;
+  return true;
+}
+
+// The totem element or 'aura' a buff occupies, or null for passives.
+function buffSlotCategory(buffId) {
+  if (TOTEM_ELEMENTS[buffId]) return TOTEM_ELEMENTS[buffId];
+  if (PALADIN_AURAS[buffId]) return 'aura';
+  return null;
+}
+
+// For every buff and debuff the raid is NOT getting, say what would fix it:
+//   { kind:'switch', player, groupIdx, currentBuffId } — a seated shaman/paladin
+//       can give it by running a different totem/aura (one click, no roster change)
+//   { kind:'bench',  player }                          — someone on the bench provides it
+//   { kind:'none' }                                    — nobody in the roster can
+// Keyed by buff/debuff id. Covered entries are absent.
+function getMissingBuffInsights() {
+  const groups = State.groups || [];
+  const bench = State.bench || [];
+  const coveredBuffs = getRaidBuffCoverage(groups);
+  const coveredDebuffs = getRaidDebuffCoverage(groups);
+  const insights = {};
+
+  const consider = (id, entry, covered, isBuff) => {
+    if (covered.has(id)) return;
+    const category = isBuff ? buffSlotCategory(id) : null;
+    if (category) {
+      for (let gi = 0; gi < groups.length; gi++) {
+        const provider = groups[gi].find(p => canProvideBuff(entry, p));
+        if (!provider) continue;
+        const current = getGroupBuffs(groups[gi], gi)
+          .find(b => b.sourceUid === provider.uid && buffSlotCategory(b.id) === category);
+        insights[id] = { kind:'switch', player:provider, groupIdx:gi, currentBuffId: current ? current.id : null };
+        return;
+      }
+    }
+    const benched = bench.find(p => canProvideBuff(entry, p));
+    if (benched) { insights[id] = { kind:'bench', player:benched }; return; }
+    insights[id] = { kind:'none' };
+  };
+
+  for (const [id, entry] of Object.entries(Config.Buffs)) consider(id, entry, coveredBuffs, true);
+  for (const [id, entry] of Object.entries(Config.Debuffs)) consider(id, entry, coveredDebuffs, false);
+  return insights;
+}
+
 // ── ROSTER EDITING ─────────────────────────────────
 // Manual edits to the plan: change a player's class/spec, add a player to a group,
 // bench a player, bring one back, or delete a benched player for good.
@@ -2592,6 +3050,99 @@ const RosterEdit = {
     groups[groupIdx].push(found.player);
     this.syncRoster();
     return { success:true, player: found.player };
+  },
+
+  // Overrides are keyed "groupIdx:uid:category"; drop every one for a uid.
+  ClearOverridesForUid(uid) {
+    if (!uid || !State.buffOverrides) return 0;
+    let cleared = 0;
+    for (const key of Object.keys(State.buffOverrides)) {
+      if (key.split(':')[1] === uid) { delete State.buffOverrides[key]; cleared++; }
+    }
+    return cleared;
+  },
+
+  // Make a seated shaman/paladin run a specific totem/aura. Removes the
+  // override when the default already produces the buff, so the icon only
+  // shows as "overridden" when it really is.
+  SwitchBuff(groupIdx, uid, buffId) {
+    const buff = Config.Buffs[buffId];
+    if (!buff) return { success:false, error:'Unknown buff' };
+    const category = buffSlotCategory(buffId);
+    if (!category) return { success:false, error:'Only totems and auras can be switched' };
+    const groups = State.groups || [];
+    const group = groups[groupIdx];
+    if (!group) return { success:false, error:'Invalid group' };
+    const player = group.find(p => p.uid === uid);
+    if (!player) return { success:false, error:'Player not found in that group' };
+    if (!canProvideBuff(buff, player)) return { success:false, error:player.name + ' cannot provide ' + buff.name };
+
+    const key = groupIdx + ':' + uid + ':' + category;
+    const existing = State.buffOverrides[key];
+    delete State.buffOverrides[key];
+    const byDefault = getGroupBuffs(group, groupIdx).some(b => b.sourceUid === uid && b.id === buffId);
+    if (!byDefault) {
+      const currentDefault = getGroupBuffs(group, groupIdx).find(b => b.sourceUid === uid && buffSlotCategory(b.id) === category);
+      const original = (existing && existing.originalBuffId) || (currentDefault ? currentDefault.id : buffId);
+      State.buffOverrides[key] = { buffId, originalBuffId: original };
+    }
+    return { success:true, player, buffId };
+  },
+
+  // Seat a benched player. With no open seat, the same-role raider whose
+  // removal costs the raid the least is benched in exchange. The incoming
+  // player lands in whichever open seat adds the most.
+  SwapIn(benchUid) {
+    const found = this.FindPlayer(benchUid);
+    if (!found) return { success:false, error:'Player not found' };
+    if (!found.benched) return { success:false, error:'Player is not benched' };
+    const incoming = found.player;
+    const groups = State.groups || [];
+    const mode = State.optimizerMode || 'max_dps';
+    const max = this.MAX_GROUP_SIZE;
+    let benched = null;
+
+    if (!groups.some(g => g.length < max)) {
+      // Exact role first; a DPS may also displace any other DPS role. Tanks
+      // and healers are never auto-benched to make room for a DPS.
+      const DPS_ROLES = ['melee_dps', 'ranged_dps', 'caster_dps'];
+      const isDps = DPS_ROLES.includes(incoming.role);
+      const cheapest = (accept) => {
+        let worst = null;
+        groups.forEach((g, gi) => {
+          const base = Optimizer.groupScore(g, gi, groups, mode);
+          g.forEach((p, si) => {
+            if (!accept(p)) return;
+            const loss = base - Optimizer.groupScore(g.filter(x => x !== p), gi, groups, mode);
+            if (!worst || loss < worst.loss) worst = { p, gi, si, loss };
+          });
+        });
+        return worst;
+      };
+      let worst = cheapest(p => p.role === incoming.role);
+      if (!worst && isDps) worst = cheapest(p => DPS_ROLES.includes(p.role));
+      if (!worst) return { success:false, error:'The raid is full and has no ' + (incoming.role || '').replace('_', ' ') + ' to swap out' };
+      groups[worst.gi].splice(worst.si, 1);
+      worst.p.groupNumber = 0;
+      State.bench.push(worst.p);
+      this.ClearOverridesForUid(worst.p.uid);
+      benched = worst.p;
+    }
+
+    State.bench.splice(State.bench.indexOf(incoming), 1);
+    let best = null;
+    groups.forEach((g, gi) => {
+      if (g.length >= max) return;
+      const base = Optimizer.groupScore(g, gi, groups, mode);
+      g.push(incoming);
+      const gain = Optimizer.groupScore(g, gi, groups, mode) - base;
+      g.pop();
+      if (!best || gain > best.gain) best = { gi, gain };
+    });
+    groups[best.gi].push(incoming);
+    incoming.groupNumber = best.gi + 1;
+    this.syncRoster();
+    return { success:true, player: incoming, groupIdx: best.gi, benched };
   },
 
   // Permanent removal, from wherever the player currently sits.
@@ -2797,6 +3348,7 @@ function renderGroups() {
   const coveredDebuffIds = getRaidDebuffCoverage(State.groups);
   renderBuffCatalog(coveredBuffIds, coveredDebuffIds);
 
+  renderSummaryBar();
   updateStatus();
   renderBench();
   cleanupOverrides();
@@ -2807,27 +3359,51 @@ function renderGroups() {
   document.getElementById('roster-name').textContent = State.rosterName;
 }
 
-// Debuffs aren't part of getGroupBuffs (they're applied to the enemy, not the
-// raid) — a class/spec anywhere in an assigned group is enough to "cover" one.
-function getRaidDebuffCoverage(groups) {
-  const players = groups.flat();
-  const covered = new Set();
-  for (const id of Object.keys(Config.Debuffs)) {
-    const d = Config.Debuffs[id];
-    const has = players.some(p => p.class === d.sourceClass && (!d.sourceSpec || p.spec === d.sourceSpec));
-    if (has) covered.add(id);
-  }
-  return covered;
-}
-
 function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
-  renderBuffRowList('buff-catalog-buffs', Config.Buffs, Config.BuffAbbreviations, id => Config.BuffIconURL(id), coveredBuffIds);
-  renderBuffRowList('buff-catalog-debuffs', Config.Debuffs, Config.DebuffAbbreviations, id => Config.DebuffIconURL(id), coveredDebuffIds);
+  const insights = getMissingBuffInsights();
+  const buffs = renderBuffRowList('buff-catalog-buffs', Config.Buffs, Config.BuffAbbreviations, id => Config.BuffIconURL(id), coveredBuffIds, insights);
+  const debuffs = renderBuffRowList('buff-catalog-debuffs', Config.Debuffs, Config.DebuffAbbreviations, id => Config.DebuffIconURL(id), coveredDebuffIds, insights);
+  renderSidebarSummary(buffs, debuffs);
 }
 
-function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds) {
+// Collapsed-state strip: "Buffs 13/20 · Debuffs 18/28 · 17 missing".
+function renderSidebarSummary(buffs, debuffs) {
+  const el = document.getElementById('sidebar-summary');
+  if (!el) return;
+  const missing = (buffs.total - buffs.covered) + (debuffs.total - debuffs.covered);
+  el.innerHTML = `
+    <div class="sidebar-summary-row"><span>Buffs</span><b>${buffs.covered} / ${buffs.total}</b></div>
+    <div class="sidebar-summary-row"><span>Debuffs</span><b>${debuffs.covered} / ${debuffs.total}</b></div>
+    <div class="sidebar-summary-row missing${missing === 0 ? ' zero' : ''}"><span>Missing</span><b>${missing}</b></div>`;
+}
+
+// One line under a missing row saying what would fix it, with the button
+// that does it. Mirrors getMissingBuffInsights(): switch / bench / none.
+function renderInsightLine(id, insight) {
+  if (!insight) return '';
+  const short = (p) => esc((p.name || 'Unknown').split('-')[0]);
+  const color = (p) => Config.ClassColors[p.class] || 'var(--text-secondary)';
+  if (insight.kind === 'switch') {
+    const p = insight.player;
+    return `<div class="buff-row-insight switch">
+      <span class="insight-text">In raid: <span class="insight-who" style="color:${color(p)}">${short(p)}</span></span>
+      <button type="button" class="insight-btn" data-insight-switch="${esc(id)}" data-group="${insight.groupIdx}" data-uid="${esc(p.uid)}" title="Make ${short(p)} run ${esc(Config.Buffs[id].name)}">Switch</button>
+    </div>`;
+  }
+  if (insight.kind === 'bench') {
+    const p = insight.player;
+    const specLabel = p.spec ? `${esc(p.spec)}` : '';
+    return `<div class="buff-row-insight bench">
+      <span class="insight-text">Benched: <span class="insight-who" style="color:${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
+      <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short(p)}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
+    </div>`;
+  }
+  return `<div class="buff-row-insight none"><span class="insight-text">Nobody in roster</span></div>`;
+}
+
+function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds, insights) {
   const container = document.getElementById(containerId);
-  if (!container) return;
+  if (!container) return { covered: 0, total: 0 };
 
   // Missing entries first so gaps are the first thing you see; covered below.
   const ids = Object.keys(dataset);
@@ -2879,8 +3455,77 @@ function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds)
       <span class="buff-row-name">${esc(entry.name)}</span>${warnBadge}
       <span class="buff-row-source" style="color:${sourceColor}">${esc(sourceLabel)}</span>
     </div>`;
+    if (!isCovered && insights) html += renderInsightLine(id, insights[id]);
   }
   container.innerHTML = html;
+  return { covered: coveredList.length, total: ids.length };
+}
+
+// ── Sidebar collapse + insight actions (delegated, attached once) ──
+const SIDEBAR_STORAGE_KEY = 'pp_sidebar_expanded';
+function setSidebarExpanded(expanded, persist = true) {
+  const aside = document.getElementById('buff-sidebar');
+  const toggle = document.getElementById('sidebar-toggle');
+  if (!aside || !toggle) return;
+  aside.classList.toggle('collapsed', !expanded);
+  toggle.setAttribute('aria-expanded', String(expanded));
+  if (persist) { try { localStorage.setItem(SIDEBAR_STORAGE_KEY, expanded ? '1' : '0'); } catch (e) {} }
+}
+(function initSidebar() {
+  const aside = document.getElementById('buff-sidebar');
+  const toggle = document.getElementById('sidebar-toggle');
+  if (!aside || !toggle) return;
+  let expanded = false;
+  try { expanded = localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1'; } catch (e) {}
+  setSidebarExpanded(expanded, false);
+  toggle.addEventListener('click', () => setSidebarExpanded(aside.classList.contains('collapsed')));
+
+  aside.addEventListener('click', (e) => {
+    const swapBtn = e.target.closest('[data-insight-swap]');
+    if (swapBtn) {
+      const res = RosterEdit.SwapIn(swapBtn.dataset.insightSwap);
+      if (!res.success) { showToast(res.error); return; }
+      renderGroups();
+      const who = (res.player.name || '').split('-')[0];
+      showToast(res.benched
+        ? `${who} seated in Group ${res.groupIdx + 1}; ${(res.benched.name || '').split('-')[0]} benched`
+        : `${who} seated in Group ${res.groupIdx + 1}`);
+      return;
+    }
+    const switchBtn = e.target.closest('[data-insight-switch]');
+    if (switchBtn) {
+      const res = RosterEdit.SwitchBuff(parseInt(switchBtn.dataset.group), switchBtn.dataset.uid, switchBtn.dataset.insightSwitch);
+      if (!res.success) { showToast(res.error); return; }
+      renderGroups();
+      showToast(`${(res.player.name || '').split('-')[0]} now runs ${Config.Buffs[res.buffId].name}`);
+    }
+  });
+})();
+
+// ── Sticky raid summary bar ──
+function renderSummaryBar() {
+  const bar = document.getElementById('summary-bar');
+  if (!bar) return;
+  const raidInfo = Config.Raids[State.selectedRaid];
+  const capacity = raidInfo ? raidInfo.size : 25;
+  const seated = State.roster.length;
+  const counts = { tank: 0, healer: 0, melee_dps: 0, ranged: 0 };
+  for (const p of State.roster) {
+    if (p.role === 'tank') counts.tank++;
+    else if (p.role === 'healer') counts.healer++;
+    else if (p.role === 'melee_dps') counts.melee_dps++;
+    else counts.ranged++;
+  }
+  const benched = (State.bench || []).length;
+  const chip = (role, label, n) => `<span class="summary-chip">${getRoleIcon(role)}<b>${n}</b> ${label}</span>`;
+  bar.innerHTML = `
+    <span class="summary-main${seated > capacity ? ' over' : ''}"><b>${seated}</b>/ ${capacity} in raid</span>
+    <span class="summary-divider"></span>
+    ${chip('tank', 'Tanks', counts.tank)}
+    ${chip('healer', 'Healers', counts.healer)}
+    ${chip('melee_dps', 'Melee', counts.melee_dps)}
+    ${chip('ranged_dps', 'Ranged', counts.ranged)}
+    <span class="summary-chip bench"><b>${benched}</b> Benched</span>`;
 }
 
 function updateStatus() {
@@ -3663,7 +4308,83 @@ function showLoadModal() {
   });
 }
 
-// ── IMPORT MODAL ────────────────────────────────────────────────
+// ── IMPORT (shared by the landing card and the toolbar modal) ───
+// Accepts: a raid-helper event URL, an API URL, a bare event ID, raw JSON,
+// or a PP: addon/share string. Resolves to { url } or { text }.
+function normalizeImportSource(raw) {
+  const t = (raw || '').trim();
+  if (/^\d{6,}$/.test(t)) return { url: `https://raid-helper.dev/api/raidplan/${t}` };
+  if (/^https?:\/\//i.test(t)) {
+    const m = t.match(/raid-helper\.dev\/(?:event|api\/v\d+\/events|api\/raidplan)\/(\d+)/i);
+    return { url: m ? `https://raid-helper.dev/api/raidplan/${m[1]}` : t };
+  }
+  return { text: t };
+}
+
+// Fetch roster JSON from a URL. Resolves to the body, or null after reporting.
+async function fetchRosterJson(url, report) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    const resp = await fetch(url, { signal: controller.signal, mode: 'cors', credentials: 'omit' });
+    clearTimeout(timeoutId);
+    if (!resp.ok) { report(`Fetch failed: HTTP ${resp.status}`, true); return null; }
+    return await resp.text();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') report('Request timed out — try again or paste the JSON directly', true);
+    else if (err instanceof TypeError) report('Network error — the server may not allow direct browser requests. Try pasting the JSON instead.', true);
+    else report('Fetch failed: ' + err.message, true);
+    return null;
+  }
+}
+
+// Import from anything the user can paste. Returns true when a roster loaded.
+// `report(msg, isError)` receives progress and errors; success is toasted.
+async function importFromText(raw, report = (m) => showToast(m)) {
+  const src = normalizeImportSource(raw);
+  if (!src.url && !src.text) return false;
+
+  if (src.text && src.text.startsWith('PP:')) {
+    const result = Import.importAddonString(src.text);
+    if (!result.success) { report('Import failed: ' + result.error, true); return false; }
+    State.rosterName = 'Imported Roster';
+    document.getElementById('raid-select').value = State.selectedRaid;
+    initGroups();
+    renderGroups();
+    showToast(`Imported ${result.playerCount} players from addon string`);
+    return true;
+  }
+
+  let jsonStr = src.text;
+  if (src.url) {
+    report('Fetching roster from Raid-Helper...', false);
+    jsonStr = await fetchRosterJson(src.url, report);
+    if (jsonStr == null) return false;
+  }
+
+  const result = Import.importRaidHelper(jsonStr);
+  if (!result.success) { report('Import failed: ' + result.error, true); return false; }
+
+  State.rosterName = 'Imported Roster';
+  document.getElementById('raid-select').value = State.selectedRaid;
+  const foldBenched = initGroups();
+  renderGroups();
+  // Tentative/Bench sign-ups are parked on the bench and Absences are dropped,
+  // so report all three counts rather than silently losing people.
+  const overflow = (result.overflowCount || 0) + foldBenched;
+  const extra = [];
+  if (overflow) extra.push(`${overflow} over the raid size, benched`);
+  else if (result.benchCount) extra.push(`${result.benchCount} benched`);
+  if (result.skippedCount) extra.push(`${result.skippedCount} skipped`);
+  const suffix = extra.length ? ` (${extra.join(', ')})` : '';
+  showToast(result.wasUnassigned
+    ? `Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups${suffix}`
+    : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}`);
+  return true;
+}
+
+// ── IMPORT MODAL (toolbar) ──────────────────────────────────────
 document.getElementById('btn-import').addEventListener('click', () => {
   document.getElementById('import-overlay').classList.add('visible');
   document.getElementById('import-textarea').value = '';
@@ -3678,76 +4399,123 @@ document.getElementById('import-overlay').addEventListener('click', e => {
 document.getElementById('btn-do-import').addEventListener('click', async () => {
   const text = document.getElementById('import-textarea').value.trim();
   if (!text) return;
+  const ok = await importFromText(text);
+  if (ok) document.getElementById('import-overlay').classList.remove('visible');
+});
 
-  // Detect addon string input (starts with PP:)
-  if (text.startsWith('PP:')) {
-    const result = Import.importAddonString(text);
-    if (result.success) {
-      State.rosterName = 'Imported Roster';
-      document.getElementById('import-overlay').classList.remove('visible');
-      document.getElementById('raid-select').value = State.selectedRaid;
-      initGroups();
-      renderGroups();
-      showToast(`Imported ${result.playerCount} players from addon string`);
-    } else {
-      showToast('Import failed: ' + result.error);
+// ── VIEWS: landing <-> planner ──────────────────────────────────
+function hasLoadedWork() {
+  return State.roster.length > 0 || (State.bench || []).length > 0;
+}
+
+function showView(view) {
+  State.view = view;
+  const landing = document.getElementById('landing-view');
+  const app = document.getElementById('app');
+  landing.hidden = view !== 'landing';
+  app.hidden = view !== 'app';
+  if (view === 'landing') renderLanding();
+  window.scrollTo(0, 0);
+}
+
+function renderLanding() {
+  // Resume banner: the planner keeps its state while the landing is shown.
+  const banner = document.getElementById('resume-banner');
+  const summary = document.getElementById('resume-summary');
+  if (banner && summary) {
+    const loaded = hasLoadedWork();
+    banner.hidden = !loaded;
+    if (loaded) {
+      const raid = Config.Raids[State.selectedRaid];
+      const parts = [`${State.roster.length} players`];
+      if ((State.bench || []).length) parts.push(`${State.bench.length} benched`);
+      summary.textContent = `${State.rosterName === NO_ROSTER_NAME ? 'a roster' : State.rosterName} (${parts.join(', ')}${raid ? ', ' + raid.name : ''})`;
     }
+  }
+  renderLandingSavedList();
+}
+
+function renderLandingSavedList() {
+  const list = document.getElementById('landing-saved-list');
+  if (!list) return;
+  const rosters = getSavedRosters();
+  const names = Object.keys(rosters);
+  if (names.length === 0) {
+    list.innerHTML = '<div class="saved-empty">No saved rosters yet. Save one from the planner and it will show up here.</div>';
     return;
   }
-
-  let jsonStr = text;
-
-  // Detect URL input — fetch the JSON first
-  if (text.startsWith('http://') || text.startsWith('https://')) {
-    let url = text;
-    // Normalize: if they paste the website URL, convert to API URL
-    // e.g. https://raid-helper.dev/event/1234 → https://raid-helper.dev/api/raidplan/1234
-    const eventMatch = url.match(/raid-helper\.dev\/event\/(\d+)/);
-    if (eventMatch) url = `https://raid-helper.dev/api/raidplan/${eventMatch[1]}`;
-
-    showToast('Fetching roster from URL...');
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    try {
-      const resp = await fetch(url, { signal: controller.signal, mode: 'cors', credentials: 'omit' });
-      clearTimeout(timeoutId);
-      if (!resp.ok) { showToast(`Fetch failed: HTTP ${resp.status}`); return; }
-      jsonStr = await resp.text();
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        showToast('Request timed out — try again or paste the JSON directly');
-      } else if (err instanceof TypeError) {
-        showToast('Network error — the server may not allow direct browser requests. Try pasting the JSON instead.');
-      } else {
-        showToast('Fetch failed: ' + err.message);
-      }
-      return;
-    }
-  }
-
-  const result = Import.importRaidHelper(jsonStr);
-  if (result.success) {
-    State.rosterName = 'Imported Roster';
-    document.getElementById('import-overlay').classList.remove('visible');
-    document.getElementById('raid-select').value = State.selectedRaid;
-    const foldBenched = initGroups();
+  list.innerHTML = names.map(name => {
+    const r = rosters[name];
+    const count = r.players ? r.players.length : 0;
+    const raid = r.raid ? (Config.Raids[r.raid]?.name || r.raid) : '';
+    return `<button type="button" class="saved-item" data-name="${esc(name)}">
+      <span class="saved-item-name">${esc(name)}</span>
+      <span class="saved-item-meta">${count} players${raid ? ' \u00b7 ' + esc(raid) : ''}</span>
+    </button>`;
+  }).join('');
+  list.querySelectorAll('.saved-item').forEach(item => item.addEventListener('click', () => {
+    const data = rosters[item.dataset.name];
+    if (!Import.loadRoster(data)) { showToast('That saved roster could not be loaded'); return; }
+    initGroups();
     renderGroups();
-    // Tentative/Bench sign-ups are parked on the bench and Absences are dropped,
-    // so report all three counts rather than silently losing people.
-    const overflow = (result.overflowCount || 0) + foldBenched;
-    const extra = [];
-    if (overflow) extra.push(`${overflow} over the raid size, benched`);
-    else if (result.benchCount) extra.push(`${result.benchCount} benched`);
-    if (result.skippedCount) extra.push(`${result.skippedCount} skipped`);
-    const suffix = extra.length ? ` (${extra.join(', ')})` : '';
-    showToast(result.wasUnassigned
-      ? `Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups${suffix}`
-      : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}`);
-  } else {
-    showToast('Import failed: ' + result.error);
-  }
-});
+    showToast(`Loaded "${item.dataset.name}"`);
+    showView('app');
+  }));
+}
+
+(function initLanding() {
+  const card = document.getElementById('import-card');
+  if (!card) return;
+
+  // Tabs
+  card.querySelectorAll('.import-tab').forEach(tab => tab.addEventListener('click', () => {
+    card.querySelectorAll('.import-tab').forEach(t => {
+      const active = t === tab;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', String(active));
+    });
+    card.querySelectorAll('.import-pane').forEach(pane => { pane.hidden = pane.dataset.pane !== tab.dataset.pane; });
+    const focusEl = card.querySelector(`.import-pane[data-pane="${tab.dataset.pane}"] .import-field`);
+    if (focusEl) focusEl.focus();
+  }));
+
+  const statusReporter = (id) => (msg, isError) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('error', !!isError);
+  };
+
+  const runImport = async (inputId, statusId, btnId) => {
+    const input = document.getElementById(inputId);
+    const btn = document.getElementById(btnId);
+    const report = statusReporter(statusId);
+    const text = input.value.trim();
+    if (!text) { report('Paste something first', true); input.focus(); return; }
+    btn.disabled = true;
+    report('', false);
+    try {
+      const ok = await importFromText(text, report);
+      if (ok) { report('', false); input.value = ''; showView('app'); }
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  document.getElementById('btn-landing-url').addEventListener('click', () => runImport('landing-url', 'landing-status-url', 'btn-landing-url'));
+  document.getElementById('landing-url').addEventListener('keydown', (e) => { if (e.key === 'Enter') runImport('landing-url', 'landing-status-url', 'btn-landing-url'); });
+  document.getElementById('btn-landing-paste').addEventListener('click', () => runImport('landing-paste', 'landing-status-paste', 'btn-landing-paste'));
+
+  document.getElementById('btn-landing-random').addEventListener('click', () => {
+    RandomRoster.generate();
+    renderGroups();
+    showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
+    showView('app');
+  });
+
+  document.getElementById('btn-resume').addEventListener('click', () => showView('app'));
+  document.getElementById('btn-back-import').addEventListener('click', () => showView('landing'));
+})();
 
 // ── ACTION BUTTONS ──────────────────────────────────────────────
 document.getElementById('optimize-mode').addEventListener('change', (e) => {
@@ -3871,25 +4639,26 @@ function buildShareUrl() {
 
 function loadFromShareLink() {
   const hash = window.location.hash || '';
-  if (!hash.startsWith('#r=')) return;
+  if (!hash.startsWith('#r=')) return false;
 
   // Strip the fragment first, so a refresh (or a declined prompt) never re-fires.
   history.replaceState(null, '', window.location.origin + window.location.pathname);
 
   const str = Import.decodeSharePayload(hash.slice(3));
-  if (!str) { showToast('That share link is invalid or damaged'); return; }
+  if (!str) { showToast('That share link is invalid or damaged'); return false; }
 
   const preview = Import.previewShareString(str);
-  if (!preview.success) { showToast(preview.error || 'That share link is invalid or damaged'); return; }
+  if (!preview.success) { showToast(preview.error || 'That share link is invalid or damaged'); return false; }
 
   const hasWork = State.roster.length > 0 || (State.bench || []).length > 0;
-  if (hasWork && !confirm(`Load shared raid "${preview.name}"? This replaces your current layout.`)) return;
+  if (hasWork && !confirm(`Load shared raid "${preview.name}"? This replaces your current layout.`)) return false;
 
   const res = Import.importAddonString(str);
-  if (!res.success) { showToast(res.error || 'That share link is invalid or damaged'); return; }
+  if (!res.success) { showToast(res.error || 'That share link is invalid or damaged'); return false; }
 
   renderGroups();
   showToast(`Loaded shared raid "${State.rosterName}" (${res.playerCount} players)`);
+  return true;
 }
 
 document.getElementById('btn-share').addEventListener('click', () => {
@@ -4145,7 +4914,11 @@ document.querySelectorAll('.mode-tab').forEach(btn => {
 initRaidDropdown();
 initGroups();
 renderGroups();
-loadFromShareLink();
+// A share link opens straight into the planner; everyone else lands on import.
+showView(loadFromShareLink() ? 'app' : 'landing');
+// A share link pasted into the address bar of an already-open page only
+// changes the hash, so honour it there too.
+window.addEventListener('hashchange', () => { if (loadFromShareLink()) showView('app'); });
 
 // ── EXPOSE FOR TESTING ──────────────────────────────────────────
 // ── BUFF TOOLTIP PORTAL ─────────────────────────────────────────
@@ -4193,10 +4966,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Config, Import, Optimizer, IdealComp, getGroupBuffs, getBuffPriority, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
+  module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
 }
 // Also expose on window for browser-based tests
-window.PP = { Config, Import, Optimizer, IdealComp, getGroupBuffs, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
+window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
 </script>
 <div id="buff-tooltip-portal"></div>
 </body>
