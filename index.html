@@ -597,18 +597,19 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   display: none;
   position: fixed;
   background: var(--bg-deepest); color: var(--text-primary);
-  padding: 9px 12px;
+  /* Sized directly (no CSS zoom): zoom rescales fixed left/top and breaks
+     the anchoring maths in the mouseover handler. */
+  padding: 13px 18px;
   font-family: var(--font-body);
-  font-size: 12px; white-space: normal; width: 280px;
+  font-size: 18px; white-space: normal; width: 420px;
   border: 1px solid var(--border-strong);
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
   z-index: 9999; letter-spacing: 0;
-  zoom: 1.5;
 }
-#buff-tooltip-portal .tt-name { font-weight: 600; font-size: 13px; color: var(--accent-gold); margin-bottom: 4px; }
-#buff-tooltip-portal .tt-desc { color: var(--text-secondary); font-size: 12px; line-height: 1.5; margin-bottom: 4px; }
-#buff-tooltip-portal .tt-source { font-weight: 500; font-size: 11px; margin-top: 3px; color: var(--text-muted); }
+#buff-tooltip-portal .tt-name { font-weight: 600; font-size: 19px; color: var(--accent-gold); margin-bottom: 6px; }
+#buff-tooltip-portal .tt-desc { color: var(--text-secondary); font-size: 18px; line-height: 1.5; margin-bottom: 6px; }
+#buff-tooltip-portal .tt-source { font-weight: 500; font-size: 16px; margin-top: 4px; color: var(--text-muted); }
 .buff-icon.swappable { cursor: pointer; }
 .buff-icon.swappable::after {
   content: ''; position: absolute; bottom: -2px; right: -2px;
