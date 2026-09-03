@@ -1022,7 +1022,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
         <p>Paste a Raid-Helper event link, API link, or just the event ID.</p>
         <div class="import-hints">
           <code>https://raid-helper.xyz/event/&lt;id&gt;</code>
-          <code>https://raid-helper.dev/api/raidplan/&lt;id&gt;</code>
+          <code>https://raid-helper.xyz/api/v4/events/&lt;id&gt;</code>
           <code>&lt;id&gt;</code>
         </div>
         <label for="landing-url" class="sr-only">Raid-Helper event link or ID</label>
@@ -4327,12 +4327,17 @@ function showLoadModal() {
 // or a PP: addon/share string. Resolves to { url } or { text }.
 function normalizeImportSource(raw) {
   const t = (raw || '').trim();
-  if (/^\d{6,}$/.test(t)) return { url: `https://raid-helper.dev/api/raidplan/${t}` };
+  // The v4 events endpoint carries every sign-up; the raidplan endpoint only
+  // holds a composition someone already built in Raid-Helper (often empty).
+  const eventsApi = (id) => `https://raid-helper.dev/api/v4/events/${id}`;
+  if (/^\d{6,}$/.test(t)) return { url: eventsApi(t) };
   if (/^https?:\/\//i.test(t)) {
-    // Raid-Helper answers on raid-helper.dev and raid-helper.xyz; event,
-    // raidplan and API links all carry the same event ID.
-    const m = t.match(/raid-helper\.[a-z]+\/(?:event|raidplan|api\/v\d+\/events|api\/raidplan)\/(\d+)/i);
-    return { url: m ? `https://raid-helper.dev/api/raidplan/${m[1]}` : t };
+    // Raid-Helper answers on raid-helper.dev and raid-helper.xyz. An explicit
+    // API link is fetched as pasted; event and raidplan page links resolve
+    // to the sign-ups for that event ID.
+    if (/raid-helper\.[a-z]+\/api\//i.test(t)) return { url: t };
+    const m = t.match(/raid-helper\.[a-z]+\/(?:event|raidplan)\/(\d+)/i);
+    return { url: m ? eventsApi(m[1]) : t };
   }
   return { text: t };
 }
