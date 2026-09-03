@@ -283,6 +283,14 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .title-diamond { display: none; }
 .title-edition { font-family: var(--font-cond); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
 
+/* Share hands a URL to other people, so it reads as the one outward action. */
+.roster-actions #btn-share {
+  color: var(--accent-gold);
+  border: 1px solid var(--accent-gold-dim);
+  padding-left: 10px; padding-right: 10px;
+}
+.roster-actions #btn-share:hover { background: var(--accent-gold); color: #151618; border-color: var(--accent-gold); }
+
 /* ── Toolbar (tabs + raid + file actions) ── */
 .toolbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -990,11 +998,11 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
     <div class="hero-copy">
       <div class="hero-kicker">Burning Crusade Classic &middot; 10 and 25-man</div>
       <h2>Optimal raid groups <em>in one click.</em></h2>
-      <p>Import your Raid-Helper sign-ups and get five parties built around Windfury, Leader of the Pack, totems, auras and every other party-scoped buff. No spreadsheet, no login, nothing uploaded.</p>
+      <p>Paste your Raid-Helper sign-ups and get raid groups built to hit harder. No spreadsheet, no login, nothing uploaded.</p>
       <ul class="hero-points">
-        <li>Tank and healer floors are seated first; extra sign-ups are benched by value, not by who clicked first.</li>
-        <li>Every missing buff tells you who could provide it and fixes it in one click.</li>
-        <li>Drag to fine-tune, then copy straight into the Party Planner addon.</li>
+        <li>Melee ride with Windfury, casters get their totems, tanks stay with their healers.</li>
+        <li>See every buff you're missing and fix it in one click.</li>
+        <li>Drag anyone anywhere, then share a link with your raid.</li>
       </ul>
     </div>
 
@@ -1026,7 +1034,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
       </div>
 
       <div class="import-pane" data-pane="paste" hidden>
-        <p>Paste the JSON from a Raid-Helper export, or a <code>PP:</code> string from the addon or a share link.</p>
+        <p>Paste the JSON from a Raid-Helper export, or a <code>PP:</code> string from a share link.</p>
         <label for="landing-paste" class="sr-only">Roster data</label>
         <textarea class="import-field" id="landing-paste" placeholder='{"signUps": [...]}  or  PP:2:bt:...' spellcheck="false"></textarea>
         <div class="import-actions">
@@ -1053,17 +1061,17 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
       <div class="step">
         <div class="step-num">1</div>
         <h3>Import</h3>
-        <p>Load sign-ups straight from a Raid-Helper event, paste the JSON, or reopen a roster you saved. Tentative and bench sign-ups land on the bench; absences are skipped.</p>
+        <p>Paste a Raid-Helper link or event ID, drop in the JSON, or reopen a roster you saved.</p>
       </div>
       <div class="step">
         <div class="step-num">2</div>
         <h3>Optimize</h3>
-        <p>The optimizer scores what every player receives in a party, seats your tanks and healers first, and places everyone where they gain the most. Max DPS, tank mitigation, or balanced.</p>
+        <p>One click builds your groups around the buffs that matter most. Too many sign-ups? The strongest raid gets seated and the rest wait on the bench.</p>
       </div>
       <div class="step">
         <div class="step-num">3</div>
         <h3>Export</h3>
-        <p>Review buff coverage, drag anyone you want moved, then copy the addon string, download JSON, or share a link that carries the whole layout.</p>
+        <p>Check your buff coverage, drag anyone you want moved, then share a link that carries the whole layout.</p>
       </div>
     </div>
   </section>
@@ -1071,12 +1079,12 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   <section class="landing-section" id="features">
     <div class="section-title">Everything you need to run an optimized raid</div>
     <div class="features">
-      <div class="feature"><h3>Raid-Helper integration</h3><p>Paste an event URL or ID and the sign-ups are fetched for you. Class and spec are resolved from the sign-up, including Tank and Bench categories.</p></div>
-      <div class="feature"><h3>Buff and totem optimization</h3><p>Windfury, Leader of the Pack, Sanctity Aura, Moonkin Aura, Mana Tide, Unleashed Rage and more, weighted by who receives them and how much DPS they add.</p></div>
-      <div class="feature"><h3>Role floors and a smart bench</h3><p>More sign-ups than seats? Tanks and healers are guaranteed first, then DPS compete on value. Nobody is dropped; they wait on the bench.</p></div>
-      <div class="feature"><h3>Actionable buff coverage</h3><p>Every missing buff or debuff says whether a benched player provides it, a seated shaman or paladin could switch to it, or nobody in the roster can. One click fixes it.</p></div>
-      <div class="feature"><h3>Drag, drop and override</h3><p>Move players between groups, swap in from the bench, edit a spec, or pick a different totem or aura for any shaman or paladin.</p></div>
-      <div class="feature"><h3>Addon export and share links</h3><p>Copy the layout into the Party Planner addon, download JSON, or send a link. Share links live in the URL itself, so nothing is stored on a server.</p></div>
+      <div class="feature"><h3>Paste your sign-ups</h3><p>Drop in a Raid-Helper link or event ID and your roster shows up with class, spec and role already sorted.</p></div>
+      <div class="feature"><h3>Groups that hit harder</h3><p>Melee get Windfury, casters get their totems and auras, tanks stay with their healers. Every party is built to do more damage.</p></div>
+      <div class="feature"><h3>Nobody gets dropped</h3><p>More sign-ups than seats? The strongest raid gets seated and everyone else waits on the bench, ready to swap in.</p></div>
+      <div class="feature"><h3>Missing buffs, fixed</h3><p>See every buff your raid isn't getting, who could provide it, and fix it in one click.</p></div>
+      <div class="feature"><h3>Drag, drop, override</h3><p>Move anyone between groups, edit a spec, or pick a different totem or aura.</p></div>
+      <div class="feature"><h3>Share with your raid</h3><p>Send a link that carries the whole layout, or download it as JSON. Nothing is stored on a server.</p></div>
     </div>
   </section>
 
@@ -1085,11 +1093,11 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
     <div class="faq">
       <details><summary>Is Party Planner free?</summary><p>Yes. There is no account, no login and no paid tier. Everything runs in your browser.</p></details>
       <details><summary>Where does my roster data go?</summary><p>Nowhere. Sign-ups are fetched by your browser directly from Raid-Helper and never touch our server. Saved rosters live in your browser's local storage, and share links carry the layout in the URL fragment, which browsers never send to the host.</p></details>
-      <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive: Windfury for melee, Wrath of Air and Moonkin Aura for casters, Devotion and Tree of Life for tanks, and so on, weighted by each recipient's role and DPS. The optimizer seeds a tank group, guarantees the raid's tank and healer minimums, then places and refines everyone else for the highest total.</p></details>
-      <details><summary>What happens when more people sign up than the raid holds?</summary><p>Tanks and healers are seated up to the raid's floor first. The remaining seats go to whoever adds the most; everyone else is placed on the bench, where the coverage panel can swap them in with one click.</p></details>
+      <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive, so melee end up with Windfury, casters with their totems and auras, and tanks with their healers. You can pick Max DPS, Tank Mitigation or Balanced, and drag anyone afterwards.</p></details>
+      <details><summary>What happens when more people sign up than the raid holds?</summary><p>You always keep enough tanks and healers. The remaining seats go to whoever adds the most, and everyone else waits on the bench, where you can swap them in with one click.</p></details>
       <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and use the Paste JSON tab.</p></details>
       <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick Karazhan or Zul'Aman from the raid dropdown and the planner switches to two groups with 10-man tank and healer floors.</p></details>
-      <details><summary>How do I get the layout into the game?</summary><p>Use Export, then Copy Addon String, and paste it into the Party Planner addon's import box in-game. JSON export and share links are there too.</p></details>
+      <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
     </div>
   </section>
 
@@ -1105,7 +1113,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
       <button type="button" class="back-link" id="btn-back-import" aria-label="Back to import">&larr; Import</button>
       <h1>Party Planner</h1>
     </div>
-    <span class="title-edition">Web Edition</span>
   </div>
 
   <div class="toolbar">
@@ -1373,21 +1380,21 @@ const Config = {
   // abbreviation above (same graceful-degradation pattern as BuffIconURL).
   DebuffIcons: {
     JUDGEMENT_CRUSADER: 'spell_holy_holysmite',
-    JUDGEMENT_LIGHT:    'spell_holy_sealoflight',
+    JUDGEMENT_LIGHT:    'spell_holy_healingaura',
     JUDGEMENT_WISDOM:   'spell_holy_sealofwisdom',
     SUNDER_ARMOR:       'ability_warrior_sunder',
     DEMORALIZING_SHOUT: 'ability_warrior_warcry',
     THUNDER_CLAP:       'spell_nature_thunderclap',
     BLOOD_FRENZY:       'ability_warrior_bloodfrenzy',
-    EXPOSE_ARMOR:       'ability_rogue_exposearmor',
-    HEMORRHAGE:         'ability_rogue_hemorrhage',
+    EXPOSE_ARMOR:       'ability_warrior_riposte',
+    HEMORRHAGE:         'spell_shadow_lifedrain',
     FAERIE_FIRE_BALANCE:'spell_nature_faeriefire',
     FAERIE_FIRE_FERAL:  'spell_nature_faeriefire',
     MANGLE:             'ability_druid_mangle2',
     DEMORALIZING_ROAR:  'ability_druid_demoralizingroar',
     INSECT_SWARM:       'spell_nature_insectswarm',
     CURSE_ELEMENTS:     'spell_shadow_chilltouch',
-    CURSE_RECKLESSNESS: 'spell_shadow_unholystrength',
+    CURSE_RECKLESSNESS: 'spell_shadow_curseofmannoroth',
     SHADOW_EMBRACE:     'spell_shadow_shadowembrace',
     IMPROVED_SHADOW_BOLT:'spell_shadow_shadowbolt',
     SHADOW_WEAVING:     'spell_shadow_blackplague',
@@ -1399,17 +1406,18 @@ const Config = {
   },
 
   Raids: {
-    kara:  { name:'Karazhan',            size:10, groups:2 },
-    za:    { name:"Zul'Aman",            size:10, groups:2 },
-    gruul: { name:"Gruul's Lair",        size:25, groups:5 },
-    mag:   { name:"Magtheridon's Lair",  size:25, groups:5 },
-    ssc:   { name:'Serpentshrine Cavern',size:25, groups:5 },
-    tk:    { name:'Tempest Keep',        size:25, groups:5 },
-    hyjal: { name:'Hyjal Summit',        size:25, groups:5 },
-    bt:    { name:'Black Temple',        size:25, groups:5 },
-    swp:   { name:'Sunwell Plateau',     size:25, groups:5 },
+    kara:  { name:'Karazhan',            size:10, groups:2, tier:'Tier 4' },
+    gruul: { name:"Gruul's Lair",        size:25, groups:5, tier:'Tier 4' },
+    mag:   { name:"Magtheridon's Lair",  size:25, groups:5, tier:'Tier 4' },
+    ssc:   { name:'Serpentshrine Cavern',size:25, groups:5, tier:'Tier 5' },
+    tk:    { name:'Tempest Keep',        size:25, groups:5, tier:'Tier 5' },
+    za:    { name:"Zul'Aman",            size:10, groups:2, tier:'Tier 5' },
+    hyjal: { name:'Hyjal Summit',        size:25, groups:5, tier:'Tier 6' },
+    bt:    { name:'Black Temple',        size:25, groups:5, tier:'Tier 6' },
+    swp:   { name:'Sunwell Plateau',     size:25, groups:5, tier:'Tier 6' },
   },
-  RaidOrder: ['kara','za','gruul','mag','ssc','tk','hyjal','bt','swp'],
+  RaidOrder: ['kara','gruul','mag','ssc','tk','za','hyjal','bt','swp'],
+  TierOrder: ['Tier 4', 'Tier 5', 'Tier 6'],
 
   // Minimum tanks and healers a raid of this size must seat before DPS
   // compete for the remaining seats. Only consulted when more players signed
@@ -3161,13 +3169,19 @@ const RosterEdit = {
 function initRaidDropdown() {
   const sel = document.getElementById('raid-select');
   sel.innerHTML = '';
-  for (const key of Config.RaidOrder) {
-    const r = Config.Raids[key];
-    const opt = document.createElement('option');
-    opt.value = key;
-    opt.textContent = `${r.name} (${r.size})`;
-    if (key === State.selectedRaid) opt.selected = true;
-    sel.appendChild(opt);
+  for (const tier of Config.TierOrder) {
+    const group = document.createElement('optgroup');
+    group.label = tier;
+    for (const key of Config.RaidOrder) {
+      const r = Config.Raids[key];
+      if (r.tier !== tier) continue;
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = `${r.name} (${r.size})`;
+      if (key === State.selectedRaid) opt.selected = true;
+      group.appendChild(opt);
+    }
+    if (group.children.length) sel.appendChild(group);
   }
   sel.addEventListener('change', () => {
     State.selectedRaid = sel.value;
