@@ -373,6 +373,33 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .roster-meta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
+/* ── Phone-only More menu (lives in the action bar; see the 600px media block) ── */
+.mobile-more { display: none; position: relative; flex-shrink: 0; }
+.mobile-more-list {
+  display: none; position: absolute; right: 0; bottom: calc(100% + 8px);
+  flex-direction: column; min-width: 180px; max-width: calc(100vw - 16px);
+  background: var(--bg-deepest); border: 1px solid var(--border-strong);
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.5); z-index: 50;
+}
+.mobile-more.open .mobile-more-list { display: flex; }
+.mobile-more-roster {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 6px 12px; background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-medium);
+}
+.mobile-more-roster #mobile-roster-name {
+  font-size: 12px; font-weight: 600; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mobile-more-list .roster-btn {
+  text-align: left; padding: 7px 12px; font-size: 12px; letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.mobile-more-list .roster-btn:last-child { border-bottom: none; }
+.mobile-more-list .roster-btn:active { background: var(--bg-card-hover); color: var(--text-primary); }
+.mobile-more-list .mobile-more-danger { color: var(--accent-red); }
+.mobile-more-sep { height: 1px; background: var(--border-medium); }
+
 /* ── App body (main column + buff sidebar) ── */
 .app-body { display: flex; align-items: stretch; }
 .main-column { flex: 1; min-width: 0; }
@@ -1002,18 +1029,31 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   }
   /* align-self: Chrome inflates a stretched flex child inside a zoomed frame */
   .mode-tabs .mode-tab { flex: 1; align-self: flex-start; text-align: center; padding-top: 5px; padding-bottom: 5px; }
-  .toolbar-right { flex-wrap: wrap; gap: var(--sp-2); }
-  .raid-selector { flex: 1 1 100%; }
+  .toolbar-right { flex-wrap: nowrap; }
+  .raid-selector { flex: 1; }
   .raid-selector .raid-dropdown { flex: 1; min-width: 0; }
-  .roster-actions { flex: 1 1 100%; justify-content: space-between; flex-wrap: nowrap; }
+  /* Share/Save/Load/Export move into the More menu on the bottom bar. */
+  .toolbar .roster-actions { display: none; }
 
-  .roster-bar { flex-direction: column; align-items: stretch; padding: var(--sp-2); gap: var(--sp-2); }
-  .action-left { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--sp-2); }
-  .action-left #btn-optimize { grid-column: span 3; }
-  .action-left #optimize-mode { grid-column: span 3; min-width: 0; }
-  .action-left .action-divider { display: none; }
-  .action-left .btn-secondary, .action-left .btn-quiet { grid-column: span 2; padding-left: 4px; padding-right: 4px; text-align: center; }
-  .roster-right { justify-content: space-between; }
+  /* The action bar becomes a thumb-reachable bar fixed to the bottom of the
+     screen: Optimize, its mode, and one More menu. Everything else it held
+     is hidden here and proxied from the menu. */
+  .addon-frame { padding-bottom: 44px; }
+  .roster-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    align-items: center; padding: var(--sp-2); gap: var(--sp-2);
+    border-top: 1px solid var(--border-medium); border-bottom: none;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.4);
+  }
+  .action-left { flex: 1; min-width: 0; }
+  .action-left #btn-optimize { flex: 0 0 auto; padding-left: 10px; padding-right: 10px; }
+  .action-left { gap: var(--sp-1); }
+  .action-left #optimize-mode { flex: 1 1 0; min-width: 0; font-size: 10.5px; letter-spacing: 0.02em; padding: 5px 16px 5px 5px; background-position: right 4px center; }
+  #btn-mobile-more { padding-left: 8px; padding-right: 8px; }
+  .action-left .action-divider,
+  .action-left #btn-import, .action-left #btn-random, .action-left #btn-clear,
+  .roster-right { display: none; }
+  .mobile-more { display: block; }
 
   .summary-bar { gap: 2px var(--sp-3); padding: 4px var(--sp-2); }
   .summary-divider { display: none; }
@@ -1032,7 +1072,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   /* Overlays live inside the zoomed frame: size the modal against the overlay,
      not the viewport, or the zoom makes it 1.5x too wide. */
   .import-modal, .save-modal { width: calc(100% - 24px); max-width: 440px; min-width: auto; padding: var(--sp-4); }
-  .toast { left: 12px; right: 12px; bottom: 12px; }
+  .toast { left: 12px; right: 12px; bottom: 56px; }
   #buff-tooltip-portal { width: min(420px, calc(100vw - 16px)); font-size: 15px; padding: 10px 14px; }
   #buff-tooltip-portal .tt-name { font-size: 16px; }
   #buff-tooltip-portal .tt-desc { font-size: 15px; }
@@ -1233,6 +1273,25 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
       <button class="btn btn-secondary" id="btn-import" aria-label="Import roster from JSON or URL">Import</button>
       <button class="btn btn-secondary" id="btn-random" aria-label="Generate a random roster">Random</button>
       <button class="btn btn-quiet" id="btn-clear" aria-label="Clear all players and groups">Clear all</button>
+      <!-- Phone-only overflow menu: every secondary action proxies to the real button above. -->
+      <div class="mobile-more" id="mobile-more">
+        <button type="button" class="btn btn-secondary" id="btn-mobile-more" aria-haspopup="true" aria-expanded="false" aria-label="More actions">More &#9662;</button>
+        <div class="mobile-more-list" role="menu">
+          <div class="mobile-more-roster"><span class="roster-label">Roster</span><span id="mobile-roster-name">No Roster Loaded</span></div>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-share">Share link</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-save">Save roster</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-load">Load roster</button>
+          <div class="mobile-more-sep" role="separator"></div>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-addon">Copy Addon String</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-mrt">Copy MRT String</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-export-json">Export JSON</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-json">Copy JSON</button>
+          <div class="mobile-more-sep" role="separator"></div>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-import">Import roster</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-random">Random roster</button>
+          <button type="button" class="roster-btn mobile-more-danger" role="menuitem" data-proxy="btn-clear">Clear all</button>
+        </div>
+      </div>
     </div>
     <div class="roster-right">
       <span class="roster-label">Roster</span>
@@ -3588,6 +3647,8 @@ function renderGroups() {
   // Update dropdown
   document.getElementById('raid-select').value = State.selectedRaid;
   document.getElementById('roster-name').textContent = State.rosterName;
+  const mobileName = document.getElementById('mobile-roster-name');
+  if (mobileName) mobileName.textContent = State.rosterName;
 }
 
 function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
@@ -4965,6 +5026,28 @@ document.getElementById('btn-random').addEventListener('click', () => {
     toggle.setAttribute('aria-expanded', String(open));
   });
   menu.querySelectorAll('.export-menu-list .roster-btn').forEach(btn => btn.addEventListener('click', close));
+  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+})();
+
+(function initMobileMoreMenu() {
+  const menu = document.getElementById('mobile-more');
+  const toggle = document.getElementById('btn-mobile-more');
+  if (!menu || !toggle) return;
+  const close = () => { menu.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); };
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = !menu.classList.contains('open');
+    menu.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+  });
+  // Each item forwards to the real (hidden) button so there is one handler per action.
+  menu.querySelectorAll('[data-proxy]').forEach(btn => btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    close();
+    const target = document.getElementById(btn.dataset.proxy);
+    if (target) target.click();
+  }));
   document.addEventListener('click', (e) => { if (!menu.contains(e.target)) close(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 })();
