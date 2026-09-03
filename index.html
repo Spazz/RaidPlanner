@@ -983,6 +983,11 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
 
+/* ── Dev scenario picker (only injected with ?dev) ── */
+.dev-scenarios { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.dev-scenarios label { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; color: var(--accent-gold); }
+.dev-scenarios .raid-dropdown { width: 100%; font-size: 13px; padding: 6px 28px 6px 8px; }
+
 /* ── Responsive ── */
 @media (max-width: 1100px) {
   body { padding: 0; }
@@ -2347,79 +2352,67 @@ const Optimizer = {
     }
     if (pool.length === 0) return;
 
-    // Canonical order. Greedy placement and swap refinement break ties by
-    // iteration order, so the result must not depend on how the board
-    // happened to be arranged before the click — otherwise every Optimize
-    // lands in a different local optimum and the second click reshuffles
-    // a layout the first one just produced.
-    pool.sort((a, b) => {
+    // Over capacity: decide WHO sits first (floors, greedy, bench trades),
+    // then lay the seated set out exactly as a seated-only run would. The
+    // selection search takes a different path than a plain layout of the same
+    // players, so laying out from its intermediate board would leave the next
+    // Optimize click (which never sees the bench) in a different local optimum
+    // and reshuffle a board the first click just produced.
+    const seated = pool.length > numGroups * max
+      ? this.selectSeated(pool, numGroups, raidSize, max, mode)
+      : pool;
+    const groups = this.arrange(seated, numGroups, raidSize, max, mode);
+
+    for (let gi = 0; gi < groups.length; gi++) {
+      for (const p of groups[gi]) p.groupNumber = gi + 1;
+    }
+    State.groups = groups;
+    State.roster = groups.flat();
+  },
+
+  // Canonical order. Greedy placement and swap refinement break ties by
+  // iteration order, so the result must not depend on how the board
+  // happened to be arranged before the click — otherwise every Optimize
+  // lands in a different local optimum and the second click reshuffles
+  // a layout the first one just produced.
+  sortedPool(players) {
+    return players.slice().sort((a, b) => {
       const ka = a.role + '|' + a.class + '|' + a.spec + '|' + (a.name || '');
       const kb = b.role + '|' + b.class + '|' + b.spec + '|' + (b.name || '');
       return ka < kb ? -1 : ka > kb ? 1 : 0;
     });
+  },
 
+  // Seated-only refinement: pairwise swaps alone cannot change group sizes,
+  // so a group the greedy phase filled last stays starved while other groups
+  // sit full; single-player moves into open slots fix that. Alternate until
+  // neither neighbourhood improves. Skipped for relaxed.
+  refineRounds(groups, max, mode) {
+    if (mode === 'relaxed') return;
+    for (let round = 0; round < 6; round++) {
+      this.refineSwaps(groups, max, mode);
+      const moved = this.refineMoves(groups, max, mode);
+      const exchanged = this.refinePairExchanges(groups, mode);
+      if (!moved && !exchanged) break;
+    }
+  },
+
+  // Lays out a set of players that fits the raid. Deterministic for a given
+  // set: the same players always produce the same board, whatever order or
+  // arrangement they arrive in.
+  arrange(players, numGroups, raidSize, max, mode) {
+    const pool = this.sortedPool(players);
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
 
     // Phase 1: Seed groups with role identities
     this.seedGroups(pool, groups, numGroups, raidSize, max, mode);
 
-    // Phase 1b: Role floors. When more players are in the pool than the raid
-    // holds, the raid's minimum tanks and healers get a seat before DPS
-    // compete for the rest, so a late-signing healer is never benched behind
-    // a twelfth mage. Within a role the greedy scorer still picks who sits.
-    const capacity = numGroups * max;
-    const seatedCount = () => groups.reduce((n, g) => n + g.length, 0);
-    if (seatedCount() + pool.length > capacity) {
-      const floors = this.floorsFor(raidSize);
-      for (const role of ['tank', 'healer']) {
-        const have = groups.flat().filter(p => p.role === role).length;
-        const need = Math.max(0, (floors[role] || 0) - have);
-        if (need > 0) this.greedyPlace(pool, groups, max, mode, { eligible: p => p.role === role, limit: need });
-      }
-    }
-
     // Phase 2: Greedy marginal-gain placement of remaining players
     this.greedyPlace(pool, groups, max, mode);
 
-    // Over capacity (more players than numGroups x 5): bench the leftovers
-    // instead of dropping them from the roster. They stay eligible for the
-    // bench refinement below; Tentative/Bench sign-ups and anyone benched by
-    // hand are not in this list and are never pulled in.
-    const overflow = [];
-    if (pool.length > 0) {
-      if (!State.bench) State.bench = [];
-      for (const p of pool.splice(0)) { p.groupNumber = 0; State.bench.push(p); overflow.push(p); }
-    }
-
-    // Phase 3: Refinement (skip for relaxed). Pairwise swaps alone cannot
-    // change group sizes, so a group the greedy phase filled last stays
-    // starved while other groups sit full; single-player moves into open
-    // slots fix that. Alternate until neither neighbourhood improves.
-    if (mode !== 'relaxed') {
-      for (let round = 0; round < 6; round++) {
-        this.refineSwaps(groups, max, mode);
-        const moved = this.refineMoves(groups, max, mode);
-        const exchanged = this.refinePairExchanges(groups, mode);
-        if (!moved && !exchanged) break;
-      }
-    }
-
-    // Phase 3d: Bench refinement. Greedy placement benches whoever is left
-    // when the seats run out, which punishes pure recipients (a Combat Rogue
-    // gives nothing, so he only scores once a melee group already has
-    // Windfury and Leader of the Pack) even when they are worth far more to
-    // the raid than a fourth tank. Trade benched overflow players against
-    // seated ones whenever the raid total rises, then let the seated-only
-    // refinement settle the new layout.
-    if (overflow.length > 0 && this.refineBench(groups, overflow, raidSize, mode) && mode !== 'relaxed') {
-      for (let round = 0; round < 6; round++) {
-        this.refineSwaps(groups, max, mode);
-        const moved = this.refineMoves(groups, max, mode);
-        const exchanged = this.refinePairExchanges(groups, mode);
-        if (!moved && !exchanged) break;
-      }
-    }
+    // Phase 3: Refinement
+    this.refineRounds(groups, max, mode);
 
     // Phase 3b: Guest optimization — the tank group is filled last by the
     // greedy phase (it's the least attractive), so its leftover DPS guests
@@ -2434,12 +2427,50 @@ const Optimizer = {
     // but refineSwaps only takes a swap that clears SWAP_THRESHOLD, so an
     // isolated player can survive it if no single swap scores well enough.
     this.deIsolate(groups);
+    return groups;
+  },
 
-    for (let gi = 0; gi < groups.length; gi++) {
-      for (const p of groups[gi]) p.groupNumber = gi + 1;
+  // Decides who sits when more players are in the pool than the raid holds.
+  // Leftovers go to State.bench (groupNumber 0). Returns the seated players;
+  // the caller lays them out with arrange().
+  selectSeated(players, numGroups, raidSize, max, mode) {
+    const pool = this.sortedPool(players);
+    const groups = [];
+    for (let i = 0; i < numGroups; i++) groups.push([]);
+
+    this.seedGroups(pool, groups, numGroups, raidSize, max, mode);
+
+    // Role floors. The raid's minimum tanks and healers get a seat before DPS
+    // compete for the rest, so a late-signing healer is never benched behind
+    // a twelfth mage. Within a role the greedy scorer still picks who sits.
+    const floors = this.floorsFor(raidSize);
+    for (const role of ['tank', 'healer']) {
+      const have = groups.flat().filter(p => p.role === role).length;
+      const need = Math.max(0, (floors[role] || 0) - have);
+      if (need > 0) this.greedyPlace(pool, groups, max, mode, { eligible: p => p.role === role, limit: need });
     }
-    State.groups = groups;
-    State.roster = groups.flat();
+
+    this.greedyPlace(pool, groups, max, mode);
+
+    // Bench the leftovers instead of dropping them from the roster. They stay
+    // eligible for the bench refinement below; Tentative/Bench sign-ups and
+    // anyone benched by hand are not in this list and are never pulled in.
+    const overflow = [];
+    if (!State.bench) State.bench = [];
+    for (const p of pool.splice(0)) { p.groupNumber = 0; State.bench.push(p); overflow.push(p); }
+
+    this.refineRounds(groups, max, mode);
+
+    // Bench refinement. Greedy placement benches whoever is left when the
+    // seats run out, which punishes pure recipients (a Combat Rogue gives
+    // nothing, so he only scores once a melee group already has Windfury and
+    // Leader of the Pack) even when they are worth far more to the raid than
+    // a fourth tank. Trade benched overflow players against seated ones
+    // whenever the raid total rises, then let the seated-only refinement
+    // settle the new layout before the next trade is judged.
+    if (this.refineBench(groups, overflow, raidSize, mode)) this.refineRounds(groups, max, mode);
+
+    return groups.flat();
   },
 
   // Minimum tanks/healers for a raid size (see Config.RaidFloors).
@@ -4910,6 +4941,32 @@ function renderLandingSavedList() {
   document.getElementById('btn-landing-url').addEventListener('click', () => runImport('landing-url', 'landing-status-url', 'btn-landing-url'));
   document.getElementById('landing-url').addEventListener('keydown', (e) => { if (e.key === 'Enter') runImport('landing-url', 'landing-status-url', 'btn-landing-url'); });
   document.getElementById('btn-landing-paste').addEventListener('click', () => runImport('landing-paste', 'landing-status-paste', 'btn-landing-paste'));
+
+  // Dev-only: open index.html?dev to load scenarios.js (untracked test data) and pick
+  // a roster from the scenario list. Production never requests the file.
+  if (/[?&]dev(?:[&=]|$)/.test(location.search)) {
+    const script = document.createElement('script');
+    script.src = 'scenarios.js';
+    script.onload = () => {
+      const S = window.PPScenarios;
+      const pane = document.querySelector('.import-pane[data-pane="paste"]');
+      if (!S || !pane) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'dev-scenarios';
+      wrap.innerHTML = `<label for="dev-scenario">Dev - load a test scenario (${S.scenarios.length})</label>
+        <select id="dev-scenario" class="raid-dropdown"><option value="" disabled selected>Pick a scenario</option>
+        ${S.scenarios.map(sc => `<option value="${esc(sc.id)}">${esc(sc.id)} - ${esc(sc.label)}</option>`).join('')}</select>`;
+      pane.insertBefore(wrap, pane.querySelector('textarea'));
+      wrap.querySelector('select').addEventListener('change', (e) => {
+        const sc = S.scenarios.find(x => x.id === e.target.value);
+        if (!sc) return;
+        if (sc.raid) State.selectedRaid = sc.raid;
+        document.getElementById('landing-paste').value = JSON.stringify(S.toRaidHelperJson(sc), null, 1);
+        runImport('landing-paste', 'landing-status-paste', 'btn-landing-paste');
+      });
+    };
+    document.head.appendChild(script);
+  }
 
   document.getElementById('btn-landing-random').addEventListener('click', () => {
     RandomRoster.generate();
