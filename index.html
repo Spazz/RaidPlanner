@@ -978,20 +978,84 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .toolbar { flex-wrap: wrap; gap: var(--sp-1); height: auto; padding: var(--sp-1) var(--sp-4); }
   .roster-bar { flex-wrap: wrap; gap: var(--sp-1); }
   .roster-actions { flex-wrap: wrap; }
+  .summary-bar { gap: 4px var(--sp-3); }
+  .summary-chip.bench { margin-left: 0; }
 }
 @media (max-width: 600px) {
+  /* Landing: body padding is 0 below 1100px, so the landing needs its own gutter. */
+  .landing { padding: 16px 12px 40px; gap: 22px; }
+  .landing-nav { flex-wrap: wrap; gap: 8px; }
+  .hero h1 { font-size: 30px; }
+  .import-field { font-size: 16px; } /* 16px stops iOS Safari zooming the page on focus */
+  textarea.import-field { font-size: 14px; }
+  .import-tab { padding-left: 6px; padding-right: 6px; }
+
+  /* Planner frame: zoom 1.5 leaves ~260 CSS px of width at 390px, so every bar restacks. */
   .groups-container,
   .groups-container.groups-5 { grid-template-columns: 1fr; }
   .title-bar { padding: 0 var(--sp-2); }
   .title-bar h1 { font-size: 13px; }
-  .toolbar { padding: var(--sp-1) var(--sp-2); }
-  .roster-bar { padding: var(--sp-1) var(--sp-2); }
+
+  .toolbar {
+    flex-direction: column; align-items: stretch;
+    gap: var(--sp-2); padding: var(--sp-2);
+  }
+  /* align-self: Chrome inflates a stretched flex child inside a zoomed frame */
+  .mode-tabs .mode-tab { flex: 1; align-self: flex-start; text-align: center; padding-top: 5px; padding-bottom: 5px; }
+  .toolbar-right { flex-wrap: wrap; gap: var(--sp-2); }
+  .raid-selector { flex: 1 1 100%; }
+  .raid-selector .raid-dropdown { flex: 1; min-width: 0; }
+  .roster-actions { flex: 1 1 100%; justify-content: space-between; flex-wrap: nowrap; }
+
+  .roster-bar { flex-direction: column; align-items: stretch; padding: var(--sp-2); gap: var(--sp-2); }
+  .action-left { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--sp-2); }
+  .action-left #btn-optimize { grid-column: span 3; }
+  .action-left #optimize-mode { grid-column: span 3; min-width: 0; }
+  .action-left .action-divider { display: none; }
+  .action-left .btn-secondary, .action-left .btn-quiet { grid-column: span 2; padding-left: 4px; padding-right: 4px; text-align: center; }
+  .roster-right { justify-content: space-between; }
+
+  .summary-bar { gap: 2px var(--sp-3); padding: 4px var(--sp-2); }
+  .summary-divider { display: none; }
+  .summary-chip.bench { margin-left: 0; }
+
+  /* Coverage sidebar: one column so buff names and providers stay readable. */
+  .sidebar-body { flex-direction: column; }
+  .sidebar-summary { flex-wrap: wrap; }
+
   .groups-container { padding: var(--sp-2); }
+  .bench-list { grid-template-columns: repeat(2, 1fr); }
   .status-bar { flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--sp-1) var(--sp-2); }
-  .import-modal { width: calc(100vw - 32px); min-width: auto; }
-  .save-modal { width: calc(100vw - 32px); min-width: auto; }
   .manual-changes-section { margin: var(--sp-2) var(--sp-2) 0; }
   .buff-bar { gap: 2px; }
+
+  /* Overlays live inside the zoomed frame: size the modal against the overlay,
+     not the viewport, or the zoom makes it 1.5x too wide. */
+  .import-modal, .save-modal { width: calc(100% - 24px); max-width: 440px; min-width: auto; padding: var(--sp-4); }
+  .toast { left: 12px; right: 12px; bottom: 12px; }
+  #buff-tooltip-portal { width: min(420px, calc(100vw - 16px)); font-size: 15px; padding: 10px 14px; }
+  #buff-tooltip-portal .tt-name { font-size: 16px; }
+  #buff-tooltip-portal .tt-desc { font-size: 15px; }
+  #buff-tooltip-portal .tt-source { font-size: 13px; }
+}
+@media (max-width: 900px) {
+  /* The frame is far taller than the phone screen; an absolute overlay would
+     centre its modal thousands of pixels below the fold. */
+  .import-overlay, .save-overlay { position: fixed; }
+}
+/* Touch devices: bigger tap targets and no long-press text callout on draggable slots. */
+@media (hover: none) and (pointer: coarse) {
+  .btn { padding: 8px 12px; }
+  .roster-btn { padding: 6px 4px; }
+  .back-link { padding-top: 6px; padding-bottom: 6px; }
+  .sidebar-toggle { padding: 8px 3px; }
+  .buff-row { padding: 4px 3px; }
+  .insight-btn { padding: 4px 9px; }
+  .player-slot { min-height: 30px; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .player-slot.drag-target { background: var(--bg-card-hover); }
+  .buff-icon { -webkit-touch-callout: none; }
+  .manual-changes-section .change-remove { padding: 4px 8px; }
+  .faq summary { padding-top: 14px; padding-bottom: 14px; }
 }
 </style>
 </head>
@@ -3709,6 +3773,26 @@ function updateStatus() {
 // ── DRAG & DROP (event delegation — attached once) ──────────────
 let dragData = null;
 
+// Moves the player at (srcG, srcS) onto slot (tgtG, tgtS): into an open seat,
+// or swapping with whoever sits there. Shared by mouse and touch drag.
+function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
+  const srcPlayer = (State.groups[srcG] || [])[srcS] || null;
+  const tgtPlayer = (State.groups[tgtG] || [])[tgtS] || null;
+  if (!srcPlayer) return false;
+  if (!tgtPlayer) {
+    State.groups[srcG].splice(srcS, 1);
+    if (tgtS >= State.groups[tgtG].length) State.groups[tgtG].push(srcPlayer);
+    else State.groups[tgtG].splice(tgtS, 0, srcPlayer);
+    srcPlayer.groupNumber = tgtG + 1;
+  } else {
+    State.groups[srcG][srcS] = tgtPlayer;
+    State.groups[tgtG][tgtS] = srcPlayer;
+    srcPlayer.groupNumber = tgtG + 1;
+    tgtPlayer.groupNumber = srcG + 1;
+  }
+  return true;
+}
+
 (function initDragDrop() {
   const container = document.getElementById('groups-container');
   const ghost = document.getElementById('drag-ghost');
@@ -3789,20 +3873,7 @@ let dragData = null;
 
     if (srcG === tgtG && srcS === tgtS) return;
 
-    const srcPlayer = State.groups[srcG][srcS] || null;
-    const tgtPlayer = State.groups[tgtG][tgtS] || null;
-
-    if (srcPlayer && !tgtPlayer) {
-      State.groups[srcG].splice(srcS, 1);
-      if (tgtS >= State.groups[tgtG].length) State.groups[tgtG].push(srcPlayer);
-      else State.groups[tgtG].splice(tgtS, 0, srcPlayer);
-      srcPlayer.groupNumber = tgtG + 1;
-    } else if (srcPlayer && tgtPlayer) {
-      State.groups[srcG][srcS] = tgtPlayer;
-      State.groups[tgtG][tgtS] = srcPlayer;
-      srcPlayer.groupNumber = tgtG + 1;
-      tgtPlayer.groupNumber = srcG + 1;
-    }
+    moveGroupPlayer(srcG, srcS, tgtG, tgtS);
 
     // renderGroups() below rebuilds groups-container, which destroys the
     // dragged element before the browser can dispatch 'dragend' on it — so
@@ -3814,78 +3885,177 @@ let dragData = null;
     renderGroups();
   });
 
-  // ── Touch drag-and-drop support ──
-  let touchDrag = null;
+})();
 
-  container.addEventListener('touchstart', e => {
+// ── TOUCH DRAG (long-press) ─────────────────────────────────────
+// A plain touch on a slot must still scroll the page and a tap must still open
+// the editor, so a drag only starts after the finger rests on a slot for
+// LONG_PRESS_MS without moving. Once it starts, the page stops scrolling and
+// the finger carries the player between group slots and the bench.
+(function initTouchDrag() {
+  const LONG_PRESS_MS = 320;
+  const MOVE_TOLERANCE = 10;   // px of finger travel that turns a press into a scroll
+  const EDGE_ZONE = 56;        // px from the viewport edge where auto-scroll kicks in
+  const groups = document.getElementById('groups-container');
+  const bench = document.getElementById('bench-section');
+  const ghost = document.getElementById('drag-ghost');
+  if (!groups || !bench || !ghost) return;
+
+  let pending = null;   // finger down on a slot, waiting for the long-press timer
+  let active = null;    // drag in progress
+  let suppressClickUntil = 0;
+  let autoScrollDir = 0;
+  let autoScrollFrame = null;
+
+  function sourceFromSlot(slot) {
+    if (slot.classList.contains('bench-slot')) {
+      const bi = parseInt(slot.dataset.benchSlot);
+      const p = (State.bench || [])[bi];
+      return p ? { group: 'bench', slot: bi, player: p } : null;
+    }
+    const gi = parseInt(slot.dataset.group), si = parseInt(slot.dataset.slot);
+    const p = State.groups[gi]?.[si];
+    return p ? { group: gi, slot: si, player: p } : null;
+  }
+
+  function clearHighlights() {
+    document.querySelectorAll('.drag-target').forEach(s => s.classList.remove('drag-target'));
+    document.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
+  }
+
+  function cancelPending() {
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pending = null;
+  }
+
+  function stopAutoScroll() {
+    autoScrollDir = 0;
+    if (autoScrollFrame) cancelAnimationFrame(autoScrollFrame);
+    autoScrollFrame = null;
+  }
+
+  function autoScrollStep() {
+    if (!active || !autoScrollDir) { autoScrollFrame = null; return; }
+    window.scrollBy(0, autoScrollDir * 10);
+    autoScrollFrame = requestAnimationFrame(autoScrollStep);
+  }
+
+  function beginDrag(src, slot) {
+    pending = null;
+    active = { ...src, el: slot };
+    slot.classList.add('dragging');
+    ghost.textContent = src.player.name.split('-')[0];
+    ghost.style.color = Config.ClassColors[src.player.class] || 'var(--text-primary)';
+    ghost.style.display = 'block';
+    if (navigator.vibrate) navigator.vibrate(12);
+  }
+
+  function endDrag() {
+    if (active && active.el) active.el.classList.remove('dragging');
+    ghost.style.display = 'none';
+    clearHighlights();
+    stopAutoScroll();
+    active = null;
+  }
+
+  function targetAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    const slot = el.closest('.player-slot');
+    if (slot && groups.contains(slot)) return { kind: 'slot', el: slot };
+    if (bench.contains(el) && bench.style.display !== 'none') return { kind: 'bench', el: bench };
+    return null;
+  }
+
+  function highlight(target) {
+    clearHighlights();
+    if (!target) return;
+    if (target.kind === 'slot') {
+      target.el.classList.add('drag-target');
+      const card = target.el.closest('.group-card');
+      if (card) card.classList.add('drag-over');
+    } else if (active.group !== 'bench') {
+      bench.classList.add('drag-over');
+    }
+  }
+
+  function drop(target) {
+    if (!target) return;
+    if (target.kind === 'bench') {
+      if (active.group === 'bench') return;
+      const result = RosterEdit.BenchPlayer(active.player.uid);
+      if (!result.success) { showToast(result.error); return; }
+      renderGroups();
+      showToast(`Benched ${result.player.name}`);
+      return;
+    }
+    const tgtG = parseInt(target.el.dataset.group), tgtS = parseInt(target.el.dataset.slot);
+    if (active.group === 'bench') {
+      const result = RosterEdit.UnbenchPlayer(active.player.uid, tgtG);
+      if (!result.success) { showToast(result.error); return; }
+      renderGroups();
+      showToast(`${result.player.name} joined group ${tgtG + 1}`);
+      return;
+    }
+    if (active.group === tgtG && active.slot === tgtS) return;
+    if (moveGroupPlayer(active.group, active.slot, tgtG, tgtS)) renderGroups();
+  }
+
+  document.addEventListener('touchstart', e => {
+    if (active || e.touches.length !== 1) return;
     const slot = e.target.closest('.player-slot[draggable="true"]');
     if (!slot) return;
-    const gi = parseInt(slot.dataset.group);
-    const si = parseInt(slot.dataset.slot);
-    const p = State.groups[gi]?.[si];
-    if (!p) return;
-    touchDrag = { group: gi, slot: si, el: slot };
-    slot.classList.add('dragging');
-    ghost.textContent = p.name.split('-')[0];
-    ghost.style.color = Config.ClassColors[p.class] || 'var(--text-primary)';
-    ghost.style.display = 'block';
+    const src = sourceFromSlot(slot);
+    if (!src) return;
+    const t = e.touches[0];
+    cancelPending();
+    pending = {
+      x: t.clientX, y: t.clientY,
+      timer: setTimeout(() => beginDrag(src, slot), LONG_PRESS_MS),
+    };
   }, { passive: true });
 
-  container.addEventListener('touchmove', e => {
-    if (!touchDrag) return;
+  document.addEventListener('touchmove', e => {
+    if (pending) {
+      const t = e.touches[0];
+      if (Math.hypot(t.clientX - pending.x, t.clientY - pending.y) > MOVE_TOLERANCE) cancelPending();
+      return;
+    }
+    if (!active) return;
     e.preventDefault();
-    const touch = e.touches[0];
-    ghost.style.left = (touch.clientX + 12) + 'px';
-    ghost.style.top = (touch.clientY - 10) + 'px';
-    // Highlight target
-    container.querySelectorAll('.drag-target').forEach(s => s.classList.remove('drag-target'));
-    container.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    if (el) {
-      const target = el.closest('.player-slot');
-      if (target) {
-        target.classList.add('drag-target');
-        const card = target.closest('.group-card');
-        if (card) card.classList.add('drag-over');
-      }
+    const t = e.touches[0];
+    ghost.style.left = (t.clientX + 12) + 'px';
+    ghost.style.top = (t.clientY - 10) + 'px';
+    highlight(targetAt(t.clientX, t.clientY));
+
+    const h = window.innerHeight;
+    const dir = t.clientY < EDGE_ZONE ? -1 : (t.clientY > h - EDGE_ZONE ? 1 : 0);
+    if (dir !== autoScrollDir) {
+      autoScrollDir = dir;
+      if (dir && !autoScrollFrame) autoScrollFrame = requestAnimationFrame(autoScrollStep);
     }
   }, { passive: false });
 
-  container.addEventListener('touchend', e => {
-    if (!touchDrag) return;
-    ghost.style.display = 'none';
-    touchDrag.el.classList.remove('dragging');
-    container.querySelectorAll('.drag-target').forEach(s => s.classList.remove('drag-target'));
-    container.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
-
-    const touch = e.changedTouches[0];
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    const target = el ? el.closest('.player-slot') : null;
-
-    if (target) {
-      const srcG = touchDrag.group, srcS = touchDrag.slot;
-      const tgtG = parseInt(target.dataset.group), tgtS = parseInt(target.dataset.slot);
-
-      if (!(srcG === tgtG && srcS === tgtS)) {
-        const srcPlayer = State.groups[srcG][srcS] || null;
-        const tgtPlayer = State.groups[tgtG]?.[tgtS] || null;
-
-        if (srcPlayer && !tgtPlayer) {
-          State.groups[srcG].splice(srcS, 1);
-          if (tgtS >= State.groups[tgtG].length) State.groups[tgtG].push(srcPlayer);
-          else State.groups[tgtG].splice(tgtS, 0, srcPlayer);
-          srcPlayer.groupNumber = tgtG + 1;
-        } else if (srcPlayer && tgtPlayer) {
-          State.groups[srcG][srcS] = tgtPlayer;
-          State.groups[tgtG][tgtS] = srcPlayer;
-          srcPlayer.groupNumber = tgtG + 1;
-          tgtPlayer.groupNumber = srcG + 1;
-        }
-        renderGroups();
-      }
-    }
-    touchDrag = null;
+  document.addEventListener('touchend', e => {
+    cancelPending();
+    if (!active) return;
+    const t = e.changedTouches[0];
+    drop(targetAt(t.clientX, t.clientY));
+    endDrag();
+    suppressClickUntil = Date.now() + 400;
   });
+
+  document.addEventListener('touchcancel', () => { cancelPending(); endDrag(); });
+
+  // Android raises a context menu on long-press; the tap that follows a drop
+  // would otherwise open the player editor.
+  document.addEventListener('contextmenu', e => {
+    if ((pending || active) && e.target.closest('.player-slot')) e.preventDefault();
+  });
+  document.addEventListener('click', e => {
+    if (Date.now() < suppressClickUntil) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
 })();
 
 // ── BUFF OVERRIDE SYSTEM ────────────────────────────────────────
@@ -5145,6 +5315,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (related && icon.contains(related)) return;
     portal.style.display = 'none';
   });
+
+  // Touch has no mouseout: a tap on an icon shows the tooltip (via the
+  // synthesized mouseover), so a tap anywhere else has to hide it.
+  document.addEventListener('touchstart', function(e) {
+    if (e.target.closest('[data-tt-name]')) return;
+    portal.style.display = 'none';
+  }, { passive: true });
 });
 
 if (typeof module !== 'undefined' && module.exports) {
