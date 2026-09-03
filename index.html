@@ -2206,10 +2206,13 @@ const Optimizer = {
     this.greedyPlace(pool, groups, max, mode);
 
     // Over capacity (more players than numGroups x 5): bench the leftovers
-    // instead of dropping them from the roster.
+    // instead of dropping them from the roster. They stay eligible for the
+    // bench refinement below; Tentative/Bench sign-ups and anyone benched by
+    // hand are not in this list and are never pulled in.
+    const overflow = [];
     if (pool.length > 0) {
       if (!State.bench) State.bench = [];
-      for (const p of pool.splice(0)) { p.groupNumber = 0; State.bench.push(p); }
+      for (const p of pool.splice(0)) { p.groupNumber = 0; State.bench.push(p); overflow.push(p); }
     }
 
     // Phase 3: Refinement (skip for relaxed). Pairwise swaps alone cannot
@@ -2217,6 +2220,22 @@ const Optimizer = {
     // starved while other groups sit full; single-player moves into open
     // slots fix that. Alternate until neither neighbourhood improves.
     if (mode !== 'relaxed') {
+      for (let round = 0; round < 6; round++) {
+        this.refineSwaps(groups, max, mode);
+        const moved = this.refineMoves(groups, max, mode);
+        const exchanged = this.refinePairExchanges(groups, mode);
+        if (!moved && !exchanged) break;
+      }
+    }
+
+    // Phase 3d: Bench refinement. Greedy placement benches whoever is left
+    // when the seats run out, which punishes pure recipients (a Combat Rogue
+    // gives nothing, so he only scores once a melee group already has
+    // Windfury and Leader of the Pack) even when they are worth far more to
+    // the raid than a fourth tank. Trade benched overflow players against
+    // seated ones whenever the raid total rises, then let the seated-only
+    // refinement settle the new layout.
+    if (overflow.length > 0 && this.refineBench(groups, overflow, raidSize, mode) && mode !== 'relaxed') {
       for (let round = 0; round < 6; round++) {
         this.refineSwaps(groups, max, mode);
         const moved = this.refineMoves(groups, max, mode);
@@ -2512,6 +2531,53 @@ const Optimizer = {
       }
       if (!improved) break;
     }
+  },
+
+  // ── PHASE 3d: BENCH REFINEMENT ───────────────────────────────
+  // For each overflow player on the bench, try them in place of every seated
+  // player and take the trade that raises the raid total the most. Seeded
+  // anchor tanks stay put, and a trade never drops tanks or healers below
+  // the raid's floors. The displaced player joins the overflow list so they
+  // can be reconsidered. Returns true when at least one trade was made.
+  refineBench(groups, overflow, raidSize, mode) {
+    const BENCH_THRESHOLD = 0.5;
+    const floors = this.floorsFor(raidSize);
+    const total = () => groups.reduce((sum, g, gi) => sum + this.groupScore(g, gi, groups, mode), 0);
+    const roleCount = (role) => groups.reduce((n, g) => n + g.filter(p => p.role === role).length, 0);
+    let traded = false;
+
+    for (let round = 0; round < 10; round++) {
+      let best = null;
+      const base = total();
+      for (let bi = 0; bi < overflow.length; bi++) {
+        const incoming = overflow[bi];
+        for (let gi = 0; gi < groups.length; gi++) {
+          const g = groups[gi];
+          for (let si = 0; si < g.length; si++) {
+            const out = g[si];
+            if (this.isPinned(out, gi, groups)) continue;
+            if (out.role !== incoming.role && (out.role === 'tank' || out.role === 'healer')) {
+              if (roleCount(out.role) - 1 < (floors[out.role] || 0)) continue;
+            }
+            g[si] = incoming;
+            const gain = total() - base;
+            g[si] = out;
+            if (gain > BENCH_THRESHOLD && (!best || gain > best.gain)) best = { bi, gi, si, gain };
+          }
+        }
+      }
+      if (!best) break;
+      const g = groups[best.gi];
+      const incoming = overflow[best.bi];
+      const out = g[best.si];
+      g[best.si] = incoming;
+      overflow[best.bi] = out;
+      const benchIdx = State.bench.indexOf(incoming);
+      if (benchIdx >= 0) State.bench[benchIdx] = out; else State.bench.push(out);
+      out.groupNumber = 0;
+      traded = true;
+    }
+    return traded;
   },
 
   // ── PHASE 3c: 2-FOR-2 EXCHANGES ──────────────────────────────
