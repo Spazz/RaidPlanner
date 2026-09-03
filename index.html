@@ -1021,7 +1021,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
       <div class="import-pane" data-pane="url">
         <p>Paste a Raid-Helper event link, API link, or just the event ID.</p>
         <div class="import-hints">
-          <code>https://raid-helper.dev/event/&lt;id&gt;</code>
+          <code>https://raid-helper.xyz/event/&lt;id&gt;</code>
           <code>https://raid-helper.dev/api/raidplan/&lt;id&gt;</code>
           <code>&lt;id&gt;</code>
         </div>
@@ -4329,7 +4329,9 @@ function normalizeImportSource(raw) {
   const t = (raw || '').trim();
   if (/^\d{6,}$/.test(t)) return { url: `https://raid-helper.dev/api/raidplan/${t}` };
   if (/^https?:\/\//i.test(t)) {
-    const m = t.match(/raid-helper\.dev\/(?:event|api\/v\d+\/events|api\/raidplan)\/(\d+)/i);
+    // Raid-Helper answers on raid-helper.dev and raid-helper.xyz; event,
+    // raidplan and API links all carry the same event ID.
+    const m = t.match(/raid-helper\.[a-z]+\/(?:event|raidplan|api\/v\d+\/events|api\/raidplan)\/(\d+)/i);
     return { url: m ? `https://raid-helper.dev/api/raidplan/${m[1]}` : t };
   }
   return { text: t };
