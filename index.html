@@ -1804,10 +1804,12 @@ const Import = {
       if (category === 'bench') { player.groupNumber = 0; bench.push(player); }
       else roster.push(player);
     }
-    if (roster.length === 0) return { success:false, error:'No valid players found in sign-ups' };
+    if (roster.length === 0 && bench.length === 0) return { success:false, error:'No valid players found in sign-ups' };
 
-    // Auto-detect raid
-    if (roster.length <= 10) {
+    // Auto-detect raid. An all-Tentative list still sizes the raid by how many
+    // people signed, so they land on a bench that matches the event.
+    const raiders = roster.length || bench.length;
+    if (raiders <= 10) {
       for (const key of Config.RaidOrder) {
         if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; }
       }
@@ -4814,6 +4816,10 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   else if (result.benchCount) extra.push(`${result.benchCount} benched`);
   if (result.skippedCount) extra.push(`${result.skippedCount} skipped`);
   const suffix = extra.length ? ` (${extra.join(', ')})` : '';
+  if (result.playerCount === 0 && result.benchCount) {
+    report(`Nobody is confirmed yet: ${result.benchCount} Tentative sign-ups are on the bench, ready to swap in`, false);
+    return true;
+  }
   showToast(result.wasUnassigned
     ? `Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups${suffix}`
     : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}`);

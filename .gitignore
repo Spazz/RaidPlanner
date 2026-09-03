@@ -3,3 +3,7 @@
 !.gitignore
 !index.html
 !index_legacy_ui.html
+# Test suites ship with the site; the ?dev picker is the only UI that touches them
+!tests.js
+!scenarios.js
+!scenario-tests.js
