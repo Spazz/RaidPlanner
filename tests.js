@@ -2083,6 +2083,148 @@ describe('Import: a sign-up list with no usable players still fails', () => {
   assert(!res.success, 'absence-only import is rejected');
 });
 
+// ════════════════════════════════════════════════════════════════
+// RAID-HELPER RE-SYNC (Refresh)
+// ════════════════════════════════════════════════════════════════
+function syncFixture() {
+  // 4 seated + 1 Tentative on the bench, imported from a sign-up list.
+  resetState();
+  State.selectedRaid = 'kara';
+  const signUps = [
+    { name: 'Tanky',  className: 'Tank',    specName: 'Protection',  id: 1 },
+    { name: 'Healy',  className: 'Priest',  specName: 'Holy1',       id: 2 },
+    { name: 'Magey',  className: 'Mage',    specName: 'Fire',        id: 3 },
+    { name: 'Roguey', className: 'Rogue',   specName: 'Combat',      id: 4 },
+    { name: 'Maybe',  className: 'Tentative', specName: 'Affliction', id: 5 },
+  ];
+  const res = Import.importRaidHelper(JSON.stringify({ signUps }));
+  if (!res.success) throw new Error('fixture import failed: ' + res.error);
+  return signUps;
+}
+const byName = (n) => State.roster.find(p => p.name === n) || (State.bench || []).find(p => p.name === n);
+
+describe('Sync: an unchanged sign-up list produces an empty diff', () => {
+  const signUps = syncFixture();
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
+  assert(diff.success, 'diff succeeds');
+  assert(!Import.hasRaidHelperChanges(diff), 'no changes reported');
+  assertEqual(diff.promoted.length, 0, 'nothing promoted');
+});
+
+describe('Sync: diff rejects bad input without touching State', () => {
+  syncFixture();
+  const before = State.roster.length;
+  assert(!Import.diffRaidHelperSignUps('nope').success, 'invalid JSON fails');
+  assert(!Import.diffRaidHelperSignUps('{"slots":[]}').success, 'slots export is not a sign-up list');
+  assertEqual(State.roster.length, before, 'roster untouched');
+});
+
+describe('Sync: new sign-ups land on the bench; seats are untouched', () => {
+  const signUps = syncFixture();
+  const seatsBefore = State.roster.map(p => p.name + ':' + p.groupNumber).join(',');
+  signUps.push({ name: 'Newbie', className: 'Hunter', specName: 'Beastmastery', id: 6 });
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
+  assertEqual(diff.added.length, 1, 'one added');
+  assertEqual(diff.added[0].name, 'Newbie', 'the new name is reported');
+  const counts = Import.applyRaidHelperSync(diff);
+  assertEqual(counts.added, 1, 'apply reports one added');
+  const nb = byName('Newbie');
+  assert(nb && nb.groupNumber === 0 && State.bench.includes(nb), 'Newbie is on the bench');
+  assertEqual(nb.class, 'HUNTER', 'class resolved');
+  assertEqual(State.roster.map(p => p.name + ':' + p.groupNumber).join(','), seatsBefore, 'seated players kept their groups');
+});
+
+describe('Sync: withdrawn and Absent players are removed from groups and bench', () => {
+  const signUps = syncFixture();
+  const gone = signUps.splice(2, 1)[0]; // Magey withdraws entirely
+  signUps[signUps.length - 1] = { name: 'Maybe', className: 'Absence', specName: 'Absence', id: 5 }; // bench player now Absent
+  const magey = byName('Magey');
+  State.buffOverrides['0:' + magey.uid + ':fire'] = { buffId: 'x' };
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
+  assertEqual(diff.removed.length, 2, 'two removed');
+  Import.applyRaidHelperSync(diff);
+  assert(!byName('Magey'), 'Magey is gone');
+  assert(!byName('Maybe'), 'Maybe is gone');
+  assert(State.groups.every(g => !g.includes(magey)), 'Magey left the group');
+  assertEqual(Object.keys(State.buffOverrides).length, 0, 'overrides for the removed player are cleared');
+  assertEqual(State.roster.length, 3, 'three seated remain');
+});
+
+describe('Sync: a spec change updates the player in place', () => {
+  const signUps = syncFixture();
+  signUps[2] = { name: 'Magey', className: 'Mage', specName: 'Frost', id: 3 };
+  const magey = byName('Magey');
+  const groupBefore = magey.groupNumber;
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
+  assertEqual(diff.changed.length, 1, 'one changed');
+  Import.applyRaidHelperSync(diff);
+  assertEqual(byName('Magey'), magey, 'same player object');
+  assertEqual(magey.spec, 'Frost', 'spec updated');
+  assertEqual(magey.groupNumber, groupBefore, 'seat kept');
+});
+
+describe('Sync: a role change is a change too (Prot -> Arms)', () => {
+  const signUps = syncFixture();
+  signUps[0] = { name: 'Tanky', className: 'Warrior', specName: 'Arms', id: 1 };
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
+  assertEqual(diff.changed.length, 1, 'one changed');
+  Import.applyRaidHelperSync(diff);
+  assertEqual(byName('Tanky').role, 'melee_dps', 'role updated');
+});
+
+describe('Sync: a seated player who goes Tentative moves to the bench', () => {
+  const signUps = syncFixture();
+  signUps[3] = { name: 'Roguey', className: 'Tentative', specName: 'Combat', id: 4 };
+  const roguey = byName('Roguey');
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
+  assertEqual(diff.demoted.length, 1, 'one demoted');
+  Import.applyRaidHelperSync(diff);
+  assert(State.bench.includes(roguey) && roguey.groupNumber === 0, 'Roguey is benched');
+  assert(!State.roster.includes(roguey), 'Roguey is not seated');
+  assert(State.groups.every(g => !g.includes(roguey)), 'Roguey left the group');
+});
+
+describe('Sync: a benched player who confirms is reported but stays benched', () => {
+  const signUps = syncFixture();
+  signUps[4] = { name: 'Maybe', className: 'Warlock', specName: 'Affliction', id: 5 };
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
+  assertEqual(diff.promoted.length, 1, 'one promoted');
+  assert(!Import.hasRaidHelperChanges(diff), 'a promotion alone is not a change to apply');
+  Import.applyRaidHelperSync(diff);
+  assert(State.bench.includes(byName('Maybe')), 'Maybe stays on the bench');
+});
+
+describe('Sync: name matching ignores case and whitespace; duplicates are not re-added', () => {
+  const signUps = syncFixture();
+  signUps[2] = { name: ' MAGEY ', className: 'Mage', specName: 'Fire', id: 3 };
+  signUps.push({ name: 'magey', className: 'Mage', specName: 'Arcane', id: 7 });
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
+  assertEqual(diff.added.length, 0, 'nothing added');
+  assertEqual(diff.removed.length, 0, 'nothing removed');
+  assertEqual(diff.changed.length, 0, 'first duplicate wins, no change');
+});
+
+describe('Sync: applying twice is a no-op the second time', () => {
+  const signUps = syncFixture();
+  signUps.push({ name: 'Newbie', className: 'Hunter', specName: 'Beastmastery', id: 6 });
+  signUps.splice(1, 1);
+  Import.applyRaidHelperSync(Import.diffRaidHelperSignUps(JSON.stringify({ signUps })));
+  const again = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
+  assert(!Import.hasRaidHelperChanges(again), 'second diff is empty');
+});
+
+describe('Sync: sourceEventId round-trips through export and load', () => {
+  syncFixture();
+  State.sourceEventId = '1483258698854826006';
+  const exported = Import.exportRoster('Linked');
+  assertEqual(exported.sourceEventId, '1483258698854826006', 'export carries the event id');
+  State.sourceEventId = null;
+  Import.loadRoster(exported);
+  assertEqual(State.sourceEventId, '1483258698854826006', 'load restores it');
+  Import.loadRoster({ name: 'Old', players: [] });
+  assertEqual(State.sourceEventId, null, 'older saves without an id clear it');
+});
+
 console.log(`Results: ${passed} passed, ${failed} failed, ${totalTests} total`);
 if (failed === 0) {
   console.log('ALL TESTS PASSED');

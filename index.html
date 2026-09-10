@@ -175,6 +175,17 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .resume-banner strong { color: var(--accent-gold-bright); }
 .resume-banner span { font-size: 13px; color: var(--text-secondary); }
 
+/* Sign-up changes found on Raid-Helper since the roster was imported. */
+.sync-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap;
+  padding: 8px var(--sp-4);
+  background: rgba(224,181,61,0.08); border-bottom: 1px solid var(--border-accent);
+  font-size: 12px; color: var(--text-secondary);
+}
+.sync-banner strong { color: var(--accent-gold-bright); }
+.sync-banner-actions { display: flex; align-items: center; gap: var(--sp-4); }
+.sync-banner-actions .btn { padding: 5px 12px; font-size: 11px; }
+
 /* Sections */
 .landing-section { display: flex; flex-direction: column; gap: 16px; }
 .section-title {
@@ -1218,6 +1229,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
       <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive, so melee end up with Windfury, casters with their totems and auras, and tanks with their healers. You can pick Max DPS, Tank Mitigation or Balanced, and drag anyone afterwards.</p></details>
       <details><summary>What happens when more people sign up than the raid holds?</summary><p>You always keep enough tanks and healers. The remaining seats go to whoever adds the most, and everyone else waits on the bench, where you can swap them in with one click.</p></details>
       <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and use the Paste JSON tab.</p></details>
+      <details><summary>People signed up after I built the groups. Do I start over?</summary><p>No. A roster imported from a Raid-Helper link remembers its event. When you reopen a saved roster, the planner checks the event and shows what changed. Click Refresh (in the toolbar or on the banner) to add new sign-ups to the bench, remove anyone who withdrew, and update changed specs, while everyone else keeps their seat.</p></details>
       <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick Karazhan or Zul'Aman from the raid dropdown and the planner switches to two groups with 10-man tank and healer floors.</p></details>
       <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
       <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you.</p></details>
@@ -1249,6 +1261,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
         <select class="raid-dropdown" id="raid-select" aria-label="Select raid instance"></select>
       </div>
       <div class="roster-actions">
+        <button class="roster-btn" id="btn-refresh" hidden aria-label="Pull the latest sign-ups from Raid-Helper" title="Pull the latest sign-ups from Raid-Helper">Refresh</button>
         <button class="roster-btn" id="btn-share" aria-label="Copy a shareable link to this layout">Share</button>
         <button class="roster-btn" id="btn-save" aria-label="Save current roster">Save</button>
         <button class="roster-btn" id="btn-load" aria-label="Load a saved roster">Load</button>
@@ -1283,6 +1296,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
         <button type="button" class="btn btn-secondary" id="btn-mobile-more" aria-haspopup="true" aria-expanded="false" aria-label="More actions">More &#9662;</button>
         <div class="mobile-more-list" role="menu">
           <div class="mobile-more-roster"><span class="roster-label">Roster</span><span id="mobile-roster-name">No Roster Loaded</span></div>
+          <button type="button" class="roster-btn" role="menuitem" id="mobile-btn-refresh" data-proxy="btn-refresh" hidden>Refresh sign-ups</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-share">Share link</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-save">Save roster</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-load">Load roster</button>
@@ -1301,6 +1315,14 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
     <div class="roster-right">
       <span class="roster-label">Roster</span>
       <span class="roster-name" id="roster-name">No Roster Loaded</span>
+    </div>
+  </div>
+
+  <div class="sync-banner" id="sync-banner" hidden aria-live="polite">
+    <span id="sync-banner-text"></span>
+    <div class="sync-banner-actions">
+      <button type="button" class="btn btn-primary" id="btn-sync-apply">Refresh roster</button>
+      <button type="button" class="link-btn" id="btn-sync-dismiss">Dismiss</button>
     </div>
   </div>
 
@@ -1649,6 +1671,7 @@ const State = {
   bench: [], // players not assigned to a group (groupNumber 0); never touched by the Optimizer
   selectedRaid: 'bt',
   rosterName: NO_ROSTER_NAME,
+  sourceEventId: null, // Raid-Helper event the roster was imported from; enables Refresh
   optimizerMode: 'max_dps', // 'max_dps' | 'tank_mit' | 'balanced' | 'relaxed'
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
   activeTab: 'plan', // 'plan' | 'ideal'
@@ -1782,26 +1805,36 @@ const Import = {
   // event sign-up roster, with no group placement at all (players haven't
   // been put into parties yet). Seed groups round-robin, then hand off to
   // the Optimizer to place everyone properly.
-  _importRaidHelperSignUps(data) {
-    const roster = [];
-    const bench = [];
+  // Reduce a "signUps" export to usable entries: { name, class, spec, role, category }
+  // where category is 'raider' or 'bench'. Absences and unresolvable classes are
+  // counted in `skipped`. Shared by the first import and by Refresh.
+  parseRaidHelperSignUps(data) {
+    const entries = [];
     let skipped = 0;
     for (const signUp of data.signUps) {
       const category = this._categorizeRaidHelperEntry(signUp);
       if (category === 'skip') { skipped++; continue; }
-
       const { classFile, specName, role } = this._resolveRaidHelperEntry(signUp);
       if (!classFile) { skipped++; continue; }
+      entries.push({
+        name: signUp.name || ('Unknown-' + (signUp.id || entries.length)),
+        class: classFile, spec: specName, role, category,
+      });
+    }
+    return { entries, skipped };
+  },
 
+  _importRaidHelperSignUps(data) {
+    const roster = [];
+    const bench = [];
+    const { entries, skipped } = this.parseRaidHelperSignUps(data);
+    for (const entry of entries) {
       const player = {
         uid: nextUid(),
-        name: signUp.name || ('Unknown-' + (signUp.id || roster.length)),
-        class: classFile,
-        spec: specName,
-        role: role,
+        name: entry.name, class: entry.class, spec: entry.spec, role: entry.role,
         imported: true,
       };
-      if (category === 'bench') { player.groupNumber = 0; bench.push(player); }
+      if (entry.category === 'bench') { player.groupNumber = 0; bench.push(player); }
       else roster.push(player);
     }
     if (roster.length === 0 && bench.length === 0) return { success:false, error:'No valid players found in sign-ups' };
@@ -1837,6 +1870,101 @@ const Import = {
 
     return { success:true, playerCount:State.roster.length, groupCount:numGroups, wasUnassigned:true,
              benchCount:State.bench.length, skippedCount:skipped, overflowCount:overflow };
+  },
+
+  // ── Raid-Helper re-sync ───────────────────────────────────────
+  // Compare a fresh "signUps" export against the loaded roster without
+  // touching State. Players are matched by name (case-insensitive), since
+  // saved rosters carry no Raid-Helper IDs.
+  //   added:    sign-ups not in the plan            -> will join the bench
+  //   removed:  plan members no longer signed up    -> will be dropped
+  //   changed:  same person, new class/spec/role    -> updated in place
+  //   demoted:  seated player now Tentative/Bench   -> moved to the bench
+  //   promoted: benched player now confirmed        -> reported, left on the bench
+  diffRaidHelperSignUps(jsonStr) {
+    let data;
+    try { data = JSON.parse(jsonStr); } catch (e) { return { success:false, error:'Invalid JSON: ' + e.message }; }
+    if (!Array.isArray(data.signUps)) return { success:false, error:"No 'signUps' array found in JSON" };
+
+    const { entries, skipped } = this.parseRaidHelperSignUps(data);
+    const key = (name) => (name || '').trim().toLowerCase();
+    const seated = new Set(State.roster.map(p => p.uid));
+    const current = new Map();
+    for (const p of State.roster) current.set(key(p.name), p);
+    for (const p of (State.bench || [])) if (!current.has(key(p.name))) current.set(key(p.name), p);
+
+    const diff = { success:true, added:[], removed:[], changed:[], demoted:[], promoted:[], skipped };
+    const seen = new Set();
+    for (const entry of entries) {
+      const k = key(entry.name);
+      if (seen.has(k)) continue; // duplicate sign-up names: first one wins
+      seen.add(k);
+      const player = current.get(k);
+      if (!player) { diff.added.push(entry); continue; }
+      if (player.class !== entry.class || player.spec !== entry.spec || player.role !== entry.role) {
+        diff.changed.push({ player, class:entry.class, spec:entry.spec, role:entry.role });
+      }
+      const isSeated = seated.has(player.uid);
+      if (isSeated && entry.category === 'bench') diff.demoted.push(player);
+      else if (!isSeated && entry.category === 'raider') diff.promoted.push(player);
+    }
+    for (const [k, player] of current) if (!seen.has(k)) diff.removed.push(player);
+    return diff;
+  },
+
+  hasRaidHelperChanges(diff) {
+    return !!diff && diff.success &&
+      (diff.added.length + diff.removed.length + diff.changed.length + diff.demoted.length) > 0;
+  },
+
+  // Fold a diff into State, keeping every untouched seat where it is.
+  // Returns the counts applied. Callers re-render.
+  applyRaidHelperSync(diff) {
+    if (!diff || !diff.success) return null;
+    State.bench = State.bench || [];
+
+    const unseat = (player) => {
+      for (const group of State.groups) {
+        const i = group.indexOf(player);
+        if (i >= 0) group.splice(i, 1);
+      }
+      const r = State.roster.indexOf(player);
+      if (r >= 0) State.roster.splice(r, 1);
+    };
+    const clearOverrides = (player) => {
+      for (const k of Object.keys(State.buffOverrides)) {
+        if (k.split(':')[1] === player.uid) delete State.buffOverrides[k];
+      }
+    };
+
+    for (const player of diff.removed) {
+      unseat(player);
+      const b = State.bench.indexOf(player);
+      if (b >= 0) State.bench.splice(b, 1);
+      clearOverrides(player);
+    }
+    for (const change of diff.changed) {
+      change.player.class = change.class;
+      change.player.spec = change.spec;
+      change.player.role = change.role;
+      clearOverrides(change.player); // an override for the old spec's buff no longer applies
+    }
+    for (const player of diff.demoted) {
+      unseat(player);
+      player.groupNumber = 0;
+      State.bench.push(player);
+      clearOverrides(player);
+    }
+    for (const entry of diff.added) {
+      State.bench.push({
+        uid: nextUid(), name:entry.name, class:entry.class, spec:entry.spec, role:entry.role,
+        groupNumber: 0, imported: true,
+      });
+    }
+    return {
+      added: diff.added.length, removed: diff.removed.length,
+      changed: diff.changed.length, demoted: diff.demoted.length, promoted: diff.promoted.length,
+    };
   },
 
   // Compact addon-friendly export string
@@ -2062,6 +2190,7 @@ const Import = {
 
     State.roster = roster;
     State.groups = groups;
+    State.sourceEventId = null;
     return { success:true, playerCount:roster.length, groupCount:numGroups };
   },
 
@@ -2070,6 +2199,7 @@ const Import = {
       name: name || State.rosterName || 'Unnamed',
       raid: State.selectedRaid,
       timestamp: Date.now(),
+      sourceEventId: State.sourceEventId || null,
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
       })),
@@ -2103,6 +2233,7 @@ const Import = {
     State.roster = roster;
     State.groups = groups;
     State.rosterName = data.name || 'Loaded Roster';
+    State.sourceEventId = data.sourceEventId || null;
     return true;
   },
 };
@@ -2200,6 +2331,7 @@ const RandomRoster = {
     State.roster = roster;
     State.groups = groups;
     State.rosterName = 'Random ' + size + '-man Roster';
+    State.sourceEventId = null;
     State.bench = [];
     State.buffOverrides = {};
   },
@@ -3682,6 +3814,7 @@ function renderGroups() {
   document.getElementById('roster-name').textContent = State.rosterName;
   const mobileName = document.getElementById('mobile-roster-name');
   if (mobileName) mobileName.textContent = State.rosterName;
+  RaidHelperSync.updateControls();
 }
 
 function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
@@ -4724,6 +4857,7 @@ function showLoadModal() {
         initGroups();
         renderGroups();
         showToast(`Loaded "${name}"`);
+        RaidHelperSync.check();
       }
     });
   });
@@ -4747,14 +4881,18 @@ function normalizeImportSource(raw) {
   // The v4 events endpoint carries every sign-up; the raidplan endpoint only
   // holds a composition someone already built in Raid-Helper (often empty).
   const eventsApi = (id) => `https://raid-helper.dev/api/v4/events/${id}`;
-  if (/^\d{6,}$/.test(t)) return { url: eventsApi(t) };
+  if (/^\d{6,}$/.test(t)) return { url: eventsApi(t), eventId: t };
   if (/^https?:\/\//i.test(t)) {
     // Raid-Helper answers on raid-helper.dev and raid-helper.xyz. An explicit
     // API link is fetched as pasted; event and raidplan page links resolve
-    // to the sign-ups for that event ID.
-    if (/raid-helper\.[a-z]+\/api\//i.test(t)) return { url: t };
+    // to the sign-ups for that event ID. `eventId` is only known when the
+    // roster comes from the events endpoint, which is what Refresh re-reads.
+    if (/raid-helper\.[a-z]+\/api\//i.test(t)) {
+      const api = t.match(/\/api\/v4\/events\/(\d+)/i);
+      return { url: t, eventId: api ? api[1] : null };
+    }
     const m = t.match(/raid-helper\.[a-z]+\/(?:event|raidplan)\/(\d+)/i);
-    return { url: m ? eventsApi(m[1]) : t };
+    return m ? { url: eventsApi(m[1]), eventId: m[1] } : { url: t, eventId: null };
   }
   return { text: t };
 }
@@ -4805,6 +4943,8 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   if (!result.success) { report('Import failed: ' + result.error, true); return false; }
 
   State.rosterName = 'Imported Roster';
+  State.sourceEventId = src.eventId || null;
+  RaidHelperSync.hideBanner();
   document.getElementById('raid-select').value = State.selectedRaid;
   const foldBenched = initGroups();
   renderGroups();
@@ -4825,6 +4965,104 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}`);
   return true;
 }
+
+// ── RAID-HELPER RE-SYNC ─────────────────────────────────────────
+// A roster imported from a Raid-Helper link remembers its event ID. Reopening
+// such a roster (or returning to the tab after a while) quietly re-reads the
+// event and offers a Refresh when sign-ups changed; the toolbar Refresh button
+// pulls on demand. Nothing is merged until the user clicks.
+const RaidHelperSync = {
+  RECHECK_AFTER_MS: 5 * 60 * 1000,
+  hiddenAt: 0,
+
+  eventsApiUrl(id) { return `https://raid-helper.dev/api/v4/events/${id}`; },
+
+  // Fetch the event and diff it against the loaded roster. Resolves to the
+  // diff, or null after reporting. Ignores the result if the roster was
+  // replaced while the request was in flight.
+  async fetchDiff(report) {
+    const eventId = State.sourceEventId;
+    if (!eventId) return null;
+    const json = await fetchRosterJson(this.eventsApiUrl(eventId), report);
+    if (json == null || State.sourceEventId !== eventId) return null;
+    const diff = Import.diffRaidHelperSignUps(json);
+    if (!diff.success) { report('Refresh failed: ' + diff.error, true); return null; }
+    return diff;
+  },
+
+  describe(diff) {
+    const n = (v) => Array.isArray(v) ? v.length : (v || 0);
+    const parts = [];
+    if (n(diff.added)) parts.push(`${n(diff.added)} new sign-up${n(diff.added) === 1 ? '' : 's'}`);
+    if (n(diff.removed)) parts.push(`${n(diff.removed)} withdrew`);
+    if (n(diff.changed)) parts.push(`${n(diff.changed)} changed spec`);
+    if (n(diff.demoted)) parts.push(`${n(diff.demoted)} went tentative`);
+    if (n(diff.promoted)) parts.push(`${n(diff.promoted)} on the bench now confirmed`);
+    return parts.join(', ');
+  },
+
+  // Quiet check: banner only when something changed, silence on any failure.
+  async check() {
+    if (!State.sourceEventId) return;
+    const diff = await this.fetchDiff(() => {});
+    if (!diff) return;
+    if (Import.hasRaidHelperChanges(diff)) this.showBanner(diff);
+    else this.hideBanner();
+  },
+
+  // User-initiated pull: re-reads the event and merges into the plan.
+  async refresh() {
+    if (!State.sourceEventId) { showToast('This roster is not linked to a Raid-Helper event'); return; }
+    showToast('Checking Raid-Helper...');
+    const diff = await this.fetchDiff((msg, isError) => { if (isError) showToast(msg); });
+    if (!diff) return;
+    this.hideBanner();
+    if (!Import.hasRaidHelperChanges(diff)) {
+      showToast(diff.promoted.length
+        ? `Up to date. ${this.describe(diff)}, swap them in from the bench`
+        : 'Roster is up to date with Raid-Helper');
+      return;
+    }
+    const counts = Import.applyRaidHelperSync(diff);
+    initGroups();
+    renderGroups();
+    showToast('Refreshed: ' + this.describe(counts));
+  },
+
+  showBanner(diff) {
+    const banner = document.getElementById('sync-banner');
+    const text = document.getElementById('sync-banner-text');
+    if (!banner || !text) return;
+    text.innerHTML = `Raid-Helper has changed since this roster was imported: <strong>${esc(this.describe(diff))}</strong>.`;
+    banner.hidden = false;
+  },
+
+  hideBanner() {
+    const banner = document.getElementById('sync-banner');
+    if (banner) banner.hidden = true;
+  },
+
+  // Refresh is only offered for linked rosters.
+  updateControls() {
+    const linked = !!State.sourceEventId;
+    const btn = document.getElementById('btn-refresh');
+    const mobile = document.getElementById('mobile-btn-refresh');
+    if (btn) btn.hidden = !linked;
+    if (mobile) mobile.hidden = !linked;
+    if (!linked) this.hideBanner();
+  },
+};
+
+document.getElementById('btn-refresh').addEventListener('click', () => RaidHelperSync.refresh());
+document.getElementById('btn-sync-apply').addEventListener('click', () => RaidHelperSync.refresh());
+document.getElementById('btn-sync-dismiss').addEventListener('click', () => RaidHelperSync.hideBanner());
+
+// Coming back to the tab after a while is a natural moment to look again.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { RaidHelperSync.hiddenAt = Date.now(); return; }
+  if (!State.sourceEventId || State.view !== 'app') return;
+  if (Date.now() - RaidHelperSync.hiddenAt >= RaidHelperSync.RECHECK_AFTER_MS) RaidHelperSync.check();
+});
 
 // ── IMPORT MODAL (toolbar) ──────────────────────────────────────
 document.getElementById('btn-import').addEventListener('click', () => {
@@ -4890,9 +5128,10 @@ function renderLandingSavedList() {
     const r = rosters[name];
     const count = r.players ? r.players.length : 0;
     const raid = r.raid ? (Config.Raids[r.raid]?.name || r.raid) : '';
+    const linked = r.sourceEventId ? ' \u00b7 Raid-Helper linked' : '';
     return `<button type="button" class="saved-item" data-name="${esc(name)}">
       <span class="saved-item-name">${esc(name)}</span>
-      <span class="saved-item-meta">${count} players${raid ? ' \u00b7 ' + esc(raid) : ''}</span>
+      <span class="saved-item-meta">${count} players${raid ? ' \u00b7 ' + esc(raid) : ''}${linked}</span>
     </button>`;
   }).join('');
   list.querySelectorAll('.saved-item').forEach(item => item.addEventListener('click', () => {
@@ -4902,6 +5141,7 @@ function renderLandingSavedList() {
     renderGroups();
     showToast(`Loaded "${item.dataset.name}"`);
     showView('app');
+    RaidHelperSync.check();
   }));
 }
 
@@ -5065,6 +5305,7 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   State.groups = [];
   State.bench = [];
   State.rosterName = NO_ROSTER_NAME;
+  State.sourceEventId = null;
   State.buffOverrides = {};
   initGroups();
   renderGroups();
