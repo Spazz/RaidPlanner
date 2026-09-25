@@ -123,7 +123,7 @@ body {
   background: var(--bg-card); border: 1px solid var(--border-medium);
   display: flex; flex-direction: column;
 }
-.import-tabs { display: flex; border-bottom: 1px solid var(--border-medium); }
+.import-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border-medium); }
 .import-tab {
   flex: 1; padding: 12px 8px; background: transparent; border: none; cursor: pointer;
   font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
@@ -156,6 +156,20 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .saved-item:hover { background: var(--bg-card-hover); border-color: var(--border-strong); }
 .saved-item-name { font-size: 13px; font-weight: 600; }
 .saved-item-meta { font-size: 11px; color: var(--text-muted); }
+.history-row { display: flex; gap: 6px; align-items: center; }
+.history-open.saved-item { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 4px; overflow-wrap: anywhere; }
+.history-remove { flex: 0 0 32px; min-height: 36px; border: 1px solid var(--border-medium); background: var(--bg-card); color: var(--text-muted); cursor: pointer; font-size: 18px; }
+.history-remove:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.roster-section-heading { font-family: var(--font-cond); font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent-gold); }
+.saved-list.history-preview { max-height: none; }
+.history-more { width: 100%; margin-top: 6px; }
+.history-dialog { margin: auto; width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 20px; background: var(--bg-panel); color: var(--text-primary); border: 1px solid var(--border-strong); }
+.history-dialog::backdrop { background: rgba(19,20,22,.85); }
+.history-dialog { color-scheme: dark; }
+.history-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.history-dialog h3 { font-family: var(--font-cond); color: var(--accent-gold); text-transform: uppercase; letter-spacing: .08em; }
+.history-dialog p { margin: 12px 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.history-dialog .saved-list { max-height: 55dvh; overflow-y: auto; }
 .saved-empty { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
 .import-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -593,6 +607,15 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .player-spec { font-size: 9px; color: var(--text-muted); line-height: 1.2; }
 .empty-slot { opacity: 0.35; font-style: italic; cursor: default; }
 .empty-slot .player-name { color: var(--text-muted); font-weight: 400; }
+.empty-slot { cursor: pointer; opacity: .6; }
+.preferred-slot { border: 1px dashed var(--preferred-color); background: color-mix(in srgb, var(--preferred-color) 9%, transparent); cursor: pointer; }
+.preferred-slot .player-name { color: color-mix(in srgb, var(--preferred-color) 75%, white); font-size: 12px; }
+.preferred-slot .player-spec { font-style: italic; }
+.preferred-slot img { opacity: .65; }
+.preferred-badge { color: var(--preferred-color); font-size: 9px; letter-spacing: .08em; border: 1px solid currentColor; border-radius: 3px; padding: 2px 4px; }
+.preferred-actions { border-top: 1px solid var(--border-color); padding: 8px 0; }
+.preferred-actions p { font-size: 12px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 8px; }
+.preferred-actions .pe-btn { margin: 0 4px 4px 0; }
 .drag-handle {
   display: flex; flex-direction: column; gap: 2px;
   opacity: 0; transition: opacity 0.15s ease;
@@ -922,10 +945,12 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   justify-content: center; align-items: center;
 }
 .save-overlay.visible { display: flex; }
+.save-overlay { z-index: 60; }
 .save-modal {
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
   padding: var(--sp-5); width: 380px;
+  max-height: 58vh; overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
 .save-modal h3 {
@@ -1113,6 +1138,91 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .manual-changes-section .change-remove { padding: 4px 8px; }
   .faq summary { padding-top: 14px; padding-bottom: 14px; }
 }
+/* Simple workflow: one primary action and progressively disclosed details. */
+.plan-feedback { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:10px 16px; font-size:12px; border-bottom:1px solid var(--border-medium); }
+#mobile-plan-title { display:none; }
+#autosave-status { color:var(--text-muted); }
+#autosave-status[data-failed] { color:#ffb86b; }
+.planner-options { margin:8px 16px; }
+.planner-options:not([open]) { display:none; }
+.options-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 0; }
+.options-controls .action-divider { display:none; }
+.share-actions { display:flex; flex-direction:column; gap:12px; }
+.share-actions details { margin-top:12px; }
+.share-actions details button { display:block; margin-top:8px; width:100%; }
+#btn-share-main { margin-left:auto; }
+.toolbar .roster-actions { display:none; }
+.action-left { flex:1; }
+#btn-optimize { background:transparent; color:var(--text-secondary); border-color:var(--border-medium); }
+.action-left .mobile-more { display:none; }
+.player-editor { max-height:calc(100dvh - 20px); overflow-y:auto; }
+.player-move { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+.player-move select { width:100%; padding:8px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border-medium); }
+@media(max-width:600px) {
+  .action-left { flex-wrap:nowrap; width:100%; gap:4px; }
+  .roster-bar { flex-wrap:nowrap; }
+  .action-left #btn-optimize { display:none; }
+  .action-left #btn-share-main, .action-left #btn-options, .action-left #btn-undo { flex:1; min-width:0; margin:0; padding:8px 4px; font-size:11px; letter-spacing:.02em; white-space:nowrap; }
+  .action-left #btn-share-main { flex:1.6; }
+  .roster-right { display:none !important; }
+  #mobile-plan-title { display:block; width:100%; font-weight:600; }
+  #roster-name { white-space:normal; text-align:left; }
+  .plan-feedback { padding:8px; font-size:11px; }
+  #readiness-text { text-align:left; }
+  .options-controls .btn { display:inline-flex !important; }
+  .player-editor { position:fixed !important; left:12px !important; right:12px; top:50% !important; transform:translateY(-50%); width:auto !important; }
+}
+/* Larger homepage type and controls for comfortable reading. */
+.landing { width:min(1180px,100%); }
+.landing-brand h1 { font-size:26px; }
+.landing-brand span, .landing-nav-links a, .hero-kicker { font-size:14px; }
+.hero h2 { font-size:clamp(38px,5vw,60px); }
+.hero-copy > p { font-size:18px; }
+.hero-points li { font-size:16px; line-height:1.45; }
+.landing .import-tab { font-size:15px; padding:15px 10px; }
+.landing .import-pane { padding:22px; gap:14px; }
+.landing .import-pane p { font-size:16px; }
+.landing .import-pane code { font-size:14px; }
+.landing textarea.import-field { font-size:16px; min-height:150px; line-height:1.5; }
+.landing .btn { font-size:15px; padding:12px 16px; }
+.landing .link-btn, .landing .import-foot span, .landing .import-status { font-size:14px; }
+.landing .resume-banner span { font-size:15px; }
+.landing .saved-item-name { font-size:15px; }
+.landing .saved-item-meta { font-size:13px; }
+.landing .saved-item { padding:12px 14px; }
+.landing .section-title, .landing .roster-section-heading { font-size:16px; }
+.landing .step h3, .landing .feature h3 { font-size:18px; }
+.landing .step p, .landing .feature p, .landing .faq details p { font-size:16px; }
+.landing .faq summary { font-size:17px; padding:16px; }
+.landing-footer { font-size:13px; }
+@media(max-width:600px) {
+  .landing-brand { flex-wrap:wrap; gap:4px 10px; }
+  .landing-brand h1 { font-size:24px; }
+  .landing .import-pane { padding:16px; }
+  .landing .import-foot { flex-wrap:wrap; }
+  .landing .saved-item:not(.history-open) { flex-wrap:wrap; }
+}
+/* Wide desktop layouts: use the monitor without stretching reading lines. */
+@media (min-width:1600px) {
+  .landing { width:min(1480px,calc(100% - 64px)); gap:36px; }
+  .hero { gap:48px; }
+  .hero-copy { padding-top:24px; }
+  .hero-points { max-width:56ch; }
+  .steps, .features { gap:20px; }
+  .step, .feature { padding:24px; }
+  .faq details p { max-width:90ch; }
+}
+@media (min-width:2200px) {
+  .landing { width:min(1920px,calc(100% - 96px)); gap:44px; padding-top:36px; }
+  .hero { gap:72px; }
+  .hero h2 { font-size:72px; }
+  .hero-copy > p { font-size:20px; }
+  .hero-points li { font-size:18px; }
+  .landing .import-pane { padding:28px; }
+  .landing textarea.import-field { min-height:180px; }
+  /* Preserve 1.5 zoom: 1280 layout pixels render as 1920 screen pixels. */
+  .addon-frame { width:min(1280px,100%); }
+}
 </style>
 </head>
 <body>
@@ -1141,9 +1251,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 
     <div class="import-card" id="import-card">
       <div class="import-tabs" role="tablist">
-        <button type="button" class="import-tab active" role="tab" data-pane="url" aria-selected="true">Load from URL</button>
-        <button type="button" class="import-tab" role="tab" data-pane="paste" aria-selected="false">Paste JSON</button>
-        <button type="button" class="import-tab" role="tab" data-pane="saved" aria-selected="false">Saved rosters</button>
+        <button type="button" class="import-tab active" role="tab" data-pane="import" aria-selected="true">Import roster</button>
+        <button type="button" class="import-tab" role="tab" data-pane="saved" aria-selected="false">Your plans</button>
       </div>
 
       <div class="resume-banner" id="resume-banner" hidden>
@@ -1151,39 +1260,29 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
         <button type="button" class="btn btn-primary" id="btn-resume">Back to planner</button>
       </div>
 
-      <div class="import-pane" data-pane="url">
-        <p>Paste a Raid-Helper event link, API link, or just the event ID.</p>
-        <div class="import-hints">
-          <code>https://raid-helper.xyz/event/&lt;id&gt;</code>
-          <code>https://raid-helper.xyz/api/v4/events/&lt;id&gt;</code>
-          <code>&lt;id&gt;</code>
-        </div>
-        <label for="landing-url" class="sr-only">Raid-Helper event link or ID</label>
-        <input type="text" class="import-field" id="landing-url" placeholder="https://raid-helper.dev/event/... or event ID" autocomplete="off" spellcheck="false">
+      <div class="import-pane" data-pane="import">
+        <p>Paste a Raid-Helper link, event ID, JSON export, or <code>PP:</code> roster string. We’ll recognize the format automatically.</p>
+        <label for="landing-import" class="sr-only">Raid-Helper link, event ID, JSON, or roster string</label>
+        <textarea class="import-field" id="landing-import" placeholder="Paste a Raid-Helper link, event ID, or JSON here…" spellcheck="false"></textarea>
         <div class="import-actions">
-          <button type="button" class="btn btn-primary btn-lg" id="btn-landing-url">Load sign-ups</button>
-          <span class="import-status" id="landing-status-url"></span>
-        </div>
-      </div>
-
-      <div class="import-pane" data-pane="paste" hidden>
-        <p>Paste the JSON from a Raid-Helper export, or a <code>PP:</code> string from a share link.</p>
-        <label for="landing-paste" class="sr-only">Roster data</label>
-        <textarea class="import-field" id="landing-paste" placeholder='{"signUps": [...]}  or  PP:2:bt:...' spellcheck="false"></textarea>
-        <div class="import-actions">
-          <button type="button" class="btn btn-primary btn-lg" id="btn-landing-paste">Import roster</button>
-          <span class="import-status" id="landing-status-paste"></span>
+          <button type="button" class="btn btn-primary btn-lg" id="btn-landing-import">Load roster</button>
+          <span class="import-status" id="landing-status-import" role="status"></span>
         </div>
       </div>
 
       <div class="import-pane" data-pane="saved" hidden>
-        <p>Rosters you saved in this browser.</p>
+        <h3 class="roster-section-heading">Your plans</h3>
+        <p>Latest changes saved automatically on this device.</p>
         <div class="saved-list" id="landing-saved-list"></div>
+        <h3 class="roster-section-heading">Recent imports</h3>
+        <p>Original import snapshots. Your plans above keep subsequent edits.</p>
+        <div class="saved-list" id="landing-history-list"></div>
       </div>
 
       <div class="import-foot">
         <span>No roster handy?</span>
         <button type="button" class="link-btn" id="btn-landing-random">Generate a random 25-man</button>
+        <button type="button" class="link-btn" id="btn-landing-empty">Start an empty plan</button>
       </div>
     </div>
   </section>
@@ -1225,10 +1324,10 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
     <div class="section-title">Frequently asked questions</div>
     <div class="faq">
       <details><summary>Is Party Planner free?</summary><p>Yes. There is no account, no login and no paid tier. Everything runs in your browser.</p></details>
-      <details><summary>Where does my roster data go?</summary><p>Nowhere. Sign-ups are fetched by your browser directly from Raid-Helper and never touch our server. Saved rosters live in your browser's local storage, and share links carry the layout in the URL fragment, which browsers never send to the host.</p></details>
+      <details><summary>Where does my roster data go?</summary><p>Sign-ups are fetched by your browser directly from Raid-Helper and never touch our server. Named saves and your latest 30 imports live in this browser's local storage. Working plans save your latest changes automatically, while import history keeps the original snapshots. Clearing site data removes both saves and history. Share links carry the layout in the URL fragment, which browsers never send to the host.</p></details>
       <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive, so melee end up with Windfury, casters with their totems and auras, and tanks with their healers. You can pick Max DPS, Tank Mitigation or Balanced, and drag anyone afterwards.</p></details>
       <details><summary>What happens when more people sign up than the raid holds?</summary><p>You always keep enough tanks and healers. The remaining seats go to whoever adds the most, and everyone else waits on the bench, where you can swap them in with one click.</p></details>
-      <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and use the Paste JSON tab.</p></details>
+      <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and paste the JSON into the import box.</p></details>
       <details><summary>People signed up after I built the groups. Do I start over?</summary><p>No. A roster imported from a Raid-Helper link remembers its event. When you reopen a saved roster, the planner checks the event and shows what changed. Click Refresh (in the toolbar or on the banner) to add new sign-ups to the bench, remove anyone who withdrew, and update changed specs, while everyone else keeps their seat.</p></details>
       <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick Karazhan or Zul'Aman from the raid dropdown and the planner switches to two groups with 10-man tank and healer floors.</p></details>
       <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
@@ -1262,12 +1361,13 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
       </div>
       <div class="roster-actions">
         <button class="roster-btn" id="btn-refresh" hidden aria-label="Pull the latest sign-ups from Raid-Helper" title="Pull the latest sign-ups from Raid-Helper">Refresh</button>
-        <button class="roster-btn" id="btn-share" aria-label="Copy a shareable link to this layout">Share</button>
+
         <button class="roster-btn" id="btn-save" aria-label="Save current roster">Save</button>
-        <button class="roster-btn" id="btn-load" aria-label="Load a saved roster">Load</button>
+        <button class="roster-btn" id="btn-load" aria-label="Load a saved roster or recent import">Load</button>
         <div class="export-menu" id="export-menu">
-          <button class="roster-btn" id="btn-export-menu" aria-haspopup="true" aria-expanded="false" aria-label="Export options">Export &#9662;</button>
+          <button class="roster-btn" id="btn-export-menu" aria-haspopup="true" aria-expanded="false" aria-label="Share or export your plan">Share / Export &#9662;</button>
           <div class="export-menu-list" role="menu">
+            <button class="roster-btn" id="btn-share" role="menuitem" aria-label="Copy a shareable link to this layout">Copy share link</button>
             <button class="roster-btn" id="btn-copy-addon" role="menuitem" aria-label="Copy roster as addon string to clipboard">Copy Addon String</button>
             <button class="roster-btn" id="btn-copy-mrt" role="menuitem" aria-label="Copy roster as an MRT Raid Groups import string to clipboard">Copy MRT String</button>
             <button class="roster-btn" id="btn-export-json" role="menuitem" aria-label="Export roster as JSON file">Export JSON</button>
@@ -1281,16 +1381,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   <div class="roster-bar">
     <div class="action-left">
       <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition">Optimize</button>
-      <select class="raid-dropdown" id="optimize-mode" aria-label="Optimizer strategy">
-        <option value="max_dps" selected>Max DPS</option>
-        <option value="tank_mit">Tank Mitigation</option>
-        <option value="balanced">Balanced</option>
-        <option value="relaxed">Relaxed</option>
-      </select>
-      <span class="action-divider"></span>
-      <button class="btn btn-secondary" id="btn-import" aria-label="Import roster from JSON or URL">Import</button>
-      <button class="btn btn-secondary" id="btn-random" aria-label="Generate a random roster">Random</button>
-      <button class="btn btn-quiet" id="btn-clear" aria-label="Clear all players and groups">Clear all</button>
+      <button type="button" class="btn btn-secondary" id="btn-undo" disabled>Undo</button>
+      <button type="button" class="btn btn-primary" id="btn-share-main">Share / Export</button>
+      <button type="button" class="btn btn-secondary" id="btn-options">Options</button>
       <!-- Phone-only overflow menu: every secondary action proxies to the real button above. -->
       <div class="mobile-more" id="mobile-more">
         <button type="button" class="btn btn-secondary" id="btn-mobile-more" aria-haspopup="true" aria-expanded="false" aria-label="More actions">More &#9662;</button>
@@ -1314,10 +1407,26 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
     </div>
     <div class="roster-right">
       <span class="roster-label">Roster</span>
-      <span class="roster-name" id="roster-name">No Roster Loaded</span>
+      <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">No Roster Loaded</button>
     </div>
   </div>
 
+  <details id="planner-options" class="planner-options">
+    <summary>Planning options</summary>
+    <div class="options-controls"><label for="optimize-mode">Optimization strategy</label>
+      <select class="raid-dropdown" id="optimize-mode" aria-label="Optimizer strategy">
+        <option value="max_dps" selected>Max DPS</option>
+        <option value="tank_mit">Tank Mitigation</option>
+        <option value="balanced">Balanced</option>
+        <option value="relaxed">Relaxed</option>
+      </select>
+      <span class="action-divider"></span>
+      <button class="btn btn-secondary" id="btn-import" aria-label="Import roster from JSON or URL">Import</button>
+      <button class="btn btn-secondary" id="btn-random" aria-label="Generate a random roster">Random</button>
+      <button class="btn btn-quiet" id="btn-clear" aria-label="Clear all players and groups">Clear all</button>
+    </div>
+  </details>
+  <div class="plan-feedback"><span id="mobile-plan-title"></span><button type="button" class="link-btn" id="readiness-text" title="Show coverage details"></button><span id="autosave-status" role="status"></span></div>
   <div class="sync-banner" id="sync-banner" hidden aria-live="polite">
     <span id="sync-banner-text"></span>
     <div class="sync-banner-actions">
@@ -1386,6 +1495,27 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
     </div>
   </div>
 </div>
+
+<dialog id="share-dialog" class="history-dialog" aria-labelledby="share-heading">
+  <div class="history-dialog-header"><h3 id="share-heading">Share your plan</h3><button type="button" class="btn btn-secondary" id="close-share">Close</button></div>
+  <p>Send your layout to the raid or bring it into the game.</p>
+  <div class="share-actions">
+    <button type="button" class="btn btn-primary" data-share-action="btn-share">Copy share link</button>
+    <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt">Copy for MRT</button>
+    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-addon">Copy addon string</button></details>
+  </div>
+</dialog>
+<dialog id="rename-dialog" class="history-dialog" aria-labelledby="rename-heading">
+  <form method="dialog"><h3 id="rename-heading">Name your plan</h3><label for="plan-name">Plan name</label><input id="plan-name" class="save-input" maxlength="120" required><div class="import-buttons"><button class="btn btn-secondary" value="cancel" formnovalidate>Cancel</button><button class="btn btn-primary" value="save">Save name</button></div></form>
+</dialog>
+<dialog id="history-dialog" class="history-dialog" aria-labelledby="history-dialog-heading">
+  <div class="history-dialog-header">
+    <h3 id="history-dialog-heading">Import history</h3>
+    <button type="button" class="btn btn-secondary" id="btn-close-history" autofocus>Close</button>
+  </div>
+  <p>Your latest 30 imports, newest first. Stored only in this browser; clearing site data removes them.</p>
+  <div class="saved-list" id="all-history-list"></div>
+</dialog>
 
 <div class="drag-ghost" id="drag-ghost"></div>
 <div class="toast" id="toast"></div>
@@ -1666,16 +1796,66 @@ function getBuffPriority(buff, role) {
 const NO_ROSTER_NAME = 'No Roster Loaded';
 
 const State = {
+  preferredSlots: [], // Open class/spec requests, separate from real players.
+  preserveGroupOrder: false,
   roster: [],
   groups: [],
   bench: [], // players not assigned to a group (groupNumber 0); never touched by the Optimizer
   selectedRaid: 'bt',
   rosterName: NO_ROSTER_NAME,
+  planId: null,
   sourceEventId: null, // Raid-Helper event the roster was imported from; enables Refresh
   optimizerMode: 'max_dps', // 'max_dps' | 'tank_mit' | 'balanced' | 'relaxed'
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
   activeTab: 'plan', // 'plan' | 'ideal'
   view: 'landing', // 'landing' | 'app'
+};
+
+const PreferredSlots = {
+  clean(items, raid = State.selectedRaid) {
+    const counts = {};
+    return (Array.isArray(items) ? items : []).filter(p => {
+      if (!p || !Number.isInteger(p.group) || p.group < 0 || p.group >= (Config.Raids[raid]?.groups || 5) ||
+          !Object.values(Config.Specs[p.class] || {}).some(s => s.name === p.spec)) return false;
+      counts[p.group] = (counts[p.group] || 0) + 1;
+      return counts[p.group] <= 5;
+    }).map(p => ({group:p.group, class:p.class, spec:p.spec}));
+  },
+  forGroup(group) { return State.preferredSlots.filter(p => p.group === group); },
+  add(group, classFile, spec, existing) {
+    if (!this.clean([{group, class:classFile, spec}]).length) return false;
+    if (!existing && (State.groups[group]?.length || 0) + this.forGroup(group).length >= 5) return false;
+    if (existing) Object.assign(existing, {class:classFile, spec});
+    else State.preferredSlots.push({group, class:classFile, spec});
+    State.preserveGroupOrder = true;
+    return true;
+  },
+  remove(preference) { State.preferredSlots = State.preferredSlots.filter(p => p !== preference); },
+  match(player) {
+    return State.preferredSlots.find(p => p.class === player.class && p.spec === player.spec && (State.groups[p.group]?.length || 0) < 5);
+  },
+  seat(player) {
+    const preference = this.match(player);
+    if (!preference) return false;
+    State.groups[preference.group] ||= [];
+    State.groups[preference.group].push(player);
+    player.groupNumber = preference.group + 1;
+    State.bench = State.bench.filter(p => p !== player);
+    this.remove(preference);
+    State.roster = State.groups.flat();
+    return true;
+  },
+  // Manual assignments are authoritative. Matching requests are fulfilled first;
+  // a full group replaces the last remaining request instead of hiding it.
+  reconcile() {
+    State.preferredSlots = this.clean(State.preferredSlots);
+    State.groups.forEach((group, gi) => {
+      while (group.length + this.forGroup(gi).length > 5) {
+        const requests = this.forGroup(gi);
+        this.remove(requests.find(r => group.some(p => p.class === r.class && p.spec === r.spec)) || requests[requests.length - 1]);
+      }
+    });
+  },
 };
 
 // ── RAID CAPACITY ───────────────────────────────────────────────
@@ -1703,6 +1883,17 @@ const Import = {
   importRaidHelper(jsonStr) {
     let data;
     try { data = JSON.parse(jsonStr); } catch(e) { return { success:false, error:'Invalid JSON: '+e.message }; }
+    if (State.preferredSlots.length && (Array.isArray(data.signUps) || Array.isArray(data.slots))) {
+      if (!this.parseRaidHelperSignUps({signUps:data.signUps || data.slots}).entries.length)
+        return {success:false, error:'No valid players found in sign-ups'};
+      const diff = this.diffRaidHelperSignUps(JSON.stringify({signUps:data.signUps || data.slots}));
+      if (!diff.success) return diff;
+      // Import into a planned layout: keep people already placed by the user.
+      diff.removed = [];
+      const counts = this.applyRaidHelperSync(diff);
+      return {success:true, playerCount:State.roster.length, groupCount:State.groups.length,
+        preferredImport:true, filledCount:counts.filled, benchCount:State.bench.length, skippedCount:diff.skipped};
+    }
     if (Array.isArray(data.slots)) return this._importRaidHelperSlots(data);
     if (Array.isArray(data.signUps)) return this._importRaidHelperSignUps(data);
     return { success:false, error:"No 'slots' or 'signUps' array found in JSON" };
@@ -1914,7 +2105,8 @@ const Import = {
 
   hasRaidHelperChanges(diff) {
     return !!diff && diff.success &&
-      (diff.added.length + diff.removed.length + diff.changed.length + diff.demoted.length) > 0;
+      ((diff.added.length + diff.removed.length + diff.changed.length + diff.demoted.length) > 0 ||
+        diff.promoted.some(p => PreferredSlots.match(p)));
   },
 
   // Fold a diff into State, keeping every untouched seat where it is.
@@ -1955,15 +2147,19 @@ const Import = {
       State.bench.push(player);
       clearOverrides(player);
     }
+    let filled = 0;
+    for (const player of diff.promoted) if (PreferredSlots.seat(player)) filled++;
     for (const entry of diff.added) {
-      State.bench.push({
+      const player = {
         uid: nextUid(), name:entry.name, class:entry.class, spec:entry.spec, role:entry.role,
         groupNumber: 0, imported: true,
-      });
+      };
+      if (entry.category !== 'bench' && PreferredSlots.seat(player)) filled++;
+      else State.bench.push(player);
     }
     return {
       added: diff.added.length, removed: diff.removed.length,
-      changed: diff.changed.length, demoted: diff.demoted.length, promoted: diff.promoted.length,
+      changed: diff.changed.length, demoted: diff.demoted.length, promoted: diff.promoted.length, filled,
     };
   },
 
@@ -2045,6 +2241,8 @@ const Import = {
 
   // v2 adds the two things the addon string drops: roster name and bench.
   // Layout: PP:2:<raid>:<encodedName>:<bench>:<group1>:<group2>:...
+  // An optional encoded JSON tail after all raid groups preserves open requests
+  // and the requested group order. Older v2 readers ignore that extra tail.
   // The addon still reads v1, so exportAddonString() is left alone.
   exportShareString() {
     const cc = this.classCode, sc = this.specCode, rc = this.roleCode;
@@ -2055,6 +2253,10 @@ const Import = {
     const name = State.rosterName === NO_ROSTER_NAME ? '' : (State.rosterName || '');
     const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
     for (const g of State.groups) parts.push(encode(g));
+    if (State.preferredSlots.length || State.preserveGroupOrder) {
+      while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
+      parts.push(encodeURIComponent(JSON.stringify({preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder})));
+    }
     return parts.join(':');
   },
 
@@ -2115,7 +2317,15 @@ const Import = {
     for (let gi = 0; gi < numGroups && (gi + 5) < parts.length; gi++) {
       players.push(...this._parsePlayerList(parts[gi + 5], gi + 1));
     }
-    if (players.length === 0 && bench.length === 0) {
+    let preferredSlots = [];
+    let preserveGroupOrder = false;
+    try {
+      const planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D'));
+      preferredSlots = PreferredSlots.clean(planning.preferredSlots, raid);
+      preserveGroupOrder = planning.preserveGroupOrder === true || preferredSlots.length > 0;
+    }
+    catch { return {success:false, error:'Share link has damaged preferred slots'}; }
+    if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0) {
       return { success:false, error:'Share link contains no players' };
     }
 
@@ -2124,7 +2334,7 @@ const Import = {
       name: name || 'Shared Roster',
       playerCount: players.length,
       groupCount: numGroups,
-      data: { name: name || 'Shared Roster', raid, players, bench },
+      data: { name: name || 'Shared Roster', raid, players, bench, preferredSlots, preserveGroupOrder },
     };
   },
 
@@ -2161,6 +2371,8 @@ const Import = {
     if (!Config.Raids[raid]) return { success:false, error:'Unknown raid: ' + raid };
 
     State.selectedRaid = raid;
+    State.preferredSlots = [];
+    State.preserveGroupOrder = false;
     const raidInfo = Config.Raids[raid];
     const numGroups = raidInfo.groups;
     const roster = [];
@@ -2200,6 +2412,8 @@ const Import = {
       raid: State.selectedRaid,
       timestamp: Date.now(),
       sourceEventId: State.sourceEventId || null,
+      preferredSlots: State.preferredSlots.map(p => ({...p})),
+      preserveGroupOrder: State.preserveGroupOrder,
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
       })),
@@ -2211,7 +2425,10 @@ const Import = {
 
   loadRoster(data) {
     if (!data || !data.players) return false;
+    State.planId = null;
     if (data.raid) State.selectedRaid = data.raid;
+    State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
+    State.preserveGroupOrder = data.preserveGroupOrder === true || State.preferredSlots.length > 0;
 
     const raidInfo = Config.Raids[State.selectedRaid];
     const numGroups = raidInfo ? raidInfo.groups : 5;
@@ -2235,6 +2452,108 @@ const Import = {
     State.rosterName = data.name || 'Loaded Roster';
     State.sourceEventId = data.sourceEventId || null;
     return true;
+  },
+};
+
+// Import snapshots are separate from named saves. Storage is injected for tests.
+const ImportHistory = {
+  key: 'pp_import_history',
+  limit: 30,
+  read(storage) {
+    try {
+      const items = JSON.parse(storage.getItem(this.key) || '[]');
+      return Array.isArray(items) ? items.filter(item => item && typeof item.id === 'string' &&
+        Number.isFinite(item.importedAt) && item.roster && Array.isArray(item.roster.players) &&
+        Array.isArray(item.roster.bench) && Config.Raids[item.roster.raid] &&
+        [...item.roster.players, ...item.roster.bench].every(p => p && typeof p.name === 'string' &&
+          typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string' &&
+          Number.isInteger(p.groupNumber))).slice(0, this.limit) : [];
+    } catch { return []; }
+  },
+  add(storage, source) {
+    const importedAt = Date.now();
+    const item = {
+      id: importedAt.toString(36) + '-' + Math.random().toString(36).slice(2),
+      importedAt, source, roster: Import.exportRoster(),
+    };
+    storage.setItem(this.key, JSON.stringify([item, ...this.read(storage)].slice(0, this.limit)));
+    return item;
+  },
+  remove(storage, id) {
+    storage.setItem(this.key, JSON.stringify(this.read(storage).filter(item => item.id !== id)));
+  },
+};
+
+// Full working plans preserve identities, overrides, and mode independently of export formats.
+const PlanStore = {
+  key: 'pp_working_plans',
+  capture() {
+    return JSON.parse(JSON.stringify({planId:State.planId, groups:State.groups, bench:State.bench,
+      selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
+      optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder}));
+  },
+  valid(data) {
+    return data && typeof data.planId === 'string' && Config.Raids[data.selectedRaid] &&
+      typeof data.rosterName === 'string' && Array.isArray(data.groups) && data.groups.every(Array.isArray) &&
+      ['max_dps','tank_mit','balanced','relaxed'].includes(data.optimizerMode) &&
+      data.buffOverrides && typeof data.buffOverrides === 'object' && !Array.isArray(data.buffOverrides) &&
+      Array.isArray(data.bench) && [...data.groups.flat(), ...data.bench].every(p => p &&
+        typeof p.uid === 'string' && typeof p.name === 'string' && typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string');
+  },
+  read(storage) {
+    try {
+      const plans = JSON.parse(storage.getItem(this.key) || '[]');
+      return Array.isArray(plans) ? plans.filter(p => p && this.valid(p.data)) : [];
+    } catch { return []; }
+  },
+  save(storage, data) {
+    const plans = this.read(storage).filter(p => p.data.planId !== data.planId);
+    storage.setItem(this.key, JSON.stringify([{updatedAt:Date.now(), data}, ...plans]));
+  },
+  restore(data) {
+    if (!this.valid(data)) return false;
+    Object.assign(State, JSON.parse(JSON.stringify(data)));
+    State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
+    State.preserveGroupOrder = data.preserveGroupOrder === true || State.preferredSlots.length > 0;
+    State.roster = State.groups.flat();
+    for (const p of [...State.roster, ...State.bench]) {
+      const n = /^p(\d+)$/.exec(p.uid);
+      if (n) _uid = Math.max(_uid, Number(n[1]));
+    }
+    return true;
+  },
+  nameFor(data, eventId) {
+    const title = typeof data.title === 'string' ? data.title.trim() : '';
+    const raw = data.startTime || data.start_time;
+    const date = raw ? new Date(Number(raw) * (Number(raw) < 1e12 ? 1000 : 1)) : null;
+    const day = date && Number.isFinite(date.getTime()) ? date.toLocaleDateString() : new Date().toLocaleDateString();
+    return (title || (Config.Raids[State.selectedRaid]?.name || 'Raid') + (eventId ? ' · Event ' + eventId : '')) + ' · ' + day;
+  },
+};
+
+const PlanSession = {
+  previous:null, undo:[], ready:false, replaying:false,
+  observe() {
+    if (!this.ready) return;
+    if (!State.planId && (State.groups.flat().length || State.bench.length || State.preferredSlots.length))
+      State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+    if (!State.planId) return;
+    const current = PlanStore.capture();
+    const changed = JSON.stringify(current) !== JSON.stringify(this.previous);
+    if (this.previous?.planId !== current.planId) this.undo = [];
+    else if (changed && !this.replaying) {
+      this.undo.push(this.previous);
+      if (this.undo.length > 30) this.undo.shift();
+    }
+    this.previous = current;
+    this.replaying = false;
+    return {current, changed};
+  },
+  undoLast() {
+    const previous = this.undo.pop();
+    if (!previous) return false;
+    this.replaying = true;
+    return PlanStore.restore(previous);
   },
 };
 
@@ -2280,6 +2599,8 @@ const RandomRoster = {
   },
 
   generate() {
+    State.preferredSlots = [];
+    State.preserveGroupOrder = false;
     const raidInfo = Config.Raids[State.selectedRaid];
     const size = raidInfo ? raidInfo.size : 25;
     const numGroups = raidInfo ? raidInfo.groups : 5;
@@ -2474,6 +2795,19 @@ const ROLE_COMPAT = {
 
 const Optimizer = {
   optimize() {
+    // Groups with open requests keep their existing layout. Optimize the remaining
+    // groups without consuming the space deliberately left for future sign-ups.
+    if (State.preferredSlots.length) {
+      const free = State.groups.map((g, i) => i).filter(i => !PreferredSlots.forGroup(i).length);
+      const pool = free.flatMap(i => State.groups[i]);
+      if (free.length && pool.length) {
+        const groups = this.arrange(pool, free.length, Config.Raids[State.selectedRaid].size, 5, State.optimizerMode);
+        free.forEach((gi, i) => { State.groups[gi] = groups[i]; });
+        State.groups.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+        State.roster = State.groups.flat();
+      }
+      return;
+    }
     const raidInfo = Config.Raids[State.selectedRaid];
     const numGroups = raidInfo ? raidInfo.groups : 5;
     const raidSize = raidInfo ? raidInfo.size : 25;
@@ -3325,6 +3659,29 @@ function getMissingBuffInsights() {
 const RosterEdit = {
   MAX_GROUP_SIZE: 5,
 
+  MovePlayer(uid, groupIdx, swapUid) {
+    const found = this.FindPlayer(uid);
+    const group = State.groups[groupIdx];
+    if (!found || !group || found.groupIdx === groupIdx) return {success:false,error:'Choose another group'};
+    const swapIndex = swapUid ? group.findIndex(p => p.uid === swapUid) : -1;
+    if (group.length >= 5 && swapIndex < 0) return {success:false,error:'Group is full; choose a player to swap with'};
+    const origin = found.benched ? State.bench : State.groups[found.groupIdx];
+    if (swapIndex >= 0) {
+      const other = group[swapIndex];
+      origin[found.slot] = other;
+      other.groupNumber = found.benched ? 0 : found.groupIdx + 1;
+      group[swapIndex] = found.player;
+      this.ClearOverridesForUid(other.uid);
+    } else {
+      origin.splice(found.slot, 1);
+      group.push(found.player);
+    }
+    found.player.groupNumber = groupIdx + 1;
+    this.ClearOverridesForUid(uid);
+    this.syncRoster();
+    return {success:true};
+  },
+
   // Display order for the class dropdown.
   ClassList: ['WARRIOR','PALADIN','HUNTER','ROGUE','PRIEST','SHAMAN','MAGE','WARLOCK','DRUID'],
 
@@ -3675,6 +4032,7 @@ function getDominantRoleLabel(players) {
 }
 
 function sortTankGroupFirst() {
+  if (State.preferredSlots.length || State.preserveGroupOrder) return;
   if (State.groups.length <= 1) return;
   // Prefer the optimizer's structural identity (authoritative, tie-proof);
   // fall back to dominant-role detection for imported/manual rosters.
@@ -3715,6 +4073,8 @@ function sortTankGroupFirst() {
 }
 
 function renderGroups() {
+  PreferredSlots.reconcile();
+  State.roster = State.groups.flat();
   // Ensure the tank group is always Group 1
   sortTankGroupFirst();
 
@@ -3751,8 +4111,12 @@ function renderGroups() {
           </div>
           ${getDragHandle()}
         </div>`;
+      } else if (PreferredSlots.forGroup(gi)[si - players.length]) {
+        const preference = PreferredSlots.forGroup(gi)[si - players.length];
+        slotsHTML += `<div class="player-slot preferred-slot" role="button" tabindex="0" data-group="${gi}" data-slot="${si}" style="--preferred-color:${Config.ClassColors[preference.class]}">
+          ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(preference.spec + ' ' + RosterEdit.ClassLabel(preference.class))}</span><span class="player-spec">Preferred · awaiting sign-up</span></div><span class="preferred-badge">OPEN</span></div>`;
       } else {
-        slotsHTML += `<div class="player-slot empty-slot" data-group="${gi}" data-slot="${si}">
+        slotsHTML += `<div class="player-slot empty-slot" role="button" tabindex="0" data-group="${gi}" data-slot="${si}" aria-label="Group ${gi+1}, empty slot: add player or preferred spec">
           <span class="role-icon" style="opacity:0.3;">&#8226;</span>
           <div class="player-info"><span class="player-name">Empty Slot</span></div>
         </div>`;
@@ -3812,9 +4176,12 @@ function renderGroups() {
   // Update dropdown
   document.getElementById('raid-select').value = State.selectedRaid;
   document.getElementById('roster-name').textContent = State.rosterName;
+  document.getElementById('mobile-plan-title').textContent = State.rosterName;
   const mobileName = document.getElementById('mobile-roster-name');
   if (mobileName) mobileName.textContent = State.rosterName;
   RaidHelperSync.updateControls();
+  persistWorkingPlan();
+  renderReadiness();
 }
 
 function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
@@ -3994,7 +4361,7 @@ function updateStatus() {
   const benchNote = benched > 0 ? ` · ${benched} benched` : '';
   document.getElementById('status-text').textContent = total > 0
     ? `${total}/${max} players loaded${benchNote}`
-    : 'Ready — import a roster to begin';
+    : State.preferredSlots.length ? `${State.preferredSlots.length} preferred slots awaiting matching sign-ups${benchNote}` : 'Ready — import a roster to begin';
 }
 
 // ── DRAG & DROP (event delegation — attached once) ──────────────
@@ -4459,7 +4826,7 @@ function renderBench() {
 
   section.innerHTML = `<div class="bench-header">
       <h3>Bench <span class="bench-count">${bench.length}</span></h3>
-      <span class="bench-hint">Drag into a group to bring someone in</span>
+      <span class="bench-hint">Tap a player to move them into a group</span>
     </div>
     <div class="bench-list" id="bench-list">${slotsHTML}</div>`;
 }
@@ -4489,9 +4856,10 @@ function showPlayerEditor(anchorEl, opts) {
   if (!isAdd && !found) return;
 
   const player = found ? found.player : null;
+  const preference = isAdd ? PreferredSlots.forGroup(opts.groupIdx)[opts.preferenceIndex] : null;
   const benched = !!(found && found.benched);
-  const curClass = player ? player.class : 'WARRIOR';
-  const curSpec = player ? player.spec : RosterEdit.SpecsForClass('WARRIOR')[0].name;
+  const curClass = player ? player.class : preference?.class || 'WARRIOR';
+  const curSpec = player ? player.spec : preference?.spec || RosterEdit.SpecsForClass('WARRIOR')[0].name;
   const curName = player ? (player.name || '') : '';
 
   const classOptions = RosterEdit.ClassList.map(c =>
@@ -4502,7 +4870,7 @@ function showPlayerEditor(anchorEl, opts) {
   ).join('');
 
   const title = isAdd
-    ? 'Add player to group ' + (opts.groupIdx + 1)
+    ? 'Open slot · Group ' + (opts.groupIdx + 1)
     : (benched ? 'Edit benched player' : 'Edit player');
 
   // A benched player is deleted outright; an assigned player is only benched.
@@ -4516,6 +4884,7 @@ function showPlayerEditor(anchorEl, opts) {
   editor.id = 'active-player-editor';
   editor.innerHTML = `
     <div class="player-editor-title">${esc(title)}</div>
+    ${!isAdd ? `<div class="player-move"><label for="pe-destination">Move ${esc(curName)}</label><select id="pe-destination"><option value="">Choose a group…</option>${State.groups.map((g,gi) => gi === found.groupIdx ? '' : g.length < 5 ? `<option value="${gi}">Move to Group ${gi+1} (${g.length}/5)</option>` : `<optgroup label="Group ${gi+1} is full — swap with">${g.map(p => `<option value="${gi}:${esc(p.uid)}">${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select><button type="button" class="pe-btn" id="pe-move">Move / swap</button></div>` : ''}
     <label class="player-editor-field">
       <span>Name</span>
       <input type="text" id="pe-name" value="${esc(curName)}" maxlength="32" autocomplete="off" spellcheck="false">
@@ -4530,11 +4899,12 @@ function showPlayerEditor(anchorEl, opts) {
     </label>
     <div class="player-editor-role" id="pe-role"></div>
     <div class="player-editor-error" id="pe-error"></div>
+    ${isAdd ? `<div class="preferred-actions"><p>Choose a class and spec to request a player. No name needed; confirmed matching imports fill this spot.</p><button type="button" class="pe-btn pe-btn-primary" id="pe-prefer">${preference ? 'Update preference' : 'Set preferred slot'}</button>${preference ? '<button type="button" class="pe-btn pe-btn-danger" id="pe-remove-preference">Remove preference</button>' : ''}</div>` : ''}
     <div class="player-editor-actions">
       ${removeLabel ? `<button type="button" class="pe-btn pe-btn-danger" id="pe-remove" title="${esc(removeTitle)}">${esc(removeLabel)}</button>` : '<span></span>'}
       <div class="pe-actions-right">
         <button type="button" class="pe-btn" id="pe-cancel">Cancel</button>
-        <button type="button" class="pe-btn pe-btn-primary" id="pe-save">${isAdd ? 'Add' : 'Save'}</button>
+        <button type="button" class="pe-btn pe-btn-primary" id="pe-save">${isAdd ? 'Add named player' : 'Save'}</button>
       </div>
     </div>`;
 
@@ -4581,6 +4951,14 @@ function showPlayerEditor(anchorEl, opts) {
 
   function showError(msg) { errorEl.textContent = msg; errorEl.style.display = 'block'; }
 
+  editor.querySelector('#pe-prefer')?.addEventListener('click', () => {
+    if (!PreferredSlots.add(opts.groupIdx, classSel.value, specSel.value, preference)) { showError('This group has no open slots'); return; }
+    closePlayerEditor(); renderGroups(); showToast('Preferred slot saved');
+  });
+  editor.querySelector('#pe-remove-preference')?.addEventListener('click', () => {
+    PreferredSlots.remove(preference); closePlayerEditor(); renderGroups(); showToast('Preference removed');
+  });
+
   function commit() {
     const changes = { name: nameInput.value, class: classSel.value, spec: specSel.value };
     const result = isAdd
@@ -4588,6 +4966,7 @@ function showPlayerEditor(anchorEl, opts) {
       : RosterEdit.UpdatePlayer(opts.uid, changes);
 
     if (!result.success) { showError(result.error); return; }
+    if (preference) PreferredSlots.remove(preference);
     closePlayerEditor();
     renderGroups();
     showToast(isAdd ? `Added ${result.player.name}` : `Updated ${result.player.name}`);
@@ -4599,6 +4978,15 @@ function showPlayerEditor(anchorEl, opts) {
     if (e.key === 'Enter') { e.preventDefault(); commit(); }
   });
 
+  const moveBtn = editor.querySelector('#pe-move');
+  if (moveBtn) moveBtn.onclick = () => {
+    const value = editor.querySelector('#pe-destination').value;
+    if (!value) { showError('Choose a destination first'); return; }
+    const [group, swapUid] = value.split(':');
+    const result = RosterEdit.MovePlayer(opts.uid, Number(group), swapUid);
+    if (!result.success) { showError(result.error); return; }
+    closePlayerEditor(); renderGroups(); showToast('Player moved');
+  };
   const removeBtn = editor.querySelector('#pe-remove');
   if (removeBtn) {
     removeBtn.addEventListener('click', () => {
@@ -4610,8 +4998,8 @@ function showPlayerEditor(anchorEl, opts) {
     });
   }
 
-  nameInput.focus();
-  nameInput.select();
+  if (isAdd) classSel.focus();
+  else editor.querySelector('#pe-destination').focus();
 }
 
 // Escape closes the editor, matching the modals elsewhere in the app.
@@ -4622,6 +5010,11 @@ document.addEventListener('keydown', e => {
 // Player editor delegation — attached once. Clicking a slot opens the editor;
 // the buff-icon handler stops propagation, so buff clicks never reach this.
 (function initPlayerEditor() {
+  document.getElementById('groups-container').addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.player-slot[role="button"]')) {
+      e.preventDefault(); e.target.click();
+    }
+  });
   document.getElementById('groups-container').addEventListener('click', e => {
     if (e.target.closest('.buff-icon')) return;
     const slot = e.target.closest('.player-slot');
@@ -4631,7 +5024,7 @@ document.addEventListener('keydown', e => {
     if (isNaN(gi)) return;
     const player = (State.groups[gi] || [])[si];
     if (player) showPlayerEditor(slot, { uid: player.uid });
-    else showPlayerEditor(slot, { groupIdx: gi });
+    else showPlayerEditor(slot, { groupIdx: gi, preferenceIndex: si - (State.groups[gi] || []).length });
   });
 
   document.getElementById('bench-section').addEventListener('click', e => {
@@ -4762,6 +5155,43 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove('visible'), 2500);
 }
 
+function persistWorkingPlan() {
+  const result = PlanSession.observe();
+  const status = document.getElementById('autosave-status');
+  if (result) {
+    try {
+      if (result.changed || status.dataset.failed) PlanStore.save(localStorage, result.current);
+      status.textContent = 'Saved on this device';
+      delete status.dataset.failed;
+    } catch {
+      status.textContent = 'Could not save — export a copy';
+      status.dataset.failed = 'true';
+    }
+  }
+  document.getElementById('btn-undo').disabled = !PlanSession.undo.length;
+  document.getElementById('optimize-mode').value = State.optimizerMode;
+}
+
+function undoPlanChange() {
+  if (!PlanSession.undoLast()) return;
+  closePlayerEditor(); closeBuffPicker();
+  initGroups(); renderGroups(); renderLastRun(null);
+  RaidHelperSync.hideBanner();
+  showToast('Change undone');
+}
+
+function renderReadiness() {
+  const floors = Optimizer.floorsFor(Config.Raids[State.selectedRaid]?.size || 25);
+  const tanks = State.roster.filter(p => p.role === 'tank').length;
+  const healers = State.roster.filter(p => p.role === 'healer').length;
+  const missing = Object.keys(getMissingBuffInsights()).filter(id => Config.Buffs[id]).length;
+  const tankText = tanks < floors.tank ? `${floors.tank - tanks} tank${floors.tank - tanks === 1 ? '' : 's'} short` : `${tanks} tank slots filled`;
+  const healerText = healers < floors.healer ? `${floors.healer - healers} healer${floors.healer - healers === 1 ? '' : 's'} short` : `${healers} healers ready`;
+  document.getElementById('readiness-text').textContent = hasLoadedWork()
+    ? `${tankText} · ${healerText} · ${missing} missing party buffs${State.preferredSlots.length ? ` · ${State.preferredSlots.length} preferred slot${State.preferredSlots.length === 1 ? '' : 's'} open` : ''}`
+    : 'Import a roster, or click an empty slot to request a class and spec';
+}
+
 // ── LOCAL STORAGE ───────────────────────────────────────────────
 function getSavedRosters() {
   try { return JSON.parse(localStorage.getItem('pp_rosters') || '{}'); }
@@ -4777,6 +5207,93 @@ function deleteRosterFromStorage(name) {
   delete rosters[name];
   localStorage.setItem('pp_rosters', JSON.stringify(rosters));
 }
+
+function rememberImport(source) {
+  try {
+    ImportHistory.add(localStorage, source);
+    return '';
+  } catch {
+    return ' — Import history could not be saved in this browser. Export JSON to keep a copy.';
+  }
+}
+
+function renderImportHistory(list, onLoad = () => {}, limit = 6) {
+  if (!list) return;
+  let items;
+  try { items = ImportHistory.read(localStorage); }
+  catch { list.textContent = 'Import history is unavailable because browser storage is blocked.'; return; }
+  if (!items.length) {
+    list.innerHTML = '<div class="saved-empty">No import history yet. Your next successful import will appear here automatically.</div>';
+    return;
+  }
+  list.classList.toggle('history-preview', Number.isFinite(limit));
+  list.innerHTML = items.slice(0, limit).map(item => {
+    const r = item.roster;
+    const source = r.sourceEventId ? `Raid-Helper event ${r.sourceEventId}` : (item.source || 'Imported roster');
+    return `<div class="history-row">
+      <button type="button" class="saved-item history-open" data-history-open="${esc(item.id)}">
+        <span class="saved-item-name">${esc(r.name)} · ${esc(Config.Raids[r.raid].name)}</span>
+        <span class="saved-item-meta">${esc(new Date(item.importedAt).toLocaleString())} · ${r.players.length} seated · ${r.bench.length} benched</span>
+        <span class="saved-item-meta">${esc(source)}</span>
+      </button>
+      <button type="button" class="history-remove" data-history-delete="${esc(item.id)}" aria-label="Remove import from ${esc(new Date(item.importedAt).toLocaleString())}" title="Remove from history">&times;</button>
+    </div>`;
+  }).join('');
+  if (items.length > limit) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'btn btn-secondary history-more';
+    more.textContent = `View all imports (${items.length})`;
+    more.onclick = showImportHistoryModal;
+    list.appendChild(more);
+  }
+  list.querySelectorAll('[data-history-open]').forEach(button => button.onclick = () => {
+    const item = items.find(entry => entry.id === button.dataset.historyOpen);
+    if (!item || !Import.loadRoster(item.roster)) { showToast('That import could not be reopened'); return; }
+    State.buffOverrides = {};
+    RaidHelperSync.hideBanner();
+    renderLastRun(null);
+    document.getElementById('raid-select').value = State.selectedRaid;
+    initGroups();
+    renderGroups();
+    onLoad();
+    showView('app');
+    showToast('Reopened imported roster');
+    RaidHelperSync.check();
+  });
+  list.querySelectorAll('[data-history-delete]').forEach(button => button.onclick = () => {
+    try {
+      ImportHistory.remove(localStorage, button.dataset.historyDelete);
+      renderImportHistory(list, onLoad, limit);
+    } catch { showToast('Could not remove this import from browser storage'); }
+  });
+}
+
+function showImportHistoryModal() {
+  const dialog = document.getElementById('history-dialog');
+  renderImportHistory(document.getElementById('all-history-list'), () => {
+    dialog.close();
+    document.getElementById('save-overlay').classList.remove('visible');
+  }, Infinity);
+  dialog.showModal();
+  document.getElementById('all-history-list').scrollTop = 0;
+}
+
+(function initHistoryDialog() {
+  const dialog = document.getElementById('history-dialog');
+  document.getElementById('btn-close-history').onclick = () => dialog.close();
+  dialog.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const rect = dialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right ||
+        event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
+  });
+  dialog.addEventListener('close', () => {
+    renderImportHistory(document.getElementById('landing-history-list'));
+    renderImportHistory(document.getElementById('load-history-list'), () =>
+      document.getElementById('save-overlay').classList.remove('visible'));
+  });
+})();
 
 // ── MODAL: SAVE ─────────────────────────────────────────────────
 function showSaveModal() {
@@ -4837,13 +5354,18 @@ function showLoadModal() {
 
   modal.innerHTML = `
     <h3>Load Roster</h3>
+    <h4>Saved rosters</h4>
     <div class="saved-roster-list">${listHTML}</div>
+    <h4>Import history</h4>
+    <p style="font-size:11px;color:var(--text-muted)">Latest 30 imports in this browser. Snapshots do not include later edits.</p>
+    <div class="saved-list" id="load-history-list"></div>
     <div class="import-buttons">
       <button class="btn btn-secondary" id="btn-cancel-load">Close</button>
     </div>`;
 
   overlay.classList.add('visible');
 
+  renderImportHistory(document.getElementById('load-history-list'), () => overlay.classList.remove('visible'));
   document.getElementById('btn-cancel-load').onclick = () => overlay.classList.remove('visible');
   overlay.onclick = e => { if (e.target === overlay) overlay.classList.remove('visible'); };
 
@@ -4924,11 +5446,12 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   if (src.text && src.text.startsWith('PP:')) {
     const result = Import.importAddonString(src.text);
     if (!result.success) { report('Import failed: ' + result.error, true); return false; }
-    State.rosterName = 'Imported Roster';
+    State.planId = null;
+    if (!src.text.startsWith('PP:2:') || State.rosterName === NO_ROSTER_NAME || State.rosterName === 'Imported Roster') State.rosterName = PlanStore.nameFor({}, null);
     document.getElementById('raid-select').value = State.selectedRaid;
     initGroups();
     renderGroups();
-    showToast(`Imported ${result.playerCount} players from addon string`);
+    showToast(`Your groups are ready. Imported ${result.playerCount} players from addon string${rememberImport('Pasted roster string')}`);
     return true;
   }
 
@@ -4939,15 +5462,40 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     if (jsonStr == null) return false;
   }
 
+  let metadata;
+  try { metadata = JSON.parse(jsonStr); } catch { metadata = {}; }
+  if (src.eventId && Array.isArray(metadata.signUps)) {
+    let existing;
+    try { existing = PlanStore.read(localStorage).find(p => p.data.planId === 'event:' + src.eventId); } catch {}
+    if (existing) {
+      PlanStore.restore(existing.data);
+      initGroups();
+      renderGroups();
+      const diff = Import.diffRaidHelperSignUps(jsonStr);
+      if (Import.hasRaidHelperChanges(diff)) RaidHelperSync.showBanner(diff);
+      showToast('Reopened your plan. Refresh sign-ups to apply new changes.');
+      return true;
+    }
+  }
   const result = Import.importRaidHelper(jsonStr);
   if (!result.success) { report('Import failed: ' + result.error, true); return false; }
+  if (result.preferredImport) {
+    State.sourceEventId = src.eventId || State.sourceEventId;
+    if (src.eventId) State.planId = 'event:' + src.eventId;
+    if (State.rosterName === NO_ROSTER_NAME) State.rosterName = PlanStore.nameFor(metadata, src.eventId);
+    RaidHelperSync.hideBanner(); initGroups(); renderGroups();
+    showToast(`Filled ${result.filledCount} preferred slots. Unmatched sign-ups are on the bench${rememberImport(src.url ? 'Raid-Helper URL' : 'Pasted JSON')}`);
+    return true;
+  }
 
-  State.rosterName = 'Imported Roster';
+  State.planId = src.eventId ? 'event:' + src.eventId : null;
+  State.rosterName = PlanStore.nameFor(metadata, src.eventId);
   State.sourceEventId = src.eventId || null;
   RaidHelperSync.hideBanner();
   document.getElementById('raid-select').value = State.selectedRaid;
   const foldBenched = initGroups();
   renderGroups();
+  const historyNotice = rememberImport(src.url ? 'Raid-Helper URL' : 'Pasted JSON');
   // Tentative/Bench sign-ups are parked on the bench and Absences are dropped,
   // so report all three counts rather than silently losing people.
   const overflow = (result.overflowCount || 0) + foldBenched;
@@ -4957,12 +5505,13 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   if (result.skippedCount) extra.push(`${result.skippedCount} skipped`);
   const suffix = extra.length ? ` (${extra.join(', ')})` : '';
   if (result.playerCount === 0 && result.benchCount) {
-    report(`Nobody is confirmed yet: ${result.benchCount} Tentative sign-ups are on the bench, ready to swap in`, false);
+    report(`Nobody is confirmed yet: ${result.benchCount} Tentative sign-ups are on the bench, ready to swap in${historyNotice}`, false);
+    showToast(`Imported ${result.benchCount} benched sign-ups${historyNotice}`);
     return true;
   }
   showToast(result.wasUnassigned
-    ? `Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups${suffix}`
-    : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}`);
+    ? `Your groups are ready. Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups${suffix}${historyNotice}`
+    : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}${historyNotice}`);
   return true;
 }
 
@@ -4982,9 +5531,10 @@ const RaidHelperSync = {
   // replaced while the request was in flight.
   async fetchDiff(report) {
     const eventId = State.sourceEventId;
+    const planId = State.planId;
     if (!eventId) return null;
     const json = await fetchRosterJson(this.eventsApiUrl(eventId), report);
-    if (json == null || State.sourceEventId !== eventId) return null;
+    if (json == null || State.sourceEventId !== eventId || State.planId !== planId) return null;
     const diff = Import.diffRaidHelperSignUps(json);
     if (!diff.success) { report('Refresh failed: ' + diff.error, true); return null; }
     return diff;
@@ -4998,6 +5548,7 @@ const RaidHelperSync = {
     if (n(diff.changed)) parts.push(`${n(diff.changed)} changed spec`);
     if (n(diff.demoted)) parts.push(`${n(diff.demoted)} went tentative`);
     if (n(diff.promoted)) parts.push(`${n(diff.promoted)} on the bench now confirmed`);
+    if (n(diff.filled)) parts.push(`${n(diff.filled)} preferred slots filled`);
     return parts.join(', ');
   },
 
@@ -5085,7 +5636,7 @@ document.getElementById('btn-do-import').addEventListener('click', async () => {
 
 // ── VIEWS: landing <-> planner ──────────────────────────────────
 function hasLoadedWork() {
-  return State.roster.length > 0 || (State.bench || []).length > 0;
+  return State.roster.length > 0 || (State.bench || []).length > 0 || State.preferredSlots.length > 0;
 }
 
 function showView(view) {
@@ -5095,6 +5646,7 @@ function showView(view) {
   landing.hidden = view !== 'landing';
   app.hidden = view !== 'app';
   if (view === 'landing') renderLanding();
+  else if (State.activeTab !== 'plan') switchTab('plan');
   window.scrollTo(0, 0);
 }
 
@@ -5113,6 +5665,7 @@ function renderLanding() {
     }
   }
   renderLandingSavedList();
+  renderImportHistory(document.getElementById('landing-history-list'));
 }
 
 function renderLandingSavedList() {
@@ -5120,11 +5673,16 @@ function renderLandingSavedList() {
   if (!list) return;
   const rosters = getSavedRosters();
   const names = Object.keys(rosters);
-  if (names.length === 0) {
-    list.innerHTML = '<div class="saved-empty">No saved rosters yet. Save one from the planner and it will show up here.</div>';
+  let drafts = [];
+  try { drafts = PlanStore.read(localStorage); } catch {}
+  if (names.length === 0 && drafts.length === 0) {
+    list.innerHTML = '<div class="saved-empty">No plans yet. Import a roster and your work will be saved here automatically.</div>';
     return;
   }
-  list.innerHTML = names.map(name => {
+  list.innerHTML = drafts.map(p => `<button type="button" class="saved-item" data-plan="${esc(p.data.planId)}">
+    <span class="saved-item-name">${esc(p.data.rosterName)}</span>
+    <span class="saved-item-meta">${p.data.groups.flat().length} seated · ${p.data.bench.length} benched · ${esc(new Date(p.updatedAt).toLocaleString())}</span>
+  </button>`).join('') + (names.length ? '<div class="saved-item-meta">Saved copies</div>' : '') + names.map(name => {
     const r = rosters[name];
     const count = r.players ? r.players.length : 0;
     const raid = r.raid ? (Config.Raids[r.raid]?.name || r.raid) : '';
@@ -5135,6 +5693,11 @@ function renderLandingSavedList() {
     </button>`;
   }).join('');
   list.querySelectorAll('.saved-item').forEach(item => item.addEventListener('click', () => {
+    if (item.dataset.plan) {
+      const plan = drafts.find(p => p.data.planId === item.dataset.plan);
+      if (plan && PlanStore.restore(plan.data)) { initGroups(); renderGroups(); showView('app'); RaidHelperSync.check(); }
+      return;
+    }
     const data = rosters[item.dataset.name];
     if (!Import.loadRoster(data)) { showToast('That saved roster could not be loaded'); return; }
     initGroups();
@@ -5184,9 +5747,14 @@ function renderLandingSavedList() {
     }
   };
 
-  document.getElementById('btn-landing-url').addEventListener('click', () => runImport('landing-url', 'landing-status-url', 'btn-landing-url'));
-  document.getElementById('landing-url').addEventListener('keydown', (e) => { if (e.key === 'Enter') runImport('landing-url', 'landing-status-url', 'btn-landing-url'); });
-  document.getElementById('btn-landing-paste').addEventListener('click', () => runImport('landing-paste', 'landing-status-paste', 'btn-landing-paste'));
+  const loadInput = () => runImport('landing-import', 'landing-status-import', 'btn-landing-import');
+  document.getElementById('btn-landing-import').addEventListener('click', loadInput);
+  document.getElementById('landing-import').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      if (!document.getElementById('btn-landing-import').disabled) loadInput();
+    }
+  });
 
   // Dev-only: open index.html?dev to load scenarios.js (untracked test data) and pick
   // a roster from the scenario list. Production never requests the file.
@@ -5195,7 +5763,7 @@ function renderLandingSavedList() {
     script.src = 'scenarios.js';
     script.onload = () => {
       const S = window.PPScenarios;
-      const pane = document.querySelector('.import-pane[data-pane="paste"]');
+      const pane = document.querySelector('.import-pane[data-pane="import"]');
       if (!S || !pane) return;
       const wrap = document.createElement('div');
       wrap.className = 'dev-scenarios';
@@ -5207,15 +5775,16 @@ function renderLandingSavedList() {
         const sc = S.scenarios.find(x => x.id === e.target.value);
         if (!sc) return;
         if (sc.raid) State.selectedRaid = sc.raid;
-        document.getElementById('landing-paste').value = JSON.stringify(S.toRaidHelperJson(sc), null, 1);
-        runImport('landing-paste', 'landing-status-paste', 'btn-landing-paste');
+        document.getElementById('landing-import').value = JSON.stringify(S.toRaidHelperJson(sc), null, 1);
+        runImport('landing-import', 'landing-status-import', 'btn-landing-import');
       });
     };
     document.head.appendChild(script);
   }
 
   document.getElementById('btn-landing-random').addEventListener('click', () => {
-    RandomRoster.generate();
+    State.planId = null;
+  RandomRoster.generate();
     renderGroups();
     showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
     showView('app');
@@ -5225,21 +5794,39 @@ function renderLandingSavedList() {
   document.getElementById('btn-back-import').addEventListener('click', () => showView('landing'));
 })();
 
+(function initSimpleWorkflow() {
+  const options = document.getElementById('planner-options');
+  const controls = options.querySelector('.options-controls');
+  for (const id of ['btn-refresh','btn-save','btn-load']) controls.appendChild(document.getElementById(id));
+  document.getElementById('btn-save').textContent = 'Save a copy';
+  document.getElementById('btn-save').setAttribute('aria-label','Save a copy');
+  document.getElementById('btn-load').textContent = 'Open a plan';
+  document.getElementById('btn-load').setAttribute('aria-label','Open a plan');
+  const rename = document.createElement('button'); rename.type = 'button'; rename.className = 'btn btn-secondary'; rename.textContent = 'Rename plan';
+  rename.onclick = () => document.getElementById('roster-name').click(); controls.appendChild(rename);
+  const optimize = document.createElement('button'); optimize.type='button'; optimize.className='btn btn-secondary'; optimize.textContent='Optimize groups';
+  optimize.onclick=()=>document.getElementById('btn-optimize').click(); controls.appendChild(optimize);
+  document.getElementById('btn-options').onclick = () => { options.open = !options.open; if(options.open) options.scrollIntoView({block:'nearest'}); };
+  document.getElementById('btn-undo').onclick = undoPlanChange;
+  document.getElementById('readiness-text').onclick = () => { setSidebarExpanded(true); document.getElementById('buff-sidebar').scrollIntoView({block:'nearest'}); };
+  const share = document.getElementById('share-dialog');
+  document.getElementById('btn-share-main').onclick = () => share.showModal();
+  document.getElementById('close-share').onclick = () => share.close();
+  share.querySelectorAll('[data-share-action]').forEach(b => b.onclick = () => { share.close(); document.getElementById(b.dataset.shareAction).click(); });
+  const renameDialog = document.getElementById('rename-dialog');
+  document.getElementById('roster-name').onclick = () => { document.getElementById('plan-name').value=State.rosterName; renameDialog.returnValue=''; renameDialog.showModal(); };
+  renameDialog.addEventListener('close', () => {
+    if(renameDialog.returnValue !== 'save') return;
+    const value=document.getElementById('plan-name').value.trim();
+    if(value) { State.rosterName=value; renderGroups(); }
+  });
+})();
+
 // ── ACTION BUTTONS ──────────────────────────────────────────────
 document.getElementById('optimize-mode').addEventListener('change', (e) => {
   State.optimizerMode = e.target.value;
+  persistWorkingPlan();
 });
-// Snapshot of the board before the last Optimize, so it can be undone once.
-let lastRunSnapshot = null;
-
-function snapshotBoard() {
-  return {
-    groups: JSON.parse(JSON.stringify(State.groups)),
-    bench: JSON.parse(JSON.stringify(State.bench || [])),
-    buffOverrides: JSON.parse(JSON.stringify(State.buffOverrides || {})),
-  };
-}
-
 function countCoveredBuffs() {
   const covered = new Set();
   for (let gi = 0; gi < State.groups.length; gi++) {
@@ -5260,28 +5847,11 @@ function renderLastRun(summary) {
   if (!summary) { el.innerHTML = ''; return; }
   const buffDelta = summary.buffDelta > 0 ? `+${summary.buffDelta}` : String(summary.buffDelta);
   el.innerHTML = `&middot; Last run: ${buffDelta} buffs &middot; ${summary.moved} moved`
-    + (lastRunSnapshot ? ` &middot; <button type="button" class="undo-link" id="btn-undo-optimize">undo</button>` : '');
-  const undoBtn = document.getElementById('btn-undo-optimize');
-  if (undoBtn) undoBtn.addEventListener('click', undoLastOptimize);
-}
-
-function undoLastOptimize() {
-  if (!lastRunSnapshot) return;
-  State.groups = lastRunSnapshot.groups;
-  State.bench = lastRunSnapshot.bench;
-  State.buffOverrides = lastRunSnapshot.buffOverrides;
-  lastRunSnapshot = null;
-  renderGroups();
-  renderLastRun(null);
-  showToast('Optimize undone');
+;
 }
 
 document.getElementById('btn-optimize').addEventListener('click', () => {
   if (State.roster.length === 0) { showToast('Import a roster first'); return; }
-  if (Object.keys(State.buffOverrides).length > 0) {
-    if (!confirm('This will clear your manual buff changes. Continue?')) return;
-  }
-  const before = snapshotBoard();
   const buffsBefore = countCoveredBuffs();
   const placementBefore = playerGroupMap();
 
@@ -5293,13 +5863,13 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
   const placementAfter = playerGroupMap();
   const moved = Object.keys(placementAfter).filter(uid => placementBefore[uid] !== undefined && placementBefore[uid] !== placementAfter[uid]).length;
   const buffDelta = countCoveredBuffs() - buffsBefore;
-  lastRunSnapshot = before;
   renderLastRun({ buffDelta, moved });
   showToast(moved === 0 && buffDelta === 0 ? 'Already optimal — nothing moved' : `Optimized: ${buffDelta >= 0 ? '+' : ''}${buffDelta} buffs, ${moved} players moved`);
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {
-  lastRunSnapshot = null;
+  State.preferredSlots = [];
+  State.preserveGroupOrder = false;
   renderLastRun(null);
   State.roster = [];
   State.groups = [];
@@ -5312,7 +5882,17 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   showToast('Cleared');
 });
 
+document.getElementById('btn-landing-empty').addEventListener('click', () => {
+  State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+  State.preserveGroupOrder = false;
+  State.groups = []; State.roster = []; State.bench = []; State.preferredSlots = [];
+  State.sourceEventId = null; State.buffOverrides = {}; State.rosterName = 'New raid plan';
+  initGroups(); renderGroups(); showView('app');
+  showToast('Click an empty slot to choose a preferred class and spec');
+});
+
 document.getElementById('btn-random').addEventListener('click', () => {
+  State.planId = null;
   RandomRoster.generate();
   renderGroups();
   showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
@@ -5357,7 +5937,7 @@ document.getElementById('btn-random').addEventListener('click', () => {
 })();
 
 document.getElementById('btn-save').addEventListener('click', showSaveModal);
-document.getElementById('btn-load').addEventListener('click', showLoadModal);
+document.getElementById('btn-load').addEventListener('click', () => { showView('landing'); document.querySelector('.import-tab[data-pane="saved"]').click(); });
 
 // ── SHARE LINK ──────────────────────────────────────────────────
 // The whole layout rides in the URL fragment, so there is no server and
@@ -5381,19 +5961,19 @@ function loadFromShareLink() {
   const preview = Import.previewShareString(str);
   if (!preview.success) { showToast(preview.error || 'That share link is invalid or damaged'); return false; }
 
-  const hasWork = State.roster.length > 0 || (State.bench || []).length > 0;
+  const hasWork = hasLoadedWork();
   if (hasWork && !confirm(`Load shared raid "${preview.name}"? This replaces your current layout.`)) return false;
 
   const res = Import.importAddonString(str);
   if (!res.success) { showToast(res.error || 'That share link is invalid or damaged'); return false; }
 
   renderGroups();
-  showToast(`Loaded shared raid "${State.rosterName}" (${res.playerCount} players)`);
+  showToast(`Loaded shared raid "${State.rosterName}" (${res.playerCount} players)${rememberImport('Shared link')}`);
   return true;
 }
 
 document.getElementById('btn-share').addEventListener('click', () => {
-  if (State.roster.length === 0 && (State.bench || []).length === 0) {
+  if (State.roster.length === 0 && (State.bench || []).length === 0 && !State.preferredSlots.length) {
     showToast('No roster to share');
     return;
   }
@@ -5419,7 +5999,7 @@ document.getElementById('btn-copy-mrt').addEventListener('click', () => {
 });
 
 document.getElementById('btn-export-json').addEventListener('click', () => {
-  if (State.roster.length === 0) { showToast('No roster to export'); return; }
+  if (!hasLoadedWork()) { showToast('No roster to export'); return; }
   const data = Import.exportRoster(State.rosterName);
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -5432,7 +6012,7 @@ document.getElementById('btn-export-json').addEventListener('click', () => {
 });
 
 document.getElementById('btn-copy-json').addEventListener('click', () => {
-  if (State.roster.length === 0) { showToast('No roster to copy'); return; }
+  if (!hasLoadedWork()) { showToast('No roster to copy'); return; }
   const data = Import.exportRoster(State.rosterName);
   navigator.clipboard.writeText(JSON.stringify(data, null, 2))
     .then(() => showToast('JSON copied to clipboard'))
@@ -5550,7 +6130,7 @@ function switchTab(tab) {
   });
 
   // Show/hide plan-mode-only elements
-  const planOnly = ['roster-bar', 'manual-changes', 'action-bar', 'bench-section'].map(
+  const planOnly = ['roster-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'planner-options'].map(
     cls => document.querySelector('.' + cls)
   ).filter(Boolean);
   for (const el of planOnly) {
@@ -5560,6 +6140,7 @@ function switchTab(tab) {
   if (tab === 'ideal') {
     renderIdealComp();
   } else {
+    initGroups();
     renderGroups();
   }
 }
@@ -5651,10 +6232,17 @@ document.querySelectorAll('.mode-tab').forEach(btn => {
 
 // ── INITIALIZE ──────────────────────────────────────────────────
 initRaidDropdown();
+try {
+  const latest = PlanStore.read(localStorage)[0];
+  if (latest) PlanStore.restore(latest.data);
+} catch {}
+PlanSession.ready = true;
 initGroups();
 renderGroups();
 // A share link opens straight into the planner; everyone else lands on import.
-showView(loadFromShareLink() ? 'app' : 'landing');
+const openedShare = loadFromShareLink();
+showView(openedShare ? 'app' : 'landing');
+if (!openedShare && hasLoadedWork()) document.querySelector('.import-tab[data-pane="saved"]').click();
 // A share link pasted into the address bar of an already-open page only
 // changes the hash, so honour it there too.
 window.addEventListener('hashchange', () => { if (loadFromShareLink()) showView('app'); });

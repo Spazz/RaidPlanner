@@ -16,7 +16,7 @@ if (!scriptMatch) { console.error('Could not extract <script> from index.html');
 // Only eval the logic portion (before UI rendering / DOM code)
 const logicCode = scriptMatch[1].split('// ── UI RENDERING')[0];
 // Add module.exports so we can access the objects
-const wrappedCode = logicCode + '\nmodule.exports = { Config, Import, Optimizer, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, enforceRaidCapacity };';
+const wrappedCode = logicCode + '\nmodule.exports = { PreferredSlots, PlanStore, PlanSession, ImportHistory, Config, Import, Optimizer, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, enforceRaidCapacity };';
 
 // Write to a temp file and require it (cleaner than eval for stack traces)
 const tmpPath = path.join(require('os').tmpdir(), '_pp_test_logic.tmp.js');
@@ -58,6 +58,8 @@ function describe(name, fn) {
 }
 
 function resetState() {
+  State.preferredSlots = [];
+  State.preserveGroupOrder = false;
   State.roster = [];
   State.groups = [];
   State.bench = [];
@@ -2225,10 +2227,223 @@ describe('Sync: sourceEventId round-trips through export and load', () => {
   assertEqual(State.sourceEventId, null, 'older saves without an id clear it');
 });
 
-console.log(`Results: ${passed} passed, ${failed} failed, ${totalTests} total`);
+describe('Import history: snapshots survive edits and restore seats, bench and event link', () => {
+  const storage = { data: new Map(), getItem(k) { return this.data.get(k) || null; }, setItem(k,v) { this.data.set(k,v); } };
+  syncFixture();
+  State.sourceEventId = '123456789';
+  State.rosterName = 'History fixture';
+  State.bench = [mkPlayer('Waiting', 'MAGE', 'Arcane', 'caster_dps')];
+  const originalNames = State.groups.flat().map(p => p.name).join(',');
+  const entry = PP.ImportHistory.add(storage, 'Pasted JSON');
+  State.groups[0][0].name = 'Edited after import';
+  State.bench = [];
+  const saved = PP.ImportHistory.read(storage);
+  assertEqual(saved.length, 1, 'one import stored');
+  assertEqual(saved[0].roster.players.map(p => p.name).join(','), originalNames, 'stored snapshot is independent of later edits');
+  assert(Import.loadRoster(saved[0].roster), 'snapshot loads');
+  assertEqual(State.groups.flat().map(p => p.name).join(','), originalNames, 'seating restored');
+  assertEqual(State.bench[0].name, 'Waiting', 'bench restored');
+  assertEqual(State.sourceEventId, '123456789', 'event link restored');
+  for (let i = 0; i < 35; i++) { State.rosterName = 'Import ' + i; PP.ImportHistory.add(storage, 'JSON'); }
+  const recent = PP.ImportHistory.read(storage);
+  assertEqual(recent.length, 30, 'history is bounded');
+  assertEqual(recent[0].roster.name, 'Import 34', 'newest first');
+  assertEqual(recent[29].roster.name, 'Import 5', 'oldest trimmed');
+  PP.ImportHistory.remove(storage, recent[0].id);
+  assertEqual(PP.ImportHistory.read(storage).length, 29, 'individual deletion');
+  assertEqual(storage.getItem('pp_rosters'), null, 'manual saves untouched');
+  storage.setItem(PP.ImportHistory.key, '{bad');
+  assertEqual(PP.ImportHistory.read(storage).length, 0, 'corrupt JSON handled');
+  storage.setItem(PP.ImportHistory.key, JSON.stringify([null, {}, { ...entry, roster: { players: [] } }, entry]));
+  assertEqual(PP.ImportHistory.read(storage).length, 1, 'invalid records skipped');
+  const blocked = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('quota'); } };
+  assertEqual(PP.ImportHistory.read(blocked).length, 0, 'blocked reads handled');
+  let failed = false;
+  try { PP.ImportHistory.add(blocked, 'JSON'); } catch { failed = true; }
+  assert(failed, 'write failure reaches UI for reporting');
+});
+
+describe('Working plans: full snapshots, independent plans, identity and undo', () => {
+  const storage = {data:new Map(), getItem(k){return this.data.get(k)||null;},setItem(k,v){this.data.set(k,v);}};
+  syncFixture();
+  State.planId = 'event:123'; State.sourceEventId = '123'; State.rosterName='Friday raid'; State.optimizerMode='balanced';
+  State.groups[0][0].uid='p9000';
+  State.buffOverrides={'0:p9000:air':{buffId:'WINDFURY'}};
+  const original = PP.PlanStore.capture();
+  PP.PlanStore.save(storage, original);
+  State.rosterName='Edited'; PP.PlanStore.save(storage,PP.PlanStore.capture());
+  assertEqual(PP.PlanStore.read(storage).length,1,'same plan updated rather than duplicated');
+  State.planId='second'; PP.PlanStore.save(storage,PP.PlanStore.capture());
+  assertEqual(PP.PlanStore.read(storage).length,2,'independent plans retained');
+  assert(PP.PlanStore.restore(original),'snapshot restores');
+  assertEqual(State.rosterName,'Friday raid','name restored');
+  assertEqual(State.optimizerMode,'balanced','mode restored');
+  assertEqual(State.sourceEventId,'123','event retained');
+  assertEqual(State.buffOverrides['0:p9000:air'].buffId,'WINDFURY','buff override retained');
+  const added=RosterEdit.AddPlayer(1,{name:'Fresh',class:'MAGE',spec:'Arcane'});
+  assert(added.success && added.player.uid !== 'p9000','new identity does not collide');
+  PP.PlanStore.restore(original);
+  PP.PlanSession.previous=null; PP.PlanSession.undo=[]; PP.PlanSession.ready=true;
+  PP.PlanSession.observe();
+  RosterEdit.BenchPlayer(State.roster[0].uid); PP.PlanSession.observe();
+  assertEqual(PP.PlanSession.undo.length,1,'bench change is undoable');
+  assert(PP.PlanSession.undoLast(),'undo succeeds'); PP.PlanSession.observe();
+  assertEqual(JSON.stringify(PP.PlanStore.capture()),JSON.stringify(original),'undo restores full state');
+  assertEqual(PP.PlanSession.undo.length,0,'undo does not create another undo entry');
+  State.rosterName='renamed'; PP.PlanSession.observe();
+  State.planId='different'; PP.PlanSession.observe();
+  assertEqual(PP.PlanSession.undo.length,0,'undo does not cross plans');
+  storage.setItem(PP.PlanStore.key,'broken'); assertEqual(PP.PlanStore.read(storage).length,0,'corrupt storage is safe');
+  assert(!PP.PlanStore.restore({groups:[]}), 'malformed draft rejected');
+  PP.PlanSession.ready=false;
+});
+
+describe('Tap moves: open seats, explicit swaps, bench and full groups', () => {
+  resetState();
+  const mage=mkPlayer('Mover','MAGE','Arcane','caster_dps');
+  const peers=Array.from({length:5},(_,i)=>mkPlayer('Peer'+i,'MAGE','Arcane','caster_dps'));
+  mage.uid='move-mage'; peers.forEach((p,i)=>p.uid='move-peer'+i);
+  State.groups=[[mage],peers]; State.roster=State.groups.flat(); State.bench=[];
+  assert(!RosterEdit.MovePlayer(mage.uid,1).success,'full group requires explicit swap');
+  assert(RosterEdit.MovePlayer(mage.uid,1,peers[0].uid).success,'group swap succeeds');
+  assertEqual(State.groups[0][0].name,'Peer0','other player replaces origin');
+  RosterEdit.BenchPlayer(mage.uid);
+  assert(RosterEdit.MovePlayer(mage.uid,0).success,'bench player can use open seat');
+  assertEqual(State.bench.length,0,'bench player removed from bench');
+  assertEqual(new Set(State.groups.flat().map(p=>p.uid)).size,6,'all identities retained once');
+  RosterEdit.BenchPlayer(mage.uid);
+  State.groups[1].push(mkPlayer('Extra','MAGE','Arcane','caster_dps'));
+  const outgoing=State.groups[1][0];
+  assert(RosterEdit.MovePlayer(mage.uid,1,outgoing.uid).success,'bench swap succeeds');
+  assertEqual(State.bench[0].uid,outgoing.uid,'outgoing player goes to bench');
+});
+
+describe('Preferred slots: real-player counts, import matching, storage and sharing', () => {
+  resetState();
+  const prefs = PP.PreferredSlots;
+  State.groups = [[],[],[],[],[]];
+  assert(prefs.add(2, 'SHAMAN', 'Restoration'), 'request can be created without a player');
+  assert(prefs.add(2, 'SHAMAN', 'Restoration'), 'multiple identical requests supported');
+  assert(!prefs.add(2, 'MAGE', 'Restoration'), 'invalid class/spec rejected');
+  assertEqual(State.roster.length, 0, 'requests do not count as players');
+  assertEqual(getGroupBuffs(State.groups[2],2).length, 0, 'requests provide no buffs');
+  State.planId = 'plan:preferences';
+  State.rosterName = 'Recruiting';
+  const snapshot = PP.PlanStore.capture();
+  const shared = Import.exportShareString();
+  State.preferredSlots = [];
+  assert(Import.importAddonString(shared).success, 'placeholder-only share loads');
+  assertEqual(State.preferredSlots.length, 2, 'share retains requests');
+  assert(PP.PlanStore.restore(snapshot), 'working plan restores');
+  assertEqual(State.preferredSlots[0].group, 2, 'group retained');
+  const saved = Import.exportRoster();
+  Import.loadRoster(saved);
+  assertEqual(State.preferredSlots.length, 2, 'saved copy retains requests');
+  const result = Import.importRaidHelper(JSON.stringify({signUps:[
+    {name:'ConfirmedA',className:'Shaman',specName:'Restoration1'},
+    {name:'Waiting',className:'Tentative',specName:'Restoration1'},
+    {name:'Unmatched',className:'Mage',specName:'Fire'},
+  ]}));
+  assert(result.success, 'import succeeds');
+  assertEqual(result.filledCount, 1, 'only confirmed exact match is placed');
+  assertEqual(State.groups[2][0]?.name, 'ConfirmedA', 'match gets requested group');
+  assertEqual(State.selectedRaid, 'bt', 'planned raid size retained for small import');
+  assertEqual(State.bench.length, 2, 'tentative and unmatched remain benched');
+  assertEqual(State.preferredSlots.length, 1, 'unfilled request stays visible');
+  const before = State.groups[2][0];
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({signUps:[
+    {name:'ConfirmedA',className:'Shaman',specName:'Restoration1'},
+    {name:'Waiting',className:'Shaman',specName:'Restoration1'},
+    {name:'Unmatched',className:'Mage',specName:'Fire'},
+  ]}));
+  assert(Import.hasRaidHelperChanges(diff), 'matching promotion triggers refresh');
+  assertEqual(Import.applyRaidHelperSync(diff).filled, 1, 'promotion fills remaining request');
+  assertEqual(State.groups[2][0], before, 'existing placement preserved');
+  assertEqual(State.groups[2][1].name, 'Waiting', 'promoted match seated');
+  assertEqual(State.preferredSlots.length, 0, 'requests consumed once');
+  prefs.add(2, 'MAGE', 'Arcane');
+  const fixed = State.groups[2].map(p => p.uid).join(',');
+  RosterEdit.AddPlayer(0, {name:'FreeMage', class:'MAGE', spec:'Fire'});
+  Optimizer.optimize();
+  assertEqual(State.groups[2].map(p => p.uid).join(','), fixed, 'optimizer keeps recruiting group intact');
+  assertEqual(State.preferredSlots.length, 1, 'optimizer retains empty request');
+  assertEqual(State.roster.length, 3, 'optimizer retains all real players');
+  assert(State.groups.every(g => g.length <= 5), 'optimizer respects capacity');
+  assert(State.preserveGroupOrder, 'requested layout retains its group order after matching');
+  PP.PlanSession.ready = true; PP.PlanSession.previous = null; PP.PlanSession.undo = [];
+  State.planId = 'plan:preferred-undo';
+  PP.PlanSession.observe();
+  prefs.remove(State.preferredSlots[0]); PP.PlanSession.observe();
+  assert(PP.PlanSession.undoLast(), 'preference removal can be undone');
+  assertEqual(State.preferredSlots.length, 1, 'undo restores request');
+  const beforeInvalid = JSON.stringify(PP.PlanStore.capture());
+  assert(!Import.importRaidHelper('{"signUps":[]}').success, 'empty import is rejected');
+  assertEqual(JSON.stringify(PP.PlanStore.capture()), beforeInvalid, 'invalid import preserves plan');
+  const wrongClass = {name:'Other',class:'DRUID',spec:'Arcane',role:'caster_dps'};
+  assert(!prefs.seat(wrongClass), 'matching spec alone is insufficient');
+  const legacyExport = Import.exportAddonString();
+  assert(!legacyExport.includes('preferredSlots'), 'addon export contains only real players');
+  const legacy = {...snapshot}; delete legacy.preferredSlots;
+  PP.PlanStore.restore(legacy);
+  assertEqual(State.preferredSlots.length, 0, 'old drafts do not inherit requests');
+  State.groups = [[],[],[],[],[]];
+  for (let i = 0; i < 5; i++) assert(prefs.add(0,'MAGE','Fire'), 'five open requests fit');
+  assert(!prefs.add(0,'MAGE','Fire'), 'sixth request rejected');
+  const slotsResult = Import.importRaidHelper(JSON.stringify({slots:[{name:'SlotMage',className:'Mage',specName:'Fire',groupNumber:4}]}));
+  assertEqual(slotsResult.filledCount, 1, 'raidplan slot import also fills request');
+  assertEqual(State.groups[0][0]?.name, 'SlotMage', 'preferred destination overrides imported group');
+  assertEqual(State.preferredSlots.length, 4, 'one signup consumes only one request');
+  resetState();
+});
+
+// Exercise the actual async UI import controller with isolated storage/network fixtures.
+(async () => {
+  const vm = require('vm');
+  const storage = {data:new Map(),getItem(k){return this.data.get(k)||null;},setItem(k,v){this.data.set(k,v);}};
+  let payload = {title:'Fixture event',startTime:1790377200,signUps:[
+    {name:'FirstMage',className:'Mage',specName:'Arcane'},
+    {name:'SecondMage',className:'Mage',specName:'Fire'}]};
+  let banner = null;
+  const context = { State, Import, PlanStore:PP.PlanStore, NO_ROSTER_NAME,
+    localStorage:storage, document:{getElementById(){return {}; }},
+    initGroups:()=>0, renderGroups:()=>PP.PlanStore.save(storage,PP.PlanStore.capture()),
+    showToast:()=>{}, rememberImport:()=>'', fetchRosterJson:async()=>JSON.stringify(payload),
+    RaidHelperSync:{hideBanner(){banner=null;},showBanner(diff){banner=diff;}} };
+  const normalizeStart = html.indexOf('function normalizeImportSource(');
+  const normalizeEnd = html.indexOf('// Fetch roster JSON',normalizeStart);
+  const importStart = html.indexOf('async function importFromText(');
+  const importEnd = html.indexOf('// ── RAID-HELPER RE-SYNC',importStart);
+  vm.createContext(context);
+  vm.runInContext(html.slice(normalizeStart,normalizeEnd)+html.slice(importStart,importEnd),context);
+  resetState();
+  assert(await context.importFromText('123456789'), 'event ID import succeeds');
+  assert(State.rosterName.startsWith('Fixture event'), 'event title used');
+  assertEqual(State.planId,'event:123456789','canonical event plan created');
+  State.groups.reverse(); State.groups.forEach((g,gi)=>g.forEach(p=>p.groupNumber=gi+1));
+  State.roster=State.groups.flat(); State.rosterName='Custom event name';
+  PP.PlanStore.save(storage,PP.PlanStore.capture());
+  const layout=JSON.stringify(State.groups);
+  payload.signUps.push({name:'NewMage',className:'Mage',specName:'Frost'});
+  assert(await context.importFromText('https://raid-helper.dev/event/123456789'), 'same event URL reopens');
+  assertEqual(JSON.stringify(State.groups),layout,'reimport preserves edited groups');
+  assertEqual(State.rosterName,'Custom event name','custom name preserved');
+  assertEqual(PP.PlanStore.read(storage).length,1,'same event does not duplicate plan');
+  assert(banner && banner.added.length===1,'new signup offered through refresh banner');
+  const oldRoster=JSON.stringify(State.groups);
+  PP.PlanSession.previous=null; PP.PlanSession.undo=[]; PP.PlanSession.ready=true;
+  PP.PlanSession.observe();
+  Import.applyRaidHelperSync(banner); PP.PlanSession.observe();
+  assertEqual(State.bench.length,1,'refresh puts new signup on bench');
+  PP.PlanSession.undoLast(); PP.PlanSession.observe();
+  assertEqual(State.bench.length,0,'refresh can be undone');
+  assertEqual(JSON.stringify(State.groups),oldRoster,'refresh undo keeps original layout');
+  PP.PlanSession.ready=false;
+  console.log(`Results: ${passed} passed, ${failed} failed, ${totalTests} total`);
 if (failed === 0) {
   console.log('ALL TESTS PASSED');
 } else {
   console.log(`${failed} TEST(S) FAILED`);
   process.exit(1);
 }
+
+})().catch(error => { console.error(error); process.exitCode=1; });
