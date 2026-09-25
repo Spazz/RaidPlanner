@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Party Planner — TBC Raid Group Builder</title>
+<title>Party Planner — Multi-version Raid Planner</title>
 <meta name="description" content="Optimize your TBC raid groups for maximum buff coverage. Drag-and-drop party builder with totem, aura, and buff planning for 10 and 25-man raids.">
 <meta name="theme-color" content="#1b1d1f">
 <meta property="og:title" content="Party Planner — TBC Raid Group Builder">
@@ -338,7 +338,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .mode-tab:hover { color: var(--text-secondary); }
 .mode-tab.active { background: var(--text-primary); color: var(--bg-frame); }
-.raid-selector { display: flex; align-items: center; gap: var(--sp-2); }
+.raid-selector { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .raid-selector label { font-size: 11px; color: var(--text-muted); font-weight: 500; }
 .raid-dropdown {
   padding: 3px var(--sp-2); padding-right: var(--sp-6);
@@ -1224,12 +1224,95 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .addon-frame { width:min(1280px,100%); }
 }
 </style>
+<style>
+/* The game switcher is shared by both views and sits outside the planner zoom. */
+body { flex-direction:column; align-items:center; justify-content:flex-start; padding-top:0; }
+.game-header { width:calc(100% + 32px); background:#101113; border-bottom:1px solid #34332d; }
+.game-header-inner { max-width:1480px; margin:auto; display:flex; align-items:stretch; padding:0 32px; }
+.game-header-brand { display:flex; align-items:center; gap:12px; padding-right:36px; color:#e5e0d3; flex-shrink:0; }
+.game-header-mark { width:32px; height:36px; display:grid; place-items:center; border:1px solid #706044; color:#dfbd75; font:700 21px var(--font-cond); clip-path:polygon(0 0,100% 0,100% 77%,50% 100%,0 77%); background:#29251d; }
+.game-header-brand strong { display:block; font:700 18px var(--font-cond); letter-spacing:.09em; text-transform:uppercase; }
+.game-header-brand small { display:block; color:#888a87; font-size:10px; letter-spacing:.18em; text-transform:uppercase; margin-top:3px; }
+.game-version-nav { display:flex; flex:1; gap:4px; }
+.game-version-tab { --game-color:#dcb978; appearance:none; border:0; border-bottom:3px solid transparent; background:transparent; color:#a7aaa4; padding:18px 30px 15px; min-width:158px; text-align:left; cursor:pointer; position:relative; transition:background .15s,color .15s; }
+.game-version-tab[data-version="tbc"] { --game-color:#abd47d; }
+.game-version-tab[data-version="forever"] { --game-color:#b9a0ec; }
+.game-version-tab:hover { background:#202224; color:#f1f1eb; }
+.game-version-tab:focus-visible { outline:2px solid var(--game-color); outline-offset:-5px; }
+.game-version-tab[aria-pressed="true"] { color:var(--game-color); border-bottom-color:var(--game-color); background:#232526; }
+.game-version-tab .game-eyebrow { display:block; font:500 9px var(--font-body); letter-spacing:.18em; text-transform:uppercase; opacity:.75; margin-bottom:4px; }
+.game-version-tab .game-name { font:700 23px var(--font-cond); letter-spacing:.045em; text-transform:uppercase; white-space:nowrap; }
+.game-beta { display:inline-block; vertical-align:middle; padding:3px 5px; margin-left:7px; border:1px solid #65577e; color:#c4afea; font:600 9px var(--font-body); letter-spacing:.06em; }
+.game-header-caption { align-self:center; margin-left:auto; padding-left:24px; font-size:11px; color:#818680; text-align:right; line-height:1.6; }
+#landing-version-note { font-size:13px; color:var(--text-muted); line-height:1.5; margin:10px 0 20px; }
+@media(max-width:900px) {
+  .game-header-inner { padding:0 16px; }
+  .game-header-brand { padding-right:20px; }
+  .game-version-tab { min-width:0; flex:1; padding:16px 18px 13px; }
+  .game-header-caption { display:none; }
+}
+@media(max-width:600px) {
+  .game-header { width:100%; }
+  .game-header-inner { padding:0; flex-wrap:wrap; }
+  .game-header-brand { width:100%; padding:10px 14px; gap:9px; border-bottom:1px solid #27292b; }
+  .game-header-mark { width:23px; height:25px; font-size:16px; }
+  .game-header-brand strong { font-size:15px; }
+  .game-header-brand small { display:none; }
+  .game-version-nav { width:100%; gap:0; }
+  .game-version-tab { padding:12px 10px 10px; text-align:center; }
+  .game-version-tab .game-name { font-size:20px; }
+  .game-version-tab .game-eyebrow { font-size:8px; letter-spacing:.1em; }
+  .game-beta { font-size:8px; margin-left:3px; padding:2px 3px; }
+}
+</style>
+<style>
+#campfire-panel { padding:18px; border-bottom:1px solid var(--border-medium); background:#1d1b20; }
+.camp-heading,.camp-card-heading,.camp-capacity { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.camp-heading h2 { font:600 24px var(--font-cond); margin:3px 0; }
+.camp-kicker { color:#c5a8ef; text-transform:uppercase; letter-spacing:.1em; font-size:10px; }
+.camp-rules { color:#c6c0cf; font-size:12px; line-height:1.6; margin:10px 0 16px; }
+#campfire-panel details { border:1px solid #3c3545; padding:12px; margin:12px 0; }
+#campfire-panel summary { cursor:pointer; font-size:13px; font-weight:600; }
+#campfire-panel summary span { color:var(--text-muted); font-size:11px; margin-left:10px; }
+#campfire-panel details p,.camp-note { color:var(--text-muted); font-size:11px; line-height:1.5; margin:10px 0; }
+.camp-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+.camp-card { background:#242127; border:1px solid #493b56; border-top:2px solid #b79ad7; padding:14px; min-width:0; }
+#campfire-panel label { display:flex; flex-direction:column; gap:5px; font-size:10px; color:#aaa0b6; min-width:0; }
+#campfire-panel input,#campfire-panel select { background:#18161c; border:1px solid #4b4255; padding:8px; color:var(--text-primary); font:12px var(--font-body); width:100%; min-width:0; }
+.camp-card-heading label { flex:1; }
+.camp-capacity { margin-top:12px; }
+.camp-capacity strong { color:#cfb7eb; font-size:14px; }
+.camp-assets { list-style:none; margin:12px 0; }
+.camp-assets li { display:flex; justify-content:space-between; gap:8px; border-top:1px solid #3d3545; padding:10px 0; }
+.camp-assets a { color:#e2c48b; font-size:13px; font-weight:600; }
+.camp-owner { display:block; color:#b9acc8; font-size:10px; margin-top:4px; }
+.camp-assets p { font-size:12px; line-height:1.5; margin:5px 0; }
+.camp-assets small { color:#aaa0b6; font-size:10px; }
+.camp-empty { color:var(--text-muted); font-size:12px; padding:15px 0; }
+.camp-form { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+.camp-form label { flex:1; min-width:90px!important; }
+.camp-form label:last-of-type { flex:0 1 75px; }
+.camp-professions>div { display:flex; gap:12px; align-items:center; padding:6px 0; font-size:12px; }
+.camp-professions span { flex:1; color:#c1b5cb; }
+@media(max-width:600px) { #campfire-panel { padding:10px; } .camp-grid { grid-template-columns:1fr; } }
+</style>
 </head>
 <body>
 
+<header class="game-header">
+  <div class="game-header-inner">
+    <div class="game-header-brand"><span class="game-header-mark" aria-hidden="true">P</span><div><strong>Party Planner</strong><small>Choose your era</small></div></div>
+    <nav class="game-version-nav" aria-label="Game version">
+      <button type="button" class="game-version-tab" data-version="classic" aria-pressed="false" aria-label="WoW Classic"><span class="game-eyebrow">World of Warcraft</span><span class="game-name">Classic</span></button>
+      <button type="button" class="game-version-tab" data-version="tbc" aria-pressed="true" aria-label="WoW TBC"><span class="game-eyebrow">Burning Crusade</span><span class="game-name">TBC</span></button>
+      <button type="button" class="game-version-tab" data-version="forever" aria-pressed="false" aria-label="WoW Forever Beta"><span class="game-eyebrow">World of Warcraft</span><span class="game-name">Forever<span class="game-beta">Beta</span></span></button>
+    </nav>
+    <span class="game-header-caption">Your raid. Your rules.<br>One planner for every era.</span>
+  </div>
+</header>
 <div class="landing" id="landing-view">
   <nav class="landing-nav" aria-label="Site">
-    <div class="landing-brand"><h1>Party Planner</h1><span>TBC Raid Group Builder</span></div>
+    <div class="landing-brand"><h1>Party Planner</h1><span>Multi-version Raid Planner</span></div>
     <div class="landing-nav-links">
       <a href="#how-it-works">How it works</a>
       <a href="#features">Features</a>
@@ -1239,7 +1322,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 
   <section class="hero">
     <div class="hero-copy">
-      <div class="hero-kicker">Burning Crusade Classic &middot; 10 and 25-man</div>
+      <div class="hero-kicker">WoW Classic &middot; WoW TBC &middot; WoW Forever Beta</div>
+      <p id="landing-version-note"></p>
       <h2>Optimal raid groups <em>in one click.</em></h2>
       <p>Paste your Raid-Helper sign-ups and get raid groups built to hit harder. No spreadsheet, no login, nothing uploaded.</p>
       <ul class="hero-points">
@@ -1336,7 +1420,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   </section>
 
   <footer class="landing-footer">
-    <span>Party Planner Web &middot; a TBC raid group builder</span>
+    <span>Party Planner Web &middot; a multi-version raid planner</span>
     <span>Built for raid leaders who would rather pull than sort.</span>
   </footer>
 </div>
@@ -1437,6 +1521,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 
   <div class="summary-bar" id="summary-bar" aria-live="polite"></div>
 
+  <section id="campfire-panel" hidden aria-label="Campfire planning"></section>
   <div class="app-body">
     <div class="main-column">
       <div class="groups-container" id="groups-container"></div>
@@ -1762,6 +1847,33 @@ const Config = {
   },
 };
 
+// Version profiles own their raid catalog and rule availability. Forever templates
+// are planning capacities chosen by the user, not claims about beta raid sizes.
+const GameVersions = {
+  tbc: { name:'WoW TBC', defaultRaid:'bt', modeled:true, raids:[...Config.RaidOrder], note:'TBC party buffs and optimization rules.' },
+  classic: { name:'WoW Classic', defaultRaid:'classic40', modeled:false, raids:[], note:'Manual planning. Classic buff, composition and optimizer rules are not configured yet.' },
+  forever: { name:'WoW Forever (Beta)', defaultRaid:'forever40', modeled:false, raids:[], note:'Beta: choose a planning capacity. Raids, class/spec changes, buffs and optimizer rules are unconfirmed; the class/spec picker uses the existing baseline.' },
+};
+for (const version of ['classic', 'forever']) {
+  for (const size of [10, 20, 40]) {
+    const key = version + size;
+    GameVersions[version].raids.push(key);
+    Config.Raids[key] = {name:`${size}-player template`, size, groups:size/5, tier:'Planning templates'};
+  }
+}
+const TBC_RULES = {buffs:Config.Buffs, debuffs:Config.Debuffs};
+Object.defineProperties(Config, {
+  Buffs: {get() { return GameVersions[State.gameVersion].modeled ? TBC_RULES.buffs : {}; }},
+  Debuffs: {get() { return GameVersions[State.gameVersion].modeled ? TBC_RULES.debuffs : {}; }},
+  RaidOrder: {get() { return GameVersions[State.gameVersion].raids; }},
+});
+function versionForRaid(raid) {
+  return Object.keys(GameVersions).find(v => GameVersions[v].raids.includes(raid));
+}
+function validVersionRaid(version, raid) {
+  return !!GameVersions[version] && GameVersions[version].raids.includes(raid);
+}
+
 // ── TOTEM / AURA EXCLUSIVITY (from Optimizer.lua) ──
 const TOTEM_ELEMENTS = {
   WINDFURY:'air', GRACE_OF_AIR:'air', WRATH_OF_AIR:'air',
@@ -1796,11 +1908,13 @@ function getBuffPriority(buff, role) {
 const NO_ROSTER_NAME = 'No Roster Loaded';
 
 const State = {
+  campfires: {professions:[], fires:[]},
   preferredSlots: [], // Open class/spec requests, separate from real players.
   preserveGroupOrder: false,
   roster: [],
   groups: [],
   bench: [], // players not assigned to a group (groupNumber 0); never touched by the Optimizer
+  gameVersion: 'tbc',
   selectedRaid: 'bt',
   rosterName: NO_ROSTER_NAME,
   planId: null,
@@ -1894,8 +2008,8 @@ const Import = {
       return {success:true, playerCount:State.roster.length, groupCount:State.groups.length,
         preferredImport:true, filledCount:counts.filled, benchCount:State.bench.length, skippedCount:diff.skipped};
     }
-    if (Array.isArray(data.slots)) return this._importRaidHelperSlots(data);
-    if (Array.isArray(data.signUps)) return this._importRaidHelperSignUps(data);
+    if (Array.isArray(data.slots)) { const result = this._importRaidHelperSlots(data); if (result.success) State.campfires = Campfires.empty(); return result; }
+    if (Array.isArray(data.signUps)) { const result = this._importRaidHelperSignUps(data); if (result.success) State.campfires = Campfires.empty(); return result; }
     return { success:false, error:"No 'slots' or 'signUps' array found in JSON" };
   },
 
@@ -1975,7 +2089,7 @@ const Import = {
     }
 
     // Auto-detect raid
-    if (roster.length <= 10) {
+    if (State.gameVersion === 'tbc' && roster.length <= 10) {
       for (const key of Config.RaidOrder) {
         if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; }
       }
@@ -2033,7 +2147,7 @@ const Import = {
     // Auto-detect raid. An all-Tentative list still sizes the raid by how many
     // people signed, so they land on a bench that matches the event.
     const raiders = roster.length || bench.length;
-    if (raiders <= 10) {
+    if (State.gameVersion === 'tbc' && raiders <= 10) {
       for (const key of Config.RaidOrder) {
         if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; }
       }
@@ -2253,9 +2367,9 @@ const Import = {
     const name = State.rosterName === NO_ROSTER_NAME ? '' : (State.rosterName || '');
     const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
     for (const g of State.groups) parts.push(encode(g));
-    if (State.preferredSlots.length || State.preserveGroupOrder) {
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
-      parts.push(encodeURIComponent(JSON.stringify({preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder})));
+      parts.push(encodeURIComponent(JSON.stringify({gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder})));
     }
     return parts.join(':');
   },
@@ -2317,15 +2431,20 @@ const Import = {
     for (let gi = 0; gi < numGroups && (gi + 5) < parts.length; gi++) {
       players.push(...this._parsePlayerList(parts[gi + 5], gi + 1));
     }
+    let campfires;
+    let gameVersion = versionForRaid(raid);
     let preferredSlots = [];
     let preserveGroupOrder = false;
     try {
       const planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D'));
+      campfires = planning.campfires;
+      gameVersion = planning.gameVersion || gameVersion;
+      if (!validVersionRaid(gameVersion, raid)) return {success:false, error:'Game version does not match raid'};
       preferredSlots = PreferredSlots.clean(planning.preferredSlots, raid);
       preserveGroupOrder = planning.preserveGroupOrder === true || preferredSlots.length > 0;
     }
     catch { return {success:false, error:'Share link has damaged preferred slots'}; }
-    if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0) {
+    if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0 && !(Array.isArray(campfires?.fires) && campfires.fires.some(f => f && [3,5,10].includes(f.capacity)))) {
       return { success:false, error:'Share link contains no players' };
     }
 
@@ -2334,7 +2453,7 @@ const Import = {
       name: name || 'Shared Roster',
       playerCount: players.length,
       groupCount: numGroups,
-      data: { name: name || 'Shared Roster', raid, players, bench, preferredSlots, preserveGroupOrder },
+      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder },
     };
   },
 
@@ -2370,7 +2489,9 @@ const Import = {
     const raid = parts[2];
     if (!Config.Raids[raid]) return { success:false, error:'Unknown raid: ' + raid };
 
+    State.gameVersion = versionForRaid(raid);
     State.selectedRaid = raid;
+    State.campfires = Campfires.empty();
     State.preferredSlots = [];
     State.preserveGroupOrder = false;
     const raidInfo = Config.Raids[raid];
@@ -2409,6 +2530,8 @@ const Import = {
   exportRoster(name) {
     return {
       name: name || State.rosterName || 'Unnamed',
+      campfires: JSON.parse(JSON.stringify(State.campfires)),
+      gameVersion: State.gameVersion,
       raid: State.selectedRaid,
       timestamp: Date.now(),
       sourceEventId: State.sourceEventId || null,
@@ -2424,7 +2547,13 @@ const Import = {
   },
 
   loadRoster(data) {
-    if (!data || !data.players) return false;
+    if (!data || !Array.isArray(data.players)) return false;
+    const version = data.gameVersion || versionForRaid(data.raid) || 'tbc';
+    const raid = data.raid || GameVersions[version]?.defaultRaid;
+    if (!validVersionRaid(version, raid)) return false;
+    State.gameVersion = version;
+    State.selectedRaid = raid;
+    State.buffOverrides = {};
     State.planId = null;
     if (data.raid) State.selectedRaid = data.raid;
     State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
@@ -2449,6 +2578,7 @@ const Import = {
     }));
     State.roster = roster;
     State.groups = groups;
+    State.campfires = Campfires.clean(data.campfires);
     State.rosterName = data.name || 'Loaded Roster';
     State.sourceEventId = data.sourceEventId || null;
     return true;
@@ -2489,11 +2619,11 @@ const PlanStore = {
   key: 'pp_working_plans',
   capture() {
     return JSON.parse(JSON.stringify({planId:State.planId, groups:State.groups, bench:State.bench,
-      selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
+      campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
       optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder}));
   },
   valid(data) {
-    return data && typeof data.planId === 'string' && Config.Raids[data.selectedRaid] &&
+    return data && typeof data.planId === 'string' && validVersionRaid(data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc', data.selectedRaid) &&
       typeof data.rosterName === 'string' && Array.isArray(data.groups) && data.groups.every(Array.isArray) &&
       ['max_dps','tank_mit','balanced','relaxed'].includes(data.optimizerMode) &&
       data.buffOverrides && typeof data.buffOverrides === 'object' && !Array.isArray(data.buffOverrides) &&
@@ -2507,15 +2637,17 @@ const PlanStore = {
     } catch { return []; }
   },
   save(storage, data) {
-    const plans = this.read(storage).filter(p => p.data.planId !== data.planId);
+    const plans = this.read(storage).filter(p => p.data.planId !== data.planId || (p.data.gameVersion || 'tbc') !== (data.gameVersion || 'tbc'));
     storage.setItem(this.key, JSON.stringify([{updatedAt:Date.now(), data}, ...plans]));
   },
   restore(data) {
     if (!this.valid(data)) return false;
     Object.assign(State, JSON.parse(JSON.stringify(data)));
+    State.gameVersion = data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc';
     State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
     State.preserveGroupOrder = data.preserveGroupOrder === true || State.preferredSlots.length > 0;
     State.roster = State.groups.flat();
+    State.campfires = Campfires.clean(data.campfires);
     for (const p of [...State.roster, ...State.bench]) {
       const n = /^p(\d+)$/.exec(p.uid);
       if (n) _uid = Math.max(_uid, Number(n[1]));
@@ -2535,7 +2667,7 @@ const PlanSession = {
   previous:null, undo:[], ready:false, replaying:false,
   observe() {
     if (!this.ready) return;
-    if (!State.planId && (State.groups.flat().length || State.bench.length || State.preferredSlots.length))
+    if (!State.planId && (State.campfires.fires.length || State.groups.flat().length || State.bench.length || State.preferredSlots.length))
       State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
     if (!State.planId) return;
     const current = PlanStore.capture();
@@ -2599,6 +2731,7 @@ const RandomRoster = {
   },
 
   generate() {
+    State.campfires = Campfires.empty();
     State.preferredSlots = [];
     State.preserveGroupOrder = false;
     const raidInfo = Config.Raids[State.selectedRaid];
@@ -2795,6 +2928,11 @@ const ROLE_COMPAT = {
 
 const Optimizer = {
   optimize() {
+    if (!GameVersions[State.gameVersion].modeled) {
+      enforceRaidCapacity(State.groups, State.bench, Config.Raids[State.selectedRaid].groups);
+      State.roster = State.groups.flat();
+      return;
+    }
     // Groups with open requests keep their existing layout. Optimize the remaining
     // groups without consuming the space deliberately left for future sign-ups.
     if (State.preferredSlots.length) {
@@ -3457,6 +3595,7 @@ const Optimizer = {
 
 // ── BUFF CALCULATOR (from Optimizer.lua GetGroupBuffs) ──────────
 function getGroupBuffs(players, groupIndex) {
+  if (!GameVersions[State.gameVersion].modeled) return [];
   const buffList = [];
   const passiveAdded = new Set(); // prevent duplicate passive buffs
   const usedAuras = new Set(); // prevent duplicate paladin auras in auto-assign
@@ -3930,11 +4069,94 @@ const RosterEdit = {
   },
 };
 
+// Camping catalog: Wowhead Forever item tooltips reviewed 2026-09-25.
+// Numeric scaling is intentionally unresolved. These effects do not enter the optimizer.
+const Campfires = {
+  tiers: {3:{name:'Basic',skill:1},5:{name:'Journeyman',skill:140},10:{name:'Expert',skill:220}},
+  catalog: [],
+  key(name) { return String(name).trim().toLowerCase(); },
+  members() { return [...State.roster, ...State.bench]; },
+  empty() { return {professions:[], fires:[]}; },
+  clean(raw) {
+    const out = this.empty();
+    if (!raw || typeof raw !== 'object') return out;
+    const names = new Set(this.members().map(p=>this.key(p.name)));
+    for (const p of Array.isArray(raw.professions) ? raw.professions : []) {
+      if (!p || !names.has(this.key(p.player)) || !this.professionNames.includes(p.profession) || !Number.isInteger(p.skill) || p.skill<1 || p.skill>300) continue;
+      if (!out.professions.some(x=>this.key(x.player)===this.key(p.player) && x.profession===p.profession)) out.professions.push({player:String(p.player),profession:p.profession,skill:p.skill});
+    }
+    const used=new Set();
+    for (const f of Array.isArray(raw.fires) ? raw.fires : []) {
+      if (!f || ![3,5,10].includes(f.capacity)) continue;
+      const fire={name:String(f.name || 'Campfire').slice(0,60),capacity:f.capacity,assets:[]};
+      const families=new Set();
+      for (const a of Array.isArray(f.assets) ? f.assets : []) {
+        const item=this.catalog.find(x=>x.id===a?.asset);
+        const key=this.key(a?.player);
+        if (!item || used.has(key) || families.has(item.family) || fire.assets.length>=fire.capacity || !out.professions.some(p=>this.key(p.player)===key && p.profession===item.profession && p.skill>=item.skill)) continue;
+        used.add(key); families.add(item.family); fire.assets.push({player:String(a.player),asset:item.id});
+      }
+      out.fires.push(fire);
+    }
+    return out;
+  },
+  eligible(fireIndex) {
+    const fire=State.campfires.fires[fireIndex];
+    if (!fire || fire.assets.length>=fire.capacity) return [];
+    const used=new Set(State.campfires.fires.flatMap(f=>f.assets.map(a=>this.key(a.player))));
+    const families=new Set(fire.assets.map(a=>this.catalog.find(x=>x.id===a.asset)?.family));
+    return this.members().flatMap(p=> used.has(this.key(p.name)) ? [] : this.catalog.filter(a=>!families.has(a.family) && State.campfires.professions.some(s=>this.key(s.player)===this.key(p.name) && s.profession===a.profession && s.skill>=a.skill)).map(a=>({player:p.name,asset:a.id})));
+  },
+  assign(index, assignment) {
+    if (!assignment || !this.eligible(index).some(a=>a.player===assignment.player && a.asset===assignment.asset)) return false;
+    State.campfires.fires[index].assets.push({...assignment}); return true;
+  },
+};
+// Each higher tier lists its own utility; inheritance is only from the base buff.
+for (const [profession, family, effect, conflict, rows] of [
+  ['Alchemy','wisdom','Mana regeneration (amount scales)','Blessing of Wisdom',[[279956,'Mana Well',''],[279970,'Fermenter','Reagent creation'],[279990,'Alchemy Laboratory','Alchemy Lab recipes']]],
+  ['Blacksmithing','strength','Strength (amount scales)','Strength of Earth Totem',[[279944,'Sharpening Wheel',''],[279988,'Anvil','Usable anvil'],[279955,'Master Forge','Forge recipes']]],
+  ['Enchanting','wild','Armor, stats and resistances (amounts scale)','Mark of the Wild',[[279976,'Enchanted Lute',''],[279985,'Arcane Salvager','Improved disenchanting'],[279987,'Arcane Forge','Arcane Forge recipes']]],
+  ['Engineering','engineering','', '',[[279950,'Reagent Bot','Reagent vendor'],[279949,'Repair Bot','Reagent vendor and repairs'],[279989,"Anarchist’s Workbench",'Workbench recipes; vendor/repairs not confirmed']]],
+  ['Herbalism','intellect','Intellect (amount scales)','Arcane Intellect',[[279962,'Incense Candle',''],[279964,'Greenhouse','Grow herbs from seeds'],[279947,'Seed Hybridizer','Multiply or combine seeds']]],
+  ['Leatherworking','rested','', '',[[279978,'Camp Tent','Rested XP up to 5% of a level'],[279941,'Tanning Rack','Reagent creation; rested XP up to 5%'],[279945,'Sewing Machine','Sewing recipes; rested XP up to 5%']]],
+  ['Mining','might','Melee attack power (amount scales)','Blessing of Might',[[279960,'Lodestone',''],[279948,'Rock Garden','Common mining node over time'],[279952,'Molten Foundry','Foundry recipes']]],
+  ['Skinning','crit','2% spell and attack crit','Moonkin Aura',[[279979,'Camp Chair',''],[279969,'Field Guide','Track Beasts'],[279938,"Trapper’s Workbench",'One trap']]],
+  ['Tailoring','spirit','Spirit (amount scales; linked base tooltip specifies Horde)','Divine Spirit',[[279972,'Faction Banner',''],[279943,'Spinning Wheel','Reagent creation'],[279959,'Loom','Loom recipes']]],
+  ['First Aid','fortitude','Stamina (amount scales)','Power Word: Fortitude',[[279968,'First Aid Kit',''],[279940,'Toxin Study','Healing potions and anti-venom'],[279951,"Plague Doctor’s Laboratory",'Healing potions and poultices']]],
+  ['Fishing','kings','8% increased stats','Blessing of Kings',[[279967,'Fish Bowl',''],[279965,'Fishing Rack','Uncommon fish for 1h; fishing lures'],[279966,'Fishing Hut','Rare fish for 1h; fishing lures']]],
+]) rows.forEach(([id,name,utility],i)=>Campfires.catalog.push({id,name,profession,family: id===279989 ? 'engineering-workbench' : family,skill:[20,140,300][i],effect,conflict,utility}));
+Campfires.catalog.push({id:279957,name:"Cookie’s Feast",profession:'Cooking',family:'food',skill:140,effect:'Stamina food (amount unknown)',conflict:'',utility:''});
+Campfires.professionNames=[...new Set(Campfires.catalog.map(a=>a.profession))].sort();
+
+
 // ── UI RENDERING ────────────────────────────────────────────────
+function syncVersionControls() {
+  const profile = GameVersions[State.gameVersion];
+  document.querySelectorAll('[data-version]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.version === State.gameVersion));
+    button.onclick = () => {
+      if (button.dataset.version === State.gameVersion) return;
+      State.planId = null;
+      State.gameVersion = button.dataset.version;
+      State.selectedRaid = GameVersions[State.gameVersion].defaultRaid;
+      State.buffOverrides = {};
+      initGroups();
+      State.preferredSlots = PreferredSlots.clean(State.preferredSlots);
+      switchTab('plan');
+      showToast(GameVersions[State.gameVersion].note);
+    };
+  });
+  document.getElementById('landing-version-note').textContent = profile.note;
+  document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-player roster`;
+  document.getElementById('btn-optimize').disabled = !profile.modeled;
+  document.getElementById('optimize-mode').disabled = !profile.modeled;
+  initRaidDropdown();
+}
 function initRaidDropdown() {
   const sel = document.getElementById('raid-select');
   sel.innerHTML = '';
-  for (const tier of Config.TierOrder) {
+  for (const tier of [...new Set(Config.RaidOrder.map(key => Config.Raids[key].tier))]) {
     const group = document.createElement('optgroup');
     group.label = tier;
     for (const key of Config.RaidOrder) {
@@ -3948,7 +4170,7 @@ function initRaidDropdown() {
     }
     if (group.children.length) sel.appendChild(group);
   }
-  sel.addEventListener('change', () => {
+  sel.onchange = () => {
     State.selectedRaid = sel.value;
     if (State.activeTab === 'ideal') {
       renderIdealComp();
@@ -3958,7 +4180,7 @@ function initRaidDropdown() {
       const raidInfo = Config.Raids[State.selectedRaid];
       if (benched > 0) showToast(`${benched} player${benched === 1 ? '' : 's'} benched — the ${raidInfo ? raidInfo.size : 25}-man raid is full`);
     }
-  });
+  };
 }
 
 // Fits State.groups to the selected raid's template. Extra groups are folded
@@ -4072,6 +4294,38 @@ function sortTankGroupFirst() {
   }
 }
 
+function renderCampfires() {
+  const panel=document.getElementById('campfire-panel');
+  panel.hidden=State.gameVersion!=='forever' || State.activeTab!=='plan';
+  if (panel.hidden) return;
+  State.campfires=Campfires.clean(State.campfires);
+  const data=State.campfires, members=Campfires.members();
+  const open=panel.querySelector('details')?.open || false;
+  panel.innerHTML=`<div class="camp-heading"><div><span class="camp-kicker">Forever · Pre-raid preparation</span><h2>Campfires</h2></div><button type="button" class="btn btn-secondary" id="camp-add">+ Add campfire</button></div>
+    <p class="camp-rules">1 minute sitting or crafting → 1 hour of buffs. Your last fire replaces your entire previous campfire buff package. Stronger class buffs take precedence.</p>
+    <details ${open?'open':''}><summary>Raid professions <span>${data.professions.length} recorded</span></summary><p>Record profession skills to unlock eligible assets. Each member can contribute one asset across all fires. Benched members are labeled.</p>
+    <div class="camp-professions">${data.professions.map((p,i)=>`<div><strong>${esc(p.player)}</strong><span>${esc(p.profession)} · ${p.skill}</span><button type="button" class="link-btn" data-prof-remove="${i}" aria-label="Remove ${esc(p.player)} ${esc(p.profession)}">Remove</button></div>`).join('')}</div>
+    ${members.length?`<form id="camp-prof-form" class="camp-form"><label>Member<select name="player">${members.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}${State.bench.includes(p)?' (bench)':''}</option>`).join('')}</select></label><label>Profession<select name="profession">${Campfires.professionNames.map(p=>`<option>${p}</option>`).join('')}</select></label><label>Skill<input name="skill" type="number" min="1" max="300" step="1" value="300" required></label><button class="btn btn-secondary" type="submit">Set profession</button></form>`:'<p>Add or import raid members first to assign professions and assets.</p>'}</details>
+    <div class="camp-grid">${data.fires.map((f,i)=>{
+      const candidates=Campfires.eligible(i), tier=Campfires.tiers[f.capacity];
+      const cook=data.professions.some(p=>p.profession==='Cooking' && p.skill>=tier.skill);
+      return `<article class="camp-card"><div class="camp-card-heading"><label>Campfire name<input data-fire-name="${i}" maxlength="60" value="${esc(f.name)}"></label><button type="button" class="link-btn" data-fire-remove="${i}">Remove fire</button></div><div class="camp-capacity"><label>Campfire tier<select data-fire-capacity="${i}">${[3,5,10].map(n=>`<option value="${n}" ${n===f.capacity?'selected':''}>${Campfires.tiers[n].name} · ${n} assets</option>`).join('')}</select></label><strong>${f.assets.length} / ${f.capacity}</strong></div><p class="camp-note">Cooking ${tier.skill} required to build this fire${cook?' · Eligible cook recorded': ' · No eligible cook recorded'}.</p>
+      <ul class="camp-assets">${f.assets.map((a,j)=>{const item=Campfires.catalog.find(x=>x.id===a.asset);return `<li><div><a href="https://www.wowhead.com/forever/item=${item.id}" target="_blank" rel="noopener noreferrer">${esc(item.name)}</a><span class="camp-owner">${esc(a.player)} · ${item.profession} ${item.skill}${State.bench.some(p=>Campfires.key(p.name)===Campfires.key(a.player))?' · Bench':''}</span><p>${esc(item.effect||'Utility asset')}${item.utility?' · '+esc(item.utility):''}</p>${item.conflict?`<small>Does not stack with ${esc(item.conflict)}</small>`:''}</div><button type="button" class="link-btn" data-asset-remove="${i}:${j}" aria-label="Remove ${esc(item.name)}">×</button></li>`;}).join('')||'<li class="camp-empty">No assets assigned. Choose contributors below.</li>'}</ul>
+      ${f.assets.length<f.capacity?`<label class="camp-assign">Assign an asset<select data-fire-assign="${i}"><option value="">${candidates.length?'Choose member and asset…':'No eligible unassigned contributors'}</option>${candidates.map((a,j)=>{const item=Campfires.catalog.find(x=>x.id===a.asset);return `<option value="${j}">${esc(a.player)} — ${esc(item.name)} (${item.profession} ${item.skill})</option>`;}).join('')}</select></label>`:'<p class="camp-note">This fire is full.</p>'}</article>`;
+    }).join('')}</div>${data.fires.length?'':'<p class="camp-empty">Plan your first fire, or create separate fires for buffs and services.</p>'}<p class="camp-note">Effects are tracked per fire, never combined. Numeric scaling is pending; campfires do not change group optimization. Assets share a 1-hour placement cooldown.</p>`;
+  const commit=()=>{const before=data.fires.reduce((n,f)=>n+f.assets.length,0);renderGroups();const after=State.campfires.fires.reduce((n,f)=>n+f.assets.length,0);if(after<before)showToast('Ineligible campfire assignments removed after profession changes. Undo is available.');};
+  panel.querySelector('#camp-add').onclick=()=>{data.fires.push({name:`Campfire ${data.fires.length+1}`,capacity:3,assets:[]});commit();};
+  const form=panel.querySelector('#camp-prof-form');
+  if(form) form.onsubmit=e=>{e.preventDefault();const values=new FormData(form);const p={player:values.get('player'),profession:values.get('profession'),skill:Number(values.get('skill'))};const old=data.professions.find(x=>Campfires.key(x.player)===Campfires.key(p.player)&&x.profession===p.profession);if(old)Object.assign(old,p);else data.professions.push(p);commit();};
+  panel.querySelectorAll('[data-prof-remove]').forEach(b=>b.onclick=()=>{data.professions.splice(Number(b.dataset.profRemove),1);commit();});
+  panel.querySelectorAll('[data-fire-remove]').forEach(b=>b.onclick=()=>{data.fires.splice(Number(b.dataset.fireRemove),1);commit();});
+  panel.querySelectorAll('[data-fire-name]').forEach(input=>input.onchange=()=>{data.fires[Number(input.dataset.fireName)].name=input.value.trim()||'Campfire';commit();});
+  panel.querySelectorAll('[data-fire-capacity]').forEach(select=>select.onchange=()=>{const f=data.fires[Number(select.dataset.fireCapacity)], n=Number(select.value);if(f.assets.length>n){select.value=f.capacity;showToast('Remove assets before choosing a smaller fire');return;}f.capacity=n;commit();});
+  panel.querySelectorAll('[data-fire-assign]').forEach(select=>select.onchange=()=>{if(select.value==='')return;const i=Number(select.dataset.fireAssign);Campfires.assign(i,Campfires.eligible(i)[Number(select.value)]);commit();});
+  panel.querySelectorAll('[data-asset-remove]').forEach(b=>b.onclick=()=>{const [i,j]=b.dataset.assetRemove.split(':').map(Number);data.fires[i].assets.splice(j,1);commit();});
+}
+
+
 function renderGroups() {
   PreferredSlots.reconcile();
   State.roster = State.groups.flat();
@@ -4125,7 +4379,7 @@ function renderGroups() {
 
     let buffsHTML = '<span class="buff-bar-label">Buffs</span>';
     if (buffList.length === 0) {
-      buffsHTML += '<span class="no-buffs">No buffs</span>';
+      buffsHTML += `<span class="no-buffs">${GameVersions[State.gameVersion].modeled ? 'No buffs' : 'Rules pending'}</span>`;
     } else {
       for (const b of buffList) {
         const abbr = Config.BuffAbbreviations[b.id] || b.id;
@@ -4173,13 +4427,15 @@ function renderGroups() {
   cleanupOverrides();
   renderManualChanges();
 
-  // Update dropdown
+  // Update version and raid controls after imports, restores and undo.
+  syncVersionControls();
   document.getElementById('raid-select').value = State.selectedRaid;
   document.getElementById('roster-name').textContent = State.rosterName;
   document.getElementById('mobile-plan-title').textContent = State.rosterName;
   const mobileName = document.getElementById('mobile-roster-name');
   if (mobileName) mobileName.textContent = State.rosterName;
   RaidHelperSync.updateControls();
+  renderCampfires();
   persistWorkingPlan();
   renderReadiness();
 }
@@ -4195,6 +4451,7 @@ function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
 function renderSidebarSummary(buffs, debuffs) {
   const el = document.getElementById('sidebar-summary');
   if (!el) return;
+  if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p style="font-size:12px;line-height:1.5;color:var(--text-muted)">Coverage rules are not configured for this version yet.</p>'; return; }
   const missing = (buffs.total - buffs.covered) + (debuffs.total - debuffs.covered);
   el.innerHTML = `
     <div class="sidebar-summary-row"><span>Buffs</span><b>${buffs.covered} / ${buffs.total}</b></div>
@@ -5181,6 +5438,10 @@ function undoPlanChange() {
 }
 
 function renderReadiness() {
+  if (!GameVersions[State.gameVersion].modeled) {
+    document.getElementById('readiness-text').textContent = `${GameVersions[State.gameVersion].name} · Manual planning · Buff and optimizer rules pending`;
+    return;
+  }
   const floors = Optimizer.floorsFor(Config.Raids[State.selectedRaid]?.size || 25);
   const tanks = State.roster.filter(p => p.role === 'tank').length;
   const healers = State.roster.filter(p => p.role === 'healer').length;
@@ -5464,9 +5725,15 @@ async function importFromText(raw, report = (m) => showToast(m)) {
 
   let metadata;
   try { metadata = JSON.parse(jsonStr); } catch { metadata = {}; }
+  if (Array.isArray(metadata.players)) {
+    if (!Import.loadRoster(metadata)) { report('Import failed: invalid game version or raid', true); return false; }
+    initGroups(); renderGroups();
+    showToast('Loaded saved roster');
+    return true;
+  }
   if (src.eventId && Array.isArray(metadata.signUps)) {
     let existing;
-    try { existing = PlanStore.read(localStorage).find(p => p.data.planId === 'event:' + src.eventId); } catch {}
+    try { existing = PlanStore.read(localStorage).find(p => p.data.planId === 'event:' + src.eventId && (p.data.gameVersion || 'tbc') === State.gameVersion); } catch {}
     if (existing) {
       PlanStore.restore(existing.data);
       initGroups();
@@ -5636,7 +5903,7 @@ document.getElementById('btn-do-import').addEventListener('click', async () => {
 
 // ── VIEWS: landing <-> planner ──────────────────────────────────
 function hasLoadedWork() {
-  return State.roster.length > 0 || (State.bench || []).length > 0 || State.preferredSlots.length > 0;
+  return State.roster.length > 0 || (State.bench || []).length > 0 || State.preferredSlots.length > 0 || State.campfires.fires.length > 0;
 }
 
 function showView(view) {
@@ -5851,6 +6118,7 @@ function renderLastRun(summary) {
 }
 
 document.getElementById('btn-optimize').addEventListener('click', () => {
+  if (!GameVersions[State.gameVersion].modeled) { showToast(GameVersions[State.gameVersion].note); return; }
   if (State.roster.length === 0) { showToast('Import a roster first'); return; }
   const buffsBefore = countCoveredBuffs();
   const placementBefore = playerGroupMap();
@@ -5868,6 +6136,7 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {
+  State.campfires = Campfires.empty();
   State.preferredSlots = [];
   State.preserveGroupOrder = false;
   renderLastRun(null);
@@ -5885,6 +6154,7 @@ document.getElementById('btn-clear').addEventListener('click', () => {
 document.getElementById('btn-landing-empty').addEventListener('click', () => {
   State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
   State.preserveGroupOrder = false;
+  State.campfires = Campfires.empty();
   State.groups = []; State.roster = []; State.bench = []; State.preferredSlots = [];
   State.sourceEventId = null; State.buffOverrides = {}; State.rosterName = 'New raid plan';
   initGroups(); renderGroups(); showView('app');
@@ -5973,7 +6243,7 @@ function loadFromShareLink() {
 }
 
 document.getElementById('btn-share').addEventListener('click', () => {
-  if (State.roster.length === 0 && (State.bench || []).length === 0 && !State.preferredSlots.length) {
+  if (!hasLoadedWork()) {
     showToast('No roster to share');
     return;
   }
@@ -6025,7 +6295,7 @@ const IdealComp = {
   // 10-man: 2 tanks, 2 healers, 6 DPS
   generate(raidKey) {
     const raidInfo = Config.Raids[raidKey];
-    if (!raidInfo) return [];
+    if (!raidInfo || !GameVersions[State.gameVersion].modeled) return [];
     return raidInfo.size === 10 ? this.build10Man() : this.build25Man();
   },
 
@@ -6146,6 +6416,7 @@ function switchTab(tab) {
 }
 
 function renderIdealComp() {
+  if (!GameVersions[State.gameVersion].modeled) { showToast(GameVersions[State.gameVersion].note); switchTab('plan'); return; }
   const container = document.getElementById('groups-container');
   container.innerHTML = '';
 
@@ -6231,7 +6502,7 @@ document.querySelectorAll('.mode-tab').forEach(btn => {
 });
 
 // ── INITIALIZE ──────────────────────────────────────────────────
-initRaidDropdown();
+syncVersionControls();
 try {
   const latest = PlanStore.read(localStorage)[0];
   if (latest) PlanStore.restore(latest.data);
