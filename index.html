@@ -1305,6 +1305,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
      Share has no icon at all, so its label stays visible here — see the
      initResponsiveChrome label swap that shortens it to plain "Share". */
   #phone-bar-undo-slot .btn-label { display: none; }
+  #phone-bar-share-slot > * { background: transparent; color: var(--accent-gold); border: 1px solid var(--accent-gold); }
   #btn-phone-more {
     font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.03em;
     font-weight: 600; font-size: 11px; min-height: 44px;
@@ -1377,7 +1378,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .plan-feedback { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:10px 16px; font-size:12px; border-bottom:1px solid var(--border-medium); }
 #mobile-plan-title { display:none; }
 #autosave-status { color:var(--text-muted); }
-#autosave-status[data-failed] { color:#ffb86b; }
+#autosave-status[data-failed], .roster-status-line[data-failed] { color:#ffb86b; }
+/* Desktop shows the save state beside the plan name (#roster-status-line); phones keep this line. */
+@media (min-width: 601px) { #autosave-status { display:none; } }
 .raid-notes-panel { margin:8px 16px; background:var(--bg-panel); border:1px solid var(--border-subtle); }
 .raid-notes-panel summary {
   padding:10px 14px; cursor:pointer; list-style:none;
@@ -10109,7 +10112,11 @@ function persistWorkingPlan() {
   document.getElementById('optimize-mode').value = State.optimizerMode;
   // Toolbar mirror of the header autosave-status line (nav redesign).
   const statusLine = document.getElementById('roster-status-line');
-  if (statusLine) statusLine.textContent = status.textContent;
+  if (statusLine) {
+    statusLine.textContent = status.textContent;
+    if (status.dataset.failed) statusLine.dataset.failed = 'true';
+    else delete statusLine.dataset.failed;
+  }
   syncStrategyChrome();
 }
 
