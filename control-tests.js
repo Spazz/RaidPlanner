@@ -458,4 +458,43 @@ check('RandomRoster.generate() clears notes, constraints, assignments and backup
   assert.equal(Object.keys(State.backups).length, 0, 'stale bench backups (old names) should not survive');
 });
 
+// Review finding #3's sibling concern: RaidSplit moves some players into a
+// brand-new "Raid B" plan with no explicit Constraints.clearForName() call
+// (unlike rename/delete/RandomRoster/RH-withdrawal). Constraints.reconcile()
+// is the render-time safety net that catches this and any other departure
+// path — mirroring Backups.reconcile(), which renderGroups() already runs
+// every render for exactly this reason.
+check('Constraints.reconcile() drops a constraint once either side leaves the roster and bench entirely', () => {
+  resetState('tbc', 'bt', 25);
+  const a = State.roster[0], b = State.roster[1], c = State.roster[2];
+  Constraints.add(a.name, b.name, 'together');
+  Constraints.add(b.name, c.name, 'apart');
+  assert.equal(State.playerConstraints.length, 2, 'fixture sanity');
+
+  // Simulate a's half of a split: they moved into "Raid B" and are no longer
+  // anywhere in this plan's roster or bench.
+  State.groups[0] = State.groups[0].filter(p => p !== a);
+  State.roster = State.groups.flat();
+  State.bench = [];
+
+  Constraints.reconcile();
+
+  assert.equal(Constraints.forPlayer(a.name).length, 0, "a's constraint is dropped — a is gone");
+  assert.equal(Constraints.forPlayer(c.name).length, 1, "b/c's constraint survives — both still present");
+  assert.equal(State.playerConstraints.length, 1);
+});
+
+check('Constraints.reconcile() leaves a pair alone when one side is merely benched, not gone', () => {
+  resetState('tbc', 'bt', 25);
+  const a = State.roster[0], b = State.roster[1];
+  Constraints.add(a.name, b.name, 'together');
+  State.groups[0] = State.groups[0].filter(p => p !== a);
+  State.roster = State.groups.flat();
+  State.bench = [a]; // benched, not removed from the plan
+
+  Constraints.reconcile();
+
+  assert.equal(Constraints.forPlayer(a.name).length, 1, 'still on the bench — constraint is not stale yet');
+});
+
 console.log(`\nControl tests (templates, constraints, explanation): ${passed} passed, 0 failed, ${passed} total`);

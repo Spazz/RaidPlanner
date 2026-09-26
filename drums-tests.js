@@ -169,6 +169,55 @@ check('RandomRoster.generate() clears drum tags from the previous roster (QA3-st
   assert.equal(State.drummers.length, 0, 'stale drummer tags (old names) should not survive a random reroll');
 });
 
+// Overnight review finding #3: a fully-withdrawn Raid-Helper sign-up cleared
+// Backups but not Constraints/Drummers. Verifies the fix (Constraints/
+// Drummers.clearForName alongside Backups.clearForName in the v.gone branch
+// of Import.applyRaidHelperSync).
+check('Import.applyRaidHelperSync drops the drum tag (and constraint) for a player who fully withdraws', () => {
+  resetState('tbc', 'bt', 25);
+  const drummer = State.roster.find(p => p.role !== 'tank');
+  const partner = State.roster.find(p => p !== drummer);
+  Drummers.set(drummer.name, 'Battle');
+  Constraints.add(drummer.name, partner.name, 'together');
+  assert.equal(Drummers.isDrummer(drummer.name), true, 'fixture sanity');
+  assert.equal(Constraints.forPlayer(partner.name).length, 1, 'fixture sanity');
+
+  // Shaped exactly like diffRaidHelperSignUps() would build it for a sign-up
+  // that no longer appears anywhere in the refreshed event data — a full
+  // withdrawal, not a demotion to bench/Tentative.
+  const diff = { success: true, added: [], removed: [drummer], changed: [], demoted: [], promoted: [], skipped: [] };
+  Import.applyRaidHelperSync(diff);
+
+  assert.equal(Drummers.isDrummer(drummer.name), false, 'the drum tag must not survive the withdrawal');
+  assert.equal(Constraints.forPlayer(partner.name).length, 0, 'the constraint must not survive either');
+});
+
+// Review finding #3's sibling concern: RaidSplit has no explicit
+// clearForName() call for players who move into "Raid B" — Drummers.
+// reconcile() is the render-time safety net (mirrors Backups.reconcile(),
+// which renderGroups() already runs every render for the same reason).
+check('Drummers.reconcile() drops a tag once the player leaves the roster and bench entirely', () => {
+  resetState('tbc', 'bt', 25);
+  const drummer = State.roster[0];
+  Drummers.set(drummer.name, 'Battle');
+
+  // Simulate the drummer's half of a split: gone from both roster and bench.
+  State.groups[0] = State.groups[0].filter(p => p !== drummer);
+  State.roster = State.groups.flat();
+  State.bench = [];
+  Drummers.reconcile();
+  assert.equal(Drummers.isDrummer(drummer.name), false, 'tag dropped once the player is gone entirely');
+
+  // But merely being benched (not gone) must not be treated as a departure.
+  const drummer2 = State.roster[0];
+  Drummers.set(drummer2.name, 'War');
+  State.groups[0] = State.groups[0].filter(p => p !== drummer2);
+  State.roster = State.groups.flat();
+  State.bench = [drummer2];
+  Drummers.reconcile();
+  assert.equal(Drummers.isDrummer(drummer2.name), true, 'still on the bench — tag is not stale yet');
+});
+
 // ══════════════════════════════════════════════════════════════
 // Persistence: exportRoster/loadRoster, share string, PlanStore
 // ══════════════════════════════════════════════════════════════

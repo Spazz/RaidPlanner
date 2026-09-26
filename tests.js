@@ -16,7 +16,7 @@ if (!scriptMatch) { console.error('Could not extract <script> from index.html');
 // Only eval the logic portion (before UI rendering / DOM code)
 const logicCode = scriptMatch[1].split('// ── UI RENDERING')[0];
 // Add module.exports so we can access the objects
-const wrappedCode = logicCode + '\nmodule.exports = { PreferredSlots, PlanStore, PlanSession, ImportHistory, Config, Import, Optimizer, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, enforceRaidCapacity };';
+const wrappedCode = logicCode + '\nmodule.exports = { PreferredSlots, PlanStore, PlanSession, ImportHistory, Config, Import, Optimizer, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, enforceRaidCapacity, esc, Constraints, Backups, Drummers, PrintSheet };';
 
 // Write to a temp file and require it (cleaner than eval for stack traces)
 const tmpPath = path.join(require('os').tmpdir(), '_pp_test_logic.tmp.js');
@@ -24,7 +24,7 @@ fs.writeFileSync(tmpPath, wrappedCode);
 const PP = require(tmpPath);
 fs.unlinkSync(tmpPath); // clean up immediately
 
-const { Config, Import, Optimizer, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, enforceRaidCapacity } = PP;
+const { Config, Import, Optimizer, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, enforceRaidCapacity, esc, Constraints, Backups, Drummers } = PP;
 
 // NOTE: All logic (Config, Optimizer, Import, getGroupBuffs, etc.)
 // is now loaded directly from index.html. No duplicate code to maintain.
@@ -66,6 +66,9 @@ function resetState() {
   State.buffOverrides = {};
   State.selectedRaid = 'bt';
   State.rosterName = 'Test';
+  State.playerConstraints = [];
+  State.drummers = [];
+  State.backups = {};
 }
 
 // ── Helper: create a player ──
@@ -2142,6 +2145,12 @@ describe('Sync: withdrawn and Absent players are removed from groups and bench',
   signUps[signUps.length - 1] = { name: 'Maybe', className: 'Absence', specName: 'Absence', id: 5 }; // bench player now Absent
   const magey = byName('Magey');
   State.buffOverrides['0:' + magey.uid + ':fire'] = { buffId: 'x' };
+  // Name-keyed features tied to the fully-withdrawn player must be dropped
+  // the same way buff overrides already are (review finding #3) — otherwise
+  // they dangle in State.playerConstraints/State.drummers and can silently
+  // re-attach to an unrelated future sign-up that happens to reuse the name.
+  Constraints.add('Magey', 'Tanky', 'together');
+  Drummers.set('Magey', 'Battle');
   const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps }));
   assertEqual(diff.removed.length, 2, 'two removed');
   Import.applyRaidHelperSync(diff);
@@ -2150,6 +2159,9 @@ describe('Sync: withdrawn and Absent players are removed from groups and bench',
   assert(State.groups.every(g => !g.includes(magey)), 'Magey left the group');
   assertEqual(Object.keys(State.buffOverrides).length, 0, 'overrides for the removed player are cleared');
   assertEqual(State.roster.length, 3, 'three seated remain');
+  assertEqual(Constraints.forPlayer('Magey').length, 0, 'Magey\'s constraint is dropped on full withdrawal');
+  assertEqual(Constraints.forPlayer('Tanky').length, 0, 'Tanky no longer inherits the stale constraint either');
+  assert(!Drummers.isDrummer('Magey'), 'Magey\'s drummer tag is dropped on full withdrawal');
 });
 
 describe('Sync: a spec change updates the player in place', () => {
@@ -2394,6 +2406,46 @@ describe('Preferred slots: real-player counts, import matching, storage and shar
   assertEqual(State.groups[0][0]?.name, 'SlotMage', 'preferred destination overrides imported group');
   assertEqual(State.preferredSlots.length, 4, 'one signup consumes only one request');
   resetState();
+});
+
+// ════════════════════════════════════════════════════════════════
+// esc() — HTML escaping (review finding #1: attribute injection)
+// ════════════════════════════════════════════════════════════════
+describe('esc(): escapes every character that is special in HTML text or attribute position', () => {
+  assertEqual(esc('&'), '&amp;', 'ampersand');
+  assertEqual(esc('<'), '&lt;', 'less-than');
+  assertEqual(esc('>'), '&gt;', 'greater-than');
+  assertEqual(esc('"'), '&quot;', 'double quote');
+  assertEqual(esc("'"), '&#39;', 'single quote');
+  assertEqual(esc(null), '', 'null becomes empty string');
+  assertEqual(esc(undefined), '', 'undefined becomes empty string');
+  assertEqual(esc('Plain Name'), 'Plain Name', 'ordinary text is untouched');
+});
+
+describe('esc(): a name built to break out of a double-quoted HTML attribute renders inert', () => {
+  // The exact payload used for the manual browser verification pass too —
+  // a raw " ends the attribute early and lets the rest add a live handler.
+  const payload = 'Foo" onmouseover="window.__pwned=1" x="';
+  const escaped = esc(payload);
+  assert(!escaped.includes('"'), 'no raw double-quote survives escaping');
+  assert(!escaped.includes("'"), 'no raw single-quote survives escaping');
+
+  // Reproduce a real call site's shape (e.g. data-template="${esc(t.name)}")
+  // and confirm the browser would parse exactly one attribute out of it,
+  // with no separate onmouseover attribute appearing anywhere on the tag.
+  const html = `<div data-template="${escaped}" class="saved-roster-item"></div>`;
+  // `key="` (an unescaped quote right after `=`) is what actually opens a new
+  // HTML attribute — matching that, rather than just the substring
+  // "onmouseover=", proves the injected text stayed inert data inside
+  // data-template's value instead of becoming a second, real attribute.
+  const attrOpenings = html.match(/[a-zA-Z0-9_-]+="/g) || [];
+  assertEqual(attrOpenings.length, 2, 'exactly the two real attributes (data-template, class) are present');
+  assert(html.includes('&quot;'), 'the quote character survives only in its escaped form');
+});
+
+describe('esc(): matches PrintSheet\'s local DOM-free escaper (no drift between the two implementations)', () => {
+  const samples = ['&<>"\'', 'Foo" onclick="x()"', "O'Brien", 'Plain', ''];
+  for (const s of samples) assertEqual(esc(s), PP.PrintSheet ? PP.PrintSheet._esc(s) : esc(s), `esc() vs PrintSheet._esc() for ${JSON.stringify(s)}`);
 });
 
 // Exercise the actual async UI import controller with isolated storage/network fixtures.

@@ -1924,10 +1924,15 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
    ================================================================ */
 
 // ── UTILITIES ───────────────────────────────────────────────────
+// Regex-based (not DOM-round-trip) so it also escapes the characters that
+// matter in HTML ATTRIBUTE position, not just text-node position: the old
+// document.createElement/textContent trick only produced &amp;/&lt;/&gt;,
+// which left every `attr="${esc(name)}"` call site open to attribute-
+// injection from a raw " or ' in a player/template/roster name. Also keeps
+// esc() DOM-free so it can be unit-tested under Node (see PrintSheet._esc,
+// which already used this same regex for exactly that reason).
 function esc(str) {
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
+  return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 let _uid = 0;
 function nextUid() { return 'p' + (++_uid); }
@@ -2768,6 +2773,17 @@ const Constraints = {
       c.a.toLowerCase() !== lower && c.b.toLowerCase() !== lower);
   },
 
+  // Drops any constraint where either side is no longer anywhere in the
+  // roster or bench — run on every render, like Backups.reconcile()/
+  // Assignments.reconcileRoster(), so a departure path with no explicit
+  // clearForName() call (e.g. RaidSplit moving a player out of this plan)
+  // still self-heals instead of leaving a name-keyed constraint dangling.
+  reconcile() {
+    const names = new Set([...(State.roster || []), ...(State.bench || [])].map(p => (p.name || '').toLowerCase()));
+    State.playerConstraints = (State.playerConstraints || []).filter(c =>
+      names.has(c.a.toLowerCase()) && names.has(c.b.toLowerCase()));
+  },
+
   _locate(groups, name) {
     const lower = String(name || '').toLowerCase();
     for (let gi = 0; gi < groups.length; gi++) {
@@ -2980,6 +2996,16 @@ const Drummers = {
   // drops the tag — mirrors Backups.clearForName/Constraints.clearForName,
   // called from the same RosterEdit call sites.
   clearForName(name) { this.remove(name); },
+
+  // Drops any drummer tag for a name no longer in the roster or bench — run
+  // on every render, mirroring Constraints.reconcile()/Backups.reconcile(),
+  // so departure paths without an explicit clearForName() call (e.g.
+  // RaidSplit) don't leave a stale tag that could resurface on a future
+  // name collision.
+  reconcile() {
+    const names = new Set([...(State.roster || []), ...(State.bench || [])].map(p => (p.name || '').toLowerCase()));
+    State.drummers = (State.drummers || []).filter(d => names.has(d.player.toLowerCase()));
+  },
 
   // Per-group booleans: does this seated group hold at least one drummer?
   // Empty/nonexistent groups are simply `false`, same as "no members yet".
@@ -3386,7 +3412,13 @@ const Import = {
       if (backupName && State.bench.some(p => p.name === backupName)) {
         backupSwapReady.push({ primaryName: v.name, backupName, groupNumber: v.groupNumber });
       }
-      if (v.gone) Backups.clearForName(v.name);
+      // A fully-withdrawn primary can never resolve again under this name, so
+      // every name-keyed feature drops them here — mirrors the rename/delete
+      // call sites (RosterEdit.UpdatePlayer/DeletePlayer) and RandomRoster's
+      // "start fresh" cleanup. Left dangling, a stale constraint/drum-tag is
+      // invisible until a later sign-up happens to reuse the same name, at
+      // which point it silently applies to the wrong (new) person.
+      if (v.gone) { Backups.clearForName(v.name); Constraints.clearForName(v.name); Drummers.clearForName(v.name); }
     }
 
     return {
@@ -7836,7 +7868,13 @@ function summarizeCandidateLayout(groups, bench) {
 // ── UI RENDERING ────────────────────────────────────────────────
 function syncVersionControls() {
   const profile = GameVersions[State.gameVersion];
-  document.querySelectorAll('[data-version]').forEach(button => {
+  // Scoped to the real switcher tabs only — the landing page's informational
+  // "What's New" version-comparison cards (renderVersionComparison) reuse the
+  // same [data-version] attribute/values for styling and would otherwise get
+  // a live click handler wired onto them too, silently switching the whole
+  // app's game version (and re-fitting the roster) when someone clicks what
+  // looks like a plain text panel on the landing page.
+  document.querySelectorAll('.game-version-tab[data-version]').forEach(button => {
     button.setAttribute('aria-pressed', String(button.dataset.version === State.gameVersion));
     button.onclick = () => {
       if (button.dataset.version === State.gameVersion) return;
@@ -8188,6 +8226,8 @@ function renderGroups() {
   State.roster = State.groups.flat();
   Assignments.reconcileRoster();
   Backups.reconcile();
+  Constraints.reconcile();
+  Drummers.reconcile();
   // Ensure the tank group is always Group 1
   sortTankGroupFirst();
 
@@ -9686,7 +9726,7 @@ function maybeSuggestVersionSwitch(templateId) {
   text.textContent = `This Raid-Helper event uses the ${GameVersions[detected].name} template — switch rulesets?`;
   banner.hidden = false;
   switchBtn.onclick = () => {
-    const versionBtn = document.querySelector(`[data-version="${detected}"]`);
+    const versionBtn = document.querySelector(`.game-version-tab[data-version="${detected}"]`);
     if (versionBtn) versionBtn.click();
     hideVersionSuggestBanner();
   };
@@ -10540,9 +10580,7 @@ const RaidHelperSync = {
   updateControls() {
     const linked = !!State.sourceEventId;
     const btn = document.getElementById('btn-refresh');
-    const mobile = document.getElementById('mobile-btn-refresh');
     if (btn) btn.hidden = !linked;
-    if (mobile) mobile.hidden = !linked;
     if (!linked) { this.hideBanner(); this.hideBackupBanner(); }
   },
 };
@@ -11965,11 +12003,33 @@ document.addEventListener('DOMContentLoaded', function() {
     const source = icon.getAttribute('data-tt-source');
     const sourceColor = icon.getAttribute('data-tt-source-color');
 
-    let html = `<div class="tt-name">${name}</div>`;
-    if (desc) html += `<div class="tt-desc">${desc}</div>`;
-    if (source) html += `<div class="tt-source"><span style="color:${sourceColor}">${source}</span></div>`;
-
-    portal.innerHTML = html;
+    // Built with textContent, not innerHTML/template-string concatenation:
+    // these data-tt-* attributes carry player/template names and notes
+    // (user-provided data, round-tripped through esc() when the attribute
+    // was written). getAttribute() returns the attribute's DECODED value —
+    // any HTML the name contains comes back out raw — so re-inserting it via
+    // innerHTML here would re-parse it as markup and execute it. Every node
+    // is built explicitly and text is assigned via .textContent instead.
+    portal.innerHTML = '';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'tt-name';
+    nameEl.textContent = name;
+    portal.appendChild(nameEl);
+    if (desc) {
+      const descEl = document.createElement('div');
+      descEl.className = 'tt-desc';
+      descEl.textContent = desc;
+      portal.appendChild(descEl);
+    }
+    if (source) {
+      const sourceEl = document.createElement('div');
+      sourceEl.className = 'tt-source';
+      const sourceSpan = document.createElement('span');
+      sourceSpan.style.color = sourceColor;
+      sourceSpan.textContent = source;
+      sourceEl.appendChild(sourceSpan);
+      portal.appendChild(sourceEl);
+    }
     portal.style.display = 'block';
 
     const rect = icon.getBoundingClientRect();
