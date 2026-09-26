@@ -1849,10 +1849,11 @@ const Config = {
 
 // Version profiles own their raid catalog and rule availability. Forever templates
 // are planning capacities chosen by the user, not claims about beta raid sizes.
+// `modeled` is derived below from Rulesets — a version is modeled iff it has one.
 const GameVersions = {
-  tbc: { name:'WoW TBC', defaultRaid:'bt', modeled:true, raids:[...Config.RaidOrder], note:'TBC party buffs and optimization rules.' },
-  classic: { name:'WoW Classic', defaultRaid:'classic40', modeled:false, raids:[], note:'Manual planning. Classic buff, composition and optimizer rules are not configured yet.' },
-  forever: { name:'WoW Forever (Beta)', defaultRaid:'forever40', modeled:false, raids:[], note:'Beta: choose a planning capacity. Raids, class/spec changes, buffs and optimizer rules are unconfirmed; the class/spec picker uses the existing baseline.' },
+  tbc: { name:'WoW TBC', defaultRaid:'bt', raids:[...Config.RaidOrder], note:'TBC party buffs and optimization rules.' },
+  classic: { name:'WoW Classic', defaultRaid:'classic40', raids:[], note:'Manual planning. Classic buff, composition and optimizer rules are not configured yet.' },
+  forever: { name:'WoW Forever (Beta)', defaultRaid:'forever40', raids:[], note:'Beta: choose a planning capacity. Raids, class/spec changes, buffs and optimizer rules are unconfirmed; the class/spec picker uses the existing baseline.' },
 };
 for (const version of ['classic', 'forever']) {
   for (const size of [10, 20, 40]) {
@@ -1861,11 +1862,75 @@ for (const version of ['classic', 'forever']) {
     Config.Raids[key] = {name:`${size}-player template`, size, groups:size/5, tier:'Planning templates'};
   }
 }
-const TBC_RULES = {buffs:Config.Buffs, debuffs:Config.Debuffs};
+
+// ── RULESET REGISTRY ────────────────────────────────────────────
+// Every piece of version-specific game-rules data (buffs, specs, optimizer
+// value tables, class-specific scoring hooks) is looked up through here, one
+// key per GameVersion. Classic/Forever stay null (empty ruleset) until their
+// data lands in a later phase — see activeRules(). A few TBC tables (the
+// Optimizer's DPS_VALUE/MIT_VALUE/etc. and IdealComp) are defined further
+// down the file; they're folded into Rulesets.tbc right after they're built.
+const Rulesets = {
+  tbc: {
+    buffs: Config.Buffs,
+    debuffs: Config.Debuffs,
+    specs: Config.Specs,
+    raidHelperSpecMap: Config.RaidHelperSpecMap,
+    classList: ['WARRIOR','PALADIN','HUNTER','ROGUE','PRIEST','SHAMAN','MAGE','WARLOCK','DRUID'],
+    // TBC talent-tree icons for the player rows' spec marker (Wowhead CDN names).
+    specIcons: {
+      WARRIOR: { Arms:'ability_rogue_eviscerate', Fury:'ability_warrior_innerrage', Protection:'ability_warrior_defensivestance' },
+      PALADIN: { Holy:'spell_holy_holybolt', Protection:'spell_holy_devotionaura', Retribution:'spell_holy_auraoflight' },
+      HUNTER:  { 'Beast Mastery':'ability_hunter_beasttaming', Marksmanship:'ability_marksmanship', Survival:'ability_hunter_swiftstrike' },
+      ROGUE:   { Assassination:'ability_rogue_eviscerate', Combat:'ability_backstab', Subtlety:'ability_stealth' },
+      PRIEST:  { Discipline:'spell_holy_wordfortitude', Holy:'spell_holy_holybolt', Shadow:'spell_shadow_shadowwordpain' },
+      SHAMAN:  { Elemental:'spell_nature_lightning', Enhancement:'spell_nature_lightningshield', Restoration:'spell_nature_magicimmunity' },
+      MAGE:    { Arcane:'spell_holy_magicalsentry', Fire:'spell_fire_firebolt02', Frost:'spell_frost_frostbolt02' },
+      WARLOCK: { Affliction:'spell_shadow_deathcoil', Demonology:'spell_shadow_metamorphosis', Destruction:'spell_shadow_rainoffire' },
+      DRUID:   { Balance:'spell_nature_starfall', Feral:'ability_racial_bearform', Restoration:'spell_nature_healingtouch' },
+    },
+    // Totem / aura exclusivity (from Optimizer.lua): which element a totem
+    // occupies, which auras a paladin can run, and the default pick per role.
+    totemElements: {
+      WINDFURY:'air', GRACE_OF_AIR:'air', WRATH_OF_AIR:'air',
+      TOTEM_OF_WRATH:'fire', MANA_SPRING:'water', MANA_TIDE:'water',
+      STRENGTH_OF_EARTH:'earth',
+    },
+    paladinAuras: { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true, SANCTITY_AURA:true },
+    bestAirTotem: { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'WRATH_OF_AIR', healer:'WRATH_OF_AIR' },
+    bestPaladinAura: { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' },
+    // Small hooks the optimizer consults instead of hardcoded class/spec
+    // checks, so a future ruleset can turn them off or swap the logic.
+    rules: {
+      tankAnchorRank: p => p.class === 'PALADIN' ? 0 : p.class === 'WARRIOR' ? 1 : 2,
+      meleeWantsWindfury: true,     // a melee group with no shaman is missing WF
+      ferociousInspiration: true,   // BM Hunter FI stacks multiplicatively per hunter
+      specAura: { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA' },
+    },
+  },
+  classic: null,
+  forever: null,
+};
+const EMPTY_RULESET = {
+  buffs: {}, debuffs: {}, totemElements: {}, paladinAuras: {}, bestAirTotem: {}, bestPaladinAura: {},
+  dpsValue: {}, mitValue: {}, sustainValue: {}, dpsWeight: {}, dpsWeightByRole: {}, rules: {}, idealComp: null,
+};
+function activeRules() {
+  return Rulesets[State.gameVersion] || EMPTY_RULESET;
+}
+// A version is modeled iff it has a ruleset.
+for (const version of Object.keys(GameVersions)) {
+  Object.defineProperty(GameVersions[version], 'modeled', { get: () => !!Rulesets[version] });
+}
+
 Object.defineProperties(Config, {
-  Buffs: {get() { return GameVersions[State.gameVersion].modeled ? TBC_RULES.buffs : {}; }},
-  Debuffs: {get() { return GameVersions[State.gameVersion].modeled ? TBC_RULES.debuffs : {}; }},
+  Buffs: {get() { return activeRules().buffs || {}; }},
+  Debuffs: {get() { return activeRules().debuffs || {}; }},
   RaidOrder: {get() { return GameVersions[State.gameVersion].raids; }},
+  // Classic/Forever have no spec/class differences modeled yet — fall back
+  // to the TBC baseline (existing behavior for every unmodeled version).
+  Specs: {get() { return activeRules().specs || Rulesets.tbc.specs; }},
+  RaidHelperSpecMap: {get() { return activeRules().raidHelperSpecMap || Rulesets.tbc.raidHelperSpecMap; }},
 });
 function versionForRaid(raid) {
   return Object.keys(GameVersions).find(v => GameVersions[v].raids.includes(raid));
@@ -1874,23 +1939,20 @@ function validVersionRaid(version, raid) {
   return !!GameVersions[version] && GameVersions[version].raids.includes(raid);
 }
 
-// ── TOTEM / AURA EXCLUSIVITY (from Optimizer.lua) ──
-const TOTEM_ELEMENTS = {
-  WINDFURY:'air', GRACE_OF_AIR:'air', WRATH_OF_AIR:'air',
-  TOTEM_OF_WRATH:'fire', MANA_SPRING:'water', MANA_TIDE:'water',
-  STRENGTH_OF_EARTH:'earth',
-};
-const PALADIN_AURAS = { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true, SANCTITY_AURA:true };
+// TBC baseline aliases — plain bindings for code (and tests) that always want
+// the TBC tables directly. Version-aware call sites use activeRules() instead.
+const TOTEM_ELEMENTS = Rulesets.tbc.totemElements;
+const PALADIN_AURAS = Rulesets.tbc.paladinAuras;
+const BEST_AIR_TOTEM = Rulesets.tbc.bestAirTotem;
+const BEST_PALADIN_AURA = Rulesets.tbc.bestPaladinAura;
 
 // Auras a given paladin can actually run (Sanctity Aura is Retribution-only).
 function paladinAurasFor(player) {
-  return Object.keys(PALADIN_AURAS).filter(id => {
+  return Object.keys(activeRules().paladinAuras || {}).filter(id => {
     const b = Config.Buffs[id];
     return !b || !b.sourceSpec || b.sourceSpec === player.spec;
   });
 }
-const BEST_AIR_TOTEM = { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'WRATH_OF_AIR', healer:'WRATH_OF_AIR' };
-const BEST_PALADIN_AURA = { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' };
 
 function getBuffPriority(buff, role) {
   if (!buff) return 0;
@@ -2891,15 +2953,24 @@ const DPS_WEIGHT = {
 };
 const DPS_WEIGHT_BY_ROLE = { melee_dps: 0.8, ranged_dps: 0.9, caster_dps: 0.85, tank: 0.5, healer: 1.0 };
 
+// Fold the value tables above into the TBC ruleset now that they exist —
+// dpsWeightFor/dpsValueFor/mitValueFor read them back out through
+// activeRules() so a future ruleset only needs its own tables here.
+Object.assign(Rulesets.tbc, {
+  dpsValue: DPS_VALUE, mitValue: MIT_VALUE, sustainValue: SUSTAIN_VALUE,
+  dpsWeight: DPS_WEIGHT, dpsWeightByRole: DPS_WEIGHT_BY_ROLE,
+});
+
 function dpsWeightFor(player) {
-  const w = DPS_WEIGHT[player.class + ':' + player.spec];
+  const rules = activeRules();
+  const w = (rules.dpsWeight || {})[player.class + ':' + player.spec];
   if (w != null) return w;
-  const r = DPS_WEIGHT_BY_ROLE[player.role];
+  const r = (rules.dpsWeightByRole || {})[player.role];
   return r != null ? r : 0.8;
 }
 
 function dpsValueFor(buffId, player) {
-  const v = DPS_VALUE[buffId];
+  const v = (activeRules().dpsValue || {})[buffId];
   if (!v) return 0;
   const key = player.class + ':' + player.spec;
   let base = 0;
@@ -2910,7 +2981,7 @@ function dpsValueFor(buffId, player) {
 }
 
 function mitValueFor(buffId, tank) {
-  const v = MIT_VALUE[buffId];
+  const v = (activeRules().mitValue || {})[buffId];
   if (!v) return 0;
   const key = tank.class + ':' + tank.spec;
   if (v[key] != null) return v[key];
@@ -3103,7 +3174,7 @@ const Optimizer = {
     const tankIdx = groups._roleIdentities.indexOf('tank');
     const targetIdx = tankIdx >= 0 ? tankIdx : 0;
     const minTanks = mode === 'tank_mit' ? 3 : 1;
-    const anchorRank = p => p.class === 'PALADIN' ? 0 : p.class === 'WARRIOR' ? 1 : 2;
+    const anchorRank = activeRules().rules.tankAnchorRank || (() => 0);
     const tanks = pool.filter(p => p.role === 'tank').sort((a, b) => anchorRank(a) - anchorRank(b));
     groups._anchors = new Set();
     for (const t of tanks.slice(0, minTanks)) {
@@ -3181,6 +3252,7 @@ const Optimizer = {
   // per shaman (chosen by group value — models totem assignments/twisting),
   // one distinct aura per paladin (best available by group value).
   resolveGroupBuffs(group, valueFn) {
+    const rules = activeRules();
     const chosen = new Set();
     const usedAuras = new Set();
     for (const p of group) {
@@ -3189,7 +3261,7 @@ const Optimizer = {
         for (const [id, buff] of Object.entries(Config.Buffs)) {
           if (buff.sourceClass !== 'SHAMAN') continue;
           if (buff.sourceSpec && buff.sourceSpec !== p.spec) continue;
-          const el = TOTEM_ELEMENTS[id];
+          const el = rules.totemElements[id];
           if (el) (byElement[el] = byElement[el] || []).push(id);
           else chosen.add(id); // shaman passives (e.g. Unleashed Rage)
         }
@@ -3214,7 +3286,7 @@ const Optimizer = {
         for (const [id, buff] of Object.entries(Config.Buffs)) {
           if (buff.sourceClass !== p.class) continue;
           if (buff.sourceSpec && buff.sourceSpec !== p.spec) continue;
-          if (TOTEM_ELEMENTS[id] || PALADIN_AURAS[id]) continue;
+          if (rules.totemElements[id] || rules.paladinAuras[id]) continue;
           chosen.add(id);
         }
       }
@@ -3225,6 +3297,7 @@ const Optimizer = {
   // The single objective all phases share. Higher = better group.
   groupScore(group, gi, groups, mode) {
     const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
+    const rules = activeRules();
     const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
     const isTank = this.isTankGroup(gi, groups);
     const healerCount = group.reduce((n, p) => n + (p.role === 'healer' ? 1 : 0), 0);
@@ -3243,7 +3316,7 @@ const Optimizer = {
       let v = 0;
       for (const m of group) v += dpsValueFor(id, m) * cfg.dps;
       for (const t of tanks) v += mitValueFor(id, t) * cfg.mit;
-      if (isTank && SUSTAIN_VALUE[id]) v += SUSTAIN_VALUE[id] * Math.min(healerCount, 2) * cfg.structure;
+      if (isTank && rules.sustainValue[id]) v += rules.sustainValue[id] * Math.min(healerCount, 2) * cfg.structure;
       return v;
     };
 
@@ -3254,7 +3327,7 @@ const Optimizer = {
     // the only party buff that does. resolveGroupBuffs dedupes it like any
     // passive, so credit each additional BM hunter's copy here.
     const bmCount = group.reduce((n, p) => n + (p.class === 'HUNTER' && p.spec === 'Beast Mastery' ? 1 : 0), 0);
-    if (bmCount > 1) score += (bmCount - 1) * buffValue('FEROCIOUS_INSP') * 0.5;
+    if (rules.rules.ferociousInspiration && bmCount > 1) score += (bmCount - 1) * buffValue('FEROCIOUS_INSP') * 0.5;
 
     // Structural placement rules (from the user's reference TBC comp):
     //  - Healers gravitate to the tank group. Healing is cross-group in TBC,
@@ -3278,7 +3351,7 @@ const Optimizer = {
     // group that has nobody to drop it (reference comp rule 1: any shaman
     // drops WF for melee), and melee spread across shaman-covered groups
     // instead of piling into the one Enhancement group.
-    if (roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')) {
+    if (rules.rules.meleeWantsWindfury && roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')) {
       for (const p of group) {
         if (p.role === 'melee_dps') score -= 6 * dpsWeightFor(p) * cfg.structure;
       }
@@ -3596,6 +3669,7 @@ const Optimizer = {
 // ── BUFF CALCULATOR (from Optimizer.lua GetGroupBuffs) ──────────
 function getGroupBuffs(players, groupIndex) {
   if (!GameVersions[State.gameVersion].modeled) return [];
+  const rules = activeRules();
   const buffList = [];
   const passiveAdded = new Set(); // prevent duplicate passive buffs
   const usedAuras = new Set(); // prevent duplicate paladin auras in auto-assign
@@ -3628,14 +3702,14 @@ function getGroupBuffs(players, groupIndex) {
       for (const [buffId, buff] of Object.entries(Config.Buffs)) {
         if (buff.sourceClass !== 'SHAMAN') continue;
         if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
-        const element = TOTEM_ELEMENTS[buffId];
+        const element = rules.totemElements[buffId];
         if (!element) continue;
         if (shamanTotems[element]?.isOverride) continue;
 
         if (!shamanTotems[element]) {
           shamanTotems[element] = { buffId };
         } else {
-          const bestForRole = BEST_AIR_TOTEM[dominantRole];
+          const bestForRole = rules.bestAirTotem[dominantRole];
           if (element === 'air' && buffId === bestForRole) {
             shamanTotems[element] = { buffId };
           } else if (element === 'water' && buffId === 'MANA_TIDE') {
@@ -3652,7 +3726,7 @@ function getGroupBuffs(players, groupIndex) {
       // Non-totem Shaman passives (e.g. Unleashed Rage) — one per unique buff type
       for (const [buffId, buff] of Object.entries(Config.Buffs)) {
         if (buff.sourceClass !== 'SHAMAN') continue;
-        if (TOTEM_ELEMENTS[buffId]) continue;
+        if (rules.totemElements[buffId]) continue;
         if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
         if (passiveAdded.has(buffId)) continue;
         passiveAdded.add(buffId);
@@ -3678,11 +3752,10 @@ function getGroupBuffs(players, groupIndex) {
         // Protection paladin runs Devotion on themselves; otherwise the
         // group's dominant role decides. Taken auras fall through.
         const candidates = paladinAurasFor(player);
-        const SPEC_AURA = { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA' };
-        const specPick = SPEC_AURA[player.spec];
+        const specPick = (rules.rules.specAura || {})[player.spec];
         const preferred = (specPick && !usedAuras.has(specPick))
           ? specPick
-          : (BEST_PALADIN_AURA[dominantRole] || 'DEVOTION_AURA');
+          : (rules.bestPaladinAura[dominantRole] || 'DEVOTION_AURA');
         if (candidates.includes(preferred) && !usedAuras.has(preferred)) {
           auraBuffId = preferred;
         } else {
@@ -3703,7 +3776,7 @@ function getGroupBuffs(players, groupIndex) {
       for (const [buffId, buff] of Object.entries(Config.Buffs)) {
         if (player.class !== buff.sourceClass) continue;
         if (buff.sourceSpec && player.spec !== buff.sourceSpec) continue;
-        if (TOTEM_ELEMENTS[buffId] || PALADIN_AURAS[buffId]) continue;
+        if (rules.totemElements[buffId] || rules.paladinAuras[buffId]) continue;
         if (passiveAdded.has(buffId)) continue;
         passiveAdded.add(buffId);
         buffList.push({ id: buffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: false });
@@ -3744,8 +3817,9 @@ function canProvideBuff(entry, player) {
 
 // The totem element or 'aura' a buff occupies, or null for passives.
 function buffSlotCategory(buffId) {
-  if (TOTEM_ELEMENTS[buffId]) return TOTEM_ELEMENTS[buffId];
-  if (PALADIN_AURAS[buffId]) return 'aura';
+  const rules = activeRules();
+  if (rules.totemElements[buffId]) return rules.totemElements[buffId];
+  if (rules.paladinAuras[buffId]) return 'aura';
   return null;
 }
 
@@ -3822,7 +3896,7 @@ const RosterEdit = {
   },
 
   // Display order for the class dropdown.
-  ClassList: ['WARRIOR','PALADIN','HUNTER','ROGUE','PRIEST','SHAMAN','MAGE','WARLOCK','DRUID'],
+  get ClassList() { return activeRules().classList || Rulesets.tbc.classList; },
 
   ClassLabel(classFile) {
     if (!classFile) return '';
@@ -4215,22 +4289,13 @@ function getRoleIcon(role) {
   return `<span class="role-icon ${r.cls}" title="${r.label}"><img src="${src}" alt="${r.label}" loading="lazy"></span>`;
 }
 
-// Player rows show the TBC talent-tree icon for the player's spec, falling
-// back to the class crest when the spec is unknown. Icon names are Wowhead's.
-const SPEC_ICONS = {
-  WARRIOR: { Arms:'ability_rogue_eviscerate', Fury:'ability_warrior_innerrage', Protection:'ability_warrior_defensivestance' },
-  PALADIN: { Holy:'spell_holy_holybolt', Protection:'spell_holy_devotionaura', Retribution:'spell_holy_auraoflight' },
-  HUNTER:  { 'Beast Mastery':'ability_hunter_beasttaming', Marksmanship:'ability_marksmanship', Survival:'ability_hunter_swiftstrike' },
-  ROGUE:   { Assassination:'ability_rogue_eviscerate', Combat:'ability_backstab', Subtlety:'ability_stealth' },
-  PRIEST:  { Discipline:'spell_holy_wordfortitude', Holy:'spell_holy_holybolt', Shadow:'spell_shadow_shadowwordpain' },
-  SHAMAN:  { Elemental:'spell_nature_lightning', Enhancement:'spell_nature_lightningshield', Restoration:'spell_nature_magicimmunity' },
-  MAGE:    { Arcane:'spell_holy_magicalsentry', Fire:'spell_fire_firebolt02', Frost:'spell_frost_frostbolt02' },
-  WARLOCK: { Affliction:'spell_shadow_deathcoil', Demonology:'spell_shadow_metamorphosis', Destruction:'spell_shadow_rainoffire' },
-  DRUID:   { Balance:'spell_nature_starfall', Feral:'ability_racial_bearform', Restoration:'spell_nature_healingtouch' },
-};
+// Player rows show the ruleset's talent-tree icon for the player's spec,
+// falling back to the class crest when the spec/ruleset has none. Icon data
+// lives in Rulesets[version].specIcons (TBC baseline: Rulesets.tbc.specIcons).
 function getSpecIcon(p) {
+  const specIcons = activeRules().specIcons || Rulesets.tbc.specIcons;
   const cls = (p.class || '').toUpperCase();
-  const icon = (SPEC_ICONS[cls] && SPEC_ICONS[cls][p.spec]) || (cls ? 'classicon_' + cls.toLowerCase() : null);
+  const icon = (specIcons[cls] && specIcons[cls][p.spec]) || (cls ? 'classicon_' + cls.toLowerCase() : null);
   if (!icon) return getRoleIcon(p.role);
   const roleCls = p.role === 'tank' ? 'role-tank' : p.role === 'healer' ? 'role-healer' : 'role-dps';
   const label = p.spec ? `${p.spec} ${cls.charAt(0) + cls.slice(1).toLowerCase()}` : cls;
@@ -4389,7 +4454,7 @@ function renderGroups() {
         const iconUrl = Config.BuffIconURL(b.id);
         const hasIcon = iconUrl ? ' has-icon' : '';
         const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy" class="buff-img">` : '';
-        const isSwappable = !!(TOTEM_ELEMENTS[b.id] || PALADIN_AURAS[b.id]);
+        const isSwappable = !!buffSlotCategory(b.id);
         const swapClass = isSwappable ? ' swappable' : '';
         const overrideClass = b.isOverride ? ' overridden' : '';
         const dataAttrs = isSwappable ? ` data-buff-id="${esc(b.id)}" data-group="${gi}" data-uid="${esc(b.sourceUid)}" data-source="${esc(b.sourceName)}" data-class="${esc(b.sourceClass)}" data-spec="${esc(b.sourceSpec || '')}"` : '';
@@ -4923,13 +4988,14 @@ function cleanupOverrides() {
 }
 
 function getSwappableBuffs(buffId, playerClass, playerSpec) {
-  const element = TOTEM_ELEMENTS[buffId];
-  const isAura = PALADIN_AURAS[buffId];
+  const rules = activeRules();
+  const element = rules.totemElements[buffId];
+  const isAura = rules.paladinAuras[buffId];
   if (!element && !isAura) return [];
 
   const alternatives = [];
   if (element) {
-    for (const [id, el] of Object.entries(TOTEM_ELEMENTS)) {
+    for (const [id, el] of Object.entries(rules.totemElements)) {
       if (el !== element) continue;
       const buff = Config.Buffs[id];
       if (!buff) continue;
@@ -4938,7 +5004,7 @@ function getSwappableBuffs(buffId, playerClass, playerSpec) {
       alternatives.push({ id, buff });
     }
   } else if (isAura) {
-    for (const id of Object.keys(PALADIN_AURAS)) {
+    for (const id of Object.keys(rules.paladinAuras)) {
       const buff = Config.Buffs[id];
       if (!buff) continue;
       alternatives.push({ id, buff });
@@ -4954,7 +5020,7 @@ function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sou
   const alts = getSwappableBuffs(buffId, sourceClass, sourceSpec);
   if (alts.length <= 1) return; // Nothing to swap to
 
-  const element = TOTEM_ELEMENTS[buffId];
+  const element = activeRules().totemElements[buffId];
   const category = element || 'aura';
   const overrideKey = `${groupIndex}:${sourceUid}:${category}`;
 
@@ -6296,7 +6362,9 @@ const IdealComp = {
   generate(raidKey) {
     const raidInfo = Config.Raids[raidKey];
     if (!raidInfo || !GameVersions[State.gameVersion].modeled) return [];
-    return raidInfo.size === 10 ? this.build10Man() : this.build25Man();
+    const comp = activeRules().idealComp;
+    if (!comp) return [];
+    return raidInfo.size === 10 ? comp.build10Man() : comp.build25Man();
   },
 
   makePlayer(cls, spec, role) {
@@ -6389,6 +6457,10 @@ const IdealComp = {
     return groups;
   },
 };
+// Wire the TBC ideal comp into the registry now that IdealComp exists —
+// IdealComp.generate() dispatches through activeRules().idealComp, so a
+// future ruleset only needs to supply its own build25Man/build10Man here.
+Rulesets.tbc.idealComp = { build25Man: () => IdealComp.build25Man(), build10Man: () => IdealComp.build10Man() };
 
 // ── TAB SWITCHING ───────────────────────────────────────────────
 function switchTab(tab) {
