@@ -459,6 +459,15 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .sidebar-summary-row.missing.zero { color: var(--text-muted); }
 .sidebar-summary-row.missing.zero b { color: var(--text-muted); }
 .sidebar-body { display: flex; flex-direction: column; gap: var(--sp-4); }
+/* Soft composition warnings (melee/ranged skew, class stacking, healer ratio) —
+   informational only, so muted/gold rather than alarm red. Empty when clean. */
+.balance-warnings { display: flex; flex-direction: column; gap: 2px; padding: 0 3px; }
+.balance-warnings:empty { display: none; }
+.balance-warning-row {
+  font-size: 10px; line-height: 1.35; color: var(--text-secondary);
+  padding-left: 12px; position: relative;
+}
+.balance-warning-row::before { content: '·'; position: absolute; left: 3px; color: var(--accent-gold-dim); }
 
 /* Missing-buff insight line under a missing row */
 .buff-row-insight {
@@ -1154,6 +1163,24 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 #autosave-status[data-failed] { color:#ffb86b; }
 .planner-options { margin:8px 16px; }
 .planner-options:not([open]) { display:none; }
+.raid-notes-panel { margin:8px 16px; background:var(--bg-panel); border:1px solid var(--border-subtle); }
+.raid-notes-panel summary {
+  padding:10px 14px; cursor:pointer; list-style:none;
+  font-family: var(--font-cond); text-transform:uppercase; letter-spacing:0.08em;
+  font-size:12px; color:var(--accent-gold); font-weight:600;
+  display:flex; align-items:center; gap:6px;
+}
+.raid-notes-panel summary::-webkit-details-marker { display:none; }
+.raid-notes-badge { color:var(--accent-gold-bright); font-size:8px; }
+.raid-notes-textarea {
+  display:block; width:100%; box-sizing:border-box;
+  min-height:80px; max-height:260px; resize:vertical;
+  background:var(--bg-input); border:1px solid var(--border-medium); border-top:none;
+  color:var(--text-primary); font-family:inherit; font-size:12px; line-height:1.5;
+  padding:var(--sp-3); margin:0;
+}
+.raid-notes-textarea:focus { outline:none; border-color:var(--accent-gold); }
+.raid-notes-textarea::placeholder { color:var(--text-muted); }
 .options-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 0; }
 .options-controls .action-divider { display:none; }
 .share-actions { display:flex; flex-direction:column; gap:12px; }
@@ -1305,6 +1332,33 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 .camp-professions span { flex:1; color:#c1b5cb; }
 @media(max-width:600px) { #campfire-panel { padding:10px; } .camp-grid { grid-template-columns:1fr; } }
 </style>
+<style>
+/* Assignments panel — Healer→Tank, Paladin Blessings, boss Debuffs. */
+.assignments-panel { padding:20px; max-width:960px; margin:0 auto; width:100%; }
+.assign-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px; flex-wrap:wrap; }
+.assign-heading h2 { font:600 24px var(--font-cond); margin:2px 0; color:var(--text-primary); }
+.assign-kicker { color:var(--accent-gold); text-transform:uppercase; letter-spacing:.1em; font-size:10px; }
+.assign-section { background:var(--bg-card); border:1px solid var(--border-medium); padding:16px; margin:16px 0; }
+.assign-section h3 { font:600 15px var(--font-cond); text-transform:uppercase; letter-spacing:.06em; color:var(--accent-gold); margin:0 0 12px; }
+.assign-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border-medium); flex-wrap:wrap; }
+.assign-row:first-of-type { border-top:none; }
+.assign-row-name { min-width:120px; font-weight:600; font-size:13px; color:var(--text-primary); }
+.assign-row-meta { flex:1; min-width:100px; color:var(--text-muted); font-size:11px; }
+.assign-select { background:var(--bg-input); border:1px solid var(--border-strong); color:var(--text-primary); font:12px var(--font-body); padding:6px 8px; min-width:160px; }
+.assign-select:focus { outline:none; border-color:var(--accent-gold); }
+.assign-hint { font-size:11px; color:var(--accent-gold-dim); }
+.assign-conflict { background:rgba(201,115,106,0.08); }
+.assign-warning { color:var(--accent-red); font-size:12px; margin-top:10px; }
+.assign-empty { color:var(--text-muted); font-size:12px; padding:10px 0; }
+.assign-matrix { width:100%; border-collapse:collapse; margin-top:14px; font-size:12px; }
+.assign-matrix th, .assign-matrix td { text-align:left; padding:6px 8px; border-top:1px solid var(--border-medium); }
+.assign-matrix th { color:var(--text-muted); text-transform:uppercase; font-size:10px; letter-spacing:.05em; }
+@media(max-width:600px) {
+  .assignments-panel { padding:12px; }
+  .assign-row { flex-direction:column; align-items:stretch; }
+  .assign-select { width:100%; }
+}
+</style>
 </head>
 <body>
 
@@ -1448,6 +1502,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
     <div class="mode-tabs">
       <button class="mode-tab active" data-tab="plan">Plan Mode</button>
       <button class="mode-tab" data-tab="ideal">Ideal Comp</button>
+      <button class="mode-tab" data-tab="assignments">Assignments</button>
     </div>
     <div class="toolbar-right">
       <div class="raid-selector">
@@ -1467,6 +1522,8 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
             <button class="roster-btn" id="btn-copy-mrt" role="menuitem" aria-label="Copy roster as an MRT Raid Groups import string to clipboard">Copy MRT String</button>
             <button class="roster-btn" id="btn-export-json" role="menuitem" aria-label="Export roster as JSON file">Export JSON</button>
             <button class="roster-btn" id="btn-copy-json" role="menuitem" aria-label="Copy roster JSON to clipboard">Copy JSON</button>
+            <button class="roster-btn" id="btn-copy-chat" role="menuitem" aria-label="Copy raid groups as plain text for Discord or raid chat">Copy Raid Chat Text</button>
+            <button class="roster-btn" id="btn-copy-chat-compact" role="menuitem" aria-label="Copy raid groups as compact plain text sized for in-game raid chat">Copy Chat Text (Compact)</button>
           </div>
         </div>
       </div>
@@ -1493,6 +1550,8 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-mrt">Copy MRT String</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-export-json">Export JSON</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-json">Copy JSON</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-chat">Copy Raid Chat Text</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-chat-compact">Copy Chat Text (Compact)</button>
           <div class="mobile-more-sep" role="separator"></div>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-import">Import roster</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-random">Random roster</button>
@@ -1521,6 +1580,10 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <button class="btn btn-quiet" id="btn-clear" aria-label="Clear all players and groups">Clear all</button>
     </div>
   </details>
+  <details id="raid-notes-panel" class="raid-notes-panel">
+    <summary>Raid notes <span id="raid-notes-badge" class="raid-notes-badge" hidden>&#9679;</span></summary>
+    <textarea class="raid-notes-textarea" id="raid-notes-textarea" maxlength="2000" placeholder="MT swaps, add assignments, kill order..."></textarea>
+  </details>
   <div class="plan-feedback"><span id="mobile-plan-title"></span><button type="button" class="link-btn" id="readiness-text" title="Show coverage details"></button><span id="autosave-status" role="status"></span></div>
   <div class="sync-banner" id="sync-banner" hidden aria-live="polite">
     <span id="sync-banner-text"></span>
@@ -1533,6 +1596,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   <div class="summary-bar" id="summary-bar" aria-live="polite"></div>
 
   <section id="campfire-panel" hidden aria-label="Campfire planning"></section>
+  <section id="assignments-panel" class="assignments-panel" hidden aria-label="Assignments"></section>
   <div class="app-body">
     <div class="main-column">
       <div class="groups-container" id="groups-container"></div>
@@ -1548,6 +1612,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
         <span class="sidebar-chevron" aria-hidden="true">&#9662;</span>
       </button>
       <div class="sidebar-summary" id="sidebar-summary"></div>
+      <div class="balance-warnings" id="balance-warnings"></div>
       <div class="sidebar-body" id="sidebar-body">
         <div class="buff-sidebar-section">
           <h4 class="buff-sidebar-title">Buffs <span class="buff-sidebar-count" id="buff-count-buffs"></span></h4>
@@ -1556,6 +1621,10 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
         <div class="buff-sidebar-section">
           <h4 class="buff-sidebar-title">Debuffs <span class="buff-sidebar-count" id="buff-count-debuffs"></span></h4>
           <div class="buff-row-list" id="buff-catalog-debuffs"></div>
+        </div>
+        <div class="buff-sidebar-section">
+          <h4 class="buff-sidebar-title">Utility <span class="buff-sidebar-count" id="buff-count-utility"></span></h4>
+          <div class="buff-row-list" id="buff-catalog-utility"></div>
         </div>
       </div>
     </aside>
@@ -1598,7 +1667,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   <div class="share-actions">
     <button type="button" class="btn btn-primary" data-share-action="btn-share">Copy share link</button>
     <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt">Copy for MRT</button>
-    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-addon">Copy addon string</button></details>
+    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-addon">Copy addon string</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button></details>
   </div>
 </dialog>
 <dialog id="rename-dialog" class="history-dialog" aria-labelledby="rename-heading">
@@ -1955,6 +2024,23 @@ const Rulesets = {
       ferociousInspiration: true,   // BM Hunter FI stacks multiplicatively per hunter
       specAura: { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA' },
     },
+    // Class-presence utility checklist (readiness sidebar's "Utility" section,
+    // Readiness.utilityCoverage() below) — separate from Buffs/Debuffs because
+    // these are one-off/in-combat abilities, not always-on party auras.
+    // `providers` is a list of {class, spec?, note?}; spec omitted means any
+    // spec of that class qualifies. See tasks/feature-backlog.md #3.
+    utilities: {
+      BATTLE_REZ: { name:'Battle Resurrection', providers:[{class:'DRUID', note:'Rebirth'}, {class:'WARLOCK', note:'Soulstone — must be pre-cast before the pull'}], desc:'Revives a fallen raid member mid-encounter, or lets one pre-flagged player self-resurrect once via a pre-pull Soulstone.' },
+      REMOVE_CURSE: { name:'Remove Curse', providers:[{class:'MAGE'}, {class:'DRUID'}], desc:'Removes a Curse debuff from a friendly target.' },
+      CURE_POISON: { name:'Cure/Abolish Poison', providers:[{class:'DRUID'}, {class:'SHAMAN'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a Poison debuff from a friendly target.' },
+      CURE_DISEASE: { name:'Cure Disease', providers:[{class:'PRIEST'}, {class:'SHAMAN'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a Disease debuff from a friendly target.' },
+      DISPEL_MAGIC: { name:'Dispel Magic', providers:[{class:'PRIEST'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a harmful Magic effect from a friendly target.' },
+      FEAR_BREAK: { name:'Fear Break (Tremor Totem)', providers:[{class:'SHAMAN'}], desc:'Tremor Totem breaks, and grants brief immunity to, Fear/Charm/Sleep effects on nearby party members.' },
+      BLOODLUST: { name:'Bloodlust / Heroism', providers:[{class:'SHAMAN'}], desc:'Raid-wide haste cooldown. Bloodlust (Horde) and Heroism (Alliance) are the same effect under different names.' },
+      INNERVATE: { name:'Innervate', providers:[{class:'DRUID'}], desc:'Restores a large amount of mana to the target over time — usually kept for another healer or self-cast.' },
+      POWER_INFUSION: { name:'Power Infusion', providers:[{class:'PRIEST', spec:'Discipline'}], desc:'Discipline talent. Increases the target\'s spell damage and reduces mana cost for a short time.' },
+      MISDIRECTION: { name:'Misdirection', providers:[{class:'HUNTER'}], desc:'Redirects the hunter\'s threat to another party/raid member for their next few attacks — commonly used to give the tank a head start on pull threat.' },
+    },
   },
   classic: null,
   forever: null,
@@ -2048,6 +2134,22 @@ Rulesets.classic = {
     // TBC has no such value (undefined = no-op) because its DPS_VALUE/
     // DPS_WEIGHT tables were tuned, and its scenario suite pinned, without it.
     meleeGroupWindfuryBias: 8,
+  },
+  // Same shape as Rulesets.tbc.utilities, with the Classic-Era differences:
+  // Tranquilizing Shot exists here (Magmadar/Flamegor/Huhuran/Chromaggus
+  // enrage removal) and neither Bloodlust/Heroism nor Misdirection exist yet
+  // (both are TBC-only). Faction-locked providers (SHAMAN/PALADIN) are
+  // filtered per-roster by Readiness._factionFilteredProviders(), not here.
+  utilities: {
+    BATTLE_REZ: { name:'Battle Resurrection', providers:[{class:'DRUID', note:'Rebirth'}, {class:'WARLOCK', note:'Soulstone — must be pre-cast before the pull'}], desc:'Revives a fallen raid member mid-encounter, or lets one pre-flagged player self-resurrect once via a pre-pull Soulstone.' },
+    REMOVE_CURSE: { name:'Remove Curse', providers:[{class:'MAGE'}, {class:'DRUID'}], desc:'Removes a Curse debuff from a friendly target.' },
+    CURE_POISON: { name:'Cure/Abolish Poison', providers:[{class:'DRUID'}, {class:'SHAMAN'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a Poison debuff from a friendly target.' },
+    CURE_DISEASE: { name:'Cure Disease', providers:[{class:'PRIEST'}, {class:'SHAMAN'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a Disease debuff from a friendly target.' },
+    DISPEL_MAGIC: { name:'Dispel Magic', providers:[{class:'PRIEST'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a harmful Magic effect from a friendly target.' },
+    FEAR_BREAK: { name:'Fear Break (Tremor Totem)', providers:[{class:'SHAMAN'}], desc:'Tremor Totem breaks, and grants brief immunity to, Fear/Charm/Sleep effects on nearby party members.' },
+    TRANQ_SHOT: { name:'Tranquilizing Shot', providers:[{class:'HUNTER'}], desc:'Removes one Enrage effect and one Magic effect from the target. Required for Magmadar, Flamegor, Princess Huhuran and Chromaggus.' },
+    INNERVATE: { name:'Innervate', providers:[{class:'DRUID'}], desc:'Restores a large amount of mana to the target over time — usually kept for another healer or self-cast.' },
+    POWER_INFUSION: { name:'Power Infusion', providers:[{class:'PRIEST', spec:'Discipline'}], desc:'Discipline talent. Increases the target\'s spell damage and reduces mana cost for a short time.' },
   },
 };
 
@@ -2184,6 +2286,11 @@ Object.defineProperties(Config, {
   // to the TBC baseline (existing behavior for every unmodeled version).
   Specs: {get() { return activeRules().specs || Rulesets.tbc.specs; }},
   RaidHelperSpecMap: {get() { return activeRules().raidHelperSpecMap || Rulesets.tbc.raidHelperSpecMap; }},
+  // Utility checklist (Battle Rez, cleanses, Bloodlust, ...) — see
+  // Rulesets.tbc.utilities / Rulesets.classic.utilities. Any ruleset without
+  // its own table yet (e.g. Forever) borrows Classic's rather than showing an
+  // empty "Utility" section.
+  Utilities: {get() { return activeRules().utilities || Rulesets.classic.utilities; }},
 });
 function versionForRaid(raid) {
   return Object.keys(GameVersions).find(v => GameVersions[v].raids.includes(raid));
@@ -2236,9 +2343,15 @@ const State = {
   sourceEventId: null, // Raid-Helper event the roster was imported from; enables Refresh
   optimizerMode: 'max_dps', // 'max_dps' | 'tank_mit' | 'balanced' | 'relaxed'
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
-  activeTab: 'plan', // 'plan' | 'ideal'
+  // Manual overrides only (name-keyed, like buffOverrides) — see the
+  // Assignments module. Live suggestions are always recomputed from the
+  // current roster and merged with these at render/serialize time.
+  assignments: { tankHealers:{}, blessings:{}, debuffs:{} },
+  activeTab: 'plan', // 'plan' | 'ideal' | 'assignments'
   view: 'landing', // 'landing' | 'app'
+  notes: '', // Free-text raid notes (MT swaps, add plans); capped at NOTES_MAX_LENGTH.
 };
+const NOTES_MAX_LENGTH = 2000;
 
 const PreferredSlots = {
   clean(items, raid = State.selectedRaid) {
@@ -2719,6 +2832,58 @@ const Import = {
     return 'MRTRGR0' + this.encodeForPrint(payload);
   },
 
+  // ── CHAT TEXT EXPORT (backlog #1) ──
+  // Plain, paste-ready text for Discord/raid chat — pure formatting over
+  // State.groups/State.bench + getGroupBuffs, no DOM. WoW's client fonts and
+  // chat parser only handle ASCII (see ARCHITECTURE.md), so every variant
+  // strips non-ASCII characters rather than just the compact one.
+  _asciiOnly(str) {
+    return String(str == null ? '' : str).replace(/[^\x00-\x7F]/g, '');
+  },
+  _classLabel(cls) {
+    return cls ? cls.charAt(0) + cls.slice(1).toLowerCase() : '';
+  },
+  // opts.compact: true caps every line at 255 chars (the WoW /raid chat limit)
+  // and swaps '|' (WoW's color-code/hyperlink escape char) for '/' — meant to
+  // be pasted line-by-line into in-game chat. Full text is meant for Discord.
+  exportChatText(opts = {}) {
+    const compact = !!opts.compact;
+    const raidInfo = Config.Raids[State.selectedRaid];
+    const versionLabel = this._asciiOnly((GameVersions[State.gameVersion] || {}).name || State.gameVersion);
+    const rosterLabel = this._asciiOnly(State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : 'Unnamed Roster');
+    const dateStr = new Date().toLocaleDateString();
+
+    const playerLabel = (p) => `${this._asciiOnly(p.name)} (${this._asciiOnly(p.spec)} ${this._asciiOnly(this._classLabel(p.class))})`;
+    const playerList = (list) => list.map(playerLabel).join(', ');
+
+    const finishLine = (line) => {
+      line = this._asciiOnly(line);
+      if (!compact) return line;
+      line = line.replace(/\|/g, '/');
+      return line.length > 255 ? line.slice(0, 254) + '.' : line;
+    };
+
+    const lines = [];
+    lines.push(finishLine(`${raidInfo ? raidInfo.name : 'Raid'} (${versionLabel}) - ${dateStr} - ${rosterLabel}`));
+
+    (State.groups || []).forEach((group, gi) => {
+      if (!group || !group.length) return;
+      const buffNames = getGroupBuffs(group, gi).map(b => Config.BuffAbbreviations[b.id] || b.buff.name);
+      const buffTail = buffNames.length ? ` - buffs: ${buffNames.join(', ')}` : '';
+      lines.push(finishLine(`G${gi + 1}: ${playerList(group)}${buffTail}`));
+    });
+
+    const bench = State.bench || [];
+    if (bench.length) lines.push(finishLine(`Bench: ${playerList(bench)}`));
+
+    if (!compact && State.notes && State.notes.trim()) {
+      lines.push('');
+      lines.push(this._asciiOnly('Notes: ' + State.notes.trim()));
+    }
+
+    return lines.join('\n');
+  },
+
   // v2 adds the two things the addon string drops: roster name and bench.
   // Layout: PP:2:<raid>:<encodedName>:<bench>:<group1>:<group2>:...
   // An optional encoded JSON tail after all raid groups preserves open requests
@@ -2731,11 +2896,18 @@ const Import = {
     ).join(',');
 
     const name = State.rosterName === NO_ROSTER_NAME ? '' : (State.rosterName || '');
+    const notes = (State.notes || '').trim();
+    const hasAssignments = Assignments.hasManualEdits();
     const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
     for (const g of State.groups) parts.push(encode(g));
-    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder) {
+    // Notes and manual assignment edits only ride along when present, so a plain
+    // TBC share link (the common case) stays byte-for-byte as compact as before.
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
-      parts.push(encodeURIComponent(JSON.stringify({gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder})));
+      const tail = {gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder};
+      if (notes) tail.notes = notes;
+      if (hasAssignments) tail.assignments = Assignments.serialize();
+      parts.push(encodeURIComponent(JSON.stringify(tail)));
     }
     return parts.join(':');
   },
@@ -2801,6 +2973,8 @@ const Import = {
     let gameVersion = versionForRaid(raid);
     let preferredSlots = [];
     let preserveGroupOrder = false;
+    let notes = '';
+    let assignments = null;
     try {
       const planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D'));
       campfires = planning.campfires;
@@ -2808,6 +2982,8 @@ const Import = {
       if (!validVersionRaid(gameVersion, raid)) return {success:false, error:'Game version does not match raid'};
       preferredSlots = PreferredSlots.clean(planning.preferredSlots, raid);
       preserveGroupOrder = planning.preserveGroupOrder === true || preferredSlots.length > 0;
+      notes = typeof planning.notes === 'string' ? planning.notes.slice(0, NOTES_MAX_LENGTH) : '';
+      assignments = planning.assignments || null;
     }
     catch { return {success:false, error:'Share link has damaged preferred slots'}; }
     if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0 && !(Array.isArray(campfires?.fires) && campfires.fires.some(f => f && [3,5,10].includes(f.capacity)))) {
@@ -2819,7 +2995,7 @@ const Import = {
       name: name || 'Shared Roster',
       playerCount: players.length,
       groupCount: numGroups,
-      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder },
+      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments },
     };
   },
 
@@ -2903,6 +3079,8 @@ const Import = {
       sourceEventId: State.sourceEventId || null,
       preferredSlots: State.preferredSlots.map(p => ({...p})),
       preserveGroupOrder: State.preserveGroupOrder,
+      notes: State.notes || '',
+      assignments: Assignments.serialize(),
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
       })),
@@ -2947,6 +3125,8 @@ const Import = {
     State.campfires = Campfires.clean(data.campfires);
     State.rosterName = data.name || 'Loaded Roster';
     State.sourceEventId = data.sourceEventId || null;
+    State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
+    Assignments.restore(data.assignments);
     return true;
   },
 };
@@ -2986,12 +3166,15 @@ const PlanStore = {
   capture() {
     return JSON.parse(JSON.stringify({planId:State.planId, groups:State.groups, bench:State.bench,
       campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
-      optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder}));
+      optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder,
+      notes:State.notes || '',
+      assignments:State.assignments}));
   },
   valid(data) {
     return data && typeof data.planId === 'string' && validVersionRaid(data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc', data.selectedRaid) &&
       typeof data.rosterName === 'string' && Array.isArray(data.groups) && data.groups.every(Array.isArray) &&
       ['max_dps','tank_mit','balanced','relaxed'].includes(data.optimizerMode) &&
+      (data.notes === undefined || typeof data.notes === 'string') &&
       data.buffOverrides && typeof data.buffOverrides === 'object' && !Array.isArray(data.buffOverrides) &&
       Array.isArray(data.bench) && [...data.groups.flat(), ...data.bench].every(p => p &&
         typeof p.uid === 'string' && typeof p.name === 'string' && typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string');
@@ -3014,6 +3197,10 @@ const PlanStore = {
     State.preserveGroupOrder = data.preserveGroupOrder === true || State.preferredSlots.length > 0;
     State.roster = State.groups.flat();
     State.campfires = Campfires.clean(data.campfires);
+    // Explicit reset (not just Object.assign) so a plan saved before this field
+    // existed clears any notes left over from whatever was in State before.
+    State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
+    Assignments.restore(data.assignments);
     for (const p of [...State.roster, ...State.bench]) {
       const n = /^p(\d+)$/.exec(p.uid);
       if (n) _uid = Math.max(_uid, Number(n[1]));
@@ -4497,6 +4684,111 @@ function getMissingBuffInsights() {
   return insights;
 }
 
+// ── UTILITY & BALANCE READINESS (backlog #2, #3) ────────────────
+// Two pure, DOM-free checks over State that extend the tank/healer floor
+// check already in renderReadiness(): a class-presence checklist for one-off
+// utility abilities (Config.Utilities — Battle Rez, cleanses, Bloodlust,
+// etc.), and soft composition warnings (melee/ranged skew, class stacking,
+// healer ratio). Both read State ambiently, same convention as
+// getMissingBuffInsights() above, so tests can drive them by setting
+// State.groups/State.bench directly.
+const Readiness = {
+  // provider.spec of null/undefined means "any spec of that class".
+  _providerMatches(provider, player) {
+    if (!player || !provider || player.class !== provider.class) return false;
+    if (provider.spec && player.spec !== provider.spec) return false;
+    return true;
+  },
+
+  // Drops providers a faction-locked ruleset's current roster could never
+  // field (Shaman for a detected Alliance roster, Paladin for Horde) before
+  // counting — mirrors factionRelevantBuffs()'s reasoning so a structurally
+  // impossible provider never shows up as a permanent, unfixable warning.
+  _factionFilteredProviders(providers) {
+    const rules = activeRules();
+    if (!rules.rules || !rules.rules.factionLock) return providers;
+    const faction = Faction.current();
+    if (faction !== 'horde' && faction !== 'alliance') return providers;
+    return providers.filter(p =>
+      !(faction === 'alliance' && p.class === 'SHAMAN') &&
+      !(faction === 'horde' && p.class === 'PALADIN'));
+  },
+
+  // [{id, name, desc, covered, seatedCount, seatedProviders, benchCount, benchProviders}]
+  // A utility whose every provider was faction-filtered away is left out
+  // entirely rather than shown as an unfixable "0 providers" warning.
+  // groups/bench default to the live State; the Ideal Comp view passes its
+  // own static groups (and no bench) instead.
+  utilityCoverage(groups = State.groups, benchList = State.bench) {
+    const table = Config.Utilities || {};
+    const seated = (groups || []).flat();
+    const bench = benchList || [];
+    const out = [];
+    for (const [id, entry] of Object.entries(table)) {
+      const providers = this._factionFilteredProviders(entry.providers || []);
+      if (!providers.length) continue;
+      const matches = (p) => providers.some(prov => this._providerMatches(prov, p));
+      const seatedProviders = seated.filter(matches);
+      const benchProviders = bench.filter(matches);
+      out.push({
+        id, name: entry.name, desc: entry.desc || '',
+        seatedCount: seatedProviders.length, seatedProviders,
+        benchCount: benchProviders.length, benchProviders,
+        covered: seatedProviders.length > 0,
+      });
+    }
+    return out;
+  },
+
+  // Tunable thresholds, kept together rather than as magic numbers below —
+  // raid-leader convention, not a game rule (see feature-backlog.md #2).
+  BALANCE_THRESHOLDS: {
+    meleeSkewPct: 0.70,     // one melee/ranged+caster side at/above this share of DPS+tanks warns
+    classStackPct: 0.35,    // one class at/above this share of the seated raid warns
+    healerRatioSlack: 1.8,  // healers beyond floor * this warns "more than the raid needs"
+    minRosterForSkew: 8,    // skip skew/stacking noise on tiny/partial rosters
+  },
+
+  // [{id, text}] — short, soft warnings; informational only, never blocks anything.
+  balanceWarnings() {
+    const T = this.BALANCE_THRESHOLDS;
+    const seated = (State.groups || []).flat();
+    const out = [];
+    if (seated.length < T.minRosterForSkew) return out;
+
+    const meleeSide = seated.filter(p => p.role === 'tank' || p.role === 'melee_dps').length;
+    const rangedSide = seated.filter(p => p.role === 'ranged_dps' || p.role === 'caster_dps').length;
+    const sideTotal = meleeSide + rangedSide;
+    if (sideTotal > 0) {
+      const meleePct = meleeSide / sideTotal;
+      if (meleePct >= T.meleeSkewPct) {
+        out.push({ id:'SKEW_MELEE', text:`${Math.round(meleePct * 100)}% melee/tank vs ${Math.round((1 - meleePct) * 100)}% ranged/caster` });
+      } else if ((1 - meleePct) >= T.meleeSkewPct) {
+        out.push({ id:'SKEW_RANGED', text:`${Math.round((1 - meleePct) * 100)}% ranged/caster vs ${Math.round(meleePct * 100)}% melee/tank` });
+      }
+    }
+
+    const byClass = {};
+    for (const p of seated) byClass[p.class] = (byClass[p.class] || 0) + 1;
+    for (const [cls, count] of Object.entries(byClass)) {
+      if (count / seated.length >= T.classStackPct) {
+        const label = cls.charAt(0) + cls.slice(1).toLowerCase();
+        out.push({ id:'STACK_' + cls, text:`${count} ${label}s — ${Math.round(count / seated.length * 100)}% of the raid` });
+      }
+    }
+
+    const size = Config.Raids[State.selectedRaid]?.size || seated.length || 25;
+    const floors = Optimizer.floorsFor(size);
+    const healers = seated.filter(p => p.role === 'healer').length;
+    const softMax = Math.ceil(floors.healer * T.healerRatioSlack);
+    if (floors.healer > 0 && healers > softMax) {
+      out.push({ id:'HEALER_SURPLUS', text:`${healers} healers seated, raid floor is ${floors.healer} — consider a DPS swap` });
+    }
+
+    return out;
+  },
+};
+
 // ── ROSTER EDITING ─────────────────────────────────
 // Manual edits to the plan: change a player's class/spec, add a player to a group,
 // bench a player, bring one back, or delete a benched player for good.
@@ -4841,6 +5133,327 @@ for (const [profession, family, effect, conflict, rows] of [
 Campfires.catalog.push({id:279957,name:"Cookie’s Feast",profession:'Cooking',family:'food',skill:140,effect:'Stamina food (amount unknown)',conflict:'',utility:''});
 Campfires.professionNames=[...new Set(Campfires.catalog.map(a=>a.profession))].sort();
 
+// ── ASSIGNMENTS (Healer→Tank, Paladin Blessings, boss Debuff casters) ──
+// Pure suggest/validate/serialize/text logic for the Assignments panel, kept
+// above the UI split (like Optimizer/Campfires) so assignments-tests.js can
+// load it exactly the way classic-tests.js loads the ruleset logic.
+//
+// Only MANUAL edits ever live in State.assignments (name-keyed, the same
+// convention State.buffOverrides already uses so identity survives
+// exportRoster/loadRoster and share links, which drop player uid but keep
+// name). Every suggested value is recomputed live from the current seated
+// roster and merged with the manual overrides at render/serialize time, so
+// "re-suggest only empty slots" falls out for free — there is no separate
+// suggest-then-freeze step to get stale.
+const Assignments = {
+  // Default Greater Blessing catalog — tasks/research-classic-buffs.md
+  // confirms Classic Era Alliance fields the same five Blessings as TBC
+  // (Kings/Might/Wisdom/Salvation/Light), so one static table covers both.
+  // A future ruleset can still override it via activeRules().blessings.
+  DEFAULT_BLESSINGS: {
+    KINGS:     { name:'Blessing of Kings',     desc:'Increases all stats by 10%.' },
+    MIGHT:     { name:'Blessing of Might',     desc:'Increases attack power.' },
+    WISDOM:    { name:'Blessing of Wisdom',    desc:'Restores mana over time.' },
+    SALVATION: { name:'Blessing of Salvation', desc:'Reduces threat generated by 30%.' },
+    LIGHT:     { name:'Blessing of Light',     desc:'Increases healing received and armor.' },
+  },
+  // Priority order when there are fewer Paladins than relevant Blessings —
+  // Kings is never dropped, Light drops first. Per feature spec order.
+  BLESSING_ORDER: ['KINGS','MIGHT','WISDOM','SALVATION','LIGHT'],
+  blessingCatalog() { return activeRules().blessings || this.DEFAULT_BLESSINGS; },
+
+  // Which Blessing(s) a role receives. Every per-class example in the spec
+  // (Warrior tank → Kings/Might/Light; Warrior Fury → Kings/Might/Salvation;
+  // Rogue → Kings/Might/Salvation; Mage/Warlock → Kings/Wisdom/Salvation;
+  // Priest/Druid/Shaman/Paladin healers → Kings/Wisdom/Salvation) reduces to
+  // a function of ROLE, not class, so one small table is correct for every
+  // class without needing per-class special cases.
+  ROLE_BLESSINGS: {
+    tank: ['KINGS','MIGHT','LIGHT'],
+    melee_dps: ['KINGS','MIGHT','SALVATION'],
+    ranged_dps: ['KINGS','MIGHT','SALVATION'],
+    caster_dps: ['KINGS','WISDOM','SALVATION'],
+    healer: ['KINGS','WISDOM','SALVATION'],
+  },
+  blessingsForRole(role) { return this.ROLE_BLESSINGS[role] || ['KINGS']; },
+
+  // ── Healer → Tank ──────────────────────────────────────────────
+  // Seated tanks (role 'tank' — includes a Feral druid whose role was set to
+  // tank) split seated healers between them; the main tank (first tank)
+  // leans toward 3, others toward 2, and anyone left over heals the raid.
+  // Healers already in a tank's own group are preferred for that tank.
+  suggestHealerTanks(players) {
+    const tanks = (players || []).filter(p => p.role === 'tank');
+    const healers = (players || []).filter(p => p.role === 'healer');
+    const result = {};
+    if (!tanks.length) { healers.forEach(h => { result[h.name] = 'RAID'; }); return result; }
+
+    // Fair round-robin to 2 each first, then the main tank leans toward a
+    // 3rd, then any further leftovers spread up to 3/tank before Raid.
+    const targets = tanks.map(() => 0);
+    let remaining = healers.length;
+    for (let round = 0; round < 2 && remaining > 0; round++) {
+      for (let i = 0; i < tanks.length && remaining > 0; i++) {
+        if (targets[i] < 2) { targets[i]++; remaining--; }
+      }
+    }
+    if (remaining > 0 && targets[0] < 3) { targets[0]++; remaining--; }
+    let ti = 1;
+    while (remaining > 0 && targets.some(t => t < 3)) {
+      if (targets[ti % tanks.length] < 3) { targets[ti % tanks.length]++; remaining--; }
+      ti++;
+    }
+
+    // Two full passes across every tank (not one tank fully resolved before
+    // the next starts) so an earlier tank's fallback fill can never steal a
+    // healer that belongs in a later tank's own group.
+    const unassigned = healers.slice();
+    const counts = tanks.map(() => 0);
+    tanks.forEach((tank, i) => {
+      for (let j = 0; j < unassigned.length && counts[i] < targets[i]; j++) {
+        const h = unassigned[j];
+        if (h && h.groupNumber === tank.groupNumber) { result[h.name] = tank.name; unassigned[j] = null; counts[i]++; }
+      }
+    });
+    tanks.forEach((tank, i) => {
+      for (let j = 0; j < unassigned.length && counts[i] < targets[i]; j++) {
+        const h = unassigned[j];
+        if (h) { result[h.name] = tank.name; unassigned[j] = null; counts[i]++; }
+      }
+    });
+    unassigned.forEach(h => { if (h) result[h.name] = 'RAID'; });
+    return result;
+  },
+
+  // ── Paladin Blessings ──────────────────────────────────────────
+  // One Blessing per seated Paladin, highest priority first. Drops the
+  // lowest-priority Blessing (and skips any Blessing with no relevant role
+  // seated at all) when there are fewer Paladins than candidates.
+  suggestBlessings(players) {
+    const paladins = (players || []).filter(p => p.class === 'PALADIN');
+    if (!paladins.length) return {};
+    const roles = new Set((players || []).map(p => p.role));
+    const catalog = this.blessingCatalog();
+    const relevant = id => {
+      if (id === 'KINGS') return true;
+      if (id === 'MIGHT') return roles.has('melee_dps') || roles.has('ranged_dps');
+      if (id === 'WISDOM') return roles.has('caster_dps') || roles.has('healer');
+      if (id === 'SALVATION') return roles.has('melee_dps') || roles.has('ranged_dps') || roles.has('caster_dps') || roles.has('healer');
+      if (id === 'LIGHT') return roles.has('tank');
+      return !!catalog[id];
+    };
+    const candidates = this.BLESSING_ORDER.filter(id => catalog[id] && relevant(id));
+    const result = {};
+    candidates.slice(0, paladins.length).forEach((id, i) => { result[id] = paladins[i].name; });
+    return result;
+  },
+
+  // For the UI's per-class matrix: classes present → the Blessing(s) their
+  // members receive and which seated Paladin (if any) actually gives each.
+  blessingMatrix(players, blessingAssignments) {
+    const presentClasses = [...new Set((players || []).map(p => p.class))];
+    return presentClasses.map(cls => {
+      const rolesForClass = new Set(players.filter(p => p.class === cls).map(p => p.role));
+      const ids = [...new Set([...rolesForClass].flatMap(r => this.blessingsForRole(r)))];
+      const cells = ids
+        .map(id => ({ id, name: (this.blessingCatalog()[id] || {}).name || id, paladin: (blessingAssignments || {})[id] || null }))
+        .filter(c => c.paladin);
+      return { class: cls, cells };
+    }).filter(r => r.cells.length);
+  },
+
+  // ── Boss debuff assignments ──────────────────────────────────────
+  // One eligible caster per debuff id defined by the active ruleset. Skips a
+  // lesser version (e.g. Faerie Fire (Feral)) when its supersededBy source is
+  // available, and spreads distinct debuffs of the same class across
+  // different casters before ever reusing one — "one warlock per curse type
+  // present", extra warlocks stay free.
+  suggestDebuffs(players) {
+    const debuffs = activeRules().debuffs || {};
+    const usedPerClass = {};
+    const result = {};
+    for (const id of Object.keys(debuffs)) {
+      const def = debuffs[id];
+      if (def.supersededBy && debuffs[def.supersededBy]) {
+        const superior = debuffs[def.supersededBy];
+        const superiorEligible = (players || []).some(p => p.class === superior.sourceClass && (!superior.sourceSpec || p.spec === superior.sourceSpec));
+        if (superiorEligible) continue;
+      }
+      const eligible = (players || []).filter(p => p.class === def.sourceClass && (!def.sourceSpec || p.spec === def.sourceSpec));
+      if (!eligible.length) continue;
+      usedPerClass[def.sourceClass] ||= new Set();
+      let pick = eligible.find(p => !usedPerClass[def.sourceClass].has(p.name));
+      if (!pick) pick = eligible[0];
+      result[id] = pick.name;
+      usedPerClass[def.sourceClass].add(pick.name);
+    }
+    return result;
+  },
+
+  // Flags pairs of ASSIGNED debuffs that share a competesWith slot — only one
+  // of the pair can actually land on the boss (e.g. Sunder vs Expose Armor).
+  getDebuffConflicts(debuffAssignments) {
+    const debuffs = activeRules().debuffs || {};
+    const conflicts = [];
+    const seen = new Set();
+    for (const id of Object.keys(debuffAssignments || {})) {
+      const def = debuffs[id];
+      if (!def || !def.competesWith) continue;
+      for (const otherId of def.competesWith) {
+        if (!debuffAssignments[otherId]) continue;
+        const key = [id, otherId].sort().join('|');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        conflicts.push({ a:id, b:otherId });
+      }
+    }
+    return conflicts;
+  },
+
+  // ── Effective values: manual override when it still resolves, else the
+  // live suggestion. Stale manual entries (referencing a player who is no
+  // longer eligible) are ignored here and pruned properly by reconcileRoster.
+  effectiveHealerTanks(players = State.roster) {
+    const result = this.suggestHealerTanks(players);
+    const manual = State.assignments.tankHealers || {};
+    const healerNames = new Set((players || []).filter(p => p.role === 'healer').map(p => p.name));
+    const tankNames = new Set((players || []).filter(p => p.role === 'tank').map(p => p.name));
+    for (const [healer, tank] of Object.entries(manual)) {
+      if (!healerNames.has(healer)) continue;
+      if (tank !== 'RAID' && !tankNames.has(tank)) continue;
+      result[healer] = tank;
+    }
+    return result;
+  },
+  effectiveBlessings(players = State.roster) {
+    const result = this.suggestBlessings(players);
+    const manual = State.assignments.blessings || {};
+    const paladinNames = new Set((players || []).filter(p => p.class === 'PALADIN').map(p => p.name));
+    const catalog = this.blessingCatalog();
+    for (const [id, name] of Object.entries(manual)) {
+      if (!catalog[id] || !paladinNames.has(name)) continue;
+      result[id] = name;
+    }
+    return result;
+  },
+  effectiveDebuffs(players = State.roster) {
+    const result = this.suggestDebuffs(players);
+    const manual = State.assignments.debuffs || {};
+    const debuffs = activeRules().debuffs || {};
+    const byName = new Map((players || []).map(p => [p.name, p]));
+    for (const [id, name] of Object.entries(manual)) {
+      const def = debuffs[id];
+      if (!def) continue;
+      const p = byName.get(name);
+      if (!p || p.class !== def.sourceClass || (def.sourceSpec && p.spec !== def.sourceSpec)) continue;
+      result[id] = name;
+    }
+    return result;
+  },
+
+  // ── Manual edits ──────────────────────────────────────────────
+  setHealerTank(healerName, tankKey) {
+    if (tankKey) State.assignments.tankHealers[healerName] = tankKey;
+    else delete State.assignments.tankHealers[healerName];
+  },
+  setBlessing(blessingId, paladinName) {
+    if (paladinName) State.assignments.blessings[blessingId] = paladinName;
+    else delete State.assignments.blessings[blessingId];
+  },
+  setDebuff(debuffId, playerName) {
+    if (playerName) State.assignments.debuffs[debuffId] = playerName;
+    else delete State.assignments.debuffs[debuffId];
+  },
+
+  // Drops manual choices that reference a player (or, for healer->tank, a
+  // tank) no longer seated. Never touches an entry that still resolves —
+  // silently discarding a choice that is still valid would violate "never
+  // overwrite a user's manual choice silently".
+  reconcileRoster(players = State.roster) {
+    const names = new Set((players || []).map(p => p.name));
+    const tankNames = new Set((players || []).filter(p => p.role === 'tank').map(p => p.name));
+    const paladinNames = new Set((players || []).filter(p => p.class === 'PALADIN').map(p => p.name));
+    for (const healer of Object.keys(State.assignments.tankHealers)) {
+      const tank = State.assignments.tankHealers[healer];
+      if (!names.has(healer) || (tank !== 'RAID' && !tankNames.has(tank))) delete State.assignments.tankHealers[healer];
+    }
+    for (const id of Object.keys(State.assignments.blessings)) {
+      if (!paladinNames.has(State.assignments.blessings[id])) delete State.assignments.blessings[id];
+    }
+    for (const id of Object.keys(State.assignments.debuffs)) {
+      if (!names.has(State.assignments.debuffs[id])) delete State.assignments.debuffs[id];
+    }
+  },
+
+  hasManualEdits() {
+    return !!(Object.keys(State.assignments.tankHealers).length || Object.keys(State.assignments.blessings).length || Object.keys(State.assignments.debuffs).length);
+  },
+  // Deep-cloned snapshot for persistence (PlanStore / exportRoster / share tail).
+  serialize() {
+    return JSON.parse(JSON.stringify(State.assignments));
+  },
+  restore(data) {
+    const clean = obj => (obj && typeof obj === 'object' && !Array.isArray(obj)) ? { ...obj } : {};
+    State.assignments = {
+      tankHealers: clean(data && data.tankHealers),
+      blessings: clean(data && data.blessings),
+      debuffs: clean(data && data.debuffs),
+    };
+    this.reconcileRoster();
+  },
+
+  // ── ASCII-only, raid-chat friendly text (<=255 chars per line) ──
+  _ascii(str) { return String(str == null ? '' : str).replace(/[^\x20-\x7E]/g, ''); },
+  _packLines(label, segments, maxLen = 255) {
+    const lines = [];
+    let current = '';
+    for (const seg of segments) {
+      const candidate = current ? current + ' | ' + seg : seg;
+      if ((`${label}: ${candidate}`).length > maxLen && current) {
+        lines.push(`${label}: ${current}`);
+        current = seg;
+      } else {
+        current = candidate;
+      }
+    }
+    if (current) lines.push(`${label}: ${current}`);
+    return lines.map(l => this._ascii(l).slice(0, maxLen));
+  },
+  toChatText(players = State.roster) {
+    const lines = [];
+    const healerTanks = this.effectiveHealerTanks(players);
+    const tanks = (players || []).filter(p => p.role === 'tank');
+    if (tanks.length) {
+      const segs = tanks.map((t, i) => {
+        const label = i === 0 ? 'MT' : i === 1 ? 'OT' : 'OT' + i;
+        const healers = Object.entries(healerTanks).filter(([, tk]) => tk === t.name).map(([h]) => h);
+        return `${label} ${t.name} <- ${healers.length ? healers.join(', ') : '(none)'}`;
+      });
+      const raidHealers = Object.entries(healerTanks).filter(([, tk]) => tk === 'RAID').map(([h]) => h);
+      if (raidHealers.length) segs.push('Raid: ' + raidHealers.join(', '));
+      lines.push(...this._packLines('Healers', segs));
+    }
+
+    const blessings = this.effectiveBlessings(players);
+    const paladins = (players || []).filter(p => p.class === 'PALADIN');
+    if (paladins.length && Object.keys(blessings).length) {
+      const catalog = this.blessingCatalog();
+      const segs = Object.entries(blessings).map(([id, paladinName]) => {
+        const rolesGranting = [...new Set((players || []).filter(p => this.blessingsForRole(p.role).includes(id)).map(p => p.class))];
+        const label = ((catalog[id] || {}).name || id).replace('Blessing of ', '');
+        return `${paladinName}: ${label}${rolesGranting.length ? ' (' + rolesGranting.map(c => RosterEdit.ClassLabel(c)).join(', ') + ')' : ''}`;
+      });
+      lines.push(...this._packLines('Blessings', segs));
+    }
+
+    const debuffAssignments = this.effectiveDebuffs(players);
+    if (Object.keys(debuffAssignments).length) {
+      const segs = Object.entries(debuffAssignments).map(([id, name]) => `${Config.DebuffAbbreviations[id] || id}: ${name}`);
+      lines.push(...this._packLines('Debuffs', segs));
+    }
+    return lines.join('\n');
+  },
+};
 
 // ── UI RENDERING ────────────────────────────────────────────────
 function syncVersionControls() {
@@ -5028,10 +5641,134 @@ function renderCampfires() {
   panel.querySelectorAll('[data-asset-remove]').forEach(b=>b.onclick=()=>{const [i,j]=b.dataset.assetRemove.split(':').map(Number);data.fires[i].assets.splice(j,1);commit();});
 }
 
+// Assignments tab: Healer→Tank, Paladin Blessings, boss Debuffs. Self-managed
+// visibility (like renderCampfires) — only builds DOM when it's the active tab.
+function renderAssignments() {
+  const panel = document.getElementById('assignments-panel');
+  panel.hidden = State.activeTab !== 'assignments';
+  if (panel.hidden) return;
+
+  if (!GameVersions[State.gameVersion].modeled) {
+    panel.innerHTML = `<div class="assign-heading"><div><h2>Assignments</h2></div></div><p class="assign-empty">${esc(GameVersions[State.gameVersion].note || 'Rules are not configured for this version yet.')}</p>`;
+    return;
+  }
+
+  const players = State.roster;
+  const tanks = players.filter(p => p.role === 'tank');
+  const healers = players.filter(p => p.role === 'healer');
+  const paladins = players.filter(p => p.class === 'PALADIN');
+
+  const healerTanks = Assignments.effectiveHealerTanks(players);
+  const blessings = Assignments.effectiveBlessings(players);
+  const debuffAssignments = Assignments.effectiveDebuffs(players);
+  const conflicts = Assignments.getDebuffConflicts(debuffAssignments);
+  const conflictIds = new Set(conflicts.flatMap(c => [c.a, c.b]));
+
+  // ── Healer -> Tank ──
+  let healerRowsHTML;
+  if (!tanks.length) healerRowsHTML = '<p class="assign-empty">No tanks seated — nothing to assign.</p>';
+  else if (!healers.length) healerRowsHTML = '<p class="assign-empty">No healers seated — nothing to assign.</p>';
+  else {
+    healerRowsHTML = healers.map(h => {
+      const current = healerTanks[h.name] || 'RAID';
+      const options = ['<option value="RAID"' + (current === 'RAID' ? ' selected' : '') + '>Raid (no tank)</option>']
+        .concat(tanks.map((t, i) => `<option value="${esc(t.name)}"${current === t.name ? ' selected' : ''}>${i === 0 ? 'MT' : i === 1 ? 'OT' : 'OT' + i} — ${esc(t.name)}</option>`));
+      return `<div class="assign-row">
+        <span class="assign-row-name" style="color:${Config.ClassColors[h.class] || 'var(--text-primary)'}">${esc(h.name)}</span>
+        <span class="assign-row-meta">${esc(h.spec || '')} ${esc(RosterEdit.ClassLabel(h.class))}</span>
+        <select class="assign-select" data-healer="${esc(h.name)}">${options.join('')}</select>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Paladin Blessings (only when Paladins are seated) ──
+  let blessingsHTML = '';
+  if (paladins.length) {
+    const catalog = Assignments.blessingCatalog();
+    const order = Assignments.BLESSING_ORDER.filter(id => catalog[id]);
+    const rows = order.map(id => {
+      const current = blessings[id] || '';
+      const options = ['<option value="">— none —</option>']
+        .concat(paladins.map(p => `<option value="${esc(p.name)}"${current === p.name ? ' selected' : ''}>${esc(p.name)}</option>`));
+      return `<div class="assign-row">
+        <span class="assign-row-name">${esc(catalog[id].name)}</span>
+        <span class="assign-row-meta">${esc(catalog[id].desc || '')}</span>
+        <select class="assign-select" data-blessing="${esc(id)}">${options.join('')}</select>
+      </div>`;
+    }).join('');
+    const matrix = Assignments.blessingMatrix(players, blessings);
+    const matrixHTML = matrix.length ? `<table class="assign-matrix"><thead><tr><th>Class</th><th>Blessings received</th></tr></thead><tbody>${
+      matrix.map(r => `<tr><td style="color:${Config.ClassColors[r.class] || 'var(--text-primary)'}">${esc(RosterEdit.ClassLabel(r.class))}</td><td>${r.cells.map(c => esc(c.name) + ' (' + esc(c.paladin) + ')').join(', ')}</td></tr>`).join('')
+    }</tbody></table>` : '';
+    blessingsHTML = `<section class="assign-section"><h3>Paladin Blessings</h3>${rows}${matrixHTML}</section>`;
+  }
+
+  // ── Boss debuffs ──
+  const debuffDefs = activeRules().debuffs || {};
+  const debuffIds = Object.keys(debuffDefs).filter(id => debuffAssignments[id] ||
+    players.some(p => p.class === debuffDefs[id].sourceClass && (!debuffDefs[id].sourceSpec || p.spec === debuffDefs[id].sourceSpec)));
+  let debuffsHTML = '<p class="assign-empty">No assignable boss debuffs for this roster.</p>';
+  if (debuffIds.length) {
+    debuffsHTML = debuffIds.map(id => {
+      const def = debuffDefs[id];
+      const eligible = players.filter(p => p.class === def.sourceClass && (!def.sourceSpec || p.spec === def.sourceSpec));
+      const current = debuffAssignments[id] || '';
+      const options = ['<option value="">— unassigned —</option>']
+        .concat(eligible.map(p => `<option value="${esc(p.name)}"${current === p.name ? ' selected' : ''}>${esc(p.name)}</option>`));
+      const isConflict = conflictIds.has(id);
+      const hint = eligible.length > 1 && !current ? `<span class="assign-hint">${eligible.length} could — pick one</span>` : '';
+      return `<div class="assign-row${isConflict ? ' assign-conflict' : ''}">
+        <span class="assign-row-name">${esc(def.name)}</span>
+        <span class="assign-row-meta">${esc(RosterEdit.ClassLabel(def.sourceClass))}${def.sourceSpec ? ' · ' + esc(def.sourceSpec) : ''}</span>
+        <select class="assign-select" data-debuff="${esc(id)}">${options.join('')}</select>
+        ${hint}
+      </div>`;
+    }).join('');
+    if (conflicts.length) {
+      debuffsHTML += `<p class="assign-warning">Conflict: ${conflicts.map(c => esc((debuffDefs[c.a]||{}).name || c.a) + ' vs ' + esc((debuffDefs[c.b]||{}).name || c.b)).join('; ')} — only one will land on the boss.</p>`;
+    }
+  }
+
+  panel.innerHTML = `
+    <div class="assign-heading">
+      <div><span class="assign-kicker">${esc((Config.Raids[State.selectedRaid] || {}).name || '')}</span><h2>Assignments</h2></div>
+      <button type="button" class="btn btn-secondary" id="btn-copy-assignments">Copy assignments</button>
+    </div>
+    <section class="assign-section"><h3>Healer &rarr; Tank</h3>${healerRowsHTML}</section>
+    ${blessingsHTML}
+    <section class="assign-section"><h3>Boss Debuffs</h3>${debuffsHTML}</section>
+  `;
+
+  panel.querySelectorAll('[data-healer]').forEach(sel => sel.onchange = () => {
+    Assignments.setHealerTank(sel.dataset.healer, sel.value);
+    renderAssignments();
+    persistWorkingPlan();
+  });
+  panel.querySelectorAll('[data-blessing]').forEach(sel => sel.onchange = () => {
+    Assignments.setBlessing(sel.dataset.blessing, sel.value);
+    renderAssignments();
+    persistWorkingPlan();
+  });
+  panel.querySelectorAll('[data-debuff]').forEach(sel => sel.onchange = () => {
+    Assignments.setDebuff(sel.dataset.debuff, sel.value);
+    renderAssignments();
+    persistWorkingPlan();
+  });
+  const copyBtn = document.getElementById('btn-copy-assignments');
+  if (copyBtn) copyBtn.onclick = () => {
+    const text = Assignments.toChatText(players);
+    if (!text) { showToast('Nothing to copy yet'); return; }
+    navigator.clipboard.writeText(text)
+      .then(() => showToast('Assignments copied to clipboard'))
+      .catch(() => showToast('Copy failed'));
+  };
+}
+
 
 function renderGroups() {
   PreferredSlots.reconcile();
   State.roster = State.groups.flat();
+  Assignments.reconcileRoster();
   // Ensure the tank group is always Group 1
   sortTankGroupFirst();
 
@@ -5124,6 +5861,8 @@ function renderGroups() {
 
   const coveredDebuffIds = getRaidDebuffCoverage(State.groups);
   renderBuffCatalog(coveredBuffIds, coveredDebuffIds);
+  renderUtilityCatalog();
+  renderBalanceWarnings();
 
   renderSummaryBar();
   updateStatus();
@@ -5138,8 +5877,10 @@ function renderGroups() {
   document.getElementById('mobile-plan-title').textContent = State.rosterName;
   const mobileName = document.getElementById('mobile-roster-name');
   if (mobileName) mobileName.textContent = State.rosterName;
+  syncRaidNotesUI();
   RaidHelperSync.updateControls();
   renderCampfires();
+  renderAssignments();
   persistWorkingPlan();
   renderReadiness();
 }
@@ -5247,6 +5988,70 @@ function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds,
   }
   container.innerHTML = html;
   return { covered: coveredList.length, total: ids.length };
+}
+
+// One line under a missing utility row saying what would fix it. Mirrors
+// renderInsightLine(), but utility abilities have no totem/aura slot to
+// switch into, so only the bench/none cases apply.
+function renderUtilityInsightLine(item) {
+  if (item.benchCount > 0) {
+    const p = item.benchProviders[0];
+    const short = esc((p.name || 'Unknown').split('-')[0]);
+    const color = Config.ClassColors[p.class] || 'var(--text-secondary)';
+    const specLabel = p.spec ? ` (${esc(p.spec)})` : '';
+    return `<div class="buff-row-insight bench">
+      <span class="insight-text">Benched: <span class="insight-who" style="color:${color}">${short}</span>${specLabel}</span>
+      <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
+    </div>`;
+  }
+  return `<div class="buff-row-insight none"><span class="insight-text">Nobody in roster</span></div>`;
+}
+
+// Class-presence utility checklist (Battle Rez, cleanses, Bloodlust, ...) —
+// same missing-first/covered-below layout as renderBuffRowList, but driven by
+// Readiness.utilityCoverage() since utility entries can have several possible
+// provider classes instead of one sourceClass/sourceSpec pair.
+function renderUtilityCatalog(groups, bench) {
+  const container = document.getElementById('buff-catalog-utility');
+  const countEl = document.getElementById('buff-count-utility');
+  if (!container) return;
+  if (!GameVersions[State.gameVersion].modeled) {
+    container.innerHTML = '';
+    if (countEl) countEl.textContent = '';
+    return;
+  }
+  const items = Readiness.utilityCoverage(groups, bench);
+  const missing = items.filter(i => !i.covered);
+  const covered = items.filter(i => i.covered);
+  if (countEl) countEl.textContent = `${covered.length} / ${items.length}`;
+
+  let html = '';
+  if (missing.length) html += `<div class="buff-sidebar-sub missing">Missing &middot; ${missing.length}</div>`;
+  const ordered = [...missing, ...(covered.length ? ['__covered__'] : []), ...covered];
+  for (const item of ordered) {
+    if (item === '__covered__') { html += `<div class="buff-sidebar-sub">Covered &middot; ${covered.length}</div>`; continue; }
+    const seatedNames = item.seatedProviders.map(p => esc((p.name || 'Unknown').split('-')[0])).join(', ');
+    const sourceText = item.covered ? seatedNames : 'Not covered';
+    const ttAttrs = ` data-tt-name="${esc(item.name)}" data-tt-desc="${esc(item.desc)}"`
+      + ` data-tt-source="${item.covered ? esc(seatedNames) + ' - Covered by this raid' : 'Not covered'}"`;
+    html += `<div class="buff-row${item.covered ? ' covered' : ''}"${ttAttrs}>
+      <span class="buff-row-name">${esc(item.name)}</span>
+      <span class="buff-row-source">${esc(sourceText)}</span>
+    </div>`;
+    if (!item.covered) html += renderUtilityInsightLine(item);
+  }
+  container.innerHTML = html;
+}
+
+// Soft composition warnings (melee/ranged skew, class stacking, healer
+// ratio) shown above the Buffs/Debuffs/Utility sections, always visible
+// (not gated behind the sidebar's collapsed state) since they're short.
+function renderBalanceWarnings() {
+  const el = document.getElementById('balance-warnings');
+  if (!el) return;
+  if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = ''; return; }
+  const warnings = Readiness.balanceWarnings();
+  el.innerHTML = warnings.map(w => `<div class="balance-warning-row">${esc(w.text)}</div>`).join('');
 }
 
 // ── Sidebar collapse + insight actions (delegated, attached once) ──
@@ -6166,6 +6971,29 @@ function renderReadiness() {
     : 'Import a roster, or click an empty slot to request a class and spec';
 }
 
+// ── RAID NOTES (backlog #11) ────────────────────────────────────
+// Reflects State.notes into the textarea without disturbing an in-progress
+// edit (renderGroups() runs far more often than the user types), and shows a
+// small dot on the collapsed "Raid notes" summary so non-empty notes aren't
+// invisible when the panel is closed.
+function syncRaidNotesUI() {
+  const el = document.getElementById('raid-notes-textarea');
+  const badge = document.getElementById('raid-notes-badge');
+  if (el && document.activeElement !== el) el.value = State.notes || '';
+  if (badge) badge.hidden = !(State.notes && State.notes.trim());
+}
+
+(function initRaidNotes() {
+  const el = document.getElementById('raid-notes-textarea');
+  if (!el) return;
+  el.addEventListener('input', () => {
+    State.notes = el.value.slice(0, NOTES_MAX_LENGTH);
+    const badge = document.getElementById('raid-notes-badge');
+    if (badge) badge.hidden = !(State.notes && State.notes.trim());
+    persistWorkingPlan();
+  });
+})();
+
 // ── LOCAL STORAGE ───────────────────────────────────────────────
 function getSavedRosters() {
   try { return JSON.parse(localStorage.getItem('pp_rosters') || '{}'); }
@@ -7002,6 +7830,20 @@ document.getElementById('btn-copy-json').addEventListener('click', () => {
     .catch(() => showToast('Copy failed'));
 });
 
+document.getElementById('btn-copy-chat').addEventListener('click', () => {
+  if (State.roster.length === 0) { showToast('No roster to export'); return; }
+  navigator.clipboard.writeText(Import.exportChatText({ compact: false }))
+    .then(() => showToast('Raid chat text copied to clipboard'))
+    .catch(() => showToast('Copy failed'));
+});
+
+document.getElementById('btn-copy-chat-compact').addEventListener('click', () => {
+  if (State.roster.length === 0) { showToast('No roster to export'); return; }
+  navigator.clipboard.writeText(Import.exportChatText({ compact: true }))
+    .then(() => showToast('Compact chat text copied — paste one line at a time into /raid chat'))
+    .catch(() => showToast('Copy failed'));
+});
+
 // ── IDEAL COMP MODULE ────────────────────────────────────────────
 const IdealComp = {
   // 25-man: 2 tanks, 5 healers, 18 DPS — optimized for buff synergies
@@ -7462,14 +8304,21 @@ function switchTab(tab) {
   });
 
   // Show/hide plan-mode-only elements
-  const planOnly = ['roster-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'planner-options'].map(
+  const planOnly = ['roster-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'planner-options', 'raid-notes-panel'].map(
     cls => document.querySelector('.' + cls)
   ).filter(Boolean);
   for (const el of planOnly) {
     el.style.display = tab === 'plan' ? '' : 'none';
   }
 
+  // Assignments is a dedicated full-width panel — it replaces the group
+  // board/sidebar the same way Ideal Comp repurposes them, just in its own section.
+  const appBody = document.querySelector('.app-body');
+  if (appBody) appBody.style.display = tab === 'assignments' ? 'none' : '';
+
   if (tab === 'ideal') {
+    const assignPanel = document.getElementById('assignments-panel');
+    if (assignPanel) assignPanel.hidden = true;
     renderIdealComp();
   } else {
     initGroups();
@@ -7555,6 +8404,11 @@ function renderIdealComp() {
 
   const coveredDebuffIds = getRaidDebuffCoverage(groups);
   renderBuffCatalog(coveredBuffIds, coveredDebuffIds);
+  renderUtilityCatalog(groups, []);
+  // Balance warnings are about the live plan's realism, not the static
+  // reference comp, so they're cleared rather than computed here.
+  const balanceEl = document.getElementById('balance-warnings');
+  if (balanceEl) balanceEl.innerHTML = '';
 
   document.getElementById('status-text').textContent = `Ideal ${raidInfo.size}-man comp — ${raidInfo.name}`;
 }
@@ -7634,10 +8488,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
+  module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
 }
 // Also expose on window for browser-based tests
-window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
+window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
 </script>
 <div id="buff-tooltip-portal"></div>
 </body>
