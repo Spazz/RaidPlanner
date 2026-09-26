@@ -177,6 +177,42 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .split-preview-col p { margin: 4px 0; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
 .split-preview-classes { font-size: 11px; color: var(--text-muted); }
 .saved-empty { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
+/* Attendance history (backlog-2 #2) */
+.attendance-dialog { width: min(680px, calc(100vw - 24px)); }
+.attendance-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.attendance-table th, .attendance-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); text-align: left; }
+.attendance-table th { color: var(--accent-gold); font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .05em; font-size: 11px; }
+.attendance-table th[aria-sort] { cursor: pointer; user-select: none; }
+.attendance-table th[aria-sort]:hover { color: var(--accent-gold-bright); }
+.attendance-table td.num, .attendance-table th.num { text-align: right; }
+.attendance-hint-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; background: var(--border-accent); color: var(--accent-gold-bright); border-radius: 2px; }
+.attendance-version-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.attendance-version-tabs button { font: 500 11px var(--font-body); padding: 5px 12px; background: var(--bg-card); border: 1px solid var(--border-medium); color: var(--text-secondary); cursor: pointer; text-transform: uppercase; letter-spacing: .04em; }
+.attendance-version-tabs button[aria-pressed="true"] { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
+/* Compare optimizer modes (backlog-2 #5) */
+.compare-modes-dialog { width: min(920px, calc(100vw - 24px)); }
+.compare-modes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.compare-mode-col { background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.compare-mode-col h4 { font-family: var(--font-cond); color: var(--accent-gold); text-transform: uppercase; letter-spacing: .05em; font-size: 13px; margin: 0; }
+.compare-mode-stat { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+.compare-mode-stat strong { color: var(--text-primary); }
+.compare-mode-missing { font-size: 11px; color: var(--text-muted); max-height: 70px; overflow-y: auto; }
+.compare-modes-loading { font-size: 13px; color: var(--text-muted); padding: 20px 0; text-align: center; }
+/* Landing: What's new + version comparison (backlog-2 #9) */
+.new-badge { display: inline-block; margin-left: 4px; padding: 1px 7px; font: 700 10px var(--font-body); text-transform: uppercase; letter-spacing: .05em; background: var(--accent-gold); color: #201a08; border-radius: 10px; vertical-align: middle; }
+.whats-new-list { list-style: none; display: flex; flex-direction: column; gap: 8px; padding: 0; margin: 0; }
+.whats-new-list li { font-size: 13px; color: var(--text-secondary); line-height: 1.5; padding-left: 18px; position: relative; }
+.whats-new-list li::before { content: '\2192'; position: absolute; left: 0; color: var(--accent-gold); }
+.whats-new-foot { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
+.version-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 8px; }
+.version-compare-col { background: var(--bg-card); border: 1px solid var(--border-subtle); border-top: 3px solid var(--accent-gold-dim); padding: 16px; }
+.version-compare-col[data-version="classic"] { border-top-color: #dcb978; }
+.version-compare-col[data-version="tbc"] { border-top-color: #abd47d; }
+.version-compare-col[data-version="forever"] { border-top-color: #b9a0ec; }
+.version-compare-col h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; color: var(--text-heading); }
+.version-compare-col p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 10px; }
+.version-compare-raids { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.version-compare-raids strong { color: var(--text-secondary); }
 .import-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 10px 18px; border-top: 1px solid var(--border-subtle); background: var(--bg-panel);
@@ -1208,6 +1244,12 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .action-left { flex-wrap:nowrap; width:100%; gap:4px; }
   .roster-bar { flex-wrap:nowrap; }
   .action-left #btn-optimize { display:none; }
+  /* Note: the .mobile-more "More" menu that would otherwise hold this as a
+     proxy is unreachable at this width (.action-left .mobile-more is forced
+     display:none elsewhere, a pre-existing condition this change doesn't
+     touch), so Compare Modes stays directly in the bar rather than being
+     hidden behind a menu nothing can open. */
+  .action-left #btn-compare-modes { flex:0 0 auto; padding:8px 6px; font-size:11px; letter-spacing:.02em; white-space:nowrap; }
   .action-left #btn-share-main, .action-left #btn-options, .action-left #btn-undo { flex:1; min-width:0; margin:0; padding:8px 4px; font-size:11px; letter-spacing:.02em; white-space:nowrap; }
   .action-left #btn-share-main { flex:1.6; }
   .roster-right { display:none !important; }
@@ -1430,6 +1472,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   <nav class="landing-nav" aria-label="Site">
     <div class="landing-brand"><h1>Party Planner</h1><span>Multi-version Raid Planner</span></div>
     <div class="landing-nav-links">
+      <a href="#whats-new" id="nav-whats-new">What's new<span class="new-badge" id="whats-new-badge" hidden>New</span></a>
       <a href="#how-it-works">How it works</a>
       <a href="#features">Features</a>
       <a href="#faq">FAQ</a>
@@ -1487,6 +1530,21 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
     </div>
   </section>
 
+  <section class="landing-section" id="whats-new">
+    <div class="section-title">What's new</div>
+    <ul class="whats-new-list">
+      <li>Classic Era and WoW Forever Beta rulesets, with real per-version buffs, debuffs and raids — not just TBC.</li>
+      <li>Assignments tab: healer-to-tank pairings, Paladin blessings and boss debuff assignments.</li>
+      <li>Raid Prep panel: per-encounter notes and consumable checklists, sourced and linked.</li>
+      <li>Copy raid groups as chat-ready text for Discord or in-game raid chat, or open a clean printable raid sheet.</li>
+      <li>Planned bench backups and one-click split into two raids for oversized sign-up lists.</li>
+      <li>Utility and balance readiness checks, plus a raid notes panel for MT swaps and add plans.</li>
+    </ul>
+    <div class="whats-new-foot">
+      <button type="button" class="link-btn" id="btn-whats-new-dismiss">Got it, hide this</button>
+    </div>
+  </section>
+
   <section class="landing-section" id="how-it-works">
     <div class="section-title">How it works</div>
     <div class="steps">
@@ -1518,6 +1576,11 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <div class="feature"><h3>Drag, drop, override</h3><p>Move anyone between groups, edit a spec, or pick a different totem or aura.</p></div>
       <div class="feature"><h3>Share with your raid</h3><p>Send a link that carries the whole layout, or download it as JSON. Nothing is stored on a server.</p></div>
     </div>
+  </section>
+
+  <section class="landing-section" id="version-comparison">
+    <div class="section-title">Pick your era</div>
+    <div class="version-compare" id="version-compare-table"></div>
   </section>
 
   <section class="landing-section" id="faq">
@@ -1567,6 +1630,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 
         <button class="roster-btn" id="btn-save" aria-label="Save current roster">Save</button>
         <button class="roster-btn" id="btn-load" aria-label="Load a saved roster or recent import">Load</button>
+        <button class="roster-btn" id="btn-attendance" aria-label="View attendance and reliability history from saved rosters">Attendance</button>
         <div class="export-menu" id="export-menu">
           <button class="roster-btn" id="btn-export-menu" aria-haspopup="true" aria-expanded="false" aria-label="Share or export your plan">Share / Export &#9662;</button>
           <div class="export-menu-list" role="menu">
@@ -1587,6 +1651,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   <div class="roster-bar">
     <div class="action-left">
       <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition">Optimize</button>
+      <button type="button" class="btn btn-secondary" id="btn-compare-modes" aria-label="Compare all optimizer modes side by side">Compare modes</button>
       <button type="button" class="btn btn-secondary" id="btn-undo" disabled>Undo</button>
       <button type="button" class="btn btn-primary" id="btn-share-main">Share / Export</button>
       <button type="button" class="btn btn-secondary" id="btn-options">Options</button>
@@ -1599,6 +1664,8 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-share">Share link</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-save">Save roster</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-load">Load roster</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-attendance">Attendance</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-compare-modes">Compare modes</button>
           <div class="mobile-more-sep" role="separator"></div>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-addon">Copy Addon String</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-mrt">Copy MRT String</button>
@@ -1761,6 +1828,22 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   </div>
   <p>Your latest 30 imports, newest first. Stored only in this browser; clearing site data removes them.</p>
   <div class="saved-list" id="all-history-list"></div>
+</dialog>
+<dialog id="attendance-dialog" class="history-dialog attendance-dialog" aria-labelledby="attendance-dialog-heading">
+  <div class="history-dialog-header">
+    <h3 id="attendance-dialog-heading">Attendance history</h3>
+    <button type="button" class="btn btn-secondary" id="btn-close-attendance" autofocus>Close</button>
+  </div>
+  <p>Built from your named saved rosters (Save button) for the current game version. Read-only — recent imports and working-plan autosaves aren't counted, so this only reflects rosters you deliberately kept.</p>
+  <div id="attendance-body"></div>
+</dialog>
+<dialog id="compare-modes-dialog" class="history-dialog compare-modes-dialog" aria-labelledby="compare-modes-heading">
+  <div class="history-dialog-header">
+    <h3 id="compare-modes-heading">Compare optimizer modes</h3>
+    <button type="button" class="btn btn-secondary" id="btn-close-compare-modes" autofocus>Close</button>
+  </div>
+  <p>Runs all four optimizer strategies against your current seated roster without changing the board. Pick one to apply it for real.</p>
+  <div id="compare-modes-body"></div>
 </dialog>
 
 <div class="drag-ghost" id="drag-ghost"></div>
@@ -6110,6 +6193,143 @@ const PrintSheet = {
   },
 };
 
+// ── ATTENDANCE HISTORY (feature-backlog-2.md #2) ──────────────────
+// Pure aggregator over named saved rosters (pp_rosters), keyed by
+// gameVersion. Deliberately reads only intentional "Save" entries, not
+// pp_import_history's unnamed auto-snapshots: a raid leader who named and
+// saved a roster is a clean, curated record, while import history is a
+// superset of the same shape (Import.exportRoster()) that would double
+// count drafts nobody chose to keep. No new persisted state — this is a
+// read-only report over storage that already exists.
+//
+// Algorithm (per version): collect the set of every player name that ever
+// appears (seated or benched) across that version's saved entries, then for
+// every entry classify every known name as seated / benched / absent —
+// "absent" meaning the entry exists but that name appears in neither its
+// players nor its bench list. This intentionally also counts a name as
+// "absent" for entries recorded before that player ever joined the roster;
+// there is no join-date concept to distinguish "not in this raid" from
+// "hadn't recruited them yet" with the data saved rosters carry today.
+function computeAttendance(savedRosters) {
+  const entries = Object.values(savedRosters || {})
+    .filter(r => r && Array.isArray(r.players) && Number.isFinite(r.timestamp))
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  const namesByVersion = {};
+  for (const entry of entries) {
+    const version = entry.gameVersion || 'tbc';
+    const set = namesByVersion[version] || (namesByVersion[version] = new Set());
+    for (const p of entry.players) { if (p && p.name) set.add(p.name); }
+    for (const p of (entry.bench || [])) { if (p && p.name) set.add(p.name); }
+  }
+
+  const rowsByVersion = {};
+  for (const entry of entries) {
+    const version = entry.gameVersion || 'tbc';
+    const rows = rowsByVersion[version] || (rowsByVersion[version] = {});
+    const seatedNames = new Set(entry.players.filter(p => p && p.name).map(p => p.name));
+    const benchedNames = new Set((entry.bench || []).filter(p => p && p.name).map(p => p.name));
+    for (const name of namesByVersion[version]) {
+      const row = rows[name] || (rows[name] = { name, seated: 0, benched: 0, absent: 0, entries: 0, lastSeen: null });
+      row.entries++;
+      if (seatedNames.has(name)) { row.seated++; row.lastSeen = entry.timestamp; }
+      else if (benchedNames.has(name)) { row.benched++; row.lastSeen = entry.timestamp; }
+      else row.absent++;
+    }
+  }
+
+  const result = {};
+  for (const version of Object.keys(rowsByVersion)) {
+    result[version] = Object.values(rowsByVersion[version]).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return result;
+}
+
+// ── COMPARE OPTIMIZER MODES (feature-backlog-2.md #5) ─────────────
+// Runs the real Optimizer once per MODE_CONFIG key against a snapshot of the
+// currently seated roster, entirely off to the side of the live board: every
+// State field the optimizer reads or writes is saved up front and restored
+// (to the exact original reference where possible) once all four runs are
+// done, so the live groups/bench, undo stack and autosave are never touched.
+// Preferred-slot requests are cleared for the comparison runs only (they
+// would otherwise make every mode look identical) and restored afterward.
+function compareOptimizerModes() {
+  if (!GameVersions[State.gameVersion].modeled) return null;
+  if (!(State.groups || []).some(g => g.length) && !(State.bench || []).length) return null;
+
+  const savedGroups = State.groups;
+  const savedBench = State.bench;
+  const savedRoster = State.roster;
+  const savedMode = State.optimizerMode;
+  const savedPreferredSlots = State.preferredSlots;
+
+  const baseGroups = JSON.parse(JSON.stringify(savedGroups || []));
+  const baseBench = JSON.parse(JSON.stringify(savedBench || []));
+
+  const results = {};
+  for (const mode of Object.keys(MODE_CONFIG)) {
+    State.groups = JSON.parse(JSON.stringify(baseGroups));
+    State.bench = JSON.parse(JSON.stringify(baseBench));
+    State.preferredSlots = [];
+    State.optimizerMode = mode;
+    Optimizer.optimize();
+    results[mode] = summarizeCandidateLayout(State.groups, State.bench);
+    // Exposed for tests (and any future debug UI) to verify byte-for-byte
+    // that Compare's candidate layout matches a direct Optimizer.optimize()
+    // call with the same inputs/mode — these are already local clones made
+    // above, not references into the live board.
+    results[mode].groups = State.groups;
+    results[mode].bench = State.bench;
+  }
+
+  State.groups = savedGroups;
+  State.bench = savedBench;
+  State.roster = savedRoster;
+  State.optimizerMode = savedMode;
+  State.preferredSlots = savedPreferredSlots;
+  return results;
+}
+
+// Buff/debuff coverage + a few headline structural facts for one candidate
+// layout. Read-only over the groups/bench it is given — never touches State
+// beyond the ambient reads getGroupBuffs/getRaidBuffCoverage already do.
+function summarizeCandidateLayout(groups, bench) {
+  const buffCoverage = getRaidBuffCoverage(groups);
+  const debuffCoverage = getRaidDebuffCoverage(groups);
+  const allBuffIds = Object.keys(Config.Buffs || {});
+  const allDebuffIds = Object.keys(Config.Debuffs || {});
+  const missingBuffs = allBuffIds.filter(id => !buffCoverage.has(id)).map(id => Config.Buffs[id].name);
+  const missingDebuffs = allDebuffIds.filter(id => !debuffCoverage.has(id)).map(id => Config.Debuffs[id].name);
+
+  const hasWindfury = !!Config.Buffs.WINDFURY;
+  const meleeGroups = hasWindfury ? groups.filter(g => g.some(p => p.role === 'melee_dps')) : [];
+  const meleeGroupsWithWindfury = hasWindfury
+    ? groups.reduce((count, g, gi) => count + (g.some(p => p.role === 'melee_dps') &&
+        getGroupBuffs(g, gi).some(b => b.id === 'WINDFURY') ? 1 : 0), 0)
+    : null;
+
+  const mitBuffIds = new Set(Object.keys((activeRules().mitValue) || {}));
+  const tankMitigation = groups.map((g, gi) => ({ groupIndex: gi + 1, group: g, gi }))
+    .filter(({group}) => group.some(p => p.role === 'tank'))
+    .map(({groupIndex, group, gi}) => ({
+      groupIndex,
+      buffs: [...new Set(getGroupBuffs(group, gi).filter(b => mitBuffIds.has(b.id)).map(b => Config.Buffs[b.id]?.name || b.id))],
+    }));
+
+  return {
+    seatedCount: groups.flat().length,
+    benchedCount: bench.length,
+    groupCount: groups.filter(g => g.length).length,
+    buffsCoveredCount: buffCoverage.size,
+    buffsTotal: allBuffIds.length,
+    missingBuffs,
+    missingDebuffs,
+    meleeGroupsWithWindfury,
+    meleeGroupsTotal: hasWindfury ? meleeGroups.length : null,
+    tankMitigation,
+  };
+}
+
 // ── UI RENDERING ────────────────────────────────────────────────
 function syncVersionControls() {
   const profile = GameVersions[State.gameVersion];
@@ -7963,6 +8183,148 @@ function showLoadModal() {
   });
 }
 
+// ── MODAL: ATTENDANCE (feature-backlog-2.md #2) ──────────────────
+const AttendanceUI = { sortKey: 'name', sortDir: 1, version: null };
+
+function showAttendanceModal() {
+  const dialog = document.getElementById('attendance-dialog');
+  const data = computeAttendance(getSavedRosters());
+  const versions = Object.keys(data);
+  if (!versions.length) {
+    document.getElementById('attendance-body').innerHTML =
+      '<div class="saved-empty">No named saved rosters yet. Save a roster (toolbar &rarr; Save) after a raid to start building attendance history.</div>';
+    dialog.showModal();
+    return;
+  }
+  AttendanceUI.version = versions.includes(State.gameVersion) ? State.gameVersion : versions[0];
+  AttendanceUI.sortKey = 'name';
+  AttendanceUI.sortDir = 1;
+  renderAttendanceBody(data);
+  dialog.showModal();
+}
+
+function renderAttendanceBody(data) {
+  const body = document.getElementById('attendance-body');
+  const versions = Object.keys(data);
+  const tabsHTML = versions.length > 1 ? `<div class="attendance-version-tabs">${versions.map(v =>
+    `<button type="button" data-attendance-version="${esc(v)}" aria-pressed="${v === AttendanceUI.version}">${esc((GameVersions[v] || {}).name || v)}</button>`
+  ).join('')}</div>` : '';
+
+  const rows = (data[AttendanceUI.version] || []).slice();
+  const key = AttendanceUI.sortKey, dir = AttendanceUI.sortDir;
+  rows.sort((a, b) => {
+    let av = a[key], bv = b[key];
+    if (key === 'name') { av = av.toLowerCase(); bv = bv.toLowerCase(); }
+    else { av = av || 0; bv = bv || 0; }
+    return av < bv ? -1 * dir : av > bv ? 1 * dir : 0;
+  });
+
+  // Cross-reference against the LIVE bench (only meaningful when viewing the
+  // version currently loaded) to flag "benched often, benched again" — the
+  // hint feature-backlog-2.md #2 asks for.
+  const currentlyBenched = AttendanceUI.version === State.gameVersion
+    ? new Set((State.bench || []).map(p => p.name)) : new Set();
+
+  const arrow = (col) => AttendanceUI.sortKey === col ? (AttendanceUI.sortDir === 1 ? ' ↑' : ' ↓') : '';
+  const sortState = (col) => AttendanceUI.sortKey === col ? (AttendanceUI.sortDir === 1 ? 'ascending' : 'descending') : 'none';
+
+  const tableHTML = rows.length ? `
+    <table class="attendance-table">
+      <thead><tr>
+        <th aria-sort="${sortState('name')}" data-attendance-sort="name">Name${arrow('name')}</th>
+        <th class="num" aria-sort="${sortState('seated')}" data-attendance-sort="seated">Seated${arrow('seated')}</th>
+        <th class="num" aria-sort="${sortState('benched')}" data-attendance-sort="benched">Benched${arrow('benched')}</th>
+        <th class="num" aria-sort="${sortState('absent')}" data-attendance-sort="absent">Absent${arrow('absent')}</th>
+        <th aria-sort="${sortState('lastSeen')}" data-attendance-sort="lastSeen">Last seen${arrow('lastSeen')}</th>
+      </tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td>${esc(r.name)}${currentlyBenched.has(r.name) && r.benched >= 2 ? '<span class="attendance-hint-badge" title="Benched often, and benched again in the current plan">Benched again</span>' : ''}</td>
+        <td class="num">${r.seated}</td>
+        <td class="num">${r.benched}</td>
+        <td class="num">${r.absent}</td>
+        <td>${r.lastSeen ? esc(new Date(r.lastSeen).toLocaleDateString()) : '—'}</td>
+      </tr>`).join('')}</tbody>
+    </table>` : '<div class="saved-empty">No saved rosters for this version yet.</div>';
+
+  body.innerHTML = tabsHTML + tableHTML;
+
+  body.querySelectorAll('[data-attendance-version]').forEach(btn => btn.onclick = () => {
+    AttendanceUI.version = btn.dataset.attendanceVersion;
+    renderAttendanceBody(data);
+  });
+  body.querySelectorAll('[data-attendance-sort]').forEach(th => th.onclick = () => {
+    const col = th.dataset.attendanceSort;
+    if (AttendanceUI.sortKey === col) AttendanceUI.sortDir *= -1;
+    else { AttendanceUI.sortKey = col; AttendanceUI.sortDir = 1; }
+    renderAttendanceBody(data);
+  });
+}
+
+(function initAttendanceDialog() {
+  const dialog = document.getElementById('attendance-dialog');
+  document.getElementById('btn-attendance').onclick = showAttendanceModal;
+  document.getElementById('btn-close-attendance').onclick = () => dialog.close();
+  dialog.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const rect = dialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right ||
+        event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
+  });
+})();
+
+// ── MODAL: COMPARE OPTIMIZER MODES (feature-backlog-2.md #5) ─────
+const MODE_LABELS = { max_dps: 'Max DPS', tank_mit: 'Tank Mitigation', balanced: 'Balanced', relaxed: 'Relaxed' };
+
+function showCompareModesModal() {
+  if (!GameVersions[State.gameVersion].modeled) { showToast(GameVersions[State.gameVersion].note); return; }
+  if (State.roster.length === 0) { showToast('Import a roster first'); return; }
+  const dialog = document.getElementById('compare-modes-dialog');
+  const body = document.getElementById('compare-modes-body');
+  body.innerHTML = '<div class="compare-modes-loading">Running all four optimizer modes…</div>';
+  dialog.showModal();
+  // Paint the loading state before the synchronous 4x-optimizer pass (cheap
+  // at raid scale, but still worth a frame so the dialog doesn't look frozen).
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const results = compareOptimizerModes();
+    renderCompareModesBody(results);
+  }));
+}
+
+function renderCompareModesBody(results) {
+  const body = document.getElementById('compare-modes-body');
+  if (!results) { body.innerHTML = '<div class="saved-empty">Nothing to compare yet.</div>'; return; }
+
+  body.innerHTML = `<div class="compare-modes-grid">${Object.entries(results).map(([mode, r]) => `
+    <div class="compare-mode-col">
+      <h4>${esc(MODE_LABELS[mode] || mode)}</h4>
+      <div class="compare-mode-stat"><strong>${r.groupCount}</strong> groups &middot; <strong>${r.seatedCount}</strong> seated &middot; <strong>${r.benchedCount}</strong> benched</div>
+      <div class="compare-mode-stat">Buffs covered: <strong>${r.buffsCoveredCount}/${r.buffsTotal}</strong></div>
+      ${r.meleeGroupsTotal != null ? `<div class="compare-mode-stat">Windfury in melee groups: <strong>${r.meleeGroupsWithWindfury}/${r.meleeGroupsTotal}</strong></div>` : ''}
+      ${r.tankMitigation.length ? `<div class="compare-mode-stat">Tank group mitigation:<br>${r.tankMitigation.map(t => `Group ${t.groupIndex}: ${esc(t.buffs.join(', ') || 'none')}`).join('<br>')}</div>` : ''}
+      ${r.missingBuffs.length ? `<div class="compare-mode-missing">Missing: ${esc(r.missingBuffs.join(', '))}</div>` : ''}
+      <button type="button" class="btn btn-primary" data-apply-mode="${esc(mode)}">Apply</button>
+    </div>
+  `).join('')}</div>`;
+
+  body.querySelectorAll('[data-apply-mode]').forEach(btn => btn.onclick = () => {
+    document.getElementById('optimize-mode').value = btn.dataset.applyMode;
+    document.getElementById('compare-modes-dialog').close();
+    document.getElementById('btn-optimize').click();
+  });
+}
+
+(function initCompareModesDialog() {
+  const dialog = document.getElementById('compare-modes-dialog');
+  document.getElementById('btn-compare-modes').onclick = showCompareModesModal;
+  document.getElementById('btn-close-compare-modes').onclick = () => dialog.close();
+  dialog.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const rect = dialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right ||
+        event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
+  });
+})();
+
 // ── IMPORT (shared by the landing card and the toolbar modal) ───
 // Accepts: a raid-helper event URL, an API URL, a bare event ID, raw JSON,
 // or a PP: addon/share string. Resolves to { url } or { text }.
@@ -8387,7 +8749,53 @@ function renderLanding() {
   }
   renderLandingSavedList();
   renderImportHistory(document.getElementById('landing-history-list'));
+  renderVersionComparison();
 }
+
+// Static 3-column TBC / Classic Era / Forever comparison (feature-backlog-2.md
+// #9). Sources every blurb from GameVersions[key].note and GameVersions[key].raids
+// so it can never drift out of sync with the FAQ, which quotes the same facts.
+function renderVersionComparison() {
+  const table = document.getElementById('version-compare-table');
+  if (!table) return;
+  const order = ['tbc', 'classic', 'forever'];
+  table.innerHTML = order.map(key => {
+    const profile = GameVersions[key];
+    if (!profile) return '';
+    // GameVersions[key].raids also carries the classicN/foreverN planning
+    // templates (kept for old saved plans — see the loop right after
+    // FOREVER_RAIDS above); this landing table only advertises real raids.
+    const raidNames = (profile.raids || [])
+      .map(r => Config.Raids[r])
+      .filter(r => r && r.tier !== 'Planning templates')
+      .map(r => r.name);
+    return `<div class="version-compare-col" data-version="${esc(key)}">
+      <h3>${esc(profile.name)}</h3>
+      <p>${esc(profile.note)}</p>
+      <div class="version-compare-raids"><strong>${raidNames.length} raid${raidNames.length === 1 ? '' : 's'} modeled:</strong> ${esc(raidNames.join(', ') || 'Planning templates only')}</div>
+    </div>`;
+  }).join('');
+}
+
+// "What's new" dismissible badge (feature-backlog-2.md #9). The key is
+// versioned so a future content refresh can re-surface the badge for anyone
+// who already dismissed an older one, without clearing unrelated storage.
+const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
+(function initWhatsNew() {
+  const badge = document.getElementById('whats-new-badge');
+  if (!badge) return;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(WHATS_NEW_KEY) === 'true'; } catch {}
+  badge.hidden = dismissed;
+  const dismiss = () => {
+    badge.hidden = true;
+    try { localStorage.setItem(WHATS_NEW_KEY, 'true'); } catch {}
+  };
+  const navLink = document.getElementById('nav-whats-new');
+  if (navLink) navLink.addEventListener('click', dismiss);
+  const dismissBtn = document.getElementById('btn-whats-new-dismiss');
+  if (dismissBtn) dismissBtn.addEventListener('click', dismiss);
+})();
 
 function renderLandingSavedList() {
   const list = document.getElementById('landing-saved-list');
