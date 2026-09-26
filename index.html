@@ -1068,6 +1068,43 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
+/* ── Feature spotlight callouts (feature-backlog-3.md #4) ── */
+.spotlight-callout {
+  position: fixed; z-index: 500; box-sizing: border-box;
+  background: var(--bg-panel); border: 1px solid var(--accent-gold);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.55);
+  padding: var(--sp-3) 22px var(--sp-3) var(--sp-3);
+  font-size: 12px; line-height: 1.4; color: var(--text-primary);
+  font-family: var(--font-body);
+  opacity: 0; transform: translateY(6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.spotlight-callout.visible { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  .spotlight-callout { transition: none; }
+}
+.spotlight-callout p { margin: 0; }
+.spotlight-callout .spotlight-close {
+  position: absolute; top: 2px; right: 4px; background: none; border: none;
+  color: var(--text-muted); font-size: 15px; cursor: pointer; line-height: 1; padding: 6px;
+}
+.spotlight-callout .spotlight-close:hover, .spotlight-callout .spotlight-close:focus-visible { color: var(--accent-gold); }
+.spotlight-callout::before {
+  content: ''; position: absolute; width: 8px; height: 8px; background: var(--bg-panel);
+  border-left: 1px solid var(--accent-gold); border-top: 1px solid var(--accent-gold);
+}
+.spotlight-callout.arrow-top::before { top: -5px; left: 16px; transform: rotate(45deg); }
+.spotlight-callout.arrow-bottom::before { bottom: -5px; left: 16px; transform: rotate(225deg); }
+@media (max-width: 600px) {
+  .spotlight-callout { left: 12px !important; right: 12px; width: auto !important; }
+}
+
+/* ── Data backup restore preview (feature-backlog-3.md #3) ── */
+.backup-restore-summary { list-style: none; margin: var(--sp-3) 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.backup-restore-summary li { font-size: 12px; color: var(--text-secondary); }
+.backup-restore-mode { display: flex; gap: var(--sp-4); margin: var(--sp-3) 0; font-size: 12px; }
+.backup-restore-mode label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
 /* ── Drag ghost ── */
 .drag-ghost {
   position: fixed; pointer-events: none; z-index: 1000;
@@ -1604,6 +1641,8 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you.</p></details>
       <details><summary>Can I paste a roster that isn't from Raid-Helper?</summary><p>Yes. The import box also accepts a plain list — one player per line or comma-separated, in any of "Name Class Spec", "Name - Spec Class", a Discord-style "@Name (Spec Class)", a WoW /who-style "Name Level 60 Race Class" line, or CSV with an optional header row. You'll see a preview of what was recognized, with anything ambiguous flagged for review and unrecognized lines listed separately, before anything is imported.</p></details>
       <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save, Share/Export, and switching between Plan/Ideal Comp/Assignments). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
+      <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open Options and click <strong>Export all data</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open Options and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Party Planner backup is rejected without touching your existing data.</p></details>
+      <details><summary>I dismissed a feature tip and want to see it again</summary><p>Party Planner shows a few one-time callouts pointing at easy-to-miss features (Assignments, Options, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button></p></details>
     </div>
   </section>
 
@@ -1684,6 +1723,11 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <button class="btn btn-secondary" id="btn-import" aria-label="Import roster from JSON or URL">Import</button>
       <button class="btn btn-secondary" id="btn-random" aria-label="Generate a random roster">Random</button>
       <button class="btn btn-quiet" id="btn-clear" aria-label="Clear all players and groups">Clear all</button>
+      <span class="action-divider"></span>
+      <button class="btn btn-secondary" id="btn-export-backup" aria-label="Download a backup of every saved roster, template and plan stored in this browser">Export all data</button>
+      <button class="btn btn-secondary" id="btn-import-backup" aria-label="Restore a Party Planner data backup file">Import data backup</button>
+      <input type="file" id="backup-file-input" accept="application/json,.json" hidden>
+      <button type="button" class="btn btn-quiet" id="btn-show-tips-again" aria-label="Show the first-run feature tips again">Show tips again</button>
     </div>
   </details>
   <details id="raid-notes-panel" class="raid-notes-panel">
@@ -1828,6 +1872,13 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   </div>
   <p>Runs all four optimizer strategies against your current seated roster without changing the board. Pick one to apply it for real.</p>
   <div id="compare-modes-body"></div>
+</dialog>
+<dialog id="backup-restore-dialog" class="history-dialog" aria-labelledby="backup-restore-heading">
+  <div class="history-dialog-header">
+    <h3 id="backup-restore-heading">Restore data backup</h3>
+    <button type="button" class="btn btn-secondary" id="btn-close-backup-restore">Close</button>
+  </div>
+  <div id="backup-restore-body"></div>
 </dialog>
 <dialog id="shortcuts-dialog" class="history-dialog" aria-labelledby="shortcuts-dialog-heading">
   <div class="history-dialog-header">
@@ -3804,6 +3855,32 @@ const Import = {
   },
 };
 
+// ── STORAGE SAFETY (feature-backlog-3.md #3) ──────────────────────
+// A raid leader who has used the tool for months (or is on a browser with a
+// smaller per-origin quota — Safari, some mobile browsers) can hit
+// QuotaExceededError on a routine save. Every localStorage.setItem call in
+// the UI layer that didn't already have a deliberate try/catch of its own
+// (persistWorkingPlan and rememberImport both need the raw throw to reach
+// their own specific failure messaging, so they're deliberately left alone)
+// goes through this instead, so the failure surfaces as a toast rather than
+// an uncaught exception that aborts whatever click triggered it mid-way.
+// Defined here (before the UI-RENDERING split) rather than next to showToast
+// so the pure Spotlight/DataBackup modules below can also use it — `typeof`
+// guards the showToast call so this stays safe to run standalone in tests.
+function safeSetItem(storage, key, value) {
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch (e) {
+    try {
+      if (typeof showToast === 'function') {
+        showToast("Couldn't save — your browser's storage is full. Export a backup and clear old saved rosters.");
+      }
+    } catch {}
+    return false;
+  }
+}
+
 // Import snapshots are separate from named saves. Storage is injected for tests.
 const ImportHistory = {
   key: 'pp_import_history',
@@ -3995,6 +4072,293 @@ const Templates = {
     State.roster = State.groups.flat();
     State.preserveGroupOrder = true;
     return { success:true, matched:result.matched, unmatched:result.unmatched };
+  },
+};
+
+// ── DATA BACKUP (feature-backlog-3.md #3) ─────────────────────────
+// Every pp_* localStorage key bundled into one downloadable JSON file, and
+// restored back with the same defensive-parsing posture every reader above
+// already uses — validate() never trusts a hand-edited/corrupted file, and
+// apply() never writes anything unless every present key passes its own
+// module's existing shape check first (ImportHistory.read/PlanStore.read/
+// Templates.read all silently drop malformed entries rather than throwing,
+// so a length mismatch after running the file's raw JSON through them is
+// what catches corruption here — no separate validation logic to drift out
+// of sync with the readers themselves).
+const DataBackup = {
+  schema: 'party-planner-backup',
+  version: 1,
+  // Kept in one place so a future new pp_* key only needs adding here (and,
+  // if it has its own shape, to _checkKey/_merge below) to be covered.
+  keys: ['pp_rosters', 'pp_import_history', 'pp_working_plans', 'pp_roster_templates',
+         'pp_sidebar_expanded', 'pp_whats_new_dismissed_v1', 'pp_spotlight_seen_v1'],
+  labels: {
+    pp_rosters: 'saved rosters',
+    pp_import_history: 'import history entries',
+    pp_working_plans: 'working plans',
+    pp_roster_templates: 'roster templates',
+    pp_sidebar_expanded: 'sidebar preference',
+    pp_whats_new_dismissed_v1: '"What\'s new" dismissal',
+    pp_spotlight_seen_v1: 'feature tips dismissed',
+  },
+
+  // Keys with no value in this browser are omitted entirely (not written as
+  // null), so restoring a backup made before some feature existed can never
+  // wipe that feature's data back out on the machine that already has it.
+  build(storage) {
+    const data = {};
+    for (const key of this.keys) {
+      const raw = storage.getItem(key);
+      if (raw !== null && raw !== undefined) data[key] = raw;
+    }
+    return { schema: this.schema, version: this.version, exportedAt: Date.now(), data };
+  },
+
+  // Mirrors the per-player field checks Import.loadRoster/ImportHistory.read
+  // already enforce elsewhere — a saved roster is only as trustworthy as
+  // those same fields are everywhere else in the file.
+  _validRoster(r) {
+    if (!r || typeof r !== 'object' || Array.isArray(r) || !Array.isArray(r.players)) return false;
+    const version = r.gameVersion || (typeof versionForRaid === 'function' ? versionForRaid(r.raid) : 'tbc') || 'tbc';
+    if (typeof validVersionRaid === 'function' && !validVersionRaid(version, r.raid)) return false;
+    return [...r.players, ...(Array.isArray(r.bench) ? r.bench : [])].every(p => p &&
+      typeof p.name === 'string' && typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string');
+  },
+
+  // {valid, error, count} for one key's raw stored string.
+  _checkKey(key, raw) {
+    if (typeof raw !== 'string') return { valid: false, error: 'expected a stored string value.' };
+    if (key === 'pp_sidebar_expanded') return (raw === '0' || raw === '1') ? { valid: true, count: null } : { valid: false, error: 'unrecognized value.' };
+    if (key === 'pp_whats_new_dismissed_v1') return (raw === 'true' || raw === 'false') ? { valid: true, count: null } : { valid: false, error: 'unrecognized value.' };
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { return { valid: false, error: 'not valid JSON.' }; }
+    if (key === 'pp_rosters') {
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { valid: false, error: 'expected an object of named rosters.' };
+      const names = Object.keys(parsed);
+      if (!names.every(n => this._validRoster(parsed[n]))) return { valid: false, error: 'one or more saved rosters are malformed.' };
+      return { valid: true, count: names.length };
+    }
+    if (key === 'pp_import_history') {
+      if (!Array.isArray(parsed)) return { valid: false, error: 'expected a list.' };
+      const kept = ImportHistory.read({ getItem: k => (k === ImportHistory.key ? raw : null) });
+      if (kept.length !== parsed.length) return { valid: false, error: 'contains malformed entries.' };
+      return { valid: true, count: kept.length };
+    }
+    if (key === 'pp_working_plans') {
+      if (!Array.isArray(parsed)) return { valid: false, error: 'expected a list.' };
+      const kept = PlanStore.read({ getItem: k => (k === PlanStore.key ? raw : null) });
+      if (kept.length !== parsed.length) return { valid: false, error: 'contains malformed entries.' };
+      return { valid: true, count: kept.length };
+    }
+    if (key === 'pp_roster_templates') {
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { valid: false, error: 'expected an object of templates.' };
+      let count = 0;
+      for (const v of Object.keys(parsed)) {
+        if (!parsed[v] || typeof parsed[v] !== 'object') return { valid: false, error: 'malformed template entry.' };
+        for (const raidKey of Object.keys(parsed[v])) {
+          const scoped = parsed[v][raidKey];
+          if (!scoped || typeof scoped !== 'object') return { valid: false, error: 'malformed template entry.' };
+          count += Object.keys(scoped).length;
+        }
+      }
+      return { valid: true, count };
+    }
+    if (key === 'pp_spotlight_seen_v1') {
+      if (!Array.isArray(parsed) || !parsed.every(x => typeof x === 'string')) return { valid: false, error: 'expected a list of feature ids.' };
+      return { valid: true, count: parsed.length };
+    }
+    return { valid: false, error: 'unrecognized key.' };
+  },
+
+  // Pure structural check of an already-parsed backup object. Never touches
+  // storage — safe to call on a freshly-read file before showing the user
+  // anything, and again inside apply() so nothing downstream can skip it.
+  validate(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { valid: false, errors: ['Not a Party Planner backup file.'] };
+    if (obj.schema !== this.schema) return { valid: false, errors: ['Unrecognized backup file — expected a Party Planner backup.'] };
+    if (!Number.isFinite(obj.version)) return { valid: false, errors: ['Backup is missing a version number.'] };
+    if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) return { valid: false, errors: ['Backup file has no data.'] };
+    const errors = [];
+    const summary = {};
+    const presentKnownKeys = Object.keys(obj.data).filter(k => this.keys.includes(k));
+    for (const key of presentKnownKeys) {
+      const result = this._checkKey(key, obj.data[key]);
+      if (!result.valid) errors.push(`${this.labels[key] || key}: ${result.error}`);
+      else summary[key] = { count: result.count, label: this.labels[key] || key };
+    }
+    if (presentKnownKeys.length === 0) errors.push('Backup file has nothing recognizable to restore.');
+    return { valid: errors.length === 0, errors, summary };
+  },
+
+  // Per-key merge: add anything missing, keep whichever copy is newer where a
+  // timestamp exists, otherwise keep what's already in this browser rather
+  // than silently overwriting a live preference with an older file's guess.
+  _merge(key, currentRaw, backupRaw) {
+    if (key === 'pp_sidebar_expanded' || key === 'pp_whats_new_dismissed_v1') {
+      if (currentRaw === null || currentRaw === undefined) return { value: backupRaw, added: 1, updated: 0, unchanged: 0 };
+      return { value: currentRaw, added: 0, updated: 0, unchanged: 1 };
+    }
+    if (key === 'pp_spotlight_seen_v1') {
+      let cur = [], inc = [];
+      try { cur = currentRaw ? JSON.parse(currentRaw) : []; } catch {}
+      try { inc = JSON.parse(backupRaw); } catch {}
+      if (!Array.isArray(cur)) cur = [];
+      if (!Array.isArray(inc)) inc = [];
+      const set = new Set(cur);
+      let added = 0;
+      for (const id of inc) { if (!set.has(id)) { set.add(id); added++; } }
+      return { value: JSON.stringify([...set]), added, updated: 0, unchanged: inc.length - added };
+    }
+    if (key === 'pp_rosters') {
+      let cur = {}, inc = {};
+      try { cur = currentRaw ? JSON.parse(currentRaw) : {}; } catch {}
+      try { inc = JSON.parse(backupRaw); } catch {}
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) cur = {};
+      if (!inc || typeof inc !== 'object' || Array.isArray(inc)) inc = {};
+      let added = 0, updated = 0, unchanged = 0;
+      for (const name of Object.keys(inc)) {
+        if (!(name in cur)) { cur[name] = inc[name]; added++; continue; }
+        const curTs = Number(cur[name] && cur[name].timestamp) || 0;
+        const incTs = Number(inc[name] && inc[name].timestamp) || 0;
+        if (incTs > curTs) { cur[name] = inc[name]; updated++; } else unchanged++;
+      }
+      return { value: JSON.stringify(cur), added, updated, unchanged };
+    }
+    if (key === 'pp_working_plans') {
+      let cur = [], inc = [];
+      try { cur = currentRaw ? JSON.parse(currentRaw) : []; } catch {}
+      try { inc = JSON.parse(backupRaw); } catch {}
+      if (!Array.isArray(cur)) cur = [];
+      if (!Array.isArray(inc)) inc = [];
+      const keyFor = p => (p.data.planId || '') + '|' + (p.data.gameVersion || 'tbc');
+      const byKey = new Map(cur.map(p => [keyFor(p), p]));
+      let added = 0, updated = 0, unchanged = 0;
+      for (const p of inc) {
+        const k = keyFor(p);
+        const existing = byKey.get(k);
+        if (!existing) { byKey.set(k, p); added++; }
+        else if ((p.updatedAt || 0) > (existing.updatedAt || 0)) { byKey.set(k, p); updated++; }
+        else unchanged++;
+      }
+      const merged = [...byKey.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      return { value: JSON.stringify(merged), added, updated, unchanged };
+    }
+    if (key === 'pp_roster_templates') {
+      let cur = {}, inc = {};
+      try { cur = currentRaw ? JSON.parse(currentRaw) : {}; } catch {}
+      try { inc = JSON.parse(backupRaw); } catch {}
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) cur = {};
+      if (!inc || typeof inc !== 'object' || Array.isArray(inc)) inc = {};
+      let added = 0, updated = 0, unchanged = 0;
+      for (const version of Object.keys(inc)) {
+        cur[version] = cur[version] || {};
+        for (const raidKey of Object.keys(inc[version] || {})) {
+          cur[version][raidKey] = cur[version][raidKey] || {};
+          for (const name of Object.keys(inc[version][raidKey] || {})) {
+            const incT = inc[version][raidKey][name];
+            const curT = cur[version][raidKey][name];
+            if (!curT) { cur[version][raidKey][name] = incT; added++; }
+            else if ((incT.savedAt || 0) > (curT.savedAt || 0)) { cur[version][raidKey][name] = incT; updated++; }
+            else unchanged++;
+          }
+        }
+      }
+      return { value: JSON.stringify(cur), added, updated, unchanged };
+    }
+    if (key === 'pp_import_history') {
+      let cur = [], inc = [];
+      try { cur = currentRaw ? JSON.parse(currentRaw) : []; } catch {}
+      try { inc = JSON.parse(backupRaw); } catch {}
+      if (!Array.isArray(cur)) cur = [];
+      if (!Array.isArray(inc)) inc = [];
+      const ids = new Set(cur.map(i => i && i.id));
+      let added = 0;
+      for (const item of inc) { if (item && !ids.has(item.id)) { cur.push(item); ids.add(item.id); added++; } }
+      cur.sort((a, b) => (b.importedAt || 0) - (a.importedAt || 0));
+      const limited = cur.slice(0, ImportHistory.limit);
+      return { value: JSON.stringify(limited), added, updated: 0, unchanged: cur.length - added };
+    }
+    return { value: backupRaw, added: 0, updated: 0, unchanged: 0 };
+  },
+
+  // Pure preview of what apply() would write — validates first (so an
+  // invalid file reports {valid:false} without ever touching storage) and
+  // otherwise never writes; the caller shows `changes` to the user, and
+  // apply() below re-derives the exact same plan right before committing it.
+  plan(storage, obj, mode) {
+    const check = this.validate(obj);
+    if (!check.valid) return { valid: false, errors: check.errors };
+    mode = mode === 'replace' ? 'replace' : 'merge';
+    const writes = {};
+    const changes = {};
+    for (const key of Object.keys(check.summary)) {
+      const raw = obj.data[key];
+      const current = storage.getItem(key);
+      const result = mode === 'replace'
+        ? { value: raw, added: current === null || current === undefined ? (check.summary[key].count || 0) : 0, updated: current === null || current === undefined ? 0 : (check.summary[key].count || 0), unchanged: 0 }
+        : this._merge(key, current, raw);
+      writes[key] = result.value;
+      changes[key] = { label: this.labels[key] || key, added: result.added || 0, updated: result.updated || 0, unchanged: result.unchanged || 0 };
+    }
+    return { valid: true, mode, writes, changes };
+  },
+
+  // Validates, computes the plan, then writes every key. If a write throws
+  // partway (quota exceeded mid-restore), every key this call touched is
+  // rolled back to its pre-apply value so a bad restore can never leave the
+  // browser in a half-written state — the same "never partially write"
+  // guarantee applies whether the failure is a validation error or a live
+  // storage error.
+  apply(storage, obj, mode) {
+    const planned = this.plan(storage, obj, mode);
+    if (!planned.valid) return { success: false, errors: planned.errors };
+    const originals = {};
+    const written = [];
+    for (const key of Object.keys(planned.writes)) originals[key] = storage.getItem(key);
+    try {
+      for (const key of Object.keys(planned.writes)) {
+        storage.setItem(key, planned.writes[key]);
+        written.push(key);
+      }
+    } catch (e) {
+      for (const key of written) {
+        try {
+          if (originals[key] === null || originals[key] === undefined) storage.removeItem(key);
+          else storage.setItem(key, originals[key]);
+        } catch {}
+      }
+      return { success: false, errors: ["Couldn't write the restored data — your browser's storage is full. Free up space (delete old saved rosters) and try again."] };
+    }
+    return { success: true, mode: planned.mode, changes: planned.changes };
+  },
+};
+
+// ── FEATURE SPOTLIGHT: seen-state (feature-backlog-3.md #4) ───────
+// Pure tracking of which one-time discovery callouts have already been shown
+// — a Set persisted as a JSON array. The DOM/positioning half lives in the
+// UI-RENDERING section below, keyed off the same ids. Showing a callout
+// counts as "seen" immediately (not only on explicit dismissal), so an
+// orphaned callout (its anchor's dialog closes before the user reacts) can
+// never come back and nag a second time.
+const Spotlight = {
+  key: 'pp_spotlight_seen_v1',
+  _read(storage) {
+    try {
+      const ids = JSON.parse(storage.getItem(this.key) || '[]');
+      return new Set(Array.isArray(ids) ? ids.filter(x => typeof x === 'string') : []);
+    } catch { return new Set(); }
+  },
+  shouldShow(storage, id) {
+    return !this._read(storage).has(id);
+  },
+  dismiss(storage, id) {
+    const seen = this._read(storage);
+    if (seen.has(id)) return;
+    seen.add(id);
+    safeSetItem(storage, this.key, JSON.stringify([...seen]));
+  },
+  resetAll(storage) {
+    try { storage.removeItem(this.key); } catch {}
   },
 };
 
@@ -7780,7 +8144,7 @@ function setSidebarExpanded(expanded, persist = true) {
   if (!aside || !toggle) return;
   aside.classList.toggle('collapsed', !expanded);
   toggle.setAttribute('aria-expanded', String(expanded));
-  if (persist) { try { localStorage.setItem(SIDEBAR_STORAGE_KEY, expanded ? '1' : '0'); } catch (e) {} }
+  if (persist) safeSetItem(localStorage, SIDEBAR_STORAGE_KEY, expanded ? '1' : '0');
 }
 (function initSidebar() {
   const aside = document.getElementById('buff-sidebar');
@@ -8379,11 +8743,88 @@ const FocusTrap = {
 
 // Opened by clicking a player slot (edit) or an empty slot (add). Follows the
 // same anchored-popover pattern as the buff picker.
+// ── Feature spotlight: DOM half (feature-backlog-3.md #4) ─────────
+// Anchors a small dismissible callout near `anchorEl` the first time `id`
+// hasn't been seen (Spotlight.shouldShow, pure logic above `UI RENDERING`).
+// At most one is ever visible — runSpotlightQueue below stops at the first
+// match — and showing a callout immediately marks it seen (Spotlight.dismiss
+// fires up front), so an anchor that disappears before the user reacts (e.g.
+// the player editor closes) can never cause it to reappear.
+function removeSpotlightCallout() {
+  document.querySelectorAll('.spotlight-callout').forEach(el => el.remove());
+}
+function showSpotlightCallout(id, anchorEl, text) {
+  if (!anchorEl || document.querySelector('.spotlight-callout')) return false;
+  const rect = anchorEl.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return false; // display:none — not rendered at all
+  // The callout is position:fixed (viewport-relative), so an anchor that's
+  // off-screen below/above/beside the current scroll position (e.g. the
+  // status-bar shortcuts link on a long roster that needs scrolling to
+  // reach) would otherwise be placed off-screen too. Skip silently rather
+  // than mark it seen — leaves it eligible to show next time it's in view.
+  if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) return false;
+  Spotlight.dismiss(localStorage, id);
+
+  const callout = document.createElement('div');
+  callout.className = 'spotlight-callout';
+  callout.setAttribute('role', 'note');
+  callout.tabIndex = -1;
+  callout.innerHTML = `<button type="button" class="spotlight-close" aria-label="Dismiss tip">&times;</button><p>${esc(text)}</p>`;
+  document.body.appendChild(callout);
+
+  const remove = () => {
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('mousedown', onOutside, true);
+    callout.remove();
+  };
+  const onKey = (e) => { if (e.key === 'Escape') remove(); };
+  const onOutside = (e) => { if (!callout.contains(e.target)) remove(); };
+  callout.querySelector('.spotlight-close').addEventListener('click', remove);
+  document.addEventListener('keydown', onKey, true);
+  // Deferred: the same click that opened this view shouldn't immediately close it.
+  setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
+
+  const w = Math.min(260, window.innerWidth - 24);
+  callout.style.width = w + 'px';
+  let top = rect.bottom + 10;
+  let arrowClass = 'arrow-top';
+  if (top + 90 > window.innerHeight) { top = Math.max(8, rect.top - 90); arrowClass = 'arrow-bottom'; }
+  const left = Math.min(Math.max(8, rect.left), window.innerWidth - w - 8);
+  callout.classList.add(arrowClass);
+  callout.style.top = top + 'px';
+  callout.style.left = left + 'px';
+  // setTimeout rather than requestAnimationFrame: reliably fires even in a
+  // backgrounded/inactive tab (some environments never schedule a paint
+  // frame there), which just gates the fade-in transition, not visibility.
+  setTimeout(() => callout.classList.add('visible'), 0);
+  return true;
+}
+
+// Small, hand-curated set of highest-value entry points (per the backlog's
+// "ship 3-4 of the highest-value ones" guidance) rather than covering every
+// module — Assignments tab, the Options panel (Templates/Attendance/Compare
+// modes/Backup all live there), and keyboard shortcuts. The player-editor
+// callout (constraints/backups/Why here?) is triggered separately from
+// showPlayerEditor itself, since it has no toolbar anchor.
+const SPOTLIGHT_DEFS = [
+  { id: 'assignments-tab', text: 'New: assign who casts curses, blessings and other one-per-raid buffs here.', anchor: () => document.querySelector('.mode-tab[data-tab="assignments"]') },
+  { id: 'options-panel', text: 'Templates, Attendance, Compare modes and a full data backup all live in Options.', anchor: () => document.getElementById('btn-options') },
+  { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.getElementById('btn-shortcuts-help') },
+];
+function runSpotlightQueue() {
+  if (document.querySelector('.spotlight-callout')) return;
+  for (const def of SPOTLIGHT_DEFS) {
+    if (!Spotlight.shouldShow(localStorage, def.id)) continue;
+    if (showSpotlightCallout(def.id, def.anchor(), def.text)) return;
+  }
+}
+
 function closePlayerEditor() {
   const existing = document.getElementById('active-player-editor');
   if (existing) { FocusTrap.close(existing); existing.remove(); }
   const overlay = document.querySelector('.player-editor-overlay');
   if (overlay) overlay.remove();
+  removeSpotlightCallout();
 }
 
 // ── Keep-together / Keep-apart editor (backlog #3) ───────────────
@@ -8526,6 +8967,14 @@ function showPlayerEditor(anchorEl, opts) {
   if (overflowX > 0) left -= overflowX;
   editor.style.top = top + 'px';
   editor.style.left = Math.max(window.scrollX + 8, left) + 'px';
+
+  if (!isAdd && Spotlight.shouldShow(localStorage, 'player-editor-features')) {
+    // getBoundingClientRect() below forces layout synchronously, so this can
+    // run immediately — no need to wait on a paint/animation frame, which
+    // some hidden/backgrounded tabs never schedule.
+    const spotlightAnchor = editor.querySelector('.player-constraints') || editor.querySelector('.player-why-here') || editor;
+    showSpotlightCallout('player-editor-features', spotlightAnchor, 'Constraints, backup links and "Why here?" all live in this panel.');
+  }
 
   const nameInput = editor.querySelector('#pe-name');
   const classSel = editor.querySelector('#pe-class');
@@ -8917,12 +9366,12 @@ function getSavedRosters() {
 function saveRosterToStorage(name, data) {
   const rosters = getSavedRosters();
   rosters[name] = data;
-  localStorage.setItem('pp_rosters', JSON.stringify(rosters));
+  return safeSetItem(localStorage, 'pp_rosters', JSON.stringify(rosters));
 }
 function deleteRosterFromStorage(name) {
   const rosters = getSavedRosters();
   delete rosters[name];
-  localStorage.setItem('pp_rosters', JSON.stringify(rosters));
+  return safeSetItem(localStorage, 'pp_rosters', JSON.stringify(rosters));
 }
 
 function rememberImport(source) {
@@ -9046,7 +9495,7 @@ function showSaveModal() {
     const name = document.getElementById('save-name-input').value.trim();
     if (!name) return;
     const data = Import.exportRoster(name);
-    saveRosterToStorage(name, data);
+    if (!saveRosterToStorage(name, data)) return;
     State.rosterName = name;
     closeSaveOverlay();
     showToast(`Roster "${name}" saved`);
@@ -9202,7 +9651,7 @@ function showLoadModal() {
     btn.addEventListener('click', e => {
       e.stopPropagation();
       const name = btn.dataset.delete;
-      deleteRosterFromStorage(name);
+      if (!deleteRosterFromStorage(name)) return;
       showLoadModal(); // re-render
       showToast(`Deleted "${name}"`);
     });
@@ -9845,6 +10294,7 @@ function showView(view) {
   if (view === 'landing') renderLanding();
   else if (State.activeTab !== 'plan') switchTab('plan');
   window.scrollTo(0, 0);
+  if (view === 'app') runSpotlightQueue();
 }
 
 function renderLanding() {
@@ -9903,7 +10353,7 @@ const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
   badge.hidden = dismissed;
   const dismiss = () => {
     badge.hidden = true;
-    try { localStorage.setItem(WHATS_NEW_KEY, 'true'); } catch {}
+    safeSetItem(localStorage, WHATS_NEW_KEY, 'true');
   };
   const navLink = document.getElementById('nav-whats-new');
   if (navLink) navLink.addEventListener('click', dismiss);
@@ -10262,6 +10712,100 @@ document.getElementById('btn-export-json').addEventListener('click', () => {
   URL.revokeObjectURL(url);
   showToast('Exported JSON file');
 });
+
+// ── DATA BACKUP: export / import UI (feature-backlog-3.md #3) ─────
+document.getElementById('btn-export-backup').addEventListener('click', () => {
+  const backup = DataBackup.build(localStorage);
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url; a.download = `party-planner-backup-${stamp}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Backup downloaded');
+});
+
+const BackupRestoreUI = {
+  pending: null,
+  mode: 'merge',
+  open(obj) {
+    this.pending = obj;
+    this.mode = 'merge';
+    this.render();
+    document.getElementById('backup-restore-dialog').showModal();
+  },
+  render() {
+    const body = document.getElementById('backup-restore-body');
+    if (!this.pending) { body.innerHTML = ''; return; }
+    const planned = DataBackup.plan(localStorage, this.pending, this.mode);
+    if (!planned.valid) {
+      body.innerHTML = `<p>${planned.errors.map(esc).join('<br>')}</p>
+        <div class="import-buttons"><button type="button" class="btn btn-secondary" id="btn-backup-cancel">Close</button></div>`;
+      document.getElementById('btn-backup-cancel').onclick = () => document.getElementById('backup-restore-dialog').close();
+      return;
+    }
+    const rows = Object.keys(planned.changes).map(key => {
+      const c = planned.changes[key];
+      const parts = [];
+      if (c.added) parts.push(`${c.added} added`);
+      if (c.updated) parts.push(`${c.updated} updated`);
+      if (c.unchanged) parts.push(`${c.unchanged} unchanged`);
+      return `<li><strong>${esc(c.label)}</strong>${parts.length ? ': ' + esc(parts.join(', ')) : ' — no change'}</li>`;
+    }).join('');
+    body.innerHTML = `
+      <p>${this.mode === 'replace'
+        ? 'Replace overwrites matching data in this browser with the backup file.'
+        : 'Merge adds anything missing and keeps whichever copy of a shared item is newer.'}</p>
+      <ul class="backup-restore-summary">${rows}</ul>
+      <div class="backup-restore-mode">
+        <label><input type="radio" name="backup-mode" value="merge" ${this.mode === 'merge' ? 'checked' : ''}> Merge (recommended)</label>
+        <label><input type="radio" name="backup-mode" value="replace" ${this.mode === 'replace' ? 'checked' : ''}> Replace</label>
+      </div>
+      <div class="import-buttons">
+        <button type="button" class="btn btn-secondary" id="btn-backup-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-backup-confirm">Apply</button>
+      </div>`;
+    body.querySelectorAll('input[name="backup-mode"]').forEach(r => r.addEventListener('change', e => { this.mode = e.target.value; this.render(); }));
+    document.getElementById('btn-backup-cancel').onclick = () => document.getElementById('backup-restore-dialog').close();
+    document.getElementById('btn-backup-confirm').onclick = () => {
+      const result = DataBackup.apply(localStorage, this.pending, this.mode);
+      document.getElementById('backup-restore-dialog').close();
+      this.pending = null;
+      if (!result.success) { showToast((result.errors && result.errors[0]) || 'Restore failed'); return; }
+      showToast('Backup restored');
+      try { setSidebarExpanded(localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1', false); } catch {}
+      if (State.view === 'landing') renderLanding();
+    };
+  },
+};
+document.getElementById('btn-close-backup-restore').addEventListener('click', () => document.getElementById('backup-restore-dialog').close());
+
+document.getElementById('btn-import-backup').addEventListener('click', () => document.getElementById('backup-file-input').click());
+document.getElementById('backup-file-input').addEventListener('change', (e) => {
+  const input = e.target;
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let obj;
+    try { obj = JSON.parse(String(reader.result)); } catch { showToast('That file is not valid JSON'); return; }
+    const check = DataBackup.validate(obj);
+    if (!check.valid) { showToast(check.errors[0] || 'That backup file could not be read'); return; }
+    BackupRestoreUI.open(obj);
+  };
+  reader.onerror = () => showToast('Could not read that file');
+  reader.readAsText(file);
+});
+
+function showTipsAgain() {
+  Spotlight.resetAll(localStorage);
+  showToast('Feature tips will show again as you use the planner');
+}
+document.getElementById('btn-show-tips-again').addEventListener('click', showTipsAgain);
+document.getElementById('faq-show-tips-again')?.addEventListener('click', showTipsAgain);
 
 document.getElementById('btn-copy-json').addEventListener('click', () => {
   if (!hasLoadedWork()) { showToast('No roster to copy'); return; }
