@@ -2021,6 +2021,13 @@ Rulesets.classic = {
     // Gates the Windfury structural penalty, the missing-buff insight list,
     // random-roster generation and the ideal-comp Horde/Alliance pick.
     factionLock: true,
+    // Classes whose buff is a single-point-of-failure per group (Shaman
+    // Windfury/totems, Paladin auras, Feral Leader of the Pack) — spread one
+    // per group instead of letting two stack in one group while another has
+    // none. See Optimizer.spreadProviders(). Only one of SHAMAN/PALADIN is
+    // ever actually present under the faction lock above, so listing both is
+    // harmless — whichever class has no members in the roster is a no-op.
+    spreadProviders: [{ class: 'SHAMAN' }, { class: 'PALADIN' }, { class: 'DRUID', spec: 'Feral' }],
   },
 };
 
@@ -3336,7 +3343,109 @@ const Optimizer = {
     // but refineSwaps only takes a swap that clears SWAP_THRESHOLD, so an
     // isolated player can survive it if no single swap scores well enough.
     this.deIsolate(groups);
+
+    // Phase 5: Spread scarce single-point-of-failure providers (ruleset-gated;
+    // a no-op unless rules.spreadProviders is set — TBC is untouched). Must
+    // run LAST: de-isolating a group that lost its second shaman to this pass
+    // can leave the remaining one as that group's only caster-family member,
+    // which deIsolate would then "fix" by pulling it out again — silently
+    // re-creating the exact stack this phase exists to prevent. Nothing runs
+    // after it, so its rebalance is what the board actually ships with.
+    this.spreadProviders(groups);
     return groups;
+  },
+
+  // A melee group's Windfury (or an Alliance melee group's aura, or a melee
+  // group's Leader of the Pack) depends on exactly one class member being
+  // present. groupScore's per-group penalties (meleeWantsWindfury etc.) can
+  // still let greedy placement + pairwise swaps settle on two of that class
+  // stacked in one group while a same-identity group has zero: the stack
+  // isn't penalized (nothing scores an *excess* of a buff down), and undoing
+  // it is a two-hop trade no single pairwise swap can discover on its own —
+  // exactly the class of local optimum documented in tasks/lessons.md
+  // (2026-08-19, "model-optimal is not the acceptance criterion"). This phase
+  // looks at the whole board instead of one group at a time and rebalances
+  // that specific case. No-op unless the active ruleset sets
+  // rules.spreadProviders (Classic only — see Rulesets.classic.rules).
+  spreadProviders(groups) {
+    const rules = activeRules();
+    const specs = (rules.rules && rules.rules.spreadProviders) || [];
+    if (!specs.length) return;
+    // Every group that actually holds melee dps (Windfury/aura/LotP
+    // convention). Checked by ACTUAL role membership, not the abstract seed
+    // identity from seedGroups — a group seeded 'caster_dps' can still end up
+    // holding melee dps members (overflow, ROLE_COMPAT cohesion), and those
+    // players need Windfury exactly as much as a 'melee_dps'-seeded group's
+    // do. Caster-group coverage (Mana Spring/Tranquil Air) is intentionally
+    // left to groupScore's ordinary buff-value pull rather than a second
+    // pass here — an equivalent caster-targeted pass fought this one over
+    // shamans that were already correctly covering a melee group.
+    this._spreadPass(groups, specs, 'melee_dps');
+  },
+
+  // One rebalancing pass for a single target role. Repeatedly finds a group
+  // that actually holds a member of that role but has zero of the class, and
+  // moves a provider in from elsewhere: straight into an open seat, or
+  // swapped for whichever non-pinned member of the needy group benefits
+  // least (lowest dpsWeightFor) if the needy group is full.
+  //
+  // Two source tiers, tried in priority order:
+  //   - "surplus" groups holding 2+ (a real excess — taking one never drops
+  //     that group below one).
+  //   - failing that, "spare" groups holding exactly 1 that this pass's role
+  //     doesn't actually need there (e.g. a shaman parked with 3 Warlocks and
+  //     no melee dps during the melee pass, or riding with the tank/healer
+  //     group) — a lone provider sitting somewhere it isn't needed outranks
+  //     a melee group getting none at all. This is what lets 4 shamans still
+  //     reach all 4 melee groups even when greedy placement already spread
+  //     them to exactly one-each in the wrong 4 groups first.
+  // The tank/healer group is never itself a needy target — it doesn't need
+  // Windfury — but it's fair game as a source under either tier, per this
+  // task's stated priority: melee groups first, then casters, then healers.
+  _spreadPass(groups, specs, wantsRole) {
+    for (const spec of specs) {
+      const matches = p => p.class === spec.class && (!spec.spec || p.spec === spec.spec);
+      for (let iter = 0; iter < 6; iter++) {
+        const needy = [], surplus = [], spare = [];
+        for (let gi = 0; gi < groups.length; gi++) {
+          const count = groups[gi].filter(matches).length;
+          const isTank = this.isTankGroup(gi, groups);
+          // Excludes members that are themselves this pass's provider class —
+          // an Enhancement Shaman's own role IS melee_dps, so without this a
+          // shaman stranded alone among casters would count as "already
+          // satisfying" the group's melee need (itself) and never be
+          // considered spare.
+          const hasWantedRole = !isTank && groups[gi].some(p => p.role === wantsRole && !matches(p));
+          if (hasWantedRole && count === 0) needy.push(gi);
+          else if (count >= 2) surplus.push(gi);
+          else if (count === 1 && !hasWantedRole) spare.push(gi);
+        }
+        const source = surplus.length ? surplus : spare;
+        if (!needy.length || !source.length) break;
+
+        const fromGi = source[0], toGi = needy[0];
+        const fromGroup = groups[fromGi], toGroup = groups[toGi];
+        const providerIdx = fromGroup.findIndex(p => matches(p) && !this.isPinned(p, fromGi, groups));
+        if (providerIdx < 0) break;
+        const provider = fromGroup[providerIdx];
+
+        if (toGroup.length < 5) {
+          fromGroup.splice(providerIdx, 1);
+          toGroup.push(provider);
+        } else {
+          let bestIdx = -1, bestWeight = Infinity;
+          for (let pi = 0; pi < toGroup.length; pi++) {
+            if (this.isPinned(toGroup[pi], toGi, groups) || matches(toGroup[pi])) continue;
+            const w = dpsWeightFor(toGroup[pi]);
+            if (w < bestWeight) { bestWeight = w; bestIdx = pi; }
+          }
+          if (bestIdx < 0) break; // no room to swap into — leave this group needy
+          const displaced = toGroup[bestIdx];
+          toGroup[bestIdx] = provider;
+          fromGroup[providerIdx] = displaced;
+        }
+      }
+    }
   },
 
   // Decides who sits when more players are in the pool than the raid holds.

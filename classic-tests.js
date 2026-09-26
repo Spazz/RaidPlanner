@@ -229,6 +229,121 @@ check('TBC ruleset is untouched by the Classic ruleset addition', () => {
   assert(State.groups.flat().length <= 25);
 });
 
+// ── 9. Provider-spread regression (coordinator review, 2026-09-26) ──
+// Repro: Optimizer.optimize() on a Horde Molten Core roster with exactly 4
+// shamans stacked 2 in one melee group while a different melee group (Rogue
+// + 2 Fury) got none — a two-hop rebalance greedy placement/pairwise swaps
+// can't discover on their own (see Optimizer.spreadProviders() comment).
+// Same class of bug applies to Alliance Paladins and to Feral Leader of the
+// Pack; all three share the same rules.spreadProviders mechanism.
+function importSignUps(spec) {
+  const signUps = [];
+  let i = 0;
+  for (const [count, className, specName] of spec) {
+    for (let k = 0; k < count; k++) signUps.push({ name: 'RP' + (i++), className, specName });
+  }
+  return Import.importRaidHelper(JSON.stringify({ signUps }));
+}
+// True if some class (by matches()) is stacked 2+ in a non-tank group while
+// a DIFFERENT non-tank group holding a melee dps member has none.
+function hasStackingViolation(matches) {
+  return State.groups.some((g, gi) => {
+    if (Optimizer.isTankGroup(gi, State.groups)) return false;
+    if (g.filter(matches).length < 2) return false;
+    return State.groups.some((g2, gi2) => gi2 !== gi
+      && !Optimizer.isTankGroup(gi2, State.groups)
+      && g2.some(p => p.role === 'melee_dps')
+      && g2.filter(matches).length === 0);
+  });
+}
+const MODES = ['max_dps', 'tank_mit', 'balanced', 'relaxed'];
+
+check('Horde 40-man 4-shaman roster: no shaman stacks while a melee group has none (all 4 modes)', () => {
+  const roster = [
+    [4, 'Warrior', 'Protection'], [6, 'Warrior', 'Fury'], [6, 'Rogue', 'Combat'], [1, 'Druid', 'Feral'],
+    [4, 'Hunter', 'Marksmanship'], [5, 'Mage', 'Frost'], [4, 'Warlock', 'Destruction'], [1, 'Priest', 'Shadow'],
+    [4, 'Priest', 'Holy'], [1, 'Druid', 'Restoration'], [2, 'Shaman', 'Restoration1'], [1, 'Shaman', 'Enhancement'], [1, 'Shaman', 'Elemental'],
+  ];
+  const isShaman = p => p.class === 'SHAMAN';
+  for (const mode of MODES) {
+    State.gameVersion = 'classic';
+    State.selectedRaid = 'mc';
+    State.optimizerMode = mode;
+    const res = importSignUps(roster);
+    assert.equal(res.success, true, `mode ${mode}: import should succeed`);
+    assert.equal(Faction.current(), 'horde', `mode ${mode}: roster should detect as horde`);
+    assert.equal(State.groups.flat().filter(isShaman).length, 4, `mode ${mode}: all 4 shamans should be seated`);
+    assert(!hasStackingViolation(isShaman), `mode ${mode}: a group has 2+ shamans while another melee group has none`);
+  }
+});
+check('Horde 40-man 4-shaman roster: every Fury/Rogue group gets Windfury (max_dps)', () => {
+  const roster = [
+    [4, 'Warrior', 'Protection'], [6, 'Warrior', 'Fury'], [6, 'Rogue', 'Combat'], [1, 'Druid', 'Feral'],
+    [4, 'Hunter', 'Marksmanship'], [5, 'Mage', 'Frost'], [4, 'Warlock', 'Destruction'], [1, 'Priest', 'Shadow'],
+    [4, 'Priest', 'Holy'], [1, 'Druid', 'Restoration'], [2, 'Shaman', 'Restoration1'], [1, 'Shaman', 'Enhancement'], [1, 'Shaman', 'Elemental'],
+  ];
+  State.gameVersion = 'classic';
+  State.selectedRaid = 'mc';
+  State.optimizerMode = 'max_dps';
+  assert.equal(importSignUps(roster).success, true);
+  State.groups.forEach((g, gi) => {
+    const hasFuryOrRogue = g.some(p => (p.class === 'WARRIOR' && p.spec === 'Fury') || (p.class === 'ROGUE' && p.spec === 'Combat'));
+    if (!hasFuryOrRogue) return;
+    const buffIds = getGroupBuffs(g, gi).map(b => b.id);
+    assert(buffIds.includes('WINDFURY'), `Group ${gi + 1} holds Fury/Rogue but has no Windfury`);
+  });
+});
+check('2-shaman roster: no stacking violation while shamans are scarce (all 4 modes)', () => {
+  const roster = [
+    [4, 'Warrior', 'Protection'], [8, 'Warrior', 'Fury'], [8, 'Rogue', 'Combat'], [2, 'Druid', 'Feral'],
+    [4, 'Hunter', 'Marksmanship'], [5, 'Mage', 'Frost'], [3, 'Warlock', 'Destruction'], [1, 'Priest', 'Shadow'],
+    [3, 'Priest', 'Holy'], [1, 'Druid', 'Restoration'], [1, 'Shaman', 'Enhancement'], [1, 'Shaman', 'Elemental'],
+  ];
+  const isShaman = p => p.class === 'SHAMAN';
+  for (const mode of MODES) {
+    State.gameVersion = 'classic';
+    State.selectedRaid = 'mc';
+    State.optimizerMode = mode;
+    assert.equal(importSignUps(roster).success, true, `mode ${mode}: import should succeed`);
+    assert.equal(State.groups.flat().filter(isShaman).length, 2, `mode ${mode}: both shamans should be seated`);
+    assert(!hasStackingViolation(isShaman), `mode ${mode}: a group has 2+ shamans while another melee group has none`);
+  }
+});
+check('Alliance paladin spread: no stacking violation (all 4 modes)', () => {
+  const roster = [
+    [4, 'Warrior', 'Protection'], [6, 'Warrior', 'Fury'], [6, 'Rogue', 'Combat'], [1, 'Druid', 'Feral'],
+    [4, 'Hunter', 'Marksmanship'], [5, 'Mage', 'Frost'], [4, 'Warlock', 'Destruction'], [1, 'Priest', 'Shadow'],
+    [4, 'Priest', 'Holy'], [1, 'Druid', 'Restoration'], [2, 'Paladin', 'Holy1'], [1, 'Paladin', 'Retribution'], [1, 'Paladin', 'Protection1'],
+  ];
+  const isPaladin = p => p.class === 'PALADIN';
+  for (const mode of MODES) {
+    State.gameVersion = 'classic';
+    State.selectedRaid = 'mc';
+    State.optimizerMode = mode;
+    const res = importSignUps(roster);
+    assert.equal(res.success, true, `mode ${mode}: import should succeed`);
+    assert.equal(Faction.current(), 'alliance', `mode ${mode}: roster should detect as alliance`);
+    assert.equal(State.groups.flat().filter(isPaladin).length, 4, `mode ${mode}: all 4 paladins should be seated`);
+    assert(!hasStackingViolation(isPaladin), `mode ${mode}: a group has 2+ paladins while another melee group has none`);
+  }
+});
+check('Feral Leader of the Pack: no stacking violation (all 4 modes)', () => {
+  const roster = [
+    [4, 'Warrior', 'Protection'], [8, 'Warrior', 'Fury'], [8, 'Rogue', 'Combat'], [4, 'Druid', 'Feral'],
+    [4, 'Hunter', 'Marksmanship'], [5, 'Mage', 'Frost'], [3, 'Warlock', 'Destruction'], [1, 'Priest', 'Shadow'],
+    [2, 'Priest', 'Holy'], [1, 'Druid', 'Restoration'],
+  ];
+  const isFeral = p => p.class === 'DRUID' && p.spec === 'Feral';
+  for (const mode of MODES) {
+    State.gameVersion = 'classic';
+    State.selectedRaid = 'mc';
+    State.optimizerMode = mode;
+    assert.equal(importSignUps(roster).success, true, `mode ${mode}: import should succeed`);
+    assert.equal(State.groups.flat().filter(isFeral).length, 4, `mode ${mode}: all 4 Ferals should be seated`);
+    assert(!hasStackingViolation(isFeral), `mode ${mode}: a group has 2+ Ferals while another melee group has none`);
+  }
+});
+
 // ── Performance: a 40-player Classic optimize should stay well under 2s ──
 check('40-player Classic optimize finishes well under 2s', () => {
   State.gameVersion = 'classic';
