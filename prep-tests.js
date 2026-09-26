@@ -143,6 +143,27 @@ check('RaidPrep.toChatText returns empty string for an unknown raid', () => {
   assert.equal(RaidPrep.toChatText('nope'), '');
 });
 
+// QA pass 2: the source notes use em/en dashes as clause separators (e.g.
+// "...interval) — keep a Hunter available."). The old ascii() stripped the
+// dash outright but kept both surrounding spaces, silently mangling text into
+// "interval)  keep" (a double space, and for a dash with no surrounding
+// spaces it would have joined two words together). It should normalize to an
+// ASCII " - " instead of just deleting the character.
+check('RaidPrep.toChatText normalizes em/en dashes to " - " instead of deleting them', () => {
+  let sawDash = false;
+  for (const key of realRaidKeys) {
+    const prep = RaidPrep.forRaid(key);
+    const hasEmDash = [...(prep.encounters || []), ...(prep.consumables || [])]
+      .some(item => /[‒-―−]/.test(item.note || ''));
+    if (!hasEmDash) continue;
+    sawDash = true;
+    const text = RaidPrep.toChatText(key);
+    assert.ok(!/  /.test(text), `"${key}" chat text has a doubled space left by a stripped dash: ${text}`);
+    assert.ok(/ - /.test(text), `"${key}" chat text should render its em/en dash as " - "`);
+  }
+  assert.ok(sawDash, 'expected at least one raid prep note with an em/en dash to exercise this path');
+});
+
 // ── 4. Raid-Helper templateId -> game version detection ─────────────
 check('detectVersionFromTemplateId("wowtbc") -> tbc (confirmed field)', () => {
   assert.equal(detectVersionFromTemplateId('wowtbc'), 'tbc');

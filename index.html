@@ -6011,7 +6011,18 @@ const RaidPrep = {
   toChatText(raidKey) {
     const prep = this.forRaid(raidKey);
     if (!prep) return '';
-    const ascii = (s) => String(s == null ? '' : s).replace(/[^\x00-\x7F]/g, '');
+    // Source notes are prose lifted from research docs and use em/en dashes as
+    // clause separators (e.g. "...interval) — keep a Hunter available.").
+    // Stripping them outright (old behavior) deleted the separator but left
+    // both surrounding spaces, silently mangling text into "interval)  keep".
+    // Normalize to an ASCII " - " first so the sentence still reads correctly
+    // in /raid chat, then drop anything else non-ASCII as before.
+    const ascii = (s) => String(s == null ? '' : s)
+      .replace(/\s*[‒-―−]\s*/g, ' - ')
+      .replace(/[‘’]/g, "'")
+      .replace(/[“”]/g, '"')
+      .replace(/…/g, '...')
+      .replace(/[^\x00-\x7F]/g, '');
     const clip = (line) => { line = ascii(line); return line.length > 255 ? line.slice(0, 254) + '.' : line; };
     const lines = [];
     const raidName = ascii((Config.Raids[raidKey] || {}).name || raidKey);
