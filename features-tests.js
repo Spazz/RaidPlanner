@@ -225,16 +225,40 @@ check('Utility coverage: Classic faction lock drops Fear Break entirely for Alli
   assert.equal(fearBreak.covered, true, 'the seated Shaman covers it');
 });
 
-check('Utility coverage: unmodeled Forever falls back to the Classic table', () => {
+check('Utility coverage: Forever is now modeled but still borrows the Classic utility table', () => {
   resetState();
   State.gameVersion = 'forever';
-  State.selectedRaid = 'forever40';
+  State.selectedRaid = 'f_ony';
   State.groups = numberGroups([[mk('DRUID', 'Restoration', 'healer')]]);
   State.bench = [];
   State.roster = State.groups.flat();
-  assert.equal(Rulesets.forever, null, 'Forever has no ruleset of its own yet');
+  assert(Rulesets.forever, 'Forever now has its own ruleset (buffs/debuffs/rules)');
+  assert.equal(Rulesets.forever.utilities, undefined, 'Forever does not define its own utilities table');
+  assert.equal(Config.Utilities, Rulesets.classic.utilities, 'Forever falls back to the Classic utility table');
   const items = Readiness.utilityCoverage();
   assert(items.find(i => i.id === 'BATTLE_REZ'), 'Forever borrows the Classic utility table rather than showing nothing');
+});
+
+check('Utility coverage: a mixed Forever raid (Shaman + Paladin, no faction lock) sees both totem and aura utility providers', () => {
+  resetState();
+  State.gameVersion = 'forever';
+  State.selectedRaid = 'f_ony';
+  // Forever has no faction lock, so a Shaman and a Paladin can be seated together.
+  State.groups = numberGroups([[
+    mk('SHAMAN', 'Restoration', 'healer', 'Shammy'),
+    mk('PALADIN', 'Holy', 'healer', 'Pallyman'),
+  ]]);
+  State.bench = [];
+  State.roster = State.groups.flat();
+  assert.equal(Rulesets.forever.rules.factionLock, false, 'Forever opts out of the faction lock');
+
+  const items = Readiness.utilityCoverage();
+  const fearBreak = items.find(i => i.id === 'FEAR_BREAK');
+  assert(fearBreak, 'Fear Break (Shaman-only) is not faction-filtered away on Forever');
+  assert.equal(fearBreak.covered, true, 'the seated Shaman covers Fear Break');
+  const cureDisease = items.find(i => i.id === 'CURE_DISEASE');
+  assert(cureDisease, 'Cure Disease applies');
+  assert.equal(cureDisease.covered, true, 'the seated Paladin (Cleanse) covers Cure Disease');
 });
 
 check('Balance warnings: melee/ranged skew fires above 70%, not below', () => {

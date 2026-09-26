@@ -2974,6 +2974,7 @@ const Import = {
       preferredSlots = PreferredSlots.clean(planning.preferredSlots, raid);
       preserveGroupOrder = planning.preserveGroupOrder === true || preferredSlots.length > 0;
       notes = typeof planning.notes === 'string' ? planning.notes.slice(0, NOTES_MAX_LENGTH) : '';
+      assignments = planning.assignments || null;
     }
     catch { return {success:false, error:'Share link has damaged preferred slots'}; }
     if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0 && !(Array.isArray(campfires?.fires) && campfires.fires.some(f => f && [3,5,10].includes(f.capacity)))) {

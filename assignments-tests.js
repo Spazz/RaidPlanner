@@ -176,6 +176,18 @@ check('Classic Horde roster (no Paladins) suggests no Blessings', () => {
   const result = Assignments.suggestBlessings(players);
   assert.equal(Object.keys(result).length, 0);
 });
+check('Forever: Blessings are suggested for seated Paladins even alongside a Shaman (no faction lock)', () => {
+  resetState('forever', 'f_ony');
+  const players = seat([
+    mk('PALADIN', 'Holy', 'healer'),
+    mk('SHAMAN', 'Enhancement', 'melee_dps'),
+    mk('WARRIOR', 'Protection', 'tank'),
+    mk('MAGE', 'Fire', 'caster_dps'),
+  ]);
+  const result = Assignments.suggestBlessings(players);
+  assert(Object.keys(result).length > 0, 'a seated Forever Paladin gets at least one Blessing');
+  assert.equal(result.KINGS, players[0].name, 'Kings is always included and given by the seated Paladin');
+});
 check('Per-class Blessing matrix matches the spec examples (role-driven)', () => {
   resetState('tbc', 'kara');
   const players = seat([
@@ -237,6 +249,20 @@ check('Faerie Fire (Feral) is suggested when there is no Balance druid to supers
   const players = seat([mk('DRUID', 'Feral', 'melee_dps')]);
   const result = Assignments.suggestDebuffs(players);
   assert.equal(result.FAERIE_FIRE_FERAL, players[0].name);
+});
+check('Forever debuff assignments use Forever\'s own Config.Debuffs and exclude Shadow Weaving/Stormstrike', () => {
+  resetState('forever', 'f_ony');
+  assert(!('SHADOW_WEAVING' in (activeRules().debuffs || {})), 'Shadow Weaving is confirmed personal-only in Forever, not modeled as a debuff');
+  assert(!('STORMSTRIKE' in (activeRules().debuffs || {})), 'Stormstrike is confirmed personal-only in Forever, not modeled as a debuff');
+  const players = seat([
+    mk('WARRIOR', 'Protection', 'tank'),
+    mk('PRIEST', 'Shadow', 'caster_dps'),
+    mk('SHAMAN', 'Enhancement', 'melee_dps'),
+  ]);
+  const result = Assignments.suggestDebuffs(players);
+  assert.equal(result.SUNDER_ARMOR, players[0].name, 'Forever still models Sunder Armor for the seated warrior');
+  assert.equal(result.SHADOW_WEAVING, undefined, 'no Shadow Weaving suggestion even with a Shadow priest seated');
+  assert.equal(result.STORMSTRIKE, undefined, 'no Stormstrike suggestion even with an Enhancement shaman seated');
 });
 
 // ── Conflict detection ──────────────────────────────────────────
