@@ -8159,6 +8159,51 @@ const IdealComp = {
     return groups;
   },
 
+  // Classic Era 10-man reference comp (the "10-player template" raid option —
+  // Classic has no real 10-man raid, but the template still needs an Ideal
+  // Comp so the tab isn't blank). Same 2-tank/2-healer/6-DPS split as TBC's
+  // build10Man, faction-split like the 20/40-man builders above.
+  buildHorde10Man() {
+    const groups = [
+      [ // Tanks + melee — Enhancement Shaman WF/SoE, Feral LotP
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('DRUID', 'Feral', 'tank'),               // LotP
+        this.makePlayer('SHAMAN', 'Enhancement', 'melee_dps'),   // WF + SoE
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('SHAMAN', 'Restoration', 'healer'),      // Mana Tide
+      ],
+      [ // Casters + healer — Elemental Shaman totems
+        this.makePlayer('SHAMAN', 'Elemental', 'caster_dps'),    // Grace of Air/Mana Spring
+        this.makePlayer('WARLOCK', 'Affliction', 'caster_dps'),
+        this.makePlayer('MAGE', 'Arcane', 'caster_dps'),
+        this.makePlayer('HUNTER', 'Marksmanship', 'ranged_dps'), // Trueshot Aura
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+      ],
+    ];
+    for (let gi = 0; gi < groups.length; gi++) for (const p of groups[gi]) p.groupNumber = gi + 1;
+    return groups;
+  },
+  buildAlliance10Man() {
+    const groups = [
+      [ // Tanks + melee — Retribution Paladin aura, Feral LotP
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('DRUID', 'Feral', 'tank'),               // LotP
+        this.makePlayer('PALADIN', 'Retribution', 'melee_dps'),
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('PALADIN', 'Holy', 'healer'),            // Devotion Aura
+      ],
+      [ // Casters + healer — no Paladin caster equivalent
+        this.makePlayer('MAGE', 'Fire', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('DRUID', 'Balance', 'caster_dps'),       // Moonkin Aura
+        this.makePlayer('HUNTER', 'Marksmanship', 'ranged_dps'), // Trueshot Aura
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+      ],
+    ];
+    for (let gi = 0; gi < groups.length; gi++) for (const p of groups[gi]) p.groupNumber = gi + 1;
+    return groups;
+  },
+
   // Forever reference comps — no faction lock, so unlike Classic these mix
   // Shaman totems and Paladin auras in the SAME roster (tasks/research-forever.md
   // Browser verification: six new race/class combos put both classes on both
@@ -8287,7 +8332,10 @@ const IdealComp = {
 // IdealComp.generate() dispatches through activeRules().idealComp, so a
 // future ruleset only needs to supply its own build25Man/build10Man here.
 Rulesets.tbc.idealComp = { build25Man: () => IdealComp.build25Man(), build10Man: () => IdealComp.build10Man() };
-Rulesets.classic.idealComp = { build40Man: () => IdealComp.build40Man(), build20Man: () => IdealComp.build20Man() };
+Rulesets.classic.idealComp = {
+  build40Man: () => IdealComp.build40Man(), build20Man: () => IdealComp.build20Man(),
+  build10Man: () => Faction.current() === 'alliance' ? IdealComp.buildAlliance10Man() : IdealComp.buildHorde10Man(),
+};
 Rulesets.forever.idealComp = {
   build40Man: () => IdealComp.buildForever40Man(),
   build20Man: () => IdealComp.buildForever20Man(),
