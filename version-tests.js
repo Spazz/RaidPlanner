@@ -27,13 +27,26 @@ for (const version of ['classic','forever','tbc']) {
   assert.equal(State.gameVersion,version);
   assert.equal(PlanStore.restore(snapshot),true);
   assert.equal(State.gameVersion,version);
-  if (version !== 'tbc') {
+  if (version === 'forever') {
+    // Forever has no ruleset yet (Phase C) — every rule-driven surface is a no-op.
     assert.equal(Object.keys(Config.Buffs).length,0);
     assert.equal(getGroupBuffs(State.groups[0],0).length,0);
     assert.equal(Object.keys(getMissingBuffInsights()).length,0);
     const before=JSON.stringify(State.groups);
     Optimizer.optimize();
     assert.equal(JSON.stringify(State.groups),before);
+  }
+  if (version === 'classic') {
+    // Classic IS modeled (Phase B) — real buffs/debuffs, and Optimizer.optimize()
+    // actually runs (an all-Mage roster just has nothing to buff, so it must not throw).
+    assert.equal(GameVersions.classic.modeled,true);
+    assert(Object.keys(Config.Buffs).length>0);
+    assert(Object.keys(Config.Debuffs).length>0);
+    Optimizer.optimize();
+    assert(State.groups.flat().length<=Config.Raids[State.selectedRaid].size);
+  }
+  if (version !== 'tbc') {
+    // Legacy classicN/foreverN planning templates stay usable for old saved plans.
     State.selectedRaid=version+'10';
     enforceRaidCapacity(State.groups,State.bench,2);
     assert.equal(State.groups.flat().length,10);

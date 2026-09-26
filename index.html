@@ -534,6 +534,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .groups-container.groups-5 .group-card:nth-child(3) { grid-column: span 2; }
 .groups-container.groups-5 .group-card:nth-child(4) { grid-column: 2 / span 2; }
 .groups-container.groups-5 .group-card:nth-child(5) { grid-column: 4 / span 2; }
+/* Classic 20-man (4 groups) and 40-man (8 groups) — even grid, no special layout needed */
+.groups-container.groups-4,
+.groups-container.groups-8 { grid-template-columns: repeat(4, 1fr); }
 .group-card {
   display: flex; flex-direction: column;
   background: var(--bg-card);
@@ -863,6 +866,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .buff-ur { background: #7a3f2f; color: #ffd8d0; }
 .buff-bs { background: #8a2f2f; color: #ffd0d0; }
 .buff-vt { background: #4a2f6a; color: #e0d0ff; }
+.buff-tqa { background: #2f6a5a; color: #d0fff0; }
+.buff-sst { background: #5a4a30; color: #ffe8c0; }
 .no-buffs { font-size: 10px; color: var(--text-muted); font-style: italic; opacity: 0.5; }
 
 /* ── Buttons ── */
@@ -1037,7 +1042,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .sidebar-body { flex-direction: row; }
   .buff-sidebar-section { flex: 1; min-width: 0; }
   .groups-container { grid-template-columns: repeat(2, 1fr); }
-  .groups-container.groups-5 { grid-template-columns: repeat(2, 1fr); }
+  .groups-container.groups-5,
+  .groups-container.groups-4,
+  .groups-container.groups-8 { grid-template-columns: repeat(2, 1fr); }
   .groups-container.groups-5 .group-card:nth-child(1),
   .groups-container.groups-5 .group-card:nth-child(2),
   .groups-container.groups-5 .group-card:nth-child(3),
@@ -1060,7 +1067,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 
   /* Planner frame: zoom 1.5 leaves ~260 CSS px of width at 390px, so every bar restacks. */
   .groups-container,
-  .groups-container.groups-5 { grid-template-columns: 1fr; }
+  .groups-container.groups-5,
+  .groups-container.groups-4,
+  .groups-container.groups-8 { grid-template-columns: 1fr; }
   .title-bar { padding: 0 var(--sp-2); }
   .title-bar h1 { font-size: 13px; }
 
@@ -1414,6 +1423,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and paste the JSON into the import box.</p></details>
       <details><summary>People signed up after I built the groups. Do I start over?</summary><p>No. A roster imported from a Raid-Helper link remembers its event. When you reopen a saved roster, the planner checks the event and shows what changed. Click Refresh (in the toolbar or on the banner) to add new sign-ups to the bench, remove anyone who withdrew, and update changed specs, while everyone else keeps their seat.</p></details>
       <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick Karazhan or Zul'Aman from the raid dropdown and the planner switches to two groups with 10-man tank and healer floors.</p></details>
+      <details><summary>Does it support Classic Era?</summary><p>Yes. Molten Core, Onyxia's Lair, Blackwing Lair, Zul'Gurub, Ruins of Ahn'Qiraj, Temple of Ahn'Qiraj and Naxxramas all have real Classic Era buff, debuff and optimizer rules, and the planner is faction-aware — Shaman totems for Horde, Paladin auras for Alliance.</p></details>
       <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
       <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you.</p></details>
     </div>
@@ -1671,6 +1681,7 @@ const Config = {
     DEVOTION_AURA:'Dev', CONCENTRATION_AURA:'Conc', RETRIBUTION_AURA:'Ret', SANCTITY_AURA:'Sanc',
     LEADER_OF_THE_PACK:'LotP', MOONKIN_AURA:'Moon', TREE_OF_LIFE:'ToL', TRUESHOT_AURA:'TSA', FEROCIOUS_INSP:'FI',
     UNLEASHED_RAGE:'UR', BATTLE_SHOUT:'BS', BLOOD_PACT:'BP', VAMPIRIC_TOUCH:'VT',
+    TRANQUIL_AIR:'TqA', STONESKIN:'SSk',
   },
 
   BuffCSSClass: {
@@ -1679,6 +1690,7 @@ const Config = {
     DEVOTION_AURA:'buff-dev', CONCENTRATION_AURA:'buff-conc', RETRIBUTION_AURA:'buff-ret', SANCTITY_AURA:'buff-sanc',
     LEADER_OF_THE_PACK:'buff-lotp', MOONKIN_AURA:'buff-moon', TREE_OF_LIFE:'buff-tol', TRUESHOT_AURA:'buff-tsa', FEROCIOUS_INSP:'buff-fi',
     UNLEASHED_RAGE:'buff-ur', BATTLE_SHOUT:'buff-bs', BLOOD_PACT:'buff-bp', VAMPIRIC_TOUCH:'buff-vt',
+    TRANQUIL_AIR:'buff-tqa', STONESKIN:'buff-sst',
   },
 
   // Wowhead CDN icon filenames for each buff
@@ -1703,6 +1715,8 @@ const Config = {
     TRUESHOT_AURA:      'ability_trueshot',
     FEROCIOUS_INSP:     'ability_hunter_ferociousinspiration',
     BLOOD_PACT:         'spell_shadow_bloodboil',
+    TRANQUIL_AIR:       'spell_nature_brilliance',
+    STONESKIN:          'spell_nature_stoneskintotem',
   },
   BuffIconURL(id) {
     const icon = this.BuffIcons[id];
@@ -1801,10 +1815,13 @@ const Config = {
 
   // Minimum tanks and healers a raid of this size must seat before DPS
   // compete for the remaining seats. Only consulted when more players signed
-  // up than the raid holds.
+  // up than the raid holds. These are planning floors chosen for this tool,
+  // not a game rule — 20/40 are Classic Era raid sizes.
   RaidFloors: {
     10: { tank: 2, healer: 3 },
+    20: { tank: 2, healer: 4 },
     25: { tank: 2, healer: 6 },
+    40: { tank: 4, healer: 10 },
   },
 
   RaidHelperClassMap: {
@@ -1852,9 +1869,26 @@ const Config = {
 // `modeled` is derived below from Rulesets — a version is modeled iff it has one.
 const GameVersions = {
   tbc: { name:'WoW TBC', defaultRaid:'bt', raids:[...Config.RaidOrder], note:'TBC party buffs and optimization rules.' },
-  classic: { name:'WoW Classic', defaultRaid:'classic40', raids:[], note:'Manual planning. Classic buff, composition and optimizer rules are not configured yet.' },
+  classic: { name:'WoW Classic', defaultRaid:'mc', raids:[], note:'WoW Classic Era party buffs, composition and optimizer rules. Faction-aware: Horde shamans, Alliance paladins.' },
   forever: { name:'WoW Forever (Beta)', defaultRaid:'forever40', raids:[], note:'Beta: choose a planning capacity. Raids, class/spec changes, buffs and optimizer rules are unconfirmed; the class/spec picker uses the existing baseline.' },
 };
+// Real Classic Era raids, in phase order (tasks/research-classic-buffs.md).
+// Unique keys so they never collide with TBC's Config.Raids entries.
+const CLASSIC_RAIDS = {
+  mc:   { name:'Molten Core',            size:40, groups:8, tier:'Phase 1' },
+  ony:  { name:"Onyxia's Lair",          size:40, groups:8, tier:'Phase 1' },
+  bwl:  { name:'Blackwing Lair',         size:40, groups:8, tier:'Phase 3' },
+  zg:   { name:"Zul'Gurub",              size:20, groups:4, tier:'Phase 4' },
+  aq20: { name:"Ruins of Ahn'Qiraj",     size:20, groups:4, tier:'Phase 5' },
+  aq40: { name:'Temple of Ahn\'Qiraj',   size:40, groups:8, tier:'Phase 5' },
+  naxx: { name:'Naxxramas',              size:40, groups:8, tier:'Phase 6' },
+};
+for (const [key, raid] of Object.entries(CLASSIC_RAIDS)) {
+  Config.Raids[key] = raid;
+  GameVersions.classic.raids.push(key);
+}
+// Classic/Forever planning templates — kept after the real Classic raids
+// above so old saved plans (keyed on classicN/foreverN) keep working.
 for (const version of ['classic', 'forever']) {
   for (const size of [10, 20, 40]) {
     const key = version + size;
@@ -1911,6 +1945,85 @@ const Rulesets = {
   classic: null,
   forever: null,
 };
+
+// ── CLASSIC ERA RULESET ─────────────────────────────────────────
+// Buff/debuff numbers and existence are sourced from tasks/research-classic-buffs.md
+// (compiled 2026-09-26). Where that research flags a value UNCONFIRMED, the
+// description below stays qualitative rather than inventing a number.
+// Ids are reused from Rulesets.tbc wherever Classic has the same spell (so the
+// global BuffIcons/BuffAbbreviations/BuffCSSClass/DebuffIcons/DebuffAbbreviations
+// maps in Config need no Classic-specific entries beyond the two brand-new
+// totems below); each ruleset still owns its own desc/value since Classic
+// ranks differ from TBC's (e.g. Leader of the Pack is 3% here, 5% in TBC).
+Rulesets.classic = {
+  buffs: {
+    WINDFURY:          { name:'Windfury Totem',      sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Enchants nearby party members\' main-hand weapons with wind, granting each hit a 20% chance to trigger an extra attack with up to 315 bonus attack power.' },
+    GRACE_OF_AIR:      { name:'Grace of Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by up to 77.' },
+    TRANQUIL_AIR:      { name:'Tranquil Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['caster_dps','healer'], priority:40, desc:'Reduces the threat generated by nearby party members by 20%.' },
+    STRENGTH_OF_EARTH: { name:'Strength of Earth Totem', sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55, desc:'Increases strength of nearby party members by up to 77.' },
+    STONESKIN:         { name:'Stoneskin Totem',     sourceClass:'SHAMAN', benefitsRoles:['tank'], priority:45, desc:'Reduces melee damage taken by nearby party members by up to 30 per hit.' },
+    MANA_SPRING:       { name:'Mana Spring Totem',   sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:{healer:58, caster_dps:48}, desc:'Restores mana to nearby party members every 2 seconds (up to 10 per tick at max rank).' },
+    MANA_TIDE:         { name:'Mana Tide Totem',     sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70, desc:'Restores mana to nearby party members over 12 seconds (rank 1: 170 mana every 3 seconds; higher ranks UNCONFIRMED).' },
+    DEVOTION_AURA:     { name:'Devotion Aura',       sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by up to 735.' },
+    RETRIBUTION_AURA:  { name:'Retribution Aura',    sourceClass:'PALADIN', benefitsRoles:['tank'], priority:30, desc:'Causes Holy damage to any enemy that strikes nearby party members in melee.' },
+    CONCENTRATION_AURA:{ name:'Concentration Aura',  sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Gives nearby party members a 35% chance to resist interruption from damage while casting.' },
+    SANCTITY_AURA:     { name:'Sanctity Aura',       sourceClass:'PALADIN', sourceSpec:'Retribution', benefitsRoles:['melee_dps','ranged_dps','caster_dps','tank'], priority:{melee_dps:80, ranged_dps:80, caster_dps:80, tank:40}, desc:'Increases Holy damage done by nearby party members by 10%.' },
+    BATTLE_SHOUT:      { name:'Battle Shout',        sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members for 2 minutes. Party-only in Classic Era; exact rank value UNCONFIRMED.' },
+    TRUESHOT_AURA:     { name:'Trueshot Aura',       sourceClass:'HUNTER', sourceSpec:'Marksmanship', benefitsRoles:['melee_dps','ranged_dps'], priority:62, desc:'Increases attack power of nearby party members. Exact value UNCONFIRMED.' },
+    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',  sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:78, tank:65}, desc:'Increases melee and ranged critical strike chance of nearby party members by 3%.' },
+    MOONKIN_AURA:      { name:'Moonkin Aura',        sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['caster_dps'], priority:72, desc:'Increases spell critical strike chance of nearby party members by 3%.' },
+    BLOOD_PACT:        { name:'Blood Pact',          sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases max health of nearby party members (Wowhead Classic: +38 Stamina).' },
+  },
+  // Debuffs applied to the enemy target — same non-stacking-slot model as
+  // Rulesets.tbc.debuffs (competesWith/supersededBy), Classic Era numbers.
+  debuffs: {
+    JUDGEMENT_CRUSADER: { name:'Judgement of the Crusader', sourceClass:'PALADIN', sourceSpec:'Retribution', desc:'Increases Holy damage taken by the target by 30. Improved Seal of the Crusader also grants attackers +3% critical strike chance against it.' },
+    JUDGEMENT_LIGHT:     { name:'Judgement of Light',       sourceClass:'PALADIN', desc:'Melee attackers have a chance to heal themselves. Exact value UNCONFIRMED.' },
+    JUDGEMENT_WISDOM:    { name:'Judgement of Wisdom',      sourceClass:'PALADIN', desc:'Attacks and spells against the target have a chance to restore mana. Exact value UNCONFIRMED.' },
+    SUNDER_ARMOR:        { name:'Sunder Armor',             sourceClass:'WARRIOR', desc:'Reduces the target\'s armor by up to 900 (5 stacks of 180).', competesWith:['EXPOSE_ARMOR'] },
+    DEMORALIZING_SHOUT:  { name:'Demoralizing Shout',       sourceClass:'WARRIOR', desc:'Reduces the target\'s melee attack power. Exact value UNCONFIRMED (community estimate ~140).', competesWith:['DEMORALIZING_ROAR','CURSE_WEAKNESS'] },
+    THUNDER_CLAP:        { name:'Thunder Clap',             sourceClass:'WARRIOR', desc:'Reduces the target\'s attack speed by 10% (20% with Improved Thunder Clap).' },
+    EXPOSE_ARMOR:        { name:'Expose Armor',             sourceClass:'ROGUE', desc:'Reduces the target\'s armor by 1700 at 5 combo points (2550 with Improved Expose Armor).', competesWith:['SUNDER_ARMOR'] },
+    FAERIE_FIRE_BALANCE: { name:'Faerie Fire',               sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s armor by 505.' },
+    FAERIE_FIRE_FERAL:   { name:'Faerie Fire (Feral)',       sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s armor by 505. Same debuff as Faerie Fire.', supersededBy:'FAERIE_FIRE_BALANCE' },
+    DEMORALIZING_ROAR:   { name:'Demoralizing Roar',         sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s melee attack power. Exact value UNCONFIRMED (community estimate ~140).', competesWith:['DEMORALIZING_SHOUT','CURSE_WEAKNESS'] },
+    INSECT_SWARM:        { name:'Insect Swarm',              sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s chance to hit by 2%.' },
+    CURSE_RECKLESSNESS:  { name:'Curse of Recklessness',     sourceClass:'WARLOCK', desc:'Increases melee attack power by 90 but reduces armor by 640.', competesWith:['CURSE_ELEMENTS','CURSE_WEAKNESS'] },
+    CURSE_ELEMENTS:      { name:'Curse of the Elements',     sourceClass:'WARLOCK', desc:'Reduces resistance to Fire and Frost by 75 and increases Fire/Frost damage taken by 10%. Fire and Frost only in Classic Era.', competesWith:['CURSE_RECKLESSNESS','CURSE_WEAKNESS'] },
+    CURSE_WEAKNESS:      { name:'Curse of Weakness',         sourceClass:'WARLOCK', desc:'Reduces the target\'s melee damage dealt. Exact value UNCONFIRMED; shares a debuff slot with Demoralizing Shout/Roar.', competesWith:['CURSE_ELEMENTS','CURSE_RECKLESSNESS','DEMORALIZING_SHOUT','DEMORALIZING_ROAR'] },
+    WINTERS_CHILL:       { name:'Winter\'s Chill',           sourceClass:'MAGE', sourceSpec:'Frost', desc:'Increases the target\'s chance to be critically hit by Frost spells by up to 10% (5 stacks).' },
+    IMPROVED_SCORCH:     { name:'Improved Scorch',           sourceClass:'MAGE', sourceSpec:'Fire', desc:'Increases Fire damage taken by the target by up to 15% (5 stacks).' },
+    SHADOW_WEAVING:      { name:'Shadow Weaving',            sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Increases Shadow damage taken by the target by up to 15% (5 stacks of 3%).' },
+    STORMSTRIKE:         { name:'Stormstrike',                sourceClass:'SHAMAN', sourceSpec:'Enhancement', desc:'Increases Nature damage taken by the target by 20% for the next 2 hits. Enhancement Shaman is Horde-only in Classic Era.' },
+  },
+  specs: Rulesets.tbc.specs,
+  raidHelperSpecMap: Rulesets.tbc.raidHelperSpecMap,
+  classList: Rulesets.tbc.classList,
+  specIcons: Rulesets.tbc.specIcons,
+  // Totem/aura exclusivity — same shape as TBC's, minus the elements/auras
+  // that don't exist in Classic Era (Wrath of Air, Totem of Wrath).
+  totemElements: {
+    WINDFURY:'air', GRACE_OF_AIR:'air', TRANQUIL_AIR:'air',
+    STRENGTH_OF_EARTH:'earth', STONESKIN:'earth',
+    MANA_SPRING:'water', MANA_TIDE:'water',
+  },
+  paladinAuras: { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true, SANCTITY_AURA:true },
+  bestAirTotem: { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'TRANQUIL_AIR', healer:'TRANQUIL_AIR' },
+  bestPaladinAura: { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' },
+  rules: {
+    // Warrior is the premier tank on both factions; Prot Paladin is a rare
+    // off-tank and only possible on Alliance (faction lock below).
+    tankAnchorRank: p => p.class === 'WARRIOR' ? 0 : p.class === 'PALADIN' ? 1 : 2,
+    meleeWantsWindfury: true,      // gated off for Alliance rosters — see Faction.current() call sites
+    ferociousInspiration: false,   // Ferocious Inspiration does not exist in Classic Era
+    specAura: { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA', Holy: 'CONCENTRATION_AURA' },
+    // Classic Era faction lock: Shaman = Horde only, Paladin = Alliance only.
+    // Gates the Windfury structural penalty, the missing-buff insight list,
+    // random-roster generation and the ideal-comp Horde/Alliance pick.
+    factionLock: true,
+  },
+};
+
 const EMPTY_RULESET = {
   buffs: {}, debuffs: {}, totemElements: {}, paladinAuras: {}, bestAirTotem: {}, bestPaladinAura: {},
   dpsValue: {}, mitValue: {}, sustainValue: {}, dpsWeight: {}, dpsWeightByRole: {}, rules: {}, idealComp: null,
@@ -2034,6 +2147,48 @@ const PreferredSlots = {
   },
 };
 
+// ── FACTION (Classic Era: Shaman = Horde only, Paladin = Alliance only) ──
+// Only meaningful for rulesets with rules.factionLock (Classic; Forever opts
+// out per its own ruleset). Ambient over State like activeRules() elsewhere
+// in this file, rather than threading a faction argument through every
+// optimizer/insight call site.
+const Faction = {
+  detect(players) {
+    if (!Array.isArray(players) || !players.length) return null;
+    const hasShaman = players.some(p => p.class === 'SHAMAN');
+    const hasPaladin = players.some(p => p.class === 'PALADIN');
+    if (hasShaman && hasPaladin) return 'mixed';
+    if (hasShaman) return 'horde';
+    if (hasPaladin) return 'alliance';
+    return null;
+  },
+  // Detected faction of the whole current roster (seated + benched).
+  current() {
+    return this.detect((State.groups || []).flat().concat(State.bench || []));
+  },
+};
+
+// Config.Buffs filtered to what the detected faction can actually provide,
+// for rulesets with rules.factionLock — an Alliance roster can never field a
+// Shaman totem, a Horde roster can never field a Paladin aura, so neither
+// should show up as a permanently "missing" buff. Unfiltered (returns
+// Config.Buffs as-is) once the roster is empty/mixed/unknown, or for any
+// ruleset that doesn't lock factions.
+function factionRelevantBuffs() {
+  const buffs = Config.Buffs;
+  const rules = activeRules();
+  if (!rules.rules || !rules.rules.factionLock) return buffs;
+  const faction = Faction.current();
+  if (faction !== 'horde' && faction !== 'alliance') return buffs;
+  const out = {};
+  for (const [id, buff] of Object.entries(buffs)) {
+    if (faction === 'horde' && buff.sourceClass === 'PALADIN') continue;
+    if (faction === 'alliance' && buff.sourceClass === 'SHAMAN') continue;
+    out[id] = buff;
+  }
+  return out;
+}
+
 // ── RAID CAPACITY ───────────────────────────────────────────────
 // A raid template only has room for numGroups x 5. Anyone past that — extra
 // groups, or a sixth player in a group — is moved onto the bench rather than
@@ -2150,10 +2305,15 @@ const Import = {
       if (g >= 1 && g <= maxGroup) groups[g-1].push(player);
     }
 
-    // Auto-detect raid
+    // Auto-detect raid — small sign-up lists default to the smallest raid
+    // size for the active version (TBC: 10-man; Classic: 20-man).
     if (State.gameVersion === 'tbc' && roster.length <= 10) {
       for (const key of Config.RaidOrder) {
         if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; }
+      }
+    } else if (State.gameVersion === 'classic' && roster.length <= 20) {
+      for (const key of Config.RaidOrder) {
+        if (Config.Raids[key].size === 20) { State.selectedRaid = key; break; }
       }
     }
 
@@ -2212,6 +2372,10 @@ const Import = {
     if (State.gameVersion === 'tbc' && raiders <= 10) {
       for (const key of Config.RaidOrder) {
         if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; }
+      }
+    } else if (State.gameVersion === 'classic' && raiders <= 20) {
+      for (const key of Config.RaidOrder) {
+        if (Config.Raids[key].size === 20) { State.selectedRaid = key; break; }
       }
     }
 
@@ -2754,18 +2918,25 @@ const PlanSession = {
 // ── RANDOM ROSTER GENERATOR ──────────────────────────────────────
 
 const RandomRoster = {
-  // Specs grouped by role for quick lookup
+  // Specs grouped by role for quick lookup, cached per gameVersion+faction
+  // combo (a faction-locked ruleset excludes the other faction's Shaman or
+  // Paladin from the pool, so the cache key has to include it).
   _specsByRole: null,
+  _specsByRoleKey: null,
 
-  _buildSpecsByRole() {
-    if (this._specsByRole) return this._specsByRole;
+  _buildSpecsByRole(faction) {
+    const key = State.gameVersion + ':' + (faction || 'any');
+    if (this._specsByRole && this._specsByRoleKey === key) return this._specsByRole;
     const byRole = { tank: [], healer: [], melee_dps: [], ranged_dps: [], caster_dps: [] };
     for (const [cls, specs] of Object.entries(Config.Specs)) {
+      if (faction === 'horde' && cls === 'PALADIN') continue;
+      if (faction === 'alliance' && cls === 'SHAMAN') continue;
       for (const [, spec] of Object.entries(specs)) {
         byRole[spec.role].push({ class: cls, spec: spec.name, role: spec.role });
       }
     }
     this._specsByRole = byRole;
+    this._specsByRoleKey = key;
     return byRole;
   },
 
@@ -2800,11 +2971,16 @@ const RandomRoster = {
     const size = raidInfo ? raidInfo.size : 25;
     const numGroups = raidInfo ? raidInfo.groups : 5;
 
-    const tanks = (size === 10) ? 2 : 2;
-    const healers = (size === 10) ? 2 : 5;
+    const tanks = (size === 40) ? 4 : 2;
+    const healers = (size === 10) ? 2 : (size === 40) ? 10 : 5;
     const dps = size - tanks - healers;
 
-    const byRole = this._buildSpecsByRole();
+    // Faction-locked rulesets (Classic) generate a single-faction roster —
+    // Shaman = Horde only, Paladin = Alliance only in Classic Era — instead
+    // of a roster that could never occur in that game version.
+    const rules = activeRules();
+    const faction = (rules.rules && rules.rules.factionLock) ? (Math.random() < 0.5 ? 'horde' : 'alliance') : null;
+    const byRole = this._buildSpecsByRole(faction);
     const roster = [];
     const usedNames = new Set();
 
@@ -2959,6 +3135,62 @@ const DPS_WEIGHT_BY_ROLE = { melee_dps: 0.8, ranged_dps: 0.9, caster_dps: 0.85, 
 Object.assign(Rulesets.tbc, {
   dpsValue: DPS_VALUE, mitValue: MIT_VALUE, sustainValue: SUSTAIN_VALUE,
   dpsWeight: DPS_WEIGHT, dpsWeightByRole: DPS_WEIGHT_BY_ROLE,
+});
+
+// ── CLASSIC ERA SYNERGY MODEL ──
+// Same shape as the TBC tables above, scaled to what actually exists in
+// Classic Era (no Wrath of Air/Totem of Wrath/Ferocious Inspiration/Tree of
+// Life). Values are heuristics, not measured percentages — same disclaimer
+// as DPS_VALUE above.
+const DPS_VALUE_CLASSIC = {
+  WINDFURY:           { key: { 'WARRIOR:Fury': 11, 'ROGUE:Combat': 10, 'ROGUE:Assassination': 9, 'ROGUE:Subtlety': 8, 'WARRIOR:Arms': 9, 'SHAMAN:Enhancement': 8, 'DRUID:Feral': 0 }, role: { melee_dps: 7, tank: 3 } },
+  GRACE_OF_AIR:       { role: { melee_dps: 2, ranged_dps: 4, tank: 2 } },
+  TRANQUIL_AIR:       { role: { caster_dps: 2, healer: 1 } },
+  STRENGTH_OF_EARTH:  { role: { melee_dps: 2, tank: 2 } },
+  STONESKIN:          { role: {} },
+  MANA_SPRING:        { role: { caster_dps: 2, healer: 2 } },
+  MANA_TIDE:          { role: { healer: 4 } },
+  DEVOTION_AURA:      { role: {} },
+  RETRIBUTION_AURA:   { role: { melee_dps: 1, tank: 1 } },
+  CONCENTRATION_AURA: { role: { healer: 2, caster_dps: 1 } },
+  SANCTITY_AURA:      { role: { melee_dps: 1, ranged_dps: 1, caster_dps: 1, tank: 1 } },
+  BATTLE_SHOUT:       { role: { melee_dps: 3, ranged_dps: 2, tank: 2 } },
+  TRUESHOT_AURA:      { role: { melee_dps: 3, ranged_dps: 4 } },
+  LEADER_OF_THE_PACK: { role: { melee_dps: 4, ranged_dps: 4, tank: 2 } },
+  MOONKIN_AURA:       { role: { caster_dps: 4 } },
+  BLOOD_PACT:         { role: { tank: 1 } },
+};
+const MIT_VALUE_CLASSIC = {
+  DEVOTION_AURA:      { 'WARRIOR:Protection': 10, 'PALADIN:Protection': 10, 'DRUID:Feral': 5 },
+  STONESKIN:          { '*': 6 },
+  GRACE_OF_AIR:       { 'WARRIOR:Protection': 3, 'PALADIN:Protection': 5, 'DRUID:Feral': 8 },
+  STRENGTH_OF_EARTH:  { 'WARRIOR:Protection': 4, 'PALADIN:Protection': 2, 'DRUID:Feral': 3 },
+  LEADER_OF_THE_PACK: { 'DRUID:Feral': 5, '*': 2 },
+  WINDFURY:           { 'WARRIOR:Protection': 3, 'PALADIN:Protection': 1, 'DRUID:Feral': 0 },
+  BATTLE_SHOUT:       { '*': 2 },
+  RETRIBUTION_AURA:   { '*': 1 },
+  BLOOD_PACT:         { '*': 4 },
+};
+const SUSTAIN_VALUE_CLASSIC = { MANA_SPRING: 3, MANA_TIDE: 5, CONCENTRATION_AURA: 2 };
+
+// DPS_WEIGHT_CLASSIC — rough Classic Era ordering: Fury Warrior/Rogues/
+// Fire+Frost Mage/Destro Warlock highest, Hunters next, Shadow Priest/Feral
+// cat/Elemental/Enhancement/Balance/Retribution lower. Heuristic, not
+// log-calibrated (no Classic parse data available yet, unlike DPS_WEIGHT above).
+const DPS_WEIGHT_CLASSIC = {
+  'WARRIOR:Fury': 1.0, 'ROGUE:Combat': 0.98, 'ROGUE:Assassination': 0.95, 'ROGUE:Subtlety': 0.9,
+  'MAGE:Fire': 0.95, 'MAGE:Frost': 0.9, 'WARLOCK:Destruction': 0.95, 'WARLOCK:Affliction': 0.9, 'WARLOCK:Demonology': 0.85,
+  'MAGE:Arcane': 0.8, 'WARRIOR:Arms': 0.85,
+  'HUNTER:Marksmanship': 0.85, 'HUNTER:Beast Mastery': 0.85, 'HUNTER:Survival': 0.8,
+  'PRIEST:Shadow': 0.7, 'DRUID:Feral': 0.68, 'SHAMAN:Elemental': 0.65, 'SHAMAN:Enhancement': 0.65,
+  'DRUID:Balance': 0.6, 'PALADIN:Retribution': 0.55,
+  'WARRIOR:Protection': 0.45, 'PALADIN:Protection': 0.45,
+};
+const DPS_WEIGHT_BY_ROLE_CLASSIC = { melee_dps: 0.8, ranged_dps: 0.85, caster_dps: 0.8, tank: 0.5, healer: 1.0 };
+
+Object.assign(Rulesets.classic, {
+  dpsValue: DPS_VALUE_CLASSIC, mitValue: MIT_VALUE_CLASSIC, sustainValue: SUSTAIN_VALUE_CLASSIC,
+  dpsWeight: DPS_WEIGHT_CLASSIC, dpsWeightByRole: DPS_WEIGHT_BY_ROLE_CLASSIC,
 });
 
 function dpsWeightFor(player) {
@@ -3157,13 +3389,27 @@ const Optimizer = {
     return raidSize <= 10 ? Config.RaidFloors[10] : Config.RaidFloors[25];
   },
 
+  // One 'tank' identity group; the rest split as evenly as possible between
+  // melee_dps and caster_dps (melee gets the extra when odd). Generalizes the
+  // original 5-group [melee,melee,caster,caster,tank] pattern (still returned
+  // unchanged for numGroups===5) to any raid size — Classic's 4-group 20-mans
+  // and 8-group 40-mans included. 2-group 10-mans (TBC kara/za) keep their
+  // own no-tank-group pattern; the seed pass below falls back to group 0.
+  roleIdentitiesFor(numGroups) {
+    if (numGroups <= 2) return ['melee_dps', 'caster_dps'].slice(0, numGroups);
+    const nonTank = numGroups - 1;
+    const meleeGroups = Math.ceil(nonTank / 2);
+    const casterGroups = nonTank - meleeGroups;
+    const ids = [];
+    for (let i = 0; i < meleeGroups; i++) ids.push('melee_dps');
+    for (let i = 0; i < casterGroups; i++) ids.push('caster_dps');
+    ids.push('tank');
+    return ids;
+  },
+
   // ── PHASE 1: SEED GROUPS ─────────────────────────────────────
   seedGroups(pool, groups, numGroups, raidSize, max, mode) {
-    if (numGroups >= 5) {
-      groups._roleIdentities = ['melee_dps', 'melee_dps', 'caster_dps', 'caster_dps', 'tank'];
-    } else {
-      groups._roleIdentities = ['melee_dps', 'caster_dps'];
-    }
+    groups._roleIdentities = this.roleIdentitiesFor(numGroups);
 
     // Seed the healer/tank group with ONE anchor tank (reference comp: only
     // the Prot Paladin rides with the healers). Every other tank is placed
@@ -3350,8 +3596,10 @@ const Optimizer = {
     // would have given them, so a Resto or Ele shaman is drawn to the melee
     // group that has nobody to drop it (reference comp rule 1: any shaman
     // drops WF for melee), and melee spread across shaman-covered groups
-    // instead of piling into the one Enhancement group.
-    if (rules.rules.meleeWantsWindfury && roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')) {
+    // instead of piling into the one Enhancement group. Skipped for a
+    // faction-locked Alliance roster, which can never field a shaman at all.
+    const canHaveShaman = !rules.rules.factionLock || Faction.current() !== 'alliance';
+    if (rules.rules.meleeWantsWindfury && canHaveShaman && roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')) {
       for (const p of group) {
         if (p.role === 'melee_dps') score -= 6 * dpsWeightFor(p) * cfg.structure;
       }
@@ -3854,7 +4102,7 @@ function getMissingBuffInsights() {
     insights[id] = { kind:'none' };
   };
 
-  for (const [id, entry] of Object.entries(Config.Buffs)) consider(id, entry, coveredBuffs, true);
+  for (const [id, entry] of Object.entries(factionRelevantBuffs())) consider(id, entry, coveredBuffs, true);
   for (const [id, entry] of Object.entries(Config.Debuffs)) consider(id, entry, coveredDebuffs, false);
   return insights;
 }
@@ -4406,6 +4654,7 @@ function renderGroups() {
   // Apply grid layout class based on group count
   container.className = 'groups-container';
   if (numGroups === 5) container.classList.add('groups-5');
+  else if (numGroups === 4 || numGroups === 8) container.classList.add('groups-' + numGroups);
 
   const coveredBuffIds = new Set();
 
@@ -4507,7 +4756,9 @@ function renderGroups() {
 
 function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
   const insights = getMissingBuffInsights();
-  const buffs = renderBuffRowList('buff-catalog-buffs', Config.Buffs, Config.BuffAbbreviations, id => Config.BuffIconURL(id), coveredBuffIds, insights);
+  // Faction-locked rosters (Classic) never show a buff the detected faction
+  // could never field (Windfury for Alliance, Devotion Aura for Horde).
+  const buffs = renderBuffRowList('buff-catalog-buffs', factionRelevantBuffs(), Config.BuffAbbreviations, id => Config.BuffIconURL(id), coveredBuffIds, insights);
   const debuffs = renderBuffRowList('buff-catalog-debuffs', Config.Debuffs, Config.DebuffAbbreviations, id => Config.DebuffIconURL(id), coveredDebuffIds, insights);
   renderSidebarSummary(buffs, debuffs);
 }
@@ -5514,8 +5765,14 @@ function renderReadiness() {
   const missing = Object.keys(getMissingBuffInsights()).filter(id => Config.Buffs[id]).length;
   const tankText = tanks < floors.tank ? `${floors.tank - tanks} tank${floors.tank - tanks === 1 ? '' : 's'} short` : `${tanks} tank slots filled`;
   const healerText = healers < floors.healer ? `${floors.healer - healers} healer${floors.healer - healers === 1 ? '' : 's'} short` : `${healers} healers ready`;
+  // Classic Era is faction-locked: Shaman and Paladin cannot exist in the
+  // same real raid. A roster that has both is a data problem worth calling
+  // out, not something the optimizer should silently paper over.
+  const rules = activeRules();
+  const factionWarning = (rules.rules && rules.rules.factionLock && Faction.current() === 'mixed')
+    ? ' · Mixed Horde/Alliance roster — impossible in Classic Era' : '';
   document.getElementById('readiness-text').textContent = hasLoadedWork()
-    ? `${tankText} · ${healerText} · ${missing} missing party buffs${State.preferredSlots.length ? ` · ${State.preferredSlots.length} preferred slot${State.preferredSlots.length === 1 ? '' : 's'} open` : ''}`
+    ? `${tankText} · ${healerText} · ${missing} missing party buffs${State.preferredSlots.length ? ` · ${State.preferredSlots.length} preferred slot${State.preferredSlots.length === 1 ? '' : 's'} open` : ''}${factionWarning}`
     : 'Import a roster, or click an empty slot to request a class and spec';
 }
 
@@ -6364,7 +6621,10 @@ const IdealComp = {
     if (!raidInfo || !GameVersions[State.gameVersion].modeled) return [];
     const comp = activeRules().idealComp;
     if (!comp) return [];
-    return raidInfo.size === 10 ? comp.build10Man() : comp.build25Man();
+    // Dispatches on raid size ('build10Man'..'build40Man') so a ruleset only
+    // needs to supply builders for the sizes it actually has raids at.
+    const builder = comp['build' + raidInfo.size + 'Man'];
+    return builder ? builder() : [];
   },
 
   makePlayer(cls, spec, role) {
@@ -6456,11 +6716,222 @@ const IdealComp = {
     }
     return groups;
   },
+
+  // Classic Era 40-man/20-man reference comps (tasks/research-classic-buffs.md
+  // 40-man conventions + faction lock). Horde's Enhancement/Elemental/Resto
+  // Shaman trio covers melee groups, caster groups AND the healer group —
+  // Alliance has no caster-group equivalent (Paladins have no caster spec;
+  // Concentration Aura is the only thing a caster group can get from one),
+  // which is a real Classic Era Horde raid-buff advantage, not an omission.
+  build40Man() {
+    return Faction.current() === 'alliance' ? this.buildAlliance40Man() : this.buildHorde40Man();
+  },
+  build20Man() {
+    return Faction.current() === 'alliance' ? this.buildAlliance20Man() : this.buildHorde20Man();
+  },
+
+  buildHorde40Man() {
+    const groups = [
+      [ // Melee A — WF/SoE Shaman, Feral LotP
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('WARRIOR', 'Fury', 'melee_dps'),
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('SHAMAN', 'Enhancement', 'melee_dps'), // WF + SoE
+        this.makePlayer('DRUID', 'Feral', 'melee_dps'),        // LotP
+      ],
+      [ // Melee B — WF/GoA Shaman, Feral LotP
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('WARRIOR', 'Arms', 'melee_dps'),
+        this.makePlayer('ROGUE', 'Assassination', 'melee_dps'),
+        this.makePlayer('SHAMAN', 'Enhancement', 'melee_dps'), // WF + GoA
+        this.makePlayer('DRUID', 'Feral', 'melee_dps'),        // LotP
+      ],
+      [ // Hunters — MM Trueshot, Elemental Shaman for Grace of Air
+        this.makePlayer('HUNTER', 'Marksmanship', 'ranged_dps'), // Trueshot Aura
+        this.makePlayer('HUNTER', 'Beast Mastery', 'ranged_dps'),
+        this.makePlayer('HUNTER', 'Survival', 'ranged_dps'),
+        this.makePlayer('ROGUE', 'Subtlety', 'melee_dps'),
+        this.makePlayer('SHAMAN', 'Elemental', 'caster_dps'),   // Grace of Air + SoE
+      ],
+      [ // Casters A (mages) — Elemental Shaman for Mana Spring/Tranquil Air
+        this.makePlayer('MAGE', 'Fire', 'caster_dps'),
+        this.makePlayer('MAGE', 'Frost', 'caster_dps'),
+        this.makePlayer('MAGE', 'Arcane', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('SHAMAN', 'Elemental', 'caster_dps'),   // Mana Spring + Tranquil Air
+      ],
+      [ // Casters B (warlocks) — Moonkin Aura, Elemental Shaman
+        this.makePlayer('WARLOCK', 'Affliction', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Demonology', 'caster_dps'),
+        this.makePlayer('DRUID', 'Balance', 'caster_dps'),      // Moonkin Aura
+        this.makePlayer('SHAMAN', 'Elemental', 'caster_dps'),   // Mana Spring
+      ],
+      [ // Healers core — Resto Shaman Mana Tide
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),       // anchor
+        this.makePlayer('SHAMAN', 'Restoration', 'healer'),     // Mana Tide
+        this.makePlayer('SHAMAN', 'Restoration', 'healer'),
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+        this.makePlayer('DRUID', 'Restoration', 'healer'),
+      ],
+      [ // Healers + Imp Blood Pact for the tanks
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('SHAMAN', 'Restoration', 'healer'),
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+        this.makePlayer('PRIEST', 'Discipline', 'healer'),
+        this.makePlayer('WARLOCK', 'Affliction', 'caster_dps'), // Imp Blood Pact
+      ],
+      [ // Overflow DPS
+        this.makePlayer('WARRIOR', 'Fury', 'melee_dps'),
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('HUNTER', 'Marksmanship', 'ranged_dps'),
+        this.makePlayer('MAGE', 'Fire', 'caster_dps'),
+        this.makePlayer('PRIEST', 'Shadow', 'caster_dps'),      // Shadow Weaving
+      ],
+    ];
+    for (let gi = 0; gi < groups.length; gi++) for (const p of groups[gi]) p.groupNumber = gi + 1;
+    return groups;
+  },
+
+  buildAlliance40Man() {
+    const groups = [
+      [ // Melee A — Ret Paladin aura, Feral LotP
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('WARRIOR', 'Fury', 'melee_dps'),
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('PALADIN', 'Retribution', 'melee_dps'), // Retribution Aura
+        this.makePlayer('DRUID', 'Feral', 'melee_dps'),         // LotP
+      ],
+      [ // Melee B — Ret Paladin aura, Feral LotP
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('WARRIOR', 'Arms', 'melee_dps'),
+        this.makePlayer('ROGUE', 'Assassination', 'melee_dps'),
+        this.makePlayer('PALADIN', 'Retribution', 'melee_dps'),
+        this.makePlayer('DRUID', 'Feral', 'melee_dps'),
+      ],
+      [ // Hunters — MM Trueshot, Battle Shout from a Fury Warrior (no
+        // Paladin caster/hybrid spec exists to spare for this group)
+        this.makePlayer('HUNTER', 'Marksmanship', 'ranged_dps'), // Trueshot Aura
+        this.makePlayer('HUNTER', 'Beast Mastery', 'ranged_dps'),
+        this.makePlayer('HUNTER', 'Survival', 'ranged_dps'),
+        this.makePlayer('ROGUE', 'Subtlety', 'melee_dps'),
+        this.makePlayer('WARRIOR', 'Fury', 'melee_dps'),          // Battle Shout
+      ],
+      [ // Casters A (mages) — no Paladin totem-equivalent for casters
+        this.makePlayer('MAGE', 'Fire', 'caster_dps'),
+        this.makePlayer('MAGE', 'Frost', 'caster_dps'),
+        this.makePlayer('MAGE', 'Arcane', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('PRIEST', 'Shadow', 'caster_dps'),        // Shadow Weaving
+      ],
+      [ // Casters B (warlocks) — Moonkin Aura
+        this.makePlayer('WARLOCK', 'Affliction', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Demonology', 'caster_dps'),
+        this.makePlayer('DRUID', 'Balance', 'caster_dps'),        // Moonkin Aura
+        this.makePlayer('PRIEST', 'Discipline', 'healer'),
+      ],
+      [ // Healers core — Devotion Aura for the tanks
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),         // anchor
+        this.makePlayer('PALADIN', 'Holy', 'healer'),             // Devotion Aura
+        this.makePlayer('PALADIN', 'Holy', 'healer'),
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+        this.makePlayer('DRUID', 'Restoration', 'healer'),
+      ],
+      [ // Healers + Imp Blood Pact for the tanks
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('PALADIN', 'Holy', 'healer'),             // Concentration Aura
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+        this.makePlayer('DRUID', 'Restoration', 'healer'),
+        this.makePlayer('WARLOCK', 'Affliction', 'caster_dps'),   // Imp Blood Pact
+      ],
+      [ // Overflow DPS
+        this.makePlayer('WARRIOR', 'Fury', 'melee_dps'),
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('HUNTER', 'Marksmanship', 'ranged_dps'),
+        this.makePlayer('MAGE', 'Fire', 'caster_dps'),
+        this.makePlayer('PRIEST', 'Shadow', 'caster_dps'),
+      ],
+    ];
+    for (let gi = 0; gi < groups.length; gi++) for (const p of groups[gi]) p.groupNumber = gi + 1;
+    return groups;
+  },
+
+  buildHorde20Man() {
+    const groups = [
+      [ // Melee — WF/SoE Shaman, Feral LotP
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('WARRIOR', 'Fury', 'melee_dps'),
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('SHAMAN', 'Enhancement', 'melee_dps'), // WF + SoE
+        this.makePlayer('DRUID', 'Feral', 'melee_dps'),        // LotP
+      ],
+      [ // Hunters + casters — Elemental Shaman for Mana Spring/Tranquil Air
+        this.makePlayer('HUNTER', 'Marksmanship', 'ranged_dps'), // Trueshot Aura
+        this.makePlayer('MAGE', 'Fire', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('SHAMAN', 'Elemental', 'caster_dps'),
+        this.makePlayer('PRIEST', 'Shadow', 'caster_dps'),        // Shadow Weaving
+      ],
+      [ // Healers — Resto Shaman Mana Tide, Imp Blood Pact
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('SHAMAN', 'Restoration', 'healer'),       // Mana Tide
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+        this.makePlayer('DRUID', 'Restoration', 'healer'),
+        this.makePlayer('WARLOCK', 'Affliction', 'caster_dps'),   // Imp Blood Pact
+      ],
+      [ // Remaining DPS
+        this.makePlayer('ROGUE', 'Assassination', 'melee_dps'),
+        this.makePlayer('HUNTER', 'Survival', 'ranged_dps'),
+        this.makePlayer('MAGE', 'Arcane', 'caster_dps'),
+        this.makePlayer('PRIEST', 'Discipline', 'healer'),
+        this.makePlayer('DRUID', 'Balance', 'caster_dps'),        // Moonkin Aura
+      ],
+    ];
+    for (let gi = 0; gi < groups.length; gi++) for (const p of groups[gi]) p.groupNumber = gi + 1;
+    return groups;
+  },
+
+  buildAlliance20Man() {
+    const groups = [
+      [ // Melee — Ret Paladin aura, Feral LotP
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('WARRIOR', 'Fury', 'melee_dps'),
+        this.makePlayer('ROGUE', 'Combat', 'melee_dps'),
+        this.makePlayer('PALADIN', 'Retribution', 'melee_dps'),
+        this.makePlayer('DRUID', 'Feral', 'melee_dps'),
+      ],
+      [ // Hunters + casters — no Paladin caster equivalent
+        this.makePlayer('HUNTER', 'Marksmanship', 'ranged_dps'), // Trueshot Aura
+        this.makePlayer('MAGE', 'Fire', 'caster_dps'),
+        this.makePlayer('WARLOCK', 'Destruction', 'caster_dps'),
+        this.makePlayer('PRIEST', 'Shadow', 'caster_dps'),       // Shadow Weaving
+        this.makePlayer('PALADIN', 'Holy', 'healer'),            // Concentration Aura
+      ],
+      [ // Healers — Devotion Aura, Imp Blood Pact
+        this.makePlayer('WARRIOR', 'Protection', 'tank'),
+        this.makePlayer('PALADIN', 'Holy', 'healer'),            // Devotion Aura
+        this.makePlayer('PRIEST', 'Holy', 'healer'),
+        this.makePlayer('DRUID', 'Restoration', 'healer'),
+        this.makePlayer('WARLOCK', 'Affliction', 'caster_dps'),  // Imp Blood Pact
+      ],
+      [ // Remaining DPS
+        this.makePlayer('ROGUE', 'Assassination', 'melee_dps'),
+        this.makePlayer('HUNTER', 'Survival', 'ranged_dps'),
+        this.makePlayer('MAGE', 'Arcane', 'caster_dps'),
+        this.makePlayer('PRIEST', 'Discipline', 'healer'),
+        this.makePlayer('DRUID', 'Balance', 'caster_dps'),       // Moonkin Aura
+      ],
+    ];
+    for (let gi = 0; gi < groups.length; gi++) for (const p of groups[gi]) p.groupNumber = gi + 1;
+    return groups;
+  },
 };
 // Wire the TBC ideal comp into the registry now that IdealComp exists —
 // IdealComp.generate() dispatches through activeRules().idealComp, so a
 // future ruleset only needs to supply its own build25Man/build10Man here.
 Rulesets.tbc.idealComp = { build25Man: () => IdealComp.build25Man(), build10Man: () => IdealComp.build10Man() };
+Rulesets.classic.idealComp = { build40Man: () => IdealComp.build40Man(), build20Man: () => IdealComp.build20Man() };
 
 // ── TAB SWITCHING ───────────────────────────────────────────────
 function switchTab(tab) {
@@ -6498,6 +6969,7 @@ function renderIdealComp() {
 
   container.className = 'groups-container';
   if (numGroups === 5) container.classList.add('groups-5');
+  else if (numGroups === 4 || numGroups === 8) container.classList.add('groups-' + numGroups);
 
   const coveredBuffIds = new Set();
 
