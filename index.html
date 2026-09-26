@@ -942,6 +942,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .buff-vt { background: #4a2f6a; color: #e0d0ff; }
 .buff-tqa { background: #2f6a5a; color: #d0fff0; }
 .buff-sst { background: #5a4a30; color: #ffe8c0; }
+.buff-drums { background: #6b3f1a; color: #ffdcb0; }
 .no-buffs { font-size: 10px; color: var(--text-muted); font-style: italic; opacity: 0.5; }
 
 /* ── Buttons ── */
@@ -1649,7 +1650,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <details><summary>Does it support Classic Era?</summary><p>Yes. Molten Core, Onyxia's Lair, Blackwing Lair, Zul'Gurub, Ruins of Ahn'Qiraj, Temple of Ahn'Qiraj and Naxxramas all have real Classic Era buff, debuff and optimizer rules, and the planner is faction-aware — Shaman totems for Horde, Paladin auras for Alliance.</p></details>
       <details><summary>Does it support WoW Forever?</summary><p>Yes, using confirmed Forever beta data. Barrow Deeps (10), Hyjal Summit (20) and Onyxia's Lair (40) are modeled with real rules — and unlike Classic Era, Forever has no faction lock: the new race/class combos put Paladin and Shaman on both factions, so a raid can freely mix totems and auras. Trueshot Aura is baseline for every Hunter spec, and Leader of the Pack and Moonkin Aura share one exclusive crit buff per group, so Feral and Balance druids spread out instead of stacking.</p></details>
       <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
-      <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you.</p></details>
+      <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes, on Classic Era and TBC — MRT ships maintained builds for both, and its Raid Groups module isn't restricted to Retail. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you. WoW Forever support is unconfirmed — MRT has no Forever build yet since Forever is still in beta.</p></details>
       <details><summary>Can I paste a roster that isn't from Raid-Helper?</summary><p>Yes. The import box also accepts a plain list — one player per line or comma-separated, in any of "Name Class Spec", "Name - Spec Class", a Discord-style "@Name (Spec Class)", a WoW /who-style "Name Level 60 Race Class" line, or CSV with an optional header row. You'll see a preview of what was recognized, with anything ambiguous flagged for review and unrecognized lines listed separately, before anything is imported.</p></details>
       <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save, Share/Export, and switching between Plan/Ideal Comp/Assignments). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
       <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open Options and click <strong>Export all data</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open Options and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Party Planner backup is rejected without touching your existing data.</p></details>
@@ -2031,6 +2032,9 @@ const Config = {
     LEADER_OF_THE_PACK:'LotP', MOONKIN_AURA:'Moon', TREE_OF_LIFE:'ToL', TRUESHOT_AURA:'TSA', FEROCIOUS_INSP:'FI',
     UNLEASHED_RAGE:'UR', BATTLE_SHOUT:'BS', BLOOD_PACT:'BP', VAMPIRIC_TOUCH:'VT',
     TRANQUIL_AIR:'TqA', STONESKIN:'SSk',
+    // Not a Config.Buffs entry (see getDrumsCoverage) — just reusing the same
+    // abbreviation/CSS/icon lookup maps for the group-card drum icon.
+    DRUMS:'Drm',
   },
 
   BuffCSSClass: {
@@ -2039,7 +2043,7 @@ const Config = {
     DEVOTION_AURA:'buff-dev', CONCENTRATION_AURA:'buff-conc', RETRIBUTION_AURA:'buff-ret', SANCTITY_AURA:'buff-sanc',
     LEADER_OF_THE_PACK:'buff-lotp', MOONKIN_AURA:'buff-moon', TREE_OF_LIFE:'buff-tol', TRUESHOT_AURA:'buff-tsa', FEROCIOUS_INSP:'buff-fi',
     UNLEASHED_RAGE:'buff-ur', BATTLE_SHOUT:'buff-bs', BLOOD_PACT:'buff-bp', VAMPIRIC_TOUCH:'buff-vt',
-    TRANQUIL_AIR:'buff-tqa', STONESKIN:'buff-sst',
+    TRANQUIL_AIR:'buff-tqa', STONESKIN:'buff-sst', DRUMS:'buff-drums',
   },
 
   // Wowhead CDN icon filenames for each buff
@@ -2066,6 +2070,7 @@ const Config = {
     BLOOD_PACT:         'spell_shadow_bloodboil',
     TRANQUIL_AIR:       'spell_nature_brilliance',
     STONESKIN:          'spell_nature_stoneskintotem',
+    DRUMS:              'inv_misc_drum_06',
   },
   BuffIconURL(id) {
     const icon = this.BuffIcons[id];
@@ -2647,6 +2652,12 @@ const State = {
   // Per-plan hard constraints between two named players (backlog #3):
   // [{a: name, b: name, type: 'together'|'apart'}]. See the Constraints module.
   playerConstraints: [],
+  // TBC-only Leatherworker drum tags (feature-backlog-3 #5): [{player: name,
+  // drum: 'Battle'|'War'|'Restoration'|''}]. Name-keyed like backups/
+  // constraints — see the Drummers module. Classic Era has no Drums
+  // equivalent and Forever's status is unconfirmed, so nothing outside TBC
+  // ever reads this.
+  drummers: [],
 };
 const NOTES_MAX_LENGTH = 2000;
 
@@ -2911,6 +2922,69 @@ const Constraints = {
     }
 
     return { violations: this.violations(groups) };
+  },
+};
+
+// ── DRUMMERS (feature-backlog-3 #5: TBC Leatherworker drum tracking) ──
+// A minimal profession flag, name-keyed exactly like Backups/Constraints:
+// which players the leader has tagged as Leatherworkers carrying drums, and
+// (optionally) which drum type. TBC-only — Drums don't exist in Classic Era
+// and Forever's status is unconfirmed (tasks/lessons.md item #5), so every
+// call site that reads this gates on State.gameVersion === 'tbc' rather than
+// this module gating itself, the same convention Campfires uses for its own
+// Forever-only data (it stays a plain array here, always reset with the
+// roster, and simply never read outside TBC).
+const DRUM_TYPES = ['Battle', 'War', 'Restoration'];
+const Drummers = {
+  clean(items) {
+    if (!Array.isArray(items)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const d of items) {
+      if (!d || typeof d.player !== 'string') continue;
+      const name = d.player.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue; // one drummer entry per named player
+      seen.add(key);
+      out.push({ player: name, drum: DRUM_TYPES.includes(d.drum) ? d.drum : '' });
+    }
+    return out;
+  },
+
+  isDrummer(name) {
+    const lower = String(name || '').toLowerCase();
+    return (State.drummers || []).some(d => d.player.toLowerCase() === lower);
+  },
+  get(name) {
+    const lower = String(name || '').toLowerCase();
+    return (State.drummers || []).find(d => d.player.toLowerCase() === lower) || null;
+  },
+  // Tags (or updates) `name` as a drummer. `drum` is optional — an empty/
+  // unrecognized value just means "drummer, type unspecified".
+  set(name, drum) {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return false;
+    State.drummers = State.drummers || [];
+    const cleanDrum = DRUM_TYPES.includes(drum) ? drum : '';
+    const existing = State.drummers.find(d => d.player.toLowerCase() === trimmed.toLowerCase());
+    if (existing) { existing.player = trimmed; existing.drum = cleanDrum; }
+    else State.drummers.push({ player: trimmed, drum: cleanDrum });
+    return true;
+  },
+  remove(name) {
+    const lower = String(name || '').toLowerCase();
+    State.drummers = (State.drummers || []).filter(d => d.player.toLowerCase() !== lower);
+  },
+  // Leaving the roster for good (delete) or losing their identity (rename)
+  // drops the tag — mirrors Backups.clearForName/Constraints.clearForName,
+  // called from the same RosterEdit call sites.
+  clearForName(name) { this.remove(name); },
+
+  // Per-group booleans: does this seated group hold at least one drummer?
+  // Empty/nonexistent groups are simply `false`, same as "no members yet".
+  coverageByGroup(groups) {
+    return (groups || []).map(g => (g || []).some(p => this.isDrummer(p.name)));
   },
 };
 
@@ -3464,18 +3538,20 @@ const Import = {
     const hasAssignments = Assignments.hasManualEdits();
     const hasBackups = Backups.hasManualEdits();
     const constraints = Constraints.clean(State.playerConstraints);
+    const drummers = Drummers.clean(State.drummers);
     const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
     for (const g of State.groups) parts.push(encode(g));
-    // Notes and manual assignment/backup/constraint edits only ride along when
-    // present, so a plain TBC share link (the common case) stays byte-for-byte
-    // as compact as before — byte-identical when no constraints are set.
-    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length) {
+    // Notes and manual assignment/backup/constraint/drummer edits only ride
+    // along when present, so a plain TBC share link (the common case) stays
+    // byte-for-byte as compact as before — byte-identical when unused.
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length || drummers.length) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
       const tail = {gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder};
       if (notes) tail.notes = notes;
       if (hasAssignments) tail.assignments = Assignments.serialize();
       if (hasBackups) tail.backups = Backups.serialize();
       if (constraints.length) tail.playerConstraints = constraints;
+      if (drummers.length) tail.drummers = drummers;
       parts.push(encodeURIComponent(JSON.stringify(tail)));
     }
     return parts.join(':');
@@ -3546,6 +3622,7 @@ const Import = {
     let assignments = null;
     let backups = null;
     let playerConstraints = [];
+    let drummers = [];
     try {
       const planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D'));
       campfires = planning.campfires;
@@ -3557,6 +3634,7 @@ const Import = {
       assignments = planning.assignments || null;
       backups = planning.backups || null;
       playerConstraints = Constraints.clean(planning.playerConstraints);
+      drummers = Drummers.clean(planning.drummers);
     }
     catch { return {success:false, error:'Share link has damaged preferred slots'}; }
     if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0 && !(Array.isArray(campfires?.fires) && campfires.fires.some(f => f && [3,5,10].includes(f.capacity)))) {
@@ -3568,7 +3646,7 @@ const Import = {
       name: name || 'Shared Roster',
       playerCount: players.length,
       groupCount: numGroups,
-      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments, backups, playerConstraints },
+      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments, backups, playerConstraints, drummers },
     };
   },
 
@@ -3656,6 +3734,7 @@ const Import = {
       assignments: Assignments.serialize(),
       backups: Backups.serialize(),
       playerConstraints: Constraints.clean(State.playerConstraints),
+      drummers: Drummers.clean(State.drummers),
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
       })),
@@ -3704,6 +3783,7 @@ const Import = {
     Assignments.restore(data.assignments);
     Backups.restore(data.backups);
     State.playerConstraints = Constraints.clean(data.playerConstraints);
+    State.drummers = Drummers.clean(data.drummers);
     return true;
   },
 
@@ -3969,7 +4049,8 @@ const PlanStore = {
       campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
       optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder,
       notes:State.notes || '',
-      assignments:State.assignments, backups:State.backups, playerConstraints:Constraints.clean(State.playerConstraints)}));
+      assignments:State.assignments, backups:State.backups, playerConstraints:Constraints.clean(State.playerConstraints),
+      drummers:Drummers.clean(State.drummers)}));
   },
   valid(data) {
     return data && typeof data.planId === 'string' && validVersionRaid(data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc', data.selectedRaid) &&
@@ -3978,6 +4059,7 @@ const PlanStore = {
       (data.notes === undefined || typeof data.notes === 'string') &&
       (data.backups === undefined || (data.backups && typeof data.backups === 'object' && !Array.isArray(data.backups))) &&
       (data.playerConstraints === undefined || Array.isArray(data.playerConstraints)) &&
+      (data.drummers === undefined || Array.isArray(data.drummers)) &&
       data.buffOverrides && typeof data.buffOverrides === 'object' && !Array.isArray(data.buffOverrides) &&
       Array.isArray(data.bench) && [...data.groups.flat(), ...data.bench].every(p => p &&
         typeof p.uid === 'string' && typeof p.name === 'string' && typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string');
@@ -4006,6 +4088,7 @@ const PlanStore = {
     Assignments.restore(data.assignments);
     Backups.restore(data.backups);
     State.playerConstraints = Constraints.clean(data.playerConstraints);
+    State.drummers = Drummers.clean(data.drummers);
     for (const p of [...State.roster, ...State.bench]) {
       const n = /^p(\d+)$/.exec(p.uid);
       if (n) _uid = Math.max(_uid, Number(n[1]));
@@ -4551,12 +4634,13 @@ const RandomRoster = {
     State.preferredSlots = [];
     State.preserveGroupOrder = false;
     // A random roster is an entirely new cast of (randomly-named) players —
-    // notes, name-keyed constraints and bench backups from whatever was
-    // loaded before would otherwise dangle, referencing nobody in the new
-    // roster, and reappear confusingly if a later import happens to reuse
-    // one of those names.
+    // notes, name-keyed constraints, bench backups and drum tags from
+    // whatever was loaded before would otherwise dangle, referencing nobody
+    // in the new roster, and reappear confusingly if a later import happens
+    // to reuse one of those names.
     State.notes = '';
     State.playerConstraints = [];
+    State.drummers = [];
     Assignments.restore(null);
     Backups.restore(null);
     const raidInfo = Config.Raids[State.selectedRaid];
@@ -4985,6 +5069,16 @@ const Optimizer = {
     // avoids trading a fixed gap for a fresh one elsewhere (see spreadProviders).
     this.spreadProviders(groups, mode);
 
+    // Phase 5b: Spread TBC drummers (feature-backlog-3 #5). A Leatherworker's
+    // Drums is party-scoped exactly like Windfury/an aura, but drummers are
+    // tagged per-player independent of class/spec, so spreadProviders' class-
+    // matching machinery doesn't apply — this is a small, dedicated pass
+    // instead. Strict no-op unless State.drummers is non-empty on a TBC
+    // roster, so the TBC scenario suite (which never tags any) is completely
+    // untouched. Runs before Phase 6 so any constraint it happens to disturb
+    // is still fixed up right after, same ordering reasoning as Phase 5.
+    this.spreadDrummers(groups);
+
     // Phase 6: Hard player constraints (backlog #3) — keep-together/keep-apart
     // pairs win over every structural/buff preference above, so this must run
     // absolutely last (same "nothing runs after it" reasoning as Phase 5). A
@@ -5038,6 +5132,68 @@ const Optimizer = {
     // lists SHAMAN as a spread provider (Classic/Forever; TBC has none).
     const shamanSpec = specs.filter(s => s.class === 'SHAMAN');
     if (shamanSpec.length) this._spreadPass(groups, shamanSpec, ['caster_dps', 'healer'], { protectRoles: ['melee_dps'], mode });
+  },
+
+  // TBC-only (feature-backlog-3 #5): spread Leatherworker drummers one per
+  // party before letting any group hold two. Deliberately simpler than
+  // _spreadPass above — drums aren't tied to a class/spec or a benefiting
+  // role, so none of that machinery's role-targeting/isolation guards apply.
+  // Every group that already has >=1 drummer is left alone; a group with
+  // zero only gets one moved in if another group has a genuine surplus
+  // (2+), and only by swapping with a non-pinned member (isPinned covers
+  // both `.locked` and the seeded anchor tank, same guard every other phase
+  // uses) — never into/out of an empty seat, since a full 25/40-man raid has
+  // none. The swap partner is the needy group's lowest dpsWeightFor member,
+  // the same "who benefits least" tie-break _spreadPass's eviction uses.
+  // Bounded, deterministic, and a strict no-op with zero drummers tagged, so
+  // the TBC scenario suite (which never tags any) is completely unaffected.
+  spreadDrummers(groups) {
+    if (State.gameVersion !== 'tbc') return;
+    if (!(State.drummers || []).length) return;
+    const isDrummer = p => Drummers.isDrummer(p.name);
+
+    for (let iter = 0; iter < 8; iter++) {
+      const counts = groups.map(g => g.filter(isDrummer).length);
+      const needy = [];
+      for (let gi = 0; gi < groups.length; gi++) {
+        if (groups[gi].length > 0 && counts[gi] === 0) needy.push(gi);
+      }
+      if (!needy.length) break; // every non-empty group already has a drummer
+
+      // Try each needy group in turn (a pinned-out needy group, or one whose
+      // only surplus sources are themselves all pinned, must not block a
+      // DIFFERENT needy group from being fixed this same round).
+      let moved = false;
+      for (const toGi of needy) {
+        const candidates = groups[toGi]
+          .map((p, pi) => ({ p, pi }))
+          .filter(({ p }) => !this.isPinned(p, toGi, groups));
+        if (!candidates.length) continue; // needy group is entirely pinned — try the next needy group
+        candidates.sort((a, b) => dpsWeightFor(a.p) - dpsWeightFor(b.p));
+        const targetIdx = candidates[0].pi;
+
+        // Surplus groups (2+), most-surplus first, so a group with 3 gives
+        // up its spare before one with exactly 2 does.
+        const surplus = groups
+          .map((g, gi) => ({ gi, count: counts[gi] }))
+          .filter(x => x.gi !== toGi && x.count >= 2)
+          .sort((a, b) => b.count - a.count);
+
+        for (const { gi: fromGi } of surplus) {
+          const sourceIdx = groups[fromGi].findIndex(p => isDrummer(p) && !this.isPinned(p, fromGi, groups));
+          if (sourceIdx < 0) continue; // this surplus group's drummer(s) are all pinned — try the next surplus group
+
+          const source = groups[fromGi][sourceIdx];
+          const target = groups[toGi][targetIdx];
+          groups[toGi][targetIdx] = source;
+          groups[fromGi][sourceIdx] = target;
+          moved = true;
+          break;
+        }
+        if (moved) break; // recompute counts fresh before tackling the next needy group
+      }
+      if (!moved) break; // nothing resolvable this round (locks blocking every option) — stop rather than spin
+    }
   },
 
   // One rebalancing pass for a single target role. Repeatedly finds a group
@@ -6045,6 +6201,19 @@ function getRaidDebuffCoverage(groups) {
   return covered;
 }
 
+// TBC-only Drums coverage (feature-backlog-3 #5). Kept as its own aggregate
+// rather than a Config.Buffs entry — Drums are tagged per-player independent
+// of class/spec (any player can carry Leatherworking), which doesn't fit
+// getGroupBuffs'/DPS_VALUE's sourceClass-driven model without disturbing
+// optimizer scoring for every other buff. `covered`/`total` count only
+// non-empty groups, so a still-filling roster's untouched groups don't read
+// as "missing" coverage. Callers gate on State.gameVersion === 'tbc'.
+function getDrumsCoverage(groups) {
+  const nonEmpty = (groups || []).filter(g => (g || []).length > 0);
+  const covered = nonEmpty.filter(g => g.some(p => Drummers.isDrummer(p.name))).length;
+  return { covered, total: nonEmpty.length };
+}
+
 function getRaidBuffCoverage(groups) {
   const covered = new Set();
   groups.forEach((g, gi) => getGroupBuffs(g, gi).forEach(b => covered.add(b.id)));
@@ -6179,6 +6348,16 @@ const Readiness = {
     // stacking heuristics.
     for (const v of Constraints.violations(State.groups || [])) {
       out.push({ id: 'CONSTRAINT_' + v.type.toUpperCase() + '_' + v.a + '_' + v.b, text: v.text });
+    }
+    // TBC Drums coverage (feature-backlog-3 #5) — same "any roster size,
+    // informational only" treatment as constraints above. Only shown once at
+    // least one drummer is tagged (nothing to report otherwise), and only
+    // while coverage is incomplete — a fully-covered raid needs no nudge.
+    if (State.gameVersion === 'tbc' && (State.drummers || []).length) {
+      const drumCoverage = getDrumsCoverage(State.groups || []);
+      if (drumCoverage.total > 0 && drumCoverage.covered < drumCoverage.total) {
+        out.push({ id: 'DRUMS_COVERAGE', text: `Drums: ${drumCoverage.covered} of ${drumCoverage.total} groups covered; spread drummers one per party first` });
+      }
     }
     if (seated.length < T.minRosterForSkew) return out;
 
@@ -6426,10 +6605,10 @@ const RosterEdit = {
     if (specChanged) { delete player.needsReview; delete player.reviewReason; }
 
     if (specChanged || name !== oldName) this.ClearOverridesFor(oldName);
-    // Backups and player constraints are name-keyed too; a rename breaks the
-    // link on whichever side it was (a spec/class change alone doesn't —
-    // same person, same seat).
-    if (name !== oldName) { Backups.clearForName(oldName); Constraints.clearForName(oldName); }
+    // Backups, player constraints and drum tags are name-keyed too; a rename
+    // breaks the link on whichever side it was (a spec/class change alone
+    // doesn't — same person, same seat).
+    if (name !== oldName) { Backups.clearForName(oldName); Constraints.clearForName(oldName); Drummers.clearForName(oldName); }
     this.syncRoster();
     return { success:true, player };
   },
@@ -6599,6 +6778,7 @@ const RosterEdit = {
     this.ClearOverridesFor(found.player.name);
     Backups.clearForName(found.player.name);
     Constraints.clearForName(found.player.name);
+    Drummers.clearForName(found.player.name);
     this.syncRoster();
     return { success:true, player: found.player };
   },
@@ -8084,8 +8264,13 @@ function renderGroups() {
       }
     }
 
+    // TBC Drums (feature-backlog-3 #5) — not part of buffList/getGroupBuffs
+    // (see getDrumsCoverage for why), so it's appended here as its own icon,
+    // reusing the same abbreviation/CSS/icon/tooltip lookups as a real buff.
+    const groupDrummers = State.gameVersion === 'tbc' ? players.filter(p => Drummers.isDrummer(p.name)) : [];
+
     let buffsHTML = '<span class="buff-bar-label">Buffs</span>';
-    if (buffList.length === 0) {
+    if (buffList.length === 0 && !groupDrummers.length) {
       buffsHTML += `<span class="no-buffs">${GameVersions[State.gameVersion].modeled ? 'No buffs' : 'Rules pending'}</span>`;
     } else {
       for (const b of buffList) {
@@ -8102,6 +8287,13 @@ function renderGroups() {
         const dataAttrs = isSwappable ? ` data-buff-id="${esc(b.id)}" data-group="${gi}" data-uid="${esc(b.sourceUid)}" data-source="${esc(b.sourceName)}" data-class="${esc(b.sourceClass)}" data-spec="${esc(b.sourceSpec || '')}"` : '';
         const ttAttrs = ` data-tt-name="${esc(b.buff.name)}" data-tt-desc="${esc(b.buff.desc || '')}" data-tt-source="${esc(from)}" data-tt-source-color="${sourceColor}"`;
         buffsHTML += `<div class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${dataAttrs}${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></div>`;
+      }
+      if (groupDrummers.length) {
+        const drumIconUrl = Config.BuffIconURL('DRUMS');
+        const drumImgTag = drumIconUrl ? `<img src="${drumIconUrl}" alt="Drm" loading="lazy" class="buff-img">` : '';
+        const drumNames = groupDrummers.map(p => (p.name || '').split('-')[0]).join(', ');
+        const drumDesc = 'Party-scoped haste/stat buff from a Leatherworker\'s drums. One effect active at a time per party — rotate multiple drummers for continuous uptime.';
+        buffsHTML += `<div class="buff-icon ${Config.BuffCSSClass.DRUMS}${drumIconUrl ? ' has-icon' : ''}" data-tt-name="Drums" data-tt-desc="${esc(drumDesc)}" data-tt-source="${esc(drumNames)}">${drumImgTag}<span class="buff-label">${Config.BuffAbbreviations.DRUMS}</span></div>`;
       }
     }
 
@@ -9042,6 +9234,29 @@ function renderConstraintEditor(player, curName) {
   </div>`;
 }
 
+// ── Drummer tagging (feature-backlog-3 #5, TBC only) ──────────────
+// A single checkbox ("this player is a Leatherworker who carries drums")
+// plus an optional drum-type select, shown for any real player (seated or
+// benched — the tag is a profession fact independent of seating, same as
+// Constraints). Never shown outside TBC: Classic Era has no Drums
+// equivalent and Forever's status is unconfirmed (tasks/lessons.md #5).
+function renderDrummerEditor(player, curName) {
+  if (!player || !curName || State.gameVersion !== 'tbc') return '';
+  const tag = Drummers.get(curName);
+  const drumOptions = ['<option value="">Type unspecified</option>']
+    .concat(DRUM_TYPES.map(t => `<option value="${t}"${tag && tag.drum === t ? ' selected' : ''}>${t}</option>`))
+    .join('');
+  return `<div class="player-move">
+    <label for="pe-drummer-toggle" style="display:flex;align-items:center;gap:6px;">
+      <input type="checkbox" id="pe-drummer-toggle"${tag ? ' checked' : ''}> Leatherworker drummer
+    </label>
+  </div>
+  <div class="player-move" id="pe-drummer-drum-row" style="${tag ? '' : 'display:none;'}">
+    <label for="pe-drummer-drum">Drum (optional)</label>
+    <select id="pe-drummer-drum">${drumOptions}</select>
+  </div>`;
+}
+
 // ── "Why here?" explanation (backlog #4) ─────────────────────────
 function renderWhyHere(player, groupIdx) {
   const reasons = explainPlacement(player, State.groups[groupIdx] || [], groupIdx, State.groups, State.optimizerMode);
@@ -9124,6 +9339,7 @@ function showPlayerEditor(anchorEl, opts) {
       <span>Locked by comp template</span>
       <button type="button" class="pe-btn" id="pe-unlock">Unlock</button>
     </div>` : ''}
+    ${!isAdd ? renderDrummerEditor(player, curName) : ''}
     ${!isAdd ? renderConstraintEditor(player, curName) : ''}
     ${!isAdd && !benched && GameVersions[State.gameVersion].modeled ? renderWhyHere(player, found.groupIdx) : ''}
     <div class="player-editor-actions">
@@ -9217,6 +9433,19 @@ function showPlayerEditor(anchorEl, opts) {
   editor.querySelector('#pe-unlock')?.addEventListener('click', () => {
     player.locked = false;
     closePlayerEditor(); renderGroups(); showToast(`${curName.split('-')[0]} unlocked`);
+  });
+
+  editor.querySelector('#pe-drummer-toggle')?.addEventListener('change', (e) => {
+    const drumSel = editor.querySelector('#pe-drummer-drum');
+    if (e.target.checked) Drummers.set(curName, drumSel ? drumSel.value : '');
+    else Drummers.remove(curName);
+    closePlayerEditor(); renderGroups();
+    showToast(e.target.checked ? `${curName.split('-')[0]} tagged as a drummer` : `${curName.split('-')[0]} untagged as a drummer`);
+  });
+  editor.querySelector('#pe-drummer-drum')?.addEventListener('change', (e) => {
+    Drummers.set(curName, e.target.value);
+    closePlayerEditor(); renderGroups();
+    showToast(`Updated ${curName.split('-')[0]}'s drum`);
   });
 
   editor.querySelector('#pe-add-together')?.addEventListener('click', () => {
@@ -10773,11 +11002,12 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   State.buffOverrides = {};
   // Wipe every per-roster feature that is keyed by player name/uid — left in
   // place, these dangle after the roster they refer to is gone (stale notes
-  // reappearing, "together"/"apart" pairs and bench backups pointing at
-  // players who no longer exist) and can resurface confusingly on whatever
-  // is imported/generated next.
+  // reappearing, "together"/"apart" pairs, bench backups and drum tags
+  // pointing at players who no longer exist) and can resurface confusingly
+  // on whatever is imported/generated next.
   State.notes = '';
   State.playerConstraints = [];
+  State.drummers = [];
   Assignments.restore(null);
   Backups.restore(null);
   initGroups();
@@ -10793,6 +11023,7 @@ document.getElementById('btn-landing-empty').addEventListener('click', () => {
   State.sourceEventId = null; State.buffOverrides = {}; State.rosterName = 'New raid plan';
   State.notes = '';
   State.playerConstraints = [];
+  State.drummers = [];
   Assignments.restore(null);
   Backups.restore(null);
   initGroups(); renderGroups(); showView('app');
@@ -11772,7 +12003,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, Assignments, RaidPrep, PrintSheet, detectVersionFromTemplateId, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, RaidSplit, PlanStore };
+  module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, Assignments, RaidPrep, PrintSheet, detectVersionFromTemplateId, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getDrumsCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, Constraints, Drummers, RaidSplit, PlanStore };
 }
 // Also expose on window for browser-based tests
 window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, RaidSplit, PlanStore, SplitFlow };
