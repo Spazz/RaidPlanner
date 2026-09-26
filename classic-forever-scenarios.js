@@ -29,10 +29,15 @@
  * relaxed mode intentionally skips swap/move/pair-exchange refinement
  * (Optimizer.refineRounds returns immediately for 'relaxed' — see index.html)
  * so it leans entirely on greedy placement + the always-on deIsolate/
- * spreadProviders passes. Where that's not enough to satisfy an invariant,
- * the check is relaxed to "no worse than greedy" and the gap is logged under
- * "Known gaps" at the end instead of failing the suite — same convention
- * scenario-tests.js uses for expect.knownGap.
+ * spreadProviders passes. Those two passes used to leave real gaps behind on
+ * Relaxed's fixtures (a stranded melee DPS, a caster-identity group with no
+ * Windfury-surplus shaman reaching it) because spreadProviders could re-isolate
+ * a player deIsolate had just fixed, or hand every spare shaman to whichever
+ * needy group happened to sort first, starving a later one — see index.html's
+ * Optimizer.wouldIsolate()/isLastResortSource()/spareProtected (the 2026-09-26
+ * "close Relaxed's optimizer quality gaps" fix) for how spreadProviders now
+ * avoids both. All four invariants below are now real assertions in every
+ * mode, including relaxed — there is no more "known gaps" carve-out.
  */
 const fs = require('fs');
 const vm = require('vm');
@@ -177,12 +182,10 @@ const FIXTURES = {
 
 // ── Runner ──
 let checks = 0, failures = 0;
-const knownGaps = [];
 function check(cond, msg) {
   checks++;
   if (!cond) { failures++; console.log('FAIL  ' + msg); }
 }
-function gap(msg) { knownGaps.push(msg); console.log('GAP   ' + msg); }
 
 for (const [key, fixture] of Object.entries(FIXTURES)) {
   const raidInfo = Config.Raids[fixture.raid];
@@ -219,18 +222,14 @@ for (const [key, fixture] of Object.entries(FIXTURES)) {
 
     // (a) stranded melee DPS
     const stranded = strandedMeleeDps(groups);
-    if (stranded.length) {
-      if (mode === 'relaxed') gap(`${key}/relaxed: ${stranded.length} stranded melee DPS (refinement skipped in relaxed mode)`);
-      else check(false, `${key}/${mode}: ${stranded.length} stranded melee DPS, e.g. group ${stranded[0].gi + 1} ${stranded[0].p.class}:${stranded[0].p.spec}`);
-    } else {
-      check(true, `${key}/${mode}: no stranded melee DPS`);
-    }
+    check(stranded.length === 0, stranded.length
+      ? `${key}/${mode}: ${stranded.length} stranded melee DPS, e.g. group ${stranded[0].gi + 1} ${stranded[0].p.class}:${stranded[0].p.spec}`
+      : `${key}/${mode}: no stranded melee DPS`);
 
     // (b) provider spread (Shaman / Paladin / Feral(+Balance in Forever))
     if (hasTankIdentity) for (const { label, matches } of providerMatchers(rules)) {
       const violated = stackingViolation(groups, matches);
-      if (violated && mode === 'relaxed') gap(`${key}/relaxed: ${label} stacking violation (refinement skipped in relaxed mode)`);
-      else check(!violated, `${key}/${mode}: ${label} stacked in one group while another melee group has none`);
+      check(!violated, `${key}/${mode}: ${label} stacked in one group while another melee group has none`);
     }
 
     // (c) shamans >= melee-identity groups => every melee-identity group with
@@ -243,8 +242,7 @@ for (const [key, fixture] of Object.entries(FIXTURES)) {
         const buffIds = getGroupBuffs(g, gi).map(b => b.id);
         if (!buffIds.includes('WINDFURY')) { coveredAll = false; example = gi; }
       }
-      if (!coveredAll && mode === 'relaxed') gap(`${key}/relaxed: melee-identity group ${example + 1} missing Windfury despite shamans >= melee groups (refinement skipped)`);
-      else check(coveredAll, `${key}/${mode}: melee-identity group ${example != null ? example + 1 : '?'} missing Windfury despite ${shamanTotal} shamans >= ${meleeIdx.length} melee groups`);
+      check(coveredAll, `${key}/${mode}: melee-identity group ${example != null ? example + 1 : '?'} missing Windfury despite ${shamanTotal} shamans >= ${meleeIdx.length} melee groups`);
     }
 
     // (d) surplus shamans (beyond one per melee group) reach caster groups as
@@ -256,8 +254,7 @@ for (const [key, fixture] of Object.entries(FIXTURES)) {
     if (hasTankIdentity && surplus > 0 && casterIdx.length > 0) {
       const casterGroupsWithManaSpring = casterIdx.filter(gi => getGroupBuffs(groups[gi], gi).some(b => b.id === 'MANA_SPRING' || b.id === 'MANA_TIDE')).length;
       const want = Math.min(surplus, casterIdx.length);
-      if (casterGroupsWithManaSpring < want && mode === 'relaxed') gap(`${key}/relaxed: only ${casterGroupsWithManaSpring}/${want} caster groups got mana sustain from ${surplus} surplus shamans (refinement skipped)`);
-      else check(casterGroupsWithManaSpring >= want, `${key}/${mode}: only ${casterGroupsWithManaSpring}/${want} caster groups got mana sustain from ${surplus} surplus shamans`);
+      check(casterGroupsWithManaSpring >= want, `${key}/${mode}: only ${casterGroupsWithManaSpring}/${want} caster groups got mana sustain from ${surplus} surplus shamans`);
     }
 
     // (f) idempotence
@@ -275,9 +272,5 @@ for (const [key, fixture] of Object.entries(FIXTURES)) {
   }
 }
 
-console.log(`\nClassic/Forever scenario suite: ${checks} checks, ${failures} failed, ${knownGaps.length} known gaps (relaxed mode only)`);
-if (knownGaps.length) {
-  console.log('\nKnown gaps (relaxed mode intentionally skips swap/move refinement — see file header):');
-  for (const g of knownGaps) console.log('  ' + g);
-}
+console.log(`\nClassic/Forever scenario suite: ${checks} checks, ${failures} failed, 0 known gaps`);
 process.exit(failures ? 1 : 0);
