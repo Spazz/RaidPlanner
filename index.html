@@ -170,6 +170,12 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .history-dialog h3 { font-family: var(--font-cond); color: var(--accent-gold); text-transform: uppercase; letter-spacing: .08em; }
 .history-dialog p { margin: 12px 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 .history-dialog .saved-list { max-height: 55dvh; overflow-y: auto; }
+/* Split-into-two-raids preview */
+.split-preview { display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: 12px; }
+.split-preview-col { flex: 1 1 200px; min-width: 180px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 10px 12px; }
+.split-preview-col h4 { font-family: var(--font-cond); color: var(--accent-gold); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; margin: 0 0 6px; }
+.split-preview-col p { margin: 4px 0; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+.split-preview-classes { font-size: 11px; color: var(--text-muted); }
 .saved-empty { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
 .import-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -625,6 +631,10 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .preferred-slot .player-spec { font-style: italic; }
 .preferred-slot img { opacity: .65; }
 .preferred-badge { color: var(--preferred-color); font-size: 9px; letter-spacing: .08em; border: 1px solid currentColor; border-radius: 3px; padding: 2px 4px; }
+/* Planned bench backup indicator — shown on both the seated player's card
+   ("Backup: Name") and the benched backup's own card ("-> Name"). */
+.backup-badge { flex-shrink:0; font-size: 9px; letter-spacing: .04em; color: var(--accent-gold-bright); border: 1px solid var(--accent-gold-dim); border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
+.backup-badge-bench { color: var(--text-secondary); border-color: var(--border-medium); }
 .preferred-actions { border-top: 1px solid var(--border-color); padding: 8px 0; }
 .preferred-actions p { font-size: 12px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 8px; }
 .preferred-actions .pe-btn { margin: 0 4px 4px 0; }
@@ -1358,6 +1368,49 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .assign-row { flex-direction:column; align-items:stretch; }
   .assign-select { width:100%; }
 }
+
+/* ── Raid Prep panel (backlog #9 + #10) — a section inside .assignments-panel ── */
+.prep-subhead { font:600 12px var(--font-cond); text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin:14px 0 6px; }
+.prep-subhead:first-child { margin-top:0; }
+.prep-row { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:8px 0; border-top:1px solid var(--border-medium); flex-wrap:wrap; }
+.prep-row:first-of-type { border-top:none; }
+.prep-row-main { display:flex; flex-direction:column; gap:2px; flex:1; min-width:200px; }
+.prep-boss { font-weight:600; font-size:12px; color:var(--text-primary); }
+.prep-note { font-size:12px; color:var(--text-secondary); line-height:1.4; }
+.prep-coverage { font-size:11px; }
+.prep-coverage.covered { color:var(--accent-green, #7fae6a); }
+.prep-coverage.missing { color:var(--accent-red); }
+.prep-source { font-size:10px; color:var(--text-muted); text-decoration:underline; white-space:nowrap; }
+@media(max-width:600px) {
+  .prep-row { flex-direction:column; align-items:stretch; }
+}
+
+/* ── Printable raid sheet (backlog #12) — hidden on screen, shown only for
+   window.print(). Fixed colors (not theme vars) guarantee a light background
+   and black text regardless of the app's own theme. ── */
+.print-sheet { display:none; }
+@media print {
+  body > *:not(#print-sheet) { display:none !important; }
+  #print-sheet {
+    display:block !important; background:#fff; color:#000;
+    font-family:Arial, Helvetica, sans-serif; padding:0;
+  }
+  @page { size:landscape; margin:10mm; }
+  #print-sheet .ps-header h1 { color:#000; margin:0 0 2px; font-size:20px; }
+  #print-sheet .ps-meta { color:#333; font-size:11px; margin-bottom:10px; }
+  #print-sheet .ps-groups { display:flex; flex-wrap:wrap; gap:8px; }
+  #print-sheet .ps-group { border:1px solid #999; padding:6px 8px; width:170px; break-inside:avoid; }
+  #print-sheet .ps-group h4 { margin:0 0 4px; font-size:12px; border-bottom:1px solid #ccc; padding-bottom:2px; color:#000; }
+  #print-sheet .ps-group ul { margin:0; padding-left:14px; font-size:10px; list-style:disc; }
+  #print-sheet .ps-buffs { font-size:9px; color:#333; margin-top:4px; }
+  #print-sheet .ps-bench, #print-sheet .ps-notes { margin-top:10px; font-size:11px; }
+  #print-sheet .ps-bench h4, #print-sheet .ps-notes h4 { margin:0 0 4px; font-size:11px; color:#000; }
+  #print-sheet .ps-assignments { display:flex; gap:24px; margin-top:10px; flex-wrap:wrap; }
+  #print-sheet .ps-assign-col { font-size:10px; }
+  #print-sheet .ps-assign-col h4 { margin:0 0 4px; font-size:11px; color:#000; }
+  #print-sheet .ps-assign-col ul, #print-sheet .ps-bench ul { margin:0; padding-left:14px; list-style:disc; }
+  #print-sheet .ps-notes p { margin:0; white-space:pre-wrap; }
+}
 </style>
 </head>
 <body>
@@ -1524,6 +1577,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
             <button class="roster-btn" id="btn-copy-json" role="menuitem" aria-label="Copy roster JSON to clipboard">Copy JSON</button>
             <button class="roster-btn" id="btn-copy-chat" role="menuitem" aria-label="Copy raid groups as plain text for Discord or raid chat">Copy Raid Chat Text</button>
             <button class="roster-btn" id="btn-copy-chat-compact" role="menuitem" aria-label="Copy raid groups as compact plain text sized for in-game raid chat">Copy Chat Text (Compact)</button>
+            <button class="roster-btn" id="btn-print-sheet" role="menuitem" aria-label="Open a clean, printable raid sheet">Print sheet</button>
           </div>
         </div>
       </div>
@@ -1552,6 +1606,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-json">Copy JSON</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-chat">Copy Raid Chat Text</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-chat-compact">Copy Chat Text (Compact)</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-print-sheet">Print sheet</button>
           <div class="mobile-more-sep" role="separator"></div>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-import">Import roster</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-random">Random roster</button>
@@ -1590,6 +1645,26 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
     <div class="sync-banner-actions">
       <button type="button" class="btn btn-primary" id="btn-sync-apply">Refresh roster</button>
       <button type="button" class="link-btn" id="btn-sync-dismiss">Dismiss</button>
+    </div>
+  </div>
+  <div class="sync-banner" id="backup-banner" hidden aria-live="polite">
+    <span id="backup-banner-text"></span>
+    <div class="sync-banner-actions" id="backup-banner-actions"></div>
+  </div>
+  <div class="sync-banner" id="split-banner" hidden aria-live="polite">
+    <span id="split-banner-text"></span>
+    <div class="sync-banner-actions">
+      <button type="button" class="btn btn-primary" id="btn-split-offer">Split into two raids</button>
+      <button type="button" class="link-btn" id="btn-split-dismiss">Dismiss</button>
+    </div>
+  </div>
+  <!-- Backlog #13: non-blocking suggestion when an imported Raid-Helper event's
+       templateId implies a different game version than the one currently active. -->
+  <div class="sync-banner" id="version-suggest-banner" hidden aria-live="polite">
+    <span id="version-suggest-text"></span>
+    <div class="sync-banner-actions">
+      <button type="button" class="btn btn-primary" id="btn-version-switch">Switch</button>
+      <button type="button" class="link-btn" id="btn-version-dismiss">Dismiss</button>
     </div>
   </div>
 
@@ -1667,11 +1742,17 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   <div class="share-actions">
     <button type="button" class="btn btn-primary" data-share-action="btn-share">Copy share link</button>
     <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt">Copy for MRT</button>
-    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-addon">Copy addon string</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button></details>
+    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-addon">Copy addon string</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-print-sheet">Print sheet</button></details>
   </div>
 </dialog>
 <dialog id="rename-dialog" class="history-dialog" aria-labelledby="rename-heading">
   <form method="dialog"><h3 id="rename-heading">Name your plan</h3><label for="plan-name">Plan name</label><input id="plan-name" class="save-input" maxlength="120" required><div class="import-buttons"><button class="btn btn-secondary" value="cancel" formnovalidate>Cancel</button><button class="btn btn-primary" value="save">Save name</button></div></form>
+</dialog>
+<dialog id="split-dialog" class="history-dialog" aria-labelledby="split-heading">
+  <div class="history-dialog-header"><h3 id="split-heading">Split into two raids</h3><button type="button" class="btn btn-secondary" id="btn-split-cancel">Cancel</button></div>
+  <p>Raid A stays as your current plan; Raid B is saved as a new plan, both linked to the same Raid-Helper event so Refresh keeps working on either one.</p>
+  <div class="split-preview" id="split-dialog-body"></div>
+  <div class="import-buttons"><button type="button" class="btn btn-primary" id="btn-split-create">Create both raids</button></div>
 </dialog>
 <dialog id="history-dialog" class="history-dialog" aria-labelledby="history-dialog-heading">
   <div class="history-dialog-header">
@@ -1684,6 +1765,10 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 
 <div class="drag-ghost" id="drag-ghost"></div>
 <div class="toast" id="toast"></div>
+<!-- Backlog #12: printable raid sheet. Kept as a body-level sibling (not
+     nested under #app/#landing-view) so @media print can show it even while
+     its normal state is empty/display:none and an ancestor view is hidden. -->
+<div class="print-sheet" id="print-sheet" aria-hidden="true"></div>
 
 <script>
 /* ================================================================
@@ -2347,6 +2432,10 @@ const State = {
   // Assignments module. Live suggestions are always recomputed from the
   // current roster and merged with these at render/serialize time.
   assignments: { tankHealers:{}, blessings:{}, debuffs:{} },
+  // Planned bench backups (name-keyed, like buffOverrides/assignments — see
+  // the Backups module): seated player's name -> the benched player pinned
+  // as their pre-planned replacement.
+  backups: {},
   activeTab: 'plan', // 'plan' | 'ideal' | 'assignments'
   view: 'landing', // 'landing' | 'app'
   notes: '', // Free-text raid notes (MT swaps, add plans); capped at NOTES_MAX_LENGTH.
@@ -2707,6 +2796,7 @@ const Import = {
   applyRaidHelperSync(diff) {
     if (!diff || !diff.success) return null;
     State.bench = State.bench || [];
+    State.backups = State.backups || {};
 
     const unseat = (player) => {
       for (const group of State.groups) {
@@ -2722,7 +2812,12 @@ const Import = {
       }
     };
 
+    // A player who was seated and just lost that seat (withdrew, or went
+    // Tentative) is a candidate for the "Backup ready — swap in?" prompt
+    // below, so their seat is captured before unseat() clears groupNumber.
+    const vacated = [];
     for (const player of diff.removed) {
+      if (player.groupNumber >= 1) vacated.push({ name: player.name, groupNumber: player.groupNumber, gone: true });
       unseat(player);
       const b = State.bench.indexOf(player);
       if (b >= 0) State.bench.splice(b, 1);
@@ -2735,6 +2830,7 @@ const Import = {
       clearOverrides(change.player); // an override for the old spec's buff no longer applies
     }
     for (const player of diff.demoted) {
+      if (player.groupNumber >= 1) vacated.push({ name: player.name, groupNumber: player.groupNumber, gone: false });
       unseat(player);
       player.groupNumber = 0;
       State.bench.push(player);
@@ -2750,9 +2846,25 @@ const Import = {
       if (entry.category !== 'bench' && PreferredSlots.seat(player)) filled++;
       else State.bench.push(player);
     }
+
+    // A designated backup still sitting on the bench is offered as a
+    // one-click promotion into the exact seat/group its primary vacated,
+    // instead of falling through to the optimizer's generic Swap In. A fully
+    // withdrawn primary's link can never resolve later, so it's dropped now;
+    // a merely-demoted primary keeps theirs in case they get re-seated.
+    const backupSwapReady = [];
+    for (const v of vacated) {
+      const backupName = Backups.backupNameFor(v.name);
+      if (backupName && State.bench.some(p => p.name === backupName)) {
+        backupSwapReady.push({ primaryName: v.name, backupName, groupNumber: v.groupNumber });
+      }
+      if (v.gone) Backups.clearForName(v.name);
+    }
+
     return {
       added: diff.added.length, removed: diff.removed.length,
       changed: diff.changed.length, demoted: diff.demoted.length, promoted: diff.promoted.length, filled,
+      backupSwapReady,
     };
   },
 
@@ -2898,15 +3010,18 @@ const Import = {
     const name = State.rosterName === NO_ROSTER_NAME ? '' : (State.rosterName || '');
     const notes = (State.notes || '').trim();
     const hasAssignments = Assignments.hasManualEdits();
+    const hasBackups = Backups.hasManualEdits();
     const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
     for (const g of State.groups) parts.push(encode(g));
-    // Notes and manual assignment edits only ride along when present, so a plain
-    // TBC share link (the common case) stays byte-for-byte as compact as before.
-    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments) {
+    // Notes and manual assignment/backup edits only ride along when present,
+    // so a plain TBC share link (the common case) stays byte-for-byte as
+    // compact as before.
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
       const tail = {gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder};
       if (notes) tail.notes = notes;
       if (hasAssignments) tail.assignments = Assignments.serialize();
+      if (hasBackups) tail.backups = Backups.serialize();
       parts.push(encodeURIComponent(JSON.stringify(tail)));
     }
     return parts.join(':');
@@ -2975,6 +3090,7 @@ const Import = {
     let preserveGroupOrder = false;
     let notes = '';
     let assignments = null;
+    let backups = null;
     try {
       const planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D'));
       campfires = planning.campfires;
@@ -2984,6 +3100,7 @@ const Import = {
       preserveGroupOrder = planning.preserveGroupOrder === true || preferredSlots.length > 0;
       notes = typeof planning.notes === 'string' ? planning.notes.slice(0, NOTES_MAX_LENGTH) : '';
       assignments = planning.assignments || null;
+      backups = planning.backups || null;
     }
     catch { return {success:false, error:'Share link has damaged preferred slots'}; }
     if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0 && !(Array.isArray(campfires?.fires) && campfires.fires.some(f => f && [3,5,10].includes(f.capacity)))) {
@@ -2995,7 +3112,7 @@ const Import = {
       name: name || 'Shared Roster',
       playerCount: players.length,
       groupCount: numGroups,
-      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments },
+      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments, backups },
     };
   },
 
@@ -3081,6 +3198,7 @@ const Import = {
       preserveGroupOrder: State.preserveGroupOrder,
       notes: State.notes || '',
       assignments: Assignments.serialize(),
+      backups: Backups.serialize(),
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
       })),
@@ -3127,6 +3245,7 @@ const Import = {
     State.sourceEventId = data.sourceEventId || null;
     State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
     Assignments.restore(data.assignments);
+    Backups.restore(data.backups);
     return true;
   },
 };
@@ -3168,13 +3287,14 @@ const PlanStore = {
       campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
       optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder,
       notes:State.notes || '',
-      assignments:State.assignments}));
+      assignments:State.assignments, backups:State.backups}));
   },
   valid(data) {
     return data && typeof data.planId === 'string' && validVersionRaid(data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc', data.selectedRaid) &&
       typeof data.rosterName === 'string' && Array.isArray(data.groups) && data.groups.every(Array.isArray) &&
       ['max_dps','tank_mit','balanced','relaxed'].includes(data.optimizerMode) &&
       (data.notes === undefined || typeof data.notes === 'string') &&
+      (data.backups === undefined || (data.backups && typeof data.backups === 'object' && !Array.isArray(data.backups))) &&
       data.buffOverrides && typeof data.buffOverrides === 'object' && !Array.isArray(data.buffOverrides) &&
       Array.isArray(data.bench) && [...data.groups.flat(), ...data.bench].every(p => p &&
         typeof p.uid === 'string' && typeof p.name === 'string' && typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string');
@@ -3201,6 +3321,7 @@ const PlanStore = {
     // existed clears any notes left over from whatever was in State before.
     State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
     Assignments.restore(data.assignments);
+    Backups.restore(data.backups);
     for (const p of [...State.roster, ...State.bench]) {
       const n = /^p(\d+)$/.exec(p.uid);
       if (n) _uid = Math.max(_uid, Number(n[1]));
@@ -4906,6 +5027,9 @@ const RosterEdit = {
     player.role = role;
 
     if (specChanged || name !== oldName) this.ClearOverridesFor(oldName);
+    // Backups are name-keyed too; a rename breaks the link on whichever side
+    // it was (a spec/class change alone doesn't — same person, same seat).
+    if (name !== oldName) Backups.clearForName(oldName);
     this.syncRoster();
     return { success:true, player };
   },
@@ -4947,6 +5071,8 @@ const RosterEdit = {
     if (!State.bench) State.bench = [];
     State.bench.push(found.player);
     this.ClearOverridesFor(found.player.name);
+    // No longer seated, so "backup for them" no longer applies.
+    Backups.unlink(found.player.name);
     this.syncRoster();
     return { success:true, player: found.player };
   },
@@ -4964,6 +5090,9 @@ const RosterEdit = {
     State.bench.splice(found.slot, 1);
     found.player.groupNumber = groupIdx + 1;
     groups[groupIdx].push(found.player);
+    // They just took their own seat, so they're no longer available as
+    // someone else's designated backup.
+    Backups.clearBackup(found.player.name);
     this.syncRoster();
     return { success:true, player: found.player };
   },
@@ -5068,6 +5197,7 @@ const RosterEdit = {
     if (found.benched) State.bench.splice(found.slot, 1);
     else State.groups[found.groupIdx].splice(found.slot, 1);
     this.ClearOverridesFor(found.player.name);
+    Backups.clearForName(found.player.name);
     this.syncRoster();
     return { success:true, player: found.player };
   },
@@ -5455,6 +5585,531 @@ const Assignments = {
   },
 };
 
+// ── PLANNED BENCH BACKUPS ──────────────────────────────────────
+// Pre-wire "if X no-shows, Y takes the seat" before a raid even starts,
+// instead of reacting live once a buff/debuff already went missing (the
+// existing renderInsightLine 'bench' case). Name-keyed like buffOverrides
+// and Assignments (State.backups: { primaryName -> backupName }) so the
+// pairing survives exportRoster/loadRoster and share links, which drop a
+// player's uid but keep their name. One seated player has at most one
+// designated backup, and one benched player backs up at most one seat.
+const Backups = {
+  backupNameFor(primaryName) { return (State.backups || {})[primaryName] || null; },
+  primaryNameFor(backupName) {
+    for (const [primary, backup] of Object.entries(State.backups || {})) if (backup === backupName) return primary;
+    return null;
+  },
+
+  // Pins `backupName` (must currently be on the bench) as the backup for
+  // `primaryName` (must currently be seated). Replaces any prior link either
+  // name was already part of, to keep the one-to-one invariant.
+  link(primaryName, backupName) {
+    if (!primaryName || !backupName || primaryName === backupName) return { success:false, error:'Choose a different player' };
+    if (!(State.roster || []).some(p => p.name === primaryName)) return { success:false, error:'Backup target must be seated' };
+    if (!(State.bench || []).some(p => p.name === backupName)) return { success:false, error:'Backup must be on the bench' };
+    State.backups = State.backups || {};
+    this.unlink(primaryName);
+    this.clearBackup(backupName);
+    State.backups[primaryName] = backupName;
+    return { success:true };
+  },
+  unlink(primaryName) { if (State.backups) delete State.backups[primaryName]; },
+  // Drops any link where `backupName` is the designated backup — used before
+  // that player backs up someone else, and when they leave the bench/roster.
+  clearBackup(backupName) {
+    for (const primary of Object.keys(State.backups || {})) if (State.backups[primary] === backupName) delete State.backups[primary];
+  },
+  // Either side of a link leaving the roster for good invalidates it.
+  clearForName(name) { this.unlink(name); this.clearBackup(name); },
+
+  hasManualEdits() { return Object.keys(State.backups || {}).length > 0; },
+  // Deep-cloned snapshot for persistence (PlanStore / exportRoster / share tail).
+  serialize() { return JSON.parse(JSON.stringify(State.backups || {})); },
+  restore(data) {
+    const clean = {};
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      for (const [k, v] of Object.entries(data)) if (typeof k === 'string' && typeof v === 'string') clean[k] = v;
+    }
+    State.backups = clean;
+  },
+  // Drops stale links: primary no longer anywhere in the roster, or backup
+  // no longer sitting on the bench (seated elsewhere, or gone entirely).
+  // Run on every render, like PreferredSlots.reconcile()/Assignments.reconcileRoster().
+  reconcile() {
+    if (!State.backups) return;
+    const names = new Set([...(State.roster || []), ...(State.bench || [])].map(p => p.name));
+    const benchNames = new Set((State.bench || []).map(p => p.name));
+    for (const [primary, backup] of Object.entries(State.backups)) {
+      if (!names.has(primary) || !benchNames.has(backup)) delete State.backups[primary];
+    }
+  },
+
+  // Seats `backupName` (the designated backup for `primaryName`) in place of
+  // the primary. When the primary is STILL seated (the manual "Swap in
+  // backup" action, used ahead of any actual absence) this is a true swap:
+  // the primary is benched and the backup takes their exact seat. When the
+  // primary has already left that seat — Raid-Helper already withdrew or
+  // demoted them before this runs — `groupIdx` (the seat they vacated, from
+  // applyRaidHelperSync's backupSwapReady) is used instead, falling back to
+  // the first open seat if that group is no longer available.
+  swapIn(primaryName, groupIdx) {
+    const backupName = this.backupNameFor(primaryName);
+    if (!backupName) return { success:false, error:'No backup designated' };
+    const bi = (State.bench || []).findIndex(p => p.name === backupName);
+    if (bi < 0) return { success:false, error: backupName + ' is no longer on the bench' };
+    const groups = State.groups || [];
+
+    let gi = -1;
+    for (let g = 0; g < groups.length; g++) {
+      const pi = (groups[g] || []).findIndex(p => p.name === primaryName);
+      if (pi < 0) continue;
+      const primary = groups[g][pi];
+      groups[g].splice(pi, 1);
+      primary.groupNumber = 0;
+      State.bench.push(primary);
+      RosterEdit.ClearOverridesFor(primary.name);
+      gi = g;
+      break;
+    }
+    if (gi < 0) {
+      gi = Number.isInteger(groupIdx) && groups[groupIdx] && groups[groupIdx].length < RosterEdit.MAX_GROUP_SIZE
+        ? groupIdx
+        : groups.findIndex(g2 => g2.length < RosterEdit.MAX_GROUP_SIZE);
+    }
+    if (gi < 0 || gi == null) return { success:false, error:'The raid is full; no open seat for ' + backupName };
+
+    const backup = State.bench[bi];
+    State.bench.splice(bi, 1);
+    backup.groupNumber = gi + 1;
+    groups[gi].push(backup);
+    this.unlink(primaryName);
+    RosterEdit.syncRoster();
+    return { success:true, player:backup, groupIdx:gi };
+  },
+};
+
+// ── SPLIT SIGN-UPS INTO TWO RAIDS ────────────────────────────────
+// When far more people sign up than one raid holds (a guild running two
+// clears the same night, a 55-person Naxx signup), RaidSplit.split()
+// partitions every sign-up — seated and benched — into two same-size
+// rosters instead of leaving the overflow to rot on one long bench.
+// Pure: reads only Config.Raids and the named ruleset's DPS-weight tables,
+// never ambient State, so the same function drives both the UI (the live
+// roster) and rosters-tests.js directly.
+const RaidSplit = {
+  // Sign-up volume that makes offering a split worthwhile, by raid size —
+  // see feature-backlog.md #8: 45+ for a 25/40-man, 30+ for a 20-man
+  // (Classic ZG/AQ20/Hyjal), 20+ for a 10-man (Kara/ZA/Barrow Deeps).
+  suggestThreshold(size) {
+    if (size <= 10) return 20;
+    if (size <= 20) return 30;
+    return 45;
+  },
+  shouldOffer(totalSignUps, raidKey) {
+    const raid = Config.Raids[raidKey];
+    if (!raid) return false;
+    return totalSignUps >= this.suggestThreshold(raid.size);
+  },
+
+  // Same lookup as dpsWeightFor(), but pinned to an explicit ruleset instead
+  // of ambient State.gameVersion, so the split stays pure regardless of what
+  // version happens to be active when it runs.
+  _weight(player, version) {
+    const rules = Rulesets[version] || {};
+    const w = (rules.dpsWeight || {})[player.class + ':' + player.spec];
+    if (w != null) return w;
+    const r = (rules.dpsWeightByRole || {})[player.role];
+    return r != null ? r : 0.8;
+  },
+
+  // Partitions every sign-up into two rosters, { a, b }, each
+  // { seated:[...], bench:[...] } capped at the raid's size. Tanks and
+  // healers are placed first (alternating so both raids reach
+  // Config.RaidFloors before either gets a second of either role), then
+  // every other role is placed class-by-class — spreading buff providers
+  // (shamans/paladins/druids/hunters) across both raids — while greedily
+  // keeping the two rosters' total dpsWeight balanced. A currently-seated
+  // sign-up is ordered ahead of a benched one within its role/class group,
+  // so a tie in the running balance favors "keep the leader's existing seats
+  // in raid A". Splitting never changes which classes are present, so a
+  // faction-locked (Classic) roster's faction carries over unchanged.
+  split(players, raidKey, version) {
+    const raid = Config.Raids[raidKey];
+    if (!raid) return null;
+    const list = (players || []).filter(p => p && p.name);
+
+    const isLocked = p => Number.isInteger(p.groupNumber) && p.groupNumber >= 1;
+    const canon = p => p.role + '|' + p.class + '|' + p.spec + '|' + (p.name || '');
+    const sorted = list.slice().sort((x, y) => {
+      const lx = isLocked(x) ? 0 : 1, ly = isLocked(y) ? 0 : 1;
+      if (lx !== ly) return lx - ly;
+      const kx = canon(x), ky = canon(y);
+      return kx < ky ? -1 : kx > ky ? 1 : 0;
+    });
+
+    const a = [], b = [];
+    let weightA = 0, weightB = 0;
+    const assign = (p) => {
+      const target = weightA <= weightB ? a : b;
+      target.push(p);
+      const w = this._weight(p, version);
+      if (target === a) weightA += w; else weightB += w;
+    };
+
+    const roleOrder = ['tank', 'healer', 'melee_dps', 'ranged_dps', 'caster_dps'];
+    for (const role of roleOrder) {
+      const byClass = new Map();
+      for (const p of sorted) {
+        if (p.role !== role) continue;
+        if (!byClass.has(p.class)) byClass.set(p.class, []);
+        byClass.get(p.class).push(p);
+      }
+      for (const cls of [...byClass.keys()].sort()) {
+        for (const p of byClass.get(cls)) assign(p);
+      }
+    }
+
+    const size = raid.size;
+    const cap = (arr) => ({ seated: arr.slice(0, size), bench: arr.slice(size) });
+    return { raidKey, size, groups: raid.groups, a: cap(a), b: cap(b) };
+  },
+};
+
+// ── RAID PREP (backlog #9 + #10) ───────────────────────────────────
+// Static, sourced encounter-prep notes and a consumables/world-buff checklist
+// per raid. Every entry carries a `source` URL — see tasks/research-wave3.md.
+// Facts that research pass flagged UNCONFIRMED (a specific number, an exact
+// itemization) were left out entirely rather than guessed; where a note's
+// general point was sourced but a number wasn't, only the qualitative point
+// is kept. An `utility` id (when present) cross-references
+// Readiness.utilityCoverage()/Config.Utilities so the panel can show whether
+// the current roster has that provider seated. Real raids only — the
+// classicN/foreverN planning templates have no encounters, by design (no
+// boss list exists for a template), so they're simply absent from `data`.
+const RaidPrep = {
+  data: {
+    // ── Classic Era ──
+    mc: {
+      encounters: [
+        { boss:'Magmadar', note:'Frenzy must be stripped with a tight Tranquilizing Shot rotation (shorter than his berserk interval) — keep at least one Hunter available.', utility:'TRANQ_SHOT', source:'https://eu.forums.blizzard.com/en/wow/t/how-to-prepare-for-molten-core-and-onyxia/458879' },
+        { boss:'Gehennas', note:'Applies a curse that must be dispelled quickly; keep decurse coverage on hand.', utility:'REMOVE_CURSE', source:'https://www.warcrafttavern.com/wow-classic/guides/bwl/' },
+        { boss:'Raid-wide', note:'Fire resistance gear recommended for the fire-elemental trash and several bosses.', source:'https://www.icy-veins.com/wow-classic/season-of-discovery-fire-resistance-gear-sets' },
+        { boss:'Composition', note:'Convention is roughly 3 tanks, 10 healers, with at least one Warlock (banish), Priest (purge/dispel) and Hunter (tranq) seated.', source:'https://www.mmoprovider.com/blog/how-to-run-bwl' },
+      ],
+      consumables: [
+        { item:'Rallying Cry of the Dragonslayer', note:'+10% spell crit, +5% melee/ranged crit, +140 Attack Power, 120 min — Onyxia kill/turn-in world buff.', source:'https://www.method.gg/wow-classic/list-of-all-wow-classic-consumables-enchants-and-world-buffs' },
+        { item:'Songflower Serenade', note:'+5% crit, +15 all stats — Felwood Songflower node.', source:'https://www.method.gg/wow-classic/list-of-all-wow-classic-consumables-enchants-and-world-buffs' },
+        { item:'Greater Fire Protection Potion', note:'+50 Fire Resistance for ~2 hours; layers with gear for the raid-wide Fire Resist check.', source:'https://umelfahemgallery.org/wow-raid-consumables-best-buffs-and-potions/' },
+        { item:'Flask of Supreme Power', note:'Long-duration caster damage flask.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+      ],
+    },
+    ony: {
+      encounters: [
+        { boss:'Onyxia (Phase 3)', note:'Bellowing Roar fears everyone nearby every ~10s; the main tank should be fear-immune (Fear Ward, Berserker Rage, or a nearby Tremor Totem) so she is never repositioned.', utility:'FEAR_BREAK', source:'https://www.icy-veins.com/wow-classic/onyxia-guide-strategy-abilities-loot' },
+        { boss:'Onyxia (Phase 2)', note:'Deep Breath: the raid must track her facing and move out of the frontal fire-breath line — no resistance gear substitutes for positioning.', source:'https://www.icy-veins.com/wow-classic/onyxia-guide-strategy-abilities-loot' },
+      ],
+      consumables: [
+        { item:'Rallying Cry of the Dragonslayer', note:'+10% spell crit, +5% melee/ranged crit, +140 Attack Power, 120 min.', source:'https://www.method.gg/wow-classic/list-of-all-wow-classic-consumables-enchants-and-world-buffs' },
+        { item:"Sayge's Dark Fortune", note:'Darkmoon Faire fortune-teller buff; grants one of several possible boons.', source:'https://www.warcrafttavern.com/wow-classic/guides/world-buffs/' },
+      ],
+    },
+    bwl: {
+      encounters: [
+        { boss:'Nefarian', note:"Opening Shadow Flame hits the whole raid — everyone should wear the Onyxia Scale Cloak (crafted, requires Onyxia's head) for the Shadow Resist it grants.", source:'https://www.warcrafttavern.com/wow-classic/guides/bwl/' },
+        { boss:'Chromaggus', note:'Hunters use Tranquilizing Shot to strip his Frenzy buff.', utility:'TRANQ_SHOT', source:'https://www.warcrafttavern.com/wow-classic/guides/bwl/' },
+        { boss:'Firemaw / Ebonroc', note:'Fire resistance gear recommended, plus spreading out to reduce Shadow Flame/fire AoE clustering.', source:'https://www.warcrafttavern.com/wow-classic/guides/bwl/' },
+      ],
+      consumables: [
+        { item:'Elixir of the Mongoose', note:'Best melee DPS potion in the game (Agility/crit).', source:'https://umelfahemgallery.org/wow-raid-consumables-best-buffs-and-potions/' },
+        { item:'Elemental Sharpening Stone', note:'Melee weapon damage buff.', source:'https://umelfahemgallery.org/wow-raid-consumables-best-buffs-and-potions/' },
+        { item:'Greater Fire Protection Potion', note:'+50 Fire Resistance for ~2 hours, for the Firemaw/Ebonroc/Nefarian fire damage.', source:'https://umelfahemgallery.org/wow-raid-consumables-best-buffs-and-potions/' },
+      ],
+    },
+    zg: {
+      encounters: [
+        { boss:'Bloodlord Mandokir', note:'Run 3 tanks — one on Mandokir, two sharing his mounted raptor add away from the raid. Decapitate one-shots a random player and stacks a raid-wide damage buff on him, so minimizing raid exposure to his line of sight helps.', source:'https://www.icy-veins.com/wow-classic/bloodlord-mandokir-guide-strategy-abilities-loot' },
+        { boss:'Hakkar', note:'Periodic Blood Siphon stuns and drains the whole raid to heal him — the raid must be pre-stacked with the Poisonous Blood debuff (from an earlier trash mechanic) so the drain damages him instead.', source:'https://www.icy-veins.com/wow-classic/hakkar-guide-strategy-abilities-loot' },
+      ],
+      consumables: [
+        { item:'Restorative Potions', note:'Poison cleansing consumable for the poison-heavy trash and Hakkar mechanics.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+        { item:'Major Mana Potion', note:'Standard caster/healer mana consumable.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+      ],
+    },
+    aq20: {
+      encounters: [
+        { boss:'Ayamiss the Hunter', note:'Nature resistance helps whichever tank/off-tank is expected to eat Poison Stinger stacks. Two-phase fight — pause DPS at 70% until the tank re-secures aggro after she lands.', source:'https://www.warcrafttavern.com/wow-classic/guides/ruins-of-ahnqiraj-aq20/' },
+        { boss:'Buru the Gorger', note:'DPS race in phase 2 against stacking Creeping Plague damage — no taunt possible.', source:'https://www.warcrafttavern.com/wow-classic/guides/ruins-of-ahnqiraj-aq20/' },
+        { boss:'Ossirian the Unscarred', note:'Immune to taunt; Free Action Potions recommended. Dragging him across elemental crystals removes his buff and opens a 45s magic-vulnerability window.', source:'https://www.warcrafttavern.com/wow-classic/guides/ruins-of-ahnqiraj-aq20/' },
+      ],
+      consumables: [
+        { item:'Free Action Potion', note:'Movement-impair immunity, useful for Ossirian.', source:'https://www.warcrafttavern.com/wow-classic/guides/ruins-of-ahnqiraj-aq20/' },
+        { item:'Restorative Potions', note:'Poison cleansing for Ayamiss stacks.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+      ],
+    },
+    aq40: {
+      encounters: [
+        { boss:'Princess Huhuran', note:'Convention is roughly 150 Nature Resistance from gear (before any Hunter Aspect of the Wild, which adds +50 NR) to reach ~200 NR ahead of her 30%-health Poison Bolt volley; at least ~12 raiders need to hit the threshold.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+        { boss:'Viscidus', note:'Nature resistance gear plus Greater Nature Protection Potions for the raid; melee use Frost Oil since he is Frost-vulnerable (used to shatter him at low HP).', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+        { boss:'Twin Emperors', note:'No raid-wide Nature Resistance requirement; instead needs 2 Warlock "tanks" with high Shadow Resistance and health pools for one Emperor\'s mechanic.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+      ],
+      consumables: [
+        { item:'Greater Nature Protection Potion', note:'Raid-wide Nature Resist check for Huhuran/Viscidus.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+        { item:'Flask of Supreme Power', note:'Caster damage flask.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+        { item:'Elixir of Greater Agility', note:'Melee agility elixir.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+        { item:'Major Mana Potion', note:'Standard caster/healer mana consumable.', source:'https://www.icy-veins.com/wow-classic/viscidus-guide-strategy-abilities-loot' },
+      ],
+    },
+    naxx: {
+      encounters: [
+        { boss:'Sapphiron', note:'Heavy Frost Resistance convention against his periodic Frost Aura/chill nova (exact Classic-Era target unconfirmed — bring a dedicated FR set).', source:'https://www.warcrafttavern.com/wotlk/guides/sapphiron-25/' },
+        { boss:'Grobbulus', note:'Nature-damage-heavy encounter — Shaman Nature Resistance Totem + Poison Cleansing Totem and Hunter Aspect of the Wild recommended.', utility:'CURE_POISON', source:'https://www.warcrafttavern.com/wow-classic/guides/naxxramas/' },
+        { boss:'Loatheb', note:"Shadow-damage-based encounter; his spore mechanic also suppresses healing received.", source:'https://www.warcrafttavern.com/wow-classic/guides/naxxramas/' },
+        { boss:'Raid-wide', note:'Tanks are advised to carry backup resist sets for Nature, Frost and Shadow across the different wings.', source:'https://www.warcrafttavern.com/wow-classic/guides/naxxramas/' },
+      ],
+      consumables: [
+        { item:'Flask of Distilled Wisdom', note:'Recommended for long fights (Four Horsemen/KT-tier) — bigger mana pool for extended healing.', source:'https://dotesports.com/streaming/news/world-of-warcraft-classic-naxxramas-raid-consume-checklist' },
+        { item:'Greater Frost Protection Potion', note:'Sapphiron\'s Frost Aura/chill damage check.', source:'https://umelfahemgallery.org/wow-raid-consumables-best-buffs-and-potions/' },
+        { item:'Greater Shadow Protection Potion', note:'Loatheb/Kel\'Thuzad Shadow damage check.', source:'https://umelfahemgallery.org/wow-raid-consumables-best-buffs-and-potions/' },
+      ],
+    },
+
+    // ── TBC ──
+    kara: {
+      encounters: [
+        { boss:'Netherspite', note:'Alternates Portal Phase (3 fixed-position colored beams, colors rotate) and Banish Phase (move to the back of the room to avoid Nether Burn/Void Zones); the assigned tank must re-acquire him immediately after each Banish Phase since aggro resets.', source:'https://www.warcrafttavern.com/tbc/guides/karazhan/' },
+        { boss:'Prince Malchezaar', note:'Infernals drop and constrain space — avoid standing near them and dodge Shadow Nova; the classic wipe cause is Enfeeble (drops a player to 1 HP) immediately followed by Shadow Nova.', source:'https://www.warcrafttavern.com/tbc/guides/karazhan/' },
+      ],
+      consumables: [
+        { item:'Flask (Battle or Guardian)', note:'A Flask fills both the Battle Elixir and Guardian Elixir slots at once — drinking a separate Battle/Guardian elixir on top does nothing until the flask expires.', source:'https://noobtoboss.com/tbc-classic-elixir-master-guide/' },
+        { item:'Drums (Leatherworking)', note:'Drums of Battle/War etc. are party-scoped, not raid-wide — want at least one Leatherworker per party, rotated to cover more of the raid.', source:'https://www.mmo-champion.com/threads/2563633-TBC-Raiding-Drums-of-Battle' },
+      ],
+    },
+    gruul: {
+      encounters: [
+        { boss:'Gruul / Maulgar', note:'A council-style tank/control plan is needed for every one of Maulgar\'s adds, plus a clear spread rule for Gruul\'s Shatter/Growth mechanics.', source:'https://www.mmogah.com/news/tbc-classic-anniversary/tbc-classic-tier-4-guide-for-beginners-karazhan-gruul-magtheridon' },
+      ],
+      consumables: [
+        { item:'Flask (Battle or Guardian)', note:'A Flask fills both the Battle Elixir and Guardian Elixir slots at once.', source:'https://noobtoboss.com/tbc-classic-elixir-master-guide/' },
+        { item:'Drums (Leatherworking)', note:'Party-scoped haste/stat drums — one Leatherworker per party, rotated.', source:'https://www.mmo-champion.com/threads/2563633-TBC-Raiding-Drums-of-Battle' },
+      ],
+    },
+    mag: {
+      encounters: [
+        { boss:'Magtheridon', note:'Needs assigned Channeler tanks, interrupt groups, Burning Abyssal control, and 5 primary cube-clickers with named backups to interrupt his Shadow Cage channel.', source:'https://www.mmogah.com/news/tbc-classic-anniversary/tbc-classic-tier-4-guide-for-beginners-karazhan-gruul-magtheridon' },
+      ],
+      consumables: [
+        { item:'Flask (Battle or Guardian)', note:'A Flask fills both the Battle Elixir and Guardian Elixir slots at once.', source:'https://noobtoboss.com/tbc-classic-elixir-master-guide/' },
+        { item:'Drums (Leatherworking)', note:'Party-scoped haste/stat drums — one Leatherworker per party, rotated.', source:'https://www.mmo-champion.com/threads/2563633-TBC-Raiding-Drums-of-Battle' },
+      ],
+    },
+    ssc: {
+      encounters: [
+        { boss:'Hydross the Unstable', note:'Two-phase elemental — conventional target is 365 Frost Resistance for the Water Form tank and 365 Nature Resistance for the (typically different) Poison Form tank; each phase transition wipes threat and spawns 4 adds that must be cleared first.', source:'https://www.icy-veins.com/tbc-classic/hydross-the-unstable-guide-strategy-abilities-loot' },
+        { boss:'Hydross gear note', note:'A Frost Resist gear set (built around Iceguard pieces) gets a plate tank to roughly 170 FR from gear alone; combined with Frost Resistance Aura/Totem this reaches the 365 target.', source:'https://noobtoboss.com/tbc-classic-serpentshrine-cavern-resistance-gear/' },
+      ],
+      consumables: [
+        { item:'Flask of Relentless Assault', note:'Standard 2-hour physical-DPS flask, persists through death.', source:'https://www.icy-veins.com/tbc-classic/fury-warrior-dps-pve-enchants-consumables' },
+        { item:'Elixir of Demonslaying', note:'+2% damage vs. Demons — situational vs. a flask on demon-heavy pulls.', source:'https://www.icy-veins.com/tbc-classic/fury-warrior-dps-pve-enchants-consumables' },
+      ],
+    },
+    tk: {
+      encounters: [
+        { boss:"Al'ar / Void Reaver / Solarian / Kael'thas", note:'None of the four bosses require resist gear — normal progression gear is sufficient, unlike SSC.', source:'https://www.warcrafttavern.com/tbc/guides/tempest-keep-the-eye-raid-guide/' },
+        { boss:"Al'ar", note:'One tank per platform plus an off-tank for Ember of Al\'ar adds.', source:'https://www.warcrafttavern.com/tbc/guides/tempest-keep-the-eye-raid-guide/' },
+        { boss:'Void Reaver', note:'Needs 3+ tanks holding high threat since Knock Away repeatedly changes his target.', source:'https://www.warcrafttavern.com/tbc/guides/tempest-keep-the-eye-raid-guide/' },
+      ],
+      consumables: [
+        { item:'Flask (Battle or Guardian)', note:'A Flask fills both the Battle Elixir and Guardian Elixir slots at once.', source:'https://noobtoboss.com/tbc-classic-elixir-master-guide/' },
+      ],
+    },
+    za: {
+      encounters: [
+        { boss:'Gong / timer', note:'Not a resistance encounter — a timed run. Banging the entrance gong starts a 20-minute timer; Nalorakk (Bear) adds 15 minutes and Akil\'zon (Eagle) adds 10 minutes, giving up to 45 minutes to down all 4 bosses for the Amani War Bear mount.', source:'https://timesaver.gg/blog/tbc-anniversary-zulaman-release-date-amani-war-bear' },
+        { boss:'Nalorakk', note:'Bear boss mechanics contribute to the timed-run bonus minutes.', source:'https://www.lootxphub.com/nalorakk-guide-zulaman-boss-strategy-for-tbc-classic/' },
+      ],
+      consumables: [
+        { item:'Flask (Battle or Guardian)', note:'A Flask fills both the Battle Elixir and Guardian Elixir slots at once.', source:'https://noobtoboss.com/tbc-classic-elixir-master-guide/' },
+      ],
+    },
+    hyjal: {
+      encounters: [
+        { boss:'Rage Winterchill', note:'Single-tank fight, no DPS check; Shaman Frost Resistance Totem / Paladin Frost Resistance Aura recommended if the raid can spare the slot.', source:'https://www.warcrafttavern.com/tbc/guides/rage-winterchill/' },
+        { boss:'Anetheron', note:'Healers must stand spread out to avoid a single Carrion Swarm cone hitting multiple healers at once (it also suppresses healing received).', source:'https://www.warcrafttavern.com/tbc/guides/rage-winterchill/' },
+        { boss:'Archimonde', note:'Raid carries Tears of the Goddess to survive Air Burst; dedicated decursers strip Grip of the Legion instantly; raid kites Doomfire; avoiding any raid death is critical since each death feeds him a raid-wide Soul Charge nuke.', utility:'REMOVE_CURSE', source:'https://www.warcrafttavern.com/tbc/guides/rage-winterchill/' },
+      ],
+      consumables: [
+        { item:'Flask (Battle or Guardian)', note:'A Flask fills both the Battle Elixir and Guardian Elixir slots at once.', source:'https://noobtoboss.com/tbc-classic-elixir-master-guide/' },
+        { item:'Drums (Leatherworking)', note:'Party-scoped haste/stat drums — one Leatherworker per party, rotated.', source:'https://www.mmo-champion.com/threads/2563633-TBC-Raiding-Drums-of-Battle' },
+      ],
+    },
+    bt: {
+      encounters: [
+        { boss:'Mother Shahraz', note:'Fatal Attraction is a non-binary Shadow debuff (1st tick 1000, 2nd 2000, 3rd+ 3000/9000 per second) — a commonly cited planning benchmark is ~244 total Shadow Resistance for non-tanks, though many guilds target only ~100-150 SR from gear and stack the rest from raid buffs.', source:'https://www.method.gg/wow-classic/shadow-resistance-guide-for-mother-shahraz-in-black-temple' },
+        { boss:'Mother Shahraz buff stack', note:'Medallion of Karabor (+40 SR trinket) plus Priest Prayer of Shadow Protection or Paladin Shadow Resistance Aura (+70 SR each, only one active at a time) reduce the gear requirement to roughly 134 SR from items.', source:'https://www.method.gg/wow-classic/shadow-resistance-guide-for-mother-shahraz-in-black-temple' },
+      ],
+      consumables: [
+        { item:'Shadow Resist crafted gear', note:'Best Shadow Resist crafted items require 375 Blacksmithing/Leatherworking/Tailoring and recipes sold by Okuno inside Black Temple, gated behind Ashtongue Deathsworn reputation.', source:'https://www.method.gg/wow-classic/shadow-resistance-guide-for-mother-shahraz-in-black-temple' },
+        { item:'Flask (Battle or Guardian)', note:'A Flask fills both the Battle Elixir and Guardian Elixir slots at once.', source:'https://noobtoboss.com/tbc-classic-elixir-master-guide/' },
+      ],
+    },
+    swp: {
+      encounters: [
+        { boss:'Kalecgos', note:'Some guilds bring Arcane Resistance; the fight splits the raid between a normal-realm and spectral-realm encounter simultaneously.', source:'https://wowtbc.gg/boss-guides/sunwell-plateau/' },
+        { boss:'Brutallus', note:'Pure gear/consumable check — full flask/elixir/food/oil usage expected; very high healing throughput required, extra healer(s) recommended for early attempts.', source:'https://wowtbc.gg/boss-guides/sunwell-plateau/' },
+        { boss:"M'uru (Entropius phase)", note:'Needs 1 dedicated tank on Entropius plus 1 tank on adds.', source:'https://wowtbc.gg/boss-guides/sunwell-plateau/' },
+      ],
+      consumables: [
+        { item:'Flask (Battle or Guardian)', note:'A Flask fills both the Battle Elixir and Guardian Elixir slots at once — full consumable usage is expected for Brutallus in particular.', source:'https://noobtoboss.com/tbc-classic-elixir-master-guide/' },
+      ],
+    },
+
+    // ── Forever (beta) — raids open December 9, 2026; Wowhead's own source
+    // lists boss lists, attunement and tier drops as "TBD" (research-wave3.md
+    // §1, per tasks/research-forever.md §4). No boss-specific mechanics exist
+    // to cite yet, so every Forever raid gets the same placeholder note
+    // pointing to the Camping/Campfire system as today's closest analog.
+    f_barrow: {
+      encounters: [],
+      consumables: [
+        { item:'No confirmed raid prep data yet', note:'Raids open December 9, 2026. See the Campfires panel for the closest thing to a consumables system today.', source:'https://www.wowhead.com/forever/guide/raids-overview-hub-dates-locations' },
+      ],
+    },
+    f_hyjal: {
+      encounters: [],
+      consumables: [
+        { item:'No confirmed raid prep data yet', note:'Raids open December 9, 2026. See the Campfires panel for the closest thing to a consumables system today.', source:'https://www.wowhead.com/forever/guide/raids-overview-hub-dates-locations' },
+      ],
+    },
+    f_ony: {
+      encounters: [],
+      consumables: [
+        { item:'No confirmed raid prep data yet', note:'Raids open December 9, 2026. See the Campfires panel for the closest thing to a consumables system today.', source:'https://www.wowhead.com/forever/guide/raids-overview-hub-dates-locations' },
+      ],
+    },
+  },
+
+  forRaid(raidKey) { return this.data[raidKey] || null; },
+
+  // Every encounter/consumable item for a raid, each augmented with a
+  // `coverage` field (from Readiness.utilityCoverage()) when the item names a
+  // `utility` id — lets the UI show whether a provider is actually seated.
+  itemsWithCoverage(raidKey, groups, bench) {
+    const prep = this.forRaid(raidKey);
+    if (!prep) return null;
+    const coverage = Readiness.utilityCoverage(groups, bench);
+    const covById = {};
+    coverage.forEach(c => { covById[c.id] = c; });
+    const annotate = (list) => (list || []).map(item => Object.assign({}, item, {
+      coverage: item.utility && covById[item.utility] ? covById[item.utility] : null,
+    }));
+    return { encounters: annotate(prep.encounters), consumables: annotate(prep.consumables) };
+  },
+
+  // ASCII-only raid-chat text, <=255 chars/line — same convention as
+  // Import.exportChatText's compact mode (WoW's client fonts/chat parser
+  // only handle ASCII; 255 is the /raid chat line limit).
+  toChatText(raidKey) {
+    const prep = this.forRaid(raidKey);
+    if (!prep) return '';
+    const ascii = (s) => String(s == null ? '' : s).replace(/[^\x00-\x7F]/g, '');
+    const clip = (line) => { line = ascii(line); return line.length > 255 ? line.slice(0, 254) + '.' : line; };
+    const lines = [];
+    const raidName = ascii((Config.Raids[raidKey] || {}).name || raidKey);
+    lines.push(clip(`${raidName} - Raid Prep`));
+    (prep.encounters || []).forEach(e => lines.push(clip(`${e.boss ? e.boss + ': ' : ''}${e.note}`)));
+    if ((prep.consumables || []).length) {
+      lines.push(clip('Consumables:'));
+      prep.consumables.forEach(c => lines.push(clip(`- ${c.item}${c.note ? ' - ' + c.note : ''}`)));
+    }
+    return lines.join('\n');
+  },
+};
+
+// ── RAID-HELPER VERSION DETECTION (backlog #13) ────────────────────
+// Pure function: a Raid-Helper event's templateId -> a GameVersions key, or
+// null when unrecognized. Only 'wowtbc' is confirmed (research-wave3.md §3 —
+// a live, unauthenticated fetch of a real TBC event). The classic/forever
+// heuristics below are an UNCONFIRMED guess at Raid-Helper's naming
+// convention (no other templateId has ever been observed) — kept only as a
+// last-resort, suggestion-only signal per the feature spec, never treated as
+// authoritative or applied automatically.
+function detectVersionFromTemplateId(templateId) {
+  if (!templateId || typeof templateId !== 'string') return null;
+  const id = templateId.toLowerCase();
+  if (id === 'wowtbc') return 'tbc';
+  // UNCONFIRMED heuristic fallback — see comment above.
+  if (id.includes('forever')) return 'forever';
+  if (id.includes('classic') || id.includes('era')) return 'classic';
+  return null;
+}
+
+// ── PRINTABLE RAID SHEET (backlog #12) ─────────────────────────────
+// Pure builder: turns the current State/Config into a static HTML string for
+// the print-only #print-sheet container. No DOM reads, same shape as
+// Import.exportChatText — kept above the UI-RENDERING split so it's covered
+// by the node test suites. Colors are intentionally omitted (fixed black text
+// in the @media print CSS) so the sheet stays legible on a printed page.
+const PrintSheet = {
+  // Local, DOM-free HTML escaper (the global esc() needs document.createElement,
+  // which would make this module untestable under Node) — same escaping rules,
+  // just implemented with a regex instead of a throwaway element.
+  _esc(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  },
+  build() {
+    const esc = this._esc;
+    const raidInfo = Config.Raids[State.selectedRaid] || {};
+    const versionLabel = (GameVersions[State.gameVersion] || {}).name || State.gameVersion;
+    const dateStr = new Date().toLocaleDateString();
+    const rosterLabel = State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : 'Unnamed Roster';
+    const modeled = !!(GameVersions[State.gameVersion] || {}).modeled;
+
+    const playerLabel = (p) => `${esc(p.name)} (${esc(p.spec || '')} ${esc(RosterEdit.ClassLabel(p.class))})`;
+
+    const groupsHTML = (State.groups || []).map((group, gi) => {
+      if (!group || !group.length) return '';
+      const buffList = modeled ? getGroupBuffs(group, gi) : [];
+      const buffNames = buffList.map(b => Config.BuffAbbreviations[b.id] || b.buff.name).join(', ');
+      const playersHTML = group.map(p => `<li>${playerLabel(p)}</li>`).join('');
+      return `<div class="ps-group"><h4>Group ${gi + 1}</h4><ul>${playersHTML}</ul>${buffNames ? `<div class="ps-buffs">Buffs: ${esc(buffNames)}</div>` : ''}</div>`;
+    }).join('');
+
+    const bench = State.bench || [];
+    const benchHTML = bench.length
+      ? `<div class="ps-bench"><h4>Bench</h4><ul>${bench.map(p => `<li>${playerLabel(p)}</li>`).join('')}</ul></div>`
+      : '';
+
+    const players = State.roster || [];
+    const healerTanks = Assignments.effectiveHealerTanks(players);
+    const healerRows = Object.entries(healerTanks).map(([h, t]) => `<li>${esc(h)} &rarr; ${esc(t)}</li>`).join('');
+
+    const blessings = Assignments.effectiveBlessings(players);
+    const blessingCatalog = Assignments.blessingCatalog();
+    const blessingRows = Object.entries(blessings).map(([id, name]) => `<li>${esc((blessingCatalog[id] || {}).name || id)}: ${esc(name)}</li>`).join('');
+
+    const debuffAssignments = Assignments.effectiveDebuffs(players);
+    const debuffDefs = activeRules().debuffs || {};
+    const debuffRows = Object.entries(debuffAssignments).map(([id, name]) => `<li>${esc((debuffDefs[id] || {}).name || id)}: ${esc(name)}</li>`).join('');
+
+    const notes = (State.notes || '').trim();
+
+    return `
+      <div class="ps-header">
+        <h1>${esc(raidInfo.name || 'Raid')}</h1>
+        <div class="ps-meta">${esc(versionLabel)} &middot; ${esc(dateStr)} &middot; ${esc(rosterLabel)}</div>
+      </div>
+      <div class="ps-groups">${groupsHTML}</div>
+      ${benchHTML}
+      <div class="ps-assignments">
+        ${healerRows ? `<div class="ps-assign-col"><h4>Healer &rarr; Tank</h4><ul>${healerRows}</ul></div>` : ''}
+        ${blessingRows ? `<div class="ps-assign-col"><h4>Blessings</h4><ul>${blessingRows}</ul></div>` : ''}
+        ${debuffRows ? `<div class="ps-assign-col"><h4>Boss Debuffs</h4><ul>${debuffRows}</ul></div>` : ''}
+      </div>
+      ${notes ? `<div class="ps-notes"><h4>Notes</h4><p>${esc(notes)}</p></div>` : ''}
+    `;
+  },
+};
+
 // ── UI RENDERING ────────────────────────────────────────────────
 function syncVersionControls() {
   const profile = GameVersions[State.gameVersion];
@@ -5729,6 +6384,34 @@ function renderAssignments() {
     }
   }
 
+  // ── Raid Prep (backlog #9 + #10) ──
+  const prep = RaidPrep.itemsWithCoverage(State.selectedRaid, State.groups, State.bench);
+  let prepHTML = '<p class="assign-empty">No raid prep notes yet for this raid.</p>';
+  let hasPrepContent = false;
+  if (prep) {
+    const prepRow = (item, showBoss) => {
+      const coverageHTML = item.coverage
+        ? `<span class="prep-coverage ${item.coverage.covered ? 'covered' : 'missing'}">${esc(item.coverage.name)}: ${item.coverage.covered ? `covered (${item.coverage.seatedCount})` : 'nobody seated'}</span>`
+        : '';
+      return `<div class="prep-row">
+        <div class="prep-row-main">
+          ${showBoss && item.boss ? `<span class="prep-boss">${esc(item.boss)}</span>` : ''}
+          ${item.item ? `<span class="prep-boss">${esc(item.item)}</span>` : ''}
+          ${item.note ? `<span class="prep-note">${esc(item.note)}</span>` : ''}
+          ${coverageHTML}
+        </div>
+        <a class="prep-source" href="${esc(item.source)}" target="_blank" rel="noopener noreferrer">source</a>
+      </div>`;
+    };
+    const encounterRows = (prep.encounters || []).map(e => prepRow(e, true)).join('');
+    const consumableRows = (prep.consumables || []).map(c => prepRow(c, false)).join('');
+    hasPrepContent = !!(encounterRows || consumableRows);
+    if (hasPrepContent) {
+      prepHTML = (encounterRows ? `<h4 class="prep-subhead">Encounter Notes</h4>${encounterRows}` : '')
+        + (consumableRows ? `<h4 class="prep-subhead">Consumables &amp; World Buffs</h4>${consumableRows}` : '');
+    }
+  }
+
   panel.innerHTML = `
     <div class="assign-heading">
       <div><span class="assign-kicker">${esc((Config.Raids[State.selectedRaid] || {}).name || '')}</span><h2>Assignments</h2></div>
@@ -5737,6 +6420,10 @@ function renderAssignments() {
     <section class="assign-section"><h3>Healer &rarr; Tank</h3>${healerRowsHTML}</section>
     ${blessingsHTML}
     <section class="assign-section"><h3>Boss Debuffs</h3>${debuffsHTML}</section>
+    <section class="assign-section">
+      <div class="assign-heading" style="margin-bottom:0;"><h3 style="margin:0;">Raid Prep</h3>${hasPrepContent ? '<button type="button" class="btn btn-secondary" id="btn-copy-prep">Copy prep</button>' : ''}</div>
+      ${prepHTML}
+    </section>
   `;
 
   panel.querySelectorAll('[data-healer]').forEach(sel => sel.onchange = () => {
@@ -5754,6 +6441,14 @@ function renderAssignments() {
     renderAssignments();
     persistWorkingPlan();
   });
+  const copyPrepBtn = document.getElementById('btn-copy-prep');
+  if (copyPrepBtn) copyPrepBtn.onclick = () => {
+    const text = RaidPrep.toChatText(State.selectedRaid);
+    if (!text) { showToast('No prep notes to copy'); return; }
+    navigator.clipboard.writeText(text)
+      .then(() => showToast('Raid prep copied to clipboard'))
+      .catch(() => showToast('Copy failed'));
+  };
   const copyBtn = document.getElementById('btn-copy-assignments');
   if (copyBtn) copyBtn.onclick = () => {
     const text = Assignments.toChatText(players);
@@ -5769,6 +6464,7 @@ function renderGroups() {
   PreferredSlots.reconcile();
   State.roster = State.groups.flat();
   Assignments.reconcileRoster();
+  Backups.reconcile();
   // Ensure the tank group is always Group 1
   sortTankGroupFirst();
 
@@ -5798,12 +6494,17 @@ function renderGroups() {
         const color = Config.ClassColors[p.class] || 'var(--text-primary)';
         const displayName = (p.name || 'Unknown').split('-')[0];
         const specClass = p.spec ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '')) : '';
+        const backupName = Backups.backupNameFor(p.name);
+        // Compact indicator — the full pairing is in the title tooltip so the
+        // card stays narrow enough not to crowd out the player's own name.
+        const backupBadge = backupName ? `<span class="backup-badge" title="Backup: ${esc(backupName.split('-')[0])}">B</span>` : '';
         slotsHTML += `<div class="player-slot" draggable="true" data-group="${gi}" data-slot="${si}">
           ${getSpecIcon(p)}
           <div class="player-info">
             <span class="player-name" style="color:${color}">${esc(displayName)}</span>
             <span class="player-spec">${esc(specClass)}</span>
           </div>
+          ${backupBadge}
           ${getDragHandle()}
         </div>`;
       } else if (PreferredSlots.forGroup(gi)[si - players.length]) {
@@ -6583,12 +7284,15 @@ function renderBench() {
     const specClass = p.spec
       ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : ''))
       : '';
+    const backupPrimary = Backups.primaryNameFor(p.name);
+    const backupBadge = backupPrimary ? `<span class="backup-badge backup-badge-bench" title="Backup for ${esc(backupPrimary.split('-')[0])}">-&gt; ${esc(backupPrimary.split('-')[0])}</span>` : '';
     slotsHTML += `<div class="player-slot bench-slot" draggable="true" data-bench-slot="${bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
       ${getSpecIcon(p)}
       <div class="player-info">
         <span class="player-name" style="color:${color}">${esc(displayName)}</span>
         <span class="player-spec">${esc(specClass)}</span>
       </div>
+      ${backupBadge}
       ${getDragHandle()}
     </div>`;
   }
@@ -6669,6 +7373,19 @@ function showPlayerEditor(anchorEl, opts) {
     <div class="player-editor-role" id="pe-role"></div>
     <div class="player-editor-error" id="pe-error"></div>
     ${isAdd ? `<div class="preferred-actions"><p>Choose a class and spec to request a player. No name needed; confirmed matching imports fill this spot.</p><button type="button" class="pe-btn pe-btn-primary" id="pe-prefer">${preference ? 'Update preference' : 'Set preferred slot'}</button>${preference ? '<button type="button" class="pe-btn pe-btn-danger" id="pe-remove-preference">Remove preference</button>' : ''}</div>` : ''}
+    ${!isAdd && benched ? `<div class="player-move">
+      <label for="pe-backup-for">Backup for</label>
+      <select id="pe-backup-for">
+        <option value="">Not a backup</option>
+        ${State.roster.map(sp => `<option value="${esc(sp.name)}"${Backups.backupNameFor(sp.name) === curName ? ' selected' : ''}>${esc((sp.name || '').split('-')[0])} (${esc(sp.spec)} ${esc(RosterEdit.ClassLabel(sp.class))})</option>`).join('')}
+      </select>
+      <button type="button" class="pe-btn" id="pe-backup-save">Save backup</button>
+    </div>` : ''}
+    ${!isAdd && !benched && Backups.backupNameFor(curName) ? `<div class="player-move">
+      <span>Backup: ${esc(Backups.backupNameFor(curName).split('-')[0])}</span>
+      <button type="button" class="pe-btn" id="pe-backup-swap">Swap in backup</button>
+      <button type="button" class="pe-btn pe-btn-danger" id="pe-backup-clear">Remove backup</button>
+    </div>` : ''}
     <div class="player-editor-actions">
       ${removeLabel ? `<button type="button" class="pe-btn pe-btn-danger" id="pe-remove" title="${esc(removeTitle)}">${esc(removeLabel)}</button>` : '<span></span>'}
       <div class="pe-actions-right">
@@ -6726,6 +7443,27 @@ function showPlayerEditor(anchorEl, opts) {
   });
   editor.querySelector('#pe-remove-preference')?.addEventListener('click', () => {
     PreferredSlots.remove(preference); closePlayerEditor(); renderGroups(); showToast('Preference removed');
+  });
+
+  editor.querySelector('#pe-backup-save')?.addEventListener('click', () => {
+    const backupSelect = editor.querySelector('#pe-backup-for');
+    const target = backupSelect.value;
+    if (!target) { Backups.clearBackup(curName); }
+    else {
+      const result = Backups.link(target, curName);
+      if (!result.success) { showError(result.error); return; }
+    }
+    closePlayerEditor(); renderGroups();
+    showToast(target ? `${curName.split('-')[0]} is now backup for ${target.split('-')[0]}` : 'Backup link removed');
+  });
+  editor.querySelector('#pe-backup-swap')?.addEventListener('click', () => {
+    const result = Backups.swapIn(curName, found.groupIdx);
+    if (!result.success) { showError(result.error); return; }
+    closePlayerEditor(); renderGroups();
+    showToast(`Swapped in ${result.player.name.split('-')[0]} for ${curName.split('-')[0]}`);
+  });
+  editor.querySelector('#pe-backup-clear')?.addEventListener('click', () => {
+    Backups.unlink(curName); closePlayerEditor(); renderGroups(); showToast('Backup link removed');
   });
 
   function commit() {
@@ -6922,6 +7660,34 @@ function showToast(msg) {
   toast.textContent = msg;
   toast.classList.add('visible');
   setTimeout(() => toast.classList.remove('visible'), 2500);
+}
+
+// ── VERSION AUTO-DETECT SUGGESTION (backlog #13) ──────────────────
+// Thin DOM wiring around the pure detectVersionFromTemplateId(): shows the
+// same non-blocking banner pattern as RaidHelperSync's sync-banner. Never
+// switches anything by itself — only the explicit "Switch" click does, by
+// clicking the real [data-version] toolbar button so every existing
+// side-effect of switching versions (initGroups, toast, etc.) still runs.
+function hideVersionSuggestBanner() {
+  const banner = document.getElementById('version-suggest-banner');
+  if (banner) banner.hidden = true;
+}
+function maybeSuggestVersionSwitch(templateId) {
+  const detected = detectVersionFromTemplateId(templateId);
+  if (!detected || detected === State.gameVersion || !GameVersions[detected]) { hideVersionSuggestBanner(); return; }
+  const banner = document.getElementById('version-suggest-banner');
+  const text = document.getElementById('version-suggest-text');
+  const switchBtn = document.getElementById('btn-version-switch');
+  const dismissBtn = document.getElementById('btn-version-dismiss');
+  if (!banner || !text || !switchBtn || !dismissBtn) return;
+  text.textContent = `This Raid-Helper event uses the ${GameVersions[detected].name} template — switch rulesets?`;
+  banner.hidden = false;
+  switchBtn.onclick = () => {
+    const versionBtn = document.querySelector(`[data-version="${detected}"]`);
+    if (versionBtn) versionBtn.click();
+    hideVersionSuggestBanner();
+  };
+  dismissBtn.onclick = hideVersionSuggestBanner;
 }
 
 function persistWorkingPlan() {
@@ -7266,6 +8032,10 @@ async function importFromText(raw, report = (m) => showToast(m)) {
 
   let metadata;
   try { metadata = JSON.parse(jsonStr); } catch { metadata = {}; }
+  // Backlog #13: a Raid-Helper event (has signUps + templateId) whose template
+  // implies a different game version than the one currently active gets a
+  // non-blocking suggestion — never applied automatically, never blocks import.
+  if (Array.isArray(metadata.signUps) && metadata.templateId) maybeSuggestVersionSwitch(metadata.templateId);
   if (Array.isArray(metadata.players)) {
     if (!Import.loadRoster(metadata)) { report('Import failed: invalid game version or raid', true); return false; }
     initGroups(); renderGroups();
@@ -7386,6 +8156,7 @@ const RaidHelperSync = {
     initGroups();
     renderGroups();
     showToast('Refreshed: ' + this.describe(counts));
+    if (counts.backupSwapReady && counts.backupSwapReady.length) this.showBackupBanner(counts.backupSwapReady);
   },
 
   showBanner(diff) {
@@ -7401,6 +8172,39 @@ const RaidHelperSync = {
     if (banner) banner.hidden = true;
   },
 
+  // "Backup X is ready — swap in?" — surfaced when a Refresh withdraws or
+  // demotes a seated player who had a designated backup still on the bench
+  // (see Import.applyRaidHelperSync's backupSwapReady). One click seats that
+  // exact backup in the vacated group instead of a generic optimizer Swap In.
+  showBackupBanner(list) {
+    const banner = document.getElementById('backup-banner');
+    const text = document.getElementById('backup-banner-text');
+    const actions = document.getElementById('backup-banner-actions');
+    if (!banner || !text || !actions) return;
+    text.textContent = list.length === 1
+      ? `Backup ready: ${list[0].backupName.split('-')[0]} can take ${list[0].primaryName.split('-')[0]}'s seat.`
+      : `${list.length} backups are ready to swap in.`;
+    actions.innerHTML = list.map((item, i) =>
+      `<button type="button" class="btn btn-primary" data-backup-swap="${i}">Swap in ${esc(item.backupName.split('-')[0])}</button>`
+    ).join('') + '<button type="button" class="link-btn" id="backup-banner-dismiss">Dismiss</button>';
+    actions.querySelectorAll('[data-backup-swap]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = list[Number(btn.dataset.backupSwap)];
+        const result = Backups.swapIn(item.primaryName, Number.isInteger(item.groupNumber) ? item.groupNumber - 1 : undefined);
+        if (result.success) { renderGroups(); showToast(`Swapped in ${result.player.name.split('-')[0]}`); }
+        else showToast(result.error);
+        this.hideBackupBanner();
+      });
+    });
+    document.getElementById('backup-banner-dismiss')?.addEventListener('click', () => this.hideBackupBanner());
+    banner.hidden = false;
+  },
+
+  hideBackupBanner() {
+    const banner = document.getElementById('backup-banner');
+    if (banner) banner.hidden = true;
+  },
+
   // Refresh is only offered for linked rosters.
   updateControls() {
     const linked = !!State.sourceEventId;
@@ -7408,7 +8212,7 @@ const RaidHelperSync = {
     const mobile = document.getElementById('mobile-btn-refresh');
     if (btn) btn.hidden = !linked;
     if (mobile) mobile.hidden = !linked;
-    if (!linked) this.hideBanner();
+    if (!linked) { this.hideBanner(); this.hideBackupBanner(); }
   },
 };
 
@@ -7422,6 +8226,115 @@ document.addEventListener('visibilitychange', () => {
   if (!State.sourceEventId || State.view !== 'app') return;
   if (Date.now() - RaidHelperSync.hiddenAt >= RaidHelperSync.RECHECK_AFTER_MS) RaidHelperSync.check();
 });
+
+// ── SPLIT SIGN-UPS INTO TWO RAIDS (UI) ──────────────────────────
+// Drives RaidSplit.split() from the live roster: offers the split after an
+// oversized import (see the two importFromText() call sites below), previews
+// both resulting rosters, then on confirmation replaces the current plan
+// with Raid A and saves Raid B as a second plan (feature-backlog.md #8).
+const SplitFlow = {
+  pending: null, // last computed RaidSplit.split() result, for the preview dialog
+
+  // Called after every import; only shows the banner when sign-ups clear the
+  // per-raid-size threshold (RaidSplit.suggestThreshold).
+  maybeOffer() {
+    const total = State.roster.length + (State.bench || []).length;
+    if (!RaidSplit.shouldOffer(total, State.selectedRaid)) { this.dismiss(); return; }
+    const banner = document.getElementById('split-banner');
+    const text = document.getElementById('split-banner-text');
+    if (!banner || !text) return;
+    const raid = Config.Raids[State.selectedRaid];
+    text.textContent = `${total} sign-ups is more than one ${raid.name} (${raid.size}-man) holds.`;
+    banner.hidden = false;
+  },
+  dismiss() {
+    const banner = document.getElementById('split-banner');
+    if (banner) banner.hidden = true;
+  },
+
+  countsFor(list) {
+    const roles = {};
+    const classes = {};
+    for (const p of list) { roles[p.role] = (roles[p.role] || 0) + 1; classes[p.class] = (classes[p.class] || 0) + 1; }
+    return { roles, classes };
+  },
+  renderPreview(result) {
+    const body = document.getElementById('split-dialog-body');
+    if (!body) return;
+    const summarize = (label, half) => {
+      const c = this.countsFor(half.seated);
+      const dps = (c.roles.melee_dps || 0) + (c.roles.ranged_dps || 0) + (c.roles.caster_dps || 0);
+      const classLine = Object.keys(c.classes).sort().map(cls => `${RosterEdit.ClassLabel(cls)} ${c.classes[cls]}`).join(', ') || 'none';
+      return `<div class="split-preview-col">
+        <h4>${esc(label)}</h4>
+        <p>${half.seated.length} seated${half.bench.length ? ` + ${half.bench.length} benched` : ''}</p>
+        <p>Tanks ${c.roles.tank || 0} &middot; Healers ${c.roles.healer || 0} &middot; DPS ${dps}</p>
+        <p class="split-preview-classes">${esc(classLine)}</p>
+      </div>`;
+    };
+    body.innerHTML = summarize('Raid A (this plan)', result.a) + summarize('Raid B (new plan)', result.b);
+  },
+  preview() {
+    const all = [...State.roster, ...(State.bench || [])];
+    const result = RaidSplit.split(all, State.selectedRaid, State.gameVersion);
+    if (!result) { showToast('Cannot split: unknown raid'); return; }
+    this.pending = result;
+    this.renderPreview(result);
+    document.getElementById('split-dialog').showModal();
+  },
+  create() {
+    const result = this.pending;
+    if (!result) return;
+    const raidInfo = Config.Raids[result.raidKey];
+    const mode = State.optimizerMode || 'max_dps';
+
+    const groupsA = Optimizer.arrange(result.a.seated, raidInfo.groups, raidInfo.size, 5, mode);
+    groupsA.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+    const benchA = result.a.bench.map(p => { p.groupNumber = 0; return p; });
+
+    const groupsB = Optimizer.arrange(result.b.seated, raidInfo.groups, raidInfo.size, 5, mode);
+    groupsB.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+    const benchB = result.b.bench.map(p => { p.groupNumber = 0; return p; });
+
+    // Raid A replaces the current plan in place; stale manual state tied to
+    // players who ended up in Raid B is dropped by the usual reconcile pass.
+    State.groups = groupsA;
+    State.bench = benchA;
+    State.roster = groupsA.flat();
+    Assignments.reconcileRoster();
+    Backups.reconcile();
+
+    // Raid B becomes its own saved plan sharing this plan's sourceEventId
+    // (compound-keyed by planId + gameVersion, same as every other saved
+    // plan — see PlanStore), so Refresh keeps working on either one without
+    // disturbing the 'event:<id>' lookup importFromText() uses to reopen A.
+    const baseName = State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : (raidInfo.name || 'Raid');
+    if (!State.planId) State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const dataB = {
+      planId: State.planId + ':B',
+      groups: groupsB, bench: benchB,
+      campfires: Campfires.empty(),
+      gameVersion: State.gameVersion, selectedRaid: State.selectedRaid,
+      rosterName: baseName + ' - Raid B',
+      sourceEventId: State.sourceEventId,
+      optimizerMode: mode,
+      buffOverrides: {}, preferredSlots: [], preserveGroupOrder: false,
+      notes: '', assignments: { tankHealers:{}, blessings:{}, debuffs:{} }, backups: {},
+    };
+    try { PlanStore.save(localStorage, dataB); } catch {}
+
+    document.getElementById('split-dialog').close();
+    this.dismiss();
+    this.pending = null;
+    renderGroups();
+    showToast(`Split into two raids: ${groupsA.flat().length} seated here, "${dataB.rosterName}" saved separately`);
+  },
+};
+
+document.getElementById('btn-split-offer').addEventListener('click', () => SplitFlow.preview());
+document.getElementById('btn-split-dismiss').addEventListener('click', () => SplitFlow.dismiss());
+document.getElementById('btn-split-cancel').addEventListener('click', () => document.getElementById('split-dialog').close());
+document.getElementById('btn-split-create').addEventListener('click', () => SplitFlow.create());
 
 // ── IMPORT MODAL (toolbar) ──────────────────────────────────────
 document.getElementById('btn-import').addEventListener('click', () => {
@@ -7439,7 +8352,7 @@ document.getElementById('btn-do-import').addEventListener('click', async () => {
   const text = document.getElementById('import-textarea').value.trim();
   if (!text) return;
   const ok = await importFromText(text);
-  if (ok) document.getElementById('import-overlay').classList.remove('visible');
+  if (ok) { document.getElementById('import-overlay').classList.remove('visible'); SplitFlow.maybeOffer(); }
 });
 
 // ── VIEWS: landing <-> planner ──────────────────────────────────
@@ -7549,7 +8462,7 @@ function renderLandingSavedList() {
     report('', false);
     try {
       const ok = await importFromText(text, report);
-      if (ok) { report('', false); input.value = ''; showView('app'); }
+      if (ok) { report('', false); input.value = ''; showView('app'); SplitFlow.maybeOffer(); }
     } finally {
       btn.disabled = false;
     }
@@ -7842,6 +8755,18 @@ document.getElementById('btn-copy-chat-compact').addEventListener('click', () =>
   navigator.clipboard.writeText(Import.exportChatText({ compact: true }))
     .then(() => showToast('Compact chat text copied — paste one line at a time into /raid chat'))
     .catch(() => showToast('Copy failed'));
+});
+
+// Backlog #12: renders PrintSheet.build()'s HTML into the body-level
+// #print-sheet container (see its @media print CSS) and opens the browser
+// print dialog. The screen view is never touched — #print-sheet stays
+// display:none outside of print media.
+document.getElementById('btn-print-sheet').addEventListener('click', () => {
+  if (State.roster.length === 0) { showToast('No roster to print'); return; }
+  const container = document.getElementById('print-sheet');
+  if (!container) return;
+  container.innerHTML = PrintSheet.build();
+  window.print();
 });
 
 // ── IDEAL COMP MODULE ────────────────────────────────────────────
@@ -8536,10 +9461,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
+  module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, Assignments, RaidPrep, PrintSheet, detectVersionFromTemplateId, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, RaidSplit, PlanStore };
 }
 // Also expose on window for browser-based tests
-window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
+window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, RaidSplit, PlanStore, SplitFlow };
 </script>
 <div id="buff-tooltip-portal"></div>
 </body>
