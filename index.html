@@ -177,6 +177,22 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .split-preview-col p { margin: 4px 0; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
 .split-preview-classes { font-size: 11px; color: var(--text-muted); }
 .saved-empty { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
+/* Keyboard shortcuts help */
+.shortcuts-list { display: flex; flex-direction: column; gap: 6px; }
+.shortcut-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+.shortcut-row kbd { flex: 0 0 auto; min-width: 90px; text-align: center; background: var(--bg-card); border: 1px solid var(--border-medium); border-bottom-width: 2px; border-radius: 4px; padding: 3px 8px; font-family: inherit; font-size: 12px; color: var(--accent-gold-bright); }
+.shortcut-row span { color: var(--text-secondary); }
+/* Plain-text roster import preview (feature-backlog-2.md #6) */
+.plain-import-body { max-height: 45dvh; overflow-y: auto; margin-bottom: 8px; }
+.plain-import-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); font-size: 12px; }
+.plain-import-row.needs-review { background: rgba(255, 184, 107, 0.08); }
+.plain-import-name { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.plain-import-spec { flex: 1 1 auto; min-width: 0; color: var(--text-secondary); }
+.plain-import-ok { flex: 0 0 auto; color: var(--text-muted); font-size: 11px; }
+.plain-import-flag { flex: 0 0 auto; color: #ffb86b; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; cursor: help; }
+.plain-import-unparsed { margin-top: 10px; }
+.plain-import-unparsed h4 { font-family: var(--font-cond); color: var(--accent-red, #e05252); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; margin: 0 0 6px; }
+.plain-import-unparsed-line { font-size: 12px; color: var(--text-muted); padding: 2px 0; overflow-wrap: anywhere; }
 .import-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 10px 18px; border-top: 1px solid var(--border-subtle); background: var(--bg-panel);
@@ -1208,7 +1224,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .action-left { flex-wrap:nowrap; width:100%; gap:4px; }
   .roster-bar { flex-wrap:nowrap; }
   .action-left #btn-optimize { display:none; }
-  .action-left #btn-share-main, .action-left #btn-options, .action-left #btn-undo { flex:1; min-width:0; margin:0; padding:8px 4px; font-size:11px; letter-spacing:.02em; white-space:nowrap; }
+  .action-left #btn-share-main, .action-left #btn-options, .action-left #btn-undo, .action-left #btn-redo { flex:1; min-width:0; margin:0; padding:8px 4px; font-size:11px; letter-spacing:.02em; white-space:nowrap; }
   .action-left #btn-share-main { flex:1.6; }
   .roster-right { display:none !important; }
   #mobile-plan-title { display:block; width:100%; font-weight:600; }
@@ -1534,6 +1550,8 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <details><summary>Does it support WoW Forever?</summary><p>Yes, using confirmed Forever beta data. Barrow Deeps (10), Hyjal Summit (20) and Onyxia's Lair (40) are modeled with real rules — and unlike Classic Era, Forever has no faction lock: the new race/class combos put Paladin and Shaman on both factions, so a raid can freely mix totems and auras. Trueshot Aura is baseline for every Hunter spec, and Leader of the Pack and Moonkin Aura share one exclusive crit buff per group, so Feral and Balance druids spread out instead of stacking.</p></details>
       <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
       <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you.</p></details>
+      <details><summary>Can I paste a roster that isn't from Raid-Helper?</summary><p>Yes. The import box also accepts a plain list — one player per line or comma-separated, in any of "Name Class Spec", "Name - Spec Class", a Discord-style "@Name (Spec Class)", a WoW /who-style "Name Level 60 Race Class" line, or CSV with an optional header row. You'll see a preview of what was recognized, with anything ambiguous flagged for review and unrecognized lines listed separately, before anything is imported.</p></details>
+      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save, Share/Export, and switching between Plan/Ideal Comp/Assignments). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
     </div>
   </section>
 
@@ -1553,9 +1571,9 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 
   <div class="toolbar">
     <div class="mode-tabs">
-      <button class="mode-tab active" data-tab="plan">Plan Mode</button>
-      <button class="mode-tab" data-tab="ideal">Ideal Comp</button>
-      <button class="mode-tab" data-tab="assignments">Assignments</button>
+      <button class="mode-tab active" data-tab="plan" title="Plan Mode (1)">Plan Mode</button>
+      <button class="mode-tab" data-tab="ideal" title="Ideal Comp (2)">Ideal Comp</button>
+      <button class="mode-tab" data-tab="assignments" title="Assignments (3)">Assignments</button>
     </div>
     <div class="toolbar-right">
       <div class="raid-selector">
@@ -1565,7 +1583,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <div class="roster-actions">
         <button class="roster-btn" id="btn-refresh" hidden aria-label="Pull the latest sign-ups from Raid-Helper" title="Pull the latest sign-ups from Raid-Helper">Refresh</button>
 
-        <button class="roster-btn" id="btn-save" aria-label="Save current roster">Save</button>
+        <button class="roster-btn" id="btn-save" aria-label="Save current roster" title="Save (Ctrl+S)">Save</button>
         <button class="roster-btn" id="btn-load" aria-label="Load a saved roster or recent import">Load</button>
         <div class="export-menu" id="export-menu">
           <button class="roster-btn" id="btn-export-menu" aria-haspopup="true" aria-expanded="false" aria-label="Share or export your plan">Share / Export &#9662;</button>
@@ -1586,9 +1604,10 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 
   <div class="roster-bar">
     <div class="action-left">
-      <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition">Optimize</button>
-      <button type="button" class="btn btn-secondary" id="btn-undo" disabled>Undo</button>
-      <button type="button" class="btn btn-primary" id="btn-share-main">Share / Export</button>
+      <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)">Optimize</button>
+      <button type="button" class="btn btn-secondary" id="btn-undo" disabled title="Undo (Ctrl+Z)">Undo</button>
+      <button type="button" class="btn btn-secondary" id="btn-redo" disabled title="Redo (Ctrl+Y)">Redo</button>
+      <button type="button" class="btn btn-primary" id="btn-share-main" title="Share / Export (E)">Share / Export</button>
       <button type="button" class="btn btn-secondary" id="btn-options">Options</button>
       <!-- Phone-only overflow menu: every secondary action proxies to the real button above. -->
       <div class="mobile-more" id="mobile-more">
@@ -1711,7 +1730,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <span id="status-text" aria-live="polite">Ready — import a roster to begin</span>
       <span class="last-run" id="last-run"></span>
     </div>
-    <div class="status-right">Party Planner Web &middot; v1.0</div>
+    <div class="status-right"><button type="button" class="link-btn" id="btn-shortcuts-help" title="Keyboard shortcuts (?)">Shortcuts</button> &middot; Party Planner Web &middot; v1.0</div>
   </div>
 
   <!-- Import modal -->
@@ -1762,6 +1781,23 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   <p>Your latest 30 imports, newest first. Stored only in this browser; clearing site data removes them.</p>
   <div class="saved-list" id="all-history-list"></div>
 </dialog>
+<dialog id="shortcuts-dialog" class="history-dialog" aria-labelledby="shortcuts-dialog-heading">
+  <div class="history-dialog-header">
+    <h3 id="shortcuts-dialog-heading">Keyboard shortcuts</h3>
+    <button type="button" class="btn btn-secondary" id="btn-close-shortcuts" autofocus>Close</button>
+  </div>
+  <p>Shortcuts are disabled while typing in a text field, or while another dialog is open.</p>
+  <div class="shortcuts-list" id="shortcuts-dialog-body"></div>
+</dialog>
+<dialog id="plain-import-dialog" class="history-dialog" aria-labelledby="plain-import-heading">
+  <div class="history-dialog-header">
+    <h3 id="plain-import-heading">Review pasted roster</h3>
+    <button type="button" class="btn btn-secondary" id="btn-plain-import-cancel" autofocus>Cancel</button>
+  </div>
+  <p id="plain-import-summary"></p>
+  <div class="plain-import-body" id="plain-import-body"></div>
+  <div class="import-buttons"><button type="button" class="btn btn-primary" id="btn-plain-import-confirm">Import these players</button></div>
+</dialog>
 
 <div class="drag-ghost" id="drag-ghost"></div>
 <div class="toast" id="toast"></div>
@@ -1784,6 +1820,18 @@ function esc(str) {
 }
 let _uid = 0;
 function nextUid() { return 'p' + (++_uid); }
+
+// Shared by the global keyboard-shortcut dispatcher (past the UI split
+// marker) and input-tests.js. True when the given target is actively
+// capturing text input, so a shortcut keystroke must not be hijacked from
+// a player-name field, a raid-notes textarea, the JSON-paste box, etc.
+// Duck-typed on purpose so it can be unit-tested with plain mock objects.
+function isTypingTarget(el) {
+  if (!el || !el.tagName) return false;
+  const tag = String(el.tagName).toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+  return !!el.isContentEditable;
+}
 
 // ── CONFIG ──────────────────────────────────────────────────────
 const Config = {
@@ -3248,6 +3296,204 @@ const Import = {
     Backups.restore(data.backups);
     return true;
   },
+
+  // ── PLAIN-TEXT ROSTER IMPORT (feature-backlog-2.md #6) ───────────
+  // Fallback for pastes that are not JSON, a PP: string or a Raid-Helper
+  // URL (see normalizeImportSource/importFromText past the UI split
+  // marker). Tolerant of one-player-per-line lists in either name/class/
+  // spec order, comma-separated CSV with an optional header row, Discord-
+  // style "@Name (Spec Class)", and a WoW /who-style "Name Level 60 Race
+  // Class" line (no spec at all — defaulted and flagged for review).
+  // Pure: takes an explicit `version` so a preview can be built before
+  // anything touches State. Returns
+  //   { entries: [{name,class,spec,role,status,reason}], unparsed:[rawLine], hasHeader }
+  // status is 'ok' or 'needsReview' — nothing is ever rejected outright,
+  // per the backlog note ("Classic: ...just flag").
+  parsePlainRoster(text, version) {
+    const ruleset = (typeof Rulesets !== 'undefined' && Rulesets[version]) || Rulesets.tbc;
+    const specsTable = ruleset.specs || Config.Specs;
+    const factionLocked = !!(ruleset.rules && ruleset.rules.factionLock);
+    const classNames = Object.keys(specsTable);
+
+    const classAlias = {};
+    for (const c of classNames) classAlias[c.toLowerCase()] = c;
+    // A few shorthands raid leaders actually type; only applied when the
+    // full class name they abbreviate exists in this ruleset's spec table.
+    const CLASS_SHORTHAND = { warr:'WARRIOR', pally:'PALADIN', pal:'PALADIN', hunt:'HUNTER', lock:'WARLOCK', warlok:'WARLOCK', sham:'SHAMAN', shammy:'SHAMAN' };
+    for (const [k, v] of Object.entries(CLASS_SHORTHAND)) if (classAlias[v.toLowerCase()]) classAlias[k] = v;
+
+    const specAlias = {}; // lowercase spec name -> [{class, spec, role}] (some names, e.g. "Holy", span classes)
+    for (const c of classNames) {
+      for (const key of Object.keys(specsTable[c])) {
+        const sp = specsTable[c][key];
+        const low = sp.name.toLowerCase();
+        (specAlias[low] = specAlias[low] || []).push({ class:c, spec:sp.name, role:sp.role });
+      }
+    }
+
+    const RACE_WORDS = new Set(['human','dwarf','nightelf','night','elf','gnome','draenei','orc','troll','tauren','undead','forsaken','bloodelf','blood']);
+    const FILLER_WORDS = new Set(['level','lvl','lv','the','of']);
+    const ROLE_WORDS = new Set(['tank','healer','melee_dps','ranged_dps','caster_dps','dps','melee','ranged','heals','healing']);
+
+    const stripEmoji = (s) => (s || '').replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, '');
+    const cleanName = (s) => (s || '').replace(/^[@*\-\s]+/, '').replace(/[,:;\s]+$/, '').trim();
+    const resolveClass = (tok) => classAlias[(tok || '').toLowerCase()] || null;
+
+    // Look for a class name anywhere in the tokens, then a spec name
+    // (checking 2-word phrases like "Beast Mastery" before single words),
+    // preferring whichever spec option belongs to the class already found.
+    // Order-independent, so "Fury Warrior" and "Warrior Fury" both resolve.
+    const findClassAndSpec = (tokens) => {
+      let foundClass = null;
+      for (const t of tokens) { const c = resolveClass(t); if (c) { foundClass = c; break; } }
+      let foundSpec = null, foundRole = null;
+      for (let w = 2; w >= 1 && !foundSpec; w--) {
+        for (let i = 0; i + w <= tokens.length; i++) {
+          const phrase = tokens.slice(i, i + w).join(' ').toLowerCase();
+          const opts = specAlias[phrase];
+          if (!opts) continue;
+          const match = foundClass ? opts.find(o => o.class === foundClass) : opts[0];
+          if (match) { foundSpec = match.spec; foundRole = match.role; foundClass = foundClass || match.class; break; }
+        }
+      }
+      return { class: foundClass, spec: foundSpec, role: foundRole };
+    };
+
+    const entries = [];
+    const unparsed = [];
+    const seenNames = new Set();
+    let hasHeader = false;
+
+    const addEntry = (name, cls, spec, role, reason) => {
+      if (!name || !cls) return false;
+      let status = 'ok', finalReason = reason || null;
+      const key = name.toLowerCase();
+      if (seenNames.has(key)) {
+        status = 'needsReview';
+        finalReason = finalReason ? finalReason + '; duplicate name in this paste' : 'Duplicate name in this paste';
+      } else {
+        seenNames.add(key);
+      }
+      if (!spec) {
+        const def = Object.values(specsTable[cls])[0];
+        spec = def.name; role = role || def.role;
+        status = 'needsReview';
+        finalReason = finalReason || ('Spec not specified — defaulted to ' + def.name);
+      }
+      entries.push({ name, class:cls, spec, role: role || 'melee_dps', status, reason: finalReason });
+      return true;
+    };
+
+    const lines = stripEmoji(text).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/[|•·]+/g, ' ').trim();
+      if (!line) continue;
+
+      // CSV row: "Name,Class,Spec[,Role]" (optional header row, first line only).
+      if (line.includes(',')) {
+        const fields = line.split(',').map(f => f.trim());
+        if (!entries.length && !unparsed.length && !hasHeader && /^name$/i.test(fields[0])) { hasHeader = true; continue; }
+        const name = cleanName(fields[0]);
+        const cls = resolveClass(fields[1]);
+        if (!name || !cls) { unparsed.push(rawLine); continue; }
+        let spec = null, role = null, reason = null;
+        if (fields[2]) {
+          const opts = specAlias[fields[2].toLowerCase()];
+          const match = opts && opts.find(o => o.class === cls);
+          if (match) { spec = match.spec; role = match.role; }
+          else reason = `Unrecognized spec "${fields[2]}" for ${cls}`;
+        }
+        if (fields[3]) {
+          const rl = fields[3].toLowerCase().replace(/\s+/g, '_');
+          if (['tank','healer','melee_dps','ranged_dps','caster_dps'].includes(rl)) role = rl;
+        }
+        addEntry(name, cls, spec, role, reason);
+        continue;
+      }
+
+      // Discord-style: "@Name (Spec Class)" or "@Name (Class Spec)".
+      const discordMatch = line.match(/^@?([^()]+?)\s*\(([^)]+)\)/);
+      if (discordMatch) {
+        const name = cleanName(discordMatch[1]);
+        const inner = discordMatch[2].replace(/[^\w\s]/g, ' ').trim().split(/\s+/).filter(Boolean);
+        const { class:cls, spec, role } = findClassAndSpec(inner);
+        if (!name || !cls) { unparsed.push(rawLine); continue; }
+        addEntry(name, cls, spec, role);
+        continue;
+      }
+
+      // Dash-separated: "Name - Spec Class" or "Name - Class Spec".
+      const dashMatch = line.match(/^(.+?)\s+-\s+(.+)$/);
+      if (dashMatch) {
+        const name = cleanName(dashMatch[1]);
+        const rest = dashMatch[2].replace(/[^\w\s]/g, ' ').trim().split(/\s+/).filter(Boolean);
+        const { class:cls, spec, role } = findClassAndSpec(rest);
+        if (!name || !cls) { unparsed.push(rawLine); continue; }
+        addEntry(name, cls, spec, role);
+        continue;
+      }
+
+      // Space-separated: "Name Class Spec", "Name Spec Class", or a WoW
+      // /who-style "Name Level 60 Race Class" line (class only — the
+      // race/level/filler words are stripped before searching for a spec).
+      const tokens = line.replace(/[^\w\s@'-]/g, ' ').trim().split(/\s+/).filter(Boolean);
+      if (tokens.length < 2) { unparsed.push(rawLine); continue; }
+      const name = cleanName(tokens[0]);
+      const rest = tokens.slice(1).filter(t => !RACE_WORDS.has(t.toLowerCase()) && !FILLER_WORDS.has(t.toLowerCase()) && !ROLE_WORDS.has(t.toLowerCase()) && !/^\d+$/.test(t));
+      const { class:cls, spec, role } = findClassAndSpec(rest);
+      if (!name || !cls) { unparsed.push(rawLine); continue; }
+      addEntry(name, cls, spec, role);
+    }
+
+    // Faction-lock flag pass (Classic-style rulesets): never reject, just
+    // flag when a paste can't possibly belong to one faction as a whole.
+    if (factionLocked) {
+      const hasShaman = entries.some(e => e.class === 'SHAMAN');
+      const hasPaladin = entries.some(e => e.class === 'PALADIN');
+      if (hasShaman && hasPaladin) {
+        for (const e of entries) {
+          if (e.class !== 'SHAMAN' && e.class !== 'PALADIN') continue;
+          e.status = 'needsReview';
+          e.reason = (e.reason ? e.reason + '; ' : '') + 'Faction lock: Shaman is Horde-only and Paladin is Alliance-only in this ruleset, and this paste has both';
+        }
+      }
+    }
+
+    return { entries, unparsed, hasHeader };
+  },
+
+  // Commits parsePlainRoster()'s entries into State the same way a Raid-
+  // Helper sign-ups export does: seed round-robin groups sized to the
+  // active raid, then let the Optimizer place everyone (see
+  // _importRaidHelperSignUps, the format-2 sibling of this path).
+  importPlainRoster(entries) {
+    if (!Array.isArray(entries) || !entries.length) return { success:false, error:'No players to import' };
+    const roster = entries.map(e => ({
+      uid: nextUid(), name:e.name, class:e.class, spec:e.spec, role:e.role, imported:true,
+    }));
+
+    const raiders = roster.length;
+    if (State.gameVersion === 'tbc' && raiders <= 10) {
+      for (const key of Config.RaidOrder) { if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; } }
+    } else if (State.gameVersion === 'classic' && raiders <= 20) {
+      for (const key of Config.RaidOrder) { if (Config.Raids[key].size === 20) { State.selectedRaid = key; break; } }
+    }
+
+    const raidInfo = Config.Raids[State.selectedRaid];
+    const numGroups = raidInfo ? raidInfo.groups : 5;
+    const groups = [];
+    for (let i = 0; i < numGroups; i++) groups.push([]);
+    roster.forEach((p, i) => { const gi = i % numGroups; p.groupNumber = gi + 1; groups[gi].push(p); });
+
+    State.roster = roster;
+    State.groups = groups;
+    State.bench = [];
+    Optimizer.optimize();
+
+    return { success:true, playerCount:State.roster.length, groupCount:numGroups, wasUnassigned:true,
+             benchCount:State.bench.length, overflowCount:State.bench.length };
+  },
 };
 
 // Import snapshots are separate from named saves. Storage is injected for tests.
@@ -3338,7 +3584,7 @@ const PlanStore = {
 };
 
 const PlanSession = {
-  previous:null, undo:[], ready:false, replaying:false,
+  previous:null, undo:[], redo:[], ready:false, replaying:false,
   observe() {
     if (!this.ready) return;
     if (!State.planId && (State.campfires.fires.length || State.groups.flat().length || State.bench.length || State.preferredSlots.length))
@@ -3346,10 +3592,13 @@ const PlanSession = {
     if (!State.planId) return;
     const current = PlanStore.capture();
     const changed = JSON.stringify(current) !== JSON.stringify(this.previous);
-    if (this.previous?.planId !== current.planId) this.undo = [];
+    if (this.previous?.planId !== current.planId) { this.undo = []; this.redo = []; }
     else if (changed && !this.replaying) {
       this.undo.push(this.previous);
       if (this.undo.length > 30) this.undo.shift();
+      // A genuine new change (not an undo/redo replay) invalidates whatever
+      // was available to redo — standard undo/redo semantics.
+      this.redo = [];
     }
     this.previous = current;
     this.replaying = false;
@@ -3358,8 +3607,18 @@ const PlanSession = {
   undoLast() {
     const previous = this.undo.pop();
     if (!previous) return false;
+    this.redo.push(this.previous);
+    if (this.redo.length > 30) this.redo.shift();
     this.replaying = true;
     return PlanStore.restore(previous);
+  },
+  redoLast() {
+    const next = this.redo.pop();
+    if (!next) return false;
+    this.undo.push(this.previous);
+    if (this.undo.length > 30) this.undo.shift();
+    this.replaying = true;
+    return PlanStore.restore(next);
   },
 };
 
@@ -7310,11 +7569,61 @@ const ROLE_LABELS = {
   melee_dps: 'Melee DPS', ranged_dps: 'Ranged DPS', caster_dps: 'Caster DPS',
 };
 
+// ── FOCUS TRAP (feature-backlog-2.md #10) ────────────────────────
+// Shared by every hand-rolled overlay below (the player editor, the Save/
+// Load overlay, the toolbar Import overlay). The five native <dialog>
+// modals elsewhere in the app (share/rename/split/history/shortcuts/plain-
+// import) already trap Tab and restore focus on close per the HTML spec's
+// modal top-layer behavior, and already carry aria-labelledby, so they
+// don't need this helper.
+const FocusTrap = {
+  active: null, // { modalEl, trigger, handler }
+  focusables(modalEl) {
+    return Array.from(modalEl.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(el => el.offsetParent !== null || el === document.activeElement);
+  },
+  // onEscape is optional — pass it for an overlay that doesn't already
+  // close on Escape (the player editor already has its own global handler).
+  // Re-opening the SAME modal element (e.g. the Load modal re-rendering
+  // itself after a delete) keeps the original trigger and never restores
+  // focus mid-flow — only close() does that.
+  open(modalEl, triggerEl, onEscape) {
+    if (!modalEl) return;
+    const reopeningSame = !!(this.active && this.active.modalEl === modalEl);
+    if (this.active) this.active.modalEl.removeEventListener('keydown', this.active.handler);
+    const trigger = reopeningSame ? this.active.trigger : (triggerEl || document.activeElement);
+    const handler = (e) => {
+      if (e.key === 'Escape') { if (onEscape) { e.stopPropagation(); onEscape(); } return; }
+      if (e.key !== 'Tab') return;
+      const els = this.focusables(modalEl);
+      if (!els.length) return;
+      const first = els[0], last = els[els.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      else if (!els.includes(document.activeElement)) { e.preventDefault(); first.focus(); }
+    };
+    modalEl.addEventListener('keydown', handler);
+    this.active = { modalEl, trigger, handler };
+  },
+  // Pass the modal element to only release the trap if it's still the active
+  // one (avoids one overlay's close tearing down a different overlay's trap
+  // when several close calls chain together); omit it to always release.
+  close(expectedEl) {
+    if (!this.active) return;
+    if (expectedEl && this.active.modalEl !== expectedEl) return;
+    const { modalEl, trigger, handler } = this.active;
+    modalEl.removeEventListener('keydown', handler);
+    this.active = null;
+    if (trigger && typeof trigger.focus === 'function' && document.body.contains(trigger)) trigger.focus();
+  },
+};
+
 // Opened by clicking a player slot (edit) or an empty slot (add). Follows the
 // same anchored-popover pattern as the buff picker.
 function closePlayerEditor() {
   const existing = document.getElementById('active-player-editor');
-  if (existing) existing.remove();
+  if (existing) { FocusTrap.close(existing); existing.remove(); }
   const overlay = document.querySelector('.player-editor-overlay');
   if (overlay) overlay.remove();
 }
@@ -7355,6 +7664,9 @@ function showPlayerEditor(anchorEl, opts) {
   const editor = document.createElement('div');
   editor.className = 'player-editor';
   editor.id = 'active-player-editor';
+  editor.setAttribute('role', 'dialog');
+  editor.setAttribute('aria-modal', 'true');
+  editor.setAttribute('aria-label', title);
   editor.innerHTML = `
     <div class="player-editor-title">${esc(title)}</div>
     ${!isAdd ? `<div class="player-move"><label for="pe-destination">Move ${esc(curName)}</label><select id="pe-destination"><option value="">Choose a group…</option>${State.groups.map((g,gi) => gi === found.groupIdx ? '' : g.length < 5 ? `<option value="${gi}">Move to Group ${gi+1} (${g.length}/5)</option>` : `<optgroup label="Group ${gi+1} is full — swap with">${g.map(p => `<option value="${gi}:${esc(p.uid)}">${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select><button type="button" class="pe-btn" id="pe-move">Move / swap</button></div>` : ''}
@@ -7505,6 +7817,7 @@ function showPlayerEditor(anchorEl, opts) {
     });
   }
 
+  FocusTrap.open(editor, anchorEl);
   if (isAdd) classSel.focus();
   else editor.querySelector('#pe-destination').focus();
 }
@@ -7704,6 +8017,7 @@ function persistWorkingPlan() {
     }
   }
   document.getElementById('btn-undo').disabled = !PlanSession.undo.length;
+  document.getElementById('btn-redo').disabled = !PlanSession.redo.length;
   document.getElementById('optimize-mode').value = State.optimizerMode;
 }
 
@@ -7713,6 +8027,14 @@ function undoPlanChange() {
   initGroups(); renderGroups(); renderLastRun(null);
   RaidHelperSync.hideBanner();
   showToast('Change undone');
+}
+
+function redoPlanChange() {
+  if (!PlanSession.redoLast()) return;
+  closePlayerEditor(); closeBuffPicker();
+  initGroups(); renderGroups(); renderLastRun(null);
+  RaidHelperSync.hideBanner();
+  showToast('Change redone');
 }
 
 function renderReadiness() {
@@ -7837,11 +8159,20 @@ function renderImportHistory(list, onLoad = () => {}, limit = 6) {
   });
 }
 
+// Shared by every path that hides the Save/Load overlay (Cancel, click-
+// outside, Escape, and completing the action) so the focus trap always
+// releases and returns focus to whatever opened it.
+function closeSaveOverlay() {
+  const overlay = document.getElementById('save-overlay');
+  overlay.classList.remove('visible');
+  FocusTrap.close(overlay);
+}
+
 function showImportHistoryModal() {
   const dialog = document.getElementById('history-dialog');
   renderImportHistory(document.getElementById('all-history-list'), () => {
     dialog.close();
-    document.getElementById('save-overlay').classList.remove('visible');
+    closeSaveOverlay();
   }, Infinity);
   dialog.showModal();
   document.getElementById('all-history-list').scrollTop = 0;
@@ -7858,8 +8189,7 @@ function showImportHistoryModal() {
   });
   dialog.addEventListener('close', () => {
     renderImportHistory(document.getElementById('landing-history-list'));
-    renderImportHistory(document.getElementById('load-history-list'), () =>
-      document.getElementById('save-overlay').classList.remove('visible'));
+    renderImportHistory(document.getElementById('load-history-list'), () => closeSaveOverlay());
   });
 })();
 
@@ -7867,6 +8197,7 @@ function showImportHistoryModal() {
 function showSaveModal() {
   const modal = document.getElementById('save-modal');
   const overlay = document.getElementById('save-overlay');
+  const trigger = document.activeElement;
 
   const defaultName = State.rosterName !== NO_ROSTER_NAME ? State.rosterName :
     'Raid ' + new Date().toLocaleDateString();
@@ -7879,20 +8210,22 @@ function showSaveModal() {
       <button class="btn btn-primary" id="btn-do-save">Save</button>
     </div>`;
 
+  overlay.setAttribute('aria-label', 'Save Roster');
   overlay.classList.add('visible');
+  FocusTrap.open(overlay, trigger, closeSaveOverlay);
 
-  document.getElementById('btn-cancel-save').onclick = () => overlay.classList.remove('visible');
+  document.getElementById('btn-cancel-save').onclick = closeSaveOverlay;
   document.getElementById('btn-do-save').onclick = () => {
     const name = document.getElementById('save-name-input').value.trim();
     if (!name) return;
     const data = Import.exportRoster(name);
     saveRosterToStorage(name, data);
     State.rosterName = name;
-    overlay.classList.remove('visible');
+    closeSaveOverlay();
     showToast(`Roster "${name}" saved`);
     renderGroups();
   };
-  overlay.onclick = e => { if (e.target === overlay) overlay.classList.remove('visible'); };
+  overlay.onclick = e => { if (e.target === overlay) closeSaveOverlay(); };
 
   document.getElementById('save-name-input').focus();
   document.getElementById('save-name-input').select();
@@ -7902,6 +8235,7 @@ function showSaveModal() {
 function showLoadModal() {
   const modal = document.getElementById('save-modal');
   const overlay = document.getElementById('save-overlay');
+  const trigger = document.activeElement;
   const rosters = getSavedRosters();
   const names = Object.keys(rosters);
 
@@ -7931,11 +8265,13 @@ function showLoadModal() {
       <button class="btn btn-secondary" id="btn-cancel-load">Close</button>
     </div>`;
 
+  overlay.setAttribute('aria-label', 'Load Roster');
   overlay.classList.add('visible');
+  FocusTrap.open(overlay, trigger, closeSaveOverlay);
 
-  renderImportHistory(document.getElementById('load-history-list'), () => overlay.classList.remove('visible'));
-  document.getElementById('btn-cancel-load').onclick = () => overlay.classList.remove('visible');
-  overlay.onclick = e => { if (e.target === overlay) overlay.classList.remove('visible'); };
+  renderImportHistory(document.getElementById('load-history-list'), () => closeSaveOverlay());
+  document.getElementById('btn-cancel-load').onclick = closeSaveOverlay;
+  overlay.onclick = e => { if (e.target === overlay) closeSaveOverlay(); };
 
   modal.querySelectorAll('.saved-roster-item').forEach(item => {
     item.addEventListener('click', e => {
@@ -7943,7 +8279,7 @@ function showLoadModal() {
       const name = item.dataset.name;
       const data = rosters[name];
       if (Import.loadRoster(data)) {
-        overlay.classList.remove('visible');
+        closeSaveOverlay();
         initGroups();
         renderGroups();
         showToast(`Loaded "${name}"`);
@@ -8031,7 +8367,20 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   }
 
   let metadata;
-  try { metadata = JSON.parse(jsonStr); } catch { metadata = {}; }
+  let isValidJson = true;
+  try { metadata = JSON.parse(jsonStr); } catch { metadata = {}; isValidJson = false; }
+
+  // Backlog #6: a paste that isn't JSON and wasn't a Raid-Helper URL falls
+  // back to the tolerant plain-text/CSV roster parser. It never replaces the
+  // JSON/URL/PP: paths above — only tried when nothing else matched.
+  if (!src.url && !isValidJson) {
+    const parsed = Import.parsePlainRoster(jsonStr, State.gameVersion);
+    if (parsed.entries.length) {
+      PlainRosterImport.preview(parsed, report);
+      return false;
+    }
+  }
+
   // Backlog #13: a Raid-Helper event (has signUps + templateId) whose template
   // implies a different game version than the one currently active gets a
   // non-blocking suggestion — never applied automatically, never blocks import.
@@ -8092,6 +8441,73 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}${historyNotice}`);
   return true;
 }
+
+// ── PLAIN-TEXT ROSTER IMPORT PREVIEW (feature-backlog-2.md #6) ───
+// Drives Import.parsePlainRoster()'s output: a preview dialog lists every
+// recognized row (flagging anything defaulted/ambiguous) plus whatever
+// lines couldn't be parsed at all, so a leader can catch a misparsed row
+// before anything is committed to State — mirrors the split-raids preview
+// dialog's Cancel/confirm pattern above.
+const PlainRosterImport = {
+  pending: null, // last parsePlainRoster() result, for the preview dialog
+
+  renderPreview(parsed) {
+    const body = document.getElementById('plain-import-body');
+    if (!body) return;
+    const rows = parsed.entries.map(e => `
+      <div class="plain-import-row${e.status === 'needsReview' ? ' needs-review' : ''}">
+        <span class="plain-import-name">${esc(e.name)}</span>
+        <span class="plain-import-spec">${esc(e.spec)} ${esc(RosterEdit.ClassLabel(e.class))}</span>
+        ${e.status === 'needsReview' ? `<span class="plain-import-flag" title="${esc(e.reason || 'Needs review')}">Needs review</span>` : '<span class="plain-import-ok">OK</span>'}
+      </div>`).join('') || '<p class="saved-empty">No recognizable players found.</p>';
+    const unparsedHtml = parsed.unparsed.length
+      ? `<div class="plain-import-unparsed"><h4>Could not parse (${parsed.unparsed.length})</h4>${parsed.unparsed.map(l => `<div class="plain-import-unparsed-line">${esc(l)}</div>`).join('')}</div>`
+      : '';
+    const flaggedCount = parsed.entries.filter(e => e.status === 'needsReview').length;
+    const summary = document.getElementById('plain-import-summary');
+    if (summary) summary.textContent =
+      `${parsed.entries.length} player${parsed.entries.length === 1 ? '' : 's'} recognized` +
+      (flaggedCount ? `, ${flaggedCount} flagged for review` : '') +
+      (parsed.unparsed.length ? `, ${parsed.unparsed.length} line${parsed.unparsed.length === 1 ? '' : 's'} skipped` : '') + '.';
+    body.innerHTML = rows + unparsedHtml;
+    document.getElementById('btn-plain-import-confirm').disabled = !parsed.entries.length;
+  },
+
+  preview(parsed, report) {
+    this.pending = parsed;
+    this.renderPreview(parsed);
+    if (report) report(`Found ${parsed.entries.length} player(s) — review below`, false);
+    document.getElementById('plain-import-dialog').showModal();
+  },
+
+  confirm() {
+    const parsed = this.pending;
+    const dialog = document.getElementById('plain-import-dialog');
+    if (!parsed || !parsed.entries.length) { dialog.close(); return; }
+    const result = Import.importPlainRoster(parsed.entries);
+    dialog.close();
+    this.pending = null;
+    if (!result.success) { showToast('Import failed: ' + result.error); return; }
+    State.planId = null;
+    closeImportOverlay();
+    const landingBox = document.getElementById('landing-import');
+    const toolbarBox = document.getElementById('import-textarea');
+    if (landingBox) landingBox.value = '';
+    if (toolbarBox) toolbarBox.value = '';
+    document.getElementById('raid-select').value = State.selectedRaid;
+    initGroups();
+    renderGroups();
+    showView('app');
+    SplitFlow.maybeOffer();
+    const extra = result.benchCount ? ` (${result.benchCount} benched)` : '';
+    showToast(`Imported ${result.playerCount} players from pasted text into ${result.groupCount} groups${extra}${rememberImport('Pasted plain-text roster')}`);
+  },
+
+  cancel() {
+    document.getElementById('plain-import-dialog').close();
+    this.pending = null;
+  },
+};
 
 // ── RAID-HELPER RE-SYNC ─────────────────────────────────────────
 // A roster imported from a Raid-Helper link remembers its event ID. Reopening
@@ -8337,23 +8753,31 @@ document.getElementById('btn-split-cancel').addEventListener('click', () => docu
 document.getElementById('btn-split-create').addEventListener('click', () => SplitFlow.create());
 
 // ── IMPORT MODAL (toolbar) ──────────────────────────────────────
+function closeImportOverlay() {
+  const overlay = document.getElementById('import-overlay');
+  overlay.classList.remove('visible');
+  FocusTrap.close(overlay);
+}
 document.getElementById('btn-import').addEventListener('click', () => {
-  document.getElementById('import-overlay').classList.add('visible');
+  const overlay = document.getElementById('import-overlay');
+  const trigger = document.activeElement;
+  overlay.classList.add('visible');
   document.getElementById('import-textarea').value = '';
   document.getElementById('import-textarea').focus();
+  FocusTrap.open(overlay, trigger, closeImportOverlay);
 });
-document.getElementById('btn-cancel-import').addEventListener('click', () => {
-  document.getElementById('import-overlay').classList.remove('visible');
-});
+document.getElementById('btn-cancel-import').addEventListener('click', closeImportOverlay);
 document.getElementById('import-overlay').addEventListener('click', e => {
-  if (e.target === e.currentTarget) e.currentTarget.classList.remove('visible');
+  if (e.target === e.currentTarget) closeImportOverlay();
 });
 document.getElementById('btn-do-import').addEventListener('click', async () => {
   const text = document.getElementById('import-textarea').value.trim();
   if (!text) return;
   const ok = await importFromText(text);
-  if (ok) { document.getElementById('import-overlay').classList.remove('visible'); SplitFlow.maybeOffer(); }
+  if (ok) { closeImportOverlay(); SplitFlow.maybeOffer(); }
 });
+document.getElementById('btn-plain-import-cancel').addEventListener('click', () => PlainRosterImport.cancel());
+document.getElementById('btn-plain-import-confirm').addEventListener('click', () => PlainRosterImport.confirm());
 
 // ── VIEWS: landing <-> planner ──────────────────────────────────
 function hasLoadedWork() {
@@ -8529,6 +8953,7 @@ function renderLandingSavedList() {
   optimize.onclick=()=>document.getElementById('btn-optimize').click(); controls.appendChild(optimize);
   document.getElementById('btn-options').onclick = () => { options.open = !options.open; if(options.open) options.scrollIntoView({block:'nearest'}); };
   document.getElementById('btn-undo').onclick = undoPlanChange;
+  document.getElementById('btn-redo').onclick = redoPlanChange;
   document.getElementById('readiness-text').onclick = () => { setSidebarExpanded(true); document.getElementById('buff-sidebar').scrollIntoView({block:'nearest'}); };
   const share = document.getElementById('share-dialog');
   document.getElementById('btn-share-main').onclick = () => share.showModal();
@@ -9389,6 +9814,60 @@ function renderIdealComp() {
 // Wire tab clicks
 document.querySelectorAll('.mode-tab').forEach(btn => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// ── GLOBAL KEYBOARD SHORTCUTS (feature-backlog-2.md #8) ──────────
+const SHORTCUTS_HELP = [
+  ['O', 'Optimize groups'],
+  ['Ctrl/Cmd + Z', 'Undo'],
+  ['Ctrl/Cmd + Y  (or Ctrl/Cmd + Shift + Z)', 'Redo'],
+  ['Ctrl/Cmd + S', 'Save roster'],
+  ['E', 'Share / Export'],
+  ['1', 'Switch to Plan Mode'],
+  ['2', 'Switch to Ideal Comp'],
+  ['3', 'Switch to Assignments'],
+  ['?', 'Show this help'],
+];
+function showShortcutsHelp() {
+  const dialog = document.getElementById('shortcuts-dialog');
+  if (!dialog) return;
+  const body = document.getElementById('shortcuts-dialog-body');
+  if (body) body.innerHTML = SHORTCUTS_HELP.map(([keys, label]) =>
+    `<div class="shortcut-row"><kbd>${esc(keys)}</kbd><span>${esc(label)}</span></div>`).join('');
+  dialog.showModal();
+}
+document.getElementById('btn-close-shortcuts')?.addEventListener('click', () => document.getElementById('shortcuts-dialog').close());
+document.getElementById('btn-shortcuts-help')?.addEventListener('click', showShortcutsHelp);
+document.getElementById('faq-shortcuts-link')?.addEventListener('click', showShortcutsHelp);
+
+// Blocks a shortcut not just while typing (isTypingTarget, defined pre-UI-
+// split so input-tests.js can exercise it directly) but also while any
+// modal — native <dialog> or one of the hand-rolled overlays above — has
+// the user's attention, so e.g. 'o' typed while a save-name confirmation
+// is open never fires Optimize behind it.
+function isShortcutBlocked(target) {
+  if (isTypingTarget(target)) return true;
+  if (document.querySelector('dialog[open]')) return true;
+  if (document.getElementById('import-overlay')?.classList.contains('visible')) return true;
+  if (document.getElementById('save-overlay')?.classList.contains('visible')) return true;
+  if (document.getElementById('active-player-editor')) return true;
+  return false;
+}
+document.addEventListener('keydown', (e) => {
+  if (State.view !== 'app') return; // shortcuts only act on the planner, not the landing page
+  if (isShortcutBlocked(e.target)) return;
+  const mod = e.ctrlKey || e.metaKey;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); document.getElementById('btn-undo').click(); return; }
+  if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); document.getElementById('btn-redo').click(); return; }
+  if (mod && k === 's') { e.preventDefault(); document.getElementById('btn-save').click(); return; }
+  if (mod) return; // no other Ctrl/Cmd combos are shortcuts — never eat browser defaults
+  if (k === 'o') { e.preventDefault(); document.getElementById('btn-optimize').click(); return; }
+  if (k === 'e') { e.preventDefault(); document.getElementById('btn-share-main').click(); return; }
+  if (k === '1') { e.preventDefault(); switchTab('plan'); return; }
+  if (k === '2') { e.preventDefault(); switchTab('ideal'); return; }
+  if (k === '3') { e.preventDefault(); switchTab('assignments'); return; }
+  if (k === '?') { e.preventDefault(); showShortcutsHelp(); return; }
 });
 
 // ── INITIALIZE ──────────────────────────────────────────────────
