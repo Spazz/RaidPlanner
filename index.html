@@ -343,7 +343,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .summary-chip.bench b { color: var(--accent-gold); }
 
 /* ── Condensed label helper ── */
-.cond, .mode-tab, .roster-btn, .btn, .buff-sidebar-title, .buff-sidebar-sub,
+.cond, .mode-tab, .btn, .buff-sidebar-title, .buff-sidebar-sub,
 .group-header h3, .group-role-tag, .buff-bar-label, .bench-header h3,
 .roster-label, .raid-selector label, .title-bar h1 {
   font-family: var(--font-cond);
@@ -368,23 +368,15 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .title-diamond { display: none; }
 .title-edition { font-family: var(--font-cond); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
 
-/* Share hands a URL to other people, so it reads as the one outward action. */
-.roster-actions #btn-share {
-  color: var(--accent-gold);
-  border: 1px solid var(--accent-gold-dim);
-  padding-left: 10px; padding-right: 10px;
-}
-.roster-actions #btn-share:hover { background: var(--accent-gold); color: #151618; border-color: var(--accent-gold); }
-
-/* ── Toolbar (tabs + raid + file actions) ── */
+/* ── Toolbar (tabs + ideal-comp link + raid) ── */
 .toolbar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: var(--sp-4);
   padding: 0 var(--sp-4);
   height: 34px;
   background: var(--bg-frame);
   border-bottom: 1px solid var(--border-subtle);
 }
-.toolbar-right { display: flex; align-items: center; gap: var(--sp-4); }
+.toolbar-right { display: flex; align-items: center; gap: var(--sp-4); margin-left: auto; }
 .mode-tabs { display: flex; gap: 2px; }
 .mode-tab {
   padding: 3px 10px;
@@ -396,6 +388,13 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .mode-tab:hover { color: var(--text-secondary); }
 .mode-tab.active { background: var(--text-primary); color: var(--bg-frame); }
+.ideal-comp-link, .back-to-plan-link {
+  display: flex; align-items: center; gap: 6px;
+  background: none; border: none; cursor: pointer; padding: 0;
+  color: var(--text-muted); font-family: var(--font-body); font-size: 12px;
+}
+.ideal-comp-link:hover, .back-to-plan-link:hover { color: var(--text-secondary); }
+.ideal-comp-link svg, .back-to-plan-link svg { flex-shrink: 0; }
 .raid-selector { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .raid-selector label { font-size: 11px; color: var(--text-muted); font-weight: 500; }
 .raid-dropdown {
@@ -413,31 +412,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .raid-dropdown:focus { outline: none; border-color: var(--accent-gold); }
 .raid-dropdown option { background: var(--bg-panel); color: var(--text-primary); }
 
-/* ── File actions (Save / Load / Share / Export) ── */
-.roster-actions { display: flex; gap: var(--sp-3); align-items: center; }
-.roster-btn {
-  padding: 2px 0;
-  background: transparent; border: none;
-  color: var(--text-secondary); font-size: 11px; font-weight: 500; cursor: pointer;
-  transition: color 0.15s ease;
-}
-.roster-btn:hover { color: var(--accent-gold); }
-.export-menu { position: relative; }
-.export-menu-list {
-  display: none; position: absolute; right: 0; top: calc(100% + 4px);
-  flex-direction: column; min-width: 150px;
-  background: var(--bg-deepest); border: 1px solid var(--border-strong);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 50;
-}
-.export-menu.open .export-menu-list { display: flex; }
-.export-menu-list .roster-btn {
-  text-align: left; padding: 6px 10px; letter-spacing: 0.06em;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.export-menu-list .roster-btn:last-child { border-bottom: none; }
-.export-menu-list .roster-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
-
-/* ── Action bar (top: optimize / import / random / clear + roster name) ── */
+/* ── Action bar (optimize split button / undo-redo / Plan & Sign-ups menus / share) ── */
 .roster-bar {
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--sp-2) var(--sp-4);
@@ -445,16 +420,65 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   border-bottom: 1px solid var(--border-subtle);
   gap: var(--sp-3);
 }
-.roster-left { display: flex; align-items: center; gap: var(--sp-2); }
 .action-left, .action-right { display: flex; gap: var(--sp-2); align-items: center; }
 .action-divider { width: 1px; height: 20px; background: var(--border-medium); margin: 0 var(--sp-1); }
-.roster-right { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; }
+.roster-right { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; flex-shrink: 1; }
+/* min-width:0 has to reach every link in this shrink chain (wrap -> button
+   -> text span) or the flex algorithm has nothing to truncate and instead
+   collapses .roster-name-wrap's own box to 0 while its unconstrained content
+   still paints at full width, overlapping the buttons next to it — exactly
+   the overlap this fixes at ~1024px, where the toolbar is tightest. */
+.roster-name-wrap { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex-shrink: 1; }
 .roster-label { font-size: 11px; color: var(--text-faint); font-weight: 500; }
 .roster-name {
+  display: flex; align-items: center; gap: 6px; justify-content: flex-end;
   font-size: 13px; color: var(--text-primary); font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; max-width: 100%;
 }
-.roster-meta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.roster-name svg { flex-shrink: 0; opacity: 0.6; }
+#roster-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster-status-line { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 10px; color: var(--text-muted); }
+
+/* ── Optimize split button (Optimize groups + strategy caret) ── */
+.split-btn { display: flex; }
+.split-btn-caret { width: 30px; padding: 0; justify-content: center; margin-left: -1px; }
+.strategy-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.strategy-label strong { color: var(--text-primary); font-weight: 600; }
+.btn-icon { width: 32px; padding: 0; justify-content: center; }
+.btn-icon .btn-label { display: none; }
+
+/* ── Generic accessible dropdown menu (Plan / Sign-ups / Share / Settings / Strategy) ── */
+.menu-wrap { position: relative; display: flex; }
+.menu {
+  position: fixed;
+  display: flex; flex-direction: column;
+  min-width: 220px; max-width: min(320px, calc(100vw - 16px));
+  background: var(--bg-deepest); border: 1px solid var(--border-strong);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 60;
+  padding: 6px 0;
+}
+.menu[hidden] { display: none; }
+.menu-heading {
+  padding: 8px 14px 4px; font-family: var(--font-cond); text-transform: uppercase;
+  letter-spacing: 0.08em; font-size: 10px; color: var(--text-faint);
+}
+.menu-sep { height: 1px; background: var(--border-medium); margin: 6px 0; }
+.menu-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; width: 100%;
+  background: none; border: none; text-align: left; cursor: pointer;
+  color: var(--text-primary); font-family: var(--font-body); font-size: 12px;
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--bg-card-hover); outline: none; }
+.menu-item[hidden] { display: none; }
+.menu-item small { display: block; color: var(--text-muted); font-size: 11px; font-weight: 400; margin-top: 2px; }
+.menu-item-check { width: 12px; flex-shrink: 0; color: var(--accent-gold); font-size: 12px; }
+.menu-item-danger { color: var(--accent-red); }
+.menu-item-danger:hover { background: rgba(201,115,106,0.12); }
+.menu-item-current { background: var(--bg-card-hover); }
+
+.share-btn { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
+.share-btn:hover { background: var(--accent-gold); color: #151618; border-color: var(--accent-gold); }
 
 /* ── App body (main column + buff sidebar) ── */
 .app-body { display: flex; align-items: stretch; }
@@ -1145,6 +1169,14 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 @media (max-width: 1100px) {
   body { padding: 0; }
 }
+/* The muted "Strategy: X" label is redundant with the split-button menu's
+   own checkmark, so it's the first thing to give way once the roster-bar
+   gets tight (~1024px real width, ~683 local px inside the .addon-frame's
+   zoom:1.5) — freeing ~120 local px keeps Plan/Sign-ups and the roster name
+   from colliding without wrapping the bar onto a second row. */
+@media (max-width: 1150px) {
+  .strategy-label { display: none; }
+}
 @media (max-width: 900px) {
   .app-body { flex-direction: column; }
   .buff-sidebar, .buff-sidebar.collapsed {
@@ -1164,10 +1196,16 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .groups-container.groups-5 .group-card:nth-child(5) { grid-column: span 1; }
   .toolbar { flex-wrap: wrap; gap: var(--sp-1); height: auto; padding: var(--sp-1) var(--sp-4); }
   .roster-bar { flex-wrap: wrap; gap: var(--sp-1); }
-  .roster-actions { flex-wrap: wrap; }
   .summary-bar { gap: 4px var(--sp-3); }
   .summary-chip.bench { margin-left: 0; }
 }
+/* Phone-only chrome stays hidden above 600px — the @media(max-width:600px)
+   block below turns each one on for its own breakpoint. Declared outside
+   any media query so it applies everywhere the phone media query doesn't. */
+.phone-context-panel { display: none; }
+#phone-action-bar { display: none; }
+.mobile-sheet-overlay { display: none; position: fixed; inset: 0; z-index: 70; background: rgba(10,10,11,0.6); }
+.mobile-sheet-overlay.visible { display: flex; align-items: flex-end; justify-content: center; }
 @media (max-width: 600px) {
   /* Landing: body padding is 0 below 1100px, so the landing needs its own gutter. */
   .landing { padding: 16px 12px 40px; gap: 22px; }
@@ -1185,35 +1223,114 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .title-bar { padding: 0 var(--sp-2); }
   .title-bar h1 { font-size: 13px; }
 
+  /* Plan-mode header collapses to two full-width tabs; the ideal-comp link,
+     raid select and optimizer strategy move into #phone-context-panel below
+     (see the phone-context-panel/phone-action-bar rules further down), and
+     the whole desktop .roster-bar (split button, Plan/Sign-ups menus, Share
+     menu) is replaced by the fixed #phone-action-bar + "More" sheet. */
   .toolbar {
     flex-direction: column; align-items: stretch;
-    gap: var(--sp-2); padding: var(--sp-2);
+    gap: 0; padding: 0; height: auto;
   }
-  /* align-self: Chrome inflates a stretched flex child inside a zoomed frame */
-  .mode-tabs .mode-tab { flex: 1; align-self: flex-start; text-align: center; padding-top: 5px; padding-bottom: 5px; }
-  .toolbar-right { flex-wrap: nowrap; }
-  .raid-selector { flex: 1; }
-  .raid-selector .raid-dropdown { flex: 1; min-width: 0; }
-  /* Share/Save/Load/Export move into the More menu on the bottom bar. */
-  .toolbar .roster-actions { display: none; }
+  .mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .mode-tabs .mode-tab { text-align: center; padding: 12px 4px; min-height: 44px; }
+  .ideal-comp-link, .back-to-plan-link, .toolbar-right { display: none; }
 
-  /* The action bar becomes a thumb-reachable bar fixed to the bottom of the
-     screen: Optimize, its mode, and one More menu. Everything else it held
-     is hidden here and proxied from the menu. */
-  .addon-frame { padding-bottom: 44px; }
-  .roster-bar {
+  .addon-frame { padding-bottom: 64px; }
+  .roster-bar { display: none; }
+
+  .phone-context-panel {
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 14px 16px; background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .phone-context-row { display: flex; flex-direction: column; gap: 4px; }
+  .phone-context-row .lbl {
+    font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 11px; color: var(--text-muted);
+  }
+  #mobile-plan-title { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.06em; font-size: 16px; font-weight: 700; }
+  #raid-selector-phone-slot .raid-selector { display: block; }
+  #raid-selector-phone-slot .raid-dropdown { width: 100%; height: 44px; font-size: 14px; }
+  .phone-strategy-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border-medium); }
+  .phone-strategy-seg button {
+    font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.03em;
+    font-weight: 600; font-size: 11px; background: transparent; color: var(--text-muted);
+    border: none; border-right: 1px solid var(--border-medium);
+    min-height: 40px; padding: 4px; cursor: pointer;
+  }
+  .phone-strategy-seg button:last-child { border-right: none; }
+  .phone-strategy-seg button[aria-pressed="true"] { background: var(--text-primary); color: var(--bg-frame); }
+  .phone-ideal-comp-link {
+    align-self: flex-start; display: flex; align-items: center; gap: 6px;
+    background: none; border: none; color: var(--text-muted); font-size: 13px;
+    padding: 6px 0; min-height: 36px; cursor: pointer;
+  }
+
+  /* Flex, not a fixed-px grid: the mockup's 52/1fr/88/72 column widths
+     assumed a plain 390px-wide page. Inside .addon-frame's zoom:1.5, a real
+     375-414px phone only has ~250-275 *local* CSS px to lay this out in
+     (see the "Planner frame: zoom 1.5" note above), so fixed tracks that
+     size ran out of room before the flexible Optimize slot got anything
+     (it measured 0px wide, clipping its own button). Flex-basis 0 + a
+     weight lets all four items share whatever local width is actually
+     available, in proportion, with min-width:0 so text ellipsizes instead
+     of forcing overflow.
+  */
+  #phone-action-bar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-    align-items: center; padding: var(--sp-2); gap: var(--sp-2);
-    border-top: 1px solid var(--border-medium); border-bottom: none;
+    display: flex; gap: 6px;
+    align-items: stretch; padding: 6px;
+    background: var(--bg-frame); border-top: 1px solid var(--border-medium);
     box-shadow: 0 -2px 8px rgba(0,0,0,0.4);
   }
-  .action-left { flex: 1; min-width: 0; }
-  .action-left #btn-optimize { flex: 0 0 auto; padding-left: 10px; padding-right: 10px; }
-  .action-left { gap: var(--sp-1); }
-  .action-left #optimize-mode { flex: 1 1 0; min-width: 0; font-size: 10.5px; letter-spacing: 0.02em; padding: 5px 16px 5px 5px; background-position: right 4px center; }
-  .action-left .action-divider,
-  .action-left #btn-import, .action-left #btn-random, .action-left #btn-clear,
-  .roster-right { display: none; }
+  #phone-bar-undo-slot { flex: 0 0 44px; }
+  #phone-bar-optimize-slot { flex: 2 1 0; min-width: 0; }
+  #phone-bar-share-slot, #btn-phone-more { flex: 1 1 0; min-width: 0; }
+  /* Class-agnostic (> *): #btn-optimize/#btn-undo carry .btn, but
+     #btn-share-main is a plain .menu-item (a Share-menu row on desktop) —
+     targeting "the one child this slot holds" instead of a class keeps
+     both cases sized and centered the same way in the bottom bar. */
+  #phone-bar-optimize-slot > *, #phone-bar-undo-slot > *, #phone-bar-share-slot > * {
+    width: 100%; height: 100%; min-height: 44px; min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden; white-space: nowrap; text-align: center;
+    font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.03em;
+    font-weight: 600; font-size: 11px; padding: 4px;
+  }
+  #phone-bar-optimize-slot .btn-label, #phone-bar-share-slot .btn-label {
+    display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Undo is icon-only in the bottom bar (its label is desktop-only text);
+     Share has no icon at all, so its label stays visible here — see the
+     initResponsiveChrome label swap that shortens it to plain "Share". */
+  #phone-bar-undo-slot .btn-label { display: none; }
+  #btn-phone-more {
+    font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.03em;
+    font-weight: 600; font-size: 11px; min-height: 44px;
+    background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-medium);
+    cursor: pointer; overflow: hidden; white-space: nowrap;
+  }
+
+  .mobile-sheet {
+    width: 100%; max-height: 78vh; overflow-y: auto;
+    background: var(--bg-panel); border-top: 1px solid var(--border-strong);
+    padding: var(--sp-4); padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  }
+  .mobile-sheet-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
+  .mobile-sheet-header h3 {
+    font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 15px;
+  }
+  .mobile-sheet-section { margin-top: var(--sp-3); }
+  .mobile-sheet-heading {
+    font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 11px; color: var(--text-muted); margin-bottom: 6px;
+  }
+  .mobile-sheet-group { display: flex; flex-direction: column; gap: 4px; }
+  .mobile-sheet-group .btn, .mobile-sheet-group .menu-item {
+    width: 100%; justify-content: flex-start; min-height: 44px; text-align: left;
+  }
+  .mobile-sheet-group .btn .btn-label { display: inline; }
 
   .summary-bar { gap: 2px var(--sp-3); padding: 4px var(--sp-2); }
   .summary-divider { display: none; }
@@ -1246,7 +1363,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 /* Touch devices: bigger tap targets and no long-press text callout on draggable slots. */
 @media (hover: none) and (pointer: coarse) {
   .btn { padding: 8px 12px; }
-  .roster-btn { padding: 6px 4px; }
   .back-link { padding-top: 6px; padding-bottom: 6px; }
   .sidebar-toggle { padding: 8px 3px; }
   .buff-row { padding: 4px 3px; }
@@ -1257,13 +1373,11 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .manual-changes-section .change-remove { padding: 4px 8px; }
   .faq summary { padding-top: 14px; padding-bottom: 14px; }
 }
-/* Simple workflow: one primary action and progressively disclosed details. */
+/* Plan-mode chrome: feedback strip + raid notes. */
 .plan-feedback { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:10px 16px; font-size:12px; border-bottom:1px solid var(--border-medium); }
 #mobile-plan-title { display:none; }
 #autosave-status { color:var(--text-muted); }
 #autosave-status[data-failed] { color:#ffb86b; }
-.planner-options { margin:8px 16px; }
-.planner-options:not([open]) { display:none; }
 .raid-notes-panel { margin:8px 16px; background:var(--bg-panel); border:1px solid var(--border-subtle); }
 .raid-notes-panel summary {
   padding:10px 14px; cursor:pointer; list-style:none;
@@ -1282,34 +1396,16 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .raid-notes-textarea:focus { outline:none; border-color:var(--accent-gold); }
 .raid-notes-textarea::placeholder { color:var(--text-muted); }
-.options-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 0; }
-.options-controls .action-divider { display:none; }
 .share-actions { display:flex; flex-direction:column; gap:12px; }
 .share-actions details { margin-top:12px; }
 .share-actions details button { display:block; margin-top:8px; width:100%; }
-#btn-share-main { margin-left:auto; }
-.toolbar .roster-actions { display:none; }
-.action-left { flex:1; }
-#btn-optimize { background:transparent; color:var(--text-secondary); border-color:var(--border-medium); }
 .player-editor { max-height:calc(100dvh - 20px); overflow-y:auto; }
 .player-move { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
 .player-move select { width:100%; padding:8px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border-medium); }
 @media(max-width:600px) {
-  .action-left { flex-wrap:nowrap; width:100%; gap:4px; }
-  .roster-bar { flex-wrap:nowrap; }
-  .action-left #btn-optimize { display:none; }
-  /* Compare modes, Templates and Attendance live as proxy buttons in the
-     Options panel on phones (see initSimpleWorkflow) instead of crowding
-     this bar, which stays limited to the actions used every session. */
-  .action-left #btn-compare-modes { display:none; }
-  .action-left #btn-share-main, .action-left #btn-options, .action-left #btn-undo, .action-left #btn-redo { flex:1; min-width:0; margin:0; padding:8px 4px; font-size:11px; letter-spacing:.02em; white-space:nowrap; }
-  .action-left #btn-share-main { flex:1.6; }
-  .roster-right { display:none !important; }
-  #mobile-plan-title { display:block; width:100%; font-weight:600; }
-  #roster-name { white-space:normal; text-align:left; }
+  #mobile-plan-title { display:block; width:100%; }
   .plan-feedback { padding:8px; font-size:11px; }
   #readiness-text { text-align:left; }
-  .options-controls .btn { display:inline-flex !important; }
   .player-editor { position:fixed !important; left:12px !important; right:12px; top:50% !important; transform:translateY(-50%); width:auto !important; }
 }
 /* Larger homepage type and controls for comfortable reading. */
@@ -1652,9 +1748,9 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
       <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes, on Classic Era and TBC — MRT ships maintained builds for both, and its Raid Groups module isn't restricted to Retail. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you. WoW Forever support is unconfirmed — MRT has no Forever build yet since Forever is still in beta.</p></details>
       <details><summary>Can I paste a roster that isn't from Raid-Helper?</summary><p>Yes. The import box also accepts a plain list — one player per line or comma-separated, in any of "Name Class Spec", "Name - Spec Class", a Discord-style "@Name (Spec Class)", a WoW /who-style "Name Level 60 Race Class" line, or CSV with an optional header row. You'll see a preview of what was recognized, with anything ambiguous flagged for review and unrecognized lines listed separately, before anything is imported.</p></details>
-      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save, Share/Export, and switching between Plan/Ideal Comp/Assignments). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
-      <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open Options and click <strong>Export all data</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open Options and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Party Planner backup is rejected without touching your existing data.</p></details>
-      <details><summary>I dismissed a feature tip and want to see it again</summary><p>Party Planner shows a few one-time callouts pointing at easy-to-miss features (Assignments, Options, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button></p></details>
+      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save, Share/Export, and switching between Plan and Assignments). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
+      <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open the gear icon (Settings and data) and click <strong>Export data backup</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open the same gear icon and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Party Planner backup is rejected without touching your existing data.</p></details>
+      <details><summary>I dismissed a feature tip and want to see it again</summary><p>Party Planner shows a few one-time callouts pointing at easy-to-miss features (Assignments, the toolbar menus, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button></p></details>
     </div>
   </section>
 
@@ -1673,80 +1769,178 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   </div>
 
   <div class="toolbar">
-    <div class="mode-tabs">
-      <button class="mode-tab active" data-tab="plan" title="Plan Mode (1)">Plan Mode</button>
-      <button class="mode-tab" data-tab="ideal" title="Ideal Comp (2)">Ideal Comp</button>
-      <button class="mode-tab" data-tab="assignments" title="Assignments (3)">Assignments</button>
+    <div class="mode-tabs" role="tablist" aria-label="View">
+      <button class="mode-tab active" data-tab="plan" role="tab" aria-selected="true" title="Plan (1)">Plan</button>
+      <button class="mode-tab" data-tab="assignments" role="tab" aria-selected="false" title="Assignments (2)">Assignments</button>
     </div>
+    <button type="button" class="ideal-comp-link" id="btn-ideal-comp-link" title="Compare to ideal comp">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
+      Compare to ideal comp
+    </button>
+    <button type="button" class="back-to-plan-link" id="btn-back-to-plan" hidden>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="M11 18l-6-6 6-6"></path></svg>
+      Back to plan
+    </button>
     <div class="toolbar-right">
-      <div class="raid-selector">
+      <div class="raid-selector" id="raid-selector-desktop-slot">
         <label for="raid-select">Raid</label>
         <select class="raid-dropdown" id="raid-select" aria-label="Select raid instance"></select>
       </div>
-      <div class="roster-actions">
-        <button class="roster-btn" id="btn-refresh" hidden aria-label="Pull the latest sign-ups from Raid-Helper" title="Pull the latest sign-ups from Raid-Helper">Refresh</button>
+    </div>
+  </div>
 
-        <button class="roster-btn" id="btn-save" aria-label="Save current roster" title="Save (Ctrl+S)">Save</button>
-        <button class="roster-btn" id="btn-load" aria-label="Load a saved roster or recent import">Load</button>
-        <button class="roster-btn" id="btn-attendance" aria-label="View attendance and reliability history from saved rosters">Attendance</button>
-        <button class="roster-btn" id="btn-templates" aria-label="Save or apply a comp template">Templates</button>
-        <div class="export-menu" id="export-menu">
-          <button class="roster-btn" id="btn-export-menu" aria-haspopup="true" aria-expanded="false" aria-label="Share or export your plan">Share / Export &#9662;</button>
-          <div class="export-menu-list" role="menu">
-            <button class="roster-btn" id="btn-share" role="menuitem" aria-label="Copy a shareable link to this layout">Copy share link</button>
-            <button class="roster-btn" id="btn-copy-addon" role="menuitem" aria-label="Copy roster as addon string to clipboard">Copy Addon String</button>
-            <button class="roster-btn" id="btn-copy-mrt" role="menuitem" aria-label="Copy roster as an MRT Raid Groups import string to clipboard">Copy MRT String</button>
-            <button class="roster-btn" id="btn-export-json" role="menuitem" aria-label="Export roster as JSON file">Export JSON</button>
-            <button class="roster-btn" id="btn-copy-json" role="menuitem" aria-label="Copy roster JSON to clipboard">Copy JSON</button>
-            <button class="roster-btn" id="btn-copy-chat" role="menuitem" aria-label="Copy raid groups as plain text for Discord or raid chat">Copy Raid Chat Text</button>
-            <button class="roster-btn" id="btn-copy-chat-compact" role="menuitem" aria-label="Copy raid groups as compact plain text sized for in-game raid chat">Copy Chat Text (Compact)</button>
-            <button class="roster-btn" id="btn-print-sheet" role="menuitem" aria-label="Open a clean, printable raid sheet">Print sheet</button>
-          </div>
-        </div>
+  <div class="phone-context-panel" id="phone-context-panel">
+    <div class="phone-context-row">
+      <span class="lbl">Plan</span>
+      <span id="mobile-plan-title"></span>
+    </div>
+    <div class="phone-context-row" id="raid-selector-phone-slot"></div>
+    <div class="phone-context-row">
+      <span class="lbl">Optimizer strategy</span>
+      <div class="phone-strategy-seg" role="group" aria-label="Optimizer strategy" id="phone-strategy-seg">
+        <button type="button" data-mode="max_dps" aria-pressed="true">Max DPS</button>
+        <button type="button" data-mode="tank_mit" aria-pressed="false">Tank</button>
+        <button type="button" data-mode="balanced" aria-pressed="false">Balanced</button>
+        <button type="button" data-mode="relaxed" aria-pressed="false">Relaxed</button>
       </div>
     </div>
+    <button type="button" class="phone-ideal-comp-link" id="btn-ideal-comp-link-phone">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
+      Compare to ideal comp
+    </button>
   </div>
 
   <div class="roster-bar">
     <div class="action-left">
-      <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)">Optimize</button>
-      <button type="button" class="btn btn-secondary" id="btn-compare-modes" aria-label="Compare all optimizer modes side by side">Compare modes</button>
-      <button type="button" class="btn btn-secondary" id="btn-undo" disabled title="Undo (Ctrl+Z)">Undo</button>
-      <button type="button" class="btn btn-secondary" id="btn-redo" disabled title="Redo (Ctrl+Y)">Redo</button>
-      <button type="button" class="btn btn-primary" id="btn-share-main" title="Share / Export (E)">Share / Export</button>
-      <button type="button" class="btn btn-secondary" id="btn-options">Options</button>
+      <div class="split-btn">
+        <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)"><span class="btn-label">Optimize groups</span></button>
+        <button type="button" class="btn btn-primary split-btn-caret" id="btn-optimize-strategy" aria-haspopup="menu" aria-expanded="false" aria-label="Choose optimizer strategy">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+        <div class="menu" id="optimize-strategy-menu" role="menu" aria-label="Optimizer strategy" hidden>
+          <div class="menu-heading">Strategy</div>
+          <button type="button" class="menu-item" role="menuitem" id="strategy-item-max_dps" data-mode="max_dps"><span class="menu-item-check" aria-hidden="true"></span><span><span class="menu-item-label">Max DPS</span><small>Buffs go where they add the most damage</small></span></button>
+          <button type="button" class="menu-item" role="menuitem" id="strategy-item-tank_mit" data-mode="tank_mit"><span class="menu-item-check" aria-hidden="true"></span><span><span class="menu-item-label">Tank Mitigation</span><small>Protect tanks first, then damage</small></span></button>
+          <button type="button" class="menu-item" role="menuitem" id="strategy-item-balanced" data-mode="balanced"><span class="menu-item-check" aria-hidden="true"></span><span><span class="menu-item-label">Balanced</span><small>Even trade between damage and survival</small></span></button>
+          <button type="button" class="menu-item" role="menuitem" id="strategy-item-relaxed" data-mode="relaxed"><span class="menu-item-check" aria-hidden="true"></span><span><span class="menu-item-label">Relaxed</span><small>Keeps role groups together, skips extra fine-tuning</small></span></button>
+          <div class="menu-sep"></div>
+          <button type="button" class="menu-item" role="menuitem" id="btn-compare-modes" aria-label="Compare all optimizer modes side by side">Compare all strategies&hellip;</button>
+        </div>
+      </div>
+      <span class="strategy-label">Strategy: <strong id="strategy-label-value">Max DPS</strong></span>
+      <button type="button" class="btn btn-secondary btn-icon" id="btn-undo" disabled aria-label="Undo" title="Undo (Ctrl+Z)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 010 12h-3"></path></svg>
+        <span class="btn-label">Undo</span>
+      </button>
+      <button type="button" class="btn btn-secondary btn-icon" id="btn-redo" disabled aria-label="Redo" title="Redo (Ctrl+Y)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"></path><path d="M20 9H10a6 6 0 000 12h3"></path></svg>
+        <span class="btn-label">Redo</span>
+      </button>
+      <span class="action-divider"></span>
+      <div class="menu-wrap">
+        <button type="button" class="btn btn-secondary" id="btn-plan-menu" aria-haspopup="menu" aria-expanded="false">Plan <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <div class="menu" id="plan-menu" role="menu" aria-label="Plan" hidden>
+          <button type="button" class="menu-item" role="menuitem" id="menu-rename-plan">Rename plan</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-save" aria-label="Save current roster" title="Save (Ctrl+S)"><span class="btn-label">Save a copy</span></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-load" aria-label="Load a saved roster or recent import"><span class="btn-label">Open saved plan&hellip;</span></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-templates" aria-label="Save or apply a comp template">Comp templates&hellip;</button>
+          <div class="menu-sep"></div>
+          <button type="button" class="menu-item menu-item-danger" role="menuitem" id="btn-clear" aria-label="Clear all players and groups">Clear board</button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button type="button" class="btn btn-secondary" id="btn-signups-menu" aria-haspopup="menu" aria-expanded="false">Sign-ups <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <div class="menu" id="signups-menu" role="menu" aria-label="Sign-ups" hidden>
+          <button type="button" class="menu-item" role="menuitem" id="btn-import" aria-label="Import roster from JSON or URL">Import sign-ups&hellip;</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-refresh" hidden aria-label="Pull the latest sign-ups from Raid-Helper" title="Pull the latest sign-ups from Raid-Helper">Refresh from Raid-Helper</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-attendance" aria-label="View attendance and reliability history from saved rosters">Attendance history</button>
+          <div class="menu-sep"></div>
+          <button type="button" class="menu-item" role="menuitem" id="btn-random" aria-label="Generate a random roster">Random test roster</button>
+        </div>
+      </div>
     </div>
     <div class="roster-right">
-      <span class="roster-label">Roster</span>
-      <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">No Roster Loaded</button>
+      <div class="roster-name-wrap">
+        <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">
+          <span id="roster-name-text">No Roster Loaded</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+        </button>
+        <span class="roster-status-line" id="roster-status-line"></span>
+      </div>
+      <div class="menu-wrap">
+        <button type="button" class="btn share-btn" id="btn-share-menu" aria-haspopup="menu" aria-expanded="false">Share <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <div class="menu" id="share-menu" role="menu" aria-label="Share" hidden>
+          <button type="button" class="menu-item" role="menuitem" id="btn-share" aria-label="Copy a shareable link to this layout">Copy share link</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt" aria-label="Copy roster as an MRT Raid Groups import string to clipboard">Copy for MRT</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat" aria-label="Copy raid groups as plain text for Discord or raid chat">Copy raid chat text</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat-compact" aria-label="Copy raid groups as compact plain text sized for in-game raid chat">Copy compact raid chat</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-print-sheet" aria-label="Open a clean, printable raid sheet">Print raid sheet</button>
+          <div class="menu-sep"></div>
+          <button type="button" class="menu-item" role="menuitem" id="btn-share-main" title="Share / Export (E)"><span class="btn-label">More export formats&hellip;</span></button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button type="button" class="btn btn-secondary btn-icon" id="btn-settings-menu" aria-haspopup="menu" aria-expanded="false" aria-label="Settings and data" title="Settings and data">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"></path></svg>
+        </button>
+        <div class="menu" id="settings-menu" role="menu" aria-label="Settings and data" hidden>
+          <button type="button" class="menu-item" role="menuitem" id="btn-export-backup" aria-label="Download a backup of every saved roster, template and plan stored in this browser">Export data backup</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-import-backup" aria-label="Restore a Party Planner data backup file">Import data backup&hellip;</button>
+          <input type="file" id="backup-file-input" accept="application/json,.json" hidden>
+          <button type="button" class="menu-item" role="menuitem" id="btn-shortcuts-help" title="Keyboard shortcuts (?)">Keyboard shortcuts</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-show-tips-again" aria-label="Show the first-run feature tips again">Show tips again</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <select id="optimize-mode" aria-label="Optimizer strategy" hidden>
+    <option value="max_dps" selected>Max DPS</option>
+    <option value="tank_mit">Tank Mitigation</option>
+    <option value="balanced">Balanced</option>
+    <option value="relaxed">Relaxed</option>
+  </select>
+  <!-- These three raw export formats aren't in the redesigned Share menu
+       (see mockup) but the share dialog's "More export formats" section
+       still reaches them by id via data-share-action — keep the real,
+       functional buttons here rather than deleting the feature. -->
+  <button type="button" id="btn-copy-addon" hidden aria-label="Copy roster as addon string to clipboard">Copy Addon String</button>
+  <button type="button" id="btn-export-json" hidden aria-label="Export roster as JSON file">Export JSON</button>
+  <button type="button" id="btn-copy-json" hidden aria-label="Copy roster JSON to clipboard">Copy JSON</button>
+
+  <div class="mobile-sheet-overlay" id="mobile-more-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-more-heading">
+    <div class="mobile-sheet">
+      <div class="mobile-sheet-header">
+        <h3 id="mobile-more-heading">More actions</h3>
+        <button type="button" class="btn btn-secondary" id="btn-close-more-sheet">Close</button>
+      </div>
+      <div class="mobile-sheet-group" id="phone-sheet-quick-slot"></div>
+      <div class="mobile-sheet-section">
+        <div class="mobile-sheet-heading">This plan</div>
+        <div class="mobile-sheet-group" id="phone-sheet-plan-slot"></div>
+      </div>
+      <div class="mobile-sheet-section">
+        <div class="mobile-sheet-heading">Sign-ups</div>
+        <div class="mobile-sheet-group" id="phone-sheet-signups-slot"></div>
+      </div>
+      <div class="mobile-sheet-section">
+        <div class="mobile-sheet-heading">Your data &amp; help</div>
+        <div class="mobile-sheet-group" id="phone-sheet-data-slot"></div>
+      </div>
     </div>
   </div>
 
-  <details id="planner-options" class="planner-options">
-    <summary>Planning options</summary>
-    <div class="options-controls"><label for="optimize-mode">Optimization strategy</label>
-      <select class="raid-dropdown" id="optimize-mode" aria-label="Optimizer strategy">
-        <option value="max_dps" selected>Max DPS</option>
-        <option value="tank_mit">Tank Mitigation</option>
-        <option value="balanced">Balanced</option>
-        <option value="relaxed">Relaxed</option>
-      </select>
-      <span class="action-divider"></span>
-      <button class="btn btn-secondary" id="btn-import" aria-label="Import roster from JSON or URL">Import</button>
-      <button class="btn btn-secondary" id="btn-random" aria-label="Generate a random roster">Random</button>
-      <button class="btn btn-quiet" id="btn-clear" aria-label="Clear all players and groups">Clear all</button>
-      <span class="action-divider"></span>
-      <button class="btn btn-secondary" id="btn-export-backup" aria-label="Download a backup of every saved roster, template and plan stored in this browser">Export all data</button>
-      <button class="btn btn-secondary" id="btn-import-backup" aria-label="Restore a Party Planner data backup file">Import data backup</button>
-      <input type="file" id="backup-file-input" accept="application/json,.json" hidden>
-      <button type="button" class="btn btn-quiet" id="btn-show-tips-again" aria-label="Show the first-run feature tips again">Show tips again</button>
-    </div>
-  </details>
+  <div id="phone-action-bar">
+    <div id="phone-bar-undo-slot"></div>
+    <div id="phone-bar-optimize-slot"></div>
+    <div id="phone-bar-share-slot"></div>
+    <button type="button" id="btn-phone-more" aria-haspopup="dialog" aria-expanded="false">More</button>
+  </div>
+
   <details id="raid-notes-panel" class="raid-notes-panel">
     <summary>Raid notes <span id="raid-notes-badge" class="raid-notes-badge" hidden>&#9679;</span></summary>
     <textarea class="raid-notes-textarea" id="raid-notes-textarea" maxlength="2000" placeholder="MT swaps, add assignments, kill order..."></textarea>
   </details>
-  <div class="plan-feedback"><span id="mobile-plan-title"></span><button type="button" class="link-btn" id="readiness-text" title="Show coverage details"></button><span id="autosave-status" role="status"></span></div>
+  <div class="plan-feedback"><button type="button" class="link-btn" id="readiness-text" title="Show coverage details"></button><span id="autosave-status" role="status"></span></div>
   <div class="sync-banner" id="sync-banner" hidden aria-live="polite">
     <span id="sync-banner-text"></span>
     <div class="sync-banner-actions">
@@ -1818,7 +2012,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <span id="status-text" aria-live="polite">Ready — import a roster to begin</span>
       <span class="last-run" id="last-run"></span>
     </div>
-    <div class="status-right"><button type="button" class="link-btn" id="btn-shortcuts-help" title="Keyboard shortcuts (?)">Shortcuts</button> &middot; Party Planner Web &middot; v1.0</div>
+    <div class="status-right">Party Planner Web &middot; v1.0</div>
   </div>
 
   <!-- Import modal -->
@@ -4755,6 +4949,33 @@ const MODE_CONFIG = {
   balanced: { dps: 0.7, mit: 0.5,  structure: 1.0, cohesion: 1.0 },
   relaxed:  { dps: 0.2, mit: 0.3,  structure: 1.0, cohesion: 1.5 },
 };
+
+// Toolbar copy for the optimizer-strategy split-button menu (nav redesign).
+// Pure data — no DOM — so nav-tests.js can check every MODE_CONFIG key has a
+// matching entry here with no stragglers. Wording is checked against what
+// each mode's weights above (and the optimizer's relaxed-mode short-circuit,
+// see Optimizer.refineRounds) actually do, not just guessed from the name:
+//  - max_dps: dps is the dominant weight (1.0, highest of any mode).
+//  - tank_mit: mit is the dominant weight (1.2, highest of any mode).
+//  - balanced: dps/mit are both mid-range and close together (0.7/0.5),
+//    unlike either mode above that leans hard on one or the other.
+//  - relaxed: dps/mit are both the lowest of any mode AND
+//    Optimizer.refineRounds() skips its swap/move refinement passes
+//    entirely for 'relaxed', so it makes noticeably fewer placement changes
+//    than the other three — "fewer moves" describes the algorithm's own
+//    pass count, not a literal diff against the board before the click.
+const STRATEGY_DESCRIPTIONS = {
+  max_dps:  { label: 'Max DPS',          description: 'Buffs go where they add the most damage' },
+  tank_mit: { label: 'Tank Mitigation',  description: 'Protect tanks first, then damage' },
+  balanced: { label: 'Balanced',         description: 'Even trade between damage and survival' },
+  relaxed:  { label: 'Relaxed',          description: 'Keeps role groups together, skips extra fine-tuning' },
+};
+// Falls back to Max DPS for an unrecognized/legacy mode string (e.g. a share
+// link or saved plan from before a mode existed) — same fallback MODE_CONFIG
+// consumers already use ("MODE_CONFIG[mode] || MODE_CONFIG.max_dps").
+function strategyLabel(mode) {
+  return (STRATEGY_DESCRIPTIONS[mode] || STRATEGY_DESCRIPTIONS.max_dps).label;
+}
 
 // ── SYNERGY MODEL (researched TBC party-buff values) ──
 // DPS_VALUE[buffId] — tier value of a buff to the RECEIVING player (relative
@@ -8377,7 +8598,7 @@ function renderGroups() {
   // Update version and raid controls after imports, restores and undo.
   syncVersionControls();
   document.getElementById('raid-select').value = State.selectedRaid;
-  document.getElementById('roster-name').textContent = State.rosterName;
+  document.getElementById('roster-name-text').textContent = State.rosterName;
   document.getElementById('mobile-plan-title').textContent = State.rosterName;
   syncRaidNotesUI();
   RaidHelperSync.updateControls();
@@ -9120,6 +9341,135 @@ const ROLE_LABELS = {
 // import) already trap Tab and restore focus on close per the HTML spec's
 // modal top-layer behavior, and already carry aria-labelledby, so they
 // don't need this helper.
+// ── Generic accessible dropdown menu (nav redesign) ────────────────
+// Backs every toolbar dropdown (Plan, Sign-ups, Share, Settings, the
+// optimizer-strategy split-button menu). One `trigger` button toggles one
+// `menu` element (role="menu", its direct action children role="menuitem").
+// Handles positioning under the trigger without overflowing the viewport,
+// arrow-key/Home/End navigation, Escape-to-close-and-refocus, closing on an
+// outside click, and keeping only one menu open at a time. isShortcutBlocked
+// (below ── UI RENDERING's keyboard-shortcut section) checks for any
+// `.menu:not([hidden])` so global shortcuts never fire behind an open menu.
+const Menu = {
+  open: null, // { trigger, menu }
+  init(trigger, menu) {
+    if (!trigger || !menu) return;
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    menu.setAttribute('role', menu.getAttribute('role') || 'menu');
+    menu.hidden = true;
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggle(trigger, menu);
+    });
+    trigger.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.openMenu(trigger, menu);
+        this.focusItem(menu, 0);
+      }
+    });
+    menu.addEventListener('keydown', (e) => this.handleMenuKeydown(e, trigger, menu));
+    // Let the clicked item's own handler run first (it's already fired by
+    // the time this bubbles up), then close — so picking an action never
+    // leaves its menu sitting open behind whatever dialog it opened.
+    menu.addEventListener('click', (e) => {
+      // No focusTrigger here: several items open a dialog synchronously
+      // (Save, Rename, Templates…) which already moves focus into itself —
+      // yanking it back to the trigger right after would fight that.
+      if (e.target.closest('[role="menuitem"]')) this.closeMenu(trigger, menu);
+    });
+  },
+  items(menu) {
+    return Array.from(menu.querySelectorAll('[role="menuitem"]')).filter(el => !el.hidden && !el.disabled);
+  },
+  openMenu(trigger, menu) {
+    if (this.open && this.open.menu !== menu) this.closeMenu(this.open.trigger, this.open.menu);
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    this.position(trigger, menu);
+    this.open = { trigger, menu };
+    document.addEventListener('mousedown', this._onDocMouseDown, true);
+    // Escape closes even when focus never left the trigger (a mouse-opened
+    // menu doesn't auto-focus its first item), not just when focus is
+    // already inside the menu (handleMenuKeydown covers that case too).
+    document.addEventListener('keydown', this._onDocKeyDown, true);
+  },
+  closeMenu(trigger, menu, opts) {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (this.open && this.open.menu === menu) this.open = null;
+    document.removeEventListener('mousedown', this._onDocMouseDown, true);
+    document.removeEventListener('keydown', this._onDocKeyDown, true);
+    if (opts && opts.focusTrigger) trigger.focus();
+  },
+  toggle(trigger, menu) {
+    if (menu.hidden) this.openMenu(trigger, menu);
+    else this.closeMenu(trigger, menu);
+  },
+  closeAll() {
+    if (this.open) this.closeMenu(this.open.trigger, this.open.menu);
+  },
+  focusItem(menu, index) {
+    const items = this.items(menu);
+    if (!items.length) return;
+    const i = ((index % items.length) + items.length) % items.length;
+    items[i].focus();
+  },
+  handleMenuKeydown(e, trigger, menu) {
+    const items = this.items(menu);
+    const current = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); this.focusItem(menu, current + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); this.focusItem(menu, current - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); this.focusItem(menu, 0); }
+    else if (e.key === 'End') { e.preventDefault(); this.focusItem(menu, items.length - 1); }
+    else if (e.key === 'Escape') { e.preventDefault(); this.closeMenu(trigger, menu, { focusTrigger: true }); }
+    else if (e.key === 'Tab') { this.closeMenu(trigger, menu); }
+  },
+  // Fixed-position popover anchored under the trigger, clamped so it never
+  // overflows the viewport on the right or bottom edge.
+  //
+  // The whole planner frame (.addon-frame) renders at `zoom: 1.5`, and CSS
+  // zoom scales an element's rendered box without changing what a length
+  // *inside* it means: getBoundingClientRect() returns real, post-zoom
+  // viewport pixels, but an inline `style.left/top` set on a zoomed
+  // descendant is a pre-zoom length that gets multiplied by zoom again at
+  // paint time. Mixing the two without correction plants the menu at
+  // (viewport position × 1.5) — off-screen for anything right of center.
+  // `scale` below is that zoom factor, measured empirically off the
+  // trigger itself (post-zoom rect ÷ pre-zoom offsetWidth) rather than
+  // hard-coded, so this still works if the frame's zoom ever changes.
+  position(trigger, menu) {
+    const scale = (trigger.offsetWidth && trigger.getBoundingClientRect().width / trigger.offsetWidth) || 1;
+    const rect = trigger.getBoundingClientRect();
+    menu.style.left = '0px'; menu.style.top = '0px';
+    const menuRect = menu.getBoundingClientRect();
+    let left = rect.left;
+    if (left + menuRect.width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - menuRect.width - 8);
+    let top = rect.bottom + 4;
+    if (top + menuRect.height > window.innerHeight - 8) top = Math.max(8, rect.top - menuRect.height - 4);
+    menu.style.left = (left / scale) + 'px';
+    menu.style.top = (top / scale) + 'px';
+  },
+};
+Menu._onDocMouseDown = (e) => {
+  if (!Menu.open) return;
+  const { trigger, menu } = Menu.open;
+  if (menu.contains(e.target) || trigger.contains(e.target)) return;
+  Menu.closeMenu(trigger, menu);
+};
+Menu._onDocKeyDown = (e) => {
+  if (e.key !== 'Escape' || !Menu.open) return;
+  const { trigger, menu } = Menu.open;
+  // A menu item's own keydown handler (handleMenuKeydown) already handles
+  // this same keypress when focus is inside the menu — let it own that
+  // case (it stops here via the closed menu on the next check) rather than
+  // double-closing/double-focusing.
+  if (menu.contains(document.activeElement)) return;
+  e.preventDefault();
+  Menu.closeMenu(trigger, menu, { focusTrigger: true });
+};
+
 const FocusTrap = {
   active: null, // { modalEl, trigger, handler }
   focusables(modalEl) {
@@ -9224,14 +9574,16 @@ function showSpotlightCallout(id, anchorEl, text) {
 
 // Small, hand-curated set of highest-value entry points (per the backlog's
 // "ship 3-4 of the highest-value ones" guidance) rather than covering every
-// module — Assignments tab, the Options panel (Templates/Attendance/Compare
-// modes/Backup all live there), and keyboard shortcuts. The player-editor
-// callout (constraints/backups/Why here?) is triggered separately from
-// showPlayerEditor itself, since it has no toolbar anchor.
+// module — Assignments tab, the Settings gear menu (data backup, keyboard
+// shortcuts and "show tips again" live there now that the old Options panel
+// is gone; Templates/Attendance moved into the Plan/Sign-ups menus), and
+// keyboard shortcuts. The player-editor callout (constraints/backups/Why
+// here?) is triggered separately from showPlayerEditor itself, since it has
+// no toolbar anchor.
 const SPOTLIGHT_DEFS = [
   { id: 'assignments-tab', text: 'New: assign who casts curses, blessings and other one-per-raid buffs here.', anchor: () => document.querySelector('.mode-tab[data-tab="assignments"]') },
-  { id: 'options-panel', text: 'Templates, Attendance, Compare modes and a full data backup all live in Options.', anchor: () => document.getElementById('btn-options') },
-  { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.getElementById('btn-shortcuts-help') },
+  { id: 'options-panel', text: 'Templates and Attendance moved into the Plan and Sign-ups menus. Data backup and shortcuts live here.', anchor: () => document.getElementById('btn-settings-menu') },
+  { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.querySelector('.mode-tab[data-tab="plan"]') },
 ];
 function runSpotlightQueue() {
   if (document.querySelector('.spotlight-callout')) return;
@@ -9755,6 +10107,31 @@ function persistWorkingPlan() {
   document.getElementById('btn-undo').disabled = !PlanSession.undo.length;
   document.getElementById('btn-redo').disabled = !PlanSession.redo.length;
   document.getElementById('optimize-mode').value = State.optimizerMode;
+  // Toolbar mirror of the header autosave-status line (nav redesign).
+  const statusLine = document.getElementById('roster-status-line');
+  if (statusLine) statusLine.textContent = status.textContent;
+  syncStrategyChrome();
+}
+
+// Refreshes every UI surface that reflects the current optimizer strategy:
+// the split-button menu's checkmark + descriptions, the muted "Strategy: X"
+// label, and the phone segmented control. Called from persistWorkingPlan
+// (itself called after nearly every state change — import, optimize, undo/
+// redo, tab switches, loading a plan) so all of them stay correct no matter
+// which entry point changed State.optimizerMode.
+function syncStrategyChrome() {
+  const mode = State.optimizerMode || 'max_dps';
+  const labelValue = document.getElementById('strategy-label-value');
+  if (labelValue) labelValue.textContent = strategyLabel(mode);
+  document.querySelectorAll('#optimize-strategy-menu [data-mode]').forEach(item => {
+    const current = item.dataset.mode === mode;
+    item.classList.toggle('menu-item-current', current);
+    const check = item.querySelector('.menu-item-check');
+    if (check) check.textContent = current ? '✓' : '';
+  });
+  document.querySelectorAll('#phone-strategy-seg [data-mode]').forEach(item => {
+    item.setAttribute('aria-pressed', String(item.dataset.mode === mode));
+  });
 }
 
 function undoPlanChange() {
@@ -10945,32 +11322,7 @@ function renderLandingSavedList() {
   document.getElementById('btn-back-import').addEventListener('click', () => showView('landing'));
 })();
 
-(function initSimpleWorkflow() {
-  const options = document.getElementById('planner-options');
-  const controls = options.querySelector('.options-controls');
-  // The old top toolbar's .roster-actions row is permanently display:none
-  // under the simple-workflow layout (see the CSS above) — every action that
-  // used to live there has to be physically relocated into this panel (or
-  // proxied from it) or it becomes unreachable on every viewport, not just
-  // phones. btn-attendance and btn-templates were added straight into that
-  // dead row by their feature branches, so they need the same treatment as
-  // btn-refresh/btn-save/btn-load below.
-  for (const id of ['btn-refresh','btn-save','btn-load','btn-attendance','btn-templates']) controls.appendChild(document.getElementById(id));
-  document.getElementById('btn-save').textContent = 'Save a copy';
-  document.getElementById('btn-save').setAttribute('aria-label','Save a copy');
-  document.getElementById('btn-load').textContent = 'Open a plan';
-  document.getElementById('btn-load').setAttribute('aria-label','Open a plan');
-  const rename = document.createElement('button'); rename.type = 'button'; rename.className = 'btn btn-secondary'; rename.textContent = 'Rename plan';
-  rename.onclick = () => document.getElementById('roster-name').click(); controls.appendChild(rename);
-  const optimize = document.createElement('button'); optimize.type='button'; optimize.className='btn btn-secondary'; optimize.textContent='Optimize groups';
-  optimize.onclick=()=>document.getElementById('btn-optimize').click(); controls.appendChild(optimize);
-  // Compare modes stays a real, directly-clickable button in the bottom
-  // action bar on desktop; on phones that bar hides it (see the 600px
-  // block), so this proxy is its only path there — same pattern as the
-  // Optimize-groups proxy above for the bar's hidden #btn-optimize.
-  const compareModes = document.createElement('button'); compareModes.type='button'; compareModes.className='btn btn-secondary'; compareModes.textContent='Compare modes';
-  compareModes.onclick=()=>document.getElementById('btn-compare-modes').click(); controls.appendChild(compareModes);
-  document.getElementById('btn-options').onclick = () => { options.open = !options.open; if(options.open) options.scrollIntoView({block:'nearest'}); };
+(function initPlanChrome() {
   document.getElementById('btn-undo').onclick = undoPlanChange;
   document.getElementById('btn-redo').onclick = redoPlanChange;
   document.getElementById('readiness-text').onclick = () => { setSidebarExpanded(true); document.getElementById('buff-sidebar').scrollIntoView({block:'nearest'}); };
@@ -10980,11 +11332,132 @@ function renderLandingSavedList() {
   share.querySelectorAll('[data-share-action]').forEach(b => b.onclick = () => { share.close(); document.getElementById(b.dataset.shareAction).click(); });
   const renameDialog = document.getElementById('rename-dialog');
   document.getElementById('roster-name').onclick = () => { document.getElementById('plan-name').value=State.rosterName; renameDialog.returnValue=''; renameDialog.showModal(); };
+  document.getElementById('menu-rename-plan').onclick = () => document.getElementById('roster-name').click();
   renameDialog.addEventListener('close', () => {
     if(renameDialog.returnValue !== 'save') return;
     const value=document.getElementById('plan-name').value.trim();
     if(value) { State.rosterName=value; renderGroups(); }
   });
+})();
+
+// ── TOOLBAR MENUS (nav redesign) ─────────────────────────────────
+(function initToolbarMenus() {
+  Menu.init(document.getElementById('btn-optimize-strategy'), document.getElementById('optimize-strategy-menu'));
+  Menu.init(document.getElementById('btn-plan-menu'), document.getElementById('plan-menu'));
+  Menu.init(document.getElementById('btn-signups-menu'), document.getElementById('signups-menu'));
+  Menu.init(document.getElementById('btn-share-menu'), document.getElementById('share-menu'));
+  Menu.init(document.getElementById('btn-settings-menu'), document.getElementById('settings-menu'));
+
+  // Strategy menu items and the phone 4-segment control both drive the same
+  // State.optimizerMode through the hidden #optimize-mode select — one
+  // source of truth, two responsive representations (dropdown vs segmented
+  // control). Selecting a strategy sets the mode but never auto-runs it.
+  document.querySelectorAll('#optimize-strategy-menu [data-mode]').forEach(item => {
+    const desc = STRATEGY_DESCRIPTIONS[item.dataset.mode];
+    if (desc) {
+      const label = item.querySelector('.menu-item-label');
+      const small = item.querySelector('small');
+      if (label) label.textContent = desc.label;
+      if (small) small.textContent = desc.description;
+    }
+    item.addEventListener('click', () => {
+      setOptimizerMode(item.dataset.mode);
+      Menu.closeMenu(document.getElementById('btn-optimize-strategy'), document.getElementById('optimize-strategy-menu'), { focusTrigger: true });
+    });
+  });
+  document.querySelectorAll('#phone-strategy-seg [data-mode]').forEach(item => {
+    const desc = STRATEGY_DESCRIPTIONS[item.dataset.mode];
+    if (desc) item.textContent = desc.label === 'Tank Mitigation' ? 'Tank' : desc.label;
+    item.addEventListener('click', () => setOptimizerMode(item.dataset.mode));
+  });
+})();
+
+function setOptimizerMode(mode) {
+  if (!STRATEGY_DESCRIPTIONS[mode]) return;
+  const select = document.getElementById('optimize-mode');
+  select.value = mode;
+  select.dispatchEvent(new Event('change'));
+}
+
+// ── PHONE "MORE" SHEET ────────────────────────────────────────────
+(function initMoreSheet() {
+  const sheet = document.getElementById('mobile-more-sheet');
+  const trigger = document.getElementById('btn-phone-more');
+  const openSheet = () => {
+    sheet.classList.add('visible');
+    trigger.setAttribute('aria-expanded', 'true');
+    FocusTrap.open(sheet, trigger, closeSheet);
+  };
+  const closeSheet = () => {
+    sheet.classList.remove('visible');
+    trigger.setAttribute('aria-expanded', 'false');
+    FocusTrap.close(sheet);
+  };
+  trigger.addEventListener('click', openSheet);
+  document.getElementById('btn-close-more-sheet').addEventListener('click', closeSheet);
+  sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+  // Close whenever a sheet action actually runs, so the sheet never sits
+  // open in front of a dialog the action just opened.
+  sheet.addEventListener('click', (e) => { if (e.target.closest('button') && e.target !== sheet) closeSheet(); });
+})();
+
+// ── RESPONSIVE CHROME ─────────────────────────────────────────────
+// Phone width collapses the desktop split-button + Plan/Sign-ups/Share/
+// Settings menus into a fixed bottom bar (Undo, Optimize, Share, More) plus
+// the More sheet's three grouped sections. Rather than duplicating every
+// action as a second button — which drifts out of sync, exactly the bug
+// this whole redesign replaced (see the old initSimpleWorkflow proxies) —
+// the SAME element physically moves between its desktop slot and its phone
+// slot. A comment node left at each element's original position lets it
+// snap back to that exact spot when the viewport widens again.
+(function initResponsiveChrome() {
+  const raidSelector = document.getElementById('raid-selector-desktop-slot');
+  const raidPhoneSlot = document.getElementById('raid-selector-phone-slot');
+  const raidAnchor = document.createComment('anchor:raid-selector');
+  raidSelector.parentNode.insertBefore(raidAnchor, raidSelector);
+
+  const slots = ['btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
+    'btn-redo:phone-sheet-quick-slot', 'btn-compare-modes:phone-sheet-quick-slot',
+    'menu-rename-plan:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
+    'btn-import:phone-sheet-signups-slot', 'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
+    'btn-export-backup:phone-sheet-data-slot', 'btn-import-backup:phone-sheet-data-slot', 'btn-shortcuts-help:phone-sheet-data-slot', 'btn-show-tips-again:phone-sheet-data-slot',
+  ].map(pair => {
+    const [elId, phoneSlotId] = pair.split(':');
+    const el = document.getElementById(elId);
+    const anchor = document.createComment('anchor:' + elId);
+    if (el && el.parentNode) el.parentNode.insertBefore(anchor, el);
+    return { el, anchor, phoneSlot: document.getElementById(phoneSlotId) };
+  });
+
+  const PHONE_QUERY = window.matchMedia('(max-width: 600px)');
+  function sync(e) {
+    const isPhone = (e || PHONE_QUERY).matches;
+    if (raidSelector) {
+      if (isPhone) {
+        if (raidSelector.parentNode !== raidPhoneSlot) raidPhoneSlot.appendChild(raidSelector);
+      } else if (raidSelector.previousSibling !== raidAnchor) {
+        raidAnchor.parentNode.insertBefore(raidSelector, raidAnchor.nextSibling);
+      }
+    }
+    for (const slot of slots) {
+      if (!slot.el) continue;
+      if (isPhone) {
+        if (slot.phoneSlot && slot.el.parentNode !== slot.phoneSlot) slot.phoneSlot.appendChild(slot.el);
+      } else if (slot.anchor.parentNode && slot.el.previousSibling !== slot.anchor) {
+        slot.anchor.parentNode.insertBefore(slot.el, slot.anchor.nextSibling);
+      }
+    }
+    // Shorter labels in the thumb-width phone bottom bar (matches the
+    // mockup's plain "Optimize"/"Share"); the fuller desktop text — "Optimize
+    // groups" and "More export formats…" — comes back once btn-share-main
+    // is a Share-menu item again instead of a bottom-bar button.
+    const optimizeLabel = document.querySelector('#btn-optimize .btn-label');
+    if (optimizeLabel) optimizeLabel.textContent = isPhone ? 'Optimize' : 'Optimize groups';
+    const shareLabel = document.querySelector('#btn-share-main .btn-label');
+    if (shareLabel) shareLabel.textContent = isPhone ? 'Share' : 'More export formats…';
+  }
+  PHONE_QUERY.addEventListener('change', sync);
+  sync(PHONE_QUERY);
 })();
 
 // ── ACTION BUTTONS ──────────────────────────────────────────────
@@ -11080,22 +11553,6 @@ document.getElementById('btn-random').addEventListener('click', () => {
   renderGroups();
   showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
 });
-
-(function initExportMenu() {
-  const menu = document.getElementById('export-menu');
-  const toggle = document.getElementById('btn-export-menu');
-  if (!menu || !toggle) return;
-  const close = () => { menu.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); };
-  toggle.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = !menu.classList.contains('open');
-    menu.classList.toggle('open', open);
-    toggle.setAttribute('aria-expanded', String(open));
-  });
-  menu.querySelectorAll('.export-menu-list .roster-btn').forEach(btn => btn.addEventListener('click', close));
-  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) close(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-})();
 
 document.getElementById('btn-save').addEventListener('click', showSaveModal);
 document.getElementById('btn-templates').addEventListener('click', showTemplatesModal);
@@ -11803,14 +12260,26 @@ Rulesets.forever.idealComp = {
 function switchTab(tab) {
   State.activeTab = tab;
 
-  // Update tab button styles
+  // Update tab button styles. Ideal Comp is no longer part of the
+  // Plan/Assignments tablist (it's a quiet link, see btn-ideal-comp-link)
+  // so neither tab shows active while viewing it.
   document.querySelectorAll('.mode-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
+    const active = btn.dataset.tab === tab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', String(active));
   });
 
+  // Ideal Comp swaps the tablist + "Compare to ideal comp" link for a single
+  // "Back to plan" control (desktop). The phone tabs row stays as-is.
+  const isIdeal = tab === 'ideal';
+  const tablist = document.querySelector('.mode-tabs');
+  if (tablist) tablist.hidden = isIdeal;
+  document.getElementById('btn-ideal-comp-link').hidden = isIdeal;
+  document.getElementById('btn-back-to-plan').hidden = !isIdeal;
+
   // Show/hide plan-mode-only elements
-  const planOnly = ['roster-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'planner-options', 'raid-notes-panel'].map(
-    cls => document.querySelector('.' + cls)
+  const planOnly = ['roster-bar', 'phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'raid-notes-panel'].map(
+    cls => document.querySelector('.' + cls) || document.getElementById(cls)
   ).filter(Boolean);
   for (const el of planOnly) {
     el.style.display = tab === 'plan' ? '' : 'none';
@@ -11922,6 +12391,11 @@ function renderIdealComp() {
 document.querySelectorAll('.mode-tab').forEach(btn => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
+// Ideal Comp is a quiet link next to the tablist (desktop and phone), not a
+// tab itself — same switchTab('ideal') destination the old third tab used.
+document.getElementById('btn-ideal-comp-link').addEventListener('click', () => switchTab('ideal'));
+document.getElementById('btn-ideal-comp-link-phone').addEventListener('click', () => switchTab('ideal'));
+document.getElementById('btn-back-to-plan').addEventListener('click', () => switchTab('plan'));
 
 // ── GLOBAL KEYBOARD SHORTCUTS (feature-backlog-2.md #8) ──────────
 const SHORTCUTS_HELP = [
@@ -11930,9 +12404,8 @@ const SHORTCUTS_HELP = [
   ['Ctrl/Cmd + Y  (or Ctrl/Cmd + Shift + Z)', 'Redo'],
   ['Ctrl/Cmd + S', 'Save roster'],
   ['E', 'Share / Export'],
-  ['1', 'Switch to Plan Mode'],
-  ['2', 'Switch to Ideal Comp'],
-  ['3', 'Switch to Assignments'],
+  ['1', 'Switch to Plan'],
+  ['2', 'Switch to Assignments'],
   ['?', 'Show this help'],
 ];
 function showShortcutsHelp() {
@@ -11958,6 +12431,10 @@ function isShortcutBlocked(target) {
   if (document.getElementById('import-overlay')?.classList.contains('visible')) return true;
   if (document.getElementById('save-overlay')?.classList.contains('visible')) return true;
   if (document.getElementById('active-player-editor')) return true;
+  // Nav redesign: no global shortcut should fire behind an open toolbar
+  // dropdown (role="menu") or the phone "More" sheet.
+  if (document.querySelector('.menu:not([hidden])')) return true;
+  if (document.getElementById('mobile-more-sheet')?.classList.contains('visible')) return true;
   return false;
 }
 document.addEventListener('keydown', (e) => {
@@ -11972,8 +12449,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'o') { e.preventDefault(); document.getElementById('btn-optimize').click(); return; }
   if (k === 'e') { e.preventDefault(); document.getElementById('btn-share-main').click(); return; }
   if (k === '1') { e.preventDefault(); switchTab('plan'); return; }
-  if (k === '2') { e.preventDefault(); switchTab('ideal'); return; }
-  if (k === '3') { e.preventDefault(); switchTab('assignments'); return; }
+  if (k === '2') { e.preventDefault(); switchTab('assignments'); return; }
   if (k === '?') { e.preventDefault(); showShortcutsHelp(); return; }
 });
 
