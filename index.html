@@ -2042,6 +2042,12 @@ Rulesets.classic = {
     // ever actually present under the faction lock above, so listing both is
     // harmless — whichever class has no members in the roster is a no-op.
     spreadProviders: [{ class: 'SHAMAN' }, { class: 'PALADIN' }, { class: 'DRUID', spec: 'Feral' }],
+    // Structural nudge (see Optimizer.groupScore's buffValue) so a melee
+    // group's shaman actually drops Windfury instead of losing the per-element
+    // totem choice to Grace of Air when the group also holds several hunters.
+    // TBC has no such value (undefined = no-op) because its DPS_VALUE/
+    // DPS_WEIGHT tables were tuned, and its scenario suite pinned, without it.
+    meleeGroupWindfuryBias: 8,
   },
 };
 
@@ -2149,6 +2155,9 @@ Rulesets.forever = {
     // groups Feral and Balance together for _spreadPass's matcher (one druid
     // of either spec already satisfies a group; a second of either is surplus).
     spreadProviders: [{ class: 'SHAMAN' }, { class: 'PALADIN' }, { class: 'DRUID', spec: ['Feral', 'Balance'] }],
+    // Same Windfury-over-Grace-of-Air structural nudge as Classic — see
+    // Rulesets.classic.rules.meleeGroupWindfuryBias for the full rationale.
+    meleeGroupWindfuryBias: 8,
     // Buff ids that occupy one shared slot per group — resolveGroupBuffs and
     // getGroupBuffs keep only the higher-value member of each listed set.
     exclusiveBuffs: [['LEADER_OF_THE_PACK', 'MOONKIN_AURA']],
@@ -3517,11 +3526,25 @@ const Optimizer = {
     // identity from seedGroups — a group seeded 'caster_dps' can still end up
     // holding melee dps members (overflow, ROLE_COMPAT cohesion), and those
     // players need Windfury exactly as much as a 'melee_dps'-seeded group's
-    // do. Caster-group coverage (Mana Spring/Tranquil Air) is intentionally
-    // left to groupScore's ordinary buff-value pull rather than a second
-    // pass here — an equivalent caster-targeted pass fought this one over
-    // shamans that were already correctly covering a melee group.
+    // do. Melee coverage runs first and always wins ties over caster
+    // coverage below, per this task's stated priority order.
     this._spreadPass(groups, specs, 'melee_dps');
+
+    // Surplus shamans (more shamans than melee-identity groups) then cover
+    // caster groups with Mana Spring. This used to be left entirely to
+    // groupScore's ordinary buff-value pull, which under-covered casters in
+    // practice (a lone extra shaman often scored better riding with the tank
+    // group's healers than hopping to an already-full caster group). Restricted
+    // to SHAMAN only — Paladin/Feral have no caster-facing equivalent buff —
+    // and passes `protectRoles: ['melee_dps']` so this pass can never treat a
+    // melee group's sole shaman as "spare" just because that melee group
+    // itself has no caster_dps members; only a genuine surplus (2+ in one
+    // group) or an idle shaman sitting somewhere with neither a melee_dps NOR
+    // a caster_dps member relying on it (e.g. alone with the tank/healer
+    // group) is fair game as a source. A no-op unless the ruleset actually
+    // lists SHAMAN as a spread provider (Classic/Forever; TBC has none).
+    const shamanSpec = specs.filter(s => s.class === 'SHAMAN');
+    if (shamanSpec.length) this._spreadPass(groups, shamanSpec, ['caster_dps', 'healer'], { protectRoles: ['melee_dps'] });
   },
 
   // One rebalancing pass for a single target role. Repeatedly finds a group
@@ -3543,52 +3566,111 @@ const Optimizer = {
   // The tank/healer group is never itself a needy target — it doesn't need
   // Windfury — but it's fair game as a source under either tier, per this
   // task's stated priority: melee groups first, then casters, then healers.
-  _spreadPass(groups, specs, wantsRole) {
-    for (const spec of specs) {
-      // spec.spec may be a single spec name (Classic: 'Feral') or an array of
-      // specs that share one provider slot (Forever: Feral+Balance druids
-      // both cover the same now-exclusive crit aura — see rules.exclusiveBuffs).
-      const matches = p => p.class === spec.class && (!spec.spec || (Array.isArray(spec.spec) ? spec.spec.includes(p.spec) : p.spec === spec.spec));
-      for (let iter = 0; iter < 6; iter++) {
-        const needy = [], surplus = [], spare = [];
-        for (let gi = 0; gi < groups.length; gi++) {
-          const count = groups[gi].filter(matches).length;
-          const isTank = this.isTankGroup(gi, groups);
-          // Excludes members that are themselves this pass's provider class —
-          // an Enhancement Shaman's own role IS melee_dps, so without this a
-          // shaman stranded alone among casters would count as "already
-          // satisfying" the group's melee need (itself) and never be
-          // considered spare.
-          const hasWantedRole = !isTank && groups[gi].some(p => p.role === wantsRole && !matches(p));
-          if (hasWantedRole && count === 0) needy.push(gi);
-          else if (count >= 2) surplus.push(gi);
-          else if (count === 1 && !hasWantedRole) spare.push(gi);
-        }
-        const source = surplus.length ? surplus : spare;
-        if (!needy.length || !source.length) break;
-
-        const fromGi = source[0], toGi = needy[0];
-        const fromGroup = groups[fromGi], toGroup = groups[toGi];
-        const providerIdx = fromGroup.findIndex(p => matches(p) && !this.isPinned(p, fromGi, groups));
-        if (providerIdx < 0) break;
-        const provider = fromGroup[providerIdx];
-
-        if (toGroup.length < 5) {
-          fromGroup.splice(providerIdx, 1);
-          toGroup.push(provider);
-        } else {
-          let bestIdx = -1, bestWeight = Infinity;
-          for (let pi = 0; pi < toGroup.length; pi++) {
-            if (this.isPinned(toGroup[pi], toGi, groups) || matches(toGroup[pi])) continue;
-            const w = dpsWeightFor(toGroup[pi]);
-            if (w < bestWeight) { bestWeight = w; bestIdx = pi; }
+  _spreadPass(groups, specs, wantsRole, opts) {
+    // wantsRole is usually one role ('melee_dps'), but the caster-facing Mana
+    // Spring/Tide pass passes ['caster_dps','healer'] — both roles actually
+    // benefit from a shaman's water totem, and a "caster-identity" group that
+    // greedy placement filled almost entirely with overflow healers (no real
+    // caster_dps member at all) still needs sustain coverage exactly like one
+    // with casters in it.
+    const wantsRoles = Array.isArray(wantsRole) ? wantsRole : [wantsRole];
+    // Roles this pass must never strip coverage from, even when the group has
+    // no member of THIS pass's wantsRole(s). Used by the caster-facing Mana
+    // Spring pass (protectRoles: ['melee_dps']) so it can't mistake a melee
+    // group's sole shaman for "spare" just because that melee group happens
+    // to have no caster_dps/healer member of its own — the shaman is still
+    // needed there for Windfury, which is a different pass's job to have
+    // already set up.
+    const protectRoles = ((opts && opts.protectRoles) || []).filter(r => !wantsRoles.includes(r));
+    // A group can be the fixed point for more than one tracked provider type
+    // at once (e.g. a melee group holding both the shaman the SHAMAN pass
+    // placed and the paladin the PALADIN pass is about to place). Without
+    // this, the swap-eviction branch below picks whoever has the lowest
+    // dpsWeightFor as the outgoing member — which happily evicts that very
+    // shaman (a healer-role Resto Shaman's weight is high, but an
+    // Enhancement Shaman's class:spec weight is low) the moment it's the
+    // weakest body in the group, silently undoing an earlier spec's fix
+    // later in this same pass. See tasks/lessons.md "model-optimal is not
+    // the acceptance criterion" — the earlier fix is the convention; it must
+    // survive a later spec's pass, not be sacrificed to it.
+    const isSoleOtherProvider = (cand, group, currentSpec) => {
+      for (const other of specs) {
+        if (other === currentSpec) continue;
+        const m = p => p.class === other.class && (!other.spec || (Array.isArray(other.spec) ? other.spec.includes(p.spec) : p.spec === other.spec));
+        if (m(cand) && group.filter(m).length <= 1) return true;
+      }
+      return false;
+    };
+    // Outer fixed-point loop over the WHOLE spec list. A single pass over
+    // specs in order (old behavior) lets a later spec's swap silently
+    // re-break an earlier spec's already-fixed group: the swap-eviction
+    // branch's "displaced" member lands in the FROM group, which can hand
+    // that group a melee_dps member it didn't have before (so it only
+    // becomes shaman-needy AFTER the shaman pass already finished). Re-running
+    // every spec until nothing moves catches that follow-on need instead of
+    // shipping the board mid-fix. Bounded rounds since isSoleOtherProvider
+    // above stops any single spec from undoing another's OWN placement, so
+    // this converges quickly in practice.
+    for (let round = 0; round < 6; round++) {
+      let changedAny = false;
+      for (const spec of specs) {
+        // spec.spec may be a single spec name (Classic: 'Feral') or an array of
+        // specs that share one provider slot (Forever: Feral+Balance druids
+        // both cover the same now-exclusive crit aura — see rules.exclusiveBuffs).
+        const matches = p => p.class === spec.class && (!spec.spec || (Array.isArray(spec.spec) ? spec.spec.includes(p.spec) : p.spec === spec.spec));
+        for (let iter = 0; iter < 6; iter++) {
+          const needy = [], surplus = [], spare = [];
+          for (let gi = 0; gi < groups.length; gi++) {
+            const count = groups[gi].filter(matches).length;
+            const isTank = this.isTankGroup(gi, groups);
+            // Excludes members that are themselves this pass's provider class —
+            // an Enhancement Shaman's own role IS melee_dps, so without this a
+            // shaman stranded alone among casters would count as "already
+            // satisfying" the group's melee need (itself) and never be
+            // considered spare.
+            const hasWantedRole = !isTank && groups[gi].some(p => wantsRoles.includes(p.role) && !matches(p));
+            // No `!isTank` guard here (unlike hasWantedRole above): a stray
+            // melee_dps guest who ended up in the tank/healer group is still
+            // relying on whatever shaman happens to be sitting there for
+            // Windfury — that placement was never guaranteed by design, but
+            // this pass must not actively break it. hasWantedRole's `!isTank`
+            // only says the tank group is never a Windfury-pass TARGET; it
+            // doesn't make its sole shaman fair game for a DIFFERENT pass to
+            // take away from a melee_dps player who has no other source.
+            const protectedElsewhere = protectRoles.some(r => groups[gi].some(p => p.role === r && !matches(p)));
+            if (hasWantedRole && count === 0) needy.push(gi);
+            else if (count >= 2) surplus.push(gi);
+            else if (count === 1 && !hasWantedRole && !protectedElsewhere) spare.push(gi);
           }
-          if (bestIdx < 0) break; // no room to swap into — leave this group needy
-          const displaced = toGroup[bestIdx];
-          toGroup[bestIdx] = provider;
-          fromGroup[providerIdx] = displaced;
+          const source = surplus.length ? surplus : spare;
+          if (!needy.length || !source.length) break;
+
+          const fromGi = source[0], toGi = needy[0];
+          const fromGroup = groups[fromGi], toGroup = groups[toGi];
+          const providerIdx = fromGroup.findIndex(p => matches(p) && !this.isPinned(p, fromGi, groups));
+          if (providerIdx < 0) break;
+          const provider = fromGroup[providerIdx];
+
+          if (toGroup.length < 5) {
+            fromGroup.splice(providerIdx, 1);
+            toGroup.push(provider);
+          } else {
+            let bestIdx = -1, bestWeight = Infinity;
+            for (let pi = 0; pi < toGroup.length; pi++) {
+              if (this.isPinned(toGroup[pi], toGi, groups) || matches(toGroup[pi])) continue;
+              if (isSoleOtherProvider(toGroup[pi], toGroup, spec)) continue;
+              const w = dpsWeightFor(toGroup[pi]);
+              if (w < bestWeight) { bestWeight = w; bestIdx = pi; }
+            }
+            if (bestIdx < 0) break; // no room to swap into — leave this group needy
+            const displaced = toGroup[bestIdx];
+            toGroup[bestIdx] = provider;
+            fromGroup[providerIdx] = displaced;
+          }
+          changedAny = true;
         }
       }
+      if (!changedAny) break;
     }
   },
 
@@ -3830,6 +3912,22 @@ const Optimizer = {
       for (const m of group) v += dpsValueFor(id, m) * cfg.dps;
       for (const t of tanks) v += mitValueFor(id, t) * cfg.mit;
       if (isTank && rules.sustainValue[id]) v += rules.sustainValue[id] * Math.min(healerCount, 2) * cfg.structure;
+      // Windfury-over-other-air-totem convention (Classic/Forever only — see
+      // rules.meleeGroupWindfuryBias, unset/false for TBC so this is a no-op
+      // there). A shaman's per-element totem choice (resolveGroupBuffs) picks
+      // whichever totem scores highest via THIS function; without a
+      // structural push, a melee group whose only shaman rides with several
+      // hunters can have its Windfury outbid by Grace of Air on raw DPS_VALUE
+      // (hunters get more from GoA than Ret/melee gets from WF) even though
+      // the melee DPS convention (any shaman drops WF for melee — see
+      // tasks/lessons.md 2026-08-19) says the group's melee should get it
+      // regardless. Scaled per actual melee_dps member so an empty or
+      // hunter-only "melee" group doesn't invent a preference it has no one
+      // to give it to.
+      if (id === 'WINDFURY' && rules.rules.meleeGroupWindfuryBias && roleIdentity === 'melee_dps') {
+        const meleeCount = group.reduce((n, p) => n + (p.role === 'melee_dps' && p.class !== 'SHAMAN' ? 1 : 0), 0);
+        if (meleeCount > 0) v += rules.rules.meleeGroupWindfuryBias * meleeCount * cfg.structure;
+      }
       return v;
     };
 
@@ -4224,7 +4322,19 @@ function getGroupBuffs(players, groupIndex) {
         if (!shamanTotems[element]) {
           shamanTotems[element] = { buffId };
         } else {
-          const bestForRole = rules.bestAirTotem[dominantRole];
+          // Windfury-over-other-air-totem convention (Classic/Forever only —
+          // rules.meleeGroupWindfuryBias is unset for TBC). Picking the air
+          // totem by the group's dominant ROLE misfires the moment a melee
+          // group's plurality is healers/tanks riding along as the totem
+          // source (2 healers + 1 rogue reads as "dominantRole: healer",
+          // whose best air totem is Grace of Air) even though the group's
+          // actual melee_dps member is who the convention says should get
+          // Windfury. Force the melee-favoring pick whenever the group holds
+          // a real (non-shaman) melee DPS, regardless of which role plurality
+          // wins the headcount.
+          const airRole = (rules.rules.meleeGroupWindfuryBias && rules.bestAirTotem.melee_dps === 'WINDFURY'
+            && players.some(p => p.role === 'melee_dps' && p.class !== 'SHAMAN')) ? 'melee_dps' : dominantRole;
+          const bestForRole = rules.bestAirTotem[airRole];
           if (element === 'air' && buffId === bestForRole) {
             shamanTotems[element] = { buffId };
           } else if (element === 'water' && buffId === 'MANA_TIDE') {
