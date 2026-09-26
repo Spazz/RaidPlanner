@@ -11387,6 +11387,10 @@ function setOptimizerMode(mode) {
     sheet.classList.add('visible');
     trigger.setAttribute('aria-expanded', 'true');
     FocusTrap.open(sheet, trigger, closeSheet);
+    // FocusTrap listens on the sheet itself, so focus must start inside it
+    // for Tab trapping and Escape to work.
+    const first = FocusTrap.focusables(sheet)[0];
+    if (first) first.focus();
   };
   const closeSheet = () => {
     sheet.classList.remove('visible');
