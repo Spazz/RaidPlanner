@@ -456,33 +456,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .roster-meta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
-/* ── Phone-only More menu (lives in the action bar; see the 600px media block) ── */
-.mobile-more { display: none; position: relative; flex-shrink: 0; }
-.mobile-more-list {
-  display: none; position: absolute; right: 0; bottom: calc(100% + 8px);
-  flex-direction: column; min-width: 180px; max-width: calc(100vw - 16px);
-  background: var(--bg-deepest); border: 1px solid var(--border-strong);
-  box-shadow: 0 -8px 24px rgba(0,0,0,0.5); z-index: 50;
-}
-.mobile-more.open .mobile-more-list { display: flex; }
-.mobile-more-roster {
-  display: flex; flex-direction: column; gap: 1px;
-  padding: 6px 12px; background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-medium);
-}
-.mobile-more-roster #mobile-roster-name {
-  font-size: 12px; font-weight: 600; color: var(--text-primary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.mobile-more-list .roster-btn {
-  text-align: left; padding: 7px 12px; font-size: 12px; letter-spacing: 0.06em;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.mobile-more-list .roster-btn:last-child { border-bottom: none; }
-.mobile-more-list .roster-btn:active { background: var(--bg-card-hover); color: var(--text-primary); }
-.mobile-more-list .mobile-more-danger { color: var(--accent-red); }
-.mobile-more-sep { height: 1px; background: var(--border-medium); }
-
 /* ── App body (main column + buff sidebar) ── */
 .app-body { display: flex; align-items: stretch; }
 .main-column { flex: 1; min-width: 0; }
@@ -1189,11 +1162,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .action-left #btn-optimize { flex: 0 0 auto; padding-left: 10px; padding-right: 10px; }
   .action-left { gap: var(--sp-1); }
   .action-left #optimize-mode { flex: 1 1 0; min-width: 0; font-size: 10.5px; letter-spacing: 0.02em; padding: 5px 16px 5px 5px; background-position: right 4px center; }
-  #btn-mobile-more { padding-left: 8px; padding-right: 8px; }
   .action-left .action-divider,
   .action-left #btn-import, .action-left #btn-random, .action-left #btn-clear,
   .roster-right { display: none; }
-  .mobile-more { display: block; }
 
   .summary-bar { gap: 2px var(--sp-3); padding: 4px var(--sp-2); }
   .summary-divider { display: none; }
@@ -1271,7 +1242,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .toolbar .roster-actions { display:none; }
 .action-left { flex:1; }
 #btn-optimize { background:transparent; color:var(--text-secondary); border-color:var(--border-medium); }
-.action-left .mobile-more { display:none; }
 .player-editor { max-height:calc(100dvh - 20px); overflow-y:auto; }
 .player-move { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
 .player-move select { width:100%; padding:8px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border-medium); }
@@ -1279,12 +1249,10 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .action-left { flex-wrap:nowrap; width:100%; gap:4px; }
   .roster-bar { flex-wrap:nowrap; }
   .action-left #btn-optimize { display:none; }
-  /* Note: the .mobile-more "More" menu that would otherwise hold this as a
-     proxy is unreachable at this width (.action-left .mobile-more is forced
-     display:none elsewhere, a pre-existing condition this change doesn't
-     touch), so Compare Modes stays directly in the bar rather than being
-     hidden behind a menu nothing can open. */
-  .action-left #btn-compare-modes { flex:0 0 auto; padding:8px 6px; font-size:11px; letter-spacing:.02em; white-space:nowrap; }
+  /* Compare modes, Templates and Attendance live as proxy buttons in the
+     Options panel on phones (see initSimpleWorkflow) instead of crowding
+     this bar, which stays limited to the actions used every session. */
+  .action-left #btn-compare-modes { display:none; }
   .action-left #btn-share-main, .action-left #btn-options, .action-left #btn-undo, .action-left #btn-redo { flex:1; min-width:0; margin:0; padding:8px 4px; font-size:11px; letter-spacing:.02em; white-space:nowrap; }
   .action-left #btn-share-main { flex:1.6; }
   .roster-right { display:none !important; }
@@ -1694,32 +1662,6 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <button type="button" class="btn btn-secondary" id="btn-redo" disabled title="Redo (Ctrl+Y)">Redo</button>
       <button type="button" class="btn btn-primary" id="btn-share-main" title="Share / Export (E)">Share / Export</button>
       <button type="button" class="btn btn-secondary" id="btn-options">Options</button>
-      <!-- Phone-only overflow menu: every secondary action proxies to the real button above. -->
-      <div class="mobile-more" id="mobile-more">
-        <button type="button" class="btn btn-secondary" id="btn-mobile-more" aria-haspopup="true" aria-expanded="false" aria-label="More actions">More &#9662;</button>
-        <div class="mobile-more-list" role="menu">
-          <div class="mobile-more-roster"><span class="roster-label">Roster</span><span id="mobile-roster-name">No Roster Loaded</span></div>
-          <button type="button" class="roster-btn" role="menuitem" id="mobile-btn-refresh" data-proxy="btn-refresh" hidden>Refresh sign-ups</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-share">Share link</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-save">Save roster</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-load">Load roster</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-attendance">Attendance</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-compare-modes">Compare modes</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-templates">Comp templates</button>
-          <div class="mobile-more-sep" role="separator"></div>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-addon">Copy Addon String</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-mrt">Copy MRT String</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-export-json">Export JSON</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-json">Copy JSON</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-chat">Copy Raid Chat Text</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-chat-compact">Copy Chat Text (Compact)</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-print-sheet">Print sheet</button>
-          <div class="mobile-more-sep" role="separator"></div>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-import">Import roster</button>
-          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-random">Random roster</button>
-          <button type="button" class="roster-btn mobile-more-danger" role="menuitem" data-proxy="btn-clear">Clear all</button>
-        </div>
-      </div>
     </div>
     <div class="roster-right">
       <span class="roster-label">Roster</span>
@@ -4191,6 +4133,15 @@ const RandomRoster = {
     State.campfires = Campfires.empty();
     State.preferredSlots = [];
     State.preserveGroupOrder = false;
+    // A random roster is an entirely new cast of (randomly-named) players —
+    // notes, name-keyed constraints and bench backups from whatever was
+    // loaded before would otherwise dangle, referencing nobody in the new
+    // roster, and reappear confusingly if a later import happens to reuse
+    // one of those names.
+    State.notes = '';
+    State.playerConstraints = [];
+    Assignments.restore(null);
+    Backups.restore(null);
     const raidInfo = Config.Raids[State.selectedRaid];
     const size = raidInfo ? raidInfo.size : 25;
     const numGroups = raidInfo ? raidInfo.groups : 5;
@@ -7642,8 +7593,6 @@ function renderGroups() {
   document.getElementById('raid-select').value = State.selectedRaid;
   document.getElementById('roster-name').textContent = State.rosterName;
   document.getElementById('mobile-plan-title').textContent = State.rosterName;
-  const mobileName = document.getElementById('mobile-roster-name');
-  if (mobileName) mobileName.textContent = State.rosterName;
   syncRaidNotesUI();
   RaidHelperSync.updateControls();
   renderCampfires();
@@ -9112,6 +9061,7 @@ function showSaveModal() {
 function showTemplatesModal() {
   const modal = document.getElementById('save-modal');
   const overlay = document.getElementById('save-overlay');
+  const trigger = document.activeElement;
   const gameVersion = State.gameVersion, raid = State.selectedRaid;
   const templates = Templates.list(localStorage, gameVersion, raid);
   const raidLabel = Config.Raids[raid]?.name || raid;
@@ -9144,10 +9094,12 @@ function showTemplatesModal() {
       <button class="btn btn-secondary" id="btn-cancel-templates">Close</button>
     </div>`;
 
+  overlay.setAttribute('aria-label', 'Comp Templates');
   overlay.classList.add('visible');
+  FocusTrap.open(overlay, trigger, closeSaveOverlay);
 
-  document.getElementById('btn-cancel-templates').onclick = () => overlay.classList.remove('visible');
-  overlay.onclick = e => { if (e.target === overlay) overlay.classList.remove('visible'); };
+  document.getElementById('btn-cancel-templates').onclick = closeSaveOverlay;
+  overlay.onclick = e => { if (e.target === overlay) closeSaveOverlay(); };
 
   document.getElementById('btn-do-save-template').onclick = () => {
     const name = document.getElementById('template-name-input').value.trim();
@@ -9163,7 +9115,7 @@ function showTemplatesModal() {
       if (e.target.dataset.templateDelete) return;
       const name = item.dataset.template;
       const result = Templates.applyToState(localStorage, name, gameVersion, raid);
-      overlay.classList.remove('visible');
+      closeSaveOverlay();
       if (!result.success) { showToast(result.error); return; }
       renderGroups();
       showToast(`Applied "${name}" — ${result.matched} seated in their old groups, ${result.unmatched} left for Optimize`);
@@ -10086,7 +10038,14 @@ function renderLandingSavedList() {
 (function initSimpleWorkflow() {
   const options = document.getElementById('planner-options');
   const controls = options.querySelector('.options-controls');
-  for (const id of ['btn-refresh','btn-save','btn-load']) controls.appendChild(document.getElementById(id));
+  // The old top toolbar's .roster-actions row is permanently display:none
+  // under the simple-workflow layout (see the CSS above) — every action that
+  // used to live there has to be physically relocated into this panel (or
+  // proxied from it) or it becomes unreachable on every viewport, not just
+  // phones. btn-attendance and btn-templates were added straight into that
+  // dead row by their feature branches, so they need the same treatment as
+  // btn-refresh/btn-save/btn-load below.
+  for (const id of ['btn-refresh','btn-save','btn-load','btn-attendance','btn-templates']) controls.appendChild(document.getElementById(id));
   document.getElementById('btn-save').textContent = 'Save a copy';
   document.getElementById('btn-save').setAttribute('aria-label','Save a copy');
   document.getElementById('btn-load').textContent = 'Open a plan';
@@ -10095,6 +10054,12 @@ function renderLandingSavedList() {
   rename.onclick = () => document.getElementById('roster-name').click(); controls.appendChild(rename);
   const optimize = document.createElement('button'); optimize.type='button'; optimize.className='btn btn-secondary'; optimize.textContent='Optimize groups';
   optimize.onclick=()=>document.getElementById('btn-optimize').click(); controls.appendChild(optimize);
+  // Compare modes stays a real, directly-clickable button in the bottom
+  // action bar on desktop; on phones that bar hides it (see the 600px
+  // block), so this proxy is its only path there — same pattern as the
+  // Optimize-groups proxy above for the bar's hidden #btn-optimize.
+  const compareModes = document.createElement('button'); compareModes.type='button'; compareModes.className='btn btn-secondary'; compareModes.textContent='Compare modes';
+  compareModes.onclick=()=>document.getElementById('btn-compare-modes').click(); controls.appendChild(compareModes);
   document.getElementById('btn-options').onclick = () => { options.open = !options.open; if(options.open) options.scrollIntoView({block:'nearest'}); };
   document.getElementById('btn-undo').onclick = undoPlanChange;
   document.getElementById('btn-redo').onclick = redoPlanChange;
@@ -10169,6 +10134,15 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   State.rosterName = NO_ROSTER_NAME;
   State.sourceEventId = null;
   State.buffOverrides = {};
+  // Wipe every per-roster feature that is keyed by player name/uid — left in
+  // place, these dangle after the roster they refer to is gone (stale notes
+  // reappearing, "together"/"apart" pairs and bench backups pointing at
+  // players who no longer exist) and can resurface confusingly on whatever
+  // is imported/generated next.
+  State.notes = '';
+  State.playerConstraints = [];
+  Assignments.restore(null);
+  Backups.restore(null);
   initGroups();
   renderGroups();
   showToast('Cleared');
@@ -10180,6 +10154,10 @@ document.getElementById('btn-landing-empty').addEventListener('click', () => {
   State.campfires = Campfires.empty();
   State.groups = []; State.roster = []; State.bench = []; State.preferredSlots = [];
   State.sourceEventId = null; State.buffOverrides = {}; State.rosterName = 'New raid plan';
+  State.notes = '';
+  State.playerConstraints = [];
+  Assignments.restore(null);
+  Backups.restore(null);
   initGroups(); renderGroups(); showView('app');
   showToast('Click an empty slot to choose a preferred class and spec');
 });
@@ -10203,28 +10181,6 @@ document.getElementById('btn-random').addEventListener('click', () => {
     toggle.setAttribute('aria-expanded', String(open));
   });
   menu.querySelectorAll('.export-menu-list .roster-btn').forEach(btn => btn.addEventListener('click', close));
-  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) close(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-})();
-
-(function initMobileMoreMenu() {
-  const menu = document.getElementById('mobile-more');
-  const toggle = document.getElementById('btn-mobile-more');
-  if (!menu || !toggle) return;
-  const close = () => { menu.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); };
-  toggle.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = !menu.classList.contains('open');
-    menu.classList.toggle('open', open);
-    toggle.setAttribute('aria-expanded', String(open));
-  });
-  // Each item forwards to the real (hidden) button so there is one handler per action.
-  menu.querySelectorAll('[data-proxy]').forEach(btn => btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    close();
-    const target = document.getElementById(btn.dataset.proxy);
-    if (target) target.click();
-  }));
   document.addEventListener('click', (e) => { if (!menu.contains(e.target)) close(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 })();

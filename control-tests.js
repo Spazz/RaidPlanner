@@ -19,10 +19,10 @@ const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
 vm.runInContext(script.split('// ── UI RENDERING')[0] +
-  '\nglobalThis.api={State,Config,GameVersions,Rulesets,Import,Optimizer,Constraints,Templates,applyTemplate,explainPlacement,RosterEdit,PlanStore,getGroupBuffs,Faction,activeRules,nextUid};',
+  '\nglobalThis.api={State,Config,GameVersions,Rulesets,Import,Optimizer,Constraints,Templates,applyTemplate,explainPlacement,RosterEdit,PlanStore,getGroupBuffs,Faction,activeRules,nextUid,RandomRoster,Assignments,Backups};',
   ctx);
 const { State, Config, GameVersions, Rulesets, Import, Optimizer, Constraints, Templates, applyTemplate, explainPlacement,
-  RosterEdit, PlanStore, getGroupBuffs, Faction, activeRules, nextUid } = ctx.api;
+  RosterEdit, PlanStore, getGroupBuffs, Faction, activeRules, nextUid, RandomRoster, Assignments, Backups } = ctx.api;
 
 let passed = 0;
 function check(name, fn) {
@@ -426,6 +426,36 @@ check('explainPlacement: the best-alternative comparison never throws across a r
       assert.ok(Array.isArray(reasons));
     }
   }
+});
+
+// ── QA pass 3: cross-feature regression ──────────────────────────
+// Generating a random roster (or any other "start fresh" action) discards
+// every current player object, but earlier code never reset the features
+// that key off player NAME rather than object identity: raid notes,
+// keep-together/apart constraints, manual assignments and bench backups.
+// Left in place, they dangle — pointing at players who no longer exist —
+// and can resurface confusingly (stale notes text, a "together" pair that
+// silently does nothing, or worse, a coincidental name collision with a
+// later import). RandomRoster.generate() must clear all four.
+check('RandomRoster.generate() clears notes, constraints, assignments and backups from the previous roster', () => {
+  resetState('tbc', 'bt', 25);
+  State.notes = 'MT swaps at 20%, watch for enrage';
+  const tank = State.roster.find(p => p.role === 'tank');
+  const healer = State.roster.find(p => p.role === 'healer');
+  Constraints.add(tank.name, healer.name, 'together');
+  Assignments.restore({ tankHealers: { [healer.name]: tank.name } });
+  State.bench = [{ uid: nextUid(), name: 'BenchGuy', class: 'WARRIOR', spec: 'Fury', role: 'melee_dps', groupNumber: 0 }];
+  Backups.link(tank.name, 'BenchGuy');
+  assert.equal(State.playerConstraints.length, 1, 'fixture sanity: constraint recorded');
+  assert.equal(Object.keys(State.assignments.tankHealers).length, 1, 'fixture sanity: assignment recorded');
+  assert.equal(Object.keys(State.backups).length, 1, 'fixture sanity: backup recorded');
+
+  RandomRoster.generate();
+
+  assert.equal(State.notes, '', 'notes should be cleared, not carried over to the new roster');
+  assert.equal(State.playerConstraints.length, 0, 'stale constraints (old names) should not survive');
+  assert.equal(Object.keys(State.assignments.tankHealers).length, 0, 'stale manual assignments (old names) should not survive');
+  assert.equal(Object.keys(State.backups).length, 0, 'stale bench backups (old names) should not survive');
 });
 
 console.log(`\nControl tests (templates, constraints, explanation): ${passed} passed, 0 failed, ${passed} total`);
