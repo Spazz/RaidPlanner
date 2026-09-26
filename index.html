@@ -846,6 +846,11 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   display: none; font-size: 10px; color: #ff6b6b;
   margin: 4px 0 2px; line-height: 1.3;
 }
+.player-editor-review-notice {
+  font-size: 11px; color: #ffb86b; line-height: 1.4;
+  background: rgba(255, 184, 107, 0.08); border: 1px solid rgba(255, 184, 107, 0.3);
+  border-radius: 3px; padding: 6px 8px; margin: 2px 0 8px;
+}
 .player-editor-actions {
   display: flex; align-items: center; justify-content: space-between;
   gap: 6px; margin-top: 8px; padding-top: 8px;
@@ -867,6 +872,12 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 
 /* Constraint / lock badges on a seated player-slot (backlog #1, #3) */
 .constraint-badge, .lock-badge { flex-shrink:0; font-size:10px; cursor:default; }
+/* Needs-review badge (backlog #2, 2026-09-26) — a class-only Raid-Helper
+   sign-up's defaulted spec/role, persisted on the card itself since this
+   import path has no confirmation dialog (unlike the plain-text importer's
+   .plain-import-flag, which this mirrors visually). */
+.player-slot.needs-review { background: rgba(255, 184, 107, 0.08); }
+.review-badge { flex-shrink:0; color: #ffb86b; font-size: 9px; text-transform: uppercase; letter-spacing: .03em; cursor: help; white-space: nowrap; border: 1px solid rgba(255,184,107,0.4); border-radius: 3px; padding: 1px 4px; }
 .player-constraints { margin-bottom: 12px; }
 .player-constraints-list { display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
 .constraint-row {
@@ -2117,6 +2128,17 @@ const Config = {
     Tank:null, Bench:null,
   },
 
+  // Least-wrong per-class default role for a Raid-Helper sign-up that only
+  // chose a class, no spec (backlog #2, 2026-09-26) — this class's single
+  // most common raid role. Every one of these is a guess the leader should
+  // confirm, hybrids (Shaman/Druid) no more so than any other entry here —
+  // Import._resolveRaidHelperEntry always pairs this with needsReview so the
+  // guess is never mistaken for a confidently-resolved sign-up.
+  DefaultRoleForClass: {
+    WARRIOR:'melee_dps', PALADIN:'healer', HUNTER:'ranged_dps', ROGUE:'melee_dps',
+    PRIEST:'healer', SHAMAN:'healer', MAGE:'caster_dps', WARLOCK:'caster_dps', DRUID:'healer',
+  },
+
   RaidHelperSpecMap: {
     Arms:        {class:'WARRIOR',spec:'Arms',      role:'melee_dps'},
     Fury:        {class:'WARRIOR',spec:'Fury',       role:'melee_dps'},
@@ -2937,9 +2959,13 @@ const Import = {
 
   // Resolve a Raid-Helper slot/signup entry (className + specName) to a class/spec/role.
   // Shared by both export shapes below — they use the same field names per entry.
+  // Returns { classFile, specName, role, needsReview, reviewReason }: needsReview
+  // mirrors the plain-text importer's status/reason shape (parsePlainRoster's
+  // addEntry) so both import paths surface a defaulted guess identically.
   _resolveRaidHelperEntry(entry) {
     const specInfo = Config.RaidHelperSpecMap[entry.specName];
     let classFile = null, specName = entry.specName || 'Unknown', role = 'melee_dps';
+    let needsReview = false, reviewReason = null;
 
     if (specInfo) {
       classFile = specInfo.class;
@@ -2947,6 +2973,26 @@ const Import = {
       role = specInfo.role;
     } else {
       classFile = Config.RaidHelperClassMap[entry.className] || null;
+      // A real class Raid-Helper resolved (entry.className is a playable
+      // class, not the Tank/Bench/Tentative/Absence meta-values, which all
+      // map to null here) but with no spec this map recognizes — signed up
+      // class-only, or a spec name it doesn't know. This used to fall
+      // straight through to the blanket `role = 'melee_dps'` default above
+      // regardless of class (backlog #2, 2026-09-26), silently corrupting
+      // tank/healer floor math (Optimizer.floorsFor) for e.g. a class-only
+      // Priest. Guess the class's single most common role instead, and flag
+      // it exactly like parsePlainRoster flags its own defaulted spec — never
+      // let a guess look like a confidently-resolved sign-up.
+      if (classFile) {
+        role = Config.DefaultRoleForClass[classFile] || 'melee_dps';
+        const specTable = Object.values(Config.Specs[classFile] || {});
+        const defaultSpec = specTable.find(sp => sp.role === role) || specTable[0];
+        specName = defaultSpec ? defaultSpec.name : 'Unknown';
+        needsReview = true;
+        reviewReason = entry.specName
+          ? `Raid-Helper spec "${entry.specName}" not recognized — defaulted to ${specName} (${role.replace('_', ' ')})`
+          : `No spec chosen on Raid-Helper — defaulted to ${specName} (${role.replace('_', ' ')})`;
+      }
     }
 
     if (entry.className === 'Tank') {
@@ -2957,7 +3003,7 @@ const Import = {
       classFile = specInfo.class;
     }
 
-    return { classFile, specName, role };
+    return { classFile, specName, role, needsReview, reviewReason };
   },
 
   // Format 1: a "slots" export that already carries per-player groupNumber
@@ -2979,7 +3025,7 @@ const Import = {
       const category = this._categorizeRaidHelperEntry(slot);
       if (category === 'skip') { skipped++; continue; }
 
-      const { classFile, specName, role } = this._resolveRaidHelperEntry(slot);
+      const { classFile, specName, role, needsReview, reviewReason } = this._resolveRaidHelperEntry(slot);
       if (!classFile) { skipped++; continue; }
 
       const player = {
@@ -2991,6 +3037,7 @@ const Import = {
         groupNumber: category === 'bench' ? 0 : slot.groupNumber,
         imported: true,
       };
+      if (needsReview) { player.needsReview = true; player.reviewReason = reviewReason; }
 
       if (category === 'bench') { bench.push(player); continue; }
 
@@ -3035,11 +3082,11 @@ const Import = {
     for (const signUp of data.signUps) {
       const category = this._categorizeRaidHelperEntry(signUp);
       if (category === 'skip') { skipped++; continue; }
-      const { classFile, specName, role } = this._resolveRaidHelperEntry(signUp);
+      const { classFile, specName, role, needsReview, reviewReason } = this._resolveRaidHelperEntry(signUp);
       if (!classFile) { skipped++; continue; }
       entries.push({
         name: signUp.name || ('Unknown-' + (signUp.id || entries.length)),
-        class: classFile, spec: specName, role, category,
+        class: classFile, spec: specName, role, category, needsReview, reviewReason,
       });
     }
     return { entries, skipped };
@@ -3055,6 +3102,7 @@ const Import = {
         name: entry.name, class: entry.class, spec: entry.spec, role: entry.role,
         imported: true,
       };
+      if (entry.needsReview) { player.needsReview = true; player.reviewReason = entry.reviewReason; }
       if (entry.category === 'bench') { player.groupNumber = 0; bench.push(player); }
       else roster.push(player);
     }
@@ -3127,7 +3175,7 @@ const Import = {
       const player = current.get(k);
       if (!player) { diff.added.push(entry); continue; }
       if (player.class !== entry.class || player.spec !== entry.spec || player.role !== entry.role) {
-        diff.changed.push({ player, class:entry.class, spec:entry.spec, role:entry.role });
+        diff.changed.push({ player, class:entry.class, spec:entry.spec, role:entry.role, needsReview:entry.needsReview, reviewReason:entry.reviewReason });
       }
       const isSeated = seated.has(player.uid);
       if (isSeated && entry.category === 'bench') diff.demoted.push(player);
@@ -3179,6 +3227,8 @@ const Import = {
       change.player.class = change.class;
       change.player.spec = change.spec;
       change.player.role = change.role;
+      if (change.needsReview) { change.player.needsReview = true; change.player.reviewReason = change.reviewReason; }
+      else { delete change.player.needsReview; delete change.player.reviewReason; }
       clearOverrides(change.player); // an override for the old spec's buff no longer applies
     }
     for (const player of diff.demoted) {
@@ -3195,6 +3245,7 @@ const Import = {
         uid: nextUid(), name:entry.name, class:entry.class, spec:entry.spec, role:entry.role,
         groupNumber: 0, imported: true,
       };
+      if (entry.needsReview) { player.needsReview = true; player.reviewReason = entry.reviewReason; }
       if (entry.category !== 'bench' && PreferredSlots.seat(player)) filled++;
       else State.bench.push(player);
     }
@@ -4557,7 +4608,18 @@ const Optimizer = {
     // which deIsolate would then "fix" by pulling it out again — silently
     // re-creating the exact stack this phase exists to prevent. Nothing runs
     // after it, so its rebalance is what the board actually ships with.
-    this.spreadProviders(groups);
+    // spreadProviders itself now refuses to pick a source whose removal would
+    // strand a melee/caster DPS deIsolate just fixed (see its wouldIsolate()
+    // guard) — the mirror case of the one this comment already described,
+    // and the one that used to survive into Relaxed mode's shipped board
+    // since nothing ran after Phase 5 to catch it there. `mode` is passed
+    // through so its very last-resort source tier (spareProtected) — a
+    // deliberate softening of the "never touch a guest's only buff" courtesy,
+    // needed to fully close Relaxed's known gaps — only engages for Relaxed;
+    // every other mode already reaches full coverage via refineRounds before
+    // Phase 5 even runs, so leaving their spreadProviders behavior untouched
+    // avoids trading a fixed gap for a fresh one elsewhere (see spreadProviders).
+    this.spreadProviders(groups, mode);
 
     // Phase 6: Hard player constraints (backlog #3) — keep-together/keep-apart
     // pairs win over every structural/buff preference above, so this must run
@@ -4584,7 +4646,7 @@ const Optimizer = {
   // looks at the whole board instead of one group at a time and rebalances
   // that specific case. No-op unless the active ruleset sets
   // rules.spreadProviders (Classic only — see Rulesets.classic.rules).
-  spreadProviders(groups) {
+  spreadProviders(groups, mode) {
     const rules = activeRules();
     const specs = (rules.rules && rules.rules.spreadProviders) || [];
     if (!specs.length) return;
@@ -4595,7 +4657,7 @@ const Optimizer = {
     // players need Windfury exactly as much as a 'melee_dps'-seeded group's
     // do. Melee coverage runs first and always wins ties over caster
     // coverage below, per this task's stated priority order.
-    this._spreadPass(groups, specs, 'melee_dps');
+    this._spreadPass(groups, specs, 'melee_dps', { mode });
 
     // Surplus shamans (more shamans than melee-identity groups) then cover
     // caster groups with Mana Spring. This used to be left entirely to
@@ -4611,7 +4673,7 @@ const Optimizer = {
     // group) is fair game as a source. A no-op unless the ruleset actually
     // lists SHAMAN as a spread provider (Classic/Forever; TBC has none).
     const shamanSpec = specs.filter(s => s.class === 'SHAMAN');
-    if (shamanSpec.length) this._spreadPass(groups, shamanSpec, ['caster_dps', 'healer'], { protectRoles: ['melee_dps'] });
+    if (shamanSpec.length) this._spreadPass(groups, shamanSpec, ['caster_dps', 'healer'], { protectRoles: ['melee_dps'], mode });
   },
 
   // One rebalancing pass for a single target role. Repeatedly finds a group
@@ -4649,6 +4711,37 @@ const Optimizer = {
     // needed there for Windfury, which is a different pass's job to have
     // already set up.
     const protectRoles = ((opts && opts.protectRoles) || []).filter(r => !wantsRoles.includes(r));
+    // Relaxed-only: whether the very last fallback tier (spareProtected,
+    // below) is allowed to engage at all. It's a deliberate softening of the
+    // "never touch a guest's only buff" courtesy, and only Relaxed actually
+    // needs it — every other mode already reaches full provider coverage via
+    // refineRounds before Phase 5 runs, so letting spareProtected fire there
+    // too just trades one mode's already-closed gap for a fresh one
+    // elsewhere (confirmed via classic-forever-scenarios.js: enabling it
+    // unconditionally regressed tank_mit on the Forever mixed 40 fixture).
+    const allowProtectedFallback = (opts && opts.mode) === 'relaxed';
+    // Last-resort-only source identity: the melee-facing (Windfury) pass must
+    // never be the one that strips the raid's caster-identity group of its
+    // own natural mana-sustain shaman just because that group has no
+    // melee_dps member to "protect" it (protectRoles above only guards the
+    // reverse direction — the caster-facing pass never touching a melee
+    // group's shaman). Concretely: with exactly enough shamans for one per
+    // melee group plus one spare, greedy placement can seat that spare
+    // shaman right in the caster-identity group (where it's doing exactly
+    // the job invariant (d) wants), and a melee-identity group elsewhere can
+    // come up needy for Windfury with the tank/healer group ALSO holding a
+    // spare shaman. Both groups are equally "spare" by the hasWantedRole
+    // check, and plain gi-ascending order can pick the caster group first —
+    // taking the one shaman that was already correctly placed instead of the
+    // one riding along with a healer-stacked tank group that doesn't need it
+    // for anything this suite checks. Demoting the opposing identity to a
+    // last-resort tier (tried only when no other source exists, so Windfury
+    // coverage — checked unconditionally, every mode — never regresses)
+    // fixes that without touching the caster-facing pass's own logic.
+    const oppositeIdentity = wantsRoles.includes('melee_dps') ? 'caster_dps'
+      : (wantsRoles.includes('caster_dps') || wantsRoles.includes('healer')) ? 'melee_dps'
+      : null;
+    const isLastResortSource = gi => !!(oppositeIdentity && groups._roleIdentities && groups._roleIdentities[gi] === oppositeIdentity);
     // A group can be the fixed point for more than one tracked provider type
     // at once (e.g. a melee group holding both the shaman the SHAMAN pass
     // placed and the paladin the PALADIN pass is about to place). Without
@@ -4686,7 +4779,9 @@ const Optimizer = {
         // both cover the same now-exclusive crit aura — see rules.exclusiveBuffs).
         const matches = p => p.class === spec.class && (!spec.spec || (Array.isArray(spec.spec) ? spec.spec.includes(p.spec) : p.spec === spec.spec));
         for (let iter = 0; iter < 6; iter++) {
-          const needy = [], surplus = [], spare = [];
+          const needy = [];
+          const surplus = [], surplusLast = [];
+          const spare = [], spareLast = [], spareProtected = [];
           for (let gi = 0; gi < groups.length; gi++) {
             const count = groups[gi].filter(matches).length;
             const isTank = this.isTankGroup(gi, groups);
@@ -4705,23 +4800,46 @@ const Optimizer = {
             // doesn't make its sole shaman fair game for a DIFFERENT pass to
             // take away from a melee_dps player who has no other source.
             const protectedElsewhere = protectRoles.some(r => groups[gi].some(p => p.role === r && !matches(p)));
-            if (hasWantedRole && count === 0) needy.push(gi);
-            else if (count >= 2) surplus.push(gi);
-            else if (count === 1 && !hasWantedRole && !protectedElsewhere) spare.push(gi);
+            if (hasWantedRole && count === 0) { needy.push(gi); continue; }
+            const lastResort = isLastResortSource(gi);
+            if (count >= 2) (lastResort ? surplusLast : surplus).push(gi);
+            else if (count === 1 && !hasWantedRole) {
+              if (protectedElsewhere && allowProtectedFallback) {
+                // protectedElsewhere used to disqualify a group outright —
+                // but "never touch a guest's only buff source" is a
+                // courtesy, not a structural guarantee (that placement was
+                // never guaranteed by design, per the comment above), while a
+                // genuinely needy group elsewhere going completely uncovered
+                // IS one of the invariants this suite checks unconditionally.
+                // Demoting it to a final fallback tier — tried only when
+                // every unprotected option is exhausted, and only in Relaxed
+                // (see allowProtectedFallback) — lets a raid with just enough
+                // providers for "one per real need plus one spare" still
+                // reach its last needy group instead of stranding that spare
+                // behind an incidental guest's nice-to-have.
+                spareProtected.push(gi);
+              } else if (!protectedElsewhere) {
+                (lastResort ? spareLast : spare).push(gi);
+              }
+            }
           }
-          const source = surplus.length ? surplus : spare;
+          // Try, in order: a real surplus outside the opposing identity, a
+          // spare outside it, the opposing identity's own surplus/spare, and
+          // finally a spare that's only protected by the soft guest-courtesy
+          // rule above — each tier is only consulted once every earlier one
+          // has nothing left to offer.
+          const source = surplus.length ? surplus : spare.length ? spare
+            : surplusLast.length ? surplusLast : spareLast.length ? spareLast : spareProtected;
           if (!needy.length || !source.length) break;
 
-          const fromGi = source[0], toGi = needy[0];
-          const fromGroup = groups[fromGi], toGroup = groups[toGi];
-          const providerIdx = fromGroup.findIndex(p => matches(p) && !this.isPinned(p, fromGi, groups));
-          if (providerIdx < 0) break;
-          const provider = fromGroup[providerIdx];
-
-          if (toGroup.length < 5) {
-            fromGroup.splice(providerIdx, 1);
-            toGroup.push(provider);
-          } else {
+          // toGi/toGroup and whichever member a full toGroup would have to
+          // evict (`displaced`) don't depend on which source group supplies
+          // the provider, so resolve them once up front — the source search
+          // below needs `displaced` to run its wouldIsolate() lookahead.
+          const toGi = needy[0];
+          const toGroup = groups[toGi];
+          let displaced = null, displacedIdx = -1;
+          if (toGroup.length >= 5) {
             let bestIdx = -1, bestWeight = Infinity;
             for (let pi = 0; pi < toGroup.length; pi++) {
               if (this.isPinned(toGroup[pi], toGi, groups) || matches(toGroup[pi])) continue;
@@ -4730,8 +4848,39 @@ const Optimizer = {
               if (w < bestWeight) { bestWeight = w; bestIdx = pi; }
             }
             if (bestIdx < 0) break; // no room to swap into — leave this group needy
-            const displaced = toGroup[bestIdx];
-            toGroup[bestIdx] = provider;
+            displacedIdx = bestIdx;
+            displaced = toGroup[bestIdx];
+          }
+
+          // Pick the first source group with a non-pinned provider whose
+          // departure — and, on a full toGroup, `displaced`'s arrival in
+          // their seat — wouldn't strand a melee/caster DPS teammate behind.
+          // Without this, moving a group's only Feral Druid/Shaman/Paladin
+          // out to cover a needier group can silently re-isolate whoever was
+          // relying on it for their only same-family peer; nothing runs after
+          // Phase 5 (spreadProviders) to catch that, so it shipped straight
+          // through in Relaxed mode, where refineRounds isn't there beforehand
+          // to have already prevented the conditions that cause it.
+          let fromGi = -1, providerIdx = -1;
+          for (const gi of source) {
+            const fg = groups[gi];
+            for (let pi = 0; pi < fg.length; pi++) {
+              if (!matches(fg[pi]) || this.isPinned(fg[pi], gi, groups)) continue;
+              if (this.wouldIsolate(fg, pi, displaced)) continue;
+              fromGi = gi; providerIdx = pi; break;
+            }
+            if (fromGi >= 0) break;
+          }
+          if (fromGi < 0) break; // every candidate source would strand someone — leave this group needy
+
+          const fromGroup = groups[fromGi];
+          const provider = fromGroup[providerIdx];
+
+          if (displaced === null) {
+            fromGroup.splice(providerIdx, 1);
+            toGroup.push(provider);
+          } else {
+            toGroup[displacedIdx] = provider;
             fromGroup[providerIdx] = displaced;
           }
           changedAny = true;
@@ -5273,16 +5422,38 @@ const Optimizer = {
     }
   },
 
+  // Shared by deIsolate and spreadProviders' wouldIsolate() guard so the two
+  // phases can never disagree about what "isolated" means — a role belongs to
+  // the 'melee' family (tank/melee_dps/ranged_dps), the 'caster' family
+  // (caster_dps/healer), or neither (null).
+  roleFamily(role) {
+    return (role === 'melee_dps' || role === 'tank' || role === 'ranged_dps') ? 'melee' :
+      (role === 'caster_dps' || role === 'healer') ? 'caster' : null;
+  },
+
+  // Would removing the player at `removeIdx` from `group` (optionally
+  // replacing them with `insertPlayer`, for a swap) leave some OTHER
+  // melee_dps/caster_dps member without a same-family peer? Same isolation
+  // definition deIsolate uses, run as a lookahead before spreadProviders
+  // commits to a source group — see spreadProviders' Phase 5 comment for why
+  // this guard exists: nothing runs after Phase 5 to undo a fresh isolation.
+  wouldIsolate(group, removeIdx, insertPlayer) {
+    const next = group.filter((_, i) => i !== removeIdx);
+    if (insertPlayer) next.push(insertPlayer);
+    return next.some((x, xi) => {
+      if (x.role !== 'melee_dps' && x.role !== 'caster_dps') return false;
+      const fam = this.roleFamily(x.role);
+      return !next.some((y, yi) => yi !== xi && this.roleFamily(y.role) === fam);
+    });
+  },
+
   // ── PHASE 4: DE-ISOLATION ─────────────────────────────────────
   // Finds any melee_dps/caster_dps player with zero role-compatible peers in
   // their own group and swaps them for an opposite-family player elsewhere —
   // preferring a partner who is themselves mismatched (a caster stuck in a
   // melee-heavy group, etc.), since that swap fixes both sides at once.
   deIsolate(groups) {
-    const family = role =>
-      (role === 'melee_dps' || role === 'tank' || role === 'ranged_dps') ? 'melee' :
-      (role === 'caster_dps' || role === 'healer') ? 'caster' :
-      null;
+    const family = role => this.roleFamily(role);
 
     // A single pass can fix one isolated player by pulling their swap
     // partner out of ITS group — which can leave a different player newly
@@ -5884,6 +6055,11 @@ const RosterEdit = {
     player.class = classFile;
     player.spec = specName;
     player.role = role;
+    // A leader picking an explicit class/spec here is exactly how a
+    // Raid-Helper class-only sign-up's defaulted guess (backlog #2) gets
+    // resolved — clear the flag the moment they touch it, same as the
+    // plain-text importer's needsReview never survives a manual edit.
+    if (specChanged) { delete player.needsReview; delete player.reviewReason; }
 
     if (specChanged || name !== oldName) this.ClearOverridesFor(oldName);
     // Backups and player constraints are name-keyed too; a rename breaks the
@@ -7515,12 +7691,18 @@ function renderGroups() {
           ? `<span class="constraint-badge" data-tt-name="Constraints" data-tt-desc="${esc(constraintDesc)}">${togetherNames.length ? '&#128279;' : ''}${apartNames.length ? '&#9940;' : ''}</span>`
           : '';
         const lockBadge = p.locked ? `<span class="lock-badge" title="Locked by comp template">&#128274;</span>` : '';
-        slotsHTML += `<div class="player-slot" draggable="true" data-group="${gi}" data-slot="${si}">
+        // Class-only Raid-Helper sign-ups (backlog #2) land with a guessed
+        // spec/role — same "Needs review" treatment the plain-text importer's
+        // preview already uses, but persisted on the card itself since this
+        // import path has no confirmation dialog to show it in first.
+        const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
+        slotsHTML += `<div class="player-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" data-group="${gi}" data-slot="${si}">
           ${getSpecIcon(p)}
           <div class="player-info">
             <span class="player-name" style="color:${color}">${esc(displayName)}</span>
             <span class="player-spec">${esc(specClass)}</span>
           </div>
+          ${reviewBadge}
           ${lockBadge}
           ${constraintBadge}
           ${backupBadge}
@@ -8303,12 +8485,14 @@ function renderBench() {
       : '';
     const backupPrimary = Backups.primaryNameFor(p.name);
     const backupBadge = backupPrimary ? `<span class="backup-badge backup-badge-bench" title="Backup for ${esc(backupPrimary.split('-')[0])}">-&gt; ${esc(backupPrimary.split('-')[0])}</span>` : '';
-    slotsHTML += `<div class="player-slot bench-slot" draggable="true" data-bench-slot="${bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
+    const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
+    slotsHTML += `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" data-bench-slot="${bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
       ${getSpecIcon(p)}
       <div class="player-info">
         <span class="player-name" style="color:${color}">${esc(displayName)}</span>
         <span class="player-spec">${esc(specClass)}</span>
       </div>
+      ${reviewBadge}
       ${backupBadge}
       ${getDragHandle()}
     </div>`;
@@ -8465,6 +8649,7 @@ function showPlayerEditor(anchorEl, opts) {
   editor.setAttribute('aria-label', title);
   editor.innerHTML = `
     <div class="player-editor-title">${esc(title)}</div>
+    ${!isAdd && player && player.needsReview ? `<div class="player-editor-review-notice">${esc(player.reviewReason || 'Needs review — spec was defaulted')}. Pick the real class/spec below to clear this.</div>` : ''}
     ${!isAdd ? `<div class="player-move"><label for="pe-destination">Move ${esc(curName)}</label><select id="pe-destination"><option value="">Choose a group…</option>${State.groups.map((g,gi) => gi === found.groupIdx ? '' : g.length < 5 ? `<option value="${gi}">Move to Group ${gi+1} (${g.length}/5)</option>` : `<optgroup label="Group ${gi+1} is full — swap with">${g.map(p => `<option value="${gi}:${esc(p.uid)}">${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select><button type="button" class="pe-btn" id="pe-move">Move / swap</button></div>` : ''}
     <label class="player-editor-field">
       <span>Name</span>
