@@ -1319,6 +1319,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 /* The game switcher is shared by both views and sits outside the planner zoom. */
 body { flex-direction:column; align-items:center; justify-content:flex-start; padding-top:0; }
 .game-header { width:calc(100% + 32px); background:#101113; border-bottom:1px solid #34332d; }
+/* The +32px bleed cancels body's 16px side padding, which drops to 0 at <=1100px. */
+@media(max-width:1100px) { .game-header { width:100%; } }
 .game-header-inner { max-width:1480px; margin:auto; display:flex; align-items:stretch; padding:0 32px; }
 .game-header-brand { display:flex; align-items:center; gap:12px; padding-right:36px; color:#e5e0d3; flex-shrink:0; }
 .game-header-mark { width:32px; height:36px; display:grid; place-items:center; border:1px solid #706044; color:#dfbd75; font:700 21px var(--font-cond); clip-path:polygon(0 0,100% 0,100% 77%,50% 100%,0 77%); background:#29251d; }
