@@ -5,8 +5,8 @@ const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 new vm.Script(script); // Includes UI handlers: catch syntax errors outside core logic.
 const ctx = vm.createContext({TextEncoder, TextDecoder, console});
-vm.runInContext(script.split('// ── UI RENDERING')[0] + '\nglobalThis.api={State,Config,GameVersions,Import,PlanStore,Optimizer,getGroupBuffs,getMissingBuffInsights,enforceRaidCapacity};', ctx);
-const {State,Config,GameVersions,Import,PlanStore,Optimizer,getGroupBuffs,getMissingBuffInsights,enforceRaidCapacity} = ctx.api;
+vm.runInContext(script.split('// ── UI RENDERING')[0] + '\nglobalThis.api={State,Config,GameVersions,Import,PlanStore,Optimizer,getGroupBuffs,getMissingBuffInsights,enforceRaidCapacity,activeRules};', ctx);
+const {State,Config,GameVersions,Import,PlanStore,Optimizer,getGroupBuffs,getMissingBuffInsights,enforceRaidCapacity,activeRules} = ctx.api;
 const storage = {data:{}, getItem(k){return this.data[k] || null;}, setItem(k,v){this.data[k]=v;}};
 const players = Array.from({length:40}, (_,i) => ({name:`Fixture${i}`,class:'MAGE',spec:'Frost',role:'caster_dps',groupNumber:Math.floor(i/5)+1}));
 for (const version of ['classic','forever','tbc']) {
@@ -28,13 +28,13 @@ for (const version of ['classic','forever','tbc']) {
   assert.equal(PlanStore.restore(snapshot),true);
   assert.equal(State.gameVersion,version);
   if (version === 'forever') {
-    // Forever has no ruleset yet (Phase C) — every rule-driven surface is a no-op.
-    assert.equal(Object.keys(Config.Buffs).length,0);
-    assert.equal(getGroupBuffs(State.groups[0],0).length,0);
-    assert.equal(Object.keys(getMissingBuffInsights()).length,0);
-    const before=JSON.stringify(State.groups);
+    // Forever IS modeled (Phase C) — real buffs/debuffs, and Optimizer.optimize()
+    // actually runs (an all-Mage roster just has nothing to buff, so it must not throw).
+    assert.equal(GameVersions.forever.modeled,true);
+    assert(Object.keys(Config.Buffs).length>0);
+    assert(Object.keys(Config.Debuffs).length>0);
     Optimizer.optimize();
-    assert.equal(JSON.stringify(State.groups),before);
+    assert(State.groups.flat().length<=Config.Raids[State.selectedRaid].size);
   }
   if (version === 'classic') {
     // Classic IS modeled (Phase B) — real buffs/debuffs, and Optimizer.optimize()
@@ -76,4 +76,18 @@ const legacy=PlanStore.capture(); delete legacy.gameVersion;
 State.gameVersion='forever';
 assert.equal(PlanStore.restore(legacy),true);
 assert.equal(State.gameVersion,'tbc');
-console.log('Version tests passed: saves, shares, migration, isolated rules, imports, capacity, event separation.');
+
+// Every real GameVersion (tbc/classic/forever) now has a ruleset, but the
+// registry's empty-ruleset fallback (Rulesets[version] || EMPTY_RULESET)
+// still exists for any future unmodeled version — cover it directly since no
+// shipped version exercises that branch anymore.
+const savedVersion=State.gameVersion;
+State.gameVersion='some-future-unmodeled-version';
+const empty=activeRules();
+assert.equal(Object.keys(empty.buffs).length,0);
+assert.equal(Object.keys(empty.debuffs).length,0);
+assert.equal(Object.keys(empty.rules).length,0);
+assert.equal(empty.idealComp,null);
+State.gameVersion=savedVersion;
+
+console.log('Version tests passed: saves, shares, migration, isolated rules, imports, capacity, event separation, empty-ruleset fallback.');
