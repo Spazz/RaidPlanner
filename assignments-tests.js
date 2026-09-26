@@ -402,8 +402,13 @@ check('Saved-roster history (Import.exportRoster payload) carries assignments th
   assert.equal(State.assignments.blessings.LIGHT, p1.name);
 });
 
-// ── 6. Chat text: ASCII-only, <=255 chars per line ─────────────────
-check('toChatText produces ASCII-only lines no longer than 255 characters', () => {
+// ── 6. Chat text: printable ASCII/Latin, <=255 UTF-8 bytes per line ────
+// Printable ASCII plus Latin-1 Supplement / Latin Extended-A/B letters (minus
+// the multiplication/division signs) — what chatSafe() keeps. See index.html
+// UTILITIES > chatSafe.
+const CHAT_SAFE_CHARS = /^[\x20-\x7EÀ-ÖØ-öø-ɏ]*$/;
+
+check('toChatText produces printable-ASCII/Latin lines no longer than 255 UTF-8 bytes', () => {
   resetState('tbc', 'gruul');
   const players = [];
   for (let i = 0; i < 4; i++) players.push(mk('WARRIOR', 'Protection', 'tank', i + 1));
@@ -416,8 +421,24 @@ check('toChatText produces ASCII-only lines no longer than 255 characters', () =
   assert(text.length > 0, 'should produce output for a populated roster');
   const lines = text.split('\n');
   for (const line of lines) {
-    assert(line.length <= 255, `line exceeds 255 chars: ${line.length}`);
-    assert(/^[\x20-\x7E]*$/.test(line), `line has non-ASCII characters: ${line}`);
+    assert(Buffer.byteLength(line, 'utf8') <= 255, `line exceeds 255 UTF-8 bytes: ${Buffer.byteLength(line, 'utf8')}`);
+    assert(CHAT_SAFE_CHARS.test(line), `line has characters outside printable ASCII/Latin: ${line}`);
+  }
+});
+check('toChatText keeps accented player names (Latin-1/Extended) and stays within the byte cap', () => {
+  resetState('tbc', 'gruul');
+  const t1 = mk('WARRIOR', 'Protection', 'tank', 1); t1.name = 'Thràll';
+  const t2 = mk('PALADIN', 'Protection', 'tank', 1); t2.name = 'Mørk';
+  const h1 = mk('PRIEST', 'Holy', 'healer', 1); h1.name = 'Jaïna';
+  seat([t1, t2, h1]);
+  Assignments.setHealerTank(h1.name, t1.name);
+  const text = Assignments.toChatText(State.roster);
+  assert(text.includes('Thràll'), 'accented tank name survives instead of being deleted');
+  assert(text.includes('Mørk'), 'accented second tank name survives');
+  assert(text.includes('Jaïna'), 'accented healer name survives');
+  for (const line of text.split('\n')) {
+    assert(Buffer.byteLength(line, 'utf8') <= 255, 'line stays within the 255 UTF-8 byte cap');
+    assert(!/ {2,}/.test(line), `line has doubled spaces: ${line}`);
   }
 });
 check('toChatText names each tank MT/OT/OT2... and lists Raid healers', () => {

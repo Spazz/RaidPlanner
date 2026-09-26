@@ -121,14 +121,19 @@ check('Full variant includes non-empty notes; omits them when empty', () => {
   assert(!compact.includes('Notes:'), 'compact variant never includes notes');
 });
 
-check('Compact variant: every line <= 255 chars, ASCII only, no pipes', () => {
+// Printable ASCII plus Latin-1 Supplement / Latin Extended-A/B letters (minus
+// the multiplication/division signs) — what chatSafe() keeps. See index.html
+// UTILITIES > chatSafe.
+const CHAT_SAFE_CHARS = /^[\x20-\x7EÀ-ÖØ-öø-ɏ]*$/;
+
+check('Compact variant: every line <= 255 UTF-8 bytes, printable ASCII + Latin letters only, no pipes, accented names survive', () => {
   resetState();
   // A big, buff-heavy 25-man to try to force a long line, plus deliberately
-  // long/unicode-laden names to stress both the length cap and the sanitizer.
+  // long/accented names to stress both the byte cap and the sanitizer.
   const longName = 'Superduperlongraidernamethatgoesonandon' + 'X'.repeat(40);
   const group = [
     mk('WARRIOR', 'Protection', 'tank', longName + '1'),
-    mk('PALADIN', 'Holy', 'healer', 'Thráll2'), // includes a non-ASCII 'á'
+    mk('PALADIN', 'Holy', 'healer', 'Thráll2'), // accented Latin letters must survive, not be deleted
     mk('SHAMAN', 'Enhancement', 'melee_dps', longName + '3'),
     mk('MAGE', 'Frost', 'caster_dps', longName + '4'),
     mk('PRIEST', 'Discipline', 'healer', longName + '5'),
@@ -140,11 +145,29 @@ check('Compact variant: every line <= 255 chars, ASCII only, no pipes', () => {
   const text = Import.exportChatText({ compact: true });
   const lines = text.split('\n').filter(Boolean);
   assert(lines.length >= 3, 'header + at least 2 group lines + bench');
+  assert(text.includes('Thráll2'), 'accented player name survives the compact export instead of being deleted');
   for (const line of lines) {
-    assert(line.length <= 255, `line exceeds 255 chars (${line.length}): ${line.slice(0, 60)}...`);
-    assert(/^[\x00-\x7F]*$/.test(line), `line has non-ASCII characters: ${line}`);
+    const byteLen = Buffer.byteLength(line, 'utf8');
+    assert(byteLen <= 255, `line exceeds 255 UTF-8 bytes (${byteLen}): ${line.slice(0, 60)}...`);
+    assert(CHAT_SAFE_CHARS.test(line), `line has characters outside printable ASCII/Latin: ${line}`);
     assert(!line.includes('|'), `line contains a pipe character: ${line}`);
+    assert(!/ {2,}/.test(line), `line has doubled spaces: ${line}`);
   }
+});
+
+check('chatSafe (via exportChatText notes) normalizes dashes/quotes/ellipsis and strips emoji', () => {
+  resetState();
+  State.groups = numberGroups([[mk('WARRIOR', 'Fury', 'melee_dps', 'Solo')]]);
+  State.roster = State.groups.flat();
+  State.notes = 'MT swap at 20% — watch adds 😀 “ready”… go!';
+  const text = Import.exportChatText({ compact: false });
+  const notesLine = text.split('\n').find(l => l.startsWith('Notes:'));
+  assert(notesLine, 'notes line present');
+  assert(notesLine.includes(' - watch'), 'em dash normalized to " - " instead of deleted');
+  assert(notesLine.includes('"ready"'), 'curly double quotes normalized to straight quotes');
+  assert(notesLine.includes('...'), 'ellipsis normalized to three dots');
+  assert(!/[\u{1F300}-\u{1FAFF}]/u.test(notesLine), 'emoji stripped');
+  assert(!/ {2,}/.test(notesLine), 'no doubled spaces left behind by stripped characters');
 });
 
 check('Empty roster produces no group/bench lines, just the header', () => {

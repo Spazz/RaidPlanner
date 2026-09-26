@@ -1785,6 +1785,43 @@ function esc(str) {
 let _uid = 0;
 function nextUid() { return 'p' + (++_uid); }
 
+// ── CHAT-SAFE TEXT (shared by every raid-chat/Discord text exporter) ──
+// WoW's client fonts and chat parser render printable ASCII plus the accented
+// Latin letters that real WoW character names commonly use (Latin-1
+// Supplement / Latin Extended-A/B — e.g. "Thràll", "Jaïna", "Äsh"), but not
+// emoji, CJK, symbols, or box-drawing glyphs. Deleting those accented letters
+// outright (the old per-exporter behavior) corrupted player names
+// ("Thràll" -> "Thrll"). This normalizes common "smart" punctuation to plain
+// ASCII first (so meaning survives), strips everything else outside the safe
+// ranges, and collapses whitespace runs the stripping leaves behind.
+function chatSafe(str) {
+  let s = String(str == null ? '' : str)
+    .replace(/[‐-―−]/g, '-')        // hyphen/dash variants, minus sign
+    .replace(/[‘’‚‛]/g, "'")   // curly single quotes
+    .replace(/[“”„‟]/g, '"')   // curly double quotes
+    .replace(/…/g, '...')                      // ellipsis
+    .replace(/[•‣◦⁃∙·]/g, '-') // bullets / middle dot
+    .replace(/[←→↔⇐⇒⇔]/g, '->'); // arrows
+  // Keep printable ASCII plus Latin-1 Supplement / Latin Extended-A/B letters
+  // (U+00C0-U+024F), excluding the multiplication (U+00D7) and division
+  // (U+00F7) signs that live in that block but aren't letters. Everything
+  // else (emoji, CJK, symbols, box drawing, control chars) is dropped.
+  s = s.replace(/[^\x20-\x7EÀ-ÖØ-öø-ɏ]/g, '');
+  return s.replace(/ {2,}/g, ' ');
+}
+// Truncates `str` to at most `maxBytes` UTF-8 bytes without splitting a
+// multi-byte character in half, appending '.' when truncation happens
+// (mirrors the old char-count cap's truncation marker). WoW's /raid chat
+// 255-character limit is actually a 255-BYTE limit, and an accented letter
+// kept by chatSafe() can take 2 bytes.
+function clipUtf8Bytes(str, maxBytes = 255) {
+  const bytes = new TextEncoder().encode(str);
+  if (bytes.length <= maxBytes) return str;
+  let end = maxBytes - 1; // reserve a byte for the trailing '.'
+  while (end > 0 && (bytes[end] & 0xC0) === 0x80) end--; // don't split a UTF-8 continuation byte
+  return new TextDecoder().decode(bytes.slice(0, end)) + '.';
+}
+
 // ── CONFIG ──────────────────────────────────────────────────────
 const Config = {
   ClassColors: {
@@ -2946,33 +2983,31 @@ const Import = {
 
   // ── CHAT TEXT EXPORT (backlog #1) ──
   // Plain, paste-ready text for Discord/raid chat — pure formatting over
-  // State.groups/State.bench + getGroupBuffs, no DOM. WoW's client fonts and
-  // chat parser only handle ASCII (see ARCHITECTURE.md), so every variant
-  // strips non-ASCII characters rather than just the compact one.
-  _asciiOnly(str) {
-    return String(str == null ? '' : str).replace(/[^\x00-\x7F]/g, '');
-  },
+  // State.groups/State.bench + getGroupBuffs, no DOM. Every variant runs
+  // through the shared chatSafe() helper (see UTILITIES) so accented player
+  // names (e.g. "Thràll") survive instead of being deleted.
   _classLabel(cls) {
     return cls ? cls.charAt(0) + cls.slice(1).toLowerCase() : '';
   },
-  // opts.compact: true caps every line at 255 chars (the WoW /raid chat limit)
-  // and swaps '|' (WoW's color-code/hyperlink escape char) for '/' — meant to
-  // be pasted line-by-line into in-game chat. Full text is meant for Discord.
+  // opts.compact: true caps every line at 255 UTF-8 bytes (the WoW /raid chat
+  // limit) and swaps '|' (WoW's color-code/hyperlink escape char) for '/' —
+  // meant to be pasted line-by-line into in-game chat. Full text is meant for
+  // Discord.
   exportChatText(opts = {}) {
     const compact = !!opts.compact;
     const raidInfo = Config.Raids[State.selectedRaid];
-    const versionLabel = this._asciiOnly((GameVersions[State.gameVersion] || {}).name || State.gameVersion);
-    const rosterLabel = this._asciiOnly(State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : 'Unnamed Roster');
+    const versionLabel = chatSafe((GameVersions[State.gameVersion] || {}).name || State.gameVersion);
+    const rosterLabel = chatSafe(State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : 'Unnamed Roster');
     const dateStr = new Date().toLocaleDateString();
 
-    const playerLabel = (p) => `${this._asciiOnly(p.name)} (${this._asciiOnly(p.spec)} ${this._asciiOnly(this._classLabel(p.class))})`;
+    const playerLabel = (p) => `${chatSafe(p.name)} (${chatSafe(p.spec)} ${chatSafe(this._classLabel(p.class))})`;
     const playerList = (list) => list.map(playerLabel).join(', ');
 
     const finishLine = (line) => {
-      line = this._asciiOnly(line);
+      line = chatSafe(line);
       if (!compact) return line;
       line = line.replace(/\|/g, '/');
-      return line.length > 255 ? line.slice(0, 254) + '.' : line;
+      return clipUtf8Bytes(line, 255);
     };
 
     const lines = [];
@@ -2990,7 +3025,7 @@ const Import = {
 
     if (!compact && State.notes && State.notes.trim()) {
       lines.push('');
-      lines.push(this._asciiOnly('Notes: ' + State.notes.trim()));
+      lines.push(chatSafe('Notes: ' + State.notes.trim()));
     }
 
     return lines.join('\n');
@@ -5532,14 +5567,16 @@ const Assignments = {
     this.reconcileRoster();
   },
 
-  // ── ASCII-only, raid-chat friendly text (<=255 chars per line) ──
-  _ascii(str) { return String(str == null ? '' : str).replace(/[^\x20-\x7E]/g, ''); },
-  _packLines(label, segments, maxLen = 255) {
+  // ── chat-safe, raid-chat friendly text (<=255 UTF-8 bytes per line) ──
+  // Uses the shared chatSafe()/clipUtf8Bytes() helpers (see UTILITIES) so
+  // accented player names survive and the byte cap never splits one in half.
+  _packLines(label, segments, maxBytes = 255) {
+    const utf8Len = (s) => new TextEncoder().encode(s).length;
     const lines = [];
     let current = '';
     for (const seg of segments) {
       const candidate = current ? current + ' | ' + seg : seg;
-      if ((`${label}: ${candidate}`).length > maxLen && current) {
+      if (utf8Len(`${label}: ${candidate}`) > maxBytes && current) {
         lines.push(`${label}: ${current}`);
         current = seg;
       } else {
@@ -5547,7 +5584,7 @@ const Assignments = {
       }
     }
     if (current) lines.push(`${label}: ${current}`);
-    return lines.map(l => this._ascii(l).slice(0, maxLen));
+    return lines.map(l => clipUtf8Bytes(chatSafe(l), maxBytes));
   },
   toChatText(players = State.roster) {
     const lines = [];
@@ -6005,27 +6042,19 @@ const RaidPrep = {
     return { encounters: annotate(prep.encounters), consumables: annotate(prep.consumables) };
   },
 
-  // ASCII-only raid-chat text, <=255 chars/line — same convention as
-  // Import.exportChatText's compact mode (WoW's client fonts/chat parser
-  // only handle ASCII; 255 is the /raid chat line limit).
+  // Chat-safe raid-chat text, <=255 UTF-8 bytes/line — same convention as
+  // Import.exportChatText's compact mode. Uses the shared chatSafe()/
+  // clipUtf8Bytes() helpers (see UTILITIES): source notes are prose lifted
+  // from research docs and use em/en dashes as clause separators (e.g.
+  // "...interval) — keep a Hunter available."); chatSafe() normalizes those
+  // to a plain '-' in place rather than deleting them (which used to leave a
+  // double space behind).
   toChatText(raidKey) {
     const prep = this.forRaid(raidKey);
     if (!prep) return '';
-    // Source notes are prose lifted from research docs and use em/en dashes as
-    // clause separators (e.g. "...interval) — keep a Hunter available.").
-    // Stripping them outright (old behavior) deleted the separator but left
-    // both surrounding spaces, silently mangling text into "interval)  keep".
-    // Normalize to an ASCII " - " first so the sentence still reads correctly
-    // in /raid chat, then drop anything else non-ASCII as before.
-    const ascii = (s) => String(s == null ? '' : s)
-      .replace(/\s*[‒-―−]\s*/g, ' - ')
-      .replace(/[‘’]/g, "'")
-      .replace(/[“”]/g, '"')
-      .replace(/…/g, '...')
-      .replace(/[^\x00-\x7F]/g, '');
-    const clip = (line) => { line = ascii(line); return line.length > 255 ? line.slice(0, 254) + '.' : line; };
+    const clip = (line) => clipUtf8Bytes(chatSafe(line), 255);
     const lines = [];
-    const raidName = ascii((Config.Raids[raidKey] || {}).name || raidKey);
+    const raidName = chatSafe((Config.Raids[raidKey] || {}).name || raidKey);
     lines.push(clip(`${raidName} - Raid Prep`));
     (prep.encounters || []).forEach(e => lines.push(clip(`${e.boss ? e.boss + ': ' : ''}${e.note}`)));
     if ((prep.consumables || []).length) {

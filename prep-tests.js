@@ -126,17 +126,40 @@ check('TBC Archimonde note cross-references Remove Curse coverage', () => {
   assert.equal(archimonde.coverage.covered, true);
 });
 
-// ── 3. Chat text: ASCII-only, <=255 chars per line ──────────────────
-check('RaidPrep.toChatText is ASCII-only and every line is <=255 chars', () => {
+// ── 3. Chat text: printable ASCII/Latin, <=255 UTF-8 bytes per line ────
+// Printable ASCII plus Latin-1 Supplement / Latin Extended-A/B letters (minus
+// the multiplication/division signs) — what chatSafe() keeps. See index.html
+// UTILITIES > chatSafe.
+const CHAT_SAFE_CHARS = /^[\x20-\x7EÀ-ÖØ-öø-ɏ]*$/;
+
+check('RaidPrep.toChatText is printable-ASCII/Latin and every line is <=255 UTF-8 bytes', () => {
   for (const key of realRaidKeys) {
     const text = RaidPrep.toChatText(key);
     assert.ok(text.length > 0, `expected non-empty chat text for "${key}"`);
     const lines = text.split('\n');
     for (const line of lines) {
-      assert.equal(line, line.replace(/[^\x00-\x7F]/g, ''), `non-ASCII character in "${key}" line: ${line}`);
-      assert.ok(line.length <= 255, `line over 255 chars in "${key}": ${line}`);
+      assert.ok(CHAT_SAFE_CHARS.test(line), `character outside printable ASCII/Latin in "${key}" line: ${line}`);
+      assert.ok(Buffer.byteLength(line, 'utf8') <= 255, `line over 255 UTF-8 bytes in "${key}": ${line}`);
     }
   }
+});
+
+check('RaidPrep.toChatText keeps accented Latin letters instead of deleting them', () => {
+  const raidKey = realRaidKeys[0];
+  const prep = RaidPrep.forRaid(raidKey);
+  const originalNote = prep.encounters[0] ? prep.encounters[0].note : (prep.consumables[0] && prep.consumables[0].note);
+  // Inject an accented name into a live note, exercise toChatText, then restore
+  // the original data so this test doesn't leak state into later checks.
+  const target = prep.encounters[0] || prep.consumables[0];
+  const before = target.note;
+  target.note = 'Watch for Thràll’s add — assign Jaïna to interrupt.';
+  const text = RaidPrep.toChatText(raidKey);
+  target.note = before;
+  assert(text.includes('Thràll'), 'accented name survives in raid prep chat text');
+  assert(text.includes('Jaïna'), 'second accented name survives');
+  assert(text.includes("Thràll's"), 'curly apostrophe normalized to a straight one');
+  assert(text.includes(' - assign'), 'em dash normalized to " - " instead of deleted');
+  assert(!/ {2,}/.test(text), 'no doubled spaces left behind by normalization');
 });
 
 check('RaidPrep.toChatText returns empty string for an unknown raid', () => {
