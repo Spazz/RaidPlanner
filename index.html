@@ -876,6 +876,25 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .pe-btn-danger { color: #ff8080; border-color: rgba(255,110,110,0.3); }
 .pe-btn-danger:hover { background: rgba(255,80,80,0.12); color: #ff9d9d; }
 
+/* Constraint / lock badges on a seated player-slot (backlog #1, #3) */
+.constraint-badge, .lock-badge { flex-shrink:0; font-size:10px; cursor:default; }
+.player-constraints { margin-bottom: 12px; }
+.player-constraints-list { display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
+.constraint-row {
+  display:flex; align-items:center; justify-content:space-between; gap:6px;
+  font-size:11px; color:var(--text-secondary);
+  border:1px solid var(--border-subtle); padding:3px 6px;
+}
+.constraint-row .pe-btn { padding:1px 6px; font-size:10px; }
+.player-why-here { margin-bottom: 12px; }
+.player-why-here h4 {
+  font-family: var(--font-cond); font-size:10px; text-transform:uppercase; letter-spacing:0.1em;
+  color: var(--text-muted); margin: 0 0 6px;
+}
+.player-why-here ul { margin:0; padding-left:16px; }
+.player-why-here li { font-size:11px; color:var(--text-secondary); margin-bottom:4px; line-height:1.4; }
+.why-here-empty { font-size:11px; color:var(--text-muted); margin:0; }
+
 .manual-changes-section {
   display: none;
   margin: 0 var(--sp-3) var(--sp-3); padding: 10px 12px;
@@ -1631,6 +1650,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
         <button class="roster-btn" id="btn-save" aria-label="Save current roster">Save</button>
         <button class="roster-btn" id="btn-load" aria-label="Load a saved roster or recent import">Load</button>
         <button class="roster-btn" id="btn-attendance" aria-label="View attendance and reliability history from saved rosters">Attendance</button>
+        <button class="roster-btn" id="btn-templates" aria-label="Save or apply a comp template">Templates</button>
         <div class="export-menu" id="export-menu">
           <button class="roster-btn" id="btn-export-menu" aria-haspopup="true" aria-expanded="false" aria-label="Share or export your plan">Share / Export &#9662;</button>
           <div class="export-menu-list" role="menu">
@@ -1666,6 +1686,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-load">Load roster</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-attendance">Attendance</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-compare-modes">Compare modes</button>
+          <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-templates">Comp templates</button>
           <div class="mobile-more-sep" role="separator"></div>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-addon">Copy Addon String</button>
           <button type="button" class="roster-btn" role="menuitem" data-proxy="btn-copy-mrt">Copy MRT String</button>
@@ -2559,6 +2580,9 @@ const State = {
   activeTab: 'plan', // 'plan' | 'ideal' | 'assignments'
   view: 'landing', // 'landing' | 'app'
   notes: '', // Free-text raid notes (MT swaps, add plans); capped at NOTES_MAX_LENGTH.
+  // Per-plan hard constraints between two named players (backlog #3):
+  // [{a: name, b: name, type: 'together'|'apart'}]. See the Constraints module.
+  playerConstraints: [],
 };
 const NOTES_MAX_LENGTH = 2000;
 
@@ -2606,6 +2630,223 @@ const PreferredSlots = {
         this.remove(requests.find(r => group.some(p => p.class === r.class && p.spec === r.spec)) || requests[requests.length - 1]);
       }
     });
+  },
+};
+
+// ── PLAYER CONSTRAINTS (backlog #3: keep-together / keep-apart) ──
+// Per-plan hard constraints between two named players, by name (case-
+// insensitive identity; original casing kept for display). This module owns
+// State.playerConstraints and the pure fixup/violation-detection logic;
+// Optimizer.arrange() calls enforce() as its own final phase (see the note
+// there) and Readiness.balanceWarnings() calls violations() every render so
+// a manual drag that breaks a constraint is flagged too, not just the
+// straight-after-Optimize case.
+const Constraints = {
+  TYPES: ['together', 'apart'],
+
+  clean(items) {
+    if (!Array.isArray(items)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const c of items) {
+      if (!c || typeof c.a !== 'string' || typeof c.b !== 'string' || !this.TYPES.includes(c.type)) continue;
+      const a = c.a.trim(), b = c.b.trim();
+      if (!a || !b || a.toLowerCase() === b.toLowerCase()) continue;
+      const pairKey = [a.toLowerCase(), b.toLowerCase()].sort().join('\u0001');
+      if (seen.has(pairKey)) continue; // one relationship per named pair
+      seen.add(pairKey);
+      out.push({ a, b, type: c.type });
+    }
+    return out;
+  },
+
+  forPlayer(name) {
+    const lower = String(name || '').toLowerCase();
+    return (State.playerConstraints || []).filter(c => c.a.toLowerCase() === lower || c.b.toLowerCase() === lower);
+  },
+  otherName(c, name) {
+    return c.a.toLowerCase() === String(name || '').toLowerCase() ? c.b : c.a;
+  },
+  nick(name) { return String(name || '').split('-')[0]; },
+
+  // Adds/replaces the relationship between two names. Returns false for a
+  // no-op (empty name, self-pair, unknown type).
+  add(nameA, nameB, type) {
+    const a = String(nameA || '').trim(), b = String(nameB || '').trim();
+    if (!a || !b || a.toLowerCase() === b.toLowerCase() || !this.TYPES.includes(type)) return false;
+    this.remove(a, b);
+    State.playerConstraints = State.playerConstraints || [];
+    State.playerConstraints.push({ a, b, type });
+    return true;
+  },
+  remove(nameA, nameB) {
+    const pair = [String(nameA || '').toLowerCase(), String(nameB || '').toLowerCase()].sort();
+    State.playerConstraints = (State.playerConstraints || []).filter(c =>
+      [c.a.toLowerCase(), c.b.toLowerCase()].sort().join('\u0001') !== pair.join('\u0001'));
+  },
+
+  // Drops any constraint referencing a name no longer in the roster — called
+  // from RosterEdit.DeletePlayer, mirroring ClearOverridesFor/Backups.clearForName.
+  clearForName(name) {
+    const lower = String(name || '').toLowerCase();
+    State.playerConstraints = (State.playerConstraints || []).filter(c =>
+      c.a.toLowerCase() !== lower && c.b.toLowerCase() !== lower);
+  },
+
+  _locate(groups, name) {
+    const lower = String(name || '').toLowerCase();
+    for (let gi = 0; gi < groups.length; gi++) {
+      const player = groups[gi].find(p => (p.name || '').toLowerCase() === lower);
+      if (player) return { player, gi };
+    }
+    return null;
+  },
+
+  // Read-only: constraints violated in `groups` as they stand, without moving
+  // anyone. A constraint naming someone not currently seated is silently
+  // skipped (nothing to report — they're on the bench or gone).
+  violations(groups) {
+    const pairs = State.playerConstraints || [];
+    if (!pairs.length) return [];
+    const out = [];
+    for (const c of pairs) {
+      const a = this._locate(groups, c.a), b = this._locate(groups, c.b);
+      if (!a || !b) continue;
+      if (c.type === 'together' && a.gi !== b.gi) {
+        out.push({ type: 'together', a: c.a, b: c.b,
+          text: `${this.nick(c.a)} and ${this.nick(c.b)} are supposed to be kept together but landed in different groups` });
+      } else if (c.type === 'apart' && a.gi === b.gi) {
+        out.push({ type: 'apart', a: c.a, b: c.b,
+          text: `${this.nick(c.a)} and ${this.nick(c.b)} are supposed to be kept apart but are both in Group ${a.gi + 1}` });
+      }
+    }
+    return out;
+  },
+
+  // Consolidates every located member of one "together" cluster into whichever
+  // of their current groups already holds the most of them (least disruptive),
+  // or the group of a locked (template-pinned) member when one exists — a
+  // locked player never moves. Evicts the lowest dps-weight non-pinned,
+  // non-cluster member to make room when the target is full. Returns true on
+  // success, false when it couldn't be done (reported as a violation by the
+  // caller via violations(), never thrown).
+  _gatherIntoOneGroup(groups, located, max) {
+    const members = located.map(l => l.player);
+    const isMember = (p) => members.includes(p);
+    const lockedAt = located.filter(l => l.player.locked);
+    if (lockedAt.length && lockedAt.some(l => l.gi !== lockedAt[0].gi)) return false; // locked in 2+ different groups — unfixable
+    let targetGi;
+    if (lockedAt.length) {
+      targetGi = lockedAt[0].gi;
+    } else {
+      let bestAlready = -1;
+      targetGi = located[0].gi;
+      for (let gi = 0; gi < groups.length; gi++) {
+        const already = located.filter(l => l.gi === gi).length;
+        if (already > bestAlready) { bestAlready = already; targetGi = gi; }
+      }
+    }
+    const targetGroup = groups[targetGi];
+    for (const { player, gi } of located) {
+      if (gi === targetGi) continue;
+      if (player.locked) return false;
+      const fromGroup = groups[gi];
+      if (targetGroup.length < max) {
+        fromGroup.splice(fromGroup.indexOf(player), 1);
+        targetGroup.push(player);
+        continue;
+      }
+      let evictIdx = -1, evictWeight = Infinity;
+      for (let pi = 0; pi < targetGroup.length; pi++) {
+        const cand = targetGroup[pi];
+        if (isMember(cand) || cand.locked) continue;
+        const w = dpsWeightFor(cand);
+        if (w < evictWeight) { evictWeight = w; evictIdx = pi; }
+      }
+      if (evictIdx < 0) return false; // nowhere to put the displaced member
+      const displaced = targetGroup[evictIdx];
+      fromGroup.splice(fromGroup.indexOf(player), 1, displaced);
+      targetGroup[evictIdx] = player;
+    }
+    return true;
+  },
+
+  // Moves whichever of a/b isn't locked into the first other group that (a)
+  // has room or a swappable non-pinned member, and (b) wouldn't create a
+  // different apart-violation for the mover. Returns true on success.
+  _separate(groups, a, b, max) {
+    const mover = a.player.locked ? (b.player.locked ? null : b) : a;
+    if (!mover) return false;
+    const moverName = (mover.player.name || '').toLowerCase();
+    const wouldViolate = (gi) => (State.playerConstraints || []).some(c => {
+      if (c.type !== 'apart') return false;
+      const names = [c.a.toLowerCase(), c.b.toLowerCase()];
+      if (!names.includes(moverName)) return false;
+      const otherName = names[0] === moverName ? names[1] : names[0];
+      return groups[gi].some(p => (p.name || '').toLowerCase() === otherName);
+    });
+    for (let gi = 0; gi < groups.length; gi++) {
+      if (gi === mover.gi || wouldViolate(gi)) continue;
+      const group = groups[gi];
+      const fromGroup = groups[mover.gi];
+      if (group.length < max) {
+        fromGroup.splice(fromGroup.indexOf(mover.player), 1);
+        group.push(mover.player);
+        return true;
+      }
+      let evictIdx = -1, evictWeight = Infinity;
+      for (let pi = 0; pi < group.length; pi++) {
+        if (group[pi].locked) continue;
+        const w = dpsWeightFor(group[pi]);
+        if (w < evictWeight) { evictWeight = w; evictIdx = pi; }
+      }
+      if (evictIdx < 0) continue;
+      const displaced = group[evictIdx];
+      group[evictIdx] = mover.player;
+      fromGroup.splice(fromGroup.indexOf(mover.player), 1, displaced);
+      return true;
+    }
+    return false;
+  },
+
+  // The hard-constraint fixup pass, run LAST in Optimizer.arrange() (see the
+  // note there). Mutates `groups` in place, same splice/push convention as
+  // every other Optimizer phase, then reports the actual resulting state via
+  // violations() rather than tracking a parallel success/failure log — the
+  // report can't drift from what the board actually ended up as.
+  enforce(groups, max) {
+    const pairs = State.playerConstraints || [];
+    if (!pairs.length) return { violations: [] };
+
+    // TOGETHER: union-find into clusters, then gather each into one group.
+    const together = pairs.filter(c => c.type === 'together');
+    const parent = {};
+    const find = (x) => { if (!(x in parent)) parent[x] = x; return parent[x] === x ? x : (parent[x] = find(parent[x])); };
+    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+    for (const c of together) union(c.a.toLowerCase(), c.b.toLowerCase());
+    const clusters = {};
+    for (const key of Object.keys(parent)) (clusters[find(key)] = clusters[find(key)] || []).push(key);
+
+    for (const key of Object.keys(clusters).sort()) {
+      const names = clusters[key].sort();
+      if (names.length < 2) continue;
+      const located = names.map(n => this._locate(groups, n)).filter(Boolean);
+      if (located.length < 2 || located.length > max) continue; // nothing seated to fix, or structurally impossible
+      if (new Set(located.map(l => l.gi)).size === 1) continue; // already together
+      this._gatherIntoOneGroup(groups, located, max);
+    }
+
+    // APART: any pair still sharing a group (after TOGETHER settled above)
+    // gets one member relocated. Sorted for a deterministic fix order.
+    const apart = pairs.filter(c => c.type === 'apart')
+      .slice().sort((x, y) => [x.a, x.b].sort().join().localeCompare([y.a, y.b].sort().join()));
+    for (const c of apart) {
+      const a = this._locate(groups, c.a), b = this._locate(groups, c.b);
+      if (!a || !b || a.gi !== b.gi) continue;
+      this._separate(groups, a, b, max);
+    }
+
+    return { violations: this.violations(groups) };
   },
 };
 
@@ -3129,17 +3370,19 @@ const Import = {
     const notes = (State.notes || '').trim();
     const hasAssignments = Assignments.hasManualEdits();
     const hasBackups = Backups.hasManualEdits();
+    const constraints = Constraints.clean(State.playerConstraints);
     const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
     for (const g of State.groups) parts.push(encode(g));
-    // Notes and manual assignment/backup edits only ride along when present,
-    // so a plain TBC share link (the common case) stays byte-for-byte as
-    // compact as before.
-    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups) {
+    // Notes and manual assignment/backup/constraint edits only ride along when
+    // present, so a plain TBC share link (the common case) stays byte-for-byte
+    // as compact as before — byte-identical when no constraints are set.
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
       const tail = {gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder};
       if (notes) tail.notes = notes;
       if (hasAssignments) tail.assignments = Assignments.serialize();
       if (hasBackups) tail.backups = Backups.serialize();
+      if (constraints.length) tail.playerConstraints = constraints;
       parts.push(encodeURIComponent(JSON.stringify(tail)));
     }
     return parts.join(':');
@@ -3209,6 +3452,7 @@ const Import = {
     let notes = '';
     let assignments = null;
     let backups = null;
+    let playerConstraints = [];
     try {
       const planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D'));
       campfires = planning.campfires;
@@ -3219,6 +3463,7 @@ const Import = {
       notes = typeof planning.notes === 'string' ? planning.notes.slice(0, NOTES_MAX_LENGTH) : '';
       assignments = planning.assignments || null;
       backups = planning.backups || null;
+      playerConstraints = Constraints.clean(planning.playerConstraints);
     }
     catch { return {success:false, error:'Share link has damaged preferred slots'}; }
     if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0 && !(Array.isArray(campfires?.fires) && campfires.fires.some(f => f && [3,5,10].includes(f.capacity)))) {
@@ -3230,7 +3475,7 @@ const Import = {
       name: name || 'Shared Roster',
       playerCount: players.length,
       groupCount: numGroups,
-      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments, backups },
+      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments, backups, playerConstraints },
     };
   },
 
@@ -3317,6 +3562,7 @@ const Import = {
       notes: State.notes || '',
       assignments: Assignments.serialize(),
       backups: Backups.serialize(),
+      playerConstraints: Constraints.clean(State.playerConstraints),
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
       })),
@@ -3364,6 +3610,7 @@ const Import = {
     State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
     Assignments.restore(data.assignments);
     Backups.restore(data.backups);
+    State.playerConstraints = Constraints.clean(data.playerConstraints);
     return true;
   },
 };
@@ -3405,7 +3652,7 @@ const PlanStore = {
       campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
       optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder,
       notes:State.notes || '',
-      assignments:State.assignments, backups:State.backups}));
+      assignments:State.assignments, backups:State.backups, playerConstraints:Constraints.clean(State.playerConstraints)}));
   },
   valid(data) {
     return data && typeof data.planId === 'string' && validVersionRaid(data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc', data.selectedRaid) &&
@@ -3413,6 +3660,7 @@ const PlanStore = {
       ['max_dps','tank_mit','balanced','relaxed'].includes(data.optimizerMode) &&
       (data.notes === undefined || typeof data.notes === 'string') &&
       (data.backups === undefined || (data.backups && typeof data.backups === 'object' && !Array.isArray(data.backups))) &&
+      (data.playerConstraints === undefined || Array.isArray(data.playerConstraints)) &&
       data.buffOverrides && typeof data.buffOverrides === 'object' && !Array.isArray(data.buffOverrides) &&
       Array.isArray(data.bench) && [...data.groups.flat(), ...data.bench].every(p => p &&
         typeof p.uid === 'string' && typeof p.name === 'string' && typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string');
@@ -3440,6 +3688,7 @@ const PlanStore = {
     State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
     Assignments.restore(data.assignments);
     Backups.restore(data.backups);
+    State.playerConstraints = Constraints.clean(data.playerConstraints);
     for (const p of [...State.roster, ...State.bench]) {
       const n = /^p(\d+)$/.exec(p.uid);
       if (n) _uid = Math.max(_uid, Number(n[1]));
@@ -3454,6 +3703,157 @@ const PlanStore = {
     return (title || (Config.Raids[State.selectedRaid]?.name || 'Raid') + (eventId ? ' · Event ' + eventId : '')) + ' · ' + day;
   },
 };
+
+// ── COMP TEMPLATES (backlog #1: Weekly Roster / Comp Templates) ──
+// Reusable group layouts, scoped to game version + raid (a TBC Black Temple
+// template has no business seeding a Classic MC import). Deliberately
+// separate from PlanStore/pp_rosters: a template only remembers
+// name -> group/role, never full player objects, buffOverrides, notes, etc.
+// — see applyTemplate() below for the pure seed-and-lock transform, and
+// Optimizer.arrange()'s Phase 0/isPinned for how a `.locked` seat survives
+// the next Optimize.
+const Templates = {
+  key: 'pp_roster_templates',
+
+  read(storage) {
+    try {
+      const all = JSON.parse(storage.getItem(this.key) || '{}');
+      return (all && typeof all === 'object' && !Array.isArray(all)) ? all : {};
+    } catch { return {}; }
+  },
+  write(storage, all) { storage.setItem(this.key, JSON.stringify(all)); },
+
+  // {lowerName: {name, group, role}} snapshot of the CURRENT layout — bench
+  // and preferred slots are deliberately excluded per the backlog scope
+  // ("keep it to group placement + preferred slots" was considered and cut
+  // down to just group placement to keep applying a template simple).
+  capture() {
+    const players = {};
+    (State.groups || []).forEach((group, gi) => {
+      for (const p of group) {
+        if (!p || !p.name) continue;
+        players[p.name.toLowerCase()] = { name: p.name, group: gi, role: p.role };
+      }
+    });
+    return players;
+  },
+
+  save(storage, name, gameVersion, raid) {
+    name = String(name || '').trim();
+    if (!name) return { success:false, error:'Name cannot be empty' };
+    const players = this.capture();
+    if (!Object.keys(players).length) return { success:false, error:'Nothing to save — seat some players first' };
+    const all = this.read(storage);
+    all[gameVersion] = all[gameVersion] || {};
+    all[gameVersion][raid] = all[gameVersion][raid] || {};
+    all[gameVersion][raid][name] = { savedAt: Date.now(), players };
+    this.write(storage, all);
+    return { success:true };
+  },
+
+  // [{name, savedAt, count}], newest first.
+  list(storage, gameVersion, raid) {
+    const all = this.read(storage);
+    const scoped = (all[gameVersion] && all[gameVersion][raid]) || {};
+    return Object.keys(scoped)
+      .map(name => ({ name, savedAt: scoped[name].savedAt || 0, count: Object.keys(scoped[name].players || {}).length }))
+      .sort((a, b) => b.savedAt - a.savedAt);
+  },
+
+  get(storage, name, gameVersion, raid) {
+    const all = this.read(storage);
+    return (all[gameVersion] && all[gameVersion][raid] && all[gameVersion][raid][name]) || null;
+  },
+
+  rename(storage, oldName, newName, gameVersion, raid) {
+    newName = String(newName || '').trim();
+    if (!newName) return { success:false, error:'Name cannot be empty' };
+    const all = this.read(storage);
+    const scoped = all[gameVersion] && all[gameVersion][raid];
+    if (!scoped || !scoped[oldName]) return { success:false, error:'Template not found' };
+    if (newName !== oldName && scoped[newName]) return { success:false, error:'A template with that name already exists' };
+    scoped[newName] = scoped[oldName];
+    if (newName !== oldName) delete scoped[oldName];
+    this.write(storage, all);
+    return { success:true };
+  },
+
+  delete(storage, name, gameVersion, raid) {
+    const all = this.read(storage);
+    if (all[gameVersion] && all[gameVersion][raid]) {
+      delete all[gameVersion][raid][name];
+      this.write(storage, all);
+    }
+    return { success:true };
+  },
+
+  // Seats matching template placements (case-insensitive) into State, locking
+  // them so Optimizer.optimize() treats them as fixed and arranges everyone
+  // else around them; unmatched entries fill whatever open seats remain
+  // (unlocked, so Optimize places them normally) and only true raid-capacity
+  // overflow goes to State.bench. State.preserveGroupOrder is set so
+  // sortTankGroupFirst() never reshuffles a template's own group numbering.
+  applyToState(storage, name, gameVersion = State.gameVersion, raid = State.selectedRaid) {
+    const template = this.get(storage, name, gameVersion, raid);
+    if (!template) return { success:false, error:'Template not found for this game version and raid' };
+    const raidInfo = Config.Raids[raid];
+    const numGroups = raidInfo ? raidInfo.groups : 5;
+    const entries = [...(State.groups || []).flat(), ...(State.bench || [])];
+    if (!entries.length) return { success:false, error:'Nothing to apply the template to — import a roster first' };
+    const result = applyTemplate(entries, template, numGroups, RosterEdit.MAX_GROUP_SIZE);
+    State.groups = result.groups;
+    State.bench = result.bench;
+    State.roster = State.groups.flat();
+    State.preserveGroupOrder = true;
+    return { success:true, matched:result.matched, unmatched:result.unmatched };
+  },
+};
+
+// Pure: seats `entries` (existing player objects — a fresh import's roster +
+// bench) into `numGroups` per `template.players` (name.toLowerCase() ->
+// {group, role}). Matched entries are locked into their recorded group
+// (first-come order wins a group that would otherwise overflow past `max`);
+// unmatched entries — no-shows, renamed sign-ups, or a template group that's
+// already full — fill remaining open seats unlocked, so a subsequent
+// Optimizer.optimize() arranges them normally around the locked seats; only
+// genuine raid-capacity overflow lands on the returned bench. Mutates the
+// entry objects' `.locked`/`.groupNumber` in place (same convention as every
+// other seat-assignment helper in this file) and returns the new
+// groups/bench arrays. Never touches State directly — callers do that (see
+// Templates.applyToState above) so this stays independently testable.
+function applyTemplate(entries, template, numGroups, max = 5) {
+  const playersMap = (template && template.players) || {};
+  const groups = []; for (let i = 0; i < numGroups; i++) groups.push([]);
+  const matched = [], unmatched = [];
+  for (const entry of entries) {
+    const rec = entry && entry.name ? playersMap[entry.name.toLowerCase()] : null;
+    if (rec) { entry._templateGroup = rec.group; matched.push(entry); }
+    else unmatched.push(entry);
+  }
+  let matchedCount = 0;
+  for (const entry of matched) {
+    const gi = entry._templateGroup;
+    delete entry._templateGroup;
+    if (Number.isInteger(gi) && gi >= 0 && gi < numGroups && groups[gi].length < max) {
+      entry.locked = true;
+      groups[gi].push(entry);
+      matchedCount++;
+    } else {
+      entry.locked = false;
+      unmatched.push(entry); // template group full/invalid — falls through like any other unmatched entry
+    }
+  }
+  const bench = [];
+  for (const entry of unmatched) {
+    entry.locked = false;
+    const gi = groups.findIndex(g => g.length < max);
+    if (gi >= 0) groups[gi].push(entry);
+    else bench.push(entry);
+  }
+  groups.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+  bench.forEach(p => { p.groupNumber = 0; });
+  return { groups, bench, matched: matchedCount, unmatched: entries.length - matchedCount };
+}
 
 const PlanSession = {
   previous:null, undo:[], ready:false, replaying:false,
@@ -3897,6 +4297,25 @@ const Optimizer = {
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
 
+    // Phase 0: Seat locked players (comp-template placements, backlog #1)
+    // into their fixed group before anything else runs, and pull them out of
+    // the pool so no later phase treats them as available. isPinned() (below)
+    // then keeps every refinement phase from moving them again — the same
+    // mechanism the seeded anchor tank already relies on. A no-op unless a
+    // template was just applied (nothing else ever sets .locked), so this
+    // changes nothing for the existing scenario-tests fixtures.
+    for (let i = pool.length - 1; i >= 0; i--) {
+      const p = pool[i];
+      if (!p.locked) continue;
+      const gi = p.groupNumber ? p.groupNumber - 1 : -1;
+      if (gi >= 0 && gi < numGroups && groups[gi].length < max) {
+        groups[gi].push(p);
+        pool.splice(i, 1);
+      } else {
+        p.locked = false; // stale/out-of-range group index — fall back to normal placement
+      }
+    }
+
     // Phase 1: Seed groups with role identities
     this.seedGroups(pool, groups, numGroups, raidSize, max, mode);
 
@@ -3928,6 +4347,17 @@ const Optimizer = {
     // re-creating the exact stack this phase exists to prevent. Nothing runs
     // after it, so its rebalance is what the board actually ships with.
     this.spreadProviders(groups);
+
+    // Phase 6: Hard player constraints (backlog #3) — keep-together/keep-apart
+    // pairs win over every structural/buff preference above, so this must run
+    // absolutely last (same "nothing runs after it" reasoning as Phase 5). A
+    // no-op unless State.playerConstraints is non-empty, so the TBC scenario
+    // suite (which never sets it) is untouched. Readiness.balanceWarnings()
+    // recomputes Constraints.violations() live from State.groups every render
+    // rather than trusting a cached report, so a later manual drag that
+    // breaks a constraint is still caught even though enforce() only runs
+    // here, right after Optimize.
+    Constraints.enforce(groups, max);
     return groups;
   },
 
@@ -4240,10 +4670,13 @@ const Optimizer = {
   },
 
   // ── SCORING ──────────────────────────────────────────────────
-  // Only the seeded anchor tank(s) are pinned to the healer/tank group. Any
-  // other tank that drifts in during placement is a regular member the
-  // refinement phases may move out again (a Feral tank belongs with melee).
+  // A comp-template lock (backlog #1) pins a player absolutely, in any group.
+  // Otherwise, only the seeded anchor tank(s) are pinned to the healer/tank
+  // group — any other tank that drifts in during placement is a regular
+  // member the refinement phases may move out again (a Feral tank belongs
+  // with melee).
   isPinned(player, gi, groups) {
+    if (player.locked) return true;
     if (player.role !== 'tank' || !this.isTankGroup(gi, groups)) return false;
     return groups._anchors ? groups._anchors.has(player) : true;
   },
@@ -4993,6 +5426,14 @@ const Readiness = {
     const T = this.BALANCE_THRESHOLDS;
     const seated = (State.groups || []).flat();
     const out = [];
+    // Constraint violations (backlog #3) are reported at any roster size —
+    // recomputed live every render, not just right after Optimize, so a
+    // manual drag that breaks one is caught too. Kept ahead of the
+    // minRosterForSkew gate below, which only applies to the soft skew/
+    // stacking heuristics.
+    for (const v of Constraints.violations(State.groups || [])) {
+      out.push({ id: 'CONSTRAINT_' + v.type.toUpperCase() + '_' + v.a + '_' + v.b, text: v.text });
+    }
     if (seated.length < T.minRosterForSkew) return out;
 
     const meleeSide = seated.filter(p => p.role === 'tank' || p.role === 'melee_dps').length;
@@ -5027,6 +5468,95 @@ const Readiness = {
     return out;
   },
 };
+
+// ── PLACEMENT EXPLANATION (backlog #4: "Why is this player here?") ──
+// Pure function: re-derives WHY a seated player is in THIS specific group
+// from the same data the optimizer's own scoring reads — getGroupBuffs() for
+// what the group actually resolves, DPS_VALUE/MIT_VALUE (via dpsValueFor/
+// mitValueFor) for what's worth anything to this player, and
+// Optimizer.groupScore() itself for the "vs their best alternative"
+// comparison — rather than tracking a parallel reason log during
+// optimization. Read-only; never mutates State. `allGroups`/`mode` are
+// optional context for the alternative-group comparison; omit them (or pass
+// a `group` that isn't a member of `allGroups`) to get just the buff/
+// convention/constraint reasons.
+function explainPlacement(player, group, groupIndex, allGroups, mode) {
+  const reasons = [];
+  if (!player || !Array.isArray(group)) return reasons;
+  const nick = (n) => String(n || '').split('-')[0];
+
+  const buffList = GameVersions[State.gameVersion].modeled ? getGroupBuffs(group, groupIndex) : [];
+  const rules = activeRules();
+
+  // What this player personally provides to the group.
+  for (const b of buffList) {
+    if (b.sourceUid !== player.uid) continue;
+    const recipients = group.filter(p => p.uid !== player.uid && (b.buff.benefitsRoles || []).includes(p.role));
+    reasons.push({ kind:'provides', text: recipients.length
+      ? `Provides ${b.buff.name} to ${recipients.length} other group member${recipients.length === 1 ? '' : 's'}`
+      : `Provides ${b.buff.name}` });
+  }
+
+  // What this player receives from OTHER members — only buffs that actually
+  // carry nonzero value for this player's class/spec/role, so a Feral druid
+  // doesn't get credited with "receiving" Windfury (0 value, no imbues in form).
+  for (const b of buffList) {
+    if (b.sourceUid === player.uid) continue;
+    const value = (player.role === 'tank' ? mitValueFor(b.id, player) : 0) + dpsValueFor(b.id, player);
+    if (value > 0) reasons.push({ kind:'receives', text:`Receives ${b.buff.name} from ${nick(b.sourceName)}` });
+  }
+
+  // Structural conventions (reference-comp rules — see tasks/lessons.md).
+  const counts = {};
+  for (const p of group) counts[p.role] = (counts[p.role] || 0) + 1;
+  let identity = 'melee_dps', bestN = 0;
+  for (const [r, n] of Object.entries(counts)) if (n > bestN) { bestN = n; identity = r; }
+  const looksLikeTankGroup = counts.tank > 0 && counts.healer > 0;
+
+  if (rules.rules && rules.rules.meleeWantsWindfury && player.class === 'SHAMAN' && identity === 'melee_dps') {
+    reasons.push({ kind:'convention', text:'Keeps Windfury coverage in this melee group' });
+  }
+  if (player.role === 'healer' && looksLikeTankGroup) {
+    reasons.push({ kind:'convention', text:'Healing is cross-group, so healers ride with the tank group by convention' });
+  }
+  if (player.role === 'tank' && looksLikeTankGroup && identity !== 'melee_dps' && identity !== 'caster_dps') {
+    reasons.push({ kind:'convention', text:'Seeded as this raid’s anchor tank alongside the healers' });
+  }
+
+  // Locks and constraints.
+  if (player.locked) reasons.push({ kind:'lock', text:'Locked here by your comp template — unlock to let Optimize move them' });
+  for (const c of Constraints.forPlayer(player.name)) {
+    const otherName = Constraints.otherName(c, player.name);
+    const otherHere = group.some(p => p !== player && (p.name || '').toLowerCase() === otherName.toLowerCase());
+    if (c.type === 'together' && otherHere) reasons.push({ kind:'constraint', text:`Kept with ${nick(otherName)} per your Keep-Together constraint` });
+    else if (c.type === 'apart' && !otherHere) reasons.push({ kind:'constraint', text:`Kept apart from ${nick(otherName)} per your Keep-Apart constraint` });
+  }
+  const preferred = (State.preferredSlots || []).find(p => p.group === groupIndex && p.class === player.class && p.spec === player.spec);
+  if (preferred) reasons.push({ kind:'preference', text:'Fills a preferred slot requested for this group' });
+
+  // Best-alternative comparison — only meaningful when the whole board (and
+  // the mode it was scored under) is known, i.e. `group` really is one of
+  // `allGroups`' own arrays. Silently skipped otherwise rather than guessing.
+  if (Array.isArray(allGroups) && allGroups[groupIndex] === group && GameVersions[State.gameVersion].modeled && !Optimizer.isPinned(player, groupIndex, allGroups)) {
+    const usedMode = mode || State.optimizerMode || 'max_dps';
+    const without = group.filter(p => p !== player);
+    const hereGain = Optimizer.groupScore(group, groupIndex, allGroups, usedMode) - Optimizer.groupScore(without, groupIndex, allGroups, usedMode);
+    // Same 0.5 swap-significance margin refineSwaps() itself requires before
+    // taking a swap, so this doesn't nag about noise-level score deltas.
+    let bestGi = -1, bestGain = hereGain + 0.5;
+    for (let gi = 0; gi < allGroups.length; gi++) {
+      if (gi === groupIndex || allGroups[gi].length >= 5) continue;
+      const there = allGroups[gi].concat([player]);
+      const thereGain = Optimizer.groupScore(there, gi, allGroups, usedMode) - Optimizer.groupScore(allGroups[gi], gi, allGroups, usedMode);
+      if (thereGain > bestGain) { bestGain = thereGain; bestGi = gi; }
+    }
+    reasons.push(bestGi < 0
+      ? { kind:'score', text:'This is their best-scoring group among the current groups' }
+      : { kind:'score', text:`Group ${bestGi + 1} would score slightly higher for them, but locks or constraints keep them here` });
+  }
+
+  return reasons;
+}
 
 // ── ROSTER EDITING ─────────────────────────────────
 // Manual edits to the plan: change a player's class/spec, add a player to a group,
@@ -5145,9 +5675,10 @@ const RosterEdit = {
     player.role = role;
 
     if (specChanged || name !== oldName) this.ClearOverridesFor(oldName);
-    // Backups are name-keyed too; a rename breaks the link on whichever side
-    // it was (a spec/class change alone doesn't — same person, same seat).
-    if (name !== oldName) Backups.clearForName(oldName);
+    // Backups and player constraints are name-keyed too; a rename breaks the
+    // link on whichever side it was (a spec/class change alone doesn't —
+    // same person, same seat).
+    if (name !== oldName) { Backups.clearForName(oldName); Constraints.clearForName(oldName); }
     this.syncRoster();
     return { success:true, player };
   },
@@ -5316,6 +5847,7 @@ const RosterEdit = {
     else State.groups[found.groupIdx].splice(found.slot, 1);
     this.ClearOverridesFor(found.player.name);
     Backups.clearForName(found.player.name);
+    Constraints.clearForName(found.player.name);
     this.syncRoster();
     return { success:true, player: found.player };
   },
@@ -6758,12 +7290,28 @@ function renderGroups() {
         // Compact indicator — the full pairing is in the title tooltip so the
         // card stays narrow enough not to crowd out the player's own name.
         const backupBadge = backupName ? `<span class="backup-badge" title="Backup: ${esc(backupName.split('-')[0])}">B</span>` : '';
+        // Constraint badges (backlog #3) reuse the buff-icon tooltip portal
+        // (data-tt-*) rather than a new hover mechanism — see the player-slot
+        // "why here" editor section for the full explanation.
+        const constraintsHere = Constraints.forPlayer(p.name);
+        const togetherNames = constraintsHere.filter(c => c.type === 'together').map(c => Constraints.otherName(c, p.name).split('-')[0]);
+        const apartNames = constraintsHere.filter(c => c.type === 'apart').map(c => Constraints.otherName(c, p.name).split('-')[0]);
+        const constraintDesc = [
+          togetherNames.length ? 'With: ' + togetherNames.join(', ') : '',
+          apartNames.length ? 'Apart from: ' + apartNames.join(', ') : '',
+        ].filter(Boolean).join(' &middot; ');
+        const constraintBadge = constraintDesc
+          ? `<span class="constraint-badge" data-tt-name="Constraints" data-tt-desc="${esc(constraintDesc)}">${togetherNames.length ? '&#128279;' : ''}${apartNames.length ? '&#9940;' : ''}</span>`
+          : '';
+        const lockBadge = p.locked ? `<span class="lock-badge" title="Locked by comp template">&#128274;</span>` : '';
         slotsHTML += `<div class="player-slot" draggable="true" data-group="${gi}" data-slot="${si}">
           ${getSpecIcon(p)}
           <div class="player-info">
             <span class="player-name" style="color:${color}">${esc(displayName)}</span>
             <span class="player-spec">${esc(specClass)}</span>
           </div>
+          ${lockBadge}
+          ${constraintBadge}
           ${backupBadge}
           ${getDragHandle()}
         </div>`;
@@ -7579,6 +8127,44 @@ function closePlayerEditor() {
   if (overlay) overlay.remove();
 }
 
+// ── Keep-together / Keep-apart editor (backlog #3) ───────────────
+// Two "Choose a player…" selects (one per constraint type) plus a list of
+// this player's existing constraints with per-row remove buttons. `curName`
+// is used for both matching and display since it's always the live name.
+function renderConstraintEditor(player, curName) {
+  if (!player || !curName) return '';
+  const others = [...State.roster, ...(State.bench || [])]
+    .filter(p => p !== player && (p.name || '').toLowerCase() !== curName.toLowerCase());
+  if (!others.length && !Constraints.forPlayer(curName).length) return '';
+  const options = '<option value="">Choose a player…</option>' +
+    others.map(p => `<option value="${esc(p.name)}">${esc(p.name.split('-')[0])} (${esc(p.spec)} ${esc(RosterEdit.ClassLabel(p.class))})</option>`).join('');
+  const rows = Constraints.forPlayer(curName).map((c, i) => {
+    const otherName = Constraints.otherName(c, curName);
+    const label = c.type === 'together' ? 'With' : 'Apart from';
+    return `<div class="constraint-row"><span>${label} ${esc(otherName.split('-')[0])}</span><button type="button" class="pe-btn pe-btn-danger" data-remove-constraint="${esc(otherName)}" title="Remove this constraint">&times;</button></div>`;
+  }).join('');
+  return `<div class="player-constraints">
+    ${rows ? `<div class="player-constraints-list">${rows}</div>` : ''}
+    ${others.length ? `<div class="player-move">
+      <label for="pe-keep-with">Keep with&hellip;</label>
+      <select id="pe-keep-with">${options}</select>
+      <button type="button" class="pe-btn" id="pe-add-together">Add</button>
+    </div>
+    <div class="player-move">
+      <label for="pe-keep-apart">Keep away from&hellip;</label>
+      <select id="pe-keep-apart">${options}</select>
+      <button type="button" class="pe-btn" id="pe-add-apart">Add</button>
+    </div>` : ''}
+  </div>`;
+}
+
+// ── "Why here?" explanation (backlog #4) ─────────────────────────
+function renderWhyHere(player, groupIdx) {
+  const reasons = explainPlacement(player, State.groups[groupIdx] || [], groupIdx, State.groups, State.optimizerMode);
+  if (!reasons.length) return '<div class="player-why-here"><h4>Why here?</h4><p class="why-here-empty">No particular buff or convention explains this placement.</p></div>';
+  return `<div class="player-why-here"><h4>Why here?</h4><ul>${reasons.map(r => `<li>${esc(r.text)}</li>`).join('')}</ul></div>`;
+}
+
 // opts: { uid } to edit an existing player, or { groupIdx } to add a new one.
 function showPlayerEditor(anchorEl, opts) {
   closePlayerEditor();
@@ -7646,6 +8232,12 @@ function showPlayerEditor(anchorEl, opts) {
       <button type="button" class="pe-btn" id="pe-backup-swap">Swap in backup</button>
       <button type="button" class="pe-btn pe-btn-danger" id="pe-backup-clear">Remove backup</button>
     </div>` : ''}
+    ${!isAdd && !benched && player.locked ? `<div class="player-move">
+      <span>Locked by comp template</span>
+      <button type="button" class="pe-btn" id="pe-unlock">Unlock</button>
+    </div>` : ''}
+    ${!isAdd ? renderConstraintEditor(player, curName) : ''}
+    ${!isAdd && !benched && GameVersions[State.gameVersion].modeled ? renderWhyHere(player, found.groupIdx) : ''}
     <div class="player-editor-actions">
       ${removeLabel ? `<button type="button" class="pe-btn pe-btn-danger" id="pe-remove" title="${esc(removeTitle)}">${esc(removeLabel)}</button>` : '<span></span>'}
       <div class="pe-actions-right">
@@ -7724,6 +8316,31 @@ function showPlayerEditor(anchorEl, opts) {
   });
   editor.querySelector('#pe-backup-clear')?.addEventListener('click', () => {
     Backups.unlink(curName); closePlayerEditor(); renderGroups(); showToast('Backup link removed');
+  });
+
+  editor.querySelector('#pe-unlock')?.addEventListener('click', () => {
+    player.locked = false;
+    closePlayerEditor(); renderGroups(); showToast(`${curName.split('-')[0]} unlocked`);
+  });
+
+  editor.querySelector('#pe-add-together')?.addEventListener('click', () => {
+    const other = editor.querySelector('#pe-keep-with').value;
+    if (!other) { showError('Choose a player first'); return; }
+    Constraints.add(curName, other, 'together');
+    closePlayerEditor(); renderGroups(); showToast(`${curName.split('-')[0]} will be kept with ${other.split('-')[0]}`);
+  });
+  editor.querySelector('#pe-add-apart')?.addEventListener('click', () => {
+    const other = editor.querySelector('#pe-keep-apart').value;
+    if (!other) { showError('Choose a player first'); return; }
+    Constraints.add(curName, other, 'apart');
+    closePlayerEditor(); renderGroups(); showToast(`${curName.split('-')[0]} will be kept apart from ${other.split('-')[0]}`);
+  });
+  editor.querySelectorAll('[data-remove-constraint]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const other = btn.dataset.removeConstraint;
+      Constraints.remove(curName, other);
+      closePlayerEditor(); renderGroups(); showToast('Constraint removed');
+    });
   });
 
   function commit() {
@@ -8156,6 +8773,86 @@ function showSaveModal() {
 
   document.getElementById('save-name-input').focus();
   document.getElementById('save-name-input').select();
+}
+
+// ── MODAL: COMP TEMPLATES (backlog #1) ───────────────────────────
+// Shares the Save modal's overlay/markup slot rather than adding a new one.
+function showTemplatesModal() {
+  const modal = document.getElementById('save-modal');
+  const overlay = document.getElementById('save-overlay');
+  const gameVersion = State.gameVersion, raid = State.selectedRaid;
+  const templates = Templates.list(localStorage, gameVersion, raid);
+  const raidLabel = Config.Raids[raid]?.name || raid;
+  const versionLabel = GameVersions[gameVersion]?.name || gameVersion;
+  const anyLocked = (State.roster || []).some(p => p.locked);
+
+  let listHTML = '';
+  if (!templates.length) {
+    listHTML = '<p style="font-size:11px;color:var(--text-muted);text-align:center;padding:16px;">No templates saved for this raid yet</p>';
+  } else {
+    for (const t of templates) {
+      listHTML += `<div class="saved-roster-item" data-template="${esc(t.name)}">
+        <div><span class="roster-item-name">${esc(t.name)}</span><br><span class="roster-item-meta">${t.count} players &middot; ${esc(new Date(t.savedAt).toLocaleDateString())}</span></div>
+        <button class="roster-item-delete" data-template-delete="${esc(t.name)}" title="Delete">&times;</button>
+      </div>`;
+    }
+  }
+
+  modal.innerHTML = `
+    <h3>Comp Templates</h3>
+    <p style="font-size:11px;color:var(--text-muted)">${esc(versionLabel)} &middot; ${esc(raidLabel)}. Save tonight's group layout, then apply it to a fresh import to seed the same names into the same groups. Optimize fills the rest.</p>
+    <div class="import-buttons">
+      <input class="save-input" id="template-name-input" type="text" placeholder="Template name...">
+      <button class="btn btn-secondary" id="btn-do-save-template">Save current layout</button>
+    </div>
+    <h4>Saved templates</h4>
+    <div class="saved-roster-list">${listHTML}</div>
+    <div class="import-buttons">
+      ${anyLocked ? '<button type="button" class="btn btn-quiet" id="btn-unlock-templates">Unlock all placements</button>' : '<span></span>'}
+      <button class="btn btn-secondary" id="btn-cancel-templates">Close</button>
+    </div>`;
+
+  overlay.classList.add('visible');
+
+  document.getElementById('btn-cancel-templates').onclick = () => overlay.classList.remove('visible');
+  overlay.onclick = e => { if (e.target === overlay) overlay.classList.remove('visible'); };
+
+  document.getElementById('btn-do-save-template').onclick = () => {
+    const name = document.getElementById('template-name-input').value.trim();
+    if (!name) return;
+    const result = Templates.save(localStorage, name, gameVersion, raid);
+    if (!result.success) { showToast(result.error); return; }
+    showToast(`Template "${name}" saved`);
+    showTemplatesModal();
+  };
+
+  modal.querySelectorAll('[data-template]').forEach(item => {
+    item.addEventListener('click', e => {
+      if (e.target.dataset.templateDelete) return;
+      const name = item.dataset.template;
+      const result = Templates.applyToState(localStorage, name, gameVersion, raid);
+      overlay.classList.remove('visible');
+      if (!result.success) { showToast(result.error); return; }
+      renderGroups();
+      showToast(`Applied "${name}" — ${result.matched} seated in their old groups, ${result.unmatched} left for Optimize`);
+    });
+  });
+  modal.querySelectorAll('[data-template-delete]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      Templates.delete(localStorage, btn.dataset.templateDelete, gameVersion, raid);
+      showTemplatesModal();
+      showToast('Template deleted');
+    });
+  });
+  document.getElementById('btn-unlock-templates')?.addEventListener('click', () => {
+    for (const p of State.roster) p.locked = false;
+    renderGroups();
+    showTemplatesModal();
+    showToast('Unlocked all template placements');
+  });
+
+  document.getElementById('template-name-input').focus();
 }
 
 // ── MODAL: LOAD ─────────────────────────────────────────────────
@@ -9109,6 +9806,7 @@ document.getElementById('btn-random').addEventListener('click', () => {
 })();
 
 document.getElementById('btn-save').addEventListener('click', showSaveModal);
+document.getElementById('btn-templates').addEventListener('click', showTemplatesModal);
 document.getElementById('btn-load').addEventListener('click', () => { showView('landing'); document.querySelector('.import-tab[data-pane="saved"]').click(); });
 
 // ── SHARE LINK ──────────────────────────────────────────────────
