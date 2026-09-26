@@ -170,6 +170,12 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .history-dialog h3 { font-family: var(--font-cond); color: var(--accent-gold); text-transform: uppercase; letter-spacing: .08em; }
 .history-dialog p { margin: 12px 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 .history-dialog .saved-list { max-height: 55dvh; overflow-y: auto; }
+/* Split-into-two-raids preview */
+.split-preview { display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: 12px; }
+.split-preview-col { flex: 1 1 200px; min-width: 180px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 10px 12px; }
+.split-preview-col h4 { font-family: var(--font-cond); color: var(--accent-gold); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; margin: 0 0 6px; }
+.split-preview-col p { margin: 4px 0; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+.split-preview-classes { font-size: 11px; color: var(--text-muted); }
 .saved-empty { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
 .import-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -625,6 +631,10 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .preferred-slot .player-spec { font-style: italic; }
 .preferred-slot img { opacity: .65; }
 .preferred-badge { color: var(--preferred-color); font-size: 9px; letter-spacing: .08em; border: 1px solid currentColor; border-radius: 3px; padding: 2px 4px; }
+/* Planned bench backup indicator — shown on both the seated player's card
+   ("Backup: Name") and the benched backup's own card ("-> Name"). */
+.backup-badge { flex-shrink:0; font-size: 9px; letter-spacing: .04em; color: var(--accent-gold-bright); border: 1px solid var(--accent-gold-dim); border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
+.backup-badge-bench { color: var(--text-secondary); border-color: var(--border-medium); }
 .preferred-actions { border-top: 1px solid var(--border-color); padding: 8px 0; }
 .preferred-actions p { font-size: 12px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 8px; }
 .preferred-actions .pe-btn { margin: 0 4px 4px 0; }
@@ -1592,6 +1602,17 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <button type="button" class="link-btn" id="btn-sync-dismiss">Dismiss</button>
     </div>
   </div>
+  <div class="sync-banner" id="backup-banner" hidden aria-live="polite">
+    <span id="backup-banner-text"></span>
+    <div class="sync-banner-actions" id="backup-banner-actions"></div>
+  </div>
+  <div class="sync-banner" id="split-banner" hidden aria-live="polite">
+    <span id="split-banner-text"></span>
+    <div class="sync-banner-actions">
+      <button type="button" class="btn btn-primary" id="btn-split-offer">Split into two raids</button>
+      <button type="button" class="link-btn" id="btn-split-dismiss">Dismiss</button>
+    </div>
+  </div>
 
   <div class="summary-bar" id="summary-bar" aria-live="polite"></div>
 
@@ -1672,6 +1693,12 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 </dialog>
 <dialog id="rename-dialog" class="history-dialog" aria-labelledby="rename-heading">
   <form method="dialog"><h3 id="rename-heading">Name your plan</h3><label for="plan-name">Plan name</label><input id="plan-name" class="save-input" maxlength="120" required><div class="import-buttons"><button class="btn btn-secondary" value="cancel" formnovalidate>Cancel</button><button class="btn btn-primary" value="save">Save name</button></div></form>
+</dialog>
+<dialog id="split-dialog" class="history-dialog" aria-labelledby="split-heading">
+  <div class="history-dialog-header"><h3 id="split-heading">Split into two raids</h3><button type="button" class="btn btn-secondary" id="btn-split-cancel">Cancel</button></div>
+  <p>Raid A stays as your current plan; Raid B is saved as a new plan, both linked to the same Raid-Helper event so Refresh keeps working on either one.</p>
+  <div class="split-preview" id="split-dialog-body"></div>
+  <div class="import-buttons"><button type="button" class="btn btn-primary" id="btn-split-create">Create both raids</button></div>
 </dialog>
 <dialog id="history-dialog" class="history-dialog" aria-labelledby="history-dialog-heading">
   <div class="history-dialog-header">
@@ -2338,6 +2365,10 @@ const State = {
   // Assignments module. Live suggestions are always recomputed from the
   // current roster and merged with these at render/serialize time.
   assignments: { tankHealers:{}, blessings:{}, debuffs:{} },
+  // Planned bench backups (name-keyed, like buffOverrides/assignments — see
+  // the Backups module): seated player's name -> the benched player pinned
+  // as their pre-planned replacement.
+  backups: {},
   activeTab: 'plan', // 'plan' | 'ideal' | 'assignments'
   view: 'landing', // 'landing' | 'app'
   notes: '', // Free-text raid notes (MT swaps, add plans); capped at NOTES_MAX_LENGTH.
@@ -2698,6 +2729,7 @@ const Import = {
   applyRaidHelperSync(diff) {
     if (!diff || !diff.success) return null;
     State.bench = State.bench || [];
+    State.backups = State.backups || {};
 
     const unseat = (player) => {
       for (const group of State.groups) {
@@ -2713,7 +2745,12 @@ const Import = {
       }
     };
 
+    // A player who was seated and just lost that seat (withdrew, or went
+    // Tentative) is a candidate for the "Backup ready — swap in?" prompt
+    // below, so their seat is captured before unseat() clears groupNumber.
+    const vacated = [];
     for (const player of diff.removed) {
+      if (player.groupNumber >= 1) vacated.push({ name: player.name, groupNumber: player.groupNumber, gone: true });
       unseat(player);
       const b = State.bench.indexOf(player);
       if (b >= 0) State.bench.splice(b, 1);
@@ -2726,6 +2763,7 @@ const Import = {
       clearOverrides(change.player); // an override for the old spec's buff no longer applies
     }
     for (const player of diff.demoted) {
+      if (player.groupNumber >= 1) vacated.push({ name: player.name, groupNumber: player.groupNumber, gone: false });
       unseat(player);
       player.groupNumber = 0;
       State.bench.push(player);
@@ -2741,9 +2779,25 @@ const Import = {
       if (entry.category !== 'bench' && PreferredSlots.seat(player)) filled++;
       else State.bench.push(player);
     }
+
+    // A designated backup still sitting on the bench is offered as a
+    // one-click promotion into the exact seat/group its primary vacated,
+    // instead of falling through to the optimizer's generic Swap In. A fully
+    // withdrawn primary's link can never resolve later, so it's dropped now;
+    // a merely-demoted primary keeps theirs in case they get re-seated.
+    const backupSwapReady = [];
+    for (const v of vacated) {
+      const backupName = Backups.backupNameFor(v.name);
+      if (backupName && State.bench.some(p => p.name === backupName)) {
+        backupSwapReady.push({ primaryName: v.name, backupName, groupNumber: v.groupNumber });
+      }
+      if (v.gone) Backups.clearForName(v.name);
+    }
+
     return {
       added: diff.added.length, removed: diff.removed.length,
       changed: diff.changed.length, demoted: diff.demoted.length, promoted: diff.promoted.length, filled,
+      backupSwapReady,
     };
   },
 
@@ -2889,15 +2943,18 @@ const Import = {
     const name = State.rosterName === NO_ROSTER_NAME ? '' : (State.rosterName || '');
     const notes = (State.notes || '').trim();
     const hasAssignments = Assignments.hasManualEdits();
+    const hasBackups = Backups.hasManualEdits();
     const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
     for (const g of State.groups) parts.push(encode(g));
-    // Notes and manual assignment edits only ride along when present, so a plain
-    // TBC share link (the common case) stays byte-for-byte as compact as before.
-    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments) {
+    // Notes and manual assignment/backup edits only ride along when present,
+    // so a plain TBC share link (the common case) stays byte-for-byte as
+    // compact as before.
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
       const tail = {gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder};
       if (notes) tail.notes = notes;
       if (hasAssignments) tail.assignments = Assignments.serialize();
+      if (hasBackups) tail.backups = Backups.serialize();
       parts.push(encodeURIComponent(JSON.stringify(tail)));
     }
     return parts.join(':');
@@ -2966,6 +3023,7 @@ const Import = {
     let preserveGroupOrder = false;
     let notes = '';
     let assignments = null;
+    let backups = null;
     try {
       const planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D'));
       campfires = planning.campfires;
@@ -2975,6 +3033,7 @@ const Import = {
       preserveGroupOrder = planning.preserveGroupOrder === true || preferredSlots.length > 0;
       notes = typeof planning.notes === 'string' ? planning.notes.slice(0, NOTES_MAX_LENGTH) : '';
       assignments = planning.assignments || null;
+      backups = planning.backups || null;
     }
     catch { return {success:false, error:'Share link has damaged preferred slots'}; }
     if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0 && !(Array.isArray(campfires?.fires) && campfires.fires.some(f => f && [3,5,10].includes(f.capacity)))) {
@@ -2986,7 +3045,7 @@ const Import = {
       name: name || 'Shared Roster',
       playerCount: players.length,
       groupCount: numGroups,
-      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments },
+      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments, backups },
     };
   },
 
@@ -3072,6 +3131,7 @@ const Import = {
       preserveGroupOrder: State.preserveGroupOrder,
       notes: State.notes || '',
       assignments: Assignments.serialize(),
+      backups: Backups.serialize(),
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
       })),
@@ -3118,6 +3178,7 @@ const Import = {
     State.sourceEventId = data.sourceEventId || null;
     State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
     Assignments.restore(data.assignments);
+    Backups.restore(data.backups);
     return true;
   },
 };
@@ -3159,13 +3220,14 @@ const PlanStore = {
       campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
       optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder,
       notes:State.notes || '',
-      assignments:State.assignments}));
+      assignments:State.assignments, backups:State.backups}));
   },
   valid(data) {
     return data && typeof data.planId === 'string' && validVersionRaid(data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc', data.selectedRaid) &&
       typeof data.rosterName === 'string' && Array.isArray(data.groups) && data.groups.every(Array.isArray) &&
       ['max_dps','tank_mit','balanced','relaxed'].includes(data.optimizerMode) &&
       (data.notes === undefined || typeof data.notes === 'string') &&
+      (data.backups === undefined || (data.backups && typeof data.backups === 'object' && !Array.isArray(data.backups))) &&
       data.buffOverrides && typeof data.buffOverrides === 'object' && !Array.isArray(data.buffOverrides) &&
       Array.isArray(data.bench) && [...data.groups.flat(), ...data.bench].every(p => p &&
         typeof p.uid === 'string' && typeof p.name === 'string' && typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string');
@@ -3192,6 +3254,7 @@ const PlanStore = {
     // existed clears any notes left over from whatever was in State before.
     State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
     Assignments.restore(data.assignments);
+    Backups.restore(data.backups);
     for (const p of [...State.roster, ...State.bench]) {
       const n = /^p(\d+)$/.exec(p.uid);
       if (n) _uid = Math.max(_uid, Number(n[1]));
@@ -4796,6 +4859,9 @@ const RosterEdit = {
     player.role = role;
 
     if (specChanged || name !== oldName) this.ClearOverridesFor(oldName);
+    // Backups are name-keyed too; a rename breaks the link on whichever side
+    // it was (a spec/class change alone doesn't — same person, same seat).
+    if (name !== oldName) Backups.clearForName(oldName);
     this.syncRoster();
     return { success:true, player };
   },
@@ -4837,6 +4903,8 @@ const RosterEdit = {
     if (!State.bench) State.bench = [];
     State.bench.push(found.player);
     this.ClearOverridesFor(found.player.name);
+    // No longer seated, so "backup for them" no longer applies.
+    Backups.unlink(found.player.name);
     this.syncRoster();
     return { success:true, player: found.player };
   },
@@ -4854,6 +4922,9 @@ const RosterEdit = {
     State.bench.splice(found.slot, 1);
     found.player.groupNumber = groupIdx + 1;
     groups[groupIdx].push(found.player);
+    // They just took their own seat, so they're no longer available as
+    // someone else's designated backup.
+    Backups.clearBackup(found.player.name);
     this.syncRoster();
     return { success:true, player: found.player };
   },
@@ -4958,6 +5029,7 @@ const RosterEdit = {
     if (found.benched) State.bench.splice(found.slot, 1);
     else State.groups[found.groupIdx].splice(found.slot, 1);
     this.ClearOverridesFor(found.player.name);
+    Backups.clearForName(found.player.name);
     this.syncRoster();
     return { success:true, player: found.player };
   },
@@ -5345,6 +5417,196 @@ const Assignments = {
   },
 };
 
+// ── PLANNED BENCH BACKUPS ──────────────────────────────────────
+// Pre-wire "if X no-shows, Y takes the seat" before a raid even starts,
+// instead of reacting live once a buff/debuff already went missing (the
+// existing renderInsightLine 'bench' case). Name-keyed like buffOverrides
+// and Assignments (State.backups: { primaryName -> backupName }) so the
+// pairing survives exportRoster/loadRoster and share links, which drop a
+// player's uid but keep their name. One seated player has at most one
+// designated backup, and one benched player backs up at most one seat.
+const Backups = {
+  backupNameFor(primaryName) { return (State.backups || {})[primaryName] || null; },
+  primaryNameFor(backupName) {
+    for (const [primary, backup] of Object.entries(State.backups || {})) if (backup === backupName) return primary;
+    return null;
+  },
+
+  // Pins `backupName` (must currently be on the bench) as the backup for
+  // `primaryName` (must currently be seated). Replaces any prior link either
+  // name was already part of, to keep the one-to-one invariant.
+  link(primaryName, backupName) {
+    if (!primaryName || !backupName || primaryName === backupName) return { success:false, error:'Choose a different player' };
+    if (!(State.roster || []).some(p => p.name === primaryName)) return { success:false, error:'Backup target must be seated' };
+    if (!(State.bench || []).some(p => p.name === backupName)) return { success:false, error:'Backup must be on the bench' };
+    State.backups = State.backups || {};
+    this.unlink(primaryName);
+    this.clearBackup(backupName);
+    State.backups[primaryName] = backupName;
+    return { success:true };
+  },
+  unlink(primaryName) { if (State.backups) delete State.backups[primaryName]; },
+  // Drops any link where `backupName` is the designated backup — used before
+  // that player backs up someone else, and when they leave the bench/roster.
+  clearBackup(backupName) {
+    for (const primary of Object.keys(State.backups || {})) if (State.backups[primary] === backupName) delete State.backups[primary];
+  },
+  // Either side of a link leaving the roster for good invalidates it.
+  clearForName(name) { this.unlink(name); this.clearBackup(name); },
+
+  hasManualEdits() { return Object.keys(State.backups || {}).length > 0; },
+  // Deep-cloned snapshot for persistence (PlanStore / exportRoster / share tail).
+  serialize() { return JSON.parse(JSON.stringify(State.backups || {})); },
+  restore(data) {
+    const clean = {};
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      for (const [k, v] of Object.entries(data)) if (typeof k === 'string' && typeof v === 'string') clean[k] = v;
+    }
+    State.backups = clean;
+  },
+  // Drops stale links: primary no longer anywhere in the roster, or backup
+  // no longer sitting on the bench (seated elsewhere, or gone entirely).
+  // Run on every render, like PreferredSlots.reconcile()/Assignments.reconcileRoster().
+  reconcile() {
+    if (!State.backups) return;
+    const names = new Set([...(State.roster || []), ...(State.bench || [])].map(p => p.name));
+    const benchNames = new Set((State.bench || []).map(p => p.name));
+    for (const [primary, backup] of Object.entries(State.backups)) {
+      if (!names.has(primary) || !benchNames.has(backup)) delete State.backups[primary];
+    }
+  },
+
+  // Seats `backupName` (the designated backup for `primaryName`) in place of
+  // the primary. When the primary is STILL seated (the manual "Swap in
+  // backup" action, used ahead of any actual absence) this is a true swap:
+  // the primary is benched and the backup takes their exact seat. When the
+  // primary has already left that seat — Raid-Helper already withdrew or
+  // demoted them before this runs — `groupIdx` (the seat they vacated, from
+  // applyRaidHelperSync's backupSwapReady) is used instead, falling back to
+  // the first open seat if that group is no longer available.
+  swapIn(primaryName, groupIdx) {
+    const backupName = this.backupNameFor(primaryName);
+    if (!backupName) return { success:false, error:'No backup designated' };
+    const bi = (State.bench || []).findIndex(p => p.name === backupName);
+    if (bi < 0) return { success:false, error: backupName + ' is no longer on the bench' };
+    const groups = State.groups || [];
+
+    let gi = -1;
+    for (let g = 0; g < groups.length; g++) {
+      const pi = (groups[g] || []).findIndex(p => p.name === primaryName);
+      if (pi < 0) continue;
+      const primary = groups[g][pi];
+      groups[g].splice(pi, 1);
+      primary.groupNumber = 0;
+      State.bench.push(primary);
+      RosterEdit.ClearOverridesFor(primary.name);
+      gi = g;
+      break;
+    }
+    if (gi < 0) {
+      gi = Number.isInteger(groupIdx) && groups[groupIdx] && groups[groupIdx].length < RosterEdit.MAX_GROUP_SIZE
+        ? groupIdx
+        : groups.findIndex(g2 => g2.length < RosterEdit.MAX_GROUP_SIZE);
+    }
+    if (gi < 0 || gi == null) return { success:false, error:'The raid is full; no open seat for ' + backupName };
+
+    const backup = State.bench[bi];
+    State.bench.splice(bi, 1);
+    backup.groupNumber = gi + 1;
+    groups[gi].push(backup);
+    this.unlink(primaryName);
+    RosterEdit.syncRoster();
+    return { success:true, player:backup, groupIdx:gi };
+  },
+};
+
+// ── SPLIT SIGN-UPS INTO TWO RAIDS ────────────────────────────────
+// When far more people sign up than one raid holds (a guild running two
+// clears the same night, a 55-person Naxx signup), RaidSplit.split()
+// partitions every sign-up — seated and benched — into two same-size
+// rosters instead of leaving the overflow to rot on one long bench.
+// Pure: reads only Config.Raids and the named ruleset's DPS-weight tables,
+// never ambient State, so the same function drives both the UI (the live
+// roster) and rosters-tests.js directly.
+const RaidSplit = {
+  // Sign-up volume that makes offering a split worthwhile, by raid size —
+  // see feature-backlog.md #8: 45+ for a 25/40-man, 30+ for a 20-man
+  // (Classic ZG/AQ20/Hyjal), 20+ for a 10-man (Kara/ZA/Barrow Deeps).
+  suggestThreshold(size) {
+    if (size <= 10) return 20;
+    if (size <= 20) return 30;
+    return 45;
+  },
+  shouldOffer(totalSignUps, raidKey) {
+    const raid = Config.Raids[raidKey];
+    if (!raid) return false;
+    return totalSignUps >= this.suggestThreshold(raid.size);
+  },
+
+  // Same lookup as dpsWeightFor(), but pinned to an explicit ruleset instead
+  // of ambient State.gameVersion, so the split stays pure regardless of what
+  // version happens to be active when it runs.
+  _weight(player, version) {
+    const rules = Rulesets[version] || {};
+    const w = (rules.dpsWeight || {})[player.class + ':' + player.spec];
+    if (w != null) return w;
+    const r = (rules.dpsWeightByRole || {})[player.role];
+    return r != null ? r : 0.8;
+  },
+
+  // Partitions every sign-up into two rosters, { a, b }, each
+  // { seated:[...], bench:[...] } capped at the raid's size. Tanks and
+  // healers are placed first (alternating so both raids reach
+  // Config.RaidFloors before either gets a second of either role), then
+  // every other role is placed class-by-class — spreading buff providers
+  // (shamans/paladins/druids/hunters) across both raids — while greedily
+  // keeping the two rosters' total dpsWeight balanced. A currently-seated
+  // sign-up is ordered ahead of a benched one within its role/class group,
+  // so a tie in the running balance favors "keep the leader's existing seats
+  // in raid A". Splitting never changes which classes are present, so a
+  // faction-locked (Classic) roster's faction carries over unchanged.
+  split(players, raidKey, version) {
+    const raid = Config.Raids[raidKey];
+    if (!raid) return null;
+    const list = (players || []).filter(p => p && p.name);
+
+    const isLocked = p => Number.isInteger(p.groupNumber) && p.groupNumber >= 1;
+    const canon = p => p.role + '|' + p.class + '|' + p.spec + '|' + (p.name || '');
+    const sorted = list.slice().sort((x, y) => {
+      const lx = isLocked(x) ? 0 : 1, ly = isLocked(y) ? 0 : 1;
+      if (lx !== ly) return lx - ly;
+      const kx = canon(x), ky = canon(y);
+      return kx < ky ? -1 : kx > ky ? 1 : 0;
+    });
+
+    const a = [], b = [];
+    let weightA = 0, weightB = 0;
+    const assign = (p) => {
+      const target = weightA <= weightB ? a : b;
+      target.push(p);
+      const w = this._weight(p, version);
+      if (target === a) weightA += w; else weightB += w;
+    };
+
+    const roleOrder = ['tank', 'healer', 'melee_dps', 'ranged_dps', 'caster_dps'];
+    for (const role of roleOrder) {
+      const byClass = new Map();
+      for (const p of sorted) {
+        if (p.role !== role) continue;
+        if (!byClass.has(p.class)) byClass.set(p.class, []);
+        byClass.get(p.class).push(p);
+      }
+      for (const cls of [...byClass.keys()].sort()) {
+        for (const p of byClass.get(cls)) assign(p);
+      }
+    }
+
+    const size = raid.size;
+    const cap = (arr) => ({ seated: arr.slice(0, size), bench: arr.slice(size) });
+    return { raidKey, size, groups: raid.groups, a: cap(a), b: cap(b) };
+  },
+};
+
 // ── UI RENDERING ────────────────────────────────────────────────
 function syncVersionControls() {
   const profile = GameVersions[State.gameVersion];
@@ -5659,6 +5921,7 @@ function renderGroups() {
   PreferredSlots.reconcile();
   State.roster = State.groups.flat();
   Assignments.reconcileRoster();
+  Backups.reconcile();
   // Ensure the tank group is always Group 1
   sortTankGroupFirst();
 
@@ -5688,12 +5951,17 @@ function renderGroups() {
         const color = Config.ClassColors[p.class] || 'var(--text-primary)';
         const displayName = (p.name || 'Unknown').split('-')[0];
         const specClass = p.spec ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '')) : '';
+        const backupName = Backups.backupNameFor(p.name);
+        // Compact indicator — the full pairing is in the title tooltip so the
+        // card stays narrow enough not to crowd out the player's own name.
+        const backupBadge = backupName ? `<span class="backup-badge" title="Backup: ${esc(backupName.split('-')[0])}">B</span>` : '';
         slotsHTML += `<div class="player-slot" draggable="true" data-group="${gi}" data-slot="${si}">
           ${getSpecIcon(p)}
           <div class="player-info">
             <span class="player-name" style="color:${color}">${esc(displayName)}</span>
             <span class="player-spec">${esc(specClass)}</span>
           </div>
+          ${backupBadge}
           ${getDragHandle()}
         </div>`;
       } else if (PreferredSlots.forGroup(gi)[si - players.length]) {
@@ -6473,12 +6741,15 @@ function renderBench() {
     const specClass = p.spec
       ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : ''))
       : '';
+    const backupPrimary = Backups.primaryNameFor(p.name);
+    const backupBadge = backupPrimary ? `<span class="backup-badge backup-badge-bench" title="Backup for ${esc(backupPrimary.split('-')[0])}">-&gt; ${esc(backupPrimary.split('-')[0])}</span>` : '';
     slotsHTML += `<div class="player-slot bench-slot" draggable="true" data-bench-slot="${bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
       ${getSpecIcon(p)}
       <div class="player-info">
         <span class="player-name" style="color:${color}">${esc(displayName)}</span>
         <span class="player-spec">${esc(specClass)}</span>
       </div>
+      ${backupBadge}
       ${getDragHandle()}
     </div>`;
   }
@@ -6559,6 +6830,19 @@ function showPlayerEditor(anchorEl, opts) {
     <div class="player-editor-role" id="pe-role"></div>
     <div class="player-editor-error" id="pe-error"></div>
     ${isAdd ? `<div class="preferred-actions"><p>Choose a class and spec to request a player. No name needed; confirmed matching imports fill this spot.</p><button type="button" class="pe-btn pe-btn-primary" id="pe-prefer">${preference ? 'Update preference' : 'Set preferred slot'}</button>${preference ? '<button type="button" class="pe-btn pe-btn-danger" id="pe-remove-preference">Remove preference</button>' : ''}</div>` : ''}
+    ${!isAdd && benched ? `<div class="player-move">
+      <label for="pe-backup-for">Backup for</label>
+      <select id="pe-backup-for">
+        <option value="">Not a backup</option>
+        ${State.roster.map(sp => `<option value="${esc(sp.name)}"${Backups.backupNameFor(sp.name) === curName ? ' selected' : ''}>${esc((sp.name || '').split('-')[0])} (${esc(sp.spec)} ${esc(RosterEdit.ClassLabel(sp.class))})</option>`).join('')}
+      </select>
+      <button type="button" class="pe-btn" id="pe-backup-save">Save backup</button>
+    </div>` : ''}
+    ${!isAdd && !benched && Backups.backupNameFor(curName) ? `<div class="player-move">
+      <span>Backup: ${esc(Backups.backupNameFor(curName).split('-')[0])}</span>
+      <button type="button" class="pe-btn" id="pe-backup-swap">Swap in backup</button>
+      <button type="button" class="pe-btn pe-btn-danger" id="pe-backup-clear">Remove backup</button>
+    </div>` : ''}
     <div class="player-editor-actions">
       ${removeLabel ? `<button type="button" class="pe-btn pe-btn-danger" id="pe-remove" title="${esc(removeTitle)}">${esc(removeLabel)}</button>` : '<span></span>'}
       <div class="pe-actions-right">
@@ -6616,6 +6900,27 @@ function showPlayerEditor(anchorEl, opts) {
   });
   editor.querySelector('#pe-remove-preference')?.addEventListener('click', () => {
     PreferredSlots.remove(preference); closePlayerEditor(); renderGroups(); showToast('Preference removed');
+  });
+
+  editor.querySelector('#pe-backup-save')?.addEventListener('click', () => {
+    const backupSelect = editor.querySelector('#pe-backup-for');
+    const target = backupSelect.value;
+    if (!target) { Backups.clearBackup(curName); }
+    else {
+      const result = Backups.link(target, curName);
+      if (!result.success) { showError(result.error); return; }
+    }
+    closePlayerEditor(); renderGroups();
+    showToast(target ? `${curName.split('-')[0]} is now backup for ${target.split('-')[0]}` : 'Backup link removed');
+  });
+  editor.querySelector('#pe-backup-swap')?.addEventListener('click', () => {
+    const result = Backups.swapIn(curName, found.groupIdx);
+    if (!result.success) { showError(result.error); return; }
+    closePlayerEditor(); renderGroups();
+    showToast(`Swapped in ${result.player.name.split('-')[0]} for ${curName.split('-')[0]}`);
+  });
+  editor.querySelector('#pe-backup-clear')?.addEventListener('click', () => {
+    Backups.unlink(curName); closePlayerEditor(); renderGroups(); showToast('Backup link removed');
   });
 
   function commit() {
@@ -7276,6 +7581,7 @@ const RaidHelperSync = {
     initGroups();
     renderGroups();
     showToast('Refreshed: ' + this.describe(counts));
+    if (counts.backupSwapReady && counts.backupSwapReady.length) this.showBackupBanner(counts.backupSwapReady);
   },
 
   showBanner(diff) {
@@ -7291,6 +7597,39 @@ const RaidHelperSync = {
     if (banner) banner.hidden = true;
   },
 
+  // "Backup X is ready — swap in?" — surfaced when a Refresh withdraws or
+  // demotes a seated player who had a designated backup still on the bench
+  // (see Import.applyRaidHelperSync's backupSwapReady). One click seats that
+  // exact backup in the vacated group instead of a generic optimizer Swap In.
+  showBackupBanner(list) {
+    const banner = document.getElementById('backup-banner');
+    const text = document.getElementById('backup-banner-text');
+    const actions = document.getElementById('backup-banner-actions');
+    if (!banner || !text || !actions) return;
+    text.textContent = list.length === 1
+      ? `Backup ready: ${list[0].backupName.split('-')[0]} can take ${list[0].primaryName.split('-')[0]}'s seat.`
+      : `${list.length} backups are ready to swap in.`;
+    actions.innerHTML = list.map((item, i) =>
+      `<button type="button" class="btn btn-primary" data-backup-swap="${i}">Swap in ${esc(item.backupName.split('-')[0])}</button>`
+    ).join('') + '<button type="button" class="link-btn" id="backup-banner-dismiss">Dismiss</button>';
+    actions.querySelectorAll('[data-backup-swap]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = list[Number(btn.dataset.backupSwap)];
+        const result = Backups.swapIn(item.primaryName, Number.isInteger(item.groupNumber) ? item.groupNumber - 1 : undefined);
+        if (result.success) { renderGroups(); showToast(`Swapped in ${result.player.name.split('-')[0]}`); }
+        else showToast(result.error);
+        this.hideBackupBanner();
+      });
+    });
+    document.getElementById('backup-banner-dismiss')?.addEventListener('click', () => this.hideBackupBanner());
+    banner.hidden = false;
+  },
+
+  hideBackupBanner() {
+    const banner = document.getElementById('backup-banner');
+    if (banner) banner.hidden = true;
+  },
+
   // Refresh is only offered for linked rosters.
   updateControls() {
     const linked = !!State.sourceEventId;
@@ -7298,7 +7637,7 @@ const RaidHelperSync = {
     const mobile = document.getElementById('mobile-btn-refresh');
     if (btn) btn.hidden = !linked;
     if (mobile) mobile.hidden = !linked;
-    if (!linked) this.hideBanner();
+    if (!linked) { this.hideBanner(); this.hideBackupBanner(); }
   },
 };
 
@@ -7312,6 +7651,115 @@ document.addEventListener('visibilitychange', () => {
   if (!State.sourceEventId || State.view !== 'app') return;
   if (Date.now() - RaidHelperSync.hiddenAt >= RaidHelperSync.RECHECK_AFTER_MS) RaidHelperSync.check();
 });
+
+// ── SPLIT SIGN-UPS INTO TWO RAIDS (UI) ──────────────────────────
+// Drives RaidSplit.split() from the live roster: offers the split after an
+// oversized import (see the two importFromText() call sites below), previews
+// both resulting rosters, then on confirmation replaces the current plan
+// with Raid A and saves Raid B as a second plan (feature-backlog.md #8).
+const SplitFlow = {
+  pending: null, // last computed RaidSplit.split() result, for the preview dialog
+
+  // Called after every import; only shows the banner when sign-ups clear the
+  // per-raid-size threshold (RaidSplit.suggestThreshold).
+  maybeOffer() {
+    const total = State.roster.length + (State.bench || []).length;
+    if (!RaidSplit.shouldOffer(total, State.selectedRaid)) { this.dismiss(); return; }
+    const banner = document.getElementById('split-banner');
+    const text = document.getElementById('split-banner-text');
+    if (!banner || !text) return;
+    const raid = Config.Raids[State.selectedRaid];
+    text.textContent = `${total} sign-ups is more than one ${raid.name} (${raid.size}-man) holds.`;
+    banner.hidden = false;
+  },
+  dismiss() {
+    const banner = document.getElementById('split-banner');
+    if (banner) banner.hidden = true;
+  },
+
+  countsFor(list) {
+    const roles = {};
+    const classes = {};
+    for (const p of list) { roles[p.role] = (roles[p.role] || 0) + 1; classes[p.class] = (classes[p.class] || 0) + 1; }
+    return { roles, classes };
+  },
+  renderPreview(result) {
+    const body = document.getElementById('split-dialog-body');
+    if (!body) return;
+    const summarize = (label, half) => {
+      const c = this.countsFor(half.seated);
+      const dps = (c.roles.melee_dps || 0) + (c.roles.ranged_dps || 0) + (c.roles.caster_dps || 0);
+      const classLine = Object.keys(c.classes).sort().map(cls => `${RosterEdit.ClassLabel(cls)} ${c.classes[cls]}`).join(', ') || 'none';
+      return `<div class="split-preview-col">
+        <h4>${esc(label)}</h4>
+        <p>${half.seated.length} seated${half.bench.length ? ` + ${half.bench.length} benched` : ''}</p>
+        <p>Tanks ${c.roles.tank || 0} &middot; Healers ${c.roles.healer || 0} &middot; DPS ${dps}</p>
+        <p class="split-preview-classes">${esc(classLine)}</p>
+      </div>`;
+    };
+    body.innerHTML = summarize('Raid A (this plan)', result.a) + summarize('Raid B (new plan)', result.b);
+  },
+  preview() {
+    const all = [...State.roster, ...(State.bench || [])];
+    const result = RaidSplit.split(all, State.selectedRaid, State.gameVersion);
+    if (!result) { showToast('Cannot split: unknown raid'); return; }
+    this.pending = result;
+    this.renderPreview(result);
+    document.getElementById('split-dialog').showModal();
+  },
+  create() {
+    const result = this.pending;
+    if (!result) return;
+    const raidInfo = Config.Raids[result.raidKey];
+    const mode = State.optimizerMode || 'max_dps';
+
+    const groupsA = Optimizer.arrange(result.a.seated, raidInfo.groups, raidInfo.size, 5, mode);
+    groupsA.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+    const benchA = result.a.bench.map(p => { p.groupNumber = 0; return p; });
+
+    const groupsB = Optimizer.arrange(result.b.seated, raidInfo.groups, raidInfo.size, 5, mode);
+    groupsB.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+    const benchB = result.b.bench.map(p => { p.groupNumber = 0; return p; });
+
+    // Raid A replaces the current plan in place; stale manual state tied to
+    // players who ended up in Raid B is dropped by the usual reconcile pass.
+    State.groups = groupsA;
+    State.bench = benchA;
+    State.roster = groupsA.flat();
+    Assignments.reconcileRoster();
+    Backups.reconcile();
+
+    // Raid B becomes its own saved plan sharing this plan's sourceEventId
+    // (compound-keyed by planId + gameVersion, same as every other saved
+    // plan — see PlanStore), so Refresh keeps working on either one without
+    // disturbing the 'event:<id>' lookup importFromText() uses to reopen A.
+    const baseName = State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : (raidInfo.name || 'Raid');
+    if (!State.planId) State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const dataB = {
+      planId: State.planId + ':B',
+      groups: groupsB, bench: benchB,
+      campfires: Campfires.empty(),
+      gameVersion: State.gameVersion, selectedRaid: State.selectedRaid,
+      rosterName: baseName + ' - Raid B',
+      sourceEventId: State.sourceEventId,
+      optimizerMode: mode,
+      buffOverrides: {}, preferredSlots: [], preserveGroupOrder: false,
+      notes: '', assignments: { tankHealers:{}, blessings:{}, debuffs:{} }, backups: {},
+    };
+    try { PlanStore.save(localStorage, dataB); } catch {}
+
+    document.getElementById('split-dialog').close();
+    this.dismiss();
+    this.pending = null;
+    renderGroups();
+    showToast(`Split into two raids: ${groupsA.flat().length} seated here, "${dataB.rosterName}" saved separately`);
+  },
+};
+
+document.getElementById('btn-split-offer').addEventListener('click', () => SplitFlow.preview());
+document.getElementById('btn-split-dismiss').addEventListener('click', () => SplitFlow.dismiss());
+document.getElementById('btn-split-cancel').addEventListener('click', () => document.getElementById('split-dialog').close());
+document.getElementById('btn-split-create').addEventListener('click', () => SplitFlow.create());
 
 // ── IMPORT MODAL (toolbar) ──────────────────────────────────────
 document.getElementById('btn-import').addEventListener('click', () => {
@@ -7329,7 +7777,7 @@ document.getElementById('btn-do-import').addEventListener('click', async () => {
   const text = document.getElementById('import-textarea').value.trim();
   if (!text) return;
   const ok = await importFromText(text);
-  if (ok) document.getElementById('import-overlay').classList.remove('visible');
+  if (ok) { document.getElementById('import-overlay').classList.remove('visible'); SplitFlow.maybeOffer(); }
 });
 
 // ── VIEWS: landing <-> planner ──────────────────────────────────
@@ -7439,7 +7887,7 @@ function renderLandingSavedList() {
     report('', false);
     try {
       const ok = await importFromText(text, report);
-      if (ok) { report('', false); input.value = ''; showView('app'); }
+      if (ok) { report('', false); input.value = ''; showView('app'); SplitFlow.maybeOffer(); }
     } finally {
       btn.disabled = false;
     }
@@ -8378,10 +8826,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
+  module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, RaidSplit, PlanStore };
 }
 // Also expose on window for browser-based tests
-window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME };
+window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, RaidSplit, PlanStore, SplitFlow };
 </script>
 <div id="buff-tooltip-portal"></div>
 </body>
