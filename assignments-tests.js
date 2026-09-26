@@ -329,6 +329,60 @@ check('A manual Debuff edit survives while the caster is seated, drops when they
   Assignments.reconcileRoster(State.roster);
   assert.equal(State.assignments.debuffs.SUNDER_ARMOR, undefined);
 });
+check('Choosing "none" removes a suggested Blessing and it stays removed through reconcile, chat text and matrix', () => {
+  resetState('tbc', 'gruul');
+  const players = seat(blessingRoster(2));
+  const suggested = Assignments.effectiveBlessings(players);
+  assert(suggested.KINGS, 'Kings is suggested before removal');
+  Assignments.setBlessing('KINGS', '');
+  Assignments.reconcileRoster(State.roster);
+  assert.equal(Assignments.effectiveBlessings(State.roster).KINGS, undefined, 'suggestion must not refill a slot the user cleared');
+  assert(!/Kings/.test(Assignments.toChatText(State.roster)), 'cleared Blessing must not appear in chat text');
+  assert(Assignments.hasManualEdits(), 'a cleared slot is a manual edit');
+  Assignments.setBlessing('KINGS', players[0].name);
+  assert.equal(Assignments.effectiveBlessings(State.roster).KINGS, players[0].name, 'picking a paladin again restores it');
+});
+check('Choosing "unassigned" removes a suggested boss Debuff and it stays removed through reconcile and chat text', () => {
+  resetState('tbc', 'kara');
+  const w = mk('WARRIOR', 'Protection', 'tank');
+  seat([w, mk('PRIEST', 'Holy', 'healer')]);
+  assert.equal(Assignments.effectiveDebuffs(State.roster).SUNDER_ARMOR, w.name, 'Sunder is suggested before removal');
+  Assignments.setDebuff('SUNDER_ARMOR', '');
+  Assignments.reconcileRoster(State.roster);
+  assert.equal(Assignments.effectiveDebuffs(State.roster).SUNDER_ARMOR, undefined, 'suggestion must not refill a slot the user cleared');
+  const sunderLine = `${Config.DebuffAbbreviations.SUNDER_ARMOR || 'SUNDER_ARMOR'}: ${w.name}`;
+  assert(!Assignments.toChatText(State.roster).includes(sunderLine), 'cleared debuff must not appear in chat text');
+});
+check('Cleared Blessing/Debuff slots survive PlanStore, exportRoster/loadRoster and share-link round trips', () => {
+  resetState('tbc', 'kara');
+  State.planId = 'plan:cleared';
+  const players = blessingRoster(2);
+  players.forEach((p, i) => { p.groupNumber = i < 5 ? 1 : 2; });
+  State.groups = [players.slice(0, 5), players.slice(5)];
+  State.roster = players;
+  assert(Assignments.effectiveBlessings(State.roster).KINGS, 'fixture suggests Kings');
+  assert(Assignments.effectiveDebuffs(State.roster).SUNDER_ARMOR, 'fixture suggests Sunder');
+  Assignments.setBlessing('KINGS', '');
+  Assignments.setDebuff('SUNDER_ARMOR', '');
+  const clearAssignments = () => { State.assignments = { tankHealers: {}, blessings: {}, debuffs: {} }; };
+  const verify = (label) => {
+    assert.equal(Assignments.effectiveBlessings(State.roster).KINGS, undefined, label + ': Kings stays cleared');
+    assert.equal(Assignments.effectiveDebuffs(State.roster).SUNDER_ARMOR, undefined, label + ': Sunder stays cleared');
+  };
+  const snap = PlanStore.capture();
+  clearAssignments();
+  assert(PlanStore.restore(snap), 'PlanStore restore');
+  verify('PlanStore');
+  const exported = JSON.parse(JSON.stringify(Import.exportRoster('Cleared')));
+  clearAssignments();
+  assert(Import.loadRoster(exported), 'loadRoster');
+  verify('exportRoster/loadRoster');
+  const str = Import.exportShareString();
+  clearAssignments();
+  const res = Import.importAddonString(str);
+  assert(res.success, 'share import: ' + (res.error || ''));
+  verify('share link');
+});
 check('Explicitly assigning a healer to Raid overrides an auto-suggested tank pairing', () => {
   resetState('tbc', 'kara');
   const t1 = mk('WARRIOR', 'Protection', 'tank', 1);

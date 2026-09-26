@@ -7074,7 +7074,9 @@ const Assignments = {
     const paladinNames = new Set((players || []).filter(p => p.class === 'PALADIN').map(p => p.name));
     const catalog = this.blessingCatalog();
     for (const [id, name] of Object.entries(manual)) {
-      if (!catalog[id] || !paladinNames.has(name)) continue;
+      if (!catalog[id]) continue;
+      if (name === this.NONE) { delete result[id]; continue; }
+      if (!paladinNames.has(name)) continue;
       result[id] = name;
     }
     return result;
@@ -7087,6 +7089,7 @@ const Assignments = {
     for (const [id, name] of Object.entries(manual)) {
       const def = debuffs[id];
       if (!def) continue;
+      if (name === this.NONE) { delete result[id]; continue; }
       const p = byName.get(name);
       if (!p || p.class !== def.sourceClass || (def.sourceSpec && p.spec !== def.sourceSpec)) continue;
       result[id] = name;
@@ -7095,17 +7098,18 @@ const Assignments = {
   },
 
   // ── Manual edits ──────────────────────────────────────────────
+  // Choosing "none" for a blessing/debuff is itself a manual choice: it is stored
+  // as NONE so the live suggestion doesn't refill the slot on the next render.
+  NONE: '',
   setHealerTank(healerName, tankKey) {
     if (tankKey) State.assignments.tankHealers[healerName] = tankKey;
     else delete State.assignments.tankHealers[healerName];
   },
   setBlessing(blessingId, paladinName) {
-    if (paladinName) State.assignments.blessings[blessingId] = paladinName;
-    else delete State.assignments.blessings[blessingId];
+    State.assignments.blessings[blessingId] = paladinName || this.NONE;
   },
   setDebuff(debuffId, playerName) {
-    if (playerName) State.assignments.debuffs[debuffId] = playerName;
-    else delete State.assignments.debuffs[debuffId];
+    State.assignments.debuffs[debuffId] = playerName || this.NONE;
   },
 
   // Drops manual choices that reference a player (or, for healer->tank, a
@@ -7121,10 +7125,12 @@ const Assignments = {
       if (!names.has(healer) || (tank !== 'RAID' && !tankNames.has(tank))) delete State.assignments.tankHealers[healer];
     }
     for (const id of Object.keys(State.assignments.blessings)) {
-      if (!paladinNames.has(State.assignments.blessings[id])) delete State.assignments.blessings[id];
+      const name = State.assignments.blessings[id];
+      if (name !== this.NONE && !paladinNames.has(name)) delete State.assignments.blessings[id];
     }
     for (const id of Object.keys(State.assignments.debuffs)) {
-      if (!names.has(State.assignments.debuffs[id])) delete State.assignments.debuffs[id];
+      const name = State.assignments.debuffs[id];
+      if (name !== this.NONE && !names.has(name)) delete State.assignments.debuffs[id];
     }
   },
 
