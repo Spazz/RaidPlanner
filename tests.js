@@ -1861,6 +1861,12 @@ for (const mode of ['max_dps', 'tank_mit', 'balanced', 'relaxed']) {
     }
     const mt = State.groups.find(gr => gr.some(p => p.name === 'Alliesha'));
     assert(mt.some(p => p.name === 'Voctave'), 'Resto Shaman rides with the MT');
+    if (mode !== 'relaxed') {
+      // Vampiric Touch: the CoH-spamming Holy Priest needs the mana, a warlock barely does.
+      const sp = State.groups.find(gr => gr.some(p => p.name === 'KashPatail'));
+      assert(sp.some(p => p.name === 'Azukl'), 'Holy Priest rides with the Shadow Priest');
+      assert(!sp.some(p => p.name === 'Soulavenger'), 'Aff lock is not the one taking the Vampiric Touch seat');
+    }
     const key = () => State.groups.map(gr => gr.map(p => p.name).sort().join(',')).join('|') + '#' +
       State.preferredSlots.map(s => s.group + s.class + s.spec).sort().join(',');
     const first = key();

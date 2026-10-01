@@ -5219,8 +5219,10 @@ function strategyLabel(mode) {
 //    NOTHING from WF (weapon imbues don't work in forms) — hence the 0 key.
 //    Hunters don't benefit either (melee-weapon imbue; role table omits ranged).
 //  - Ferocious Inspiration is 3% damage for the whole party, any role.
-//  - Vampiric Touch is a party mana battery: locks/arcane mages value it most;
-//    a Holy Priest spamming Circle of Healing is the healer that wants it.
+//  - Vampiric Touch is a party mana battery: a Holy Priest spamming Circle of
+//    Healing needs it most, then Arcane/other mages. Warlocks barely do —
+//    Life Tap covers their mana — so a lock no longer outbids the priest for
+//    the Shadow Priest's group.
 const DPS_VALUE = {
   WINDFURY:           { key: { 'PALADIN:Retribution': 12, 'WARRIOR:Fury': 11, 'WARRIOR:Arms': 10, 'SHAMAN:Enhancement': 9, 'ROGUE:Combat': 8, 'ROGUE:Assassination': 8, 'ROGUE:Subtlety': 8, 'DRUID:Feral': 0 }, role: { melee_dps: 8, tank: 3 } },
   GRACE_OF_AIR:       { key: { 'DRUID:Feral': 4 }, role: { melee_dps: 2, ranged_dps: 3, tank: 2 } },
@@ -5241,7 +5243,7 @@ const DPS_VALUE = {
   UNLEASHED_RAGE:     { role: { melee_dps: 5, ranged_dps: 4, tank: 2 } },
   BATTLE_SHOUT:       { role: { melee_dps: 3, ranged_dps: 2, tank: 2 } },
   BLOOD_PACT:         { role: { tank: 1 } },
-  VAMPIRIC_TOUCH:     { key: { 'MAGE:Arcane': 7, 'PRIEST:Holy': 6 }, class: { WARLOCK: 6, MAGE: 6 }, role: { caster_dps: 4, healer: 3 } },
+  VAMPIRIC_TOUCH:     { key: { 'MAGE:Arcane': 7, 'PRIEST:Holy': 10 }, class: { WARLOCK: 2, MAGE: 6 }, role: { caster_dps: 4, healer: 3 } },
 };
 
 // MIT_VALUE[buffId] — survivability value for a TANK receiving the buff,
@@ -6271,7 +6273,10 @@ const Optimizer = {
     //    riding with the tanks is fine; a lone Rogue receiving nothing
     //    there is not).
     if (isTank) {
-      score += Math.min(healerCount, 4) * 10 * cfg.structure;
+      // Three healers is the MT group's core; a 4th is allowed but only
+      // lightly pulled, so a Holy Priest who'd get Vampiric Touch in the
+      // Shadow Priest's group goes there instead of padding the MT group.
+      score += (Math.min(healerCount, 3) * 10 + (healerCount >= 4 ? 3 : 0)) * cfg.structure;
       // The MT group holds up to four healers (the MT plus a healer party).
       // A fifth only stays for the mana totems it receives; past four, they
       // move on.
@@ -6742,6 +6747,16 @@ const OpenSlots = {
     return v;
   },
 
+  // Where a player (moved real player, or a suggestion) may sit without
+  // breaking group conventions: the tank group takes healers, and tanks only
+  // as suggestions (a real Feral tank stays with melee); spare tanks and
+  // physical DPS go to melee groups; casters and healers to caster groups.
+  _fits(member, identity, suggested) {
+    if (identity === 'tank') return member.role === 'healer' || (member.role === 'tank' && suggested);
+    if (identity === 'caster_dps') return member.role === 'caster_dps' || member.role === 'healer';
+    return member.role === 'melee_dps' || member.role === 'ranged_dps' || member.role === 'tank';
+  },
+
   // The specs to suggest for the raid's open seats outside groups frozen by
   // the leader's own requests: tank/healer floors first, then whatever adds
   // the most (party-buff gain in its group + _raidValue), one at a time so
@@ -6766,16 +6781,7 @@ const OpenSlots = {
     board._roleIdentities = State.groups._roleIdentities;
     board._anchors = State.groups._anchors;
     const score = (b, gi, group = b[gi]) => Optimizer.groupScore(group, gi, b, mode);
-    // Where a player (displaced, or a suggestion) may sit without breaking
-    // group conventions: the tank group takes healers and tanks only for
-    // suggestions (a displaced Feral tank stays with melee), spare tanks and
-    // physical DPS go to melee groups, casters and healers to caster groups.
-    const fits = (m, gj) => {
-      const id = (board._roleIdentities || [])[gj];
-      if (id === 'tank') return m.role === 'healer' || (m.role === 'tank' && !board.flat().includes(m));
-      if (id === 'caster_dps') return m.role === 'caster_dps' || m.role === 'healer';
-      return m.role === 'melee_dps' || m.role === 'ranged_dps' || m.role === 'tank';
-    };
+    const fits = (m, gj) => this._fits(m, (board._roleIdentities || [])[gj], !board.flat().includes(m));
     // Cheapest way to free a seat in full group gi: move one real, unpinned
     // player to a non-frozen group with room. cost = real score lost.
     const roomIn = (gi) => {
@@ -6840,7 +6846,52 @@ const OpenSlots = {
       }
       State.preferredSlots.push({ group: pick.group, class: pick.class, spec: pick.spec, auto: true });
     }
+    this._settle();
     State.roster = State.groups.flat();
+  },
+
+  // A real player may trade seats with a suggested slot in another group when
+  // that scores better, so a suggestion never keeps a seat a real player
+  // wants more (the Holy Priest takes the Shadow Priest's group for Vampiric
+  // Touch; the suggested Disc moves to the MT group instead).
+  _settle() {
+    const mode = State.optimizerMode || 'max_dps';
+    const groups = State.groups;
+    const ids = groups._roleIdentities || [];
+    const frozen = groups.map((g, gi) => PreferredSlots.manual().some(p => p.group === gi));
+    const autos = State.preferredSlots.filter(p => p.auto);
+    const virtual = (slot) => ({ class: slot.class, spec: slot.spec, role: RosterEdit.RoleForSpec(slot.class, slot.spec), uid: 'open', name: '' });
+    const board = () => {
+      const b = groups.map((g, gi) => [...g, ...autos.filter(a => a.group === gi).map(virtual)]);
+      b._roleIdentities = ids;
+      b._anchors = groups._anchors;
+      return b;
+    };
+    for (let iter = 0; iter < 8; iter++) {
+      const b = board();
+      const score = (gi, grp = b[gi]) => Optimizer.groupScore(grp, gi, b, mode);
+      let best = null;
+      for (const slot of autos) {
+        const a = slot.group;
+        const v = virtual(slot);
+        for (let gb = 0; gb < groups.length; gb++) {
+          if (gb === a || frozen[gb] || !this._fits(v, ids[gb], true)) continue;
+          for (const p of groups[gb]) {
+            if (Optimizer.isPinned(p, gb, groups) || !this._fits(p, ids[a], false)) continue;
+            const withoutSlot = [...b[a]];
+            withoutSlot.splice(withoutSlot.findIndex(x => x.uid === 'open' && x.class === v.class && x.spec === v.spec), 1);
+            const delta = score(a, [...withoutSlot, p]) + score(gb, [...b[gb].filter(x => x !== p), v]) - score(a) - score(gb);
+            if (delta > 0.5 && (!best || delta > best.delta)) best = { slot, p, gb, delta };
+          }
+        }
+      }
+      if (!best) break;
+      const { slot, p, gb } = best;
+      groups[gb].splice(groups[gb].indexOf(p), 1);
+      groups[slot.group].push(p);
+      p.groupNumber = slot.group + 1;
+      slot.group = gb;
+    }
   },
 
   // Fills seats still empty after Optimize's own suggestions (inside groups
@@ -6888,7 +6939,8 @@ const OpenSlots = {
       if (board[gi].length >= max) continue;
       const before = Optimizer.groupScore(board[gi], gi, board, mode);
       for (const candidate of pool) {
-        const gain = Optimizer.groupScore([...board[gi], candidate], gi, board, mode) - before;
+        const gain = Optimizer.groupScore([...board[gi], candidate], gi, board, mode) - before
+                   + this._raidValue(candidate, board.flat(), mode);
         if (!best || gain > best.gain) best = { candidate, gi, gain };
       }
     }
