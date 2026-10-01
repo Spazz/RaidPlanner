@@ -1739,6 +1739,138 @@ describe('ACCEPTANCE: real 22-man roster follows the reference comp rules (max_d
     'Second Resto Shaman in the WF-less melee group or the mage group (was G' + (g(otherRsham)+1) + ')');
 });
 
+// Team KJ Hyjal sign-ups (2026-10-01 report), Alliesha switched to Ret by hand.
+// Reported: two shamans stacked, an Ele Shaman in a melee group, both Rets in
+// one group, Zzaps moved to the mage group, Kajuk parked with the warlocks.
+function buildHyjalRoster22() {
+  return [
+    mkPlayer('Daolith','WARLOCK','Destruction','caster_dps'),
+    mkPlayer('Stingz','HUNTER','Beast Mastery','ranged_dps'),
+    mkPlayer('Zzaps','DRUID','Balance','caster_dps'),
+    mkPlayer('Genow','SHAMAN','Elemental','caster_dps'),
+    mkPlayer('Roost','MAGE','Arcane','caster_dps'),
+    mkPlayer('Soulavenger','WARLOCK','Affliction','caster_dps'),
+    mkPlayer('Voctave','SHAMAN','Restoration','healer'),
+    mkPlayer('Hinastorm','ROGUE','Combat','melee_dps'),
+    mkPlayer('kimmjungheal','DRUID','Restoration','healer'),
+    mkPlayer('Sanga','WARRIOR','Fury','melee_dps'),
+    mkPlayer('KashPatail','PRIEST','Shadow','caster_dps'),
+    mkPlayer('Rhyme','WARRIOR','Arms','melee_dps'),
+    mkPlayer('Ohmnath','SHAMAN','Elemental','caster_dps'),
+    mkPlayer('Throssel','PALADIN','Protection','tank'),
+    mkPlayer('Daxxter','MAGE','Arcane','caster_dps'),
+    mkPlayer('Kajuk','WARRIOR','Protection','tank'),
+    mkPlayer('Alliesha','PALADIN','Retribution','melee_dps'),
+    mkPlayer('Ceedarius','PALADIN','Retribution','melee_dps'),
+    mkPlayer('Azukl','PRIEST','Holy','healer'),
+    mkPlayer('Drenna','PALADIN','Holy','healer'),
+    mkPlayer('Gnope','WARLOCK','Destruction','caster_dps'),
+    mkPlayer('Originalgoat','SHAMAN','Enhancement','melee_dps'),
+  ];
+}
+
+for (const mode of ['max_dps', 'tank_mit', 'balanced', 'relaxed']) {
+  describe('ACCEPTANCE: Hyjal 22-man report has no awkward placements (' + mode + ')', () => {
+    State.optimizerMode = mode;
+    loadRosterAndOptimize(buildHyjalRoster22(), 'hyjal');
+    const g = name => State.groups.findIndex(gr => gr.some(p => p.name === name));
+    const grp = name => State.groups[g(name)];
+    const physical = gr => gr.filter(p => (p.role === 'melee_dps' && p.class !== 'SHAMAN') || p.role === 'ranged_dps').length;
+    const casters = gr => gr.filter(p => p.role === 'caster_dps').length;
+
+    for (const gr of State.groups) {
+      assert(gr.filter(p => p.class === 'SHAMAN').length <= 1,
+        'No group holds two shamans (' + gr.map(p => p.name).join(', ') + ')');
+    }
+    for (const ele of ['Genow', 'Ohmnath']) {
+      assert(casters(grp(ele)) > physical(grp(ele)), ele + ' (Ele) rides with casters, not melee');
+    }
+    assert(g('Alliesha') !== g('Ceedarius'), 'The two Ret Paladins are split across groups');
+    assert(g('Zzaps') === g('Daolith') && g('Zzaps') === g('Gnope'), 'Zzaps (Boomkin) rides with both Destro locks');
+    assert(!grp('Kajuk').some(p => p.class === 'WARLOCK' || p.class === 'MAGE'), 'Kajuk (Prot Warrior) is not parked with the casters');
+  });
+}
+
+// The board behind the report: an Open request for a Resto Druid froze G3
+// (the three tanks), and Optimize used to lay the other four groups out as a
+// 4-group raid, collapsing a caster group into a "melee" one.
+for (const mode of ['max_dps', 'balanced']) {
+  describe('ACCEPTANCE: Optimize around an Open request keeps 5-group roles (' + mode + ')', () => {
+    resetState();
+    State.selectedRaid = 'hyjal';
+    State.optimizerMode = mode;
+    const byName = Object.fromEntries(buildHyjalRoster22().map(p => [p.name, p]));
+    const kanyan = mkPlayer('Kanyan','DRUID','Feral','tank');
+    const layout = [
+      ['Originalgoat','Sanga','Ceedarius','Hinastorm','Rhyme'],
+      ['Ohmnath','Stingz','Zzaps','Daolith','Gnope'],
+      ['Throssel','Kajuk'],
+      ['Genow','KashPatail','Soulavenger','Daxxter','Roost'],
+      ['Alliesha','Voctave','kimmjungheal','Azukl','Drenna'],
+    ];
+    State.groups = layout.map(names => names.map(n => byName[n]));
+    State.groups[2].push(kanyan);
+    State.groups.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+    State.roster = State.groups.flat();
+    State.preferredSlots = [{ group: 2, class: 'DRUID', spec: 'Restoration' }];
+    Optimizer.optimize();
+
+    const g = name => State.groups.findIndex(gr => gr.some(p => p.name === name));
+    assertEqual(State.groups[2].map(p => p.name).sort().join(','), 'Kajuk,Kanyan,Throssel', 'The requested group keeps its players');
+    assertEqual(State.groups[2].length, 3, 'Its open seat stays reserved');
+    for (const gr of State.groups) assert(gr.filter(p => p.class === 'SHAMAN').length <= 1, 'No group holds two shamans');
+    for (const ele of ['Genow', 'Ohmnath']) {
+      const gr = State.groups[g(ele)];
+      const otherCasters = gr.filter(p => p.role === 'caster_dps' && p.class !== 'SHAMAN').length;
+      const physical = gr.filter(p => p.role === 'melee_dps' || p.role === 'ranged_dps').length;
+      assert(otherCasters > physical, ele + ' (Ele) rides with casters, not melee');
+    }
+    assert(g('Alliesha') !== g('Ceedarius'), 'Ret Paladins split');
+    assert(g('Zzaps') === g('Daolith') && g('Zzaps') === g('Gnope'), 'Zzaps with both Destro locks');
+    const first = State.groups.map(gr => gr.map(p => p.name).sort().join(',')).join(' | ');
+    Optimizer.optimize();
+    assertEqual(State.groups.map(gr => gr.map(p => p.name).sort().join(',')).join(' | '), first, 'A second Optimize moves nobody');
+  });
+}
+
+describe('Optimizer: one Resto Shaman provides both Mana Spring and Mana Tide', () => {
+  resetState();
+  const group = [mkPlayer('R','SHAMAN','Restoration','healer'), mkPlayer('M','MAGE','Arcane','caster_dps')];
+  const chosen = Optimizer.resolveGroupBuffs(group, () => 1);
+  assert(chosen.has('MANA_SPRING') && chosen.has('MANA_TIDE'), 'Mana Tide does not occupy the Mana Spring water slot');
+});
+
+describe('Optimizer: group identities follow the roster DPS mix (TBC)', () => {
+  resetState();
+  assertEqual(Optimizer.roleIdentitiesFor(5).join(','), 'melee_dps,melee_dps,caster_dps,caster_dps,tank', 'Default split without a roster');
+  const casterHeavy = [
+    mkPlayer('a','ROGUE','Combat','melee_dps'), mkPlayer('b','HUNTER','Beast Mastery','ranged_dps'), mkPlayer('c','SHAMAN','Enhancement','melee_dps'),
+    ...['d','e','f','g','h','i','j','k','l','m','n','o'].map(n => mkPlayer(n,'WARLOCK','Destruction','caster_dps')),
+  ];
+  assertEqual(Optimizer.roleIdentitiesFor(5, casterHeavy).join(','), 'melee_dps,caster_dps,caster_dps,caster_dps,tank', '3 physical vs 12 casters: one melee group');
+});
+
+describe('Optimizer: de-isolation picks the cheapest fix, not the first healer it finds', () => {
+  resetState();
+  State.selectedRaid = 'hyjal';
+  const groups = [
+    [mkPlayer('enh','SHAMAN','Enhancement','melee_dps'), mkPlayer('fury','WARRIOR','Fury','melee_dps'), mkPlayer('ret','PALADIN','Retribution','melee_dps'), mkPlayer('rog','ROGUE','Combat','melee_dps'), mkPlayer('bm','HUNTER','Beast Mastery','ranged_dps')],
+    [mkPlayer('arms','WARRIOR','Arms','melee_dps'), mkPlayer('rog2','ROGUE','Combat','melee_dps'), mkPlayer('sv','HUNTER','Survival','ranged_dps')],
+    [mkPlayer('rsham','SHAMAN','Restoration','healer'), mkPlayer('arc','MAGE','Arcane','caster_dps'), mkPlayer('aff','WARLOCK','Affliction','caster_dps'), mkPlayer('fire1','MAGE','Fire','caster_dps'), mkPlayer('hpal','PALADIN','Holy','healer')],
+    [mkPlayer('fire2','MAGE','Fire','caster_dps')],
+    [mkPlayer('tank','PALADIN','Protection','tank'), mkPlayer('rdru','DRUID','Restoration','healer'), mkPlayer('hpri','PRIEST','Holy','healer')],
+  ];
+  groups._roleIdentities = ['melee_dps','melee_dps','caster_dps','caster_dps','tank'];
+  groups._anchors = new Set([groups[4][0]]);
+  const total = () => groups.reduce((s, gr, gi) => s + Optimizer.groupScore(gr, gi, groups, 'max_dps'), 0);
+  const before = total();
+  Optimizer.deIsolate(groups, 'max_dps', 5);
+  const where = n => groups.findIndex(gr => gr.some(p => p.name === n));
+  assertEqual(where('rsham'), 2, 'The caster group keeps its Resto Shaman');
+  assert(groups[where('fire2')].filter(p => p.role === 'caster_dps').length >= 2, 'The lone Fire mage now has a caster peer');
+  assert(total() >= before - 5, 'De-isolation did not wreck the board score (' + before.toFixed(1) + ' -> ' + total().toFixed(1) + ')');
+});
+
 describe('ACCEPTANCE: optimize is idempotent (second click moves nobody)', () => {
   State.optimizerMode = 'max_dps';
   loadRosterAndOptimize(buildRealRoster22(), 'bt');

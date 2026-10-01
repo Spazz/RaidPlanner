@@ -2582,7 +2582,17 @@ const Rulesets = {
       tankAnchorRank: p => p.class === 'PALADIN' ? 0 : p.class === 'WARRIOR' ? 1 : 2,
       meleeWantsWindfury: true,     // a melee group with no shaman is missing WF
       ferociousInspiration: true,   // BM Hunter FI stacks multiplicatively per hunter
+      rosterShapedIdentities: true, // melee/caster group count follows the DPS mix (Optimizer.roleIdentitiesFor)
       specAura: { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA' },
+      // Party-buff providers whose second copy in one group mostly duplicates
+      // the first (totems share elements, LotP/Moonkin/Sanctity don't stack)
+      // while another group goes without. See Optimizer.groupScore.
+      stackPenalty: [
+        { match: p => p.class === 'SHAMAN', weight: 10 },
+        { match: p => p.class === 'PALADIN' && p.spec === 'Retribution', weight: 8 },
+        { match: p => p.class === 'DRUID' && p.spec === 'Feral', weight: 8 },
+        { match: p => p.class === 'DRUID' && p.spec === 'Balance', weight: 4 },
+      ],
     },
     // Class-presence utility checklist (readiness sidebar's "Utility" section,
     // Readiness.utilityCoverage() below) — separate from Buffs/Debuffs because
@@ -5388,6 +5398,10 @@ function mitValueFor(buffId, tank) {
   return 0;
 }
 
+// Totems the scorer credits on top of the shaman's standing element totem
+// (see Optimizer.resolveGroupBuffs).
+const COOLDOWN_TOTEMS = new Set(['MANA_TIDE']);
+
 const ROLE_COMPAT = {
   tank:       ['melee_dps', 'healer'],
   healer:     ['tank', 'caster_dps'],
@@ -5413,14 +5427,21 @@ const Optimizer = {
     }
     // Groups with open requests keep their existing layout. Optimize the remaining
     // groups without consuming the space deliberately left for future sign-ups.
+    // The whole board is arranged with those groups frozen in place, not the
+    // free groups on their own: arranging four free groups as a 4-group raid
+    // collapsed the group identities (a caster group turned "melee"), which
+    // put Ele Shamans, Boomkins and Destro locks into melee-identity groups.
     if (State.preferredSlots.length) {
-      const free = State.groups.map((g, i) => i).filter(i => !PreferredSlots.forGroup(i).length);
-      const pool = free.flatMap(i => State.groups[i]);
-      if (free.length && pool.length) {
-        const groups = this.arrange(pool, free.length, Config.Raids[State.selectedRaid].size, 5, State.optimizerMode);
-        free.forEach((gi, i) => { State.groups[gi] = groups[i]; });
-        State.groups.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
-        State.roster = State.groups.flat();
+      const frozen = State.groups.map((g, i) => PreferredSlots.forGroup(i).length ? g.slice() : null);
+      const free = State.groups.filter((g, i) => !frozen[i]).flat();
+      if (frozen.some(f => !f) && free.length) {
+        const groups = this.arrange(State.groups.flat(), State.groups.length, Config.Raids[State.selectedRaid].size, 5,
+          State.optimizerMode, { frozen });
+        // The freeze only applies to this run; the board keeps _roleIdentities.
+        delete groups._frozen; delete groups._frozenGroups; delete groups._cap;
+        groups.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+        State.groups = groups;
+        State.roster = groups.flat();
       }
       return;
     }
@@ -5484,10 +5505,29 @@ const Optimizer = {
   // Lays out a set of players that fits the raid. Deterministic for a given
   // set: the same players always produce the same board, whatever order or
   // arrangement they arrive in.
-  arrange(players, numGroups, raidSize, max, mode) {
+  //
+  // opts.frozen[gi] (an array of that group's players, or null) seats those
+  // players first, pins them, and caps the group at its current size so its
+  // open seats stay reserved (see _optimizeSeats' preferred-slot path).
+  arrange(players, numGroups, raidSize, max, mode, opts) {
     const pool = this.sortedPool(players);
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
+    groups._cap = groups.map(() => max);
+    groups._frozen = new Set();
+    groups._frozenGroups = new Set();
+    for (const [gi, members] of ((opts && opts.frozen) || []).entries()) {
+      if (!members || gi >= numGroups) continue;
+      groups._frozenGroups.add(gi);
+      for (const p of members) {
+        const i = pool.indexOf(p);
+        if (i < 0) continue;
+        pool.splice(i, 1);
+        groups[gi].push(p);
+        groups._frozen.add(p);
+      }
+      groups._cap[gi] = groups[gi].length;
+    }
 
     // Phase 0: Seat locked players (comp-template placements, backlog #1)
     // into their fixed group before anything else runs, and pull them out of
@@ -5500,7 +5540,7 @@ const Optimizer = {
       const p = pool[i];
       if (!p.locked) continue;
       const gi = p.groupNumber ? p.groupNumber - 1 : -1;
-      if (gi >= 0 && gi < numGroups && groups[gi].length < max) {
+      if (gi >= 0 && gi < numGroups && this.hasRoom(groups, gi, max)) {
         groups[gi].push(p);
         pool.splice(i, 1);
       } else {
@@ -5529,7 +5569,7 @@ const Optimizer = {
     // all-caster/healer group) is worse than a small buff-score inefficiency,
     // but refineSwaps only takes a swap that clears SWAP_THRESHOLD, so an
     // isolated player can survive it if no single swap scores well enough.
-    this.deIsolate(groups);
+    this.deIsolate(groups, mode, max);
 
     // Phase 5: Spread scarce single-point-of-failure providers (ruleset-gated;
     // a no-op unless rules.spreadProviders is set — TBC is untouched). Must
@@ -5841,7 +5881,7 @@ const Optimizer = {
           const toGi = needy[0];
           const toGroup = groups[toGi];
           let displaced = null, displacedIdx = -1;
-          if (toGroup.length >= 5) {
+          if (!this.hasRoom(groups, toGi, 5)) {
             let bestIdx = -1, bestWeight = Infinity;
             for (let pi = 0; pi < toGroup.length; pi++) {
               if (this.isPinned(toGroup[pi], toGi, groups) || matches(toGroup[pi])) continue;
@@ -5948,21 +5988,64 @@ const Optimizer = {
   // unchanged for numGroups===5) to any raid size — Classic's 4-group 20-mans
   // and 8-group 40-mans included. 2-group 10-mans (TBC kara/za) keep their
   // own no-tank-group pattern; the seed pass below falls back to group 0.
-  roleIdentitiesFor(numGroups) {
+  //
+  // With `players` and rules.rosterShapedIdentities (TBC), the melee/caster
+  // split follows the roster's physical vs caster DPS headcount instead, so
+  // a caster-heavy raid gets one melee group and three caster groups rather
+  // than casters and their shamans squeezed into a half-empty "melee" group.
+  roleIdentitiesFor(numGroups, players) {
     if (numGroups <= 2) return ['melee_dps', 'caster_dps'].slice(0, numGroups);
-    const nonTank = numGroups - 1;
-    const meleeGroups = Math.ceil(nonTank / 2);
-    const casterGroups = nonTank - meleeGroups;
-    const ids = [];
-    for (let i = 0; i < meleeGroups; i++) ids.push('melee_dps');
-    for (let i = 0; i < casterGroups; i++) ids.push('caster_dps');
-    ids.push('tank');
+    return this.dpsIdentitiesFor(numGroups - 1, players).concat('tank');
+  },
+
+  // Melee groups first, then caster groups, for `count` DPS-identity groups.
+  dpsIdentitiesFor(count, players) {
+    let meleeGroups = Math.ceil(count / 2);
+    if (players && activeRules().rules.rosterShapedIdentities) {
+      const phys = players.filter(p => p.role === 'melee_dps' || p.role === 'ranged_dps').length;
+      const cast = players.filter(p => p.role === 'caster_dps').length;
+      if (phys + cast > 0) {
+        meleeGroups = Math.round(count * phys / (phys + cast));
+        if (phys > 0) meleeGroups = Math.max(meleeGroups, 1);
+        if (cast > 0) meleeGroups = Math.min(meleeGroups, count - 1);
+      }
+    }
+    meleeGroups = Math.max(0, Math.min(meleeGroups, count));
+    return Array.from({ length: count }, (_, i) => i < meleeGroups ? 'melee_dps' : 'caster_dps');
+  },
+
+  // Identities for a board with groups frozen around open requests: a frozen
+  // group is whatever it already holds (tanks/healers -> the tank group), and
+  // the free groups share the remaining identities among the free players.
+  // Without this, freezing the group that held the tanks left an empty
+  // "tank" identity that the healers and mages then piled into.
+  frozenIdentitiesFor(groups, players) {
+    const ids = groups.map(() => null);
+    let haveTank = false;
+    for (const gi of groups._frozenGroups) {
+      const g = groups[gi];
+      if (!g.length) continue;
+      const support = g.filter(p => p.role === 'tank' || p.role === 'healer').length;
+      const phys = g.filter(p => p.role === 'melee_dps' || p.role === 'ranged_dps').length;
+      const cast = g.filter(p => p.role === 'caster_dps').length;
+      if (!haveTank && support * 2 >= g.length) { ids[gi] = 'tank'; haveTank = true; }
+      else ids[gi] = phys >= cast ? 'melee_dps' : 'caster_dps';
+    }
+    const freeIdx = groups.map((_, gi) => gi).filter(gi => !groups._frozenGroups.has(gi));
+    const freePlayers = players.filter(p => !groups._frozen.has(p));
+    const freeIds = haveTank
+      ? this.dpsIdentitiesFor(freeIdx.length, freePlayers)
+      : this.roleIdentitiesFor(freeIdx.length, freePlayers);
+    freeIdx.forEach((gi, i) => { ids[gi] = freeIds[i] || null; });
     return ids;
   },
 
   // ── PHASE 1: SEED GROUPS ─────────────────────────────────────
   seedGroups(pool, groups, numGroups, raidSize, max, mode) {
-    groups._roleIdentities = this.roleIdentitiesFor(numGroups);
+    const everyone = pool.concat(groups.flat());
+    groups._roleIdentities = groups._frozenGroups && groups._frozenGroups.size
+      ? this.frozenIdentitiesFor(groups, everyone)
+      : this.roleIdentitiesFor(numGroups, everyone);
 
     // Seed the healer/tank group with ONE anchor tank (reference comp: only
     // the Prot Paladin rides with the healers). Every other tank is placed
@@ -5977,7 +6060,7 @@ const Optimizer = {
     const tanks = pool.filter(p => p.role === 'tank').sort((a, b) => anchorRank(a) - anchorRank(b));
     groups._anchors = new Set();
     for (const t of tanks.slice(0, minTanks)) {
-      if (groups[targetIdx].length >= max) break;
+      if (!this.hasRoom(groups, targetIdx, max)) break;
       groups[targetIdx].push(pool.splice(pool.indexOf(t), 1)[0]);
       groups._anchors.add(t);
     }
@@ -6008,7 +6091,7 @@ const Optimizer = {
       let bestGroupIdx = -1;
 
       for (let gi = 0; gi < groups.length; gi++) {
-        if (groups[gi].length >= max) continue;
+        if (!this.hasRoom(groups, gi, max)) continue;
         const base = this.groupScore(groups[gi], gi, groups, mode);
         for (let pi = 0; pi < pool.length; pi++) {
           if (!eligible(pool[pi])) continue;
@@ -6039,8 +6122,15 @@ const Optimizer = {
   // with melee).
   isPinned(player, gi, groups) {
     if (player.locked) return true;
+    if (groups._frozen && groups._frozen.has(player)) return true;
     if (player.role !== 'tank' || !this.isTankGroup(gi, groups)) return false;
     return groups._anchors ? groups._anchors.has(player) : true;
+  },
+
+  // Open seat in group gi: below the raid's party size and, for a group
+  // frozen around an open request, below its reserved size.
+  hasRoom(groups, gi, max) {
+    return groups[gi].length < (groups._cap ? groups._cap[gi] : max);
   },
 
   isTankGroup(gi, groups) {
@@ -6064,7 +6154,11 @@ const Optimizer = {
           if (buff.sourceClass !== 'SHAMAN') continue;
           if (buff.sourceSpec && buff.sourceSpec !== p.spec) continue;
           const el = rules.totemElements[id];
-          if (el) (byElement[el] = byElement[el] || []).push(id);
+          // Mana Tide is a short cooldown dropped over Mana Spring, not a
+          // standing totem: the same shaman provides both. Scoring it as the
+          // water slot made a second Resto Shaman look like it "unlocked"
+          // Mana Spring, so two piled into the tank group.
+          if (el && !COOLDOWN_TOTEMS.has(id)) (byElement[el] = byElement[el] || []).push(id);
           else chosen.add(id); // shaman passives (e.g. Unleashed Rage)
         }
         for (const el of Object.keys(byElement)) {
@@ -6172,6 +6266,10 @@ const Optimizer = {
     //    there is not).
     if (isTank) {
       score += Math.min(healerCount, 3) * 10 * cfg.structure;
+      // Reference comp: three healers ride with the tanks. A fourth only
+      // stays for the mana totems it receives, which left a 2-man caster
+      // group beside a 5-man healer pile; past three, they move on.
+      score -= Math.max(0, healerCount - 3) * 15 * cfg.structure;
       for (const p of group) {
         if (p.role === 'melee_dps' || p.role === 'caster_dps') score -= 12 * cfg.structure;
       }
@@ -6203,6 +6301,19 @@ const Optimizer = {
         else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) score += 6 * cfg.cohesion;
         else score -= 12 * cfg.cohesion;
       }
+      // A tank in a caster group is off-role there: without this, Blood Pact's
+      // mitigation value alone pulled spare tanks into the warlock group. A
+      // structural rule, not a cohesion preference, so it holds in every mode;
+      // a healer trades out of the tank group instead.
+      if (roleIdentity === 'caster_dps') score -= 15 * cfg.structure * tanks.length;
+    }
+
+    // Duplicate providers (rules.stackPenalty): the second shaman/Ret/Feral in
+    // a group adds only leftovers, so the stack must outbid a group that has
+    // none. Triangular, so a third copy costs more than the second.
+    for (const { match, weight } of rules.rules.stackPenalty || []) {
+      const n = group.reduce((c, p) => c + (match(p) ? 1 : 0), 0);
+      if (n > 1) score -= weight * (n * (n - 1) / 2) * cfg.structure;
     }
 
     // Spreading pressure — convex penalty so the marginal cost of joining a
@@ -6364,7 +6475,7 @@ const Optimizer = {
           const p = groups[gi][pi];
           if (this.isPinned(p, gi, groups)) continue;
           for (let gj = 0; gj < groups.length; gj++) {
-            if (gj === gi || groups[gj].length >= max) continue;
+            if (gj === gi || !this.hasRoom(groups, gj, max)) continue;
             groups[gi].splice(pi, 1);
             groups[gj].push(p);
             const gain = total() - before;
@@ -6451,11 +6562,25 @@ const Optimizer = {
 
   // ── PHASE 4: DE-ISOLATION ─────────────────────────────────────
   // Finds any melee_dps/caster_dps player with zero role-compatible peers in
-  // their own group and swaps them for an opposite-family player elsewhere —
-  // preferring a partner who is themselves mismatched (a caster stuck in a
-  // melee-heavy group, etc.), since that swap fixes both sides at once.
-  deIsolate(groups) {
+  // their own group and fixes it with whichever swap or open-seat move costs
+  // the least groupScore. Candidates that don't strand someone else win
+  // first; among those, the score decides — an unscored pick used to trade a
+  // caster group's only Resto Shaman for a lone mage, wrecking both groups.
+  deIsolate(groups, mode, max = 5) {
     const family = role => this.roleFamily(role);
+    const score = (gi) => this.groupScore(groups[gi], gi, groups, mode);
+    const isolated = (group) => group.some((x, xi) =>
+      (x.role === 'melee_dps' || x.role === 'caster_dps') &&
+      !group.some((y, yi) => yi !== xi && family(y.role) === family(x.role)));
+    // Apply a change, measure it, undo it. Returns { clean, delta }.
+    const trial = (gi, gj, apply, undo) => {
+      const before = score(gi) + score(gj);
+      apply();
+      const res = { clean: !isolated(groups[gi]) && !isolated(groups[gj]), delta: score(gi) + score(gj) - before };
+      undo();
+      return res;
+    };
+    const better = (a, b) => !b || (a.clean !== b.clean ? a.clean : a.delta > b.delta);
 
     // A single pass can fix one isolated player by pulling their swap
     // partner out of ITS group — which can leave a different player newly
@@ -6473,45 +6598,43 @@ const Optimizer = {
           const hasPeer = groups[gi].some((x, xi) => xi !== pi && family(x.role) === pFam);
           if (hasPeer) continue;
 
-          let bestGj = -1, bestPj = -1, bestScore = -Infinity;
+          if (this.isPinned(p, gi, groups)) continue;
+          let best = null;
+          const consider = (cand) => { if (better(cand, best)) best = cand; };
           for (let gj = 0; gj < groups.length; gj++) {
             if (gj === gi) continue;
-            for (let pj = 0; pj < groups[gj].length; pj++) {
-              const q = groups[gj][pj];
+            const G = groups[gi], H = groups[gj];
 
+            // Move p into an open seat beside a same-family peer.
+            if (this.hasRoom(groups, gj, max) && H.some(x => family(x.role) === pFam)) {
+              const r = trial(gi, gj, () => { G.splice(pi, 1); H.push(p); }, () => { H.pop(); G.splice(pi, 0, p); });
+              consider({ ...r, apply: () => { G.splice(pi, 1); H.push(p); } });
+            }
+
+            for (let pj = 0; pj < H.length; pj++) {
+              const q = H[pj];
               // Invariant outranks fixing DPS isolation: never pull a tank
               // out of the tank-identity group.
               if (this.isPinned(q, gj, groups)) continue;
 
-              // p only needs gj to already have OTHER pFam members before q
-              // leaves — q's own family is irrelevant to whether this fixes
-              // p. (A same-family q works too: pulling one melee out of a
-              // group that has three, to rescue an isolated melee elsewhere,
-              // is exactly as valid as trading with an opposite-family q.)
-              const gjWithoutQ = groups[gj].filter((x, xj) => xj !== pj);
-              const pHasPeerAfter = gjWithoutQ.some(x => family(x.role) === pFam);
-              if (!pHasPeerAfter) continue; // must actually resolve p's isolation
-
-              // Prefer swaps that don't just relocate the isolation onto q.
-              // Check q's family against gi's OTHER members only (excluding
-              // p, who is leaving) — q trivially "matches itself", so q must
-              // never be included in the set it's being checked against.
-              const qFam = family(q.role);
-              let qOk = true;
-              if (q.role === 'melee_dps' || q.role === 'caster_dps') {
-                const giWithoutP = groups[gi].filter((x, xi) => xi !== pi);
-                qOk = giWithoutP.some(x => family(x.role) === qFam);
+              // Move a same-family peer q into p's open seat.
+              if (this.hasRoom(groups, gi, max) && family(q.role) === pFam) {
+                const r = trial(gi, gj, () => { H.splice(pj, 1); G.push(q); }, () => { G.pop(); H.splice(pj, 0, q); });
+                consider({ ...r, apply: () => { H.splice(pj, 1); G.push(q); } });
               }
 
-              const score = qOk ? 2 : 1;
-              if (score > bestScore) { bestScore = score; bestGj = gj; bestPj = pj; }
+              // Swap p with q: p only needs gj to keep OTHER pFam members
+              // once q leaves — q's own family is irrelevant to fixing p.
+              const pHasPeerAfter = H.some((x, xj) => xj !== pj && family(x.role) === pFam);
+              if (!pHasPeerAfter) continue;
+              const swap = () => { G[pi] = q; H[pj] = p; };
+              const r = trial(gi, gj, swap, () => { G[pi] = p; H[pj] = q; });
+              consider({ ...r, apply: swap });
             }
           }
 
-          if (bestGj >= 0) {
-            const tmp = groups[gi][pi];
-            groups[gi][pi] = groups[bestGj][bestPj];
-            groups[bestGj][bestPj] = tmp;
+          if (best) {
+            best.apply();
             swapped = true;
           }
         }
