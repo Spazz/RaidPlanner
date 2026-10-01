@@ -5412,10 +5412,16 @@ const ROLE_COMPAT = {
 
 const Optimizer = {
   // Every Optimize replaces the previous run's suggested Open slots: drop
-  // them, lay out the seats, then suggest for whatever seats are still empty.
+  // them and lay out the real players, then suggest the specs the raid is
+  // missing (OpenSlots.choose) and seat each one in the group it belongs in,
+  // moving one seated player out to an empty seat when that group is full
+  // (a suggested Disc Priest with the MT and healers, not wherever a seat
+  // happened to be empty). Any seat still empty after that (inside a group
+  // frozen by the leader's own request) is filled in place.
   optimize() {
     State.preferredSlots = PreferredSlots.manual();
     this._optimizeSeats();
+    OpenSlots.seat(OpenSlots.choose());
     OpenSlots.fill();
   },
 
@@ -6265,11 +6271,11 @@ const Optimizer = {
     //    riding with the tanks is fine; a lone Rogue receiving nothing
     //    there is not).
     if (isTank) {
-      score += Math.min(healerCount, 3) * 10 * cfg.structure;
-      // Reference comp: three healers ride with the tanks. A fourth only
-      // stays for the mana totems it receives, which left a 2-man caster
-      // group beside a 5-man healer pile; past three, they move on.
-      score -= Math.max(0, healerCount - 3) * 15 * cfg.structure;
+      score += Math.min(healerCount, 4) * 10 * cfg.structure;
+      // The MT group holds up to four healers (the MT plus a healer party).
+      // A fifth only stays for the mana totems it receives; past four, they
+      // move on.
+      score -= Math.max(0, healerCount - 4) * 15 * cfg.structure;
       for (const p of group) {
         if (p.role === 'melee_dps' || p.role === 'caster_dps') score -= 12 * cfg.structure;
       }
@@ -6303,9 +6309,10 @@ const Optimizer = {
       }
       // A tank in a caster group is off-role there: without this, Blood Pact's
       // mitigation value alone pulled spare tanks into the warlock group. A
-      // structural rule, not a cohesion preference, so it holds in every mode;
-      // a healer trades out of the tank group instead.
-      if (roleIdentity === 'caster_dps') score -= 15 * cfg.structure * tanks.length;
+      // structural rule, not a cohesion preference, so it holds in every mode,
+      // and it outweighs the tank group's pull on a 4th healer: that healer
+      // trades out to the casters instead.
+      if (roleIdentity === 'caster_dps') score -= 25 * cfg.structure * tanks.length;
     }
 
     // Duplicate providers (rules.stackPenalty): the second shaman/Ret/Feral in
@@ -6511,7 +6518,7 @@ const Optimizer = {
           if (gj === tIdx) continue;
           for (let pj = 0; pj < groups[gj].length; pj++) {
             const q = groups[gj][pj];
-            if (q.role === 'tank') continue;
+            if (q.role === 'tank' || this.isPinned(q, gj, groups)) continue;
             const before = this.groupScore(groups[tIdx], tIdx, groups, mode)
                          + this.groupScore(groups[gj], gj, groups, mode);
             groups[tIdx][pi] = q;
@@ -6661,9 +6668,184 @@ const OpenSlots = {
     return Object.values(RandomRoster._buildSpecsByRole(faction)).flat();
   },
 
-  // Fills empty seats with suggested slots. Returns how many were added.
+  // Raid-level worth of a suggested spec on top of its party buffs: it covers
+  // a raid debuff or utility nobody brings yet (Expose Weakness, Power
+  // Infusion, ...), and it costs a little for every copy of its spec already
+  // in the raid and for piling onto a class the raid already has plenty of.
+  // groupScore alone only sees party buffs, so a Resto Shaman (Windfury for
+  // one Arms Warrior) beat a Disc Priest and a second Ret beat a Survival Hunter.
+  // A raid debuff is worth what a party buff of the same value would be to
+  // every raid member it actually helps. `tier` is on the DPS_VALUE scale
+  // (Trueshot Aura's 125 AP = 3-4 per player), `who` names the players it
+  // helps: 'physical' (melee/hunters), 'caster', a spell school, or 'tank'
+  // (defensive: tier per tank, mitigation-weighted). Unlisted debuffs (other
+  // rulesets) count tier 2 for every DPS. Expose Weakness (~225 AP to every
+  // physical attacker) is why a Survival Hunter beats a Marksmanship one
+  // whose Trueshot Aura only reaches its own party.
+  DEBUFF_VALUE: {
+    EXPOSE_WEAKNESS: { tier: 6, who: 'physical' }, SUNDER_ARMOR: { tier: 6, who: 'physical' },
+    EXPOSE_ARMOR: { tier: 6, who: 'physical' }, BLOOD_FRENZY: { tier: 4, who: 'physical' },
+    JUDGEMENT_CRUSADER: { tier: 3, who: 'physical' }, FAERIE_FIRE_BALANCE: { tier: 3, who: 'physical' },
+    FAERIE_FIRE_FERAL: { tier: 2, who: 'physical' }, CURSE_RECKLESSNESS: { tier: 3, who: 'physical' },
+    HUNTERS_MARK: { tier: 3, who: 'physical' }, MANGLE: { tier: 1, who: 'physical' }, HEMORRHAGE: { tier: 1, who: 'physical' },
+    CURSE_ELEMENTS: { tier: 6, who: 'caster' }, MISERY: { tier: 4, who: 'caster' }, JUDGEMENT_WISDOM: { tier: 1, who: 'caster' },
+    IMPROVED_SHADOW_BOLT: { tier: 6, who: 'shadow' }, SHADOW_WEAVING: { tier: 4, who: 'shadow' },
+    IMPROVED_SCORCH: { tier: 6, who: 'fire' }, WINTERS_CHILL: { tier: 3, who: 'frost' }, STORMSTRIKE: { tier: 3, who: 'nature' },
+    DEMORALIZING_SHOUT: { tier: 2, who: 'tank' }, DEMORALIZING_ROAR: { tier: 2, who: 'tank' },
+    CURSE_WEAKNESS: { tier: 2, who: 'tank' }, THUNDER_CLAP: { tier: 2, who: 'tank' },
+    SHADOW_EMBRACE: { tier: 1, who: 'tank' }, INSECT_SWARM: { tier: 1, who: 'tank' },
+    SCORPID_STING: { tier: 1, who: 'tank' }, JUDGEMENT_LIGHT: { tier: 1, who: 'tank' },
+  },
+  // Who a school debuff helps: the specs that mostly cast that school.
+  DEBUFF_SCHOOLS: {
+    shadow: p => p.class === 'WARLOCK' || (p.class === 'PRIEST' && p.spec === 'Shadow'),
+    fire: p => p.class === 'MAGE' && p.spec === 'Fire',
+    frost: p => p.class === 'MAGE' && p.spec === 'Frost',
+    nature: p => p.class === 'SHAMAN' && p.spec === 'Elemental' || (p.class === 'DRUID' && p.spec === 'Balance'),
+  },
+  UTILITY_BONUS: 6,
+  SPEC_REPEAT: 6,
+  CLASS_CROWD: 4,
+  CLASS_CROWD_FREE: 5,
+  // Debuffs every member of a class can apply at a base rank; the listed
+  // spec only improves them, so with that class present it's worth half.
+  BASELINE_DEBUFFS: { HUNTERS_MARK: 'HUNTER' },
+  _raidValue(candidate, raid, mode) {
+    const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
+    const withCandidate = raid.concat(candidate);
+    const helps = {
+      physical: p => p.role === 'melee_dps' || p.role === 'ranged_dps',
+      caster: p => p.role === 'caster_dps',
+      all: p => p.role !== 'tank' && p.role !== 'healer',
+      ...this.DEBUFF_SCHOOLS,
+    };
+    const weightOf = (who) => who === 'tank'
+      ? withCandidate.filter(p => p.role === 'tank').length * cfg.mit * 4
+      : withCandidate.filter(helps[who] || helps.all).reduce((sum, p) => sum + dpsWeightFor(p), 0) * cfg.dps;
+    let v = 0;
+    const covered = getRaidDebuffCoverage([raid]);
+    for (const [id, d] of Object.entries(Config.Debuffs || {})) {
+      if (covered.has(id) || !canProvideBuff(d, candidate)) continue;
+      if (d.supersededBy && covered.has(d.supersededBy)) continue;
+      if ((d.competesWith || []).some(other => covered.has(other))) continue;
+      const { tier, who } = this.DEBUFF_VALUE[id] || { tier: 2, who: 'all' };
+      const baseClass = this.BASELINE_DEBUFFS[id];
+      const share = baseClass && raid.some(p => p.class === baseClass) ? 0.5 : 1;
+      v += tier * share * weightOf(who);
+    }
+    for (const u of Readiness.utilityCoverage([raid], [])) {
+      if (u.covered) continue;
+      if ((Config.Utilities[u.id].providers || []).some(prov => Readiness._providerMatches(prov, candidate))) v += this.UTILITY_BONUS;
+    }
+    v -= this.SPEC_REPEAT * raid.filter(p => p.class === candidate.class && p.spec === candidate.spec).length;
+    v -= this.CLASS_CROWD * Math.max(0, raid.filter(p => p.class === candidate.class).length - this.CLASS_CROWD_FREE + 1);
+    return v;
+  },
+
+  // The specs to suggest for the raid's open seats outside groups frozen by
+  // the leader's own requests: tank/healer floors first, then whatever adds
+  // the most (party-buff gain in its group + _raidValue), one at a time so
+  // each pick sees the last. A pick may go into a full group when moving one
+  // seated player out to an empty seat costs the real raid less than the pick
+  // gains there; that move is priced on real players only, so a suggestion
+  // never takes Windfury from someone who has it for a player who may never
+  // sign up. Returns picks as { class, spec, role, group, move }.
+  choose() {
+    if (!GameVersions[State.gameVersion].modeled) return [];
+    const raid = Config.Raids[State.selectedRaid];
+    if (!raid || !State.groups.length) return [];
+    const max = RosterEdit.MAX_GROUP_SIZE;
+    const mode = State.optimizerMode || 'max_dps';
+    const frozen = State.groups.map((g, gi) => PreferredSlots.forGroup(gi).length > 0);
+    const requests = State.preferredSlots.map(p => ({ ...p, role: RosterEdit.RoleForSpec(p.class, p.spec) }));
+    const seats = State.groups.reduce((n, g, gi) => n + (frozen[gi] ? 0 : Math.max(0, max - g.length)), 0);
+    let open = Math.min(seats, raid.size - State.groups.flat().length - requests.length);
+    if (open <= 0) return [];
+
+    const board = State.groups.map(g => [...g]);
+    board._roleIdentities = State.groups._roleIdentities;
+    board._anchors = State.groups._anchors;
+    const score = (b, gi, group = b[gi]) => Optimizer.groupScore(group, gi, b, mode);
+    // Where a player (displaced, or a suggestion) may sit without breaking
+    // group conventions: the tank group takes healers and tanks only for
+    // suggestions (a displaced Feral tank stays with melee), spare tanks and
+    // physical DPS go to melee groups, casters and healers to caster groups.
+    const fits = (m, gj) => {
+      const id = (board._roleIdentities || [])[gj];
+      if (id === 'tank') return m.role === 'healer' || (m.role === 'tank' && !board.flat().includes(m));
+      if (id === 'caster_dps') return m.role === 'caster_dps' || m.role === 'healer';
+      return m.role === 'melee_dps' || m.role === 'ranged_dps' || m.role === 'tank';
+    };
+    // Cheapest way to free a seat in full group gi: move one real, unpinned
+    // player to a non-frozen group with room. cost = real score lost.
+    const roomIn = (gi) => {
+      let best = null;
+      for (const m of board[gi]) {
+        if (m.openSlot || Optimizer.isPinned(m, gi, board)) continue;
+        const without = board[gi].filter(p => p !== m);
+        for (let gj = 0; gj < board.length; gj++) {
+          if (gj === gi || frozen[gj] || board[gj].length >= max || !fits(m, gj)) continue;
+          const cost = score(board, gi) + score(board, gj) - score(board, gi, without) - score(board, gj, [...board[gj], m]);
+          if (!best || cost < best.cost) best = { m, gj, without, cost };
+        }
+      }
+      return best;
+    };
+    const floors = Optimizer.floorsFor(raid.size);
+    const everyone = () => board.flat().concat(requests);
+    const roleCount = (role) => everyone().filter(p => p.role === role).length;
+    const candidates = this.candidates();
+    const picks = [];
+    while (open > 0) {
+      const role = roleCount('tank') < floors.tank ? 'tank'
+        : roleCount('healer') < floors.healer ? 'healer' : null;
+      const pool = candidates.filter(c => role ? c.role === role : (c.role !== 'tank' && c.role !== 'healer'));
+      const rooms = board.map((g, gi) => (!frozen[gi] && g.length >= max) ? roomIn(gi) : null);
+      let best = null;
+      for (const candidate of pool) {
+        const raidValue = this._raidValue(candidate, everyone(), mode);
+        for (let gi = 0; gi < board.length; gi++) {
+          if (frozen[gi] || !fits(candidate, gi)) continue;
+          const room = board[gi].length >= max ? rooms[gi] : null;
+          if (board[gi].length >= max && !room) continue;
+          const base = room ? room.without : board[gi];
+          const gain = score(board, gi, [...base, candidate]) - score(board, gi, base) - (room ? room.cost : 0) + raidValue;
+          if (!best || gain > best.gain) best = { candidate, gi, room, gain };
+        }
+      }
+      if (!best) break;
+      const { candidate, gi, room } = best;
+      if (room) {
+        board[gi].splice(board[gi].indexOf(room.m), 1);
+        board[room.gj].push(room.m);
+      }
+      board[gi].push({ ...candidate, uid: 'open-' + picks.length, name: '', openSlot: true });
+      picks.push({ class: candidate.class, spec: candidate.spec, role: candidate.role, group: gi,
+        move: room ? { player: room.m, to: room.gj } : null });
+      open--;
+    }
+    return picks;
+  },
+
+  // Applies choose()'s picks: each becomes an auto Open slot in its group,
+  // after moving out the seated player it made room with.
+  seat(picks) {
+    for (const pick of picks) {
+      if (pick.move) {
+        const { player, to } = pick.move;
+        const from = State.groups.findIndex(g => g.includes(player));
+        if (from >= 0) State.groups[from].splice(State.groups[from].indexOf(player), 1);
+        State.groups[to].push(player);
+        player.groupNumber = to + 1;
+      }
+      State.preferredSlots.push({ group: pick.group, class: pick.class, spec: pick.spec, auto: true });
+    }
+    State.roster = State.groups.flat();
+  },
+
+  // Fills seats still empty after Optimize's own suggestions (inside groups
+  // frozen by the leader's requests) in place. Returns how many were added.
   fill() {
-    State.preferredSlots = PreferredSlots.manual();
     if (!GameVersions[State.gameVersion].modeled) return 0;
     const raid = Config.Raids[State.selectedRaid];
     if (!raid || !State.groups.length) return 0;

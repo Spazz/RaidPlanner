@@ -1718,8 +1718,11 @@ describe('ACCEPTANCE: real 22-man roster follows the reference comp rules (max_d
   sameGroup('Zzaps', 'Roost', 'Boomkin with Ele Shaman');
   sameGroup('Daolith', 'Roost', 'Destro lock with Ele Shaman');
   sameGroup('Gnope', 'Roost', 'Second Destro lock with Ele Shaman');
-  sameGroup('Soulavenger', 'Roost', 'Aff lock fills the Ele Shaman caster group');
-  assertEqual(grp('Roost').length, 5, 'Ele caster group is full');
+  // 2026-10-01: the MT group may hold 4 healers, so this 22-man has three
+  // empty seats on the caster side; the Ele group's fifth seat is either the
+  // Aff lock or a suggested Open slot.
+  const seatsWithOpens = gi => State.groups[gi].length + State.preferredSlots.filter(s => s.group === gi).length;
+  assertEqual(seatsWithOpens(g('Roost')), 5, 'Ele caster group is full, counting suggested Opens');
 
   // Mages: together, with one healer (reference comp G3)
   sameGroup('Daxxter', 'Terani', 'Both Arcane mages together');
@@ -1727,7 +1730,8 @@ describe('ACCEPTANCE: real 22-man roster follows the reference comp rules (max_d
 
   // Tank group: Prot Pal + exactly three healers, no DPS
   const tankGroup = grp('Starck');
-  assertEqual(tankGroup.filter(p => p.role === 'healer').length, 3, 'Exactly three healers ride with the Prot Paladin');
+  const tankHealers = tankGroup.filter(p => p.role === 'healer').length;
+  assert(tankHealers >= 3 && tankHealers <= 4, 'Three or four healers ride with the Prot Paladin (had ' + tankHealers + ')');
   assert(tankGroup.some(p => p.class === 'SHAMAN' && p.spec === 'Restoration'), 'One Resto Shaman rides with the tank group');
   sameGroup('kimmjungheal', 'Starck', 'Resto Druid with the Prot Paladin');
   assert(!tankGroup.some(p => p.role.endsWith('dps')), 'No DPS parked in the healer/tank group');
@@ -1830,6 +1834,38 @@ for (const mode of ['max_dps', 'balanced']) {
     const first = State.groups.map(gr => gr.map(p => p.name).sort().join(',')).join(' | ');
     Optimizer.optimize();
     assertEqual(State.groups.map(gr => gr.map(p => p.name).sort().join(',')).join(' | '), first, 'A second Optimize moves nobody');
+  });
+}
+
+// Same event loaded fresh (2026-10-01, Alliesha back to Prot): 3 empty seats.
+// Suggestions used to be Resto Shaman + Enh Shaman + Ret, all crammed into
+// the one group with room, because only party buffs were scored.
+for (const mode of ['max_dps', 'tank_mit', 'balanced', 'relaxed']) {
+  describe('OpenSlots: Hyjal 22-man suggests what the raid lacks (' + mode + ')', () => {
+    State.optimizerMode = mode;
+    const roster = buildHyjalRoster22().map(p => p.name === 'Alliesha' ? mkPlayer('Alliesha','PALADIN','Protection','tank') : p);
+    loadRosterAndOptimize(roster, 'hyjal');
+    const slots = State.preferredSlots.filter(s => s.auto);
+    const has = (cls, spec) => slots.some(s => s.class === cls && s.spec === spec);
+    assertEqual(slots.length, 3, 'one suggestion per empty seat');
+    assert(has('PRIEST', 'Discipline'), 'Disc Priest suggested (Power Infusion + Misery missing)');
+    assert(has('HUNTER', 'Survival'), 'Survival Hunter suggested (Expose Weakness missing)');
+    assert(!has('SHAMAN', 'Restoration'), 'no Resto Shaman suggested on a 4-shaman raid');
+    assert(!has('PALADIN', 'Retribution'), 'no second Ret');
+    for (const s of slots) {
+      const gr = State.groups[s.group];
+      const role = PP.RosterEdit.RoleForSpec(s.class, s.spec);
+      const physical = gr.filter(p => p.role === 'melee_dps' || p.role === 'ranged_dps').length;
+      const casters = gr.filter(p => p.role === 'caster_dps').length;
+      if (role === 'ranged_dps' || role === 'melee_dps') assert(physical >= casters, s.spec + ' ' + s.class + ' suggested into a physical group (G' + (s.group + 1) + ')');
+    }
+    const mt = State.groups.find(gr => gr.some(p => p.name === 'Alliesha'));
+    assert(mt.some(p => p.name === 'Voctave'), 'Resto Shaman rides with the MT');
+    const key = () => State.groups.map(gr => gr.map(p => p.name).sort().join(',')).join('|') + '#' +
+      State.preferredSlots.map(s => s.group + s.class + s.spec).sort().join(',');
+    const first = key();
+    Optimizer.optimize();
+    assertEqual(key(), first, 'a second Optimize gives the same board and suggestions');
   });
 }
 
