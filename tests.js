@@ -2455,18 +2455,18 @@ describe('esc(): matches PrintSheet\'s local DOM-free escaper (no drift between 
   let payload = {title:'Fixture event',startTime:1790377200,signUps:[
     {name:'FirstMage',className:'Mage',specName:'Arcane'},
     {name:'SecondMage',className:'Mage',specName:'Fire'}]};
-  let banner = null;
+  let lastToast = '';
   const context = { State, Import, PlanStore:PP.PlanStore, NO_ROSTER_NAME,
     localStorage:storage, document:{getElementById(){return {}; }},
     initGroups:()=>0, renderGroups:()=>PP.PlanStore.save(storage,PP.PlanStore.capture()),
-    showToast:()=>{}, rememberImport:()=>'', fetchRosterJson:async()=>JSON.stringify(payload),
-    RaidHelperSync:{hideBanner(){banner=null;},showBanner(diff){banner=diff;}} };
+    showToast:(m)=>{lastToast=m;}, rememberImport:()=>'', fetchRosterJson:async()=>JSON.stringify(payload) };
   const normalizeStart = html.indexOf('function normalizeImportSource(');
   const normalizeEnd = html.indexOf('// Fetch roster JSON',normalizeStart);
   const importStart = html.indexOf('async function importFromText(');
   const importEnd = html.indexOf('// ── RAID-HELPER RE-SYNC',importStart);
+  const syncEnd = html.indexOf("document.getElementById('btn-refresh').addEventListener",importEnd);
   vm.createContext(context);
-  vm.runInContext(html.slice(normalizeStart,normalizeEnd)+html.slice(importStart,importEnd),context);
+  vm.runInContext(html.slice(normalizeStart,normalizeEnd)+html.slice(importStart,syncEnd),context);
   resetState();
   assert(await context.importFromText('123456789'), 'event ID import succeeds');
   assert(State.rosterName.startsWith('Fixture event'), 'event title used');
@@ -2475,20 +2475,22 @@ describe('esc(): matches PrintSheet\'s local DOM-free escaper (no drift between 
   State.roster=State.groups.flat(); State.rosterName='Custom event name';
   PP.PlanStore.save(storage,PP.PlanStore.capture());
   const layout=JSON.stringify(State.groups);
+  PP.PlanSession.previous=null; PP.PlanSession.undo=[]; PP.PlanSession.ready=true;
+  PP.PlanSession.observe();
   payload.signUps.push({name:'NewMage',className:'Mage',specName:'Frost'});
   assert(await context.importFromText('https://raid-helper.dev/event/123456789'), 'same event URL reopens');
+  PP.PlanSession.observe();
   assertEqual(JSON.stringify(State.groups),layout,'reimport preserves edited groups');
   assertEqual(State.rosterName,'Custom event name','custom name preserved');
   assertEqual(PP.PlanStore.read(storage).length,1,'same event does not duplicate plan');
-  assert(banner && banner.added.length===1,'new signup offered through refresh banner');
-  const oldRoster=JSON.stringify(State.groups);
-  PP.PlanSession.previous=null; PP.PlanSession.undo=[]; PP.PlanSession.ready=true;
-  PP.PlanSession.observe();
-  Import.applyRaidHelperSync(banner); PP.PlanSession.observe();
-  assertEqual(State.bench.length,1,'refresh puts new signup on bench');
+  assertEqual(State.bench.map(p=>p.name).join(),'NewMage','reimport pulls the new signup onto the bench without a Refresh click');
+  assert(lastToast.startsWith('Reopened your plan: 1 new sign-up'),'reimport toast reports what changed');
+  assertEqual(PP.PlanStore.read(storage)[0].data.bench.length,1,'merged sign-ups are saved with the plan');
   PP.PlanSession.undoLast(); PP.PlanSession.observe();
-  assertEqual(State.bench.length,0,'refresh can be undone');
-  assertEqual(JSON.stringify(State.groups),oldRoster,'refresh undo keeps original layout');
+  assertEqual(State.bench.length,0,'reimport merge can be undone');
+  assertEqual(JSON.stringify(State.groups),layout,'undo keeps original layout');
+  assert(await context.importFromText('123456789'), 'unchanged event reopens');
+  assert(lastToast.startsWith('Reopened your plan. Up to date.'),'unchanged reimport says it is current');
   PP.PlanSession.ready=false;
   console.log(`Results: ${passed} passed, ${failed} failed, ${totalTests} total`);
 if (failed === 0) {

@@ -10739,13 +10739,12 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   if (src.eventId && Array.isArray(metadata.signUps)) {
     let existing;
     try { existing = PlanStore.read(localStorage).find(p => p.data.planId === 'event:' + src.eventId && (p.data.gameVersion || 'tbc') === State.gameVersion); } catch {}
+    // Pasting the link again means "give me this event now": reopen the plan
+    // and merge the sign-ups just fetched, so edited seats survive and the
+    // roster is current without a second click on Refresh.
     if (existing) {
       PlanStore.restore(existing.data);
-      initGroups();
-      renderGroups();
-      const diff = Import.diffRaidHelperSignUps(jsonStr);
-      if (Import.hasRaidHelperChanges(diff)) RaidHelperSync.showBanner(diff);
-      showToast('Reopened your plan. Refresh sign-ups to apply new changes.');
+      RaidHelperSync.apply(Import.diffRaidHelperSignUps(jsonStr), 'Reopened your plan');
       return true;
     }
   }
@@ -10906,17 +10905,24 @@ const RaidHelperSync = {
     showToast('Checking Raid-Helper...');
     const diff = await this.fetchDiff((msg, isError) => { if (isError) showToast(msg); });
     if (!diff) return;
+    this.apply(diff, 'Refreshed');
+  },
+
+  // Merge a diff into the plan (untouched seats stay put) and report it.
+  // Shared by Refresh and by re-pasting the link of an event that already
+  // has a plan; `lead` opens the toast.
+  apply(diff, lead) {
     this.hideBanner();
-    if (!Import.hasRaidHelperChanges(diff)) {
-      showToast(diff.promoted.length
-        ? `Up to date. ${this.describe(diff)}, swap them in from the bench`
-        : 'Roster is up to date with Raid-Helper');
-      return;
-    }
-    const counts = Import.applyRaidHelperSync(diff);
+    const counts = Import.hasRaidHelperChanges(diff) ? Import.applyRaidHelperSync(diff) : null;
     initGroups();
     renderGroups();
-    showToast('Refreshed: ' + this.describe(counts));
+    if (!counts) {
+      showToast(diff.promoted.length
+        ? `${lead}. Up to date. ${this.describe(diff)}, swap them in from the bench`
+        : `${lead}. Roster is up to date with Raid-Helper`);
+      return;
+    }
+    showToast(`${lead}: ${this.describe(counts)}`);
     if (counts.backupSwapReady && counts.backupSwapReady.length) this.showBackupBanner(counts.backupSwapReady);
   },
 
@@ -11325,7 +11331,8 @@ function renderLandingSavedList() {
     showView('app');
   });
 
-  document.getElementById('btn-resume').addEventListener('click', () => showView('app'));
+  // The plan restored at page load may be hours old, so look at its event again.
+  document.getElementById('btn-resume').addEventListener('click', () => { showView('app'); RaidHelperSync.check(); });
   document.getElementById('btn-back-import').addEventListener('click', () => showView('landing'));
 })();
 
