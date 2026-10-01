@@ -415,7 +415,7 @@ check('split(): every sign-up lands in exactly one raid, none dropped or duplica
 
 check('split(): each raid meets the raid-size tank/healer floors when supply allows', () => {
   const raid = Config.Raids['bt']; // size 25
-  const floors = Config.RaidFloors[raid.size]; // {tank:2, healer:6}
+  const floors = Config.RaidFloors[raid.size]; // {tank:2, healer:5}
   const players = buildOverflowRoster(floors.tank * 2 + 2, floors.healer * 2 + 2, 40, [
     { class: 'ROGUE', spec: 'Combat', role: 'melee_dps' }, { class: 'HUNTER', spec: 'Survival', role: 'ranged_dps' }, { class: 'MAGE', spec: 'Arcane', role: 'caster_dps' },
   ]);

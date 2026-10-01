@@ -1094,7 +1094,7 @@ describe('Import: sign-ups beyond the raid size are benched, not dropped', () =>
   const seatedTanks = State.roster.filter(p => p.role === 'tank').length;
   const seatedHealers = State.roster.filter(p => p.role === 'healer').length;
   assert(seatedTanks >= 2, 'At least 2 tanks are seated (floor)');
-  assert(seatedHealers >= 6, 'At least 6 healers are seated (floor)');
+  assert(seatedHealers >= 5, 'At least 5 healers are seated (floor)');
   assert(State.bench.every(p => p.groupNumber === 0), 'Benched players carry groupNumber 0');
   assert(State.groups.every(g => g.length <= 5), 'No group holds more than 5 after optimize');
 });
@@ -1891,14 +1891,14 @@ describe('ACCEPTANCE: shared 25-man roster follows the reference comp rules (max
 // ════════════════════════════════════════════════════════════════
 // OVERFLOW BENCHING: ROLE FLOORS + MARGINAL VALUE
 // ════════════════════════════════════════════════════════════════
-describe('Floors: 25-man requires 2 tanks and 6 healers, 10-man 2 and 3', () => {
+describe('Floors: 25-man requires 2 tanks and 5 healers, 10-man 2 and 3', () => {
   assertEqual(Optimizer.floorsFor(25).tank, 2, '25-man tank floor');
-  assertEqual(Optimizer.floorsFor(25).healer, 6, '25-man healer floor');
+  assertEqual(Optimizer.floorsFor(25).healer, 5, '25-man healer floor');
   assertEqual(Optimizer.floorsFor(10).tank, 2, '10-man tank floor');
   assertEqual(Optimizer.floorsFor(10).healer, 3, '10-man healer floor');
 });
 
-describe('Overflow: healer floor is filled before any DPS when 30 sign up with exactly 6 healers', () => {
+describe('Overflow: healer floor is filled before any DPS when 31 sign up with exactly 5 healers', () => {
   resetState();
   State.selectedRaid = 'bt';
   const signUps = [];
@@ -1908,15 +1908,15 @@ describe('Overflow: healer floor is filled before any DPS when 30 sign up with e
   for (let i = 0; i < 24; i++) signUps.push({ name:'D' + i, className:dps[i % 6][0], specName:dps[i % 6][1], id:id++ });
   signUps.push({ name:'Tank1', className:'Tank', specName:'Protection1', id:id++ });
   signUps.push({ name:'Tank2', className:'Tank', specName:'Protection', id:id++ });
-  for (let i = 0; i < 6; i++) signUps.push({ name:'Heal' + i, className:'Paladin', specName:'Holy1', id:id++ });
+  for (let i = 0; i < 5; i++) signUps.push({ name:'Heal' + i, className:'Paladin', specName:'Holy1', id:id++ });
   const result = Import.importRaidHelper(JSON.stringify({ signUps }));
   assert(result.success, 'Import succeeds');
   assertEqual(State.roster.length, 25, '25 seated');
-  assertEqual(State.bench.length, 7, '7 benched');
+  assertEqual(State.bench.length, 6, '6 benched');
   assertEqual(State.roster.filter(p => p.role === 'tank').length, 2, 'Both tanks seated');
-  assertEqual(State.roster.filter(p => p.role === 'healer').length, 6, 'All 6 healers seated (floor)');
+  assertEqual(State.roster.filter(p => p.role === 'healer').length, 5, 'All 5 healers seated (floor)');
   assert(State.bench.every(p => p.role !== 'healer' && p.role !== 'tank'), 'Only DPS are benched');
-  assertEqual(result.overflowCount, 7, 'overflowCount reports the seven benched for capacity');
+  assertEqual(result.overflowCount, 6, 'overflowCount reports the six benched for capacity');
 });
 
 describe('Overflow: benching is by marginal value, not sign-up order', () => {
@@ -2619,8 +2619,8 @@ describe('OpenSlots: every empty seat in a short raid gets a suggested Open, tan
   const role = (slot) => PP.RosterEdit.RoleForSpec(slot.class, slot.spec);
   const roles = autoSlots().map(role);
   assertEqual(roles.filter(r => r === 'tank').length, 1, 'one tank to reach the 2-tank floor');
-  assertEqual(roles.filter(r => r === 'healer').length, 3, 'three healers to reach the 6-healer floor');
-  assert(roles.slice(4).every(r => r !== 'tank' && r !== 'healer'), 'seats past the floors go to DPS');
+  assertEqual(roles.filter(r => r === 'healer').length, 2, 'two healers to reach the 5-healer floor');
+  assert(roles.slice(3).every(r => r !== 'tank' && r !== 'healer'), 'seats past the floors go to DPS');
 });
 
 describe('OpenSlots: a full raid gets no suggestions', () => {

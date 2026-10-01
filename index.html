@@ -2432,13 +2432,14 @@ const Config = {
   TierOrder: ['Tier 4', 'Tier 5', 'Tier 6'],
 
   // Minimum tanks and healers a raid of this size must seat before DPS
-  // compete for the remaining seats. Only consulted when more players signed
-  // up than the raid holds. These are planning floors chosen for this tool,
-  // not a game rule — 20/40 are Classic Era raid sizes.
+  // compete for the remaining seats (when more signed up than the raid
+  // holds), and the roles OpenSlots suggests first for empty seats. Readiness
+  // reports "N healers short" against them. These are planning floors chosen
+  // for this tool, not a game rule — 20/40 are Classic Era raid sizes.
   RaidFloors: {
     10: { tank: 2, healer: 3 },
     20: { tank: 2, healer: 4 },
-    25: { tank: 2, healer: 6 },
+    25: { tank: 2, healer: 5 },
     40: { tank: 4, healer: 10 },
   },
 
