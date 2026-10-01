@@ -2937,13 +2937,24 @@ const PreferredSlots = {
           !Object.values(Config.Specs[p.class] || {}).some(s => s.name === p.spec)) return false;
       counts[p.group] = (counts[p.group] || 0) + 1;
       return counts[p.group] <= 5;
-    }).map(p => ({group:p.group, class:p.class, spec:p.spec}));
+    }).map(p => ({group:p.group, class:p.class, spec:p.spec, ...(p.auto === true ? {auto:true} : {})}));
   },
   forGroup(group) { return State.preferredSlots.filter(p => p.group === group); },
+  // Slots the leader set by hand. Auto-suggested ones (OpenSlots) are left
+  // out wherever a slot means "keep this group as I arranged it".
+  manual() { return State.preferredSlots.filter(p => !p.auto); },
+  hasManual(list = State.preferredSlots) { return (list || []).some(p => !p.auto); },
   add(group, classFile, spec, existing) {
     if (!this.clean([{group, class:classFile, spec}]).length) return false;
-    if (!existing && (State.groups[group]?.length || 0) + this.forGroup(group).length >= 5) return false;
-    if (existing) Object.assign(existing, {class:classFile, spec});
+    if (!existing) {
+      const seated = State.groups[group]?.length || 0;
+      const requests = this.forGroup(group);
+      if (seated + requests.filter(p => !p.auto).length >= 5) return false;
+      // A suggested Open gives its seat up to the leader's own request.
+      if (seated + requests.length >= 5) this.remove(requests.filter(p => p.auto).pop());
+    }
+    // Editing a suggested slot makes it the leader's own: never auto-replaced.
+    if (existing) { Object.assign(existing, {class:classFile, spec}); delete existing.auto; }
     else State.preferredSlots.push({group, class:classFile, spec});
     State.preserveGroupOrder = true;
     return true;
@@ -2970,7 +2981,9 @@ const PreferredSlots = {
     State.groups.forEach((group, gi) => {
       while (group.length + this.forGroup(gi).length > 5) {
         const requests = this.forGroup(gi);
-        this.remove(requests.find(r => group.some(p => p.class === r.class && p.spec === r.spec)) || requests[requests.length - 1]);
+        const suggested = requests.filter(r => r.auto);
+        this.remove(requests.find(r => group.some(p => p.class === r.class && p.spec === r.spec))
+          || suggested[suggested.length - 1] || requests[requests.length - 1]);
       }
     });
   },
@@ -3387,7 +3400,7 @@ const Import = {
   importRaidHelper(jsonStr) {
     let data;
     try { data = JSON.parse(jsonStr); } catch(e) { return { success:false, error:'Invalid JSON: '+e.message }; }
-    if (State.preferredSlots.length && (Array.isArray(data.signUps) || Array.isArray(data.slots))) {
+    if (PreferredSlots.hasManual() && (Array.isArray(data.signUps) || Array.isArray(data.slots))) {
       if (!this.parseRaidHelperSignUps({signUps:data.signUps || data.slots}).entries.length)
         return {success:false, error:'No valid players found in sign-ups'};
       const diff = this.diffRaidHelperSignUps(JSON.stringify({signUps:data.signUps || data.slots}));
@@ -4044,7 +4057,7 @@ const Import = {
       gameVersion = planning.gameVersion || gameVersion;
       if (!validVersionRaid(gameVersion, raid)) return {success:false, error:'Game version does not match raid'};
       preferredSlots = PreferredSlots.clean(planning.preferredSlots, raid);
-      preserveGroupOrder = planning.preserveGroupOrder === true || preferredSlots.length > 0;
+      preserveGroupOrder = planning.preserveGroupOrder === true || PreferredSlots.hasManual(preferredSlots);
       notes = typeof planning.notes === 'string' ? planning.notes.slice(0, NOTES_MAX_LENGTH) : '';
       assignments = planning.assignments || null;
       backups = planning.backups || null;
@@ -4181,7 +4194,7 @@ const Import = {
     State.planId = null;
     if (data.raid) State.selectedRaid = data.raid;
     State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
-    State.preserveGroupOrder = data.preserveGroupOrder === true || State.preferredSlots.length > 0;
+    State.preserveGroupOrder = data.preserveGroupOrder === true || PreferredSlots.hasManual();
 
     const raidInfo = Config.Raids[State.selectedRaid];
     const numGroups = raidInfo ? raidInfo.groups : 5;
@@ -4510,7 +4523,7 @@ const PlanStore = {
     Object.assign(State, JSON.parse(JSON.stringify(data)));
     State.gameVersion = data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc';
     State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
-    State.preserveGroupOrder = data.preserveGroupOrder === true || State.preferredSlots.length > 0;
+    State.preserveGroupOrder = data.preserveGroupOrder === true || PreferredSlots.hasManual();
     State.roster = State.groups.flat();
     State.unplaced = SignupStatus.cleanUnplaced(data.unplaced);
     State.campfires = Campfires.clean(data.campfires);
@@ -5383,7 +5396,15 @@ const ROLE_COMPAT = {
 };
 
 const Optimizer = {
+  // Every Optimize replaces the previous run's suggested Open slots: drop
+  // them, lay out the seats, then suggest for whatever seats are still empty.
   optimize() {
+    State.preferredSlots = PreferredSlots.manual();
+    this._optimizeSeats();
+    OpenSlots.fill();
+  },
+
+  _optimizeSeats() {
     if (!GameVersions[State.gameVersion].modeled) {
       enforceRaidCapacity(State.groups, State.bench, Config.Raids[State.selectedRaid].groups);
       State.roster = State.groups.flat();
@@ -6497,6 +6518,75 @@ const Optimizer = {
 
       if (!swapped) break;
     }
+  },
+};
+
+// ── OPEN SLOT SUGGESTIONS ───────────────────────────────────────
+// When fewer players are seated than the raid holds, Optimize ends by giving
+// every empty seat an Open preferred slot for the class/spec that adds the
+// most there. Missing tanks and healers (Optimizer.floorsFor) come first;
+// every other seat goes to the DPS spec with the best marginal groupScore
+// under the current mode, one seat at a time so each pick sees the last.
+// Suggestions carry `auto: true`: replaced on every Optimize, never freeze
+// their group (PreferredSlots.manual), and become manual once edited.
+const OpenSlots = {
+  // Classes the raid can bring: under a faction lock (Classic) no Paladin for
+  // Horde or Shaman for Alliance, same as the Random roster's list.
+  candidates() {
+    const faction = activeRules().rules?.factionLock ? Faction.current() : null;
+    return Object.values(RandomRoster._buildSpecsByRole(faction)).flat();
+  },
+
+  // Fills empty seats with suggested slots. Returns how many were added.
+  fill() {
+    State.preferredSlots = PreferredSlots.manual();
+    if (!GameVersions[State.gameVersion].modeled) return 0;
+    const raid = Config.Raids[State.selectedRaid];
+    if (!raid || !State.groups.length) return 0;
+
+    const max = RosterEdit.MAX_GROUP_SIZE;
+    const mode = State.optimizerMode || 'max_dps';
+    // Scratch board: seated players plus the leader's own requests, so the
+    // suggestions build on what's already planned. Never touches State.groups.
+    const board = State.groups.map((group, gi) => [
+      ...group,
+      ...PreferredSlots.forGroup(gi).map(p => ({ ...p, role: RosterEdit.RoleForSpec(p.class, p.spec), uid: 'open', name: '' })),
+    ]);
+    board._roleIdentities = State.groups._roleIdentities;
+    let open = Math.min(raid.size, State.groups.length * max) - board.flat().length;
+    if (open <= 0) return 0;
+
+    const floors = Optimizer.floorsFor(raid.size);
+    const roleCount = (role) => board.flat().filter(p => p.role === role).length;
+    const candidates = this.candidates();
+    const added = [];
+    while (open > 0) {
+      const role = roleCount('tank') < floors.tank ? 'tank'
+        : roleCount('healer') < floors.healer ? 'healer' : null;
+      const pool = candidates.filter(c => role ? c.role === role : (c.role !== 'tank' && c.role !== 'healer'));
+      const choice = this._best(pool, board, mode, max);
+      if (!choice) break;
+      board[choice.gi].push({ ...choice.candidate, uid: 'open', name: '' });
+      added.push({ group: choice.gi, class: choice.candidate.class, spec: choice.candidate.spec, auto: true });
+      open--;
+    }
+    State.preferredSlots.push(...added);
+    return added.length;
+  },
+
+  // The (spec, group) pair that raises its group's score the most. Ties keep
+  // the first found (spec list order, then lowest group), so it's stable.
+  _best(pool, board, mode, max) {
+    let best = null;
+    for (let gi = 0; gi < board.length; gi++) {
+      if (board[gi].length >= max) continue;
+      const before = Optimizer.groupScore(board[gi], gi, board, mode);
+      for (const candidate of pool) {
+        const gain = Optimizer.groupScore([...board[gi], candidate], gi, board, mode) - before;
+        if (!best || gain > best.gain) best = { candidate, gi, gain };
+      }
+    }
+    return best;
   },
 };
 
@@ -8453,7 +8543,7 @@ function getDominantRoleLabel(players) {
 }
 
 function sortTankGroupFirst() {
-  if (State.preferredSlots.length || State.preserveGroupOrder) return;
+  if (PreferredSlots.hasManual() || State.preserveGroupOrder) return;
   if (State.groups.length <= 1) return;
   // Prefer the optimizer's structural identity (authoritative, tie-proof);
   // fall back to dominant-role detection for imported/manual rosters.
@@ -8478,6 +8568,11 @@ function sortTankGroupFirst() {
     // Update groupNumber on all players
     for (let i = 0; i < State.groups.length; i++) {
       for (const p of (State.groups[i] || [])) p.groupNumber = i + 1;
+    }
+    // Suggested Open slots (the only kind present here) move with their group.
+    for (const slot of State.preferredSlots) {
+      if (slot.group === tankIdx) slot.group = 0;
+      else if (slot.group < tankIdx) slot.group += 1;
     }
     // Remap any buff overrides that reference the old indices
     const newOverrides = {};

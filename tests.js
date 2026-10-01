@@ -2515,16 +2515,17 @@ describe('Preferred slots: real-player counts, import matching, storage and shar
   RosterEdit.AddPlayer(0, {name:'FreeMage', class:'MAGE', spec:'Fire'});
   Optimizer.optimize();
   assertEqual(State.groups[2].map(p => p.uid).join(','), fixed, 'optimizer keeps recruiting group intact');
-  assertEqual(State.preferredSlots.length, 1, 'optimizer retains empty request');
+  assertEqual(prefs.manual().length, 1, 'optimizer retains empty request');
+  assertEqual(State.preferredSlots.filter(p => p.auto).length, 21, 'every other empty seat gets a suggested Open (25 - 3 seated - 1 request)');
   assertEqual(State.roster.length, 3, 'optimizer retains all real players');
   assert(State.groups.every(g => g.length <= 5), 'optimizer respects capacity');
   assert(State.preserveGroupOrder, 'requested layout retains its group order after matching');
   PP.PlanSession.ready = true; PP.PlanSession.previous = null; PP.PlanSession.undo = [];
   State.planId = 'plan:preferred-undo';
   PP.PlanSession.observe();
-  prefs.remove(State.preferredSlots[0]); PP.PlanSession.observe();
+  prefs.remove(prefs.manual()[0]); PP.PlanSession.observe();
   assert(PP.PlanSession.undoLast(), 'preference removal can be undone');
-  assertEqual(State.preferredSlots.length, 1, 'undo restores request');
+  assertEqual(prefs.manual().length, 1, 'undo restores request');
   const beforeInvalid = JSON.stringify(PP.PlanStore.capture());
   assert(!Import.importRaidHelper('{"signUps":[]}').success, 'empty import is rejected');
   assertEqual(JSON.stringify(PP.PlanStore.capture()), beforeInvalid, 'invalid import preserves plan');
@@ -2583,6 +2584,127 @@ describe('esc(): a name built to break out of a double-quoted HTML attribute ren
 describe('esc(): matches PrintSheet\'s local DOM-free escaper (no drift between the two implementations)', () => {
   const samples = ['&<>"\'', 'Foo" onclick="x()"', "O'Brien", 'Plain', ''];
   for (const s of samples) assertEqual(esc(s), PP.PrintSheet ? PP.PrintSheet._esc(s) : esc(s), `esc() vs PrintSheet._esc() for ${JSON.stringify(s)}`);
+});
+
+// ── OPEN SLOT SUGGESTIONS (auto-filled empty seats) ──────────────
+// Seats a hand-built roster round-robin, then runs the real Optimize.
+function seatForOpenSlots(specs, raid = 'bt') {
+  resetState();
+  State.selectedRaid = raid;
+  State.optimizerMode = 'max_dps';
+  const numGroups = Config.Raids[raid].groups;
+  State.groups = Array.from({ length: numGroups }, () => []);
+  specs.forEach(([cls, spec, role], i) => {
+    const player = { uid: nextUid(), name: 'P' + i, class: cls, spec, role, groupNumber: (i % numGroups) + 1, imported: true };
+    State.groups[i % numGroups].push(player);
+  });
+  State.roster = State.groups.flat();
+  Optimizer.optimize();
+}
+const autoSlots = () => State.preferredSlots.filter(p => p.auto);
+const seatsWithOpens = () => State.groups.map((g, gi) => g.length + PP.PreferredSlots.forGroup(gi).length);
+const DPS_14 = [
+  ['WARRIOR','Fury','melee_dps'], ['ROGUE','Combat','melee_dps'], ['ROGUE','Combat','melee_dps'], ['SHAMAN','Enhancement','melee_dps'],
+  ['HUNTER','Beast Mastery','ranged_dps'], ['HUNTER','Beast Mastery','ranged_dps'], ['MAGE','Fire','caster_dps'], ['MAGE','Arcane','caster_dps'],
+  ['WARLOCK','Destruction','caster_dps'], ['WARLOCK','Destruction','caster_dps'], ['PRIEST','Shadow','caster_dps'], ['DRUID','Balance','caster_dps'],
+  ['SHAMAN','Elemental','caster_dps'], ['DRUID','Feral','melee_dps'],
+];
+
+describe('OpenSlots: every empty seat in a short raid gets a suggested Open, tanks/healers first', () => {
+  seatForOpenSlots([['WARRIOR','Protection','tank'], ['PRIEST','Holy','healer'], ['PALADIN','Holy','healer'], ['DRUID','Restoration','healer'], ...DPS_14]);
+  const seated = State.roster.length;
+  assertEqual(seated, 18, 'fixture seats 18');
+  assertEqual(autoSlots().length, 25 - seated, 'one Open per empty seat');
+  assert(seatsWithOpens().every(n => n === 5), 'every group ends at exactly 5 with its Opens');
+  const role = (slot) => PP.RosterEdit.RoleForSpec(slot.class, slot.spec);
+  const roles = autoSlots().map(role);
+  assertEqual(roles.filter(r => r === 'tank').length, 1, 'one tank to reach the 2-tank floor');
+  assertEqual(roles.filter(r => r === 'healer').length, 3, 'three healers to reach the 6-healer floor');
+  assert(roles.slice(4).every(r => r !== 'tank' && r !== 'healer'), 'seats past the floors go to DPS');
+});
+
+describe('OpenSlots: a full raid gets no suggestions', () => {
+  const specs = [['WARRIOR','Protection','tank'], ['PALADIN','Protection','tank']];
+  for (let i = 0; i < 6; i++) specs.push(['PRIEST','Holy','healer']);
+  while (specs.length < 25) specs.push(DPS_14[specs.length % DPS_14.length]);
+  seatForOpenSlots(specs);
+  assertEqual(State.roster.length, 25, 'raid is full');
+  assertEqual(State.preferredSlots.length, 0, 'no Opens');
+});
+
+describe('OpenSlots: suggestions are recalculated each Optimize, never stacked', () => {
+  seatForOpenSlots(DPS_14.slice(0, 10));
+  const first = JSON.stringify(State.preferredSlots);
+  Optimizer.optimize();
+  assertEqual(JSON.stringify(State.preferredSlots), first, 'a second Optimize yields the same suggestions');
+  assertEqual(autoSlots().length, 15, 'still exactly one per empty seat');
+});
+
+describe('OpenSlots: suggestions never freeze a group; the leader\'s own slots still do', () => {
+  seatForOpenSlots(DPS_14.slice(0, 12));
+  const fresh = State.groups.map(g => g.map(p => p.uid).join(',')).join('|');
+  assert(autoSlots().length > 0, 'Opens were suggested');
+  Optimizer.optimize();
+  assertEqual(State.groups.map(g => g.map(p => p.uid).join(',')).join('|'), fresh, 'groups with Opens are re-optimized normally');
+  const gi = autoSlots()[0].group;
+  assert(PP.PreferredSlots.add(gi, 'MAGE', 'Frost'), 'a manual request takes a suggested seat');
+  const kept = State.groups[gi].map(p => p.uid).join(',');
+  Optimizer.optimize();
+  assertEqual(State.groups[gi].map(p => p.uid).join(','), kept, 'a manual slot still keeps its group as arranged');
+  assertEqual(PP.PreferredSlots.manual().length, 1, 'the manual slot survives Optimize');
+  assertEqual(autoSlots().length, 25 - State.roster.length - 1, 'suggestions fill around the manual slot');
+  assert(seatsWithOpens().every(n => n <= 5), 'no group over 5');
+});
+
+describe('OpenSlots: editing a suggestion makes it the leader\'s own', () => {
+  seatForOpenSlots(DPS_14.slice(0, 20));
+  const slot = autoSlots()[0];
+  assert(PP.PreferredSlots.add(slot.group, 'HUNTER', 'Survival', slot), 'edit accepted');
+  assert(!slot.auto, 'no longer a suggestion');
+  Optimizer.optimize();
+  assert(State.preferredSlots.some(p => !p.auto && p.spec === 'Survival'), 'kept through the next Optimize');
+});
+
+describe('OpenSlots: a matching sign-up fills a suggested seat', () => {
+  seatForOpenSlots(DPS_14.slice(0, 20));
+  const slot = autoSlots()[0];
+  const player = { uid: nextUid(), name: 'Joiner', class: slot.class, spec: slot.spec, role: PP.RosterEdit.RoleForSpec(slot.class, slot.spec), groupNumber: 0 };
+  State.bench.push(player);
+  assert(PP.PreferredSlots.seat(player), 'seated into the Open');
+  assertEqual(player.groupNumber, slot.group + 1, 'in the suggested group');
+  assert(!State.preferredSlots.includes(slot), 'the Open is consumed');
+});
+
+describe('OpenSlots: suggestions do not hijack a fresh import or pin the group order', () => {
+  seatForOpenSlots(DPS_14.slice(0, 12));
+  assert(autoSlots().length > 0, 'Opens exist');
+  const result = Import.importRaidHelper(JSON.stringify({ signUps: [
+    { name:'NewTank', className:'Tank', specName:'Protection', id:1 },
+    { name:'NewMage', className:'Mage', specName:'Fire', id:2 },
+  ]}));
+  assert(result.success && !result.preferredImport, 'a new import is a normal import, not "fill the planned layout"');
+  assertEqual(PP.PreferredSlots.manual().length, 0, 'no manual slots appeared');
+  const capture = PP.PlanStore.capture();
+  capture.planId = 'plan:open-test';
+  assert(PP.PlanStore.restore(capture), 'plan restores');
+  assert(State.preferredSlots.length > 0 && State.preferredSlots.every(p => p.auto), 'suggestions persist as suggestions');
+  assert(!State.preserveGroupOrder, 'suggestions alone never pin the group order');
+});
+
+describe('OpenSlots: under Classic faction lock a Horde raid is never offered a Paladin', () => {
+  const savedVersion = State.gameVersion;
+  State.gameVersion = 'classic';
+  try {
+    const horde = [['WARRIOR','Protection','tank'], ['SHAMAN','Restoration','healer'], ['PRIEST','Holy','healer'],
+      ['ROGUE','Combat','melee_dps'], ['MAGE','Fire','caster_dps'], ['WARLOCK','Destruction','caster_dps']];
+    seatForOpenSlots(horde, 'mc');
+    assert(autoSlots().length === 40 - 6, 'every empty seat in the 40-man gets an Open');
+    assert(!State.preferredSlots.some(p => p.class === 'PALADIN'), 'no Paladin for a Horde raid');
+    assert(seatsWithOpens().every(n => n === 5), 'all 8 groups end at 5');
+  } finally {
+    State.gameVersion = savedVersion;
+    resetState();
+  }
 });
 
 // Exercise the actual async UI import controller with isolated storage/network fixtures.
