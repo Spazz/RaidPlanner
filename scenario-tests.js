@@ -126,8 +126,10 @@ function runScenario(scenario, mode) {
   const expectedRaiders = facts.primary + facts.tentative + facts.bench;
   check(seated.length + bench.length === expectedRaiders,
     `lost players: seated ${seated.length} + bench ${bench.length} != ${expectedRaiders} raiders`);
-  check((result.skippedCount || 0) === facts.absence + facts.unknown,
-    `skipped ${result.skippedCount} but scenario has ${facts.absence} absences + ${facts.unknown} unknown specs`);
+  // Absences and unknown classes are kept off the raid as unplaced sign-ups.
+  check(State.unplaced.length === facts.absence + facts.unknown,
+    `unplaced ${State.unplaced.length} but scenario has ${facts.absence} absences + ${facts.unknown} unknown specs`);
+  check(State.unplaced.every(p => !State.roster.includes(p) && !bench.includes(p)), 'an unplaced sign-up is also seated or benched');
   check(seated.length === Math.min(facts.primary, size),
     `seated ${seated.length}, expected min(primary ${facts.primary}, size ${size})`);
   check(bench.every(p => p.groupNumber === 0), 'a benched player still carries a group number');
@@ -171,7 +173,7 @@ function runScenario(scenario, mode) {
   if (exp.raidSize != null) check(size === exp.raidSize, `raid size ${size}, expected ${exp.raidSize}`);
   if (exp.seated != null) check(seated.length === exp.seated, `seated ${seated.length}, expected ${exp.seated}`);
   if (exp.benched != null) check(bench.length === exp.benched, `benched ${bench.length}, expected ${exp.benched}`);
-  if (exp.skipped != null) check(result.skippedCount === exp.skipped, `skipped ${result.skippedCount}, expected ${exp.skipped}`);
+  if (exp.unplaced != null) check(State.unplaced.length === exp.unplaced, `unplaced ${State.unplaced.length}, expected ${exp.unplaced}`);
   if (exp.minHealersSeated != null) check(seatedRoles.healer >= exp.minHealersSeated, `healers seated ${seatedRoles.healer} < ${exp.minHealersSeated}`);
   if (exp.tentativeBenched != null) check(bench.filter(p => tentNames.has(p.name)).length === exp.tentativeBenched, 'tentative bench count mismatch');
   if (exp.windfuryGroups != null) check(groupsWithBuff('WINDFURY') >= exp.windfuryGroups, `Windfury in ${groupsWithBuff('WINDFURY')} groups, expected ${exp.windfuryGroups}`);

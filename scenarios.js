@@ -15,7 +15,7 @@
  * Optional per-scenario fields
  *   raid    - raid key to select before import (default: the app's current selection,
  *             which the importer switches to a 10-man automatically for <= 10 raiders)
- *   expect  - see scenario-tests.js: { importFails, skipped, benched, seated, raidSize,
+ *   expect  - see scenario-tests.js: { importFails, unplaced, benched, seated, raidSize,
  *             minHealersSeated, tentativeBenched, feralGroups, windfuryGroups, missingNone: [buffId],
  *             knownGap: 'text' (documents current behaviour we consider a gap; shown in the summary) }
  *             A nested object keyed by optimizer mode (max_dps, tank_mit, balanced, relaxed)
@@ -61,7 +61,7 @@ const SPEC_KEYS = {
   restoS:      ['Shaman', 'Restoration1'],
   // Not real: exercise the importer's fallback paths.
   unknownSpec:  ['Warrior', 'Gladiator'],      // known class, unknown spec -> seated by class
-  unknownClass: ['Deathknight', 'Blood'],      // unknown class and spec -> skipped
+  unknownClass: ['Deathknight', 'Blood'],      // unknown class and spec -> unplaced
 };
 
 // status: 'primary' (default) | 'tentative' | 'bench' | 'absence'
@@ -219,12 +219,12 @@ const scenarios = [
   { id: 'P05', source: 'partyplanner', label: 'Bench sign-ups (Raid-Helper Bench class) stay benched',
     entries: CORE_25.slice(0, 22).concat([['fury','Benchwarrior','bench'], ['holyP','Benchpriest','bench'], ['arcane','Benchmage','bench']]),
     expect: { seated: 22, benched: 3 } },
-  { id: 'P06', source: 'partyplanner', label: 'Unknown class is skipped, not seated',
+  { id: 'P06', source: 'partyplanner', label: 'Unknown class is held unplaced, not seated',
     entries: CORE_25.slice(0, 24).concat([['unknownClass','Arthas']]),
-    expect: { seated: 24, skipped: 1 } },
+    expect: { seated: 24, unplaced: 1 } },
   { id: 'P17', source: 'partyplanner', label: 'Unknown spec on a known class is seated by class',
     entries: CORE_25.slice(0, 24).concat([['unknownSpec','Gladiatus']]),
-    expect: { seated: 25, skipped: 0 } },
+    expect: { seated: 25, unplaced: 0 } },
   { id: 'P07', source: 'partyplanner', label: 'Realm-suffixed and duplicate names',
     entries: CORE_25.map(([k, n], i) => [k, i % 3 === 0 ? n + '-Whitemane' : (i % 7 === 0 ? 'Sunra' : n)]),
     expect: { seated: 25 } },
@@ -236,7 +236,7 @@ const scenarios = [
   { id: 'P10', source: 'partyplanner', label: 'Empty sign-up list',
     entries: [], expect: { importFails: true } },
   { id: 'P11', source: 'partyplanner', label: 'Only absences',
-    entries: many('arms', 'Gone', 6, 'absence'), expect: { importFails: true, skipped: 6 } },
+    entries: many('arms', 'Gone', 6, 'absence'), expect: { importFails: true } },
   { id: 'P12', source: 'partyplanner', label: 'Tentative healers cannot cover a missing healer floor',
     entries: CORE_25.slice(0, 21).concat([['holyP','Maybe1','tentative'], ['restoD','Maybe2','tentative'], ['restoS','Maybe3','tentative']]),
     expect: { seated: 21, benched: 3, tentativeBenched: 3 } },

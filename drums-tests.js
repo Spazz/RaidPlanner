@@ -185,7 +185,7 @@ check('Import.applyRaidHelperSync drops the drum tag (and constraint) for a play
   // Shaped exactly like diffRaidHelperSignUps() would build it for a sign-up
   // that no longer appears anywhere in the refreshed event data — a full
   // withdrawal, not a demotion to bench/Tentative.
-  const diff = { success: true, added: [], removed: [drummer], changed: [], demoted: [], promoted: [], skipped: [] };
+  const diff = { success: true, added: [], removed: [drummer], changed: [], demoted: [], promoted: [] };
   Import.applyRaidHelperSync(diff);
 
   assert.equal(Drummers.isDrummer(drummer.name), false, 'the drum tag must not survive the withdrawal');

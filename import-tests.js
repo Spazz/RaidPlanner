@@ -95,13 +95,21 @@ check('_resolveRaidHelperEntry: an unrecognized spec name on a known class still
   assert(reviewReason.includes('NotARealSpec'), 'reason should name the unrecognized spec');
 });
 
-// ── 4. Tank/Bench/Tentative/Absence categorization is untouched ──
-check('Raid-Helper Absence entries are still skipped outright', () => {
-  assert.equal(Import._categorizeRaidHelperEntry({ className: 'Absence' }), 'skip');
+// ── 4. Tank/Bench/Tentative/Late/Absence categorization ──
+check('Raid-Helper Absence entries are held unplaced with an absent status', () => {
+  const e = Import._readRaidHelperEntry({ className: 'Absence', specName: 'Absence', name: 'Gone' }, 'x');
+  assert.equal(e.status, 'absent');
+  assert.equal(e.category, 'unplaced');
+  assert.equal(e.class, null, 'an Absence carries no class');
+  assert.equal(e.needsReview, false, 'a classless entry is not flagged as a defaulted spec');
 });
-check('Raid-Helper Tentative/Bench entries still categorize as bench, with their real spec resolved (not flagged)', () => {
-  assert.equal(Import._categorizeRaidHelperEntry({ className: 'Tentative' }), 'bench');
-  assert.equal(Import._categorizeRaidHelperEntry({ className: 'Bench' }), 'bench');
+check('Raid-Helper Tentative/Bench/Late entries categorize as bench with their status, real spec resolved (not flagged)', () => {
+  assert.equal(Import._readRaidHelperEntry({ className: 'Tentative', specName: 'Fire' }, 'x').category, 'bench');
+  assert.equal(Import._readRaidHelperEntry({ className: 'Bench', specName: 'Fire' }, 'x').status, 'bench');
+  const late = Import._readRaidHelperEntry({ className: 'Late', specName: 'Fire' }, 'x');
+  assert.equal(late.status, 'late');
+  assert.equal(late.category, 'bench', 'Late is held on the bench, never seated by the optimizer');
+  assert.equal(Import._readRaidHelperEntry({ className: 'Mage', specName: 'Fire' }, 'x').category, 'raider');
   const t = Import._resolveRaidHelperEntry({ className: 'Tentative', specName: 'Fire' });
   assert.equal(t.classFile, 'MAGE');
   assert.equal(t.role, 'caster_dps');

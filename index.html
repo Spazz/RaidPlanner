@@ -820,16 +820,62 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .bench-hint { font-size: 10px; color: var(--text-faint); font-style: italic; }
 .bench-list {
-  display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr)); gap: 6px;
 }
 .bench-slot { opacity: 0.85; border: 1px solid var(--border-subtle); }
 .bench-slot:hover { opacity: 1; }
 
+/* ── Sign-up tray: the bench panel's status tabs ── */
+.bench-header.tray-header { align-items: center; flex-wrap: wrap; row-gap: 6px; }
+.tray-tabs {
+  position: relative; /* offsetParent for the tabs, so select() can scroll one into view */
+  display: flex; gap: 4px; flex: 1 1 auto; min-width: 0;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.tray-tabs::-webkit-scrollbar { display: none; }
+.tray-tab {
+  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+  padding: 3px 8px; background: transparent; cursor: pointer;
+  border: 1px solid var(--border-subtle); color: var(--text-muted);
+  font: 600 11px var(--font-body); white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.tray-tab:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.tray-tab[aria-selected="true"] {
+  color: var(--accent-gold); border-color: var(--accent-gold-dim);
+  background: rgba(224,181,61,0.06);
+}
+.tray-tab[aria-selected="true"] .bench-count { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
+.tray-tab:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 1px; }
+.tray-tab.is-empty:not([aria-selected="true"]) { opacity: 0.55; }
+.tray-empty { grid-column: 1 / -1; padding: 6px 0; font-size: 11px; font-style: italic; color: var(--text-faint); }
+.status-tag {
+  flex-shrink: 0; padding: 1px 4px; border: 1px solid currentColor; border-radius: 3px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: default;
+}
+.status-confirmed { color: #8fc98a; }
+.status-bench     { color: var(--accent-gold-dim); }
+.status-tentative { color: #d9a95b; }
+.status-late      { color: #7fb2e5; }
+.status-absent    { color: var(--accent-red); }
+.unplaced-slot { border-style: dashed; opacity: 0.7; }
+.unplaced-icon { opacity: 0.4; }
+.unplaced-dialog-fields { display: grid; gap: 10px; margin: 12px 0; }
+.unplaced-dialog-fields label { display: grid; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.unplaced-dialog-fields label[hidden] { display: none; }
+.unplaced-dialog-fields select {
+  background: var(--bg-card); color: var(--text-primary);
+  border: 1px solid var(--border-medium);
+  padding: 6px 8px; font-size: 13px; font-family: inherit;
+}
+.unplaced-dialog-fields select:focus { outline: none; border-color: var(--accent-gold); }
+.unplaced-dialog-error { min-height: 16px; font-size: 12px; color: var(--accent-red); }
+
 @media (max-width: 900px) {
-  .bench-list { grid-template-columns: repeat(2, 1fr); }
+  .bench-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) {
-  .bench-list { grid-template-columns: 1fr; }
+  .bench-list { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── Player editor popover ── */
@@ -1342,7 +1388,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .sidebar-summary { flex-wrap: wrap; }
 
   .groups-container { padding: var(--sp-2); }
-  .bench-list { grid-template-columns: repeat(2, 1fr); }
+  .bench-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .status-bar { flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--sp-1) var(--sp-2); }
   .manual-changes-section { margin: var(--sp-2) var(--sp-2) 0; }
   .buff-bar { gap: 2px; }
@@ -1745,6 +1791,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <details><summary>What happens when more people sign up than the raid holds?</summary><p>You always keep enough tanks and healers. The remaining seats go to whoever adds the most, and everyone else waits on the bench, where you can swap them in with one click.</p></details>
       <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and paste the JSON into the import box.</p></details>
       <details><summary>People signed up after I built the groups. Do I start over?</summary><p>No. A roster imported from a Raid-Helper link remembers its event. When you reopen a saved roster, the planner checks the event and shows what changed. Click Refresh (in the toolbar or on the banner) to add new sign-ups to the bench, remove anyone who withdrew, and update changed specs, while everyone else keeps their seat.</p></details>
+      <details><summary>Where do Bench, Tentative, Late and Absent sign-ups go?</summary><p>Into the Sign-ups panel under the groups, one tab per Raid-Helper status. Only confirmed sign-ups are seated automatically. Drag anyone from Bench, Tentative or Late into a group when you want them; Absent players can be seated too, after you confirm (and pick a class if they didn't). On Refresh, people move between tabs as their Raid-Helper status changes.</p></details>
       <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick Karazhan or Zul'Aman from the raid dropdown and the planner switches to two groups with 10-man tank and healer floors.</p></details>
       <details><summary>Does it support Classic Era?</summary><p>Yes. Molten Core, Onyxia's Lair, Blackwing Lair, Zul'Gurub, Ruins of Ahn'Qiraj, Temple of Ahn'Qiraj and Naxxramas all have real Classic Era buff, debuff and optimizer rules, and the planner is faction-aware — Shaman totems for Horde, Paladin auras for Alliance.</p></details>
       <details><summary>Does it support WoW Forever?</summary><p>Yes, using confirmed Forever beta data. Barrow Deeps (10), Hyjal Summit (20) and Onyxia's Lair (40) are modeled with real rules — and unlike Classic Era, Forever has no faction lock: the new race/class combos put Paladin and Shaman on both factions, so a raid can freely mix totems and auras. Trueshot Aura is baseline for every Hunter spec, and Leader of the Pack and Moonkin Aura share one exclusive crit buff per group, so Feral and Balance druids spread out instead of stacking.</p></details>
@@ -2015,7 +2062,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
       <span id="status-text" aria-live="polite">Ready — import a roster to begin</span>
       <span class="last-run" id="last-run"></span>
     </div>
-    <div class="status-right">Party Planner Web &middot; v1.0</div>
+    <div class="status-right">Party Planner Web &middot; v5.0</div>
   </div>
 
   <!-- Import modal -->
@@ -2105,6 +2152,21 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   <p id="plain-import-summary"></p>
   <div class="plain-import-body" id="plain-import-body"></div>
   <div class="import-buttons"><button type="button" class="btn btn-primary" id="btn-plain-import-confirm">Import these players</button></div>
+</dialog>
+
+<dialog id="unplaced-dialog" class="history-dialog" aria-labelledby="unplaced-heading">
+  <div class="history-dialog-header">
+    <h3 id="unplaced-heading">Seat this sign-up?</h3>
+    <button type="button" class="btn btn-secondary" id="btn-unplaced-cancel">Cancel</button>
+  </div>
+  <p id="unplaced-message"></p>
+  <div class="unplaced-dialog-fields">
+    <label id="unplaced-class-field">Class<select id="unplaced-class"></select></label>
+    <label id="unplaced-spec-field">Spec<select id="unplaced-spec"></select></label>
+    <label>Group<select id="unplaced-group"></select></label>
+  </div>
+  <div class="unplaced-dialog-error" id="unplaced-error" role="alert"></div>
+  <div class="import-buttons"><button type="button" class="btn btn-primary" id="btn-unplaced-confirm">Seat them anyway</button></div>
 </dialog>
 
 <div class="drag-ghost" id="drag-ghost"></div>
@@ -2833,6 +2895,10 @@ const State = {
   roster: [],
   groups: [],
   bench: [], // players not assigned to a group (groupNumber 0); never touched by the Optimizer
+  // Sign-ups that can't be benched as-is: marked Absent on Raid-Helper, or
+  // sent with no class. {uid, name, signupStatus, class|null, spec|null, role|null}.
+  // Kept apart from the bench so nothing treats them as available players.
+  unplaced: [],
   gameVersion: 'tbc',
   selectedRaid: 'bt',
   rosterName: NO_ROSTER_NAME,
@@ -3273,6 +3339,49 @@ function enforceRaidCapacity(groups, bench, numGroups, maxPerGroup = 5) {
   return benched;
 }
 
+// ── SIGN-UP STATUS ──────────────────────────────────────────────
+// How a person marked themselves on Raid-Helper, kept on the player as
+// `signupStatus` so the sign-up tray can file everyone off the raid by why
+// they're out. Raid-Helper carries Bench/Tentative/Late/Absence in className;
+// any real class (or Tank) is a confirmed sign-up. Players added by hand or
+// saved before this existed have no status and file under Bench.
+const SignupStatus = {
+  ALL: ['confirmed', 'bench', 'tentative', 'late', 'absent'],
+  LABELS: { confirmed:'Signed up', bench:'Bench', tentative:'Tentative', late:'Late', absent:'Absent' },
+  FROM_RAID_HELPER: { Bench:'bench', Tentative:'tentative', Late:'late', Absence:'absent' },
+
+  fromRaidHelper(className) { return this.FROM_RAID_HELPER[className] || 'confirmed'; },
+  clean(status) { return this.ALL.includes(status) ? status : undefined; },
+  label(status) { return this.LABELS[status] || ''; },
+
+  // Where a sign-up lands on import: confirmed people go to the optimizer,
+  // Bench/Tentative/Late wait on the bench, and anyone Absent or without a
+  // class is held as unplaced.
+  categoryFor(status, classFile) {
+    if (status === 'absent' || !classFile) return 'unplaced';
+    return status === 'confirmed' ? 'raider' : 'bench';
+  },
+
+  // The tray tab a benched or unplaced player is filed under.
+  tabFor(status) { return ['tentative', 'late', 'absent'].includes(status) ? status : 'bench'; },
+
+  // Unplaced entries survive storage only with a name; class/spec/role are
+  // kept when they are a real class, otherwise null (the drag-in picker asks).
+  cleanUnplaced(list) {
+    if (!Array.isArray(list)) return [];
+    return list.filter(p => p && typeof p.name === 'string' && p.name).map(p => {
+      const known = typeof p.class === 'string' && !!Config.Specs[p.class];
+      return {
+        uid: typeof p.uid === 'string' ? p.uid : nextUid(), name: p.name,
+        signupStatus: this.clean(p.signupStatus) || 'absent',
+        class: known ? p.class : null,
+        spec: known && typeof p.spec === 'string' ? p.spec : null,
+        role: known && typeof p.role === 'string' ? p.role : null,
+      };
+    });
+  },
+};
+
 // ── IMPORT ──────────────────────────────────────────────────────
 const Import = {
   importRaidHelper(jsonStr) {
@@ -3287,22 +3396,29 @@ const Import = {
       diff.removed = [];
       const counts = this.applyRaidHelperSync(diff);
       return {success:true, playerCount:State.roster.length, groupCount:State.groups.length,
-        preferredImport:true, filledCount:counts.filled, benchCount:State.bench.length, skippedCount:diff.skipped};
+        preferredImport:true, filledCount:counts.filled, benchCount:State.bench.length, unplacedCount:State.unplaced.length};
     }
     if (Array.isArray(data.slots)) { const result = this._importRaidHelperSlots(data); if (result.success) State.campfires = Campfires.empty(); return result; }
     if (Array.isArray(data.signUps)) { const result = this._importRaidHelperSignUps(data); if (result.success) State.campfires = Campfires.empty(); return result; }
     return { success:false, error:"No 'slots' or 'signUps' array found in JSON" };
   },
 
-  // Raid-Helper uses the className field to carry non-raider sign-up categories.
-  // Tentative/Bench players are real people with a real spec who just aren't slotted,
-  // so they land on the bench; Absence entries carry no spec at all and aren't coming,
-  // so they're skipped outright.
-  _categorizeRaidHelperEntry(entry) {
-    const cn = entry && entry.className;
-    if (cn === 'Absence') return 'skip';
-    if (cn === 'Tentative' || cn === 'Bench') return 'bench';
-    return 'raider';
+  // One Raid-Helper entry -> everything the importers need: its sign-up
+  // status, resolved class/spec/role, and where it lands (see
+  // SignupStatus.categoryFor). Class/spec/role are null when unresolved.
+  _readRaidHelperEntry(entry, fallbackName) {
+    const status = SignupStatus.fromRaidHelper(entry && entry.className);
+    const { classFile, specName, role, needsReview, reviewReason } = this._resolveRaidHelperEntry(entry);
+    return {
+      name: entry.name || fallbackName, status,
+      class: classFile || null, spec: classFile ? specName : null, role: classFile ? role : null,
+      category: SignupStatus.categoryFor(status, classFile),
+      needsReview: !!classFile && needsReview, reviewReason,
+    };
+  },
+
+  _makeUnplaced(entry) {
+    return { uid: nextUid(), name: entry.name, signupStatus: entry.status, class: entry.class, spec: entry.spec, role: entry.role };
   },
 
   // Resolve a Raid-Helper slot/signup entry (className + specName) to a class/spec/role.
@@ -3365,29 +3481,27 @@ const Import = {
 
     const roster = [];
     const bench = [];
+    const unplaced = [];
     const groups = [];
-    let skipped = 0;
     for (let i = 0; i < maxGroup; i++) groups.push([]);
 
     for (const slot of data.slots) {
-      const category = this._categorizeRaidHelperEntry(slot);
-      if (category === 'skip') { skipped++; continue; }
-
-      const { classFile, specName, role, needsReview, reviewReason } = this._resolveRaidHelperEntry(slot);
-      if (!classFile) { skipped++; continue; }
+      const entry = this._readRaidHelperEntry(slot, 'Unknown-' + (slot.slotNumber || 0));
+      if (entry.category === 'unplaced') { unplaced.push(this._makeUnplaced(entry)); continue; }
 
       const player = {
         uid: nextUid(),
-        name: slot.name || ('Unknown-' + (slot.slotNumber || 0)),
-        class: classFile,
-        spec: specName,
-        role: role,
-        groupNumber: category === 'bench' ? 0 : slot.groupNumber,
+        name: entry.name,
+        class: entry.class,
+        spec: entry.spec,
+        role: entry.role,
+        groupNumber: entry.category === 'bench' ? 0 : slot.groupNumber,
         imported: true,
+        signupStatus: entry.status,
       };
-      if (needsReview) { player.needsReview = true; player.reviewReason = reviewReason; }
+      if (entry.needsReview) { player.needsReview = true; player.reviewReason = entry.reviewReason; }
 
-      if (category === 'bench') { bench.push(player); continue; }
+      if (entry.category === 'bench') { bench.push(player); continue; }
 
       roster.push(player);
       const g = slot.groupNumber;
@@ -3413,48 +3527,42 @@ const Import = {
     State.roster = groups.flat();
     State.groups = groups;
     State.bench = bench;
+    State.unplaced = unplaced;
     return { success:true, playerCount:State.roster.length, groupCount:maxGroup,
-             benchCount:bench.length, skippedCount:skipped, overflowCount:overflow };
+             benchCount:bench.length, unplacedCount:unplaced.length, overflowCount:overflow };
   },
 
   // Format 2: the raid-helper.dev/api/raidplan/{id} "signUps" export — the
   // event sign-up roster, with no group placement at all (players haven't
   // been put into parties yet). Seed groups round-robin, then hand off to
   // the Optimizer to place everyone properly.
-  // Reduce a "signUps" export to usable entries: { name, class, spec, role, category }
-  // where category is 'raider' or 'bench'. Absences and unresolvable classes are
-  // counted in `skipped`. Shared by the first import and by Refresh.
+  // Reduce a "signUps" export to entries: { name, status, class, spec, role, category }
+  // where category is 'raider', 'bench' or 'unplaced' (Absent, or no class).
+  // Every sign-up is kept. Shared by the first import and by Refresh.
   parseRaidHelperSignUps(data) {
-    const entries = [];
-    let skipped = 0;
-    for (const signUp of data.signUps) {
-      const category = this._categorizeRaidHelperEntry(signUp);
-      if (category === 'skip') { skipped++; continue; }
-      const { classFile, specName, role, needsReview, reviewReason } = this._resolveRaidHelperEntry(signUp);
-      if (!classFile) { skipped++; continue; }
-      entries.push({
-        name: signUp.name || ('Unknown-' + (signUp.id || entries.length)),
-        class: classFile, spec: specName, role, category, needsReview, reviewReason,
-      });
-    }
-    return { entries, skipped };
+    const entries = data.signUps.filter(Boolean).map((signUp, i) =>
+      this._readRaidHelperEntry(signUp, 'Unknown-' + (signUp.id || i)));
+    return { entries };
   },
 
   _importRaidHelperSignUps(data) {
     const roster = [];
     const bench = [];
-    const { entries, skipped } = this.parseRaidHelperSignUps(data);
+    const unplaced = [];
+    const { entries } = this.parseRaidHelperSignUps(data);
     for (const entry of entries) {
+      if (entry.category === 'unplaced') { unplaced.push(this._makeUnplaced(entry)); continue; }
       const player = {
         uid: nextUid(),
         name: entry.name, class: entry.class, spec: entry.spec, role: entry.role,
-        imported: true,
+        imported: true, signupStatus: entry.status,
       };
       if (entry.needsReview) { player.needsReview = true; player.reviewReason = entry.reviewReason; }
       if (entry.category === 'bench') { player.groupNumber = 0; bench.push(player); }
       else roster.push(player);
     }
     if (roster.length === 0 && bench.length === 0) return { success:false, error:'No valid players found in sign-ups' };
+    State.unplaced = unplaced;
 
     // Auto-detect raid. An all-Tentative list still sizes the raid by how many
     // people signed, so they land on a bench that matches the event.
@@ -3490,31 +3598,37 @@ const Import = {
     const overflow = State.bench.length - benchBefore;
 
     return { success:true, playerCount:State.roster.length, groupCount:numGroups, wasUnassigned:true,
-             benchCount:State.bench.length, skippedCount:skipped, overflowCount:overflow };
+             benchCount:State.bench.length, unplacedCount:State.unplaced.length, overflowCount:overflow };
   },
 
   // ── Raid-Helper re-sync ───────────────────────────────────────
-  // Compare a fresh "signUps" export against the loaded roster without
-  // touching State. Players are matched by name (case-insensitive), since
-  // saved rosters carry no Raid-Helper IDs.
-  //   added:    sign-ups not in the plan            -> will join the bench
+  // Compare a fresh "signUps" export against the loaded plan without
+  // touching State. Players are matched by name (case-insensitive) across the
+  // groups, the bench and the unplaced list, since saved rosters carry no
+  // Raid-Helper IDs.
+  //   added:    sign-ups not in the plan            -> bench / unplaced by status
   //   removed:  plan members no longer signed up    -> will be dropped
   //   changed:  same person, new class/spec/role    -> updated in place
-  //   demoted:  seated player now Tentative/Bench   -> moved to the bench
+  //   restatus: same person, new sign-up status     -> {player, status, backfill};
+  //             people off the raid move to the matching tray tab
+  //   demoted:  seated player newly marked Bench/Tentative/Late/Absent -> unseated
   //   promoted: benched player now confirmed        -> reported, left on the bench
+  // A status on a player saved before statuses existed is a silent `backfill`,
+  // never reported as a change by itself.
   diffRaidHelperSignUps(jsonStr) {
     let data;
     try { data = JSON.parse(jsonStr); } catch (e) { return { success:false, error:'Invalid JSON: ' + e.message }; }
     if (!Array.isArray(data.signUps)) return { success:false, error:"No 'signUps' array found in JSON" };
 
-    const { entries, skipped } = this.parseRaidHelperSignUps(data);
+    const { entries } = this.parseRaidHelperSignUps(data);
     const key = (name) => (name || '').trim().toLowerCase();
     const seated = new Set(State.roster.map(p => p.uid));
     const current = new Map();
-    for (const p of State.roster) current.set(key(p.name), p);
-    for (const p of (State.bench || [])) if (!current.has(key(p.name))) current.set(key(p.name), p);
+    for (const p of [...State.roster, ...(State.bench || []), ...(State.unplaced || [])]) {
+      if (!current.has(key(p.name))) current.set(key(p.name), p);
+    }
 
-    const diff = { success:true, added:[], removed:[], changed:[], demoted:[], promoted:[], skipped };
+    const diff = { success:true, added:[], removed:[], changed:[], restatus:[], demoted:[], promoted:[] };
     const seen = new Set();
     for (const entry of entries) {
       const k = key(entry.name);
@@ -3522,12 +3636,15 @@ const Import = {
       seen.add(k);
       const player = current.get(k);
       if (!player) { diff.added.push(entry); continue; }
-      if (player.class !== entry.class || player.spec !== entry.spec || player.role !== entry.role) {
+      // An entry without a class (an Absence, usually) says nothing about spec.
+      if (entry.class && (player.class !== entry.class || player.spec !== entry.spec || player.role !== entry.role)) {
         diff.changed.push({ player, class:entry.class, spec:entry.spec, role:entry.role, needsReview:entry.needsReview, reviewReason:entry.reviewReason });
       }
+      const statusChanged = player.signupStatus !== entry.status;
       const isSeated = seated.has(player.uid);
-      if (isSeated && entry.category === 'bench') diff.demoted.push(player);
+      if (isSeated && entry.status !== 'confirmed' && statusChanged) diff.demoted.push(player);
       else if (!isSeated && entry.category === 'raider') diff.promoted.push(player);
+      if (statusChanged) diff.restatus.push({ player, status: entry.status, backfill: player.signupStatus === undefined });
     }
     for (const [k, player] of current) if (!seen.has(k)) diff.removed.push(player);
     return diff;
@@ -3536,6 +3653,7 @@ const Import = {
   hasRaidHelperChanges(diff) {
     return !!diff && diff.success &&
       ((diff.added.length + diff.removed.length + diff.changed.length + diff.demoted.length) > 0 ||
+        (diff.restatus || []).some(r => !r.backfill) ||
         diff.promoted.some(p => PreferredSlots.match(p)));
   },
 
@@ -3544,6 +3662,7 @@ const Import = {
   applyRaidHelperSync(diff) {
     if (!diff || !diff.success) return null;
     State.bench = State.bench || [];
+    State.unplaced = State.unplaced || [];
     State.backups = State.backups || {};
 
     const unseat = (player) => {
@@ -3569,6 +3688,8 @@ const Import = {
       unseat(player);
       const b = State.bench.indexOf(player);
       if (b >= 0) State.bench.splice(b, 1);
+      const u = State.unplaced.indexOf(player);
+      if (u >= 0) State.unplaced.splice(u, 1);
       clearOverrides(player);
     }
     for (const change of diff.changed) {
@@ -3579,19 +3700,27 @@ const Import = {
       else { delete change.player.needsReview; delete change.player.reviewReason; }
       clearOverrides(change.player); // an override for the old spec's buff no longer applies
     }
+    for (const { player, status } of (diff.restatus || [])) player.signupStatus = status;
     for (const player of diff.demoted) {
       if (player.groupNumber >= 1) vacated.push({ name: player.name, groupNumber: player.groupNumber, gone: false });
       unseat(player);
       player.groupNumber = 0;
-      State.bench.push(player);
       clearOverrides(player);
+      this._fileOffRaid(player);
+    }
+    // Anyone off the raid whose status or class changed moves between the
+    // bench and the unplaced list (an Absence, or a class finally chosen).
+    const seated = new Set(State.roster);
+    for (const { player } of [...(diff.restatus || []), ...diff.changed]) {
+      if (!seated.has(player)) this._fileOffRaid(player);
     }
     let filled = 0;
     for (const player of diff.promoted) if (PreferredSlots.seat(player)) filled++;
     for (const entry of diff.added) {
+      if (entry.category === 'unplaced') { State.unplaced.push(this._makeUnplaced(entry)); continue; }
       const player = {
         uid: nextUid(), name:entry.name, class:entry.class, spec:entry.spec, role:entry.role,
-        groupNumber: 0, imported: true,
+        groupNumber: 0, imported: true, signupStatus: entry.status,
       };
       if (entry.needsReview) { player.needsReview = true; player.reviewReason = entry.reviewReason; }
       if (entry.category !== 'bench' && PreferredSlots.seat(player)) filled++;
@@ -3620,9 +3749,51 @@ const Import = {
 
     return {
       added: diff.added.length, removed: diff.removed.length,
-      changed: diff.changed.length, demoted: diff.demoted.length, promoted: diff.promoted.length, filled,
-      backupSwapReady,
+      changed: diff.changed.length, demoted: diff.demoted, promoted: diff.promoted.length, filled,
+      moved: this.statusMoves(diff), backupSwapReady,
     };
+  },
+
+  // One line for the banner/toast. Accepts a diff (arrays) or
+  // applyRaidHelperSync's counts (numbers, plus the demoted players and
+  // `moved` status changes, which are told by their new status).
+  describeRaidHelperChanges(diff) {
+    const n = (v) => Array.isArray(v) ? v.length : (v || 0);
+    const moved = diff.moved || Import.statusMoves(diff);
+    const newStatus = new Map((diff.restatus || moved).map(r => [r.player, r.status]));
+    const byStatus = (players) => {
+      const tally = {};
+      for (const p of players) { const s = newStatus.get(p) || p.signupStatus; tally[s] = (tally[s] || 0) + 1; }
+      return Object.entries(tally);
+    };
+    const parts = [];
+    if (n(diff.added)) parts.push(`${n(diff.added)} new sign-up${n(diff.added) === 1 ? '' : 's'}`);
+    if (n(diff.removed)) parts.push(`${n(diff.removed)} withdrew`);
+    if (n(diff.changed)) parts.push(`${n(diff.changed)} changed spec`);
+    for (const [s, k] of byStatus(diff.demoted || [])) parts.push(`${k} seated now ${SignupStatus.label(s)}`);
+    for (const [s, k] of byStatus(moved.map(r => r.player))) parts.push(`${k} now ${SignupStatus.label(s)}`);
+    if (n(diff.promoted)) parts.push(`${n(diff.promoted)} on the bench now confirmed`);
+    if (n(diff.filled)) parts.push(`${n(diff.filled)} preferred slots filled`);
+    return parts.join(', ');
+  },
+
+  // Status changes worth reporting on their own: not a silent backfill, and
+  // not already told as a seat change (demoted) or a confirmation (promoted).
+  statusMoves(diff) {
+    const told = new Set([...diff.demoted, ...diff.promoted]);
+    return (diff.restatus || []).filter(r => !r.backfill && !told.has(r.player));
+  },
+
+  // Put a player who isn't seated in the list their status calls for: the
+  // unplaced list when Absent or classless, otherwise the bench.
+  _fileOffRaid(player) {
+    const target = (player.signupStatus === 'absent' || !player.class) ? State.unplaced : State.bench;
+    if (target.includes(player)) return; // already filed; keep its place in line
+    const other = target === State.bench ? State.unplaced : State.bench;
+    const i = other.indexOf(player);
+    if (i >= 0) other.splice(i, 1);
+    if (target === State.bench) { player.groupNumber = 0; player.imported = true; }
+    target.push(player);
   },
 
   // Compact addon-friendly export string
@@ -3768,12 +3939,14 @@ const Import = {
     const hasBackups = Backups.hasManualEdits();
     const constraints = Constraints.clean(State.playerConstraints);
     const drummers = Drummers.clean(State.drummers);
+    const statuses = this._shareStatuses();
+    const unplaced = (State.unplaced || []).map(p => ({ name:p.name, class:p.class, spec:p.spec, role:p.role, signupStatus:p.signupStatus }));
     const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
     for (const g of State.groups) parts.push(encode(g));
     // Notes and manual assignment/backup/constraint/drummer edits only ride
     // along when present, so a plain TBC share link (the common case) stays
     // byte-for-byte as compact as before — byte-identical when unused.
-    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length || drummers.length) {
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length || drummers.length || statuses || unplaced.length) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
       const tail = {gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder};
       if (notes) tail.notes = notes;
@@ -3781,9 +3954,21 @@ const Import = {
       if (hasBackups) tail.backups = Backups.serialize();
       if (constraints.length) tail.playerConstraints = constraints;
       if (drummers.length) tail.drummers = drummers;
+      if (statuses) tail.signupStatuses = statuses;
+      if (unplaced.length) tail.unplaced = unplaced;
       parts.push(encodeURIComponent(JSON.stringify(tail)));
     }
     return parts.join(':');
+  },
+
+  // name -> sign-up status for the share tail, or null when every status is
+  // a plain confirmed sign-up, so the common link stays as compact as before.
+  _shareStatuses() {
+    const all = [...State.roster, ...(State.bench || [])].filter(p => p.signupStatus);
+    if (!all.some(p => p.signupStatus !== 'confirmed')) return null;
+    const map = {};
+    for (const p of all) map[p.name] = p.signupStatus;
+    return map;
   },
 
   // Base64url so the payload survives a URL fragment untouched (no +, / or =).
@@ -3852,6 +4037,7 @@ const Import = {
     let backups = null;
     let playerConstraints = [];
     let drummers = [];
+    let unplaced = [];
     try {
       const planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D'));
       campfires = planning.campfires;
@@ -3864,6 +4050,11 @@ const Import = {
       backups = planning.backups || null;
       playerConstraints = Constraints.clean(planning.playerConstraints);
       drummers = Drummers.clean(planning.drummers);
+      const statuses = planning.signupStatuses && typeof planning.signupStatuses === 'object' ? planning.signupStatuses : {};
+      for (const p of [...players, ...bench]) {
+        if (SignupStatus.clean(statuses[p.name])) p.signupStatus = statuses[p.name];
+      }
+      unplaced = SignupStatus.cleanUnplaced(planning.unplaced);
     }
     catch { return {success:false, error:'Share link has damaged preferred slots'}; }
     if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0 && !(Array.isArray(campfires?.fires) && campfires.fires.some(f => f && [3,5,10].includes(f.capacity)))) {
@@ -3875,7 +4066,7 @@ const Import = {
       name: name || 'Shared Roster',
       playerCount: players.length,
       groupCount: numGroups,
-      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, preferredSlots, preserveGroupOrder, notes, assignments, backups, playerConstraints, drummers },
+      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, unplaced, preferredSlots, preserveGroupOrder, notes, assignments, backups, playerConstraints, drummers },
     };
   },
 
@@ -3945,6 +4136,7 @@ const Import = {
 
     State.roster = roster;
     State.groups = groups;
+    State.unplaced = [];
     State.sourceEventId = null;
     return { success:true, playerCount:roster.length, groupCount:numGroups };
   },
@@ -3966,9 +4158,14 @@ const Import = {
       drummers: Drummers.clean(State.drummers),
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
+        ...(p.signupStatus ? { signupStatus:p.signupStatus } : {}),
       })),
       bench: (State.bench || []).map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:0,
+        ...(p.signupStatus ? { signupStatus:p.signupStatus } : {}),
+      })),
+      unplaced: (State.unplaced || []).map(p => ({
+        name:p.name, class:p.class, spec:p.spec, role:p.role, signupStatus:p.signupStatus,
       })),
     };
   },
@@ -3995,6 +4192,7 @@ const Import = {
 
     for (const p of data.players) {
       const player = { uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber, imported:true };
+      if (SignupStatus.clean(p.signupStatus)) player.signupStatus = p.signupStatus;
       roster.push(player);
       const g = player.groupNumber;
       if (g >= 1 && g <= numGroups) groups[g-1].push(player);
@@ -4002,7 +4200,9 @@ const Import = {
     State.bench = (data.bench || []).map(p => ({
       uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role,
       groupNumber: 0, imported: true,
+      ...(SignupStatus.clean(p.signupStatus) ? { signupStatus:p.signupStatus } : {}),
     }));
+    State.unplaced = SignupStatus.cleanUnplaced(data.unplaced);
     State.roster = roster;
     State.groups = groups;
     State.campfires = Campfires.clean(data.campfires);
@@ -4208,6 +4408,7 @@ const Import = {
     State.roster = roster;
     State.groups = groups;
     State.bench = [];
+    State.unplaced = [];
     Optimizer.optimize();
 
     return { success:true, playerCount:State.roster.length, groupCount:numGroups, wasUnassigned:true,
@@ -4274,7 +4475,7 @@ const ImportHistory = {
 const PlanStore = {
   key: 'pp_working_plans',
   capture() {
-    return JSON.parse(JSON.stringify({planId:State.planId, groups:State.groups, bench:State.bench,
+    return JSON.parse(JSON.stringify({planId:State.planId, groups:State.groups, bench:State.bench, unplaced:State.unplaced || [],
       campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
       optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder,
       notes:State.notes || '',
@@ -4289,6 +4490,7 @@ const PlanStore = {
       (data.backups === undefined || (data.backups && typeof data.backups === 'object' && !Array.isArray(data.backups))) &&
       (data.playerConstraints === undefined || Array.isArray(data.playerConstraints)) &&
       (data.drummers === undefined || Array.isArray(data.drummers)) &&
+      (data.unplaced === undefined || Array.isArray(data.unplaced)) &&
       data.buffOverrides && typeof data.buffOverrides === 'object' && !Array.isArray(data.buffOverrides) &&
       Array.isArray(data.bench) && [...data.groups.flat(), ...data.bench].every(p => p &&
         typeof p.uid === 'string' && typeof p.name === 'string' && typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string');
@@ -4310,6 +4512,7 @@ const PlanStore = {
     State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
     State.preserveGroupOrder = data.preserveGroupOrder === true || State.preferredSlots.length > 0;
     State.roster = State.groups.flat();
+    State.unplaced = SignupStatus.cleanUnplaced(data.unplaced);
     State.campfires = Campfires.clean(data.campfires);
     // Explicit reset (not just Object.assign) so a plan saved before this field
     // existed clears any notes left over from whatever was in State before.
@@ -4318,7 +4521,7 @@ const PlanStore = {
     Backups.restore(data.backups);
     State.playerConstraints = Constraints.clean(data.playerConstraints);
     State.drummers = Drummers.clean(data.drummers);
-    for (const p of [...State.roster, ...State.bench]) {
+    for (const p of [...State.roster, ...State.bench, ...State.unplaced]) {
       const n = /^p(\d+)$/.exec(p.uid);
       if (n) _uid = Math.max(_uid, Number(n[1]));
     }
@@ -4930,6 +5133,7 @@ const RandomRoster = {
     State.rosterName = 'Random ' + size + '-man Roster';
     State.sourceEventId = null;
     State.bench = [];
+    State.unplaced = [];
     State.buffOverrides = {};
   },
 };
@@ -6932,6 +7136,31 @@ const RosterEdit = {
     return { success:true, player: found.player };
   },
 
+  // Unplaced sign-up (Absent, or no class) -> group. The leader has confirmed
+  // it and, when Raid-Helper sent no class, picked one (`pick`). The person
+  // keeps their Raid-Helper status, so their card still reads Absent.
+  PlaceUnplaced(uid, groupIdx, pick = {}) {
+    const list = State.unplaced || [];
+    const i = list.findIndex(p => p.uid === uid);
+    if (i < 0) return { success:false, error:'Sign-up not found' };
+    const entry = list[i];
+    const classFile = pick.class || entry.class;
+    const specName = pick.spec || entry.spec;
+    const role = classFile && specName ? this.RoleForSpec(classFile, specName) : null;
+    if (!role) return { success:false, error:'Pick a class and spec first' };
+    const groups = State.groups || [];
+    if (!(groupIdx >= 0 && groupIdx < groups.length)) return { success:false, error:'Invalid group' };
+    if (groups[groupIdx].length >= this.MAX_GROUP_SIZE) return { success:false, error:'Group ' + (groupIdx+1) + ' is full' };
+
+    list.splice(i, 1);
+    const player = { uid: entry.uid, name: entry.name, class: classFile, spec: specName, role,
+      groupNumber: groupIdx + 1, imported: true };
+    if (entry.signupStatus) player.signupStatus = entry.signupStatus;
+    groups[groupIdx].push(player);
+    this.syncRoster();
+    return { success:true, player };
+  },
+
   // Overrides are keyed "groupIdx:uid:category"; drop every one for a uid.
   ClearOverridesForUid(uid) {
     if (!uid || !State.buffOverrides) return 0;
@@ -8161,6 +8390,7 @@ function initGroups() {
   const raidInfo = Config.Raids[State.selectedRaid];
   const numGroups = raidInfo ? raidInfo.groups : 5;
   if (!State.bench) State.bench = [];
+  if (!State.unplaced) State.unplaced = [];
   let benched = 0;
   if (State.groups.length > numGroups) {
     benched = enforceRaidCapacity(State.groups, State.bench, numGroups);
@@ -8198,6 +8428,13 @@ function getSpecIcon(p) {
   const label = p.spec ? `${p.spec} ${cls.charAt(0) + cls.slice(1).toLowerCase()}` : cls;
   const src = `https://wow.zamimg.com/images/wow/icons/small/${icon}.jpg`;
   return `<span class="role-icon spec-icon ${roleCls}"><img src="${src}" alt="${label}" loading="lazy"></span>`;
+}
+
+// Raid-Helper sign-up status as a small colored tag (see SignupStatus).
+function getStatusTag(status) {
+  const label = SignupStatus.label(status);
+  if (!label) return '';
+  return `<span class="status-tag status-${esc(status)}" title="Marked ${esc(label)} on Raid-Helper">${esc(label)}</span>`;
 }
 
 function getDragHandle() {
@@ -8517,6 +8754,7 @@ function renderGroups() {
             <span class="player-spec">${esc(specClass)}</span>
           </div>
           ${reviewBadge}
+          ${p.signupStatus && p.signupStatus !== 'confirmed' ? getStatusTag(p.signupStatus) : ''}
           ${lockBadge}
           ${constraintBadge}
           ${backupBadge}
@@ -8594,7 +8832,7 @@ function renderGroups() {
 
   renderSummaryBar();
   updateStatus();
-  renderBench();
+  SignupTray.render();
   cleanupOverrides();
   renderManualChanges();
 
@@ -8944,6 +9182,17 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
 
     const tgtGroupIdx = parseInt(slot.dataset.group);
 
+    // An unplaced sign-up is only seated after the leader confirms.
+    if (dragData.group === 'unplaced') {
+      const uid = dragData.uid;
+      ghost.style.display = 'none';
+      dragData = null;
+      container.querySelectorAll('.drag-target').forEach(s => s.classList.remove('drag-target'));
+      container.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
+      UnplacedDialog.open(uid, tgtGroupIdx);
+      return;
+    }
+
     // Dragged off the bench and into a group.
     if (dragData.group === 'bench') {
       const uid = dragData.uid;
@@ -8996,6 +9245,10 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
   let autoScrollFrame = null;
 
   function sourceFromSlot(slot) {
+    if (slot.dataset.unplacedUid) {
+      const p = (State.unplaced || []).find(u => u.uid === slot.dataset.unplacedUid);
+      return p ? { group: 'unplaced', player: p } : null;
+    }
     if (slot.classList.contains('bench-slot')) {
       const bi = parseInt(slot.dataset.benchSlot);
       const p = (State.bench || [])[bi];
@@ -9063,7 +9316,7 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
       target.el.classList.add('drag-target');
       const card = target.el.closest('.group-card');
       if (card) card.classList.add('drag-over');
-    } else if (active.group !== 'bench') {
+    } else if (active.group !== 'bench' && active.group !== 'unplaced') {
       bench.classList.add('drag-over');
     }
   }
@@ -9071,7 +9324,7 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
   function drop(target) {
     if (!target) return;
     if (target.kind === 'bench') {
-      if (active.group === 'bench') return;
+      if (active.group === 'bench' || active.group === 'unplaced') return;
       const result = RosterEdit.BenchPlayer(active.player.uid);
       if (!result.success) { showToast(result.error); return; }
       renderGroups();
@@ -9079,6 +9332,7 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
       return;
     }
     const tgtG = parseInt(target.el.dataset.group), tgtS = parseInt(target.el.dataset.slot);
+    if (active.group === 'unplaced') { UnplacedDialog.open(active.player.uid, tgtG); return; }
     if (active.group === 'bench') {
       const result = RosterEdit.UnbenchPlayer(active.player.uid, tgtG);
       if (!result.success) { showToast(result.error); return; }
@@ -9288,48 +9542,185 @@ function closeBuffPicker() {
 // ── BENCH PANEL ─────────────────────────────────────────────────
 // Players who are in the roster but not slotted into a party. The Optimizer
 // never sees them; they sit here until dragged back in or deleted.
-function renderBench() {
-  const section = document.getElementById('bench-section');
-  if (!section) return;
+// ── SIGN-UP TRAY ────────────────────────────────────────────────
+// Replaces the single bench panel with one bench-sized panel whose tabs file
+// everyone off the raid by their Raid-Helper status, so adding statuses adds
+// tabs, not page height. Bench/Tentative/Late come from State.bench (real
+// players, draggable as before); Absent and classless sign-ups come from
+// State.unplaced and are seated through UnplacedDialog.
+const SignupTray = {
+  TABS: [
+    { id:'bench',     label:'Bench',     hint:'Drag into a group, or tap to edit' },
+    { id:'tentative', label:'Tentative', hint:'Marked Tentative on Raid-Helper' },
+    { id:'late',      label:'Late',      hint:'Marked Late on Raid-Helper. Seat them when they arrive' },
+    { id:'absent',    label:'Absent',    hint:"Marked Absent. You'll confirm before seating them" },
+    { id:'all',       label:'All',       hint:'Everyone not seated, tagged by status' },
+  ],
+  activeTab: 'bench',
+  chosen: false, // until the leader picks a tab, open the first one with people in it
 
-  const bench = State.bench || [];
-  if (bench.length === 0) {
-    section.style.display = 'none';
-    section.innerHTML = '';
-    return;
-  }
+  entries() {
+    return [
+      ...(State.bench || []).map((p, bi) => ({ p, bi, unplaced:false })),
+      ...(State.unplaced || []).map(p => ({ p, unplaced:true })),
+    ];
+  },
 
-  section.style.display = State.activeTab === 'plan' ? 'block' : 'none';
+  tabOf(entry) { return SignupStatus.tabFor(entry.p.signupStatus); },
 
-  let slotsHTML = '';
-  for (let bi = 0; bi < bench.length; bi++) {
-    const p = bench[bi];
-    const color = Config.ClassColors[p.class] || 'var(--text-primary)';
+  select(tab) {
+    if (!this.TABS.some(t => t.id === tab)) return;
+    this.activeTab = tab;
+    this.chosen = true;
+    this.render();
+    const btn = document.querySelector(`[data-tray-tab="${tab}"]`);
+    if (!btn) return;
+    btn.focus({ preventScroll: true });
+    // On a phone the tab row scrolls sideways; bring the chosen tab fully in.
+    const row = btn.parentElement;
+    if (btn.offsetLeft < row.scrollLeft || btn.offsetLeft + btn.offsetWidth > row.scrollLeft + row.clientWidth) {
+      row.scrollLeft = btn.offsetLeft - (row.clientWidth - btn.offsetWidth) / 2;
+    }
+  },
+
+  slotHTML(entry, tab) {
+    const p = entry.p;
     const displayName = (p.name || 'Unknown').split('-')[0];
+    // The Bench tab tags only "Signed up" (overflow raiders vs Raid-Helper
+    // Bench); the All tab tags everyone; a status tab is its own label.
+    const tag = tab === 'all' ? getStatusTag(p.signupStatus)
+      : (tab === 'bench' && p.signupStatus === 'confirmed' ? getStatusTag('confirmed') : '');
+    if (entry.unplaced) {
+      const color = (p.class && Config.ClassColors[p.class]) || 'var(--text-muted)';
+      const icon = p.class ? getSpecIcon(p) : '<span class="role-icon unplaced-icon">?</span>';
+      const specText = p.class ? `${p.spec} ${RosterEdit.ClassLabel(p.class)}` : 'No spec on Raid-Helper';
+      return `<div class="player-slot bench-slot unplaced-slot" draggable="true" data-unplaced-uid="${esc(p.uid)}" title="Click or drag into a group to seat them">
+        ${icon}
+        <div class="player-info">
+          <span class="player-name" style="color:${color}">${esc(displayName)}</span>
+          <span class="player-spec">${esc(specText)}</span>
+        </div>
+        ${tag}
+        ${getDragHandle()}
+      </div>`;
+    }
+    const color = Config.ClassColors[p.class] || 'var(--text-primary)';
     const specClass = p.spec
       ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : ''))
       : '';
     const backupPrimary = Backups.primaryNameFor(p.name);
     const backupBadge = backupPrimary ? `<span class="backup-badge backup-badge-bench" title="Backup for ${esc(backupPrimary.split('-')[0])}">-&gt; ${esc(backupPrimary.split('-')[0])}</span>` : '';
     const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
-    slotsHTML += `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" data-bench-slot="${bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
+    return `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" data-bench-slot="${entry.bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
       ${getSpecIcon(p)}
       <div class="player-info">
         <span class="player-name" style="color:${color}">${esc(displayName)}</span>
         <span class="player-spec">${esc(specClass)}</span>
       </div>
+      ${tag}
       ${reviewBadge}
       ${backupBadge}
       ${getDragHandle()}
     </div>`;
-  }
+  },
 
-  section.innerHTML = `<div class="bench-header">
-      <h3>Bench <span class="bench-count">${bench.length}</span></h3>
-      <span class="bench-hint">Tap a player to move them into a group</span>
-    </div>
-    <div class="bench-list" id="bench-list">${slotsHTML}</div>`;
-}
+  render() {
+    const section = document.getElementById('bench-section');
+    if (!section) return;
+    const entries = this.entries();
+    if (entries.length === 0) {
+      section.style.display = 'none';
+      section.innerHTML = '';
+      return;
+    }
+    section.style.display = State.activeTab === 'plan' ? 'block' : 'none';
+
+    const counts = { all: entries.length };
+    for (const e of entries) { const t = this.tabOf(e); counts[t] = (counts[t] || 0) + 1; }
+    if (!this.chosen && !counts[this.activeTab]) {
+      this.activeTab = (this.TABS.find(t => t.id !== 'all' && counts[t.id]) || { id:'all' }).id;
+    }
+    const tab = this.TABS.find(t => t.id === this.activeTab) || this.TABS[0];
+    const shown = tab.id === 'all' ? entries : entries.filter(e => this.tabOf(e) === tab.id);
+
+    const tabsHTML = this.TABS.map(t => {
+      const n = counts[t.id] || 0;
+      const selected = t.id === tab.id;
+      return `<button type="button" role="tab" class="tray-tab${n ? '' : ' is-empty'}" id="tray-tab-${t.id}" data-tray-tab="${t.id}" aria-selected="${selected}" aria-controls="bench-list" tabindex="${selected ? 0 : -1}">${t.label} <span class="bench-count">${n}</span></button>`;
+    }).join('');
+    const slotsHTML = shown.length
+      ? shown.map(e => this.slotHTML(e, tab.id)).join('')
+      : `<div class="tray-empty">No one is marked ${esc(tab.label)}.</div>`;
+
+    section.innerHTML = `<div class="bench-header tray-header">
+        <h3>Sign-ups</h3>
+        <div class="tray-tabs" role="tablist" aria-label="Sign-ups not in a group, by status">${tabsHTML}</div>
+      </div>
+      <div class="bench-hint tray-hint">${esc(tab.hint)}</div>
+      <div class="bench-list" id="bench-list" role="tabpanel" aria-labelledby="tray-tab-${tab.id}">${slotsHTML}</div>`;
+  },
+};
+
+// Confirm-and-seat for an unplaced sign-up: someone marked Absent, or sent
+// with no class. Asks for a class/spec only when Raid-Helper didn't send one.
+const UnplacedDialog = {
+  uid: null,
+
+  el(id) { return document.getElementById(id); },
+
+  fillSpecs(classFile, selectedSpec) {
+    const specs = Object.values(Config.Specs[classFile] || {});
+    this.el('unplaced-spec').innerHTML = specs.map(sp =>
+      `<option value="${esc(sp.name)}"${sp.name === selectedSpec ? ' selected' : ''}>${esc(sp.name)}</option>`).join('');
+  },
+
+  open(uid, groupIdx) {
+    const entry = (State.unplaced || []).find(p => p.uid === uid);
+    if (!entry) return;
+    this.uid = uid;
+    const name = (entry.name || 'This player').split('-')[0];
+    const status = SignupStatus.label(entry.signupStatus) || 'not signed up';
+    const needsClass = !entry.class;
+    this.el('unplaced-message').textContent = needsClass
+      ? `${name} is marked ${status} on Raid-Helper and didn't pick a class. Choose one to seat them.`
+      : `${name} is marked ${status} on Raid-Helper. Seat them anyway?`;
+
+    const classSel = this.el('unplaced-class');
+    const classes = Object.keys(Config.Specs);
+    classSel.innerHTML = classes.map(c => `<option value="${c}">${esc(RosterEdit.ClassLabel(c))}</option>`).join('');
+    classSel.value = entry.class || classes[0];
+    this.fillSpecs(classSel.value, entry.spec);
+    this.el('unplaced-class-field').hidden = !needsClass;
+    this.el('unplaced-spec-field').hidden = !needsClass;
+
+    const groupSel = this.el('unplaced-group');
+    groupSel.innerHTML = State.groups.map((g, gi) =>
+      `<option value="${gi}"${g.length >= RosterEdit.MAX_GROUP_SIZE ? ' disabled' : ''}>Group ${gi + 1} (${g.length}/5)</option>`).join('');
+    const open = State.groups.findIndex(g => g.length < RosterEdit.MAX_GROUP_SIZE);
+    const wanted = Number.isInteger(groupIdx) && State.groups[groupIdx]?.length < RosterEdit.MAX_GROUP_SIZE ? groupIdx : open;
+    if (wanted >= 0) groupSel.value = String(wanted);
+
+    this.el('unplaced-error').textContent = open < 0 ? 'Every group is full. Bench someone first.' : '';
+    this.el('btn-unplaced-confirm').disabled = open < 0;
+    this.el('unplaced-dialog').showModal();
+    (needsClass ? classSel : this.el('btn-unplaced-confirm')).focus();
+  },
+
+  confirm() {
+    const pick = this.el('unplaced-class-field').hidden ? {} : { class: this.el('unplaced-class').value, spec: this.el('unplaced-spec').value };
+    const groupIdx = parseInt(this.el('unplaced-group').value);
+    const result = RosterEdit.PlaceUnplaced(this.uid, groupIdx, pick);
+    if (!result.success) { this.el('unplaced-error').textContent = result.error; return; }
+    this.close();
+    renderGroups();
+    showToast(`${result.player.name.split('-')[0]} joined group ${groupIdx + 1}`);
+  },
+
+  close() {
+    this.uid = null;
+    this.el('unplaced-dialog').close();
+  },
+};
 
 // ── PLAYER EDITOR POPOVER ───────────────────────────────────────
 const ROLE_LABELS = {
@@ -9939,11 +10330,30 @@ document.addEventListener('keydown', e => {
   });
 
   document.getElementById('bench-section').addEventListener('click', e => {
+    const tab = e.target.closest('[data-tray-tab]');
+    if (tab) { SignupTray.select(tab.dataset.trayTab); return; }
     const slot = e.target.closest('.bench-slot');
     if (!slot) return;
+    if (slot.dataset.unplacedUid) { UnplacedDialog.open(slot.dataset.unplacedUid, null); return; }
     const uid = slot.dataset.uid;
     if (uid) showPlayerEditor(slot, { uid });
   });
+
+  // Arrow keys move between tray tabs (WAI-ARIA tabs pattern).
+  document.getElementById('bench-section').addEventListener('keydown', e => {
+    const tab = e.target.closest('[data-tray-tab]');
+    if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const ids = SignupTray.TABS.map(t => t.id);
+    const i = ids.indexOf(tab.dataset.trayTab);
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1
+      : (i + (e.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length;
+    SignupTray.select(ids[next]);
+  });
+
+  document.getElementById('btn-unplaced-cancel').addEventListener('click', () => UnplacedDialog.close());
+  document.getElementById('btn-unplaced-confirm').addEventListener('click', () => UnplacedDialog.confirm());
+  document.getElementById('unplaced-class').addEventListener('change', e => UnplacedDialog.fillSpecs(e.target.value));
 })();
 
 // ── BENCH DRAG & DROP ───────────────────────────────────────────
@@ -9956,10 +10366,17 @@ document.addEventListener('keydown', e => {
   section.addEventListener('dragstart', e => {
     const slot = e.target.closest('.bench-slot[draggable="true"]');
     if (!slot) return;
-    const bi = parseInt(slot.dataset.benchSlot);
-    const p = (State.bench || [])[bi];
-    if (!p) return;
-    dragData = { group: 'bench', slot: bi, uid: p.uid };
+    let p;
+    if (slot.dataset.unplacedUid) {
+      p = (State.unplaced || []).find(u => u.uid === slot.dataset.unplacedUid);
+      if (!p) return;
+      dragData = { group: 'unplaced', uid: p.uid };
+    } else {
+      const bi = parseInt(slot.dataset.benchSlot);
+      p = (State.bench || [])[bi];
+      if (!p) return;
+      dragData = { group: 'bench', slot: bi, uid: p.uid };
+    }
     slot.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     const img = new Image(); img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
@@ -9986,7 +10403,7 @@ document.addEventListener('keydown', e => {
 
   // Dropping anywhere on the bench panel benches the dragged group member.
   section.addEventListener('dragover', e => {
-    if (!dragData || dragData.group === 'bench') return;
+    if (!dragData || dragData.group === 'bench' || dragData.group === 'unplaced') return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     section.classList.add('drag-over');
@@ -9997,7 +10414,7 @@ document.addEventListener('keydown', e => {
   });
 
   section.addEventListener('drop', e => {
-    if (!dragData || dragData.group === 'bench') return;
+    if (!dragData || dragData.group === 'bench' || dragData.group === 'unplaced') return;
     e.preventDefault();
     section.classList.remove('drag-over');
     const player = (State.groups[dragData.group] || [])[dragData.slot];
@@ -10767,16 +11184,16 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   const foldBenched = initGroups();
   renderGroups();
   const historyNotice = rememberImport(src.url ? 'Raid-Helper URL' : 'Pasted JSON');
-  // Tentative/Bench sign-ups are parked on the bench and Absences are dropped,
-  // so report all three counts rather than silently losing people.
+  // Bench/Tentative/Late sign-ups wait on the bench and Absences are held
+  // unplaced, so report those counts rather than leave people unaccounted for.
   const overflow = (result.overflowCount || 0) + foldBenched;
   const extra = [];
   if (overflow) extra.push(`${overflow} over the raid size, benched`);
   else if (result.benchCount) extra.push(`${result.benchCount} benched`);
-  if (result.skippedCount) extra.push(`${result.skippedCount} skipped`);
+  if (result.unplacedCount) extra.push(`${result.unplacedCount} absent or without a class`);
   const suffix = extra.length ? ` (${extra.join(', ')})` : '';
   if (result.playerCount === 0 && result.benchCount) {
-    report(`Nobody is confirmed yet: ${result.benchCount} Tentative sign-ups are on the bench, ready to swap in${historyNotice}`, false);
+    report(`Nobody is confirmed yet: ${result.benchCount} Bench, Tentative or Late sign-ups are waiting in Sign-ups, ready to swap in${historyNotice}`, false);
     showToast(`Imported ${result.benchCount} benched sign-ups${historyNotice}`);
     return true;
   }
@@ -10878,17 +11295,7 @@ const RaidHelperSync = {
     return diff;
   },
 
-  describe(diff) {
-    const n = (v) => Array.isArray(v) ? v.length : (v || 0);
-    const parts = [];
-    if (n(diff.added)) parts.push(`${n(diff.added)} new sign-up${n(diff.added) === 1 ? '' : 's'}`);
-    if (n(diff.removed)) parts.push(`${n(diff.removed)} withdrew`);
-    if (n(diff.changed)) parts.push(`${n(diff.changed)} changed spec`);
-    if (n(diff.demoted)) parts.push(`${n(diff.demoted)} went tentative`);
-    if (n(diff.promoted)) parts.push(`${n(diff.promoted)} on the bench now confirmed`);
-    if (n(diff.filled)) parts.push(`${n(diff.filled)} preferred slots filled`);
-    return parts.join(', ');
-  },
+  describe(diff) { return Import.describeRaidHelperChanges(diff); },
 
   // Quiet check: banner only when something changed, silence on any failure.
   async check() {
@@ -11532,6 +11939,7 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   State.roster = [];
   State.groups = [];
   State.bench = [];
+  State.unplaced = [];
   State.rosterName = NO_ROSTER_NAME;
   State.sourceEventId = null;
   State.buffOverrides = {};
@@ -11554,7 +11962,7 @@ document.getElementById('btn-landing-empty').addEventListener('click', () => {
   State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
   State.preserveGroupOrder = false;
   State.campfires = Campfires.empty();
-  State.groups = []; State.roster = []; State.bench = []; State.preferredSlots = [];
+  State.groups = []; State.roster = []; State.bench = []; State.unplaced = []; State.preferredSlots = [];
   State.sourceEventId = null; State.buffOverrides = {}; State.rosterName = 'New raid plan';
   State.notes = '';
   State.playerConstraints = [];
