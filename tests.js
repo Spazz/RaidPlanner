@@ -2924,6 +2924,24 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   assertEqual(JSON.stringify(State.groups),layout,'undo keeps original layout');
   assert(await context.importFromText('123456789'), 'unchanged event reopens');
   assert(lastToast.startsWith('Reopened your plan. Up to date.'),'unchanged reimport says it is current');
+  // A different event's link must start that event's own plan, even when the
+  // open plan has Open-slot requests (which otherwise fill the open layout).
+  State.preferredSlots=[{group:1,class:'MAGE',spec:'Fire'}]; State.notes='Friday notes';
+  PP.PlanSession.observe();
+  payload={id:'987654321',title:'Other event',startTime:1790463600,signUps:[
+    {name:'OtherPriest',className:'Priest',specName:'Holy'},
+    {name:'OtherRogue',className:'Rogue',specName:'Combat'}]};
+  assert(await context.importFromText('https://raid-helper.xyz/event/987654321'), 'other event imports');
+  PP.PlanSession.observe();
+  assertEqual(State.planId,'event:987654321','other event gets its own plan');
+  assertEqual(State.sourceEventId,'987654321','other event is the linked source');
+  assert(State.rosterName.startsWith('Other event'),'other event plan takes its own title');
+  assertEqual([...State.roster,...State.bench].map(p=>p.name).sort().join(),'OtherPriest,OtherRogue','other event roster holds only its sign-ups');
+  assertEqual(State.notes,'','other event plan does not inherit notes');
+  assertEqual(State.preferredSlots.filter(p=>!p.auto).length,0,'other event plan does not inherit Open-slot requests');
+  const firstPlan=PP.PlanStore.read(storage).find(p=>p.data.planId==='event:123456789');
+  assertEqual(firstPlan && firstPlan.data.rosterName,'Custom event name','first event plan keeps its name');
+  assert(firstPlan && firstPlan.data.groups.flat().every(p=>p.name!=='OtherPriest'),'first event plan keeps its own roster');
   PP.PlanSession.ready=false;
   console.log(`Results: ${passed} passed, ${failed} failed, ${totalTests} total`);
 if (failed === 0) {

@@ -4551,6 +4551,23 @@ const PlanStore = {
     }
     return true;
   },
+  // Empty every per-plan field (roster, layout, Open-slot requests, notes and
+  // the features keyed by player) so whatever loads next starts clean. The
+  // plan ID is the caller's call: Clear keeps it, a new plan replaces it.
+  startFresh() {
+    State.campfires = Campfires.empty();
+    State.preferredSlots = [];
+    State.preserveGroupOrder = false;
+    State.roster = []; State.groups = []; State.bench = []; State.unplaced = [];
+    State.rosterName = NO_ROSTER_NAME;
+    State.sourceEventId = null;
+    State.buffOverrides = {};
+    State.notes = '';
+    State.playerConstraints = [];
+    State.drummers = [];
+    Assignments.restore(null);
+    Backups.restore(null);
+  },
   nameFor(data, eventId) {
     const title = typeof data.title === 'string' ? data.title.trim() : '';
     const raw = data.startTime || data.start_time;
@@ -11618,8 +11635,19 @@ async function importFromText(raw, report = (m) => showToast(m)) {
       return true;
     }
   }
+  // A different event than the one the open plan is linked to starts that
+  // event's own plan. Without this, an open plan with Open-slot requests takes
+  // the fill-my-layout path and absorbs the other event's sign-ups under its
+  // own name, notes and seats. Pasted JSON carries the event ID as `id`.
+  const incomingEventId = src.eventId || (/^\d{6,}$/.test(String(metadata.id || '')) ? String(metadata.id) : null);
+  const previousPlan = State.sourceEventId && incomingEventId !== State.sourceEventId ? PlanStore.capture() : null;
+  if (previousPlan) PlanStore.startFresh();
   const result = Import.importRaidHelper(jsonStr);
-  if (!result.success) { report('Import failed: ' + result.error, true); return false; }
+  if (!result.success) {
+    if (previousPlan) PlanStore.restore(previousPlan);
+    report('Import failed: ' + result.error, true);
+    return false;
+  }
   if (result.preferredImport) {
     State.sourceEventId = src.eventId || State.sourceEventId;
     if (src.eventId) State.planId = 'event:' + src.eventId;
@@ -12385,27 +12413,13 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {
-  State.campfires = Campfires.empty();
-  State.preferredSlots = [];
-  State.preserveGroupOrder = false;
   renderLastRun(null);
-  State.roster = [];
-  State.groups = [];
-  State.bench = [];
-  State.unplaced = [];
-  State.rosterName = NO_ROSTER_NAME;
-  State.sourceEventId = null;
-  State.buffOverrides = {};
   // Wipe every per-roster feature that is keyed by player name/uid — left in
   // place, these dangle after the roster they refer to is gone (stale notes
   // reappearing, "together"/"apart" pairs, bench backups and drum tags
   // pointing at players who no longer exist) and can resurface confusingly
   // on whatever is imported/generated next.
-  State.notes = '';
-  State.playerConstraints = [];
-  State.drummers = [];
-  Assignments.restore(null);
-  Backups.restore(null);
+  PlanStore.startFresh();
   initGroups();
   renderGroups();
   showToast('Cleared');
@@ -12413,15 +12427,8 @@ document.getElementById('btn-clear').addEventListener('click', () => {
 
 document.getElementById('btn-landing-empty').addEventListener('click', () => {
   State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
-  State.preserveGroupOrder = false;
-  State.campfires = Campfires.empty();
-  State.groups = []; State.roster = []; State.bench = []; State.unplaced = []; State.preferredSlots = [];
-  State.sourceEventId = null; State.buffOverrides = {}; State.rosterName = 'New raid plan';
-  State.notes = '';
-  State.playerConstraints = [];
-  State.drummers = [];
-  Assignments.restore(null);
-  Backups.restore(null);
+  PlanStore.startFresh();
+  State.rosterName = 'New raid plan';
   initGroups(); renderGroups(); showView('app');
   showToast('Click an empty slot to choose a preferred class and spec');
 });
