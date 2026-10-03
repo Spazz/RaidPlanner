@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/:version(tbc|classic|forever)/:id", "destination": "/index.html" }
+  ]
+}

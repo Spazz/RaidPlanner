@@ -12445,12 +12445,46 @@ document.getElementById('btn-templates').addEventListener('click', showTemplates
 document.getElementById('btn-load').addEventListener('click', () => { showView('landing'); document.querySelector('.import-tab[data-pane="saved"]').click(); });
 
 // ── SHARE LINK ──────────────────────────────────────────────────
-// The whole layout rides in the URL fragment, so there is no server and
-// no expiry. Fragments are never sent to the host, which keeps rosters
-// out of Vercel's logs.
-function buildShareUrl() {
+// Short links (/<version>/<id>) keep the share code server-side in
+// api/share.js for 30 days. The version segment is a readable label only:
+// the stored code carries the real version and raid. The long #r= link,
+// where the whole layout rides in the URL fragment, is the fallback when the
+// API is unreachable, and old #r= links keep loading.
+const SHARE_API = '/api/share';
+const SHORT_LINK_ID = /^[0-9A-Za-z]{7}$/;
+const SHORT_LINK_PATH = new RegExp(`^/(?:${Object.keys(GameVersions).join('|')})/([0-9A-Za-z]{7})/?$`);
+
+function siteRoot() {
+  return window.location.origin + '/';
+}
+
+// Resolves to {url, short} and never rejects, so Share always has a link.
+async function createShareLink() {
   const code = Import.encodeSharePayload(Import.exportShareString());
-  return window.location.origin + window.location.pathname + '#r=' + code;
+  const fallback = { url: siteRoot() + '#r=' + code, short: false };
+  try {
+    const resp = await fetch(SHARE_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+      signal: AbortSignal.timeout?.(5000),
+    });
+    if (!resp.ok) return fallback;
+    const { id } = await resp.json();
+    if (typeof id !== 'string' || !SHORT_LINK_ID.test(id)) return fallback;
+    return { url: siteRoot() + State.gameVersion + '/' + id, short: true };
+  } catch {
+    return fallback;
+  }
+}
+
+// Safari only allows clipboard writes inside the click itself, so the
+// pending link goes in as a ClipboardItem promise; writeText covers the rest.
+function copyShareLink(linkPromise) {
+  const writeText = () => linkPromise.then(link => navigator.clipboard.writeText(link.url));
+  if (!window.ClipboardItem || !navigator.clipboard.write) return writeText();
+  const item = new ClipboardItem({ 'text/plain': linkPromise.then(link => new Blob([link.url], { type: 'text/plain' })) });
+  return navigator.clipboard.write([item]).catch(writeText);
 }
 
 function loadFromShareLink() {
@@ -12459,8 +12493,33 @@ function loadFromShareLink() {
 
   // Strip the fragment first, so a refresh (or a declined prompt) never re-fires.
   history.replaceState(null, '', window.location.origin + window.location.pathname);
+  return applyShareCode(hash.slice(3));
+}
 
-  const str = Import.decodeSharePayload(hash.slice(3));
+async function loadFromShortLink() {
+  const match = window.location.pathname.match(SHORT_LINK_PATH);
+  if (!match) return false;
+
+  // Back to the site root first, so a refresh never re-fires and relative
+  // assets (the ?dev scenario loader) resolve against /.
+  history.replaceState(null, '', siteRoot());
+  showToast('Opening shared raid...');
+
+  let resp;
+  try {
+    resp = await fetch(`${SHARE_API}?id=${match[1]}`, { signal: AbortSignal.timeout?.(8000) });
+  } catch {
+    showToast('Could not reach the server to open that share link');
+    return false;
+  }
+  if (resp.status === 404) { showToast('That share link has expired or does not exist (links last 30 days)'); return false; }
+  const data = resp.ok ? await resp.json().catch(() => null) : null;
+  if (!data || typeof data.code !== 'string') { showToast('Could not open that share link, try again shortly'); return false; }
+  return applyShareCode(data.code);
+}
+
+function applyShareCode(code) {
+  const str = Import.decodeSharePayload(code);
   if (!str) { showToast('That share link is invalid or damaged'); return false; }
 
   const preview = Import.previewShareString(str);
@@ -12482,8 +12541,11 @@ document.getElementById('btn-share').addEventListener('click', () => {
     showToast('No roster to share');
     return;
   }
-  navigator.clipboard.writeText(buildShareUrl())
-    .then(() => showToast('Share link copied to clipboard'))
+  const link = createShareLink();
+  Promise.all([link, copyShareLink(link)])
+    .then(([{ short }]) => showToast(short
+      ? 'Share link copied (expires in 30 days)'
+      : 'Share link copied (long link: short links are unavailable right now)'))
     .catch(() => showToast('Copy failed'));
 });
 
@@ -13352,6 +13414,9 @@ renderGroups();
 const openedShare = loadFromShareLink();
 showView(openedShare ? 'app' : 'landing');
 if (!openedShare && hasLoadedWork()) document.querySelector('.import-tab[data-pane="saved"]').click();
+// A short link (/<version>/<id>) needs a server round-trip, so it lands on
+// import first and switches to the planner once the layout arrives.
+loadFromShortLink().then(opened => { if (opened) showView('app'); });
 // A share link pasted into the address bar of an already-open page only
 // changes the hash, so honour it there too.
 window.addEventListener('hashchange', () => { if (loadFromShareLink()) showView('app'); });
