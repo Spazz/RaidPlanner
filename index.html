@@ -5054,6 +5054,56 @@ const PlanSession = {
   },
 };
 
+// ── LIVE SHARE LINKS ─────────────────────────────────────────────
+// Each plan (PlanStore's planId + gameVersion key) can own one server-side
+// link (/<version>/<id>) that follows every change. This half is pure
+// bookkeeping over an injected storage so share-tests.js can drive it; the
+// network side is LiveSync, next to the share-link UI code.
+const LiveLinks = {
+  key: 'pp_live_links',
+  max: 100,
+  ID: /^[0-9A-Za-z]{7}$/,
+  planKey(data) {
+    return data && typeof data.planId === 'string' ? (data.gameVersion || 'tbc') + '|' + data.planId : null;
+  },
+  read(storage) {
+    try {
+      const map = JSON.parse(storage.getItem(this.key) || '{}');
+      return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
+    } catch { return {}; }
+  },
+  get(storage, planKey) {
+    const entry = planKey ? this.read(storage)[planKey] : null;
+    return entry && this.ID.test(entry.id) ? entry : null;
+  },
+  findById(storage, id) {
+    const map = this.read(storage);
+    const planKey = Object.keys(map).find(k => map[k] && map[k].id === id);
+    return planKey ? { planKey, ...map[planKey] } : null;
+  },
+  // One plan per link: binding an ID that another plan held moves it over.
+  bind(storage, planKey, id, code, updatedAt) {
+    const map = this.read(storage);
+    for (const k of Object.keys(map)) if (map[k] && map[k].id === id) delete map[k];
+    map[planKey] = { id, lastCode: code, updatedAt: updatedAt || 0, touchedAt: Date.now() };
+    // Oldest beyond the cap go; the binding just written always stays.
+    const stale = Object.keys(map).filter(k => k !== planKey)
+      .sort((a, b) => (map[b].touchedAt || 0) - (map[a].touchedAt || 0)).slice(this.max - 1);
+    for (const k of stale) delete map[k];
+    storage.setItem(this.key, JSON.stringify(map));
+    return map[planKey];
+  },
+  // What is on screen differs from what this browser last synced.
+  needsPush(entry, localCode) {
+    return !!entry && !!localCode && localCode !== entry.lastCode;
+  },
+  // A remote copy replaces the local plan only when it is newer than the last
+  // sync and no local save is waiting; a waiting local save wins instead.
+  shouldApply(entry, remote, pending) {
+    return !!entry && !!remote && !pending && remote.updatedAt > entry.updatedAt;
+  },
+};
+
 // ── RANDOM ROSTER GENERATOR ──────────────────────────────────────
 
 const RandomRoster = {
@@ -10983,11 +11033,12 @@ function maybeSuggestVersionSwitch(templateId) {
 
 function persistWorkingPlan() {
   const result = PlanSession.observe();
+  LiveSync.onRender();
   const status = document.getElementById('autosave-status');
   if (result) {
     try {
       if (result.changed || status.dataset.failed) PlanStore.save(localStorage, result.current);
-      status.textContent = 'Saved on this device';
+      status.textContent = LiveSync.statusText('Saved on this device');
       delete status.dataset.failed;
     } catch {
       status.textContent = 'Could not save — export a copy';
@@ -12189,7 +12240,8 @@ function renderLandingSavedList() {
   // a roster from the scenario list. Production never requests the file.
   if (/[?&]dev(?:[&=]|$)/.test(location.search)) {
     const script = document.createElement('script');
-    script.src = 'scenarios.js';
+    // Absolute: the address bar may be on a /<version>/<id> live link.
+    script.src = '/scenarios.js';
     script.onload = () => {
       const S = window.PPScenarios;
       const pane = document.querySelector('.import-pane[data-pane="import"]');
@@ -12445,23 +12497,183 @@ document.getElementById('btn-templates').addEventListener('click', showTemplates
 document.getElementById('btn-load').addEventListener('click', () => { showView('landing'); document.querySelector('.import-tab[data-pane="saved"]').click(); });
 
 // ── SHARE LINK ──────────────────────────────────────────────────
-// Short links (/<version>/<id>) keep the share code server-side in
-// api/share.js for 30 days. The version segment is a readable label only:
-// the stored code carries the real version and raid. The long #r= link,
-// where the whole layout rides in the URL fragment, is the fallback when the
-// API is unreachable, and old #r= links keep loading.
+// Live links (/<version>/<id>): a plan's first Share stores its share code
+// via api/share.js; from then on every change auto-saves to that same link,
+// the address bar shows it while the plan is open, and open pages pull other
+// people's changes. Anyone with the link can edit and the latest save wins.
+// The version segment is a readable label only (the stored code carries the
+// real version and raid). The long #r= link is the fallback when the API is
+// unreachable, and old #r= links keep loading.
 const SHARE_API = '/api/share';
-const SHORT_LINK_ID = /^[0-9A-Za-z]{7}$/;
 const SHORT_LINK_PATH = new RegExp(`^/(?:${Object.keys(GameVersions).join('|')})/([0-9A-Za-z]{7})/?$`);
+// Read before the first render, which hands the address bar to syncAddressBar.
+const SHORT_LINK_AT_LOAD = (window.location.pathname.match(SHORT_LINK_PATH) || [])[1] || null;
+const LIVE_SAVE_DELAY_MS = 2000;
+const LIVE_POLL_MS = 15000;
 
 function siteRoot() {
   return window.location.origin + '/';
 }
 
-// Resolves to {url, short} and never rejects, so Share always has a link.
-async function createShareLink() {
-  const code = Import.encodeSharePayload(Import.exportShareString());
-  const fallback = { url: siteRoot() + '#r=' + code, short: false };
+function currentShareCode() {
+  return Import.encodeSharePayload(Import.exportShareString());
+}
+
+function linkStorage() {
+  try { return window.localStorage; } catch { return null; }
+}
+
+function currentLiveLink() {
+  const planKey = LiveLinks.planKey(State);
+  const entry = LiveLinks.get(linkStorage(), planKey);
+  return entry ? { planKey, entry } : null;
+}
+
+function bindLiveLink(planKey, id, code, updatedAt) {
+  try { LiveLinks.bind(linkStorage(), planKey, id, code, updatedAt); } catch {}
+}
+
+function liveLinkPath(id) {
+  return '/' + State.gameVersion + '/' + id;
+}
+
+// The address bar always names the open plan's live link, or / without one.
+function syncAddressBar() {
+  const link = currentLiveLink();
+  const path = link ? liveLinkPath(link.entry.id) : '/';
+  if (window.location.pathname !== path) history.replaceState(null, '', path + window.location.search);
+}
+
+// Resolves to {code, updatedAt}, or null when the link is unknown/expired.
+// Throws when the server cannot be reached.
+async function fetchLiveLink(id) {
+  const resp = await fetch(`${SHARE_API}?id=${id}`, { signal: AbortSignal.timeout?.(8000) });
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error('share ' + resp.status);
+  const data = await resp.json();
+  if (!data || typeof data.code !== 'string') throw new Error('share: bad response');
+  return { code: data.code, updatedAt: Number(data.updatedAt) || 0 };
+}
+
+// Swaps in someone else's copy of this plan, keeping what makes it this
+// browser's plan (its ID, Raid-Helper event and optimizer strategy).
+function applyRemoteLiveCode(id, remote) {
+  const str = Import.decodeSharePayload(remote.code);
+  if (!str || !Import.previewShareString(str).success) return false;
+  const keep = { planId: State.planId, sourceEventId: State.sourceEventId, optimizerMode: State.optimizerMode };
+  if (!Import.importAddonString(str).success) return false;
+  Object.assign(State, keep);
+  // Bound before rendering, so the render does not echo the copy straight back.
+  bindLiveLink(LiveLinks.planKey(State), id, currentShareCode(), remote.updatedAt);
+  renderGroups();
+  return true;
+}
+
+const LiveSync = {
+  saveTimer: null,
+  pending: false,
+  saving: false,
+  failed: false,
+  // True while a /<version>/<id> link from page load is still being fetched.
+  opening: !!SHORT_LINK_AT_LOAD,
+
+  // Called from persistWorkingPlan after every render.
+  onRender() {
+    if (!this.opening) syncAddressBar();
+    const link = currentLiveLink();
+    if (!link) { clearTimeout(this.saveTimer); this.pending = false; return; }
+    if (!LiveLinks.needsPush(link.entry, currentShareCode())) return;
+    this.pending = true;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.save(), LIVE_SAVE_DELAY_MS);
+  },
+
+  flush() {
+    clearTimeout(this.saveTimer);
+    if (this.pending && !this.saving) this.save();
+  },
+
+  async save() {
+    clearTimeout(this.saveTimer);
+    const link = currentLiveLink();
+    const code = link && currentShareCode();
+    if (!link || !LiveLinks.needsPush(link.entry, code)) { this.pending = false; this.refreshStatus(); return; }
+    this.saving = true;
+    try {
+      const resp = await fetch(SHARE_API, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: link.entry.id, code }),
+        signal: AbortSignal.timeout?.(8000),
+      });
+      if (!resp.ok) throw new Error('share ' + resp.status);
+      const { updatedAt } = await resp.json();
+      bindLiveLink(link.planKey, link.entry.id, code, Number(updatedAt) || 0);
+      this.failed = false;
+    } catch {
+      // Retried by the next poll tick (or the next change).
+      this.failed = true;
+    }
+    this.saving = false;
+    // An edit made while the save was in flight still needs its own save.
+    const now = currentLiveLink();
+    this.pending = this.failed || (!!now && LiveLinks.needsPush(now.entry, currentShareCode()));
+    if (this.pending && !this.failed) this.saveTimer = setTimeout(() => this.save(), LIVE_SAVE_DELAY_MS);
+    this.refreshStatus();
+  },
+
+  async pull() {
+    if (document.hidden || this.opening || this.saving) return;
+    const link = currentLiveLink();
+    if (!link) return;
+    if (this.failed) { this.save(); return; }
+    if (this.pending) return;
+
+    let remote;
+    try { remote = await fetchLiveLink(link.entry.id); } catch { return; }
+    // An expired link is re-created from this browser's copy.
+    if (remote === null) { this.pending = true; this.save(); return; }
+
+    const now = currentLiveLink();
+    if (!now || now.planKey !== link.planKey) return;
+    if (dragData || document.querySelector('.dragging')) return;
+    if (!LiveLinks.shouldApply(now.entry, remote, this.pending || this.saving)) return;
+    if (remote.code === currentShareCode()) { bindLiveLink(now.planKey, now.entry.id, remote.code, remote.updatedAt); return; }
+    if (applyRemoteLiveCode(now.entry.id, remote)) showToast('Roster updated by someone else');
+  },
+
+  statusText(fallback) {
+    if (!currentLiveLink()) return fallback;
+    if (this.failed) return 'Live link not synced, retrying';
+    if (this.pending || this.saving) return 'Syncing live link...';
+    return 'Synced to live link';
+  },
+
+  refreshStatus() {
+    const status = document.getElementById('autosave-status');
+    if (!status || status.dataset.failed) return;
+    status.textContent = this.statusText('Saved on this device');
+    const line = document.getElementById('roster-status-line');
+    if (line) line.textContent = status.textContent;
+  },
+
+  start() {
+    setInterval(() => this.pull(), LIVE_POLL_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.pull(); });
+  },
+};
+
+// Resolves to {url, live} and never rejects, so Share always has a link.
+async function getShareLink() {
+  const code = currentShareCode();
+  const fallback = { url: siteRoot() + '#r=' + code, live: false };
+  const existing = currentLiveLink();
+  if (existing) {
+    LiveSync.flush();
+    return { url: window.location.origin + liveLinkPath(existing.entry.id), live: true };
+  }
+  const planKey = LiveLinks.planKey(State);
+  if (!planKey) return fallback;
   try {
     const resp = await fetch(SHARE_API, {
       method: 'POST',
@@ -12470,9 +12682,13 @@ async function createShareLink() {
       signal: AbortSignal.timeout?.(5000),
     });
     if (!resp.ok) return fallback;
-    const { id } = await resp.json();
-    if (typeof id !== 'string' || !SHORT_LINK_ID.test(id)) return fallback;
-    return { url: siteRoot() + State.gameVersion + '/' + id, short: true };
+    const { id, updatedAt } = await resp.json();
+    if (!LiveLinks.ID.test(id)) return fallback;
+    bindLiveLink(planKey, id, code, Number(updatedAt) || 0);
+    if (!currentLiveLink()) return fallback;
+    syncAddressBar();
+    LiveSync.refreshStatus();
+    return { url: window.location.origin + liveLinkPath(id), live: true };
   } catch {
     return fallback;
   }
@@ -12497,25 +12713,40 @@ function loadFromShareLink() {
 }
 
 async function loadFromShortLink() {
-  const match = window.location.pathname.match(SHORT_LINK_PATH);
-  if (!match) return false;
-
-  // Back to the site root first, so a refresh never re-fires and relative
-  // assets (the ?dev scenario loader) resolve against /.
-  history.replaceState(null, '', siteRoot());
-  showToast('Opening shared raid...');
-
-  let resp;
+  const id = SHORT_LINK_AT_LOAD;
+  if (!id) return false;
   try {
-    resp = await fetch(`${SHARE_API}?id=${match[1]}`, { signal: AbortSignal.timeout?.(8000) });
-  } catch {
-    showToast('Could not reach the server to open that share link');
-    return false;
+    showToast('Opening shared raid...');
+    let remote;
+    try { remote = await fetchLiveLink(id); } catch {
+      showToast('Could not reach the server to open that share link');
+      return false;
+    }
+    if (!remote) { showToast('That share link has expired or does not exist (links last 30 days after the last change)'); return false; }
+
+    // This browser already owns a plan on that link: reopen it quietly (it is
+    // saved on this device, so nothing is replaced) and catch up.
+    const bound = LiveLinks.findById(linkStorage(), id);
+    let saved = null;
+    try { saved = bound && PlanStore.read(localStorage).find(p => LiveLinks.planKey(p.data) === bound.planKey); } catch {}
+    if (saved) {
+      if (LiveLinks.planKey(State) !== bound.planKey) PlanStore.restore(saved.data);
+      const entry = LiveLinks.get(linkStorage(), bound.planKey);
+      const caughtUp = LiveLinks.shouldApply(entry, remote, false) && remote.code !== currentShareCode() && applyRemoteLiveCode(id, remote);
+      if (!caughtUp) renderGroups();
+      showToast(`Opened live raid "${State.rosterName}"`);
+      return true;
+    }
+
+    if (!applyShareCode(remote.code)) return false;
+    const planKey = LiveLinks.planKey(State);
+    if (planKey) bindLiveLink(planKey, id, currentShareCode(), remote.updatedAt);
+    return true;
+  } finally {
+    LiveSync.opening = false;
+    syncAddressBar();
+    LiveSync.refreshStatus();
   }
-  if (resp.status === 404) { showToast('That share link has expired or does not exist (links last 30 days)'); return false; }
-  const data = resp.ok ? await resp.json().catch(() => null) : null;
-  if (!data || typeof data.code !== 'string') { showToast('Could not open that share link, try again shortly'); return false; }
-  return applyShareCode(data.code);
 }
 
 function applyShareCode(code) {
@@ -12541,11 +12772,11 @@ document.getElementById('btn-share').addEventListener('click', () => {
     showToast('No roster to share');
     return;
   }
-  const link = createShareLink();
+  const link = getShareLink();
   Promise.all([link, copyShareLink(link)])
-    .then(([{ short }]) => showToast(short
-      ? 'Share link copied (expires in 30 days)'
-      : 'Share link copied (long link: short links are unavailable right now)'))
+    .then(([{ live }]) => showToast(live
+      ? 'Live link copied: anyone with it can view and edit'
+      : 'Share link copied (long link: live links are unavailable right now)'))
     .catch(() => showToast('Copy failed'));
 });
 
@@ -13417,6 +13648,7 @@ if (!openedShare && hasLoadedWork()) document.querySelector('.import-tab[data-pa
 // A short link (/<version>/<id>) needs a server round-trip, so it lands on
 // import first and switches to the planner once the layout arrives.
 loadFromShortLink().then(opened => { if (opened) showView('app'); });
+LiveSync.start();
 // A share link pasted into the address bar of an already-open page only
 // changes the hash, so honour it there too.
 window.addEventListener('hashchange', () => { if (loadFromShareLink()) showView('app'); });
