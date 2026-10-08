@@ -2,6 +2,19 @@
 *
 !.gitignore
 !index.html
+# The page's stylesheet and the app scripts it loads in order (plain classic scripts, no build step); split-tests.js checks every one is listed
+!app.css
+!js/
+!js/rules.js
+!js/state.js
+!js/import.js
+!js/storage.js
+!js/livesync.js
+!js/optimizer.js
+!js/analysis.js
+!js/render.js
+!js/modals.js
+!js/app.js
 # Vercel config (/<version>/<id> rewrite to index.html) and the short-share-link function
 !vercel.json
 !api/
@@ -9,6 +22,7 @@
 # Test suites are tracked and served as static files; `npm test` (tests/run-all.js) runs them under Node; scenarios.js is also the ?dev roster picker data
 !tests.js
 !loader-tests.js
+!split-tests.js
 !scenarios.js
 !scenario-tests.js
 !version-tests.js

@@ -189,6 +189,7 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
   });
 
   const html = app.html;
+  const css = app.css; // styles live in app.css since the index.html split
 
   await check('toast element is a polite, atomic live region', () => {
     const m = html.match(/<div class="toast" id="toast"[^>]*>/);
@@ -199,11 +200,11 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
   });
 
   await check('dead .undo-link CSS is removed and nothing references it', () => {
-    assert(!/undo-link/.test(html));
+    assert(!/undo-link/.test(html) && !/undo-link/.test(css) && !/undo-link/.test(app.script));
   });
 
   await check('--text-faint is at least 4.5:1 on every surface it is used on', () => {
-    const token = (name) => { const m = html.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`)); assert(m, name); return m[1]; };
+    const token = (name) => { const m = css.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`)); assert(m, name); return m[1]; };
     const lum = (hex) => {
       const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.substr(i, 2), 16) / 255)
         .map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -221,7 +222,7 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
 
   await check('the "Buffs" labels are at least 10px', () => {
     for (const sel of ['.buff-bar-label', '.buff-sidebar-sub']) {
-      const rule = html.match(new RegExp(`${sel.replace('.', '\\.')}\\s*\\{([^}]*)\\}`));
+      const rule = css.match(new RegExp(`${sel.replace('.', '\\.')}\\s*\\{([^}]*)\\}`));
       assert(rule, sel);
       const size = rule[1].match(/font-size:\s*(\d+(?:\.\d+)?)px/);
       assert(size && Number(size[1]) >= 10, `${sel} font-size ${size && size[1]}px`);
@@ -290,7 +291,7 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
     assert(/Raid-Helper link, event ID/.test(modal));
     assert(/PP:/.test(modal));
     // The dialog button goes through the shared runner (not a bespoke handler).
-    assert(/runImport\('import-textarea', 'import-status', 'btn-do-import'/.test(html));
+    assert(/runImport\('import-textarea', 'import-status', 'btn-do-import'/.test(app.script));
   });
 
   console.log(`\n${passed} a11y checks passed`);
