@@ -4738,7 +4738,7 @@ const DataBackup = {
   // Kept in one place so a future new pp_* key only needs adding here (and,
   // if it has its own shape, to _checkKey/_merge below) to be covered.
   keys: ['pp_rosters', 'pp_import_history', 'pp_working_plans', 'pp_roster_templates',
-         'pp_sidebar_expanded', 'pp_whats_new_dismissed_v1', 'pp_spotlight_seen_v1'],
+         'pp_sidebar_expanded', 'pp_whats_new_dismissed_v1', 'pp_spotlight_seen_v1', 'pp_live_links'],
   labels: {
     pp_rosters: 'saved rosters',
     pp_import_history: 'import history entries',
@@ -4747,6 +4747,7 @@ const DataBackup = {
     pp_sidebar_expanded: 'sidebar preference',
     pp_whats_new_dismissed_v1: '"What\'s new" dismissal',
     pp_spotlight_seen_v1: 'feature tips dismissed',
+    pp_live_links: 'live links',
   },
 
   // Keys with no value in this browser are omitted entirely (not written as
@@ -4813,6 +4814,13 @@ const DataBackup = {
     if (key === 'pp_spotlight_seen_v1') {
       if (!Array.isArray(parsed) || !parsed.every(x => typeof x === 'string')) return { valid: false, error: 'expected a list of feature ids.' };
       return { valid: true, count: parsed.length };
+    }
+    if (key === 'pp_live_links') {
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { valid: false, error: 'expected an object of plan links.' };
+      const planKeys = Object.keys(parsed);
+      const wellFormed = e => e && typeof e === 'object' && LiveLinks.ID.test(e.id) && typeof e.lastCode === 'string';
+      if (!planKeys.every(k => wellFormed(parsed[k]))) return { valid: false, error: 'one or more plan links are malformed.' };
+      return { valid: true, count: planKeys.length };
     }
     return { valid: false, error: 'unrecognized key.' };
   },
@@ -4924,6 +4932,37 @@ const DataBackup = {
       cur.sort((a, b) => (b.importedAt || 0) - (a.importedAt || 0));
       const limited = cur.slice(0, ImportHistory.limit);
       return { value: JSON.stringify(limited), added, updated: 0, unchanged: cur.length - added };
+    }
+    if (key === 'pp_live_links') {
+      let cur = {}, inc = {};
+      try { cur = currentRaw ? JSON.parse(currentRaw) : {}; } catch {}
+      try { inc = JSON.parse(backupRaw); } catch {}
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) cur = {};
+      if (!inc || typeof inc !== 'object' || Array.isArray(inc)) inc = {};
+      const touched = e => Number(e.touchedAt) || 0;
+      const merged = {};
+      for (const planKey of Object.keys(cur)) if (cur[planKey] && LiveLinks.ID.test(cur[planKey].id)) merged[planKey] = cur[planKey];
+      const how = {};
+      for (const planKey of Object.keys(inc)) {
+        if (!(planKey in merged)) { merged[planKey] = inc[planKey]; how[planKey] = 'added'; }
+        else if (touched(inc[planKey]) > touched(merged[planKey])) { merged[planKey] = inc[planKey]; how[planKey] = 'updated'; }
+      }
+      // One plan per link ID and at most LiveLinks.max bindings; the most
+      // recently touched win (ties keep this browser's copy: it sorts first).
+      const kept = {};
+      const ids = new Set();
+      for (const planKey of Object.keys(merged).sort((a, b) => touched(merged[b]) - touched(merged[a]))) {
+        if (ids.has(merged[planKey].id) || Object.keys(kept).length >= LiveLinks.max) continue;
+        ids.add(merged[planKey].id);
+        kept[planKey] = merged[planKey];
+      }
+      let added = 0, updated = 0, unchanged = 0;
+      for (const planKey of Object.keys(inc)) {
+        if (kept[planKey] !== inc[planKey]) unchanged++;
+        else if (how[planKey] === 'added') added++;
+        else updated++;
+      }
+      return { value: JSON.stringify(kept), added, updated, unchanged };
     }
     return { value: backupRaw, added: 0, updated: 0, unchanged: 0 };
   },

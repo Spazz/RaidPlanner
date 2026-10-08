@@ -12,8 +12,8 @@
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['DataBackup', 'Spotlight', 'safeSetItem', 'ImportHistory', 'PlanStore', 'Templates', 'nextUid']);
-const { DataBackup, Spotlight, safeSetItem, ImportHistory, PlanStore, Templates, nextUid } = ctx.api;
+const ctx = app.sandbox(['DataBackup', 'Spotlight', 'safeSetItem', 'ImportHistory', 'PlanStore', 'Templates', 'nextUid', 'LiveLinks']);
+const { DataBackup, Spotlight, safeSetItem, ImportHistory, PlanStore, Templates, nextUid, LiveLinks } = ctx.api;
 
 let passed = 0;
 function check(name, fn) {
@@ -289,6 +289,96 @@ check('Spotlight.shouldShow: corrupt stored value is treated as nothing seen, no
   try { shows = Spotlight.shouldShow(storage, 'assignments-tab'); } catch { threw = true; }
   assert.equal(threw, false);
   assert.equal(shows, true);
+});
+
+// ══════════════════════════════════════════════════════════════
+// pp_live_links in the backup (a restored plan must keep its live link)
+// ══════════════════════════════════════════════════════════════
+
+function liveLinks(entries) {
+  return JSON.stringify(Object.fromEntries(Object.entries(entries).map(([planKey, [id, touchedAt]]) =>
+    [planKey, { id, lastCode: 'code-' + id, updatedAt: 10, touchedAt }])));
+}
+
+check('DataBackup live links: build includes pp_live_links and a restore into an empty browser reproduces the bindings', () => {
+  const src = fakeStorage({ pp_live_links: liveLinks({ 'tbc|plan:a': ['aB3dE5g', 100], 'forever|plan:b': ['zZ9yY8x', 200] }) });
+  const backup = DataBackup.build(src);
+  assert.ok(Object.prototype.hasOwnProperty.call(backup.data, 'pp_live_links'));
+  const verdict = DataBackup.validate(backup);
+  assert.equal(verdict.valid, true, verdict.errors.join('; '));
+  assert.equal(verdict.summary.pp_live_links.count, 2);
+  const dest = fakeStorage();
+  assert.equal(DataBackup.apply(dest, backup, 'merge').success, true);
+  assert.deepEqual(JSON.parse(dest.getItem('pp_live_links')), JSON.parse(src.getItem('pp_live_links')));
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:a').id, 'aB3dE5g');
+  assert.equal(LiveLinks.findById(dest, 'zZ9yY8x').planKey, 'forever|plan:b');
+});
+
+check('DataBackup live links: a browser with no links omits the key (an older backup never wipes bindings)', () => {
+  assert.ok(!Object.prototype.hasOwnProperty.call(DataBackup.build(fakeStorage({ pp_sidebar_expanded: '1' })).data, 'pp_live_links'));
+  const dest = fakeStorage({ pp_live_links: liveLinks({ 'tbc|plan:a': ['aB3dE5g', 100] }) });
+  assert.equal(DataBackup.apply(dest, validBackup({ pp_sidebar_expanded: '1' }), 'merge').success, true);
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:a').id, 'aB3dE5g');
+});
+
+check('DataBackup live links: validate rejects bad JSON, wrong shape, malformed entries and non-link IDs', () => {
+  const bad = raw => DataBackup.validate(validBackup({ pp_live_links: raw })).valid;
+  assert.equal(bad('{not json'), false);
+  assert.equal(bad(JSON.stringify([1])), false, 'array instead of object');
+  assert.equal(bad(JSON.stringify({ 'tbc|plan:a': 'aB3dE5g' })), false, 'entry must be an object');
+  assert.equal(bad(JSON.stringify({ 'tbc|plan:a': { id: '../etc', lastCode: 'x' } })), false, 'ID must be a 7-char link ID');
+  assert.equal(bad(JSON.stringify({ 'tbc|plan:a': { id: 'aB3dE5g', lastCode: 5 } })), false, 'lastCode must be a string');
+  assert.equal(bad(liveLinks({ 'tbc|plan:a': ['aB3dE5g', 1] })), true);
+  assert.equal(bad('{}'), true, 'no bindings is a valid (empty) set');
+});
+
+check('DataBackup live links: merge adds missing bindings and the newer touchedAt wins a shared plan', () => {
+  const dest = fakeStorage({ pp_live_links: liveLinks({ 'tbc|plan:keep': ['keepKe1', 500], 'tbc|plan:old': ['oldOld1', 100], 'tbc|plan:tie': ['tieTie1', 300] }) });
+  const backup = validBackup({ pp_live_links: liveLinks({
+    'tbc|plan:keep': ['keepKe2', 400], // older in the file: this browser's copy stays
+    'tbc|plan:old': ['oldOld2', 900],  // newer in the file: replaces
+    'tbc|plan:tie': ['tieTie2', 300],  // tie: this browser's copy stays
+    'tbc|plan:new': ['newNew1', 50],   // missing here: added
+  }) });
+  const planned = DataBackup.plan(dest, backup, 'merge');
+  assert.deepEqual({ ...planned.changes.pp_live_links }, { label: 'live links', added: 1, updated: 1, unchanged: 2 });
+  assert.equal(DataBackup.apply(dest, backup, 'merge').success, true);
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:keep').id, 'keepKe1');
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:old').id, 'oldOld2');
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:tie').id, 'tieTie1');
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:new').id, 'newNew1');
+});
+
+check('DataBackup live links: merge keeps one plan per link ID (the newer binding of a shared ID wins)', () => {
+  const dest = fakeStorage({ pp_live_links: liveLinks({ 'tbc|plan:a': ['sharedL', 100] }) });
+  const newerInFile = validBackup({ pp_live_links: liveLinks({ 'tbc|plan:b': ['sharedL', 200] }) });
+  assert.equal(DataBackup.apply(dest, newerInFile, 'merge').success, true);
+  assert.equal(LiveLinks.findById(dest, 'sharedL').planKey, 'tbc|plan:b');
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:a'), null);
+
+  const olderInFile = validBackup({ pp_live_links: liveLinks({ 'tbc|plan:c': ['sharedL', 50] }) });
+  assert.equal(DataBackup.apply(dest, olderInFile, 'merge').success, true);
+  assert.equal(LiveLinks.findById(dest, 'sharedL').planKey, 'tbc|plan:b', 'the older file binding is dropped');
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:c'), null);
+});
+
+check('DataBackup live links: merge respects the LiveLinks cap, dropping the least recently used bindings', () => {
+  const many = {};
+  for (let i = 0; i < LiveLinks.max + 5; i++) many['tbc|plan:' + i] = ['link' + String(i).padStart(3, '0'), 1000 + i];
+  const dest = fakeStorage();
+  assert.equal(DataBackup.apply(dest, validBackup({ pp_live_links: liveLinks(many) }), 'merge').success, true);
+  const kept = Object.keys(LiveLinks.read(dest));
+  assert.equal(kept.length, LiveLinks.max);
+  assert.ok(kept.includes('tbc|plan:' + (LiveLinks.max + 4)), 'newest kept');
+  assert.ok(!kept.includes('tbc|plan:0'), 'oldest dropped');
+});
+
+check('DataBackup live links: replace overwrites the stored bindings wholesale', () => {
+  const dest = fakeStorage({ pp_live_links: liveLinks({ 'tbc|plan:gone': ['goneGo1', 900] }) });
+  const backup = validBackup({ pp_live_links: liveLinks({ 'tbc|plan:a': ['aB3dE5g', 100] }) });
+  assert.equal(DataBackup.apply(dest, backup, 'replace').success, true);
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:gone'), null);
+  assert.equal(LiveLinks.get(dest, 'tbc|plan:a').id, 'aB3dE5g');
 });
 
 console.log(`\nData backup / storage safety / spotlight tests: ${passed} passed, 0 failed, ${passed} total`);
