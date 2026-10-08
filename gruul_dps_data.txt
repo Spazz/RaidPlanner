@@ -1,0 +1,28 @@
+Gruul Kill - DPS Data (fix class/spec as needed)
+Source: https://fresh.warcraftlogs.com/reports/mnbLV8PAp4d3CYBM?fight=7
+
+Player            | DPS    | Class/Spec
+------------------|--------|---------------------
+Devilsmaycry      | 997.3  | Affliction Warlock
+Kellogs           | 950.0  | Beast Mastery Hunter
+Terani            | 930.5  | Arcane Mage
+Gnope             | 926.7  | Destro Warlock
+Slicegirls        | 899.6  | Combat Rogue (had enh shaman in group)
+Stingz            | 881.9  | Beast Mastery Hunter
+Daxxter           | 876.4  | Arcane Mage
+Overload          | 869.0  | Elemental Shaman
+Daolith           | 807.2  | Destro Warlock
+Lachesis          | 756.5  | Arcane Mage
+Oscillate         | 741.5  | Combat Rogue
+Bulkbrogann       | 729.9  | Fury Warrior
+Sanga             | 727.9  | Enhance Shaman
+Soulavenger       | 637.5  | Destro Warlock
+Liquidium         | 633.0  | Ret Paladin
+Givepets          | 506.9  | Boomkin
+Starcks           | 466.9  | Prot Paladin (tank)
+Koneless          | 462.5  | Feral Druid (Tank)
+Aizuthegrand      | 308.0  | Elemental Shaman (probably died early)
+Healthas          | 5.3    | Holy Priest (healer)
+
+Total Raid DPS: 14,114.6
+Fight Duration: ~241.9s

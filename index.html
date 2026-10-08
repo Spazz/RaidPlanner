@@ -12505,7 +12505,7 @@ function renderLandingSavedList() {
     }
   });
 
-  // Dev-only: open index.html?dev to load scenarios.js (untracked test data) and pick
+  // Dev-only: open index.html?dev to load scenarios.js (tracked test data, fetched only in dev mode) and pick
   // a roster from the scenario list. Production never requests the file.
   if (/[?&]dev(?:[&=]|$)/.test(location.search)) {
     const script = document.createElement('script');

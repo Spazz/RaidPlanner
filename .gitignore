@@ -1,12 +1,12 @@
-# Only track index.html
+# Whitelist: everything is ignored unless listed below (new tracked files need a ! line)
 *
 !.gitignore
 !index.html
-# Short share links: Vercel function + /s/<id> rewrite
+# Vercel config (/<version>/<id> rewrite to index.html) and the short-share-link function
 !vercel.json
 !api/
 !api/share.js
-# Test suites ship with the site; `npm test` (tests/run-all.js) runs them under Node
+# Test suites are tracked and served as static files; `npm test` (tests/run-all.js) runs them under Node; scenarios.js is also the ?dev roster picker data
 !tests.js
 !loader-tests.js
 !scenarios.js
@@ -42,3 +42,5 @@
 !.github/
 !.github/workflows/
 !.github/workflows/test.yml
+# DPS reference data cited by the optimizer comments
+!gruul_dps_data.txt
