@@ -119,16 +119,28 @@ const PlanStore = {
     } catch {}
     return { entries: [], corrupt: raw };
   },
+  // The entries of a stored list this build can read, at the current schema. Pure.
+  readable(entries) {
+    const plans = [];
+    for (const entry of entries) {
+      const plan = this.migrate(entry);
+      if (plan && this.valid(plan.data)) plans.push(plan);
+    }
+    return plans;
+  },
+  // Whether a backup may carry this entry: a plan this build reads must pass
+  // valid(); one it cannot read only because a newer build wrote it is passed on as is.
+  portable(entry) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    const plan = this.migrate(entry);
+    if (plan) return this.valid(plan.data);
+    return !!entry.data && typeof entry.data === 'object';
+  },
   // The readable plans, newest save first. Anything else stays in storage.
   read(storage) {
     if (this.pending && this.pending.storage === storage) this.flush();
-    const plans = [];
-    for (const entry of this._load(storage).entries) {
-      const plan = this.migrate(entry);
-      if (!plan || !this.valid(plan.data)) continue;
-      this.known[LiveLinks.planKey(plan.data)] = plan.updatedAt;
-      plans.push(plan);
-    }
+    const plans = this.readable(this._load(storage).entries);
+    for (const plan of plans) this.known[LiveLinks.planKey(plan.data)] = plan.updatedAt;
     return plans;
   },
   isQuotaError(err) {
@@ -137,7 +149,9 @@ const PlanStore = {
   // Read-modify-write: this plan goes first, replacing its own earlier entry,
   // and every other entry is kept as stored, readable or not. Past the cap, or
   // when the browser reports its storage full, the oldest unprotected entries
-  // go. Throws if it still cannot be written; returns {evicted: [names]}.
+  // go. Throws if it still cannot be written; returns {evicted: [names], reason},
+  // reason being 'quota' when the browser ran out of room, 'cap' when only the
+  // plan limit forced the removal, null when nothing was removed.
   save(storage, data) {
     const planKey = LiveLinks.planKey(data);
     const { entries, corrupt } = this._load(storage);
@@ -148,6 +162,7 @@ const PlanStore = {
     try { bound = Object.keys(LiveLinks.read(storage)); } catch {}
     const protectedKeys = new Set([planKey, ...bound]);
     const evicted = [];
+    let reason = null;
     const stamp = e => (e && Number.isFinite(e.updatedAt) ? e.updatedAt : 0);
     const evictOldest = () => {
       let oldest = -1;
@@ -160,13 +175,13 @@ const PlanStore = {
       evicted.push(gone && gone.data && typeof gone.data.rosterName === 'string' ? gone.data.rosterName : 'an unreadable plan');
       return true;
     };
-    while (list.length > this.max && evictOldest()) {}
+    while (list.length > this.max && evictOldest()) reason = 'cap';
     for (;;) {
       try { storage.setItem(this.key, JSON.stringify(list)); break; }
-      catch (err) { if (!this.isQuotaError(err) || !evictOldest()) throw err; }
+      catch (err) { if (!this.isQuotaError(err) || !evictOldest()) throw err; reason = 'quota'; }
     }
     if (planKey) this.known[planKey] = entry.updatedAt;
-    return { evicted };
+    return { evicted, reason };
   },
   // save() after a short pause, so typing does not rewrite every plan on each keystroke.
   // onDone gets {ok, evicted} or {ok:false, error}. A waiting save of another plan goes out first.
@@ -408,9 +423,17 @@ const DataBackup = {
     const data = {};
     for (const key of this.keys) {
       const raw = storage.getItem(key);
-      if (raw !== null && raw !== undefined) data[key] = raw;
+      if (raw !== null && raw !== undefined) data[key] = key === 'pp_working_plans' ? this._exportablePlans(raw) : raw;
     }
     return { schema: this.schema, version: this.version, exportedAt: Date.now(), data };
+  },
+
+  // PlanStore keeps entries that fail its checks; leave those out so the file
+  // always passes validate() (entries only a newer build can read are kept).
+  _exportablePlans(raw) {
+    let list;
+    try { list = JSON.parse(raw); } catch { return raw; }
+    return Array.isArray(list) ? JSON.stringify(list.filter(e => PlanStore.portable(e))) : raw;
   },
 
   // Mirrors the per-player field checks Import.loadRoster/ImportHistory.read
@@ -445,9 +468,9 @@ const DataBackup = {
     }
     if (key === 'pp_working_plans') {
       if (!Array.isArray(parsed)) return { valid: false, error: 'expected a list.' };
-      const kept = PlanStore.read({ getItem: k => (k === PlanStore.key ? raw : null) });
-      if (kept.length !== parsed.length) return { valid: false, error: 'contains malformed entries.' };
-      return { valid: true, count: kept.length };
+      // A newer build's entries are carried as they are (see PlanStore.portable); anything else must pass.
+      if (!parsed.every(e => PlanStore.portable(e))) return { valid: false, error: 'contains malformed entries.' };
+      return { valid: true, count: PlanStore.readable(parsed).length };
     }
     if (key === 'pp_roster_templates') {
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { valid: false, error: 'expected an object of templates.' };

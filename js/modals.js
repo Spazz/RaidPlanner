@@ -192,8 +192,11 @@ function showSaveOutcome(outcome) {
   if (outcome.ok) {
     status.textContent = LiveSync.statusText('Saved on this device');
     delete status.dataset.failed;
-    // Saving made room by removing the oldest saved plans: say which.
-    if (outcome.evicted.length) showToast(`Browser storage was full: removed the oldest saved plan${outcome.evicted.length === 1 ? '' : 's'} (${outcome.evicted.join(', ')})`);
+    // Saving made room by removing the oldest saved plans: say which and why.
+    if (outcome.evicted.length) {
+      const why = outcome.reason === 'quota' ? 'Browser storage was full' : `Plan limit reached (${PlanStore.max} kept)`;
+      showToast(`${why}: removed the oldest saved plan${outcome.evicted.length === 1 ? '' : 's'} (${outcome.evicted.join(', ')})`);
+    }
   } else {
     status.textContent = 'Could not save — export a copy';
     status.dataset.failed = 'true';
@@ -203,11 +206,12 @@ function showSaveOutcome(outcome) {
 
 function persistWorkingPlan() {
   const result = PlanSession.observe();
+  TabWatch.dropIfElsewhere();
   LiveSync.onRender();
   const status = document.getElementById('autosave-status');
   if (result) {
     // Any change to the plan retires the "updated by someone else" Undo, which would drop it.
-    if (result.changed) RemoteUpdate.hide();
+    if (result.changed) { RemoteUpdate.hide(); TabWatch.hide(); }
     if (result.changed || status.dataset.failed) {
       try { PlanStore.saveSoon(localStorage, result.current, showSaveOutcome); }
       catch { showSaveOutcome({ ok: false }); }

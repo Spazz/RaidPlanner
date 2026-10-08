@@ -836,6 +836,96 @@ async function check(name, fn) {
       assert(html.includes(`id="${id}"`), id + ' is in index.html');
     }
   });
+  // ── review fixes ────────────────────────────────────────────────
+  await check('a backup built from a store holding unreadable entries validates and applies again', async () => {
+    const env = makeEnv();
+    const { DataBackup, PlanStore } = env.api;
+    seedPlan(env);
+    const future = { updatedAt: 1, schemaVersion: 2, data: { planId: 'future' } };
+    const noData = { updatedAt: 2 };
+    env.storage.setItem('pp_working_plans', JSON.stringify([future, noData]));
+    PlanStore.save(env.storage, planData(env, 'plan:mine', 'Mine'));
+    const backup = DataBackup.build(env.storage);
+    const verdict = DataBackup.validate(backup);
+    assert.equal(verdict.valid, true, JSON.stringify(verdict.errors));
+    const target = makeEnv();
+    assert.equal(target.api.DataBackup.validate(backup).valid, true);
+    assert.equal(target.api.DataBackup.apply(target.storage, backup, 'replace').success, true);
+    const restored = JSON.parse(target.storage.getItem('pp_working_plans'));
+    assert.equal(restored.length, 2, 'the newer-build entry survives the round trip; the one with no data is not exported');
+    assert(restored.some(e => e.schemaVersion === 2));
+  });
+
+  await check('validating a backup does not teach PlanStore.known about the file\'s plans', async () => {
+    const env = makeEnv();
+    const { DataBackup, PlanStore } = env.api;
+    seedPlan(env);
+    PlanStore.save(env.storage, planData(env, 'plan:mine', 'Mine'));
+    const backup = DataBackup.build(env.storage);
+    PlanStore.known = {};
+    DataBackup.validate(backup);
+    same(PlanStore.known, {});
+  });
+
+  await check('a backup leaves out stored plan entries that fail validation and still validates; hand-made ones are rejected', async () => {
+    const env = makeEnv();
+    const { DataBackup, PlanStore } = env.api;
+    seedPlan(env);
+    PlanStore.save(env.storage, planData(env, 'plan:mine', 'Mine'));
+    const stored = JSON.parse(env.storage.getItem('pp_working_plans'));
+    env.storage.setItem('pp_working_plans', JSON.stringify([...stored, { updatedAt: 1, data: {} }, { updatedAt: 2 }, 'junk']));
+    const backup = DataBackup.build(env.storage);
+    assert.equal(JSON.parse(backup.data.pp_working_plans).length, 1, 'only the valid plan is exported');
+    assert.equal(DataBackup.validate(backup).valid, true);
+    backup.data.pp_working_plans = JSON.stringify([...stored, 'junk']);
+    assert.equal(DataBackup.validate(backup).valid, false, 'a hand-edited file with a junk entry is rejected');
+    backup.data.pp_working_plans = JSON.stringify([{ updatedAt: 1, data: { planId: 'x' } }]);
+    assert.equal(DataBackup.validate(backup).valid, false);
+  });
+
+  await check('save reports why it evicted: the plan cap or a full browser', async () => {
+    const env = makeEnv();
+    const { PlanStore } = env.api;
+    seedPlan(env);
+    assert.equal(PlanStore.save(env.storage, planData(env, 'plan:a', 'a')).reason, null);
+    PlanStore.max = 1; env.now += 10;
+    const cap = PlanStore.save(env.storage, planData(env, 'plan:b', 'b'));
+    assert.equal(cap.reason, 'cap');
+    PlanStore.max = 50; env.now += 10;
+    PlanStore.save(env.storage, planData(env, 'plan:c', 'c')); env.now += 10;
+    env.storage.limit = JSON.stringify([{ updatedAt: 1, schemaVersion: 1, data: planData(env, 'plan:d', 'd') }]).length + 50;
+    const quota = PlanStore.save(env.storage, planData(env, 'plan:d', 'd'));
+    assert.equal(quota.reason, 'quota');
+  });
+
+  await check('the eviction toast names the cause', async () => {
+    const env = makeEnv();
+    env.ctx.showSaveOutcome({ ok: true, evicted: ['Old'], reason: 'quota' });
+    env.ctx.showSaveOutcome({ ok: true, evicted: ['Older'], reason: 'cap' });
+    assert(/Browser storage was full: removed the oldest saved plan \(Old\)/.test(env.toasts[0]), env.toasts[0]);
+    assert(/Plan limit reached \(50 kept\): removed the oldest saved plan \(Older\)/.test(env.toasts[1]), env.toasts[1]);
+  });
+
+  await check('TabWatch banner clears once this tab saves a change, and when another plan is open', async () => {
+    const { env, theirs } = tabEnv();
+    const { TabWatch, PlanSession, State } = env.api;
+    PlanSession.ready = true;
+    env.ctx.persistWorkingPlan();
+    TabWatch.onStorage({ key: 'pp_working_plans', newValue: theirs });
+    assert.equal(env.el('tab-conflict-banner').hidden, false);
+    env.ctx.persistWorkingPlan();
+    assert.equal(env.el('tab-conflict-banner').hidden, false, 'an unchanged persist leaves the warning up');
+    State.notes = 'my edit';
+    env.ctx.persistWorkingPlan();
+    assert.equal(env.el('tab-conflict-banner').hidden, true, 'saving over their version retires it');
+    assert.equal(TabWatch.entry, null);
+    TabWatch.onStorage({ key: 'pp_working_plans', newValue: theirs });
+    assert.equal(env.el('tab-conflict-banner').hidden, false);
+    State.planId = 'plan:different';
+    TabWatch.dropIfElsewhere();
+    assert.equal(env.el('tab-conflict-banner').hidden, true, 'a different open plan drops it');
+  });
+
 
   console.log(`\nPlan state tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);
   if (failed > 0) process.exit(1);

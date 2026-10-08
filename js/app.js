@@ -420,6 +420,10 @@ const TabWatch = {
     this.entry = null;
     document.getElementById('tab-conflict-banner').hidden = true;
   },
+  // The warning is about one plan: drop it once a different plan is open.
+  dropIfElsewhere() {
+    if (this.entry && LiveLinks.planKey(State) !== LiveLinks.planKey(this.entry.data)) this.hide();
+  },
   // Replace this tab's copy with the other tab's save.
   loadTheirs() {
     const entry = this.entry;
@@ -554,7 +558,7 @@ const RemoteUpdate = {
     if (!before || !PlanStore.restore(before)) return false;
     closePlayerEditor(); closeBuffPicker();
     initGroups(); commit(); renderLastRun(null);
-    showToast('Restored your version of the roster');
+    showToast('Restored your version of the roster (a live link will now show it)');
     return true;
   },
 };
