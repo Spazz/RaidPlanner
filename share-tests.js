@@ -16,10 +16,25 @@ const share = require('./api/share.js');
 const ENV = { PP_KV_REST_API_URL: 'https://fake.upstash.io', PP_KV_REST_API_TOKEN: 'test-token' };
 
 // Minimal Upstash REST fake: POST [command, ...args] -> {result}.
-function fakeUpstash({ failWith } = {}) {
+function fakeUpstash({ failWith, failPipeline } = {}) {
   const store = new Map();
   const calls = [];
+  const limiterCalls = [];
+  const counters = new Map();
+  const expiries = new Map();
   const fetch = async (url, init) => {
+    if (url.endsWith('/pipeline')) {
+      const commands = JSON.parse(init.body);
+      limiterCalls.push({ url, auth: init.headers.Authorization, commands });
+      if (failPipeline === 'throw') throw new Error('network down');
+      if (failPipeline) return { ok: false, status: failPipeline, json: async () => ({ error: 'boom' }) };
+      const results = commands.map(([cmd, key, value]) => {
+        if (cmd === 'INCR') { counters.set(key, (counters.get(key) || 0) + 1); return { result: counters.get(key) }; }
+        if (cmd === 'EXPIRE') { expiries.set(key, value); return { result: 1 }; }
+        return { error: 'unsupported' };
+      });
+      return { ok: true, status: 200, json: async () => results };
+    }
     const args = JSON.parse(init.body);
     calls.push({ url, auth: init.headers.Authorization, args });
     if (failWith) return { ok: false, status: failWith, json: async () => ({ error: 'boom' }) };
@@ -33,7 +48,7 @@ function fakeUpstash({ failWith } = {}) {
     }
     return { ok: true, status: 200, json: async () => ({ result }) };
   };
-  return { store, calls, fetch };
+  return { store, calls, limiterCalls, counters, expiries, fetch };
 }
 
 function fakeRes() {
@@ -207,6 +222,97 @@ async function check(name, fn) {
       assert.equal(res.statusCode, 400, `expected 400 for ${JSON.stringify(id)}`);
     }
     assert.equal(redis.calls.length, 0);
+  });
+
+  const ipReq = (ip, extra = {}) => ({ headers: { 'x-forwarded-for': ip }, ...extra });
+  const getReq = ip => ipReq(ip, { method: 'GET', query: { id: 'aB3dE5g' } });
+  const putReq = ip => ipReq(ip, { method: 'PUT', body: { id: 'aB3dE5g', code: 'abc' } });
+
+  await check('Rate limit: INCR + EXPIRE go out as one pipeline keyed by budget, first x-forwarded-for hop and window', async () => {
+    const redis = fakeUpstash();
+    const handler = makeHandler(redis, { now: () => 125000 }); // window 2 (60s windows)
+    const res = await call(handler, getReq('203.0.113.9, 10.0.0.1, 10.0.0.2'));
+    assert.equal(res.statusCode, 404);
+    assert.equal(redis.limiterCalls.length, 1);
+    assert.equal(redis.limiterCalls[0].url, ENV.PP_KV_REST_API_URL + '/pipeline');
+    assert.equal(redis.limiterCalls[0].auth, 'Bearer test-token');
+    assert.deepEqual(redis.limiterCalls[0].commands, [['INCR', 'pp:rl:read:203.0.113.9:2'], ['EXPIRE', 'pp:rl:read:203.0.113.9:2', '60']]);
+  });
+
+  await check('Rate limit: falls back to x-real-ip, and a request with no client IP is not limited or counted', async () => {
+    const redis = fakeUpstash();
+    const handler = makeHandler(redis);
+    await call(handler, { method: 'GET', query: { id: 'aB3dE5g' }, headers: { 'x-real-ip': '198.51.100.7' } });
+    assert.match(redis.limiterCalls[0].commands[0][1], /^pp:rl:read:198\.51\.100\.7:/);
+    await call(handler, { method: 'GET', query: { id: 'aB3dE5g' }, headers: {} });
+    await call(handler, { method: 'GET', query: { id: 'aB3dE5g' } });
+    assert.equal(redis.limiterCalls.length, 1);
+  });
+
+  await check('Rate limit: writes are capped at 60/min, then 429 with Retry-After and no Redis write', async () => {
+    const redis = fakeUpstash();
+    const handler = makeHandler(redis, { now: () => 125000 }); // 55s left in the window
+    for (let i = 0; i < 60; i++) assert.equal((await call(handler, putReq('203.0.113.9'))).statusCode, 200, `write ${i + 1}`);
+    const writesBefore = redis.calls.length;
+    const res = await call(handler, putReq('203.0.113.9'));
+    assert.equal(res.statusCode, 429);
+    assert.equal(res.headers['Retry-After'], '55');
+    assert.deepEqual(res.body, { error: 'Too many requests', retryAfter: 55 });
+    assert.equal(redis.calls.length, writesBefore, 'a limited request never reaches the store');
+    assert.equal((await call(handler, { ...ipReq('203.0.113.9'), method: 'POST', body: { code: 'abc' } })).statusCode, 429, 'POST shares the write budget');
+  });
+
+  await check('Rate limit: reads and writes have separate budgets (reads 240/min)', async () => {
+    const redis = fakeUpstash();
+    const handler = makeHandler(redis);
+    for (let i = 0; i < 60; i++) await call(handler, putReq('203.0.113.9'));
+    assert.equal((await call(handler, putReq('203.0.113.9'))).statusCode, 429);
+    assert.equal((await call(handler, getReq('203.0.113.9'))).statusCode, 200, 'reads still allowed after the write budget is spent');
+    for (let i = 1; i < 240; i++) await call(handler, getReq('203.0.113.9'));
+    assert.equal((await call(handler, getReq('203.0.113.9'))).statusCode, 429, 'the 241st read is limited');
+  });
+
+  await check('Rate limit: budgets are per IP and reset when the window rolls over', async () => {
+    const redis = fakeUpstash();
+    let now = 125000;
+    const handler = makeHandler(redis, { now: () => now, limits: { write: 2 } });
+    await call(handler, putReq('203.0.113.9'));
+    await call(handler, putReq('203.0.113.9'));
+    assert.equal((await call(handler, putReq('203.0.113.9'))).statusCode, 429);
+    assert.equal((await call(handler, putReq('203.0.113.10'))).statusCode, 200, 'another IP is unaffected');
+    now = 180000; // next window
+    assert.equal((await call(handler, putReq('203.0.113.9'))).statusCode, 200, 'fresh window');
+  });
+
+  await check('Rate limit: Retry-After is at least 1 second, even on the last millisecond of a window', async () => {
+    const handler = makeHandler(fakeUpstash(), { now: () => 119999, limits: { read: 0 } });
+    const res = await call(handler, getReq('203.0.113.9'));
+    assert.equal(res.statusCode, 429);
+    assert.equal(res.headers['Retry-After'], '1');
+  });
+
+  await check('Rate limit: fails open when the limiter call errors, is rejected, or answers garbage', async () => {
+    for (const failPipeline of ['throw', 500, 401]) {
+      const redis = fakeUpstash({ failPipeline });
+      const logged = [];
+      const handler = makeHandler(redis, { log: (...a) => logged.push(a.join(' ')) });
+      const res = await call(handler, putReq('203.0.113.9'));
+      assert.equal(res.statusCode, 200, `limiter ${failPipeline} must not block the write`);
+      assert(logged.some(l => /rate limiter failed/.test(l)), 'the failure is logged');
+      assert(!logged.join().includes('test-token'));
+    }
+    const garbage = fakeUpstash();
+    const realFetch = garbage.fetch;
+    garbage.fetch = async (url, init) => (url.endsWith('/pipeline') ? { ok: true, status: 200, json: async () => ({ oops: 1 }) } : realFetch(url, init));
+    assert.equal((await call(makeHandler(garbage), putReq('203.0.113.9'))).statusCode, 200);
+  });
+
+  await check('Rate limit: the missing-env 503 and the 405 come before any limiter traffic', async () => {
+    const redis = fakeUpstash();
+    const noEnv = share.createHandler({ getEnv: () => ({}), fetch: redis.fetch, log: () => {} });
+    assert.equal((await call(noEnv, getReq('203.0.113.9'))).statusCode, 503);
+    assert.equal((await call(makeHandler(redis), ipReq('203.0.113.9', { method: 'DELETE' }))).statusCode, 405);
+    assert.equal(redis.limiterCalls.length, 0);
   });
 
   await check('Other methods get 405 with an Allow header', async () => {

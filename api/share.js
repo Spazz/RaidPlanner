@@ -9,6 +9,12 @@
 // Backed by Upstash Redis over its REST API (plain fetch, no dependencies).
 // Links expire 30 days after their last save. The token never leaves this
 // function.
+//
+// Per-IP fixed-window rate limit (writes and reads have separate budgets):
+// over budget -> 429 with Retry-After. The client IP is the first
+// x-forwarded-for hop (Vercel sets it; it does not pass a client-supplied
+// value through), else x-real-ip; without either the request is not limited.
+// If the limiter itself fails the request goes through (fail open).
 
 const crypto = require('crypto');
 
@@ -18,6 +24,10 @@ const ID_LENGTH = 7;
 const ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const MAX_ID_ATTEMPTS = 5;
 const KEY_PREFIX = 'pp:share:';
+const RATE_WINDOW_SECONDS = 60;
+const RATE_LIMITS = { write: 60, read: 240 }; // requests per IP per window; a polling tab reads 4/min
+const RATE_KEY_PREFIX = 'pp:rl:';
+const MAX_IP_LENGTH = 64;
 const CODE_PATTERN = /^[A-Za-z0-9_-]+$/;
 const ID_PATTERN = new RegExp(`^[0-9A-Za-z]{${ID_LENGTH}}$`);
 
@@ -40,7 +50,7 @@ function createRedis(env, fetchImpl) {
   const token = env.PP_KV_REST_API_TOKEN;
   if (!url || !token) return null;
 
-  return async function command(args) {
+  async function command(args) {
     const resp = await fetchImpl(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -50,6 +60,45 @@ function createRedis(env, fetchImpl) {
     if (!resp.ok || data.error) throw new Error(`Redis ${args[0]} failed (${resp.status})`);
     return data.result;
   };
+
+  // Several commands in one round trip -> an array of results.
+  command.pipeline = async function pipeline(commands) {
+    const resp = await fetchImpl(url + '/pipeline', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(commands),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !Array.isArray(data) || data.length !== commands.length || data.some(item => !item || item.error)) {
+      throw new Error(`Redis pipeline failed (${resp.status})`);
+    }
+    return data.map(item => item.result);
+  };
+
+  return command;
+}
+
+function clientIp(req) {
+  const headers = (req && req.headers) || {};
+  const first = value => (Array.isArray(value) ? value[0] : value);
+  const forwarded = first(headers['x-forwarded-for']);
+  const candidate = (typeof forwarded === 'string' && forwarded.split(',')[0].trim()) || first(headers['x-real-ip']);
+  return typeof candidate === 'string' && candidate.trim() ? candidate.trim().slice(0, MAX_IP_LENGTH) : null;
+}
+
+// Fixed window: one counter per (budget, IP, window number). INCR + EXPIRE go
+// out as one pipeline; the key rotates every window, so re-arming the expiry
+// on each hit cannot stretch a window. Resolves to {limited, retryAfter}.
+async function checkRateLimit(redis, req, deps) {
+  const ip = clientIp(req);
+  if (!ip) return { limited: false };
+  const budget = req.method === 'GET' ? 'read' : 'write';
+  const windowMs = RATE_WINDOW_SECONDS * 1000;
+  const now = deps.now();
+  const key = `${RATE_KEY_PREFIX}${budget}:${ip}:${Math.floor(now / windowMs)}`;
+  const [count] = await redis.pipeline([['INCR', key], ['EXPIRE', key, String(RATE_WINDOW_SECONDS)]]);
+  if (!(Number(count) > deps.limits[budget])) return { limited: false };
+  return { limited: true, retryAfter: Math.max(1, Math.ceil((windowMs - (now % windowMs)) / 1000)) };
 }
 
 function parseBody(body) {
@@ -124,7 +173,11 @@ function createHandler(deps = {}) {
   const getEnv = deps.getEnv || (() => process.env);
   const fetchImpl = deps.fetch || ((...args) => fetch(...args));
   const log = deps.log || console.error;
-  const handlerDeps = { randomBytes: deps.randomBytes || crypto.randomBytes, now: deps.now || Date.now };
+  const handlerDeps = {
+    randomBytes: deps.randomBytes || crypto.randomBytes,
+    now: deps.now || Date.now,
+    limits: { ...RATE_LIMITS, ...deps.limits },
+  };
 
   return async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
@@ -141,6 +194,12 @@ function createHandler(deps = {}) {
     }
 
     try {
+      let limit = { limited: false };
+      try { limit = await checkRateLimit(redis, req, handlerDeps); } catch (err) { log('share: rate limiter failed, allowing request:', err.message); }
+      if (limit.limited) {
+        res.setHeader('Retry-After', String(limit.retryAfter));
+        return res.status(429).json({ error: 'Too many requests', retryAfter: limit.retryAfter });
+      }
       return await handle(req, res, redis, handlerDeps);
     } catch (err) {
       log('share:', err.message);
@@ -155,3 +214,5 @@ module.exports.generateId = generateId;
 module.exports.parseStored = parseStored;
 module.exports.TTL_SECONDS = TTL_SECONDS;
 module.exports.MAX_CODE_LENGTH = MAX_CODE_LENGTH;
+module.exports.RATE_LIMITS = RATE_LIMITS;
+module.exports.RATE_WINDOW_SECONDS = RATE_WINDOW_SECONDS;
