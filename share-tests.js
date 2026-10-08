@@ -232,8 +232,9 @@ async function check(name, fn) {
   await check('Real share code from index.html round-trips through the API and keeps its game version', async () => {
     const { Import, State } = loadLogic();
     const classes = ['WARRIOR', 'PRIEST', 'MAGE', 'ROGUE', 'DRUID'];
+    const specs = ['Arms', 'Holy', 'Frost', 'Combat', 'Feral']; // real specs: the importer drops unknown ones
     const players = Array.from({ length: 40 }, (_, i) => ({
-      name: 'Player' + i, class: classes[i % 5], spec: '', role: 'melee_dps', groupNumber: 1 + Math.floor(i / 5),
+      name: 'Player' + i, class: classes[i % 5], spec: specs[i % 5], role: 'melee_dps', groupNumber: 1 + Math.floor(i / 5),
     }));
     assert(Import.loadRoster({ gameVersion: 'forever', raid: 'f_ony', players }));
     State.notes = 'Pull at 8. Bring flasks, Onyxia fire resist gear, and a sense of humour. '.repeat(20);

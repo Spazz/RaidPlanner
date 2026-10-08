@@ -3363,6 +3363,24 @@ function enforceRaidCapacity(groups, bench, numGroups, maxPerGroup = 5) {
   return benched;
 }
 
+// ── PLAYER IDENTITY ─────────────────────────────────────────────
+// class/spec/role reach the app from share links, live links, v1 strings,
+// JSON rosters and saved plans, then get used as lookup keys and rendered
+// into HTML. Only values the active ruleset knows are accepted; everything
+// else is dropped at the door (own-property checks, so "constructor" and
+// "__proto__" are not mistaken for classes).
+const PlayerIdentity = {
+  isClass(cls) { return typeof cls === 'string' && Object.prototype.hasOwnProperty.call(Config.Specs, cls); },
+  isSpec(cls, spec) {
+    return this.isClass(cls) && typeof spec === 'string' && Object.values(Config.Specs[cls]).some(s => s.name === spec);
+  },
+  isRole(role) { return Object.values(Config.Roles).includes(role); },
+  isValid(p) {
+    return !!p && typeof p.name === 'string' && this.isSpec(p.class, p.spec) && this.isRole(p.role);
+  },
+  cleanList(list) { return Array.isArray(list) ? list.filter(p => this.isValid(p)) : []; },
+};
+
 // ── SIGN-UP STATUS ──────────────────────────────────────────────
 // How a person marked themselves on Raid-Helper, kept on the player as
 // `signupStatus` so the sign-up tray can file everyone off the raid by why
@@ -3390,17 +3408,17 @@ const SignupStatus = {
   tabFor(status) { return ['tentative', 'late', 'absent'].includes(status) ? status : 'bench'; },
 
   // Unplaced entries survive storage only with a name; class/spec/role are
-  // kept when they are a real class, otherwise null (the drag-in picker asks).
+  // kept when the ruleset knows them, otherwise null (the drag-in picker asks).
   cleanUnplaced(list) {
     if (!Array.isArray(list)) return [];
     return list.filter(p => p && typeof p.name === 'string' && p.name).map(p => {
-      const known = typeof p.class === 'string' && !!Config.Specs[p.class];
+      const known = PlayerIdentity.isClass(p.class);
       return {
         uid: typeof p.uid === 'string' ? p.uid : nextUid(), name: p.name,
         signupStatus: this.clean(p.signupStatus) || 'absent',
         class: known ? p.class : null,
-        spec: known && typeof p.spec === 'string' ? p.spec : null,
-        role: known && typeof p.role === 'string' ? p.role : null,
+        spec: PlayerIdentity.isSpec(p.class, p.spec) ? p.spec : null,
+        role: known && PlayerIdentity.isRole(p.role) ? p.role : null,
       };
     });
   },
@@ -3951,10 +3969,15 @@ const Import = {
   // An optional encoded JSON tail after all raid groups preserves open requests
   // and the requested group order. Older v2 readers ignore that extra tail.
   // The addon still reads v1, so exportAddonString() is left alone.
+  // Names are written raw (every link made before this existed is raw) unless
+  // one contains a delimiter (. , :): then EVERY name is percent-encoded and
+  // the tail carries encodedNames so the reader knows to decode them.
   exportShareString() {
     const cc = this.classCode, sc = this.specCode, rc = this.roleCode;
+    const encodeNames = [...State.groups.flat(), ...(State.bench || [])].some(p => /[.,:]/.test(String(p.name)));
+    const nameCode = n => encodeNames ? encodeURIComponent(n).replace(/\./g, '%2E') : n;
     const encode = list => list.map(p =>
-      `${p.name}.${cc[p.class] || p.class}.${sc[p.spec] || p.spec}.${rc[p.role] || p.role}`
+      `${nameCode(p.name)}.${cc[p.class] || p.class}.${sc[p.spec] || p.spec}.${rc[p.role] || p.role}`
     ).join(',');
 
     const name = State.rosterName === NO_ROSTER_NAME ? '' : (State.rosterName || '');
@@ -3970,9 +3993,10 @@ const Import = {
     // Notes and manual assignment/backup/constraint/drummer edits only ride
     // along when present, so a plain TBC share link (the common case) stays
     // byte-for-byte as compact as before — byte-identical when unused.
-    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length || drummers.length || statuses || unplaced.length) {
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length || drummers.length || statuses || unplaced.length || encodeNames) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
       const tail = {gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder};
+      if (encodeNames) tail.encodedNames = true;
       if (notes) tail.notes = notes;
       if (hasAssignments) tail.assignments = Assignments.serialize();
       if (hasBackups) tail.backups = Backups.serialize();
@@ -4013,8 +4037,11 @@ const Import = {
     }
   },
 
-  // Shared by the v1 and v2 readers: "Name.CC.SS.R,Name.CC.SS.R" -> player objects
-  _parsePlayerList(listStr, groupNumber) {
+  // Shared by the v1 and v2 readers: "Name.CC.SS.R,Name.CC.SS.R" -> player objects.
+  // Entries with a class/spec/role the ruleset does not know are dropped.
+  // namesEncoded: the names are percent-encoded (see exportShareString);
+  // a malformed escape throws URIError for the caller to report.
+  _parsePlayerList(listStr, groupNumber, namesEncoded = false) {
     const ccRev = {}; for (const [k,v] of Object.entries(this.classCode)) ccRev[v] = k;
     const scRev = {}; for (const [k,v] of Object.entries(this.specCode)) scRev[v] = k;
     const rcRev = {}; for (const [k,v] of Object.entries(this.roleCode)) rcRev[v] = k;
@@ -4022,15 +4049,16 @@ const Import = {
     const players = [];
     if (!listStr) return players;
     for (const ps of listStr.split(',')) {
-      const [name, cCode, sCode, rCode] = ps.split('.');
-      if (!name) continue;
-      players.push({
-        name,
+      const [rawName, cCode, sCode, rCode] = ps.split('.');
+      if (!rawName) continue;
+      const player = {
+        name: namesEncoded ? decodeURIComponent(rawName) : rawName,
         class: ccRev[cCode] || cCode,
         spec: scRev[sCode] || sCode,
         role: rcRev[rCode] || rCode,
         groupNumber,
-      });
+      };
+      if (PlayerIdentity.isValid(player)) players.push(player);
     }
     return players;
   },
@@ -4046,12 +4074,22 @@ const Import = {
     try { name = decodeURIComponent(parts[3] || ''); }
     catch (e) { return { success:false, error:'Share link is damaged' }; }
 
-    const bench = this._parsePlayerList(parts[4], 0);
-    const players = [];
+    // The tail goes first: its encodedNames flag says how to read the names.
     const numGroups = Config.Raids[raid].groups;
-    for (let gi = 0; gi < numGroups && (gi + 5) < parts.length; gi++) {
-      players.push(...this._parsePlayerList(parts[gi + 5], gi + 1));
+    let planning;
+    try { planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D')); }
+    catch { return {success:false, error:'Share link has damaged preferred slots'}; }
+
+    const namesEncoded = !!planning && planning.encodedNames === true;
+    let bench;
+    const players = [];
+    try {
+      bench = this._parsePlayerList(parts[4], 0, namesEncoded);
+      for (let gi = 0; gi < numGroups && (gi + 5) < parts.length; gi++) {
+        players.push(...this._parsePlayerList(parts[gi + 5], gi + 1, namesEncoded));
+      }
     }
+    catch { return {success:false, error:'Share link is damaged'}; }
     let campfires;
     let gameVersion = versionForRaid(raid);
     let preferredSlots = [];
@@ -4063,7 +4101,6 @@ const Import = {
     let drummers = [];
     let unplaced = [];
     try {
-      const planning = JSON.parse(decodeURIComponent(parts[5 + numGroups] || '%7B%7D'));
       campfires = planning.campfires;
       gameVersion = planning.gameVersion || gameVersion;
       if (!validVersionRaid(gameVersion, raid)) return {success:false, error:'Game version does not match raid'};
@@ -4153,6 +4190,7 @@ const Import = {
           groupNumber: gi + 1,
           imported: true,
         };
+        if (!PlayerIdentity.isValid(player)) continue;
         roster.push(player);
         groups[gi].push(player);
       }
@@ -4214,14 +4252,14 @@ const Import = {
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
 
-    for (const p of data.players) {
+    for (const p of PlayerIdentity.cleanList(data.players)) {
       const player = { uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber, imported:true };
       if (SignupStatus.clean(p.signupStatus)) player.signupStatus = p.signupStatus;
       roster.push(player);
       const g = player.groupNumber;
       if (g >= 1 && g <= numGroups) groups[g-1].push(player);
     }
-    State.bench = (data.bench || []).map(p => ({
+    State.bench = PlayerIdentity.cleanList(data.bench).map(p => ({
       uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role,
       groupNumber: 0, imported: true,
       ...(SignupStatus.clean(p.signupStatus) ? { signupStatus:p.signupStatus } : {}),
@@ -4535,6 +4573,8 @@ const PlanStore = {
     State.gameVersion = data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc';
     State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
     State.preserveGroupOrder = data.preserveGroupOrder === true || PreferredSlots.hasManual();
+    State.groups = State.groups.map(g => PlayerIdentity.cleanList(g));
+    State.bench = PlayerIdentity.cleanList(State.bench);
     State.roster = State.groups.flat();
     State.unplaced = SignupStatus.cleanUnplaced(data.unplaced);
     State.campfires = Campfires.clean(data.campfires);
@@ -8926,9 +8966,9 @@ const ROLE_ICONS = {
   ranged: { cls: 'role-dps',    icon: 'inv_weapon_bow_07',               label: 'Ranged DPS' },
 };
 function getRoleIcon(role) {
-  const r = ROLE_ICONS[role] || ROLE_ICONS.dps;
+  const r = Object.prototype.hasOwnProperty.call(ROLE_ICONS, role) ? ROLE_ICONS[role] : ROLE_ICONS.dps;
   const src = `https://wow.zamimg.com/images/wow/icons/small/${r.icon}.jpg`;
-  return `<span class="role-icon ${r.cls}" title="${r.label}"><img src="${src}" alt="${r.label}" loading="lazy"></span>`;
+  return `<span class="role-icon ${r.cls}" title="${esc(r.label)}"><img src="${esc(src)}" alt="${esc(r.label)}" loading="lazy"></span>`;
 }
 
 // Player rows show the ruleset's talent-tree icon for the player's spec,
@@ -8942,7 +8982,7 @@ function getSpecIcon(p) {
   const roleCls = p.role === 'tank' ? 'role-tank' : p.role === 'healer' ? 'role-healer' : 'role-dps';
   const label = p.spec ? `${p.spec} ${cls.charAt(0) + cls.slice(1).toLowerCase()}` : cls;
   const src = `https://wow.zamimg.com/images/wow/icons/small/${icon}.jpg`;
-  return `<span class="role-icon spec-icon ${roleCls}"><img src="${src}" alt="${label}" loading="lazy"></span>`;
+  return `<span class="role-icon spec-icon ${roleCls}"><img src="${esc(src)}" alt="${esc(label)}" loading="lazy"></span>`;
 }
 
 // Raid-Helper sign-up status as a small colored tag (see SignupStatus).
