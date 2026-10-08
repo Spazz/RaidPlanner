@@ -54,7 +54,7 @@ const LiveLinks = {
     const kb = n => Math.ceil(n / 1024);
     return `plan is too large for a live link (${kb(code.length)} KB, limit ${kb(this.maxCodeLength)} KB)`;
   },
-  // A 4xx a retry cannot fix. 404 (link gone: re-created), 408 and 429
+  // A 4xx a retry cannot fix. 404 (link gone: replaced by a new link), 408 and 429
   // (rate limited: back off) are transient.
   isPermanentFailure(status) {
     return status >= 400 && status < 500 && status !== 404 && status !== 408 && status !== 429;

@@ -3,7 +3,7 @@
 // Anyone holding the link can update it; the latest save wins.
 //
 //   POST /api/share   body {"code"}         -> 201 {"id", "updatedAt"}
-//   PUT  /api/share   body {"id", "code"}   -> 200 {"updatedAt"}
+//   PUT  /api/share   body {"id", "code"}   -> 200 {"updatedAt"} | 404 (never creates an ID)
 //   GET  /api/share?id=<id>                 -> 200 {"code", "updatedAt"} | 404
 //
 // Backed by Upstash Redis over its REST API (plain fetch, no dependencies).
@@ -15,6 +15,11 @@
 // x-forwarded-for hop (Vercel sets it; it does not pass a client-supplied
 // value through), else x-real-ip; without either the request is not limited.
 // If the limiter itself fails the request goes through (fail open).
+//
+// POST/PUT only take a JSON Content-Type (else 415) and a JSON object body
+// (else 400), and refuse a cross-site Origin (403): the Origin host must equal
+// the request's Host header, which also admits Vercel preview hosts. Requests
+// without an Origin header (curl, same-origin GETs) pass.
 
 const crypto = require('crypto');
 
@@ -101,9 +106,33 @@ async function checkRateLimit(redis, req, deps) {
   return { limited: true, retryAfter: Math.max(1, Math.ceil((windowMs - (now % windowMs)) / 1000)) };
 }
 
+// The request body as a plain object, or null for anything else (a JSON array,
+// string, number or null, or text that is not JSON).
 function parseBody(body) {
-  if (typeof body !== 'string') return body || {};
-  try { return JSON.parse(body) || {}; } catch { return {}; }
+  let value = body;
+  if (typeof body === 'string') {
+    try { value = JSON.parse(body); } catch { return null; }
+  }
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function headerValue(req, name) {
+  const value = ((req && req.headers) || {})[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function hasJsonContentType(req) {
+  const type = headerValue(req, 'content-type');
+  return typeof type === 'string' && /^application\/json\s*(;|$)/i.test(type.trim());
+}
+
+// True when the request carries no Origin header or one naming this host.
+function isSameSiteOrigin(req) {
+  const origin = headerValue(req, 'origin');
+  if (origin === undefined) return true;
+  const host = headerValue(req, 'host');
+  if (typeof origin !== 'string' || typeof host !== 'string' || !host) return false;
+  try { return new URL(origin).host.toLowerCase() === host.trim().toLowerCase(); } catch { return false; }
 }
 
 function validCode(code) {
@@ -127,34 +156,40 @@ function parseStored(raw) {
   return validCode(raw) ? { code: raw, updatedAt: 0 } : null;
 }
 
-function store(redis, id, code, updatedAt, onlyIfNew) {
+// condition: 'NX' (only if absent), 'XX' (only if present) or none.
+function store(redis, id, code, updatedAt, condition) {
   const args = ['SET', KEY_PREFIX + id, JSON.stringify({ code, updatedAt }), 'EX', String(TTL_SECONDS)];
-  if (onlyIfNew) args.push('NX');
+  if (condition) args.push(condition);
   return redis(args);
 }
 
 async function handleCreate(req, res, redis, deps) {
-  const { code } = parseBody(req.body);
+  const body = parseBody(req.body);
+  if (!body) return res.status(400).json({ error: 'Body must be a JSON object' });
+  const { code } = body;
   if (!validCode(code)) return res.status(400).json({ error: 'Invalid share code' });
 
   for (let attempt = 0; attempt < MAX_ID_ATTEMPTS; attempt++) {
     const id = generateId(deps.randomBytes);
     const updatedAt = deps.now();
     // NX: never overwrite an existing link if two IDs ever collide.
-    if (await store(redis, id, code, updatedAt, true) === 'OK') return res.status(201).json({ id, updatedAt });
+    if (await store(redis, id, code, updatedAt, 'NX') === 'OK') return res.status(201).json({ id, updatedAt });
   }
   return res.status(503).json({ error: 'Could not allocate a link ID' });
 }
 
-// Overwrites unconditionally and restarts the 30-day clock. An expired ID is
-// simply re-created, so a plan someone is still editing never loses its link.
+// Overwrites an existing link and restarts its 30-day clock. An unknown or
+// expired ID is 404 and is never created here (XX), so a caller cannot pick an
+// ID; the client POSTs a fresh link instead.
 async function handleUpdate(req, res, redis, deps) {
-  const { id, code } = parseBody(req.body);
+  const body = parseBody(req.body);
+  if (!body) return res.status(400).json({ error: 'Body must be a JSON object' });
+  const { id, code } = body;
   if (!validId(id)) return res.status(400).json({ error: 'Invalid link ID' });
   if (!validCode(code)) return res.status(400).json({ error: 'Invalid share code' });
 
   const updatedAt = deps.now();
-  await store(redis, id, code, updatedAt, false);
+  if (await store(redis, id, code, updatedAt, 'XX') !== 'OK') return res.status(404).json({ error: 'Link not found or expired' });
   return res.status(200).json({ updatedAt });
 }
 
@@ -185,6 +220,11 @@ function createHandler(deps = {}) {
     if (!handle) {
       res.setHeader('Allow', Object.keys(HANDLERS).join(', '));
       return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    if (req.method !== 'GET') {
+      if (!isSameSiteOrigin(req)) return res.status(403).json({ error: 'Cross-site requests are not allowed' });
+      if (!hasJsonContentType(req)) return res.status(415).json({ error: 'Content-Type must be application/json' });
     }
 
     const redis = createRedis(getEnv(), fetchImpl);

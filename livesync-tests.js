@@ -6,7 +6,7 @@
  * applyShareCode: fetchLiveLink, LiveSync, getShareLink, loadFromShortLink) in
  * a vm sandbox next to the logic half, with a fake fetch, fake timers, a fake
  * clock and a fake document/window/localStorage. Covers the reliability pack:
- * re-creating an expired link, flushing on page hide, permanent vs transient
+ * replacing an expired link with a new one, flushing on page hide, permanent vs transient
  * failures, 429 back-off and the portable timeout signal.
  */
 const assert = require('node:assert/strict');
@@ -48,6 +48,7 @@ function makeEnv({ path = '/', hidden = false } = {}) {
   const FakeDate = new Proxy(Date, { get: (target, prop) => (prop === 'now' ? () => env.now : target[prop]) });
   const addListener = scope => (type, fn) => { (env.listeners[scope + ':' + type] ||= []).push(fn); };
   const location = { pathname: path, origin: 'https://pp.test', search: '', hash: '' };
+  env.location = location;
   env.document = { hidden, getElementById: () => null, querySelector: () => null, addEventListener: addListener('document') };
 
   const globals = {
@@ -130,49 +131,153 @@ async function check(name, fn) {
 }
 
 (async () => {
-  // ── B8: an expired link is re-created ──────────────────────────
-  await check('Poll 404 forces a PUT of the current plan even though it is already synced', async () => {
-    const env = makeEnv();
+  // ── S3: an expired link is replaced by a new one (a PUT never creates an ID) ──
+  const NEW_ID = 'nEw1234';
+  const expiredRoute = (env, { putStatus = 404, postStatus = 201 } = {}) => {
+    env.route = call => {
+      if (call.method === 'GET') return response(404, { error: 'Link not found or expired' });
+      if (call.method === 'PUT') return response(putStatus, { error: 'Link not found or expired' });
+      return postStatus === 201 ? response(201, { id: NEW_ID, updatedAt: 777 }) : response(postStatus, { error: 'boom' });
+    };
+  };
+  const posts = env => env.calls.filter(c => c.method === 'POST');
+  const expiryToasts = env => env.toasts.filter(t => /live link expired/.test(t));
+
+  await check('Poll 404 POSTs the current plan as a new link and rebinds, with no PUT', async () => {
+    const env = makeEnv({ path: '/tbc/aB3dE5g' });
     const planKey = seedLinkedPlan(env);
-    env.route = call => (call.method === 'GET' ? response(404, { error: 'Link not found or expired' }) : response(200, { updatedAt: 777 }));
+    env.api.LiveSync.opening = false; // the page-load fetch of this link is over
+    expiredRoute(env);
     await env.api.LiveSync.pull();
     await settle();
-    assert.equal(puts(env).length, 1, 'the expired link is re-created');
-    assert.equal(puts(env)[0].body.id, 'aB3dE5g');
-    assert.equal(puts(env)[0].body.code, env.api.currentShareCode());
-    assert.equal(entryOf(env, planKey).updatedAt, 777);
+    assert.equal(puts(env).length, 0, 'a PUT would only 404 again');
+    assert.equal(posts(env).length, 1);
+    assert.deepEqual(posts(env)[0].body, { code: env.api.currentShareCode() });
+    const entry = entryOf(env, planKey);
+    assert.equal(entry.id, NEW_ID, 'the plan is bound to the new link');
+    assert.equal(entry.updatedAt, 777);
+    assert.equal(entry.lastCode, env.api.currentShareCode());
+    assert.equal(env.api.LiveLinks.findById(env.storage, 'aB3dE5g'), null, 'the old id is no longer bound');
+    assert.equal(env.location.pathname, '/tbc/' + NEW_ID, 'address bar follows the new link');
+    assert.equal(expiryToasts(env).length, 1, 'the user is told');
+    assert.equal(env.api.LiveSync.expiredId, null);
     assert.equal(env.api.LiveSync.statusText('x'), 'Synced to live link');
   });
 
-  await check('Poll 200 of an unchanged plan does not PUT', async () => {
+  await check('A save that gets 404 from the PUT POSTs a fresh link, rebinds, updates the address bar and toasts', async () => {
+    const env = makeEnv({ path: '/tbc/aB3dE5g' });
+    const planKey = seedLinkedPlan(env);
+    expiredRoute(env);
+    edit(env, 'edited after the link expired');
+    await env.advance(2000);
+    assert.equal(puts(env).length, 1);
+    assert.equal(puts(env)[0].body.id, 'aB3dE5g');
+    assert.equal(posts(env).length, 1);
+    assert.equal(posts(env)[0].body.code, env.api.currentShareCode(), 'the edit travels with the new link');
+    assert.equal(entryOf(env, planKey).id, NEW_ID);
+    assert.equal(entryOf(env, planKey).lastCode, env.api.currentShareCode());
+    assert.equal(env.location.pathname, '/tbc/' + NEW_ID);
+    assert.equal(expiryToasts(env).length, 1);
+    assert.match(expiryToasts(env)[0], /new live link is active/);
+    assert.equal(env.api.LiveSync.failed, false);
+    assert.equal(env.api.LiveSync.pending, false);
+    // Later edits PUT to the new link.
+    env.route = () => response(200, { updatedAt: 900 });
+    edit(env, 'and again');
+    await env.advance(2000);
+    assert.equal(puts(env).length, 2);
+    assert.equal(puts(env)[1].body.id, NEW_ID);
+    assert.equal(expiryToasts(env).length, 1, 'no second toast');
+  });
+
+  await check('A page-exit save (keepalive) that finds the link expired creates the new link with keepalive too', async () => {
+    const env = makeEnv();
+    const planKey = seedLinkedPlan(env);
+    expiredRoute(env);
+    edit(env, 'closing the tab');
+    env.api.LiveSync.flushOnExit();
+    await settle();
+    assert.equal(posts(env).length, 1);
+    assert.equal(posts(env)[0].keepalive, true);
+    assert.equal(entryOf(env, planKey).id, NEW_ID);
+  });
+
+  await check('Poll 200 of an unchanged plan does not PUT or POST', async () => {
     const env = makeEnv();
     seedLinkedPlan(env);
     env.route = () => response(200, { code: env.api.currentShareCode(), updatedAt: 100 });
     await env.api.LiveSync.pull();
     await settle();
     assert.equal(puts(env).length, 0);
+    assert.equal(posts(env).length, 0);
   });
 
-  await check('A failed re-creation keeps being forced on the next ticks until it lands', async () => {
-    const env = makeEnv();
-    seedLinkedPlan(env);
-    let putStatus = 503;
-    env.route = call => (call.method === 'GET' ? response(404) : response(putStatus, { updatedAt: 888 }));
+  await check('A failed replacement keeps the old binding and is retried on the next tick until it lands', async () => {
+    const env = makeEnv({ path: '/tbc/aB3dE5g' });
+    const planKey = seedLinkedPlan(env);
+    env.api.LiveSync.opening = false; // the page-load fetch of this link is over
+    expiredRoute(env, { postStatus: 503 });
     await env.api.LiveSync.pull();
     await settle();
-    assert.equal(puts(env).length, 1);
+    assert.equal(posts(env).length, 1);
     assert.equal(env.api.LiveSync.failed, true);
     assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced, retrying');
-    putStatus = 200;
-    await env.api.LiveSync.pull(); // failed -> retried as a forced save, no GET needed
+    assert.equal(entryOf(env, planKey).id, 'aB3dE5g', 'still bound to the old link');
+    assert.equal(env.location.pathname, '/tbc/aB3dE5g');
+    assert.equal(expiryToasts(env).length, 0, 'no toast for a replacement that did not happen');
+    expiredRoute(env); // the server is back
+    await env.api.LiveSync.pull(); // failed -> retried without a GET
     await settle();
-    assert.equal(puts(env).length, 2, 'retried although the plan itself never changed');
+    assert.equal(posts(env).length, 2, 'retried although the plan itself never changed');
+    assert.equal(puts(env).length, 0, 'the link is already known to be gone');
     assert.equal(env.api.LiveSync.failed, false);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Synced to live link');
-    env.route = call => (call.method === 'GET' ? response(200, { code: env.api.currentShareCode(), updatedAt: 888 }) : response(200, { updatedAt: 999 }));
+    assert.equal(entryOf(env, planKey).id, NEW_ID);
+    assert.equal(expiryToasts(env).length, 1);
+    const callsBefore = env.calls.length;
+    env.route = call => (call.method === 'GET' ? response(200, { code: env.api.currentShareCode(), updatedAt: 777 }) : response(500));
     await env.api.LiveSync.pull();
     await settle();
-    assert.equal(puts(env).length, 2, 'the forced flag is spent once the link exists again');
+    assert.deepEqual(env.calls.slice(callsBefore).map(c => c.method), ['GET'], 'the expired flag is spent: only the poll goes out');
+  });
+
+  await check('A POST that answers with a malformed ID is a failed replacement, not a rebind', async () => {
+    const env = makeEnv();
+    const planKey = seedLinkedPlan(env);
+    env.route = call => (call.method === 'POST' ? response(201, { id: '../etc', updatedAt: 1 }) : response(404));
+    edit(env, 'edit');
+    await env.advance(2000);
+    assert.equal(env.api.LiveSync.failed, true);
+    assert.equal(entryOf(env, planKey).id, 'aB3dE5g');
+    assert.equal(expiryToasts(env).length, 0);
+  });
+
+  await check('A 4xx refusal of the replacement (e.g. 403) is a permanent rejection, like any save', async () => {
+    const env = makeEnv();
+    const planKey = seedLinkedPlan(env);
+    expiredRoute(env, { postStatus: 403 });
+    edit(env, 'edit');
+    await env.advance(2000);
+    assert.equal(env.api.LiveSync.failed, false);
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced: boom');
+    assert.equal(entryOf(env, planKey).id, 'aB3dE5g');
+  });
+
+  await check('A 429 on the replacement backs off; the retry afterwards creates the link', async () => {
+    const env = makeEnv();
+    const planKey = seedLinkedPlan(env);
+    env.route = call => (call.method === 'POST' ? response(429, {}, { 'Retry-After': '7' }) : response(404));
+    edit(env, 'edit');
+    await env.advance(2000);
+    assert.equal(posts(env).length, 1);
+    assert.equal(env.api.LiveSync.failed, true);
+    expiredRoute(env);
+    await env.advance(3000);
+    await env.api.LiveSync.pull();
+    await settle();
+    assert.equal(posts(env).length, 1, 'still backing off');
+    await env.advance(5000);
+    assert.equal(posts(env).length, 2);
+    assert.equal(entryOf(env, planKey).id, NEW_ID);
   });
 
   await check('A transient failure with nothing left to push clears itself instead of sticking on "retrying"', async () => {
@@ -189,21 +294,24 @@ async function check(name, fn) {
     assert.equal(env.api.LiveSync.pending, false);
   });
 
-  await check('Opening an expired /<version>/<id> link reopens the local copy and re-creates the link', async () => {
+  await check('Opening an expired /<version>/<id> link reopens the local copy and gives it a new link', async () => {
     const env = makeEnv({ path: '/tbc/aB3dE5g' });
     const planKey = seedLinkedPlan(env);
     env.api.PlanStore.save(env.storage, env.api.PlanStore.capture());
     env.api.State.planId = 'plan:something-else'; // a different plan is open when the link is visited
     env.api.State.rosterName = 'Other';
-    env.route = call => (call.method === 'GET' ? response(404) : response(200, { updatedAt: 555 }));
+    expiredRoute(env);
     const opened = await env.api.loadFromShortLink();
     await settle();
     assert.equal(opened, true);
     assert.equal(env.api.LiveLinks.planKey(env.api.State), planKey, 'the bound plan is open again');
-    assert.equal(puts(env).length, 1);
-    assert.equal(puts(env)[0].body.id, 'aB3dE5g');
-    assert.equal(entryOf(env, planKey).updatedAt, 555);
+    assert.equal(puts(env).length, 0);
+    assert.equal(posts(env).length, 1);
+    assert.equal(entryOf(env, planKey).id, NEW_ID);
+    assert.equal(entryOf(env, planKey).updatedAt, 777);
+    assert.equal(env.location.pathname, '/tbc/' + NEW_ID);
     assert(!env.toasts.some(t => /expired or does not exist/.test(t)));
+    assert.equal(expiryToasts(env).length, 1);
   });
 
   await check('Opening an expired link with no local copy still reports it as expired', async () => {
@@ -212,9 +320,10 @@ async function check(name, fn) {
     assert.equal(await env.api.loadFromShortLink(), false);
     assert(env.toasts.some(t => /expired or does not exist/.test(t)));
     assert.equal(puts(env).length, 0);
+    assert.equal(posts(env).length, 0, 'a link someone else shared is never re-created from nothing');
   });
 
-  await check('Opening a live link whose server copy exists is unchanged (no PUT, local copy reopened)', async () => {
+  await check('Opening a live link whose server copy exists is unchanged (no PUT or POST, local copy reopened)', async () => {
     const env = makeEnv({ path: '/tbc/aB3dE5g' });
     seedLinkedPlan(env);
     env.api.PlanStore.save(env.storage, env.api.PlanStore.capture());

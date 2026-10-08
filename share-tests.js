@@ -42,6 +42,7 @@ function fakeUpstash({ failWith, failPipeline } = {}) {
     let result = null;
     if (cmd === 'SET') {
       if (opts.includes('NX') && store.has(key)) result = null;
+      else if (opts.includes('XX') && !store.has(key)) result = null;
       else { store.set(key, value); result = 'OK'; }
     } else if (cmd === 'GET') {
       result = store.has(key) ? store.get(key) : null;
@@ -60,9 +61,11 @@ function fakeRes() {
   };
 }
 
+// Writes carry the JSON Content-Type the browser client sends, unless a test overrides it.
 async function call(handler, req) {
   const res = fakeRes();
-  await handler({ query: {}, ...req }, res);
+  const writes = req.method === 'POST' || req.method === 'PUT';
+  await handler({ query: {}, ...req, headers: { ...(writes ? { 'content-type': 'application/json' } : {}), ...req.headers } }, res);
   return res;
 }
 
@@ -180,22 +183,109 @@ async function check(name, fn) {
     assert.equal((await call(handler, { method: 'GET', query: { id: 'bB3dE5g' } })).statusCode, 404);
   });
 
-  await check('PUT overwrites the link, restarts the 30-day TTL (no NX) and returns the new updatedAt', async () => {
+  await check('PUT overwrites the link, restarts the 30-day TTL (XX: only if it exists) and returns the new updatedAt', async () => {
     const redis = fakeUpstash();
     redis.store.set('pp:share:aB3dE5g', JSON.stringify({ code: 'old', updatedAt: 1 }));
     const res = await call(makeHandler(redis, { now: () => 5000 }), { method: 'PUT', body: { id: 'aB3dE5g', code: 'newer' } });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.body, { updatedAt: 5000 });
-    assert.deepEqual(redis.calls[0].args, ['SET', 'pp:share:aB3dE5g', JSON.stringify({ code: 'newer', updatedAt: 5000 }), 'EX', TTL]);
+    assert.deepEqual(redis.calls[0].args, ['SET', 'pp:share:aB3dE5g', JSON.stringify({ code: 'newer', updatedAt: 5000 }), 'EX', TTL, 'XX']);
     const read = await call(makeHandler(redis), { method: 'GET', query: { id: 'aB3dE5g' } });
     assert.deepEqual(read.body, { code: 'newer', updatedAt: 5000 });
   });
 
-  await check('PUT re-creates an expired (unknown) link so a plan still in use keeps its URL', async () => {
+  await check('PUT to an unknown or expired link is 404 and never creates it (SET ... XX)', async () => {
     const redis = fakeUpstash();
     const res = await call(makeHandler(redis), { method: 'PUT', body: JSON.stringify({ id: 'gone123', code: 'back' }) });
+    assert.equal(res.statusCode, 404);
+    assert.deepEqual(res.body, { error: 'Link not found or expired' });
+    assert.equal(redis.store.has('pp:share:gone123'), false, 'nothing was written');
+    assert.deepEqual(redis.calls[0].args, ['SET', 'pp:share:gone123', JSON.stringify({ code: 'back', updatedAt: 1000 }), 'EX', TTL, 'XX']);
+    const read = await call(makeHandler(redis), { method: 'GET', query: { id: 'gone123' } });
+    assert.equal(read.statusCode, 404, 'still unknown afterwards');
+  });
+
+  await check('PUT still updates a link stored before live updates (bare code)', async () => {
+    const redis = fakeUpstash();
+    redis.store.set('pp:share:aB3dE5g', 'UFA6MjpsZWdhY3k');
+    const res = await call(makeHandler(redis, { now: () => 7 }), { method: 'PUT', body: { id: 'aB3dE5g', code: 'fresh' } });
     assert.equal(res.statusCode, 200);
-    assert.equal(JSON.parse(redis.store.get('pp:share:gone123')).code, 'back');
+    assert.deepEqual(JSON.parse(redis.store.get('pp:share:aB3dE5g')), { code: 'fresh', updatedAt: 7 });
+  });
+
+  // ── S2: request validation ─────────────────────────────────────
+  await check('POST/PUT without a JSON Content-Type are 415 and never reach Redis', async () => {
+    const redis = fakeUpstash();
+    const handler = makeHandler(redis);
+    const body = JSON.stringify({ id: 'aB3dE5g', code: 'abc' });
+    for (const method of ['POST', 'PUT']) {
+      for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=x', 'application/jsonx', 'text/json', '']) {
+        const res = await call(handler, { method, body, headers: { 'content-type': type } });
+        assert.equal(res.statusCode, 415, `${method} ${JSON.stringify(type)}`);
+      }
+      const bare = fakeRes();
+      await handler({ method, body, query: {} }, bare); // no Content-Type header at all
+      assert.equal(bare.statusCode, 415, `${method} with no Content-Type`);
+    }
+    assert.equal(redis.calls.length, 0);
+    assert.equal(redis.limiterCalls.length, 0);
+  });
+
+  await check('Content-Type is matched case-insensitively and may carry parameters', async () => {
+    const handler = makeHandler(fakeUpstash());
+    for (const type of ['application/json', 'Application/JSON', 'application/json; charset=utf-8', 'application/json;charset=UTF-8']) {
+      const res = await call(handler, { method: 'POST', body: { code: 'abc' }, headers: { 'content-type': type } });
+      assert.equal(res.statusCode, 201, type);
+    }
+  });
+
+  await check('A cross-site or opaque Origin is 403 on POST and PUT, before any Redis call', async () => {
+    const redis = fakeUpstash();
+    const handler = makeHandler(redis);
+    const origins = ['https://evil.example', 'https://pp.example.evil.example', 'https://pp.example:8443', 'null', 'not a url', ''];
+    for (const method of ['POST', 'PUT']) {
+      for (const origin of origins) {
+        const res = await call(handler, { method, body: { id: 'aB3dE5g', code: 'abc' }, headers: { host: 'pp.example', origin } });
+        assert.equal(res.statusCode, 403, `${method} Origin ${JSON.stringify(origin)}`);
+      }
+    }
+    const noHost = await call(handler, { method: 'POST', body: { code: 'abc' }, headers: { origin: 'https://pp.example' } });
+    assert.equal(noHost.statusCode, 403, 'an Origin with no Host to compare against');
+    assert.equal(redis.calls.length, 0);
+  });
+
+  await check('Same-host Origins (production, Vercel previews, localhost) and requests with no Origin are allowed', async () => {
+    const handler = makeHandler(fakeUpstash());
+    const cases = [
+      { host: 'pp.example', origin: 'https://pp.example' },
+      { host: 'PP.Example', origin: 'https://pp.example' },
+      { host: 'party-planner-git-phase-2-team.vercel.app', origin: 'https://party-planner-git-phase-2-team.vercel.app' },
+      { host: 'localhost:3000', origin: 'http://localhost:3000' },
+      { host: 'pp.example' }, // curl / server-to-server: no Origin
+      {},
+    ];
+    for (const headers of cases) {
+      const res = await call(handler, { method: 'POST', body: { code: 'abc' }, headers });
+      assert.equal(res.statusCode, 201, JSON.stringify(headers));
+    }
+  });
+
+  await check('GET is not subject to the Origin or Content-Type checks', async () => {
+    const res = await call(makeHandler(fakeUpstash()), { method: 'GET', query: { id: 'zzzzzzz' }, headers: { host: 'pp.example', origin: 'https://other.example' } });
+    assert.equal(res.statusCode, 404);
+  });
+
+  await check('A body that is not a JSON object is 400 and never reaches Redis', async () => {
+    const redis = fakeUpstash();
+    const handler = makeHandler(redis);
+    for (const method of ['POST', 'PUT']) {
+      for (const body of ['[1,2]', '"abc"', '5', 'null', 'true', 'not json', '', [], ['code'], 7, null, undefined, true]) {
+        const res = await call(handler, { method, body });
+        assert.equal(res.statusCode, 400, `${method} ${JSON.stringify(body)}`);
+        assert.deepEqual(res.body, { error: 'Body must be a JSON object' }, `${method} ${JSON.stringify(body)}`);
+      }
+    }
+    assert.equal(redis.calls.length, 0);
   });
 
   await check('PUT rejects bad IDs and codes without touching Redis', async () => {
@@ -226,6 +316,8 @@ async function check(name, fn) {
 
   const ipReq = (ip, extra = {}) => ({ headers: { 'x-forwarded-for': ip }, ...extra });
   const getReq = ip => ipReq(ip, { method: 'GET', query: { id: 'aB3dE5g' } });
+  // PUT only updates an existing link, so rate-limit tests seed aB3dE5g first.
+  const linked = redis => { redis.store.set('pp:share:aB3dE5g', JSON.stringify({ code: 'old', updatedAt: 1 })); return redis; };
   const putReq = ip => ipReq(ip, { method: 'PUT', body: { id: 'aB3dE5g', code: 'abc' } });
 
   await check('Rate limit: INCR + EXPIRE go out as one pipeline keyed by budget, first x-forwarded-for hop and window', async () => {
@@ -250,7 +342,7 @@ async function check(name, fn) {
   });
 
   await check('Rate limit: writes are capped at 60/min, then 429 with Retry-After and no Redis write', async () => {
-    const redis = fakeUpstash();
+    const redis = linked(fakeUpstash());
     const handler = makeHandler(redis, { now: () => 125000 }); // 55s left in the window
     for (let i = 0; i < 60; i++) assert.equal((await call(handler, putReq('203.0.113.9'))).statusCode, 200, `write ${i + 1}`);
     const writesBefore = redis.calls.length;
@@ -263,7 +355,7 @@ async function check(name, fn) {
   });
 
   await check('Rate limit: reads and writes have separate budgets (reads 240/min)', async () => {
-    const redis = fakeUpstash();
+    const redis = linked(fakeUpstash());
     const handler = makeHandler(redis);
     for (let i = 0; i < 60; i++) await call(handler, putReq('203.0.113.9'));
     assert.equal((await call(handler, putReq('203.0.113.9'))).statusCode, 429);
@@ -273,7 +365,7 @@ async function check(name, fn) {
   });
 
   await check('Rate limit: budgets are per IP and reset when the window rolls over', async () => {
-    const redis = fakeUpstash();
+    const redis = linked(fakeUpstash());
     let now = 125000;
     const handler = makeHandler(redis, { now: () => now, limits: { write: 2 } });
     await call(handler, putReq('203.0.113.9'));
@@ -293,7 +385,7 @@ async function check(name, fn) {
 
   await check('Rate limit: fails open when the limiter call errors, is rejected, or answers garbage', async () => {
     for (const failPipeline of ['throw', 500, 401]) {
-      const redis = fakeUpstash({ failPipeline });
+      const redis = linked(fakeUpstash({ failPipeline }));
       const logged = [];
       const handler = makeHandler(redis, { log: (...a) => logged.push(a.join(' ')) });
       const res = await call(handler, putReq('203.0.113.9'));
@@ -301,7 +393,7 @@ async function check(name, fn) {
       assert(logged.some(l => /rate limiter failed/.test(l)), 'the failure is logged');
       assert(!logged.join().includes('test-token'));
     }
-    const garbage = fakeUpstash();
+    const garbage = linked(fakeUpstash());
     const realFetch = garbage.fetch;
     garbage.fetch = async (url, init) => (url.endsWith('/pipeline') ? { ok: true, status: 200, json: async () => ({ oops: 1 }) } : realFetch(url, init));
     assert.equal((await call(makeHandler(garbage), putReq('203.0.113.9'))).statusCode, 200);

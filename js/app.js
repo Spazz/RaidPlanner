@@ -519,6 +519,22 @@ async function fetchLiveLink(id) {
   return { code: data.code, updatedAt: Number(data.updatedAt) || 0 };
 }
 
+// Stores code under a new link. Resolves to {id, updatedAt}; throws when the
+// server cannot be reached, refuses it or answers with a malformed ID.
+async function createLiveLink(code, { keepalive = false, timeoutMs = 8000 } = {}) {
+  const resp = await fetch(SHARE_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+    keepalive,
+    signal: timeoutSignal(timeoutMs),
+  });
+  if (!resp.ok) throw await shareError(resp);
+  const { id, updatedAt } = await resp.json();
+  if (!LiveLinks.ID.test(id)) throw new Error('share: bad response');
+  return { id, updatedAt: Number(updatedAt) || 0 };
+}
+
 // Swaps in someone else's copy of this plan, keeping what makes it this
 // browser's plan (its ID, Raid-Helper event and optimizer strategy) and what
 // the share code does not carry (player identities, totem and aura picks).
@@ -571,9 +587,10 @@ const LiveSync = {
   // The server refused this exact code for good: {code, reason}. Cleared as
   // soon as the plan changes, since a different code may be accepted.
   rejected: null,
-  // Link ID the server forgot (expired): its next save goes out even though
-  // this browser already synced the same code, to re-create the link.
-  recreateId: null,
+  // Link ID the server forgot (expired): its next save skips the PUT (which
+  // would only 404) and goes out as a new link, even though this browser
+  // already synced the same code.
+  expiredId: null,
   // Rate limited (429): no requests until this time.
   backoffUntil: 0,
   // True while a /<version>/<id> link from page load is still being fetched.
@@ -615,9 +632,10 @@ const LiveSync = {
     this.save({ keepalive: true });
   },
 
-  // The server forgot this link: push this browser's copy back under the same ID.
-  recreateLink(id) {
-    this.recreateId = id;
+  // The server forgot this link: this browser's copy goes out as a new link
+  // (a PUT never re-creates an ID) and the plan rebinds to it.
+  replaceExpiredLink(id) {
+    this.expiredId = id;
     this.pending = true;
     this.save();
   },
@@ -626,8 +644,8 @@ const LiveSync = {
     clearTimeout(this.saveTimer);
     const link = currentLiveLink();
     const code = link && currentShareCode();
-    const recreating = !!link && this.recreateId === link.entry.id;
-    if (!link || !(recreating || LiveLinks.needsPush(link.entry, code)) || this.blocked(code)) {
+    const expired = !!link && this.expiredId === link.entry.id;
+    if (!link || !(expired || LiveLinks.needsPush(link.entry, code)) || this.blocked(code)) {
       // Nothing (left) to push, so a failed attempt no longer matters.
       this.pending = false;
       this.failed = false;
@@ -643,20 +661,33 @@ const LiveSync = {
     }
     this.saving = true;
     try {
-      const resp = await fetch(SHARE_API, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: link.entry.id, code }),
-        keepalive,
-        signal: timeoutSignal(8000),
-      });
-      if (!resp.ok) throw await shareError(resp);
-      const { updatedAt } = await resp.json();
-      bindLiveLink(link.planKey, link.entry.id, code, Number(updatedAt) || 0);
+      let needsNewLink = expired;
+      if (!needsNewLink) {
+        const resp = await fetch(SHARE_API, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: link.entry.id, code }),
+          keepalive,
+          signal: timeoutSignal(8000),
+        });
+        // 404: the link expired, and a PUT never creates an ID. Only a POST can.
+        if (resp.status === 404) needsNewLink = true;
+        else {
+          if (!resp.ok) throw await shareError(resp);
+          const { updatedAt } = await resp.json();
+          bindLiveLink(link.planKey, link.entry.id, code, Number(updatedAt) || 0);
+        }
+      }
+      if (needsNewLink) {
+        const created = await createLiveLink(code, { keepalive });
+        bindLiveLink(link.planKey, created.id, code, created.updatedAt);
+        this.expiredId = null;
+        syncAddressBar();
+        showToast('That live link expired (links last 30 days after the last change). A new live link is active, so share the new one.');
+      }
       this.failed = false;
       this.rejected = null;
       this.backoffUntil = 0;
-      if (recreating) this.recreateId = null;
     } catch (err) {
       // Retried by the next poll tick (or the next change), unless the server
       // refused this code for good.
@@ -685,8 +716,8 @@ const LiveSync = {
       if (err.retryAfterMs) this.backoffUntil = Date.now() + err.retryAfterMs;
       return;
     }
-    // An expired link is re-created from this browser's copy.
-    if (remote === null) { this.recreateLink(link.entry.id); return; }
+    // An expired link is replaced by a new one holding this browser's copy.
+    if (remote === null) { this.replaceExpiredLink(link.entry.id); return; }
 
     const now = currentLiveLink();
     if (!now || now.planKey !== link.planKey) return;
@@ -750,16 +781,8 @@ async function getShareLink() {
   const planKey = LiveLinks.planKey(State);
   if (!planKey || LiveLinks.rejection(code)) return fallback;
   try {
-    const resp = await fetch(SHARE_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
-      signal: timeoutSignal(5000),
-    });
-    if (!resp.ok) return fallback;
-    const { id, updatedAt } = await resp.json();
-    if (!LiveLinks.ID.test(id)) return fallback;
-    bindLiveLink(planKey, id, code, Number(updatedAt) || 0);
+    const { id, updatedAt } = await createLiveLink(code, { timeoutMs: 5000 });
+    bindLiveLink(planKey, id, code, updatedAt);
     if (!currentLiveLink()) return fallback;
     syncAddressBar();
     LiveSync.refreshStatus();
@@ -808,10 +831,10 @@ async function loadFromShortLink() {
     if (saved) {
       if (LiveLinks.planKey(State) !== bound.planKey) PlanStore.restore(saved.data);
       if (!remote) {
-        // The server forgot the link, but this browser's copy is still here: bring the link back.
+        // The server forgot the link, but this browser's copy is still here: give it a new link.
         commit();
-        LiveSync.recreateLink(id);
-        showToast(`Opened live raid "${State.rosterName}" (its link had expired, restoring it)`);
+        LiveSync.replaceExpiredLink(id);
+        showToast(`Opened live raid "${State.rosterName}" (its link had expired, making a new one)`);
         return true;
       }
       const entry = LiveLinks.get(linkStorage(), bound.planKey);
