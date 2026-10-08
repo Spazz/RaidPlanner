@@ -1,7 +1,6 @@
-const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
-const code=fs.readFileSync(require('path').join(__dirname,'index.html'),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
-const ctx=vm.createContext({TextEncoder,console});
-vm.runInContext(code.split('// ── UI RENDERING')[0]+'\nglobalThis.api={Campfires,State,Import,PlanStore,PlanSession};',ctx);
+const assert=require('node:assert/strict');
+const app=require('./tests/load-app');
+const ctx=app.sandbox(['Campfires','State','Import','PlanStore','PlanSession']);
 const {Campfires:C,State:S,Import:I,PlanStore:P,PlanSession:U}=ctx.api;
 I.loadRoster({gameVersion:'forever',raid:'forever10',players:['Miner','Fisher','Engineer','MinerTwo'].map(name=>({name,class:'MAGE',spec:'Frost',role:'caster_dps',groupNumber:1}))});
 S.planId='camp-test';

@@ -12,16 +12,9 @@
  * (spreading across all 4 modes, idempotence, locks/constraints honored,
  * zero-drummer TBC no-op), and that none of this activates outside TBC.
  */
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(script.split('// ── UI RENDERING')[0] +
-  '\nglobalThis.api={State,Config,GameVersions,Import,Optimizer,RosterEdit,Readiness,Constraints,Backups,Drummers,getDrumsCoverage,PlanStore,RandomRoster,nextUid,activeRules};',
-  ctx);
+const app = require('./tests/load-app');
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Import', 'Optimizer', 'RosterEdit', 'Readiness', 'Constraints', 'Backups', 'Drummers', 'getDrumsCoverage', 'PlanStore', 'RandomRoster', 'nextUid', 'activeRules']);
 const { State, Config, GameVersions, Import, Optimizer, RosterEdit, Readiness, Constraints, Backups, Drummers,
   getDrumsCoverage, PlanStore, RandomRoster, nextUid, activeRules } = ctx.api;
 

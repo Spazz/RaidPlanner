@@ -8,11 +8,9 @@
  * round-tripped through the API to prove the two sides agree on the code
  * format, and LiveLinks (the per-plan link bookkeeping) is driven directly.
  */
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
 const crypto = require('crypto');
 const assert = require('node:assert/strict');
+const app = require('./tests/load-app');
 const share = require('./api/share.js');
 
 const ENV = { PP_KV_REST_API_URL: 'https://fake.upstash.io', PP_KV_REST_API_TOKEN: 'test-token' };
@@ -58,11 +56,7 @@ function makeHandler(redis, extra = {}) {
 }
 
 function loadLogic() {
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-  const ctx = vm.createContext({ TextEncoder, TextDecoder, console, btoa, atob, escape, unescape });
-  vm.runInContext(script.split('// ── UI RENDERING')[0] + '\nglobalThis.api={Import,State,LiveLinks};', ctx);
-  return ctx.api;
+  return app.sandbox(['Import', 'State', 'LiveLinks'], { globals: { btoa, atob, escape, unescape } }).api;
 }
 
 function memoryStorage(initial = {}) {

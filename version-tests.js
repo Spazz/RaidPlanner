@@ -1,11 +1,7 @@
-const fs = require('fs');
-const vm = require('vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-new vm.Script(script); // Includes UI handlers: catch syntax errors outside core logic.
-const ctx = vm.createContext({TextEncoder, TextDecoder, console});
-vm.runInContext(script.split('// ── UI RENDERING')[0] + '\nglobalThis.api={State,Config,GameVersions,Import,PlanStore,Optimizer,getGroupBuffs,getMissingBuffInsights,enforceRaidCapacity,activeRules};', ctx);
+const app = require('./tests/load-app');
+app.compileFull(); // Includes UI handlers: catch syntax errors outside core logic.
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Import', 'PlanStore', 'Optimizer', 'getGroupBuffs', 'getMissingBuffInsights', 'enforceRaidCapacity', 'activeRules']);
 const {State,Config,GameVersions,Import,PlanStore,Optimizer,getGroupBuffs,getMissingBuffInsights,enforceRaidCapacity,activeRules} = ctx.api;
 const storage = {data:{}, getItem(k){return this.data[k] || null;}, setItem(k,v){this.data[k]=v;}};
 const players = Array.from({length:40}, (_,i) => ({name:`Fixture${i}`,class:'MAGE',spec:'Frost',role:'caster_dps',groupNumber:Math.floor(i/5)+1}));

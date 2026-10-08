@@ -11,17 +11,9 @@
  * MODE_CONFIG so the split-button menu can never list a strategy the
  * optimizer doesn't have, or vice versa.
  */
-const fs = require('fs');
-const vm = require('vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(
-  script.split('// ── UI RENDERING')[0] +
-  '\nglobalThis.api={MODE_CONFIG,STRATEGY_DESCRIPTIONS,strategyLabel};',
-  ctx
-);
+const app = require('./tests/load-app');
+const ctx = app.sandbox(['MODE_CONFIG', 'STRATEGY_DESCRIPTIONS', 'strategyLabel']);
 const { MODE_CONFIG, STRATEGY_DESCRIPTIONS, strategyLabel } = ctx.api;
 
 let passed = 0, failed = 0;

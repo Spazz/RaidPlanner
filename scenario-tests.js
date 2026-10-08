@@ -7,18 +7,9 @@
  * per-scenario expectations declared in scenarios.js. Logic comes straight from
  * index.html, the same way tests.js loads it.
  */
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const app = require('./tests/load-app');
 
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
-if (!scriptMatch) { console.error('Could not extract <script> from index.html'); process.exit(1); }
-const logicCode = scriptMatch[1].split('// ── UI RENDERING')[0];
-const tmpPath = path.join(os.tmpdir(), '_pp_scenario_logic.tmp.js');
-fs.writeFileSync(tmpPath, logicCode + '\nmodule.exports = { Config, Import, Optimizer, State, getMissingBuffInsights, getGroupBuffs };');
-const PP = require(tmpPath);
-fs.unlinkSync(tmpPath);
+const PP = app.requireLogic(['Config', 'Import', 'Optimizer', 'State', 'getMissingBuffInsights', 'getGroupBuffs'], '_pp_scenario_logic.tmp.js');
 const { Config, Import, Optimizer, State, getMissingBuffInsights, getGroupBuffs } = PP;
 const Scenarios = require('./scenarios.js');
 

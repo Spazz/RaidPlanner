@@ -7,14 +7,9 @@
  * <script> (everything above '// ── UI RENDERING') is executed in a sandboxed
  * context and the pieces under test are pulled out through globalThis.api.
  */
-const fs = require('fs');
-const vm = require('vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(script.split('// ── UI RENDERING')[0] +
-  '\nglobalThis.api={State,Config,GameVersions,Rulesets,Import,PlanStore,Assignments,Faction,nextUid,activeRules,RosterEdit};', ctx);
+const app = require('./tests/load-app');
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'PlanStore', 'Assignments', 'Faction', 'nextUid', 'activeRules', 'RosterEdit']);
 const { State, Config, GameVersions, Rulesets, Import, PlanStore, Assignments, Faction, nextUid, activeRules, RosterEdit } = ctx.api;
 
 function mk(cls, spec, role, groupNumber) {

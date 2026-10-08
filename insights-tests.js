@@ -11,15 +11,9 @@
  * executed in a sandboxed context and the pieces under test are pulled out
  * through globalThis.api.
  */
-const fs = require('fs');
-const vm = require('vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(script.split('// ── UI RENDERING')[0] +
-  '\nglobalThis.api={State,Config,GameVersions,MODE_CONFIG,Optimizer,RandomRoster,PlanSession,PlanStore,' +
-  'computeAttendance,compareOptimizerModes,nextUid,getRaidBuffCoverage,getRaidDebuffCoverage};', ctx);
+const app = require('./tests/load-app');
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'MODE_CONFIG', 'Optimizer', 'RandomRoster', 'PlanSession', 'PlanStore', 'computeAttendance', 'compareOptimizerModes', 'nextUid', 'getRaidBuffCoverage', 'getRaidDebuffCoverage']);
 const { State, Config, GameVersions, MODE_CONFIG, Optimizer, RandomRoster, PlanSession, PlanStore,
   computeAttendance, compareOptimizerModes, nextUid, getRaidBuffCoverage, getRaidDebuffCoverage } = ctx.api;
 

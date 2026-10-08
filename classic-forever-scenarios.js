@@ -39,15 +39,10 @@
  * avoids both. All four invariants below are now real assertions in every
  * mode, including relaxed — there is no more "known gaps" carve-out.
  */
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
 const assert = require('node:assert/strict');
+const app = require('./tests/load-app');
 
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(script.split('// ── UI RENDERING')[0] + '\nglobalThis.api={State,Config,GameVersions,Rulesets,Import,Optimizer,getGroupBuffs,getMissingBuffInsights,getRaidDebuffCoverage,Faction,enforceRaidCapacity,nextUid};', ctx);
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'Optimizer', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidDebuffCoverage', 'Faction', 'enforceRaidCapacity', 'nextUid']);
 const { State, Config, GameVersions, Rulesets, Import, Optimizer, getGroupBuffs, getMissingBuffInsights, getRaidDebuffCoverage, Faction, enforceRaidCapacity, nextUid } = ctx.api;
 
 const MODES = ['max_dps', 'tank_mit', 'balanced', 'relaxed'];

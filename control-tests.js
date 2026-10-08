@@ -11,16 +11,9 @@
  *      Optimizer.arrange()'s Phase 0/Phase 6 hooks)
  *   #4 "Why is this player here?" placement explanation (explainPlacement)
  */
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(script.split('// ── UI RENDERING')[0] +
-  '\nglobalThis.api={State,Config,GameVersions,Rulesets,Import,Optimizer,Constraints,Templates,applyTemplate,explainPlacement,RosterEdit,PlanStore,getGroupBuffs,Faction,activeRules,nextUid,RandomRoster,Assignments,Backups};',
-  ctx);
+const app = require('./tests/load-app');
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'Optimizer', 'Constraints', 'Templates', 'applyTemplate', 'explainPlacement', 'RosterEdit', 'PlanStore', 'getGroupBuffs', 'Faction', 'activeRules', 'nextUid', 'RandomRoster', 'Assignments', 'Backups']);
 const { State, Config, GameVersions, Rulesets, Import, Optimizer, Constraints, Templates, applyTemplate, explainPlacement,
   RosterEdit, PlanStore, getGroupBuffs, Faction, activeRules, nextUid, RandomRoster, Assignments, Backups } = ctx.api;
 

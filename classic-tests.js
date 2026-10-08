@@ -9,17 +9,13 @@
  * real raids (20/40-man), overflow-optimize idempotence, and a save/share
  * round trip — plus a TBC spot-check to prove nothing regressed.
  */
-const fs = require('fs');
-const vm = require('vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const app = require('./tests/load-app');
 // IdealComp is defined past the '// ── UI RENDERING' split marker (like the
 // rest of the render layer), so this pulls out only the ruleset/optimizer/
 // import logic before it — same cut point as version-tests.js/tests.js. The
 // Horde/Alliance/20-man fixtures below are built inline instead.
-const ctx = vm.createContext({TextEncoder, TextDecoder, console});
-vm.runInContext(script.split('// ── UI RENDERING')[0] + '\nglobalThis.api={State,Config,GameVersions,Rulesets,Import,Optimizer,getGroupBuffs,getMissingBuffInsights,getRaidDebuffCoverage,Faction,enforceRaidCapacity,nextUid};', ctx);
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'Optimizer', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidDebuffCoverage', 'Faction', 'enforceRaidCapacity', 'nextUid']);
 const {State,Config,GameVersions,Rulesets,Import,Optimizer,getGroupBuffs,getMissingBuffInsights,getRaidDebuffCoverage,Faction,enforceRaidCapacity,nextUid} = ctx.api;
 
 // Same conventions as Rulesets.classic.idealComp's Horde/Alliance builders

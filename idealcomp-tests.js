@@ -16,20 +16,11 @@
  * "10-player template" raid silently rendered a blank Ideal Comp tab
  * because Rulesets.classic.idealComp had no build10Man).
  */
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const logic = script.split('// ── UI RENDERING')[0];
-const idealCompSrc = script.slice(script.indexOf('const IdealComp = {'), script.indexOf('// ── TAB SWITCHING'));
-
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(
-  logic + '\n' + idealCompSrc +
-  '\nglobalThis.api={State,Config,GameVersions,Rulesets,IdealComp,Faction,versionForRaid,nextUid};',
-  ctx
+const app = require('./tests/load-app');
+const ctx = app.sandbox(
+  ['State', 'Config', 'GameVersions', 'Rulesets', 'IdealComp', 'Faction', 'versionForRaid', 'nextUid'],
+  { extraSource: app.slice('const IdealComp = {', '// ── TAB SWITCHING') }
 );
 const { State, Config, GameVersions, Rulesets, IdealComp, Faction, versionForRaid } = ctx.api;
 

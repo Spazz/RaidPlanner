@@ -11,13 +11,9 @@
  *        + soft composition warnings
  *   #11 State.notes                 — raid notes round-trip
  */
-const fs = require('fs');
-const vm = require('vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(script.split('// ── UI RENDERING')[0] + '\nglobalThis.api={State,Config,GameVersions,Rulesets,Import,Optimizer,Readiness,getGroupBuffs,getMissingBuffInsights,getRaidDebuffCoverage,Faction,enforceRaidCapacity,nextUid,PlanStore,NO_ROSTER_NAME,NOTES_MAX_LENGTH};', ctx);
+const app = require('./tests/load-app');
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'Optimizer', 'Readiness', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidDebuffCoverage', 'Faction', 'enforceRaidCapacity', 'nextUid', 'PlanStore', 'NO_ROSTER_NAME', 'NOTES_MAX_LENGTH']);
 const { State, Config, GameVersions, Rulesets, Import, Optimizer, Readiness, getGroupBuffs, getMissingBuffInsights, getRaidDebuffCoverage, Faction, enforceRaidCapacity, nextUid, PlanStore, NO_ROSTER_NAME, NOTES_MAX_LENGTH } = ctx.api;
 
 function mk(cls, spec, role, name) {

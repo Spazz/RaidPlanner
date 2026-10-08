@@ -10,16 +10,9 @@
  * the DOM/positioning half lives past the UI-RENDERING split and has no
  * meaningful node-testable surface, per that item's own Test section).
  */
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(script.split('// ── UI RENDERING')[0] +
-  '\nglobalThis.api={DataBackup,Spotlight,safeSetItem,ImportHistory,PlanStore,Templates,nextUid};',
-  ctx);
+const app = require('./tests/load-app');
+const ctx = app.sandbox(['DataBackup', 'Spotlight', 'safeSetItem', 'ImportHistory', 'PlanStore', 'Templates', 'nextUid']);
 const { DataBackup, Spotlight, safeSetItem, ImportHistory, PlanStore, Templates, nextUid } = ctx.api;
 
 let passed = 0;

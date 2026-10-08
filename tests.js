@@ -7,22 +7,11 @@
  */
 
 // ── Extract and load the core logic from index.html ──
-const fs = require('fs');
-const path = require('path');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
-if (!scriptMatch) { console.error('Could not extract <script> from index.html'); process.exit(1); }
+const app = require('./tests/load-app');
 
-// Only eval the logic portion (before UI rendering / DOM code)
-const logicCode = scriptMatch[1].split('// ── UI RENDERING')[0];
-// Add module.exports so we can access the objects
-const wrappedCode = logicCode + '\nmodule.exports = { SignupStatus, nextUid, PreferredSlots, PlanStore, PlanSession, ImportHistory, Config, Import, Optimizer, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, enforceRaidCapacity, esc, Constraints, Backups, Drummers, PrintSheet };';
-
-// Write to a temp file and require it (cleaner than eval for stack traces)
-const tmpPath = path.join(require('os').tmpdir(), '_pp_test_logic.tmp.js');
-fs.writeFileSync(tmpPath, wrappedCode);
-const PP = require(tmpPath);
-fs.unlinkSync(tmpPath); // clean up immediately
+// Only the logic portion of index.html (before UI rendering / DOM code), loaded as a
+// CommonJS module (via a temp file, cleaned up immediately) for readable stack traces.
+const PP = app.requireLogic(['SignupStatus', 'nextUid', 'PreferredSlots', 'PlanStore', 'PlanSession', 'ImportHistory', 'Config', 'Import', 'Optimizer', 'RosterEdit', 'getGroupBuffs', 'getBuffPriority', 'getRaidDebuffCoverage', 'getMissingBuffInsights', 'State', 'TOTEM_ELEMENTS', 'PALADIN_AURAS', 'BEST_AIR_TOTEM', 'BEST_PALADIN_AURA', 'NO_ROSTER_NAME', 'enforceRaidCapacity', 'esc', 'Constraints', 'Backups', 'Drummers', 'PrintSheet'], '_pp_test_logic.tmp.js');
 
 const { SignupStatus, nextUid, Config, Import, Optimizer, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, enforceRaidCapacity, esc, Constraints, Backups, Drummers } = PP;
 
@@ -2893,13 +2882,11 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
     localStorage:storage, document:{getElementById(){return {}; }},
     initGroups:()=>0, renderGroups:()=>PP.PlanStore.save(storage,PP.PlanStore.capture()),
     showToast:(m)=>{lastToast=m;}, rememberImport:()=>'', fetchRosterJson:async()=>JSON.stringify(payload) };
-  const normalizeStart = html.indexOf('function normalizeImportSource(');
-  const normalizeEnd = html.indexOf('// Fetch roster JSON',normalizeStart);
-  const importStart = html.indexOf('async function importFromText(');
-  const importEnd = html.indexOf('// ── RAID-HELPER RE-SYNC',importStart);
-  const syncEnd = html.indexOf("document.getElementById('btn-refresh').addEventListener",importEnd);
+  // app.slice throws if a marker is missing, so a renamed function can't silently slice the wrong code.
+  const importSrc = app.slice('function normalizeImportSource(','// Fetch roster JSON')
+    + app.slice('async function importFromText(',"document.getElementById('btn-refresh').addEventListener");
   vm.createContext(context);
-  vm.runInContext(html.slice(normalizeStart,normalizeEnd)+html.slice(importStart,syncEnd),context);
+  vm.runInContext(importSrc,context);
   resetState();
   assert(await context.importFromText('123456789'), 'event ID import succeeds');
   assert(State.rosterName.startsWith('Fixture event'), 'event title used');

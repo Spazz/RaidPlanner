@@ -16,14 +16,10 @@
  *  - isTypingTarget (feature-backlog-2.md #8): the pure guard the global
  *    keyboard-shortcut dispatcher uses to avoid hijacking text input.
  */
-const fs = require('fs');
-const vm = require('vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-new vm.Script(script); // Compile the FULL script (including UI wiring) to catch syntax errors.
-const ctx = vm.createContext({ TextEncoder, TextDecoder, console });
-vm.runInContext(script.split('// ── UI RENDERING')[0] + '\nglobalThis.api={State,Config,Rulesets,Import,PlanStore,PlanSession,isTypingTarget,nextUid};', ctx);
+const app = require('./tests/load-app');
+app.compileFull(); // Compile the FULL script (including UI wiring) to catch syntax errors.
+const ctx = app.sandbox(['State', 'Config', 'Rulesets', 'Import', 'PlanStore', 'PlanSession', 'isTypingTarget', 'nextUid']);
 const { State, Config, Rulesets, Import, PlanStore, PlanSession, isTypingTarget, nextUid } = ctx.api;
 
 let passed = 0;
