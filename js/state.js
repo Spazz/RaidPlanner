@@ -171,7 +171,7 @@ const Constraints = {
   },
 
   // Drops any constraint where either side is no longer anywhere in the
-  // roster or bench — run on every render, like Backups.reconcile()/
+  // roster or bench — run on every commit (reconcilePlan), like Backups.reconcile()/
   // Assignments.reconcileRoster(), so a departure path with no explicit
   // clearForName() call (e.g. RaidSplit moving a player out of this plan)
   // still self-heals instead of leaving a name-keyed constraint dangling.
@@ -399,7 +399,7 @@ const Drummers = {
   clearForName(name) { this.remove(name); },
 
   // Drops any drummer tag for a name no longer in the roster or bench — run
-  // on every render, mirroring Constraints.reconcile()/Backups.reconcile(),
+  // on every commit (reconcilePlan), mirroring Constraints.reconcile()/Backups.reconcile(),
   // so departure paths without an explicit clearForName() call (e.g.
   // RaidSplit) don't leave a stale tag that could resurface on a future
   // name collision.

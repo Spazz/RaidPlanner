@@ -44,6 +44,7 @@
 !buffdata-tests.js
 !buffparity-tests.js
 !plan-tests.js
+!commit-tests.js
 !nav-tests.js
 !share-tests.js
 !livesync-tests.js

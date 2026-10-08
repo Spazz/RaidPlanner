@@ -18,7 +18,7 @@ const LIVE_SOURCE = app.slice('const SHARE_API', "document.getElementById('btn-s
 const STUBS = `
 var dragData = null;
 function showToast(message) { __env.toasts.push(message); }
-function renderGroups() { __env.renders++; LiveSync.onRender(); }
+function commit() { __env.renders++; LiveSync.onRender(); }
 function hasLoadedWork() { return State.roster.length > 0; }
 function rememberImport() { return ''; }
 var confirm = () => true;
@@ -110,7 +110,7 @@ function seedPlan(env) {
 // A user edit: change the plan, then render (which is what schedules the save).
 function edit(env, notes) {
   env.api.State.notes = notes;
-  env.ctx.renderGroups();
+  env.ctx.commit();
 }
 
 const puts = env => env.calls.filter(c => c.method === 'PUT');

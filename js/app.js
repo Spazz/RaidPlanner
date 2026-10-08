@@ -106,13 +106,13 @@ function renderLandingSavedList() {
   list.querySelectorAll('.saved-item').forEach(item => item.addEventListener('click', () => {
     if (item.dataset.plan) {
       const plan = drafts.find(p => p.data.planId === item.dataset.plan);
-      if (plan && PlanStore.restore(plan.data)) { initGroups(); renderGroups(); showView('app'); RaidHelperSync.check(); }
+      if (plan && PlanStore.restore(plan.data)) { initGroups(); commit(); showView('app'); RaidHelperSync.check(); }
       return;
     }
     const data = rosters[item.dataset.name];
     if (!Import.loadRoster(data)) { showToast('That saved roster could not be loaded'); return; }
     initGroups();
-    renderGroups();
+    commit();
     showToast(`Loaded "${item.dataset.name}"`);
     showView('app');
     RaidHelperSync.check();
@@ -174,7 +174,7 @@ function renderLandingSavedList() {
   document.getElementById('btn-landing-random').addEventListener('click', () => {
     State.planId = null;
   RandomRoster.generate();
-    renderGroups();
+    commit();
     showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
     showView('app');
   });
@@ -198,7 +198,7 @@ function renderLandingSavedList() {
   renameDialog.addEventListener('close', () => {
     if(renameDialog.returnValue !== 'save') return;
     const value=document.getElementById('plan-name').value.trim();
-    if(value) { State.rosterName=value; renderGroups(); }
+    if(value) { State.rosterName=value; commit(); }
   });
 })();
 
@@ -363,7 +363,7 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
   State.optimizerMode = document.getElementById('optimize-mode').value;
   State.buffOverrides = {};
   Optimizer.optimize();
-  renderGroups();
+  commit();
 
   const placementAfter = playerGroupMap();
   const moved = Object.keys(placementAfter).filter(uid => placementBefore[uid] !== undefined && placementBefore[uid] !== placementAfter[uid]).length;
@@ -381,7 +381,7 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   // on whatever is imported/generated next.
   PlanStore.startFresh();
   initGroups();
-  renderGroups();
+  commit();
   showToast('Cleared');
 });
 
@@ -389,14 +389,14 @@ document.getElementById('btn-landing-empty').addEventListener('click', () => {
   State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
   PlanStore.startFresh();
   State.rosterName = 'New raid plan';
-  initGroups(); renderGroups(); showView('app');
+  initGroups(); commit(); showView('app');
   showToast('Click an empty slot to choose a preferred class and spec');
 });
 
 document.getElementById('btn-random').addEventListener('click', () => {
   State.planId = null;
   RandomRoster.generate();
-  renderGroups();
+  commit();
   showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
 });
 
@@ -487,7 +487,7 @@ function applyRemoteLiveCode(id, remote) {
   Object.assign(State, keep);
   // Bound before rendering, so the render does not echo the copy straight back.
   bindLiveLink(LiveLinks.planKey(State), id, currentShareCode(), remote.updatedAt);
-  renderGroups();
+  commit();
   return true;
 }
 
@@ -507,7 +507,7 @@ const LiveSync = {
   // True while a /<version>/<id> link from page load is still being fetched.
   opening: !!SHORT_LINK_AT_LOAD,
 
-  // Called from persistWorkingPlan after every render.
+  // Called from persistWorkingPlan on every commit.
   onRender() {
     if (!this.opening) syncAddressBar();
     const link = currentLiveLink();
@@ -715,14 +715,14 @@ async function loadFromShortLink() {
       if (LiveLinks.planKey(State) !== bound.planKey) PlanStore.restore(saved.data);
       if (!remote) {
         // The server forgot the link, but this browser's copy is still here: bring the link back.
-        renderGroups();
+        commit();
         LiveSync.recreateLink(id);
         showToast(`Opened live raid "${State.rosterName}" (its link had expired, restoring it)`);
         return true;
       }
       const entry = LiveLinks.get(linkStorage(), bound.planKey);
       const caughtUp = LiveLinks.shouldApply(entry, remote, false) && remote.code !== currentShareCode() && applyRemoteLiveCode(id, remote);
-      if (!caughtUp) renderGroups();
+      if (!caughtUp) commit();
       showToast(`Opened live raid "${State.rosterName}"`);
       return true;
     }
@@ -751,7 +751,7 @@ function applyShareCode(code) {
   const res = Import.importAddonString(str);
   if (!res.success) { showToast(res.error || 'That share link is invalid or damaged'); return false; }
 
-  renderGroups();
+  commit();
   showToast(`Loaded shared raid "${State.rosterName}" (${res.playerCount} players)${rememberImport('Shared link')}`);
   return true;
 }
@@ -1464,7 +1464,7 @@ function switchTab(tab) {
     renderIdealComp();
   } else {
     initGroups();
-    renderGroups();
+    commit();
   }
 }
 
@@ -1629,7 +1629,7 @@ try {
 } catch {}
 PlanSession.ready = true;
 initGroups();
-renderGroups();
+commit();
 // A share link opens straight into the planner; everyone else lands on import.
 const openedShare = loadFromShareLink();
 showView(openedShare ? 'app' : 'landing');

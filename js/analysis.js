@@ -1107,7 +1107,7 @@ const Backups = {
   },
   // Drops stale links: primary no longer anywhere in the roster, or backup
   // no longer sitting on the bench (seated elsewhere, or gone entirely).
-  // Run on every render, like PreferredSlots.reconcile()/Assignments.reconcileRoster().
+  // Run on every commit (reconcilePlan), like PreferredSlots.reconcile()/Assignments.reconcileRoster().
   reconcile() {
     if (!State.backups) return;
     const names = new Set([...(State.roster || []), ...(State.bench || [])].map(p => p.name));

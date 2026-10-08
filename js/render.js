@@ -50,7 +50,7 @@ function initRaidDropdown() {
       renderIdealComp();
     } else {
       const benched = initGroups();
-      renderGroups();
+      commit();
       const raidInfo = Config.Raids[State.selectedRaid];
       if (benched > 0) showToast(`${benched} player${benched === 1 ? '' : 's'} benched — the ${raidInfo ? raidInfo.size : 25}-man raid is full`);
     }
@@ -249,7 +249,6 @@ function renderCampfires() {
   const panel=document.getElementById('campfire-panel');
   panel.hidden=State.gameVersion!=='forever' || State.activeTab!=='plan';
   if (panel.hidden) return;
-  State.campfires=Campfires.clean(State.campfires);
   const data=State.campfires, members=Campfires.members();
   const open=panel.querySelector('details')?.open || false;
   panel.innerHTML=`<div class="camp-heading"><div><span class="camp-kicker">Forever · Pre-raid preparation</span><h2>Campfires</h2></div><button type="button" class="btn btn-secondary" id="camp-add">+ Add campfire</button></div>
@@ -264,16 +263,16 @@ function renderCampfires() {
       <ul class="camp-assets">${f.assets.map((a,j)=>{const item=Campfires.catalog.find(x=>x.id===a.asset);return `<li><div><a href="https://www.wowhead.com/forever/item=${item.id}" target="_blank" rel="noopener noreferrer">${esc(item.name)}</a><span class="camp-owner">${esc(a.player)} · ${item.profession} ${item.skill}${State.bench.some(p=>Campfires.key(p.name)===Campfires.key(a.player))?' · Bench':''}</span><p>${esc(item.effect||'Utility asset')}${item.utility?' · '+esc(item.utility):''}</p>${item.conflict?`<small>Does not stack with ${esc(item.conflict)}</small>`:''}</div><button type="button" class="link-btn" data-asset-remove="${i}:${j}" aria-label="Remove ${esc(item.name)}">×</button></li>`;}).join('')||'<li class="camp-empty">No assets assigned. Choose contributors below.</li>'}</ul>
       ${f.assets.length<f.capacity?`<label class="camp-assign">Assign an asset<select data-fire-assign="${i}"><option value="">${candidates.length?'Choose member and asset…':'No eligible unassigned contributors'}</option>${candidates.map((a,j)=>{const item=Campfires.catalog.find(x=>x.id===a.asset);return `<option value="${j}">${esc(a.player)} — ${esc(item.name)} (${item.profession} ${item.skill})</option>`;}).join('')}</select></label>`:'<p class="camp-note">This fire is full.</p>'}</article>`;
     }).join('')}</div>${data.fires.length?'':'<p class="camp-empty">Plan your first fire, or create separate fires for buffs and services.</p>'}<p class="camp-note">Effects are tracked per fire, never combined. Numeric scaling is pending; campfires do not change group optimization. Assets share a 1-hour placement cooldown.</p>`;
-  const commit=()=>{const before=data.fires.reduce((n,f)=>n+f.assets.length,0);renderGroups();const after=State.campfires.fires.reduce((n,f)=>n+f.assets.length,0);if(after<before)showToast('Ineligible campfire assignments removed after profession changes. Undo is available.');};
-  panel.querySelector('#camp-add').onclick=()=>{data.fires.push({name:`Campfire ${data.fires.length+1}`,capacity:3,assets:[]});commit();};
+  const commitFire=()=>{const before=data.fires.reduce((n,f)=>n+f.assets.length,0);commit();const after=State.campfires.fires.reduce((n,f)=>n+f.assets.length,0);if(after<before)showToast('Ineligible campfire assignments removed after profession changes. Undo is available.');};
+  panel.querySelector('#camp-add').onclick=()=>{data.fires.push({name:`Campfire ${data.fires.length+1}`,capacity:3,assets:[]});commitFire();};
   const form=panel.querySelector('#camp-prof-form');
-  if(form) form.onsubmit=e=>{e.preventDefault();const values=new FormData(form);const p={player:values.get('player'),profession:values.get('profession'),skill:Number(values.get('skill'))};const old=data.professions.find(x=>Campfires.key(x.player)===Campfires.key(p.player)&&x.profession===p.profession);if(old)Object.assign(old,p);else data.professions.push(p);commit();};
-  panel.querySelectorAll('[data-prof-remove]').forEach(b=>b.onclick=()=>{data.professions.splice(Number(b.dataset.profRemove),1);commit();});
-  panel.querySelectorAll('[data-fire-remove]').forEach(b=>b.onclick=()=>{data.fires.splice(Number(b.dataset.fireRemove),1);commit();});
-  panel.querySelectorAll('[data-fire-name]').forEach(input=>input.onchange=()=>{data.fires[Number(input.dataset.fireName)].name=input.value.trim()||'Campfire';commit();});
-  panel.querySelectorAll('[data-fire-capacity]').forEach(select=>select.onchange=()=>{const f=data.fires[Number(select.dataset.fireCapacity)], n=Number(select.value);if(f.assets.length>n){select.value=f.capacity;showToast('Remove assets before choosing a smaller fire');return;}f.capacity=n;commit();});
-  panel.querySelectorAll('[data-fire-assign]').forEach(select=>select.onchange=()=>{if(select.value==='')return;const i=Number(select.dataset.fireAssign);Campfires.assign(i,Campfires.eligible(i)[Number(select.value)]);commit();});
-  panel.querySelectorAll('[data-asset-remove]').forEach(b=>b.onclick=()=>{const [i,j]=b.dataset.assetRemove.split(':').map(Number);data.fires[i].assets.splice(j,1);commit();});
+  if(form) form.onsubmit=e=>{e.preventDefault();const values=new FormData(form);const p={player:values.get('player'),profession:values.get('profession'),skill:Number(values.get('skill'))};const old=data.professions.find(x=>Campfires.key(x.player)===Campfires.key(p.player)&&x.profession===p.profession);if(old)Object.assign(old,p);else data.professions.push(p);commitFire();};
+  panel.querySelectorAll('[data-prof-remove]').forEach(b=>b.onclick=()=>{data.professions.splice(Number(b.dataset.profRemove),1);commitFire();});
+  panel.querySelectorAll('[data-fire-remove]').forEach(b=>b.onclick=()=>{data.fires.splice(Number(b.dataset.fireRemove),1);commitFire();});
+  panel.querySelectorAll('[data-fire-name]').forEach(input=>input.onchange=()=>{data.fires[Number(input.dataset.fireName)].name=input.value.trim()||'Campfire';commitFire();});
+  panel.querySelectorAll('[data-fire-capacity]').forEach(select=>select.onchange=()=>{const f=data.fires[Number(select.dataset.fireCapacity)], n=Number(select.value);if(f.assets.length>n){select.value=f.capacity;showToast('Remove assets before choosing a smaller fire');return;}f.capacity=n;commitFire();});
+  panel.querySelectorAll('[data-fire-assign]').forEach(select=>select.onchange=()=>{if(select.value==='')return;const i=Number(select.dataset.fireAssign);Campfires.assign(i,Campfires.eligible(i)[Number(select.value)]);commitFire();});
+  panel.querySelectorAll('[data-asset-remove]').forEach(b=>b.onclick=()=>{const [i,j]=b.dataset.assetRemove.split(':').map(Number);data.fires[i].assets.splice(j,1);commitFire();});
 }
 
 // Assignments tab: Healer→Tank, Paladin Blessings, boss Debuffs. Self-managed
@@ -440,7 +439,12 @@ function renderAssignments() {
 }
 
 
-function renderGroups() {
+// ── STATE CHANGE PIPELINE ───────────────────────────────────────
+// A change to the plan reaches storage and the screen one way: commit(mutator)
+// applies the change (the mutator is optional, for callers that already made it),
+// reconciles the state derived from it, persists the result, then renders it.
+// renderGroups() only draws; a pure re-render can call it directly.
+function reconcilePlan() {
   PreferredSlots.reconcile();
   State.roster = State.groups.flat();
   Assignments.reconcileRoster();
@@ -449,7 +453,20 @@ function renderGroups() {
   Drummers.reconcile();
   // Ensure the tank group is always Group 1
   sortTankGroupFirst();
+  cleanupOverrides();
+  // Campfires drop assets whose owner lost the profession, while their panel is showing.
+  if (State.gameVersion === 'forever' && State.activeTab === 'plan') State.campfires = Campfires.clean(State.campfires);
+}
 
+function commit(mutator) {
+  const result = mutator ? mutator() : undefined;
+  reconcilePlan();
+  persistWorkingPlan();
+  renderGroups();
+  return result;
+}
+
+function renderGroups() {
   const focusedSlot = capturePlayerSlotFocus();
   const container = document.getElementById('groups-container');
   container.innerHTML = '';
@@ -548,7 +565,6 @@ function renderGroups() {
   updateStatus();
   SignupTray.render();
   restorePlayerSlotFocus(focusedSlot);
-  cleanupOverrides();
   renderManualChanges();
 
   // Update version and raid controls after imports, restores and undo.
@@ -560,7 +576,6 @@ function renderGroups() {
   RaidHelperSync.updateControls();
   renderCampfires();
   renderAssignments();
-  persistWorkingPlan();
   renderReadiness();
 }
 
@@ -757,7 +772,7 @@ function setSidebarExpanded(expanded, persist = true) {
     if (swapBtn) {
       const res = RosterEdit.SwapIn(swapBtn.dataset.insightSwap);
       if (!res.success) { showToast(res.error); return; }
-      renderGroups();
+      commit();
       const who = (res.player.name || '').split('-')[0];
       showToast(res.benched
         ? `${who} seated in Group ${res.groupIdx + 1}; ${(res.benched.name || '').split('-')[0]} benched`
@@ -768,7 +783,7 @@ function setSidebarExpanded(expanded, persist = true) {
     if (switchBtn) {
       const res = RosterEdit.SwitchBuff(parseInt(switchBtn.dataset.group), switchBtn.dataset.uid, switchBtn.dataset.insightSwitch);
       if (!res.success) { showToast(res.error); return; }
-      renderGroups();
+      commit();
       showToast(`${(res.player.name || '').split('-')[0]} now runs ${Config.Buffs[res.buffId].name}`);
     }
   });
@@ -915,7 +930,7 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
       dragData = null;
       const result = RosterEdit.UnbenchPlayer(uid, tgtGroupIdx);
       if (!result.success) { showToast(result.error); return; }
-      renderGroups();
+      commit();
       showToast(`${result.player.name} joined group ${tgtGroupIdx + 1}`);
       return;
     }
@@ -927,14 +942,14 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
 
     moveGroupPlayer(srcG, srcS, tgtG, tgtS);
 
-    // renderGroups() below rebuilds groups-container, which destroys the
+    // commit() below rebuilds groups-container, which destroys the
     // dragged element before the browser can dispatch 'dragend' on it — so
     // it never bubbles up to the container's dragend listener and the ghost
     // is left stuck on screen. Clean up here instead of relying on that.
     ghost.style.display = 'none';
     dragData = null;
 
-    renderGroups();
+    commit();
   });
 
 })();
@@ -1042,7 +1057,7 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
       if (active.group === 'bench' || active.group === 'unplaced') return;
       const result = RosterEdit.BenchPlayer(active.player.uid);
       if (!result.success) { showToast(result.error); return; }
-      renderGroups();
+      commit();
       showToast(`Benched ${result.player.name}`);
       return;
     }
@@ -1051,12 +1066,12 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     if (active.group === 'bench') {
       const result = RosterEdit.UnbenchPlayer(active.player.uid, tgtG);
       if (!result.success) { showToast(result.error); return; }
-      renderGroups();
+      commit();
       showToast(`${result.player.name} joined group ${tgtG + 1}`);
       return;
     }
     if (active.group === tgtG && active.slot === tgtS) return;
-    if (moveGroupPlayer(active.group, active.slot, tgtG, tgtS)) renderGroups();
+    if (moveGroupPlayer(active.group, active.slot, tgtG, tgtS)) commit();
   }
 
   document.addEventListener('touchstart', e => {
@@ -1216,7 +1231,7 @@ function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sou
         State.buffOverrides[overrideKey] = { buffId: pickId, originalBuffId: existingOriginal };
       }
       closeBuffPicker();
-      renderGroups();
+      commit();
     });
   });
 
@@ -1226,7 +1241,7 @@ function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sou
       e.stopPropagation();
       delete State.buffOverrides[overrideKey];
       closeBuffPicker();
-      renderGroups();
+      commit();
     });
   }
 }
@@ -1427,7 +1442,7 @@ const UnplacedDialog = {
     const result = RosterEdit.PlaceUnplaced(this.uid, groupIdx, pick);
     if (!result.success) { this.el('unplaced-error').textContent = result.error; return; }
     this.close();
-    renderGroups();
+    commit();
     showToast(`${result.player.name.split('-')[0]} joined group ${groupIdx + 1}`);
   },
 
@@ -1910,10 +1925,10 @@ function showPlayerEditor(anchorEl, opts) {
 
   editor.querySelector('#pe-prefer')?.addEventListener('click', () => {
     if (!PreferredSlots.add(opts.groupIdx, classSel.value, specSel.value, preference)) { showError('This group has no open slots'); return; }
-    closePlayerEditor(); renderGroups(); showToast('Preferred slot saved');
+    closePlayerEditor(); commit(); showToast('Preferred slot saved');
   });
   editor.querySelector('#pe-remove-preference')?.addEventListener('click', () => {
-    PreferredSlots.remove(preference); closePlayerEditor(); renderGroups(); showToast('Preference removed');
+    PreferredSlots.remove(preference); closePlayerEditor(); commit(); showToast('Preference removed');
   });
 
   editor.querySelector('#pe-backup-save')?.addEventListener('click', () => {
@@ -1924,34 +1939,34 @@ function showPlayerEditor(anchorEl, opts) {
       const result = Backups.link(target, curName);
       if (!result.success) { showError(result.error); return; }
     }
-    closePlayerEditor(); renderGroups();
+    closePlayerEditor(); commit();
     showToast(target ? `${curName.split('-')[0]} is now backup for ${target.split('-')[0]}` : 'Backup link removed');
   });
   editor.querySelector('#pe-backup-swap')?.addEventListener('click', () => {
     const result = Backups.swapIn(curName, found.groupIdx);
     if (!result.success) { showError(result.error); return; }
-    closePlayerEditor(); renderGroups();
+    closePlayerEditor(); commit();
     showToast(`Swapped in ${result.player.name.split('-')[0]} for ${curName.split('-')[0]}`);
   });
   editor.querySelector('#pe-backup-clear')?.addEventListener('click', () => {
-    Backups.unlink(curName); closePlayerEditor(); renderGroups(); showToast('Backup link removed');
+    Backups.unlink(curName); closePlayerEditor(); commit(); showToast('Backup link removed');
   });
 
   editor.querySelector('#pe-unlock')?.addEventListener('click', () => {
     player.locked = false;
-    closePlayerEditor(); renderGroups(); showToast(`${curName.split('-')[0]} unlocked`);
+    closePlayerEditor(); commit(); showToast(`${curName.split('-')[0]} unlocked`);
   });
 
   editor.querySelector('#pe-drummer-toggle')?.addEventListener('change', (e) => {
     const drumSel = editor.querySelector('#pe-drummer-drum');
     if (e.target.checked) Drummers.set(curName, drumSel ? drumSel.value : '');
     else Drummers.remove(curName);
-    closePlayerEditor(); renderGroups();
+    closePlayerEditor(); commit();
     showToast(e.target.checked ? `${curName.split('-')[0]} tagged as a drummer` : `${curName.split('-')[0]} untagged as a drummer`);
   });
   editor.querySelector('#pe-drummer-drum')?.addEventListener('change', (e) => {
     Drummers.set(curName, e.target.value);
-    closePlayerEditor(); renderGroups();
+    closePlayerEditor(); commit();
     showToast(`Updated ${curName.split('-')[0]}'s drum`);
   });
 
@@ -1959,23 +1974,23 @@ function showPlayerEditor(anchorEl, opts) {
     const other = editor.querySelector('#pe-keep-with').value;
     if (!other) { showError('Choose a player first'); return; }
     Constraints.add(curName, other, 'together');
-    closePlayerEditor(); renderGroups(); showToast(`${curName.split('-')[0]} will be kept with ${other.split('-')[0]}`);
+    closePlayerEditor(); commit(); showToast(`${curName.split('-')[0]} will be kept with ${other.split('-')[0]}`);
   });
   editor.querySelector('#pe-add-apart')?.addEventListener('click', () => {
     const other = editor.querySelector('#pe-keep-apart').value;
     if (!other) { showError('Choose a player first'); return; }
     Constraints.add(curName, other, 'apart');
-    closePlayerEditor(); renderGroups(); showToast(`${curName.split('-')[0]} will be kept apart from ${other.split('-')[0]}`);
+    closePlayerEditor(); commit(); showToast(`${curName.split('-')[0]} will be kept apart from ${other.split('-')[0]}`);
   });
   editor.querySelectorAll('[data-remove-constraint]').forEach(btn => {
     btn.addEventListener('click', () => {
       const other = btn.dataset.removeConstraint;
       Constraints.remove(curName, other);
-      closePlayerEditor(); renderGroups(); showToast('Constraint removed');
+      closePlayerEditor(); commit(); showToast('Constraint removed');
     });
   });
 
-  function commit() {
+  function savePlayerEdit() {
     const changes = { name: nameInput.value, class: classSel.value, spec: specSel.value };
     const result = isAdd
       ? RosterEdit.AddPlayer(opts.groupIdx, changes)
@@ -1984,14 +1999,14 @@ function showPlayerEditor(anchorEl, opts) {
     if (!result.success) { showError(result.error); return; }
     if (preference) PreferredSlots.remove(preference);
     closePlayerEditor();
-    renderGroups();
+    commit();
     showToast(isAdd ? `Added ${result.player.name}` : `Updated ${result.player.name}`);
   }
 
-  editor.querySelector('#pe-save').addEventListener('click', commit);
+  editor.querySelector('#pe-save').addEventListener('click', savePlayerEdit);
   editor.querySelector('#pe-cancel').addEventListener('click', closePlayerEditor);
   nameInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Enter') { e.preventDefault(); savePlayerEdit(); }
   });
 
   const moveBtn = editor.querySelector('#pe-move');
@@ -2001,7 +2016,7 @@ function showPlayerEditor(anchorEl, opts) {
     const [group, swapUid] = value.split(':');
     const result = RosterEdit.MovePlayer(opts.uid, Number(group), swapUid);
     if (!result.success) { showError(result.error); return; }
-    closePlayerEditor(); renderGroups(); showToast('Player moved');
+    closePlayerEditor(); commit(); showToast('Player moved');
   };
   const removeBtn = editor.querySelector('#pe-remove');
   if (removeBtn) {
@@ -2009,7 +2024,7 @@ function showPlayerEditor(anchorEl, opts) {
       const result = benched ? RosterEdit.DeletePlayer(opts.uid) : RosterEdit.BenchPlayer(opts.uid);
       if (!result.success) { showError(result.error); return; }
       closePlayerEditor();
-      renderGroups();
+      commit();
       showToast(benched ? `Removed ${result.player.name}` : `Benched ${result.player.name}`);
     });
   }

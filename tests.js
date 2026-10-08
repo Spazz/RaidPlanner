@@ -2880,7 +2880,7 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   let lastToast = '';
   const context = { State, Import, PlanStore:PP.PlanStore, NO_ROSTER_NAME,
     localStorage:storage, document:{getElementById(){return {}; }},
-    initGroups:()=>0, renderGroups:()=>PP.PlanStore.save(storage,PP.PlanStore.capture()),
+    initGroups:()=>0, commit:()=>PP.PlanStore.save(storage,PP.PlanStore.capture()),
     showToast:(m)=>{lastToast=m;}, rememberImport:()=>'', fetchRosterJson:async()=>JSON.stringify(payload) };
   // app.slice throws if a marker is missing, so a renamed function can't silently slice the wrong code.
   const importSrc = app.slice('function normalizeImportSource(','// Fetch roster JSON')

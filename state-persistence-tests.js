@@ -44,7 +44,7 @@ const ctx = app.sandbox(
       document: { getElementById: el },
       localStorage: fakeStorage,
       showToast: (m) => { toasts.push(m); },
-      renderGroups: () => { rendered.count++; },
+      commit: () => { rendered.count++; },
     },
     extraSource: SPLIT_SOURCE,
   }

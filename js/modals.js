@@ -66,7 +66,7 @@
     if (!uid) return;
     const result = RosterEdit.BenchPlayer(uid);
     if (!result.success) { showToast(result.error); return; }
-    renderGroups();
+    commit();
     showToast(`Benched ${result.player.name}`);
   });
 })();
@@ -112,7 +112,7 @@ function renderManualChanges() {
   container.querySelectorAll('.change-remove').forEach(btn => {
     btn.addEventListener('click', () => {
       delete State.buffOverrides[btn.dataset.overrideKey];
-      renderGroups();
+      commit();
     });
   });
 }
@@ -208,7 +208,7 @@ function syncStrategyChrome() {
 function undoPlanChange() {
   if (!PlanSession.undoLast()) return;
   closePlayerEditor(); closeBuffPicker();
-  initGroups(); renderGroups(); renderLastRun(null);
+  initGroups(); commit(); renderLastRun(null);
   RaidHelperSync.hideBanner();
   showToast('Change undone');
 }
@@ -216,7 +216,7 @@ function undoPlanChange() {
 function redoPlanChange() {
   if (!PlanSession.redoLast()) return;
   closePlayerEditor(); closeBuffPicker();
-  initGroups(); renderGroups(); renderLastRun(null);
+  initGroups(); commit(); renderLastRun(null);
   RaidHelperSync.hideBanner();
   showToast('Change redone');
 }
@@ -245,7 +245,7 @@ function renderReadiness() {
 
 // ── RAID NOTES (backlog #11) ────────────────────────────────────
 // Reflects State.notes into the textarea without disturbing an in-progress
-// edit (renderGroups() runs far more often than the user types), and shows a
+// edit (commit() runs far more often than the user types), and shows a
 // small dot on the collapsed "Raid notes" summary so non-empty notes aren't
 // invisible when the panel is closed.
 function syncRaidNotesUI() {
@@ -329,7 +329,7 @@ function renderImportHistory(list, onLoad = () => {}, limit = 6) {
     renderLastRun(null);
     document.getElementById('raid-select').value = State.selectedRaid;
     initGroups();
-    renderGroups();
+    commit();
     onLoad();
     showView('app');
     showToast('Reopened imported roster');
@@ -407,7 +407,7 @@ function showSaveModal() {
     State.rosterName = name;
     closeSaveOverlay();
     showToast(`Roster "${name}" saved`);
-    renderGroups();
+    commit();
   };
   overlay.onclick = e => { if (e.target === overlay) closeSaveOverlay(); };
 
@@ -476,7 +476,7 @@ function showTemplatesModal() {
       const result = Templates.applyToState(localStorage, name, gameVersion, raid);
       closeSaveOverlay();
       if (!result.success) { showToast(result.error); return; }
-      renderGroups();
+      commit();
       showToast(`Applied "${name}" — ${result.matched} seated in their old groups, ${result.unmatched} left for Optimize`);
     });
   });
@@ -490,7 +490,7 @@ function showTemplatesModal() {
   });
   document.getElementById('btn-unlock-templates')?.addEventListener('click', () => {
     for (const p of State.roster) p.locked = false;
-    renderGroups();
+    commit();
     showTemplatesModal();
     showToast('Unlocked all template placements');
   });
@@ -548,7 +548,7 @@ function showLoadModal() {
       if (Import.loadRoster(data)) {
         closeSaveOverlay();
         initGroups();
-        renderGroups();
+        commit();
         showToast(`Loaded "${name}"`);
         RaidHelperSync.check();
       }
@@ -763,7 +763,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     if (!src.text.startsWith('PP:2:') || State.rosterName === NO_ROSTER_NAME || State.rosterName === 'Imported Roster') State.rosterName = PlanStore.nameFor({}, null);
     document.getElementById('raid-select').value = State.selectedRaid;
     initGroups();
-    renderGroups();
+    commit();
     showToast(`Your groups are ready. Imported ${result.playerCount} players from addon string${rememberImport('Pasted roster string')}`);
     return true;
   }
@@ -796,7 +796,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   if (Array.isArray(metadata.signUps) && metadata.templateId) maybeSuggestVersionSwitch(metadata.templateId);
   if (Array.isArray(metadata.players)) {
     if (!Import.loadRoster(metadata)) { report('Import failed: invalid game version or raid', true); return false; }
-    initGroups(); renderGroups();
+    initGroups(); commit();
     showToast('Loaded saved roster');
     return true;
   }
@@ -830,7 +830,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     State.eventStartTime = PlanStore.eventStart(metadata) || State.eventStartTime;
     if (src.eventId) State.planId = 'event:' + src.eventId;
     if (State.rosterName === NO_ROSTER_NAME) State.rosterName = PlanStore.nameFor(metadata, src.eventId);
-    RaidHelperSync.hideBanner(); initGroups(); renderGroups();
+    RaidHelperSync.hideBanner(); initGroups(); commit();
     showToast(`Filled ${result.filledCount} preferred slots. Unmatched sign-ups are on the bench${rememberImport(src.url ? 'Raid-Helper URL' : 'Pasted JSON')}`);
     return true;
   }
@@ -842,7 +842,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   RaidHelperSync.hideBanner();
   document.getElementById('raid-select').value = State.selectedRaid;
   const foldBenched = initGroups();
-  renderGroups();
+  commit();
   const historyNotice = rememberImport(src.url ? 'Raid-Helper URL' : 'Pasted JSON');
   // Bench/Tentative/Late sign-ups wait on the bench and Absences are held
   // unplaced, so report those counts rather than leave people unaccounted for.
@@ -917,7 +917,7 @@ const PlainRosterImport = {
     if (toolbarBox) toolbarBox.value = '';
     document.getElementById('raid-select').value = State.selectedRaid;
     initGroups();
-    renderGroups();
+    commit();
     showView('app');
     SplitFlow.maybeOffer();
     const extra = result.benchCount ? ` (${result.benchCount} benched)` : '';
@@ -983,7 +983,7 @@ const RaidHelperSync = {
     if (diff.eventStartTime) State.eventStartTime = diff.eventStartTime;
     const counts = Import.hasRaidHelperChanges(diff) ? Import.applyRaidHelperSync(diff) : null;
     initGroups();
-    renderGroups();
+    commit();
     if (!counts) {
       showToast(diff.promoted.length
         ? `${lead}. Up to date. ${this.describe(diff)}, swap them in from the bench`
@@ -1026,7 +1026,7 @@ const RaidHelperSync = {
       btn.addEventListener('click', () => {
         const item = list[Number(btn.dataset.backupSwap)];
         const result = Backups.swapIn(item.primaryName, Number.isInteger(item.groupNumber) ? item.groupNumber - 1 : undefined);
-        if (result.success) { renderGroups(); showToast(`Swapped in ${result.player.name.split('-')[0]}`); }
+        if (result.success) { commit(); showToast(`Swapped in ${result.player.name.split('-')[0]}`); }
         else showToast(result.error);
         this.hideBackupBanner();
       });
@@ -1173,7 +1173,7 @@ const SplitFlow = {
     document.getElementById('split-dialog').close();
     this.dismiss();
     this.pending = null;
-    renderGroups();
+    commit();
     showToast(`Split into two raids: ${groupsA.flat().length} seated here, "${dataB.rosterName}" saved separately`);
   },
 };
