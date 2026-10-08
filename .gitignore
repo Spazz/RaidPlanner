@@ -7,8 +7,9 @@
 !vercel.json
 !api/
 !api/share.js
-# Test suites ship with the site; the ?dev picker is the only UI that touches them
+# Test suites ship with the site; `npm test` (tests/run-all.js) runs them under Node
 !tests.js
+!loader-tests.js
 !scenarios.js
 !scenario-tests.js
 !version-tests.js
@@ -29,3 +30,11 @@
 !drums-tests.js
 !nav-tests.js
 !share-tests.js
+# Test runner, loader and CI (npm test; the Vercel ignoreCommand gate runs it too)
+!package.json
+!tests/
+!tests/load-app.js
+!tests/run-all.js
+!.github/
+!.github/workflows/
+!.github/workflows/test.yml

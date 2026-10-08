@@ -1,0 +1,7 @@
+{
+  "name": "party-planner-web",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run-all.js"
+  }
+}
