@@ -4,8 +4,7 @@
  *
  * Each suite is a standalone script at the repo root that exits non-zero on
  * failure. They run one after another as child processes; output is shown only
- * for failing suites. Exits 1 if any suite fails, so CI and the Vercel
- * ignoreCommand gate can rely on the exit code.
+ * for failing suites. Exits 1 if any suite fails, so CI can rely on the exit code.
  *
  * Suites are discovered by file name so a new one cannot be forgotten:
  *   tests.js, *-tests.js, *-scenarios.js   -> suites

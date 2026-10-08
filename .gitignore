@@ -34,7 +34,7 @@
 !security-tests.js
 !state-persistence-tests.js
 !a11y-tests.js
-# Test runner, loader and CI (npm test; the Vercel ignoreCommand gate runs it too)
+# Test runner, loader and CI (npm test; GitHub Actions runs it)
 !package.json
 !tests/
 !tests/load-app.js

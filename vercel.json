@@ -1,7 +1,6 @@
 {
   "framework": null,
   "installCommand": "",
-  "ignoreCommand": "npm test; [ $? -eq 1 ] && exit 0; exit 1",
   "rewrites": [
     { "source": "/:version(tbc|classic|forever)/:id", "destination": "/index.html" }
   ]
