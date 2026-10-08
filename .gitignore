@@ -33,6 +33,7 @@
 !livesync-tests.js
 !security-tests.js
 !state-persistence-tests.js
+!a11y-tests.js
 # Test runner, loader and CI (npm test; the Vercel ignoreCommand gate runs it too)
 !package.json
 !tests/

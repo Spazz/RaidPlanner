@@ -38,7 +38,7 @@
   --text-primary: #e4e6e3;
   --text-secondary: #c9ccc8;
   --text-muted: #8d918e;
-  --text-faint: #6d716e;
+  --text-faint: #8a8e8b;
   --text-heading: #e4e6e3;
   --btn-primary-bg: var(--accent-gold);
   --btn-primary-hover: #eac455;
@@ -550,7 +550,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .buff-sidebar-count { font-size: 10px; color: var(--text-muted); font-weight: 500; letter-spacing: 0.06em; }
 .buff-sidebar-sub {
-  font-size: 9px; color: var(--text-faint); font-weight: 600;
+  font-size: 10px; color: var(--text-faint); font-weight: 600;
   padding: 6px 3px 2px;
 }
 .buff-sidebar-sub.missing { color: var(--accent-red); }
@@ -677,6 +677,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .empty-slot { opacity: 0.35; font-style: italic; cursor: default; }
 .empty-slot .player-name { color: var(--text-muted); font-weight: 400; }
 .empty-slot { cursor: pointer; opacity: .6; }
+.player-slot:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
 .preferred-slot { border: 1px dashed var(--preferred-color); background: color-mix(in srgb, var(--preferred-color) 9%, transparent); cursor: pointer; }
 .preferred-slot .player-name { color: color-mix(in srgb, var(--preferred-color) 75%, white); font-size: 12px; }
 .preferred-slot .player-spec { font-style: italic; }
@@ -708,7 +709,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   margin-top: auto;
 }
 .buff-bar-label {
-  font-size: 9px; color: var(--text-faint);
+  font-size: 10px; color: var(--text-faint);
   font-weight: 600; flex-shrink: 0; margin-right: 3px;
 }
 .buff-icon {
@@ -1051,8 +1052,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .status-dot { width: 6px; height: 6px; background: #4a8; }
 .status-right { opacity: 0.6; }
 .last-run { color: var(--text-muted); }
-.last-run .undo-link { color: var(--text-secondary); text-decoration: underline; cursor: pointer; background: none; border: none; font: inherit; padding: 0; }
-.last-run .undo-link:hover { color: var(--accent-gold); }
 
 /* ── Import modal ── */
 .import-overlay {
@@ -1088,6 +1087,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .import-textarea:focus { outline: none; border-color: var(--accent-gold); }
 .import-textarea::placeholder { color: var(--text-muted); }
+.import-modal .import-status { margin: calc(-1 * var(--sp-2)) 0 var(--sp-3); }
 .import-buttons { display: flex; justify-content: flex-end; gap: var(--sp-2); }
 
 /* ── Save/Load modal ── */
@@ -2071,9 +2071,10 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   <div class="import-overlay" id="import-overlay" role="dialog" aria-modal="true" aria-labelledby="import-heading">
     <div class="import-modal">
       <h3 id="import-heading">Import Roster</h3>
-      <p>Paste JSON data from raid-helper.dev below. The tool will parse player names, classes, and specs to populate the planner.</p>
-      <label for="import-textarea" class="sr-only">Roster data</label>
-      <textarea class="import-textarea" id="import-textarea" placeholder='Paste JSON, a raid-helper URL, or a PP: addon string'></textarea>
+      <p>Paste a Raid-Helper link, event ID, JSON export, or <code>PP:</code> roster string. The format is recognized automatically.</p>
+      <label for="import-textarea" class="sr-only">Raid-Helper link, event ID, JSON, or roster string</label>
+      <textarea class="import-textarea" id="import-textarea" placeholder="Paste a Raid-Helper link, event ID, or JSON here…" spellcheck="false"></textarea>
+      <div class="import-status" id="import-status" role="status"></div>
       <div class="import-buttons">
         <button class="btn btn-secondary" id="btn-cancel-import">Cancel</button>
         <button class="btn btn-primary" id="btn-do-import">Import</button>
@@ -2176,7 +2177,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 </dialog>
 
 <div class="drag-ghost" id="drag-ghost"></div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <!-- Backlog #12: printable raid sheet. Kept as a body-level sibling (not
      nested under #app/#landing-view) so @media print can show it even while
      its normal state is empty/display:none and an ancestor view is hidden. -->
@@ -9154,6 +9155,78 @@ function getDragHandle() {
   return '<div class="drag-handle"><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div></div>';
 }
 
+// A player slot is a role="button" (Enter/Space opens the editor), so the icon
+// and badges inside would be read out piecemeal; this is the one spoken label.
+function playerSlotLabel(p, where) {
+  const name = (p.name || 'Unknown').split('-')[0];
+  const cls = p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '';
+  const status = p.signupStatus && p.signupStatus !== 'confirmed' && p.signupStatus !== 'bench' ? SignupStatus.label(p.signupStatus) : '';
+  return [name, [p.spec, cls].filter(Boolean).join(' '), where, status, p.needsReview ? 'needs review' : '']
+    .filter(Boolean).join(', ');
+}
+
+// Re-rendering rebuilds every slot, so a keyboard user's focus would drop to
+// <body>. Remember which player's slot had focus (or, for an empty slot, which
+// seat) and refocus the equivalent slot afterwards.
+function capturePlayerSlotFocus() {
+  const el = document.activeElement;
+  const slot = el && typeof el.closest === 'function' ? el.closest('.player-slot') : null;
+  if (!slot) return null;
+  const { uid, unplacedUid, group, slot: seat } = slot.dataset;
+  return { uid, unplacedUid, group, seat };
+}
+function restorePlayerSlotFocus(key) {
+  if (!key) return;
+  const slots = [...document.querySelectorAll('.player-slot')];
+  const is = (a, b) => a != null && a === b;
+  const target = slots.find(s => is(key.uid, s.dataset.uid))
+    || slots.find(s => is(key.unplacedUid, s.dataset.unplacedUid))
+    || slots.find(s => is(key.group, s.dataset.group) && is(key.seat, s.dataset.slot));
+  if (target) target.focus({ preventScroll: true });
+}
+
+function seatedSlotHTML(p, gi, si) {
+  const color = Config.ClassColors[p.class] || 'var(--text-primary)';
+  const displayName = (p.name || 'Unknown').split('-')[0];
+  const specClass = p.spec ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '')) : '';
+  const backupName = Backups.backupNameFor(p.name);
+  // Compact indicator — the full pairing is in the title tooltip so the
+  // card stays narrow enough not to crowd out the player's own name.
+  const backupBadge = backupName ? `<span class="backup-badge" title="Backup: ${esc(backupName.split('-')[0])}">B</span>` : '';
+  // Constraint badges (backlog #3) reuse the buff-icon tooltip portal
+  // (data-tt-*) rather than a new hover mechanism — see the player-slot
+  // "why here" editor section for the full explanation.
+  const constraintsHere = Constraints.forPlayer(p.name);
+  const togetherNames = constraintsHere.filter(c => c.type === 'together').map(c => Constraints.otherName(c, p.name).split('-')[0]);
+  const apartNames = constraintsHere.filter(c => c.type === 'apart').map(c => Constraints.otherName(c, p.name).split('-')[0]);
+  const constraintDesc = [
+    togetherNames.length ? 'With: ' + togetherNames.join(', ') : '',
+    apartNames.length ? 'Apart from: ' + apartNames.join(', ') : '',
+  ].filter(Boolean).join(' &middot; ');
+  const constraintBadge = constraintDesc
+    ? `<span class="constraint-badge" data-tt-name="Constraints" data-tt-desc="${esc(constraintDesc)}">${togetherNames.length ? '&#128279;' : ''}${apartNames.length ? '&#9940;' : ''}</span>`
+    : '';
+  const lockBadge = p.locked ? `<span class="lock-badge" title="Locked by comp template">&#128274;</span>` : '';
+  // Class-only Raid-Helper sign-ups (backlog #2) land with a guessed
+  // spec/role — same "Needs review" treatment the plain-text importer's
+  // preview already uses, but persisted on the card itself since this
+  // import path has no confirmation dialog to show it in first.
+  const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
+  return `<div class="player-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'group ' + (gi + 1)))}" data-uid="${esc(p.uid)}" data-group="${gi}" data-slot="${si}">
+    ${getSpecIcon(p)}
+    <div class="player-info">
+      <span class="player-name" style="color:${color}">${esc(displayName)}</span>
+      <span class="player-spec">${esc(specClass)}</span>
+    </div>
+    ${reviewBadge}
+    ${p.signupStatus && p.signupStatus !== 'confirmed' ? getStatusTag(p.signupStatus) : ''}
+    ${lockBadge}
+    ${constraintBadge}
+    ${backupBadge}
+    ${getDragHandle()}
+  </div>`;
+}
+
 function getDominantRoleLabel(players) {
   const roleCounts = {};
   for (const p of players) roleCounts[p.role] = (roleCounts[p.role] || 0) + 1;
@@ -9416,6 +9489,7 @@ function renderGroups() {
   // Ensure the tank group is always Group 1
   sortTankGroupFirst();
 
+  const focusedSlot = capturePlayerSlotFocus();
   const container = document.getElementById('groups-container');
   container.innerHTML = '';
 
@@ -9438,46 +9512,7 @@ function renderGroups() {
     let slotsHTML = '';
     for (let si = 0; si < 5; si++) {
       if (si < players.length) {
-        const p = players[si];
-        const color = Config.ClassColors[p.class] || 'var(--text-primary)';
-        const displayName = (p.name || 'Unknown').split('-')[0];
-        const specClass = p.spec ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '')) : '';
-        const backupName = Backups.backupNameFor(p.name);
-        // Compact indicator — the full pairing is in the title tooltip so the
-        // card stays narrow enough not to crowd out the player's own name.
-        const backupBadge = backupName ? `<span class="backup-badge" title="Backup: ${esc(backupName.split('-')[0])}">B</span>` : '';
-        // Constraint badges (backlog #3) reuse the buff-icon tooltip portal
-        // (data-tt-*) rather than a new hover mechanism — see the player-slot
-        // "why here" editor section for the full explanation.
-        const constraintsHere = Constraints.forPlayer(p.name);
-        const togetherNames = constraintsHere.filter(c => c.type === 'together').map(c => Constraints.otherName(c, p.name).split('-')[0]);
-        const apartNames = constraintsHere.filter(c => c.type === 'apart').map(c => Constraints.otherName(c, p.name).split('-')[0]);
-        const constraintDesc = [
-          togetherNames.length ? 'With: ' + togetherNames.join(', ') : '',
-          apartNames.length ? 'Apart from: ' + apartNames.join(', ') : '',
-        ].filter(Boolean).join(' &middot; ');
-        const constraintBadge = constraintDesc
-          ? `<span class="constraint-badge" data-tt-name="Constraints" data-tt-desc="${esc(constraintDesc)}">${togetherNames.length ? '&#128279;' : ''}${apartNames.length ? '&#9940;' : ''}</span>`
-          : '';
-        const lockBadge = p.locked ? `<span class="lock-badge" title="Locked by comp template">&#128274;</span>` : '';
-        // Class-only Raid-Helper sign-ups (backlog #2) land with a guessed
-        // spec/role — same "Needs review" treatment the plain-text importer's
-        // preview already uses, but persisted on the card itself since this
-        // import path has no confirmation dialog to show it in first.
-        const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
-        slotsHTML += `<div class="player-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" data-group="${gi}" data-slot="${si}">
-          ${getSpecIcon(p)}
-          <div class="player-info">
-            <span class="player-name" style="color:${color}">${esc(displayName)}</span>
-            <span class="player-spec">${esc(specClass)}</span>
-          </div>
-          ${reviewBadge}
-          ${p.signupStatus && p.signupStatus !== 'confirmed' ? getStatusTag(p.signupStatus) : ''}
-          ${lockBadge}
-          ${constraintBadge}
-          ${backupBadge}
-          ${getDragHandle()}
-        </div>`;
+        slotsHTML += seatedSlotHTML(players[si], gi, si);
       } else if (PreferredSlots.forGroup(gi)[si - players.length]) {
         const preference = PreferredSlots.forGroup(gi)[si - players.length];
         slotsHTML += `<div class="player-slot preferred-slot" role="button" tabindex="0" data-group="${gi}" data-slot="${si}" style="--preferred-color:${Config.ClassColors[preference.class]}">
@@ -9551,6 +9586,7 @@ function renderGroups() {
   renderSummaryBar();
   updateStatus();
   SignupTray.render();
+  restorePlayerSlotFocus(focusedSlot);
   cleanupOverrides();
   renderManualChanges();
 
@@ -10312,7 +10348,7 @@ const SignupTray = {
       const color = (p.class && Config.ClassColors[p.class]) || 'var(--text-muted)';
       const icon = p.class ? getSpecIcon(p) : '<span class="role-icon unplaced-icon">?</span>';
       const specText = p.class ? `${p.spec} ${RosterEdit.ClassLabel(p.class)}` : 'No spec on Raid-Helper';
-      return `<div class="player-slot bench-slot unplaced-slot" draggable="true" data-unplaced-uid="${esc(p.uid)}" title="Click or drag into a group to seat them">
+      return `<div class="player-slot bench-slot unplaced-slot" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'not seated'))}" data-unplaced-uid="${esc(p.uid)}" title="Click or drag into a group to seat them">
         ${icon}
         <div class="player-info">
           <span class="player-name" style="color:${color}">${esc(displayName)}</span>
@@ -10329,7 +10365,7 @@ const SignupTray = {
     const backupPrimary = Backups.primaryNameFor(p.name);
     const backupBadge = backupPrimary ? `<span class="backup-badge backup-badge-bench" title="Backup for ${esc(backupPrimary.split('-')[0])}">-&gt; ${esc(backupPrimary.split('-')[0])}</span>` : '';
     const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
-    return `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" data-bench-slot="${entry.bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
+    return `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'on the bench'))}" data-bench-slot="${entry.bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
       ${getSpecIcon(p)}
       <div class="player-info">
         <span class="player-name" style="color:${color}">${esc(displayName)}</span>
@@ -11027,14 +11063,17 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closePlayerEditor();
 });
 
+// Enter/Space on a focused role="button" slot opens it, same as a click.
+function activateSlotOnKey(e) {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.player-slot[role="button"]')) {
+    e.preventDefault(); e.target.click();
+  }
+}
+
 // Player editor delegation — attached once. Clicking a slot opens the editor;
 // the buff-icon handler stops propagation, so buff clicks never reach this.
 (function initPlayerEditor() {
-  document.getElementById('groups-container').addEventListener('keydown', e => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.player-slot[role="button"]')) {
-      e.preventDefault(); e.target.click();
-    }
-  });
+  document.getElementById('groups-container').addEventListener('keydown', activateSlotOnKey);
   document.getElementById('groups-container').addEventListener('click', e => {
     if (e.target.closest('.buff-icon')) return;
     const slot = e.target.closest('.player-slot');
@@ -11059,6 +11098,7 @@ document.addEventListener('keydown', e => {
 
   // Arrow keys move between tray tabs (WAI-ARIA tabs pattern).
   document.getElementById('bench-section').addEventListener('keydown', e => {
+    activateSlotOnKey(e);
     const tab = e.target.closest('[data-tray-tab]');
     if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
     e.preventDefault();
@@ -11194,11 +11234,15 @@ function renderManualChanges() {
 }
 
 // ── TOAST NOTIFICATION ──────────────────────────────────────────
+// One shared timer: a toast that arrives while another is showing restarts the
+// countdown instead of being hidden by the earlier toast's timeout.
+let toastTimer = null;
 function showToast(msg) {
   const toast = document.getElementById('toast');
   toast.textContent = msg;
   toast.classList.add('visible');
-  setTimeout(() => toast.classList.remove('visible'), 2500);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('visible'), 2500);
 }
 
 // ── VERSION AUTO-DETECT SUGGESTION (backlog #13) ──────────────────
@@ -12256,6 +12300,34 @@ document.getElementById('btn-split-cancel').addEventListener('click', () => docu
 document.getElementById('btn-split-create').addEventListener('click', () => SplitFlow.create());
 document.getElementById('btn-split-export').addEventListener('click', () => document.getElementById('btn-export-json').click());
 
+// ── SHARED IMPORT RUNNER ────────────────────────────────────────
+// Landing page and the in-app Import dialog both go through this: empty paste
+// is reported inline, the button stays disabled while the import runs (it may
+// fetch from Raid-Helper), errors land in the status line, and onSuccess runs
+// only when a roster was actually loaded.
+const statusReporter = (id) => (msg, isError) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg || '';
+  el.classList.toggle('error', !!isError);
+};
+
+async function runImport(inputId, statusId, btnId, onSuccess) {
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  const report = statusReporter(statusId);
+  const text = input.value.trim();
+  if (!text) { report('Paste something first', true); input.focus(); return; }
+  btn.disabled = true;
+  report('', false);
+  try {
+    const ok = await importFromText(text, report);
+    if (ok) { report('', false); input.value = ''; onSuccess(); }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ── IMPORT MODAL (toolbar) ──────────────────────────────────────
 function closeImportOverlay() {
   const overlay = document.getElementById('import-overlay');
@@ -12267,6 +12339,7 @@ document.getElementById('btn-import').addEventListener('click', () => {
   const trigger = document.activeElement;
   overlay.classList.add('visible');
   document.getElementById('import-textarea').value = '';
+  statusReporter('import-status')('', false);
   document.getElementById('import-textarea').focus();
   FocusTrap.open(overlay, trigger, closeImportOverlay);
 });
@@ -12274,11 +12347,13 @@ document.getElementById('btn-cancel-import').addEventListener('click', closeImpo
 document.getElementById('import-overlay').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeImportOverlay();
 });
-document.getElementById('btn-do-import').addEventListener('click', async () => {
-  const text = document.getElementById('import-textarea').value.trim();
-  if (!text) return;
-  const ok = await importFromText(text);
-  if (ok) { closeImportOverlay(); SplitFlow.maybeOffer(); }
+const runDialogImport = () => runImport('import-textarea', 'import-status', 'btn-do-import', () => { closeImportOverlay(); SplitFlow.maybeOffer(); });
+document.getElementById('btn-do-import').addEventListener('click', runDialogImport);
+document.getElementById('import-textarea').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    if (!document.getElementById('btn-do-import').disabled) runDialogImport();
+  }
 });
 document.getElementById('btn-plain-import-cancel').addEventListener('click', () => PlainRosterImport.cancel());
 document.getElementById('btn-plain-import-confirm').addEventListener('click', () => PlainRosterImport.confirm());
@@ -12420,30 +12495,7 @@ function renderLandingSavedList() {
     if (focusEl) focusEl.focus();
   }));
 
-  const statusReporter = (id) => (msg, isError) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = msg || '';
-    el.classList.toggle('error', !!isError);
-  };
-
-  const runImport = async (inputId, statusId, btnId) => {
-    const input = document.getElementById(inputId);
-    const btn = document.getElementById(btnId);
-    const report = statusReporter(statusId);
-    const text = input.value.trim();
-    if (!text) { report('Paste something first', true); input.focus(); return; }
-    btn.disabled = true;
-    report('', false);
-    try {
-      const ok = await importFromText(text, report);
-      if (ok) { report('', false); input.value = ''; showView('app'); SplitFlow.maybeOffer(); }
-    } finally {
-      btn.disabled = false;
-    }
-  };
-
-  const loadInput = () => runImport('landing-import', 'landing-status-import', 'btn-landing-import');
+  const loadInput = () => runImport('landing-import', 'landing-status-import', 'btn-landing-import', () => { showView('app'); SplitFlow.maybeOffer(); });
   document.getElementById('btn-landing-import').addEventListener('click', loadInput);
   document.getElementById('landing-import').addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -12473,7 +12525,7 @@ function renderLandingSavedList() {
         if (!sc) return;
         if (sc.raid) State.selectedRaid = sc.raid;
         document.getElementById('landing-import').value = JSON.stringify(S.toRaidHelperJson(sc), null, 1);
-        runImport('landing-import', 'landing-status-import', 'btn-landing-import');
+        loadInput();
       });
     };
     document.head.appendChild(script);
