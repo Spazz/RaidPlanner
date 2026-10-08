@@ -19,10 +19,10 @@
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
 const ctx = app.sandbox(
-  ['State', 'Config', 'GameVersions', 'Rulesets', 'IdealComp', 'Faction', 'versionForRaid', 'nextUid'],
+  ['State', 'Config', 'GameVersions', 'Rulesets', 'IdealComp', 'Faction', 'versionForRaid', 'nextUid', 'getGroupBuffs', 'getRaidBuffCoverage'],
   { extraSource: app.slice('const IdealComp = {', '// ── TAB SWITCHING') }
 );
-const { State, Config, GameVersions, Rulesets, IdealComp, Faction, versionForRaid } = ctx.api;
+const { State, Config, GameVersions, Rulesets, IdealComp, Faction, versionForRaid, getGroupBuffs, getRaidBuffCoverage } = ctx.api;
 
 let passed = 0, failed = 0;
 function assertTrue(cond, msg) {
@@ -71,6 +71,34 @@ for (const raidKey of Config.RaidOrder) {
   assertTrue(alliance.flat().length === 10, 'Classic 10-man Ideal Comp (Alliance): 10 players seated');
   assertTrue(alliance.flat().some(p => p.class === 'PALADIN'), 'Classic 10-man Ideal Comp (Alliance): includes a Paladin');
   assertTrue(!alliance.flat().some(p => p.class === 'SHAMAN'), 'Classic 10-man Ideal Comp (Alliance): no Shaman (faction lock)');
+})();
+
+// The badges and coverage of a generated board depend only on that board, never
+// on whatever plan State.groups currently holds.
+(function () {
+  const badges = (groups) => groups.map((g, gi) => getGroupBuffs(g, gi, groups).map(b => b.id + ':' + b.sourceUid).join(',')).join('|');
+  const coverage = (groups) => [...getRaidBuffCoverage(groups)].sort().join(',');
+  for (const [version, raidKey] of [['classic', 'naxx'], ['tbc', 'gruul']]) {
+    State.gameVersion = version;
+    State.selectedRaid = raidKey;
+    State.bench = [];
+    const identities = ['tank', 'melee_dps', 'caster_dps', 'healer'];
+    for (const mode of ['max_dps', 'balanced']) {
+      State.optimizerMode = mode;
+      State.groups = [[]];
+      const ideal = IdealComp.generate(raidKey);
+      const baseline = badges(ideal);
+      const baselineCoverage = coverage(ideal);
+      assertTrue(baseline.length > 0, `${version}/${raidKey}/${mode}: Ideal Comp shows some buffs`);
+      // Other plans on the board: same players in other seats, other role identities.
+      for (let shift = 0; shift < identities.length; shift++) {
+        State.groups = ideal.map(g => g.slice().reverse()).reverse();
+        State.groups._roleIdentities = State.groups.map((_, i) => identities[(i + shift) % identities.length]);
+        assertTrue(badges(ideal) === baseline, `${version}/${raidKey}/${mode}/${shift}: Ideal Comp badges ignore State.groups`);
+        assertTrue(coverage(ideal) === baselineCoverage, `${version}/${raidKey}/${mode}/${shift}: Ideal Comp coverage ignores State.groups`);
+      }
+    }
+  }
 })();
 
 console.log(`\nIdeal Comp tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

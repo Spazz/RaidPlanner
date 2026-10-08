@@ -7,7 +7,7 @@
 //
 // A totem worth nothing to anyone in the group is credited by no one, so it is
 // not shown either (a lone shaman with nobody to buff shows no totem).
-function getGroupBuffs(players, groupIndex, groups = State.groups) {
+function getGroupBuffs(players, groupIndex, groups = State.groups, mode = State.optimizerMode) {
   if (!GameVersions[State.gameVersion].modeled) return [];
 
   // Determine dominant role
@@ -19,7 +19,7 @@ function getGroupBuffs(players, groupIndex, groups = State.groups) {
   }
 
   const priorityOf = (id) => getBuffPriority(Config.Buffs[id], dominantRole);
-  const value = Optimizer.buffValueFn(players, groupIndex, groups, State.optimizerMode);
+  const value = Optimizer.buffValueFn(players, groupIndex, groups, mode);
   const overrideFor = groupIndex === undefined ? null : (player, slot) => {
     const ov = State.buffOverrides[`${groupIndex}:${player.uid}:${slot}`];
     return ov && Config.Buffs[ov.buffId] ? ov.buffId : undefined;
@@ -75,7 +75,7 @@ function getDrumsCoverage(groups) {
 
 function getRaidBuffCoverage(groups) {
   const covered = new Set();
-  groups.forEach((g, gi) => getGroupBuffs(g, gi).forEach(b => covered.add(b.id)));
+  groups.forEach((g, gi) => getGroupBuffs(g, gi, groups).forEach(b => covered.add(b.id)));
   return covered;
 }
 
@@ -269,7 +269,7 @@ function explainPlacement(player, group, groupIndex, allGroups, mode) {
   if (!player || !Array.isArray(group)) return reasons;
   const nick = (n) => String(n || '').split('-')[0];
 
-  const buffList = GameVersions[State.gameVersion].modeled ? getGroupBuffs(group, groupIndex) : [];
+  const buffList = GameVersions[State.gameVersion].modeled ? getGroupBuffs(group, groupIndex, allGroups || State.groups, mode || State.optimizerMode) : [];
   const rules = activeRules();
 
   // What this player personally provides to the group.

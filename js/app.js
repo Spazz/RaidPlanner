@@ -1485,7 +1485,7 @@ function renderIdealComp() {
 
   for (let gi = 0; gi < numGroups; gi++) {
     const players = groups[gi] || [];
-    const buffList = getGroupBuffs(players, gi);
+    const buffList = getGroupBuffs(players, gi, groups);
     buffList.forEach(b => coveredBuffIds.add(b.id));
     const roleLabel = getDominantRoleLabel(players);
 
