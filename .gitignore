@@ -27,6 +27,7 @@
 !data-tests.js
 !import-tests.js
 !drums-tests.js
+!buffdata-tests.js
 !nav-tests.js
 !share-tests.js
 !security-tests.js

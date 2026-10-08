@@ -406,6 +406,102 @@ check('Optimizer.spreadDrummers() never moves a locked player', () => {
   assert.equal(groupIndexOf(drummer.name), 2, 'the locked drummer must stay exactly where they were locked');
 });
 
+// Hand-built boards for the swap-choice cases: spreadDrummers must pay for a
+// drummer with a member whose departure costs the needy group nothing it
+// actually relies on.
+function member(name, cls, spec) {
+  return { uid: nextUid(), name, class: cls, spec, role: RosterEdit.RoleForSpec(cls, spec), imported: false };
+}
+function boardState(groups) {
+  resetState('tbc', 'bt', 25);
+  State.groups = groups;
+  State.roster = groups.flat();
+}
+
+check("spreadDrummers does not swap out a melee group's only Feral (Leader of the Pack)", () => {
+  // The Feral is the lowest-DPS-weight member of the drummer-less group, which
+  // is exactly who the old pass picked to trade away.
+  const feral = member('Feral', 'DRUID', 'Feral');
+  const needy = [feral, member('Fury', 'WARRIOR', 'Fury'), member('Arms', 'WARRIOR', 'Arms'),
+    member('Combat', 'ROGUE', 'Combat'), member('Assassin', 'ROGUE', 'Assassination')];
+  const rich = [member('DrumRogueA', 'ROGUE', 'Subtlety'), member('DrumRogueB', 'ROGUE', 'Subtlety'),
+    member('Mut', 'ROGUE', 'Assassination'), member('Surv', 'HUNTER', 'Survival'), member('Sub', 'ROGUE', 'Combat')];
+  boardState([needy, rich]);
+  Drummers.set('DrumRogueA', 'Battle');
+  Drummers.set('DrumRogueB', 'War');
+  Optimizer.spreadDrummers(State.groups);
+  assert.equal(groupIndexOf('Feral'), 0, 'the only LotP source must stay in its melee group');
+  assert(State.groups[0].some(p => Drummers.isDrummer(p.name)), 'the needy group still gets a drummer');
+  assert(State.groups[1].some(p => Drummers.isDrummer(p.name)), 'the surplus group keeps one drummer');
+});
+
+check("spreadDrummers does not swap out a caster group's only Moonkin", () => {
+  const boomkin = member('Boomkin', 'DRUID', 'Balance');
+  const needy = [boomkin, member('Destro', 'WARLOCK', 'Destruction'), member('Aff', 'WARLOCK', 'Affliction'),
+    member('Fire', 'MAGE', 'Fire'), member('Arcane', 'MAGE', 'Arcane')];
+  const rich = [member('DrumMageA', 'MAGE', 'Frost'), member('DrumMageB', 'MAGE', 'Frost'),
+    member('Demo', 'WARLOCK', 'Demonology'), member('Fire2', 'MAGE', 'Fire'), member('Arcane2', 'MAGE', 'Arcane')];
+  boardState([needy, rich]);
+  Drummers.set('DrumMageA', 'Battle');
+  Drummers.set('DrumMageB', 'War');
+  Optimizer.spreadDrummers(State.groups);
+  assert.equal(groupIndexOf('Boomkin'), 0, 'the only Moonkin Aura source must stay in its caster group');
+  assert(State.groups[0].some(p => Drummers.isDrummer(p.name)), 'the needy group still gets a drummer');
+});
+
+check("spreadDrummers does not pull the surplus group's only Feral away just because the Feral is a drummer", () => {
+  const needy = [member('Fury', 'WARRIOR', 'Fury'), member('Arms', 'WARRIOR', 'Arms'),
+    member('Combat', 'ROGUE', 'Combat'), member('Assassin', 'ROGUE', 'Assassination'), member('Sub', 'ROGUE', 'Subtlety')];
+  const rich = [member('FeralDrummer', 'DRUID', 'Feral'), member('RogueDrummer', 'ROGUE', 'Combat'),
+    member('Fury2', 'WARRIOR', 'Fury'), member('Arms2', 'WARRIOR', 'Arms'), member('Surv', 'HUNTER', 'Survival')];
+  boardState([needy, rich]);
+  Drummers.set('FeralDrummer', 'Battle');
+  Drummers.set('RogueDrummer', 'War');
+  Optimizer.spreadDrummers(State.groups);
+  assert.equal(groupIndexOf('FeralDrummer'), 1, 'the surplus group must keep its LotP source');
+  assert.equal(groupIndexOf('RogueDrummer'), 0, 'the other drummer is the one that moves');
+});
+
+check('spreadDrummers does not strand a lone caster with a melee drummer', () => {
+  const needy = [member('Frost', 'MAGE', 'Frost'), member('Destro', 'WARLOCK', 'Destruction'), member('Arcane', 'MAGE', 'Arcane')];
+  // The melee drummer comes first: the old pass took the first drummer it found.
+  const rich = [member('MeleeDrummer', 'ROGUE', 'Combat'), member('CasterDrummer', 'MAGE', 'Fire'),
+    member('Aff', 'WARLOCK', 'Affliction'), member('Frost2', 'MAGE', 'Frost')];
+  boardState([needy, rich]);
+  Drummers.set('MeleeDrummer', 'Battle');
+  Drummers.set('CasterDrummer', 'War');
+  Optimizer.spreadDrummers(State.groups);
+  assert.equal(groupIndexOf('CasterDrummer'), 0, 'the caster drummer fills the caster group');
+  assert.equal(groupIndexOf('MeleeDrummer'), 1, 'the melee drummer is not marooned among casters');
+});
+
+check('spreadDrummers picks the swap that costs the least group score', () => {
+  const needy = [member('Fury', 'WARRIOR', 'Fury'), member('Combat', 'ROGUE', 'Combat'),
+    member('Assassin', 'ROGUE', 'Assassination'), member('Sub', 'ROGUE', 'Subtlety'), member('Retri', 'PALADIN', 'Retribution')];
+  const rich = [member('DrumA', 'ROGUE', 'Subtlety'), member('DrumB', 'ROGUE', 'Combat'),
+    member('Arms2', 'WARRIOR', 'Arms'), member('Surv', 'HUNTER', 'Survival'), member('Sub2', 'ROGUE', 'Subtlety')];
+  boardState([needy, rich]);
+  Drummers.set('DrumA', 'Battle');
+  Drummers.set('DrumB', 'War');
+  const mode = 'max_dps';
+  State.optimizerMode = mode;
+  const total = () => Optimizer.groupScore(State.groups[0], 0, State.groups, mode) + Optimizer.groupScore(State.groups[1], 1, State.groups, mode);
+  // Brute force the best legal swap of one needy member for one drummer.
+  let bestScore = -Infinity;
+  for (let i = 0; i < needy.length; i++) {
+    for (const d of ['DrumA', 'DrumB']) {
+      const g0 = State.groups[0], g1 = State.groups[1];
+      const di = g1.findIndex(p => p.name === d);
+      const a = g0[i], b = g1[di];
+      g0[i] = b; g1[di] = a;
+      bestScore = Math.max(bestScore, total());
+      g0[i] = a; g1[di] = b;
+    }
+  }
+  Optimizer.spreadDrummers(State.groups, mode);
+  assert(Math.abs(total() - bestScore) < 1e-9, 'the chosen swap must be the best-scoring one available');
+});
+
 check('Optimizer.arrange() honors keep-apart constraints even when drum-spreading also wants to move someone', () => {
   resetState('tbc', 'bt', 25);
   State.optimizerMode = 'max_dps';

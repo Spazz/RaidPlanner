@@ -2268,23 +2268,23 @@ const Config = {
 
   Buffs: {
     WINDFURY:          { name:'Windfury Totem',       sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Enchants nearby party members\' main-hand weapons with wind, granting each hit a 20% chance to trigger an extra attack with bonus AP.' },
-    GRACE_OF_AIR:      { name:'Grace of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by 77.' },
-    WRATH_OF_AIR:      { name:'Wrath of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['caster_dps','healer'], priority:85, desc:'Increases spell power of nearby party members by 101.' },
-    TOTEM_OF_WRATH:    { name:'Totem of Wrath',       sourceClass:'SHAMAN', sourceSpec:'Elemental', benefitsRoles:['caster_dps'], priority:80, desc:'Increases spell critical strike chance of nearby party members by 3% and increases spell power by 120.' },
+    GRACE_OF_AIR:      { name:'Grace of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by 77.' },
+    WRATH_OF_AIR:      { name:'Wrath of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['tank','caster_dps','healer'], priority:85, desc:'Increases spell power of nearby party members by 101.' },
+    TOTEM_OF_WRATH:    { name:'Totem of Wrath',       sourceClass:'SHAMAN', sourceSpec:'Elemental', benefitsRoles:['caster_dps','healer'], priority:80, desc:'Increases spell hit chance of nearby party members by 3% and spell critical strike chance by 3%.' },
     MANA_SPRING:       { name:'Mana Spring Totem',    sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:{healer:58, caster_dps:48}, desc:'Restores 20 mana every 2 seconds to nearby party members.' },
-    MANA_TIDE:         { name:'Mana Tide Totem',      sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70, desc:'Restores 24% of total mana to nearby party members over 12 seconds.' },
+    MANA_TIDE:         { name:'Mana Tide Totem',      sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer','caster_dps'], priority:70, desc:'Restores 24% of total mana to nearby party members over 12 seconds.' },
     STRENGTH_OF_EARTH: { name:'Strength of Earth',    sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55, desc:'Increases strength of nearby party members by 86.' },
     DEVOTION_AURA:     { name:'Devotion Aura',        sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by 861.' },
     CONCENTRATION_AURA:{ name:'Concentration Aura',   sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Reduces the duration of silence and interrupt effects by 30% and gives 35% resistance to pushback while casting.' },
-    RETRIBUTION_AURA:  { name:'Retribution Aura',     sourceClass:'PALADIN', benefitsRoles:['tank'], priority:30, desc:'Causes 26 Holy damage to any enemy that strikes nearby party members.' },
+    RETRIBUTION_AURA:  { name:'Retribution Aura',     sourceClass:'PALADIN', benefitsRoles:['tank','melee_dps'], priority:30, desc:'Causes 26 Holy damage to any enemy that strikes nearby party members.' },
     SANCTITY_AURA:     { name:'Sanctity Aura',        sourceClass:'PALADIN', sourceSpec:'Retribution', benefitsRoles:['melee_dps','ranged_dps','caster_dps','tank'], priority:{melee_dps:80, ranged_dps:80, caster_dps:80, tank:40}, desc:'Increases Holy damage done by party members by 10%. Improved Sanctity Aura also increases all damage done by party members by 2%.' },
-    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',   sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:78, tank:65}, desc:'Increases melee and ranged critical strike chance of nearby party members by 5%.' },
+    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',   sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:78, tank:65}, desc:'Increases melee and ranged critical strike chance of nearby party members by 5%.' },
     MOONKIN_AURA:      { name:'Moonkin Aura',         sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['caster_dps'], priority:72, desc:'Increases spell critical strike chance of nearby party members by 5%.' },
     TRUESHOT_AURA:     { name:'Trueshot Aura',        sourceClass:'HUNTER', sourceSpec:'Marksmanship', benefitsRoles:['melee_dps','ranged_dps'], priority:62, desc:'Increases attack power of nearby party members by 125.' },
-    FEROCIOUS_INSP:    { name:'Ferocious Inspiration',sourceClass:'HUNTER', sourceSpec:'Beast Mastery', benefitsRoles:['melee_dps','ranged_dps','caster_dps'], priority:58, desc:'When your pet scores a critical hit, all party members gain 3% increased damage for 10 seconds.' },
-    TREE_OF_LIFE:      { name:'Tree of Life',          sourceClass:'DRUID', sourceSpec:'Restoration', benefitsRoles:['tank','healer','melee_dps','ranged_dps','caster_dps'], priority:{tank:90, healer:10, melee_dps:10, ranged_dps:10, caster_dps:10}, desc:'Increases healing received by nearby party members by 25% of the Druid\'s spirit.' },
+    FEROCIOUS_INSP:    { name:'Ferocious Inspiration',sourceClass:'HUNTER', sourceSpec:'Beast Mastery', benefitsRoles:['tank','melee_dps','ranged_dps','caster_dps'], priority:58, desc:'When your pet scores a critical hit, all party members gain 3% increased damage for 10 seconds.' },
+    TREE_OF_LIFE:      { name:'Tree of Life',          sourceClass:'DRUID', sourceSpec:'Restoration', benefitsRoles:['tank','healer'], priority:{tank:90, healer:10, melee_dps:10, ranged_dps:10, caster_dps:10}, desc:'Increases healing received by nearby party members by 25% of the Druid\'s spirit.' },
     UNLEASHED_RAGE:    { name:'Unleashed Rage',        sourceClass:'SHAMAN', sourceSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:88, tank:60}, desc:'Increases melee attack power of nearby party members by 10% after landing a melee critical strike.' },
-    BATTLE_SHOUT:      { name:'Battle Shout',          sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members by 305 for 2 minutes.' },
+    BATTLE_SHOUT:      { name:'Battle Shout',          sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members by 305 for 2 minutes.' },
     BLOOD_PACT:        { name:'Blood Pact',           sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases max health of nearby party members by 1330.' },
     VAMPIRIC_TOUCH:    { name:'Vampiric Touch',       sourceClass:'PRIEST', sourceSpec:'Shadow', benefitsRoles:['healer','caster_dps'], priority:{caster_dps:75, healer:55}, desc:'Restores mana to nearby party members equal to 5% of Shadow damage dealt.' },
   },
@@ -2368,11 +2368,11 @@ const Config = {
     WINTERS_CHILL:        { name:'Winter\'s Chill',            sourceClass:'MAGE', sourceSpec:'Frost', desc:'Increases the target\'s chance to be critically hit by Frost spells by 10%.' },
     IMPROVED_SCORCH:      { name:'Improved Scorch',            sourceClass:'MAGE', sourceSpec:'Fire', desc:'Increases Fire damage taken by the target by 15%.' },
     SHADOW_WEAVING:       { name:'Shadow Weaving',             sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Increases Shadow damage taken by the target by 10%.' },
-    MISERY:               { name:'Misery',                     sourceClass:'PRIEST', sourceSpec:'Discipline', desc:'Increases Spell damage taken by the target by 5%.' },
+    MISERY:               { name:'Misery',                     sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Increases Spell damage taken by the target by 5%.' },
     VAMPIRIC_EMBRACE:     { name:'Vampiric Embrace',           sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Heals the caster\'s party for 15% of the Priest\'s damage dealt to the target.' },
     STORMSTRIKE:          { name:'Stormstrike',                sourceClass:'SHAMAN', sourceSpec:'Enhancement', desc:'Increases Nature damage taken by the target by 20%, for 2 charges.' },
     SCORPID_STING:        { name:'Scorpid Sting',              sourceClass:'HUNTER', desc:'Reduces the target\'s chance to hit with melee/ranged attacks by 5%.' },
-    HUNTERS_MARK:         { name:'Hunter\'s Mark',              sourceClass:'HUNTER', sourceSpec:'Marksmanship', desc:'Grants attackers 110 increased melee/ranged attack power against the target.' },
+    HUNTERS_MARK:         { name:'Hunter\'s Mark',              sourceClass:'HUNTER', desc:'Grants attackers 110 increased melee/ranged attack power against the target.' },
     EXPOSE_WEAKNESS:      { name:'Expose Weakness',            sourceClass:'HUNTER', sourceSpec:'Survival', desc:'Grants attackers bonus attack power equal to 25% of the Hunter\'s Agility.' },
   },
 
@@ -2628,19 +2628,19 @@ const Rulesets = {
 Rulesets.classic = {
   buffs: {
     WINDFURY:          { name:'Windfury Totem',      sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Enchants nearby party members\' main-hand weapons with wind, granting each hit a 20% chance to trigger an extra attack with up to 315 bonus attack power.' },
-    GRACE_OF_AIR:      { name:'Grace of Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by up to 77.' },
+    GRACE_OF_AIR:      { name:'Grace of Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by up to 77.' },
     TRANQUIL_AIR:      { name:'Tranquil Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['caster_dps','healer'], priority:40, desc:'Reduces the threat generated by nearby party members by 20%.' },
     STRENGTH_OF_EARTH: { name:'Strength of Earth Totem', sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55, desc:'Increases strength of nearby party members by up to 77.' },
     STONESKIN:         { name:'Stoneskin Totem',     sourceClass:'SHAMAN', benefitsRoles:['tank'], priority:45, desc:'Reduces melee damage taken by nearby party members by up to 30 per hit.' },
     MANA_SPRING:       { name:'Mana Spring Totem',   sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:{healer:58, caster_dps:48}, desc:'Restores mana to nearby party members every 2 seconds (up to 10 per tick at max rank).' },
     MANA_TIDE:         { name:'Mana Tide Totem',     sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70, desc:'Restores mana to nearby party members over 12 seconds (rank 1: 170 mana every 3 seconds; higher ranks UNCONFIRMED).' },
     DEVOTION_AURA:     { name:'Devotion Aura',       sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by up to 735.' },
-    RETRIBUTION_AURA:  { name:'Retribution Aura',    sourceClass:'PALADIN', benefitsRoles:['tank'], priority:30, desc:'Causes Holy damage to any enemy that strikes nearby party members in melee.' },
+    RETRIBUTION_AURA:  { name:'Retribution Aura',    sourceClass:'PALADIN', benefitsRoles:['tank','melee_dps'], priority:30, desc:'Causes Holy damage to any enemy that strikes nearby party members in melee.' },
     CONCENTRATION_AURA:{ name:'Concentration Aura',  sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Gives nearby party members a 35% chance to resist interruption from damage while casting.' },
     SANCTITY_AURA:     { name:'Sanctity Aura',       sourceClass:'PALADIN', sourceSpec:'Retribution', benefitsRoles:['melee_dps','ranged_dps','caster_dps','tank'], priority:{melee_dps:80, ranged_dps:80, caster_dps:80, tank:40}, desc:'Increases Holy damage done by nearby party members by 10%.' },
-    BATTLE_SHOUT:      { name:'Battle Shout',        sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members for 2 minutes. Party-only in Classic Era; exact rank value UNCONFIRMED.' },
+    BATTLE_SHOUT:      { name:'Battle Shout',        sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members for 2 minutes. Party-only in Classic Era; exact rank value UNCONFIRMED.' },
     TRUESHOT_AURA:     { name:'Trueshot Aura',       sourceClass:'HUNTER', sourceSpec:'Marksmanship', benefitsRoles:['melee_dps','ranged_dps'], priority:62, desc:'Increases attack power of nearby party members. Exact value UNCONFIRMED.' },
-    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',  sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:78, tank:65}, desc:'Increases melee and ranged critical strike chance of nearby party members by 3%.' },
+    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',  sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:78, tank:65}, desc:'Increases melee and ranged critical strike chance of nearby party members by 3%.' },
     MOONKIN_AURA:      { name:'Moonkin Aura',        sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['caster_dps'], priority:72, desc:'Increases spell critical strike chance of nearby party members by 3%.' },
     BLOOD_PACT:        { name:'Blood Pact',          sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases max health of nearby party members (Wowhead Classic: +38 Stamina).' },
   },
@@ -2763,16 +2763,16 @@ Rulesets.classic = {
 Rulesets.forever = {
   buffs: {
     WINDFURY:          { name:'Windfury Totem',      sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Enchants nearby party members\' main-hand weapons with wind, granting each hit a 20% chance to trigger an extra attack with 246 bonus attack power. Party, 30 yards.' },
-    GRACE_OF_AIR:      { name:'Grace of Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by 89. Party, 30 yards.' },
+    GRACE_OF_AIR:      { name:'Grace of Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by 89. Party, 30 yards.' },
     STRENGTH_OF_EARTH: { name:'Strength of Earth Totem', sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55, desc:'Increases strength of nearby party members by 53. Party, 30 yards.' },
     STONESKIN:         { name:'Stoneskin Totem',     sourceClass:'SHAMAN', benefitsRoles:['tank'], priority:45, desc:'Reduces melee damage taken by nearby party members by 30 per hit. Party, 30 yards.' },
     MANA_SPRING:       { name:'Mana Spring Totem',   sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:{healer:58, caster_dps:48}, desc:'Restores 10 mana every 2 seconds to nearby party members. Group, 30 yards.' },
     MANA_TIDE:         { name:'Mana Tide Totem',     sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70, desc:'Restores 88 mana every 3 seconds to nearby party members for 12 seconds. Still a 1-point Restoration talent, not baseline. Group, 30 yards.' },
     DEVOTION_AURA:     { name:'Devotion Aura',       sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by 735. Also increases healing taken by nearby party members by 1%. Party, 30 yards.' },
-    RETRIBUTION_AURA:  { name:'Retribution Aura',    sourceClass:'PALADIN', benefitsRoles:['tank'], priority:30, desc:'Causes Holy damage to any enemy that strikes nearby party members in melee. Also increases healing taken by nearby party members by 1%. Party, 30 yards.' },
+    RETRIBUTION_AURA:  { name:'Retribution Aura',    sourceClass:'PALADIN', benefitsRoles:['tank','melee_dps'], priority:30, desc:'Causes Holy damage to any enemy that strikes nearby party members in melee. Also increases healing taken by nearby party members by 1%. Party, 30 yards.' },
     CONCENTRATION_AURA:{ name:'Concentration Aura',  sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Gives nearby party members a 35% chance to resist interruption from damage while casting. Also increases healing taken by nearby party members by 1%. Party, 30 yards.' },
     SANCTITY_AURA:     { name:'Sanctity Aura',       sourceClass:'PALADIN', sourceSpec:'Retribution', benefitsRoles:['melee_dps','ranged_dps','caster_dps','tank'], priority:{melee_dps:80, ranged_dps:80, caster_dps:80, tank:40}, desc:'Increases Holy damage done by nearby party members by 10%. Also increases healing taken by nearby party members by 1%. Improved Devotion Aura no longer exists as a talent. Party, 30 yards.' },
-    BATTLE_SHOUT:      { name:'Battle Shout',        sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members by 140 for 3 minutes. Party, 20 yards (not raid-wide).' },
+    BATTLE_SHOUT:      { name:'Battle Shout',        sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members by 140 for 3 minutes. Party, 20 yards (not raid-wide).' },
     TRUESHOT_AURA:     { name:'Trueshot Aura',       sourceClass:'HUNTER', benefitsRoles:['melee_dps','ranged_dps'], priority:62, desc:'Baseline for every Hunter spec — trained at level 32, no longer Marksmanship-only. Increases ranged attack power of nearby party members by 40. Party, 45 yards, 30 minutes.' },
     LEADER_OF_THE_PACK:{ name:'Leader of the Pack',  sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps','ranged_dps','caster_dps'], priority:{melee_dps:78, ranged_dps:78, caster_dps:70, tank:65}, desc:'While in Cat, Bear or Dire Bear Form, increases critical strike chance (melee, ranged and spell) of nearby party members by 3%. Mutually exclusive with Moonkin Aura — a group with both only benefits from one. Party, 45 yards.' },
     MOONKIN_AURA:      { name:'Moonkin Aura',        sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['tank','melee_dps','ranged_dps','caster_dps'], priority:{caster_dps:72, melee_dps:60, ranged_dps:60, tank:50}, desc:'While in Moonkin Form, increases critical strike chance (melee, ranged and spell) of nearby party members by 3%. Mutually exclusive with Leader of the Pack — a group with both only benefits from one. Party, 45 yards.' },
@@ -5347,7 +5347,7 @@ const DPS_VALUE = {
   TREE_OF_LIFE:       { role: { healer: 1 } },
   TRUESHOT_AURA:      { role: { melee_dps: 3, ranged_dps: 4 } },
   FEROCIOUS_INSP:     { role: { melee_dps: 3, ranged_dps: 3, caster_dps: 3, tank: 1 } },
-  UNLEASHED_RAGE:     { role: { melee_dps: 5, ranged_dps: 4, tank: 2 } },
+  UNLEASHED_RAGE:     { role: { melee_dps: 5, tank: 2 } },
   BATTLE_SHOUT:       { role: { melee_dps: 3, ranged_dps: 2, tank: 2 } },
   BLOOD_PACT:         { role: { tank: 1 } },
   VAMPIRIC_TOUCH:     { key: { 'MAGE:Arcane': 7, 'PRIEST:Holy': 10 }, class: { WARLOCK: 2, MAGE: 6 }, role: { caster_dps: 4, healer: 3 } },
@@ -5472,6 +5472,12 @@ Object.assign(Rulesets.classic, {
 // from 2 to 3; the other three, which had none, get a light +1).
 const DPS_VALUE_FOREVER = { ...DPS_VALUE_CLASSIC };
 delete DPS_VALUE_FOREVER.TRANQUIL_AIR;
+// Forever's Leader of the Pack and Moonkin Aura are the same 3% crit aura for
+// melee, ranged AND spell crit (one slot, see rules.exclusiveBuffs), so each
+// is worth something to every role, unlike Classic's melee-only LotP and
+// caster-only Moonkin it was copied from. Scaled to the priorities above.
+DPS_VALUE_FOREVER.LEADER_OF_THE_PACK = { role: { melee_dps: 4, ranged_dps: 4, caster_dps: 3, tank: 2 } };
+DPS_VALUE_FOREVER.MOONKIN_AURA = { role: { caster_dps: 4, melee_dps: 2, ranged_dps: 2, tank: 1 } };
 const MIT_VALUE_FOREVER = { ...MIT_VALUE_CLASSIC };
 const SUSTAIN_VALUE_FOREVER = { ...SUSTAIN_VALUE_CLASSIC, CONCENTRATION_AURA: 3, DEVOTION_AURA: 1, RETRIBUTION_AURA: 1, SANCTITY_AURA: 1 };
 Object.assign(Rulesets.forever, {
@@ -5714,7 +5720,7 @@ const Optimizer = {
     // roster, so the TBC scenario suite (which never tags any) is completely
     // untouched. Runs before Phase 6 so any constraint it happens to disturb
     // is still fixed up right after, same ordering reasoning as Phase 5.
-    this.spreadDrummers(groups);
+    this.spreadDrummers(groups, mode);
 
     // Phase 6: Hard player constraints (backlog #3) — keep-together/keep-apart
     // pairs win over every structural/buff preference above, so this must run
@@ -5774,20 +5780,37 @@ const Optimizer = {
   // TBC-only (feature-backlog-3 #5): spread Leatherworker drummers one per
   // party before letting any group hold two. Deliberately simpler than
   // _spreadPass above — drums aren't tied to a class/spec or a benefiting
-  // role, so none of that machinery's role-targeting/isolation guards apply.
+  // role, so none of that machinery's role-targeting guards apply.
   // Every group that already has >=1 drummer is left alone; a group with
   // zero only gets one moved in if another group has a genuine surplus
   // (2+), and only by swapping with a non-pinned member (isPinned covers
   // both `.locked` and the seeded anchor tank, same guard every other phase
   // uses) — never into/out of an empty seat, since a full 25/40-man raid has
-  // none. The swap partner is the needy group's lowest dpsWeightFor member,
-  // the same "who benefits least" tie-break _spreadPass's eviction uses.
+  // none.
+  //
+  // Drums are worth less than the buffs a swap can take away, so a candidate
+  // swap (needy member <-> surplus drummer) is skipped when it would remove
+  // the only provider of a buff either group's members actually use (the
+  // melee group's sole Feral = Leader of the Pack, the caster group's sole
+  // Boomkin, ...) or leave a melee/caster DPS with no same-family peer
+  // (wouldIsolate, the same lookahead spreadProviders uses; a group that was
+  // already isolated before the swap doesn't block it). Of the swaps that
+  // remain, the one losing the least groupScore across the two groups wins.
   // Bounded, deterministic, and a strict no-op with zero drummers tagged, so
   // the TBC scenario suite (which never tags any) is completely unaffected.
-  spreadDrummers(groups) {
+  spreadDrummers(groups, mode = State.optimizerMode || 'max_dps') {
     if (State.gameVersion !== 'tbc') return;
     if (!(State.drummers || []).length) return;
     const isDrummer = p => Drummers.isDrummer(p.name);
+    const pairScore = (a, b) => this.groupScore(groups[a], a, groups, mode) + this.groupScore(groups[b], b, groups, mode);
+    // Buff ids a group resolves that at least one of its members gets value from.
+    const usedBuffs = (grp) => [...this.resolveGroupBuffs(grp, () => 1)].filter(id =>
+      grp.some(m => dpsValueFor(id, m) > 0 || (m.role === 'tank' && mitValueFor(id, m) > 0)));
+    const keepsBuffs = (before, after) => {
+      const kept = this.resolveGroupBuffs(after, () => 1);
+      return usedBuffs(before).every(id => kept.has(id));
+    };
+    const isolatedNow = (gi) => this.wouldIsolate(groups[gi], -1);
 
     for (let iter = 0; iter < 8; iter++) {
       const counts = groups.map(g => g.filter(isDrummer).length);
@@ -5802,13 +5825,6 @@ const Optimizer = {
       // DIFFERENT needy group from being fixed this same round).
       let moved = false;
       for (const toGi of needy) {
-        const candidates = groups[toGi]
-          .map((p, pi) => ({ p, pi }))
-          .filter(({ p }) => !this.isPinned(p, toGi, groups));
-        if (!candidates.length) continue; // needy group is entirely pinned — try the next needy group
-        candidates.sort((a, b) => dpsWeightFor(a.p) - dpsWeightFor(b.p));
-        const targetIdx = candidates[0].pi;
-
         // Surplus groups (2+), most-surplus first, so a group with 3 gives
         // up its spare before one with exactly 2 does.
         const surplus = groups
@@ -5816,20 +5832,43 @@ const Optimizer = {
           .filter(x => x.gi !== toGi && x.count >= 2)
           .sort((a, b) => b.count - a.count);
 
+        let best = null;
         for (const { gi: fromGi } of surplus) {
-          const sourceIdx = groups[fromGi].findIndex(p => isDrummer(p) && !this.isPinned(p, fromGi, groups));
-          if (sourceIdx < 0) continue; // this surplus group's drummer(s) are all pinned — try the next surplus group
+          const toIsolated = isolatedNow(toGi), fromIsolated = isolatedNow(fromGi);
+          const before = pairScore(toGi, fromGi);
+          for (let targetIdx = 0; targetIdx < groups[toGi].length; targetIdx++) {
+            const target = groups[toGi][targetIdx];
+            if (this.isPinned(target, toGi, groups)) continue;
+            for (let sourceIdx = 0; sourceIdx < groups[fromGi].length; sourceIdx++) {
+              const source = groups[fromGi][sourceIdx];
+              if (!isDrummer(source) || this.isPinned(source, fromGi, groups)) continue;
+              if (!toIsolated && this.wouldIsolate(groups[toGi], targetIdx, source)) continue;
+              if (!fromIsolated && this.wouldIsolate(groups[fromGi], sourceIdx, target)) continue;
 
-          const source = groups[fromGi][sourceIdx];
-          const target = groups[toGi][targetIdx];
-          groups[toGi][targetIdx] = source;
-          groups[fromGi][sourceIdx] = target;
-          moved = true;
-          break;
+              const toBefore = groups[toGi], fromBefore = groups[fromGi];
+              const toAfter = toBefore.map(p => p === target ? source : p);
+              const fromAfter = fromBefore.map(p => p === source ? target : p);
+              if (!keepsBuffs(toBefore, toAfter) || !keepsBuffs(fromBefore, fromAfter)) continue;
+
+              groups[toGi][targetIdx] = source;
+              groups[fromGi][sourceIdx] = target;
+              const delta = pairScore(toGi, fromGi) - before;
+              groups[toGi][targetIdx] = target;
+              groups[fromGi][sourceIdx] = source;
+              if (!best || delta > best.delta) best = { toGi, targetIdx, fromGi, sourceIdx, delta };
+            }
+          }
         }
-        if (moved) break; // recompute counts fresh before tackling the next needy group
+
+        if (best) {
+          const source = groups[best.fromGi][best.sourceIdx];
+          groups[best.fromGi][best.sourceIdx] = groups[best.toGi][best.targetIdx];
+          groups[best.toGi][best.targetIdx] = source;
+          moved = true;
+          break; // recompute counts fresh before tackling the next needy group
+        }
       }
-      if (!moved) break; // nothing resolvable this round (locks blocking every option) — stop rather than spin
+      if (!moved) break; // nothing resolvable this round (locks, or every swap costs a sole provider) — stop rather than spin
     }
   },
 
@@ -6409,13 +6448,18 @@ const Optimizer = {
 
     // Role cohesion — DPS members clustered with their group's identity.
     // Ranged DPS (hunters) count as full members of melee groups: they
-    // bring FI/TSA to the physical party and receive LotP/GoA/UR there
+    // bring FI/TSA to the physical party and receive LotP/GoA there
     // (reference comp rule: BM/Surv hunters ride in the melee groups).
     if (roleIdentity !== 'tank') {
       for (const p of group) {
         if (p.role === 'healer' || p.role === 'tank') continue;
         const matches = p.role === roleIdentity || (roleIdentity === 'melee_dps' && p.role === 'ranged_dps');
         if (matches) score += 12 * cfg.cohesion;
+        // Hunters ride with the physical groups. In a caster group they are
+        // neutral rather than "compatible": Unleashed Rage (melee-only) no
+        // longer holds them in a melee group, and without this a leftover
+        // hunter drifted in beside the Ele Shaman and mages.
+        else if (p.role === 'ranged_dps' && roleIdentity === 'caster_dps') continue;
         else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) score += 6 * cfg.cohesion;
         else score -= 12 * cfg.cohesion;
       }
@@ -6819,9 +6863,10 @@ const OpenSlots = {
   SPEC_REPEAT: 6,
   CLASS_CROWD: 4,
   CLASS_CROWD_FREE: 5,
-  // Debuffs every member of a class can apply at a base rank; the listed
-  // spec only improves them, so with that class present it's worth half.
-  BASELINE_DEBUFFS: { HUNTERS_MARK: 'HUNTER' },
+  // Debuffs any member of the source class can apply at a base rank, which a
+  // spec improves (Improved Hunter's Mark). Once the base spell is covered the
+  // improving spec still adds half, until one of that spec is in the raid.
+  IMPROVED_DEBUFFS: { HUNTERS_MARK: 'Marksmanship' },
   _raidValue(candidate, raid, mode) {
     const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
     const withCandidate = raid.concat(candidate);
@@ -6837,12 +6882,15 @@ const OpenSlots = {
     let v = 0;
     const covered = getRaidDebuffCoverage([raid]);
     for (const [id, d] of Object.entries(Config.Debuffs || {})) {
-      if (covered.has(id) || !canProvideBuff(d, candidate)) continue;
+      if (!canProvideBuff(d, candidate)) continue;
+      // Covered by the base spell: only the improving spec, absent so far, still adds.
+      const improvedBy = this.IMPROVED_DEBUFFS[id];
+      const improvesOnly = covered.has(id) && improvedBy === candidate.spec && !raid.some(p => p.class === d.sourceClass && p.spec === improvedBy);
+      if (covered.has(id) && !improvesOnly) continue;
       if (d.supersededBy && covered.has(d.supersededBy)) continue;
       if ((d.competesWith || []).some(other => covered.has(other))) continue;
       const { tier, who } = this.DEBUFF_VALUE[id] || { tier: 2, who: 'all' };
-      const baseClass = this.BASELINE_DEBUFFS[id];
-      const share = baseClass && raid.some(p => p.class === baseClass) ? 0.5 : 1;
+      const share = improvesOnly ? 0.5 : 1;
       v += tier * share * weightOf(who);
     }
     for (const u of Readiness.utilityCoverage([raid], [])) {
