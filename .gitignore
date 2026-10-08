@@ -30,6 +30,7 @@
 !buffdata-tests.js
 !nav-tests.js
 !share-tests.js
+!livesync-tests.js
 !security-tests.js
 # Test runner, loader and CI (npm test; the Vercel ignoreCommand gate runs it too)
 !package.json

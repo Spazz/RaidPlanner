@@ -5181,7 +5181,35 @@ const LiveLinks = {
   shouldApply(entry, remote, pending) {
     return !!entry && !!remote && !pending && remote.updatedAt > entry.updatedAt;
   },
+  // Mirrors MAX_CODE_LENGTH in api/share.js: a larger code is always refused.
+  maxCodeLength: 32 * 1024,
+  // Why the server would refuse this code (shown instead of retrying), or null.
+  rejection(code) {
+    if (typeof code !== 'string' || code.length <= this.maxCodeLength) return null;
+    const kb = n => Math.ceil(n / 1024);
+    return `plan is too large for a live link (${kb(code.length)} KB, limit ${kb(this.maxCodeLength)} KB)`;
+  },
+  // A 4xx a retry cannot fix. 404 (link gone: re-created), 408 and 429
+  // (rate limited: back off) are transient.
+  isPermanentFailure(status) {
+    return status >= 400 && status < 500 && status !== 404 && status !== 408 && status !== 429;
+  },
+  // Retry-After header (seconds) -> milliseconds to back off.
+  retryAfterMs(header, fallbackMs = 30000, capMs = 300000) {
+    const seconds = Number(header);
+    return seconds > 0 ? Math.min(seconds * 1000, capMs) : fallbackMs;
+  },
 };
+
+// AbortSignal.timeout where it exists, otherwise an AbortController timer, so
+// a hung request cannot wedge sync on older browsers. undefined = no timeout.
+function timeoutSignal(ms) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms);
+  if (typeof AbortController === 'undefined') return undefined;
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
 
 // ── RANDOM ROSTER GENERATOR ──────────────────────────────────────
 
@@ -12671,12 +12699,26 @@ function syncAddressBar() {
   if (window.location.pathname !== path) history.replaceState(null, '', path + window.location.search);
 }
 
+// The Error for a failed API response: 429 carries retryAfterMs (back off,
+// then retry); permanent marks a 4xx no retry can fix, with the server's reason.
+async function shareError(resp) {
+  const err = new Error('share ' + resp.status);
+  err.status = resp.status;
+  if (resp.status === 429) err.retryAfterMs = LiveLinks.retryAfterMs(resp.headers && resp.headers.get('Retry-After'));
+  if (LiveLinks.isPermanentFailure(resp.status)) {
+    err.permanent = true;
+    const body = await resp.json().catch(() => null);
+    err.reason = body && typeof body.error === 'string' && body.error ? body.error : 'the server refused it (' + resp.status + ')';
+  }
+  return err;
+}
+
 // Resolves to {code, updatedAt}, or null when the link is unknown/expired.
 // Throws when the server cannot be reached.
 async function fetchLiveLink(id) {
-  const resp = await fetch(`${SHARE_API}?id=${id}`, { signal: AbortSignal.timeout?.(8000) });
+  const resp = await fetch(`${SHARE_API}?id=${id}`, { signal: timeoutSignal(8000) });
   if (resp.status === 404) return null;
-  if (!resp.ok) throw new Error('share ' + resp.status);
+  if (!resp.ok) throw await shareError(resp);
   const data = await resp.json();
   if (!data || typeof data.code !== 'string') throw new Error('share: bad response');
   return { code: data.code, updatedAt: Number(data.updatedAt) || 0 };
@@ -12701,6 +12743,14 @@ const LiveSync = {
   pending: false,
   saving: false,
   failed: false,
+  // The server refused this exact code for good: {code, reason}. Cleared as
+  // soon as the plan changes, since a different code may be accepted.
+  rejected: null,
+  // Link ID the server forgot (expired): its next save goes out even though
+  // this browser already synced the same code, to re-create the link.
+  recreateId: null,
+  // Rate limited (429): no requests until this time.
+  backoffUntil: 0,
   // True while a /<version>/<id> link from page load is still being fetched.
   opening: !!SHORT_LINK_AT_LOAD,
 
@@ -12709,10 +12759,21 @@ const LiveSync = {
     if (!this.opening) syncAddressBar();
     const link = currentLiveLink();
     if (!link) { clearTimeout(this.saveTimer); this.pending = false; return; }
-    if (!LiveLinks.needsPush(link.entry, currentShareCode())) return;
+    const code = currentShareCode();
+    if (this.blocked(code)) { clearTimeout(this.saveTimer); this.pending = false; return; }
+    if (!LiveLinks.needsPush(link.entry, code)) return;
     this.pending = true;
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.save(), LIVE_SAVE_DELAY_MS);
+  },
+
+  // True when the server will never take this code (over the size limit, or
+  // refused with a 4xx before); sets the reason the status line shows.
+  blocked(code) {
+    if (this.rejected && this.rejected.code !== code) this.rejected = null;
+    const reason = this.rejected ? null : LiveLinks.rejection(code);
+    if (reason) this.rejected = { code, reason };
+    return !!this.rejected;
   },
 
   flush() {
@@ -12720,31 +12781,66 @@ const LiveSync = {
     if (this.pending && !this.saving) this.save();
   },
 
-  async save() {
+  // The page is being hidden or closed: send the waiting save now instead of
+  // leaving it to the debounce timer. keepalive lets the request outlive the page.
+  flushOnExit() {
+    if (!this.pending || this.saving) return;
+    this.save({ keepalive: true });
+  },
+
+  // The server forgot this link: push this browser's copy back under the same ID.
+  recreateLink(id) {
+    this.recreateId = id;
+    this.pending = true;
+    this.save();
+  },
+
+  async save({ keepalive = false } = {}) {
     clearTimeout(this.saveTimer);
     const link = currentLiveLink();
     const code = link && currentShareCode();
-    if (!link || !LiveLinks.needsPush(link.entry, code)) { this.pending = false; this.refreshStatus(); return; }
+    const recreating = !!link && this.recreateId === link.entry.id;
+    if (!link || !(recreating || LiveLinks.needsPush(link.entry, code)) || this.blocked(code)) {
+      // Nothing (left) to push, so a failed attempt no longer matters.
+      this.pending = false;
+      this.failed = false;
+      this.refreshStatus();
+      return;
+    }
+    if (!keepalive && Date.now() < this.backoffUntil) {
+      // Rate limited: wait it out.
+      this.pending = true;
+      this.saveTimer = setTimeout(() => this.save(), this.backoffUntil - Date.now());
+      this.refreshStatus();
+      return;
+    }
     this.saving = true;
     try {
       const resp = await fetch(SHARE_API, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: link.entry.id, code }),
-        signal: AbortSignal.timeout?.(8000),
+        keepalive,
+        signal: timeoutSignal(8000),
       });
-      if (!resp.ok) throw new Error('share ' + resp.status);
+      if (!resp.ok) throw await shareError(resp);
       const { updatedAt } = await resp.json();
       bindLiveLink(link.planKey, link.entry.id, code, Number(updatedAt) || 0);
       this.failed = false;
-    } catch {
-      // Retried by the next poll tick (or the next change).
+      this.rejected = null;
+      this.backoffUntil = 0;
+      if (recreating) this.recreateId = null;
+    } catch (err) {
+      // Retried by the next poll tick (or the next change), unless the server
+      // refused this code for good.
       this.failed = true;
+      if (err.retryAfterMs) this.backoffUntil = Date.now() + err.retryAfterMs;
+      else if (err.permanent) { this.failed = false; this.rejected = { code, reason: err.reason }; }
     }
     this.saving = false;
     // An edit made while the save was in flight still needs its own save.
     const now = currentLiveLink();
-    this.pending = this.failed || (!!now && LiveLinks.needsPush(now.entry, currentShareCode()));
+    this.pending = this.failed || (!!now && !this.blocked(currentShareCode()) && LiveLinks.needsPush(now.entry, currentShareCode()));
     if (this.pending && !this.failed) this.saveTimer = setTimeout(() => this.save(), LIVE_SAVE_DELAY_MS);
     this.refreshStatus();
   },
@@ -12754,12 +12850,16 @@ const LiveSync = {
     const link = currentLiveLink();
     if (!link) return;
     if (this.failed) { this.save(); return; }
-    if (this.pending) return;
+    if (this.pending || this.rejected) return;
+    if (Date.now() < this.backoffUntil) return;
 
     let remote;
-    try { remote = await fetchLiveLink(link.entry.id); } catch { return; }
+    try { remote = await fetchLiveLink(link.entry.id); } catch (err) {
+      if (err.retryAfterMs) this.backoffUntil = Date.now() + err.retryAfterMs;
+      return;
+    }
     // An expired link is re-created from this browser's copy.
-    if (remote === null) { this.pending = true; this.save(); return; }
+    if (remote === null) { this.recreateLink(link.entry.id); return; }
 
     const now = currentLiveLink();
     if (!now || now.planKey !== link.planKey) return;
@@ -12771,6 +12871,7 @@ const LiveSync = {
 
   statusText(fallback) {
     if (!currentLiveLink()) return fallback;
+    if (this.rejected) return 'Live link not synced: ' + this.rejected.reason;
     if (this.failed) return 'Live link not synced, retrying';
     if (this.pending || this.saving) return 'Syncing live link...';
     return 'Synced to live link';
@@ -12786,7 +12887,8 @@ const LiveSync = {
 
   start() {
     setInterval(() => this.pull(), LIVE_POLL_MS);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.pull(); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.flushOnExit(); else this.pull(); });
+    window.addEventListener('pagehide', () => this.flushOnExit());
   },
 };
 
@@ -12800,13 +12902,13 @@ async function getShareLink() {
     return { url: window.location.origin + liveLinkPath(existing.entry.id), live: true };
   }
   const planKey = LiveLinks.planKey(State);
-  if (!planKey) return fallback;
+  if (!planKey || LiveLinks.rejection(code)) return fallback;
   try {
     const resp = await fetch(SHARE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
-      signal: AbortSignal.timeout?.(5000),
+      signal: timeoutSignal(5000),
     });
     if (!resp.ok) return fallback;
     const { id, updatedAt } = await resp.json();
@@ -12849,15 +12951,22 @@ async function loadFromShortLink() {
       showToast('Could not reach the server to open that share link');
       return false;
     }
-    if (!remote) { showToast('That share link has expired or does not exist (links last 30 days after the last change)'); return false; }
 
     // This browser already owns a plan on that link: reopen it quietly (it is
     // saved on this device, so nothing is replaced) and catch up.
     const bound = LiveLinks.findById(linkStorage(), id);
     let saved = null;
     try { saved = bound && PlanStore.read(localStorage).find(p => LiveLinks.planKey(p.data) === bound.planKey); } catch {}
+    if (!remote && !saved) { showToast('That share link has expired or does not exist (links last 30 days after the last change)'); return false; }
     if (saved) {
       if (LiveLinks.planKey(State) !== bound.planKey) PlanStore.restore(saved.data);
+      if (!remote) {
+        // The server forgot the link, but this browser's copy is still here: bring the link back.
+        renderGroups();
+        LiveSync.recreateLink(id);
+        showToast(`Opened live raid "${State.rosterName}" (its link had expired, restoring it)`);
+        return true;
+      }
       const entry = LiveLinks.get(linkStorage(), bound.planKey);
       const caughtUp = LiveLinks.shouldApply(entry, remote, false) && remote.code !== currentShareCode() && applyRemoteLiveCode(id, remote);
       if (!caughtUp) renderGroups();
