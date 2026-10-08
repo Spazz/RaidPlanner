@@ -47,6 +47,7 @@
 !commit-tests.js
 !nav-tests.js
 !share-tests.js
+!headers-tests.js
 !livesync-tests.js
 !security-tests.js
 !state-persistence-tests.js
