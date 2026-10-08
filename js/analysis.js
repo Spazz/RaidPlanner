@@ -1,10 +1,14 @@
-// ── BUFF CALCULATOR (from Optimizer.lua GetGroupBuffs) ──────────
-function getGroupBuffs(players, groupIndex) {
+// ── BUFF CALCULATOR ─────────────────────────────────────────────
+// The buffs a group displays are the buffs the optimizer scores: both come from
+// Optimizer.resolveBuffSources valued by Optimizer.buffValueFn, so the badges,
+// the "why here" explanations and groupScore() can never disagree (two shamans
+// give two different totems, not the same one twice). Only the manual totem/aura
+// overrides are display state the scorer never sees.
+//
+// A totem worth nothing to anyone in the group is credited by no one, so it is
+// not shown either (a lone shaman with nobody to buff shows no totem).
+function getGroupBuffs(players, groupIndex, groups = State.groups) {
   if (!GameVersions[State.gameVersion].modeled) return [];
-  const rules = activeRules();
-  const buffList = [];
-  const passiveAdded = new Set(); // prevent duplicate passive buffs
-  const usedAuras = new Set(); // prevent duplicate paladin auras in auto-assign
 
   // Determine dominant role
   const roleCounts = {};
@@ -14,134 +18,31 @@ function getGroupBuffs(players, groupIndex) {
     if (count > maxCount) { maxCount = count; dominantRole = role; }
   }
 
-  for (const player of players) {
-    if (player.class === 'SHAMAN') {
-      // Each shaman provides one totem per element
-      const shamanTotems = {}; // element → { buffId, isOverride }
+  const priorityOf = (id) => getBuffPriority(Config.Buffs[id], dominantRole);
+  const value = Optimizer.buffValueFn(players, groupIndex, groups, State.optimizerMode);
+  const overrideFor = groupIndex === undefined ? null : (player, slot) => {
+    const ov = State.buffOverrides[`${groupIndex}:${player.uid}:${slot}`];
+    return ov && Config.Buffs[ov.buffId] ? ov.buffId : undefined;
+  };
+  const overridden = new Set();
+  const sources = Optimizer.resolveBuffSources(players, value, { overrideFor, overridden });
 
-      // Check for overrides first
-      if (groupIndex !== undefined) {
-        for (const element of ['air', 'fire', 'water', 'earth']) {
-          const key = `${groupIndex}:${player.uid}:${element}`;
-          const ov = State.buffOverrides[key];
-          if (ov && Config.Buffs[ov.buffId]) {
-            shamanTotems[element] = { buffId: ov.buffId, isOverride: true };
-          }
-        }
-      }
-
-      // Auto-select remaining elements
-      for (const [buffId, buff] of Object.entries(Config.Buffs)) {
-        if (buff.sourceClass !== 'SHAMAN') continue;
-        if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
-        const element = rules.totemElements[buffId];
-        if (!element) continue;
-        if (shamanTotems[element]?.isOverride) continue;
-
-        if (!shamanTotems[element]) {
-          shamanTotems[element] = { buffId };
-        } else {
-          // Windfury-over-other-air-totem convention (Classic/Forever only —
-          // rules.meleeGroupWindfuryBias is unset for TBC). Picking the air
-          // totem by the group's dominant ROLE misfires the moment a melee
-          // group's plurality is healers/tanks riding along as the totem
-          // source (2 healers + 1 rogue reads as "dominantRole: healer",
-          // whose best air totem is Grace of Air) even though the group's
-          // actual melee_dps member is who the convention says should get
-          // Windfury. Force the melee-favoring pick whenever the group holds
-          // a real (non-shaman) melee DPS, regardless of which role plurality
-          // wins the headcount.
-          const airRole = (rules.rules.meleeGroupWindfuryBias && rules.bestAirTotem.melee_dps === 'WINDFURY'
-            && players.some(p => p.role === 'melee_dps' && p.class !== 'SHAMAN')) ? 'melee_dps' : dominantRole;
-          const bestForRole = rules.bestAirTotem[airRole];
-          if (element === 'air' && buffId === bestForRole) {
-            shamanTotems[element] = { buffId };
-          } else if (element === 'water' && buffId === 'MANA_TIDE') {
-            shamanTotems[element] = { buffId };
-          }
-        }
-      }
-
-      for (const [, entry] of Object.entries(shamanTotems)) {
-        const buff = Config.Buffs[entry.buffId];
-        if (buff) buffList.push({ id: entry.buffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: !!entry.isOverride });
-      }
-
-      // Non-totem Shaman passives (e.g. Unleashed Rage) — one per unique buff type
-      for (const [buffId, buff] of Object.entries(Config.Buffs)) {
-        if (buff.sourceClass !== 'SHAMAN') continue;
-        if (rules.totemElements[buffId]) continue;
-        if (buff.sourceSpec && buff.sourceSpec !== player.spec) continue;
-        if (passiveAdded.has(buffId)) continue;
-        passiveAdded.add(buffId);
-        buffList.push({ id: buffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: false });
-      }
-
-    } else if (player.class === 'PALADIN') {
-      // Each paladin provides one aura — avoid duplicating auras already assigned
-      let auraBuffId, isOverride = false;
-
-      if (groupIndex !== undefined) {
-        const key = `${groupIndex}:${player.uid}:aura`;
-        const ov = State.buffOverrides[key];
-        if (ov && Config.Buffs[ov.buffId]) {
-          auraBuffId = ov.buffId;
-          isOverride = true;
-        }
-      }
-
-      if (!auraBuffId) {
-        // Pick best available aura not already used by another paladin.
-        // A Retribution paladin runs Sanctity Aura (2% party damage) and a
-        // Protection paladin runs Devotion on themselves; otherwise the
-        // group's dominant role decides. Taken auras fall through.
-        const candidates = paladinAurasFor(player);
-        const specPick = (rules.rules.specAura || {})[player.spec];
-        const preferred = (specPick && !usedAuras.has(specPick))
-          ? specPick
-          : (rules.bestPaladinAura[dominantRole] || 'DEVOTION_AURA');
-        if (candidates.includes(preferred) && !usedAuras.has(preferred)) {
-          auraBuffId = preferred;
-        } else {
-          // Pick the highest-priority aura not yet taken
-          const allAuras = candidates
-            .filter(id => !usedAuras.has(id))
-            .sort((a, b) => getBuffPriority(Config.Buffs[b], dominantRole) - getBuffPriority(Config.Buffs[a], dominantRole));
-          auraBuffId = allAuras[0] || preferred; // fallback if all taken
-        }
-      }
-
-      usedAuras.add(auraBuffId);
-      const buff = Config.Buffs[auraBuffId];
-      if (buff) buffList.push({ id: auraBuffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride });
-
-    } else {
-      // Passive buffs — one per unique buff type in the group
-      for (const [buffId, buff] of Object.entries(Config.Buffs)) {
-        if (player.class !== buff.sourceClass) continue;
-        if (buff.sourceSpec && player.spec !== buff.sourceSpec) continue;
-        if (rules.totemElements[buffId] || rules.paladinAuras[buffId]) continue;
-        if (passiveAdded.has(buffId)) continue;
-        passiveAdded.add(buffId);
-        buffList.push({ id: buffId, buff, sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: false });
-      }
+  // The scorer credits a Restoration shaman with both Mana Spring and Mana Tide,
+  // but the badge row shows one water totem per shaman: the cooldown replaces
+  // the standing totem it is dropped over.
+  const rules = activeRules();
+  for (const [id, player] of sources) {
+    if (!COOLDOWN_TOTEMS.has(id)) continue;
+    for (const [other, otherPlayer] of sources) {
+      if (otherPlayer === player && other !== id && rules.totemElements[other] === rules.totemElements[id]) sources.delete(other);
     }
   }
 
-  // Exclusive buff sets (Forever: Leader of the Pack / Moonkin Aura) — a
-  // group that produced both keeps only the higher-priority one, so coverage
-  // badges and insights don't double-count a slot the group only fills once.
-  for (const set of (rules.rules && rules.rules.exclusiveBuffs) || []) {
-    const entries = buffList.filter(b => set.includes(b.id));
-    if (entries.length < 2) continue;
-    entries.sort((a, b) => getBuffPriority(b.buff, dominantRole) - getBuffPriority(a.buff, dominantRole));
-    for (const drop of entries.slice(1)) {
-      const idx = buffList.indexOf(drop);
-      if (idx >= 0) buffList.splice(idx, 1);
-    }
+  const buffList = [];
+  for (const [id, player] of sources) {
+    buffList.push({ id, buff: Config.Buffs[id], sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: overridden.has(id) });
   }
-
-  buffList.sort((a, b) => getBuffPriority(b.buff, dominantRole) - getBuffPriority(a.buff, dominantRole));
+  buffList.sort((a, b) => priorityOf(b.id) - priorityOf(a.id));
   return buffList;
 }
 

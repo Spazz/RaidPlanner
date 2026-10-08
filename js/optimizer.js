@@ -1151,12 +1151,42 @@ const Optimizer = {
 
   // Buffs the group actually gets: passives deduped, one totem per element
   // per shaman (chosen by group value — models totem assignments/twisting),
-  // one distinct aura per paladin (best available by group value).
+  // one distinct aura per paladin (best available by group value). The scorer
+  // only needs the ids; getGroupBuffs shows the same resolution with sources.
   resolveGroupBuffs(group, valueFn) {
+    return new Set(this.resolveBuffSources(group, valueFn).keys());
+  },
+
+  // The resolution behind resolveGroupBuffs, with source tracking: a Map of
+  // buffId -> the player providing it (the first to provide it, for passives).
+  // `opts` is display-only: { overrideFor(player, slot) -> buffId|undefined }
+  // pins a shaman's air/fire/water/earth totem or a paladin's 'aura' to a manual
+  // choice (resolved first, so no auto pick duplicates it),
+  // and `overridden` collects the ids that came from such a choice. The scorer
+  // passes neither.
+  resolveBuffSources(group, valueFn, opts) {
     const rules = activeRules();
-    const chosen = new Set();
+    const overrideFor = opts && opts.overrideFor;
+    const sources = new Map();
     const usedAuras = new Set();
+    const pinned = new Map(); // player -> Set of slots fixed by an override
+    if (overrideFor) {
+      for (const p of group) {
+        const slots = p.class === 'SHAMAN' ? ['air', 'fire', 'water', 'earth'] : p.class === 'PALADIN' ? ['aura'] : [];
+        for (const slot of slots) {
+          const id = overrideFor(p, slot);
+          if (!id) continue;
+          if (!pinned.has(p)) pinned.set(p, new Set());
+          pinned.get(p).add(slot);
+          if (slot === 'aura') usedAuras.add(id);
+          if (sources.has(id)) continue;
+          sources.set(id, p);
+          if (opts.overridden) opts.overridden.add(id);
+        }
+      }
+    }
     for (const p of group) {
+      const fixed = pinned.get(p);
       if (p.class === 'SHAMAN') {
         const byElement = {};
         for (const [id, buff] of Object.entries(Config.Buffs)) {
@@ -1168,31 +1198,36 @@ const Optimizer = {
           // water slot made a second Resto Shaman look like it "unlocked"
           // Mana Spring, so two piled into the tank group.
           if (el && !COOLDOWN_TOTEMS.has(id)) (byElement[el] = byElement[el] || []).push(id);
-          else chosen.add(id); // shaman passives (e.g. Unleashed Rage)
+          else if (!sources.has(id)) sources.set(id, p); // shaman passives (e.g. Unleashed Rage)
         }
         for (const el of Object.keys(byElement)) {
+          if (fixed && fixed.has(el)) continue;
           let best = null, bestV = 0;
           for (const id of byElement[el]) {
-            if (chosen.has(id)) continue; // another shaman already provides it
+            if (sources.has(id)) continue; // another shaman already provides it
             const v = valueFn(id);
             if (v > bestV) { bestV = v; best = id; }
           }
-          if (best) chosen.add(best);
+          if (best) sources.set(best, p);
         }
       } else if (p.class === 'PALADIN') {
+        if (fixed) continue;
+        // A tie goes to the spec's own aura (Retribution runs Sanctity, Protection
+        // Devotion) - equal value either way, so scores never move.
+        const specPick = (rules.rules.specAura || {})[p.spec];
+        const open = paladinAurasFor(p).filter(id => !usedAuras.has(id));
         let best = null, bestV = -1;
-        for (const id of paladinAurasFor(p)) {
-          if (usedAuras.has(id)) continue;
+        for (const id of open) {
           const v = valueFn(id);
-          if (v > bestV) { bestV = v; best = id; }
+          if (v > bestV || (v === bestV && id === specPick)) { bestV = v; best = id; }
         }
-        if (best) { usedAuras.add(best); chosen.add(best); }
+        if (best) { usedAuras.add(best); if (!sources.has(best)) sources.set(best, p); }
       } else {
         for (const [id, buff] of Object.entries(Config.Buffs)) {
           if (buff.sourceClass !== p.class) continue;
           if (buff.sourceSpec && buff.sourceSpec !== p.spec) continue;
           if (rules.totemElements[id] || rules.paladinAuras[id]) continue;
-          chosen.add(id);
+          if (!sources.has(id)) sources.set(id, p);
         }
       }
     }
@@ -1201,20 +1236,23 @@ const Optimizer = {
     // group, so a group with both a Feral and a Balance druid scores exactly
     // one of them instead of double-counting.
     for (const set of (rules.rules && rules.rules.exclusiveBuffs) || []) {
-      const present = set.filter(id => chosen.has(id));
+      const present = set.filter(id => sources.has(id));
       if (present.length < 2) continue;
       let best = present[0], bestV = valueFn(best);
       for (const id of present.slice(1)) {
         const v = valueFn(id);
         if (v > bestV) { bestV = v; best = id; }
       }
-      for (const id of present) if (id !== best) chosen.delete(id);
+      for (const id of present) if (id !== best) sources.delete(id);
     }
-    return chosen;
+    return sources;
   },
 
-  // The single objective all phases share. Higher = better group.
-  groupScore(group, gi, groups, mode) {
+  // The value function behind every buff decision for a group: what one buff
+  // is worth to THIS group in the given mode. groupScore sums it over the
+  // buffs resolveGroupBuffs credits; getGroupBuffs resolves the displayed
+  // buffs with the same function so display, explanations and scoring agree.
+  buffValueFn(group, gi, groups, mode) {
     const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
     const rules = activeRules();
     const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
@@ -1231,7 +1269,7 @@ const Optimizer = {
     // not a mitigation one — so it scales with the structure weight. This is
     // what keeps a lone Resto Shaman with the tank healers instead of chasing
     // Mana Tide value in a mage group.
-    const buffValue = (id) => {
+    return (id) => {
       let v = 0;
       for (const m of group) v += dpsValueFor(id, m) * cfg.dps;
       for (const t of tanks) v += mitValueFor(id, t) * cfg.mit;
@@ -1254,6 +1292,18 @@ const Optimizer = {
       }
       return v;
     };
+  },
+
+  // The single objective all phases share. Higher = better group.
+  groupScore(group, gi, groups, mode) {
+    const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
+    const rules = activeRules();
+    const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
+    const isTank = this.isTankGroup(gi, groups);
+    const healerCount = group.reduce((n, p) => n + (p.role === 'healer' ? 1 : 0), 0);
+    const tanks = group.filter(p => p.role === 'tank');
+
+    const buffValue = this.buffValueFn(group, gi, groups, mode);
 
     let score = 0;
     for (const id of this.resolveGroupBuffs(group, buffValue)) score += buffValue(id);

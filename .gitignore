@@ -42,6 +42,7 @@
 !import-tests.js
 !drums-tests.js
 !buffdata-tests.js
+!buffparity-tests.js
 !nav-tests.js
 !share-tests.js
 !livesync-tests.js
