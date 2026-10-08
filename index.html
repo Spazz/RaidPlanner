@@ -176,6 +176,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .split-preview-col h4 { font-family: var(--font-cond); color: var(--accent-gold); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; margin: 0 0 6px; }
 .split-preview-col p { margin: 4px 0; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
 .split-preview-classes { font-size: 11px; color: var(--text-muted); }
+.split-error { margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--accent-red); background: var(--bg-card); }
+.history-dialog .split-error p { margin: 0 0 8px; color: var(--accent-red); }
 .saved-empty { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
 /* Attendance history (backlog-2 #2) */
 .attendance-dialog { width: min(680px, calc(100vw - 24px)); }
@@ -2103,6 +2105,10 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   <div class="history-dialog-header"><h3 id="split-heading">Split into two raids</h3><button type="button" class="btn btn-secondary" id="btn-split-cancel">Cancel</button></div>
   <p>Raid A stays as your current plan; Raid B is saved as a new plan, both linked to the same Raid-Helper event so Refresh keeps working on either one.</p>
   <div class="split-preview" id="split-dialog-body"></div>
+  <div class="split-error" id="split-dialog-error" role="alert" hidden>
+    <p id="split-dialog-error-text"></p>
+    <button type="button" class="btn btn-secondary" id="btn-split-export">Export this plan as JSON</button>
+  </div>
   <div class="import-buttons"><button type="button" class="btn btn-primary" id="btn-split-create">Create both raids</button></div>
 </dialog>
 <dialog id="history-dialog" class="history-dialog" aria-labelledby="history-dialog-heading">
@@ -2915,6 +2921,7 @@ const State = {
   rosterName: NO_ROSTER_NAME,
   planId: null,
   sourceEventId: null, // Raid-Helper event the roster was imported from; enables Refresh
+  eventStartTime: null, // That event's start (epoch ms); dates exports and the print sheet. null = use today.
   optimizerMode: 'max_dps', // 'max_dps' | 'tank_mit' | 'balanced' | 'relaxed'
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
   // Manual overrides only (name-keyed, like buffOverrides) — see the
@@ -3671,6 +3678,9 @@ const Import = {
     }
 
     const diff = { success:true, added:[], removed:[], changed:[], restatus:[], demoted:[], promoted:[] };
+    // A rescheduled event moves the date exports show; absent from the response, the stored one stays.
+    const eventStartTime = PlanStore.eventStart(data);
+    if (eventStartTime) diff.eventStartTime = eventStartTime;
     const seen = new Set();
     for (const entry of entries) {
       const k = key(entry.name);
@@ -3931,7 +3941,7 @@ const Import = {
     const raidInfo = Config.Raids[State.selectedRaid];
     const versionLabel = chatSafe((GameVersions[State.gameVersion] || {}).name || State.gameVersion);
     const rosterLabel = chatSafe(State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : 'Unnamed Roster');
-    const dateStr = new Date().toLocaleDateString();
+    const dateStr = PlanStore.dayLabel();
 
     const playerLabel = (p) => `${chatSafe(p.name)} (${chatSafe(p.spec)} ${chatSafe(this._classLabel(p.class))})`;
     const playerList = (list) => list.map(playerLabel).join(', ');
@@ -3993,7 +4003,8 @@ const Import = {
     // Notes and manual assignment/backup/constraint/drummer edits only ride
     // along when present, so a plain TBC share link (the common case) stays
     // byte-for-byte as compact as before — byte-identical when unused.
-    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length || drummers.length || statuses || unplaced.length || encodeNames) {
+    const eventStartTime = PlanStore.cleanEventStart(State.eventStartTime);
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length || drummers.length || statuses || unplaced.length || encodeNames || eventStartTime) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
       const tail = {gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder};
       if (encodeNames) tail.encodedNames = true;
@@ -4004,6 +4015,7 @@ const Import = {
       if (drummers.length) tail.drummers = drummers;
       if (statuses) tail.signupStatuses = statuses;
       if (unplaced.length) tail.unplaced = unplaced;
+      if (eventStartTime) tail.eventStartTime = eventStartTime;
       parts.push(encodeURIComponent(JSON.stringify(tail)));
     }
     return parts.join(':');
@@ -4100,6 +4112,7 @@ const Import = {
     let playerConstraints = [];
     let drummers = [];
     let unplaced = [];
+    let eventStartTime = null;
     try {
       campfires = planning.campfires;
       gameVersion = planning.gameVersion || gameVersion;
@@ -4116,6 +4129,7 @@ const Import = {
         if (SignupStatus.clean(statuses[p.name])) p.signupStatus = statuses[p.name];
       }
       unplaced = SignupStatus.cleanUnplaced(planning.unplaced);
+      eventStartTime = PlanStore.cleanEventStart(planning.eventStartTime);
     }
     catch { return {success:false, error:'Share link has damaged preferred slots'}; }
     if (players.length === 0 && bench.length === 0 && preferredSlots.length === 0 && !(Array.isArray(campfires?.fires) && campfires.fires.some(f => f && [3,5,10].includes(f.capacity)))) {
@@ -4127,7 +4141,7 @@ const Import = {
       name: name || 'Shared Roster',
       playerCount: players.length,
       groupCount: numGroups,
-      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, unplaced, preferredSlots, preserveGroupOrder, notes, assignments, backups, playerConstraints, drummers },
+      data: { name: name || 'Shared Roster', campfires, gameVersion, raid, players, bench, unplaced, preferredSlots, preserveGroupOrder, notes, assignments, backups, playerConstraints, drummers, eventStartTime },
     };
   },
 
@@ -4163,6 +4177,9 @@ const Import = {
     const raid = parts[2];
     if (!Config.Raids[raid]) return { success:false, error:'Unknown raid: ' + raid };
 
+    // A PP:1 string holds only the seated groups, so nothing of the open plan
+    // (bench, notes, assignments, backups, overrides) may carry over into it.
+    PlanStore.startFresh();
     State.gameVersion = versionForRaid(raid);
     State.selectedRaid = raid;
     State.campfires = Campfires.empty();
@@ -4211,6 +4228,7 @@ const Import = {
       raid: State.selectedRaid,
       timestamp: Date.now(),
       sourceEventId: State.sourceEventId || null,
+      eventStartTime: State.eventStartTime || null,
       preferredSlots: State.preferredSlots.map(p => ({...p})),
       preserveGroupOrder: State.preserveGroupOrder,
       notes: State.notes || '',
@@ -4252,24 +4270,29 @@ const Import = {
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
 
+    // A player whose group does not exist in this raid (a saved roster for a
+    // bigger raid, a damaged number) waits on the bench rather than being
+    // counted this session and dropped on the next reload.
+    const misplaced = [];
     for (const p of PlayerIdentity.cleanList(data.players)) {
       const player = { uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber, imported:true };
       if (SignupStatus.clean(p.signupStatus)) player.signupStatus = p.signupStatus;
-      roster.push(player);
       const g = player.groupNumber;
-      if (g >= 1 && g <= numGroups) groups[g-1].push(player);
+      if (Number.isInteger(g) && g >= 1 && g <= numGroups) { roster.push(player); groups[g-1].push(player); }
+      else { player.groupNumber = 0; misplaced.push(player); }
     }
     State.bench = PlayerIdentity.cleanList(data.bench).map(p => ({
       uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role,
       groupNumber: 0, imported: true,
       ...(SignupStatus.clean(p.signupStatus) ? { signupStatus:p.signupStatus } : {}),
-    }));
+    })).concat(misplaced);
     State.unplaced = SignupStatus.cleanUnplaced(data.unplaced);
     State.roster = roster;
     State.groups = groups;
     State.campfires = Campfires.clean(data.campfires);
     State.rosterName = data.name || 'Loaded Roster';
     State.sourceEventId = data.sourceEventId || null;
+    State.eventStartTime = PlanStore.cleanEventStart(data.eventStartTime);
     State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
     Assignments.restore(data.assignments);
     Backups.restore(data.backups);
@@ -4538,7 +4561,7 @@ const PlanStore = {
   key: 'pp_working_plans',
   capture() {
     return JSON.parse(JSON.stringify({planId:State.planId, groups:State.groups, bench:State.bench, unplaced:State.unplaced || [],
-      campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId,
+      campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId, eventStartTime:State.eventStartTime,
       optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder,
       notes:State.notes || '',
       assignments:State.assignments, backups:State.backups, playerConstraints:Constraints.clean(State.playerConstraints),
@@ -4573,6 +4596,7 @@ const PlanStore = {
     State.gameVersion = data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc';
     State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
     State.preserveGroupOrder = data.preserveGroupOrder === true || PreferredSlots.hasManual();
+    State.eventStartTime = this.cleanEventStart(data.eventStartTime);
     State.groups = State.groups.map(g => PlayerIdentity.cleanList(g));
     State.bench = PlayerIdentity.cleanList(State.bench);
     State.roster = State.groups.flat();
@@ -4601,6 +4625,7 @@ const PlanStore = {
     State.roster = []; State.groups = []; State.bench = []; State.unplaced = [];
     State.rosterName = NO_ROSTER_NAME;
     State.sourceEventId = null;
+    State.eventStartTime = null;
     State.buffOverrides = {};
     State.notes = '';
     State.playerConstraints = [];
@@ -4608,11 +4633,24 @@ const PlanStore = {
     Assignments.restore(null);
     Backups.restore(null);
   },
+  // Epoch ms for a stored event start, or null when it is absent or not a usable date.
+  cleanEventStart(ms) {
+    return Number.isFinite(ms) && ms > 0 && Number.isFinite(new Date(ms).getTime()) ? ms : null;
+  },
+  // A Raid-Helper event's start as epoch ms, or null. startTime is Unix seconds
+  // (a millisecond value is tolerated), so anything below 1e12 is seconds.
+  eventStart(data) {
+    const raw = Number(data && (data.startTime || data.start_time));
+    return this.cleanEventStart(raw < 1e12 ? raw * 1000 : raw);
+  },
+  // The date exports and the print sheet show: the event's day, else today.
+  dayLabel() {
+    const start = this.cleanEventStart(State.eventStartTime);
+    return (start ? new Date(start) : new Date()).toLocaleDateString();
+  },
   nameFor(data, eventId) {
     const title = typeof data.title === 'string' ? data.title.trim() : '';
-    const raw = data.startTime || data.start_time;
-    const date = raw ? new Date(Number(raw) * (Number(raw) < 1e12 ? 1000 : 1)) : null;
-    const day = date && Number.isFinite(date.getTime()) ? date.toLocaleDateString() : new Date().toLocaleDateString();
+    const day = new Date(this.eventStart(data) || Date.now()).toLocaleDateString();
     return (title || (Config.Raids[State.selectedRaid]?.name || 'Raid') + (eventId ? ' · Event ' + eventId : '')) + ' · ' + day;
   },
 };
@@ -5330,6 +5368,7 @@ const RandomRoster = {
     State.groups = groups;
     State.rosterName = 'Random ' + size + '-man Roster';
     State.sourceEventId = null;
+    State.eventStartTime = null;
     State.bench = [];
     State.unplaced = [];
     State.buffOverrides = {};
@@ -8807,7 +8846,7 @@ const PrintSheet = {
     const esc = this._esc;
     const raidInfo = Config.Raids[State.selectedRaid] || {};
     const versionLabel = (GameVersions[State.gameVersion] || {}).name || State.gameVersion;
-    const dateStr = new Date().toLocaleDateString();
+    const dateStr = PlanStore.dayLabel();
     const rosterLabel = State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : 'Unnamed Roster';
     const modeled = !!(GameVersions[State.gameVersion] || {}).modeled;
 
@@ -8931,26 +8970,30 @@ function compareOptimizerModes() {
   const baseBench = JSON.parse(JSON.stringify(savedBench || []));
 
   const results = {};
-  for (const mode of Object.keys(MODE_CONFIG)) {
-    State.groups = JSON.parse(JSON.stringify(baseGroups));
-    State.bench = JSON.parse(JSON.stringify(baseBench));
-    State.preferredSlots = [];
-    State.optimizerMode = mode;
-    Optimizer.optimize();
-    results[mode] = summarizeCandidateLayout(State.groups, State.bench);
-    // Exposed for tests (and any future debug UI) to verify byte-for-byte
-    // that Compare's candidate layout matches a direct Optimizer.optimize()
-    // call with the same inputs/mode — these are already local clones made
-    // above, not references into the live board.
-    results[mode].groups = State.groups;
-    results[mode].bench = State.bench;
+  // try/finally: an exception from the optimizer or the summary must not leave
+  // the live board holding a comparison run's layout.
+  try {
+    for (const mode of Object.keys(MODE_CONFIG)) {
+      State.groups = JSON.parse(JSON.stringify(baseGroups));
+      State.bench = JSON.parse(JSON.stringify(baseBench));
+      State.preferredSlots = [];
+      State.optimizerMode = mode;
+      Optimizer.optimize();
+      results[mode] = summarizeCandidateLayout(State.groups, State.bench);
+      // Exposed for tests (and any future debug UI) to verify byte-for-byte
+      // that Compare's candidate layout matches a direct Optimizer.optimize()
+      // call with the same inputs/mode — these are already local clones made
+      // above, not references into the live board.
+      results[mode].groups = State.groups;
+      results[mode].bench = State.bench;
+    }
+  } finally {
+    State.groups = savedGroups;
+    State.bench = savedBench;
+    State.roster = savedRoster;
+    State.optimizerMode = savedMode;
+    State.preferredSlots = savedPreferredSlots;
   }
-
-  State.groups = savedGroups;
-  State.bench = savedBench;
-  State.roster = savedRoster;
-  State.optimizerMode = savedMode;
-  State.preferredSlots = savedPreferredSlots;
   return results;
 }
 
@@ -11856,6 +11899,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   }
   if (result.preferredImport) {
     State.sourceEventId = src.eventId || State.sourceEventId;
+    State.eventStartTime = PlanStore.eventStart(metadata) || State.eventStartTime;
     if (src.eventId) State.planId = 'event:' + src.eventId;
     if (State.rosterName === NO_ROSTER_NAME) State.rosterName = PlanStore.nameFor(metadata, src.eventId);
     RaidHelperSync.hideBanner(); initGroups(); renderGroups();
@@ -11866,6 +11910,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   State.planId = src.eventId ? 'event:' + src.eventId : null;
   State.rosterName = PlanStore.nameFor(metadata, src.eventId);
   State.sourceEventId = src.eventId || null;
+  State.eventStartTime = PlanStore.eventStart(metadata);
   RaidHelperSync.hideBanner();
   document.getElementById('raid-select').value = State.selectedRaid;
   const foldBenched = initGroups();
@@ -12007,6 +12052,7 @@ const RaidHelperSync = {
   // has a plan; `lead` opens the toast.
   apply(diff, lead) {
     this.hideBanner();
+    if (diff.eventStartTime) State.eventStartTime = diff.eventStartTime;
     const counts = Import.hasRaidHelperChanges(diff) ? Import.applyRaidHelperSync(diff) : null;
     initGroups();
     renderGroups();
@@ -12138,22 +12184,54 @@ const SplitFlow = {
     const result = RaidSplit.split(all, State.selectedRaid, State.gameVersion);
     if (!result) { showToast('Cannot split: unknown raid'); return; }
     this.pending = result;
+    document.getElementById('split-dialog-error').hidden = true;
     this.renderPreview(result);
     document.getElementById('split-dialog').showModal();
+  },
+  showSaveError() {
+    document.getElementById('split-dialog-error-text').textContent =
+      "Raid B could not be saved because this browser's storage is full, so the raids were not split and your plan is unchanged. Export this plan as JSON, clear old saved rosters, then try again.";
+    document.getElementById('split-dialog-error').hidden = false;
   },
   create() {
     const result = this.pending;
     if (!result) return;
+    document.getElementById('split-dialog-error').hidden = true;
     const raidInfo = Config.Raids[result.raidKey];
     const mode = State.optimizerMode || 'max_dps';
+
+    // Raid B is saved before anything about Raid A changes, so a failed save
+    // leaves the plan whole. Its players are copies: arranging them cannot
+    // touch the live board.
+    const copy = (list) => JSON.parse(JSON.stringify(list));
+    const groupsB = Optimizer.arrange(copy(result.b.seated), raidInfo.groups, raidInfo.size, 5, mode);
+    groupsB.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+    const benchB = copy(result.b.bench).map(p => { p.groupNumber = 0; return p; });
+
+    // Raid B becomes its own saved plan sharing this plan's sourceEventId
+    // (compound-keyed by planId + gameVersion, same as every other saved
+    // plan — see PlanStore), so Refresh keeps working on either one without
+    // disturbing the 'event:<id>' lookup importFromText() uses to reopen A.
+    const baseName = State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : (raidInfo.name || 'Raid');
+    const planId = State.planId || 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const dataB = {
+      planId: planId + ':B',
+      groups: groupsB, bench: benchB,
+      campfires: Campfires.empty(),
+      gameVersion: State.gameVersion, selectedRaid: State.selectedRaid,
+      rosterName: baseName + ' - Raid B',
+      sourceEventId: State.sourceEventId,
+      eventStartTime: State.eventStartTime,
+      optimizerMode: mode,
+      buffOverrides: {}, preferredSlots: [], preserveGroupOrder: false,
+      notes: '', assignments: { tankHealers:{}, blessings:{}, debuffs:{} }, backups: {},
+    };
+    try { PlanStore.save(localStorage, dataB); }
+    catch { this.showSaveError(); return; }
 
     const groupsA = Optimizer.arrange(result.a.seated, raidInfo.groups, raidInfo.size, 5, mode);
     groupsA.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
     const benchA = result.a.bench.map(p => { p.groupNumber = 0; return p; });
-
-    const groupsB = Optimizer.arrange(result.b.seated, raidInfo.groups, raidInfo.size, 5, mode);
-    groupsB.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
-    const benchB = result.b.bench.map(p => { p.groupNumber = 0; return p; });
 
     // Raid A replaces the current plan in place; stale manual state tied to
     // players who ended up in Raid B is dropped by the usual reconcile pass.
@@ -12162,25 +12240,7 @@ const SplitFlow = {
     State.roster = groupsA.flat();
     Assignments.reconcileRoster();
     Backups.reconcile();
-
-    // Raid B becomes its own saved plan sharing this plan's sourceEventId
-    // (compound-keyed by planId + gameVersion, same as every other saved
-    // plan — see PlanStore), so Refresh keeps working on either one without
-    // disturbing the 'event:<id>' lookup importFromText() uses to reopen A.
-    const baseName = State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : (raidInfo.name || 'Raid');
-    if (!State.planId) State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    const dataB = {
-      planId: State.planId + ':B',
-      groups: groupsB, bench: benchB,
-      campfires: Campfires.empty(),
-      gameVersion: State.gameVersion, selectedRaid: State.selectedRaid,
-      rosterName: baseName + ' - Raid B',
-      sourceEventId: State.sourceEventId,
-      optimizerMode: mode,
-      buffOverrides: {}, preferredSlots: [], preserveGroupOrder: false,
-      notes: '', assignments: { tankHealers:{}, blessings:{}, debuffs:{} }, backups: {},
-    };
-    try { PlanStore.save(localStorage, dataB); } catch {}
+    State.planId = planId;
 
     document.getElementById('split-dialog').close();
     this.dismiss();
@@ -12194,6 +12254,7 @@ document.getElementById('btn-split-offer').addEventListener('click', () => Split
 document.getElementById('btn-split-dismiss').addEventListener('click', () => SplitFlow.dismiss());
 document.getElementById('btn-split-cancel').addEventListener('click', () => document.getElementById('split-dialog').close());
 document.getElementById('btn-split-create').addEventListener('click', () => SplitFlow.create());
+document.getElementById('btn-split-export').addEventListener('click', () => document.getElementById('btn-export-json').click());
 
 // ── IMPORT MODAL (toolbar) ──────────────────────────────────────
 function closeImportOverlay() {

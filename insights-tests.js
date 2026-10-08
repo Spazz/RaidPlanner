@@ -194,6 +194,34 @@ runCompareModesSuite('TBC 25-man', 'tbc', 'bt');
 runCompareModesSuite('Classic 40-man', 'classic', 'mc');
 runCompareModesSuite('Forever 40-man', 'forever', 'f_ony');
 
+check('compareOptimizerModes: an exception mid-run restores the live board (try/finally)', () => {
+  resetState('tbc', 'bt');
+  RandomRoster.generate();
+  State.optimizerMode = 'tank_mit';
+  State.preferredSlots = [{ group: 0, class: 'MAGE', spec: 'Fire' }];
+  const live = { groups: State.groups, bench: State.bench, roster: State.roster, mode: State.optimizerMode, slots: State.preferredSlots };
+  const before = JSON.stringify([State.groups, State.bench, State.roster, State.optimizerMode, State.preferredSlots]);
+  const realOptimize = Optimizer.optimize;
+  let calls = 0;
+  // Fail on the third mode, after the first two runs have already swapped State.
+  Optimizer.optimize = function () {
+    if (++calls === 3) throw new Error('optimizer blew up');
+    return realOptimize.apply(this, arguments);
+  };
+  try {
+    assert.throws(() => compareOptimizerModes(), /optimizer blew up/);
+  } finally {
+    Optimizer.optimize = realOptimize;
+  }
+  assert.equal(calls, 3, 'the failure happened mid-run');
+  assert.equal(State.groups, live.groups, 'same groups reference');
+  assert.equal(State.bench, live.bench, 'same bench reference');
+  assert.equal(State.roster, live.roster, 'same roster reference');
+  assert.equal(State.optimizerMode, live.mode);
+  assert.equal(State.preferredSlots, live.slots);
+  assert.equal(JSON.stringify([State.groups, State.bench, State.roster, State.optimizerMode, State.preferredSlots]), before);
+});
+
 check('compareOptimizerModes: returns null for an empty roster (nothing to compare)', () => {
   resetState('tbc', 'bt');
   assert.equal(compareOptimizerModes(), null);

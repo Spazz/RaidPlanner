@@ -2891,6 +2891,8 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   assert(await context.importFromText('123456789'), 'event ID import succeeds');
   assert(State.rosterName.startsWith('Fixture event'), 'event title used');
   assertEqual(State.planId,'event:123456789','canonical event plan created');
+  assertEqual(State.eventStartTime,1790377200*1000,'event start time is stored with the plan');
+  assert(Import.exportChatText().split(String.fromCharCode(10))[0].includes(new Date(1790377200*1000).toLocaleDateString()),'chat export is dated with the event day');
   State.groups.reverse(); State.groups.forEach((g,gi)=>g.forEach(p=>p.groupNumber=gi+1));
   State.roster=State.groups.flat(); State.rosterName='Custom event name';
   PP.PlanStore.save(storage,PP.PlanStore.capture());
@@ -2898,6 +2900,7 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   PP.PlanSession.previous=null; PP.PlanSession.undo=[]; PP.PlanSession.ready=true;
   PP.PlanSession.observe();
   payload.signUps.push({name:'NewMage',className:'Mage',specName:'Frost'});
+  payload.startTime=1790550000; // the event was rescheduled
   assert(await context.importFromText('https://raid-helper.dev/event/123456789'), 'same event URL reopens');
   PP.PlanSession.observe();
   assertEqual(JSON.stringify(State.groups),layout,'reimport preserves edited groups');
@@ -2906,6 +2909,7 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   assertEqual(State.bench.map(p=>p.name).join(),'NewMage','reimport pulls the new signup onto the bench without a Refresh click');
   assert(lastToast.startsWith('Reopened your plan: 1 new sign-up'),'reimport toast reports what changed');
   assertEqual(PP.PlanStore.read(storage)[0].data.bench.length,1,'merged sign-ups are saved with the plan');
+  assertEqual(State.eventStartTime,1790550000*1000,'reopening picks up the rescheduled event start');
   PP.PlanSession.undoLast(); PP.PlanSession.observe();
   assertEqual(State.bench.length,0,'reimport merge can be undone');
   assertEqual(JSON.stringify(State.groups),layout,'undo keeps original layout');
@@ -2922,6 +2926,7 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   PP.PlanSession.observe();
   assertEqual(State.planId,'event:987654321','other event gets its own plan');
   assertEqual(State.sourceEventId,'987654321','other event is the linked source');
+  assertEqual(State.eventStartTime,1790463600*1000,'other event plan takes its own start time');
   assert(State.rosterName.startsWith('Other event'),'other event plan takes its own title');
   assertEqual([...State.roster,...State.bench].map(p=>p.name).sort().join(),'OtherPriest,OtherRogue','other event roster holds only its sign-ups');
   assertEqual(State.notes,'','other event plan does not inherit notes');
@@ -2929,6 +2934,14 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   const firstPlan=PP.PlanStore.read(storage).find(p=>p.data.planId==='event:123456789');
   assertEqual(firstPlan && firstPlan.data.rosterName,'Custom event name','first event plan keeps its name');
   assert(firstPlan && firstPlan.data.groups.flat().every(p=>p.name!=='OtherPriest'),'first event plan keeps its own roster');
+  // A leader who only planned Open slots (no linked event) fills them from an event: the date still comes along.
+  State.sourceEventId=null; State.eventStartTime=null; State.planId=null; State.rosterName=NO_ROSTER_NAME;
+  State.preferredSlots=[{group:0,class:'PRIEST',spec:'Holy'}];
+  payload={id:'111222333',title:'Planned event',startTime:1790600000,signUps:[{name:'PlannedPriest',className:'Priest',specName:'Holy'}]};
+  assert(await context.importFromText('https://raid-helper.xyz/event/111222333'), 'event fills planned Open slots');
+  assertEqual(State.eventStartTime,1790600000*1000,'Open-slot fill stores the event start time');
+  payload.startTime=undefined;
+  State.sourceEventId='111222333'; State.planId='event:111222333';
   PP.PlanSession.ready=false;
   console.log(`Results: ${passed} passed, ${failed} failed, ${totalTests} total`);
 if (failed === 0) {
