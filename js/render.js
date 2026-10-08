@@ -1019,6 +1019,7 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     if (!pending) return;
     clearTimeout(pending.timer);
     pending = null;
+    if (!active) disarmTouchMove();
   }
 
   function stopAutoScroll() {
@@ -1049,6 +1050,7 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     clearHighlights();
     stopAutoScroll();
     active = null;
+    disarmTouchMove();
   }
 
   function targetAt(x, y) {
@@ -1103,13 +1105,14 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     if (!src) return;
     const t = e.touches[0];
     cancelPending();
+    armTouchMove();
     pending = {
       x: t.clientX, y: t.clientY,
       timer: setTimeout(() => beginDrag(src, slot), LONG_PRESS_MS),
     };
   }, { passive: true });
 
-  document.addEventListener('touchmove', e => {
+  function onTouchMove(e) {
     if (pending) {
       const t = e.touches[0];
       if (Math.hypot(t.clientX - pending.x, t.clientY - pending.y) > MOVE_TOLERANCE) cancelPending();
@@ -1128,7 +1131,23 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
       autoScrollDir = dir;
       if (dir && !autoScrollFrame) autoScrollFrame = requestAnimationFrame(autoScrollStep);
     }
-  }, { passive: false });
+  }
+
+  // The only non-passive listener the page needs (it must preventDefault to stop the page
+  // scrolling under a drag). A permanent one on document would make every scroll gesture
+  // on the page wait for script, so it exists only from the moment a finger lands on a
+  // draggable slot until the press turns into a scroll, the drag ends, or the touch is cancelled.
+  let touchMoveArmed = false;
+  function armTouchMove() {
+    if (touchMoveArmed) return;
+    touchMoveArmed = true;
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+  }
+  function disarmTouchMove() {
+    if (!touchMoveArmed) return;
+    touchMoveArmed = false;
+    document.removeEventListener('touchmove', onTouchMove, { passive: false });
+  }
 
   document.addEventListener('touchend', e => {
     cancelPending();

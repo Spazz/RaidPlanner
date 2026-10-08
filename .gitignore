@@ -57,6 +57,7 @@
 !plan-state-tests.js
 !a11y-tests.js
 !icons-tests.js
+!touch-tests.js
 # Test runner, loader and CI (npm test; GitHub Actions runs it)
 !package.json
 !tests/
