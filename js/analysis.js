@@ -25,7 +25,7 @@ function getGroupBuffs(players, groupIndex, groups = State.groups) {
     return ov && Config.Buffs[ov.buffId] ? ov.buffId : undefined;
   };
   const overridden = new Set();
-  const sources = Optimizer.resolveBuffSources(players, value, { overrideFor, overridden });
+  const sources = Optimizer.resolveBuffSources(players, value, { overrideFor, overridden, preferSpecAura: true });
 
   // The scorer credits a Restoration shaman with both Mana Spring and Mana Tide,
   // but the badge row shows one water totem per shaman: the cooldown replaces

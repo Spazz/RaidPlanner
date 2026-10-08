@@ -395,12 +395,21 @@ const Optimizer = {
     OpenSlots.fill();
   },
 
+  // The adapter between State and plan(): reads the board and its settings,
+  // asks plan() for a layout, and applies the result.
   _optimizeSeats() {
     if (!GameVersions[State.gameVersion].modeled) {
       enforceRaidCapacity(State.groups, State.bench, Config.Raids[State.selectedRaid].groups);
       State.roster = State.groups.flat();
       return;
     }
+    const inputs = {
+      gameVersion: State.gameVersion,
+      mode: State.optimizerMode || 'max_dps',
+      constraints: State.playerConstraints || [],
+      drummers: State.drummers || [],
+      faction: Faction.current(),
+    };
     // Groups with open requests keep their existing layout. Optimize the remaining
     // groups without consuming the space deliberately left for future sign-ups.
     // The whole board is arranged with those groups frozen in place, not the
@@ -411,44 +420,72 @@ const Optimizer = {
       const frozen = State.groups.map((g, i) => PreferredSlots.forGroup(i).length ? g.slice() : null);
       const free = State.groups.filter((g, i) => !frozen[i]).flat();
       if (frozen.some(f => !f) && free.length) {
-        const groups = this.arrange(State.groups.flat(), State.groups.length, Config.Raids[State.selectedRaid].size, 5,
-          State.optimizerMode, { frozen });
-        // The freeze only applies to this run; the board keeps _roleIdentities.
-        delete groups._frozen; delete groups._frozenGroups; delete groups._cap;
-        groups.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
-        State.groups = groups;
-        State.roster = groups.flat();
+        const { groups } = this.plan(State.groups.flat(), {
+          ...inputs, numGroups: State.groups.length, raidSize: Config.Raids[State.selectedRaid].size, frozen,
+        });
+        this._applyPlan(groups, []);
       }
       return;
     }
     const raidInfo = Config.Raids[State.selectedRaid];
-    const numGroups = raidInfo ? raidInfo.groups : 5;
-    const raidSize = raidInfo ? raidInfo.size : 25;
-    const max = 5;
-    const mode = State.optimizerMode || 'max_dps';
-
     const pool = [];
     for (const group of State.groups) {
       for (const player of group) pool.push(player);
     }
     if (pool.length === 0) return;
+    const { groups, bench } = this.plan(pool, {
+      ...inputs, numGroups: raidInfo ? raidInfo.groups : 5, raidSize: raidInfo ? raidInfo.size : 25,
+    });
+    this._applyPlan(groups, bench);
+  },
 
-    // Over capacity: decide WHO sits first (floors, greedy, bench trades),
-    // then lay the seated set out exactly as a seated-only run would. The
-    // selection search takes a different path than a plain layout of the same
-    // players, so laying out from its intermediate board would leave the next
-    // Optimize click (which never sees the bench) in a different local optimum
-    // and reshuffle a board the first click just produced.
-    const seated = pool.length > numGroups * max
-      ? this.selectSeated(pool, numGroups, raidSize, max, mode)
-      : pool;
-    const groups = this.arrange(seated, numGroups, raidSize, max, mode);
-
+  // Writes a plan() result to the board: overflow joins the bench, every seated
+  // player learns their group, and the roster follows the groups.
+  _applyPlan(groups, bench) {
+    if (!State.bench) State.bench = [];
+    State.bench.push(...bench);
     for (let gi = 0; gi < groups.length; gi++) {
       for (const p of groups[gi]) p.groupNumber = gi + 1;
     }
     State.groups = groups;
     State.roster = groups.flat();
+  },
+
+  // Lays `players` out into groups from explicit inputs only: it reads and
+  // writes no State and no DOM (the rule lookups it leans on read `opts`
+  // through LayoutScope while it runs), so a caller can plan any roster under
+  // any settings without staging a board first. Deterministic for a given
+  // player set and opts, whatever order or arrangement the players arrive in.
+  //
+  // opts: { gameVersion, numGroups, raidSize, mode = 'max_dps', max = 5,
+  //   constraints = [], drummers = [], faction (default: detected from players),
+  //   frozen (per-group player arrays or null: those groups keep their members
+  //   and stay at their current size, see arrange) }.
+  // Returns { groups, bench }: `groups` is the board (it also carries
+  // _roleIdentities/_anchors for later scoring) and `bench` the players left
+  // over when the roster exceeds the raid. Seated players are stamped with
+  // their group (groupNumber) by the caller; the players passed in are not
+  // copied, so a benched one comes back with groupNumber 0 and a stale
+  // comp-template lock is cleared, exactly as arrange() has always done.
+  plan(players, opts) {
+    const { gameVersion, numGroups, raidSize, mode = 'max_dps', max = 5, constraints = [], drummers = [], frozen = null } = opts;
+    const faction = opts.faction !== undefined ? opts.faction : Faction.detect(players);
+    return LayoutScope.run({ gameVersion, faction, constraints, drummers }, () => {
+      // Over capacity: decide WHO sits first (floors, greedy, bench trades),
+      // then lay the seated set out exactly as a seated-only run would. The
+      // selection search takes a different path than a plain layout of the same
+      // players, so laying out from its intermediate board would leave the next
+      // Optimize click (which never sees the bench) in a different local optimum
+      // and reshuffle a board the first click just produced.
+      let seated = players, bench = [];
+      if (!frozen && players.length > numGroups * max) {
+        ({ seated, bench } = this.selectSeated(players, numGroups, raidSize, max, mode));
+      }
+      const groups = this.arrange(seated, numGroups, raidSize, max, mode, frozen ? { frozen } : undefined);
+      // The freeze only applies to this run; the board keeps _roleIdentities.
+      if (frozen) { delete groups._frozen; delete groups._frozenGroups; delete groups._cap; }
+      return { groups, bench };
+    });
   },
 
   // Canonical order. Greedy placement and swap refinement break ties by
@@ -654,8 +691,8 @@ const Optimizer = {
   // Bounded, deterministic, and a strict no-op with zero drummers tagged, so
   // the TBC scenario suite (which never tags any) is completely unaffected.
   spreadDrummers(groups, mode = State.optimizerMode || 'max_dps') {
-    if (State.gameVersion !== 'tbc') return;
-    if (!(State.drummers || []).length) return;
+    if (activeVersion() !== 'tbc') return;
+    if (!Drummers.tagged().length) return;
     const isDrummer = p => Drummers.isDrummer(p.name);
     const pairScore = (a, b) => this.groupScore(groups[a], a, groups, mode) + this.groupScore(groups[b], b, groups, mode);
     // Buff ids a group resolves that at least one of its members gets value from.
@@ -942,8 +979,8 @@ const Optimizer = {
   },
 
   // Decides who sits when more players are in the pool than the raid holds.
-  // Leftovers go to State.bench (groupNumber 0). Returns the seated players;
-  // the caller lays them out with arrange().
+  // Returns { seated, bench }: the leftovers (groupNumber 0) are the bench, and
+  // the caller lays the seated players out with arrange().
   selectSeated(players, numGroups, raidSize, max, mode) {
     const pool = this.sortedPool(players);
     const groups = [];
@@ -967,8 +1004,7 @@ const Optimizer = {
     // eligible for the bench refinement below; Tentative/Bench sign-ups and
     // anyone benched by hand are not in this list and are never pulled in.
     const overflow = [];
-    if (!State.bench) State.bench = [];
-    for (const p of pool.splice(0)) { p.groupNumber = 0; State.bench.push(p); overflow.push(p); }
+    for (const p of pool.splice(0)) { p.groupNumber = 0; overflow.push(p); }
 
     this.refineRounds(groups, max, mode);
 
@@ -981,7 +1017,7 @@ const Optimizer = {
     // settle the new layout before the next trade is judged.
     if (this.refineBench(groups, overflow, raidSize, mode)) this.refineRounds(groups, max, mode);
 
-    return groups.flat();
+    return { seated: groups.flat(), bench: overflow };
   },
 
   // Minimum tanks/healers for a raid size (see Config.RaidFloors).
@@ -1162,8 +1198,10 @@ const Optimizer = {
   // `opts` is display-only: { overrideFor(player, slot) -> buffId|undefined }
   // pins a shaman's air/fire/water/earth totem or a paladin's 'aura' to a manual
   // choice (resolved first, so no auto pick duplicates it),
-  // and `overridden` collects the ids that came from such a choice. The scorer
-  // passes neither.
+  // `overridden` collects the ids that came from such a choice, and
+  // `preferSpecAura` lets a paladin's own aura (Retribution: Sanctity) win a tie
+  // between equally valued auras. The scorer passes none, so its choices (and
+  // every optimizer outcome) stay exactly as they were.
   resolveBuffSources(group, valueFn, opts) {
     const rules = activeRules();
     const overrideFor = opts && opts.overrideFor;
@@ -1212,9 +1250,7 @@ const Optimizer = {
         }
       } else if (p.class === 'PALADIN') {
         if (fixed) continue;
-        // A tie goes to the spec's own aura (Retribution runs Sanctity, Protection
-        // Devotion) - equal value either way, so scores never move.
-        const specPick = (rules.rules.specAura || {})[p.spec];
+        const specPick = opts && opts.preferSpecAura ? (rules.rules.specAura || {})[p.spec] : null;
         const open = paladinAurasFor(p).filter(id => !usedAuras.has(id));
         let best = null, bestV = -1;
         for (const id of open) {
@@ -1472,8 +1508,6 @@ const Optimizer = {
       const out = g[best.si];
       g[best.si] = incoming;
       overflow[best.bi] = out;
-      const benchIdx = State.bench.indexOf(incoming);
-      if (benchIdx >= 0) State.bench[benchIdx] = out; else State.bench.push(out);
       out.groupNumber = 0;
       traded = true;
     }

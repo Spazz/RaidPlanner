@@ -132,6 +132,11 @@ const Constraints = {
     return out;
   },
 
+  // The pairs in force: State's, or the running plan's own.
+  pairs() {
+    return LayoutScope.current ? LayoutScope.current.constraints : (State.playerConstraints || []);
+  },
+
   forPlayer(name) {
     const lower = String(name || '').toLowerCase();
     return (State.playerConstraints || []).filter(c => c.a.toLowerCase() === lower || c.b.toLowerCase() === lower);
@@ -189,7 +194,7 @@ const Constraints = {
   // anyone. A constraint naming someone not currently seated is silently
   // skipped (nothing to report — they're on the bench or gone).
   violations(groups) {
-    const pairs = State.playerConstraints || [];
+    const pairs = this.pairs();
     if (!pairs.length) return [];
     const out = [];
     for (const c of pairs) {
@@ -261,7 +266,7 @@ const Constraints = {
     const mover = a.player.locked ? (b.player.locked ? null : b) : a;
     if (!mover) return false;
     const moverName = (mover.player.name || '').toLowerCase();
-    const wouldViolate = (gi) => (State.playerConstraints || []).some(c => {
+    const wouldViolate = (gi) => this.pairs().some(c => {
       if (c.type !== 'apart') return false;
       const names = [c.a.toLowerCase(), c.b.toLowerCase()];
       if (!names.includes(moverName)) return false;
@@ -298,7 +303,7 @@ const Constraints = {
   // violations() rather than tracking a parallel success/failure log — the
   // report can't drift from what the board actually ended up as.
   enforce(groups, max) {
-    const pairs = State.playerConstraints || [];
+    const pairs = this.pairs();
     if (!pairs.length) return { violations: [] };
 
     // TOGETHER: union-find into clusters, then gather each into one group.
@@ -360,9 +365,13 @@ const Drummers = {
     return out;
   },
 
+  // The tagged drummers in force: State's, or the running plan's own.
+  tagged() {
+    return LayoutScope.current ? LayoutScope.current.drummers : (State.drummers || []);
+  },
   isDrummer(name) {
     const lower = String(name || '').toLowerCase();
-    return (State.drummers || []).some(d => d.player.toLowerCase() === lower);
+    return this.tagged().some(d => d.player.toLowerCase() === lower);
   },
   get(name) {
     const lower = String(name || '').toLowerCase();
@@ -423,6 +432,7 @@ const Faction = {
   },
   // Detected faction of the whole current roster (seated + benched).
   current() {
+    if (LayoutScope.current) return LayoutScope.current.faction;
     return this.detect((State.groups || []).flat().concat(State.bench || []));
   },
 };

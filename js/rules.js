@@ -661,8 +661,24 @@ const EMPTY_RULESET = {
   buffs: {}, debuffs: {}, totemElements: {}, paladinAuras: {}, bestAirTotem: {}, bestPaladinAura: {},
   dpsValue: {}, mitValue: {}, sustainValue: {}, dpsWeight: {}, dpsWeightByRole: {}, rules: {}, idealComp: null,
 };
+// The inputs Optimizer.plan() was given, while it runs. The layout algorithm leans
+// on lookups that read State ambiently (the active ruleset, the roster's faction,
+// the keep-together/apart pairs, the tagged drummers); inside a plan they read this
+// instead, so a plan never touches State. Null outside a plan.
+const LayoutScope = {
+  current: null,
+  run(inputs, fn) {
+    const previous = this.current;
+    this.current = inputs;
+    try { return fn(); } finally { this.current = previous; }
+  },
+};
+
+function activeVersion() {
+  return LayoutScope.current ? LayoutScope.current.gameVersion : State.gameVersion;
+}
 function activeRules() {
-  return Rulesets[State.gameVersion] || EMPTY_RULESET;
+  return Rulesets[activeVersion()] || EMPTY_RULESET;
 }
 // A version is modeled iff it has a ruleset.
 for (const version of Object.keys(GameVersions)) {

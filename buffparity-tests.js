@@ -80,7 +80,7 @@ check('resolveGroupBuffs is the key set of resolveBuffSources', () => {
   assert.deepEqual([...Optimizer.resolveGroupBuffs(group, value)], [...Optimizer.resolveBuffSources(group, value).keys()]);
 });
 
-check('parity: every shown buff is credited by the scorer and vice versa, with the same source, on optimized boards', () => {
+check('parity: every shown buff is credited by the scorer and vice versa, with the same source, on optimized boards (equal-value aura ties aside)', () => {
   let boards = 0;
   for (const gameVersion of ['tbc', 'classic', 'forever']) {
     for (const mode of gameVersion === 'tbc' ? ['max_dps', 'tank_mit', 'balanced'] : ['max_dps']) {
@@ -93,7 +93,15 @@ check('parity: every shown buff is credited by the scorer and vice versa, with t
         State.optimizerMode = mode;
         boards++;
         State.groups.forEach((group, gi) => {
-          assert.deepEqual(sorted(displayed(group, gi)), sorted(credited(group, gi)), `${gameVersion}/${mode}/${sc.id} group ${gi + 1}: display and scorer disagree`);
+          const shown = displayed(group, gi), scored = credited(group, gi);
+          const value = Optimizer.buffValueFn(group, gi, State.groups, mode);
+          const isAura = (id) => activeRules().paladinAuras[id];
+          const nonAura = (map) => sorted(new Map([...map].filter(([id]) => !isAura(id))));
+          const auraValues = (map) => [...map.keys()].filter(isAura).map(value).sort((a, b) => a - b);
+          const where = `${gameVersion}/${mode}/${sc.id} group ${gi + 1}`;
+          assert.deepEqual(nonAura(shown), nonAura(scored), `${where}: display and scorer disagree`);
+          // Equally valued auras may differ by name (the display prefers a spec's own aura); their worth may not.
+          assert.deepEqual(auraValues(shown), auraValues(scored), `${where}: display and scorer aura values disagree`);
         });
       }
     }
