@@ -50,6 +50,7 @@
 !livesync-tests.js
 !security-tests.js
 !state-persistence-tests.js
+!plan-state-tests.js
 !a11y-tests.js
 # Test runner, loader and CI (npm test; GitHub Actions runs it)
 !package.json

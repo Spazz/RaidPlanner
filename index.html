@@ -377,6 +377,22 @@
       <button type="button" class="link-btn" id="btn-version-dismiss">Dismiss</button>
     </div>
   </div>
+  <!-- Live link: a co-editor's change replaced the plan; stays until acted on. -->
+  <div class="sync-banner" id="remote-update-banner" hidden aria-live="polite">
+    <span id="remote-update-text">Roster updated by someone else.</span>
+    <div class="sync-banner-actions">
+      <button type="button" class="btn btn-primary" id="btn-remote-undo">Undo</button>
+      <button type="button" class="link-btn" id="btn-remote-dismiss">Dismiss</button>
+    </div>
+  </div>
+  <!-- Another tab saved this plan; this tab's next change would overwrite it. -->
+  <div class="sync-banner" id="tab-conflict-banner" hidden aria-live="polite">
+    <span id="tab-conflict-text">This plan was changed in another tab. Your next change here will overwrite it.</span>
+    <div class="sync-banner-actions">
+      <button type="button" class="btn btn-primary" id="btn-tab-load">Load their version</button>
+      <button type="button" class="link-btn" id="btn-tab-keep">Keep mine</button>
+    </div>
+  </div>
 
   <div class="summary-bar" id="summary-bar" aria-live="polite"></div>
 
@@ -455,6 +471,11 @@
     <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt">Copy for MRT</button>
     <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-addon">Copy addon string</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-print-sheet">Print sheet</button></details>
   </div>
+</dialog>
+<dialog id="manual-copy-dialog" class="history-dialog" aria-labelledby="manual-copy-heading">
+  <div class="history-dialog-header"><h3 id="manual-copy-heading">Copy by hand</h3><button type="button" class="btn btn-secondary" id="close-manual-copy">Close</button></div>
+  <p>Your browser would not let the page copy for you. The text is selected below: press Ctrl+C (Cmd+C on a Mac).</p>
+  <textarea id="manual-copy-text" class="manual-copy-text" readonly aria-label="Text to copy"></textarea>
 </dialog>
 <dialog id="rename-dialog" class="history-dialog" aria-labelledby="rename-heading">
   <form method="dialog"><h3 id="rename-heading">Name your plan</h3><label for="plan-name">Plan name</label><input id="plan-name" class="save-input" maxlength="120" required><div class="import-buttons"><button class="btn btn-secondary" value="cancel" formnovalidate>Cancel</button><button class="btn btn-primary" value="save">Save name</button></div></form>

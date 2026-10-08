@@ -129,6 +129,25 @@ function showToast(msg) {
   toastTimer = setTimeout(() => toast.classList.remove('visible'), 2500);
 }
 
+// ── CLIPBOARD ───────────────────────────────────────────────────
+// Copies text and toasts the result. When the browser refuses (permission, an
+// insecure page, no focus) the text opens in a dialog instead, selected, so it
+// can still be copied by hand.
+function showManualCopy(text) {
+  const dialog = document.getElementById('manual-copy-dialog');
+  const area = document.getElementById('manual-copy-text');
+  document.getElementById('close-manual-copy').onclick = () => dialog.close();
+  area.value = text;
+  dialog.showModal();
+  area.focus();
+  area.select();
+}
+function copyText(text, successMessage) {
+  let written;
+  try { written = navigator.clipboard.writeText(text); } catch (err) { written = Promise.reject(err); }
+  return written.then(() => showToast(successMessage), () => showManualCopy(text));
+}
+
 // ── VERSION AUTO-DETECT SUGGESTION (backlog #13) ──────────────────
 // Thin DOM wiring around the pure detectVersionFromTemplateId(): shows the
 // same non-blocking banner pattern as RaidHelperSync's sync-banner. Never
@@ -157,30 +176,49 @@ function maybeSuggestVersionSwitch(templateId) {
   dismissBtn.onclick = hideVersionSuggestBanner;
 }
 
+// Toolbar mirror of the header autosave-status line (nav redesign).
+function mirrorSaveStatus() {
+  const status = document.getElementById('autosave-status');
+  const statusLine = document.getElementById('roster-status-line');
+  if (!statusLine) return;
+  statusLine.textContent = status.textContent;
+  if (status.dataset.failed) statusLine.dataset.failed = 'true';
+  else delete statusLine.dataset.failed;
+}
+
+// What a PlanStore write came to (it runs a moment after the change, see saveSoon).
+function showSaveOutcome(outcome) {
+  const status = document.getElementById('autosave-status');
+  if (outcome.ok) {
+    status.textContent = LiveSync.statusText('Saved on this device');
+    delete status.dataset.failed;
+    // Saving made room by removing the oldest saved plans: say which.
+    if (outcome.evicted.length) showToast(`Browser storage was full: removed the oldest saved plan${outcome.evicted.length === 1 ? '' : 's'} (${outcome.evicted.join(', ')})`);
+  } else {
+    status.textContent = 'Could not save — export a copy';
+    status.dataset.failed = 'true';
+  }
+  mirrorSaveStatus();
+}
+
 function persistWorkingPlan() {
   const result = PlanSession.observe();
   LiveSync.onRender();
   const status = document.getElementById('autosave-status');
   if (result) {
-    try {
-      if (result.changed || status.dataset.failed) PlanStore.save(localStorage, result.current);
-      status.textContent = LiveSync.statusText('Saved on this device');
-      delete status.dataset.failed;
-    } catch {
-      status.textContent = 'Could not save — export a copy';
-      status.dataset.failed = 'true';
+    // Any change to the plan retires the "updated by someone else" Undo, which would drop it.
+    if (result.changed) RemoteUpdate.hide();
+    if (result.changed || status.dataset.failed) {
+      try { PlanStore.saveSoon(localStorage, result.current, showSaveOutcome); }
+      catch { showSaveOutcome({ ok: false }); }
     }
+    // A failed save keeps saying so until a later write lands.
+    if (!status.dataset.failed) status.textContent = LiveSync.statusText('Saved on this device');
   }
   document.getElementById('btn-undo').disabled = !PlanSession.undo.length;
   document.getElementById('btn-redo').disabled = !PlanSession.redo.length;
   document.getElementById('optimize-mode').value = State.optimizerMode;
-  // Toolbar mirror of the header autosave-status line (nav redesign).
-  const statusLine = document.getElementById('roster-status-line');
-  if (statusLine) {
-    statusLine.textContent = status.textContent;
-    if (status.dataset.failed) statusLine.dataset.failed = 'true';
-    else delete statusLine.dataset.failed;
-  }
+  mirrorSaveStatus();
   syncStrategyChrome();
 }
 
@@ -483,9 +521,9 @@ function showTemplatesModal() {
   modal.querySelectorAll('[data-template-delete]').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      Templates.delete(localStorage, btn.dataset.templateDelete, gameVersion, raid);
+      const deleted = Templates.delete(localStorage, btn.dataset.templateDelete, gameVersion, raid);
       showTemplatesModal();
-      showToast('Template deleted');
+      showToast(deleted.success ? 'Template deleted' : deleted.error);
     });
   });
   document.getElementById('btn-unlock-templates')?.addEventListener('click', () => {

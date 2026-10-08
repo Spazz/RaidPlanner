@@ -66,6 +66,38 @@ const LiveLinks = {
   },
 };
 
+// What a live-link update must not wipe from this browser's copy: the totem and
+// aura picks (State.buffOverrides) are not part of the share code, and an open
+// editor, picker or Undo points at players by uid, which a re-import renews.
+// Players are matched by name; a pick follows its player to their new group
+// and is dropped if that player can no longer provide the buff.
+const LocalPicks = {
+  capture() {
+    return {
+      players: [...State.groups.flat(), ...(State.bench || [])].map(p => ({ name: p.name, uid: p.uid })),
+      overrides: JSON.parse(JSON.stringify(State.buffOverrides || {})),
+    };
+  },
+  // Call once the update's players are in State.
+  restore(snapshot) {
+    const uidsByName = {};
+    for (const p of snapshot.players) (uidsByName[p.name] ||= []).push(p.uid);
+    for (const p of [...State.groups.flat(), ...(State.bench || [])]) {
+      const uids = uidsByName[p.name];
+      if (uids && uids.length) p.uid = uids.shift();
+    }
+    State.buffOverrides = {};
+    for (const [key, pick] of Object.entries(snapshot.overrides)) {
+      const [, uid, slot] = key.split(':');
+      const groupIdx = State.groups.findIndex(g => g.some(p => p.uid === uid));
+      if (groupIdx < 0) continue;
+      const player = State.groups[groupIdx].find(p => p.uid === uid);
+      const buff = pick && Config.Buffs[pick.buffId];
+      if (buff && canProvideBuff(buff, player)) State.buffOverrides[`${groupIdx}:${uid}:${slot}`] = pick;
+    }
+  },
+};
+
 // AbortSignal.timeout where it exists, otherwise an AbortController timer, so
 // a hung request cannot wedge sync on older browsers. undefined = no timeout.
 function timeoutSignal(ms) {

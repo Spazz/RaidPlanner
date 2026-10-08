@@ -424,17 +424,13 @@ function renderAssignments() {
   if (copyPrepBtn) copyPrepBtn.onclick = () => {
     const text = RaidPrep.toChatText(State.selectedRaid);
     if (!text) { showToast('No prep notes to copy'); return; }
-    navigator.clipboard.writeText(text)
-      .then(() => showToast('Raid prep copied to clipboard'))
-      .catch(() => showToast('Copy failed'));
+    copyText(text, 'Raid prep copied to clipboard');
   };
   const copyBtn = document.getElementById('btn-copy-assignments');
   if (copyBtn) copyBtn.onclick = () => {
     const text = Assignments.toChatText(players);
     if (!text) { showToast('Nothing to copy yet'); return; }
-    navigator.clipboard.writeText(text)
-      .then(() => showToast('Assignments copied to clipboard'))
-      .catch(() => showToast('Copy failed'));
+    copyText(text, 'Assignments copied to clipboard');
   };
 }
 

@@ -404,6 +404,43 @@ document.getElementById('btn-save').addEventListener('click', showSaveModal);
 document.getElementById('btn-templates').addEventListener('click', showTemplatesModal);
 document.getElementById('btn-load').addEventListener('click', () => { showView('landing'); document.querySelector('.import-tab[data-pane="saved"]').click(); });
 
+// ── SECOND TAB ──────────────────────────────────────────────────
+// Another tab saving the plan open here (the storage event only reaches other
+// tabs) would be overwritten by this tab's next save: say so, without blocking.
+const TabWatch = {
+  entry: null,
+  onStorage(e) {
+    if (e.key !== PlanStore.key) return;
+    const entry = PlanStore.foreignEdit(e.newValue, LiveLinks.planKey(State));
+    if (!entry) return;
+    this.entry = entry;
+    document.getElementById('tab-conflict-banner').hidden = false;
+  },
+  hide() {
+    this.entry = null;
+    document.getElementById('tab-conflict-banner').hidden = true;
+  },
+  // Replace this tab's copy with the other tab's save.
+  loadTheirs() {
+    const entry = this.entry;
+    this.hide();
+    if (!entry || !PlanStore.restore(entry.data)) return false;
+    closePlayerEditor(); closeBuffPicker();
+    initGroups(); commit(); renderLastRun(null);
+    showToast('Loaded the version from the other tab');
+    return true;
+  },
+  // Carry on here; the warning returns only if the other tab saves again.
+  keepMine() {
+    if (this.entry) PlanStore.known[LiveLinks.planKey(State)] = this.entry.updatedAt;
+    this.hide();
+  },
+};
+document.getElementById('btn-tab-load').addEventListener('click', () => TabWatch.loadTheirs());
+document.getElementById('btn-tab-keep').addEventListener('click', () => TabWatch.keepMine());
+document.getElementById('btn-remote-undo').addEventListener('click', () => RemoteUpdate.undo());
+document.getElementById('btn-remote-dismiss').addEventListener('click', () => RemoteUpdate.hide());
+
 // ── SHARE LINK ──────────────────────────────────────────────────
 // Live links (/<version>/<id>): a plan's first Share stores its share code
 // via api/share.js; from then on every change auto-saves to that same link,
@@ -418,6 +455,7 @@ const SHORT_LINK_PATH = new RegExp(`^/(?:${Object.keys(GameVersions).join('|')})
 const SHORT_LINK_AT_LOAD = (window.location.pathname.match(SHORT_LINK_PATH) || [])[1] || null;
 const LIVE_SAVE_DELAY_MS = 2000;
 const LIVE_POLL_MS = 15000;
+const LIVE_DEFER_POLL_MS = 500;
 
 function siteRoot() {
   return window.location.origin + '/';
@@ -478,18 +516,48 @@ async function fetchLiveLink(id) {
 }
 
 // Swaps in someone else's copy of this plan, keeping what makes it this
-// browser's plan (its ID, Raid-Helper event and optimizer strategy).
+// browser's plan (its ID, Raid-Helper event and optimizer strategy) and what
+// the share code does not carry (player identities, totem and aura picks).
 function applyRemoteLiveCode(id, remote) {
   const str = Import.decodeSharePayload(remote.code);
   if (!str || !Import.previewShareString(str).success) return false;
   const keep = { planId: State.planId, sourceEventId: State.sourceEventId, optimizerMode: State.optimizerMode };
+  const picks = LocalPicks.capture();
   if (!Import.importAddonString(str).success) return false;
   Object.assign(State, keep);
+  LocalPicks.restore(picks);
   // Bound before rendering, so the render does not echo the copy straight back.
   bindLiveLink(LiveLinks.planKey(State), id, currentShareCode(), remote.updatedAt);
   commit();
   return true;
 }
+
+// Stays up after a co-editor's change replaces the open plan, until the user
+// dismisses it, undoes it or changes the plan themselves.
+const RemoteUpdate = {
+  before: null,
+  show(before) {
+    this.before = before;
+    const banner = document.getElementById('remote-update-banner');
+    if (banner) banner.hidden = false;
+  },
+  hide() {
+    this.before = null;
+    const banner = document.getElementById('remote-update-banner');
+    if (banner) banner.hidden = true;
+  },
+  // Puts the plan as it was before the update back on screen; the live link
+  // then follows it like any other local change.
+  undo() {
+    const before = this.before;
+    this.hide();
+    if (!before || !PlanStore.restore(before)) return false;
+    closePlayerEditor(); closeBuffPicker();
+    initGroups(); commit(); renderLastRun(null);
+    showToast('Restored your version of the roster');
+    return true;
+  },
+};
 
 const LiveSync = {
   saveTimer: null,
@@ -506,6 +574,8 @@ const LiveSync = {
   backoffUntil: 0,
   // True while a /<version>/<id> link from page load is still being fetched.
   opening: !!SHORT_LINK_AT_LOAD,
+  // An update waiting for the user to let go of the editor, picker or notes.
+  deferTimer: null,
 
   // Called from persistWorkingPlan on every commit.
   onRender() {
@@ -619,7 +689,26 @@ const LiveSync = {
     if (dragData || document.querySelector('.dragging')) return;
     if (!LiveLinks.shouldApply(now.entry, remote, this.pending || this.saving)) return;
     if (remote.code === currentShareCode()) { bindLiveLink(now.planKey, now.entry.id, remote.code, remote.updatedAt); return; }
-    if (applyRemoteLiveCode(now.entry.id, remote)) showToast('Roster updated by someone else');
+    if (this.editing()) { this.deferUntilIdle(); return; }
+    const before = PlanStore.capture();
+    if (applyRemoteLiveCode(now.entry.id, remote)) RemoteUpdate.show(before);
+  },
+
+  // The player editor, buff picker or notes field is in use: an update now would
+  // rebuild the plan under it.
+  editing() {
+    const notes = document.getElementById('raid-notes-textarea');
+    return !!(document.getElementById('active-player-editor') || document.getElementById('active-buff-picker') ||
+      (notes && document.activeElement === notes));
+  },
+
+  // Waits for the user to let go, then pulls again (which re-checks everything).
+  deferUntilIdle() {
+    if (this.deferTimer) return;
+    this.deferTimer = setTimeout(() => {
+      this.deferTimer = null;
+      if (this.editing()) this.deferUntilIdle(); else this.pull();
+    }, LIVE_DEFER_POLL_MS);
   },
 
   statusText(fallback) {
@@ -679,6 +768,7 @@ async function getShareLink() {
 // Safari only allows clipboard writes inside the click itself, so the
 // pending link goes in as a ClipboardItem promise; writeText covers the rest.
 function copyShareLink(linkPromise) {
+  if (!navigator.clipboard) return Promise.reject(new Error('no clipboard'));
   const writeText = () => linkPromise.then(link => navigator.clipboard.writeText(link.url));
   if (!window.ClipboardItem || !navigator.clipboard.write) return writeText();
   const item = new ClipboardItem({ 'text/plain': linkPromise.then(link => new Blob([link.url], { type: 'text/plain' })) });
@@ -766,23 +856,19 @@ document.getElementById('btn-share').addEventListener('click', () => {
     .then(([{ live }]) => showToast(live
       ? 'Live link copied: anyone with it can view and edit'
       : 'Share link copied (long link: live links are unavailable right now)'))
-    .catch(() => showToast('Copy failed'));
+    .catch(() => link.then(({ url }) => showManualCopy(url)));
 });
 
 document.getElementById('btn-copy-addon').addEventListener('click', () => {
   if (State.roster.length === 0) { showToast('No roster to export'); return; }
   const str = Import.exportAddonString();
-  navigator.clipboard.writeText(str)
-    .then(() => showToast('Addon string copied to clipboard'))
-    .catch(() => showToast('Copy failed'));
+  copyText(str, 'Addon string copied to clipboard');
 });
 
 document.getElementById('btn-copy-mrt').addEventListener('click', () => {
   if (State.roster.length === 0) { showToast('No roster to export'); return; }
   const str = Import.exportMrtString();
-  navigator.clipboard.writeText(str)
-    .then(() => showToast('MRT string copied. In MRT: Raid Groups > Import > "From ExRT export string"'))
-    .catch(() => showToast('Copy failed'));
+  copyText(str, 'MRT string copied. In MRT: Raid Groups > Import > "From ExRT export string"');
 });
 
 document.getElementById('btn-export-json').addEventListener('click', () => {
@@ -800,6 +886,7 @@ document.getElementById('btn-export-json').addEventListener('click', () => {
 
 // ── DATA BACKUP: export / import UI (feature-backlog-3.md #3) ─────
 document.getElementById('btn-export-backup').addEventListener('click', () => {
+  PlanStore.flush();
   const backup = DataBackup.build(localStorage);
   const json = JSON.stringify(backup, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -895,23 +982,17 @@ document.getElementById('faq-show-tips-again')?.addEventListener('click', showTi
 document.getElementById('btn-copy-json').addEventListener('click', () => {
   if (!hasLoadedWork()) { showToast('No roster to copy'); return; }
   const data = Import.exportRoster(State.rosterName);
-  navigator.clipboard.writeText(JSON.stringify(data, null, 2))
-    .then(() => showToast('JSON copied to clipboard'))
-    .catch(() => showToast('Copy failed'));
+  copyText(JSON.stringify(data, null, 2), 'JSON copied to clipboard');
 });
 
 document.getElementById('btn-copy-chat').addEventListener('click', () => {
   if (State.roster.length === 0) { showToast('No roster to export'); return; }
-  navigator.clipboard.writeText(Import.exportChatText({ compact: false }))
-    .then(() => showToast('Raid chat text copied to clipboard'))
-    .catch(() => showToast('Copy failed'));
+  copyText(Import.exportChatText({ compact: false }), 'Raid chat text copied to clipboard');
 });
 
 document.getElementById('btn-copy-chat-compact').addEventListener('click', () => {
   if (State.roster.length === 0) { showToast('No roster to export'); return; }
-  navigator.clipboard.writeText(Import.exportChatText({ compact: true }))
-    .then(() => showToast('Compact chat text copied — paste one line at a time into /raid chat'))
-    .catch(() => showToast('Copy failed'));
+  copyText(Import.exportChatText({ compact: true }), 'Compact chat text copied — paste one line at a time into /raid chat');
 });
 
 // Backlog #12: renders PrintSheet.build()'s HTML into the body-level
@@ -1638,6 +1719,10 @@ if (!openedShare && hasLoadedWork()) document.querySelector('.import-tab[data-pa
 // import first and switches to the planner once the layout arrives.
 loadFromShortLink().then(opened => { if (opened) showView('app'); });
 LiveSync.start();
+// A debounced plan save must not be lost when the page is hidden or closed.
+window.addEventListener('pagehide', () => PlanStore.flush());
+document.addEventListener('visibilitychange', () => { if (document.hidden) PlanStore.flush(); });
+window.addEventListener('storage', e => TabWatch.onStorage(e));
 // A share link pasted into the address bar of an already-open page only
 // changes the hash, so honour it there too.
 window.addEventListener('hashchange', () => { if (loadFromShareLink()) showView('app'); });

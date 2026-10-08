@@ -77,15 +77,130 @@ const PlanStore = {
       Array.isArray(data.bench) && [...data.groups.flat(), ...data.bench].every(p => p &&
         typeof p.uid === 'string' && typeof p.name === 'string' && typeof p.class === 'string' && typeof p.spec === 'string' && typeof p.role === 'string');
   },
-  read(storage) {
-    try {
-      const plans = JSON.parse(storage.getItem(this.key) || '[]');
-      return Array.isArray(plans) ? plans.filter(p => p && this.valid(p.data)) : [];
-    } catch { return []; }
+  // Entries are {updatedAt, schemaVersion, data}. schemaVersion is the shape of
+  // `data`; an entry written before it existed counts as version 1. A bump adds
+  // migrations[fromVersion] = data => data at fromVersion + 1.
+  schemaVersion: 1,
+  migrations: {},
+  // At most this many plans are kept; the oldest by updatedAt go first, never
+  // the plan being saved or one bound to a live link.
+  max: 50,
+  saveDelayMs: 400,
+  corruptKey: 'pp_working_plans_corrupt',
+  // planKey -> updatedAt this tab last wrote or read, to tell another tab's save from its own.
+  known: {},
+  pending: null,
+  timer: null,
+
+  // The entry at the current schema, or null when it cannot be read here (a
+  // newer build wrote it, or no migration path exists). Unreadable entries are
+  // left in storage untouched, never dropped.
+  migrate(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    let version = Number.isInteger(entry.schemaVersion) && entry.schemaVersion >= 1 ? entry.schemaVersion : 1;
+    if (version > this.schemaVersion) return null;
+    let data = entry.data;
+    while (version < this.schemaVersion) {
+      const step = this.migrations[version];
+      if (typeof step !== 'function') return null;
+      try { data = step(JSON.parse(JSON.stringify(data))); } catch { return null; }
+      version++;
+    }
+    return { ...entry, schemaVersion: version, data };
   },
+  // Every stored entry as-is, whatever its shape; `corrupt` holds the raw text when the key is not a JSON list.
+  _load(storage) {
+    let raw;
+    try { raw = storage.getItem(this.key); } catch { return { entries: [], corrupt: null }; }
+    if (!raw) return { entries: [], corrupt: null };
+    try {
+      const entries = JSON.parse(raw);
+      if (Array.isArray(entries)) return { entries, corrupt: null };
+    } catch {}
+    return { entries: [], corrupt: raw };
+  },
+  // The readable plans, newest save first. Anything else stays in storage.
+  read(storage) {
+    if (this.pending && this.pending.storage === storage) this.flush();
+    const plans = [];
+    for (const entry of this._load(storage).entries) {
+      const plan = this.migrate(entry);
+      if (!plan || !this.valid(plan.data)) continue;
+      this.known[LiveLinks.planKey(plan.data)] = plan.updatedAt;
+      plans.push(plan);
+    }
+    return plans;
+  },
+  isQuotaError(err) {
+    return !!err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 || err.code === 1014);
+  },
+  // Read-modify-write: this plan goes first, replacing its own earlier entry,
+  // and every other entry is kept as stored, readable or not. Past the cap, or
+  // when the browser reports its storage full, the oldest unprotected entries
+  // go. Throws if it still cannot be written; returns {evicted: [names]}.
   save(storage, data) {
-    const plans = this.read(storage).filter(p => p.data.planId !== data.planId || (p.data.gameVersion || 'tbc') !== (data.gameVersion || 'tbc'));
-    storage.setItem(this.key, JSON.stringify([{updatedAt:Date.now(), data}, ...plans]));
+    const planKey = LiveLinks.planKey(data);
+    const { entries, corrupt } = this._load(storage);
+    if (corrupt) { try { storage.setItem(this.corruptKey, corrupt); } catch {} }
+    const entry = { updatedAt: Date.now(), schemaVersion: this.schemaVersion, data };
+    const list = [entry, ...entries.filter(e => !(planKey && e && e.data && LiveLinks.planKey(e.data) === planKey))];
+    let bound = [];
+    try { bound = Object.keys(LiveLinks.read(storage)); } catch {}
+    const protectedKeys = new Set([planKey, ...bound]);
+    const evicted = [];
+    const stamp = e => (e && Number.isFinite(e.updatedAt) ? e.updatedAt : 0);
+    const evictOldest = () => {
+      let oldest = -1;
+      for (let i = 1; i < list.length; i++) {
+        if (list[i] && list[i].data && protectedKeys.has(LiveLinks.planKey(list[i].data))) continue;
+        if (oldest < 0 || stamp(list[i]) < stamp(list[oldest])) oldest = i;
+      }
+      if (oldest < 0) return false;
+      const gone = list.splice(oldest, 1)[0];
+      evicted.push(gone && gone.data && typeof gone.data.rosterName === 'string' ? gone.data.rosterName : 'an unreadable plan');
+      return true;
+    };
+    while (list.length > this.max && evictOldest()) {}
+    for (;;) {
+      try { storage.setItem(this.key, JSON.stringify(list)); break; }
+      catch (err) { if (!this.isQuotaError(err) || !evictOldest()) throw err; }
+    }
+    if (planKey) this.known[planKey] = entry.updatedAt;
+    return { evicted };
+  },
+  // save() after a short pause, so typing does not rewrite every plan on each keystroke.
+  // onDone gets {ok, evicted} or {ok:false, error}. A waiting save of another plan goes out first.
+  saveSoon(storage, data, onDone) {
+    if (this.pending && (this.pending.storage !== storage || LiveLinks.planKey(this.pending.data) !== LiveLinks.planKey(data))) this.flush();
+    this.pending = { storage, data, onDone };
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.flush(), this.saveDelayMs);
+  },
+  // Writes the waiting save now (page hide, before reading the list).
+  flush() {
+    clearTimeout(this.timer);
+    this.timer = null;
+    const job = this.pending;
+    if (!job) return null;
+    this.pending = null;
+    let outcome;
+    try { outcome = { ok: true, ...this.save(job.storage, job.data) }; } catch (error) { outcome = { ok: false, error }; }
+    if (job.onDone) job.onDone(outcome);
+    return outcome;
+  },
+  // The stored entry for planKey when `raw` (a storage event's new value) holds
+  // a save of it this tab did not make, else null.
+  foreignEdit(raw, planKey) {
+    if (!planKey || typeof raw !== 'string') return null;
+    let list;
+    try { list = JSON.parse(raw); } catch { return null; }
+    if (!Array.isArray(list)) return null;
+    for (const e of list) {
+      const plan = this.migrate(e);
+      if (!plan || !this.valid(plan.data) || LiveLinks.planKey(plan.data) !== planKey) continue;
+      return plan.updatedAt === this.known[planKey] ? null : plan;
+    }
+    return null;
   },
   restore(data) {
     if (!this.valid(data)) return false;
@@ -169,7 +284,8 @@ const Templates = {
       return (all && typeof all === 'object' && !Array.isArray(all)) ? all : {};
     } catch { return {}; }
   },
-  write(storage, all) { storage.setItem(this.key, JSON.stringify(all)); },
+  // false when the browser refused the write (safeSetItem has already told the user).
+  write(storage, all) { return safeSetItem(storage, this.key, JSON.stringify(all)); },
 
   // {lowerName: {name, group, role}} snapshot of the CURRENT layout — bench
   // and preferred slots are deliberately excluded per the backlog scope
@@ -195,7 +311,7 @@ const Templates = {
     all[gameVersion] = all[gameVersion] || {};
     all[gameVersion][raid] = all[gameVersion][raid] || {};
     all[gameVersion][raid][name] = { savedAt: Date.now(), players };
-    this.write(storage, all);
+    if (!this.write(storage, all)) return { success:false, error:'Browser storage is full' };
     return { success:true };
   },
 
@@ -222,7 +338,7 @@ const Templates = {
     if (newName !== oldName && scoped[newName]) return { success:false, error:'A template with that name already exists' };
     scoped[newName] = scoped[oldName];
     if (newName !== oldName) delete scoped[oldName];
-    this.write(storage, all);
+    if (!this.write(storage, all)) return { success:false, error:'Browser storage is full' };
     return { success:true };
   },
 
@@ -230,7 +346,7 @@ const Templates = {
     const all = this.read(storage);
     if (all[gameVersion] && all[gameVersion][raid]) {
       delete all[gameVersion][raid][name];
-      this.write(storage, all);
+      if (!this.write(storage, all)) return { success:false, error:'Browser storage is full' };
     }
     return { success:true };
   },
@@ -420,17 +536,18 @@ const DataBackup = {
       try { inc = JSON.parse(backupRaw); } catch {}
       if (!Array.isArray(cur)) cur = [];
       if (!Array.isArray(inc)) inc = [];
-      const keyFor = p => (p.data.planId || '') + '|' + (p.data.gameVersion || 'tbc');
+      // An entry this build cannot read (PlanStore keeps those) is merged as it is, keyed by its text.
+      const keyFor = p => (p && p.data && typeof p.data.planId === 'string') ? p.data.planId + '|' + (p.data.gameVersion || 'tbc') : 'raw|' + JSON.stringify(p);
       const byKey = new Map(cur.map(p => [keyFor(p), p]));
       let added = 0, updated = 0, unchanged = 0;
       for (const p of inc) {
         const k = keyFor(p);
         const existing = byKey.get(k);
         if (!existing) { byKey.set(k, p); added++; }
-        else if ((p.updatedAt || 0) > (existing.updatedAt || 0)) { byKey.set(k, p); updated++; }
+        else if (((p && p.updatedAt) || 0) > ((existing && existing.updatedAt) || 0)) { byKey.set(k, p); updated++; }
         else unchanged++;
       }
-      const merged = [...byKey.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      const merged = [...byKey.values()].sort((a, b) => (((b && b.updatedAt) || 0)) - (((a && a.updatedAt) || 0)));
       return { value: JSON.stringify(merged), added, updated, unchanged };
     }
     if (key === 'pp_roster_templates') {

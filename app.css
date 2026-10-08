@@ -1434,6 +1434,12 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .raid-notes-textarea:focus { outline:none; border-color:var(--accent-gold); }
 .raid-notes-textarea::placeholder { color:var(--text-muted); }
+.manual-copy-text {
+  display:block; width:100%; box-sizing:border-box; min-height:140px; resize:vertical;
+  background:var(--bg-input); border:1px solid var(--border-medium); color:var(--text-primary);
+  font-family:inherit; font-size:12px; line-height:1.5; padding:var(--sp-3);
+}
+.manual-copy-text:focus { outline:none; border-color:var(--accent-gold); }
 .share-actions { display:flex; flex-direction:column; gap:12px; }
 .share-actions details { margin-top:12px; }
 .share-actions details button { display:block; margin-top:8px; width:100%; }
