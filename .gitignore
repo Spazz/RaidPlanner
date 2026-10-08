@@ -15,6 +15,9 @@
 !js/render.js
 !js/modals.js
 !js/app.js
+# Self-hosted spec/class/role/buff/debuff icons (one <slug>.jpg each, fetched once from the Wowhead CDN); icons-tests.js checks every slug the rule tables name is here
+!icons/
+!icons/*.jpg
 # Vercel config (/<version>/<id> rewrite to index.html) and the short-share-link function
 !vercel.json
 !api/
@@ -53,6 +56,7 @@
 !state-persistence-tests.js
 !plan-state-tests.js
 !a11y-tests.js
+!icons-tests.js
 # Test runner, loader and CI (npm test; GitHub Actions runs it)
 !package.json
 !tests/

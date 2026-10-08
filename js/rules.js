@@ -131,7 +131,13 @@ const Config = {
     TRANQUIL_AIR:'buff-tqa', STONESKIN:'buff-sst', DRUMS:'buff-drums',
   },
 
-  // Wowhead CDN icon filenames for each buff
+  // Icon files are self-hosted in icons/ (one <name>.jpg per slug, fetched once from the
+  // Wowhead CDN); every spec/class/role/buff/debuff icon goes through this one URL builder.
+  IconURL(name) {
+    return name ? `/icons/${name}.jpg` : '';
+  },
+
+  // Wowhead icon slugs (= icons/<slug>.jpg) for each buff
   BuffIcons: {
     WINDFURY:           'spell_nature_windfury',
     GRACE_OF_AIR:       'spell_nature_invisibilitytotem',
@@ -158,8 +164,7 @@ const Config = {
     DRUMS:              'inv_misc_drum_06',
   },
   BuffIconURL(id) {
-    const icon = this.BuffIcons[id];
-    return icon ? `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg` : '';
+    return this.IconURL(this.BuffIcons[id]);
   },
 
   // ── Raid debuffs (applied to enemy targets, not the raid) ──
@@ -209,7 +214,7 @@ const Config = {
     SCORPID_STING:'Scorp', HUNTERS_MARK:'HM', EXPOSE_WEAKNESS:'EW',
   },
 
-  // Best-effort Wowhead CDN icon slugs — entries left blank fall back to the text
+  // Best-effort Wowhead icon slugs — entries left blank fall back to the text
   // abbreviation above (same graceful-degradation pattern as BuffIconURL).
   DebuffIcons: {
     JUDGEMENT_CRUSADER: 'spell_holy_holysmite',
@@ -234,8 +239,7 @@ const Config = {
     STORMSTRIKE:        'ability_shaman_stormstrike',
   },
   DebuffIconURL(id) {
-    const icon = this.DebuffIcons[id];
-    return icon ? `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg` : '';
+    return this.IconURL(this.DebuffIcons[id]);
   },
 
   Raids: {
@@ -375,7 +379,7 @@ const Rulesets = {
     specs: Config.Specs,
     raidHelperSpecMap: Config.RaidHelperSpecMap,
     classList: ['WARRIOR','PALADIN','HUNTER','ROGUE','PRIEST','SHAMAN','MAGE','WARLOCK','DRUID'],
-    // TBC talent-tree icons for the player rows' spec marker (Wowhead CDN names).
+    // TBC talent-tree icons for the player rows' spec marker (Wowhead icon slugs, self-hosted in icons/).
     specIcons: {
       WARRIOR: { Arms:'ability_rogue_eviscerate', Fury:'ability_warrior_innerrage', Protection:'ability_warrior_defensivestance' },
       PALADIN: { Holy:'spell_holy_holybolt', Protection:'spell_holy_devotionaura', Retribution:'spell_holy_auraoflight' },

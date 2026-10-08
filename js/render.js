@@ -74,7 +74,7 @@ function initGroups() {
   return benched;
 }
 
-// Role markers use in-game spell icons from the same Wowhead CDN as the buff
+// Role markers use in-game spell icons from the same self-hosted icons/ set as the buff
 // icons. Player rows use one shared DPS marker for melee / ranged / caster;
 // the summary bar asks for 'melee' and 'ranged' explicitly to split its counts.
 const ROLE_ICONS = {
@@ -86,7 +86,7 @@ const ROLE_ICONS = {
 };
 function getRoleIcon(role) {
   const r = Object.prototype.hasOwnProperty.call(ROLE_ICONS, role) ? ROLE_ICONS[role] : ROLE_ICONS.dps;
-  const src = `https://wow.zamimg.com/images/wow/icons/small/${r.icon}.jpg`;
+  const src = Config.IconURL(r.icon);
   return `<span class="role-icon ${r.cls}" title="${esc(r.label)}"><img src="${esc(src)}" alt="${esc(r.label)}" loading="lazy"></span>`;
 }
 
@@ -100,8 +100,41 @@ function getSpecIcon(p) {
   if (!icon) return getRoleIcon(p.role);
   const roleCls = p.role === 'tank' ? 'role-tank' : p.role === 'healer' ? 'role-healer' : 'role-dps';
   const label = p.spec ? `${p.spec} ${cls.charAt(0) + cls.slice(1).toLowerCase()}` : cls;
-  const src = `https://wow.zamimg.com/images/wow/icons/small/${icon}.jpg`;
-  return `<span class="role-icon spec-icon ${roleCls}"><img src="${esc(src)}" alt="${esc(label)}" loading="lazy"></span>`;
+  const src = Config.IconURL(icon);
+  // Spec art that fails to load falls back to the class crest (see handleIconError).
+  const fallback = cls ? ` data-fallback="${esc(Config.IconURL('classicon_' + cls.toLowerCase()))}"` : '';
+  return `<span class="role-icon spec-icon ${roleCls}"><img src="${esc(src)}" alt="${esc(label)}" loading="lazy"${fallback}></span>`;
+}
+
+// ONE capture-phase listener (image errors do not bubble) covers every icon the
+// page renders, so no <img> needs its own handler or an inline onerror. A spec
+// icon retries with its class crest (data-fallback); anything else degrades to
+// the alt text it was already carrying, or to nothing where the name is printed
+// next to the icon anyway. Returns what it did, for the tests.
+function handleIconError(img) {
+  if (!img || !img.tagName || img.tagName.toUpperCase() !== 'IMG') return 'ignored';
+  const fallback = img.getAttribute('data-fallback');
+  if (fallback) {
+    img.removeAttribute('data-fallback');
+    if (img.getAttribute('src') !== fallback) {
+      img.setAttribute('src', fallback);
+      return 'fallback';
+    }
+  }
+  const parent = img.parentElement;
+  if (parent && parent.classList.contains('buff-icon')) {
+    parent.classList.remove('has-icon');
+    img.remove();
+    return 'removed';
+  }
+  if (parent && parent.classList.contains('buff-row-icon')) {
+    const text = document.createElement('span');
+    text.textContent = img.getAttribute('alt') || '';
+    img.replaceWith(text);
+    return 'text';
+  }
+  img.remove();
+  return 'removed';
 }
 
 // Raid-Helper sign-up status as a small colored tag (see SignupStatus).
@@ -543,14 +576,6 @@ function renderGroups() {
       <div class="buff-bar">${buffsHTML}</div>
     </div>`;
   }
-
-  // Attach error handlers on buff images (CSP-safe, replaces inline onerror)
-  container.querySelectorAll('.buff-img').forEach(img => {
-    img.addEventListener('error', () => {
-      img.parentElement.classList.remove('has-icon');
-      img.remove();
-    });
-  });
 
   const coveredDebuffIds = getRaidDebuffCoverage(State.groups);
   renderBuffCatalog(coveredBuffIds, coveredDebuffIds);

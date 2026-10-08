@@ -92,13 +92,13 @@ check('Every external host index.html and js/ load a resource from is allowed by
     const directive = /rel="stylesheet"/.test(tag) ? 'style-src' : /<script/.test(tag) ? 'script-src' : null;
     if (directive) assert(policy[directive].includes(origin), `${directive} must allow ${origin}`);
   }
-  // Icon images the scripts build.
+  // Remote icon images the scripts build (none expected now that the icons are self-hosted).
   const iconHosts = new Set();
   for (const file of fs.readdirSync(path.join(__dirname, 'js'))) {
     const source = fs.readFileSync(path.join(__dirname, 'js', file), 'utf8');
     for (const m of source.matchAll(/(https:\/\/[a-z0-9.-]+)\/images\//g)) iconHosts.add(m[1]);
   }
-  assert(iconHosts.size > 0, 'found the icon host');
+  assert(!iconHosts.has('https://wow.zamimg.com'), 'icons are self-hosted under /icons/ (icons-tests.js), not loaded from the CDN');
   for (const host of iconHosts) assert(policy['img-src'].includes(host), `img-src must allow ${host}`);
 });
 

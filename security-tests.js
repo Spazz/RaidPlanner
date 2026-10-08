@@ -177,7 +177,7 @@ check('PlanStore.restore (saved working plan) drops invalid players from groups 
 
 // ── 3. Render helpers escape on their own ────────────────────────
 check('getSpecIcon never lets a tampered spec/class/role break out of an attribute', () => {
-  const well = /^<span class="role-icon spec-icon role-(?:tank|healer|dps)"><img src="[^"<>]*" alt="[^"<>]*" loading="lazy"><\/span>$/;
+  const well = /^<span class="role-icon spec-icon role-(?:tank|healer|dps)"><img src="[^"<>]*" alt="[^"<>]*" loading="lazy"(?: data-fallback="[^"<>]*")?><\/span>$/;
   for (const p of [
     { class: 'WARRIOR', spec: EVIL, role: 'tank' },
     { class: EVIL, spec: 'Arms', role: EVIL },

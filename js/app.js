@@ -1644,14 +1644,6 @@ function renderIdealComp() {
     </div>`;
   }
 
-  // Attach error handlers on buff images
-  container.querySelectorAll('.buff-img').forEach(img => {
-    img.addEventListener('error', () => {
-      img.parentElement.classList.remove('has-icon');
-      img.remove();
-    });
-  });
-
   const coveredDebuffIds = getRaidDebuffCoverage(groups);
   renderBuffCatalog(coveredBuffIds, coveredDebuffIds);
   renderUtilityCatalog(groups, []);
@@ -1713,6 +1705,9 @@ function isShortcutBlocked(target) {
   if (document.getElementById('mobile-more-sheet')?.classList.contains('visible')) return true;
   return false;
 }
+// Icon <img> failures do not bubble, so one capture-phase listener covers them all.
+document.addEventListener('error', e => handleIconError(e.target), true);
+
 document.addEventListener('keydown', (e) => {
   if (State.view !== 'app') return; // shortcuts only act on the planner, not the landing page
   if (isShortcutBlocked(e.target)) return;
