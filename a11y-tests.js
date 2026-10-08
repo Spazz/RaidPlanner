@@ -143,6 +143,15 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
     restorePlayerSlotFocus(key3);
     assert.equal(document.activeElement, un2);
 
+    // Unplaced sign-up gets seated: same uid, now a seated slot.
+    document.activeElement = un;
+    const key4 = capturePlayerSlotFocus();
+    const seated = mkSlot({ uid: 'x1', group: '1', slot: '0' });
+    document.activeElement = null;
+    document.slots = [other, seated];
+    restorePlayerSlotFocus(key4);
+    assert.equal(document.activeElement, seated, 'seating an unplaced player keeps focus on their new slot');
+
     // Focus somewhere else (an input, nothing): nothing is captured and nothing is stolen.
     document.activeElement = { closest: () => null };
     assert.equal(capturePlayerSlotFocus(), null);

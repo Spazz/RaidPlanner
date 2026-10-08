@@ -9179,7 +9179,8 @@ function restorePlayerSlotFocus(key) {
   if (!key) return;
   const slots = [...document.querySelectorAll('.player-slot')];
   const is = (a, b) => a != null && a === b;
-  const target = slots.find(s => is(key.uid, s.dataset.uid))
+  // An unplaced sign-up keeps its uid when seated, so match it against seated slots too.
+  const target = slots.find(s => is(key.uid, s.dataset.uid) || is(key.unplacedUid, s.dataset.uid))
     || slots.find(s => is(key.unplacedUid, s.dataset.unplacedUid))
     || slots.find(s => is(key.group, s.dataset.group) && is(key.seat, s.dataset.slot));
   if (target) target.focus({ preventScroll: true });
