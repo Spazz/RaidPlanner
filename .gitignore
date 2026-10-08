@@ -1,8 +1,7 @@
-# Only track index.html (and the legacy UI backup)
+# Only track index.html
 *
 !.gitignore
 !index.html
-!index_legacy_ui.html
 # Short share links: Vercel function + /s/<id> rewrite
 !vercel.json
 !api/
