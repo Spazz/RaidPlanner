@@ -486,6 +486,41 @@ function enforceRaidCapacity(groups, bench, numGroups, maxPerGroup = 5) {
   return benched;
 }
 
+// Players a Raid size shrink benched (nav slim-down). Growing the size again
+// re-seats the ones still on the bench into the new open seats, so 25 -> 10 -> 25
+// ends with everyone seated again; players the leader benched themselves are
+// never in this list and stay benched. In memory only and bound to one plan:
+// PlanStore.restore / startFresh clear it, and a different planId ignores it.
+const SizeBench = {
+  planId: undefined,
+  uids: [],
+  clear() { this.planId = undefined; this.uids = []; },
+  remember(uids) {
+    if (this.planId !== State.planId) { this.planId = State.planId; this.uids = []; }
+    for (const uid of uids) if (!this.uids.includes(uid)) this.uids.push(uid);
+  },
+  // Moves remembered players still on the bench into open seats, in the order
+  // they were benched. Returns how many were seated.
+  reseat(maxPerGroup = 5) {
+    if (this.planId !== State.planId) { this.clear(); return 0; }
+    const bench = State.bench || [];
+    this.uids = this.uids.filter(uid => bench.some(p => p.uid === uid));
+    let seated = 0;
+    for (const uid of [...this.uids]) {
+      const gi = State.groups.findIndex(g => g.length < maxPerGroup);
+      if (gi < 0) break;
+      const bi = bench.findIndex(p => p.uid === uid);
+      const [player] = bench.splice(bi, 1);
+      player.groupNumber = gi + 1;
+      State.groups[gi].push(player);
+      this.uids = this.uids.filter(u => u !== uid);
+      seated++;
+    }
+    if (seated) State.roster = State.groups.flat();
+    return seated;
+  },
+};
+
 // ── PLAYER IDENTITY ─────────────────────────────────────────────
 // class/spec/role reach the app from share links, live links, v1 strings,
 // JSON rosters and saved plans, then get used as lookup keys and rendered

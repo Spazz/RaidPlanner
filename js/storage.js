@@ -219,6 +219,7 @@ const PlanStore = {
   },
   restore(data) {
     if (!this.valid(data)) return false;
+    SizeBench.clear();
     Object.assign(State, JSON.parse(JSON.stringify(data)));
     State.gameVersion = data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc';
     // Plans saved before the nav slim-down may name another strategy; Optimize only runs Max DPS now.
@@ -248,6 +249,7 @@ const PlanStore = {
   // the features keyed by player) so whatever loads next starts clean. The
   // plan ID is the caller's call: Clear keeps it, a new plan replaces it.
   startFresh() {
+    SizeBench.clear();
     State.campfires = Campfires.empty();
     State.preferredSlots = [];
     State.preserveGroupOrder = false;

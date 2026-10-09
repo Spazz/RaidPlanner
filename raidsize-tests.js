@@ -130,6 +130,56 @@ check('on the ideal comp view a size pick re-renders the ideal comp instead of t
   State.activeTab = 'plan';
 });
 
+// ── Size round trip: a shrink's bench comes back on the next grow ────
+function roundTripEnv() {
+  const g = fakeGroup();
+  const env = { commits: 0, toasts: [] };
+  const rtCtx = app.sandbox(['State', 'SizeBench', 'PlanStore', 'selectRaidSize', 'nextUid'], {
+    globals: { document: { getElementById: id => (id === 'raid-size-control' ? g : null) }, __env: env },
+    extraSource: 'function commit() { __env.commits++; }\nfunction showToast(m) { __env.toasts.push(m); }\nfunction renderIdealComp() {}\n' +
+      app.slice('function renderRaidSizeControl', '(function initRaidSizeControl') +
+      app.slice('function initGroups()', '// Role markers'),
+  });
+  const api = rtCtx.api;
+  const mk = (i, group) => ({ uid: api.nextUid(), name: 'R' + i, class: 'MAGE', spec: 'Fire', role: 'caster_dps', groupNumber: group });
+  api.State.gameVersion = 'tbc'; api.State.selectedRaid = 'bt'; api.State.activeTab = 'plan'; api.State.planId = 'plan:rt';
+  api.State.groups = [0, 1, 2, 3, 4].map(gi => [0, 1, 2, 3, 4].map(si => mk(gi * 5 + si, gi + 1)));
+  api.State.roster = api.State.groups.flat();
+  api.State.bench = [mk(99, 0)]; // benched by the leader before any size change
+  api.SizeBench.clear();
+  return { api, env };
+}
+
+check('25 -> 10 -> 25 seats everyone the shrink benched again; a deliberately benched player stays benched', () => {
+  const { api, env } = roundTripEnv();
+  api.selectRaidSize(10);
+  assert.equal(api.State.groups.flat().length, 10);
+  assert.equal(api.State.bench.length, 16, '15 benched by the shrink + the leader\'s own bench');
+  api.selectRaidSize(25);
+  assert.equal(api.State.selectedRaid, 'bt');
+  assert.equal(api.State.groups.length, 5);
+  assert.equal(api.State.groups.flat().length, 25, 'back to 25 seated');
+  assert.deepEqual(api.State.bench.map(p => p.name), ['R99'], 'the leader-benched player stays on the bench');
+  assert(api.State.groups.every(g => g.length <= 5));
+  assert(api.State.groups.flat().every((p, i) => p.groupNumber >= 1), 'seated players carry a group number');
+  assert.match(env.toasts.at(-1), /15 players back in the raid/);
+});
+
+check('the shrink list is per plan: a plan load or another plan never re-seats from it', () => {
+  const { api } = roundTripEnv();
+  api.selectRaidSize(10);
+  api.State.planId = 'plan:other';
+  api.selectRaidSize(25);
+  assert.equal(api.State.groups.flat().length, 10, 'another plan ignores the list');
+  const second = roundTripEnv();
+  second.api.selectRaidSize(10);
+  second.api.SizeBench.clear(); // what PlanStore.restore and startFresh do
+  second.api.selectRaidSize(25);
+  assert.equal(second.api.State.groups.flat().length, 10);
+  assert.match(app.slice('  restore(data) {', '  // Empty every per-plan field'), /SizeBench\.clear\(\);/);
+  assert.match(app.slice('  startFresh() {', 'State.campfires = Campfires.empty();'), /SizeBench\.clear\(\);/);
+});
+
 // ── (c) old saved plans ─────────────────────────────────────────────
 function oldPlan(extra) {
   return { planId: 'plan:old', groups: [[], [], [], [], []], bench: [], gameVersion: 'tbc', selectedRaid: 'ssc',

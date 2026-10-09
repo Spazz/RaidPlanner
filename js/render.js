@@ -57,8 +57,9 @@ function renderRaidSizeControl() {
     button.setAttribute('aria-pressed', String(!!current && Number(button.dataset.raidSize) === current.size));
   });
 }
-// Picking size N keeps the current raid when it already has N seats, else moves
-// to the version's first raid of that size, then refits the board.
+// Picking size N keeps the current raid when it already has N seats, else moves to
+// the version's default or first raid of that size, then refits the board. A shrink
+// remembers whom it benched (SizeBench); a later grow seats them again.
 function selectRaidSize(size) {
   const raid = raidForSize(State.gameVersion, size, State.selectedRaid);
   if (!raid || raid === State.selectedRaid) return;
@@ -67,10 +68,14 @@ function selectRaidSize(size) {
   if (State.activeTab === 'ideal') {
     renderIdealComp();
   } else {
+    const before = new Set((State.bench || []).map(p => p.uid));
     const benched = initGroups();
+    if (benched > 0) SizeBench.remember(State.bench.filter(p => !before.has(p.uid)).map(p => p.uid));
+    const reseated = SizeBench.reseat();
     commit();
     const raidInfo = Config.Raids[State.selectedRaid];
     if (benched > 0) showToast(`${benched} player${benched === 1 ? '' : 's'} benched — the ${raidInfo ? raidInfo.size : 25}-man raid is full`);
+    else if (reseated > 0) showToast(`${reseated} player${reseated === 1 ? '' : 's'} back in the raid from the bench`);
   }
 }
 (function initRaidSizeControl() {
