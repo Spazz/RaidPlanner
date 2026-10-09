@@ -620,6 +620,7 @@ function copyMrtNote() {
 function reconcilePlan() {
   PreferredSlots.reconcile();
   State.roster = State.groups.flat();
+  SizeBench.prune();
   Assignments.reconcileRoster();
   Backups.reconcile();
   Constraints.reconcile();

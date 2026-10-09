@@ -60,7 +60,7 @@ const PlanStore = {
     return JSON.parse(JSON.stringify({planId:State.planId, groups:State.groups, bench:State.bench, unplaced:State.unplaced || [],
       campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId, eventStartTime:State.eventStartTime,
       optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder,
-      notes:State.notes || '',
+      notes:State.notes || '', sizeBenched:SizeBench.clean(State.sizeBenched),
       assignments:State.assignments, backups:State.backups, playerConstraints:Constraints.clean(State.playerConstraints),
       drummers:Drummers.clean(State.drummers)}));
   },
@@ -69,6 +69,7 @@ const PlanStore = {
       typeof data.rosterName === 'string' && Array.isArray(data.groups) && data.groups.every(Array.isArray) &&
       ['max_dps','tank_mit','balanced','relaxed'].includes(data.optimizerMode) &&
       (data.notes === undefined || typeof data.notes === 'string') &&
+      (data.sizeBenched === undefined || Array.isArray(data.sizeBenched)) &&
       (data.backups === undefined || (data.backups && typeof data.backups === 'object' && !Array.isArray(data.backups))) &&
       (data.playerConstraints === undefined || Array.isArray(data.playerConstraints)) &&
       (data.drummers === undefined || Array.isArray(data.drummers)) &&
@@ -219,7 +220,6 @@ const PlanStore = {
   },
   restore(data) {
     if (!this.valid(data)) return false;
-    SizeBench.clear();
     Object.assign(State, JSON.parse(JSON.stringify(data)));
     State.gameVersion = data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc';
     // Plans saved before the nav slim-down may name another strategy; Optimize only runs Max DPS now.
@@ -235,6 +235,8 @@ const PlanStore = {
     // Explicit reset (not just Object.assign) so a plan saved before this field
     // existed clears any notes left over from whatever was in State before.
     State.notes = typeof data.notes === 'string' ? data.notes.slice(0, NOTES_MAX_LENGTH) : '';
+    // Plans saved before the size round trip existed have no list: nothing to re-seat.
+    State.sizeBenched = SizeBench.clean(data.sizeBenched);
     Assignments.restore(data.assignments);
     Backups.restore(data.backups);
     State.playerConstraints = Constraints.clean(data.playerConstraints);
@@ -249,7 +251,7 @@ const PlanStore = {
   // the features keyed by player) so whatever loads next starts clean. The
   // plan ID is the caller's call: Clear keeps it, a new plan replaces it.
   startFresh() {
-    SizeBench.clear();
+    State.sizeBenched = [];
     State.campfires = Campfires.empty();
     State.preferredSlots = [];
     State.preserveGroupOrder = false;

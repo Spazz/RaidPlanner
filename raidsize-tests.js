@@ -148,53 +148,115 @@ check('on the ideal comp view a size pick re-renders the ideal comp instead of t
 });
 
 // ── Size round trip: a shrink's bench comes back on the next grow ────
+// commit() here does what the real one does for this feature: prune the list
+// (reconcilePlan) and let PlanSession record the change (persistWorkingPlan).
 function roundTripEnv() {
   const g = fakeGroup();
   const env = { commits: 0, toasts: [] };
-  const rtCtx = app.sandbox(['State', 'SizeBench', 'PlanStore', 'selectRaidSize', 'nextUid'], {
+  const rtCtx = app.sandbox(['State', 'SizeBench', 'PlanStore', 'PlanSession', 'selectRaidSize', 'initGroups', 'commit', 'nextUid'], {
     globals: { document: { getElementById: id => (id === 'raid-size-control' ? g : null) }, __env: env },
-    extraSource: 'function commit() { __env.commits++; }\nfunction showToast(m) { __env.toasts.push(m); }\nfunction renderIdealComp() {}\n' +
+    extraSource: 'function commit() { __env.commits++; State.roster = State.groups.flat(); SizeBench.prune(); PlanSession.observe(); }\n' +
+      'function showToast(m) { __env.toasts.push(m); }\nfunction renderIdealComp() {}\n' +
       app.slice('function renderRaidSizeControl', '(function initRaidSizeControl') +
       app.slice('function initGroups()', '// Role markers'),
   });
   const api = rtCtx.api;
   const mk = (i, group) => ({ uid: api.nextUid(), name: 'R' + i, class: 'MAGE', spec: 'Fire', role: 'caster_dps', groupNumber: group });
-  api.State.gameVersion = 'tbc'; api.State.selectedRaid = 'bt'; api.State.activeTab = 'plan'; api.State.planId = 'plan:rt';
+  Object.assign(api.State, { gameVersion: 'tbc', selectedRaid: 'bt', activeTab: 'plan', planId: 'plan:rt', rosterName: 'Round trip', sizeBenched: [] });
   api.State.groups = [0, 1, 2, 3, 4].map(gi => [0, 1, 2, 3, 4].map(si => mk(gi * 5 + si, gi + 1)));
   api.State.roster = api.State.groups.flat();
   api.State.bench = [mk(99, 0)]; // benched by the leader before any size change
-  api.SizeBench.clear();
+  api.PlanSession.previous = null; api.PlanSession.undo = []; api.PlanSession.redo = []; api.PlanSession.ready = true;
+  api.PlanSession.observe();
   return { api, env };
 }
+const seatedCount = api => api.State.groups.flat().length;
+const benchNames = api => plain(api.State.bench.map(p => p.name).sort());
 
 check('25 -> 10 -> 25 seats everyone the shrink benched again; a deliberately benched player stays benched', () => {
   const { api, env } = roundTripEnv();
   api.selectRaidSize(10);
-  assert.equal(api.State.groups.flat().length, 10);
+  assert.equal(seatedCount(api), 10);
   assert.equal(api.State.bench.length, 16, '15 benched by the shrink + the leader\'s own bench');
+  assert.equal(api.State.sizeBenched.length, 15);
   api.selectRaidSize(25);
   assert.equal(api.State.selectedRaid, 'bt');
-  assert.equal(api.State.groups.length, 5);
-  assert.equal(api.State.groups.flat().length, 25, 'back to 25 seated');
-  assert.deepEqual(api.State.bench.map(p => p.name), ['R99'], 'the leader-benched player stays on the bench');
-  assert(api.State.groups.every(g => g.length <= 5));
-  assert(api.State.groups.flat().every((p, i) => p.groupNumber >= 1), 'seated players carry a group number');
+  assert.equal(seatedCount(api), 25, 'back to 25 seated');
+  assert.deepEqual(benchNames(api), ['R99'], 'the leader-benched player stays on the bench');
+  assert(api.State.groups.every(grp => grp.length <= 5));
+  assert.equal(api.State.sizeBenched.length, 0);
   assert.match(env.toasts.at(-1), /15 players back in the raid/);
 });
 
-check('the shrink list is per plan: a plan load or another plan never re-seats from it', () => {
+check('the list survives undo and redo: 25 -> 10, undo, undo, redo, then 25 re-seats', () => {
   const { api } = roundTripEnv();
   api.selectRaidSize(10);
-  api.State.planId = 'plan:other';
+  const undoStep = () => { assert(api.PlanSession.undoLast()); api.initGroups(); api.commit(); };
+  const redoStep = () => { assert(api.PlanSession.redoLast()); api.initGroups(); api.commit(); };
+  undoStep();
+  assert.equal(api.State.selectedRaid, 'bt'); assert.equal(seatedCount(api), 25);
+  assert.equal(api.PlanSession.undoLast(), false, 'nothing older to undo');
+  redoStep();
+  assert.equal(api.State.selectedRaid, 'kara'); assert.equal(seatedCount(api), 10);
+  assert.equal(api.State.sizeBenched.length, 15, 'redo brings the list back with the board');
   api.selectRaidSize(25);
-  assert.equal(api.State.groups.flat().length, 10, 'another plan ignores the list');
-  const second = roundTripEnv();
-  second.api.selectRaidSize(10);
-  second.api.SizeBench.clear(); // what PlanStore.restore and startFresh do
-  second.api.selectRaidSize(25);
-  assert.equal(second.api.State.groups.flat().length, 10);
-  assert.match(app.slice('  restore(data) {', '  // Empty every per-plan field'), /SizeBench\.clear\(\);/);
-  assert.match(app.slice('  startFresh() {', 'State.campfires = Campfires.empty();'), /SizeBench\.clear\(\);/);
+  assert.equal(seatedCount(api), 25);
+  assert.deepEqual(benchNames(api), ['R99']);
+});
+
+check('the list survives a reload: the saved plan carries it and a fresh page re-seats', () => {
+  const { api } = roundTripEnv();
+  api.selectRaidSize(10);
+  const saved = JSON.parse(JSON.stringify(api.PlanStore.capture()));
+  assert.equal(saved.sizeBenched.length, 15, 'capture() writes the list into the saved plan');
+  const fresh = roundTripEnv().api; // another page load
+  fresh.State.sizeBenched = [];
+  assert(fresh.PlanStore.restore(saved));
+  assert.equal(fresh.State.sizeBenched.length, 15);
+  fresh.selectRaidSize(25);
+  assert.equal(seatedCount(fresh), 25);
+  assert.deepEqual(benchNames(fresh), ['R99']);
+});
+
+check('a size-benched player who was swapped in and then benched by hand stays benched on the next grow (Vorren)', () => {
+  const { api } = roundTripEnv();
+  api.selectRaidSize(10);
+  const vorren = api.State.bench.find(p => p.name === 'R12');
+  vorren.name = 'Vorren';
+  assert(api.State.sizeBenched.includes(vorren.uid));
+  // Swap Vorren in for a seated player.
+  const out = api.State.groups[0].pop();
+  api.State.bench.splice(api.State.bench.indexOf(vorren), 1, out);
+  out.groupNumber = 0; vorren.groupNumber = 1;
+  api.State.groups[0].push(vorren);
+  api.commit();
+  assert(!api.State.sizeBenched.includes(vorren.uid), 'seated: off the list for good');
+  // The leader benches Vorren again by hand.
+  api.State.groups[0].splice(api.State.groups[0].indexOf(vorren), 1);
+  vorren.groupNumber = 0; api.State.bench.push(vorren);
+  api.commit();
+  api.selectRaidSize(25);
+  assert(api.State.bench.includes(vorren), 'Vorren stays benched');
+  assert(api.State.bench.some(p => p.name === 'R99'));
+  assert(api.State.bench.includes(out), 'the player swapped out by hand stays benched too');
+  assert.equal(api.State.bench.length, 3);
+  assert.equal(seatedCount(api), 23, 'every size-benched player is seated again');
+});
+
+check('the list is per plan: plans without it load empty, and a new plan starts empty', () => {
+  const { api } = roundTripEnv();
+  api.selectRaidSize(10);
+  const old = JSON.parse(JSON.stringify(api.PlanStore.capture()));
+  delete old.sizeBenched; old.planId = 'plan:old';
+  assert(api.PlanStore.valid(old), 'a plan saved before the field existed is still valid');
+  assert(api.PlanStore.restore(old));
+  assert.deepEqual([...api.State.sizeBenched], [], 'no list: nothing to re-seat');
+  api.selectRaidSize(25);
+  assert.equal(seatedCount(api), 10);
+  api.State.sizeBenched = ['p1'];
+  api.PlanStore.startFresh();
+  assert.deepEqual([...api.State.sizeBenched], []);
+  assert.equal(api.PlanStore.valid({ ...old, sizeBenched: 'x' }), false, 'a malformed list is rejected');
 });
 
 // ── (c) old saved plans ─────────────────────────────────────────────

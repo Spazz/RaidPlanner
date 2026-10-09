@@ -41,6 +41,8 @@ const State = {
   activeTab: 'plan', // 'plan' | 'ideal' | 'assignments'
   view: 'landing', // 'landing' | 'app'
   notes: '', // Free-text raid notes (MT swaps, add plans); capped at NOTES_MAX_LENGTH.
+  // uids a Raid size shrink moved to the bench (see SizeBench). Saved with the plan.
+  sizeBenched: [],
   // Per-plan hard constraints between two named players (backlog #3):
   // [{a: name, b: name, type: 'together'|'apart'}]. See the Constraints module.
   playerConstraints: [],
@@ -486,34 +488,39 @@ function enforceRaidCapacity(groups, bench, numGroups, maxPerGroup = 5) {
   return benched;
 }
 
-// Players a Raid size shrink benched (nav slim-down). Growing the size again
-// re-seats the ones still on the bench into the new open seats, so 25 -> 10 -> 25
-// ends with everyone seated again; players the leader benched themselves are
-// never in this list and stay benched. In memory only and bound to one plan:
-// PlanStore.restore / startFresh clear it, and a different planId ignores it.
+// Players a Raid size shrink benched (nav slim-down), as State.sizeBenched (uids).
+// Growing the size again re-seats the ones still on the bench into the new open
+// seats, so 25 -> 10 -> 25 ends with everyone seated again. The list is part of
+// the plan: PlanStore.capture/restore carry it, so undo/redo and a reload keep
+// it, and another plan brings its own (or none). prune() runs on every commit, so
+// a remembered player who gets seated drops off for good: benching them by hand
+// later never makes a size change re-seat them. Players the leader benched
+// themselves are never remembered.
 const SizeBench = {
-  planId: undefined,
-  uids: [],
-  clear() { this.planId = undefined; this.uids = []; },
+  clean(list) {
+    return Array.isArray(list) ? [...new Set(list.filter(uid => typeof uid === 'string' && uid))] : [];
+  },
   remember(uids) {
-    if (this.planId !== State.planId) { this.planId = State.planId; this.uids = []; }
-    for (const uid of uids) if (!this.uids.includes(uid)) this.uids.push(uid);
+    State.sizeBenched = this.clean([...(State.sizeBenched || []), ...uids]);
+  },
+  // Keeps only remembered players who are on the bench right now.
+  prune() {
+    const onBench = new Set((State.bench || []).map(p => p.uid));
+    State.sizeBenched = this.clean(State.sizeBenched).filter(uid => onBench.has(uid));
   },
   // Moves remembered players still on the bench into open seats, in the order
   // they were benched. Returns how many were seated.
   reseat(maxPerGroup = 5) {
-    if (this.planId !== State.planId) { this.clear(); return 0; }
+    this.prune();
     const bench = State.bench || [];
-    this.uids = this.uids.filter(uid => bench.some(p => p.uid === uid));
     let seated = 0;
-    for (const uid of [...this.uids]) {
+    for (const uid of [...State.sizeBenched]) {
       const gi = State.groups.findIndex(g => g.length < maxPerGroup);
       if (gi < 0) break;
-      const bi = bench.findIndex(p => p.uid === uid);
-      const [player] = bench.splice(bi, 1);
+      const [player] = bench.splice(bench.findIndex(p => p.uid === uid), 1);
       player.groupNumber = gi + 1;
       State.groups[gi].push(player);
-      this.uids = this.uids.filter(u => u !== uid);
+      State.sizeBenched = State.sizeBenched.filter(u => u !== uid);
       seated++;
     }
     if (seated) State.roster = State.groups.flat();
