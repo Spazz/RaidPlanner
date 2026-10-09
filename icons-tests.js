@@ -132,6 +132,13 @@ check('a failed catalog icon is replaced by its alt text', () => {
   assert.equal(img.replacement.textContent, 'WF');
 });
 
+check('a failed role icon is replaced by its alt text instead of leaving an empty span', () => {
+  const span = makeEl('span', { class: 'role-icon tank' });
+  const img = makeEl('img', { src: '/icons/x.jpg', alt: 'Tank' }, span);
+  assert.equal(handleIconError(img), 'text');
+  assert.equal(img.replacement.textContent, 'Tank');
+});
+
 check('non-image error targets are ignored', () => {
   assert.equal(handleIconError(null), 'ignored');
   assert.equal(handleIconError({}), 'ignored');

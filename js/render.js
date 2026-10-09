@@ -138,7 +138,7 @@ function handleIconError(img) {
     img.remove();
     return 'removed';
   }
-  if (parent && parent.classList.contains('buff-row-icon')) {
+  if (parent && (parent.classList.contains('buff-row-icon') || parent.classList.contains('role-icon'))) {
     const text = document.createElement('span');
     text.textContent = img.getAttribute('alt') || '';
     img.replaceWith(text);
@@ -1051,7 +1051,6 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     if (!pending) return;
     clearTimeout(pending.timer);
     pending = null;
-    if (!active) disarmTouchMove();
   }
 
   function stopAutoScroll() {
@@ -1082,7 +1081,6 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     clearHighlights();
     stopAutoScroll();
     active = null;
-    disarmTouchMove();
   }
 
   function targetAt(x, y) {
@@ -1137,7 +1135,6 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     if (!src) return;
     const t = e.touches[0];
     cancelPending();
-    armTouchMove();
     pending = {
       x: t.clientX, y: t.clientY,
       timer: setTimeout(() => beginDrag(src, slot), LONG_PRESS_MS),
@@ -1165,21 +1162,13 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     }
   }
 
-  // The only non-passive listener the page needs (it must preventDefault to stop the page
-  // scrolling under a drag). A permanent one on document would make every scroll gesture
-  // on the page wait for script, so it exists only from the moment a finger lands on a
-  // draggable slot until the press turns into a scroll, the drag ends, or the touch is cancelled.
-  let touchMoveArmed = false;
-  function armTouchMove() {
-    if (touchMoveArmed) return;
-    touchMoveArmed = true;
-    document.addEventListener('touchmove', onTouchMove, { passive: false });
-  }
-  function disarmTouchMove() {
-    if (!touchMoveArmed) return;
-    touchMoveArmed = false;
-    document.removeEventListener('touchmove', onTouchMove, { passive: false });
-  }
+  // The only non-passive listeners the page needs (they must preventDefault to stop the page
+  // scrolling under a drag). Browsers decide at touchstart whether a touch sequence can be
+  // cancelled, so these are permanent and scoped to the drag containers (touchmove goes to
+  // the element where the touch started): scrolls that start elsewhere stay passive, and
+  // onTouchMove returns early unless a press or drag is in progress.
+  groups.addEventListener('touchmove', onTouchMove, { passive: false });
+  bench.addEventListener('touchmove', onTouchMove, { passive: false });
 
   document.addEventListener('touchend', e => {
     cancelPending();
