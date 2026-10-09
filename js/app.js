@@ -442,7 +442,10 @@ const TabWatch = {
     if (!entry) return;
     // A tab opened beside this one re-saves the same plan with a new updatedAt:
     // identical content is no conflict, but remember the stamp so a later real edit shows.
-    if (JSON.stringify(entry.data) === JSON.stringify(PlanStore.capture())) {
+    // A tab still on a pre-4.0 build saves without sizeBenched; that alone is no edit.
+    const mine = PlanStore.capture();
+    if (entry.data && !('sizeBenched' in entry.data)) delete mine.sizeBenched;
+    if (JSON.stringify(entry.data) === JSON.stringify(mine)) {
       PlanStore.known[LiveLinks.planKey(State)] = entry.updatedAt;
       return;
     }
