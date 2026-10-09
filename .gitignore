@@ -35,6 +35,7 @@
 !forever-tests.js
 !classic-forever-scenarios.js
 !assignments-tests.js
+!custom-assignments-tests.js
 !idealcomp-tests.js
 !rosters-tests.js
 !prep-tests.js

@@ -964,6 +964,101 @@ const Assignments = {
     State.assignments.debuffs[debuffId] = playerName || this.NONE;
   },
 
+  // ── Custom rows (interrupts, cube clickers, kiters, ...) ─────────────
+  // State.assignments.custom = [{ id, label, players:[name], mark }] in the
+  // user's order. The key exists only while at least one row does, so a plan
+  // with none serializes exactly as it did before rows existed. `mark` is a
+  // raid-target number (1 Star ... 8 Skull) or 0 for none.
+  CUSTOM_MAX_ROWS: 20,
+  CUSTOM_LABEL_MAX: 40,
+  CUSTOM_MAX_PLAYERS: 40,
+  RAID_MARKS: ['Star', 'Circle', 'Diamond', 'Triangle', 'Moon', 'Square', 'Cross', 'Skull'],
+  customRows() { return State.assignments.custom || []; },
+  findCustom(id) { return this.customRows().find(r => r.id === id) || null; },
+  // Control characters and runs of whitespace collapse to one space; the label stays free text.
+  cleanLabel(raw) {
+    return String(raw == null ? '' : raw).replace(/[\x00-\x1f\x7f\s]+/g, ' ').trim().slice(0, this.CUSTOM_LABEL_MAX).trim();
+  },
+  cleanMark(raw) { return Number.isInteger(raw) && raw >= 1 && raw <= this.RAID_MARKS.length ? raw : 0; },
+  // Defensive read of untrusted rows (saved plan, share tail, template, hand-edited backup).
+  cleanCustom(items) {
+    if (!Array.isArray(items)) return [];
+    const out = [], ids = new Set();
+    for (const r of items) {
+      if (out.length >= this.CUSTOM_MAX_ROWS) break;
+      if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+      const label = this.cleanLabel(r.label);
+      if (!label) continue;
+      let id = typeof r.id === 'string' && /^c\d+$/.test(r.id) && !ids.has(r.id) ? r.id : null;
+      if (!id) { let n = 1; while (ids.has('c' + n)) n++; id = 'c' + n; }
+      ids.add(id);
+      const players = [...new Set((Array.isArray(r.players) ? r.players : []).filter(n => typeof n === 'string' && n))].slice(0, this.CUSTOM_MAX_PLAYERS);
+      out.push({ id, label, players, mark: this.cleanMark(r.mark) });
+    }
+    return out;
+  },
+  _storeCustom(rows) {
+    if (rows.length) State.assignments.custom = rows;
+    else delete State.assignments.custom;
+  },
+  addCustom(label, mark = 0) {
+    const clean = this.cleanLabel(label);
+    if (!clean) return { success:false, error:'Enter a label for the assignment' };
+    const rows = this.customRows();
+    if (rows.length >= this.CUSTOM_MAX_ROWS) return { success:false, error:'At most ' + this.CUSTOM_MAX_ROWS + ' custom assignments' };
+    const taken = new Set(rows.map(r => r.id));
+    let n = 1; while (taken.has('c' + n)) n++;
+    const row = { id: 'c' + n, label: clean, players: [], mark: this.cleanMark(mark) };
+    this._storeCustom([...rows, row]);
+    return { success:true, row };
+  },
+  renameCustom(id, label) {
+    const row = this.findCustom(id);
+    if (!row) return { success:false, error:'Assignment not found' };
+    const clean = this.cleanLabel(label);
+    if (!clean) return { success:false, error:'Label cannot be empty' };
+    row.label = clean;
+    return { success:true, row };
+  },
+  setCustomMark(id, mark) {
+    const row = this.findCustom(id);
+    if (!row) return { success:false, error:'Assignment not found' };
+    row.mark = this.cleanMark(Number(mark));
+    return { success:true, row };
+  },
+  // Only a player seated right now can be assigned, so a row never starts out with a dangling name.
+  addCustomPlayer(id, name) {
+    const row = this.findCustom(id);
+    if (!row) return { success:false, error:'Assignment not found' };
+    if (!(State.roster || []).some(p => p.name === name)) return { success:false, error:'Player is not seated' };
+    if (row.players.includes(name)) return { success:true, row };
+    if (row.players.length >= this.CUSTOM_MAX_PLAYERS) return { success:false, error:'Too many players on one assignment' };
+    row.players.push(name);
+    return { success:true, row };
+  },
+  removeCustomPlayer(id, name) {
+    const row = this.findCustom(id);
+    if (!row) return { success:false, error:'Assignment not found' };
+    row.players = row.players.filter(n => n !== name);
+    return { success:true, row };
+  },
+  moveCustom(id, delta) {
+    const rows = this.customRows().slice();
+    const from = rows.findIndex(r => r.id === id);
+    if (from < 0) return { success:false, error:'Assignment not found' };
+    const to = Math.max(0, Math.min(rows.length - 1, from + delta));
+    if (to === from) return { success:true, moved:false };
+    rows.splice(to, 0, rows.splice(from, 1)[0]);
+    this._storeCustom(rows);
+    return { success:true, moved:true };
+  },
+  removeCustom(id) {
+    const rows = this.customRows();
+    if (!rows.some(r => r.id === id)) return { success:false, error:'Assignment not found' };
+    this._storeCustom(rows.filter(r => r.id !== id));
+    return { success:true };
+  },
+
   // Drops manual choices that reference a player (or, for healer->tank, a
   // tank) no longer seated. Never touches an entry that still resolves —
   // silently discarding a choice that is still valid would violate "never
@@ -984,10 +1079,12 @@ const Assignments = {
       const name = State.assignments.debuffs[id];
       if (name !== this.NONE && !names.has(name)) delete State.assignments.debuffs[id];
     }
+    // A custom row outlives its players (it is the user's own label); only the names go.
+    for (const row of this.customRows()) row.players = row.players.filter(n => names.has(n));
   },
 
   hasManualEdits() {
-    return !!(Object.keys(State.assignments.tankHealers).length || Object.keys(State.assignments.blessings).length || Object.keys(State.assignments.debuffs).length);
+    return !!(Object.keys(State.assignments.tankHealers).length || Object.keys(State.assignments.blessings).length || Object.keys(State.assignments.debuffs).length || this.customRows().length);
   },
   // Deep-cloned snapshot for persistence (PlanStore / exportRoster / share tail).
   serialize() {
@@ -1000,6 +1097,7 @@ const Assignments = {
       blessings: clean(data && data.blessings),
       debuffs: clean(data && data.debuffs),
     };
+    this._storeCustom(this.cleanCustom(data && data.custom));
     this.reconcileRoster();
   },
 
@@ -1054,7 +1152,63 @@ const Assignments = {
       const segs = Object.entries(debuffAssignments).map(([id, name]) => `${Config.DebuffAbbreviations[id] || id}: ${name}`);
       lines.push(...this._packLines('Debuffs', segs));
     }
+
+    const seated = new Set((players || []).map(p => p.name));
+    for (const row of this.customRows()) {
+      const names = row.players.filter(n => seated.has(n));
+      if (names.length) lines.push(...this._packLines((row.mark ? '{rt' + row.mark + '} ' : '') + row.label, [names.join(', ')]));
+    }
     return lines.join('\n');
+  },
+
+  // ── MRT (Method Raid Tools) note ──
+  // Plain note text for MRT's Note module (paste into a note, then send to the
+  // raid): a heading per section, one line per assignment, names wrapped in
+  // their class colour. Every assignment is included - the live Healer->Tank,
+  // Blessing and Debuff values plus the custom rows. A "|" would start a WoW
+  // escape sequence, so it is doubled in every user-supplied piece of text.
+  _mrtText(str) { return chatSafe(str).replace(/\|/g, '||'); },
+  _mrtName(name, byName) {
+    const color = Config.ClassColors[(byName.get(name) || {}).class];
+    const text = this._mrtText(name);
+    return color ? '|cff' + color.slice(1).toUpperCase() + text + '|r' : text;
+  },
+  toMrtNote(players = State.roster) {
+    const byName = new Map((players || []).map(p => [p.name, p]));
+    const names = list => list.map(n => this._mrtName(n, byName)).join(', ');
+    const sections = [];
+
+    const healerTanks = this.effectiveHealerTanks(players);
+    const tanks = (players || []).filter(p => p.role === 'tank');
+    if (tanks.length) {
+      const lines = ['Healers'];
+      tanks.forEach((t, i) => {
+        const healers = Object.entries(healerTanks).filter(([, tk]) => tk === t.name).map(([h]) => h);
+        lines.push((i === 0 ? 'MT' : i === 1 ? 'OT' : 'OT' + i) + ' ' + this._mrtName(t.name, byName) + ': ' + (healers.length ? names(healers) : '(none)'));
+      });
+      const raidHealers = Object.entries(healerTanks).filter(([, tk]) => tk === 'RAID').map(([h]) => h);
+      if (raidHealers.length) lines.push('Raid: ' + names(raidHealers));
+      sections.push(lines);
+    }
+
+    const blessings = this.effectiveBlessings(players);
+    const catalog = this.blessingCatalog();
+    const blessingIds = this.BLESSING_ORDER.filter(id => blessings[id]);
+    if (blessingIds.length) {
+      sections.push(['Blessings', ...blessingIds.map(id => this._mrtText(((catalog[id] || {}).name || id).replace('Blessing of ', '')) + ': ' + names([blessings[id]]))]);
+    }
+
+    const debuffAssignments = this.effectiveDebuffs(players);
+    const debuffEntries = Object.entries(debuffAssignments);
+    if (debuffEntries.length) {
+      sections.push(['Debuffs', ...debuffEntries.map(([id, name]) => this._mrtText(Config.DebuffAbbreviations[id] || id) + ': ' + names([name]))]);
+    }
+
+    const custom = this.customRows().map(row => ({ row, who: row.players.filter(n => byName.has(n)) })).filter(c => c.who.length);
+    if (custom.length) {
+      sections.push(['Custom', ...custom.map(({ row, who }) => (row.mark ? '{rt' + row.mark + '} ' : '') + this._mrtText(row.label) + ': ' + names(who))]);
+    }
+    return sections.map(lines => lines.join('\n')).join('\n\n');
   },
 };
 
@@ -1567,6 +1721,9 @@ const PrintSheet = {
     const debuffDefs = activeRules().debuffs || {};
     const debuffRows = Object.entries(debuffAssignments).map(([id, name]) => `<li>${esc((debuffDefs[id] || {}).name || id)}: ${esc(name)}</li>`).join('');
 
+    const customRows = Assignments.customRows().map(row => ({ row, who: row.players.filter(n => players.some(p => p.name === n)) })).filter(c => c.who.length);
+    const customItems = customRows.map(({ row, who }) => `<li>${row.mark ? esc(Assignments.RAID_MARKS[row.mark - 1]) + ' ' : ''}${esc(row.label)}: ${who.map(esc).join(', ')}</li>`).join('');
+
     const notes = (State.notes || '').trim();
 
     return `
@@ -1580,6 +1737,7 @@ const PrintSheet = {
         ${healerRows ? `<div class="ps-assign-col"><h4>Healer &rarr; Tank</h4><ul>${healerRows}</ul></div>` : ''}
         ${blessingRows ? `<div class="ps-assign-col"><h4>Blessings</h4><ul>${blessingRows}</ul></div>` : ''}
         ${debuffRows ? `<div class="ps-assign-col"><h4>Boss Debuffs</h4><ul>${debuffRows}</ul></div>` : ''}
+        ${customItems ? `<div class="ps-assign-col"><h4>Custom</h4><ul>${customItems}</ul></div>` : ''}
       </div>
       ${notes ? `<div class="ps-notes"><h4>Notes</h4><p>${esc(notes)}</p></div>` : ''}
     `;

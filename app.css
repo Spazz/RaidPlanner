@@ -1590,6 +1590,22 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 .assign-select { background:var(--bg-input); border:1px solid var(--border-strong); color:var(--text-primary); font:12px var(--font-body); padding:6px 8px; min-width:160px; }
 .assign-select:focus { outline:none; border-color:var(--accent-gold); }
 .assign-hint { font-size:11px; color:var(--accent-gold-dim); }
+.assign-heading-flush { margin-bottom:0; }
+.assign-heading-flush h3 { margin:0; }
+.assign-heading-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.assign-custom-row { flex-direction:column; align-items:stretch; gap:8px; }
+.assign-custom-head, .assign-custom-players, .assign-custom-add { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.assign-custom-add { margin-top:12px; }
+.assign-custom-actions { display:flex; gap:6px; margin-left:auto; }
+.assign-mark-select { min-width:110px; }
+.assign-label-input { flex:1; min-width:160px; background:var(--bg-input); border:1px solid var(--border-strong); color:var(--text-primary); font:13px var(--font-body); padding:6px 8px; }
+.assign-label-input:focus { outline:none; border-color:var(--accent-gold); }
+.assign-chip { display:inline-flex; align-items:center; gap:4px; padding:3px 4px 3px 8px; border:1px solid var(--border-strong); background:var(--bg-input); color:var(--text-primary); font-size:12px; font-weight:600; }
+.assign-chip-remove { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; line-height:1; padding:0 4px; }
+.assign-chip-remove:hover, .assign-chip-remove:focus-visible { color:var(--accent-red); }
+.cc-warrior { color:var(--class-warrior); } .cc-paladin { color:var(--class-paladin); } .cc-hunter { color:var(--class-hunter); }
+.cc-rogue { color:var(--class-rogue); } .cc-priest { color:var(--class-priest); } .cc-shaman { color:var(--class-shaman); }
+.cc-mage { color:var(--class-mage); } .cc-warlock { color:var(--class-warlock); } .cc-druid { color:var(--class-druid); }
 .assign-conflict { background:rgba(201,115,106,0.08); }
 .assign-warning { color:var(--accent-red); font-size:12px; margin-top:10px; }
 .assign-empty { color:var(--text-muted); font-size:12px; padding:10px 0; }

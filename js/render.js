@@ -408,6 +408,40 @@ function renderAssignments() {
     }
   }
 
+  // ── Custom assignments (user-defined rows: interrupts, cube clickers, kiters...) ──
+  const customRows = Assignments.customRows();
+  const markOptions = current => ['<option value="0"' + (!current ? ' selected' : '') + '>No mark</option>']
+    .concat(Assignments.RAID_MARKS.map((m, i) => `<option value="${i + 1}"${current === i + 1 ? ' selected' : ''}>${esc(m)}</option>`)).join('');
+  const customHTML = customRows.map((row, i) => {
+    const addable = players.filter(p => !row.players.includes(p.name));
+    const chips = row.players.map(name => {
+      const cls = (players.find(p => p.name === name) || {}).class;
+      return `<span class="assign-chip${Config.ClassColors[cls] ? ' cc-' + esc(cls.toLowerCase()) : ''}">${esc(name)}<button type="button" class="assign-chip-remove" data-custom-unassign="${esc(row.id)}" data-player="${esc(name)}" aria-label="Remove ${esc(name)} from ${esc(row.label)}">&times;</button></span>`;
+    }).join('');
+    const addSelect = addable.length
+      ? `<select class="assign-select" data-custom-assign="${esc(row.id)}" aria-label="Add a player to ${esc(row.label)}"><option value="">Add player...</option>${addable.map(p => `<option value="${esc(p.name)}">${esc(p.name)} (${esc(p.spec || '')} ${esc(RosterEdit.ClassLabel(p.class))})</option>`).join('')}</select>`
+      : '';
+    return `<div class="assign-row assign-custom-row" data-custom-row="${esc(row.id)}">
+      <div class="assign-custom-head">
+        <select class="assign-select assign-mark-select" data-custom-mark="${esc(row.id)}" aria-label="Raid mark for ${esc(row.label)}">${markOptions(row.mark)}</select>
+        <input type="text" class="assign-label-input" maxlength="${Assignments.CUSTOM_LABEL_MAX}" value="${esc(row.label)}" data-custom-label="${esc(row.id)}" aria-label="Assignment label">
+        <span class="assign-custom-actions">
+          <button type="button" class="btn btn-quiet" data-custom-move="${esc(row.id)}" data-delta="-1"${i === 0 ? ' disabled' : ''} aria-label="Move ${esc(row.label)} up">Up</button>
+          <button type="button" class="btn btn-quiet" data-custom-move="${esc(row.id)}" data-delta="1"${i === customRows.length - 1 ? ' disabled' : ''} aria-label="Move ${esc(row.label)} down">Down</button>
+          <button type="button" class="btn btn-quiet" data-custom-delete="${esc(row.id)}" aria-label="Delete ${esc(row.label)}">Delete</button>
+        </span>
+      </div>
+      <div class="assign-custom-players">${chips}${addSelect}${!chips && !addSelect ? '<span class="assign-empty">No players seated.</span>' : ''}</div>
+    </div>`;
+  }).join('');
+  const customSectionHTML = `<section class="assign-section">
+      <div class="assign-heading assign-heading-flush"><h3>Custom Assignments</h3></div>
+      ${customHTML || '<p class="assign-empty">Nothing yet. Add a row for interrupts, cube clickers, kiters or anything else the encounter needs.</p>'}
+      ${customRows.length < Assignments.CUSTOM_MAX_ROWS
+        ? `<div class="assign-custom-add"><input type="text" class="assign-label-input" id="custom-new-label" maxlength="${Assignments.CUSTOM_LABEL_MAX}" placeholder="New assignment, e.g. Interrupts" aria-label="New assignment label"><button type="button" class="btn btn-secondary" id="btn-add-custom">Add</button></div>`
+        : `<p class="assign-empty">At most ${Assignments.CUSTOM_MAX_ROWS} custom assignments.</p>`}
+    </section>`;
+
   // ── Raid Prep (backlog #9 + #10) ──
   const prep = RaidPrep.itemsWithCoverage(State.selectedRaid, State.groups, State.bench);
   let prepHTML = '<p class="assign-empty">No raid prep notes yet for this raid.</p>';
@@ -439,11 +473,15 @@ function renderAssignments() {
   panel.innerHTML = `
     <div class="assign-heading">
       <div><span class="assign-kicker">${esc((Config.Raids[State.selectedRaid] || {}).name || '')}</span><h2>Assignments</h2></div>
-      <button type="button" class="btn btn-secondary" id="btn-copy-assignments">Copy assignments</button>
+      <div class="assign-heading-actions">
+        <button type="button" class="btn btn-secondary" id="btn-copy-assignments">Copy assignments</button>
+        <button type="button" class="btn btn-secondary" id="btn-copy-mrt-note-panel">Copy MRT note</button>
+      </div>
     </div>
     <section class="assign-section"><h3>Healer &rarr; Tank</h3>${healerRowsHTML}</section>
     ${blessingsHTML}
     <section class="assign-section"><h3>Boss Debuffs</h3>${debuffsHTML}</section>
+    ${customSectionHTML}
     <section class="assign-section">
       <div class="assign-heading" style="margin-bottom:0;"><h3 style="margin:0;">Raid Prep</h3>${hasPrepContent ? '<button type="button" class="btn btn-secondary" id="btn-copy-prep">Copy prep</button>' : ''}</div>
       ${prepHTML}
@@ -465,6 +503,56 @@ function renderAssignments() {
     renderAssignments();
     persistWorkingPlan();
   });
+  // Custom rows change through commit() like every other plan edit. The panel is
+  // rebuilt by it, so focus goes back to the first of `focusSelectors` that exists.
+  const editCustom = (mutate, ...focusSelectors) => {
+    const result = commit(mutate);
+    if (result && result.error) showToast(result.error);
+    for (const selector of focusSelectors) {
+      const target = panel.querySelector(selector);
+      if (target && !target.disabled) { target.focus(); break; }
+    }
+  };
+  const addCustomRow = () => {
+    const input = document.getElementById('custom-new-label');
+    if (!input) return;
+    if (!Assignments.cleanLabel(input.value)) { showToast('Enter a label for the assignment'); input.focus(); return; }
+    let newId = null;
+    editCustom(() => { const r = Assignments.addCustom(input.value); if (r.success) newId = r.row.id; return r; });
+    panel.querySelector(newId ? `[data-custom-assign="${newId}"]` : '#custom-new-label')?.focus();
+  };
+  const addCustomBtn = document.getElementById('btn-add-custom');
+  if (addCustomBtn) addCustomBtn.onclick = addCustomRow;
+  const newLabelInput = document.getElementById('custom-new-label');
+  if (newLabelInput) newLabelInput.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addCustomRow(); } };
+  panel.querySelectorAll('[data-custom-label]').forEach(input => input.onchange = () => {
+    const id = input.dataset.customLabel;
+    if (!Assignments.cleanLabel(input.value)) { showToast('Label cannot be empty'); renderAssignments(); return; }
+    editCustom(() => Assignments.renameCustom(id, input.value));
+  });
+  panel.querySelectorAll('[data-custom-mark]').forEach(sel => sel.onchange = () => {
+    const id = sel.dataset.customMark;
+    editCustom(() => Assignments.setCustomMark(id, sel.value), `[data-custom-mark="${id}"]`);
+  });
+  panel.querySelectorAll('[data-custom-assign]').forEach(sel => sel.onchange = () => {
+    if (!sel.value) return;
+    const id = sel.dataset.customAssign, name = sel.value;
+    editCustom(() => Assignments.addCustomPlayer(id, name), `[data-custom-assign="${id}"]`, `[data-custom-row="${id}"] input`);
+  });
+  panel.querySelectorAll('[data-custom-unassign]').forEach(btn => btn.onclick = () => {
+    const id = btn.dataset.customUnassign, name = btn.dataset.player;
+    editCustom(() => Assignments.removeCustomPlayer(id, name), `[data-custom-assign="${id}"]`, `[data-custom-row="${id}"] input`);
+  });
+  panel.querySelectorAll('[data-custom-move]').forEach(btn => btn.onclick = () => {
+    const id = btn.dataset.customMove, delta = btn.dataset.delta;
+    editCustom(() => Assignments.moveCustom(id, Number(delta)), `[data-custom-move="${id}"][data-delta="${delta}"]`, `[data-custom-move="${id}"]`);
+  });
+  panel.querySelectorAll('[data-custom-delete]').forEach(btn => btn.onclick = () => {
+    editCustom(() => Assignments.removeCustom(btn.dataset.customDelete), '#custom-new-label');
+    showToast('Assignment deleted. Undo is available.');
+  });
+  const copyMrtBtn = document.getElementById('btn-copy-mrt-note-panel');
+  if (copyMrtBtn) copyMrtBtn.onclick = copyMrtNote;
   const copyPrepBtn = document.getElementById('btn-copy-prep');
   if (copyPrepBtn) copyPrepBtn.onclick = () => {
     const text = RaidPrep.toChatText(State.selectedRaid);
@@ -479,6 +567,13 @@ function renderAssignments() {
   };
 }
 
+
+// Shared by the Assignments panel, the Share menu and the share dialog.
+function copyMrtNote() {
+  const text = Assignments.toMrtNote();
+  if (!text) { showToast('No assignments to export'); return; }
+  copyText(text, 'MRT note copied. In MRT: Note > paste into a note');
+}
 
 // ── STATE CHANGE PIPELINE ───────────────────────────────────────
 // A change to the plan reaches storage and the screen one way: commit(mutator)

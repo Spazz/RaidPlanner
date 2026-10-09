@@ -286,7 +286,11 @@ const PlanStore = {
 // Reusable group layouts, scoped to game version + raid (a TBC Black Temple
 // template has no business seeding a Classic MC import). Deliberately
 // separate from PlanStore/pp_rosters: a template only remembers
-// name -> group/role, never full player objects, buffOverrides, notes, etc.
+// name -> group/role (never full player objects, buffOverrides, notes, etc.)
+// plus the name-keyed planning that goes with the layout: assignments
+// (custom rows included), bench backups, keep-together/apart constraints and
+// drummer tags, each stored only when the plan had some. Templates saved before
+// those existed simply lack the fields and leave the open plan's own alone.
 // — see applyTemplate() below for the pure seed-and-lock transform, and
 // Optimizer.arrange()'s Phase 0/isPinned for how a `.locked` seat survives
 // the next Optimize.
@@ -317,6 +321,18 @@ const Templates = {
     return players;
   },
 
+  // The optional planning fields of a template: only the ones the plan has.
+  capturePlanning() {
+    const planning = {};
+    if (Assignments.hasManualEdits()) planning.assignments = Assignments.serialize();
+    if (Backups.hasManualEdits()) planning.backups = Backups.serialize();
+    const constraints = Constraints.clean(State.playerConstraints);
+    if (constraints.length) planning.playerConstraints = constraints;
+    const drummers = Drummers.clean(State.drummers);
+    if (drummers.length) planning.drummers = drummers;
+    return planning;
+  },
+
   save(storage, name, gameVersion, raid) {
     name = String(name || '').trim();
     if (!name) return { success:false, error:'Name cannot be empty' };
@@ -325,7 +341,7 @@ const Templates = {
     const all = this.read(storage);
     all[gameVersion] = all[gameVersion] || {};
     all[gameVersion][raid] = all[gameVersion][raid] || {};
-    all[gameVersion][raid][name] = { savedAt: Date.now(), players };
+    all[gameVersion][raid][name] = { savedAt: Date.now(), players, ...this.capturePlanning() };
     if (!this.write(storage, all)) return { success:false, error:'Browser storage is full' };
     return { success:true };
   },
@@ -384,6 +400,13 @@ const Templates = {
     State.bench = result.bench;
     State.roster = State.groups.flat();
     State.preserveGroupOrder = true;
+    // Planning the template carries replaces the open plan's; a field it lacks
+    // (an older template, or none was set) leaves the plan's own untouched.
+    // Names no longer in the roster are dropped by the restore/reconcile passes.
+    if (template.assignments !== undefined) Assignments.restore(template.assignments);
+    if (template.backups !== undefined) Backups.restore(template.backups);
+    if (template.playerConstraints !== undefined) State.playerConstraints = Constraints.clean(template.playerConstraints);
+    if (template.drummers !== undefined) State.drummers = Drummers.clean(template.drummers);
     return { success:true, matched:result.matched, unmatched:result.unmatched };
   },
 };

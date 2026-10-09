@@ -931,6 +931,8 @@ document.getElementById('btn-copy-mrt').addEventListener('click', () => {
   copyText(str, 'MRT string copied. In MRT: Raid Groups > Import > "From ExRT export string"');
 });
 
+document.getElementById('btn-copy-mrt-note').addEventListener('click', copyMrtNote);
+
 document.getElementById('btn-export-json').addEventListener('click', () => {
   if (!hasLoadedWork()) { showToast('No roster to export'); return; }
   const data = Import.exportRoster(State.rosterName);

@@ -24,7 +24,8 @@ const State = {
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
   // Manual overrides only (name-keyed, like buffOverrides) — see the
   // Assignments module. Live suggestions are always recomputed from the
-  // current roster and merged with these at render/serialize time.
+  // current roster and merged with these at render/serialize time. The user's
+  // own rows live in an optional `custom` array (absent while there are none).
   assignments: { tankHealers:{}, blessings:{}, debuffs:{} },
   // Planned bench backups (name-keyed, like buffOverrides/assignments — see
   // the Backups module): seated player's name -> the benched player pinned
