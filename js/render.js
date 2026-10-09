@@ -979,18 +979,19 @@ function announce(message) {
 
 // Phone: the readiness strip (#plan-feedback) is folded away and a short link on line 2
 // of the context row opens it and the coverage panel. The link says what the strip
-// warns about: "N missing" for missing party buffs (the same count the strip names),
-// else the first roster warning ("⚠ 1 healer short"). Hidden when there is nothing to
-// warn about or coverage rules are not configured. Desktop always shows the strip.
+// warns about, most serious first: tanks short, healers short, a mixed-faction
+// Classic roster ("⚠ 1 healer short"), then "N missing" for missing party buffs (the
+// same count the strip names). Hidden when there is nothing to warn about or coverage
+// rules are not configured. Desktop always shows the strip.
 // lastReadiness is set by renderReadiness: {missingBuffs, tanksShort, healersShort, mixedFactions} or null.
 let lastReadiness = null;
 function phoneReadinessLabel(r) {
   if (!r) return '';
   const n = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
-  if (r.missingBuffs > 0) return `<b>${r.missingBuffs}</b> missing &#9656;`;
   if (r.tanksShort > 0) return `<b>&#9888; ${n(r.tanksShort, 'tank')} short</b> &#9656;`;
   if (r.healersShort > 0) return `<b>&#9888; ${n(r.healersShort, 'healer')} short</b> &#9656;`;
   if (r.mixedFactions) return '<b>&#9888; Mixed factions</b> &#9656;';
+  if (r.missingBuffs > 0) return `<b>${r.missingBuffs}</b> missing &#9656;`;
   return '';
 }
 let phoneFeedbackOpen = false;

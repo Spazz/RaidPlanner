@@ -154,12 +154,14 @@ check('the link counts what the strip says: missing party buffs, from renderRead
   assert.doesNotMatch(renderJs, /lastMissingCoverageCount/, 'the buffs + debuffs total no longer feeds the link');
 });
 
-check('with no missing buffs the link names the roster warning instead', () => {
+check('the link names the most serious warning: tanks, healers, factions, then missing buffs', () => {
   const label = r => renderPhone({ missingBuffs: 0, tanksShort: 0, healersShort: 0, mixedFactions: false, ...r }).els['btn-summary-missing'];
   assert.equal(label({ healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;');
   assert.equal(label({ tanksShort: 2, healersShort: 1 }).innerHTML, '<b>&#9888; 2 tanks short</b> &#9656;');
   assert.equal(label({ mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
-  assert.equal(label({ missingBuffs: 3, healersShort: 1 }).innerHTML, '<b>3</b> missing &#9656;', 'buffs first; the strip lists the rest');
+  assert.equal(label({ missingBuffs: 3, healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;', 'a shortage outranks missing buffs; the strip lists the rest');
+  assert.equal(label({ missingBuffs: 3, mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
+  assert.equal(label({ missingBuffs: 3 }).innerHTML, '<b>3</b> missing &#9656;', 'buffs only when the roster itself is fine');
   assert.equal(label({}).hidden, true);
 });
 
