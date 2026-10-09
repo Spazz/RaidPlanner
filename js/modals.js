@@ -792,18 +792,22 @@ function normalizeImportSource(raw) {
   const eventsApi = (id) => `https://raid-helper.dev/api/v4/events/${id}`;
   if (/^\d{6,}$/.test(t)) return { url: eventsApi(t), eventId: t };
   if (/^https?:\/\//i.test(t)) {
-    // Raid-Helper answers on raid-helper.dev and raid-helper.xyz (exact hosts, no
-    // port or userinfo). An explicit API link is fetched as pasted, over https;
-    // event and raidplan page links resolve to the sign-ups for that event ID.
+    // Raid-Helper answers on raid-helper.dev and raid-helper.xyz (no port or userinfo).
+    // An explicit API link is fetched as pasted, over https, so it needs the exact host.
+    // Event and raidplan page links only yield an event ID (the fetch always goes to the
+    // fixed events API), so any subdomain (www.) is fine and text after the URL is ignored.
     // `eventId` is only known when the roster comes from the events endpoint,
     // which is what Refresh re-reads. Any other link is refused, not fetched.
-    const parts = t.match(/^https?:\/\/([^\/?#\s]+)(\/\S*)?$/i);
+    const parts = t.match(/^https?:\/\/([^\/?#\s]+)(\/\S*)?(?:\s[\s\S]*)?$/i);
     const host = parts ? parts[1].toLowerCase() : '';
     const rest = parts ? (parts[2] || '') : '';
-    if (host !== 'raid-helper.dev' && host !== 'raid-helper.xyz') {
+    const exactHost = host === 'raid-helper.dev' || host === 'raid-helper.xyz';
+    const raidHelperHost = exactHost || /^(?:[a-z0-9-]+\.)+raid-helper\.(?:dev|xyz)$/.test(host);
+    if (!raidHelperHost) {
       return { error: 'Only Raid-Helper links can be imported (raid-helper.dev or raid-helper.xyz). Paste the Raid-Helper event link or ID, or paste the JSON text instead.' };
     }
     if (/^\/api\//i.test(rest)) {
+      if (!exactHost) return { error: 'Only Raid-Helper links can be imported (raid-helper.dev or raid-helper.xyz). Paste the Raid-Helper event link or ID, or paste the JSON text instead.' };
       const api = rest.match(/^\/api\/v4\/events\/(\d+)/i);
       return { url: 'https://' + host + rest, eventId: api ? api[1] : null };
     }

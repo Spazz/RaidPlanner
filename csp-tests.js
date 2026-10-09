@@ -116,6 +116,12 @@ check('Event IDs and Raid-Helper event/raidplan links resolve to the events API'
   assert.deepEqual({ ...normalize('  HTTPS://Raid-Helper.DEV/raidplan/1234567890  ') }, { url: API('1234567890'), eventId: '1234567890' });
 });
 
+check('Page links on a raid-helper subdomain (www.) and with trailing text still resolve to the events API', () => {
+  for (const url of ['https://www.raid-helper.dev/event/1234567890', 'https://www.raid-helper.xyz/raidplan/1234567890', 'https://raid-helper.dev/event/1234567890 tonight', 'https://raid-helper.dev/event/1234567890\nsee you there']) {
+    assert.deepEqual({ ...normalize(url) }, { url: API('1234567890'), eventId: '1234567890' }, url);
+  }
+});
+
 check('An explicit Raid-Helper API link is fetched as pasted (upgraded to https)', () => {
   assert.deepEqual({ ...normalize(API('55555555') + '?includeAllUsers=true') }, { url: API('55555555') + '?includeAllUsers=true', eventId: '55555555' });
   assert.deepEqual({ ...normalize('http://raid-helper.xyz/api/raidplan/99') }, { url: 'https://raid-helper.xyz/api/raidplan/99', eventId: null });
@@ -123,7 +129,7 @@ check('An explicit Raid-Helper API link is fetched as pasted (upgraded to https)
 
 check('Any other host is refused with a message that points at the event link / ID / JSON', () => {
   for (const url of ['https://example.com/roster.json', 'https://evil.example/?u=raid-helper.dev/api/v4/events/1', 'https://raid-helper.dev.evil.example/api/v4/events/1',
-    'https://raid-helper.com/api/v4/events/1', 'https://raid-helper.dev@evil.example/api/x', 'https://raid-helper.dev:8443/api/x', 'https://www.raid-helper.dev/event/123456',
+    'https://raid-helper.com/api/v4/events/1', 'https://raid-helper.dev@evil.example/api/x', 'https://raid-helper.dev:8443/api/x', 'https://www.raid-helper.dev/api/v4/events/1', 'https://www.raid-helper.dev.evil.example/event/123456', 'https://xraid-helper.dev/event/123456',
     'http://127.0.0.1/api/share', 'https://raid-helper.devx/event/123456', 'https://']) {
     const r = normalize(url);
     assert.equal(r.url, undefined, `${url} must not be fetched`);
