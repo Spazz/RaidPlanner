@@ -471,6 +471,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   padding: 8px 14px 4px; font-family: var(--font-cond); text-transform: uppercase;
   letter-spacing: 0.08em; font-size: 10px; color: var(--text-faint);
 }
+.menu-hint { padding: 0 14px 6px; font-size: 11px; color: var(--text-muted); max-width: 260px; }
+.menu-hint[hidden] { display: none; }
 .menu-sep { height: 1px; background: var(--border-medium); margin: 6px 0; }
 .menu-item {
   display: flex; align-items: center; gap: 10px;

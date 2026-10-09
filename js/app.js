@@ -225,6 +225,18 @@ function renderLandingSavedList() {
   // State.optimizerMode through the hidden #optimize-mode select — one
   // source of truth, two responsive representations (dropdown vs segmented
   // control). Selecting a strategy sets the mode but never auto-runs it.
+  // "Current board X vs optimized Y": computed only when the menu opens (a full plan() run),
+  // after the menu has painted, so it never adds to a render.
+  const scoreHint = document.getElementById('board-score-hint');
+  document.getElementById('optimize-strategy-menu').addEventListener('menuopen', () => {
+    scoreHint.hidden = true;
+    setTimeout(() => {
+      if (document.getElementById('optimize-strategy-menu').hidden) return;
+      const text = Optimizer.describeComparison(Optimizer.compareToOptimized());
+      scoreHint.textContent = text;
+      scoreHint.hidden = !text;
+    }, 0);
+  });
   document.querySelectorAll('#optimize-strategy-menu [data-mode]').forEach(item => {
     const desc = STRATEGY_DESCRIPTIONS[item.dataset.mode];
     if (desc) {

@@ -1683,6 +1683,7 @@ const Menu = {
   openMenu(trigger, menu) {
     if (this.open && this.open.menu !== menu) this.closeMenu(this.open.trigger, this.open.menu);
     menu.hidden = false;
+    menu.dispatchEvent(new Event('menuopen'));
     trigger.setAttribute('aria-expanded', 'true');
     this.position(trigger, menu);
     this.open = { trigger, menu };

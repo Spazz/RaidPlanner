@@ -453,6 +453,81 @@ const Optimizer = {
     State.roster = groups.flat();
   },
 
+  // ── BOARD COMPARISON (read-only) ────────────────────────────
+  // "Current board X vs optimized Y". Never touches State: plan() gets copies of the
+  // seated players and both boards are only scored. groupScore alone is not the
+  // acceptance criterion (Optimize's later phases exist to remove an isolated
+  // player, fill drum coverage and honour keep-together/apart pairs), so a board
+  // is judged by its total groupScore AND those rule breaks.
+
+  // The group identities to score `groups` under: the board's own while they still
+  // describe it (Optimize stamps them), otherwise read off what each group holds.
+  boardIdentities(groups) {
+    const own = groups._roleIdentities;
+    if (own && own.length === groups.length) return own;
+    const held = groups.map(g => g.slice());
+    held._frozenGroups = new Set(held.map((_, gi) => gi));
+    held._frozen = new Set(groups.flat());
+    return this.frozenIdentitiesFor(held, groups.flat());
+  },
+
+  // { score, isolated, constraintBreaks, drumGaps, breaks } for a board. `identities`
+  // defaults to boardIdentities(); the returned object never aliases `groups`.
+  evaluateBoard(groups, mode, identities) {
+    const board = groups.map(g => g.slice());
+    board._roleIdentities = identities || this.boardIdentities(groups);
+    let score = 0;
+    board.forEach((g, gi) => { score += this.groupScore(g, gi, board, mode); });
+    const isolated = board.filter(g => this.wouldIsolate(g, -1)).length;
+    const constraintBreaks = Constraints.violations(board).length;
+    const drumGaps = activeVersion() === 'tbc' && Drummers.tagged().length
+      ? board.filter(g => g.length > 0 && !g.some(p => Drummers.isDrummer(p.name))).length : 0;
+    return { score, isolated, constraintBreaks, drumGaps, breaks: isolated + constraintBreaks + drumGaps };
+  },
+
+  // The seated board against what a plain Optimize click would lay out from the same
+  // players under the same strategy, or null when there is nothing to compare (not
+  // modeled, empty, or open requests, which make Optimize freeze groups instead).
+  // verdict: 'same' | 'optimize-better' | 'current-ahead' | 'optimize-fixes'.
+  compareToOptimized() {
+    if (!GameVersions[State.gameVersion].modeled) return null;
+    if ((State.preferredSlots || []).length) return null;
+    const groups = State.groups || [];
+    const seated = groups.flat();
+    if (!seated.length) return null;
+    const mode = State.optimizerMode || 'max_dps';
+    const raidInfo = Config.Raids[State.selectedRaid];
+    const { groups: planned } = this.plan(seated.map(p => ({ ...p })), {
+      gameVersion: State.gameVersion, mode, constraints: State.playerConstraints || [], drummers: State.drummers || [],
+      faction: Faction.current(), numGroups: raidInfo ? raidInfo.groups : 5, raidSize: raidInfo ? raidInfo.size : 25,
+    });
+    const current = this.evaluateBoard(groups, mode);
+    const optimized = this.evaluateBoard(planned, mode, planned._roleIdentities);
+    const delta = optimized.score - current.score;
+    const EPSILON = 0.5; // the same bar refineSwaps uses before it moves anyone
+    const verdict = optimized.breaks < current.breaks ? 'optimize-fixes'
+      : optimized.breaks > current.breaks ? 'current-ahead'
+      : delta > EPSILON ? 'optimize-better'
+      : delta < -EPSILON ? 'current-ahead' : 'same';
+    return { mode, current, optimized, delta, verdict };
+  },
+
+  // One line for the strategy menu.
+  describeComparison(cmp) {
+    if (!cmp) return '';
+    const x = Math.round(cmp.current.score), y = Math.round(cmp.optimized.score);
+    const breaks = [
+      cmp.current.isolated ? `${cmp.current.isolated} isolated` : '',
+      cmp.current.constraintBreaks ? `${cmp.current.constraintBreaks} constraint${cmp.current.constraintBreaks === 1 ? '' : 's'} broken` : '',
+      cmp.current.drumGaps ? `${cmp.current.drumGaps} without drums` : '',
+    ].filter(Boolean).join(', ');
+    const head = `Current board ${x} vs optimized ${y}`;
+    if (cmp.verdict === 'same') return `${head}: already as good as Optimize.`;
+    if (cmp.verdict === 'optimize-fixes') return `${head}: Optimize fixes ${breaks}.`;
+    if (cmp.verdict === 'current-ahead') return `${head}: Optimize would not improve this board.`;
+    return `${head}: Optimize adds ${Math.round(cmp.delta)}.`;
+  },
+
   // Lays `players` out into groups from explicit inputs only: it reads and
   // writes no State and no DOM (the rule lookups it leans on read `opts`
   // through LayoutScope while it runs), so a caller can plan any roster under
