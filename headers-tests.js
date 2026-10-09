@@ -3,10 +3,9 @@
  * Run: node headers-tests.js
  *
  * vercel.json must parse and ship the security headers on every route. The CSP
- * is Report-Only for now (violations are logged in the browser console, nothing
- * is blocked); this suite fails if it is ever made enforcing by accident, and
- * checks the hosts the page really loads from are allowed so enforcement later
- * does not break the app.
+ * is enforcing (no Report-Only twin): style-src carries no 'unsafe-inline', which
+ * csp-tests.js backs by failing on any inline style="..." or on*="..." attribute.
+ * This suite also checks the hosts the page really loads from are allowed.
  */
 const fs = require('fs');
 const path = require('path');
@@ -27,6 +26,7 @@ function check(name, fn) {
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'vercel.json'), 'utf8'));
 const rule = (config.headers || []).find(entry => entry.source === '/(.*)');
 const headers = Object.fromEntries(((rule && rule.headers) || []).map(h => [h.key, h.value]));
+const CSP = headers['Content-Security-Policy'];
 
 // Directive name -> its source list, from a CSP value.
 function parsePolicy(value) {
@@ -50,13 +50,22 @@ check('A catch-all rule applies the security headers to every route', () => {
   assert.equal(headers['Referrer-Policy'], 'strict-origin-when-cross-origin');
 });
 
-check('The CSP ships as Report-Only and is not enforced yet', () => {
-  assert(headers['Content-Security-Policy-Report-Only'], 'report-only header present');
-  assert(!('Content-Security-Policy' in headers), 'enforcing header must not be set until the inline-style reports are cleared');
+check('The CSP is enforced, not Report-Only', () => {
+  assert(headers['Content-Security-Policy'], 'enforcing header present');
+  assert(!('Content-Security-Policy-Report-Only' in headers), 'no report-only twin: it would hide a regression behind the enforcing policy');
+});
+
+check('No directive allows inline code: style-src has no unsafe-inline and nothing allows unsafe-eval', () => {
+  const policy = parsePolicy(CSP);
+  for (const [name, sources] of Object.entries(policy)) {
+    assert(!sources.includes("'unsafe-inline'"), `${name} must not allow 'unsafe-inline'`);
+    assert(!sources.includes("'unsafe-eval'"), `${name} must not allow 'unsafe-eval'`);
+  }
+  assert(!('style-src-attr' in policy) || !policy['style-src-attr'].includes("'unsafe-inline'"));
 });
 
 check('The CSP carries the expected directives', () => {
-  const policy = parsePolicy(headers['Content-Security-Policy-Report-Only']);
+  const policy = parsePolicy(CSP);
   assert.deepEqual(policy['default-src'], ["'self'"]);
   assert.deepEqual(policy['script-src'], ["'self'"]);
   assert.deepEqual(policy['style-src'], ["'self'", 'https://fonts.googleapis.com']);
@@ -68,21 +77,21 @@ check('The CSP carries the expected directives', () => {
 });
 
 check('script-src allows no inline script, eval or remote script host', () => {
-  const sources = parsePolicy(headers['Content-Security-Policy-Report-Only'])['script-src'];
+  const sources = parsePolicy(CSP)['script-src'];
   assert.deepEqual(sources, ["'self'"]);
-  const whole = headers['Content-Security-Policy-Report-Only'];
+  const whole = CSP;
   assert(!/unsafe-eval|unsafe-inline|\*/.test(whole), 'no wildcard or unsafe keyword anywhere');
 });
 
 check('connect-src allows this site and the Raid-Helper hosts the import fetches from', () => {
-  const sources = parsePolicy(headers['Content-Security-Policy-Report-Only'])['connect-src'];
+  const sources = parsePolicy(CSP)['connect-src'];
   assert(sources.includes("'self'"), 'the /api/share calls');
   assert(sources.includes('https://raid-helper.dev'), 'the events API (normalizeImportSource)');
   assert(sources.includes('https://raid-helper.xyz'));
 });
 
 check('Every external host index.html and js/ load a resource from is allowed by the policy', () => {
-  const policy = parsePolicy(headers['Content-Security-Policy-Report-Only']);
+  const policy = parsePolicy(CSP);
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   // Stylesheets and scripts named in index.html's own tags.
   for (const tag of html.match(/<(?:link|script)\b[^>]*>/g) || []) {
