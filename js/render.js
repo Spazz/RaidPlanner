@@ -33,6 +33,7 @@ async function switchGameVersion(version) {
   const benched = initGroups();
   State.preferredSlots = PreferredSlots.clean(State.preferredSlots);
   switchTab('plan');
+  if (State.view === 'landing') renderLanding(); // its resume banner names the plan just replaced
   const size = Config.Raids[State.selectedRaid] ? Config.Raids[State.selectedRaid].size : 25;
   showToast((benched > 0 ? `${benched} player${benched === 1 ? '' : 's'} benched: the ${size}-man raid is full. ` : '') + GameVersions[version].note);
   return true;

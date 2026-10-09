@@ -184,20 +184,21 @@ return { ${exported.join(', ')} };
 
   // ── U3: version switch ────────────────────────────────────────────
   const versionSrc = app.slice('async function switchGameVersion', 'function initRaidDropdown');
-  function makeVersionEnv({ work = true, answer = true, benched = 0 } = {}) {
-    const log = { confirm: [], toasts: [], tabs: [], initGroups: 0 };
+  function makeVersionEnv({ work = true, answer = true, benched = 0, view = 'app' } = {}) {
+    const log = { confirm: [], toasts: [], tabs: [], initGroups: 0, landing: 0 };
     const deps = {
       GameVersions: {
         tbc: { name: 'WoW TBC', defaultRaid: 'bt', note: 'TBC note.' },
         classic: { name: 'WoW Classic', defaultRaid: 'mc', note: 'Classic note.' },
       },
       Config: { Raids: { bt: { size: 25 }, mc: { size: 40 }, kara: { size: 10 } } },
-      State: { gameVersion: 'tbc', selectedRaid: 'bt', planId: 'plan:1', buffOverrides: { '0:a:air': 'GRACE_OF_AIR' }, preferredSlots: [{ group: 0 }] },
+      State: { view, gameVersion: 'tbc', selectedRaid: 'bt', planId: 'plan:1', buffOverrides: { '0:a:air': 'GRACE_OF_AIR' }, preferredSlots: [{ group: 0 }] },
       hasLoadedWork: () => work,
       Modal: { confirm: async opts => { log.confirm.push(opts); return answer; } },
       initGroups: () => { log.initGroups++; return benched; },
       PreferredSlots: { clean: list => list },
       switchTab: tab => log.tabs.push(tab),
+      renderLanding: () => log.landing++,
       showToast: msg => log.toasts.push(msg),
     };
     const { switchGameVersion } = bind(versionSrc, deps, ['switchGameVersion']);
@@ -235,6 +236,15 @@ return { ${exported.join(', ')} };
     env = makeVersionEnv({ benched: 0 });
     await env.switchGameVersion('classic');
     assert.equal(env.log.toasts[0], 'Classic note.');
+  });
+
+  await check('switching version from the landing view re-renders it so the resume banner is current', async () => {
+    let env = makeVersionEnv({ view: 'landing' });
+    await env.switchGameVersion('classic');
+    assert.equal(env.log.landing, 1);
+    env = makeVersionEnv({ view: 'app' });
+    await env.switchGameVersion('classic');
+    assert.equal(env.log.landing, 0);
   });
 
   await check('with nothing loaded the switch is immediate; the same or an unknown version is a no-op', async () => {
