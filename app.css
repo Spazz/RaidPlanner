@@ -1718,7 +1718,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
    Phone-only chrome is hidden by default and switched on in the media block below, so
    desktop is untouched. The planner frame drops its 1.5x zoom here: sizes in this block
    are real CSS pixels. */
-.summary-phone, .phone-summary, .pe-sheet-handle, .pe-sheet-header, .pe-more-row { display:none; }
+.phone-summary-wrap, .summary-missing, .pe-sheet-handle, .pe-sheet-header, .pe-more-row { display:none; }
 @media (max-width: 600px) {
   .addon-frame { zoom: 1; padding-bottom: 68px; }
   .toast { zoom: 1; bottom: 72px; left: 12px; right: 12px; }
@@ -1749,6 +1749,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 
   /* Context panel: one 44px summary row; Edit expands the existing controls in place. */
   .phone-context-panel { padding: 0; gap: 0; display: block; background: var(--bg-card); }
+  .phone-summary-wrap { display: block; position: relative; }
   .phone-summary {
     display: flex; align-items: center; gap: 8px; width: 100%; height: 44px; padding: 0 12px; box-sizing: border-box;
     background: var(--bg-panel); color: var(--text-primary); border: 0; text-align: left; cursor: pointer; font-family: var(--font-body);
@@ -1756,7 +1757,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .phone-summary-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .phone-summary-main { font-size: 14px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .phone-summary-sub { font-size: 11px; line-height: 1.25; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .phone-summary-edit { font-size: 12px; color: var(--accent-gold); white-space: nowrap; }
+  .phone-summary-edit { align-self: flex-start; margin-top: 6px; font-size: 12px; line-height: 17px; color: var(--accent-gold); white-space: nowrap; }
   .phone-summary:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
   .phone-context-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; border-top: 1px solid var(--border-subtle); }
   .phone-context-body[hidden] { display: none; }
@@ -1769,19 +1770,14 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .raid-notes-panel summary { padding: 8px 10px; }
   .raid-notes-textarea { font-size: 14px; }
 
-  /* Plan feedback + summary bar: one 34px line ("25/25 2T 5H 9M 9R" ... "7 missing buffs"). */
-  .summary-bar { height: 34px; padding: 0 12px; box-sizing: border-box; flex-wrap: nowrap; gap: 0; }
-  .summary-bar > :not(.summary-phone) { display: none; }
-  .summary-phone { display: flex; align-items: center; gap: 10px; width: 100%; font-size: 12px; color: var(--text-secondary); }
-  .summary-phone-count b { color: var(--text-primary); }
-  .summary-phone-count.over { color: var(--danger-bright); }
-  .summary-phone-roles { display: flex; gap: 8px; }
-  .summary-phone .role-t { color: var(--role-tank); }
-  .summary-phone .role-h { color: var(--role-healer); }
-  .summary-phone .role-d { color: var(--role-dps); }
-  .summary-missing { margin-left: auto; background: none; border: 0; padding: 0; min-height: 34px; font: inherit; font-size: 12px; color: var(--warning); cursor: pointer; white-space: nowrap; }
-  .summary-missing.zero { color: var(--success); }
+  /* The desktop summary bar is not shown on phones; the seated count sits on line 2 of the
+     context row and a small "N missing" link (only when something is missing) sits at its right. */
+  .summary-bar { display: none; }
+  .summary-missing { display: block; position: absolute; right: 12px; top: 24px; height: 20px; padding: 0 0 0 8px; background: none; border: 0; font: inherit; font-size: 11px; line-height: 20px; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
+  .summary-missing[hidden] { display: none; }
+  .summary-missing b { font-weight: 600; color: var(--warning); }
   .summary-missing:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
+  .phone-summary-wrap.has-missing .phone-summary-sub { padding-right: 84px; }
   .plan-feedback { display: none; padding: 6px 12px; font-size: 11px; border-bottom: 1px solid var(--border-subtle); }
   .plan-feedback.phone-open, .plan-feedback:has(#autosave-status[data-failed]) { display: flex; }
   #buff-sidebar { scroll-margin-top: 40px; }

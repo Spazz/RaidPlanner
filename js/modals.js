@@ -280,7 +280,7 @@ function syncStrategyChrome() {
 }
 
 // The phone's collapsed context row: line 1 "<raid> · <strategy>", line 2
-// "<plan title> · notes" (notes only when the plan has some).
+// "<plan title> · seated/size · notes" (notes only when the plan has some).
 function renderPhoneSummary() {
   const main = document.getElementById('phone-summary-main');
   const sub = document.getElementById('phone-summary-sub');
@@ -288,7 +288,8 @@ function renderPhoneSummary() {
   const raid = Config.Raids[State.selectedRaid];
   main.textContent = `${raid ? raid.name : 'No raid'} (${raid ? raid.size : 25}) · ${strategyLabel(State.optimizerMode || 'max_dps')}`;
   const hasNotes = !!(State.notes && State.notes.trim());
-  sub.textContent = `${State.rosterName || 'Untitled plan'}${hasNotes ? ' · notes' : ''}`;
+  const capacity = raid ? raid.size : 25;
+  sub.textContent = `${State.rosterName || 'Untitled plan'} · ${State.roster.length}/${capacity}${hasNotes ? ' · notes' : ''}`;
 }
 
 function undoPlanChange() {

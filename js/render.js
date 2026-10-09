@@ -732,18 +732,19 @@ function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
 }
 
 // Collapsed-state strip: "Buffs 13/20 · Debuffs 18/28 · 17 missing".
-let lastMissingCoverageCount = null; // null = coverage rules not configured; feeds the phone summary line
+let lastMissingCoverageCount = null; // null = coverage rules not configured; feeds the phone missing-buffs link
 function renderSidebarSummary(buffs, debuffs) {
   const el = document.getElementById('sidebar-summary');
   if (!el) return;
   lastMissingCoverageCount = null;
-  if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p class="sidebar-note">Coverage rules are not configured for this version yet.</p>'; return; }
+  if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p class="sidebar-note">Coverage rules are not configured for this version yet.</p>'; renderPhoneMissing(); return; }
   const missing = (buffs.total - buffs.covered) + (debuffs.total - debuffs.covered);
   lastMissingCoverageCount = missing;
   el.innerHTML = `
     <div class="sidebar-summary-row"><span>Buffs</span><b>${buffs.covered} / ${buffs.total}</b></div>
     <div class="sidebar-summary-row"><span>Debuffs</span><b>${debuffs.covered} / ${debuffs.total}</b></div>
     <div class="sidebar-summary-row missing${missing === 0 ? ' zero' : ''}"><span>Missing</span><b>${missing}</b></div>`;
+  renderPhoneMissing();
 }
 
 // One line under a missing row saying what would fix it, with the button
@@ -957,8 +958,9 @@ function announce(message) {
   region.textContent = message;
 }
 
-// Phone: the summary line's missing-buffs button reveals the plan feedback text
-// and opens the coverage panel. Delegated because the bar is rebuilt on every render.
+// Phone: the small "N missing" link on line 2 of the context row reveals the plan feedback
+// text and opens the coverage panel. Hidden when coverage rules are not configured or
+// nothing is missing.
 let phoneFeedbackOpen = false;
 function setPhoneFeedbackOpen(open) {
   phoneFeedbackOpen = open;
@@ -967,11 +969,21 @@ function setPhoneFeedbackOpen(open) {
   const btn = document.getElementById('btn-summary-missing');
   if (btn) btn.setAttribute('aria-expanded', String(open));
 }
+function renderPhoneMissing() {
+  const btn = document.getElementById('btn-summary-missing');
+  if (!btn) return;
+  const n = lastMissingCoverageCount;
+  const show = n !== null && n > 0;
+  btn.hidden = !show;
+  const wrap = document.getElementById('phone-summary-wrap');
+  if (wrap) wrap.classList.toggle('has-missing', show);
+  btn.setAttribute('aria-expanded', String(phoneFeedbackOpen));
+  if (show) btn.innerHTML = `<b>${n}</b> missing &#9656;`;
+}
 (function initSummaryMissing() {
-  const bar = document.getElementById('summary-bar');
-  if (!bar) return;
-  bar.addEventListener('click', (e) => {
-    if (!e.target.closest('#btn-summary-missing')) return;
+  const btn = document.getElementById('btn-summary-missing');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
     const open = !phoneFeedbackOpen;
     setPhoneFeedbackOpen(open);
     if (open) {
@@ -1003,12 +1015,7 @@ function renderSummaryBar() {
     ${chip('healer', 'Healers', counts.healer)}
     ${chip('melee', 'Melee', counts.melee_dps)}
     ${chip('ranged', 'Ranged', counts.ranged)}
-    <span class="summary-chip bench"><b>${benched}</b> Benched</span>
-    <span class="summary-phone">
-      <span class="summary-phone-count${seated > capacity ? ' over' : ''}"><b>${seated}</b>/${capacity}</span>
-      <span class="summary-phone-roles"><span class="role-t">${counts.tank}T</span> <span class="role-h">${counts.healer}H</span> <span class="role-d">${counts.melee_dps}M</span> <span class="role-d">${counts.ranged}R</span></span>
-      ${lastMissingCoverageCount === null ? '' : `<button type="button" class="summary-missing${lastMissingCoverageCount === 0 ? ' zero' : ''}" id="btn-summary-missing" aria-expanded="${phoneFeedbackOpen}" aria-controls="plan-feedback">${lastMissingCoverageCount === 0 ? 'No missing buffs' : `${lastMissingCoverageCount} missing buff${lastMissingCoverageCount === 1 ? '' : 's'} &#9656;`}</button>`}
-    </span>`;
+    <span class="summary-chip bench"><b>${benched}</b> Benched</span>`;
   announce(describeRaidSummary({ seated, capacity, counts, benched }));
 }
 

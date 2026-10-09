@@ -5,8 +5,8 @@
  * What Node can check about the <=600px layout (the pixel measurements are checked in a browser):
  *   - the phone context summary is a real <button> with aria-expanded, collapsed by default, and
  *     its toggle flips aria-expanded / hidden; every control it hides is still in the page
- *   - the phone summary line (counts, role letters, missing-buffs button) is rendered next to the
- *     desktop chips, which stay untouched
+ *   - the phone has no summary line; the missing-buffs link lives on line 2 of the context row and
+ *     the desktop chips stay untouched
  *   - the player editor's short view holds exactly the agreed controls and the More view holds the
  *     rest, with every original element ID preserved
  *   - phone-only chrome is hidden outside the media query, and no markup uses inline styles
@@ -93,43 +93,71 @@ check('toggling the summary flips aria-expanded, hidden and the label, and remem
   assert.equal(stored.pp_phone_context_open, '0');
 });
 
-// ── Phone summary line ─────────────────────────────────────────────
+const phoneCssAll = () => { const c = css.slice(css.lastIndexOf('/* ── Slim phone layout')); return c.slice(c.indexOf('@media (max-width: 600px)')); };
 
-function renderBar(roster, capacity, missing) {
+// ── Phone missing-buffs link (replaces the old 34px summary line) ──
+
+function renderPhone(missing, { notes = '', seated = 25, size = 25 } = {}) {
+  const els = {};
+  const node = id => els[id] || (els[id] = { id, textContent: '', innerHTML: '', hidden: false, attrs: {}, listeners: {},
+    classList: { toggle(c, on) { this.on = on; } }, setAttribute(k, v) { this.attrs[k] = v; },
+    addEventListener(t, fn) { this.listeners[t] = fn; } });
   const src = 'let lastMissingCoverageCount = ' + JSON.stringify(missing) + ';\n' +
-    between(renderJs, 'function describeRaidSummary', 'function updateStatus');
-  const bar = { innerHTML: '', listeners: [], addEventListener(t, fn) { this.listeners.push(t); } };
+    between(renderJs, 'let phoneFeedbackOpen', 'function renderSummaryBar') +
+    between(read('js/modals.js'), 'function renderPhoneSummary', 'function undoPlanChange');
   const ctx = vm.createContext({
-    document: { getElementById: id => id === 'summary-bar' ? bar : { textContent: '', classList: { toggle() {} }, setAttribute() {} } },
-    State: { roster, bench: [], selectedRaid: 'x' },
-    Config: { Raids: { x: { size: capacity } } },
-    getRoleIcon: () => '',
+    document: { getElementById: node },
+    State: { roster: Array(seated).fill({}), selectedRaid: 'x', optimizerMode: 'max_dps', rosterName: 'Random 25-man Roster', notes },
+    Config: { Raids: { x: { name: 'Karazhan', size } } },
+    strategyLabel: () => 'Max DPS', setSidebarExpanded() {},
   });
-  vm.runInContext(src + '\nrenderSummaryBar();', ctx);
-  return bar;
+  vm.runInContext(src + '\nrenderPhoneSummary(); renderPhoneMissing();', ctx);
+  return { els, ctx };
 }
-const player = role => ({ role });
 
-check('summary bar carries a phone line: count, role letters in role colours, missing-buffs button', () => {
-  const roster = [player('tank'), player('tank'), ...Array(5).fill(player('healer')), ...Array(9).fill(player('melee_dps')), ...Array(9).fill(player('ranged'))];
-  const bar = renderBar(roster, 25, 7);
-  assert.match(bar.innerHTML, /class="summary-phone-count"><b>25<\/b>\/25/);
-  assert.match(bar.innerHTML, /class="role-t">2T</);
-  assert.match(bar.innerHTML, /class="role-h">5H</);
-  assert.equal((bar.innerHTML.match(/class="role-d">9[MR]</g) || []).length, 2);
-  const btn = bar.innerHTML.match(/<button[^>]*id="btn-summary-missing"[^>]*>([^<]*)/);
-  assert.ok(btn, 'missing-buffs button');
-  assert.match(btn[0], /type="button"/);
-  assert.match(btn[0], /aria-expanded="false"/);
-  assert.match(btn[1], /^7 missing buffs/);
-  assert.match(bar.innerHTML, /class="summary-chip bench"/, 'desktop chips are still rendered');
-  assert.ok(bar.listeners.includes('click'), 'delegated click handler on the bar');
+check('the 34px phone summary line (counts, role letters) is gone from the summary bar', () => {
+  const bar = between(renderJs, 'function renderSummaryBar', 'function updateStatus');
+  assert.doesNotMatch(bar, /summary-phone|role-t|btn-summary-missing/);
+  assert.match(bar, /class="summary-chip bench"/, 'desktop chips are still rendered');
+  assert.match(phoneCssAll(), /\.summary-bar \{ display: none; \}/);
+  assert.doesNotMatch(css, /height: 34px; padding: 0 12px/);
 });
 
-check('summary line says "No missing buffs" at zero and omits the button when coverage is not modeled', () => {
-  assert.match(renderBar([player('tank')], 25, 0).innerHTML, />No missing buffs</);
-  assert.doesNotMatch(renderBar([player('tank')], 25, null).innerHTML, /btn-summary-missing/);
-  assert.match(renderBar([player('tank')], 25, 1).innerHTML, />1 missing buff &#9656;</);
+check('missing link is a real button outside the Edit toggle, with the count in warning colour', () => {
+  assert.match(html, /<button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" hidden><\/button>/);
+  const toggle = html.match(/<button[^>]*id="phone-summary-toggle"[\s\S]*?<\/button>/)[0];
+  assert.doesNotMatch(toggle, /btn-summary-missing/, 'must not be nested inside the toggle button');
+  const { els } = renderPhone(7);
+  assert.equal(els['btn-summary-missing'].hidden, false);
+  assert.equal(els['btn-summary-missing'].innerHTML, '<b>7</b> missing &#9656;');
+  assert.equal(els['btn-summary-missing'].attrs['aria-expanded'], 'false');
+  assert.match(phoneCssAll(), /\.summary-missing b \{[^}]*var\(--warning\)/);
+  assert.match(phoneCssAll(), /\.summary-missing \{[^}]*font-size: 11px/);
+});
+
+check('line 2 carries the plan title, seated count and notes marker', () => {
+  assert.equal(renderPhone(7).els['phone-summary-sub'].textContent, 'Random 25-man Roster · 25/25');
+  assert.equal(renderPhone(7, { notes: 'x', seated: 20, size: 10 }).els['phone-summary-sub'].textContent, 'Random 25-man Roster · 20/10 · notes');
+});
+
+check('missing link is hidden at zero missing and when coverage is not modeled', () => {
+  assert.equal(renderPhone(0).els['btn-summary-missing'].hidden, true);
+  assert.equal(renderPhone(null).els['btn-summary-missing'].hidden, true);
+  assert.equal(renderPhone(1).els['btn-summary-missing'].innerHTML, '<b>1</b> missing &#9656;');
+});
+
+check('clicking the missing link toggles the feedback text and opens the coverage panel', () => {
+  const { els, ctx } = renderPhone(7);
+  els['buff-sidebar'] = { scrolled: false, scrollIntoView() { this.scrolled = true; } };
+  const click = els['btn-summary-missing'].listeners.click;
+  assert.ok(click, 'direct click handler on the button');
+  vm.runInContext('initSummaryMissing_ran = true', ctx);
+  click();
+  assert.equal(els['plan-feedback'].classList.on, true);
+  assert.equal(els['btn-summary-missing'].attrs['aria-expanded'], 'true');
+  assert.ok(els['buff-sidebar'].scrolled);
+  click();
+  assert.equal(els['plan-feedback'].classList.on, false);
 });
 
 // ── Player editor sheet ────────────────────────────────────────────
@@ -204,7 +232,7 @@ const phoneBlock = phoneCss.slice(phoneCss.indexOf('@media (max-width: 600px)'))
 
 check('phone-only chrome is hidden outside the media query', () => {
   const base = phoneCss.slice(0, phoneCss.indexOf('@media'));
-  for (const sel of ['.summary-phone', '.phone-summary', '.pe-sheet-handle', '.pe-sheet-header', '.pe-more-row']) {
+  for (const sel of ['.phone-summary-wrap', '.summary-missing', '.phone-summary', '.pe-sheet-handle', '.pe-sheet-header', '.pe-more-row']) {
     assert.ok(base.includes(sel), `${sel} must default to hidden`);
   }
   assert.match(base, /display:\s*none/);
@@ -212,7 +240,7 @@ check('phone-only chrome is hidden outside the media query', () => {
 
 check('phone block defines the sheet views, the zoom reset and the fixed row heights', () => {
   for (const frag of ['.addon-frame { zoom: 1;', '.player-editor:not(.pe-more-open) .pe-more-only { display: none; }',
-    '.player-editor.pe-more-open .pe-short-only', 'height: 44px', 'height: 34px', 'height: 40px', 'height: 60px']) {
+    '.player-editor.pe-more-open .pe-short-only', 'height: 44px', 'height: 40px', 'height: 60px']) {
     assert.ok(phoneBlock.includes(frag), frag);
   }
 });
