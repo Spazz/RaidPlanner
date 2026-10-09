@@ -309,7 +309,9 @@ function syncRaidNotesToggle() {
     // fuller desktop text "More export formats…" comes back once
     // btn-share-main is a Share-menu item again instead of a bottom-bar button.
     const shareLabel = document.querySelector('#btn-share-main .btn-label');
-    if (shareLabel) shareLabel.textContent = isPhone ? 'Share' : 'More export formats…';
+    // Written only when it changes: sync() also runs on every resize.
+    const label = isPhone ? 'Share' : 'More export formats…';
+    if (shareLabel && shareLabel.textContent !== label) shareLabel.textContent = label;
   }
   PHONE_QUERY.addEventListener('change', sync);
   // A page whose viewport is still settling while this runs (seen in an embedded
