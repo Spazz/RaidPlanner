@@ -9,8 +9,11 @@
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['State', 'Config', 'Optimizer', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidBuffCoverage', 'nextUid']);
-const { State, Config, Optimizer, getGroupBuffs, getMissingBuffInsights, getRaidBuffCoverage, nextUid } = ctx.api;
+const ctx = app.sandbox(['State', 'Config', 'Optimizer', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidBuffCoverage', 'renderInsightLine', 'nextUid'], {
+  extraSource: app.slice('function isKnownClass(', 'function preferredColorClass(')
+    + app.slice('function renderInsightLine(', 'function renderBuffRowList('),
+});
+const { State, Config, Optimizer, getGroupBuffs, getMissingBuffInsights, getRaidBuffCoverage, renderInsightLine, nextUid } = ctx.api;
 
 let passed = 0;
 function check(name, fn) {
@@ -110,6 +113,21 @@ check('Commanding Shout is reported as shared (not "nobody") when the only seate
   assert.equal(getRaidBuffCoverage(State.groups).has('COMMANDING_SHOUT'), false);
   assert.equal(insights.COMMANDING_SHOUT.kind, 'shared');
   assert.equal(insights.COMMANDING_SHOUT.player, w);
+});
+
+check('the shared insight says to recruit a 2nd warrior for one, and to group two together for two or more', () => {
+  useTbc();
+  State.groups = [[warrior(), mage()], [], [], [], []];
+  let insight = getMissingBuffInsights().COMMANDING_SHOUT;
+  assert.equal(insight.casters, 1);
+  assert(/Needs a 2nd warrior/.test(renderInsightLine('COMMANDING_SHOUT', insight)));
+  // Two warriors seated in different groups: each picks Battle Shout, so the fix is grouping them.
+  State.groups = [[warrior(), mage()], [warrior('Arms')], [], [], []];
+  insight = getMissingBuffInsights().COMMANDING_SHOUT;
+  assert.equal(insight.kind, 'shared');
+  assert.equal(insight.casters, 2);
+  const html = renderInsightLine('COMMANDING_SHOUT', insight);
+  assert(/Group two warriors together/.test(html) && !/Needs a 2nd warrior/.test(html));
 });
 
 check('with two seated warriors both shouts are covered and neither is reported missing', () => {

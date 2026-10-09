@@ -778,10 +778,13 @@ const LiveSync = {
   schedulePoll() {
     clearTimeout(this.pollTimer);
     this.pollTimer = setTimeout(async () => {
-      const outcome = await this.pull();
-      if (outcome === 'changed') LivePoll.sawChange();
-      else if (outcome === 'quiet') LivePoll.sawNothing();
-      this.schedulePoll();
+      let outcome;
+      // A throw after the fetch (re-import, render) must not end polling for the session.
+      try { outcome = await this.pull(); } catch (err) { console.error(err); } finally {
+        if (outcome === 'changed') LivePoll.sawChange();
+        else if (outcome === 'quiet') LivePoll.sawNothing();
+        this.schedulePoll();
+      }
     }, LivePoll.intervalMs());
   },
 

@@ -765,7 +765,8 @@ function renderInsightLine(id, insight) {
     </div>`;
   }
   if (insight.kind === 'shared') {
-    return `<div class="buff-row-insight none"><span class="insight-text">Needs a 2nd warrior: <span class="insight-who ${color(insight.player)}">${short(insight.player)}</span> casts the other shout</span></div>`;
+    const lead = insight.casters > 1 ? 'Group two warriors together' : 'Needs a 2nd warrior';
+    return `<div class="buff-row-insight none"><span class="insight-text">${lead}: <span class="insight-who ${color(insight.player)}">${short(insight.player)}</span> casts the other shout</span></div>`;
   }
   return `<div class="buff-row-insight none"><span class="insight-text">Nobody in roster</span></div>`;
 }

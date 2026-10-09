@@ -712,6 +712,24 @@ async function check(name, fn) {
     assert.equal(await nextGap(env), 15000);
   });
 
+  await check('A poll that throws after the fetch still schedules the next poll', async () => {
+    const env = makeEnv();
+    seedLinkedPlan(env);
+    env.route = () => response(200, { code: env.api.currentShareCode(), updatedAt: 100 });
+    const realPull = env.api.LiveSync.pull;
+    let calls = 0;
+    env.api.LiveSync.pull = async function () { if (++calls === 1) throw new Error('boom'); return realPull.call(this); };
+    const realError = console.error;
+    console.error = () => {};
+    try {
+      env.api.LiveSync.start();
+      await env.advance(15000);
+      assert.equal(calls, 1, 'first poll ran and threw');
+      await env.advance(15000);
+      assert.equal(calls, 2, 'polling continued after the throw');
+    } finally { console.error = realError; }
+  });
+
   console.log(`\nLiveSync tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);
   if (failed > 0) process.exit(1);
 })();

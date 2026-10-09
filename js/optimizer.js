@@ -509,7 +509,7 @@ const Optimizer = {
 
   // The seated board against what a plain Optimize click would lay out from the same
   // players under the same strategy, or null when there is nothing to compare (not
-  // modeled, empty, or open requests, which make Optimize freeze groups instead).
+  // modeled, empty, over raid size, or open requests, which make Optimize freeze groups instead).
   // verdict: 'same' | 'optimize-better' | 'current-ahead' | 'optimize-fixes'.
   compareToOptimized() {
     if (!GameVersions[State.gameVersion].modeled) return null;
@@ -519,10 +519,12 @@ const Optimizer = {
     if (!seated.length) return null;
     const mode = State.optimizerMode || 'max_dps';
     const raidInfo = Config.Raids[State.selectedRaid];
-    const { groups: planned } = this.plan(seated.map(p => ({ ...p })), {
+    const { groups: planned, bench: benched } = this.plan(seated.map(p => ({ ...p })), {
       gameVersion: State.gameVersion, mode, constraints: State.playerConstraints || [], drummers: State.drummers || [],
       faction: Faction.current(), numGroups: raidInfo ? raidInfo.groups : 5, raidSize: raidInfo ? raidInfo.size : 25,
     });
+    // More seated players than the raid holds: plan() benches some, so the two scores would cover different players.
+    if (benched && benched.length) return null;
     const current = this.evaluateBoard(groups, mode);
     const optimized = this.evaluateBoard(planned, mode, planned._roleIdentities);
     const delta = optimized.score - current.score;

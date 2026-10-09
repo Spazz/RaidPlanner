@@ -116,6 +116,16 @@ check('nothing to compare: empty board or open requests give null', () => {
   assert.equal(Optimizer.describeComparison(null), '');
 });
 
+check('more seated players than the raid holds gives null (the two scores would cover different players)', () => {
+  load('F01');
+  assert(Optimizer.compareToOptimized(), 'a full raid compares');
+  const extra = State.groups[0][0];
+  State.groups[4].push({ ...extra, uid: ctx.api.nextUid(), name: 'Extra1' }, { ...extra, uid: ctx.api.nextUid(), name: 'Extra2' },
+    { ...extra, uid: ctx.api.nextUid(), name: 'Extra3' });
+  assert(State.groups.flat().length > 25);
+  assert.equal(Optimizer.compareToOptimized(), null);
+});
+
 check('describeComparison words every verdict', () => {
   const side = (score, extra = {}) => ({ score, isolated: 0, constraintBreaks: 0, drumGaps: 0, breaks: 0, ...extra });
   const text = (verdict, current, optimized, delta) => Optimizer.describeComparison({ verdict, current, optimized, delta });
