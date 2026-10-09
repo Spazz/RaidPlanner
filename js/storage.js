@@ -221,6 +221,8 @@ const PlanStore = {
     if (!this.valid(data)) return false;
     Object.assign(State, JSON.parse(JSON.stringify(data)));
     State.gameVersion = data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc';
+    // Plans saved before the nav slim-down may name another strategy; Optimize only runs Max DPS now.
+    State.optimizerMode = 'max_dps';
     State.preferredSlots = PreferredSlots.clean(data.preferredSlots);
     State.preserveGroupOrder = data.preserveGroupOrder === true || PreferredSlots.hasManual();
     State.eventStartTime = this.cleanEventStart(data.eventStartTime);

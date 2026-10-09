@@ -252,30 +252,7 @@ function persistWorkingPlan() {
   }
   document.getElementById('btn-undo').disabled = !PlanSession.undo.length;
   document.getElementById('btn-redo').disabled = !PlanSession.redo.length;
-  document.getElementById('optimize-mode').value = State.optimizerMode;
   mirrorSaveStatus();
-  syncStrategyChrome();
-}
-
-// Refreshes every UI surface that reflects the current optimizer strategy:
-// the split-button menu's checkmark + descriptions, the muted "Strategy: X"
-// label, and the phone segmented control. Called from persistWorkingPlan
-// (itself called after nearly every state change — import, optimize, undo/
-// redo, tab switches, loading a plan) so all of them stay correct no matter
-// which entry point changed State.optimizerMode.
-function syncStrategyChrome() {
-  const mode = State.optimizerMode || 'max_dps';
-  const labelValue = document.getElementById('strategy-label-value');
-  if (labelValue) labelValue.textContent = strategyLabel(mode);
-  document.querySelectorAll('#optimize-strategy-menu [data-mode]').forEach(item => {
-    const current = item.dataset.mode === mode;
-    item.classList.toggle('menu-item-current', current);
-    const check = item.querySelector('.menu-item-check');
-    if (check) check.textContent = current ? '✓' : '';
-  });
-  document.querySelectorAll('#phone-strategy-seg [data-mode]').forEach(item => {
-    item.setAttribute('aria-pressed', String(item.dataset.mode === mode));
-  });
   renderPhoneSummary();
 }
 
@@ -286,7 +263,7 @@ function renderPhoneSummary() {
   const sub = document.getElementById('phone-summary-sub');
   if (!main || !sub) return;
   const raid = Config.Raids[State.selectedRaid];
-  main.textContent = `${raid ? raid.name : 'No raid'} (${raid ? raid.size : 25}) · ${strategyLabel(State.optimizerMode || 'max_dps')}`;
+  main.textContent = `${raid ? raid.name : 'No raid'} (${raid ? raid.size : 25})`;
   const hasNotes = !!(State.notes && State.notes.trim());
   const capacity = raid ? raid.size : 25;
   sub.textContent = `${State.rosterName || 'Untitled plan'} · ${State.roster.length}/${capacity}${hasNotes ? ' · notes' : ''}`;
@@ -735,59 +712,6 @@ function renderAttendanceBody(data) {
   const dialog = document.getElementById('attendance-dialog');
   document.getElementById('btn-attendance').onclick = showAttendanceModal;
   document.getElementById('btn-close-attendance').onclick = () => dialog.close();
-  dialog.addEventListener('click', event => {
-    if (event.target !== dialog) return;
-    const rect = dialog.getBoundingClientRect();
-    if (event.clientX < rect.left || event.clientX > rect.right ||
-        event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
-  });
-})();
-
-// ── MODAL: COMPARE OPTIMIZER MODES (feature-backlog-2.md #5) ─────
-const MODE_LABELS = { max_dps: 'Max DPS', tank_mit: 'Tank Mitigation', balanced: 'Balanced', relaxed: 'Relaxed' };
-
-function showCompareModesModal() {
-  if (!GameVersions[State.gameVersion].modeled) { showToast(GameVersions[State.gameVersion].note); return; }
-  if (State.roster.length === 0) { showToast('Import a roster first'); return; }
-  const dialog = document.getElementById('compare-modes-dialog');
-  const body = document.getElementById('compare-modes-body');
-  body.innerHTML = '<div class="compare-modes-loading">Running all four optimizer modes…</div>';
-  dialog.showModal();
-  // Paint the loading state before the synchronous 4x-optimizer pass (cheap
-  // at raid scale, but still worth a frame so the dialog doesn't look frozen).
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    const results = compareOptimizerModes();
-    renderCompareModesBody(results);
-  }));
-}
-
-function renderCompareModesBody(results) {
-  const body = document.getElementById('compare-modes-body');
-  if (!results) { body.innerHTML = '<div class="saved-empty">Nothing to compare yet.</div>'; return; }
-
-  body.innerHTML = `<div class="compare-modes-grid">${Object.entries(results).map(([mode, r]) => `
-    <div class="compare-mode-col">
-      <h4>${esc(MODE_LABELS[mode] || mode)}</h4>
-      <div class="compare-mode-stat"><strong>${r.groupCount}</strong> groups &middot; <strong>${r.seatedCount}</strong> seated &middot; <strong>${r.benchedCount}</strong> benched</div>
-      <div class="compare-mode-stat">Buffs covered: <strong>${r.buffsCoveredCount}/${r.buffsTotal}</strong></div>
-      ${r.meleeGroupsTotal != null ? `<div class="compare-mode-stat">Windfury in melee groups: <strong>${r.meleeGroupsWithWindfury}/${r.meleeGroupsTotal}</strong></div>` : ''}
-      ${r.tankMitigation.length ? `<div class="compare-mode-stat">Tank group mitigation:<br>${r.tankMitigation.map(t => `Group ${t.groupIndex}: ${esc(t.buffs.join(', ') || 'none')}`).join('<br>')}</div>` : ''}
-      ${r.missingBuffs.length ? `<div class="compare-mode-missing">Missing: ${esc(r.missingBuffs.join(', '))}</div>` : ''}
-      <button type="button" class="btn btn-primary" data-apply-mode="${esc(mode)}">Apply</button>
-    </div>
-  `).join('')}</div>`;
-
-  body.querySelectorAll('[data-apply-mode]').forEach(btn => btn.onclick = () => {
-    document.getElementById('optimize-mode').value = btn.dataset.applyMode;
-    document.getElementById('compare-modes-dialog').close();
-    document.getElementById('btn-optimize').click();
-  });
-}
-
-(function initCompareModesDialog() {
-  const dialog = document.getElementById('compare-modes-dialog');
-  document.getElementById('btn-compare-modes').onclick = showCompareModesModal;
-  document.getElementById('btn-close-compare-modes').onclick = () => dialog.close();
   dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
     const rect = dialog.getBoundingClientRect();

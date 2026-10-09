@@ -152,7 +152,7 @@
     <div class="faq">
       <details><summary>Is Party Planner free?</summary><p>Yes. There is no account, no login and no paid tier. Everything runs in your browser.</p></details>
       <details><summary>Where does my roster data go?</summary><p>Sign-ups are fetched by your browser directly from Raid-Helper and never touch our server. Named saves and your latest 30 imports live in this browser's local storage. Working plans save your latest changes automatically, while import history keeps the original snapshots. Clearing site data removes both saves and history. Share links carry the layout in the URL fragment, which browsers never send to the host.</p></details>
-      <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive, so melee end up with Windfury, casters with their totems and auras, and tanks with their healers. You can pick Max DPS, Tank Mitigation or Balanced, and drag anyone afterwards.</p></details>
+      <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive, so melee end up with Windfury, casters with their totems and auras, and tanks with their healers. Optimize places buffs where they add the most damage, and you can drag anyone afterwards.</p></details>
       <details><summary>What happens when more people sign up than the raid holds?</summary><p>You always keep enough tanks and healers. The remaining seats go to whoever adds the most, and everyone else waits on the bench, where you can swap them in with one click.</p></details>
       <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and paste the JSON into the import box.</p></details>
       <details><summary>People signed up after I built the groups. Do I start over?</summary><p>No. A roster imported from a Raid-Helper link remembers its event. When you reopen a saved roster, the planner checks the event and shows what changed. Click Refresh (in the toolbar or on the banner) to add new sign-ups to the bench, remove anyone who withdrew, and update changed specs, while everyone else keeps their seat.</p></details>
@@ -218,15 +218,6 @@
       <span id="mobile-plan-title"></span>
     </div>
     <div class="phone-context-row" id="raid-selector-phone-slot"></div>
-    <div class="phone-context-row">
-      <span class="lbl">Optimizer strategy</span>
-      <div class="phone-strategy-seg" role="group" aria-label="Optimizer strategy" id="phone-strategy-seg">
-        <button type="button" data-mode="max_dps" aria-pressed="true">Max DPS</button>
-        <button type="button" data-mode="tank_mit" aria-pressed="false">Tank</button>
-        <button type="button" data-mode="balanced" aria-pressed="false">Balanced</button>
-        <button type="button" data-mode="relaxed" aria-pressed="false">Relaxed</button>
-      </div>
-    </div>
     <button type="button" class="phone-ideal-comp-link" id="btn-ideal-comp-link-phone">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
       Compare to ideal comp
@@ -237,23 +228,7 @@
 
   <div class="roster-bar">
     <div class="action-left">
-      <div class="split-btn">
-        <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)"><span class="btn-label">Optimize groups</span></button>
-        <button type="button" class="btn btn-primary split-btn-caret" id="btn-optimize-strategy" aria-haspopup="menu" aria-expanded="false" aria-label="Choose optimizer strategy">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
-        </button>
-        <div class="menu" id="optimize-strategy-menu" role="menu" aria-label="Optimizer strategy" hidden>
-          <div class="menu-heading">Strategy</div>
-          <div class="menu-hint" id="board-score-hint" hidden></div>
-          <button type="button" class="menu-item" role="menuitem" id="strategy-item-max_dps" data-mode="max_dps"><span class="menu-item-check" aria-hidden="true"></span><span><span class="menu-item-label">Max DPS</span><small>Buffs go where they add the most damage</small></span></button>
-          <button type="button" class="menu-item" role="menuitem" id="strategy-item-tank_mit" data-mode="tank_mit"><span class="menu-item-check" aria-hidden="true"></span><span><span class="menu-item-label">Tank Mitigation</span><small>Protect tanks first, then damage</small></span></button>
-          <button type="button" class="menu-item" role="menuitem" id="strategy-item-balanced" data-mode="balanced"><span class="menu-item-check" aria-hidden="true"></span><span><span class="menu-item-label">Balanced</span><small>Even trade between damage and survival</small></span></button>
-          <button type="button" class="menu-item" role="menuitem" id="strategy-item-relaxed" data-mode="relaxed"><span class="menu-item-check" aria-hidden="true"></span><span><span class="menu-item-label">Relaxed</span><small>Keeps role groups together, skips extra fine-tuning</small></span></button>
-          <div class="menu-sep"></div>
-          <button type="button" class="menu-item" role="menuitem" id="btn-compare-modes" aria-label="Compare all optimizer modes side by side">Compare all strategies&hellip;</button>
-        </div>
-      </div>
-      <span class="strategy-label">Strategy: <strong id="strategy-label-value">Max DPS</strong></span>
+      <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)"><span class="btn-label">Optimize</span></button>
       <button type="button" class="btn btn-secondary btn-icon" id="btn-undo" disabled aria-label="Undo" title="Undo (Ctrl+Z)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 010 12h-3"></path></svg>
         <span class="btn-label">Undo</span>
@@ -320,12 +295,6 @@
       </div>
     </div>
   </div>
-  <select id="optimize-mode" aria-label="Optimizer strategy" hidden>
-    <option value="max_dps" selected>Max DPS</option>
-    <option value="tank_mit">Tank Mitigation</option>
-    <option value="balanced">Balanced</option>
-    <option value="relaxed">Relaxed</option>
-  </select>
   <!-- These raw export formats aren't in the redesigned Share menu
        (see mockup) but the share dialog's "More export formats" section
        still reaches them by id via data-share-action — keep the real,
@@ -523,14 +492,6 @@
   </div>
   <p>Built from your named saved rosters (Save button) for the current game version. Read-only — recent imports and working-plan autosaves aren't counted, so this only reflects rosters you deliberately kept.</p>
   <div id="attendance-body"></div>
-</dialog>
-<dialog id="compare-modes-dialog" class="history-dialog compare-modes-dialog" aria-labelledby="compare-modes-heading">
-  <div class="history-dialog-header">
-    <h3 id="compare-modes-heading">Compare optimizer modes</h3>
-    <button type="button" class="btn btn-secondary" id="btn-close-compare-modes" autofocus>Close</button>
-  </div>
-  <p>Runs all four optimizer strategies against your current seated roster without changing the board. Pick one to apply it for real.</p>
-  <div id="compare-modes-body"></div>
 </dialog>
 <dialog id="backup-restore-dialog" class="history-dialog" aria-labelledby="backup-restore-heading">
   <div class="history-dialog-header">

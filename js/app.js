@@ -217,54 +217,12 @@ function renderLandingSavedList() {
 
 // ── TOOLBAR MENUS (nav redesign) ─────────────────────────────────
 (function initToolbarMenus() {
-  Menu.init(document.getElementById('btn-optimize-strategy'), document.getElementById('optimize-strategy-menu'));
   Menu.init(document.getElementById('btn-plan-menu'), document.getElementById('plan-menu'));
   Menu.init(document.getElementById('btn-signups-menu'), document.getElementById('signups-menu'));
   Menu.init(document.getElementById('btn-share-menu'), document.getElementById('share-menu'));
   Menu.init(document.getElementById('btn-settings-menu'), document.getElementById('settings-menu'));
 
-  // Strategy menu items and the phone 4-segment control both drive the same
-  // State.optimizerMode through the hidden #optimize-mode select — one
-  // source of truth, two responsive representations (dropdown vs segmented
-  // control). Selecting a strategy sets the mode but never auto-runs it.
-  // "Current board X vs optimized Y": computed only when the menu opens (a full plan() run),
-  // after the menu has painted, so it never adds to a render.
-  const scoreHint = document.getElementById('board-score-hint');
-  document.getElementById('optimize-strategy-menu').addEventListener('menuopen', () => {
-    scoreHint.hidden = true;
-    setTimeout(() => {
-      if (document.getElementById('optimize-strategy-menu').hidden) return;
-      const text = Optimizer.describeComparison(Optimizer.compareToOptimized());
-      scoreHint.textContent = text;
-      scoreHint.hidden = !text;
-    }, 0);
-  });
-  document.querySelectorAll('#optimize-strategy-menu [data-mode]').forEach(item => {
-    const desc = STRATEGY_DESCRIPTIONS[item.dataset.mode];
-    if (desc) {
-      const label = item.querySelector('.menu-item-label');
-      const small = item.querySelector('small');
-      if (label) label.textContent = desc.label;
-      if (small) small.textContent = desc.description;
-    }
-    item.addEventListener('click', () => {
-      setOptimizerMode(item.dataset.mode);
-      Menu.closeMenu(document.getElementById('btn-optimize-strategy'), document.getElementById('optimize-strategy-menu'), { focusTrigger: true });
-    });
-  });
-  document.querySelectorAll('#phone-strategy-seg [data-mode]').forEach(item => {
-    const desc = STRATEGY_DESCRIPTIONS[item.dataset.mode];
-    if (desc) item.textContent = desc.label === 'Tank Mitigation' ? 'Tank' : desc.label;
-    item.addEventListener('click', () => setOptimizerMode(item.dataset.mode));
-  });
 })();
-
-function setOptimizerMode(mode) {
-  if (!STRATEGY_DESCRIPTIONS[mode]) return;
-  const select = document.getElementById('optimize-mode');
-  select.value = mode;
-  select.dispatchEvent(new Event('change'));
-}
 
 // ── PHONE "MORE" SHEET ────────────────────────────────────────────
 (function initMoreSheet() {
@@ -308,7 +266,7 @@ function setOptimizerMode(mode) {
   raidSelector.parentNode.insertBefore(raidAnchor, raidSelector);
 
   const slots = ['btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
-    'btn-redo:phone-sheet-quick-slot', 'btn-compare-modes:phone-sheet-quick-slot',
+    'btn-redo:phone-sheet-quick-slot',
     'menu-rename-plan:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
     'btn-import:phone-sheet-signups-slot', 'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
     'raid-notes-panel:phone-context-notes-slot',
@@ -339,12 +297,9 @@ function setOptimizerMode(mode) {
         slot.anchor.parentNode.insertBefore(slot.el, slot.anchor.nextSibling);
       }
     }
-    // Shorter labels in the thumb-width phone bottom bar (matches the
-    // mockup's plain "Optimize"/"Share"); the fuller desktop text — "Optimize
-    // groups" and "More export formats…" — comes back once btn-share-main
-    // is a Share-menu item again instead of a bottom-bar button.
-    const optimizeLabel = document.querySelector('#btn-optimize .btn-label');
-    if (optimizeLabel) optimizeLabel.textContent = isPhone ? 'Optimize' : 'Optimize groups';
+    // Shorter label in the thumb-width phone bottom bar (plain "Share"); the
+    // fuller desktop text "More export formats…" comes back once
+    // btn-share-main is a Share-menu item again instead of a bottom-bar button.
     const shareLabel = document.querySelector('#btn-share-main .btn-label');
     if (shareLabel) shareLabel.textContent = isPhone ? 'Share' : 'More export formats…';
   }
@@ -376,10 +331,6 @@ function setPhoneContextOpen(open, persist = true) {
 })();
 
 // ── ACTION BUTTONS ──────────────────────────────────────────────
-document.getElementById('optimize-mode').addEventListener('change', (e) => {
-  State.optimizerMode = e.target.value;
-  persistWorkingPlan();
-});
 function countCoveredBuffs() {
   const covered = new Set();
   for (let gi = 0; gi < State.groups.length; gi++) {
@@ -417,7 +368,8 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
   const buffsBefore = countCoveredBuffs();
   const placementBefore = playerGroupMap();
 
-  State.optimizerMode = document.getElementById('optimize-mode').value;
+  // One strategy since the nav slim-down: Optimize always runs Max DPS.
+  State.optimizerMode = 'max_dps';
   const overridesReset = Object.keys(State.buffOverrides).length;
   State.buffOverrides = {};
   Optimizer.optimize();

@@ -2576,7 +2576,7 @@ describe('Import history: snapshots survive edits and restore seats, bench and e
 describe('Working plans: full snapshots, independent plans, identity and undo', () => {
   const storage = {data:new Map(), getItem(k){return this.data.get(k)||null;},setItem(k,v){this.data.set(k,v);}};
   syncFixture();
-  State.planId = 'event:123'; State.sourceEventId = '123'; State.rosterName='Friday raid'; State.optimizerMode='balanced';
+  State.planId = 'event:123'; State.sourceEventId = '123'; State.rosterName='Friday raid'; State.optimizerMode='max_dps';
   State.groups[0][0].uid='p9000';
   State.buffOverrides={'0:p9000:air':{buffId:'WINDFURY'}};
   const original = PP.PlanStore.capture();
@@ -2587,7 +2587,11 @@ describe('Working plans: full snapshots, independent plans, identity and undo', 
   assertEqual(PP.PlanStore.read(storage).length,2,'independent plans retained');
   assert(PP.PlanStore.restore(original),'snapshot restores');
   assertEqual(State.rosterName,'Friday raid','name restored');
-  assertEqual(State.optimizerMode,'balanced','mode restored');
+  assertEqual(State.optimizerMode,'max_dps','mode restored');
+  // Plans saved before the nav slim-down may carry another strategy; Optimize only runs Max DPS now.
+  assert(PP.PlanStore.restore({...original, optimizerMode:'balanced'}),'an old strategy still loads');
+  assertEqual(State.optimizerMode,'max_dps','an old strategy is forced to Max DPS');
+  PP.PlanStore.restore(original);
   assertEqual(State.sourceEventId,'123','event retained');
   assertEqual(State.buffOverrides['0:p9000:air'].buffId,'WINDFURY','buff override retained');
   const added=RosterEdit.AddPlayer(1,{name:'Fresh',class:'MAGE',spec:'Arcane'});

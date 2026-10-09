@@ -143,32 +143,6 @@ const MODE_CONFIG = {
   relaxed:  { dps: 0.2, mit: 0.3,  structure: 1.0, cohesion: 1.5 },
 };
 
-// Toolbar copy for the optimizer-strategy split-button menu (nav redesign).
-// Pure data — no DOM — so nav-tests.js can check every MODE_CONFIG key has a
-// matching entry here with no stragglers. Wording is checked against what
-// each mode's weights above (and the optimizer's relaxed-mode short-circuit,
-// see Optimizer.refineRounds) actually do, not just guessed from the name:
-//  - max_dps: dps is the dominant weight (1.0, highest of any mode).
-//  - tank_mit: mit is the dominant weight (1.2, highest of any mode).
-//  - balanced: dps/mit are both mid-range and close together (0.7/0.5),
-//    unlike either mode above that leans hard on one or the other.
-//  - relaxed: dps/mit are both the lowest of any mode AND
-//    Optimizer.refineRounds() skips its swap/move refinement passes
-//    entirely for 'relaxed', so it makes noticeably fewer placement changes
-//    than the other three — "fewer moves" describes the algorithm's own
-//    pass count, not a literal diff against the board before the click.
-const STRATEGY_DESCRIPTIONS = {
-  max_dps:  { label: 'Max DPS',          description: 'Buffs go where they add the most damage' },
-  tank_mit: { label: 'Tank Mitigation',  description: 'Protect tanks first, then damage' },
-  balanced: { label: 'Balanced',         description: 'Even trade between damage and survival' },
-  relaxed:  { label: 'Relaxed',          description: 'Keeps role groups together, skips extra fine-tuning' },
-};
-// Falls back to Max DPS for an unrecognized/legacy mode string (e.g. a share
-// link or saved plan from before a mode existed) — same fallback MODE_CONFIG
-// consumers already use ("MODE_CONFIG[mode] || MODE_CONFIG.max_dps").
-function strategyLabel(mode) {
-  return (STRATEGY_DESCRIPTIONS[mode] || STRATEGY_DESCRIPTIONS.max_dps).label;
-}
 
 // ── SYNERGY MODEL (researched TBC party-buff values) ──
 // DPS_VALUE[buffId] — tier value of a buff to the RECEIVING player (relative

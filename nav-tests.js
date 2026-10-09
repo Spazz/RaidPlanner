@@ -6,15 +6,15 @@
  * <script> (everything above the '// ── UI RENDERING' split marker — pure
  * data/logic, no `document`) runs in a sandboxed context and the pieces
  * under test are pulled out through globalThis.api. Covers the pure logic
- * introduced for the Plan-mode nav redesign: the optimizer-strategy menu's
- * copy (STRATEGY_DESCRIPTIONS/strategyLabel), kept in lockstep with
- * MODE_CONFIG so the split-button menu can never list a strategy the
- * optimizer doesn't have, or vice versa.
+ * behind the optimizer strategies: each MODE_CONFIG mode leans the way its
+ * name says. The strategy picker UI is gone since the nav slim-down
+ * (Optimize always runs Max DPS), but the modes stay for the optimizer's own
+ * scoring, compareOptimizerModes() and old saved plans.
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['MODE_CONFIG', 'STRATEGY_DESCRIPTIONS', 'strategyLabel']);
-const { MODE_CONFIG, STRATEGY_DESCRIPTIONS, strategyLabel } = ctx.api;
+const ctx = app.sandbox(['MODE_CONFIG']);
+const { MODE_CONFIG } = ctx.api;
 
 let passed = 0, failed = 0;
 function check(name, fn) {
@@ -27,19 +27,6 @@ function check(name, fn) {
     console.log(`FAIL  ${name}\n      ${e.message}`);
   }
 }
-
-check('Every MODE_CONFIG strategy has exactly one STRATEGY_DESCRIPTIONS entry (no stragglers either way)', () => {
-  const modeKeys = Object.keys(MODE_CONFIG).sort();
-  const descKeys = Object.keys(STRATEGY_DESCRIPTIONS).sort();
-  assert.deepEqual(descKeys, modeKeys);
-});
-
-check('Every strategy description has a non-empty label and description', () => {
-  for (const [mode, desc] of Object.entries(STRATEGY_DESCRIPTIONS)) {
-    assert.ok(desc.label && desc.label.trim().length > 0, `${mode}: label`);
-    assert.ok(desc.description && desc.description.trim().length > 0, `${mode}: description`);
-  }
-});
 
 check('max_dps is the mode with the single highest dps weight — its copy calling out damage checks out', () => {
   const maxDpsWeight = MODE_CONFIG.max_dps.dps;
@@ -64,17 +51,6 @@ check('relaxed has the single lowest dps weight and single highest cohesion weig
     assert.ok(relaxed.dps < cfg.dps, `relaxed.dps (${relaxed.dps}) should be < ${mode}.dps (${cfg.dps})`);
     assert.ok(relaxed.cohesion > cfg.cohesion, `relaxed.cohesion (${relaxed.cohesion}) should be > ${mode}.cohesion (${cfg.cohesion})`);
   }
-});
-
-check('strategyLabel() returns the matching label for every known mode', () => {
-  for (const mode of Object.keys(MODE_CONFIG)) {
-    assert.equal(strategyLabel(mode), STRATEGY_DESCRIPTIONS[mode].label);
-  }
-});
-
-check('strategyLabel() falls back to Max DPS for an unknown/legacy mode string', () => {
-  assert.equal(strategyLabel('not_a_real_mode'), STRATEGY_DESCRIPTIONS.max_dps.label);
-  assert.equal(strategyLabel(undefined), STRATEGY_DESCRIPTIONS.max_dps.label);
 });
 
 console.log(`\nNav tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

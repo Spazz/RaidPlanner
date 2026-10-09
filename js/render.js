@@ -14,7 +14,6 @@ function syncVersionControls() {
   document.getElementById('landing-version-note').textContent = profile.note;
   document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-player roster`;
   document.getElementById('btn-optimize').disabled = !profile.modeled;
-  document.getElementById('optimize-mode').disabled = !profile.modeled;
   initRaidDropdown();
 }
 // Switching version refits the plan to the new version's default raid, so with a plan
