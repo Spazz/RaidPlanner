@@ -487,7 +487,6 @@ const Import = {
   // Discord.
   exportChatText(opts = {}) {
     const compact = !!opts.compact;
-    const raidInfo = Config.Raids[State.selectedRaid];
     const versionLabel = chatSafe((GameVersions[State.gameVersion] || {}).name || State.gameVersion);
     const rosterLabel = chatSafe(State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : 'Unnamed Roster');
     const dateStr = PlanStore.dayLabel();
@@ -503,7 +502,7 @@ const Import = {
     };
 
     const lines = [];
-    lines.push(finishLine(`${raidInfo ? raidInfo.name : 'Raid'} (${versionLabel}) - ${dateStr} - ${rosterLabel}`));
+    lines.push(finishLine(`${raidSizeLabel(State.selectedRaid)} (${versionLabel}) - ${dateStr} - ${rosterLabel}`));
 
     (State.groups || []).forEach((group, gi) => {
       if (!group || !group.length) return;

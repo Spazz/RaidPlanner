@@ -1691,7 +1691,6 @@ function detectVersionFromTemplateId(templateId) {
 // in the @media print CSS) so the sheet stays legible on a printed page.
 const PrintSheet = {
   build() {
-    const raidInfo = Config.Raids[State.selectedRaid] || {};
     const versionLabel = (GameVersions[State.gameVersion] || {}).name || State.gameVersion;
     const dateStr = PlanStore.dayLabel();
     const rosterLabel = State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : 'Unnamed Roster';
@@ -1731,7 +1730,7 @@ const PrintSheet = {
 
     return `
       <div class="ps-header">
-        <h1>${esc(raidInfo.name || 'Raid')}</h1>
+        <h1>${esc(raidSizeLabel(State.selectedRaid))} raid</h1>
         <div class="ps-meta">${esc(versionLabel)} &middot; ${esc(dateStr)} &middot; ${esc(rosterLabel)}</div>
       </div>
       <div class="ps-groups">${groupsHTML}</div>

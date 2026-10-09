@@ -36,7 +36,7 @@ function renderLanding() {
       const raid = Config.Raids[State.selectedRaid];
       const parts = [`${State.roster.length} players`];
       if ((State.bench || []).length) parts.push(`${State.bench.length} benched`);
-      summary.textContent = `${State.rosterName === NO_ROSTER_NAME ? 'a roster' : State.rosterName} (${parts.join(', ')}${raid ? ', ' + raid.name : ''})`;
+      summary.textContent = `${State.rosterName === NO_ROSTER_NAME ? 'a roster' : State.rosterName} (${parts.join(', ')}${raid ? ', ' + raidSizeLabel(State.selectedRaid) : ''})`;
     }
   }
   renderLandingSavedList();
@@ -108,7 +108,7 @@ function renderLandingSavedList() {
   </button>`).join('') + (names.length ? '<div class="saved-item-meta">Saved copies</div>' : '') + names.map(name => {
     const r = rosters[name];
     const count = r.players ? r.players.length : 0;
-    const raid = r.raid ? (Config.Raids[r.raid]?.name || r.raid) : '';
+    const raid = r.raid && Config.Raids[r.raid] ? raidSizeLabel(r.raid) : '';
     const linked = r.sourceEventId ? ' \u00b7 Raid-Helper linked' : '';
     return `<button type="button" class="saved-item" data-name="${esc(name)}">
       <span class="saved-item-name">${esc(name)}</span>
@@ -260,13 +260,8 @@ function renderLandingSavedList() {
 // slot. A comment node left at each element's original position lets it
 // snap back to that exact spot when the viewport widens again.
 (function initResponsiveChrome() {
-  const raidSelector = document.getElementById('raid-selector-desktop-slot');
-  const raidPhoneSlot = document.getElementById('raid-selector-phone-slot');
-  const raidAnchor = document.createComment('anchor:raid-selector');
-  raidSelector.parentNode.insertBefore(raidAnchor, raidSelector);
-
   const slots = ['btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
-    'btn-redo:phone-sheet-quick-slot',
+    'btn-redo:phone-sheet-quick-slot', 'raid-size-wrap:raid-size-phone-slot',
     'menu-rename-plan:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
     'btn-import:phone-sheet-signups-slot', 'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
     'raid-notes-panel:phone-context-notes-slot',
@@ -282,13 +277,6 @@ function renderLandingSavedList() {
   const PHONE_QUERY = window.matchMedia('(max-width: 600px)');
   function sync(e) {
     const isPhone = (e || PHONE_QUERY).matches;
-    if (raidSelector) {
-      if (isPhone) {
-        if (raidSelector.parentNode !== raidPhoneSlot) raidPhoneSlot.appendChild(raidSelector);
-      } else if (raidSelector.previousSibling !== raidAnchor) {
-        raidAnchor.parentNode.insertBefore(raidSelector, raidAnchor.nextSibling);
-      }
-    }
     for (const slot of slots) {
       if (!slot.el) continue;
       if (isPhone) {
@@ -1699,7 +1687,7 @@ function renderIdealComp() {
   const balanceEl = document.getElementById('balance-warnings');
   if (balanceEl) balanceEl.innerHTML = '';
 
-  document.getElementById('status-text').textContent = `Ideal ${raidInfo.size}-man comp — ${raidInfo.name}`;
+  document.getElementById('status-text').textContent = `Ideal ${raidInfo.size}-man comp`;
 }
 
 // Wire tab clicks

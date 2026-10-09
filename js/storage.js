@@ -280,7 +280,7 @@ const PlanStore = {
   nameFor(data, eventId) {
     const title = typeof data.title === 'string' ? data.title.trim() : '';
     const day = new Date(this.eventStart(data) || Date.now()).toLocaleDateString();
-    return (title || (Config.Raids[State.selectedRaid]?.name || 'Raid') + (eventId ? ' · Event ' + eventId : '')) + ' · ' + day;
+    return (title || raidSizeLabel(State.selectedRaid) + (eventId ? ' · Event ' + eventId : '')) + ' · ' + day;
   },
 };
 

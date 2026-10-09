@@ -722,6 +722,33 @@ function versionForRaid(raid) {
 function validVersionRaid(version, raid) {
   return !!GameVersions[version] && GameVersions[version].raids.includes(raid);
 }
+// What the planner calls a raid since the nav slim-down hid the specific
+// instance: its size ("25-man"), or 'Raid' for an unknown key.
+function raidSizeLabel(raidKey) {
+  const raid = Config.Raids[raidKey];
+  return raid ? `${raid.size}-man` : 'Raid';
+}
+// The raid sizes the Raid size control offers for a version: the sizes of its
+// real raids (planning templates left out), smallest first. A plan saved on a
+// template whose size no real raid has (classic10) adds that size, so the
+// control still shows what the plan is.
+function raidSizesFor(version, currentRaid) {
+  const profile = GameVersions[version];
+  if (!profile) return [];
+  const sizes = new Set(profile.raids.map(key => Config.Raids[key])
+    .filter(raid => raid && raid.tier !== 'Planning templates').map(raid => raid.size));
+  if (profile.raids.includes(currentRaid) && Config.Raids[currentRaid]) sizes.add(Config.Raids[currentRaid].size);
+  return [...sizes].sort((a, b) => a - b);
+}
+// The raid a size pick lands on: the current raid when it already has that
+// size, else the version's first raid of that size in catalog order (real
+// raids come before the planning templates), or null when there is none.
+function raidForSize(version, size, currentRaid) {
+  const profile = GameVersions[version];
+  if (!profile) return null;
+  if (profile.raids.includes(currentRaid) && Config.Raids[currentRaid] && Config.Raids[currentRaid].size === size) return currentRaid;
+  return profile.raids.find(key => Config.Raids[key] && Config.Raids[key].size === size) || null;
+}
 
 // TBC baseline aliases — plain bindings for code (and tests) that always want
 // the TBC tables directly. Version-aware call sites use activeRules() instead.

@@ -34,6 +34,7 @@
 !campfire-tests.js
 !classic-tests.js
 !features-tests.js
+!raidsize-tests.js
 !forever-tests.js
 !classic-forever-scenarios.js
 !assignments-tests.js

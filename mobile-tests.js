@@ -58,11 +58,11 @@ check('phone summary has the two text lines and an Edit control', () => {
 
 check('every existing phone control is still in the page (inside the expandable body or the notes slot)', () => {
   const panel = between(html, 'id="phone-context-panel"', '<div class="roster-bar">');
-  for (const id of ['mobile-plan-title', 'raid-selector-phone-slot', 'btn-ideal-comp-link-phone', 'phone-context-notes-slot']) {
+  for (const id of ['mobile-plan-title', 'raid-size-phone-slot', 'btn-ideal-comp-link-phone', 'phone-context-notes-slot']) {
     assert.ok(panel.includes(`id="${id}"`), `${id} missing from the context panel`);
   }
   const body = between(panel, 'id="phone-context-body"', 'id="phone-context-notes-slot"');
-  assert.ok(body.includes('id="raid-selector-phone-slot"'));
+  assert.ok(body.includes('id="raid-size-phone-slot"'));
   assert.ok(!html.includes('phone-strategy-seg'), 'the optimizer strategy control is gone (Optimize always runs Max DPS)');
   for (const id of ['raid-notes-panel', 'raid-notes-textarea', 'readiness-text', 'summary-bar', 'plan-feedback']) {
     assert.match(html, new RegExp(`id="${id}"`), id);

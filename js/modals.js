@@ -371,7 +371,7 @@ function renderImportHistory(list, onLoad = () => {}, limit = 6) {
     const source = r.sourceEventId ? `Raid-Helper event ${r.sourceEventId}` : (item.source || 'Imported roster');
     return `<div class="history-row">
       <button type="button" class="saved-item history-open" data-history-open="${esc(item.id)}">
-        <span class="saved-item-name">${esc(r.name)} · ${esc(Config.Raids[r.raid].name)}</span>
+        <span class="saved-item-name">${esc(r.name)} · ${esc(raidSizeLabel(r.raid))}</span>
         <span class="saved-item-meta">${esc(new Date(item.importedAt).toLocaleString())} · ${r.players.length} seated · ${r.bench.length} benched</span>
         <span class="saved-item-meta">${esc(source)}</span>
       </button>
@@ -392,7 +392,6 @@ function renderImportHistory(list, onLoad = () => {}, limit = 6) {
     State.buffOverrides = {};
     RaidHelperSync.hideBanner();
     renderLastRun(null);
-    document.getElementById('raid-select').value = State.selectedRaid;
     initGroups();
     commit();
     onLoad();
@@ -488,7 +487,7 @@ function showTemplatesModal() {
   const trigger = document.activeElement;
   const gameVersion = State.gameVersion, raid = State.selectedRaid;
   const templates = Templates.list(localStorage, gameVersion, raid);
-  const raidLabel = Config.Raids[raid]?.name || raid;
+  const raidLabel = raidSizeLabel(raid);
   const versionLabel = GameVersions[gameVersion]?.name || gameVersion;
   const anyLocked = (State.roster || []).some(p => p.locked);
 
@@ -578,7 +577,7 @@ function showLoadModal() {
     for (const name of names) {
       const r = rosters[name];
       const count = r.players ? r.players.length : 0;
-      const raid = r.raid ? (Config.Raids[r.raid]?.name || r.raid) : '';
+      const raid = r.raid && Config.Raids[r.raid] ? raidSizeLabel(r.raid) : '';
       listHTML += `<div class="saved-roster-item" data-name="${esc(name)}">
         <div><span class="roster-item-name">${esc(name)}</span><br><span class="roster-item-meta">${count} players — ${esc(raid)}</span></div>
         <button class="roster-item-delete" data-delete="${esc(name)}" title="Delete">&times;</button>
@@ -797,7 +796,6 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     if (!result.success) { report('Import failed: ' + result.error, true); return false; }
     State.planId = null;
     if (!src.text.startsWith('PP:2:') || State.rosterName === NO_ROSTER_NAME || State.rosterName === 'Imported Roster') State.rosterName = PlanStore.nameFor({}, null);
-    document.getElementById('raid-select').value = State.selectedRaid;
     initGroups();
     commit();
     showToast(`Your groups are ready. Imported ${result.playerCount} players from addon string${rememberImport('Pasted roster string')}`);
@@ -877,7 +875,6 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   State.sourceEventId = src.eventId || null;
   State.eventStartTime = PlanStore.eventStart(metadata);
   RaidHelperSync.hideBanner();
-  document.getElementById('raid-select').value = State.selectedRaid;
   const foldBenched = initGroups();
   commit();
   const historyNotice = rememberImport(src.url ? 'Raid-Helper URL' : 'Pasted JSON');
@@ -952,7 +949,6 @@ const PlainRosterImport = {
     const toolbarBox = document.getElementById('import-textarea');
     if (landingBox) landingBox.value = '';
     if (toolbarBox) toolbarBox.value = '';
-    document.getElementById('raid-select').value = State.selectedRaid;
     initGroups();
     commit();
     showView('app');
@@ -1114,7 +1110,7 @@ const SplitFlow = {
     const text = document.getElementById('split-banner-text');
     if (!banner || !text) return;
     const raid = Config.Raids[State.selectedRaid];
-    text.textContent = `${total} sign-ups is more than one ${raid.name} (${raid.size}-man) holds.`;
+    text.textContent = `${total} sign-ups is more than one ${raid.size}-man raid holds.`;
     banner.hidden = false;
   },
   dismiss() {
@@ -1177,7 +1173,7 @@ const SplitFlow = {
     // (compound-keyed by planId + gameVersion, same as every other saved
     // plan — see PlanStore), so Refresh keeps working on either one without
     // disturbing the 'event:<id>' lookup importFromText() uses to reopen A.
-    const baseName = State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : (raidInfo.name || 'Raid');
+    const baseName = State.rosterName && State.rosterName !== NO_ROSTER_NAME ? State.rosterName : raidSizeLabel(result.raidKey);
     const planId = State.planId || 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     const dataB = {
       planId: planId + ':B',

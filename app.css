@@ -348,7 +348,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 /* ── Condensed label helper ── */
 .cond, .mode-tab, .btn, .buff-sidebar-title, .buff-sidebar-sub,
 .group-header h3, .group-role-tag, .buff-bar-label, .bench-header h3,
-.roster-label, .raid-selector label, .title-bar h1 {
+.roster-label, .title-bar h1 {
   font-family: var(--font-cond);
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -398,8 +398,18 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .ideal-comp-link:hover, .back-to-plan-link:hover { color: var(--text-secondary); }
 .ideal-comp-link svg, .back-to-plan-link svg { flex-shrink: 0; }
-.raid-selector { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
-.raid-selector label { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+/* Raid size segmented control (nav slim-down; replaced the raid dropdown). */
+.raid-size-wrap { display: flex; align-items: center; gap: var(--sp-2); }
+.raid-size-label { font-size: 11px; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
+.raid-size-seg { display: flex; border: 1px solid var(--border-medium); }
+.raid-size-seg button {
+  min-width: 30px; padding: 3px 10px; border: 0; background: transparent; cursor: pointer;
+  color: var(--text-muted); font-family: var(--font-body); font-size: 11px; font-weight: 600;
+}
+.raid-size-seg button + button { border-left: 1px solid var(--border-medium); }
+.raid-size-seg button:hover { color: var(--text-secondary); }
+.raid-size-seg button[aria-pressed="true"] { background: var(--text-primary); color: var(--bg-frame); }
+.raid-size-seg button:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
 .raid-dropdown {
   padding: 3px var(--sp-2); padding-right: var(--sp-6);
   background: var(--bg-input);
@@ -1299,8 +1309,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
     font-size: 11px; color: var(--text-muted);
   }
   #mobile-plan-title { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.06em; font-size: 16px; font-weight: 700; }
-  #raid-selector-phone-slot .raid-selector { display: block; }
-  #raid-selector-phone-slot .raid-dropdown { width: 100%; height: 44px; font-size: 14px; }
   .phone-ideal-comp-link {
     align-self: flex-start; display: flex; align-items: center; gap: 6px;
     background: none; border: none; color: var(--text-muted); font-size: 13px;
@@ -1732,7 +1740,6 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .phone-context-body[hidden] { display: none; }
   .phone-context-row .lbl { font-size: 11px; }
   #mobile-plan-title { font-size: 14px; }
-  #raid-selector-phone-slot .raid-dropdown { height: 40px; }
   .phone-ideal-comp-link { min-height: 32px; }
   #phone-context-notes-slot .raid-notes-panel { margin: 0; }
   .raid-notes-panel summary { padding: 8px 10px; }

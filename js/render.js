@@ -14,7 +14,7 @@ function syncVersionControls() {
   document.getElementById('landing-version-note').textContent = profile.note;
   document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-player roster`;
   document.getElementById('btn-optimize').disabled = !profile.modeled;
-  initRaidDropdown();
+  renderRaidSizeControl();
 }
 // Switching version refits the plan to the new version's default raid, so with a plan
 // loaded it asks first, and afterwards says how many players the smaller raid benched.
@@ -38,35 +38,49 @@ async function switchGameVersion(version) {
   return true;
 }
 
-function initRaidDropdown() {
-  const sel = document.getElementById('raid-select');
-  sel.innerHTML = '';
-  for (const tier of [...new Set(Config.RaidOrder.map(key => Config.Raids[key].tier))]) {
-    const group = document.createElement('optgroup');
-    group.label = tier;
-    for (const key of Config.RaidOrder) {
-      const r = Config.Raids[key];
-      if (r.tier !== tier) continue;
-      const opt = document.createElement('option');
-      opt.value = key;
-      opt.textContent = `${r.name} (${r.size})`;
-      if (key === State.selectedRaid) opt.selected = true;
-      group.appendChild(opt);
-    }
-    if (group.children.length) sel.appendChild(group);
+// Raid size segmented control (replaced the raid dropdown in the nav slim-down).
+// The sizes come from the version's raid catalog (raidSizesFor); the specific
+// raid stays in State.selectedRaid, so old plans and share links that name one
+// still load and show their size. Buttons are rebuilt only when the size list
+// changes, so a render never steals focus from them.
+function renderRaidSizeControl() {
+  const group = document.getElementById('raid-size-control');
+  if (!group) return;
+  const sizes = raidSizesFor(State.gameVersion, State.selectedRaid);
+  const key = sizes.join(',');
+  if (group.dataset.sizes !== key) {
+    group.dataset.sizes = key;
+    group.innerHTML = sizes.map(size => `<button type="button" data-raid-size="${size}" aria-pressed="false" title="${size}-man raid">${size}</button>`).join('');
   }
-  sel.onchange = () => {
-    State.selectedRaid = sel.value;
-    if (State.activeTab === 'ideal') {
-      renderIdealComp();
-    } else {
-      const benched = initGroups();
-      commit();
-      const raidInfo = Config.Raids[State.selectedRaid];
-      if (benched > 0) showToast(`${benched} player${benched === 1 ? '' : 's'} benched — the ${raidInfo ? raidInfo.size : 25}-man raid is full`);
-    }
-  };
+  const current = Config.Raids[State.selectedRaid];
+  group.querySelectorAll('[data-raid-size]').forEach(button => {
+    button.setAttribute('aria-pressed', String(!!current && Number(button.dataset.raidSize) === current.size));
+  });
 }
+// Picking size N keeps the current raid when it already has N seats, else moves
+// to the version's first raid of that size, then refits the board.
+function selectRaidSize(size) {
+  const raid = raidForSize(State.gameVersion, size, State.selectedRaid);
+  if (!raid || raid === State.selectedRaid) return;
+  State.selectedRaid = raid;
+  renderRaidSizeControl();
+  if (State.activeTab === 'ideal') {
+    renderIdealComp();
+  } else {
+    const benched = initGroups();
+    commit();
+    const raidInfo = Config.Raids[State.selectedRaid];
+    if (benched > 0) showToast(`${benched} player${benched === 1 ? '' : 's'} benched — the ${raidInfo ? raidInfo.size : 25}-man raid is full`);
+  }
+}
+(function initRaidSizeControl() {
+  const group = document.getElementById('raid-size-control');
+  if (!group) return;
+  group.addEventListener('click', e => {
+    const button = e.target.closest('[data-raid-size]');
+    if (button) selectRaidSize(Number(button.dataset.raidSize));
+  });
+})();
 
 // Fits State.groups to the selected raid's template. Extra groups are folded
 // into open seats; whoever still does not fit is benched, never dropped.
@@ -711,7 +725,6 @@ function renderGroups() {
 
   // Update version and raid controls after imports, restores and undo.
   syncVersionControls();
-  document.getElementById('raid-select').value = State.selectedRaid;
   document.getElementById('roster-name-text').textContent = State.rosterName;
   document.getElementById('mobile-plan-title').textContent = State.rosterName;
   syncRaidNotesUI();

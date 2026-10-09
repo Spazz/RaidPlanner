@@ -183,7 +183,7 @@ return { ${exported.join(', ')} };
   });
 
   // ── U3: version switch ────────────────────────────────────────────
-  const versionSrc = app.slice('async function switchGameVersion', 'function initRaidDropdown');
+  const versionSrc = app.slice('async function switchGameVersion', 'function renderRaidSizeControl');
   function makeVersionEnv({ work = true, answer = true, benched = 0, view = 'app' } = {}) {
     const log = { confirm: [], toasts: [], tabs: [], initGroups: 0, landing: 0 };
     const deps = {

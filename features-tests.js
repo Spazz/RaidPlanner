@@ -61,7 +61,7 @@ check('TBC chat text: header, group lines, buffs, bench (full variant)', () => {
   const text = Import.exportChatText({ compact: false });
   const lines = text.split('\n');
 
-  assert.match(lines[0], /Black Temple/, 'header names the selected raid');
+  assert.match(lines[0], /^25-man /, 'header names the raid size (the specific raid is no longer shown)');
   assert.match(lines[0], /WoW TBC/, 'header names the version');
   assert.match(lines[0], /Test Raid/, 'header names the roster');
 
@@ -91,7 +91,7 @@ check('Classic chat text: Horde group with Windfury, no paladin content leaks in
   assert.equal(Faction.current(), 'horde');
 
   const text = Import.exportChatText({ compact: false });
-  assert.match(text.split('\n')[0], /Molten Core/);
+  assert.match(text.split('\n')[0], /^40-man /);
   assert.match(text.split('\n')[0], /WoW Classic/);
   const groupLine = text.split('\n').find(l => l.startsWith('G1:'));
   assert(groupLine.includes('Totemus (Enhancement Shaman)'));

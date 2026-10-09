@@ -215,7 +215,7 @@ check('PrintSheet.build() includes every seated player, the bench and notes', ()
   State.rosterName = 'Friday Kara';
 
   const html = PrintSheet.build();
-  assert.match(html, /Karazhan/);
+  assert.match(html, /<h1>10-man raid<\/h1>/, 'the sheet names the raid size (the specific raid is no longer shown)');
   assert.match(html, new RegExp(t1.name));
   assert.match(html, new RegExp(dps1.name));
   assert.match(html, new RegExp(benched.name), 'bench section should list the benched player');
