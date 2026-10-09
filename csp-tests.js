@@ -104,6 +104,13 @@ check('An unknown class falls back to a neutral colour class that exists, never 
   }
 });
 
+check('Every var(--x) used in app.css is defined in app.css (or carries a fallback)', () => {
+  const defined = new Set([...app.css.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
+  const missing = [...app.css.matchAll(/var\(\s*(--[\w-]+)\s*([,)])/g)]
+    .filter(m => m[2] === ')' && !defined.has(m[1])).map(m => m[1]);
+  assert.deepEqual([...new Set(missing)], [], 'undefined CSS custom properties');
+});
+
 // ── Imports only fetch Raid-Helper ────────────────────────────────
 const importCtx = app.sandbox(['normalizeImportSource'], { extraSource: app.slice('function normalizeImportSource(', '// Numbers every import') });
 const normalize = importCtx.api.normalizeImportSource;

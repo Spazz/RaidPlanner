@@ -700,7 +700,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
    ("Backup: Name") and the benched backup's own card ("-> Name"). */
 .backup-badge { flex-shrink:0; font-size: 9px; letter-spacing: .04em; color: var(--accent-gold-bright); border: 1px solid var(--accent-gold-dim); border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
 .backup-badge-bench { color: var(--text-secondary); border-color: var(--border-medium); }
-.preferred-actions { border-top: 1px solid var(--border-color); padding: 8px 0; }
+.preferred-actions { border-top: 1px solid var(--border-subtle); padding: 8px 0; }
 .preferred-actions p { font-size: 12px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 8px; }
 .preferred-actions .pe-btn { margin: 0 4px 4px 0; }
 .drag-handle {
