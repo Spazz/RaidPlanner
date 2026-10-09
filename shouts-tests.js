@@ -130,6 +130,22 @@ check('the shared insight says to recruit a 2nd warrior for one, and to group tw
   assert(/Group two warriors together/.test(html) && !/Needs a 2nd warrior/.test(html));
 });
 
+check('one seated warrior plus a benched warrior reports the bench (Swap In), not "Needs a 2nd warrior"', () => {
+  useTbc();
+  const benched = warrior('Arms');
+  State.groups = [[warrior(), mage()], [], [], [], []];
+  State.bench = [benched];
+  let insight = getMissingBuffInsights().COMMANDING_SHOUT;
+  assert.equal(insight.kind, 'bench');
+  assert.equal(insight.player, benched);
+  assert(!/Needs a 2nd warrior/.test(renderInsightLine('COMMANDING_SHOUT', insight)));
+  // Two seated warriors still get the grouping advice even with a warrior on the bench.
+  State.groups = [[warrior(), mage()], [warrior('Arms')], [], [], []];
+  insight = getMissingBuffInsights().COMMANDING_SHOUT;
+  assert.equal(insight.kind, 'shared');
+  State.bench = [];
+});
+
 check('with two seated warriors both shouts are covered and neither is reported missing', () => {
   useTbc();
   State.groups = [[warrior(), warrior('Arms'), mage()], [], [], [], []];

@@ -125,7 +125,10 @@ function getMissingBuffInsights() {
     // A seated warrior who casts the other shout: the buff needs one more warrior, not "nobody".
     if (isBuff && (activeRules().shouts || []).includes(id)) {
       const casters = groups.flat().filter(p => canProvideBuff(entry, p));
-      if (casters.length) { insights[id] = { kind:'shared', player:casters[0], casters:casters.length }; return; }
+      // With exactly one warrior seated, a benched warrior is the fix (Swap In), so fall through to the bench lookup.
+      if (casters.length >= 2 || (casters.length === 1 && !bench.some(p => canProvideBuff(entry, p)))) {
+        insights[id] = { kind:'shared', player:casters[0], casters:casters.length }; return;
+      }
     }
     const benched = bench.find(p => canProvideBuff(entry, p));
     if (benched) { insights[id] = { kind:'bench', player:benched }; return; }
