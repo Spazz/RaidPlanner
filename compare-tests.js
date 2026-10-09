@@ -151,4 +151,20 @@ check('describeComparison words every verdict', () => {
     'Current board 440 vs optimized 431: Optimize fixes 1 isolated group, 2 constraints broken.');
 });
 
+check('optimize-fixes words only the breaks Optimize removes, not ones both boards share', () => {
+  const side = (score, extra = {}) => ({ score, isolated: 0, constraintBreaks: 0, drumGaps: 0, breaks: 0, ...extra });
+  const text = (current, optimized) => Optimizer.describeComparison({ verdict: 'optimize-fixes', current, optimized, delta: 47 });
+  // Shared drum gaps (1 drummer, 5 groups) stay out of the hint; only the isolated group is fixed.
+  assert.equal(text(side(264, { isolated: 1, drumGaps: 4, breaks: 5 }), side(311, { drumGaps: 4, breaks: 4 })),
+    'Current board 264 vs optimized 311: Optimize fixes 1 isolated group.');
+  // A partial reduction words the difference, not the current count.
+  assert.equal(text(side(264, { constraintBreaks: 3, drumGaps: 4, breaks: 7 }), side(311, { constraintBreaks: 1, drumGaps: 1, breaks: 2 })),
+    'Current board 264 vs optimized 311: Optimize fixes 2 constraints broken, 3 without drums.');
+  // A rule that gets worse is never worded as a fix.
+  assert.equal(text(side(264, { isolated: 2, breaks: 2 }), side(311, { isolated: 1, drumGaps: 0, constraintBreaks: 0, breaks: 1 })),
+    'Current board 264 vs optimized 311: Optimize fixes 1 isolated group.');
+  assert.equal(text(side(264, { isolated: 2, breaks: 2 }), side(311, { isolated: 0, drumGaps: 1, breaks: 1 })),
+    'Current board 264 vs optimized 311: Optimize fixes 2 isolated groups.');
+});
+
 console.log(`\nCompare tests: ${passed} passed, 0 failed, ${passed} total`);

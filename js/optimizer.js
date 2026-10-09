@@ -564,10 +564,13 @@ const Optimizer = {
   describeComparison(cmp) {
     if (!cmp) return '';
     const x = Math.round(cmp.current.score), y = Math.round(cmp.optimized.score);
+    // Only the breaks Optimize removes: a gap both boards share is not something it fixes.
+    const fixed = key => Math.max(0, cmp.current[key] - cmp.optimized[key]);
+    const isolated = fixed('isolated'), constraints = fixed('constraintBreaks'), drumGaps = fixed('drumGaps');
     const breaks = [
-      cmp.current.isolated ? `${cmp.current.isolated} isolated group${cmp.current.isolated === 1 ? '' : 's'}` : '',
-      cmp.current.constraintBreaks ? `${cmp.current.constraintBreaks} constraint${cmp.current.constraintBreaks === 1 ? '' : 's'} broken` : '',
-      cmp.current.drumGaps ? `${cmp.current.drumGaps} without drums` : '',
+      isolated ? `${isolated} isolated group${isolated === 1 ? '' : 's'}` : '',
+      constraints ? `${constraints} constraint${constraints === 1 ? '' : 's'} broken` : '',
+      drumGaps ? `${drumGaps} without drums` : '',
     ].filter(Boolean).join(', ');
     const head = `Current board ${x} vs optimized ${y}`;
     if (cmp.verdict === 'same') return `${head}: already as good as Optimize.`;
