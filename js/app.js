@@ -295,8 +295,8 @@ function syncRaidNotesToggle() {
   });
 
   const PHONE_QUERY = window.matchMedia('(max-width: 600px)');
-  function sync(e) {
-    const isPhone = (e || PHONE_QUERY).matches;
+  function sync() {
+    const isPhone = PHONE_QUERY.matches;
     for (const slot of slots) {
       if (!slot.el) continue;
       if (isPhone) {
@@ -312,7 +312,13 @@ function syncRaidNotesToggle() {
     if (shareLabel) shareLabel.textContent = isPhone ? 'Share' : 'More export formats…';
   }
   PHONE_QUERY.addEventListener('change', sync);
-  sync(PHONE_QUERY);
+  // A page whose viewport is still settling while this runs (seen in an embedded
+  // frame) can match the phone query here and never get a 'change' back to
+  // desktop, leaving every control in its phone slot. sync() is idempotent and
+  // cheap, so it also runs on resize and once the page has loaded.
+  window.addEventListener('resize', sync);
+  window.addEventListener('load', sync);
+  sync();
 })();
 
 // Phone context summary: line 1 is the plan name (a button that expands the Edit
