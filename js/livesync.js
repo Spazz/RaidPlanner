@@ -66,6 +66,21 @@ const LiveLinks = {
   },
 };
 
+// How often to poll a live link. 15 s while changes keep arriving; after a few polls
+// that found nothing the gap widens (60 s, then 120 s) so an idle open tab costs almost
+// nothing. Any change (remote, a local edit, coming back to the tab) starts over at 15 s.
+const LivePoll = {
+  fastMs: 15000,
+  steps: [{ quiet: 8, ms: 120000 }, { quiet: 4, ms: 60000 }], // largest threshold first
+  quiet: 0, // consecutive polls that found nothing new
+  intervalMs(quiet = this.quiet) {
+    const step = this.steps.find(s => quiet >= s.quiet);
+    return step ? step.ms : this.fastMs;
+  },
+  sawChange() { this.quiet = 0; },
+  sawNothing() { this.quiet++; },
+};
+
 // What a live-link update must not wipe from this browser's copy: the totem and
 // aura picks (State.buffOverrides) are not part of the share code, and an open
 // editor, picker or Undo points at players by uid, which a re-import renews.

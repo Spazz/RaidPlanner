@@ -499,7 +499,6 @@ const SHORT_LINK_PATH = new RegExp(`^/(?:${Object.keys(GameVersions).join('|')})
 // Read before the first render, which hands the address bar to syncAddressBar.
 const SHORT_LINK_AT_LOAD = (window.location.pathname.match(SHORT_LINK_PATH) || [])[1] || null;
 const LIVE_SAVE_DELAY_MS = 2000;
-const LIVE_POLL_MS = 15000;
 const LIVE_DEFER_POLL_MS = 500;
 
 function siteRoot() {
@@ -649,6 +648,7 @@ const LiveSync = {
     const code = currentShareCode();
     if (this.blocked(code)) { clearTimeout(this.saveTimer); this.pending = false; return; }
     if (!LiveLinks.needsPush(link.entry, code)) return;
+    this.wake(); // someone is editing: collaborators may be too, so poll fast again
     this.pending = true;
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.save(), LIVE_SAVE_DELAY_MS);
@@ -765,11 +765,31 @@ const LiveSync = {
     const now = currentLiveLink();
     if (!now || now.planKey !== link.planKey) return;
     if (dragData || document.querySelector('.dragging')) return;
-    if (!LiveLinks.shouldApply(now.entry, remote, this.pending || this.saving)) return;
-    if (remote.code === currentShareCode()) { bindLiveLink(now.planKey, now.entry.id, remote.code, remote.updatedAt); return; }
-    if (this.editing()) { this.deferUntilIdle(); return; }
+    // 'changed' / 'quiet' tell the poll loop whether to keep polling fast.
+    if (!LiveLinks.shouldApply(now.entry, remote, this.pending || this.saving)) return 'quiet';
+    if (remote.code === currentShareCode()) { bindLiveLink(now.planKey, now.entry.id, remote.code, remote.updatedAt); return 'quiet'; }
+    if (this.editing()) { this.deferUntilIdle(); return 'changed'; }
     const before = PlanStore.capture();
     if (applyRemoteLiveCode(now.entry.id, remote)) RemoteUpdate.show(before);
+    return 'changed';
+  },
+
+  // The next poll, LivePoll.intervalMs() after the last one finished.
+  schedulePoll() {
+    clearTimeout(this.pollTimer);
+    this.pollTimer = setTimeout(async () => {
+      const outcome = await this.pull();
+      if (outcome === 'changed') LivePoll.sawChange();
+      else if (outcome === 'quiet') LivePoll.sawNothing();
+      this.schedulePoll();
+    }, LivePoll.intervalMs());
+  },
+
+  // Back to the fast cadence now (a local edit, or the tab became visible again).
+  wake() {
+    const wasSlow = LivePoll.quiet > 0;
+    LivePoll.sawChange();
+    if (wasSlow && this.pollTimer) this.schedulePoll();
   },
 
   // The player editor, buff picker or notes field is in use: an update now would
@@ -806,8 +826,12 @@ const LiveSync = {
   },
 
   start() {
-    setInterval(() => this.pull(), LIVE_POLL_MS);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) this.flushOnExit(); else this.pull(); });
+    this.schedulePoll();
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { this.flushOnExit(); return; }
+      this.wake();
+      this.pull();
+    });
     window.addEventListener('pagehide', () => this.flushOnExit());
   },
 };

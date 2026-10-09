@@ -25,7 +25,7 @@ var confirm = () => true;
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'timeoutSignal', 'fetchLiveLink',
-  'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar'];
+  'LivePoll', 'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar'];
 
 function memoryStorage() {
   const data = {};
@@ -611,6 +611,105 @@ async function check(name, fn) {
     assert.equal(LiveLinks.retryAfterMs('soon'), 30000);
     assert.equal(LiveLinks.retryAfterMs('0'), 30000);
     assert.equal(LiveLinks.retryAfterMs('99999'), 300000, 'capped');
+  });
+
+  // ── P3: adaptive poll cadence ───────────────────────────────────
+  await check('LivePoll: 15s while changes are seen, 60s after 4 quiet polls, 120s after 8, and a change starts over', async () => {
+    const { LivePoll } = makeEnv().api;
+    const at = quiet => LivePoll.intervalMs(quiet);
+    assert.equal(at(0), 15000);
+    assert.equal(at(3), 15000);
+    assert.equal(at(4), 60000);
+    assert.equal(at(7), 60000);
+    assert.equal(at(8), 120000);
+    assert.equal(at(500), 120000);
+    LivePoll.quiet = 9;
+    assert.equal(LivePoll.intervalMs(), 120000);
+    LivePoll.sawChange();
+    assert.equal(LivePoll.intervalMs(), 15000);
+    LivePoll.sawNothing();
+    assert.equal(LivePoll.quiet, 1);
+  });
+
+  // The polls of an idle linked plan, as the clock reaches them.
+  async function idlePolls(env, totalMs, stepMs = 5000) {
+    const times = [];
+    for (let t = 0; t < totalMs; t += stepMs) {
+      const before = gets(env).length;
+      await env.advance(stepMs);
+      if (gets(env).length > before) times.push(env.now - 1_000_000);
+    }
+    return times;
+  }
+
+  await check('An idle tab polls 4 times at 15s, 4 at 60s, then every 120s', async () => {
+    const env = makeEnv();
+    seedLinkedPlan(env);
+    env.route = () => response(200, { code: env.api.currentShareCode(), updatedAt: 100 }); // nothing new
+    env.api.LiveSync.start();
+    const times = await idlePolls(env, 900000);
+    const gaps = times.slice(1).map((t, i) => t - times[i]);
+    assert.deepEqual(times.slice(0, 4), [15000, 30000, 45000, 60000]);
+    assert.deepEqual(gaps.slice(0, 3), [15000, 15000, 15000]);
+    assert.deepEqual(gaps.slice(3, 7), [60000, 60000, 60000, 60000]);
+    assert(gaps.slice(7).every(g => g === 120000), 'then every 120s: ' + gaps.slice(7));
+  });
+
+  await check('A change by a collaborator, a local edit and coming back to the tab each return polling to 15s', async () => {
+    const quietFor = async (env, minutes) => { env.route = () => response(200, { code: env.api.currentShareCode(), updatedAt: 100 }); await env.advance(minutes * 60000); };
+    const nextGap = async (env) => {
+      const before = gets(env).length;
+      const times = [];
+      for (let i = 0; i < 40 && times.length < 2; i++) {
+        await env.advance(5000);
+        if (gets(env).length > before + times.length) times.push(env.now);
+      }
+      return times[1] - times[0];
+    };
+
+    // remote change
+    let env = makeEnv();
+    seedLinkedPlan(env);
+    env.api.LiveSync.start();
+    await quietFor(env, 12);
+    assert.equal(env.api.LivePoll.intervalMs(), 120000, 'backed off');
+    const { State, currentShareCode } = env.api;
+    const mine = State.notes;
+    State.notes = 'collaborator edit';
+    const remoteCode = currentShareCode();
+    State.notes = mine;
+    env.route = () => response(200, { code: remoteCode, updatedAt: 500 });
+    const getsBeforeChange = gets(env).length;
+    for (let i = 0; i < 30 && gets(env).length === getsBeforeChange; i++) await env.advance(5000); // up to the next poll
+    assert.equal(env.api.LivePoll.quiet, 0, 'a change was seen');
+    env.route = () => response(200, { code: env.api.currentShareCode(), updatedAt: 500 });
+    assert.equal(await nextGap(env), 15000, 'back to the fast cadence');
+
+    // local edit
+    env = makeEnv();
+    seedLinkedPlan(env);
+    env.api.LiveSync.start();
+    await quietFor(env, 12);
+    assert.equal(env.api.LivePoll.intervalMs(), 120000);
+    env.route = () => response(200, { updatedAt: 101 });
+    edit(env, 'my edit');
+    assert.equal(env.api.LivePoll.quiet, 0, 'the edit reset the cadence');
+    await env.advance(2000);
+    env.route = () => response(200, { code: env.api.currentShareCode(), updatedAt: 101 });
+    assert.equal(await nextGap(env), 15000);
+
+    // visibility return
+    env = makeEnv();
+    seedLinkedPlan(env);
+    env.api.LiveSync.start();
+    await quietFor(env, 12);
+    assert.equal(env.api.LivePoll.intervalMs(), 120000);
+    const getsBefore = gets(env).length;
+    env.listeners['document:visibilitychange'].forEach(fn => fn());
+    await settle();
+    assert.equal(env.api.LivePoll.quiet, 0);
+    assert(gets(env).length > getsBefore, 'pulls at once');
+    assert.equal(await nextGap(env), 15000);
   });
 
   console.log(`\nLiveSync tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);
