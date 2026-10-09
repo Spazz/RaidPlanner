@@ -4,6 +4,7 @@
 !index.html
 # The page's stylesheet and the app scripts it loads in order (plain classic scripts, no build step); split-tests.js checks every one is listed
 !app.css
+!og-image.png
 !js/
 !js/rules.js
 !js/state.js
@@ -64,6 +65,7 @@
 !shouts-tests.js
 !compare-tests.js
 !shortcuts-tests.js
+!head-tests.js
 # Test runner, loader and CI (npm test; GitHub Actions runs it)
 !package.json
 !tests/

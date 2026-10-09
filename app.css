@@ -1178,6 +1178,15 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 @media (prefers-reduced-motion: reduce) {
   .spotlight-callout { transition: none; }
 }
+/* Everyone who asks the OS for less motion gets none: fades, slides and smooth scrolls end at once. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 .spotlight-callout p { margin: 0; }
 .spotlight-callout .spotlight-close {
   position: absolute; top: 2px; right: 4px; background: none; border: none;
@@ -1430,6 +1439,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .player-slot { min-height: 30px; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   .player-slot.drag-target { background: var(--bg-card-hover); }
   .buff-icon { -webkit-touch-callout: none; }
+  /* A 24px icon is too small for a finger: an invisible 32px hit area, with the gap widened so neighbours do not overlap. */
+  .buff-bar { gap: 8px; }
+  .buff-icon::before { content: ''; position: absolute; inset: -4px; }
   .manual-changes-section .change-remove { padding: 4px 8px; }
   .faq summary { padding-top: 14px; padding-bottom: 14px; }
 }
