@@ -1061,7 +1061,7 @@ document.getElementById('btn-print-sheet').addEventListener('click', () => {
 
 // ── IDEAL COMP MODULE ────────────────────────────────────────────
 const IdealComp = {
-  // 25-man: 2 tanks, 5 healers, 18 DPS — optimized for buff synergies
+  // 25-man: 1 tank, 5 healers, 19 DPS — optimized for buff synergies
   // 10-man: 2 tanks, 2 healers, 6 DPS
   generate(raidKey) {
     const raidInfo = Config.Raids[raidKey];

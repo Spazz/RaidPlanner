@@ -409,6 +409,14 @@ const Rulesets = {
       ferociousInspiration: true,   // BM Hunter FI stacks multiplicatively per hunter
       rosterShapedIdentities: true, // melee/caster group count follows the DPS mix (Optimizer.roleIdentitiesFor)
       specAura: { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA' },
+      // A Survival Hunter brings no party buff in TBC (FI is Beast Mastery's, TSA is
+      // Marksmanship's), so sharing a group with another hunter duplicates a seat; the
+      // reference comp spreads one hunter per melee group. Penalty per such Survival
+      // Hunter. See Optimizer.groupScore.
+      hunterSpread: 2,
+      // DPS specs the reference comp parks in the healer/tank group as its one overflow
+      // seat (exempt from the DPS-guest penalty there). See Optimizer.groupScore.
+      healerGroupDps: p => p.class === 'WARLOCK' && p.spec === 'Affliction',
       // Party-buff providers whose second copy in one group mostly duplicates
       // the first (totems share elements, LotP/Moonkin/Sanctity don't stack)
       // while another group goes without. See Optimizer.groupScore.

@@ -19,10 +19,10 @@
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
 const ctx = app.sandbox(
-  ['State', 'Config', 'GameVersions', 'Rulesets', 'IdealComp', 'Faction', 'versionForRaid', 'nextUid', 'getGroupBuffs', 'getRaidBuffCoverage'],
+  ['State', 'Config', 'GameVersions', 'Rulesets', 'IdealComp', 'Faction', 'versionForRaid', 'nextUid', 'getGroupBuffs', 'getRaidBuffCoverage', 'Optimizer'],
   { extraSource: app.slice('const IdealComp = {', '// ── TAB SWITCHING') }
 );
-const { State, Config, GameVersions, Rulesets, IdealComp, Faction, versionForRaid, getGroupBuffs, getRaidBuffCoverage } = ctx.api;
+const { State, Config, GameVersions, Rulesets, IdealComp, Faction, versionForRaid, getGroupBuffs, getRaidBuffCoverage, Optimizer } = ctx.api;
 
 let passed = 0, failed = 0;
 function assertTrue(cond, msg) {
@@ -99,6 +99,93 @@ for (const raidKey of Config.RaidOrder) {
       }
     }
   }
+})();
+
+// Round trip: the reference TBC 25-man comp, shuffled and handed to Optimize, must come back
+// as the reference PATTERN (user's wowhead comp wins over the scorer, tasks/lessons.md
+// 2026-09-02). Group order is arbitrary, so groups are compared as multisets of "Spec CLASS".
+(function () {
+  const specKey = (p) => p.spec + ' ' + p.class;
+  const groupKey = (g) => g.map(specKey).sort().join(', ');
+  const shuffle = (arr, seedStart) => {
+    let seed = seedStart;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const out = arr.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  };
+
+  State.gameVersion = 'tbc';
+  State.selectedRaid = 'bt';
+  State.bench = [];
+  State.groups = [[]];
+  const reference = IdealComp.generate('bt');
+  assertTrue(reference.length === 5 && reference.flat().length === 25, 'TBC 25-man reference: 5 groups, 25 players');
+  const expectedMelee = reference.slice(0, 2).flat().map(specKey).sort().join(', ');
+  const expectedCasterSupport = groupKey(reference[2]);
+  const expectedCasterDps = groupKey(reference[3]);
+  const expectedHealerTank = groupKey(reference[4]);
+
+  // balanced/relaxed weigh role cohesion (a DPS stays with its role's group) by design, so the overflow
+  // Warlock stays with the casters there; the reference pattern is asserted for the modes that follow it.
+  for (const mode of ['max_dps', 'tank_mit']) {
+    for (const seed of [1, 2, 3]) {
+      State.optimizerMode = mode;
+      State.selectedRaid = 'bt';
+      State.roster = shuffle(reference.flat(), seed).map(p => ({ ...p, groupNumber: 1 }));
+      State.groups = [State.roster.slice(), [], [], [], []];
+      State.bench = [];
+      Optimizer.optimize();
+      const label = `TBC 25-man reference round trip (${mode}, shuffle ${seed})`;
+      const board = State.groups;
+      assertTrue(board.flat().length === 25 && State.bench.length === 0, `${label}: all 25 seated`);
+
+      const keys = board.map(groupKey);
+      const melee = board.filter(g => g.some(p => p.spec === 'Feral'));
+      assertTrue(melee.length === 2, `${label}: the two Ferals sit in two different melee groups`);
+      for (const g of melee) {
+        assertTrue(g.filter(p => p.spec === 'Feral').length === 1, `${label}: melee group has exactly one Feral`);
+        assertTrue(g.filter(p => p.spec === 'Enhancement').length === 1, `${label}: melee group has exactly one Enhancement Shaman`);
+        assertTrue(g.filter(p => p.class === 'HUNTER').length === 1, `${label}: melee group has exactly one Hunter`);
+        assertTrue(g.every(p => p.role !== 'healer' && p.role !== 'tank' && p.role !== 'caster_dps' || p.spec === 'Feral'), `${label}: melee group has no healers or casters`);
+      }
+      assertTrue(melee.flat().map(specKey).sort().join(', ') === expectedMelee, `${label}: melee groups hold the reference melee/hunter roster (got ${melee.map(groupKey).join(' | ')})`);
+      assertTrue(keys.includes(expectedCasterSupport), `${label}: caster-support group is ${expectedCasterSupport} (got ${keys.join(' | ')})`);
+      assertTrue(keys.includes(expectedCasterDps), `${label}: caster-DPS group is ${expectedCasterDps} (got ${keys.join(' | ')})`);
+      assertTrue(keys.includes(expectedHealerTank), `${label}: healer/tank group is ${expectedHealerTank} with the one overflow DPS (got ${keys.join(' | ')})`);
+    }
+  }
+})();
+
+// Edge paths of the overflow-seat exemption: it covers ONE Affliction Warlock, and only once the
+// tank group has its three-healer core; any other DPS guest still pays the guest penalty.
+(function () {
+  State.gameVersion = 'tbc';
+  State.selectedRaid = 'bt';
+  const mk = (cls, spec, role) => IdealComp.makePlayer(cls, spec, role);
+  const tankGroup = (guests, healers) => {
+    const group = [mk('PALADIN', 'Protection', 'tank')];
+    for (let i = 0; i < healers; i++) group.push(mk('PRIEST', 'Holy', 'healer'));
+    return group.concat(guests);
+  };
+  const score = (group) => {
+    const groups = [group, [], [], [], []];
+    groups._roleIdentities = ['tank', 'melee_dps', 'melee_dps', 'caster_dps', 'caster_dps'];
+    return Optimizer.groupScore(group, 0, groups, 'max_dps');
+  };
+  const aff = () => mk('WARLOCK', 'Affliction', 'caster_dps');
+  const rogue = () => mk('ROGUE', 'Combat', 'melee_dps');
+  const base3 = score(tankGroup([], 3));
+  const withAff = score(tankGroup([aff()], 3)) - base3;
+  const withRogue = score(tankGroup([rogue()], 3)) - base3;
+  assertTrue(withAff > withRogue, 'tank group: an Affliction Warlock overflow seat costs less than a Rogue guest');
+  const twoAff = score(tankGroup([aff(), aff()], 3)) - base3;
+  assertTrue(twoAff < withAff, 'tank group: a second Affliction Warlock pays the guest penalty again');
+  const base2 = score(tankGroup([], 2));
+  assertTrue(score(tankGroup([aff()], 2)) - base2 < withAff, 'tank group: no overflow exemption before the three-healer core is there');
 })();
 
 console.log(`\nIdeal Comp tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

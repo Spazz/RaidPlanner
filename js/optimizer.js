@@ -1350,6 +1350,14 @@ const Optimizer = {
     const bmCount = group.reduce((n, p) => n + (p.class === 'HUNTER' && p.spec === 'Beast Mastery' ? 1 : 0), 0);
     if (rules.rules.ferociousInspiration && bmCount > 1) score += (bmCount - 1) * buffValue('FEROCIOUS_INSP') * 0.5;
 
+    // Reference comp: one hunter per melee group. A Survival Hunter adds no party
+    // buff (rules.hunterSpread), so pairing it with another hunter is a duplicate
+    // that spreads out; a second Beast Mastery hunter is exempt (its FI stacks, above).
+    if (rules.rules.hunterSpread) {
+      const hunterCount = group.reduce((n, p) => n + (p.class === 'HUNTER' ? 1 : 0), 0);
+      if (hunterCount > 1) score -= rules.rules.hunterSpread * cfg.structure * group.reduce((n, p) => n + (p.class === 'HUNTER' && p.spec === 'Survival' ? 1 : 0), 0);
+    }
+
     // Structural placement rules (from the user's reference TBC comp):
     //  - Healers gravitate to the tank group. Healing is cross-group in TBC,
     //    so a healer in a DPS group displaces a DPS from a buffed slot for no
@@ -1368,8 +1376,18 @@ const Optimizer = {
       // A fifth only stays for the mana totems it receives; past four, they
       // move on.
       score -= Math.max(0, healerCount - 4) * 15 * cfg.structure;
+      // The reference comp seats one overflow Affliction Warlock with the healers (it
+      // needs none of the party buffs a DPS group offers) once the three-healer core is
+      // there, so that seat is not a penalized guest. Without this the guest penalty
+      // handed the seat to a 4th healer and moved the Warlock in with the mages.
+      let overflowSeatOpen = healerCount >= 3;
       for (const p of group) {
-        if (p.role === 'melee_dps' || p.role === 'caster_dps') score -= 12 * cfg.structure;
+        if (p.role !== 'melee_dps' && p.role !== 'caster_dps') continue;
+        if (overflowSeatOpen && rules.rules.healerGroupDps && rules.rules.healerGroupDps(p)) {
+          overflowSeatOpen = false;
+          continue;
+        }
+        score -= 12 * cfg.structure;
       }
     }
 
