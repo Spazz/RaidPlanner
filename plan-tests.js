@@ -206,4 +206,42 @@ check('plan() defaults the mode to max_dps and the faction to the players detect
   assert.equal(sortedNames(implicit.groups), sortedNames(explicit.groups));
 });
 
+// ── Optimize on real scenarios (ported from compare-tests.js, removed with the
+// strategy picker): checked with live functions only. Own sandbox, so the
+// booby-trapped State above never sees these runs.
+const live = app.sandbox(['State', 'Import', 'Optimizer']).api;
+const Scenarios = require('./scenarios.js');
+function loadScenario(id) {
+  const sc = Scenarios.scenarios.find(s => s.id === id);
+  const S = live.State;
+  S.gameVersion = 'tbc';
+  S.roster = []; S.groups = []; S.bench = []; S.unplaced = []; S.buffOverrides = {};
+  S.playerConstraints = []; S.drummers = []; S.preferredSlots = [];
+  S.selectedRaid = sc.raid || 'bt'; S.rosterName = 'Scenario'; S.optimizerMode = 'max_dps';
+  assert(live.Import.importRaidHelper(JSON.stringify(Scenarios.toRaidHelperJson(sc))).success, id);
+  live.Optimizer.optimize();
+}
+const boardScore = groups => groups.reduce((sum, g, gi) => sum + live.Optimizer.groupScore(g, gi, groups, 'max_dps'), 0);
+
+check('after Optimize no group is left isolated (F01, F05, F08)', () => {
+  for (const id of ['F01', 'F05', 'F08']) {
+    loadScenario(id);
+    const isolated = live.State.groups.filter(g => g.length && live.Optimizer.wouldIsolate(g, -1));
+    assert.equal(isolated.length, 0, `${id}: ${isolated.length} isolated group(s)`);
+  }
+});
+
+check('Optimize scores above a round-robin scramble of the same players (F01)', () => {
+  loadScenario('F01');
+  const optimized = live.State.groups;
+  const optimizedScore = boardScore(optimized);
+  // Deal the same players round-robin: every group ends up a mix of every role.
+  // Scored under the optimized board's group identities, so only placement differs.
+  const everyone = optimized.flat();
+  const scrambled = optimized.map((_, i) => everyone.filter((__, k) => k % optimized.length === i));
+  scrambled._roleIdentities = optimized._roleIdentities;
+  const scrambledScore = boardScore(scrambled);
+  assert.ok(optimizedScore > scrambledScore, `optimized ${optimizedScore.toFixed(1)} vs scrambled ${scrambledScore.toFixed(1)}`);
+});
+
 console.log(`\nOptimizer.plan tests: ${passed} passed, 0 failed, ${passed} total`);
