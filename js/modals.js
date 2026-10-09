@@ -499,9 +499,9 @@ function showTemplatesModal() {
     listHTML = `<p class="modal-empty-note">No ${esc(raidLabel)} templates saved yet</p>`;
   } else {
     for (const t of templates) {
-      listHTML += `<div class="saved-roster-item" data-template="${esc(t.name)}">
-        <div><span class="roster-item-name">${esc(t.name)}</span><br><span class="roster-item-meta">${t.count} players &middot; ${esc(new Date(t.savedAt).toLocaleDateString())}</span></div>
-        <button class="roster-item-delete" data-template-delete="${esc(t.name)}" title="Delete">&times;</button>
+      listHTML += `<div class="saved-roster-item" data-template="${esc(t.name)}" data-template-raid="${esc(t.raid)}">
+        <div><span class="roster-item-name">${esc(t.label)}</span><br><span class="roster-item-meta">${t.count} players &middot; ${esc(new Date(t.savedAt).toLocaleDateString())}</span></div>
+        <button class="roster-item-delete" data-template-delete="${esc(t.name)}" data-template-raid="${esc(t.raid)}" title="Delete" aria-label="Delete template ${esc(t.label)}">&times;</button>
       </div>`;
     }
   }
@@ -540,7 +540,7 @@ function showTemplatesModal() {
     item.addEventListener('click', e => {
       if (e.target.dataset.templateDelete) return;
       const name = item.dataset.template;
-      const result = Templates.applyToState(localStorage, name, gameVersion, raid);
+      const result = Templates.applyToState(localStorage, name, gameVersion, raid, item.dataset.templateRaid);
       closeSaveOverlay();
       if (!result.success) { showToast(result.error); return; }
       commit();
@@ -550,7 +550,7 @@ function showTemplatesModal() {
   modal.querySelectorAll('[data-template-delete]').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      const deleted = Templates.delete(localStorage, btn.dataset.templateDelete, gameVersion, raid);
+      const deleted = Templates.delete(localStorage, btn.dataset.templateDelete, gameVersion, raid, btn.dataset.templateRaid);
       showTemplatesModal();
       showToast(deleted.success ? 'Template deleted' : deleted.error);
     });

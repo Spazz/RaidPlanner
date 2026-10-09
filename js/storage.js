@@ -288,9 +288,11 @@ const PlanStore = {
 // Reusable group layouts, scoped to game version + raid size (a TBC 25-man
 // template has no business seeding a Classic 40-man import). Stored as
 // {version: {raidKey: {name: template}}} as before, but since the nav slim-down
-// hid the specific raid, every lookup spans all raid keys of the same size in
-// that version: a template saved on SSC shows on a Black Temple plan, and old
-// stored templates keep working without a migration. Deliberately
+// hid the specific raid, listing spans all raid keys of the same size in that
+// version: a template saved on SSC shows on a Black Temple plan, and old stored
+// templates keep working without a migration. Every action targets exactly one
+// stored copy, keyed by (raidKey, name), so two same-named templates on raids of
+// the same size never overwrite or delete each other. Deliberately
 // separate from PlanStore/pp_rosters: a template only remembers
 // name -> group/role (never full player objects, buffOverrides, notes, etc.)
 // plus the name-keyed planning that goes with the layout: assignments
@@ -339,85 +341,106 @@ const Templates = {
     return planning;
   },
 
-  // The stored buckets ({name: template}) a plan on `raid` can see: every raid
-  // key of this version with the same size (the plan's own key always counts).
-  sameSizeBuckets(all, gameVersion, raid) {
+  // The raid keys of this version a plan on `raid` can see templates under:
+  // every key with the same size (the plan's own key always counts). Only keys
+  // whose stored value is a {name: template} object are returned.
+  sameSizeKeys(all, gameVersion, raid) {
     const scoped = all[gameVersion];
     if (!scoped || typeof scoped !== 'object') return [];
     const size = Config.Raids[raid] ? Config.Raids[raid].size : null;
-    return Object.keys(scoped)
-      .filter(key => key === raid || (size !== null && Config.Raids[key] && Config.Raids[key].size === size))
-      .map(key => scoped[key])
-      .filter(bucket => bucket && typeof bucket === 'object' && !Array.isArray(bucket));
+    return Object.keys(scoped).filter(key =>
+      (key === raid || (size !== null && Config.Raids[key] && Config.Raids[key].size === size)) &&
+      scoped[key] && typeof scoped[key] === 'object' && !Array.isArray(scoped[key]));
   },
-  // Every same-size bucket holding `name`, newest copy first.
-  matches(all, name, gameVersion, raid) {
-    return this.sameSizeBuckets(all, gameVersion, raid)
-      .filter(bucket => Object.prototype.hasOwnProperty.call(bucket, name) && bucket[name])
-      .sort((a, b) => (b[name].savedAt || 0) - (a[name].savedAt || 0));
+  // The one stored copy (raidKey, name) an action targets, or null. With an
+  // explicit `source` raid key it is exactly that copy (it must be same-size).
+  // Without one: the copy under the plan's own key, else the only same-size copy;
+  // several copies and none under the plan's key is ambiguous, so null.
+  locate(all, name, gameVersion, raid, source) {
+    const keys = this.sameSizeKeys(all, gameVersion, raid);
+    const has = key => Object.prototype.hasOwnProperty.call(all[gameVersion][key], name) && !!all[gameVersion][key][name];
+    if (source !== undefined && source !== null) return keys.includes(source) && has(source) ? source : null;
+    if (keys.includes(raid) && has(raid)) return raid;
+    const found = keys.filter(has);
+    return found.length === 1 ? found[0] : null;
   },
 
-  // Saved under the plan's own raid key; a same-named template on another raid
-  // of the same size is replaced, so a name means one template per size.
+  // Saving "name": exactly one same-size copy -> overwrite it; none -> write under
+  // the plan's raid key; several -> overwrite the one under the plan's key if
+  // there is one, else write a new copy under the plan's key. Never touches any
+  // other copy.
   save(storage, name, gameVersion, raid) {
     name = String(name || '').trim();
     if (!name) return { success:false, error:'Name cannot be empty' };
     const players = this.capture();
     if (!Object.keys(players).length) return { success:false, error:'Nothing to save — seat some players first' };
     const all = this.read(storage);
-    for (const bucket of this.matches(all, name, gameVersion, raid)) delete bucket[name];
+    const target = this.locate(all, name, gameVersion, raid) || raid;
     all[gameVersion] = all[gameVersion] || {};
-    all[gameVersion][raid] = all[gameVersion][raid] || {};
-    all[gameVersion][raid][name] = { savedAt: Date.now(), players, ...this.capturePlanning() };
+    all[gameVersion][target] = all[gameVersion][target] || {};
+    all[gameVersion][target][name] = { savedAt: Date.now(), players, ...this.capturePlanning() };
     if (!this.write(storage, all)) return { success:false, error:'Browser storage is full' };
     return { success:true };
   },
 
-  // [{name, savedAt, count}] across every raid of this size, newest first; a
-  // name stored on two raids (possible in data saved before) lists once, newest copy.
+  // Every same-size template, newest first: [{name, raid, label, savedAt, count}].
+  // `raid` is the stored raid key (pass it back to get/apply/rename/delete). When
+  // a name is stored on more than one raid of this size, the copy under the
+  // plan's own key (else the newest) keeps the plain name and the others are
+  // labelled with their raid: "Main (Serpentshrine Cavern)".
   list(storage, gameVersion, raid) {
     const all = this.read(storage);
-    const byName = {};
-    for (const bucket of this.sameSizeBuckets(all, gameVersion, raid)) {
+    const items = [];
+    for (const key of this.sameSizeKeys(all, gameVersion, raid)) {
+      const bucket = all[gameVersion][key];
       for (const name of Object.keys(bucket)) {
         const t = bucket[name];
         if (!t || typeof t !== 'object') continue;
-        if (!byName[name] || (t.savedAt || 0) > byName[name].savedAt) {
-          byName[name] = { name, savedAt: t.savedAt || 0, count: Object.keys(t.players || {}).length };
-        }
+        items.push({ name, raid: key, label: name, savedAt: t.savedAt || 0, count: Object.keys(t.players || {}).length });
       }
     }
-    return Object.values(byName).sort((a, b) => b.savedAt - a.savedAt);
+    items.sort((a, b) => b.savedAt - a.savedAt);
+    const byName = {};
+    for (const item of items) (byName[item.name] = byName[item.name] || []).push(item);
+    for (const copies of Object.values(byName)) {
+      if (copies.length < 2) continue;
+      const primary = copies.find(c => c.raid === raid) || copies[0];
+      for (const c of copies) if (c !== primary) c.label = `${c.name} (${(Config.Raids[c.raid] || {}).name || c.raid})`;
+    }
+    return items;
   },
 
-  get(storage, name, gameVersion, raid) {
-    const bucket = this.matches(this.read(storage), name, gameVersion, raid)[0];
-    return bucket ? bucket[name] : null;
+  get(storage, name, gameVersion, raid, source) {
+    const all = this.read(storage);
+    const key = this.locate(all, name, gameVersion, raid, source);
+    return key ? all[gameVersion][key][name] : null;
   },
 
-  rename(storage, oldName, newName, gameVersion, raid) {
+  // Renames exactly one stored copy, inside its own raid key. A name already
+  // used by any same-size template is refused, so no two copies get merged.
+  rename(storage, oldName, newName, gameVersion, raid, source) {
     newName = String(newName || '').trim();
     if (!newName) return { success:false, error:'Name cannot be empty' };
     const all = this.read(storage);
-    const found = this.matches(all, oldName, gameVersion, raid);
-    if (!found.length) return { success:false, error:'Template not found' };
-    if (newName !== oldName && this.matches(all, newName, gameVersion, raid).length) return { success:false, error:'A template with that name already exists' };
-    if (newName !== oldName) {
-      const [newest, ...older] = found;
-      newest[newName] = newest[oldName];
-      delete newest[oldName];
-      for (const bucket of older) delete bucket[oldName];
+    const key = this.locate(all, oldName, gameVersion, raid, source);
+    if (!key) return { success:false, error:'Template not found' };
+    if (newName === oldName) return { success:true };
+    if (this.sameSizeKeys(all, gameVersion, raid).some(k => Object.prototype.hasOwnProperty.call(all[gameVersion][k], newName))) {
+      return { success:false, error:'A template with that name already exists' };
     }
+    const bucket = all[gameVersion][key];
+    bucket[newName] = bucket[oldName];
+    delete bucket[oldName];
     if (!this.write(storage, all)) return { success:false, error:'Browser storage is full' };
     return { success:true };
   },
 
-  // Removes the name from every raid of this size, so no older copy resurfaces.
-  delete(storage, name, gameVersion, raid) {
+  // Deletes exactly one stored copy.
+  delete(storage, name, gameVersion, raid, source) {
     const all = this.read(storage);
-    const found = this.matches(all, name, gameVersion, raid);
-    if (found.length) {
-      for (const bucket of found) delete bucket[name];
+    const key = this.locate(all, name, gameVersion, raid, source);
+    if (key) {
+      delete all[gameVersion][key][name];
       if (!this.write(storage, all)) return { success:false, error:'Browser storage is full' };
     }
     return { success:true };
@@ -429,8 +452,8 @@ const Templates = {
   // (unlocked, so Optimize places them normally) and only true raid-capacity
   // overflow goes to State.bench. State.preserveGroupOrder is set so
   // sortTankGroupFirst() never reshuffles a template's own group numbering.
-  applyToState(storage, name, gameVersion = State.gameVersion, raid = State.selectedRaid) {
-    const template = this.get(storage, name, gameVersion, raid);
+  applyToState(storage, name, gameVersion = State.gameVersion, raid = State.selectedRaid, source) {
+    const template = this.get(storage, name, gameVersion, raid, source);
     if (!template) return { success:false, error:'Template not found for this game version and raid size' };
     const raidInfo = Config.Raids[raid];
     const numGroups = raidInfo ? raidInfo.groups : 5;

@@ -227,23 +227,81 @@ check('old stored templates (keyed by raid) keep working across raids of the sam
   assert.equal(T.Templates.list(storage, 'tbc', 'hyjal').length, 0, 'deleting from a same-size plan removes the stored copy');
 });
 
-check('one name per size: duplicates in old data list once (newest), saving or deleting covers every copy', () => {
-  const older = { savedAt: 1, players: { a: { name: 'A', group: 0, role: 'tank' } } };
-  const newer = { savedAt: 9, players: { a: { name: 'A', group: 0, role: 'tank' }, b: { name: 'B', group: 1, role: 'healer' } } };
-  const storage = memStorage({ [T.Templates.key]: JSON.stringify({ tbc: { ssc: { Friday: older }, tk: { Friday: newer } } }) });
-  const list = T.Templates.list(storage, 'tbc', 'bt');
-  assert.equal(list.length, 1);
-  assert.equal(list[0].count, 2, 'the newest copy wins');
-  assert.equal(T.Templates.get(storage, 'Friday', 'tbc', 'bt').savedAt, 9);
-  assert.equal(T.Templates.rename(storage, 'Friday', 'Thursday', 'tbc', 'bt').success, true);
-  assert.deepEqual(plain(T.Templates.list(storage, 'tbc', 'bt').map(t => t.name)), ['Thursday'], 'rename leaves no older copy behind');
+// Two same-named templates on raids of the same size ("Main" on SSC and on TK).
+const MAIN_SSC = { savedAt: 1, players: { a: { name: 'A', group: 0, role: 'tank' } } };
+const MAIN_TK = { savedAt: 9, players: { a: { name: 'A', group: 0, role: 'tank' }, b: { name: 'B', group: 1, role: 'healer' } } };
+const twoMains = () => memStorage({ [T.Templates.key]: JSON.stringify({ tbc: { ssc: { Main: MAIN_SSC }, tk: { Main: MAIN_TK } } }) });
+const stored = storage => JSON.parse(storage.data[T.Templates.key]).tbc;
+
+check('colliding names: the list shows every copy, extras labelled with their raid', () => {
+  const list = plain(T.Templates.list(twoMains(), 'tbc', 'bt'));
+  assert.deepEqual(list.map(t => [t.name, t.raid, t.label]), [
+    ['Main', 'tk', 'Main'],
+    ['Main', 'ssc', 'Main (Serpentshrine Cavern)'],
+  ]);
+  const onSsc = plain(T.Templates.list(twoMains(), 'tbc', 'ssc'));
+  assert.deepEqual(onSsc.map(t => t.label).sort(), ['Main', 'Main (Tempest Keep)'], "the plan's own raid keeps the plain name");
+});
+
+check('colliding names: get and apply act on the copy they are pointed at', () => {
+  const storage = twoMains();
+  assert.equal(T.Templates.get(storage, 'Main', 'tbc', 'bt', 'ssc').savedAt, 1);
+  assert.equal(T.Templates.get(storage, 'Main', 'tbc', 'bt', 'tk').savedAt, 9);
+  assert.equal(T.Templates.get(storage, 'Main', 'tbc', 'bt'), null, 'ambiguous without a raid key: nothing is guessed');
+  assert.equal(T.Templates.get(storage, 'Main', 'tbc', 'bt', 'kara'), null, 'a 10-man key is never reachable from a 25-man plan');
+});
+
+check('colliding names: delete removes exactly one copy', () => {
+  const storage = twoMains();
+  assert(T.Templates.delete(storage, 'Main', 'tbc', 'bt', 'ssc').success);
+  assert.deepEqual(plain(stored(storage).ssc), {});
+  assert.equal(stored(storage).tk.Main.savedAt, 9, 'the TK copy is untouched');
+  const ambiguous = twoMains();
+  T.Templates.delete(ambiguous, 'Main', 'tbc', 'bt');
+  assert.equal(ambiguous.data[T.Templates.key], twoMains().data[T.Templates.key], 'an ambiguous delete writes nothing');
+});
+
+check('colliding names: rename renames exactly one copy and never merges', () => {
+  const storage = twoMains();
+  assert(T.Templates.rename(storage, 'Main', 'Main SSC', 'tbc', 'bt', 'ssc').success);
+  assert.equal(stored(storage).ssc['Main SSC'].savedAt, 1);
+  assert(!stored(storage).ssc.Main);
+  assert.equal(stored(storage).tk.Main.savedAt, 9, 'the TK copy keeps its name and data');
+  assert.equal(T.Templates.rename(storage, 'Main SSC', 'Main', 'tbc', 'bt', 'ssc').success, false, 'renaming onto a same-size name is refused');
+  assert.equal(stored(storage).ssc['Main SSC'].savedAt, 1, 'a refused rename changes nothing');
+});
+
+check('saving a name: one same-size match is overwritten, none writes under the plan key', () => {
+  const storage = memStorage({ [T.Templates.key]: JSON.stringify({ tbc: { ssc: { Main: MAIN_SSC } } }) });
   seatTen('bt');
-  T.Templates.save(storage, 'Thursday', 'tbc', 'bt');
-  const stored = JSON.parse(storage.data[T.Templates.key]).tbc;
-  assert.deepEqual(Object.keys(stored.bt), ['Thursday']);
-  assert(!stored.tk.Thursday, 'saving replaces the same-named copy on another raid of that size');
-  T.Templates.delete(storage, 'Thursday', 'tbc', 'bt');
-  assert.equal(T.Templates.list(storage, 'tbc', 'ssc').length, 0);
+  T.Templates.save(storage, 'Main', 'tbc', 'bt');
+  assert.equal(stored(storage).ssc.Main.savedAt > 1, true, 'the only match (SSC) is overwritten');
+  assert(!stored(storage).bt, 'no second copy appears under BT');
+  T.Templates.save(storage, 'Fresh', 'tbc', 'bt');
+  assert(stored(storage).bt.Fresh, 'a new name goes under the plan key');
+});
+
+check('saving a name with several matches: overwrite the plan-key copy, else add one under the plan key', () => {
+  seatTen('ssc');
+  const onSsc = twoMains();
+  T.Templates.save(onSsc, 'Main', 'tbc', 'ssc');
+  assert.equal(Object.keys(stored(onSsc).ssc.Main.players).length, 10, 'the SSC copy (plan key) is overwritten');
+  assert.equal(stored(onSsc).tk.Main.savedAt, 9, 'the TK copy is untouched');
+  seatTen('bt');
+  const onBt = twoMains();
+  T.Templates.save(onBt, 'Main', 'tbc', 'bt');
+  assert.equal(stored(onBt).ssc.Main.savedAt, 1, 'SSC untouched');
+  assert.equal(stored(onBt).tk.Main.savedAt, 9, 'TK untouched');
+  assert(stored(onBt).bt.Main, 'a new copy is written under BT');
+  assert.equal(T.Templates.list(onBt, 'tbc', 'bt').length, 3);
+});
+
+check('apply with a raid key seats from that copy', () => {
+  const storage = twoMains();
+  seatTen('bt');
+  const result = T.Templates.applyToState(storage, 'Main', 'tbc', 'bt', 'tk');
+  assert(result.success, result.error);
+  assert.equal(T.Templates.applyToState(storage, 'Main', 'tbc', 'bt').success, false, 'ambiguous apply is refused, not guessed');
 });
 
 // ── (e) Assignments is unreachable ──────────────────────────────────
