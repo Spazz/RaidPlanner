@@ -1,6 +1,7 @@
 /**
- * PartyPlanner Web - Wave 7 tests: Attendance history + optimizer mode
- * comparison (feature-backlog-2.md #2 and #5). The landing "What's New" /
+ * PartyPlanner Web - Wave 7 tests: Attendance history (feature-backlog-2.md
+ * #2). The optimizer mode comparison (#5) was removed with the strategy
+ * picker in the nav slim-down. The landing "What's New" /
  * version-comparison feature (#9) is static markup with no logic surface,
  * per the backlog's own test note, so it isn't covered here (see the
  * worktree's browser smoke check instead).
@@ -13,9 +14,9 @@
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'MODE_CONFIG', 'Optimizer', 'RandomRoster', 'PlanSession', 'PlanStore', 'computeAttendance', 'compareOptimizerModes', 'nextUid', 'getRaidBuffCoverage', 'getRaidDebuffCoverage']);
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'MODE_CONFIG', 'Optimizer', 'RandomRoster', 'PlanSession', 'PlanStore', 'computeAttendance', 'nextUid', 'getRaidBuffCoverage', 'getRaidDebuffCoverage']);
 const { State, Config, GameVersions, MODE_CONFIG, Optimizer, RandomRoster, PlanSession, PlanStore,
-  computeAttendance, compareOptimizerModes, nextUid, getRaidBuffCoverage, getRaidDebuffCoverage } = ctx.api;
+  computeAttendance, nextUid, getRaidBuffCoverage, getRaidDebuffCoverage } = ctx.api;
 
 let passed = 0;
 function check(name, fn) {
@@ -123,124 +124,4 @@ check('computeAttendance: a name that only ever appears on the bench is never "s
   assert.equal(row.benched, 1);
 });
 
-// ════════════════════════════════════════════════════════════════
-// COMPARE OPTIMIZER MODES (feature-backlog-2.md #5)
-// ════════════════════════════════════════════════════════════════
-
-function runCompareModesSuite(label, version, raid) {
-  resetState(version, raid);
-  RandomRoster.generate();
-  // Give PlanSession something plan-shaped to track, mirroring a real loaded
-  // roster, so "the undo stack is unchanged" is a meaningful assertion.
-  State.planId = 'plan:test-' + label;
-  PlanSession.ready = true;
-  PlanSession.undo = [{ fake: 'previous-snapshot' }];
-  PlanSession.previous = clone(PlanStore.capture());
-
-  const beforeState = clone(State);
-  const beforeUndo = clone(PlanSession.undo);
-
-  const results = compareOptimizerModes();
-
-  check(`${label}: compareOptimizerModes returns exactly the 4 MODE_CONFIG keys`, () => {
-    assert.ok(results, 'compareOptimizerModes should return a result for a modeled, non-empty roster');
-    assert.deepEqual(Object.keys(results).sort(), Object.keys(MODE_CONFIG).sort());
-  });
-
-  check(`${label}: compareOptimizerModes leaves State byte-for-byte unchanged`, () => {
-    assert.deepEqual(clone(State), beforeState);
-  });
-
-  check(`${label}: compareOptimizerModes never touches the undo stack`, () => {
-    assert.deepEqual(clone(PlanSession.undo), beforeUndo);
-  });
-
-  check(`${label}: every candidate layout matches what Optimizer.optimize() produces directly`, () => {
-    for (const mode of Object.keys(MODE_CONFIG)) {
-      resetState(version, raid);
-      State.groups = clone(beforeState.groups);
-      State.bench = clone(beforeState.bench);
-      State.optimizerMode = mode;
-      Optimizer.optimize();
-
-      const candidate = results[mode];
-      assert.equal(candidate.seatedCount, State.groups.flat().length, `${mode}: seated count matches`);
-      assert.equal(candidate.benchedCount, State.bench.length, `${mode}: benched count matches`);
-      assert.equal(candidate.buffsCoveredCount, getRaidBuffCoverage(State.groups).size, `${mode}: buff coverage matches`);
-      const directDebuffCoverage = getRaidDebuffCoverage(State.groups).size;
-      const candidateMissingDebuffs = Object.keys(Config.Debuffs).length - candidate.missingDebuffs.length;
-      assert.equal(candidateMissingDebuffs, directDebuffCoverage, `${mode}: debuff coverage matches`);
-
-      // Exact layout equality: same players (by uid) in the same groups, same
-      // bench. Compared via JSON.stringify, not assert.deepEqual: these
-      // arrays are built by a mix of vm-context code (Optimizer.optimize())
-      // and this file's own code across the two branches, so their realm
-      // (and therefore Array constructor identity) isn't guaranteed to
-      // match even when the contents are identical — same convention as
-      // computeAttendance's cross-realm checks above.
-      const directNamesByGroup = State.groups.map(g => g.map(p => p.uid).sort());
-      const candidateNamesByGroup = candidate.groups.map(g => g.map(p => p.uid).sort());
-      assert.equal(JSON.stringify(candidateNamesByGroup), JSON.stringify(directNamesByGroup), `${mode}: group-by-group layout matches exactly`);
-      assert.equal(
-        JSON.stringify(candidate.bench.map(p => p.uid).sort()),
-        JSON.stringify(State.bench.map(p => p.uid).sort()),
-        `${mode}: bench matches exactly`
-      );
-    }
-  });
-}
-
-runCompareModesSuite('TBC 25-man', 'tbc', 'bt');
-runCompareModesSuite('Classic 40-man', 'classic', 'mc');
-runCompareModesSuite('Forever 40-man', 'forever', 'f_ony');
-
-check('compareOptimizerModes: an exception mid-run restores the live board (try/finally)', () => {
-  resetState('tbc', 'bt');
-  RandomRoster.generate();
-  State.optimizerMode = 'tank_mit';
-  State.preferredSlots = [{ group: 0, class: 'MAGE', spec: 'Fire' }];
-  const live = { groups: State.groups, bench: State.bench, roster: State.roster, mode: State.optimizerMode, slots: State.preferredSlots };
-  const before = JSON.stringify([State.groups, State.bench, State.roster, State.optimizerMode, State.preferredSlots]);
-  const realOptimize = Optimizer.optimize;
-  let calls = 0;
-  // Fail on the third mode, after the first two runs have already swapped State.
-  Optimizer.optimize = function () {
-    if (++calls === 3) throw new Error('optimizer blew up');
-    return realOptimize.apply(this, arguments);
-  };
-  try {
-    assert.throws(() => compareOptimizerModes(), /optimizer blew up/);
-  } finally {
-    Optimizer.optimize = realOptimize;
-  }
-  assert.equal(calls, 3, 'the failure happened mid-run');
-  assert.equal(State.groups, live.groups, 'same groups reference');
-  assert.equal(State.bench, live.bench, 'same bench reference');
-  assert.equal(State.roster, live.roster, 'same roster reference');
-  assert.equal(State.optimizerMode, live.mode);
-  assert.equal(State.preferredSlots, live.slots);
-  assert.equal(JSON.stringify([State.groups, State.bench, State.roster, State.optimizerMode, State.preferredSlots]), before);
-});
-
-check('compareOptimizerModes: returns null for an empty roster (nothing to compare)', () => {
-  resetState('tbc', 'bt');
-  assert.equal(compareOptimizerModes(), null);
-});
-
-check('compareOptimizerModes: returns null for an unmodeled version (no ruleset to run)', () => {
-  // Every shipped version (tbc/classic/forever) has a ruleset today — same
-  // situation version-tests.js documents for activeRules()'s empty-ruleset
-  // fallback — so exercise the branch with a synthetic version key that has
-  // no matching Rulesets entry, the same "modeled iff it has a ruleset" rule
-  // every real version follows.
-  GameVersions.fictional = { name: 'Fictional', defaultRaid: 'bt', raids: [], note: 'test-only', modeled: false };
-  resetState('fictional', 'bt');
-  State.groups = [[{ uid: nextUid(), name: 'X', class: 'WARRIOR', spec: 'Fury', role: 'melee_dps', groupNumber: 1 }]];
-  try {
-    assert.equal(compareOptimizerModes(), null);
-  } finally {
-    delete GameVersions.fictional;
-  }
-});
-
-console.log(`\nInsights tests (attendance history + compare optimizer modes): ${passed} passed, 0 failed, ${passed} total`);
+console.log(`\nInsights tests (attendance history): ${passed} passed, 0 failed, ${passed} total`);

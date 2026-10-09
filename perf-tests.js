@@ -73,9 +73,8 @@ check('devMeasure measures a failing call, rethrows, and tolerates a missing per
   assert.equal(node.devMeasure('pp:test', () => 8), 8);
 });
 
-check('Optimize and Compare run inside devMeasure', () => {
+check('Optimize runs inside devMeasure', () => {
   assert(/optimize\(\) \{\s*devMeasure\('pp:optimize'/.test(app.script));
-  assert(/function compareOptimizerModes\(\) \{\s*return devMeasure\('pp:compare', computeOptimizerModeComparison\);/.test(app.script));
 });
 
 function ghostEnv() {
@@ -127,11 +126,11 @@ check('no drag handler writes the ghost position with left/top, and touch highli
 // ── Timing: warn only ──────────────────────────────────────────
 // Budgets are loose on purpose (a slow CI box should not cry wolf). A WARN is a prompt to
 // look, not a failure; this section can never fail the suite, even if it throws.
-const BUDGET_MS = { optimize: 400, compare: 1500 };
+const BUDGET_MS = { optimize: 400 };
 try {
-  const PP = app.requireLogic(['Import', 'Optimizer', 'State', 'compareOptimizerModes'], '_pp_perf_logic.tmp.js');
+  const PP = app.requireLogic(['Import', 'Optimizer', 'State'], '_pp_perf_logic.tmp.js');
   const Scenarios = require('./scenarios.js');
-  const { Import, Optimizer, State, compareOptimizerModes } = PP;
+  const { Import, Optimizer, State } = PP;
   const time = fn => { const t0 = process.hrtime.bigint(); fn(); return Number(process.hrtime.bigint() - t0) / 1e6; };
   const warnings = [];
   const report = (label, ms, budget) => {
@@ -145,7 +144,6 @@ try {
     State.selectedRaid = scenario.raid || 'bt'; State.optimizerMode = 'max_dps';
     Import.importRaidHelper(JSON.stringify(Scenarios.toRaidHelperJson(scenario)));
     report(`Optimize ${id} (${scenario.entries.length} sign-ups)`, time(() => Optimizer.optimize()), BUDGET_MS.optimize);
-    report(`Compare all modes ${id}`, time(() => compareOptimizerModes()), BUDGET_MS.compare);
   }
   if (warnings.length) console.log(`WARN  ${warnings.length} timing budget(s) exceeded (not a failure): ${warnings.join('; ')}`);
 } catch (err) {

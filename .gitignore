@@ -66,7 +66,6 @@
 !mobile-tests.js
 !ux-tests.js
 !shouts-tests.js
-!compare-tests.js
 !shortcuts-tests.js
 !head-tests.js
 !deploy-tests.js

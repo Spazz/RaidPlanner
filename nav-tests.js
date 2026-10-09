@@ -9,7 +9,7 @@
  * behind the optimizer strategies: each MODE_CONFIG mode leans the way its
  * name says. The strategy picker UI is gone since the nav slim-down
  * (Optimize always runs Max DPS), but the modes stay for the optimizer's own
- * scoring, compareOptimizerModes() and old saved plans.
+ * scoring and old saved plans.
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
