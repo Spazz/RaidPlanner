@@ -415,9 +415,8 @@ const Import = {
     target.push(player);
   },
 
-  // Compact addon-friendly export string
+  // Short class/spec/role codes of the PP:1 addon string (no longer exported; still read by importAddonString)
   // Format: PP:1:raid:G1name.class.spec.role,name.class.spec.role:G2...:G3...
-  // Class/spec/role use short codes to keep the string small.
   classCode: {
     WARRIOR:'WR', PALADIN:'PA', HUNTER:'HU', ROGUE:'RO',
     PRIEST:'PR', SHAMAN:'SH', MAGE:'MA', WARLOCK:'WL', DRUID:'DR',
@@ -434,23 +433,6 @@ const Import = {
     Balance:'Bal', Feral:'Fer',
   },
   roleCode: { tank:'T', healer:'H', melee_dps:'M', ranged_dps:'R', caster_dps:'C' },
-
-  exportAddonString() {
-    const cc = this.classCode;
-    const sc = this.specCode;
-    const rc = this.roleCode;
-    const parts = ['PP', '1', State.selectedRaid];
-    for (const g of State.groups) {
-      const players = g.map(p => {
-        const c = cc[p.class] || p.class;
-        const s = sc[p.spec] || p.spec;
-        const r = rc[p.role] || p.role;
-        return `${p.name}.${c}.${s}.${r}`;
-      });
-      parts.push(players.join(','));
-    }
-    return parts.join(':');
-  },
 
   // ── MRT (Method Raid Tools) Raid Groups export ──
   // MRT > Raid Groups > Import > "From ExRT export string" accepts:
@@ -545,7 +527,6 @@ const Import = {
   // Layout: PP:2:<raid>:<encodedName>:<bench>:<group1>:<group2>:...
   // An optional encoded JSON tail after all raid groups preserves open requests
   // and the requested group order. Older v2 readers ignore that extra tail.
-  // The addon still reads v1, so exportAddonString() is left alone.
   // Names are written raw (every link made before this existed is raw) unless
   // one contains a delimiter (. , :): then EVERY name is percent-encoded and
   // the tail carries encodedNames so the reader knows to decode them.

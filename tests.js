@@ -1609,15 +1609,13 @@ describe('Share: a link can be previewed without touching the planner', () => {
 
 describe('Share: v1 addon strings still import', () => {
   resetState();
-  State.groups = [[ mkPlayer('Legacy','WARRIOR','Protection','tank') ]];
-  RosterEdit.syncRoster();
-  const v1 = Import.exportAddonString();
-  assert(v1.startsWith('PP:1:'), 'exportAddonString should still emit v1 for the addon');
+  const v1 = 'PP:1:bt:Legacy.WR.Prot.T';
 
   resetState();
   const res = Import.importAddonString(v1);
   assert(res.success, 'v1 strings must keep working: ' + (res.error || ''));
   assertEqual(State.roster[0].name, 'Legacy', 'v1 player should load');
+  assert(!Import.exportAddonString, 'the site no longer exports addon strings (the addon was dropped)');
 });
 
 // ── REAL ROSTER ACCEPTANCE (2026-09-02) ─────────────────────────
@@ -2694,8 +2692,6 @@ describe('Preferred slots: real-player counts, import matching, storage and shar
   assertEqual(JSON.stringify(PP.PlanStore.capture()), beforeInvalid, 'invalid import preserves plan');
   const wrongClass = {name:'Other',class:'DRUID',spec:'Arcane',role:'caster_dps'};
   assert(!prefs.seat(wrongClass), 'matching spec alone is insufficient');
-  const legacyExport = Import.exportAddonString();
-  assert(!legacyExport.includes('preferredSlots'), 'addon export contains only real players');
   const legacy = {...snapshot}; delete legacy.preferredSlots;
   PP.PlanStore.restore(legacy);
   assertEqual(State.preferredSlots.length, 0, 'old drafts do not inherit requests');

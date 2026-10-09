@@ -919,12 +919,6 @@ document.getElementById('btn-share').addEventListener('click', () => {
     .catch(() => link.then(({ url }) => showManualCopy(url)));
 });
 
-document.getElementById('btn-copy-addon').addEventListener('click', () => {
-  if (State.roster.length === 0) { showToast('No roster to export'); return; }
-  const str = Import.exportAddonString();
-  copyText(str, 'Addon string copied to clipboard');
-});
-
 document.getElementById('btn-copy-mrt').addEventListener('click', () => {
   if (State.roster.length === 0) { showToast('No roster to export'); return; }
   const str = Import.exportMrtString();

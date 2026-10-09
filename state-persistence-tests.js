@@ -109,10 +109,7 @@ function dirtyPlan() {
 
 function pp1String() {
   resetState();
-  seat([mk('WARRIOR', 'Protection', 'tank', 0, 'NewTank'), mk('PRIEST', 'Holy', 'healer', 0, 'NewHealer')], 5);
-  const str = Import.exportAddonString();
-  assert.ok(str.startsWith('PP:1:bt:'), 'fixture is a PP:1 string: ' + str);
-  return str;
+  return 'PP:1:bt:NewTank.WR.Prot.T,NewHealer.PR.Holy.H';
 }
 
 check('B16: PP:1 import drops the previous plan bench, notes, assignments and constraints', () => {

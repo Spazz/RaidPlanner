@@ -309,11 +309,10 @@
     <option value="balanced">Balanced</option>
     <option value="relaxed">Relaxed</option>
   </select>
-  <!-- These three raw export formats aren't in the redesigned Share menu
+  <!-- These raw export formats aren't in the redesigned Share menu
        (see mockup) but the share dialog's "More export formats" section
        still reaches them by id via data-share-action — keep the real,
        functional buttons here rather than deleting the feature. -->
-  <button type="button" id="btn-copy-addon" hidden aria-label="Copy roster as addon string to clipboard">Copy Addon String</button>
   <button type="button" id="btn-export-json" hidden aria-label="Export roster as JSON file">Export JSON</button>
   <button type="button" id="btn-copy-json" hidden aria-label="Copy roster JSON to clipboard">Copy JSON</button>
 
@@ -471,7 +470,7 @@
     <button type="button" class="btn btn-primary" data-share-action="btn-share">Copy share link</button>
     <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt">Copy for MRT</button>
     <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt-note">Copy MRT note</button>
-    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-addon">Copy addon string</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-print-sheet">Print sheet</button></details>
+    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-print-sheet">Print sheet</button></details>
   </div>
 </dialog>
 <dialog id="manual-copy-dialog" class="history-dialog" aria-labelledby="manual-copy-heading">
