@@ -6,12 +6,14 @@
 const APP_VERSION = '4.0.0';
 const CHANGELOG = [
   { version: '4.0.0', date: '2026-10-09', title: 'A slimmer planner header', changes: [
-    'One action row: Optimize, Undo, Redo, Raid size, Compare to ideal comp, Raid notes and a short "N missing" link that opens the details.',
+    'One action row: Optimize, Undo, Redo, Raid size, Compare to ideal comp and Raid notes, with the readiness line right below it.',
     'Optimize always places buffs for the most damage; the strategy picker and the Compare all strategies dialog are gone.',
     'Pick 10 or 25 (20 or 40 on Classic; 10, 20 or 40 on Forever) instead of a specific raid. Saved plans keep the raid they were made for.',
-    'The Plan and Sign-ups menus moved into the gear menu, next to your data and help. New plan takes you back to the import screen.',
+    'Comp templates show for every raid of the same size, and going 25 to 10 and back to 25 seats the players the 10 benched.',
+    'The Plan and Sign-ups menus moved into the gear menu. To import sign-ups, use Menu > New plan, which opens the import screen.',
+    'Plan names, raid chat text and the print sheet now say "25-man" instead of the raid name.',
     'The Assignments tab is hidden for now.',
-    'Phones: the plan name, raid size and missing buffs share one compact row, so your groups start a little higher.',
+    'Phones: plan name, raid size and a short readiness link share one compact row, so your groups start a little higher.',
   ] },
   { version: '3.0.0', date: '2026-10-08', title: 'Planning tools and polish', changes: [
     'Custom assignment rows (interrupts, cube clickers, kiters, marks) and a one-click MRT note export; templates carry the planning with them.',
