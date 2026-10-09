@@ -1024,7 +1024,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .btn-quiet { color: var(--text-muted); border-color: var(--border-medium); }
 .btn-quiet:hover { background: var(--btn-secondary-hover); color: var(--text-secondary); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-#optimize-mode { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 600; padding: 5px 26px 5px 10px; border-color: var(--border-strong); }
 
 /* ── Status bar ── */
 .status-bar {
