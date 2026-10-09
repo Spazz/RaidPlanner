@@ -311,6 +311,7 @@ function setOptimizerMode(mode) {
     'btn-redo:phone-sheet-quick-slot', 'btn-compare-modes:phone-sheet-quick-slot',
     'menu-rename-plan:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
     'btn-import:phone-sheet-signups-slot', 'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
+    'raid-notes-panel:phone-context-notes-slot',
     'btn-export-backup:phone-sheet-data-slot', 'btn-import-backup:phone-sheet-data-slot', 'btn-shortcuts-help:phone-sheet-data-slot', 'btn-show-tips-again:phone-sheet-data-slot',
   ].map(pair => {
     const [elId, phoneSlotId] = pair.split(':');
@@ -349,6 +350,29 @@ function setOptimizerMode(mode) {
   }
   PHONE_QUERY.addEventListener('change', sync);
   sync(PHONE_QUERY);
+})();
+
+// Phone context summary: one 44px row ("Raid · Strategy" / "Plan title · notes")
+// that expands the full plan controls in place. Collapsed by default; the choice
+// is remembered for the session only.
+const PHONE_CONTEXT_STORAGE_KEY = 'pp_phone_context_open';
+function setPhoneContextOpen(open, persist = true) {
+  const toggle = document.getElementById('phone-summary-toggle');
+  const body = document.getElementById('phone-context-body');
+  if (!toggle || !body) return;
+  toggle.setAttribute('aria-expanded', String(open));
+  body.hidden = !open;
+  document.getElementById('phone-summary-edit-label').textContent = open ? 'Done' : 'Edit';
+  document.getElementById('phone-summary-chevron').innerHTML = open ? '&#9652;' : '&#9662;';
+  if (persist) safeSetItem(sessionStorage, PHONE_CONTEXT_STORAGE_KEY, open ? '1' : '0');
+}
+(function initPhoneContextToggle() {
+  const toggle = document.getElementById('phone-summary-toggle');
+  if (!toggle) return;
+  let open = false;
+  try { open = sessionStorage.getItem(PHONE_CONTEXT_STORAGE_KEY) === '1'; } catch (e) {}
+  setPhoneContextOpen(open, false);
+  toggle.addEventListener('click', () => setPhoneContextOpen(toggle.getAttribute('aria-expanded') !== 'true'));
 })();
 
 // ── ACTION BUTTONS ──────────────────────────────────────────────

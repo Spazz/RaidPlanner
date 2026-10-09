@@ -1713,3 +1713,157 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   #print-sheet .ps-assign-col ul, #print-sheet .ps-bench ul { margin:0; padding-left:14px; list-style:disc; }
   #print-sheet .ps-notes p { margin:0; white-space:pre-wrap; }
 }
+
+/* ── Slim phone layout (<=600px) ──
+   Phone-only chrome is hidden by default and switched on in the media block below, so
+   desktop is untouched. The planner frame drops its 1.5x zoom here: sizes in this block
+   are real CSS pixels. */
+.summary-phone, .phone-summary, .pe-sheet-handle, .pe-sheet-header, .pe-more-row { display:none; }
+@media (max-width: 600px) {
+  .addon-frame { zoom: 1; padding-bottom: 68px; }
+  .toast { zoom: 1; bottom: 72px; left: 12px; right: 12px; }
+
+  /* Version header: one 40px row (mark + Classic | TBC | Forever). */
+  .game-header-inner { flex-wrap: nowrap; align-items: center; height: 40px; padding: 0 12px; gap: 10px; }
+  .game-header-brand { width: auto; padding: 0; border-bottom: 0; flex-shrink: 0; }
+  .game-header-brand > div, .game-header-caption { display: none; }
+  .game-header-mark { width: 22px; height: 22px; font-size: 13px; clip-path: none; border-color: var(--border-accent); }
+  .game-version-nav { flex: 1; width: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; height: 28px; border: 1px solid var(--border-subtle); }
+  .game-version-tab { min-width: 0; padding: 0; display: flex; align-items: center; justify-content: center; border-bottom: 0; color: var(--text-secondary); }
+  .game-version-tab .game-eyebrow { display: none; }
+  .game-version-tab .game-name { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; }
+  .game-version-tab[aria-pressed="true"] { background: var(--accent-gold); color: var(--text-on-accent); }
+  .game-version-tab[aria-pressed="true"] .game-name { font-weight: 700; }
+  .game-version-tab[aria-pressed="true"] .game-beta { color: var(--text-on-accent); border-color: var(--text-on-accent); }
+  .game-version-tab:focus-visible { outline-offset: -3px; }
+  .game-beta { font-size: 8px; margin-left: 4px; padding: 1px 3px; }
+
+  /* Title bar + mode tabs share one 40px row: "<- Import" left, Plan | Assignments right. */
+  .title-bar { height: 40px; padding: 0 12px; margin-bottom: -40px; position: relative; }
+  .title-bar h1 { display: none; }
+  .back-link { font-size: 12px; letter-spacing: 0.08em; border-right: 0; padding: 0; margin: 0; min-height: 40px; }
+  .toolbar { position: relative; z-index: 2; flex-direction: row; justify-content: flex-end; align-items: center; width: fit-content; margin-left: auto; height: 40px; padding: 0 12px 0 0; background: transparent; border-bottom: 0; }
+  .mode-tabs { display: flex; height: 28px; border: 1px solid var(--border-medium); }
+  .mode-tabs .mode-tab { min-height: 0; padding: 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-secondary); }
+  .mode-tabs .mode-tab.active { color: var(--bg-frame); }
+
+  /* Context panel: one 44px summary row; Edit expands the existing controls in place. */
+  .phone-context-panel { padding: 0; gap: 0; display: block; background: var(--bg-card); }
+  .phone-summary {
+    display: flex; align-items: center; gap: 8px; width: 100%; height: 44px; padding: 0 12px; box-sizing: border-box;
+    background: var(--bg-panel); color: var(--text-primary); border: 0; text-align: left; cursor: pointer; font-family: var(--font-body);
+  }
+  .phone-summary-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .phone-summary-main { font-size: 14px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .phone-summary-sub { font-size: 11px; line-height: 1.25; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .phone-summary-edit { font-size: 12px; color: var(--accent-gold); white-space: nowrap; }
+  .phone-summary:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
+  .phone-context-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; border-top: 1px solid var(--border-subtle); }
+  .phone-context-body[hidden] { display: none; }
+  .phone-context-row .lbl { font-size: 11px; }
+  #mobile-plan-title { font-size: 14px; }
+  #raid-selector-phone-slot .raid-dropdown { height: 40px; }
+  .phone-strategy-seg button { min-height: 36px; font-size: 12px; }
+  .phone-ideal-comp-link { min-height: 32px; }
+  #phone-context-notes-slot .raid-notes-panel { margin: 0; }
+  .raid-notes-panel summary { padding: 8px 10px; }
+  .raid-notes-textarea { font-size: 14px; }
+
+  /* Plan feedback + summary bar: one 34px line ("25/25 2T 5H 9M 9R" ... "7 missing buffs"). */
+  .summary-bar { height: 34px; padding: 0 12px; box-sizing: border-box; flex-wrap: nowrap; gap: 0; }
+  .summary-bar > :not(.summary-phone) { display: none; }
+  .summary-phone { display: flex; align-items: center; gap: 10px; width: 100%; font-size: 12px; color: var(--text-secondary); }
+  .summary-phone-count b { color: var(--text-primary); }
+  .summary-phone-count.over { color: var(--danger-bright); }
+  .summary-phone-roles { display: flex; gap: 8px; }
+  .summary-phone .role-t { color: var(--role-tank); }
+  .summary-phone .role-h { color: var(--role-healer); }
+  .summary-phone .role-d { color: var(--role-dps); }
+  .summary-missing { margin-left: auto; background: none; border: 0; padding: 0; min-height: 34px; font: inherit; font-size: 12px; color: var(--warning); cursor: pointer; white-space: nowrap; }
+  .summary-missing.zero { color: var(--success); }
+  .summary-missing:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
+  .plan-feedback { display: none; padding: 6px 12px; font-size: 11px; border-bottom: 1px solid var(--border-subtle); }
+  .plan-feedback.phone-open, .plan-feedback:has(#autosave-status[data-failed]) { display: flex; }
+  #buff-sidebar { scroll-margin-top: 40px; }
+
+  /* Group cards. */
+  .groups-container { padding: 8px; gap: 8px; }
+  .group-header { padding: 6px 10px; align-items: center; }
+  .group-header h3 { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; }
+  .group-role-tag { font-size: 12px; letter-spacing: 0.1em; }
+  .player-slot { padding: 4px 10px; gap: 8px; min-height: 38px; }
+  .role-icon { width: 22px; height: 22px; }
+  .player-name { font-size: 14px; }
+  .player-spec { font-size: 11px; }
+  .buff-bar { padding: 4px 10px; }
+
+  /* Bottom action bar: 60px. */
+  #phone-action-bar { height: 60px; padding: 8px; box-sizing: border-box; gap: 6px; }
+  #phone-bar-undo-slot { flex: 0 0 44px; }
+  #phone-bar-optimize-slot { flex: 1 1 0; }
+  #phone-bar-share-slot, #btn-phone-more { flex: 0 0 70px; }
+  #phone-bar-optimize-slot > *, #phone-bar-undo-slot > *, #phone-bar-share-slot > *, #btn-phone-more { min-height: 0; font-size: 13px; letter-spacing: 0.1em; font-weight: 700; }
+  #phone-bar-optimize-slot > * { font-size: 14px; }
+  #phone-bar-share-slot kbd { display: none; }
+
+  /* Player editor: bottom sheet. Short view = header, Name, Class + Spec, backup row,
+     More row, actions. .pe-more-open swaps to the "More options" sections. */
+  .player-editor-overlay { background: rgba(0, 0, 0, 0.45); }
+  .player-editor {
+    position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0;
+    transform: none; width: auto !important; max-height: 85dvh; box-sizing: border-box;
+    background: var(--bg-frame); border: 0; border-top: 1px solid var(--border-strong); box-shadow: none;
+    padding: 8px 14px calc(14px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px;
+  }
+  .player-editor > * { margin: 0; flex-shrink: 0; }
+  .pe-sheet-handle { display: block; width: 36px; height: 4px; background: var(--border-strong); align-self: center; }
+  .pe-desktop-only { display: none; }
+  .player-editor-title { padding: 0 0 6px; font-size: 12px; }
+  .pe-sheet-header { display: flex; align-items: center; gap: 10px; }
+  .pe-sheet-swatch { width: 28px; height: 28px; background: currentColor; flex-shrink: 0; }
+  .pe-sheet-heading { flex: 1; min-width: 0; }
+  .pe-sheet-name { font-size: 16px; font-weight: 600; line-height: 1.25; }
+  .pe-sheet-sub { font-size: 12px; color: var(--text-muted); }
+  .pe-sheet-back { width: 32px; height: 32px; border: 1px solid var(--border-medium); background: transparent; color: var(--text-primary); font-size: 18px; line-height: 1; cursor: pointer; }
+  .pe-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
+  .pe-field-name { grid-column: 1 / -1; }
+  .player-editor-field { flex-direction: column; align-items: stretch; gap: 3px; margin: 0; }
+  .player-editor-field > span { width: auto; font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; color: var(--text-faint); }
+  .player-editor-field input, .player-editor-field select { height: 40px; box-sizing: border-box; padding: 0 10px; font-size: 15px; background: var(--bg-input); }
+  .player-move { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px 6px; }
+  .player-move > label, .player-move > select:last-child { grid-column: 1 / -1; }
+  .player-move select { height: 38px; box-sizing: border-box; padding: 0 8px; font-size: 14px; }
+  .player-move label { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; color: var(--text-faint); }
+  .player-move label.pe-inline-label { font-family: var(--font-body); text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--text-primary); min-height: 32px; }
+  .player-move .pe-btn { height: 38px; font-size: 12px; padding: 0 12px; }
+  .player-move.pe-backup-row { display: flex; flex-direction: row; align-items: center; gap: 8px; border: 1px solid var(--border-subtle); padding: 6px 10px; font-size: 13px; color: var(--text-secondary); }
+  .pe-backup-row > span { flex: 1; min-width: 0; }
+  .pe-backup-row b { color: var(--text-primary); }
+  .player-move.pe-backup-row .pe-btn { height: 32px; }
+  .pe-more-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 40px; padding: 0 2px; width: 100%;
+    background: transparent; border: 0; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);
+    color: var(--accent-gold); font: inherit; font-size: 14px; cursor: pointer; text-align: left;
+  }
+  .pe-more-hint { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .player-editor-error { margin: 0; font-size: 12px; }
+  .player-constraints { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+  .constraint-row { font-size: 13px; padding: 4px 8px; }
+  .constraint-row .pe-btn { height: 28px; }
+  .player-why-here { margin: 0; border-top: 1px solid var(--border-subtle); padding-top: 8px; }
+  .player-why-here h4 { font-size: 11px; letter-spacing: 0.1em; }
+  .player-why-here li, .why-here-empty { font-size: 13px; color: var(--text-secondary); }
+  .pe-more-group { display: flex; flex-direction: column; gap: 10px; }
+  .preferred-actions { padding: 8px 0; }
+  .preferred-actions p { font-size: 13px; }
+  .preferred-actions .pe-btn { height: 40px; }
+  .player-editor-actions { display: flex; gap: 8px; margin: 0; padding: 0; border-top: 0; }
+  .pe-actions-right { display: contents; }
+  .player-editor-actions .pe-btn { height: 44px; padding: 0 16px; font-size: 13px; letter-spacing: 0.08em; flex: 1 1 0; }
+  .player-editor-actions #pe-remove { flex: 0 0 auto; }
+  .player-editor-actions > span:empty { display: none; }
+  /* Short view hides the More sections; the More view hides the short ones (and Bench/Delete). */
+  .player-editor:not(.pe-more-open) .pe-more-only { display: none; }
+  .player-editor.pe-more-open .pe-short-only, .player-editor.pe-more-open .pe-fields,
+  .player-editor.pe-more-open #pe-remove { display: none; }
+}

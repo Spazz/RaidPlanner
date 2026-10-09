@@ -276,6 +276,19 @@ function syncStrategyChrome() {
   document.querySelectorAll('#phone-strategy-seg [data-mode]').forEach(item => {
     item.setAttribute('aria-pressed', String(item.dataset.mode === mode));
   });
+  renderPhoneSummary();
+}
+
+// The phone's collapsed context row: line 1 "<raid> · <strategy>", line 2
+// "<plan title> · notes" (notes only when the plan has some).
+function renderPhoneSummary() {
+  const main = document.getElementById('phone-summary-main');
+  const sub = document.getElementById('phone-summary-sub');
+  if (!main || !sub) return;
+  const raid = Config.Raids[State.selectedRaid];
+  main.textContent = `${raid ? raid.name : 'No raid'} (${raid ? raid.size : 25}) · ${strategyLabel(State.optimizerMode || 'max_dps')}`;
+  const hasNotes = !!(State.notes && State.notes.trim());
+  sub.textContent = `${State.rosterName || 'Untitled plan'}${hasNotes ? ' · notes' : ''}`;
 }
 
 function undoPlanChange() {
@@ -326,6 +339,7 @@ function syncRaidNotesUI() {
   const badge = document.getElementById('raid-notes-badge');
   if (el && document.activeElement !== el) el.value = State.notes || '';
   if (badge) badge.hidden = !(State.notes && State.notes.trim());
+  renderPhoneSummary();
 }
 
 (function initRaidNotes() {

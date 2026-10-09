@@ -732,11 +732,14 @@ function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
 }
 
 // Collapsed-state strip: "Buffs 13/20 · Debuffs 18/28 · 17 missing".
+let lastMissingCoverageCount = null; // null = coverage rules not configured; feeds the phone summary line
 function renderSidebarSummary(buffs, debuffs) {
   const el = document.getElementById('sidebar-summary');
   if (!el) return;
+  lastMissingCoverageCount = null;
   if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p class="sidebar-note">Coverage rules are not configured for this version yet.</p>'; return; }
   const missing = (buffs.total - buffs.covered) + (debuffs.total - debuffs.covered);
+  lastMissingCoverageCount = missing;
   el.innerHTML = `
     <div class="sidebar-summary-row"><span>Buffs</span><b>${buffs.covered} / ${buffs.total}</b></div>
     <div class="sidebar-summary-row"><span>Debuffs</span><b>${debuffs.covered} / ${debuffs.total}</b></div>
@@ -954,6 +957,30 @@ function announce(message) {
   region.textContent = message;
 }
 
+// Phone: the summary line's missing-buffs button reveals the plan feedback text
+// and opens the coverage panel. Delegated because the bar is rebuilt on every render.
+let phoneFeedbackOpen = false;
+function setPhoneFeedbackOpen(open) {
+  phoneFeedbackOpen = open;
+  const feedback = document.getElementById('plan-feedback');
+  if (feedback) feedback.classList.toggle('phone-open', open);
+  const btn = document.getElementById('btn-summary-missing');
+  if (btn) btn.setAttribute('aria-expanded', String(open));
+}
+(function initSummaryMissing() {
+  const bar = document.getElementById('summary-bar');
+  if (!bar) return;
+  bar.addEventListener('click', (e) => {
+    if (!e.target.closest('#btn-summary-missing')) return;
+    const open = !phoneFeedbackOpen;
+    setPhoneFeedbackOpen(open);
+    if (open) {
+      setSidebarExpanded(true);
+      document.getElementById('buff-sidebar').scrollIntoView({ block: 'start' });
+    }
+  });
+})();
+
 function renderSummaryBar() {
   const bar = document.getElementById('summary-bar');
   if (!bar) return;
@@ -976,7 +1003,12 @@ function renderSummaryBar() {
     ${chip('healer', 'Healers', counts.healer)}
     ${chip('melee', 'Melee', counts.melee_dps)}
     ${chip('ranged', 'Ranged', counts.ranged)}
-    <span class="summary-chip bench"><b>${benched}</b> Benched</span>`;
+    <span class="summary-chip bench"><b>${benched}</b> Benched</span>
+    <span class="summary-phone">
+      <span class="summary-phone-count${seated > capacity ? ' over' : ''}"><b>${seated}</b>/${capacity}</span>
+      <span class="summary-phone-roles"><span class="role-t">${counts.tank}T</span> <span class="role-h">${counts.healer}H</span> <span class="role-d">${counts.melee_dps}M</span> <span class="role-d">${counts.ranged}R</span></span>
+      ${lastMissingCoverageCount === null ? '' : `<button type="button" class="summary-missing${lastMissingCoverageCount === 0 ? ' zero' : ''}" id="btn-summary-missing" aria-expanded="${phoneFeedbackOpen}" aria-controls="plan-feedback">${lastMissingCoverageCount === 0 ? 'No missing buffs' : `${lastMissingCoverageCount} missing buff${lastMissingCoverageCount === 1 ? '' : 's'} &#9656;`}</button>`}
+    </span>`;
   announce(describeRaidSummary({ seated, capacity, counts, benched }));
 }
 
@@ -2048,25 +2080,36 @@ function showPlayerEditor(anchorEl, opts) {
   editor.setAttribute('aria-modal', 'true');
   editor.setAttribute('aria-label', title);
   editor.innerHTML = `
-    <div class="player-editor-title">${esc(title)}</div>
+    <div class="pe-sheet-handle" aria-hidden="true"></div>
+    ${!isAdd ? `<div class="pe-sheet-header pe-short-only">
+      <span class="pe-sheet-swatch ${classColorClass(curClass, 'primary')}" id="pe-sheet-swatch" aria-hidden="true"></span>
+      <div class="pe-sheet-heading"><div class="pe-sheet-name ${classColorClass(curClass, 'primary')}" id="pe-sheet-name">${esc(curName.split('-')[0])}</div><div class="pe-sheet-sub" id="pe-sheet-sub"></div></div>
+    </div>
+    <div class="pe-sheet-header pe-more-only">
+      <button type="button" class="pe-sheet-back" id="pe-more-back" aria-label="Back to the short menu">&lsaquo;</button>
+      <div class="pe-sheet-heading"><div class="pe-sheet-name ${classColorClass(curClass, 'primary')}">${esc(curName.split('-')[0])}</div><div class="pe-sheet-sub">More options</div></div>
+    </div>` : ''}
+    <div class="player-editor-title${isAdd ? '' : ' pe-desktop-only'}">${esc(title)}</div>
     ${!isAdd && player && player.needsReview ? `<div class="player-editor-review-notice">${esc(player.reviewReason || 'Needs review — spec was defaulted')}. Pick the real class/spec below to clear this.</div>` : ''}
-    ${!isAdd ? `<div class="player-move"><label for="pe-destination">Move ${esc(curName)}</label><select id="pe-destination"><option value="">Choose a group…</option>${State.groups.map((g,gi) => gi === found.groupIdx ? '' : g.length < 5 ? `<option value="${gi}">Move to Group ${gi+1} (${g.length}/5)</option>` : `<optgroup label="Group ${gi+1} is full — swap with">${g.map(p => `<option value="${gi}:${esc(p.uid)}">${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select><button type="button" class="pe-btn" id="pe-move">Move / swap</button></div>` : ''}
-    <label class="player-editor-field">
+    ${!isAdd ? `<div class="player-move pe-more-only"><label for="pe-destination">Move ${esc(curName)}</label><select id="pe-destination"><option value="">Choose a group…</option>${State.groups.map((g,gi) => gi === found.groupIdx ? '' : g.length < 5 ? `<option value="${gi}">Move to Group ${gi+1} (${g.length}/5)</option>` : `<optgroup label="Group ${gi+1} is full — swap with">${g.map(p => `<option value="${gi}:${esc(p.uid)}">${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select><button type="button" class="pe-btn" id="pe-move">Move / swap</button></div>` : ''}
+    <div class="pe-fields">
+    <label class="player-editor-field pe-field-name">
       <span>Name</span>
       <input type="text" id="pe-name" value="${esc(curName)}" maxlength="32" autocomplete="off" spellcheck="false">
     </label>
-    <label class="player-editor-field">
+    <label class="player-editor-field pe-field-class">
       <span>Class</span>
       <select id="pe-class">${classOptions}</select>
     </label>
-    <label class="player-editor-field">
+    <label class="player-editor-field pe-field-spec">
       <span>Spec</span>
       <select id="pe-spec">${specOptions}</select>
     </label>
-    <div class="player-editor-role" id="pe-role"></div>
+    </div>
+    <div class="player-editor-role pe-desktop-only" id="pe-role"></div>
     <div class="player-editor-error" id="pe-error"></div>
     ${isAdd ? `<div class="preferred-actions"><p>Choose a class and spec to request a player. No name needed; confirmed matching imports fill this spot.</p><button type="button" class="pe-btn pe-btn-primary" id="pe-prefer">${preference ? 'Update preference' : 'Set preferred slot'}</button>${preference ? '<button type="button" class="pe-btn pe-btn-danger" id="pe-remove-preference">Remove preference</button>' : ''}</div>` : ''}
-    ${!isAdd && benched ? `<div class="player-move">
+    ${!isAdd && benched ? `<div class="player-move pe-more-only">
       <label for="pe-backup-for">Backup for</label>
       <select id="pe-backup-for">
         <option value="">Not a backup</option>
@@ -2074,18 +2117,17 @@ function showPlayerEditor(anchorEl, opts) {
       </select>
       <button type="button" class="pe-btn" id="pe-backup-save">Save backup</button>
     </div>` : ''}
-    ${!isAdd && !benched && Backups.backupNameFor(curName) ? `<div class="player-move">
-      <span>Backup: ${esc(Backups.backupNameFor(curName).split('-')[0])}</span>
-      <button type="button" class="pe-btn" id="pe-backup-swap">Swap in backup</button>
-      <button type="button" class="pe-btn pe-btn-danger" id="pe-backup-clear">Remove backup</button>
+    ${!isAdd && !benched && Backups.backupNameFor(curName) ? `<div class="player-move pe-backup-row">
+      <span class="pe-short-only">Backup: <b>${esc(Backups.backupNameFor(curName).split('-')[0])}</b></span>
+      <button type="button" class="pe-btn pe-short-only" id="pe-backup-swap">Swap in backup</button>
+      <button type="button" class="pe-btn pe-btn-danger pe-more-only" id="pe-backup-clear">Remove backup</button>
     </div>` : ''}
-    ${!isAdd && !benched && player.locked ? `<div class="player-move">
+    ${!isAdd && !benched && player.locked ? `<div class="player-move pe-more-only">
       <span>Locked by comp template</span>
       <button type="button" class="pe-btn" id="pe-unlock">Unlock</button>
     </div>` : ''}
-    ${!isAdd ? renderDrummerEditor(player, curName) : ''}
-    ${!isAdd ? renderConstraintEditor(player, curName) : ''}
-    ${!isAdd && !benched && GameVersions[State.gameVersion].modeled ? renderWhyHere(player, found.groupIdx) : ''}
+    ${!isAdd ? `<button type="button" class="pe-more-row pe-short-only" id="pe-more-toggle" aria-expanded="false"><span>More options</span><span class="pe-more-hint">Move, drummer, keep with/apart, Why here? &rsaquo;</span></button>` : ''}
+    ${!isAdd ? `<div class="pe-more-group pe-more-only">${renderDrummerEditor(player, curName)}${renderConstraintEditor(player, curName)}${!benched && GameVersions[State.gameVersion].modeled ? renderWhyHere(player, found.groupIdx) : ''}</div>` : ''}
     <div class="player-editor-actions">
       ${removeLabel ? `<button type="button" class="pe-btn pe-btn-danger" id="pe-remove" title="${esc(removeTitle)}">${esc(removeLabel)}</button>` : '<span></span>'}
       <div class="pe-actions-right">
@@ -2127,11 +2169,19 @@ function showPlayerEditor(anchorEl, opts) {
   const roleEl = editor.querySelector('#pe-role');
   const errorEl = editor.querySelector('#pe-error');
 
+  const sheetSub = editor.querySelector('#pe-sheet-sub');
   function refreshRole() {
     const role = RosterEdit.RoleForSpec(classSel.value, specSel.value);
     roleEl.innerHTML = role
       ? `${getRoleIcon(role)}<span>Role: ${esc(ROLE_LABELS[role] || role)}</span>`
       : '';
+    // Phone sheet header: "Spec Class · Group N", tinted by the chosen class.
+    if (sheetSub) {
+      sheetSub.textContent = `${specSel.value} ${RosterEdit.ClassLabel(classSel.value)} · ${benched ? 'Bench' : 'Group ' + (found.groupIdx + 1)}`;
+      for (const el of editor.querySelectorAll('.pe-sheet-swatch, .pe-sheet-name')) {
+        el.className = el.className.replace(/cc-[a-z-]+/, classColorClass(classSel.value, 'primary'));
+      }
+    }
   }
 
   // Class change repopulates specs, since specs are class-specific.
@@ -2251,8 +2301,21 @@ function showPlayerEditor(anchorEl, opts) {
     });
   }
 
+  // Phone bottom sheet: a short view and a "More options" view of the same
+  // elements, switched by one class (the CSS hides the other view's sections).
+  const moreToggle = editor.querySelector('#pe-more-toggle');
+  const moreBack = editor.querySelector('#pe-more-back');
+  function setMoreOpen(open) {
+    editor.classList.toggle('pe-more-open', open);
+    if (moreToggle) moreToggle.setAttribute('aria-expanded', String(open));
+    (open ? moreBack : moreToggle).focus();
+  }
+  if (moreToggle) moreToggle.addEventListener('click', () => setMoreOpen(true));
+  if (moreBack) moreBack.addEventListener('click', () => setMoreOpen(false));
+
   FocusTrap.open(editor, anchorEl);
   if (isAdd) classSel.focus();
+  else if (window.matchMedia('(max-width: 600px)').matches) nameInput.focus(); // the move row is under More there
   else editor.querySelector('#pe-destination').focus();
 }
 

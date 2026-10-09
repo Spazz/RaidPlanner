@@ -205,6 +205,11 @@
   </div>
 
   <div class="phone-context-panel" id="phone-context-panel">
+    <button type="button" class="phone-summary" id="phone-summary-toggle" aria-expanded="false" aria-controls="phone-context-body">
+      <span class="phone-summary-text"><span class="phone-summary-main" id="phone-summary-main"></span><span class="phone-summary-sub" id="phone-summary-sub"></span></span>
+      <span class="phone-summary-edit"><span id="phone-summary-edit-label">Edit</span> <span aria-hidden="true" id="phone-summary-chevron">&#9662;</span></span>
+    </button>
+    <div class="phone-context-body" id="phone-context-body" hidden>
     <div class="phone-context-row">
       <span class="lbl">Plan</span>
       <span id="mobile-plan-title"></span>
@@ -223,6 +228,8 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
       Compare to ideal comp
     </button>
+    <div id="phone-context-notes-slot"></div>
+    </div>
   </div>
 
   <div class="roster-bar">
@@ -356,7 +363,7 @@
     <summary>Raid notes <span id="raid-notes-badge" class="raid-notes-badge" hidden>&#9679;</span></summary>
     <textarea class="raid-notes-textarea" id="raid-notes-textarea" maxlength="2000" placeholder="MT swaps, add assignments, kill order..."></textarea>
   </details>
-  <div class="plan-feedback"><button type="button" class="link-btn" id="readiness-text" title="Show coverage details"></button><span id="autosave-status" role="status"></span></div>
+  <div class="plan-feedback" id="plan-feedback"><button type="button" class="link-btn" id="readiness-text" title="Show coverage details"></button><span id="autosave-status" role="status"></span></div>
   <div class="sync-banner" id="sync-banner" hidden aria-live="polite">
     <span id="sync-banner-text"></span>
     <div class="sync-banner-actions">
