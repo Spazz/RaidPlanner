@@ -95,10 +95,10 @@ function renderManualChanges() {
     const group = State.groups[gi] || [];
     const player = group.find(p => p.uid === uid);
     const displayName = player ? player.name.split('-')[0] : 'Unknown';
-    const color = player ? (Config.ClassColors[player.class] || 'var(--text-primary)') : 'var(--text-primary)';
+    const colorClass = player ? classColorClass(player.class) : 'cc-unknown-primary';
 
     html += `<li>
-      <span style="color:${color};font-weight:600;">${esc(displayName)}</span>
+      <span class="change-player ${colorClass}">${esc(displayName)}</span>
       <span>(Group ${gi + 1})</span>
       <span class="change-arrow">&#8594;</span>
       <span>Use <span class="change-buff">${esc(toBuff.name)}</span> instead of <span class="change-buff">${esc(fromBuff.name)}</span></span>
@@ -504,7 +504,7 @@ function showTemplatesModal() {
 
   let listHTML = '';
   if (!templates.length) {
-    listHTML = '<p style="font-size:11px;color:var(--text-muted);text-align:center;padding:16px;">No templates saved for this raid yet</p>';
+    listHTML = '<p class="modal-empty-note">No templates saved for this raid yet</p>';
   } else {
     for (const t of templates) {
       listHTML += `<div class="saved-roster-item" data-template="${esc(t.name)}">
@@ -516,7 +516,7 @@ function showTemplatesModal() {
 
   modal.innerHTML = `
     <h3>Comp Templates</h3>
-    <p style="font-size:11px;color:var(--text-muted)">${esc(versionLabel)} &middot; ${esc(raidLabel)}. Save tonight's group layout, then apply it to a fresh import to seed the same names into the same groups. Optimize fills the rest.</p>
+    <p class="modal-note">${esc(versionLabel)} &middot; ${esc(raidLabel)}. Save tonight's group layout, then apply it to a fresh import to seed the same names into the same groups. Optimize fills the rest.</p>
     <div class="import-buttons">
       <input class="save-input" id="template-name-input" type="text" placeholder="Template name...">
       <button class="btn btn-secondary" id="btn-do-save-template">Save current layout</button>
@@ -583,7 +583,7 @@ function showLoadModal() {
 
   let listHTML = '';
   if (names.length === 0) {
-    listHTML = '<p style="font-size:11px;color:var(--text-muted);text-align:center;padding:16px;">No saved rosters yet</p>';
+    listHTML = '<p class="modal-empty-note">No saved rosters yet</p>';
   } else {
     for (const name of names) {
       const r = rosters[name];
@@ -601,7 +601,7 @@ function showLoadModal() {
     <h4>Saved rosters</h4>
     <div class="saved-roster-list">${listHTML}</div>
     <h4>Import history</h4>
-    <p style="font-size:11px;color:var(--text-muted)">Latest 30 imports in this browser. Snapshots do not include later edits.</p>
+    <p class="modal-note">Latest 30 imports in this browser. Snapshots do not include later edits.</p>
     <div class="saved-list" id="load-history-list"></div>
     <div class="import-buttons">
       <button class="btn btn-secondary" id="btn-cancel-load">Close</button>
@@ -785,7 +785,8 @@ function renderCompareModesBody(results) {
 
 // ── IMPORT (shared by the landing card and the toolbar modal) ───
 // Accepts: a raid-helper event URL, an API URL, a bare event ID, raw JSON,
-// or a PP: addon/share string. Resolves to { url } or { text }.
+// or a PP: addon/share string. Resolves to { url }, { text } or { error }: only the
+// Raid-Helper hosts the CSP's connect-src allows are ever fetched.
 function normalizeImportSource(raw) {
   const t = (raw || '').trim();
   // The v4 events endpoint carries every sign-up; the raidplan endpoint only
@@ -793,16 +794,24 @@ function normalizeImportSource(raw) {
   const eventsApi = (id) => `https://raid-helper.dev/api/v4/events/${id}`;
   if (/^\d{6,}$/.test(t)) return { url: eventsApi(t), eventId: t };
   if (/^https?:\/\//i.test(t)) {
-    // Raid-Helper answers on raid-helper.dev and raid-helper.xyz. An explicit
-    // API link is fetched as pasted; event and raidplan page links resolve
-    // to the sign-ups for that event ID. `eventId` is only known when the
-    // roster comes from the events endpoint, which is what Refresh re-reads.
-    if (/raid-helper\.[a-z]+\/api\//i.test(t)) {
-      const api = t.match(/\/api\/v4\/events\/(\d+)/i);
-      return { url: t, eventId: api ? api[1] : null };
+    // Raid-Helper answers on raid-helper.dev and raid-helper.xyz (exact hosts, no
+    // port or userinfo). An explicit API link is fetched as pasted, over https;
+    // event and raidplan page links resolve to the sign-ups for that event ID.
+    // `eventId` is only known when the roster comes from the events endpoint,
+    // which is what Refresh re-reads. Any other link is refused, not fetched.
+    const parts = t.match(/^https?:\/\/([^\/?#\s]+)(\/\S*)?$/i);
+    const host = parts ? parts[1].toLowerCase() : '';
+    const rest = parts ? (parts[2] || '') : '';
+    if (host !== 'raid-helper.dev' && host !== 'raid-helper.xyz') {
+      return { error: 'Only Raid-Helper links can be imported (raid-helper.dev or raid-helper.xyz). Paste the Raid-Helper event link or ID, or paste the JSON text instead.' };
     }
-    const m = t.match(/raid-helper\.[a-z]+\/(?:event|raidplan)\/(\d+)/i);
-    return m ? { url: eventsApi(m[1]), eventId: m[1] } : { url: t, eventId: null };
+    if (/^\/api\//i.test(rest)) {
+      const api = rest.match(/^\/api\/v4\/events\/(\d+)/i);
+      return { url: 'https://' + host + rest, eventId: api ? api[1] : null };
+    }
+    const m = rest.match(/^\/(?:event|raidplan)\/(\d+)/i);
+    if (!m) return { error: 'That Raid-Helper link is not an event link. Paste the event link (raid-helper.dev/event/...) or ID, or paste the JSON text instead.' };
+    return { url: eventsApi(m[1]), eventId: m[1] };
   }
   return { text: t };
 }
@@ -838,6 +847,7 @@ async function fetchRosterJson(url, report) {
 // `report(msg, isError)` receives progress and errors; success is toasted.
 async function importFromText(raw, report = (m) => showToast(m)) {
   const src = normalizeImportSource(raw);
+  if (src.error) { report(src.error, true); return false; }
   if (!src.url && !src.text) return false;
   const ticket = ImportGate.begin();
 

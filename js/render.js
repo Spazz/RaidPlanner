@@ -118,6 +118,20 @@ function getSpecIcon(p) {
   return `<span class="role-icon spec-icon ${roleCls}"><img src="${esc(src)}" alt="${esc(label)}" loading="lazy"${fallback}></span>`;
 }
 
+// Class colours reach the DOM as classes (cc-<class> / pref-<class> in app.css, fed by
+// the --class-* tokens), never as inline style, so the CSP can forbid style attributes.
+// An unknown class gets a neutral tone: 'primary' (default), 'secondary' or 'muted'.
+function isKnownClass(cls) {
+  return Object.prototype.hasOwnProperty.call(Config.ClassColors, cls);
+}
+function classColorClass(cls, fallback = 'primary') {
+  return isKnownClass(cls) ? 'cc-' + cls.toLowerCase() : 'cc-unknown-' + fallback;
+}
+// Leading-space class for a preferred slot's --preferred-color (none when the class is unknown).
+function preferredColorClass(cls) {
+  return isKnownClass(cls) ? ' pref-' + cls.toLowerCase() : '';
+}
+
 // ONE capture-phase listener (image errors do not bubble) covers every icon the
 // page renders, so no <img> needs its own handler or an inline onerror. A spec
 // icon retries with its class crest (data-fallback); anything else degrades to
@@ -192,7 +206,6 @@ function restorePlayerSlotFocus(key) {
 }
 
 function seatedSlotHTML(p, gi, si) {
-  const color = Config.ClassColors[p.class] || 'var(--text-primary)';
   const displayName = (p.name || 'Unknown').split('-')[0];
   const specClass = p.spec ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '')) : '';
   const backupName = Backups.backupNameFor(p.name);
@@ -221,7 +234,7 @@ function seatedSlotHTML(p, gi, si) {
   return `<div class="player-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'group ' + (gi + 1)))}" data-uid="${esc(p.uid)}" data-group="${gi}" data-slot="${si}">
     ${getSpecIcon(p)}
     <div class="player-info">
-      <span class="player-name" style="color:${color}">${esc(displayName)}</span>
+      <span class="player-name ${classColorClass(p.class)}">${esc(displayName)}</span>
       <span class="player-spec">${esc(specClass)}</span>
     </div>
     ${reviewBadge}
@@ -353,7 +366,7 @@ function renderAssignments() {
       const options = ['<option value="RAID"' + (current === 'RAID' ? ' selected' : '') + '>Raid (no tank)</option>']
         .concat(tanks.map((t, i) => `<option value="${esc(t.name)}"${current === t.name ? ' selected' : ''}>${i === 0 ? 'MT' : i === 1 ? 'OT' : 'OT' + i} — ${esc(t.name)}</option>`));
       return `<div class="assign-row">
-        <span class="assign-row-name" style="color:${Config.ClassColors[h.class] || 'var(--text-primary)'}">${esc(h.name)}</span>
+        <span class="assign-row-name ${classColorClass(h.class)}">${esc(h.name)}</span>
         <span class="assign-row-meta">${esc(h.spec || '')} ${esc(RosterEdit.ClassLabel(h.class))}</span>
         <select class="assign-select" data-healer="${esc(h.name)}">${options.join('')}</select>
       </div>`;
@@ -377,7 +390,7 @@ function renderAssignments() {
     }).join('');
     const matrix = Assignments.blessingMatrix(players, blessings);
     const matrixHTML = matrix.length ? `<table class="assign-matrix"><thead><tr><th>Class</th><th>Blessings received</th></tr></thead><tbody>${
-      matrix.map(r => `<tr><td style="color:${Config.ClassColors[r.class] || 'var(--text-primary)'}">${esc(RosterEdit.ClassLabel(r.class))}</td><td>${r.cells.map(c => esc(c.name) + ' (' + esc(c.paladin) + ')').join(', ')}</td></tr>`).join('')
+      matrix.map(r => `<tr><td class="${classColorClass(r.class)}">${esc(RosterEdit.ClassLabel(r.class))}</td><td>${r.cells.map(c => esc(c.name) + ' (' + esc(c.paladin) + ')').join(', ')}</td></tr>`).join('')
     }</tbody></table>` : '';
     blessingsHTML = `<section class="assign-section"><h3>Paladin Blessings</h3>${rows}${matrixHTML}</section>`;
   }
@@ -483,7 +496,7 @@ function renderAssignments() {
     <section class="assign-section"><h3>Boss Debuffs</h3>${debuffsHTML}</section>
     ${customSectionHTML}
     <section class="assign-section">
-      <div class="assign-heading" style="margin-bottom:0;"><h3 style="margin:0;">Raid Prep</h3>${hasPrepContent ? '<button type="button" class="btn btn-secondary" id="btn-copy-prep">Copy prep</button>' : ''}</div>
+      <div class="assign-heading assign-heading-flush"><h3>Raid Prep</h3>${hasPrepContent ? '<button type="button" class="btn btn-secondary" id="btn-copy-prep">Copy prep</button>' : ''}</div>
       ${prepHTML}
     </section>
   `;
@@ -629,11 +642,11 @@ function renderGroups() {
         slotsHTML += seatedSlotHTML(players[si], gi, si);
       } else if (PreferredSlots.forGroup(gi)[si - players.length]) {
         const preference = PreferredSlots.forGroup(gi)[si - players.length];
-        slotsHTML += `<div class="player-slot preferred-slot" role="button" tabindex="0" data-group="${gi}" data-slot="${si}" style="--preferred-color:${Config.ClassColors[preference.class]}">
+        slotsHTML += `<div class="player-slot preferred-slot${preferredColorClass(preference.class)}" role="button" tabindex="0" data-group="${gi}" data-slot="${si}">
           ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(preference.spec + ' ' + RosterEdit.ClassLabel(preference.class))}</span><span class="player-spec">Preferred · awaiting sign-up</span></div><span class="preferred-badge">OPEN</span></div>`;
       } else {
         slotsHTML += `<div class="player-slot empty-slot" role="button" tabindex="0" data-group="${gi}" data-slot="${si}" aria-label="Group ${gi+1}, empty slot: add player or preferred spec">
-          <span class="role-icon" style="opacity:0.3;">&#8226;</span>
+          <span class="role-icon role-icon-empty">&#8226;</span>
           <div class="player-info"><span class="player-name">Empty Slot</span></div>
         </div>`;
       }
@@ -675,7 +688,7 @@ function renderGroups() {
     container.innerHTML += `<div class="group-card" role="listitem" data-group="${gi}">
       <div class="group-header">
         <h3>Group ${gi+1}</h3>
-        <div style="display:flex;align-items:center;gap:var(--sp-2);">
+        <div class="group-header-tags">
           <span class="group-role-tag">${roleLabel}</span>
         </div>
       </div>
@@ -720,7 +733,7 @@ function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
 function renderSidebarSummary(buffs, debuffs) {
   const el = document.getElementById('sidebar-summary');
   if (!el) return;
-  if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p style="font-size:12px;line-height:1.5;color:var(--text-muted)">Coverage rules are not configured for this version yet.</p>'; return; }
+  if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p class="sidebar-note">Coverage rules are not configured for this version yet.</p>'; return; }
   const missing = (buffs.total - buffs.covered) + (debuffs.total - debuffs.covered);
   el.innerHTML = `
     <div class="sidebar-summary-row"><span>Buffs</span><b>${buffs.covered} / ${buffs.total}</b></div>
@@ -733,11 +746,11 @@ function renderSidebarSummary(buffs, debuffs) {
 function renderInsightLine(id, insight) {
   if (!insight) return '';
   const short = (p) => esc((p.name || 'Unknown').split('-')[0]);
-  const color = (p) => Config.ClassColors[p.class] || 'var(--text-secondary)';
+  const color = (p) => classColorClass(p.class, 'secondary');
   if (insight.kind === 'switch') {
     const p = insight.player;
     return `<div class="buff-row-insight switch">
-      <span class="insight-text">In raid: <span class="insight-who" style="color:${color(p)}">${short(p)}</span></span>
+      <span class="insight-text">In raid: <span class="insight-who ${color(p)}">${short(p)}</span></span>
       <button type="button" class="insight-btn" data-insight-switch="${esc(id)}" data-group="${insight.groupIdx}" data-uid="${esc(p.uid)}" title="Make ${short(p)} run ${esc(Config.Buffs[id].name)}">Switch</button>
     </div>`;
   }
@@ -745,7 +758,7 @@ function renderInsightLine(id, insight) {
     const p = insight.player;
     const specLabel = p.spec ? `${esc(p.spec)}` : '';
     return `<div class="buff-row-insight bench">
-      <span class="insight-text">Benched: <span class="insight-who" style="color:${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
+      <span class="insight-text">Benched: <span class="insight-who ${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
       <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short(p)}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
@@ -804,7 +817,7 @@ function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds,
     html += `<div class="buff-row${isCovered ? ' covered' : ''}">
       <div class="buff-row-icon"${ttAttrs}>${imgTag}</div>
       <span class="buff-row-name">${esc(entry.name)}</span>${warnBadge}
-      <span class="buff-row-source" style="color:${sourceColor}">${esc(sourceLabel)}</span>
+      <span class="buff-row-source ${classColorClass(entry.sourceClass, 'secondary')}">${esc(sourceLabel)}</span>
     </div>`;
     if (!isCovered && insights) html += renderInsightLine(id, insights[id]);
   }
@@ -819,10 +832,10 @@ function renderUtilityInsightLine(item) {
   if (item.benchCount > 0) {
     const p = item.benchProviders[0];
     const short = esc((p.name || 'Unknown').split('-')[0]);
-    const color = Config.ClassColors[p.class] || 'var(--text-secondary)';
+    const color = classColorClass(p.class, 'secondary');
     const specLabel = p.spec ? ` (${esc(p.spec)})` : '';
     return `<div class="buff-row-insight bench">
-      <span class="insight-text">Benched: <span class="insight-who" style="color:${color}">${short}</span>${specLabel}</span>
+      <span class="insight-text">Benched: <span class="insight-who ${color}">${short}</span>${specLabel}</span>
       <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
@@ -1478,20 +1491,20 @@ const SignupTray = {
     const tag = tab === 'all' ? getStatusTag(p.signupStatus)
       : (tab === 'bench' && p.signupStatus === 'confirmed' ? getStatusTag('confirmed') : '');
     if (entry.unplaced) {
-      const color = (p.class && Config.ClassColors[p.class]) || 'var(--text-muted)';
+      const color = classColorClass(p.class, 'muted');
       const icon = p.class ? getSpecIcon(p) : '<span class="role-icon unplaced-icon">?</span>';
       const specText = p.class ? `${p.spec} ${RosterEdit.ClassLabel(p.class)}` : 'No spec on Raid-Helper';
       return `<div class="player-slot bench-slot unplaced-slot" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'not seated'))}" data-unplaced-uid="${esc(p.uid)}" title="Click or drag into a group to seat them">
         ${icon}
         <div class="player-info">
-          <span class="player-name" style="color:${color}">${esc(displayName)}</span>
+          <span class="player-name ${color}">${esc(displayName)}</span>
           <span class="player-spec">${esc(specText)}</span>
         </div>
         ${tag}
         ${getDragHandle()}
       </div>`;
     }
-    const color = Config.ClassColors[p.class] || 'var(--text-primary)';
+    const color = classColorClass(p.class);
     const specClass = p.spec
       ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : ''))
       : '';
@@ -1501,7 +1514,7 @@ const SignupTray = {
     return `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'on the bench'))}" data-bench-slot="${entry.bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
       ${getSpecIcon(p)}
       <div class="player-info">
-        <span class="player-name" style="color:${color}">${esc(displayName)}</span>
+        <span class="player-name ${color}">${esc(displayName)}</span>
         <span class="player-spec">${esc(specClass)}</span>
       </div>
       ${tag}
@@ -1926,11 +1939,11 @@ function renderDrummerEditor(player, curName) {
     .concat(DRUM_TYPES.map(t => `<option value="${t}"${tag && tag.drum === t ? ' selected' : ''}>${t}</option>`))
     .join('');
   return `<div class="player-move">
-    <label for="pe-drummer-toggle" style="display:flex;align-items:center;gap:6px;">
+    <label for="pe-drummer-toggle" class="pe-inline-label">
       <input type="checkbox" id="pe-drummer-toggle"${tag ? ' checked' : ''}> Leatherworker drummer
     </label>
   </div>
-  <div class="player-move" id="pe-drummer-drum-row" style="${tag ? '' : 'display:none;'}">
+  <div class="player-move" id="pe-drummer-drum-row"${tag ? '' : ' hidden'}>
     <label for="pe-drummer-drum">Drum (optional)</label>
     <select id="pe-drummer-drum">${drumOptions}</select>
   </div>`;

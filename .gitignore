@@ -52,6 +52,7 @@
 !nav-tests.js
 !share-tests.js
 !headers-tests.js
+!csp-tests.js
 !livesync-tests.js
 !security-tests.js
 !state-persistence-tests.js

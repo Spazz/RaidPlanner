@@ -1636,17 +1636,16 @@ function renderIdealComp() {
     for (let si = 0; si < 5; si++) {
       if (si < players.length) {
         const p = players[si];
-        const color = Config.ClassColors[p.class] || 'var(--text-primary)';
         const specLabel = p.spec + ' ' + p.class.charAt(0) + p.class.slice(1).toLowerCase();
         slotsHTML += `<div class="player-slot" data-group="${gi}" data-slot="${si}">
           ${getSpecIcon(p)}
           <div class="player-info">
-            <span class="player-name" style="color:${color}">${esc(specLabel)}</span>
+            <span class="player-name ${classColorClass(p.class)}">${esc(specLabel)}</span>
           </div>
         </div>`;
       } else {
         slotsHTML += `<div class="player-slot empty-slot" data-group="${gi}" data-slot="${si}">
-          <span class="role-icon" style="opacity:0.3;">&#8226;</span>
+          <span class="role-icon role-icon-empty">&#8226;</span>
           <div class="player-info"><span class="player-name">Empty Slot</span></div>
         </div>`;
       }
@@ -1670,7 +1669,7 @@ function renderIdealComp() {
     container.innerHTML += `<div class="group-card" role="listitem" data-group="${gi}">
       <div class="group-header">
         <h3>Group ${gi+1}</h3>
-        <div style="display:flex;align-items:center;gap:var(--sp-2);">
+        <div class="group-header-tags">
           <span class="group-role-tag">${roleLabel}</span>
         </div>
       </div>

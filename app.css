@@ -1606,6 +1606,20 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 .cc-warrior { color:var(--class-warrior); } .cc-paladin { color:var(--class-paladin); } .cc-hunter { color:var(--class-hunter); }
 .cc-rogue { color:var(--class-rogue); } .cc-priest { color:var(--class-priest); } .cc-shaman { color:var(--class-shaman); }
 .cc-mage { color:var(--class-mage); } .cc-warlock { color:var(--class-warlock); } .cc-druid { color:var(--class-druid); }
+/* Neutral tones for an unknown class (classColorClass() in render.js) */
+.cc-unknown-primary { color:var(--text-primary); } .cc-unknown-secondary { color:var(--text-secondary); } .cc-unknown-muted { color:var(--text-muted); }
+/* Open (preferred-spec) slot tint: --preferred-color per class */
+.pref-warrior { --preferred-color:var(--class-warrior); } .pref-paladin { --preferred-color:var(--class-paladin); } .pref-hunter { --preferred-color:var(--class-hunter); }
+.pref-rogue { --preferred-color:var(--class-rogue); } .pref-priest { --preferred-color:var(--class-priest); } .pref-shaman { --preferred-color:var(--class-shaman); }
+.pref-mage { --preferred-color:var(--class-mage); } .pref-warlock { --preferred-color:var(--class-warlock); } .pref-druid { --preferred-color:var(--class-druid); }
+/* Former inline styles (the CSP forbids style attributes) */
+.role-icon-empty { opacity:.3; }
+.group-header-tags { display:flex; align-items:center; gap:var(--sp-2); }
+.sidebar-note { font-size:12px; line-height:1.5; color:var(--text-muted); }
+.modal-note { font-size:11px; color:var(--text-muted); }
+.modal-empty-note { font-size:11px; color:var(--text-muted); text-align:center; padding:16px; }
+.pe-inline-label { display:flex; align-items:center; gap:6px; }
+.manual-changes-section .change-player { font-weight:600; }
 .assign-conflict { background:rgba(201,115,106,0.08); }
 .assign-warning { color:var(--accent-red); font-size:12px; margin-top:10px; }
 .assign-empty { color:var(--text-muted); font-size:12px; padding:10px 0; }
