@@ -2744,11 +2744,6 @@ describe('esc(): a name built to break out of a double-quoted HTML attribute ren
   assert(html.includes('&quot;'), 'the quote character survives only in its escaped form');
 });
 
-describe('esc(): matches PrintSheet\'s local DOM-free escaper (no drift between the two implementations)', () => {
-  const samples = ['&<>"\'', 'Foo" onclick="x()"', "O'Brien", 'Plain', ''];
-  for (const s of samples) assertEqual(esc(s), PP.PrintSheet ? PP.PrintSheet._esc(s) : esc(s), `esc() vs PrintSheet._esc() for ${JSON.stringify(s)}`);
-});
-
 // ── OPEN SLOT SUGGESTIONS (auto-filled empty seats) ──────────────
 // Seats a hand-built roster round-robin, then runs the real Optimize.
 function seatForOpenSlots(specs, raid = 'bt') {

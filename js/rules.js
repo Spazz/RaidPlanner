@@ -9,8 +9,7 @@
 // document.createElement/textContent trick only produced &amp;/&lt;/&gt;,
 // which left every `attr="${esc(name)}"` call site open to attribute-
 // injection from a raw " or ' in a player/template/roster name. Also keeps
-// esc() DOM-free so it can be unit-tested under Node (see PrintSheet._esc,
-// which already used this same regex for exactly that reason).
+// esc() DOM-free so it can be unit-tested under Node and used by PrintSheet.
 function esc(str) {
   return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }

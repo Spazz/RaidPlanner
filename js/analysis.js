@@ -1680,14 +1680,7 @@ function detectVersionFromTemplateId(templateId) {
 // by the node test suites. Colors are intentionally omitted (fixed black text
 // in the @media print CSS) so the sheet stays legible on a printed page.
 const PrintSheet = {
-  // Local, DOM-free HTML escaper (the global esc() needs document.createElement,
-  // which would make this module untestable under Node) — same escaping rules,
-  // just implemented with a regex instead of a throwaway element.
-  _esc(str) {
-    return String(str == null ? '' : str).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-  },
   build() {
-    const esc = this._esc;
     const raidInfo = Config.Raids[State.selectedRaid] || {};
     const versionLabel = (GameVersions[State.gameVersion] || {}).name || State.gameVersion;
     const dateStr = PlanStore.dayLabel();
