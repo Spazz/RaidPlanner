@@ -146,6 +146,13 @@ check('missing link is hidden at zero missing and when coverage is not modeled',
   assert.equal(renderPhone(1).els['btn-summary-missing'].innerHTML, '<b>1</b> missing &#9656;');
 });
 
+check('feedback closes when the missing count drops to zero', () => {
+  const { els, ctx } = renderPhone(7);
+  vm.runInContext('setPhoneFeedbackOpen(true); lastMissingCoverageCount = 0; renderPhoneMissing();', ctx);
+  assert.equal(vm.runInContext('phoneFeedbackOpen', ctx), false);
+  assert.equal(els['plan-feedback'].classList.on, false);
+});
+
 check('clicking the missing link toggles the feedback text and opens the coverage panel', () => {
   const { els, ctx } = renderPhone(7);
   els['buff-sidebar'] = { scrolled: false, scrollIntoView() { this.scrolled = true; } };

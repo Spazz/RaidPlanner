@@ -975,6 +975,8 @@ function renderPhoneMissing() {
   const n = lastMissingCoverageCount;
   const show = n !== null && n > 0;
   btn.hidden = !show;
+  // With the link gone nothing could close the feedback strip.
+  if (!show && phoneFeedbackOpen) setPhoneFeedbackOpen(false);
   const wrap = document.getElementById('phone-summary-wrap');
   if (wrap) wrap.classList.toggle('has-missing', show);
   btn.setAttribute('aria-expanded', String(phoneFeedbackOpen));
