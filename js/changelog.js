@@ -3,8 +3,16 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '4.0.0';
 const CHANGELOG = [
+  { version: '4.0.0', date: '2026-10-09', title: 'A slimmer planner header', changes: [
+    'One action row: Optimize, Undo, Redo, Raid size, Compare to ideal comp, Raid notes and a short "N missing" link that opens the details.',
+    'Optimize always places buffs for the most damage; the strategy picker and the Compare all strategies dialog are gone.',
+    'Pick 10 or 25 (20 or 40 on Classic; 10, 20 or 40 on Forever) instead of a specific raid. Saved plans keep the raid they were made for.',
+    'The Plan and Sign-ups menus moved into the gear menu, next to your data and help. New plan takes you back to the import screen.',
+    'The Assignments tab is hidden for now.',
+    'Phones: the plan name, raid size and missing buffs share one compact row, so your groups start a little higher.',
+  ] },
   { version: '3.0.0', date: '2026-10-08', title: 'Planning tools and polish', changes: [
     'Custom assignment rows (interrupts, cube clickers, kiters, marks) and a one-click MRT note export; templates carry the planning with them.',
     'Warriors now cast one shout each: a second warrior covers Commanding Shout for the tank group, and the optimizer values it.',
