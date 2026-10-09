@@ -48,11 +48,17 @@ function renderRaidSizeControl() {
   if (!group) return;
   const sizes = raidSizesFor(State.gameVersion, State.selectedRaid);
   const key = sizes.join(',');
+  const current = Config.Raids[State.selectedRaid];
   if (group.dataset.sizes !== key) {
+    // Rebuilding drops focus; give it back to the button for the current size.
+    const hadFocus = group.contains(document.activeElement);
     group.dataset.sizes = key;
     group.innerHTML = sizes.map(size => `<button type="button" data-raid-size="${size}" aria-pressed="false" title="${size}-man raid">${size}</button>`).join('');
+    if (hadFocus && current) {
+      const button = group.querySelector(`[data-raid-size="${current.size}"]`);
+      if (button) button.focus();
+    }
   }
-  const current = Config.Raids[State.selectedRaid];
   group.querySelectorAll('[data-raid-size]').forEach(button => {
     button.setAttribute('aria-pressed', String(!!current && Number(button.dataset.raidSize) === current.size));
   });
@@ -2003,7 +2009,8 @@ const SPOTLIGHT_DEFS = [
   { id: 'assignments-tab', text: 'New: assign who casts curses, blessings and other one-per-raid buffs here.', anchor: () => document.querySelector('.mode-tab[data-tab="assignments"]') },
   // A new id (was 'options-panel') so people who saw the old tip learn where the menus went.
   { id: 'menu-panel', text: 'Plan, sign-up and data actions now live in this menu.', anchor: () => document.getElementById('btn-settings-menu') },
-  { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.querySelector('.title-bar h1') },
+  // The gear menu holds Keyboard shortcuts; it is hidden on phones, so the tip skips them.
+  { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.getElementById('btn-settings-menu') },
 ];
 function runSpotlightQueue() {
   if (document.querySelector('.spotlight-callout')) return;

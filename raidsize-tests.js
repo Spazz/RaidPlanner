@@ -25,24 +25,27 @@ function check(name, fn) {
 }
 
 // A fake #raid-size-control: innerHTML is parsed back into button records so
-// aria-pressed can be read the way the page would.
-function fakeGroup() {
+// aria-pressed and focus can be read the way the page would. `doc` tracks activeElement.
+function fakeGroup(doc) {
   const group = {
     dataset: {}, buttons: [],
     set innerHTML(html) {
       this.buttons = [...html.matchAll(/data-raid-size="(\d+)"/g)].map(m => ({
         dataset: { raidSize: m[1] }, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; },
+        focus() { if (doc) doc.activeElement = this; },
       }));
     },
+    contains(el) { return this.buttons.includes(el); },
+    querySelector(sel) { const m = /"(\d+)"/.exec(sel); return this.buttons.find(b => m && b.dataset.raidSize === m[1]) || null; },
     querySelectorAll() { return this.buttons; },
     addEventListener() {},
   };
   return group;
 }
 
-const group = fakeGroup();
+const document = { activeElement: null, getElementById: id => (id === 'raid-size-control' ? group : null) };
+const group = fakeGroup(document);
 const log = { commits: 0, inits: 0, ideal: 0, toasts: [] };
-const document = { getElementById: id => (id === 'raid-size-control' ? group : null) };
 const STUBS = `
 function initGroups() { __log.inits++; return 0; }
 function commit() { __log.commits++; }
@@ -80,6 +83,20 @@ check('the control renders the active version\'s sizes with the current raid\'s 
   renderRaidSizeControl();
   assert.deepEqual(offered(), [10, 25]);
   assert.deepEqual(pressed(), [25]);
+});
+
+check('a rebuild of the control keeps focus on the button for the current size', () => {
+  State.gameVersion = 'classic'; State.selectedRaid = 'classic10'; State.activeTab = 'plan';
+  renderRaidSizeControl();
+  assert.deepEqual(offered(), [10, 20, 40]);
+  document.activeElement = group.buttons[1]; // the user clicked 20
+  selectRaidSize(20); // the template size disappears, so the buttons are rebuilt
+  assert.deepEqual(offered(), [20, 40]);
+  assert.equal(document.activeElement && document.activeElement.dataset.raidSize, '20');
+  document.activeElement = null;
+  State.gameVersion = 'tbc'; State.selectedRaid = 'bt';
+  renderRaidSizeControl();
+  assert.equal(document.activeElement, null, 'a rebuild without focus in the control does not steal focus');
 });
 
 // ── (b) picking a size ──────────────────────────────────────────────

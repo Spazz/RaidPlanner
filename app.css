@@ -389,7 +389,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .summary-missing:hover { color: var(--text-secondary); }
 .summary-missing:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 /* Raid size segmented control (nav slim-down; replaced the raid dropdown). */
-.raid-size-wrap { display: flex; align-items: center; gap: var(--sp-2); }
+.raid-size-wrap { display: flex; align-items: center; gap: var(--sp-2); margin-right: var(--sp-3); }
 .raid-size-label { font-size: 11px; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
 .raid-size-seg { display: flex; border: 1px solid var(--border-medium); }
 .raid-size-seg button {
@@ -1196,6 +1196,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .groups-container.groups-5 .group-card:nth-child(4),
   .groups-container.groups-5 .group-card:nth-child(5) { grid-column: span 1; }
   .toolbar { flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
+  /* Once the action row can wrap, a divider may end up dangling at a line end. */
+  .action-divider { display: none; }
   .summary-bar { gap: 4px var(--sp-3); }
   .summary-chip.bench { margin-left: 0; }
 }
@@ -1649,7 +1651,8 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
      comp the action row comes back holding only "Back to plan". */
   .title-bar { display: none; }
   .toolbar { display: none; }
-  .toolbar:has(#btn-back-to-plan:not([hidden])) { display: flex; height: 40px; padding: 0 12px; }
+  .toolbar:has(#btn-back-to-plan:not([hidden])) { display: flex; height: 52px; padding: 0 12px; }
+  #btn-back-to-plan { min-height: 44px; padding: 0 8px 0 0; }
   .toolbar > :not(#btn-back-to-plan) { display: none; }
 
   /* Context row: line 1 plan name + Edit (the toggle button), line 2 seated count ·
