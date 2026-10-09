@@ -382,6 +382,26 @@ const ROLE_COMPAT = {
   caster_dps: ['healer', 'ranged_dps'],
 };
 
+// ?dev only: wraps fn in performance.mark/measure ("pp:optimize", "pp:compare") so the
+// browser's Performance panel and performance.getEntriesByType('measure') show what
+// Optimize and Compare cost. Production (no ?dev) just calls fn.
+function devPerfEnabled() {
+  return typeof location !== 'undefined' && /[?&]dev(?:[&=]|$)/.test(location.search || '') &&
+    typeof performance !== 'undefined' && typeof performance.mark === 'function' && typeof performance.measure === 'function';
+}
+function devMeasure(name, fn) {
+  if (!devPerfEnabled()) return fn();
+  performance.mark(name + ':start');
+  try {
+    return fn();
+  } finally {
+    performance.mark(name + ':end');
+    performance.measure(name, name + ':start', name + ':end');
+    performance.clearMarks(name + ':start');
+    performance.clearMarks(name + ':end');
+  }
+}
+
 const Optimizer = {
   // Every Optimize replaces the previous run's suggested Open slots: drop
   // them and lay out the real players, then suggest the specs the raid is
@@ -391,10 +411,12 @@ const Optimizer = {
   // happened to be empty). Any seat still empty after that (inside a group
   // frozen by the leader's own request) is filled in place.
   optimize() {
-    State.preferredSlots = PreferredSlots.manual();
-    this._optimizeSeats();
-    OpenSlots.seat(OpenSlots.choose());
-    OpenSlots.fill();
+    devMeasure('pp:optimize', () => {
+      State.preferredSlots = PreferredSlots.manual();
+      this._optimizeSeats();
+      OpenSlots.seat(OpenSlots.choose());
+      OpenSlots.fill();
+    });
   },
 
   // The adapter between State and plan(): reads the board and its settings,

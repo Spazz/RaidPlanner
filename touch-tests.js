@@ -23,6 +23,8 @@ function check(name, fn) {
 function makeEnv() {
   const listeners = [];   // live registrations: { type, fn, passive, capture }
   const timers = [];
+  const lookups = { count: 0 };
+  const frames = [];      // pending animation frames (run on demand by flushFrames)
   const slotClasses = new Set();
   const slot = {
     dataset: { group: '0', slot: '0' },
@@ -48,20 +50,22 @@ function makeEnv() {
       const i = listeners.findIndex(l => l.type === type && l.fn === fn && l.capture === capture);
       if (i >= 0) listeners.splice(i, 1);
     },
-    elementFromPoint: () => null,
+    elementFromPoint: () => { lookups.count++; return null; },
     querySelectorAll: () => [],
   };
   const ctx = vm.createContext({
     document, console, Math, Date,
     window: { innerHeight: 800, scrollBy() {} },
     navigator: {},
-    requestAnimationFrame: () => 1, cancelAnimationFrame() {},
+    requestAnimationFrame: fn => { frames.push(fn); return frames.length; },
+    cancelAnimationFrame: id => { frames[id - 1] = null; },
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearTimeout: id => { if (timers[id - 1]) timers[id - 1].fn = null; },
     State: { groups: [[{ uid: 'a', name: 'Alpha-Realm', class: 'MAGE' }]], bench: [], unplaced: [] },
     Config: { ClassColors: {} },
     RosterEdit: {}, UnplacedDialog: {}, commit() {}, showToast() {}, moveGroupPlayer: () => false,
   });
+  vm.runInContext(app.slice('const DragGhost', '(function initDragDrop'), ctx);
   vm.runInContext(app.slice('(function initTouchDrag() {', '// ── BUFF OVERRIDE SYSTEM'), ctx);
 
   const fire = (type, e) => {
@@ -71,12 +75,13 @@ function makeEnv() {
   };
   const touch = (x, y) => ({ clientX: x, clientY: y });
   return {
-    slot, ghost, listeners, slotClasses,
+    slot, ghost, listeners, slotClasses, lookups,
     moveListeners: () => containerListeners.filter(l => l.type === 'touchmove'),
     start: (x = 100, y = 100) => fire('touchstart', { touches: [touch(x, y)], target: slot }),
     move: (x, y) => { const e = { touches: [touch(x, y)], prevented: false, preventDefault() { this.prevented = true; } }; fire('touchmove', e); return e; },
     end: (x = 100, y = 100) => fire('touchend', { changedTouches: [touch(x, y)] }),
     cancel: () => fire('touchcancel', {}),
+    flushFrames: () => { const pending = frames.splice(0).filter(Boolean); pending.forEach(fn => fn()); },
     longPress: () => { const t = timers.filter(x => x.fn).pop(); t.fn(); t.fn = null; },
   };
 }
@@ -134,7 +139,8 @@ check('after the long press the drag blocks page scroll, and ends on drop', () =
   assert(env.slotClasses.has('dragging'), 'drag started');
   const e = env.move(140, 220);
   assert.equal(e.prevented, true, 'touchmove during an active drag must preventDefault');
-  assert.equal(env.ghost.style.left, '152px');
+  env.flushFrames();
+  assert.equal(env.ghost.style.transform, 'translate(152px, 210px)', 'the ghost follows the finger (by transform, applied on the next frame)');
   env.end(140, 220);
   assert.equal(env.slotClasses.has('dragging'), false);
   assert.equal(env.move(140, 300).prevented, false, 'after the drop, scrolling is free again');
@@ -154,6 +160,23 @@ check('touchcancel during the press cancels it', () => {
   env.start();
   env.cancel();
   assert.equal(env.move(100, 300).prevented, false);
+});
+
+check('during a drag, drop-target lookups run once per frame from the newest finger position', () => {
+  const env = makeEnv();
+  env.start();
+  env.longPress();
+  env.flushFrames(); // anything queued by the press itself
+  const before = env.lookups.count;
+  for (let i = 0; i < 10; i++) env.move(120 + i, 200 + i);
+  assert.equal(env.lookups.count, before, 'touchmove no longer looks up the target synchronously');
+  env.flushFrames();
+  assert.equal(env.lookups.count, before + 1, 'one lookup for ten moves');
+  env.move(130, 210);
+  env.end(130, 210); // the drop does its own lookup; the queued highlight is dropped
+  const afterDrop = env.lookups.count;
+  env.flushFrames();
+  assert.equal(env.lookups.count, afterDrop, 'no highlight work after the drag ended');
 });
 
 console.log(`

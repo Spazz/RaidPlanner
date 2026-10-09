@@ -1804,6 +1804,10 @@ function computeAttendance(savedRosters) {
 // Preferred-slot requests are cleared for the comparison runs only (they
 // would otherwise make every mode look identical) and restored afterward.
 function compareOptimizerModes() {
+  return devMeasure('pp:compare', computeOptimizerModeComparison);
+}
+
+function computeOptimizerModeComparison() {
   if (!GameVersions[State.gameVersion].modeled) return null;
   if (!(State.groups || []).some(g => g.length) && !(State.bench || []).length) return null;
 

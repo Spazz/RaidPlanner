@@ -1214,7 +1214,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 
 /* ── Drag ghost ── */
 .drag-ghost {
-  position: fixed; pointer-events: none; z-index: 1000;
+  position: fixed; left: 0; top: 0; will-change: transform; pointer-events: none; z-index: 1000;
   background: color-mix(in srgb, var(--accent-gold) 15%, transparent);
   border: 1px solid var(--accent-gold);
   padding: var(--sp-1) var(--sp-3);

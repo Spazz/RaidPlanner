@@ -68,6 +68,7 @@
 !shortcuts-tests.js
 !head-tests.js
 !deploy-tests.js
+!perf-tests.js
 !README.md
 !changelog-tests.js
 !.vercelignore

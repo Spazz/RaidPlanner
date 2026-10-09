@@ -1657,6 +1657,7 @@ function renderIdealComp() {
   else if (numGroups === 4 || numGroups === 8) container.classList.add('groups-' + numGroups);
 
   const coveredBuffIds = new Set();
+  const cards = [];
 
   for (let gi = 0; gi < numGroups; gi++) {
     const players = groups[gi] || [];
@@ -1698,7 +1699,7 @@ function renderIdealComp() {
       }
     }
 
-    container.innerHTML += `<div class="group-card" role="listitem" data-group="${gi}">
+    cards.push(`<div class="group-card" role="listitem" data-group="${gi}">
       <div class="group-header">
         <h3>Group ${gi+1}</h3>
         <div class="group-header-tags">
@@ -1707,8 +1708,9 @@ function renderIdealComp() {
       </div>
       <div class="player-list">${slotsHTML}</div>
       <div class="buff-bar">${buffsHTML}</div>
-    </div>`;
+    </div>`);
   }
+  container.innerHTML = cards.join('');
 
   const coveredDebuffIds = getRaidDebuffCoverage(groups);
   renderBuffCatalog(coveredBuffIds, coveredDebuffIds);

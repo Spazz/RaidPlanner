@@ -629,6 +629,7 @@ function renderGroups() {
   else if (numGroups === 4 || numGroups === 8) container.classList.add('groups-' + numGroups);
 
   const coveredBuffIds = new Set();
+  const cards = [];
 
   for (let gi = 0; gi < numGroups; gi++) {
     const players = State.groups[gi] || [];
@@ -685,7 +686,7 @@ function renderGroups() {
       }
     }
 
-    container.innerHTML += `<div class="group-card" role="listitem" data-group="${gi}">
+    cards.push(`<div class="group-card" role="listitem" data-group="${gi}">
       <div class="group-header">
         <h3>Group ${gi+1}</h3>
         <div class="group-header-tags">
@@ -694,8 +695,9 @@ function renderGroups() {
       </div>
       <div class="player-list">${slotsHTML}</div>
       <div class="buff-bar">${buffsHTML}</div>
-    </div>`;
+    </div>`);
   }
+  container.innerHTML = cards.join('');
 
   const coveredDebuffIds = getRaidDebuffCoverage(State.groups);
   renderBuffCatalog(coveredBuffIds, coveredDebuffIds);
@@ -1014,6 +1016,32 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
   return true;
 }
 
+// The drag ghost follows the pointer through a transform (left/top would re-layout on every
+// move) and at most one move is applied per animation frame.
+const DragGhost = {
+  x: 0, y: 0, frame: 0,
+  move(x, y) {
+    this.x = x;
+    this.y = y;
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => { this.frame = 0; this.place(); });
+  },
+  place() {
+    document.getElementById('drag-ghost').style.transform = `translate(${this.x + 12}px, ${this.y - 10}px)`;
+  },
+  // Show it already under the pointer, not where the last drag left it.
+  start(x, y) {
+    this.stop();
+    this.x = x;
+    this.y = y;
+    this.place();
+  },
+  stop() {
+    if (this.frame) cancelAnimationFrame(this.frame);
+    this.frame = 0;
+  },
+};
+
 (function initDragDrop() {
   const container = document.getElementById('groups-container');
   const ghost = document.getElementById('drag-ghost');
@@ -1033,14 +1061,12 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
       ghost.textContent = p.name.split('-')[0];
       ghost.style.color = Config.ClassColors[p.class] || 'var(--text-primary)';
       ghost.style.display = 'block';
+      DragGhost.start(e.clientX, e.clientY);
     }
   });
 
   container.addEventListener('drag', e => {
-    if (e.clientX > 0) {
-      ghost.style.left = (e.clientX + 12) + 'px';
-      ghost.style.top = (e.clientY - 10) + 'px';
-    }
+    if (e.clientX > 0) DragGhost.move(e.clientX, e.clientY);
   });
 
   container.addEventListener('dragend', e => {
@@ -1177,19 +1203,24 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     autoScrollFrame = requestAnimationFrame(autoScrollStep);
   }
 
-  function beginDrag(src, slot) {
+  function beginDrag(src, slot, x, y) {
     pending = null;
     active = { ...src, el: slot };
     slot.classList.add('dragging');
     ghost.textContent = src.player.name.split('-')[0];
     ghost.style.color = Config.ClassColors[src.player.class] || 'var(--text-primary)';
     ghost.style.display = 'block';
+    DragGhost.start(x, y);
     if (navigator.vibrate) navigator.vibrate(12);
   }
 
   function endDrag() {
     if (active && active.el) active.el.classList.remove('dragging');
     ghost.style.display = 'none';
+    if (highlightFrame) cancelAnimationFrame(highlightFrame);
+    highlightFrame = 0;
+    highlighted = null;
+    DragGhost.stop();
     clearHighlights();
     stopAutoScroll();
     active = null;
@@ -1204,7 +1235,24 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     return null;
   }
 
+  // elementFromPoint and the highlight classes are applied once per frame, from the
+  // newest finger position, however many touchmoves arrived since.
+  let highlightFrame = 0;
+  let highlightPoint = null;
+  function queueHighlight(x, y) {
+    highlightPoint = { x, y };
+    if (highlightFrame) return;
+    highlightFrame = requestAnimationFrame(() => {
+      highlightFrame = 0;
+      if (active && highlightPoint) highlight(targetAt(highlightPoint.x, highlightPoint.y));
+    });
+  }
+
+  let highlighted = null; // the element currently carrying the drop highlight
   function highlight(target) {
+    const el = target ? target.el : null;
+    if (el === highlighted) return;
+    highlighted = el;
     clearHighlights();
     if (!target) return;
     if (target.kind === 'slot') {
@@ -1249,7 +1297,7 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     cancelPending();
     pending = {
       x: t.clientX, y: t.clientY,
-      timer: setTimeout(() => beginDrag(src, slot), LONG_PRESS_MS),
+      timer: setTimeout(() => beginDrag(src, slot, t.clientX, t.clientY), LONG_PRESS_MS),
     };
   }, { passive: true });
 
@@ -1262,9 +1310,8 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     if (!active) return;
     e.preventDefault();
     const t = e.touches[0];
-    ghost.style.left = (t.clientX + 12) + 'px';
-    ghost.style.top = (t.clientY - 10) + 'px';
-    highlight(targetAt(t.clientX, t.clientY));
+    DragGhost.move(t.clientX, t.clientY);
+    queueHighlight(t.clientX, t.clientY);
 
     const h = window.innerHeight;
     const dir = t.clientY < EDGE_ZONE ? -1 : (t.clientY > h - EDGE_ZONE ? 1 : 0);

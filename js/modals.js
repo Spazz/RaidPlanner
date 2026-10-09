@@ -26,13 +26,11 @@
     ghost.textContent = p.name.split('-')[0];
     ghost.style.color = Config.ClassColors[p.class] || 'var(--text-primary)';
     ghost.style.display = 'block';
+    DragGhost.start(e.clientX, e.clientY);
   });
 
   section.addEventListener('drag', e => {
-    if (e.clientX > 0) {
-      ghost.style.left = (e.clientX + 12) + 'px';
-      ghost.style.top = (e.clientY - 10) + 'px';
-    }
+    if (e.clientX > 0) DragGhost.move(e.clientX, e.clientY);
   });
 
   section.addEventListener('dragend', e => {
