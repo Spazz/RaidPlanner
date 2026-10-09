@@ -444,6 +444,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   background: var(--bg-deepest); border: 1px solid var(--border-strong);
   box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 60;
   padding: 6px 0;
+  /* Menu.position() caps max-height to the room beside the trigger; a taller menu scrolls. */
+  overflow-y: auto; overscroll-behavior: contain;
 }
 .menu[hidden] { display: none; }
 .menu-heading {

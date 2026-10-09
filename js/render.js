@@ -1847,12 +1847,20 @@ const Menu = {
   position(trigger, menu) {
     const scale = (trigger.offsetWidth && trigger.getBoundingClientRect().width / trigger.offsetWidth) || 1;
     const rect = trigger.getBoundingClientRect();
-    menu.style.left = '0px'; menu.style.top = '0px';
+    menu.style.left = '0px'; menu.style.top = '0px'; menu.style.maxHeight = '';
     const menuRect = menu.getBoundingClientRect();
     let left = rect.left;
     if (left + menuRect.width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - menuRect.width - 8);
-    let top = rect.bottom + 4;
-    if (top + menuRect.height > window.innerHeight - 8) top = Math.max(8, rect.top - menuRect.height - 4);
+    // Open below the trigger, or above it when that side has more room; never over
+    // the trigger itself. A menu taller than its side scrolls (max-height is in the
+    // menu's own CSS px, so the frame's zoom scale is divided out).
+    const below = window.innerHeight - rect.bottom - 4 - 8;
+    const above = rect.top - 4 - 8;
+    const openBelow = menuRect.height <= below || below >= above;
+    const room = Math.max(0, openBelow ? below : above);
+    const height = Math.min(menuRect.height, room);
+    if (menuRect.height > room) menu.style.maxHeight = (room / scale) + 'px';
+    const top = openBelow ? rect.bottom + 4 : rect.top - 4 - height;
     menu.style.left = (left / scale) + 'px';
     menu.style.top = (top / scale) + 'px';
   },
