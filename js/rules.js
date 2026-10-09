@@ -741,13 +741,16 @@ function raidSizesFor(version, currentRaid) {
   return [...sizes].sort((a, b) => a - b);
 }
 // The raid a size pick lands on: the current raid when it already has that
-// size, else the version's first raid of that size in catalog order (real
-// raids come before the planning templates), or null when there is none.
+// size, else the version's default raid when it has that size (so BT -> 10 ->
+// 25 comes back to Black Temple), else the version's first real raid of that
+// size in catalog order (planning templates left out), or null when there is none.
 function raidForSize(version, size, currentRaid) {
   const profile = GameVersions[version];
   if (!profile) return null;
-  if (profile.raids.includes(currentRaid) && Config.Raids[currentRaid] && Config.Raids[currentRaid].size === size) return currentRaid;
-  return profile.raids.find(key => Config.Raids[key] && Config.Raids[key].size === size) || null;
+  const hasSize = key => profile.raids.includes(key) && !!Config.Raids[key] && Config.Raids[key].size === size;
+  if (hasSize(currentRaid)) return currentRaid;
+  if (hasSize(profile.defaultRaid)) return profile.defaultRaid;
+  return profile.raids.find(key => hasSize(key) && Config.Raids[key].tier !== 'Planning templates') || null;
 }
 
 // TBC baseline aliases — plain bindings for code (and tests) that always want

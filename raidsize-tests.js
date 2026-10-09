@@ -7,7 +7,8 @@
  *   - raidSizesFor() derives each version's sizes from its raid catalog
  *     (TBC 10|25, Classic 20|40, Forever 10|20|40; planning templates left out)
  *   - picking a size keeps a current raid of that size, else moves to the
- *     version's first raid of that size (raidForSize / selectRaidSize)
+ *     version's default raid when it has that size, else its first real raid
+ *     of that size (raidForSize / selectRaidSize)
  *   - an old saved plan on a specific raid (SSC) loads with 25 selected
  *   - Optimize only runs Max DPS: an old plan's other strategy is forced to max_dps
  *   - the Assignments view is unreachable while ASSIGNMENTS_TAB_ENABLED is false
@@ -80,13 +81,21 @@ check('the control renders the active version\'s sizes with the current raid\'s 
 });
 
 // ── (b) picking a size ──────────────────────────────────────────────
-check('picking a size moves to the version\'s first raid of that size', () => {
-  assert.equal(raidForSize('tbc', 10, 'bt'), 'kara');
-  assert.equal(raidForSize('tbc', 25, 'kara'), 'gruul');
+check('picking a size prefers the version\'s default raid, else its first real raid of that size', () => {
+  assert.equal(raidForSize('tbc', 10, 'bt'), 'kara', 'BT is 25-man, so 10 takes the first real 10-man raid');
+  assert.equal(raidForSize('tbc', 25, 'kara'), 'bt', 'the TBC default (Black Temple) is 25-man');
   assert.equal(raidForSize('classic', 20, 'mc'), 'zg');
   assert.equal(raidForSize('classic', 40, 'zg'), 'mc');
   assert.equal(raidForSize('forever', 20, 'f_ony'), 'f_hyjal');
+  assert.equal(raidForSize('forever', 10, 'f_ony'), 'f_barrow');
   assert.equal(raidForSize('tbc', 40, 'bt'), null, 'TBC has no 40-man raid');
+  assert.equal(raidForSize('classic', 10, 'mc'), null, 'Classic has no real 10-man raid; the classic10 template is never picked');
+});
+
+check('BT -> 10 -> 25 lands back on Black Temple', () => {
+  const ten = raidForSize('tbc', 10, 'bt');
+  assert.equal(ten, 'kara');
+  assert.equal(raidForSize('tbc', 25, ten), 'bt');
 });
 
 check('picking the current raid\'s size keeps that raid', () => {
@@ -106,7 +115,7 @@ check('selectRaidSize refits the board and re-syncs the control; same size is a 
   assert.equal(log.inits, 1); assert.equal(log.commits, 1);
   assert.deepEqual(pressed(), [10]);
   selectRaidSize(25);
-  assert.equal(State.selectedRaid, 'gruul', 'back to 25 lands on the first 25-man raid');
+  assert.equal(State.selectedRaid, 'bt', 'back to 25 lands on the TBC default raid');
   assert.deepEqual(pressed(), [25]);
 });
 
