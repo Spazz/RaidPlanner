@@ -61,7 +61,7 @@ check('The CSP carries the expected directives', () => {
   assert.deepEqual(policy['script-src'], ["'self'"]);
   assert.deepEqual(policy['style-src'], ["'self'", 'https://fonts.googleapis.com']);
   assert.deepEqual(policy['font-src'], ['https://fonts.gstatic.com']);
-  assert.deepEqual(policy['img-src'], ["'self'", 'data:', 'https://wow.zamimg.com']);
+  assert.deepEqual(policy['img-src'], ["'self'", 'data:']);
   assert.deepEqual(policy['object-src'], ["'none'"]);
   assert.deepEqual(policy['base-uri'], ["'self'"]);
   assert.deepEqual(policy['frame-ancestors'], ["'none'"]);
