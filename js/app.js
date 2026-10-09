@@ -272,8 +272,7 @@ function syncRaidNotesToggle() {
 
 // ── RESPONSIVE CHROME ─────────────────────────────────────────────
 // Phone width hides the desktop header and action row: Undo, Optimize and Share
-// go to a fixed bottom bar, the Raid size control and the missing-buffs link to
-// line 2 of the context row, the plan name to its Edit body, and the gear menu's
+// go to a fixed bottom bar, the Raid size control to line 2 of the context row, the plan name to its Edit body, and the gear menu's
 // three sections to the More sheet. Rather than duplicating every action as a
 // second button — which drifts out of sync — the SAME element physically moves
 // between its desktop slot and its phone slot. A comment node left at each
@@ -281,7 +280,7 @@ function syncRaidNotesToggle() {
 // viewport widens again. Slots fill in list order.
 (function initResponsiveChrome() {
   const slots = ['btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
-    'raid-size-wrap:raid-size-phone-slot', 'btn-summary-missing:phone-missing-slot', 'roster-name:phone-plan-name-slot',
+    'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot',
     'btn-redo:phone-sheet-quick-slot',
     'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
     'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',

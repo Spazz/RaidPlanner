@@ -234,7 +234,7 @@
     </div>
   </div>
 
-  <!-- Action row: Optimize · Undo · Redo · Raid size · ideal comp · notes · missing buffs. -->
+  <!-- Action row: Optimize · Undo · Redo · Raid size · ideal comp · notes. -->
   <div class="toolbar">
     <button class="btn btn-primary plan-only" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)"><span class="btn-label">Optimize</span></button>
     <button type="button" class="btn btn-secondary btn-icon plan-only" id="btn-undo" disabled aria-label="Undo" title="Undo (Ctrl+Z)">
@@ -260,10 +260,9 @@
       Back to plan
     </button>
     <button type="button" class="raid-notes-toggle plan-only" id="btn-raid-notes-toggle" aria-expanded="false" aria-controls="raid-notes-panel"><span class="raid-notes-chevron" id="raid-notes-chevron" aria-hidden="true">&#9656;</span> Raid notes <span id="raid-notes-toggle-badge" class="raid-notes-badge" hidden>&#9679;</span></button>
-    <button type="button" class="summary-missing plan-only" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" title="Show coverage details" hidden></button>
   </div>
 
-  <!-- Phone context row: line 1 plan name (+ Edit), line 2 seated count · Raid size · missing. -->
+  <!-- Phone context row: line 1 plan name (+ Edit), line 2 seated count · Raid size · readiness link. -->
   <div class="phone-context-panel" id="phone-context-panel">
     <div class="phone-summary-wrap" id="phone-summary-wrap">
       <button type="button" class="phone-summary" id="phone-summary-toggle" aria-expanded="false" aria-controls="phone-context-body">
@@ -273,7 +272,7 @@
       <div class="phone-summary-line2">
         <span class="phone-summary-sub" id="phone-summary-sub"></span>
         <div id="raid-size-phone-slot"></div>
-        <div class="phone-missing-slot" id="phone-missing-slot"></div>
+        <div class="phone-missing-slot"><button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" title="Show coverage details" hidden></button></div>
       </div>
     </div>
     <div class="phone-context-body" id="phone-context-body" hidden>

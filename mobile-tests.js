@@ -58,11 +58,11 @@ check('phone summary has the two text lines and an Edit control', () => {
 
 check('every phone control is in the context row: line 2 slots, the Edit body, the notes slot', () => {
   const panel = between(html, 'id="phone-context-panel"', '<!-- These raw export formats');
-  for (const id of ['phone-plan-name-slot', 'raid-size-phone-slot', 'phone-missing-slot', 'btn-ideal-comp-link-phone', 'phone-context-notes-slot']) {
+  for (const id of ['phone-plan-name-slot', 'raid-size-phone-slot', 'btn-summary-missing', 'btn-ideal-comp-link-phone', 'phone-context-notes-slot']) {
     assert.ok(panel.includes(`id="${id}"`), `${id} missing from the context panel`);
   }
   const line2 = between(panel, 'class="phone-summary-line2"', 'id="phone-context-body"');
-  assert.ok(line2.includes('id="raid-size-phone-slot"') && line2.includes('id="phone-missing-slot"'), 'size control and missing link sit on line 2');
+  assert.ok(line2.includes('id="raid-size-phone-slot"') && line2.includes('id="btn-summary-missing"'), 'size control and readiness link sit on line 2');
   const body = between(panel, 'id="phone-context-body"', 'id="phone-context-notes-slot"');
   assert.ok(body.includes('id="phone-plan-name-slot"'), 'the rename button moves into the Edit body');
   assert.ok(!html.includes('phone-strategy-seg'), 'the optimizer strategy control is gone (Optimize always runs Max DPS)');
@@ -70,7 +70,7 @@ check('every phone control is in the context row: line 2 slots, the Edit body, t
   for (const id of ['raid-notes-panel', 'raid-notes-textarea', 'readiness-text', 'summary-bar', 'plan-feedback']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
-  for (const pair of ['raid-notes-panel:phone-context-notes-slot', 'raid-size-wrap:raid-size-phone-slot', 'btn-summary-missing:phone-missing-slot', 'roster-name:phone-plan-name-slot']) {
+  for (const pair of ['raid-notes-panel:phone-context-notes-slot', 'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot']) {
     assert.ok(appJs.includes(`'${pair}'`), `${pair} relocation on phones`);
   }
 });
@@ -101,15 +101,18 @@ check('toggling the summary flips aria-expanded, hidden and the label, and remem
 
 const phoneCssAll = () => { const c = css.slice(css.lastIndexOf('/* ── Slim phone layout')); return c.slice(c.indexOf('@media (max-width: 600px)')); };
 
-// ── Phone missing-buffs link (replaces the old 34px summary line) ──
+// ── Phone readiness link (replaces the old 34px summary line) ──
 
-function renderPhone(missing, { notes = '', seated = 25, size = 25 } = {}) {
+// `readiness` is a missing-party-buff count, a full {missingBuffs, tanksShort,
+// healersShort, mixedFactions} object, or null (nothing loaded / not modeled).
+function renderPhone(readiness, { notes = '', seated = 25, size = 25 } = {}) {
   const els = {};
   const node = id => els[id] || (els[id] = { id, textContent: '', innerHTML: '', hidden: false, attrs: {}, listeners: {},
     classList: { toggle(c, on) { this.on = on; } }, setAttribute(k, v) { this.attrs[k] = v; },
     addEventListener(t, fn) { this.listeners[t] = fn; } });
-  const src = 'let lastMissingCoverageCount = ' + JSON.stringify(missing) + ';\n' +
-    between(renderJs, 'let phoneFeedbackOpen', 'function renderSummaryBar') +
+  const value = typeof readiness === 'number'
+    ? { missingBuffs: readiness, tanksShort: 0, healersShort: 0, mixedFactions: false } : readiness;
+  const src = between(renderJs, 'let lastReadiness', 'function renderSummaryBar') +
     between(read('js/modals.js'), 'function renderPhoneSummary', 'function undoPlanChange');
   const ctx = vm.createContext({
     document: { getElementById: node },
@@ -117,7 +120,7 @@ function renderPhone(missing, { notes = '', seated = 25, size = 25 } = {}) {
     Config: { Raids: { x: { name: 'Karazhan', size } } },
     setSidebarExpanded() {},
   });
-  vm.runInContext(src + '\nrenderPhoneSummary(); renderPhoneMissing();', ctx);
+  vm.runInContext(src + `\nlastReadiness = ${JSON.stringify(value)};\nrenderPhoneSummary(); renderPhoneMissing();`, ctx);
   return { els, ctx };
 }
 
@@ -129,8 +132,10 @@ check('the 34px phone summary line (counts, role letters) is gone from the summa
   assert.doesNotMatch(css, /height: 34px; padding: 0 12px/);
 });
 
-check('missing link is a real button outside the Edit toggle, with the count in warning colour', () => {
-  assert.match(html, /<button type="button" class="summary-missing plan-only" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" title="Show coverage details" hidden><\/button>/);
+check('readiness link is a real phone-only button outside the Edit toggle, with the count in warning colour', () => {
+  const line2 = between(html, 'class="phone-summary-line2"', 'id="phone-context-body"');
+  assert.match(line2, /<button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" title="Show coverage details" hidden><\/button>/);
+  assert.doesNotMatch(between(html, '<div class="toolbar">', '<div class="phone-context-panel"'), /btn-summary-missing/, 'desktop shows the strip itself, not the link');
   const toggle = html.match(/<button[^>]*id="phone-summary-toggle"[\s\S]*?<\/button>/)[0];
   const inner = toggle.slice(toggle.indexOf('>') + 1);
   assert.doesNotMatch(inner, /btn-summary-missing|raid-size|<button|<select|<input/, 'nothing interactive is nested inside the toggle button');
@@ -142,21 +147,43 @@ check('missing link is a real button outside the Edit toggle, with the count in 
   assert.match(phoneCssAll(), /\.phone-missing-slot \.summary-missing \{[^}]*font-size: 12px/);
 });
 
+check('the link counts what the strip says: missing party buffs, from renderReadiness', () => {
+  const readiness = between(read('js/modals.js'), 'function renderReadiness', '// ── RAID NOTES');
+  assert.match(readiness, /\$\{missing\} missing party buffs/);
+  assert.match(readiness, /lastReadiness = \{ missingBuffs: missing,/);
+  assert.doesNotMatch(renderJs, /lastMissingCoverageCount/, 'the buffs + debuffs total no longer feeds the link');
+});
+
+check('with no missing buffs the link names the roster warning instead', () => {
+  const label = r => renderPhone({ missingBuffs: 0, tanksShort: 0, healersShort: 0, mixedFactions: false, ...r }).els['btn-summary-missing'];
+  assert.equal(label({ healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;');
+  assert.equal(label({ tanksShort: 2, healersShort: 1 }).innerHTML, '<b>&#9888; 2 tanks short</b> &#9656;');
+  assert.equal(label({ mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
+  assert.equal(label({ missingBuffs: 3, healersShort: 1 }).innerHTML, '<b>3</b> missing &#9656;', 'buffs first; the strip lists the rest');
+  assert.equal(label({}).hidden, true);
+});
+
+check('desktop always shows the readiness strip; only phones fold it', () => {
+  assert.match(css, /\.plan-feedback \{ display:flex;/);
+  assert.doesNotMatch(css.slice(0, css.lastIndexOf('/* ── Slim phone layout')), /\.plan-feedback\.feedback-open/);
+  assert.match(phoneCssAll(), /\.plan-feedback \{ display: none;/);
+});
+
 check('line 1 is the plan name; line 2 carries the seated count and notes marker', () => {
   assert.equal(renderPhone(7).els['phone-summary-main'].textContent, 'Random 25-man Roster');
   assert.equal(renderPhone(7).els['phone-summary-sub'].textContent, '25/25');
   assert.equal(renderPhone(7, { notes: 'x', seated: 20, size: 10 }).els['phone-summary-sub'].textContent, '20/10 · notes');
 });
 
-check('missing link is hidden at zero missing and when coverage is not modeled', () => {
+check('readiness link is hidden when nothing is wrong and when coverage is not modeled', () => {
   assert.equal(renderPhone(0).els['btn-summary-missing'].hidden, true);
   assert.equal(renderPhone(null).els['btn-summary-missing'].hidden, true);
   assert.equal(renderPhone(1).els['btn-summary-missing'].innerHTML, '<b>1</b> missing &#9656;');
 });
 
-check('feedback closes when the missing count drops to zero', () => {
+check('feedback closes when the last warning goes away', () => {
   const { els, ctx } = renderPhone(7);
-  vm.runInContext('setPhoneFeedbackOpen(true); lastMissingCoverageCount = 0; renderPhoneMissing();', ctx);
+  vm.runInContext('setPhoneFeedbackOpen(true); lastReadiness = { missingBuffs: 0, tanksShort: 0, healersShort: 0, mixedFactions: false }; renderPhoneMissing();', ctx);
   assert.equal(vm.runInContext('phoneFeedbackOpen', ctx), false);
   assert.equal(els['plan-feedback'].classList.on, false);
 });

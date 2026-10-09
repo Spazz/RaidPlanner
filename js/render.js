@@ -743,19 +743,15 @@ function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
 }
 
 // Collapsed-state strip: "Buffs 13/20 · Debuffs 18/28 · 17 missing".
-let lastMissingCoverageCount = null; // null = coverage rules not configured; feeds the phone missing-buffs link
 function renderSidebarSummary(buffs, debuffs) {
   const el = document.getElementById('sidebar-summary');
   if (!el) return;
-  lastMissingCoverageCount = null;
-  if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p class="sidebar-note">Coverage rules are not configured for this version yet.</p>'; renderPhoneMissing(); return; }
+  if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p class="sidebar-note">Coverage rules are not configured for this version yet.</p>'; return; }
   const missing = (buffs.total - buffs.covered) + (debuffs.total - debuffs.covered);
-  lastMissingCoverageCount = missing;
   el.innerHTML = `
     <div class="sidebar-summary-row"><span>Buffs</span><b>${buffs.covered} / ${buffs.total}</b></div>
     <div class="sidebar-summary-row"><span>Debuffs</span><b>${debuffs.covered} / ${debuffs.total}</b></div>
     <div class="sidebar-summary-row missing${missing === 0 ? ' zero' : ''}"><span>Missing</span><b>${missing}</b></div>`;
-  renderPhoneMissing();
 }
 
 // One line under a missing row saying what would fix it, with the button
@@ -969,9 +965,22 @@ function announce(message) {
   region.textContent = message;
 }
 
-// The short "N missing" link (right end of the desktop action row; line 2 of the phone
-// context row) reveals the plan feedback text and opens the coverage panel. Hidden when
-// coverage rules are not configured or nothing is missing.
+// Phone: the readiness strip (#plan-feedback) is folded away and a short link on line 2
+// of the context row opens it and the coverage panel. The link says what the strip
+// warns about: "N missing" for missing party buffs (the same count the strip names),
+// else the first roster warning ("⚠ 1 healer short"). Hidden when there is nothing to
+// warn about or coverage rules are not configured. Desktop always shows the strip.
+// lastReadiness is set by renderReadiness: {missingBuffs, tanksShort, healersShort, mixedFactions} or null.
+let lastReadiness = null;
+function phoneReadinessLabel(r) {
+  if (!r) return '';
+  const n = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+  if (r.missingBuffs > 0) return `<b>${r.missingBuffs}</b> missing &#9656;`;
+  if (r.tanksShort > 0) return `<b>&#9888; ${n(r.tanksShort, 'tank')} short</b> &#9656;`;
+  if (r.healersShort > 0) return `<b>&#9888; ${n(r.healersShort, 'healer')} short</b> &#9656;`;
+  if (r.mixedFactions) return '<b>&#9888; Mixed factions</b> &#9656;';
+  return '';
+}
 let phoneFeedbackOpen = false;
 function setPhoneFeedbackOpen(open) {
   phoneFeedbackOpen = open;
@@ -983,13 +992,13 @@ function setPhoneFeedbackOpen(open) {
 function renderPhoneMissing() {
   const btn = document.getElementById('btn-summary-missing');
   if (!btn) return;
-  const n = lastMissingCoverageCount;
-  const show = n !== null && n > 0;
+  const label = phoneReadinessLabel(lastReadiness);
+  const show = !!label;
   btn.hidden = !show;
   // With the link gone nothing could close the feedback strip.
   if (!show && phoneFeedbackOpen) setPhoneFeedbackOpen(false);
   btn.setAttribute('aria-expanded', String(phoneFeedbackOpen));
-  if (show) btn.innerHTML = `<b>${n}</b> missing &#9656;`;
+  if (show) btn.innerHTML = label;
 }
 (function initSummaryMissing() {
   const btn = document.getElementById('btn-summary-missing');

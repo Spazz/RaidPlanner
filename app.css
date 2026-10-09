@@ -379,9 +379,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .ideal-comp-link svg, .back-to-plan-link svg { flex-shrink: 0; }
 .raid-notes-toggle { margin-left: var(--sp-2); }
 .raid-notes-chevron { font-size: 10px; }
-/* Short readiness link: "N missing" at the right end of the action row (and on phone line 2). */
+/* Phone readiness link on line 2 of the context row ("N missing", "⚠ 1 healer short"). */
 .summary-missing {
-  display: block; margin-left: auto; padding: 0; background: none; border: 0; cursor: pointer;
+  display: block; padding: 0; background: none; border: 0; cursor: pointer;
   font-family: var(--font-body); font-size: 12px; color: var(--text-muted); white-space: nowrap;
 }
 .summary-missing[hidden] { display: none; }
@@ -1346,9 +1346,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .manual-changes-section .change-remove { padding: 4px 8px; }
   .faq summary { padding-top: 14px; padding-bottom: 14px; }
 }
-/* Plan-mode chrome: feedback strip + raid notes. The feedback strip opens from the "N missing" link. */
-.plan-feedback { display:none; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:10px 16px; font-size:12px; border-bottom:1px solid var(--border-medium); }
-.plan-feedback.feedback-open { display:flex; }
+/* Plan-mode chrome: readiness strip + raid notes. Always shown on desktop; phones fold it
+   behind the readiness link on the context row (see the slim phone block). */
+.plan-feedback { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:10px 16px; font-size:12px; border-bottom:1px solid var(--border-medium); }
 #autosave-status { color:var(--text-muted); }
 #autosave-status[data-failed], .roster-status-line[data-failed] { color:var(--warning); }
 /* Desktop shows the save state beside the plan name (#roster-status-line); phones keep this line. */

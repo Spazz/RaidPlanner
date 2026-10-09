@@ -286,8 +286,10 @@ function redoPlanChange() {
 }
 
 function renderReadiness() {
+  lastReadiness = null;
   if (!GameVersions[State.gameVersion].modeled) {
     document.getElementById('readiness-text').textContent = `${GameVersions[State.gameVersion].name} · Manual planning · Buff and optimizer rules pending`;
+    renderPhoneMissing();
     return;
   }
   const floors = Optimizer.floorsFor(Config.Raids[State.selectedRaid]?.size || 25);
@@ -300,8 +302,13 @@ function renderReadiness() {
   // same real raid. A roster that has both is a data problem worth calling
   // out, not something the optimizer should silently paper over.
   const rules = activeRules();
-  const factionWarning = (rules.rules && rules.rules.factionLock && Faction.current() === 'mixed')
-    ? ' · Mixed Horde/Alliance roster — impossible in Classic Era' : '';
+  const mixedFactions = !!(rules.rules && rules.rules.factionLock && Faction.current() === 'mixed');
+  const factionWarning = mixedFactions ? ' · Mixed Horde/Alliance roster — impossible in Classic Era' : '';
+  // The phone link names the same things the strip warns about (see phoneReadinessLabel).
+  if (hasLoadedWork()) {
+    lastReadiness = { missingBuffs: missing, tanksShort: Math.max(0, floors.tank - tanks), healersShort: Math.max(0, floors.healer - healers), mixedFactions };
+  }
+  renderPhoneMissing();
   document.getElementById('readiness-text').textContent = hasLoadedWork()
     ? `${tankText} · ${healerText} · ${missing} missing party buffs${State.preferredSlots.length ? ` · ${State.preferredSlots.length} preferred slot${State.preferredSlots.length === 1 ? '' : 's'} open` : ''}${factionWarning}`
     : 'Import a roster, or click an empty slot to request a class and spec';
