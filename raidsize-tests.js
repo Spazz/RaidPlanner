@@ -10,6 +10,8 @@
  *     version's default raid when it has that size, else its first real raid
  *     of that size (raidForSize / selectRaidSize)
  *   - an old saved plan on a specific raid (SSC) loads with 25 selected
+ *   - comp templates match by game version + raid SIZE, not raid key (a template
+ *     saved on SSC shows on a Black Temple plan; old stored templates still work)
  *   - Optimize only runs Max DPS: an old plan's other strategy is forced to max_dps
  *   - the Assignments view is unreachable while ASSIGNMENTS_TAB_ENABLED is false
  */
@@ -173,6 +175,75 @@ check('raidSizeLabel and auto plan names use the size, not the raid name', () =>
   const name = PlanStore.nameFor({}, '123');
   assert.match(name, /^25-man · Event 123 · /);
   assert.doesNotMatch(name, /Serpentshrine/);
+});
+
+// ── Comp templates match by raid size, not raid key ──────────────────
+const tplCtx = app.sandbox(['State', 'Templates', 'nextUid']);
+const T = tplCtx.api;
+function memStorage(seed) {
+  const data = { ...seed };
+  return { getItem: k => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = v; }, data };
+}
+function seatTen(raid) {
+  T.State.gameVersion = 'tbc'; T.State.selectedRaid = raid;
+  const classes = [['WARRIOR', 'Protection', 'tank'], ['PRIEST', 'Holy', 'healer'], ['MAGE', 'Fire', 'caster_dps'], ['ROGUE', 'Combat', 'melee_dps'], ['HUNTER', 'Beast Mastery', 'ranged_dps']];
+  const players = Array.from({ length: 10 }, (_, i) => {
+    const [cls, spec, role] = classes[i % 5];
+    return { uid: T.nextUid(), name: 'P' + i, class: cls, spec, role, groupNumber: (i % 5) + 1 };
+  });
+  T.State.groups = [[], [], [], [], []];
+  players.forEach((p, i) => T.State.groups[i % 5].push(p));
+  T.State.roster = T.State.groups.flat();
+  T.State.bench = [];
+}
+
+check('a template saved on SSC lists and applies on a Black Temple plan (same size)', () => {
+  const storage = memStorage();
+  seatTen('ssc');
+  assert(T.Templates.save(storage, 'SSC night', 'tbc', 'ssc').success);
+  assert.deepEqual(plain(T.Templates.list(storage, 'tbc', 'bt').map(t => t.name)), ['SSC night']);
+  assert(T.Templates.get(storage, 'SSC night', 'tbc', 'bt'), 'get finds it from a BT plan');
+  seatTen('bt');
+  const result = T.Templates.applyToState(storage, 'SSC night', 'tbc', 'bt');
+  assert(result.success, result.error);
+  assert.equal(result.matched, 10);
+});
+
+check('templates stay scoped by size and version: a 25-man template is not offered to 10-man or Classic plans', () => {
+  const storage = memStorage();
+  seatTen('bt');
+  T.Templates.save(storage, 'BT comp', 'tbc', 'bt');
+  assert.equal(T.Templates.list(storage, 'tbc', 'kara').length, 0);
+  assert.equal(T.Templates.list(storage, 'classic', 'mc').length, 0);
+  assert.equal(T.Templates.get(storage, 'BT comp', 'tbc', 'za'), null);
+});
+
+check('old stored templates (keyed by raid) keep working across raids of the same size', () => {
+  const players = { p0: { name: 'P0', group: 0, role: 'tank' } };
+  const storage = memStorage({ [T.Templates.key]: JSON.stringify({ tbc: { hyjal: { Old: { savedAt: 5, players } }, kara: { Small: { savedAt: 6, players } } } }) });
+  assert.deepEqual(plain(T.Templates.list(storage, 'tbc', 'bt').map(t => t.name)), ['Old']);
+  assert.deepEqual(plain(T.Templates.list(storage, 'tbc', 'za').map(t => t.name)), ['Small']);
+  assert(T.Templates.delete(storage, 'Old', 'tbc', 'swp').success);
+  assert.equal(T.Templates.list(storage, 'tbc', 'hyjal').length, 0, 'deleting from a same-size plan removes the stored copy');
+});
+
+check('one name per size: duplicates in old data list once (newest), saving or deleting covers every copy', () => {
+  const older = { savedAt: 1, players: { a: { name: 'A', group: 0, role: 'tank' } } };
+  const newer = { savedAt: 9, players: { a: { name: 'A', group: 0, role: 'tank' }, b: { name: 'B', group: 1, role: 'healer' } } };
+  const storage = memStorage({ [T.Templates.key]: JSON.stringify({ tbc: { ssc: { Friday: older }, tk: { Friday: newer } } }) });
+  const list = T.Templates.list(storage, 'tbc', 'bt');
+  assert.equal(list.length, 1);
+  assert.equal(list[0].count, 2, 'the newest copy wins');
+  assert.equal(T.Templates.get(storage, 'Friday', 'tbc', 'bt').savedAt, 9);
+  assert.equal(T.Templates.rename(storage, 'Friday', 'Thursday', 'tbc', 'bt').success, true);
+  assert.deepEqual(plain(T.Templates.list(storage, 'tbc', 'bt').map(t => t.name)), ['Thursday'], 'rename leaves no older copy behind');
+  seatTen('bt');
+  T.Templates.save(storage, 'Thursday', 'tbc', 'bt');
+  const stored = JSON.parse(storage.data[T.Templates.key]).tbc;
+  assert.deepEqual(Object.keys(stored.bt), ['Thursday']);
+  assert(!stored.tk.Thursday, 'saving replaces the same-named copy on another raid of that size');
+  T.Templates.delete(storage, 'Thursday', 'tbc', 'bt');
+  assert.equal(T.Templates.list(storage, 'tbc', 'ssc').length, 0);
 });
 
 // ── (e) Assignments is unreachable ──────────────────────────────────

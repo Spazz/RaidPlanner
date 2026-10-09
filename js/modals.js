@@ -496,7 +496,7 @@ function showTemplatesModal() {
 
   let listHTML = '';
   if (!templates.length) {
-    listHTML = '<p class="modal-empty-note">No templates saved for this raid yet</p>';
+    listHTML = `<p class="modal-empty-note">No ${esc(raidLabel)} templates saved yet</p>`;
   } else {
     for (const t of templates) {
       listHTML += `<div class="saved-roster-item" data-template="${esc(t.name)}">
