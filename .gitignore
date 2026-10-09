@@ -63,6 +63,7 @@
 !ux-tests.js
 !shouts-tests.js
 !compare-tests.js
+!shortcuts-tests.js
 # Test runner, loader and CI (npm test; GitHub Actions runs it)
 !package.json
 !tests/

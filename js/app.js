@@ -1706,12 +1706,17 @@ document.getElementById('btn-ideal-comp-link-phone').addEventListener('click', (
 document.getElementById('btn-back-to-plan').addEventListener('click', () => switchTab('plan'));
 
 // ── GLOBAL KEYBOARD SHORTCUTS (feature-backlog-2.md #8) ──────────
+// Single-key shortcuts and the toolbar button each one clicks (SHORTCUTS_HELP lists them for people).
+const SHORTCUT_BUTTONS = { o: 'btn-optimize', e: 'btn-share-main', l: 'btn-share', m: 'btn-copy-mrt-note', c: 'btn-copy-chat' };
 const SHORTCUTS_HELP = [
   ['O', 'Optimize groups'],
   ['Ctrl/Cmd + Z', 'Undo'],
   ['Ctrl/Cmd + Y  (or Ctrl/Cmd + Shift + Z)', 'Redo'],
-  ['Ctrl/Cmd + S', 'Save roster'],
+  ['Ctrl/Cmd + S', 'Save a copy (the plan also saves itself)'],
   ['E', 'Share / Export'],
+  ['L', 'Copy share link'],
+  ['M', 'Copy MRT note'],
+  ['C', 'Copy raid chat text'],
   ['1', 'Switch to Plan'],
   ['2', 'Switch to Assignments'],
   ['?', 'Show this help'],
@@ -1757,8 +1762,7 @@ document.addEventListener('keydown', (e) => {
   if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); document.getElementById('btn-redo').click(); return; }
   if (mod && k === 's') { e.preventDefault(); document.getElementById('btn-save').click(); return; }
   if (mod) return; // no other Ctrl/Cmd combos are shortcuts — never eat browser defaults
-  if (k === 'o') { e.preventDefault(); document.getElementById('btn-optimize').click(); return; }
-  if (k === 'e') { e.preventDefault(); document.getElementById('btn-share-main').click(); return; }
+  if (SHORTCUT_BUTTONS[k] && !e.altKey) { e.preventDefault(); document.getElementById(SHORTCUT_BUTTONS[k]).click(); return; }
   if (k === '1') { e.preventDefault(); switchTab('plan'); return; }
   if (k === '2') { e.preventDefault(); switchTab('assignments'); return; }
   if (k === '?') { e.preventDefault(); showShortcutsHelp(); return; }

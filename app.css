@@ -473,6 +473,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .menu-hint { padding: 0 14px 6px; font-size: 11px; color: var(--text-muted); max-width: 260px; }
 .menu-hint[hidden] { display: none; }
+.menu-kbd { margin-left: auto; padding: 1px 6px; border: 1px solid var(--border-medium); border-bottom-width: 2px; border-radius: 4px; font-family: inherit; font-size: 10px; color: var(--accent-gold-bright); }
 .menu-sep { height: 1px; background: var(--border-medium); margin: 6px 0; }
 .menu-item {
   display: flex; align-items: center; gap: 10px;
