@@ -539,7 +539,7 @@ const Optimizer = {
     if (!cmp) return '';
     const x = Math.round(cmp.current.score), y = Math.round(cmp.optimized.score);
     const breaks = [
-      cmp.current.isolated ? `${cmp.current.isolated} isolated` : '',
+      cmp.current.isolated ? `${cmp.current.isolated} isolated group${cmp.current.isolated === 1 ? '' : 's'}` : '',
       cmp.current.constraintBreaks ? `${cmp.current.constraintBreaks} constraint${cmp.current.constraintBreaks === 1 ? '' : 's'} broken` : '',
       cmp.current.drumGaps ? `${cmp.current.drumGaps} without drums` : '',
     ].filter(Boolean).join(', ');

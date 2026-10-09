@@ -123,7 +123,7 @@ check('describeComparison words every verdict', () => {
   assert.equal(text('optimize-better', side(400), side(431.4), 31.4), 'Current board 400 vs optimized 431: Optimize adds 31.');
   assert.equal(text('current-ahead', side(440), side(431), -9), 'Current board 440 vs optimized 431: Optimize would not improve this board.');
   assert.equal(text('optimize-fixes', side(440, { isolated: 1, constraintBreaks: 2, breaks: 3 }), side(431), -9),
-    'Current board 440 vs optimized 431: Optimize fixes 1 isolated, 2 constraints broken.');
+    'Current board 440 vs optimized 431: Optimize fixes 1 isolated group, 2 constraints broken.');
 });
 
 console.log(`\nCompare tests: ${passed} passed, 0 failed, ${passed} total`);
