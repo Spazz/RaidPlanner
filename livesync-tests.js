@@ -25,7 +25,7 @@ var confirm = () => true;
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'timeoutSignal', 'fetchLiveLink',
-  'getShareLink', 'loadFromShortLink', 'currentShareCode'];
+  'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar'];
 
 function memoryStorage() {
   const data = {};
@@ -57,7 +57,7 @@ function makeEnv({ path = '/', hidden = false } = {}) {
     localStorage: env.storage,
     document: env.document,
     window: { location, localStorage: env.storage, addEventListener: addListener('window') },
-    history: { replaceState: (_state, _title, url) => { location.pathname = String(url).split('?')[0]; } },
+    history: { replaceState: (_state, _title, url) => { location.pathname = String(url).split('?')[0].split('#')[0]; location.hash = url.includes('#') ? url.slice(url.indexOf('#')) : ''; } },
     navigator: {},
     fetch: async (url, init = {}) => {
       const call = { url, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null, keepalive: !!init.keepalive, signal: init.signal };
@@ -200,6 +200,20 @@ async function check(name, fn) {
     assert.equal(posts(env).length, 1);
     assert.equal(posts(env)[0].keepalive, true);
     assert.equal(entryOf(env, planKey).id, NEW_ID);
+  });
+
+  await check('Syncing the address bar keeps a pending #r= share link and drops other fragments', async () => {
+    const env = makeEnv();
+    seedLinkedPlan(env);
+    env.location.hash = '#r=abc123';
+    env.api.syncAddressBar();
+    assert.equal(env.location.pathname, '/tbc/aB3dE5g');
+    assert.equal(env.location.hash, '#r=abc123', 'the share link is still there to be read');
+    const other = makeEnv();
+    seedLinkedPlan(other);
+    other.location.hash = '#something';
+    other.api.syncAddressBar();
+    assert.equal(other.location.hash, '');
   });
 
   await check('Poll 200 of an unchanged plan does not PUT or POST', async () => {

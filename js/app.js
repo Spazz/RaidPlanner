@@ -518,7 +518,9 @@ function liveLinkPath(id) {
 function syncAddressBar() {
   const link = currentLiveLink();
   const path = link ? liveLinkPath(link.entry.id) : '/';
-  if (window.location.pathname !== path) history.replaceState(null, '', path + window.location.search);
+  // A pending #r= share link has not been read yet: keep it.
+  const hash = window.location.hash.startsWith('#r=') ? window.location.hash : '';
+  if (window.location.pathname !== path) history.replaceState(null, '', path + window.location.search + hash);
 }
 
 // The Error for a failed API response: 429 carries retryAfterMs (back off,
