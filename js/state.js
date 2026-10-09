@@ -3,6 +3,13 @@
 // roster name, so it must never travel in an export or a share link.
 const NO_ROSTER_NAME = 'No Roster Loaded';
 
+// The Assignments view is hidden for now (nav slim-down, 2026-10-09). Its
+// rendering code (renderAssignments) stays in place, but while this is false
+// switchTab() lands on the plan instead, and the '2' shortcut and its help row
+// are left out. To bring it back: set true and give it an entry point again
+// (the old Plan | Assignments tab bar was removed from index.html).
+const ASSIGNMENTS_TAB_ENABLED = false;
+
 const State = {
   campfires: {professions:[], fires:[]},
   preferredSlots: [], // Open class/spec requests, separate from real players.

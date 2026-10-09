@@ -230,7 +230,7 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
   });
 
   await check('runImport: disables the button while importing, reports errors inline, runs onSuccess only on success', async () => {
-    const src = app.slice('// ── SHARED IMPORT RUNNER', '// ── IMPORT MODAL (toolbar)');
+    const src = app.slice('// ── SHARED IMPORT RUNNER', "document.getElementById('btn-plain-import-cancel')");
     const els = {
       inp: { value: '  data  ', focused: 0, focus() { this.focused++; } },
       btn: { disabled: false },
@@ -284,14 +284,11 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
     assert.equal(els.btn.disabled, false);
   });
 
-  await check('in-app Import dialog has an inline status line and copy that matches what is accepted', () => {
-    const modal = html.match(/<div class="import-overlay" id="import-overlay"[\s\S]*?<!-- Save modal -->/)[0];
-    assert(/id="import-status"[^>]*role="status"/.test(modal), 'inline status region');
-    assert(!/Paste JSON data from raid-helper\.dev/.test(modal), 'old copy removed');
-    assert(/Raid-Helper link, event ID/.test(modal));
-    assert(/PP:/.test(modal));
-    // The dialog button goes through the shared runner (not a bespoke handler).
-    assert(/runImport\('import-textarea', 'import-status', 'btn-do-import'/.test(app.script));
+  await check('importing goes through the landing box: "New plan…" returns there and the toolbar Import dialog is gone', () => {
+    assert(!/id="import-overlay"|id="import-textarea"|id="btn-import"/.test(html), 'no second, toolbar-only import dialog');
+    assert(/getElementById\('btn-new-plan'\)\.addEventListener\('click', \(\) => showView\('landing'\)\)/.test(app.script));
+    const landing = html.match(/id="landing-import"[^>]*>/);
+    assert(landing, 'the landing import box is still there');
   });
 
   console.log(`\n${passed} a11y checks passed`);

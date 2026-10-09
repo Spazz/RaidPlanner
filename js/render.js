@@ -726,7 +726,6 @@ function renderGroups() {
   // Update version and raid controls after imports, restores and undo.
   syncVersionControls();
   document.getElementById('roster-name-text').textContent = State.rosterName;
-  document.getElementById('mobile-plan-title').textContent = State.rosterName;
   syncRaidNotesUI();
   RaidHelperSync.updateControls();
   renderCampfires();
@@ -970,14 +969,14 @@ function announce(message) {
   region.textContent = message;
 }
 
-// Phone: the small "N missing" link on line 2 of the context row reveals the plan feedback
-// text and opens the coverage panel. Hidden when coverage rules are not configured or
-// nothing is missing.
+// The short "N missing" link (right end of the desktop action row; line 2 of the phone
+// context row) reveals the plan feedback text and opens the coverage panel. Hidden when
+// coverage rules are not configured or nothing is missing.
 let phoneFeedbackOpen = false;
 function setPhoneFeedbackOpen(open) {
   phoneFeedbackOpen = open;
   const feedback = document.getElementById('plan-feedback');
-  if (feedback) feedback.classList.toggle('phone-open', open);
+  if (feedback) feedback.classList.toggle('feedback-open', open);
   const btn = document.getElementById('btn-summary-missing');
   if (btn) btn.setAttribute('aria-expanded', String(open));
 }
@@ -989,8 +988,6 @@ function renderPhoneMissing() {
   btn.hidden = !show;
   // With the link gone nothing could close the feedback strip.
   if (!show && phoneFeedbackOpen) setPhoneFeedbackOpen(false);
-  const wrap = document.getElementById('phone-summary-wrap');
-  if (wrap) wrap.classList.toggle('has-missing', show);
   btn.setAttribute('aria-expanded', String(phoneFeedbackOpen));
   if (show) btn.innerHTML = `<b>${n}</b> missing &#9656;`;
 }
@@ -1980,9 +1977,11 @@ function showSpotlightCallout(id, anchorEl, text) {
 // here?) is triggered separately from showPlayerEditor itself, since it has
 // no toolbar anchor.
 const SPOTLIGHT_DEFS = [
+  // Anchorless while the Assignments tab is hidden (ASSIGNMENTS_TAB_ENABLED), so it never shows.
   { id: 'assignments-tab', text: 'New: assign who casts curses, blessings and other one-per-raid buffs here.', anchor: () => document.querySelector('.mode-tab[data-tab="assignments"]') },
-  { id: 'options-panel', text: 'Templates and Attendance moved into the Plan and Sign-ups menus. Data backup and shortcuts live here.', anchor: () => document.getElementById('btn-settings-menu') },
-  { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.querySelector('.mode-tab[data-tab="plan"]') },
+  // A new id (was 'options-panel') so people who saw the old tip learn where the menus went.
+  { id: 'menu-panel', text: 'Plan, sign-up and data actions now live in this menu.', anchor: () => document.getElementById('btn-settings-menu') },
+  { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.querySelector('.title-bar h1') },
 ];
 function runSpotlightQueue() {
   if (document.querySelector('.spotlight-callout')) return;

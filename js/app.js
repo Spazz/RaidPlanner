@@ -194,7 +194,8 @@ function renderLandingSavedList() {
 
   // The plan restored at page load may be hours old, so look at its event again.
   document.getElementById('btn-resume').addEventListener('click', () => { showView('app'); RaidHelperSync.check(); });
-  document.getElementById('btn-back-import').addEventListener('click', () => showView('landing'));
+  // "New plan…" (menu) goes back to the import screen; the planner keeps its plan meanwhile.
+  document.getElementById('btn-new-plan').addEventListener('click', () => showView('landing'));
 })();
 
 (function initPlanChrome() {
@@ -207,7 +208,6 @@ function renderLandingSavedList() {
   share.querySelectorAll('[data-share-action]').forEach(b => b.onclick = () => { share.close(); document.getElementById(b.dataset.shareAction).click(); });
   const renameDialog = document.getElementById('rename-dialog');
   document.getElementById('roster-name').onclick = () => { document.getElementById('plan-name').value=State.rosterName; renameDialog.returnValue=''; renameDialog.showModal(); };
-  document.getElementById('menu-rename-plan').onclick = () => document.getElementById('roster-name').click();
   renameDialog.addEventListener('close', () => {
     if(renameDialog.returnValue !== 'save') return;
     const value=document.getElementById('plan-name').value.trim();
@@ -215,13 +215,33 @@ function renderLandingSavedList() {
   });
 })();
 
-// ── TOOLBAR MENUS (nav redesign) ─────────────────────────────────
+// ── HEADER MENUS (nav slim-down) ─────────────────────────────────
+// Share, and one menu (gear) holding the Plan, Sign-ups and Data & help sections.
 (function initToolbarMenus() {
-  Menu.init(document.getElementById('btn-plan-menu'), document.getElementById('plan-menu'));
-  Menu.init(document.getElementById('btn-signups-menu'), document.getElementById('signups-menu'));
   Menu.init(document.getElementById('btn-share-menu'), document.getElementById('share-menu'));
   Menu.init(document.getElementById('btn-settings-menu'), document.getElementById('settings-menu'));
+})();
 
+// ── RAID NOTES TOGGLE (desktop action row) ───────────────────────
+// On desktop the notes panel's own summary is hidden and this button opens it;
+// on phones the panel sits in the context row and keeps its summary.
+function syncRaidNotesToggle() {
+  const panel = document.getElementById('raid-notes-panel');
+  const toggle = document.getElementById('btn-raid-notes-toggle');
+  if (!panel || !toggle) return;
+  toggle.setAttribute('aria-expanded', String(panel.open));
+  document.getElementById('raid-notes-chevron').innerHTML = panel.open ? '&#9662;' : '&#9656;';
+}
+(function initRaidNotesToggle() {
+  const panel = document.getElementById('raid-notes-panel');
+  const toggle = document.getElementById('btn-raid-notes-toggle');
+  if (!panel || !toggle) return;
+  toggle.addEventListener('click', () => {
+    panel.open = !panel.open;
+    if (panel.open) document.getElementById('raid-notes-textarea').focus();
+  });
+  panel.addEventListener('toggle', syncRaidNotesToggle);
+  syncRaidNotesToggle();
 })();
 
 // ── PHONE "MORE" SHEET ────────────────────────────────────────────
@@ -251,19 +271,20 @@ function renderLandingSavedList() {
 })();
 
 // ── RESPONSIVE CHROME ─────────────────────────────────────────────
-// Phone width collapses the desktop split-button + Plan/Sign-ups/Share/
-// Settings menus into a fixed bottom bar (Undo, Optimize, Share, More) plus
-// the More sheet's three grouped sections. Rather than duplicating every
-// action as a second button — which drifts out of sync, exactly the bug
-// this whole redesign replaced (see the old initSimpleWorkflow proxies) —
-// the SAME element physically moves between its desktop slot and its phone
-// slot. A comment node left at each element's original position lets it
-// snap back to that exact spot when the viewport widens again.
+// Phone width hides the desktop header and action row: Undo, Optimize and Share
+// go to a fixed bottom bar, the Raid size control and the missing-buffs link to
+// line 2 of the context row, the plan name to its Edit body, and the gear menu's
+// three sections to the More sheet. Rather than duplicating every action as a
+// second button — which drifts out of sync — the SAME element physically moves
+// between its desktop slot and its phone slot. A comment node left at each
+// element's original position lets it snap back to that exact spot when the
+// viewport widens again. Slots fill in list order.
 (function initResponsiveChrome() {
   const slots = ['btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
-    'btn-redo:phone-sheet-quick-slot', 'raid-size-wrap:raid-size-phone-slot',
-    'menu-rename-plan:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
-    'btn-import:phone-sheet-signups-slot', 'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
+    'raid-size-wrap:raid-size-phone-slot', 'btn-summary-missing:phone-missing-slot', 'roster-name:phone-plan-name-slot',
+    'btn-redo:phone-sheet-quick-slot',
+    'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
+    'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
     'raid-notes-panel:phone-context-notes-slot',
     'btn-export-backup:phone-sheet-data-slot', 'btn-import-backup:phone-sheet-data-slot', 'btn-shortcuts-help:phone-sheet-data-slot', 'btn-show-tips-again:phone-sheet-data-slot',
   ].map(pair => {
@@ -295,8 +316,8 @@ function renderLandingSavedList() {
   sync(PHONE_QUERY);
 })();
 
-// Phone context summary: one 44px row ("Raid · Strategy" / "Plan title · notes")
-// that expands the full plan controls in place. Collapsed by default; the choice
+// Phone context summary: line 1 is the plan name (a button that expands the Edit
+// body in place); line 2 holds the seated count, Raid size and missing link. Collapsed by default; the choice
 // is remembered for the session only.
 const PHONE_CONTEXT_STORAGE_KEY = 'pp_phone_context_open';
 function setPhoneContextOpen(open, persist = true) {
@@ -1567,31 +1588,23 @@ Rulesets.forever.idealComp = {
 };
 
 // ── TAB SWITCHING ───────────────────────────────────────────────
+// 'plan', 'ideal' (Compare to ideal comp) or 'assignments' (hidden while
+// ASSIGNMENTS_TAB_ENABLED is false, see js/state.js: it lands on the plan).
 function switchTab(tab) {
+  if (tab === 'assignments' && !ASSIGNMENTS_TAB_ENABLED) tab = 'plan';
   State.activeTab = tab;
 
-  // Update tab button styles. Ideal Comp is no longer part of the
-  // Plan/Assignments tablist (it's a quiet link, see btn-ideal-comp-link)
-  // so neither tab shows active while viewing it.
-  document.querySelectorAll('.mode-tab').forEach(btn => {
-    const active = btn.dataset.tab === tab;
-    btn.classList.toggle('active', active);
-    btn.setAttribute('aria-selected', String(active));
-  });
-
-  // Ideal Comp swaps the tablist + "Compare to ideal comp" link for a single
-  // "Back to plan" control (desktop). The phone tabs row stays as-is.
+  // Ideal Comp swaps the "Compare to ideal comp" link for "Back to plan".
   const isIdeal = tab === 'ideal';
-  const tablist = document.querySelector('.mode-tabs');
-  if (tablist) tablist.hidden = isIdeal;
   document.getElementById('btn-ideal-comp-link').hidden = isIdeal;
   document.getElementById('btn-back-to-plan').hidden = !isIdeal;
 
-  // Show/hide plan-mode-only elements
-  const planOnly = ['roster-bar', 'phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'raid-notes-panel'].map(
+  // Show/hide plan-mode-only sections, plus the header and action-row controls
+  // marked .plan-only (Optimize, Undo/Redo, plan name, Share, menu, notes, missing).
+  const planOnly = ['phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'raid-notes-panel'].map(
     cls => document.querySelector('.' + cls) || document.getElementById(cls)
   ).filter(Boolean);
-  for (const el of planOnly) {
+  for (const el of [...planOnly, ...document.querySelectorAll('.plan-only')]) {
     el.style.display = tab === 'plan' ? '' : 'none';
   }
 
@@ -1690,12 +1703,7 @@ function renderIdealComp() {
   document.getElementById('status-text').textContent = `Ideal ${raidInfo.size}-man comp`;
 }
 
-// Wire tab clicks
-document.querySelectorAll('.mode-tab').forEach(btn => {
-  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-});
-// Ideal Comp is a quiet link next to the tablist (desktop and phone), not a
-// tab itself — same switchTab('ideal') destination the old third tab used.
+// Ideal Comp is a quiet link in the action row (desktop) and the Edit body (phone).
 document.getElementById('btn-ideal-comp-link').addEventListener('click', () => switchTab('ideal'));
 document.getElementById('btn-ideal-comp-link-phone').addEventListener('click', () => switchTab('ideal'));
 document.getElementById('btn-back-to-plan').addEventListener('click', () => switchTab('plan'));
@@ -1712,8 +1720,8 @@ const SHORTCUTS_HELP = [
   ['L', 'Copy share link'],
   ['M', 'Copy MRT note'],
   ['C', 'Copy raid chat text'],
-  ['1', 'Switch to Plan'],
-  ['2', 'Switch to Assignments'],
+  ['1', 'Back to the plan'],
+  ...(ASSIGNMENTS_TAB_ENABLED ? [['2', 'Switch to Assignments']] : []),
   ['?', 'Show this help'],
 ];
 function showShortcutsHelp() {
@@ -1736,7 +1744,6 @@ document.getElementById('faq-shortcuts-link')?.addEventListener('click', showSho
 function isShortcutBlocked(target) {
   if (isTypingTarget(target)) return true;
   if (document.querySelector('dialog[open]')) return true;
-  if (document.getElementById('import-overlay')?.classList.contains('visible')) return true;
   if (document.getElementById('save-overlay')?.classList.contains('visible')) return true;
   if (document.getElementById('active-player-editor')) return true;
   // Nav redesign: no global shortcut should fire behind an open toolbar
@@ -1759,7 +1766,7 @@ document.addEventListener('keydown', (e) => {
   if (mod) return; // no other Ctrl/Cmd combos are shortcuts — never eat browser defaults
   if (SHORTCUT_BUTTONS[k] && !e.altKey) { e.preventDefault(); document.getElementById(SHORTCUT_BUTTONS[k]).click(); return; }
   if (k === '1') { e.preventDefault(); switchTab('plan'); return; }
-  if (k === '2') { e.preventDefault(); switchTab('assignments'); return; }
+  if (k === '2' && ASSIGNMENTS_TAB_ENABLED) { e.preventDefault(); switchTab('assignments'); return; }
   if (k === '?') { e.preventDefault(); showShortcutsHelp(); return; }
 });
 

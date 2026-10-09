@@ -323,7 +323,7 @@ return { ${exported.join(', ')} };
   });
 
   await check('runImport ignores a second trigger while its own import is still running', async () => {
-    const src = app.slice('// ── SHARED IMPORT RUNNER', '// ── IMPORT MODAL (toolbar)');
+    const src = app.slice('// ── SHARED IMPORT RUNNER', "document.getElementById('btn-plain-import-cancel')");
     const els = {
       inp: { value: 'data', focus() {} },
       btn: { disabled: false },

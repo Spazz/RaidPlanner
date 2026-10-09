@@ -166,5 +166,34 @@ check('raidSizeLabel and auto plan names use the size, not the raid name', () =>
   assert.doesNotMatch(name, /Serpentshrine/);
 });
 
+// ── (e) Assignments is unreachable ──────────────────────────────────
+check('the Assignments view cannot be opened: no tab, switchTab lands on the plan, no 2 shortcut', () => {
+  const stub = () => ({ hidden: false, style: {} });
+  const elements = {};
+  const doc = {
+    getElementById: id => elements[id] || (elements[id] = stub()),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  const env = { inits: 0, commits: 0 };
+  const tabCtx = app.sandbox(['State', 'ASSIGNMENTS_TAB_ENABLED', 'switchTab', 'SHORTCUTS_HELP'], {
+    globals: { document: doc, __env: env },
+    extraSource: 'function initGroups() { __env.inits++; }\nfunction commit() { __env.commits++; }\nfunction renderIdealComp() {}\nfunction esc(s) { return s; }\n' +
+      app.slice('function switchTab(tab)', 'function renderIdealComp()') +
+      app.slice('const SHORTCUT_BUTTONS', 'function showShortcutsHelp()'),
+  });
+  const api = tabCtx.api;
+  assert.equal(api.ASSIGNMENTS_TAB_ENABLED, false);
+  api.State.activeTab = 'ideal';
+  api.switchTab('assignments');
+  assert.equal(api.State.activeTab, 'plan', 'asking for Assignments lands on the plan');
+  assert.equal(elements['btn-back-to-plan'].hidden, true);
+  assert.equal(env.commits, 1, 'the plan board renders');
+  assert(!api.SHORTCUTS_HELP.some(([keys]) => keys === '2'), 'the help list has no 2 shortcut');
+  assert.match(app.script, /if \(k === '2' && ASSIGNMENTS_TAB_ENABLED\)/, 'the 2 key is gated by the flag');
+  assert.doesNotMatch(app.html, /data-tab="assignments"|class="mode-tabs"/, 'no Plan | Assignments tab bar');
+  assert.match(app.script, /function renderAssignments\(\)/, 'the Assignments rendering code is kept for later');
+});
+
 console.log(`\nRaid size tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);

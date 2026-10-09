@@ -256,17 +256,17 @@ function persistWorkingPlan() {
   renderPhoneSummary();
 }
 
-// The phone's collapsed context row: line 1 "<raid> · <strategy>", line 2
-// "<plan title> · seated/size · notes" (notes only when the plan has some).
+// The phone's context row: line 1 the plan name, line 2 "seated/size" (plus
+// "· notes" when the plan has some) beside the Raid size control.
 function renderPhoneSummary() {
   const main = document.getElementById('phone-summary-main');
   const sub = document.getElementById('phone-summary-sub');
   if (!main || !sub) return;
   const raid = Config.Raids[State.selectedRaid];
-  main.textContent = `${raid ? raid.name : 'No raid'} (${raid ? raid.size : 25})`;
+  main.textContent = State.rosterName || 'Untitled plan';
   const hasNotes = !!(State.notes && State.notes.trim());
   const capacity = raid ? raid.size : 25;
-  sub.textContent = `${State.rosterName || 'Untitled plan'} · ${State.roster.length}/${capacity}${hasNotes ? ' · notes' : ''}`;
+  sub.textContent = `${State.roster.length}/${capacity}${hasNotes ? ' · notes' : ''}`;
 }
 
 function undoPlanChange() {
@@ -314,9 +314,12 @@ function renderReadiness() {
 // invisible when the panel is closed.
 function syncRaidNotesUI() {
   const el = document.getElementById('raid-notes-textarea');
-  const badge = document.getElementById('raid-notes-badge');
+  const hasNotes = !!(State.notes && State.notes.trim());
   if (el && document.activeElement !== el) el.value = State.notes || '';
-  if (badge) badge.hidden = !(State.notes && State.notes.trim());
+  for (const id of ['raid-notes-badge', 'raid-notes-toggle-badge']) {
+    const badge = document.getElementById(id);
+    if (badge) badge.hidden = !hasNotes;
+  }
   renderPhoneSummary();
 }
 
@@ -944,11 +947,8 @@ const PlainRosterImport = {
     this.pending = null;
     if (!result.success) { showToast('Import failed: ' + result.error); return; }
     State.planId = null;
-    closeImportOverlay();
     const landingBox = document.getElementById('landing-import');
-    const toolbarBox = document.getElementById('import-textarea');
     if (landingBox) landingBox.value = '';
-    if (toolbarBox) toolbarBox.value = '';
     initGroups();
     commit();
     showView('app');
@@ -1246,33 +1246,6 @@ async function runImport(inputId, statusId, btnId, onSuccess) {
   }
 }
 
-// ── IMPORT MODAL (toolbar) ──────────────────────────────────────
-function closeImportOverlay() {
-  const overlay = document.getElementById('import-overlay');
-  overlay.classList.remove('visible');
-  FocusTrap.close(overlay);
-}
-document.getElementById('btn-import').addEventListener('click', () => {
-  const overlay = document.getElementById('import-overlay');
-  const trigger = document.activeElement;
-  overlay.classList.add('visible');
-  document.getElementById('import-textarea').value = '';
-  statusReporter('import-status')('', false);
-  document.getElementById('import-textarea').focus();
-  FocusTrap.open(overlay, trigger, closeImportOverlay);
-});
-document.getElementById('btn-cancel-import').addEventListener('click', closeImportOverlay);
-document.getElementById('import-overlay').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeImportOverlay();
-});
-const runDialogImport = () => runImport('import-textarea', 'import-status', 'btn-do-import', () => { closeImportOverlay(); SplitFlow.maybeOffer(); });
-document.getElementById('btn-do-import').addEventListener('click', runDialogImport);
-document.getElementById('import-textarea').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
-    if (!document.getElementById('btn-do-import').disabled) runDialogImport();
-  }
-});
 document.getElementById('btn-plain-import-cancel').addEventListener('click', () => PlainRosterImport.cancel());
 document.getElementById('btn-plain-import-confirm').addEventListener('click', () => PlainRosterImport.confirm());
 

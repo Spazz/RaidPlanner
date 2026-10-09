@@ -5,8 +5,8 @@
  * What Node can check about the <=600px layout (the pixel measurements are checked in a browser):
  *   - the phone context summary is a real <button> with aria-expanded, collapsed by default, and
  *     its toggle flips aria-expanded / hidden; every control it hides is still in the page
- *   - the phone has no summary line; the missing-buffs link lives on line 2 of the context row and
- *     the desktop chips stay untouched
+ *   - line 1 of the context row is the plan name (the toggle); line 2 holds the seated count, the
+ *     Raid size control and the missing-buffs link as separate controls; the desktop chips stay untouched
  *   - the player editor's short view holds exactly the agreed controls and the More view holds the
  *     rest, with every original element ID preserved
  *   - phone-only chrome is hidden outside the media query, and no markup uses inline styles
@@ -56,18 +56,23 @@ check('phone summary has the two text lines and an Edit control', () => {
   assert.match(html, /id="phone-summary-edit-label">Edit</);
 });
 
-check('every existing phone control is still in the page (inside the expandable body or the notes slot)', () => {
-  const panel = between(html, 'id="phone-context-panel"', '<div class="roster-bar">');
-  for (const id of ['mobile-plan-title', 'raid-size-phone-slot', 'btn-ideal-comp-link-phone', 'phone-context-notes-slot']) {
+check('every phone control is in the context row: line 2 slots, the Edit body, the notes slot', () => {
+  const panel = between(html, 'id="phone-context-panel"', '<!-- These raw export formats');
+  for (const id of ['phone-plan-name-slot', 'raid-size-phone-slot', 'phone-missing-slot', 'btn-ideal-comp-link-phone', 'phone-context-notes-slot']) {
     assert.ok(panel.includes(`id="${id}"`), `${id} missing from the context panel`);
   }
+  const line2 = between(panel, 'class="phone-summary-line2"', 'id="phone-context-body"');
+  assert.ok(line2.includes('id="raid-size-phone-slot"') && line2.includes('id="phone-missing-slot"'), 'size control and missing link sit on line 2');
   const body = between(panel, 'id="phone-context-body"', 'id="phone-context-notes-slot"');
-  assert.ok(body.includes('id="raid-size-phone-slot"'));
+  assert.ok(body.includes('id="phone-plan-name-slot"'), 'the rename button moves into the Edit body');
   assert.ok(!html.includes('phone-strategy-seg'), 'the optimizer strategy control is gone (Optimize always runs Max DPS)');
+  assert.ok(!html.includes('raid-select'), 'the raid dropdown is gone');
   for (const id of ['raid-notes-panel', 'raid-notes-textarea', 'readiness-text', 'summary-bar', 'plan-feedback']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
-  assert.match(appJs, /'raid-notes-panel:phone-context-notes-slot'/, 'raid notes move into the panel on phones');
+  for (const pair of ['raid-notes-panel:phone-context-notes-slot', 'raid-size-wrap:raid-size-phone-slot', 'btn-summary-missing:phone-missing-slot', 'roster-name:phone-plan-name-slot']) {
+    assert.ok(appJs.includes(`'${pair}'`), `${pair} relocation on phones`);
+  }
 });
 
 check('toggling the summary flips aria-expanded, hidden and the label, and remembers the choice', () => {
@@ -110,7 +115,7 @@ function renderPhone(missing, { notes = '', seated = 25, size = 25 } = {}) {
     document: { getElementById: node },
     State: { roster: Array(seated).fill({}), selectedRaid: 'x', optimizerMode: 'max_dps', rosterName: 'Random 25-man Roster', notes },
     Config: { Raids: { x: { name: 'Karazhan', size } } },
-    strategyLabel: () => 'Max DPS', setSidebarExpanded() {},
+    setSidebarExpanded() {},
   });
   vm.runInContext(src + '\nrenderPhoneSummary(); renderPhoneMissing();', ctx);
   return { els, ctx };
@@ -125,20 +130,22 @@ check('the 34px phone summary line (counts, role letters) is gone from the summa
 });
 
 check('missing link is a real button outside the Edit toggle, with the count in warning colour', () => {
-  assert.match(html, /<button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" hidden><\/button>/);
+  assert.match(html, /<button type="button" class="summary-missing plan-only" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" title="Show coverage details" hidden><\/button>/);
   const toggle = html.match(/<button[^>]*id="phone-summary-toggle"[\s\S]*?<\/button>/)[0];
-  assert.doesNotMatch(toggle, /btn-summary-missing/, 'must not be nested inside the toggle button');
+  const inner = toggle.slice(toggle.indexOf('>') + 1);
+  assert.doesNotMatch(inner, /btn-summary-missing|raid-size|<button|<select|<input/, 'nothing interactive is nested inside the toggle button');
   const { els } = renderPhone(7);
   assert.equal(els['btn-summary-missing'].hidden, false);
   assert.equal(els['btn-summary-missing'].innerHTML, '<b>7</b> missing &#9656;');
   assert.equal(els['btn-summary-missing'].attrs['aria-expanded'], 'false');
-  assert.match(phoneCssAll(), /\.summary-missing b \{[^}]*var\(--warning\)/);
-  assert.match(phoneCssAll(), /\.summary-missing \{[^}]*font-size: 11px/);
+  assert.match(css, /\.summary-missing b \{[^}]*var\(--warning\)/);
+  assert.match(phoneCssAll(), /\.phone-missing-slot \.summary-missing \{[^}]*font-size: 12px/);
 });
 
-check('line 2 carries the plan title, seated count and notes marker', () => {
-  assert.equal(renderPhone(7).els['phone-summary-sub'].textContent, 'Random 25-man Roster · 25/25');
-  assert.equal(renderPhone(7, { notes: 'x', seated: 20, size: 10 }).els['phone-summary-sub'].textContent, 'Random 25-man Roster · 20/10 · notes');
+check('line 1 is the plan name; line 2 carries the seated count and notes marker', () => {
+  assert.equal(renderPhone(7).els['phone-summary-main'].textContent, 'Random 25-man Roster');
+  assert.equal(renderPhone(7).els['phone-summary-sub'].textContent, '25/25');
+  assert.equal(renderPhone(7, { notes: 'x', seated: 20, size: 10 }).els['phone-summary-sub'].textContent, '20/10 · notes');
 });
 
 check('missing link is hidden at zero missing and when coverage is not modeled', () => {
@@ -240,7 +247,8 @@ const phoneBlock = phoneCss.slice(phoneCss.indexOf('@media (max-width: 600px)'))
 
 check('phone-only chrome is hidden outside the media query', () => {
   const base = phoneCss.slice(0, phoneCss.indexOf('@media'));
-  for (const sel of ['.phone-summary-wrap', '.summary-missing', '.phone-summary', '.pe-sheet-handle', '.pe-sheet-header', '.pe-more-row']) {
+  // (.summary-missing is no longer phone-only: desktop shows it at the end of the action row.)
+  for (const sel of ['.phone-summary-wrap', '.phone-summary', '.pe-sheet-handle', '.pe-sheet-header', '.pe-more-row']) {
     assert.ok(base.includes(sel), `${sel} must default to hidden`);
   }
   assert.match(base, /display:\s*none/);
@@ -255,7 +263,7 @@ check('phone block defines the sheet views, the zoom reset and the fixed row hei
 
 check('no inline style or handler attributes in the new markup', () => {
   const INLINE = /[\s`'"](?:style|on[a-z]{3,})\s*=\s*(?:["'`\\]|\$\{)/i;
-  assert.doesNotMatch(between(html, 'id="phone-context-panel"', '<div class="roster-bar">'), INLINE);
+  assert.doesNotMatch(between(html, '<main class="addon-frame" id="app"', '<!-- These raw export formats'), INLINE);
   assert.doesNotMatch(editorViews().tpl, INLINE);
 });
 

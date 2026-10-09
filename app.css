@@ -316,14 +316,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   overflow: clip; /* clip, not hidden: hidden makes the frame a scroll root and kills the sticky summary bar */
   zoom: 1.5;
 }
-.back-link {
-  background: none; border: none; cursor: pointer; padding: 0 var(--sp-2) 0 0;
-  margin-right: var(--sp-2); border-right: 1px solid var(--border-medium);
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
-  font-size: 11px; color: var(--text-muted); line-height: 1;
-}
-.back-link:hover { color: var(--accent-gold); }
-
 /* ── Sticky raid summary bar ── */
 .summary-bar {
   position: sticky; top: 0; z-index: 30;
@@ -346,7 +338,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .summary-chip.bench b { color: var(--accent-gold); }
 
 /* ── Condensed label helper ── */
-.cond, .mode-tab, .btn, .buff-sidebar-title, .buff-sidebar-sub,
+.cond, .btn, .buff-sidebar-title, .buff-sidebar-sub,
 .group-header h3, .group-role-tag, .buff-bar-label, .bench-header h3,
 .roster-label, .title-bar h1 {
   font-family: var(--font-cond);
@@ -354,50 +346,48 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   letter-spacing: 0.1em;
 }
 
-/* ── Title bar ── */
+/* ── Header row: title · plan name + status · Share and the menu (nav slim-down) ── */
 .title-bar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: var(--sp-4);
   padding: 0 var(--sp-4);
-  height: 34px;
+  height: 36px;
   background: var(--bg-frame);
   border-bottom: 1px solid var(--border-subtle);
   user-select: none;
 }
 .title-bar h1 {
-  font-size: 15px; font-weight: 600;
+  font-size: 15px; font-weight: 600; flex-shrink: 0;
   color: var(--text-primary); letter-spacing: 0.12em;
 }
-.title-left { display: flex; align-items: center; gap: var(--sp-2); }
 .title-diamond { display: none; }
 .title-edition { font-family: var(--font-cond); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
+.title-right { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; flex-shrink: 0; }
 
-/* ── Toolbar (tabs + ideal-comp link + raid) ── */
+/* ── Action row: Optimize · Undo · Redo · Raid size · ideal comp · notes · missing ── */
 .toolbar {
-  display: flex; align-items: center; gap: var(--sp-4);
-  padding: 0 var(--sp-4);
-  height: 34px;
-  background: var(--bg-frame);
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--bg-panel);
   border-bottom: 1px solid var(--border-subtle);
 }
-.toolbar-right { display: flex; align-items: center; gap: var(--sp-4); margin-left: auto; }
-.mode-tabs { display: flex; gap: 2px; }
-.mode-tab {
-  padding: 3px 10px;
-  border: 1px solid transparent; background: transparent;
-  color: var(--text-muted);
-  font-size: 11px; font-weight: 600;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-.mode-tab:hover { color: var(--text-secondary); }
-.mode-tab.active { background: var(--text-primary); color: var(--bg-frame); }
-.ideal-comp-link, .back-to-plan-link {
-  display: flex; align-items: center; gap: 6px;
+.ideal-comp-link, .back-to-plan-link, .raid-notes-toggle {
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
   background: none; border: none; cursor: pointer; padding: 0;
   color: var(--text-muted); font-family: var(--font-body); font-size: 12px;
 }
-.ideal-comp-link:hover, .back-to-plan-link:hover { color: var(--text-secondary); }
+.ideal-comp-link:hover, .back-to-plan-link:hover, .raid-notes-toggle:hover { color: var(--text-secondary); }
 .ideal-comp-link svg, .back-to-plan-link svg { flex-shrink: 0; }
+.raid-notes-toggle { margin-left: var(--sp-2); }
+.raid-notes-chevron { font-size: 10px; }
+/* Short readiness link: "N missing" at the right end of the action row (and on phone line 2). */
+.summary-missing {
+  display: block; margin-left: auto; padding: 0; background: none; border: 0; cursor: pointer;
+  font-family: var(--font-body); font-size: 12px; color: var(--text-muted); white-space: nowrap;
+}
+.summary-missing[hidden] { display: none; }
+.summary-missing b { font-weight: 600; color: var(--warning); }
+.summary-missing:hover { color: var(--text-secondary); }
+.summary-missing:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 /* Raid size segmented control (nav slim-down; replaced the raid dropdown). */
 .raid-size-wrap { display: flex; align-items: center; gap: var(--sp-2); }
 .raid-size-label { font-size: 11px; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
@@ -425,37 +415,27 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .raid-dropdown:focus { outline: none; border-color: var(--accent-gold); }
 .raid-dropdown option { background: var(--bg-panel); color: var(--text-primary); }
 
-/* ── Action bar (optimize split button / undo-redo / Plan & Sign-ups menus / share) ── */
-.roster-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: var(--sp-2) var(--sp-4);
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-subtle);
-  gap: var(--sp-3);
-}
-.action-left, .action-right { display: flex; gap: var(--sp-2); align-items: center; }
 .action-divider { width: 1px; height: 20px; background: var(--border-medium); margin: 0 var(--sp-1); }
-.roster-right { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; flex-shrink: 1; }
 /* min-width:0 has to reach every link in this shrink chain (wrap -> button
    -> text span) or the flex algorithm has nothing to truncate and instead
    collapses .roster-name-wrap's own box to 0 while its unconstrained content
    still paints at full width, overlapping the buttons next to it — exactly
-   the overlap this fixes at ~1024px, where the toolbar is tightest. */
-.roster-name-wrap { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex-shrink: 1; }
+   the overlap this fixes at ~1024px, where the header is tightest. */
+.roster-name-wrap { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex-shrink: 1; }
 .roster-label { font-size: 11px; color: var(--text-faint); font-weight: 500; }
 .roster-name {
-  display: flex; align-items: center; gap: 6px; justify-content: flex-end;
+  display: flex; align-items: center; gap: 6px;
   font-size: 13px; color: var(--text-primary); font-weight: 600;
   min-width: 0; max-width: 100%;
 }
 .roster-name svg { flex-shrink: 0; opacity: 0.6; }
 #roster-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.roster-status-line { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 10px; color: var(--text-muted); }
+.roster-status-line { display: block; min-width: 0; flex-shrink: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-muted); }
 
 .btn-icon { width: 32px; padding: 0; justify-content: center; }
 .btn-icon .btn-label { display: none; }
 
-/* ── Generic accessible dropdown menu (Plan / Sign-ups / Share / Settings / Strategy) ── */
+/* ── Generic accessible dropdown menu (Share / the gear menu) ── */
 .menu-wrap { position: relative; display: flex; }
 .menu {
   position: fixed;
@@ -470,8 +450,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   padding: 8px 14px 4px; font-family: var(--font-cond); text-transform: uppercase;
   letter-spacing: 0.08em; font-size: 10px; color: var(--text-faint);
 }
-.menu-hint { padding: 0 14px 6px; font-size: 11px; color: var(--text-muted); max-width: 260px; }
-.menu-hint[hidden] { display: none; }
 .menu-kbd { margin-left: auto; padding: 1px 6px; border: 1px solid var(--border-medium); border-bottom-width: 2px; border-radius: 4px; font-family: inherit; font-size: 10px; color: var(--accent-gold-bright); }
 .menu-sep { height: 1px; background: var(--border-medium); margin: 6px 0; }
 .menu-item {
@@ -483,10 +461,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .menu-item:hover, .menu-item:focus-visible { background: var(--bg-card-hover); outline: none; }
 .menu-item[hidden] { display: none; }
 .menu-item small { display: block; color: var(--text-muted); font-size: 11px; font-weight: 400; margin-top: 2px; }
-.menu-item-check { width: 12px; flex-shrink: 0; color: var(--accent-gold); font-size: 12px; }
 .menu-item-danger { color: var(--danger); }
 .menu-item-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
-.menu-item-current { background: var(--bg-card-hover); }
 
 .share-btn { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
 .share-btn:hover { background: var(--accent-gold); color: var(--text-on-accent); border-color: var(--accent-gold); }
@@ -1063,41 +1039,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .status-right { opacity: 0.6; }
 .last-run { color: var(--text-muted); }
 
-/* ── Import modal ── */
-.import-overlay {
-  display: none; position: absolute; inset: 0;
-  background: color-mix(in srgb, var(--bg-page) 85%, transparent); z-index: 10;
-  justify-content: center; align-items: center;
-}
-.import-overlay.visible { display: flex; }
-.import-modal {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-strong);
-  padding: var(--sp-5); width: 440px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-}
-.import-modal h3 {
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.12em;
-  font-size: 15px; font-weight: 600;
-  color: var(--accent-gold); margin-bottom: var(--sp-3);
-}
-.import-modal p {
-  font-size: 11px; color: var(--text-secondary);
-  margin-bottom: var(--sp-3); line-height: 1.5;
-}
-.import-textarea {
-  width: 100%; height: 140px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-medium);
-  color: var(--text-primary);
-  font-family: Consolas, 'Courier New', monospace; font-size: 11px;
-  padding: var(--sp-3); resize: none;
-  margin-bottom: var(--sp-3);
-  transition: border-color 0.15s ease;
-}
-.import-textarea:focus { outline: none; border-color: var(--accent-gold); }
-.import-textarea::placeholder { color: var(--text-muted); }
-.import-modal .import-status { margin: calc(-1 * var(--sp-2)) 0 var(--sp-3); }
 .import-buttons { display: flex; justify-content: flex-end; gap: var(--sp-2); }
 
 /* ── Save/Load modal ── */
@@ -1253,8 +1194,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .groups-container.groups-5 .group-card:nth-child(3),
   .groups-container.groups-5 .group-card:nth-child(4),
   .groups-container.groups-5 .group-card:nth-child(5) { grid-column: span 1; }
-  .toolbar { flex-wrap: wrap; gap: var(--sp-1); height: auto; padding: var(--sp-1) var(--sp-4); }
-  .roster-bar { flex-wrap: wrap; gap: var(--sp-1); }
+  .toolbar { flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
   .summary-bar { gap: 4px var(--sp-3); }
   .summary-chip.bench { margin-left: 0; }
 }
@@ -1279,24 +1219,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .groups-container.groups-5,
   .groups-container.groups-4,
   .groups-container.groups-8 { grid-template-columns: 1fr; }
-  .title-bar { padding: 0 var(--sp-2); }
-  .title-bar h1 { font-size: 13px; }
-
-  /* Plan-mode header collapses to two full-width tabs; the ideal-comp link,
-     raid select and optimizer strategy move into #phone-context-panel below
-     (see the phone-context-panel/phone-action-bar rules further down), and
-     the whole desktop .roster-bar (split button, Plan/Sign-ups menus, Share
-     menu) is replaced by the fixed #phone-action-bar + "More" sheet. */
-  .toolbar {
-    flex-direction: column; align-items: stretch;
-    gap: 0; padding: 0; height: auto;
-  }
-  .mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
-  .mode-tabs .mode-tab { text-align: center; padding: 12px 4px; min-height: 44px; }
-  .ideal-comp-link, .back-to-plan-link, .toolbar-right { display: none; }
 
   .addon-frame { padding-bottom: 64px; }
-  .roster-bar { display: none; }
 
   .phone-context-panel {
     display: flex; flex-direction: column; gap: 12px;
@@ -1308,7 +1232,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
     font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.08em;
     font-size: 11px; color: var(--text-muted);
   }
-  #mobile-plan-title { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.06em; font-size: 16px; font-weight: 700; }
   .phone-ideal-comp-link {
     align-self: flex-start; display: flex; align-items: center; gap: 6px;
     background: none; border: none; color: var(--text-muted); font-size: 13px;
@@ -1397,7 +1320,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 
   /* Overlays live inside the zoomed frame: size the modal against the overlay,
      not the viewport, or the zoom makes it 1.5x too wide. */
-  .import-modal, .save-modal { width: calc(100% - 24px); max-width: 440px; min-width: auto; padding: var(--sp-4); }
+  .save-modal { width: calc(100% - 24px); max-width: 440px; min-width: auto; padding: var(--sp-4); }
   .toast { left: 12px; right: 12px; bottom: 56px; }
   #buff-tooltip-portal { width: min(420px, calc(100vw - 16px)); font-size: 15px; padding: 10px 14px; }
   #buff-tooltip-portal .tt-name { font-size: 16px; }
@@ -1407,12 +1330,11 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 @media (max-width: 900px) {
   /* The frame is far taller than the phone screen; an absolute overlay would
      centre its modal thousands of pixels below the fold. */
-  .import-overlay, .save-overlay { position: fixed; }
+  .save-overlay { position: fixed; }
 }
 /* Touch devices: bigger tap targets and no long-press text callout on draggable slots. */
 @media (hover: none) and (pointer: coarse) {
   .btn { padding: 8px 12px; }
-  .back-link { padding-top: 6px; padding-bottom: 6px; }
   .sidebar-toggle { padding: 8px 3px; }
   .buff-row { padding: 4px 3px; }
   .insight-btn { padding: 4px 9px; }
@@ -1425,13 +1347,20 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   .manual-changes-section .change-remove { padding: 4px 8px; }
   .faq summary { padding-top: 14px; padding-bottom: 14px; }
 }
-/* Plan-mode chrome: feedback strip + raid notes. */
-.plan-feedback { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:10px 16px; font-size:12px; border-bottom:1px solid var(--border-medium); }
-#mobile-plan-title { display:none; }
+/* Plan-mode chrome: feedback strip + raid notes. The feedback strip opens from the "N missing" link. */
+.plan-feedback { display:none; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:10px 16px; font-size:12px; border-bottom:1px solid var(--border-medium); }
+.plan-feedback.feedback-open { display:flex; }
 #autosave-status { color:var(--text-muted); }
 #autosave-status[data-failed], .roster-status-line[data-failed] { color:var(--warning); }
 /* Desktop shows the save state beside the plan name (#roster-status-line); phones keep this line. */
-@media (min-width: 601px) { #autosave-status { display:none; } }
+@media (min-width: 601px) {
+  #autosave-status { display:none; }
+  /* Desktop opens the notes from the action row's "Raid notes" toggle, so the panel shows only while open. */
+  .raid-notes-panel > summary { display:none; }
+  .raid-notes-panel:not([open]) { display:none; }
+  .raid-notes-panel .raid-notes-textarea { border-top:1px solid var(--border-medium); }
+  .raid-notes-panel .raid-notes-textarea:focus { border-color:var(--accent-gold); }
+}
 .raid-notes-panel { margin:8px 16px; background:var(--bg-panel); border:1px solid var(--border-subtle); }
 .raid-notes-panel summary {
   padding:10px 14px; cursor:pointer; list-style:none;
@@ -1463,7 +1392,6 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .player-move { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
 .player-move select { width:100%; padding:8px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border-medium); }
 @media(max-width:600px) {
-  #mobile-plan-title { display:block; width:100%; }
   .plan-feedback { padding:8px; font-size:11px; }
   #readiness-text { text-align:left; }
   .player-editor { position:fixed !important; left:12px !important; right:12px; top:50% !important; transform:translateY(-50%); width:auto !important; }
@@ -1695,7 +1623,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
    Phone-only chrome is hidden by default and switched on in the media block below, so
    desktop is untouched. The planner frame drops its 1.5x zoom here: sizes in this block
    are real CSS pixels. */
-.phone-summary-wrap, .summary-missing, .pe-sheet-handle, .pe-sheet-header, .pe-more-row { display:none; }
+.phone-summary-wrap, .pe-sheet-handle, .pe-sheet-header, .pe-more-row { display:none; }
 @media (max-width: 600px) {
   .addon-frame { zoom: 1; padding-bottom: 68px; }
   .toast { zoom: 1; bottom: 72px; left: 12px; right: 12px; }
@@ -1715,46 +1643,47 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .game-version-tab:focus-visible { outline-offset: -3px; }
   .game-beta { font-size: 8px; margin-left: 4px; padding: 1px 3px; }
 
-  /* Title bar + mode tabs share one 40px row: "<- Import" left, Plan | Assignments right. */
-  .title-bar { height: 40px; padding: 0 12px; margin-bottom: -40px; position: relative; }
-  .title-bar h1 { display: none; }
-  .back-link { font-size: 12px; letter-spacing: 0.08em; border-right: 0; padding: 0; margin: 0; min-height: 40px; }
-  .toolbar { position: relative; z-index: 2; flex-direction: row; justify-content: flex-end; align-items: center; width: fit-content; margin-left: auto; height: 40px; padding: 0 12px 0 0; background: transparent; border-bottom: 0; }
-  .mode-tabs { display: flex; height: 28px; border: 1px solid var(--border-medium); }
-  .mode-tabs .mode-tab { min-height: 0; padding: 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-secondary); }
-  .mode-tabs .mode-tab.active { color: var(--bg-frame); }
+  /* Header row and action row are hidden: their controls move to the context row, the
+     bottom bar and the More sheet (initResponsiveChrome). While comparing to the ideal
+     comp the action row comes back holding only "Back to plan". */
+  .title-bar { display: none; }
+  .toolbar { display: none; }
+  .toolbar:has(#btn-back-to-plan:not([hidden])) { display: flex; height: 40px; padding: 0 12px; }
+  .toolbar > :not(#btn-back-to-plan) { display: none; }
 
-  /* Context panel: one 44px summary row; Edit expands the existing controls in place. */
+  /* Context row: line 1 plan name + Edit (the toggle button), line 2 seated count ·
+     Raid size · "N missing" (separate controls, not nested in the toggle). */
   .phone-context-panel { padding: 0; gap: 0; display: block; background: var(--bg-card); }
-  .phone-summary-wrap { display: block; position: relative; }
+  .phone-summary-wrap { display: flex; flex-direction: column; gap: 2px; padding: 4px 12px 6px; background: var(--bg-panel); }
   .phone-summary {
-    display: flex; align-items: center; gap: 8px; width: 100%; height: 44px; padding: 0 12px; box-sizing: border-box;
-    background: var(--bg-panel); color: var(--text-primary); border: 0; text-align: left; cursor: pointer; font-family: var(--font-body);
+    display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 0; box-sizing: border-box;
+    background: transparent; color: var(--text-primary); border: 0; text-align: left; cursor: pointer; font-family: var(--font-body);
   }
-  .phone-summary-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .phone-summary-main { font-size: 14px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .phone-summary-sub { font-size: 11px; line-height: 1.25; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .phone-summary-edit { align-self: flex-start; margin-top: 6px; font-size: 12px; line-height: 17px; color: var(--accent-gold); white-space: nowrap; }
-  .phone-summary:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
+  .phone-summary-main { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .phone-summary-edit { font-size: 12px; color: var(--accent-gold); white-space: nowrap; }
+  .phone-summary:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+  .phone-summary-line2 { display: flex; align-items: center; gap: 10px; min-height: 30px; font-size: 12px; color: var(--text-muted); }
+  .phone-summary-sub { white-space: nowrap; }
+  #raid-size-phone-slot .raid-size-label { display: none; }
+  #raid-size-phone-slot .raid-size-seg button { min-height: 30px; padding: 0 12px; font-size: 12px; }
+  .phone-missing-slot { margin-left: auto; }
+  .phone-missing-slot .summary-missing { min-height: 30px; font-size: 12px; }
   .phone-context-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; border-top: 1px solid var(--border-subtle); }
   .phone-context-body[hidden] { display: none; }
   .phone-context-row .lbl { font-size: 11px; }
-  #mobile-plan-title { font-size: 14px; }
+  .phone-plan-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+  #phone-plan-name-slot { min-width: 0; }
+  #phone-plan-name-slot .roster-name { font-size: 14px; min-height: 32px; }
   .phone-ideal-comp-link { min-height: 32px; }
   #phone-context-notes-slot .raid-notes-panel { margin: 0; }
   .raid-notes-panel summary { padding: 8px 10px; }
   .raid-notes-textarea { font-size: 14px; }
 
   /* The desktop summary bar is not shown on phones; the seated count sits on line 2 of the
-     context row and a small "N missing" link (only when something is missing) sits at its right. */
+     context row. A failed save keeps the feedback strip open so the warning stays visible. */
   .summary-bar { display: none; }
-  .summary-missing { display: block; position: absolute; right: 12px; top: 24px; height: 20px; padding: 0 0 0 8px; background: none; border: 0; font: inherit; font-size: 11px; line-height: 20px; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
-  .summary-missing[hidden] { display: none; }
-  .summary-missing b { font-weight: 600; color: var(--warning); }
-  .summary-missing:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
-  .phone-summary-wrap.has-missing .phone-summary-sub { padding-right: 84px; }
   .plan-feedback { display: none; padding: 6px 12px; font-size: 11px; border-bottom: 1px solid var(--border-subtle); }
-  .plan-feedback.phone-open, .plan-feedback:has(#autosave-status[data-failed]) { display: flex; }
+  .plan-feedback.feedback-open, .plan-feedback:has(#autosave-status[data-failed]) { display: flex; }
   #buff-sidebar { scroll-margin-top: 40px; }
 
   /* Group cards. */

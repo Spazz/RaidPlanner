@@ -155,17 +155,17 @@
       <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive, so melee end up with Windfury, casters with their totems and auras, and tanks with their healers. Optimize places buffs where they add the most damage, and you can drag anyone afterwards.</p></details>
       <details><summary>What happens when more people sign up than the raid holds?</summary><p>You always keep enough tanks and healers. The remaining seats go to whoever adds the most, and everyone else waits on the bench, where you can swap them in with one click.</p></details>
       <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and paste the JSON into the import box.</p></details>
-      <details><summary>People signed up after I built the groups. Do I start over?</summary><p>No. A roster imported from a Raid-Helper link remembers its event. When you reopen a saved roster, the planner checks the event and shows what changed. Click Refresh (in the toolbar or on the banner) to add new sign-ups to the bench, remove anyone who withdrew, and update changed specs, while everyone else keeps their seat.</p></details>
+      <details><summary>People signed up after I built the groups. Do I start over?</summary><p>No. A roster imported from a Raid-Helper link remembers its event. When you reopen a saved roster, the planner checks the event and shows what changed. Click Refresh (in the gear menu, under Sign-ups, or on the banner) to add new sign-ups to the bench, remove anyone who withdrew, and update changed specs, while everyone else keeps their seat.</p></details>
       <details><summary>Where do Bench, Tentative, Late and Absent sign-ups go?</summary><p>Into the Sign-ups panel under the groups, one tab per Raid-Helper status. Only confirmed sign-ups are seated automatically. Drag anyone from Bench, Tentative or Late into a group when you want them; Absent players can be seated too, after you confirm (and pick a class if they didn't). On Refresh, people move between tabs as their Raid-Helper status changes.</p></details>
-      <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick Karazhan or Zul'Aman from the raid dropdown and the planner switches to two groups with 10-man tank and healer floors.</p></details>
+      <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick 10 on the Raid size switch above the groups and the planner switches to two groups with 10-man tank and healer floors.</p></details>
       <details><summary>Does it support Classic Era?</summary><p>Yes. Molten Core, Onyxia's Lair, Blackwing Lair, Zul'Gurub, Ruins of Ahn'Qiraj, Temple of Ahn'Qiraj and Naxxramas all have real Classic Era buff, debuff and optimizer rules, and the planner is faction-aware — Shaman totems for Horde, Paladin auras for Alliance.</p></details>
       <details><summary>Does it support WoW Forever?</summary><p>Yes, using confirmed Forever beta data. Barrow Deeps (10), Hyjal Summit (20) and Onyxia's Lair (40) are modeled with real rules — and unlike Classic Era, Forever has no faction lock: the new race/class combos put Paladin and Shaman on both factions, so a raid can freely mix totems and auras. Trueshot Aura is baseline for every Hunter spec, and Leader of the Pack and Moonkin Aura share one exclusive crit buff per group, so Feral and Balance druids spread out instead of stacking.</p></details>
       <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
       <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes, on Classic Era and TBC — MRT ships maintained builds for both, and its Raid Groups module isn't restricted to Retail. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you. WoW Forever support is unconfirmed — MRT has no Forever build yet since Forever is still in beta.</p></details>
       <details><summary>Can I paste a roster that isn't from Raid-Helper?</summary><p>Yes. The import box also accepts a plain list — one player per line or comma-separated, in any of "Name Class Spec", "Name - Spec Class", a Discord-style "@Name (Spec Class)", a WoW /who-style "Name Level 60 Race Class" line, or CSV with an optional header row. You'll see a preview of what was recognized, with anything ambiguous flagged for review and unrecognized lines listed separately, before anything is imported.</p></details>
-      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save a copy, Share/Export, copying the share link, MRT note or raid chat text, and switching between Plan and Assignments). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
-      <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open the gear icon (Settings and data) and click <strong>Export data backup</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open the same gear icon and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Party Planner backup is rejected without touching your existing data.</p></details>
-      <details><summary>I dismissed a feature tip and want to see it again</summary><p>Party Planner shows a few one-time callouts pointing at easy-to-miss features (Assignments, the toolbar menus, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button></p></details>
+      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save a copy, Share/Export, copying the share link, MRT note or raid chat text, and getting back to the plan from the ideal comp). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
+      <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open the gear menu at the top right of the planner (More on a phone) and click <strong>Export data backup</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open the same menu and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Party Planner backup is rejected without touching your existing data.</p></details>
+      <details><summary>I dismissed a feature tip and want to see it again</summary><p>Party Planner shows a few one-time callouts pointing at easy-to-miss features (the gear menu, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button></p></details>
     </div>
   </section>
 
@@ -176,98 +176,17 @@
 </main>
 
 <main class="addon-frame" id="app" hidden>
+  <!-- Header row: title · plan name + status · Share and the menu (nav slim-down). -->
   <div class="title-bar">
-    <div class="title-left">
-      <button type="button" class="back-link" id="btn-back-import" aria-label="Back to import">&larr; Import</button>
-      <h1>Party Planner</h1>
-    </div>
-  </div>
-
-  <div class="toolbar">
-    <div class="mode-tabs" role="tablist" aria-label="View">
-      <button class="mode-tab active" data-tab="plan" role="tab" aria-selected="true" title="Plan (1)">Plan</button>
-      <button class="mode-tab" data-tab="assignments" role="tab" aria-selected="false" title="Assignments (2)">Assignments</button>
-    </div>
-    <button type="button" class="ideal-comp-link" id="btn-ideal-comp-link" title="Compare to ideal comp">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
-      Compare to ideal comp
-    </button>
-    <button type="button" class="back-to-plan-link" id="btn-back-to-plan" hidden>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="M11 18l-6-6 6-6"></path></svg>
-      Back to plan
-    </button>
-    <div class="toolbar-right">
-      <div class="raid-size-wrap" id="raid-size-wrap">
-        <span class="raid-size-label" id="raid-size-label">Raid size</span>
-        <div class="raid-size-seg" id="raid-size-control" role="group" aria-labelledby="raid-size-label"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="phone-context-panel" id="phone-context-panel">
-    <div class="phone-summary-wrap" id="phone-summary-wrap">
-    <button type="button" class="phone-summary" id="phone-summary-toggle" aria-expanded="false" aria-controls="phone-context-body">
-      <span class="phone-summary-text"><span class="phone-summary-main" id="phone-summary-main"></span><span class="phone-summary-sub" id="phone-summary-sub"></span></span>
-      <span class="phone-summary-edit"><span id="phone-summary-edit-label">Edit</span> <span aria-hidden="true" id="phone-summary-chevron">&#9662;</span></span>
-    </button>
-    <button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" hidden></button>
-    </div>
-    <div class="phone-context-body" id="phone-context-body" hidden>
-    <div class="phone-context-row">
-      <span class="lbl">Plan</span>
-      <span id="mobile-plan-title"></span>
-    </div>
-    <div class="phone-context-row" id="raid-size-phone-slot"></div>
-    <button type="button" class="phone-ideal-comp-link" id="btn-ideal-comp-link-phone">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
-      Compare to ideal comp
-    </button>
-    <div id="phone-context-notes-slot"></div>
-    </div>
-  </div>
-
-  <div class="roster-bar">
-    <div class="action-left">
-      <button class="btn btn-primary" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)"><span class="btn-label">Optimize</span></button>
-      <button type="button" class="btn btn-secondary btn-icon" id="btn-undo" disabled aria-label="Undo" title="Undo (Ctrl+Z)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 010 12h-3"></path></svg>
-        <span class="btn-label">Undo</span>
+    <h1>Party Planner</h1>
+    <div class="roster-name-wrap plan-only">
+      <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">
+        <span id="roster-name-text">No Roster Loaded</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
       </button>
-      <button type="button" class="btn btn-secondary btn-icon" id="btn-redo" disabled aria-label="Redo" title="Redo (Ctrl+Y)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"></path><path d="M20 9H10a6 6 0 000 12h3"></path></svg>
-        <span class="btn-label">Redo</span>
-      </button>
-      <span class="action-divider"></span>
-      <div class="menu-wrap">
-        <button type="button" class="btn btn-secondary" id="btn-plan-menu" aria-haspopup="menu" aria-expanded="false">Plan <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
-        <div class="menu" id="plan-menu" role="menu" aria-label="Plan" hidden>
-          <button type="button" class="menu-item" role="menuitem" id="menu-rename-plan">Rename plan</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-save" aria-label="Save a copy of the current plan" title="Save a copy (Ctrl+S). Your plan also saves itself as you edit." aria-keyshortcuts="Control+S Meta+S"><span class="btn-label">Save a copy</span><kbd class="menu-kbd" aria-hidden="true">Ctrl+S</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-load" aria-label="Load a saved roster or recent import"><span class="btn-label">Open saved plan&hellip;</span></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-templates" aria-label="Save or apply a comp template">Comp templates&hellip;</button>
-          <div class="menu-sep"></div>
-          <button type="button" class="menu-item menu-item-danger" role="menuitem" id="btn-clear" aria-label="Clear all players and groups">Clear board</button>
-        </div>
-      </div>
-      <div class="menu-wrap">
-        <button type="button" class="btn btn-secondary" id="btn-signups-menu" aria-haspopup="menu" aria-expanded="false">Sign-ups <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
-        <div class="menu" id="signups-menu" role="menu" aria-label="Sign-ups" hidden>
-          <button type="button" class="menu-item" role="menuitem" id="btn-import" aria-label="Import roster from JSON or URL">Import sign-ups&hellip;</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-refresh" hidden aria-label="Pull the latest sign-ups from Raid-Helper" title="Pull the latest sign-ups from Raid-Helper">Refresh from Raid-Helper</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-attendance" aria-label="View attendance and reliability history from saved rosters">Attendance history</button>
-          <div class="menu-sep"></div>
-          <button type="button" class="menu-item" role="menuitem" id="btn-random" aria-label="Generate a random roster">Random test roster</button>
-        </div>
-      </div>
+      <span class="roster-status-line" id="roster-status-line"></span>
     </div>
-    <div class="roster-right">
-      <div class="roster-name-wrap">
-        <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">
-          <span id="roster-name-text">No Roster Loaded</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-        </button>
-        <span class="roster-status-line" id="roster-status-line"></span>
-      </div>
+    <div class="title-right plan-only">
       <div class="menu-wrap">
         <button type="button" class="btn share-btn" id="btn-share-menu" aria-haspopup="menu" aria-expanded="false">Share <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
         <div class="menu" id="share-menu" role="menu" aria-label="Share" hidden>
@@ -282,19 +201,94 @@
         </div>
       </div>
       <div class="menu-wrap">
-        <button type="button" class="btn btn-secondary btn-icon" id="btn-settings-menu" aria-haspopup="menu" aria-expanded="false" aria-label="Settings and data" title="Settings and data">
+        <button type="button" class="btn btn-secondary btn-icon" id="btn-settings-menu" aria-haspopup="menu" aria-expanded="false" aria-label="Menu: plan, sign-ups and data" title="Menu">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"></path></svg>
         </button>
-        <div class="menu" id="settings-menu" role="menu" aria-label="Settings and data" hidden>
-          <button type="button" class="menu-item" role="menuitem" id="btn-export-backup" aria-label="Download a backup of every saved roster, template and plan stored in this browser">Export data backup</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-import-backup" aria-label="Restore a Party Planner data backup file">Import data backup&hellip;</button>
-          <input type="file" id="backup-file-input" accept="application/json,.json" hidden>
-          <button type="button" class="menu-item" role="menuitem" id="btn-shortcuts-help" title="Keyboard shortcuts (?)">Keyboard shortcuts</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-show-tips-again" aria-label="Show the first-run feature tips again">Show tips again</button>
+        <div class="menu" id="settings-menu" role="menu" aria-label="Plan, sign-ups and data" hidden>
+          <div role="group" aria-labelledby="menu-heading-plan">
+            <div class="menu-heading" id="menu-heading-plan">Plan</div>
+            <button type="button" class="menu-item" role="menuitem" id="btn-new-plan" aria-label="Start a new plan from the import screen">New plan&hellip;</button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-load" aria-label="Load a saved roster or recent import"><span class="btn-label">Open saved plan&hellip;</span></button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-save" aria-label="Save a copy of the current plan" title="Save a copy (Ctrl+S). Your plan also saves itself as you edit." aria-keyshortcuts="Control+S Meta+S"><span class="btn-label">Save a copy</span><kbd class="menu-kbd" aria-hidden="true">Ctrl+S</kbd></button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-templates" aria-label="Save or apply a comp template">Comp templates&hellip;</button>
+            <button type="button" class="menu-item menu-item-danger" role="menuitem" id="btn-clear" aria-label="Clear all players and groups">Clear board</button>
+          </div>
+          <div class="menu-sep"></div>
+          <div role="group" aria-labelledby="menu-heading-signups">
+            <div class="menu-heading" id="menu-heading-signups">Sign-ups</div>
+            <button type="button" class="menu-item" role="menuitem" id="btn-refresh" hidden aria-label="Pull the latest sign-ups from Raid-Helper" title="Pull the latest sign-ups from Raid-Helper">Refresh from Raid-Helper</button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-attendance" aria-label="View attendance and reliability history from saved rosters">Attendance history</button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-random" aria-label="Generate a random roster">Random test roster</button>
+          </div>
+          <div class="menu-sep"></div>
+          <div role="group" aria-labelledby="menu-heading-data">
+            <div class="menu-heading" id="menu-heading-data">Data &amp; help</div>
+            <button type="button" class="menu-item" role="menuitem" id="btn-export-backup" aria-label="Download a backup of every saved roster, template and plan stored in this browser">Export data backup</button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-import-backup" aria-label="Restore a Party Planner data backup file">Import data backup&hellip;</button>
+            <input type="file" id="backup-file-input" accept="application/json,.json" hidden>
+            <button type="button" class="menu-item" role="menuitem" id="btn-shortcuts-help" title="Keyboard shortcuts (?)">Keyboard shortcuts</button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-show-tips-again" aria-label="Show the first-run feature tips again">Show tips again</button>
+          </div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Action row: Optimize · Undo · Redo · Raid size · ideal comp · notes · missing buffs. -->
+  <div class="toolbar">
+    <button class="btn btn-primary plan-only" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)"><span class="btn-label">Optimize</span></button>
+    <button type="button" class="btn btn-secondary btn-icon plan-only" id="btn-undo" disabled aria-label="Undo" title="Undo (Ctrl+Z)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 010 12h-3"></path></svg>
+      <span class="btn-label">Undo</span>
+    </button>
+    <button type="button" class="btn btn-secondary btn-icon plan-only" id="btn-redo" disabled aria-label="Redo" title="Redo (Ctrl+Y)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"></path><path d="M20 9H10a6 6 0 000 12h3"></path></svg>
+      <span class="btn-label">Redo</span>
+    </button>
+    <span class="action-divider plan-only"></span>
+    <div class="raid-size-wrap" id="raid-size-wrap">
+      <span class="raid-size-label" id="raid-size-label">Raid size</span>
+      <div class="raid-size-seg" id="raid-size-control" role="group" aria-labelledby="raid-size-label"></div>
+    </div>
+    <span class="action-divider"></span>
+    <button type="button" class="ideal-comp-link" id="btn-ideal-comp-link" title="Compare to ideal comp">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
+      Compare to ideal comp
+    </button>
+    <button type="button" class="back-to-plan-link" id="btn-back-to-plan" hidden>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="M11 18l-6-6 6-6"></path></svg>
+      Back to plan
+    </button>
+    <button type="button" class="raid-notes-toggle plan-only" id="btn-raid-notes-toggle" aria-expanded="false" aria-controls="raid-notes-panel"><span class="raid-notes-chevron" id="raid-notes-chevron" aria-hidden="true">&#9656;</span> Raid notes <span id="raid-notes-toggle-badge" class="raid-notes-badge" hidden>&#9679;</span></button>
+    <button type="button" class="summary-missing plan-only" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" title="Show coverage details" hidden></button>
+  </div>
+
+  <!-- Phone context row: line 1 plan name (+ Edit), line 2 seated count · Raid size · missing. -->
+  <div class="phone-context-panel" id="phone-context-panel">
+    <div class="phone-summary-wrap" id="phone-summary-wrap">
+      <button type="button" class="phone-summary" id="phone-summary-toggle" aria-expanded="false" aria-controls="phone-context-body">
+        <span class="phone-summary-main" id="phone-summary-main"></span>
+        <span class="phone-summary-edit"><span id="phone-summary-edit-label">Edit</span> <span aria-hidden="true" id="phone-summary-chevron">&#9662;</span></span>
+      </button>
+      <div class="phone-summary-line2">
+        <span class="phone-summary-sub" id="phone-summary-sub"></span>
+        <div id="raid-size-phone-slot"></div>
+        <div class="phone-missing-slot" id="phone-missing-slot"></div>
+      </div>
+    </div>
+    <div class="phone-context-body" id="phone-context-body" hidden>
+    <div class="phone-context-row phone-plan-row">
+      <span class="lbl">Plan</span>
+      <div id="phone-plan-name-slot"></div>
+    </div>
+    <button type="button" class="phone-ideal-comp-link" id="btn-ideal-comp-link-phone">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
+      Compare to ideal comp
+    </button>
+    <div id="phone-context-notes-slot"></div>
+    </div>
+  </div>
+
   <!-- These raw export formats aren't in the redesigned Share menu
        (see mockup) but the share dialog's "More export formats" section
        still reaches them by id via data-share-action — keep the real,
@@ -310,7 +304,7 @@
       </div>
       <div class="mobile-sheet-group" id="phone-sheet-quick-slot"></div>
       <div class="mobile-sheet-section">
-        <div class="mobile-sheet-heading">This plan</div>
+        <div class="mobile-sheet-heading">Plan</div>
         <div class="mobile-sheet-group" id="phone-sheet-plan-slot"></div>
       </div>
       <div class="mobile-sheet-section">
@@ -318,7 +312,7 @@
         <div class="mobile-sheet-group" id="phone-sheet-signups-slot"></div>
       </div>
       <div class="mobile-sheet-section">
-        <div class="mobile-sheet-heading">Your data &amp; help</div>
+        <div class="mobile-sheet-heading">Data &amp; help</div>
         <div class="mobile-sheet-group" id="phone-sheet-data-slot"></div>
       </div>
     </div>
@@ -424,21 +418,6 @@
       <span class="last-run" id="last-run"></span>
     </div>
     <div class="status-right">Party Planner Web &middot; v5.0</div>
-  </div>
-
-  <!-- Import modal -->
-  <div class="import-overlay" id="import-overlay" role="dialog" aria-modal="true" aria-labelledby="import-heading">
-    <div class="import-modal">
-      <h3 id="import-heading">Import Roster</h3>
-      <p>Paste a Raid-Helper link, event ID, JSON export, or <code>PP:</code> roster string. The format is recognized automatically.</p>
-      <label for="import-textarea" class="sr-only">Raid-Helper link, event ID, JSON, or roster string</label>
-      <textarea class="import-textarea" id="import-textarea" placeholder="Paste a Raid-Helper link, event ID, or JSON here…" spellcheck="false"></textarea>
-      <div class="import-status" id="import-status" role="status"></div>
-      <div class="import-buttons">
-        <button class="btn btn-secondary" id="btn-cancel-import">Cancel</button>
-        <button class="btn btn-primary" id="btn-do-import">Import</button>
-      </div>
-    </div>
   </div>
 
   <!-- Save modal -->
