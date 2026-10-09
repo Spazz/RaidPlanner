@@ -69,19 +69,21 @@ function renderVersionComparison() {
   }).join('');
 }
 
-// "What's new" dismissible badge (feature-backlog-2.md #9). The key is
-// versioned so a future content refresh can re-surface the badge for anyone
-// who already dismissed an older one, without clearing unrelated storage.
+// "What's new" dismissible badge (feature-backlog-2.md #9). The key keeps its original
+// name (data backups know it); its value is the release the person dismissed, so a new
+// APP_VERSION (js/changelog.js) re-surfaces the badge once. The old value "true" covers none.
 const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
 (function initWhatsNew() {
   const badge = document.getElementById('whats-new-badge');
   if (!badge) return;
-  let dismissed = false;
-  try { dismissed = localStorage.getItem(WHATS_NEW_KEY) === 'true'; } catch {}
-  badge.hidden = dismissed;
+  document.getElementById('whats-new-body').innerHTML = renderChangelog();
+  document.getElementById('app-version').textContent = 'v' + APP_VERSION;
+  let stored = null;
+  try { stored = localStorage.getItem(WHATS_NEW_KEY); } catch {}
+  badge.hidden = whatsNewDismissed(stored);
   const dismiss = () => {
     badge.hidden = true;
-    safeSetItem(localStorage, WHATS_NEW_KEY, 'true');
+    safeSetItem(localStorage, WHATS_NEW_KEY, APP_VERSION);
   };
   const navLink = document.getElementById('nav-whats-new');
   if (navLink) navLink.addEventListener('click', dismiss);

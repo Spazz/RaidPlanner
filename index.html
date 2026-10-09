@@ -102,15 +102,8 @@
   </section>
 
   <section class="landing-section" id="whats-new">
-    <div class="section-title">What's new</div>
-    <ul class="whats-new-list">
-      <li>Classic Era and WoW Forever Beta rulesets, with real per-version buffs, debuffs and raids — not just TBC.</li>
-      <li>Assignments tab: healer-to-tank pairings, Paladin blessings and boss debuff assignments.</li>
-      <li>Raid Prep panel: per-encounter notes and consumable checklists, sourced and linked.</li>
-      <li>Copy raid groups as chat-ready text for Discord or in-game raid chat, or open a clean printable raid sheet.</li>
-      <li>Planned bench backups and one-click split into two raids for oversized sign-up lists.</li>
-      <li>Utility and balance readiness checks, plus a raid notes panel for MT swaps and add plans.</li>
-    </ul>
+    <div class="section-title">What's new <span class="app-version" id="app-version"></span></div>
+    <div id="whats-new-body"></div>
     <div class="whats-new-foot">
       <button type="button" class="link-btn" id="btn-whats-new-dismiss">Got it, hide this</button>
     </div>
@@ -585,6 +578,7 @@
 <div class="print-sheet" id="print-sheet" aria-hidden="true"></div>
 
 <script src="/js/rules.js"></script>
+<script src="/js/changelog.js"></script>
 <script src="/js/state.js"></script>
 <script src="/js/import.js"></script>
 <script src="/js/storage.js"></script>

@@ -212,6 +212,9 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .whats-new-list { list-style: none; display: flex; flex-direction: column; gap: 8px; padding: 0; margin: 0; }
 .whats-new-list li { font-size: 13px; color: var(--text-secondary); line-height: 1.5; padding-left: 18px; position: relative; }
 .whats-new-list li::before { content: '\2192'; position: absolute; left: 0; color: var(--accent-gold); }
+.whats-new-version { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 14px 0 8px; }
+.whats-new-version:first-child { margin-top: 0; }
+.whats-new-version span, .app-version { font-weight: 400; color: var(--text-muted); font-size: 11px; text-transform: none; letter-spacing: 0; }
 .whats-new-foot { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
 .version-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 8px; }
 .version-compare-col { background: var(--bg-card); border: 1px solid var(--border-subtle); border-top: 3px solid var(--accent-gold-dim); padding: 16px; }

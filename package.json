@@ -1,5 +1,6 @@
 {
   "name": "party-planner-web",
+  "version": "3.0.0",
   "private": true,
   "scripts": {
     "test": "node tests/run-all.js"

@@ -474,7 +474,7 @@ const DataBackup = {
   _checkKey(key, raw) {
     if (typeof raw !== 'string') return { valid: false, error: 'expected a stored string value.' };
     if (key === 'pp_sidebar_expanded') return (raw === '0' || raw === '1') ? { valid: true, count: null } : { valid: false, error: 'unrecognized value.' };
-    if (key === 'pp_whats_new_dismissed_v1') return (raw === 'true' || raw === 'false') ? { valid: true, count: null } : { valid: false, error: 'unrecognized value.' };
+    if (key === 'pp_whats_new_dismissed_v1') return (raw === 'true' || raw === 'false' || parseVersion(raw)) ? { valid: true, count: null } : { valid: false, error: 'unrecognized value.' };
     let parsed;
     try { parsed = JSON.parse(raw); } catch { return { valid: false, error: 'not valid JSON.' }; }
     if (key === 'pp_rosters') {
