@@ -484,20 +484,39 @@ const Optimizer = {
 
   // The group identities to score `groups` under: the board's own while they still
   // describe it (Optimize stamps them), otherwise read off what each group holds.
-  boardIdentities(groups) {
+  // `planned` (a plan() result over the same players, `copyOf` mapping its player
+  // copies back to the board's players) lends the identity plan() stamped on any
+  // group that holds exactly the same players: _roleIdentities is never persisted,
+  // so after a reload a board Optimize laid out would otherwise be scored under
+  // different identities than its planned twin and read as worse than itself.
+  boardIdentities(groups, planned, copyOf) {
     const own = groups._roleIdentities;
     if (own && own.length === groups.length) return own;
     const held = groups.map(g => g.slice());
     held._frozenGroups = new Set(held.map((_, gi) => gi));
     held._frozen = new Set(groups.flat());
-    return this.frozenIdentitiesFor(held, groups.flat());
+    const derived = this.frozenIdentitiesFor(held, groups.flat()).slice();
+    const plannedIds = planned && planned._roleIdentities;
+    if (!plannedIds || !copyOf) return derived;
+    const keyOf = g => g.map(p => copyOf.get(p) || p).map(p => p.uid !== undefined ? p.uid : p.name).sort().join('|');
+    const open = new Map(); // member key -> planned group indexes not yet lent out
+    planned.forEach((g, pi) => {
+      const k = keyOf(g);
+      if (!open.has(k)) open.set(k, []);
+      open.get(k).push(pi);
+    });
+    groups.forEach((g, gi) => {
+      const pool = open.get(keyOf(g));
+      if (pool && pool.length && plannedIds[pool[0]]) derived[gi] = plannedIds[pool.shift()];
+    });
+    return derived;
   },
 
   // { score, isolated, constraintBreaks, drumGaps, breaks } for a board. `identities`
   // defaults to boardIdentities(); the returned object never aliases `groups`.
-  evaluateBoard(groups, mode, identities) {
+  evaluateBoard(groups, mode, identities, planned, copyOf) {
     const board = groups.map(g => g.slice());
-    board._roleIdentities = identities || this.boardIdentities(groups);
+    board._roleIdentities = identities || this.boardIdentities(groups, planned, copyOf);
     let score = 0;
     board.forEach((g, gi) => { score += this.groupScore(g, gi, board, mode); });
     const isolated = board.filter(g => this.wouldIsolate(g, -1)).length;
@@ -509,7 +528,10 @@ const Optimizer = {
 
   // The seated board against what a plain Optimize click would lay out from the same
   // players under the same strategy, or null when there is nothing to compare (not
-  // modeled, empty, over raid size, or open requests, which make Optimize freeze groups instead).
+  // modeled, empty, over raid size, or any open request: manual ones make Optimize
+  // freeze groups and the auto-suggested ones add a seating phase plan() alone does
+  // not run, so the hint stays off rather than promise a gain Optimize would not
+  // deliver; it therefore also stays off on an under-full roster after Optimize).
   // verdict: 'same' | 'optimize-better' | 'current-ahead' | 'optimize-fixes'.
   compareToOptimized() {
     if (!GameVersions[State.gameVersion].modeled) return null;
@@ -519,13 +541,15 @@ const Optimizer = {
     if (!seated.length) return null;
     const mode = State.optimizerMode || 'max_dps';
     const raidInfo = Config.Raids[State.selectedRaid];
-    const { groups: planned, bench: benched } = this.plan(seated.map(p => ({ ...p })), {
+    const copyOf = new Map(); // planned player copy -> the board's player
+    const copies = seated.map(p => { const c = { ...p }; copyOf.set(c, p); return c; });
+    const { groups: planned, bench: benched } = this.plan(copies, {
       gameVersion: State.gameVersion, mode, constraints: State.playerConstraints || [], drummers: State.drummers || [],
       faction: Faction.current(), numGroups: raidInfo ? raidInfo.groups : 5, raidSize: raidInfo ? raidInfo.size : 25,
     });
     // More seated players than the raid holds: plan() benches some, so the two scores would cover different players.
     if (benched && benched.length) return null;
-    const current = this.evaluateBoard(groups, mode);
+    const current = this.evaluateBoard(groups, mode, null, planned, copyOf);
     const optimized = this.evaluateBoard(planned, mode, planned._roleIdentities);
     const delta = optimized.score - current.score;
     const EPSILON = 0.5; // the same bar refineSwaps uses before it moves anyone

@@ -4,7 +4,7 @@ A raid group planner for World of Warcraft Classic Era, TBC Anniversary and WoW 
 
 Production: https://raid-planner-theta.vercel.app
 
-It is a static site with no build step and no npm dependencies: `index.html`, `app.css` and ten plain `<script src>` files under `js/`, plus one serverless function (`api/share.js`) for short and live share links.
+It is a static site with no build step and no npm dependencies: `index.html`, `app.css` and eleven plain `<script src>` files under `js/`, plus one serverless function (`api/share.js`) for short and live share links.
 
 ## Layout
 

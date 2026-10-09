@@ -104,7 +104,7 @@ check('the share menu items carry a <kbd> hint and aria-keyshortcuts for M, L, C
 check('Ctrl+S is labelled "Save a copy" everywhere (menu, tooltip, help)', () => {
   const save = app.html.match(/<button[^>]*id="btn-save"[^>]*>[\s\S]*?<\/button>/)[0];
   assert(/aria-label="Save a copy/.test(save) && /title="Save a copy \(Ctrl\+S\)/.test(save));
-  assert(!/Save roster|Save current roster/.test(app.html + app.script));
+  assert(!/Save roster|Save current roster/i.test(app.html + app.script), "no leftover Save Roster wording (dialog heading included)");
   const row = harness().api.SHORTCUTS_HELP.find(([keys]) => keys === 'Ctrl/Cmd + S');
   assert(/^Save a copy/.test(row[1]) && /saves itself/.test(row[1]));
 });

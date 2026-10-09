@@ -126,6 +126,21 @@ check('more seated players than the raid holds gives null (the two scores would 
   assert.equal(Optimizer.compareToOptimized(), null);
 });
 
+check('a reloaded optimized board (no _roleIdentities) still reads "same" with zero delta', () => {
+  for (const [id, mode] of [['F06', 'max_dps'], ['F01', 'max_dps'], ['F05', 'balanced'], ['F08', 'max_dps']]) {
+    load(id, mode);
+    if (State.preferredSlots.length) continue; // under-full rosters are not compared
+    const inMemory = Optimizer.compareToOptimized();
+    // A reload, a saved plan or a share link rebuilds State.groups without the unpersisted expando.
+    State.groups = State.groups.map(g => g.slice());
+    assert.equal(State.groups._roleIdentities, undefined);
+    const cmp = Optimizer.compareToOptimized();
+    assert.equal(cmp.verdict, 'same', `${id} ${mode}: ${Optimizer.describeComparison(cmp)}`);
+    assert(Math.abs(cmp.delta) < 1e-9, `${id} ${mode} delta ${cmp.delta}`);
+    assert.equal(cmp.current.score, inMemory.current.score, `${id} ${mode} scores like the in-memory board`);
+  }
+});
+
 check('describeComparison words every verdict', () => {
   const side = (score, extra = {}) => ({ score, isolated: 0, constraintBreaks: 0, drumGaps: 0, breaks: 0, ...extra });
   const text = (verdict, current, optimized, delta) => Optimizer.describeComparison({ verdict, current, optimized, delta });

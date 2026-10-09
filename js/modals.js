@@ -460,14 +460,14 @@ function showSaveModal() {
     'Raid ' + new Date().toLocaleDateString();
 
   modal.innerHTML = `
-    <h3>Save Roster</h3>
+    <h3>Save a copy</h3>
     <input class="save-input" id="save-name-input" type="text" value="${esc(defaultName)}" placeholder="Roster name...">
     <div class="import-buttons">
       <button class="btn btn-secondary" id="btn-cancel-save">Cancel</button>
       <button class="btn btn-primary" id="btn-do-save">Save</button>
     </div>`;
 
-  overlay.setAttribute('aria-label', 'Save Roster');
+  overlay.setAttribute('aria-label', 'Save a copy');
   overlay.classList.add('visible');
   FocusTrap.open(overlay, trigger, closeSaveOverlay);
 
