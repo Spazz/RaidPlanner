@@ -98,6 +98,7 @@ function buffSlotCategory(buffId) {
 //   { kind:'switch', player, groupIdx, currentBuffId } — a seated shaman/paladin
 //       can give it by running a different totem/aura (one click, no roster change)
 //   { kind:'bench',  player }                          — someone on the bench provides it
+//   { kind:'shared', player }                          — a seated warrior casts the other shout; a 2nd warrior covers this one
 //   { kind:'none' }                                    — nobody in the roster can
 // Keyed by buff/debuff id. Covered entries are absent.
 function getMissingBuffInsights() {
@@ -119,6 +120,11 @@ function getMissingBuffInsights() {
         insights[id] = { kind:'switch', player:provider, groupIdx:gi, currentBuffId: current ? current.id : null };
         return;
       }
+    }
+    // A seated warrior who casts the other shout: the buff needs one more warrior, not "nobody".
+    if (isBuff && (activeRules().shouts || []).includes(id)) {
+      const caster = groups.flat().find(p => canProvideBuff(entry, p));
+      if (caster) { insights[id] = { kind:'shared', player:caster }; return; }
     }
     const benched = bench.find(p => canProvideBuff(entry, p));
     if (benched) { insights[id] = { kind:'bench', player:benched }; return; }

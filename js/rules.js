@@ -105,6 +105,7 @@ const Config = {
     TREE_OF_LIFE:      { name:'Tree of Life',          sourceClass:'DRUID', sourceSpec:'Restoration', benefitsRoles:['tank','healer'], priority:{tank:90, healer:10, melee_dps:10, ranged_dps:10, caster_dps:10}, desc:'Increases healing received by nearby party members by 25% of the Druid\'s spirit.' },
     UNLEASHED_RAGE:    { name:'Unleashed Rage',        sourceClass:'SHAMAN', sourceSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:88, tank:60}, desc:'Increases melee attack power of nearby party members by 10% after landing a melee critical strike.' },
     BATTLE_SHOUT:      { name:'Battle Shout',          sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members by 305 for 2 minutes.' },
+    COMMANDING_SHOUT:  { name:'Commanding Shout',      sourceClass:'WARRIOR', benefitsRoles:['tank'], priority:35, desc:'Increases maximum health of nearby party members by 1080 for 2 minutes. The planner models one shout per warrior, so a second warrior covers the other.' },
     BLOOD_PACT:        { name:'Blood Pact',           sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases max health of nearby party members by 1330.' },
     VAMPIRIC_TOUCH:    { name:'Vampiric Touch',       sourceClass:'PRIEST', sourceSpec:'Shadow', benefitsRoles:['healer','caster_dps'], priority:{caster_dps:75, healer:55}, desc:'Restores mana to nearby party members equal to 5% of Shadow damage dealt.' },
   },
@@ -114,7 +115,7 @@ const Config = {
     MANA_SPRING:'MS', MANA_TIDE:'MT', STRENGTH_OF_EARTH:'SoE',
     DEVOTION_AURA:'Dev', CONCENTRATION_AURA:'Conc', RETRIBUTION_AURA:'Ret', SANCTITY_AURA:'Sanc',
     LEADER_OF_THE_PACK:'LotP', MOONKIN_AURA:'Moon', TREE_OF_LIFE:'ToL', TRUESHOT_AURA:'TSA', FEROCIOUS_INSP:'FI',
-    UNLEASHED_RAGE:'UR', BATTLE_SHOUT:'BS', BLOOD_PACT:'BP', VAMPIRIC_TOUCH:'VT',
+    UNLEASHED_RAGE:'UR', BATTLE_SHOUT:'BS', COMMANDING_SHOUT:'CS', BLOOD_PACT:'BP', VAMPIRIC_TOUCH:'VT',
     TRANQUIL_AIR:'TqA', STONESKIN:'SSk',
     // Not a Config.Buffs entry (see getDrumsCoverage) — just reusing the same
     // abbreviation/CSS/icon lookup maps for the group-card drum icon.
@@ -126,7 +127,7 @@ const Config = {
     MANA_SPRING:'buff-ms', MANA_TIDE:'buff-mt', STRENGTH_OF_EARTH:'buff-soe',
     DEVOTION_AURA:'buff-dev', CONCENTRATION_AURA:'buff-conc', RETRIBUTION_AURA:'buff-ret', SANCTITY_AURA:'buff-sanc',
     LEADER_OF_THE_PACK:'buff-lotp', MOONKIN_AURA:'buff-moon', TREE_OF_LIFE:'buff-tol', TRUESHOT_AURA:'buff-tsa', FEROCIOUS_INSP:'buff-fi',
-    UNLEASHED_RAGE:'buff-ur', BATTLE_SHOUT:'buff-bs', BLOOD_PACT:'buff-bp', VAMPIRIC_TOUCH:'buff-vt',
+    UNLEASHED_RAGE:'buff-ur', BATTLE_SHOUT:'buff-bs', COMMANDING_SHOUT:'buff-cs', BLOOD_PACT:'buff-bp', VAMPIRIC_TOUCH:'buff-vt',
     TRANQUIL_AIR:'buff-tqa', STONESKIN:'buff-sst', DRUMS:'buff-drums',
   },
 
@@ -154,6 +155,7 @@ const Config = {
     TREE_OF_LIFE:       'ability_druid_treeoflife',
     UNLEASHED_RAGE:     'spell_nature_unleashedrage',
     BATTLE_SHOUT:       'ability_warrior_battleshout',
+    COMMANDING_SHOUT:   'ability_warrior_rallyingcry',
     VAMPIRIC_TOUCH:     'spell_holy_stoicism',
     TRUESHOT_AURA:      'ability_trueshot',
     FEROCIOUS_INSP:     'ability_hunter_ferociousinspiration',
@@ -398,6 +400,10 @@ const Rulesets = {
       STRENGTH_OF_EARTH:'earth',
     },
     paladinAuras: { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true, SANCTITY_AURA:true },
+    // Warrior shout slot: each warrior casts ONE of these per group (the resolver
+    // picks by group value; a second warrior covers the other). Unset = every
+    // warrior is simply credited Battle Shout as a passive (Classic, Forever).
+    shouts: ['BATTLE_SHOUT', 'COMMANDING_SHOUT'],
     bestAirTotem: { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'WRATH_OF_AIR', healer:'WRATH_OF_AIR' },
     bestPaladinAura: { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' },
     // Small hooks the optimizer consults instead of hardcoded class/spec

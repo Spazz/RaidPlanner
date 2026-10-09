@@ -1019,6 +1019,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .buff-fi { background: #8a4a2f; color: #ffe0d0; }
 .buff-ur { background: #7a3f2f; color: #ffd8d0; }
 .buff-bs { background: #8a2f2f; color: #ffd0d0; }
+.buff-cs { background: #8a5a2f; color: #ffe8d0; }
 .buff-vt { background: #4a2f6a; color: #e0d0ff; }
 .buff-tqa { background: #2f6a5a; color: #d0fff0; }
 .buff-sst { background: #5a4a30; color: #ffe8c0; }

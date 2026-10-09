@@ -204,6 +204,7 @@ const DPS_VALUE = {
   FEROCIOUS_INSP:     { role: { melee_dps: 3, ranged_dps: 3, caster_dps: 3, tank: 1 } },
   UNLEASHED_RAGE:     { role: { melee_dps: 5, tank: 2 } },
   BATTLE_SHOUT:       { role: { melee_dps: 3, ranged_dps: 2, tank: 2 } },
+  COMMANDING_SHOUT:   { role: {} },
   BLOOD_PACT:         { role: { tank: 1 } },
   VAMPIRIC_TOUCH:     { key: { 'MAGE:Arcane': 7, 'PRIEST:Holy': 10 }, class: { WARLOCK: 2, MAGE: 6 }, role: { caster_dps: 4, healer: 3 } },
 };
@@ -226,6 +227,7 @@ const MIT_VALUE = {
   LEADER_OF_THE_PACK: { 'DRUID:Feral': 6, '*': 2 },
   WINDFURY:           { 'WARRIOR:Protection': 4, 'PALADIN:Protection': 1, 'DRUID:Feral': 0 },
   BATTLE_SHOUT:       { '*': 2 },
+  COMMANDING_SHOUT:   { '*': 5 },
   RETRIBUTION_AURA:   { '*': 1 },
 };
 
@@ -696,11 +698,15 @@ const Optimizer = {
     const isDrummer = p => Drummers.isDrummer(p.name);
     const pairScore = (a, b) => this.groupScore(groups[a], a, groups, mode) + this.groupScore(groups[b], b, groups, mode);
     // Buff ids a group resolves that at least one of its members gets value from.
+    // The warrior shouts count as one buff (Battle or Commanding Shout): a swap may
+    // turn a group's second shout into nothing, never its only one.
+    const shouts = activeRules().shouts || [];
+    const family = (id) => shouts.includes(id) ? 'SHOUT' : id;
     const usedBuffs = (grp) => [...this.resolveGroupBuffs(grp, () => 1)].filter(id =>
       grp.some(m => dpsValueFor(id, m) > 0 || (m.role === 'tank' && mitValueFor(id, m) > 0)));
     const keepsBuffs = (before, after) => {
-      const kept = this.resolveGroupBuffs(after, () => 1);
-      return usedBuffs(before).every(id => kept.has(id));
+      const kept = new Set([...this.resolveGroupBuffs(after, () => 1)].map(family));
+      return usedBuffs(before).every(id => kept.has(family(id)));
     };
     const isolatedNow = (gi) => this.wouldIsolate(groups[gi], -1);
 
@@ -1204,6 +1210,7 @@ const Optimizer = {
   // every optimizer outcome) stay exactly as they were.
   resolveBuffSources(group, valueFn, opts) {
     const rules = activeRules();
+    const shouts = rules.shouts || [];
     const overrideFor = opts && opts.overrideFor;
     const sources = new Map();
     const usedAuras = new Set();
@@ -1262,8 +1269,19 @@ const Optimizer = {
         for (const [id, buff] of Object.entries(Config.Buffs)) {
           if (buff.sourceClass !== p.class) continue;
           if (buff.sourceSpec && buff.sourceSpec !== p.spec) continue;
-          if (rules.totemElements[id] || rules.paladinAuras[id]) continue;
+          if (rules.totemElements[id] || rules.paladinAuras[id] || shouts.includes(id)) continue;
           if (!sources.has(id)) sources.set(id, p);
+        }
+        // One shout per warrior: the best-valued one nobody else in the group already
+        // casts (a tie, e.g. in a caster group, keeps the first listed - Battle Shout).
+        if (p.class === 'WARRIOR') {
+          let best = null, bestV = -1;
+          for (const id of shouts) {
+            if (sources.has(id) || !Config.Buffs[id]) continue;
+            const v = valueFn(id);
+            if (v > bestV) { bestV = v; best = id; }
+          }
+          if (best) sources.set(best, p);
         }
       }
     }

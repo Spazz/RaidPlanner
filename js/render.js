@@ -742,7 +742,7 @@ function renderSidebarSummary(buffs, debuffs) {
 }
 
 // One line under a missing row saying what would fix it, with the button
-// that does it. Mirrors getMissingBuffInsights(): switch / bench / none.
+// that does it. Mirrors getMissingBuffInsights(): switch / bench / shared / none.
 function renderInsightLine(id, insight) {
   if (!insight) return '';
   const short = (p) => esc((p.name || 'Unknown').split('-')[0]);
@@ -761,6 +761,9 @@ function renderInsightLine(id, insight) {
       <span class="insight-text">Benched: <span class="insight-who ${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
       <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short(p)}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
+  }
+  if (insight.kind === 'shared') {
+    return `<div class="buff-row-insight none"><span class="insight-text">Needs a 2nd warrior: <span class="insight-who ${color(insight.player)}">${short(insight.player)}</span> casts the other shout</span></div>`;
   }
   return `<div class="buff-row-insight none"><span class="insight-text">Nobody in roster</span></div>`;
 }
