@@ -1,6 +1,7 @@
 /**
  * PartyPlanner Web - Scenario test runner
- * Run: node scenario-tests.js [--mode max_dps|tank_mit|balanced|relaxed|all] [--only F12,P03] [--verbose]
+ * Run: node scenario-tests.js [--mode max_dps|tank_mit|balanced|relaxed|all] [--only F12,P03] [--verbose] [--shard i/n]
+ * (--shard runs every n-th scenario starting at the i-th; tests/run-all.js runs the shards listed in tests/shards.js side by side.)
  *
  * Feeds every roster in scenarios.js through the real Raid-Helper importer (which runs
  * the optimizer) and checks invariants that must hold for ANY roster, plus the
@@ -12,6 +13,7 @@ const app = require('./tests/load-app');
 const PP = app.requireLogic(['Config', 'Import', 'Optimizer', 'State', 'getMissingBuffInsights', 'getGroupBuffs'], '_pp_scenario_logic.tmp.js');
 const { Config, Import, Optimizer, State, getMissingBuffInsights, getGroupBuffs } = PP;
 const Scenarios = require('./scenarios.js');
+const { parseShard, partition } = require('./tests/shards');
 
 // ── CLI ──
 const args = process.argv.slice(2);
@@ -20,6 +22,7 @@ const modeArg = argVal('--mode', 'all');
 const MODES = modeArg === 'all' ? ['max_dps', 'tank_mit', 'balanced', 'relaxed'] : [modeArg];
 const only = argVal('--only', '').split(',').filter(Boolean);
 const verbose = args.includes('--verbose');
+const shard = parseShard(argVal('--shard', ''));
 
 // ── Helpers ──
 function resetState(raid) {
@@ -176,7 +179,7 @@ function runScenario(scenario, mode) {
   return { failures, ms, seated: seated.length, benched: bench.length, tanks: seatedRoles.tank, healers: seatedRoles.healer, size };
 }
 
-const list = Scenarios.scenarios.filter(s => only.length === 0 || only.includes(s.id));
+const list = partition(Scenarios.scenarios.filter(s => only.length === 0 || only.includes(s.id)), shard);
 for (const scenario of list) {
   scenarioCount++;
   const perMode = {};
@@ -212,5 +215,5 @@ if (gaps.length) {
   for (const g of gaps) console.log(`  ${g.id}  ${g.label}: ${g.expect.knownGap}`);
 }
 const failedScenarios = rows.filter(r => r.status === 'FAIL').length;
-console.log(`\nScenarios: ${scenarioCount} (${scenarioCount - failedScenarios} passed, ${failedScenarios} failed)  Modes: ${MODES.join(', ')}  Checks: ${checkCount} (${failCount} failed)`);
+console.log(`\nScenarios: ${scenarioCount} (${scenarioCount - failedScenarios} passed, ${failedScenarios} failed)  Modes: ${MODES.join(', ')}  Checks: ${checkCount} (${failCount} failed)${shard ? `  Shard: ${shard.index + 1}/${shard.count}` : ''}`);
 process.exit(failedScenarios ? 1 : 0);
