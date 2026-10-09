@@ -1,0 +1,11 @@
+# Files Vercel does not upload: tests, CI and docs are not part of the running site.
+# Everything the page loads must stay out of this list; deploy-tests.js checks that.
+# (scenarios.js is kept: the ?dev roster picker fetches it.)
+/tests.js
+/*-tests.js
+/*-scenarios.js
+/tests/
+/.github/
+/gruul_dps_data.txt
+/README.md
+/CHANGELOG.md

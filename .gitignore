@@ -7,6 +7,7 @@
 !og-image.png
 !js/
 !js/rules.js
+!js/changelog.js
 !js/state.js
 !js/import.js
 !js/storage.js
@@ -66,6 +67,10 @@
 !compare-tests.js
 !shortcuts-tests.js
 !head-tests.js
+!deploy-tests.js
+!README.md
+!changelog-tests.js
+!.vercelignore
 # Test runner, loader and CI (npm test; GitHub Actions runs it)
 !package.json
 !tests/
