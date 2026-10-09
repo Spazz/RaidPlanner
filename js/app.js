@@ -3,6 +3,16 @@ function hasLoadedWork() {
   return State.roster.length > 0 || (State.bench || []).length > 0 || State.preferredSlots.length > 0 || State.campfires.fires.length > 0;
 }
 
+// A random roster replaces the whole plan, so it asks first whenever there is work to lose.
+async function confirmReplaceWithRandom() {
+  if (!hasLoadedWork()) return true;
+  return Modal.confirm({
+    title: 'Replace your plan?',
+    message: 'A random roster replaces your current layout.',
+    confirmLabel: 'Generate random roster',
+  });
+}
+
 function showView(view) {
   State.view = view;
   const landing = document.getElementById('landing-view');
@@ -171,9 +181,10 @@ function renderLandingSavedList() {
     document.head.appendChild(script);
   }
 
-  document.getElementById('btn-landing-random').addEventListener('click', () => {
+  document.getElementById('btn-landing-random').addEventListener('click', async () => {
+    if (!await confirmReplaceWithRandom()) return;
     State.planId = null;
-  RandomRoster.generate();
+    RandomRoster.generate();
     commit();
     showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
     showView('app');
@@ -354,6 +365,14 @@ function renderLastRun(summary) {
 ;
 }
 
+// Optimize wipes the leader's totem/aura picks, so the toast says so when it did.
+function optimizeToastMessage({ moved, buffDelta, overridesReset }) {
+  const base = moved === 0 && buffDelta === 0
+    ? 'Already optimal — nothing moved'
+    : `Optimized: ${buffDelta >= 0 ? '+' : ''}${buffDelta} buffs, ${moved} players moved`;
+  return overridesReset > 0 ? `${base}. ${overridesReset} buff override${overridesReset === 1 ? '' : 's'} reset` : base;
+}
+
 document.getElementById('btn-optimize').addEventListener('click', () => {
   if (!GameVersions[State.gameVersion].modeled) { showToast(GameVersions[State.gameVersion].note); return; }
   if (State.roster.length === 0) { showToast('Import a roster first'); return; }
@@ -361,6 +380,7 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
   const placementBefore = playerGroupMap();
 
   State.optimizerMode = document.getElementById('optimize-mode').value;
+  const overridesReset = Object.keys(State.buffOverrides).length;
   State.buffOverrides = {};
   Optimizer.optimize();
   commit();
@@ -369,7 +389,7 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
   const moved = Object.keys(placementAfter).filter(uid => placementBefore[uid] !== undefined && placementBefore[uid] !== placementAfter[uid]).length;
   const buffDelta = countCoveredBuffs() - buffsBefore;
   renderLastRun({ buffDelta, moved });
-  showToast(moved === 0 && buffDelta === 0 ? 'Already optimal — nothing moved' : `Optimized: ${buffDelta >= 0 ? '+' : ''}${buffDelta} buffs, ${moved} players moved`);
+  showToast(optimizeToastMessage({ moved, buffDelta, overridesReset }));
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {
@@ -393,7 +413,8 @@ document.getElementById('btn-landing-empty').addEventListener('click', () => {
   showToast('Click an empty slot to choose a preferred class and spec');
 });
 
-document.getElementById('btn-random').addEventListener('click', () => {
+document.getElementById('btn-random').addEventListener('click', async () => {
+  if (!await confirmReplaceWithRandom()) return;
   State.planId = null;
   RandomRoster.generate();
   commit();
@@ -802,13 +823,13 @@ function copyShareLink(linkPromise) {
   return navigator.clipboard.write([item]).catch(writeText);
 }
 
-function loadFromShareLink() {
+async function loadFromShareLink() {
   const hash = window.location.hash || '';
   if (!hash.startsWith('#r=')) return false;
 
   // Strip the fragment first, so a refresh (or a declined prompt) never re-fires.
   history.replaceState(null, '', window.location.origin + window.location.pathname);
-  return applyShareCode(hash.slice(3));
+  return await applyShareCode(hash.slice(3));
 }
 
 async function loadFromShortLink() {
@@ -844,7 +865,7 @@ async function loadFromShortLink() {
       return true;
     }
 
-    if (!applyShareCode(remote.code)) return false;
+    if (!await applyShareCode(remote.code)) return false;
     const planKey = LiveLinks.planKey(State);
     if (planKey) bindLiveLink(planKey, id, currentShareCode(), remote.updatedAt);
     return true;
@@ -855,7 +876,7 @@ async function loadFromShortLink() {
   }
 }
 
-function applyShareCode(code) {
+async function applyShareCode(code) {
   const str = Import.decodeSharePayload(code);
   if (!str) { showToast('That share link is invalid or damaged'); return false; }
 
@@ -863,7 +884,11 @@ function applyShareCode(code) {
   if (!preview.success) { showToast(preview.error || 'That share link is invalid or damaged'); return false; }
 
   const hasWork = hasLoadedWork();
-  if (hasWork && !confirm(`Load shared raid "${preview.name}"? This replaces your current layout.`)) return false;
+  if (hasWork && !await Modal.confirm({
+    title: 'Load shared raid?',
+    message: `"${preview.name}" replaces your current layout.`,
+    confirmLabel: 'Load shared raid',
+  })) return false;
 
   const res = Import.importAddonString(str);
   if (!res.success) { showToast(res.error || 'That share link is invalid or damaged'); return false; }
@@ -1632,7 +1657,7 @@ function renderIdealComp() {
       }
     }
 
-    container.innerHTML += `<div class="group-card" data-group="${gi}">
+    container.innerHTML += `<div class="group-card" role="listitem" data-group="${gi}">
       <div class="group-header">
         <h3>Group ${gi+1}</h3>
         <div style="display:flex;align-items:center;gap:var(--sp-2);">
@@ -1734,9 +1759,10 @@ PlanSession.ready = true;
 initGroups();
 commit();
 // A share link opens straight into the planner; everyone else lands on import.
-const openedShare = loadFromShareLink();
-showView(openedShare ? 'app' : 'landing');
-if (!openedShare && hasLoadedWork()) document.querySelector('.import-tab[data-pane="saved"]').click();
+// The link may ask before replacing the restored plan, so the page starts on the landing view.
+showView('landing');
+if (hasLoadedWork()) document.querySelector('.import-tab[data-pane="saved"]').click();
+loadFromShareLink().then(opened => { if (opened) showView('app'); });
 // A short link (/<version>/<id>) needs a server round-trip, so it lands on
 // import first and switches to the planner once the layout arrives.
 loadFromShortLink().then(opened => { if (opened) showView('app'); });
@@ -1747,7 +1773,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) PlanS
 window.addEventListener('storage', e => TabWatch.onStorage(e));
 // A share link pasted into the address bar of an already-open page only
 // changes the hash, so honour it there too.
-window.addEventListener('hashchange', () => { if (loadFromShareLink()) showView('app'); });
+window.addEventListener('hashchange', () => { loadFromShareLink().then(opened => { if (opened) showView('app'); }); });
 
 // ── EXPOSE FOR TESTING ──────────────────────────────────────────
 // ── BUFF TOOLTIP PORTAL ─────────────────────────────────────────

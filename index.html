@@ -26,7 +26,7 @@
     <span class="game-header-caption">Your raid. Your rules.<br>One planner for every era.</span>
   </div>
 </header>
-<div class="landing" id="landing-view">
+<main class="landing" id="landing-view">
   <nav class="landing-nav" aria-label="Site">
     <div class="landing-brand"><h1>Party Planner</h1><span>Multi-version Raid Planner</span></div>
     <div class="landing-nav-links">
@@ -167,9 +167,9 @@
     <span>Party Planner Web &middot; a multi-version raid planner</span>
     <span>Built for raid leaders who would rather pull than sort.</span>
   </footer>
-</div>
+</main>
 
-<div class="addon-frame" id="app" hidden>
+<main class="addon-frame" id="app" hidden>
   <div class="title-bar">
     <div class="title-left">
       <button type="button" class="back-link" id="btn-back-import" aria-label="Back to import">&larr; Import</button>
@@ -394,13 +394,13 @@
     </div>
   </div>
 
-  <div class="summary-bar" id="summary-bar" aria-live="polite"></div>
+  <div class="summary-bar" id="summary-bar"></div>
 
   <section id="campfire-panel" hidden aria-label="Campfire planning"></section>
   <section id="assignments-panel" class="assignments-panel" hidden aria-label="Assignments"></section>
   <div class="app-body">
     <div class="main-column">
-      <div class="groups-container" id="groups-container"></div>
+      <div class="groups-container" id="groups-container" role="list" aria-label="Raid parties"></div>
 
       <div class="bench-section" id="bench-section"></div>
 
@@ -461,7 +461,7 @@
       <!-- Content injected by JS -->
     </div>
   </div>
-</div>
+</main>
 
 <dialog id="share-dialog" class="history-dialog" aria-labelledby="share-heading">
   <div class="history-dialog-header"><h3 id="share-heading">Share your plan</h3><button type="button" class="btn btn-secondary" id="close-share">Close</button></div>
@@ -554,8 +554,16 @@
   <div class="import-buttons"><button type="button" class="btn btn-primary" id="btn-unplaced-confirm">Seat them anyway</button></div>
 </dialog>
 
+<dialog id="confirm-dialog" class="history-dialog" aria-labelledby="confirm-heading" aria-describedby="confirm-message">
+  <h3 id="confirm-heading"></h3>
+  <p id="confirm-message"></p>
+  <div class="import-buttons"><button type="button" class="btn btn-secondary" id="btn-confirm-cancel" autofocus>Cancel</button><button type="button" class="btn btn-primary" id="btn-confirm-ok">Continue</button></div>
+</dialog>
+
 <div class="drag-ghost" id="drag-ghost"></div>
 <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<!-- The one place the planner announces changes to screen readers (see announce()). -->
+<div class="sr-only" id="sr-status" role="status" aria-live="polite" aria-atomic="true"></div>
 <!-- Backlog #12: printable raid sheet. Kept as a body-level sibling (not
      nested under #app/#landing-view) so @media print can show it even while
      its normal state is empty/display:none and an ancestor view is hidden. -->

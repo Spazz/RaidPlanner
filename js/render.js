@@ -9,17 +9,7 @@ function syncVersionControls() {
   // looks like a plain text panel on the landing page.
   document.querySelectorAll('.game-version-tab[data-version]').forEach(button => {
     button.setAttribute('aria-pressed', String(button.dataset.version === State.gameVersion));
-    button.onclick = () => {
-      if (button.dataset.version === State.gameVersion) return;
-      State.planId = null;
-      State.gameVersion = button.dataset.version;
-      State.selectedRaid = GameVersions[State.gameVersion].defaultRaid;
-      State.buffOverrides = {};
-      initGroups();
-      State.preferredSlots = PreferredSlots.clean(State.preferredSlots);
-      switchTab('plan');
-      showToast(GameVersions[State.gameVersion].note);
-    };
+    button.onclick = () => switchGameVersion(button.dataset.version);
   });
   document.getElementById('landing-version-note').textContent = profile.note;
   document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-player roster`;
@@ -27,6 +17,27 @@ function syncVersionControls() {
   document.getElementById('optimize-mode').disabled = !profile.modeled;
   initRaidDropdown();
 }
+// Switching version refits the plan to the new version's default raid, so with a plan
+// loaded it asks first, and afterwards says how many players the smaller raid benched.
+async function switchGameVersion(version) {
+  if (!Object.prototype.hasOwnProperty.call(GameVersions, version) || version === State.gameVersion) return false;
+  if (hasLoadedWork() && !await Modal.confirm({
+    title: `Switch to ${GameVersions[version].name}?`,
+    message: 'Your players carry over to the default raid of the new version. Totem and aura picks are reset, and anyone who does not fit the new raid size moves to the bench.',
+    confirmLabel: `Switch to ${GameVersions[version].name}`,
+  })) return false;
+  State.planId = null;
+  State.gameVersion = version;
+  State.selectedRaid = GameVersions[version].defaultRaid;
+  State.buffOverrides = {};
+  const benched = initGroups();
+  State.preferredSlots = PreferredSlots.clean(State.preferredSlots);
+  switchTab('plan');
+  const size = Config.Raids[State.selectedRaid] ? Config.Raids[State.selectedRaid].size : 25;
+  showToast((benched > 0 ? `${benched} player${benched === 1 ? '' : 's'} benched: the ${size}-man raid is full. ` : '') + GameVersions[version].note);
+  return true;
+}
+
 function initRaidDropdown() {
   const sel = document.getElementById('raid-select');
   sel.innerHTML = '';
@@ -565,7 +576,7 @@ function renderGroups() {
       }
     }
 
-    container.innerHTML += `<div class="group-card" data-group="${gi}">
+    container.innerHTML += `<div class="group-card" role="listitem" data-group="${gi}">
       <div class="group-header">
         <h3>Group ${gi+1}</h3>
         <div style="display:flex;align-items:center;gap:var(--sp-2);">
@@ -811,6 +822,23 @@ function setSidebarExpanded(expanded, persist = true) {
 })();
 
 // ── Sticky raid summary bar ──
+// The sentence the screen-reader region announces for the summary bar; the bar itself is
+// not a live region (it is rebuilt on every render, which would re-read all of it).
+function describeRaidSummary({ seated, capacity, counts, benched }) {
+  const n = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+  return `${seated} of ${capacity} in raid: ${n(counts.tank, 'tank')}, ${n(counts.healer, 'healer')}, ${counts.melee_dps} melee, ${counts.ranged} ranged. ${benched} benched.`;
+}
+
+// One polite, atomic sr-only region for every announcement the page makes by itself.
+// Repeating the last message is skipped, so re-rendering an unchanged plan stays silent.
+let lastAnnouncement = '';
+function announce(message) {
+  const region = document.getElementById('sr-status');
+  if (!region || !message || message === lastAnnouncement) return;
+  lastAnnouncement = message;
+  region.textContent = message;
+}
+
 function renderSummaryBar() {
   const bar = document.getElementById('summary-bar');
   if (!bar) return;
@@ -834,6 +862,7 @@ function renderSummaryBar() {
     ${chip('melee', 'Melee', counts.melee_dps)}
     ${chip('ranged', 'Ranged', counts.ranged)}
     <span class="summary-chip bench"><b>${benched}</b> Benched</span>`;
+  announce(describeRaidSummary({ seated, capacity, counts, benched }));
 }
 
 function updateStatus() {
@@ -851,7 +880,8 @@ function updateStatus() {
 let dragData = null;
 
 // Moves the player at (srcG, srcS) onto slot (tgtG, tgtS): into an open seat,
-// or swapping with whoever sits there. Shared by mouse and touch drag.
+// or swapping with whoever sits there. Shared by mouse and touch drag; a manual move also
+// pins the group order.
 function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
   const srcPlayer = (State.groups[srcG] || [])[srcS] || null;
   const tgtPlayer = (State.groups[tgtG] || [])[tgtS] || null;
@@ -867,6 +897,8 @@ function moveGroupPlayer(srcG, srcS, tgtG, tgtS) {
     srcPlayer.groupNumber = tgtG + 1;
     tgtPlayer.groupNumber = srcG + 1;
   }
+  // The leader arranged this by hand: sortTankGroupFirst() must not reshuffle the group order afterwards.
+  State.preserveGroupOrder = true;
   return true;
 }
 

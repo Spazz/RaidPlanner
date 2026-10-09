@@ -117,6 +117,39 @@ function renderManualChanges() {
   });
 }
 
+// ── CONFIRM DIALOG ──────────────────────────────────────────────
+// The one styled yes/no prompt (replaces window.confirm, which blocks the page and
+// cannot be styled or tested). Modal.confirm() resolves true only when the confirm
+// button is pressed; Cancel, Escape and a newer confirm replacing it all resolve false.
+// Cancel holds the initial focus so Enter never confirms a destructive action by accident.
+const Modal = {
+  resolver: null,
+  confirm({ title = 'Are you sure?', message = '', confirmLabel = 'Continue', cancelLabel = 'Cancel' } = {}) {
+    const dialog = document.getElementById('confirm-dialog');
+    if (!dialog || typeof dialog.showModal !== 'function') return Promise.resolve(false);
+    this.settle(false);
+    document.getElementById('confirm-heading').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    document.getElementById('btn-confirm-ok').textContent = confirmLabel;
+    const cancel = document.getElementById('btn-confirm-cancel');
+    cancel.textContent = cancelLabel;
+    return new Promise(resolve => {
+      this.resolver = resolve;
+      dialog.returnValue = '';
+      if (!dialog.open) dialog.showModal();
+      cancel.focus();
+    });
+  },
+  settle(result) {
+    const resolve = this.resolver;
+    this.resolver = null;
+    if (resolve) resolve(result);
+  },
+};
+document.getElementById('btn-confirm-ok').addEventListener('click', () => document.getElementById('confirm-dialog').close('ok'));
+document.getElementById('btn-confirm-cancel').addEventListener('click', () => document.getElementById('confirm-dialog').close());
+document.getElementById('confirm-dialog').addEventListener('close', e => Modal.settle(e.target.returnValue === 'ok'));
+
 // ── TOAST NOTIFICATION ──────────────────────────────────────────
 // One shared timer: a toast that arrives while another is showing restarts the
 // countdown instead of being hidden by the earlier toast's timeout.
@@ -774,6 +807,15 @@ function normalizeImportSource(raw) {
   return { text: t };
 }
 
+// Numbers every import as it starts. A Raid-Helper fetch can take seconds, so when a newer
+// import has started meanwhile the older one must not land on top of it (importFromText
+// drops it after its await). The landing card and the Import dialog share this counter.
+const ImportGate = {
+  latest: 0,
+  begin() { return ++this.latest; },
+  isStale(ticket) { return ticket !== this.latest; },
+};
+
 // Fetch roster JSON from a URL. Resolves to the body, or null after reporting.
 async function fetchRosterJson(url, report) {
   const controller = new AbortController();
@@ -797,6 +839,7 @@ async function fetchRosterJson(url, report) {
 async function importFromText(raw, report = (m) => showToast(m)) {
   const src = normalizeImportSource(raw);
   if (!src.url && !src.text) return false;
+  const ticket = ImportGate.begin();
 
   if (src.text && src.text.startsWith('PP:')) {
     const result = Import.importAddonString(src.text);
@@ -815,6 +858,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     report('Fetching roster from Raid-Helper...', false);
     jsonStr = await fetchRosterJson(src.url, report);
     if (jsonStr == null) return false;
+    if (ImportGate.isStale(ticket)) { report('Skipped: a newer import replaced this one', false); return false; }
   }
 
   let metadata;
@@ -1242,6 +1286,7 @@ async function runImport(inputId, statusId, btnId, onSuccess) {
   const input = document.getElementById(inputId);
   const btn = document.getElementById(btnId);
   const report = statusReporter(statusId);
+  if (btn.disabled) return;   // this runner's import is still in flight (Enter / Ctrl+Enter / a double click)
   const text = input.value.trim();
   if (!text) { report('Paste something first', true); input.focus(); return; }
   btn.disabled = true;
