@@ -726,6 +726,17 @@ async function check(name, fn) {
     assert.equal(env.api.TabWatch.entry.data.notes, 'edited in the other tab');
   });
 
+  await check('TabWatch ignores a save with identical content, then warns on a real edit', async () => {
+    const { env, key, theirs } = tabEnv();
+    const { TabWatch, PlanStore } = env.api;
+    const same = JSON.stringify([{ updatedAt: env.now + 3000, schemaVersion: 1, data: PlanStore.capture() }]);
+    TabWatch.onStorage({ key: 'pp_working_plans', newValue: same });
+    assert.equal(env.el('tab-conflict-banner').hidden, true, 'a second tab opening the same plan is no conflict');
+    assert.equal(PlanStore.known[key], env.now + 3000);
+    TabWatch.onStorage({ key: 'pp_working_plans', newValue: theirs });
+    assert.equal(env.el('tab-conflict-banner').hidden, false);
+  });
+
   await check('TabWatch ignores other keys, key-less events, other plans and this tab\'s own write', async () => {
     const { env, theirs } = tabEnv();
     const { TabWatch, PlanStore, State } = env.api;

@@ -434,6 +434,12 @@ const TabWatch = {
     if (e.key !== PlanStore.key) return;
     const entry = PlanStore.foreignEdit(e.newValue, LiveLinks.planKey(State));
     if (!entry) return;
+    // A tab opened beside this one re-saves the same plan with a new updatedAt:
+    // identical content is no conflict, but remember the stamp so a later real edit shows.
+    if (JSON.stringify(entry.data) === JSON.stringify(PlanStore.capture())) {
+      PlanStore.known[LiveLinks.planKey(State)] = entry.updatedAt;
+      return;
+    }
     this.entry = entry;
     document.getElementById('tab-conflict-banner').hidden = false;
   },
