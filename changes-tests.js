@@ -473,7 +473,7 @@ check('changes.js is logic: after analysis.js, before render.js, without the UI 
 check('the Changes button ends the action row as a hidden disclosure for the panel, with a badge', () => {
   const toolbar = html.slice(html.indexOf('<div class="toolbar">'), html.indexOf('<!-- Phone context row'));
   const button = toolbar.match(/<button[^>]*id="btn-changes"[^>]*>[\s\S]*?<\/button>/)[0];
-  assert(toolbar.trimEnd().endsWith(button + '\n  </div>'), 'last item of the toolbar');
+  assert(toolbar.replace(/\r\n/g, '\n').trimEnd().endsWith(button + '\n  </div>'), 'last item of the toolbar'); // CRLF checkouts too
   assert.match(button, /aria-expanded="false"/);
   assert.match(button, /aria-controls="changes-log-panel"/);
   assert.match(button, / hidden>/);
