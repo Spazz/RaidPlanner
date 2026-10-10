@@ -3,8 +3,19 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.1.0';
+const APP_VERSION = '4.2.0';
 const CHANGELOG = [
+  { version: '4.2.0', date: '2026-10-10', title: 'Smarter TBC groups', changes: [
+    'A Ret Paladin is now placed in the same group as an Enhancement Shaman.',
+    'Hunters stay out of caster groups, and when the raid has two Enhancement Shamans they spread over the melee groups as evenly as the seats allow.',
+    'Destruction Warlocks now stack in a group with the Elemental Shaman and the Balance Druid.',
+    'A spare Elemental or Restoration Shaman covers a melee group that has no Windfury.',
+    'A second Feral Druid or Enhancement Shaman in one group is avoided, and a redundant third Enhancement Shaman is benched before a DPS player.',
+    'At most 6 healers are seated when more healers would bench DPS players.',
+    'A spare hunter is no longer parked in the tank group as its guest; a caster takes that seat.',
+    'Optimize now also tries rotating players through three groups, and re-checks the board after its last passes.',
+    "Open-slot suggestions favour a Feral Druid for a hunter group: a Feral no longer pays for a Windfury totem it cannot use, and Marksmanship gets no credit for Improved Hunter's Mark (every raid hunter build has it).",
+  ] },
   { version: '4.1.0', date: '2026-10-09', title: 'See what changed', changes: [
     'A Changes button at the end of the action row lists what a sign-up sync, a raid size change or a live link update did to the roster, newest first.',
     'Each change names the player and what happened: benched, seated, a new sign-up status, a new sign-up, a dropped sign-up, or a group move from a co-editor.',

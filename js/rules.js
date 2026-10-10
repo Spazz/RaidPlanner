@@ -411,6 +411,16 @@ const Rulesets = {
     rules: {
       tankAnchorRank: p => p.class === 'PALADIN' ? 0 : p.class === 'WARRIOR' ? 1 : 2,
       meleeWantsWindfury: true,     // a melee group with no shaman is missing WF
+      // 2026-10-10 comp rule 1 (any shaman drops Windfury for melee): per-melee cost (x dpsWeight x structure)
+      // of a melee group with no shaman; sized so a spare Ele/Resto is worth pulling to it.
+      meleeWantsWindfuryCost: 13, // 14 breaks drums-tests (spreadDrummers); 13 is the highest value that keeps it green
+      // 2026-10-10 user decision: Windfury from an Enhancement Shaman is worth more to melee than from an
+      // Ele/Resto; the WINDFURY value in a group holding an Enh is scaled by (1 + this).
+      enhWindfuryBonus: 0.4,
+      // 2026-10-10 user decision "Ret sits with an Enh": flat bonus (x structure) for a group holding both a
+      // Retribution Paladin and an Enhancement Shaman; gives the pairing a clear margin over swapping the Ret
+      // into a shaman-less group (T02 was +0.03 without it).
+      retEnhPairBonus: 8,
       ferociousInspiration: true,   // BM Hunter FI stacks multiplicatively per hunter
       rosterShapedIdentities: true, // melee/caster group count follows the DPS mix (Optimizer.roleIdentitiesFor)
       specAura: { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA' },
@@ -419,16 +429,62 @@ const Rulesets = {
       // reference comp spreads one hunter per melee group. Penalty per such Survival
       // Hunter. See Optimizer.groupScore.
       hunterSpread: 2,
+      // 2026-10-10 user decision: hunters stay out of caster groups as a HEAVY WEIGHT
+      // (never a hard ban). Cost per hunter in a caster_dps-identity group, x cfg.structure.
+      hunterInCasterGroup: 20,
+      // 2026-10-10 user decision: with 2+ Enhancement Shamans on the board, hunters spread
+      // one per melee group whatever their spec. Cost per hunter beyond a fair share
+      // (ceil(hunters / melee groups)) in a group, triangular in the excess, x cfg.structure;
+      // 24 (not 12): a 3rd hunter in a leftover melee group (T48) must cost more than the melee
+      // buffs lost by pulling a non-hunter out of a Windfury group (swap probes: up to ~21);
+      // sized above the FI stacking bonus a BM pair earns. With 0-1 Enh the
+      // Survival-only tax (hunterSpread) applies and BM pairs stack freely.
+      hunterSpreadEnh: 24,
+      // 2026-10-10 comp rules 2/3: the Ele amplifies the warlock group together with the Boomkin, so
+      // OpenSlots.choose() does not suggest an Ele beyond one per Boomkin (cost in _raidValue points).
+      extraEleNeedsBoomkin: 30,
+      // 2026-10-10 comp rules (reference G5 = healers + one Affliction lock): pulls the leftover
+      // Affliction lock into the healer-group overflow seat (x cfg.structure). Knife-edge: 8+ breaks
+      // tests.js, below 7 breaks T21.
+      healerGroupDpsPull: 7,
+      // 2026-10-10 user decision "a roster's only Resto Shaman stays with the tank-group healers": a tank
+      // group with under 3 healers and no shaman pays this (x cfg.structure) when the roster's lone shaman is
+      // a Resto elsewhere, so the Windfury coverage pull cannot strip the tank healers.
+      loneRestoTankCost: 25,
+      // 2026-10-10 comp rules (reference G5 keeps 3 healers + 1 overflow DPS): cost per healer below 3 in the
+      // tank group (x cfg.structure), so pushing hunters out of caster groups never trades a tank-group healer for a guest.
+      tankGroupHealerCost: 15,
+      // Search depth beyond swaps/exchanges (2026-10-10 comp rules: the reference comp
+      // needs moves like the suggested Ret rotating to the Enh Shaman's group while a
+      // displaced player takes its seat): 3-cycle rotations in the refine rounds plus a
+      // guarded final refine after de-isolation. Absent = off, so Classic/Forever boards
+      // are unchanged (and their 40-man boards skip the extra cost). See Optimizer.refineRotations.
+      rotationSearch: true,
       // DPS specs the reference comp parks in the healer/tank group as its one overflow
       // seat (exempt from the DPS-guest penalty there). See Optimizer.groupScore.
       healerGroupDps: p => p.class === 'WARLOCK' && p.spec === 'Affliction',
-      // Party-buff providers whose second copy in one group mostly duplicates
-      // the first (totems share elements, LotP/Moonkin/Sanctity don't stack)
-      // while another group goes without. See Optimizer.groupScore.
+      // 2026-10-10 comp rules: a hunter in the tank group's guest seat pays this (x structure), the same
+      // 12 a melee or caster guest pays there. The base penalty never charged ranged_dps, so a spare
+      // hunter was parked with the healers for free (F01) while a warlock, which at least gives the
+      // tank Blood Pact, sat with the hunters. Absent in Classic/Forever.
+      hunterTankGuestCost: 12,
+      // 2026-10-10 duplicate-stacks decision: an Enh Shaman beyond the melee-group count is redundant
+      // (Windfury is per group), so seating one in a tank/caster group costs this (x structure); the
+      // bench trade then benches the spare Enh rather than a DPS that receives buffs.
+      surplusEnhCost: 25,
+      // Healer cap (user decision 2026-10-10): when DPS would otherwise be benched, seat at most
+      // floor + this many healers (6 in a 25-man, 4 in a 10-man). Absent in Classic/Forever.
+      healerCapOverFloor: 1,
+      // 2026-10-10 comp rule 4 (one Feral per group) and the any-shaman-drops-WF spread: raised from
+      // SHAMAN 10 / Feral 8 so a second copy in a group is worth less than a seat elsewhere.
+      // Party-buff providers whose second copy in one group mostly duplicates the first (totems share
+      // elements, LotP/Moonkin/Sanctity don't stack) while another group goes without. See Optimizer.groupScore.
       stackPenalty: [
         { match: p => p.class === 'SHAMAN', weight: 10 },
+        // extra weight on a second Enh (Windfury copies do not stack); only Enh, since raising it for every shaman broke T46's bench trade.
+        { match: p => p.class === 'SHAMAN' && p.spec === 'Enhancement', weight: 30 },
         { match: p => p.class === 'PALADIN' && p.spec === 'Retribution', weight: 8 },
-        { match: p => p.class === 'DRUID' && p.spec === 'Feral', weight: 8 },
+        { match: p => p.class === 'DRUID' && p.spec === 'Feral', weight: 30 },
         { match: p => p.class === 'DRUID' && p.spec === 'Balance', weight: 4 },
       ],
     },

@@ -67,6 +67,7 @@ const PlanStore = {
   valid(data) {
     return data && typeof data.planId === 'string' && validVersionRaid(data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc', data.selectedRaid) &&
       typeof data.rosterName === 'string' && Array.isArray(data.groups) && data.groups.every(Array.isArray) &&
+      // Old plans and share links may still name a retired strategy; restore() runs Max DPS regardless (4.2.0).
       ['max_dps','tank_mit','balanced','relaxed'].includes(data.optimizerMode) &&
       (data.notes === undefined || typeof data.notes === 'string') &&
       (data.sizeBenched === undefined || Array.isArray(data.sizeBenched)) &&

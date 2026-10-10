@@ -10,8 +10,8 @@
  * the optimizer scores with (one assertion per ruleset, so a future edit that
  * drifts either side fails here), the TBC talent/spec gates on raid debuffs
  * (Misery = Shadow Priest, Hunter's Mark = any Hunter), Unleashed Rage being
- * melee-only, the Totem of Wrath tooltip, and Open-slot credit for the
- * Improved Hunter's Mark (Marksmanship) on top of the baseline spell.
+ * melee-only, the Totem of Wrath tooltip, and the Open-slot Hunter's Mark credit
+ * (earned once by any Hunter spec; a Marksmanship pick earns nothing extra for Improved Hunter's Mark).
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
@@ -118,13 +118,13 @@ check("Open slots: with no Hunter in the raid every Hunter spec earns Hunter's M
   assert(Math.abs(bm - mm) < 1, `BM ${bm} vs MM ${mm}`);
 });
 
-check("Open slots: Improved Hunter's Mark still earns a Marksmanship pick half credit once a BM Hunter covers the base spell", () => {
+check("Open slots: a Marksmanship pick earns no Improved Hunter's Mark credit once any Hunter covers the base spell", () => {
   openSlotBoard();
   const raid = [player('WARRIOR', 'Fury'), player('ROGUE', 'Combat'), player('HUNTER', 'Beast Mastery')];
-  // Both candidates are the raid's 2nd Hunter; BM repeats its spec (-SPEC_REPEAT).
-  // Without the improvement credit the gap would be exactly SPEC_REPEAT.
+  // Both candidates are the raid's 2nd Hunter and bring the same debuffs; the only difference is that
+  // BM repeats its spec (-SPEC_REPEAT). Every TBC raid hunter build has Improved Hunter's Mark (user decision 2026-10-10).
   const gap = value(player('HUNTER', 'Marksmanship'), raid) - value(player('HUNTER', 'Beast Mastery'), raid);
-  assert(gap > OpenSlots.SPEC_REPEAT + 1, `gap ${gap} must exceed the spec-repeat cost by the improvement credit`);
+  assert(Math.abs(gap - OpenSlots.SPEC_REPEAT) < 1e-9, `gap ${gap} must be exactly the spec-repeat cost`);
 });
 
 check("Open slots: a second Marksmanship pick adds no Hunter's Mark credit over a second BM one", () => {

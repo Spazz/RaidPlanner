@@ -1,28 +1,47 @@
 /**
  * PartyPlanner Web - Scenario test runner
- * Run: node scenario-tests.js [--mode max_dps|tank_mit|balanced|relaxed|all] [--only F12,P03] [--verbose] [--shard i/n]
+ * Run: node scenario-tests.js [--mode max_dps|all] [--only F12,P03] [--verbose] [--shard i/n] [--rotation-depth k]
  * (--shard runs every n-th scenario starting at the i-th; tests/run-all.js runs the shards listed in tests/shards.js side by side.)
+ * --mode defaults to max_dps, the only supported strategy (4.2.0). 'all' (or tank_mit|balanced|relaxed) is a
+ * one-off probe of the deprecated modes and is not a gate: a failure there is never a reason to tune the optimizer.
  *
  * Feeds every roster in scenarios.js through the real Raid-Helper importer (which runs
  * the optimizer) and checks invariants that must hold for ANY roster, plus the
  * per-scenario expectations declared in scenarios.js. Logic comes straight from
  * index.html, the same way tests.js loads it.
+ *
+ * Composition expectations (keys of a scenario's expect, checked only in exp.compModes, default ['max_dps']),
+ * evaluated on the board = State.groups + one OpenSlots.standIn per State.preferredSlots entry, in its group.
+ * Selectors: a SPEC_KEYS key ('enh'), 'class:HUNTER', 'role:healer|tank|melee_dps|ranged_dps|caster_dps'.
+ *   compModes: [modes]            modes that check the keys below (every other check runs in all modes)
+ *   together: [[a, b], ...]       each a-member shares a group with another b-member
+ *   apart: [[sel, max], ...]      no group holds more than max sel-members
+ *   mixedDpsGroups: n             at most n non-tank groups hold physical DPS (melee+ranged) AND caster_dps
+ *   huntersInCasterGroups: n      at most n hunters in a group where caster_dps outnumber melee+ranged DPS
+ *   tankGroup: { maxDps, minHealers }   the tank-identity group (group 0 if none)
+ *   suggested: [specKey, ...]     each listed spec appears (multiset) among the auto Open slots
+ *   suggestedCount: n             exactly n auto Open slots
+ *   benchHas: [[sel, min], ...]   at least min benched players match sel
+ *   localOptimum: true            no swap / rotation / single move that keeps every touched group's isolated-member
+ *                                 count (Optimizer.isolatedCount, the de-isolation rule) gains > 0.5 groupScore (pinned members never move);
+ *                                 --rotation-depth k (default 3) sets the longest cycle (2 = swaps only; 4+ is slow)
  */
 const app = require('./tests/load-app');
 
-const PP = app.requireLogic(['Config', 'Import', 'Optimizer', 'State', 'getMissingBuffInsights', 'getGroupBuffs'], '_pp_scenario_logic.tmp.js');
-const { Config, Import, Optimizer, State, getMissingBuffInsights, getGroupBuffs } = PP;
+const PP = app.requireLogic(['Config', 'Import', 'Optimizer', 'State', 'getMissingBuffInsights', 'getGroupBuffs', 'OpenSlots'], '_pp_scenario_logic.tmp.js');
+const { Config, Import, Optimizer, State, getMissingBuffInsights, getGroupBuffs, OpenSlots } = PP;
 const Scenarios = require('./scenarios.js');
 const { parseShard, partition } = require('./tests/shards');
 
 // ── CLI ──
 const args = process.argv.slice(2);
 const argVal = (flag, def) => { const i = args.indexOf(flag); return i >= 0 && args[i + 1] ? args[i + 1] : def; };
-const modeArg = argVal('--mode', 'all');
+const modeArg = argVal('--mode', 'max_dps');
 const MODES = modeArg === 'all' ? ['max_dps', 'tank_mit', 'balanced', 'relaxed'] : [modeArg];
 const only = argVal('--only', '').split(',').filter(Boolean);
 const verbose = args.includes('--verbose');
 const shard = parseShard(argVal('--shard', ''));
+const rotationDepth = Math.max(2, parseInt(argVal('--rotation-depth', '3'), 10) || 3);
 
 // ── Helpers ──
 function resetState(raid) {
@@ -78,6 +97,197 @@ function classify(scenario) {
     if (role === 'healer') out.healers++;
   }
   return out;
+}
+
+// ── Composition expectations (together, apart, localOptimum, ...) ──
+// Selector strings: a SPEC_KEYS key ('enh'), 'class:HUNTER', or 'role:healer'.
+const ROLE_NAMES = ['tank', 'healer', 'melee_dps', 'ranged_dps', 'caster_dps'];
+const titleCase = s => s.charAt(0) + s.slice(1).toLowerCase();
+
+/** One helper for every key: a selector string -> { label, test(member) }. */
+function resolveSelector(sel) {
+  if (typeof sel !== 'string') throw new Error('bad selector: ' + JSON.stringify(sel));
+  if (sel.startsWith('class:')) {
+    const cls = sel.slice(6).toUpperCase();
+    return { label: titleCase(cls), test: m => m.class === cls };
+  }
+  if (sel.startsWith('role:')) {
+    const role = sel.slice(5);
+    if (!ROLE_NAMES.includes(role)) throw new Error('bad selector role: ' + sel);
+    return { label: role, test: m => m.role === role };
+  }
+  const def = Scenarios.SPEC_KEYS[sel];
+  if (!def) throw new Error('unknown selector: ' + sel);
+  const [className, specName] = def;
+  const info = Config.RaidHelperSpecMap[specName];
+  if (info) return { label: `${info.spec} ${titleCase(info.class)}`, test: m => m.class === info.class && m.spec === info.spec && m.role === info.role };
+  const cls = Config.RaidHelperClassMap[className];
+  if (!cls) throw new Error('selector resolves to no class: ' + sel);
+  return { label: titleCase(cls), test: m => m.class === cls };
+}
+
+/** One helper for every key: State.groups plus a stand-in per Open slot, carrying the optimizer's identities and anchors. */
+function buildBoard() {
+  const board = State.groups.map(g => g.slice());
+  board._roleIdentities = State.groups._roleIdentities;
+  board._anchors = State.groups._anchors;
+  for (const slot of State.preferredSlots || []) {
+    if (!(slot.group >= 0 && slot.group < board.length)) throw new Error(`Open ${slot.spec} ${titleCase(slot.class)} has no group (${slot.group})`);
+    board[slot.group].push(OpenSlots.standIn(slot));
+  }
+  return board;
+}
+
+const memberName = m => m.openSlot ? `Open ${m.spec} ${titleCase(m.class)}` : m.name;
+const tag = (m, gi) => `${memberName(m)}(G${gi + 1})`;
+const slotName = s => `Open ${s.spec} ${titleCase(s.class)} G${s.group + 1}`;
+const where = (board, test, skip) => {
+  const out = [];
+  board.forEach((g, gi) => g.forEach(m => { if (m !== skip && test(m)) out.push(`${memberName(m)} G${gi + 1}`); }));
+  return out.length ? out.join(', ') : 'none';
+};
+
+const lo = { ms: 0, runs: 0 };
+
+/**
+ * Best improving move the optimizer itself would accept (gain > 0.5), or null.
+ * Pinned members never move. A candidate that raises Optimizer.isolatedCount of any touched group is rejected
+ * (the optimizer's de-isolation rule, the same predicate its Phase 4b guard uses). Group scores are cached per (group index, member set),
+ * so a candidate only pays for the groups it touches, and only the first time.
+ */
+function findImprovingMove(board, mode, depth) {
+  const nG = board.length;
+  const ids = new Map(); let nextId = 0;
+  board.forEach(g => g.forEach(m => ids.set(m, nextId++)));
+  const memo = new Map();
+  const scoreOf = (group, gi) => {
+    const key = gi + ':' + group.map(m => ids.get(m)).sort((a, b) => a - b).join(',');
+    let s = memo.get(key);
+    if (s === undefined) { s = Optimizer.groupScore(group, gi, board, mode); memo.set(key, s); }
+    return s;
+  };
+  const base = board.map((g, gi) => scoreOf(g, gi));
+  const baseIso = board.map(g => Optimizer.isolatedCount(g));
+  const isoMemo = new Map();
+  const isoOf = (group, gi) => {
+    const key = gi + ':' + group.map(m => ids.get(m)).sort((a, b) => a - b).join(',');
+    let n = isoMemo.get(key);
+    if (n === undefined) { n = Optimizer.isolatedCount(group); isoMemo.set(key, n); }
+    return n;
+  };
+  const movable = board.map((g, gi) => g.filter(m => !Optimizer.isPinned(m, gi, board)));
+  const MIN_GAIN = 0.5;
+  let best = null;
+  const consider = (gain, text) => { if (gain > MIN_GAIN && (!best || gain > best.gain)) best = { gain, text }; };
+
+  // (3) single moves into a group with a free seat
+  for (let to = 0; to < nG; to++) {
+    if (board[to].length >= 5) continue;
+    for (let from = 0; from < nG; from++) {
+      if (from === to) continue;
+      for (const m of movable[from]) {
+        const toGroup = board[to].concat(m), fromGroup = board[from].filter(x => x !== m);
+        if (isoOf(toGroup, to) > baseIso[to] || isoOf(fromGroup, from) > baseIso[from]) continue;
+        const gain = scoreOf(toGroup, to) + scoreOf(fromGroup, from) - base[to] - base[from];
+        consider(gain, `move ${memberName(m)} G${from + 1}->G${to + 1}`);
+      }
+    }
+  }
+
+  // (1)+(2) cycles over L distinct groups, L = 2 (swap) .. depth. gs[0] is the lowest group of
+  // the cycle, so each cycle is visited once per direction. Member i of gs[i] moves to gs[i+1].
+  const gs = [], picks = [];
+  const evalCycle = () => {
+    const L = gs.length;
+    let gain = 0;
+    for (let i = 0; i < L; i++) {
+      const incoming = picks[(i + L - 1) % L];
+      const after = board[gs[i]].filter(x => x !== picks[i]).concat(incoming);
+      if (isoOf(after, gs[i]) > baseIso[gs[i]]) return;
+      gain += scoreOf(after, gs[i]) - base[gs[i]];
+    }
+    if (gain <= MIN_GAIN) return;
+    if (L === 2) consider(gain, `swap ${tag(picks[0], gs[0])}<->${tag(picks[1], gs[1])}`);
+    else consider(gain, 'rotate ' + picks.map((m, i) => `${memberName(m)} G${gs[i] + 1}->G${gs[(i + 1) % L] + 1}`).join(', '));
+  };
+  const pickMembers = (L, i) => {
+    if (i === L) { evalCycle(); return; }
+    for (const m of movable[gs[i]]) { picks[i] = m; pickMembers(L, i + 1); }
+  };
+  const chooseGroups = (L) => {
+    if (gs.length === L) { pickMembers(L, 0); return; }
+    for (let g = gs[0] + 1; g < nG; g++) {
+      if (gs.includes(g)) continue;
+      gs.push(g); chooseGroups(L); gs.pop();
+    }
+  };
+  for (let L = 2; L <= Math.min(depth, nG); L++) {
+    for (let g0 = 0; g0 < nG; g0++) { gs.length = 0; gs.push(g0); chooseGroups(L); }
+  }
+  return best;
+}
+
+function checkComposition(exp, board, mode, check) {
+  const casters = g => g.filter(m => m.role === 'caster_dps').length;
+  const phys = g => g.filter(m => m.role === 'melee_dps' || m.role === 'ranged_dps').length;
+
+  for (const [a, b] of exp.together || []) {
+    const A = resolveSelector(a), B = resolveSelector(b);
+    board.forEach((g, gi) => g.forEach(m => {
+      if (!A.test(m)) return;
+      check(g.some(o => o !== m && B.test(o)),
+        `${A.label} ${memberName(m)} sits in G${gi + 1} without a ${B.label} (${B.label}: ${where(board, B.test, m)})`);
+    }));
+  }
+  for (const [sel, max] of exp.apart || []) {
+    const S = resolveSelector(sel);
+    board.forEach((g, gi) => {
+      const hit = g.filter(S.test);
+      check(hit.length <= max, `G${gi + 1} holds ${hit.length} ${S.label} (max ${max}): ${hit.map(memberName).join(', ')}`);
+    });
+  }
+  if (exp.mixedDpsGroups != null) {
+    const mixed = [];
+    board.forEach((g, gi) => { if (!Optimizer.isTankGroup(gi, board) && phys(g) > 0 && casters(g) > 0) mixed.push(`G${gi + 1} (${phys(g)} physical, ${casters(g)} caster)`); });
+    check(mixed.length <= exp.mixedDpsGroups, `${mixed.length} groups mix physical and caster DPS, max ${exp.mixedDpsGroups}: ${mixed.join(', ')}`);
+  }
+  if (exp.huntersInCasterGroups != null) {
+    const found = [];
+    board.forEach((g, gi) => { if (casters(g) > phys(g)) g.filter(m => m.class === 'HUNTER').forEach(m => found.push(`${memberName(m)} G${gi + 1} (${casters(g)} casters)`)); });
+    check(found.length <= exp.huntersInCasterGroups, `${found.length} hunters in caster groups, max ${exp.huntersInCasterGroups}: ${found.join(', ')}`);
+  }
+  if (exp.tankGroup) {
+    const ids = board._roleIdentities;
+    const ti = ids ? ids.indexOf('tank') : -1;
+    const gi = ti >= 0 ? ti : 0, g = board[gi] || [];
+    const dps = g.filter(m => m.role === 'melee_dps' || m.role === 'ranged_dps' || m.role === 'caster_dps');
+    const healers = g.filter(m => m.role === 'healer');
+    if (exp.tankGroup.maxDps != null) check(dps.length <= exp.tankGroup.maxDps, `tank group G${gi + 1} holds ${dps.length} DPS, max ${exp.tankGroup.maxDps}: ${dps.map(memberName).join(', ')}`);
+    if (exp.tankGroup.minHealers != null) check(healers.length >= exp.tankGroup.minHealers, `tank group G${gi + 1} holds ${healers.length} healers, min ${exp.tankGroup.minHealers}: ${healers.map(memberName).join(', ') || 'none'}`);
+  }
+  const auto = (State.preferredSlots || []).filter(s => s.auto);
+  const autoText = auto.map(slotName).join(', ') || 'none';
+  if (exp.suggested) {
+    const pool = auto.map(s => OpenSlots.standIn(s));
+    for (const sel of exp.suggested) {
+      const S = resolveSelector(sel);
+      const i = pool.findIndex(S.test);
+      check(i >= 0, `no suggested Open slot left for ${S.label} (suggested: ${autoText})`);
+      if (i >= 0) pool.splice(i, 1);
+    }
+  }
+  if (exp.suggestedCount != null) check(auto.length === exp.suggestedCount, `${auto.length} suggested Open slots, expected ${exp.suggestedCount}: ${autoText}`);
+  for (const [sel, min] of exp.benchHas || []) {
+    const S = resolveSelector(sel);
+    const hit = State.bench.filter(S.test);
+    check(hit.length >= min, `bench holds ${hit.length} ${S.label}, expected at least ${min} (bench: ${State.bench.map(memberName).join(', ') || 'empty'})`);
+  }
+  if (exp.localOptimum) {
+    const t = process.hrtime.bigint();
+    const move = findImprovingMove(board, mode, rotationDepth);
+    lo.ms += Number(process.hrtime.bigint() - t) / 1e6; lo.runs++;
+    check(!move, move ? `board is not a local optimum: ${move.text} +${move.gain.toFixed(2)}` : '');
+  }
 }
 
 // ── Runner ──
@@ -175,6 +385,7 @@ function runScenario(scenario, mode) {
   if (exp.missingNone && insights) {
     for (const id of exp.missingNone) check(insights[id] && insights[id].kind === 'none', `${id} should be reported as unobtainable`);
   }
+  if ((exp.compModes || ['max_dps']).includes(mode)) checkComposition(exp, buildBoard(), mode, check);
 
   return { failures, ms, seated: seated.length, benched: bench.length, tanks: seatedRoles.tank, healers: seatedRoles.healer, size };
 }
@@ -214,6 +425,7 @@ if (gaps.length) {
   console.log('\nKnown gaps (the scenario passes against current behaviour, but that behaviour is questionable):');
   for (const g of gaps) console.log(`  ${g.id}  ${g.label}: ${g.expect.knownGap}`);
 }
+if (lo.runs) console.log(`localOptimum: ${lo.runs} runs, ${lo.ms.toFixed(0)}ms total, ${(lo.ms / lo.runs).toFixed(0)}ms avg (rotation depth ${rotationDepth})`);
 const failedScenarios = rows.filter(r => r.status === 'FAIL').length;
 console.log(`\nScenarios: ${scenarioCount} (${scenarioCount - failedScenarios} passed, ${failedScenarios} failed)  Modes: ${MODES.join(', ')}  Checks: ${checkCount} (${failCount} failed)${shard ? `  Shard: ${shard.index + 1}/${shard.count}` : ''}`);
 process.exit(failedScenarios ? 1 : 0);

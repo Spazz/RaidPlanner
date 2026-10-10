@@ -136,6 +136,13 @@ const RandomRoster = {
 //   mit       — mitigation value of buffs reaching tanks in the tank group (MIT_VALUE)
 //   structure — healer coverage + spreading pressure
 //   cohesion  — role-family clustering around each group's identity
+// DEPRECATED (4.2.0, user decision 2026-10-10): only max_dps is supported. The nav
+// slim-down (4.0.0) removed the strategy selector, and app.js / PlanStore.restore()
+// force State.optimizerMode = 'max_dps', so tank_mit / balanced / relaxed are
+// unreachable from the UI. They stay only so old saved plans and share links still
+// validate and old tests still run. Do not tune weights or write code for them;
+// when a non-max_dps check conflicts with a max_dps improvement, delete the check.
+// The scenario runner gates on max_dps only (--mode all is a one-off probe).
 const MODE_CONFIG = {
   max_dps:  { dps: 1.0, mit: 0.25, structure: 0.7, cohesion: 0.4 },
   tank_mit: { dps: 0.7, mit: 1.2,  structure: 1.0, cohesion: 0.4 },
@@ -163,7 +170,10 @@ const DPS_VALUE = {
   WINDFURY:           { key: { 'PALADIN:Retribution': 12, 'WARRIOR:Fury': 11, 'WARRIOR:Arms': 10, 'SHAMAN:Enhancement': 9, 'ROGUE:Combat': 8, 'ROGUE:Assassination': 8, 'ROGUE:Subtlety': 8, 'DRUID:Feral': 0 }, role: { melee_dps: 8, tank: 3 } },
   GRACE_OF_AIR:       { key: { 'DRUID:Feral': 4 }, role: { melee_dps: 2, ranged_dps: 3, tank: 2 } },
   WRATH_OF_AIR:       { role: { caster_dps: 4, healer: 2 } },
-  TOTEM_OF_WRATH:     { key: { 'WARLOCK:Destruction': 8 }, role: { caster_dps: 6, healer: 1 } },
+  // 2026-10-10 comp rules 2/3: the crit auras are worth clearly more to Destruction Locks (they scale
+  // with spell crit far more than Arcane/Affliction) so the Ele and the Boomkin join the Destro group;
+  // Arcane's Mana Spring/Tide keys below stay, they draw the Resto Shaman to the mages.
+  TOTEM_OF_WRATH:     { key: { 'WARLOCK:Destruction': 12 }, role: { caster_dps: 6, healer: 1 } },
   STRENGTH_OF_EARTH:  { role: { melee_dps: 2, tank: 2 } },
   MANA_SPRING:        { key: { 'MAGE:Arcane': 3 }, role: { healer: 2, caster_dps: 1 } },
   MANA_TIDE:          { key: { 'MAGE:Arcane': 5 }, role: { healer: 4 } },
@@ -172,7 +182,7 @@ const DPS_VALUE = {
   RETRIBUTION_AURA:   { role: { melee_dps: 1, tank: 1 } },
   SANCTITY_AURA:      { role: { melee_dps: 2, ranged_dps: 2, caster_dps: 2, tank: 1 } },
   LEADER_OF_THE_PACK: { role: { melee_dps: 5, ranged_dps: 5, tank: 2 } },
-  MOONKIN_AURA:       { key: { 'WARLOCK:Destruction': 7 }, role: { caster_dps: 5 } },
+  MOONKIN_AURA:       { key: { 'WARLOCK:Destruction': 12 }, role: { caster_dps: 5 } },
   TREE_OF_LIFE:       { role: { healer: 1 } },
   TRUESHOT_AURA:      { role: { melee_dps: 3, ranged_dps: 4 } },
   FEROCIOUS_INSP:     { role: { melee_dps: 3, ranged_dps: 3, caster_dps: 3, tank: 1 } },
@@ -504,7 +514,11 @@ const Optimizer = {
       this.refineSwaps(groups, max, mode);
       const moved = this.refineMoves(groups, max, mode);
       const exchanged = this.refinePairExchanges(groups, mode);
-      if (!moved && !exchanged) break;
+      // 3-cycles reach rebalances no swap/exchange can (e.g. the suggested Ret
+      // rotating from the tank group to the Enh Shaman's group while a
+      // displaced player fills the seat it leaves). 2026-10-10 comp rules.
+      const rotated = this.refineRotations(groups, mode);
+      if (!moved && !exchanged && !rotated) break;
     }
   },
 
@@ -561,6 +575,21 @@ const Optimizer = {
     // but refineSwaps only takes a swap that clears SWAP_THRESHOLD, so an
     // isolated player can survive it if no single swap scores well enough.
     this.deIsolate(groups, mode, max);
+
+    // Phase 4b: final refine. Phases 3b/4 run after the last refineRounds, so
+    // plain swaps / rotations they left on the table are taken here, guarded
+    // so a candidate never isolates a member (de-isolation is never undone).
+    // deIsolate then runs once more and must be a no-op. Before Phase 5 so the
+    // Classic/Forever spreadProviders ordering stays true.
+    if (mode !== 'relaxed' && activeRules().rules.rotationSearch) {
+      const guard = { noIsolate: true };
+      for (let iter = 0; iter < 6; iter++) {
+        const swapped = this.refineSwaps(groups, max, mode, guard);
+        const rotated = this.refineRotations(groups, mode, guard);
+        if (!swapped && !rotated) break;
+      }
+      this.deIsolate(groups, mode, max);
+    }
 
     // Phase 5: Spread scarce single-point-of-failure providers (ruleset-gated;
     // a no-op unless rules.spreadProviders is set — TBC is untouched). Must
@@ -980,6 +1009,15 @@ const Optimizer = {
       if (need > 0) this.greedyPlace(pool, groups, max, mode, { eligible: p => p.role === role, limit: need });
     }
 
+    // Healer cap (TBC comp rules, user decision 2026-10-10): when players exceed
+    // seats, seat at most floor + rules.healerCapOverFloor healers; DPS take the
+    // rest. A second uncapped pass fills any seat the DPS could not use. The
+    // rule is absent from Classic/Forever, so this is a no-op there.
+    const healerCap = this.healerCapFor(raidSize);
+    const healersSeated = () => groups.reduce((n, g) => n + g.filter(p => p.role === 'healer').length, 0);
+    if (healerCap != null) {
+      this.greedyPlace(pool, groups, max, mode, { eligible: p => p.role !== 'healer' || healersSeated() < healerCap });
+    }
     this.greedyPlace(pool, groups, max, mode);
 
     // Bench the leftovers instead of dropping them from the roster. They stay
@@ -1000,6 +1038,14 @@ const Optimizer = {
     if (this.refineBench(groups, overflow, raidSize, mode)) this.refineRounds(groups, max, mode);
 
     return { seated: groups.flat(), bench: overflow };
+  },
+
+  // Seated-healer cap for over-capacity rosters, or null when the ruleset has
+  // none (Classic/Forever). TBC: floor + 1 (user decision 2026-10-10).
+  healerCapFor(raidSize) {
+    const over = activeRules().rules.healerCapOverFloor;
+    if (over == null) return null;
+    return (this.floorsFor(raidSize).healer || 0) + over;
   },
 
   // Minimum tanks/healers for a raid size (see Config.RaidFloors).
@@ -1288,6 +1334,12 @@ const Optimizer = {
       // regardless. Scaled per actual melee_dps member so an empty or
       // hunter-only "melee" group doesn't invent a preference it has no one
       // to give it to.
+      // 2026-10-10 user decision (TBC only, rules.enhWindfuryBonus, absent = no-op): Windfury from an
+      // Enhancement Shaman is worth more to melee than from an Ele/Resto (the Enh talents improve the
+      // totem), so a group that holds an Enh scales its Windfury value by (1 + bonus).
+      if (id === 'WINDFURY' && rules.rules.enhWindfuryBonus && v > 0 && group.some(p => p.class === 'SHAMAN' && p.spec === 'Enhancement')) {
+        v *= 1 + rules.rules.enhWindfuryBonus;
+      }
       if (id === 'WINDFURY' && rules.rules.meleeGroupWindfuryBias && roleIdentity === 'melee_dps') {
         const meleeCount = group.reduce((n, p) => n + (p.role === 'melee_dps' && p.class !== 'SHAMAN' ? 1 : 0), 0);
         if (meleeCount > 0) v += rules.rules.meleeGroupWindfuryBias * meleeCount * cfg.structure;
@@ -1321,7 +1373,24 @@ const Optimizer = {
     // that spreads out; a second Beast Mastery hunter is exempt (its FI stacks, above).
     if (rules.rules.hunterSpread) {
       const hunterCount = group.reduce((n, p) => n + (p.class === 'HUNTER' ? 1 : 0), 0);
-      if (hunterCount > 1) score -= rules.rules.hunterSpread * cfg.structure * group.reduce((n, p) => n + (p.class === 'HUNTER' && p.spec === 'Survival' ? 1 : 0), 0);
+      if (hunterCount > 1) {
+        // 2026-10-10 decision: with 2+ Enhancement Shamans on the board (every group,
+        // stand-ins included) hunters spread one per melee group whatever their spec:
+        // each hunter beyond a fair share (ceil(hunters on the board / melee groups)) pays
+        // rules.hunterSpreadEnh (triangular in the excess), so a roster with more hunters than
+        // melee groups is not taxed for the unavoidable doubling. With 0-1 Enh, stacking is
+        // fine and only the Survival tax applies.
+        const enhOnBoard = rules.rules.hunterSpreadEnh ? groups.reduce((n, g) => n + g.reduce((m, p) => m + (p.class === 'SHAMAN' && p.spec === 'Enhancement' ? 1 : 0), 0), 0) : 0;
+        if (enhOnBoard >= 2) {
+          const hIds = groups._roleIdentities || [];
+          const meleeGroupCount = Math.max(1, groups.reduce((c, g, i) => c + ((hIds[i] || 'melee_dps') === 'melee_dps' ? 1 : 0), 0));
+          const huntersOnBoard = groups.reduce((n, g) => n + g.reduce((m, p) => m + (p.class === 'HUNTER' ? 1 : 0), 0), 0);
+          const fairShare = Math.max(1, Math.ceil(huntersOnBoard / meleeGroupCount));
+          const excess = Math.max(0, hunterCount - fairShare);
+          score -= rules.rules.hunterSpreadEnh * cfg.structure * (excess * (excess + 1) / 2); // triangular in the excess
+        }
+        else score -= rules.rules.hunterSpread * cfg.structure * group.reduce((n, p) => n + (p.class === 'HUNTER' && p.spec === 'Survival' ? 1 : 0), 0);
+      }
     }
 
     // Structural placement rules (from the user's reference TBC comp):
@@ -1346,14 +1415,37 @@ const Optimizer = {
       // needs none of the party buffs a DPS group offers) once the three-healer core is
       // there, so that seat is not a penalized guest. Without this the guest penalty
       // handed the seat to a 4th healer and moved the Warlock in with the mages.
+      // 2026-10-10 comp rules (TBC only; both no-op when the rule is absent):
+      //  - rules.loneRestoTankCost: a roster's only Resto Shaman stays with the tank-group healers, so a
+      //    tank group that has fewer than 3 healers without it pays this when the Windfury pull (or
+      //    anything else) has moved it out.
+      //  - rules.tankGroupHealerCost: per healer missing below 3 in the tank group, so the hunter weight
+      //    (hunters out of caster groups) does not displace a tank-group healer for a DPS guest.
+      if (rules.rules.loneRestoTankCost && healerCount < 3 && !group.some(p => p.class === 'SHAMAN')) {
+        let shamans = 0, loneResto = false;
+        for (const g of groups) for (const q of g) if (q.class === 'SHAMAN') { shamans++; loneResto = q.role === 'healer' && q.spec === 'Restoration'; }
+        if (shamans === 1 && loneResto) score -= rules.rules.loneRestoTankCost * cfg.structure;
+      }
+      if (rules.rules.tankGroupHealerCost && healerCount < 3) {
+        score -= rules.rules.tankGroupHealerCost * (3 - healerCount) * cfg.structure;
+      }
       let overflowSeatOpen = healerCount >= 3;
+      // 2026-10-10 comp rules (TBC, rules.hunterTankGuestCost, no-op when absent): a hunter guest pays
+      // like any other DPS guest. ranged_dps was never charged here, so F01 parked a Survival hunter
+      // in the tank group for free while its Demo lock sat with the hunters.
+      const hunterGuestCost = rules.rules.hunterTankGuestCost || 0;
       for (const p of group) {
-        if (p.role !== 'melee_dps' && p.role !== 'caster_dps') continue;
+        const hunterGuest = hunterGuestCost > 0 && p.role === 'ranged_dps';
+        if (p.role !== 'melee_dps' && p.role !== 'caster_dps' && !hunterGuest) continue;
         if (overflowSeatOpen && rules.rules.healerGroupDps && rules.rules.healerGroupDps(p)) {
           overflowSeatOpen = false;
+          // 2026-10-10 comp rules: with the Ele and Boomkin now holding the Destruction locks, the
+          // leftover lock's home is this seat; a small pull (rules.healerGroupDpsPull, no-op when
+          // absent) keeps it from drifting into a melee group as a lone caster.
+          score += (rules.rules.healerGroupDpsPull || 0) * cfg.structure;
           continue;
         }
-        score -= 12 * cfg.structure;
+        score -= (hunterGuest ? hunterGuestCost : 12) * cfg.structure;
       }
     }
 
@@ -1364,11 +1456,21 @@ const Optimizer = {
     // drops WF for melee), and melee spread across shaman-covered groups
     // instead of piling into the one Enhancement group. Skipped for a
     // faction-locked Alliance roster, which can never field a shaman at all.
+    // 2026-10-10 rule 1: TBC raises the per-melee cost (rules.meleeWantsWindfuryCost, default 6) so a spare
+    // Ele/Resto shaman is drawn to a melee group with 2+ melee DPS and no shaman; scaled per melee DPS.
     const canHaveShaman = !rules.rules.factionLock || Faction.current() !== 'alliance';
-    if (rules.rules.meleeWantsWindfury && canHaveShaman && roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')) {
+    // A group whose melee DPS would all get nothing from Windfury (a Feral: weapon imbues do not work in forms) is not missing a Windfury totem, so a Feral seated with hunters is no pull for a shaman; any group with a Windfury-using melee is charged as before, Feral included.
+    if (rules.rules.meleeWantsWindfury && canHaveShaman && roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')
+        && group.some(p => p.role === 'melee_dps' && dpsValueFor('WINDFURY', p) > 0)) {
       for (const p of group) {
-        if (p.role === 'melee_dps') score -= 6 * dpsWeightFor(p) * cfg.structure;
+        if (p.role === 'melee_dps') score -= (rules.rules.meleeWantsWindfuryCost || 6) * dpsWeightFor(p) * cfg.structure;
       }
+    }
+
+    // 2026-10-10 user decision: a Retribution Paladin sits with an Enhancement Shaman (rules.retEnhPairBonus,
+    // x cfg.structure; default 0 = no-op, so Classic/Forever never change).
+    if (rules.rules.retEnhPairBonus && group.some(p => p.class === 'PALADIN' && p.spec === 'Retribution') && group.some(p => p.class === 'SHAMAN' && p.spec === 'Enhancement')) {
+      score += rules.rules.retEnhPairBonus * cfg.structure;
     }
 
     // Role cohesion — DPS members clustered with their group's identity.
@@ -1376,6 +1478,11 @@ const Optimizer = {
     // bring FI/TSA to the physical party and receive LotP/GoA there
     // (reference comp rule: BM/Surv hunters ride in the melee groups).
     if (roleIdentity !== 'tank') {
+      // A group labelled caster_dps only counts as a caster group for the hunter weight when its caster_dps
+      // members outnumber its melee + ranged members (2-group 10-mans label a melee/hunter group 'caster_dps').
+      const casterMembers = group.reduce((n, p) => n + (p.role === 'caster_dps' ? 1 : 0), 0);
+      const physicalMembers = group.reduce((n, p) => n + (p.role === 'melee_dps' || p.role === 'ranged_dps' ? 1 : 0), 0);
+      const casterByMembers = casterMembers > physicalMembers;
       for (const p of group) {
         if (p.role === 'healer' || p.role === 'tank') continue;
         const matches = p.role === roleIdentity || (roleIdentity === 'melee_dps' && p.role === 'ranged_dps');
@@ -1384,7 +1491,12 @@ const Optimizer = {
         // neutral rather than "compatible": Unleashed Rage (melee-only) no
         // longer holds them in a melee group, and without this a leftover
         // hunter drifted in beside the Ele Shaman and mages.
-        else if (p.role === 'ranged_dps' && roleIdentity === 'caster_dps') continue;
+        else if (p.role === 'ranged_dps' && roleIdentity === 'caster_dps') {
+          // 2026-10-10 decision: a hunter in a caster group is a heavy weight, never a
+          // hard ban (rules.hunterInCasterGroup; no-op when absent).
+          if (casterByMembers) score -= (rules.rules.hunterInCasterGroup || 0) * cfg.structure;
+          continue;
+        }
         else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) score += 6 * cfg.cohesion;
         else score -= 12 * cfg.cohesion;
       }
@@ -1404,6 +1516,20 @@ const Optimizer = {
       if (n > 1) score -= weight * (n * (n - 1) / 2) * cfg.structure;
     }
 
+    // 2026-10-10 duplicate stacks (comp rule 1: one shaman's Windfury per melee group): an
+    // Enhancement Shaman beyond the number of melee groups adds no coverage, so one parked in a
+    // tank or caster group costs rules.surplusEnhCost, which lets the bench trade (refineBench)
+    // bench the redundant Enh instead of a DPS that would receive buffs. No-op when absent.
+    if (rules.rules.surplusEnhCost && roleIdentity !== 'melee_dps') {
+      const enhHere = group.reduce((c, p) => c + (p.class === 'SHAMAN' && p.spec === 'Enhancement' ? 1 : 0), 0);
+      if (enhHere > 0) {
+        const ids = groups._roleIdentities || [];
+        const meleeGroups = groups.reduce((c, g, i) => c + ((ids[i] || 'melee_dps') === 'melee_dps' ? 1 : 0), 0);
+        const enhTotal = groups.reduce((c, g) => c + g.reduce((m, p) => m + (p.class === 'SHAMAN' && p.spec === 'Enhancement' ? 1 : 0), 0), 0);
+        if (enhTotal > meleeGroups) score -= rules.rules.surplusEnhCost * enhHere * cfg.structure;
+      }
+    }
+
     // Spreading pressure — convex penalty so the marginal cost of joining a
     // fuller group is higher, nudging placement toward emptier groups when
     // synergy gains are comparable.
@@ -1416,8 +1542,13 @@ const Optimizer = {
   // Hill-climbs pairwise swaps against the same groupScore() objective the
   // greedy phase used, so refinement can never "improve" toward a different
   // goal than placement optimized for.
-  refineSwaps(groups, max, mode) {
+  // opts.noIsolate rejects a swap that leaves a touched group with an isolated
+  // member it did not have before. Returns true if any swap was applied.
+  refineSwaps(groups, max, mode, opts) {
     const SWAP_THRESHOLD = 0.5;
+    const guard = !!(opts && opts.noIsolate);
+    let changedAny = false;
+    const wasIso = guard ? groups.map(g => this.isolatedCount(g)) : null;
     for (let iter = 0; iter < 4; iter++) {
       let improved = false;
       for (let gi = 0; gi < groups.length; gi++) {
@@ -1438,8 +1569,12 @@ const Optimizer = {
               const newScore = this.groupScore(groups[gi], gi, groups, mode)
                              + this.groupScore(groups[gj], gj, groups, mode);
 
-              if (newScore > currentScore + SWAP_THRESHOLD) {
+              if (newScore > currentScore + SWAP_THRESHOLD &&
+                  !(guard && (this.isolatedCount(groups[gi]) > wasIso[gi] ||
+                              this.isolatedCount(groups[gj]) > wasIso[gj]))) {
                 improved = true;
+                changedAny = true;
+                if (guard) { wasIso[gi] = this.isolatedCount(groups[gi]); wasIso[gj] = this.isolatedCount(groups[gj]); }
               } else {
                 // Revert swap
                 groups[gj][pj] = groups[gi][pi];
@@ -1451,6 +1586,90 @@ const Optimizer = {
       }
       if (!improved) break;
     }
+    return changedAny;
+  },
+
+  // ── PHASE 3e: K-CYCLE ROTATIONS ──────────────────────────────
+  // Rotates one non-pinned member through k distinct groups (a to b's seat,
+  // b to c's seat, c to a's seat), both directions, scoring only the touched
+  // groups like refinePairExchanges. Per iteration the best gain above 0.5 is
+  // applied (ties: first found, ascending index order). Only k = 3 is used
+  // (a 25-man has ~2,500 candidates); the loop is general in k. opts.noIsolate
+  // rejects a candidate that newly isolates a member of a touched group.
+  // Returns true if anything changed.
+  refineRotations(groups, mode, opts, k = 3) {
+    const THRESHOLD = 0.5;
+    const guard = !!(opts && opts.noIsolate);
+    const n = groups.length;
+    if (n < k || !activeRules().rules.rotationSearch) return false;
+    let changedAny = false;
+    for (let iter = 0; iter < 10; iter++) {
+      let best = null, bestGain = THRESHOLD;
+      const scores = groups.map((g, gi) => this.groupScore(g, gi, groups, mode));
+      const iso = guard ? groups.map(g => this.isolatedCount(g)) : null;
+      const memo = new Map();
+      const gs = new Array(k);
+      const idx = new Array(k);
+      // dir 0: member of gs[i] moves to gs[i+1]'s seat; dir 1: to gs[i-1]'s.
+      const tryCycle = () => {
+        const mem = gs.map((g, i) => groups[g][idx[i]]);
+        for (let dir = 0; dir < 2; dir++) {
+          for (let i = 0; i < k; i++) {
+            const to = dir === 0 ? (i + 1) % k : (i + k - 1) % k;
+            groups[gs[to]][idx[to]] = mem[i];
+          }
+          let gain = -gs.reduce((sum, g) => sum + scores[g], 0);
+          let ok = true;
+          // Each resulting group is "group g without seat idx plus the member from (g', idx')"; the
+          // same composition recurs in many cycles, so its score is memoized per iteration. Valid
+          // because a cycle only permutes members between groups (board-level totals do not change).
+          for (let i = 0; i < k; i++) {
+            const from = dir === 0 ? (i + k - 1) % k : (i + 1) % k;
+            const key = ((gs[i] * 64 + idx[i]) * 64 + gs[from]) * 64 + idx[from];
+            let sc = memo.get(key);
+            if (sc === undefined) { sc = this.groupScore(groups[gs[i]], gs[i], groups, mode); memo.set(key, sc); }
+            gain += sc;
+          }
+          if (guard && gain > bestGain) {
+            for (let i = 0; i < k; i++) {
+              if (this.isolatedCount(groups[gs[i]]) > iso[gs[i]]) { ok = false; break; }
+            }
+          }
+          for (let i = 0; i < k; i++) groups[gs[i]][idx[i]] = mem[i];
+          if (ok && gain > bestGain) {
+            bestGain = gain;
+            best = { gs: gs.slice(), idx: idx.slice(), dir };
+          }
+        }
+      };
+      const recurse = (depth, startG) => {
+        if (depth === k) { tryCycle(); return; }
+        for (let g = startG; g < n; g++) {
+          gs[depth] = g;
+          const seen = new Set();
+          for (let p = 0; p < groups[g].length; p++) {
+            const m = groups[g][p];
+            if (this.isPinned(m, g, groups)) continue;
+            // Same role/class/spec in one group are interchangeable: only the first is tried
+            // (identical gain, and ties already resolve to the first found), cutting the candidates ~3x.
+            const key = m.role + '|' + m.class + '|' + m.spec;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            idx[depth] = p;
+            recurse(depth + 1, g + 1);
+          }
+        }
+      };
+      recurse(0, 0);
+      if (!best) break;
+      const mem = best.gs.map((g, i) => groups[g][best.idx[i]]);
+      for (let i = 0; i < k; i++) {
+        const to = best.dir === 0 ? (i + 1) % k : (i + k - 1) % k;
+        groups[best.gs[to]][best.idx[to]] = mem[i];
+      }
+      changedAny = true;
+    }
+    return changedAny;
   },
 
   // ── PHASE 3d: BENCH REFINEMENT ───────────────────────────────
@@ -1464,6 +1683,9 @@ const Optimizer = {
     const floors = this.floorsFor(raidSize);
     const total = () => groups.reduce((sum, g, gi) => sum + this.groupScore(g, gi, groups, mode), 0);
     const roleCount = (role) => groups.reduce((n, g) => n + g.filter(p => p.role === role).length, 0);
+    // Healer cap (2026-10-10 decision): a non-healer may not be traded out for a
+    // healer once seated healers already reach the cap.
+    const healerCap = this.healerCapFor(raidSize);
     let traded = false;
 
     for (let round = 0; round < 10; round++) {
@@ -1476,6 +1698,7 @@ const Optimizer = {
           for (let si = 0; si < g.length; si++) {
             const out = g[si];
             if (this.isPinned(out, gi, groups)) continue;
+            if (healerCap != null && incoming.role === 'healer' && out.role !== 'healer' && roleCount('healer') + 1 > healerCap) continue;
             if (out.role !== incoming.role && (out.role === 'tank' || out.role === 'healer')) {
               if (roleCount(out.role) - 1 < (floors[out.role] || 0)) continue;
             }
@@ -1628,6 +1851,19 @@ const Optimizer = {
   roleFamily(role) {
     return (role === 'melee_dps' || role === 'tank' || role === 'ranged_dps') ? 'melee' :
       (role === 'caster_dps' || role === 'healer') ? 'caster' : null;
+  },
+
+  // Number of isolated members (same definition as wouldIsolate); the refine guards compare counts so a
+  // candidate that isolates a SECOND member of an already-isolated group is rejected too.
+  isolatedCount(group) {
+    let n = 0;
+    for (let xi = 0; xi < group.length; xi++) {
+      const x = group[xi];
+      if (x.role !== 'melee_dps' && x.role !== 'caster_dps') continue;
+      const fam = this.roleFamily(x.role);
+      if (!group.some((y, yi) => yi !== xi && this.roleFamily(y.role) === fam)) n++;
+    }
+    return n;
   },
 
   // Would removing the player at `removeIdx` from `group` (optionally
@@ -1787,10 +2023,9 @@ const OpenSlots = {
   SPEC_REPEAT: 6,
   CLASS_CROWD: 4,
   CLASS_CROWD_FREE: 5,
-  // Debuffs any member of the source class can apply at a base rank, which a
-  // spec improves (Improved Hunter's Mark). Once the base spell is covered the
-  // improving spec still adds half, until one of that spec is in the raid.
-  IMPROVED_DEBUFFS: { HUNTERS_MARK: 'Marksmanship' },
+  // Hunter's Mark counts as fully covered by any hunter: every TBC raid hunter build (Beast Mastery 41/20/0, Survival 0/20/41)
+  // takes Improved Hunter's Mark on its way through the Marksmanship tree, so it is no reason to suggest a Marksmanship hunter
+  // (user decision 2026-10-10; the half credit that existed here made an MM pick beat a Feral for a hunter group).
   _raidValue(candidate, raid, mode) {
     const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
     const withCandidate = raid.concat(candidate);
@@ -1807,19 +2042,24 @@ const OpenSlots = {
     const covered = getRaidDebuffCoverage([raid]);
     for (const [id, d] of Object.entries(Config.Debuffs || {})) {
       if (!canProvideBuff(d, candidate)) continue;
-      // Covered by the base spell: only the improving spec, absent so far, still adds.
-      const improvedBy = this.IMPROVED_DEBUFFS[id];
-      const improvesOnly = covered.has(id) && improvedBy === candidate.spec && !raid.some(p => p.class === d.sourceClass && p.spec === improvedBy);
-      if (covered.has(id) && !improvesOnly) continue;
+      if (covered.has(id)) continue;
       if (d.supersededBy && covered.has(d.supersededBy)) continue;
       if ((d.competesWith || []).some(other => covered.has(other))) continue;
       const { tier, who } = this.DEBUFF_VALUE[id] || { tier: 2, who: 'all' };
-      const share = improvesOnly ? 0.5 : 1;
-      v += tier * share * weightOf(who);
+      v += tier * weightOf(who);
     }
     for (const u of Readiness.utilityCoverage([raid], [])) {
       if (u.covered) continue;
       if ((Config.Utilities[u.id].providers || []).some(prov => Readiness._providerMatches(prov, candidate))) v += this.UTILITY_BONUS;
+    }
+    // 2026-10-10 comp rules (2 and 3): an Elemental Shaman earns its keep beside the Boomkin and
+    // the Destruction locks, so a suggested Ele beyond one per Boomkin has no group to amplify.
+    // Off unless the ruleset sets extraEleNeedsBoomkin (TBC only).
+    const eleCost = activeRules().rules.extraEleNeedsBoomkin || 0;
+    if (eleCost && candidate.class === 'SHAMAN' && candidate.spec === 'Elemental') {
+      const eles = raid.filter(p => p.class === 'SHAMAN' && p.spec === 'Elemental').length;
+      const boomkins = raid.filter(p => p.class === 'DRUID' && p.spec === 'Balance').length;
+      if (eles >= Math.max(1, boomkins)) v -= eleCost;
     }
     v -= this.SPEC_REPEAT * raid.filter(p => p.class === candidate.class && p.spec === candidate.spec).length;
     v -= this.CLASS_CROWD * Math.max(0, raid.filter(p => p.class === candidate.class).length - this.CLASS_CROWD_FREE + 1);
@@ -1862,6 +2102,14 @@ const OpenSlots = {
     board._anchors = State.groups._anchors;
     const open = Math.min(raid.size, board.length * max) - board.flat().length;
     const score = (gi, group = board[gi]) => Optimizer.groupScore(group, gi, board, mode);
+    // Score a hypothetical group on a board that actually contains it, so board-level terms (the 2+ Enh
+    // hunter-spread flip, the surplus-Enh count) see a candidate Enh Shaman before it is picked.
+    const scoreWith = (gi, group) => {
+      const hypo = board.map((g, i) => i === gi ? group : g);
+      hypo._roleIdentities = board._roleIdentities;
+      hypo._anchors = board._anchors;
+      return Optimizer.groupScore(group, gi, hypo, mode);
+    };
     const fits = (m, gi) => this._fits(m, (board._roleIdentities || [])[gi], !board.flat().includes(m));
     // Cheapest way to free a seat in full group gi: move one real, unpinned
     // player to a group with room. cost = score lost.
@@ -1896,7 +2144,7 @@ const OpenSlots = {
             const room = board[gi].length >= max ? rooms[gi] : null;
             if (board[gi].length >= max && !room) continue;
             const base = room ? room.without : board[gi];
-            const gain = score(gi, [...base, candidate]) - score(gi, base) - (room ? room.cost : 0) + raidValue;
+            const gain = scoreWith(gi, [...base, candidate]) - scoreWith(gi, base) - (room ? room.cost : 0) + raidValue;
             if (!best || gain > best.gain) best = { candidate, gi, room, gain };
           }
         }

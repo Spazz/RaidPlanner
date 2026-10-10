@@ -27,7 +27,7 @@ const State = {
   planId: null,
   sourceEventId: null, // Raid-Helper event the roster was imported from; enables Refresh
   eventStartTime: null, // That event's start (epoch ms); dates exports and the print sheet. null = use today.
-  optimizerMode: 'max_dps', // 'max_dps' | 'tank_mit' | 'balanced' | 'relaxed'
+  optimizerMode: 'max_dps', // always 'max_dps' (4.2.0); tank_mit | balanced | relaxed are deprecated and only accepted from old plans
   buffOverrides: {}, // key: "groupIdx:playerName:element|aura" → { buffId, originalBuffId }
   // Manual overrides only (name-keyed, like buffOverrides) — see the
   // Assignments module. Live suggestions are always recomputed from the
