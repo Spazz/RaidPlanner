@@ -1715,13 +1715,28 @@ describe('ACCEPTANCE: real 22-man roster follows the reference comp rules (max_d
   sameGroup('Daxxter', 'Terani', 'Both Arcane mages together');
   assert(grp('Terani').some(p => p.role === 'healer'), 'A healer rides with the Arcane mages');
 
+  // Open slots are seated exactly as real players of their specs would be.
+  const asReal = State.preferredSlots.map(s => mkPlayer('', s.class, s.spec, PP.RosterEdit.RoleForSpec(s.class, s.spec)));
+  const planned = Optimizer.plan(buildRealRoster22().concat(asReal), {
+    gameVersion: 'tbc', numGroups: 5, raidSize: 25, mode: 'max_dps',
+  }).groups;
+  const shape = gs => gs.map(gr => gr.map(p => p.name || p.spec).sort().join(',')).join(' | ');
+  const withOpens = State.groups.map((gr, gi) => gr.concat(State.preferredSlots.filter(s => s.group === gi).map(s => ({ spec: s.spec }))));
+  assertEqual(shape(withOpens), shape(planned), 'The board with its Opens is the plan() for 25 real players of those specs');
+
   // Tank group: Prot Pal + exactly three healers, no DPS
   const tankGroup = grp('Starck');
   const tankHealers = tankGroup.filter(p => p.role === 'healer').length;
   assert(tankHealers >= 3 && tankHealers <= 4, 'Three or four healers ride with the Prot Paladin (had ' + tankHealers + ')');
   assert(tankGroup.some(p => p.class === 'SHAMAN' && p.spec === 'Restoration'), 'One Resto Shaman rides with the tank group');
   sameGroup('kimmjungheal', 'Starck', 'Resto Druid with the Prot Paladin');
-  assert(!tankGroup.some(p => p.role.endsWith('dps')), 'No DPS parked in the healer/tank group');
+  // 2026-10-09: with the three suggested Opens seated as members the raid is
+  // full, both caster groups are full, and the second Holy healer rides with
+  // the mages, so the tank group's fifth seat goes to the Affliction lock,
+  // exactly as plan() seats 25 real players of these specs (asserted above).
+  // No physical DPS and at most that one caster.
+  assert(!tankGroup.some(p => p.role === 'melee_dps' || p.role === 'ranged_dps'), 'No physical DPS parked in the healer/tank group');
+  assert(tankGroup.filter(p => p.role === 'caster_dps').length <= 1, 'At most one caster rides with the tank group');
 
   // Second Resto Shaman: raid-leader coin flip between the WF-less melee group and the mage group
   const otherRsham = tankGroup.some(p => p.name === 'Originalgoat') ? 'Voctave' : 'Originalgoat';
@@ -1784,7 +1799,8 @@ for (const mode of ['max_dps', 'tank_mit', 'balanced', 'relaxed']) {
 
 // The board behind the report: an Open request for a Resto Druid froze G3
 // (the three tanks), and Optimize used to lay the other four groups out as a
-// 4-group raid, collapsing a caster group into a "melee" one.
+// 4-group raid, collapsing a caster group into a "melee" one. 2026-10-09: the
+// request no longer freezes its group; it is seated like a player.
 for (const mode of ['max_dps', 'balanced']) {
   describe('ACCEPTANCE: Optimize around an Open request keeps 5-group roles (' + mode + ')', () => {
     resetState();
@@ -1807,8 +1823,10 @@ for (const mode of ['max_dps', 'balanced']) {
     Optimizer.optimize();
 
     const g = name => State.groups.findIndex(gr => gr.some(p => p.name === name));
-    assertEqual(State.groups[2].map(p => p.name).sort().join(','), 'Kajuk,Kanyan,Throssel', 'The requested group keeps its players');
-    assertEqual(State.groups[2].length, 3, 'Its open seat stays reserved');
+    const manual = PP.PreferredSlots.manual();
+    assertEqual(manual.map(s => s.class + ':' + s.spec).join(','), 'DRUID:Restoration', 'The request survives Optimize and stays the leader\'s own');
+    assert(g('Kanyan') !== g('Throssel') || g('Kajuk') !== g('Throssel'), 'The requested group is re-arranged, not kept as the three tanks');
+    assert(State.groups.every((gr, gi) => gr.length + PP.PreferredSlots.forGroup(gi).length <= 5), 'No group over 5, counting Opens');
     for (const gr of State.groups) assert(gr.filter(p => p.class === 'SHAMAN').length <= 1, 'No group holds two shamans');
     for (const ele of ['Genow', 'Ohmnath']) {
       const gr = State.groups[g(ele)];
@@ -2676,11 +2694,11 @@ describe('Preferred slots: real-player counts, import matching, storage and shar
   assertEqual(State.groups[2][1].name, 'Waiting', 'promoted match seated');
   assertEqual(State.preferredSlots.length, 0, 'requests consumed once');
   prefs.add(2, 'MAGE', 'Arcane');
-  const fixed = State.groups[2].map(p => p.uid).join(',');
   RosterEdit.AddPlayer(0, {name:'FreeMage', class:'MAGE', spec:'Fire'});
   Optimizer.optimize();
-  assertEqual(State.groups[2].map(p => p.uid).join(','), fixed, 'optimizer keeps recruiting group intact');
   assertEqual(prefs.manual().length, 1, 'optimizer retains empty request');
+  assertEqual(prefs.manual()[0].spec, 'Arcane', 'the request is re-seated as the leader\'s own Arcane slot');
+  assert(State.groups.every((g, gi) => g.length + prefs.forGroup(gi).length <= 5), 'no group over 5, counting Opens');
   assertEqual(State.preferredSlots.filter(p => p.auto).length, 21, 'every other empty seat gets a suggested Open (25 - 3 seated - 1 request)');
   assertEqual(State.roster.length, 3, 'optimizer retains all real players');
   assert(State.groups.every(g => g.length <= 5), 'optimizer respects capacity');
@@ -2798,7 +2816,7 @@ describe('OpenSlots: suggestions are recalculated each Optimize, never stacked',
   assertEqual(autoSlots().length, 15, 'still exactly one per empty seat');
 });
 
-describe('OpenSlots: suggestions never freeze a group; the leader\'s own slots still do', () => {
+describe('OpenSlots: no Open slot freezes a group; a manual one is re-seated and stays manual', () => {
   seatForOpenSlots(DPS_14.slice(0, 12));
   const fresh = State.groups.map(g => g.map(p => p.uid).join(',')).join('|');
   assert(autoSlots().length > 0, 'Opens were suggested');
@@ -2806,12 +2824,104 @@ describe('OpenSlots: suggestions never freeze a group; the leader\'s own slots s
   assertEqual(State.groups.map(g => g.map(p => p.uid).join(',')).join('|'), fresh, 'groups with Opens are re-optimized normally');
   const gi = autoSlots()[0].group;
   assert(PP.PreferredSlots.add(gi, 'MAGE', 'Frost'), 'a manual request takes a suggested seat');
-  const kept = State.groups[gi].map(p => p.uid).join(',');
   Optimizer.optimize();
-  assertEqual(State.groups[gi].map(p => p.uid).join(','), kept, 'a manual slot still keeps its group as arranged');
-  assertEqual(PP.PreferredSlots.manual().length, 1, 'the manual slot survives Optimize');
+  const manual = PP.PreferredSlots.manual();
+  assertEqual(manual.length, 1, 'the manual slot survives Optimize');
+  assertEqual(manual[0].spec, 'Frost', 'still the leader\'s Frost Mage');
   assertEqual(autoSlots().length, 25 - State.roster.length - 1, 'suggestions fill around the manual slot');
   assert(seatsWithOpens().every(n => n <= 5), 'no group over 5');
+});
+
+describe('OpenSlots: a manual Open slot does not freeze its group; its players can move', () => {
+  const specs = [['PALADIN','Protection','tank'], ['PRIEST','Holy','healer'], ['PALADIN','Holy','healer'], ['DRUID','Restoration','healer'], ...DPS_14];
+  // Lays the players out from a given start with one manual Arms Warrior request.
+  const optimizeFrom = (requestGroup, startGroupOf) => {
+    seatForOpenSlots(specs);
+    const players = State.groups.flat().sort((a, b) => a.name < b.name ? -1 : 1);
+    State.groups = [[], [], [], [], []];
+    players.forEach((p, i) => { const gi = startGroupOf(p, i); State.groups[gi].push(p); p.groupNumber = gi + 1; });
+    State.roster = State.groups.flat();
+    State.preferredSlots = [{ group: requestGroup, class: 'WARRIOR', spec: 'Arms' }];
+    Optimizer.optimize();
+    const slot = PP.PreferredSlots.manual()[0];
+    return { slot, key: State.groups.map((g, gi) => g.map(p => p.name).sort().concat(gi === slot.group ? ['ARMS'] : []).join(',')).join(' | ') };
+  };
+  // Four casters packed into the requested group, everyone else round robin.
+  const casters = new Set();
+  const packed = optimizeFrom(0, (p, i) => {
+    if (p.role === 'caster_dps' && casters.size < 4) { casters.add(p.name); return 0; }
+    return 1 + i % 4;
+  });
+  assert(packed.slot && !packed.slot.auto, 'the request is still the leader\'s own');
+  const slotGroup = State.groups[packed.slot.group];
+  assert(![...casters].every(n => slotGroup.some(p => p.name === n)), 'the casters packed with the request were moved');
+  const physical = slotGroup.filter(p => p.role === 'melee_dps' || p.role === 'ranged_dps' || p.role === 'tank').length;
+  assert(physical > slotGroup.length - physical, 'the Arms request sits with physical DPS (G' + (packed.slot.group + 1) + ')');
+  const other = optimizeFrom(3, (p, i) => i % 5);
+  assertEqual(other.key, packed.key, 'the layout does not depend on where the request or the players started');
+});
+
+// Share plan jolBchk (2026-10-09): one empty seat besides the Disc Priest's.
+// The suggested Enh Shaman used to sit with the hunters/Feral/Prot Warrior
+// because placement only seated it where a seat was free or one real player
+// could step out; Arms, Ret, Fury and the Rogue stayed with the hunters.
+describe('OpenSlots: a suggested Enh Shaman is seated with the melee it buffs (jolBchk)', () => {
+  resetState();
+  State.gameVersion = 'tbc';
+  State.selectedRaid = 'bt';
+  State.optimizerMode = 'max_dps';
+  const layout = [
+    [['Stingz','HUNTER','Beast Mastery','ranged_dps'], ['hellsmouth','HUNTER','Beast Mastery','ranged_dps'], ['Kanyan','DRUID','Feral','tank'], ['Therhyme','WARRIOR','Arms','melee_dps'], ['Ceedarius','PALADIN','Retribution','melee_dps']],
+    [['Sanga','WARRIOR','Fury','melee_dps'], ['Hinastorm','ROGUE','Combat','melee_dps'], ['Aimers','HUNTER','Beast Mastery','ranged_dps'], ['Kajuk','WARRIOR','Protection','tank']],
+    [['Genow','SHAMAN','Elemental','caster_dps'], ['KashPatail','PRIEST','Shadow','caster_dps'], ['Firefly','MAGE','Arcane','caster_dps'], ['Roost','MAGE','Arcane','caster_dps'], ['Azukl','PRIEST','Holy','healer']],
+    [['Ohmnath','SHAMAN','Elemental','caster_dps'], ['Daolith','WARLOCK','Destruction','caster_dps'], ['Gnope','WARLOCK','Destruction','caster_dps'], ['Soulavenger','WARLOCK','Affliction','caster_dps'], ['Zzaps','DRUID','Balance','caster_dps']],
+    [['Alliesha','PALADIN','Protection','tank'], ['Voctave','SHAMAN','Restoration','healer'], ['kimmjungheal','DRUID','Restoration','healer'], ['Drenna','PALADIN','Holy','healer']],
+  ];
+  State.groups = layout.map((g, gi) => g.map(([name, cls, spec, role]) => ({ ...mkPlayer(name, cls, spec, role), groupNumber: gi + 1 })));
+  State.roster = State.groups.flat();
+  State.bench = [{ ...mkPlayer('Originalgoat', 'SHAMAN', 'Enhancement', 'melee_dps'), groupNumber: 0 }];
+  State.preferredSlots = [{ group: 4, class: 'PRIEST', spec: 'Discipline', auto: true }, { group: 1, class: 'SHAMAN', spec: 'Enhancement', auto: true }];
+  Optimizer.optimize();
+
+  const enh = autoSlots().find(s => s.class === 'SHAMAN' && s.spec === 'Enhancement');
+  assert(enh, 'an Enh Shaman is suggested');
+  const names = State.groups[enh.group].map(p => p.name).sort().join(',');
+  for (const n of ['Therhyme', 'Ceedarius', 'Sanga', 'Hinastorm']) assert(names.includes(n), n + ' rides with the suggested Enh Shaman (G' + (enh.group + 1) + ': ' + names + ')');
+  const board = State.groups.map((g, gi) => g.concat(PP.PreferredSlots.forGroup(gi).map(s => ({ class: s.class, spec: s.spec, role: PP.RosterEdit.RoleForSpec(s.class, s.spec), name: '' }))));
+  board._roleIdentities = State.groups._roleIdentities;
+  board._anchors = State.groups._anchors;
+  const total = board.reduce((sum, g, gi) => sum + Optimizer.groupScore(g, gi, board, 'max_dps'), 0);
+  assert(total >= 393.05 - 1e-6, 'raid score with the Opens is at least 393.05 (was 374.90), got ' + total.toFixed(2));
+  assertEqual(State.bench.map(p => p.name).join(','), 'Originalgoat', 'the benched Enh Shaman stays benched');
+});
+
+// A suggestion is priced on a board that never holds more than a party: a
+// pick priced in a group of 9 or 10 inflated the specs that pile onto the
+// best-buffed group (a short raid lost its Enh/Ele/Shadow picks).
+describe('OpenSlots: suggestions are priced on groups of at most five', () => {
+  seatForOpenSlots(DPS_14.slice(0, 12));
+  const score = Optimizer.groupScore;
+  let largest = 0;
+  Optimizer.groupScore = function (group, ...rest) { largest = Math.max(largest, group.length); return score.call(this, group, ...rest); };
+  try { Optimizer.optimize(); } finally { Optimizer.groupScore = score; }
+  assert(autoSlots().length > 0, 'Opens were suggested');
+  assert(largest <= 5, 'no group priced past five members (largest ' + largest + ')');
+});
+
+// More players and Open slots than the raid seats: the slots give way, a
+// signed-up player is never benched for a hypothetical one.
+describe('OpenSlots: a full raid drops a manual Open slot, never a real player', () => {
+  resetState();
+  State.selectedRaid = 'bt';
+  State.optimizerMode = 'max_dps';
+  State.roster = buildStandard25ManRoster().map(p => ({ ...p, uid: nextUid() }));
+  State.groups = [0, 1, 2, 3, 4].map(gi => State.roster.slice(gi * 5, gi * 5 + 5));
+  State.groups.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+  State.preferredSlots = [{ group: 0, class: 'PRIEST', spec: 'Discipline' }];
+  Optimizer.optimize();
+  assertEqual(State.groups.flat().length, 25, 'all 25 players stay seated');
+  assertEqual(State.bench.length, 0, 'nobody is benched');
+  assertEqual(State.preferredSlots.length, 0, 'the Open slot that no longer fits is dropped');
 });
 
 describe('OpenSlots: editing a suggestion makes it the leader\'s own', () => {

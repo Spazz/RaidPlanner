@@ -378,24 +378,34 @@ function devMeasure(name, fn) {
 
 const Optimizer = {
   // Every Optimize replaces the previous run's suggested Open slots: drop
-  // them and lay out the real players, then suggest the specs the raid is
-  // missing (OpenSlots.choose) and seat each one in the group it belongs in,
-  // moving one seated player out to an empty seat when that group is full
-  // (a suggested Disc Priest with the MT and healers, not wherever a seat
-  // happened to be empty). Any seat still empty after that (inside a group
-  // frozen by the leader's own request) is filled in place.
+  // them and lay out the real players with the leader's own Open slots, then
+  // suggest a spec for every seat still empty (OpenSlots.choose) and lay the
+  // whole raid out again with every Open slot as a stand-in member, so a
+  // suggested Enh Shaman sits with the melee it buffs even when real players
+  // have to move to make room. The first layout is a draft (one swap pass,
+  // no further refinement): it only gives choose() a board that does not
+  // depend on how the players arrived, at a fraction of the full cost.
   optimize() {
     devMeasure('pp:optimize', () => {
       State.preferredSlots = PreferredSlots.manual();
+      // A full raid has no seat to suggest for: skip the draft.
+      const raid = Config.Raids[State.selectedRaid];
+      const seats = raid ? Math.min(raid.size, State.groups.length * RosterEdit.MAX_GROUP_SIZE) : 0;
+      if (State.groups.flat().length + State.preferredSlots.length < seats) {
+        this._optimizeSeats(true);
+        State.preferredSlots.push(...OpenSlots.choose().map(p => ({ group: -1, class: p.class, spec: p.spec, auto: true })));
+      }
       this._optimizeSeats();
-      OpenSlots.seat(OpenSlots.choose());
-      OpenSlots.fill();
     });
   },
 
   // The adapter between State and plan(): reads the board and its settings,
-  // asks plan() for a layout, and applies the result.
-  _optimizeSeats() {
+  // asks plan() for a layout, and applies the result. Open slots (manual and
+  // suggested alike) join the layout as stand-in members and come back in the
+  // group plan() put them in; no group is held back for them. Slots past the
+  // raid's seats are dropped (suggested ones first), never a real player.
+  // draft: a quick layout for choose() to price on (see plan).
+  _optimizeSeats(draft = false) {
     if (!GameVersions[State.gameVersion].modeled) {
       enforceRaidCapacity(State.groups, State.bench, Config.Raids[State.selectedRaid].groups);
       State.roster = State.groups.flat();
@@ -408,32 +418,20 @@ const Optimizer = {
       drummers: State.drummers || [],
       faction: Faction.current(),
     };
-    // Groups with open requests keep their existing layout. Optimize the remaining
-    // groups without consuming the space deliberately left for future sign-ups.
-    // The whole board is arranged with those groups frozen in place, not the
-    // free groups on their own: arranging four free groups as a 4-group raid
-    // collapsed the group identities (a caster group turned "melee"), which
-    // put Ele Shamans, Boomkins and Destro locks into melee-identity groups.
-    if (State.preferredSlots.length) {
-      const frozen = State.groups.map((g, i) => PreferredSlots.forGroup(i).length ? g.slice() : null);
-      const free = State.groups.filter((g, i) => !frozen[i]).flat();
-      if (frozen.some(f => !f) && free.length) {
-        const { groups } = this.plan(State.groups.flat(), {
-          ...inputs, numGroups: State.groups.length, raidSize: Config.Raids[State.selectedRaid].size, frozen,
-        });
-        this._applyPlan(groups, []);
-      }
-      return;
-    }
     const raidInfo = Config.Raids[State.selectedRaid];
-    const pool = [];
-    for (const group of State.groups) {
-      for (const player of group) pool.push(player);
-    }
-    if (pool.length === 0) return;
-    const { groups, bench } = this.plan(pool, {
-      ...inputs, numGroups: raidInfo ? raidInfo.groups : 5, raidSize: raidInfo ? raidInfo.size : 25,
+    const numGroups = raidInfo ? raidInfo.groups : 5;
+    const players = State.groups.flat();
+    State.preferredSlots = State.preferredSlots.slice(0, Math.max(0, numGroups * RosterEdit.MAX_GROUP_SIZE - players.length));
+    const standIns = State.preferredSlots.map(OpenSlots.standIn);
+    if (!players.length && !standIns.length) return;
+    const { groups, bench } = this.plan(players.concat(standIns), {
+      ...inputs, numGroups, raidSize: raidInfo ? raidInfo.size : 25, draft,
     });
+    // Each slot takes its stand-in's group.
+    State.preferredSlots.forEach((slot, i) => { slot.group = groups.findIndex(g => g.includes(standIns[i])); });
+    for (const group of groups) {
+      for (let i = group.length - 1; i >= 0; i--) if (group[i].openSlot) group.splice(i, 1);
+    }
     this._applyPlan(groups, bench);
   },
 
@@ -457,8 +455,8 @@ const Optimizer = {
   //
   // opts: { gameVersion, numGroups, raidSize, mode = 'max_dps', max = 5,
   //   constraints = [], drummers = [], faction (default: detected from players),
-  //   frozen (per-group player arrays or null: those groups keep their members
-  //   and stay at their current size, see arrange) }.
+  //   draft (true: seeding, greedy placement and one swap pass only; a quick
+  //   canonical board for pricing Open slots, not one to ship) }.
   // Returns { groups, bench }: `groups` is the board (it also carries
   // _roleIdentities/_anchors for later scoring) and `bench` the players left
   // over when the roster exceeds the raid. Seated players are stamped with
@@ -466,7 +464,7 @@ const Optimizer = {
   // copied, so a benched one comes back with groupNumber 0 and a stale
   // comp-template lock is cleared, exactly as arrange() has always done.
   plan(players, opts) {
-    const { gameVersion, numGroups, raidSize, mode = 'max_dps', max = 5, constraints = [], drummers = [], frozen = null } = opts;
+    const { gameVersion, numGroups, raidSize, mode = 'max_dps', max = 5, constraints = [], drummers = [], draft = false } = opts;
     const faction = opts.faction !== undefined ? opts.faction : Faction.detect(players);
     return LayoutScope.run({ gameVersion, faction, constraints, drummers }, () => {
       // Over capacity: decide WHO sits first (floors, greedy, bench trades),
@@ -476,13 +474,10 @@ const Optimizer = {
       // Optimize click (which never sees the bench) in a different local optimum
       // and reshuffle a board the first click just produced.
       let seated = players, bench = [];
-      if (!frozen && players.length > numGroups * max) {
+      if (players.length > numGroups * max) {
         ({ seated, bench } = this.selectSeated(players, numGroups, raidSize, max, mode));
       }
-      const groups = this.arrange(seated, numGroups, raidSize, max, mode, frozen ? { frozen } : undefined);
-      // The freeze only applies to this run; the board keeps _roleIdentities.
-      if (frozen) { delete groups._frozen; delete groups._frozenGroups; delete groups._cap; }
-      return { groups, bench };
+      return { groups: this.arrange(seated, numGroups, raidSize, max, mode, draft), bench };
     });
   },
 
@@ -515,30 +510,11 @@ const Optimizer = {
 
   // Lays out a set of players that fits the raid. Deterministic for a given
   // set: the same players always produce the same board, whatever order or
-  // arrangement they arrive in.
-  //
-  // opts.frozen[gi] (an array of that group's players, or null) seats those
-  // players first, pins them, and caps the group at its current size so its
-  // open seats stay reserved (see _optimizeSeats' preferred-slot path).
-  arrange(players, numGroups, raidSize, max, mode, opts) {
+  // arrangement they arrive in. draft stops after one swap pass (see plan).
+  arrange(players, numGroups, raidSize, max, mode, draft = false) {
     const pool = this.sortedPool(players);
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
-    groups._cap = groups.map(() => max);
-    groups._frozen = new Set();
-    groups._frozenGroups = new Set();
-    for (const [gi, members] of ((opts && opts.frozen) || []).entries()) {
-      if (!members || gi >= numGroups) continue;
-      groups._frozenGroups.add(gi);
-      for (const p of members) {
-        const i = pool.indexOf(p);
-        if (i < 0) continue;
-        pool.splice(i, 1);
-        groups[gi].push(p);
-        groups._frozen.add(p);
-      }
-      groups._cap[gi] = groups[gi].length;
-    }
 
     // Phase 0: Seat locked players (comp-template placements, backlog #1)
     // into their fixed group before anything else runs, and pull them out of
@@ -564,6 +540,10 @@ const Optimizer = {
 
     // Phase 2: Greedy marginal-gain placement of remaining players
     this.greedyPlace(pool, groups, max, mode);
+    if (draft) {
+      this.refineSwaps(groups, max, mode);
+      return groups;
+    }
 
     // Phase 3: Refinement
     this.refineRounds(groups, max, mode);
@@ -1061,50 +1041,24 @@ const Optimizer = {
     return Array.from({ length: count }, (_, i) => i < meleeGroups ? 'melee_dps' : 'caster_dps');
   },
 
-  // Identities for a board with groups frozen around open requests: a frozen
-  // group is whatever it already holds (tanks/healers -> the tank group), and
-  // the free groups share the remaining identities among the free players.
-  // Without this, freezing the group that held the tanks left an empty
-  // "tank" identity that the healers and mages then piled into.
-  frozenIdentitiesFor(groups, players) {
-    const ids = groups.map(() => null);
-    let haveTank = false;
-    for (const gi of groups._frozenGroups) {
-      const g = groups[gi];
-      if (!g.length) continue;
-      const support = g.filter(p => p.role === 'tank' || p.role === 'healer').length;
-      const phys = g.filter(p => p.role === 'melee_dps' || p.role === 'ranged_dps').length;
-      const cast = g.filter(p => p.role === 'caster_dps').length;
-      if (!haveTank && support * 2 >= g.length) { ids[gi] = 'tank'; haveTank = true; }
-      else ids[gi] = phys >= cast ? 'melee_dps' : 'caster_dps';
-    }
-    const freeIdx = groups.map((_, gi) => gi).filter(gi => !groups._frozenGroups.has(gi));
-    const freePlayers = players.filter(p => !groups._frozen.has(p));
-    const freeIds = haveTank
-      ? this.dpsIdentitiesFor(freeIdx.length, freePlayers)
-      : this.roleIdentitiesFor(freeIdx.length, freePlayers);
-    freeIdx.forEach((gi, i) => { ids[gi] = freeIds[i] || null; });
-    return ids;
-  },
-
   // ── PHASE 1: SEED GROUPS ─────────────────────────────────────
   seedGroups(pool, groups, numGroups, raidSize, max, mode) {
     const everyone = pool.concat(groups.flat());
-    groups._roleIdentities = groups._frozenGroups && groups._frozenGroups.size
-      ? this.frozenIdentitiesFor(groups, everyone)
-      : this.roleIdentitiesFor(numGroups, everyone);
+    groups._roleIdentities = this.roleIdentitiesFor(numGroups, everyone);
 
     // Seed the healer/tank group with ONE anchor tank (reference comp: only
     // the Prot Paladin rides with the healers). Every other tank is placed
     // by the scorer like anyone else — a Feral tank is still that melee
     // group's Leader of the Pack, a spare Prot tank lands where its aura and
     // the totems it receives are worth most. tank_mit consolidates up to 3
-    // tanks here so mitigation buffs cover all of them.
+    // tanks here so mitigation buffs cover all of them. A signed-up tank
+    // anchors before an Open slot of the same rank.
     const tankIdx = groups._roleIdentities.indexOf('tank');
     const targetIdx = tankIdx >= 0 ? tankIdx : 0;
     const minTanks = mode === 'tank_mit' ? 3 : 1;
     const anchorRank = activeRules().rules.tankAnchorRank || (() => 0);
-    const tanks = pool.filter(p => p.role === 'tank').sort((a, b) => anchorRank(a) - anchorRank(b));
+    const tanks = pool.filter(p => p.role === 'tank')
+      .sort((a, b) => (anchorRank(a) - anchorRank(b)) || (!!a.openSlot - !!b.openSlot));
     groups._anchors = new Set();
     for (const t of tanks.slice(0, minTanks)) {
       if (!this.hasRoom(groups, targetIdx, max)) break;
@@ -1169,15 +1123,13 @@ const Optimizer = {
   // with melee).
   isPinned(player, gi, groups) {
     if (player.locked) return true;
-    if (groups._frozen && groups._frozen.has(player)) return true;
     if (player.role !== 'tank' || !this.isTankGroup(gi, groups)) return false;
     return groups._anchors ? groups._anchors.has(player) : true;
   },
 
-  // Open seat in group gi: below the raid's party size and, for a group
-  // frozen around an open request, below its reserved size.
+  // Open seat in group gi: below the raid's party size.
   hasRoom(groups, gi, max) {
-    return groups[gi].length < (groups._cap ? groups._cap[gi] : max);
+    return groups[gi].length < max;
   },
 
   isTankGroup(gi, groups) {
@@ -1780,13 +1732,14 @@ const Optimizer = {
 };
 
 // ── OPEN SLOT SUGGESTIONS ───────────────────────────────────────
-// When fewer players are seated than the raid holds, Optimize ends by giving
-// every empty seat an Open preferred slot for the class/spec that adds the
-// most there. Missing tanks and healers (Optimizer.floorsFor) come first;
-// every other seat goes to the DPS spec with the best marginal groupScore
+// When fewer players are seated than the raid holds, Optimize gives every
+// empty seat an Open preferred slot for the class/spec that adds the most.
+// Missing tanks and healers (Optimizer.floorsFor) come first; every other
+// seat goes to the DPS spec with the best marginal groupScore plus raid value
 // under the current mode, one seat at a time so each pick sees the last.
-// Suggestions carry `auto: true`: replaced on every Optimize, never freeze
-// their group (PreferredSlots.manual), and become manual once edited.
+// Suggestions carry `auto: true`: replaced on every Optimize and become
+// manual once edited. Every Open slot, manual or auto, is then seated by the
+// full layout like a real player (Optimizer._optimizeSeats).
 const OpenSlots = {
   // Classes the raid can bring: under a faction lock (Classic) no Paladin for
   // Horde or Shaman for Alliance, same as the Random roster's list.
@@ -1873,204 +1826,93 @@ const OpenSlots = {
     return v;
   },
 
-  // Where a player (moved real player, or a suggestion) may sit without
-  // breaking group conventions: the tank group takes healers, and tanks only
-  // as suggestions (a real Feral tank stays with melee); spare tanks and
-  // physical DPS go to melee groups; casters and healers to caster groups.
+  // An Open slot as a board member, for pricing and for the layout.
+  standIn(slot) {
+    return { class: slot.class, spec: slot.spec, role: RosterEdit.RoleForSpec(slot.class, slot.spec), uid: 'open', name: '', openSlot: true };
+  },
+
+  // Where a member is priced without breaking group conventions: the tank
+  // group takes healers, and tanks only as suggestions (a real Feral tank
+  // stays with melee); spare tanks and physical DPS go to melee groups;
+  // casters and healers to caster groups.
   _fits(member, identity, suggested) {
     if (identity === 'tank') return member.role === 'healer' || (member.role === 'tank' && suggested);
     if (identity === 'caster_dps') return member.role === 'caster_dps' || member.role === 'healer';
     return member.role === 'melee_dps' || member.role === 'ranged_dps' || member.role === 'tank';
   },
 
-  // The specs to suggest for the raid's open seats outside groups frozen by
-  // the leader's own requests: tank/healer floors first, then whatever adds
-  // the most (party-buff gain in its group + _raidValue), one at a time so
-  // each pick sees the last. A pick may go into a full group when moving one
-  // seated player out to an empty seat costs the real raid less than the pick
-  // gains there; that move is priced on real players only, so a suggestion
-  // never takes Windfury from someone who has it for a player who may never
-  // sign up. Returns picks as { class, spec, role, group, move }.
+  // The specs to suggest for the raid's empty seats: tank/healer floors first,
+  // then whatever adds the most (party-buff gain in its group + _raidValue),
+  // one at a time so each pick sees the last. A pick is priced in a group
+  // with a seat, or in a full one after moving its cheapest real player to a
+  // seat elsewhere, on a scratch board that never grows past the party size.
+  // That only prices the spec: where the slot sits is decided by the full
+  // layout optimize() runs next. A seat no spec fits by convention still
+  // gets the best spec regardless. Returns picks as { class, spec }.
   choose() {
     if (!GameVersions[State.gameVersion].modeled) return [];
     const raid = Config.Raids[State.selectedRaid];
     if (!raid || !State.groups.length) return [];
     const max = RosterEdit.MAX_GROUP_SIZE;
     const mode = State.optimizerMode || 'max_dps';
-    const frozen = State.groups.map((g, gi) => PreferredSlots.forGroup(gi).length > 0);
-    const requests = State.preferredSlots.map(p => ({ ...p, role: RosterEdit.RoleForSpec(p.class, p.spec) }));
-    const seats = State.groups.reduce((n, g, gi) => n + (frozen[gi] ? 0 : Math.max(0, max - g.length)), 0);
-    let open = Math.min(seats, raid.size - State.groups.flat().length - requests.length);
-    if (open <= 0) return [];
-
-    const board = State.groups.map(g => [...g]);
+    // Scratch board: seated players plus the leader's own requests, so the
+    // suggestions build on what's already planned. Never touches State.groups.
+    const board = State.groups.map((g, gi) => g.concat(PreferredSlots.forGroup(gi).map(this.standIn)));
     board._roleIdentities = State.groups._roleIdentities;
     board._anchors = State.groups._anchors;
-    const score = (b, gi, group = b[gi]) => Optimizer.groupScore(group, gi, b, mode);
-    const fits = (m, gj) => this._fits(m, (board._roleIdentities || [])[gj], !board.flat().includes(m));
+    const open = Math.min(raid.size, board.length * max) - board.flat().length;
+    const score = (gi, group = board[gi]) => Optimizer.groupScore(group, gi, board, mode);
+    const fits = (m, gi) => this._fits(m, (board._roleIdentities || [])[gi], !board.flat().includes(m));
     // Cheapest way to free a seat in full group gi: move one real, unpinned
-    // player to a non-frozen group with room. cost = real score lost.
+    // player to a group with room. cost = score lost.
     const roomIn = (gi) => {
       let best = null;
       for (const m of board[gi]) {
         if (m.openSlot || Optimizer.isPinned(m, gi, board)) continue;
         const without = board[gi].filter(p => p !== m);
         for (let gj = 0; gj < board.length; gj++) {
-          if (gj === gi || frozen[gj] || board[gj].length >= max || !fits(m, gj)) continue;
-          const cost = score(board, gi) + score(board, gj) - score(board, gi, without) - score(board, gj, [...board[gj], m]);
+          if (gj === gi || board[gj].length >= max || !fits(m, gj)) continue;
+          const cost = score(gi) + score(gj) - score(gi, without) - score(gj, [...board[gj], m]);
           if (!best || cost < best.cost) best = { m, gj, without, cost };
         }
       }
       return best;
     };
     const floors = Optimizer.floorsFor(raid.size);
-    const everyone = () => board.flat().concat(requests);
-    const roleCount = (role) => everyone().filter(p => p.role === role).length;
+    const roleCount = (role) => board.flat().filter(p => p.role === role).length;
     const candidates = this.candidates();
     const picks = [];
-    while (open > 0) {
+    while (picks.length < open) {
       const role = roleCount('tank') < floors.tank ? 'tank'
         : roleCount('healer') < floors.healer ? 'healer' : null;
       const pool = candidates.filter(c => role ? c.role === role : (c.role !== 'tank' && c.role !== 'healer'));
-      const rooms = board.map((g, gi) => (!frozen[gi] && g.length >= max) ? roomIn(gi) : null);
-      let best = null;
-      for (const candidate of pool) {
-        const raidValue = this._raidValue(candidate, everyone(), mode);
-        for (let gi = 0; gi < board.length; gi++) {
-          if (frozen[gi] || !fits(candidate, gi)) continue;
-          const room = board[gi].length >= max ? rooms[gi] : null;
-          if (board[gi].length >= max && !room) continue;
-          const base = room ? room.without : board[gi];
-          const gain = score(board, gi, [...base, candidate]) - score(board, gi, base) - (room ? room.cost : 0) + raidValue;
-          if (!best || gain > best.gain) best = { candidate, gi, room, gain };
+      const rooms = board.map((g, gi) => g.length >= max ? roomIn(gi) : null);
+      const bestPick = (conventional) => {
+        let best = null;
+        for (const candidate of pool) {
+          const raidValue = this._raidValue(candidate, board.flat(), mode);
+          for (let gi = 0; gi < board.length; gi++) {
+            if (conventional && !fits(candidate, gi)) continue;
+            const room = board[gi].length >= max ? rooms[gi] : null;
+            if (board[gi].length >= max && !room) continue;
+            const base = room ? room.without : board[gi];
+            const gain = score(gi, [...base, candidate]) - score(gi, base) - (room ? room.cost : 0) + raidValue;
+            if (!best || gain > best.gain) best = { candidate, gi, room, gain };
+          }
         }
-      }
+        return best;
+      };
+      const best = bestPick(true) || bestPick(false);
       if (!best) break;
       const { candidate, gi, room } = best;
       if (room) {
         board[gi].splice(board[gi].indexOf(room.m), 1);
         board[room.gj].push(room.m);
       }
-      board[gi].push({ ...candidate, uid: 'open-' + picks.length, name: '', openSlot: true });
-      picks.push({ class: candidate.class, spec: candidate.spec, role: candidate.role, group: gi,
-        move: room ? { player: room.m, to: room.gj } : null });
-      open--;
+      board[gi].push(this.standIn(candidate));
+      picks.push({ class: candidate.class, spec: candidate.spec });
     }
     return picks;
-  },
-
-  // Applies choose()'s picks: each becomes an auto Open slot in its group,
-  // after moving out the seated player it made room with.
-  seat(picks) {
-    for (const pick of picks) {
-      if (pick.move) {
-        const { player, to } = pick.move;
-        const from = State.groups.findIndex(g => g.includes(player));
-        if (from >= 0) State.groups[from].splice(State.groups[from].indexOf(player), 1);
-        State.groups[to].push(player);
-        player.groupNumber = to + 1;
-      }
-      State.preferredSlots.push({ group: pick.group, class: pick.class, spec: pick.spec, auto: true });
-    }
-    this._settle();
-    State.roster = State.groups.flat();
-  },
-
-  // A real player may trade seats with a suggested slot in another group when
-  // that scores better, so a suggestion never keeps a seat a real player
-  // wants more (the Holy Priest takes the Shadow Priest's group for Vampiric
-  // Touch; the suggested Disc moves to the MT group instead).
-  _settle() {
-    const mode = State.optimizerMode || 'max_dps';
-    const groups = State.groups;
-    const ids = groups._roleIdentities || [];
-    const frozen = groups.map((g, gi) => PreferredSlots.manual().some(p => p.group === gi));
-    const autos = State.preferredSlots.filter(p => p.auto);
-    const virtual = (slot) => ({ class: slot.class, spec: slot.spec, role: RosterEdit.RoleForSpec(slot.class, slot.spec), uid: 'open', name: '' });
-    const board = () => {
-      const b = groups.map((g, gi) => [...g, ...autos.filter(a => a.group === gi).map(virtual)]);
-      b._roleIdentities = ids;
-      b._anchors = groups._anchors;
-      return b;
-    };
-    for (let iter = 0; iter < 8; iter++) {
-      const b = board();
-      const score = (gi, grp = b[gi]) => Optimizer.groupScore(grp, gi, b, mode);
-      let best = null;
-      for (const slot of autos) {
-        const a = slot.group;
-        const v = virtual(slot);
-        for (let gb = 0; gb < groups.length; gb++) {
-          if (gb === a || frozen[gb] || !this._fits(v, ids[gb], true)) continue;
-          for (const p of groups[gb]) {
-            if (Optimizer.isPinned(p, gb, groups) || !this._fits(p, ids[a], false)) continue;
-            const withoutSlot = [...b[a]];
-            withoutSlot.splice(withoutSlot.findIndex(x => x.uid === 'open' && x.class === v.class && x.spec === v.spec), 1);
-            const delta = score(a, [...withoutSlot, p]) + score(gb, [...b[gb].filter(x => x !== p), v]) - score(a) - score(gb);
-            if (delta > 0.5 && (!best || delta > best.delta)) best = { slot, p, gb, delta };
-          }
-        }
-      }
-      if (!best) break;
-      const { slot, p, gb } = best;
-      groups[gb].splice(groups[gb].indexOf(p), 1);
-      groups[slot.group].push(p);
-      p.groupNumber = slot.group + 1;
-      slot.group = gb;
-    }
-  },
-
-  // Fills seats still empty after Optimize's own suggestions (inside groups
-  // frozen by the leader's requests) in place. Returns how many were added.
-  fill() {
-    if (!GameVersions[State.gameVersion].modeled) return 0;
-    const raid = Config.Raids[State.selectedRaid];
-    if (!raid || !State.groups.length) return 0;
-
-    const max = RosterEdit.MAX_GROUP_SIZE;
-    const mode = State.optimizerMode || 'max_dps';
-    // Scratch board: seated players plus the leader's own requests, so the
-    // suggestions build on what's already planned. Never touches State.groups.
-    const board = State.groups.map((group, gi) => [
-      ...group,
-      ...PreferredSlots.forGroup(gi).map(p => ({ ...p, role: RosterEdit.RoleForSpec(p.class, p.spec), uid: 'open', name: '' })),
-    ]);
-    board._roleIdentities = State.groups._roleIdentities;
-    let open = Math.min(raid.size, State.groups.length * max) - board.flat().length;
-    if (open <= 0) return 0;
-
-    const floors = Optimizer.floorsFor(raid.size);
-    const roleCount = (role) => board.flat().filter(p => p.role === role).length;
-    const candidates = this.candidates();
-    const added = [];
-    while (open > 0) {
-      const role = roleCount('tank') < floors.tank ? 'tank'
-        : roleCount('healer') < floors.healer ? 'healer' : null;
-      const pool = candidates.filter(c => role ? c.role === role : (c.role !== 'tank' && c.role !== 'healer'));
-      const choice = this._best(pool, board, mode, max);
-      if (!choice) break;
-      board[choice.gi].push({ ...choice.candidate, uid: 'open', name: '' });
-      added.push({ group: choice.gi, class: choice.candidate.class, spec: choice.candidate.spec, auto: true });
-      open--;
-    }
-    State.preferredSlots.push(...added);
-    return added.length;
-  },
-
-  // The (spec, group) pair that raises its group's score the most. Ties keep
-  // the first found (spec list order, then lowest group), so it's stable.
-  _best(pool, board, mode, max) {
-    let best = null;
-    for (let gi = 0; gi < board.length; gi++) {
-      if (board[gi].length >= max) continue;
-      const before = Optimizer.groupScore(board[gi], gi, board, mode);
-      for (const candidate of pool) {
-        const gain = Optimizer.groupScore([...board[gi], candidate], gi, board, mode) - before
-                   + this._raidValue(candidate, board.flat(), mode);
-        if (!best || gain > best.gain) best = { candidate, gi, gain };
-      }
-    }
-    return best;
   },
 };
 

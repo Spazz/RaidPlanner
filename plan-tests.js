@@ -9,8 +9,8 @@
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['State', 'Config', 'Optimizer', 'Faction', 'LayoutScope', 'Constraints', 'Drummers', 'nextUid']);
-const { State, Config, Optimizer, Faction, LayoutScope, Constraints, Drummers, nextUid } = ctx.api;
+const ctx = app.sandbox(['State', 'Config', 'Optimizer', 'Faction', 'LayoutScope', 'Constraints', 'Drummers', 'nextUid', 'RosterEdit']);
+const { State, Config, Optimizer, Faction, LayoutScope, Constraints, Drummers, nextUid, RosterEdit } = ctx.api;
 
 let passed = 0;
 function check(name, fn) {
@@ -165,18 +165,33 @@ check('plan() honors drummers passed in opts, exactly as State.drummers drives o
   assert.equal(sortedNames(State.groups), sortedNames(withOpts.groups));
 });
 
-check('plan() keeps a frozen group as it is and arranges the rest around it', () => {
+check('optimize() seats every Open slot, manual or suggested, as a member of the one plan() layout', () => {
   resetState();
-  const players = roster();
+  const players = roster(21);
   seatRoundRobin(players, 5);
-  const frozen = State.groups.map((g, i) => (i === 2 ? g.slice() : null));
-  const keep = frozen[2].map(p => p.name);
-  const input = State.groups.flat();
-  const { groups } = withoutState(() => Optimizer.plan(input, opts({ frozen })));
-  assert.deepEqual([...names(groups)[2]].sort(), [...keep].sort(), 'the frozen group keeps its members');
-  assert.equal(groups.flat().length, 25);
-  assert.equal(groups._frozen, undefined, 'the freeze does not outlive the run');
-  assert.equal(groups._cap, undefined);
+  State.preferredSlots = [{ group: 0, class: 'PRIEST', spec: 'Discipline' }];
+  Optimizer.optimize();
+  const slots = State.preferredSlots;
+  assert.equal(slots.length, 4, 'the manual slot plus one suggestion per empty seat');
+  assert.equal(slots.filter(s => !s.auto).length, 1, 'the manual slot stays manual');
+  assert.ok(State.groups.every((g, gi) => g.length + slots.filter(s => s.group === gi).length === 5), 'every group holds 5, counting Opens');
+  // The same layout plan() gives the players plus stand-ins of the slots' specs.
+  const standIns = slots.map(s => ({ name: '', class: s.class, spec: s.spec, role: RosterEdit.RoleForSpec(s.class, s.spec) }));
+  const faction = Faction.current();
+  const { groups } = withoutState(() => Optimizer.plan(players.concat(standIns), opts({ faction })));
+  const shape = (gs) => gs.map(g => g.map(p => p.name || p.spec).sort().join(',')).join(' | ');
+  const board = State.groups.map((g, gi) => g.concat(slots.filter(s => s.group === gi)));
+  assert.equal(shape(board), shape(groups));
+});
+
+check('plan() anchors a signed-up tank before an Open slot of the same spec', () => {
+  resetState();
+  const players = roster().filter(p => p.spec !== 'Protection' || p.class === 'WARRIOR');
+  const open = { uid: 'open', name: '', class: 'WARRIOR', spec: 'Protection', role: 'tank', openSlot: true };
+  const { groups } = withoutState(() => Optimizer.plan(players.concat(open), opts()));
+  const anchors = [...groups._anchors];
+  assert.equal(anchors.length, 1);
+  assert.equal(anchors[0].name, 'WARRIOR-Protection-0', 'the real Prot Warrior holds the tank group, not the Open one');
 });
 
 check('plan() honors a comp-template lock', () => {

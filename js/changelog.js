@@ -3,8 +3,12 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.0.0';
+const APP_VERSION = '4.0.1';
 const CHANGELOG = [
+  { version: '4.0.1', date: '2026-10-09', title: 'Smarter Open slots', changes: [
+    'Optimize arranges suggested and requested Open slots together with everyone else, moving as many players as it takes: a suggested Enhancement Shaman now lands with the Arms, Ret, Fury and Rogue who use Windfury.',
+    'Adding an Open slot to a group no longer freezes that group; Optimize can rearrange it.',
+  ] },
   { version: '4.0.0', date: '2026-10-09', title: 'A slimmer planner header', changes: [
     'One action row: Optimize, Undo, Redo, Raid size, Compare to ideal comp and Raid notes, with the readiness line right below it.',
     'Optimize always places buffs for the most damage; the strategy picker and the Compare all strategies dialog are gone.',

@@ -138,7 +138,9 @@ try {
     console.log(`${over ? 'WARN' : 'info'}  ${label}: ${ms.toFixed(0)} ms (budget ${budget} ms)`);
     if (over) warnings.push(label);
   };
-  for (const id of ['F01', 'F27', 'F28']) {
+  // F39 sits below capacity, so its Optimize also suggests Open slots and lays
+  // them out (draft layout + choose + full layout); the others are full raids.
+  for (const id of ['F01', 'F27', 'F28', 'F39']) {
     const scenario = Scenarios.scenarios.find(s => s.id === id);
     State.roster = []; State.groups = []; State.bench = []; State.unplaced = []; State.buffOverrides = {};
     State.selectedRaid = scenario.raid || 'bt'; State.optimizerMode = 'max_dps';

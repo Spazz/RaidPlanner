@@ -66,8 +66,8 @@ const PreferredSlots = {
     }).map(p => ({group:p.group, class:p.class, spec:p.spec, ...(p.auto === true ? {auto:true} : {})}));
   },
   forGroup(group) { return State.preferredSlots.filter(p => p.group === group); },
-  // Slots the leader set by hand. Auto-suggested ones (OpenSlots) are left
-  // out wherever a slot means "keep this group as I arranged it".
+  // Slots the leader set by hand. Optimize keeps these and replaces the
+  // auto-suggested ones (OpenSlots); both are re-seated like any player.
   manual() { return State.preferredSlots.filter(p => !p.auto); },
   hasManual(list = State.preferredSlots) { return (list || []).some(p => !p.auto); },
   add(group, classFile, spec, existing) {
