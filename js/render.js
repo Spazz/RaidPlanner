@@ -26,6 +26,7 @@ async function switchGameVersion(version) {
     confirmLabel: `Switch to ${GameVersions[version].name}`,
   })) return false;
   State.planId = null;
+  ChangeLog.clear();
   State.gameVersion = version;
   State.selectedRaid = GameVersions[version].defaultRaid;
   State.buffOverrides = {};
@@ -69,16 +70,21 @@ function renderRaidSizeControl() {
 function selectRaidSize(size) {
   const raid = raidForSize(State.gameVersion, size, State.selectedRaid);
   if (!raid || raid === State.selectedRaid) return;
+  const fromSize = Config.Raids[State.selectedRaid] ? Config.Raids[State.selectedRaid].size : null;
   State.selectedRaid = raid;
   renderRaidSizeControl();
   if (State.activeTab === 'ideal') {
     renderIdealComp();
   } else {
-    const before = new Set((State.bench || []).map(p => p.uid));
-    const benched = initGroups();
-    if (benched > 0) SizeBench.remember(State.bench.filter(p => !before.has(p.uid)).map(p => p.uid));
-    const reseated = SizeBench.reseat();
-    commit();
+    let benched = 0, reseated = 0;
+    // Whoever the new size benches or seats again is logged under Changes.
+    ChangeLog.track('size', fromSize ? `Raid size ${fromSize} to ${size}` : `Raid size ${size}`, () => {
+      const before = new Set((State.bench || []).map(p => p.uid));
+      benched = initGroups();
+      if (benched > 0) SizeBench.remember(State.bench.filter(p => !before.has(p.uid)).map(p => p.uid));
+      reseated = SizeBench.reseat();
+      commit();
+    });
     const raidInfo = Config.Raids[State.selectedRaid];
     if (benched > 0) showToast(`${benched} player${benched === 1 ? '' : 's'} benched — the ${raidInfo ? raidInfo.size : 25}-man raid is full`);
     else if (reseated > 0) showToast(`${reseated} player${reseated === 1 ? '' : 's'} back in the raid from the bench`);
@@ -204,8 +210,21 @@ function playerSlotLabel(p, where) {
   const name = (p.name || 'Unknown').split('-')[0];
   const cls = p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '';
   const status = p.signupStatus && p.signupStatus !== 'confirmed' && p.signupStatus !== 'bench' ? SignupStatus.label(p.signupStatus) : '';
-  return [name, [p.spec, cls].filter(Boolean).join(' '), where, status, p.needsReview ? 'needs review' : '']
+  const change = ChangeLog.highlightFor(p);
+  return [name, [p.spec, cls].filter(Boolean).join(' '), where, status, p.needsReview ? 'needs review' : '',
+    change ? 'changed: ' + change.word.toLowerCase() : '']
     .filter(Boolean).join(', ');
+}
+
+// A player the latest unseen change touched (see ChangeLog.highlightFor): a
+// leading-space slot class, and the small tag that names the change.
+function changedSlotClass(p) {
+  const change = ChangeLog.highlightFor(p);
+  return change ? ' changed changed-' + change.kind : '';
+}
+function changedTag(p) {
+  const change = ChangeLog.highlightFor(p);
+  return change ? `<span class="changed-tag" title="Changed: ${esc(change.word)}">${esc(change.word)}</span>` : '';
 }
 
 // Re-rendering rebuilds every slot, so a keyboard user's focus would drop to
@@ -255,12 +274,13 @@ function seatedSlotHTML(p, gi, si) {
   // preview already uses, but persisted on the card itself since this
   // import path has no confirmation dialog to show it in first.
   const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
-  return `<div class="player-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'group ' + (gi + 1)))}" data-uid="${esc(p.uid)}" data-group="${gi}" data-slot="${si}">
+  return `<div class="player-slot${p.needsReview ? ' needs-review' : ''}${changedSlotClass(p)}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'group ' + (gi + 1)))}" data-uid="${esc(p.uid)}" data-group="${gi}" data-slot="${si}">
     ${getSpecIcon(p)}
     <div class="player-info">
       <span class="player-name ${classColorClass(p.class)}">${esc(displayName)}</span>
       <span class="player-spec">${esc(specClass)}</span>
     </div>
+    ${changedTag(p)}
     ${reviewBadge}
     ${p.signupStatus && p.signupStatus !== 'confirmed' ? getStatusTag(p.signupStatus) : ''}
     ${lockBadge}
@@ -641,6 +661,7 @@ function commit(mutator) {
 }
 
 function renderGroups() {
+  ChangeLog.forPlan(State.planId); // before any card reads a highlight: another plan's log never paints this one
   const focusedSlot = capturePlayerSlotFocus();
   const container = document.getElementById('groups-container');
   container.innerHTML = '';
@@ -734,6 +755,7 @@ function renderGroups() {
   SignupTray.render();
   restorePlayerSlotFocus(focusedSlot);
   renderManualChanges();
+  ChangesPanel.render();
 
   // Update version and raid controls after imports, restores and undo.
   syncVersionControls();
@@ -970,12 +992,138 @@ function describeRaidSummary({ seated, capacity, counts, benched }) {
 // One polite, atomic sr-only region for every announcement the page makes by itself.
 // Repeating the last message is skipped, so re-rendering an unchanged plan stays silent.
 let lastAnnouncement = '';
+let lastRaidSummary = ''; // the composition sentence renderSummaryBar last built
 function announce(message) {
   const region = document.getElementById('sr-status');
   if (!region || !message || message === lastAnnouncement) return;
   lastAnnouncement = message;
   region.textContent = message;
 }
+
+// ── CHANGES PANEL ──
+// The "Changes" button at the end of the action row (in the More sheet on phones)
+// and the "Recent changes" panel below the banners. Both follow ChangeLog: the
+// button shows while the log has entries, its badge counts unseen changes, and
+// every render redraws the panel, so card highlights and the list never disagree.
+const ChangesPanel = {
+  COLLAPSE_AT: 7, // entries with more items than this list counts per kind until shown
+  expanded: new Set(), // entry ids whose full list is open
+
+  el(id) { return document.getElementById(id); },
+  isOpen() { const panel = this.el('changes-log-panel'); return !!panel && !panel.hidden; },
+
+  setOpen(open) {
+    const panel = this.el('changes-log-panel');
+    const button = this.el('btn-changes');
+    if (!panel || !button) return;
+    panel.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    if (open) {
+      this.render();
+      if (typeof panel.scrollIntoView === 'function') panel.scrollIntoView({ block: 'nearest' });
+    }
+  },
+
+  itemHTML(it) {
+    const name = (it.name || 'Unknown').split('-')[0];
+    return `<li class="changes-log-item"><span class="changes-log-kind changes-log-kind-${esc(it.kind)}">${esc(ChangeLog.WORDS[it.kind] || it.kind)}</span> <strong>${esc(name)}</strong>${it.detail ? ` <span class="changes-log-detail">- ${esc(it.detail)}</span>` : ''}</li>`;
+  },
+
+  entryHTML(entry, now) {
+    const long = entry.items.length > this.COLLAPSE_AT;
+    const open = !long || this.expanded.has(entry.id);
+    const lines = open
+      ? entry.items.map(it => this.itemHTML(it)).join('')
+      : ChangeLog.kindCounts(entry).map(k => `<li class="changes-log-item"><span class="changes-log-kind changes-log-kind-${k.kind}">${esc(k.word)}</span> ${k.count} player${k.count === 1 ? '' : 's'}</li>`).join('');
+    const toggle = long
+      ? `<button type="button" class="link-btn changes-log-more" data-changes-expand="${entry.id}" aria-expanded="${open}">${open ? 'Hide the list' : `Show all ${entry.items.length}`}</button>`
+      : '';
+    return `<div class="changes-log-entry${entry.seen ? '' : ' is-unseen'}">
+      <h4 class="changes-log-meta">${esc(entry.label)} <span class="changes-log-time">- ${esc(ChangeLog.ago(entry.time, now))}</span>${entry.seen ? '' : '<span class="sr-only">, not seen yet</span>'}</h4>
+      <ul class="changes-log-items">${lines}</ul>${toggle}
+    </div>`;
+  },
+
+  render() {
+    const button = this.el('btn-changes');
+    if (!button) return;
+    ChangeLog.forPlan(State.planId); // another plan open: its log starts empty
+    const entries = ChangeLog.entries;
+    const unseen = ChangeLog.unseenCount();
+    button.hidden = !entries.length;
+    button.setAttribute('aria-label', unseen ? `Changes, ${unseen} unseen` : 'Changes');
+    for (const id of ['changes-count', 'phone-more-changes-count']) {
+      const badge = this.el(id);
+      if (!badge) continue;
+      badge.hidden = !unseen;
+      badge.textContent = unseen ? String(unseen) : '';
+    }
+    const more = this.el('btn-phone-more');
+    if (more) {
+      if (unseen) more.setAttribute('aria-label', `More, ${unseen} unseen change${unseen === 1 ? '' : 's'}`);
+      else more.removeAttribute('aria-label');
+    }
+    for (const id of this.expanded) if (!entries.some(entry => entry.id === id)) this.expanded.delete(id);
+    if (!entries.length) {
+      if (this.isOpen()) this.setOpen(false);
+      return;
+    }
+    const list = this.el('changes-log-list');
+    if (!list || !this.isOpen()) return;
+    const now = Date.now();
+    list.innerHTML = entries.map(entry => this.entryHTML(entry, now)).join('');
+  },
+
+  // Highlights live in the slot markup, so the board is redrawn (through commit, the one render path).
+  markAllSeen() {
+    ChangeLog.markAllSeen();
+    commit();
+  },
+};
+// A recorded change redraws the board (highlights, badge, panel) and is announced once.
+// The tracked action has already committed; this commit only redraws.
+ChangeLog.onRecord = entry => {
+  commit();
+  // A size change or a seat change also changed the composition the tracked commit
+  // just announced; the region holds one message, so the summary carries both.
+  const reshaped = entry.kind === 'size' || entry.items.some(it => it.kind !== 'status' && it.kind !== 'moved');
+  const summary = ChangeLog.summary(entry);
+  lastAnnouncement = ''; // every entry is news, even one that reads like the last
+  announce(reshaped && lastRaidSummary ? `${summary}. ${lastRaidSummary}` : summary);
+};
+(function initChangesPanel() {
+  const button = ChangesPanel.el('btn-changes');
+  const list = ChangesPanel.el('changes-log-list');
+  if (!button || !list) return;
+  // On phones the button sits in the More sheet, which closes on the click and hands
+  // focus back to More; move focus to the panel after that so it is not opened silently.
+  const inSheet = () => !!button.closest('#mobile-more-sheet');
+  button.addEventListener('click', () => {
+    const open = !ChangesPanel.isOpen();
+    ChangesPanel.setOpen(open);
+    const heading = ChangesPanel.el('changes-log-heading');
+    if (open && heading && inSheet()) setTimeout(() => heading.focus(), 0);
+  });
+  const seen = ChangesPanel.el('btn-changes-seen');
+  if (seen) seen.addEventListener('click', () => ChangesPanel.markAllSeen());
+  const close = ChangesPanel.el('btn-changes-close');
+  if (close) close.addEventListener('click', () => {
+    ChangesPanel.setOpen(false);
+    const opener = inSheet() ? ChangesPanel.el('btn-phone-more') : button;
+    if (opener) opener.focus();
+  });
+  list.addEventListener('click', e => {
+    const toggle = e.target.closest('[data-changes-expand]');
+    if (!toggle) return;
+    const id = Number(toggle.dataset.changesExpand);
+    if (ChangesPanel.expanded.has(id)) ChangesPanel.expanded.delete(id); else ChangesPanel.expanded.add(id);
+    ChangesPanel.render();
+    const again = list.querySelector(`[data-changes-expand="${id}"]`);
+    if (again) again.focus();
+  });
+  // Keeps "N min ago" current while the panel is open.
+  setInterval(() => { if (ChangesPanel.isOpen()) ChangesPanel.render(); }, 60000);
+})();
 
 // Phone: the readiness strip (#plan-feedback) is folded away and a short link on line 2
 // of the context row opens it and the coverage panel. The link says what the strip
@@ -1049,7 +1197,8 @@ function renderSummaryBar() {
     ${chip('melee', 'Melee', counts.melee_dps)}
     ${chip('ranged', 'Ranged', counts.ranged)}
     <span class="summary-chip bench"><b>${benched}</b> Benched</span>`;
-  announce(describeRaidSummary({ seated, capacity, counts, benched }));
+  lastRaidSummary = describeRaidSummary({ seated, capacity, counts, benched });
+  announce(lastRaidSummary);
 }
 
 function updateStatus() {
@@ -1617,12 +1766,13 @@ const SignupTray = {
       const color = classColorClass(p.class, 'muted');
       const icon = p.class ? getSpecIcon(p) : '<span class="role-icon unplaced-icon">?</span>';
       const specText = p.class ? `${p.spec} ${RosterEdit.ClassLabel(p.class)}` : 'No spec on Raid-Helper';
-      return `<div class="player-slot bench-slot unplaced-slot" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'not seated'))}" data-unplaced-uid="${esc(p.uid)}" title="Click or drag into a group to seat them">
+      return `<div class="player-slot bench-slot unplaced-slot${changedSlotClass(p)}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'not seated'))}" data-unplaced-uid="${esc(p.uid)}" title="Click or drag into a group to seat them">
         ${icon}
         <div class="player-info">
           <span class="player-name ${color}">${esc(displayName)}</span>
           <span class="player-spec">${esc(specText)}</span>
         </div>
+        ${changedTag(p)}
         ${tag}
         ${getDragHandle()}
       </div>`;
@@ -1634,12 +1784,13 @@ const SignupTray = {
     const backupPrimary = Backups.primaryNameFor(p.name);
     const backupBadge = backupPrimary ? `<span class="backup-badge backup-badge-bench" title="Backup for ${esc(backupPrimary.split('-')[0])}">-&gt; ${esc(backupPrimary.split('-')[0])}</span>` : '';
     const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
-    return `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'on the bench'))}" data-bench-slot="${entry.bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
+    return `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}${changedSlotClass(p)}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'on the bench'))}" data-bench-slot="${entry.bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
       ${getSpecIcon(p)}
       <div class="player-info">
         <span class="player-name ${color}">${esc(displayName)}</span>
         <span class="player-spec">${esc(specClass)}</span>
       </div>
+      ${changedTag(p)}
       ${tag}
       ${reviewBadge}
       ${backupBadge}
@@ -1659,7 +1810,12 @@ const SignupTray = {
     section.style.display = State.activeTab === 'plan' ? 'block' : 'none';
 
     const counts = { all: entries.length };
-    for (const e of entries) { const t = this.tabOf(e); counts[t] = (counts[t] || 0) + 1; }
+    const changedTabs = new Set(); // tabs holding someone with an unseen change
+    for (const e of entries) {
+      const t = this.tabOf(e);
+      counts[t] = (counts[t] || 0) + 1;
+      if (ChangeLog.highlightFor(e.p)) changedTabs.add(t);
+    }
     if (!this.chosen && !counts[this.activeTab]) {
       this.activeTab = (this.TABS.find(t => t.id !== 'all' && counts[t.id]) || { id:'all' }).id;
     }
@@ -1669,7 +1825,9 @@ const SignupTray = {
     const tabsHTML = this.TABS.map(t => {
       const n = counts[t.id] || 0;
       const selected = t.id === tab.id;
-      return `<button type="button" role="tab" class="tray-tab${n ? '' : ' is-empty'}" id="tray-tab-${t.id}" data-tray-tab="${t.id}" aria-selected="${selected}" aria-controls="bench-list" tabindex="${selected ? 0 : -1}">${t.label} <span class="bench-count">${n}</span></button>`;
+      // A dot on a tab the leader is not looking at, when a changed player is in it (All shows everyone, so never).
+      const dot = tab.id !== 'all' && !selected && changedTabs.has(t.id) ? '<span class="tray-tab-dot" aria-hidden="true"></span><span class="sr-only">, has changes</span>' : '';
+      return `<button type="button" role="tab" class="tray-tab${n ? '' : ' is-empty'}" id="tray-tab-${t.id}" data-tray-tab="${t.id}" aria-selected="${selected}" aria-controls="bench-list" tabindex="${selected ? 0 : -1}">${t.label} <span class="bench-count">${n}</span>${dot}</button>`;
     }).join('');
     const slotsHTML = shown.length
       ? shown.map(e => this.slotHTML(e, tab.id)).join('')

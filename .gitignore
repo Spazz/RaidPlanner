@@ -14,6 +14,7 @@
 !js/livesync.js
 !js/optimizer.js
 !js/analysis.js
+!js/changes.js
 !js/render.js
 !js/modals.js
 !js/app.js
@@ -73,6 +74,7 @@
 !perf-tests.js
 !README.md
 !changelog-tests.js
+!changes-tests.js
 !.vercelignore
 # Test runner, loader and CI (npm test; GitHub Actions runs it)
 !package.json

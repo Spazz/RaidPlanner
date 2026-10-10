@@ -3,8 +3,16 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.0.1';
+const APP_VERSION = '4.1.0';
 const CHANGELOG = [
+  { version: '4.1.0', date: '2026-10-09', title: 'See what changed', changes: [
+    'A Changes button at the end of the action row lists what a sign-up sync, a raid size change or a live link update did to the roster, newest first.',
+    'Each change names the player and what happened: benched, seated, a new sign-up status, a new sign-up, a dropped sign-up, or a group move from a co-editor.',
+    'Changed players are outlined and tagged on their cards, on the bench and in the Sign-ups tabs until you click Mark all seen.',
+    "Undoing a co-editor's update removes it from the list. The list covers this session only and starts over with each new plan or import.",
+    'Phones: Changes is in the More sheet, and the More button shows how many changes you have not seen yet.',
+    'Click the Party Planner title in the header to go back to the home screen and load a different plan. Your current plan stays there to resume.',
+  ] },
   { version: '4.0.1', date: '2026-10-09', title: 'Smarter Open slots', changes: [
     'Optimize arranges suggested and requested Open slots together with everyone else, moving as many players as it takes: a suggested Enhancement Shaman now lands with the Arms, Ret, Fury and Rogue who use Windfury.',
     'Adding an Open slot to a group no longer freezes that group; Optimize can rearrange it.',

@@ -178,7 +178,7 @@
 <main class="addon-frame" id="app" hidden>
   <!-- Header row: title · plan name + status · Share and the menu (nav slim-down). -->
   <div class="title-bar">
-    <h1>Party Planner</h1>
+    <h1><button type="button" class="title-home" id="btn-home" aria-label="Party Planner home: load a different plan" title="Home: load a different plan">Party Planner</button></h1>
     <div class="roster-name-wrap plan-only">
       <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">
         <span id="roster-name-text">No Roster Loaded</span>
@@ -259,6 +259,8 @@
       Back to plan
     </button>
     <button type="button" class="raid-notes-toggle plan-only" id="btn-raid-notes-toggle" aria-expanded="false" aria-controls="raid-notes-panel"><span class="raid-notes-chevron" id="raid-notes-chevron" aria-hidden="true">&#9656;</span> Raid notes <span id="raid-notes-toggle-badge" class="raid-notes-badge" hidden>&#9679;</span></button>
+    <!-- Shown once a sync, size change or live update changed the roster; the badge counts unseen changes. -->
+    <button type="button" class="btn btn-secondary changes-toggle plan-only" id="btn-changes" aria-expanded="false" aria-controls="changes-log-panel" hidden>Changes <span class="changes-count" id="changes-count" hidden></span></button>
   </div>
 
   <!-- Phone context row: line 1 plan name (+ Edit), line 2 seated count · Raid size · readiness link. -->
@@ -320,7 +322,7 @@
     <div id="phone-bar-undo-slot"></div>
     <div id="phone-bar-optimize-slot"></div>
     <div id="phone-bar-share-slot"></div>
-    <button type="button" id="btn-phone-more" aria-haspopup="dialog" aria-expanded="false">More</button>
+    <button type="button" id="btn-phone-more" aria-haspopup="dialog" aria-expanded="false">More <span class="changes-count" id="phone-more-changes-count" hidden></span></button>
   </div>
 
   <details id="raid-notes-panel" class="raid-notes-panel">
@@ -371,6 +373,15 @@
       <button type="button" class="link-btn" id="btn-tab-keep">Keep mine</button>
     </div>
   </div>
+  <!-- Recent changes: what syncs, size changes and live updates did to the roster (session only). -->
+  <section class="changes-log-panel" id="changes-log-panel" aria-labelledby="changes-log-heading" hidden>
+    <div class="changes-log-header">
+      <h3 class="changes-log-heading" id="changes-log-heading" tabindex="-1">Recent changes</h3>
+      <button type="button" class="btn btn-secondary changes-log-seen" id="btn-changes-seen">Mark all seen</button>
+      <button type="button" class="btn btn-secondary changes-log-close" id="btn-changes-close">Close</button>
+    </div>
+    <div class="changes-log-list" id="changes-log-list"></div>
+  </section>
 
   <div class="summary-bar" id="summary-bar"></div>
 
@@ -533,6 +544,7 @@
 <script src="/js/livesync.js"></script>
 <script src="/js/optimizer.js"></script>
 <script src="/js/analysis.js"></script>
+<script src="/js/changes.js"></script>
 <script src="/js/render.js"></script>
 <script src="/js/modals.js"></script>
 <script src="/js/app.js"></script>

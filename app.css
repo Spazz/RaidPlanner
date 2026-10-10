@@ -359,6 +359,10 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   font-size: 15px; font-weight: 600; flex-shrink: 0;
   color: var(--text-primary); letter-spacing: 0.12em;
 }
+/* The title is the way home (btn-home): it inherits the h1's look and only gains a pointer. */
+.title-home { all: unset; cursor: pointer; }
+.title-home:hover { color: var(--accent-gold-bright); }
+.title-home:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 .title-diamond { display: none; }
 .title-edition { font-family: var(--font-cond); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
 .title-right { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; flex-shrink: 0; }
@@ -379,6 +383,13 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .ideal-comp-link svg, .back-to-plan-link svg { flex-shrink: 0; }
 .raid-notes-toggle { margin-left: var(--sp-2); }
 .raid-notes-chevron { font-size: 10px; }
+/* "Changes" (end of the action row): what a sync, size change or live update did. */
+.changes-toggle { margin-left: auto; color: var(--accent-gold-bright); border-color: var(--border-accent); }
+.changes-count {
+  display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 9px;
+  background: var(--accent-gold); color: var(--text-on-accent);
+  font: 700 11px/18px var(--font-body); text-align: center; letter-spacing: 0;
+}
 /* Phone readiness link on line 2 of the context row ("N missing", "⚠ 1 healer short"). */
 .summary-missing {
   display: block; padding: 0; background: none; border: 0; cursor: pointer;
@@ -849,6 +860,57 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .status-late      { color: #7fb2e5; }
 .status-absent    { color: var(--danger); }
 .unplaced-slot { border-style: dashed; opacity: 0.7; }
+
+/* ── Changed players (ChangeLog highlights) ──
+   An inset ring, not an outline: :focus-visible already draws the outline. */
+.changed-benched { --changed-color: var(--warning); }
+.changed-seated  { --changed-color: var(--success); }
+.changed-status  { --changed-color: var(--accent-gold); }
+.changed-moved   { --changed-color: color-mix(in srgb, var(--role-tank) 85%, #fff); }
+.changed-added   { --changed-color: var(--text-secondary); }
+.player-slot.changed { box-shadow: inset 0 0 0 2px var(--changed-color, var(--accent-gold)); opacity: 1; }
+/* The gold focus outline would sit on the ring (and vanish on a gold Status ring):
+   focus turns the outline light and pushes the kind color inward. */
+.player-slot.changed:focus-visible { outline-color: var(--text-primary); box-shadow: inset 0 0 0 4px var(--changed-color, var(--accent-gold)); }
+.player-slot.changed.dragging { opacity: 0.3; }
+.changed-tag {
+  flex-shrink: 0; padding: 1px 4px; border: 1px solid currentColor; border-radius: 3px;
+  color: var(--changed-color, var(--accent-gold));
+  font-size: 9px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: default;
+}
+.tray-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-gold); flex-shrink: 0; }
+
+/* ── Recent changes panel (below the banners) ── */
+.changes-log-panel {
+  margin: var(--sp-2) var(--sp-4); padding: 12px 16px;
+  background: var(--bg-frame); border: 1px solid var(--border-medium);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.changes-log-header { display: flex; align-items: center; gap: var(--sp-2); }
+.changes-log-heading {
+  flex: 1; margin: 0; font-family: var(--font-cond); font-size: 15px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--accent-gold-bright);
+}
+.changes-log-list { display: flex; flex-direction: column; gap: 12px; }
+.changes-log-entry { display: flex; flex-direction: column; gap: 4px; }
+.changes-log-entry + .changes-log-entry { border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+.changes-log-meta {
+  margin: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);
+}
+.changes-log-entry.is-unseen .changes-log-meta { color: var(--text-secondary); }
+.changes-log-time { font-weight: 400; }
+.changes-log-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.changes-log-item { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+.changes-log-item strong { color: var(--text-primary); font-weight: 600; }
+.changes-log-detail { color: var(--text-secondary); }
+.changes-log-kind { font-weight: 600; }
+.changes-log-kind-benched { color: var(--warning); }
+.changes-log-kind-seated  { color: var(--success); }
+.changes-log-kind-status  { color: var(--accent-gold); }
+.changes-log-kind-moved   { color: color-mix(in srgb, var(--role-tank) 85%, #fff); }
+.changes-log-kind-added   { color: var(--text-secondary); }
+.changes-log-kind-dropped { color: var(--danger); }
+.changes-log-more { align-self: flex-start; min-height: 24px; }
 .unplaced-icon { opacity: 0.4; }
 .unplaced-dialog-fields { display: grid; gap: 10px; margin: 12px 0; }
 .unplaced-dialog-fields label { display: grid; gap: 4px; font-size: 12px; color: var(--text-muted); }
@@ -1709,6 +1771,11 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   #phone-bar-optimize-slot > *, #phone-bar-undo-slot > *, #phone-bar-share-slot > *, #btn-phone-more { min-height: 0; font-size: 13px; letter-spacing: 0.1em; font-weight: 700; }
   #phone-bar-optimize-slot > * { font-size: 14px; }
   #phone-bar-share-slot kbd { display: none; }
+  /* Unseen Changes count on More (the Changes button itself sits in the More sheet). */
+  #btn-phone-more .changes-count { min-width: 16px; padding: 0 4px; margin-left: 2px; font-size: 10px; line-height: 16px; letter-spacing: 0; }
+  .changes-log-panel { margin: 8px 12px; padding: 10px 12px; }
+  #btn-changes-seen, #btn-changes-close, #changes-log-panel .changes-log-more { min-height: 44px; }
+  #changes-log-panel .changes-log-more { padding: 0 8px; }
 
   /* Player editor: bottom sheet. Short view = header, Name, Class + Spec, backup row,
      More row, actions. .pe-more-open swaps to the "More options" sections. */

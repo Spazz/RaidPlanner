@@ -88,6 +88,9 @@ check('the landing page renders the release notes, shows the version and stores 
   assert(!/<ul class="whats-new-list">/.test(app.html), 'the list is generated, not hand-written');
   assert(app.scripts.indexOf('/js/changelog.js') > app.scripts.indexOf('/js/rules.js'), 'loads after rules.js (needs esc)');
   assert(app.scripts.indexOf('/js/changelog.js') < app.scripts.indexOf('/js/app.js'));
+  // The change log is logic (load-app's half above the UI marker): after analysis.js, before render.js.
+  assert(app.scripts.indexOf('/js/changes.js') > app.scripts.indexOf('/js/analysis.js'), 'changes.js loads after analysis.js');
+  assert(app.scripts.indexOf('/js/changes.js') < app.scripts.indexOf('/js/render.js'), 'changes.js loads before render.js');
   const wiring = app.slice('const WHATS_NEW_KEY', 'function renderLandingSavedList');
   assert(wiring.includes("pp_whats_new_dismissed_v1") && wiring.includes('renderChangelog()'));
   assert(wiring.includes('safeSetItem(localStorage, WHATS_NEW_KEY, APP_VERSION)'));

@@ -11,7 +11,7 @@ const app = require('./tests/load-app');
 
 // Only the logic portion of index.html (before UI rendering / DOM code), loaded as a
 // CommonJS module (via a temp file, cleaned up immediately) for readable stack traces.
-const PP = app.requireLogic(['SignupStatus', 'nextUid', 'PreferredSlots', 'PlanStore', 'PlanSession', 'ImportHistory', 'Config', 'Import', 'Optimizer', 'RosterEdit', 'getGroupBuffs', 'getBuffPriority', 'getRaidDebuffCoverage', 'getMissingBuffInsights', 'State', 'TOTEM_ELEMENTS', 'PALADIN_AURAS', 'BEST_AIR_TOTEM', 'BEST_PALADIN_AURA', 'NO_ROSTER_NAME', 'enforceRaidCapacity', 'esc', 'Constraints', 'Backups', 'Drummers', 'PrintSheet'], '_pp_test_logic.tmp.js');
+const PP = app.requireLogic(['SignupStatus', 'nextUid', 'PreferredSlots', 'PlanStore', 'PlanSession', 'ImportHistory', 'Config', 'Import', 'Optimizer', 'RosterEdit', 'getGroupBuffs', 'getBuffPriority', 'getRaidDebuffCoverage', 'getMissingBuffInsights', 'State', 'TOTEM_ELEMENTS', 'PALADIN_AURAS', 'BEST_AIR_TOTEM', 'BEST_PALADIN_AURA', 'NO_ROSTER_NAME', 'enforceRaidCapacity', 'esc', 'Constraints', 'Backups', 'Drummers', 'PrintSheet', 'ChangeLog'], '_pp_test_logic.tmp.js');
 
 const { SignupStatus, nextUid, Config, Import, Optimizer, RosterEdit, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, enforceRaidCapacity, esc, Constraints, Backups, Drummers } = PP;
 
@@ -2983,7 +2983,8 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
     {name:'FirstMage',className:'Mage',specName:'Arcane'},
     {name:'SecondMage',className:'Mage',specName:'Fire'}]};
   let lastToast = '';
-  const context = { State, Import, PlanStore:PP.PlanStore, NO_ROSTER_NAME,
+  const ChangeLog = PP.ChangeLog;
+  const context = { State, Import, PlanStore:PP.PlanStore, NO_ROSTER_NAME, ChangeLog,
     localStorage:storage, document:{getElementById(){return {}; }},
     initGroups:()=>0, commit:()=>PP.PlanStore.save(storage,PP.PlanStore.capture()),
     showToast:(m)=>{lastToast=m;}, rememberImport:()=>'', fetchRosterJson:async()=>JSON.stringify(payload) };
@@ -2996,6 +2997,7 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   assert(await context.importFromText('123456789'), 'event ID import succeeds');
   assert(State.rosterName.startsWith('Fixture event'), 'event title used');
   assertEqual(State.planId,'event:123456789','canonical event plan created');
+  assertEqual(ChangeLog.entries.length,0,'a fresh import is not a logged change');
   assertEqual(State.eventStartTime,1790377200*1000,'event start time is stored with the plan');
   assert(Import.exportChatText().split(String.fromCharCode(10))[0].includes(new Date(1790377200*1000).toLocaleDateString()),'chat export is dated with the event day');
   State.groups.reverse(); State.groups.forEach((g,gi)=>g.forEach(p=>p.groupNumber=gi+1));
@@ -3013,6 +3015,8 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   assertEqual(PP.PlanStore.read(storage).length,1,'same event does not duplicate plan');
   assertEqual(State.bench.map(p=>p.name).join(),'NewMage','reimport pulls the new signup onto the bench without a Refresh click');
   assert(lastToast.startsWith('Reopened your plan: 1 new sign-up'),'reimport toast reports what changed');
+  assertEqual(ChangeLog.entries.length,1,'the re-paste sync is logged once');
+  assertEqual(ChangeLog.entries[0].kind+':'+ChangeLog.entries[0].items.map(i=>i.kind+' '+i.name+' '+i.detail).join(),'sync:added NewMage added to the bench','the log names the new sign-up');
   assertEqual(PP.PlanStore.read(storage)[0].data.bench.length,1,'merged sign-ups are saved with the plan');
   assertEqual(State.eventStartTime,1790550000*1000,'reopening picks up the rescheduled event start');
   PP.PlanSession.undoLast(); PP.PlanSession.observe();
@@ -3020,6 +3024,7 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   assertEqual(JSON.stringify(State.groups),layout,'undo keeps original layout');
   assert(await context.importFromText('123456789'), 'unchanged event reopens');
   assert(lastToast.startsWith('Reopened your plan. Up to date.'),'unchanged reimport says it is current');
+  assertEqual(ChangeLog.entries.length,1,'a sync that changed nothing records nothing');
   // A different event's link must start that event's own plan, even when the
   // open plan has Open-slot requests (which otherwise fill the open layout).
   State.preferredSlots=[{group:1,class:'MAGE',spec:'Fire'}]; State.notes='Friday notes';
@@ -3030,6 +3035,7 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   assert(await context.importFromText('https://raid-helper.xyz/event/987654321'), 'other event imports');
   PP.PlanSession.observe();
   assertEqual(State.planId,'event:987654321','other event gets its own plan');
+  assertEqual(ChangeLog.entries.length,0,'another event starts with an empty change log');
   assertEqual(State.sourceEventId,'987654321','other event is the linked source');
   assertEqual(State.eventStartTime,1790463600*1000,'other event plan takes its own start time');
   assert(State.rosterName.startsWith('Other event'),'other event plan takes its own title');
@@ -3045,6 +3051,8 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   payload={id:'111222333',title:'Planned event',startTime:1790600000,signUps:[{name:'PlannedPriest',className:'Priest',specName:'Holy'}]};
   assert(await context.importFromText('https://raid-helper.xyz/event/111222333'), 'event fills planned Open slots');
   assertEqual(State.eventStartTime,1790600000*1000,'Open-slot fill stores the event start time');
+  assertEqual(ChangeLog.entries.length,1,'filling planned Open slots is a logged sync');
+  assert(ChangeLog.entries[0].items.some(i=>i.kind==='added'&&i.name==='PlannedPriest'),'the fill lists who arrived');
   payload.startTime=undefined;
   State.sourceEventId='111222333'; State.planId='event:111222333';
   PP.PlanSession.ready=false;

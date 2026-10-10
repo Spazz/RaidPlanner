@@ -40,7 +40,7 @@ var confirm = () => true;
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'PlanSession', 'LocalPicks', 'Templates', 'DataBackup',
-  'RemoteUpdate', 'TabWatch', 'persistWorkingPlan', 'showSaveOutcome', 'copyText', 'showManualCopy', 'currentShareCode', 'safeSetItem'];
+  'RemoteUpdate', 'TabWatch', 'persistWorkingPlan', 'showSaveOutcome', 'copyText', 'showManualCopy', 'currentShareCode', 'safeSetItem', 'ChangeLog'];
 
 function memoryStorage({ limit = Infinity, failWith = null } = {}) {
   const data = {};
@@ -635,6 +635,39 @@ async function check(name, fn) {
     assert(env.closed.includes('editor') && env.closed.includes('picker'), 'open editors are closed');
     assert.equal(env.api.LiveSync.pending, true, 'the restored copy is queued for the live link');
     assert(env.toasts.some(t => /Restored your version/.test(t)));
+  });
+
+  await check('a live update is logged under Changes with its group moves (players matched by name)', async () => {
+    const env = linkedEnv();
+    const { State, LiveSync, ChangeLog, RemoteUpdate } = env.api;
+    ChangeLog.clear();
+    await LiveSync.pull();
+    await settle();
+    assert.equal(ChangeLog.entries.length, 1);
+    const [entry] = ChangeLog.entries;
+    assert.equal(entry.kind, 'live');
+    assert.equal(entry.label, 'Live link update');
+    assert.deepEqual(Array.from(entry.items, i => `${i.kind} ${i.name}: ${i.detail}`), ['moved Shammy: Group 1 to Group 2']);
+    assert.equal(RemoteUpdate.entryId, entry.id, 'the banner remembers which entry Undo drops');
+    assert.equal(ChangeLog.highlightFor(State.groups[1].find(p => p.name === 'Shammy')).kind, 'moved');
+  });
+
+  await check('Undo of a live update drops its Changes entry; Dismiss keeps it', async () => {
+    const env = linkedEnv();
+    const { LiveSync, ChangeLog, RemoteUpdate } = env.api;
+    ChangeLog.clear();
+    const earlier = ChangeLog.record('sync', [{ kind: 'added', name: 'Someone' }]);
+    await LiveSync.pull();
+    await settle();
+    assert.equal(ChangeLog.entries.length, 2);
+    assert.equal(RemoteUpdate.undo(), true);
+    assert.deepEqual(Array.from(ChangeLog.entries, e => e.id), [earlier.id], 'only the undone update goes');
+    const env2 = linkedEnv();
+    env2.api.ChangeLog.clear();
+    await env2.api.LiveSync.pull();
+    await settle();
+    env2.api.RemoteUpdate.hide();
+    assert.equal(env2.api.ChangeLog.entries.length, 1);
   });
 
   await check('Undo with nothing to undo, a second Undo, and Dismiss are harmless', async () => {

@@ -118,11 +118,12 @@ function renderLandingSavedList() {
   list.querySelectorAll('.saved-item').forEach(item => item.addEventListener('click', () => {
     if (item.dataset.plan) {
       const plan = drafts.find(p => p.data.planId === item.dataset.plan);
-      if (plan && PlanStore.restore(plan.data)) { initGroups(); commit(); showView('app'); RaidHelperSync.check(); }
+      if (plan && PlanStore.restore(plan.data)) { ChangeLog.clear(); initGroups(); commit(); showView('app'); RaidHelperSync.check(); }
       return;
     }
     const data = rosters[item.dataset.name];
     if (!Import.loadRoster(data)) { showToast('That saved roster could not be loaded'); return; }
+    ChangeLog.clear();
     initGroups();
     commit();
     showToast(`Loaded "${item.dataset.name}"`);
@@ -186,6 +187,7 @@ function renderLandingSavedList() {
   document.getElementById('btn-landing-random').addEventListener('click', async () => {
     if (!await confirmReplaceWithRandom()) return;
     State.planId = null;
+    ChangeLog.clear();
     RandomRoster.generate();
     commit();
     showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
@@ -196,6 +198,7 @@ function renderLandingSavedList() {
   document.getElementById('btn-resume').addEventListener('click', () => { showView('app'); RaidHelperSync.check(); });
   // "New plan…" (menu) goes back to the import screen; the planner keeps its plan meanwhile.
   document.getElementById('btn-new-plan').addEventListener('click', () => showView('landing'));
+  document.getElementById('btn-home').addEventListener('click', () => showView('landing')); // the header title is the way home
 })();
 
 (function initPlanChrome() {
@@ -281,7 +284,7 @@ function syncRaidNotesToggle() {
 (function initResponsiveChrome() {
   const slots = ['btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
     'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot',
-    'btn-redo:phone-sheet-quick-slot',
+    'btn-redo:phone-sheet-quick-slot', 'btn-changes:phone-sheet-quick-slot',
     'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
     'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
     'raid-notes-panel:phone-context-notes-slot',
@@ -406,6 +409,7 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   // pointing at players who no longer exist) and can resurface confusingly
   // on whatever is imported/generated next.
   PlanStore.startFresh();
+  ChangeLog.clear();
   initGroups();
   commit();
   showToast('Cleared');
@@ -414,6 +418,7 @@ document.getElementById('btn-clear').addEventListener('click', () => {
 document.getElementById('btn-landing-empty').addEventListener('click', () => {
   State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
   PlanStore.startFresh();
+  ChangeLog.clear();
   State.rosterName = 'New raid plan';
   initGroups(); commit(); showView('app');
   showToast('Click an empty slot to choose a preferred class and spec');
@@ -422,6 +427,7 @@ document.getElementById('btn-landing-empty').addEventListener('click', () => {
 document.getElementById('btn-random').addEventListener('click', async () => {
   if (!await confirmReplaceWithRandom()) return;
   State.planId = null;
+  ChangeLog.clear();
   RandomRoster.generate();
   commit();
   showToast('Random ' + (Config.Raids[State.selectedRaid]?.size || 25) + '-man roster generated');
@@ -572,6 +578,12 @@ async function createLiveLink(code, { keepalive = false, timeoutMs = 8000 } = {}
   return { id, updatedAt: Number(updatedAt) || 0 };
 }
 
+// A co-editor's update, logged under Changes with group moves (match by uid,
+// then name: the share code carries no uids). Returns ChangeLog.track's {result, entry}.
+function trackLiveUpdate(apply) {
+  return ChangeLog.track('live', 'Live link update', apply, { moves: true, ignoreBackfill: false });
+}
+
 // Swaps in someone else's copy of this plan, keeping what makes it this
 // browser's plan (its ID, Raid-Helper event and optimizer strategy) and what
 // the share code does not carry (player identities, totem and aura picks).
@@ -593,13 +605,16 @@ function applyRemoteLiveCode(id, remote) {
 // dismisses it, undoes it or changes the plan themselves.
 const RemoteUpdate = {
   before: null,
-  show(before) {
+  entryId: null, // the Changes entry the update recorded, dropped again by Undo
+  show(before, entry) {
     this.before = before;
+    this.entryId = entry ? entry.id : null;
     const banner = document.getElementById('remote-update-banner');
     if (banner) banner.hidden = false;
   },
   hide() {
     this.before = null;
+    this.entryId = null;
     const banner = document.getElementById('remote-update-banner');
     if (banner) banner.hidden = true;
   },
@@ -607,8 +622,10 @@ const RemoteUpdate = {
   // then follows it like any other local change.
   undo() {
     const before = this.before;
+    const entryId = this.entryId;
     this.hide();
     if (!before || !PlanStore.restore(before)) return false;
+    if (entryId) ChangeLog.remove(entryId);
     closePlayerEditor(); closeBuffPicker();
     initGroups(); commit(); renderLastRun(null);
     showToast('Restored your version of the roster (a live link will now show it)');
@@ -765,7 +782,8 @@ const LiveSync = {
     if (remote.code === currentShareCode()) { bindLiveLink(now.planKey, now.entry.id, remote.code, remote.updatedAt); return 'quiet'; }
     if (this.editing()) { this.deferUntilIdle(); return 'changed'; }
     const before = PlanStore.capture();
-    if (applyRemoteLiveCode(now.entry.id, remote)) RemoteUpdate.show(before);
+    const { result: applied, entry } = trackLiveUpdate(() => applyRemoteLiveCode(now.entry.id, remote));
+    if (applied) RemoteUpdate.show(before, entry);
     return 'changed';
   },
 
@@ -894,7 +912,7 @@ async function loadFromShortLink() {
     try { saved = bound && PlanStore.read(localStorage).find(p => LiveLinks.planKey(p.data) === bound.planKey); } catch {}
     if (!remote && !saved) { showToast('That share link has expired or does not exist (links last 30 days after the last change)'); return false; }
     if (saved) {
-      if (LiveLinks.planKey(State) !== bound.planKey) PlanStore.restore(saved.data);
+      if (LiveLinks.planKey(State) !== bound.planKey && PlanStore.restore(saved.data)) ChangeLog.clear();
       if (!remote) {
         // The server forgot the link, but this browser's copy is still here: give it a new link.
         commit();
@@ -903,7 +921,8 @@ async function loadFromShortLink() {
         return true;
       }
       const entry = LiveLinks.get(linkStorage(), bound.planKey);
-      const caughtUp = LiveLinks.shouldApply(entry, remote, false) && remote.code !== currentShareCode() && applyRemoteLiveCode(id, remote);
+      const caughtUp = LiveLinks.shouldApply(entry, remote, false) && remote.code !== currentShareCode()
+        && trackLiveUpdate(() => applyRemoteLiveCode(id, remote)).result;
       if (!caughtUp) commit();
       showToast(`Opened live raid "${State.rosterName}"`);
       return true;
@@ -937,6 +956,7 @@ async function applyShareCode(code) {
   const res = Import.importAddonString(str);
   if (!res.success) { showToast(res.error || 'That share link is invalid or damaged'); return false; }
 
+  ChangeLog.clear();
   commit();
   showToast(`Loaded shared raid "${State.rosterName}" (${res.playerCount} players)${rememberImport('Shared link')}`);
   return true;
@@ -1611,7 +1631,7 @@ function switchTab(tab) {
 
   // Show/hide plan-mode-only sections, plus the header and action-row controls
   // marked .plan-only (Optimize, Undo/Redo, plan name, Share, menu, notes, missing).
-  const planOnly = ['phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'raid-notes-panel'].map(
+  const planOnly = ['phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'raid-notes-panel', 'changes-log-panel'].map(
     cls => document.querySelector('.' + cls) || document.getElementById(cls)
   ).filter(Boolean);
   for (const el of [...planOnly, ...document.querySelectorAll('.plan-only')]) {

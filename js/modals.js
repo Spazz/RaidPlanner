@@ -399,6 +399,7 @@ function renderImportHistory(list, onLoad = () => {}, limit = 6) {
   list.querySelectorAll('[data-history-open]').forEach(button => button.onclick = () => {
     const item = items.find(entry => entry.id === button.dataset.historyOpen);
     if (!item || !Import.loadRoster(item.roster)) { showToast('That import could not be reopened'); return; }
+    ChangeLog.clear();
     State.buffOverrides = {};
     RaidHelperSync.hideBanner();
     renderLastRun(null);
@@ -620,6 +621,7 @@ function showLoadModal() {
       const name = item.dataset.name;
       const data = rosters[name];
       if (Import.loadRoster(data)) {
+        ChangeLog.clear();
         closeSaveOverlay();
         initGroups();
         commit();
@@ -805,6 +807,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     const result = Import.importAddonString(src.text);
     if (!result.success) { report('Import failed: ' + result.error, true); return false; }
     State.planId = null;
+    ChangeLog.clear();
     if (!src.text.startsWith('PP:2:') || State.rosterName === NO_ROSTER_NAME || State.rosterName === 'Imported Roster') State.rosterName = PlanStore.nameFor({}, null);
     initGroups();
     commit();
@@ -841,6 +844,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   if (Array.isArray(metadata.signUps) && metadata.templateId) maybeSuggestVersionSwitch(metadata.templateId);
   if (Array.isArray(metadata.players)) {
     if (!Import.loadRoster(metadata)) { report('Import failed: invalid game version or raid', true); return false; }
+    ChangeLog.clear();
     initGroups(); commit();
     showToast('Loaded saved roster');
     return true;
@@ -864,6 +868,8 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   const incomingEventId = src.eventId || (/^\d{6,}$/.test(String(metadata.id || '')) ? String(metadata.id) : null);
   const previousPlan = State.sourceEventId && incomingEventId !== State.sourceEventId ? PlanStore.capture() : null;
   if (previousPlan) PlanStore.startFresh();
+  // Filling a planned layout is a sync (logged below); a fresh import clears the log.
+  const beforeImport = ChangeLog.snapshot();
   const result = Import.importRaidHelper(jsonStr);
   if (!result.success) {
     if (previousPlan) PlanStore.restore(previousPlan);
@@ -876,6 +882,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     if (src.eventId) State.planId = 'event:' + src.eventId;
     if (State.rosterName === NO_ROSTER_NAME) State.rosterName = PlanStore.nameFor(metadata, src.eventId);
     RaidHelperSync.hideBanner(); initGroups(); commit();
+    ChangeLog.record('sync', ChangeLog.diff(beforeImport, ChangeLog.snapshot()), 'Sign-up sync');
     showToast(`Filled ${result.filledCount} preferred slots. Unmatched sign-ups are on the bench${rememberImport(src.url ? 'Raid-Helper URL' : 'Pasted JSON')}`);
     return true;
   }
@@ -885,6 +892,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   State.sourceEventId = src.eventId || null;
   State.eventStartTime = PlanStore.eventStart(metadata);
   RaidHelperSync.hideBanner();
+  ChangeLog.clear();
   const foldBenched = initGroups();
   commit();
   const historyNotice = rememberImport(src.url ? 'Raid-Helper URL' : 'Pasted JSON');
@@ -954,6 +962,7 @@ const PlainRosterImport = {
     this.pending = null;
     if (!result.success) { showToast('Import failed: ' + result.error); return; }
     State.planId = null;
+    ChangeLog.clear();
     const landingBox = document.getElementById('landing-import');
     if (landingBox) landingBox.value = '';
     initGroups();
@@ -1021,9 +1030,13 @@ const RaidHelperSync = {
   apply(diff, lead) {
     this.hideBanner();
     if (diff.eventStartTime) State.eventStartTime = diff.eventStartTime;
-    const counts = Import.hasRaidHelperChanges(diff) ? Import.applyRaidHelperSync(diff) : null;
-    initGroups();
-    commit();
+    // Logged as one Changes entry, including anyone initGroups benches for room.
+    const { result: counts } = ChangeLog.track('sync', 'Sign-up sync', () => {
+      const applied = Import.hasRaidHelperChanges(diff) ? Import.applyRaidHelperSync(diff) : null;
+      initGroups();
+      commit();
+      return applied;
+    });
     if (!counts) {
       showToast(diff.promoted.length
         ? `${lead}. Up to date. ${this.describe(diff)}, swap them in from the bench`

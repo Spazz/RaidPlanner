@@ -162,7 +162,7 @@ return { ${exported.join(', ')} };
         importAddonString: () => { calls.imported++; return { success: true, playerCount: 3 }; },
       },
       hasLoadedWork: () => work, State: { rosterName: 'Raid X' }, commit: () => { calls.committed++; },
-      showToast() {}, rememberImport: () => '',
+      showToast() {}, rememberImport: () => '', ChangeLog: { clear() {} },
       Modal: { confirm: async opts => { calls.confirm++; assert.match(opts.message, /Raid X/); return answer; } },
     };
     const { applyShareCode } = bind(shareSrc, deps, ['applyShareCode']);
@@ -420,7 +420,7 @@ return { ${exported.join(', ')} };
 
   await check('renderSummaryBar announces through announce()', () => {
     const fn = app.slice('function renderSummaryBar', 'function updateStatus');
-    assert(/announce\(describeRaidSummary\(/.test(fn));
+    assert(/lastRaidSummary = describeRaidSummary\(/.test(fn) && /announce\(lastRaidSummary\)/.test(fn));
   });
 
   // ── U10: landmarks and lists ──────────────────────────────────────
