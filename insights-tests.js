@@ -14,8 +14,8 @@
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'MODE_CONFIG', 'Optimizer', 'RandomRoster', 'PlanSession', 'PlanStore', 'computeAttendance', 'nextUid', 'getRaidBuffCoverage', 'getRaidDebuffCoverage']);
-const { State, Config, GameVersions, MODE_CONFIG, Optimizer, RandomRoster, PlanSession, PlanStore,
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Optimizer', 'RandomRoster', 'PlanSession', 'PlanStore', 'computeAttendance', 'nextUid', 'getRaidBuffCoverage', 'getRaidDebuffCoverage']);
+const { State, Config, GameVersions, Optimizer, RandomRoster, PlanSession, PlanStore,
   computeAttendance, nextUid, getRaidBuffCoverage, getRaidDebuffCoverage } = ctx.api;
 
 let passed = 0;

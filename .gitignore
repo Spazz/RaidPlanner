@@ -81,7 +81,7 @@
 !changelog-tests.js
 !changes-tests.js
 !boards-tests.js
-!rules-migration-tests.js
+!rules-data-tests.js
 !.vercelignore
 # Test runner, loader and CI (npm test; GitHub Actions runs it), the golden boards snapshot and the rosters two suites share
 !package.json
@@ -90,6 +90,7 @@
 !tests/run-all.js
 !tests/shards.js
 !tests/boards-snapshot.json
+!tests/rules-ids-snapshot.json
 !tests/classic-forever-fixtures.js
 !.github/
 !.github/workflows/

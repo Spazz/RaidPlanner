@@ -6,18 +6,20 @@
    Classic or Forever use). The per-version files (tbc.js, classic.js, forever.js) own everything else.
    Rulesets.compile() takes this catalog as its second argument.
 
-   Source of truth: from Phase 2 of the rules data refactor on, this file replaces the hand-written tables in
-   js/rules.js and js/optimizer.js and is edited by hand. Until then the app still reads those tables and
-   rules-migration-tests.js pins that Rulesets.compile() rebuilds them from this file exactly. Generated once
-   on 2026-10-11 by tools/generate-rules-data.js from the then-live tables. Design and vocabulary:
-   tasks/rules-data-refactor.md.
+   Source of truth: this file IS the source of truth for these rules and is edited by hand. It was generated
+   once on 2026-10-11 from the then-live tables by tools/generate-rules-data.js (now a guarded record of the
+   mapping, which refuses to run). Rulesets.compile() in js/rules.js turns it into the app's tables at load.
+   Ids never change: saved plans and share links store them, and rules-data-tests.js pins them. Every number
+   is explained: see README.md, Editing the rules. Design and vocabulary: tasks/rules-data-refactor.md.
 
    Research behind the numbers: tasks/research-*.md (see the version files).
 
    Mechanics that stay in code (their numbers live in `conventions`, their logic does not move): Ferocious
    Inspiration stacking per BM hunter, the Enhancement Windfury bonus, the Windfury-coverage cost, drums,
    Bloodlust (raid-wide, never a placement factor), the isolation constraint, hunter spreading with 2+ Enh,
-   the healer cap, Open-slot choose() pricing.
+   the healer cap, Open-slot choose() pricing. Also in code, not in these files: the Ideal-comp builders
+   (js/app.js, faction-aware per version) and the blessing catalog (js/analysis.js,
+   Assignments.DEFAULT_BLESSINGS).
    ================================================================ */
 
 // The shared namespace: a top-level var is a window property in the browser and a plain binding in the Node test loaders.
@@ -98,7 +100,7 @@ RulesData.catalog = {
     },
   },
 
-  // Icon slugs (icons/<slug>.jpg) for the spec markers.
+  // Icon slugs (icons/<slug>.jpg) for the spec markers of the player rows (Wowhead icon slugs, self-hosted in icons/).
   specIcons: {
     WARRIOR: {
       Arms: 'ability_rogue_eviscerate',
@@ -162,7 +164,10 @@ RulesData.catalog = {
     Bench: null,
   },
 
-  // Role assumed for a Raid-Helper sign-up that names a class but no spec.
+  // Least-wrong per-class default role for a Raid-Helper sign-up that only chose a class, no spec (backlog #2,
+  // 2026-09-26) - this class's single most common raid role. Every one of these is a guess the leader should confirm,
+  // hybrids (Shaman/Druid) no more so than any other entry here - Import._resolveRaidHelperEntry always pairs this with
+  // needsReview so the guess is never mistaken for a confidently-resolved sign-up.
   defaultRoleForClass: {
     WARRIOR: 'melee_dps',
     PALADIN: 'healer',
@@ -209,7 +214,9 @@ RulesData.catalog = {
     Dreamstate: { class: 'DRUID', spec: 'Balance', role: 'healer' },
   },
 
-  // Icon slugs (icons/<slug>.jpg) per buff id.
+  // Icon slugs (icons/<slug>.jpg) per buff id. One entry per buff id of any version: ids are reused wherever two
+  // versions have the same spell, so only the totems new to Classic (Tranquil Air, Stoneskin) have entries of their
+  // own.
   buffIcons: {
     WINDFURY: 'spell_nature_windfury',
     GRACE_OF_AIR: 'spell_nature_invisibilitytotem',
@@ -296,7 +303,8 @@ RulesData.catalog = {
     DRUMS: 'buff-drums',
   },
 
-  // Icon slugs (icons/<slug>.jpg) per debuff id.
+  // Icon slugs (icons/<slug>.jpg) per debuff id. Best-effort Wowhead slugs - entries left blank fall back to the text
+  // abbreviation (same graceful-degradation pattern as Config.BuffIconURL).
   debuffIcons: {
     JUDGEMENT_CRUSADER: 'spell_holy_holysmite',
     JUDGEMENT_LIGHT: 'spell_holy_healingaura',

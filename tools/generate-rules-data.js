@@ -1,17 +1,23 @@
 /**
- * PartyPlanner Web - rules data generator (one-off)
- * Run: node tools/generate-rules-data.js
+ * PartyPlanner Web - rules data generator (one-off, GUARDED: it refuses to run)
+ * Run: node tools/generate-rules-data.js   (throws at once, see the guard below)
  *
- * Writes js/rules/catalog.js, js/rules/tbc.js, js/rules/classic.js and js/rules/forever.js from the LIVE hand-written
- * tables (Config and Rulesets.tbc/classic/forever in js/rules.js, the optimizer's DPS_VALUE/MIT_VALUE/SUSTAIN_VALUE/
- * DPS_WEIGHT* tables, MODE_CONFIG, COOLDOWN_TOTEMS and the OpenSlots block), in the vocabulary of
- * tasks/rules-data-refactor.md. It runs once: afterwards the data files are the source of truth and this script only
- * documents the mapping (running it again would overwrite hand-written comments and spell ids).
+ * RECORD OF THE MAPPING, NOT A TOOL. This script wrote the data files on 2026-10-11 (Phase 1 of
+ * tasks/rules-data-refactor.md; its last run was at the start of Phase 2, before any hand edit, and left idealComp and
+ * blessings out because they stay in code). It wrote js/rules/catalog.js, js/rules/tbc.js, js/rules/classic.js and js/rules/forever.js from the LIVE hand-written tables
+ * (Config and Rulesets.tbc/classic/forever in js/rules.js, the optimizer's DPS_VALUE/MIT_VALUE/SUSTAIN_VALUE/DPS_WEIGHT*
+ * tables, MODE_CONFIG, COOLDOWN_TOTEMS and the OpenSlots block), in the vocabulary of tasks/rules-data-refactor.md. Since
+ * Phase 2 those tables are gone from js/ and the data files are the source of truth, edited by hand: re-running the
+ * generator would overwrite hand-written comments and spellIds, and the code below could not even find its inputs any
+ * more. It is kept as documentation of how each field of the data files was derived from the old tables.
  *
- * The page is loaded through tests/load-app.js WITHOUT its js/rules/*.js tags, so the output depends on the old tables
- * alone and a second run is byte for byte the same (files are rewritten only when their content changes). (load-app
- * itself still reads index.html's full script list on require: if the four data files were deleted, restore them from
- * git before running this.)
+ * Hand edits after the final run (all in the data files): Forever got its own copy of Classic's utilities list (it had
+ * borrowed it through a getter fallback); the CONCENTRATION_AURA and RETRIBUTION_AURA entries of Classic and Forever were
+ * swapped so the compiled paladinAuras keep today's order; spellId was filled from tasks/research-spell-ids.md; the
+ * comment blocks that explained the old tables moved next to the entries and sections they describe.
+ *
+ * When it ran, the page was loaded through tests/load-app.js WITHOUT its js/rules/*.js tags, so the output depended on
+ * the old tables alone and a second run was byte for byte the same (files were rewritten only when their content changed).
  *
  * Mapping, per buff id (source: Rulesets[v].buffs[id] + totemElements/paladinAuras/shouts + the optimizer tables):
  *   name, desc copied; spellId null; scope 'party'
@@ -31,11 +37,20 @@
  *   spreadProviders, factionLock, tankAnchorOrder (tankAnchorRank applied to each class, then sorted),
  *   stackPenalty [{ class, spec?, weight }] and healerGroupDps [{ class, spec }] (each predicate tested against every
  *   class/spec of Config.Specs), conventions (every other number/flag of rules.rules + modeConfig + openSlots), raids,
- *   utilities, and for TBC idealComp and blessings (copied as is).
+ *   utilities (TBC and Classic; Forever borrowed Classic's list through a getter fallback and got its own copy by hand
+ *   afterwards). idealComp and blessings are NOT written: the Ideal-comp builders (js/app.js) and the blessing catalog
+ *   (Assignments.DEFAULT_BLESSINGS in js/analysis.js) stay in code for every version.
  * Shared catalog: classes, colours, roles, specs, spec icons, Raid-Helper maps, default roles, buff/debuff icons,
  *   abbreviations and CSS classes, unchanged.
  */
 'use strict';
+
+// The guard: nothing below this throw runs.
+throw new Error(
+  'tools/generate-rules-data.js ran once on 2026-10-11; js/rules/*.js are the source of truth. '
+  + 'Re-running it would overwrite hand-written comments and spellIds.',
+);
+
 const fs = require('fs');
 const path = require('path');
 const app = require('../tests/load-app');
@@ -86,7 +101,8 @@ const DEBUFF_SCHOOLS = ['shadow', 'fire', 'frost', 'nature', 'arcane'];
 const MECHANICS_IN_CODE = 'Mechanics that stay in code (their numbers live in `conventions`, their logic does not move): '
   + 'Ferocious Inspiration stacking per BM hunter, the Enhancement Windfury bonus, the Windfury-coverage cost, drums, '
   + 'Bloodlust (raid-wide, never a placement factor), the isolation constraint, hunter spreading with 2+ Enh, the '
-  + 'healer cap, Open-slot choose() pricing.';
+  + 'healer cap, Open-slot choose() pricing. Also in code, not in these files: the Ideal-comp builders (js/app.js, '
+  + 'faction-aware per version) and the blessing catalog (js/analysis.js, Assignments.DEFAULT_BLESSINGS).';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const isContainer = value => value !== null && typeof value === 'object';
@@ -96,9 +112,8 @@ function fail(message) { throw new Error(`generate-rules-data: ${message}`); }
 /** The hand-written tables, from the page loaded without its data files (so a previous run can never feed this one). */
 function loadLiveTables() {
   const page = app.fromHtml(app.html.replace(DATA_SCRIPT_TAGS, ''));
-  const idealCompSource = page.slice('const IdealComp = {', '// ── TAB SWITCHING');
-  const names = ['Config', 'GameVersions', 'Rulesets', 'MODE_CONFIG', 'OpenSlots', 'COOLDOWN_TOTEMS', 'Assignments'];
-  return { ...page.sandbox(names, { extraSource: idealCompSource }).api, idealCompSource };
+  const names = ['Config', 'GameVersions', 'Rulesets', 'MODE_CONFIG', 'OpenSlots', 'COOLDOWN_TOTEMS'];
+  return page.sandbox(names).api;
 }
 
 function assertKnownKeys(label, entry, allowed) {
@@ -337,53 +352,6 @@ function noteOrderDifferences(version, rules, report) {
   }
 }
 
-// ── TBC extras copied as is: ideal comp and blessings ───────────
-/** The seats of one IdealComp builder with the comments the source puts on its groups and seats. */
-function readIdealComp(tables, size, methodName) {
-  const live = tables.Rulesets.tbc.idealComp[`build${size}Man`]();
-  const lines = tables.idealCompSource.split(/\r?\n/).map(line => line.trim());
-  const start = lines.indexOf(`${methodName}() {`);
-  if (start < 0) fail(`IdealComp.${methodName} not found in the source`);
-  const groups = [];
-  let pending = [];
-  let open = null;
-  for (let i = start + 1; i < lines.length && lines[i] !== '},'; i++) {
-    const line = lines[i];
-    const comment = /^\/\/\s?(.*)$/.exec(line);
-    const seat = /^this\.makePlayer\('([A-Z]+)', '([^']+)', '([a-z_]+)'\),\s*(?:\/\/\s*(.*))?$/.exec(line);
-    if (line.startsWith('const groups = [')) pending = [];
-    else if (comment && !open) pending.push(comment[1]);
-    else if (line === '[') { open = { comment: pending.join(' '), seats: [] }; pending = []; }
-    else if (seat && open) open.seats.push({ class: seat[1], spec: seat[2], role: seat[3], comment: seat[4] || '' });
-    else if (line === '],' && open) { groups.push(open); open = null; }
-  }
-  const same = JSON.stringify(groups.map(g => g.seats.map(s => [s.class, s.spec, s.role])))
-    === JSON.stringify(live.map(g => g.map(p => [p.class, p.spec, p.role])));
-  const plain = live.every((group, gi) => group.every(p => p.imported === false && p.groupNumber === gi + 1 && p.name === `${p.spec} ${p.class[0]}${p.class.slice(1).toLowerCase()}`));
-  if (!same || !plain) fail(`IdealComp.${methodName}: the seats read from the source differ from what the builder returns`);
-  return groups;
-}
-
-/** idealComp as text: groups of { class, spec, role } seats with the source's comments kept. */
-function renderIdealComp(rosters) {
-  const lines = ['{'];
-  for (const { size, comment, groups } of rosters) {
-    lines.push(...commentLines(comment, INDENT.repeat(2)));
-    lines.push(`${INDENT.repeat(2)}${size}: [`);
-    for (const group of groups) {
-      if (group.comment) lines.push(...commentLines(group.comment, INDENT.repeat(3)));
-      lines.push(`${INDENT.repeat(3)}[`);
-      const texts = group.seats.map(seat => `{ class: ${quote(seat.class)}, spec: ${quote(seat.spec)}, role: ${quote(seat.role)} },`);
-      const width = Math.max(...texts.map(text => text.length));
-      group.seats.forEach((seat, i) => lines.push(`${INDENT.repeat(4)}${seat.comment ? `${texts[i].padEnd(width)} // ${seat.comment}` : texts[i]}`));
-      lines.push(`${INDENT.repeat(3)}],`);
-    }
-    lines.push(`${INDENT.repeat(2)}],`);
-  }
-  lines.push(`${INDENT}}`);
-  return lines.join('\n');
-}
-
 // ── Text output ─────────────────────────────────────────────────
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const INTEGER_KEY = /^(?:0|[1-9][0-9]*)$/;
@@ -452,10 +420,11 @@ const commentLines = (text, indent) => wrap(text, MAX_WIDTH - indent.length - 3)
 function headerComment({ title, summary, research }) {
   const paragraphs = [
     summary,
-    'Source of truth: from Phase 2 of the rules data refactor on, this file replaces the hand-written tables in js/rules.js and '
-      + 'js/optimizer.js and is edited by hand. Until then the app still reads those tables and rules-migration-tests.js pins '
-      + 'that Rulesets.compile() rebuilds them from this file exactly. Generated once on ' + GENERATED_ON
-      + ' by tools/generate-rules-data.js from the then-live tables. Design and vocabulary: tasks/rules-data-refactor.md.',
+    'Source of truth: this file IS the source of truth for these rules and is edited by hand. It was generated once on '
+      + GENERATED_ON + ' from the then-live tables by tools/generate-rules-data.js (now a guarded record of the mapping, which '
+      + "refuses to run). Rulesets.compile() in js/rules.js turns it into the app's tables at load. Ids never change: saved plans "
+      + 'and share links store them, and rules-data-tests.js pins them. Every number is explained: see README.md, Editing the rules. '
+      + 'Design and vocabulary: tasks/rules-data-refactor.md.',
     `Research behind the numbers: ${research}`,
     MECHANICS_IN_CODE,
   ];
@@ -547,7 +516,8 @@ function versionFile(version, tables, report) {
       comment: 'Party buffs the optimizer places, in display order. buffType drives the slot rule in code: one totem per element per '
         + 'shaman, one aura per paladin, one shout per warrior; a passive is always on when its provider is present. weight.dps is what '
         + 'a recipient gains: the exact CLASS:Spec key first, then the bare class name, then the role name, else 0 (multiplied by the '
-        + "recipient's specDpsWeight); weight.mitigation is the value to a tank (per CLASS:Spec, '*' = any tank); weight.sustain is one "
+        + "recipient's specDpsWeight); weight.dps: {} (a buff worth nothing to any recipient's DPS) is written out on purpose, the key "
+        + "is explicit; weight.mitigation is the value to a tank (per CLASS:Spec, '*' = any tank); weight.sustain is one "
         + 'number for healer groups. exclusiveBuffs lists the ids that share one slot per party with this one (the better-valued member '
         + 'wins). priority only orders the buff list per role in the UI. spellId is the max-rank spell, a verification handle.',
     },
@@ -614,28 +584,13 @@ function versionFile(version, tables, report) {
         + 'providers lists { class, spec?, note? }; no spec = any spec of the class.',
     });
   }
-  if (version === 'tbc') {
-    sections.push({
-      key: 'idealComp',
-      comment: 'Reference compositions for the Compare-to-ideal tab: groups of five seats { class, spec, role }, group 1 first.',
-      text: renderIdealComp([
-        { size: 25, comment: '25-man: 1 tank, 5 healers, 19 DPS (Ferals flex tank as needed).', groups: readIdealComp(tables, 25, 'build25Man') },
-        { size: 10, comment: '10-man: 2 tanks, 2 healers, 6 DPS.', groups: readIdealComp(tables, 10, 'build10Man') },
-      ]),
-    });
-    sections.push({
-      key: 'blessings', value: clone(tables.Assignments.DEFAULT_BLESSINGS),
-      comment: 'Greater Blessing catalog: the TBC copy of Assignments.DEFAULT_BLESSINGS (Classic and Forever keep using the default).',
-    });
-  }
-
   const research = {
     tbc: 'tasks/research-synergy-sheet.md (Lokgol TBC synergy tiers) and gruul_dps_data.txt (DPS weights).',
     classic: 'tasks/research-classic-buffs.md (Classic Era buffs, debuffs and raids).',
     forever: 'tasks/research-forever.md (WoW Forever beta audit of 2026-10-10 against build 1.60.1.70338).',
   }[version];
   const summaries = {
-    tbc: 'WoW TBC: party buffs and raid debuffs with their weights, the optimizer tuning numbers, raids, utilities, the reference compositions and the blessing catalog.',
+    tbc: 'WoW TBC: party buffs and raid debuffs with their weights, the optimizer tuning numbers, raids and utilities.',
     classic: 'WoW Classic Era: party buffs and raid debuffs with their weights, the optimizer tuning numbers, raids and utilities. Faction-aware: Horde shamans, Alliance paladins.',
     forever: 'WoW Forever (beta): party buffs and raid debuffs with their weights, the optimizer tuning numbers and raids. Rules follow the beta data of 2026-10-10 (build 1.60.1.70338); Forever has no faction lock.',
   };

@@ -10,8 +10,8 @@
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Import', 'Optimizer', 'getGroupBuffs', 'explainPlacement', 'activeRules', 'nextUid', 'COOLDOWN_TOTEMS']);
-const { State, Config, GameVersions, Import, Optimizer, getGroupBuffs, explainPlacement, activeRules, nextUid, COOLDOWN_TOTEMS } = ctx.api;
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Import', 'Optimizer', 'getGroupBuffs', 'explainPlacement', 'activeRules', 'nextUid']);
+const { State, Config, GameVersions, Import, Optimizer, getGroupBuffs, explainPlacement, activeRules, nextUid } = ctx.api;
 const Scenarios = require('./scenarios.js');
 
 let passed = 0;
@@ -49,7 +49,7 @@ function credited(group, gi) {
   const sources = Optimizer.resolveBuffSources(group, value);
   const out = new Map();
   for (const [id, player] of sources) {
-    const replaced = [...sources].some(([cd, p]) => p === player && cd !== id && COOLDOWN_TOTEMS.has(cd) && rules.totemElements[cd] === rules.totemElements[id]);
+    const replaced = [...sources].some(([cd, p]) => p === player && cd !== id && rules.cooldownTotems.includes(cd) && rules.totemElements[cd] === rules.totemElements[id]);
     if (!replaced) out.set(id, player.uid);
   }
   return out;

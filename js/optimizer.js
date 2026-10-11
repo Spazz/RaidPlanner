@@ -131,209 +131,20 @@ const RandomRoster = {
 // terms (healer coverage, role cohesion, spreading pressure). All phases
 // (greedy placement, swap refinement, de-isolation) share one groupScore().
 
-// Mode weights over the objective components:
-//   dps       — party-buff DPS value received by members (DPS_VALUE)
-//   mit       — mitigation value of buffs reaching tanks in the tank group (MIT_VALUE)
-//   structure — healer coverage + spreading pressure
-//   cohesion  — role-family clustering around each group's identity
-// DEPRECATED (4.2.0, user decision 2026-10-10): only max_dps is supported. The nav
-// slim-down (4.0.0) removed the strategy selector, and app.js / PlanStore.restore()
-// force State.optimizerMode = 'max_dps', so tank_mit / balanced / relaxed are
-// unreachable from the UI. They stay only so old saved plans and share links still
-// validate and old tests still run. Do not tune weights or write code for them;
-// when a non-max_dps check conflicts with a max_dps improvement, delete the check.
-// The scenario runner gates on max_dps only (--mode all is a one-off probe).
-const MODE_CONFIG = {
-  max_dps:  { dps: 1.0, mit: 0.25, structure: 0.7, cohesion: 0.4 },
-  tank_mit: { dps: 0.7, mit: 1.2,  structure: 1.0, cohesion: 0.4 },
-  balanced: { dps: 0.7, mit: 0.5,  structure: 1.0, cohesion: 1.0 },
-  relaxed:  { dps: 0.2, mit: 0.3,  structure: 1.0, cohesion: 1.5 },
-};
+// The numbers behind the score are data, not code: each buff's `weight` (what a recipient gains: dps, mitigation for a
+// tank, sustain for a healer group), specDpsWeight / roleDpsWeight (a recipient's expected DPS output), the tuning
+// numbers in `conventions` and the objective weights per mode in conventions.modeConfig, one file per game version
+// (js/rules/tbc.js, classic.js, forever.js, each explained where it is written). Rulesets.compile() (js/rules.js) turns
+// them into the tables read below: the active ruleset's dpsValue, mitValue, sustainValue, dpsWeight, dpsWeightByRole,
+// cooldownTotems, modeConfig and rules.
 
-
-// ── SYNERGY MODEL (researched TBC party-buff values) ──
-// DPS_VALUE[buffId] — tier value of a buff to the RECEIVING player (relative
-// scale, NOT a measured % gain), resolved key ('CLASS:Spec') → class → role
-// → 0. Ordering cross-checked against Lokgol's TBC synergy sheet (0-4 tiers;
-// see tasks/research-synergy-sheet.md): WF is the top tier, ToW / Moonkin /
-// LotP / FI the next, WoA / SoE / GoA / UR / Sanctity below that.
-// Notable modeling choices:
-//  - Windfury: Ret > Fury > Arms > Rogues (main-hand only). Feral druids get
-//    NOTHING from WF (weapon imbues don't work in forms) — hence the 0 key.
-//    Hunters don't benefit either (melee-weapon imbue; role table omits ranged).
-//  - Ferocious Inspiration is 3% damage for the whole party, any role.
-//  - Vampiric Touch is a party mana battery: a Holy Priest spamming Circle of
-//    Healing needs it most, then Arcane/other mages. Warlocks barely do —
-//    Life Tap covers their mana — so a lock no longer outbids the priest for
-//    the Shadow Priest's group.
-const DPS_VALUE = {
-  WINDFURY:           { key: { 'PALADIN:Retribution': 12, 'WARRIOR:Fury': 11, 'WARRIOR:Arms': 10, 'SHAMAN:Enhancement': 9, 'ROGUE:Combat': 8, 'ROGUE:Assassination': 8, 'ROGUE:Subtlety': 8, 'DRUID:Feral': 0 }, role: { melee_dps: 8, tank: 3 } },
-  GRACE_OF_AIR:       { key: { 'DRUID:Feral': 4 }, role: { melee_dps: 2, ranged_dps: 3, tank: 2 } },
-  WRATH_OF_AIR:       { role: { caster_dps: 4, healer: 2 } },
-  // 2026-10-10 comp rules 2/3: the crit auras are worth clearly more to Destruction Locks (they scale
-  // with spell crit far more than Arcane/Affliction) so the Ele and the Boomkin join the Destro group;
-  // Arcane's Mana Spring/Tide keys below stay, they draw the Resto Shaman to the mages.
-  TOTEM_OF_WRATH:     { key: { 'WARLOCK:Destruction': 12 }, role: { caster_dps: 6, healer: 1 } },
-  STRENGTH_OF_EARTH:  { role: { melee_dps: 2, tank: 2 } },
-  MANA_SPRING:        { key: { 'MAGE:Arcane': 3 }, role: { healer: 2, caster_dps: 1 } },
-  MANA_TIDE:          { key: { 'MAGE:Arcane': 5 }, role: { healer: 4 } },
-  DEVOTION_AURA:      { role: {} },
-  CONCENTRATION_AURA: { role: { healer: 2, caster_dps: 1 } },
-  RETRIBUTION_AURA:   { role: { melee_dps: 1, tank: 1 } },
-  SANCTITY_AURA:      { role: { melee_dps: 2, ranged_dps: 2, caster_dps: 2, tank: 1 } },
-  LEADER_OF_THE_PACK: { role: { melee_dps: 5, ranged_dps: 5, tank: 2 } },
-  MOONKIN_AURA:       { key: { 'WARLOCK:Destruction': 12 }, role: { caster_dps: 5 } },
-  TREE_OF_LIFE:       { role: { healer: 1 } },
-  TRUESHOT_AURA:      { role: { melee_dps: 3, ranged_dps: 4 } },
-  FEROCIOUS_INSP:     { role: { melee_dps: 3, ranged_dps: 3, caster_dps: 3, tank: 1 } },
-  UNLEASHED_RAGE:     { role: { melee_dps: 5, tank: 2 } },
-  BATTLE_SHOUT:       { role: { melee_dps: 3, ranged_dps: 2, tank: 2 } },
-  COMMANDING_SHOUT:   { role: {} },
-  BLOOD_PACT:         { role: { tank: 1 } },
-  VAMPIRIC_TOUCH:     { key: { 'MAGE:Arcane': 7, 'PRIEST:Holy': 10 }, class: { WARLOCK: 2, MAGE: 6 }, role: { caster_dps: 4, healer: 3 } },
-};
-
-// MIT_VALUE[buffId] — survivability value for a TANK receiving the buff,
-// keyed per tank class:spec ('*' = any tank). Researched priorities:
-//  - Prot Warrior: armor (Devotion, ~5-7% phys DR) + block value (SoE)
-//  - Prot Paladin: armor + dodge (Grace of Air) + spell power (Wrath of Air
-//    feeds Holy Shield / Consecration threat; worth more to them than WF)
-//  - Feral Druid: agility scaling (GoA) + Imp LotP heal; low Devotion value
-//    (high base armor), zero Windfury (no weapon imbues in forms)
-//  - Tree of Life (+25% healing received, party-only) is huge for any tank
-const MIT_VALUE = {
-  DEVOTION_AURA:      { 'WARRIOR:Protection': 10, 'PALADIN:Protection': 10, 'DRUID:Feral': 5 },
-  GRACE_OF_AIR:       { 'WARRIOR:Protection': 4, 'PALADIN:Protection': 7, 'DRUID:Feral': 9 },
-  WRATH_OF_AIR:       { 'PALADIN:Protection': 5 },
-  BLOOD_PACT:         { '*': 6 },
-  TREE_OF_LIFE:       { '*': 12 },
-  STRENGTH_OF_EARTH:  { 'WARRIOR:Protection': 5, 'PALADIN:Protection': 2, 'DRUID:Feral': 3 },
-  LEADER_OF_THE_PACK: { 'DRUID:Feral': 6, '*': 2 },
-  WINDFURY:           { 'WARRIOR:Protection': 4, 'PALADIN:Protection': 1, 'DRUID:Feral': 0 },
-  BATTLE_SHOUT:       { '*': 2 },
-  COMMANDING_SHOUT:   { '*': 5 },
-  RETRIBUTION_AURA:   { '*': 1 },
-};
-
-// Healer-sustain buffs: extra value in the tank group per healer present
-// (capped at 2) — Mana Tide/Spring keep tank healers casting, VT feeds
-// their mana, Concentration Aura protects their casts.
-const SUSTAIN_VALUE = { MANA_SPRING: 3, MANA_TIDE: 5, VAMPIRIC_TOUCH: 3, CONCENTRATION_AURA: 3 };
-
-// DPS_WEIGHT['CLASS:Spec'] — the recipient's expected DPS output relative to
-// the raid's top spec (1.0). A party buff is worth what it multiplies: the
-// same tier on a 950-DPS hunter beats it on a 500-DPS boomkin, so a top DPS
-// is placed where THEY get buffed before their buff goes to a weaker group.
-// Calibrated from a live Gruul log (PartyPlannerWeb/gruul_dps_data.txt):
-// Aff ~1000, BM ~950/880, Arcane ~930/880/760, Destro ~930/810/640,
-// Combat ~900/740, Ele ~870, Fury ~730, Enh ~730, Ret ~630, Boomkin ~510,
-// Prot Pal ~470, Feral tank ~460. Unlogged specs are placed by class analogy.
-const DPS_WEIGHT = {
-  'WARLOCK:Affliction': 1.0, 'HUNTER:Beast Mastery': 1.0, 'MAGE:Arcane': 0.95,
-  'WARLOCK:Destruction': 0.9, 'ROGUE:Combat': 0.9, 'SHAMAN:Elemental': 0.9,
-  'HUNTER:Marksmanship': 0.9, 'HUNTER:Survival': 0.85, 'ROGUE:Assassination': 0.85,
-  'ROGUE:Subtlety': 0.8, 'MAGE:Fire': 0.85, 'MAGE:Frost': 0.8, 'WARLOCK:Demonology': 0.85,
-  'PRIEST:Shadow': 0.8, 'WARRIOR:Fury': 0.8, 'WARRIOR:Arms': 0.8, 'SHAMAN:Enhancement': 0.8,
-  'PALADIN:Retribution': 0.7, 'DRUID:Balance': 0.6, 'DRUID:Feral': 0.6,
-  'PALADIN:Protection': 0.5, 'WARRIOR:Protection': 0.5,
-};
-const DPS_WEIGHT_BY_ROLE = { melee_dps: 0.8, ranged_dps: 0.9, caster_dps: 0.85, tank: 0.5, healer: 1.0 };
-
-// Fold the value tables above into the TBC ruleset now that they exist —
-// dpsWeightFor/dpsValueFor/mitValueFor read them back out through
-// activeRules() so a future ruleset only needs its own tables here.
-Object.assign(Rulesets.tbc, {
-  dpsValue: DPS_VALUE, mitValue: MIT_VALUE, sustainValue: SUSTAIN_VALUE,
-  dpsWeight: DPS_WEIGHT, dpsWeightByRole: DPS_WEIGHT_BY_ROLE,
-});
-
-// ── CLASSIC ERA SYNERGY MODEL ──
-// Same shape as the TBC tables above, scaled to what actually exists in
-// Classic Era (no Wrath of Air/Totem of Wrath/Ferocious Inspiration/Tree of
-// Life). Values are heuristics, not measured percentages — same disclaimer
-// as DPS_VALUE above.
-const DPS_VALUE_CLASSIC = {
-  WINDFURY:           { key: { 'WARRIOR:Fury': 11, 'ROGUE:Combat': 10, 'ROGUE:Assassination': 9, 'ROGUE:Subtlety': 8, 'WARRIOR:Arms': 9, 'SHAMAN:Enhancement': 8, 'DRUID:Feral': 0 }, role: { melee_dps: 7, tank: 3 } },
-  GRACE_OF_AIR:       { role: { melee_dps: 2, ranged_dps: 4, tank: 2 } },
-  TRANQUIL_AIR:       { role: { caster_dps: 2, healer: 1 } },
-  STRENGTH_OF_EARTH:  { role: { melee_dps: 2, tank: 2 } },
-  STONESKIN:          { role: {} },
-  MANA_SPRING:        { role: { caster_dps: 2, healer: 2 } },
-  MANA_TIDE:          { role: { healer: 4 } },
-  DEVOTION_AURA:      { role: {} },
-  RETRIBUTION_AURA:   { role: { melee_dps: 1, tank: 1 } },
-  CONCENTRATION_AURA: { role: { healer: 2, caster_dps: 1 } },
-  SANCTITY_AURA:      { role: { melee_dps: 1, ranged_dps: 1, caster_dps: 1, tank: 1 } },
-  BATTLE_SHOUT:       { role: { melee_dps: 3, ranged_dps: 2, tank: 2 } },
-  TRUESHOT_AURA:      { role: { melee_dps: 3, ranged_dps: 4 } },
-  LEADER_OF_THE_PACK: { role: { melee_dps: 4, ranged_dps: 4, tank: 2 } },
-  MOONKIN_AURA:       { role: { caster_dps: 4 } },
-  BLOOD_PACT:         { role: { tank: 1 } },
-};
-const MIT_VALUE_CLASSIC = {
-  DEVOTION_AURA:      { 'WARRIOR:Protection': 10, 'PALADIN:Protection': 10, 'DRUID:Feral': 5 },
-  STONESKIN:          { '*': 6 },
-  GRACE_OF_AIR:       { 'WARRIOR:Protection': 3, 'PALADIN:Protection': 5, 'DRUID:Feral': 8 },
-  STRENGTH_OF_EARTH:  { 'WARRIOR:Protection': 4, 'PALADIN:Protection': 2, 'DRUID:Feral': 3 },
-  LEADER_OF_THE_PACK: { 'DRUID:Feral': 5, '*': 2 },
-  WINDFURY:           { 'WARRIOR:Protection': 3, 'PALADIN:Protection': 1, 'DRUID:Feral': 0 },
-  BATTLE_SHOUT:       { '*': 2 },
-  RETRIBUTION_AURA:   { '*': 1 },
-  BLOOD_PACT:         { '*': 4 },
-};
-const SUSTAIN_VALUE_CLASSIC = { MANA_SPRING: 3, MANA_TIDE: 5, CONCENTRATION_AURA: 2 };
-
-// DPS_WEIGHT_CLASSIC — rough Classic Era ordering: Fury Warrior/Rogues/
-// Fire+Frost Mage/Destro Warlock highest, Hunters next, Shadow Priest/Feral
-// cat/Elemental/Enhancement/Balance/Retribution lower. Heuristic, not
-// log-calibrated (no Classic parse data available yet, unlike DPS_WEIGHT above).
-const DPS_WEIGHT_CLASSIC = {
-  'WARRIOR:Fury': 1.0, 'ROGUE:Combat': 0.98, 'ROGUE:Assassination': 0.95, 'ROGUE:Subtlety': 0.9,
-  'MAGE:Fire': 0.95, 'MAGE:Frost': 0.9, 'WARLOCK:Destruction': 0.95, 'WARLOCK:Affliction': 0.9, 'WARLOCK:Demonology': 0.85,
-  'MAGE:Arcane': 0.8, 'WARRIOR:Arms': 0.85,
-  'HUNTER:Marksmanship': 0.85, 'HUNTER:Beast Mastery': 0.85, 'HUNTER:Survival': 0.8,
-  'PRIEST:Shadow': 0.7, 'DRUID:Feral': 0.68, 'SHAMAN:Elemental': 0.65, 'SHAMAN:Enhancement': 0.65,
-  'DRUID:Balance': 0.6, 'PALADIN:Retribution': 0.55,
-  'WARRIOR:Protection': 0.45, 'PALADIN:Protection': 0.45,
-};
-const DPS_WEIGHT_BY_ROLE_CLASSIC = { melee_dps: 0.8, ranged_dps: 0.85, caster_dps: 0.8, tank: 0.5, healer: 1.0 };
-
-Object.assign(Rulesets.classic, {
-  dpsValue: DPS_VALUE_CLASSIC, mitValue: MIT_VALUE_CLASSIC, sustainValue: SUSTAIN_VALUE_CLASSIC,
-  dpsWeight: DPS_WEIGHT_CLASSIC, dpsWeightByRole: DPS_WEIGHT_BY_ROLE_CLASSIC,
-});
-
-// ── FOREVER SYNERGY MODEL ──
-// Same roster of specs as Classic (no new classes/specs in Forever), so the
-// recipient DPS-weight ordering is identical — shared directly by reference
-// rather than copy-pasted. The buff-value tables differ from Classic's only
-// where Forever's buff catalog does:
-//   - Tranquil Air is dropped (it does not exist).
-//   - Leader of the Pack and Moonkin Aura are the same crit aura for every role.
-//   - Windfury is worth something to Ferals: it is a party buff whose procs work
-//     in Cat and Bear form, so Classic's `'DRUID:Feral': 0` (a weapon-enchant
-//     rule) is overridden.
-//   - Trueshot Aura buffs ranged attack power only; Battle Shout melee only.
-//   - Sanctity Aura does not exist.
-//   - The paladin auras carry no healing-taken rider, so SUSTAIN equals Classic's.
-const DPS_VALUE_FOREVER = { ...DPS_VALUE_CLASSIC };
-delete DPS_VALUE_FOREVER.TRANQUIL_AIR;
-// Forever's Leader of the Pack and Moonkin Aura are the same 3% crit aura for
-// melee, ranged AND spell crit (one slot, see rules.exclusiveBuffs), so each
-// is worth something to every role, unlike Classic's melee-only LotP and
-// caster-only Moonkin it was copied from. Scaled to the priorities above.
-DPS_VALUE_FOREVER.LEADER_OF_THE_PACK = { role: { melee_dps: 4, ranged_dps: 4, caster_dps: 3, tank: 2 } };
-DPS_VALUE_FOREVER.MOONKIN_AURA = { role: { caster_dps: 4, melee_dps: 2, ranged_dps: 2, tank: 1 } };
-DPS_VALUE_FOREVER.WINDFURY = { key: { ...DPS_VALUE_CLASSIC.WINDFURY.key, 'DRUID:Feral': 8 }, role: { ...DPS_VALUE_CLASSIC.WINDFURY.role } };
-DPS_VALUE_FOREVER.TRUESHOT_AURA = { role: { ranged_dps: 4 } };
-DPS_VALUE_FOREVER.BATTLE_SHOUT = { role: { melee_dps: 3, tank: 2 } };
-delete DPS_VALUE_FOREVER.SANCTITY_AURA;
-const MIT_VALUE_FOREVER = { ...MIT_VALUE_CLASSIC, WINDFURY: { ...MIT_VALUE_CLASSIC.WINDFURY, 'DRUID:Feral': 3 } };
-const SUSTAIN_VALUE_FOREVER = { ...SUSTAIN_VALUE_CLASSIC };
-Object.assign(Rulesets.forever, {
-  dpsValue: DPS_VALUE_FOREVER, mitValue: MIT_VALUE_FOREVER, sustainValue: SUSTAIN_VALUE_FOREVER,
-  dpsWeight: DPS_WEIGHT_CLASSIC, dpsWeightByRole: DPS_WEIGHT_BY_ROLE_CLASSIC,
-});
+// The objective weights of an optimizer mode: the ruleset's modeConfig (dps, mit, structure, cohesion). Only max_dps is
+// supported; the other modes are deprecated and kept in the data only so old saved plans and share links still
+// validate (see the DEPRECATED note on conventions.modeConfig in js/rules/*.js: never tune or write code for them).
+// An unknown mode, e.g. from an old link, scores as max_dps.
+function modeConfigFor(rules, mode) {
+  return rules.modeConfig[mode] || rules.modeConfig.max_dps;
+}
 
 function dpsWeightFor(player) {
   const rules = activeRules();
@@ -362,10 +173,6 @@ function mitValueFor(buffId, tank) {
   if (v['*'] != null) return v['*'];
   return 0;
 }
-
-// Totems the scorer credits on top of the shaman's standing element totem
-// (see Optimizer.resolveGroupBuffs).
-const COOLDOWN_TOTEMS = new Set(['MANA_TIDE']);
 
 const ROLE_COMPAT = {
   tank:       ['melee_dps', 'healer'],
@@ -1245,7 +1052,7 @@ const Optimizer = {
           // standing totem: the same shaman provides both. Scoring it as the
           // water slot made a second Resto Shaman look like it "unlocked"
           // Mana Spring, so two piled into the tank group.
-          if (el && !COOLDOWN_TOTEMS.has(id)) (byElement[el] = byElement[el] || []).push(id);
+          if (el && !rules.cooldownTotems.includes(id)) (byElement[el] = byElement[el] || []).push(id);
           else if (!sources.has(id)) sources.set(id, p); // shaman passives (e.g. Unleashed Rage)
         }
         for (const el of Object.keys(byElement)) {
@@ -1310,8 +1117,8 @@ const Optimizer = {
   // buffs resolveGroupBuffs credits; getGroupBuffs resolves the displayed
   // buffs with the same function so display, explanations and scoring agree.
   buffValueFn(group, gi, groups, mode) {
-    const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
     const rules = activeRules();
+    const cfg = modeConfigFor(rules, mode);
     const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
     const isTank = this.isTankGroup(gi, groups);
     const healerCount = group.reduce((n, p) => n + (p.role === 'healer' ? 1 : 0), 0);
@@ -1336,7 +1143,7 @@ const Optimizer = {
       // there). A shaman's per-element totem choice (resolveGroupBuffs) picks
       // whichever totem scores highest via THIS function; without a
       // structural push, a melee group whose only shaman rides with several
-      // hunters can have its Windfury outbid by Grace of Air on raw DPS_VALUE
+      // hunters can have its Windfury outbid by Grace of Air on raw weight.dps
       // (hunters get more from GoA than Ret/melee gets from WF) even though
       // the melee DPS convention (any shaman drops WF for melee — see
       // tasks/lessons.md 2026-08-19) says the group's melee should get it
@@ -1359,8 +1166,8 @@ const Optimizer = {
 
   // The single objective all phases share. Higher = better group.
   groupScore(group, gi, groups, mode) {
-    const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
     const rules = activeRules();
+    const cfg = modeConfigFor(rules, mode);
     const roleIdentity = (groups._roleIdentities && groups._roleIdentities[gi]) || 'melee_dps';
     const isTank = this.isTankGroup(gi, groups);
     const healerCount = group.reduce((n, p) => n + (p.role === 'healer' ? 1 : 0), 0);
@@ -1468,7 +1275,7 @@ const Optimizer = {
     // 2026-10-10 rule 1: TBC raises the per-melee cost (rules.meleeWantsWindfuryCost, default 6) so a spare
     // Ele/Resto shaman is drawn to a melee group with 2+ melee DPS and no shaman; scaled per melee DPS.
     const canHaveShaman = !rules.rules.factionLock || Faction.current() !== 'alliance';
-    // A group whose melee DPS would all get nothing from Windfury (a TBC/Classic Feral: weapon imbues do not work in forms; Forever's party-wide Windfury does, see DPS_VALUE_FOREVER) is not missing a Windfury totem, so a Feral seated with hunters is no pull for a shaman; any group with a Windfury-using melee is charged as before, Feral included.
+    // A group whose melee DPS would all get nothing from Windfury (a TBC/Classic Feral: weapon imbues do not work in forms; Forever's party-wide Windfury does, see WINDFURY's weight.dps in js/rules/forever.js) is not missing a Windfury totem, so a Feral seated with hunters is no pull for a shaman; any group with a Windfury-using melee is charged as before, Feral included.
     if (rules.rules.meleeWantsWindfury && canHaveShaman && roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')
         && group.some(p => p.role === 'melee_dps' && dpsValueFor('WINDFURY', p) > 0)) {
       for (const p of group) {
@@ -1977,6 +1784,17 @@ const Optimizer = {
 };
 
 // ── OPEN SLOT SUGGESTIONS ───────────────────────────────────────
+// Who a school debuff helps: the specs that mostly cast that school. A debuff's compiled `value.who` names the school
+// (its targetSchool in js/rules/<version>.js); OpenSlots._raidValue looks the players up here. Every school the data
+// may name needs an entry (a school without one is priced as if it helped every DPS); rules-data-tests.js checks it.
+const SCHOOL_CASTERS = {
+  shadow: p => p.class === 'WARLOCK' || (p.class === 'PRIEST' && p.spec === 'Shadow'),
+  fire: p => p.class === 'MAGE' && p.spec === 'Fire',
+  frost: p => p.class === 'MAGE' && p.spec === 'Frost',
+  nature: p => p.class === 'SHAMAN' && p.spec === 'Elemental' || (p.class === 'DRUID' && p.spec === 'Balance'),
+  arcane: p => p.class === 'MAGE' && p.spec === 'Arcane',
+};
+
 // When fewer players are seated than the raid holds, Optimize gives every
 // empty seat an Open preferred slot for the class/spec that adds the most.
 // Missing tanks and healers (Optimizer.floorsFor) come first; every other
@@ -1999,54 +1817,23 @@ const OpenSlots = {
   // in the raid and for piling onto a class the raid already has plenty of.
   // groupScore alone only sees party buffs, so a Resto Shaman (Windfury for
   // one Arms Warrior) beat a Disc Priest and a second Ret beat a Survival Hunter.
-  // A raid debuff is worth what a party buff of the same value would be to
-  // every raid member it actually helps. `tier` is on the DPS_VALUE scale
-  // (Trueshot Aura's 125 AP = 3-4 per player), `who` names the players it
-  // helps: 'physical' (melee/hunters), 'caster', a spell school, or 'tank'
-  // (defensive: tier per tank, mitigation-weighted). Unlisted debuffs (other
-  // rulesets) count tier 2 for every DPS. Expose Weakness (~225 AP to every
-  // physical attacker) is why a Survival Hunter beats a Marksmanship one
-  // whose Trueshot Aura only reaches its own party. A ruleset's debuff entry may
-  // carry its own `value` ({ tier, who }, where `who` may also be 'ranged' for
-  // hunters only) when the same spell differs by version (Forever's Hunter's Mark).
-  DEBUFF_VALUE: {
-    EXPOSE_WEAKNESS: { tier: 6, who: 'physical' }, SUNDER_ARMOR: { tier: 6, who: 'physical' },
-    EXPOSE_ARMOR: { tier: 6, who: 'physical' }, BLOOD_FRENZY: { tier: 4, who: 'physical' },
-    JUDGEMENT_CRUSADER: { tier: 3, who: 'physical' }, FAERIE_FIRE_BALANCE: { tier: 3, who: 'physical' },
-    FAERIE_FIRE: { tier: 3, who: 'physical' },
-    FAERIE_FIRE_FERAL: { tier: 2, who: 'physical' }, CURSE_RECKLESSNESS: { tier: 3, who: 'physical' },
-    HUNTERS_MARK: { tier: 3, who: 'physical' }, MANGLE: { tier: 1, who: 'physical' }, HEMORRHAGE: { tier: 1, who: 'physical' },
-    CURSE_ELEMENTS: { tier: 6, who: 'caster' }, MISERY: { tier: 4, who: 'caster' }, JUDGEMENT_WISDOM: { tier: 1, who: 'caster' },
-    IMPROVED_SHADOW_BOLT: { tier: 6, who: 'shadow' }, SHADOW_WEAVING: { tier: 4, who: 'shadow' },
-    IMPROVED_SCORCH: { tier: 6, who: 'fire' }, WINTERS_CHILL: { tier: 3, who: 'frost' }, STORMSTRIKE: { tier: 3, who: 'nature' },
-    DEMORALIZING_SHOUT: { tier: 2, who: 'tank' }, DEMORALIZING_ROAR: { tier: 2, who: 'tank' },
-    CURSE_WEAKNESS: { tier: 2, who: 'tank' }, THUNDER_CLAP: { tier: 2, who: 'tank' },
-    SHADOW_EMBRACE: { tier: 1, who: 'tank' }, INSECT_SWARM: { tier: 1, who: 'tank' },
-    SCORPID_STING: { tier: 1, who: 'tank' }, JUDGEMENT_LIGHT: { tier: 1, who: 'tank' },
-  },
-  // Who a school debuff helps: the specs that mostly cast that school.
-  DEBUFF_SCHOOLS: {
-    shadow: p => p.class === 'WARLOCK' || (p.class === 'PRIEST' && p.spec === 'Shadow'),
-    fire: p => p.class === 'MAGE' && p.spec === 'Fire',
-    frost: p => p.class === 'MAGE' && p.spec === 'Frost',
-    nature: p => p.class === 'SHAMAN' && p.spec === 'Elemental' || (p.class === 'DRUID' && p.spec === 'Balance'),
-  },
-  UTILITY_BONUS: 6,
-  SPEC_REPEAT: 6,
-  CLASS_CROWD: 4,
-  CLASS_CROWD_FREE: 5,
+  // A raid debuff is worth what a party buff of the same value would be to every raid member it actually helps: its
+  // compiled `value` ({ tier, who }, from the debuff's weight, targetRoles and targetSchool in js/rules/<version>.js).
+  // The scalars (utilityBonus, specRepeat, classCrowd, classCrowdFree) are the ruleset's `openSlots`.
   // Hunter's Mark counts as fully covered by any hunter: every TBC raid hunter build (Beast Mastery 41/20/0, Survival 0/20/41)
   // takes Improved Hunter's Mark on its way through the Marksmanship tree, so it is no reason to suggest a Marksmanship hunter
   // (user decision 2026-10-10; the half credit that existed here made an MM pick beat a Feral for a hunter group).
   _raidValue(candidate, raid, mode) {
-    const cfg = MODE_CONFIG[mode] || MODE_CONFIG.max_dps;
+    const rules = activeRules();
+    const cfg = modeConfigFor(rules, mode);
+    const { utilityBonus, specRepeat, classCrowd, classCrowdFree } = rules.openSlots;
     const withCandidate = raid.concat(candidate);
     const helps = {
       physical: p => p.role === 'melee_dps' || p.role === 'ranged_dps',
       ranged: p => p.role === 'ranged_dps',
       caster: p => p.role === 'caster_dps',
       all: p => p.role !== 'tank' && p.role !== 'healer',
-      ...this.DEBUFF_SCHOOLS,
+      ...SCHOOL_CASTERS,
     };
     const weightOf = (who) => who === 'tank'
       ? withCandidate.filter(p => p.role === 'tank').length * cfg.mit * 4
@@ -2058,25 +1845,24 @@ const OpenSlots = {
       if (covered.has(id)) continue;
       if (d.supersededBy && covered.has(d.supersededBy)) continue;
       if ((d.competesWith || []).some(other => covered.has(other))) continue;
-      // A ruleset's debuff entry may carry its own `value` when the same spell differs by version (Forever's Hunter's Mark is ranged-only).
-      const { tier, who } = d.value || this.DEBUFF_VALUE[id] || { tier: 2, who: 'all' };
+      const { tier, who } = d.value;
       v += tier * weightOf(who);
     }
     for (const u of Readiness.utilityCoverage([raid], [])) {
       if (u.covered) continue;
-      if ((Config.Utilities[u.id].providers || []).some(prov => Readiness._providerMatches(prov, candidate))) v += this.UTILITY_BONUS;
+      if ((Config.Utilities[u.id].providers || []).some(prov => Readiness._providerMatches(prov, candidate))) v += utilityBonus;
     }
     // 2026-10-10 comp rules (2 and 3): an Elemental Shaman earns its keep beside the Boomkin and
     // the Destruction locks, so a suggested Ele beyond one per Boomkin has no group to amplify.
     // Off unless the ruleset sets extraEleNeedsBoomkin (TBC only).
-    const eleCost = activeRules().rules.extraEleNeedsBoomkin || 0;
+    const eleCost = rules.rules.extraEleNeedsBoomkin || 0;
     if (eleCost && candidate.class === 'SHAMAN' && candidate.spec === 'Elemental') {
       const eles = raid.filter(p => p.class === 'SHAMAN' && p.spec === 'Elemental').length;
       const boomkins = raid.filter(p => p.class === 'DRUID' && p.spec === 'Balance').length;
       if (eles >= Math.max(1, boomkins)) v -= eleCost;
     }
-    v -= this.SPEC_REPEAT * raid.filter(p => p.class === candidate.class && p.spec === candidate.spec).length;
-    v -= this.CLASS_CROWD * Math.max(0, raid.filter(p => p.class === candidate.class).length - this.CLASS_CROWD_FREE + 1);
+    v -= specRepeat * raid.filter(p => p.class === candidate.class && p.spec === candidate.spec).length;
+    v -= classCrowd * Math.max(0, raid.filter(p => p.class === candidate.class).length - classCrowdFree + 1);
     return v;
   },
 

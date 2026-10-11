@@ -43,6 +43,8 @@ npm test
 
 `boards-tests.js` builds the optimized board of every scenario in `scenarios.js` and of the six Classic/Forever rosters in `tests/classic-forever-fixtures.js`, and compares each with the golden snapshot `tests/boards-snapshot.json`, listing who moved when a rule or weight edit changes a layout. A changed layout is accepted only on purpose, with `node boards-tests.js --update`, which rewrites the snapshot (read its git diff before committing it).
 
+`rules-data-tests.js` guards the rules data files in `js/rules/`: it pins the buff and debuff ids per version in `tests/rules-ids-snapshot.json` (a rename or removal is accepted only on purpose, with `node rules-data-tests.js --update`), checks that every version still compiles into the shape the app reads and keeps the vocabulary the code relies on (types, known roles, classes and specs, finite weights, references that exist, spell ids), and exercises `Rulesets.compile` on small synthetic data.
+
 GitHub Actions runs `npm test` on every push and pull request (`.github/workflows/test.yml`). Vercel does not run the tests, so a green check on `main` is what to look at before deploying.
 
 ## Environment variables

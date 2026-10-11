@@ -244,18 +244,19 @@ check('Utility coverage: Classic faction lock drops Fear Break entirely for Alli
   assert.equal(fearBreak.covered, true, 'the seated Shaman covers it');
 });
 
-check('Utility coverage: Forever is now modeled but still borrows the Classic utility table', () => {
+check('Utility coverage: Forever has its own utility table (started as a copy of the Classic list, editable apart)', () => {
   resetState();
   State.gameVersion = 'forever';
   State.selectedRaid = 'f_ony';
   State.groups = numberGroups([[mk('DRUID', 'Restoration', 'healer')]]);
   State.bench = [];
   State.roster = State.groups.flat();
-  assert(Rulesets.forever, 'Forever now has its own ruleset (buffs/debuffs/rules)');
-  assert.equal(Rulesets.forever.utilities, undefined, 'Forever does not define its own utilities table');
-  assert.equal(Config.Utilities, Rulesets.classic.utilities, 'Forever falls back to the Classic utility table');
+  assert(Rulesets.forever, 'Forever has its own ruleset (buffs/debuffs/rules)');
+  assert(Rulesets.forever.utilities && Object.keys(Rulesets.forever.utilities).length, 'Forever defines its own utilities table');
+  assert.equal(Config.Utilities, Rulesets.forever.utilities, 'Forever reads its own utility table');
+  assert.notEqual(Rulesets.forever.utilities, Rulesets.classic.utilities, 'it is not the Classic table: Classic and Forever are edited apart');
   const items = Readiness.utilityCoverage();
-  assert(items.find(i => i.id === 'BATTLE_REZ'), 'Forever borrows the Classic utility table rather than showing nothing');
+  assert(items.find(i => i.id === 'BATTLE_REZ'), 'Forever shows its utility checklist');
 });
 
 check('Utility coverage: a mixed Forever raid (Shaman + Paladin, no faction lock) sees both totem and aura utility providers', () => {

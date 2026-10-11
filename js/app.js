@@ -55,8 +55,8 @@ function renderVersionComparison() {
     const profile = GameVersions[key];
     if (!profile) return '';
     // GameVersions[key].raids also carries the classicN/foreverN planning
-    // templates (kept for old saved plans — see the loop right after
-    // FOREVER_RAIDS above); this landing table only advertises real raids.
+    // templates (kept for old saved plans — see the raids section of
+    // js/rules/classic.js and forever.js); this landing table only advertises real raids.
     const raidNames = (profile.raids || [])
       .map(r => Config.Raids[r])
       .filter(r => r && r.tier !== 'Planning templates')

@@ -6,8 +6,8 @@
  * <script> runs in a sandboxed context and the pieces under test are pulled
  * out through globalThis.api.
  *
- * Covers: Rulesets' benefitsRoles agreeing with the DPS_VALUE/MIT_VALUE tables
- * the optimizer scores with (one assertion per ruleset, so a future edit that
+ * Covers: Rulesets' benefitsRoles agreeing with the dpsValue/mitValue tables (compiled from the
+ * data files' weight.dps / weight.mitigation) the optimizer scores with (one assertion per ruleset, so a future edit that
  * drifts either side fails here), the TBC talent/spec gates on raid debuffs
  * (Misery = Shadow Priest, Hunter's Mark = any Hunter), Unleashed Rage being
  * melee-only, the Totem of Wrath tooltip, and the Open-slot Hunter's Mark credit
@@ -53,7 +53,7 @@ function valuedRoles(rules, buffId) {
 }
 
 for (const version of Object.keys(Rulesets)) {
-  check(`${version}: every buff's benefitsRoles matches the roles DPS_VALUE/MIT_VALUE give it value`, () => {
+  check(`${version}: every buff's benefitsRoles matches the roles dpsValue/mitValue give it value`, () => {
     const rules = Rulesets[version];
     const drift = [];
     for (const [id, buff] of Object.entries(rules.buffs)) {
@@ -122,9 +122,9 @@ check("Open slots: a Marksmanship pick earns no Improved Hunter's Mark credit on
   openSlotBoard();
   const raid = [player('WARRIOR', 'Fury'), player('ROGUE', 'Combat'), player('HUNTER', 'Beast Mastery')];
   // Both candidates are the raid's 2nd Hunter and bring the same debuffs; the only difference is that
-  // BM repeats its spec (-SPEC_REPEAT). Every TBC raid hunter build has Improved Hunter's Mark (user decision 2026-10-10).
+  // BM repeats its spec (-openSlots.specRepeat). Every TBC raid hunter build has Improved Hunter's Mark (user decision 2026-10-10).
   const gap = value(player('HUNTER', 'Marksmanship'), raid) - value(player('HUNTER', 'Beast Mastery'), raid);
-  assert(Math.abs(gap - OpenSlots.SPEC_REPEAT) < 1e-9, `gap ${gap} must be exactly the spec-repeat cost`);
+  assert(Math.abs(gap - Rulesets.tbc.openSlots.specRepeat) < 1e-9, `gap ${gap} must be exactly the spec-repeat cost`);
 });
 
 check("Open slots: a second Marksmanship pick adds no Hunter's Mark credit over a second BM one", () => {

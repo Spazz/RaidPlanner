@@ -32,7 +32,7 @@ function getGroupBuffs(players, groupIndex, groups = State.groups, mode = State.
   // the standing totem it is dropped over.
   const rules = activeRules();
   for (const [id, player] of sources) {
-    if (!COOLDOWN_TOTEMS.has(id)) continue;
+    if (!rules.cooldownTotems.includes(id)) continue;
     for (const [other, otherPlayer] of sources) {
       if (otherPlayer === player && other !== id && rules.totemElements[other] === rules.totemElements[id]) sources.delete(other);
     }
@@ -63,7 +63,7 @@ function getRaidDebuffCoverage(groups) {
 // TBC-only Drums coverage (feature-backlog-3 #5). Kept as its own aggregate
 // rather than a Config.Buffs entry — Drums are tagged per-player independent
 // of class/spec (any player can carry Leatherworking), which doesn't fit
-// getGroupBuffs'/DPS_VALUE's sourceClass-driven model without disturbing
+// getGroupBuffs'/the buffs' sourceClass-driven weight model without disturbing
 // optimizer scoring for every other buff. `covered`/`total` count only
 // non-empty groups, so a still-filling roster's untouched groups don't read
 // as "missing" coverage. Callers gate on State.gameVersion === 'tbc'.
@@ -266,7 +266,7 @@ const Readiness = {
 // ── PLACEMENT EXPLANATION (backlog #4: "Why is this player here?") ──
 // Pure function: re-derives WHY a seated player is in THIS specific group
 // from the same data the optimizer's own scoring reads — getGroupBuffs() for
-// what the group actually resolves, DPS_VALUE/MIT_VALUE (via dpsValueFor/
+// what the group actually resolves, the buffs' weight.dps / weight.mitigation (via dpsValueFor/
 // mitValueFor) for what's worth anything to this player, and
 // Optimizer.groupScore() itself for the "vs their best alternative"
 // comparison — rather than tracking a parallel reason log during

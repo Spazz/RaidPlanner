@@ -6,15 +6,17 @@
  * <script> (everything above the '// ── UI RENDERING' split marker — pure
  * data/logic, no `document`) runs in a sandboxed context and the pieces
  * under test are pulled out through globalThis.api. Covers the pure logic
- * behind the optimizer strategies: each MODE_CONFIG mode leans the way its
+ * behind the optimizer strategies: each mode of every version's modeConfig
+ * (compiled from conventions.modeConfig in js/rules/*.js) leans the way its
  * name says. The strategy picker UI is gone since the nav slim-down
  * (Optimize always runs Max DPS), but the modes stay for the optimizer's own
  * scoring and old saved plans.
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['MODE_CONFIG']);
-const { MODE_CONFIG } = ctx.api;
+const ctx = app.sandbox(['Rulesets']);
+const { Rulesets } = ctx.api;
+const MODES_BY_VERSION = Object.entries(Rulesets).map(([version, rules]) => [version, rules.modeConfig]);
 
 let passed = 0, failed = 0;
 function check(name, fn) {
@@ -29,27 +31,33 @@ function check(name, fn) {
 }
 
 check('max_dps is the mode with the single highest dps weight — its copy calling out damage checks out', () => {
-  const maxDpsWeight = MODE_CONFIG.max_dps.dps;
-  for (const [mode, cfg] of Object.entries(MODE_CONFIG)) {
-    if (mode === 'max_dps') continue;
-    assert.ok(maxDpsWeight > cfg.dps, `max_dps.dps (${maxDpsWeight}) should exceed ${mode}.dps (${cfg.dps})`);
+  for (const [version, modeConfig] of MODES_BY_VERSION) {
+    const maxDpsWeight = modeConfig.max_dps.dps;
+    for (const [mode, cfg] of Object.entries(modeConfig)) {
+      if (mode === 'max_dps') continue;
+      assert.ok(maxDpsWeight > cfg.dps, `${version}: max_dps.dps (${maxDpsWeight}) should exceed ${mode}.dps (${cfg.dps})`);
+    }
   }
 });
 
 check('tank_mit is the mode with the single highest mitigation weight — its "protect tanks first" copy checks out', () => {
-  const tankMitWeight = MODE_CONFIG.tank_mit.mit;
-  for (const [mode, cfg] of Object.entries(MODE_CONFIG)) {
-    if (mode === 'tank_mit') continue;
-    assert.ok(tankMitWeight > cfg.mit, `tank_mit.mit (${tankMitWeight}) should exceed ${mode}.mit (${cfg.mit})`);
+  for (const [version, modeConfig] of MODES_BY_VERSION) {
+    const tankMitWeight = modeConfig.tank_mit.mit;
+    for (const [mode, cfg] of Object.entries(modeConfig)) {
+      if (mode === 'tank_mit') continue;
+      assert.ok(tankMitWeight > cfg.mit, `${version}: tank_mit.mit (${tankMitWeight}) should exceed ${mode}.mit (${cfg.mit})`);
+    }
   }
 });
 
 check('relaxed has the single lowest dps weight and single highest cohesion weight of any mode — the "keeps role groups together, skips fine-tuning" copy checks out', () => {
-  const relaxed = MODE_CONFIG.relaxed;
-  for (const [mode, cfg] of Object.entries(MODE_CONFIG)) {
-    if (mode === 'relaxed') continue;
-    assert.ok(relaxed.dps < cfg.dps, `relaxed.dps (${relaxed.dps}) should be < ${mode}.dps (${cfg.dps})`);
-    assert.ok(relaxed.cohesion > cfg.cohesion, `relaxed.cohesion (${relaxed.cohesion}) should be > ${mode}.cohesion (${cfg.cohesion})`);
+  for (const [version, modeConfig] of MODES_BY_VERSION) {
+    const relaxed = modeConfig.relaxed;
+    for (const [mode, cfg] of Object.entries(modeConfig)) {
+      if (mode === 'relaxed') continue;
+      assert.ok(relaxed.dps < cfg.dps, `${version}: relaxed.dps (${relaxed.dps}) should be < ${mode}.dps (${cfg.dps})`);
+      assert.ok(relaxed.cohesion > cfg.cohesion, `${version}: relaxed.cohesion (${relaxed.cohesion}) should be > ${mode}.cohesion (${cfg.cohesion})`);
+    }
   }
 });
 

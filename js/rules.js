@@ -65,71 +65,25 @@ function isTypingTarget(el) {
 }
 
 // ── CONFIG ──────────────────────────────────────────────────────
+// The lookup maps (class colours, roles, Raid-Helper maps, icon slugs, badge abbreviations and CSS classes) are the
+// shared catalog, js/rules/catalog.js (RulesData.catalog). What a game version owns (buffs, debuffs, raids, weights,
+// utilities) is in js/rules/<version>.js and reaches the app compiled, through Rulesets below. The accessors (Specs,
+// Buffs, Debuffs, RaidOrder, RaidHelperSpecMap, Utilities) read the version in play; Raids is filled in once the
+// rulesets are compiled.
 const Config = {
-  ClassColors: {
-    WARRIOR: '#C69B6D', PALADIN: '#F48CBA', HUNTER: '#AAD372',
-    ROGUE: '#FFF468', PRIEST: '#d0d0d0', SHAMAN: '#0070DD',
-    MAGE: '#3FC7EB', WARLOCK: '#8788EE', DRUID: '#FF7C0A',
-  },
+  ClassColors: RulesData.catalog.classColors,
 
-  Roles: { TANK:'tank', HEALER:'healer', MELEE_DPS:'melee_dps', RANGED_DPS:'ranged_dps', CASTER_DPS:'caster_dps' },
+  Roles: RulesData.catalog.roles,
 
-  Specs: {
-    WARRIOR: { 1:{name:'Arms',role:'melee_dps'},2:{name:'Fury',role:'melee_dps'},3:{name:'Protection',role:'tank'} },
-    PALADIN: { 1:{name:'Holy',role:'healer'},2:{name:'Protection',role:'tank'},3:{name:'Retribution',role:'melee_dps'} },
-    HUNTER:  { 1:{name:'Beast Mastery',role:'ranged_dps'},2:{name:'Marksmanship',role:'ranged_dps'},3:{name:'Survival',role:'ranged_dps'} },
-    ROGUE:   { 1:{name:'Assassination',role:'melee_dps'},2:{name:'Combat',role:'melee_dps'},3:{name:'Subtlety',role:'melee_dps'} },
-    PRIEST:  { 1:{name:'Discipline',role:'healer'},2:{name:'Holy',role:'healer'},3:{name:'Shadow',role:'caster_dps'} },
-    SHAMAN:  { 1:{name:'Elemental',role:'caster_dps'},2:{name:'Enhancement',role:'melee_dps'},3:{name:'Restoration',role:'healer'} },
-    MAGE:    { 1:{name:'Arcane',role:'caster_dps'},2:{name:'Fire',role:'caster_dps'},3:{name:'Frost',role:'caster_dps'} },
-    WARLOCK: { 1:{name:'Affliction',role:'caster_dps'},2:{name:'Demonology',role:'caster_dps'},3:{name:'Destruction',role:'caster_dps'} },
-    DRUID:   { 1:{name:'Balance',role:'caster_dps'},2:{name:'Feral',role:'melee_dps'},3:{name:'Restoration',role:'healer'} },
-  },
+  // Specs and the Raid-Helper spec map come with every compiled ruleset (from the catalog); a version without a
+  // ruleset falls back to the TBC copy.
+  get Specs() { return activeRules().specs || Rulesets.tbc.specs; },
 
-  Buffs: {
-    WINDFURY:          { name:'Windfury Totem',       sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Enchants nearby party members\' main-hand weapons with wind, granting each hit a 20% chance to trigger an extra attack with bonus AP.' },
-    GRACE_OF_AIR:      { name:'Grace of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by 77.' },
-    WRATH_OF_AIR:      { name:'Wrath of Air Totem',   sourceClass:'SHAMAN', benefitsRoles:['tank','caster_dps','healer'], priority:85, desc:'Increases spell power of nearby party members by 101.' },
-    TOTEM_OF_WRATH:    { name:'Totem of Wrath',       sourceClass:'SHAMAN', sourceSpec:'Elemental', benefitsRoles:['caster_dps','healer'], priority:80, desc:'Increases spell hit chance of nearby party members by 3% and spell critical strike chance by 3%.' },
-    MANA_SPRING:       { name:'Mana Spring Totem',    sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:{healer:58, caster_dps:48}, desc:'Restores 20 mana every 2 seconds to nearby party members.' },
-    MANA_TIDE:         { name:'Mana Tide Totem',      sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer','caster_dps'], priority:70, desc:'Restores 24% of total mana to nearby party members over 12 seconds.' },
-    STRENGTH_OF_EARTH: { name:'Strength of Earth',    sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55, desc:'Increases strength of nearby party members by 86.' },
-    DEVOTION_AURA:     { name:'Devotion Aura',        sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by 861.' },
-    CONCENTRATION_AURA:{ name:'Concentration Aura',   sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Reduces the duration of silence and interrupt effects by 30% and gives 35% resistance to pushback while casting.' },
-    RETRIBUTION_AURA:  { name:'Retribution Aura',     sourceClass:'PALADIN', benefitsRoles:['tank','melee_dps'], priority:30, desc:'Causes 26 Holy damage to any enemy that strikes nearby party members.' },
-    SANCTITY_AURA:     { name:'Sanctity Aura',        sourceClass:'PALADIN', sourceSpec:'Retribution', benefitsRoles:['melee_dps','ranged_dps','caster_dps','tank'], priority:{melee_dps:80, ranged_dps:80, caster_dps:80, tank:40}, desc:'Increases Holy damage done by party members by 10%. Improved Sanctity Aura also increases all damage done by party members by 2%.' },
-    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',   sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:78, tank:65}, desc:'Increases melee and ranged critical strike chance of nearby party members by 5%.' },
-    MOONKIN_AURA:      { name:'Moonkin Aura',         sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['caster_dps'], priority:72, desc:'Increases spell critical strike chance of nearby party members by 5%.' },
-    TRUESHOT_AURA:     { name:'Trueshot Aura',        sourceClass:'HUNTER', sourceSpec:'Marksmanship', benefitsRoles:['melee_dps','ranged_dps'], priority:62, desc:'Increases attack power of nearby party members by 125.' },
-    FEROCIOUS_INSP:    { name:'Ferocious Inspiration',sourceClass:'HUNTER', sourceSpec:'Beast Mastery', benefitsRoles:['tank','melee_dps','ranged_dps','caster_dps'], priority:58, desc:'When your pet scores a critical hit, all party members gain 3% increased damage for 10 seconds.' },
-    TREE_OF_LIFE:      { name:'Tree of Life',          sourceClass:'DRUID', sourceSpec:'Restoration', benefitsRoles:['tank','healer'], priority:{tank:90, healer:10, melee_dps:10, ranged_dps:10, caster_dps:10}, desc:'Increases healing received by nearby party members by 25% of the Druid\'s spirit.' },
-    UNLEASHED_RAGE:    { name:'Unleashed Rage',        sourceClass:'SHAMAN', sourceSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:88, tank:60}, desc:'Increases melee attack power of nearby party members by 10% after landing a melee critical strike.' },
-    BATTLE_SHOUT:      { name:'Battle Shout',          sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members by 305 for 2 minutes.' },
-    COMMANDING_SHOUT:  { name:'Commanding Shout',      sourceClass:'WARRIOR', benefitsRoles:['tank'], priority:35, desc:'Increases maximum health of nearby party members by 1080 for 2 minutes. The planner models one shout per warrior, so a second warrior covers the other.' },
-    BLOOD_PACT:        { name:'Blood Pact',           sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases max health of nearby party members by 1330.' },
-    VAMPIRIC_TOUCH:    { name:'Vampiric Touch',       sourceClass:'PRIEST', sourceSpec:'Shadow', benefitsRoles:['healer','caster_dps'], priority:{caster_dps:75, healer:55}, desc:'Restores mana to nearby party members equal to 5% of Shadow damage dealt.' },
-  },
+  get Buffs() { return activeRules().buffs || {}; },
 
-  BuffAbbreviations: {
-    WINDFURY:'WF', GRACE_OF_AIR:'GoA', WRATH_OF_AIR:'WoA', TOTEM_OF_WRATH:'ToW',
-    MANA_SPRING:'MS', MANA_TIDE:'MT', STRENGTH_OF_EARTH:'SoE',
-    DEVOTION_AURA:'Dev', CONCENTRATION_AURA:'Conc', RETRIBUTION_AURA:'Ret', SANCTITY_AURA:'Sanc',
-    LEADER_OF_THE_PACK:'LotP', MOONKIN_AURA:'Moon', TREE_OF_LIFE:'ToL', TRUESHOT_AURA:'TSA', FEROCIOUS_INSP:'FI',
-    UNLEASHED_RAGE:'UR', BATTLE_SHOUT:'BS', COMMANDING_SHOUT:'CS', BLOOD_PACT:'BP', VAMPIRIC_TOUCH:'VT',
-    TRANQUIL_AIR:'TqA', STONESKIN:'SSk',
-    // Not a Config.Buffs entry (see getDrumsCoverage) — just reusing the same
-    // abbreviation/CSS/icon lookup maps for the group-card drum icon.
-    DRUMS:'Drm',
-  },
+  BuffAbbreviations: RulesData.catalog.buffAbbreviations,
 
-  BuffCSSClass: {
-    WINDFURY:'buff-wf', GRACE_OF_AIR:'buff-goa', WRATH_OF_AIR:'buff-woa', TOTEM_OF_WRATH:'buff-tow',
-    MANA_SPRING:'buff-ms', MANA_TIDE:'buff-mt', STRENGTH_OF_EARTH:'buff-soe',
-    DEVOTION_AURA:'buff-dev', CONCENTRATION_AURA:'buff-conc', RETRIBUTION_AURA:'buff-ret', SANCTITY_AURA:'buff-sanc',
-    LEADER_OF_THE_PACK:'buff-lotp', MOONKIN_AURA:'buff-moon', TREE_OF_LIFE:'buff-tol', TRUESHOT_AURA:'buff-tsa', FEROCIOUS_INSP:'buff-fi',
-    UNLEASHED_RAGE:'buff-ur', BATTLE_SHOUT:'buff-bs', COMMANDING_SHOUT:'buff-cs', BLOOD_PACT:'buff-bp', VAMPIRIC_TOUCH:'buff-vt',
-    TRANQUIL_AIR:'buff-tqa', STONESKIN:'buff-sst', DRUMS:'buff-drums',
-  },
+  BuffCSSClass: RulesData.catalog.buffCSSClass,
 
   // Icon files are self-hosted in icons/ (one <name>.jpg per slug, fetched once from the
   // Wowhead CDN); every spec/class/role/buff/debuff icon goes through this one URL builder.
@@ -137,125 +91,24 @@ const Config = {
     return name ? `/icons/${name}.jpg` : '';
   },
 
-  // Wowhead icon slugs (= icons/<slug>.jpg) for each buff
-  BuffIcons: {
-    WINDFURY:           'spell_nature_windfury',
-    GRACE_OF_AIR:       'spell_nature_invisibilitytotem',
-    WRATH_OF_AIR:       'spell_nature_slowingtotem',
-    TOTEM_OF_WRATH:     'spell_fire_totemofwrath',
-    MANA_SPRING:        'spell_nature_manaregentotem',
-    MANA_TIDE:          'spell_frost_summonwaterelemental',
-    STRENGTH_OF_EARTH:  'spell_nature_earthbindtotem',
-    DEVOTION_AURA:      'spell_holy_devotionaura',
-    CONCENTRATION_AURA: 'spell_holy_mindsooth',
-    RETRIBUTION_AURA:   'spell_holy_auraoflight',
-    SANCTITY_AURA:      'spell_holy_mindvision',
-    LEADER_OF_THE_PACK: 'spell_nature_unyeildingstamina',
-    MOONKIN_AURA:       'spell_nature_starfall',
-    TREE_OF_LIFE:       'ability_druid_treeoflife',
-    UNLEASHED_RAGE:     'spell_nature_unleashedrage',
-    BATTLE_SHOUT:       'ability_warrior_battleshout',
-    COMMANDING_SHOUT:   'ability_warrior_rallyingcry',
-    VAMPIRIC_TOUCH:     'spell_holy_stoicism',
-    TRUESHOT_AURA:      'ability_trueshot',
-    FEROCIOUS_INSP:     'ability_hunter_ferociousinspiration',
-    BLOOD_PACT:         'spell_shadow_bloodboil',
-    TRANQUIL_AIR:       'spell_nature_brilliance',
-    STONESKIN:          'spell_nature_stoneskintotem',
-    DRUMS:              'inv_misc_drum_06',
-  },
+  BuffIcons: RulesData.catalog.buffIcons,
   BuffIconURL(id) {
     return this.IconURL(this.BuffIcons[id]);
   },
 
-  // ── Raid debuffs (applied to enemy targets, not the raid) ──
-  // family/competesWith/supersededBy model non-stacking debuff slots — see
-  // https://www.warcrafttavern.com/tbc/guides/warlock-curses/ and
-  // https://www.warcrafttavern.com/tbc/guides/rogue-expose-armor/ for the mechanics.
-  Debuffs: {
-    JUDGEMENT_CRUSADER:  { name:'Judgement of the Crusader', sourceClass:'PALADIN', sourceSpec:'Retribution', desc:'Attackers have a 3% increased chance to critically hit the target, which also takes 219 increased Holy damage.' },
-    JUDGEMENT_LIGHT:      { name:'Judgement of Light',        sourceClass:'PALADIN', desc:'Melee attackers have a chance to heal themselves for 95 health.' },
-    JUDGEMENT_WISDOM:     { name:'Judgement of Wisdom',       sourceClass:'PALADIN', desc:'Attacks and spells against the target have a chance to restore 74 mana.' },
-    SUNDER_ARMOR:         { name:'Sunder Armor',              sourceClass:'WARRIOR', desc:'Reduces the target\'s armor by up to 2600 (5 stacks).', competesWith:['EXPOSE_ARMOR'] },
-    DEMORALIZING_SHOUT:   { name:'Demoralizing Shout',        sourceClass:'WARRIOR', desc:'Reduces the target\'s melee attack power by 300 (420 with Improved Demoralizing Shout).', competesWith:['DEMORALIZING_ROAR','CURSE_WEAKNESS'] },
-    THUNDER_CLAP:         { name:'Thunder Clap',              sourceClass:'WARRIOR', desc:'Reduces the target\'s attack speed by 10% (20% with Improved Thunder Clap).' },
-    BLOOD_FRENZY:         { name:'Blood Frenzy',              sourceClass:'WARRIOR', sourceSpec:'Arms', desc:'Increases Physical damage taken by the target by 4%.' },
-    EXPOSE_ARMOR:         { name:'Expose Armor',              sourceClass:'ROGUE', desc:'Reduces the target\'s armor by 2050 (3075 with Improved Expose Armor).', competesWith:['SUNDER_ARMOR'] },
-    HEMORRHAGE:           { name:'Hemorrhage',                sourceClass:'ROGUE', sourceSpec:'Subtlety', desc:'Increases Physical damage taken by the target by 42, for 10 charges.' },
-    FAERIE_FIRE_BALANCE:  { name:'Faerie Fire',                sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s armor by 610 and, with Improved Faerie Fire, gives attackers +3% chance to hit.' },
-    FAERIE_FIRE_FERAL:    { name:'Faerie Fire (Feral)',        sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s armor by 610.', supersededBy:'FAERIE_FIRE_BALANCE' },
-    MANGLE:               { name:'Mangle',                     sourceClass:'DRUID', sourceSpec:'Feral', desc:'Increases damage taken from bleed effects by 30%.' },
-    DEMORALIZING_ROAR:    { name:'Demoralizing Roar',          sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s melee attack power by 232.', competesWith:['DEMORALIZING_SHOUT','CURSE_WEAKNESS'] },
-    INSECT_SWARM:         { name:'Insect Swarm',               sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s chance to hit by 2%.' },
-    CURSE_ELEMENTS:       { name:'Curse of the Elements',      sourceClass:'WARLOCK', desc:'Reduces resistance to Fire/Frost/Shadow by 88 and increases Arcane/Fire/Frost/Shadow damage taken by 10%.', competesWith:['CURSE_RECKLESSNESS','CURSE_WEAKNESS'] },
-    CURSE_RECKLESSNESS:   { name:'Curse of Recklessness',      sourceClass:'WARLOCK', desc:'Increases melee attack power by 135 but reduces armor by 800.', competesWith:['CURSE_ELEMENTS','CURSE_WEAKNESS'] },
-    CURSE_WEAKNESS:       { name:'Curse of Weakness',          sourceClass:'WARLOCK', desc:'Reduces the target\'s melee attack power by 350.', competesWith:['CURSE_ELEMENTS','CURSE_RECKLESSNESS','DEMORALIZING_SHOUT','DEMORALIZING_ROAR'] },
-    SHADOW_EMBRACE:       { name:'Shadow Embrace',             sourceClass:'WARLOCK', sourceSpec:'Affliction', desc:'Reduces the target\'s Physical damage dealt by 5%.' },
-    IMPROVED_SHADOW_BOLT: { name:'Improved Shadow Bolt',       sourceClass:'WARLOCK', sourceSpec:'Destruction', desc:'Increases Shadow damage taken by the target by 20%, for 5 charges.' },
-    WINTERS_CHILL:        { name:'Winter\'s Chill',            sourceClass:'MAGE', sourceSpec:'Frost', desc:'Increases the target\'s chance to be critically hit by Frost spells by 10%.' },
-    IMPROVED_SCORCH:      { name:'Improved Scorch',            sourceClass:'MAGE', sourceSpec:'Fire', desc:'Increases Fire damage taken by the target by 15%.' },
-    SHADOW_WEAVING:       { name:'Shadow Weaving',             sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Increases Shadow damage taken by the target by 10%.' },
-    MISERY:               { name:'Misery',                     sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Increases Spell damage taken by the target by 5%.' },
-    VAMPIRIC_EMBRACE:     { name:'Vampiric Embrace',           sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Heals the caster\'s party for 15% of the Priest\'s damage dealt to the target.' },
-    STORMSTRIKE:          { name:'Stormstrike',                sourceClass:'SHAMAN', sourceSpec:'Enhancement', desc:'Increases Nature damage taken by the target by 20%, for 2 charges.' },
-    SCORPID_STING:        { name:'Scorpid Sting',              sourceClass:'HUNTER', desc:'Reduces the target\'s chance to hit with melee/ranged attacks by 5%.' },
-    HUNTERS_MARK:         { name:'Hunter\'s Mark',              sourceClass:'HUNTER', desc:'Grants attackers 110 increased melee/ranged attack power against the target.' },
-    EXPOSE_WEAKNESS:      { name:'Expose Weakness',            sourceClass:'HUNTER', sourceSpec:'Survival', desc:'Grants attackers bonus attack power equal to 25% of the Hunter\'s Agility.' },
-  },
+  get Debuffs() { return activeRules().debuffs || {}; },
 
-  DebuffAbbreviations: {
-    JUDGEMENT_CRUSADER:'JotC', JUDGEMENT_LIGHT:'JoL', JUDGEMENT_WISDOM:'JoW',
-    SUNDER_ARMOR:'Sun', DEMORALIZING_SHOUT:'DS', THUNDER_CLAP:'TC', BLOOD_FRENZY:'BF',
-    EXPOSE_ARMOR:'EA', HEMORRHAGE:'Hem',
-    FAERIE_FIRE_BALANCE:'FF', FAERIE_FIRE_FERAL:'FF', FAERIE_FIRE:'FF', MANGLE:'Man', DEMORALIZING_ROAR:'DR', INSECT_SWARM:'IS',
-    CURSE_ELEMENTS:'CoE', CURSE_RECKLESSNESS:'CoR', CURSE_WEAKNESS:'CoW', SHADOW_EMBRACE:'SE', IMPROVED_SHADOW_BOLT:'ISB',
-    WINTERS_CHILL:'WC', IMPROVED_SCORCH:'Scorch',
-    SHADOW_WEAVING:'SW', MISERY:'Mis', VAMPIRIC_EMBRACE:'VE',
-    STORMSTRIKE:'SS',
-    SCORPID_STING:'Scorp', HUNTERS_MARK:'HM', EXPOSE_WEAKNESS:'EW',
-  },
+  DebuffAbbreviations: RulesData.catalog.debuffAbbreviations,
 
-  // Best-effort Wowhead icon slugs — entries left blank fall back to the text
-  // abbreviation above (same graceful-degradation pattern as BuffIconURL).
-  DebuffIcons: {
-    JUDGEMENT_CRUSADER: 'spell_holy_holysmite',
-    JUDGEMENT_LIGHT:    'spell_holy_healingaura',
-    JUDGEMENT_WISDOM:   'spell_holy_sealofwisdom',
-    SUNDER_ARMOR:       'ability_warrior_sunder',
-    DEMORALIZING_SHOUT: 'ability_warrior_warcry',
-    THUNDER_CLAP:       'spell_nature_thunderclap',
-    BLOOD_FRENZY:       'ability_warrior_bloodfrenzy',
-    EXPOSE_ARMOR:       'ability_warrior_riposte',
-    HEMORRHAGE:         'spell_shadow_lifedrain',
-    FAERIE_FIRE_BALANCE:'spell_nature_faeriefire',
-    FAERIE_FIRE_FERAL:  'spell_nature_faeriefire',
-    FAERIE_FIRE:        'spell_nature_faeriefire',
-    MANGLE:             'ability_druid_mangle2',
-    DEMORALIZING_ROAR:  'ability_druid_demoralizingroar',
-    INSECT_SWARM:       'spell_nature_insectswarm',
-    CURSE_ELEMENTS:     'spell_shadow_chilltouch',
-    CURSE_RECKLESSNESS: 'spell_shadow_curseofmannoroth',
-    SHADOW_EMBRACE:     'spell_shadow_shadowembrace',
-    IMPROVED_SHADOW_BOLT:'spell_shadow_shadowbolt',
-    SHADOW_WEAVING:     'spell_shadow_blackplague',
-    STORMSTRIKE:        'ability_shaman_stormstrike',
-  },
+  DebuffIcons: RulesData.catalog.debuffIcons,
   DebuffIconURL(id) {
     return this.IconURL(this.DebuffIcons[id]);
   },
 
-  Raids: {
-    kara:  { name:'Karazhan',            size:10, groups:2, tier:'Tier 4' },
-    gruul: { name:"Gruul's Lair",        size:25, groups:5, tier:'Tier 4' },
-    mag:   { name:"Magtheridon's Lair",  size:25, groups:5, tier:'Tier 4' },
-    ssc:   { name:'Serpentshrine Cavern',size:25, groups:5, tier:'Tier 5' },
-    tk:    { name:'Tempest Keep',        size:25, groups:5, tier:'Tier 5' },
-    za:    { name:"Zul'Aman",            size:10, groups:2, tier:'Tier 5' },
-    hyjal: { name:'Hyjal Summit',        size:25, groups:5, tier:'Tier 6' },
-    bt:    { name:'Black Temple',        size:25, groups:5, tier:'Tier 6' },
-    swp:   { name:'Sunwell Plateau',     size:25, groups:5, tier:'Tier 6' },
-  },
-  RaidOrder: ['kara','gruul','mag','ssc','tk','za','hyjal','bt','swp'],
+  // The flat merge of every version's raids, so any raid id resolves whichever version is active. Filled in below,
+  // once the rulesets are compiled.
+  Raids: {},
+  get RaidOrder() { return GameVersions[State.gameVersion].raids; },
   TierOrder: ['Tier 4', 'Tier 5', 'Tier 6'],
 
   // Minimum tanks and healers a raid of this size must seat before DPS
@@ -270,11 +123,7 @@ const Config = {
     40: { tank: 4, healer: 10 },
   },
 
-  RaidHelperClassMap: {
-    Hunter:'HUNTER', Druid:'DRUID', Warrior:'WARRIOR', Priest:'PRIEST',
-    Mage:'MAGE', Shaman:'SHAMAN', Paladin:'PALADIN', Rogue:'ROGUE', Warlock:'WARLOCK',
-    Tank:null, Bench:null,
-  },
+  RaidHelperClassMap: RulesData.catalog.raidHelperClassMap,
 
   // Least-wrong per-class default role for a Raid-Helper sign-up that only
   // chose a class, no spec (backlog #2, 2026-09-26) — this class's single
@@ -282,254 +131,49 @@ const Config = {
   // confirm, hybrids (Shaman/Druid) no more so than any other entry here —
   // Import._resolveRaidHelperEntry always pairs this with needsReview so the
   // guess is never mistaken for a confidently-resolved sign-up.
-  DefaultRoleForClass: {
-    WARRIOR:'melee_dps', PALADIN:'healer', HUNTER:'ranged_dps', ROGUE:'melee_dps',
-    PRIEST:'healer', SHAMAN:'healer', MAGE:'caster_dps', WARLOCK:'caster_dps', DRUID:'healer',
-  },
+  DefaultRoleForClass: RulesData.catalog.defaultRoleForClass,
 
-  RaidHelperSpecMap: {
-    Arms:        {class:'WARRIOR',spec:'Arms',      role:'melee_dps'},
-    Fury:        {class:'WARRIOR',spec:'Fury',       role:'melee_dps'},
-    Protection:  {class:'WARRIOR',spec:'Protection', role:'tank'},
-    Holy1:       {class:'PALADIN',spec:'Holy',       role:'healer'},
-    Protection1: {class:'PALADIN',spec:'Protection', role:'tank'},
-    Retribution: {class:'PALADIN',spec:'Retribution',role:'melee_dps'},
-    Beastmastery:{class:'HUNTER', spec:'Beast Mastery',role:'ranged_dps'},
-    Marksmanship:{class:'HUNTER', spec:'Marksmanship',role:'ranged_dps'},
-    Survival:    {class:'HUNTER', spec:'Survival',    role:'ranged_dps'},
-    Assassination:{class:'ROGUE',spec:'Assassination',role:'melee_dps'},
-    Combat:      {class:'ROGUE', spec:'Combat',       role:'melee_dps'},
-    Subtlety:    {class:'ROGUE', spec:'Subtlety',     role:'melee_dps'},
-    Discipline:  {class:'PRIEST',spec:'Discipline',   role:'healer'},
-    Holy:        {class:'PRIEST',spec:'Holy',          role:'healer'},
-    Shadow:      {class:'PRIEST',spec:'Shadow',        role:'caster_dps'},
-    Smite:       {class:'PRIEST',spec:'Discipline',    role:'caster_dps'},
-    Elemental:   {class:'SHAMAN',spec:'Elemental',     role:'caster_dps'},
-    Enhancement: {class:'SHAMAN',spec:'Enhancement',   role:'melee_dps'},
-    Restoration1:{class:'SHAMAN',spec:'Restoration',   role:'healer'},
-    Restoration: {class:'DRUID', spec:'Restoration',   role:'healer'},
-    Arcane:      {class:'MAGE',  spec:'Arcane',        role:'caster_dps'},
-    Fire:        {class:'MAGE',  spec:'Fire',          role:'caster_dps'},
-    Frost:       {class:'MAGE',  spec:'Frost',         role:'caster_dps'},
-    Affliction:  {class:'WARLOCK',spec:'Affliction',   role:'caster_dps'},
-    Demonology:  {class:'WARLOCK',spec:'Demonology',   role:'caster_dps'},
-    Destruction: {class:'WARLOCK',spec:'Destruction',   role:'caster_dps'},
-    Balance:     {class:'DRUID', spec:'Balance',        role:'caster_dps'},
-    Feral:       {class:'DRUID', spec:'Feral',          role:'melee_dps'},
-    Guardian:    {class:'DRUID', spec:'Feral',          role:'tank'},
-    Dreamstate:  {class:'DRUID', spec:'Balance',        role:'healer'},
-  },
-};
+  get RaidHelperSpecMap() { return activeRules().raidHelperSpecMap || Rulesets.tbc.raidHelperSpecMap; },
 
-// Version profiles own their raid catalog and rule availability. Forever templates
-// are planning capacities chosen by the user, not claims about beta raid sizes.
-// `modeled` is derived below from Rulesets — a version is modeled iff it has one.
-const GameVersions = {
-  tbc: { name:'WoW TBC', defaultRaid:'bt', raids:[...Config.RaidOrder], note:'TBC party buffs and optimization rules.' },
-  classic: { name:'WoW Classic', defaultRaid:'mc', raids:[], note:'WoW Classic Era party buffs, composition and optimizer rules. Faction-aware: Horde shamans, Alliance paladins.' },
-  forever: { name:'WoW Forever (Beta)', defaultRaid:'f_ony', raids:[], note:'Rules follow WoW Forever beta data as of 2026-10-10 (build 1.60.1.70338): Paladin and Shaman on both factions (no faction lock), Trueshot Aura a Marksmanship talent, one Faerie Fire for every Druid, Leader of the Pack/Moonkin Aura one exclusive crit buff, one air totem per party, Sanctity Aura removed, and the confirmed Barrow Deeps/Hyjal Summit/Onyxia\'s Lair raids.' },
+  // Utility checklist (Battle Rez, cleanses, Bloodlust, ...) of the version in play: its own `utilities` in
+  // js/rules/<version>.js. No version borrows another's list (Forever's started as a copy of Classic's).
+  get Utilities() { return activeRules().utilities || {}; },
 };
-// Real Classic Era raids, in phase order (tasks/research-classic-buffs.md).
-// Unique keys so they never collide with TBC's Config.Raids entries.
-const CLASSIC_RAIDS = {
-  mc:   { name:'Molten Core',            size:40, groups:8, tier:'Phase 1' },
-  ony:  { name:"Onyxia's Lair",          size:40, groups:8, tier:'Phase 1' },
-  bwl:  { name:'Blackwing Lair',         size:40, groups:8, tier:'Phase 3' },
-  zg:   { name:"Zul'Gurub",              size:20, groups:4, tier:'Phase 4' },
-  aq20: { name:"Ruins of Ahn'Qiraj",     size:20, groups:4, tier:'Phase 5' },
-  aq40: { name:'Temple of Ahn\'Qiraj',   size:40, groups:8, tier:'Phase 5' },
-  naxx: { name:'Naxxramas',              size:40, groups:8, tier:'Phase 6' },
-};
-for (const [key, raid] of Object.entries(CLASSIC_RAIDS)) {
-  Config.Raids[key] = raid;
-  GameVersions.classic.raids.push(key);
-}
-// Real WoW Forever raids, confirmed via a full-page browser read of Wowhead's
-// raids-overview guide (tasks/research-forever.md, "Browser verification"
-// section, "Raids" table) — launching December 9, 2026. 'f_' prefix keeps
-// these unique from Classic's 'ony' key (Onyxia exists in both games).
-const FOREVER_RAIDS = {
-  f_barrow: { name:'Barrow Deeps',   size:10, groups:2, tier:'Launch (Dec 9, 2026)' },
-  f_hyjal:  { name:'Hyjal Summit',   size:20, groups:4, tier:'Launch (Dec 9, 2026)' },
-  f_ony:    { name:"Onyxia's Lair",  size:40, groups:8, tier:'Launch (Dec 9, 2026)' },
-};
-for (const [key, raid] of Object.entries(FOREVER_RAIDS)) {
-  Config.Raids[key] = raid;
-  GameVersions.forever.raids.push(key);
-}
-// Classic/Forever planning templates — kept after the real raids above so old
-// saved plans (keyed on classicN/foreverN) keep working.
-for (const version of ['classic', 'forever']) {
-  for (const size of [10, 20, 40]) {
-    const key = version + size;
-    GameVersions[version].raids.push(key);
-    Config.Raids[key] = {name:`${size}-player template`, size, groups:size/5, tier:'Planning templates'};
-  }
-}
 
 // ── RULESET REGISTRY ────────────────────────────────────────────
-// Every piece of version-specific game-rules data (buffs, specs, optimizer
-// value tables, class-specific scoring hooks) is looked up through here, one
-// key per GameVersion. Classic/Forever stay null (empty ruleset) until their
-// data lands in a later phase — see activeRules(). A few TBC tables (the
-// Optimizer's DPS_VALUE/MIT_VALUE/etc. and IdealComp) are defined further
-// down the file; they're folded into Rulesets.tbc right after they're built.
-const Rulesets = {
-  tbc: {
-    buffs: Config.Buffs,
-    debuffs: Config.Debuffs,
-    specs: Config.Specs,
-    raidHelperSpecMap: Config.RaidHelperSpecMap,
-    classList: ['WARRIOR','PALADIN','HUNTER','ROGUE','PRIEST','SHAMAN','MAGE','WARLOCK','DRUID'],
-    // TBC talent-tree icons for the player rows' spec marker (Wowhead icon slugs, self-hosted in icons/).
-    specIcons: {
-      WARRIOR: { Arms:'ability_rogue_eviscerate', Fury:'ability_warrior_innerrage', Protection:'ability_warrior_defensivestance' },
-      PALADIN: { Holy:'spell_holy_holybolt', Protection:'spell_holy_devotionaura', Retribution:'spell_holy_auraoflight' },
-      HUNTER:  { 'Beast Mastery':'ability_hunter_beasttaming', Marksmanship:'ability_marksmanship', Survival:'ability_hunter_swiftstrike' },
-      ROGUE:   { Assassination:'ability_rogue_eviscerate', Combat:'ability_backstab', Subtlety:'ability_stealth' },
-      PRIEST:  { Discipline:'spell_holy_wordfortitude', Holy:'spell_holy_holybolt', Shadow:'spell_shadow_shadowwordpain' },
-      SHAMAN:  { Elemental:'spell_nature_lightning', Enhancement:'spell_nature_lightningshield', Restoration:'spell_nature_magicimmunity' },
-      MAGE:    { Arcane:'spell_holy_magicalsentry', Fire:'spell_fire_firebolt02', Frost:'spell_frost_frostbolt02' },
-      WARLOCK: { Affliction:'spell_shadow_deathcoil', Demonology:'spell_shadow_metamorphosis', Destruction:'spell_shadow_rainoffire' },
-      DRUID:   { Balance:'spell_nature_starfall', Feral:'ability_racial_bearform', Restoration:'spell_nature_healingtouch' },
-    },
-    // Totem / aura exclusivity (from Optimizer.lua): which element a totem
-    // occupies, which auras a paladin can run, and the default pick per role.
-    totemElements: {
-      WINDFURY:'air', GRACE_OF_AIR:'air', WRATH_OF_AIR:'air',
-      TOTEM_OF_WRATH:'fire', MANA_SPRING:'water', MANA_TIDE:'water',
-      STRENGTH_OF_EARTH:'earth',
-    },
-    paladinAuras: { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true, SANCTITY_AURA:true },
-    // Warrior shout slot: each warrior casts ONE of these per group (the resolver
-    // picks by group value; a second warrior covers the other). Unset = every
-    // warrior is simply credited Battle Shout as a passive (Classic, Forever).
-    shouts: ['BATTLE_SHOUT', 'COMMANDING_SHOUT'],
-    bestAirTotem: { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'WRATH_OF_AIR', healer:'WRATH_OF_AIR' },
-    bestPaladinAura: { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' },
-    // Small hooks the optimizer consults instead of hardcoded class/spec
-    // checks, so a future ruleset can turn them off or swap the logic.
-    rules: {
-      tankAnchorRank: p => p.class === 'PALADIN' ? 0 : p.class === 'WARRIOR' ? 1 : 2,
-      meleeWantsWindfury: true,     // a melee group with no shaman is missing WF
-      // 2026-10-10 comp rule 1 (any shaman drops Windfury for melee): per-melee cost (x dpsWeight x structure)
-      // of a melee group with no shaman; sized so a spare Ele/Resto is worth pulling to it.
-      meleeWantsWindfuryCost: 13, // 14 breaks drums-tests (spreadDrummers); 13 is the highest value that keeps it green
-      // 2026-10-10 user decision: Windfury from an Enhancement Shaman is worth more to melee than from an
-      // Ele/Resto; the WINDFURY value in a group holding an Enh is scaled by (1 + this).
-      enhWindfuryBonus: 0.4,
-      // 2026-10-10 user decision "Ret sits with an Enh": flat bonus (x structure) for a group holding both a
-      // Retribution Paladin and an Enhancement Shaman; gives the pairing a clear margin over swapping the Ret
-      // into a shaman-less group (T02 was +0.03 without it).
-      retEnhPairBonus: 8,
-      ferociousInspiration: true,   // BM Hunter FI stacks multiplicatively per hunter
-      rosterShapedIdentities: true, // melee/caster group count follows the DPS mix (Optimizer.roleIdentitiesFor)
-      specAura: { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA' },
-      // A Survival Hunter brings no party buff in TBC (FI is Beast Mastery's, TSA is
-      // Marksmanship's), so sharing a group with another hunter duplicates a seat; the
-      // reference comp spreads one hunter per melee group. Penalty per such Survival
-      // Hunter. See Optimizer.groupScore.
-      hunterSpread: 2,
-      // 2026-10-10 user decision: hunters stay out of caster groups as a HEAVY WEIGHT
-      // (never a hard ban). Cost per hunter in a caster_dps-identity group, x cfg.structure.
-      hunterInCasterGroup: 20,
-      // 2026-10-10 user decision: with 2+ Enhancement Shamans on the board, hunters spread
-      // one per melee group whatever their spec. Cost per hunter beyond a fair share
-      // (ceil(hunters / melee groups)) in a group, triangular in the excess, x cfg.structure;
-      // 24 (not 12): a 3rd hunter in a leftover melee group (T48) must cost more than the melee
-      // buffs lost by pulling a non-hunter out of a Windfury group (swap probes: up to ~21);
-      // sized above the FI stacking bonus a BM pair earns. With 0-1 Enh the
-      // Survival-only tax (hunterSpread) applies and BM pairs stack freely.
-      hunterSpreadEnh: 24,
-      // 2026-10-10 comp rules 2/3: the Ele amplifies the warlock group together with the Boomkin, so
-      // OpenSlots.choose() does not suggest an Ele beyond one per Boomkin (cost in _raidValue points).
-      extraEleNeedsBoomkin: 30,
-      // 2026-10-10 comp rules (reference G5 = healers + one Affliction lock): pulls the leftover
-      // Affliction lock into the healer-group overflow seat (x cfg.structure). Knife-edge: 8+ breaks
-      // tests.js, below 7 breaks T21.
-      healerGroupDpsPull: 7,
-      // 2026-10-10 user decision "a roster's only Resto Shaman stays with the tank-group healers": a tank
-      // group with under 3 healers and no shaman pays this (x cfg.structure) when the roster's lone shaman is
-      // a Resto elsewhere, so the Windfury coverage pull cannot strip the tank healers.
-      loneRestoTankCost: 25,
-      // 2026-10-10 comp rules (reference G5 keeps 3 healers + 1 overflow DPS): cost per healer below 3 in the
-      // tank group (x cfg.structure), so pushing hunters out of caster groups never trades a tank-group healer for a guest.
-      tankGroupHealerCost: 15,
-      // Search depth beyond swaps/exchanges (2026-10-10 comp rules: the reference comp
-      // needs moves like the suggested Ret rotating to the Enh Shaman's group while a
-      // displaced player takes its seat): 3-cycle rotations in the refine rounds plus a
-      // guarded final refine after de-isolation. Absent = off, so Classic/Forever boards
-      // are unchanged (and their 40-man boards skip the extra cost). See Optimizer.refineRotations.
-      rotationSearch: true,
-      // DPS specs the reference comp parks in the healer/tank group as its one overflow
-      // seat (exempt from the DPS-guest penalty there). See Optimizer.groupScore.
-      healerGroupDps: p => p.class === 'WARLOCK' && p.spec === 'Affliction',
-      // 2026-10-10 comp rules: a hunter in the tank group's guest seat pays this (x structure), the same
-      // 12 a melee or caster guest pays there. The base penalty never charged ranged_dps, so a spare
-      // hunter was parked with the healers for free (F01) while a warlock, which at least gives the
-      // tank Blood Pact, sat with the hunters. Absent in Classic/Forever.
-      hunterTankGuestCost: 12,
-      // 2026-10-10 duplicate-stacks decision: an Enh Shaman beyond the melee-group count is redundant
-      // (Windfury is per group), so seating one in a tank/caster group costs this (x structure); the
-      // bench trade then benches the spare Enh rather than a DPS that receives buffs.
-      surplusEnhCost: 25,
-      // Healer cap (user decision 2026-10-10): when DPS would otherwise be benched, seat at most
-      // floor + this many healers (6 in a 25-man, 4 in a 10-man). Absent in Classic/Forever.
-      healerCapOverFloor: 1,
-      // 2026-10-10 comp rule 4 (one Feral per group) and the any-shaman-drops-WF spread: raised from
-      // SHAMAN 10 / Feral 8 so a second copy in a group is worth less than a seat elsewhere.
-      // Party-buff providers whose second copy in one group mostly duplicates the first (totems share
-      // elements, LotP/Moonkin/Sanctity don't stack) while another group goes without. See Optimizer.groupScore.
-      stackPenalty: [
-        { match: p => p.class === 'SHAMAN', weight: 10 },
-        // extra weight on a second Enh (Windfury copies do not stack); only Enh, since raising it for every shaman broke T46's bench trade.
-        { match: p => p.class === 'SHAMAN' && p.spec === 'Enhancement', weight: 30 },
-        { match: p => p.class === 'PALADIN' && p.spec === 'Retribution', weight: 8 },
-        { match: p => p.class === 'DRUID' && p.spec === 'Feral', weight: 30 },
-        { match: p => p.class === 'DRUID' && p.spec === 'Balance', weight: 4 },
-      ],
-    },
-    // Class-presence utility checklist (readiness sidebar's "Utility" section,
-    // Readiness.utilityCoverage() below) — separate from Buffs/Debuffs because
-    // these are one-off/in-combat abilities, not always-on party auras.
-    // `providers` is a list of {class, spec?, note?}; spec omitted means any
-    // spec of that class qualifies. See tasks/feature-backlog.md #3.
-    utilities: {
-      BATTLE_REZ: { name:'Battle Resurrection', providers:[{class:'DRUID', note:'Rebirth'}, {class:'WARLOCK', note:'Soulstone — must be pre-cast before the pull'}], desc:'Revives a fallen raid member mid-encounter, or lets one pre-flagged player self-resurrect once via a pre-pull Soulstone.' },
-      REMOVE_CURSE: { name:'Remove Curse', providers:[{class:'MAGE'}, {class:'DRUID'}], desc:'Removes a Curse debuff from a friendly target.' },
-      CURE_POISON: { name:'Cure/Abolish Poison', providers:[{class:'DRUID'}, {class:'SHAMAN'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a Poison debuff from a friendly target.' },
-      CURE_DISEASE: { name:'Cure Disease', providers:[{class:'PRIEST'}, {class:'SHAMAN'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a Disease debuff from a friendly target.' },
-      DISPEL_MAGIC: { name:'Dispel Magic', providers:[{class:'PRIEST'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a harmful Magic effect from a friendly target.' },
-      FEAR_BREAK: { name:'Fear Break (Tremor Totem)', providers:[{class:'SHAMAN'}], desc:'Tremor Totem breaks, and grants brief immunity to, Fear/Charm/Sleep effects on nearby party members.' },
-      BLOODLUST: { name:'Bloodlust / Heroism', providers:[{class:'SHAMAN'}], desc:'Raid-wide haste cooldown. Bloodlust (Horde) and Heroism (Alliance) are the same effect under different names.' },
-      INNERVATE: { name:'Innervate', providers:[{class:'DRUID'}], desc:'Restores a large amount of mana to the target over time — usually kept for another healer or self-cast.' },
-      POWER_INFUSION: { name:'Power Infusion', providers:[{class:'PRIEST', spec:'Discipline'}], desc:'Discipline talent. Increases the target\'s spell damage and reduces mana cost for a short time.' },
-      MISDIRECTION: { name:'Misdirection', providers:[{class:'HUNTER'}], desc:'Redirects the hunter\'s threat to another party/raid member for their next few attacks — commonly used to give the tank a head start on pull threat.' },
-    },
-  },
-  classic: null,
-  forever: null,
-};
+// Every piece of version-specific game-rules data (buffs, debuffs, specs, raids, the optimizer's value tables and
+// scoring hooks) is looked up through here, one key per GameVersion. Each ruleset is compiled once at load from the
+// version's data file (js/rules/<version>.js, edited by hand) and the shared catalog (js/rules/catalog.js);
+// activeRules() picks the one for the version in play.
+const Rulesets = {};
 
 // ── RULES DATA COMPILER ─────────────────────────────────────────
 // Rulesets.compile(data, catalog) turns one version's data file (RulesData.tbc / .classic / .forever, js/rules/*.js)
 // plus the shared catalog (RulesData.catalog, js/rules/catalog.js) back into the ruleset shape the app reads from
-// Rulesets.<version>: buffs and debuffs under their old field names (benefitsRoles, value: { tier, who }), the slot
-// tables derived from buffType (totemElements, paladinAuras, shouts, cooldownTotems), the optimizer's value tables
+// Rulesets.<version>: buffs and debuffs under the field names the code reads (benefitsRoles, value: { tier, who }), the
+// slot tables derived from buffType (totemElements, paladinAuras, shouts, cooldownTotems), the optimizer's value tables
 // rebuilt from each buff's `weight` (dpsValue, mitValue, sustainValue) next to dpsWeight / dpsWeightByRole, `rules`
 // (conventions, specAura, spreadProviders, factionLock, exclusiveBuffs as a list of sets, and tankAnchorRank /
-// healerGroupDps / stackPenalty[].match rebuilt as functions from the matcher data), utilities, idealComp (builder
-// functions), blessings, raids, modeConfig and openSlots; specs, raidHelperSpecMap, classList and specIcons come from
-// the catalog. Pure: the inputs are copied, never changed, and nothing outside the returned object is touched (the
-// idealComp builders it returns hand out fresh player uids with nextUid() each time they are called, like IdealComp).
-// Not wired into the app yet (the tables above and below are still the registry; rules-migration-tests.js pins that
-// compile rebuilds them), and non-enumerable on purpose: Rulesets is iterated as the registry of versions
-// (Object.keys / Object.entries), and compile is not one.
+// healerGroupDps / stackPenalty[].match rebuilt as functions from the matcher data), utilities, raids, modeConfig and
+// openSlots; specs, raidHelperSpecMap, classList and specIcons come from the catalog. Pure: the inputs are copied,
+// never changed, and nothing outside the returned object is touched. It throws on data it cannot read faithfully (an
+// unknown buffType, debuffType or scope, a totem without a totemElement, ...), so a bad edit fails at load and in
+// rules-data-tests.js. (The Ideal-comp builders, js/app.js, and the blessing catalog, js/analysis.js, are code and not
+// part of the data.) Non-enumerable on purpose: Rulesets is iterated as the registry of versions (Object.keys /
+// Object.entries), and compile is not one.
 Object.defineProperty(Rulesets, 'compile', {
   enumerable: false,
   value: (function () {
     const copy = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
     const problem = message => new Error(`Rulesets.compile: ${message}`);
+    // The closed vocabularies of the data files (tasks/rules-data-refactor.md); rules-data-tests.js pins the same lists.
+    // debuffType is descriptive only, but a typo in it still fails loudly here instead of staying unnoticed.
+    const BUFF_TYPES = ['totem', 'paladinAura', 'warriorShout', 'passive'];
+    const BUFF_SCOPES = ['party', 'raid'];
+    const DEBUFF_TYPES = [
+      'armor', 'attackPower', 'magicVulnerability', 'physicalVulnerability', 'attackSpeed', 'hitChance',
+      'holyVulnerability', 'healOnHit', 'manaOnHit', 'other',
+    ];
     // The Open-slot `who` of a debuff by the roles it helps (roles sorted and comma-joined).
     const DEBUFF_WHO_BY_ROLES = {
       'melee_dps,ranged_dps': 'physical', ranged_dps: 'ranged', caster_dps: 'caster', tank: 'tank',
@@ -537,7 +181,7 @@ Object.defineProperty(Rulesets, 'compile', {
     };
 
     // weight.dps is one flat map; the optimizer's tables keep three: exact 'CLASS:Spec' keys, bare class names, role
-    // names. Every old entry carries a role map (empty for a buff that is worth nothing to any recipient).
+    // names. Every compiled entry carries a role map (empty for a buff that is worth nothing to any recipient).
     function dpsValueFrom(id, flat, catalog) {
       const value = { role: {} };
       for (const [name, weight] of Object.entries(flat)) {
@@ -553,6 +197,8 @@ Object.defineProperty(Rulesets, 'compile', {
       const out = { buffs: {}, totemElements: {}, paladinAuras: {}, shouts: [], cooldownTotems: [], dpsValue: {}, mitValue: {}, sustainValue: {} };
       for (const [id, entry] of Object.entries(data.buffs || {})) {
         if (!Array.isArray(entry.targetRoles)) throw problem(`${id} has no targetRoles list`);
+        if (!BUFF_TYPES.includes(entry.buffType)) throw problem(`${id} has unknown buffType "${entry.buffType}"`);
+        if (!BUFF_SCOPES.includes(entry.scope)) throw problem(`${id} has unknown scope "${entry.scope}"`);
         const buff = { name: entry.name, sourceClass: entry.sourceClass };
         if (entry.sourceSpec) buff.sourceSpec = entry.sourceSpec;
         if (entry.preferSpec) buff.preferSpec = entry.preferSpec;
@@ -569,8 +215,6 @@ Object.defineProperty(Rulesets, 'compile', {
           out.paladinAuras[id] = true;
         } else if (entry.buffType === 'warriorShout') {
           out.shouts.push(id);
-        } else if (entry.buffType !== 'passive') {
-          throw problem(`${id} has unknown buffType "${entry.buffType}"`);
         }
 
         const weight = entry.weight || {};
@@ -617,6 +261,7 @@ Object.defineProperty(Rulesets, 'compile', {
     function compileDebuffs(debuffs) {
       const out = {};
       for (const [id, entry] of Object.entries(debuffs || {})) {
+        if (!DEBUFF_TYPES.includes(entry.debuffType)) throw problem(`${id} has unknown debuffType "${entry.debuffType}"`);
         const debuff = { name: entry.name, sourceClass: entry.sourceClass };
         if (entry.sourceSpec) debuff.sourceSpec = entry.sourceSpec;
         debuff.desc = entry.desc;
@@ -659,23 +304,6 @@ Object.defineProperty(Rulesets, 'compile', {
       return { rules, modeConfig, openSlots };
     }
 
-    // Reference compositions: seats { class, spec, role } per group; each builder returns fresh player objects.
-    function idealCompFrom(rosters) {
-      const comp = {};
-      for (const [size, groups] of Object.entries(rosters)) {
-        comp[`build${size}Man`] = () => groups.map((group, index) => group.map(seat => ({
-          uid: nextUid(),
-          name: `${seat.spec} ${seat.class.charAt(0)}${seat.class.slice(1).toLowerCase()}`,
-          class: seat.class,
-          spec: seat.spec,
-          role: seat.role,
-          imported: false,
-          groupNumber: index + 1,
-        })));
-      }
-      return comp;
-    }
-
     return function compile(data, catalog) {
       if (!data || typeof data !== 'object') throw new TypeError('Rulesets.compile: the version data is required');
       if (!catalog || typeof catalog !== 'object') throw new TypeError('Rulesets.compile: the catalog is required');
@@ -702,10 +330,15 @@ Object.defineProperty(Rulesets, 'compile', {
       ruleset.sustainValue = buffs.sustainValue;
       ruleset.dpsWeight = copy(data.specDpsWeight || {});
       ruleset.dpsWeightByRole = copy(data.roleDpsWeight || {});
-      if (data.idealComp) ruleset.idealComp = idealCompFrom(copy(data.idealComp));
-      if (data.blessings) ruleset.blessings = copy(data.blessings);
       ruleset.cooldownTotems = buffs.cooldownTotems;
       ruleset.raids = copy(data.raids || {});
+      // Re-create the id-keyed tables as fresh objects. They were filled by keyed stores (out[id] = ...), and V8 turns an
+      // object filled that way into a slow dictionary-mode one once it passes roughly 16-20 keys; Object.entries(Config.Buffs)
+      // in Optimizer.resolveBuffSources (the optimizer's hot loop) then runs about 2.6x slower and Optimize about 1.5x. A
+      // spread copy is a fast-properties object whatever its size, so a hand edit that adds entries cannot bring it back.
+      for (const key of ['buffs', 'debuffs', 'dpsValue', 'mitValue', 'sustainValue', 'totemElements', 'paladinAuras']) {
+        ruleset[key] = { ...ruleset[key] };
+      }
       if (modeConfig) ruleset.modeConfig = modeConfig;
       if (openSlots) ruleset.openSlots = openSlots;
       return ruleset;
@@ -713,225 +346,21 @@ Object.defineProperty(Rulesets, 'compile', {
   })(),
 });
 
-// ── CLASSIC ERA RULESET ─────────────────────────────────────────
-// Buff/debuff numbers and existence are sourced from tasks/research-classic-buffs.md
-// (compiled 2026-09-26). Where that research flags a value UNCONFIRMED, the
-// description below stays qualitative rather than inventing a number.
-// Ids are reused from Rulesets.tbc wherever Classic has the same spell (so the
-// global BuffIcons/BuffAbbreviations/BuffCSSClass/DebuffIcons/DebuffAbbreviations
-// maps in Config need no Classic-specific entries beyond the two brand-new
-// totems below); each ruleset still owns its own desc/value since Classic
-// ranks differ from TBC's (e.g. Leader of the Pack is 3% here, 5% in TBC).
-Rulesets.classic = {
-  buffs: {
-    WINDFURY:          { name:'Windfury Totem',      sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Enchants nearby party members\' main-hand weapons with wind, granting each hit a 20% chance to trigger an extra attack with up to 315 bonus attack power.' },
-    GRACE_OF_AIR:      { name:'Grace of Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by up to 77.' },
-    TRANQUIL_AIR:      { name:'Tranquil Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['caster_dps','healer'], priority:40, desc:'Reduces the threat generated by nearby party members by 20%.' },
-    STRENGTH_OF_EARTH: { name:'Strength of Earth Totem', sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55, desc:'Increases strength of nearby party members by up to 77.' },
-    STONESKIN:         { name:'Stoneskin Totem',     sourceClass:'SHAMAN', benefitsRoles:['tank'], priority:45, desc:'Reduces melee damage taken by nearby party members by up to 30 per hit.' },
-    MANA_SPRING:       { name:'Mana Spring Totem',   sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:{healer:58, caster_dps:48}, desc:'Restores mana to nearby party members every 2 seconds (up to 10 per tick at max rank).' },
-    MANA_TIDE:         { name:'Mana Tide Totem',     sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70, desc:'Restores mana to nearby party members over 12 seconds (rank 1: 170 mana every 3 seconds; higher ranks UNCONFIRMED).' },
-    DEVOTION_AURA:     { name:'Devotion Aura',       sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by up to 735.' },
-    RETRIBUTION_AURA:  { name:'Retribution Aura',    sourceClass:'PALADIN', benefitsRoles:['tank','melee_dps'], priority:30, desc:'Causes Holy damage to any enemy that strikes nearby party members in melee.' },
-    CONCENTRATION_AURA:{ name:'Concentration Aura',  sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Gives nearby party members a 35% chance to resist interruption from damage while casting.' },
-    SANCTITY_AURA:     { name:'Sanctity Aura',       sourceClass:'PALADIN', sourceSpec:'Retribution', benefitsRoles:['melee_dps','ranged_dps','caster_dps','tank'], priority:{melee_dps:80, ranged_dps:80, caster_dps:80, tank:40}, desc:'Increases Holy damage done by nearby party members by 10%.' },
-    BATTLE_SHOUT:      { name:'Battle Shout',        sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members for 2 minutes. Party-only in Classic Era; exact rank value UNCONFIRMED.' },
-    TRUESHOT_AURA:     { name:'Trueshot Aura',       sourceClass:'HUNTER', sourceSpec:'Marksmanship', benefitsRoles:['melee_dps','ranged_dps'], priority:62, desc:'Increases attack power of nearby party members. Exact value UNCONFIRMED.' },
-    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',  sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:78, tank:65}, desc:'Increases melee and ranged critical strike chance of nearby party members by 3%.' },
-    MOONKIN_AURA:      { name:'Moonkin Aura',        sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['caster_dps'], priority:72, desc:'Increases spell critical strike chance of nearby party members by 3%.' },
-    BLOOD_PACT:        { name:'Blood Pact',          sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases max health of nearby party members (Wowhead Classic: +38 Stamina).' },
-  },
-  // Debuffs applied to the enemy target — same non-stacking-slot model as
-  // Rulesets.tbc.debuffs (competesWith/supersededBy), Classic Era numbers.
-  debuffs: {
-    JUDGEMENT_CRUSADER: { name:'Judgement of the Crusader', sourceClass:'PALADIN', sourceSpec:'Retribution', desc:'Increases Holy damage taken by the target by 30. Improved Seal of the Crusader also grants attackers +3% critical strike chance against it.' },
-    JUDGEMENT_LIGHT:     { name:'Judgement of Light',       sourceClass:'PALADIN', desc:'Melee attackers have a chance to heal themselves. Exact value UNCONFIRMED.' },
-    JUDGEMENT_WISDOM:    { name:'Judgement of Wisdom',      sourceClass:'PALADIN', desc:'Attacks and spells against the target have a chance to restore mana. Exact value UNCONFIRMED.' },
-    SUNDER_ARMOR:        { name:'Sunder Armor',             sourceClass:'WARRIOR', desc:'Reduces the target\'s armor by up to 900 (5 stacks of 180).', competesWith:['EXPOSE_ARMOR'] },
-    DEMORALIZING_SHOUT:  { name:'Demoralizing Shout',       sourceClass:'WARRIOR', desc:'Reduces the target\'s melee attack power. Exact value UNCONFIRMED (community estimate ~140).', competesWith:['DEMORALIZING_ROAR','CURSE_WEAKNESS'] },
-    THUNDER_CLAP:        { name:'Thunder Clap',             sourceClass:'WARRIOR', desc:'Reduces the target\'s attack speed by 10% (20% with Improved Thunder Clap).' },
-    EXPOSE_ARMOR:        { name:'Expose Armor',             sourceClass:'ROGUE', desc:'Reduces the target\'s armor by 1700 at 5 combo points (2550 with Improved Expose Armor).', competesWith:['SUNDER_ARMOR'] },
-    FAERIE_FIRE_BALANCE: { name:'Faerie Fire',               sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s armor by 505.' },
-    FAERIE_FIRE_FERAL:   { name:'Faerie Fire (Feral)',       sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s armor by 505. Same debuff as Faerie Fire.', supersededBy:'FAERIE_FIRE_BALANCE' },
-    DEMORALIZING_ROAR:   { name:'Demoralizing Roar',         sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s melee attack power. Exact value UNCONFIRMED (community estimate ~140).', competesWith:['DEMORALIZING_SHOUT','CURSE_WEAKNESS'] },
-    INSECT_SWARM:        { name:'Insect Swarm',              sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s chance to hit by 2%.' },
-    CURSE_RECKLESSNESS:  { name:'Curse of Recklessness',     sourceClass:'WARLOCK', desc:'Increases melee attack power by 90 but reduces armor by 640.', competesWith:['CURSE_ELEMENTS','CURSE_WEAKNESS'] },
-    CURSE_ELEMENTS:      { name:'Curse of the Elements',     sourceClass:'WARLOCK', desc:'Reduces resistance to Fire and Frost by 75 and increases Fire/Frost damage taken by 10%. Fire and Frost only in Classic Era.', competesWith:['CURSE_RECKLESSNESS','CURSE_WEAKNESS'] },
-    CURSE_WEAKNESS:      { name:'Curse of Weakness',         sourceClass:'WARLOCK', desc:'Reduces the target\'s melee damage dealt. Exact value UNCONFIRMED; shares a debuff slot with Demoralizing Shout/Roar.', competesWith:['CURSE_ELEMENTS','CURSE_RECKLESSNESS','DEMORALIZING_SHOUT','DEMORALIZING_ROAR'] },
-    WINTERS_CHILL:       { name:'Winter\'s Chill',           sourceClass:'MAGE', sourceSpec:'Frost', desc:'Increases the target\'s chance to be critically hit by Frost spells by up to 10% (5 stacks).' },
-    IMPROVED_SCORCH:     { name:'Improved Scorch',           sourceClass:'MAGE', sourceSpec:'Fire', desc:'Increases Fire damage taken by the target by up to 15% (5 stacks).' },
-    SHADOW_WEAVING:      { name:'Shadow Weaving',            sourceClass:'PRIEST', sourceSpec:'Shadow', desc:'Increases Shadow damage taken by the target by up to 15% (5 stacks of 3%).' },
-    STORMSTRIKE:         { name:'Stormstrike',                sourceClass:'SHAMAN', sourceSpec:'Enhancement', desc:'Increases Nature damage taken by the target by 20% for the next 2 hits. Enhancement Shaman is Horde-only in Classic Era.' },
-  },
-  specs: Rulesets.tbc.specs,
-  raidHelperSpecMap: Rulesets.tbc.raidHelperSpecMap,
-  classList: Rulesets.tbc.classList,
-  specIcons: Rulesets.tbc.specIcons,
-  // Totem/aura exclusivity — same shape as TBC's, minus the elements/auras
-  // that don't exist in Classic Era (Wrath of Air, Totem of Wrath).
-  totemElements: {
-    WINDFURY:'air', GRACE_OF_AIR:'air', TRANQUIL_AIR:'air',
-    STRENGTH_OF_EARTH:'earth', STONESKIN:'earth',
-    MANA_SPRING:'water', MANA_TIDE:'water',
-  },
-  paladinAuras: { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true, SANCTITY_AURA:true },
-  bestAirTotem: { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'TRANQUIL_AIR', healer:'TRANQUIL_AIR' },
-  bestPaladinAura: { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' },
-  rules: {
-    // Warrior is the premier tank on both factions; Prot Paladin is a rare
-    // off-tank and only possible on Alliance (faction lock below).
-    tankAnchorRank: p => p.class === 'WARRIOR' ? 0 : p.class === 'PALADIN' ? 1 : 2,
-    meleeWantsWindfury: true,      // gated off for Alliance rosters — see Faction.current() call sites
-    ferociousInspiration: false,   // Ferocious Inspiration does not exist in Classic Era
-    specAura: { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA', Holy: 'CONCENTRATION_AURA' },
-    // Classic Era faction lock: Shaman = Horde only, Paladin = Alliance only.
-    // Gates the Windfury structural penalty, the missing-buff insight list,
-    // random-roster generation and the ideal-comp Horde/Alliance pick.
-    factionLock: true,
-    // Classes whose buff is a single-point-of-failure per group (Shaman
-    // Windfury/totems, Paladin auras, Feral Leader of the Pack) — spread one
-    // per group instead of letting two stack in one group while another has
-    // none. See Optimizer.spreadProviders(). Only one of SHAMAN/PALADIN is
-    // ever actually present under the faction lock above, so listing both is
-    // harmless — whichever class has no members in the roster is a no-op.
-    spreadProviders: [{ class: 'SHAMAN' }, { class: 'PALADIN' }, { class: 'DRUID', spec: 'Feral' }],
-    // Structural nudge (see Optimizer.groupScore's buffValue) so a melee
-    // group's shaman actually drops Windfury instead of losing the per-element
-    // totem choice to Grace of Air when the group also holds several hunters.
-    // TBC has no such value (undefined = no-op) because its DPS_VALUE/
-    // DPS_WEIGHT tables were tuned, and its scenario suite pinned, without it.
-    meleeGroupWindfuryBias: 8,
-  },
-  // Same shape as Rulesets.tbc.utilities, with the Classic-Era differences:
-  // Tranquilizing Shot exists here (Magmadar/Flamegor/Huhuran/Chromaggus
-  // enrage removal) and neither Bloodlust/Heroism nor Misdirection exist yet
-  // (both are TBC-only). Faction-locked providers (SHAMAN/PALADIN) are
-  // filtered per-roster by Readiness._factionFilteredProviders(), not here.
-  utilities: {
-    BATTLE_REZ: { name:'Battle Resurrection', providers:[{class:'DRUID', note:'Rebirth'}, {class:'WARLOCK', note:'Soulstone — must be pre-cast before the pull'}], desc:'Revives a fallen raid member mid-encounter, or lets one pre-flagged player self-resurrect once via a pre-pull Soulstone.' },
-    REMOVE_CURSE: { name:'Remove Curse', providers:[{class:'MAGE'}, {class:'DRUID'}], desc:'Removes a Curse debuff from a friendly target.' },
-    CURE_POISON: { name:'Cure/Abolish Poison', providers:[{class:'DRUID'}, {class:'SHAMAN'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a Poison debuff from a friendly target.' },
-    CURE_DISEASE: { name:'Cure Disease', providers:[{class:'PRIEST'}, {class:'SHAMAN'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a Disease debuff from a friendly target.' },
-    DISPEL_MAGIC: { name:'Dispel Magic', providers:[{class:'PRIEST'}, {class:'PALADIN', note:'Cleanse'}], desc:'Removes a harmful Magic effect from a friendly target.' },
-    FEAR_BREAK: { name:'Fear Break (Tremor Totem)', providers:[{class:'SHAMAN'}], desc:'Tremor Totem breaks, and grants brief immunity to, Fear/Charm/Sleep effects on nearby party members.' },
-    TRANQ_SHOT: { name:'Tranquilizing Shot', providers:[{class:'HUNTER'}], desc:'Removes one Enrage effect and one Magic effect from the target. Required for Magmadar, Flamegor, Princess Huhuran and Chromaggus.' },
-    INNERVATE: { name:'Innervate', providers:[{class:'DRUID'}], desc:'Restores a large amount of mana to the target over time — usually kept for another healer or self-cast.' },
-    POWER_INFUSION: { name:'Power Infusion', providers:[{class:'PRIEST', spec:'Discipline'}], desc:'Discipline talent. Increases the target\'s spell damage and reduces mana cost for a short time.' },
-  },
-};
+// The rulesets, compiled once at load (registry order: tbc, classic, forever).
+Rulesets.tbc = Rulesets.compile(RulesData.tbc, RulesData.catalog);
+Rulesets.classic = Rulesets.compile(RulesData.classic, RulesData.catalog);
+Rulesets.forever = Rulesets.compile(RulesData.forever, RulesData.catalog);
 
-// ── WOW FOREVER RULESET ─────────────────────────────────────────
-// Vanilla/Classic Era baseline (no new classes or specs — the six new
-// race/class combos and the Skyborne race only widen WHO can play a class,
-// never WHAT a class does), with the Forever deltas confirmed on 2026-10-10
-// against beta build 1.60.1.70338 layered on. Source: tasks/research-forever.md,
-// "Audit 2026-10-10", which supersedes the 09-26 browser pass. Deltas modeled here:
-//   - No faction lock: six new race/class combos put Paladin and Shaman on
-//     both factions (`rules.factionLock: false`).
-//   - Tranquil Air Totem, Wrath of Air Totem and Totem of Wrath do not exist
-//     (omitted from `buffs` and `totemElements`).
-//   - Windfury Totem is a party-wide buff, no longer a weapon enchant, and its
-//     procs work in Cat/Bear form (Blizzard 09-30 and 10-07); a party gets only
-//     one of Windfury / Grace of Air / Flametongue even from two shamans
-//     (`rules.exclusiveBuffs`). `preferSpec: 'Enhancement'` is kept on purpose
-//     as a placement convention (keep melee together), not a value claim:
-//     every shaman spec drops the same totem.
-//   - Trueshot Aura is the Marksmanship 21-point talent and buffs ranged
-//     attack power only (`sourceSpec`, `benefitsRoles`).
-//   - Leader of the Pack and Moonkin Aura are the same +3% all-school crit
-//     aura and mutually exclusive (`rules.exclusiveBuffs`).
-//   - Sanctity Aura and Improved Devotion/Retribution/Concentration Aura were
-//     removed; auras carry no healing-taken rider.
-//   - Faerie Fire is one baseline spell for every Druid spec (castable in
-//     forms); it does not stack with Curse of Recklessness.
-//   - Debuffs list only confirmed raid debuffs. Personal-only effects are left
-//     out on purpose: Shadow Weaving, Winter's Chill, Improved Scorch, Improved
-//     Shadow Bolt, Hemorrhage, Stormstrike ("from the caster" auras); Mangle is
-//     now Primal Bite without a debuff; Curse of Shadows is gone.
-//   - Known gaps, not modeled yet: hunter pet effects (Wolf Furious Howl party
-//     AP, Tallstrider armor, Carrion Bird AP; need a per-player pet tag),
-//     Flametongue Totem, Healing Stream Totem, Vampiric Embrace, Vindication.
-Rulesets.forever = {
-  buffs: {
-    WINDFURY:          { name:'Windfury Totem',      sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Party-wide buff in Forever (no longer a weapon enchant): each main-hand hit has a 20% chance to grant an extra attack with 246 extra attack power. Works in Cat and Bear form. A party has only one of Windfury, Grace of Air and Flametongue Totem, even from two shamans. Party, 30 yards, 5 min.' },
-    GRACE_OF_AIR:      { name:'Grace of Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by 89. Not active alongside Windfury Totem in the same party. Party, 30 yards.' },
-    STRENGTH_OF_EARTH: { name:'Strength of Earth Totem', sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55, desc:'Increases strength of nearby party members by 53. Party, 30 yards.' },
-    STONESKIN:         { name:'Stoneskin Totem',     sourceClass:'SHAMAN', benefitsRoles:['tank'], priority:45, desc:'Reduces Physical damage taken by nearby party members by 30 per hit. Party, 30 yards.' },
-    MANA_SPRING:       { name:'Mana Spring Totem',   sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:{healer:58, caster_dps:48}, desc:'Restores 10 mana every 2 seconds to nearby party members. Group, 30 yards.' },
-    MANA_TIDE:         { name:'Mana Tide Totem',     sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70, desc:'Restores 290 mana every 3 seconds to nearby party members for 12 seconds (rank 3; 5 min cooldown). The 16-point Restoration talent. Group, 30 yards.' },
-    DEVOTION_AURA:     { name:'Devotion Aura',       sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by 735. Party, 30 yards.' },
-    RETRIBUTION_AURA:  { name:'Retribution Aura',    sourceClass:'PALADIN', benefitsRoles:['tank','melee_dps'], priority:30, desc:'Causes 20 Holy damage (plus 6% of the paladin\'s spell power) to any enemy that strikes nearby party members in melee. Party, 30 yards.' },
-    CONCENTRATION_AURA:{ name:'Concentration Aura',  sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Gives nearby party members a 35% chance to resist interruption from damage while casting. Party, 30 yards.' },
-    BATTLE_SHOUT:      { name:'Battle Shout',        sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases melee attack power of nearby party members by 139 for 3 minutes (melee only; hunters gain nothing). Party, 20 yards (30 with Booming Voice), not raid-wide.' },
-    TRUESHOT_AURA:     { name:'Trueshot Aura',       sourceClass:'HUNTER', sourceSpec:'Marksmanship', benefitsRoles:['ranged_dps'], priority:62, desc:'Marksmanship talent (21-point, row 4); higher ranks are trained once the talent is known. Increases ranged attack power of nearby party members by 75 at rank 4 (the level-60 rank 5 reads 50 in the beta). Ranged attack power only. Party, 45 yards.' },
-    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',  sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps','ranged_dps','caster_dps'], priority:{melee_dps:78, ranged_dps:78, caster_dps:70, tank:65}, desc:'Feral 21-point talent. While in Cat, Bear or Dire Bear Form, increases critical strike chance (melee, ranged and spell) of nearby party members by 3%. Mutually exclusive with Moonkin Aura — a group with both only benefits from one. Party, 45 yards.' },
-    MOONKIN_AURA:      { name:'Moonkin Aura',        sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['tank','melee_dps','ranged_dps','caster_dps'], priority:{caster_dps:72, melee_dps:60, ranged_dps:60, tank:50}, desc:'While in Moonkin Form, increases critical strike chance (melee, ranged and spell) of nearby party members by 3%. Mutually exclusive with Leader of the Pack — a group with both only benefits from one. Party, 45 yards.' },
-    BLOOD_PACT:        { name:'Blood Pact',          sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases Stamina of nearby party members by 54 (via the Imp; Improved Imp no longer scales it). Party, 30 yards.' },
-  },
-  debuffs: {
-    SUNDER_ARMOR:        { name:'Sunder Armor',              sourceClass:'WARRIOR', desc:'Reduces the target\'s armor by 450 per stack, up to 5 stacks (2250 total). Shares its slot with Expose Armor; the stronger effect stays.', competesWith:['EXPOSE_ARMOR'] },
-    EXPOSE_ARMOR:        { name:'Expose Armor',              sourceClass:'ROGUE', desc:'Reduces the target\'s armor by 450 per combo point (2250 at 5), the same as five Sunder Armor stacks. Shares the slot with Sunder Armor.', competesWith:['SUNDER_ARMOR'] },
-    FAERIE_FIRE:         { name:'Faerie Fire',               sourceClass:'DRUID', desc:'Reduces the target\'s armor by 505 for 40 seconds. Baseline for every Druid spec and castable in Cat, Bear and Dire Bear form. Does not stack with Curse of Recklessness.', competesWith:['CURSE_RECKLESSNESS'] },
-    HUNTERS_MARK:        { name:'Hunter\'s Mark',            sourceClass:'HUNTER', desc:'Increases the ranged attack power of all attackers against the target by 71 for 2 minutes (Improved Hunter\'s Mark is baseline). Ranged attack power only.', value:{ tier:3, who:'ranged' } },
-    DEMORALIZING_SHOUT:  { name:'Demoralizing Shout',        sourceClass:'WARRIOR', desc:'Reduces the target\'s melee attack power by 210 for 45 seconds.', competesWith:['DEMORALIZING_ROAR'] },
-    DEMORALIZING_ROAR:   { name:'Demoralizing Roar',          sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the melee attack power of nearby enemies by 207 for 30 seconds (Bear form; equal to Demoralizing Shout at 60).', competesWith:['DEMORALIZING_SHOUT'] },
-    INSECT_SWARM:        { name:'Insect Swarm',              sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s chance to hit by 2% for 12 seconds (16-point Balance talent).' },
-    THUNDER_CLAP:        { name:'Thunder Clap',              sourceClass:'WARRIOR', desc:'Increases the time between the target\'s attacks by 20% for 30 seconds (up to 4 targets).' },
-    CURSE_ELEMENTS:      { name:'Curse of the Elements',      sourceClass:'WARLOCK', desc:'Increases all magic damage taken by 10% and reduces all magic resistances by 75 for 5 minutes. One curse per warlock on a target (Curse of Shadows no longer exists).', competesWith:['CURSE_RECKLESSNESS'] },
-    CURSE_RECKLESSNESS:  { name:'Curse of Recklessness',      sourceClass:'WARLOCK', desc:'Reduces the target\'s armor by 505 for 2 minutes (no attack power effect in Forever). Does not stack with Faerie Fire.', competesWith:['CURSE_ELEMENTS','FAERIE_FIRE'] },
-    JUDGEMENT_CRUSADER:  { name:'Judgement of the Crusader',  sourceClass:'PALADIN', desc:'Increases Holy damage taken by the target by 161 for 40 seconds, refreshed by the paladin\'s melee hits. Judgement no longer consumes the Seal; one Judgement per paladin on a target.' },
-    JUDGEMENT_LIGHT:     { name:'Judgement of Light',        sourceClass:'PALADIN', desc:'Melee attacks against the target have a chance to heal the attacker for 61. 40 seconds.' },
-    JUDGEMENT_WISDOM:    { name:'Judgement of Wisdom',       sourceClass:'PALADIN', desc:'Attacks and spells against the target have a chance to restore 59 mana to the attacker. 40 seconds.' },
-  },
-  specs: Rulesets.tbc.specs,
-  raidHelperSpecMap: Rulesets.tbc.raidHelperSpecMap,
-  classList: Rulesets.tbc.classList,
-  specIcons: Rulesets.tbc.specIcons,
-  // No Tranquil Air (absent), no Wrath of Air/Totem of Wrath (absent) — only
-  // the four totem elements that still exist in Forever.
-  totemElements: {
-    WINDFURY:'air', GRACE_OF_AIR:'air',
-    STRENGTH_OF_EARTH:'earth', STONESKIN:'earth',
-    MANA_SPRING:'water', MANA_TIDE:'water',
-  },
-  paladinAuras: { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true },
-  // No Tranquil Air exists for casters/healers to fall back to — Grace of Air
-  // (agility) is the only other air totem, so it's the least-bad default.
-  bestAirTotem: { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'GRACE_OF_AIR', healer:'GRACE_OF_AIR' },
-  bestPaladinAura: { tank:'DEVOTION_AURA', melee_dps:'RETRIBUTION_AURA', ranged_dps:'CONCENTRATION_AURA', caster_dps:'CONCENTRATION_AURA', healer:'CONCENTRATION_AURA' },
-  rules: {
-    // Both Warrior and Paladin tank on either faction now; Warrior stays the
-    // conventional premier tank (vanilla baseline unchanged), Paladin a
-    // strong and now cross-faction off-tank.
-    tankAnchorRank: p => p.class === 'WARRIOR' ? 0 : p.class === 'PALADIN' ? 1 : 2,
-    meleeWantsWindfury: true,     // Shaman exists on both factions — no faction gate needed
-    ferociousInspiration: false,  // TBC-only Beast Mastery talent; does not exist in Forever
-    // Sanctity Aura no longer exists, so a Ret paladin's own aura is Retribution Aura;
-    // specAura only breaks value ties between equally valued auras.
-    specAura: { Retribution: 'RETRIBUTION_AURA', Protection: 'DEVOTION_AURA', Holy: 'CONCENTRATION_AURA' },
-    // No faction lock: the six new race/class combos put Paladin and Shaman
-    // on both factions, so a raid can field both totems and auras, and a
-    // mixed shaman+paladin roster is normal rather than a data problem.
-    factionLock: false,
-    // Same single-point-of-failure spreading as Classic (Optimizer.spreadProviders/
-    // _spreadPass), plus the Feral/Balance druid crit auras — now mutually
-    // exclusive with each other (see exclusiveBuffs below), so a group needs
-    // exactly one crit-aura druid, not one of each. The array form of `spec`
-    // groups Feral and Balance together for _spreadPass's matcher (one druid
-    // of either spec already satisfies a group; a second of either is surplus).
-    spreadProviders: [{ class: 'SHAMAN' }, { class: 'PALADIN' }, { class: 'DRUID', spec: ['Feral', 'Balance'] }],
-    // Same Windfury-over-Grace-of-Air structural nudge as Classic — see
-    // Rulesets.classic.rules.meleeGroupWindfuryBias for the full rationale.
-    meleeGroupWindfuryBias: 8,
-    // Buff ids that occupy one shared slot per group — resolveGroupBuffs and
-    // getGroupBuffs keep only the higher-value member of each listed set.
-    // Leader of the Pack / Moonkin Aura are one crit aura. Windfury / Grace of Air are one air totem
-    // per party (Blizzard 10-07: "Parties cannot benefit from this totem at the same time as Grace
-    // of Air or Flametongue Totem"; dev notes 09-24: no stacking "even if used by different Shamans
-    // in the same group"), so a second shaman in a group adds only earth/water totems.
-    exclusiveBuffs: [['LEADER_OF_THE_PACK', 'MOONKIN_AURA'], ['WINDFURY', 'GRACE_OF_AIR']],
-  },
+// Version profiles: what the version picker shows and where a plan starts. A version's raids are the keys of its
+// ruleset's `raids` (its data file), in picker order. `modeled` is derived below from Rulesets - a version is modeled
+// iff it has one.
+const GameVersions = {
+  tbc: { name:'WoW TBC', defaultRaid:'bt', raids:Object.keys(Rulesets.tbc.raids), note:'TBC party buffs and optimization rules.' },
+  classic: { name:'WoW Classic', defaultRaid:'mc', raids:Object.keys(Rulesets.classic.raids), note:'WoW Classic Era party buffs, composition and optimizer rules. Faction-aware: Horde shamans, Alliance paladins.' },
+  forever: { name:'WoW Forever (Beta)', defaultRaid:'f_ony', raids:Object.keys(Rulesets.forever.raids), note:'Rules follow WoW Forever beta data as of 2026-10-10 (build 1.60.1.70338): Paladin and Shaman on both factions (no faction lock), Trueshot Aura a Marksmanship talent, one Faerie Fire for every Druid, Leader of the Pack/Moonkin Aura one exclusive crit buff, one air totem per party, Sanctity Aura removed, and the confirmed Barrow Deeps/Hyjal Summit/Onyxia\'s Lair raids.' },
 };
+// Raid ids are unique across versions (Classic's Onyxia is `ony`, Forever's `f_ony`; rules-data-tests.js checks it).
+Object.assign(Config.Raids, Rulesets.tbc.raids, Rulesets.classic.raids, Rulesets.forever.raids);
 
 const EMPTY_RULESET = {
   buffs: {}, debuffs: {}, totemElements: {}, paladinAuras: {}, bestAirTotem: {}, bestPaladinAura: {},
@@ -961,20 +390,6 @@ for (const version of Object.keys(GameVersions)) {
   Object.defineProperty(GameVersions[version], 'modeled', { get: () => !!Rulesets[version] });
 }
 
-Object.defineProperties(Config, {
-  Buffs: {get() { return activeRules().buffs || {}; }},
-  Debuffs: {get() { return activeRules().debuffs || {}; }},
-  RaidOrder: {get() { return GameVersions[State.gameVersion].raids; }},
-  // Classic/Forever have no spec/class differences modeled yet — fall back
-  // to the TBC baseline (existing behavior for every unmodeled version).
-  Specs: {get() { return activeRules().specs || Rulesets.tbc.specs; }},
-  RaidHelperSpecMap: {get() { return activeRules().raidHelperSpecMap || Rulesets.tbc.raidHelperSpecMap; }},
-  // Utility checklist (Battle Rez, cleanses, Bloodlust, ...) — see
-  // Rulesets.tbc.utilities / Rulesets.classic.utilities. Any ruleset without
-  // its own table yet (e.g. Forever) borrows Classic's rather than showing an
-  // empty "Utility" section.
-  Utilities: {get() { return activeRules().utilities || Rulesets.classic.utilities; }},
-});
 function versionForRaid(raid) {
   return Object.keys(GameVersions).find(v => GameVersions[v].raids.includes(raid));
 }
