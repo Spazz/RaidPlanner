@@ -5,18 +5,19 @@
  * Same vm loader pattern as classic-tests.js: the logic half of index.html's
  * <script> is executed in a sandboxed context and the pieces under test are
  * pulled out through globalThis.api. Covers the Phase C Forever ruleset
- * (tasks/research-forever.md "Browser verification" section): Tranquil Air
- * (and Wrath of Air/Totem of Wrath) absence, Trueshot Aura baseline on every
- * Hunter spec, the Leader of the Pack/Moonkin Aura exclusive crit slot, no
- * faction lock (mixed Shaman+Paladin rosters are normal), the three real
- * raids, provider-spread across all 4 optimizer modes, overflow-optimize
- * idempotence, and a save/share round trip — plus Classic/TBC spot-checks to
- * prove nothing regressed.
+ * (tasks/research-forever.md "Browser verification" section, corrected by its
+ * "Audit 2026-10-10"): Tranquil Air (and Wrath of Air/Totem of Wrath) absence,
+ * Trueshot Aura a Marksmanship talent (ranged only), Sanctity Aura removed, one
+ * Faerie Fire, one air totem per party, the Leader of the Pack/Moonkin Aura
+ * exclusive crit slot, no faction lock (mixed Shaman+Paladin rosters are
+ * normal), the three real raids, provider-spread across all 4 optimizer modes,
+ * overflow-optimize idempotence, and a save/share round trip — plus
+ * Classic/TBC spot-checks to prove nothing regressed.
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'Optimizer', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidDebuffCoverage', 'Faction', 'enforceRaidCapacity', 'nextUid']);
-const {State,Config,GameVersions,Rulesets,Import,Optimizer,getGroupBuffs,getMissingBuffInsights,getRaidDebuffCoverage,Faction,enforceRaidCapacity,nextUid} = ctx.api;
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'Optimizer', 'OpenSlots', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidDebuffCoverage', 'Faction', 'enforceRaidCapacity', 'nextUid', 'dpsValueFor']);
+const {State,Config,GameVersions,Rulesets,Import,Optimizer,OpenSlots,getGroupBuffs,getMissingBuffInsights,getRaidDebuffCoverage,Faction,enforceRaidCapacity,nextUid,dpsValueFor} = ctx.api;
 
 function mk(cls, spec, role) {
   return { uid: nextUid(), name: cls + '-' + spec, class: cls, spec, role, imported: false };
@@ -87,16 +88,19 @@ check('Forever has no Shadow Weaving/Stormstrike/Winter\'s Chill/Improved Scorch
   assert(Rulesets.forever.debuffs.CURSE_ELEMENTS, 'Curse of the Elements should still exist');
 });
 
-// ── 2. Trueshot Aura is baseline for every Hunter spec ──
-check('Trueshot Aura has no sourceSpec restriction (baseline for every Hunter)', () => {
-  assert(!Rulesets.forever.buffs.TRUESHOT_AURA.sourceSpec, 'Trueshot Aura must not be spec-gated in Forever');
+// ── 2. Trueshot Aura is a Marksmanship talent ──
+check('Trueshot Aura is a Marksmanship talent that buffs ranged attack power only', () => {
+  const trueshot = Rulesets.forever.buffs.TRUESHOT_AURA;
+  assert.equal(trueshot.sourceSpec, 'Marksmanship', 'Trueshot Aura must be Marksmanship-gated in Forever');
+  assert.deepEqual([...trueshot.benefitsRoles], ['ranged_dps']);
 });
-check('A non-Marksmanship Hunter provides Trueshot Aura', () => {
+check('Only a Marksmanship Hunter provides Trueshot Aura', () => {
   State.gameVersion = 'forever';
   State.selectedRaid = 'f_ony';
-  const group = numberGroups([[mk('HUNTER', 'Survival', 'ranged_dps'), mk('WARRIOR', 'Fury', 'melee_dps')]])[0];
-  const buffIds = getGroupBuffs(group, 0).map(b => b.id);
-  assert(buffIds.includes('TRUESHOT_AURA'), 'Survival Hunter should still provide Trueshot Aura');
+  const survivalGroup = numberGroups([[mk('HUNTER', 'Survival', 'ranged_dps'), mk('WARRIOR', 'Fury', 'melee_dps')]])[0];
+  assert(!getGroupBuffs(survivalGroup, 0).map(b => b.id).includes('TRUESHOT_AURA'), 'a Survival Hunter does not provide Trueshot Aura');
+  const marksmanshipGroup = numberGroups([[mk('HUNTER', 'Marksmanship', 'ranged_dps'), mk('WARRIOR', 'Fury', 'melee_dps')]])[0];
+  assert(getGroupBuffs(marksmanshipGroup, 0).map(b => b.id).includes('TRUESHOT_AURA'), 'a Marksmanship Hunter provides Trueshot Aura');
 });
 
 // ── 3. Leader of the Pack + Moonkin Aura share one exclusive crit slot ──
@@ -266,6 +270,90 @@ check('TBC ruleset is untouched by the Forever ruleset addition', () => {
   State.roster = State.groups.flat();
   Optimizer.optimize();
   assert(State.groups.flat().length <= 25);
+});
+
+// ── 10. Beta data refresh (tasks/research-forever.md, "Audit 2026-10-10") ──
+// A lone group is scored on its own in the one supported strategy, so these
+// checks do not depend on what earlier checks left in State.
+const groupBuffs = group => getGroupBuffs(group, 0, [group], 'max_dps');
+
+check('Sanctity Aura does not exist in Forever', () => {
+  State.gameVersion = 'forever';
+  State.selectedRaid = 'f_ony';
+  assert(!Rulesets.forever.buffs.SANCTITY_AURA, 'Sanctity Aura must not be a Forever buff');
+  assert(!Rulesets.forever.paladinAuras.SANCTITY_AURA, 'Sanctity Aura must not be a Forever paladin aura');
+  assert.equal(Rulesets.forever.rules.specAura.Retribution, 'RETRIBUTION_AURA', 'a Ret paladin breaks aura ties toward Retribution Aura');
+  assert.equal(Rulesets.forever.dpsValue.SANCTITY_AURA, undefined, 'a removed buff has no DPS value');
+  assert.equal(Rulesets.forever.sustainValue.SANCTITY_AURA, undefined, 'a removed buff has no sustain value');
+  const group = numberGroups([[mk('PALADIN', 'Retribution', 'melee_dps'), mk('WARRIOR', 'Fury', 'melee_dps'), mk('ROGUE', 'Combat', 'melee_dps')]])[0];
+  const paladinBuffs = groupBuffs(group).filter(b => b.sourceClass === 'PALADIN');
+  assert.equal(paladinBuffs.length, 1, 'a Ret paladin still runs exactly one aura');
+});
+check('One Faerie Fire for every Druid spec', () => {
+  State.gameVersion = 'forever';
+  State.selectedRaid = 'f_ony';
+  const { debuffs } = Rulesets.forever;
+  assert(debuffs.FAERIE_FIRE, 'Forever has a single Faerie Fire');
+  assert.equal(debuffs.FAERIE_FIRE.sourceSpec, undefined, 'Faerie Fire is not spec-gated');
+  assert(!debuffs.FAERIE_FIRE_FERAL && !debuffs.FAERIE_FIRE_BALANCE, 'the Feral/Balance Faerie Fire split is gone');
+  assert(getRaidDebuffCoverage([[mk('DRUID', 'Restoration', 'healer')]]).has('FAERIE_FIRE'), 'any Druid spec covers Faerie Fire');
+  assert(debuffs.CURSE_RECKLESSNESS.competesWith.includes('FAERIE_FIRE'), 'Curse of Recklessness does not stack with Faerie Fire');
+  assert(debuffs.FAERIE_FIRE.competesWith.includes('CURSE_RECKLESSNESS'), 'and Faerie Fire does not stack with it');
+  assert(Config.DebuffAbbreviations.FAERIE_FIRE && Config.DebuffIcons.FAERIE_FIRE, 'the debuff catalog can draw it (abbreviation and icon)');
+});
+check('Two shamans in one party are credited with one air totem', () => {
+  State.gameVersion = 'forever';
+  State.selectedRaid = 'f_ony';
+  const enhancement = mk('SHAMAN', 'Enhancement', 'melee_dps');
+  const restoration = mk('SHAMAN', 'Restoration', 'healer');
+  const group = numberGroups([[enhancement, restoration, mk('WARRIOR', 'Fury', 'melee_dps'), mk('ROGUE', 'Combat', 'melee_dps'), mk('WARRIOR', 'Arms', 'melee_dps')]])[0];
+  const buffs = groupBuffs(group);
+  const buffIds = buffs.map(b => b.id);
+  assert(buffIds.includes('WINDFURY'), 'the party gets Windfury');
+  assert(!buffIds.includes('GRACE_OF_AIR'), 'the second shaman adds no second air totem');
+  assert(buffIds.includes('STRENGTH_OF_EARTH') && buffIds.includes('MANA_SPRING'), 'the shamans still add earth and water totems');
+  for (const shaman of [enhancement, restoration]) {
+    assert(buffs.some(b => b.sourceUid === shaman.uid), `${shaman.name} is credited with some buff`);
+  }
+});
+check('Windfury is worth something to a Feral in Forever', () => {
+  const feral = mk('DRUID', 'Feral', 'melee_dps');
+  try {
+    State.gameVersion = 'forever';
+    assert(dpsValueFor('WINDFURY', feral) > 0, 'Windfury procs work in Cat form, so a Forever Feral wants the totem');
+    assert(Rulesets.forever.mitValue.WINDFURY['DRUID:Feral'] > 0, 'and so does a Feral tank');
+    State.gameVersion = 'classic';
+    assert.equal(dpsValueFor('WINDFURY', feral), 0, 'Classic Windfury is a weapon enchant a Feral cannot use');
+    assert.equal(Rulesets.classic.mitValue.WINDFURY['DRUID:Feral'], 0, 'Classic stays untouched for a Feral tank too');
+  } finally {
+    State.gameVersion = 'forever';
+  }
+});
+check('Battle Shout benefits melee only in Forever', () => {
+  const roles = Rulesets.forever.buffs.BATTLE_SHOUT.benefitsRoles;
+  assert(!roles.includes('ranged_dps'), 'hunters gain nothing from Battle Shout');
+  assert.deepEqual([...roles].sort(), ['melee_dps', 'tank']);
+});
+check("Hunter's Mark and Insect Swarm are Forever raid debuffs", () => {
+  State.gameVersion = 'forever';
+  State.selectedRaid = 'f_ony';
+  assert(getRaidDebuffCoverage([[mk('HUNTER', 'Survival', 'ranged_dps')]]).has('HUNTERS_MARK'), 'any Hunter covers Hunter\'s Mark');
+  assert(getRaidDebuffCoverage([[mk('DRUID', 'Balance', 'caster_dps')]]).has('INSECT_SWARM'), 'a Balance Druid covers Insect Swarm');
+  assert(!getRaidDebuffCoverage([[mk('DRUID', 'Feral', 'melee_dps')]]).has('INSECT_SWARM'), 'a Feral Druid does not');
+});
+check("Open-slot pricing counts Forever's Hunter's Mark for ranged DPS only", () => {
+  const hunter = mk('HUNTER', 'Survival', 'ranged_dps');
+  const melee = [mk('WARRIOR', 'Fury', 'melee_dps'), mk('ROGUE', 'Combat', 'melee_dps')];
+  const price = raid => OpenSlots._raidValue(hunter, raid, 'max_dps');
+  try {
+    State.gameVersion = 'forever';
+    assert.deepEqual({ ...Rulesets.forever.debuffs.HUNTERS_MARK.value }, { tier: 3, who: 'ranged' });
+    assert.equal(price(melee), price([]), 'melee players add nothing to a ranged-only debuff');
+    State.gameVersion = 'tbc';
+    assert(price(melee) > price([]), 'TBC Hunter\'s Mark still counts every physical attacker');
+  } finally {
+    State.gameVersion = 'forever';
+  }
 });
 
 console.log(`\nForever ruleset tests: ${passed} passed, 0 failed, ${passed} total`);

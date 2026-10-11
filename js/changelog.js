@@ -3,8 +3,15 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.2.0';
+const APP_VERSION = '4.2.1';
 const CHANGELOG = [
+  { version: '4.2.1', date: '2026-10-11', title: 'WoW Forever beta data refresh', changes: [
+    'Forever: Trueshot Aura is a Marksmanship talent that buffs ranged attack power only; other hunter specs no longer count as providing it.',
+    'Forever: Sanctity Aura is gone (removed in the beta); Retribution Paladins are placed on Retribution, Devotion or Concentration Aura.',
+    'Forever: one Faerie Fire for every Druid spec, and it no longer stacks with Curse of Recklessness.',
+    'Forever: Windfury Totem works in Cat and Bear form, so Feral Druids now want a Windfury group; a party gets only one of Windfury and Grace of Air, even from two shamans.',
+    "Forever: Hunter's Mark and Insect Swarm join the raid debuffs; Battle Shout counts for melee only; curse, judgement, shout, Expose Armor and Mana Tide values updated to the current beta.",
+  ] },
   { version: '4.2.0', date: '2026-10-10', title: 'Smarter TBC groups', changes: [
     'A Ret Paladin is now placed in the same group as an Enhancement Shaman.',
     'Hunters stay out of caster groups, and when the raid has two Enhancement Shamans they spread over the melee groups as evenly as the seats allow.',

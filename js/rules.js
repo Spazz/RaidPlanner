@@ -207,7 +207,7 @@ const Config = {
     JUDGEMENT_CRUSADER:'JotC', JUDGEMENT_LIGHT:'JoL', JUDGEMENT_WISDOM:'JoW',
     SUNDER_ARMOR:'Sun', DEMORALIZING_SHOUT:'DS', THUNDER_CLAP:'TC', BLOOD_FRENZY:'BF',
     EXPOSE_ARMOR:'EA', HEMORRHAGE:'Hem',
-    FAERIE_FIRE_BALANCE:'FF', FAERIE_FIRE_FERAL:'FF', MANGLE:'Man', DEMORALIZING_ROAR:'DR', INSECT_SWARM:'IS',
+    FAERIE_FIRE_BALANCE:'FF', FAERIE_FIRE_FERAL:'FF', FAERIE_FIRE:'FF', MANGLE:'Man', DEMORALIZING_ROAR:'DR', INSECT_SWARM:'IS',
     CURSE_ELEMENTS:'CoE', CURSE_RECKLESSNESS:'CoR', CURSE_WEAKNESS:'CoW', SHADOW_EMBRACE:'SE', IMPROVED_SHADOW_BOLT:'ISB',
     WINTERS_CHILL:'WC', IMPROVED_SCORCH:'Scorch',
     SHADOW_WEAVING:'SW', MISERY:'Mis', VAMPIRIC_EMBRACE:'VE',
@@ -229,6 +229,7 @@ const Config = {
     HEMORRHAGE:         'spell_shadow_lifedrain',
     FAERIE_FIRE_BALANCE:'spell_nature_faeriefire',
     FAERIE_FIRE_FERAL:  'spell_nature_faeriefire',
+    FAERIE_FIRE:        'spell_nature_faeriefire',
     MANGLE:             'ability_druid_mangle2',
     DEMORALIZING_ROAR:  'ability_druid_demoralizingroar',
     INSECT_SWARM:       'spell_nature_insectswarm',
@@ -326,7 +327,7 @@ const Config = {
 const GameVersions = {
   tbc: { name:'WoW TBC', defaultRaid:'bt', raids:[...Config.RaidOrder], note:'TBC party buffs and optimization rules.' },
   classic: { name:'WoW Classic', defaultRaid:'mc', raids:[], note:'WoW Classic Era party buffs, composition and optimizer rules. Faction-aware: Horde shamans, Alliance paladins.' },
-  forever: { name:'WoW Forever (Beta)', defaultRaid:'f_ony', raids:[], note:'Rules follow Wowhead Forever beta data as of 2026-09-26: Paladin and Shaman on both factions (no faction lock), Trueshot Aura baseline for every Hunter, Leader of the Pack/Moonkin Aura merged into one exclusive crit buff, and the confirmed Barrow Deeps/Hyjal Summit/Onyxia\'s Lair raids.' },
+  forever: { name:'WoW Forever (Beta)', defaultRaid:'f_ony', raids:[], note:'Rules follow WoW Forever beta data as of 2026-10-10 (build 1.60.1.70338): Paladin and Shaman on both factions (no faction lock), Trueshot Aura a Marksmanship talent, one Faerie Fire for every Druid, Leader of the Pack/Moonkin Aura one exclusive crit buff, one air totem per party, Sanctity Aura removed, and the confirmed Barrow Deeps/Hyjal Summit/Onyxia\'s Lair raids.' },
 };
 // Real Classic Era raids, in phase order (tasks/research-classic-buffs.md).
 // Unique keys so they never collide with TBC's Config.Raids entries.
@@ -620,71 +621,65 @@ Rulesets.classic = {
 // ── WOW FOREVER RULESET ─────────────────────────────────────────
 // Vanilla/Classic Era baseline (no new classes or specs — the six new
 // race/class combos and the Skyborne race only widen WHO can play a class,
-// never WHAT a class does), with the confirmed Forever deltas layered on.
-// Source: tasks/research-forever.md, the "## Browser verification
-// (2026-09-26)" section, which is sourced from live Wowhead spell pages and
-// the raids/camping/talent-calc guide pages and supersedes every earlier
-// UNCONFIRMED claim in that file. Deltas modeled here:
-//   - No faction lock: six new race/class combos (Undead Paladin, Dwarf
-//     Shaman, etc.) put Paladin and Shaman on both factions — see the
-//     `rules.factionLock: false` below and the Faction module call sites.
+// never WHAT a class does), with the Forever deltas confirmed on 2026-10-10
+// against beta build 1.60.1.70338 layered on. Source: tasks/research-forever.md,
+// "Audit 2026-10-10", which supersedes the 09-26 browser pass. Deltas modeled here:
+//   - No faction lock: six new race/class combos put Paladin and Shaman on
+//     both factions (`rules.factionLock: false`).
 //   - Tranquil Air Totem, Wrath of Air Totem and Totem of Wrath do not exist
-//     (confirmed absent via /forever/search) — omitted from `buffs` and
-//     `totemElements` entirely.
-//   - Every Paladin Aura (Devotion/Retribution/Concentration/Sanctity) gained
-//     a uniform +1% party healing-taken secondary effect; Improved Devotion
-//     Aura was removed as a talent.
-//   - Trueshot Aura moved from a 31-point Marksmanship talent to a baseline
-//     ability every Hunter trains at level 32 — no `sourceSpec` restriction.
-//   - Leader of the Pack and Moonkin Aura were both reworked into the same
-//     generalized +3% crit (all schools) party aura and made mutually
-//     exclusive with each other — modeled via `rules.exclusiveBuffs` below
-//     (see resolveGroupBuffs/getGroupBuffs, which dedupe an exclusive set
-//     down to whichever member is worth more to the group, so a group with
-//     both a Feral and a Balance druid is only ever credited with one).
-// Debuffs below are limited to what the verification pass confirmed exists
-// as a target debuff. Excluded as unverified or not-a-raid-debuff per that
-// same section: Shadow Weaving and Stormstrike (confirmed PERSONAL-only
-// effects in Forever, not raid debuffs), Winter's Chill (tooltip read as
-// personal-only this pass; ambiguous, left out pending re-verification),
-// Improved Scorch (not re-checked before a Wowhead CloudFront rate-limit
-// ended the session), and exact numbers for Curse of the Elements/
-// Recklessness and the three Judgements (existence confirmed, tooltip
-// values blocked by the same rate-limit — worded qualitatively instead of
-// invented). Curse of Weakness, Mangle, Insect Swarm, Blood Frenzy,
-// Hemorrhage and other TBC/talent-only debuffs were not part of the
-// verification pass at all and are left out.
+//     (omitted from `buffs` and `totemElements`).
+//   - Windfury Totem is a party-wide buff, no longer a weapon enchant, and its
+//     procs work in Cat/Bear form (Blizzard 09-30 and 10-07); a party gets only
+//     one of Windfury / Grace of Air / Flametongue even from two shamans
+//     (`rules.exclusiveBuffs`). `preferSpec: 'Enhancement'` is kept on purpose
+//     as a placement convention (keep melee together), not a value claim:
+//     every shaman spec drops the same totem.
+//   - Trueshot Aura is the Marksmanship 21-point talent and buffs ranged
+//     attack power only (`sourceSpec`, `benefitsRoles`).
+//   - Leader of the Pack and Moonkin Aura are the same +3% all-school crit
+//     aura and mutually exclusive (`rules.exclusiveBuffs`).
+//   - Sanctity Aura and Improved Devotion/Retribution/Concentration Aura were
+//     removed; auras carry no healing-taken rider.
+//   - Faerie Fire is one baseline spell for every Druid spec (castable in
+//     forms); it does not stack with Curse of Recklessness.
+//   - Debuffs list only confirmed raid debuffs. Personal-only effects are left
+//     out on purpose: Shadow Weaving, Winter's Chill, Improved Scorch, Improved
+//     Shadow Bolt, Hemorrhage, Stormstrike ("from the caster" auras); Mangle is
+//     now Primal Bite without a debuff; Curse of Shadows is gone.
+//   - Known gaps, not modeled yet: hunter pet effects (Wolf Furious Howl party
+//     AP, Tallstrider armor, Carrion Bird AP; need a per-player pet tag),
+//     Flametongue Totem, Healing Stream Totem, Vampiric Embrace, Vindication.
 Rulesets.forever = {
   buffs: {
-    WINDFURY:          { name:'Windfury Totem',      sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Enchants nearby party members\' main-hand weapons with wind, granting each hit a 20% chance to trigger an extra attack with 246 bonus attack power. Party, 30 yards.' },
-    GRACE_OF_AIR:      { name:'Grace of Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by 89. Party, 30 yards.' },
+    WINDFURY:          { name:'Windfury Totem',      sourceClass:'SHAMAN', preferSpec:'Enhancement', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:100, tank:70}, desc:'Party-wide buff in Forever (no longer a weapon enchant): each main-hand hit has a 20% chance to grant an extra attack with 246 extra attack power. Works in Cat and Bear form. A party has only one of Windfury, Grace of Air and Flametongue Totem, even from two shamans. Party, 30 yards, 5 min.' },
+    GRACE_OF_AIR:      { name:'Grace of Air Totem',  sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:60, desc:'Increases agility of nearby party members by 89. Not active alongside Windfury Totem in the same party. Party, 30 yards.' },
     STRENGTH_OF_EARTH: { name:'Strength of Earth Totem', sourceClass:'SHAMAN', benefitsRoles:['tank','melee_dps'], priority:55, desc:'Increases strength of nearby party members by 53. Party, 30 yards.' },
-    STONESKIN:         { name:'Stoneskin Totem',     sourceClass:'SHAMAN', benefitsRoles:['tank'], priority:45, desc:'Reduces melee damage taken by nearby party members by 30 per hit. Party, 30 yards.' },
+    STONESKIN:         { name:'Stoneskin Totem',     sourceClass:'SHAMAN', benefitsRoles:['tank'], priority:45, desc:'Reduces Physical damage taken by nearby party members by 30 per hit. Party, 30 yards.' },
     MANA_SPRING:       { name:'Mana Spring Totem',   sourceClass:'SHAMAN', benefitsRoles:['healer','caster_dps'], priority:{healer:58, caster_dps:48}, desc:'Restores 10 mana every 2 seconds to nearby party members. Group, 30 yards.' },
-    MANA_TIDE:         { name:'Mana Tide Totem',     sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70, desc:'Restores 88 mana every 3 seconds to nearby party members for 12 seconds. Still a 1-point Restoration talent, not baseline. Group, 30 yards.' },
-    DEVOTION_AURA:     { name:'Devotion Aura',       sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by 735. Also increases healing taken by nearby party members by 1%. Party, 30 yards.' },
-    RETRIBUTION_AURA:  { name:'Retribution Aura',    sourceClass:'PALADIN', benefitsRoles:['tank','melee_dps'], priority:30, desc:'Causes Holy damage to any enemy that strikes nearby party members in melee. Also increases healing taken by nearby party members by 1%. Party, 30 yards.' },
-    CONCENTRATION_AURA:{ name:'Concentration Aura',  sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Gives nearby party members a 35% chance to resist interruption from damage while casting. Also increases healing taken by nearby party members by 1%. Party, 30 yards.' },
-    SANCTITY_AURA:     { name:'Sanctity Aura',       sourceClass:'PALADIN', sourceSpec:'Retribution', benefitsRoles:['melee_dps','ranged_dps','caster_dps','tank'], priority:{melee_dps:80, ranged_dps:80, caster_dps:80, tank:40}, desc:'Increases Holy damage done by nearby party members by 10%. Also increases healing taken by nearby party members by 1%. Improved Devotion Aura no longer exists as a talent. Party, 30 yards.' },
-    BATTLE_SHOUT:      { name:'Battle Shout',        sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps','ranged_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases attack power of nearby party members by 140 for 3 minutes. Party, 20 yards (not raid-wide).' },
-    TRUESHOT_AURA:     { name:'Trueshot Aura',       sourceClass:'HUNTER', benefitsRoles:['melee_dps','ranged_dps'], priority:62, desc:'Baseline for every Hunter spec — trained at level 32, no longer Marksmanship-only. Increases ranged attack power of nearby party members by 40. Party, 45 yards, 30 minutes.' },
-    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',  sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps','ranged_dps','caster_dps'], priority:{melee_dps:78, ranged_dps:78, caster_dps:70, tank:65}, desc:'While in Cat, Bear or Dire Bear Form, increases critical strike chance (melee, ranged and spell) of nearby party members by 3%. Mutually exclusive with Moonkin Aura — a group with both only benefits from one. Party, 45 yards.' },
+    MANA_TIDE:         { name:'Mana Tide Totem',     sourceClass:'SHAMAN', sourceSpec:'Restoration', benefitsRoles:['healer'], priority:70, desc:'Restores 290 mana every 3 seconds to nearby party members for 12 seconds (rank 3; 5 min cooldown). The 16-point Restoration talent. Group, 30 yards.' },
+    DEVOTION_AURA:     { name:'Devotion Aura',       sourceClass:'PALADIN', benefitsRoles:['tank'], priority:75, desc:'Increases armor of nearby party members by 735. Party, 30 yards.' },
+    RETRIBUTION_AURA:  { name:'Retribution Aura',    sourceClass:'PALADIN', benefitsRoles:['tank','melee_dps'], priority:30, desc:'Causes 20 Holy damage (plus 6% of the paladin\'s spell power) to any enemy that strikes nearby party members in melee. Party, 30 yards.' },
+    CONCENTRATION_AURA:{ name:'Concentration Aura',  sourceClass:'PALADIN', benefitsRoles:['healer','caster_dps'], priority:{healer:65, caster_dps:55}, desc:'Gives nearby party members a 35% chance to resist interruption from damage while casting. Party, 30 yards.' },
+    BATTLE_SHOUT:      { name:'Battle Shout',        sourceClass:'WARRIOR', benefitsRoles:['tank','melee_dps'], priority:{melee_dps:65, tank:50}, desc:'Increases melee attack power of nearby party members by 139 for 3 minutes (melee only; hunters gain nothing). Party, 20 yards (30 with Booming Voice), not raid-wide.' },
+    TRUESHOT_AURA:     { name:'Trueshot Aura',       sourceClass:'HUNTER', sourceSpec:'Marksmanship', benefitsRoles:['ranged_dps'], priority:62, desc:'Marksmanship talent (21-point, row 4); higher ranks are trained once the talent is known. Increases ranged attack power of nearby party members by 75 at rank 4 (the level-60 rank 5 reads 50 in the beta). Ranged attack power only. Party, 45 yards.' },
+    LEADER_OF_THE_PACK:{ name:'Leader of the Pack',  sourceClass:'DRUID', sourceSpec:'Feral', benefitsRoles:['tank','melee_dps','ranged_dps','caster_dps'], priority:{melee_dps:78, ranged_dps:78, caster_dps:70, tank:65}, desc:'Feral 21-point talent. While in Cat, Bear or Dire Bear Form, increases critical strike chance (melee, ranged and spell) of nearby party members by 3%. Mutually exclusive with Moonkin Aura — a group with both only benefits from one. Party, 45 yards.' },
     MOONKIN_AURA:      { name:'Moonkin Aura',        sourceClass:'DRUID', sourceSpec:'Balance', benefitsRoles:['tank','melee_dps','ranged_dps','caster_dps'], priority:{caster_dps:72, melee_dps:60, ranged_dps:60, tank:50}, desc:'While in Moonkin Form, increases critical strike chance (melee, ranged and spell) of nearby party members by 3%. Mutually exclusive with Leader of the Pack — a group with both only benefits from one. Party, 45 yards.' },
-    BLOOD_PACT:        { name:'Blood Pact',          sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases Stamina of nearby party members by 54 (via the Imp). Party, 30 yards.' },
+    BLOOD_PACT:        { name:'Blood Pact',          sourceClass:'WARLOCK', benefitsRoles:['tank'], priority:40, desc:'Increases Stamina of nearby party members by 54 (via the Imp; Improved Imp no longer scales it). Party, 30 yards.' },
   },
   debuffs: {
-    SUNDER_ARMOR:        { name:'Sunder Armor',              sourceClass:'WARRIOR', desc:'Reduces the target\'s armor by 450 per stack, up to 5 stacks (2250 total).', competesWith:['EXPOSE_ARMOR'] },
-    EXPOSE_ARMOR:        { name:'Expose Armor',              sourceClass:'ROGUE', desc:'Reduces the target\'s armor at 5 combo points. Confirmed to exist in Forever; exact value UNCONFIRMED.', competesWith:['SUNDER_ARMOR'] },
-    FAERIE_FIRE_BALANCE: { name:'Faerie Fire',                sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s armor by 505.' },
-    FAERIE_FIRE_FERAL:   { name:'Faerie Fire (Feral)',        sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s armor by 505. Same debuff as Faerie Fire.', supersededBy:'FAERIE_FIRE_BALANCE' },
-    DEMORALIZING_SHOUT:  { name:'Demoralizing Shout',        sourceClass:'WARRIOR', desc:'Reduces the target\'s melee attack power. Exact value UNCONFIRMED.', competesWith:['DEMORALIZING_ROAR'] },
-    DEMORALIZING_ROAR:   { name:'Demoralizing Roar',          sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the target\'s melee attack power. Exact value UNCONFIRMED.', competesWith:['DEMORALIZING_SHOUT'] },
-    THUNDER_CLAP:        { name:'Thunder Clap',              sourceClass:'WARRIOR', desc:'Reduces the target\'s attack speed by 10% (20% with Improved Thunder Clap).' },
-    CURSE_ELEMENTS:      { name:'Curse of the Elements',      sourceClass:'WARLOCK', desc:'Increases damage taken from the Warlock\'s curse school and reduces resistance to it. Confirmed to exist in Forever (multiple spell ids found, suggesting a reworked/talent-scaling version); exact value UNCONFIRMED.', competesWith:['CURSE_RECKLESSNESS'] },
-    CURSE_RECKLESSNESS:  { name:'Curse of Recklessness',      sourceClass:'WARLOCK', desc:'Increases the target\'s melee attack power but reduces its armor. Confirmed to exist in Forever; exact value UNCONFIRMED.', competesWith:['CURSE_ELEMENTS'] },
-    JUDGEMENT_CRUSADER:  { name:'Judgement of the Crusader',  sourceClass:'PALADIN', desc:'Increases Holy damage taken by the target. Judgement is a single unified spell in Forever and no longer consumes the active Seal. Confirmed to exist; exact value UNCONFIRMED.' },
-    JUDGEMENT_LIGHT:     { name:'Judgement of Light',        sourceClass:'PALADIN', desc:'Melee attackers have a chance to heal themselves. Confirmed to exist; exact value UNCONFIRMED.' },
-    JUDGEMENT_WISDOM:    { name:'Judgement of Wisdom',       sourceClass:'PALADIN', desc:'Attacks and spells against the target have a chance to restore mana. Confirmed to exist; exact value UNCONFIRMED.' },
+    SUNDER_ARMOR:        { name:'Sunder Armor',              sourceClass:'WARRIOR', desc:'Reduces the target\'s armor by 450 per stack, up to 5 stacks (2250 total). Shares its slot with Expose Armor; the stronger effect stays.', competesWith:['EXPOSE_ARMOR'] },
+    EXPOSE_ARMOR:        { name:'Expose Armor',              sourceClass:'ROGUE', desc:'Reduces the target\'s armor by 450 per combo point (2250 at 5), the same as five Sunder Armor stacks. Shares the slot with Sunder Armor.', competesWith:['SUNDER_ARMOR'] },
+    FAERIE_FIRE:         { name:'Faerie Fire',               sourceClass:'DRUID', desc:'Reduces the target\'s armor by 505 for 40 seconds. Baseline for every Druid spec and castable in Cat, Bear and Dire Bear form. Does not stack with Curse of Recklessness.', competesWith:['CURSE_RECKLESSNESS'] },
+    HUNTERS_MARK:        { name:'Hunter\'s Mark',            sourceClass:'HUNTER', desc:'Increases the ranged attack power of all attackers against the target by 71 for 2 minutes (Improved Hunter\'s Mark is baseline). Ranged attack power only.', value:{ tier:3, who:'ranged' } },
+    DEMORALIZING_SHOUT:  { name:'Demoralizing Shout',        sourceClass:'WARRIOR', desc:'Reduces the target\'s melee attack power by 210 for 45 seconds.', competesWith:['DEMORALIZING_ROAR'] },
+    DEMORALIZING_ROAR:   { name:'Demoralizing Roar',          sourceClass:'DRUID', sourceSpec:'Feral', desc:'Reduces the melee attack power of nearby enemies by 207 for 30 seconds (Bear form; equal to Demoralizing Shout at 60).', competesWith:['DEMORALIZING_SHOUT'] },
+    INSECT_SWARM:        { name:'Insect Swarm',              sourceClass:'DRUID', sourceSpec:'Balance', desc:'Reduces the target\'s chance to hit by 2% for 12 seconds (16-point Balance talent).' },
+    THUNDER_CLAP:        { name:'Thunder Clap',              sourceClass:'WARRIOR', desc:'Increases the time between the target\'s attacks by 20% for 30 seconds (up to 4 targets).' },
+    CURSE_ELEMENTS:      { name:'Curse of the Elements',      sourceClass:'WARLOCK', desc:'Increases all magic damage taken by 10% and reduces all magic resistances by 75 for 5 minutes. One curse per warlock on a target (Curse of Shadows no longer exists).', competesWith:['CURSE_RECKLESSNESS'] },
+    CURSE_RECKLESSNESS:  { name:'Curse of Recklessness',      sourceClass:'WARLOCK', desc:'Reduces the target\'s armor by 505 for 2 minutes (no attack power effect in Forever). Does not stack with Faerie Fire.', competesWith:['CURSE_ELEMENTS','FAERIE_FIRE'] },
+    JUDGEMENT_CRUSADER:  { name:'Judgement of the Crusader',  sourceClass:'PALADIN', desc:'Increases Holy damage taken by the target by 161 for 40 seconds, refreshed by the paladin\'s melee hits. Judgement no longer consumes the Seal; one Judgement per paladin on a target.' },
+    JUDGEMENT_LIGHT:     { name:'Judgement of Light',        sourceClass:'PALADIN', desc:'Melee attacks against the target have a chance to heal the attacker for 61. 40 seconds.' },
+    JUDGEMENT_WISDOM:    { name:'Judgement of Wisdom',       sourceClass:'PALADIN', desc:'Attacks and spells against the target have a chance to restore 59 mana to the attacker. 40 seconds.' },
   },
   specs: Rulesets.tbc.specs,
   raidHelperSpecMap: Rulesets.tbc.raidHelperSpecMap,
@@ -697,7 +692,7 @@ Rulesets.forever = {
     STRENGTH_OF_EARTH:'earth', STONESKIN:'earth',
     MANA_SPRING:'water', MANA_TIDE:'water',
   },
-  paladinAuras: { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true, SANCTITY_AURA:true },
+  paladinAuras: { DEVOTION_AURA:true, CONCENTRATION_AURA:true, RETRIBUTION_AURA:true },
   // No Tranquil Air exists for casters/healers to fall back to — Grace of Air
   // (agility) is the only other air totem, so it's the least-bad default.
   bestAirTotem: { tank:'WINDFURY', melee_dps:'WINDFURY', ranged_dps:'GRACE_OF_AIR', caster_dps:'GRACE_OF_AIR', healer:'GRACE_OF_AIR' },
@@ -709,7 +704,9 @@ Rulesets.forever = {
     tankAnchorRank: p => p.class === 'WARRIOR' ? 0 : p.class === 'PALADIN' ? 1 : 2,
     meleeWantsWindfury: true,     // Shaman exists on both factions — no faction gate needed
     ferociousInspiration: false,  // TBC-only Beast Mastery talent; does not exist in Forever
-    specAura: { Retribution: 'SANCTITY_AURA', Protection: 'DEVOTION_AURA', Holy: 'CONCENTRATION_AURA' },
+    // Sanctity Aura no longer exists, so a Ret paladin's own aura is Retribution Aura;
+    // specAura only breaks value ties between equally valued auras.
+    specAura: { Retribution: 'RETRIBUTION_AURA', Protection: 'DEVOTION_AURA', Holy: 'CONCENTRATION_AURA' },
     // No faction lock: the six new race/class combos put Paladin and Shaman
     // on both factions, so a raid can field both totems and auras, and a
     // mixed shaman+paladin roster is normal rather than a data problem.
@@ -726,7 +723,11 @@ Rulesets.forever = {
     meleeGroupWindfuryBias: 8,
     // Buff ids that occupy one shared slot per group — resolveGroupBuffs and
     // getGroupBuffs keep only the higher-value member of each listed set.
-    exclusiveBuffs: [['LEADER_OF_THE_PACK', 'MOONKIN_AURA']],
+    // Leader of the Pack / Moonkin Aura are one crit aura. Windfury / Grace of Air are one air totem
+    // per party (Blizzard 10-07: "Parties cannot benefit from this totem at the same time as Grace
+    // of Air or Flametongue Totem"; dev notes 09-24: no stacking "even if used by different Shamans
+    // in the same group"), so a second shaman in a group adds only earth/water totems.
+    exclusiveBuffs: [['LEADER_OF_THE_PACK', 'MOONKIN_AURA'], ['WINDFURY', 'GRACE_OF_AIR']],
   },
 };
 

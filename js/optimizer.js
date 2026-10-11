@@ -306,11 +306,16 @@ Object.assign(Rulesets.classic, {
 // ── FOREVER SYNERGY MODEL ──
 // Same roster of specs as Classic (no new classes/specs in Forever), so the
 // recipient DPS-weight ordering is identical — shared directly by reference
-// rather than copy-pasted. The buff-value tables differ only where Forever's
-// buff catalog differs from Classic's: Tranquil Air is dropped (doesn't
-// exist), and the four Paladin auras get a small sustain bump for their new
-// +1% healing-taken effect (Concentration Aura's existing sustain value goes
-// from 2 to 3; the other three, which had none, get a light +1).
+// rather than copy-pasted. The buff-value tables differ from Classic's only
+// where Forever's buff catalog does:
+//   - Tranquil Air is dropped (it does not exist).
+//   - Leader of the Pack and Moonkin Aura are the same crit aura for every role.
+//   - Windfury is worth something to Ferals: it is a party buff whose procs work
+//     in Cat and Bear form, so Classic's `'DRUID:Feral': 0` (a weapon-enchant
+//     rule) is overridden.
+//   - Trueshot Aura buffs ranged attack power only; Battle Shout melee only.
+//   - Sanctity Aura does not exist.
+//   - The paladin auras carry no healing-taken rider, so SUSTAIN equals Classic's.
 const DPS_VALUE_FOREVER = { ...DPS_VALUE_CLASSIC };
 delete DPS_VALUE_FOREVER.TRANQUIL_AIR;
 // Forever's Leader of the Pack and Moonkin Aura are the same 3% crit aura for
@@ -319,8 +324,12 @@ delete DPS_VALUE_FOREVER.TRANQUIL_AIR;
 // caster-only Moonkin it was copied from. Scaled to the priorities above.
 DPS_VALUE_FOREVER.LEADER_OF_THE_PACK = { role: { melee_dps: 4, ranged_dps: 4, caster_dps: 3, tank: 2 } };
 DPS_VALUE_FOREVER.MOONKIN_AURA = { role: { caster_dps: 4, melee_dps: 2, ranged_dps: 2, tank: 1 } };
-const MIT_VALUE_FOREVER = { ...MIT_VALUE_CLASSIC };
-const SUSTAIN_VALUE_FOREVER = { ...SUSTAIN_VALUE_CLASSIC, CONCENTRATION_AURA: 3, DEVOTION_AURA: 1, RETRIBUTION_AURA: 1, SANCTITY_AURA: 1 };
+DPS_VALUE_FOREVER.WINDFURY = { key: { ...DPS_VALUE_CLASSIC.WINDFURY.key, 'DRUID:Feral': 8 }, role: { ...DPS_VALUE_CLASSIC.WINDFURY.role } };
+DPS_VALUE_FOREVER.TRUESHOT_AURA = { role: { ranged_dps: 4 } };
+DPS_VALUE_FOREVER.BATTLE_SHOUT = { role: { melee_dps: 3, tank: 2 } };
+delete DPS_VALUE_FOREVER.SANCTITY_AURA;
+const MIT_VALUE_FOREVER = { ...MIT_VALUE_CLASSIC, WINDFURY: { ...MIT_VALUE_CLASSIC.WINDFURY, 'DRUID:Feral': 3 } };
+const SUSTAIN_VALUE_FOREVER = { ...SUSTAIN_VALUE_CLASSIC };
 Object.assign(Rulesets.forever, {
   dpsValue: DPS_VALUE_FOREVER, mitValue: MIT_VALUE_FOREVER, sustainValue: SUSTAIN_VALUE_FOREVER,
   dpsWeight: DPS_WEIGHT_CLASSIC, dpsWeightByRole: DPS_WEIGHT_BY_ROLE_CLASSIC,
@@ -1459,7 +1468,7 @@ const Optimizer = {
     // 2026-10-10 rule 1: TBC raises the per-melee cost (rules.meleeWantsWindfuryCost, default 6) so a spare
     // Ele/Resto shaman is drawn to a melee group with 2+ melee DPS and no shaman; scaled per melee DPS.
     const canHaveShaman = !rules.rules.factionLock || Faction.current() !== 'alliance';
-    // A group whose melee DPS would all get nothing from Windfury (a Feral: weapon imbues do not work in forms) is not missing a Windfury totem, so a Feral seated with hunters is no pull for a shaman; any group with a Windfury-using melee is charged as before, Feral included.
+    // A group whose melee DPS would all get nothing from Windfury (a TBC/Classic Feral: weapon imbues do not work in forms; Forever's party-wide Windfury does, see DPS_VALUE_FOREVER) is not missing a Windfury totem, so a Feral seated with hunters is no pull for a shaman; any group with a Windfury-using melee is charged as before, Feral included.
     if (rules.rules.meleeWantsWindfury && canHaveShaman && roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')
         && group.some(p => p.role === 'melee_dps' && dpsValueFor('WINDFURY', p) > 0)) {
       for (const p of group) {
@@ -1997,11 +2006,14 @@ const OpenSlots = {
   // (defensive: tier per tank, mitigation-weighted). Unlisted debuffs (other
   // rulesets) count tier 2 for every DPS. Expose Weakness (~225 AP to every
   // physical attacker) is why a Survival Hunter beats a Marksmanship one
-  // whose Trueshot Aura only reaches its own party.
+  // whose Trueshot Aura only reaches its own party. A ruleset's debuff entry may
+  // carry its own `value` ({ tier, who }, where `who` may also be 'ranged' for
+  // hunters only) when the same spell differs by version (Forever's Hunter's Mark).
   DEBUFF_VALUE: {
     EXPOSE_WEAKNESS: { tier: 6, who: 'physical' }, SUNDER_ARMOR: { tier: 6, who: 'physical' },
     EXPOSE_ARMOR: { tier: 6, who: 'physical' }, BLOOD_FRENZY: { tier: 4, who: 'physical' },
     JUDGEMENT_CRUSADER: { tier: 3, who: 'physical' }, FAERIE_FIRE_BALANCE: { tier: 3, who: 'physical' },
+    FAERIE_FIRE: { tier: 3, who: 'physical' },
     FAERIE_FIRE_FERAL: { tier: 2, who: 'physical' }, CURSE_RECKLESSNESS: { tier: 3, who: 'physical' },
     HUNTERS_MARK: { tier: 3, who: 'physical' }, MANGLE: { tier: 1, who: 'physical' }, HEMORRHAGE: { tier: 1, who: 'physical' },
     CURSE_ELEMENTS: { tier: 6, who: 'caster' }, MISERY: { tier: 4, who: 'caster' }, JUDGEMENT_WISDOM: { tier: 1, who: 'caster' },
@@ -2031,6 +2043,7 @@ const OpenSlots = {
     const withCandidate = raid.concat(candidate);
     const helps = {
       physical: p => p.role === 'melee_dps' || p.role === 'ranged_dps',
+      ranged: p => p.role === 'ranged_dps',
       caster: p => p.role === 'caster_dps',
       all: p => p.role !== 'tank' && p.role !== 'healer',
       ...this.DEBUFF_SCHOOLS,
@@ -2045,7 +2058,8 @@ const OpenSlots = {
       if (covered.has(id)) continue;
       if (d.supersededBy && covered.has(d.supersededBy)) continue;
       if ((d.competesWith || []).some(other => covered.has(other))) continue;
-      const { tier, who } = this.DEBUFF_VALUE[id] || { tier: 2, who: 'all' };
+      // A ruleset's debuff entry may carry its own `value` when the same spell differs by version (Forever's Hunter's Mark is ranged-only).
+      const { tier, who } = d.value || this.DEBUFF_VALUE[id] || { tier: 2, who: 'all' };
       v += tier * weightOf(who);
     }
     for (const u of Readiness.utilityCoverage([raid], [])) {
