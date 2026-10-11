@@ -23,6 +23,7 @@
 !js/rules/*.js
 !tools/
 !tools/generate-rules-data.js
+!tools/rules-report.js
 # Self-hosted spec/class/role/buff/debuff icons (one <slug>.jpg each, fetched once from the Wowhead CDN); icons-tests.js checks every slug the rule tables name is here
 !icons/
 !icons/*.jpg

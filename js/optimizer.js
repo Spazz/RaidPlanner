@@ -151,6 +151,8 @@ function dpsWeightFor(player) {
   const w = (rules.dpsWeight || {})[player.class + ':' + player.spec];
   if (w != null) return w;
   const r = (rules.dpsWeightByRole || {})[player.role];
+  // 0.8 only for a player whose role has no roleDpsWeight entry; every version file lists all five roles, so today
+  // this is a dead guard, kept on purpose.
   return r != null ? r : 0.8;
 }
 
@@ -828,7 +830,8 @@ const Optimizer = {
     // Healer cap (TBC comp rules, user decision 2026-10-10): when players exceed
     // seats, seat at most floor + rules.healerCapOverFloor healers; DPS take the
     // rest. A second uncapped pass fills any seat the DPS could not use. The
-    // rule is absent from Classic/Forever, so this is a no-op there.
+    // rule is off in Classic/Forever (healerCapOverFloor: null), so this is a
+    // no-op there.
     const healerCap = this.healerCapFor(raidSize);
     const healersSeated = () => groups.reduce((n, g) => n + g.filter(p => p.role === 'healer').length, 0);
     if (healerCap != null) {
@@ -1139,7 +1142,7 @@ const Optimizer = {
       for (const t of tanks) v += mitValueFor(id, t) * cfg.mit;
       if (isTank && rules.sustainValue[id]) v += rules.sustainValue[id] * Math.min(healerCount, 2) * cfg.structure;
       // Windfury-over-other-air-totem convention (Classic/Forever only — see
-      // rules.meleeGroupWindfuryBias, unset/false for TBC so this is a no-op
+      // rules.meleeGroupWindfuryBias, 0 for TBC so this is a no-op
       // there). A shaman's per-element totem choice (resolveGroupBuffs) picks
       // whichever totem scores highest via THIS function; without a
       // structural push, a melee group whose only shaman rides with several
@@ -1150,7 +1153,7 @@ const Optimizer = {
       // regardless. Scaled per actual melee_dps member so an empty or
       // hunter-only "melee" group doesn't invent a preference it has no one
       // to give it to.
-      // 2026-10-10 user decision (TBC only, rules.enhWindfuryBonus, absent = no-op): Windfury from an
+      // 2026-10-10 user decision (TBC only, rules.enhWindfuryBonus, 0 = off in Classic and Forever): Windfury from an
       // Enhancement Shaman is worth more to melee than from an Ele/Resto (the Enh talents improve the
       // totem), so a group that holds an Enh scales its Windfury value by (1 + bonus).
       if (id === 'WINDFURY' && rules.rules.enhWindfuryBonus && v > 0 && group.some(p => p.class === 'SHAMAN' && p.spec === 'Enhancement')) {
@@ -1180,9 +1183,10 @@ const Optimizer = {
 
     // Ferocious Inspiration stacks multiplicatively per BM Hunter (1.03^n) —
     // the only party buff that does. resolveGroupBuffs dedupes it like any
-    // passive, so credit each additional BM hunter's copy here.
+    // passive, so credit each additional BM hunter's copy here
+    // (rules.ferociousInspirationStacking of its value).
     const bmCount = group.reduce((n, p) => n + (p.class === 'HUNTER' && p.spec === 'Beast Mastery' ? 1 : 0), 0);
-    if (rules.rules.ferociousInspiration && bmCount > 1) score += (bmCount - 1) * buffValue('FEROCIOUS_INSP') * 0.5;
+    if (rules.rules.ferociousInspiration && bmCount > 1) score += (bmCount - 1) * buffValue('FEROCIOUS_INSP') * rules.rules.ferociousInspirationStacking;
 
     // Reference comp: one hunter per melee group. A Survival Hunter adds no party
     // buff (rules.hunterSpread), so pairing it with another hunter is a duplicate
@@ -1219,10 +1223,11 @@ const Optimizer = {
     //    riding with the tanks is fine; a lone Rogue receiving nothing
     //    there is not).
     if (isTank) {
-      // Three healers is the MT group's core; a 4th is allowed but only
-      // lightly pulled, so a Holy Priest who'd get Vampiric Touch in the
-      // Shadow Priest's group goes there instead of padding the MT group.
-      score += (Math.min(healerCount, 3) * 10 + (healerCount >= 4 ? 3 : 0)) * cfg.structure;
+      const coreHealers = rules.rules.tankGroupHealers;
+      // Three healers (rules.tankGroupHealers) is the MT group's core; a 4th is
+      // allowed but only lightly pulled, so a Holy Priest who'd get Vampiric
+      // Touch in the Shadow Priest's group goes there instead of padding the MT group.
+      score += (Math.min(healerCount, coreHealers) * 10 + (healerCount >= 4 ? 3 : 0)) * cfg.structure;
       // The MT group holds up to four healers (the MT plus a healer party).
       // A fifth only stays for the mana totems it receives; past four, they
       // move on.
@@ -1231,37 +1236,37 @@ const Optimizer = {
       // needs none of the party buffs a DPS group offers) once the three-healer core is
       // there, so that seat is not a penalized guest. Without this the guest penalty
       // handed the seat to a 4th healer and moved the Warlock in with the mages.
-      // 2026-10-10 comp rules (TBC only; both no-op when the rule is absent):
+      // 2026-10-10 comp rules (TBC; each is off at 0, which Classic and Forever set):
       //  - rules.loneRestoTankCost: a roster's only Resto Shaman stays with the tank-group healers, so a
-      //    tank group that has fewer than 3 healers without it pays this when the Windfury pull (or
-      //    anything else) has moved it out.
-      //  - rules.tankGroupHealerCost: per healer missing below 3 in the tank group, so the hunter weight
-      //    (hunters out of caster groups) does not displace a tank-group healer for a DPS guest.
-      if (rules.rules.loneRestoTankCost && healerCount < 3 && !group.some(p => p.class === 'SHAMAN')) {
+      //    tank group that has fewer than rules.tankGroupHealers healers without it pays this when the
+      //    Windfury pull (or anything else) has moved it out.
+      //  - rules.tankGroupHealerCost: per healer missing below rules.tankGroupHealers in the tank group, so
+      //    the hunter weight (hunters out of caster groups) does not displace a tank-group healer for a DPS guest.
+      if (rules.rules.loneRestoTankCost && healerCount < coreHealers && !group.some(p => p.class === 'SHAMAN')) {
         let shamans = 0, loneResto = false;
         for (const g of groups) for (const q of g) if (q.class === 'SHAMAN') { shamans++; loneResto = q.role === 'healer' && q.spec === 'Restoration'; }
         if (shamans === 1 && loneResto) score -= rules.rules.loneRestoTankCost * cfg.structure;
       }
-      if (rules.rules.tankGroupHealerCost && healerCount < 3) {
-        score -= rules.rules.tankGroupHealerCost * (3 - healerCount) * cfg.structure;
+      if (rules.rules.tankGroupHealerCost && healerCount < coreHealers) {
+        score -= rules.rules.tankGroupHealerCost * (coreHealers - healerCount) * cfg.structure;
       }
-      let overflowSeatOpen = healerCount >= 3;
-      // 2026-10-10 comp rules (TBC, rules.hunterTankGuestCost, no-op when absent): a hunter guest pays
+      let overflowSeatOpen = healerCount >= coreHealers;
+      // 2026-10-10 comp rules (TBC, rules.hunterTankGuestCost, off at 0): a hunter guest pays
       // like any other DPS guest. ranged_dps was never charged here, so F01 parked a Survival hunter
       // in the tank group for free while its Demo lock sat with the hunters.
-      const hunterGuestCost = rules.rules.hunterTankGuestCost || 0;
+      const hunterGuestCost = rules.rules.hunterTankGuestCost;
       for (const p of group) {
         const hunterGuest = hunterGuestCost > 0 && p.role === 'ranged_dps';
         if (p.role !== 'melee_dps' && p.role !== 'caster_dps' && !hunterGuest) continue;
         if (overflowSeatOpen && rules.rules.healerGroupDps && rules.rules.healerGroupDps(p)) {
           overflowSeatOpen = false;
           // 2026-10-10 comp rules: with the Ele and Boomkin now holding the Destruction locks, the
-          // leftover lock's home is this seat; a small pull (rules.healerGroupDpsPull, no-op when
-          // absent) keeps it from drifting into a melee group as a lone caster.
-          score += (rules.rules.healerGroupDpsPull || 0) * cfg.structure;
+          // leftover lock's home is this seat; a small pull (rules.healerGroupDpsPull, off at 0)
+          // keeps it from drifting into a melee group as a lone caster.
+          score += rules.rules.healerGroupDpsPull * cfg.structure;
           continue;
         }
-        score -= (hunterGuest ? hunterGuestCost : 12) * cfg.structure;
+        score -= (hunterGuest ? hunterGuestCost : rules.rules.tankGroupGuestCost) * cfg.structure;
       }
     }
 
@@ -1272,19 +1277,19 @@ const Optimizer = {
     // drops WF for melee), and melee spread across shaman-covered groups
     // instead of piling into the one Enhancement group. Skipped for a
     // faction-locked Alliance roster, which can never field a shaman at all.
-    // 2026-10-10 rule 1: TBC raises the per-melee cost (rules.meleeWantsWindfuryCost, default 6) so a spare
-    // Ele/Resto shaman is drawn to a melee group with 2+ melee DPS and no shaman; scaled per melee DPS.
+    // 2026-10-10 rule 1: TBC raises the per-melee cost (rules.meleeWantsWindfuryCost, 13 in TBC, 6 in Classic and
+    // Forever) so a spare Ele/Resto shaman is drawn to a melee group with 2+ melee DPS and no shaman; scaled per melee DPS.
     const canHaveShaman = !rules.rules.factionLock || Faction.current() !== 'alliance';
     // A group whose melee DPS would all get nothing from Windfury (a TBC/Classic Feral: weapon imbues do not work in forms; Forever's party-wide Windfury does, see WINDFURY's weight.dps in js/rules/forever.js) is not missing a Windfury totem, so a Feral seated with hunters is no pull for a shaman; any group with a Windfury-using melee is charged as before, Feral included.
     if (rules.rules.meleeWantsWindfury && canHaveShaman && roleIdentity === 'melee_dps' && !group.some(p => p.class === 'SHAMAN')
         && group.some(p => p.role === 'melee_dps' && dpsValueFor('WINDFURY', p) > 0)) {
       for (const p of group) {
-        if (p.role === 'melee_dps') score -= (rules.rules.meleeWantsWindfuryCost || 6) * dpsWeightFor(p) * cfg.structure;
+        if (p.role === 'melee_dps') score -= rules.rules.meleeWantsWindfuryCost * dpsWeightFor(p) * cfg.structure;
       }
     }
 
     // 2026-10-10 user decision: a Retribution Paladin sits with an Enhancement Shaman (rules.retEnhPairBonus,
-    // x cfg.structure; default 0 = no-op, so Classic/Forever never change).
+    // x cfg.structure; 0 = off, as in Classic and Forever).
     if (rules.rules.retEnhPairBonus && group.some(p => p.class === 'PALADIN' && p.spec === 'Retribution') && group.some(p => p.class === 'SHAMAN' && p.spec === 'Enhancement')) {
       score += rules.rules.retEnhPairBonus * cfg.structure;
     }
@@ -1302,19 +1307,19 @@ const Optimizer = {
       for (const p of group) {
         if (p.role === 'healer' || p.role === 'tank') continue;
         const matches = p.role === roleIdentity || (roleIdentity === 'melee_dps' && p.role === 'ranged_dps');
-        if (matches) score += 12 * cfg.cohesion;
+        if (matches) score += rules.rules.cohesionMatch * cfg.cohesion;
         // Hunters ride with the physical groups. In a caster group they are
         // neutral rather than "compatible": Unleashed Rage (melee-only) no
         // longer holds them in a melee group, and without this a leftover
         // hunter drifted in beside the Ele Shaman and mages.
         else if (p.role === 'ranged_dps' && roleIdentity === 'caster_dps') {
           // 2026-10-10 decision: a hunter in a caster group is a heavy weight, never a
-          // hard ban (rules.hunterInCasterGroup; no-op when absent).
-          if (casterByMembers) score -= (rules.rules.hunterInCasterGroup || 0) * cfg.structure;
+          // hard ban (rules.hunterInCasterGroup; off at 0).
+          if (casterByMembers) score -= rules.rules.hunterInCasterGroup * cfg.structure;
           continue;
         }
-        else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) score += 6 * cfg.cohesion;
-        else score -= 12 * cfg.cohesion;
+        else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) score += rules.rules.cohesionCompatible * cfg.cohesion;
+        else score -= rules.rules.cohesionMismatch * cfg.cohesion;
       }
       // A tank in a caster group is off-role there: without this, Blood Pact's
       // mitigation value alone pulled spare tanks into the warlock group. A
@@ -1335,7 +1340,7 @@ const Optimizer = {
     // 2026-10-10 duplicate stacks (comp rule 1: one shaman's Windfury per melee group): an
     // Enhancement Shaman beyond the number of melee groups adds no coverage, so one parked in a
     // tank or caster group costs rules.surplusEnhCost, which lets the bench trade (refineBench)
-    // bench the redundant Enh instead of a DPS that would receive buffs. No-op when absent.
+    // bench the redundant Enh instead of a DPS that would receive buffs. Off at 0.
     if (rules.rules.surplusEnhCost && roleIdentity !== 'melee_dps') {
       const enhHere = group.reduce((c, p) => c + (p.class === 'SHAMAN' && p.spec === 'Enhancement' ? 1 : 0), 0);
       if (enhHere > 0) {
@@ -1348,8 +1353,8 @@ const Optimizer = {
 
     // Spreading pressure — convex penalty so the marginal cost of joining a
     // fuller group is higher, nudging placement toward emptier groups when
-    // synergy gains are comparable.
-    score -= 0.8 * group.length * group.length * cfg.structure;
+    // synergy gains are comparable (rules.groupSizePressure).
+    score -= rules.rules.groupSizePressure * group.length * group.length * cfg.structure;
 
     return score;
   },
@@ -1854,8 +1859,8 @@ const OpenSlots = {
     }
     // 2026-10-10 comp rules (2 and 3): an Elemental Shaman earns its keep beside the Boomkin and
     // the Destruction locks, so a suggested Ele beyond one per Boomkin has no group to amplify.
-    // Off unless the ruleset sets extraEleNeedsBoomkin (TBC only).
-    const eleCost = rules.rules.extraEleNeedsBoomkin || 0;
+    // Off at extraEleNeedsBoomkin 0 (Classic and Forever).
+    const eleCost = rules.rules.extraEleNeedsBoomkin;
     if (eleCost && candidate.class === 'SHAMAN' && candidate.spec === 'Elemental') {
       const eles = raid.filter(p => p.class === 'SHAMAN' && p.spec === 'Elemental').length;
       const boomkins = raid.filter(p => p.class === 'DRUID' && p.spec === 'Balance').length;

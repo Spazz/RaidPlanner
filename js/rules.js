@@ -147,6 +147,51 @@ const Config = {
 // activeRules() picks the one for the version in play.
 const Rulesets = {};
 
+// ── CONVENTIONS SCHEMA ──────────────────────────────────────────
+// The closed list of the keys of a version file's `conventions` block: the optimizer's tuning numbers and flags (the
+// scorer reads them as rules.rules.<key>), each with its type: 'number', 'boolean' or 'number|null' (healerCapOverFloor
+// only: null means no cap, the one off state that has no number). `modeConfig` (the objective weights of the four
+// optimizer modes) and `openSlots` (the Open-slot pricing scalars) are nested blocks of numbers. Every version file lists
+// every key (0, false and null are how a version switches a rule off) and Rulesets.compile throws on a missing, an
+// unknown or a mistyped key, so a misspelled knob fails at load instead of being ignored. rules-data-tests.js checks
+// the data files, this list and the keys js/*.js reads against each other. Non-enumerable on purpose, like compile:
+// Rulesets is iterated as the registry of versions (Object.keys / Object.entries).
+Object.defineProperty(Rulesets, 'CONVENTIONS', {
+  enumerable: false,
+  value: (function () {
+    const modeWeights = Object.freeze({ dps: 'number', mit: 'number', structure: 'number', cohesion: 'number' });
+    return Object.freeze({
+      meleeWantsWindfury: 'boolean',
+      ferociousInspiration: 'boolean',
+      rosterShapedIdentities: 'boolean',
+      rotationSearch: 'boolean',
+      meleeWantsWindfuryCost: 'number',
+      enhWindfuryBonus: 'number',
+      meleeGroupWindfuryBias: 'number',
+      retEnhPairBonus: 'number',
+      surplusEnhCost: 'number',
+      ferociousInspirationStacking: 'number',
+      hunterSpread: 'number',
+      hunterSpreadEnh: 'number',
+      hunterInCasterGroup: 'number',
+      hunterTankGuestCost: 'number',
+      tankGroupHealers: 'number',
+      tankGroupHealerCost: 'number',
+      loneRestoTankCost: 'number',
+      tankGroupGuestCost: 'number',
+      healerGroupDpsPull: 'number',
+      cohesionMatch: 'number',
+      cohesionCompatible: 'number',
+      cohesionMismatch: 'number',
+      groupSizePressure: 'number',
+      healerCapOverFloor: 'number|null',
+      extraEleNeedsBoomkin: 'number',
+      modeConfig: Object.freeze({ max_dps: modeWeights, tank_mit: modeWeights, balanced: modeWeights, relaxed: modeWeights }),
+      openSlots: Object.freeze({ utilityBonus: 'number', specRepeat: 'number', classCrowd: 'number', classCrowdFree: 'number' }),
+    });
+  })(),
+});
+
 // ── RULES DATA COMPILER ─────────────────────────────────────────
 // Rulesets.compile(data, catalog) turns one version's data file (RulesData.tbc / .classic / .forever, js/rules/*.js)
 // plus the shared catalog (RulesData.catalog, js/rules/catalog.js) back into the ruleset shape the app reads from
@@ -157,10 +202,10 @@ const Rulesets = {};
 // healerGroupDps / stackPenalty[].match rebuilt as functions from the matcher data), utilities, raids, modeConfig and
 // openSlots; specs, raidHelperSpecMap, classList and specIcons come from the catalog. Pure: the inputs are copied,
 // never changed, and nothing outside the returned object is touched. It throws on data it cannot read faithfully (an
-// unknown buffType, debuffType or scope, a totem without a totemElement, ...), so a bad edit fails at load and in
-// rules-data-tests.js. (The Ideal-comp builders, js/app.js, and the blessing catalog, js/analysis.js, are code and not
-// part of the data.) Non-enumerable on purpose: Rulesets is iterated as the registry of versions (Object.keys /
-// Object.entries), and compile is not one.
+// unknown buffType, debuffType or scope, a totem without a totemElement, a `conventions` block that is not exactly
+// Rulesets.CONVENTIONS, ...), so a bad edit fails at load and in rules-data-tests.js. (The Ideal-comp builders,
+// js/app.js, and the blessing catalog, js/analysis.js, are code and not part of the data.) Non-enumerable on purpose:
+// Rulesets is iterated as the registry of versions (Object.keys / Object.entries), and compile is not one.
 Object.defineProperty(Rulesets, 'compile', {
   enumerable: false,
   value: (function () {
@@ -278,8 +323,37 @@ Object.defineProperty(Rulesets, 'compile', {
       ? p => p.class === className
       : p => p.class === className && p.spec === spec);
 
+    // `conventions` must be exactly Rulesets.CONVENTIONS: every key present, none unknown, each of its type (the nested
+    // modeConfig and openSlots blocks key by key). All problems come back together, so a misspelled key shows both the
+    // unknown name and the missing one.
+    const isPlainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+    const isFiniteNumber = value => typeof value === 'number' && Number.isFinite(value);
+    const CONVENTION_TYPES = {
+      number: { accepts: isFiniteNumber, label: 'a number' },
+      boolean: { accepts: value => typeof value === 'boolean', label: 'a boolean' },
+      'number|null': { accepts: value => value === null || isFiniteNumber(value), label: 'a number or null' },
+    };
+    const shown = value => (typeof value === 'string' ? JSON.stringify(value) : String(value));
+    const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+
+    function conventionProblems(schema, block, where) {
+      if (!isPlainObject(block)) return [`${where} must be an object, not ${shown(block)}`];
+      const found = [];
+      for (const key of Object.keys(block)) {
+        if (!hasOwn(schema, key)) found.push(`${where}.${key} is not a known key (the keys are Rulesets.CONVENTIONS)`);
+      }
+      for (const [key, rule] of Object.entries(schema)) {
+        if (!hasOwn(block, key)) found.push(`${where}.${key} is missing (every version file lists every key)`);
+        else if (typeof rule === 'object') found.push(...conventionProblems(rule, block[key], `${where}.${key}`));
+        else if (!CONVENTION_TYPES[rule].accepts(block[key])) found.push(`${where}.${key} must be ${CONVENTION_TYPES[rule].label}, not ${shown(block[key])}`);
+      }
+      return found;
+    }
+
     function compileRules(data, exclusiveBuffs) {
-      const conventions = copy(data.conventions || {});
+      const problems = conventionProblems(Rulesets.CONVENTIONS, data.conventions, 'conventions');
+      if (problems.length) throw problem(problems.join('; '));
+      const conventions = copy(data.conventions);
       const { modeConfig, openSlots } = conventions;
       delete conventions.modeConfig;
       delete conventions.openSlots;
@@ -336,11 +410,13 @@ Object.defineProperty(Rulesets, 'compile', {
       // object filled that way into a slow dictionary-mode one once it passes roughly 16-20 keys; Object.entries(Config.Buffs)
       // in Optimizer.resolveBuffSources (the optimizer's hot loop) then runs about 2.6x slower and Optimize about 1.5x. A
       // spread copy is a fast-properties object whatever its size, so a hand edit that adds entries cannot bring it back.
-      for (const key of ['buffs', 'debuffs', 'dpsValue', 'mitValue', 'sustainValue', 'totemElements', 'paladinAuras']) {
+      // `rules` (about 30 keys now that every convention is written out; the scorer reads it on every groupScore call)
+      // gets the same treatment.
+      for (const key of ['buffs', 'debuffs', 'dpsValue', 'mitValue', 'sustainValue', 'totemElements', 'paladinAuras', 'rules']) {
         ruleset[key] = { ...ruleset[key] };
       }
-      if (modeConfig) ruleset.modeConfig = modeConfig;
-      if (openSlots) ruleset.openSlots = openSlots;
+      ruleset.modeConfig = modeConfig;
+      ruleset.openSlots = openSlots;
       return ruleset;
     };
   })(),

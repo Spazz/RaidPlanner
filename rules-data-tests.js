@@ -10,10 +10,16 @@
  *   - the compiled rulesets carry every key the app reads, and the data keeps the vocabulary the code relies on (buffType,
  *     scope, debuffType, totem elements, target schools with a pricing predicate, known roles, classes and specs, finite
  *     weights, symmetric exclusiveBuffs, existing references, spell ids, the Classic/Forever aura order, one utilities list
- *     per version);
- *   - Rulesets.compile itself, on small synthetic data (matchers, sustain 0, the closed vocabularies) and on the real data
- *     (pure: nothing shared with its inputs; the id-keyed tables stay V8 fast-properties objects, which keeps the
- *     optimizer's hot loops fast).
+ *     per version, an icon / abbreviation / CSS class in the catalog for every buff and debuff id, known classes and specs
+ *     in sourceClass / sourceSpec / preferSpec / tankAnchorOrder);
+ *   - the conventions: every version holds exactly the keys of Rulesets.CONVENTIONS (js/rules.js) with the right types,
+ *     modeConfig holds exactly the four modes, and the names js/*.js reads as rules.rules.<name> are that schema plus the
+ *     structural rules (so a knob can be neither read without being listed nor listed without being read);
+ *   - Rulesets.compile itself, on small synthetic data (matchers, sustain 0, the closed vocabularies, the conventions
+ *     schema) and on the real data (pure: nothing shared with its inputs; the id-keyed tables and the rules object stay V8
+ *     fast-properties objects, which keeps the optimizer's hot loops fast);
+ *   - tools/rules-report.js: all four sections for every version within 160 columns, --json parses, a bad argument exits 2,
+ *     and every conventions key has a comment above it.
  * One PASS line per check; exits 1 when a check fails. There is no Classic-vs-Forever comparison on purpose: they are
  * independent games and may drift.
  */
@@ -62,14 +68,12 @@ const ROLES = Object.values(catalog.roles);
 const CLASSES = catalog.classes;
 const specNames = cls => Object.values(catalog.specs[cls]).map(s => s.name);
 const SPEC_KEYS = CLASSES.flatMap(cls => specNames(cls).map(name => `${cls}:${name}`));
-// Numbers and flags of `conventions` (compiled into ruleset.rules) with the type the scorer expects when the key is present.
-const CONVENTION_NUMBERS = ['meleeWantsWindfuryCost', 'enhWindfuryBonus', 'retEnhPairBonus', 'hunterSpread', 'hunterInCasterGroup',
-  'hunterSpreadEnh', 'extraEleNeedsBoomkin', 'healerGroupDpsPull', 'loneRestoTankCost', 'tankGroupHealerCost', 'hunterTankGuestCost',
-  'surplusEnhCost', 'healerCapOverFloor', 'meleeGroupWindfuryBias'];
-const CONVENTION_FLAGS = ['meleeWantsWindfury', 'ferociousInspiration', 'rosterShapedIdentities', 'rotationSearch'];
 const MODES = ['max_dps', 'tank_mit', 'balanced', 'relaxed'];
 const MODE_WEIGHTS = ['dps', 'mit', 'structure', 'cohesion'];
 const OPEN_SLOT_SCALARS = ['utilityBonus', 'specRepeat', 'classCrowd', 'classCrowdFree'];
+// The sections of a version file that rules.rules holds besides the conventions: structural rules read by the scorer and
+// the page, not tuning knobs (tankAnchorOrder is compiled into tankAnchorRank).
+const STRUCTURAL_RULES = ['tankAnchorRank', 'specAura', 'spreadProviders', 'exclusiveBuffs', 'healerGroupDps', 'stackPenalty', 'factionLock'];
 
 let passed = 0;
 let failed = 0;
@@ -95,6 +99,12 @@ const isFinitePositiveInt = value => Number.isInteger(value) && value > 0;
 const isNumber = value => typeof value === 'number' && Number.isFinite(value);
 const entriesOf = (version, section) => Object.entries(RulesData[version][section] || {});
 const compiledOf = version => Rulesets[version];
+// Rulesets.CONVENTIONS (js/rules.js) is the closed list of conventions keys: a scalar knob maps to its type name, modeConfig
+// and openSlots to nested blocks of numbers. KNOBS is the scalar part: [key, type].
+const SCHEMA = Rulesets.CONVENTIONS;
+const KNOBS = Object.entries(SCHEMA).filter(([, type]) => typeof type === 'string');
+const TYPE_TESTS = { number: isNumber, boolean: value => typeof value === 'boolean', 'number|null': value => value === null || isNumber(value) };
+const TYPE_WORDS = { number: 'a finite number', boolean: 'a boolean', 'number|null': 'a finite number or null' };
 
 // ── The id snapshot ─────────────────────────────────────────────
 /** Sorted buff and debuff ids of every version, as the data files hold them. */
@@ -205,8 +215,10 @@ check('compile: every version compiles and the ruleset carries every key the app
       if (typeof rules.rules.tankAnchorRank !== 'function') problem(`${where('rules.tankAnchorRank')} is not a function`);
       else if (!isNumber(rules.rules.tankAnchorRank({ class: 'WARRIOR' }))) problem(`${where('rules.tankAnchorRank')} does not return a number for a player`);
       if (!isObject(rules.rules.specAura)) problem(`${where('rules.specAura')} is not an object`);
-      for (const key of CONVENTION_NUMBERS) if (key in rules.rules && !isNumber(rules.rules[key])) problem(`${where(`rules.${key}`)} is not a finite number`);
-      for (const key of CONVENTION_FLAGS) if (key in rules.rules && typeof rules.rules[key] !== 'boolean') problem(`${where(`rules.${key}`)} is not a boolean`);
+      for (const [key, type] of KNOBS) {
+        if (!(key in rules.rules)) problem(`${where(`rules.${key}`)} is missing from the compiled rules`);
+        else if (!TYPE_TESTS[type](rules.rules[key])) problem(`${where(`rules.${key}`)} is not ${TYPE_WORDS[type]}`);
+      }
       if ('factionLock' in rules.rules && typeof rules.rules.factionLock !== 'boolean') problem(`${where('rules.factionLock')} is not a boolean`);
       if ('healerGroupDps' in rules.rules && typeof rules.rules.healerGroupDps !== 'function') problem(`${where('rules.healerGroupDps')} is not a function`);
       for (const [i, entry] of (rules.rules.stackPenalty || []).entries()) {
@@ -390,7 +402,8 @@ check('specDpsWeight keys are known CLASS:Spec, roleDpsWeight keys known roles; 
       }
       for (const [key, value] of Object.entries(data.conventions || {})) {
         if (key === 'modeConfig' || key === 'openSlots') continue;
-        if (typeof value !== 'boolean' && !isNumber(value)) problem(`${version}.conventions.${key} is neither a boolean nor a finite number`);
+        const isValid = typeof value === 'boolean' || isNumber(value) || (value === null && SCHEMA[key] === 'number|null');
+        if (!isValid) problem(`${version}.conventions.${key} is neither a boolean nor a finite number (null is allowed only where Rulesets.CONVENTIONS says number|null)`);
       }
     }
   });
@@ -419,6 +432,129 @@ check('bestAirTotem, bestPaladinAura and specAura name existing buffs of the rig
       }
     }
   });
+});
+
+check('catalog: every buff id has an icon, an abbreviation and a CSS class; every debuff id an abbreviation and an icon or the documented text fallback', () => {
+  // catalog.js documents the fallback for debuffs only ("entries left blank fall back to the text abbreviation"); a buff without
+  // an icon, an abbreviation or a CSS class would render as an empty badge.
+  const filled = (table, id) => typeof catalog[table][id] === 'string' && catalog[table][id].trim() !== '';
+  const buffIds = new Set();
+  const debuffIds = new Set();
+  const textFallback = new Set();
+  noProblems(problem => {
+    for (const version of VERSIONS) {
+      for (const id of Object.keys(RulesData[version].buffs)) {
+        buffIds.add(id);
+        for (const table of ['buffIcons', 'buffAbbreviations', 'buffCSSClass']) {
+          if (!filled(table, id)) problem(`${version}.buffs.${id} has no entry in catalog.${table}`);
+        }
+      }
+      for (const id of Object.keys(RulesData[version].debuffs)) {
+        debuffIds.add(id);
+        if (!filled('debuffAbbreviations', id)) problem(`${version}.debuffs.${id} has no entry in catalog.debuffAbbreviations`);
+        if (!filled('debuffIcons', id)) textFallback.add(id);
+      }
+    }
+  });
+  return `${buffIds.size} buff ids, ${debuffIds.size} debuff ids, ${textFallback.size} debuffs show their abbreviation instead of an icon`;
+});
+
+check('sourceClass is a known class; sourceSpec and preferSpec are specs of that class', () => {
+  noProblems(problem => {
+    for (const version of VERSIONS) {
+      for (const section of ['buffs', 'debuffs']) {
+        for (const [id, entry] of entriesOf(version, section)) {
+          const where = `${version}.${section}.${id}`;
+          if (!CLASSES.includes(entry.sourceClass)) { problem(`${where}.sourceClass is ${JSON.stringify(entry.sourceClass)}, which is not a class of the catalog`); continue; }
+          for (const field of ['sourceSpec', 'preferSpec']) {
+            if (field in entry && !specNames(entry.sourceClass).includes(entry[field])) problem(`${where}.${field} is ${JSON.stringify(entry[field])}, which is not a ${entry.sourceClass} spec (${specNames(entry.sourceClass).join(', ')})`);
+          }
+        }
+      }
+    }
+  });
+});
+
+check('tankAnchorOrder names known classes, each once', () => {
+  noProblems(problem => {
+    for (const version of VERSIONS) {
+      const order = RulesData[version].tankAnchorOrder;
+      if (!Array.isArray(order) || !order.length) { problem(`${version}.tankAnchorOrder must be a non-empty list of classes`); continue; }
+      for (const cls of order) if (!CLASSES.includes(cls)) problem(`${version}.tankAnchorOrder names ${JSON.stringify(cls)}, which is not a class of the catalog`);
+      if (new Set(order).size !== order.length) problem(`${version}.tankAnchorOrder lists a class twice`);
+    }
+  });
+});
+
+check('conventions: every version holds exactly the keys of Rulesets.CONVENTIONS, with the right types (null only where the schema says number|null)', () => {
+  // The schema itself: three scalar types, null allowed for one key, the two nested blocks.
+  assert.deepStrictEqual([...new Set(KNOBS.map(([, type]) => type))].sort(), ['boolean', 'number', 'number|null'], 'the scalar types of Rulesets.CONVENTIONS');
+  assert.deepStrictEqual(KNOBS.filter(([, type]) => type === 'number|null').map(([key]) => key), ['healerCapOverFloor'], 'only healerCapOverFloor may be null');
+  assert.deepStrictEqual(Object.keys(SCHEMA).filter(key => typeof SCHEMA[key] !== 'string').sort(), ['modeConfig', 'openSlots'], 'the nested blocks of Rulesets.CONVENTIONS');
+  noProblems(problem => {
+    for (const version of VERSIONS) {
+      const conventions = RulesData[version].conventions;
+      if (!conventions || typeof conventions !== 'object') { problem(`${version} has no conventions block`); continue; }
+      for (const key of Object.keys(conventions)) if (!(key in SCHEMA)) problem(`${version}.conventions.${key} is not a key of Rulesets.CONVENTIONS (misspelled?)`);
+      for (const [key, type] of KNOBS) {
+        if (!(key in conventions)) problem(`${version}.conventions.${key} is missing (every version file lists every key)`);
+        else if (!TYPE_TESTS[type](conventions[key])) problem(`${version}.conventions.${key} is ${JSON.stringify(conventions[key])}, expected ${TYPE_WORDS[type]}`);
+      }
+    }
+  });
+  return `${KNOBS.length} knobs + modeConfig + openSlots in each of ${VERSIONS.length} files`;
+});
+
+check('conventions: modeConfig holds exactly the four modes, each with the four weights; openSlots exactly its four scalars (schema, data files and compiled rulesets)', () => {
+  const sorted = list => [...list].sort();
+  assert.deepStrictEqual(Object.keys(SCHEMA.modeConfig), MODES, 'Rulesets.CONVENTIONS.modeConfig lists the modes');
+  for (const mode of MODES) assert.deepStrictEqual(Object.keys(SCHEMA.modeConfig[mode]), MODE_WEIGHTS, `Rulesets.CONVENTIONS.modeConfig.${mode}`);
+  assert.deepStrictEqual(Object.keys(SCHEMA.openSlots), OPEN_SLOT_SCALARS, 'Rulesets.CONVENTIONS.openSlots');
+  noProblems(problem => {
+    for (const version of VERSIONS) {
+      const { modeConfig, openSlots } = RulesData[version].conventions;
+      if (JSON.stringify(sorted(Object.keys(modeConfig))) !== JSON.stringify(sorted(MODES))) problem(`${version}.conventions.modeConfig holds ${Object.keys(modeConfig).join(', ')}, expected ${MODES.join(', ')}`);
+      for (const mode of MODES) {
+        const weights = modeConfig[mode] || {};
+        if (JSON.stringify(sorted(Object.keys(weights))) !== JSON.stringify(sorted(MODE_WEIGHTS))) problem(`${version}.conventions.modeConfig.${mode} holds ${Object.keys(weights).join(', ')}, expected ${MODE_WEIGHTS.join(', ')}`);
+      }
+      if (JSON.stringify(sorted(Object.keys(openSlots))) !== JSON.stringify(sorted(OPEN_SLOT_SCALARS))) problem(`${version}.conventions.openSlots holds ${Object.keys(openSlots).join(', ')}, expected ${OPEN_SLOT_SCALARS.join(', ')}`);
+      const compiled = compiledOf(version);
+      if (JSON.stringify(compiled.modeConfig) !== JSON.stringify(modeConfig)) problem(`${version}: the compiled modeConfig differs from the data file`);
+      if (JSON.stringify(compiled.openSlots) !== JSON.stringify(openSlots)) problem(`${version}: the compiled openSlots differ from the data file`);
+    }
+  });
+});
+
+check('code and schema agree: every rules.rules.<name> that js/*.js reads is a conventions key or a structural rule, and every conventions key is read', () => {
+  // Reads are found by the form the code uses: `<ruleset>.rules.<name>`, `.rules?.<name>` (rules.rules.x, activeRules().rules.x,
+  // ruleset.rules.x). Comments are stripped first, so a comment that mentions a knob does not count as a read.
+  const stripComments = text => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+  const sources = new Map();
+  for (const file of fs.readdirSync(path.join(app.ROOT, 'js')).filter(name => name.endsWith('.js')).sort()) {
+    sources.set(file, stripComments(fs.readFileSync(path.join(app.ROOT, 'js', file), 'utf8')));
+  }
+  const reads = new Map(); // name -> files that read it
+  for (const [file, source] of sources) {
+    for (const match of source.matchAll(/\.rules\??\.([A-Za-z_$][\w$]*)/g)) {
+      if (!reads.has(match[1])) reads.set(match[1], new Set());
+      reads.get(match[1]).add(file);
+    }
+  }
+  noProblems(problem => {
+    for (const [name, files] of reads) {
+      if (!KNOBS.some(([key]) => key === name) && !STRUCTURAL_RULES.includes(name)) problem(`js/${[...files][0]} reads rules.${name}, which is neither a key of Rulesets.CONVENTIONS nor a structural rule (${STRUCTURAL_RULES.join(', ')})`);
+    }
+    for (const [key] of KNOBS) if (!reads.has(key)) problem(`Rulesets.CONVENTIONS lists ${key}, but no file in js/ reads rules.${key}`);
+    for (const name of STRUCTURAL_RULES) if (!reads.has(name)) problem(`the structural rule ${name} is no longer read anywhere in js/ (drop it from this list)`);
+    // The nested blocks are read through the compiled ruleset's modeConfig (cfg.<weight>) and openSlots, not through rules.rules.
+    const optimizer = sources.get('optimizer.js') || '';
+    if (!/\.modeConfig\b/.test(optimizer)) problem('js/optimizer.js no longer reads the ruleset\'s modeConfig');
+    if (!/\.openSlots\b/.test(optimizer)) problem('js/optimizer.js no longer reads the ruleset\'s openSlots');
+    for (const weight of MODE_WEIGHTS) if (!new RegExp(`\\bcfg\\.${weight}\\b`).test(optimizer)) problem(`Rulesets.CONVENTIONS lists the mode weight ${weight}, but js/optimizer.js never reads cfg.${weight}`);
+    for (const scalar of OPEN_SLOT_SCALARS) if (!new RegExp(`\\b${scalar}\\b`).test(optimizer)) problem(`Rulesets.CONVENTIONS lists the Open-slot scalar ${scalar}, but js/optimizer.js never reads it`);
+  });
+  return `${reads.size} names read across the ${sources.size} files of js/`;
 });
 
 check('Classic and Forever paladinAuras keep the key order Devotion, Concentration, Retribution (then Sanctity)', () => {
@@ -468,7 +604,7 @@ check('utilities: every version owns its list, Config.Utilities reads the active
 });
 
 // ── Checks: Rulesets.compile on synthetic data ──────────────────
-/** A minimal valid version: one buff of each slot type, one debuff; `edit` changes it before use. */
+/** A minimal valid version: one buff of each slot type, one debuff and a complete conventions block (a copy of TBC's); `edit` changes it before use. */
 function synthetic(edit = () => {}) {
   const buff = (extra) => ({
     name: 'Test buff', spellId: null, desc: 'x', scope: 'party', sourceClass: 'SHAMAN', targetRoles: ['melee_dps'], priority: 1, weight: { dps: { melee_dps: 1 } }, ...extra,
@@ -484,6 +620,7 @@ function synthetic(edit = () => {}) {
       ARMOR: { name: 'Test debuff', spellId: null, desc: 'x', debuffType: 'armor', sourceClass: 'WARRIOR', targetRoles: ['melee_dps', 'ranged_dps'], weight: 3 },
     },
     healerGroupDps: [{ class: 'WARLOCK', spec: 'Affliction' }, { class: 'PRIEST', spec: 'Shadow' }],
+    conventions: copy(RulesData.tbc.conventions),
   };
   edit(data);
   return data;
@@ -500,6 +637,20 @@ check('compile (synthetic): a two-matcher healerGroupDps matches a player of eit
   }
   assert.equal(healerGroupDps({ class: 'WARLOCK', spec: undefined }), false, 'a warlock without a spec');
   assert.equal(healerGroupDps({ class: 'NOCLASS', spec: 'Affliction' }), false, 'an unknown class');
+});
+
+check('compile (synthetic): an empty healerGroupDps matches nobody and an empty stackPenalty adds nothing; every version lists both sections', () => {
+  // Classic and Forever write the TBC-only sections as [] (an absent section would read the same, but an explicit one is editable).
+  const compiled = Rulesets.compile(synthetic(data => { data.healerGroupDps = []; data.stackPenalty = []; }), catalog);
+  assert.equal(typeof compiled.rules.healerGroupDps, 'function', 'an empty list still compiles to a matcher');
+  for (const key of SPEC_KEYS) {
+    const [cls, spec] = key.split(':');
+    assert.equal(compiled.rules.healerGroupDps({ class: cls, spec, role: 'caster_dps' }), false, key);
+  }
+  assert.deepStrictEqual(compiled.rules.stackPenalty, [], 'an empty list compiles to no penalty');
+  for (const version of VERSIONS) {
+    for (const section of ['healerGroupDps', 'stackPenalty']) assert.ok(Array.isArray(RulesData[version][section]), `${version}.${section} is listed (as [] when the version has none)`);
+  }
 });
 
 check('compile (synthetic): weight.sustain 0 is kept as 0, not dropped', () => {
@@ -538,13 +689,35 @@ check('compile (synthetic): derives the slot tables from buffType and refuses da
   assert.throws(() => Rulesets.compile(synthetic()), TypeError);
 });
 
+check('compile (synthetic): a misspelled, a missing and a mistyped conventions key each throw, naming the key', () => {
+  const bad = edit => () => Rulesets.compile(synthetic(edit), catalog);
+  assert.doesNotThrow(bad(() => {}), 'a complete conventions block compiles');
+  assert.throws(bad(data => { data.conventions.hunterSpred = data.conventions.hunterSpread; delete data.conventions.hunterSpread; }),
+    /conventions\.hunterSpred is not a known key.*conventions\.hunterSpread is missing/, 'a misspelled key shows the unknown name and the missing one');
+  assert.throws(bad(data => { data.conventions.nonsense = 1; }), /conventions\.nonsense is not a known key/);
+  assert.throws(bad(data => { delete data.conventions.rotationSearch; }), /conventions\.rotationSearch is missing/);
+  assert.throws(bad(data => { delete data.conventions.healerCapOverFloor; }), /conventions\.healerCapOverFloor is missing/, 'absent is not the same as null');
+  assert.throws(bad(data => { data.conventions.hunterSpread = '2'; }), /conventions\.hunterSpread must be a number, not "2"/);
+  assert.throws(bad(data => { data.conventions.hunterSpread = null; }), /conventions\.hunterSpread must be a number, not null/);
+  assert.throws(bad(data => { data.conventions.cohesionMatch = NaN; }), /conventions\.cohesionMatch must be a number, not NaN/);
+  assert.throws(bad(data => { data.conventions.rotationSearch = 1; }), /conventions\.rotationSearch must be a boolean, not 1/);
+  assert.throws(bad(data => { data.conventions.healerCapOverFloor = 'one'; }), /conventions\.healerCapOverFloor must be a number or null, not "one"/);
+  assert.doesNotThrow(bad(data => { data.conventions.healerCapOverFloor = null; }), 'null is the no-cap value of healerCapOverFloor');
+  assert.throws(bad(data => { delete data.conventions.modeConfig.relaxed; }), /conventions\.modeConfig\.relaxed is missing/);
+  assert.throws(bad(data => { data.conventions.modeConfig.max_dps.dps = '1'; }), /conventions\.modeConfig\.max_dps\.dps must be a number, not "1"/);
+  assert.throws(bad(data => { data.conventions.modeConfig.max_dps.cohesionn = 1; }), /conventions\.modeConfig\.max_dps\.cohesionn is not a known key/);
+  assert.throws(bad(data => { delete data.conventions.openSlots.specRepeat; }), /conventions\.openSlots\.specRepeat is missing/);
+  assert.throws(bad(data => { data.conventions.openSlots = 5; }), /conventions\.openSlots must be an object, not 5/);
+  assert.throws(bad(data => { delete data.conventions; }), /conventions must be an object, not undefined/, 'compile requires a conventions block');
+});
+
 check('compile: the id-keyed tables are V8 fast-properties objects (in dictionary mode Object.entries(Config.Buffs), the optimizer\'s hot loop, runs 2.6x slower)', () => {
   // Rulesets.compile fills these tables with keyed stores (out[id] = ...), which makes V8 turn one into a dictionary-mode
   // object once it passes roughly 16-20 ids, and then re-creates each of them as a fresh object. The Phase 2 switch-over
   // shipped without that and made every Optimize about 1.5x slower with all other checks green. V8 reports an object's mode
   // only to natives syntax, so the flag is switched on for this check alone; a Node that refuses it skips the check.
   const v8 = require('v8');
-  const tables = ['buffs', 'debuffs', 'dpsValue', 'mitValue', 'sustainValue', 'totemElements', 'paladinAuras'];
+  const tables = ['buffs', 'debuffs', 'dpsValue', 'mitValue', 'sustainValue', 'totemElements', 'paladinAuras', 'rules'];
   v8.setFlagsFromString('--allow-natives-syntax');
   try {
     let isFast;
@@ -595,6 +768,37 @@ check('compile is pure: the inputs are unchanged and the result shares nothing w
     scribble(first);
     assert.equal(snapshot(), before, `${version}: the compiled ruleset shares objects with the data`);
     assert.equal(JSON.stringify(second).includes('scribble'), false, `${version}: two compiles share objects`);
+  }
+});
+
+// ── Checks: the rules report ────────────────────────────────────
+check('tools/rules-report.js prints its four sections for every version within 160 columns, --json parses, a bad argument exits 2', () => {
+  const { spawnSync } = require('child_process');
+  const run = (...args) => spawnSync(process.execPath, [path.join(app.ROOT, 'tools', 'rules-report.js'), ...args], { encoding: 'utf8' });
+  const sections = ['(a) Buff by recipient', '(b) Mitigation weight', '(c) Debuffs', '(d) Conventions'];
+  noProblems(problem => {
+    for (const version of VERSIONS) {
+      const text = run(version);
+      if (text.status !== 0) { problem(`${version}: exit ${text.status}: ${text.stderr}`); continue; }
+      for (const heading of sections) if (!text.stdout.includes(heading)) problem(`${version}: the report has no "${heading}" section`);
+      const widest = Math.max(...text.stdout.split('\n').map(line => line.length));
+      if (widest > 160) problem(`${version}: a report line is ${widest} columns wide, the limit is 160`);
+      let json;
+      try { json = JSON.parse(run(version, '--json').stdout); } catch (e) { problem(`${version}: --json is not JSON: ${e.message}`); continue; }
+      if (json.version !== version) problem(`${version}: --json reports version ${json.version}`);
+      // Every number and flag of `conventions` is listed, each with the first clause of the comment above it in the data file.
+      const flat = [];
+      const walk = (value, prefix) => { for (const [key, inner] of Object.entries(value)) (inner !== null && typeof inner === 'object' ? walk(inner, `${prefix}${key}.`) : flat.push(`${prefix}${key}`)); };
+      walk(RulesData[version].conventions, '');
+      if (JSON.stringify(json.conventions.map(row => row.key)) !== JSON.stringify(flat)) problem(`${version}: the report lists ${json.conventions.length} conventions, the data file holds ${flat.length}`);
+      for (const row of json.conventions) if (!row.note) problem(`${version}.conventions.${row.key} has no comment above it in js/rules/${version}.js`);
+      if (!json.dpsWeights.rows.length || !json.debuffs.length) problem(`${version}: the report is missing its buff rows or debuffs`);
+    }
+  });
+  for (const args of [[], ['nonsense'], ['tbc', '--bogus'], ['tbc', 'classic']]) {
+    const bad = run(...args);
+    assert.equal(bad.status, 2, `rules-report ${args.join(' ') || '(no argument)'} should exit 2, exited ${bad.status}`);
+    assert.match(bad.stderr, /Usage: node tools\/rules-report\.js/);
   }
 });
 

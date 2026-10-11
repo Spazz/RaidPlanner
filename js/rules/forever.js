@@ -40,15 +40,20 @@ RulesData.forever = {
   // browser pass.
   //
   // Tranquil Air Totem, Wrath of Air Totem and Totem of Wrath do not exist in Forever and are left out of the buffs (no
-  // Tranquil Air, no Wrath of Air/Totem of Wrath - only the four totem elements that still exist in Forever). Sanctity
-  // Aura and Improved Devotion/Retribution/Concentration Aura were removed; auras carry no healing-taken rider.
+  // Tranquil Air, no Wrath of Air/Totem of Wrath). The totems listed here cover three elements: air, earth and water.
+  // The fire element exists in Forever too (Flametongue Totem) but is not modeled yet, see the known gaps below.
+  // Sanctity Aura and Improved Devotion/Retribution/Concentration Aura were removed; auras carry no healing-taken
+  // rider.
   //
   // The weights started as Classic's (the recipient DPS-weight ordering is the same: no new classes or specs) and
   // differ only where Forever's buff catalog does: Tranquil Air is dropped (it does not exist); Leader of the Pack and
   // Moonkin Aura are the same crit aura for every role; Windfury is worth something to Ferals (it is a party buff whose
   // procs work in Cat and Bear form, so Classic's 'DRUID:Feral': 0, a weapon-enchant rule, is overridden); Trueshot
   // Aura buffs ranged attack power only and Battle Shout melee only; Sanctity Aura does not exist; the paladin auras
-  // carry no healing-taken rider, so the sustain weights equal Classic's.
+  // carry no healing-taken rider, so the sustain weights equal Classic's. A trailing "research-forever W<n>" comment on
+  // a weight names the item of the 2026-10-10 audit (tasks/research-forever.md, "Audit 2026-10-10") that states why it
+  // is what it is, and "audit CONFIRMED" refers to that audit's list of unchanged facts. The audit gives facts, not
+  // weight values. A weight without a comment has no audit item behind it.
   //
   // Known gaps, not modeled yet: hunter pet effects (Wolf Furious Howl party AP, Tallstrider armor, Carrion Bird AP;
   // need a per-player pet tag), Flametongue Totem, Healing Stream Totem, Vampiric Embrace, Vindication.
@@ -79,14 +84,14 @@ RulesData.forever = {
           'ROGUE:Subtlety': 8,
           'WARRIOR:Arms': 9,
           'SHAMAN:Enhancement': 8,
-          'DRUID:Feral': 8,
+          'DRUID:Feral': 8, // research-forever W4: Windfury works for Ferals in Forever (Classic has 0)
           melee_dps: 7,
           tank: 3,
         },
         mitigation: {
           'WARRIOR:Protection': 3,
           'PALADIN:Protection': 1,
-          'DRUID:Feral': 3,
+          'DRUID:Feral': 3, // research-forever W4: Windfury works for Ferals in Forever
         },
       },
       // A party gets only one of Windfury / Grace of Air / Flametongue even from two shamans (Blizzard 10-07: "Parties
@@ -234,7 +239,7 @@ RulesData.forever = {
           healer: 2,
           caster_dps: 1,
         },
-        sustain: 2,
+        sustain: 2, // research-forever W6: no healing-taken rider, so the same as Classic
       },
     },
     RETRIBUTION_AURA: {
@@ -269,7 +274,7 @@ RulesData.forever = {
       },
       weight: {
         dps: {
-          melee_dps: 3,
+          melee_dps: 3, // research-forever W10: melee attack power only (no ranged_dps key)
           tank: 2,
         },
         mitigation: { '*': 2 },
@@ -288,7 +293,7 @@ RulesData.forever = {
       targetRoles: ['ranged_dps'],
       priority: 62,
       weight: {
-        dps: { ranged_dps: 4 },
+        dps: { ranged_dps: 4 }, // research-forever W1: ranged attack power only (no melee_dps key)
       },
     },
     // Leader of the Pack and Moonkin Aura are the same +3% all-school crit aura in Forever (melee, ranged AND spell
@@ -312,8 +317,8 @@ RulesData.forever = {
       weight: {
         dps: {
           melee_dps: 4,
-          ranged_dps: 4,
-          caster_dps: 3,
+          ranged_dps: 4, // research-forever, audit CONFIRMED: +3% crit for spells and attacks
+          caster_dps: 3, // research-forever, audit CONFIRMED: +3% crit for spells and attacks
           tank: 2,
         },
         mitigation: {
@@ -344,8 +349,8 @@ RulesData.forever = {
       weight: {
         dps: {
           caster_dps: 4,
-          melee_dps: 2,
-          ranged_dps: 2,
+          melee_dps: 2, // research-forever, audit CONFIRMED: +3% crit for spells and attacks
+          ranged_dps: 2, // research-forever, audit CONFIRMED: +3% crit for spells and attacks
           tank: 1,
         },
       },
@@ -604,20 +609,136 @@ RulesData.forever = {
   // unchanged), Paladin a strong and now cross-faction off-tank.
   tankAnchorOrder: ['WARRIOR', 'PALADIN'],
 
-  // Every tuning number and flag the optimizer reads (rules.* before this file), plus modeConfig (objective weights per
-  // optimizer mode: only max_dps is supported, the other entries stay so old plans and share links validate) and
+  // TBC-only: this version has no duplicate-provider penalty (an empty list adds none). See tbc.js.
+  stackPenalty: [],
+
+  // TBC-only: this version has no overflow DPS seat in the healer group (an empty list matches nobody). See tbc.js.
+  healerGroupDps: [],
+
+  // Every tuning number and flag the optimizer reads (rules.* in js/optimizer.js), plus modeConfig (objective weights
+  // per optimizer mode: only max_dps is supported, the other entries stay so old plans and share links validate) and
   // openSlots (Open-slot pricing scalars).
   //
   // These are small hooks the optimizer consults instead of hardcoded class/spec checks, so a version can turn one off
-  // or swap its value; a key that is absent is off (the Classic and Forever files leave out the TBC-only ones).
+  // or swap its value. Every key is present in every version file (Rulesets.CONVENTIONS in js/rules.js is the closed
+  // list, and Rulesets.compile stops the page at load on a missing, an unknown or a mistyped key, so a misspelled
+  // knob cannot be ignored): a number of 0 and a flag of false switch that rule off for this version, and
+  // healerCapOverFloor: null means no cap (the only key whose off state has no number). The line above each key gives
+  // its unit, what it trades against and the boards-tests.js fixtures that move when it changes; node boards-tests.js
+  // shows who moves after an edit of your own. The 2026-10-10 TBC comp rules (tbc.js) are off here.
   conventions: {
+    // ---- Switches: on or off for the whole version ----
+
     // meleeWantsWindfury: Shaman exists on both factions - no faction gate needed.
+    //
+    // flag: charge a melee group that has no shaman (meleeWantsWindfuryCost) and explain its shaman as keeping Windfury
+    // coverage; trades Windfury coverage against the shaman's other seats; off: no fixture moves.
     meleeWantsWindfury: true,
     // ferociousInspiration: a TBC-only Beast Mastery talent; it does not exist in Forever.
+    //
+    // flag: credit each extra Beast Mastery hunter in a group with ferociousInspirationStacking of the FI value; trades
+    // BM pairs against spreading hunters; on: no fixture moves.
     ferociousInspiration: false,
+    // flag: the melee/caster group count follows the roster's physical vs caster DPS headcount, not a half-and-half
+    // split; trades melee-group seats against caster-group seats; on moves foreverMixed40.
+    rosterShapedIdentities: false,
+    // flag: the refine rounds also try 3-cycle rotations, plus a guarded final refine after de-isolation; trades
+    // Optimize time for boards that plain swaps cannot reach; on: no fixture moves.
+    rotationSearch: false,
+
+    // ---- Windfury and shamans ----
+
+    // 6 is the cost Classic and Forever have always used; TBC raised it to 13 on 2026-10-10 (comp rule 1, see tbc.js).
+    //
+    // points per melee DPS (x dpsWeight x structure) in a melee group with no shaman (while meleeWantsWindfury is on);
+    // trades Windfury coverage against the shaman's other seats; x2: no fixture moves.
+    meleeWantsWindfuryCost: 6,
+    // multiplier: Windfury's value in a group holding an Enhancement shaman is scaled by 1 + this; trades an Enh
+    // shaman's Windfury against an Ele or Resto shaman's; 0 -> 0.4 moves foreverMixed40.
+    enhWindfuryBonus: 0,
     // Same Windfury-over-Grace-of-Air structural nudge as Classic - see conventions.meleeGroupWindfuryBias in
     // classic.js for the full rationale.
+    //
+    // points per non-shaman melee DPS (x structure) added to Windfury's value in a melee-identity group; trades
+    // Windfury against Grace of Air for the shaman's air totem; x2 moves foreverMixed40.
     meleeGroupWindfuryBias: 8,
+    // points (x structure) for a group holding both a Retribution Paladin and an Enhancement Shaman; trades the pair
+    // against the Ret's seat in a shaman-less group; 0 -> 8 moves foreverMixed40.
+    retEnhPairBonus: 0,
+    // points per Enhancement shaman (x structure) parked in a tank or caster group when Enh outnumber the melee groups;
+    // trades the spare Enh's seat against a DPS that receives buffs; 0 -> 25: no fixture moves.
+    surplusEnhCost: 0,
+    // multiplier of FI's value credited per extra Beast Mastery hunter in a group (read only while ferociousInspiration
+    // is on); trades BM pairs against spreading hunters; x2: no fixture moves.
+    ferociousInspirationStacking: 0.5,
+
+    // ---- Hunters ----
+
+    // points per Survival hunter (x structure) sharing a group with another hunter, unless 2+ Enh are on the board;
+    // trades a duplicated hunter seat against buffs elsewhere; 0 -> 2: no fixture moves.
+    hunterSpread: 0,
+    // points (x structure) per hunter beyond a fair share in a group, triangular, with 2+ Enh on the board (needs
+    // hunterSpread); trades hunter spread against Windfury-group buffs; 0 -> 24: no fixture moves; 0 -> 24 with
+    // hunterSpread 0 -> 2 moves foreverMixed40.
+    hunterSpreadEnh: 0,
+    // points per hunter (x structure) in a caster group (casters outnumber melee and hunters); trades hunters in
+    // physical groups against the buffs a caster group gives them; 0 -> 20 moves foreverMixed40.
+    hunterInCasterGroup: 0,
+    // points per hunter guest (x structure) in the tank group, in place of tankGroupGuestCost; 0 = hunters ride free;
+    // trades a spare hunter's seat with the healers against its buffs elsewhere; 0 -> 12: no fixture moves.
+    hunterTankGuestCost: 0,
+
+    // ---- The tank group (the anchor tank with its healers) ----
+
+    // count: healers the tank group is built around (pull of 10 each up to it, shortfall costs, overflow seat opens
+    // at it); the fourth-healer bonus (3) and the cost per healer past four (15) are still literals in
+    // js/optimizer.js, so keep this at 4 or below; trades healer seats against DPS seats; 3 -> 4 moves
+    // foreverMixed40; 3 -> 2: no fixture moves.
+    tankGroupHealers: 3,
+    // points per healer below tankGroupHealers in the tank group (x structure); trades a tank-group healer against a
+    // DPS guest; 0 -> 15 moves forever10.
+    tankGroupHealerCost: 0,
+    // points (x structure) when the roster's only shaman is a Resto outside a tank group that is short of healers;
+    // trades the Windfury pull on that shaman against the tank healers; 0 -> 25: no fixture moves.
+    loneRestoTankCost: 0,
+    // points per melee or caster DPS guest (x structure) in the tank group, except the one overflow seat; trades a
+    // guest's buffs against a healer seat; x2: no fixture moves.
+    tankGroupGuestCost: 12,
+    // points (x structure) for the one healerGroupDps DPS seated in the tank group once it holds its
+    // tankGroupHealers; inert while healerGroupDps is [], as it is in this file; trades that overflow seat against a
+    // melee or caster group; 0 -> 7: no fixture moves.
+    healerGroupDpsPull: 0,
+
+    // ---- Role cohesion and group size ----
+
+    // points per DPS member (x cohesion) whose role is the group's identity (a hunter counts as melee in a melee
+    // group); trades role clustering against buff value; x2 moves foreverMixed40.
+    cohesionMatch: 12,
+    // unreachable today (points per DPS member, x cohesion, whose role is ROLE_COMPAT-compatible with the group's
+    // identity); the identities Optimizer.roleIdentitiesFor assigns are melee_dps, caster_dps and tank, tank groups
+    // skip the cohesion block, hunters in a caster group take the neutral branch above it, and ROLE_COMPAT pairs
+    // neither a melee member with a caster group nor a caster member with a melee group, so every DPS member either
+    // matches or mismatches; kept so a ROLE_COMPAT edit can use it; trades role clustering against buff value; x2: no
+    // fixture moves.
+    cohesionCompatible: 6,
+    // points subtracted per DPS member (x cohesion) whose role fits neither; trades role clustering against buff value;
+    // x2: no fixture moves.
+    cohesionMismatch: 12,
+    // points per (group size squared) (x structure) subtracted from every group, a convex push toward emptier groups;
+    // trades synergy against evenly filled groups; x2 moves foreverMixed40.
+    groupSizePressure: 0.8,
+
+    // ---- Bench and Open slots ----
+
+    // count: seated healers are capped at the raid size's healer floor plus this when DPS would otherwise be benched;
+    // null = no cap; trades healer seats against benched DPS; null -> 1: no fixture moves.
+    healerCapOverFloor: null,
+    // Open-slot points subtracted for suggesting an Elemental shaman beyond one per Boomkin; trades another Ele against
+    // other specs for an empty seat; 0 -> 30: no fixture moves.
+    extraEleNeedsBoomkin: 0,
+
+    // ---- Objective weights and Open-slot pricing ----
+
     // modeConfig: the objective weights per optimizer mode over the score's components. dps: party-buff DPS value
     // received by members (weight.dps); mit: mitigation value of buffs reaching tanks in the tank group
     // (weight.mitigation); structure: healer coverage + spreading pressure; cohesion: role-family clustering around
@@ -629,7 +750,20 @@ RulesData.forever = {
     // tests still run. Do not tune weights or write code for them; when a non-max_dps check conflicts with a max_dps
     // improvement, delete the check. The scenario runner gates on max_dps only (--mode all is a one-off probe).
     modeConfig: {
-      max_dps: { dps: 1.0, mit: 0.25, structure: 0.7, cohesion: 0.4 },
+      max_dps: {
+        // multiplier on every party-buff DPS value a member receives (weight.dps); trades DPS buffs against mitigation,
+        // structure and cohesion; x2 moves foreverMixed40, forever20, forever10.
+        dps: 1.0,
+        // multiplier on the mitigation value of buffs that reach tanks (weight.mitigation); also scales tank-debuff
+        // pricing in Open slots; trades tank mitigation against DPS buffs; x2 moves foreverMixed40.
+        mit: 0.25,
+        // multiplier on healer coverage, spreading pressure and every structural cost and bonus above (those marked x
+        // structure); trades composition rules against buff value; x2 moves foreverMixed40.
+        structure: 0.7,
+        // multiplier on the three cohesion terms; trades role clustering against buff value; x2 moves foreverMixed40,
+        // forever10.
+        cohesion: 0.4,
+      },
       tank_mit: { dps: 0.7, mit: 1.2, structure: 1.0, cohesion: 0.4 },
       balanced: { dps: 0.7, mit: 0.5, structure: 1.0, cohesion: 1.0 },
       relaxed: { dps: 0.2, mit: 0.3, structure: 1.0, cohesion: 1.5 },
@@ -637,13 +771,25 @@ RulesData.forever = {
     openSlots: {
       // Open-slot pricing (OpenSlots._raidValue), on top of the party buffs. utilityBonus: flat bonus for a spec that
       // provides a utility nobody in the raid brings yet (Power Infusion, ...).
+      //
+      // Open-slot points for a spec that covers a utility nobody in the raid brings yet; trades a utility against
+      // party-buff gain; x2: no fixture moves.
       utilityBonus: 6,
       // specRepeat: cost for every copy of the candidate's spec already in the raid.
+      //
+      // Open-slot points subtracted per copy of the candidate's spec already in the raid; trades another copy of a spec
+      // against variety; x2: no fixture moves.
       specRepeat: 6,
       // classCrowd: cost for piling onto a class the raid already has plenty of: classCrowd x max(0, copies of the
       // class already in the raid - classCrowdFree + 1).
+      //
+      // Open-slot points per copy of the candidate's class beyond classCrowdFree; trades a crowded class against
+      // variety; x2: no fixture moves.
       classCrowd: 4,
       // classCrowdFree: see classCrowd.
+      //
+      // count: copies of one class the raid holds before the next one costs classCrowd; trades a crowded class against
+      // variety; x2: no fixture moves.
       classCrowdFree: 5,
     },
   },
