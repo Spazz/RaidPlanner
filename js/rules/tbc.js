@@ -48,8 +48,9 @@ RulesData.tbc = {
   // more to them than WF). Feral Druid: agility scaling (GoA) + Imp LotP heal; low Devotion value (high base armor),
   // zero Windfury (no weapon imbues in forms). Tree of Life (+25% healing received, party-only) is huge for any tank.
   //
-  // weight.sustain: healer-sustain buffs give extra value in the tank group per healer present (capped at 2) - Mana
-  // Tide/Spring keep tank healers casting, VT feeds their mana, Concentration Aura protects their casts.
+  // weight.sustain: healer-sustain buffs give extra value in the tank group per healer present (up to
+  // conventions.sustainHealers) - Mana Tide/Spring keep tank healers casting, VT feeds their mana, Concentration Aura
+  // protects their casts.
   buffs: {
     // Windfury: Ret > Fury > Arms > Rogues (main-hand only). Feral druids get NOTHING from WF (weapon imbues don't work
     // in forms), hence the 0 key. Hunters don't benefit either (melee-weapon imbue; the role table omits ranged).
@@ -899,13 +900,14 @@ RulesData.tbc = {
   // per optimizer mode: only max_dps is supported, the other entries stay so old plans and share links validate) and
   // openSlots (Open-slot pricing scalars).
   //
-  // These are small hooks the optimizer consults instead of hardcoded class/spec checks, so a version can turn one off
-  // or swap its value. Every key is present in every version file (Rulesets.CONVENTIONS in js/rules.js is the closed
-  // list, and Rulesets.compile stops the page at load on a missing, an unknown or a mistyped key, so a misspelled
-  // knob cannot be ignored): a number of 0 and a flag of false switch that rule off for this version, and
-  // healerCapOverFloor: null means no cap (the only key whose off state has no number). The line above each key gives
-  // its unit, what it trades against and the boards-tests.js fixtures that move when it changes; node boards-tests.js
-  // shows who moves after an edit of your own.
+  // These are small hooks the optimizer consults instead of hardcoded class/spec checks, so a version can turn one
+  // off or swap its value. Every key is present in every version file (Rulesets.CONVENTIONS in js/rules.js is the
+  // closed list, and Rulesets.compile stops the page at load on a missing, an unknown or a mistyped key, so a
+  // misspelled knob cannot be ignored): a number of 0 switches that cost or bonus off and a flag of false switches
+  // that rule off for this version; a count is a threshold, not a switch (tankGroupHealerMax and classCrowdFree say
+  // what 0 does there), and healerCapOverFloor: null means no cap (the only key whose off state has no number). The
+  // line above each key gives its unit, what it trades against and the boards-tests.js fixtures that move when it
+  // changes; node boards-tests.js shows who moves after an edit of your own.
   conventions: {
     // ---- Switches: on or off for the whole version ----
 
@@ -1007,11 +1009,47 @@ RulesData.tbc = {
 
     // ---- The tank group (the anchor tank with its healers) ----
 
-    // count: healers the tank group is built around (pull of 10 each up to it, shortfall costs, overflow seat opens
-    // at it); the fourth-healer bonus (3) and the cost per healer past four (15) are still literals in
-    // js/optimizer.js, so keep this at 4 or below; trades healer seats against DPS seats; 3 -> 4 moves F02, F05, F07,
-    // F09, F10, +37 more; 3 -> 2 moves F09, F10, F13, F14, F15, +12 more.
+    // count: healers the tank group is built around (pull of tankGroupHealerPull each up to it); below it a shortfall
+    // costs and at it the overflow seat opens; keep it at or below tankGroupHealerMax (rules-data-tests.js checks
+    // it); trades healer seats against DPS seats; 3 -> 4 moves F02, F05, F07, F09, F10, +37 more; 3 -> 2 moves F09,
+    // F10, F13, F14, F15, +12 more.
     tankGroupHealers: 3,
+    // Three healers (tankGroupHealers) is the MT group's core; each of them is pulled into it with this much.
+    //
+    // points per healer (x structure) in the tank group, up to tankGroupHealers of them; trades a healer's seat with
+    // the tank group against its own buffs in a DPS group; x2 moves F13, F14, F15.
+    tankGroupHealerPull: 10,
+    // The MT group holds up to four healers (the MT plus a healer party). It is one number on purpose: the
+    // extra-healer pull (tankGroupExtraHealerPull) begins when the group holds this many, and each healer past it
+    // costs tankGroupHealerOverflowCost. 0 is not an off switch here: every healer would then pay
+    // tankGroupHealerOverflowCost and the extra pull would apply at any count; to switch the rule off set
+    // tankGroupExtraHealerPull and tankGroupHealerOverflowCost to 0.
+    //
+    // count: healers the tank group holds before each further one costs tankGroupHealerOverflowCost; trades healer
+    // seats against DPS seats; x2 moves F01, F04, F10, F16, F21, +36 more; 4 -> 5 moves F01, F04, F10, F16, F21, +36
+    // more; 4 -> 3 moves F01, F03, F04, F06, F08, +76 more.
+    tankGroupHealerMax: 4,
+    // A 4th healer is allowed but only lightly pulled, so a Holy Priest who'd get Vampiric Touch in the Shadow
+    // Priest's group goes there instead of padding the MT group.
+    //
+    // points (x structure), once, when the tank group holds tankGroupHealerMax healers or more; trades a 4th healer's
+    // seat in the tank group against its buffs in a DPS group; x2 moves F21, F37, F42, P06, P08, +7 more.
+    tankGroupExtraHealerPull: 3,
+    // A fifth healer only stays in the MT group for the mana totems it receives; past four (tankGroupHealerMax), they
+    // move on.
+    //
+    // points per healer (x structure) past tankGroupHealerMax in the tank group; trades a surplus healer's mana
+    // totems in the tank group against a seat elsewhere; x2: no fixture moves; off moves F16.
+    tankGroupHealerOverflowCost: 15,
+    // weight.sustain is counted per healer in the tank group, up to this many, and scales with the structure weight:
+    // it is a healing-structure concern (keeping the tank healers casting: Mana Tide and Spring, VT feeding their
+    // mana, Concentration Aura protecting their casts), not a mitigation one. It is what keeps a lone Resto Shaman
+    // with the tank healers instead of chasing Mana Tide value in a mage group.
+    //
+    // count: healers in the tank group counted for a buff's weight.sustain, at most this many; trades the tank
+    // group's pull on sustain providers against their buffs in a DPS group; x2 moves F02, F13, F21, F32, F33, +21
+    // more; 2 -> 1 moves F05, F17, T10, T21, T27, +2 more.
+    sustainHealers: 2,
     // 2026-10-10 comp rules (reference G5 keeps 3 healers + 1 overflow DPS): cost per healer below 3 in the tank group
     // (x structure), so pushing hunters out of caster groups never trades a tank-group healer for a guest.
     //
@@ -1053,6 +1091,14 @@ RulesData.tbc = {
     // points per (group size squared) (x structure) subtracted from every group, a convex push toward emptier groups;
     // trades synergy against evenly filled groups; x2 moves F03, F05, F21, F23, F28, +27 more.
     groupSizePressure: 0.8,
+    // A tank in a caster group is off-role there: without this, Blood Pact's mitigation value alone pulled spare
+    // tanks into the warlock group. A structural rule, not a cohesion preference, so it holds in every mode, and it
+    // outweighs the tank group's pull on a 4th healer (tankGroupExtraHealerPull): that healer trades out to the
+    // casters instead.
+    //
+    // points per tank (x structure) seated in a caster group; trades the buffs a caster group gives a spare tank
+    // (Blood Pact) against its seat in a tank or melee group; x2 moves F18, P17.
+    tankInCasterGroupCost: 25,
 
     // ---- Bench and Open slots ----
 
@@ -1087,7 +1133,8 @@ RulesData.tbc = {
         // structure and cohesion; x2 moves F01, F02, F03, F04, F05, +84 more.
         dps: 1.0,
         // multiplier on the mitigation value of buffs that reach tanks (weight.mitigation); also scales tank-debuff
-        // pricing in Open slots; trades tank mitigation against DPS buffs; x2 moves F01, F03, F04, F05, F07, +66 more.
+        // pricing in Open slots (openSlots.tankDebuffScale); trades tank mitigation against DPS buffs; x2 moves F01,
+        // F03, F04, F05, F07, +66 more.
         mit: 0.25,
         // multiplier on healer coverage, spreading pressure and every structural cost and bonus above (those marked x
         // structure); trades composition rules against buff value; x2 moves F01, F03, F04, F05, F12, +63 more.
@@ -1120,9 +1167,19 @@ RulesData.tbc = {
       classCrowd: 4,
       // classCrowdFree: see classCrowd.
       //
+      // 0 is not an off switch here: every copy of a class would then cost classCrowd, the first one included (the
+      // candidate's own copy counts, OpenSlots._raidValue); set classCrowd to 0 to switch the rule off.
+      //
       // count: copies of one class the raid holds before the next one costs classCrowd; trades a crowded class against
       // variety; x2 moves F29.
       classCrowdFree: 5,
+      // OpenSlots._raidValue prices a tank debuff at its weight x the raid's tank count x modeConfig.max_dps.mit x
+      // this. 4 is the reciprocal of max_dps.mit 0.25, so a tank debuff is worth its weight per tank today, and mit
+      // also reprices tank debuffs in Open slots.
+      //
+      // multiplier on tank count x the mode's mit for a tank debuff's Open-slot weight; trades a spec that brings a
+      // tank debuff against the party-buff gain of other specs; x2 moves T36, T41.
+      tankDebuffScale: 4,
     },
   },
 

@@ -1140,7 +1140,7 @@ const Optimizer = {
       let v = 0;
       for (const m of group) v += dpsValueFor(id, m) * cfg.dps;
       for (const t of tanks) v += mitValueFor(id, t) * cfg.mit;
-      if (isTank && rules.sustainValue[id]) v += rules.sustainValue[id] * Math.min(healerCount, 2) * cfg.structure;
+      if (isTank && rules.sustainValue[id]) v += rules.sustainValue[id] * Math.min(healerCount, rules.rules.sustainHealers) * cfg.structure;
       // Windfury-over-other-air-totem convention (Classic/Forever only — see
       // rules.meleeGroupWindfuryBias, 0 for TBC so this is a no-op
       // there). A shaman's per-element totem choice (resolveGroupBuffs) picks
@@ -1224,14 +1224,12 @@ const Optimizer = {
     //    there is not).
     if (isTank) {
       const coreHealers = rules.rules.tankGroupHealers;
-      // Three healers (rules.tankGroupHealers) is the MT group's core; a 4th is
-      // allowed but only lightly pulled, so a Holy Priest who'd get Vampiric
-      // Touch in the Shadow Priest's group goes there instead of padding the MT group.
-      score += (Math.min(healerCount, coreHealers) * 10 + (healerCount >= 4 ? 3 : 0)) * cfg.structure;
-      // The MT group holds up to four healers (the MT plus a healer party).
-      // A fifth only stays for the mana totems it receives; past four, they
-      // move on.
-      score -= Math.max(0, healerCount - 4) * 15 * cfg.structure;
+      const maxHealers = rules.rules.tankGroupHealerMax;
+      // Healers pulled in: rules.tankGroupHealerPull each up to the core (rules.tankGroupHealers), plus
+      // rules.tankGroupExtraHealerPull at rules.tankGroupHealerMax (why: conventions in js/rules/<version>.js).
+      score += (Math.min(healerCount, coreHealers) * rules.rules.tankGroupHealerPull + (healerCount >= maxHealers ? rules.rules.tankGroupExtraHealerPull : 0)) * cfg.structure;
+      // Past rules.tankGroupHealerMax each further healer costs rules.tankGroupHealerOverflowCost.
+      score -= Math.max(0, healerCount - maxHealers) * rules.rules.tankGroupHealerOverflowCost * cfg.structure;
       // The reference comp seats one overflow Affliction Warlock with the healers (it
       // needs none of the party buffs a DPS group offers) once the three-healer core is
       // there, so that seat is not a penalized guest. Without this the guest penalty
@@ -1321,12 +1319,9 @@ const Optimizer = {
         else if (ROLE_COMPAT[p.role] && ROLE_COMPAT[p.role].includes(roleIdentity)) score += rules.rules.cohesionCompatible * cfg.cohesion;
         else score -= rules.rules.cohesionMismatch * cfg.cohesion;
       }
-      // A tank in a caster group is off-role there: without this, Blood Pact's
-      // mitigation value alone pulled spare tanks into the warlock group. A
-      // structural rule, not a cohesion preference, so it holds in every mode,
-      // and it outweighs the tank group's pull on a 4th healer: that healer
-      // trades out to the casters instead.
-      if (roleIdentity === 'caster_dps') score -= 25 * cfg.structure * tanks.length;
+      // A tank in a caster group is off-role there: rules.tankInCasterGroupCost per tank, x structure in every mode
+      // (a structural rule, not a cohesion preference; why: conventions in js/rules/<version>.js).
+      if (roleIdentity === 'caster_dps') score -= rules.rules.tankInCasterGroupCost * cfg.structure * tanks.length;
     }
 
     // Duplicate providers (rules.stackPenalty): the second shaman/Ret/Feral in
@@ -1824,14 +1819,15 @@ const OpenSlots = {
   // one Arms Warrior) beat a Disc Priest and a second Ret beat a Survival Hunter.
   // A raid debuff is worth what a party buff of the same value would be to every raid member it actually helps: its
   // compiled `value` ({ tier, who }, from the debuff's weight, targetRoles and targetSchool in js/rules/<version>.js).
-  // The scalars (utilityBonus, specRepeat, classCrowd, classCrowdFree) are the ruleset's `openSlots`.
+  // The scalars (utilityBonus, specRepeat, classCrowd, classCrowdFree, tankDebuffScale) are the ruleset's `openSlots`; a
+  // tank debuff is priced at tier x tank count x the mode's mit x tankDebuffScale, so mit also reprices it.
   // Hunter's Mark counts as fully covered by any hunter: every TBC raid hunter build (Beast Mastery 41/20/0, Survival 0/20/41)
   // takes Improved Hunter's Mark on its way through the Marksmanship tree, so it is no reason to suggest a Marksmanship hunter
   // (user decision 2026-10-10; the half credit that existed here made an MM pick beat a Feral for a hunter group).
   _raidValue(candidate, raid, mode) {
     const rules = activeRules();
     const cfg = modeConfigFor(rules, mode);
-    const { utilityBonus, specRepeat, classCrowd, classCrowdFree } = rules.openSlots;
+    const { utilityBonus, specRepeat, classCrowd, classCrowdFree, tankDebuffScale } = rules.openSlots;
     const withCandidate = raid.concat(candidate);
     const helps = {
       physical: p => p.role === 'melee_dps' || p.role === 'ranged_dps',
@@ -1841,7 +1837,7 @@ const OpenSlots = {
       ...SCHOOL_CASTERS,
     };
     const weightOf = (who) => who === 'tank'
-      ? withCandidate.filter(p => p.role === 'tank').length * cfg.mit * 4
+      ? withCandidate.filter(p => p.role === 'tank').length * cfg.mit * tankDebuffScale
       : withCandidate.filter(helps[who] || helps.all).reduce((sum, p) => sum + dpsWeightFor(p), 0) * cfg.dps;
     let v = 0;
     const covered = getRaidDebuffCoverage([raid]);

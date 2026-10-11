@@ -13,8 +13,10 @@
  *     per version, an icon / abbreviation / CSS class in the catalog for every buff and debuff id, known classes and specs
  *     in sourceClass / sourceSpec / preferSpec / tankAnchorOrder);
  *   - the conventions: every version holds exactly the keys of Rulesets.CONVENTIONS (js/rules.js) with the right types,
- *     modeConfig holds exactly the four modes, and the names js/*.js reads as rules.rules.<name> are that schema plus the
- *     structural rules (so a knob can be neither read without being listed nor listed without being read);
+ *     the tank group's healer counts stay in order (tankGroupHealers and sustainHealers at or below tankGroupHealerMax),
+ *     modeConfig holds exactly the four modes, openSlots exactly its five scalars, and the names js/*.js reads as
+ *     rules.rules.<name> are that schema plus the structural rules (so a knob can be neither read without being listed
+ *     nor listed without being read);
  *   - Rulesets.compile itself, on small synthetic data (matchers, sustain 0, the closed vocabularies, the conventions
  *     schema) and on the real data (pure: nothing shared with its inputs; the id-keyed tables and the rules object stay V8
  *     fast-properties objects, which keeps the optimizer's hot loops fast);
@@ -70,7 +72,7 @@ const specNames = cls => Object.values(catalog.specs[cls]).map(s => s.name);
 const SPEC_KEYS = CLASSES.flatMap(cls => specNames(cls).map(name => `${cls}:${name}`));
 const MODES = ['max_dps', 'tank_mit', 'balanced', 'relaxed'];
 const MODE_WEIGHTS = ['dps', 'mit', 'structure', 'cohesion'];
-const OPEN_SLOT_SCALARS = ['utilityBonus', 'specRepeat', 'classCrowd', 'classCrowdFree'];
+const OPEN_SLOT_SCALARS = ['utilityBonus', 'specRepeat', 'classCrowd', 'classCrowdFree', 'tankDebuffScale'];
 // The sections of a version file that rules.rules holds besides the conventions: structural rules read by the scorer and
 // the page, not tuning knobs (tankAnchorOrder is compiled into tankAnchorRank).
 const STRUCTURAL_RULES = ['tankAnchorRank', 'specAura', 'spreadProviders', 'exclusiveBuffs', 'healerGroupDps', 'stackPenalty', 'factionLock'];
@@ -486,7 +488,7 @@ check('tankAnchorOrder names known classes, each once', () => {
   });
 });
 
-check('conventions: every version holds exactly the keys of Rulesets.CONVENTIONS, with the right types (null only where the schema says number|null)', () => {
+check('conventions: every version holds exactly the keys of Rulesets.CONVENTIONS, with the right types (null only where the schema says number|null); tankGroupHealers and sustainHealers stay at or below tankGroupHealerMax', () => {
   // The schema itself: three scalar types, null allowed for one key, the two nested blocks.
   assert.deepStrictEqual([...new Set(KNOBS.map(([, type]) => type))].sort(), ['boolean', 'number', 'number|null'], 'the scalar types of Rulesets.CONVENTIONS');
   assert.deepStrictEqual(KNOBS.filter(([, type]) => type === 'number|null').map(([key]) => key), ['healerCapOverFloor'], 'only healerCapOverFloor may be null');
@@ -500,12 +502,22 @@ check('conventions: every version holds exactly the keys of Rulesets.CONVENTIONS
         if (!(key in conventions)) problem(`${version}.conventions.${key} is missing (every version file lists every key)`);
         else if (!TYPE_TESTS[type](conventions[key])) problem(`${version}.conventions.${key} is ${JSON.stringify(conventions[key])}, expected ${TYPE_WORDS[type]}`);
       }
+      // The tank group's healer counts are ordered (Optimizer.groupScore): tankGroupHealerMax is where the group is full, the extra-
+      // healer pull starts and each further healer costs tankGroupHealerOverflowCost, so neither the core (tankGroupHealers) nor the
+      // number of healers counted for weight.sustain (sustainHealers) may lie above it.
+      const { tankGroupHealers, sustainHealers, tankGroupHealerMax } = conventions;
+      if (isNumber(tankGroupHealers) && isNumber(tankGroupHealerMax) && tankGroupHealers > tankGroupHealerMax) {
+        problem(`${version}.conventions.tankGroupHealers is ${tankGroupHealers}, above tankGroupHealerMax ${tankGroupHealerMax}: the core cannot be larger than the group's maximum`);
+      }
+      if (isNumber(sustainHealers) && isNumber(tankGroupHealerMax) && sustainHealers > tankGroupHealerMax) {
+        problem(`${version}.conventions.sustainHealers is ${sustainHealers}, above tankGroupHealerMax ${tankGroupHealerMax}: weight.sustain would count healers the group no longer holds`);
+      }
     }
   });
   return `${KNOBS.length} knobs + modeConfig + openSlots in each of ${VERSIONS.length} files`;
 });
 
-check('conventions: modeConfig holds exactly the four modes, each with the four weights; openSlots exactly its four scalars (schema, data files and compiled rulesets)', () => {
+check('conventions: modeConfig holds exactly the four modes, each with the four weights; openSlots exactly its five scalars (schema, data files and compiled rulesets)', () => {
   const sorted = list => [...list].sort();
   assert.deepStrictEqual(Object.keys(SCHEMA.modeConfig), MODES, 'Rulesets.CONVENTIONS.modeConfig lists the modes');
   for (const mode of MODES) assert.deepStrictEqual(Object.keys(SCHEMA.modeConfig[mode]), MODE_WEIGHTS, `Rulesets.CONVENTIONS.modeConfig.${mode}`);
@@ -552,7 +564,13 @@ check('code and schema agree: every rules.rules.<name> that js/*.js reads is a c
     if (!/\.modeConfig\b/.test(optimizer)) problem('js/optimizer.js no longer reads the ruleset\'s modeConfig');
     if (!/\.openSlots\b/.test(optimizer)) problem('js/optimizer.js no longer reads the ruleset\'s openSlots');
     for (const weight of MODE_WEIGHTS) if (!new RegExp(`\\bcfg\\.${weight}\\b`).test(optimizer)) problem(`Rulesets.CONVENTIONS lists the mode weight ${weight}, but js/optimizer.js never reads cfg.${weight}`);
-    for (const scalar of OPEN_SLOT_SCALARS) if (!new RegExp(`\\b${scalar}\\b`).test(optimizer)) problem(`Rulesets.CONVENTIONS lists the Open-slot scalar ${scalar}, but js/optimizer.js never reads it`);
+    // Each scalar must be named at least twice with the comments gone: once destructured from openSlots and once where it
+    // is used, so a use site reverted to a literal fails here even while the destructuring still names the scalar.
+    for (const scalar of OPEN_SLOT_SCALARS) {
+      const mentions = (optimizer.match(new RegExp(`\\b${scalar}\\b`, 'g')) || []).length;
+      if (mentions === 0) problem(`Rulesets.CONVENTIONS lists the Open-slot scalar ${scalar}, but js/optimizer.js never reads it`);
+      else if (mentions < 2) problem(`js/optimizer.js names the Open-slot scalar ${scalar} only once (destructured from openSlots but never used)`);
+    }
   });
   return `${reads.size} names read across the ${sources.size} files of js/`;
 });
