@@ -1,0 +1,5121 @@
+{
+  "F01": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Bearwick",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Beastmode",
+        "ROGUE:Assassination Nightblade",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "HUNTER:Survival Trapper",
+        "PRIEST:Holy Greedius"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "SHAMAN:Restoration Tidecrest",
+        "WARLOCK:Demonology Doomfire",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F02": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Pybz",
+        "WARRIOR:Fury Holyfire"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Beast Mastery Yum",
+        "HUNTER:Survival Khartor",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Shadow Mindweaver",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction MrCam"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms",
+        "WARLOCK:Demonology Femscout"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Sté",
+        "WARLOCK:Affliction Poena"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F03": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ironbreaker",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "HUNTER:Beast Mastery Courgette",
+        "ROGUE:Assassination Nightblade",
+        "SHAMAN:Restoration Toms",
+        "WARRIOR:Arms Bladestorm",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "PALADIN:Holy Azuraab",
+        "WARLOCK:Demonology Doomfire",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "MAGE:Frost Icebolt",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Holy Sanctus",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F04": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Shouna",
+        "HUNTER:Beast Mastery Courgette",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Klyaksah",
+        "WARRIOR:Fury Holyfire"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "PALADIN:Retribution Cromer",
+        "SHAMAN:Enhancement Pybz/Dodz",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction femscout",
+        "WARLOCK:Destruction MrCam",
+        "WARLOCK:Destruction Poena"
+      ],
+      [
+        "HUNTER:Beast Mastery Yum",
+        "HUNTER:Survival Khartor/Minko",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow treshflay",
+        "SHAMAN:Restoration Toms⛷️"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab/Ashkaz",
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Sté"
+      ]
+    ],
+    "bench": [
+      "MAGE:Arcane Möoncake/Kelolon",
+      "PRIEST:Holy Greedìus"
+    ],
+    "unplaced": 0,
+    "suggestions": [
+      "G5 PRIEST:Discipline"
+    ]
+  },
+  "F05": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "PALADIN:Retribution Judgement",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ironbreaker"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "ROGUE:Assassination Nightblade",
+        "ROGUE:Assassination Toxin",
+        "WARRIOR:Arms Bladestorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PRIEST:Discipline Sanctus",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Holyrad",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F06": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Marksmanship Arrowhead",
+        "PALADIN:Retribution Cromer",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Courgette",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Grizzhide",
+        "HUNTER:Beast Mastery Relapse",
+        "PRIEST:Holy Greedius",
+        "ROGUE:Assassination Nightblade",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Holyrad",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F07": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Courgette",
+        "PALADIN:Retribution Cromer",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "PRIEST:Discipline Sanctus",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Feral Wildclaw",
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Holyrad",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F08": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Marksmanship Arrowhead",
+        "ROGUE:Assassination Nightblade",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "HUNTER:Beast Mastery Courgette",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Thunderfist",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "HUNTER:Beast Mastery Relapse",
+        "PALADIN:Retribution Cromer",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Enhancement Windcaller",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Holyrad",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F09": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PRIEST:Holy Greedius",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Destruction Felstorm",
+        "WARLOCK:Destruction MrCam"
+      ],
+      [
+        "MAGE:Arcane Möoncake",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms",
+        "WARLOCK:Demonology Demonia"
+      ],
+      [
+        "MAGE:Fire Infernal",
+        "MAGE:Fire Pyroblast",
+        "MAGE:Frost Icebolt",
+        "PRIEST:Shadow Mindweaver",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Holyrad",
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F10": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Cursecaster",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "MAGE:Frost Icebolt",
+        "WARLOCK:Demonology Demonia",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Demonology Felmaster",
+        "WARLOCK:Demonology Soulcrush"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Holyrad",
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F11": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Bearwick",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Balance Lunaris",
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Balance Stardancer",
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "MAGE:Frost Icebolt",
+        "PALADIN:Holy Holyrad"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F12": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Sheimz",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Beast Mastery Relapse",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Holy Sanctus",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Restoration Moondew",
+        "PALADIN:Holy Lightbringer",
+        "PRIEST:Discipline Holyspam",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F13": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Assassination Nightblade",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Balance Stardew",
+        "DRUID:Restoration Leafsong",
+        "DRUID:Restoration Moondew",
+        "MAGE:Fire Pyroblast",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Balance Dreamer",
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Sheimz",
+        "PRIEST:Holy Greedius",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F14": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "HUNTER:Survival Trapper",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "HUNTER:Beast Mastery Courgette",
+        "MAGE:Fire Pyroblast",
+        "ROGUE:Assassination Nightblade",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Discipline Sanctus",
+        "PRIEST:Holy Greedius",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F15": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "HUNTER:Survival Trapper"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Fire Pyroblast",
+        "ROGUE:Assassination Nightblade",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Demonology Doomfire",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Sheimz",
+        "PRIEST:Discipline Sanctus",
+        "PRIEST:Holy Greedius",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F16": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "ROGUE:Assassination Nightblade",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "HUNTER:Beast Mastery Courgette",
+        "MAGE:Fire Pyroblast",
+        "MAGE:Frost Icebolt",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Toms",
+        "WARLOCK:Affliction Femscout"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F17": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Discipline Sanctus",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "ROGUE:Assassination Nightblade",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F18": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Protection Ironwall",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Protection Fortify",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F19": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "PALADIN:Retribution Cromer",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Courgette",
+        "ROGUE:Assassination Nightblade",
+        "ROGUE:Combat Yow",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Fire Pyroblast",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Holy Sanctus",
+        "PRIEST:Shadow Treshflay"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Moondew",
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Spellspam"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F20": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Assassination Nightblade",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Möoncake",
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Infernal",
+        "SHAMAN:Elemental Ronii"
+      ],
+      [
+        "MAGE:Fire Pyroblast",
+        "MAGE:Frost Icebolt",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F21": {
+    "raid": "bt",
+    "groups": [
+      [
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ironbreaker",
+        "WARRIOR:Fury Ragefist",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "HUNTER:Beast Mastery Courgette",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Assassination Nightblade",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "MAGE:Arcane Syba",
+        "SHAMAN:Restoration Toms",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F22": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Courgette",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Assassination Nightblade",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "PRIEST:Shadow Mindweaver",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F23": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Bearwick",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Assassination Nightblade",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Stormbrew"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Marksmanship Arrowhead",
+        "PALADIN:Retribution Judgement",
+        "SHAMAN:Enhancement Windcaller"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "PALADIN:Holy Azuraab",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F24": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Assassination Nightblade",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Restoration Toms",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Stormcaller"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F25": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "HUNTER:Beast Mastery Relapse",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "SHAMAN:Elemental Ronii"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 PALADIN:Retribution",
+      "G1 WARRIOR:Fury",
+      "G2 HUNTER:Marksmanship",
+      "G2 HUNTER:Survival",
+      "G3 DRUID:Balance",
+      "G3 PRIEST:Shadow",
+      "G3 WARLOCK:Destruction",
+      "G4 MAGE:Fire",
+      "G5 PALADIN:Holy",
+      "G5 PRIEST:Discipline"
+    ]
+  },
+  "F26": {
+    "raid": "kara",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "DRUID:Feral Bearwick",
+        "SHAMAN:Enhancement Windcaller",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Demonology Doomfire"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F27": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "PALADIN:Retribution Cromer",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Courgette",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "HUNTER:Beast Mastery Yum",
+        "HUNTER:Marksmanship Arrowhead",
+        "ROGUE:Assassination Nightblade",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Mindweaver",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [
+      "HUNTER:Survival Trapper",
+      "PRIEST:Holy Greedius",
+      "PRIEST:Shadow Treshflay",
+      "WARLOCK:Demonology Doomfire",
+      "WARRIOR:Protection Shieldwall"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F28": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Courgette",
+        "PALADIN:Retribution Cromer",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "ROGUE:Assassination Nightblade",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Thunderfist",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Windcaller",
+        "SHAMAN:Restoration Toms",
+        "WARRIOR:Arms Bladestorm"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Fortify",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [
+      "DRUID:Feral Grizzhide",
+      "HUNTER:Beast Mastery Relapse",
+      "HUNTER:Beast Mastery Yum",
+      "HUNTER:Marksmanship Arrowhead",
+      "HUNTER:Survival Trapper",
+      "PALADIN:Protection Reyn",
+      "PRIEST:Discipline Spellspam",
+      "PRIEST:Holy Greedius",
+      "PRIEST:Holy Sanctus",
+      "WARLOCK:Affliction Femscout",
+      "WARLOCK:Demonology Doomfire",
+      "WARLOCK:Demonology Felmaster",
+      "WARRIOR:Protection Shieldwall"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F29": {
+    "raid": "bt",
+    "groups": [
+      [],
+      [],
+      [],
+      [],
+      []
+    ],
+    "bench": [
+      "DRUID:Balance Kerne",
+      "DRUID:Feral Ashwolf",
+      "DRUID:Feral Bearwick",
+      "DRUID:Feral Thornpaw",
+      "DRUID:Restoration Leafsong",
+      "HUNTER:Beast Mastery Courgette",
+      "HUNTER:Beast Mastery Relapse",
+      "HUNTER:Marksmanship Arrowhead",
+      "MAGE:Arcane Syba",
+      "PALADIN:Holy Azuraab",
+      "PALADIN:Retribution Cromer",
+      "PRIEST:Discipline Sanctus",
+      "PRIEST:Holy Greedius",
+      "PRIEST:Shadow Treshflay",
+      "ROGUE:Assassination Nightblade",
+      "ROGUE:Combat Yow",
+      "SHAMAN:Elemental Ronii",
+      "SHAMAN:Enhancement Windcaller",
+      "SHAMAN:Restoration Tidecrest",
+      "WARLOCK:Affliction Femscout",
+      "WARLOCK:Demonology Doomfire",
+      "WARLOCK:Destruction Felstorm",
+      "WARRIOR:Arms Sunra",
+      "WARRIOR:Fury Ragefist",
+      "WARRIOR:Protection Shieldwall"
+    ],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 DRUID:Feral",
+      "G1 PALADIN:Retribution",
+      "G1 ROGUE:Combat",
+      "G1 SHAMAN:Enhancement",
+      "G1 WARRIOR:Fury",
+      "G2 DRUID:Feral",
+      "G2 PALADIN:Retribution",
+      "G2 ROGUE:Combat",
+      "G2 SHAMAN:Enhancement",
+      "G2 WARRIOR:Arms",
+      "G3 HUNTER:Marksmanship",
+      "G3 PALADIN:Retribution",
+      "G3 ROGUE:Assassination",
+      "G3 SHAMAN:Enhancement",
+      "G3 WARRIOR:Arms",
+      "G4 HUNTER:Survival",
+      "G4 ROGUE:Subtlety",
+      "G4 SHAMAN:Restoration",
+      "G4 WARRIOR:Fury",
+      "G4 WARRIOR:Protection",
+      "G5 DRUID:Restoration",
+      "G5 PALADIN:Holy",
+      "G5 PALADIN:Protection",
+      "G5 PRIEST:Discipline",
+      "G5 SHAMAN:Restoration"
+    ]
+  },
+  "F30": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "ROGUE:Combat Yow",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction MrCam"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Tidecrest",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Holy Greedius",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [
+      "DRUID:Feral Thornpaw",
+      "HUNTER:Beast Mastery Courgette",
+      "HUNTER:Marksmanship Arrowhead",
+      "MAGE:Frost Icebolt",
+      "PALADIN:Protection Reyn",
+      "PALADIN:Retribution Cromer",
+      "PRIEST:Discipline Sanctus",
+      "SHAMAN:Enhancement Stormbrew",
+      "SHAMAN:Restoration Toms",
+      "WARLOCK:Affliction Femscout"
+    ],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G2 HUNTER:Survival",
+      "G2 PALADIN:Retribution",
+      "G3 DRUID:Balance",
+      "G3 MAGE:Fire",
+      "G3 PRIEST:Shadow",
+      "G5 SHAMAN:Restoration"
+    ]
+  },
+  "F31": {
+    "raid": "bt",
+    "groups": [
+      [
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Beast Mastery Relapse"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay"
+      ],
+      [
+        "DRUID:Feral Bearwick"
+      ]
+    ],
+    "bench": [
+      "DRUID:Restoration Sheimz",
+      "HUNTER:Marksmanship Arrowhead",
+      "HUNTER:Survival Trapper",
+      "MAGE:Fire Pyroblast",
+      "MAGE:Frost Icebolt",
+      "PALADIN:Holy Azuraab",
+      "PALADIN:Retribution Cromer",
+      "PRIEST:Discipline Spellspam",
+      "PRIEST:Holy Greedius",
+      "PRIEST:Holy Sanctus",
+      "SHAMAN:Restoration Toms",
+      "WARRIOR:Protection Shieldwall"
+    ],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 PALADIN:Retribution",
+      "G2 HUNTER:Marksmanship",
+      "G2 HUNTER:Survival",
+      "G4 MAGE:Fire",
+      "G4 PALADIN:Holy",
+      "G4 SHAMAN:Restoration",
+      "G5 DRUID:Restoration",
+      "G5 PALADIN:Protection",
+      "G5 PRIEST:Discipline",
+      "G5 SHAMAN:Restoration"
+    ]
+  },
+  "F32": {
+    "raid": "bt",
+    "groups": [
+      [
+        "HUNTER:Beast Mastery Archerboy",
+        "HUNTER:Beast Mastery Arrowhead",
+        "HUNTER:Beast Mastery Beastlord",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Marksmanship MMNotBM"
+      ],
+      [
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Beast Mastery Snipez",
+        "HUNTER:Beast Mastery Trapmaster",
+        "HUNTER:Beast Mastery Wolflover",
+        "HUNTER:Beast Mastery Yum"
+      ],
+      [
+        "HUNTER:Beast Mastery Bowmaster",
+        "HUNTER:Beast Mastery Courgette",
+        "HUNTER:Beast Mastery CritChance",
+        "HUNTER:Beast Mastery Featherhands",
+        "HUNTER:Beast Mastery FluffyArrows"
+      ],
+      [
+        "HUNTER:Beast Mastery HunterHarold",
+        "HUNTER:Beast Mastery Huntress",
+        "HUNTER:Beast Mastery Petmaster",
+        "HUNTER:Beast Mastery Petwhisperer",
+        "HUNTER:Beast Mastery Quiverfull"
+      ],
+      [
+        "DRUID:Feral TankInAGuildOfHunters",
+        "DRUID:Restoration DruidMama",
+        "PRIEST:Holy OnlyHealerISwear",
+        "SHAMAN:Restoration HealsThemAll",
+        "SHAMAN:Restoration ShamanPeacekeeper"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F33": {
+    "raid": "bt",
+    "groups": [
+      [
+        "MAGE:Arcane Arcaneek",
+        "MAGE:Arcane Blinky",
+        "MAGE:Arcane Evocation",
+        "MAGE:Arcane Möoncake",
+        "SHAMAN:Restoration ShamanForBL"
+      ],
+      [
+        "MAGE:Arcane Spellsteal",
+        "MAGE:Fire DragonBreath",
+        "MAGE:Fire Pyroblast",
+        "MAGE:Frost ColdSnap",
+        "MAGE:Frost IcyVeins"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Fireball",
+        "MAGE:Fire Scorch",
+        "MAGE:Frost Frostbolt",
+        "MAGE:Frost ShatterPoint"
+      ],
+      [
+        "MAGE:Fire Combustion",
+        "MAGE:Fire Infernal",
+        "MAGE:Frost Blizzard",
+        "MAGE:Frost Icebolt",
+        "MAGE:Frost Winterchill"
+      ],
+      [
+        "DRUID:Feral TankInMageGuild",
+        "PALADIN:Holy WisdomBot",
+        "PALADIN:Protection ThePaladinSuffer",
+        "PRIEST:Holy FortitudeGiver",
+        "SHAMAN:Restoration Manaspring"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F34": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Bearwick",
+        "PALADIN:Holy Azuraab",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm",
+        "WARLOCK:Destruction Hellfire",
+        "WARLOCK:Destruction Shadowbolt"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "WARLOCK:Affliction Cursecaster",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Affliction Plague"
+      ],
+      [
+        "WARLOCK:Demonology Demonia",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Demonology Felmaster",
+        "WARLOCK:Demonology Soulcrush",
+        "WARLOCK:Destruction MrCam"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Restoration Tidecrest",
+        "WARLOCK:Affliction Dotvomit"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F35": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "HUNTER:Beast Mastery Relapse",
+        "PALADIN:Protection Reyn",
+        "PALADIN:Retribution Crusader",
+        "PALADIN:Retribution Judgement"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout"
+      ],
+      [
+        "MAGE:Frost Icebolt",
+        "PALADIN:Holy Holyrad",
+        "PALADIN:Holy Lightbringer",
+        "PRIEST:Discipline Sanctus",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Holy Divinia",
+        "PALADIN:Protection Fortify",
+        "SHAMAN:Restoration Toms"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F36": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Balance Dreamer",
+        "DRUID:Feral Thornpaw",
+        "DRUID:Feral Wildclaw",
+        "DRUID:Restoration Leafsong",
+        "HUNTER:Beast Mastery Relapse"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii"
+      ],
+      [
+        "DRUID:Balance Stardancer",
+        "DRUID:Feral Grizzhide",
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Moondew",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Toms"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F37": {
+    "raid": "bt",
+    "groups": [
+      [
+        "HUNTER:Beast Mastery Relapse",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Courgette",
+        "SHAMAN:Enhancement Thunderfist",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Femscout",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Stormcaller",
+        "SHAMAN:Restoration Tidecrest"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Toms"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F38": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Moondew",
+        "PALADIN:Holy Azuraab",
+        "SHAMAN:Enhancement Stormbrew",
+        "SHAMAN:Restoration Wavecrest"
+      ],
+      [
+        "DRUID:Feral Grizzhide",
+        "DRUID:Restoration Sheimz",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Protection Ironwall",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Stardew",
+        "PALADIN:Holy Lightbringer",
+        "PRIEST:Discipline Sanctus2",
+        "PRIEST:Holy Loophole",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Balance Dreamer",
+        "PALADIN:Holy Crusader",
+        "PRIEST:Holy Blessings",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Elemental Ronii"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Spellspam",
+        "PRIEST:Holy Sanctus",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F39": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Relapse",
+        "ROGUE:Combat Yow",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "SHAMAN:Elemental Ronii"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 8,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G2 HUNTER:Survival",
+      "G2 PALADIN:Retribution",
+      "G3 DRUID:Balance",
+      "G3 PRIEST:Shadow",
+      "G3 WARLOCK:Destruction",
+      "G4 MAGE:Fire"
+    ]
+  },
+  "F40": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Marksmanship Arrowhead",
+        "PALADIN:Retribution Cromer",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Relapse",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "DRUID:Restoration Sheimz",
+        "HUNTER:Survival Trapper",
+        "PALADIN:Holy Azuraab",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Restoration Tidecrest",
+        "WARLOCK:Affliction Femscout"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F41": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "PALADIN:Retribution Judgement",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ironbreaker"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "HUNTER:Beast Mastery Courgette",
+        "ROGUE:Assassination Nightblade",
+        "WARRIOR:Arms Bladestorm",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "HUNTER:Beast Mastery Relapse",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Restoration Leafsong",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F42": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Demonology Demonia",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Balance Stardancer",
+        "MAGE:Fire Pyroblast",
+        "MAGE:Frost Icebolt",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Stormcaller"
+      ],
+      [
+        "MAGE:Arcane Möoncake",
+        "MAGE:Arcane Syba",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Shadow Mindweaver",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Sanctus",
+        "SHAMAN:Restoration Tidecrest",
+        "WARLOCK:Affliction Femscout"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F43": {
+    "raid": "kara",
+    "groups": [
+      [
+        "DRUID:Feral LonelyTank"
+      ],
+      []
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 PALADIN:Holy",
+      "G1 PALADIN:Protection",
+      "G1 PRIEST:Discipline",
+      "G1 SHAMAN:Restoration",
+      "G2 PALADIN:Retribution",
+      "G2 PRIEST:Shadow",
+      "G2 SHAMAN:Enhancement",
+      "G2 WARLOCK:Destruction",
+      "G2 WARRIOR:Arms"
+    ]
+  },
+  "F44": {
+    "raid": "kara",
+    "groups": [
+      [
+        "DRUID:Restoration Healer6",
+        "PALADIN:Holy Healer4",
+        "PRIEST:Discipline Healer9",
+        "PRIEST:Holy Healer1",
+        "SHAMAN:Restoration Healer7"
+      ],
+      [
+        "DRUID:Balance Healer10",
+        "DRUID:Restoration Healer5",
+        "PRIEST:Holy Healer2",
+        "PRIEST:Holy Healer3",
+        "SHAMAN:Restoration Healer8"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "F45": {
+    "raid": "bt",
+    "groups": [
+      [
+        "ROGUE:Combat Ambush1",
+        "ROGUE:Combat Backstab1",
+        "ROGUE:Combat Backstab2"
+      ],
+      [
+        "ROGUE:Assassination Garrote1",
+        "ROGUE:Combat Gouge1",
+        "ROGUE:Combat Slice1"
+      ],
+      [
+        "ROGUE:Assassination Eviscerate1",
+        "ROGUE:Assassination Poison1",
+        "ROGUE:Combat Backstab3",
+        "ROGUE:Combat Sap1"
+      ],
+      [
+        "ROGUE:Assassination Poison2",
+        "ROGUE:Assassination Poison3"
+      ],
+      []
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G1 WARRIOR:Arms",
+      "G2 PALADIN:Retribution",
+      "G2 SHAMAN:Enhancement",
+      "G3 SHAMAN:Enhancement",
+      "G4 HUNTER:Survival",
+      "G4 SHAMAN:Restoration",
+      "G4 WARRIOR:Protection",
+      "G5 DRUID:Restoration",
+      "G5 PALADIN:Holy",
+      "G5 PALADIN:Protection",
+      "G5 PRIEST:Discipline",
+      "G5 SHAMAN:Restoration"
+    ]
+  },
+  "F46": {
+    "raid": "kara",
+    "groups": [
+      [
+        "DRUID:Feral Bearwall",
+        "HUNTER:Beast Mastery Courgette",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Chamelio",
+        "WARRIOR:Arms Bladestorm"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Petgap",
+        "HUNTER:Beast Mastery Relapse",
+        "SHAMAN:Enhancement Chamelio2",
+        "WARRIOR:Fury Ragefist"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P01": {
+    "raid": "kara",
+    "groups": [
+      [
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Holy Greedius",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Beastmode",
+        "MAGE:Arcane Syba",
+        "SHAMAN:Enhancement Windcaller",
+        "WARLOCK:Destruction Felstorm"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P02": {
+    "raid": "kara",
+    "groups": [
+      [
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Holy Greedius",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Marksmanship Arrowhead",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ]
+    ],
+    "bench": [
+      "MAGE:Arcane Syba",
+      "WARLOCK:Destruction Felstorm"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P03": {
+    "raid": "kara",
+    "groups": [
+      [
+        "DRUID:Feral Bearwick",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "HUNTER:Beast Mastery Beastmode",
+        "MAGE:Arcane Syba",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARLOCK:Destruction Felstorm"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P04": {
+    "raid": "kara",
+    "groups": [
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ]
+    ],
+    "bench": [
+      "DRUID:Feral Ashwolf",
+      "HUNTER:Beast Mastery Beastmode",
+      "HUNTER:Beast Mastery Relapse",
+      "HUNTER:Marksmanship Arrowhead",
+      "MAGE:Fire Pyroblast",
+      "PALADIN:Retribution Cromer",
+      "PRIEST:Discipline Mendel",
+      "PRIEST:Holy Greedius",
+      "ROGUE:Combat Yow",
+      "SHAMAN:Enhancement Windcaller",
+      "SHAMAN:Restoration Toms",
+      "WARLOCK:Affliction Poena",
+      "WARLOCK:Demonology Doomfire",
+      "WARRIOR:Arms Sunra",
+      "WARRIOR:Fury Ragefist"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P05": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Poena",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "PALADIN:Protection Reyn",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [
+      "MAGE:Arcane Benchmage",
+      "PRIEST:Holy Benchpriest",
+      "WARRIOR:Fury Benchwarrior"
+    ],
+    "unplaced": 0,
+    "suggestions": [
+      "G3 DRUID:Balance",
+      "G5 DRUID:Restoration",
+      "G5 PRIEST:Discipline"
+    ]
+  },
+  "P06": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Fire Pyroblast",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Tidecrest",
+        "WARLOCK:Affliction Poena"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 1,
+    "suggestions": [
+      "G3 PRIEST:Shadow"
+    ]
+  },
+  "P17": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Gladiatus",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Poena",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Tidecrest",
+        "WARRIOR:Protection Shieldwall"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P07": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow-Whitemane",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra-Whitemane",
+        "WARRIOR:Fury Sunra"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Beast Mastery Relapse-Whitemane",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Protection Shieldwall-Whitemane"
+      ],
+      [
+        "DRUID:Balance Kerne-Whitemane",
+        "SHAMAN:Elemental Ronii-Whitemane",
+        "WARLOCK:Affliction Poena",
+        "WARLOCK:Demonology Doomfire-Whitemane",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Holy Greedius-Whitemane",
+        "PRIEST:Shadow Sunra",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Mendel-Whitemane",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P08": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Fire Pyroblast",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms",
+        "WARLOCK:Demonology Doomfire"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Tidecrest",
+        "WARLOCK:Affliction Poena"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G3 PRIEST:Shadow"
+    ]
+  },
+  "P09": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Poena",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PALADIN:Holy Azuraab",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Tidecrest"
+      ],
+      [
+        "DRUID:Restoration Extra2",
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Extra3",
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Extra4"
+      ]
+    ],
+    "bench": [
+      "PRIEST:Discipline Extra5",
+      "PRIEST:Discipline Mendel",
+      "PRIEST:Holy Extra1",
+      "PRIEST:Holy Greedius",
+      "SHAMAN:Restoration Toms"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P10": {
+    "importFails": true
+  },
+  "P11": {
+    "importFails": true
+  },
+  "P12": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Sunra",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Poena",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "PALADIN:Protection Reyn",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [
+      "DRUID:Restoration Maybe2",
+      "PRIEST:Holy Maybe1",
+      "SHAMAN:Restoration Maybe3"
+    ],
+    "unplaced": 0,
+    "suggestions": [
+      "G3 DRUID:Balance",
+      "G5 DRUID:Restoration",
+      "G5 PALADIN:Holy",
+      "G5 PRIEST:Discipline"
+    ]
+  },
+  "P13": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Fury1",
+        "WARRIOR:Fury Fury2",
+        "WARRIOR:Fury Fury3"
+      ],
+      [
+        "DRUID:Feral Ashwolf",
+        "HUNTER:Beast Mastery Hunter1",
+        "HUNTER:Beast Mastery Hunter2",
+        "HUNTER:Beast Mastery Hunter3",
+        "HUNTER:Marksmanship Arrowhead"
+      ],
+      [
+        "HUNTER:Beast Mastery Beastmode",
+        "SHAMAN:Restoration Toms",
+        "WARRIOR:Fury Fury4",
+        "WARRIOR:Fury Fury5",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Mage1",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Mendel",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [
+      "HUNTER:Beast Mastery Hunter4",
+      "HUNTER:Beast Mastery Hunter5",
+      "HUNTER:Beast Mastery Relapse",
+      "MAGE:Arcane Mage2",
+      "MAGE:Arcane Mage3",
+      "MAGE:Arcane Mage4",
+      "MAGE:Arcane Mage5",
+      "MAGE:Arcane Syba",
+      "MAGE:Fire Pyroblast",
+      "PRIEST:Holy Greedius",
+      "ROGUE:Combat Yow",
+      "WARLOCK:Affliction Poena",
+      "WARLOCK:Demonology Doomfire",
+      "WARRIOR:Arms Sunra",
+      "WARRIOR:Fury Ragefist"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P14": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral T5",
+        "WARRIOR:Fury Fury1",
+        "WARRIOR:Fury Fury2",
+        "WARRIOR:Fury Fury4",
+        "WARRIOR:Protection T2"
+      ],
+      [
+        "DRUID:Feral T6",
+        "WARRIOR:Fury Fury3",
+        "WARRIOR:Fury Fury5",
+        "WARRIOR:Fury Fury6",
+        "WARRIOR:Fury Fury7"
+      ],
+      [
+        "WARLOCK:Destruction Lock1",
+        "WARLOCK:Destruction Lock2",
+        "WARLOCK:Destruction Lock3",
+        "WARLOCK:Destruction Lock5",
+        "WARLOCK:Destruction Lock7"
+      ],
+      [
+        "WARLOCK:Destruction Lock4",
+        "WARLOCK:Destruction Lock6",
+        "WARLOCK:Destruction Lock8",
+        "WARRIOR:Fury Fury8",
+        "WARRIOR:Fury Fury9"
+      ],
+      [
+        "PALADIN:Protection T3",
+        "PALADIN:Protection T4",
+        "PRIEST:Holy Solo",
+        "WARRIOR:Protection T1",
+        "WARRIOR:Protection T7"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P15": {
+    "raid": "bt",
+    "groups": [
+      [
+        "HUNTER:Beast Mastery Relapse",
+        "ROGUE:Assassination R3",
+        "ROGUE:Combat R1",
+        "SHAMAN:Enhancement E1",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "HUNTER:Beast Mastery Beastmode",
+        "ROGUE:Assassination R6",
+        "ROGUE:Combat R2",
+        "SHAMAN:Enhancement E2",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "PALADIN:Holy Azuraab",
+        "ROGUE:Combat R5",
+        "ROGUE:Subtlety R4",
+        "SHAMAN:Enhancement E3",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "MAGE:Arcane Syba",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Mendel",
+        "PRIEST:Holy Greedius",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "P16": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Ashwolf",
+        "PALADIN:Retribution Cromer",
+        "ROGUE:Combat Yow",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Feral Bearwick",
+        "HUNTER:Beast Mastery Beastmode",
+        "HUNTER:Beast Mastery Relapse",
+        "HUNTER:Marksmanship Arrowhead",
+        "WARRIOR:Arms Sunra"
+      ],
+      [
+        "DRUID:Balance Kerne",
+        "SHAMAN:Elemental Ronii",
+        "WARLOCK:Affliction Poena",
+        "WARLOCK:Demonology Doomfire",
+        "WARLOCK:Destruction Felstorm"
+      ],
+      [
+        "MAGE:Arcane Syba",
+        "MAGE:Fire Pyroblast",
+        "PRIEST:Holy Greedius",
+        "PRIEST:Shadow Treshflay",
+        "SHAMAN:Restoration Toms"
+      ],
+      [
+        "DRUID:Restoration Sheimz",
+        "PALADIN:Holy Azuraab",
+        "PALADIN:Protection Reyn",
+        "PRIEST:Discipline Mendel",
+        "SHAMAN:Restoration Tidecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T01": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lunaclaw",
+        "HUNTER:Beast Mastery Arrowhead",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Brakkar"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Survival Trapper",
+        "PALADIN:Retribution Dawnbringer",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Gorehowl"
+      ],
+      [
+        "DRUID:Balance Moonwhisper",
+        "SHAMAN:Elemental Thundermaw",
+        "WARLOCK:Destruction Cindervow",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PRIEST:Holy Lightmend",
+        "PRIEST:Shadow Voidmind",
+        "SHAMAN:Restoration Tidecaller"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Sunhealer",
+        "PALADIN:Protection Ironaegis",
+        "SHAMAN:Restoration Earthmender",
+        "WARLOCK:Affliction Rotcurse"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T02": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lunaclaw",
+        "PALADIN:Retribution Dawnbringer",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Brakkar"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Arrowhead",
+        "HUNTER:Survival Trapper",
+        "ROGUE:Assassination Nightblade",
+        "WARRIOR:Arms Gorehowl"
+      ],
+      [
+        "DRUID:Balance Moonwhisper",
+        "SHAMAN:Elemental Thundermaw",
+        "WARLOCK:Destruction Cindervow",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PRIEST:Holy Lightmend",
+        "PRIEST:Shadow Voidmind",
+        "SHAMAN:Restoration Tidecaller"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Sunhealer",
+        "PALADIN:Protection Ironaegis",
+        "SHAMAN:Restoration Earthmender",
+        "WARLOCK:Affliction Rotcurse"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T03": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Bramblehide",
+        "ROGUE:Assassination Nightblade",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Restoration Tidecaller",
+        "WARRIOR:Fury Skullsplit"
+      ],
+      [
+        "DRUID:Feral Mistfang",
+        "HUNTER:Beast Mastery Arrowhead",
+        "HUNTER:Survival Trapper",
+        "PALADIN:Retribution Dawnbringer",
+        "WARRIOR:Arms Gorehowl"
+      ],
+      [
+        "DRUID:Balance Moonwhisper",
+        "SHAMAN:Elemental Thundermaw",
+        "WARLOCK:Destruction Cindervow",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PRIEST:Holy Lightmend",
+        "PRIEST:Shadow Voidmind",
+        "WARLOCK:Affliction Rotcurse"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Sunhealer",
+        "PALADIN:Protection Ironaegis",
+        "SHAMAN:Restoration Earthmender",
+        "WARRIOR:Fury Brakkar"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T04": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lunaclaw",
+        "HUNTER:Beast Mastery Arrowhead",
+        "PALADIN:Retribution Truthseeker",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Stormbrew"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Survival Trapper",
+        "PALADIN:Retribution Dawnbringer",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Brakkar"
+      ],
+      [
+        "DRUID:Balance Moonwhisper",
+        "SHAMAN:Elemental Thundermaw",
+        "WARLOCK:Destruction Cindervow",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PRIEST:Holy Lightmend",
+        "PRIEST:Shadow Voidmind",
+        "SHAMAN:Restoration Tidecaller"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Sunhealer",
+        "PALADIN:Protection Ironaegis",
+        "SHAMAN:Restoration Earthmender",
+        "WARLOCK:Affliction Rotcurse"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T05": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lunaclaw",
+        "HUNTER:Beast Mastery Arrowhead",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Arms Bladestorm"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Survival Trapper",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Arms Gorehowl",
+        "WARRIOR:Fury Brakkar"
+      ],
+      [
+        "DRUID:Balance Moonwhisper",
+        "SHAMAN:Elemental Thundermaw",
+        "WARLOCK:Destruction Cindervow",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PRIEST:Holy Lightmend",
+        "PRIEST:Shadow Voidmind",
+        "SHAMAN:Restoration Tidecaller"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Sunhealer",
+        "PALADIN:Protection Ironaegis",
+        "SHAMAN:Restoration Earthmender",
+        "WARLOCK:Affliction Rotcurse"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T06": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lunaclaw",
+        "HUNTER:Survival Trapper",
+        "PRIEST:Holy Lightmend",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Arms Gorehowl"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Arrowhead",
+        "PALADIN:Retribution Dawnbringer",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Brakkar"
+      ],
+      [
+        "DRUID:Balance Moonwhisper",
+        "SHAMAN:Elemental Thundermaw",
+        "WARLOCK:Destruction Cindervow",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PRIEST:Shadow Voidmind",
+        "SHAMAN:Restoration Tidecaller",
+        "WARLOCK:Affliction Rotcurse"
+      ],
+      [
+        "DRUID:Feral Grizzlemaw",
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Sunhealer",
+        "PALADIN:Protection Ironaegis",
+        "SHAMAN:Restoration Earthmender"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T07": {
+    "raid": "bt",
+    "groups": [
+      [
+        "HUNTER:Beast Mastery Arrowhead",
+        "PALADIN:Retribution Dawnbringer",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Arms Gorehowl"
+      ],
+      [
+        "HUNTER:Survival Trapper",
+        "ROGUE:Assassination Nightblade",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Brakkar",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Moonwhisper",
+        "SHAMAN:Elemental Thundermaw",
+        "WARLOCK:Destruction Cindervow",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PRIEST:Holy Lightmend",
+        "PRIEST:Shadow Voidmind",
+        "SHAMAN:Restoration Tidecaller"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Sunhealer",
+        "PALADIN:Protection Ironaegis",
+        "SHAMAN:Restoration Earthmender",
+        "WARLOCK:Affliction Rotcurse"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T08": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lunaclaw",
+        "HUNTER:Beast Mastery Arrowhead",
+        "PALADIN:Retribution Dawnbringer",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Brakkar"
+      ],
+      [
+        "DRUID:Feral Grizzlemaw",
+        "HUNTER:Survival Trapper",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Moonwhisper",
+        "SHAMAN:Elemental Thundermaw",
+        "WARLOCK:Affliction Rotcurse",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PRIEST:Holy Lightmend",
+        "PRIEST:Shadow Voidmind",
+        "SHAMAN:Restoration Tidecaller"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Sunhealer",
+        "PALADIN:Protection Ironaegis",
+        "PRIEST:Discipline Penitent",
+        "SHAMAN:Restoration Earthmender"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T09": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Dawnbringer",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Arms Gorehowl",
+        "WARRIOR:Fury Brakkar"
+      ],
+      [
+        "DRUID:Feral Lunaclaw",
+        "HUNTER:Beast Mastery Arrowhead",
+        "HUNTER:Survival Trapper",
+        "PALADIN:Holy Sunhealer",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PALADIN:Holy Beaconlight",
+        "PRIEST:Shadow Mindflay",
+        "SHAMAN:Restoration Tidecaller"
+      ],
+      [
+        "PRIEST:Holy Lightmend",
+        "PRIEST:Holy Prayerbind",
+        "PRIEST:Shadow Voidmind",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Protection Ironaegis",
+        "PRIEST:Discipline Penitent",
+        "SHAMAN:Restoration Earthmender",
+        "WARLOCK:Affliction Rotcurse"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T10": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lunaclaw",
+        "PALADIN:Retribution Dawnbringer",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Fury Brakkar"
+      ],
+      [
+        "DRUID:Feral Thornpaw",
+        "HUNTER:Beast Mastery Arrowhead",
+        "HUNTER:Marksmanship Longshot",
+        "WARRIOR:Arms Gorehowl",
+        "WARRIOR:Protection Shieldwall"
+      ],
+      [
+        "DRUID:Balance Moonwhisper",
+        "SHAMAN:Elemental Thundermaw",
+        "WARLOCK:Destruction Cindervow",
+        "WARLOCK:Destruction Emberlash",
+        "WARLOCK:Destruction Hellscream"
+      ],
+      [
+        "MAGE:Arcane Frostweave",
+        "MAGE:Arcane Spellwright",
+        "PRIEST:Holy Lightmend",
+        "PRIEST:Shadow Voidmind",
+        "WARLOCK:Affliction Rotcurse"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Sunhealer",
+        "PALADIN:Protection Ironaegis",
+        "PRIEST:Discipline Penitent",
+        "SHAMAN:Restoration Tidecaller"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T11": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Clawdia",
+        "HUNTER:Beast Mastery Arrowhead",
+        "HUNTER:Survival Snakebite",
+        "SHAMAN:Enhancement Stormbrew",
+        "WARRIOR:Protection Stonebrow"
+      ],
+      [
+        "DRUID:Feral Nightpaw",
+        "HUNTER:Beast Mastery Trapper",
+        "HUNTER:Marksmanship Longshot",
+        "SHAMAN:Enhancement Windcaller",
+        "WARRIOR:Fury Ragefist"
+      ],
+      [
+        "DRUID:Balance Starfall",
+        "SHAMAN:Elemental Thundrak",
+        "WARLOCK:Destruction Cinderax",
+        "WARLOCK:Destruction Felstorm",
+        "WARLOCK:Destruction Hexblaze"
+      ],
+      [
+        "MAGE:Arcane Frostwick",
+        "MAGE:Arcane Syba",
+        "PRIEST:Holy Candlewick",
+        "PRIEST:Holy Lumina",
+        "PRIEST:Shadow Voidtouch"
+      ],
+      [
+        "DRUID:Restoration Mossgrove",
+        "PALADIN:Holy Seraphine",
+        "PALADIN:Protection Aldrimar",
+        "PRIEST:Discipline Mendara",
+        "SHAMAN:Restoration Tidewalker"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T12": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Cromer",
+        "SHAMAN:Enhancement Earthstrike",
+        "WARRIOR:Arms Bladesong",
+        "WARRIOR:Fury Bloodrage",
+        "WARRIOR:Fury Whirlwind"
+      ],
+      [
+        "ROGUE:Assassination Venomtip",
+        "ROGUE:Combat Daggerfall",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Fistoflame",
+        "WARRIOR:Arms Cleaver"
+      ],
+      [
+        "DRUID:Feral Pouncer",
+        "PALADIN:Holy Dawnwarden",
+        "PRIEST:Holy Benedyn",
+        "PRIEST:Holy Oracle",
+        "WARRIOR:Protection Ironhide"
+      ],
+      [
+        "MAGE:Arcane Aethon",
+        "MAGE:Arcane Pyrelle",
+        "PRIEST:Shadow Mindrot",
+        "SHAMAN:Elemental Voltaic",
+        "WARLOCK:Destruction Brimstone"
+      ],
+      [
+        "DRUID:Restoration Thornheal",
+        "PALADIN:Holy Lightbringer",
+        "PALADIN:Protection Gorrash",
+        "PRIEST:Discipline Wardweaver",
+        "SHAMAN:Restoration Riptide"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T13": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Stalkpaw",
+        "PALADIN:Holy Radiance",
+        "SHAMAN:Enhancement Skyfury",
+        "WARRIOR:Fury Mauler",
+        "WARRIOR:Protection Shieldmaiden"
+      ],
+      [
+        "DRUID:Balance Moonflare",
+        "SHAMAN:Elemental Lightningrod",
+        "WARLOCK:Destruction Felbolt",
+        "WARLOCK:Destruction Ruinous",
+        "WARLOCK:Destruction Shadowflame"
+      ],
+      [
+        "MAGE:Arcane Aluneth",
+        "MAGE:Arcane Manaflux",
+        "MAGE:Arcane Spellweft",
+        "PRIEST:Holy Hymnal",
+        "PRIEST:Shadow Voidcaller"
+      ],
+      [
+        "MAGE:Fire Scorchlyn",
+        "MAGE:Frost Rimewind",
+        "PRIEST:Holy Vesperal",
+        "PRIEST:Shadow Dreadmind",
+        "WARLOCK:Demonology Impkeeper"
+      ],
+      [
+        "DRUID:Restoration Wildgrowth",
+        "PALADIN:Holy Solace",
+        "PALADIN:Protection Bulwark",
+        "PRIEST:Discipline Shielder",
+        "SHAMAN:Restoration Brooktide"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T14": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Catclaw",
+        "HUNTER:Beast Mastery Packleader",
+        "ROGUE:Combat Backstab",
+        "SHAMAN:Enhancement Doomhammer",
+        "WARRIOR:Arms Mortalis"
+      ],
+      [
+        "PALADIN:Holy Sunmender",
+        "PRIEST:Holy Renewal",
+        "SHAMAN:Enhancement Rockbiter",
+        "WARRIOR:Fury Titangrip",
+        "WARRIOR:Protection Gruntlock"
+      ],
+      [
+        "DRUID:Balance Eclipsa",
+        "SHAMAN:Elemental Chainzap",
+        "WARLOCK:Destruction Chaosbolt",
+        "WARLOCK:Destruction Shadowburn",
+        "WARLOCK:Destruction Soulfire"
+      ],
+      [
+        "MAGE:Arcane Blinkster",
+        "MAGE:Arcane Polymorpha",
+        "PRIEST:Holy Lightwell",
+        "PRIEST:Shadow Mindflay",
+        "WARLOCK:Demonology Metamorph"
+      ],
+      [
+        "DRUID:Restoration Briarwind",
+        "PALADIN:Protection Dunmar",
+        "PRIEST:Discipline Penitent",
+        "SHAMAN:Restoration Springwater",
+        "WARLOCK:Affliction Corruptia"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T15": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Maulwyn",
+        "HUNTER:Beast Mastery Huntsman",
+        "PALADIN:Retribution Crusadian",
+        "SHAMAN:Enhancement Earthshock",
+        "WARRIOR:Fury Rampage"
+      ],
+      [
+        "PALADIN:Holy Beaconer",
+        "ROGUE:Combat Gouger",
+        "SHAMAN:Enhancement Totemic",
+        "WARRIOR:Arms Slamson",
+        "WARRIOR:Protection Ironwall"
+      ],
+      [
+        "MAGE:Arcane Arcanist",
+        "MAGE:Arcane Evocatia",
+        "MAGE:Arcane Intellect",
+        "PRIEST:Holy Haloed",
+        "PRIEST:Shadow Shadowmend"
+      ],
+      [
+        "MAGE:Fire Pyroblast",
+        "MAGE:Frost Icelance",
+        "WARLOCK:Affliction Agonia",
+        "WARLOCK:Destruction Hellfire",
+        "WARLOCK:Destruction Incinera"
+      ],
+      [
+        "DRUID:Restoration Lifebloom",
+        "PALADIN:Protection Valorian",
+        "PRIEST:Discipline Absolver",
+        "PRIEST:Holy Serenity",
+        "SHAMAN:Restoration Wavecrest"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T16": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Predator",
+        "HUNTER:Beast Mastery Wildcall",
+        "ROGUE:Combat Riposte",
+        "SHAMAN:Enhancement Flametongue",
+        "WARRIOR:Fury Bloodthirst"
+      ],
+      [
+        "HUNTER:Survival Expose",
+        "PALADIN:Retribution Vengeful",
+        "SHAMAN:Enhancement Shockfist",
+        "WARRIOR:Arms Overpower",
+        "WARRIOR:Protection Rampart"
+      ],
+      [
+        "DRUID:Balance Lunarwrath",
+        "MAGE:Arcane Frostfire",
+        "PRIEST:Shadow Nightmind",
+        "WARLOCK:Destruction Ashbringer",
+        "WARLOCK:Destruction Fellash"
+      ],
+      [
+        "MAGE:Arcane Manawell",
+        "PRIEST:Holy Anchorite",
+        "PRIEST:Holy Chastise",
+        "PRIEST:Holy Prayerful",
+        "PRIEST:Shadow Vampiric"
+      ],
+      [
+        "DRUID:Restoration Verdance",
+        "PALADIN:Protection Templar",
+        "PRIEST:Discipline Bubblegum",
+        "SHAMAN:Restoration Healstream",
+        "WARLOCK:Affliction Siphon"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T17": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Judgemental",
+        "ROGUE:Combat Sinister",
+        "SHAMAN:Enhancement Lavalash",
+        "WARRIOR:Fury Berserkr",
+        "WARRIOR:Protection Garrosh"
+      ],
+      [
+        "DRUID:Feral Ravager",
+        "HUNTER:Beast Mastery Beastlord",
+        "PALADIN:Retribution Templar",
+        "SHAMAN:Enhancement Maelstrom",
+        "WARRIOR:Arms Colossus"
+      ],
+      [
+        "DRUID:Balance Wrathful",
+        "SHAMAN:Elemental Earthquake",
+        "WARLOCK:Affliction Haunter",
+        "WARLOCK:Destruction Conflag",
+        "WARLOCK:Destruction Infernus"
+      ],
+      [
+        "MAGE:Arcane Netherwind",
+        "MAGE:Arcane Spellfire",
+        "PALADIN:Holy Illumina",
+        "PRIEST:Holy Smiteous",
+        "PRIEST:Shadow Penumbra"
+      ],
+      [
+        "DRUID:Restoration Rejuvia",
+        "PALADIN:Holy Flashlight",
+        "PALADIN:Holy Holyshock",
+        "PALADIN:Protection Lightshield",
+        "SHAMAN:Restoration Mistwalker"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T18": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Rakeclaw",
+        "HUNTER:Beast Mastery Hawkeye",
+        "ROGUE:Combat Eviscera",
+        "SHAMAN:Enhancement Boltcaller",
+        "WARRIOR:Fury Execute"
+      ],
+      [
+        "DRUID:Feral Shredder",
+        "HUNTER:Marksmanship Steadyshot",
+        "PALADIN:Retribution Sanctimon",
+        "SHAMAN:Enhancement Stormstrike",
+        "WARRIOR:Arms Sunder"
+      ],
+      [
+        "DRUID:Feral Ursoc",
+        "DRUID:Restoration Swiftmend",
+        "HUNTER:Survival Raptor",
+        "PALADIN:Holy Redeemer",
+        "WARRIOR:Arms Mortal"
+      ],
+      [
+        "DRUID:Balance Starsurge",
+        "SHAMAN:Elemental Lightningbolt",
+        "WARLOCK:Destruction Dreadlock",
+        "WARLOCK:Destruction Immolates",
+        "WARLOCK:Destruction Shadowbolt"
+      ],
+      [
+        "DRUID:Restoration Treeform",
+        "PALADIN:Protection Aegis",
+        "PRIEST:Discipline Painsupp",
+        "PRIEST:Holy Prayerbook",
+        "SHAMAN:Restoration Chainheal"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T19": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Savagery",
+        "HUNTER:Beast Mastery Aspectx",
+        "ROGUE:Combat Bladeflurry",
+        "SHAMAN:Enhancement Rockbitter",
+        "WARRIOR:Fury Enrager"
+      ],
+      [
+        "HUNTER:Survival Lacerate",
+        "PALADIN:Retribution Crusadin",
+        "SHAMAN:Enhancement Windfury",
+        "WARRIOR:Arms Mortalstrike",
+        "WARRIOR:Protection Bulwarkus"
+      ],
+      [
+        "DRUID:Balance Typhoon",
+        "SHAMAN:Elemental Stormcaller",
+        "WARLOCK:Affliction Unstable",
+        "WARLOCK:Destruction Conflagrate",
+        "WARLOCK:Destruction Shadowfury"
+      ],
+      [
+        "MAGE:Arcane Arcblast",
+        "MAGE:Arcane Slowfall",
+        "PRIEST:Holy Circle",
+        "PRIEST:Holy Flashheal",
+        "PRIEST:Shadow Shadowform"
+      ],
+      [
+        "DRUID:Restoration Naturecall",
+        "PALADIN:Holy Radiant",
+        "PALADIN:Protection Dawnshield",
+        "PRIEST:Discipline Barrier",
+        "SHAMAN:Restoration Healingrain"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T20": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Mangle",
+        "HUNTER:Beast Mastery Kilcommand",
+        "HUNTER:Marksmanship Aimedshot",
+        "ROGUE:Combat Sinistrike",
+        "WARRIOR:Arms Hamstrung"
+      ],
+      [
+        "DRUID:Feral Rippler",
+        "HUNTER:Survival Wyvern",
+        "PALADIN:Retribution Retribulus",
+        "ROGUE:Combat Gougewise",
+        "WARRIOR:Fury Slammer"
+      ],
+      [
+        "PALADIN:Holy Chronicler",
+        "PRIEST:Holy Binding",
+        "PRIEST:Holy Circlehealer",
+        "ROGUE:Assassination Mutilatus",
+        "WARRIOR:Arms Whirlblade"
+      ],
+      [
+        "DRUID:Balance Starshard",
+        "MAGE:Arcane Arcanum",
+        "MAGE:Arcane Missilez",
+        "PRIEST:Shadow Mindblast",
+        "WARLOCK:Destruction Soulburn"
+      ],
+      [
+        "DRUID:Restoration Tranquil",
+        "PALADIN:Holy Lightforge",
+        "PALADIN:Protection Highlord",
+        "PRIEST:Discipline Powershield",
+        "WARRIOR:Protection Wallbreaker"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T21": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Crusadon",
+        "ROGUE:Combat Shivster",
+        "SHAMAN:Enhancement Stormfist",
+        "WARRIOR:Arms Sundersplit",
+        "WARRIOR:Fury Bloodrager"
+      ],
+      [
+        "DRUID:Feral Clawdia",
+        "HUNTER:Beast Mastery Arrowind",
+        "HUNTER:Survival Snaretrap",
+        "PRIEST:Discipline Warden",
+        "WARRIOR:Protection Brickwall"
+      ],
+      [
+        "DRUID:Balance Starfell",
+        "PRIEST:Shadow Mindflayr",
+        "SHAMAN:Elemental Thunderlux",
+        "WARLOCK:Destruction Chaosnova",
+        "WARLOCK:Destruction Felbolt"
+      ],
+      [
+        "MAGE:Arcane Frostbyte",
+        "MAGE:Arcane Pyrolyte",
+        "PALADIN:Holy Dawnbringer",
+        "PRIEST:Holy Mercya",
+        "PRIEST:Shadow Voidwhisper"
+      ],
+      [
+        "DRUID:Restoration Mosswalker",
+        "PALADIN:Holy Lumina",
+        "PALADIN:Protection Aegisor",
+        "SHAMAN:Restoration Tidecaller",
+        "WARLOCK:Affliction Doomcurse"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T22": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Smitelord",
+        "ROGUE:Assassination Poisonara",
+        "ROGUE:Combat Backstabb",
+        "SHAMAN:Enhancement Earthfury",
+        "WARRIOR:Fury Whirlwynd"
+      ],
+      [
+        "DRUID:Feral Pouncer",
+        "DRUID:Restoration Moonwell",
+        "HUNTER:Beast Mastery Wyvernsting",
+        "HUNTER:Survival Explotrap",
+        "WARRIOR:Arms Mortalis"
+      ],
+      [
+        "DRUID:Balance Lunarwrath",
+        "SHAMAN:Elemental Lightningx",
+        "WARLOCK:Affliction Corruptia",
+        "WARLOCK:Destruction Hellfirex",
+        "WARLOCK:Destruction Shadowburn"
+      ],
+      [
+        "MAGE:Arcane Blinkster",
+        "PALADIN:Holy Beaconis",
+        "PRIEST:Holy Prayerful",
+        "PRIEST:Shadow Dispella",
+        "SHAMAN:Elemental Chainzap"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Radiance",
+        "PALADIN:Protection Ironhide",
+        "PRIEST:Discipline Painsupp",
+        "WARRIOR:Protection Shieldmaw"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T23": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Judgemint",
+        "ROGUE:Combat Sinisterx",
+        "SHAMAN:Enhancement Windlash",
+        "WARRIOR:Arms Slamjob",
+        "WARRIOR:Fury Rampager"
+      ],
+      [
+        "DRUID:Feral Mangleclaw",
+        "HUNTER:Beast Mastery Killshot",
+        "HUNTER:Survival Wingclip",
+        "PALADIN:Holy Lightbringr",
+        "WARRIOR:Protection Bulwarkk"
+      ],
+      [
+        "DRUID:Balance Eclipsia",
+        "SHAMAN:Elemental Stormcaller",
+        "WARLOCK:Affliction Siphonic",
+        "WARLOCK:Destruction Incinerax",
+        "WARLOCK:Destruction Shadowbolt"
+      ],
+      [
+        "DRUID:Balance Starfyre",
+        "MAGE:Arcane Arcanist",
+        "MAGE:Arcane Evocaton",
+        "PRIEST:Holy Renewal",
+        "PRIEST:Shadow Mindblast"
+      ],
+      [
+        "DRUID:Restoration Wildgrowth",
+        "PALADIN:Holy Sanctifier",
+        "PALADIN:Protection Holdfast",
+        "PRIEST:Discipline Shieldpriest",
+        "SHAMAN:Restoration Healingtide"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T24": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Shredder",
+        "HUNTER:Beast Mastery Aimedshot",
+        "PALADIN:Retribution Hammerfall",
+        "SHAMAN:Enhancement Doomhammer",
+        "WARRIOR:Arms Tendonrip"
+      ],
+      [
+        "PALADIN:Retribution Templarx",
+        "PALADIN:Retribution Vengeance",
+        "SHAMAN:Enhancement Stormstrike",
+        "WARRIOR:Fury Bladestorm",
+        "WARRIOR:Protection Rampart"
+      ],
+      [
+        "DRUID:Balance Wrathwood",
+        "MAGE:Fire Scorchmark",
+        "WARLOCK:Affliction Unstablex",
+        "WARLOCK:Destruction Conflagra",
+        "WARLOCK:Destruction Soulfire"
+      ],
+      [
+        "MAGE:Arcane Missilex",
+        "MAGE:Arcane Slowfall",
+        "PALADIN:Holy Illuminas",
+        "PRIEST:Holy Circlehealr",
+        "PRIEST:Shadow Painweave"
+      ],
+      [
+        "DRUID:Restoration Thornbloom",
+        "PALADIN:Holy Redemptor",
+        "PALADIN:Protection Stonewall",
+        "PRIEST:Discipline Barrierix",
+        "SHAMAN:Restoration Riptide"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T25": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Catform",
+        "ROGUE:Assassination Envenomx",
+        "ROGUE:Combat Bladeflurry",
+        "ROGUE:Combat Swashbuk",
+        "SHAMAN:Enhancement Fireslash"
+      ],
+      [
+        "ROGUE:Assassination Mutilatr",
+        "ROGUE:Combat Riposter",
+        "ROGUE:Subtlety Shadowdnc",
+        "SHAMAN:Enhancement Totemlord",
+        "WARRIOR:Protection Gatekeepr"
+      ],
+      [
+        "DRUID:Balance Hurricanx",
+        "SHAMAN:Elemental Earthquaker",
+        "WARLOCK:Affliction Hauntedx",
+        "WARLOCK:Destruction Felhunt",
+        "WARLOCK:Destruction Imprix"
+      ],
+      [
+        "MAGE:Arcane Polymorpher",
+        "MAGE:Arcane Spellsteal",
+        "PALADIN:Holy Guardiana",
+        "PRIEST:Holy Serenity",
+        "PRIEST:Shadow Shadowfend"
+      ],
+      [
+        "DRUID:Restoration Rejuvix",
+        "PALADIN:Holy Vindicia",
+        "PALADIN:Protection Oakenshld",
+        "PRIEST:Discipline Atonex",
+        "SHAMAN:Restoration Earthshield"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T26": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Leaderpak",
+        "ROGUE:Combat Daggerfan",
+        "ROGUE:Combat Gougemaster",
+        "SHAMAN:Enhancement Maelstrmx",
+        "WARRIOR:Protection Wallbreakr"
+      ],
+      [
+        "DRUID:Feral Rakeclaw",
+        "HUNTER:Beast Mastery Packleadr",
+        "PALADIN:Retribution Sealcmdr",
+        "ROGUE:Assassination Garrotes",
+        "SHAMAN:Enhancement Spiritwolf"
+      ],
+      [
+        "DRUID:Balance Typhoonx",
+        "SHAMAN:Elemental Totemwrath",
+        "WARLOCK:Affliction Lifetapper",
+        "WARLOCK:Destruction Rainoffire",
+        "WARLOCK:Destruction Shadowfury"
+      ],
+      [
+        "MAGE:Arcane Counterspl",
+        "MAGE:Arcane Ignitex",
+        "PALADIN:Holy Auralight",
+        "PRIEST:Holy Binding",
+        "PRIEST:Shadow Vampirix"
+      ],
+      [
+        "DRUID:Restoration Lifebloomr",
+        "PALADIN:Holy Consecrax",
+        "PALADIN:Protection Sentinelle",
+        "PRIEST:Discipline Penancer",
+        "SHAMAN:Restoration Chainheal"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T27": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lacerate",
+        "PALADIN:Retribution Holywrath",
+        "ROGUE:Combat Daggerdance",
+        "SHAMAN:Enhancement Lavalash",
+        "WARRIOR:Fury Berserkr"
+      ],
+      [
+        "PALADIN:Holy Holyshock",
+        "ROGUE:Assassination Cheapshot",
+        "SHAMAN:Enhancement Shamanwolf",
+        "WARRIOR:Arms Overpowr",
+        "WARRIOR:Protection Defiantus"
+      ],
+      [
+        "DRUID:Balance Naturesgrasp",
+        "SHAMAN:Elemental Elementalx",
+        "WARLOCK:Destruction Backdraft",
+        "WARLOCK:Destruction Chaosbolt",
+        "WARLOCK:Destruction Havocx"
+      ],
+      [
+        "MAGE:Arcane Manaburn",
+        "MAGE:Arcane Slowx",
+        "PRIEST:Holy Lightwell",
+        "PRIEST:Shadow Shadowform",
+        "WARLOCK:Affliction Agonyx"
+      ],
+      [
+        "DRUID:Restoration Treeform",
+        "PALADIN:Holy Lightsworn",
+        "PALADIN:Protection Titanguard",
+        "PRIEST:Discipline Fortitude",
+        "SHAMAN:Restoration Manatide"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T28": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Crusader",
+        "ROGUE:Combat Sliceanddice",
+        "SHAMAN:Enhancement Flametongue",
+        "WARRIOR:Arms Mortalstrk",
+        "WARRIOR:Fury Execution"
+      ],
+      [
+        "DRUID:Feral Maulbear",
+        "HUNTER:Beast Mastery Bestialwrth",
+        "HUNTER:Survival Lockandload",
+        "ROGUE:Assassination Rupturex",
+        "WARRIOR:Protection Shieldbash"
+      ],
+      [
+        "DRUID:Balance Starfire",
+        "MAGE:Arcane Arcanepwr",
+        "MAGE:Arcane Presenceofm",
+        "PRIEST:Shadow Shadowweav",
+        "SHAMAN:Elemental Thunderstrm"
+      ],
+      [
+        "MAGE:Fire Combustn",
+        "MAGE:Frost Icelance",
+        "PALADIN:Holy Flashlite",
+        "PRIEST:Holy Chastise",
+        "PRIEST:Shadow Vampiric"
+      ],
+      [
+        "DRUID:Restoration Tranquilx",
+        "PALADIN:Holy Judgmentx",
+        "PALADIN:Protection Bastionor",
+        "PRIEST:Discipline Powerword",
+        "SHAMAN:Restoration Earthliving"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T29": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Avenging",
+        "ROGUE:Combat Adrenaline",
+        "SHAMAN:Enhancement Thunderfury",
+        "WARRIOR:Arms Cleaver",
+        "WARRIOR:Fury Bloodthirst"
+      ],
+      [
+        "DRUID:Feral Savageroar",
+        "HUNTER:Beast Mastery Serpentstng",
+        "HUNTER:Survival Lacerates",
+        "WARRIOR:Arms Deepwound",
+        "WARRIOR:Protection Shieldwal"
+      ],
+      [
+        "DRUID:Balance Insectswrm",
+        "SHAMAN:Elemental Lavaburst",
+        "WARLOCK:Destruction Emberstorm",
+        "WARLOCK:Destruction Ruinx",
+        "WARLOCK:Destruction Shadowflme"
+      ],
+      [
+        "PALADIN:Holy Beaconic",
+        "PRIEST:Holy Lightfont",
+        "PRIEST:Shadow Mindsear",
+        "WARLOCK:Affliction Soulrot",
+        "WARLOCK:Demonology Metamorphx"
+      ],
+      [
+        "DRUID:Restoration Naturescare",
+        "PALADIN:Holy Wingsofgld",
+        "PALADIN:Protection Fortressa",
+        "PRIEST:Discipline Oraclex",
+        "SHAMAN:Restoration Healwave"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T30": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Tigersfury",
+        "HUNTER:Beast Mastery Bestialpet",
+        "HUNTER:Marksmanship Steadyshot",
+        "PALADIN:Retribution Retribute",
+        "SHAMAN:Enhancement Stormbringr"
+      ],
+      [
+        "HUNTER:Beast Mastery Rapidfire",
+        "PALADIN:Holy Holylight",
+        "PRIEST:Discipline Painsuppr",
+        "SHAMAN:Enhancement Windfurious",
+        "WARRIOR:Protection Ironbark"
+      ],
+      [
+        "DRUID:Balance Naturewrath",
+        "SHAMAN:Elemental Earthshockr",
+        "WARLOCK:Destruction Dreadlock",
+        "WARLOCK:Destruction Seedofcorr",
+        "WARLOCK:Destruction Shadowshard"
+      ],
+      [
+        "MAGE:Arcane Arcaneblast",
+        "MAGE:Arcane Spellfrost",
+        "MAGE:Fire Livingbomb",
+        "PRIEST:Holy Prayerofhl",
+        "PRIEST:Shadow Mindcontrolr"
+      ],
+      [
+        "DRUID:Restoration Swiftmendr",
+        "PALADIN:Holy Sanctuary",
+        "PALADIN:Protection Shieldmaiden",
+        "SHAMAN:Restoration Tidalwave",
+        "WARLOCK:Affliction Unstableaff"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T31": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Quillon",
+        "ROGUE:Combat Eira",
+        "SHAMAN:Enhancement Xanthe",
+        "WARRIOR:Arms Brynja",
+        "WARRIOR:Fury Tamsin"
+      ],
+      [
+        "DRUID:Feral Lysander",
+        "HUNTER:Beast Mastery Jorvik",
+        "HUNTER:Survival Caelum",
+        "WARRIOR:Protection Selene"
+      ],
+      [
+        "DRUID:Balance Valen",
+        "SHAMAN:Elemental Dorgal",
+        "WARLOCK:Affliction Yorrick",
+        "WARLOCK:Destruction Kaelith",
+        "WARLOCK:Destruction Rhaegal"
+      ],
+      [
+        "MAGE:Arcane Fenwick",
+        "MAGE:Arcane Morwen",
+        "MAGE:Fire Nyssa",
+        "PRIEST:Holy Pyrrha",
+        "PRIEST:Shadow Ursa"
+      ],
+      [
+        "DRUID:Restoration Drystan",
+        "PALADIN:Holy Kestrel",
+        "PALADIN:Protection Aldrin",
+        "PRIEST:Discipline Isolde",
+        "SHAMAN:Restoration Wynstan"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G2 HUNTER:Marksmanship"
+    ]
+  },
+  "T32": {
+    "raid": "bt",
+    "groups": [
+      [
+        "HUNTER:Marksmanship Brynja",
+        "ROGUE:Combat Kestrel",
+        "WARRIOR:Fury Aldrin",
+        "WARRIOR:Fury Haldor"
+      ],
+      [
+        "ROGUE:Assassination Drystan",
+        "ROGUE:Subtlety Wynstan",
+        "WARRIOR:Arms Orsyn",
+        "WARRIOR:Arms Vexari"
+      ],
+      [
+        "DRUID:Feral Selene",
+        "HUNTER:Beast Mastery Pyrrha",
+        "HUNTER:Survival Isolde",
+        "PRIEST:Holy Rowan",
+        "WARRIOR:Protection Ulrich"
+      ],
+      [
+        "MAGE:Arcane Lysander",
+        "PRIEST:Holy Joran",
+        "PRIEST:Shadow Tamsin",
+        "WARLOCK:Destruction Eira",
+        "WARLOCK:Destruction Xanthe"
+      ],
+      [
+        "DRUID:Restoration Gwynna",
+        "PALADIN:Holy Norrin",
+        "PALADIN:Protection Branwen",
+        "PRIEST:Discipline Corvus",
+        "SHAMAN:Restoration Zarek"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G2 SHAMAN:Enhancement"
+    ]
+  },
+  "T33": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Faldrek",
+        "HUNTER:Survival Norrin",
+        "ROGUE:Combat Perrin",
+        "WARRIOR:Fury Mirela"
+      ],
+      [
+        "DRUID:Feral Yara",
+        "HUNTER:Beast Mastery Ulrich",
+        "PALADIN:Retribution Branwen",
+        "SHAMAN:Enhancement Ingrid",
+        "WARRIOR:Arms Torvald"
+      ],
+      [
+        "DRUID:Balance Haldor",
+        "MAGE:Fire Joran",
+        "SHAMAN:Elemental Orsyn",
+        "WARLOCK:Destruction Corvus",
+        "WARLOCK:Destruction Vexari"
+      ],
+      [
+        "MAGE:Arcane Rowan",
+        "MAGE:Arcane Zarek",
+        "PRIEST:Holy Halvard",
+        "PRIEST:Shadow Gwynna",
+        "SHAMAN:Restoration Thalin"
+      ],
+      [
+        "DRUID:Restoration Osric",
+        "PALADIN:Holy Wren",
+        "PALADIN:Protection Elowen"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G5 SHAMAN:Restoration",
+      "G5 WARRIOR:Protection"
+    ]
+  },
+  "T34": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lorcan",
+        "HUNTER:Beast Mastery Halvard",
+        "ROGUE:Combat Elowen",
+        "WARRIOR:Fury Sylvar"
+      ],
+      [
+        "PALADIN:Retribution Osric",
+        "ROGUE:Assassination Wren",
+        "WARRIOR:Arms Zephra",
+        "WARRIOR:Protection Yorrick"
+      ],
+      [
+        "WARLOCK:Affliction Perrin",
+        "WARLOCK:Destruction Faldrek",
+        "WARLOCK:Destruction Yara"
+      ],
+      [
+        "MAGE:Arcane Mirela",
+        "MAGE:Arcane Torvald",
+        "PRIEST:Holy Nyssa",
+        "PRIEST:Holy Valen",
+        "PRIEST:Shadow Thalin"
+      ],
+      [
+        "DRUID:Restoration Kaelith",
+        "PALADIN:Holy Rhaegal",
+        "PALADIN:Protection Fenwick",
+        "PRIEST:Discipline Garrick",
+        "SHAMAN:Restoration Dorgal"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G2 SHAMAN:Enhancement",
+      "G3 DRUID:Balance",
+      "G3 SHAMAN:Elemental"
+    ]
+  },
+  "T35": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Fenwick",
+        "HUNTER:Marksmanship Rhaegal",
+        "ROGUE:Assassination Caelum",
+        "WARRIOR:Arms Ursa"
+      ],
+      [
+        "DRUID:Feral Isolde",
+        "ROGUE:Assassination Jorvik",
+        "WARRIOR:Arms Morwen"
+      ],
+      [
+        "MAGE:Fire Garrick",
+        "MAGE:Fire Zephra",
+        "SHAMAN:Elemental Nyssa"
+      ],
+      [
+        "HUNTER:Marksmanship Yorrick",
+        "HUNTER:Survival Kaelith",
+        "PRIEST:Holy Tamsin",
+        "PRIEST:Shadow Dorgal",
+        "SHAMAN:Elemental Valen"
+      ],
+      [
+        "DRUID:Restoration Xanthe",
+        "PRIEST:Holy Eira",
+        "PRIEST:Holy Lysander",
+        "SHAMAN:Restoration Quillon",
+        "WARRIOR:Protection Brynja"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G2 PALADIN:Retribution",
+      "G2 SHAMAN:Enhancement",
+      "G3 DRUID:Balance",
+      "G3 WARLOCK:Destruction"
+    ]
+  },
+  "T36": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Wynstan",
+        "ROGUE:Combat Pyrrha",
+        "WARRIOR:Arms Drystan",
+        "WARRIOR:Protection Corvus"
+      ],
+      [
+        "WARLOCK:Destruction Eira",
+        "WARLOCK:Destruction Lysander",
+        "WARLOCK:Destruction Xanthe"
+      ],
+      [
+        "DRUID:Balance Jorvik",
+        "PRIEST:Shadow Isolde",
+        "SHAMAN:Elemental Quillon"
+      ],
+      [
+        "MAGE:Arcane Brynja",
+        "MAGE:Arcane Tamsin",
+        "PRIEST:Holy Selene",
+        "SHAMAN:Restoration Haldor"
+      ],
+      [
+        "DRUID:Restoration Orsyn",
+        "PALADIN:Holy Vexari",
+        "PALADIN:Protection Joran",
+        "PRIEST:Discipline Kestrel",
+        "SHAMAN:Restoration Aldrin"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G2 DRUID:Balance",
+      "G2 SHAMAN:Elemental",
+      "G3 MAGE:Fire",
+      "G3 MAGE:Frost",
+      "G4 PRIEST:Shadow"
+    ]
+  },
+  "T37": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Selene",
+        "ROGUE:Assassination Haldor",
+        "WARRIOR:Fury Joran",
+        "WARRIOR:Fury Rowan"
+      ],
+      [
+        "DRUID:Feral Vexari",
+        "ROGUE:Combat Orsyn",
+        "WARRIOR:Arms Gwynna",
+        "WARRIOR:Arms Zarek"
+      ],
+      [
+        "DRUID:Feral Corvus",
+        "DRUID:Restoration Ingrid",
+        "HUNTER:Beast Mastery Kestrel",
+        "ROGUE:Subtlety Aldrin",
+        "WARRIOR:Protection Faldrek"
+      ],
+      [
+        "MAGE:Arcane Wynstan",
+        "PALADIN:Holy Perrin",
+        "PRIEST:Holy Ulrich",
+        "PRIEST:Shadow Drystan",
+        "WARLOCK:Destruction Pyrrha"
+      ],
+      [
+        "DRUID:Restoration Branwen",
+        "PALADIN:Holy Yara",
+        "PALADIN:Protection Mirela",
+        "PRIEST:Discipline Norrin",
+        "WARLOCK:Affliction Isolde"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G2 SHAMAN:Enhancement"
+    ]
+  },
+  "T38": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Torvald",
+        "PALADIN:Retribution Yara",
+        "ROGUE:Combat Mirela",
+        "WARRIOR:Fury Thalin"
+      ],
+      [
+        "ROGUE:Assassination Perrin",
+        "SHAMAN:Enhancement Faldrek",
+        "WARRIOR:Arms Halvard",
+        "WARRIOR:Protection Garrick"
+      ],
+      [
+        "DRUID:Balance Rowan",
+        "MAGE:Arcane Branwen",
+        "SHAMAN:Elemental Zarek",
+        "WARLOCK:Destruction Gwynna",
+        "WARLOCK:Destruction Norrin"
+      ],
+      [
+        "MAGE:Arcane Ulrich",
+        "PRIEST:Holy Elowen",
+        "PRIEST:Holy Osric",
+        "PRIEST:Shadow Ingrid"
+      ],
+      [
+        "DRUID:Restoration Sylvar",
+        "PALADIN:Holy Zephra",
+        "PALADIN:Protection Nyssa",
+        "PRIEST:Discipline Wren",
+        "SHAMAN:Restoration Lorcan"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 SHAMAN:Enhancement",
+      "G2 HUNTER:Survival",
+      "G4 MAGE:Fire"
+    ]
+  },
+  "T39": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Zephra",
+        "ROGUE:Combat Nyssa",
+        "SHAMAN:Enhancement Garrick",
+        "WARRIOR:Arms Kaelith",
+        "WARRIOR:Fury Dorgal"
+      ],
+      [
+        "DRUID:Feral Valen",
+        "HUNTER:Beast Mastery Sylvar",
+        "HUNTER:Survival Lorcan",
+        "WARRIOR:Protection Jorvik"
+      ],
+      [
+        "WARLOCK:Destruction Elowen",
+        "WARLOCK:Destruction Osric",
+        "WARLOCK:Destruction Wren"
+      ],
+      [
+        "MAGE:Arcane Halvard",
+        "PRIEST:Holy Fenwick",
+        "PRIEST:Holy Yorrick",
+        "PRIEST:Shadow Thalin"
+      ],
+      [
+        "DRUID:Restoration Ursa",
+        "PALADIN:Holy Caelum",
+        "PALADIN:Protection Quillon",
+        "PRIEST:Discipline Rhaegal",
+        "SHAMAN:Restoration Morwen"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G2 HUNTER:Marksmanship",
+      "G3 DRUID:Balance",
+      "G3 SHAMAN:Elemental",
+      "G4 MAGE:Fire"
+    ]
+  },
+  "T40": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Ursa",
+        "ROGUE:Combat Quillon",
+        "SHAMAN:Enhancement Caelum",
+        "WARRIOR:Arms Eira",
+        "WARRIOR:Fury Xanthe"
+      ],
+      [
+        "HUNTER:Beast Mastery Morwen",
+        "HUNTER:Survival Fenwick",
+        "ROGUE:Assassination Jorvik",
+        "WARRIOR:Arms Lysander",
+        "WARRIOR:Protection Kestrel"
+      ],
+      [
+        "DRUID:Balance Garrick",
+        "MAGE:Arcane Kaelith",
+        "SHAMAN:Elemental Nyssa",
+        "WARLOCK:Destruction Dorgal",
+        "WARLOCK:Destruction Valen"
+      ],
+      [
+        "MAGE:Arcane Rhaegal",
+        "PRIEST:Holy Brynja",
+        "PRIEST:Holy Isolde",
+        "PRIEST:Shadow Yorrick"
+      ],
+      [
+        "DRUID:Restoration Wynstan",
+        "PALADIN:Holy Drystan",
+        "PALADIN:Protection Selene",
+        "PRIEST:Discipline Tamsin",
+        "SHAMAN:Restoration Pyrrha"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G4 MAGE:Fire"
+    ]
+  },
+  "T41": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Selene",
+        "ROGUE:Combat Haldor",
+        "SHAMAN:Enhancement Aldrin",
+        "WARRIOR:Arms Corvus",
+        "WARRIOR:Fury Vexari"
+      ],
+      [
+        "DRUID:Feral Orsyn",
+        "HUNTER:Beast Mastery Kestrel",
+        "WARRIOR:Protection Norrin"
+      ],
+      [
+        "SHAMAN:Elemental Tamsin",
+        "WARLOCK:Destruction Brynja",
+        "WARLOCK:Destruction Isolde"
+      ],
+      [
+        "DRUID:Balance Lysander",
+        "MAGE:Arcane Pyrrha",
+        "MAGE:Arcane Wynstan",
+        "PRIEST:Shadow Drystan",
+        "SHAMAN:Restoration Rowan"
+      ],
+      [
+        "DRUID:Restoration Zarek",
+        "PALADIN:Holy Gwynna",
+        "PALADIN:Protection Ulrich",
+        "PRIEST:Holy Joran"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G2 HUNTER:Marksmanship",
+      "G2 HUNTER:Survival",
+      "G3 DRUID:Balance",
+      "G3 PRIEST:Shadow",
+      "G5 SHAMAN:Restoration"
+    ]
+  },
+  "T42": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Branwen",
+        "ROGUE:Combat Ulrich",
+        "SHAMAN:Enhancement Gwynna",
+        "WARRIOR:Fury Ingrid"
+      ],
+      [
+        "DRUID:Feral Osric",
+        "HUNTER:Beast Mastery Zarek",
+        "ROGUE:Assassination Norrin",
+        "WARRIOR:Arms Perrin"
+      ],
+      [
+        "DRUID:Balance Aldrin",
+        "MAGE:Arcane Corvus",
+        "SHAMAN:Elemental Haldor",
+        "WARLOCK:Destruction Orsyn",
+        "WARLOCK:Destruction Vexari"
+      ],
+      [
+        "MAGE:Arcane Joran",
+        "PRIEST:Holy Mirela",
+        "PRIEST:Holy Torvald",
+        "PRIEST:Shadow Rowan"
+      ],
+      [
+        "DRUID:Restoration Halvard",
+        "DRUID:Restoration Thalin",
+        "PRIEST:Discipline Faldrek",
+        "SHAMAN:Restoration Yara",
+        "WARRIOR:Protection Wren"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 PALADIN:Retribution",
+      "G2 HUNTER:Survival",
+      "G4 MAGE:Fire"
+    ]
+  },
+  "T43": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Elowen",
+        "ROGUE:Combat Wren",
+        "WARRIOR:Fury Lorcan"
+      ],
+      [
+        "PALADIN:Retribution Halvard",
+        "SHAMAN:Enhancement Osric",
+        "WARRIOR:Arms Sylvar",
+        "WARRIOR:Protection Rhaegal"
+      ],
+      [
+        "DRUID:Balance Perrin",
+        "MAGE:Arcane Mirela",
+        "WARLOCK:Destruction Faldrek",
+        "WARLOCK:Destruction Yara"
+      ],
+      [
+        "MAGE:Arcane Torvald",
+        "PRIEST:Holy Garrick",
+        "PRIEST:Holy Nyssa",
+        "PRIEST:Shadow Thalin"
+      ],
+      [
+        "DRUID:Restoration Dorgal",
+        "PALADIN:Holy Kaelith",
+        "PALADIN:Protection Yorrick",
+        "PRIEST:Discipline Zephra",
+        "SHAMAN:Restoration Valen"
+      ]
+    ],
+    "bench": [
+      "HUNTER:Beast Mastery Ingrid",
+      "ROGUE:Subtlety Ulrich",
+      "SHAMAN:Elemental Branwen"
+    ],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 PALADIN:Retribution",
+      "G1 SHAMAN:Enhancement",
+      "G2 HUNTER:Survival",
+      "G3 SHAMAN:Elemental",
+      "G4 MAGE:Fire"
+    ]
+  },
+  "T44": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Morwen",
+        "ROGUE:Combat Fenwick",
+        "WARRIOR:Arms Ursa"
+      ],
+      [
+        "PALADIN:Retribution Rhaegal",
+        "SHAMAN:Enhancement Yorrick",
+        "WARRIOR:Protection Tamsin"
+      ],
+      [
+        "MAGE:Arcane Dorgal",
+        "SHAMAN:Elemental Nyssa",
+        "WARLOCK:Destruction Valen"
+      ],
+      [
+        "PRIEST:Holy Jorvik",
+        "PRIEST:Holy Quillon",
+        "PRIEST:Shadow Kaelith"
+      ],
+      [
+        "DRUID:Restoration Eira",
+        "PALADIN:Holy Lysander",
+        "PALADIN:Protection Brynja",
+        "PRIEST:Discipline Caelum",
+        "SHAMAN:Restoration Xanthe"
+      ]
+    ],
+    "bench": [
+      "WARLOCK:Affliction Zephra",
+      "WARRIOR:Fury Garrick"
+    ],
+    "unplaced": 0,
+    "suggestions": [
+      "G1 PALADIN:Retribution",
+      "G1 SHAMAN:Enhancement",
+      "G2 HUNTER:Survival",
+      "G2 ROGUE:Subtlety",
+      "G3 DRUID:Balance",
+      "G3 PRIEST:Shadow",
+      "G4 DRUID:Balance",
+      "G4 MAGE:Fire"
+    ]
+  },
+  "T45": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Clawdan",
+        "HUNTER:Beast Mastery Hawkeyes",
+        "PALADIN:Retribution Crusadus",
+        "SHAMAN:Enhancement Earthfury",
+        "WARRIOR:Fury Rageblade"
+      ],
+      [
+        "PALADIN:Holy Lightbringer",
+        "ROGUE:Combat Shadowstep",
+        "SHAMAN:Enhancement Stormhowl",
+        "WARRIOR:Arms Mortalis",
+        "WARRIOR:Protection Ironhide"
+      ],
+      [
+        "DRUID:Balance Starfallen",
+        "SHAMAN:Elemental Thunderkin",
+        "WARLOCK:Destruction Chaosbolt",
+        "WARLOCK:Destruction Felburn",
+        "WARLOCK:Destruction Soulrend"
+      ],
+      [
+        "MAGE:Arcane Blinkdrake",
+        "MAGE:Arcane Spellweft",
+        "PRIEST:Holy Divinia",
+        "PRIEST:Shadow Mindshiv",
+        "SHAMAN:Restoration Tidecaller"
+      ],
+      [
+        "DRUID:Restoration Mossbark",
+        "PALADIN:Protection Holybulwark",
+        "PRIEST:Discipline Serenia",
+        "SHAMAN:Restoration Brookwater",
+        "WARLOCK:Affliction Corruptia"
+      ]
+    ],
+    "bench": [
+      "MAGE:Fire Pyrodan",
+      "MAGE:Frost Icewind"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T46": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Pouncer",
+        "HUNTER:Beast Mastery Beastlord",
+        "ROGUE:Combat Daggerfall",
+        "SHAMAN:Enhancement Skyfury",
+        "WARRIOR:Fury Bloodrage"
+      ],
+      [
+        "HUNTER:Survival Snaretrap",
+        "PALADIN:Retribution Vengeor",
+        "SHAMAN:Enhancement Windlash",
+        "WARRIOR:Arms Cleaver",
+        "WARRIOR:Protection Bastionel"
+      ],
+      [
+        "DRUID:Balance Moonfury",
+        "SHAMAN:Elemental Lavaburst",
+        "WARLOCK:Destruction Hellfirer",
+        "WARLOCK:Destruction Imphater",
+        "WARLOCK:Destruction Shadowflame"
+      ],
+      [
+        "MAGE:Arcane Arcmage",
+        "MAGE:Arcane Polymorpha",
+        "PRIEST:Holy Prayerful",
+        "PRIEST:Shadow Voidtouch",
+        "SHAMAN:Restoration Waveshaper"
+      ],
+      [
+        "DRUID:Restoration Barkskin",
+        "PALADIN:Holy Dawnlight",
+        "PALADIN:Holy Sunwarden",
+        "PALADIN:Protection Aegisor",
+        "SHAMAN:Restoration Totemic"
+      ]
+    ],
+    "bench": [
+      "DRUID:Restoration Wildgrove",
+      "MAGE:Fire Pyromancer",
+      "PRIEST:Discipline Penitent",
+      "PRIEST:Discipline Shieldmend",
+      "WARLOCK:Affliction Hexcurse"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T47": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Lacerate",
+        "HUNTER:Beast Mastery Falconer",
+        "PALADIN:Retribution Templarr",
+        "SHAMAN:Enhancement Flametongue",
+        "WARRIOR:Fury Berserka"
+      ],
+      [
+        "DRUID:Restoration Rejuvena",
+        "ROGUE:Combat Eviscerate",
+        "SHAMAN:Enhancement Rockbiter",
+        "WARRIOR:Arms Sunderer",
+        "WARRIOR:Protection Shieldbreaker"
+      ],
+      [
+        "DRUID:Balance Typhoona",
+        "SHAMAN:Elemental Earthshock",
+        "WARLOCK:Destruction Cinderlock",
+        "WARLOCK:Destruction Dreadflame",
+        "WARLOCK:Destruction Warlockian"
+      ],
+      [
+        "MAGE:Arcane Evocate",
+        "MAGE:Arcane Mirrorimg",
+        "PRIEST:Holy Renewal",
+        "PRIEST:Shadow Fiendish",
+        "WARLOCK:Affliction Siphonia"
+      ],
+      [
+        "DRUID:Restoration Treebeard",
+        "PALADIN:Holy Beacon",
+        "PALADIN:Protection Oathkeeper",
+        "PRIEST:Discipline Atonia",
+        "SHAMAN:Restoration Chainheal"
+      ]
+    ],
+    "bench": [
+      "SHAMAN:Enhancement Windfurious"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T48": {
+    "raid": "bt",
+    "groups": [
+      [
+        "HUNTER:Beast Mastery Direwolf",
+        "PALADIN:Retribution Justicar",
+        "ROGUE:Combat Riposte",
+        "SHAMAN:Enhancement Galewarden",
+        "WARRIOR:Fury Warcry"
+      ],
+      [
+        "DRUID:Feral Mangler",
+        "HUNTER:Beast Mastery Beastmaster",
+        "HUNTER:Marksmanship Deadeye",
+        "SHAMAN:Enhancement Stoneclaw",
+        "WARRIOR:Arms Executor"
+      ],
+      [
+        "DRUID:Restoration Grovetender",
+        "HUNTER:Beast Mastery Packleader",
+        "HUNTER:Marksmanship Longshot",
+        "PALADIN:Holy Radiance",
+        "WARRIOR:Protection Stonewall"
+      ],
+      [
+        "MAGE:Arcane Frostbolt",
+        "MAGE:Arcane Manasurge",
+        "PRIEST:Shadow Dreadwhisper",
+        "SHAMAN:Elemental Voltshock",
+        "WARLOCK:Destruction Ashbringer"
+      ],
+      [
+        "DRUID:Restoration Mendleaf",
+        "PALADIN:Protection Wardenic",
+        "PRIEST:Discipline Absolver",
+        "PRIEST:Holy Lumina",
+        "SHAMAN:Restoration Tideturner"
+      ]
+    ],
+    "bench": [
+      "HUNTER:Survival Wyvernsting",
+      "WARLOCK:Destruction Doomcaller",
+      "WARLOCK:Destruction Emberlash"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T49": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Mauler",
+        "PALADIN:Retribution Smiteful",
+        "ROGUE:Combat Swashbuck",
+        "SHAMAN:Enhancement Lightningrod",
+        "WARRIOR:Arms Slayerx"
+      ],
+      [
+        "DRUID:Feral Ravager",
+        "PALADIN:Retribution Zealot",
+        "ROGUE:Combat Shivster",
+        "SHAMAN:Enhancement Totembrawler",
+        "WARRIOR:Arms Maimer"
+      ],
+      [
+        "DRUID:Restoration Everbloom",
+        "SHAMAN:Restoration Waterwalker",
+        "WARRIOR:Arms Titanfall",
+        "WARRIOR:Fury Thirstblade",
+        "WARRIOR:Fury Windfuria"
+      ],
+      [
+        "MAGE:Arcane Frostflux",
+        "MAGE:Arcane Manaburn",
+        "PRIEST:Shadow Painweaver",
+        "SHAMAN:Elemental Thunderlord",
+        "WARLOCK:Destruction Cindermaw"
+      ],
+      [
+        "DRUID:Restoration Thornwhisper",
+        "PALADIN:Holy Soulmend",
+        "PALADIN:Protection Ramparts",
+        "PRIEST:Discipline Painless",
+        "WARRIOR:Protection Ironbulwark"
+      ]
+    ],
+    "bench": [
+      "PRIEST:Holy Chantress",
+      "ROGUE:Assassination Mutilator",
+      "ROGUE:Subtlety Shadedance",
+      "WARLOCK:Destruction Pyrolord"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T50": {
+    "raid": "bt",
+    "groups": [
+      [
+        "DRUID:Feral Prowler",
+        "PALADIN:Retribution Paragon",
+        "ROGUE:Combat Backstabber",
+        "SHAMAN:Enhancement Earthbind",
+        "WARRIOR:Fury Gladiatrix"
+      ],
+      [
+        "DRUID:Feral Grizzlepaw",
+        "DRUID:Restoration Verdancy",
+        "HUNTER:Survival Marksmaster",
+        "SHAMAN:Enhancement Thunderfist",
+        "WARRIOR:Arms Warbringer"
+      ],
+      [
+        "DRUID:Balance Lunarbeam",
+        "SHAMAN:Elemental Stormcaller",
+        "WARLOCK:Destruction Immolator",
+        "WARLOCK:Destruction Rainoffire",
+        "WARLOCK:Destruction Voidcaller"
+      ],
+      [
+        "MAGE:Arcane Arcanum",
+        "MAGE:Arcane Starweaver",
+        "PRIEST:Holy Seraphine",
+        "PRIEST:Shadow Dreamless",
+        "WARLOCK:Affliction Plaguebringer"
+      ],
+      [
+        "DRUID:Restoration Wildmend",
+        "PALADIN:Holy Lightforge",
+        "PALADIN:Protection Dawnshield",
+        "PRIEST:Discipline Atoner",
+        "SHAMAN:Restoration Spiritlink"
+      ]
+    ],
+    "bench": [
+      "HUNTER:Marksmanship Steadyshot",
+      "MAGE:Fire Scorchy",
+      "PALADIN:Holy Gracebringer",
+      "ROGUE:Combat Gouger",
+      "WARLOCK:Destruction Hellspawn"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "T51": {
+    "raid": "bt",
+    "groups": [
+      [
+        "PALADIN:Retribution Crusadia",
+        "ROGUE:Combat Blademist",
+        "SHAMAN:Enhancement Stormhowl",
+        "WARRIOR:Arms Colossar",
+        "WARRIOR:Fury Rageborn"
+      ],
+      [
+        "HUNTER:Beast Mastery Beastcaller",
+        "HUNTER:Beast Mastery Packleader",
+        "HUNTER:Survival Snaretrap",
+        "WARRIOR:Protection Stonewarden"
+      ],
+      [
+        "DRUID:Balance Starfallen",
+        "SHAMAN:Elemental Galecrest",
+        "WARLOCK:Affliction Wiltshade",
+        "WARLOCK:Destruction Ashmantle",
+        "WARLOCK:Destruction Emberlash"
+      ],
+      [
+        "MAGE:Arcane Runebloom",
+        "MAGE:Arcane Spellwisp",
+        "PRIEST:Holy Hymnal",
+        "PRIEST:Shadow Gloomveil",
+        "SHAMAN:Elemental Voltaic"
+      ],
+      [
+        "DRUID:Restoration Mossheart",
+        "PALADIN:Holy Dawnbringer",
+        "PALADIN:Protection Bastionel",
+        "SHAMAN:Restoration Tidecaller"
+      ]
+    ],
+    "bench": [
+      "DRUID:Feral Thornhide",
+      "MAGE:Arcane Idlemage",
+      "SHAMAN:Restoration Brookwhisper"
+    ],
+    "unplaced": 0,
+    "suggestions": [
+      "G2 DRUID:Feral",
+      "G5 PRIEST:Discipline"
+    ]
+  },
+  "classicHorde40": {
+    "raid": "mc",
+    "groups": [
+      [
+        "DRUID:Feral FP27",
+        "HUNTER:Marksmanship FP28",
+        "SHAMAN:Enhancement FP25",
+        "WARRIOR:Fury FP17",
+        "WARRIOR:Fury FP18"
+      ],
+      [
+        "ROGUE:Combat FP20",
+        "ROGUE:Combat FP21",
+        "ROGUE:Combat FP22",
+        "SHAMAN:Restoration FP8",
+        "WARRIOR:Fury FP19"
+      ],
+      [
+        "DRUID:Feral FP4",
+        "ROGUE:Assassination FP23",
+        "ROGUE:Assassination FP24",
+        "SHAMAN:Enhancement FP26",
+        "WARRIOR:Fury FP16"
+      ],
+      [
+        "HUNTER:Beast Mastery FP30",
+        "HUNTER:Marksmanship FP29",
+        "HUNTER:Survival FP31",
+        "WARRIOR:Protection FP2",
+        "WARRIOR:Protection FP3"
+      ],
+      [
+        "MAGE:Fire FP32",
+        "MAGE:Fire FP33",
+        "SHAMAN:Elemental FP39",
+        "WARLOCK:Destruction FP36",
+        "WARLOCK:Destruction FP37"
+      ],
+      [
+        "MAGE:Frost FP34",
+        "PRIEST:Holy FP10",
+        "PRIEST:Holy FP12",
+        "SHAMAN:Restoration FP6",
+        "WARLOCK:Affliction FP38"
+      ],
+      [
+        "DRUID:Restoration FP15",
+        "MAGE:Frost FP35",
+        "PRIEST:Holy FP11",
+        "PRIEST:Holy FP9",
+        "SHAMAN:Restoration FP5"
+      ],
+      [
+        "DRUID:Restoration FP13",
+        "DRUID:Restoration FP14",
+        "SHAMAN:Restoration FP7",
+        "WARRIOR:Protection FP0",
+        "WARRIOR:Protection FP1"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "classicAlliance40": {
+    "raid": "mc",
+    "groups": [
+      [
+        "DRUID:Feral FP27",
+        "PALADIN:Retribution FP26",
+        "WARRIOR:Fury FP16",
+        "WARRIOR:Fury FP17",
+        "WARRIOR:Fury FP18"
+      ],
+      [
+        "HUNTER:Beast Mastery FP30",
+        "HUNTER:Marksmanship FP29",
+        "PALADIN:Holy FP5",
+        "ROGUE:Combat FP21",
+        "WARRIOR:Fury FP19"
+      ],
+      [
+        "HUNTER:Marksmanship FP28",
+        "PALADIN:Protection FP4",
+        "ROGUE:Combat FP22",
+        "WARRIOR:Protection FP1",
+        "WARRIOR:Protection FP3"
+      ],
+      [
+        "PALADIN:Retribution FP25",
+        "ROGUE:Assassination FP23",
+        "ROGUE:Assassination FP24",
+        "ROGUE:Combat FP20",
+        "WARRIOR:Protection FP2"
+      ],
+      [
+        "MAGE:Fire FP32",
+        "MAGE:Frost FP34",
+        "MAGE:Frost FP35",
+        "WARLOCK:Affliction FP38",
+        "WARLOCK:Destruction FP36"
+      ],
+      [
+        "MAGE:Fire FP33",
+        "PALADIN:Holy FP6",
+        "PRIEST:Holy FP9",
+        "PRIEST:Shadow FP39",
+        "WARLOCK:Destruction FP37"
+      ],
+      [
+        "DRUID:Restoration FP13",
+        "DRUID:Restoration FP14",
+        "DRUID:Restoration FP15",
+        "PALADIN:Holy FP8",
+        "PRIEST:Holy FP12"
+      ],
+      [
+        "HUNTER:Survival FP31",
+        "PALADIN:Holy FP7",
+        "PRIEST:Holy FP10",
+        "PRIEST:Holy FP11",
+        "WARRIOR:Protection FP0"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "classicHorde20": {
+    "raid": "zg",
+    "groups": [
+      [
+        "HUNTER:Survival FP13",
+        "ROGUE:Combat FP8",
+        "ROGUE:Combat FP9",
+        "SHAMAN:Restoration FP2",
+        "WARRIOR:Protection FP1"
+      ],
+      [
+        "DRUID:Feral FP11",
+        "HUNTER:Marksmanship FP12",
+        "SHAMAN:Enhancement FP10",
+        "WARRIOR:Fury FP6",
+        "WARRIOR:Fury FP7"
+      ],
+      [
+        "MAGE:Frost FP14",
+        "MAGE:Frost FP15",
+        "SHAMAN:Elemental FP19",
+        "WARLOCK:Destruction FP16",
+        "WARLOCK:Destruction FP17"
+      ],
+      [
+        "DRUID:Restoration FP5",
+        "PRIEST:Holy FP4",
+        "SHAMAN:Restoration FP3",
+        "WARLOCK:Affliction FP18",
+        "WARRIOR:Protection FP0"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "foreverMixed40": {
+    "raid": "f_ony",
+    "groups": [
+      [
+        "DRUID:Feral FP4",
+        "PALADIN:Protection FP3",
+        "SHAMAN:Enhancement FP26",
+        "WARRIOR:Fury FP16",
+        "WARRIOR:Fury FP18"
+      ],
+      [
+        "PALADIN:Retribution FP24",
+        "ROGUE:Assassination FP22",
+        "ROGUE:Combat FP21",
+        "SHAMAN:Enhancement FP27",
+        "WARRIOR:Protection FP2"
+      ],
+      [
+        "PALADIN:Retribution FP25",
+        "ROGUE:Assassination FP23",
+        "ROGUE:Combat FP20",
+        "SHAMAN:Restoration FP13",
+        "WARRIOR:Fury FP17"
+      ],
+      [
+        "HUNTER:Beast Mastery FP30",
+        "HUNTER:Marksmanship FP29",
+        "PALADIN:Holy FP9",
+        "ROGUE:Combat FP19",
+        "SHAMAN:Restoration FP12"
+      ],
+      [
+        "DRUID:Restoration FP14",
+        "DRUID:Restoration FP15",
+        "PALADIN:Holy FP10",
+        "PRIEST:Holy FP6",
+        "WARLOCK:Destruction FP36"
+      ],
+      [
+        "MAGE:Fire FP34",
+        "PALADIN:Holy FP11",
+        "PRIEST:Holy FP7",
+        "PRIEST:Shadow FP39",
+        "WARLOCK:Destruction FP37"
+      ],
+      [
+        "HUNTER:Marksmanship FP28",
+        "MAGE:Arcane FP35",
+        "MAGE:Frost FP32",
+        "MAGE:Frost FP33",
+        "WARLOCK:Affliction FP38"
+      ],
+      [
+        "HUNTER:Survival FP31",
+        "PRIEST:Discipline FP8",
+        "PRIEST:Holy FP5",
+        "WARRIOR:Protection FP0",
+        "WARRIOR:Protection FP1"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "forever20": {
+    "raid": "f_hyjal",
+    "groups": [
+      [
+        "DRUID:Feral FP11",
+        "PALADIN:Retribution FP9",
+        "ROGUE:Combat FP8",
+        "SHAMAN:Enhancement FP10",
+        "WARRIOR:Fury FP7"
+      ],
+      [
+        "HUNTER:Marksmanship FP12",
+        "HUNTER:Survival FP13",
+        "PALADIN:Protection FP1",
+        "SHAMAN:Restoration FP2",
+        "WARRIOR:Fury FP6"
+      ],
+      [
+        "MAGE:Frost FP14",
+        "MAGE:Frost FP15",
+        "SHAMAN:Elemental FP19",
+        "WARLOCK:Destruction FP16",
+        "WARLOCK:Destruction FP17"
+      ],
+      [
+        "DRUID:Restoration FP5",
+        "PALADIN:Holy FP3",
+        "PRIEST:Holy FP4",
+        "WARLOCK:Affliction FP18",
+        "WARRIOR:Protection FP0"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  },
+  "forever10": {
+    "raid": "f_barrow",
+    "groups": [
+      [
+        "HUNTER:Marksmanship FP8",
+        "MAGE:Frost FP9",
+        "PALADIN:Holy FP4",
+        "SHAMAN:Restoration FP3",
+        "WARRIOR:Protection FP0"
+      ],
+      [
+        "PALADIN:Protection FP1",
+        "PRIEST:Holy FP2",
+        "ROGUE:Combat FP6",
+        "SHAMAN:Enhancement FP7",
+        "WARRIOR:Fury FP5"
+      ]
+    ],
+    "bench": [],
+    "unplaced": 0,
+    "suggestions": []
+  }
+}

@@ -9,6 +9,7 @@
  */
 const SHARDS = {
   'scenario-tests.js': 3,
+  'boards-tests.js': 2,
 };
 
 /** "2/3" -> { index: 1, count: 3 } (index is 0-based), or null when no --shard was given. */

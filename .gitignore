@@ -75,13 +75,16 @@
 !README.md
 !changelog-tests.js
 !changes-tests.js
+!boards-tests.js
 !.vercelignore
-# Test runner, loader and CI (npm test; GitHub Actions runs it)
+# Test runner, loader and CI (npm test; GitHub Actions runs it), the golden boards snapshot and the rosters two suites share
 !package.json
 !tests/
 !tests/load-app.js
 !tests/run-all.js
 !tests/shards.js
+!tests/boards-snapshot.json
+!tests/classic-forever-fixtures.js
 !.github/
 !.github/workflows/
 !.github/workflows/test.yml

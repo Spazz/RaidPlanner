@@ -41,6 +41,7 @@
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
+const { FIXTURES } = require('./tests/classic-forever-fixtures');
 
 const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'Optimizer', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidDebuffCoverage', 'Faction', 'enforceRaidCapacity', 'nextUid']);
 const { State, Config, GameVersions, Rulesets, Import, Optimizer, getGroupBuffs, getMissingBuffInsights, getRaidDebuffCoverage, Faction, enforceRaidCapacity, nextUid } = ctx.api;
@@ -105,75 +106,8 @@ function casterIdentityIndices(numGroups) {
 }
 
 // ── Fixtures ──
-// Realistic sign-up counts per raid, following architecture-map.md's spec-key
-// shape ([count, RaidHelperClassName, RaidHelperSpecName]) — same format
-// classic-tests.js/forever-tests.js use for their importSignUps() rosters.
-// Composition follows the 40-man convention in tasks/research-classic-buffs.md
-// ("40-man comp conventions"): ~4-5 tanks, ~10-12 healers, 10-14 melee, 3-5
-// hunters, 10-12 casters, a handful of shamans/paladins as the totem/aura
-// providers riding inside those role buckets.
-const FIXTURES = {
-  classicHorde40: {
-    version: 'classic', raid: 'mc', label: 'Classic Horde 40 (Molten Core)',
-    roster: [
-      [4, 'Warrior', 'Protection'], [1, 'Druid', 'Guardian'],
-      [4, 'Shaman', 'Restoration1'], [4, 'Priest', 'Holy'], [3, 'Druid', 'Restoration'],
-      [4, 'Warrior', 'Fury'], [3, 'Rogue', 'Combat'], [2, 'Rogue', 'Assassination'], [2, 'Shaman', 'Enhancement'], [1, 'Druid', 'Feral'],
-      [2, 'Hunter', 'Marksmanship'], [1, 'Hunter', 'Beastmastery'], [1, 'Hunter', 'Survival'],
-      [2, 'Mage', 'Fire'], [2, 'Mage', 'Frost'], [2, 'Warlock', 'Destruction'], [1, 'Warlock', 'Affliction'], [1, 'Shaman', 'Elemental'],
-    ],
-  },
-  classicAlliance40: {
-    version: 'classic', raid: 'mc', label: 'Classic Alliance 40 (Molten Core)',
-    roster: [
-      [4, 'Warrior', 'Protection'], [1, 'Paladin', 'Protection1'],
-      [4, 'Paladin', 'Holy1'], [4, 'Priest', 'Holy'], [3, 'Druid', 'Restoration'],
-      [4, 'Warrior', 'Fury'], [3, 'Rogue', 'Combat'], [2, 'Rogue', 'Assassination'], [2, 'Paladin', 'Retribution'], [1, 'Druid', 'Feral'],
-      [2, 'Hunter', 'Marksmanship'], [1, 'Hunter', 'Beastmastery'], [1, 'Hunter', 'Survival'],
-      [2, 'Mage', 'Fire'], [2, 'Mage', 'Frost'], [2, 'Warlock', 'Destruction'], [1, 'Warlock', 'Affliction'], [1, 'Priest', 'Shadow'],
-    ],
-  },
-  classicHorde20: {
-    version: 'classic', raid: 'zg', label: "Classic Horde 20 (Zul'Gurub)",
-    roster: [
-      [2, 'Warrior', 'Protection'],
-      [2, 'Shaman', 'Restoration1'], [1, 'Priest', 'Holy'], [1, 'Druid', 'Restoration'],
-      [2, 'Warrior', 'Fury'], [2, 'Rogue', 'Combat'], [1, 'Shaman', 'Enhancement'], [1, 'Druid', 'Feral'],
-      [1, 'Hunter', 'Marksmanship'], [1, 'Hunter', 'Survival'],
-      [2, 'Mage', 'Frost'], [2, 'Warlock', 'Destruction'], [1, 'Warlock', 'Affliction'], [1, 'Shaman', 'Elemental'],
-    ],
-  },
-  foreverMixed40: {
-    version: 'forever', raid: 'f_ony', label: "Forever mixed 40 (Onyxia's Lair)",
-    roster: [
-      [3, 'Warrior', 'Protection'], [1, 'Paladin', 'Protection1'], [1, 'Druid', 'Guardian'],
-      [3, 'Priest', 'Holy'], [1, 'Priest', 'Discipline'], [3, 'Paladin', 'Holy1'], [2, 'Shaman', 'Restoration1'], [2, 'Druid', 'Restoration'],
-      [3, 'Warrior', 'Fury'], [3, 'Rogue', 'Combat'], [2, 'Rogue', 'Assassination'], [2, 'Paladin', 'Retribution'], [2, 'Shaman', 'Enhancement'],
-      [2, 'Hunter', 'Marksmanship'], [1, 'Hunter', 'Beastmastery'], [1, 'Hunter', 'Survival'],
-      [2, 'Mage', 'Frost'], [1, 'Mage', 'Fire'], [1, 'Mage', 'Arcane'], [2, 'Warlock', 'Destruction'], [1, 'Warlock', 'Affliction'], [1, 'Priest', 'Shadow'],
-    ],
-  },
-  forever20: {
-    version: 'forever', raid: 'f_hyjal', label: 'Forever 20 (Hyjal Summit)',
-    roster: [
-      [1, 'Warrior', 'Protection'], [1, 'Paladin', 'Protection1'],
-      [1, 'Shaman', 'Restoration1'], [1, 'Paladin', 'Holy1'], [1, 'Priest', 'Holy'], [1, 'Druid', 'Restoration'],
-      [2, 'Warrior', 'Fury'], [1, 'Rogue', 'Combat'], [1, 'Paladin', 'Retribution'], [1, 'Shaman', 'Enhancement'], [1, 'Druid', 'Feral'],
-      [1, 'Hunter', 'Marksmanship'], [1, 'Hunter', 'Survival'],
-      [2, 'Mage', 'Frost'], [2, 'Warlock', 'Destruction'], [1, 'Warlock', 'Affliction'], [1, 'Shaman', 'Elemental'],
-    ],
-  },
-  forever10: {
-    version: 'forever', raid: 'f_barrow', label: 'Forever 10 (Barrow Deeps)',
-    roster: [
-      [1, 'Warrior', 'Protection'], [1, 'Paladin', 'Protection1'],
-      [1, 'Priest', 'Holy'], [1, 'Shaman', 'Restoration1'], [1, 'Paladin', 'Holy1'],
-      [1, 'Warrior', 'Fury'], [1, 'Rogue', 'Combat'], [1, 'Shaman', 'Enhancement'],
-      [1, 'Hunter', 'Marksmanship'],
-      [1, 'Mage', 'Frost'],
-    ],
-  },
-};
+// The six rosters ([count, RaidHelperClassName, RaidHelperSpecName] per spec) live in tests/classic-forever-fixtures.js,
+// shared with boards-tests.js (the golden boards snapshot), and are loaded by the require at the top.
 
 // ── Runner ──
 let checks = 0, failures = 0;

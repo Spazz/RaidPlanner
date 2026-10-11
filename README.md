@@ -39,7 +39,9 @@ Then open http://localhost:5173/. The `/<version>/<id>` link rewrite and `api/sh
 npm test
 ```
 
-`tests/run-all.js` runs every `tests.js`, `*-tests.js` and `*-scenarios.js` at the repo root as its own Node process, up to three at a time (`PP_TEST_JOBS=1` runs them one by one), and exits non-zero if any fails (about a minute). The slow scenario suite is split into shards listed in `tests/shards.js`; `node scenario-tests.js` still runs it whole, and `--shard i/n` runs one slice. Run one suite with `node tests/run-all.js <name-filter>` or `node <suite>.js`. `tests/load-app.js` reads the script list from `index.html`, so the suites always test the files the page loads.
+`tests/run-all.js` runs every `tests.js`, `*-tests.js` and `*-scenarios.js` at the repo root as its own Node process, up to three at a time (`PP_TEST_JOBS=1` runs them one by one), and exits non-zero if any fails (about a minute). The slow suites (`scenario-tests.js`, `boards-tests.js`) are split into shards listed in `tests/shards.js`; running a suite file directly still runs it whole, and `--shard i/n` runs one slice. Run one suite with `node tests/run-all.js <name-filter>` or `node <suite>.js`. `tests/load-app.js` reads the script list from `index.html`, so the suites always test the files the page loads.
+
+`boards-tests.js` builds the optimized board of every scenario in `scenarios.js` and of the six Classic/Forever rosters in `tests/classic-forever-fixtures.js`, and compares each with the golden snapshot `tests/boards-snapshot.json`, listing who moved when a rule or weight edit changes a layout. A changed layout is accepted only on purpose, with `node boards-tests.js --update`, which rewrites the snapshot (read its git diff before committing it).
 
 GitHub Actions runs `npm test` on every push and pull request (`.github/workflows/test.yml`). Vercel does not run the tests, so a green check on `main` is what to look at before deploying.
 
