@@ -864,7 +864,7 @@ async function check(name, fn) {
 
   await check('every clipboard write in the app goes through copyText, and the new wiring is present', async () => {
     const root = path.join(__dirname, 'js');
-    for (const file of fs.readdirSync(root)) {
+    for (const file of fs.readdirSync(root, { recursive: true }).filter(f => f.endsWith('.js'))) {
       const src = fs.readFileSync(path.join(root, file), 'utf8');
       const direct = src.split('\n').filter(l => /clipboard\.writeText|clipboard\.write\(/.test(l) && !/^\s*\/\//.test(l));
       const allowed = file === 'modals.js' ? 1 : (file === 'app.js' ? 2 : 0); // copyText itself, and copyShareLink's own Safari path

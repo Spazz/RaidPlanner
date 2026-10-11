@@ -70,7 +70,7 @@ check('tests, CI, docs and reference data stay out of the deploy', () => {
   const suites = tracked.filter(n => /^(?:.+-tests|tests|.+-scenarios)\.js$/.test(n));
   assert(suites.includes('tests.js') && suites.includes('classic-forever-scenarios.js') && suites.includes('deploy-tests.js'));
   for (const suite of suites) assert(ignored(suite), `${suite} should not be deployed`);
-  for (const file of ['tests/run-all.js', 'tests/load-app.js', '.github/workflows/test.yml', 'gruul_dps_data.txt', 'README.md', 'CHANGELOG.md']) {
+  for (const file of ['tests/run-all.js', 'tests/load-app.js', '.github/workflows/test.yml', 'gruul_dps_data.txt', 'README.md', 'CHANGELOG.md', 'tools/generate-rules-data.js']) {
     assert(ignored(file), `${file} should not be deployed`);
   }
 });

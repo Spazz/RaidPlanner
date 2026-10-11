@@ -511,6 +511,208 @@ const Rulesets = {
   forever: null,
 };
 
+// ── RULES DATA COMPILER ─────────────────────────────────────────
+// Rulesets.compile(data, catalog) turns one version's data file (RulesData.tbc / .classic / .forever, js/rules/*.js)
+// plus the shared catalog (RulesData.catalog, js/rules/catalog.js) back into the ruleset shape the app reads from
+// Rulesets.<version>: buffs and debuffs under their old field names (benefitsRoles, value: { tier, who }), the slot
+// tables derived from buffType (totemElements, paladinAuras, shouts, cooldownTotems), the optimizer's value tables
+// rebuilt from each buff's `weight` (dpsValue, mitValue, sustainValue) next to dpsWeight / dpsWeightByRole, `rules`
+// (conventions, specAura, spreadProviders, factionLock, exclusiveBuffs as a list of sets, and tankAnchorRank /
+// healerGroupDps / stackPenalty[].match rebuilt as functions from the matcher data), utilities, idealComp (builder
+// functions), blessings, raids, modeConfig and openSlots; specs, raidHelperSpecMap, classList and specIcons come from
+// the catalog. Pure: the inputs are copied, never changed, and nothing outside the returned object is touched (the
+// idealComp builders it returns hand out fresh player uids with nextUid() each time they are called, like IdealComp).
+// Not wired into the app yet (the tables above and below are still the registry; rules-migration-tests.js pins that
+// compile rebuilds them), and non-enumerable on purpose: Rulesets is iterated as the registry of versions
+// (Object.keys / Object.entries), and compile is not one.
+Object.defineProperty(Rulesets, 'compile', {
+  enumerable: false,
+  value: (function () {
+    const copy = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
+    const problem = message => new Error(`Rulesets.compile: ${message}`);
+    // The Open-slot `who` of a debuff by the roles it helps (roles sorted and comma-joined).
+    const DEBUFF_WHO_BY_ROLES = {
+      'melee_dps,ranged_dps': 'physical', ranged_dps: 'ranged', caster_dps: 'caster', tank: 'tank',
+      'caster_dps,melee_dps,ranged_dps': 'all',
+    };
+
+    // weight.dps is one flat map; the optimizer's tables keep three: exact 'CLASS:Spec' keys, bare class names, role
+    // names. Every old entry carries a role map (empty for a buff that is worth nothing to any recipient).
+    function dpsValueFrom(id, flat, catalog) {
+      const value = { role: {} };
+      for (const [name, weight] of Object.entries(flat)) {
+        const isKey = name.includes(':') && catalog.classes.includes(name.split(':')[0]);
+        const part = isKey ? 'key' : catalog.classes.includes(name) ? 'class' : Object.values(catalog.roles).includes(name) ? 'role' : null;
+        if (!part) throw problem(`${id} weight.dps names "${name}", which is no CLASS:Spec key, class or role`);
+        (value[part] = value[part] || {})[name] = weight;
+      }
+      return value;
+    }
+
+    function compileBuffs(data, catalog) {
+      const out = { buffs: {}, totemElements: {}, paladinAuras: {}, shouts: [], cooldownTotems: [], dpsValue: {}, mitValue: {}, sustainValue: {} };
+      for (const [id, entry] of Object.entries(data.buffs || {})) {
+        if (!Array.isArray(entry.targetRoles)) throw problem(`${id} has no targetRoles list`);
+        const buff = { name: entry.name, sourceClass: entry.sourceClass };
+        if (entry.sourceSpec) buff.sourceSpec = entry.sourceSpec;
+        if (entry.preferSpec) buff.preferSpec = entry.preferSpec;
+        buff.benefitsRoles = [...entry.targetRoles];
+        buff.priority = copy(entry.priority);
+        buff.desc = entry.desc;
+        out.buffs[id] = buff;
+
+        if (entry.buffType === 'totem') {
+          if (!entry.totemElement) throw problem(`totem ${id} has no totemElement`);
+          out.totemElements[id] = entry.totemElement;
+          if (entry.cooldownTotem) out.cooldownTotems.push(id);
+        } else if (entry.buffType === 'paladinAura') {
+          out.paladinAuras[id] = true;
+        } else if (entry.buffType === 'warriorShout') {
+          out.shouts.push(id);
+        } else if (entry.buffType !== 'passive') {
+          throw problem(`${id} has unknown buffType "${entry.buffType}"`);
+        }
+
+        const weight = entry.weight || {};
+        if (weight.dps) out.dpsValue[id] = dpsValueFrom(id, weight.dps, catalog);
+        if (weight.mitigation) out.mitValue[id] = copy(weight.mitigation);
+        if (weight.sustain !== undefined) out.sustainValue[id] = weight.sustain;
+      }
+      return out;
+    }
+
+    // Buffs that share one slot per party are listed on every member of the set. Rebuild each set once, starting from
+    // its first member in buff order (a tie in value keeps the first member), and check that all members agree.
+    function exclusiveSetsFrom(buffs) {
+      const sets = [];
+      const placed = new Set();
+      for (const [id, entry] of Object.entries(buffs)) {
+        if (placed.has(id) || !entry.exclusiveBuffs || !entry.exclusiveBuffs.length) continue;
+        const set = [id, ...entry.exclusiveBuffs];
+        for (const member of set) {
+          const listed = (buffs[member] && buffs[member].exclusiveBuffs) || [];
+          const others = set.filter(other => other !== member);
+          if (listed.length !== others.length || !others.every(other => listed.includes(other))) {
+            throw problem(`exclusiveBuffs of ${id} and ${member} do not list each other`);
+          }
+          placed.add(member);
+        }
+        sets.push(set);
+      }
+      return sets;
+    }
+
+    function debuffWho(id, entry) {
+      if (!Array.isArray(entry.targetRoles)) throw problem(`${id} has no targetRoles list`);
+      const roles = [...entry.targetRoles].sort().join();
+      if (entry.targetSchool) {
+        if (roles !== 'caster_dps') throw problem(`${id} has a targetSchool but targets ${roles}; a school narrows casters only`);
+        return entry.targetSchool;
+      }
+      const who = DEBUFF_WHO_BY_ROLES[roles];
+      if (!who) throw problem(`${id} targets ${roles}, which the Open-slot pricing has no group for`);
+      return who;
+    }
+
+    function compileDebuffs(debuffs) {
+      const out = {};
+      for (const [id, entry] of Object.entries(debuffs || {})) {
+        const debuff = { name: entry.name, sourceClass: entry.sourceClass };
+        if (entry.sourceSpec) debuff.sourceSpec = entry.sourceSpec;
+        debuff.desc = entry.desc;
+        if (entry.competesWith) debuff.competesWith = [...entry.competesWith];
+        if (entry.supersededBy) debuff.supersededBy = entry.supersededBy;
+        debuff.value = { tier: entry.weight, who: debuffWho(id, entry) };
+        out[id] = debuff;
+      }
+      return out;
+    }
+
+    // { class, spec? } -> predicate over a player; no spec = every spec of the class.
+    const matcherFor = ({ class: className, spec }) => (spec === undefined
+      ? p => p.class === className
+      : p => p.class === className && p.spec === spec);
+
+    function compileRules(data, exclusiveBuffs) {
+      const conventions = copy(data.conventions || {});
+      const { modeConfig, openSlots } = conventions;
+      delete conventions.modeConfig;
+      delete conventions.openSlots;
+
+      const rules = {};
+      if (data.tankAnchorOrder) {
+        const order = [...data.tankAnchorOrder];
+        rules.tankAnchorRank = p => { const at = order.indexOf(p.class); return at < 0 ? order.length : at; };
+      }
+      Object.assign(rules, conventions);
+      if (data.specAura) rules.specAura = copy(data.specAura);
+      if (data.spreadProviders) rules.spreadProviders = copy(data.spreadProviders);
+      if (data.factionLock !== undefined) rules.factionLock = data.factionLock;
+      if (exclusiveBuffs.length) rules.exclusiveBuffs = exclusiveBuffs;
+      if (data.healerGroupDps) {
+        const matchers = data.healerGroupDps.map(matcherFor);
+        rules.healerGroupDps = p => matchers.some(match => match(p));
+      }
+      if (data.stackPenalty) {
+        rules.stackPenalty = data.stackPenalty.map(entry => ({ match: matcherFor(entry), weight: entry.weight }));
+      }
+      return { rules, modeConfig, openSlots };
+    }
+
+    // Reference compositions: seats { class, spec, role } per group; each builder returns fresh player objects.
+    function idealCompFrom(rosters) {
+      const comp = {};
+      for (const [size, groups] of Object.entries(rosters)) {
+        comp[`build${size}Man`] = () => groups.map((group, index) => group.map(seat => ({
+          uid: nextUid(),
+          name: `${seat.spec} ${seat.class.charAt(0)}${seat.class.slice(1).toLowerCase()}`,
+          class: seat.class,
+          spec: seat.spec,
+          role: seat.role,
+          imported: false,
+          groupNumber: index + 1,
+        })));
+      }
+      return comp;
+    }
+
+    return function compile(data, catalog) {
+      if (!data || typeof data !== 'object') throw new TypeError('Rulesets.compile: the version data is required');
+      if (!catalog || typeof catalog !== 'object') throw new TypeError('Rulesets.compile: the catalog is required');
+      const buffs = compileBuffs(data, catalog);
+      const { rules, modeConfig, openSlots } = compileRules(data, exclusiveSetsFrom(data.buffs || {}));
+
+      const ruleset = {
+        buffs: buffs.buffs,
+        debuffs: compileDebuffs(data.debuffs),
+        specs: copy(catalog.specs),
+        raidHelperSpecMap: copy(catalog.raidHelperSpecMap),
+        classList: copy(catalog.classes),
+        specIcons: copy(catalog.specIcons),
+        totemElements: buffs.totemElements,
+        paladinAuras: buffs.paladinAuras,
+      };
+      if (buffs.shouts.length) ruleset.shouts = buffs.shouts;
+      ruleset.bestAirTotem = copy(data.bestAirTotem || {});
+      ruleset.bestPaladinAura = copy(data.bestPaladinAura || {});
+      ruleset.rules = rules;
+      if (data.utilities) ruleset.utilities = copy(data.utilities);
+      ruleset.dpsValue = buffs.dpsValue;
+      ruleset.mitValue = buffs.mitValue;
+      ruleset.sustainValue = buffs.sustainValue;
+      ruleset.dpsWeight = copy(data.specDpsWeight || {});
+      ruleset.dpsWeightByRole = copy(data.roleDpsWeight || {});
+      if (data.idealComp) ruleset.idealComp = idealCompFrom(copy(data.idealComp));
+      if (data.blessings) ruleset.blessings = copy(data.blessings);
+      ruleset.cooldownTotems = buffs.cooldownTotems;
+      ruleset.raids = copy(data.raids || {});
+      if (modeConfig) ruleset.modeConfig = modeConfig;
+      if (openSlots) ruleset.openSlots = openSlots;
+      return ruleset;
+    };
+  })(),
+});
+
 // ── CLASSIC ERA RULESET ─────────────────────────────────────────
 // Buff/debuff numbers and existence are sourced from tasks/research-classic-buffs.md
 // (compiled 2026-09-26). Where that research flags a value UNCONFIRMED, the

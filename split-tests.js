@@ -44,22 +44,29 @@ check('index.html carries no inline <script> or <style>', () => {
 
 check('the page links /app.css and loads every js file as a plain classic script', () => {
   assert.deepEqual(app.stylesheets, ['/app.css']);
-  assert.ok(app.scripts.length >= 6 && app.scripts.length <= 12, `${app.scripts.length} script files`);
-  for (const src of app.scripts) assert.match(src, /^\/js\/[a-z0-9-]+\.js$/, `${src} must be root-absolute under /js/`);
+  assert.ok(app.scripts.length >= 6 && app.scripts.length <= 16, `${app.scripts.length} script files`);
+  for (const src of app.scripts) assert.match(src, /^\/js\/(?:rules\/)?[a-z0-9-]+\.js$/, `${src} must be root-absolute under /js/ (the rules data files under /js/rules/)`);
   assert.equal(new Set(app.scripts).size, app.scripts.length, 'a script is loaded twice');
   for (const m of html.matchAll(/<script\b([^>]*)>/gi)) {
     assert.ok(!/\b(?:defer|async)\b/i.test(m[1]) && !/type\s*=/i.test(m[1]), `script tag must be plain: ${m[0]}`);
   }
 });
 
+// js/rules/ holds the rules data files: one glob line whitelists the directory's scripts, every other file has its own line.
+const DATA_DIR = 'js/rules';
+const whitelisted = file => gitignoreLines.includes(`!${file}`)
+  || (path.posix.dirname(file) === DATA_DIR && gitignoreLines.includes(`!${DATA_DIR}/*.js`));
+const scriptsIn = dir => fs.readdirSync(path.join(ROOT, dir)).filter(f => f.endsWith('.js')).map(f => `/${dir}/${f}`);
+
 check('every referenced file exists, is non-empty and is whitelisted in .gitignore', () => {
   for (const src of [...app.scripts, ...app.stylesheets]) {
     assert.ok(fs.statSync(path.join(ROOT, rel(src))).size > 0, `${src} missing or empty`);
-    assert.ok(gitignoreLines.includes(`!${rel(src)}`), `.gitignore has no "!${rel(src)}" line`);
+    assert.ok(whitelisted(rel(src)), `.gitignore has no "!${rel(src)}" line`);
   }
   assert.ok(gitignoreLines.includes('!js/'), '.gitignore must un-ignore the js/ directory');
-  const onDisk = fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).map(f => `/js/${f}`).sort();
-  assert.deepEqual(onDisk, [...app.scripts].sort(), 'js/ holds a file the page does not load (or vice versa)');
+  assert.ok(gitignoreLines.includes(`!${DATA_DIR}/`), `.gitignore must un-ignore the ${DATA_DIR}/ directory`);
+  const onDisk = [...scriptsIn('js'), ...scriptsIn(DATA_DIR)].sort();
+  assert.deepEqual(onDisk, [...app.scripts].sort(), 'js/ or js/rules/ holds a file the page does not load (or vice versa)');
 });
 
 check('the page head still carries the fonts and icon links', () => {

@@ -27,8 +27,8 @@ function check(name, fn) {
 
 const ROOT = __dirname;
 const sources = [['index.html', fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')]]
-  .concat(fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js'))
-    .map(f => ['js/' + f, fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')]));
+  .concat(fs.readdirSync(path.join(ROOT, 'js'), { recursive: true }).filter(f => f.endsWith('.js'))
+    .map(f => ['js/' + f.replace(/\\/g, '/'), fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')]));
 
 // An HTML attribute assignment as it appears in markup or a template string: ` style="`, ` style='`,
 // ` style=\"`, ` style=${...}` (and the same for any on<event>= handler). Plain JS such as

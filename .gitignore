@@ -18,6 +18,11 @@
 !js/render.js
 !js/modals.js
 !js/app.js
+# Rules data files (plain scripts that assign RulesData.*, loaded before js/rules.js): written once by tools/generate-rules-data.js, then edited by hand
+!js/rules/
+!js/rules/*.js
+!tools/
+!tools/generate-rules-data.js
 # Self-hosted spec/class/role/buff/debuff icons (one <slug>.jpg each, fetched once from the Wowhead CDN); icons-tests.js checks every slug the rule tables name is here
 !icons/
 !icons/*.jpg
@@ -76,6 +81,7 @@
 !changelog-tests.js
 !changes-tests.js
 !boards-tests.js
+!rules-migration-tests.js
 !.vercelignore
 # Test runner, loader and CI (npm test; GitHub Actions runs it), the golden boards snapshot and the rosters two suites share
 !package.json

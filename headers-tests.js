@@ -103,7 +103,7 @@ check('Every external host index.html and js/ load a resource from is allowed by
   }
   // Remote icon images the scripts build (none expected now that the icons are self-hosted).
   const iconHosts = new Set();
-  for (const file of fs.readdirSync(path.join(__dirname, 'js'))) {
+  for (const file of fs.readdirSync(path.join(__dirname, 'js'), { recursive: true }).filter(f => f.endsWith('.js'))) {
     const source = fs.readFileSync(path.join(__dirname, 'js', file), 'utf8');
     for (const m of source.matchAll(/(https:\/\/[a-z0-9.-]+)\/images\//g)) iconHosts.add(m[1]);
   }
