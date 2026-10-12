@@ -3,8 +3,13 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.2.1';
+const APP_VERSION = '4.2.2';
 const CHANGELOG = [
+  { version: '4.2.2', date: '2026-10-12', title: 'Optimize after a raid size change', changes: [
+    'Optimize after a raid size change now decides who sits from everyone the size change benched: tanks and healers up to the floors, then whoever adds the most. Before, whoever sat in the first groups kept their seats.',
+    'Forever: at most 4 healers are seated in a 20-man raid (3 in a 10-man, 10 in a 40-man) when more healers would bench DPS players.',
+    'The Optimize message says how many players it benched or seated.',
+  ] },
   { version: '4.2.1', date: '2026-10-11', title: 'WoW Forever beta data refresh', changes: [
     'Forever: Trueshot Aura is a Marksmanship talent that buffs ranged attack power only; other hunter specs no longer count as providing it.',
     'Forever: Sanctity Aura is gone (removed in the beta); Retribution Paladins are placed on Retribution, Devotion or Concentration Aura.',

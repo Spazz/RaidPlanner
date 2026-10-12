@@ -44,7 +44,7 @@ npm test
 
 `tests/run-all.js` runs every `tests.js`, `*-tests.js` and `*-scenarios.js` at the repo root as its own Node process, up to three at a time (`PP_TEST_JOBS=1` runs them one by one), and exits non-zero if any fails (about a minute). The slow suites (`scenario-tests.js`, `boards-tests.js`) are split into shards listed in `tests/shards.js`; running a suite file directly still runs it whole, and `--shard i/n` runs one slice. Run one suite with `node tests/run-all.js <name-filter>` or `node <suite>.js`. `tests/load-app.js` reads the script list from `index.html`, so the suites always test the files the page loads.
 
-`boards-tests.js` builds the optimized board of every scenario in `scenarios.js` and of the six Classic/Forever rosters in `tests/classic-forever-fixtures.js`, and compares each with the golden snapshot `tests/boards-snapshot.json`, listing who moved when a rule or weight edit changes a layout. A changed layout is accepted only on purpose, with `node boards-tests.js --update`, which rewrites the snapshot (read its git diff before committing it).
+`boards-tests.js` builds the optimized board of every scenario in `scenarios.js` and of the seven Classic/Forever rosters in `tests/classic-forever-fixtures.js`, and compares each with the golden snapshot `tests/boards-snapshot.json`, listing who moved when a rule or weight edit changes a layout. A changed layout is accepted only on purpose, with `node boards-tests.js --update`, which rewrites the snapshot (read its git diff before committing it).
 
 `rules-data-tests.js` guards the rules data files in `js/rules/`: it pins the buff and debuff ids per version in `tests/rules-ids-snapshot.json` (a rename or removal is accepted only on purpose, with `node rules-data-tests.js --update`), checks that every version still compiles into the shape the app reads and keeps the vocabulary the code relies on (types, known roles, classes and specs, finite weights, references that exist, spell ids, an icon, abbreviation and CSS class for every buff id, an abbreviation for every debuff id), that each `conventions` block holds exactly the keys of `Rulesets.CONVENTIONS` and that the keys the code reads (`rules.rules.<name>`) and that schema agree, and exercises `Rulesets.compile` on small synthetic data.
 
@@ -120,7 +120,7 @@ A version file is one plain object literal, `RulesData.<version> = { ... }`, loa
 1. Edit `js/rules/<version>.js`.
 2. `node rules-data-tests.js` checks the vocabulary, the references, the ids and the conventions keys.
 3. `node tools/rules-report.js <tbc|classic|forever>` prints what the optimizer will use: the buff-by-recipient weight matrix (the effective weight per `CLASS:Spec`), the mitigation and sustain weights, the debuffs, and every convention flat with the first clause of its comment (`--json` for scripts). Read-only.
-4. `node boards-tests.js` rebuilds the 120 fixture boards and lists who moved. A deliberate change is accepted with `node boards-tests.js --update` (read the diff of `tests/boards-snapshot.json` first).
+4. `node boards-tests.js` rebuilds the 121 fixture boards and lists who moved. A deliberate change is accepted with `node boards-tests.js --update` (read the diff of `tests/boards-snapshot.json` first).
 5. `npm test` runs everything.
 
 Classic and Forever are independent games: their files may differ on purpose and no test compares them, so edit one without touching the other.

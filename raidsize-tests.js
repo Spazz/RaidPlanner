@@ -462,5 +462,175 @@ check('the Assignments view cannot be opened: no tab, switchTab lands on the pla
   assert.match(app.script, /function renderAssignments\(\)/, 'the Assignments rendering code is kept for later');
 });
 
+// ── (e) Optimize after a shrink plans the board plus the players the shrink benched ─────────────────────────────
+// The user's flow, deterministic: a 40-man whose first four groups hold 2 tanks and 7 healers, Raid size 20, Optimize.
+// The shrink benches groups 5-8 by position; Optimize must still decide who sits from all 40 (floors, healer cap,
+// value), the way an import does, and never touch anyone the leader benched by hand.
+const sizeCtx = app.sandbox(
+  ['State', 'Config', 'RosterEdit', 'SizeBench', 'ChangeLog', 'Optimizer', 'nextUid', 'initGroups', 'selectRaidSize'],
+  {
+    globals: { document, __log: log },
+    extraSource: 'function commit() { State.roster = State.groups.flat(); SizeBench.prune(); }\n'
+      + 'function showToast(m) { __log.toasts.push(m); }\nfunction renderIdealComp() {}\n'
+      + app.slice('function renderRaidSizeControl', '(function initRaidSizeControl') + app.slice('function initGroups()', '// Role markers'),
+  },
+);
+const sz = sizeCtx.api;
+
+// Players from [count, CLASS, Spec] lists; the role comes from the ruleset, like an import.
+function makePlayers(list) {
+  return list.flatMap(([count, cls, spec]) => Array.from({ length: count }, () => ({
+    uid: sz.nextUid(), name: `${cls}-${spec}-${sz.nextUid()}`, class: cls, spec, role: sz.RosterEdit.RoleForSpec(cls, spec),
+  })));
+}
+// The first four groups (the ones a 20-man keeps) get `kept`, the other four `rest`; each is 5-wide in list order.
+function stageBoard(version, raid, kept, rest) {
+  Object.assign(sz.State, {
+    gameVersion: version, selectedRaid: raid, activeTab: 'plan', planId: 'plan:sizebench', rosterName: 'Sizebench', sizeBenched: [],
+    bench: [], unplaced: [], preferredSlots: [], playerConstraints: [], drummers: [], buffOverrides: {},
+  });
+  const all = kept.concat(rest);
+  assert.equal(all.length, 40);
+  sz.State.groups = [0, 1, 2, 3, 4, 5, 6, 7].map(gi => all.slice(gi * 5, gi * 5 + 5));
+  sz.State.groups.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+  sz.State.roster = sz.State.groups.flat();
+}
+const roleCount = (players, role) => players.filter(p => p.role === role).length;
+const seatedPlayers = () => sz.State.groups.flat();
+const uids = list => list.map(p => p.uid);
+
+// Strong healers (six Restoration Shamans) and plain DPS (Arms, Subtlety, Arcane), so that without the Forever healer
+// cap the plan seats 6 or more healers; the cap holds it to the floor of 4.
+function foreverRoster() {
+  const tanks = makePlayers([[5, 'WARRIOR', 'Protection']]);
+  const healers = makePlayers([[6, 'SHAMAN', 'Restoration'], [2, 'PALADIN', 'Holy'], [2, 'PRIEST', 'Holy'], [1, 'DRUID', 'Restoration']]);
+  const dps = makePlayers([
+    [4, 'WARRIOR', 'Arms'], [3, 'ROGUE', 'Subtlety'], [2, 'PALADIN', 'Retribution'], [1, 'SHAMAN', 'Enhancement'], [1, 'DRUID', 'Feral'],
+    [2, 'HUNTER', 'Marksmanship'], [1, 'HUNTER', 'Survival'], [3, 'MAGE', 'Arcane'], [2, 'MAGE', 'Fire'],
+    [2, 'WARLOCK', 'Destruction'], [1, 'WARLOCK', 'Affliction'], [1, 'SHAMAN', 'Elemental'], [1, 'PRIEST', 'Shadow'],
+  ]);
+  assert.deepEqual([tanks.length, healers.length, dps.length], [5, 11, 24]);
+  // Groups 1-4 keep 2 tanks, 7 healers and 11 DPS (the user's case); groups 5-8 hold the rest.
+  return {
+    kept: tanks.slice(0, 2).concat(healers.slice(0, 7), dps.slice(0, 11)),
+    rest: tanks.slice(2).concat(healers.slice(7), dps.slice(11)),
+  };
+}
+
+// Shrink exactly as selectRaidSize does, then Optimize and commit.
+function shrinkAndOptimize(version, from, to, handBench) {
+  const roster = version === 'forever' ? foreverRoster() : classicRoster();
+  stageBoard(version, from, roster.kept, roster.rest);
+  sz.selectRaidSize(20);
+  assert.equal(sz.State.selectedRaid, to);
+  let hand = null;
+  if (handBench) {
+    hand = sz.State.groups[3].find(p => p.role === 'melee_dps');
+    sz.State.groups[3].splice(sz.State.groups[3].indexOf(hand), 1);
+    sz.State.bench.push(hand);
+    hand.groupNumber = 0;
+    sz.State.roster = sz.State.groups.flat();
+  }
+  const afterShrink = { board: seatedPlayers().slice(), benched: sz.State.bench.slice(), remembered: sz.State.sizeBenched.slice() };
+  sz.Optimizer.optimize();
+  sz.State.roster = sz.State.groups.flat();
+  sz.SizeBench.prune();
+  return { afterShrink, hand };
+}
+function assertBenchInvariants(afterShrink, hand) {
+  const seated = seatedPlayers(), bench = sz.State.bench;
+  const everyone = afterShrink.board.concat(afterShrink.benched);
+  assert.equal(seated.length, 20);
+  assert.equal(bench.length, 20);
+  assert.equal(new Set(uids(seated).concat(uids(bench))).size, 40, 'no player appears twice across board and bench');
+  assert.deepEqual(plain([...uids(seated), ...uids(bench)].sort()), plain(uids(everyone)).sort(), 'nobody was lost or added');
+  assert.deepEqual(plain(uids(sz.State.roster)), plain(uids(seated)), 'the roster is the board');
+  // Everyone on the bench is remembered (so a later grow seats them), except the player benched by hand.
+  const remembered = new Set(sz.State.sizeBenched);
+  for (const p of bench) assert.equal(remembered.has(p.uid), p !== hand, `${p.name}: remembered unless benched by hand`);
+}
+
+check('Forever 40 -> 20 then Optimize decides who sits from all 40: 2 tanks, 4 healers (the cap at the floor), 14 DPS', () => {
+  const { afterShrink, hand } = shrinkAndOptimize('forever', 'f_ony', 'f_hyjal', false);
+  assert.equal(afterShrink.board.length, 20);
+  assert.equal(roleCount(afterShrink.board, 'healer'), 7, 'the shrink leaves the first four groups, with their 7 healers');
+  assert.equal(afterShrink.remembered.length, 20, 'the 20 benched players are all remembered');
+  assert.equal(hand, null);
+  const seated = seatedPlayers();
+  assert.deepEqual(
+    [roleCount(seated, 'tank'), roleCount(seated, 'healer'), seated.length - roleCount(seated, 'tank') - roleCount(seated, 'healer')],
+    [2, 4, 14],
+  );
+  assertBenchInvariants(afterShrink, hand);
+});
+
+check('a player benched by hand stays benched through Optimize; growing back seats only the size-benched', () => {
+  const { afterShrink, hand } = shrinkAndOptimize('forever', 'f_ony', 'f_hyjal', true);
+  assert(hand && !sz.State.sizeBenched.includes(hand.uid), 'the hand-benched player was never remembered');
+  const seated = seatedPlayers();
+  assert.deepEqual(
+    [roleCount(seated, 'tank'), roleCount(seated, 'healer'), seated.length - roleCount(seated, 'tank') - roleCount(seated, 'healer')],
+    [2, 4, 14],
+  );
+  assert(sz.State.bench.includes(hand), 'still on the bench');
+  assert(!seated.includes(hand));
+  assert(!sz.State.sizeBenched.includes(hand.uid), 'and still not remembered');
+  assertBenchInvariants(afterShrink, hand);
+  sz.selectRaidSize(40);
+  assert.equal(sz.State.selectedRaid, 'f_ony');
+  assert.deepEqual(plain(uids(sz.State.bench)), [hand.uid], 'only the hand-benched player is left on the bench');
+  assert.deepEqual(plain(sz.State.sizeBenched), [], 'everyone remembered is seated again');
+  assert.equal(seatedPlayers().length, 39);
+});
+
+function classicRoster() {
+  const tanks = makePlayers([[4, 'WARRIOR', 'Protection'], [1, 'DRUID', 'Guardian']]);
+  const healers = makePlayers([[4, 'SHAMAN', 'Restoration'], [4, 'PRIEST', 'Holy'], [3, 'DRUID', 'Restoration']]);
+  const dps = makePlayers([
+    [4, 'WARRIOR', 'Fury'], [3, 'ROGUE', 'Combat'], [2, 'ROGUE', 'Assassination'], [2, 'SHAMAN', 'Enhancement'], [1, 'DRUID', 'Feral'],
+    [2, 'HUNTER', 'Marksmanship'], [1, 'HUNTER', 'Beastmastery'], [1, 'HUNTER', 'Survival'], [2, 'MAGE', 'Fire'], [2, 'MAGE', 'Frost'],
+    [2, 'WARLOCK', 'Destruction'], [1, 'WARLOCK', 'Affliction'], [1, 'SHAMAN', 'Elemental'],
+  ]);
+  assert.deepEqual([tanks.length, healers.length, dps.length], [5, 11, 24]);
+  return {
+    kept: tanks.slice(0, 2).concat(healers.slice(0, 7), dps.slice(0, 11)),
+    rest: tanks.slice(2).concat(healers.slice(7), dps.slice(11)),
+  };
+}
+
+check('Classic 40 -> 20 then Optimize re-seats players the shrink benched (no healer cap in Classic: floors only) and keeps the bench invariants', () => {
+  const { afterShrink, hand } = shrinkAndOptimize('classic', 'mc', 'zg', false);
+  assert.equal(roleCount(afterShrink.board, 'healer'), 7);
+  const seated = seatedPlayers();
+  assert(roleCount(seated, 'tank') >= 2, `tanks ${roleCount(seated, 'tank')}`);
+  assert(roleCount(seated, 'healer') >= 4, `healers ${roleCount(seated, 'healer')}`);
+  const reseated = seated.filter(p => afterShrink.benched.some(b => b.uid === p.uid));
+  assert(reseated.length > 0, 'at least one player the shrink benched is seated again');
+  assert.notDeepEqual(plain(uids(seated).slice().sort()), plain(uids(afterShrink.board).slice().sort()), 'the seated players differ from the board the shrink left');
+  assert(roleCount(seated, 'healer') < 7, `healers ${roleCount(seated, 'healer')} (the positional board had 7)`);
+  assertBenchInvariants(afterShrink, hand);
+});
+
+check('with 18 on the board and 2 size-benched DPS, Optimize seats them and suggests no Open slot', () => {
+  const board = makePlayers([[2, 'WARRIOR', 'Protection'], [2, 'SHAMAN', 'Restoration'], [2, 'PALADIN', 'Holy'], [4, 'WARRIOR', 'Fury'],
+    [2, 'ROGUE', 'Combat'], [2, 'MAGE', 'Frost'], [2, 'WARLOCK', 'Destruction'], [1, 'HUNTER', 'Marksmanship'], [1, 'SHAMAN', 'Elemental']]);
+  const benchedByShrink = makePlayers([[1, 'MAGE', 'Fire'], [1, 'WARLOCK', 'Affliction']]);
+  assert.equal(board.length, 18);
+  Object.assign(sz.State, {
+    gameVersion: 'forever', selectedRaid: 'f_hyjal', activeTab: 'plan', planId: 'plan:sizebench-open', sizeBenched: uids(benchedByShrink),
+    bench: benchedByShrink, unplaced: [], preferredSlots: [], playerConstraints: [], drummers: [], buffOverrides: {},
+  });
+  sz.State.groups = [0, 1, 2, 3].map(gi => board.slice(gi * 5, gi * 5 + 5));
+  sz.State.groups.forEach((g, gi) => g.forEach(p => { p.groupNumber = gi + 1; }));
+  sz.State.roster = sz.State.groups.flat();
+  sz.Optimizer.optimize();
+  sz.State.roster = sz.State.groups.flat();
+  sz.SizeBench.prune();
+  assert.equal(seatedPlayers().length, 20, 'both size-benched players take the empty seats');
+  assert.equal(sz.State.bench.length, 0);
+  assert.deepEqual(plain(sz.State.preferredSlots), [], 'no Open slot is suggested while a size-benched player can take the seat');
+  assert.deepEqual(plain(sz.State.sizeBenched), []);
+});
+
 console.log(`\nRaid size tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);

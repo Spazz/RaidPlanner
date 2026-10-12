@@ -1,8 +1,8 @@
 /**
  * PartyPlanner Web - Classic/Forever optimizer fixtures
  *
- * The six realistic UNASSIGNED rosters (Classic Horde 40 and 20, Classic Alliance 40, Forever mixed 40, Forever 20 and
- * Forever 10) that two suites feed through the real Raid-Helper importer and Optimizer:
+ * The seven realistic UNASSIGNED rosters (Classic Horde 40 and 20, Classic Alliance 40, Forever mixed 40, Forever 20,
+ * Forever 20 over-signed and Forever 10) that two suites feed through the real Raid-Helper importer and Optimizer:
  *   classic-forever-scenarios.js   invariant checks (stranded melee, provider spread, Windfury coverage, idempotence)
  *   boards-tests.js                the golden snapshot of each optimized board (tests/boards-snapshot.json)
  * Data only: editing a roster here changes the golden board too, so it takes a deliberate `node boards-tests.js --update`.
@@ -64,6 +64,17 @@ const FIXTURES = {
       [2, 'Warrior', 'Fury'], [1, 'Rogue', 'Combat'], [1, 'Paladin', 'Retribution'], [1, 'Shaman', 'Enhancement'], [1, 'Druid', 'Feral'],
       [1, 'Hunter', 'Marksmanship'], [1, 'Hunter', 'Survival'],
       [2, 'Mage', 'Frost'], [2, 'Warlock', 'Destruction'], [1, 'Warlock', 'Affliction'], [1, 'Shaman', 'Elemental'],
+    ],
+  },
+  forever20over: {
+    version: 'forever', raid: 'f_hyjal', label: 'Forever 20 over-signed (Hyjal Summit, 30 sign-ups)',
+    roster: [
+      [2, 'Warrior', 'Protection'], [1, 'Paladin', 'Protection1'],
+      [2, 'Priest', 'Holy'], [2, 'Paladin', 'Holy1'], [3, 'Shaman', 'Restoration1'],
+      [3, 'Warrior', 'Fury'], [2, 'Rogue', 'Combat'], [1, 'Paladin', 'Retribution'], [2, 'Shaman', 'Enhancement'], [2, 'Druid', 'Feral'],
+      [1, 'Hunter', 'Marksmanship'], [1, 'Hunter', 'Survival'],
+      [2, 'Mage', 'Frost'], [1, 'Mage', 'Fire'], [2, 'Warlock', 'Destruction'], [1, 'Warlock', 'Affliction'], [1, 'Shaman', 'Elemental'],
+      [1, 'Priest', 'Shadow'],
     ],
   },
   forever10: {

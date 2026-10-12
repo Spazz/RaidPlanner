@@ -374,10 +374,12 @@ function renderLastRun(summary) {
 }
 
 // Optimize wipes the leader's totem/aura picks, so the toast says so when it did.
-function optimizeToastMessage({ moved, buffDelta, overridesReset }) {
-  const base = moved === 0 && buffDelta === 0
+// It also names the players Optimize benched or seated again (after a raid size change it decides who sits).
+function optimizeToastMessage({ moved, benched = 0, seated = 0, buffDelta, overridesReset }) {
+  const seatChanges = [benched > 0 ? `${benched} benched` : '', seated > 0 ? `${seated} seated` : ''].filter(Boolean);
+  const base = moved === 0 && buffDelta === 0 && !seatChanges.length
     ? 'Already optimal — nothing moved'
-    : `Optimized: ${buffDelta >= 0 ? '+' : ''}${buffDelta} buffs, ${moved} players moved`;
+    : `Optimized: ${buffDelta >= 0 ? '+' : ''}${buffDelta} buffs, ${seatChanges.concat(`${moved} players moved`).join(', ')}`;
   return overridesReset > 0 ? `${base}. ${overridesReset} buff override${overridesReset === 1 ? '' : 's'} reset` : base;
 }
 
@@ -396,9 +398,11 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
 
   const placementAfter = playerGroupMap();
   const moved = Object.keys(placementAfter).filter(uid => placementBefore[uid] !== undefined && placementBefore[uid] !== placementAfter[uid]).length;
+  const benched = Object.keys(placementBefore).filter(uid => placementAfter[uid] === undefined).length;
+  const seated = Object.keys(placementAfter).filter(uid => placementBefore[uid] === undefined).length;
   const buffDelta = countCoveredBuffs() - buffsBefore;
   renderLastRun({ buffDelta, moved });
-  showToast(optimizeToastMessage({ moved, buffDelta, overridesReset }));
+  showToast(optimizeToastMessage({ moved, benched, seated, buffDelta, overridesReset }));
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {

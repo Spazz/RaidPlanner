@@ -776,9 +776,14 @@ RulesData.forever = {
 
     // ---- Bench and Open slots ----
 
+    // Healer cap (user decision 2026-10-11): when DPS would otherwise be benched, seat at most floor + this many
+    // healers: 4 in a 20-man, 3 in a 10-man, 10 in a 40-man. The 20-man floor is expected to drop to 2-3 later, which
+    // means moving Config.RaidFloors into the version files.
+    //
     // count: seated healers are capped at the raid size's healer floor plus this when DPS would otherwise be benched;
-    // null = no cap; trades healer seats against benched DPS; null -> 1: no fixture moves.
-    healerCapOverFloor: null,
+    // null = no cap; trades healer seats against benched DPS; 0 -> null moves forever20over; 0 -> 1 moves
+    // forever20over.
+    healerCapOverFloor: 0,
     // Open-slot points subtracted for suggesting an Elemental shaman beyond one per Boomkin; trades another Ele against
     // other specs for an empty seat; 0 -> 30: no fixture moves.
     extraEleNeedsBoomkin: 0,

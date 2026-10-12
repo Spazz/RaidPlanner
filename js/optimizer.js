@@ -217,9 +217,10 @@ const Optimizer = {
     devMeasure('pp:optimize', () => {
       State.preferredSlots = PreferredSlots.manual();
       // A full raid has no seat to suggest for: skip the draft.
+      // Size-benched players count as seated here: the draft would pull them in anyway, so this only skips it.
       const raid = Config.Raids[State.selectedRaid];
       const seats = raid ? Math.min(raid.size, State.groups.length * RosterEdit.MAX_GROUP_SIZE) : 0;
-      if (State.groups.flat().length + State.preferredSlots.length < seats) {
+      if (State.groups.flat().length + this._sizeBenchedPlayers().length + State.preferredSlots.length < seats) {
         this._optimizeSeats(true);
         State.preferredSlots.push(...OpenSlots.choose().map(p => ({ group: -1, class: p.class, spec: p.spec, auto: true })));
       }
@@ -227,11 +228,21 @@ const Optimizer = {
     });
   },
 
+  // Players a raid-size shrink benched (State.sizeBenched, see SizeBench in js/state.js) are the optimizer's to seat
+  // again: the shrink benched them by position, so Optimize decides who sits from the board plus these players, by
+  // the role floors, the healer cap and value, exactly as an import does. Anyone benched by hand, and Bench/Tentative
+  // sign-ups, are not remembered there and stay on the bench.
+  _sizeBenchedPlayers() {
+    const remembered = new Set(State.sizeBenched || []);
+    return (State.bench || []).filter(p => remembered.has(p.uid));
+  },
+
   // The adapter between State and plan(): reads the board and its settings,
   // asks plan() for a layout, and applies the result. Open slots (manual and
   // suggested alike) join the layout as stand-in members and come back in the
   // group plan() put them in; no group is held back for them. Slots past the
   // raid's seats are dropped (suggested ones first), never a real player.
+  // The pool is the board plus the players a raid-size shrink benched (_sizeBenchedPlayers).
   // draft: a quick layout for choose() to price on (see plan).
   _optimizeSeats(draft = false) {
     if (!GameVersions[State.gameVersion].modeled) {
@@ -248,7 +259,9 @@ const Optimizer = {
     };
     const raidInfo = Config.Raids[State.selectedRaid];
     const numGroups = raidInfo ? raidInfo.groups : 5;
-    const players = State.groups.flat();
+    const pulled = this._sizeBenchedPlayers();
+    if (pulled.length) State.bench = State.bench.filter(p => !pulled.includes(p));
+    const players = State.groups.flat().concat(pulled);
     State.preferredSlots = State.preferredSlots.slice(0, Math.max(0, numGroups * RosterEdit.MAX_GROUP_SIZE - players.length));
     const standIns = State.preferredSlots.map(OpenSlots.standIn);
     if (!players.length && !standIns.length) return;
@@ -260,6 +273,9 @@ const Optimizer = {
     for (const group of groups) {
       for (let i = group.length - 1; i >= 0; i--) if (group[i].openSlot) group.splice(i, 1);
     }
+    // Once a shrink's players are pooled, everyone plan() leaves out is the size change's bench (remembered, so a
+    // later grow seats them all); the player the leader benched by hand was never in the pool.
+    if (pulled.length) SizeBench.remember(bench.filter(p => !p.openSlot).map(p => p.uid));
     this._applyPlan(groups, bench);
   },
 
@@ -830,7 +846,7 @@ const Optimizer = {
     // Healer cap (TBC comp rules, user decision 2026-10-10): when players exceed
     // seats, seat at most floor + rules.healerCapOverFloor healers; DPS take the
     // rest. A second uncapped pass fills any seat the DPS could not use. The
-    // rule is off in Classic/Forever (healerCapOverFloor: null), so this is a
+    // rule is off in Classic (healerCapOverFloor: null), so this is a
     // no-op there.
     const healerCap = this.healerCapFor(raidSize);
     const healersSeated = () => groups.reduce((n, g) => n + g.filter(p => p.role === 'healer').length, 0);
@@ -860,7 +876,7 @@ const Optimizer = {
   },
 
   // Seated-healer cap for over-capacity rosters, or null when the ruleset has
-  // none (Classic/Forever). TBC: floor + 1 (user decision 2026-10-10).
+  // none (Classic). TBC: floor + 1 (user decision 2026-10-10); Forever: the floor.
   healerCapFor(raidSize) {
     const over = activeRules().rules.healerCapOverFloor;
     if (over == null) return null;

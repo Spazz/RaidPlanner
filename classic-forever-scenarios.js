@@ -106,7 +106,7 @@ function casterIdentityIndices(numGroups) {
 }
 
 // ── Fixtures ──
-// The six rosters ([count, RaidHelperClassName, RaidHelperSpecName] per spec) live in tests/classic-forever-fixtures.js,
+// The seven rosters ([count, RaidHelperClassName, RaidHelperSpecName] per spec) live in tests/classic-forever-fixtures.js,
 // shared with boards-tests.js (the golden boards snapshot), and are loaded by the require at the top.
 
 // ── Runner ──

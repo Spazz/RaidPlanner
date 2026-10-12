@@ -5096,6 +5096,53 @@
     "unplaced": 0,
     "suggestions": []
   },
+  "forever20over": {
+    "raid": "f_hyjal",
+    "groups": [
+      [
+        "DRUID:Feral FP18",
+        "PALADIN:Retribution FP15",
+        "SHAMAN:Enhancement FP16",
+        "WARRIOR:Fury FP11",
+        "WARRIOR:Fury FP12"
+      ],
+      [
+        "DRUID:Feral FP19",
+        "PALADIN:Holy FP5",
+        "ROGUE:Combat FP14",
+        "SHAMAN:Restoration FP9",
+        "WARRIOR:Fury FP10"
+      ],
+      [
+        "HUNTER:Marksmanship FP20",
+        "MAGE:Fire FP24",
+        "SHAMAN:Elemental FP28",
+        "WARLOCK:Destruction FP25",
+        "WARLOCK:Destruction FP26"
+      ],
+      [
+        "PALADIN:Protection FP2",
+        "ROGUE:Combat FP13",
+        "SHAMAN:Restoration FP7",
+        "SHAMAN:Restoration FP8",
+        "WARRIOR:Protection FP0"
+      ]
+    ],
+    "bench": [
+      "HUNTER:Survival FP21",
+      "MAGE:Frost FP22",
+      "MAGE:Frost FP23",
+      "PALADIN:Holy FP6",
+      "PRIEST:Holy FP3",
+      "PRIEST:Holy FP4",
+      "PRIEST:Shadow FP29",
+      "SHAMAN:Enhancement FP17",
+      "WARLOCK:Affliction FP27",
+      "WARRIOR:Protection FP1"
+    ],
+    "unplaced": 0,
+    "suggestions": []
+  },
   "forever10": {
     "raid": "f_barrow",
     "groups": [

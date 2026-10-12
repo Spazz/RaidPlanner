@@ -1103,7 +1103,7 @@ RulesData.tbc = {
     // ---- Bench and Open slots ----
 
     // Healer cap (user decision 2026-10-10): when DPS would otherwise be benched, seat at most floor + this many
-    // healers (6 in a 25-man, 4 in a 10-man). null (no cap) in Classic/Forever.
+    // healers (6 in a 25-man, 4 in a 10-man). null (no cap) in Classic; Forever caps at the floor (0).
     //
     // count: seated healers are capped at the raid size's healer floor plus this when DPS would otherwise be benched;
     // null = no cap; trades healer seats against benched DPS; 1 -> null moves P09.

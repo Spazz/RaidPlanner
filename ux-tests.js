@@ -374,6 +374,8 @@ return { ${exported.join(', ')} };
     assert.equal(optimizeToastMessage({ moved: 2, buffDelta: 0, overridesReset: 3 }), 'Optimized: +0 buffs, 2 players moved. 3 buff overrides reset');
     assert.equal(optimizeToastMessage({ moved: 0, buffDelta: 0, overridesReset: 0 }), 'Already optimal — nothing moved');
     assert.equal(optimizeToastMessage({ moved: 0, buffDelta: 0, overridesReset: 2 }), 'Already optimal — nothing moved. 2 buff overrides reset');
+    assert.equal(optimizeToastMessage({ moved: 12, benched: 3, seated: 3, buffDelta: 2, overridesReset: 0 }), 'Optimized: +2 buffs, 3 benched, 3 seated, 12 players moved');
+    assert.equal(optimizeToastMessage({ moved: 0, benched: 1, seated: 0, buffDelta: 0, overridesReset: 0 }), 'Optimized: +0 buffs, 1 benched, 0 players moved');
   });
 
   await check('the Optimize click counts the overrides before it clears them', () => {
@@ -381,7 +383,7 @@ return { ${exported.join(', ')} };
     const body = app.script.slice(at, at + 1200);
     const count = body.indexOf('Object.keys(State.buffOverrides).length');
     assert(count > 0 && count < body.indexOf('State.buffOverrides = {}'));
-    assert(/optimizeToastMessage\(\{ moved, buffDelta, overridesReset \}\)/.test(body));
+    assert(/optimizeToastMessage\(\{ moved, benched, seated, buffDelta, overridesReset \}\)/.test(body));
   });
 
   // ── U9: one sr-only status region ─────────────────────────────────

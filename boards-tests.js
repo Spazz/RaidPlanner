@@ -2,7 +2,7 @@
  * PartyPlanner Web - golden boards snapshot
  * Run: node boards-tests.js [--update] [--only F12,T07] [--shard i/n] [--verbose]
  *
- * Builds the optimized board of every fixture - each scenario in scenarios.js plus the six Classic/Forever rosters in
+ * Builds the optimized board of every fixture - each scenario in scenarios.js plus the seven Classic/Forever rosters in
  * tests/classic-forever-fixtures.js - through the real Raid-Helper importer (which runs the optimizer once), in max_dps,
  * the only supported strategy, and compares it with the golden snapshot tests/boards-snapshot.json. It is the acceptance
  * gate for rules and weight work: a refactor that must not change behaviour leaves every board untouched, and a deliberate
@@ -70,7 +70,7 @@ function rosterJson(roster) {
   return JSON.stringify({ signUps });
 }
 
-/** Every scenario, then the six Classic/Forever rosters: { id, label, version, raid, json }. */
+/** Every scenario, then the seven Classic/Forever rosters: { id, label, version, raid, json }. */
 function fixtureList() {
   const list = Scenarios.scenarios.map(s => ({
     id: s.id, label: s.label, version: 'tbc', raid: s.raid || 'bt', json: JSON.stringify(Scenarios.toRaidHelperJson(s)),
