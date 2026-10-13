@@ -402,6 +402,7 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
   const reach = diffBuffReach(reachBefore, snapshotBuffReach());
   renderLastRun({ moved: counts.moved, reach });
   const message = optimizeToastMessage({ ...counts, reach, overridesReset });
+  ResultLine.show(message); // after the commit above, which clears any earlier result
   if (!entry || !pushed) { showToast(message); return; } // nothing moved: no Undo, even if the groups were re-sorted
   showToast(message, { action: { label: 'Undo', onClick: () => {
     if (PlanSession.undo[PlanSession.undo.length - 1] !== undoRef) { showToast('Nothing to undo: the plan changed after Optimize'); return; }

@@ -539,7 +539,7 @@ check('hooks: sync, size and live are tracked; fresh imports and new plans clear
 // The real Optimize click handler, undoPlanChange and renderLastRun, with commit() reduced to
 // "re-read the roster and let PlanSession observe", the way persistWorkingPlan does.
 function optimizeHarness() {
-  const els = {}, toasts = [], commits = { n: 0 };
+  const els = {}, toasts = [], results = [], commits = { n: 0 };
   let handler = null;
   const document = { getElementById: id => els[id] || (els[id] = { id, innerHTML: '', addEventListener(ev, fn) { if (id === 'btn-optimize') handler = fn; } }) };
   const extra = `
@@ -549,7 +549,7 @@ ${app.slice('function undoPlanChange', 'function redoPlanChange')}
 ${app.slice('function renderLastRun', "document.getElementById('btn-landing-empty')")}
 `;
   const c = app.sandbox(['State', 'ChangeLog', 'PlanSession', 'Import', 'snapshotBuffReach', 'diffBuffReach', 'receivesBuff', 'undoPlanChange'], {
-    globals: { toasts, commits, document, closePlayerEditor() {}, closeBuffPicker() {}, initGroups() {}, RaidHelperSync: { hideBanner() {} }, Modal: { confirm: async () => true } },
+    globals: { toasts, commits, document, ResultLine: { show: t => results.push({ t, commits: commits.n }), hide() {} }, closePlayerEditor() {}, closeBuffPicker() {}, initGroups() {}, RaidHelperSync: { hideBanner() {} }, Modal: { confirm: async () => true } },
     extraSource: extra,
   });
   const api = c.api;
@@ -565,7 +565,7 @@ ${app.slice('function renderLastRun', "document.getElementById('btn-landing-empt
   api.ChangeLog.onRecord = null;
   const ps = api.PlanSession;
   ps.previous = null; ps.undo = []; ps.redo = []; ps.ready = true; ps.replaying = false; ps.observe();
-  return { api, els, toasts, commits, click: () => handler(), undoPlanChange: () => api.undoPlanChange() };
+  return { api, els, toasts, results, commits, click: () => handler(), undoPlanChange: () => api.undoPlanChange() };
 }
 const boardOf = api => JSON.stringify(api.State.groups.map(g => g.map(p => p.name)));
 
@@ -625,6 +625,10 @@ check('an Optimize click records one optimize entry and one undo step, and offer
   assert.match(toast.m, /Windfury Totem \+\d+ melee/);
   assert.equal(toast.o.action.label, 'Undo');
   assert.match(h.els['last-run'].innerHTML, /^&middot; Last Optimize: \d+ moved, Windfury Totem \+\d+ melee/);
+  // The result line repeats the toast sentence, set after the Optimize commit (that commit clears the line).
+  assert.equal(h.results.length, 1);
+  assert.equal(h.results[0].t, toast.m);
+  assert.equal(h.results[0].commits, h.commits.n, 'no commit follows the result line');
 });
 
 check('the re-commit that onRecord runs after an Optimize adds no second undo step', () => {

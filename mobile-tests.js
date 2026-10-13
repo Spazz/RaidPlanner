@@ -147,9 +147,10 @@ check('readiness link is a real phone-only button outside the Edit toggle, with 
   assert.match(phoneCssAll(), /\.phone-missing-slot \.summary-missing \{[^}]*font-size: 12px/);
 });
 
-check('the link counts what the strip says: missing party buffs, from renderReadiness', () => {
+check('the link counts the party buffs the strip counts, from renderReadiness', () => {
   const readiness = between(read('js/modals.js'), 'function renderReadiness', '// ── RAID NOTES');
-  assert.match(readiness, /\$\{missing\} missing party buffs/);
+  assert.match(readiness, /coverageGapHtml\(gaps\)/);
+  assert.match(readiness, /const gaps = liveCoverageGaps\(\);\s*const missing = gaps\.buffs;/);
   assert.match(readiness, /lastReadiness = \{ missingBuffs: missing,/);
   assert.doesNotMatch(renderJs, /lastMissingCoverageCount/, 'the buffs + debuffs total no longer feeds the link');
 });

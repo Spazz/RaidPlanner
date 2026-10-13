@@ -768,24 +768,27 @@ function renderGroups() {
 }
 
 function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
-  const insights = getMissingBuffInsights();
+  // The reference comp is a static board: the live plan's Switch / Swap In fixes do not belong on it.
+  const insights = State.activeTab === 'ideal' ? null : getMissingBuffInsights();
   // Faction-locked rosters (Classic) never show a buff the detected faction
   // could never field (Windfury for Alliance, Devotion Aura for Horde).
   const buffs = renderBuffRowList('buff-catalog-buffs', factionRelevantBuffs(), Config.BuffAbbreviations, id => Config.BuffIconURL(id), coveredBuffIds, insights);
   const debuffs = renderBuffRowList('buff-catalog-debuffs', Config.Debuffs, Config.DebuffAbbreviations, id => Config.DebuffIconURL(id), coveredDebuffIds, insights);
-  renderSidebarSummary(buffs, debuffs);
+  renderSidebarSummary(coverageGapCounts(coveredBuffIds, coveredDebuffIds));
 }
 
-// Collapsed-state strip: "Buffs 13/20 · Debuffs 18/28 · 17 missing".
-function renderSidebarSummary(buffs, debuffs) {
+// Collapsed-state strip: "Party buffs missing 7", "Raid debuffs missing 6", or one "all covered" row.
+function renderSidebarSummary(gaps) {
   const el = document.getElementById('sidebar-summary');
   if (!el) return;
   if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p class="sidebar-note">Coverage rules are not configured for this version yet.</p>'; return; }
-  const missing = (buffs.total - buffs.covered) + (debuffs.total - debuffs.covered);
+  if (gaps.buffs === 0 && gaps.debuffs === 0) {
+    el.innerHTML = '<div class="sidebar-summary-row ok"><span>All party buffs and raid debuffs covered</span></div>';
+    return;
+  }
   el.innerHTML = `
-    <div class="sidebar-summary-row"><span>Buffs</span><b>${buffs.covered} / ${buffs.total}</b></div>
-    <div class="sidebar-summary-row"><span>Debuffs</span><b>${debuffs.covered} / ${debuffs.total}</b></div>
-    <div class="sidebar-summary-row missing${missing === 0 ? ' zero' : ''}"><span>Missing</span><b>${missing}</b></div>`;
+    <div class="sidebar-summary-row missing"><span>Party buffs missing</span><b>${gaps.buffs}</b></div>
+    <div class="sidebar-summary-row missing"><span>Raid debuffs missing</span><b>${gaps.debuffs}</b></div>`;
 }
 
 // One line under a missing row saying what would fix it, with the button
@@ -797,7 +800,7 @@ function renderInsightLine(id, insight) {
   if (insight.kind === 'switch') {
     const p = insight.player;
     return `<div class="buff-row-insight switch">
-      <span class="insight-text">In raid: <span class="insight-who ${color(p)}">${short(p)}</span></span>
+      <span class="insight-text" title="In raid: ${short(p)}">In raid: <span class="insight-who ${color(p)}">${short(p)}</span></span>
       <button type="button" class="insight-btn" data-insight-switch="${esc(id)}" data-group="${insight.groupIdx}" data-uid="${esc(p.uid)}" title="Make ${short(p)} run ${esc(Config.Buffs[id].name)}">Switch</button>
     </div>`;
   }
@@ -805,15 +808,15 @@ function renderInsightLine(id, insight) {
     const p = insight.player;
     const specLabel = p.spec ? `${esc(p.spec)}` : '';
     return `<div class="buff-row-insight bench">
-      <span class="insight-text">Benched: <span class="insight-who ${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
+      <span class="insight-text" title="Benched: ${short(p)}${specLabel ? ' (' + specLabel + ')' : ''}">Benched: <span class="insight-who ${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
       <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short(p)}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
   if (insight.kind === 'shared') {
     const lead = insight.casters > 1 ? 'Group two warriors together' : 'Needs a 2nd warrior';
-    return `<div class="buff-row-insight none"><span class="insight-text">${lead}: <span class="insight-who ${color(insight.player)}">${short(insight.player)}</span> casts the other shout</span></div>`;
+    return `<div class="buff-row-insight none"><span class="insight-text" title="${lead}: ${short(insight.player)} casts the other shout">${lead}: <span class="insight-who ${color(insight.player)}">${short(insight.player)}</span> casts the other shout</span></div>`;
   }
-  return `<div class="buff-row-insight none"><span class="insight-text">Nobody in roster</span></div>`;
+  return `<div class="buff-row-insight none"><span class="insight-text" title="Nobody in roster">Nobody in roster</span></div>`;
 }
 
 function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds, insights) {
@@ -867,8 +870,8 @@ function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds,
 
     html += `<div class="buff-row${isCovered ? ' covered' : ''}">
       <div class="buff-row-icon"${ttAttrs}>${imgTag}</div>
-      <span class="buff-row-name">${esc(entry.name)}</span>${warnBadge}
-      <span class="buff-row-source ${classColorClass(entry.sourceClass, 'secondary')}">${esc(sourceLabel)}</span>
+      <span class="buff-row-name" title="${esc(entry.name)}">${esc(entry.name)}</span>${warnBadge}
+      <span class="buff-row-source ${classColorClass(entry.sourceClass, 'secondary')}" title="${esc(sourceLabel)}">${esc(sourceLabel)}</span>
     </div>`;
     if (!isCovered && insights) html += renderInsightLine(id, insights[id]);
   }
@@ -886,11 +889,11 @@ function renderUtilityInsightLine(item) {
     const color = classColorClass(p.class, 'secondary');
     const specLabel = p.spec ? ` (${esc(p.spec)})` : '';
     return `<div class="buff-row-insight bench">
-      <span class="insight-text">Benched: <span class="insight-who ${color}">${short}</span>${specLabel}</span>
+      <span class="insight-text" title="Benched: ${short}${specLabel}">Benched: <span class="insight-who ${color}">${short}</span>${specLabel}</span>
       <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
-  return `<div class="buff-row-insight none"><span class="insight-text">Nobody in roster</span></div>`;
+  return `<div class="buff-row-insight none"><span class="insight-text" title="Nobody in roster">Nobody in roster</span></div>`;
 }
 
 // Class-presence utility checklist (Battle Rez, cleanses, Bloodlust, ...) —
@@ -921,8 +924,8 @@ function renderUtilityCatalog(groups, bench) {
     const ttAttrs = ` data-tt-name="${esc(item.name)}" data-tt-desc="${esc(item.desc)}"`
       + ` data-tt-source="${item.covered ? esc(seatedNames) + ' - Covered by this raid' : 'Not covered'}"`;
     html += `<div class="buff-row${item.covered ? ' covered' : ''}"${ttAttrs}>
-      <span class="buff-row-name">${esc(item.name)}</span>
-      <span class="buff-row-source">${esc(sourceText)}</span>
+      <span class="buff-row-name" title="${esc(item.name)}">${esc(item.name)}</span>
+      <span class="buff-row-source" title="${esc(sourceText)}">${esc(sourceText)}</span>
     </div>`;
     if (!item.covered) html += renderUtilityInsightLine(item);
   }

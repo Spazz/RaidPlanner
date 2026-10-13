@@ -140,6 +140,31 @@ function getMissingBuffInsights() {
   return insights;
 }
 
+// How many party buffs and raid debuffs the given coverage leaves open. The one
+// count behind the readiness line and the Coverage rail summary, so they agree.
+// Buffs are the faction-relevant list (what the rail lists), debuffs Config.Debuffs.
+function coverageGapCounts(coveredBuffIds, coveredDebuffIds) {
+  const open = (dataset, covered) => Object.keys(dataset).filter(id => !covered.has(id)).length;
+  return { buffs: open(factionRelevantBuffs(), coveredBuffIds), debuffs: open(Config.Debuffs, coveredDebuffIds) };
+}
+
+// The same counts for the live plan.
+function liveCoverageGaps() {
+  const groups = State.groups || [];
+  return coverageGapCounts(getRaidBuffCoverage(groups), getRaidDebuffCoverage(groups));
+}
+
+// The coverage part of the readiness line, as HTML built only from numbers and fixed
+// strings: "7 party buffs missing · 6 raid debuffs missing", one half alone when the
+// other is covered, or "All party buffs and raid debuffs covered".
+function coverageGapHtml(gaps) {
+  const part = (n, noun) => `<span class="readiness-short"><b>${n}</b> ${noun}${n === 1 ? '' : 's'} missing</span>`;
+  const parts = [];
+  if (gaps.buffs > 0) parts.push(part(gaps.buffs, 'party buff'));
+  if (gaps.debuffs > 0) parts.push(part(gaps.debuffs, 'raid debuff'));
+  return parts.length ? parts.join(' · ') : 'All party buffs and raid debuffs covered';
+}
+
 // ── UTILITY & BALANCE READINESS (backlog #2, #3) ────────────────
 // Two pure, DOM-free checks over State that extend the tank/healer floor
 // check already in renderReadiness(): a class-presence checklist for one-off

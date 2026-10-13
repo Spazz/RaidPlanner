@@ -295,6 +295,23 @@ function showSaveOutcome(outcome) {
   mirrorSaveStatus();
 }
 
+// The one-line answer to "what did that just do": under the readiness line on desktop,
+// a slim strip above Group 1 on phones. Shown AFTER an action's own commit (that commit
+// goes through persistWorkingPlan, which clears the line); any later change clears it.
+const ResultLine = {
+  show(text) {
+    const el = document.getElementById('result-line');
+    const textEl = document.getElementById('result-line-text');
+    if (!el || !textEl) return;
+    textEl.textContent = text;
+    el.hidden = false;
+  },
+  hide() {
+    const el = document.getElementById('result-line');
+    if (el) el.hidden = true;
+  },
+};
+
 function persistWorkingPlan() {
   const result = PlanSession.observe();
   TabWatch.dropIfElsewhere();
@@ -302,7 +319,7 @@ function persistWorkingPlan() {
   const status = document.getElementById('autosave-status');
   if (result) {
     // Any change to the plan retires the "updated by someone else" Undo, which would drop it.
-    if (result.changed) { RemoteUpdate.retireUndo(); TabWatch.hide(); }
+    if (result.changed) { RemoteUpdate.retireUndo(); TabWatch.hide(); ResultLine.hide(); }
     if (result.changed || status.dataset.failed) {
       try { PlanStore.saveSoon(localStorage, result.current, showSaveOutcome); }
       catch { showSaveOutcome({ ok: false }); }
@@ -349,6 +366,8 @@ function redoPlanChange() {
   showToast('Change redone');
 }
 
+document.getElementById('btn-result-dismiss')?.addEventListener('click', () => ResultLine.hide());
+
 function renderReadiness() {
   lastReadiness = null;
   if (!GameVersions[State.gameVersion].modeled) {
@@ -359,23 +378,25 @@ function renderReadiness() {
   const floors = Optimizer.floorsFor(Config.Raids[State.selectedRaid]?.size || 25);
   const tanks = State.roster.filter(p => p.role === 'tank').length;
   const healers = State.roster.filter(p => p.role === 'healer').length;
-  const missing = Object.keys(getMissingBuffInsights()).filter(id => Config.Buffs[id]).length;
-  const tankText = tanks < floors.tank ? `${floors.tank - tanks} tank${floors.tank - tanks === 1 ? '' : 's'} short` : `${tanks} tank slots filled`;
-  const healerText = healers < floors.healer ? `${floors.healer - healers} healer${floors.healer - healers === 1 ? '' : 's'} short` : `${healers} healers ready`;
+  const gaps = liveCoverageGaps();
+  const missing = gaps.buffs;
+  // Short parts render in the warning colour, satisfied parts stay muted. Only numbers and fixed strings go in.
+  const tankText = tanks < floors.tank ? `<span class="readiness-short">${floors.tank - tanks} tank${floors.tank - tanks === 1 ? '' : 's'} short</span>` : `${tanks} tank slots filled`;
+  const healerText = healers < floors.healer ? `<span class="readiness-short">${floors.healer - healers} healer${floors.healer - healers === 1 ? '' : 's'} short</span>` : `${healers} healers ready`;
   // Classic Era is faction-locked: Shaman and Paladin cannot exist in the
   // same real raid. A roster that has both is a data problem worth calling
   // out, not something the optimizer should silently paper over.
   const rules = activeRules();
   const mixedFactions = !!(rules.rules && rules.rules.factionLock && Faction.current() === 'mixed');
-  const factionWarning = mixedFactions ? ' · Mixed Horde/Alliance roster — impossible in Classic Era' : '';
+  const factionWarning = mixedFactions ? ' · <span class="readiness-short">Mixed Horde/Alliance roster — impossible in Classic Era</span>' : '';
   // The phone link names the same things the strip warns about (see phoneReadinessLabel).
   if (hasLoadedWork()) {
     lastReadiness = { missingBuffs: missing, tanksShort: Math.max(0, floors.tank - tanks), healersShort: Math.max(0, floors.healer - healers), mixedFactions };
   }
   renderPhoneMissing();
-  document.getElementById('readiness-text').textContent = hasLoadedWork()
-    ? `${tankText} · ${healerText} · ${missing} missing party buffs${State.preferredSlots.length ? ` · ${State.preferredSlots.length} preferred slot${State.preferredSlots.length === 1 ? '' : 's'} open` : ''}${factionWarning}`
-    : 'Import a roster, or click an empty slot to request a class and spec';
+  const readinessEl = document.getElementById('readiness-text');
+  if (!hasLoadedWork()) { readinessEl.textContent = 'Import a roster, or click an empty slot to request a class and spec'; return; }
+  readinessEl.innerHTML = `${tankText} · ${healerText} · ${coverageGapHtml(gaps)}${State.preferredSlots.length ? ` · ${State.preferredSlots.length} preferred slot${State.preferredSlots.length === 1 ? '' : 's'} open` : ''}${factionWarning}`;
 }
 
 // ── RAID NOTES (backlog #11) ────────────────────────────────────
@@ -973,6 +994,11 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     showToast(`Imported ${result.benchCount} benched sign-ups${historyNotice}`);
     return true;
   }
+  // The result line is set after the commit above, which would otherwise clear it.
+  const benchedCount = overflow || result.benchCount || 0;
+  ResultLine.show(result.wasUnassigned
+    ? `Arranged ${result.playerCount} sign-ups into ${result.groupCount} groups${benchedCount ? `, ${benchedCount} benched` : ''}`
+    : `Kept the ${result.groupCount} groups set in Raid-Helper. Optimize rearranges them.`);
   showToast(result.wasUnassigned
     ? `Your groups are ready. Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups${suffix}${historyNotice}`
     : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}${historyNotice}`);
@@ -1034,6 +1060,7 @@ const PlainRosterImport = {
     showView('app');
     SplitFlow.maybeOffer();
     const extra = result.benchCount ? ` (${result.benchCount} benched)` : '';
+    ResultLine.show(`Arranged ${result.playerCount} players into ${result.groupCount} groups${result.benchCount ? `, ${result.benchCount} benched` : ''}`);
     showToast(`Imported ${result.playerCount} players from pasted text into ${result.groupCount} groups${extra}${rememberImport('Pasted plain-text roster')}`);
   },
 
@@ -1095,7 +1122,7 @@ const RaidHelperSync = {
     this.hideBanner();
     if (diff.eventStartTime) State.eventStartTime = diff.eventStartTime;
     // Logged as one Changes entry, including anyone initGroups benches for room.
-    const { result: counts } = ChangeLog.track('sync', 'Sign-up sync', () => {
+    const { result: counts, entry } = ChangeLog.track('sync', 'Sign-up sync', () => {
       const applied = Import.hasRaidHelperChanges(diff) ? Import.applyRaidHelperSync(diff) : null;
       initGroups();
       commit();
@@ -1107,6 +1134,7 @@ const RaidHelperSync = {
         : `${lead}. Roster is up to date with Raid-Helper`);
       return;
     }
+    if (entry) ResultLine.show(ChangeLog.summary(entry));
     showToast(`${lead}: ${this.describe(counts)}`);
     if (counts.backupSwapReady && counts.backupSwapReady.length) this.showBackupBanner(counts.backupSwapReady);
   },

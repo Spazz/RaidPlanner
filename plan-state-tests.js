@@ -41,7 +41,7 @@ var confirm = () => true;
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'PlanSession', 'LocalPicks', 'Templates', 'DataBackup',
-  'RemoteUpdate', 'TabWatch', 'persistWorkingPlan', 'showSaveOutcome', 'copyText', 'showManualCopy', 'currentShareCode', 'safeSetItem', 'ChangeLog'];
+  'RemoteUpdate', 'TabWatch', 'ResultLine', 'persistWorkingPlan', 'showSaveOutcome', 'copyText', 'showManualCopy', 'currentShareCode', 'safeSetItem', 'ChangeLog'];
 
 function memoryStorage({ limit = Infinity, failWith = null } = {}) {
   const data = {};
@@ -413,6 +413,25 @@ async function check(name, fn) {
     assert.equal(raw(env)[0].data.planId, State.planId);
     assert.equal(env.el('roster-status-line').textContent, 'Saved on this device');
     assert.equal(env.el('btn-undo').disabled, true);
+  });
+
+  await check('a later change to the plan clears the result line; an unchanged persist and the setting itself do not', async () => {
+    const env = makeEnv();
+    const { PlanSession, State, ResultLine } = env.api;
+    seedPlan(env);
+    PlanSession.ready = true;
+    env.ctx.persistWorkingPlan(); // the action's own commit comes first ...
+    ResultLine.show('Arranged 5 players into 2 groups'); // ... then the line is set
+    assert.equal(env.el('result-line').hidden, false);
+    assert.equal(env.el('result-line-text').textContent, 'Arranged 5 players into 2 groups');
+    env.ctx.persistWorkingPlan(); // nothing changed
+    assert.equal(env.el('result-line').hidden, false, 'an unchanged persist keeps the line');
+    State.notes = 'Pull order changed';
+    env.ctx.persistWorkingPlan();
+    assert.equal(env.el('result-line').hidden, true, 'a later change clears the line');
+    ResultLine.show('Optimized: 3 moved.');
+    assert.equal(env.el('result-line-text').textContent, 'Optimized: 3 moved.', 'a newer result replaces the older one');
+    assert.equal(env.el('result-line').hidden, false);
   });
 
   await check('a failed save shows the failure on both status lines, then retries on the next persist', async () => {
