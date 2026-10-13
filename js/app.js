@@ -320,11 +320,11 @@ function syncRaidNotesToggle() {
       }
     }
     // Shorter label in the thumb-width phone bottom bar (plain "Share"); the
-    // fuller desktop text "More export formats…" comes back once
+    // fuller desktop text "Share and export…" comes back once
     // btn-share-main is a Share-menu item again instead of a bottom-bar button.
     const shareLabel = document.querySelector('#btn-share-main .btn-label');
     // Written only when it changes: sync() also runs on every resize.
-    const label = isPhone ? 'Share' : 'More export formats…';
+    const label = isPhone ? 'Share' : 'Share and export…';
     if (shareLabel && shareLabel.textContent !== label) shareLabel.textContent = label;
   }
   PHONE_QUERY.addEventListener('change', sync);
@@ -842,10 +842,10 @@ const LiveSync = {
 
   statusText(fallback) {
     if (!currentLiveLink()) return fallback;
-    if (this.rejected) return 'Live link not synced: ' + this.rejected.reason;
-    if (this.failed) return 'Live link not synced, retrying';
-    if (this.pending || this.saving) return 'Syncing live link...';
-    return 'Synced to live link';
+    if (this.rejected) return 'Live link not saved: ' + this.rejected.reason + '. Your changes are safe on this device.';
+    if (this.failed) return 'Live link not saved yet, retrying. Your changes are safe on this device.';
+    if (this.pending || this.saving) return 'Saving to the live link...';
+    return 'Shared plan, changes sync to everyone with the link';
   },
 
   refreshStatus() {
@@ -986,15 +986,15 @@ document.getElementById('btn-share').addEventListener('click', () => {
   const link = getShareLink();
   Promise.all([link, copyShareLink(link)])
     .then(([{ live }]) => showToast(live
-      ? 'Live link copied: anyone with it can view and edit'
-      : 'Share link copied (long link: live links are unavailable right now)'))
+      ? 'Live link copied. Anyone with it can see and edit this plan; it expires 30 days after the last change.'
+      : 'Live links are down right now, so this is a snapshot link: it will not update when the plan changes.'))
     .catch(() => link.then(({ url }) => showManualCopy(url)));
 });
 
 document.getElementById('btn-copy-mrt').addEventListener('click', () => {
   if (State.roster.length === 0) { showToast('No roster to export'); return; }
   const str = Import.exportMrtString();
-  copyText(str, 'MRT string copied. In MRT: Raid Groups > Import > "From ExRT export string"');
+  copyText(str, 'MRT string copied (seated groups only). In MRT: Raid Groups > Import > "From ExRT export string"');
 });
 
 document.getElementById('btn-copy-mrt-note').addEventListener('click', copyMrtNote);
@@ -1756,14 +1756,15 @@ document.getElementById('btn-back-to-plan').addEventListener('click', () => swit
 
 // ── GLOBAL KEYBOARD SHORTCUTS (feature-backlog-2.md #8) ──────────
 // Single-key shortcuts and the toolbar button each one clicks (SHORTCUTS_HELP lists them for people).
-const SHORTCUT_BUTTONS = { o: 'btn-optimize', e: 'btn-share-main', l: 'btn-share', m: 'btn-copy-mrt-note', c: 'btn-copy-chat' };
+const SHORTCUT_BUTTONS = { o: 'btn-optimize', e: 'btn-share-main', l: 'btn-share', g: 'btn-copy-mrt', m: 'btn-copy-mrt-note', c: 'btn-copy-chat' };
 const SHORTCUTS_HELP = [
   ['O', 'Optimize groups'],
   ['Ctrl/Cmd + Z', 'Undo'],
   ['Ctrl/Cmd + Y  (or Ctrl/Cmd + Shift + Z)', 'Redo'],
   ['Ctrl/Cmd + S', 'Save a copy (the plan also saves itself)'],
-  ['E', 'Share / Export'],
-  ['L', 'Copy share link'],
+  ['E', 'Share and export'],
+  ['L', 'Copy live link'],
+  ['G', 'Copy for MRT'],
   ['M', 'Copy MRT note'],
   ['C', 'Copy raid chat text'],
   ['1', 'Back to the plan'],

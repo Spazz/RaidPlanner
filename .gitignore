@@ -100,3 +100,4 @@
 # DPS reference data cited by the optimizer comments
 !gruul_dps_data.txt
 !import-copy-tests.js
+!labels-tests.js

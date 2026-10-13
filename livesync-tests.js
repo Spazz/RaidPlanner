@@ -171,7 +171,7 @@ async function check(name, fn) {
     assert.equal(env.location.pathname, '/tbc/' + NEW_ID, 'address bar follows the new link');
     assert.equal(expiryToasts(env).length, 1, 'the user is told');
     assert.equal(env.api.LiveSync.expiredId, null);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Synced to live link');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Shared plan, changes sync to everyone with the link');
   });
 
   await check('A save that gets 404 from the PUT POSTs a fresh link, rebinds, updates the address bar and toasts', async () => {
@@ -245,7 +245,7 @@ async function check(name, fn) {
     await settle();
     assert.equal(posts(env).length, 1);
     assert.equal(env.api.LiveSync.failed, true);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced, retrying');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved yet, retrying. Your changes are safe on this device.');
     assert.equal(entryOf(env, planKey).id, 'aB3dE5g', 'still bound to the old link');
     assert.equal(env.location.pathname, '/tbc/aB3dE5g');
     assert.equal(expiryToasts(env).length, 0, 'no toast for a replacement that did not happen');
@@ -282,7 +282,7 @@ async function check(name, fn) {
     edit(env, 'edit');
     await env.advance(2000);
     assert.equal(env.api.LiveSync.failed, false);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced: boom');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved: boom. Your changes are safe on this device.');
     assert.equal(entryOf(env, planKey).id, 'aB3dE5g');
   });
 
@@ -429,7 +429,7 @@ async function check(name, fn) {
     await env.advance(2000);
     assert.equal(puts(env).length, 1);
     assert.equal(env.api.LiveSync.failed, false, 'not "retrying"');
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced: Invalid share code');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved: Invalid share code. Your changes are safe on this device.');
     await env.advance(60000);
     await env.api.LiveSync.pull();
     await settle();
@@ -445,10 +445,10 @@ async function check(name, fn) {
     env.route = () => response(403, { error: 'nope' });
     edit(env, 'bad');
     await env.advance(2000);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced: nope');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved: nope. Your changes are safe on this device.');
     edit(env, '');
     assert.equal(env.api.LiveSync.rejected, null);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Synced to live link');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Shared plan, changes sync to everyone with the link');
   });
 
   await check('5xx, 404 and 408 are transient: retried on the next poll, not treated as rejections', async () => {
@@ -475,7 +475,7 @@ async function check(name, fn) {
     env.route = () => response(200, { updatedAt: 1 });
     edit(env, 'huge');
     assert.equal(env.api.LiveSync.pending, false);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced: plan is too large for a live link (33 KB, limit 32 KB)');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved: plan is too large for a live link (33 KB, limit 32 KB). Your changes are safe on this device.');
     await env.advance(60000);
     await env.api.LiveSync.pull();
     await settle();

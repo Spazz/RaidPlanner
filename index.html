@@ -190,14 +190,14 @@
       <div class="menu-wrap">
         <button type="button" class="btn share-btn" id="btn-share-menu" aria-haspopup="menu" aria-expanded="false">Share <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
         <div class="menu" id="share-menu" role="menu" aria-label="Share" hidden>
-          <button type="button" class="menu-item" role="menuitem" id="btn-share" aria-label="Copy a shareable link to this layout" aria-keyshortcuts="L">Copy share link<kbd class="menu-kbd" aria-hidden="true">L</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt" aria-label="Copy roster as an MRT Raid Groups import string to clipboard">Copy for MRT</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt-note" aria-label="Copy the assignments as an MRT note to clipboard" aria-keyshortcuts="M">Copy MRT note<kbd class="menu-kbd" aria-hidden="true">M</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat" aria-label="Copy raid groups as plain text for Discord or raid chat" aria-keyshortcuts="C">Copy raid chat text<kbd class="menu-kbd" aria-hidden="true">C</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat-compact" aria-label="Copy raid groups as compact plain text sized for in-game raid chat">Copy compact raid chat</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-print-sheet" aria-label="Open a clean, printable raid sheet">Print raid sheet</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-share" aria-label="Copy a live link: everyone with it sees and edits this plan" aria-keyshortcuts="L">Copy live link<kbd class="menu-kbd" aria-hidden="true">L</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt" aria-label="Copy the seated groups as an MRT Raid Groups import string" aria-keyshortcuts="G">Copy for MRT<kbd class="menu-kbd" aria-hidden="true">G</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt-note" aria-label="Copy the assignments as an MRT note" aria-keyshortcuts="M">Copy MRT note<kbd class="menu-kbd" aria-hidden="true">M</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat" aria-label="Copy the groups as plain text for Discord or raid chat" aria-keyshortcuts="C">Copy raid chat text<kbd class="menu-kbd" aria-hidden="true">C</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat-compact" aria-label="Copy the groups as compact text sized for in-game raid chat">Copy compact chat text</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-print-sheet" aria-label="Open a printable raid sheet">Print raid sheet</button>
           <div class="menu-sep"></div>
-          <button type="button" class="menu-item" role="menuitem" id="btn-share-main" title="Share / Export (E)" aria-keyshortcuts="E"><span class="btn-label">More export formats&hellip;</span><kbd class="menu-kbd" aria-hidden="true">E</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-share-main" title="Share and export (E)" aria-keyshortcuts="E"><span class="btn-label">Share and export&hellip;</span><kbd class="menu-kbd" aria-hidden="true">E</kbd></button>
         </div>
       </div>
       <div class="menu-wrap">
@@ -441,10 +441,10 @@
   <div class="history-dialog-header"><h3 id="share-heading">Share your plan</h3><button type="button" class="btn btn-secondary" id="close-share">Close</button></div>
   <p>Send your layout to the raid or bring it into the game.</p>
   <div class="share-actions">
-    <button type="button" class="btn btn-primary" data-share-action="btn-share">Copy share link</button>
+    <button type="button" class="btn btn-primary" data-share-action="btn-share">Copy live link</button>
     <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt">Copy for MRT</button>
     <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt-note">Copy MRT note</button>
-    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-print-sheet">Print sheet</button></details>
+    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-print-sheet">Print raid sheet</button></details>
   </div>
 </dialog>
 <dialog id="manual-copy-dialog" class="history-dialog" aria-labelledby="manual-copy-heading">
