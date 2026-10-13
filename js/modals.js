@@ -152,12 +152,72 @@ document.getElementById('confirm-dialog').addEventListener('close', e => Modal.s
 // One shared timer: a toast that arrives while another is showing restarts the
 // countdown instead of being hidden by the earlier toast's timeout.
 let toastTimer = null;
-function showToast(msg) {
+let toastWired = false;
+const TOAST_BASE_MS = 2500;
+const TOAST_FREE_CHARS = 50;
+const TOAST_MS_PER_EXTRA_CHAR = 50;
+const TOAST_MAX_MS = 8000;
+
+// 2.5 s up to 50 characters, plus 50 ms per extra character, capped at 8 s.
+// A toast with an action always stays 8 s so there is time to reach the button.
+function toastDuration(msg, opts) {
+  if (opts.duration > 0) return opts.duration;
+  if (opts.action) return TOAST_MAX_MS;
+  const extra = Math.max(0, String(msg).length - TOAST_FREE_CHARS);
+  return Math.min(TOAST_MAX_MS, TOAST_BASE_MS + extra * TOAST_MS_PER_EXTRA_CHAR);
+}
+
+function hideToast(toast) {
+  clearTimeout(toastTimer);
+  toast.classList.remove('visible');
+}
+
+// Wired on the first toast. Esc dismisses only when the keydown was not handled
+// elsewhere and no dialog or player editor was open when it arrived. Menus call
+// preventDefault; the editor removes itself on the same keydown, so its state is
+// recorded in the capture phase, before it can close.
+function wireToast(toast) {
+  if (toastWired || typeof toast.addEventListener !== 'function') return;
+  toastWired = true;
+  let overlayOpen = false;
+  toast.addEventListener('click', e => {
+    if (e.target && e.target.closest && e.target.closest('.toast-action')) return;
+    hideToast(toast);
+  });
+  window.addEventListener('keydown', () => {
+    overlayOpen = !!document.querySelector('dialog[open], #active-player-editor');
+  }, true);
+  window.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || e.defaultPrevented || overlayOpen) return;
+    if (!toast.classList.contains('visible')) return;
+    hideToast(toast);
+  });
+}
+
+function showToast(msg, opts = {}) {
   const toast = document.getElementById('toast');
-  toast.textContent = msg;
+  wireToast(toast);
+  const action = opts.action;
+  if (action) {
+    const text = document.createElement('span');
+    text.textContent = msg;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast-action';
+    button.textContent = action.label;
+    button.addEventListener('click', () => {
+      hideToast(toast);
+      if (action.onClick) action.onClick();
+    });
+    toast.textContent = '';
+    toast.appendChild(text);
+    toast.appendChild(button);
+  } else {
+    toast.textContent = msg;
+  }
   toast.classList.add('visible');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('visible'), 2500);
+  toastTimer = setTimeout(() => toast.classList.remove('visible'), toastDuration(msg, opts));
 }
 
 // ── CLIPBOARD ───────────────────────────────────────────────────

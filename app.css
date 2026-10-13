@@ -1165,6 +1165,13 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   zoom: 1.5;
 }
 .toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.toast { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
+.toast-action {
+  background: transparent; border: 1px solid var(--accent-gold); color: var(--accent-gold);
+  padding: 3px 10px; font: inherit; font-weight: 600; cursor: pointer;
+}
+.toast-action:hover { background: var(--btn-secondary-hover); }
+.toast-action:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 
 /* ── Feature spotlight callouts (feature-backlog-3.md #4) ── */
 .spotlight-callout {

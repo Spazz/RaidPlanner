@@ -188,6 +188,87 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
     assert.equal(timers.size, 0);
   });
 
+  function makeToastHarness() {
+    const src = app.slice('// ── TOAST NOTIFICATION', '// ── VERSION AUTO-DETECT');
+    const timers = new Map(); let nextId = 1, now = 0;
+    const setTimeoutFake = (fn, ms) => { const id = nextId++; timers.set(id, { fn, at: now + ms }); return id; };
+    const clearTimeoutFake = (id) => { timers.delete(id); };
+    const advance = (ms) => { now += ms; for (const [id, t] of [...timers]) if (t.at <= now) { timers.delete(id); t.fn(); } };
+    const classes = new Set();
+    const listeners = (target) => { target.handlers = {}; target.addEventListener = (type, fn, cap) => { (target.handlers[type + (cap ? ':cap' : '')] ||= []).push(fn); }; };
+    const mkEl = () => { const el = { children: [], textContent: '', className: '', type: '', appendChild(c) { el.children.push(c); } }; listeners(el); return el; };
+    const toastEl = Object.assign(mkEl(), { classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c) } });
+    const state = { overlay: false };
+    const document = {
+      getElementById: (id) => (id === 'toast' ? toastEl : null),
+      createElement: () => mkEl(),
+      querySelector: () => (state.overlay ? {} : null),
+    };
+    const win = {}; listeners(win);
+    const c = app.sandbox(['showToast'], { globals: { document, window: win, setTimeout: setTimeoutFake, clearTimeout: clearTimeoutFake }, extraSource: src });
+    const key = (e) => { (win.handlers['keydown:cap'] || []).forEach(f => f(e)); (win.handlers.keydown || []).forEach(f => f(e)); };
+    return { showToast: c.api.showToast, toastEl, classes, timers, advance, key, state };
+  }
+
+  await check('toast: duration scales with message length and caps at 8s', () => {
+    for (const [len, ms] of [[50, 2500], [130, 6500], [400, 8000]]) {
+      const h = makeToastHarness();
+      h.showToast('x'.repeat(len));
+      h.advance(ms - 1);
+      assert(h.classes.has('visible'), len + ' chars still visible at ' + (ms - 1));
+      h.advance(1);
+      assert(!h.classes.has('visible'), len + ' chars hidden at ' + ms);
+    }
+  });
+
+  await check('toast: an action toast renders a button, holds 8s, and the click hides then calls onClick', () => {
+    const h = makeToastHarness();
+    const order = [];
+    h.showToast('Removed', { action: { label: 'Undo', onClick: () => order.push(h.classes.has('visible') ? 'visible' : 'hidden') } });
+    const [span, button] = h.toastEl.children;
+    assert.equal(span.textContent, 'Removed');
+    assert.equal(button.textContent, 'Undo');
+    assert.equal(button.type, 'button');
+    assert.equal(button.className, 'toast-action');
+    h.advance(7999);
+    assert(h.classes.has('visible'));
+    button.handlers.click[0]();
+    assert.deepEqual(order, ['hidden']);
+    assert(!h.classes.has('visible'));
+  });
+
+  await check('toast: clicking the body hides it, clicking the action button does not', () => {
+    const h = makeToastHarness();
+    h.showToast('hello');
+    h.toastEl.handlers.click[0]({ target: { closest: () => null } });
+    assert(!h.classes.has('visible'));
+    h.showToast('hello again');
+    h.toastEl.handlers.click[0]({ target: { closest: () => ({}) } });
+    assert(h.classes.has('visible'));
+  });
+
+  await check('toast: a plain toast after an action toast drops the button', () => {
+    const h = makeToastHarness();
+    h.showToast('a', { action: { label: 'Undo' } });
+    h.showToast('b');
+    assert.equal(h.toastEl.textContent, 'b');
+  });
+
+  await check('toast: Esc hides it only when nothing else is open and the event was not handled', () => {
+    const h = makeToastHarness();
+    h.showToast('hello');
+    h.key({ key: 'Enter', defaultPrevented: false });
+    assert(h.classes.has('visible'), 'other keys leave it');
+    h.key({ key: 'Escape', defaultPrevented: true });
+    assert(h.classes.has('visible'), 'handled Esc leaves it');
+    h.state.overlay = true;
+    h.key({ key: 'Escape', defaultPrevented: false });
+    assert(h.classes.has('visible'), 'Esc with a dialog or editor open leaves it');
+    h.state.overlay = false;
+    h.key({ key: 'Escape', defaultPrevented: false });
+    assert(!h.classes.has('visible'), 'free Esc hides it');
+  });
+
   const html = app.html;
   const css = app.css; // styles live in app.css since the index.html split
 
