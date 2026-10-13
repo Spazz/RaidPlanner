@@ -65,7 +65,7 @@ check('no file the page loads at runtime is excluded', () => {
 check('every runtime file named in the page, the dev picker and the head exists', () => {
   for (const file of runtimeFiles()) assert(fs.existsSync(path.join(ROOT, file)), file);
   assert(/script\.src = '\/scenarios\.js'/.test(app.script), '?dev still loads /scenarios.js');
-  assert(app.html.includes('https://raid-planner-theta.vercel.app/og-image.png'));
+  assert(app.html.includes('https://raidsmith.vercel.app/og-image.png'));
 });
 
 check('tests, CI, docs and reference data stay out of the deploy', () => {

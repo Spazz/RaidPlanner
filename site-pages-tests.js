@@ -19,7 +19,7 @@ const app = require('./tests/load-app');
 
 const ROOT = app.ROOT;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const SITE = 'https://raid-planner-theta.vercel.app';
+const SITE = 'https://raidsmith.vercel.app';
 const PAGES = {
   'faq.html': { title: 'FAQ - Raidsmith', h1: 'Frequently asked questions', scripts: ['/js/util.js', '/js/changelog.js', '/js/storage.js', '/js/site-pages.js'] },
   'whats-new.html': { title: "What's new - Raidsmith", h1: "What's new", scripts: ['/js/util.js', '/js/changelog.js', '/js/site-pages.js'] },

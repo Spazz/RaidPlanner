@@ -4,9 +4,9 @@
 
 A raid group planner for World of Warcraft Classic Era, TBC Anniversary and WoW Forever. Import a Raid-Helper sign-up list (or paste a roster), let the optimizer lay out the parties for buff and debuff coverage, adjust by drag and drop, then share a link, copy raid chat text, or export an MRT note.
 
-Production: https://raid-planner-theta.vercel.app
+Production: https://raidsmith.vercel.app
 
-**When the domain changes**, update these places in `index.html`, `faq.html` and `whats-new.html` (each page has its own `og:url`; all still point at `raid-planner-theta.vercel.app`): `og:url`, `og:image` and `twitter:image`. Then update the host the tests pin: `SITE` in `head-tests.js` and the og-image line in `deploy-tests.js`.
+**When the domain changes**, update these places in `index.html`, `faq.html` and `whats-new.html` (each page has its own `og:url`; all point at `raidsmith.vercel.app`): `og:url`, `og:image` and `twitter:image`. Then update the host the tests pin: `SITE` in `head-tests.js` and `site-pages-tests.js`, and the og-image line in `deploy-tests.js`.
 
 It is a static site with no build step and no npm dependencies: `index.html` (the planner), two static pages (`faq.html`, `whats-new.html`), `app.css` and eighteen plain `<script src>` files (fourteen under `js/`, the four rules data files under `js/rules/`), plus one serverless function (`api/share.js`) for short and live share links.
 
