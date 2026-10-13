@@ -3,8 +3,17 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.3.1';
+const APP_VERSION = '4.4.0';
 const CHANGELOG = [
+  { version: '4.4.0', date: '2026-10-13', title: 'One header row, Coverage grouped by fix and a player editor panel', changes: [
+    'The planner has one header row: the P mark takes you home, and the version button (for example TBC) switches the game version. The start page has one brand row.',
+    'Coverage lists what is missing by how to fix it: Fix now (Switch or Swap In), Needs a recruit (the spec that would bring it) and Covered behind a toggle.',
+    'On phones the missing link opens Coverage as a sheet over the lower half of the screen, above the bottom bar; Show all expands it.',
+    'The player editor opens as a panel on the right with larger text. Group buttons move a player in one click, and a full group lists its players to swap with. Phones get the same buttons.',
+    'Open slots say whether Optimize suggested them or you requested them, and the spec line on player cards is larger.',
+    'The Share menu groups its actions under Into the game, Send to the raid and Other.',
+    'Your plans shows one message until you have plans or imports, and the import box shows a Raid-Helper link as its example; a player list fills in a sample list.',
+  ] },
   { version: '4.3.1', date: '2026-10-12', title: 'A home link in the brand and a readiness banner you can minimize', changes: [
     'The Party Planner name at the top left now takes you back to the start page, and the planner title bar starts with your plan name, shown larger.',
     'The readiness line is now a banner of status chips (tanks, healers, coverage) that you can minimize; the result of your last import, sync or Optimize shows inside it.',
