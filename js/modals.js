@@ -651,7 +651,7 @@ function showAttendanceModal() {
   const versions = Object.keys(data);
   if (!versions.length) {
     document.getElementById('attendance-body').innerHTML =
-      '<div class="saved-empty">No named saved rosters yet. Save a roster (toolbar &rarr; Save) after a raid to start building attendance history.</div>';
+      '<div class="saved-empty">No saved copies yet. After a raid, use Plan menu &gt; Save a copy to start building attendance history.</div>';
     dialog.showModal();
     return;
   }

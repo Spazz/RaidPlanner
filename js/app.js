@@ -22,7 +22,7 @@ function showView(view) {
   if (view === 'landing') renderLanding();
   else if (State.activeTab !== 'plan') switchTab('plan');
   window.scrollTo(0, 0);
-  if (view === 'app') runSpotlightQueue();
+  if (view === 'app') scheduleSpotlightQueue();
 }
 
 // An import error belongs to the paste that caused it: drop it when the landing re-renders
@@ -78,6 +78,12 @@ function renderVersionComparison() {
     </div>`;
   }).join('');
 }
+
+// Status bar version, set once from APP_VERSION (js/changelog.js).
+(function initStatusVersion() {
+  const el = document.getElementById('status-version');
+  if (el) el.textContent = `Party Planner v${APP_VERSION}`;
+})();
 
 // "What's new" dismissible badge (feature-backlog-2.md #9). The key keeps its original
 // name (data backups know it); its value is the release the person dismissed, so a new

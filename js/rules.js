@@ -437,9 +437,9 @@ Rulesets.forever = Rulesets.compile(RulesData.forever, RulesData.catalog);
 // ruleset's `raids` (its data file), in picker order. `modeled` is derived below from Rulesets - a version is modeled
 // iff it has one.
 const GameVersions = {
-  tbc: { name:'WoW TBC', defaultRaid:'bt', raids:Object.keys(Rulesets.tbc.raids), note:'TBC party buffs and optimization rules.' },
-  classic: { name:'WoW Classic', defaultRaid:'mc', raids:Object.keys(Rulesets.classic.raids), note:'WoW Classic Era party buffs, composition and optimizer rules. Faction-aware: Horde shamans, Alliance paladins.' },
-  forever: { name:'WoW Forever (Beta)', defaultRaid:'f_ony', raids:Object.keys(Rulesets.forever.raids), note:'Rules follow WoW Forever beta data as of 2026-10-10 (build 1.60.1.70338): Paladin and Shaman on both factions (no faction lock), Trueshot Aura a Marksmanship talent, one Faerie Fire for every Druid, Leader of the Pack/Moonkin Aura one exclusive crit buff, one air totem per party, Sanctity Aura removed, and the confirmed Barrow Deeps/Hyjal Summit/Onyxia\'s Lair raids.' },
+  tbc: { name:'WoW TBC', defaultRaid:'bt', raids:Object.keys(Rulesets.tbc.raids), note:'TBC party buffs and optimization rules.', toastNote:'TBC Anniversary party buffs and optimization rules.' },
+  classic: { name:'WoW Classic', defaultRaid:'mc', raids:Object.keys(Rulesets.classic.raids), note:'WoW Classic Era party buffs, composition and optimizer rules. Faction-aware: Horde shamans, Alliance paladins.', toastNote:'WoW Classic Era rules, faction-aware: Horde shamans, Alliance paladins.' },
+  forever: { name:'WoW Forever (Beta)', defaultRaid:'f_ony', raids:Object.keys(Rulesets.forever.raids), note:'Rules follow WoW Forever beta data as of 2026-10-10 (build 1.60.1.70338): Paladin and Shaman on both factions (no faction lock), Trueshot Aura a Marksmanship talent, one Faerie Fire for every Druid, Leader of the Pack/Moonkin Aura one exclusive crit buff, one air totem per party, Sanctity Aura removed, and the confirmed Barrow Deeps/Hyjal Summit/Onyxia\'s Lair raids.', toastNote:'WoW Forever beta rules, data as of 2026-10-10. The landing page has the details.' },
 };
 // Raid ids are unique across versions (Classic's Onyxia is `ony`, Forever's `f_ony`; rules-data-tests.js checks it).
 Object.assign(Config.Raids, Rulesets.tbc.raids, Rulesets.classic.raids, Rulesets.forever.raids);
