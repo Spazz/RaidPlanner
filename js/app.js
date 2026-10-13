@@ -296,7 +296,14 @@ function renderLandingSavedList() {
   document.getElementById('btn-resume').addEventListener('click', () => { showView('app'); RaidHelperSync.check(); });
   // "New plan…" (menu) goes back to the import screen; the planner keeps its plan meanwhile.
   document.getElementById('btn-new-plan').addEventListener('click', () => showView('landing'));
-  document.getElementById('btn-home').addEventListener('click', () => showView('landing')); // the header title is the way home
+  // The era-band brand is the way home. A plain left click stays in the app; a modified or middle click
+  // keeps the link's default so the start page opens in a new tab.
+  document.getElementById('brand-home').addEventListener('click', e => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    showView('landing');
+    window.scrollTo(0, 0);
+  });
 })();
 
 (function initPlanChrome() {

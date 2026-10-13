@@ -38,6 +38,7 @@
 !scenarios.js
 !scenario-tests.js
 !version-tests.js
+!brand-tests.js
 !landing-copy-tests.js
 !campfire-tests.js
 !classic-tests.js

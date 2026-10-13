@@ -3,8 +3,11 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.3.0';
+const APP_VERSION = '4.3.1';
 const CHANGELOG = [
+  { version: '4.3.1', date: '2026-10-12', title: 'The Party Planner name is the way home', changes: [
+    'The Party Planner name at the top left now takes you back to the start page, and the planner title bar starts with your plan name, shown larger.',
+  ] },
   { version: '4.3.0', date: '2026-10-12', title: 'Clearer Optimize results with Undo, plain import errors and deletable saved plans', changes: [
     'Optimize says what it did in buff terms (for example Windfury Totem +4 melee), offers Undo for 8 seconds, and lists who it benched, seated or moved under Changes.',
     'A result line under the readiness line keeps the last import, sync or Optimize result until your next change. On phones it is a strip above Group 1.',

@@ -30,7 +30,7 @@
 
 <header class="game-header">
   <div class="game-header-inner">
-    <div class="game-header-brand"><span class="game-header-mark" aria-hidden="true">P</span><div><strong>Party Planner</strong><small>Choose your era</small></div></div>
+    <a href="/" class="game-header-brand" id="brand-home" aria-label="Party Planner home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true">P</span><div><strong>Party Planner</strong><small>Choose your era</small></div></a>
     <nav class="game-version-nav" aria-label="Game version">
       <button type="button" class="game-version-tab" data-version="classic" aria-pressed="false" aria-label="WoW Classic"><span class="game-eyebrow">World of Warcraft</span><span class="game-name">Classic</span></button>
       <button type="button" class="game-version-tab" data-version="tbc" aria-pressed="true" aria-label="TBC Anniversary"><span class="game-eyebrow">Burning Crusade</span><span class="game-name">TBC</span></button>
@@ -182,7 +182,7 @@
 <main class="addon-frame" id="app" hidden>
   <!-- Header row: title · plan name + status · Share and the menu (nav slim-down). -->
   <div class="title-bar">
-    <h1><button type="button" class="title-home" id="btn-home" aria-label="Party Planner home: load a different plan" title="Home: load a different plan">Party Planner</button></h1>
+    <h1 class="sr-only">Party Planner</h1>
     <div class="roster-name-wrap plan-only">
       <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">
         <span id="roster-name-text">No Roster Loaded</span>
