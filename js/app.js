@@ -108,7 +108,7 @@ function onVersionCardClick(event) {
 // Status bar version, set once from APP_VERSION (js/changelog.js).
 (function initStatusVersion() {
   const el = document.getElementById('status-version');
-  if (el) el.textContent = `Party Planner v${APP_VERSION}`;
+  if (el) el.textContent = `Raidsmith v${APP_VERSION}`;
 })();
 
 // Feedback link: the static href works without JS; this adds the version and browser to the
@@ -116,7 +116,7 @@ function onVersionCardClick(event) {
 (function initFeedbackLink() {
   const link = document.getElementById('feedback-link');
   if (!link) return;
-  const body = `Party Planner ${APP_VERSION}\nBrowser: ${navigator.userAgent}\n\nWhat happened:\n`;
+  const body = `Raidsmith ${APP_VERSION}\nBrowser: ${navigator.userAgent}\n\nWhat happened:\n`;
   link.href = `${link.getAttribute('href').split('?')[0]}?body=${encodeURIComponent(body)}`;
 })();
 
@@ -583,6 +583,18 @@ function reachParts(reach) {
   return gains.concat(loss ? [loss] : []).map(r => `${r.name} ${r.delta > 0 ? '+' : ''}${r.delta} ${r.word}`);
 }
 
+// Ember glow on the Optimize button (app.css #btn-optimize.firing). Only the successful-rebuild path calls it.
+// Removing the class, forcing a reflow and adding it again restarts the animation on repeated clicks.
+let emberTimer = null;
+function fireEmber(btn) {
+  if (!btn || !btn.classList) return;
+  btn.classList.remove('firing');
+  void btn.offsetWidth;
+  btn.classList.add('firing');
+  clearTimeout(emberTimer);
+  emberTimer = setTimeout(() => btn.classList.remove('firing'), 1300);
+}
+
 document.getElementById('btn-optimize').addEventListener('click', () => {
   if (!GameVersions[State.gameVersion].modeled) { showToast(GameVersions[State.gameVersion].note); return; }
   if (State.roster.length === 0) { showToast('Import a roster first'); return; }
@@ -606,6 +618,7 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
   for (const it of entry ? entry.items : []) if (it.kind in counts) counts[it.kind]++;
   const reach = diffBuffReach(reachBefore, snapshotBuffReach());
   renderLastRun({ moved: counts.moved, reach });
+  if (pushed && (entry || overridesReset > 0)) fireEmber(document.getElementById('btn-optimize')); // something was rebuilt: no glow for "already optimal"
   const message = optimizeToastMessage({ ...counts, reach, overridesReset });
   ResultLine.show(message); // after the commit above, which clears any earlier result
   // Undo whenever the click pushed a step that changed something: moves, or only reset buff overrides.
@@ -1327,7 +1340,7 @@ document.getElementById('btn-export-backup').addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0, 10);
-  a.href = url; a.download = `party-planner-backup-${stamp}.json`;
+  a.href = url; a.download = `raidsmith-backup-${stamp}.json`;
   a.click();
   URL.revokeObjectURL(url);
   BackupStamp.record(localStorage);

@@ -73,7 +73,7 @@ check('DataBackup.build: bundles only pp_* keys actually present, with a schema/
     unrelated_key: 'should not appear',
   });
   const backup = DataBackup.build(src);
-  assert.equal(backup.schema, 'party-planner-backup');
+  assert.equal(backup.schema, 'raidsmith-backup');
   assert.equal(backup.version, DataBackup.version);
   assert.equal(typeof backup.exportedAt, 'number');
   assert.ok(Object.prototype.hasOwnProperty.call(backup.data, 'pp_rosters'));

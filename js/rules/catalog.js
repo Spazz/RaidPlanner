@@ -1,5 +1,5 @@
 /* ================================================================
-   PARTY PLANNER WEB - rules data: shared catalog
+   RAIDSMITH WEB - rules data: shared catalog
    ----------------------------------------------------------------
    Pure data shared by every game version: classes, roles, specs and their icons, the Raid-Helper maps, and
    the icon, abbreviation and CSS-class lookups of every buff and debuff id (including the ids that only

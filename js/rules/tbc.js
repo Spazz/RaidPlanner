@@ -1,5 +1,5 @@
 /* ================================================================
-   PARTY PLANNER WEB - rules data: TBC
+   RAIDSMITH WEB - rules data: TBC
    ----------------------------------------------------------------
    WoW TBC: party buffs and raid debuffs with their weights, the optimizer tuning numbers, raids and
    utilities.

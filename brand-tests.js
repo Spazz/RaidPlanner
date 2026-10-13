@@ -30,17 +30,17 @@ check('the brand is an <a href="/" id="brand-home"> with the aria-label', () => 
   assert.ok(m, 'no <a class="game-header-brand">');
   assert.match(m[0], /href="\/"/);
   assert.match(m[0], /id="brand-home"/);
-  assert.match(m[0], /aria-label="Party Planner home: load a different plan"/);
+  assert.match(m[0], /aria-label="Raidsmith home: load a different plan"/);
 });
 
 check('the title bar holds an h1.sr-only', () => {
   const bar = html.slice(html.indexOf('<div class="title-bar">'));
-  assert.match(bar.slice(0, 200), /^<div class="title-bar">\s*<h1 class="sr-only">Party Planner<\/h1>/);
+  assert.match(bar.slice(0, 200), /^<div class="title-bar">\s*<h1 class="sr-only">Raidsmith<\/h1>/);
 });
 
 check('brand has pointer, gold hover and focus-visible outline', () => {
   assert.match(css, /\.game-header-brand\s*\{[^}]*cursor:\s*pointer/);
-  assert.match(css, /\.game-header-brand:hover strong\s*\{[^}]*var\(--accent-gold-bright\)/);
+  assert.match(css, /\.game-header-brand:hover strong[^{]*\{[^}]*var\(--accent-gold-bright\)/);
   assert.match(css, /\.game-header-brand:focus-visible\s*\{[^}]*var\(--accent-gold\)/);
 });
 
@@ -135,7 +135,7 @@ check('the title bar runs h1.sr-only, #planner-home (href "/", aria-label), then
   assert.ok(h1 >= 0 && h1 < home && home < name, 'order h1, planner-home, roster-name');
   const tag = bar.match(/<a [^>]*id="planner-home"[^>]*>/)[0];
   assert.match(tag, /href="\/"/);
-  assert.match(tag, /aria-label="Party Planner home: load a different plan"/);
+  assert.match(tag, /aria-label="Raidsmith home: load a different plan"/);
   assert.match(tag, /title="Home: load a different plan"/);
   assert.ok(!/title-home/.test(html + css));
 });
@@ -246,7 +246,7 @@ check('the landing has one brand row: links in the era band, no landing-nav, no 
   assert.ok(!/\.landing-nav|\.features|\.feature\b/.test(css), 'dead CSS removed');
   const landing = sliceBetween(html, '<main class="landing" id="landing-view">', '</main>');
   assert.equal((landing.match(/<h1[ >]/g) || []).length, 1);
-  assert.match(landing, /^<main class="landing" id="landing-view">\s*<h1 class="sr-only">Party Planner<\/h1>/);
+  assert.match(landing, /^<main class="landing" id="landing-view">\s*<h1 class="sr-only">Raidsmith<\/h1>/);
 });
 
 check('the hero wordmark is phone-only', () => {

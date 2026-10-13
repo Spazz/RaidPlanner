@@ -1,5 +1,5 @@
 /* ================================================================
-   PARTY PLANNER WEB - rules data: WoW Forever (beta)
+   RAIDSMITH WEB - rules data: WoW Forever (beta)
    ----------------------------------------------------------------
    WoW Forever (beta): party buffs and raid debuffs with their weights, the optimizer tuning numbers and
    raids. Rules follow the beta data of 2026-10-10 (build 1.60.1.70338); Forever has no faction lock.

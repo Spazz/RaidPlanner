@@ -3,26 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Party Planner - WoW Raid Group Planner</title>
+<title>Raidsmith - WoW Raid Group Planner</title>
 <meta name="description" content="Plan and optimize World of Warcraft raid groups for Classic, TBC and Forever: buff and debuff coverage, a one-click optimizer, drag-and-drop parties, assignments and shareable links.">
 <meta name="theme-color" content="#1b1d1f">
-<meta property="og:site_name" content="Party Planner">
-<meta property="og:title" content="Party Planner - WoW Raid Group Planner">
+<meta property="og:site_name" content="Raidsmith">
+<meta property="og:title" content="Raidsmith - WoW Raid Group Planner">
 <meta property="og:description" content="Plan and optimize WoW raid groups for Classic, TBC and Forever: buff coverage, a one-click optimizer, drag-and-drop parties and shareable links.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://raid-planner-theta.vercel.app/">
 <meta property="og:image" content="https://raid-planner-theta.vercel.app/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Party Planner: five raid party cards under the title Party Planner">
+<meta property="og:image:alt" content="Raidsmith: a gold anvil logo with five ember dots above the name Raidsmith, the tagline Forge optimal raid groups in one click, and five raid group cards">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Party Planner - WoW Raid Group Planner">
+<meta name="twitter:title" content="Raidsmith - WoW Raid Group Planner">
 <meta name="twitter:description" content="Plan and optimize WoW raid groups for Classic, TBC and Forever: buff coverage, a one-click optimizer, drag-and-drop parties and shareable links.">
 <meta name="twitter:image" content="https://raid-planner-theta.vercel.app/og-image.png">
-<meta name="twitter:image:alt" content="Party Planner: five raid party cards under the title Party Planner">
+<meta name="twitter:image:alt" content="Raidsmith: a gold anvil logo with five ember dots above the name Raidsmith, the tagline Forge optimal raid groups in one click, and five raid group cards">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9733;</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><g fill='%23ffb35c'><circle cx='9' cy='14' r='3'/><circle cx='16.5' cy='9' r='3'/><circle cx='24' cy='7' r='3'/><circle cx='31.5' cy='9' r='3'/><circle cx='39' cy='14' r='3'/></g><path d='M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z' transform='translate(0 -1)' fill='%23e0b53d'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
 </head>
@@ -30,7 +30,7 @@
 
 <header class="game-header" id="era-band">
   <div class="game-header-inner">
-    <a href="/" class="game-header-brand" id="brand-home" aria-label="Party Planner home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true">P</span><div><strong>Party Planner</strong></div></a>
+    <a href="/" class="game-header-brand" id="brand-home" aria-label="Raidsmith home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true"><svg class="mark-svg" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="9" cy="14" r="3" fill="#ffb35c"/><circle cx="16.5" cy="9" r="3" fill="#ffb35c"/><circle cx="24" cy="7" r="3" fill="#ffb35c"/><circle cx="31.5" cy="9" r="3" fill="#ffb35c"/><circle cx="39" cy="14" r="3" fill="#ffb35c"/><path d="M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z" transform="translate(0 -1)" fill="currentColor"/></svg></span><div><strong>Raidsmith</strong></div></a>
     <nav class="game-version-nav" aria-label="Game version">
       <button type="button" class="game-version-tab" data-version="classic" aria-pressed="false" aria-label="WoW Classic"><span class="game-name">Classic</span></button>
       <button type="button" class="game-version-tab" data-version="tbc" aria-pressed="true" aria-label="TBC Anniversary"><span class="game-name">TBC</span></button>
@@ -44,14 +44,14 @@
   </div>
 </header>
 <main class="landing" id="landing-view">
-  <h1 class="sr-only">Party Planner</h1>
+  <h1 class="sr-only">Raidsmith</h1>
 
   <section class="hero">
     <div class="hero-copy">
-      <div class="hero-wordmark" aria-hidden="true"><span class="game-header-mark">P</span><strong>Party Planner</strong></div>
+      <div class="hero-wordmark" aria-hidden="true"><span class="game-header-mark"><svg class="mark-svg" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="9" cy="14" r="3" fill="#ffb35c"/><circle cx="16.5" cy="9" r="3" fill="#ffb35c"/><circle cx="24" cy="7" r="3" fill="#ffb35c"/><circle cx="31.5" cy="9" r="3" fill="#ffb35c"/><circle cx="39" cy="14" r="3" fill="#ffb35c"/><path d="M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z" transform="translate(0 -1)" fill="currentColor"/></svg></span><strong>Raidsmith</strong></div>
       <div class="hero-kicker">WoW Classic &middot; TBC Anniversary &middot; WoW Forever Beta</div>
       <p id="landing-version-note"></p>
-      <h2>Optimal raid groups <em>in one click.</em></h2>
+      <h2>Forge optimal raid groups <em>in one click.</em></h2>
       <p>Paste your Raid-Helper sign-ups and get raid groups built to hit harder. No spreadsheet, no login; imports stay in your browser.</p>
       <ul class="hero-points">
         <li>Melee ride with Windfury, casters get their totems, tanks stay with their healers.</li>
@@ -72,7 +72,7 @@
       </div>
 
       <div class="import-pane" data-pane="import">
-        <p>Paste a Raid-Helper event link or ID, its JSON export, a Party Planner share code, or a plain list of players (one per line). Your plans save automatically in this browser.</p>
+        <p>Paste a Raid-Helper event link or ID, its JSON export, a Raidsmith share code, or a plain list of players (one per line). Your plans save automatically in this browser.</p>
         <label for="landing-import" class="sr-only">Raid-Helper link, event ID, JSON, share code or player list</label>
         <textarea class="import-field" id="landing-import" placeholder="https://raid-helper.dev/event/1234567890123456789" spellcheck="false"></textarea>
         <div class="import-formats">Accepts a Raid-Helper link or event ID, JSON, or <button type="button" class="link-btn" id="btn-landing-sample">a player list</button>.</div>
@@ -83,7 +83,7 @@
       </div>
 
       <div class="import-pane" data-pane="saved" hidden>
-        <p class="saved-empty-note">Plans you import or start save here automatically, in this browser only.</p>
+        <p class="saved-empty-note">Nothing on the anvil yet. Plans you import or start save here automatically, in this browser only.</p>
         <h3 class="roster-section-heading saved-full">Your plans</h3>
         <div class="saved-list saved-full" id="landing-saved-list"></div>
         <div class="foot-note saved-full">Saved automatically in this browser only. Clearing site data removes them.</div>
@@ -140,7 +140,7 @@
   <section class="landing-section" id="faq">
     <div class="section-title">Frequently asked questions</div>
     <div class="faq">
-      <details><summary>Is Party Planner free?</summary><p>Yes. There is no account, no login and no paid tier. Everything runs in your browser.</p></details>
+      <details><summary>Is Raidsmith free?</summary><p>Yes. There is no account, no login and no paid tier. Everything runs in your browser.</p></details>
       <details><summary>Where does my roster data go?</summary><p>Imports and saved plans stay in this browser. A live link is stored on our server so others can open it: anyone with the link can see and edit the plan, and it expires 30 days after its last change. A long snapshot link (#r=...) carries the plan inside the link itself, and browsers never send that part to our server.</p></details>
       <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive, so melee end up with Windfury, casters with their totems and auras, and tanks with their healers. Optimize places buffs where they add the most damage, and you can drag anyone afterwards.</p></details>
       <details><summary>What happens when more people sign up than the raid holds?</summary><p>You always keep enough tanks and healers. The remaining seats go to whoever adds the most, and everyone else waits on the bench, where you can swap them in with one click.</p></details>
@@ -154,13 +154,13 @@
       <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes, on Classic Era and TBC — MRT ships maintained builds for both, and its Raid Groups module isn't restricted to Retail. Share &gt; Copy for MRT, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you. WoW Forever support is unconfirmed — MRT has no Forever build yet since Forever is still in beta.</p></details>
       <details><summary>Can I paste a roster that isn't from Raid-Helper?</summary><p>Yes. The import box also accepts a plain list — one player per line or comma-separated, in any of "Name Class Spec", "Name - Spec Class", a Discord-style "@Name (Spec Class)", a WoW /who-style "Name Level 60 Race Class" line, or CSV with an optional header row. You'll see a preview of what was recognized, with anything ambiguous flagged for review and unrecognized lines listed separately, before anything is imported.</p></details>
       <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save a copy, Share &gt; Copy live link, MRT note or raid chat text, and getting back to the plan from the reference comp). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
-      <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open the gear menu at the top right of the planner (More on a phone) and click <strong>Export data backup</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open the same menu and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Party Planner backup is rejected without touching your existing data.</p></details>
-      <details><summary>I dismissed a feature tip and want to see it again</summary><p>Party Planner shows a few one-time callouts pointing at easy-to-miss features (the gear menu, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button></p></details>
+      <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open the gear menu at the top right of the planner (More on a phone) and click <strong>Export data backup</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open the same menu and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Raidsmith backup is rejected without touching your existing data.</p></details>
+      <details><summary>I dismissed a feature tip and want to see it again</summary><p>Raidsmith shows a few one-time callouts pointing at easy-to-miss features (the gear menu, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button></p></details>
     </div>
   </section>
 
   <footer class="landing-footer">
-    <span>Party Planner Web &middot; a multi-version raid planner</span>
+    <span>Raidsmith &middot; forged for raid night</span>
     <span>Built for raid leaders who would rather pull than sort.</span>
     <a class="footer-link" id="feedback-link" href="https://github.com/Spazz/RaidPlanner/issues/new" target="_blank" rel="noopener">Report a problem or suggest a feature</a>
   </footer>
@@ -169,8 +169,8 @@
 <main class="addon-frame" id="app" hidden>
   <!-- Header row: title · plan name + status · Share and the menu (nav slim-down). -->
   <div class="title-bar">
-    <h1 class="sr-only">Party Planner</h1>
-    <a href="/" class="planner-home" id="planner-home" aria-label="Party Planner home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true">P</span></a>
+    <h1 class="sr-only">Raidsmith</h1>
+    <a href="/" class="planner-home" id="planner-home" aria-label="Raidsmith home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true"><svg class="mark-svg" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="9" cy="14" r="3" fill="#ffb35c"/><circle cx="16.5" cy="9" r="3" fill="#ffb35c"/><circle cx="24" cy="7" r="3" fill="#ffb35c"/><circle cx="31.5" cy="9" r="3" fill="#ffb35c"/><circle cx="39" cy="14" r="3" fill="#ffb35c"/><path d="M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z" transform="translate(0 -1)" fill="currentColor"/></svg></span></a>
     <div class="roster-name-wrap plan-only">
       <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">
         <span id="roster-name-text">No Roster Loaded</span>
@@ -236,7 +236,7 @@
           <div role="group" aria-labelledby="menu-heading-data">
             <div class="menu-heading" id="menu-heading-data">Data &amp; help</div>
             <button type="button" class="menu-item" role="menuitem" id="btn-export-backup" aria-label="Download a backup of every saved roster, template and plan stored in this browser">Export data backup</button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-import-backup" aria-label="Restore a Party Planner data backup file">Import data backup&hellip;</button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-import-backup" aria-label="Restore a Raidsmith data backup file">Import data backup&hellip;</button>
             <button type="button" class="menu-item" role="menuitem" id="btn-shortcuts-help" title="Keyboard shortcuts (?)">Keyboard shortcuts</button>
             <button type="button" class="menu-item" role="menuitem" id="btn-show-tips-again" aria-label="Show the first-run feature tips again">Show tips again</button>
           </div>
@@ -247,7 +247,7 @@
 
   <!-- Action row: Optimize · Undo · Redo · Raid size · ideal comp · notes. -->
   <div class="toolbar">
-    <button class="btn btn-primary plan-only" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)"><span class="btn-label">Optimize</span></button>
+    <button class="btn btn-primary plan-only" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)"><span class="btn-label">Optimize</span><span class="spark" aria-hidden="true"></span><span class="spark" aria-hidden="true"></span><span class="spark" aria-hidden="true"></span><span class="spark" aria-hidden="true"></span><span class="spark" aria-hidden="true"></span></button>
     <button type="button" class="btn btn-secondary btn-icon plan-only" id="btn-undo" disabled aria-label="Undo" title="Undo (Ctrl+Z)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 010 12h-3"></path></svg>
       <span class="btn-label">Undo</span>

@@ -51,7 +51,7 @@ check('status bar is a span filled from APP_VERSION', () => {
   assert(html.includes('<span id="status-version"></span>'));
   assert(!/v5\.0/.test(html));
   assert(script.includes("document.getElementById('status-version')"));
-  assert(script.includes('`Party Planner v${APP_VERSION}`'));
+  assert(script.includes('`Raidsmith v${APP_VERSION}`'));
   assert(/^\d+\.\d+\.\d+$/.test(APP_VERSION));
 });
 
@@ -240,7 +240,7 @@ check('the footer feedback link carries the version and browser, encoded', () =>
     globals: { document: { getElementById: id => (id === 'feedback-link' ? link : null) }, navigator: { userAgent: 'Mozilla/5.0 (Test; x&y)' } },
     extraSource: app.slice('(function initFeedbackLink', '// "What\'s new" dismissible badge'),
   });
-  const body = `Party Planner ${APP_VERSION}\nBrowser: Mozilla/5.0 (Test; x&y)\n\nWhat happened:\n`;
+  const body = `Raidsmith ${APP_VERSION}\nBrowser: Mozilla/5.0 (Test; x&y)\n\nWhat happened:\n`;
   assert.equal(link.href, 'https://github.com/Spazz/RaidPlanner/issues/new?body=' + encodeURIComponent(body));
   assert(link.href.includes(encodeURIComponent('Mozilla/5.0 (Test; x&y)')) && !link.href.includes('x&y'));
 });

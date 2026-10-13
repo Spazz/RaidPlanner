@@ -1,5 +1,5 @@
 /* ================================================================
-   PARTY PLANNER WEB — Full TBC Raid Group Builder
+   RAIDSMITH WEB — Full TBC Raid Group Builder
    Ported from the WoW addon Lua codebase
    ================================================================ */
 

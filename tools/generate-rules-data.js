@@ -1,5 +1,5 @@
 /**
- * PartyPlanner Web - rules data generator (one-off, GUARDED: it refuses to run)
+ * Raidsmith Web - rules data generator (one-off, GUARDED: it refuses to run)
  * Run: node tools/generate-rules-data.js   (throws at once, see the guard below)
  *
  * RECORD OF THE MAPPING, NOT A TOOL. This script wrote the data files on 2026-10-11 (Phase 1 of
@@ -430,7 +430,7 @@ function headerComment({ title, summary, research }) {
   ];
   const rule = '='.repeat(64);
   const body = paragraphs.flatMap((text, i) => [...(i ? [''] : []), ...wrap(text, 106)]).map(line => (line ? `   ${line}` : ''));
-  return ['/* ' + rule, `   PARTY PLANNER WEB - rules data: ${title}`, '   ' + '-'.repeat(64), ...body, '   ' + rule + ' */'].join('\n');
+  return ['/* ' + rule, `   RAIDSMITH WEB - rules data: ${title}`, '   ' + '-'.repeat(64), ...body, '   ' + rule + ' */'].join('\n');
 }
 
 /** A whole data file: header, the RulesData namespace line, then `RulesData.<name> = { sections };`. */

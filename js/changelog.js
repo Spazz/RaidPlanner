@@ -3,8 +3,13 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.4.0';
+const APP_VERSION = '4.4.1';
 const CHANGELOG = [
+  { version: '4.4.1', date: '2026-10-13', title: 'Party Planner is now Raidsmith', changes: [
+    'The app is now called Raidsmith, with a new anvil logo and a new tab icon.',
+    'Primary buttons are now molten amber, and Optimize flashes an ember glow when it rebuilds your groups.',
+    'Your saved plans, share links and data backups carry over unchanged, and backups from before the rename still restore.',
+  ] },
   { version: '4.4.0', date: '2026-10-13', title: 'One header row, Coverage grouped by fix and a player editor panel', changes: [
     'The planner has one header row: the P mark takes you home, and the version button (for example TBC) switches the game version. The start page has one brand row.',
     'Coverage lists what is missing by how to fix it: Fix now (Switch or Swap In), Needs a recruit (the spec that would bring it) and Covered behind a toggle.',

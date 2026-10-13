@@ -1,5 +1,5 @@
 /* ================================================================
-   PARTY PLANNER WEB - rules data: Classic Era
+   RAIDSMITH WEB - rules data: Classic Era
    ----------------------------------------------------------------
    WoW Classic Era: party buffs and raid debuffs with their weights, the optimizer tuning numbers, raids and
    utilities. Faction-aware: Horde shamans, Alliance paladins.

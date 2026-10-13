@@ -520,7 +520,9 @@ const BackupStamp = {
 // what catches corruption here — no separate validation logic to drift out
 // of sync with the readers themselves).
 const DataBackup = {
-  schema: 'party-planner-backup',
+  schema: 'raidsmith-backup',
+  // Files written before the 4.4.1 rename carry the old schema name; they stay valid.
+  legacySchemas: ['party-planner-backup'],
   version: 1,
   // Kept in one place so a future new pp_* key only needs adding here (and,
   // if it has its own shape, to _checkKey/_merge below) to be covered.
@@ -624,8 +626,8 @@ const DataBackup = {
   // storage — safe to call on a freshly-read file before showing the user
   // anything, and again inside apply() so nothing downstream can skip it.
   validate(obj) {
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { valid: false, errors: ['Not a Party Planner backup file.'] };
-    if (obj.schema !== this.schema) return { valid: false, errors: ['Unrecognized backup file — expected a Party Planner backup.'] };
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { valid: false, errors: ['Not a Raidsmith backup file.'] };
+    if (obj.schema !== this.schema && !this.legacySchemas.includes(obj.schema)) return { valid: false, errors: ['Unrecognized backup file — expected a Raidsmith backup.'] };
     if (!Number.isFinite(obj.version)) return { valid: false, errors: ['Backup is missing a version number.'] };
     if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) return { valid: false, errors: ['Backup file has no data.'] };
     const errors = [];

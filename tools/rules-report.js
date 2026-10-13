@@ -1,5 +1,5 @@
 /**
- * PartyPlanner Web - rules report (read-only)
+ * Raidsmith Web - rules report (read-only)
  * Run: node tools/rules-report.js <tbc|classic|forever> [--json]
  *
  * Prints what the optimizer will use for one game version, so a hand edit of js/rules/<version>.js can be reviewed at a glance

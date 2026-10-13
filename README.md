@@ -1,8 +1,12 @@
-# Party Planner
+# Raidsmith
+
+*Raidsmith was formerly called Party Planner (renamed in 4.4.1). Saved plans, share links, backup files and the `pp_*` storage keys are unchanged, so everything made under the old name still works.*
 
 A raid group planner for World of Warcraft Classic Era, TBC Anniversary and WoW Forever. Import a Raid-Helper sign-up list (or paste a roster), let the optimizer lay out the parties for buff and debuff coverage, adjust by drag and drop, then share a link, copy raid chat text, or export an MRT note.
 
 Production: https://raid-planner-theta.vercel.app
+
+**When the domain changes**, update these three places in `index.html` (all still point at `raid-planner-theta.vercel.app`): `og:url`, `og:image` and `twitter:image`. Then update the host the tests pin: `SITE` in `head-tests.js` and the og-image line in `deploy-tests.js`.
 
 It is a static site with no build step and no npm dependencies: `index.html`, `app.css` and sixteen plain `<script src>` files (twelve under `js/`, the four rules data files under `js/rules/`), plus one serverless function (`api/share.js`) for short and live share links.
 

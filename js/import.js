@@ -696,7 +696,7 @@ const Import = {
   // asked before their current layout is replaced.
   previewShareString(str) {
     const parts = String(str || '').trim().split(':');
-    if (parts[0] !== 'PP') return { success:false, error:'Not a Party Planner share link' };
+    if (parts[0] !== 'PP') return { success:false, error:'Not a Raidsmith share link' };
     if (parts[1] !== '2') return { success:false, error:'Unknown share version: ' + parts[1] };
     const parsed = this._parseShareString(parts);
     if (!parsed.success) return parsed;
@@ -717,7 +717,7 @@ const Import = {
     const rcRev = {}; for (const [k,v] of Object.entries(this.roleCode)) rcRev[v] = k;
 
     const parts = String(str || '').trim().split(':');
-    if (parts[0] !== 'PP') return { success:false, error:'Not a Party Planner export string' };
+    if (parts[0] !== 'PP') return { success:false, error:'Not a Raidsmith export string' };
     const version = parts[1];
     if (version === '2') return this._importShareString(parts);
     if (version !== '1') return { success:false, error:'Unknown export version: ' + version };

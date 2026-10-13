@@ -221,7 +221,7 @@ function importEnv(fetchImpl) {
 
   await check('the import card copy', () => {
     const html = app.html.replace(/\r\n/g, '\n');
-    assert(html.includes('Paste a Raid-Helper event link or ID, its JSON export, a Party Planner share code, or a plain list of players (one per line). Your plans save automatically in this browser.'));
+    assert(html.includes('Paste a Raid-Helper event link or ID, its JSON export, a Raidsmith share code, or a plain list of players (one per line). Your plans save automatically in this browser.'));
     assert(html.includes('placeholder="https://raid-helper.dev/event/1234567890123456789"'));
     assert(html.includes('>Raid-Helper link, event ID, JSON, share code or player list</label>'));
   });
@@ -302,7 +302,7 @@ function importEnv(fetchImpl) {
   await check("Your plans pane: both lists empty -> one message and the restore row; either list filled -> today's pane", () => {
     const html = app.html.replace(/\r\n/g, '\n');
     const pane = html.slice(html.indexOf('data-pane="saved"'), html.indexOf('class="import-foot"'));
-    assert(pane.includes('<p class="saved-empty-note">Plans you import or start save here automatically, in this browser only.</p>'));
+    assert(pane.includes('<p class="saved-empty-note">Nothing on the anvil yet. Plans you import or start save here automatically, in this browser only.</p>'));
     assert.equal((pane.match(/id="btn-landing-restore"/g) || []).length, 1, 'one restore button');
     for (const hidden of ['>Your plans</h3>', 'id="landing-saved-list"', 'class="foot-note', '>Recent imports</h3>', 'Original import snapshots', 'id="landing-history-list"']) {
       const at = pane.indexOf(hidden);
