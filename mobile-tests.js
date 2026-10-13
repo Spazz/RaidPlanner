@@ -532,6 +532,20 @@ check('the drawer follows the title bar and stops following when the editor clos
   assert.equal(editor.style.top, '0px', 'no title bar: the drawer starts at the top');
 });
 
+check('the first-run tip is skipped, still unseen, when there is no room left of the drawer', () => {
+  const src = between(renderJs, 'function showSpotlightCallout', '// Small, hand-curated');
+  const seen = [];
+  const rectOf = left => ({ getBoundingClientRect: () => ({ left, top: 100, bottom: 140, right: left + 300, width: 300, height: 40 }) });
+  const ctx = vm.createContext({
+    document: { querySelector: () => null }, window: { innerWidth: 640, innerHeight: 700 },
+    localStorage: {}, Spotlight: { dismiss: (_, id) => seen.push(id) }, esc: s => s,
+  });
+  vm.runInContext(src + '\nthis.api = showSpotlightCallout;', ctx);
+  const show = (edgeLeft) => ctx.api('x', rectOf(300), 'text', { side: 'left', edgeEl: rectOf(edgeLeft) });
+  assert.equal(show(240), false, 'drawer at 240 leaves no room for a 260px tip');
+  assert.equal(seen.length, 0, 'and the tip is not marked seen');
+});
+
 check('drawer CSS: 380px, fixed to the right edge, outside the phone block; no text under 12px', () => {
   const norm = css.replace(/\r\n/g, '\n');
   const base = norm.slice(0, norm.lastIndexOf('/* ── Slim phone layout'));
@@ -546,6 +560,10 @@ check('drawer CSS: 380px, fixed to the right edge, outside the phone block; no t
   assert.match(phoneBlock, /\.player-editor \{[^}]*position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0;/, 'the phone block still makes it a bottom sheet');
   assert.match(phoneBlock, /\.pe-chip \{[^}]*height: 44px; min-height: 44px/, 'phone chips are 44px tall');
   assert.match(phoneBlock, /\.pe-swap-row \{ height: 44px/, 'phone swap rows are 44px tall');
+  assert.match(phoneBlock, /\.pe-chip-room \.pe-chip-count \{ color: var\(--success\)/, 'a room chip is highlighted on phones');
+  assert.match(phoneBlock, /\.pe-chip-current \.pe-chip-count \{ color: var\(--accent-gold\)/);
+  assert.match(css, /\.pe-section-title, \.player-why-here h4 \{\s*font-family: var\(--font-cond\); font-size: 12px/, 'section headings are 12px');
+  assert.match(renderJs, /if \(!c\.disabled\) c\.setAttribute\('aria-pressed'/, 'the current chip gets no aria-pressed');
   assert.match(css, /\.spotlight-callout\.arrow-right::before/);
 });
 

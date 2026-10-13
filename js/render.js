@@ -2159,6 +2159,9 @@ function showSpotlightCallout(id, anchorEl, text, opts = {}) {
   // reach) would otherwise be placed off-screen too. Skip silently rather
   // than mark it seen — leaves it eligible to show next time it's in view.
   if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) return false;
+  // No room left of the drawer: skip without marking it seen, so it shows on a later open that has room.
+  if (opts.side === 'left' && opts.edgeEl
+      && opts.edgeEl.getBoundingClientRect().left - Math.min(260, window.innerWidth - 24) - 14 < 8) return false;
   Spotlight.dismiss(localStorage, id);
 
   const callout = document.createElement('div');
@@ -2643,7 +2646,7 @@ function showPlayerEditor(anchorEl, opts) {
     }
     editor.querySelectorAll('[data-move-group]').forEach(c => {
       c.classList.toggle('pe-chip-pick', c === chip);
-      c.setAttribute('aria-pressed', String(c === chip));
+      if (!c.disabled) c.setAttribute('aria-pressed', String(c === chip));
     });
     moveDetail.innerHTML = moveSwapListHTML(opts.uid, groupIdx);
   });
