@@ -300,7 +300,7 @@ check('phone-only chrome is hidden outside the media query', () => {
 
 check('phone block defines the sheet views, the zoom reset and the fixed row heights', () => {
   for (const frag of ['.addon-frame { zoom: 1;', '.player-editor:not(.pe-more-open) .pe-more-only { display: none; }',
-    '.player-editor.pe-more-open .pe-short-only', 'height: 44px', 'height: 40px', 'height: 60px']) {
+    '.player-editor.pe-more-open .pe-short-only', 'height: 44px', 'height: 40px', 'height: calc(60px + env(safe-area-inset-bottom']) {
     assert.ok(phoneBlock.includes(frag), frag);
   }
 });
@@ -309,6 +309,78 @@ check('no inline style or handler attributes in the new markup', () => {
   const INLINE = /[\s`'"](?:style|on[a-z]{3,})\s*=\s*(?:["'`\\]|\$\{)/i;
   assert.doesNotMatch(between(html, '<main class="addon-frame" id="app"', '<!-- These raw export formats'), INLINE);
   assert.doesNotMatch(editorViews().tpl, INLINE);
+});
+
+
+// ── Phone sizing (4.3.0) ───────────────────────────────────────────
+const rule = (sel, src = phoneBlock) => {
+  const line = src.replace(/\r\n/g, '\n').split('\n').find(l => l.trim().startsWith(sel + ' {'));
+  assert.ok(line, 'phone block has a rule for ' + sel);
+  return line;
+};
+
+check('phone banner actions stack full width at 44px with 13px text; banner text is 14px / 1.4', () => {
+  assert.match(rule('.sync-banner-actions'), /flex-direction: column/);
+  assert.match(rule('.sync-banner-actions'), /width: 100%/);
+  const btn = rule('.sync-banner .btn, .sync-banner .link-btn, .sync-banner-actions .btn');
+  assert.match(btn, /width: 100%/);
+  assert.match(btn, /min-height: 44px/);
+  assert.match(btn, /font-size: 13px/);
+  assert.match(rule('.sync-banner'), /font-size: 14px; line-height: 1\.4/);
+});
+
+check('the landing import card is ordered before the hero text without touching the DOM', () => {
+  assert.match(rule('.hero .import-card'), /order: 1/);
+  assert.match(rule('.hero .hero-copy'), /order: 2/);
+  const hero = between(html, '<section class="hero">', '</section>');
+  assert.ok(hero.indexOf('class="hero-copy"') < hero.indexOf('id="import-card"'), 'DOM order is unchanged');
+});
+
+check('Coverage rail text and the Switch / Swap in button reach the approved sizes', () => {
+  assert.match(rule('.buff-row-name'), /font-size: 13px/);
+  assert.match(rule('.buff-row-insight'), /font-size: 12px/);
+  assert.match(rule('.buff-row-source'), /font-size: 11px/);
+  const b = rule('.insight-btn');
+  assert.match(b, /min-height: 36px/);
+  assert.match(b, /font-size: 12px/);
+  assert.match(b, /padding: 0 14px/);
+  assert.match(rule('.buff-row-icon'), /width: 22px; height: 22px/);
+});
+
+check('version tabs, raid size buttons and the plan-name toggle get 44px hit areas', () => {
+  assert.match(rule('.game-version-tab::before'), /inset: -8px 0/);
+  assert.match(rule('#raid-size-phone-slot .raid-size-seg button::before'), /inset: -7px 0/);
+  assert.match(rule('.phone-summary::before'), /inset: -8px 0/);
+  assert.ok(phoneBlock.includes('.phone-summary { position: relative; }'));
+});
+
+check('the 7px fallback label inside buff icons is hidden on phones', () => {
+  assert.match(rule('.buff-icon .buff-label'), /display: none/);
+});
+
+check('the bench is one column at phone width and no 560px two-column rule remains', () => {
+  assert.match(rule('.bench-list'), /grid-template-columns: minmax\(0, 1fr\)/);
+  assert.doesNotMatch(css, /max-width:\s*560px\)\s*\{\s*\.bench-list/);
+  // The only two-column bench rule left is the 900px one; the phone rule above overrides it.
+  const twoCol = css.replace(/\r\n/g, '\n').split('\n').filter(l => /\.bench-list \{ grid-template-columns: repeat\(2/.test(l));
+  assert.equal(twoCol.length, 1);
+});
+
+check('the tray status tabs wrap on phones instead of scrolling', () => {
+  const r = rule('.tray-tabs');
+  assert.match(r, /flex-wrap: wrap/);
+  assert.match(r, /overflow-x: visible/);
+});
+
+check('the viewport covers the safe area; the bottom bar and frame pad for the inset', () => {
+  assert.match(html, /<meta name="viewport" content="[^"]*viewport-fit=cover/);
+  assert.match(rule('#phone-action-bar'), /padding: 8px 8px calc\(8px \+ env\(safe-area-inset-bottom, 0px\)\)/);
+  assert.match(rule('.addon-frame'), /calc\(68px \+ env\(safe-area-inset-bottom/);
+});
+
+check('the reference view status bar reads "Reference N-man comp"', () => {
+  assert.match(appJs, /textContent = `Reference \$\{raidInfo\.size\}-man comp`/);
+  assert.doesNotMatch(appJs, /Ideal \$\{raidInfo/);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

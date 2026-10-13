@@ -958,9 +958,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 @media (max-width: 900px) {
   .bench-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 560px) {
-  .bench-list { grid-template-columns: minmax(0, 1fr); }
-}
 
 /* ── Player editor popover ── */
 .player-editor-overlay { position: fixed; inset: 0; z-index: 99; background: transparent; }
@@ -1420,7 +1417,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .sidebar-summary { flex-wrap: wrap; }
 
   .groups-container { padding: var(--sp-2); }
-  .bench-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .status-bar { flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--sp-1) var(--sp-2); }
   .manual-changes-section { margin: var(--sp-2) var(--sp-2) 0; }
   .buff-bar { gap: 2px; }
@@ -1760,7 +1756,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
    are real CSS pixels. */
 .phone-summary-wrap, .pe-sheet-handle, .pe-sheet-header, .pe-more-row { display:none; }
 @media (max-width: 600px) {
-  .addon-frame { zoom: 1; padding-bottom: 68px; }
+  .addon-frame { zoom: 1; padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
   /* The toast sits at the top, under the 40px header and above the player editor sheet (z-index 200). */
   .toast { zoom: 1; top: calc(env(safe-area-inset-top, 0px) + 44px); bottom: auto; left: 12px; right: 12px; font-size: 13px; z-index: 300; transform: translateY(-10px); }
 
@@ -1777,6 +1773,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .game-version-tab[aria-pressed="true"] .game-name { font-weight: 700; }
   .game-version-tab[aria-pressed="true"] .game-beta { color: var(--text-on-accent); border-color: var(--text-on-accent); }
   .game-version-tab:focus-visible { outline-offset: -3px; }
+  .game-version-tab::before { content: ''; position: absolute; inset: -8px 0; }
   .game-beta { font-size: 8px; margin-left: 4px; padding: 1px 3px; }
 
   /* Header row and action row are hidden: their controls move to the context row, the
@@ -1795,11 +1792,14 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   }
   .phone-summary-main { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .phone-summary-edit { font-size: 12px; color: var(--accent-gold); white-space: nowrap; }
+  .phone-summary { position: relative; }
+  .phone-summary::before { content: ''; position: absolute; inset: -8px 0; }
   .phone-summary:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
   .phone-summary-line2 { display: flex; align-items: center; gap: 10px; min-height: 30px; font-size: 12px; color: var(--text-muted); }
   .phone-summary-sub { white-space: nowrap; }
   #raid-size-phone-slot .raid-size-label { display: none; }
-  #raid-size-phone-slot .raid-size-seg button { min-height: 30px; padding: 0 12px; font-size: 12px; }
+  #raid-size-phone-slot .raid-size-seg button { position: relative; min-height: 30px; padding: 0 12px; font-size: 12px; }
+  #raid-size-phone-slot .raid-size-seg button::before { content: ''; position: absolute; inset: -7px 0; }
   .phone-missing-slot { margin-left: auto; }
   .phone-missing-slot .summary-missing { display: flex; align-items: center; gap: 0.3em; min-height: 44px; margin: -7px 0; font-size: 12px; }
   .phone-context-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; border-top: 1px solid var(--border-subtle); }
@@ -1835,7 +1835,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .buff-bar { padding: 4px 10px; }
 
   /* Bottom action bar: 60px. */
-  #phone-action-bar { height: 60px; padding: 8px; box-sizing: border-box; gap: 6px; }
+  #phone-action-bar { height: calc(60px + env(safe-area-inset-bottom, 0px)); padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; gap: 6px; }
   #phone-bar-undo-slot { flex: 0 0 44px; }
   #phone-bar-optimize-slot { flex: 1 1 0; }
   #phone-bar-share-slot, #btn-phone-more { flex: 0 0 70px; }
@@ -1908,4 +1908,29 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .player-editor:not(.pe-more-open) .pe-more-only { display: none; }
   .player-editor.pe-more-open .pe-short-only, .player-editor.pe-more-open .pe-fields,
   .player-editor.pe-more-open #pe-remove { display: none; }
+  /* Banners: actions stack full width at 44px; text 14px (M0-7). */
+  .sync-banner { font-size: 14px; line-height: 1.4; }
+  .sync-banner-actions { flex-direction: column; align-items: stretch; gap: 8px; width: 100%; }
+  .sync-banner .btn, .sync-banner .link-btn, .sync-banner-actions .btn { display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 100%; min-height: 44px; font-size: 13px; }
+
+  /* Landing: the import card comes before the hero text (M0-8). Visual order only; the DOM is unchanged. */
+  .hero .import-card { order: 1; }
+  .hero .hero-copy { order: 2; }
+
+  /* Coverage rail (M0-13). */
+  .buff-row { gap: 8px; }
+  .buff-row-icon { width: 22px; height: 22px; font-size: 8px; }
+  .buff-row-name { font-size: 13px; }
+  .buff-row-insight { padding-left: 33px; font-size: 12px; }
+  .buff-row-source { font-size: 11px; }
+  .insight-btn { display: flex; align-items: center; min-height: 36px; padding: 0 14px; font-size: 12px; }
+
+  /* The 7px abbreviation inside buff icons is unreadable on a phone; aria-label and title carry the name. */
+  .buff-icon .buff-label { display: none; }
+
+  /* Bench: one column (the 900px rule would otherwise give two). */
+  .bench-list { grid-template-columns: minmax(0, 1fr); }
+
+  /* Tray status tabs wrap instead of scrolling sideways. */
+  .tray-tabs { flex-wrap: wrap; overflow-x: visible; }
 }

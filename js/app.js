@@ -1949,7 +1949,7 @@ function renderIdealComp() {
   const balanceEl = document.getElementById('balance-warnings');
   if (balanceEl) balanceEl.innerHTML = '';
 
-  document.getElementById('status-text').textContent = `Ideal ${raidInfo.size}-man comp`;
+  document.getElementById('status-text').textContent = `Reference ${raidInfo.size}-man comp`;
 }
 
 // Reference comp is a quiet link in the action row (desktop) and the Edit body (phone).
