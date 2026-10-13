@@ -188,12 +188,12 @@ return { ${exported.join(', ')} };
 
   // ── U3: version switch ────────────────────────────────────────────
   const versionSrc = app.slice('async function switchGameVersion', 'function renderRaidSizeControl');
-  function makeVersionEnv({ work = true, answer = true, benched = 0, view = 'app' } = {}) {
+  function makeVersionEnv({ work = true, answer = true, benched = 0, view = 'app', toastNote } = {}) {
     const log = { confirm: [], toasts: [], tabs: [], initGroups: 0, landing: 0 };
     const deps = {
       GameVersions: {
         tbc: { name: 'WoW TBC', defaultRaid: 'bt', note: 'TBC note.' },
-        classic: { name: 'WoW Classic', defaultRaid: 'mc', note: 'Classic note.' },
+        classic: { name: 'WoW Classic', defaultRaid: 'mc', note: 'Classic note.', ...(toastNote ? { toastNote } : {}) },
       },
       Config: { Raids: { bt: { size: 25 }, mc: { size: 40 }, kara: { size: 10 } } },
       State: { view, gameVersion: 'tbc', selectedRaid: 'bt', planId: 'plan:1', buffOverrides: { '0:a:air': 'GRACE_OF_AIR' }, preferredSlots: [{ group: 0 }] },
@@ -240,6 +240,15 @@ return { ${exported.join(', ')} };
     env = makeVersionEnv({ benched: 0 });
     await env.switchGameVersion('classic');
     assert.equal(env.log.toasts[0], 'Classic note.');
+  });
+
+  await check('the version-switch toast prefers the short toastNote and falls back to note', async () => {
+    let env = makeVersionEnv({ toastNote: 'Short classic note.' });
+    await env.switchGameVersion('classic');
+    assert.equal(env.log.toasts[0], 'Short classic note.');
+    env = makeVersionEnv({ benched: 2, toastNote: 'Short classic note.' });
+    await env.switchGameVersion('classic');
+    assert.match(env.log.toasts[0], /^2 players benched: the 40-man raid is full\. Short classic note\.$/);
   });
 
   await check('switching version from the landing view re-renders it so the resume banner is current', async () => {
@@ -330,7 +339,7 @@ return { ${exported.join(', ')} };
     const src = app.slice('// ── SHARED IMPORT RUNNER', "document.getElementById('btn-plain-import-cancel')");
     const els = {
       inp: { value: 'data', focus() {} },
-      btn: { disabled: false },
+      btn: { disabled: false, textContent: 'Load', setAttribute() {}, removeAttribute() {} },
       st: { textContent: '', classList: { toggle() {} } },
     };
     const document = { getElementById: id => els[id] };
@@ -373,21 +382,30 @@ return { ${exported.join(', ')} };
   const toastSrc = app.slice('function optimizeToastMessage', "document.getElementById('btn-optimize')");
   await check('the Optimize toast reports reset buff overrides, and only when there were some', () => {
     const { optimizeToastMessage } = app.sandbox(['optimizeToastMessage'], { extraSource: toastSrc }).api;
-    assert.equal(optimizeToastMessage({ moved: 4, buffDelta: 3, overridesReset: 0 }), 'Optimized: +3 buffs, 4 players moved');
-    assert.equal(optimizeToastMessage({ moved: 4, buffDelta: -1, overridesReset: 1 }), 'Optimized: -1 buffs, 4 players moved. 1 buff override reset');
-    assert.equal(optimizeToastMessage({ moved: 2, buffDelta: 0, overridesReset: 3 }), 'Optimized: +0 buffs, 2 players moved. 3 buff overrides reset');
-    assert.equal(optimizeToastMessage({ moved: 0, buffDelta: 0, overridesReset: 0 }), 'Already optimal — nothing moved');
-    assert.equal(optimizeToastMessage({ moved: 0, buffDelta: 0, overridesReset: 2 }), 'Already optimal — nothing moved. 2 buff overrides reset');
-    assert.equal(optimizeToastMessage({ moved: 12, benched: 3, seated: 3, buffDelta: 2, overridesReset: 0 }), 'Optimized: +2 buffs, 3 benched, 3 seated, 12 players moved');
-    assert.equal(optimizeToastMessage({ moved: 0, benched: 1, seated: 0, buffDelta: 0, overridesReset: 0 }), 'Optimized: +0 buffs, 1 benched, 0 players moved');
+    const wf = { id: 'windfury', name: 'Windfury', delta: 4, word: 'melee' };
+    const woa = { id: 'woa', name: 'Wrath of Air', delta: 5, word: 'casters' };
+    const third = { id: 'x', name: 'Third', delta: 1, word: 'players' };
+    const shout = { id: 'shout', name: 'Battle Shout', delta: -2, word: 'melee' };
+    assert.equal(optimizeToastMessage({ moved: 4, reach: [], overridesReset: 0 }), 'Optimized: 4 moved.');
+    assert.equal(optimizeToastMessage({ moved: 8, benched: 1, reach: [woa, wf], overridesReset: 0 }), 'Optimized: 8 moved, 1 benched. Wrath of Air +5 casters, Windfury +4 melee.');
+    assert.equal(optimizeToastMessage({ moved: 12, benched: 3, seated: 3, reach: [], overridesReset: 0 }), 'Optimized: 12 moved, 3 benched, 3 seated.');
+    assert.equal(optimizeToastMessage({ moved: 0, benched: 1, reach: [], overridesReset: 0 }), 'Optimized: 0 moved, 1 benched.');
+    // Two gains at most, then the largest loss.
+    assert.equal(optimizeToastMessage({ moved: 4, reach: [woa, wf, third, shout, { id: 'y', name: 'Other', delta: -1, word: 'tanks' }], overridesReset: 0 }),
+      'Optimized: 4 moved. Wrath of Air +5 casters, Windfury +4 melee, Battle Shout -2 melee.');
+    assert.equal(optimizeToastMessage({ moved: 2, reach: [], overridesReset: 3 }), 'Optimized: 2 moved. 3 buff overrides reset');
+    assert.equal(optimizeToastMessage({ moved: 4, reach: [wf], overridesReset: 1 }), 'Optimized: 4 moved. Windfury +4 melee. 1 buff override reset');
+    assert.equal(optimizeToastMessage({ moved: 0, reach: [], overridesReset: 0 }), 'Already optimal — nothing moved');
+    assert.equal(optimizeToastMessage({ moved: 0, reach: [wf], overridesReset: 0 }), 'Already optimal — nothing moved', 'no reach part when nothing moved');
+    assert.equal(optimizeToastMessage({ moved: 0, reach: [], overridesReset: 2 }), 'No moves needed. 2 buff overrides reset');
   });
 
   await check('the Optimize click counts the overrides before it clears them', () => {
     const at = app.script.indexOf("getElementById('btn-optimize').addEventListener('click'");
-    const body = app.script.slice(at, at + 1200);
+    const body = app.script.slice(at, at + 2400);
     const count = body.indexOf('Object.keys(State.buffOverrides).length');
     assert(count > 0 && count < body.indexOf('State.buffOverrides = {}'));
-    assert(/optimizeToastMessage\(\{ moved, benched, seated, buffDelta, overridesReset \}\)/.test(body));
+    assert(/optimizeToastMessage\(\{ \.\.\.counts, reach, overridesReset \}\)/.test(body));
   });
 
   // ── U9: one sr-only status region ─────────────────────────────────

@@ -152,12 +152,72 @@ document.getElementById('confirm-dialog').addEventListener('close', e => Modal.s
 // One shared timer: a toast that arrives while another is showing restarts the
 // countdown instead of being hidden by the earlier toast's timeout.
 let toastTimer = null;
-function showToast(msg) {
+let toastWired = false;
+const TOAST_BASE_MS = 2500;
+const TOAST_FREE_CHARS = 50;
+const TOAST_MS_PER_EXTRA_CHAR = 50;
+const TOAST_MAX_MS = 8000;
+
+// 2.5 s up to 50 characters, plus 50 ms per extra character, capped at 8 s.
+// A toast with an action always stays 8 s so there is time to reach the button.
+function toastDuration(msg, opts) {
+  if (opts.duration > 0) return opts.duration;
+  if (opts.action) return TOAST_MAX_MS;
+  const extra = Math.max(0, String(msg).length - TOAST_FREE_CHARS);
+  return Math.min(TOAST_MAX_MS, TOAST_BASE_MS + extra * TOAST_MS_PER_EXTRA_CHAR);
+}
+
+function hideToast(toast) {
+  clearTimeout(toastTimer);
+  toast.classList.remove('visible');
+}
+
+// Wired on the first toast. Esc dismisses only when the keydown was not handled
+// elsewhere and no dialog or player editor was open when it arrived. Menus call
+// preventDefault; the editor removes itself on the same keydown, so its state is
+// recorded in the capture phase, before it can close.
+function wireToast(toast) {
+  if (toastWired || typeof toast.addEventListener !== 'function') return;
+  toastWired = true;
+  let overlayOpen = false;
+  toast.addEventListener('click', e => {
+    if (e.target && e.target.closest && e.target.closest('.toast-action')) return;
+    hideToast(toast);
+  });
+  window.addEventListener('keydown', () => {
+    overlayOpen = !!document.querySelector('dialog[open], #active-player-editor, .spotlight-callout');
+  }, true);
+  window.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || e.defaultPrevented || overlayOpen) return;
+    if (!toast.classList.contains('visible')) return;
+    hideToast(toast);
+  });
+}
+
+function showToast(msg, opts = {}) {
   const toast = document.getElementById('toast');
-  toast.textContent = msg;
+  wireToast(toast);
+  const action = opts.action;
+  if (action) {
+    const text = document.createElement('span');
+    text.textContent = msg;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast-action';
+    button.textContent = action.label;
+    button.addEventListener('click', () => {
+      hideToast(toast);
+      if (action.onClick) action.onClick();
+    });
+    toast.textContent = '';
+    toast.appendChild(text);
+    toast.appendChild(button);
+  } else {
+    toast.textContent = msg;
+  }
   toast.classList.add('visible');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('visible'), 2500);
+  toastTimer = setTimeout(() => toast.classList.remove('visible'), toastDuration(msg, opts));
 }
 
 // ── CLIPBOARD ───────────────────────────────────────────────────
@@ -235,6 +295,23 @@ function showSaveOutcome(outcome) {
   mirrorSaveStatus();
 }
 
+// The one-line answer to "what did that just do": under the readiness line on desktop,
+// a slim strip above Group 1 on phones. Shown AFTER an action's own commit (that commit
+// goes through persistWorkingPlan, which clears the line); any later change clears it.
+const ResultLine = {
+  show(text) {
+    const el = document.getElementById('result-line');
+    const textEl = document.getElementById('result-line-text');
+    if (!el || !textEl) return;
+    textEl.textContent = text;
+    el.hidden = false;
+  },
+  hide() {
+    const el = document.getElementById('result-line');
+    if (el) el.hidden = true;
+  },
+};
+
 function persistWorkingPlan() {
   const result = PlanSession.observe();
   TabWatch.dropIfElsewhere();
@@ -242,7 +319,7 @@ function persistWorkingPlan() {
   const status = document.getElementById('autosave-status');
   if (result) {
     // Any change to the plan retires the "updated by someone else" Undo, which would drop it.
-    if (result.changed) { RemoteUpdate.hide(); TabWatch.hide(); }
+    if (result.changed) { RemoteUpdate.retireUndo(); TabWatch.hide(); ResultLine.hide(); }
     if (result.changed || status.dataset.failed) {
       try { PlanStore.saveSoon(localStorage, result.current, showSaveOutcome); }
       catch { showSaveOutcome({ ok: false }); }
@@ -271,7 +348,11 @@ function renderPhoneSummary() {
 }
 
 function undoPlanChange() {
+  // An Optimize entry belongs to the step it pushed; undoing that step drops the entry (compare before popping).
+  const top = PlanSession.undo[PlanSession.undo.length - 1];
+  const optimizeEntry = top ? ChangeLog.entries.find(e => e.undoRef === top) : null;
   if (!PlanSession.undoLast()) return;
+  if (optimizeEntry) ChangeLog.remove(optimizeEntry.id);
   closePlayerEditor(); closeBuffPicker();
   initGroups(); commit(); renderLastRun(null);
   RaidHelperSync.hideBanner();
@@ -286,6 +367,11 @@ function redoPlanChange() {
   showToast('Change redone');
 }
 
+document.getElementById('btn-result-dismiss')?.addEventListener('click', () => {
+  ResultLine.hide();
+  document.getElementById('readiness-text')?.focus(); // the dismiss button just vanished
+});
+
 function renderReadiness() {
   lastReadiness = null;
   if (!GameVersions[State.gameVersion].modeled) {
@@ -296,23 +382,25 @@ function renderReadiness() {
   const floors = Optimizer.floorsFor(Config.Raids[State.selectedRaid]?.size || 25);
   const tanks = State.roster.filter(p => p.role === 'tank').length;
   const healers = State.roster.filter(p => p.role === 'healer').length;
-  const missing = Object.keys(getMissingBuffInsights()).filter(id => Config.Buffs[id]).length;
-  const tankText = tanks < floors.tank ? `${floors.tank - tanks} tank${floors.tank - tanks === 1 ? '' : 's'} short` : `${tanks} tank slots filled`;
-  const healerText = healers < floors.healer ? `${floors.healer - healers} healer${floors.healer - healers === 1 ? '' : 's'} short` : `${healers} healers ready`;
+  const gaps = liveCoverageGaps();
+  const missing = gaps.buffs + gaps.debuffs;
+  // Short parts render in the warning colour, satisfied parts stay muted. Only numbers and fixed strings go in.
+  const tankText = tanks < floors.tank ? `<span class="readiness-short">${floors.tank - tanks} tank${floors.tank - tanks === 1 ? '' : 's'} short</span>` : `${tanks} tank slots filled`;
+  const healerText = healers < floors.healer ? `<span class="readiness-short">${floors.healer - healers} healer${floors.healer - healers === 1 ? '' : 's'} short</span>` : `${healers} healers ready`;
   // Classic Era is faction-locked: Shaman and Paladin cannot exist in the
   // same real raid. A roster that has both is a data problem worth calling
   // out, not something the optimizer should silently paper over.
   const rules = activeRules();
   const mixedFactions = !!(rules.rules && rules.rules.factionLock && Faction.current() === 'mixed');
-  const factionWarning = mixedFactions ? ' · Mixed Horde/Alliance roster — impossible in Classic Era' : '';
+  const factionWarning = mixedFactions ? ' · <span class="readiness-short">Mixed Horde/Alliance roster — impossible in Classic Era</span>' : '';
   // The phone link names the same things the strip warns about (see phoneReadinessLabel).
   if (hasLoadedWork()) {
-    lastReadiness = { missingBuffs: missing, tanksShort: Math.max(0, floors.tank - tanks), healersShort: Math.max(0, floors.healer - healers), mixedFactions };
+    lastReadiness = { missingCoverage: missing, tanksShort: Math.max(0, floors.tank - tanks), healersShort: Math.max(0, floors.healer - healers), mixedFactions };
   }
   renderPhoneMissing();
-  document.getElementById('readiness-text').textContent = hasLoadedWork()
-    ? `${tankText} · ${healerText} · ${missing} missing party buffs${State.preferredSlots.length ? ` · ${State.preferredSlots.length} preferred slot${State.preferredSlots.length === 1 ? '' : 's'} open` : ''}${factionWarning}`
-    : 'Import a roster, or click an empty slot to request a class and spec';
+  const readinessEl = document.getElementById('readiness-text');
+  if (!hasLoadedWork()) { readinessEl.textContent = 'Import a roster, or click an empty slot to request a class and spec'; return; }
+  readinessEl.innerHTML = `${tankText} · ${healerText} · ${coverageGapHtml(gaps)}${State.preferredSlots.length ? ` · ${State.preferredSlots.length} preferred slot${State.preferredSlots.length === 1 ? '' : 's'} open` : ''}${factionWarning}`;
 }
 
 // ── RAID NOTES (backlog #11) ────────────────────────────────────
@@ -594,7 +682,7 @@ function showAttendanceModal() {
   const versions = Object.keys(data);
   if (!versions.length) {
     document.getElementById('attendance-body').innerHTML =
-      '<div class="saved-empty">No named saved rosters yet. Save a roster (toolbar &rarr; Save) after a raid to start building attendance history.</div>';
+      '<div class="saved-empty">No saved copies yet. After a raid, use Plan menu &gt; Save a copy to start building attendance history.</div>';
     dialog.showModal();
     return;
   }
@@ -720,19 +808,50 @@ const ImportGate = {
   isStale(ticket) { return ticket !== this.latest; },
 };
 
+// One plain sentence plus one next step for each way an import can fail. `failure` is
+// { http: status } | { timeout: true } | { network: true } | { raw: 'error text from Import' }.
+// Anything unmapped keeps its raw text (a raw Import error keeps its 'Import failed: ' prefix).
+function importErrorMessage(failure) {
+  const f = failure || {};
+  if (f.timeout) return "Raid-Helper took too long to answer. Try again, or paste the event's JSON export.";
+  if (f.network) return "Couldn't reach Raid-Helper. Your connection may be down, or the browser blocked the request. Paste the event's JSON export instead.";
+  if (f.notAnEvent) return "Raid-Helper answered with something that isn't an event export. Try again, or paste the event's JSON export.";
+  if (f.http === 401 || f.http === 403) return "Raid-Helper won't share that event. It may be private: paste its JSON export instead.";
+  if (f.http === 404) return "Raid-Helper couldn't find that event. Check the link or ID. For a private event, paste its JSON export instead.";
+  if (f.http) return `Raid-Helper returned an error (HTTP ${f.http}). Try again in a minute, or paste the event's JSON export.`;
+  const raw = String(f.raw || '');
+  if (/^Invalid JSON/.test(raw)) return "We couldn't read that as a Raid-Helper link, event ID, JSON or player list. A player line looks like: Thrall - Enhancement Shaman.";
+  if (/^No 'slots' or 'signUps' array/.test(raw)) return "That JSON isn't a Raid-Helper event export. Use the event's JSON export, or paste a player list.";
+  if (/^No valid players found/.test(raw)) return 'That event has no sign-ups with a class yet.';
+  if (/invalid game version or raid/.test(raw)) return "That event's game version or raid isn't supported here.";
+  return 'Import failed: ' + raw;
+}
+
+// The same failure classes for Refresh, which has no paste box to point at.
+function refreshErrorMessage(failure) {
+  const f = failure || {};
+  if (f.timeout) return 'Raid-Helper took too long to answer. Try Refresh again.';
+  if (f.network) return "Couldn't reach Raid-Helper. Check your connection and try Refresh again.";
+  if (f.http === 404) return "Raid-Helper couldn't find this event any more. It may have been deleted or made private.";
+  if (f.http === 401 || f.http === 403) return "Raid-Helper won't share this event any more. It may have been made private.";
+  return `Raid-Helper returned an error (HTTP ${f.http}). Try Refresh again in a minute.`;
+}
+
 // Fetch roster JSON from a URL. Resolves to the body, or null after reporting.
-async function fetchRosterJson(url, report) {
+// `context` is 'import' (the default) or 'refresh': it picks which wording the failures use.
+async function fetchRosterJson(url, report, context = 'import') {
+  const describe = context === 'refresh' ? refreshErrorMessage : importErrorMessage;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {
     const resp = await fetch(url, { signal: controller.signal, mode: 'cors', credentials: 'omit' });
     clearTimeout(timeoutId);
-    if (!resp.ok) { report(`Fetch failed: HTTP ${resp.status}`, true); return null; }
+    if (!resp.ok) { report(describe({ http: resp.status }), true); return null; }
     return await resp.text();
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') report('Request timed out — try again or paste the JSON directly', true);
-    else if (err instanceof TypeError) report('Network error — the server may not allow direct browser requests. Try pasting the JSON instead.', true);
+    if (err.name === 'AbortError') report(describe({ timeout: true }), true);
+    else if (err instanceof TypeError) report(describe({ network: true }), true);
     else report('Fetch failed: ' + err.message, true);
     return null;
   }
@@ -748,7 +867,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
 
   if (src.text && src.text.startsWith('PP:')) {
     const result = Import.importAddonString(src.text);
-    if (!result.success) { report('Import failed: ' + result.error, true); return false; }
+    if (!result.success) { report(importErrorMessage({ raw: result.error }), true); return false; }
     State.planId = null;
     ChangeLog.clear();
     if (!src.text.startsWith('PP:2:') || State.rosterName === NO_ROSTER_NAME || State.rosterName === 'Imported Roster') State.rosterName = PlanStore.nameFor({}, null);
@@ -769,6 +888,8 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   let metadata;
   let isValidJson = true;
   try { metadata = JSON.parse(jsonStr); } catch { metadata = {}; isValidJson = false; }
+  // A fetched link whose body is not JSON (an HTML error page, say) is not the user's paste.
+  if (src.url && !isValidJson) { report(importErrorMessage({ notAnEvent: true }), true); return false; }
 
   // Backlog #6: a paste that isn't JSON and wasn't a Raid-Helper URL falls
   // back to the tolerant plain-text/CSV roster parser. It never replaces the
@@ -786,7 +907,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   // non-blocking suggestion — never applied automatically, never blocks import.
   if (Array.isArray(metadata.signUps) && metadata.templateId) maybeSuggestVersionSwitch(metadata.templateId);
   if (Array.isArray(metadata.players)) {
-    if (!Import.loadRoster(metadata)) { report('Import failed: invalid game version or raid', true); return false; }
+    if (!Import.loadRoster(metadata)) { report(importErrorMessage({ raw: 'invalid game version or raid' }), true); return false; }
     ChangeLog.clear();
     initGroups(); commit();
     showToast('Loaded saved roster');
@@ -816,7 +937,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   const result = Import.importRaidHelper(jsonStr);
   if (!result.success) {
     if (previousPlan) PlanStore.restore(previousPlan);
-    report('Import failed: ' + result.error, true);
+    report(importErrorMessage({ raw: result.error }), true);
     return false;
   }
   if (result.preferredImport) {
@@ -852,6 +973,11 @@ async function importFromText(raw, report = (m) => showToast(m)) {
     showToast(`Imported ${result.benchCount} benched sign-ups${historyNotice}`);
     return true;
   }
+  // The result line is set after the commit above, which would otherwise clear it.
+  const benchedCount = overflow || result.benchCount || 0;
+  ResultLine.show(result.wasUnassigned
+    ? `Arranged ${result.playerCount} sign-ups into ${result.groupCount} groups${benchedCount ? `, ${benchedCount} benched` : ''}`
+    : `Kept the ${result.groupCount} groups set in Raid-Helper. Optimize rearranges them.`);
   showToast(result.wasUnassigned
     ? `Your groups are ready. Imported ${result.playerCount} sign-ups and auto-optimized into ${result.groupCount} groups${suffix}${historyNotice}`
     : `Imported ${result.playerCount} players into ${result.groupCount} groups${suffix}${historyNotice}`);
@@ -881,12 +1007,22 @@ const PlainRosterImport = {
       : '';
     const flaggedCount = parsed.entries.filter(e => e.status === 'needsReview').length;
     const summary = document.getElementById('plain-import-summary');
-    if (summary) summary.textContent =
-      `${parsed.entries.length} player${parsed.entries.length === 1 ? '' : 's'} recognized` +
-      (flaggedCount ? `, ${flaggedCount} flagged for review` : '') +
-      (parsed.unparsed.length ? `, ${parsed.unparsed.length} line${parsed.unparsed.length === 1 ? '' : 's'} skipped` : '') + '.';
+    if (summary) summary.textContent = PlainRosterImport.summaryText(parsed, flaggedCount);
     body.innerHTML = rows + unparsedHtml;
     document.getElementById('btn-plain-import-confirm').disabled = !parsed.entries.length;
+  },
+
+  // Names where the players go, using the same raid pick importPlainRoster makes.
+  summaryText(parsed, flaggedCount) {
+    const count = parsed.entries.length;
+    if (!count) return 'No players recognized.';
+    const raidKey = Import.plainRosterRaid(count, State.gameVersion, State.selectedRaid);
+    const raid = Config.Raids[raidKey];
+    const version = GameVersions[State.gameVersion];
+    const target = raid ? `${version ? version.name + ' ' : ''}${raid.name} (${raid.size}-man)` : 'the selected raid';
+    return `${count} player${count === 1 ? '' : 's'} into ${target}. Groups are arranged automatically.` +
+      (flaggedCount ? ` ${flaggedCount} flagged for review.` : '') +
+      (parsed.unparsed.length ? ` ${parsed.unparsed.length} line${parsed.unparsed.length === 1 ? '' : 's'} skipped.` : '');
   },
 
   preview(parsed, report) {
@@ -903,7 +1039,7 @@ const PlainRosterImport = {
     const result = Import.importPlainRoster(parsed.entries);
     dialog.close();
     this.pending = null;
-    if (!result.success) { showToast('Import failed: ' + result.error); return; }
+    if (!result.success) { showToast(importErrorMessage({ raw: result.error })); return; }
     State.planId = null;
     ChangeLog.clear();
     const landingBox = document.getElementById('landing-import');
@@ -913,6 +1049,7 @@ const PlainRosterImport = {
     showView('app');
     SplitFlow.maybeOffer();
     const extra = result.benchCount ? ` (${result.benchCount} benched)` : '';
+    ResultLine.show(`Arranged ${result.playerCount} players into ${result.groupCount} groups${result.benchCount ? `, ${result.benchCount} benched` : ''}`);
     showToast(`Imported ${result.playerCount} players from pasted text into ${result.groupCount} groups${extra}${rememberImport('Pasted plain-text roster')}`);
   },
 
@@ -940,7 +1077,7 @@ const RaidHelperSync = {
     const eventId = State.sourceEventId;
     const planId = State.planId;
     if (!eventId) return null;
-    const json = await fetchRosterJson(this.eventsApiUrl(eventId), report);
+    const json = await fetchRosterJson(this.eventsApiUrl(eventId), report, 'refresh');
     if (json == null || State.sourceEventId !== eventId || State.planId !== planId) return null;
     const diff = Import.diffRaidHelperSignUps(json);
     if (!diff.success) { report('Refresh failed: ' + diff.error, true); return null; }
@@ -974,7 +1111,7 @@ const RaidHelperSync = {
     this.hideBanner();
     if (diff.eventStartTime) State.eventStartTime = diff.eventStartTime;
     // Logged as one Changes entry, including anyone initGroups benches for room.
-    const { result: counts } = ChangeLog.track('sync', 'Sign-up sync', () => {
+    const { result: counts, entry } = ChangeLog.track('sync', 'Sign-up sync', () => {
       const applied = Import.hasRaidHelperChanges(diff) ? Import.applyRaidHelperSync(diff) : null;
       initGroups();
       commit();
@@ -986,6 +1123,7 @@ const RaidHelperSync = {
         : `${lead}. Roster is up to date with Raid-Helper`);
       return;
     }
+    if (entry && ChangeLog.countsText(entry)) ResultLine.show(`Sign-up sync: ${ChangeLog.countsText(entry)}`);
     showToast(`${lead}: ${this.describe(counts)}`);
     if (counts.backupSwapReady && counts.backupSwapReady.length) this.showBackupBanner(counts.backupSwapReady);
   },
@@ -1215,13 +1353,18 @@ async function runImport(inputId, statusId, btnId, onSuccess) {
   if (btn.disabled) return;   // this runner's import is still in flight (Enter / Ctrl+Enter / a double click)
   const text = input.value.trim();
   if (!text) { report('Paste something first', true); input.focus(); return; }
+  const idleLabel = btn.textContent;
   btn.disabled = true;
+  btn.textContent = 'Loading...';
+  btn.setAttribute('aria-busy', 'true');
   report('', false);
   try {
     const ok = await importFromText(text, report);
     if (ok) { report('', false); input.value = ''; onSuccess(); }
   } finally {
     btn.disabled = false;
+    btn.textContent = idleLabel;
+    btn.removeAttribute('aria-busy');
   }
 }
 

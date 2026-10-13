@@ -527,10 +527,302 @@ check('hooks: sync, size and live are tracked; fresh imports and new plans clear
     const at = app.script.indexOf(`getElementById('${id}').addEventListener`);
     assert(app.script.slice(at, at + 700).includes('ChangeLog.clear()'), id);
   }
-  // Optimize, undo/redo and the other-tab load never record.
-  for (const [from, to] of [["getElementById('btn-optimize').addEventListener", "getElementById('btn-clear').addEventListener"], ['const TabWatch = {', "getElementById('btn-tab-load')"], ['const PlanSession = {', '\n};']]) {
+  // Optimize records through track(); undo/redo and the other-tab load never record.
+  assert.match(app.slice("getElementById('btn-optimize').addEventListener", "getElementById('btn-clear').addEventListener"),
+    /ChangeLog\.track\('optimize', 'Optimize', [\s\S]*\{ moves: true \}\)/);
+  for (const [from, to] of [['const TabWatch = {', "getElementById('btn-tab-load')"], ['const PlanSession = {', '\n};']]) {
     assert.doesNotMatch(app.slice(from, to), /ChangeLog\.(track|record)/, from);
   }
+});
+
+// ── Optimize: buff reach, the Changes entry, Undo ────────────────────
+// The real Optimize click handler, undoPlanChange and renderLastRun, with commit() reduced to
+// "re-read the roster and let PlanSession observe", the way persistWorkingPlan does.
+function optimizeHarness() {
+  const els = {}, toasts = [], results = [], commits = { n: 0 };
+  let handler = null, clearHandler = null;
+  const document = { getElementById: id => els[id] || (els[id] = { id, innerHTML: '', addEventListener(ev, fn) { if (id === 'btn-optimize') handler = fn; if (id === 'btn-clear') clearHandler = fn; } }) };
+  const extra = `
+function showToast(m, o) { toasts.push({ m, o }); }
+function commit() { State.roster = State.groups.flat(); commits.n++; PlanSession.observe(); }
+${app.slice('function undoPlanChange', 'function redoPlanChange')}
+${app.slice('function renderLastRun', "document.getElementById('btn-landing-empty')")}
+`;
+  const c = app.sandbox(['State', 'ChangeLog', 'PlanSession', 'Import', 'snapshotBuffReach', 'diffBuffReach', 'receivesBuff', 'undoPlanChange', 'PlanStore'], {
+    globals: { toasts, commits, document, ResultLine: { show: t => results.push({ t, commits: commits.n }), hide() {} }, closePlayerEditor() {}, closeBuffPicker() {}, initGroups() {}, RaidHelperSync: { hideBanner() {} }, Modal: { confirm: async () => true } },
+    extraSource: extra,
+  });
+  const api = c.api;
+  const P = (name, cls, spec, role, g) => ({ name, class: cls, spec, role, groupNumber: g });
+  assert(api.Import.loadRoster({ gameVersion: 'tbc', raid: 'bt', name: 'T', players: [
+    P('Tanky', 'WARRIOR', 'Protection', 'tank', 1), P('Healy', 'PRIEST', 'Holy', 'healer', 1),
+    P('Shammy', 'SHAMAN', 'Enhancement', 'melee_dps', 2), P('Mage1', 'MAGE', 'Fire', 'caster_dps', 2), P('Mage2', 'MAGE', 'Fire', 'caster_dps', 2),
+    P('Fury1', 'WARRIOR', 'Fury', 'melee_dps', 3), P('Fury2', 'WARRIOR', 'Fury', 'melee_dps', 3), P('Rogue', 'ROGUE', 'Combat', 'melee_dps', 3), P('Ret', 'PALADIN', 'Retribution', 'melee_dps', 3),
+  ] }));
+  api.State.planId = 'plan:optimize';
+  api.ChangeLog.clear();
+  api.ChangeLog.planId = 'plan:optimize';
+  api.ChangeLog.onRecord = null;
+  const ps = api.PlanSession;
+  ps.previous = null; ps.undo = []; ps.redo = []; ps.ready = true; ps.replaying = false; ps.observe();
+  return { api, els, toasts, results, commits, click: () => handler(), clear: () => clearHandler(), undoPlanChange: () => api.undoPlanChange() };
+}
+const boardOf = api => JSON.stringify(api.State.groups.map(g => g.map(p => p.name)));
+
+check('receivesBuff: Windfury reaches melee but never a Feral druid; a tank is credited through mitValueFor', () => {
+  const { api } = optimizeHarness();
+  const who = (cls, spec, role) => ({ uid: nextUid(), name: spec, class: cls, spec, role });
+  assert.equal(api.receivesBuff('WINDFURY', who('WARRIOR', 'Fury', 'melee_dps')), true);
+  assert.equal(api.receivesBuff('WINDFURY', who('DRUID', 'Feral', 'melee_dps')), false);
+  assert.equal(api.receivesBuff('WINDFURY', who('MAGE', 'Fire', 'caster_dps')), false);
+  assert.equal(api.receivesBuff('WINDFURY', null), false);
+  // Devotion Aura has no DPS value, only a mitigation value: it counts for the tank and for nobody else.
+  assert.equal(api.receivesBuff('DEVOTION_AURA', who('WARRIOR', 'Protection', 'tank')), true);
+  assert.equal(api.receivesBuff('DEVOTION_AURA', who('WARRIOR', 'Protection', 'melee_dps')), false);
+});
+
+check('snapshotBuffReach counts recipients per buff by role, the source included when it receives', () => {
+  const { api } = optimizeHarness();
+  const reach = plain(api.snapshotBuffReach());
+  assert.equal(reach.WINDFURY.name, 'Windfury Totem');
+  assert.deepEqual(reach.WINDFURY.roles, { melee_dps: 1 }, 'the Enhancement shaman alone: the mages get nothing from Windfury');
+  assert.deepEqual(reach.MANA_SPRING.roles, { caster_dps: 2 });
+  assert.equal(reach.MANA_SPRING.uids.length, 2);
+});
+
+check('diffBuffReach: gains and losses with a role word, largest first, unchanged buffs left out', () => {
+  const { api } = optimizeHarness();
+  const side = (name, roles) => ({ name, roles, uids: Object.entries(roles).flatMap(([r, n]) => Array.from({ length: n }, (_, i) => r + i)) });
+  const before = { WINDFURY: side('Windfury Totem', { melee_dps: 1 }), SHOUT: side('Battle Shout', { melee_dps: 4 }), SAME: side('Same', { healer: 2 }), MIX: side('Mix', { tank: 1 }) };
+  const after = { WINDFURY: side('Windfury Totem', { melee_dps: 5 }), SHOUT: side('Battle Shout', { melee_dps: 2 }), SAME: side('Same', { healer: 2 }), MIX: side('Mix', { tank: 2, healer: 1 }), WOA: side('Wrath of Air Totem', { caster_dps: 3 }) };
+  assert.deepEqual(plain(api.diffBuffReach(before, after)), [
+    { id: 'WINDFURY', name: 'Windfury Totem', delta: 4, word: 'melee' },
+    { id: 'WOA', name: 'Wrath of Air Totem', delta: 3, word: 'casters' },
+    { id: 'SHOUT', name: 'Battle Shout', delta: -2, word: 'melee' },
+    { id: 'MIX', name: 'Mix', delta: 2, word: 'players' },
+  ].sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta)));
+  assert.deepEqual(plain(api.diffBuffReach(before, before)), []);
+  const words = { melee_dps: 'melee', caster_dps: 'casters', ranged_dps: 'ranged', healer: 'healers', tank: 'tanks' };
+  for (const [role, word] of Object.entries(words)) {
+    assert.equal(api.diffBuffReach({}, { B: side('B', { [role]: 2 }) })[0].word, word, role);
+  }
+});
+
+check('an Optimize click records one optimize entry and one undo step, and offers Undo', () => {
+  const h = optimizeHarness();
+  const { ChangeLog, PlanSession } = h.api;
+  const undoBefore = PlanSession.undo.length;
+  h.click();
+  assert.equal(ChangeLog.entries.length, 1);
+  const entry = ChangeLog.entries[0];
+  assert.equal(entry.kind, 'optimize');
+  assert.equal(entry.label, 'Optimize');
+  assert(entry.items.length > 0 && entry.items.every(it => it.kind === 'moved'));
+  assert.equal(PlanSession.undo.length, undoBefore + 1);
+  assert.equal(entry.undoRef, PlanSession.undo[PlanSession.undo.length - 1]);
+  const toast = h.toasts.at(-1);
+  assert.match(toast.m, /^Optimized: \d+ moved\./);
+  assert.match(toast.m, /Windfury Totem \+\d+ melee/);
+  assert.equal(toast.o.action.label, 'Undo');
+  assert.match(h.els['last-run'].innerHTML, /^&middot; Last Optimize: \d+ moved, Windfury Totem \+\d+ melee/);
+  // The result line repeats the toast sentence, set after the Optimize commit (that commit clears the line).
+  assert.equal(h.results.length, 1);
+  assert.equal(h.results[0].t, toast.m);
+  assert.equal(h.results[0].commits, h.commits.n, 'no commit follows the result line');
+});
+
+check('the re-commit that onRecord runs after an Optimize adds no second undo step', () => {
+  const h = optimizeHarness();
+  const { PlanSession, ChangeLog, State } = h.api;
+  let recommits = 0;
+  ChangeLog.onRecord = () => { recommits++; State.roster = State.groups.flat(); PlanSession.observe(); };
+  h.click();
+  assert.equal(recommits, 1, 'onRecord ran its commit');
+  assert.equal(PlanSession.undo.length, 1);
+  assert(app.slice('ChangeLog.onRecord = entry => {', '(function initChangesPanel').includes('commit();'));
+});
+
+check('the toast Undo undoes the Optimize while its step is on top, and drops the entry', () => {
+  const h = optimizeHarness();
+  const before = boardOf(h.api);
+  h.click();
+  assert.notEqual(boardOf(h.api), before);
+  h.toasts.at(-1).o.action.onClick();
+  assert.equal(boardOf(h.api), before, 'the board is back');
+  assert.equal(h.toasts.at(-1).m, 'Change undone');
+  assert.equal(h.api.ChangeLog.entries.length, 0, 'the Optimize entry went with its step');
+});
+
+check('the toast Undo refuses once another change sits on top of the Optimize step', () => {
+  const h = optimizeHarness();
+  const { State, ChangeLog, PlanSession } = h.api;
+  h.click();
+  const entry = ChangeLog.entries[0];
+  const undoToast = h.toasts.at(-1);
+  State.groups[0][0].name = 'Renamed'; // a later edit
+  State.roster = State.groups.flat();
+  PlanSession.observe();
+  const steps = PlanSession.undo.length, board = boardOf(h.api);
+  undoToast.o.action.onClick();
+  assert.equal(h.toasts.at(-1).m, 'Nothing to undo: the plan changed after Optimize');
+  assert.equal(PlanSession.undo.length, steps);
+  assert.equal(boardOf(h.api), board);
+  assert.equal(ChangeLog.entries[0], entry, 'the entry stays');
+});
+
+check('undoPlanChange removes the entry whose step it pops, and only that one', () => {
+  const h = optimizeHarness();
+  const { ChangeLog, PlanSession, State } = h.api;
+  h.click();
+  assert.equal(ChangeLog.entries.length, 1);
+  State.groups[0][0].name = 'Edited';
+  State.roster = State.groups.flat();
+  PlanSession.observe();
+  h.undoPlanChange(); // pops the edit
+  assert.equal(ChangeLog.entries.length, 1, 'the Optimize entry stays while its step is not the one popped');
+  h.undoPlanChange(); // pops the Optimize step
+  assert.equal(ChangeLog.entries.length, 0);
+});
+
+check('an Optimize that moves nothing says so, records nothing and offers no Undo', () => {
+  const h = optimizeHarness();
+  h.click();
+  h.toasts.length = 0;
+  h.click(); // the board is already optimal
+  assert.equal(h.toasts.length, 1);
+  assert.equal(h.toasts[0].m, 'Already optimal — nothing moved');
+  assert.equal(h.toasts[0].o, undefined);
+  assert.equal(h.api.ChangeLog.entries.length, 1, 'still only the first run');
+});
+
+check('an optimize entry records benched, seated and moved players; only benched and seated are loud', () => {
+  reset();
+  const a = mk('Mover'), b = mk('Sitter'), c = mk('Bencher'), d = mk('Seatee');
+  seat([[a, c], [b]], [d]);
+  const { entry } = ChangeLog.track('optimize', 'Optimize', () => {
+    seat([[b], [a, d]], [c]);
+  }, { moves: true });
+  assert.deepEqual(plain(entry.items.map(i => i.kind + ' ' + i.name)).sort(), ['benched Bencher', 'moved Mover', 'moved Sitter', 'seated Seatee']);
+  assert.equal(entry.label, 'Optimize');
+  assert.equal(ChangeLog.unseenCount(), 2, 'moves are not counted');
+  assert.equal(ChangeLog.highlightFor(a), null);
+  assert.equal(ChangeLog.highlightFor(b), null);
+  assert.equal(ChangeLog.highlightFor(c).kind, 'benched');
+  assert.equal(ChangeLog.highlightFor(d).kind, 'seated');
+  assert.equal(ChangeLog.summary(entry), 'Optimize: 2 changes');
+  // The same moves under a live update stay loud.
+  reset();
+  seat([[a], []]);
+  ChangeLog.track('live', 'Live link update', () => seat([[], [a]]), { moves: true });
+  assert.equal(ChangeLog.unseenCount(), 1);
+  assert.equal(ChangeLog.highlightFor(a).kind, 'moved');
+});
+
+check('an Optimize that only moves players announces nothing; with a bench change it announces that change', () => {
+  const calls = { commit: 0, announce: [] };
+  const wiring = app.slice('ChangeLog.onRecord = entry => {', '(function initChangesPanel');
+  const c = app.sandbox(['ChangeLog'], { globals: { commit() { calls.commit++; }, announce: m => calls.announce.push(m), lastRaidSummary: '' }, extraSource: wiring });
+  const log = c.api.ChangeLog;
+  log.onRecord({ kind: 'optimize', label: 'Optimize', items: [{ kind: 'moved' }, { kind: 'moved' }] });
+  assert.equal(calls.commit, 1);
+  assert.deepEqual(calls.announce, []);
+  log.onRecord({ kind: 'optimize', label: 'Optimize', items: [{ kind: 'moved' }, { kind: 'benched' }] });
+  assert.deepEqual(calls.announce, ['Optimize: 1 change']);
+});
+
+check('Clear board asks first and a decline keeps the board', () => {
+  const at = app.script.indexOf("getElementById('btn-clear').addEventListener('click', async () => {");
+  assert(at >= 0, 'the handler is async');
+  const body = app.script.slice(at, at + 700);
+  assert.match(body, /Modal\.confirm\(\{\s*title: 'Clear the board\?',\s*message: 'Removes every player, your notes and your picks from this plan\. Undo brings it back\.',\s*confirmLabel: 'Clear board',\s*\}\)/);
+  const declines = body.indexOf('if (!confirmed) return;');
+  assert(declines > body.indexOf('Modal.confirm') && declines < body.indexOf('PlanStore.startFresh()') && declines < body.indexOf('ChangeLog.clear()'));
+});
+
+check('an Optimize that only resets buff overrides offers Undo, and Undo brings the overrides back', () => {
+  const h = optimizeHarness();
+  const { State, PlanSession } = h.api;
+  h.click(); // now optimal
+  State.buffOverrides = { WINDFURY: 'someone' };
+  PlanSession.observe();
+  h.toasts.length = 0;
+  const board = boardOf(h.api), steps = PlanSession.undo.length;
+  h.click();
+  const toast = h.toasts.at(-1);
+  assert.equal(toast.m, 'No moves needed. 1 buff override reset');
+  assert.equal(toast.o.action.label, 'Undo');
+  assert.equal(PlanSession.undo.length, steps + 1);
+  assert.deepEqual(plain(State.buffOverrides), {});
+  assert.equal(boardOf(h.api), board);
+  toast.o.action.onClick();
+  assert.deepEqual(plain(State.buffOverrides), { WINDFURY: 'someone' }, 'the overrides are back');
+});
+
+check('Optimize with nothing moved and no overrides still offers no Undo', () => {
+  const h = optimizeHarness();
+  h.click();
+  h.toasts.length = 0;
+  h.click();
+  assert.equal(h.toasts.at(-1).m, 'Already optimal — nothing moved');
+  assert.equal(h.toasts.at(-1).o, undefined);
+});
+
+(async () => {
+  const h = optimizeHarness();
+  const { State, PlanSession } = h.api;
+  State.notes = 'Pull Gruul at 8';
+  PlanSession.observe();
+  const names = JSON.stringify(State.groups.flat().map(p => p.name).sort());
+  await h.clear();
+  assert.equal(State.groups.flat().length, 0, 'Clear emptied the groups');
+  assert.equal(State.notes, '');
+  h.undoPlanChange();
+  assert.equal(JSON.stringify(State.groups.flat().map(p => p.name).sort()), names, 'Undo brings the players back');
+  assert.equal(State.notes, 'Pull Gruul at 8', 'and the notes');
+  passed++;
+  console.log('PASS  Clear board then Undo restores the players and the notes');
+})().catch(e => { console.error(e); process.exit(1); });
+
+check('countsText: loud items per kind in KINDS order, status and new worded, Optimize moves left out', () => {
+  const it = kind => ({ kind });
+  const entry = items => ({ kind: 'sync', items: items.map(it) });
+  assert.equal(ChangeLog.countsText(entry(['moved', 'seated', 'seated', 'benched', 'moved', 'moved'])), '1 benched, 2 seated, 3 moved');
+  assert.equal(ChangeLog.countsText(entry(['status'])), '1 status change');
+  assert.equal(ChangeLog.countsText(entry(['status', 'status', 'added', 'dropped'])), '2 status changes, 1 new, 1 dropped');
+  assert.equal(ChangeLog.countsText({ kind: 'optimize', items: [it('moved'), it('moved'), it('benched')] }), '1 benched', 'quiet Optimize moves are not counted');
+  assert.equal(ChangeLog.countsText({ kind: 'optimize', items: [it('moved')] }), '');
+});
+
+check('the sync result line and the co-editor banner both use countsText', () => {
+  assert(app.script.includes('Sign-up sync: ${ChangeLog.countsText(entry)}'));
+  assert(app.script.includes('Updated by someone else: ${counts}.'));
+});
+
+check('recording an Optimize entry replaces older ones, so sync and live entries keep their place', () => {
+  reset();
+  const a = mk('A'), b = mk('B');
+  seat([[a], []], [b]);
+  ChangeLog.track('sync', 'Sign-up sync', () => seat([[a, b], []]));
+  for (let i = 0; i < 25; i++) {
+    ChangeLog.track('optimize', 'Optimize', () => seat(i % 2 ? [[a, b], []] : [[a], [b]]), { moves: true });
+  }
+  assert.equal(ChangeLog.entries.filter(e => e.kind === 'optimize').length, 1);
+  assert.equal(ChangeLog.entries.filter(e => e.kind === 'sync').length, 1, 'the sync entry is still listed');
+});
+
+check('diffBuffReach uses the singular role word for a change of one player', () => {
+  const { api } = optimizeHarness();
+  const side = (roles) => ({ name: 'B', roles, uids: Object.entries(roles).flatMap(([r, n]) => Array.from({ length: n }, (_, i) => r + i)) });
+  const word = (before, after) => api.diffBuffReach({ B: side(before) }, { B: side(after) })[0].word;
+  assert.equal(word({ tank: 2 }, { tank: 1 }), 'tank');
+  assert.equal(word({ tank: 3 }, { tank: 1 }), 'tanks');
+  assert.equal(word({}, { healer: 1 }), 'healer');
+  assert.equal(word({}, { caster_dps: 1 }), 'caster');
+  assert.equal(word({}, { melee_dps: 1 }), 'melee');
+  assert.equal(word({}, { ranged_dps: 1 }), 'ranged');
+  assert.equal(word({ tank: 1 }, { tank: 1, healer: 1 }), 'healer');
+  assert.equal(word({}, { tank: 1, healer: 1 }), 'players');
+  assert.equal(word({ tank: 1 }, { healer: 2 }), 'player', 'a mix of one player');
 });
 
 check('CSS: a changed slot is an inset ring (focus keeps the outline), coloured per kind', () => {
@@ -550,4 +842,4 @@ check('CSS: a changed slot is an inset ring (focus keeps the outline), coloured 
   assert.match(focus[0], /box-shadow: inset 0 0 0 4px var\(--changed-color/);
 });
 
-console.log(`\nChange report tests: ${passed} passed, 0 failed, ${passed} total`);
+setTimeout(() => console.log(`\nChange report tests: ${passed} passed, 0 failed, ${passed} total`), 50);

@@ -22,7 +22,16 @@ function showView(view) {
   if (view === 'landing') renderLanding();
   else if (State.activeTab !== 'plan') switchTab('plan');
   window.scrollTo(0, 0);
-  if (view === 'app') runSpotlightQueue();
+  if (view === 'app') scheduleSpotlightQueue();
+}
+
+// An import error belongs to the paste that caused it: drop it when the landing re-renders
+// or the user edits the box.
+function clearLandingImportStatus() {
+  const status = document.getElementById('landing-status-import');
+  if (!status) return;
+  status.textContent = '';
+  status.classList.remove('error');
 }
 
 function renderLanding() {
@@ -39,6 +48,7 @@ function renderLanding() {
       summary.textContent = `${State.rosterName === NO_ROSTER_NAME ? 'a roster' : State.rosterName} (${parts.join(', ')}${raid ? ', ' + raidSizeLabel(State.selectedRaid) : ''})`;
     }
   }
+  clearLandingImportStatus();
   renderLandingSavedList();
   renderImportHistory(document.getElementById('landing-history-list'));
   renderVersionComparison();
@@ -50,6 +60,9 @@ function renderLanding() {
 function renderVersionComparison() {
   const table = document.getElementById('version-compare-table');
   if (!table) return;
+  // Re-rendering after a switch replaces the focused card; give focus back to the same one.
+  const focused = document.activeElement && table.contains(document.activeElement) ? document.activeElement : null;
+  const refocus = focused ? focused.dataset.version : null;
   const order = ['tbc', 'classic', 'forever'];
   table.innerHTML = order.map(key => {
     const profile = GameVersions[key];
@@ -61,13 +74,47 @@ function renderVersionComparison() {
       .map(r => Config.Raids[r])
       .filter(r => r && r.tier !== 'Planning templates')
       .map(r => r.name);
-    return `<div class="version-compare-col" data-version="${esc(key)}">
-      <h3>${esc(profile.name)}</h3>
-      <p>${esc(profile.note)}</p>
-      <div class="version-compare-raids"><strong>${raidNames.length} raid${raidNames.length === 1 ? '' : 's'} modeled:</strong> ${esc(raidNames.join(', ') || 'Planning templates only')}</div>
-    </div>`;
+    const here = key === State.gameVersion;
+    return `<button type="button" class="version-compare-col${here ? ' here' : ''}" data-version="${esc(key)}" aria-label="${esc(here ? profile.name + ', current version' : 'Switch to ' + profile.name)}"${here ? ' aria-current="true"' : ''}>
+      <span class="version-compare-name">${esc(profile.name)}</span>
+      <span class="version-compare-note">${esc(profile.note)}</span>
+      <span class="version-compare-raids"><strong>${raidNames.length} raid${raidNames.length === 1 ? '' : 's'} modeled:</strong> ${esc(raidNames.join(', ') || 'Planning templates only')}</span>
+      <span class="go">${here ? 'You are here' : 'Switch to ' + esc(profile.name)}</span>
+    </button>`;
   }).join('');
+  if (refocus) {
+    const card = table.querySelector(`[data-version="${refocus}"]`);
+    if (card) card.focus();
+  }
 }
+
+// The cards are buttons that switch the game version (switchGameVersion asks first when a
+// plan is loaded). Own handler on the container: syncVersionControls wires only the real
+// .game-version-tab buttons, so the cards never get its generic [data-version] click.
+function onVersionCardClick(event) {
+  const card = event.target && event.target.closest ? event.target.closest('button[data-version]') : null;
+  if (!card || card.getAttribute('aria-current') === 'true') return;
+  switchGameVersion(card.dataset.version);
+}
+(function initVersionCards() {
+  const table = document.getElementById('version-compare-table');
+  if (table) table.addEventListener('click', onVersionCardClick);
+})();
+
+// Status bar version, set once from APP_VERSION (js/changelog.js).
+(function initStatusVersion() {
+  const el = document.getElementById('status-version');
+  if (el) el.textContent = `Party Planner v${APP_VERSION}`;
+})();
+
+// Feedback link: the static href works without JS; this adds the version and browser to the
+// issue body so a report arrives with the facts a fix needs.
+(function initFeedbackLink() {
+  const link = document.getElementById('feedback-link');
+  if (!link) return;
+  const body = `Party Planner ${APP_VERSION}\nBrowser: ${navigator.userAgent}\n\nWhat happened:\n`;
+  link.href = `${link.getAttribute('href').split('?')[0]}?body=${encodeURIComponent(body)}`;
+})();
 
 // "What's new" dismissible badge (feature-backlog-2.md #9). The key keeps its original
 // name (data backups know it); its value is the release the person dismissed, so a new
@@ -77,7 +124,8 @@ const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
   const badge = document.getElementById('whats-new-badge');
   if (!badge) return;
   document.getElementById('whats-new-body').innerHTML = renderChangelog();
-  document.getElementById('app-version').textContent = 'v' + APP_VERSION;
+  document.getElementById('app-version').textContent = APP_VERSION;
+  document.getElementById('whats-new-title').textContent = /\.$/.test(CHANGELOG[0].title) ? CHANGELOG[0].title : `${CHANGELOG[0].title}.`;
   let stored = null;
   try { stored = localStorage.getItem(WHATS_NEW_KEY); } catch {}
   badge.hidden = whatsNewDismissed(stored);
@@ -85,10 +133,21 @@ const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
     badge.hidden = true;
     safeSetItem(localStorage, WHATS_NEW_KEY, APP_VERSION);
   };
+  // Expanding the list counts as seeing it: the nav badge goes and the version is remembered.
+  const line = document.getElementById('whats-new-line');
+  const body = document.getElementById('whats-new-body');
+  const toggle = document.getElementById('btn-whats-new-toggle');
+  const setOpen = (open) => {
+    body.hidden = !open;
+    line.classList.toggle('open', open);
+    toggle.textContent = open ? 'Hide' : "What's new";
+    toggle.setAttribute('aria-expanded', String(open));
+    if (open) dismiss();
+  };
+  toggle.addEventListener('click', () => setOpen(body.hidden));
+  // The nav link scrolls to the line and opens the list too (the scroll is the link's own).
   const navLink = document.getElementById('nav-whats-new');
-  if (navLink) navLink.addEventListener('click', dismiss);
-  const dismissBtn = document.getElementById('btn-whats-new-dismiss');
-  if (dismissBtn) dismissBtn.addEventListener('click', dismiss);
+  if (navLink) navLink.addEventListener('click', () => { dismiss(); if (body.hidden) setOpen(true); });
 })();
 
 // Asks, then removes one landing row: a working plan (kind 'plan', id = its plan key) or a saved
@@ -186,6 +245,7 @@ function renderLandingSavedList() {
 
   const loadInput = () => runImport('landing-import', 'landing-status-import', 'btn-landing-import', () => { showView('app'); SplitFlow.maybeOffer(); });
   document.getElementById('btn-landing-import').addEventListener('click', loadInput);
+  document.getElementById('landing-import').addEventListener('input', clearLandingImportStatus);
   document.getElementById('landing-import').addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -345,11 +405,11 @@ function syncRaidNotesToggle() {
       }
     }
     // Shorter label in the thumb-width phone bottom bar (plain "Share"); the
-    // fuller desktop text "More export formats…" comes back once
+    // fuller desktop text "Share and export…" comes back once
     // btn-share-main is a Share-menu item again instead of a bottom-bar button.
     const shareLabel = document.querySelector('#btn-share-main .btn-label');
     // Written only when it changes: sync() also runs on every resize.
-    const label = isPhone ? 'Share' : 'More export formats…';
+    const label = isPhone ? 'Share' : 'Share and export…';
     if (shareLabel && shareLabel.textContent !== label) shareLabel.textContent = label;
   }
   PHONE_QUERY.addEventListener('change', sync);
@@ -386,68 +446,77 @@ function setPhoneContextOpen(open, persist = true) {
 })();
 
 // ── ACTION BUTTONS ──────────────────────────────────────────────
-function countCoveredBuffs() {
-  const covered = new Set();
-  for (let gi = 0; gi < State.groups.length; gi++) {
-    for (const b of getGroupBuffs(State.groups[gi], gi)) covered.add(b.id);
-  }
-  return covered.size;
-}
-
-function playerGroupMap() {
-  const map = {};
-  State.groups.forEach((g, gi) => g.forEach(p => { map[p.uid] = gi; }));
-  return map;
-}
-
+// "Last Optimize: 8 moved, Windfury +4 melee": the toast's wording in short form.
 function renderLastRun(summary) {
   const el = document.getElementById('last-run');
   if (!el) return;
   if (!summary) { el.innerHTML = ''; return; }
-  const buffDelta = summary.buffDelta > 0 ? `+${summary.buffDelta}` : String(summary.buffDelta);
-  el.innerHTML = `&middot; Last run: ${buffDelta} buffs &middot; ${summary.moved} moved`
-;
+  const parts = [`${summary.moved} moved`].concat(reachParts(summary.reach));
+  el.innerHTML = `&middot; Last Optimize: ${parts.join(', ')}`;
 }
 
 // Optimize wipes the leader's totem/aura picks, so the toast says so when it did.
-// It also names the players Optimize benched or seated again (after a raid size change it decides who sits).
-function optimizeToastMessage({ moved, benched = 0, seated = 0, buffDelta, overridesReset }) {
-  const seatChanges = [benched > 0 ? `${benched} benched` : '', seated > 0 ? `${seated} seated` : ''].filter(Boolean);
-  const base = moved === 0 && buffDelta === 0 && !seatChanges.length
-    ? 'Already optimal — nothing moved'
-    : `Optimized: ${buffDelta >= 0 ? '+' : ''}${buffDelta} buffs, ${seatChanges.concat(`${moved} players moved`).join(', ')}`;
-  return overridesReset > 0 ? `${base}. ${overridesReset} buff override${overridesReset === 1 ? '' : 's'} reset` : base;
+// It also names the players Optimize benched or seated again (after a raid size change it decides who sits),
+// and which buffs now reach more or fewer players.
+function optimizeToastMessage({ moved, benched = 0, seated = 0, reach = [], overridesReset }) {
+  const reset = overridesReset > 0 ? `${overridesReset} buff override${overridesReset === 1 ? '' : 's'} reset` : '';
+  if (moved === 0 && benched === 0 && seated === 0) return reset ? `No moves needed. ${reset}` : 'Already optimal — nothing moved';
+  const counts = [`${moved} moved`, benched > 0 ? `${benched} benched` : '', seated > 0 ? `${seated} seated` : ''].filter(Boolean);
+  const parts = reachParts(reach);
+  return [`Optimized: ${counts.join(', ')}.`, parts.length ? `${parts.join(', ')}.` : '', reset].filter(Boolean).join(' ');
+}
+
+// Up to two gains and the largest loss from diffBuffReach(), as "Windfury +4 melee".
+function reachParts(reach) {
+  const list = Array.isArray(reach) ? reach : [];
+  const gains = list.filter(r => r.delta > 0).slice(0, 2);
+  const loss = list.filter(r => r.delta < 0).sort((x, y) => x.delta - y.delta)[0];
+  return gains.concat(loss ? [loss] : []).map(r => `${r.name} ${r.delta > 0 ? '+' : ''}${r.delta} ${r.word}`);
 }
 
 document.getElementById('btn-optimize').addEventListener('click', () => {
   if (!GameVersions[State.gameVersion].modeled) { showToast(GameVersions[State.gameVersion].note); return; }
   if (State.roster.length === 0) { showToast('Import a roster first'); return; }
-  const buffsBefore = countCoveredBuffs();
-  const placementBefore = playerGroupMap();
+  const reachBefore = snapshotBuffReach(); // the board as the leader saw it, overrides included
+  const undoTopBefore = PlanSession.undo[PlanSession.undo.length - 1];
 
   // One strategy since the nav slim-down: Optimize always runs Max DPS.
   State.optimizerMode = 'max_dps';
   const overridesReset = Object.keys(State.buffOverrides).length;
-  State.buffOverrides = {};
-  Optimizer.optimize();
-  commit();
+  const { entry } = ChangeLog.track('optimize', 'Optimize', () => {
+    State.buffOverrides = {};
+    Optimizer.optimize();
+    commit();
+  }, { moves: true });
 
-  const placementAfter = playerGroupMap();
-  const moved = Object.keys(placementAfter).filter(uid => placementBefore[uid] !== undefined && placementBefore[uid] !== placementAfter[uid]).length;
-  const benched = Object.keys(placementBefore).filter(uid => placementAfter[uid] === undefined).length;
-  const seated = Object.keys(placementAfter).filter(uid => placementBefore[uid] === undefined).length;
-  const buffDelta = countCoveredBuffs() - buffsBefore;
-  renderLastRun({ buffDelta, moved });
-  showToast(optimizeToastMessage({ moved, benched, seated, buffDelta, overridesReset }));
+  // The step this click pushed, if it pushed one; Undo only acts while it is still the latest.
+  const undoRef = PlanSession.undo[PlanSession.undo.length - 1];
+  const pushed = undoRef !== undefined && undoRef !== undoTopBefore;
+  if (entry && pushed) entry.undoRef = undoRef;
+  const counts = { moved: 0, benched: 0, seated: 0 };
+  for (const it of entry ? entry.items : []) if (it.kind in counts) counts[it.kind]++;
+  const reach = diffBuffReach(reachBefore, snapshotBuffReach());
+  renderLastRun({ moved: counts.moved, reach });
+  const message = optimizeToastMessage({ ...counts, reach, overridesReset });
+  ResultLine.show(message); // after the commit above, which clears any earlier result
+  // Undo whenever the click pushed a step that changed something: moves, or only reset buff overrides.
+  if (!pushed || (!entry && overridesReset === 0)) { showToast(message); return; } // nothing changed: no Undo, even if the groups were re-sorted
+  showToast(message, { action: { label: 'Undo', onClick: () => {
+    if (PlanSession.undo[PlanSession.undo.length - 1] !== undoRef) { showToast('Nothing to undo: the plan changed after Optimize'); return; }
+    undoPlanChange();
+  } } });
 });
 
-document.getElementById('btn-clear').addEventListener('click', () => {
+document.getElementById('btn-clear').addEventListener('click', async () => {
+  const confirmed = await Modal.confirm({
+    title: 'Clear the board?',
+    message: 'Removes every player, your notes and your picks from this plan. Undo brings it back.',
+    confirmLabel: 'Clear board',
+  });
+  if (!confirmed) return;
   renderLastRun(null);
-  // Wipe every per-roster feature that is keyed by player name/uid — left in
-  // place, these dangle after the roster they refer to is gone (stale notes
-  // reappearing, "together"/"apart" pairs, bench backups and drum tags
-  // pointing at players who no longer exist) and can resurface confusingly
-  // on whatever is imported/generated next.
+  // Wipe every per-roster feature keyed by player name/uid, or it dangles (stale notes,
+  // together/apart pairs, Standby backups, drum tags) and resurfaces on the next import.
   PlanStore.startFresh();
   ChangeLog.clear();
   initGroups();
@@ -525,7 +594,10 @@ const TabWatch = {
 document.getElementById('btn-tab-load').addEventListener('click', () => TabWatch.loadTheirs());
 document.getElementById('btn-tab-keep').addEventListener('click', () => TabWatch.keepMine());
 document.getElementById('btn-remote-undo').addEventListener('click', () => RemoteUpdate.undo());
+document.getElementById('btn-remote-changes').addEventListener('click', () => RemoteUpdate.seeChanges());
 document.getElementById('btn-remote-dismiss').addEventListener('click', () => RemoteUpdate.hide());
+document.getElementById('btn-shared-gotit').addEventListener('click', () => SharedPlanBanner.hide({ focus: true }));
+document.getElementById('btn-shared-copy').addEventListener('click', () => SharedPlanBanner.makeCopy());
 
 // ── SHARE LINK ──────────────────────────────────────────────────
 // Live links (/<version>/<id>): a plan's first Share stores its share code
@@ -641,16 +713,105 @@ function applyRemoteLiveCode(id, remote) {
   return true;
 }
 
+// Shown once per link when this browser opens someone else's live link: the
+// plan is shared and edits reach everyone. The seen list is device-local (not
+// part of the data backup).
+const SHARED_SEEN_KEY = 'pp_shared_seen_v1';
+const SHARED_SEEN_MAX = 50;
+const SharedPlanBanner = {
+  linkId: null,
+  planKey: null, // the plan the banner was shown for; it hides when the open plan is another one
+  seen() {
+    try {
+      const list = JSON.parse(linkStorage().getItem(SHARED_SEEN_KEY));
+      return Array.isArray(list) ? list.filter(x => typeof x === 'string') : [];
+    } catch { return []; }
+  },
+  remember(id) {
+    if (!id) return;
+    const list = this.seen().filter(x => x !== id);
+    list.push(id);
+    try { linkStorage().setItem(SHARED_SEEN_KEY, JSON.stringify(list.slice(-SHARED_SEEN_MAX))); } catch {}
+  },
+  show(id) {
+    if (!id || this.seen().includes(id)) return;
+    const banner = document.getElementById('shared-plan-banner');
+    const text = document.getElementById('shared-plan-text');
+    if (!banner || !text) return;
+    this.linkId = id;
+    this.planKey = LiveLinks.planKey(State);
+    const name = document.createElement('strong');
+    name.textContent = State.rosterName;
+    text.replaceChildren('You opened a shared live plan: ', name, '. Changes you make are saved for everyone with this link.');
+    banner.hidden = false;
+  },
+  // Hides the banner and marks the link seen. `focus`: the user pressed one of its buttons, so
+  // focus moves to the plan name rather than falling to the page.
+  hide({ focus = false } = {}) {
+    const id = this.linkId;
+    this.linkId = null;
+    this.planKey = null;
+    this.remember(id);
+    const banner = document.getElementById('shared-plan-banner');
+    if (banner) banner.hidden = true;
+    if (focus) {
+      const target = document.getElementById('roster-name');
+      if (target && target.focus) target.focus();
+    }
+  },
+  // True while the open plan is the one the banner was shown for. Otherwise the
+  // banner goes away without marking the link seen: the user never answered it.
+  belongsToOpenPlan() {
+    if (!this.linkId) return false;
+    if (this.planKey === LiveLinks.planKey(State)) return true;
+    this.linkId = null;
+    this.planKey = null;
+    const banner = document.getElementById('shared-plan-banner');
+    if (banner) banner.hidden = true;
+    return false;
+  },
+  // Turns the open plan into this browser's own plan: a new planId, so no
+  // link is bound to it. The shared plan stays saved as it was. Sends nothing.
+  makeCopy() {
+    if (!this.belongsToOpenPlan()) return;
+    this.hide({ focus: true });
+    PlanStore.flush();
+    State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    State.rosterName = State.rosterName + ' (my copy)';
+    commit();
+    syncAddressBar();
+    showToast('Saved your own copy. Changes now stay in this browser.');
+  },
+};
+
 // Stays up after a co-editor's change replaces the open plan, until the user
-// dismisses it, undoes it or changes the plan themselves.
+// dismisses it. Changing the plan themselves only retires its Undo.
 const RemoteUpdate = {
   before: null,
   entryId: null, // the Changes entry the update recorded, dropped again by Undo
+  // "Updated by someone else: 3 moved, 1 benched." from the update's Changes entry.
+  summaryText(entry) {
+    if (!entry || !entry.items || !entry.items.length) return 'Roster updated by someone else.';
+    const counts = ChangeLog.countsText(entry);
+    return counts ? `Updated by someone else: ${counts}.` : 'Roster updated by someone else.';
+  },
   show(before, entry) {
     this.before = before;
     this.entryId = entry ? entry.id : null;
     const banner = document.getElementById('remote-update-banner');
+    const text = document.getElementById('remote-update-text');
+    const undo = document.getElementById('btn-remote-undo');
+    if (text) text.textContent = this.summaryText(entry);
+    if (undo) undo.hidden = false;
     if (banner) banner.hidden = false;
+  },
+  seeChanges() { ChangesPanel.setOpen(true); },
+  // The user's own edit now sits on top of the update; Undo would throw it away.
+  retireUndo() {
+    this.before = null;
+    this.entryId = null;
+    const undo = document.getElementById('btn-remote-undo');
+    if (undo) undo.hidden = true;
   },
   hide() {
     this.before = null;
@@ -694,6 +855,7 @@ const LiveSync = {
 
   // Called from persistWorkingPlan on every commit.
   onRender() {
+    if (SharedPlanBanner.linkId) SharedPlanBanner.belongsToOpenPlan();
     if (!this.opening) syncAddressBar();
     const link = currentLiveLink();
     if (!link) { clearTimeout(this.saveTimer); this.pending = false; return; }
@@ -867,10 +1029,10 @@ const LiveSync = {
 
   statusText(fallback) {
     if (!currentLiveLink()) return fallback;
-    if (this.rejected) return 'Live link not synced: ' + this.rejected.reason;
-    if (this.failed) return 'Live link not synced, retrying';
-    if (this.pending || this.saving) return 'Syncing live link...';
-    return 'Synced to live link';
+    if (this.rejected) return 'Live link not saved: ' + this.rejected.reason + '. Your changes are safe on this device.';
+    if (this.failed) return 'Live link not saved yet, retrying. Your changes are safe on this device.';
+    if (this.pending || this.saving) return 'Saving to the live link...';
+    return 'Shared plan, changes sync to everyone with the link';
   },
 
   refreshStatus() {
@@ -938,7 +1100,7 @@ async function loadFromShortLink() {
   const id = SHORT_LINK_AT_LOAD;
   if (!id) return false;
   try {
-    showToast('Opening shared raid...');
+    showToast('Opening shared plan...');
     let remote;
     try { remote = await fetchLiveLink(id); } catch {
       showToast('Could not reach the server to open that share link');
@@ -957,20 +1119,21 @@ async function loadFromShortLink() {
         // The server forgot the link, but this browser's copy is still here: give it a new link.
         commit();
         LiveSync.replaceExpiredLink(id);
-        showToast(`Opened live raid "${State.rosterName}" (its link had expired, making a new one)`);
+        showToast(`Opened live plan "${State.rosterName}" (its link had expired, making a new one)`);
         return true;
       }
       const entry = LiveLinks.get(linkStorage(), bound.planKey);
       const caughtUp = LiveLinks.shouldApply(entry, remote, false) && remote.code !== currentShareCode()
         && trackLiveUpdate(() => applyRemoteLiveCode(id, remote)).result;
       if (!caughtUp) commit();
-      showToast(`Opened live raid "${State.rosterName}"`);
+      showToast(`Opened live plan "${State.rosterName}"`);
       return true;
     }
 
     if (!await applyShareCode(remote.code)) return false;
     const planKey = LiveLinks.planKey(State);
     if (planKey) bindLiveLink(planKey, id, currentShareCode(), remote.updatedAt);
+    SharedPlanBanner.show(id);
     return true;
   } finally {
     LiveSync.opening = false;
@@ -999,7 +1162,7 @@ async function applyShareCode(code) {
 
   ChangeLog.clear();
   commit();
-  showToast(`Loaded shared raid "${State.rosterName}" (${res.playerCount} players)${rememberImport('Shared link')}`);
+  showToast(`Loaded shared plan "${State.rosterName}" (${res.playerCount} players)${rememberImport('Shared link')}`);
   return true;
 }
 
@@ -1011,15 +1174,15 @@ document.getElementById('btn-share').addEventListener('click', () => {
   const link = getShareLink();
   Promise.all([link, copyShareLink(link)])
     .then(([{ live }]) => showToast(live
-      ? 'Live link copied: anyone with it can view and edit'
-      : 'Share link copied (long link: live links are unavailable right now)'))
+      ? 'Live link copied. Anyone with it can see and edit this plan; it expires 30 days after the last change.'
+      : 'Live links are down right now, so this is a snapshot link: it will not update when the plan changes.'))
     .catch(() => link.then(({ url }) => showManualCopy(url)));
 });
 
 document.getElementById('btn-copy-mrt').addEventListener('click', () => {
   if (State.roster.length === 0) { showToast('No roster to export'); return; }
   const str = Import.exportMrtString();
-  copyText(str, 'MRT string copied. In MRT: Raid Groups > Import > "From ExRT export string"');
+  copyText(str, 'MRT string copied (seated groups only). In MRT: Raid Groups > Import > "From ExRT export string"');
 });
 
 document.getElementById('btn-copy-mrt-note').addEventListener('click', copyMrtNote);
@@ -1796,14 +1959,15 @@ document.getElementById('btn-back-to-raid').addEventListener('click', () => swit
 
 // ── GLOBAL KEYBOARD SHORTCUTS (feature-backlog-2.md #8) ──────────
 // Single-key shortcuts and the toolbar button each one clicks (SHORTCUTS_HELP lists them for people).
-const SHORTCUT_BUTTONS = { o: 'btn-optimize', e: 'btn-share-main', l: 'btn-share', m: 'btn-copy-mrt-note', c: 'btn-copy-chat' };
+const SHORTCUT_BUTTONS = { o: 'btn-optimize', e: 'btn-share-main', l: 'btn-share', g: 'btn-copy-mrt', m: 'btn-copy-mrt-note', c: 'btn-copy-chat' };
 const SHORTCUTS_HELP = [
   ['O', 'Optimize groups'],
   ['Ctrl/Cmd + Z', 'Undo'],
   ['Ctrl/Cmd + Y  (or Ctrl/Cmd + Shift + Z)', 'Redo'],
   ['Ctrl/Cmd + S', 'Save a copy (the plan also saves itself)'],
-  ['E', 'Share / Export'],
-  ['L', 'Copy share link'],
+  ['E', 'Share and export'],
+  ['L', 'Copy live link'],
+  ['G', 'Copy for MRT'],
   ['M', 'Copy MRT note'],
   ['C', 'Copy raid chat text'],
   ['1', 'Back to the plan'],

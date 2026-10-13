@@ -2983,11 +2983,12 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
     {name:'FirstMage',className:'Mage',specName:'Arcane'},
     {name:'SecondMage',className:'Mage',specName:'Fire'}]};
   let lastToast = '';
+  const shownResults = []; let commitCount = 0;
   const ChangeLog = PP.ChangeLog;
   const context = { State, Import, PlanStore:PP.PlanStore, NO_ROSTER_NAME, ChangeLog,
     localStorage:storage, document:{getElementById(){return {}; }},
-    initGroups:()=>0, commit:()=>PP.PlanStore.save(storage,PP.PlanStore.capture()),
-    showToast:(m)=>{lastToast=m;}, rememberImport:()=>'', fetchRosterJson:async()=>JSON.stringify(payload) };
+    initGroups:()=>0, commit:()=>{ commitCount++; PP.PlanStore.save(storage,PP.PlanStore.capture()); },
+    showToast:(m)=>{lastToast=m;}, ResultLine:{ show(t){ shownResults.push({ t, commits: commitCount }); }, hide(){} }, rememberImport:()=>'', fetchRosterJson:async()=>JSON.stringify(payload) };
   // app.slice throws if a marker is missing, so a renamed function can't silently slice the wrong code.
   const importSrc = app.slice('function normalizeImportSource(','// Fetch roster JSON')
     + app.slice('async function importFromText(',"document.getElementById('btn-refresh').addEventListener");
@@ -2996,6 +2997,9 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   resetState();
   assert(await context.importFromText('123456789'), 'event ID import succeeds');
   assert(State.rosterName.startsWith('Fixture event'), 'event title used');
+  assertEqual(shownResults.length,1,'a sign-up import sets one result line');
+  assert(/^Arranged 2 sign-ups into \d+ groups?$/.test(shownResults[0].t),'result line: '+shownResults[0].t);
+  assertEqual(shownResults[0].commits,commitCount,'the result line is set after the import commit, which would clear it');
   assertEqual(State.planId,'event:123456789','canonical event plan created');
   assertEqual(ChangeLog.entries.length,0,'a fresh import is not a logged change');
   assertEqual(State.eventStartTime,1790377200*1000,'event start time is stored with the plan');

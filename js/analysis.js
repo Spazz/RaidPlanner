@@ -140,6 +140,31 @@ function getMissingBuffInsights() {
   return insights;
 }
 
+// How many party buffs and raid debuffs the given coverage leaves open. The one
+// count behind the readiness line and the Coverage rail summary, so they agree.
+// Buffs are the faction-relevant list (what the rail lists), debuffs Config.Debuffs.
+function coverageGapCounts(coveredBuffIds, coveredDebuffIds) {
+  const open = (dataset, covered) => Object.keys(dataset).filter(id => !covered.has(id)).length;
+  return { buffs: open(factionRelevantBuffs(), coveredBuffIds), debuffs: open(Config.Debuffs, coveredDebuffIds) };
+}
+
+// The same counts for the live plan.
+function liveCoverageGaps() {
+  const groups = State.groups || [];
+  return coverageGapCounts(getRaidBuffCoverage(groups), getRaidDebuffCoverage(groups));
+}
+
+// The coverage part of the readiness line, as HTML built only from numbers and fixed
+// strings: "7 party buffs missing · 6 raid debuffs missing", one half alone when the
+// other is covered, or "All party buffs and raid debuffs covered".
+function coverageGapHtml(gaps) {
+  const part = (n, noun) => `<span class="readiness-short"><b>${n}</b> ${noun}${n === 1 ? '' : 's'} missing</span>`;
+  const parts = [];
+  if (gaps.buffs > 0) parts.push(part(gaps.buffs, 'party buff'));
+  if (gaps.debuffs > 0) parts.push(part(gaps.debuffs, 'raid debuff'));
+  return parts.length ? parts.join(' · ') : 'All party buffs and raid debuffs covered';
+}
+
 // ── UTILITY & BALANCE READINESS (backlog #2, #3) ────────────────
 // Two pure, DOM-free checks over State that extend the tank/healer floor
 // check already in renderReadiness(): a class-presence checklist for one-off
@@ -263,6 +288,59 @@ const Readiness = {
   },
 };
 
+// ── BUFF REACH (what Optimize changed for whom) ──────────────────
+// Whether a buff is worth anything to this player: tanks count for mitigation too, and a
+// Feral druid gets nothing from Windfury because dpsValueFor is 0 for them. One test for
+// "Why here?" and for the reach snapshots below, so they cannot disagree.
+function receivesBuff(buffId, player) {
+  if (!player) return false;
+  const value = (player.role === 'tank' ? mitValueFor(buffId, player) : 0) + dpsValueFor(buffId, player);
+  return value > 0;
+}
+
+// The party buffs the current board delivers: { [buffId]: { name, uids:[...], roles:{role:count} } }.
+// Modelled exactly as the group cards are (getGroupBuffs, overrides included); a buff counts the
+// players in its group who receive it, the source too when it receives value.
+function snapshotBuffReach() {
+  const reach = {};
+  (State.groups || []).forEach((group, gi) => {
+    for (const b of getGroupBuffs(group, gi)) {
+      const entry = reach[b.id] || (reach[b.id] = { name: b.buff.name, uids: [], roles: {} });
+      for (const p of group) {
+        if (!receivesBuff(b.id, p)) continue;
+        entry.uids.push(p.uid);
+        entry.roles[p.role] = (entry.roles[p.role] || 0) + 1;
+      }
+    }
+  });
+  return reach;
+}
+
+const REACH_WORDS = { melee_dps:'melee', caster_dps:'casters', ranged_dps:'ranged', healer:'healers', tank:'tanks' };
+// The same words for a change of one player ("Blood Pact -1 tank"); melee and ranged do not change.
+const REACH_WORDS_ONE = { caster_dps:'caster', healer:'healer', tank:'tank' };
+
+// Pure. [{ id, name, delta, word }] for each buff whose recipient count changed, largest change
+// first. word names the role group that gained or lost it, or 'players' when it was a mix.
+function diffBuffReach(before, after) {
+  const a = before || {}, b = after || {};
+  const out = [];
+  for (const id of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const was = a[id], now = b[id];
+    const delta = (now ? now.uids.length : 0) - (was ? was.uids.length : 0);
+    if (!delta) continue;
+    const changedRoles = [];
+    for (const role of new Set([...Object.keys(was ? was.roles : {}), ...Object.keys(now ? now.roles : {})])) {
+      if (((now ? now.roles[role] : 0) || 0) !== ((was ? was.roles[role] : 0) || 0)) changedRoles.push(role);
+    }
+    const one = Math.abs(delta) === 1;
+    const words = one ? { ...REACH_WORDS, ...REACH_WORDS_ONE } : REACH_WORDS;
+    const word = changedRoles.length === 1 && words[changedRoles[0]] ? words[changedRoles[0]] : (one ? 'player' : 'players');
+    out.push({ id, name: (now || was).name, delta, word });
+  }
+  return out.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+}
+
 // ── PLACEMENT EXPLANATION (backlog #4: "Why is this player here?") ──
 // Pure function: re-derives WHY a seated player is in THIS specific group
 // from the same data the optimizer's own scoring reads — getGroupBuffs() for
@@ -296,8 +374,7 @@ function explainPlacement(player, group, groupIndex, allGroups, mode) {
   // doesn't get credited with "receiving" Windfury (0 value, no imbues in form).
   for (const b of buffList) {
     if (b.sourceUid === player.uid) continue;
-    const value = (player.role === 'tank' ? mitValueFor(b.id, player) : 0) + dpsValueFor(b.id, player);
-    if (value > 0) reasons.push({ kind:'receives', text:`Receives ${b.buff.name} from ${nick(b.sourceName)}` });
+    if (receivesBuff(b.id, player)) reasons.push({ kind:'receives', text:`Receives ${b.buff.name} from ${nick(b.sourceName)}` });
   }
 
   // Structural conventions (reference-comp rules — see tasks/lessons.md).

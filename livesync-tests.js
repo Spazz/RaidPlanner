@@ -33,7 +33,7 @@ var Modal = { confirm: async () => (__env.confirmAnswer !== undefined ? __env.co
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'timeoutSignal', 'fetchLiveLink',
-  'LivePoll', 'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar', 'PlanSession', 'applyShareCode'];
+  'LivePoll', 'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar', 'PlanSession', 'applyShareCode', 'SharedPlanBanner', 'DataBackup'];
 
 function memoryStorage() {
   const data = {};
@@ -171,7 +171,7 @@ async function check(name, fn) {
     assert.equal(env.location.pathname, '/tbc/' + NEW_ID, 'address bar follows the new link');
     assert.equal(expiryToasts(env).length, 1, 'the user is told');
     assert.equal(env.api.LiveSync.expiredId, null);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Synced to live link');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Shared plan, changes sync to everyone with the link');
   });
 
   await check('A save that gets 404 from the PUT POSTs a fresh link, rebinds, updates the address bar and toasts', async () => {
@@ -245,7 +245,7 @@ async function check(name, fn) {
     await settle();
     assert.equal(posts(env).length, 1);
     assert.equal(env.api.LiveSync.failed, true);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced, retrying');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved yet, retrying. Your changes are safe on this device.');
     assert.equal(entryOf(env, planKey).id, 'aB3dE5g', 'still bound to the old link');
     assert.equal(env.location.pathname, '/tbc/aB3dE5g');
     assert.equal(expiryToasts(env).length, 0, 'no toast for a replacement that did not happen');
@@ -282,7 +282,7 @@ async function check(name, fn) {
     edit(env, 'edit');
     await env.advance(2000);
     assert.equal(env.api.LiveSync.failed, false);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced: boom');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved: boom. Your changes are safe on this device.');
     assert.equal(entryOf(env, planKey).id, 'aB3dE5g');
   });
 
@@ -429,7 +429,7 @@ async function check(name, fn) {
     await env.advance(2000);
     assert.equal(puts(env).length, 1);
     assert.equal(env.api.LiveSync.failed, false, 'not "retrying"');
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced: Invalid share code');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved: Invalid share code. Your changes are safe on this device.');
     await env.advance(60000);
     await env.api.LiveSync.pull();
     await settle();
@@ -445,10 +445,10 @@ async function check(name, fn) {
     env.route = () => response(403, { error: 'nope' });
     edit(env, 'bad');
     await env.advance(2000);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced: nope');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved: nope. Your changes are safe on this device.');
     edit(env, '');
     assert.equal(env.api.LiveSync.rejected, null);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Synced to live link');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Shared plan, changes sync to everyone with the link');
   });
 
   await check('5xx, 404 and 408 are transient: retried on the next poll, not treated as rejections', async () => {
@@ -475,7 +475,7 @@ async function check(name, fn) {
     env.route = () => response(200, { updatedAt: 1 });
     edit(env, 'huge');
     assert.equal(env.api.LiveSync.pending, false);
-    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not synced: plan is too large for a live link (33 KB, limit 32 KB)');
+    assert.equal(env.api.LiveSync.statusText('x'), 'Live link not saved: plan is too large for a live link (33 KB, limit 32 KB). Your changes are safe on this device.');
     await env.advance(60000);
     await env.api.LiveSync.pull();
     await settle();
@@ -797,6 +797,164 @@ async function check(name, fn) {
     assert.equal(puts(env)[0].body.code, codeWithEdit, "the PUT carries P's edit");
     assert.equal(entryOf(env, planKey).lastCode, codeWithEdit, 'P is recorded as synced');
     assert.notEqual(env.api.LiveLinks.planKey(env.api.State), planKey, 'the shared plan replaced it on screen');
+  });
+
+  // ── Shared live-plan banner ──
+  // Fake banner elements so the DOM-facing code has something to write to.
+  function bannerEnv(opts) {
+    const env = makeEnv(opts);
+    const els = {
+      'shared-plan-banner': { hidden: true },
+      'shared-plan-text': { children: [], replaceChildren(...c) { this.children = c; } },
+      'roster-name': { focused: 0, focus() { this.focused++; } },
+    };
+    env.els = els;
+    env.document.getElementById = id => els[id] || null;
+    env.document.createElement = () => ({ set textContent(v) { this.text = v; }, get textContent() { return this.text; } });
+    return env;
+  }
+  const SHARED_ID = 'sHar3d1';
+  const sharedRoute = env => { env.route = call => (call.method === 'GET' ? response(200, { code: otherRosterCode(), updatedAt: 50 }) : response(500)); };
+  const seenList = env => JSON.parse(env.storage.getItem('pp_shared_seen_v1') || '[]');
+
+  await check("Opening someone else's link shows the shared-plan banner once, with the plan name", async () => {
+    const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    sharedRoute(env);
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    assert.equal(env.els['shared-plan-banner'].hidden, false);
+    const kids = env.els['shared-plan-text'].children;
+    assert.equal(kids[0], 'You opened a shared live plan: ');
+    assert.equal(kids[1].textContent, env.api.State.rosterName);
+    assert.equal(kids[2], '. Changes you make are saved for everyone with this link.');
+
+    env.api.SharedPlanBanner.hide(); // Got it
+    assert.equal(env.els['shared-plan-banner'].hidden, true);
+    assert.deepEqual(seenList(env), [SHARED_ID]);
+
+    // Same link opened again on a fresh page load (nothing bound here): no banner.
+    const again = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    again.storage.setItem('pp_shared_seen_v1', JSON.stringify([SHARED_ID]));
+    sharedRoute(again);
+    assert.equal(await again.api.loadFromShortLink(), true);
+    await settle();
+    assert.equal(again.els['shared-plan-banner'].hidden, true);
+  });
+
+  await check('Opening a link this browser is bound to never shows the shared-plan banner', async () => {
+    const env = bannerEnv({ path: '/tbc/aB3dE5g', persist: true });
+    seedLinkedPlan(env);
+    env.ctx.commit();
+    env.route = call => (call.method === 'GET' ? response(200, { code: env.api.currentShareCode(), updatedAt: 100 }) : response(200, { updatedAt: 101 }));
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    assert.equal(env.els['shared-plan-banner'].hidden, true);
+    assert.deepEqual(seenList(env), []);
+  });
+
+  await check('The seen list keeps the newest 50 ids and stays out of the data backup', async () => {
+    const env = bannerEnv({ persist: true });
+    for (let i = 0; i < 55; i++) env.api.SharedPlanBanner.remember('id' + String(i).padStart(5, '0'));
+    const list = seenList(env);
+    assert.equal(list.length, 50);
+    assert.equal(list[49], 'id00054');
+    assert.equal(list[0], 'id00005');
+    assert(!env.api.DataBackup.keys.includes('pp_shared_seen_v1'));
+  });
+
+  await check('Make my own copy: new plan, nothing bound, address bar at the root, nothing sent, shared plan kept', async () => {
+    const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    sharedRoute(env);
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    const { State, LiveLinks, PlanStore } = env.api;
+    const sharedPlanId = State.planId;
+    const sharedKey = LiveLinks.planKey(State);
+    const sharedName = State.rosterName;
+    assert.equal(entryOf(env, sharedKey).id, SHARED_ID);
+    const callsBefore = env.calls.length;
+
+    env.api.SharedPlanBanner.makeCopy();
+    await settle();
+
+    assert.notEqual(State.planId, sharedPlanId, 'new planId');
+    assert.equal(State.rosterName, sharedName + ' (my copy)');
+    assert.equal(entryOf(env, LiveLinks.planKey(State)), null, 'nothing is bound to the copy');
+    assert.equal(env.location.pathname, '/', 'address bar at the app root');
+    assert.equal(env.calls.length, callsBefore, 'no request sent');
+    assert.equal(puts(env).length, 0);
+    assert.equal(env.calls.filter(c => c.method === 'POST').length, 0);
+    assert.equal(env.els['shared-plan-banner'].hidden, true);
+    assert.deepEqual(seenList(env), [SHARED_ID]);
+    assert(env.toasts.includes('Saved your own copy. Changes now stay in this browser.'));
+    const kept = PlanStore.read(env.storage).find(p => p.data.planId === sharedPlanId);
+    assert(kept, 'the shared plan is still saved');
+    assert.equal(entryOf(env, sharedKey).id, SHARED_ID, 'and still bound to its link');
+  });
+
+  await check('The banner belongs to one plan: switching plans hides it without marking the link seen, and Make my own copy then does nothing', async () => {
+    const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    sharedRoute(env);
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    assert.equal(env.els['shared-plan-banner'].hidden, false);
+    const { State } = env.api;
+    const sharedPlanId = State.planId;
+    const name = State.rosterName;
+
+    State.planId = 'event:another'; // the user opens another plan
+    env.ctx.commit();
+    assert.equal(env.els['shared-plan-banner'].hidden, true, 'hidden for the other plan');
+    assert.deepEqual(seenList(env), [], 'not marked seen: the user never answered it');
+    assert.equal(env.api.SharedPlanBanner.linkId, null);
+
+    const toasts = env.toasts.length;
+    const callsBefore = env.calls.length;
+    env.api.SharedPlanBanner.makeCopy();
+    assert.equal(State.planId, 'event:another', 'the new plan is untouched');
+    assert.equal(State.rosterName, name, 'and not renamed');
+    assert.equal(env.toasts.length, toasts, 'no toast');
+    assert.equal(env.calls.length, callsBefore);
+
+    // Back on the shared plan the link is still unseen, so it shows again.
+    State.planId = sharedPlanId;
+    env.ctx.commit();
+    env.api.SharedPlanBanner.show(SHARED_ID);
+    assert.equal(env.els['shared-plan-banner'].hidden, false);
+  });
+
+  await check('Make my own copy refuses when the open plan is not the one the banner was shown for, even before any commit', async () => {
+    const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    sharedRoute(env);
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    const { State } = env.api;
+    State.planId = 'event:another'; // no commit yet
+    env.api.SharedPlanBanner.makeCopy();
+    assert.equal(State.planId, 'event:another');
+    assert.equal(env.els['shared-plan-banner'].hidden, true);
+    assert.deepEqual(seenList(env), []);
+  });
+
+  await check('Got it and Make my own copy move focus to the plan name; a plan switch does not', async () => {
+    const opened = async () => {
+      const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+      sharedRoute(env);
+      assert.equal(await env.api.loadFromShortLink(), true);
+      await settle();
+      return env;
+    };
+    const gotIt = await opened();
+    gotIt.api.SharedPlanBanner.hide({ focus: true });
+    assert.equal(gotIt.els['roster-name'].focused, 1, 'Got it');
+    const copy = await opened();
+    copy.api.SharedPlanBanner.makeCopy();
+    assert.equal(copy.els['roster-name'].focused, 1, 'Make my own copy');
+    const away = await opened();
+    away.api.State.planId = 'event:another';
+    away.ctx.commit();
+    assert.equal(away.els['roster-name'].focused, 0, 'no focus grab when the plan changed under the banner');
+    assert(/btn-shared-gotit'\)\.addEventListener\('click', \(\) => SharedPlanBanner\.hide\(\{ focus: true \}\)\)/.test(app.script), 'the Got it button asks for focus');
   });
 
   console.log(`\nLiveSync tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

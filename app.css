@@ -212,7 +212,11 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .whats-new-version { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 14px 0 8px; }
 .whats-new-version:first-child { margin-top: 0; }
 .whats-new-version span, .app-version { font-weight: 400; color: var(--text-muted); font-size: 11px; text-transform: none; letter-spacing: 0; }
-.whats-new-foot { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
+.whats-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 16px; background: color-mix(in srgb, var(--accent-gold) 8%, transparent); border: 1px solid var(--border-accent); font-size: 13px; color: var(--text-secondary); }
+.whats-line strong { color: var(--accent-gold-bright); }
+.whats-line .app-version { font: inherit; color: inherit; }
+.whats-line.open { flex-direction: column; align-items: stretch; gap: 0; }
+#whats-new-body { margin-top: 12px; }
 .version-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 8px; }
 .version-compare-col { background: var(--bg-card); border: 1px solid var(--border-subtle); border-top: 3px solid var(--accent-gold-dim); padding: 16px; }
 .version-compare-col[data-version="classic"] { border-top-color: var(--version-classic); }
@@ -220,8 +224,17 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .version-compare-col[data-version="forever"] { border-top-color: #b9a0ec; }
 .version-compare-col h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; color: var(--text-heading); }
 .version-compare-col p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 10px; }
-.version-compare-raids { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.version-compare-name { display: block; font-family: var(--font-cond); font-size: 1.17em; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; color: var(--text-heading); }
+.version-compare-note { display: block; font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 10px; }
+.version-compare-raids { display: block; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 .version-compare-raids strong { color: var(--text-secondary); }
+button.version-compare-col { cursor: pointer; text-align: left; color: inherit; font: inherit; display: block; width: 100%; transition: background .15s, border-color .15s; }
+button.version-compare-col:hover, button.version-compare-col:focus-visible { background: var(--bg-card-hover); border-color: var(--border-strong); }
+button.version-compare-col:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+button.version-compare-col .go { display: block; margin-top: 10px; font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .1em; font-size: 12px; color: var(--accent-gold); }
+button.version-compare-col.here { cursor: default; border-color: var(--border-accent); }
+button.version-compare-col.here:hover { background: var(--bg-card); border-color: var(--border-accent); }
+button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 /* Keyboard shortcuts help */
 .shortcuts-list { display: flex; flex-direction: column; gap: 6px; }
 .shortcut-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
@@ -307,6 +320,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   padding-top: 16px; border-top: 1px solid var(--border-subtle);
   font-size: 11.5px; color: var(--text-faint);
 }
+.footer-link { color: var(--accent-gold); text-decoration: none; }
+.footer-link:hover { color: var(--accent-gold-bright); text-decoration: underline; }
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; }
   .steps, .features { grid-template-columns: 1fr; }
@@ -1180,8 +1195,18 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   transition: opacity 0.3s ease, transform 0.3s ease;
   pointer-events: none;
   zoom: 1.5;
+  /* Hidden once the fade ends, so a faded-out Undo button leaves the tab order. */
+  visibility: hidden;
+  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0s linear 0.3s;
 }
-.toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; visibility: visible; transition-delay: 0s; }
+.toast { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
+.toast-action {
+  background: transparent; border: 1px solid var(--accent-gold); color: var(--accent-gold);
+  padding: 3px 10px; font: inherit; font-weight: 600; cursor: pointer;
+}
+.toast-action:hover { background: var(--btn-secondary-hover); }
+.toast-action:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 
 /* ── Feature spotlight callouts (feature-backlog-3.md #4) ── */
 .spotlight-callout {
@@ -1479,6 +1504,33 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   #readiness-text { text-align:left; }
   .player-editor { position:fixed !important; left:12px !important; right:12px; top:50% !important; transform:translateY(-50%); width:auto !important; }
 }
+/* Readiness line: a plain sentence; missing and short parts in the warning colour, satisfied parts muted. */
+.readiness-line {
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
+  font-family: var(--font-body); font-size: 12px; color: var(--text-muted);
+}
+.readiness-line:hover { color: var(--text-secondary); }
+.readiness-line:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.readiness-short, .readiness-short b { color: var(--warning); }
+.readiness-short b { font-weight: 600; }
+/* Result line: what the last import, Optimize or sync did. Phones turn it into a strip (slim phone block). */
+.result-line {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0 16px 10px; font-size: 12px; color: var(--text-muted);
+  border-bottom: 1px solid var(--border-medium);
+}
+.result-line[hidden] { display: none; }
+.result-line-dismiss { display: none; }
+.plan-feedback:has(+ .result-line:not([hidden])) { border-bottom: 0; padding-bottom: 4px; }
+/* Coverage rail legend for the gold corner on swappable buff icons. */
+.swap-legend {
+  display: flex; gap: 6px; padding: 6px 8px;
+  font-size: 10px; line-height: 1.4; color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent-gold) 8%, transparent); border: 1px solid var(--border-accent);
+}
+.swap-legend i { flex-shrink: 0; width: 6px; height: 6px; margin-top: 4px; background: var(--accent-gold); border: 1px solid var(--bg-deepest); }
+.buff-sidebar.collapsed .swap-legend { display: none; }
+.sidebar-summary-row.ok { color: var(--success); }
 /* Larger homepage type and controls for comfortable reading. */
 .landing { width:min(1180px,100%); }
 .landing-brand h1 { font-size:26px; }
@@ -1709,7 +1761,8 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 .phone-summary-wrap, .pe-sheet-handle, .pe-sheet-header, .pe-more-row { display:none; }
 @media (max-width: 600px) {
   .addon-frame { zoom: 1; padding-bottom: 68px; }
-  .toast { zoom: 1; bottom: 72px; left: 12px; right: 12px; }
+  /* The toast sits at the top, under the 40px header and above the player editor sheet (z-index 200). */
+  .toast { zoom: 1; top: calc(env(safe-area-inset-top, 0px) + 44px); bottom: auto; left: 12px; right: 12px; font-size: 13px; z-index: 300; transform: translateY(-10px); }
 
   /* Version header: one 40px row (mark + Classic | TBC | Forever). */
   .game-header-inner { flex-wrap: nowrap; align-items: center; height: 40px; padding: 0 12px; gap: 10px; }
@@ -1748,7 +1801,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   #raid-size-phone-slot .raid-size-label { display: none; }
   #raid-size-phone-slot .raid-size-seg button { min-height: 30px; padding: 0 12px; font-size: 12px; }
   .phone-missing-slot { margin-left: auto; }
-  .phone-missing-slot .summary-missing { min-height: 30px; font-size: 12px; }
+  .phone-missing-slot .summary-missing { display: flex; align-items: center; gap: 0.3em; min-height: 44px; margin: -7px 0; font-size: 12px; }
   .phone-context-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; border-top: 1px solid var(--border-subtle); }
   .phone-context-body[hidden] { display: none; }
   .phone-context-row .lbl { font-size: 11px; }
@@ -1766,6 +1819,9 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .plan-feedback { display: none; padding: 6px 12px; font-size: 11px; border-bottom: 1px solid var(--border-subtle); }
   .plan-feedback.feedback-open, .plan-feedback:has(#autosave-status[data-failed]) { display: flex; }
   #buff-sidebar { scroll-margin-top: 40px; }
+  /* Result line: a slim strip above Group 1 with a dismiss button. */
+  .result-line { padding: 6px 4px 6px 12px; font-size: 12px; color: var(--text-secondary); background: color-mix(in srgb, var(--accent-gold) 10%, transparent); border-bottom: 1px solid var(--border-accent); }
+  .result-line-dismiss { display: block; flex-shrink: 0; min-width: 44px; min-height: 44px; margin: -12px 0; background: none; border: 0; color: var(--text-muted); font-size: 18px; cursor: pointer; }
 
   /* Group cards. */
   .groups-container { padding: 8px; gap: 8px; }

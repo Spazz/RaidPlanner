@@ -39,10 +39,12 @@ function check(name, fn) {
   console.log('PASS  ' + name);
 }
 
-check('M, L and C click the MRT note, share link and raid chat buttons; O and E still work', () => {
+check('G, M, L and C click the MRT string, MRT note, live link and raid chat buttons; O and E still work', () => {
   const h = harness();
-  for (const key of ['m', 'l', 'c', 'o', 'e']) assert(h.press(key).defaultPrevented, key);
-  assert.equal(JSON.stringify(h.clicks), JSON.stringify(['btn-copy-mrt-note', 'btn-share', 'btn-copy-chat', 'btn-optimize', 'btn-share-main']));
+  for (const key of ['g', 'm', 'l', 'c', 'o', 'e']) assert(h.press(key).defaultPrevented, key);
+  assert.equal(JSON.stringify(h.clicks), JSON.stringify(['btn-copy-mrt', 'btn-copy-mrt-note', 'btn-share', 'btn-copy-chat', 'btn-optimize', 'btn-share-main']));
+  h.press('G'); // caps lock / shift
+  assert.equal(h.clicks.at(-1), 'btn-copy-mrt');
   h.press('M'); // caps lock / shift
   assert.equal(h.clicks.at(-1), 'btn-copy-mrt-note');
 });
@@ -58,13 +60,14 @@ check('shortcuts stay quiet while typing, with a dialog or menu or the player ed
   assert.equal(editable.clicks.length, 0, 'contenteditable');
   for (const state of [{ dialogOpen: true }, { menuOpen: true }, { editor: true }, { view: 'landing' }]) {
     const h = harness(state);
-    for (const key of ['m', 'l', 'c']) h.press(key);
+    for (const key of ['g', 'm', 'l', 'c']) h.press(key);
     assert.equal(h.clicks.length, 0, JSON.stringify(state));
   }
   const h = harness();
   h.press('c', { ctrlKey: true });   // browser copy
   h.press('l', { metaKey: true });   // browser address bar
   h.press('m', { altKey: true });
+  h.press('g', { ctrlKey: true });
   assert.equal(h.clicks.length, 0, 'modifier combos are never eaten');
 });
 
@@ -92,8 +95,8 @@ check('every shortcut button exists in the page and the help lists its key', () 
   }
 });
 
-check('the share menu items carry a <kbd> hint and aria-keyshortcuts for M, L, C and E', () => {
-  const hints = { 'btn-share': 'L', 'btn-copy-mrt-note': 'M', 'btn-copy-chat': 'C', 'btn-share-main': 'E' };
+check('the share menu items carry a <kbd> hint and aria-keyshortcuts for G, M, L, C and E', () => {
+  const hints = { 'btn-share': 'L', 'btn-copy-mrt': 'G', 'btn-copy-mrt-note': 'M', 'btn-copy-chat': 'C', 'btn-share-main': 'E' };
   for (const [id, key] of Object.entries(hints)) {
     const tag = app.html.match(new RegExp('<button[^>]*id="' + id + '"[^>]*>[\\s\\S]*?</button>'))[0];
     assert(tag.includes(`aria-keyshortcuts="${key}"`), `${id} aria-keyshortcuts`);

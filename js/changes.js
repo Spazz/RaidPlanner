@@ -1,11 +1,14 @@
 // ── ROSTER CHANGE LOG ───────────────────────────────────────────
-// What a Raid-Helper sync, a raid size change or a co-editor's live update did
-// to the roster, so the leader can see who moved without diffing the board by
-// eye. Each of those actions runs through ChangeLog.track(): a snapshot of where
-// everyone sits before and after, diffed into one entry of items (benched,
-// seated, status, added, dropped and, for live updates only, moved). Optimize,
-// manual drags, undo/redo and tab-conflict loads are the user's own doing and
-// are never recorded. Session only: nothing here is saved or shared.
+// What a Raid-Helper sync, a raid size change, an Optimize run or a co-editor's
+// live update did to the roster, so the leader can see who moved without diffing
+// the board by eye. Each of those actions runs through ChangeLog.track(): a
+// snapshot of where everyone sits before and after, diffed into one entry of
+// items (benched, seated, status, added, dropped and, for Optimize and live
+// updates, moved). Optimize moves are quiet: the panel lists them, but they get
+// no card highlight, no unseen count and no announcement, because Optimize moves
+// most of the board by design. Manual drags, undo/redo and tab-conflict loads
+// are the user's own doing and are still never recorded. Session only: nothing
+// here is saved or shared.
 //
 // The log belongs to one plan: recording on a different planId starts a fresh
 // log, and fresh imports clear it explicitly. Highlights (the card outline and
@@ -16,7 +19,7 @@ const ChangeLog = {
   KINDS: ['benched', 'seated', 'status', 'moved', 'added', 'dropped'],
   // The word the panel and the card tag show for each kind.
   WORDS: { benched:'Benched', seated:'Seated', status:'Status', moved:'Moved', added:'New', dropped:'Dropped' },
-  LABELS: { sync:'Sign-up sync', size:'Raid size change', live:'Live link update' },
+  LABELS: { sync:'Sign-up sync', size:'Raid size change', live:'Live link update', optimize:'Optimize' },
 
   entries: [], // newest first: {id, kind, label, time, items, seen}
   planId: null, // the plan the entries belong to
@@ -124,6 +127,8 @@ const ChangeLog = {
   record(kind, items, label) {
     if (!Array.isArray(items) || !items.length) return null;
     this.forPlan(State.planId);
+    // One Optimize entry at a time: twenty clicks must not push sync and live-update entries out of the cap.
+    if (kind === 'optimize') this.entries = this.entries.filter(e => e.kind !== 'optimize');
     const entry = { id: this.nextId++, kind, label: label || this.LABELS[kind] || 'Roster change', time: Date.now(), items, seen: false };
     this.entries.unshift(entry);
     if (this.entries.length > this.MAX_ENTRIES) this.entries.length = this.MAX_ENTRIES;
@@ -141,9 +146,14 @@ const ChangeLog = {
     return { result, entry };
   },
 
+  // An Optimize entry's moves are listed in the panel but never flagged.
+  isQuiet(entry, item) { return entry.kind === 'optimize' && item.kind === 'moved'; },
+  // The items that count as news: highlights, the unseen badge and the announcement use these.
+  loudItems(entry) { return entry.items.filter(it => !this.isQuiet(entry, it)); },
+
   // How many changes the leader has not looked at yet.
   unseenCount() {
-    return this.entries.reduce((n, e) => n + (e.seen ? 0 : e.items.length), 0);
+    return this.entries.reduce((n, e) => n + (e.seen ? 0 : this.loudItems(e).length), 0);
   },
 
   // The latest unseen change for a player, matched by uid, else by name:
@@ -155,7 +165,7 @@ const ChangeLog = {
       for (const entry of this.entries) {
         if (entry.seen) continue;
         for (const it of entry.items) {
-          if (it.kind === 'dropped') continue;
+          if (it.kind === 'dropped' || this.isQuiet(entry, it)) continue;
           const tag = { kind: it.kind, word: this.WORDS[it.kind] };
           if (it.uid && !byUid.has(it.uid)) byUid.set(it.uid, tag);
           if (it.name && !it.sharedName && !byName.has(it.name)) byName.set(it.name, tag);
@@ -189,6 +199,18 @@ const ChangeLog = {
     return this.KINDS.filter(k => counts[k]).map(k => ({ kind: k, word: this.WORDS[k], count: counts[k] }));
   },
 
+  // "2 seated, 1 benched, 3 moved": the loud items of an entry per kind, in KINDS order.
+  countsText(entry) {
+    const counts = {};
+    for (const it of this.loudItems(entry)) counts[it.kind] = (counts[it.kind] || 0) + 1;
+    return this.KINDS.filter(k => counts[k]).map(k => {
+      const n = counts[k];
+      if (k === 'status') return n === 1 ? '1 status change' : `${n} status changes`;
+      if (k === 'added') return `${n} new`;
+      return `${n} ${k}`;
+    }).join(', ');
+  },
+
   // "just now", "4 min ago", "2 h ago", then the date for anything older than a day.
   ago(time, now = Date.now()) {
     const minutes = Math.round((now - time) / 60000);
@@ -199,8 +221,9 @@ const ChangeLog = {
   },
 
   // The one line the screen reader hears for an entry ("Sign-up sync: 5 changes").
+  // Quiet items are not counted: an Optimize that only moved players says nothing.
   summary(entry) {
-    const n = entry.items.length;
+    const n = this.loudItems(entry).length;
     return `${entry.label}: ${n} change${n === 1 ? '' : 's'}`;
   },
 };

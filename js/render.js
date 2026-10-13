@@ -22,7 +22,7 @@ async function switchGameVersion(version) {
   if (!Object.prototype.hasOwnProperty.call(GameVersions, version) || version === State.gameVersion) return false;
   if (hasLoadedWork() && !await Modal.confirm({
     title: `Switch to ${GameVersions[version].name}?`,
-    message: 'Your players carry over to the default raid of the new version. Totem and aura picks are reset, and anyone who does not fit the new raid size moves to the bench.',
+    message: `This becomes a new plan in ${GameVersions[version].name}: your players carry over to its default raid, totem and aura picks reset, and anyone who doesn't fit moves to the bench. Your current plan stays in Your plans.`,
     confirmLabel: `Switch to ${GameVersions[version].name}`,
   })) return false;
   State.planId = null;
@@ -35,7 +35,7 @@ async function switchGameVersion(version) {
   switchTab('plan');
   if (State.view === 'landing') renderLanding(); // its resume banner names the plan just replaced
   const size = Config.Raids[State.selectedRaid] ? Config.Raids[State.selectedRaid].size : 25;
-  showToast((benched > 0 ? `${benched} player${benched === 1 ? '' : 's'} benched: the ${size}-man raid is full. ` : '') + GameVersions[version].note);
+  showToast((benched > 0 ? `${benched} player${benched === 1 ? '' : 's'} benched: the ${size}-man raid is full. ` : '') + (GameVersions[version].toastNote || GameVersions[version].note));
   return true;
 }
 
@@ -793,24 +793,27 @@ function renderGroups() {
 }
 
 function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
-  const insights = getMissingBuffInsights();
+  // The reference comp is a static board: the live plan's Switch / Swap In fixes do not belong on it.
+  const insights = State.activeTab === 'ideal' ? null : getMissingBuffInsights();
   // Faction-locked rosters (Classic) never show a buff the detected faction
   // could never field (Windfury for Alliance, Devotion Aura for Horde).
   const buffs = renderBuffRowList('buff-catalog-buffs', factionRelevantBuffs(), Config.BuffAbbreviations, id => Config.BuffIconURL(id), coveredBuffIds, insights);
   const debuffs = renderBuffRowList('buff-catalog-debuffs', Config.Debuffs, Config.DebuffAbbreviations, id => Config.DebuffIconURL(id), coveredDebuffIds, insights);
-  renderSidebarSummary(buffs, debuffs);
+  renderSidebarSummary(coverageGapCounts(coveredBuffIds, coveredDebuffIds));
 }
 
-// Collapsed-state strip: "Buffs 13/20 · Debuffs 18/28 · 17 missing".
-function renderSidebarSummary(buffs, debuffs) {
+// Collapsed-state strip: "Party buffs missing 7", "Raid debuffs missing 6", or one "all covered" row.
+function renderSidebarSummary(gaps) {
   const el = document.getElementById('sidebar-summary');
   if (!el) return;
   if (!GameVersions[State.gameVersion].modeled) { el.innerHTML = '<p class="sidebar-note">Coverage rules are not configured for this version yet.</p>'; return; }
-  const missing = (buffs.total - buffs.covered) + (debuffs.total - debuffs.covered);
+  if (gaps.buffs === 0 && gaps.debuffs === 0) {
+    el.innerHTML = '<div class="sidebar-summary-row ok"><span>All party buffs and raid debuffs covered</span></div>';
+    return;
+  }
   el.innerHTML = `
-    <div class="sidebar-summary-row"><span>Buffs</span><b>${buffs.covered} / ${buffs.total}</b></div>
-    <div class="sidebar-summary-row"><span>Debuffs</span><b>${debuffs.covered} / ${debuffs.total}</b></div>
-    <div class="sidebar-summary-row missing${missing === 0 ? ' zero' : ''}"><span>Missing</span><b>${missing}</b></div>`;
+    <div class="sidebar-summary-row missing${gaps.buffs === 0 ? ' zero' : ''}"><span>Party buffs missing</span><b>${gaps.buffs}</b></div>
+    <div class="sidebar-summary-row missing${gaps.debuffs === 0 ? ' zero' : ''}"><span>Raid debuffs missing</span><b>${gaps.debuffs}</b></div>`;
 }
 
 // One line under a missing row saying what would fix it, with the button
@@ -822,7 +825,7 @@ function renderInsightLine(id, insight) {
   if (insight.kind === 'switch') {
     const p = insight.player;
     return `<div class="buff-row-insight switch">
-      <span class="insight-text">In raid: <span class="insight-who ${color(p)}">${short(p)}</span></span>
+      <span class="insight-text" title="In raid: ${short(p)}">In raid: <span class="insight-who ${color(p)}">${short(p)}</span></span>
       <button type="button" class="insight-btn" data-insight-switch="${esc(id)}" data-group="${insight.groupIdx}" data-uid="${esc(p.uid)}" title="Make ${short(p)} run ${esc(Config.Buffs[id].name)}">Switch</button>
     </div>`;
   }
@@ -830,15 +833,15 @@ function renderInsightLine(id, insight) {
     const p = insight.player;
     const specLabel = p.spec ? `${esc(p.spec)}` : '';
     return `<div class="buff-row-insight bench">
-      <span class="insight-text">Benched: <span class="insight-who ${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
+      <span class="insight-text" title="Benched: ${short(p)}${specLabel ? ' (' + specLabel + ')' : ''}">Benched: <span class="insight-who ${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
       <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short(p)}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
   if (insight.kind === 'shared') {
     const lead = insight.casters > 1 ? 'Group two warriors together' : 'Needs a 2nd warrior';
-    return `<div class="buff-row-insight none"><span class="insight-text">${lead}: <span class="insight-who ${color(insight.player)}">${short(insight.player)}</span> casts the other shout</span></div>`;
+    return `<div class="buff-row-insight none"><span class="insight-text" title="${lead}: ${short(insight.player)} casts the other shout">${lead}: <span class="insight-who ${color(insight.player)}">${short(insight.player)}</span> casts the other shout</span></div>`;
   }
-  return `<div class="buff-row-insight none"><span class="insight-text">Nobody in roster</span></div>`;
+  return `<div class="buff-row-insight none"><span class="insight-text" title="Nobody in roster">Nobody in roster</span></div>`;
 }
 
 function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds, insights) {
@@ -892,8 +895,8 @@ function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds,
 
     html += `<div class="buff-row${isCovered ? ' covered' : ''}">
       <div class="buff-row-icon"${ttAttrs}>${imgTag}</div>
-      <span class="buff-row-name">${esc(entry.name)}</span>${warnBadge}
-      <span class="buff-row-source ${classColorClass(entry.sourceClass, 'secondary')}">${esc(sourceLabel)}</span>
+      <span class="buff-row-name" title="${esc(entry.name)}">${esc(entry.name)}</span>${warnBadge}
+      <span class="buff-row-source ${classColorClass(entry.sourceClass, 'secondary')}" title="${esc(sourceLabel)}">${esc(sourceLabel)}</span>
     </div>`;
     if (!isCovered && insights) html += renderInsightLine(id, insights[id]);
   }
@@ -911,11 +914,11 @@ function renderUtilityInsightLine(item) {
     const color = classColorClass(p.class, 'secondary');
     const specLabel = p.spec ? ` (${esc(p.spec)})` : '';
     return `<div class="buff-row-insight bench">
-      <span class="insight-text">Benched: <span class="insight-who ${color}">${short}</span>${specLabel}</span>
+      <span class="insight-text" title="Benched: ${short}${specLabel}">Benched: <span class="insight-who ${color}">${short}</span>${specLabel}</span>
       <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
-  return `<div class="buff-row-insight none"><span class="insight-text">Nobody in roster</span></div>`;
+  return `<div class="buff-row-insight none"><span class="insight-text" title="Nobody in roster">Nobody in roster</span></div>`;
 }
 
 // Class-presence utility checklist (Battle Rez, cleanses, Bloodlust, ...) —
@@ -946,8 +949,8 @@ function renderUtilityCatalog(groups, bench) {
     const ttAttrs = ` data-tt-name="${esc(item.name)}" data-tt-desc="${esc(item.desc)}"`
       + ` data-tt-source="${item.covered ? esc(seatedNames) + ' - Covered by this raid' : 'Not covered'}"`;
     html += `<div class="buff-row${item.covered ? ' covered' : ''}"${ttAttrs}>
-      <span class="buff-row-name">${esc(item.name)}</span>
-      <span class="buff-row-source">${esc(sourceText)}</span>
+      <span class="buff-row-name" title="${esc(item.name)}">${esc(item.name)}</span>
+      <span class="buff-row-source" title="${esc(sourceText)}">${esc(sourceText)}</span>
     </div>`;
     if (!item.covered) html += renderUtilityInsightLine(item);
   }
@@ -1063,8 +1066,9 @@ const ChangesPanel = {
     const toggle = long
       ? `<button type="button" class="link-btn changes-log-more" data-changes-expand="${entry.id}" aria-expanded="${open}">${open ? 'Hide the list' : `Show all ${entry.items.length}`}</button>`
       : '';
-    return `<div class="changes-log-entry${entry.seen ? '' : ' is-unseen'}">
-      <h4 class="changes-log-meta">${esc(entry.label)} <span class="changes-log-time">- ${esc(ChangeLog.ago(entry.time, now))}</span>${entry.seen ? '' : '<span class="sr-only">, not seen yet</span>'}</h4>
+    const unseen = !entry.seen && ChangeLog.loudItems(entry).length > 0;
+    return `<div class="changes-log-entry${unseen ? ' is-unseen' : ''}">
+      <h4 class="changes-log-meta">${esc(entry.label)} <span class="changes-log-time">- ${esc(ChangeLog.ago(entry.time, now))}</span>${unseen ? '<span class="sr-only">, not seen yet</span>' : ''}</h4>
       <ul class="changes-log-items">${lines}</ul>${toggle}
     </div>`;
   },
@@ -1109,6 +1113,8 @@ const ChangesPanel = {
 // The tracked action has already committed; this commit only redraws.
 ChangeLog.onRecord = entry => {
   commit();
+  // An Optimize that only moved players has nothing to announce beyond the composition the tracked commit spoke.
+  if (!ChangeLog.loudItems(entry).length) return;
   // A size change or a seat change also changed the composition the tracked commit
   // just announced; the region holds one message, so the summary carries both.
   const reshaped = entry.kind === 'size' || entry.items.some(it => it.kind !== 'status' && it.kind !== 'moved');
@@ -1153,10 +1159,10 @@ ChangeLog.onRecord = entry => {
 // Phone: the readiness strip (#plan-feedback) is folded away and a short link on line 2
 // of the context row opens it and the coverage panel. The link says what the strip
 // warns about, most serious first: tanks short, healers short, a mixed-faction
-// Classic roster ("⚠ 1 healer short"), then "N missing" for missing party buffs (the
-// same count the strip names). Hidden when there is nothing to warn about or coverage
+// Classic roster ("⚠ 1 healer short"), then "N missing" for party buffs plus raid debuffs (the
+// two counts the strip names). Hidden when there is nothing to warn about or coverage
 // rules are not configured. Desktop always shows the strip.
-// lastReadiness is set by renderReadiness: {missingBuffs, tanksShort, healersShort, mixedFactions} or null.
+// lastReadiness is set by renderReadiness: {missingCoverage, tanksShort, healersShort, mixedFactions} or null.
 let lastReadiness = null;
 function phoneReadinessLabel(r) {
   if (!r) return '';
@@ -1164,7 +1170,7 @@ function phoneReadinessLabel(r) {
   if (r.tanksShort > 0) return `<b>&#9888; ${n(r.tanksShort, 'tank')} short</b> &#9656;`;
   if (r.healersShort > 0) return `<b>&#9888; ${n(r.healersShort, 'healer')} short</b> &#9656;`;
   if (r.mixedFactions) return '<b>&#9888; Mixed factions</b> &#9656;';
-  if (r.missingBuffs > 0) return `<b>${r.missingBuffs}</b> missing &#9656;`;
+  if (r.missingCoverage > 0) return `<b>${r.missingCoverage}</b> missing &#9656;`;
   return '';
 }
 let phoneFeedbackOpen = false;
@@ -2208,10 +2214,23 @@ const SPOTLIGHT_DEFS = [
   // Anchorless while the Assignments tab is hidden (ASSIGNMENTS_TAB_ENABLED), so it never shows.
   { id: 'assignments-tab', text: 'New: assign who casts curses, blessings and other one-per-raid buffs here.', anchor: () => document.querySelector('.mode-tab[data-tab="assignments"]') },
   // A new id (was 'options-panel') so people who saw the old tip learn where the menus went.
-  { id: 'menu-panel', text: 'Plan, sign-up and data actions now live in this menu.', anchor: () => document.getElementById('btn-settings-menu') },
+  { id: 'menu-panel-v2', text: 'Save a copy, templates, backups and shortcuts are in this menu.', anchor: () => document.getElementById('btn-settings-menu') },
   // The gear menu holds Keyboard shortcuts; it is hidden on phones, so the tip skips them.
   { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.getElementById('btn-settings-menu') },
 ];
+// First-run tips wait until the import feedback is out of the way: about 3 seconds after the view opens,
+// and a further beat while a toast is still showing.
+const SPOTLIGHT_DELAY_MS = 3000;
+let spotlightTimer = null;
+function scheduleSpotlightQueue() {
+  clearTimeout(spotlightTimer);
+  const attempt = () => {
+    const toast = document.getElementById('toast');
+    if (toast && toast.classList.contains('visible')) { spotlightTimer = setTimeout(attempt, 500); return; }
+    if (State.view === 'app') runSpotlightQueue();
+  };
+  spotlightTimer = setTimeout(attempt, SPOTLIGHT_DELAY_MS);
+}
 function runSpotlightQueue() {
   if (document.querySelector('.spotlight-callout')) return;
   for (const def of SPOTLIGHT_DEFS) {
