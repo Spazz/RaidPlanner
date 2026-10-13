@@ -528,7 +528,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .buff-sidebar.collapsed .sidebar-chevron { transform: rotate(-90deg); }
 .sidebar-toggle:hover .sidebar-toggle-label { color: var(--accent-gold-bright); }
 .sidebar-summary { display: flex; flex-direction: column; gap: 3px; padding: 0 3px; }
-.sidebar-summary-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--text-secondary); }
+.sidebar-summary-row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 11px; color: var(--text-secondary); }
 .sidebar-summary-row b { font-family: var(--font-cond); font-size: 13px; color: var(--text-primary); letter-spacing: 0.04em; }
 .sidebar-summary-row.missing { color: var(--danger); }
 .sidebar-summary-row.missing b { color: var(--danger); }
