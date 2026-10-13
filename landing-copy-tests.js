@@ -24,7 +24,7 @@ function check(name, fn) {
 check('privacy lines say what is true about imports and live links', () => {
   assert(html.includes('No spreadsheet, no login; imports stay in your browser.'));
   assert(!/nothing uploaded/i.test(html));
-  assert(html.includes('Live links are stored on our server until 30 days after their last change.'));
+  assert(html.includes('A live link is stored on our server so others can open it'));  // the FAQ now holds this fact (the feature cards are gone)
   assert(!html.includes('Nothing is stored on a server'));
   assert(html.includes('anyone with the link can see and edit the plan, and it expires 30 days after its last change'));
   assert(html.includes('A long snapshot link (#r=...) carries the plan inside the link itself'));

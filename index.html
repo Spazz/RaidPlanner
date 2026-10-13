@@ -28,30 +28,27 @@
 </head>
 <body>
 
-<header class="game-header">
+<header class="game-header" id="era-band">
   <div class="game-header-inner">
-    <a href="/" class="game-header-brand" id="brand-home" aria-label="Party Planner home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true">P</span><div><strong>Party Planner</strong><small>Choose your era</small></div></a>
+    <a href="/" class="game-header-brand" id="brand-home" aria-label="Party Planner home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true">P</span><div><strong>Party Planner</strong></div></a>
     <nav class="game-version-nav" aria-label="Game version">
-      <button type="button" class="game-version-tab" data-version="classic" aria-pressed="false" aria-label="WoW Classic"><span class="game-eyebrow">World of Warcraft</span><span class="game-name">Classic</span></button>
-      <button type="button" class="game-version-tab" data-version="tbc" aria-pressed="true" aria-label="TBC Anniversary"><span class="game-eyebrow">Burning Crusade</span><span class="game-name">TBC</span></button>
-      <button type="button" class="game-version-tab" data-version="forever" aria-pressed="false" aria-label="WoW Forever Beta"><span class="game-eyebrow">World of Warcraft</span><span class="game-name">Forever<span class="game-beta">Beta</span></span></button>
+      <button type="button" class="game-version-tab" data-version="classic" aria-pressed="false" aria-label="WoW Classic"><span class="game-name">Classic</span></button>
+      <button type="button" class="game-version-tab" data-version="tbc" aria-pressed="true" aria-label="TBC Anniversary"><span class="game-name">TBC</span></button>
+      <button type="button" class="game-version-tab" data-version="forever" aria-pressed="false" aria-label="WoW Forever Beta"><span class="game-name">Forever<span class="game-beta">Beta</span></span></button>
     </nav>
-    <span class="game-header-caption">Your raid. Your rules.<br>One planner for every era.</span>
+    <nav class="game-header-links" aria-label="Site">
+      <a href="#whats-new" id="nav-whats-new">What's new<span class="new-badge" id="whats-new-badge" hidden>New</span></a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#faq">FAQ</a>
+    </nav>
   </div>
 </header>
 <main class="landing" id="landing-view">
-  <nav class="landing-nav" aria-label="Site">
-    <div class="landing-brand"><h1>Party Planner</h1><span>Multi-version Raid Planner</span></div>
-    <div class="landing-nav-links">
-      <a href="#whats-new" id="nav-whats-new">What's new<span class="new-badge" id="whats-new-badge" hidden>New</span></a>
-      <a href="#how-it-works">How it works</a>
-      <a href="#features">Features</a>
-      <a href="#faq">FAQ</a>
-    </div>
-  </nav>
+  <h1 class="sr-only">Party Planner</h1>
 
   <section class="hero">
     <div class="hero-copy">
+      <div class="hero-wordmark" aria-hidden="true"><span class="game-header-mark">P</span><strong>Party Planner</strong></div>
       <div class="hero-kicker">WoW Classic &middot; TBC Anniversary &middot; WoW Forever Beta</div>
       <p id="landing-version-note"></p>
       <h2>Optimal raid groups <em>in one click.</em></h2>
@@ -135,18 +132,6 @@
     </div>
   </section>
 
-  <section class="landing-section" id="features">
-    <div class="section-title">Everything you need to run an optimized raid</div>
-    <div class="features">
-      <div class="feature"><h3>Paste your sign-ups</h3><p>Drop in a Raid-Helper link or event ID and your roster shows up with class, spec and role already sorted.</p></div>
-      <div class="feature"><h3>Groups that hit harder</h3><p>Melee get Windfury, casters get their totems and auras, tanks stay with their healers. Every party is built to do more damage.</p></div>
-      <div class="feature"><h3>Nobody gets dropped</h3><p>More sign-ups than seats? The strongest raid gets seated and everyone else waits on the bench, ready to swap in.</p></div>
-      <div class="feature"><h3>Missing buffs, fixed</h3><p>See every buff your raid isn't getting, who could provide it, and fix it in one click.</p></div>
-      <div class="feature"><h3>Drag, drop, override</h3><p>Move anyone between groups, edit a spec, or pick a different totem or aura.</p></div>
-      <div class="feature"><h3>Share with your raid</h3><p>Send a live link that updates as you plan, or download the plan as JSON. Live links are stored on our server until 30 days after their last change.</p></div>
-    </div>
-  </section>
-
   <section class="landing-section" id="version-comparison">
     <div class="section-title">Pick your era</div>
     <div class="version-compare" id="version-compare-table"></div>
@@ -185,6 +170,7 @@
   <!-- Header row: title · plan name + status · Share and the menu (nav slim-down). -->
   <div class="title-bar">
     <h1 class="sr-only">Party Planner</h1>
+    <a href="/" class="planner-home" id="planner-home" aria-label="Party Planner home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true">P</span></a>
     <div class="roster-name-wrap plan-only">
       <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">
         <span id="roster-name-text">No Roster Loaded</span>
@@ -193,15 +179,34 @@
       <span class="roster-status-line" id="roster-status-line"></span>
     </div>
     <div class="title-right plan-only">
+      <div class="menu-wrap" id="version-menu-wrap">
+        <button type="button" class="btn version-btn" id="btn-version-menu" data-version="tbc" aria-haspopup="menu" aria-expanded="false" aria-label="Game version: TBC Anniversary" title="Switch game version"><span id="version-btn-text">TBC</span> <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <div class="menu" id="version-menu" role="menu" aria-label="Game version" hidden>
+          <button type="button" class="menu-item" role="menuitemradio" aria-checked="false" data-version="classic">WoW Classic<span class="menu-check" aria-hidden="true">&#10003;</span></button>
+          <button type="button" class="menu-item" role="menuitemradio" aria-checked="true" data-version="tbc">TBC Anniversary<span class="menu-check" aria-hidden="true">&#10003;</span></button>
+          <button type="button" class="menu-item" role="menuitemradio" aria-checked="false" data-version="forever">WoW Forever<span class="game-beta">Beta</span><span class="menu-check" aria-hidden="true">&#10003;</span></button>
+        </div>
+      </div>
       <div class="menu-wrap">
         <button type="button" class="btn share-btn" id="btn-share-menu" aria-haspopup="menu" aria-expanded="false">Share <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
         <div class="menu" id="share-menu" role="menu" aria-label="Share" hidden>
-          <button type="button" class="menu-item" role="menuitem" id="btn-share" aria-label="Copy live link: everyone with it sees and edits this plan" aria-keyshortcuts="L">Copy live link<kbd class="menu-kbd" aria-hidden="true">L</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt" aria-label="Copy for MRT: the seated groups as an MRT Raid Groups import string" aria-keyshortcuts="G">Copy for MRT<kbd class="menu-kbd" aria-hidden="true">G</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt-note" aria-label="Copy MRT note: the assignments as an MRT note" aria-keyshortcuts="M">Copy MRT note<kbd class="menu-kbd" aria-hidden="true">M</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat" aria-label="Copy raid chat text: the groups as plain text for Discord or raid chat" aria-keyshortcuts="C">Copy raid chat text<kbd class="menu-kbd" aria-hidden="true">C</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat-compact" aria-label="Copy compact chat text: sized for in-game raid chat">Copy compact chat text</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-print-sheet" aria-label="Print raid sheet: opens a printable sheet">Print raid sheet</button>
+          <div role="group" aria-labelledby="menu-heading-game">
+            <div class="menu-heading" id="menu-heading-game">Into the game</div>
+            <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt" aria-label="Copy for MRT: the seated groups as an MRT Raid Groups import string" aria-keyshortcuts="G">Copy for MRT<kbd class="menu-kbd" aria-hidden="true">G</kbd></button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt-note" aria-label="Copy MRT note: the assignments as an MRT note" aria-keyshortcuts="M">Copy MRT note<kbd class="menu-kbd" aria-hidden="true">M</kbd></button>
+          </div>
+          <div class="menu-sep"></div>
+          <div role="group" aria-labelledby="menu-heading-raid">
+            <div class="menu-heading" id="menu-heading-raid">Send to the raid</div>
+            <button type="button" class="menu-item" role="menuitem" id="btn-share" aria-label="Copy live link: everyone with it sees and edits this plan" aria-keyshortcuts="L">Copy live link<kbd class="menu-kbd" aria-hidden="true">L</kbd></button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat" aria-label="Copy raid chat text: the groups as plain text for Discord or raid chat" aria-keyshortcuts="C">Copy raid chat text<kbd class="menu-kbd" aria-hidden="true">C</kbd></button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat-compact" aria-label="Copy compact chat text: sized for in-game raid chat">Copy compact chat text</button>
+          </div>
+          <div class="menu-sep"></div>
+          <div role="group" aria-labelledby="menu-heading-other">
+            <div class="menu-heading" id="menu-heading-other">Other</div>
+            <button type="button" class="menu-item" role="menuitem" id="btn-print-sheet" aria-label="Print raid sheet: opens a printable sheet">Print raid sheet</button>
+          </div>
           <div class="menu-sep"></div>
           <button type="button" class="menu-item" role="menuitem" id="btn-share-main" title="Share and export (E)" aria-keyshortcuts="E"><span class="btn-label">Share and export&hellip;</span><kbd class="menu-kbd" aria-hidden="true">E</kbd></button>
         </div>
@@ -268,10 +273,14 @@
   <!-- Phone context row: line 1 plan name (+ Edit), line 2 seated count · Raid size · readiness link. -->
   <div class="phone-context-panel" id="phone-context-panel">
     <div class="phone-summary-wrap" id="phone-summary-wrap">
-      <button type="button" class="phone-summary" id="phone-summary-toggle" aria-expanded="false" aria-controls="phone-context-body">
-        <span class="phone-summary-main" id="phone-summary-main"></span>
-        <span class="phone-summary-edit"><span id="phone-summary-edit-label">Edit</span> <span aria-hidden="true" id="phone-summary-chevron">&#9662;</span></span>
-      </button>
+      <div class="phone-summary-line1">
+        <div id="phone-home-slot"></div>
+        <button type="button" class="phone-summary" id="phone-summary-toggle" aria-expanded="false" aria-controls="phone-context-body">
+          <span class="phone-summary-main" id="phone-summary-main"></span>
+          <span class="phone-summary-edit"><span id="phone-summary-edit-label">Edit</span> <span aria-hidden="true" id="phone-summary-chevron">&#9662;</span></span>
+        </button>
+        <div id="phone-version-slot"></div>
+      </div>
       <div class="phone-summary-line2">
         <span class="phone-summary-sub" id="phone-summary-sub"></span>
         <div id="raid-size-phone-slot"></div>

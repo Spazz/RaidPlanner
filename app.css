@@ -87,26 +87,6 @@ body {
   padding: 24px 0 48px;
   display: flex; flex-direction: column; gap: 28px;
 }
-.landing-nav {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 4px 16px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.landing-brand { display: flex; align-items: baseline; gap: 10px; }
-.landing-brand h1 {
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.14em;
-  font-size: 22px; font-weight: 700; color: var(--text-primary);
-}
-.landing-brand span {
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
-  font-size: 12px; color: var(--accent-gold);
-}
-.landing-nav-links { display: flex; gap: 20px; align-items: center; }
-.landing-nav-links a {
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em;
-  font-size: 12px; color: var(--text-muted); text-decoration: none;
-}
-.landing-nav-links a:hover { color: var(--text-primary); }
 
 .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 32px; align-items: start; }
 .hero-copy { padding-top: 12px; }
@@ -303,13 +283,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 .step h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 15px; color: var(--text-primary); }
 .step p { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
-.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.feature {
-  padding: 16px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
-  border-left: 2px solid var(--accent-gold-dim);
-}
-.feature h3 { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
-.feature p { font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
 .faq { display: flex; flex-direction: column; gap: 6px; }
 .faq details { background: var(--bg-panel); border: 1px solid var(--border-subtle); }
 .faq summary {
@@ -329,8 +302,8 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .footer-link:hover { color: var(--accent-gold-bright); text-decoration: underline; }
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; }
-  .steps, .features { grid-template-columns: 1fr; }
-  .landing-nav-links { display: none; }
+  .steps { grid-template-columns: 1fr; }
+  .game-header-links { display: none; }
 }
 
 /* ── Main frame ── */
@@ -376,7 +349,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .title-bar {
   display: flex; align-items: center; gap: var(--sp-4);
   padding: 0 var(--sp-4);
-  height: 36px;
+  height: 32px;
   background: var(--bg-frame);
   border-bottom: 1px solid var(--border-subtle);
   user-select: none;
@@ -385,6 +358,11 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   font-size: 15px; font-weight: 600; flex-shrink: 0;
   color: var(--text-primary); letter-spacing: 0.12em;
 }
+/* The P mark is the planner's way home (planner-home), same look as the era band's mark. */
+.planner-home { display: flex; align-items: center; flex-shrink: 0; text-decoration: none; cursor: pointer; }
+.planner-home .game-header-mark { width: 20px; height: 23px; font-size: 13px; }
+.planner-home:hover .game-header-mark { border-color: var(--accent-gold-bright); color: var(--accent-gold-bright); }
+.planner-home:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 .title-diamond { display: none; }
 .title-edition { font-family: var(--font-cond); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
 .title-right { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; flex-shrink: 0; }
@@ -503,6 +481,14 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .menu-item-danger { color: var(--danger); }
 .menu-item-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
+/* Version button in the header row: bordered outline in the era colour (--game-color, as on the era tabs). */
+.btn.version-btn { --game-color: var(--version-classic); color: var(--game-color); border-color: var(--game-color); background: transparent; }
+.btn.version-btn[data-version="tbc"] { --game-color: #abd47d; }
+.btn.version-btn[data-version="forever"] { --game-color: #b9a0ec; }
+.btn.version-btn:hover { background: color-mix(in srgb, var(--game-color) 14%, transparent); }
+.menu-item[role="menuitemradio"] .menu-check { margin-left: auto; visibility: hidden; color: var(--accent-gold-bright); }
+.menu-item[role="menuitemradio"][aria-checked="true"] { font-weight: 600; }
+.menu-item[role="menuitemradio"][aria-checked="true"] .menu-check { visibility: visible; }
 .share-btn { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
 .share-btn:hover { background: var(--accent-gold); color: var(--text-on-accent); border-color: var(--accent-gold); }
 
@@ -1360,7 +1346,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 @media (max-width: 600px) {
   /* Landing: body padding is 0 below 1100px, so the landing needs its own gutter. */
   .landing { padding: 16px 12px 40px; gap: 22px; }
-  .landing-nav { flex-wrap: wrap; gap: 8px; }
   .hero h1 { font-size: 30px; }
   .import-field { font-size: 16px; } /* 16px stops iOS Safari zooming the page on focus */
   textarea.import-field { font-size: 14px; }
@@ -1607,8 +1592,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .sidebar-summary-row.ok { color: var(--success); }
 /* Larger homepage type and controls for comfortable reading. */
 .landing { width:min(1180px,100%); }
-.landing-brand h1 { font-size:26px; }
-.landing-brand span, .landing-nav-links a, .hero-kicker { font-size:14px; }
+.hero-kicker { font-size:14px; }
 .hero h2 { font-size:clamp(38px,5vw,60px); }
 .hero-copy > p { font-size:18px; }
 .hero-points li { font-size:16px; line-height:1.45; }
@@ -1624,13 +1608,11 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .landing .saved-item-meta { font-size:13px; }
 .landing .saved-item { padding:12px 14px; }
 .landing .section-title, .landing .roster-section-heading { font-size:16px; }
-.landing .step h3, .landing .feature h3 { font-size:18px; }
-.landing .step p, .landing .feature p, .landing .faq details p { font-size:16px; }
+.landing .step h3 { font-size:18px; }
+.landing .step p, .landing .faq details p { font-size:16px; }
 .landing .faq summary { font-size:17px; padding:16px; }
 .landing-footer { font-size:13px; }
 @media(max-width:600px) {
-  .landing-brand { flex-wrap:wrap; gap:4px 10px; }
-  .landing-brand h1 { font-size:24px; }
   .landing .import-pane { padding:16px; }
   .landing .import-foot { flex-wrap:wrap; }
   .landing .saved-item:not(.history-open) { flex-wrap:wrap; }
@@ -1641,8 +1623,8 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .hero { gap:48px; }
   .hero-copy { padding-top:24px; }
   .hero-points { max-width:56ch; }
-  .steps, .features { gap:20px; }
-  .step, .feature { padding:24px; }
+  .steps { gap:20px; }
+  .step { padding:24px; }
   .faq details p { max-width:90ch; }
 }
 @media (min-width:2200px) {
@@ -1662,32 +1644,35 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 .game-header { width:calc(100% + 32px); background:#101113; border-bottom:1px solid #34332d; }
 /* The +32px bleed cancels body's 16px side padding, which drops to 0 at <=1100px. */
 @media(max-width:1100px) { .game-header { width:100%; } }
-.game-header-inner { max-width:1480px; margin:auto; display:flex; align-items:stretch; padding:0 32px; }
-.game-header-brand { display:flex; align-items:center; gap:12px; padding-right:36px; color:#e5e0d3; flex-shrink:0; }
+.game-header-inner { max-width:1480px; margin:auto; display:flex; align-items:center; height:56px; padding:0 32px; }
+.game-header-brand { display:flex; align-items:center; gap:12px; padding-right:32px; color:#e5e0d3; flex-shrink:0; }
 .game-header-mark { width:32px; height:36px; display:grid; place-items:center; border:1px solid #706044; color:var(--version-classic); font:700 21px var(--font-cond); clip-path:polygon(0 0,100% 0,100% 77%,50% 100%,0 77%); background:#29251d; }
 .game-header-brand strong { display:block; font:700 18px var(--font-cond); letter-spacing:.09em; text-transform:uppercase; }
-.game-header-brand small { display:block; color:var(--text-faint); font-size:10px; letter-spacing:.18em; text-transform:uppercase; margin-top:3px; }
 /* The brand is the way home (brand-home): same look as before, plus a pointer, a gold hover and a focus ring. */
 .game-header-brand { cursor:pointer; text-decoration:none; }
 .game-header-brand:hover strong { color:var(--accent-gold-bright); }
 .game-header-brand:focus-visible { outline:2px solid var(--accent-gold); outline-offset:2px; }
-.game-version-nav { display:flex; flex:1; gap:4px; }
-.game-version-tab { --game-color:var(--version-classic); appearance:none; border:0; border-bottom:3px solid transparent; background:transparent; color:#a7aaa4; padding:18px 30px 15px; min-width:158px; text-align:left; cursor:pointer; position:relative; transition:background .15s,color .15s; }
+.game-version-nav { display:flex; gap:2px; padding:3px; border:1px solid var(--border-subtle); background:#17181a; }
+.game-version-tab { --game-color:var(--version-classic); appearance:none; border:0; border-bottom:3px solid transparent; background:transparent; color:#a7aaa4; padding:5px 18px 4px; text-align:center; cursor:pointer; position:relative; transition:background .15s,color .15s; }
 .game-version-tab[data-version="tbc"] { --game-color:#abd47d; }
 .game-version-tab[data-version="forever"] { --game-color:#b9a0ec; }
 .game-version-tab:hover { background:var(--bg-card); color:#f1f1eb; }
 .game-version-tab:focus-visible { outline:2px solid var(--game-color); outline-offset:-5px; }
 .game-version-tab[aria-pressed="true"] { color:var(--game-color); border-bottom-color:var(--game-color); background:#232526; }
-.game-version-tab .game-eyebrow { display:block; font:500 9px var(--font-body); letter-spacing:.18em; text-transform:uppercase; opacity:.75; margin-bottom:4px; }
-.game-version-tab .game-name { font:700 23px var(--font-cond); letter-spacing:.045em; text-transform:uppercase; white-space:nowrap; }
+.game-version-tab .game-name { font:700 18px var(--font-cond); letter-spacing:.045em; text-transform:uppercase; white-space:nowrap; }
 .game-beta { display:inline-block; vertical-align:middle; padding:3px 5px; margin-left:7px; border:1px solid #65577e; color:var(--camp-accent); font:600 9px var(--font-body); letter-spacing:.06em; }
-.game-header-caption { align-self:center; margin-left:auto; padding-left:24px; font-size:11px; color:var(--text-faint); text-align:right; line-height:1.6; }
+/* Landing links in the band (What's new, How it works, FAQ): hidden below 900px and on phones. */
+.game-header-links { display:flex; gap:22px; align-items:center; margin-left:auto; }
+.game-header-links a { font-family:var(--font-cond); text-transform:uppercase; letter-spacing:.1em; font-size:14px; color:var(--text-muted); text-decoration:none; }
+.game-header-links a:hover { color:var(--text-primary); }
+/* The wordmark in the hero is for phones only: the phone era band keeps just the mark. */
+.hero-wordmark { display:none; }
 #landing-version-note { font-size:13px; color:var(--text-muted); line-height:1.5; margin:10px 0 20px; }
 @media(max-width:900px) {
   .game-header-inner { padding:0 16px; }
   .game-header-brand { padding-right:20px; }
-  .game-version-tab { min-width:0; flex:1; padding:16px 18px 13px; }
-  .game-header-caption { display:none; }
+  .game-version-tab { min-width:0; padding:5px 14px 4px; }
+  .game-header-links { display:none; }
 }
 @media(max-width:600px) {
   .game-header { width:100%; }
@@ -1695,11 +1680,9 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .game-header-brand { width:100%; padding:10px 14px; gap:9px; border-bottom:1px solid #27292b; }
   .game-header-mark { width:23px; height:25px; font-size:16px; }
   .game-header-brand strong { font-size:15px; }
-  .game-header-brand small { display:none; }
   .game-version-nav { width:100%; gap:0; }
   .game-version-tab { padding:12px 10px 10px; text-align:center; }
   .game-version-tab .game-name { font-size:20px; }
-  .game-version-tab .game-eyebrow { font-size:8px; letter-spacing:.1em; }
   .game-beta { font-size:8px; margin-left:3px; padding:2px 3px; }
 }
 
@@ -1846,14 +1829,13 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   /* Version header: one 40px row (mark + Classic | TBC | Forever). */
   .game-header-inner { flex-wrap: nowrap; align-items: center; height: 40px; padding: 0 12px; gap: 10px; }
   .game-header-brand { width: auto; padding: 0; border-bottom: 0; flex-shrink: 0; }
-  .game-header-brand > div, .game-header-caption { display: none; }
+  .game-header-brand > div, .game-header-links { display: none; }
   /* 44px x 44px tap area around the 22px mark: it reaches the screen edge (12px padding) and stops at the first tab (10px gap). */
   .game-header-brand { position: relative; }
   .game-header-brand::before { content: ''; position: absolute; top: -11px; left: -12px; width: 44px; height: 44px; }
   .game-header-mark { width: 22px; height: 22px; font-size: 13px; clip-path: none; border-color: var(--border-accent); }
-  .game-version-nav { flex: 1; width: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; height: 28px; border: 1px solid var(--border-subtle); }
+  .game-version-nav { flex: 1; width: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; padding: 0; background: none; height: 28px; border: 1px solid var(--border-subtle); }
   .game-version-tab { min-width: 0; padding: 0; display: flex; align-items: center; justify-content: center; border-bottom: 0; color: var(--text-secondary); }
-  .game-version-tab .game-eyebrow { display: none; }
   .game-version-tab .game-name { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; }
   .game-version-tab[aria-pressed="true"] { background: var(--accent-gold); color: var(--text-on-accent); }
   .game-version-tab[aria-pressed="true"] .game-name { font-weight: 700; }
@@ -1867,6 +1849,20 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
      carries its own "Back to my raid" button. */
   .title-bar { display: none; }
   .toolbar { display: none; }
+  /* Line 1 of the context row: P mark home link, plan name / Edit toggle, version button. */
+  .phone-summary-line1 { display: flex; align-items: center; gap: 10px; }
+  .phone-summary-line1 > .phone-summary { flex: 1; width: auto; min-width: 0; }
+  #phone-home-slot, #phone-version-slot { display: flex; align-items: center; flex-shrink: 0; }
+  /* 44px x 44px tap area around the 22px mark, above the toggle's own hit area. */
+  .planner-home { position: relative; z-index: 1; }
+  .planner-home::before { content: ''; position: absolute; top: -11px; left: -12px; width: 44px; height: 44px; }
+  .planner-home .game-header-mark { width: 22px; height: 22px; font-size: 13px; clip-path: none; border-color: var(--border-accent); }
+  .version-btn { min-height: 32px; padding: 0 10px; position: relative; }
+  /* 44px tall tap area around the 32px button (the row stays as tall as before). */
+  .version-btn::before { content: ''; position: absolute; inset: -6px 0; }
+  .hero-wordmark { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+  .hero-wordmark .game-header-mark { width: 23px; height: 25px; font-size: 16px; }
+  .hero-wordmark strong { font: 700 15px var(--font-cond); letter-spacing: .09em; text-transform: uppercase; color: #e5e0d3; }
 
   /* Context row: line 1 plan name + Edit (the toggle button), line 2 seated count ·
      Raid size · "N missing" (separate controls, not nested in the toggle). */

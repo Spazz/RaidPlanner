@@ -1,4 +1,18 @@
 // ── UI RENDERING ────────────────────────────────────────────────
+// The planner header's version button shows the short name; its aria-label spells the era out.
+const VERSION_BUTTON_TEXT = {
+  classic: { text: 'Classic', label: 'WoW Classic' },
+  tbc: { text: 'TBC', label: 'TBC Anniversary' },
+  forever: { text: 'Forever', label: 'WoW Forever Beta' },
+};
+// The picked menu item is hidden by now: when nothing visible holds focus (and no dialog does), the button gets it back.
+function restoreVersionButtonFocus() {
+  if (document.querySelector('dialog[open]')) return;
+  const active = document.activeElement;
+  if (active && active !== document.body && !active.closest('#version-menu')) return;
+  const button = document.getElementById('btn-version-menu');
+  if (button) button.focus();
+}
 function syncVersionControls() {
   const profile = GameVersions[State.gameVersion];
   // Scoped to the real switcher tabs only — the landing page's informational
@@ -10,6 +24,21 @@ function syncVersionControls() {
   document.querySelectorAll('.game-version-tab[data-version]').forEach(button => {
     button.setAttribute('aria-pressed', String(button.dataset.version === State.gameVersion));
     button.onclick = () => switchGameVersion(button.dataset.version);
+  });
+  // The planner header's version button and menu (the era band is hidden while the planner shows).
+  const versionButton = document.getElementById('btn-version-menu');
+  const buttonText = VERSION_BUTTON_TEXT[State.gameVersion];
+  if (versionButton && buttonText) {
+    versionButton.dataset.version = State.gameVersion;
+    versionButton.setAttribute('aria-label', 'Game version: ' + buttonText.label);
+    document.getElementById('version-btn-text').textContent = buttonText.text;
+  }
+  document.querySelectorAll('#version-menu [data-version]').forEach(item => {
+    item.setAttribute('aria-checked', String(item.dataset.version === State.gameVersion));
+    item.onclick = async () => {
+      await switchGameVersion(item.dataset.version);
+      restoreVersionButtonFocus();
+    };
   });
   document.getElementById('landing-version-note').textContent = profile.note;
   document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-player roster`;
@@ -1992,11 +2021,11 @@ const Menu = {
       // No focusTrigger here: several items open a dialog synchronously
       // (Save, Rename, Templates…) which already moves focus into itself —
       // yanking it back to the trigger right after would fight that.
-      if (e.target.closest('[role="menuitem"]')) this.closeMenu(trigger, menu);
+      if (e.target.closest('[role="menuitem"], [role="menuitemradio"]')) this.closeMenu(trigger, menu);
     });
   },
   items(menu) {
-    return Array.from(menu.querySelectorAll('[role="menuitem"]')).filter(el => !el.hidden && !el.disabled);
+    return Array.from(menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')).filter(el => !el.hidden && !el.disabled);
   },
   openMenu(trigger, menu) {
     if (this.open && this.open.menu !== menu) this.closeMenu(this.open.trigger, this.open.menu);

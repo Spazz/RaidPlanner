@@ -19,6 +19,9 @@ function showView(view) {
   const app = document.getElementById('app');
   landing.hidden = view !== 'landing';
   app.hidden = view !== 'app';
+  // The era band is the landing's brand row; the planner's header row carries the version button instead.
+  const eraBand = document.getElementById('era-band');
+  if (eraBand) eraBand.hidden = view !== 'landing';
   if (view === 'landing') renderLanding();
   else if (State.activeTab !== 'plan') switchTab('plan');
   window.scrollTo(0, 0);
@@ -332,6 +335,13 @@ const LandingSample = {
     showView('landing');
     window.scrollTo(0, 0);
   });
+  // The planner header's P mark does the same.
+  document.getElementById('planner-home').addEventListener('click', e => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    showView('landing');
+    window.scrollTo(0, 0);
+  });
 })();
 
 (function initPlanChrome() {
@@ -354,6 +364,7 @@ const LandingSample = {
 // ── HEADER MENUS (nav slim-down) ─────────────────────────────────
 // Share, and one menu (gear) holding the Plan, Sign-ups and Data & help sections.
 (function initToolbarMenus() {
+  Menu.init(document.getElementById('btn-version-menu'), document.getElementById('version-menu'));
   Menu.init(document.getElementById('btn-share-menu'), document.getElementById('share-menu'));
   Menu.init(document.getElementById('btn-settings-menu'), document.getElementById('settings-menu'));
 })();
@@ -415,7 +426,7 @@ function syncRaidNotesToggle() {
 // element's original position lets it snap back to that exact spot when the
 // viewport widens again. Slots fill in list order.
 (function initResponsiveChrome() {
-  const slots = ['btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
+  const slots = ['planner-home:phone-home-slot', 'version-menu-wrap:phone-version-slot', 'btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
     'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot',
     'btn-redo:phone-sheet-quick-slot', 'btn-changes:phone-sheet-quick-slot',
     'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-split-plan:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
