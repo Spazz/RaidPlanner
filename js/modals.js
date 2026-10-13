@@ -1228,6 +1228,9 @@ const SplitFlow = {
     const state = this.menuState();
     btn.disabled = !state.enabled;
     btn.title = state.title;
+    // The reason is visible text on the item, not only a tooltip.
+    const reason = document.getElementById('split-plan-reason');
+    if (reason) reason.textContent = state.enabled ? '' : state.title;
   },
   dismiss() {
     const banner = document.getElementById('split-banner');

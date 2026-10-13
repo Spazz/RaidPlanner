@@ -348,14 +348,54 @@ check('Coverage rail text and the Switch / Swap in button reach the approved siz
 });
 
 check('version tabs, raid size buttons and the plan-name toggle get 44px hit areas', () => {
-  assert.match(rule('.game-version-tab::before'), /inset: -8px 0/);
+  assert.match(rule('.game-version-tab::before'), /inset: -9px 0/);
   assert.match(rule('#raid-size-phone-slot .raid-size-seg button::before'), /inset: -7px 0/);
-  assert.match(rule('.phone-summary::before'), /inset: -8px 0/);
+  assert.match(rule('.phone-summary::before'), /inset: -6px -12px 0/);
   assert.ok(phoneBlock.includes('.phone-summary { position: relative; }'));
 });
 
-check('the 7px fallback label inside buff icons is hidden on phones', () => {
-  assert.match(rule('.buff-icon .buff-label'), /display: none/);
+check('the phone hit areas add up to 44px and do not overlap their neighbours', () => {
+  const px = (line, re) => Number(line.match(re)[1]);
+  // Version tabs: grid row inside the 1px-bordered 28px nav, grown by the ::before inset on both sides.
+  const nav = rule('.game-version-nav');
+  const tabHeight = px(nav, /height: (\d+)px/) - 2 * px(nav, /border: (\d+)px/);
+  const tabInset = px(rule('.game-version-tab::before'), /inset: -(\d+)px 0/);
+  assert.ok(tabHeight + 2 * tabInset >= 44, `tabs reach ${tabHeight + 2 * tabInset}px`);
+  const headerHeight = px(rule('.game-header-inner'), /height: (\d+)px/);
+  const tabOvershoot = (tabHeight + 2 * tabInset - headerHeight) / 2; // how far the tab hit area spills below the header
+  // Plan-name toggle: its row plus the upward inset reach 44px; the inset stays inside the wrap's top padding
+  // (past the tabs' spill) and nothing extends down into line 2.
+  const summary = phoneBlock.replace(/\r\n/g, '\n').match(/\.phone-summary \{\n[^}]*\}/)[0]; // the multi-line rule
+  const before = rule('.phone-summary::before').match(/inset: -(\d+)px -(\d+)px (-?\d+)/);
+  const rowHeight = px(summary, /min-height: (\d+)px/);
+  const up = Number(before[1]);
+  const down = Number(before[3]);
+  assert.ok(rowHeight + up + down >= 44, `plan-name toggle reaches ${rowHeight + up + down}px`);
+  assert.equal(down, 0, 'the toggle hit area does not reach into line 2');
+  const wrapTop = px(rule('.phone-summary-wrap'), /padding: (\d+)px/);
+  assert.ok(up + tabOvershoot <= wrapTop, `toggle (${up}px up) clears the tabs (${tabOvershoot}px spill) within ${wrapTop}px of padding`);
+});
+
+check('the buff icon fallback label stays visible on phones at 9px', () => {
+  const r = rule('.buff-icon .buff-label');
+  assert.match(r, /font-size: 9px/);
+  assert.doesNotMatch(r, /display: none/);
+});
+
+check('landing restore link and saved-plan Delete buttons get 44px tap areas on phones', () => {
+  const r = rule('#btn-landing-restore, .landing .row-actions .link-btn.del');
+  assert.match(r, /min-height: 44px/);
+});
+
+check('side safe areas pad the page on notched landscape phones, keeping existing padding', () => {
+  const flat = css.replace(/\r\n/g, '\n');
+  assert.match(flat, /body \{[^}]*padding: 8px max\(16px, env\(safe-area-inset-right, 0px\)\) 8px max\(16px, env\(safe-area-inset-left, 0px\)\);/);
+  assert.match(flat, /@media \(max-width: 1100px\) \{[^@]*body \{ padding: 0 env\(safe-area-inset-right, 0px\) 0 env\(safe-area-inset-left, 0px\); \}/);
+});
+
+check('opening the reference comp on a phone moves focus to Back to my raid', () => {
+  const src = appJs.replace(/\r\n/g, '\n');
+  assert.match(src, /if \(tab === 'ideal' && window\.matchMedia\('\(max-width: 600px\)'\)\.matches\) \{\s*const back = document\.getElementById\('btn-back-to-raid'\);\s*if \(back\) back\.focus\(\);/);
 });
 
 check('the bench is one column at phone width and no 560px two-column rule remains', () => {

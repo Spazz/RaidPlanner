@@ -23,11 +23,21 @@ const pickerSrc = norm(app.slice('function showBuffPicker(', 'function closeBuff
 check('swappable buff icons render as buttons with an accessible name; drums stay divs', () => {
   const m = renderSrc.match(/const iconTag = isSwappable \? 'button' : 'div';/);
   assert(m, 'icon tag is chosen from isSwappable');
-  assert(/const iconAttrs = isSwappable \? ` type="button" aria-label="\$\{esc\(b\.buff\.name\)\}: choose another buff"` : '';/.test(renderSrc),
-    'button type and escaped aria-label only on swappable icons');
+  assert(/const iconAttrs = isSwappable\s*\? ` type="button" aria-label="\$\{esc\(swappableBuffLabel\(b, from\)\)\}"`\s*: ` role="img" aria-label="\$\{esc\(b\.buff\.name\)\}"`;/.test(renderSrc),
+    'button type and escaped label on swappable icons; role=img and the escaped buff name on the others');
   assert(/<\$\{iconTag\} class="buff-icon [^`]*<\/\$\{iconTag\}>/.test(renderSrc), 'icon uses the chosen tag for open and close');
-  assert(/<div class="buff-icon \$\{Config\.BuffCSSClass\.DRUMS\}/.test(renderSrc), 'drum icon is still a div');
+  assert(/<div class="buff-icon \$\{Config\.BuffCSSClass\.DRUMS\}[^`]*role="img" aria-label="Drums"/.test(renderSrc), 'drum icon is still a div, named for assistive tech');
   assert(!/<div class="buff-icon \$\{css\}/.test(renderSrc), 'no swappable-capable icon is a bare div any more');
+});
+
+check('swappable icon names read "<buff> from <player>" and offer the picker hint only with a real choice', () => {
+  const c = app.sandbox(['swappableBuffLabel'], { extraSource: app.slice('function getSwappableBuffs', 'function closeBuffPicker') });
+  const { swappableBuffLabel } = c.api;
+  const buff = (id, name, spec) => ({ id, buff: { name }, sourceClass: 'SHAMAN', sourceSpec: spec });
+  // Windfury has three air totems to pick from; Strength of Earth has only itself.
+  assert.equal(swappableBuffLabel(buff('WINDFURY', 'Windfury', 'Enhancement'), 'Bob'), 'Windfury from Bob: choose another buff');
+  assert.equal(swappableBuffLabel(buff('STRENGTH_OF_EARTH', 'Strength of Earth', 'Enhancement'), 'Bob'), 'Strength of Earth from Bob');
+  assert.equal(swappableBuffLabel(buff('STRENGTH_OF_EARTH', 'Strength of Earth', undefined), ''), 'Strength of Earth');
 });
 
 check('picker items and the reset row are buttons', () => {

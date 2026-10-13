@@ -73,7 +73,7 @@ body {
   justify-content: center;
   align-items: flex-start;
   min-height: 100vh;
-  padding: 8px 16px;
+  padding: 8px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
   font-family: var(--font-body);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
@@ -495,6 +495,9 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .menu-item:hover, .menu-item:focus-visible { background: var(--bg-card-hover); outline: none; }
 .menu-item[hidden] { display: none; }
 .menu-item small { display: block; color: var(--text-muted); font-size: 11px; font-weight: 400; margin-top: 2px; }
+.menu-item small:empty { display: none; }
+.menu-item:has(> small) { flex-direction: column; align-items: flex-start; gap: 0; }
+.menu-item:disabled { opacity: .5; cursor: default; }
 .menu-item-danger { color: var(--danger); }
 .menu-item-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
@@ -1277,7 +1280,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 
 /* ── Responsive ── */
 @media (max-width: 1100px) {
-  body { padding: 0; }
+  body { padding: 0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
 }
 @media (max-width: 900px) {
   .app-body { flex-direction: column; }
@@ -1773,7 +1776,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .game-version-tab[aria-pressed="true"] .game-name { font-weight: 700; }
   .game-version-tab[aria-pressed="true"] .game-beta { color: var(--text-on-accent); border-color: var(--text-on-accent); }
   .game-version-tab:focus-visible { outline-offset: -3px; }
-  .game-version-tab::before { content: ''; position: absolute; inset: -8px 0; }
+  .game-version-tab::before { content: ''; position: absolute; inset: -9px 0; }
   .game-beta { font-size: 8px; margin-left: 4px; padding: 1px 3px; }
 
   /* Header row and action row are hidden: their controls move to the context row, the
@@ -1785,15 +1788,16 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   /* Context row: line 1 plan name + Edit (the toggle button), line 2 seated count ·
      Raid size · "N missing" (separate controls, not nested in the toggle). */
   .phone-context-panel { padding: 0; gap: 0; display: block; background: var(--bg-card); }
-  .phone-summary-wrap { display: flex; flex-direction: column; gap: 2px; padding: 4px 12px 6px; background: var(--bg-panel); }
+  .phone-summary-wrap { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 6px; background: var(--bg-panel); }
   .phone-summary {
-    display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 0; box-sizing: border-box;
+    display: flex; align-items: center; gap: 8px; width: 100%; min-height: 38px; padding: 0; box-sizing: border-box;
     background: transparent; color: var(--text-primary); border: 0; text-align: left; cursor: pointer; font-family: var(--font-body);
   }
   .phone-summary-main { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .phone-summary-edit { font-size: 12px; color: var(--accent-gold); white-space: nowrap; }
   .phone-summary { position: relative; }
-  .phone-summary::before { content: ''; position: absolute; inset: -8px 0; }
+  /* 38px row + 6px up = a 44px hit area that stays under the wrap's top padding (clear of the version tabs) and above line 2. */
+  .phone-summary::before { content: ''; position: absolute; inset: -6px -12px 0; }
   .phone-summary:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
   .phone-summary-line2 { display: flex; align-items: center; gap: 10px; min-height: 30px; font-size: 12px; color: var(--text-muted); }
   .phone-summary-sub { white-space: nowrap; }
@@ -1925,8 +1929,11 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .buff-row-source { font-size: 11px; }
   .insight-btn { display: flex; align-items: center; min-height: 36px; padding: 0 14px; font-size: 12px; }
 
-  /* The 7px abbreviation inside buff icons is unreadable on a phone; aria-label and title carry the name. */
-  .buff-icon .buff-label { display: none; }
+  /* An icon whose image is missing or failed shows its abbreviation at a readable size (icons with an image keep the label hidden). */
+  .buff-icon .buff-label { font-size: 9px; }
+
+  /* Landing: 44px tap areas for the restore link and the saved-plan Delete buttons. */
+  #btn-landing-restore, .landing .row-actions .link-btn.del { display: inline-flex; align-items: center; min-height: 44px; }
 
   /* Bench: one column (the 900px rule would otherwise give two). */
   .bench-list { grid-template-columns: minmax(0, 1fr); }

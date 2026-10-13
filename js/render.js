@@ -276,7 +276,7 @@ function seatedSlotHTML(p, gi, si) {
   const backupName = Backups.backupNameFor(p.name);
   // Compact indicator — the full pairing is in the title tooltip so the
   // card stays narrow enough not to crowd out the player's own name.
-  const backupBadge = backupName ? `<span class="backup-badge" title="Standby: ${esc(backupName.split('-')[0])}" aria-label="Standby: ${esc(backupName.split('-')[0])}">S</span>` : '';
+  const backupBadge = backupName ? `<span class="backup-badge" role="img" title="Standby: ${esc(backupName.split('-')[0])}" aria-label="Standby: ${esc(backupName.split('-')[0])}">S</span>` : '';
   // Constraint badges (backlog #3) reuse the buff-icon tooltip portal
   // (data-tt-*) rather than a new hover mechanism — see the player-slot
   // "why here" editor section for the full explanation.
@@ -744,7 +744,9 @@ function renderGroups() {
         const dataAttrs = isSwappable ? ` data-buff-id="${esc(b.id)}" data-group="${gi}" data-uid="${esc(b.sourceUid)}" data-source="${esc(b.sourceName)}" data-class="${esc(b.sourceClass)}" data-spec="${esc(b.sourceSpec || '')}"` : '';
         const ttAttrs = ` data-tt-name="${esc(b.buff.name)}" data-tt-desc="${esc(b.buff.desc || '')}" data-tt-source="${esc(from)}" data-tt-source-color="${sourceColor}"`;
         const iconTag = isSwappable ? 'button' : 'div';
-        const iconAttrs = isSwappable ? ` type="button" aria-label="${esc(b.buff.name)}: choose another buff"` : '';
+        const iconAttrs = isSwappable
+          ? ` type="button" aria-label="${esc(swappableBuffLabel(b, from))}"`
+          : ` role="img" aria-label="${esc(b.buff.name)}"`;
         buffsHTML += `<${iconTag} class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${iconAttrs}${dataAttrs}${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></${iconTag}>`;
       }
       if (groupDrummers.length) {
@@ -752,7 +754,7 @@ function renderGroups() {
         const drumImgTag = drumIconUrl ? `<img src="${drumIconUrl}" alt="Drm" loading="lazy" class="buff-img">` : '';
         const drumNames = groupDrummers.map(p => (p.name || '').split('-')[0]).join(', ');
         const drumDesc = 'Party-scoped haste/stat buff from a Leatherworker\'s drums. One effect active at a time per party — rotate multiple drummers for continuous uptime.';
-        buffsHTML += `<div class="buff-icon ${Config.BuffCSSClass.DRUMS}${drumIconUrl ? ' has-icon' : ''}" data-tt-name="Drums" data-tt-desc="${esc(drumDesc)}" data-tt-source="${esc(drumNames)}">${drumImgTag}<span class="buff-label">${Config.BuffAbbreviations.DRUMS}</span></div>`;
+        buffsHTML += `<div class="buff-icon ${Config.BuffCSSClass.DRUMS}${drumIconUrl ? ' has-icon' : ''}" role="img" aria-label="Drums" data-tt-name="Drums" data-tt-desc="${esc(drumDesc)}" data-tt-source="${esc(drumNames)}">${drumImgTag}<span class="buff-label">${Config.BuffAbbreviations.DRUMS}</span></div>`;
       }
     }
 
@@ -1640,6 +1642,13 @@ function getSwappableBuffs(buffId, playerClass, playerSpec) {
     }
   }
   return alternatives;
+}
+
+// Accessible name of a swappable buff icon: "<buff> from <player>", plus ": choose another buff" only
+// when showBuffPicker would offer more than one choice.
+function swappableBuffLabel(b, from) {
+  const name = from ? `${b.buff.name} from ${from}` : b.buff.name;
+  return getSwappableBuffs(b.id, b.sourceClass, b.sourceSpec || '').length > 1 ? `${name}: choose another buff` : name;
 }
 
 function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sourceClass, sourceSpec) {

@@ -399,7 +399,7 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
 
   await check('Raid notes carry a caption saying where notes go, inside the notes panel', () => {
     const panel = app.html.replace(/\r\n/g, '\n').match(/<details id="raid-notes-panel"[^]*?<\/details>/)[0];
-    assert(panel.includes('<p class="raid-notes-caption">Notes go into the raid chat text, print sheet, live links and JSON, not the MRT string or compact chat.</p>'));
+    assert(panel.includes('<p class="raid-notes-caption">Notes go into the raid chat text, print sheet, links you share and JSON, not the MRT string or compact chat.</p>'));
     assert(panel.indexOf('</textarea>') < panel.indexOf('raid-notes-caption'), 'the caption sits under the textarea');
     assert(/\.raid-notes-caption\s*\{/.test(app.css));
   });
@@ -419,6 +419,11 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
   await check('the result line is not a live region (the toast announces) and its dismiss moves focus', () => {
     assert.doesNotMatch(html.match(/<div class="result-line" id="result-line"[^>]*>/)[0], /aria-live/);
     assert.match(app.script, /btn-result-dismiss'\)\?\.addEventListener\('click', \(\) => \{\s*ResultLine\.hide\(\);\s*document\.getElementById\('readiness-text'\)\?\.focus\(\);/);
+  });
+
+  await check('the Standby chip is an image with its Standby name', () => {
+    const src = app.script.replace(/\r\n/g, '\n');
+    assert(/<span class="backup-badge" role="img" title="Standby: [^"]*" aria-label="Standby: /.test(src));
   });
 
   console.log(`\n${passed} a11y checks passed`);

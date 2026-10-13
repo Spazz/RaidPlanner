@@ -16,6 +16,9 @@ const fakeStorage = {
   getItem(k) { return this.data.has(k) ? this.data.get(k) : null; },
   setItem(k, v) { this.data.set(k, String(v)); },
 };
+const fakeWindow = { localStorage: fakeStorage, location: { pathname: '/', search: '', hash: '', origin: 'https://pp.test' } };
+const fakeHistory = { replaceState(_s, _t, url) { fakeWindow.location.pathname = url; } };
+const lastRunCalls = [];
 const elements = {};
 const el = (id) => elements[id] || (elements[id] = { id, disabled: false, title: '' });
 
@@ -23,16 +26,19 @@ const SOURCE = [
   'function initGroups() {}',
   app.slice('function hasLoadedWork()', '// A random roster replaces'),
   app.slice('function getSavedRosters()', 'function rememberImport'),
+  app.slice('function linkStorage()', '// The Error for a failed API response'),
   app.slice('async function deleteSavedEntry', 'function renderLandingSavedList'),
   app.slice('const SplitFlow = {', "document.getElementById('btn-split-offer')"),
 ].join('\n');
 const ctx = app.sandbox(
   ['State', 'Config', 'PlanStore', 'LiveLinks', 'BackupStamp', 'DataBackup', 'RaidSplit', 'SplitFlow',
-    'getSavedRosters', 'saveRosterToStorage', 'confirmReplaceSavedCopy', 'deleteSavedEntry', 'hasLoadedWork', 'ChangeLog', 'Backups'],
+    'getSavedRosters', 'saveRosterToStorage', 'bindLiveLink', 'syncAddressBar', 'confirmReplaceSavedCopy', 'deleteSavedEntry', 'hasLoadedWork', 'ChangeLog', 'Backups'],
   {
     globals: {
       localStorage: fakeStorage, setTimeout, clearTimeout,
       document: { getElementById: el },
+      window: fakeWindow, history: fakeHistory,
+      renderLastRun: (s) => { lastRunCalls.push(s); },
       showToast: (m) => { toasts.push(m); },
       safeSetItem: (s, k, v) => { s.setItem(k, v); return true; },
       Modal: { confirm: async (opts) => { asked.push(opts); return answer; } },
@@ -40,7 +46,7 @@ const ctx = app.sandbox(
     extraSource: SOURCE,
   }
 );
-const { State, Config, PlanStore, LiveLinks, BackupStamp, DataBackup, RaidSplit, SplitFlow, getSavedRosters, saveRosterToStorage,
+const { State, Config, PlanStore, LiveLinks, BackupStamp, DataBackup, RaidSplit, SplitFlow, getSavedRosters, saveRosterToStorage, bindLiveLink, syncAddressBar,
   confirmReplaceSavedCopy, deleteSavedEntry, hasLoadedWork, ChangeLog, Backups } = ctx.api;
 
 let passed = 0, failed = 0;
@@ -236,8 +242,48 @@ const noComments = (text) => text.split('\n').filter(l => !/^\s*\/\//.test(l)).j
     assert.equal(s.enabled, true);
     SplitFlow.syncMenu();
     assert.equal(el('btn-split-plan').disabled, false);
-    assert(/<button[^>]*id="btn-split-plan"[^>]*>Split into two raids<\/button>/.test(html));
+    assert(/<button[^>]*id="btn-split-plan"[^>]*>Split into two raids<small id="split-plan-reason"><\/small><\/button>/.test(html));
+    assert(!/id="btn-split-plan"[^>]*aria-label/.test(html), 'the visible reason must stay part of the accessible name');
     assert(script.includes("getElementById('btn-split-plan').addEventListener('click', () => SplitFlow.preview())"));
+  });
+
+  await check('Split menu entry ships disabled and shows the reason as visible text, cleared once enabled', () => {
+    assert(/<button[^>]*id="btn-split-plan"[^>]* disabled[ >]/.test(html), 'disabled until the first sync');
+    const need = RaidSplit.suggestThreshold(Config.Raids[State.selectedRaid].size);
+    State.roster = [{ uid: 'u1', name: 'P1' }];
+    State.bench = [];
+    SplitFlow.syncMenu();
+    assert.equal(el('split-plan-reason').textContent, `Needs at least ${need} players`);
+    State.roster = Array.from({ length: need }, (_, i) => ({ uid: 'u' + i, name: 'P' + i }));
+    SplitFlow.syncMenu();
+    assert.equal(el('split-plan-reason').textContent, '');
+    const flat = app.css.replace(/\r\n/g, '\n');
+    assert(/\.menu-item:disabled \{ opacity: \.5; cursor: default; \}/.test(flat));
+    assert(!/\.menu-item:disabled:hover/.test(flat), 'no hover change when disabled');
+  });
+
+  await check('deleting the open plan bound to a live link: address bar back to /, no binding, last-run cleared, no late re-bind', async () => {
+    reset();
+    lastRunCalls.length = 0;
+    const open = planData('plan:live', 'Live plan');
+    const key = LiveLinks.planKey(open);
+    PlanStore.save(fakeStorage, open);
+    Object.assign(State, { planId: 'plan:live', gameVersion: 'tbc', rosterName: 'Live plan', roster: [{ uid: 'u1', name: 'A' }], groups: [[{ uid: 'u1', name: 'A' }]], bench: [] });
+    LiveLinks.bind(fakeStorage, key, 'LIVEAAA', 'code', 1);
+    fakeWindow.location.pathname = '/tbc/LIVEAAA';
+    syncAddressBar();
+    assert.equal(fakeWindow.location.pathname, '/tbc/LIVEAAA', 'bound open plan keeps its link URL');
+    assert.equal(await deleteSavedEntry('plan', key, 'Live plan'), true);
+    assert.equal(fakeWindow.location.pathname, '/', 'address bar is back at the root');
+    assert.deepEqual(Object.keys(LiveLinks.read(fakeStorage)), [], 'no live-link binding is left');
+    assert.deepEqual(lastRunCalls, [null], 'the stale last-run summary is cleared');
+    // A live-link save that finishes after the delete cannot bring the binding back.
+    bindLiveLink(key, 'LIVEAAA', 'code', 2);
+    assert.deepEqual(Object.keys(LiveLinks.read(fakeStorage)), [], 'a late completion does not re-bind a deleted plan');
+    // ...while a plan that still exists can still be bound.
+    PlanStore.save(fakeStorage, planData('plan:kept', 'Kept'));
+    bindLiveLink(LiveLinks.planKey(planData('plan:kept')), 'KEPTAAA', 'c', 1);
+    assert.deepEqual(Object.keys(LiveLinks.read(fakeStorage)), [LiveLinks.planKey(planData('plan:kept'))]);
   });
 
   await check('Standby wording: no "Backup for" or "Backup ready" in user-facing text; the new strings are present', () => {

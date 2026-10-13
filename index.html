@@ -215,7 +215,7 @@
             <button type="button" class="menu-item" role="menuitem" id="btn-load" aria-label="Load a saved roster or recent import"><span class="btn-label">Open saved plan&hellip;</span></button>
             <button type="button" class="menu-item" role="menuitem" id="btn-save" aria-label="Save a copy of the current plan" title="Save a copy (Ctrl+S). Your plan also saves itself as you edit." aria-keyshortcuts="Control+S Meta+S"><span class="btn-label">Save a copy</span><kbd class="menu-kbd" aria-hidden="true">Ctrl+S</kbd></button>
             <button type="button" class="menu-item" role="menuitem" id="btn-templates" aria-label="Save or apply a comp template">Comp templates&hellip;</button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-split-plan" aria-label="Split the sign-ups into two raids">Split into two raids</button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-split-plan" disabled>Split into two raids<small id="split-plan-reason"></small></button>
             <button type="button" class="menu-item menu-item-danger" role="menuitem" id="btn-clear" aria-label="Clear all players and groups">Clear board</button>
           </div>
           <div class="menu-sep"></div>
@@ -328,7 +328,7 @@
   <details id="raid-notes-panel" class="raid-notes-panel">
     <summary>Raid notes <span id="raid-notes-badge" class="raid-notes-badge" hidden>&#9679;</span></summary>
     <textarea class="raid-notes-textarea" id="raid-notes-textarea" maxlength="2000" placeholder="MT swaps, add assignments, kill order..."></textarea>
-    <p class="raid-notes-caption">Notes go into the raid chat text, print sheet, live links and JSON, not the MRT string or compact chat.</p>
+    <p class="raid-notes-caption">Notes go into the raid chat text, print sheet, links you share and JSON, not the MRT string or compact chat.</p>
   </details>
   <div class="plan-feedback" id="plan-feedback"><button type="button" class="readiness-line" id="readiness-text" title="Show coverage details"></button><span id="autosave-status" role="status"></span></div>
   <div class="result-line" id="result-line" hidden><span id="result-line-text"></span><button type="button" class="result-line-dismiss" id="btn-result-dismiss" aria-label="Dismiss">&times;</button></div>

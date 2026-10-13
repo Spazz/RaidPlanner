@@ -633,7 +633,7 @@ check('with 18 on the board and 2 size-benched DPS, Optimize seats them and sugg
 });
 
 // ── Reference comp view (4.3.0, L3-3) ────────────────────────────────
-function referenceHarness() {
+function referenceHarness({ phone = false } = {}) {
   const elements = {};
   const log = { focused: [], toasts: [] };
   let active = null;
@@ -647,7 +647,7 @@ function referenceHarness() {
     get activeElement() { return active; },
   };
   const c = app.sandbox(['State', 'Config', 'GameVersions', 'IdealComp', 'switchTab', 'renderIdealComp'], {
-    globals: { document: doc, __log: log },
+    globals: { document: doc, __log: log, window: { matchMedia: () => ({ matches: phone }) } },
     extraSource: 'function esc(s) { return String(s); }\nfunction showToast(m) { __log.toasts.push(m); }\n' +
       'function initGroups() {}\nfunction commit() {}\nfunction getDominantRoleLabel() { return ""; }\nfunction classColorClass() { return ""; }\n' +
       'function getSpecIcon() { return ""; }\nfunction renderBuffCatalog() {}\nfunction renderUtilityCatalog() {}\n' +
@@ -673,6 +673,17 @@ check('the reference comp view shows the banner with the selected raid size, and
   assert.match(html, /id="btn-ideal-comp-link" title="Reference comp"/);
   const userFacing = html + '\n' + app.script.split(/\r?\n/).filter(l => !/^\s*\/\//.test(l)).join('\n');
   assert.doesNotMatch(userFacing.replace(/'One action row: [^\n]*Compare to ideal comp[^\n]*'/, ''), /Compare to ideal comp/i);
+});
+
+check('opening the reference comp on a phone moves focus to Back to my raid; on desktop it moves none', () => {
+  const phone = referenceHarness({ phone: true });
+  phone.api.State.gameVersion = 'tbc'; phone.api.State.selectedRaid = 'ssc';
+  phone.api.switchTab('ideal');
+  assert.deepEqual(phone.log.focused, ['btn-back-to-raid']);
+  const desktop = referenceHarness();
+  desktop.api.State.gameVersion = 'tbc'; desktop.api.State.selectedRaid = 'ssc';
+  desktop.api.switchTab('ideal');
+  assert.deepEqual(desktop.log.focused, []);
 });
 
 check('Back to my raid returns to the plan, hides the banner and focuses the Reference comp link', () => {

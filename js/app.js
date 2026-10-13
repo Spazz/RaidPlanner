@@ -166,6 +166,8 @@ async function deleteSavedEntry(kind, id, label) {
         State.planId = null;
         ChangeLog.clear();
         initGroups();
+        syncAddressBar();
+        renderLastRun(null);
       }
     } else if (!deleteRosterFromStorage(id)) return false;
   } catch { showToast('Could not delete this plan from browser storage'); return false; }
@@ -632,7 +634,16 @@ function currentLiveLink() {
   return entry ? { planKey, entry } : null;
 }
 
+// A save still in flight when its plan is deleted must not re-create the binding: bind only for the
+// open plan or a plan PlanStore still holds.
+function planKeyIsLive(planKey) {
+  if (!planKey) return false;
+  if (LiveLinks.planKey(State) === planKey) return true;
+  try { return PlanStore.read(linkStorage()).some(p => LiveLinks.planKey(p.data) === planKey); } catch { return false; }
+}
+
 function bindLiveLink(planKey, id, code, updatedAt) {
+  if (!planKeyIsLive(planKey)) return;
   try { LiveLinks.bind(linkStorage(), planKey, id, code, updatedAt); } catch {}
 }
 
@@ -1858,6 +1869,11 @@ function switchTab(tab) {
     commit();
   }
 
+  // Opening the reference view on a phone hides the context panel, so focus goes to the way back.
+  if (tab === 'ideal' && window.matchMedia('(max-width: 600px)').matches) {
+    const back = document.getElementById('btn-back-to-raid');
+    if (back) back.focus();
+  }
   // Back from the reference comp: the link that opened it is visible again, so focus goes there
   // (the phone link, then the phone summary toggle, when the desktop one is not shown).
   if (leavingReference) {
@@ -1924,7 +1940,7 @@ function renderIdealComp() {
         const hasIcon = iconUrl ? ' has-icon' : '';
         const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy" class="buff-img">` : '';
         const ttAttrs = ` data-tt-name="${esc(b.buff.name)}" data-tt-desc="${esc(b.buff.desc || '')}"`;
-        buffsHTML += `<div class="buff-icon ${css}${hasIcon}"${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></div>`;
+        buffsHTML += `<div class="buff-icon ${css}${hasIcon}" role="img" aria-label="${esc(b.buff.name)}"${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></div>`;
       }
     }
 
