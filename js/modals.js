@@ -783,7 +783,9 @@ const ImportGate = {
 function importErrorMessage(failure) {
   const f = failure || {};
   if (f.timeout) return "Raid-Helper took too long to answer. Try again, or paste the event's JSON export.";
-  if (f.network) return "Couldn't reach Raid-Helper. Check your connection, or paste the event's JSON export.";
+  if (f.network) return "Couldn't reach Raid-Helper. Your connection may be down, or the browser blocked the request. Paste the event's JSON export instead.";
+  if (f.notAnEvent) return "Raid-Helper answered with something that isn't an event export. Try again, or paste the event's JSON export.";
+  if (f.http === 401 || f.http === 403) return "Raid-Helper won't share that event. It may be private: paste its JSON export instead.";
   if (f.http === 404) return "Raid-Helper couldn't find that event. Check the link or ID. For a private event, paste its JSON export instead.";
   if (f.http) return `Raid-Helper returned an error (HTTP ${f.http}). Try again in a minute, or paste the event's JSON export.`;
   const raw = String(f.raw || '');
@@ -794,19 +796,31 @@ function importErrorMessage(failure) {
   return 'Import failed: ' + raw;
 }
 
+// The same failure classes for Refresh, which has no paste box to point at.
+function refreshErrorMessage(failure) {
+  const f = failure || {};
+  if (f.timeout) return 'Raid-Helper took too long to answer. Try Refresh again.';
+  if (f.network) return "Couldn't reach Raid-Helper. Check your connection and try Refresh again.";
+  if (f.http === 404) return "Raid-Helper couldn't find this event any more. It may have been deleted or made private.";
+  if (f.http === 401 || f.http === 403) return "Raid-Helper won't share this event any more. It may have been made private.";
+  return `Raid-Helper returned an error (HTTP ${f.http}). Try Refresh again in a minute.`;
+}
+
 // Fetch roster JSON from a URL. Resolves to the body, or null after reporting.
-async function fetchRosterJson(url, report) {
+// `context` is 'import' (the default) or 'refresh': it picks which wording the failures use.
+async function fetchRosterJson(url, report, context = 'import') {
+  const describe = context === 'refresh' ? refreshErrorMessage : importErrorMessage;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {
     const resp = await fetch(url, { signal: controller.signal, mode: 'cors', credentials: 'omit' });
     clearTimeout(timeoutId);
-    if (!resp.ok) { report(importErrorMessage({ http: resp.status }), true); return null; }
+    if (!resp.ok) { report(describe({ http: resp.status }), true); return null; }
     return await resp.text();
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') report(importErrorMessage({ timeout: true }), true);
-    else if (err instanceof TypeError) report(importErrorMessage({ network: true }), true);
+    if (err.name === 'AbortError') report(describe({ timeout: true }), true);
+    else if (err instanceof TypeError) report(describe({ network: true }), true);
     else report('Fetch failed: ' + err.message, true);
     return null;
   }
@@ -843,6 +857,8 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   let metadata;
   let isValidJson = true;
   try { metadata = JSON.parse(jsonStr); } catch { metadata = {}; isValidJson = false; }
+  // A fetched link whose body is not JSON (an HTML error page, say) is not the user's paste.
+  if (src.url && !isValidJson) { report(importErrorMessage({ notAnEvent: true }), true); return false; }
 
   // Backlog #6: a paste that isn't JSON and wasn't a Raid-Helper URL falls
   // back to the tolerant plain-text/CSV roster parser. It never replaces the
@@ -1024,7 +1040,7 @@ const RaidHelperSync = {
     const eventId = State.sourceEventId;
     const planId = State.planId;
     if (!eventId) return null;
-    const json = await fetchRosterJson(this.eventsApiUrl(eventId), report);
+    const json = await fetchRosterJson(this.eventsApiUrl(eventId), report, 'refresh');
     if (json == null || State.sourceEventId !== eventId || State.planId !== planId) return null;
     const diff = Import.diffRaidHelperSignUps(json);
     if (!diff.success) { report('Refresh failed: ' + diff.error, true); return null; }

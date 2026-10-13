@@ -23,12 +23,12 @@ const dialogButton = (id) => {
 
 // id, menu label, aria-label, dialog label (null: not in the dialog), help key + label (null: no shortcut)
 const ACTIONS = [
-  { id: 'btn-share', label: 'Copy live link', aria: 'Copy a live link: everyone with it sees and edits this plan', dialog: 'Copy live link', help: ['L', 'Copy live link'] },
-  { id: 'btn-copy-mrt', label: 'Copy for MRT', aria: 'Copy the seated groups as an MRT Raid Groups import string', dialog: 'Copy for MRT', help: ['G', 'Copy for MRT'] },
-  { id: 'btn-copy-mrt-note', label: 'Copy MRT note', aria: 'Copy the assignments as an MRT note', dialog: 'Copy MRT note', help: ['M', 'Copy MRT note'] },
-  { id: 'btn-copy-chat', label: 'Copy raid chat text', aria: 'Copy the groups as plain text for Discord or raid chat', dialog: 'Copy raid chat text', help: ['C', 'Copy raid chat text'] },
-  { id: 'btn-copy-chat-compact', label: 'Copy compact chat text', aria: 'Copy the groups as compact text sized for in-game raid chat', dialog: 'Copy compact chat text', help: null },
-  { id: 'btn-print-sheet', label: 'Print raid sheet', aria: 'Open a printable raid sheet', dialog: 'Print raid sheet', help: null },
+  { id: 'btn-share', label: 'Copy live link', aria: 'Copy live link: everyone with it sees and edits this plan', dialog: 'Copy live link', help: ['L', 'Copy live link'] },
+  { id: 'btn-copy-mrt', label: 'Copy for MRT', aria: 'Copy for MRT: the seated groups as an MRT Raid Groups import string', dialog: 'Copy for MRT', help: ['G', 'Copy for MRT'] },
+  { id: 'btn-copy-mrt-note', label: 'Copy MRT note', aria: 'Copy MRT note: the assignments as an MRT note', dialog: 'Copy MRT note', help: ['M', 'Copy MRT note'] },
+  { id: 'btn-copy-chat', label: 'Copy raid chat text', aria: 'Copy raid chat text: the groups as plain text for Discord or raid chat', dialog: 'Copy raid chat text', help: ['C', 'Copy raid chat text'] },
+  { id: 'btn-copy-chat-compact', label: 'Copy compact chat text', aria: 'Copy compact chat text: sized for in-game raid chat', dialog: 'Copy compact chat text', help: null },
+  { id: 'btn-print-sheet', label: 'Print raid sheet', aria: 'Print raid sheet: opens a printable sheet', dialog: 'Print raid sheet', help: null },
   { id: 'btn-share-main', label: 'Share and export\u2026', title: 'Share and export (E)', aria: null, dialog: null, help: ['E', 'Share and export'] },
 ];
 
@@ -52,10 +52,25 @@ check('the dialog-only JSON buttons keep their labels', () => {
 });
 
 check('no share surface keeps a retired label', () => {
-  for (const old of ['Copy share link', 'Share / Export', 'Copy compact raid chat', 'Print sheet']) {
+  for (const old of ['Copy share link', 'Share / Export', 'Share/Export', 'Copy compact raid chat', 'Print sheet', 'shared raid']) {
     assert(!html.replace(/<!--[\s\S]*?-->/g, '').includes(old), old + ' in index.html');
     assert(!script.includes(old), old + ' in app.js');
   }
+  // "share link" is gone from the page text (ids, classes and attributes aside).
+  const pageText = html.replace(/<!--[\s\S]*?-->/g, '').replace(/\s(?:id|class|for|href|data-[a-z-]+)="[^"]*"/g, '');
+  assert(!/share link/i.test(pageText), 'share link in index.html text');
+});
+
+check('shared-plan toasts say plan, not raid', () => {
+  for (const text of ['Opening shared plan...', 'Opened live plan "${State.rosterName}"', 'Opened live plan "${State.rosterName}" (its link had expired', 'Loaded shared plan "${State.rosterName}"'])
+    assert(script.includes(text), text);
+  assert(!/Opened live raid/.test(script));
+});
+
+check('the FAQ and the Share dialog name the real Share path', () => {
+  assert(html.includes('use Share and export&hellip;, then Download JSON under More export formats'));
+  assert(html.includes('Share &gt; Copy live link'));
+  assert(html.includes('<p>Send your plan to the raid or bring it into the game.</p>'));
 });
 
 check('help lists G (Copy for MRT) right after L', () => {

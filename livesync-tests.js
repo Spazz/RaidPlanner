@@ -799,13 +799,14 @@ async function check(name, fn) {
     assert.notEqual(env.api.LiveLinks.planKey(env.api.State), planKey, 'the shared plan replaced it on screen');
   });
 
-  // â”€â”€ Shared live-plan banner â”€â”€
+  // ── Shared live-plan banner ──
   // Fake banner elements so the DOM-facing code has something to write to.
   function bannerEnv(opts) {
     const env = makeEnv(opts);
     const els = {
       'shared-plan-banner': { hidden: true },
       'shared-plan-text': { children: [], replaceChildren(...c) { this.children = c; } },
+      'roster-name': { focused: 0, focus() { this.focused++; } },
     };
     env.els = els;
     env.document.getElementById = id => els[id] || null;
@@ -889,6 +890,71 @@ async function check(name, fn) {
     const kept = PlanStore.read(env.storage).find(p => p.data.planId === sharedPlanId);
     assert(kept, 'the shared plan is still saved');
     assert.equal(entryOf(env, sharedKey).id, SHARED_ID, 'and still bound to its link');
+  });
+
+  await check('The banner belongs to one plan: switching plans hides it without marking the link seen, and Make my own copy then does nothing', async () => {
+    const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    sharedRoute(env);
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    assert.equal(env.els['shared-plan-banner'].hidden, false);
+    const { State } = env.api;
+    const sharedPlanId = State.planId;
+    const name = State.rosterName;
+
+    State.planId = 'event:another'; // the user opens another plan
+    env.ctx.commit();
+    assert.equal(env.els['shared-plan-banner'].hidden, true, 'hidden for the other plan');
+    assert.deepEqual(seenList(env), [], 'not marked seen: the user never answered it');
+    assert.equal(env.api.SharedPlanBanner.linkId, null);
+
+    const toasts = env.toasts.length;
+    const callsBefore = env.calls.length;
+    env.api.SharedPlanBanner.makeCopy();
+    assert.equal(State.planId, 'event:another', 'the new plan is untouched');
+    assert.equal(State.rosterName, name, 'and not renamed');
+    assert.equal(env.toasts.length, toasts, 'no toast');
+    assert.equal(env.calls.length, callsBefore);
+
+    // Back on the shared plan the link is still unseen, so it shows again.
+    State.planId = sharedPlanId;
+    env.ctx.commit();
+    env.api.SharedPlanBanner.show(SHARED_ID);
+    assert.equal(env.els['shared-plan-banner'].hidden, false);
+  });
+
+  await check('Make my own copy refuses when the open plan is not the one the banner was shown for, even before any commit', async () => {
+    const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    sharedRoute(env);
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    const { State } = env.api;
+    State.planId = 'event:another'; // no commit yet
+    env.api.SharedPlanBanner.makeCopy();
+    assert.equal(State.planId, 'event:another');
+    assert.equal(env.els['shared-plan-banner'].hidden, true);
+    assert.deepEqual(seenList(env), []);
+  });
+
+  await check('Got it and Make my own copy move focus to the plan name; a plan switch does not', async () => {
+    const opened = async () => {
+      const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+      sharedRoute(env);
+      assert.equal(await env.api.loadFromShortLink(), true);
+      await settle();
+      return env;
+    };
+    const gotIt = await opened();
+    gotIt.api.SharedPlanBanner.hide({ focus: true });
+    assert.equal(gotIt.els['roster-name'].focused, 1, 'Got it');
+    const copy = await opened();
+    copy.api.SharedPlanBanner.makeCopy();
+    assert.equal(copy.els['roster-name'].focused, 1, 'Make my own copy');
+    const away = await opened();
+    away.api.State.planId = 'event:another';
+    away.ctx.commit();
+    assert.equal(away.els['roster-name'].focused, 0, 'no focus grab when the plan changed under the banner');
+    assert(/btn-shared-gotit'\)\.addEventListener\('click', \(\) => SharedPlanBanner\.hide\(\{ focus: true \}\)\)/.test(app.script), 'the Got it button asks for focus');
   });
 
   console.log(`\nLiveSync tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

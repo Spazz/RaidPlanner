@@ -1021,7 +1021,8 @@ const Import = {
     const size = gameVersion === 'tbc' && playerCount <= 10 ? 10
       : gameVersion === 'classic' && playerCount <= 20 ? 20 : 0;
     if (!size) return selectedRaid;
-    return Config.RaidOrder.find(key => Config.Raids[key].size === size) || selectedRaid;
+    const raids = GameVersions[gameVersion] ? GameVersions[gameVersion].raids : [];
+    return raids.find(key => Config.Raids[key] && Config.Raids[key].size === size) || selectedRaid;
   },
 
   // Commits parsePlainRoster()'s entries into State the same way a Raid-

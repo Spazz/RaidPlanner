@@ -35,7 +35,9 @@ function importEnv(fetchImpl) {
     notFound: "Raid-Helper couldn't find that event. Check the link or ID. For a private event, paste its JSON export instead.",
     http: status => `Raid-Helper returned an error (HTTP ${status}). Try again in a minute, or paste the event's JSON export.`,
     timeout: "Raid-Helper took too long to answer. Try again, or paste the event's JSON export.",
-    network: "Couldn't reach Raid-Helper. Check your connection, or paste the event's JSON export.",
+    network: "Couldn't reach Raid-Helper. Your connection may be down, or the browser blocked the request. Paste the event's JSON export instead.",
+    private: "Raid-Helper won't share that event. It may be private: paste its JSON export instead.",
+    notAnEvent: "Raid-Helper answered with something that isn't an event export. Try again, or paste the event's JSON export.",
     notExport: "That JSON isn't a Raid-Helper event export. Use the event's JSON export, or paste a player list.",
     noPlayers: 'That event has no sign-ups with a class yet.',
     unsupported: "That event's game version or raid isn't supported here.",
@@ -46,6 +48,8 @@ function importEnv(fetchImpl) {
     assert.equal(importErrorMessage({ raw: 'Invalid JSON: Unexpected token' }), MSG.unreadable);
     assert.equal(importErrorMessage({ http: 404 }), MSG.notFound);
     assert.equal(importErrorMessage({ http: 503 }), MSG.http(503));
+    assert.equal(importErrorMessage({ http: 401 }), MSG.private);
+    assert.equal(importErrorMessage({ http: 403 }), MSG.private);
     assert.equal(importErrorMessage({ timeout: true }), MSG.timeout);
     assert.equal(importErrorMessage({ network: true }), MSG.network);
     assert.equal(importErrorMessage({ raw: "No 'slots' or 'signUps' array found in JSON" }), MSG.notExport);
@@ -71,6 +75,52 @@ function importEnv(fetchImpl) {
     assert.deepEqual(r.out, [[MSG.network, true]]);
     r = await run(async () => { throw new Error('weird'); });
     assert.deepEqual(r.out, [['Fetch failed: weird', true]]);
+  });
+
+  await check('Refresh failures use refresh wording and never mention pasting', async () => {
+    const refresh = {
+      notFound: "Raid-Helper couldn't find this event any more. It may have been deleted or made private.",
+      private: "Raid-Helper won't share this event any more. It may have been made private.",
+      http: status => `Raid-Helper returned an error (HTTP ${status}). Try Refresh again in a minute.`,
+      timeout: 'Raid-Helper took too long to answer. Try Refresh again.',
+      network: "Couldn't reach Raid-Helper. Check your connection and try Refresh again.",
+    };
+    const run = async fetchImpl => {
+      const out = [];
+      await importEnv(fetchImpl).fetchRosterJson('https://raid-helper.dev/api/v4/events/1', (m, e) => out.push([m, e]), 'refresh');
+      return out;
+    };
+    assert.deepEqual(await run(async () => ({ ok: false, status: 404 })), [[refresh.notFound, true]]);
+    assert.deepEqual(await run(async () => ({ ok: false, status: 401 })), [[refresh.private, true]]);
+    assert.deepEqual(await run(async () => ({ ok: false, status: 403 })), [[refresh.private, true]]);
+    assert.deepEqual(await run(async () => ({ ok: false, status: 502 })), [[refresh.http(502), true]]);
+    assert.deepEqual(await run(async () => { const e = new Error('a'); e.name = 'AbortError'; throw e; }), [[refresh.timeout, true]]);
+    assert.deepEqual(await run(async () => { throw new TypeError('Failed to fetch'); }), [[refresh.network, true]]);
+    // The Refresh path itself asks for the refresh wording.
+    const syncEnv = app.sandbox(['RaidHelperSync', 'State'], {
+      globals: {
+        fetch: async () => ({ ok: false, status: 404 }), AbortController, TypeError, setTimeout, clearTimeout, localStorage: {},
+        document: { getElementById: () => null },
+      },
+      extraSource: importSrc + ' ' + app.slice('const RaidHelperSync = {', "document.getElementById('btn-refresh').addEventListener"),
+    }).api;
+    syncEnv.State.sourceEventId = '123'; syncEnv.State.planId = 'event:123';
+    const sync = syncEnv.RaidHelperSync;
+    const out = [];
+    assert.equal(await sync.fetchDiff((m, e) => out.push([m, e])), null);
+    assert.deepEqual(out, [[refresh.notFound, true]]);
+    assert(!out.some(([m]) => /paste/i.test(m)));
+  });
+
+  await check('a fetched link whose body is not JSON gets the not-an-export text, not the unreadable-paste text', async () => {
+    const html = async () => ({ ok: true, status: 200, text: async () => '<html>Service unavailable</html>' });
+    const out = [];
+    assert.equal(await importEnv(html).importFromText('https://raid-helper.dev/api/v4/events/123456789', (m, e) => out.push([m, e])), false);
+    assert.deepEqual(out.filter(([, e]) => e), [[MSG.notAnEvent, true]]);
+    // A paste that is not JSON keeps the unreadable-paste text.
+    const pasted = [];
+    await importEnv().importFromText('zzz qqq', (m, e) => pasted.push([m, e]));
+    assert.deepEqual(pasted, [[MSG.unreadable, true]]);
   });
 
   await check('importFromText reports the mapped text for unreadable and non-export pastes', async () => {
@@ -105,7 +155,12 @@ function importEnv(fetchImpl) {
     const { State, Import, Config } = app.sandbox(['State', 'Import', 'Config']).api;
     assert.equal(Import.plainRosterRaid(11, 'tbc', 'gruul'), 'gruul');
     assert.equal(Config.Raids[Import.plainRosterRaid(10, 'tbc', 'gruul')].size, 10);
-    assert.equal(Import.plainRosterRaid(20, 'classic', 'mc'), 'mc'); // RaidOrder lists no 20-man, so Classic keeps its raid (as before)
+    // Classic picks from the Classic list whichever version is open: the first 20-man there is Zul'Gurub.
+    assert.equal(State.gameVersion, 'tbc');
+    assert.equal(Import.plainRosterRaid(20, 'classic', 'mc'), 'zg');
+    State.gameVersion = 'classic';
+    assert.equal(Import.plainRosterRaid(20, 'classic', 'mc'), 'zg');
+    State.gameVersion = 'tbc';
     assert.equal(Import.plainRosterRaid(21, 'classic', 'mc'), 'mc');
     assert.equal(Import.plainRosterRaid(3, 'forever', 'f_ony'), 'f_ony');
     State.gameVersion = 'tbc'; State.selectedRaid = 'gruul';

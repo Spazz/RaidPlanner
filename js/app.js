@@ -75,10 +75,10 @@ function renderVersionComparison() {
       .filter(r => r && r.tier !== 'Planning templates')
       .map(r => r.name);
     const here = key === State.gameVersion;
-    return `<button type="button" class="version-compare-col${here ? ' here' : ''}" data-version="${esc(key)}"${here ? ' aria-current="true"' : ''}>
-      <h3>${esc(profile.name)}</h3>
-      <p>${esc(profile.note)}</p>
-      <div class="version-compare-raids"><strong>${raidNames.length} raid${raidNames.length === 1 ? '' : 's'} modeled:</strong> ${esc(raidNames.join(', ') || 'Planning templates only')}</div>
+    return `<button type="button" class="version-compare-col${here ? ' here' : ''}" data-version="${esc(key)}" aria-label="${esc(here ? profile.name + ', current version' : 'Switch to ' + profile.name)}"${here ? ' aria-current="true"' : ''}>
+      <span class="version-compare-name">${esc(profile.name)}</span>
+      <span class="version-compare-note">${esc(profile.note)}</span>
+      <span class="version-compare-raids"><strong>${raidNames.length} raid${raidNames.length === 1 ? '' : 's'} modeled:</strong> ${esc(raidNames.join(', ') || 'Planning templates only')}</span>
       <span class="go">${here ? 'You are here' : 'Switch to ' + esc(profile.name)}</span>
     </button>`;
   }).join('');
@@ -125,7 +125,7 @@ const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
   if (!badge) return;
   document.getElementById('whats-new-body').innerHTML = renderChangelog();
   document.getElementById('app-version').textContent = APP_VERSION;
-  document.getElementById('whats-new-title').textContent = `${CHANGELOG[0].title}.`;
+  document.getElementById('whats-new-title').textContent = /\.$/.test(CHANGELOG[0].title) ? CHANGELOG[0].title : `${CHANGELOG[0].title}.`;
   let stored = null;
   try { stored = localStorage.getItem(WHATS_NEW_KEY); } catch {}
   badge.hidden = whatsNewDismissed(stored);
@@ -133,20 +133,21 @@ const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
     badge.hidden = true;
     safeSetItem(localStorage, WHATS_NEW_KEY, APP_VERSION);
   };
-  const navLink = document.getElementById('nav-whats-new');
-  if (navLink) navLink.addEventListener('click', dismiss);
   // Expanding the list counts as seeing it: the nav badge goes and the version is remembered.
   const line = document.getElementById('whats-new-line');
   const body = document.getElementById('whats-new-body');
   const toggle = document.getElementById('btn-whats-new-toggle');
-  toggle.addEventListener('click', () => {
-    const open = body.hidden;
+  const setOpen = (open) => {
     body.hidden = !open;
     line.classList.toggle('open', open);
     toggle.textContent = open ? 'Hide' : "What's new";
     toggle.setAttribute('aria-expanded', String(open));
     if (open) dismiss();
-  });
+  };
+  toggle.addEventListener('click', () => setOpen(body.hidden));
+  // The nav link scrolls to the line and opens the list too (the scroll is the link's own).
+  const navLink = document.getElementById('nav-whats-new');
+  if (navLink) navLink.addEventListener('click', () => { dismiss(); if (body.hidden) setOpen(true); });
 })();
 
 function renderLandingSavedList() {
@@ -549,7 +550,7 @@ document.getElementById('btn-tab-load').addEventListener('click', () => TabWatch
 document.getElementById('btn-tab-keep').addEventListener('click', () => TabWatch.keepMine());
 document.getElementById('btn-remote-undo').addEventListener('click', () => RemoteUpdate.undo());
 document.getElementById('btn-remote-dismiss').addEventListener('click', () => RemoteUpdate.hide());
-document.getElementById('btn-shared-gotit').addEventListener('click', () => SharedPlanBanner.hide());
+document.getElementById('btn-shared-gotit').addEventListener('click', () => SharedPlanBanner.hide({ focus: true }));
 document.getElementById('btn-shared-copy').addEventListener('click', () => SharedPlanBanner.makeCopy());
 
 // ── SHARE LINK ──────────────────────────────────────────────────
@@ -673,6 +674,7 @@ const SHARED_SEEN_KEY = 'pp_shared_seen_v1';
 const SHARED_SEEN_MAX = 50;
 const SharedPlanBanner = {
   linkId: null,
+  planKey: null, // the plan the banner was shown for; it hides when the open plan is another one
   seen() {
     try {
       const list = JSON.parse(linkStorage().getItem(SHARED_SEEN_KEY));
@@ -691,28 +693,47 @@ const SharedPlanBanner = {
     const text = document.getElementById('shared-plan-text');
     if (!banner || !text) return;
     this.linkId = id;
+    this.planKey = LiveLinks.planKey(State);
     const name = document.createElement('strong');
     name.textContent = State.rosterName;
     text.replaceChildren('You opened a shared live plan: ', name, '. Changes you make are saved for everyone with this link.');
     banner.hidden = false;
   },
-  hide() {
+  // Hides the banner and marks the link seen. `focus`: the user pressed one of its buttons, so
+  // focus moves to the plan name rather than falling to the page.
+  hide({ focus = false } = {}) {
     const id = this.linkId;
     this.linkId = null;
+    this.planKey = null;
     this.remember(id);
     const banner = document.getElementById('shared-plan-banner');
     if (banner) banner.hidden = true;
+    if (focus) {
+      const target = document.getElementById('roster-name');
+      if (target && target.focus) target.focus();
+    }
+  },
+  // True while the open plan is the one the banner was shown for. Otherwise the
+  // banner goes away without marking the link seen: the user never answered it.
+  belongsToOpenPlan() {
+    if (!this.linkId) return false;
+    if (this.planKey === LiveLinks.planKey(State)) return true;
+    this.linkId = null;
+    this.planKey = null;
+    const banner = document.getElementById('shared-plan-banner');
+    if (banner) banner.hidden = true;
+    return false;
   },
   // Turns the open plan into this browser's own plan: a new planId, so no
   // link is bound to it. The shared plan stays saved as it was. Sends nothing.
   makeCopy() {
-    if (!this.linkId) return;
+    if (!this.belongsToOpenPlan()) return;
+    this.hide({ focus: true });
     PlanStore.flush();
     State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     State.rosterName = State.rosterName + ' (my copy)';
     commit();
     syncAddressBar();
-    this.hide();
     showToast('Saved your own copy. Changes now stay in this browser.');
   },
 };
@@ -770,6 +791,7 @@ const LiveSync = {
 
   // Called from persistWorkingPlan on every commit.
   onRender() {
+    if (SharedPlanBanner.linkId) SharedPlanBanner.belongsToOpenPlan();
     if (!this.opening) syncAddressBar();
     const link = currentLiveLink();
     if (!link) { clearTimeout(this.saveTimer); this.pending = false; return; }
@@ -1014,7 +1036,7 @@ async function loadFromShortLink() {
   const id = SHORT_LINK_AT_LOAD;
   if (!id) return false;
   try {
-    showToast('Opening shared raid...');
+    showToast('Opening shared plan...');
     let remote;
     try { remote = await fetchLiveLink(id); } catch {
       showToast('Could not reach the server to open that share link');
@@ -1033,14 +1055,14 @@ async function loadFromShortLink() {
         // The server forgot the link, but this browser's copy is still here: give it a new link.
         commit();
         LiveSync.replaceExpiredLink(id);
-        showToast(`Opened live raid "${State.rosterName}" (its link had expired, making a new one)`);
+        showToast(`Opened live plan "${State.rosterName}" (its link had expired, making a new one)`);
         return true;
       }
       const entry = LiveLinks.get(linkStorage(), bound.planKey);
       const caughtUp = LiveLinks.shouldApply(entry, remote, false) && remote.code !== currentShareCode()
         && trackLiveUpdate(() => applyRemoteLiveCode(id, remote)).result;
       if (!caughtUp) commit();
-      showToast(`Opened live raid "${State.rosterName}"`);
+      showToast(`Opened live plan "${State.rosterName}"`);
       return true;
     }
 
@@ -1076,7 +1098,7 @@ async function applyShareCode(code) {
 
   ChangeLog.clear();
   commit();
-  showToast(`Loaded shared raid "${State.rosterName}" (${res.playerCount} players)${rememberImport('Shared link')}`);
+  showToast(`Loaded shared plan "${State.rosterName}" (${res.playerCount} players)${rememberImport('Shared link')}`);
   return true;
 }
 

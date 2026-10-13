@@ -42,7 +42,7 @@ check('How it works explains import grouping and ends on Share', () => {
 check('FAQ names the real API URL and the Share menu entries', () => {
   assert(html.includes('raid-helper.dev/api/v4/events/&lt;id&gt;'));
   assert(!html.includes('api/raidplan/&lt;id&gt;'));
-  assert(html.includes('use Share &gt; Download JSON'));
+  assert(html.includes('use Share and export&hellip;, then Download JSON under More export formats'));
   assert(html.includes('Share &gt; Copy for MRT'));
   assert(!html.includes('Copy MRT String') && !html.includes('use Export to download'));
 });
@@ -181,13 +181,55 @@ check('era cards are buttons: the current one is marked and inert, any other swi
   assert(tbc.includes('aria-current="true"') && tbc.includes('<span class="go">You are here</span>'));
   const classic = cards.find(c => c.includes('data-version="classic"'));
   assert(!classic.includes('aria-current') && classic.includes('<span class="go">Switch to WoW Classic</span>'));
-  assert(classic.includes('<h3>WoW Classic</h3>') && classic.includes(GameVersions.classic.note), 'content kept');
+  assert(classic.includes('WoW Classic') && classic.includes(GameVersions.classic.note), 'content kept');
+  // Phrasing content only inside a button: no headings, paragraphs or divs.
+  for (const c of cards) {
+    const inner = c.replace(/^<button [^>]*>/, '').replace(/<\/button>$/, '');
+    assert(!/<(h[1-6]|p|div)[\s>]/.test(inner), 'block element inside a button');
+  }
+  assert(classic.includes('aria-label="Switch to WoW Classic"'), 'aria-label starts with the visible action');
+  assert(tbc.includes('aria-label="WoW TBC, current version"'), 'current card is named');
   const click = (version, current) => env.onVersionCardClick({ target: env.cardFor({ dataset: { version }, getAttribute: k => (current && k === 'aria-current' ? 'true' : null) }) });
   click('tbc', true);
   assert.deepEqual(env.calls, [], 'the current card does nothing');
   click('classic', false);
   assert.deepEqual(env.calls, ['classic']);
   assert(/getElementById\('version-compare-table'\)[\s\S]{0,80}addEventListener\('click', onVersionCardClick\)/.test(script), 'delegated on the container');
+});
+
+check("the What's new nav link opens the list as well as scrolling to it, and the title never ends in two periods", () => {
+  const CH = app.sandbox(['CHANGELOG', 'APP_VERSION']).api;
+  const build = (prefix) => {
+    const els = {
+      'whats-new-badge': fakeEl(), 'whats-new-body': fakeEl({ hidden: true }), 'app-version': fakeEl(),
+      'whats-new-title': fakeEl(), 'whats-new-line': fakeEl(), 'btn-whats-new-toggle': fakeEl({ textContent: "What's new" }),
+      'nav-whats-new': fakeEl(),
+    };
+    const stored = {};
+    const localStorage = { getItem: k => stored[k] ?? null, setItem: (k, v) => { stored[k] = v; } };
+    app.sandbox([], {
+      globals: { document: { getElementById: id => els[id] || null }, localStorage },
+      extraSource: prefix + app.slice('const WHATS_NEW_KEY', 'function renderLandingSavedList'),
+    });
+    return { els, stored };
+  };
+  const { els, stored } = build('');
+  els['nav-whats-new'].handlers.click();
+  assert.equal(els['whats-new-body'].hidden, false, 'nav link expands the list');
+  assert.equal(els['btn-whats-new-toggle'].attrs['aria-expanded'], 'true');
+  assert.equal(els['btn-whats-new-toggle'].textContent, 'Hide');
+  assert.equal(stored.pp_whats_new_dismissed_v1, CH.APP_VERSION);
+  els['nav-whats-new'].handlers.click();
+  assert.equal(els['whats-new-body'].hidden, false, 'a second click does not collapse it');
+  const dotted = build("CHANGELOG[0].title = 'Ends with a period.'; ");
+  assert.equal(dotted.els['whats-new-title'].textContent, 'Ends with a period.');
+});
+
+check('the inert You are here card gets no hover effect, and the card parts are block spans', () => {
+  const css = app.css || require('fs').readFileSync(require('path').join(__dirname, 'app.css'), 'utf8');
+  assert(/button\.version-compare-col\.here:hover\s*\{[^}]*border-color:\s*var\(--border-accent\)/.test(css));
+  for (const cls of ['version-compare-name', 'version-compare-note', 'version-compare-raids'])
+    assert(new RegExp('\\.' + cls + '\\s*\\{[^}]*display:\\s*block').test(css), cls + ' is display:block');
 });
 
 check('the footer feedback link carries the version and browser, encoded', () => {
