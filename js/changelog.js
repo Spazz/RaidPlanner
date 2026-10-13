@@ -3,8 +3,20 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.2.2';
+const APP_VERSION = '4.3.0';
 const CHANGELOG = [
+  { version: '4.3.0', date: '2026-10-12', title: 'Clearer Optimize results with Undo, plain import errors and deletable saved plans', changes: [
+    'Optimize says what it did in buff terms (for example Windfury Totem +4 melee), offers Undo for 8 seconds, and lists who it benched, seated or moved under Changes.',
+    'A result line under the readiness line keeps the last import, sync or Optimize result until your next change. On phones it is a strip above Group 1.',
+    'The readiness line, the Coverage rail and the phone link count missing party buffs and raid debuffs the same way, and say when everything is covered.',
+    'Import errors say what went wrong and what to try next, Refresh has its own messages, and an old error clears when you type or go back to the start page.',
+    'Share labels match everywhere: Copy live link, Copy for MRT (new shortcut G), Copy MRT note, Copy raid chat text, Copy compact chat text and Print raid sheet.',
+    "Opening someone else's live link now says that your changes reach everyone with the link, and offers Make my own copy.",
+    'Saved plans can be deleted, a backup file can be restored from the start page, and saving over an existing name asks first.',
+    'Standby players are now called Standby, so backup only means the data file. The ideal comp link is now Reference comp and says it is not your raid.',
+    'Phones: bigger buttons and Coverage text, banner buttons stacked full width, the import box first on the start page and toasts at the top.',
+    "Buff icons and the buff picker work from the keyboard, and the start page shows What's new as one line, era cards that switch versions and a link for feedback.",
+  ] },
   { version: '4.2.2', date: '2026-10-12', title: 'Optimize after a raid size change', changes: [
     'Optimize after a raid size change now decides who sits from everyone the size change benched: tanks and healers up to the floors, then whoever adds the most. Before, whoever sat in the first groups kept their seats.',
     'Forever: at most 4 healers are seated in a 20-man raid (3 in a 10-man, 10 in a 40-man) when more healers would bench DPS players.',
