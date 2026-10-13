@@ -1038,8 +1038,9 @@ const ChangesPanel = {
     const toggle = long
       ? `<button type="button" class="link-btn changes-log-more" data-changes-expand="${entry.id}" aria-expanded="${open}">${open ? 'Hide the list' : `Show all ${entry.items.length}`}</button>`
       : '';
-    return `<div class="changes-log-entry${entry.seen ? '' : ' is-unseen'}">
-      <h4 class="changes-log-meta">${esc(entry.label)} <span class="changes-log-time">- ${esc(ChangeLog.ago(entry.time, now))}</span>${entry.seen ? '' : '<span class="sr-only">, not seen yet</span>'}</h4>
+    const unseen = !entry.seen && ChangeLog.loudItems(entry).length > 0;
+    return `<div class="changes-log-entry${unseen ? ' is-unseen' : ''}">
+      <h4 class="changes-log-meta">${esc(entry.label)} <span class="changes-log-time">- ${esc(ChangeLog.ago(entry.time, now))}</span>${unseen ? '<span class="sr-only">, not seen yet</span>' : ''}</h4>
       <ul class="changes-log-items">${lines}</ul>${toggle}
     </div>`;
   },
@@ -1084,6 +1085,8 @@ const ChangesPanel = {
 // The tracked action has already committed; this commit only redraws.
 ChangeLog.onRecord = entry => {
   commit();
+  // An Optimize that only moved players has nothing to announce beyond the composition the tracked commit spoke.
+  if (!ChangeLog.loudItems(entry).length) return;
   // A size change or a seat change also changed the composition the tracked commit
   // just announced; the region holds one message, so the summary carries both.
   const reshaped = entry.kind === 'size' || entry.items.some(it => it.kind !== 'status' && it.kind !== 'moved');

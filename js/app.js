@@ -350,68 +350,75 @@ function setPhoneContextOpen(open, persist = true) {
 })();
 
 // ── ACTION BUTTONS ──────────────────────────────────────────────
-function countCoveredBuffs() {
-  const covered = new Set();
-  for (let gi = 0; gi < State.groups.length; gi++) {
-    for (const b of getGroupBuffs(State.groups[gi], gi)) covered.add(b.id);
-  }
-  return covered.size;
-}
-
-function playerGroupMap() {
-  const map = {};
-  State.groups.forEach((g, gi) => g.forEach(p => { map[p.uid] = gi; }));
-  return map;
-}
-
+// "Last Optimize: 8 moved, Windfury +4 melee": the toast's wording in short form.
 function renderLastRun(summary) {
   const el = document.getElementById('last-run');
   if (!el) return;
   if (!summary) { el.innerHTML = ''; return; }
-  const buffDelta = summary.buffDelta > 0 ? `+${summary.buffDelta}` : String(summary.buffDelta);
-  el.innerHTML = `&middot; Last run: ${buffDelta} buffs &middot; ${summary.moved} moved`
-;
+  const parts = [`${summary.moved} moved`].concat(reachParts(summary.reach));
+  el.innerHTML = `&middot; Last Optimize: ${parts.join(', ')}`;
 }
 
 // Optimize wipes the leader's totem/aura picks, so the toast says so when it did.
-// It also names the players Optimize benched or seated again (after a raid size change it decides who sits).
-function optimizeToastMessage({ moved, benched = 0, seated = 0, buffDelta, overridesReset }) {
-  const seatChanges = [benched > 0 ? `${benched} benched` : '', seated > 0 ? `${seated} seated` : ''].filter(Boolean);
-  const base = moved === 0 && buffDelta === 0 && !seatChanges.length
-    ? 'Already optimal — nothing moved'
-    : `Optimized: ${buffDelta >= 0 ? '+' : ''}${buffDelta} buffs, ${seatChanges.concat(`${moved} players moved`).join(', ')}`;
-  return overridesReset > 0 ? `${base}. ${overridesReset} buff override${overridesReset === 1 ? '' : 's'} reset` : base;
+// It also names the players Optimize benched or seated again (after a raid size change it decides who sits),
+// and which buffs now reach more or fewer players.
+function optimizeToastMessage({ moved, benched = 0, seated = 0, reach = [], overridesReset }) {
+  const reset = overridesReset > 0 ? `${overridesReset} buff override${overridesReset === 1 ? '' : 's'} reset` : '';
+  if (moved === 0 && benched === 0 && seated === 0) return reset ? `Already optimal — nothing moved. ${reset}` : 'Already optimal — nothing moved';
+  const counts = [`${moved} moved`, benched > 0 ? `${benched} benched` : '', seated > 0 ? `${seated} seated` : ''].filter(Boolean);
+  const parts = reachParts(reach);
+  return [`Optimized: ${counts.join(', ')}.`, parts.length ? `${parts.join(', ')}.` : '', reset].filter(Boolean).join(' ');
+}
+
+// Up to two gains and the largest loss from diffBuffReach(), as "Windfury +4 melee".
+function reachParts(reach) {
+  const list = Array.isArray(reach) ? reach : [];
+  const gains = list.filter(r => r.delta > 0).slice(0, 2);
+  const loss = list.filter(r => r.delta < 0).sort((x, y) => x.delta - y.delta)[0];
+  return gains.concat(loss ? [loss] : []).map(r => `${r.name} ${r.delta > 0 ? '+' : ''}${r.delta} ${r.word}`);
 }
 
 document.getElementById('btn-optimize').addEventListener('click', () => {
   if (!GameVersions[State.gameVersion].modeled) { showToast(GameVersions[State.gameVersion].note); return; }
   if (State.roster.length === 0) { showToast('Import a roster first'); return; }
-  const buffsBefore = countCoveredBuffs();
-  const placementBefore = playerGroupMap();
+  const reachBefore = snapshotBuffReach(); // the board as the leader saw it, overrides included
+  const undoTopBefore = PlanSession.undo[PlanSession.undo.length - 1];
 
   // One strategy since the nav slim-down: Optimize always runs Max DPS.
   State.optimizerMode = 'max_dps';
   const overridesReset = Object.keys(State.buffOverrides).length;
-  State.buffOverrides = {};
-  Optimizer.optimize();
-  commit();
+  const { entry } = ChangeLog.track('optimize', 'Optimize', () => {
+    State.buffOverrides = {};
+    Optimizer.optimize();
+    commit();
+  }, { moves: true });
 
-  const placementAfter = playerGroupMap();
-  const moved = Object.keys(placementAfter).filter(uid => placementBefore[uid] !== undefined && placementBefore[uid] !== placementAfter[uid]).length;
-  const benched = Object.keys(placementBefore).filter(uid => placementAfter[uid] === undefined).length;
-  const seated = Object.keys(placementAfter).filter(uid => placementBefore[uid] === undefined).length;
-  const buffDelta = countCoveredBuffs() - buffsBefore;
-  renderLastRun({ buffDelta, moved });
-  showToast(optimizeToastMessage({ moved, benched, seated, buffDelta, overridesReset }));
+  // The step this click pushed, if it pushed one; Undo only acts while it is still the latest.
+  const undoRef = PlanSession.undo[PlanSession.undo.length - 1];
+  const pushed = undoRef !== undefined && undoRef !== undoTopBefore;
+  if (entry && pushed) entry.undoRef = undoRef;
+  const counts = { moved: 0, benched: 0, seated: 0 };
+  for (const it of entry ? entry.items : []) if (it.kind in counts) counts[it.kind]++;
+  const reach = diffBuffReach(reachBefore, snapshotBuffReach());
+  renderLastRun({ moved: counts.moved, reach });
+  const message = optimizeToastMessage({ ...counts, reach, overridesReset });
+  if (!entry || !pushed) { showToast(message); return; } // nothing moved: no Undo, even if the groups were re-sorted
+  showToast(message, { action: { label: 'Undo', onClick: () => {
+    if (PlanSession.undo[PlanSession.undo.length - 1] !== undoRef) { showToast('Nothing to undo: the plan changed after Optimize'); return; }
+    undoPlanChange();
+  } } });
 });
 
-document.getElementById('btn-clear').addEventListener('click', () => {
+document.getElementById('btn-clear').addEventListener('click', async () => {
+  const confirmed = await Modal.confirm({
+    title: 'Clear the board?',
+    message: 'Every player moves back to Sign-ups. Undo brings the board back.',
+    confirmLabel: 'Clear board',
+  });
+  if (!confirmed) return;
   renderLastRun(null);
-  // Wipe every per-roster feature that is keyed by player name/uid — left in
-  // place, these dangle after the roster they refer to is gone (stale notes
-  // reappearing, "together"/"apart" pairs, bench backups and drum tags
-  // pointing at players who no longer exist) and can resurface confusingly
-  // on whatever is imported/generated next.
+  // Wipe every per-roster feature keyed by player name/uid, or it dangles (stale notes,
+  // together/apart pairs, Standby backups, drum tags) and resurfaces on the next import.
   PlanStore.startFresh();
   ChangeLog.clear();
   initGroups();

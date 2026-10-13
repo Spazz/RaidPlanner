@@ -330,7 +330,11 @@ function renderPhoneSummary() {
 }
 
 function undoPlanChange() {
+  // An Optimize entry belongs to the step it pushed; undoing that step drops the entry (compare before popping).
+  const top = PlanSession.undo[PlanSession.undo.length - 1];
+  const optimizeEntry = top ? ChangeLog.entries.find(e => e.undoRef === top) : null;
   if (!PlanSession.undoLast()) return;
+  if (optimizeEntry) ChangeLog.remove(optimizeEntry.id);
   closePlayerEditor(); closeBuffPicker();
   initGroups(); commit(); renderLastRun(null);
   RaidHelperSync.hideBanner();
