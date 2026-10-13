@@ -598,6 +598,28 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   flex: 1 1 auto; min-width: 24px;
 }
 .buff-row.covered .buff-row-name { color: var(--accent-gold-bright); }
+.buff-row-groups { display: flex; flex-direction: column; gap: var(--sp-4); }
+.buff-row-groups:empty { display: none; }
+.tag-deb {
+  flex-shrink: 0; padding: 0 4px; border: 1px solid var(--border-strong);
+  font-family: var(--font-cond); font-size: 8.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted); white-space: nowrap;
+}
+/* Needs a recruit: text only, one line per source spec. */
+.rec-item { border-bottom: 1px solid var(--border-subtle); }
+.rec-line { padding: 3px 3px; font-size: 10.5px; line-height: 1.3; color: var(--text-muted); }
+.rec-spec { font-weight: 600; }
+.rec-item .buff-row-insight { margin-top: 0; padding-left: 3px; }
+.cov-toggle {
+  width: 100%; padding: 4px 8px; background: none; border: 1px solid var(--border-strong); cursor: pointer;
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; text-align: left;
+  color: var(--text-secondary);
+}
+.cov-toggle:hover { background: var(--bg-card-hover); }
+#buff-catalog-covered { gap: var(--sp-2); }
+/* A debuff row keeps its label right after the name and pushes the source to the edge. */
+.buff-row.tagged .buff-row-name { flex-grow: 0; }
+.buff-row.tagged .buff-row-source { margin-left: auto; }
 .buff-row-warn { font-size: 9px; color: var(--accent-gold-dim); flex-shrink: 0; cursor: help; }
 .buff-row-source {
   font-size: 9px; font-weight: 500; flex: 0 1 auto; margin-left: 4px;
@@ -1285,8 +1307,9 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
     width: 100%; border-left: none; border-top: 1px solid var(--border-subtle);
   }
   .sidebar-summary { flex-direction: row; gap: var(--sp-4); }
-  .sidebar-body { flex-direction: row; }
-  .buff-sidebar-section { flex: 1; min-width: 0; }
+  .sidebar-body { flex-direction: row; flex-wrap: wrap; }
+  .buff-sidebar-section, .buff-row-groups { flex: 1; min-width: 0; }
+  .swap-legend { flex: 1 0 100%; }
   .groups-container { grid-template-columns: repeat(2, 1fr); }
   .groups-container.groups-5,
   .groups-container.groups-4,
@@ -1552,6 +1575,8 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 .swap-legend i { flex-shrink: 0; width: 6px; height: 6px; margin-top: 4px; background: var(--accent-gold); border: 1px solid var(--bg-deepest); }
 .buff-sidebar.collapsed .swap-legend { display: none; }
+/* Phone-only Coverage sheet; the slim phone block below shows it. */
+.coverage-sheet { display: none; }
 .sidebar-summary-row.ok { color: var(--success); }
 /* Larger homepage type and controls for comfortable reading. */
 .landing { width:min(1180px,100%); }
@@ -1856,7 +1881,33 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .rb-bar { min-height: 36px; padding: 0 0 0 var(--sp-3); gap: 0; }
   .rb-arrow { width: 44px; }
   .rb-failed { padding: 0 var(--sp-3) 8px; }
-  #buff-sidebar { scroll-margin-top: 40px; }
+  /* Coverage sheet (M2): the rail lives in it on phones. Peek is half the viewport, expanded nearly all of it;
+     above the board and the bottom bar (40), below the player editor sheet (200) and the toast (300). */
+  .coverage-sheet.visible {
+    display: flex; flex-direction: column; position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    height: 50dvh; background: var(--bg-frame); border-top: 1px solid var(--border-strong);
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
+  }
+  .coverage-sheet.expanded { height: 85dvh; }
+  .coverage-sheet-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); }
+  .coverage-sheet-header h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 15px; color: var(--accent-gold); }
+  .coverage-sheet-header h3:focus { outline: none; }
+  .coverage-sheet-header .btn { min-height: 44px; }
+  .coverage-sheet-slot { flex: 1; min-height: 0; overflow-y: auto; }
+  .coverage-sheet-slot .buff-sidebar { width: 100%; border: none; padding: var(--sp-3); }
+  .coverage-sheet .sidebar-toggle { display: none; }
+  .coverage-sheet .buff-sidebar.collapsed .sidebar-body { display: flex; }
+  .coverage-sheet .swap-legend { display: flex; }
+  .coverage-sheet-more {
+    flex-shrink: 0; min-height: 44px; padding: 0 12px; background: var(--bg-panel); border: none; border-top: 1px solid var(--border-strong);
+    font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 13px; color: var(--accent-gold); cursor: pointer;
+    padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: content-box;
+  }
+  .buff-sidebar-title { font-size: 14px; }
+  .buff-sidebar-count { font-size: 13px; }
+  .rec-line { font-size: 13px; padding: 8px 3px; }
+  .tag-deb { font-size: 10px; }
+  .cov-toggle { min-height: 44px; font-size: 13px; padding: 0 12px; }
   /* Result row of the banner: the dismiss button gets the 44px hit area. */
   .result-line { padding: 0 0 0 var(--sp-3); }
   .result-line-dismiss { min-width: 44px; min-height: 44px; font-size: 18px; }

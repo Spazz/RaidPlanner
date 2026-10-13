@@ -110,6 +110,7 @@ function renderPhone(readiness, { notes = '', seated = 25, size = 25 } = {}) {
   const node = id => els[id] || (els[id] = { id, textContent: '', innerHTML: '', hidden: false, attrs: {}, listeners: {},
     classList: { toggle(c, on) { this.on = on; } }, setAttribute(k, v) { this.attrs[k] = v; },
     addEventListener(t, fn) { this.listeners[t] = fn; } });
+  const opened = [];
   const value = typeof readiness === 'number'
     ? { missingCoverage: readiness, tanksShort: 0, healersShort: 0, mixedFactions: false } : readiness;
   const src = between(renderJs, 'let lastReadiness', 'function renderSummaryBar') +
@@ -118,7 +119,8 @@ function renderPhone(readiness, { notes = '', seated = 25, size = 25 } = {}) {
     document: { getElementById: node },
     State: { roster: Array(seated).fill({}), selectedRaid: 'x', optimizerMode: 'max_dps', rosterName: 'Random 25-man Roster', notes },
     Config: { Raids: { x: { name: 'Karazhan', size } } },
-    setSidebarExpanded() {},
+    openCoverageSheet(trigger) { opened.push(trigger.id); },
+    opened,
     ReadinessBanner: { calls: [], set(minimized) { this.calls.push(minimized); } },
   });
   vm.runInContext(src + `\nlastReadiness = ${JSON.stringify(value)};\nrenderPhoneSummary(); renderPhoneMissing();`, ctx);
@@ -198,16 +200,106 @@ check('readiness link is hidden when nothing is wrong and when coverage is not m
   assert.equal(renderPhone(1).els['btn-summary-missing'].innerHTML, '<b>1</b> missing &#9656;');
 });
 
-check('clicking the missing link expands the banner (and keeps it expanded) and opens the coverage panel', () => {
+check('clicking the missing link expands the banner (and keeps it expanded) and opens the Coverage sheet', () => {
   const { els, ctx } = renderPhone(7);
-  els['buff-sidebar'] = { scrolled: false, scrollIntoView() { this.scrolled = true; } };
   const click = els['btn-summary-missing'].listeners.click;
   assert.ok(click, 'direct click handler on the button');
   click();
   assert.deepEqual(ctx.ReadinessBanner.calls, [false], 'the banner is told to expand (not to toggle)');
-  assert.ok(els['buff-sidebar'].scrolled);
+  assert.deepEqual(ctx.opened, ['btn-summary-missing'], 'the link opens the Coverage sheet, passing itself as the trigger');
   click();
   assert.deepEqual(ctx.ReadinessBanner.calls, [false, false], 'a second click does not minimize it');
+});
+
+// ── Coverage sheet (phones) ──
+
+// The sheet functions of js/app.js in a vm with a fake DOM; phone = whether the (max-width: 600px) query matches.
+function coverageSheetHarness({ phone = true } = {}) {
+  const els = {};
+  const node = id => {
+    if (els[id]) return els[id];
+    const el = { id, attrs: {}, listeners: {}, focused: 0, innerHTML: '', classes: new Set(),
+      setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; },
+      addEventListener(t, fn) { this.listeners[t] = fn; }, focus() { this.focused++; } };
+    el.classList = { add: c => el.classes.add(c), remove: c => el.classes.delete(c), contains: c => el.classes.has(c),
+      toggle: (c, on) => (on ? el.classes.add(c) : el.classes.delete(c)) };
+    return (els[id] = el);
+  };
+  const query = { matches: phone, listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; } };
+  const ctx = vm.createContext({ document: { getElementById: node }, window: { matchMedia: () => query } });
+  const src = between(appJs, 'const PHONE_QUERY', '// ── PHONE "MORE" SHEET');
+  vm.runInContext(src + '\nthis.openCoverageSheet = openCoverageSheet; this.closeCoverageSheet = closeCoverageSheet;', ctx);
+  return { els: new Proxy(els, { get: (t, k) => node(k) }), ctx, query };
+}
+
+check('the Coverage sheet is real markup, and the rail moves into it through the phone slot list', () => {
+  const sheet = between(html, 'id="coverage-sheet"', 'id="phone-action-bar"');
+  assert.match(html, /<div class="coverage-sheet" id="coverage-sheet" role="dialog" aria-modal="false" aria-labelledby="coverage-sheet-heading">/);
+  assert.match(sheet, /<h3 id="coverage-sheet-heading" tabindex="-1">Coverage<\/h3>/);
+  assert.match(sheet, /id="btn-close-coverage-sheet" aria-label="Close Coverage"/);
+  assert.match(sheet, /id="coverage-sheet-slot"/);
+  assert.match(sheet, /id="btn-coverage-expand" aria-expanded="false">Show all/);
+  assert.ok(html.indexOf('id="coverage-sheet"') > html.indexOf('id="mobile-more-sheet"'), 'right after the More sheet');
+  assert.ok(appJs.includes("'buff-sidebar:coverage-sheet-slot'"), 'the existing slot list moves the rail');
+  assert.match(css, /\n\.coverage-sheet \{ display: none; \}/, 'hidden outside the phone block');
+  assert.match(phoneCssAll(), /\.coverage-sheet\.visible \{[^}]*height: 50dvh/);
+  assert.match(phoneCssAll(), /\.coverage-sheet\.expanded \{ height: 85dvh; \}/);
+  assert.match(phoneCssAll(), /\.coverage-sheet \.buff-sidebar\.collapsed \.sidebar-body \{ display: flex; \}/, 'the body shows whatever .collapsed says');
+  assert.match(phoneCssAll(), /\.coverage-sheet \.sidebar-toggle \{ display: none; \}/);
+  assert.match(phoneCssAll(), /\.coverage-sheet-more \{[^}]*min-height: 44px/);
+});
+
+check('the Coverage sheet opens from a trigger on phones, marks it expanded, and starts in the peek', () => {
+  const { els, ctx } = coverageSheetHarness();
+  ctx.openCoverageSheet(els['btn-summary-missing']);
+  assert.ok(els['coverage-sheet'].classes.has('visible'));
+  assert.equal(els['btn-summary-missing'].attrs['aria-expanded'], 'true');
+  assert.equal(els['coverage-sheet-heading'].focused, 1, 'focus moves to the sheet heading');
+  els['btn-coverage-expand'].listeners.click();
+  assert.ok(els['coverage-sheet'].classes.has('expanded'));
+  assert.equal(els['btn-coverage-expand'].innerHTML, 'Show less &#9662;');
+  assert.equal(els['btn-coverage-expand'].attrs['aria-expanded'], 'true');
+  els['btn-coverage-expand'].listeners.click();
+  assert.ok(!els['coverage-sheet'].classes.has('expanded'));
+  assert.equal(els['btn-coverage-expand'].innerHTML, 'Show all &#9652;');
+  els['btn-coverage-expand'].listeners.click();
+  ctx.closeCoverageSheet();
+  ctx.openCoverageSheet(els['readiness-text']);
+  assert.ok(!els['coverage-sheet'].classes.has('expanded'), 'opening always starts in the peek');
+  assert.equal(els['readiness-text'].attrs['aria-expanded'], 'true', 'the chip works as a trigger too');
+});
+
+check('Escape and Close close the Coverage sheet and give focus back to the trigger', () => {
+  const { els, ctx } = coverageSheetHarness();
+  const trigger = els['btn-summary-missing'];
+  ctx.openCoverageSheet(trigger);
+  let prevented = false;
+  els['coverage-sheet'].listeners.keydown({ key: 'Escape', preventDefault() { prevented = true; } });
+  assert.ok(prevented);
+  assert.ok(!els['coverage-sheet'].classes.has('visible'));
+  assert.equal(trigger.attrs['aria-expanded'], 'false');
+  assert.equal(trigger.focused, 1);
+  ctx.openCoverageSheet(trigger);
+  els['btn-close-coverage-sheet'].listeners.click();
+  assert.ok(!els['coverage-sheet'].classes.has('visible'));
+  assert.equal(trigger.focused, 2);
+});
+
+check('the Coverage sheet does not open above phone width, and closes when the window widens', () => {
+  const desktop = coverageSheetHarness({ phone: false });
+  desktop.ctx.openCoverageSheet(desktop.els['readiness-text']);
+  assert.ok(!desktop.els['coverage-sheet'].classes.has('visible'));
+  const { els, ctx, query } = coverageSheetHarness();
+  ctx.openCoverageSheet(els['btn-summary-missing']);
+  query.matches = false;
+  query.listeners.change();
+  assert.ok(!els['coverage-sheet'].classes.has('visible'));
+  assert.equal(els['btn-summary-missing'].attrs['aria-expanded'], 'false');
+});
+
+check('the readiness chip opens the Coverage sheet on phones only, and the More sheet closes it', () => {
+  assert.match(appJs, /getElementById\('readiness-text'\)\.onclick = \(e\) => \{[^}]*PHONE_QUERY\.matches\) \{ openCoverageSheet\(e\.currentTarget\); return; \}\s*setSidebarExpanded\(true\)/);
+  assert.match(between(appJs, 'const openSheet = () => {', 'sheet.classList.add'), /closeCoverageSheet\(false\)/);
 });
 
 // ── Player editor sheet ────────────────────────────────────────────

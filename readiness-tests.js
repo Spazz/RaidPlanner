@@ -19,11 +19,11 @@ function check(name, fn) {
 
 const NAMES = ['State', 'Config', 'Import', 'liveCoverageGaps', 'coverageGapCounts', 'renderReadiness', 'renderBuffCatalog',
   'getRaidBuffCoverage', 'getRaidDebuffCoverage', 'factionRelevantBuffs', 'ResultLine', 'renderSidebarSummary', 'Optimizer',
-  'ReadinessBanner', 'DataBackup'];
+  'ReadinessBanner', 'DataBackup', 'setCoveredListOpen'];
 
 // Fake DOM: every element remembers what the code wrote to it. With fixedGaps the live gap
 // counts come from setGaps() instead of the roster, so each wording state can be driven directly.
-function makeSandbox({ fixedGaps = false, globals = {} } = {}) {
+function makeSandbox({ fixedGaps = false, fixedInsights = false, globals = {} } = {}) {
   const els = {};
   const document = { getElementById: id => els[id] || (els[id] = { id, innerHTML: '', textContent: '', hidden: false }) };
   const extraSource = `
@@ -31,13 +31,14 @@ var lastReadiness = null;
 function renderPhoneMissing() {}
 function hasLoadedWork() { return true; }
 ${fixedGaps ? 'var __gaps = null; function liveCoverageGaps() { return __gaps; }' : ''}
+${fixedInsights ? 'var __insights = null; function getMissingBuffInsights() { return __insights; }' : ''}
 ${app.slice('function isKnownClass(', 'function preferredColorClass(')}
 ${app.slice('function renderReadiness', '// ── RAID NOTES')}
 ${app.slice('function renderBuffCatalog(', '// One line under a missing utility row')}
 ${app.slice('const ResultLine = {', 'function persistWorkingPlan')}
 `;
   const ctx = app.sandbox(NAMES, { globals: { document, ...globals }, extraSource });
-  return { api: ctx.api, els, setGaps: gaps => { ctx.__gaps = gaps; } };
+  return { api: ctx.api, els, setGaps: gaps => { ctx.__gaps = gaps; }, setInsights: insights => { ctx.__insights = insights; } };
 }
 
 const plain = html => html.replace(/<[^>]+>/g, '');
@@ -181,7 +182,7 @@ check('rail text carries a title with the full text: names, sources and insights
   seedRaid(api);
   const groups = api.State.groups;
   api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
-  const rows = els['buff-catalog-buffs'].innerHTML;
+  const rows = els['buff-catalog-gaps'].innerHTML;
   assert.match(rows, /<span class="buff-row-name" title="[^"]+">/);
   assert.match(rows, /<span class="buff-row-source [^"]*" title="[^"]+">/);
   assert.match(rows, /<span class="insight-text" title="[^"]+">/);
@@ -195,21 +196,126 @@ check('the reference comp shows no Switch or Swap In rows taken from the live pl
   const groups = api.State.groups;
   const cover = () => api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
   cover();
-  assert.match(els['buff-catalog-buffs'].innerHTML, /buff-row-insight/, 'the live plan lists fixes');
+  assert.match(els['buff-catalog-gaps'].innerHTML, /buff-row-insight/, 'the live plan lists fixes');
   api.State.activeTab = 'ideal';
   cover();
-  assert.doesNotMatch(els['buff-catalog-buffs'].innerHTML, /buff-row-insight|data-insight-/);
-  assert.doesNotMatch(els['buff-catalog-debuffs'].innerHTML, /buff-row-insight|data-insight-/);
+  assert.doesNotMatch(els['buff-catalog-gaps'].innerHTML, /buff-row-insight|data-insight-/);
+  assert.doesNotMatch(els['buff-catalog-covered'].innerHTML, /buff-row-insight|data-insight-/);
   api.State.activeTab = 'plan';
 });
 
 check('the Coverage rail opens with the gold-corner legend, and the corner it names is the swappable icon corner', () => {
   const aside = app.html.slice(app.html.indexOf('<aside class="buff-sidebar'), app.html.indexOf('</aside>'));
   assert(aside.includes('Icons with a gold corner can be swapped: click one to choose another buff.'));
-  assert(aside.indexOf('swap-legend') < aside.indexOf('id="sidebar-summary"'), 'the legend sits at the top of the rail');
-  assert(aside.indexOf('swap-legend') < aside.indexOf('id="sidebar-body"'));
+  assert(aside.indexOf('id="sidebar-summary"') < aside.indexOf('swap-legend'), 'the legend sits at the bottom of the open rail');
+  assert(aside.indexOf('id="buff-catalog-utility"') < aside.indexOf('swap-legend'), 'after Utility, the last thing in the rail body');
+  assert(aside.indexOf('id="sidebar-body"') < aside.indexOf('swap-legend'), 'inside the body, so a collapsed rail hides it');
   assert.match(app.css, /\.swap-legend i \{[^}]*background: var\(--accent-gold\)/);
   assert.match(app.css, /\.buff-icon\.swappable::after \{[^}]*background: var\(--accent-gold\)/);
+});
+
+// ── Coverage rail groups (4.4.0) ──
+
+const person = (name, cls, spec, uid) => ({ name, class: cls, spec, uid: uid || name });
+// A board whose gaps cover every kind of fix: two one-click ones (a Switch and a Swap In), a debuff Swap In, a shout with
+// two warriors seated, a shout with one, and two Shadow Priest gaps nobody can fill. Everything else is covered.
+function groupedBoard() {
+  const { api, els, setInsights } = makeSandbox({ fixedInsights: true });
+  seedRaid(api);
+  const insights = {
+    GRACE_OF_AIR: { kind: 'switch', player: person('Shammy', 'SHAMAN', 'Enhancement'), groupIdx: 1, currentBuffId: 'WINDFURY' },
+    WINDFURY: { kind: 'bench', player: person('Benchy', 'SHAMAN', 'Enhancement') },
+    SUNDER_ARMOR: { kind: 'bench', player: person('Warry', 'WARRIOR', 'Arms') },
+    BATTLE_SHOUT: { kind: 'shared', player: person('Tanky', 'WARRIOR', 'Protection'), casters: 2 },
+    COMMANDING_SHOUT: { kind: 'shared', player: person('Tanky', 'WARRIOR', 'Protection'), casters: 1 },
+    VAMPIRIC_TOUCH: { kind: 'none' },
+    MISERY: { kind: 'none' },
+  };
+  setInsights(insights);
+  const buffs = api.factionRelevantBuffs();
+  const coveredBuffs = new Set(Object.keys(buffs).filter(id => !insights[id]));
+  const coveredDebuffs = new Set(Object.keys(api.Config.Debuffs).filter(id => !insights[id]));
+  api.renderBuffCatalog(coveredBuffs, coveredDebuffs);
+  return { api, els, coveredBuffs, coveredDebuffs, render: () => api.renderBuffCatalog(coveredBuffs, coveredDebuffs) };
+}
+const sectionOf = (html, title) => {
+  const m = html.match(new RegExp(`<h4 class="buff-sidebar-title">${title} <span class="buff-sidebar-count">&middot; (\\d+)</span></h4>([\\s\\S]*?)(?=<div class="buff-sidebar-section">|$)`));
+  return m && { count: +m[1], body: m[2] };
+};
+const rowNames = html => [...html.matchAll(/<span class="buff-row-name" title="[^"]*">([^<]*)</g)].map(m => m[1]);
+
+check('Fix now lists the one-click gaps, buffs before debuffs; Needs a recruit lists the rest', () => {
+  const { els } = groupedBoard();
+  const html = els['buff-catalog-gaps'].innerHTML;
+  const fix = sectionOf(html, 'Fix now');
+  assert.deepEqual(rowNames(fix.body), ['Windfury Totem', 'Grace of Air Totem', 'Battle Shout', 'Sunder Armor'],
+    'switch, bench and shared >= 2, dataset order, the debuff last');
+  assert.equal(fix.count, 4);
+  assert.match(fix.body, /data-insight-switch="GRACE_OF_AIR"/);
+  assert.match(fix.body, /data-insight-swap="Benchy"/);
+  assert.match(fix.body, /Group two warriors together/);
+  assert.doesNotMatch(sectionOf(html, 'Needs a recruit').body, /<button|data-insight-|buff-row-icon/, 'recruit lines are text only');
+});
+
+check('Needs a recruit: one line per source spec, N counts lines, the debuff carries a Debuff label', () => {
+  const { els } = groupedBoard();
+  const need = sectionOf(els['buff-catalog-gaps'].innerHTML, 'Needs a recruit');
+  const lines = [...need.body.matchAll(/<div class="rec-line">(.*?)<\/div>/g)].map(m => plain(m[1]));
+  assert.deepEqual(lines, ['Warrior: Commanding Shout', 'Shadow Priest: Vampiric Touch, Misery Debuff'], 'buffs before debuffs inside a line');
+  assert.equal(need.count, 2, 'N counts lines, not entries');
+  assert.match(need.body, /<span class="rec-spec [^"]*">Shadow Priest<\/span>: Vampiric Touch, Misery <span class="tag-deb">Debuff<\/span>/);
+  assert.match(need.body, /rec-line">.*Commanding Shout<\/div><div class="buff-row-insight none"><span class="insight-text"[^>]*>Needs a 2nd warrior: <span class="insight-who [^"]*">Tanky<\/span> casts the other shout/,
+    'the one-warrior shout keeps its insight line under the Warrior line');
+  const fix = sectionOf(els['buff-catalog-gaps'].innerHTML, 'Fix now');
+  assert.match(fix.body, /Sunder Armor<\/span><span class="tag-deb">Debuff<\/span>/, 'a debuff row labels itself too');
+  assert.doesNotMatch(fix.body.replace(/Sunder Armor<\/span><span class="tag-deb">Debuff<\/span>/, ''), /tag-deb/, 'buff rows carry no label');
+});
+
+check('Covered is a toggle, closed by default, with a count; it stays open across re-renders', () => {
+  const { api, els, coveredBuffs, coveredDebuffs, render } = groupedBoard();
+  const total = coveredBuffs.size + coveredDebuffs.size;
+  let html = els['buff-catalog-covered'].innerHTML;
+  assert.match(html, new RegExp(`<button type="button" class="cov-toggle" id="btn-covered-toggle" aria-expanded="false">Show ${total} covered &#9656;</button>$`));
+  assert.doesNotMatch(html, /buff-row/, 'closed: no covered rows');
+  api.setCoveredListOpen(true);
+  html = els['buff-catalog-covered'].innerHTML;
+  assert.match(html, /aria-expanded="true">Hide covered &#9662;<\/button>/);
+  assert.equal(rowNames(html).length, total, 'open: every covered row, buffs then debuffs');
+  assert(rowNames(html).indexOf('Windfury Totem') < 0 && rowNames(html).includes('Mana Spring Totem'));
+  assert.equal([...html.matchAll(/tag-deb/g)].length, coveredDebuffs.size, 'covered debuff rows are labelled');
+  render();
+  assert.match(els['buff-catalog-covered'].innerHTML, /aria-expanded="true"/, 'a re-render keeps it open');
+  api.setCoveredListOpen(false);
+  assert.match(els['buff-catalog-covered'].innerHTML, /aria-expanded="false"/);
+});
+
+check('a board with nothing missing shows the success row and a Covered toggle, no gap groups', () => {
+  const { api, els } = makeSandbox();
+  seedRaid(api);
+  api.renderBuffCatalog(new Set(Object.keys(api.factionRelevantBuffs())), new Set(Object.keys(api.Config.Debuffs)));
+  assert.equal(els['buff-catalog-gaps'].innerHTML, '');
+  assert.match(els['buff-catalog-covered'].innerHTML, /Show \d+ covered/);
+});
+
+check('the reference comp has one Missing group: no Fix now, no Needs a recruit, no insight lines', () => {
+  const { api, els } = makeSandbox();
+  seedRaid(api);
+  api.State.activeTab = 'ideal';
+  const groups = api.State.groups;
+  api.renderBuffCatalog(api.getRaidBuffCoverage(groups), api.getRaidDebuffCoverage(groups));
+  const html = els['buff-catalog-gaps'].innerHTML;
+  assert.match(html, /<h4 class="buff-sidebar-title">Missing <span class="buff-sidebar-count">&middot; \d+<\/span><\/h4>/);
+  assert.doesNotMatch(html, /Fix now|Needs a recruit|rec-line|buff-row-insight|data-insight-|<button/);
+  assert(rowNames(html).length > 0);
+  api.State.activeTab = 'plan';
+});
+
+check('no Request text or button anywhere in the rail', () => {
+  const aside = app.html.slice(app.html.indexOf('<aside class="buff-sidebar'), app.html.indexOf('</aside>'));
+  assert.doesNotMatch(aside, /Request/i);
+  const { els } = groupedBoard();
+  for (const id of ['buff-catalog-gaps', 'buff-catalog-covered']) assert.doesNotMatch(els[id].innerHTML, /Request/i);
+  assert.doesNotMatch(app.html.slice(app.html.indexOf('<aside class="buff-sidebar'), app.html.indexOf('</aside>')), /buff-count-(buffs|debuffs)/, 'the old section counts are gone');
 });
 
 // The banner's markup, cut out of index.html (LF-normalized).

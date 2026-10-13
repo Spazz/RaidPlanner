@@ -318,6 +318,15 @@
     </div>
   </div>
 
+  <div class="coverage-sheet" id="coverage-sheet" role="dialog" aria-modal="false" aria-labelledby="coverage-sheet-heading">
+    <div class="coverage-sheet-header">
+      <h3 id="coverage-sheet-heading" tabindex="-1">Coverage</h3>
+      <button type="button" class="btn btn-secondary" id="btn-close-coverage-sheet" aria-label="Close Coverage">Close</button>
+    </div>
+    <div class="coverage-sheet-slot" id="coverage-sheet-slot"></div>
+    <button type="button" class="coverage-sheet-more" id="btn-coverage-expand" aria-expanded="false">Show all &#9652;</button>
+  </div>
+
   <div id="phone-action-bar">
     <div id="phone-bar-undo-slot"></div>
     <div id="phone-bar-optimize-slot"></div>
@@ -421,22 +430,16 @@
         <span class="sidebar-toggle-label">Coverage</span>
         <span class="sidebar-chevron" aria-hidden="true">&#9662;</span>
       </button>
-      <div class="swap-legend" id="swap-legend"><i aria-hidden="true"></i><span>Icons with a gold corner can be swapped: click one to choose another buff.</span></div>
       <div class="sidebar-summary" id="sidebar-summary"></div>
       <div class="balance-warnings" id="balance-warnings"></div>
       <div class="sidebar-body" id="sidebar-body">
-        <div class="buff-sidebar-section">
-          <h4 class="buff-sidebar-title">Buffs <span class="buff-sidebar-count" id="buff-count-buffs"></span></h4>
-          <div class="buff-row-list" id="buff-catalog-buffs"></div>
-        </div>
-        <div class="buff-sidebar-section">
-          <h4 class="buff-sidebar-title">Debuffs <span class="buff-sidebar-count" id="buff-count-debuffs"></span></h4>
-          <div class="buff-row-list" id="buff-catalog-debuffs"></div>
-        </div>
+        <div class="buff-row-groups" id="buff-catalog-gaps"></div>
+        <div class="buff-row-groups" id="buff-catalog-covered"></div>
         <div class="buff-sidebar-section">
           <h4 class="buff-sidebar-title">Utility <span class="buff-sidebar-count" id="buff-count-utility"></span></h4>
           <div class="buff-row-list" id="buff-catalog-utility"></div>
         </div>
+        <div class="swap-legend" id="swap-legend"><i aria-hidden="true"></i><span>Icons with a gold corner can be swapped: click one to choose another buff.</span></div>
       </div>
     </aside>
   </div>

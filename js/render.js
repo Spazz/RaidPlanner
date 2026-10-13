@@ -794,14 +794,70 @@ function renderGroups() {
   renderReadiness();
 }
 
+// The rail groups what is missing by what fixes it: Fix now (one click: a Switch or a Swap In, or two warriors to
+// group together), Needs a recruit (nobody in the roster can; text only), then a Covered list behind a toggle.
+// The reference comp has no live-plan fixes, so it gets one Missing group of plain rows.
 function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
+  lastCatalogCoverage = [coveredBuffIds, coveredDebuffIds];
   // The reference comp is a static board: the live plan's Switch / Swap In fixes do not belong on it.
   const insights = State.activeTab === 'ideal' ? null : getMissingBuffInsights();
   // Faction-locked rosters (Classic) never show a buff the detected faction
   // could never field (Windfury for Alliance, Devotion Aura for Horde).
-  const buffs = renderBuffRowList('buff-catalog-buffs', factionRelevantBuffs(), Config.BuffAbbreviations, id => Config.BuffIconURL(id), coveredBuffIds, insights);
-  const debuffs = renderBuffRowList('buff-catalog-debuffs', Config.Debuffs, Config.DebuffAbbreviations, id => Config.DebuffIconURL(id), coveredDebuffIds, insights);
+  const lists = [
+    { dataset: factionRelevantBuffs(), abbr: Config.BuffAbbreviations, iconUrl: id => Config.BuffIconURL(id), covered: coveredBuffIds, debuff: false },
+    { dataset: Config.Debuffs, abbr: Config.DebuffAbbreviations, iconUrl: id => Config.DebuffIconURL(id), covered: coveredDebuffIds, debuff: true },
+  ];
+  const missing = [];
+  const covered = [];
+  for (const list of lists) {
+    for (const id of Object.keys(list.dataset)) (list.covered.has(id) ? covered : missing).push({ id, ...list });
+  }
+  const rows = (items) => items.map(m => renderBuffRowList(m.id, m.dataset, m.abbr, m.iconUrl, m.covered.has(m.id), insights ? insights[m.id] : null, m.debuff)).join('');
+  const group = (title, count, body) => `<div class="buff-sidebar-section">
+    <h4 class="buff-sidebar-title">${title} <span class="buff-sidebar-count">&middot; ${count}</span></h4>${body}</div>`;
+
+  let gaps = '';
+  if (!insights) {
+    if (missing.length) gaps = group('Missing', missing.length, `<div class="buff-row-list">${rows(missing)}</div>`);
+  } else {
+    const oneClick = (m) => {
+      const i = insights[m.id];
+      return i && (i.kind === 'switch' || i.kind === 'bench' || (i.kind === 'shared' && i.casters >= 2));
+    };
+    const fixNow = missing.filter(oneClick);
+    // One line per source spec; the shared-shout entry with one warrior seated keeps its insight line under it.
+    const lines = new Map();
+    for (const m of missing.filter(m => !oneClick(m))) {
+      const entry = m.dataset[m.id];
+      const key = buffSourceInfo(entry).label || 'Other';
+      if (!lines.has(key)) lines.set(key, { label: key, cls: classColorClass(entry.sourceClass, 'secondary'), names: [], notes: [] });
+      const line = lines.get(key);
+      line.names.push(esc(entry.name) + (m.debuff ? ' <span class="tag-deb">Debuff</span>' : ''));
+      if (insights[m.id] && insights[m.id].kind === 'shared') line.notes.push(renderInsightLine(m.id, insights[m.id]));
+    }
+    if (fixNow.length) gaps += group('Fix now', fixNow.length, `<div class="buff-row-list">${rows(fixNow)}</div>`);
+    if (lines.size) {
+      const body = [...lines.values()].map(l => `<div class="rec-item"><div class="rec-line"><span class="rec-spec ${l.cls}">${esc(l.label)}</span>: ${l.names.join(', ')}</div>${l.notes.join('')}</div>`).join('');
+      gaps += group('Needs a recruit', lines.size, `<div class="rec-list">${body}</div>`);
+    }
+  }
+  const gapsEl = document.getElementById('buff-catalog-gaps');
+  if (gapsEl) gapsEl.innerHTML = gaps;
+
+  const coveredEl = document.getElementById('buff-catalog-covered');
+  if (coveredEl) {
+    coveredEl.innerHTML = covered.length ? `<button type="button" class="cov-toggle" id="btn-covered-toggle" aria-expanded="${coveredListOpen}">${coveredListOpen ? 'Hide covered &#9662;' : `Show ${covered.length} covered &#9656;`}</button>`
+      + (coveredListOpen ? `<div class="buff-row-list" id="buff-covered-list">${rows(covered)}</div>` : '') : '';
+  }
   renderSidebarSummary(coverageGapCounts(coveredBuffIds, coveredDebuffIds));
+}
+
+// The Covered list under the rail's groups: open or closed, kept for the page session (not stored).
+let coveredListOpen = false;
+let lastCatalogCoverage = null;
+function setCoveredListOpen(open) {
+  coveredListOpen = open;
+  if (lastCatalogCoverage) renderBuffCatalog(...lastCatalogCoverage);
 }
 
 // Collapsed-state strip: "Party buffs missing 7", "Raid debuffs missing 6", or one "all covered" row.
@@ -846,64 +902,50 @@ function renderInsightLine(id, insight) {
   return `<div class="buff-row-insight none"><span class="insight-text" title="Nobody in roster">Nobody in roster</span></div>`;
 }
 
-function renderBuffRowList(containerId, dataset, abbrMap, iconUrlFn, coveredIds, insights) {
-  const container = document.getElementById(containerId);
-  if (!container) return { covered: 0, total: 0 };
+// One buff or debuff row, followed by its insight line when it is missing and the live plan has one.
+function renderBuffRowList(id, dataset, abbrMap, iconUrlFn, isCovered, insight, isDebuff) {
+  const entry = dataset[id];
+  const iconUrl = iconUrlFn(id);
+  const abbr = abbrMap[id] || id;
+  const imgTag = iconUrl
+    ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy">`
+    : esc(abbr);
+  const { label: sourceLabel, color: sourceColor } = buffSourceInfo(entry);
 
-  // Missing entries first so gaps are the first thing you see; covered below.
-  const ids = Object.keys(dataset);
-  const missingIds = ids.filter(id => !coveredIds.has(id));
-  const coveredList = ids.filter(id => coveredIds.has(id));
-  const countEl = document.getElementById(containerId.replace('buff-catalog-', 'buff-count-'));
-  if (countEl) countEl.textContent = `${coveredList.length} / ${ids.length}`;
-
-  let html = '';
-  if (missingIds.length) html += `<div class="buff-sidebar-sub missing">Missing &middot; ${missingIds.length}</div>`;
-  for (const id of [...missingIds, '__covered__', ...coveredList]) {
-    if (id === '__covered__') {
-      if (coveredList.length) html += `<div class="buff-sidebar-sub">Covered &middot; ${coveredList.length}</div>`;
-      continue;
-    }
-    const entry = dataset[id];
-    const iconUrl = iconUrlFn(id);
-    const abbr = abbrMap[id] || id;
-    const imgTag = iconUrl
-      ? `<img src="${iconUrl}" alt="${esc(abbr)}" loading="lazy">`
-      : esc(abbr);
-    const sourceClassLabel = entry.sourceClass
-      ? entry.sourceClass.charAt(0) + entry.sourceClass.slice(1).toLowerCase()
-      : '';
-    const sourceSpec = entry.sourceSpec || entry.preferSpec || '';
-    const sourceLabel = sourceSpec ? `${sourceSpec} ${sourceClassLabel}` : sourceClassLabel;
-    const sourceColor = entry.sourceClass ? (Config.ClassColors[entry.sourceClass] || 'var(--text-secondary)') : 'var(--text-secondary)';
-    const isCovered = coveredIds.has(id);
-
-    let tooltip = entry.desc || '';
-    let warnBadge = '';
-    if (entry.supersededBy) {
-      const winner = dataset[entry.supersededBy];
-      const winnerName = winner ? winner.name : entry.supersededBy;
-      tooltip += ` Shares a debuff slot with ${winnerName}, which is strictly better.`;
-      warnBadge = ` <span class="buff-row-warn" title="Superseded by ${esc(winnerName)}">&#9888;</span>`;
-    } else if (entry.competesWith && entry.competesWith.length) {
-      const names = entry.competesWith.map(cid => (dataset[cid] ? dataset[cid].name : cid)).join(', ');
-      tooltip += ` Mutually exclusive with: ${names}.`;
-    }
-
-    const statusLabel = isCovered ? 'Covered by this raid' : 'Not covered';
-    const sourceLine = sourceLabel ? `${sourceLabel} - ${statusLabel}` : statusLabel;
-    const ttAttrs = ` data-tt-name="${esc(entry.name)}" data-tt-desc="${esc(tooltip.trim())}"`
-      + ` data-tt-source="${esc(sourceLine)}" data-tt-source-color="${sourceColor}"`;
-
-    html += `<div class="buff-row${isCovered ? ' covered' : ''}">
-      <div class="buff-row-icon"${ttAttrs}>${imgTag}</div>
-      <span class="buff-row-name" title="${esc(entry.name)}">${esc(entry.name)}</span>${warnBadge}
-      <span class="buff-row-source ${classColorClass(entry.sourceClass, 'secondary')}" title="${esc(sourceLabel)}">${esc(sourceLabel)}</span>
-    </div>`;
-    if (!isCovered && insights) html += renderInsightLine(id, insights[id]);
+  let tooltip = entry.desc || '';
+  let warnBadge = '';
+  if (entry.supersededBy) {
+    const winner = dataset[entry.supersededBy];
+    const winnerName = winner ? winner.name : entry.supersededBy;
+    tooltip += ` Shares a debuff slot with ${winnerName}, which is strictly better.`;
+    warnBadge = ` <span class="buff-row-warn" title="Superseded by ${esc(winnerName)}">&#9888;</span>`;
+  } else if (entry.competesWith && entry.competesWith.length) {
+    const names = entry.competesWith.map(cid => (dataset[cid] ? dataset[cid].name : cid)).join(', ');
+    tooltip += ` Mutually exclusive with: ${names}.`;
   }
-  container.innerHTML = html;
-  return { covered: coveredList.length, total: ids.length };
+
+  const statusLabel = isCovered ? 'Covered by this raid' : 'Not covered';
+  const sourceLine = sourceLabel ? `${sourceLabel} - ${statusLabel}` : statusLabel;
+  const ttAttrs = ` data-tt-name="${esc(entry.name)}" data-tt-desc="${esc(tooltip.trim())}"`
+    + ` data-tt-source="${esc(sourceLine)}" data-tt-source-color="${sourceColor}"`;
+
+  return `<div class="buff-row${isCovered ? ' covered' : ''}${isDebuff ? ' tagged' : ''}">
+    <div class="buff-row-icon"${ttAttrs}>${imgTag}</div>
+    <span class="buff-row-name" title="${esc(entry.name)}">${esc(entry.name)}</span>${isDebuff ? '<span class="tag-deb">Debuff</span>' : ''}${warnBadge}
+    <span class="buff-row-source ${classColorClass(entry.sourceClass, 'secondary')}" title="${esc(sourceLabel)}">${esc(sourceLabel)}</span>
+  </div>` + (!isCovered && insight ? renderInsightLine(id, insight) : '');
+}
+
+// What a row's source label says: "Shadow Priest", or just the class when the entry names no spec.
+function buffSourceInfo(entry) {
+  const sourceClassLabel = entry.sourceClass
+    ? entry.sourceClass.charAt(0) + entry.sourceClass.slice(1).toLowerCase()
+    : '';
+  const sourceSpec = entry.sourceSpec || entry.preferSpec || '';
+  return {
+    label: sourceSpec ? `${sourceSpec} ${sourceClassLabel}` : sourceClassLabel,
+    color: entry.sourceClass ? (Config.ClassColors[entry.sourceClass] || 'var(--text-secondary)') : 'var(--text-secondary)',
+  };
 }
 
 // One line under a missing utility row saying what would fix it. Mirrors
@@ -990,6 +1032,11 @@ function setSidebarExpanded(expanded, persist = true) {
   toggle.addEventListener('click', () => setSidebarExpanded(aside.classList.contains('collapsed')));
 
   aside.addEventListener('click', (e) => {
+    if (e.target.closest('#btn-covered-toggle')) {
+      setCoveredListOpen(!coveredListOpen);
+      document.getElementById('btn-covered-toggle')?.focus(); // the render replaced the button
+      return;
+    }
     const swapBtn = e.target.closest('[data-insight-swap]');
     if (swapBtn) {
       const res = RosterEdit.SwapIn(swapBtn.dataset.insightSwap);
@@ -1186,8 +1233,7 @@ function renderPhoneMissing() {
   if (!btn) return;
   btn.addEventListener('click', () => {
     ReadinessBanner.set(false);
-    setSidebarExpanded(true);
-    document.getElementById('buff-sidebar').scrollIntoView({ block: 'start' });
+    openCoverageSheet(btn);
   });
 })();
 
