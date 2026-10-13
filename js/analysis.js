@@ -454,6 +454,18 @@ const RosterEdit = {
     return {success:true};
   },
 
+  // One entry per group of the raid for the player editor's move chips: the player's own group is
+  // 'current' (none for a benched player), a group with a free seat is 'room', a full one is 'full'.
+  MoveTargets(uid) {
+    const found = this.FindPlayer(uid);
+    if (!found) return [];
+    return State.groups.map((g, groupIdx) => ({
+      groupIdx,
+      count: g.length,
+      state: !found.benched && found.groupIdx === groupIdx ? 'current' : g.length < this.MAX_GROUP_SIZE ? 'room' : 'full',
+    }));
+  },
+
   // Display order for the class dropdown.
   get ClassList() { return activeRules().classList || Rulesets.tbc.classList; },
 

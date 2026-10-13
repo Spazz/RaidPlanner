@@ -2148,7 +2148,8 @@ const FocusTrap = {
 function removeSpotlightCallout() {
   document.querySelectorAll('.spotlight-callout').forEach(el => el.remove());
 }
-function showSpotlightCallout(id, anchorEl, text) {
+// opts.side 'left' puts the callout to the left of opts.edgeEl (the drawer), level with the anchor.
+function showSpotlightCallout(id, anchorEl, text, opts = {}) {
   if (!anchorEl || document.querySelector('.spotlight-callout')) return false;
   const rect = anchorEl.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return false; // display:none — not rendered at all
@@ -2158,6 +2159,9 @@ function showSpotlightCallout(id, anchorEl, text) {
   // reach) would otherwise be placed off-screen too. Skip silently rather
   // than mark it seen — leaves it eligible to show next time it's in view.
   if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) return false;
+  // No room left of the drawer: skip without marking it seen, so it shows on a later open that has room.
+  if (opts.side === 'left' && opts.edgeEl
+      && opts.edgeEl.getBoundingClientRect().left - Math.min(260, window.innerWidth - 24) - 14 < 8) return false;
   Spotlight.dismiss(localStorage, id);
 
   const callout = document.createElement('div');
@@ -2184,7 +2188,12 @@ function showSpotlightCallout(id, anchorEl, text) {
   let top = rect.bottom + 10;
   let arrowClass = 'arrow-top';
   if (top + 90 > window.innerHeight) { top = Math.max(8, rect.top - 90); arrowClass = 'arrow-bottom'; }
-  const left = Math.min(Math.max(8, rect.left), window.innerWidth - w - 8);
+  let left = Math.min(Math.max(8, rect.left), window.innerWidth - w - 8);
+  if (opts.side === 'left' && opts.edgeEl) {
+    top = Math.max(8, Math.min(rect.top, window.innerHeight - 90));
+    left = Math.max(8, opts.edgeEl.getBoundingClientRect().left - w - 14);
+    arrowClass = 'arrow-right';
+  }
   callout.classList.add(arrowClass);
   callout.style.top = top + 'px';
   callout.style.left = left + 'px';
@@ -2237,7 +2246,74 @@ function closePlayerEditor() {
   if (existing) { FocusTrap.close(existing); existing.remove(); }
   const overlay = document.querySelector('.player-editor-overlay');
   if (overlay) overlay.remove();
+  document.querySelectorAll('.editing').forEach(el => el.classList.remove('editing'));
+  stopTrackingEditorDrawer();
   removeSpotlightCallout();
+}
+
+// ── Editor drawer + move chips ─────────────────────────────────────
+// On desktop the editor is a drawer fixed to the right edge, from the bottom of the title bar down.
+// The title bar scrolls with the page, so the drawer's top follows it while the editor is open.
+let stopEditorDrawerTracking = null;
+function placeEditorDrawer(editor) {
+  const bar = document.querySelector('.title-bar');
+  editor.style.top = Math.max(0, bar ? bar.getBoundingClientRect().bottom : 0) + 'px';
+}
+function trackEditorDrawer(editor) {
+  stopTrackingEditorDrawer();
+  let frame = 0;
+  const onMove = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => { frame = 0; placeEditorDrawer(editor); });
+  };
+  window.addEventListener('scroll', onMove, true);
+  window.addEventListener('resize', onMove);
+  stopEditorDrawerTracking = () => {
+    window.removeEventListener('scroll', onMove, true);
+    window.removeEventListener('resize', onMove);
+    if (frame) cancelAnimationFrame(frame);
+  };
+}
+function stopTrackingEditorDrawer() {
+  if (stopEditorDrawerTracking) stopEditorDrawerTracking();
+  stopEditorDrawerTracking = null;
+}
+
+const MOVE_HINT = 'A group with room moves the player at once. A full group lists its players to swap with.';
+
+// One chip per group of the raid. No ids: the handlers read data-move-group.
+function moveChipsHTML(uid) {
+  return RosterEdit.MoveTargets(uid).map(t => {
+    const current = t.state === 'current';
+    return `<button type="button" class="pe-chip pe-chip-${t.state}" data-move-group="${t.groupIdx}"${current ? ' disabled aria-current="true"' : ''}>`
+      + `<b class="pe-chip-num">${t.groupIdx + 1}</b><span class="pe-chip-sep">&middot;</span><span class="pe-chip-count">${t.count}/${RosterEdit.MAX_GROUP_SIZE}</span>`
+      + `<small class="pe-chip-state">${current ? 'current' : t.state === 'room' ? 'room' : 'swap'}</small></button>`;
+  }).join('');
+}
+
+// Shown in place of the hint when a full group's chip is pressed: who to swap with.
+function moveSwapListHTML(uid, groupIdx) {
+  const found = RosterEdit.FindPlayer(uid);
+  const group = State.groups[groupIdx];
+  if (!found || !group) return '';
+  const dest = found.benched ? 'the bench' : 'Group ' + (found.groupIdx + 1);
+  const rows = group.map(p => `<button type="button" class="pe-swap-row" data-swap-uid="${esc(p.uid)}" data-swap-group="${groupIdx}" title="${esc(p.name)}">`
+    + `<span class="pe-swap-name ${classColorClass(p.class, 'primary')}">${esc((p.name || '').split('-')[0])}</span><small>${esc(p.spec)}</small><em>Swap</em></button>`).join('');
+  return `<div class="pe-swap"><p class="pe-swap-prompt">Group ${groupIdx + 1} is full. Pick who goes to ${dest}.</p>${rows}</div>`;
+}
+
+// A room chip or a swap row: move (or swap), close the editor and say what happened.
+function performEditorMove(uid, groupIdx, swapUid) {
+  const found = RosterEdit.FindPlayer(uid);
+  if (!found) return { success: false, error: 'Player not found' };
+  const swapped = swapUid ? (State.groups[groupIdx] || []).find(p => p.uid === swapUid) : null;
+  const result = RosterEdit.MovePlayer(uid, groupIdx, swapUid);
+  if (!result.success) return result;
+  const shortName = p => (p.name || '').split('-')[0];
+  let text = `Moved ${shortName(found.player)} to Group ${groupIdx + 1}`;
+  if (swapped) text += found.benched ? `; ${shortName(swapped)} to the bench` : `; ${shortName(swapped)} to Group ${found.groupIdx + 1}`;
+  closePlayerEditor(); commit(); showToast(text);
+  return result;
 }
 
 // ── Keep-together / Keep-apart editor (backlog #3) ───────────────
@@ -2257,6 +2333,7 @@ function renderConstraintEditor(player, curName) {
     return `<div class="constraint-row"><span>${label} ${esc(otherName.split('-')[0])}</span><button type="button" class="pe-btn pe-btn-danger" data-remove-constraint="${esc(otherName)}" title="Remove this constraint">&times;</button></div>`;
   }).join('');
   return `<div class="player-constraints">
+    <h4 class="pe-section-title pe-desktop-only">Keep together / apart</h4>
     ${rows ? `<div class="player-constraints-list">${rows}</div>` : ''}
     ${others.length ? `<div class="player-move">
       <label for="pe-keep-with">Keep with&hellip;</label>
@@ -2350,9 +2427,23 @@ function showPlayerEditor(anchorEl, opts) {
       <button type="button" class="pe-sheet-back" id="pe-more-back" aria-label="Back to the short menu">&lsaquo;</button>
       <div class="pe-sheet-heading"><div class="pe-sheet-name ${classColorClass(curClass, 'primary')}">${esc(curName.split('-')[0])}</div><div class="pe-sheet-sub">More options</div></div>
     </div>` : ''}
-    <div class="player-editor-title${isAdd ? '' : ' pe-desktop-only'}">${esc(title)}</div>
+    ${isAdd ? `<div class="player-editor-title pe-phone-only">${esc(title)}</div>` : ''}
+    <div class="pe-drawer-head pe-desktop-only">
+      <div class="pe-drawer-heading">
+        <span class="pe-drawer-kicker">${esc(title)}</span>
+        ${!isAdd ? `<span class="pe-drawer-name ${classColorClass(curClass, 'primary')}">${esc(curName.split('-')[0])}</span><span class="pe-drawer-sub"></span>` : ''}
+      </div>
+      <button type="button" class="pe-drawer-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="pe-body">
+    ${!isAdd ? `<div class="pe-move-section pe-short-only">
+      <h4 class="pe-section-title pe-desktop-only">Move</h4>
+      <div class="pe-move-label pe-phone-only"><span>Move to</span><span class="pe-move-note">${benched ? 'on the bench' : 'now in Group ' + (found.groupIdx + 1)}</span></div>
+      <div class="pe-chips" role="group" aria-label="Move ${esc(curName.split('-')[0])} to a group">${moveChipsHTML(opts.uid)}</div>
+      <div class="pe-move-detail" aria-live="polite"><p class="pe-move-hint pe-desktop-only">${MOVE_HINT}</p></div>
+    </div>` : ''}
+    <h4 class="pe-section-title pe-desktop-only">Player</h4>
     ${!isAdd && player && player.needsReview ? `<div class="player-editor-review-notice">${esc(player.reviewReason || 'Needs review — spec was defaulted')}. Pick the real class/spec below to clear this.</div>` : ''}
-    ${!isAdd ? `<div class="player-move pe-more-only"><label for="pe-destination">Move ${esc(curName)}</label><select id="pe-destination"><option value="">Choose a group…</option>${State.groups.map((g,gi) => gi === found.groupIdx ? '' : g.length < 5 ? `<option value="${gi}">Move to Group ${gi+1} (${g.length}/5)</option>` : `<optgroup label="Group ${gi+1} is full — swap with">${g.map(p => `<option value="${gi}:${esc(p.uid)}">${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select><button type="button" class="pe-btn" id="pe-move">Move / swap</button></div>` : ''}
     <div class="pe-fields">
     <label class="player-editor-field pe-field-name">
       <span>Name</span>
@@ -2368,7 +2459,6 @@ function showPlayerEditor(anchorEl, opts) {
     </label>
     </div>
     <div class="player-editor-role pe-desktop-only" id="pe-role"></div>
-    <div class="player-editor-error" id="pe-error"></div>
     ${isAdd ? `<div class="preferred-actions"><p>Choose a class and spec to request a player. No name needed; confirmed matching imports fill this spot.</p><button type="button" class="pe-btn pe-btn-primary" id="pe-prefer">${preference ? 'Update preference' : 'Set preferred slot'}</button>${preference ? '<button type="button" class="pe-btn pe-btn-danger" id="pe-remove-preference">Remove preference</button>' : ''}</div>` : ''}
     ${!isAdd && benched ? `<div class="player-move pe-more-only">
       <label for="pe-backup-for">Standby for</label>
@@ -2387,8 +2477,10 @@ function showPlayerEditor(anchorEl, opts) {
       <span>Locked by comp template</span>
       <button type="button" class="pe-btn" id="pe-unlock">Unlock</button>
     </div>` : ''}
-    ${!isAdd ? `<button type="button" class="pe-more-row pe-short-only" id="pe-more-toggle" aria-expanded="false"><span>More options</span><span class="pe-more-hint">Move, drummer, keep with/apart, Why here? &rsaquo;</span></button>` : ''}
+    ${!isAdd ? `<button type="button" class="pe-more-row pe-short-only" id="pe-more-toggle" aria-expanded="false"><span>More options</span><span class="pe-more-hint">Drummer, keep with/apart, Why here? &rsaquo;</span></button>` : ''}
     ${!isAdd ? `<div class="pe-more-group pe-more-only">${renderDrummerEditor(player, curName)}${renderConstraintEditor(player, curName)}${!benched && GameVersions[State.gameVersion].modeled ? renderWhyHere(player, found.groupIdx) : ''}</div>` : ''}
+    </div>
+    <div class="player-editor-error" id="pe-error"></div>
     <div class="player-editor-actions">
       ${removeLabel ? `<button type="button" class="pe-btn pe-btn-danger" id="pe-remove" title="${esc(removeTitle)}">${esc(removeLabel)}</button>` : '<span></span>'}
       <div class="pe-actions-right">
@@ -2403,25 +2495,21 @@ function showPlayerEditor(anchorEl, opts) {
   document.body.appendChild(overlay);
   document.body.appendChild(editor);
 
-  // Anchor below the slot, flipping above when it would run off the viewport.
-  const rect = anchorEl.getBoundingClientRect();
-  const h = editor.offsetHeight;
-  let top = rect.bottom + 6 + window.scrollY;
-  if (rect.bottom + h + 12 > window.innerHeight) {
-    top = Math.max(window.scrollY + 8, rect.top - h - 6 + window.scrollY);
-  }
-  let left = rect.left + window.scrollX;
-  const overflowX = (left - window.scrollX) + editor.offsetWidth + 12 - window.innerWidth;
-  if (overflowX > 0) left -= overflowX;
-  editor.style.top = top + 'px';
-  editor.style.left = Math.max(window.scrollX + 8, left) + 'px';
+  // Desktop drawer: fixed to the right edge under the title bar; the edited card gets a gold outline.
+  anchorEl.classList.add('editing');
+  placeEditorDrawer(editor);
+  trackEditorDrawer(editor);
+  const isPhone = window.matchMedia('(max-width: 600px)').matches;
 
   if (!isAdd && Spotlight.shouldShow(localStorage, 'player-editor-features')) {
     // getBoundingClientRect() below forces layout synchronously, so this can
     // run immediately — no need to wait on a paint/animation frame, which
     // some hidden/backgrounded tabs never schedule.
-    const spotlightAnchor = editor.querySelector('.player-constraints') || editor.querySelector('.player-why-here') || editor;
-    showSpotlightCallout('player-editor-features', spotlightAnchor, 'Constraints, Standby links and "Why here?" all live in this panel.');
+    // Desktop: left of the drawer, level with Move. Phone: the old anchors (hidden in the short view, so usually no tip).
+    const spotlightAnchor = isPhone
+      ? (editor.querySelector('.player-constraints') || editor.querySelector('.player-why-here') || editor)
+      : editor.querySelector('.pe-move-section');
+    showSpotlightCallout('player-editor-features', spotlightAnchor, 'Constraints, Standby links and "Why here?" all live in this panel.', isPhone ? {} : { side: 'left', edgeEl: editor });
   }
 
   const nameInput = editor.querySelector('#pe-name');
@@ -2431,6 +2519,7 @@ function showPlayerEditor(anchorEl, opts) {
   const errorEl = editor.querySelector('#pe-error');
 
   const sheetSub = editor.querySelector('#pe-sheet-sub');
+  const drawerSub = editor.querySelector('.pe-drawer-sub');
   function refreshRole() {
     const role = RosterEdit.RoleForSpec(classSel.value, specSel.value);
     roleEl.innerHTML = role
@@ -2439,7 +2528,8 @@ function showPlayerEditor(anchorEl, opts) {
     // Phone sheet header: "Spec Class · Group N", tinted by the chosen class.
     if (sheetSub) {
       sheetSub.textContent = `${specSel.value} ${RosterEdit.ClassLabel(classSel.value)} · ${benched ? 'Bench' : 'Group ' + (found.groupIdx + 1)}`;
-      for (const el of editor.querySelectorAll('.pe-sheet-swatch, .pe-sheet-name')) {
+      if (drawerSub) drawerSub.textContent = sheetSub.textContent;
+      for (const el of editor.querySelectorAll('.pe-sheet-swatch, .pe-sheet-name, .pe-drawer-name')) {
         el.className = el.className.replace(/cc-[a-z-]+/, classColorClass(classSel.value, 'primary'));
       }
     }
@@ -2542,15 +2632,30 @@ function showPlayerEditor(anchorEl, opts) {
     if (e.key === 'Enter') { e.preventDefault(); savePlayerEdit(); }
   });
 
-  const moveBtn = editor.querySelector('#pe-move');
-  if (moveBtn) moveBtn.onclick = () => {
-    const value = editor.querySelector('#pe-destination').value;
-    if (!value) { showError('Choose a destination first'); return; }
-    const [group, swapUid] = value.split(':');
-    const result = RosterEdit.MovePlayer(opts.uid, Number(group), swapUid);
-    if (!result.success) { showError(result.error); return; }
-    closePlayerEditor(); commit(); showToast('Player moved');
-  };
+  editor.querySelector('.pe-drawer-close').addEventListener('click', closePlayerEditor);
+  // Group chips: a group with room moves the player at once; a full group lists its players to swap with.
+  const moveDetail = editor.querySelector('.pe-move-detail');
+  editor.querySelector('.pe-chips')?.addEventListener('click', e => {
+    const chip = e.target.closest('[data-move-group]');
+    if (!chip || chip.disabled) return;
+    const groupIdx = Number(chip.dataset.moveGroup);
+    if (State.groups[groupIdx].length < RosterEdit.MAX_GROUP_SIZE) {
+      const result = performEditorMove(opts.uid, groupIdx);
+      if (!result.success) showError(result.error);
+      return;
+    }
+    editor.querySelectorAll('[data-move-group]').forEach(c => {
+      c.classList.toggle('pe-chip-pick', c === chip);
+      if (!c.disabled) c.setAttribute('aria-pressed', String(c === chip));
+    });
+    moveDetail.innerHTML = moveSwapListHTML(opts.uid, groupIdx);
+  });
+  moveDetail?.addEventListener('click', e => {
+    const row = e.target.closest('[data-swap-uid]');
+    if (!row) return;
+    const result = performEditorMove(opts.uid, Number(row.dataset.swapGroup), row.dataset.swapUid);
+    if (!result.success) showError(result.error);
+  });
   const removeBtn = editor.querySelector('#pe-remove');
   if (removeBtn) {
     removeBtn.addEventListener('click', () => {
@@ -2576,8 +2681,8 @@ function showPlayerEditor(anchorEl, opts) {
 
   FocusTrap.open(editor, anchorEl);
   if (isAdd) classSel.focus();
-  else if (window.matchMedia('(max-width: 600px)').matches) nameInput.focus(); // the move row is under More there
-  else editor.querySelector('#pe-destination').focus();
+  else if (window.matchMedia('(max-width: 600px)').matches) nameInput.focus(); // the sheet opens on the name
+  else (editor.querySelector('[data-move-group]:not([disabled])') || nameInput).focus();
 }
 
 // Escape closes the editor, matching the modals elsewhere in the app.
