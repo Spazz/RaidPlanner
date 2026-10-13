@@ -263,8 +263,10 @@ check('Needs a recruit: one line per source spec, N counts lines, the debuff car
   const lines = [...need.body.matchAll(/<div class="rec-line">(.*?)<\/div>/g)].map(m => plain(m[1]));
   assert.deepEqual(lines, ['Warrior: Commanding Shout', 'Shadow Priest: Vampiric Touch, Misery Debuff'], 'buffs before debuffs inside a line');
   assert.equal(need.count, 2, 'N counts lines, not entries');
-  assert.match(need.body, /<span class="rec-spec [^"]*">Shadow Priest<\/span>: Vampiric Touch, Misery <span class="tag-deb">Debuff<\/span>/);
-  assert.match(need.body, /rec-line">.*Commanding Shout<\/div><div class="buff-row-insight none"><span class="insight-text"[^>]*>Needs a 2nd warrior: <span class="insight-who [^"]*">Tanky<\/span> casts the other shout/,
+  assert.match(need.body, /<span class="rec-spec [^"]*">Shadow Priest<\/span>: <span class="rec-name">Vampiric Touch<\/span>, <span class="rec-name">Misery <span class="tag-deb">Debuff<\/span><\/span>/);
+  assert.match(app.css, /\.buff-row-groups \.buff-sidebar-section \{ flex: none; \}/, 'tablet: sections inside a group do not stretch');
+  assert.match(app.css, /\.rec-name \{ white-space: nowrap; \}/, 'a wrapped Debuff label stays with its name');
+  assert.match(need.body, /rec-line">.*Commanding Shout<\/span><\/div><div class="buff-row-insight none"><span class="insight-text"[^>]*>Needs a 2nd warrior: <span class="insight-who [^"]*">Tanky<\/span> casts the other shout/,
     'the one-warrior shout keeps its insight line under the Warrior line');
   const fix = sectionOf(els['buff-catalog-gaps'].innerHTML, 'Fix now');
   assert.match(fix.body, /Sunder Armor<\/span><span class="tag-deb">Debuff<\/span>/, 'a debuff row labels itself too');

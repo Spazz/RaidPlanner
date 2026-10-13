@@ -832,7 +832,7 @@ function renderBuffCatalog(coveredBuffIds, coveredDebuffIds) {
       const key = buffSourceInfo(entry).label || 'Other';
       if (!lines.has(key)) lines.set(key, { label: key, cls: classColorClass(entry.sourceClass, 'secondary'), names: [], notes: [] });
       const line = lines.get(key);
-      line.names.push(esc(entry.name) + (m.debuff ? ' <span class="tag-deb">Debuff</span>' : ''));
+      line.names.push(`<span class="rec-name">${esc(entry.name)}${m.debuff ? ' <span class="tag-deb">Debuff</span>' : ''}</span>`);
       if (insights[m.id] && insights[m.id].kind === 'shared') line.notes.push(renderInsightLine(m.id, insights[m.id]));
     }
     if (fixNow.length) gaps += group('Fix now', fixNow.length, `<div class="buff-row-list">${rows(fixNow)}</div>`);

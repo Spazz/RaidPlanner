@@ -368,6 +368,7 @@ function setCoverageSheetExpanded(expanded) {
   const more = document.getElementById('btn-coverage-expand');
   if (!sheet || !more) return;
   sheet.classList.toggle('expanded', expanded);
+  document.body.classList.toggle('coverage-expanded', expanded);
   more.setAttribute('aria-expanded', String(expanded));
   more.innerHTML = expanded ? 'Show less &#9662;' : 'Show all &#9652;';
 }
@@ -378,6 +379,7 @@ function openCoverageSheet(trigger) {
   coverageSheetTrigger = trigger || null;
   setCoverageSheetExpanded(false);
   sheet.classList.add('visible');
+  document.body.classList.add('coverage-open'); // the page gets bottom padding equal to the sheet, so its end can scroll clear
   if (coverageSheetTrigger) coverageSheetTrigger.setAttribute('aria-expanded', 'true');
   document.getElementById('coverage-sheet-heading').focus();
 }
@@ -385,11 +387,13 @@ function closeCoverageSheet(restoreFocus = true) {
   const sheet = document.getElementById('coverage-sheet');
   if (!sheet || !sheet.classList.contains('visible')) return;
   sheet.classList.remove('visible');
+  document.body.classList.remove('coverage-open', 'coverage-expanded');
   const trigger = coverageSheetTrigger;
   coverageSheetTrigger = null;
   if (!trigger) return;
   trigger.setAttribute('aria-expanded', 'false');
-  if (restoreFocus) trigger.focus();
+  // A fix can clear the last gap and hide the link that opened the sheet: focus the summary toggle then.
+  if (restoreFocus) (trigger.hidden ? document.getElementById('phone-summary-toggle') : trigger)?.focus();
 }
 (function initCoverageSheet() {
   const sheet = document.getElementById('coverage-sheet');
@@ -397,6 +401,14 @@ function closeCoverageSheet(restoreFocus = true) {
   document.getElementById('btn-close-coverage-sheet').addEventListener('click', () => closeCoverageSheet());
   document.getElementById('btn-coverage-expand').addEventListener('click', () => setCoverageSheetExpanded(!sheet.classList.contains('expanded')));
   sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeCoverageSheet(); } });
+  // Escape from anywhere, unless another overlay is open (capture: the player editor's own Escape runs after this and closes it first).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !sheet.classList.contains('visible')) return;
+    if (document.querySelector('dialog[open], #active-player-editor, .menu:not([hidden])')) return;
+    if (document.getElementById('mobile-more-sheet').classList.contains('visible')) return;
+    e.preventDefault();
+    closeCoverageSheet();
+  }, true);
   // Leaving phone width puts the rail back in its desktop place, so the sheet has nothing to show.
   PHONE_QUERY.addEventListener('change', () => { if (!PHONE_QUERY.matches) closeCoverageSheet(false); });
 })();

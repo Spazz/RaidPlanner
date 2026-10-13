@@ -226,10 +226,17 @@ function coverageSheetHarness({ phone = true } = {}) {
     return (els[id] = el);
   };
   const query = { matches: phone, listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; } };
-  const ctx = vm.createContext({ document: { getElementById: node }, window: { matchMedia: () => query } });
+  const bodyClasses = new Set();
+  const docListeners = {};
+  let overlay = null; // what the document.querySelector for "another overlay" finds
+  const document = { getElementById: node, querySelector: () => overlay,
+    addEventListener(t, fn, capture) { docListeners[t] = fn; },
+    body: { classList: { add: (...c) => c.forEach(x => bodyClasses.add(x)), remove: (...c) => c.forEach(x => bodyClasses.delete(x)),
+      toggle: (c, on) => (on ? bodyClasses.add(c) : bodyClasses.delete(c)), contains: c => bodyClasses.has(c) } } };
+  const ctx = vm.createContext({ document, window: { matchMedia: () => query } });
   const src = between(appJs, 'const PHONE_QUERY', '// ── PHONE "MORE" SHEET');
   vm.runInContext(src + '\nthis.openCoverageSheet = openCoverageSheet; this.closeCoverageSheet = closeCoverageSheet;', ctx);
-  return { els: new Proxy(els, { get: (t, k) => node(k) }), ctx, query };
+  return { els: new Proxy(els, { get: (t, k) => node(k) }), ctx, query, bodyClasses, docListeners, setOverlay: o => { overlay = o; } };
 }
 
 check('the Coverage sheet is real markup, and the rail moves into it through the phone slot list', () => {
@@ -242,11 +249,57 @@ check('the Coverage sheet is real markup, and the rail moves into it through the
   assert.ok(html.indexOf('id="coverage-sheet"') > html.indexOf('id="mobile-more-sheet"'), 'right after the More sheet');
   assert.ok(appJs.includes("'buff-sidebar:coverage-sheet-slot'"), 'the existing slot list moves the rail');
   assert.match(css, /\n\.coverage-sheet \{ display: none; \}/, 'hidden outside the phone block');
-  assert.match(phoneCssAll(), /\.coverage-sheet\.visible \{[^}]*height: 50dvh/);
-  assert.match(phoneCssAll(), /\.coverage-sheet\.expanded \{ height: 85dvh; \}/);
+  assert.match(phoneCssAll(), /body\.coverage-open \{ --coverage-sheet-h: 50dvh; \}/);
+  assert.match(phoneCssAll(), /\.coverage-sheet\.visible \{[^}]*height: var\(--coverage-sheet-h\)/);
   assert.match(phoneCssAll(), /\.coverage-sheet \.buff-sidebar\.collapsed \.sidebar-body \{ display: flex; \}/, 'the body shows whatever .collapsed says');
   assert.match(phoneCssAll(), /\.coverage-sheet \.sidebar-toggle \{ display: none; \}/);
   assert.match(phoneCssAll(), /\.coverage-sheet-more \{[^}]*min-height: 44px/);
+});
+
+check('the sheet sits on the bottom bar, leaves the top 44px clear, and the page gets bottom padding for it', () => {
+  const css = phoneCssAll();
+  assert.match(css, /\.coverage-sheet\.visible \{[^}]*bottom: calc\(60px \+ env\(safe-area-inset-bottom, 0px\)\)/, 'directly above the 60px bottom bar, not over it');
+  assert.match(css, /body\.coverage-open\.coverage-expanded \{ --coverage-sheet-h: min\(85dvh, calc\(100dvh - 104px /, '44px top + 60px bar');
+  assert.match(css, /body\.coverage-open \.addon-frame \{ padding-bottom: calc\(68px \+ env\(safe-area-inset-bottom, 0px\) \+ var\(--coverage-sheet-h\)\); \}/);
+  const { els, ctx, bodyClasses } = coverageSheetHarness();
+  ctx.openCoverageSheet(els['btn-summary-missing']);
+  assert.ok(bodyClasses.has('coverage-open') && !bodyClasses.has('coverage-expanded'));
+  els['btn-coverage-expand'].listeners.click();
+  assert.ok(bodyClasses.has('coverage-expanded'));
+  ctx.closeCoverageSheet();
+  assert.equal(bodyClasses.size, 0, 'closing removes both classes');
+});
+
+check('the legend shows in the sheet even when the rail is collapsed', () => {
+  assert.match(phoneCssAll(), /\.coverage-sheet \.buff-sidebar\.collapsed \.swap-legend \{ display: flex; \}/);
+});
+
+check('Escape anywhere closes the sheet, unless another overlay or the More sheet is open', () => {
+  const { els, ctx, docListeners, setOverlay } = coverageSheetHarness();
+  const key = { key: 'Escape', preventDefault() {} };
+  ctx.openCoverageSheet(els['btn-summary-missing']);
+  setOverlay({});
+  docListeners.keydown(key);
+  assert.ok(els['coverage-sheet'].classes.has('visible'), 'a dialog, the editor or a menu keeps its own Escape');
+  setOverlay(null);
+  els['mobile-more-sheet'].classes.add('visible');
+  docListeners.keydown(key);
+  assert.ok(els['coverage-sheet'].classes.has('visible'), 'the More sheet keeps its own Escape');
+  els['mobile-more-sheet'].classes.delete('visible');
+  docListeners.keydown({ key: 'Enter', preventDefault() {} });
+  assert.ok(els['coverage-sheet'].classes.has('visible'));
+  docListeners.keydown(key);
+  assert.ok(!els['coverage-sheet'].classes.has('visible'));
+  assert.equal(els['btn-summary-missing'].focused, 1);
+});
+
+check('closing with a hidden trigger (a fix cleared the last gap) focuses the summary toggle', () => {
+  const { els, ctx } = coverageSheetHarness();
+  ctx.openCoverageSheet(els['btn-summary-missing']);
+  els['btn-summary-missing'].hidden = true;
+  ctx.closeCoverageSheet();
+  assert.equal(els['phone-summary-toggle'].focused, 1);
+  assert.equal(els['btn-summary-missing'].focused, 0);
 });
 
 check('the Coverage sheet opens from a trigger on phones, marks it expanded, and starts in the peek', () => {

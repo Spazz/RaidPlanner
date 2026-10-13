@@ -609,6 +609,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .rec-item { border-bottom: 1px solid var(--border-subtle); }
 .rec-line { padding: 3px 3px; font-size: 10.5px; line-height: 1.3; color: var(--text-muted); }
 .rec-spec { font-weight: 600; }
+.rec-name { white-space: nowrap; } /* a wrapped Debuff label stays with its name and the comma */
 .rec-item .buff-row-insight { margin-top: 0; padding-left: 3px; }
 .cov-toggle {
   width: 100%; padding: 4px 8px; background: none; border: 1px solid var(--border-strong); cursor: pointer;
@@ -1309,6 +1310,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .sidebar-summary { flex-direction: row; gap: var(--sp-4); }
   .sidebar-body { flex-direction: row; flex-wrap: wrap; }
   .buff-sidebar-section, .buff-row-groups { flex: 1; min-width: 0; }
+  .buff-row-groups .buff-sidebar-section { flex: none; }
   .swap-legend { flex: 1 0 100%; }
   .groups-container { grid-template-columns: repeat(2, 1fr); }
   .groups-container.groups-5,
@@ -1883,12 +1885,14 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .rb-failed { padding: 0 var(--sp-3) 8px; }
   /* Coverage sheet (M2): the rail lives in it on phones. Peek is half the viewport, expanded nearly all of it;
      above the board and the bottom bar (40), below the player editor sheet (200) and the toast (300). */
+  body.coverage-open { --coverage-sheet-h: 50dvh; }
+  body.coverage-open.coverage-expanded { --coverage-sheet-h: min(85dvh, calc(100dvh - 104px - env(safe-area-inset-bottom, 0px))); }
+  body.coverage-open .addon-frame { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px) + var(--coverage-sheet-h)); }
   .coverage-sheet.visible {
-    display: flex; flex-direction: column; position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
-    height: 50dvh; background: var(--bg-frame); border-top: 1px solid var(--border-strong);
+    display: flex; flex-direction: column; position: fixed; left: 0; right: 0; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); z-index: 60;
+    height: var(--coverage-sheet-h); background: var(--bg-frame); border-top: 1px solid var(--border-strong);
     box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
   }
-  .coverage-sheet.expanded { height: 85dvh; }
   .coverage-sheet-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); }
   .coverage-sheet-header h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 15px; color: var(--accent-gold); }
   .coverage-sheet-header h3:focus { outline: none; }
@@ -1897,11 +1901,10 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .coverage-sheet-slot .buff-sidebar { width: 100%; border: none; padding: var(--sp-3); }
   .coverage-sheet .sidebar-toggle { display: none; }
   .coverage-sheet .buff-sidebar.collapsed .sidebar-body { display: flex; }
-  .coverage-sheet .swap-legend { display: flex; }
+  .coverage-sheet .buff-sidebar.collapsed .swap-legend { display: flex; }
   .coverage-sheet-more {
     flex-shrink: 0; min-height: 44px; padding: 0 12px; background: var(--bg-panel); border: none; border-top: 1px solid var(--border-strong);
     font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 13px; color: var(--accent-gold); cursor: pointer;
-    padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: content-box;
   }
   .buff-sidebar-title { font-size: 14px; }
   .buff-sidebar-count { font-size: 13px; }
