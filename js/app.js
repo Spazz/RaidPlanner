@@ -347,7 +347,12 @@ const LandingSample = {
 (function initPlanChrome() {
   document.getElementById('btn-undo').onclick = undoPlanChange;
   document.getElementById('btn-redo').onclick = redoPlanChange;
-  document.getElementById('readiness-text').onclick = () => { setSidebarExpanded(true); document.getElementById('buff-sidebar').scrollIntoView({block:'nearest'}); };
+  document.getElementById('readiness-text').onclick = (e) => {
+    // Phones open the Coverage sheet; desktop opens the rail in place.
+    if (PHONE_QUERY.matches) { openCoverageSheet(e.currentTarget); return; }
+    setSidebarExpanded(true);
+    document.getElementById('buff-sidebar').scrollIntoView({block:'nearest'});
+  };
   const share = document.getElementById('share-dialog');
   document.getElementById('btn-share-main').onclick = () => share.showModal();
   document.getElementById('close-share').onclick = () => share.close();
@@ -391,11 +396,68 @@ function syncRaidNotesToggle() {
   syncRaidNotesToggle();
 })();
 
+const PHONE_QUERY = window.matchMedia('(max-width: 600px)');
+
+// ── PHONE COVERAGE SHEET ──────────────────────────────────────────
+// The rail itself moves into this non-modal bottom sheet on phones (see initResponsiveChrome).
+// It opens half height ("peek") so the board stays usable; Show all grows it to nearly full height.
+let coverageSheetTrigger = null;
+function setCoverageSheetExpanded(expanded) {
+  const sheet = document.getElementById('coverage-sheet');
+  const more = document.getElementById('btn-coverage-expand');
+  if (!sheet || !more) return;
+  sheet.classList.toggle('expanded', expanded);
+  document.body.classList.toggle('coverage-expanded', expanded);
+  more.setAttribute('aria-expanded', String(expanded));
+  more.innerHTML = expanded ? 'Show less &#9662;' : 'Show all &#9652;';
+}
+function openCoverageSheet(trigger) {
+  const sheet = document.getElementById('coverage-sheet');
+  if (!sheet || !PHONE_QUERY.matches) return;
+  closeCoverageSheet(false);
+  coverageSheetTrigger = trigger || null;
+  setCoverageSheetExpanded(false);
+  sheet.classList.add('visible');
+  document.body.classList.add('coverage-open'); // the page gets bottom padding equal to the sheet, so its end can scroll clear
+  if (coverageSheetTrigger) coverageSheetTrigger.setAttribute('aria-expanded', 'true');
+  document.getElementById('coverage-sheet-heading').focus();
+}
+function closeCoverageSheet(restoreFocus = true) {
+  const sheet = document.getElementById('coverage-sheet');
+  if (!sheet || !sheet.classList.contains('visible')) return;
+  sheet.classList.remove('visible');
+  document.body.classList.remove('coverage-open', 'coverage-expanded');
+  const trigger = coverageSheetTrigger;
+  coverageSheetTrigger = null;
+  if (!trigger) return;
+  trigger.setAttribute('aria-expanded', 'false');
+  // A fix can clear the last gap and hide the link that opened the sheet: focus the summary toggle then.
+  if (restoreFocus) (trigger.hidden ? document.getElementById('phone-summary-toggle') : trigger)?.focus();
+}
+(function initCoverageSheet() {
+  const sheet = document.getElementById('coverage-sheet');
+  if (!sheet) return;
+  document.getElementById('btn-close-coverage-sheet').addEventListener('click', () => closeCoverageSheet());
+  document.getElementById('btn-coverage-expand').addEventListener('click', () => setCoverageSheetExpanded(!sheet.classList.contains('expanded')));
+  sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeCoverageSheet(); } });
+  // Escape from anywhere, unless another overlay is open (capture: the player editor's own Escape runs after this and closes it first).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !sheet.classList.contains('visible')) return;
+    if (document.querySelector('dialog[open], #active-player-editor, .menu:not([hidden])')) return;
+    if (document.getElementById('mobile-more-sheet').classList.contains('visible')) return;
+    e.preventDefault();
+    closeCoverageSheet();
+  }, true);
+  // Leaving phone width puts the rail back in its desktop place, so the sheet has nothing to show.
+  PHONE_QUERY.addEventListener('change', () => { if (!PHONE_QUERY.matches) closeCoverageSheet(false); });
+})();
+
 // ── PHONE "MORE" SHEET ────────────────────────────────────────────
 (function initMoreSheet() {
   const sheet = document.getElementById('mobile-more-sheet');
   const trigger = document.getElementById('btn-phone-more');
   const openSheet = () => {
+    closeCoverageSheet(false);
     sheet.classList.add('visible');
     trigger.setAttribute('aria-expanded', 'true');
     FocusTrap.open(sheet, trigger, closeSheet);
@@ -431,7 +493,7 @@ function syncRaidNotesToggle() {
     'btn-redo:phone-sheet-quick-slot', 'btn-changes:phone-sheet-quick-slot',
     'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-split-plan:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
     'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
-    'raid-notes-panel:phone-context-notes-slot',
+    'raid-notes-panel:phone-context-notes-slot', 'buff-sidebar:coverage-sheet-slot',
     'btn-export-backup:phone-sheet-data-slot', 'btn-import-backup:phone-sheet-data-slot', 'btn-shortcuts-help:phone-sheet-data-slot', 'btn-show-tips-again:phone-sheet-data-slot',
   ].map(pair => {
     const [elId, phoneSlotId] = pair.split(':');
@@ -441,7 +503,6 @@ function syncRaidNotesToggle() {
     return { el, anchor, phoneSlot: document.getElementById(phoneSlotId) };
   });
 
-  const PHONE_QUERY = window.matchMedia('(max-width: 600px)');
   function sync() {
     const isPhone = PHONE_QUERY.matches;
     for (const slot of slots) {
