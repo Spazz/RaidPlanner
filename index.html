@@ -102,10 +102,9 @@
   </section>
 
   <section class="landing-section" id="whats-new">
-    <div class="section-title">What's new <span class="app-version" id="app-version"></span></div>
-    <div id="whats-new-body"></div>
-    <div class="whats-new-foot">
-      <button type="button" class="link-btn" id="btn-whats-new-dismiss">Got it, hide this</button>
+    <div class="whats-line" id="whats-new-line">
+      <span><strong>New in <span class="app-version" id="app-version"></span>:</strong> <span id="whats-new-title"></span> <button type="button" class="link-btn" id="btn-whats-new-toggle" aria-expanded="false" aria-controls="whats-new-body">What's new</button></span>
+      <div id="whats-new-body" hidden></div>
     </div>
   </section>
 
@@ -172,6 +171,7 @@
   <footer class="landing-footer">
     <span>Party Planner Web &middot; a multi-version raid planner</span>
     <span>Built for raid leaders who would rather pull than sort.</span>
+    <a class="footer-link" id="feedback-link" href="https://github.com/Spazz/RaidPlanner/issues/new" target="_blank" rel="noopener">Report a problem or suggest a feature</a>
   </footer>
 </main>
 

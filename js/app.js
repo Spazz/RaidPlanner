@@ -60,6 +60,9 @@ function renderLanding() {
 function renderVersionComparison() {
   const table = document.getElementById('version-compare-table');
   if (!table) return;
+  // Re-rendering after a switch replaces the focused card; give focus back to the same one.
+  const focused = document.activeElement && table.contains(document.activeElement) ? document.activeElement : null;
+  const refocus = focused ? focused.dataset.version : null;
   const order = ['tbc', 'classic', 'forever'];
   table.innerHTML = order.map(key => {
     const profile = GameVersions[key];
@@ -71,18 +74,46 @@ function renderVersionComparison() {
       .map(r => Config.Raids[r])
       .filter(r => r && r.tier !== 'Planning templates')
       .map(r => r.name);
-    return `<div class="version-compare-col" data-version="${esc(key)}">
+    const here = key === State.gameVersion;
+    return `<button type="button" class="version-compare-col${here ? ' here' : ''}" data-version="${esc(key)}"${here ? ' aria-current="true"' : ''}>
       <h3>${esc(profile.name)}</h3>
       <p>${esc(profile.note)}</p>
       <div class="version-compare-raids"><strong>${raidNames.length} raid${raidNames.length === 1 ? '' : 's'} modeled:</strong> ${esc(raidNames.join(', ') || 'Planning templates only')}</div>
-    </div>`;
+      <span class="go">${here ? 'You are here' : 'Switch to ' + esc(profile.name)}</span>
+    </button>`;
   }).join('');
+  if (refocus) {
+    const card = table.querySelector(`[data-version="${refocus}"]`);
+    if (card) card.focus();
+  }
 }
+
+// The cards are buttons that switch the game version (switchGameVersion asks first when a
+// plan is loaded). Own handler on the container: syncVersionControls wires only the real
+// .game-version-tab buttons, so the cards never get its generic [data-version] click.
+function onVersionCardClick(event) {
+  const card = event.target && event.target.closest ? event.target.closest('button[data-version]') : null;
+  if (!card || card.getAttribute('aria-current') === 'true') return;
+  switchGameVersion(card.dataset.version);
+}
+(function initVersionCards() {
+  const table = document.getElementById('version-compare-table');
+  if (table) table.addEventListener('click', onVersionCardClick);
+})();
 
 // Status bar version, set once from APP_VERSION (js/changelog.js).
 (function initStatusVersion() {
   const el = document.getElementById('status-version');
   if (el) el.textContent = `Party Planner v${APP_VERSION}`;
+})();
+
+// Feedback link: the static href works without JS; this adds the version and browser to the
+// issue body so a report arrives with the facts a fix needs.
+(function initFeedbackLink() {
+  const link = document.getElementById('feedback-link');
+  if (!link) return;
+  const body = `Party Planner ${APP_VERSION}\nBrowser: ${navigator.userAgent}\n\nWhat happened:\n`;
+  link.href = `${link.getAttribute('href').split('?')[0]}?body=${encodeURIComponent(body)}`;
 })();
 
 // "What's new" dismissible badge (feature-backlog-2.md #9). The key keeps its original
@@ -93,7 +124,8 @@ const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
   const badge = document.getElementById('whats-new-badge');
   if (!badge) return;
   document.getElementById('whats-new-body').innerHTML = renderChangelog();
-  document.getElementById('app-version').textContent = 'v' + APP_VERSION;
+  document.getElementById('app-version').textContent = APP_VERSION;
+  document.getElementById('whats-new-title').textContent = `${CHANGELOG[0].title}.`;
   let stored = null;
   try { stored = localStorage.getItem(WHATS_NEW_KEY); } catch {}
   badge.hidden = whatsNewDismissed(stored);
@@ -103,8 +135,18 @@ const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
   };
   const navLink = document.getElementById('nav-whats-new');
   if (navLink) navLink.addEventListener('click', dismiss);
-  const dismissBtn = document.getElementById('btn-whats-new-dismiss');
-  if (dismissBtn) dismissBtn.addEventListener('click', dismiss);
+  // Expanding the list counts as seeing it: the nav badge goes and the version is remembered.
+  const line = document.getElementById('whats-new-line');
+  const body = document.getElementById('whats-new-body');
+  const toggle = document.getElementById('btn-whats-new-toggle');
+  toggle.addEventListener('click', () => {
+    const open = body.hidden;
+    body.hidden = !open;
+    line.classList.toggle('open', open);
+    toggle.textContent = open ? 'Hide' : "What's new";
+    toggle.setAttribute('aria-expanded', String(open));
+    if (open) dismiss();
+  });
 })();
 
 function renderLandingSavedList() {

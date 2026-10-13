@@ -109,4 +109,98 @@ check('attendance copy points at saved copies', () => {
   assert(script.includes('No saved copies yet. After a raid, use Plan menu &gt; Save a copy to start building attendance history.'));
 });
 
+// ── L2-4b: What's new line, era cards, footer link ───────────────
+function fakeEl(extra = {}) {
+  const attrs = {};
+  const handlers = {};
+  const classes = new Set();
+  return Object.assign({
+    textContent: '', innerHTML: '', hidden: false, handlers, attrs, classes,
+    classList: { toggle: (c, on) => { on ? classes.add(c) : classes.delete(c); }, contains: c => classes.has(c) },
+    addEventListener(type, fn) { handlers[type] = fn; },
+    setAttribute(k, v) { attrs[k] = String(v); },
+    getAttribute(k) { return k in attrs ? attrs[k] : null; },
+  }, extra);
+}
+
+check('the What\'s new section is one line with the newest title and a button that expands the list and stores the dismissal', () => {
+  const CH = app.sandbox(['CHANGELOG', 'APP_VERSION']).api;
+  const els = {
+    'whats-new-badge': fakeEl(), 'whats-new-body': fakeEl({ hidden: true }), 'app-version': fakeEl(),
+    'whats-new-title': fakeEl(), 'whats-new-line': fakeEl(), 'btn-whats-new-toggle': fakeEl({ textContent: "What's new" }),
+    'nav-whats-new': fakeEl(),
+  };
+  const stored = {};
+  const localStorage = { getItem: k => stored[k] ?? null, setItem: (k, v) => { stored[k] = v; } };
+  app.sandbox([], {
+    globals: { document: { getElementById: id => els[id] || null }, localStorage },
+    extraSource: app.slice('const WHATS_NEW_KEY', 'function renderLandingSavedList'),
+  });
+  assert.equal(els['app-version'].textContent, CH.APP_VERSION);
+  assert.equal(els['whats-new-title'].textContent, CH.CHANGELOG[0].title + '.');
+  assert.equal((els['whats-new-body'].innerHTML.match(/<h3 /g) || []).length, 3);
+  assert.equal(els['whats-new-body'].hidden, true, 'collapsed until asked');
+  assert.equal(els['whats-new-badge'].hidden, false);
+  assert.deepEqual(stored, {});
+  els['btn-whats-new-toggle'].handlers.click();
+  assert.equal(els['whats-new-body'].hidden, false);
+  assert.equal(els['btn-whats-new-toggle'].textContent, 'Hide');
+  assert.equal(els['btn-whats-new-toggle'].attrs['aria-expanded'], 'true');
+  assert.equal(els['whats-new-badge'].hidden, true);
+  assert.equal(stored.pp_whats_new_dismissed_v1, CH.APP_VERSION);
+  els['btn-whats-new-toggle'].handlers.click();
+  assert.equal(els['whats-new-body'].hidden, true);
+  assert.equal(els['btn-whats-new-toggle'].textContent, "What's new");
+  assert(!html.includes('btn-whats-new-dismiss'), 'the Got it button is gone');
+});
+
+function makeCardEnv(current) {
+  const table = fakeEl();
+  const calls = [];
+  const cardFor = el => ({ closest: () => el });
+  const api = app.sandbox(['renderVersionComparison', 'onVersionCardClick'], {
+    globals: {
+      document: { getElementById: () => table, activeElement: null },
+      State: { gameVersion: current },
+      GameVersions: { tbc: { name: 'WoW TBC', note: 'tbc note', raids: [] }, classic: { name: 'WoW Classic', note: 'classic note', raids: [] }, forever: { name: 'WoW Forever (Beta)', note: 'f note', raids: [] } },
+      Config: { Raids: {} },
+      switchGameVersion: v => calls.push(v),
+    },
+    extraSource: app.slice('function renderVersionComparison', '// Status bar version') + '\nglobalThis.api = { renderVersionComparison, onVersionCardClick, esc };',
+  }).api;
+  return { table, calls, cardFor, ...api };
+}
+
+check('era cards are buttons: the current one is marked and inert, any other switches the version', () => {
+  const env = makeCardEnv('tbc');
+  env.renderVersionComparison();
+  const cards = env.table.innerHTML.match(/<button [^>]*>[\s\S]*?<\/button>/g);
+  assert.equal(cards.length, 3);
+  assert(cards.every(c => c.includes('type="button"') && c.includes('class="version-compare-col')));
+  const tbc = cards.find(c => c.includes('data-version="tbc"'));
+  assert(tbc.includes('aria-current="true"') && tbc.includes('<span class="go">You are here</span>'));
+  const classic = cards.find(c => c.includes('data-version="classic"'));
+  assert(!classic.includes('aria-current') && classic.includes('<span class="go">Switch to WoW Classic</span>'));
+  assert(classic.includes('<h3>WoW Classic</h3>') && classic.includes(GameVersions.classic.note), 'content kept');
+  const click = (version, current) => env.onVersionCardClick({ target: env.cardFor({ dataset: { version }, getAttribute: k => (current && k === 'aria-current' ? 'true' : null) }) });
+  click('tbc', true);
+  assert.deepEqual(env.calls, [], 'the current card does nothing');
+  click('classic', false);
+  assert.deepEqual(env.calls, ['classic']);
+  assert(/getElementById\('version-compare-table'\)[\s\S]{0,80}addEventListener\('click', onVersionCardClick\)/.test(script), 'delegated on the container');
+});
+
+check('the footer feedback link carries the version and browser, encoded', () => {
+  assert(html.includes('id="feedback-link" href="https://github.com/Spazz/RaidPlanner/issues/new" target="_blank" rel="noopener">Report a problem or suggest a feature</a>'));
+  const link = fakeEl({ href: '' });
+  link.attrs.href = 'https://github.com/Spazz/RaidPlanner/issues/new';
+  app.sandbox([], {
+    globals: { document: { getElementById: id => (id === 'feedback-link' ? link : null) }, navigator: { userAgent: 'Mozilla/5.0 (Test; x&y)' } },
+    extraSource: app.slice('(function initFeedbackLink', '// "What\'s new" dismissible badge'),
+  });
+  const body = `Party Planner ${APP_VERSION}\nBrowser: Mozilla/5.0 (Test; x&y)\n\nWhat happened:\n`;
+  assert.equal(link.href, 'https://github.com/Spazz/RaidPlanner/issues/new?body=' + encodeURIComponent(body));
+  assert(link.href.includes(encodeURIComponent('Mozilla/5.0 (Test; x&y)')) && !link.href.includes('x&y'));
+});
+
 console.log(`\n${passed} checks passed`);

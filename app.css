@@ -206,7 +206,11 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .whats-new-version { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 14px 0 8px; }
 .whats-new-version:first-child { margin-top: 0; }
 .whats-new-version span, .app-version { font-weight: 400; color: var(--text-muted); font-size: 11px; text-transform: none; letter-spacing: 0; }
-.whats-new-foot { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
+.whats-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 16px; background: color-mix(in srgb, var(--accent-gold) 8%, transparent); border: 1px solid var(--border-accent); font-size: 13px; color: var(--text-secondary); }
+.whats-line strong { color: var(--accent-gold-bright); }
+.whats-line .app-version { font: inherit; color: inherit; }
+.whats-line.open { flex-direction: column; align-items: stretch; gap: 0; }
+#whats-new-body { margin-top: 12px; }
 .version-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 8px; }
 .version-compare-col { background: var(--bg-card); border: 1px solid var(--border-subtle); border-top: 3px solid var(--accent-gold-dim); padding: 16px; }
 .version-compare-col[data-version="classic"] { border-top-color: var(--version-classic); }
@@ -216,6 +220,12 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .version-compare-col p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 10px; }
 .version-compare-raids { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 .version-compare-raids strong { color: var(--text-secondary); }
+button.version-compare-col { cursor: pointer; text-align: left; color: inherit; font: inherit; display: block; width: 100%; transition: background .15s, border-color .15s; }
+button.version-compare-col:hover, button.version-compare-col:focus-visible { background: var(--bg-card-hover); border-color: var(--border-strong); }
+button.version-compare-col:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+button.version-compare-col .go { display: block; margin-top: 10px; font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .1em; font-size: 12px; color: var(--accent-gold); }
+button.version-compare-col.here { cursor: default; border-color: var(--border-accent); }
+button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 /* Keyboard shortcuts help */
 .shortcuts-list { display: flex; flex-direction: column; gap: 6px; }
 .shortcut-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
@@ -301,6 +311,8 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   padding-top: 16px; border-top: 1px solid var(--border-subtle);
   font-size: 11.5px; color: var(--text-faint);
 }
+.footer-link { color: var(--accent-gold); text-decoration: none; }
+.footer-link:hover { color: var(--accent-gold-bright); text-decoration: underline; }
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; }
   .steps, .features { grid-template-columns: 1fr; }
