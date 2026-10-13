@@ -302,7 +302,7 @@ function persistWorkingPlan() {
   const status = document.getElementById('autosave-status');
   if (result) {
     // Any change to the plan retires the "updated by someone else" Undo, which would drop it.
-    if (result.changed) { RemoteUpdate.hide(); TabWatch.hide(); }
+    if (result.changed) { RemoteUpdate.retireUndo(); TabWatch.hide(); }
     if (result.changed || status.dataset.failed) {
       try { PlanStore.saveSoon(localStorage, result.current, showSaveOutcome); }
       catch { showSaveOutcome({ ok: false }); }

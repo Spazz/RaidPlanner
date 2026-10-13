@@ -35,6 +35,7 @@ function initGroups() { __env.inits++; }
 function closePlayerEditor() { __env.closed.push('editor'); }
 function closeBuffPicker() { __env.closed.push('picker'); }
 function renderLastRun() {}
+var ChangesPanel = { setOpen(open) { __env.panelOpen = open; } };
 function renderPhoneSummary() {}
 var confirm = () => true;
 `;
@@ -461,7 +462,7 @@ async function check(name, fn) {
     assert(env.toasts.some(t => /removed the oldest saved plan \(Old raid\)/.test(t)), env.toasts.join('|'));
   });
 
-  await check('a change to the plan retires the remote-update Undo; an unchanged persist does not', async () => {
+  await check('a change to the plan retires the remote-update Undo but keeps the banner; an unchanged persist does not', async () => {
     const env = makeEnv();
     const { PlanSession, RemoteUpdate, State } = env.api;
     seedPlan(env);
@@ -471,10 +472,32 @@ async function check(name, fn) {
     assert.equal(env.el('remote-update-banner').hidden, false);
     env.ctx.persistWorkingPlan();
     assert.equal(env.el('remote-update-banner').hidden, false, 'nothing changed');
+    assert.equal(env.el('btn-remote-undo').hidden, false);
     State.notes = 'my own edit';
     env.ctx.persistWorkingPlan();
-    assert.equal(env.el('remote-update-banner').hidden, true);
+    assert.equal(env.el('remote-update-banner').hidden, false, 'the banner stays');
+    assert.equal(env.el('btn-remote-undo').hidden, true, 'Undo is gone');
     assert.equal(RemoteUpdate.before, null);
+    assert.equal(RemoteUpdate.entryId, null);
+    RemoteUpdate.show({ some: 'snapshot' });
+    assert.equal(env.el('btn-remote-undo').hidden, false, 'a new remote update brings Undo back');
+  });
+
+  await check('the remote-update banner summarises the entry; See changes opens the panel; Dismiss hides it', async () => {
+    const env = makeEnv();
+    const { RemoteUpdate, ChangeLog } = env.api;
+    ChangeLog.clear();
+    RemoteUpdate.show({ some: 'snapshot' });
+    assert.equal(env.el('remote-update-text').textContent, 'Roster updated by someone else.');
+    const entry = ChangeLog.record('live', [
+      { kind: 'moved', name: 'A' }, { kind: 'moved', name: 'B' }, { kind: 'moved', name: 'C' }, { kind: 'benched', name: 'D' }]);
+    RemoteUpdate.show({ some: 'snapshot' }, entry);
+    assert.equal(env.el('remote-update-text').textContent, 'Updated by someone else: 1 benched, 3 moved.');
+    RemoteUpdate.seeChanges();
+    assert.equal(env.panelOpen, true);
+    assert.equal(env.el('remote-update-banner').hidden, false, 'See changes leaves the banner up');
+    RemoteUpdate.hide();
+    assert.equal(env.el('remote-update-banner').hidden, true);
   });
 
   // ── F7: Templates.write ─────────────────────────────────────────
@@ -876,7 +899,7 @@ async function check(name, fn) {
     assert(/visibilitychange', \(\) => \{ if \(document\.hidden\) PlanStore\.flush\(\)/.test(appSrc), 'and when the tab is hidden');
     assert(/showManualCopy\(url\)/.test(appSrc), 'share link has the manual fallback');
     const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-    for (const id of ['remote-update-banner', 'btn-remote-undo', 'btn-remote-dismiss', 'tab-conflict-banner', 'btn-tab-load', 'btn-tab-keep', 'manual-copy-dialog', 'manual-copy-text', 'close-manual-copy']) {
+    for (const id of ['remote-update-banner', 'btn-remote-undo', 'btn-remote-changes', 'btn-remote-dismiss', 'tab-conflict-banner', 'btn-tab-load', 'btn-tab-keep', 'manual-copy-dialog', 'manual-copy-text', 'close-manual-copy']) {
       assert(html.includes(`id="${id}"`), id + ' is in index.html');
     }
   });

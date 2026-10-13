@@ -496,6 +496,7 @@ const TabWatch = {
 document.getElementById('btn-tab-load').addEventListener('click', () => TabWatch.loadTheirs());
 document.getElementById('btn-tab-keep').addEventListener('click', () => TabWatch.keepMine());
 document.getElementById('btn-remote-undo').addEventListener('click', () => RemoteUpdate.undo());
+document.getElementById('btn-remote-changes').addEventListener('click', () => RemoteUpdate.seeChanges());
 document.getElementById('btn-remote-dismiss').addEventListener('click', () => RemoteUpdate.hide());
 
 // ── SHARE LINK ──────────────────────────────────────────────────
@@ -613,15 +614,33 @@ function applyRemoteLiveCode(id, remote) {
 }
 
 // Stays up after a co-editor's change replaces the open plan, until the user
-// dismisses it, undoes it or changes the plan themselves.
+// dismisses it. Changing the plan themselves only retires its Undo.
 const RemoteUpdate = {
   before: null,
   entryId: null, // the Changes entry the update recorded, dropped again by Undo
+  // "Updated by someone else: 3 moved, 1 benched." from the update's Changes entry.
+  summaryText(entry) {
+    if (!entry || !entry.items || !entry.items.length) return 'Roster updated by someone else.';
+    const parts = ChangeLog.kindCounts(entry).map(k => `${k.count} ${k.word.toLowerCase()}`);
+    return `Updated by someone else: ${parts.join(', ')}.`;
+  },
   show(before, entry) {
     this.before = before;
     this.entryId = entry ? entry.id : null;
     const banner = document.getElementById('remote-update-banner');
+    const text = document.getElementById('remote-update-text');
+    const undo = document.getElementById('btn-remote-undo');
+    if (text) text.textContent = this.summaryText(entry);
+    if (undo) undo.hidden = false;
     if (banner) banner.hidden = false;
+  },
+  seeChanges() { ChangesPanel.setOpen(true); },
+  // The user's own edit now sits on top of the update; Undo would throw it away.
+  retireUndo() {
+    this.before = null;
+    this.entryId = null;
+    const undo = document.getElementById('btn-remote-undo');
+    if (undo) undo.hidden = true;
   },
   hide() {
     this.before = null;
