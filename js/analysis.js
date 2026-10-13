@@ -317,6 +317,8 @@ function snapshotBuffReach() {
 }
 
 const REACH_WORDS = { melee_dps:'melee', caster_dps:'casters', ranged_dps:'ranged', healer:'healers', tank:'tanks' };
+// The same words for a change of one player ("Blood Pact -1 tank"); melee and ranged do not change.
+const REACH_WORDS_ONE = { caster_dps:'caster', healer:'healer', tank:'tank' };
 
 // Pure. [{ id, name, delta, word }] for each buff whose recipient count changed, largest change
 // first. word names the role group that gained or lost it, or 'players' when it was a mix.
@@ -331,7 +333,9 @@ function diffBuffReach(before, after) {
     for (const role of new Set([...Object.keys(was ? was.roles : {}), ...Object.keys(now ? now.roles : {})])) {
       if (((now ? now.roles[role] : 0) || 0) !== ((was ? was.roles[role] : 0) || 0)) changedRoles.push(role);
     }
-    const word = changedRoles.length === 1 && REACH_WORDS[changedRoles[0]] ? REACH_WORDS[changedRoles[0]] : 'players';
+    const one = Math.abs(delta) === 1;
+    const words = one ? { ...REACH_WORDS, ...REACH_WORDS_ONE } : REACH_WORDS;
+    const word = changedRoles.length === 1 && words[changedRoles[0]] ? words[changedRoles[0]] : (one ? 'player' : 'players');
     out.push({ id, name: (now || was).name, delta, word });
   }
   return out.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));

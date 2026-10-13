@@ -388,7 +388,7 @@ return { ${exported.join(', ')} };
     assert.equal(optimizeToastMessage({ moved: 4, reach: [wf], overridesReset: 1 }), 'Optimized: 4 moved. Windfury +4 melee. 1 buff override reset');
     assert.equal(optimizeToastMessage({ moved: 0, reach: [], overridesReset: 0 }), 'Already optimal — nothing moved');
     assert.equal(optimizeToastMessage({ moved: 0, reach: [wf], overridesReset: 0 }), 'Already optimal — nothing moved', 'no reach part when nothing moved');
-    assert.equal(optimizeToastMessage({ moved: 0, reach: [], overridesReset: 2 }), 'Already optimal — nothing moved. 2 buff overrides reset');
+    assert.equal(optimizeToastMessage({ moved: 0, reach: [], overridesReset: 2 }), 'No moves needed. 2 buff overrides reset');
   });
 
   await check('the Optimize click counts the overrides before it clears them', () => {

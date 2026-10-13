@@ -127,6 +127,8 @@ const ChangeLog = {
   record(kind, items, label) {
     if (!Array.isArray(items) || !items.length) return null;
     this.forPlan(State.planId);
+    // One Optimize entry at a time: twenty clicks must not push sync and live-update entries out of the cap.
+    if (kind === 'optimize') this.entries = this.entries.filter(e => e.kind !== 'optimize');
     const entry = { id: this.nextId++, kind, label: label || this.LABELS[kind] || 'Roster change', time: Date.now(), items, seen: false };
     this.entries.unshift(entry);
     if (this.entries.length > this.MAX_ENTRIES) this.entries.length = this.MAX_ENTRIES;
@@ -195,6 +197,18 @@ const ChangeLog = {
     const counts = {};
     for (const it of entry.items) counts[it.kind] = (counts[it.kind] || 0) + 1;
     return this.KINDS.filter(k => counts[k]).map(k => ({ kind: k, word: this.WORDS[k], count: counts[k] }));
+  },
+
+  // "2 seated, 1 benched, 3 moved": the loud items of an entry per kind, in KINDS order.
+  countsText(entry) {
+    const counts = {};
+    for (const it of this.loudItems(entry)) counts[it.kind] = (counts[it.kind] || 0) + 1;
+    return this.KINDS.filter(k => counts[k]).map(k => {
+      const n = counts[k];
+      if (k === 'status') return n === 1 ? '1 status change' : `${n} status changes`;
+      if (k === 'added') return `${n} new`;
+      return `${n} ${k}`;
+    }).join(', ');
   },
 
   // "just now", "4 min ago", "2 h ago", then the date for anything older than a day.

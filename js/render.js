@@ -787,8 +787,8 @@ function renderSidebarSummary(gaps) {
     return;
   }
   el.innerHTML = `
-    <div class="sidebar-summary-row missing"><span>Party buffs missing</span><b>${gaps.buffs}</b></div>
-    <div class="sidebar-summary-row missing"><span>Raid debuffs missing</span><b>${gaps.debuffs}</b></div>`;
+    <div class="sidebar-summary-row missing${gaps.buffs === 0 ? ' zero' : ''}"><span>Party buffs missing</span><b>${gaps.buffs}</b></div>
+    <div class="sidebar-summary-row missing${gaps.debuffs === 0 ? ' zero' : ''}"><span>Raid debuffs missing</span><b>${gaps.debuffs}</b></div>`;
 }
 
 // One line under a missing row saying what would fix it, with the button
@@ -1134,10 +1134,10 @@ ChangeLog.onRecord = entry => {
 // Phone: the readiness strip (#plan-feedback) is folded away and a short link on line 2
 // of the context row opens it and the coverage panel. The link says what the strip
 // warns about, most serious first: tanks short, healers short, a mixed-faction
-// Classic roster ("⚠ 1 healer short"), then "N missing" for missing party buffs (the
-// same count the strip names). Hidden when there is nothing to warn about or coverage
+// Classic roster ("⚠ 1 healer short"), then "N missing" for party buffs plus raid debuffs (the
+// two counts the strip names). Hidden when there is nothing to warn about or coverage
 // rules are not configured. Desktop always shows the strip.
-// lastReadiness is set by renderReadiness: {missingBuffs, tanksShort, healersShort, mixedFactions} or null.
+// lastReadiness is set by renderReadiness: {missingCoverage, tanksShort, healersShort, mixedFactions} or null.
 let lastReadiness = null;
 function phoneReadinessLabel(r) {
   if (!r) return '';
@@ -1145,7 +1145,7 @@ function phoneReadinessLabel(r) {
   if (r.tanksShort > 0) return `<b>&#9888; ${n(r.tanksShort, 'tank')} short</b> &#9656;`;
   if (r.healersShort > 0) return `<b>&#9888; ${n(r.healersShort, 'healer')} short</b> &#9656;`;
   if (r.mixedFactions) return '<b>&#9888; Mixed factions</b> &#9656;';
-  if (r.missingBuffs > 0) return `<b>${r.missingBuffs}</b> missing &#9656;`;
+  if (r.missingCoverage > 0) return `<b>${r.missingCoverage}</b> missing &#9656;`;
   return '';
 }
 let phoneFeedbackOpen = false;

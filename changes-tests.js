@@ -540,15 +540,15 @@ check('hooks: sync, size and live are tracked; fresh imports and new plans clear
 // "re-read the roster and let PlanSession observe", the way persistWorkingPlan does.
 function optimizeHarness() {
   const els = {}, toasts = [], results = [], commits = { n: 0 };
-  let handler = null;
-  const document = { getElementById: id => els[id] || (els[id] = { id, innerHTML: '', addEventListener(ev, fn) { if (id === 'btn-optimize') handler = fn; } }) };
+  let handler = null, clearHandler = null;
+  const document = { getElementById: id => els[id] || (els[id] = { id, innerHTML: '', addEventListener(ev, fn) { if (id === 'btn-optimize') handler = fn; if (id === 'btn-clear') clearHandler = fn; } }) };
   const extra = `
 function showToast(m, o) { toasts.push({ m, o }); }
 function commit() { State.roster = State.groups.flat(); commits.n++; PlanSession.observe(); }
 ${app.slice('function undoPlanChange', 'function redoPlanChange')}
 ${app.slice('function renderLastRun', "document.getElementById('btn-landing-empty')")}
 `;
-  const c = app.sandbox(['State', 'ChangeLog', 'PlanSession', 'Import', 'snapshotBuffReach', 'diffBuffReach', 'receivesBuff', 'undoPlanChange'], {
+  const c = app.sandbox(['State', 'ChangeLog', 'PlanSession', 'Import', 'snapshotBuffReach', 'diffBuffReach', 'receivesBuff', 'undoPlanChange', 'PlanStore'], {
     globals: { toasts, commits, document, ResultLine: { show: t => results.push({ t, commits: commits.n }), hide() {} }, closePlayerEditor() {}, closeBuffPicker() {}, initGroups() {}, RaidHelperSync: { hideBanner() {} }, Modal: { confirm: async () => true } },
     extraSource: extra,
   });
@@ -565,7 +565,7 @@ ${app.slice('function renderLastRun', "document.getElementById('btn-landing-empt
   api.ChangeLog.onRecord = null;
   const ps = api.PlanSession;
   ps.previous = null; ps.undo = []; ps.redo = []; ps.ready = true; ps.replaying = false; ps.observe();
-  return { api, els, toasts, results, commits, click: () => handler(), undoPlanChange: () => api.undoPlanChange() };
+  return { api, els, toasts, results, commits, click: () => handler(), clear: () => clearHandler(), undoPlanChange: () => api.undoPlanChange() };
 }
 const boardOf = api => JSON.stringify(api.State.groups.map(g => g.map(p => p.name)));
 
@@ -604,7 +604,7 @@ check('diffBuffReach: gains and losses with a role word, largest first, unchange
   assert.deepEqual(plain(api.diffBuffReach(before, before)), []);
   const words = { melee_dps: 'melee', caster_dps: 'casters', ranged_dps: 'ranged', healer: 'healers', tank: 'tanks' };
   for (const [role, word] of Object.entries(words)) {
-    assert.equal(api.diffBuffReach({}, { B: side('B', { [role]: 1 }) })[0].word, word, role);
+    assert.equal(api.diffBuffReach({}, { B: side('B', { [role]: 2 }) })[0].word, word, role);
   }
 });
 
@@ -734,9 +734,95 @@ check('Clear board asks first and a decline keeps the board', () => {
   const at = app.script.indexOf("getElementById('btn-clear').addEventListener('click', async () => {");
   assert(at >= 0, 'the handler is async');
   const body = app.script.slice(at, at + 700);
-  assert.match(body, /Modal\.confirm\(\{\s*title: 'Clear the board\?',\s*message: 'Every player moves back to Sign-ups\. Undo brings the board back\.',\s*confirmLabel: 'Clear board',\s*\}\)/);
+  assert.match(body, /Modal\.confirm\(\{\s*title: 'Clear the board\?',\s*message: 'Removes every player, your notes and your picks from this plan\. Undo brings it back\.',\s*confirmLabel: 'Clear board',\s*\}\)/);
   const declines = body.indexOf('if (!confirmed) return;');
   assert(declines > body.indexOf('Modal.confirm') && declines < body.indexOf('PlanStore.startFresh()') && declines < body.indexOf('ChangeLog.clear()'));
+});
+
+check('an Optimize that only resets buff overrides offers Undo, and Undo brings the overrides back', () => {
+  const h = optimizeHarness();
+  const { State, PlanSession } = h.api;
+  h.click(); // now optimal
+  State.buffOverrides = { WINDFURY: 'someone' };
+  PlanSession.observe();
+  h.toasts.length = 0;
+  const board = boardOf(h.api), steps = PlanSession.undo.length;
+  h.click();
+  const toast = h.toasts.at(-1);
+  assert.equal(toast.m, 'No moves needed. 1 buff override reset');
+  assert.equal(toast.o.action.label, 'Undo');
+  assert.equal(PlanSession.undo.length, steps + 1);
+  assert.deepEqual(plain(State.buffOverrides), {});
+  assert.equal(boardOf(h.api), board);
+  toast.o.action.onClick();
+  assert.deepEqual(plain(State.buffOverrides), { WINDFURY: 'someone' }, 'the overrides are back');
+});
+
+check('Optimize with nothing moved and no overrides still offers no Undo', () => {
+  const h = optimizeHarness();
+  h.click();
+  h.toasts.length = 0;
+  h.click();
+  assert.equal(h.toasts.at(-1).m, 'Already optimal — nothing moved');
+  assert.equal(h.toasts.at(-1).o, undefined);
+});
+
+(async () => {
+  const h = optimizeHarness();
+  const { State, PlanSession } = h.api;
+  State.notes = 'Pull Gruul at 8';
+  PlanSession.observe();
+  const names = JSON.stringify(State.groups.flat().map(p => p.name).sort());
+  await h.clear();
+  assert.equal(State.groups.flat().length, 0, 'Clear emptied the groups');
+  assert.equal(State.notes, '');
+  h.undoPlanChange();
+  assert.equal(JSON.stringify(State.groups.flat().map(p => p.name).sort()), names, 'Undo brings the players back');
+  assert.equal(State.notes, 'Pull Gruul at 8', 'and the notes');
+  passed++;
+  console.log('PASS  Clear board then Undo restores the players and the notes');
+})().catch(e => { console.error(e); process.exit(1); });
+
+check('countsText: loud items per kind in KINDS order, status and new worded, Optimize moves left out', () => {
+  const it = kind => ({ kind });
+  const entry = items => ({ kind: 'sync', items: items.map(it) });
+  assert.equal(ChangeLog.countsText(entry(['moved', 'seated', 'seated', 'benched', 'moved', 'moved'])), '1 benched, 2 seated, 3 moved');
+  assert.equal(ChangeLog.countsText(entry(['status'])), '1 status change');
+  assert.equal(ChangeLog.countsText(entry(['status', 'status', 'added', 'dropped'])), '2 status changes, 1 new, 1 dropped');
+  assert.equal(ChangeLog.countsText({ kind: 'optimize', items: [it('moved'), it('moved'), it('benched')] }), '1 benched', 'quiet Optimize moves are not counted');
+  assert.equal(ChangeLog.countsText({ kind: 'optimize', items: [it('moved')] }), '');
+});
+
+check('the sync result line and the co-editor banner both use countsText', () => {
+  assert(app.script.includes('Sign-up sync: ${ChangeLog.countsText(entry)}'));
+  assert(app.script.includes('Updated by someone else: ${counts}.'));
+});
+
+check('recording an Optimize entry replaces older ones, so sync and live entries keep their place', () => {
+  reset();
+  const a = mk('A'), b = mk('B');
+  seat([[a], []], [b]);
+  ChangeLog.track('sync', 'Sign-up sync', () => seat([[a, b], []]));
+  for (let i = 0; i < 25; i++) {
+    ChangeLog.track('optimize', 'Optimize', () => seat(i % 2 ? [[a, b], []] : [[a], [b]]), { moves: true });
+  }
+  assert.equal(ChangeLog.entries.filter(e => e.kind === 'optimize').length, 1);
+  assert.equal(ChangeLog.entries.filter(e => e.kind === 'sync').length, 1, 'the sync entry is still listed');
+});
+
+check('diffBuffReach uses the singular role word for a change of one player', () => {
+  const { api } = optimizeHarness();
+  const side = (roles) => ({ name: 'B', roles, uids: Object.entries(roles).flatMap(([r, n]) => Array.from({ length: n }, (_, i) => r + i)) });
+  const word = (before, after) => api.diffBuffReach({ B: side(before) }, { B: side(after) })[0].word;
+  assert.equal(word({ tank: 2 }, { tank: 1 }), 'tank');
+  assert.equal(word({ tank: 3 }, { tank: 1 }), 'tanks');
+  assert.equal(word({}, { healer: 1 }), 'healer');
+  assert.equal(word({}, { caster_dps: 1 }), 'caster');
+  assert.equal(word({}, { melee_dps: 1 }), 'melee');
+  assert.equal(word({}, { ranged_dps: 1 }), 'ranged');
+  assert.equal(word({ tank: 1 }, { tank: 1, healer: 1 }), 'healer');
+  assert.equal(word({}, { tank: 1, healer: 1 }), 'players');
+  assert.equal(word({ tank: 1 }, { healer: 2 }), 'player', 'a mix of one player');
 });
 
 check('CSS: a changed slot is an inset ring (focus keeps the outline), coloured per kind', () => {
@@ -756,4 +842,4 @@ check('CSS: a changed slot is an inset ring (focus keeps the outline), coloured 
   assert.match(focus[0], /box-shadow: inset 0 0 0 4px var\(--changed-color/);
 });
 
-console.log(`\nChange report tests: ${passed} passed, 0 failed, ${passed} total`);
+setTimeout(() => console.log(`\nChange report tests: ${passed} passed, 0 failed, ${passed} total`), 50);

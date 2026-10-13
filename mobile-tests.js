@@ -103,7 +103,7 @@ const phoneCssAll = () => { const c = css.slice(css.lastIndexOf('/* ── Slim 
 
 // ── Phone readiness link (replaces the old 34px summary line) ──
 
-// `readiness` is a missing-party-buff count, a full {missingBuffs, tanksShort,
+// `readiness` is a missing-party-buff count, a full {missingCoverage, tanksShort,
 // healersShort, mixedFactions} object, or null (nothing loaded / not modeled).
 function renderPhone(readiness, { notes = '', seated = 25, size = 25 } = {}) {
   const els = {};
@@ -111,7 +111,7 @@ function renderPhone(readiness, { notes = '', seated = 25, size = 25 } = {}) {
     classList: { toggle(c, on) { this.on = on; } }, setAttribute(k, v) { this.attrs[k] = v; },
     addEventListener(t, fn) { this.listeners[t] = fn; } });
   const value = typeof readiness === 'number'
-    ? { missingBuffs: readiness, tanksShort: 0, healersShort: 0, mixedFactions: false } : readiness;
+    ? { missingCoverage: readiness, tanksShort: 0, healersShort: 0, mixedFactions: false } : readiness;
   const src = between(renderJs, 'let lastReadiness', 'function renderSummaryBar') +
     between(read('js/modals.js'), 'function renderPhoneSummary', 'function undoPlanChange');
   const ctx = vm.createContext({
@@ -150,20 +150,34 @@ check('readiness link is a real phone-only button outside the Edit toggle, with 
 check('the link counts the party buffs the strip counts, from renderReadiness', () => {
   const readiness = between(read('js/modals.js'), 'function renderReadiness', '// ── RAID NOTES');
   assert.match(readiness, /coverageGapHtml\(gaps\)/);
-  assert.match(readiness, /const gaps = liveCoverageGaps\(\);\s*const missing = gaps\.buffs;/);
-  assert.match(readiness, /lastReadiness = \{ missingBuffs: missing,/);
+  assert.match(readiness, /const gaps = liveCoverageGaps\(\);\s*const missing = gaps\.buffs \+ gaps\.debuffs;/);
+  assert.match(readiness, /lastReadiness = \{ missingCoverage: missing,/);
   assert.doesNotMatch(renderJs, /lastMissingCoverageCount/, 'the buffs + debuffs total no longer feeds the link');
 });
 
 check('the link names the most serious warning: tanks, healers, factions, then missing buffs', () => {
-  const label = r => renderPhone({ missingBuffs: 0, tanksShort: 0, healersShort: 0, mixedFactions: false, ...r }).els['btn-summary-missing'];
+  const label = r => renderPhone({ missingCoverage: 0, tanksShort: 0, healersShort: 0, mixedFactions: false, ...r }).els['btn-summary-missing'];
   assert.equal(label({ healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;');
   assert.equal(label({ tanksShort: 2, healersShort: 1 }).innerHTML, '<b>&#9888; 2 tanks short</b> &#9656;');
   assert.equal(label({ mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
-  assert.equal(label({ missingBuffs: 3, healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;', 'a shortage outranks missing buffs; the strip lists the rest');
-  assert.equal(label({ missingBuffs: 3, mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
-  assert.equal(label({ missingBuffs: 3 }).innerHTML, '<b>3</b> missing &#9656;', 'buffs only when the roster itself is fine');
+  assert.equal(label({ missingCoverage: 3, healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;', 'a shortage outranks missing buffs; the strip lists the rest');
+  assert.equal(label({ missingCoverage: 3, mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
+  assert.equal(label({ missingCoverage: 3 }).innerHTML, '<b>3</b> missing &#9656;', 'buffs only when the roster itself is fine');
   assert.equal(label({}).hidden, true);
+});
+
+check('the link counts party buffs plus raid debuffs, and shows for debuffs alone', () => {
+  const link = n => renderPhone({ missingCoverage: n, tanksShort: 0, healersShort: 0, mixedFactions: false }).els['btn-summary-missing'];
+  assert.equal(link(6).hidden, false);
+  assert.equal(link(13).innerHTML, '<b>13</b> missing &#9656;');
+  const readiness = between(read('js/modals.js'), 'function renderReadiness', '// ── RAID NOTES');
+  assert.match(readiness, /const missing = gaps\.buffs \+ gaps\.debuffs;/);
+});
+
+check('the phone link is a flex box that keeps the space between its number and its words', () => {
+  const rule = phoneCssAll().match(/\.phone-missing-slot \.summary-missing \{[^}]*\}/)[0];
+  assert.match(rule, /display: flex/);
+  assert.match(rule, /\bgap: [\d.]+(em|px)/, 'flex drops the whitespace after </b>, so a gap restores it');
 });
 
 check('desktop always shows the readiness strip; only phones fold it', () => {
@@ -186,7 +200,7 @@ check('readiness link is hidden when nothing is wrong and when coverage is not m
 
 check('feedback closes when the last warning goes away', () => {
   const { els, ctx } = renderPhone(7);
-  vm.runInContext('setPhoneFeedbackOpen(true); lastReadiness = { missingBuffs: 0, tanksShort: 0, healersShort: 0, mixedFactions: false }; renderPhoneMissing();', ctx);
+  vm.runInContext('setPhoneFeedbackOpen(true); lastReadiness = { missingCoverage: 0, tanksShort: 0, healersShort: 0, mixedFactions: false }; renderPhoneMissing();', ctx);
   assert.equal(vm.runInContext('phoneFeedbackOpen', ctx), false);
   assert.equal(els['plan-feedback'].classList.on, false);
 });

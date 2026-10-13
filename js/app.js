@@ -364,7 +364,7 @@ function renderLastRun(summary) {
 // and which buffs now reach more or fewer players.
 function optimizeToastMessage({ moved, benched = 0, seated = 0, reach = [], overridesReset }) {
   const reset = overridesReset > 0 ? `${overridesReset} buff override${overridesReset === 1 ? '' : 's'} reset` : '';
-  if (moved === 0 && benched === 0 && seated === 0) return reset ? `Already optimal — nothing moved. ${reset}` : 'Already optimal — nothing moved';
+  if (moved === 0 && benched === 0 && seated === 0) return reset ? `No moves needed. ${reset}` : 'Already optimal — nothing moved';
   const counts = [`${moved} moved`, benched > 0 ? `${benched} benched` : '', seated > 0 ? `${seated} seated` : ''].filter(Boolean);
   const parts = reachParts(reach);
   return [`Optimized: ${counts.join(', ')}.`, parts.length ? `${parts.join(', ')}.` : '', reset].filter(Boolean).join(' ');
@@ -403,7 +403,8 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
   renderLastRun({ moved: counts.moved, reach });
   const message = optimizeToastMessage({ ...counts, reach, overridesReset });
   ResultLine.show(message); // after the commit above, which clears any earlier result
-  if (!entry || !pushed) { showToast(message); return; } // nothing moved: no Undo, even if the groups were re-sorted
+  // Undo whenever the click pushed a step that changed something: moves, or only reset buff overrides.
+  if (!pushed || (!entry && overridesReset === 0)) { showToast(message); return; } // nothing changed: no Undo, even if the groups were re-sorted
   showToast(message, { action: { label: 'Undo', onClick: () => {
     if (PlanSession.undo[PlanSession.undo.length - 1] !== undoRef) { showToast('Nothing to undo: the plan changed after Optimize'); return; }
     undoPlanChange();
@@ -413,7 +414,7 @@ document.getElementById('btn-optimize').addEventListener('click', () => {
 document.getElementById('btn-clear').addEventListener('click', async () => {
   const confirmed = await Modal.confirm({
     title: 'Clear the board?',
-    message: 'Every player moves back to Sign-ups. Undo brings the board back.',
+    message: 'Removes every player, your notes and your picks from this plan. Undo brings it back.',
     confirmLabel: 'Clear board',
   });
   if (!confirmed) return;
@@ -622,8 +623,8 @@ const RemoteUpdate = {
   // "Updated by someone else: 3 moved, 1 benched." from the update's Changes entry.
   summaryText(entry) {
     if (!entry || !entry.items || !entry.items.length) return 'Roster updated by someone else.';
-    const parts = ChangeLog.kindCounts(entry).map(k => `${k.count} ${k.word.toLowerCase()}`);
-    return `Updated by someone else: ${parts.join(', ')}.`;
+    const counts = ChangeLog.countsText(entry);
+    return counts ? `Updated by someone else: ${counts}.` : 'Roster updated by someone else.';
   },
   show(before, entry) {
     this.before = before;

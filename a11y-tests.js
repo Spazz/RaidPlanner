@@ -372,5 +372,22 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
     assert(landing, 'the landing import box is still there');
   });
 
+  await check('a hidden toast leaves the tab order: visibility hides after the fade, shows at once', () => {
+    const base = css.match(/\n\.toast \{[^}]*\}/)[0];
+    assert.match(base, /visibility: hidden;/);
+    assert.match(base, /transition:[^;]*visibility 0s linear 0\.3s/);
+    assert.match(css, /\.toast\.visible \{[^}]*visibility: visible; transition-delay: 0s;/);
+  });
+
+  await check('Esc: a visible spotlight callout counts as open, so the toast stays', () => {
+    const wiring = app.slice('function wireToast', 'function showToast');
+    assert.match(wiring, /dialog\[open\], #active-player-editor, \.spotlight-callout/);
+  });
+
+  await check('the result line is not a live region (the toast announces) and its dismiss moves focus', () => {
+    assert.doesNotMatch(html.match(/<div class="result-line" id="result-line"[^>]*>/)[0], /aria-live/);
+    assert.match(app.script, /btn-result-dismiss'\)\?\.addEventListener\('click', \(\) => \{\s*ResultLine\.hide\(\);\s*document\.getElementById\('readiness-text'\)\?\.focus\(\);/);
+  });
+
   console.log(`\n${passed} a11y checks passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

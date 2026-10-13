@@ -17,7 +17,7 @@ function check(name, fn) {
 }
 
 const NAMES = ['State', 'Config', 'Import', 'liveCoverageGaps', 'coverageGapCounts', 'renderReadiness', 'renderBuffCatalog',
-  'getRaidBuffCoverage', 'getRaidDebuffCoverage', 'factionRelevantBuffs', 'ResultLine'];
+  'getRaidBuffCoverage', 'getRaidDebuffCoverage', 'factionRelevantBuffs', 'ResultLine', 'renderSidebarSummary'];
 
 // Fake DOM: every element remembers what the code wrote to it. With fixedGaps the live gap
 // counts come from setGaps() instead of the roster, so each wording state can be driven directly.
@@ -174,7 +174,7 @@ check('imports, Optimize and the sync set the line after their commit; persistWo
   assert(plainAt > script.lastIndexOf('commit();', plainAt), 'the plain-text import sets the line after its commit');
   const optimize = script.slice(script.indexOf("getElementById('btn-optimize').addEventListener"), script.indexOf("getElementById('btn-clear').addEventListener"));
   assert(optimize.indexOf('ResultLine.show(message)') > optimize.indexOf('commit();'), 'Optimize sets the line after its commit');
-  assert(script.includes('if (entry) ResultLine.show(ChangeLog.summary(entry))'), 'the sync shows its Changes summary');
+  assert(script.includes('if (entry && ChangeLog.countsText(entry)) ResultLine.show(`Sign-up sync: ${ChangeLog.countsText(entry)}`)'), 'the sync shows its Changes summary');
   const persist = app.slice('function persistWorkingPlan', 'function renderPhoneSummary').replace(/\r\n/g, '\n');
   assert.match(persist, /if \(result\.changed\) \{[^}]*ResultLine\.hide\(\);/);
 });
@@ -203,6 +203,16 @@ check('phone: the result line is a gold strip with a visible dismiss button; "N 
   assert(missing);
   assert.match(missing[1], /min-height: 44px/);
   assert.match(missing[1], /font-size: 12px/);
+});
+
+check('rail summary: a row with a count of 0 is muted (zero), the other stays red', () => {
+  const { api, els } = makeSandbox();
+  api.renderSidebarSummary({ buffs: 0, debuffs: 6 });
+  assert(els['sidebar-summary'].innerHTML.includes('<div class="sidebar-summary-row missing zero"><span>Party buffs missing</span><b>0</b></div>'), els['sidebar-summary'].innerHTML);
+  assert(els['sidebar-summary'].innerHTML.includes('<div class="sidebar-summary-row missing"><span>Raid debuffs missing</span><b>6</b></div>'));
+  api.renderSidebarSummary({ buffs: 2, debuffs: 0 });
+  assert(els['sidebar-summary'].innerHTML.includes('missing"><span>Party buffs missing'));
+  assert(els['sidebar-summary'].innerHTML.includes('missing zero"><span>Raid debuffs missing'));
 });
 
 console.log(`\n${passed} readiness checks passed`);

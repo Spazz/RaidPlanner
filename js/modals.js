@@ -185,7 +185,7 @@ function wireToast(toast) {
     hideToast(toast);
   });
   window.addEventListener('keydown', () => {
-    overlayOpen = !!document.querySelector('dialog[open], #active-player-editor');
+    overlayOpen = !!document.querySelector('dialog[open], #active-player-editor, .spotlight-callout');
   }, true);
   window.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || e.defaultPrevented || overlayOpen) return;
@@ -366,7 +366,10 @@ function redoPlanChange() {
   showToast('Change redone');
 }
 
-document.getElementById('btn-result-dismiss')?.addEventListener('click', () => ResultLine.hide());
+document.getElementById('btn-result-dismiss')?.addEventListener('click', () => {
+  ResultLine.hide();
+  document.getElementById('readiness-text')?.focus(); // the dismiss button just vanished
+});
 
 function renderReadiness() {
   lastReadiness = null;
@@ -379,7 +382,7 @@ function renderReadiness() {
   const tanks = State.roster.filter(p => p.role === 'tank').length;
   const healers = State.roster.filter(p => p.role === 'healer').length;
   const gaps = liveCoverageGaps();
-  const missing = gaps.buffs;
+  const missing = gaps.buffs + gaps.debuffs;
   // Short parts render in the warning colour, satisfied parts stay muted. Only numbers and fixed strings go in.
   const tankText = tanks < floors.tank ? `<span class="readiness-short">${floors.tank - tanks} tank${floors.tank - tanks === 1 ? '' : 's'} short</span>` : `${tanks} tank slots filled`;
   const healerText = healers < floors.healer ? `<span class="readiness-short">${floors.healer - healers} healer${floors.healer - healers === 1 ? '' : 's'} short</span>` : `${healers} healers ready`;
@@ -391,7 +394,7 @@ function renderReadiness() {
   const factionWarning = mixedFactions ? ' · <span class="readiness-short">Mixed Horde/Alliance roster — impossible in Classic Era</span>' : '';
   // The phone link names the same things the strip warns about (see phoneReadinessLabel).
   if (hasLoadedWork()) {
-    lastReadiness = { missingBuffs: missing, tanksShort: Math.max(0, floors.tank - tanks), healersShort: Math.max(0, floors.healer - healers), mixedFactions };
+    lastReadiness = { missingCoverage: missing, tanksShort: Math.max(0, floors.tank - tanks), healersShort: Math.max(0, floors.healer - healers), mixedFactions };
   }
   renderPhoneMissing();
   const readinessEl = document.getElementById('readiness-text');
@@ -1134,7 +1137,7 @@ const RaidHelperSync = {
         : `${lead}. Roster is up to date with Raid-Helper`);
       return;
     }
-    if (entry) ResultLine.show(ChangeLog.summary(entry));
+    if (entry && ChangeLog.countsText(entry)) ResultLine.show(`Sign-up sync: ${ChangeLog.countsText(entry)}`);
     showToast(`${lead}: ${this.describe(counts)}`);
     if (counts.backupSwapReady && counts.backupSwapReady.length) this.showBackupBanner(counts.backupSwapReady);
   },

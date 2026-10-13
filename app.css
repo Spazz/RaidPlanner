@@ -1163,8 +1163,11 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   transition: opacity 0.3s ease, transform 0.3s ease;
   pointer-events: none;
   zoom: 1.5;
+  /* Hidden once the fade ends, so a faded-out Undo button leaves the tab order. */
+  visibility: hidden;
+  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0s linear 0.3s;
 }
-.toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; visibility: visible; transition-delay: 0s; }
 .toast { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
 .toast-action {
   background: transparent; border: 1px solid var(--accent-gold); color: var(--accent-gold);
@@ -1768,7 +1771,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   #raid-size-phone-slot .raid-size-label { display: none; }
   #raid-size-phone-slot .raid-size-seg button { min-height: 30px; padding: 0 12px; font-size: 12px; }
   .phone-missing-slot { margin-left: auto; }
-  .phone-missing-slot .summary-missing { display: flex; align-items: center; min-height: 44px; margin: -7px 0; font-size: 12px; }
+  .phone-missing-slot .summary-missing { display: flex; align-items: center; gap: 0.3em; min-height: 44px; margin: -7px 0; font-size: 12px; }
   .phone-context-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; border-top: 1px solid var(--border-subtle); }
   .phone-context-body[hidden] { display: none; }
   .phone-context-row .lbl { font-size: 11px; }
