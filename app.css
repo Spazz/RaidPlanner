@@ -149,6 +149,11 @@ body {
   font-family: var(--font-body); font-size: 14px;
 }
 .import-field:focus { outline: none; border-color: var(--accent-gold); }
+.import-field::placeholder, .import-field.is-sample { color: var(--text-muted); opacity: 1; }
+.import-formats { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.import-formats .link-btn { font-size: inherit; text-transform: none; letter-spacing: 0; text-decoration: underline; }
+.import-pane.is-empty .saved-full { display: none; }
+.import-pane:not(.is-empty) .saved-empty-note { display: none; }
 textarea.import-field { min-height: 130px; resize: vertical; font-family: Consolas, 'Courier New', monospace; font-size: 12px; }
 .import-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .btn-lg { padding: 11px 18px; font-size: 13px; }
@@ -692,7 +697,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
-.player-spec { font-size: 9px; color: var(--text-muted); line-height: 1.2; }
+.player-spec { font-size: 10.5px; color: var(--text-muted); line-height: 1.2; }
 .empty-slot { opacity: 0.35; font-style: italic; cursor: default; }
 .empty-slot .player-name { color: var(--text-muted); font-weight: 400; }
 .empty-slot { cursor: pointer; opacity: .6; }

@@ -592,6 +592,7 @@ function renderImportHistory(list, onLoad = () => {}, limit = 6) {
     try {
       ImportHistory.remove(localStorage, button.dataset.historyDelete);
       renderImportHistory(list, onLoad, limit);
+      if (list.id === 'landing-history-list') renderLandingSavedList();
     } catch { showToast('Could not remove this import from browser storage'); }
   });
 }

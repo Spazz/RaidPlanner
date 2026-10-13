@@ -712,7 +712,7 @@ function renderGroups() {
       } else if (PreferredSlots.forGroup(gi)[si - players.length]) {
         const preference = PreferredSlots.forGroup(gi)[si - players.length];
         slotsHTML += `<div class="player-slot preferred-slot${preferredColorClass(preference.class)}" role="button" tabindex="0" data-group="${gi}" data-slot="${si}">
-          ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(preference.spec + ' ' + RosterEdit.ClassLabel(preference.class))}</span><span class="player-spec">Preferred · awaiting sign-up</span></div><span class="preferred-badge">OPEN</span></div>`;
+          ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(preference.spec + ' ' + RosterEdit.ClassLabel(preference.class))}</span><span class="player-spec">${preference.auto ? 'Suggested by Optimize' : 'Requested, awaiting sign-up'}</span></div><span class="preferred-badge">${preference.auto ? 'SUGGESTED' : 'REQUESTED'}</span></div>`;
       } else {
         slotsHTML += `<div class="player-slot empty-slot" role="button" tabindex="0" data-group="${gi}" data-slot="${si}" aria-label="Group ${gi+1}, empty slot: add player or preferred spec">
           <span class="role-icon role-icon-empty">&#8226;</span>

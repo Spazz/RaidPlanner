@@ -94,4 +94,19 @@ check('the button reset keeps the old look: a zero-specificity reset exists for 
   assert(/\.buff-icon\.swappable:focus-visible[^{]*\{[^}]*outline/.test(css), 'keyboard focus is visible');
 });
 
+check('Open slot cards say Suggested (Optimize) or Requested (leader) in both the line and the badge', () => {
+  assert(renderSrc.includes("<span class=\"player-spec\">${preference.auto ? 'Suggested by Optimize' : 'Requested, awaiting sign-up'}</span>"));
+  assert(renderSrc.includes("<span class=\"preferred-badge\">${preference.auto ? 'SUGGESTED' : 'REQUESTED'}</span>"));
+  assert(!renderSrc.includes('>OPEN<'), 'old badge gone from the card');
+});
+
+check('.player-spec is 10.5px on desktop and 11px in the phone block; Open slot colours are unchanged', () => {
+  const css = norm(app.css);
+  assert(/\n\.player-spec \{ font-size: 10\.5px;/.test(css));
+  const phone = css.slice(css.lastIndexOf('/* ── Slim phone layout'));
+  assert(/\.player-spec \{ font-size: 11px; \}/.test(phone));
+  assert(/\.preferred-slot \{ border: 1px dashed var\(--preferred-color\);/.test(css));
+  assert(/\.preferred-badge \{ color: var\(--preferred-color\); font-size: 9px;/.test(css));
+});
+
 console.log(`\n${passed} buff keyboard checks passed`);
