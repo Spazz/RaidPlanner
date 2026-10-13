@@ -68,6 +68,7 @@
 !state-persistence-tests.js
 !plan-state-tests.js
 !a11y-tests.js
+!buffkeys-tests.js
 !icons-tests.js
 !touch-tests.js
 !mobile-tests.js

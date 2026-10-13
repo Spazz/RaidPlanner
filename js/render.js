@@ -248,6 +248,23 @@ function restorePlayerSlotFocus(key) {
   if (target) target.focus({ preventScroll: true });
 }
 
+// A swapped buff icon is rebuilt by the re-render too. The picker remembers which
+// icon it came from (group + buff id before and after the pick) so focus can
+// return to it; the buff id changes when the pick replaces the default.
+let pendingBuffIconFocus = null;
+function rememberBuffIconFocus(group, uid, buffIds) {
+  pendingBuffIconFocus = { group: String(group), uid, buffIds };
+}
+function restoreBuffIconFocus() {
+  const key = pendingBuffIconFocus;
+  pendingBuffIconFocus = null;
+  if (!key) return;
+  const icons = [...document.querySelectorAll('.buff-icon.swappable')]
+    .filter(i => i.dataset.group === key.group && key.buffIds.includes(i.dataset.buffId));
+  const target = icons.find(i => i.dataset.uid === key.uid) || icons[0];
+  if (target) target.focus({ preventScroll: true });
+}
+
 function seatedSlotHTML(p, gi, si) {
   const displayName = (p.name || 'Unknown').split('-')[0];
   const specClass = p.spec ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '')) : '';
@@ -721,7 +738,9 @@ function renderGroups() {
         const overrideClass = b.isOverride ? ' overridden' : '';
         const dataAttrs = isSwappable ? ` data-buff-id="${esc(b.id)}" data-group="${gi}" data-uid="${esc(b.sourceUid)}" data-source="${esc(b.sourceName)}" data-class="${esc(b.sourceClass)}" data-spec="${esc(b.sourceSpec || '')}"` : '';
         const ttAttrs = ` data-tt-name="${esc(b.buff.name)}" data-tt-desc="${esc(b.buff.desc || '')}" data-tt-source="${esc(from)}" data-tt-source-color="${sourceColor}"`;
-        buffsHTML += `<div class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${dataAttrs}${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></div>`;
+        const iconTag = isSwappable ? 'button' : 'div';
+        const iconAttrs = isSwappable ? ` type="button" aria-label="${esc(b.buff.name)}: choose another buff"` : '';
+        buffsHTML += `<${iconTag} class="buff-icon ${css}${hasIcon}${swapClass}${overrideClass}"${iconAttrs}${dataAttrs}${ttAttrs}>${imgTag}<span class="buff-label">${abbr}</span></${iconTag}>`;
       }
       if (groupDrummers.length) {
         const drumIconUrl = Config.BuffIconURL('DRUMS');
@@ -754,6 +773,7 @@ function renderGroups() {
   updateStatus();
   SignupTray.render();
   restorePlayerSlotFocus(focusedSlot);
+  restoreBuffIconFocus();
   renderManualChanges();
   ChangesPanel.render();
 
@@ -1628,13 +1648,13 @@ function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sou
     const isActive = alt.id === buffId;
     const iconUrl = Config.BuffIconURL(alt.id);
     const imgTag = iconUrl ? `<img src="${iconUrl}" alt="${alt.buff.name}">` : '';
-    pickerHTML += `<div class="buff-picker-item${isActive ? ' active' : ''}" data-pick-id="${alt.id}">
+    pickerHTML += `<button type="button" class="buff-picker-item${isActive ? ' active' : ''}" data-pick-id="${alt.id}">
       ${imgTag}<span class="picker-buff-name">${esc(alt.buff.name)}</span>${isActive ? '<span class="picker-check">&#10003;</span>' : ''}
-    </div>`;
+    </button>`;
   }
   // Reset option if overridden
   if (State.buffOverrides[overrideKey]) {
-    pickerHTML += `<div class="buff-picker-reset" data-pick-reset="true">Reset to default</div>`;
+    pickerHTML += `<button type="button" class="buff-picker-reset" data-pick-reset="true">Reset to default</button>`;
   }
 
   // Create overlay to catch outside clicks
@@ -1655,6 +1675,17 @@ function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sou
   picker.style.left = (rect.left + rect.width / 2 - picker.offsetWidth / 2) + 'px';
   picker.style.top = (rect.top - picker.offsetHeight - 6 + window.scrollY) + 'px';
 
+  // Keyboard: Escape closes and hands focus back to the icon; focus starts on the current choice.
+  picker.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeBuffPicker();
+    buffIcon.focus({ preventScroll: true });
+  });
+  const startItem = picker.querySelector('.buff-picker-item.active') || picker.querySelector('.buff-picker-item');
+  if (startItem) startItem.focus({ preventScroll: true });
+
   // Handle picks
   picker.querySelectorAll('.buff-picker-item').forEach(item => {
     item.addEventListener('click', (e) => {
@@ -1662,6 +1693,7 @@ function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sou
       const pickId = item.dataset.pickId;
       if (pickId === buffId && !State.buffOverrides[overrideKey]) {
         closeBuffPicker();
+        buffIcon.focus({ preventScroll: true });
         return; // Already the default, no change
       }
       // Preserve the original default buff (before any overrides)
@@ -1672,6 +1704,7 @@ function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sou
       } else {
         State.buffOverrides[overrideKey] = { buffId: pickId, originalBuffId: existingOriginal };
       }
+      rememberBuffIconFocus(groupIndex, sourceUid, [pickId, existingOriginal]);
       closeBuffPicker();
       commit();
     });
@@ -1681,6 +1714,7 @@ function showBuffPicker(buffIcon, buffId, groupIndex, sourceUid, sourceName, sou
   if (resetBtn) {
     resetBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      rememberBuffIconFocus(groupIndex, sourceUid, [buffId, State.buffOverrides[overrideKey]?.originalBuffId || buffId]);
       delete State.buffOverrides[overrideKey];
       closeBuffPicker();
       commit();

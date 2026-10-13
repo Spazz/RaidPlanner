@@ -752,6 +752,16 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 #buff-tooltip-portal .tt-name { font-weight: 600; font-size: 19px; color: var(--accent-gold); margin-bottom: 6px; }
 #buff-tooltip-portal .tt-desc { color: var(--text-secondary); font-size: 18px; line-height: 1.5; margin-bottom: 6px; }
 #buff-tooltip-portal .tt-source { font-weight: 500; font-size: 16px; margin-top: 4px; color: var(--text-muted); }
+/* Swappable icons and picker rows are <button>s for keyboard access. :where() keeps the reset at zero
+   specificity so every existing .buff-icon / .buff-picker-* rule still wins, and the look stays as it was. */
+:where(button.buff-icon, button.buff-picker-item, button.buff-picker-reset) {
+  appearance: none; background: transparent; border: 0; border-radius: 0;
+  font: inherit; line-height: inherit; color: inherit; text-align: inherit;
+}
+:where(button.buff-picker-item, button.buff-picker-reset) { width: 100%; }
+.buff-icon.swappable:focus-visible, .buff-picker-item:focus-visible, .buff-picker-reset:focus-visible {
+  outline: 2px solid var(--accent-gold); outline-offset: 1px;
+}
 .buff-icon.swappable { cursor: pointer; }
 .buff-icon.swappable::after {
   content: ''; position: absolute; bottom: -2px; right: -2px;
