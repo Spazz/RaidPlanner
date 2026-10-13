@@ -1855,7 +1855,7 @@ function switchTab(tab) {
 
   // Show/hide plan-mode-only sections, plus the header and action-row controls
   // marked .plan-only (Optimize, Undo/Redo, plan name, Share, menu, notes, missing).
-  const planOnly = ['phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'plan-feedback', 'raid-notes-panel', 'changes-log-panel'].map(
+  const planOnly = ['phone-context-panel', 'phone-action-bar', 'manual-changes', 'action-bar', 'bench-section', 'readiness-banner', 'raid-notes-panel', 'changes-log-panel'].map(
     cls => document.querySelector('.' + cls) || document.getElementById(cls)
   ).filter(Boolean);
   for (const el of [...planOnly, ...document.querySelectorAll('.plan-only')]) {

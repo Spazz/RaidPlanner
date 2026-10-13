@@ -445,11 +445,14 @@ async function check(name, fn) {
     assert.equal(env.el('autosave-status').textContent, 'Could not save — export a copy');
     assert.equal(env.el('autosave-status').dataset.failed, 'true');
     assert.equal(env.el('roster-status-line').dataset.failed, 'true');
+    assert.equal(env.el('save-failed').hidden, false, 'the banner shows a danger chip so phones see the failure');
+    assert.equal(env.el('save-failed-chip').textContent, 'Could not save — export a copy');
     env.storage.limit = Infinity;
     env.ctx.persistWorkingPlan(); // nothing changed, but the failure forces a retry
     await env.advance(PlanStore.saveDelayMs);
     assert.equal(env.el('autosave-status').dataset.failed, undefined);
     assert.equal(env.el('roster-status-line').dataset.failed, undefined);
+    assert.equal(env.el('save-failed').hidden, true, 'the chip goes away once a save lands');
     assert.equal(raw(env)[0].data.planId, State.planId);
   });
 

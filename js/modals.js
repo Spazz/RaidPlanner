@@ -275,6 +275,13 @@ function mirrorSaveStatus() {
   statusLine.textContent = status.textContent;
   if (status.dataset.failed) statusLine.dataset.failed = 'true';
   else delete statusLine.dataset.failed;
+  // The banner no longer shows the save status, but a failed save must still reach phones.
+  const failed = document.getElementById('save-failed');
+  const failedChip = document.getElementById('save-failed-chip');
+  if (!failed || !failedChip) return;
+  failed.hidden = !status.dataset.failed;
+  failedChip.textContent = status.dataset.failed ? status.textContent : '';
+  failedChip.title = failedChip.textContent;
 }
 
 // What a PlanStore write came to (it runs a moment after the change, see saveSoon).
@@ -295,8 +302,8 @@ function showSaveOutcome(outcome) {
   mirrorSaveStatus();
 }
 
-// The one-line answer to "what did that just do": under the readiness line on desktop,
-// a slim strip above Group 1 on phones. Shown AFTER an action's own commit (that commit
+// The one-line answer to "what did that just do": the second row of the readiness banner.
+// Shown AFTER an action's own commit (that commit
 // goes through persistWorkingPlan, which clears the line); any later change clears it.
 const ResultLine = {
   show(text) {
@@ -309,6 +316,31 @@ const ResultLine = {
   hide() {
     const el = document.getElementById('result-line');
     if (el) el.hidden = true;
+  },
+};
+
+// The readiness banner is expanded (chips plus the result row) or one slim bar. The choice is a
+// device preference (not in DataBackup.keys); with none stored, phones start minimized.
+const READINESS_MIN_KEY = 'pp_readiness_minimized';
+const ReadinessBanner = {
+  isMinimized() {
+    let stored = null;
+    try { stored = localStorage.getItem(READINESS_MIN_KEY); } catch { stored = null; }
+    if (stored === '1') return true;
+    if (stored === '0') return false;
+    return !!(window.matchMedia && window.matchMedia('(max-width: 600px)').matches);
+  },
+  // Paints the state without storing it.
+  apply(minimized) {
+    document.getElementById('readiness-banner')?.classList.toggle('min', minimized);
+    for (const id of ['btn-readiness-minimize', 'btn-readiness-expand', 'btn-summary-missing']) {
+      document.getElementById(id)?.setAttribute('aria-expanded', String(!minimized));
+    }
+  },
+  // The user's choice: stored, then painted.
+  set(minimized) {
+    safeSetItem(localStorage, READINESS_MIN_KEY, minimized ? '1' : '0');
+    this.apply(minimized);
   },
 };
 
@@ -367,6 +399,19 @@ function redoPlanChange() {
   showToast('Change redone');
 }
 
+(function initReadinessBanner() {
+  ReadinessBanner.apply(ReadinessBanner.isMinimized());
+  // Focus follows the control that just vanished.
+  document.getElementById('btn-readiness-minimize')?.addEventListener('click', () => {
+    ReadinessBanner.set(true);
+    document.getElementById('btn-readiness-expand')?.focus();
+  });
+  document.getElementById('btn-readiness-expand')?.addEventListener('click', () => {
+    ReadinessBanner.set(false);
+    document.getElementById('btn-readiness-minimize')?.focus();
+  });
+})();
+
 document.getElementById('btn-result-dismiss')?.addEventListener('click', () => {
   ResultLine.hide();
   document.getElementById('readiness-text')?.focus(); // the dismiss button just vanished
@@ -375,7 +420,8 @@ document.getElementById('btn-result-dismiss')?.addEventListener('click', () => {
 function renderReadiness() {
   lastReadiness = null;
   if (!GameVersions[State.gameVersion].modeled) {
-    document.getElementById('readiness-text').textContent = `${GameVersions[State.gameVersion].name} · Manual planning · Buff and optimizer rules pending`;
+    const text = `${GameVersions[State.gameVersion].name} · Manual planning · Buff and optimizer rules pending`;
+    setReadinessChips(readinessChip('', esc(text), text));
     renderPhoneMissing();
     return;
   }
@@ -384,23 +430,58 @@ function renderReadiness() {
   const healers = State.roster.filter(p => p.role === 'healer').length;
   const gaps = liveCoverageGaps();
   const missing = gaps.buffs + gaps.debuffs;
-  // Short parts render in the warning colour, satisfied parts stay muted. Only numbers and fixed strings go in.
-  const tankText = tanks < floors.tank ? `<span class="readiness-short">${floors.tank - tanks} tank${floors.tank - tanks === 1 ? '' : 's'} short</span>` : `${tanks} tank slots filled`;
-  const healerText = healers < floors.healer ? `<span class="readiness-short">${floors.healer - healers} healer${floors.healer - healers === 1 ? '' : 's'} short</span>` : `${healers} healers ready`;
+  const tanksShort = Math.max(0, floors.tank - tanks);
+  const healersShort = Math.max(0, floors.healer - healers);
   // Classic Era is faction-locked: Shaman and Paladin cannot exist in the
   // same real raid. A roster that has both is a data problem worth calling
   // out, not something the optimizer should silently paper over.
   const rules = activeRules();
   const mixedFactions = !!(rules.rules && rules.rules.factionLock && Faction.current() === 'mixed');
-  const factionWarning = mixedFactions ? ' · <span class="readiness-short">Mixed Horde/Alliance roster — impossible in Classic Era</span>' : '';
-  // The phone link names the same things the strip warns about (see phoneReadinessLabel).
+  // The phone link names the same things the banner warns about (see phoneReadinessLabel).
   if (hasLoadedWork()) {
-    lastReadiness = { missingCoverage: missing, tanksShort: Math.max(0, floors.tank - tanks), healersShort: Math.max(0, floors.healer - healers), mixedFactions };
+    lastReadiness = { missingCoverage: missing, tanksShort, healersShort, mixedFactions };
   }
   renderPhoneMissing();
-  const readinessEl = document.getElementById('readiness-text');
-  if (!hasLoadedWork()) { readinessEl.textContent = 'Import a roster, or click an empty slot to request a class and spec'; return; }
-  readinessEl.innerHTML = `${tankText} · ${healerText} · ${coverageGapHtml(gaps)}${State.preferredSlots.length ? ` · ${State.preferredSlots.length} preferred slot${State.preferredSlots.length === 1 ? '' : 's'} open` : ''}${factionWarning}`;
+  if (!hasLoadedWork()) {
+    setReadinessChips('<span class="rb-note">Import a roster, or click an empty slot to request a class and spec</span>');
+    return;
+  }
+  const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+  const chips = [
+    tanksShort > 0
+      ? readinessChip('warn', `Tanks ${tanksShort} short`, `${plural(tanksShort, 'tank')} short: ${tanks} of ${floors.tank} tank slots filled`)
+      : readinessChip('ok', 'Tanks &#10003;', `${plural(tanks, 'tank slot')} filled`),
+    healersShort > 0
+      ? readinessChip('warn', `Healers ${healersShort} short`, `${plural(healersShort, 'healer')} short: ${healers} of ${floors.healer} healers ready`)
+      : readinessChip('ok', 'Healers &#10003;', `${plural(healers, 'healer')} ready`),
+    coverageChip(gaps),
+  ];
+  const open = State.preferredSlots.length;
+  if (open) chips.push(readinessChip('', plural(open, 'open slot'), `${plural(open, 'preferred slot')} open`));
+  if (mixedFactions) chips.push(readinessChip('danger', 'Mixed factions', 'Mixed Horde/Alliance roster — impossible in Classic Era'));
+  setReadinessChips(chips.join(''));
+}
+
+// One status chip. label is markup built from numbers and fixed strings; title is escaped here.
+function readinessChip(kind, label, title) {
+  return `<span class="chip${kind ? ' ' + kind : ''}" title="${esc(title)}">${label}</span>`;
+}
+
+// The coverage chip: the shared gap counts as "Coverage: 7 buffs · 4 debuffs missing", naming only
+// the kind that is missing, or "Coverage ✓" when nothing is.
+function coverageChip(gaps) {
+  const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+  const short = [], long = [];
+  if (gaps.buffs > 0) { short.push(count(gaps.buffs, 'buff')); long.push(`${count(gaps.buffs, 'party buff')} missing`); }
+  if (gaps.debuffs > 0) { short.push(count(gaps.debuffs, 'debuff')); long.push(`${count(gaps.debuffs, 'raid debuff')} missing`); }
+  if (!short.length) return readinessChip('ok', 'Coverage &#10003;', 'All party buffs and raid debuffs covered');
+  return readinessChip('warn', `Coverage: ${short.join(' &middot; ')} missing`, long.join(' · '));
+}
+
+// Paints the chips into the expanded banner and the minimized bar.
+function setReadinessChips(html) {
+  document.getElementById('readiness-text').innerHTML = html;
+  document.getElementById('readiness-chips-min').innerHTML = html;
 }
 
 // ── RAID NOTES (backlog #11) ────────────────────────────────────

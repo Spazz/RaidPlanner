@@ -5,8 +5,9 @@
 // "New" badge then appears once for everyone who dismissed an older version.
 const APP_VERSION = '4.3.1';
 const CHANGELOG = [
-  { version: '4.3.1', date: '2026-10-12', title: 'The Party Planner name is the way home', changes: [
+  { version: '4.3.1', date: '2026-10-12', title: 'A home link in the brand and a readiness banner you can minimize', changes: [
     'The Party Planner name at the top left now takes you back to the start page, and the planner title bar starts with your plan name, shown larger.',
+    'The readiness line is now a banner of status chips (tanks, healers, coverage) that you can minimize; the result of your last import, sync or Optimize shows inside it.',
   ] },
   { version: '4.3.0', date: '2026-10-12', title: 'Clearer Optimize results with Undo, plain import errors and deletable saved plans', changes: [
     'Optimize says what it did in buff terms (for example Windfury Totem +4 melee), offers Undo for 8 seconds, and lists who it benched, seated or moved under Changes.',

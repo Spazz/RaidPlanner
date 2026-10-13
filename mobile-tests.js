@@ -67,7 +67,7 @@ check('every phone control is in the context row: line 2 slots, the Edit body, t
   assert.ok(body.includes('id="phone-plan-name-slot"'), 'the rename button moves into the Edit body');
   assert.ok(!html.includes('phone-strategy-seg'), 'the optimizer strategy control is gone (Optimize always runs Max DPS)');
   assert.ok(!html.includes('raid-select'), 'the raid dropdown is gone');
-  for (const id of ['raid-notes-panel', 'raid-notes-textarea', 'readiness-text', 'summary-bar', 'plan-feedback']) {
+  for (const id of ['raid-notes-panel', 'raid-notes-textarea', 'readiness-text', 'summary-bar', 'readiness-banner']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
   for (const pair of ['raid-notes-panel:phone-context-notes-slot', 'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot']) {
@@ -119,6 +119,7 @@ function renderPhone(readiness, { notes = '', seated = 25, size = 25 } = {}) {
     State: { roster: Array(seated).fill({}), selectedRaid: 'x', optimizerMode: 'max_dps', rosterName: 'Random 25-man Roster', notes },
     Config: { Raids: { x: { name: 'Karazhan', size } } },
     setSidebarExpanded() {},
+    ReadinessBanner: { calls: [], set(minimized) { this.calls.push(minimized); } },
   });
   vm.runInContext(src + `\nlastReadiness = ${JSON.stringify(value)};\nrenderPhoneSummary(); renderPhoneMissing();`, ctx);
   return { els, ctx };
@@ -134,22 +135,21 @@ check('the 34px phone summary line (counts, role letters) is gone from the summa
 
 check('readiness link is a real phone-only button outside the Edit toggle, with the count in warning colour', () => {
   const line2 = between(html, 'class="phone-summary-line2"', 'id="phone-context-body"');
-  assert.match(line2, /<button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" title="Show coverage details" hidden><\/button>/);
-  assert.doesNotMatch(between(html, '<div class="toolbar">', '<div class="phone-context-panel"'), /btn-summary-missing/, 'desktop shows the strip itself, not the link');
+  assert.match(line2, /<button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="readiness-banner" title="Show coverage details" hidden><\/button>/);
+  assert.doesNotMatch(between(html, '<div class="toolbar">', '<div class="phone-context-panel"'), /btn-summary-missing/, 'desktop shows the banner itself, not the link');
   const toggle = html.match(/<button[^>]*id="phone-summary-toggle"[\s\S]*?<\/button>/)[0];
   const inner = toggle.slice(toggle.indexOf('>') + 1);
   assert.doesNotMatch(inner, /btn-summary-missing|raid-size|<button|<select|<input/, 'nothing interactive is nested inside the toggle button');
   const { els } = renderPhone(7);
   assert.equal(els['btn-summary-missing'].hidden, false);
   assert.equal(els['btn-summary-missing'].innerHTML, '<b>7</b> missing &#9656;');
-  assert.equal(els['btn-summary-missing'].attrs['aria-expanded'], 'false');
   assert.match(css, /\.summary-missing b \{[^}]*var\(--warning\)/);
   assert.match(phoneCssAll(), /\.phone-missing-slot \.summary-missing \{[^}]*font-size: 12px/);
 });
 
-check('the link counts the party buffs the strip counts, from renderReadiness', () => {
+check('the link counts the party buffs the banner counts, from renderReadiness', () => {
   const readiness = between(read('js/modals.js'), 'function renderReadiness', '// ── RAID NOTES');
-  assert.match(readiness, /coverageGapHtml\(gaps\)/);
+  assert.match(readiness, /coverageChip\(gaps\)/);
   assert.match(readiness, /const gaps = liveCoverageGaps\(\);\s*const missing = gaps\.buffs \+ gaps\.debuffs;/);
   assert.match(readiness, /lastReadiness = \{ missingCoverage: missing,/);
   assert.doesNotMatch(renderJs, /lastMissingCoverageCount/, 'the buffs + debuffs total no longer feeds the link');
@@ -160,7 +160,7 @@ check('the link names the most serious warning: tanks, healers, factions, then m
   assert.equal(label({ healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;');
   assert.equal(label({ tanksShort: 2, healersShort: 1 }).innerHTML, '<b>&#9888; 2 tanks short</b> &#9656;');
   assert.equal(label({ mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
-  assert.equal(label({ missingCoverage: 3, healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;', 'a shortage outranks missing buffs; the strip lists the rest');
+  assert.equal(label({ missingCoverage: 3, healersShort: 1 }).innerHTML, '<b>&#9888; 1 healer short</b> &#9656;', 'a shortage outranks missing buffs; (the banner lists the rest)');
   assert.equal(label({ missingCoverage: 3, mixedFactions: true }).innerHTML, '<b>&#9888; Mixed factions</b> &#9656;');
   assert.equal(label({ missingCoverage: 3 }).innerHTML, '<b>3</b> missing &#9656;', 'buffs only when the roster itself is fine');
   assert.equal(label({}).hidden, true);
@@ -180,10 +180,10 @@ check('the phone link is a flex box that keeps the space between its number and 
   assert.match(rule, /\bgap: [\d.]+(em|px)/, 'flex drops the whitespace after </b>, so a gap restores it');
 });
 
-check('desktop always shows the readiness strip; only phones fold it', () => {
-  assert.match(css, /\.plan-feedback \{ display:flex;/);
-  assert.doesNotMatch(css.slice(0, css.lastIndexOf('/* ── Slim phone layout')), /\.plan-feedback\.feedback-open/);
-  assert.match(phoneCssAll(), /\.plan-feedback \{ display: none;/);
+check('the readiness banner is shown on desktop and on phones (phones only start it minimized)', () => {
+  assert.doesNotMatch(css, /\.plan-feedback|feedback-open/, 'the old strip rules are gone');
+  assert.doesNotMatch(phoneCssAll(), /\.readiness-banner \{ display: none/);
+  assert.doesNotMatch(renderJs, /setPhoneFeedbackOpen|phoneFeedbackOpen/, 'the strip open/close state is gone');
 });
 
 check('line 1 is the plan name; line 2 carries the seated count and notes marker', () => {
@@ -198,25 +198,16 @@ check('readiness link is hidden when nothing is wrong and when coverage is not m
   assert.equal(renderPhone(1).els['btn-summary-missing'].innerHTML, '<b>1</b> missing &#9656;');
 });
 
-check('feedback closes when the last warning goes away', () => {
-  const { els, ctx } = renderPhone(7);
-  vm.runInContext('setPhoneFeedbackOpen(true); lastReadiness = { missingCoverage: 0, tanksShort: 0, healersShort: 0, mixedFactions: false }; renderPhoneMissing();', ctx);
-  assert.equal(vm.runInContext('phoneFeedbackOpen', ctx), false);
-  assert.equal(els['plan-feedback'].classList.on, false);
-});
-
-check('clicking the missing link toggles the feedback text and opens the coverage panel', () => {
+check('clicking the missing link expands the banner (and keeps it expanded) and opens the coverage panel', () => {
   const { els, ctx } = renderPhone(7);
   els['buff-sidebar'] = { scrolled: false, scrollIntoView() { this.scrolled = true; } };
   const click = els['btn-summary-missing'].listeners.click;
   assert.ok(click, 'direct click handler on the button');
-  vm.runInContext('initSummaryMissing_ran = true', ctx);
   click();
-  assert.equal(els['plan-feedback'].classList.on, true);
-  assert.equal(els['btn-summary-missing'].attrs['aria-expanded'], 'true');
+  assert.deepEqual(ctx.ReadinessBanner.calls, [false], 'the banner is told to expand (not to toggle)');
   assert.ok(els['buff-sidebar'].scrolled);
   click();
-  assert.equal(els['plan-feedback'].classList.on, false);
+  assert.deepEqual(ctx.ReadinessBanner.calls, [false, false], 'a second click does not minimize it');
 });
 
 // ── Player editor sheet ────────────────────────────────────────────

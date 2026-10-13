@@ -1158,12 +1158,11 @@ ChangeLog.onRecord = entry => {
   setInterval(() => { if (ChangesPanel.isOpen()) ChangesPanel.render(); }, 60000);
 })();
 
-// Phone: the readiness strip (#plan-feedback) is folded away and a short link on line 2
-// of the context row opens it and the coverage panel. The link says what the strip
-// warns about, most serious first: tanks short, healers short, a mixed-faction
-// Classic roster ("⚠ 1 healer short"), then "N missing" for party buffs plus raid debuffs (the
-// two counts the strip names). Hidden when there is nothing to warn about or coverage
-// rules are not configured. Desktop always shows the strip.
+// Phone: a short link on line 2 of the context row expands the readiness banner and opens
+// the coverage panel. The link says what the banner warns about, most serious first: tanks
+// short, healers short, a mixed-faction Classic roster ("⚠ 1 healer short"), then "N missing"
+// for party buffs plus raid debuffs (the two counts the banner names). Hidden when there is
+// nothing to warn about or coverage rules are not configured. Desktop has no link.
 // lastReadiness is set by renderReadiness: {missingCoverage, tanksShort, healersShort, mixedFactions} or null.
 let lastReadiness = null;
 function phoneReadinessLabel(r) {
@@ -1175,35 +1174,20 @@ function phoneReadinessLabel(r) {
   if (r.missingCoverage > 0) return `<b>${r.missingCoverage}</b> missing &#9656;`;
   return '';
 }
-let phoneFeedbackOpen = false;
-function setPhoneFeedbackOpen(open) {
-  phoneFeedbackOpen = open;
-  const feedback = document.getElementById('plan-feedback');
-  if (feedback) feedback.classList.toggle('feedback-open', open);
-  const btn = document.getElementById('btn-summary-missing');
-  if (btn) btn.setAttribute('aria-expanded', String(open));
-}
 function renderPhoneMissing() {
   const btn = document.getElementById('btn-summary-missing');
   if (!btn) return;
   const label = phoneReadinessLabel(lastReadiness);
-  const show = !!label;
-  btn.hidden = !show;
-  // With the link gone nothing could close the feedback strip.
-  if (!show && phoneFeedbackOpen) setPhoneFeedbackOpen(false);
-  btn.setAttribute('aria-expanded', String(phoneFeedbackOpen));
-  if (show) btn.innerHTML = label;
+  btn.hidden = !label;
+  if (label) btn.innerHTML = label;
 }
 (function initSummaryMissing() {
   const btn = document.getElementById('btn-summary-missing');
   if (!btn) return;
   btn.addEventListener('click', () => {
-    const open = !phoneFeedbackOpen;
-    setPhoneFeedbackOpen(open);
-    if (open) {
-      setSidebarExpanded(true);
-      document.getElementById('buff-sidebar').scrollIntoView({ block: 'start' });
-    }
+    ReadinessBanner.set(false);
+    setSidebarExpanded(true);
+    document.getElementById('buff-sidebar').scrollIntoView({ block: 'start' });
   });
 })();
 

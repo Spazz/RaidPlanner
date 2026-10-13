@@ -273,7 +273,7 @@
       <div class="phone-summary-line2">
         <span class="phone-summary-sub" id="phone-summary-sub"></span>
         <div id="raid-size-phone-slot"></div>
-        <div class="phone-missing-slot"><button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="plan-feedback" title="Show coverage details" hidden></button></div>
+        <div class="phone-missing-slot"><button type="button" class="summary-missing" id="btn-summary-missing" aria-expanded="false" aria-controls="readiness-banner" title="Show coverage details" hidden></button></div>
       </div>
     </div>
     <div class="phone-context-body" id="phone-context-body" hidden>
@@ -330,8 +330,13 @@
     <textarea class="raid-notes-textarea" id="raid-notes-textarea" maxlength="2000" placeholder="MT swaps, add assignments, kill order..."></textarea>
     <p class="raid-notes-caption">Notes go into the raid chat text, print sheet, links you share and JSON, not the MRT string or compact chat.</p>
   </details>
-  <div class="plan-feedback" id="plan-feedback"><button type="button" class="readiness-line" id="readiness-text" title="Show coverage details"></button><span id="autosave-status" role="status"></span></div>
-  <div class="result-line" id="result-line" hidden><span id="result-line-text"></span><button type="button" class="result-line-dismiss" id="btn-result-dismiss" aria-label="Dismiss">&times;</button></div>
+  <div class="readiness-banner" id="readiness-banner">
+    <div class="rb-row"><button type="button" class="rb-chips" id="readiness-text" title="Show coverage details"></button><button type="button" class="rb-toggle" id="btn-readiness-minimize" aria-label="Minimize readiness" aria-expanded="true" aria-controls="readiness-banner">&#9650;</button></div>
+    <div class="rb-failed" id="save-failed" hidden><span class="chip danger" id="save-failed-chip"></span></div>
+    <div class="result-line" id="result-line" hidden><span id="result-line-text"></span><button type="button" class="result-line-dismiss" id="btn-result-dismiss" aria-label="Dismiss">&times;</button></div>
+    <button type="button" class="rb-bar" id="btn-readiness-expand" aria-label="Expand readiness" aria-expanded="false" aria-controls="readiness-banner"><span class="rb-chips compact" id="readiness-chips-min"></span><span class="rb-arrow" aria-hidden="true">&#9660;</span></button>
+  </div>
+  <span class="sr-only" id="autosave-status" role="status"></span>
   <div class="sync-banner" id="sync-banner" hidden aria-live="polite">
     <span id="sync-banner-text"></span>
     <div class="sync-banner-actions">

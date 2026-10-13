@@ -154,17 +154,6 @@ function liveCoverageGaps() {
   return coverageGapCounts(getRaidBuffCoverage(groups), getRaidDebuffCoverage(groups));
 }
 
-// The coverage part of the readiness line, as HTML built only from numbers and fixed
-// strings: "7 party buffs missing · 6 raid debuffs missing", one half alone when the
-// other is covered, or "All party buffs and raid debuffs covered".
-function coverageGapHtml(gaps) {
-  const part = (n, noun) => `<span class="readiness-short"><b>${n}</b> ${noun}${n === 1 ? '' : 's'} missing</span>`;
-  const parts = [];
-  if (gaps.buffs > 0) parts.push(part(gaps.buffs, 'party buff'));
-  if (gaps.debuffs > 0) parts.push(part(gaps.debuffs, 'raid debuff'));
-  return parts.length ? parts.join(' · ') : 'All party buffs and raid debuffs covered';
-}
-
 // ── UTILITY & BALANCE READINESS (backlog #2, #3) ────────────────
 // Two pure, DOM-free checks over State that extend the tank/healer floor
 // check already in renderReadiness(): a class-presence checklist for one-off
