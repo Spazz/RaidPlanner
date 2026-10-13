@@ -254,6 +254,7 @@ function persistWorkingPlan() {
   document.getElementById('btn-redo').disabled = !PlanSession.redo.length;
   mirrorSaveStatus();
   renderPhoneSummary();
+  if (typeof SplitFlow !== 'undefined') SplitFlow.syncMenu();
 }
 
 // The phone's context row: line 1 the plan name, line 2 "seated/size" (plus
@@ -351,6 +352,11 @@ function saveRosterToStorage(name, data) {
   rosters[name] = data;
   return safeSetItem(localStorage, 'pp_rosters', JSON.stringify(rosters));
 }
+// Asks before a save replaces a saved copy of the same name; true when the save may go ahead.
+async function confirmReplaceSavedCopy(name) {
+  if (!Object.prototype.hasOwnProperty.call(getSavedRosters(), name)) return true;
+  return Modal.confirm({ title: 'Replace saved copy?', message: `A saved copy named "${name}" exists. Replace it with the current plan?`, confirmLabel: 'Replace' });
+}
 function deleteRosterFromStorage(name) {
   const rosters = getSavedRosters();
   delete rosters[name];
@@ -410,7 +416,10 @@ function renderImportHistory(list, onLoad = () => {}, limit = 6) {
     showToast('Reopened imported roster');
     RaidHelperSync.check();
   });
-  list.querySelectorAll('[data-history-delete]').forEach(button => button.onclick = () => {
+  list.querySelectorAll('[data-history-delete]').forEach(button => button.onclick = async () => {
+    const entry = items.find(it => it.id === button.dataset.historyDelete);
+    const ok = await Modal.confirm({ title: 'Remove from recent imports?', message: `Remove "${entry ? entry.roster.name : 'this import'}" from recent imports?`, confirmLabel: 'Remove' });
+    if (!ok) return;
     try {
       ImportHistory.remove(localStorage, button.dataset.historyDelete);
       renderImportHistory(list, onLoad, limit);
@@ -474,9 +483,10 @@ function showSaveModal() {
   FocusTrap.open(overlay, trigger, closeSaveOverlay);
 
   document.getElementById('btn-cancel-save').onclick = closeSaveOverlay;
-  document.getElementById('btn-do-save').onclick = () => {
+  document.getElementById('btn-do-save').onclick = async () => {
     const name = document.getElementById('save-name-input').value.trim();
     if (!name) return;
+    if (!await confirmReplaceSavedCopy(name)) return;
     const data = Import.exportRoster(name);
     if (!saveRosterToStorage(name, data)) return;
     State.rosterName = name;
@@ -556,8 +566,10 @@ function showTemplatesModal() {
     });
   });
   modal.querySelectorAll('[data-template-delete]').forEach(btn => {
-    btn.addEventListener('click', e => {
+    btn.addEventListener('click', async e => {
       e.stopPropagation();
+      const ok = await Modal.confirm({ title: 'Delete template?', message: `Delete the template "${btn.dataset.templateDelete}"?`, confirmLabel: 'Delete' });
+      if (!ok) return;
       const deleted = Templates.delete(localStorage, btn.dataset.templateDelete, gameVersion, raid, btn.dataset.templateRaid);
       showTemplatesModal();
       showToast(deleted.success ? 'Template deleted' : deleted.error);
@@ -571,75 +583,6 @@ function showTemplatesModal() {
   });
 
   document.getElementById('template-name-input').focus();
-}
-
-// ── MODAL: LOAD ─────────────────────────────────────────────────
-function showLoadModal() {
-  const modal = document.getElementById('save-modal');
-  const overlay = document.getElementById('save-overlay');
-  const trigger = document.activeElement;
-  const rosters = getSavedRosters();
-  const names = Object.keys(rosters);
-
-  let listHTML = '';
-  if (names.length === 0) {
-    listHTML = '<p class="modal-empty-note">No saved rosters yet</p>';
-  } else {
-    for (const name of names) {
-      const r = rosters[name];
-      const count = r.players ? r.players.length : 0;
-      const raid = r.raid && Config.Raids[r.raid] ? raidSizeLabel(r.raid) : '';
-      listHTML += `<div class="saved-roster-item" data-name="${esc(name)}">
-        <div><span class="roster-item-name">${esc(name)}</span><br><span class="roster-item-meta">${count} players — ${esc(raid)}</span></div>
-        <button class="roster-item-delete" data-delete="${esc(name)}" title="Delete">&times;</button>
-      </div>`;
-    }
-  }
-
-  modal.innerHTML = `
-    <h3>Load Roster</h3>
-    <h4>Saved rosters</h4>
-    <div class="saved-roster-list">${listHTML}</div>
-    <h4>Import history</h4>
-    <p class="modal-note">Latest 30 imports in this browser. Snapshots do not include later edits.</p>
-    <div class="saved-list" id="load-history-list"></div>
-    <div class="import-buttons">
-      <button class="btn btn-secondary" id="btn-cancel-load">Close</button>
-    </div>`;
-
-  overlay.setAttribute('aria-label', 'Load Roster');
-  overlay.classList.add('visible');
-  FocusTrap.open(overlay, trigger, closeSaveOverlay);
-
-  renderImportHistory(document.getElementById('load-history-list'), () => closeSaveOverlay());
-  document.getElementById('btn-cancel-load').onclick = closeSaveOverlay;
-  overlay.onclick = e => { if (e.target === overlay) closeSaveOverlay(); };
-
-  modal.querySelectorAll('.saved-roster-item').forEach(item => {
-    item.addEventListener('click', e => {
-      if (e.target.dataset.delete) return;
-      const name = item.dataset.name;
-      const data = rosters[name];
-      if (Import.loadRoster(data)) {
-        ChangeLog.clear();
-        closeSaveOverlay();
-        initGroups();
-        commit();
-        showToast(`Loaded "${name}"`);
-        RaidHelperSync.check();
-      }
-    });
-  });
-
-  modal.querySelectorAll('.roster-item-delete').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const name = btn.dataset.delete;
-      if (!deleteRosterFromStorage(name)) return;
-      showLoadModal(); // re-render
-      showToast(`Deleted "${name}"`);
-    });
-  });
 }
 
 // ── MODAL: ATTENDANCE (feature-backlog-2.md #2) ──────────────────
@@ -1060,7 +1003,7 @@ const RaidHelperSync = {
     if (banner) banner.hidden = true;
   },
 
-  // "Backup X is ready — swap in?" — surfaced when a Refresh withdraws or
+  // "Standby X is ready — swap in?" — surfaced when a Refresh withdraws or
   // demotes a seated player who had a designated backup still on the bench
   // (see Import.applyRaidHelperSync's backupSwapReady). One click seats that
   // exact backup in the vacated group instead of a generic optimizer Swap In.
@@ -1070,8 +1013,8 @@ const RaidHelperSync = {
     const actions = document.getElementById('backup-banner-actions');
     if (!banner || !text || !actions) return;
     text.textContent = list.length === 1
-      ? `Backup ready: ${list[0].backupName.split('-')[0]} can take ${list[0].primaryName.split('-')[0]}'s seat.`
-      : `${list.length} backups are ready to swap in.`;
+      ? `Standby ready: ${list[0].backupName.split('-')[0]} can take ${list[0].primaryName.split('-')[0]}'s seat.`
+      : `${list.length} Standby players are ready to swap in.`;
     actions.innerHTML = list.map((item, i) =>
       `<button type="button" class="btn btn-primary" data-backup-swap="${i}">Swap in ${esc(item.backupName.split('-')[0])}</button>`
     ).join('') + '<button type="button" class="link-btn" id="backup-banner-dismiss">Dismiss</button>';
@@ -1132,6 +1075,21 @@ const SplitFlow = {
     const raid = Config.Raids[State.selectedRaid];
     text.textContent = `${total} sign-ups is more than one ${raid.size}-man raid holds.`;
     banner.hidden = false;
+  },
+  // The Plan menu entry: usable once the roster reaches the per-size threshold, else disabled with the reason.
+  menuState() {
+    const raid = Config.Raids[State.selectedRaid];
+    if (!raid) return { enabled: false, title: 'Pick a raid first' };
+    const need = RaidSplit.suggestThreshold(raid.size);
+    const total = State.roster.length + (State.bench || []).length;
+    return total >= need ? { enabled: true, title: 'Split the sign-ups into two raids' } : { enabled: false, title: `Needs at least ${need} players` };
+  },
+  syncMenu() {
+    const btn = document.getElementById('btn-split-plan');
+    if (!btn) return;
+    const state = this.menuState();
+    btn.disabled = !state.enabled;
+    btn.title = state.title;
   },
   dismiss() {
     const banner = document.getElementById('split-banner');
@@ -1232,6 +1190,7 @@ const SplitFlow = {
 };
 
 document.getElementById('btn-split-offer').addEventListener('click', () => SplitFlow.preview());
+document.getElementById('btn-split-plan').addEventListener('click', () => SplitFlow.preview());
 document.getElementById('btn-split-dismiss').addEventListener('click', () => SplitFlow.dismiss());
 document.getElementById('btn-split-cancel').addEventListener('click', () => document.getElementById('split-dialog').close());
 document.getElementById('btn-split-create').addEventListener('click', () => SplitFlow.create());

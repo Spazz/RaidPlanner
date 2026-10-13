@@ -522,7 +522,7 @@ check('hooks: sync, size and live are tracked; fresh imports and new plans clear
   assert.match(app.slice('async function applyShareCode', "document.getElementById('btn-share')"), /ChangeLog\.clear\(\)/);
   // Reopening an import from history and loading a saved roster are fresh loads too.
   assert.match(app.script, /\[data-history-open\][\s\S]{0,300}Import\.loadRoster\(item\.roster\)\) \{[^}]*\}\s*ChangeLog\.clear\(\);/);
-  assert.match(app.script, /\.saved-roster-item'\)\.forEach[\s\S]{0,300}if \(Import\.loadRoster\(data\)\) \{\s*ChangeLog\.clear\(\);/);
+  assert.match(app.script, /\.saved-open'\)\.forEach[\s\S]{0,900}Import\.loadRoster\(data\)\) \{[^}]*\}\s*ChangeLog\.clear\(\);/);
   for (const id of ['btn-clear', 'btn-landing-empty', 'btn-random']) {
     const at = app.script.indexOf(`getElementById('${id}').addEventListener`);
     assert(app.script.slice(at, at + 700).includes('ChangeLog.clear()'), id);

@@ -53,6 +53,7 @@
 !control-tests.js
 !input-tests.js
 !data-tests.js
+!saved-data-tests.js
 !import-tests.js
 !drums-tests.js
 !buffdata-tests.js

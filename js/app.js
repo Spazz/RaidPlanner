@@ -91,7 +91,22 @@ const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
   if (dismissBtn) dismissBtn.addEventListener('click', dismiss);
 })();
 
+// Asks, then removes one landing row: a working plan (kind 'plan', id = its plan key) or a saved
+// copy (kind 'copy', id = its name). Resolves true only when something was removed. Declining keeps it.
+async function deleteSavedEntry(kind, id, label) {
+  const ok = await Modal.confirm({ title: 'Delete plan', message: `Delete "${label}"? This can't be undone.`, confirmLabel: 'Delete' });
+  if (!ok) return false;
+  try {
+    if (kind === 'plan') PlanStore.remove(localStorage, id);
+    else if (!deleteRosterFromStorage(id)) return false;
+  } catch { showToast('Could not delete this plan from browser storage'); return false; }
+  showToast(`Deleted "${label}"`);
+  return true;
+}
+
 function renderLandingSavedList() {
+  const backupNote = document.getElementById('landing-last-backup');
+  if (backupNote) backupNote.textContent = BackupStamp.label(localStorage);
   const list = document.getElementById('landing-saved-list');
   if (!list) return;
   const rosters = getSavedRosters();
@@ -102,22 +117,33 @@ function renderLandingSavedList() {
     list.innerHTML = '<div class="saved-empty">No plans yet. Import a roster and your work will be saved here automatically.</div>';
     return;
   }
-  list.innerHTML = drafts.map(p => `<button type="button" class="saved-item" data-plan="${esc(p.data.planId)}">
-    <span class="saved-item-name">${esc(p.data.rosterName)}</span>
-    <span class="saved-item-meta">${p.data.groups.flat().length} seated · ${p.data.bench.length} benched · ${esc(new Date(p.updatedAt).toLocaleString())}</span>
-  </button>`).join('') + (names.length ? '<div class="saved-item-meta">Saved copies</div>' : '') + names.map(name => {
+  list.innerHTML = drafts.map(p => `<div class="history-row saved-row">
+    <button type="button" class="saved-item history-open saved-open" data-plan="${esc(LiveLinks.planKey(p.data))}">
+      <span class="saved-item-name">${esc(p.data.rosterName)}</span>
+      <span class="saved-item-meta">${p.data.groups.flat().length} seated · ${p.data.bench.length} benched · ${esc(new Date(p.updatedAt).toLocaleString())}</span>
+    </button>
+    <span class="row-actions"><button type="button" class="link-btn del" data-delete-plan="${esc(LiveLinks.planKey(p.data))}" data-label="${esc(p.data.rosterName)}" aria-label="Delete plan ${esc(p.data.rosterName)}">Delete</button></span>
+  </div>`).join('') + (names.length ? '<div class="saved-item-meta">Saved copies</div>' : '') + names.map(name => {
     const r = rosters[name];
     const count = r.players ? r.players.length : 0;
     const raid = r.raid && Config.Raids[r.raid] ? raidSizeLabel(r.raid) : '';
     const linked = r.sourceEventId ? ' \u00b7 Raid-Helper linked' : '';
-    return `<button type="button" class="saved-item" data-name="${esc(name)}">
-      <span class="saved-item-name">${esc(name)}</span>
-      <span class="saved-item-meta">${count} players${raid ? ' \u00b7 ' + esc(raid) : ''}${linked}</span>
-    </button>`;
+    return `<div class="history-row saved-row">
+      <button type="button" class="saved-item history-open saved-open" data-name="${esc(name)}">
+        <span class="saved-item-name">${esc(name)}</span>
+        <span class="saved-item-meta">${count} players${raid ? ' \u00b7 ' + esc(raid) : ''}${linked}</span>
+      </button>
+      <span class="row-actions"><button type="button" class="link-btn del" data-delete-copy="${esc(name)}" data-label="${esc(name)}" aria-label="Delete saved copy ${esc(name)}">Delete</button></span>
+    </div>`;
   }).join('');
-  list.querySelectorAll('.saved-item').forEach(item => item.addEventListener('click', () => {
+  list.querySelectorAll('[data-delete-plan], [data-delete-copy]').forEach(btn => btn.addEventListener('click', async () => {
+    const isPlan = btn.dataset.deletePlan !== undefined;
+    const removed = await deleteSavedEntry(isPlan ? 'plan' : 'copy', isPlan ? btn.dataset.deletePlan : btn.dataset.deleteCopy, btn.dataset.label);
+    if (removed) renderLandingSavedList();
+  }));
+  list.querySelectorAll('.saved-open').forEach(item => item.addEventListener('click', () => {
     if (item.dataset.plan) {
-      const plan = drafts.find(p => p.data.planId === item.dataset.plan);
+      const plan = drafts.find(p => LiveLinks.planKey(p.data) === item.dataset.plan);
       if (plan && PlanStore.restore(plan.data)) { ChangeLog.clear(); initGroups(); commit(); showView('app'); RaidHelperSync.check(); }
       return;
     }
@@ -285,7 +311,7 @@ function syncRaidNotesToggle() {
   const slots = ['btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
     'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot',
     'btn-redo:phone-sheet-quick-slot', 'btn-changes:phone-sheet-quick-slot',
-    'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
+    'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-split-plan:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
     'btn-refresh:phone-sheet-signups-slot', 'btn-attendance:phone-sheet-signups-slot', 'btn-random:phone-sheet-signups-slot',
     'raid-notes-panel:phone-context-notes-slot',
     'btn-export-backup:phone-sheet-data-slot', 'btn-import-backup:phone-sheet-data-slot', 'btn-shortcuts-help:phone-sheet-data-slot', 'btn-show-tips-again:phone-sheet-data-slot',
@@ -1013,6 +1039,7 @@ document.getElementById('btn-export-backup').addEventListener('click', () => {
   a.href = url; a.download = `party-planner-backup-${stamp}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  BackupStamp.record(localStorage);
   showToast('Backup downloaded');
 });
 
@@ -1072,6 +1099,8 @@ const BackupRestoreUI = {
 document.getElementById('btn-close-backup-restore').addEventListener('click', () => document.getElementById('backup-restore-dialog').close());
 
 document.getElementById('btn-import-backup').addEventListener('click', () => document.getElementById('backup-file-input').click());
+// The landing link runs the same file picker and restore flow; the input lives outside #app so it works there.
+document.getElementById('btn-landing-restore').addEventListener('click', () => document.getElementById('backup-file-input').click());
 document.getElementById('backup-file-input').addEventListener('change', (e) => {
   const input = e.target;
   const file = input.files && input.files[0];

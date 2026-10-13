@@ -86,8 +86,12 @@
 
       <div class="import-pane" data-pane="saved" hidden>
         <h3 class="roster-section-heading">Your plans</h3>
-        <p>Latest changes saved automatically on this device.</p>
         <div class="saved-list" id="landing-saved-list"></div>
+        <div class="foot-note">Saved automatically in this browser only. Clearing site data removes them.</div>
+        <div class="row-actions">
+          <button type="button" class="link-btn" id="btn-landing-restore">Restore from a backup file</button>
+          <span class="saved-item-meta" id="landing-last-backup"></span>
+        </div>
         <h3 class="roster-section-heading">Recent imports</h3>
         <p>Original import snapshots. Your plans above keep subsequent edits.</p>
         <div class="saved-list" id="landing-history-list"></div>
@@ -211,6 +215,7 @@
             <button type="button" class="menu-item" role="menuitem" id="btn-load" aria-label="Load a saved roster or recent import"><span class="btn-label">Open saved plan&hellip;</span></button>
             <button type="button" class="menu-item" role="menuitem" id="btn-save" aria-label="Save a copy of the current plan" title="Save a copy (Ctrl+S). Your plan also saves itself as you edit." aria-keyshortcuts="Control+S Meta+S"><span class="btn-label">Save a copy</span><kbd class="menu-kbd" aria-hidden="true">Ctrl+S</kbd></button>
             <button type="button" class="menu-item" role="menuitem" id="btn-templates" aria-label="Save or apply a comp template">Comp templates&hellip;</button>
+            <button type="button" class="menu-item" role="menuitem" id="btn-split-plan" aria-label="Split the sign-ups into two raids">Split into two raids</button>
             <button type="button" class="menu-item menu-item-danger" role="menuitem" id="btn-clear" aria-label="Clear all players and groups">Clear board</button>
           </div>
           <div class="menu-sep"></div>
@@ -225,7 +230,6 @@
             <div class="menu-heading" id="menu-heading-data">Data &amp; help</div>
             <button type="button" class="menu-item" role="menuitem" id="btn-export-backup" aria-label="Download a backup of every saved roster, template and plan stored in this browser">Export data backup</button>
             <button type="button" class="menu-item" role="menuitem" id="btn-import-backup" aria-label="Restore a Party Planner data backup file">Import data backup&hellip;</button>
-            <input type="file" id="backup-file-input" accept="application/json,.json" hidden>
             <button type="button" class="menu-item" role="menuitem" id="btn-shortcuts-help" title="Keyboard shortcuts (?)">Keyboard shortcuts</button>
             <button type="button" class="menu-item" role="menuitem" id="btn-show-tips-again" aria-label="Show the first-run feature tips again">Show tips again</button>
           </div>
@@ -481,6 +485,7 @@
   <p>Built from your named saved rosters (Save button) for the current game version. Read-only — recent imports and working-plan autosaves aren't counted, so this only reflects rosters you deliberately kept.</p>
   <div id="attendance-body"></div>
 </dialog>
+<input type="file" id="backup-file-input" accept="application/json,.json" hidden>
 <dialog id="backup-restore-dialog" class="history-dialog" aria-labelledby="backup-restore-heading">
   <div class="history-dialog-header">
     <h3 id="backup-restore-heading">Restore data backup</h3>

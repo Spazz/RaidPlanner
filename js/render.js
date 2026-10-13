@@ -271,7 +271,7 @@ function seatedSlotHTML(p, gi, si) {
   const backupName = Backups.backupNameFor(p.name);
   // Compact indicator — the full pairing is in the title tooltip so the
   // card stays narrow enough not to crowd out the player's own name.
-  const backupBadge = backupName ? `<span class="backup-badge" title="Backup: ${esc(backupName.split('-')[0])}">B</span>` : '';
+  const backupBadge = backupName ? `<span class="backup-badge" title="Standby: ${esc(backupName.split('-')[0])}" aria-label="Standby: ${esc(backupName.split('-')[0])}">S</span>` : '';
   // Constraint badges (backlog #3) reuse the buff-icon tooltip portal
   // (data-tt-*) rather than a new hover mechanism — see the player-slot
   // "why here" editor section for the full explanation.
@@ -1816,7 +1816,7 @@ const SignupTray = {
       ? (p.spec + ' ' + (p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : ''))
       : '';
     const backupPrimary = Backups.primaryNameFor(p.name);
-    const backupBadge = backupPrimary ? `<span class="backup-badge backup-badge-bench" title="Backup for ${esc(backupPrimary.split('-')[0])}">-&gt; ${esc(backupPrimary.split('-')[0])}</span>` : '';
+    const backupBadge = backupPrimary ? `<span class="backup-badge backup-badge-bench" title="Standby for ${esc(backupPrimary.split('-')[0])}" aria-label="Standby for ${esc(backupPrimary.split('-')[0])}">-&gt; ${esc(backupPrimary.split('-')[0])}</span>` : '';
     const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
     return `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}${changedSlotClass(p)}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'on the bench'))}" data-bench-slot="${entry.bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
       ${getSpecIcon(p)}
@@ -2353,17 +2353,17 @@ function showPlayerEditor(anchorEl, opts) {
     <div class="player-editor-error" id="pe-error"></div>
     ${isAdd ? `<div class="preferred-actions"><p>Choose a class and spec to request a player. No name needed; confirmed matching imports fill this spot.</p><button type="button" class="pe-btn pe-btn-primary" id="pe-prefer">${preference ? 'Update preference' : 'Set preferred slot'}</button>${preference ? '<button type="button" class="pe-btn pe-btn-danger" id="pe-remove-preference">Remove preference</button>' : ''}</div>` : ''}
     ${!isAdd && benched ? `<div class="player-move pe-more-only">
-      <label for="pe-backup-for">Backup for</label>
+      <label for="pe-backup-for">Standby for</label>
       <select id="pe-backup-for">
-        <option value="">Not a backup</option>
+        <option value="">Not on Standby</option>
         ${State.roster.map(sp => `<option value="${esc(sp.name)}"${Backups.backupNameFor(sp.name) === curName ? ' selected' : ''}>${esc((sp.name || '').split('-')[0])} (${esc(sp.spec)} ${esc(RosterEdit.ClassLabel(sp.class))})</option>`).join('')}
       </select>
-      <button type="button" class="pe-btn" id="pe-backup-save">Save backup</button>
+      <button type="button" class="pe-btn" id="pe-backup-save">Save Standby</button>
     </div>` : ''}
     ${!isAdd && !benched && Backups.backupNameFor(curName) ? `<div class="player-move pe-backup-row">
-      <span class="pe-short-only">Backup: <b>${esc(Backups.backupNameFor(curName).split('-')[0])}</b></span>
-      <button type="button" class="pe-btn pe-short-only" id="pe-backup-swap">Swap in backup</button>
-      <button type="button" class="pe-btn pe-btn-danger pe-more-only" id="pe-backup-clear">Remove backup</button>
+      <span class="pe-short-only">Standby: <b>${esc(Backups.backupNameFor(curName).split('-')[0])}</b></span>
+      <button type="button" class="pe-btn pe-short-only" id="pe-backup-swap">Swap in Standby</button>
+      <button type="button" class="pe-btn pe-btn-danger pe-more-only" id="pe-backup-clear">Remove Standby</button>
     </div>` : ''}
     ${!isAdd && !benched && player.locked ? `<div class="player-move pe-more-only">
       <span>Locked by comp template</span>
@@ -2403,7 +2403,7 @@ function showPlayerEditor(anchorEl, opts) {
     // run immediately — no need to wait on a paint/animation frame, which
     // some hidden/backgrounded tabs never schedule.
     const spotlightAnchor = editor.querySelector('.player-constraints') || editor.querySelector('.player-why-here') || editor;
-    showSpotlightCallout('player-editor-features', spotlightAnchor, 'Constraints, backup links and "Why here?" all live in this panel.');
+    showSpotlightCallout('player-editor-features', spotlightAnchor, 'Constraints, Standby links and "Why here?" all live in this panel.');
   }
 
   const nameInput = editor.querySelector('#pe-name');
@@ -2455,7 +2455,7 @@ function showPlayerEditor(anchorEl, opts) {
       if (!result.success) { showError(result.error); return; }
     }
     closePlayerEditor(); commit();
-    showToast(target ? `${curName.split('-')[0]} is now backup for ${target.split('-')[0]}` : 'Backup link removed');
+    showToast(target ? `${curName.split('-')[0]} is now Standby for ${target.split('-')[0]}` : 'Standby link removed');
   });
   editor.querySelector('#pe-backup-swap')?.addEventListener('click', () => {
     const result = Backups.swapIn(curName, found.groupIdx);
@@ -2464,7 +2464,7 @@ function showPlayerEditor(anchorEl, opts) {
     showToast(`Swapped in ${result.player.name.split('-')[0]} for ${curName.split('-')[0]}`);
   });
   editor.querySelector('#pe-backup-clear')?.addEventListener('click', () => {
-    Backups.unlink(curName); closePlayerEditor(); commit(); showToast('Backup link removed');
+    Backups.unlink(curName); closePlayerEditor(); commit(); showToast('Standby link removed');
   });
 
   editor.querySelector('#pe-unlock')?.addEventListener('click', () => {

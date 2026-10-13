@@ -167,6 +167,12 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .history-open.saved-item { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 4px; overflow-wrap: anywhere; }
 .history-remove { flex: 0 0 32px; min-height: 36px; border: 1px solid var(--border-medium); background: var(--bg-card); color: var(--text-muted); cursor: pointer; font-size: 18px; }
 .history-remove:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.row-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.row-actions .link-btn.del { color: var(--text-muted); font-size: 11px; padding: 8px 6px; }
+.row-actions .link-btn.del:hover { color: var(--danger-bright); }
+.landing .row-actions .link-btn.del { font-size: 13px; }
+.foot-note { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
+.landing .foot-note { font-size: 13px; }
 .roster-section-heading { font-family: var(--font-cond); font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent-gold); }
 .saved-list.history-preview { max-height: none; }
 .history-more { width: 100%; margin-top: 6px; }

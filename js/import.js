@@ -299,7 +299,7 @@ const Import = {
     };
 
     // A player who was seated and just lost that seat (withdrew, or went
-    // Tentative) is a candidate for the "Backup ready — swap in?" prompt
+    // Tentative) is a candidate for the "Standby ready — swap in?" prompt
     // below, so their seat is captured before unseat() clears groupNumber.
     const vacated = [];
     for (const player of diff.removed) {

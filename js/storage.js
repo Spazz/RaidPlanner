@@ -185,6 +185,19 @@ const PlanStore = {
     if (planKey) this.known[planKey] = entry.updatedAt;
     return { evicted, reason };
   },
+  // Deletes one plan by its LiveLinks.planKey and keeps every other entry as stored. A waiting save goes
+  // out first so it cannot write the plan back afterwards; autosave only writes when the plan changes
+  // again. Returns whether an entry was removed; throws if storage refuses the write.
+  remove(storage, planKey) {
+    if (!planKey) return false;
+    if (this.pending && this.pending.storage === storage) this.flush();
+    const { entries } = this._load(storage);
+    const kept = entries.filter(e => !(e && e.data && LiveLinks.planKey(e.data) === planKey));
+    if (kept.length === entries.length) return false;
+    storage.setItem(this.key, JSON.stringify(kept));
+    delete this.known[planKey];
+    return true;
+  },
   // save() after a short pause, so typing does not rewrite every plan on each keystroke.
   // onDone gets {ok, evicted} or {ok:false, error}. A waiting save of another plan goes out first.
   saveSoon(storage, data, onDone) {
@@ -477,6 +490,22 @@ const Templates = {
     if (template.playerConstraints !== undefined) State.playerConstraints = Constraints.clean(template.playerConstraints);
     if (template.drummers !== undefined) State.drummers = Drummers.clean(template.drummers);
     return { success:true, matched:result.matched, unmatched:result.unmatched };
+  },
+};
+
+// When "Export data backup" last succeeded in this browser. Device-local on purpose: it is not in
+// DataBackup.keys, so a restored file never carries another device's date.
+const BackupStamp = {
+  key: 'pp_last_backup_at',
+  record(storage, now = Date.now()) {
+    try { storage.setItem(this.key, String(now)); return true; } catch { return false; }
+  },
+  // "Last backup: 9 Oct 2026", or "No backup yet" when none was made here.
+  label(storage) {
+    let at = NaN;
+    try { at = Number(storage.getItem(this.key)); } catch {}
+    if (!Number.isFinite(at) || at <= 0) return 'No backup yet';
+    return 'Last backup: ' + new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   },
 };
 
