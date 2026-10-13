@@ -188,12 +188,12 @@ return { ${exported.join(', ')} };
 
   // ── U3: version switch ────────────────────────────────────────────
   const versionSrc = app.slice('async function switchGameVersion', 'function renderRaidSizeControl');
-  function makeVersionEnv({ work = true, answer = true, benched = 0, view = 'app' } = {}) {
+  function makeVersionEnv({ work = true, answer = true, benched = 0, view = 'app', toastNote } = {}) {
     const log = { confirm: [], toasts: [], tabs: [], initGroups: 0, landing: 0 };
     const deps = {
       GameVersions: {
         tbc: { name: 'WoW TBC', defaultRaid: 'bt', note: 'TBC note.' },
-        classic: { name: 'WoW Classic', defaultRaid: 'mc', note: 'Classic note.' },
+        classic: { name: 'WoW Classic', defaultRaid: 'mc', note: 'Classic note.', ...(toastNote ? { toastNote } : {}) },
       },
       Config: { Raids: { bt: { size: 25 }, mc: { size: 40 }, kara: { size: 10 } } },
       State: { view, gameVersion: 'tbc', selectedRaid: 'bt', planId: 'plan:1', buffOverrides: { '0:a:air': 'GRACE_OF_AIR' }, preferredSlots: [{ group: 0 }] },
@@ -240,6 +240,15 @@ return { ${exported.join(', ')} };
     env = makeVersionEnv({ benched: 0 });
     await env.switchGameVersion('classic');
     assert.equal(env.log.toasts[0], 'Classic note.');
+  });
+
+  await check('the version-switch toast prefers the short toastNote and falls back to note', async () => {
+    let env = makeVersionEnv({ toastNote: 'Short classic note.' });
+    await env.switchGameVersion('classic');
+    assert.equal(env.log.toasts[0], 'Short classic note.');
+    env = makeVersionEnv({ benched: 2, toastNote: 'Short classic note.' });
+    await env.switchGameVersion('classic');
+    assert.match(env.log.toasts[0], /^2 players benched: the 40-man raid is full\. Short classic note\.$/);
   });
 
   await check('switching version from the landing view re-renders it so the resume banner is current', async () => {
@@ -330,7 +339,7 @@ return { ${exported.join(', ')} };
     const src = app.slice('// ── SHARED IMPORT RUNNER', "document.getElementById('btn-plain-import-cancel')");
     const els = {
       inp: { value: 'data', focus() {} },
-      btn: { disabled: false },
+      btn: { disabled: false, textContent: 'Load', setAttribute() {}, removeAttribute() {} },
       st: { textContent: '', classList: { toggle() {} } },
     };
     const document = { getElementById: id => els[id] };

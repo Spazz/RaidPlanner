@@ -739,7 +739,7 @@ function showAttendanceModal() {
   const versions = Object.keys(data);
   if (!versions.length) {
     document.getElementById('attendance-body').innerHTML =
-      '<div class="saved-empty">No named saved rosters yet. Save a roster (toolbar &rarr; Save) after a raid to start building attendance history.</div>';
+      '<div class="saved-empty">No saved copies yet. After a raid, use Plan menu &gt; Save a copy to start building attendance history.</div>';
     dialog.showModal();
     return;
   }
@@ -865,19 +865,50 @@ const ImportGate = {
   isStale(ticket) { return ticket !== this.latest; },
 };
 
+// One plain sentence plus one next step for each way an import can fail. `failure` is
+// { http: status } | { timeout: true } | { network: true } | { raw: 'error text from Import' }.
+// Anything unmapped keeps its raw text (a raw Import error keeps its 'Import failed: ' prefix).
+function importErrorMessage(failure) {
+  const f = failure || {};
+  if (f.timeout) return "Raid-Helper took too long to answer. Try again, or paste the event's JSON export.";
+  if (f.network) return "Couldn't reach Raid-Helper. Your connection may be down, or the browser blocked the request. Paste the event's JSON export instead.";
+  if (f.notAnEvent) return "Raid-Helper answered with something that isn't an event export. Try again, or paste the event's JSON export.";
+  if (f.http === 401 || f.http === 403) return "Raid-Helper won't share that event. It may be private: paste its JSON export instead.";
+  if (f.http === 404) return "Raid-Helper couldn't find that event. Check the link or ID. For a private event, paste its JSON export instead.";
+  if (f.http) return `Raid-Helper returned an error (HTTP ${f.http}). Try again in a minute, or paste the event's JSON export.`;
+  const raw = String(f.raw || '');
+  if (/^Invalid JSON/.test(raw)) return "We couldn't read that as a Raid-Helper link, event ID, JSON or player list. A player line looks like: Thrall - Enhancement Shaman.";
+  if (/^No 'slots' or 'signUps' array/.test(raw)) return "That JSON isn't a Raid-Helper event export. Use the event's JSON export, or paste a player list.";
+  if (/^No valid players found/.test(raw)) return 'That event has no sign-ups with a class yet.';
+  if (/invalid game version or raid/.test(raw)) return "That event's game version or raid isn't supported here.";
+  return 'Import failed: ' + raw;
+}
+
+// The same failure classes for Refresh, which has no paste box to point at.
+function refreshErrorMessage(failure) {
+  const f = failure || {};
+  if (f.timeout) return 'Raid-Helper took too long to answer. Try Refresh again.';
+  if (f.network) return "Couldn't reach Raid-Helper. Check your connection and try Refresh again.";
+  if (f.http === 404) return "Raid-Helper couldn't find this event any more. It may have been deleted or made private.";
+  if (f.http === 401 || f.http === 403) return "Raid-Helper won't share this event any more. It may have been made private.";
+  return `Raid-Helper returned an error (HTTP ${f.http}). Try Refresh again in a minute.`;
+}
+
 // Fetch roster JSON from a URL. Resolves to the body, or null after reporting.
-async function fetchRosterJson(url, report) {
+// `context` is 'import' (the default) or 'refresh': it picks which wording the failures use.
+async function fetchRosterJson(url, report, context = 'import') {
+  const describe = context === 'refresh' ? refreshErrorMessage : importErrorMessage;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {
     const resp = await fetch(url, { signal: controller.signal, mode: 'cors', credentials: 'omit' });
     clearTimeout(timeoutId);
-    if (!resp.ok) { report(`Fetch failed: HTTP ${resp.status}`, true); return null; }
+    if (!resp.ok) { report(describe({ http: resp.status }), true); return null; }
     return await resp.text();
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') report('Request timed out — try again or paste the JSON directly', true);
-    else if (err instanceof TypeError) report('Network error — the server may not allow direct browser requests. Try pasting the JSON instead.', true);
+    if (err.name === 'AbortError') report(describe({ timeout: true }), true);
+    else if (err instanceof TypeError) report(describe({ network: true }), true);
     else report('Fetch failed: ' + err.message, true);
     return null;
   }
@@ -893,7 +924,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
 
   if (src.text && src.text.startsWith('PP:')) {
     const result = Import.importAddonString(src.text);
-    if (!result.success) { report('Import failed: ' + result.error, true); return false; }
+    if (!result.success) { report(importErrorMessage({ raw: result.error }), true); return false; }
     State.planId = null;
     ChangeLog.clear();
     if (!src.text.startsWith('PP:2:') || State.rosterName === NO_ROSTER_NAME || State.rosterName === 'Imported Roster') State.rosterName = PlanStore.nameFor({}, null);
@@ -914,6 +945,8 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   let metadata;
   let isValidJson = true;
   try { metadata = JSON.parse(jsonStr); } catch { metadata = {}; isValidJson = false; }
+  // A fetched link whose body is not JSON (an HTML error page, say) is not the user's paste.
+  if (src.url && !isValidJson) { report(importErrorMessage({ notAnEvent: true }), true); return false; }
 
   // Backlog #6: a paste that isn't JSON and wasn't a Raid-Helper URL falls
   // back to the tolerant plain-text/CSV roster parser. It never replaces the
@@ -931,7 +964,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   // non-blocking suggestion — never applied automatically, never blocks import.
   if (Array.isArray(metadata.signUps) && metadata.templateId) maybeSuggestVersionSwitch(metadata.templateId);
   if (Array.isArray(metadata.players)) {
-    if (!Import.loadRoster(metadata)) { report('Import failed: invalid game version or raid', true); return false; }
+    if (!Import.loadRoster(metadata)) { report(importErrorMessage({ raw: 'invalid game version or raid' }), true); return false; }
     ChangeLog.clear();
     initGroups(); commit();
     showToast('Loaded saved roster');
@@ -961,7 +994,7 @@ async function importFromText(raw, report = (m) => showToast(m)) {
   const result = Import.importRaidHelper(jsonStr);
   if (!result.success) {
     if (previousPlan) PlanStore.restore(previousPlan);
-    report('Import failed: ' + result.error, true);
+    report(importErrorMessage({ raw: result.error }), true);
     return false;
   }
   if (result.preferredImport) {
@@ -1031,12 +1064,22 @@ const PlainRosterImport = {
       : '';
     const flaggedCount = parsed.entries.filter(e => e.status === 'needsReview').length;
     const summary = document.getElementById('plain-import-summary');
-    if (summary) summary.textContent =
-      `${parsed.entries.length} player${parsed.entries.length === 1 ? '' : 's'} recognized` +
-      (flaggedCount ? `, ${flaggedCount} flagged for review` : '') +
-      (parsed.unparsed.length ? `, ${parsed.unparsed.length} line${parsed.unparsed.length === 1 ? '' : 's'} skipped` : '') + '.';
+    if (summary) summary.textContent = PlainRosterImport.summaryText(parsed, flaggedCount);
     body.innerHTML = rows + unparsedHtml;
     document.getElementById('btn-plain-import-confirm').disabled = !parsed.entries.length;
+  },
+
+  // Names where the players go, using the same raid pick importPlainRoster makes.
+  summaryText(parsed, flaggedCount) {
+    const count = parsed.entries.length;
+    if (!count) return 'No players recognized.';
+    const raidKey = Import.plainRosterRaid(count, State.gameVersion, State.selectedRaid);
+    const raid = Config.Raids[raidKey];
+    const version = GameVersions[State.gameVersion];
+    const target = raid ? `${version ? version.name + ' ' : ''}${raid.name} (${raid.size}-man)` : 'the selected raid';
+    return `${count} player${count === 1 ? '' : 's'} into ${target}. Groups are arranged automatically.` +
+      (flaggedCount ? ` ${flaggedCount} flagged for review.` : '') +
+      (parsed.unparsed.length ? ` ${parsed.unparsed.length} line${parsed.unparsed.length === 1 ? '' : 's'} skipped.` : '');
   },
 
   preview(parsed, report) {
@@ -1053,7 +1096,7 @@ const PlainRosterImport = {
     const result = Import.importPlainRoster(parsed.entries);
     dialog.close();
     this.pending = null;
-    if (!result.success) { showToast('Import failed: ' + result.error); return; }
+    if (!result.success) { showToast(importErrorMessage({ raw: result.error })); return; }
     State.planId = null;
     ChangeLog.clear();
     const landingBox = document.getElementById('landing-import');
@@ -1091,7 +1134,7 @@ const RaidHelperSync = {
     const eventId = State.sourceEventId;
     const planId = State.planId;
     if (!eventId) return null;
-    const json = await fetchRosterJson(this.eventsApiUrl(eventId), report);
+    const json = await fetchRosterJson(this.eventsApiUrl(eventId), report, 'refresh');
     if (json == null || State.sourceEventId !== eventId || State.planId !== planId) return null;
     const diff = Import.diffRaidHelperSignUps(json);
     if (!diff.success) { report('Refresh failed: ' + diff.error, true); return null; }
@@ -1351,13 +1394,18 @@ async function runImport(inputId, statusId, btnId, onSuccess) {
   if (btn.disabled) return;   // this runner's import is still in flight (Enter / Ctrl+Enter / a double click)
   const text = input.value.trim();
   if (!text) { report('Paste something first', true); input.focus(); return; }
+  const idleLabel = btn.textContent;
   btn.disabled = true;
+  btn.textContent = 'Loading...';
+  btn.setAttribute('aria-busy', 'true');
   report('', false);
   try {
     const ok = await importFromText(text, report);
     if (ok) { report('', false); input.value = ''; onSuccess(); }
   } finally {
     btn.disabled = false;
+    btn.textContent = idleLabel;
+    btn.removeAttribute('aria-busy');
   }
 }
 

@@ -33,7 +33,7 @@
     <div class="game-header-brand"><span class="game-header-mark" aria-hidden="true">P</span><div><strong>Party Planner</strong><small>Choose your era</small></div></div>
     <nav class="game-version-nav" aria-label="Game version">
       <button type="button" class="game-version-tab" data-version="classic" aria-pressed="false" aria-label="WoW Classic"><span class="game-eyebrow">World of Warcraft</span><span class="game-name">Classic</span></button>
-      <button type="button" class="game-version-tab" data-version="tbc" aria-pressed="true" aria-label="WoW TBC"><span class="game-eyebrow">Burning Crusade</span><span class="game-name">TBC</span></button>
+      <button type="button" class="game-version-tab" data-version="tbc" aria-pressed="true" aria-label="TBC Anniversary"><span class="game-eyebrow">Burning Crusade</span><span class="game-name">TBC</span></button>
       <button type="button" class="game-version-tab" data-version="forever" aria-pressed="false" aria-label="WoW Forever Beta"><span class="game-eyebrow">World of Warcraft</span><span class="game-name">Forever<span class="game-beta">Beta</span></span></button>
     </nav>
     <span class="game-header-caption">Your raid. Your rules.<br>One planner for every era.</span>
@@ -52,10 +52,10 @@
 
   <section class="hero">
     <div class="hero-copy">
-      <div class="hero-kicker">WoW Classic &middot; WoW TBC &middot; WoW Forever Beta</div>
+      <div class="hero-kicker">WoW Classic &middot; TBC Anniversary &middot; WoW Forever Beta</div>
       <p id="landing-version-note"></p>
       <h2>Optimal raid groups <em>in one click.</em></h2>
-      <p>Paste your Raid-Helper sign-ups and get raid groups built to hit harder. No spreadsheet, no login, nothing uploaded.</p>
+      <p>Paste your Raid-Helper sign-ups and get raid groups built to hit harder. No spreadsheet, no login; imports stay in your browser.</p>
       <ul class="hero-points">
         <li>Melee ride with Windfury, casters get their totems, tanks stay with their healers.</li>
         <li>See every buff you're missing and fix it in one click.</li>
@@ -75,9 +75,9 @@
       </div>
 
       <div class="import-pane" data-pane="import">
-        <p>Paste a Raid-Helper link, event ID, JSON export, or <code>PP:</code> roster string. We’ll recognize the format automatically.</p>
-        <label for="landing-import" class="sr-only">Raid-Helper link, event ID, JSON, or roster string</label>
-        <textarea class="import-field" id="landing-import" placeholder="Paste a Raid-Helper link, event ID, or JSON here…" spellcheck="false"></textarea>
+        <p>Paste a Raid-Helper event link or ID, its JSON export, a Party Planner share code, or a plain list of players (one per line). Your plans save automatically in this browser.</p>
+        <label for="landing-import" class="sr-only">Raid-Helper link, event ID, JSON, share code or player list</label>
+        <textarea class="import-field" id="landing-import" placeholder="Paste a Raid-Helper link, event ID, JSON or a player list" spellcheck="false"></textarea>
         <div class="import-actions">
           <button type="button" class="btn btn-primary btn-lg" id="btn-landing-import">Load roster</button>
           <span class="import-status" id="landing-status-import" role="status"></span>
@@ -102,10 +102,9 @@
   </section>
 
   <section class="landing-section" id="whats-new">
-    <div class="section-title">What's new <span class="app-version" id="app-version"></span></div>
-    <div id="whats-new-body"></div>
-    <div class="whats-new-foot">
-      <button type="button" class="link-btn" id="btn-whats-new-dismiss">Got it, hide this</button>
+    <div class="whats-line" id="whats-new-line">
+      <span><strong>New in <span class="app-version" id="app-version"></span>:</strong> <span id="whats-new-title"></span> <button type="button" class="link-btn" id="btn-whats-new-toggle" aria-expanded="false" aria-controls="whats-new-body">What's new</button></span>
+      <div id="whats-new-body" hidden></div>
     </div>
   </section>
 
@@ -120,12 +119,12 @@
       <div class="step">
         <div class="step-num">2</div>
         <h3>Optimize</h3>
-        <p>One click builds your groups around the buffs that matter most. Too many sign-ups? The strongest raid gets seated and the rest wait on the bench.</p>
+        <p>Import arranges groups automatically, except that an event whose Raid-Helper groups are already set keeps them. Press Optimize after any change to rebuild your groups around the buffs that matter most. Too many sign-ups? The strongest raid gets seated and the rest wait on the bench.</p>
       </div>
       <div class="step">
         <div class="step-num">3</div>
-        <h3>Export</h3>
-        <p>Check your buff coverage, drag anyone you want moved, then share a link that carries the whole layout.</p>
+        <h3>Share</h3>
+        <p>Check your buff coverage, drag anyone you want moved, then use Share: Copy for MRT for the in-game groups, or Copy live link to send the plan.</p>
       </div>
     </div>
   </section>
@@ -138,7 +137,7 @@
       <div class="feature"><h3>Nobody gets dropped</h3><p>More sign-ups than seats? The strongest raid gets seated and everyone else waits on the bench, ready to swap in.</p></div>
       <div class="feature"><h3>Missing buffs, fixed</h3><p>See every buff your raid isn't getting, who could provide it, and fix it in one click.</p></div>
       <div class="feature"><h3>Drag, drop, override</h3><p>Move anyone between groups, edit a spec, or pick a different totem or aura.</p></div>
-      <div class="feature"><h3>Share with your raid</h3><p>Send a link that carries the whole layout, or download it as JSON. Nothing is stored on a server.</p></div>
+      <div class="feature"><h3>Share with your raid</h3><p>Send a live link that updates as you plan, or download the plan as JSON. Live links are stored on our server until 30 days after their last change.</p></div>
     </div>
   </section>
 
@@ -151,19 +150,19 @@
     <div class="section-title">Frequently asked questions</div>
     <div class="faq">
       <details><summary>Is Party Planner free?</summary><p>Yes. There is no account, no login and no paid tier. Everything runs in your browser.</p></details>
-      <details><summary>Where does my roster data go?</summary><p>Sign-ups are fetched by your browser directly from Raid-Helper and never touch our server. Named saves and your latest 30 imports live in this browser's local storage. Working plans save your latest changes automatically, while import history keeps the original snapshots. Clearing site data removes both saves and history. Share links carry the layout in the URL fragment, which browsers never send to the host.</p></details>
+      <details><summary>Where does my roster data go?</summary><p>Imports and saved plans stay in this browser. A live link is stored on our server so others can open it: anyone with the link can see and edit the plan, and it expires 30 days after its last change. A long snapshot link (#r=...) carries the plan inside the link itself, and browsers never send that part to our server.</p></details>
       <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive, so melee end up with Windfury, casters with their totems and auras, and tanks with their healers. Optimize places buffs where they add the most damage, and you can drag anyone afterwards.</p></details>
       <details><summary>What happens when more people sign up than the raid holds?</summary><p>You always keep enough tanks and healers. The remaining seats go to whoever adds the most, and everyone else waits on the bench, where you can swap them in with one click.</p></details>
-      <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/raidplan/&lt;id&gt;</code>) in a new tab, copy the JSON, and paste the JSON into the import box.</p></details>
+      <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/v4/events/&lt;id&gt;</code>) in a new tab, copy the JSON, and paste the JSON into the import box.</p></details>
       <details><summary>People signed up after I built the groups. Do I start over?</summary><p>No. A roster imported from a Raid-Helper link remembers its event. When you reopen a saved roster, the planner checks the event and shows what changed. Click Refresh (in the gear menu, under Sign-ups, or on the banner) to add new sign-ups to the bench, remove anyone who withdrew, and update changed specs, while everyone else keeps their seat.</p></details>
       <details><summary>Where do Bench, Tentative, Late and Absent sign-ups go?</summary><p>Into the Sign-ups panel under the groups, one tab per Raid-Helper status. Only confirmed sign-ups are seated automatically. Drag anyone from Bench, Tentative or Late into a group when you want them; Absent players can be seated too, after you confirm (and pick a class if they didn't). On Refresh, people move between tabs as their Raid-Helper status changes.</p></details>
       <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick 10 on the Raid size switch above the groups and the planner switches to two groups with 10-man tank and healer floors.</p></details>
       <details><summary>Does it support Classic Era?</summary><p>Yes. Molten Core, Onyxia's Lair, Blackwing Lair, Zul'Gurub, Ruins of Ahn'Qiraj, Temple of Ahn'Qiraj and Naxxramas all have real Classic Era buff, debuff and optimizer rules, and the planner is faction-aware — Shaman totems for Horde, Paladin auras for Alliance.</p></details>
       <details><summary>Does it support WoW Forever?</summary><p>Yes, using confirmed Forever beta data. Barrow Deeps (10), Hyjal Summit (20) and Onyxia's Lair (40) are modeled with real rules — and unlike Classic Era, Forever has no faction lock: the new race/class combos put Paladin and Shaman on both factions, so a raid can freely mix totems and auras. Trueshot Aura is baseline for every Hunter spec, and Leader of the Pack and Moonkin Aura share one exclusive crit buff per group, so Feral and Balance druids spread out instead of stacking.</p></details>
-      <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
-      <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes, on Classic Era and TBC — MRT ships maintained builds for both, and its Raid Groups module isn't restricted to Retail. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you. WoW Forever support is unconfirmed — MRT has no Forever build yet since Forever is still in beta.</p></details>
+      <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Share and export&hellip;, then Download JSON under More export formats.</p></details>
+      <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes, on Classic Era and TBC — MRT ships maintained builds for both, and its Raid Groups module isn't restricted to Retail. Share &gt; Copy for MRT, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you. WoW Forever support is unconfirmed — MRT has no Forever build yet since Forever is still in beta.</p></details>
       <details><summary>Can I paste a roster that isn't from Raid-Helper?</summary><p>Yes. The import box also accepts a plain list — one player per line or comma-separated, in any of "Name Class Spec", "Name - Spec Class", a Discord-style "@Name (Spec Class)", a WoW /who-style "Name Level 60 Race Class" line, or CSV with an optional header row. You'll see a preview of what was recognized, with anything ambiguous flagged for review and unrecognized lines listed separately, before anything is imported.</p></details>
-      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save a copy, Share/Export, copying the share link, MRT note or raid chat text, and getting back to the plan from the ideal comp). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
+      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save a copy, Share &gt; Copy live link, MRT note or raid chat text, and getting back to the plan from the ideal comp). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
       <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open the gear menu at the top right of the planner (More on a phone) and click <strong>Export data backup</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open the same menu and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Party Planner backup is rejected without touching your existing data.</p></details>
       <details><summary>I dismissed a feature tip and want to see it again</summary><p>Party Planner shows a few one-time callouts pointing at easy-to-miss features (the gear menu, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button></p></details>
     </div>
@@ -172,6 +171,7 @@
   <footer class="landing-footer">
     <span>Party Planner Web &middot; a multi-version raid planner</span>
     <span>Built for raid leaders who would rather pull than sort.</span>
+    <a class="footer-link" id="feedback-link" href="https://github.com/Spazz/RaidPlanner/issues/new" target="_blank" rel="noopener">Report a problem or suggest a feature</a>
   </footer>
 </main>
 
@@ -190,14 +190,14 @@
       <div class="menu-wrap">
         <button type="button" class="btn share-btn" id="btn-share-menu" aria-haspopup="menu" aria-expanded="false">Share <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
         <div class="menu" id="share-menu" role="menu" aria-label="Share" hidden>
-          <button type="button" class="menu-item" role="menuitem" id="btn-share" aria-label="Copy a shareable link to this layout" aria-keyshortcuts="L">Copy share link<kbd class="menu-kbd" aria-hidden="true">L</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt" aria-label="Copy roster as an MRT Raid Groups import string to clipboard">Copy for MRT</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt-note" aria-label="Copy the assignments as an MRT note to clipboard" aria-keyshortcuts="M">Copy MRT note<kbd class="menu-kbd" aria-hidden="true">M</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat" aria-label="Copy raid groups as plain text for Discord or raid chat" aria-keyshortcuts="C">Copy raid chat text<kbd class="menu-kbd" aria-hidden="true">C</kbd></button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat-compact" aria-label="Copy raid groups as compact plain text sized for in-game raid chat">Copy compact raid chat</button>
-          <button type="button" class="menu-item" role="menuitem" id="btn-print-sheet" aria-label="Open a clean, printable raid sheet">Print raid sheet</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-share" aria-label="Copy live link: everyone with it sees and edits this plan" aria-keyshortcuts="L">Copy live link<kbd class="menu-kbd" aria-hidden="true">L</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt" aria-label="Copy for MRT: the seated groups as an MRT Raid Groups import string" aria-keyshortcuts="G">Copy for MRT<kbd class="menu-kbd" aria-hidden="true">G</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt-note" aria-label="Copy MRT note: the assignments as an MRT note" aria-keyshortcuts="M">Copy MRT note<kbd class="menu-kbd" aria-hidden="true">M</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat" aria-label="Copy raid chat text: the groups as plain text for Discord or raid chat" aria-keyshortcuts="C">Copy raid chat text<kbd class="menu-kbd" aria-hidden="true">C</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat-compact" aria-label="Copy compact chat text: sized for in-game raid chat">Copy compact chat text</button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-print-sheet" aria-label="Print raid sheet: opens a printable sheet">Print raid sheet</button>
           <div class="menu-sep"></div>
-          <button type="button" class="menu-item" role="menuitem" id="btn-share-main" title="Share / Export (E)" aria-keyshortcuts="E"><span class="btn-label">More export formats&hellip;</span><kbd class="menu-kbd" aria-hidden="true">E</kbd></button>
+          <button type="button" class="menu-item" role="menuitem" id="btn-share-main" title="Share and export (E)" aria-keyshortcuts="E"><span class="btn-label">Share and export&hellip;</span><kbd class="menu-kbd" aria-hidden="true">E</kbd></button>
         </div>
       </div>
       <div class="menu-wrap">
@@ -367,6 +367,14 @@
       <button type="button" class="link-btn" id="btn-remote-dismiss">Dismiss</button>
     </div>
   </div>
+  <!-- Live link opened from someone else: says the plan is shared and editable; stays until acted on. -->
+  <div class="sync-banner" id="shared-plan-banner" hidden aria-live="polite">
+    <span id="shared-plan-text"></span>
+    <div class="sync-banner-actions">
+      <button type="button" class="btn btn-primary" id="btn-shared-gotit">Got it</button>
+      <button type="button" class="link-btn" id="btn-shared-copy">Make my own copy</button>
+    </div>
+  </div>
   <!-- Another tab saved this plan; this tab's next change would overwrite it. -->
   <div class="sync-banner" id="tab-conflict-banner" hidden aria-live="polite">
     <span id="tab-conflict-text">This plan was changed in another tab. Your next change here will overwrite it.</span>
@@ -429,7 +437,7 @@
       <span id="status-text">Ready — import a roster to begin</span>
       <span class="last-run" id="last-run"></span>
     </div>
-    <div class="status-right">Party Planner Web &middot; v5.0</div>
+    <div class="status-right"><span id="status-version"></span></div>
   </div>
 
   <!-- Save modal -->
@@ -442,12 +450,12 @@
 
 <dialog id="share-dialog" class="history-dialog" aria-labelledby="share-heading">
   <div class="history-dialog-header"><h3 id="share-heading">Share your plan</h3><button type="button" class="btn btn-secondary" id="close-share">Close</button></div>
-  <p>Send your layout to the raid or bring it into the game.</p>
+  <p>Send your plan to the raid or bring it into the game.</p>
   <div class="share-actions">
-    <button type="button" class="btn btn-primary" data-share-action="btn-share">Copy share link</button>
+    <button type="button" class="btn btn-primary" data-share-action="btn-share">Copy live link</button>
     <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt">Copy for MRT</button>
     <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt-note">Copy MRT note</button>
-    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-print-sheet">Print sheet</button></details>
+    <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-print-sheet">Print raid sheet</button></details>
   </div>
 </dialog>
 <dialog id="manual-copy-dialog" class="history-dialog" aria-labelledby="manual-copy-heading">
@@ -481,7 +489,7 @@
     <h3 id="attendance-dialog-heading">Attendance history</h3>
     <button type="button" class="btn btn-secondary" id="btn-close-attendance" autofocus>Close</button>
   </div>
-  <p>Built from your named saved rosters (Save button) for the current game version. Read-only — recent imports and working-plan autosaves aren't counted, so this only reflects rosters you deliberately kept.</p>
+  <p>Built from your saved copies (Plan menu &gt; Save a copy) for the current game version. Recent imports and autosaved plans don't count, so this only reflects raids you saved on purpose.</p>
   <div id="attendance-body"></div>
 </dialog>
 <dialog id="backup-restore-dialog" class="history-dialog" aria-labelledby="backup-restore-heading">

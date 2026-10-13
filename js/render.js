@@ -22,7 +22,7 @@ async function switchGameVersion(version) {
   if (!Object.prototype.hasOwnProperty.call(GameVersions, version) || version === State.gameVersion) return false;
   if (hasLoadedWork() && !await Modal.confirm({
     title: `Switch to ${GameVersions[version].name}?`,
-    message: 'Your players carry over to the default raid of the new version. Totem and aura picks are reset, and anyone who does not fit the new raid size moves to the bench.',
+    message: `This becomes a new plan in ${GameVersions[version].name}: your players carry over to its default raid, totem and aura picks reset, and anyone who doesn't fit moves to the bench. Your current plan stays in Your plans.`,
     confirmLabel: `Switch to ${GameVersions[version].name}`,
   })) return false;
   State.planId = null;
@@ -35,7 +35,7 @@ async function switchGameVersion(version) {
   switchTab('plan');
   if (State.view === 'landing') renderLanding(); // its resume banner names the plan just replaced
   const size = Config.Raids[State.selectedRaid] ? Config.Raids[State.selectedRaid].size : 25;
-  showToast((benched > 0 ? `${benched} player${benched === 1 ? '' : 's'} benched: the ${size}-man raid is full. ` : '') + GameVersions[version].note);
+  showToast((benched > 0 ? `${benched} player${benched === 1 ? '' : 's'} benched: the ${size}-man raid is full. ` : '') + (GameVersions[version].toastNote || GameVersions[version].note));
   return true;
 }
 
@@ -2174,10 +2174,23 @@ const SPOTLIGHT_DEFS = [
   // Anchorless while the Assignments tab is hidden (ASSIGNMENTS_TAB_ENABLED), so it never shows.
   { id: 'assignments-tab', text: 'New: assign who casts curses, blessings and other one-per-raid buffs here.', anchor: () => document.querySelector('.mode-tab[data-tab="assignments"]') },
   // A new id (was 'options-panel') so people who saw the old tip learn where the menus went.
-  { id: 'menu-panel', text: 'Plan, sign-up and data actions now live in this menu.', anchor: () => document.getElementById('btn-settings-menu') },
+  { id: 'menu-panel-v2', text: 'Save a copy, templates, backups and shortcuts are in this menu.', anchor: () => document.getElementById('btn-settings-menu') },
   // The gear menu holds Keyboard shortcuts; it is hidden on phones, so the tip skips them.
   { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.getElementById('btn-settings-menu') },
 ];
+// First-run tips wait until the import feedback is out of the way: about 3 seconds after the view opens,
+// and a further beat while a toast is still showing.
+const SPOTLIGHT_DELAY_MS = 3000;
+let spotlightTimer = null;
+function scheduleSpotlightQueue() {
+  clearTimeout(spotlightTimer);
+  const attempt = () => {
+    const toast = document.getElementById('toast');
+    if (toast && toast.classList.contains('visible')) { spotlightTimer = setTimeout(attempt, 500); return; }
+    if (State.view === 'app') runSpotlightQueue();
+  };
+  spotlightTimer = setTimeout(attempt, SPOTLIGHT_DELAY_MS);
+}
 function runSpotlightQueue() {
   if (document.querySelector('.spotlight-callout')) return;
   for (const def of SPOTLIGHT_DEFS) {

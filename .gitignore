@@ -38,6 +38,7 @@
 !scenarios.js
 !scenario-tests.js
 !version-tests.js
+!landing-copy-tests.js
 !campfire-tests.js
 !classic-tests.js
 !features-tests.js
@@ -100,3 +101,5 @@
 # DPS reference data cited by the optimizer comments
 !gruul_dps_data.txt
 !readiness-tests.js
+!import-copy-tests.js
+!labels-tests.js
