@@ -704,7 +704,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .player-slot:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
 .preferred-slot { border: 1px dashed var(--preferred-color); background: color-mix(in srgb, var(--preferred-color) 9%, transparent); cursor: pointer; }
 .preferred-slot .player-name { color: color-mix(in srgb, var(--preferred-color) 75%, white); font-size: 12px; }
-.preferred-slot .player-spec { font-style: italic; }
+.preferred-slot .player-spec { font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .preferred-slot img { opacity: .65; }
 .preferred-badge { color: var(--preferred-color); font-size: 9px; letter-spacing: .08em; border: 1px solid currentColor; border-radius: 3px; padding: 2px 4px; }
 /* Planned bench backup indicator — shown on both the seated player's card

@@ -627,6 +627,7 @@ function showImportHistoryModal() {
   });
   dialog.addEventListener('close', () => {
     renderImportHistory(document.getElementById('landing-history-list'));
+    renderLandingSavedList(); // deleting imports in this dialog can empty the Your plans pane
     renderImportHistory(document.getElementById('load-history-list'), () => closeSaveOverlay());
   });
 })();

@@ -334,5 +334,14 @@ function importEnv(fetchImpl) {
     assert(/renderImportHistory\(list, onLoad, limit\);\s*if \(list\.id === 'landing-history-list'\) renderLandingSavedList\(\);/.test(app.script), 'removing the last import re-decides the pane');
   });
 
+  await check('closing the View all imports dialog re-decides the Your plans pane; the dev scenario picker drops the sample state', () => {
+    const dialogSrc = app.slice('(function initHistoryDialog', "dialog.addEventListener('close'");
+    const closeAt = app.script.indexOf("dialog.addEventListener('close'", app.script.indexOf('(function initHistoryDialog'));
+    const closeHandler = app.script.slice(closeAt, app.script.indexOf('});', closeAt));
+    assert(dialogSrc.length > 0);
+    assert(/renderImportHistory\(document\.getElementById\('landing-history-list'\)\);\s*renderLandingSavedList\(\);/.test(closeHandler));
+    assert(/\.value = JSON\.stringify\(S\.toRaidHelperJson\(sc\), null, 1\);\s*LandingSample\.sync\(document\.getElementById\('landing-import'\)\);/.test(app.script));
+  });
+
   console.log(`\n${passed} import copy checks passed`);
 })().catch(err => { console.error(err); process.exit(1); });

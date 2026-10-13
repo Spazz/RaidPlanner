@@ -303,6 +303,7 @@ const LandingSample = {
         if (!sc) return;
         if (sc.raid) State.selectedRaid = sc.raid;
         document.getElementById('landing-import').value = JSON.stringify(S.toRaidHelperJson(sc), null, 1);
+        LandingSample.sync(document.getElementById('landing-import'));
         loadInput();
       });
     };
