@@ -1014,6 +1014,16 @@ const Import = {
     return { entries, unparsed, hasHeader };
   },
 
+  // The raid a plain-text roster lands in: a small TBC roster (10 or fewer) picks the
+  // first 10-man, a small Classic roster (20 or fewer) the first 20-man, anything else
+  // stays on the raid already selected. Pure: importPlainRoster and the preview share it.
+  plainRosterRaid(playerCount, gameVersion, selectedRaid) {
+    const size = gameVersion === 'tbc' && playerCount <= 10 ? 10
+      : gameVersion === 'classic' && playerCount <= 20 ? 20 : 0;
+    if (!size) return selectedRaid;
+    return Config.RaidOrder.find(key => Config.Raids[key].size === size) || selectedRaid;
+  },
+
   // Commits parsePlainRoster()'s entries into State the same way a Raid-
   // Helper sign-ups export does: seed round-robin groups sized to the
   // active raid, then let the Optimizer place everyone (see
@@ -1024,12 +1034,7 @@ const Import = {
       uid: nextUid(), name:e.name, class:e.class, spec:e.spec, role:e.role, imported:true,
     }));
 
-    const raiders = roster.length;
-    if (State.gameVersion === 'tbc' && raiders <= 10) {
-      for (const key of Config.RaidOrder) { if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; } }
-    } else if (State.gameVersion === 'classic' && raiders <= 20) {
-      for (const key of Config.RaidOrder) { if (Config.Raids[key].size === 20) { State.selectedRaid = key; break; } }
-    }
+    State.selectedRaid = this.plainRosterRaid(roster.length, State.gameVersion, State.selectedRaid);
 
     const raidInfo = Config.Raids[State.selectedRaid];
     const numGroups = raidInfo ? raidInfo.groups : 5;

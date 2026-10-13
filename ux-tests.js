@@ -330,7 +330,7 @@ return { ${exported.join(', ')} };
     const src = app.slice('// ── SHARED IMPORT RUNNER', "document.getElementById('btn-plain-import-cancel')");
     const els = {
       inp: { value: 'data', focus() {} },
-      btn: { disabled: false },
+      btn: { disabled: false, textContent: 'Load', setAttribute() {}, removeAttribute() {} },
       st: { textContent: '', classList: { toggle() {} } },
     };
     const document = { getElementById: id => els[id] };

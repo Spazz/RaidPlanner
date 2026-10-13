@@ -25,6 +25,15 @@ function showView(view) {
   if (view === 'app') runSpotlightQueue();
 }
 
+// An import error belongs to the paste that caused it: drop it when the landing re-renders
+// or the user edits the box.
+function clearLandingImportStatus() {
+  const status = document.getElementById('landing-status-import');
+  if (!status) return;
+  status.textContent = '';
+  status.classList.remove('error');
+}
+
 function renderLanding() {
   // Resume banner: the planner keeps its state while the landing is shown.
   const banner = document.getElementById('resume-banner');
@@ -39,6 +48,7 @@ function renderLanding() {
       summary.textContent = `${State.rosterName === NO_ROSTER_NAME ? 'a roster' : State.rosterName} (${parts.join(', ')}${raid ? ', ' + raidSizeLabel(State.selectedRaid) : ''})`;
     }
   }
+  clearLandingImportStatus();
   renderLandingSavedList();
   renderImportHistory(document.getElementById('landing-history-list'));
   renderVersionComparison();
@@ -150,6 +160,7 @@ function renderLandingSavedList() {
 
   const loadInput = () => runImport('landing-import', 'landing-status-import', 'btn-landing-import', () => { showView('app'); SplitFlow.maybeOffer(); });
   document.getElementById('btn-landing-import').addEventListener('click', loadInput);
+  document.getElementById('landing-import').addEventListener('input', clearLandingImportStatus);
   document.getElementById('landing-import').addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();

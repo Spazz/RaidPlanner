@@ -233,7 +233,7 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
     const src = app.slice('// ── SHARED IMPORT RUNNER', "document.getElementById('btn-plain-import-cancel')");
     const els = {
       inp: { value: '  data  ', focused: 0, focus() { this.focused++; } },
-      btn: { disabled: false },
+      btn: { disabled: false, textContent: 'Load', setAttribute() {}, removeAttribute() {} },
       st: { textContent: '', cls: new Set(), classList: { toggle(c, on) { on ? els.st.cls.add(c) : els.st.cls.delete(c); } } },
     };
     const document = { getElementById: (id) => ({ inp: els.inp, btn: els.btn, st: els.st })[id] };
