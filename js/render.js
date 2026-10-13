@@ -5,6 +5,14 @@ const VERSION_BUTTON_TEXT = {
   tbc: { text: 'TBC', label: 'TBC Anniversary' },
   forever: { text: 'Forever', label: 'WoW Forever Beta' },
 };
+// The picked menu item is hidden by now: when nothing visible holds focus (and no dialog does), the button gets it back.
+function restoreVersionButtonFocus() {
+  if (document.querySelector('dialog[open]')) return;
+  const active = document.activeElement;
+  if (active && active !== document.body && !active.closest('#version-menu')) return;
+  const button = document.getElementById('btn-version-menu');
+  if (button) button.focus();
+}
 function syncVersionControls() {
   const profile = GameVersions[State.gameVersion];
   // Scoped to the real switcher tabs only — the landing page's informational
@@ -27,7 +35,10 @@ function syncVersionControls() {
   }
   document.querySelectorAll('#version-menu [data-version]').forEach(item => {
     item.setAttribute('aria-checked', String(item.dataset.version === State.gameVersion));
-    item.onclick = () => switchGameVersion(item.dataset.version);
+    item.onclick = async () => {
+      await switchGameVersion(item.dataset.version);
+      restoreVersionButtonFocus();
+    };
   });
   document.getElementById('landing-version-note').textContent = profile.note;
   document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-player roster`;

@@ -86,6 +86,10 @@ check('the phone block gives the brand a 44px x 44px tap area', () => {
   assert.match(m[1], /width:\s*44px/);
   assert.match(m[1], /height:\s*44px/);
   assert.match(m[1], /position:\s*absolute/);
+  const v = block.match(/\.version-btn::before\s*\{([^}]*)\}/);
+  assert.ok(v, 'no .version-btn::before in the phone block');
+  assert.match(v[1], /inset:\s*-6px 0/, '32px button + 6px up and down = a 44px tall tap area');
+  assert.match(block, /\.version-btn\s*\{[^}]*min-height:\s*32px[^}]*position:\s*relative/);
 });
 
 check('the plan name is larger and gold, with the underline-only hover', () => {
@@ -153,10 +157,10 @@ check('the version button and menu sit before Share, with radio items in era ord
   assert.match(bar, /WoW Forever<span class="game-beta">Beta<\/span>/);
 });
 
-function runSync(version, confirmCalls) {
+function runSync(version, confirmCalls, docExtra = {}) {
   const code = sliceBetween(renderJs, 'const VERSION_BUTTON_TEXT', '// Switching version refits');
   const attrs = {}, text = {};
-  const button = { dataset: {}, setAttribute: (k, v) => { attrs.button = Object.assign(attrs.button || {}, { [k]: v }); } };
+  const button = { dataset: {}, focused: 0, focus() { this.focused++; }, setAttribute: (k, v) => { attrs.button = Object.assign(attrs.button || {}, { [k]: v }); } };
   const items = ['classic', 'tbc', 'forever'].map(v => ({ dataset: { version: v }, checked: null, setAttribute(k, val) { if (k === 'aria-checked') this.checked = val; } }));
   const tabs = [];
   const els = { 'btn-version-menu': button, 'version-btn-text': { set textContent(v) { text.btn = v; } }, 'landing-version-note': {}, 'btn-landing-random': {}, 'btn-optimize': {} };
@@ -164,7 +168,7 @@ function runSync(version, confirmCalls) {
     State: { gameVersion: version, selectedRaid: 'r' }, Config: { Raids: { r: { size: 25 } } },
     GameVersions: { classic: { note: '' }, tbc: { note: '' }, forever: { note: '' } },
     renderRaidSizeControl() {}, switchGameVersion: v => confirmCalls.push(v),
-    document: { getElementById: id => els[id], querySelectorAll: sel => (sel === '#version-menu [data-version]' ? items : tabs) },
+    document: Object.assign({ body: {}, activeElement: null, querySelector: () => null, getElementById: id => els[id], querySelectorAll: sel => (sel === '#version-menu [data-version]' ? items : tabs) }, docExtra),
   };
   vm.runInNewContext(code + '\nsyncVersionControls();', sandbox);
   return { button, attrs, text, items };
@@ -184,6 +188,22 @@ check('picking a version item calls switchGameVersion with its version', () => {
   const r = runSync('tbc', calls);
   r.items[0].onclick(); r.items[2].onclick();
   assert.deepEqual(calls, ['classic', 'forever']);
+});
+check('after a version pick resolves, focus returns to the version button unless a dialog or a visible element has it', async () => {
+  const hiddenItem = { closest: sel => (sel === '#version-menu' ? {} : null) };
+  const visible = { closest: () => null };
+  const cases = [
+    [{ activeElement: hiddenItem }, 1, 'focus on the hidden menu item'],
+    [{ activeElement: null }, 1, 'no focus'],
+    [{ activeElement: visible }, 0, 'focus already on a visible element'],
+    [{ activeElement: hiddenItem, querySelector: sel => (sel === 'dialog[open]' ? {} : null) }, 0, 'a dialog is open'],
+  ];
+  for (const [doc, focused, why] of cases) {
+    const r = runSync('tbc', [], doc);
+    r.items[0].onclick();
+    await new Promise(res => setTimeout(res, 0));
+    assert.equal(r.button.focused, focused, why);
+  }
 });
 
 check('Menu keyboard navigation includes menuitemradio items', () => {
