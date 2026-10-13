@@ -26,7 +26,7 @@ function check(name, fn) {
 }
 
 const ROOT = __dirname;
-const sources = [['index.html', fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')]]
+const sources = ['index.html', 'faq.html', 'whats-new.html'].map(f => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')])
   .concat(fs.readdirSync(path.join(ROOT, 'js'), { recursive: true }).filter(f => f.endsWith('.js'))
     .map(f => ['js/' + f.replace(/\\/g, '/'), fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')]));
 
@@ -47,11 +47,11 @@ function offenders(re) {
   return found;
 }
 
-check('No inline style="..." attribute in index.html or any HTML template string', () => {
+check('No inline style="..." attribute in any page (index, faq, whats-new) or HTML template string', () => {
   assert.deepEqual(offenders(INLINE_STYLE), []);
 });
 
-check('No inline on*="..." event-handler attribute in index.html or any HTML template string', () => {
+check('No inline on*="..." event-handler attribute in any page (index, faq, whats-new) or HTML template string', () => {
   assert.deepEqual(offenders(INLINE_HANDLER), []);
 });
 

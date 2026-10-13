@@ -163,7 +163,7 @@ function runSync(version, confirmCalls, docExtra = {}) {
   const button = { dataset: {}, focused: 0, focus() { this.focused++; }, setAttribute: (k, v) => { attrs.button = Object.assign(attrs.button || {}, { [k]: v }); } };
   const items = ['classic', 'tbc', 'forever'].map(v => ({ dataset: { version: v }, checked: null, setAttribute(k, val) { if (k === 'aria-checked') this.checked = val; } }));
   const tabs = [];
-  const els = { 'btn-version-menu': button, 'version-btn-text': { set textContent(v) { text.btn = v; } }, 'landing-version-note': {}, 'btn-landing-random': {}, 'btn-optimize': {} };
+  const els = { 'btn-version-menu': button, 'version-btn-text': { set textContent(v) { text.btn = v; } }, 'btn-landing-random': {}, 'btn-optimize': {} };
   const sandbox = {
     State: { gameVersion: version, selectedRaid: 'r' }, Config: { Raids: { r: { size: 25 } } },
     GameVersions: { classic: { note: '' }, tbc: { note: '' }, forever: { note: '' } },
@@ -240,7 +240,9 @@ check('the landing has one brand row: links in the era band, no landing-nav, no 
   const band = sliceBetween(html, '<header class="game-header"', '</header>');
   for (const id of ['nav-whats-new', 'whats-new-badge']) assert.ok(band.includes('id="' + id + '"'), id + ' in the band');
   assert.match(band, /href="#how-it-works"/);
-  assert.match(band, /href="#faq"/);
+  assert.match(band, /href="\/whats-new\.html" id="nav-whats-new"/);
+  assert.match(band, /href="\/faq\.html"/);
+  assert.ok(!/href="#(?:faq|whats-new)"/.test(html), 'no link to the moved sections');
   assert.ok(!band.includes('Choose your era') && !band.includes('Your raid. Your rules.') && !band.includes('game-eyebrow'));
   assert.ok(!html.includes('landing-nav') && !html.includes('landing-brand') && !/>Features</.test(html) && !html.includes('class="features"') && !html.includes('id="features"'));
   assert.ok(!/\.landing-nav|\.features|\.feature\b/.test(css), 'dead CSS removed');

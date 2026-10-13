@@ -95,10 +95,6 @@ body {
 
 .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 32px; align-items: start; }
 .hero-copy { padding-top: 12px; }
-.hero-kicker {
-  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.16em;
-  font-size: 12px; color: var(--accent-gold); margin-bottom: 12px;
-}
 .hero h2 {
   font-family: var(--font-cond); font-weight: 700; text-transform: uppercase;
   font-size: clamp(34px, 4.6vw, 52px); line-height: 0.98; letter-spacing: 0.02em;
@@ -194,18 +190,14 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .attendance-version-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .attendance-version-tabs button { font: 500 11px var(--font-body); padding: 5px 12px; background: var(--bg-card); border: 1px solid var(--border-medium); color: var(--text-secondary); cursor: pointer; text-transform: uppercase; letter-spacing: .04em; }
 .attendance-version-tabs button[aria-pressed="true"] { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
-/* Landing: What's new + version comparison (backlog-2 #9) */
+/* The "New" header badge, the release notes list and the version comparison (backlog-2 #9) */
 .new-badge { display: inline-block; margin-left: 4px; padding: 1px 7px; font: 700 10px var(--font-body); text-transform: uppercase; letter-spacing: .05em; background: var(--accent-gold); color: #201a08; border-radius: 10px; vertical-align: middle; }
 .whats-new-list { list-style: none; display: flex; flex-direction: column; gap: 8px; padding: 0; margin: 0; }
 .whats-new-list li { font-size: 13px; color: var(--text-secondary); line-height: 1.5; padding-left: 18px; position: relative; }
 .whats-new-list li::before { content: '\2192'; position: absolute; left: 0; color: var(--accent-gold); }
 .whats-new-version { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 14px 0 8px; }
 .whats-new-version:first-child { margin-top: 0; }
-.whats-new-version span, .app-version { font-weight: 400; color: var(--text-muted); font-size: 11px; text-transform: none; letter-spacing: 0; }
-.whats-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 16px; background: color-mix(in srgb, var(--accent-gold) 8%, transparent); border: 1px solid var(--border-accent); font-size: 13px; color: var(--text-secondary); }
-.whats-line strong { color: var(--accent-gold-bright); }
-.whats-line .app-version { font: inherit; color: inherit; }
-.whats-line.open { flex-direction: column; align-items: stretch; gap: 0; }
+.whats-new-version span { font-weight: 400; color: var(--text-muted); font-size: 11px; text-transform: none; letter-spacing: 0; }
 #whats-new-body { margin-top: 12px; }
 .version-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 8px; }
 .version-compare-col { background: var(--bg-card); border: 1px solid var(--border-subtle); border-top: 3px solid var(--accent-gold-dim); padding: 16px; }
@@ -1653,7 +1645,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .sidebar-summary-row.ok { color: var(--success); }
 /* Larger homepage type and controls for comfortable reading. */
 .landing { width:min(1180px,100%); }
-.hero-kicker { font-size:14px; }
 .hero h2 { font-size:clamp(38px,5vw,60px); }
 .hero-copy > p { font-size:18px; }
 .hero-points li { font-size:16px; line-height:1.45; }
@@ -1729,7 +1720,6 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 .game-header-links a:hover { color:var(--text-primary); }
 /* The wordmark in the hero is for phones only: the phone era band keeps just the mark. */
 .hero-wordmark { display:none; }
-#landing-version-note { font-size:13px; color:var(--text-muted); line-height:1.5; margin:10px 0 20px; }
 @media(max-width:900px) {
   .game-header-inner { padding:0 16px; }
   .game-header-brand { padding-right:20px; }
@@ -2128,3 +2118,27 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   /* Tray status tabs wrap instead of scrolling sideways. */
   .tray-tabs { flex-wrap: wrap; overflow-x: visible; }
 }
+
+/* The static site pages (faq.html, whats-new.html): the landing layout under the same header, with the site links kept on every width. */
+.site-page .landing { padding-top: 32px; }
+.page-title {
+  font-family: var(--font-cond); font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
+  font-size: clamp(30px, 4.2vw, 46px); line-height: 1; color: var(--text-primary);
+}
+.site-page .whats-new-version { font-size: 17px; margin-top: 24px; }
+.site-page .whats-new-version span { font-size: 13px; }
+.site-page .whats-new-list li { font-size: 15px; }
+.faq a.link-btn { text-decoration: none; }
+.faq-status { margin-left: 8px; font-size: 13px; color: var(--text-muted); }
+.site-page .game-header-links { display: flex; }
+@media (max-width: 900px) { .site-page .game-header-inner { height: auto; min-height: 56px; flex-wrap: wrap; padding: 6px 16px; row-gap: 4px; } }
+@media (max-width: 600px) {
+  .site-page .game-header-inner { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px 12px; gap: 4px 12px; }
+  .site-page .game-header-brand > div { display: block; }
+  .site-page .game-header-brand { padding: 0; width: auto; border-bottom: 0; }
+  .site-page .game-header-links { gap: 12px; margin-left: auto; }
+  .site-page .game-header-links a { font-size: 13px; letter-spacing: .04em; }
+  .site-page .landing { padding-top: 20px; }
+}
+.site-page .whats-new-version:first-child { margin-top: 0; }
+.game-header-links a[aria-current="page"] { color: var(--text-primary); }

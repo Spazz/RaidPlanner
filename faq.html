@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FAQ - Raidsmith</title>
+<meta name="description" content="Answers about Raidsmith: pricing, where your roster data goes, how groups are chosen, Raid-Helper imports, Classic, TBC and Forever support, MRT export and backups.">
+<meta name="theme-color" content="#1b1d1f">
+<meta property="og:site_name" content="Raidsmith">
+<meta property="og:title" content="FAQ - Raidsmith">
+<meta property="og:description" content="Answers about Raidsmith: pricing, where your roster data goes, how groups are chosen, Raid-Helper imports, Classic, TBC and Forever support, MRT export and backups.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://raid-planner-theta.vercel.app/faq.html">
+<meta property="og:image" content="https://raid-planner-theta.vercel.app/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Raidsmith: a gold anvil logo with five ember dots above the name Raidsmith, the tagline Forge optimal raid groups in one click, and five raid group cards">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="FAQ - Raidsmith">
+<meta name="twitter:description" content="Answers about Raidsmith: pricing, where your roster data goes, how groups are chosen, Raid-Helper imports, Classic, TBC and Forever support, MRT export and backups.">
+<meta name="twitter:image" content="https://raid-planner-theta.vercel.app/og-image.png">
+<meta name="twitter:image:alt" content="Raidsmith: a gold anvil logo with five ember dots above the name Raidsmith, the tagline Forge optimal raid groups in one click, and five raid group cards">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><g fill='%23ffb35c'><circle cx='9' cy='14' r='3'/><circle cx='16.5' cy='9' r='3'/><circle cx='24' cy='7' r='3'/><circle cx='31.5' cy='9' r='3'/><circle cx='39' cy='14' r='3'/></g><path d='M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z' transform='translate(0 -1)' fill='%23e0b53d'/></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body class="site-page">
+
+<header class="game-header" id="era-band">
+  <div class="game-header-inner">
+    <a href="/" class="game-header-brand" id="brand-home" aria-label="Raidsmith home" title="Home"><span class="game-header-mark" aria-hidden="true"><svg class="mark-svg" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="9" cy="14" r="3" fill="#ffb35c"/><circle cx="16.5" cy="9" r="3" fill="#ffb35c"/><circle cx="24" cy="7" r="3" fill="#ffb35c"/><circle cx="31.5" cy="9" r="3" fill="#ffb35c"/><circle cx="39" cy="14" r="3" fill="#ffb35c"/><path d="M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z" transform="translate(0 -1)" fill="currentColor"/></svg></span><div><strong>Raidsmith</strong></div></a>
+    <nav class="game-header-links" aria-label="Site">
+      <a href="/whats-new.html" id="nav-whats-new">What's new<span class="new-badge" id="whats-new-badge" hidden>New</span></a>
+      <a href="/#how-it-works">How it works</a>
+      <a href="/faq.html" aria-current="page">FAQ</a>
+    </nav>
+  </div>
+</header>
+<main class="landing">
+  <h1 class="page-title">Frequently asked questions</h1>
+  <section class="landing-section" id="faq">
+    <h2 class="section-title">Questions and answers</h2>
+    <div class="faq">
+      <details><summary>Is Raidsmith free?</summary><p>Yes. There is no account, no login and no paid tier. Everything runs in your browser.</p></details>
+      <details><summary>Where does my roster data go?</summary><p>Imports and saved plans stay in this browser. A live link is stored on our server so others can open it: anyone with the link can see and edit the plan, and it expires 30 days after its last change. A long snapshot link (#r=...) carries the plan inside the link itself, and browsers never send that part to our server.</p></details>
+      <details><summary>How does it decide who goes where?</summary><p>Each party is scored by the buffs its members receive, so melee end up with Windfury, casters with their totems and auras, and tanks with their healers. Optimize places buffs where they add the most damage, and you can drag anyone afterwards.</p></details>
+      <details><summary>What happens when more people sign up than the raid holds?</summary><p>You always keep enough tanks and healers. The remaining seats go to whoever adds the most, and everyone else waits on the bench, where you can swap them in with one click.</p></details>
+      <details><summary>Loading from URL failed. What now?</summary><p>Some browsers or network setups block direct requests to Raid-Helper. Open the API link (<code>raid-helper.dev/api/v4/events/&lt;id&gt;</code>) in a new tab, copy the JSON, and paste the JSON into the import box.</p></details>
+      <details><summary>People signed up after I built the groups. Do I start over?</summary><p>No. A roster imported from a Raid-Helper link remembers its event. When you reopen a saved roster, the planner checks the event and shows what changed. Click Refresh (in the gear menu, under Sign-ups, or on the banner) to add new sign-ups to the bench, remove anyone who withdrew, and update changed specs, while everyone else keeps their seat.</p></details>
+      <details><summary>Where do Bench, Tentative, Late and Absent sign-ups go?</summary><p>Into the Sign-ups panel under the groups, one tab per Raid-Helper status. Only confirmed sign-ups are seated automatically. Drag anyone from Bench, Tentative or Late into a group when you want them; Absent players can be seated too, after you confirm (and pick a class if they didn't). On Refresh, people move between tabs as their Raid-Helper status changes.</p></details>
+      <details><summary>Does it support 10-man raids?</summary><p>Yes. Pick 10 on the Raid size switch above the groups and the planner switches to two groups with 10-man tank and healer floors.</p></details>
+      <details><summary>Does it support Classic Era?</summary><p>Yes. Molten Core, Onyxia's Lair, Blackwing Lair, Zul'Gurub, Ruins of Ahn'Qiraj, Temple of Ahn'Qiraj and Naxxramas all have real Classic Era buff, debuff and optimizer rules, and the planner is faction-aware — Shaman totems for Horde, Paladin auras for Alliance.</p></details>
+      <details><summary>Does it support WoW Forever?</summary><p>Yes, using confirmed Forever beta data. Barrow Deeps (10), Hyjal Summit (20) and Onyxia's Lair (40) are modeled with real rules — and unlike Classic Era, Forever has no faction lock: the new race/class combos put Paladin and Shaman on both factions, so a raid can freely mix totems and auras. Trueshot Aura is baseline for every Hunter spec, and Leader of the Pack and Moonkin Aura share one exclusive crit buff per group, so Feral and Balance druids spread out instead of stacking.</p></details>
+      <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Share and export&hellip;, then Download JSON under More export formats.</p></details>
+      <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes, on Classic Era and TBC — MRT ships maintained builds for both, and its Raid Groups module isn't restricted to Retail. Share &gt; Copy for MRT, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you. WoW Forever support is unconfirmed — MRT has no Forever build yet since Forever is still in beta.</p></details>
+      <details><summary>Can I paste a roster that isn't from Raid-Helper?</summary><p>Yes. The import box also accepts a plain list — one player per line or comma-separated, in any of "Name Class Spec", "Name - Spec Class", a Discord-style "@Name (Spec Class)", a WoW /who-style "Name Level 60 Race Class" line, or CSV with an optional header row. You'll see a preview of what was recognized, with anything ambiguous flagged for review and unrecognized lines listed separately, before anything is imported.</p></details>
+      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save a copy, Share &gt; Copy live link, MRT note or raid chat text, and getting back to the plan from the reference comp). <a class="link-btn" href="/">Open the planner</a></p></details>
+      <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open the gear menu at the top right of the planner (More on a phone) and click <strong>Export data backup</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open the same menu and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Raidsmith backup is rejected without touching your existing data.</p></details>
+      <details><summary>I dismissed a feature tip and want to see it again</summary><p>Raidsmith shows a few one-time callouts pointing at easy-to-miss features (the gear menu, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button> <span class="faq-status" id="faq-tips-status" role="status"></span></p></details>
+    </div>
+  </section>
+
+  <footer class="landing-footer">
+    <span>Raidsmith &middot; forged for raid night</span>
+    <span>Built for raid leaders who would rather pull than sort.</span>
+    <a class="footer-link" id="feedback-link" href="https://github.com/Spazz/RaidPlanner/issues/new" target="_blank" rel="noopener">Report a problem or suggest a feature</a>
+  </footer>
+</main>
+
+<script src="/js/util.js"></script>
+<script src="/js/changelog.js"></script>
+<script src="/js/storage.js"></script>
+<script src="/js/site-pages.js"></script>
+</body>
+</html>

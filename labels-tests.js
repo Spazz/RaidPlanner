@@ -7,6 +7,8 @@
  * entry and the menu aria-label. Also pins the MRT / live link toast and status copy.
  */
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const app = require('./tests/load-app');
 
 const html = app.html.replace(/\r\n/g, '\n');
@@ -68,8 +70,9 @@ check('shared-plan toasts say plan, not raid', () => {
 });
 
 check('the FAQ and the Share dialog name the real Share path', () => {
-  assert(html.includes('use Share and export&hellip;, then Download JSON under More export formats'));
-  assert(html.includes('Share &gt; Copy live link'));
+  const faq = fs.readFileSync(path.join(app.ROOT, 'faq.html'), 'utf8').replace(/\r\n/g, '\n');
+  assert(faq.includes('use Share and export&hellip;, then Download JSON under More export formats'));
+  assert(faq.includes('Share &gt; Copy live link'));
   assert(html.includes('<p>Send your plan to the raid or bring it into the game.</p>'));
 });
 

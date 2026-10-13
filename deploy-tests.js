@@ -40,8 +40,11 @@ function check(name, fn) {
 
 /** Every file the running site needs, as repo-relative paths. */
 function runtimeFiles() {
-  const files = new Set(['index.html', 'vercel.json', 'package.json', 'scenarios.js', 'og-image.png']);
+  const files = new Set(['index.html', 'faq.html', 'whats-new.html', 'vercel.json', 'package.json', 'scenarios.js', 'og-image.png']);
   for (const src of [...app.scripts, ...app.stylesheets]) files.add(src.split(/[?#]/)[0].replace(/^\//, ''));
+  for (const page of ['faq.html', 'whats-new.html']) {
+    for (const m of fs.readFileSync(path.join(ROOT, page), 'utf8').matchAll(/<script src="([^"]+)"/g)) files.add(m[1].replace(/^\//, ''));
+  }
   for (const name of fs.readdirSync(path.join(ROOT, 'icons'))) files.add(`icons/${name}`);
   for (const name of fs.readdirSync(path.join(ROOT, 'api'))) files.add(`api/${name}`);
   return [...files].sort();

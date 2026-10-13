@@ -92,8 +92,8 @@ check('connect-src allows this site and the Raid-Helper hosts the import fetches
 
 check('Every external host index.html and js/ load a resource from is allowed by the policy', () => {
   const policy = parsePolicy(CSP);
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  // Stylesheets and scripts named in index.html's own tags.
+  const html = ['index.html', 'faq.html', 'whats-new.html'].map(f => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n');
+  // Stylesheets and scripts named in the pages' own tags.
   for (const tag of html.match(/<(?:link|script)\b[^>]*>/g) || []) {
     const url = (tag.match(/\b(?:href|src)="(https?:\/\/[^"]+)"/) || [])[1];
     if (!url) continue;

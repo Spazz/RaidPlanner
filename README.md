@@ -6,22 +6,25 @@ A raid group planner for World of Warcraft Classic Era, TBC Anniversary and WoW 
 
 Production: https://raid-planner-theta.vercel.app
 
-**When the domain changes**, update these three places in `index.html` (all still point at `raid-planner-theta.vercel.app`): `og:url`, `og:image` and `twitter:image`. Then update the host the tests pin: `SITE` in `head-tests.js` and the og-image line in `deploy-tests.js`.
+**When the domain changes**, update these places in `index.html`, `faq.html` and `whats-new.html` (each page has its own `og:url`; all still point at `raid-planner-theta.vercel.app`): `og:url`, `og:image` and `twitter:image`. Then update the host the tests pin: `SITE` in `head-tests.js` and the og-image line in `deploy-tests.js`.
 
-It is a static site with no build step and no npm dependencies: `index.html`, `app.css` and sixteen plain `<script src>` files (twelve under `js/`, the four rules data files under `js/rules/`), plus one serverless function (`api/share.js`) for short and live share links.
+It is a static site with no build step and no npm dependencies: `index.html` (the planner), two static pages (`faq.html`, `whats-new.html`), `app.css` and eighteen plain `<script src>` files (fourteen under `js/`, the four rules data files under `js/rules/`), plus one serverless function (`api/share.js`) for short and live share links.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
 | `index.html` | Markup only. Loads `app.css` and the scripts below, in this order. |
+| `faq.html`, `whats-new.html` | Static pages under the same site header and footer: the 16 FAQ questions, and the full release list. Served as plain files at `/faq.html` and `/whats-new.html` (no rewrite); the header links of all three pages point at them. They load only `js/util.js`, `js/changelog.js`, `js/site-pages.js` (and `js/storage.js` for the FAQ). |
+| `js/util.js` | `esc()`, loaded first by every page. |
 | `js/rules.js` | `Config`, the rules compiler `Rulesets.compile` with its closed `Rulesets.CONVENTIONS` schema, the compiled rulesets (one per game version) and the version helpers. |
 | `js/rules/` | The rules, as data: `catalog.js` (shared by every version: classes, specs, icons, abbreviations) and one file per game version (`tbc.js`, `classic.js`, `forever.js`: buffs, debuffs, weights, tuning numbers, raids). The source of truth, edited by hand; see Editing the rules. Loaded before `js/rules.js`. |
-| `js/changelog.js` | `APP_VERSION` and the release notes behind the landing page's "What's new". |
+| `js/changelog.js` | `APP_VERSION` and the release notes behind `whats-new.html`, and the helpers that remember which release was seen. |
 | `js/state.js`, `import.js`, `storage.js`, `livesync.js` | Plan state, importers and exporters, local storage, live link sync. |
 | `js/optimizer.js`, `analysis.js` | `Optimizer.plan()` (pure layout), scoring, buff resolution, coverage insights. |
 | `js/changes.js` | The roster change log: who a sign-up sync, a raid size change or a live update benched, seated or moved. |
 | `js/render.js`, `modals.js`, `app.js` | Rendering and wiring. Every plan change goes through `commit()` (reconcile, persist, render). |
+| `js/site-pages.js` | Wiring shared by all three pages: the "New" badge on the header's What's new link, the release list, the footer feedback link and the FAQ's tips reset. |
 | `api/share.js` | Short and live share links on Upstash Redis (REST, plain `fetch`). |
 | `scenarios.js` | Test rosters. Also fetched by the `?dev` roster picker (open `/?dev`). |
 | `tools/` | `rules-report.js` (prints a version's weights and tuning numbers for review) and `generate-rules-data.js` (a guarded one-shot record that refuses to run). Not deployed. |
@@ -153,4 +156,4 @@ Vercel deploys from GitHub `main`: **pushing to `main` deploys to production**, 
 
 ## Releases
 
-User-visible changes get an entry at the top of `CHANGELOG` in `js/changelog.js` and a matching bump of `APP_VERSION` there and `version` in `package.json` (a test checks they agree). The landing page lists the newest releases under "What's new" and shows a "New" badge once per version for everyone who has not dismissed that version.
+User-visible changes get an entry at the top of `CHANGELOG` in `js/changelog.js` and a matching bump of `APP_VERSION` there and `version` in `package.json` (a test checks they agree). `whats-new.html` lists every release; the header's What's new link shows a "New" badge until someone opens that page, once per version (the stored version is under `pp_whats_new_dismissed_v1`).

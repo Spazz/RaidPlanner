@@ -7,9 +7,12 @@
  * is filled from APP_VERSION, and the menu tip waits for the import feedback to clear.
  */
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const app = require('./tests/load-app');
 
 const html = app.html.replace(/\r\n/g, '\n');
+const faqHtml = fs.readFileSync(path.join(app.ROOT, 'faq.html'), 'utf8').replace(/\r\n/g, '\n');
 const script = app.script.replace(/\r\n/g, '\n');
 const ctx = app.sandbox(['GameVersions', 'APP_VERSION']);
 const { GameVersions, APP_VERSION } = ctx.api;
@@ -24,11 +27,11 @@ function check(name, fn) {
 check('privacy lines say what is true about imports and live links', () => {
   assert(html.includes('No spreadsheet, no login; imports stay in your browser.'));
   assert(!/nothing uploaded/i.test(html));
-  assert(html.includes('A live link is stored on our server so others can open it'));  // the FAQ now holds this fact (the feature cards are gone)
-  assert(!html.includes('Nothing is stored on a server'));
-  assert(html.includes('anyone with the link can see and edit the plan, and it expires 30 days after its last change'));
-  assert(html.includes('A long snapshot link (#r=...) carries the plan inside the link itself'));
-  assert(!html.includes('Sign-ups are fetched by your browser directly from Raid-Helper and never touch our server'));
+  assert(faqHtml.includes('A live link is stored on our server so others can open it'));  // the FAQ now holds this fact (the feature cards are gone)
+  assert(!faqHtml.includes('Nothing is stored on a server'));
+  assert(faqHtml.includes('anyone with the link can see and edit the plan, and it expires 30 days after its last change'));
+  assert(faqHtml.includes('A long snapshot link (#r=...) carries the plan inside the link itself'));
+  assert(!faqHtml.includes('Sign-ups are fetched by your browser directly from Raid-Helper and never touch our server'));
 });
 
 check('How it works explains import grouping and ends on Share', () => {
@@ -39,12 +42,12 @@ check('How it works explains import grouping and ends on Share', () => {
   assert(html.includes('Copy for MRT') && html.includes('Copy live link'));
 });
 
-check('FAQ names the real API URL and the Share menu entries', () => {
-  assert(html.includes('raid-helper.dev/api/v4/events/&lt;id&gt;'));
-  assert(!html.includes('api/raidplan/&lt;id&gt;'));
-  assert(html.includes('use Share and export&hellip;, then Download JSON under More export formats'));
-  assert(html.includes('Share &gt; Copy for MRT'));
-  assert(!html.includes('Copy MRT String') && !html.includes('use Export to download'));
+check('The FAQ page names the real API URL and the Share menu entries', () => {
+  assert(faqHtml.includes('raid-helper.dev/api/v4/events/&lt;id&gt;'));
+  assert(!faqHtml.includes('api/raidplan/&lt;id&gt;'));
+  assert(faqHtml.includes('use Share and export&hellip;, then Download JSON under More export formats'));
+  assert(faqHtml.includes('Share &gt; Copy for MRT'));
+  assert(!faqHtml.includes('Copy MRT String') && !faqHtml.includes('use Export to download'));
 });
 
 check('status bar is a span filled from APP_VERSION', () => {
@@ -55,8 +58,9 @@ check('status bar is a span filled from APP_VERSION', () => {
   assert(/^\d+\.\d+\.\d+$/.test(APP_VERSION));
 });
 
-check('TBC Anniversary naming on the kicker and the version tab', () => {
-  assert(html.includes('WoW Classic &middot; TBC Anniversary &middot; WoW Forever Beta'));
+check('the version tab names TBC Anniversary, and the homepage has no kicker or version note line', () => {
+  assert(!html.includes('hero-kicker') && !html.includes('landing-version-note'));
+  assert(!html.includes('WoW Classic &middot; TBC Anniversary &middot; WoW Forever Beta'));
   assert(/data-version="tbc"[^>]*aria-label="TBC Anniversary"/.test(html));
   assert.equal(GameVersions.tbc.name, 'WoW TBC');
 });
@@ -109,7 +113,7 @@ check('attendance copy points at saved copies', () => {
   assert(script.includes('No saved copies yet. After a raid, use Plan menu &gt; Save a copy to start building attendance history.'));
 });
 
-// ── L2-4b: What's new line, era cards, footer link ───────────────
+// ── L2-4b: era cards, footer link ───────────────
 function fakeEl(extra = {}) {
   const attrs = {};
   const handlers = {};
@@ -122,37 +126,6 @@ function fakeEl(extra = {}) {
     getAttribute(k) { return k in attrs ? attrs[k] : null; },
   }, extra);
 }
-
-check('the What\'s new section is one line with the newest title and a button that expands the list and stores the dismissal', () => {
-  const CH = app.sandbox(['CHANGELOG', 'APP_VERSION']).api;
-  const els = {
-    'whats-new-badge': fakeEl(), 'whats-new-body': fakeEl({ hidden: true }), 'app-version': fakeEl(),
-    'whats-new-title': fakeEl(), 'whats-new-line': fakeEl(), 'btn-whats-new-toggle': fakeEl({ textContent: "What's new" }),
-    'nav-whats-new': fakeEl(),
-  };
-  const stored = {};
-  const localStorage = { getItem: k => stored[k] ?? null, setItem: (k, v) => { stored[k] = v; } };
-  app.sandbox([], {
-    globals: { document: { getElementById: id => els[id] || null }, localStorage },
-    extraSource: app.slice('const WHATS_NEW_KEY', 'function renderLandingSavedList'),
-  });
-  assert.equal(els['app-version'].textContent, CH.APP_VERSION);
-  assert.equal(els['whats-new-title'].textContent, CH.CHANGELOG[0].title + '.');
-  assert.equal((els['whats-new-body'].innerHTML.match(/<h3 /g) || []).length, 3);
-  assert.equal(els['whats-new-body'].hidden, true, 'collapsed until asked');
-  assert.equal(els['whats-new-badge'].hidden, false);
-  assert.deepEqual(stored, {});
-  els['btn-whats-new-toggle'].handlers.click();
-  assert.equal(els['whats-new-body'].hidden, false);
-  assert.equal(els['btn-whats-new-toggle'].textContent, 'Hide');
-  assert.equal(els['btn-whats-new-toggle'].attrs['aria-expanded'], 'true');
-  assert.equal(els['whats-new-badge'].hidden, true);
-  assert.equal(stored.pp_whats_new_dismissed_v1, CH.APP_VERSION);
-  els['btn-whats-new-toggle'].handlers.click();
-  assert.equal(els['whats-new-body'].hidden, true);
-  assert.equal(els['btn-whats-new-toggle'].textContent, "What's new");
-  assert(!html.includes('btn-whats-new-dismiss'), 'the Got it button is gone');
-});
 
 function makeCardEnv(current) {
   const table = fakeEl();
@@ -197,34 +170,6 @@ check('era cards are buttons: the current one is marked and inert, any other swi
   assert(/getElementById\('version-compare-table'\)[\s\S]{0,80}addEventListener\('click', onVersionCardClick\)/.test(script), 'delegated on the container');
 });
 
-check("the What's new nav link opens the list as well as scrolling to it, and the title never ends in two periods", () => {
-  const CH = app.sandbox(['CHANGELOG', 'APP_VERSION']).api;
-  const build = (prefix) => {
-    const els = {
-      'whats-new-badge': fakeEl(), 'whats-new-body': fakeEl({ hidden: true }), 'app-version': fakeEl(),
-      'whats-new-title': fakeEl(), 'whats-new-line': fakeEl(), 'btn-whats-new-toggle': fakeEl({ textContent: "What's new" }),
-      'nav-whats-new': fakeEl(),
-    };
-    const stored = {};
-    const localStorage = { getItem: k => stored[k] ?? null, setItem: (k, v) => { stored[k] = v; } };
-    app.sandbox([], {
-      globals: { document: { getElementById: id => els[id] || null }, localStorage },
-      extraSource: prefix + app.slice('const WHATS_NEW_KEY', 'function renderLandingSavedList'),
-    });
-    return { els, stored };
-  };
-  const { els, stored } = build('');
-  els['nav-whats-new'].handlers.click();
-  assert.equal(els['whats-new-body'].hidden, false, 'nav link expands the list');
-  assert.equal(els['btn-whats-new-toggle'].attrs['aria-expanded'], 'true');
-  assert.equal(els['btn-whats-new-toggle'].textContent, 'Hide');
-  assert.equal(stored.pp_whats_new_dismissed_v1, CH.APP_VERSION);
-  els['nav-whats-new'].handlers.click();
-  assert.equal(els['whats-new-body'].hidden, false, 'a second click does not collapse it');
-  const dotted = build("CHANGELOG[0].title = 'Ends with a period.'; ");
-  assert.equal(dotted.els['whats-new-title'].textContent, 'Ends with a period.');
-});
-
 check('the inert You are here card gets no hover effect, and the card parts are block spans', () => {
   const css = app.css || require('fs').readFileSync(require('path').join(__dirname, 'app.css'), 'utf8');
   assert(/button\.version-compare-col\.here:hover\s*\{[^}]*border-color:\s*var\(--border-accent\)/.test(css));
@@ -237,8 +182,8 @@ check('the footer feedback link carries the version and browser, encoded', () =>
   const link = fakeEl({ href: '' });
   link.attrs.href = 'https://github.com/Spazz/RaidPlanner/issues/new';
   app.sandbox([], {
-    globals: { document: { getElementById: id => (id === 'feedback-link' ? link : null) }, navigator: { userAgent: 'Mozilla/5.0 (Test; x&y)' } },
-    extraSource: app.slice('(function initFeedbackLink', '// "What\'s new" dismissible badge'),
+    globals: { doc: { getElementById: id => (id === 'feedback-link' ? link : null) }, nav: { userAgent: 'Mozilla/5.0 (Test; x&y)' }, store: {} },
+    extraSource: app.slice('function initSitePage', '// Reading localStorage') + '\ninitSitePage(doc, store, nav);',
   });
   const body = `Raidsmith ${APP_VERSION}\nBrowser: Mozilla/5.0 (Test; x&y)\n\nWhat happened:\n`;
   assert.equal(link.href, 'https://github.com/Spazz/RaidPlanner/issues/new?body=' + encodeURIComponent(body));

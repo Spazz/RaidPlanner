@@ -40,7 +40,6 @@ function syncVersionControls() {
       restoreVersionButtonFocus();
     };
   });
-  document.getElementById('landing-version-note').textContent = profile.note;
   document.getElementById('btn-landing-random').textContent = `Generate a random ${Config.Raids[State.selectedRaid].size}-player roster`;
   document.getElementById('btn-optimize').disabled = !profile.modeled;
   renderRaidSizeControl();

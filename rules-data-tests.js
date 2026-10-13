@@ -165,7 +165,7 @@ if (update) {
 
 // ── Checks: the page and the registry ───────────────────────────
 check('index.html loads the four data files, the catalog first, right before js/rules.js', () => {
-  assert.deepStrictEqual(app.scripts.slice(0, 5), ['/js/rules/catalog.js', '/js/rules/tbc.js', '/js/rules/classic.js', '/js/rules/forever.js', '/js/rules.js']);
+  assert.deepStrictEqual(app.scripts.slice(1, 6), ['/js/rules/catalog.js', '/js/rules/tbc.js', '/js/rules/classic.js', '/js/rules/forever.js', '/js/rules.js']);
 });
 
 check('RulesData holds the shared catalog and one file per version; Rulesets is the registry of versions', () => {

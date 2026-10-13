@@ -2,8 +2,8 @@
  * PartyPlanner Web - release notes and version tests
  * Run: node changelog-tests.js
  *
- * js/changelog.js holds APP_VERSION and the CHANGELOG that the landing page's "What's new"
- * list renders. These checks pin: the version agrees with package.json and the newest entry,
+ * js/changelog.js holds APP_VERSION and the CHANGELOG that whats-new.html renders as its
+ * release list. These checks pin: the version agrees with package.json and the newest entry,
  * entries are well formed and strictly newest-first, the dismissal rule shows the badge once
  * per new version (and once for the old "true" value), the markup escapes its text, backups
  * still validate the dismissal key, and the page actually wires it all up.
@@ -13,8 +13,8 @@ const fs = require('fs');
 const path = require('path');
 const app = require('./tests/load-app');
 
-const ctx = app.sandbox(['APP_VERSION', 'CHANGELOG', 'parseVersion', 'whatsNewDismissed', 'renderChangelog', 'DataBackup', 'esc']);
-const { APP_VERSION, CHANGELOG, parseVersion, whatsNewDismissed, renderChangelog, DataBackup } = ctx.api;
+const ctx = app.sandbox(['APP_VERSION', 'CHANGELOG', 'parseVersion', 'whatsNewDismissed', 'renderChangelog', 'DataBackup', 'esc', 'WHATS_NEW_KEY', 'dismissWhatsNew', 'whatsNewSeen']);
+const { APP_VERSION, CHANGELOG, parseVersion, whatsNewDismissed, renderChangelog, DataBackup, WHATS_NEW_KEY, dismissWhatsNew, whatsNewSeen } = ctx.api;
 
 let passed = 0;
 function check(name, fn) {
@@ -66,11 +66,11 @@ check('the pre-versioned "true", "false", garbage and nothing stored all show th
   }
 });
 
-check('renderChangelog lists the newest releases with escaped text and respects the limit', () => {
+check('renderChangelog lists every release by default, with escaped text, and respects an explicit limit', () => {
   const html = renderChangelog();
-  assert.equal((html.match(/<h3 /g) || []).length, 3);
+  assert.equal((html.match(/<h3 /g) || []).length, CHANGELOG.length);
   assert(html.includes(`v${APP_VERSION}`));
-  assert(!html.includes('v0.9.0'), 'the fourth release is beyond the default limit');
+  assert.equal((renderChangelog(CHANGELOG, 2).match(/<h3 /g) || []).length, 2);
   const hostile = [{ version: '9.9.9', date: '2030-01-01', title: '<img src=x onerror=alert(1)>', changes: ['a "quote" & <b>bold</b>'] }];
   const out = renderChangelog(hostile, 5);
   assert(!/<img|<b>/.test(out) && out.includes('&lt;img') && out.includes('&amp;'));
@@ -83,18 +83,19 @@ check('data backups accept a version, "true" or "false" for the dismissal key an
   assert(!valid('maybe') && !valid('3.0') && !valid(''));
 });
 
-check('the landing page renders the release notes, shows the version and stores the dismissed version', () => {
-  assert(app.html.includes('id="whats-new-body"') && app.html.includes('id="app-version"'));
-  assert(!/<ul class="whats-new-list">/.test(app.html), 'the list is generated, not hand-written');
-  assert(app.scripts.indexOf('/js/changelog.js') > app.scripts.indexOf('/js/rules.js'), 'loads after rules.js (needs esc)');
-  assert(app.scripts.indexOf('/js/changelog.js') < app.scripts.indexOf('/js/app.js'));
-  // The change log is logic (load-app's half above the UI marker): after analysis.js, before render.js.
-  assert(app.scripts.indexOf('/js/changes.js') > app.scripts.indexOf('/js/analysis.js'), 'changes.js loads after analysis.js');
-  assert(app.scripts.indexOf('/js/changes.js') < app.scripts.indexOf('/js/render.js'), 'changes.js loads before render.js');
-  const wiring = app.slice('const WHATS_NEW_KEY', 'function renderLandingSavedList');
-  assert(wiring.includes("pp_whats_new_dismissed_v1") && wiring.includes('renderChangelog()'));
-  assert(wiring.includes('safeSetItem(localStorage, WHATS_NEW_KEY, APP_VERSION)'));
-  assert(wiring.includes('whatsNewDismissed(stored)'));
+check('the dismissal is stored under the original key as the current version, and survives a broken store', () => {
+  assert.equal(WHATS_NEW_KEY, 'pp_whats_new_dismissed_v1');
+  const data = {};
+  const store = { getItem: k => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v); } };
+  assert.equal(whatsNewSeen(store), false);
+  assert.equal(dismissWhatsNew(store), true);
+  assert.equal(data[WHATS_NEW_KEY], APP_VERSION);
+  assert.equal(whatsNewSeen(store), true);
+  data[WHATS_NEW_KEY] = 'true';
+  assert.equal(whatsNewSeen(store), false, 'the pre-versioned value covers nothing');
+  const broken = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('full'); } };
+  assert.equal(whatsNewSeen(broken), false);
+  assert.equal(dismissWhatsNew(broken), false);
 });
 
 console.log(`\nChangelog tests: ${passed} passed, 0 failed, ${passed} total`);

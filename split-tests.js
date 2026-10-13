@@ -44,7 +44,7 @@ check('index.html carries no inline <script> or <style>', () => {
 
 check('the page links /app.css and loads every js file as a plain classic script', () => {
   assert.deepEqual(app.stylesheets, ['/app.css']);
-  assert.ok(app.scripts.length >= 6 && app.scripts.length <= 16, `${app.scripts.length} script files`);
+  assert.ok(app.scripts.length >= 6 && app.scripts.length <= 20, `${app.scripts.length} script files`);
   for (const src of app.scripts) assert.match(src, /^\/js\/(?:rules\/)?[a-z0-9-]+\.js$/, `${src} must be root-absolute under /js/ (the rules data files under /js/rules/)`);
   assert.equal(new Set(app.scripts).size, app.scripts.length, 'a script is loaded twice');
   for (const m of html.matchAll(/<script\b([^>]*)>/gi)) {
@@ -129,8 +129,10 @@ check('the whole page runs in page order against a lenient DOM stub, and exposes
   assert.ok(ctx.window.PP && ctx.window.PP.State && ctx.window.PP.Optimizer, 'window.PP not exposed by the last script');
 });
 
-check('the load-order check is sensitive: loading the last two scripts swapped fails', () => {
-  const last = app.scripts.length - 1;
+check('the load-order check is sensitive: loading modals.js and app.js swapped fails', () => {
+  // site-pages.js comes after app.js and is deliberately tolerant, so the swap is of the two scripts before it.
+  const last = app.scripts.indexOf('/js/app.js');
+  assert.equal(app.scripts[last - 1], '/js/modals.js');
   const swapped = [...app.scripts];
   [swapped[last - 1], swapped[last]] = [swapped[last], swapped[last - 1]];
   assert.throws(() => runPage(swapped, lenientBrowser()), /not defined|is not a function/);

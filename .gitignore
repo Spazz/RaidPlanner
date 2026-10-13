@@ -2,10 +2,14 @@
 *
 !.gitignore
 !index.html
+# Static site pages (same header and footer as index.html; they load js/util.js, js/changelog.js, js/site-pages.js), served as-is
+!faq.html
+!whats-new.html
 # The page's stylesheet and the app scripts it loads in order (plain classic scripts, no build step); split-tests.js checks every one is listed
 !app.css
 !og-image.png
 !js/
+!js/util.js
 !js/rules.js
 !js/changelog.js
 !js/state.js
@@ -18,6 +22,7 @@
 !js/render.js
 !js/modals.js
 !js/app.js
+!js/site-pages.js
 # Rules data files (plain scripts that assign RulesData.*, loaded before js/rules.js): written once by tools/generate-rules-data.js, then edited by hand
 !js/rules/
 !js/rules/*.js
@@ -26,6 +31,7 @@
 !tools/rules-report.js
 !tools/make-og-image.py
 !rebrand-tests.js
+!site-pages-tests.js
 # Self-hosted spec/class/role/buff/debuff icons (one <slug>.jpg each, fetched once from the Wowhead CDN); icons-tests.js checks every slug the rule tables name is here
 !icons/
 !icons/*.jpg

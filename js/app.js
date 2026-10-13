@@ -111,49 +111,6 @@ function onVersionCardClick(event) {
   if (el) el.textContent = `Raidsmith v${APP_VERSION}`;
 })();
 
-// Feedback link: the static href works without JS; this adds the version and browser to the
-// issue body so a report arrives with the facts a fix needs.
-(function initFeedbackLink() {
-  const link = document.getElementById('feedback-link');
-  if (!link) return;
-  const body = `Raidsmith ${APP_VERSION}\nBrowser: ${navigator.userAgent}\n\nWhat happened:\n`;
-  link.href = `${link.getAttribute('href').split('?')[0]}?body=${encodeURIComponent(body)}`;
-})();
-
-// "What's new" dismissible badge (feature-backlog-2.md #9). The key keeps its original
-// name (data backups know it); its value is the release the person dismissed, so a new
-// APP_VERSION (js/changelog.js) re-surfaces the badge once. The old value "true" covers none.
-const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
-(function initWhatsNew() {
-  const badge = document.getElementById('whats-new-badge');
-  if (!badge) return;
-  document.getElementById('whats-new-body').innerHTML = renderChangelog();
-  document.getElementById('app-version').textContent = APP_VERSION;
-  document.getElementById('whats-new-title').textContent = /\.$/.test(CHANGELOG[0].title) ? CHANGELOG[0].title : `${CHANGELOG[0].title}.`;
-  let stored = null;
-  try { stored = localStorage.getItem(WHATS_NEW_KEY); } catch {}
-  badge.hidden = whatsNewDismissed(stored);
-  const dismiss = () => {
-    badge.hidden = true;
-    safeSetItem(localStorage, WHATS_NEW_KEY, APP_VERSION);
-  };
-  // Expanding the list counts as seeing it: the nav badge goes and the version is remembered.
-  const line = document.getElementById('whats-new-line');
-  const body = document.getElementById('whats-new-body');
-  const toggle = document.getElementById('btn-whats-new-toggle');
-  const setOpen = (open) => {
-    body.hidden = !open;
-    line.classList.toggle('open', open);
-    toggle.textContent = open ? 'Hide' : "What's new";
-    toggle.setAttribute('aria-expanded', String(open));
-    if (open) dismiss();
-  };
-  toggle.addEventListener('click', () => setOpen(body.hidden));
-  // The nav link scrolls to the line and opens the list too (the scroll is the link's own).
-  const navLink = document.getElementById('nav-whats-new');
-  if (navLink) navLink.addEventListener('click', () => { dismiss(); if (body.hidden) setOpen(true); });
-})();
-
 // Asks, then removes one landing row: a working plan (kind 'plan', id = its plan key) or a saved
 // copy (kind 'copy', id = its name). Resolves true only when something was removed. Declining keeps it.
 async function deleteSavedEntry(kind, id, label) {
@@ -1427,7 +1384,6 @@ function showTipsAgain() {
   showToast('Feature tips will show again as you use the planner');
 }
 document.getElementById('btn-show-tips-again').addEventListener('click', showTipsAgain);
-document.getElementById('faq-show-tips-again')?.addEventListener('click', showTipsAgain);
 
 document.getElementById('btn-copy-json').addEventListener('click', () => {
   if (!hasLoadedWork()) { showToast('No roster to copy'); return; }
@@ -2120,7 +2076,6 @@ function showShortcutsHelp() {
 }
 document.getElementById('btn-close-shortcuts')?.addEventListener('click', () => document.getElementById('shortcuts-dialog').close());
 document.getElementById('btn-shortcuts-help')?.addEventListener('click', showShortcutsHelp);
-document.getElementById('faq-shortcuts-link')?.addEventListener('click', showShortcutsHelp);
 
 // Blocks a shortcut not just while typing (isTypingTarget, defined pre-UI-
 // split so input-tests.js can exercise it directly) but also while any

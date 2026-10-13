@@ -1,5 +1,5 @@
 // ── RELEASE NOTES ───────────────────────────────────────────────
-// What the landing page's "What's new" list shows. Newest entry first; its version is
+// What the "What's new" page (whats-new.html) lists. Newest entry first; its version is
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
@@ -134,8 +134,25 @@ function whatsNewDismissed(stored, current = APP_VERSION) {
   return true;
 }
 
-// The markup for the newest `limit` releases (pure; the landing page assigns it once).
-function renderChangelog(entries = CHANGELOG, limit = 3) {
+// The localStorage key holding the release the person last saw on the What's new page. It keeps
+// its original name (data backups know it); the value is a version, so a new APP_VERSION
+// re-surfaces the header badge once.
+const WHATS_NEW_KEY = 'pp_whats_new_dismissed_v1';
+
+// Remembers that the current release was seen. True when it was stored.
+function dismissWhatsNew(storage) {
+  try { storage.setItem(WHATS_NEW_KEY, APP_VERSION); return true; } catch { return false; }
+}
+
+// Whether the stored dismissal covers APP_VERSION (an unreadable store counts as not dismissed).
+function whatsNewSeen(storage) {
+  let stored = null;
+  try { stored = storage.getItem(WHATS_NEW_KEY); } catch {}
+  return whatsNewDismissed(stored);
+}
+
+// The markup for the newest `limit` releases (all of them by default; pure, the page assigns it once).
+function renderChangelog(entries = CHANGELOG, limit = entries.length) {
   return entries.slice(0, limit).map(entry => `
       <h3 class="whats-new-version">${esc(entry.title)} <span>v${esc(entry.version)}, ${esc(entry.date)}</span></h3>
       <ul class="whats-new-list">${entry.changes.map(line => `<li>${esc(line)}</li>`).join('')}</ul>`).join('');
