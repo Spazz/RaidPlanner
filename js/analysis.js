@@ -1242,8 +1242,8 @@ const Backups = {
   // name was already part of, to keep the one-to-one invariant.
   link(primaryName, backupName) {
     if (!primaryName || !backupName || primaryName === backupName) return { success:false, error:'Choose a different player' };
-    if (!(State.roster || []).some(p => p.name === primaryName)) return { success:false, error:'Backup target must be seated' };
-    if (!(State.bench || []).some(p => p.name === backupName)) return { success:false, error:'Backup must be on the bench' };
+    if (!(State.roster || []).some(p => p.name === primaryName)) return { success:false, error:'Standby target must be seated' };
+    if (!(State.bench || []).some(p => p.name === backupName)) return { success:false, error:'A standby player must be on the bench' };
     State.backups = State.backups || {};
     this.unlink(primaryName);
     this.clearBackup(backupName);
@@ -1291,7 +1291,7 @@ const Backups = {
   // the first open seat if that group is no longer available.
   swapIn(primaryName, groupIdx) {
     const backupName = this.backupNameFor(primaryName);
-    if (!backupName) return { success:false, error:'No backup designated' };
+    if (!backupName) return { success:false, error:'No standby player set' };
     const bi = (State.bench || []).findIndex(p => p.name === backupName);
     if (bi < 0) return { success:false, error: backupName + ' is no longer on the bench' };
     const groups = State.groups || [];

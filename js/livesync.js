@@ -37,6 +37,14 @@ const LiveLinks = {
     storage.setItem(this.key, JSON.stringify(map));
     return map[planKey];
   },
+  // Forgets one plan's link binding (its plan is deleted); every other binding stays as stored.
+  drop(storage, planKey) {
+    const map = this.read(storage);
+    if (!planKey || !Object.prototype.hasOwnProperty.call(map, planKey)) return false;
+    delete map[planKey];
+    storage.setItem(this.key, JSON.stringify(map));
+    return true;
+  },
   // What is on screen differs from what this browser last synced.
   needsPush(entry, localCode) {
     return !!entry && !!localCode && localCode !== entry.lastCode;

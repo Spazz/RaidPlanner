@@ -435,7 +435,7 @@ check('apply with a raid key seats from that copy', () => {
 
 // ── (e) Assignments is unreachable ──────────────────────────────────
 check('the Assignments view cannot be opened: no tab, switchTab lands on the plan, no 2 shortcut', () => {
-  const stub = () => ({ hidden: false, style: {} });
+  const stub = () => ({ hidden: false, style: {}, focus() {} });
   const elements = {};
   const doc = {
     getElementById: id => elements[id] || (elements[id] = stub()),
@@ -454,7 +454,7 @@ check('the Assignments view cannot be opened: no tab, switchTab lands on the pla
   api.State.activeTab = 'ideal';
   api.switchTab('assignments');
   assert.equal(api.State.activeTab, 'plan', 'asking for Assignments lands on the plan');
-  assert.equal(elements['btn-back-to-plan'].hidden, true);
+  assert.equal(elements['reference-banner'].hidden, true);
   assert.equal(env.commits, 1, 'the plan board renders');
   assert(!api.SHORTCUTS_HELP.some(([keys]) => keys === '2'), 'the help list has no 2 shortcut');
   assert.match(app.script, /if \(k === '2' && ASSIGNMENTS_TAB_ENABLED\)/, 'the 2 key is gated by the flag');
@@ -630,6 +630,73 @@ check('with 18 on the board and 2 size-benched DPS, Optimize seats them and sugg
   assert.equal(sz.State.bench.length, 0);
   assert.deepEqual(plain(sz.State.preferredSlots), [], 'no Open slot is suggested while a size-benched player can take the seat');
   assert.deepEqual(plain(sz.State.sizeBenched), []);
+});
+
+// ── Reference comp view (4.3.0, L3-3) ────────────────────────────────
+function referenceHarness() {
+  const elements = {};
+  const log = { focused: [], toasts: [] };
+  let active = null;
+  const doc = {
+    getElementById: id => elements[id] || (elements[id] = {
+      id, hidden: false, style: {}, innerHTML: '', textContent: '', className: '', classList: { add() {} },
+      focus() { if (!this.unfocusable) { active = this; log.focused.push(id); } },
+    }),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    get activeElement() { return active; },
+  };
+  const c = app.sandbox(['State', 'Config', 'GameVersions', 'IdealComp', 'switchTab', 'renderIdealComp'], {
+    globals: { document: doc, __log: log },
+    extraSource: 'function esc(s) { return String(s); }\nfunction showToast(m) { __log.toasts.push(m); }\n' +
+      'function initGroups() {}\nfunction commit() {}\nfunction getDominantRoleLabel() { return ""; }\nfunction classColorClass() { return ""; }\n' +
+      'function getSpecIcon() { return ""; }\nfunction renderBuffCatalog() {}\nfunction renderUtilityCatalog() {}\n' +
+      app.slice('const IdealComp = {', '// Reference comp is a quiet link'),
+  });
+  return { api: c.api, elements, log, doc };
+}
+
+check('the reference comp view shows the banner with the selected raid size, and no "Compare to ideal comp" is left', () => {
+  const { api, elements } = referenceHarness();
+  api.State.gameVersion = 'tbc';
+  for (const [raid, size] of [['ssc', 25], ['kara', 10]]) {
+    api.State.selectedRaid = raid;
+    api.switchTab('ideal');
+    assert.equal(elements['reference-banner'].hidden, false);
+    assert.equal(elements['reference-banner-text'].innerHTML,
+      `<strong>Reference comp, not your raid:</strong> a standard ${size}-man layout to compare against.`);
+  }
+  const html = app.html.replace(/\r\n/g, '\n');
+  assert.match(html, /<button type="button" class="btn btn-primary" id="btn-back-to-raid">Back to my raid<\/button>/);
+  assert.doesNotMatch(html, /btn-back-to-plan/, 'the plain back link is gone');
+  assert.equal((html.match(/>\s*Reference comp\s*</g) || []).length, 2, 'desktop and phone links are renamed');
+  assert.match(html, /id="btn-ideal-comp-link" title="Reference comp"/);
+  const userFacing = html + '\n' + app.script.split(/\r?\n/).filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.doesNotMatch(userFacing.replace(/'One action row: [^\n]*Compare to ideal comp[^\n]*'/, ''), /Compare to ideal comp/i);
+});
+
+check('Back to my raid returns to the plan, hides the banner and focuses the Reference comp link', () => {
+  const { api, elements, log } = referenceHarness();
+  api.State.gameVersion = 'tbc';
+  api.State.selectedRaid = 'ssc';
+  api.switchTab('ideal');
+  assert.equal(log.focused.length, 0, 'opening the view moves no focus');
+  api.switchTab('plan');
+  assert.equal(api.State.activeTab, 'plan');
+  assert.equal(elements['reference-banner'].hidden, true);
+  assert.deepEqual(log.focused, ['btn-ideal-comp-link']);
+  // on a phone the desktop link is not rendered: focus falls to the phone link
+  const phone = referenceHarness();
+  phone.api.State.gameVersion = 'tbc'; phone.api.State.selectedRaid = 'ssc';
+  phone.api.switchTab('ideal');
+  phone.doc.getElementById('btn-ideal-comp-link').unfocusable = true;
+  phone.api.switchTab('plan');
+  assert.deepEqual(phone.log.focused, ['btn-ideal-comp-link-phone']);
+  // a plain plan-to-plan switch moves no focus
+  api.switchTab('plan');
+  assert.equal(log.focused.length, 1);
+  assert.doesNotMatch(app.script, /btn-ideal-comp-link'\)\.hidden/, 'the Reference comp link stays visible while the view is open');
+  assert.match(app.script, /getElementById\('btn-back-to-raid'\)\.addEventListener\('click', \(\) => switchTab\('plan'\)\)/);
 });
 
 console.log(`\nRaid size tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

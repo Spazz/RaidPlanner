@@ -145,4 +145,17 @@ check('non-image error targets are ignored', () => {
   assert.equal(handleIconError(makeEl('script')), 'ignored');
 });
 
+check('a spec icon says what it is on hover: spec, class and a role word, escaped', () => {
+  const html = (p) => getSpecIcon(p);
+  assert.match(html({ class: 'SHAMAN', spec: 'Enhancement', role: 'melee_dps' }), /^<span class="role-icon spec-icon role-dps" title="Enhancement Shaman, melee">/);
+  assert.match(html({ class: 'PRIEST', spec: 'Holy', role: 'healer' }), /title="Holy Priest, healer"/);
+  assert.match(html({ class: 'WARRIOR', spec: 'Protection', role: 'tank' }), /title="Protection Warrior, tank"/);
+  assert.match(html({ class: 'HUNTER', spec: 'Marksmanship', role: 'ranged_dps' }), /title="Marksmanship Hunter, ranged"/);
+  assert.match(html({ class: 'MAGE', spec: 'Fire', role: 'caster_dps' }), /title="Fire Mage, caster"/);
+  assert.match(html({ class: 'MAGE', spec: 'Fire', role: 'dps' }), /title="Fire Mage"/, 'a role without a word adds none');
+  const evil = html({ class: 'MAGE', spec: 'Fire"><img src=x onerror=alert(1)>', role: 'constructor' });
+  assert.doesNotMatch(evil, /title="[^"]*[<>]/, evil);
+  assert.match(evil, /title="Fire&quot;&gt;&lt;img src=x onerror=alert\(1\)&gt; Mage"/);
+});
+
 console.log(`\n${passed} checks passed`);

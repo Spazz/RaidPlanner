@@ -291,5 +291,37 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
     assert(landing, 'the landing import box is still there');
   });
 
+  await check('the empty Sign-ups tray keeps a slim header with a 0 count and the hint; a full tray renders as before', () => {
+    const section = { style: {}, innerHTML: '' };
+    const tctx = app.sandbox(['State', 'Config', 'ChangeLog', 'SignupTray'], {
+      extraSource: slotSource,
+      globals: { document: { getElementById: id => (id === 'bench-section' ? section : null), querySelector: () => null } },
+    });
+    const t = tctx.api;
+    t.State.gameVersion = 'tbc'; t.State.activeTab = 'plan';
+    t.State.groups = [[]]; t.State.bench = []; t.State.unplaced = [];
+    t.SignupTray.render();
+    assert.equal(section.style.display, 'block', 'an empty tray stays visible');
+    assert.match(section.innerHTML, /<h3>Sign-ups<\/h3><span class="bench-count">0<\/span>/);
+    assert.match(section.innerHTML, /<span class="bench-hint">Late sign-ups and players you bench appear here\.<\/span>/);
+    assert.doesNotMatch(section.innerHTML, /tray-tabs|role="tablist"/, 'no tabs while empty');
+    t.State.activeTab = 'ideal';
+    t.SignupTray.render();
+    assert.equal(section.style.display, 'none', 'the reference comp view hides it');
+    t.State.activeTab = 'plan';
+    t.State.bench = [player({ name: 'Benchy-Realm' })];
+    t.SignupTray.render();
+    assert.match(section.innerHTML, /role="tablist"/);
+    assert.match(section.innerHTML, /<div class="bench-hint tray-hint">Drag onto a seat, or tap to pick a group or swap<\/div>/);
+    assert(!section.innerHTML.includes('Drag into a group, or tap to edit'));
+  });
+
+  await check('Raid notes carry a caption saying where notes go, inside the notes panel', () => {
+    const panel = app.html.replace(/\r\n/g, '\n').match(/<details id="raid-notes-panel"[^]*?<\/details>/)[0];
+    assert(panel.includes('<p class="raid-notes-caption">Notes go into the raid chat text, print sheet, share links and JSON, not the MRT string or compact chat.</p>'));
+    assert(panel.indexOf('</textarea>') < panel.indexOf('raid-notes-caption'), 'the caption sits under the textarea');
+    assert(/\.raid-notes-caption\s*\{/.test(app.css));
+  });
+
   console.log(`\n${passed} a11y checks passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

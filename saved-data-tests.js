@@ -20,13 +20,15 @@ const elements = {};
 const el = (id) => elements[id] || (elements[id] = { id, disabled: false, title: '' });
 
 const SOURCE = [
+  'function initGroups() {}',
+  app.slice('function hasLoadedWork()', '// A random roster replaces'),
   app.slice('function getSavedRosters()', 'function rememberImport'),
   app.slice('async function deleteSavedEntry', 'function renderLandingSavedList'),
   app.slice('const SplitFlow = {', "document.getElementById('btn-split-offer')"),
 ].join('\n');
 const ctx = app.sandbox(
   ['State', 'Config', 'PlanStore', 'LiveLinks', 'BackupStamp', 'DataBackup', 'RaidSplit', 'SplitFlow',
-    'getSavedRosters', 'saveRosterToStorage', 'confirmReplaceSavedCopy', 'deleteSavedEntry'],
+    'getSavedRosters', 'saveRosterToStorage', 'confirmReplaceSavedCopy', 'deleteSavedEntry', 'hasLoadedWork', 'ChangeLog', 'Backups'],
   {
     globals: {
       localStorage: fakeStorage, setTimeout, clearTimeout,
@@ -39,7 +41,7 @@ const ctx = app.sandbox(
   }
 );
 const { State, Config, PlanStore, LiveLinks, BackupStamp, DataBackup, RaidSplit, SplitFlow, getSavedRosters, saveRosterToStorage,
-  confirmReplaceSavedCopy, deleteSavedEntry } = ctx.api;
+  confirmReplaceSavedCopy, deleteSavedEntry, hasLoadedWork, ChangeLog, Backups } = ctx.api;
 
 let passed = 0, failed = 0;
 async function check(name, fn) {
@@ -97,6 +99,67 @@ const noComments = (text) => text.split('\n').filter(l => !/^\s*\/\//.test(l)).j
     PlanStore.flush();
     assert.equal(plansLeft().length, 0);
     assert.equal(PlanStore.remove(fakeStorage, 'tbc|nope'), false);
+  });
+
+  await check('LiveLinks.drop removes only that plan\'s binding', () => {
+    reset();
+    LiveLinks.bind(fakeStorage, 'tbc|plan:a', 'AAAAAAA', 'code-a', 1);
+    LiveLinks.bind(fakeStorage, 'tbc|plan:b', 'BBBBBBB', 'code-b', 2);
+    assert.equal(LiveLinks.drop(fakeStorage, 'tbc|plan:a'), true);
+    assert.deepEqual(Object.keys(LiveLinks.read(fakeStorage)), ['tbc|plan:b']);
+    assert.equal(LiveLinks.read(fakeStorage)['tbc|plan:b'].id, 'BBBBBBB');
+    assert.equal(LiveLinks.drop(fakeStorage, 'tbc|plan:a'), false, 'a missing binding is a no-op');
+    assert.equal(LiveLinks.drop(fakeStorage, null), false);
+    assert.equal(LiveLinks.drop(fakeStorage, 'constructor'), false, 'inherited keys are not bindings');
+  });
+
+  await check('deleting a plan also drops its live-link binding and keeps the others', async () => {
+    reset();
+    PlanStore.save(fakeStorage, planData('plan:a', 'Gruul Thursday'));
+    PlanStore.save(fakeStorage, planData('plan:b', 'Kara Sunday'));
+    LiveLinks.bind(fakeStorage, LiveLinks.planKey(planData('plan:a')), 'AAAAAAA', 'code-a', 1);
+    LiveLinks.bind(fakeStorage, LiveLinks.planKey(planData('plan:b')), 'BBBBBBB', 'code-b', 2);
+    State.planId = 'plan:other';
+    answer = false;
+    await deleteSavedEntry('plan', LiveLinks.planKey(planData('plan:a')), 'Gruul Thursday');
+    assert.equal(Object.keys(LiveLinks.read(fakeStorage)).length, 2, 'declining drops nothing');
+    answer = true;
+    await deleteSavedEntry('plan', LiveLinks.planKey(planData('plan:a')), 'Gruul Thursday');
+    assert.deepEqual(Object.keys(LiveLinks.read(fakeStorage)), [LiveLinks.planKey(planData('plan:b'))]);
+  });
+
+  await check('deleting the open plan clears the working state: no Resume offer, nothing autosaves it back', async () => {
+    reset();
+    const open = planData('plan:open', 'Open plan');
+    PlanStore.save(fakeStorage, open);
+    PlanStore.save(fakeStorage, planData('plan:b', 'Kara Sunday'));
+    Object.assign(State, { planId: 'plan:open', gameVersion: 'tbc', rosterName: 'Open plan', roster: [{ uid: 'u1', name: 'A' }], groups: [[{ uid: 'u1', name: 'A' }]], bench: [{ uid: 'u2', name: 'B' }], notes: 'hello' });
+    PlanStore.saveSoon(fakeStorage, planData('plan:open', 'Open plan edited'), () => {});
+    assert.equal(hasLoadedWork(), true);
+    assert.equal(await deleteSavedEntry('plan', LiveLinks.planKey(open), 'Open plan'), true);
+    assert.equal(hasLoadedWork(), false, 'the landing Resume banner (hasLoadedWork) stops offering it');
+    assert.equal(State.planId, null);
+    assert.equal(State.notes, '');
+    PlanStore.flush();
+    assert.deepEqual([...plansLeft()], ['Kara Sunday'], 'no autosave writes the plan back');
+    // another plan's deletion leaves the open plan alone
+    Object.assign(State, { planId: 'plan:b', roster: [{ uid: 'u9', name: 'Z' }], groups: [[{ uid: 'u9', name: 'Z' }]] });
+    assert.equal(await deleteSavedEntry('plan', LiveLinks.planKey(planData('plan:zzz')), 'Nope'), true);
+    assert.equal(hasLoadedWork(), true);
+    assert.equal(State.planId, 'plan:b');
+    // the landing re-renders after a removal
+    const handler = script.slice(script.indexOf("list.querySelectorAll('[data-delete-plan], [data-delete-copy]')"), script.indexOf("list.querySelectorAll('.saved-open')"));
+    assert(/if \(removed\) renderLanding\(\);/.test(handler));
+  });
+
+  await check('Standby wording in the link and swap-in errors', () => {
+    reset();
+    State.roster = [{ uid: 'p1', name: 'Prime' }];
+    State.bench = [{ uid: 'b1', name: 'Bench' }];
+    assert.equal(Backups.link('Gone', 'Bench').error, 'Standby target must be seated');
+    assert.equal(Backups.link('Prime', 'Nobody').error, 'A standby player must be on the bench');
+    State.backups = {};
+    assert.equal(Backups.swapIn('Prime', 0).error, 'No standby player set');
   });
 
   await check('landing rows are an open button plus a separate Delete button (no button inside a button)', () => {

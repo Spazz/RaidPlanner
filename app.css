@@ -380,13 +380,13 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border-subtle);
 }
-.ideal-comp-link, .back-to-plan-link, .raid-notes-toggle {
+.ideal-comp-link, .raid-notes-toggle {
   display: flex; align-items: center; gap: 6px; white-space: nowrap;
   background: none; border: none; cursor: pointer; padding: 0;
   color: var(--text-muted); font-family: var(--font-body); font-size: 12px;
 }
-.ideal-comp-link:hover, .back-to-plan-link:hover, .raid-notes-toggle:hover { color: var(--text-secondary); }
-.ideal-comp-link svg, .back-to-plan-link svg { flex-shrink: 0; }
+.ideal-comp-link:hover, .raid-notes-toggle:hover { color: var(--text-secondary); }
+.ideal-comp-link svg { flex-shrink: 0; }
 .raid-notes-toggle { margin-left: var(--sp-2); }
 .raid-notes-chevron { font-size: 10px; }
 /* "Changes" (end of the action row): what a sync, size change or live update did. */
@@ -836,6 +836,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
   text-align: center;
 }
 .bench-hint { font-size: 10px; color: var(--text-faint); font-style: italic; }
+.bench-header.tray-slim { flex-wrap: wrap; margin-bottom: 0; }
 .bench-list {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr)); gap: 6px;
 }
@@ -1451,6 +1452,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 }
 .raid-notes-panel summary::-webkit-details-marker { display:none; }
 .raid-notes-badge { color:var(--accent-gold-bright); font-size:8px; }
+.raid-notes-caption { margin:0; padding:6px var(--sp-3); font-size:11px; color:var(--text-muted); line-height:1.4; border:1px solid var(--border-medium); border-top:none; }
 .raid-notes-textarea {
   display:block; width:100%; box-sizing:border-box;
   min-height:80px; max-height:260px; resize:vertical;
@@ -1725,13 +1727,10 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .game-beta { font-size: 8px; margin-left: 4px; padding: 1px 3px; }
 
   /* Header row and action row are hidden: their controls move to the context row, the
-     bottom bar and the More sheet (initResponsiveChrome). While comparing to the ideal
-     comp the action row comes back holding only "Back to plan". */
+     bottom bar and the More sheet (initResponsiveChrome). The Reference comp banner
+     carries its own "Back to my raid" button. */
   .title-bar { display: none; }
   .toolbar { display: none; }
-  .toolbar:has(#btn-back-to-plan:not([hidden])) { display: flex; height: 52px; padding: 0 12px; }
-  #btn-back-to-plan { min-height: 44px; padding: 0 8px 0 0; }
-  .toolbar > :not(#btn-back-to-plan) { display: none; }
 
   /* Context row: line 1 plan name + Edit (the toggle button), line 2 seated count ·
      Raid size · "N missing" (separate controls, not nested in the toggle). */

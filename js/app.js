@@ -97,8 +97,18 @@ async function deleteSavedEntry(kind, id, label) {
   const ok = await Modal.confirm({ title: 'Delete plan', message: `Delete "${label}"? This can't be undone.`, confirmLabel: 'Delete' });
   if (!ok) return false;
   try {
-    if (kind === 'plan') PlanStore.remove(localStorage, id);
-    else if (!deleteRosterFromStorage(id)) return false;
+    if (kind === 'plan') {
+      PlanStore.remove(localStorage, id);
+      LiveLinks.drop(localStorage, id);
+      // The open plan goes too: clear the working state so the Resume banner stops offering it
+      // and nothing autosaves it back.
+      if (LiveLinks.planKey(State) === id) {
+        PlanStore.startFresh();
+        State.planId = null;
+        ChangeLog.clear();
+        initGroups();
+      }
+    } else if (!deleteRosterFromStorage(id)) return false;
   } catch { showToast('Could not delete this plan from browser storage'); return false; }
   showToast(`Deleted "${label}"`);
   return true;
@@ -139,7 +149,7 @@ function renderLandingSavedList() {
   list.querySelectorAll('[data-delete-plan], [data-delete-copy]').forEach(btn => btn.addEventListener('click', async () => {
     const isPlan = btn.dataset.deletePlan !== undefined;
     const removed = await deleteSavedEntry(isPlan ? 'plan' : 'copy', isPlan ? btn.dataset.deletePlan : btn.dataset.deleteCopy, btn.dataset.label);
-    if (removed) renderLandingSavedList();
+    if (removed) renderLanding();
   }));
   list.querySelectorAll('.saved-open').forEach(item => item.addEventListener('click', () => {
     if (item.dataset.plan) {
@@ -1652,16 +1662,15 @@ Rulesets.forever.idealComp = {
 };
 
 // ── TAB SWITCHING ───────────────────────────────────────────────
-// 'plan', 'ideal' (Compare to ideal comp) or 'assignments' (hidden while
+// 'plan', 'ideal' (Reference comp) or 'assignments' (hidden while
 // ASSIGNMENTS_TAB_ENABLED is false, see js/state.js: it lands on the plan).
 function switchTab(tab) {
   if (tab === 'assignments' && !ASSIGNMENTS_TAB_ENABLED) tab = 'plan';
+  const leavingReference = State.activeTab === 'ideal' && tab !== 'ideal';
   State.activeTab = tab;
 
-  // Ideal Comp swaps the "Compare to ideal comp" link for "Back to plan".
-  const isIdeal = tab === 'ideal';
-  document.getElementById('btn-ideal-comp-link').hidden = isIdeal;
-  document.getElementById('btn-back-to-plan').hidden = !isIdeal;
+  // The Reference comp view announces itself with a banner (its "Back to my raid" button returns here).
+  document.getElementById('reference-banner').hidden = tab !== 'ideal';
 
   // Show/hide plan-mode-only sections, plus the header and action-row controls
   // marked .plan-only (Optimize, Undo/Redo, plan name, Share, menu, notes, missing).
@@ -1685,6 +1694,17 @@ function switchTab(tab) {
     initGroups();
     commit();
   }
+
+  // Back from the reference comp: the link that opened it is visible again, so focus goes there
+  // (the phone link, then the phone summary toggle, when the desktop one is not shown).
+  if (leavingReference) {
+    for (const id of ['btn-ideal-comp-link', 'btn-ideal-comp-link-phone', 'phone-summary-toggle']) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.focus();
+      if (document.activeElement === el) break;
+    }
+  }
 }
 
 function renderIdealComp() {
@@ -1693,6 +1713,8 @@ function renderIdealComp() {
   container.innerHTML = '';
 
   const raidInfo = Config.Raids[State.selectedRaid];
+  document.getElementById('reference-banner-text').innerHTML =
+    `<strong>Reference comp, not your raid:</strong> a standard ${Number(raidInfo.size)}-man layout to compare against.`;
   const groups = IdealComp.generate(State.selectedRaid);
   const numGroups = groups.length;
 
@@ -1767,10 +1789,10 @@ function renderIdealComp() {
   document.getElementById('status-text').textContent = `Ideal ${raidInfo.size}-man comp`;
 }
 
-// Ideal Comp is a quiet link in the action row (desktop) and the Edit body (phone).
+// Reference comp is a quiet link in the action row (desktop) and the Edit body (phone).
 document.getElementById('btn-ideal-comp-link').addEventListener('click', () => switchTab('ideal'));
 document.getElementById('btn-ideal-comp-link-phone').addEventListener('click', () => switchTab('ideal'));
-document.getElementById('btn-back-to-plan').addEventListener('click', () => switchTab('plan'));
+document.getElementById('btn-back-to-raid').addEventListener('click', () => switchTab('plan'));
 
 // ── GLOBAL KEYBOARD SHORTCUTS (feature-backlog-2.md #8) ──────────
 // Single-key shortcuts and the toolbar button each one clicks (SHORTCUTS_HELP lists them for people).

@@ -132,6 +132,9 @@ function getRoleIcon(role) {
   return `<span class="role-icon ${r.cls}" title="${esc(r.label)}"><img src="${esc(src)}" alt="${esc(r.label)}" loading="lazy"></span>`;
 }
 
+// Role words for the spec icon's hover title (a role the table does not know adds no word).
+const SPEC_TITLE_ROLES = { tank: 'tank', healer: 'healer', melee_dps: 'melee', ranged_dps: 'ranged', caster_dps: 'caster' };
+
 // Player rows show the ruleset's talent-tree icon for the player's spec,
 // falling back to the class crest when the spec/ruleset has none. Icon data
 // lives in Rulesets[version].specIcons (TBC baseline: Rulesets.tbc.specIcons).
@@ -142,10 +145,12 @@ function getSpecIcon(p) {
   if (!icon) return getRoleIcon(p.role);
   const roleCls = p.role === 'tank' ? 'role-tank' : p.role === 'healer' ? 'role-healer' : 'role-dps';
   const label = p.spec ? `${p.spec} ${cls.charAt(0) + cls.slice(1).toLowerCase()}` : cls;
+  const roleWord = Object.prototype.hasOwnProperty.call(SPEC_TITLE_ROLES, p.role) ? SPEC_TITLE_ROLES[p.role] : '';
+  const title = roleWord ? `${label}, ${roleWord}` : label;
   const src = Config.IconURL(icon);
   // Spec art that fails to load falls back to the class crest (see handleIconError).
   const fallback = cls ? ` data-fallback="${esc(Config.IconURL('classicon_' + cls.toLowerCase()))}"` : '';
-  return `<span class="role-icon spec-icon ${roleCls}"><img src="${esc(src)}" alt="${esc(label)}" loading="lazy"${fallback}></span>`;
+  return `<span class="role-icon spec-icon ${roleCls}" title="${esc(title)}"><img src="${esc(src)}" alt="${esc(label)}" loading="lazy"${fallback}></span>`;
 }
 
 // Class colours reach the DOM as classes (cc-<class> / pref-<class> in app.css, fed by
@@ -1756,7 +1761,7 @@ function closeBuffPicker() {
 // State.unplaced and are seated through UnplacedDialog.
 const SignupTray = {
   TABS: [
-    { id:'bench',     label:'Bench',     hint:'Drag into a group, or tap to edit' },
+    { id:'bench',     label:'Bench',     hint:'Drag onto a seat, or tap to pick a group or swap' },
     { id:'tentative', label:'Tentative', hint:'Marked Tentative on Raid-Helper' },
     { id:'late',      label:'Late',      hint:'Marked Late on Raid-Helper. Seat them when they arrive' },
     { id:'absent',    label:'Absent',    hint:"Marked Absent. You'll confirm before seating them" },
@@ -1837,8 +1842,9 @@ const SignupTray = {
     if (!section) return;
     const entries = this.entries();
     if (entries.length === 0) {
-      section.style.display = 'none';
-      section.innerHTML = '';
+      // A slim header keeps the tray discoverable while nobody is in it.
+      section.style.display = State.activeTab === 'plan' ? 'block' : 'none';
+      section.innerHTML = `<div class="bench-header tray-slim"><h3>Sign-ups</h3><span class="bench-count">0</span><span class="bench-hint">Late sign-ups and players you bench appear here.</span></div>`;
       return;
     }
     section.style.display = State.activeTab === 'plan' ? 'block' : 'none';

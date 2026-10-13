@@ -167,7 +167,7 @@
       <details><summary>How do I get the layout to my raid?</summary><p>Click Share to copy a link that carries the whole layout, or use Export to download it as JSON.</p></details>
       <details><summary>Can I load the groups into MRT (Method Raid Tools)?</summary><p>Yes, on Classic Era and TBC — MRT ships maintained builds for both, and its Raid Groups module isn't restricted to Retail. Export &gt; Copy MRT String, then in game open MRT &gt; Raid Groups &gt; Import, pick the <em>From ExRT export string</em> tab, paste, and give the profile a name. MRT can then move everyone into the right party for you. WoW Forever support is unconfirmed — MRT has no Forever build yet since Forever is still in beta.</p></details>
       <details><summary>Can I paste a roster that isn't from Raid-Helper?</summary><p>Yes. The import box also accepts a plain list — one player per line or comma-separated, in any of "Name Class Spec", "Name - Spec Class", a Discord-style "@Name (Spec Class)", a WoW /who-style "Name Level 60 Race Class" line, or CSV with an optional header row. You'll see a preview of what was recognized, with anything ambiguous flagged for review and unrecognized lines listed separately, before anything is imported.</p></details>
-      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save a copy, Share/Export, copying the share link, MRT note or raid chat text, and getting back to the plan from the ideal comp). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
+      <details><summary>Are there keyboard shortcuts?</summary><p>Yes — press <kbd>?</kbd> anywhere in the planner for the full list (Optimize, Undo/Redo, Save a copy, Share/Export, copying the share link, MRT note or raid chat text, and getting back to the plan from the reference comp). <button type="button" class="link-btn" id="faq-shortcuts-link">Open the shortcuts list</button></p></details>
       <details><summary>Can I back up my data, or move it to another browser or device?</summary><p>Yes. Open the gear menu at the top right of the planner (More on a phone) and click <strong>Export data backup</strong> to download every saved roster, comp template, working plan and import history record kept in this browser as one JSON file, with a timestamp and version header. On the new browser, open the same menu and click <strong>Import data backup</strong>, pick that file, and choose <strong>Merge</strong> (adds anything missing and keeps whichever copy of a shared item is newer — the default) or <strong>Replace</strong> (overwrites matching data with the backup). You'll see a summary of exactly what will change before anything is written, and a file that doesn't look like a Party Planner backup is rejected without touching your existing data.</p></details>
       <details><summary>I dismissed a feature tip and want to see it again</summary><p>Party Planner shows a few one-time callouts pointing at easy-to-miss features (the gear menu, the player editor, keyboard shortcuts). Once shown, each one stays dismissed. <button type="button" class="link-btn" id="faq-show-tips-again">Show tips again</button></p></details>
     </div>
@@ -254,13 +254,9 @@
       <span class="raid-size-label" id="raid-size-label">Raid size</span>
       <div class="raid-size-seg" id="raid-size-control" role="group" aria-labelledby="raid-size-label"></div>
     </div>
-    <button type="button" class="ideal-comp-link" id="btn-ideal-comp-link" title="Compare to ideal comp">
+    <button type="button" class="ideal-comp-link" id="btn-ideal-comp-link" title="Reference comp">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
-      Compare to ideal comp
-    </button>
-    <button type="button" class="back-to-plan-link" id="btn-back-to-plan" hidden>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="M11 18l-6-6 6-6"></path></svg>
-      Back to plan
+      Reference comp
     </button>
     <button type="button" class="raid-notes-toggle plan-only" id="btn-raid-notes-toggle" aria-expanded="false" aria-controls="raid-notes-panel"><span class="raid-notes-chevron" id="raid-notes-chevron" aria-hidden="true">&#9656;</span> Raid notes <span id="raid-notes-toggle-badge" class="raid-notes-badge" hidden>&#9679;</span></button>
     <!-- Shown once a sync, size change or live update changed the roster; the badge counts unseen changes. -->
@@ -287,7 +283,7 @@
     </div>
     <button type="button" class="phone-ideal-comp-link" id="btn-ideal-comp-link-phone">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M5 7h14"></path><path d="M5 7l-3 7a4 4 0 006 0z"></path><path d="M19 7l-3 7a4 4 0 006 0z"></path></svg>
-      Compare to ideal comp
+      Reference comp
     </button>
     <div id="phone-context-notes-slot"></div>
     </div>
@@ -332,6 +328,7 @@
   <details id="raid-notes-panel" class="raid-notes-panel">
     <summary>Raid notes <span id="raid-notes-badge" class="raid-notes-badge" hidden>&#9679;</span></summary>
     <textarea class="raid-notes-textarea" id="raid-notes-textarea" maxlength="2000" placeholder="MT swaps, add assignments, kill order..."></textarea>
+    <p class="raid-notes-caption">Notes go into the raid chat text, print sheet, share links and JSON, not the MRT string or compact chat.</p>
   </details>
   <div class="plan-feedback" id="plan-feedback"><button type="button" class="link-btn" id="readiness-text" title="Show coverage details"></button><span id="autosave-status" role="status"></span></div>
   <div class="sync-banner" id="sync-banner" hidden aria-live="polite">
@@ -393,6 +390,10 @@
   <section id="assignments-panel" class="assignments-panel" hidden aria-label="Assignments"></section>
   <div class="app-body">
     <div class="main-column">
+      <div class="sync-banner ref-banner" id="reference-banner" hidden>
+        <span id="reference-banner-text"></span>
+        <div class="sync-banner-actions"><button type="button" class="btn btn-primary" id="btn-back-to-raid">Back to my raid</button></div>
+      </div>
       <div class="groups-container" id="groups-container" role="list" aria-label="Raid parties"></div>
 
       <div class="bench-section" id="bench-section"></div>
