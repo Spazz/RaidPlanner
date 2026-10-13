@@ -49,6 +49,7 @@ function renderLanding() {
     }
   }
   clearLandingImportStatus();
+  LandingSample.sync(document.getElementById('landing-import'));
   renderLandingSavedList();
   renderImportHistory(document.getElementById('landing-history-list'));
   renderVersionComparison();
@@ -184,6 +185,11 @@ function renderLandingSavedList() {
   const names = Object.keys(rosters);
   let drafts = [];
   try { drafts = PlanStore.read(localStorage); } catch {}
+  // Nothing saved and nothing imported: the pane shows one message and the restore row instead of two empty lists.
+  let imports = [];
+  try { imports = ImportHistory.read(localStorage); } catch {}
+  const pane = list.closest('.import-pane');
+  if (pane) pane.classList.toggle('is-empty', names.length === 0 && drafts.length === 0 && imports.length === 0);
   if (names.length === 0 && drafts.length === 0) {
     list.innerHTML = '<div class="saved-empty">No plans yet. Import a roster and your work will be saved here automatically.</div>';
     return;
@@ -229,6 +235,23 @@ function renderLandingSavedList() {
   }));
 }
 
+// The sample behind "a player list": shown gray like placeholder text, and the leader's first edit replaces it.
+const LandingSample = {
+  text: ['Korbridra - Retribution Paladin', 'Fensyl - Arms Warrior', 'Thiven - Restoration Druid',
+    'Lormalisa - Destruction Warlock', 'Sarfendra - Frost Mage'].join('\n'),
+  isShown(box) { return !!box && box.classList.contains('is-sample') && box.value === this.text; },
+  // The class never outlives the text (a cleared or edited box is the leader's own).
+  sync(box) { if (box && !this.isShown(box)) box.classList.remove('is-sample'); },
+  fill(box) {
+    if (!box) return;
+    if (box.value.trim() && !this.isShown(box)) { box.focus(); box.select(); return; }
+    box.value = this.text;
+    box.classList.add('is-sample');
+    box.focus();
+  },
+  beforeInput(box) { if (this.isShown(box)) { box.value = ''; box.classList.remove('is-sample'); } },
+};
+
 (function initLanding() {
   const card = document.getElementById('import-card');
   if (!card) return;
@@ -248,6 +271,10 @@ function renderLandingSavedList() {
   const loadInput = () => runImport('landing-import', 'landing-status-import', 'btn-landing-import', () => { showView('app'); SplitFlow.maybeOffer(); });
   document.getElementById('btn-landing-import').addEventListener('click', loadInput);
   document.getElementById('landing-import').addEventListener('input', clearLandingImportStatus);
+  const landingBox = document.getElementById('landing-import');
+  landingBox.addEventListener('beforeinput', () => LandingSample.beforeInput(landingBox));
+  landingBox.addEventListener('input', () => LandingSample.sync(landingBox));
+  document.getElementById('btn-landing-sample').addEventListener('click', () => LandingSample.fill(landingBox));
   document.getElementById('landing-import').addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -276,6 +303,7 @@ function renderLandingSavedList() {
         if (!sc) return;
         if (sc.raid) State.selectedRaid = sc.raid;
         document.getElementById('landing-import').value = JSON.stringify(S.toRaidHelperJson(sc), null, 1);
+        LandingSample.sync(document.getElementById('landing-import'));
         loadInput();
       });
     };

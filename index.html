@@ -77,7 +77,8 @@
       <div class="import-pane" data-pane="import">
         <p>Paste a Raid-Helper event link or ID, its JSON export, a Party Planner share code, or a plain list of players (one per line). Your plans save automatically in this browser.</p>
         <label for="landing-import" class="sr-only">Raid-Helper link, event ID, JSON, share code or player list</label>
-        <textarea class="import-field" id="landing-import" placeholder="Paste a Raid-Helper link, event ID, JSON or a player list" spellcheck="false"></textarea>
+        <textarea class="import-field" id="landing-import" placeholder="https://raid-helper.dev/event/1234567890123456789" spellcheck="false"></textarea>
+        <div class="import-formats">Accepts a Raid-Helper link or event ID, JSON, or <button type="button" class="link-btn" id="btn-landing-sample">a player list</button>.</div>
         <div class="import-actions">
           <button type="button" class="btn btn-primary btn-lg" id="btn-landing-import">Load roster</button>
           <span class="import-status" id="landing-status-import" role="status"></span>
@@ -85,16 +86,17 @@
       </div>
 
       <div class="import-pane" data-pane="saved" hidden>
-        <h3 class="roster-section-heading">Your plans</h3>
-        <div class="saved-list" id="landing-saved-list"></div>
-        <div class="foot-note">Saved automatically in this browser only. Clearing site data removes them.</div>
+        <p class="saved-empty-note">Plans you import or start save here automatically, in this browser only.</p>
+        <h3 class="roster-section-heading saved-full">Your plans</h3>
+        <div class="saved-list saved-full" id="landing-saved-list"></div>
+        <div class="foot-note saved-full">Saved automatically in this browser only. Clearing site data removes them.</div>
         <div class="row-actions">
           <button type="button" class="link-btn" id="btn-landing-restore">Restore from a backup file</button>
           <span class="saved-item-meta" id="landing-last-backup"></span>
         </div>
-        <h3 class="roster-section-heading">Recent imports</h3>
-        <p>Original import snapshots. Your plans above keep subsequent edits.</p>
-        <div class="saved-list" id="landing-history-list"></div>
+        <h3 class="roster-section-heading saved-full">Recent imports</h3>
+        <p class="saved-full">Original import snapshots. Your plans above keep subsequent edits.</p>
+        <div class="saved-list saved-full" id="landing-history-list"></div>
       </div>
 
       <div class="import-foot">

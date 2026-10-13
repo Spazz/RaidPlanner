@@ -222,8 +222,125 @@ function importEnv(fetchImpl) {
   await check('the import card copy', () => {
     const html = app.html.replace(/\r\n/g, '\n');
     assert(html.includes('Paste a Raid-Helper event link or ID, its JSON export, a Party Planner share code, or a plain list of players (one per line). Your plans save automatically in this browser.'));
-    assert(html.includes('placeholder="Paste a Raid-Helper link, event ID, JSON or a player list"'));
+    assert(html.includes('placeholder="https://raid-helper.dev/event/1234567890123456789"'));
     assert(html.includes('>Raid-Helper link, event ID, JSON, share code or player list</label>'));
+  });
+
+  // ---- 4.4.0 (lane I2): formats line, sample, Your plans empty state ----
+  const sampleSrc = app.slice('const LandingSample = {', '(function initLanding');
+  const makeBox = (value = '', cls = []) => {
+    const set = new Set(cls);
+    const box = { value, focused: 0, selected: 0, focus() { box.focused++; }, select() { box.selected++; },
+      classList: { contains: c => set.has(c), add: c => set.add(c), remove: c => set.delete(c) } };
+    return box;
+  };
+  const { LandingSample } = app.sandbox(['LandingSample'], { extraSource: sampleSrc }).api;
+  const SAMPLE = ['Korbridra - Retribution Paladin', 'Fensyl - Arms Warrior', 'Thiven - Restoration Druid',
+    'Lormalisa - Destruction Warlock', 'Sarfendra - Frost Mage'].join('\n');
+
+  await check('the formats line sits under the box with the sample button', () => {
+    const html = app.html.replace(/\r\n/g, '\n');
+    assert(html.includes('Accepts a Raid-Helper link or event ID, JSON, or <button type="button" class="link-btn" id="btn-landing-sample">a player list</button>.'));
+    assert(html.indexOf('id="btn-landing-sample"') > html.indexOf('id="landing-import"') && html.indexOf('id="btn-landing-sample"') < html.indexOf('id="btn-landing-import"'));
+    assert(/\.import-field::placeholder, \.import-field\.is-sample \{ color: var\(--text-muted\)/.test(app.css), 'sample reads like placeholder text');
+  });
+
+  await check('the sample button fills an empty box and marks it as the sample', () => {
+    assert.equal(LandingSample.text, SAMPLE);
+    const box = makeBox();
+    LandingSample.fill(box);
+    assert.equal(box.value, SAMPLE);
+    assert(box.classList.contains('is-sample'));
+    assert.equal(box.focused, 1);
+    LandingSample.fill(box); // pressing again while the sample shows just refills it
+    assert.equal(box.value, SAMPLE);
+  });
+
+  await check("the sample button never overwrites the leader's own text; it selects it", () => {
+    const box = makeBox('Thrall - Enhancement Shaman');
+    LandingSample.fill(box);
+    assert.equal(box.value, 'Thrall - Enhancement Shaman');
+    assert(!box.classList.contains('is-sample'));
+    assert.equal(box.selected, 1);
+    assert.equal(box.focused, 1);
+  });
+
+  await check('the first edit replaces the sample; an edited or cleared box keeps no gray state', () => {
+    const box = makeBox();
+    LandingSample.fill(box);
+    LandingSample.beforeInput(box);
+    assert.equal(box.value, '');
+    assert(!box.classList.contains('is-sample'));
+    const own = makeBox('Thrall - Enhancement Shaman');
+    LandingSample.beforeInput(own);
+    assert.equal(own.value, 'Thrall - Enhancement Shaman');
+    const edited = makeBox(SAMPLE + ' x', ['is-sample']);
+    LandingSample.sync(edited);
+    assert(!edited.classList.contains('is-sample'));
+    const cleared = makeBox('', ['is-sample']);
+    LandingSample.sync(cleared);
+    assert(!cleared.classList.contains('is-sample'));
+    const intact = makeBox(SAMPLE, ['is-sample']);
+    LandingSample.sync(intact);
+    assert(intact.classList.contains('is-sample'));
+    assert(/addEventListener\('beforeinput', \(\) => LandingSample\.beforeInput\(landingBox\)\)/.test(app.script));
+    assert(/addEventListener\('input', \(\) => LandingSample\.sync\(landingBox\)\)/.test(app.script));
+    assert(/addEventListener\('click', \(\) => LandingSample\.fill\(landingBox\)\)/.test(app.script));
+    assert(/LandingSample\.sync\(document\.getElementById\('landing-import'\)\);\s*renderLandingSavedList\(\);/.test(app.script), 'renderLanding drops a stale gray state');
+  });
+
+  await check('the sample parses cleanly on every version: five players, nothing unparsed, no review flags', () => {
+    const { Import } = app.sandbox(['Import']).api;
+    for (const v of ['classic', 'tbc', 'forever']) {
+      const r = Import.parsePlainRoster(SAMPLE, v);
+      assert.equal(r.entries.length, 5, v);
+      assert.equal(r.unparsed.length, 0, v);
+      for (const e of r.entries) { assert.equal(e.status, 'ok', v); assert(!e.reason, v); }
+    }
+  });
+
+  await check("Your plans pane: both lists empty -> one message and the restore row; either list filled -> today's pane", () => {
+    const html = app.html.replace(/\r\n/g, '\n');
+    const pane = html.slice(html.indexOf('data-pane="saved"'), html.indexOf('class="import-foot"'));
+    assert(pane.includes('<p class="saved-empty-note">Plans you import or start save here automatically, in this browser only.</p>'));
+    assert.equal((pane.match(/id="btn-landing-restore"/g) || []).length, 1, 'one restore button');
+    for (const hidden of ['>Your plans</h3>', 'id="landing-saved-list"', 'class="foot-note', '>Recent imports</h3>', 'Original import snapshots', 'id="landing-history-list"']) {
+      const at = pane.indexOf(hidden);
+      assert(at >= 0, hidden);
+      assert(/saved-full/.test(pane.slice(pane.lastIndexOf('<', at), at + 60)), hidden + ' is hidden when empty');
+    }
+    assert(/\.import-pane\.is-empty \.saved-full \{ display: none; \}/.test(app.css));
+    assert(/\.import-pane:not\(\.is-empty\) \.saved-empty-note \{ display: none; \}/.test(app.css));
+
+    const renderSrc = app.slice('function renderLandingSavedList', '// The sample behind');
+    const run = (plans, copies, imports) => {
+      const pane = { empty: null, classList: { toggle: (c, on) => { pane.empty = on; } } };
+      const list = { innerHTML: '', closest: sel => sel === '.import-pane' ? pane : null, querySelectorAll: () => [] };
+      const ctx = app.sandbox(['renderLandingSavedList', 'PlanStore', 'ImportHistory', 'BackupStamp'], { extraSource: renderSrc + '\n', globals: {
+        document: { getElementById: id => id === 'landing-saved-list' ? list : { textContent: '' } },
+        localStorage: {}, getSavedRosters: () => copies,
+      } });
+      // the real stores come with the logic half: stub their reads
+      ctx.api.PlanStore.read = () => plans;
+      ctx.api.ImportHistory.read = () => imports;
+      ctx.api.BackupStamp.label = () => '';
+      ctx.api.renderLandingSavedList();
+      return pane.empty;
+    };
+    assert.equal(run([], {}, []), true);
+    assert.equal(run([], {}, [{}]), false, 'imports only');
+    assert.equal(run([], { A: { players: [] } }, []), false, 'a saved copy only');
+    assert.equal(run([{ data: { rosterName: 'P', groups: [[]], bench: [] }, updatedAt: 0 }], {}, []), false, 'plans only');
+    assert(/renderImportHistory\(list, onLoad, limit\);\s*if \(list\.id === 'landing-history-list'\) renderLandingSavedList\(\);/.test(app.script), 'removing the last import re-decides the pane');
+  });
+
+  await check('closing the View all imports dialog re-decides the Your plans pane; the dev scenario picker drops the sample state', () => {
+    const dialogSrc = app.slice('(function initHistoryDialog', "dialog.addEventListener('close'");
+    const closeAt = app.script.indexOf("dialog.addEventListener('close'", app.script.indexOf('(function initHistoryDialog'));
+    const closeHandler = app.script.slice(closeAt, app.script.indexOf('});', closeAt));
+    assert(dialogSrc.length > 0);
+    assert(/renderImportHistory\(document\.getElementById\('landing-history-list'\)\);\s*renderLandingSavedList\(\);/.test(closeHandler));
+    assert(/\.value = JSON\.stringify\(S\.toRaidHelperJson\(sc\), null, 1\);\s*LandingSample\.sync\(document\.getElementById\('landing-import'\)\);/.test(app.script));
   });
 
   console.log(`\n${passed} import copy checks passed`);

@@ -94,4 +94,51 @@ check('the button reset keeps the old look: a zero-specificity reset exists for 
   assert(/\.buff-icon\.swappable:focus-visible[^{]*\{[^}]*outline/.test(css), 'keyboard focus is visible');
 });
 
+check('Open slot cards say Suggested (Optimize) or Requested (leader) in both the line and the badge', () => {
+  // Runs the real renderGroups on one group holding an auto entry and a leader's entry; everything it calls but the cards is stubbed.
+  let html = '';
+  const noop = () => {};
+  // Any other element the surrounding script touches while loading answers every method with a no-op.
+  const lenient = (own) => new Proxy(own, { get: (t, k) => (k in t ? t[k] : (k === 'classList' ? { toggle: noop, add: noop, remove: noop, contains: () => false } : (k === 'style' || k === 'dataset') ? {} : noop)) });
+  const container = lenient({ set innerHTML(v) { html = v; }, get innerHTML() { return html; } });
+  const el = lenient({ textContent: '' });
+  const c = app.sandbox(['State', 'PreferredSlots', 'renderGroups'], { extraSource: renderSrc + ' function renderBuffCatalog() {} function renderUtilityCatalog() {} function renderBalanceWarnings() {} function renderSummaryBar() {} function updateStatus() {} function renderManualChanges() {} function syncVersionControls() {} function syncRaidNotesUI() {} function renderCampfires() {} function renderAssignments() {} function renderReadiness() {}', globals: {
+    document: lenient({ getElementById: id => id === 'groups-container' ? container : el, querySelectorAll: () => [] }),
+    capturePlayerSlotFocus: noop, restorePlayerSlotFocus: noop, restoreBuffIconFocus: noop, getGroupBuffs: () => [],
+    getDominantRoleLabel: () => 'MELEE', getSpecIcon: () => '', preferredColorClass: () => '', seatedSlotHTML: () => '',
+    getRaidDebuffCoverage: () => new Set(), renderBuffCatalog: noop, renderUtilityCatalog: noop, renderBalanceWarnings: noop,
+    renderSummaryBar: noop, updateStatus: noop, SignupTray: { render: noop }, renderManualChanges: noop, ChangesPanel: { render: noop },
+    syncVersionControls: noop, syncRaidNotesUI: noop, RaidHelperSync: { updateControls: noop }, renderCampfires: noop,
+    renderAssignments: noop, renderReadiness: noop, Drummers: { isDrummer: () => false },
+    classColorClass: () => "", setInterval: noop, setTimeout: noop, clearTimeout: noop, clearInterval: noop,
+  } });
+  const { State, renderGroups } = c.api;
+  State.groups = [[]];
+  State.preferredSlots = [{ group: 0, class: 'MAGE', spec: 'Frost', auto: true }, { group: 0, class: 'PRIEST', spec: 'Holy' }];
+  renderGroups();
+  const cards = html.split('<div class="player-slot preferred-slot').slice(1);
+  assert.equal(cards.length, 2, 'both Open slots render');
+  const words = (card) => [card.match(/<span class="player-spec" title="([^"]*)">([^<]*)</), card.match(/<span class="preferred-badge">([^<]*)</)];
+  const [autoSpec, autoBadge] = words(cards[0]);
+  assert.equal(autoSpec[2], 'Suggested by Optimize');
+  assert.equal(autoSpec[1], 'Suggested by Optimize', 'the full text is on hover');
+  assert.equal(autoBadge[1], 'SUGGESTED');
+  const [ownSpec, ownBadge] = words(cards[1]);
+  assert.equal(ownSpec[2], 'Requested, awaiting sign-up');
+  assert.equal(ownBadge[1], 'REQUESTED');
+});
+
+check('the Open slot spec line stays on one line and ends in an ellipsis', () => {
+  assert(/\.preferred-slot \.player-spec \{[^}]*white-space: nowrap; overflow: hidden; text-overflow: ellipsis;/.test(norm(app.css)));
+});
+
+check('.player-spec is 10.5px on desktop and 11px in the phone block; Open slot colours are unchanged', () => {
+  const css = norm(app.css);
+  assert(/\n\.player-spec \{ font-size: 10\.5px;/.test(css));
+  const phone = css.slice(css.lastIndexOf('/* ── Slim phone layout'));
+  assert(/\.player-spec \{ font-size: 11px; \}/.test(phone));
+  assert(/\.preferred-slot \{ border: 1px dashed var\(--preferred-color\);/.test(css));
+  assert(/\.preferred-badge \{ color: var\(--preferred-color\); font-size: 9px;/.test(css));
+});
+
 console.log(`\n${passed} buff keyboard checks passed`);
