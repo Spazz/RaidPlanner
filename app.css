@@ -453,10 +453,10 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .roster-label { font-size: 11px; color: var(--text-faint); font-weight: 500; }
 .roster-name {
   display: flex; align-items: center; gap: 6px;
-  font-size: 15px; color: var(--accent-gold-bright); font-weight: 700; letter-spacing: 0.08em;
+  font-size: 15px; color: var(--btn-primary-bg); font-weight: 700; letter-spacing: 0.08em;
   min-width: 0; max-width: 100%;
 }
-.roster-name:hover { color: var(--accent-gold-bright); text-decoration: underline; }
+.roster-name:hover { color: var(--btn-primary-bg); text-decoration: underline; }
 .roster-name svg { flex-shrink: 0; opacity: 0.7; }
 #roster-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roster-status-line { display: block; min-width: 0; flex-shrink: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-muted); }

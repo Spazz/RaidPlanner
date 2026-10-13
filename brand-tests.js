@@ -84,9 +84,9 @@ check('the plan name is larger and gold, with the underline-only hover', () => {
   const rule = css.match(/\.roster-name\s*\{([^}]*)\}/)[1];
   assert.match(rule, /font-size:\s*15px/);
   assert.match(rule, /font-weight:\s*700/);
-  assert.match(rule, /color:\s*var\(--accent-gold-bright\)/);
+  assert.match(rule, /color:\s*var\(--btn-primary-bg\)/, 'the plan name uses the Optimize button gold');
   assert.match(rule, /letter-spacing:\s*0\.08em/);
-  assert.match(css, /\.roster-name:hover\s*\{[^}]*var\(--accent-gold-bright\)[^}]*underline/);
+  assert.match(css, /\.roster-name:hover\s*\{[^}]*var\(--btn-primary-bg\)[^}]*underline/);
   assert.match(css, /\.roster-name svg\s*\{[^}]*opacity:\s*0\.7/);
   assert.match(css, /#phone-plan-name-slot \.roster-name\s*\{[^}]*font-size:\s*15px/);
   assert.match(css, /#roster-name-text\s*\{[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis/);
