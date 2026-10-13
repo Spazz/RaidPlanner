@@ -18,14 +18,22 @@ const LIVE_SOURCE = app.slice('const SHARE_API', "document.getElementById('btn-s
 const STUBS = `
 var dragData = null;
 function showToast(message) { __env.toasts.push(message); }
-function commit() { __env.renders++; LiveSync.onRender(); }
+function commit() {
+  __env.renders++;
+  if (__env.persist) { // mirrors persistWorkingPlan (js/modals.js): mint the planId, save the plan, then LiveSync
+    var result = PlanSession.observe();
+    if (result && result.changed) PlanStore.save(localStorage, result.current);
+  }
+  LiveSync.onRender();
+}
 function hasLoadedWork() { return State.roster.length > 0; }
 function rememberImport() { return ''; }
 var confirm = () => true;
+var Modal = { confirm: async () => (__env.confirmAnswer !== undefined ? __env.confirmAnswer : true) };
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'timeoutSignal', 'fetchLiveLink',
-  'LivePoll', 'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar'];
+  'LivePoll', 'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar', 'PlanSession', 'applyShareCode'];
 
 function memoryStorage() {
   const data = {};
@@ -41,8 +49,9 @@ function response(status, body = {}, headers = {}) {
 }
 
 // A fresh sandbox per test: its own clock, timers, storage and fetch log.
-function makeEnv({ path = '/', hidden = false } = {}) {
-  const env = { toasts: [], renders: 0, calls: [], timers: [], listeners: {}, storage: memoryStorage(), now: 1_000_000, nextTimer: 1 };
+// persist: also mint planIds and save plans the way the app's persistWorkingPlan does.
+function makeEnv({ path = '/', hidden = false, persist = false } = {}) {
+  const env = { persist, toasts: [], renders: 0, calls: [], timers: [], listeners: {}, storage: memoryStorage(), now: 1_000_000, nextTimer: 1 };
   env.route = () => response(200, { updatedAt: 1 });
 
   const FakeDate = new Proxy(Date, { get: (target, prop) => (prop === 'now' ? () => env.now : target[prop]) });
@@ -70,6 +79,7 @@ function makeEnv({ path = '/', hidden = false } = {}) {
   };
   env.ctx = app.sandbox(NAMES, { globals, extraSource: STUBS + LIVE_SOURCE });
   env.api = env.ctx.api;
+  if (persist) env.api.PlanSession.ready = true;
 
   // Moves the clock forward, firing due timers in order.
   env.advance = async ms => {
@@ -728,6 +738,65 @@ async function check(name, fn) {
       await env.advance(15000);
       assert.equal(calls, 2, 'polling continued after the throw');
     } finally { console.error = realError; }
+  });
+
+  // ── Opening a shared plan while a linked plan is open ─────────────
+  // A different roster's share code, built in a sandbox of its own.
+  function otherRosterCode() {
+    const other = makeEnv();
+    const { Import, State, currentShareCode } = other.api;
+    const players = Array.from({ length: 10 }, (_, i) => ({ name: 'Q' + i, class: 'WARRIOR', spec: 'Arms', role: 'melee_dps', groupNumber: 1 + Math.floor(i / 5) }));
+    assert(Import.loadRoster({ gameVersion: 'tbc', raid: 'kara', players }));
+    State.planId = 'event:555';
+    return currentShareCode();
+  }
+
+  await check("Opening someone else's live link while my own linked plan is open keeps my plan and its link", async () => {
+    const OTHER_ID = 'oTh3rId';
+    const env = makeEnv({ path: '/tbc/' + OTHER_ID, persist: true });
+    const planKey = seedLinkedPlan(env);
+    env.ctx.commit(); // saves plan P
+    const before = env.api.PlanStore.read(env.storage).find(p => env.api.LiveLinks.planKey(p.data) === planKey);
+    assert(before, 'P is saved');
+    const savedData = JSON.parse(JSON.stringify(before.data));
+    const theirCode = otherRosterCode();
+    env.route = call => (call.method === 'GET' ? response(200, { code: theirCode, updatedAt: 50 }) : response(500));
+    env.confirmAnswer = true;
+
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+
+    const kept = env.api.PlanStore.read(env.storage).find(p => p.data.planId === 'event:999');
+    assert(kept, 'P is still in PlanStore under its own planId');
+    assert.equal(JSON.stringify(kept.data), JSON.stringify(savedData), 'P is unchanged');
+    assert.equal(entryOf(env, planKey).id, 'aB3dE5g', 'P keeps its own link');
+    const openKey = env.api.LiveLinks.planKey(env.api.State);
+    assert(openKey && openKey !== planKey, 'the open plan is a new plan');
+    assert.equal(entryOf(env, openKey).id, OTHER_ID, 'the open plan is bound to the other link');
+    assert.equal(puts(env).length, 0);
+    assert.equal(env.calls.filter(c => c.method === 'POST').length, 0);
+  });
+
+  await check('Opening a share code while my linked plan has an unsent edit sends that edit first', async () => {
+    const env = makeEnv({ persist: true });
+    const planKey = seedLinkedPlan(env);
+    env.ctx.commit(); // saves plan P
+    env.route = () => response(200, { updatedAt: 900 });
+    edit(env, 'late note'); // a save is pending; the 2 s debounce has not fired
+    assert.equal(env.api.LiveSync.pending, true);
+    const codeWithEdit = env.api.currentShareCode();
+    const theirCode = otherRosterCode();
+    env.confirmAnswer = true;
+
+    assert.equal(await env.api.applyShareCode(theirCode), true);
+    await settle();
+
+    assert.equal(env.calls.length, 1, 'one request, nothing to any other id');
+    assert.equal(puts(env).length, 1);
+    assert.equal(puts(env)[0].body.id, 'aB3dE5g', "P's own link");
+    assert.equal(puts(env)[0].body.code, codeWithEdit, "the PUT carries P's edit");
+    assert.equal(entryOf(env, planKey).lastCode, codeWithEdit, 'P is recorded as synced');
+    assert.notEqual(env.api.LiveLinks.planKey(env.api.State), planKey, 'the shared plan replaced it on screen');
   });
 
   console.log(`\nLiveSync tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

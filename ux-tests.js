@@ -154,23 +154,27 @@ return { ${exported.join(', ')} };
   // ── U4: a shared link asks through the Modal ──────────────────────
   const shareSrc = app.slice('async function applyShareCode', "document.getElementById('btn-share')");
   await check('applyShareCode asks via Modal.confirm only when work is loaded, and a decline changes nothing', async () => {
-    const calls = { confirm: 0, imported: 0, committed: 0 };
+    const calls = { confirm: 0, imported: 0, committed: 0, flushed: 0 };
+    const order = [];
     let answer = false, work = true;
     const deps = {
       Import: {
         decodeSharePayload: c => c, previewShareString: () => ({ success: true, name: 'Raid X' }),
-        importAddonString: () => { calls.imported++; return { success: true, playerCount: 3 }; },
+        importAddonString: () => { calls.imported++; order.push('import'); return { success: true, playerCount: 3 }; },
       },
       hasLoadedWork: () => work, State: { rosterName: 'Raid X' }, commit: () => { calls.committed++; },
       showToast() {}, rememberImport: () => '', ChangeLog: { clear() {} },
+      LiveSync: { flush() { calls.flushed++; order.push('flush'); } },
       Modal: { confirm: async opts => { calls.confirm++; assert.match(opts.message, /Raid X/); return answer; } },
     };
     const { applyShareCode } = bind(shareSrc, deps, ['applyShareCode']);
     assert.equal(await applyShareCode('abc'), false);
-    assert.deepEqual(calls, { confirm: 1, imported: 0, committed: 0 });
+    assert.deepEqual(calls, { confirm: 1, imported: 0, committed: 0, flushed: 0 });
+    assert.deepEqual(order, [], 'a decline never flushes');
     answer = true;
     assert.equal(await applyShareCode('abc'), true);
-    assert.deepEqual(calls, { confirm: 2, imported: 1, committed: 1 });
+    assert.deepEqual(calls, { confirm: 2, imported: 1, committed: 1, flushed: 1 });
+    assert.deepEqual(order, ['flush', 'import'], 'the pending live push goes out before the import replaces State');
     work = false;
     assert.equal(await applyShareCode('abc'), true);
     assert.equal(calls.confirm, 2, 'no work to replace, no question');

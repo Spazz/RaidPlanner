@@ -543,6 +543,29 @@ async function check(name, fn) {
     assert(State.groups[1].some(p => p.name === 'P0'));
   });
 
+  await check('A manual standby edit survives the share format, and the wire key stays "backups"', () => {
+    const { Import, State, Backups } = app.sandbox(['Import', 'State', 'Backups'], { globals: { btoa, atob, escape, unescape } }).api;
+    const players = Array.from({ length: 10 }, (_, i) => ({ name: 'P' + i, class: 'MAGE', spec: 'Frost', role: 'caster_dps', groupNumber: 1 + Math.floor(i / 5) }));
+    assert(Import.loadRoster({ gameVersion: 'tbc', raid: 'kara', players }));
+    const sitter = State.groups[1].pop();
+    State.roster = State.roster.filter(p => p !== sitter);
+    State.bench.push(sitter);
+    assert.equal(Backups.link('P0', sitter.name).success, true);
+    assert.equal(Backups.hasManualEdits(), true);
+    const expected = JSON.stringify(Backups.serialize());
+    assert.equal(expected, '{"P0":"' + sitter.name + '"}');
+
+    const str = Import.exportShareString();
+    const tail = JSON.parse(decodeURIComponent(str.split(':').pop()));
+    assert.deepEqual(Object.keys(tail).filter(k => /backup|standby/i.test(k)), ['backups'], 'the PP:2 tail uses the literal key "backups"');
+    assert.equal(JSON.stringify(tail.backups), expected);
+
+    State.backups = {};
+    assert.equal(Backups.hasManualEdits(), false);
+    assert.equal(Import.importAddonString(str).success, true);
+    assert.equal(JSON.stringify(Backups.serialize()), expected, 'the standby edit comes back identical');
+  });
+
   console.log(`\nShare tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);
   if (failed > 0) process.exit(1);
 })();

@@ -952,11 +952,12 @@ async function applyShareCode(code) {
 
   const hasWork = hasLoadedWork();
   if (hasWork && !await Modal.confirm({
-    title: 'Load shared raid?',
-    message: `"${preview.name}" replaces your current layout.`,
-    confirmLabel: 'Load shared raid',
+    title: 'Open shared plan?',
+    message: `"${preview.name}" opens as a new plan. Your current plan stays in Your plans.`,
+    confirmLabel: 'Open shared plan',
   })) return false;
 
+  LiveSync.flush();
   const res = Import.importAddonString(str);
   if (!res.success) { showToast(res.error || 'That share link is invalid or damaged'); return false; }
 

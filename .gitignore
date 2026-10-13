@@ -83,6 +83,7 @@
 !changes-tests.js
 !boards-tests.js
 !rules-data-tests.js
+!mrt-tests.js
 !.vercelignore
 # Test runner, loader and CI (npm test; GitHub Actions runs it), the golden boards snapshot and the rosters two suites share
 !package.json
