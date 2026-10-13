@@ -365,6 +365,14 @@
       <button type="button" class="link-btn" id="btn-remote-dismiss">Dismiss</button>
     </div>
   </div>
+  <!-- Live link opened from someone else: says the plan is shared and editable; stays until acted on. -->
+  <div class="sync-banner" id="shared-plan-banner" hidden aria-live="polite">
+    <span id="shared-plan-text"></span>
+    <div class="sync-banner-actions">
+      <button type="button" class="btn btn-primary" id="btn-shared-gotit">Got it</button>
+      <button type="button" class="link-btn" id="btn-shared-copy">Make my own copy</button>
+    </div>
+  </div>
   <!-- Another tab saved this plan; this tab's next change would overwrite it. -->
   <div class="sync-banner" id="tab-conflict-banner" hidden aria-live="polite">
     <span id="tab-conflict-text">This plan was changed in another tab. Your next change here will overwrite it.</span>

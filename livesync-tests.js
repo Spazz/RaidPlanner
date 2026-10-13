@@ -33,7 +33,7 @@ var Modal = { confirm: async () => (__env.confirmAnswer !== undefined ? __env.co
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'timeoutSignal', 'fetchLiveLink',
-  'LivePoll', 'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar', 'PlanSession', 'applyShareCode'];
+  'LivePoll', 'getShareLink', 'loadFromShortLink', 'currentShareCode', 'syncAddressBar', 'PlanSession', 'applyShareCode', 'SharedPlanBanner', 'DataBackup'];
 
 function memoryStorage() {
   const data = {};
@@ -797,6 +797,98 @@ async function check(name, fn) {
     assert.equal(puts(env)[0].body.code, codeWithEdit, "the PUT carries P's edit");
     assert.equal(entryOf(env, planKey).lastCode, codeWithEdit, 'P is recorded as synced');
     assert.notEqual(env.api.LiveLinks.planKey(env.api.State), planKey, 'the shared plan replaced it on screen');
+  });
+
+  // â”€â”€ Shared live-plan banner â”€â”€
+  // Fake banner elements so the DOM-facing code has something to write to.
+  function bannerEnv(opts) {
+    const env = makeEnv(opts);
+    const els = {
+      'shared-plan-banner': { hidden: true },
+      'shared-plan-text': { children: [], replaceChildren(...c) { this.children = c; } },
+    };
+    env.els = els;
+    env.document.getElementById = id => els[id] || null;
+    env.document.createElement = () => ({ set textContent(v) { this.text = v; }, get textContent() { return this.text; } });
+    return env;
+  }
+  const SHARED_ID = 'sHar3d1';
+  const sharedRoute = env => { env.route = call => (call.method === 'GET' ? response(200, { code: otherRosterCode(), updatedAt: 50 }) : response(500)); };
+  const seenList = env => JSON.parse(env.storage.getItem('pp_shared_seen_v1') || '[]');
+
+  await check("Opening someone else's link shows the shared-plan banner once, with the plan name", async () => {
+    const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    sharedRoute(env);
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    assert.equal(env.els['shared-plan-banner'].hidden, false);
+    const kids = env.els['shared-plan-text'].children;
+    assert.equal(kids[0], 'You opened a shared live plan: ');
+    assert.equal(kids[1].textContent, env.api.State.rosterName);
+    assert.equal(kids[2], '. Changes you make are saved for everyone with this link.');
+
+    env.api.SharedPlanBanner.hide(); // Got it
+    assert.equal(env.els['shared-plan-banner'].hidden, true);
+    assert.deepEqual(seenList(env), [SHARED_ID]);
+
+    // Same link opened again on a fresh page load (nothing bound here): no banner.
+    const again = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    again.storage.setItem('pp_shared_seen_v1', JSON.stringify([SHARED_ID]));
+    sharedRoute(again);
+    assert.equal(await again.api.loadFromShortLink(), true);
+    await settle();
+    assert.equal(again.els['shared-plan-banner'].hidden, true);
+  });
+
+  await check('Opening a link this browser is bound to never shows the shared-plan banner', async () => {
+    const env = bannerEnv({ path: '/tbc/aB3dE5g', persist: true });
+    seedLinkedPlan(env);
+    env.ctx.commit();
+    env.route = call => (call.method === 'GET' ? response(200, { code: env.api.currentShareCode(), updatedAt: 100 }) : response(200, { updatedAt: 101 }));
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    assert.equal(env.els['shared-plan-banner'].hidden, true);
+    assert.deepEqual(seenList(env), []);
+  });
+
+  await check('The seen list keeps the newest 50 ids and stays out of the data backup', async () => {
+    const env = bannerEnv({ persist: true });
+    for (let i = 0; i < 55; i++) env.api.SharedPlanBanner.remember('id' + String(i).padStart(5, '0'));
+    const list = seenList(env);
+    assert.equal(list.length, 50);
+    assert.equal(list[49], 'id00054');
+    assert.equal(list[0], 'id00005');
+    assert(!env.api.DataBackup.keys.includes('pp_shared_seen_v1'));
+  });
+
+  await check('Make my own copy: new plan, nothing bound, address bar at the root, nothing sent, shared plan kept', async () => {
+    const env = bannerEnv({ path: '/tbc/' + SHARED_ID, persist: true });
+    sharedRoute(env);
+    assert.equal(await env.api.loadFromShortLink(), true);
+    await settle();
+    const { State, LiveLinks, PlanStore } = env.api;
+    const sharedPlanId = State.planId;
+    const sharedKey = LiveLinks.planKey(State);
+    const sharedName = State.rosterName;
+    assert.equal(entryOf(env, sharedKey).id, SHARED_ID);
+    const callsBefore = env.calls.length;
+
+    env.api.SharedPlanBanner.makeCopy();
+    await settle();
+
+    assert.notEqual(State.planId, sharedPlanId, 'new planId');
+    assert.equal(State.rosterName, sharedName + ' (my copy)');
+    assert.equal(entryOf(env, LiveLinks.planKey(State)), null, 'nothing is bound to the copy');
+    assert.equal(env.location.pathname, '/', 'address bar at the app root');
+    assert.equal(env.calls.length, callsBefore, 'no request sent');
+    assert.equal(puts(env).length, 0);
+    assert.equal(env.calls.filter(c => c.method === 'POST').length, 0);
+    assert.equal(env.els['shared-plan-banner'].hidden, true);
+    assert.deepEqual(seenList(env), [SHARED_ID]);
+    assert(env.toasts.includes('Saved your own copy. Changes now stay in this browser.'));
+    const kept = PlanStore.read(env.storage).find(p => p.data.planId === sharedPlanId);
+    assert(kept, 'the shared plan is still saved');
+    assert.equal(entryOf(env, sharedKey).id, SHARED_ID, 'and still bound to its link');
   });
 
   console.log(`\nLiveSync tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

@@ -501,6 +501,8 @@ document.getElementById('btn-tab-load').addEventListener('click', () => TabWatch
 document.getElementById('btn-tab-keep').addEventListener('click', () => TabWatch.keepMine());
 document.getElementById('btn-remote-undo').addEventListener('click', () => RemoteUpdate.undo());
 document.getElementById('btn-remote-dismiss').addEventListener('click', () => RemoteUpdate.hide());
+document.getElementById('btn-shared-gotit').addEventListener('click', () => SharedPlanBanner.hide());
+document.getElementById('btn-shared-copy').addEventListener('click', () => SharedPlanBanner.makeCopy());
 
 // ── SHARE LINK ──────────────────────────────────────────────────
 // Live links (/<version>/<id>): a plan's first Share stores its share code
@@ -615,6 +617,57 @@ function applyRemoteLiveCode(id, remote) {
   commit();
   return true;
 }
+
+// Shown once per link when this browser opens someone else's live link: the
+// plan is shared and edits reach everyone. The seen list is device-local (not
+// part of the data backup).
+const SHARED_SEEN_KEY = 'pp_shared_seen_v1';
+const SHARED_SEEN_MAX = 50;
+const SharedPlanBanner = {
+  linkId: null,
+  seen() {
+    try {
+      const list = JSON.parse(linkStorage().getItem(SHARED_SEEN_KEY));
+      return Array.isArray(list) ? list.filter(x => typeof x === 'string') : [];
+    } catch { return []; }
+  },
+  remember(id) {
+    if (!id) return;
+    const list = this.seen().filter(x => x !== id);
+    list.push(id);
+    try { linkStorage().setItem(SHARED_SEEN_KEY, JSON.stringify(list.slice(-SHARED_SEEN_MAX))); } catch {}
+  },
+  show(id) {
+    if (!id || this.seen().includes(id)) return;
+    const banner = document.getElementById('shared-plan-banner');
+    const text = document.getElementById('shared-plan-text');
+    if (!banner || !text) return;
+    this.linkId = id;
+    const name = document.createElement('strong');
+    name.textContent = State.rosterName;
+    text.replaceChildren('You opened a shared live plan: ', name, '. Changes you make are saved for everyone with this link.');
+    banner.hidden = false;
+  },
+  hide() {
+    const id = this.linkId;
+    this.linkId = null;
+    this.remember(id);
+    const banner = document.getElementById('shared-plan-banner');
+    if (banner) banner.hidden = true;
+  },
+  // Turns the open plan into this browser's own plan: a new planId, so no
+  // link is bound to it. The shared plan stays saved as it was. Sends nothing.
+  makeCopy() {
+    if (!this.linkId) return;
+    PlanStore.flush();
+    State.planId = 'plan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    State.rosterName = State.rosterName + ' (my copy)';
+    commit();
+    syncAddressBar();
+    this.hide();
+    showToast('Saved your own copy. Changes now stay in this browser.');
+  },
+};
 
 // Stays up after a co-editor's change replaces the open plan, until the user
 // dismisses it, undoes it or changes the plan themselves.
@@ -946,6 +999,7 @@ async function loadFromShortLink() {
     if (!await applyShareCode(remote.code)) return false;
     const planKey = LiveLinks.planKey(State);
     if (planKey) bindLiveLink(planKey, id, currentShareCode(), remote.updatedAt);
+    SharedPlanBanner.show(id);
     return true;
   } finally {
     LiveSync.opening = false;
