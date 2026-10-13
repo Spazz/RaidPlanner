@@ -399,7 +399,7 @@ const openTag = (html) => html.match(/^\s*<div[^>]*>/)[0];
 
   await check('Raid notes carry a caption saying where notes go, inside the notes panel', () => {
     const panel = app.html.replace(/\r\n/g, '\n').match(/<details id="raid-notes-panel"[^]*?<\/details>/)[0];
-    assert(panel.includes('<p class="raid-notes-caption">Notes go into the raid chat text, print sheet, share links and JSON, not the MRT string or compact chat.</p>'));
+    assert(panel.includes('<p class="raid-notes-caption">Notes go into the raid chat text, print sheet, live links and JSON, not the MRT string or compact chat.</p>'));
     assert(panel.indexOf('</textarea>') < panel.indexOf('raid-notes-caption'), 'the caption sits under the textarea');
     assert(/\.raid-notes-caption\s*\{/.test(app.css));
   });
