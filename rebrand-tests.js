@@ -129,7 +129,8 @@ check('no visible text or source outside history and compat strings still says "
   const OLD = /party[\s-]?planner/i;
   // The folder is still called PartyPlannerWeb, so paths that name it are fine.
   const allowed = line => /formerly/i.test(line) || line.includes("'party-planner-backup'");
-  const files = ['index.html', 'buff-priorities.html', 'package.json', 'README.md', 'app.css', 'vercel.json',
+  // Tracked files only: CI runs on a clean checkout, and buff-priorities.html is local and untracked.
+  const files = ['index.html', 'package.json', 'README.md', 'app.css', 'vercel.json',
     ...fs.readdirSync(path.join(app.ROOT, 'js')).filter(f => f.endsWith('.js') && f !== 'changelog.js').map(f => 'js/' + f),
     ...fs.readdirSync(path.join(app.ROOT, 'js', 'rules')).map(f => 'js/rules/' + f),
     ...fs.readdirSync(path.join(app.ROOT, 'api')).map(f => 'api/' + f)];
