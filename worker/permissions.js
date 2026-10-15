@@ -74,7 +74,7 @@ export function requireAnyAction(guildContext, actions) {
 export async function loadGuildContext(db, userId, guildId) {
   const [guildResult, blockResult, memberResult, assignmentResult, permissionResult] = await db.batch([
     db.prepare(
-      `SELECT id, name, realm, region, discord_server_id, time_zone, game_version, created_at
+      `SELECT id, name, realm, realm_kind, realm_slug, region, discord_server_id, time_zone, game_version, created_at
          FROM guilds WHERE id = ?`,
     ).bind(guildId),
     db.prepare('SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?').bind(guildId, userId),

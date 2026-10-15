@@ -135,7 +135,7 @@ async function signIn(world, person, servers = [], jar = newJar()) {
 
 const manageable = (id, extra = {}) => ({ id, name: `Server ${id.slice(-2)}`, icon: null, owner: true, permissions: '8', ...extra });
 const plain = (id) => ({ id, name: `Server ${id.slice(-2)}`, icon: null, owner: false, permissions: '0' });
-const GUILD_BODY = { serverId: SERVER_A, name: 'Ember', realm: 'Mankrik', region: 'US', timeZone: 'America/New_York', teamName: 'Main' };
+const GUILD_BODY = { serverId: SERVER_A, gameVersion: 'tbc', region: 'US', realm: 'Nightslayer', name: 'Ember', timeZone: 'America/New_York', multipleTeams: false };
 
 // Alice (allowlisted) creates the guild; Bob, Carol, Dave, Erin sign in as members.
 async function scenario({ extraMembers = [] } = {}) {
@@ -525,15 +525,149 @@ check('create guild: 201 returns the guild payload; the servers list drops the t
   const created = await w.call(jar, 'POST', '/api/guild', GUILD_BODY);
   assert.equal(created.status, 201);
   assert.deepEqual(Object.keys(created.json).sort(), ['guild', 'me', 'teams']);
-  assert.deepEqual(Object.keys(created.json.guild).sort(), ['createdAt', 'gameVersion', 'id', 'name', 'realm', 'region', 'timeZone']);
-  assert.equal(created.json.guild.gameVersion, 'tbc-anniversary');
+  assert.deepEqual(Object.keys(created.json.guild).sort(), ['createdAt', 'gameVersion', 'id', 'name', 'realm', 'realmKind', 'realmSlug', 'region', 'timeZone']);
+  assert.equal(created.json.guild.gameVersion, 'tbc');
   assert(ID.guild.test(created.json.guild.id));
-  assert.deepEqual(created.json.teams.map(({ id, ...rest }) => rest), [{ name: 'Main', size: 25, archived: false, players: 0, leads: [] }]);
+  assert.deepEqual(created.json.teams.map(({ id, ...rest }) => rest), [{ name: 'Main team', size: 25, archived: false, players: 0, leads: [] }]);
   assert.deepEqual(created.json.me.roles, [{ role: 'guild_master' }]);
   assert.equal(created.json.me.can['guild.roles'], 'guild');
   const me = (await w.call(jar, 'GET', '/auth/me')).json;
   assert.deepEqual(me.create.servers.map((server) => server.id), [SERVER_B]);
   assert.deepEqual(me.guilds.map((guild) => [guild.name, guild.roles]), [['Ember', [{ role: 'guild_master' }]]]);
+});
+
+check('create guild v2: game version, region and realm are validated; a listed realm stores its canonical name and slug, an unlisted one stores no slug', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A), manageable(SERVER_B)]);
+  for (const [patch, field] of [
+    [{ gameVersion: undefined }, 'gameVersion'], [{ gameVersion: 'tbc-anniversary' }, 'gameVersion'], [{ gameVersion: 'wotlk' }, 'gameVersion'],
+    [{ gameVersion: 5 }, 'gameVersion'], [{ region: 'XX' }, 'region'], [{ realm: '' }, 'realm'], [{ realm: '   ' }, 'realm'], [{ realm: 7 }, 'realm'],
+    [{ realm: 'x'.repeat(65) }, 'realm'], [{ realm: 'a\u0007b' }, 'realm'], [{ multipleTeams: undefined }, 'multipleTeams'], [{ multipleTeams: 'yes' }, 'multipleTeams'],
+  ]) {
+    const response = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, ...patch });
+    assert.equal(response.status, 400, JSON.stringify(patch));
+    assert.equal(response.json.error, 'bad_request');
+    assert.equal(response.json.field, field, JSON.stringify(patch));
+    assert.equal(typeof response.json.message, 'string');
+  }
+  assert.equal(await w.count('guilds'), 0, 'nothing was written');
+
+  const listed = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, realm: '  nightSLAYER ' });
+  assert.equal(listed.status, 201, JSON.stringify(listed.json));
+  assert.deepEqual([listed.json.guild.realm, listed.json.guild.realmKind, listed.json.guild.realmSlug, listed.json.guild.gameVersion],
+    ['Nightslayer', 'realm', 'nightslayer', 'tbc']);
+  const unlisted = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, serverId: SERVER_B, gameVersion: 'classic', region: 'EU', realm: ' Some New Realm ' });
+  assert.equal(unlisted.status, 201, JSON.stringify(unlisted.json));
+  assert.deepEqual([unlisted.json.guild.realm, unlisted.json.guild.realmKind, unlisted.json.guild.realmSlug, unlisted.json.guild.gameVersion],
+    ['Some New Realm', 'realm', null, 'classic']);
+  const rows = await w.rows('SELECT realm, realm_kind, realm_slug, game_version FROM guilds ORDER BY created_at, id');
+  assert.equal(rows.length, 2);
+  const got = await w.call(jar, 'GET', `/api/guild/${listed.json.guild.id}`);
+  assert.equal(got.json.guild.realmKind, 'realm');
+  assert.equal(got.json.guild.realmSlug, 'nightslayer');
+  assert.equal(got.json.guild.realm, 'Nightslayer');
+});
+
+check('create guild v2: the same realm name resolves per version and region (Doomhowl is a Classic Era US realm, not TBC)', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A), manageable(SERVER_B)]);
+  const era = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, gameVersion: 'classic', realm: 'doomhowl' });
+  assert.deepEqual([era.json.guild.realm, era.json.guild.realmSlug], ['Doomhowl', 'doomhowl']);
+  const tbc = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, serverId: SERVER_B, realm: 'doomhowl' });
+  assert.deepEqual([tbc.json.guild.realm, tbc.json.guild.realmSlug], ['doomhowl', null], 'typed as given, no slug');
+});
+
+check('create guild v2: WoW Forever stores a ruleset (no slug); anything else is refused', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
+  for (const realm of ['Nightslayer', 'pvp', 'Normal ', '', undefined, 5]) {
+    const response = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, gameVersion: 'forever', realm });
+    assert.equal(response.status, 400, String(realm));
+    assert.equal(response.json.field, 'realm');
+  }
+  const ok = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, gameVersion: 'forever', region: 'EU', realm: 'Hardcore' });
+  assert.equal(ok.status, 201, JSON.stringify(ok.json));
+  assert.deepEqual([ok.json.guild.realm, ok.json.guild.realmKind, ok.json.guild.realmSlug, ok.json.guild.gameVersion], ['Hardcore', 'ruleset', null, 'forever']);
+});
+
+check('create guild v2: one team is "Main team" and teamNames is ignored', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
+  const created = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, multipleTeams: false, teamNames: ['Ignored', 'Also ignored'], teamName: 'Old field' });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  assert.deepEqual(created.json.teams.map(({ id, ...rest }) => rest), [{ name: 'Main team', size: 25, archived: false, players: 0, leads: [] }]);
+  assert.equal(await w.count('teams'), 1);
+});
+
+check('create guild v2: several teams are written in the same batch as the guild, in order, 25-man each', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
+  const created = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, multipleTeams: true, teamNames: ['  Mythic Monday ', 'Casual Thursday', 'Sunday Alts'] });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  assert.deepEqual(created.json.teams.map((team) => team.name).sort(), ['Casual Thursday', 'Mythic Monday', 'Sunday Alts']);
+  assert(created.json.teams.every((team) => team.size === 25 && team.archived === false));
+  const rows = await w.rows('SELECT name, size, archived, guild_id FROM teams ORDER BY created_at, rowid');
+  assert.deepEqual(rows.map((row) => row.name), ['Mythic Monday', 'Casual Thursday', 'Sunday Alts'], 'trimmed, in the order sent');
+  assert(rows.every((row) => row.guild_id === created.json.guild.id));
+  const audit = await w.rows("SELECT after FROM audit_log WHERE action = 'guild.create'");
+  assert.equal(JSON.parse(audit[0].after).teamIds.length, 3);
+});
+
+check('create guild v2: bad team names return teamNames with the index of the bad entry, and write nothing', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
+  const body = (teamNames) => ({ ...GUILD_BODY, multipleTeams: true, teamNames });
+  const eleven = Array.from({ length: 11 }, (_, i) => `Team ${i + 1}`);
+  const cases = [
+    [['Only one'], undefined], [[], undefined], [eleven, undefined], ['Mon,Thu', undefined], [undefined, undefined],
+    [['Mon', ''], 1], [['Mon', '   '], 1], [['Mon', 5], 1], [['', 'Thu'], 0], [['Mon', 'Thu', 'y'.repeat(41)], 2],
+    [['Mon', 'Thu', 'a\nb'], 2], [['Mon', 'Thu', 'mon'], 2], [['Mon', 'Thu', ' THU '], 2],
+  ];
+  for (const [teamNames, index] of cases) {
+    const response = await w.call(jar, 'POST', '/api/guild', body(teamNames));
+    assert.equal(response.status, 400, JSON.stringify(teamNames));
+    assert.equal(response.json.error, 'bad_request');
+    assert.equal(response.json.field, 'teamNames', JSON.stringify(teamNames));
+    assert.equal(response.json.index, index, JSON.stringify(teamNames));
+    assert.equal(typeof response.json.message, 'string');
+  }
+  assert.equal(await w.count('guilds'), 0);
+  assert.equal(await w.count('teams'), 0);
+  const ten = await w.call(jar, 'POST', '/api/guild', body(eleven.slice(0, 10)));
+  assert.equal(ten.status, 201, 'ten is the cap');
+  assert.equal(ten.json.teams.length, 10);
+});
+
+check('create guild v2: the 50-active-team cap still holds after a multi-team create', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
+  const created = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, multipleTeams: true, teamNames: Array.from({ length: 10 }, (_, i) => `Start ${i}`) });
+  const path = `/api/guild/${created.json.guild.id}/teams`;
+  for (let i = 0; i < 40; i++) assert.equal((await w.call(jar, 'POST', path, { name: `Extra ${i}` })).status, 201, `team ${i}`);
+  const over = await w.call(jar, 'POST', path, { name: 'One too many' });
+  assert.equal(over.status, 400);
+  assert.equal(over.json.field, 'name');
+  assert.equal(await w.count('teams'), 50);
+});
+
+check('/auth/me create.options: sent to allowlisted creators only, from worker/realms.js', async () => {
+  const realms = await import('./worker/realms.js');
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const alice = (await signIn(w, PEOPLE.alice, [manageable(SERVER_A)])).jar;
+  const bob = (await signIn(w, PEOPLE.bob, [manageable(SERVER_B)])).jar;
+  const mine = (await w.call(alice, 'GET', '/auth/me')).json.create;
+  assert.deepEqual(Object.keys(mine).sort(), ['allowed', 'claimable', 'options', 'servers', 'stale']);
+  assert.deepEqual(Object.keys(mine.options).sort(), ['realms', 'regions', 'rulesets', 'versions']);
+  assert.deepEqual(mine.options.versions, [
+    { key: 'tbc', label: 'TBC Anniversary' }, { key: 'classic', label: 'Classic Era' }, { key: 'forever', label: 'WoW Forever' },
+  ]);
+  assert.deepEqual(mine.options.regions, ['US', 'EU', 'KR', 'TW']);
+  assert.deepEqual(mine.options.rulesets, ['Normal', 'PvP', 'RP', 'Hardcore']);
+  assert.deepEqual(mine.options.realms, JSON.parse(JSON.stringify(realms.REALMS)));
+  assert.deepEqual(mine.options.realms.tbc.US.map((realm) => realm.name), ['Dreamscythe', 'Nightslayer', 'Maladath (AU)']);
+  const theirs = (await w.call(bob, 'GET', '/auth/me')).json.create;
+  assert.deepEqual(theirs, { allowed: false }, 'no options for people who cannot create');
+  assert(!JSON.stringify(theirs).includes('Dreamscythe'));
 });
 
 check('create guild: a stale manageable list gets reauth_required; a server outside the list is refused', async () => {
@@ -547,7 +681,8 @@ check('create guild: a stale manageable list gets reauth_required; a server outs
   assert.equal(stale.status, 403);
   assert.equal(stale.json.error, 'reauth_required');
   const me = (await w.call(jar, 'GET', '/auth/me')).json;
-  assert.deepEqual(me.create, { allowed: true, stale: true, servers: [], claimable: [] });
+  assert.deepEqual({ ...me.create, options: undefined }, { allowed: true, stale: true, servers: [], claimable: [], options: undefined });
+  assert.deepEqual(Object.keys(me.create.options).sort(), ['realms', 'regions', 'rulesets', 'versions']);
   const [row] = await w.rows('SELECT manageable_servers FROM sessions');
   assert.equal(row.manageable_servers, null, 'a stale list is dropped');
   await signIn(w, PEOPLE.alice, [manageable(SERVER_A)], jar);
@@ -563,8 +698,8 @@ check('create guild: 409 for a taken server, 400 for bad fields, 409 for a dupli
   assert.equal(taken.json.field, 'serverId');
   assert.equal(await s.w.count('guilds'), 1);
   for (const [patch, field] of [
-    [{ name: '' }, 'name'], [{ name: 5 }, 'name'], [{ realm: 'x'.repeat(41) }, 'realm'], [{ region: 'XX' }, 'region'],
-    [{ timeZone: 'Mars/Phobos' }, 'timeZone'], [{ teamName: '  ' }, 'teamName'], [{ serverId: '12ab' }, 'serverId'],
+    [{ name: '' }, 'name'], [{ name: 5 }, 'name'], [{ realm: 'x'.repeat(65) }, 'realm'], [{ region: 'XX' }, 'region'],
+    [{ timeZone: 'Mars/Phobos' }, 'timeZone'], [{ gameVersion: 'nope' }, 'gameVersion'], [{ serverId: '12ab' }, 'serverId'],
     [{ name: 'a\nb' }, 'name'],
   ]) {
     const response = await s.w.call(frank, 'POST', '/api/guild', { ...GUILD_BODY, serverId: SERVER_B, ...patch });
@@ -577,7 +712,7 @@ check('create guild: 409 for a taken server, 400 for bad fields, 409 for a dupli
   assert.equal(dupe.status, 409);
   assert.equal(dupe.json.error, 'team_name_taken');
   assert.equal(dupe.json.field, 'name');
-  assert.equal((await s.w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'main' })).status, 409);
+  assert.equal((await s.w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'main TEAM' })).status, 409);
 });
 
 // ---------------------------------------------------------------------------
@@ -639,7 +774,7 @@ check('permissions over HTTP: Member, Team Lead, Officer and Guild Master are ea
 check('cross-guild denial: another guild is a 403, another guild\'s team id is a 400/404, and ids come from the URL', async () => {
   const s = await scenario();
   const frank = (await signIn(s.w, PEOPLE.frank, [manageable(SERVER_B), plain(SERVER_A)])).jar;
-  const other = await s.w.call(frank, 'POST', '/api/guild', { ...GUILD_BODY, serverId: SERVER_B, name: 'Other', teamName: 'Their Team' });
+  const other = await s.w.call(frank, 'POST', '/api/guild', { ...GUILD_BODY, serverId: SERVER_B, name: 'Other', multipleTeams: true, teamNames: ['Their Team', 'Their Alts'] });
   assert.equal(other.status, 201);
   const otherGuild = other.json.guild.id;
   const otherTeam = other.json.teams[0].id;
@@ -868,7 +1003,7 @@ check('teams: create, rename, archive and restore; payload shape; case-insensiti
   const badArchived = await s.w.call(s.alice, 'PATCH', teamPath, { archived: 'yes' });
   assert.equal(badArchived.status, 400);
   assert.equal(badArchived.json.field, undefined, 'field values on team routes are limited to name');
-  assert.equal((await s.w.call(s.alice, 'PATCH', teamPath, { name: 'Main' })).status, 409);
+  assert.equal((await s.w.call(s.alice, 'PATCH', teamPath, { name: 'Main team' })).status, 409);
   const renamed = await s.w.call(s.alice, 'PATCH', teamPath, { name: 'Gruul Prog' });
   assert.equal(renamed.status, 200);
   assert.equal(renamed.json.team.name, 'Gruul Prog');
@@ -985,8 +1120,8 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   await w.call(s.alice, 'GET', s.guildPath);
   await w.call(s.alice, 'GET', `${s.guildPath}/people`);
   await w.call(s.alice, 'PATCH', '/auth/prefs', { sidebarCollapsed: true });
-  await w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'Main' });
-  await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { name: 'Main', archived: false });
+  await w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'Main team' });
+  await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { name: 'Main team', archived: false });
   await w.call(s.alice, 'PUT', `${s.peoplePath('bob')}/roles`, { officer: false, teamLeadTeamIds: [] });
   assert.deepEqual(await baseline(), ['guild.create']);
 

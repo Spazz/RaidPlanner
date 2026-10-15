@@ -120,7 +120,7 @@
     const checks = '<div class="gs-check"><input type="checkbox" id="dlg-role-officer" name="officer"' + (isOfficer ? ' checked' : '') + '><label for="dlg-role-officer">Officer: whole guild</label></div>' +
       (active.length
         ? active.map(function (t, i) {
-          return '<div class="gs-check"><input type="checkbox" id="dlg-role-lead-' + i + '" name="teamLead" value="' + esc(t.id) + '"' + (leadIds.indexOf(t.id) >= 0 ? ' checked' : '') + '><label for="dlg-role-lead-' + i + '">Team Lead: ' + esc(t.name) + '</label></div>';
+          return '<div class="gs-check"><input type="checkbox" id="dlg-role-lead-' + i + '" name="teamLead" value="' + esc(t.id) + '"' + (leadIds.indexOf(t.id) >= 0 ? ' checked' : '') + '><label for="dlg-role-lead-' + i + '">' + (active.length === 1 ? 'Team Lead' : 'Team Lead: ' + esc(t.name)) + '</label></div>';
         }).join('')
         : '<p class="gs-fine">There are no active teams, so no Team Lead roles to give.</p>');
     const gm = a.makeGuildMaster

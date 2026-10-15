@@ -211,6 +211,17 @@ body.guild-page {
 .gs-server input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--accent-gold); cursor: pointer; }
 .gs-server-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-weight: 600; font-size: 16px; line-height: 1.3; }
 .gs-fieldset .gs-fine { margin-top: 12px; }
+.gs-realm-host { display: contents; }
+.gs-realm-hint { margin-top: 0; }
+.gs-fieldset .gs-realm-hint { margin-top: 0; }
+.gs-server { min-height: 44px; box-sizing: border-box; }
+.gs-teams-q { display: flex; flex-direction: column; gap: 8px; }
+.gs-teams-host { margin-top: 14px; display: flex; flex-direction: column; gap: 14px; }
+.gs-teams-host .gs-fine { margin-top: 0; }
+.gs-team-row { display: flex; align-items: center; gap: 8px; }
+.gs-team-row .gs-input { flex: 1 1 auto; min-width: 0; }
+.gs-team-row .gs-btn { flex: none; }
+.gs-team-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
 .gs-check { display: flex; align-items: center; gap: 12px; min-height: 40px; }
 .gs-check input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--accent-gold); cursor: pointer; }
 .gs-check label { font-size: 16px; line-height: 1.3; cursor: pointer; }

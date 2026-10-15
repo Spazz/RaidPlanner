@@ -4,7 +4,6 @@
   'use strict';
 
   const REGIONS = ['US', 'EU', 'KR', 'TW'];
-  const FIELD_IDS = { serverId: 'cg-server', name: 'cg-name', realm: 'cg-realm', region: 'cg-region', timeZone: 'cg-timezone', teamName: 'cg-team' };
   const CREATED_NOTICE = 'Ask your officers and raiders to sign in. Anyone already signed in clicks Sign in again.';
 
   function browserTimeZone() {
@@ -44,6 +43,94 @@
       }).join('') + '</ul></section>';
   }
 
+  const OTHER_VALUE = '__other__';
+  const OTHER_LABEL = 'Other (type it)';
+  const MAX_TEAMS = 10;
+  const MIN_SEVERAL = 2;
+  const TEAM_NAME_MAX = 40;
+  const NO_REALMS_HINT = 'No TBC Anniversary realms in this region.';
+  const ONE_TEAM_HELP = 'We\'ll set up one team for you. You can add more later in Guild settings.';
+
+  // The version / region / realm data the server sent in /auth/me create.options (set by createHtml).
+  let createOptions = { versions: [], regions: REGIONS, realms: {}, rulesets: [] };
+
+  function readOptions(create) {
+    const o = (create && create.options) || {};
+    return {
+      versions: Array.isArray(o.versions) ? o.versions : [],
+      regions: Array.isArray(o.regions) && o.regions.length ? o.regions : REGIONS,
+      realms: o.realms && typeof o.realms === 'object' ? o.realms : {},
+      rulesets: Array.isArray(o.rulesets) ? o.rulesets : [],
+    };
+  }
+
+  function realmList(version, region) {
+    const byRegion = createOptions.realms[version];
+    const list = byRegion && byRegion[region];
+    return Array.isArray(list) ? list : [];
+  }
+
+  function optionHtml(value, label, selected) {
+    return '<option value="' + esc(value) + '"' + (selected ? ' selected' : '') + '>' + esc(label) + '</option>';
+  }
+
+  // The realm (or ruleset) controls for a version + region. state: { choice, other }. These sit directly in the
+  // Guild grid (the host uses display: contents), so a re-render only swaps this block.
+  function realmFieldsHtml(version, region, state) {
+    const st = state || {};
+    if (version === 'forever') {
+      const choice = createOptions.rulesets.indexOf(st.choice) >= 0 ? st.choice : (createOptions.rulesets[0] || '');
+      return fieldHtml('cg-realm', 'Ruleset', '<select class="gs-input" id="cg-realm" name="realm" data-change="cg-realm-refresh">' +
+        createOptions.rulesets.map(function (r) { return optionHtml(r, r, r === choice); }).join('') + '</select>');
+    }
+    const list = realmList(version, region);
+    const names = list.map(function (r) { return r.name; });
+    const choice = (st.choice === OTHER_VALUE || names.indexOf(st.choice) >= 0) ? st.choice : (names[0] || OTHER_VALUE);
+    const showOther = choice === OTHER_VALUE;
+    const options = list.map(function (r) { return optionHtml(r.name, r.type ? r.name + ' - ' + r.type : r.name, r.name === choice); }).join('') +
+      optionHtml(OTHER_VALUE, OTHER_LABEL, showOther);
+    const hint = (!list.length && version === 'tbc') ? '<p class="gs-fine gs-realm-hint" id="cg-realm-hint">' + esc(NO_REALMS_HINT) + '</p>' : '';
+    const select = fieldHtml('cg-realm', 'Realm', '<select class="gs-input" id="cg-realm" name="realm" data-change="cg-realm-refresh"' + (hint ? ' aria-describedby="cg-realm-hint"' : '') + '>' + options + '</select>' + hint);
+    const other = showOther
+      ? fieldHtml('cg-realm-other', 'Realm name', '<input class="gs-input" type="text" id="cg-realm-other" name="realmOther" value="' + esc(st.other || '') + '" maxlength="64" autocomplete="off" required>')
+      : '';
+    return select + other;
+  }
+
+  function teamFieldHtml(index, value) {
+    const n = index + 1;
+    const id = 'cg-team-' + index;
+    const input = '<input class="gs-input" type="text" id="' + id + '" name="teamName" value="' + esc(value) + '" maxlength="' + TEAM_NAME_MAX + '" autocomplete="off" required>';
+    const remove = index >= MIN_SEVERAL
+      ? '<button type="button" class="gs-btn gs-btn-sm" data-action="cg-team-remove" data-index="' + index + '" data-key="cg-team-remove-' + index + '" aria-label="Remove team ' + n + '">Remove</button>'
+      : '';
+    const control = remove ? '<div class="gs-team-row">' + input + remove + '</div>' : input;
+    return fieldHtml(id, 'Team ' + n + ' name', control);
+  }
+
+  // The block under the "more than one team" radios. names: the team name fields' current values.
+  function teamsFieldsHtml(multiple, names) {
+    if (!multiple) return '<p class="gs-fine" id="cg-one-team-help">' + esc(ONE_TEAM_HELP) + '</p>';
+    const values = Array.isArray(names) ? names.slice() : [];
+    while (values.length < MIN_SEVERAL) values.push('');
+    const add = values.length < MAX_TEAMS
+      ? '<button type="button" class="gs-btn" data-action="cg-team-add" data-key="cg-team-add">Add another team</button>'
+      : '';
+    return '<div class="gs-grid">' + values.map(function (v, i) { return teamFieldHtml(i, v); }).join('') + '</div>' +
+      '<p class="gs-field-error" id="cg-teams-error" role="alert" hidden></p>' +
+      '<div class="gs-team-tools">' + add + '<span class="gs-fine">All teams are 25-man.</span></div>';
+  }
+
+  function teamsRadioHtml(multiple) {
+    function card(id, value, label, checked) {
+      return '<label class="gs-server" for="' + id + '"><input type="radio" id="' + id + '" name="multipleTeams" value="' + value + '"' + (checked ? ' checked' : '') + ' data-change="cg-teams-refresh">' +
+        '<span class="gs-server-name">' + esc(label) + '</span></label>';
+    }
+    return '<span class="gs-label" id="cg-teams-q">Does your guild run more than one raid team?</span>' +
+      '<div class="gs-server-grid" role="radiogroup" aria-labelledby="cg-teams-q">' +
+      card('cg-teams-one', 'one', 'No, one team', !multiple) + card('cg-teams-many', 'many', 'Yes, several teams', multiple) + '</div>';
+  }
+
   // opts: { me, timeZones, defaultTimeZone, alert }
   function createHtml(opts) {
     const o = opts || {};
@@ -51,6 +138,7 @@
     if (!create.allowed) {
       return G.pages.signin.messageHtml('You cannot create a guild', 'This account is not set up to create a guild. If your guild already exists, open it from the list on the left, or sign in again.');
     }
+    createOptions = readOptions(create);
     const claim = claimHtml(claimableList(o.me));
     const alertHtml = o.alert ? G.ui.alertHtml(o.alert, 'gs-page-alert') : '';
     const servers = Array.isArray(create.servers) ? create.servers : [];
@@ -60,6 +148,9 @@
     if (def && zones.indexOf(def) < 0) zones.unshift(def);
     if (!zones.length) zones = ['UTC'];
     const selectedZone = def || zones[0];
+    const versions = createOptions.versions;
+    const firstVersion = versions.length ? versions[0].key : 'tbc';
+    const firstRegion = createOptions.regions[0] || 'US';
 
     const serverList = servers.length
       ? '<div class="gs-server-grid">' + servers.map(function (s, i) {
@@ -81,64 +172,157 @@
       '<p class="gs-field-error" id="cg-server-error" role="alert" hidden></p>' +
       '<p class="gs-fine">Only servers you own or administer are listed.</p></fieldset></div>' +
       '<div class="gs-panel"><fieldset class="gs-fieldset"><legend class="gs-legend">Guild</legend><div class="gs-grid">' +
+      fieldHtml('cg-version', 'Game version', '<select class="gs-input" id="cg-version" name="gameVersion" data-change="cg-realm-refresh">' +
+        versions.map(function (v) { return optionHtml(v.key, v.label, v.key === firstVersion); }).join('') + '</select>') +
+      fieldHtml('cg-region', 'Region', '<select class="gs-input" id="cg-region" name="region" data-change="cg-realm-refresh">' +
+        createOptions.regions.map(function (r) { return optionHtml(r, r, r === firstRegion); }).join('') + '</select>') +
+      '<div class="gs-realm-host" id="cg-realm-host">' + realmFieldsHtml(firstVersion, firstRegion, {}) + '</div>' +
       fieldHtml('cg-name', 'Guild name', '<input class="gs-input" type="text" id="cg-name" name="name" autocomplete="off" required>') +
-      fieldHtml('cg-realm', 'Realm', '<input class="gs-input" type="text" id="cg-realm" name="realm" autocomplete="off" required>') +
-      fieldHtml('cg-region', 'Region', '<select class="gs-input" id="cg-region" name="region">' + REGIONS.map(function (r) { return '<option value="' + r + '">' + r + '</option>'; }).join('') + '</select>') +
       fieldHtml('cg-timezone', 'Time zone', '<select class="gs-input" id="cg-timezone" name="timeZone">' + zones.map(function (z) { return '<option value="' + esc(z) + '"' + (z === selectedZone ? ' selected' : '') + '>' + esc(z) + '</option>'; }).join('') + '</select>') +
-      '<div class="gs-field"><span class="gs-label">Game version</span><div class="gs-static"><span class="gs-badge">TBC Anniversary</span></div></div>' +
       '</div></fieldset></div>' +
-      '<div class="gs-panel"><fieldset class="gs-fieldset"><legend class="gs-legend">First team</legend><div class="gs-grid">' +
-      fieldHtml('cg-team', 'Team name', '<input class="gs-input" type="text" id="cg-team" name="teamName" value="Team A" autocomplete="off" required>') +
-      '<div class="gs-field"><span class="gs-label">Size</span><div class="gs-static">25-man</div></div>' +
-      '</div></fieldset></div>' +
+      '<div class="gs-panel"><fieldset class="gs-fieldset"><legend class="gs-legend">Raid teams</legend>' +
+      '<div class="gs-teams-q">' + teamsRadioHtml(false) + '</div>' +
+      '<div class="gs-teams-host" id="cg-teams-host">' + teamsFieldsHtml(false, []) + '</div>' +
+      '</fieldset></div>' +
       '<p class="gs-alert" id="cg-form-error" role="alert" hidden></p>' +
       '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="create-guild"' + (disabled ? ' disabled' : '') + '>Create guild</button>' +
       '<a href="#/">Cancel</a><span class="gs-fine">You become this guild\'s Guild Master.</span>' +
       '<a href="/auth/login" id="cg-reauth" hidden>Sign in again</a></div></form>';
   }
 
-  function readForm(form) {
-    const checked = form.querySelector('input[name="serverId"]:checked');
-    return {
-      serverId: checked ? checked.value : '',
-      name: form.elements.name.value.trim(),
-      realm: form.elements.realm.value.trim(),
-      region: form.elements.region.value,
-      timeZone: form.elements.timeZone.value,
-      teamName: form.elements.teamName.value.trim(),
-    };
+  function teamInputs(form) {
+    return Array.prototype.slice.call(form.querySelectorAll('input[name="teamName"]'));
   }
 
+  function isMultiple(form) {
+    const checked = form.querySelector('input[name="multipleTeams"]:checked');
+    return !!checked && checked.value === 'many';
+  }
+
+  function readForm(form) {
+    const checked = form.querySelector('input[name="serverId"]:checked');
+    const version = form.elements.gameVersion.value;
+    const choice = form.elements.realm ? form.elements.realm.value : '';
+    const typed = form.elements.realmOther ? form.elements.realmOther.value.trim() : '';
+    const multipleTeams = isMultiple(form);
+    const data = {
+      serverId: checked ? checked.value : '',
+      gameVersion: version,
+      region: form.elements.region.value,
+      realm: version !== 'forever' && choice === OTHER_VALUE ? typed : choice,
+      name: form.elements.name.value.trim(),
+      timeZone: form.elements.timeZone.value,
+      multipleTeams: multipleTeams,
+    };
+    if (multipleTeams) data.teamNames = teamInputs(form).map(function (i) { return i.value.trim(); });
+    return data;
+  }
+
+  // -> { key: message }. Team name errors are keyed 'teamNames:<index>'.
   function validate(d) {
     const errs = {};
     if (!d.serverId) errs.serverId = 'Pick the Discord server for your guild.';
+    if (!d.gameVersion) errs.gameVersion = 'Pick a game version.';
+    if (!d.realm) errs.realm = d.gameVersion === 'forever' ? 'Pick a ruleset.' : 'Enter your realm.';
+    else if (d.gameVersion !== 'forever' && Array.from(d.realm).length > 64) errs.realm = 'The realm name can be at most 64 characters.';
     if (!d.name) errs.name = 'Enter a guild name.';
-    if (!d.realm) errs.realm = 'Enter your realm.';
-    if (!d.teamName) errs.teamName = 'Enter a name for the first team.';
+    if (d.multipleTeams) {
+      const seen = {};
+      d.teamNames.forEach(function (n, i) {
+        const key = 'teamNames:' + i;
+        if (!n) { errs[key] = 'Enter a name for team ' + (i + 1) + '.'; return; }
+        if (Array.from(n).length > TEAM_NAME_MAX) { errs[key] = 'Team names can be at most ' + TEAM_NAME_MAX + ' characters.'; return; }
+        if (seen[n.toLowerCase()]) { errs[key] = 'Each team needs a different name.'; return; }
+        seen[n.toLowerCase()] = true;
+      });
+    }
     return errs;
   }
 
+  // An error key -> [inputId, errorId] of the elements it marks, or null.
+  function errorTarget(form, key) {
+    if (key === 'serverId') return ['', 'cg-server-error'];
+    if (key === 'gameVersion') return ['cg-version', 'cg-version-error'];
+    if (key === 'region') return ['cg-region', 'cg-region-error'];
+    if (key === 'name') return ['cg-name', 'cg-name-error'];
+    if (key === 'timeZone') return ['cg-timezone', 'cg-timezone-error'];
+    if (key === 'realm') {
+      return form.querySelector('#cg-realm-other') ? ['cg-realm-other', 'cg-realm-other-error'] : ['cg-realm', 'cg-realm-error'];
+    }
+    if (key === 'teamNames') return ['', 'cg-teams-error'];
+    const m = /^teamNames:(\d+)$/.exec(key);
+    if (m) return ['cg-team-' + m[1], 'cg-team-' + m[1] + '-error'];
+    return null;
+  }
+
   function clearErrors(form) {
-    Object.keys(FIELD_IDS).forEach(function (k) {
-      G.ui.setText(FIELD_IDS[k] + '-error', '');
-      const input = form.querySelector('#' + FIELD_IDS[k]);
-      if (input) input.removeAttribute('aria-invalid');
-    });
+    Array.prototype.forEach.call(form.querySelectorAll('.gs-field-error'), function (p) { G.ui.setText(p.id, ''); });
+    Array.prototype.forEach.call(form.querySelectorAll('[aria-invalid]'), function (el) { el.removeAttribute('aria-invalid'); });
     G.ui.setText('cg-form-error', '');
-    G.ui.setText('cg-server-error', '');
     const re = document.getElementById('cg-reauth');
     if (re) re.hidden = true;
   }
 
   function showFieldError(form, key, text) {
-    const id = FIELD_IDS[key];
-    if (!id) return false;
-    const target = key === 'serverId' ? 'cg-server-error' : id + '-error';
-    G.ui.setText(target, text);
-    const input = form.querySelector('#' + id);
+    const target = errorTarget(form, key);
+    if (!target) return false;
+    if (!document.getElementById(target[1])) return false;
+    G.ui.setText(target[1], text);
+    const input = target[0] ? form.querySelector('#' + target[0]) : null;
     if (input) input.setAttribute('aria-invalid', 'true');
     return true;
   }
+
+  // The realm block re-renders when the version, region or realm choice changes; typed text is kept.
+  G.handlers.change['cg-realm-refresh'] = function (el) {
+    const form = el.closest('form');
+    const host = form && form.querySelector('#cg-realm-host');
+    if (!host) return;
+    const realmEl = form.elements.realm;
+    const otherEl = form.elements.realmOther;
+    host.innerHTML = realmFieldsHtml(form.elements.gameVersion.value, form.elements.region.value, {
+      choice: realmEl ? realmEl.value : '',
+      other: otherEl ? otherEl.value : '',
+    });
+    if (el.id === 'cg-realm') {
+      const other = form.querySelector('#cg-realm-other');
+      if (other) other.focus();
+    }
+  };
+
+  function renderTeams(form, multiple, names, focusIndex) {
+    const host = form.querySelector('#cg-teams-host');
+    if (!host) return;
+    host.innerHTML = teamsFieldsHtml(multiple, names);
+    if (typeof focusIndex === 'number') {
+      const input = form.querySelector('#cg-team-' + focusIndex);
+      if (input) input.focus();
+    }
+  }
+
+  G.handlers.change['cg-teams-refresh'] = function (el) {
+    const form = el.closest('form');
+    if (!form) return;
+    renderTeams(form, isMultiple(form), teamInputs(form).map(function (i) { return i.value; }));
+  };
+
+  G.handlers.click['cg-team-add'] = function (el) {
+    const form = el.closest('form');
+    if (!form) return;
+    const names = teamInputs(form).map(function (i) { return i.value; });
+    if (names.length >= MAX_TEAMS) return;
+    names.push('');
+    renderTeams(form, true, names, names.length - 1);
+  };
+
+  G.handlers.click['cg-team-remove'] = function (el) {
+    const form = el.closest('form');
+    const index = parseInt(el.getAttribute('data-index'), 10);
+    if (!form || !(index >= MIN_SEVERAL)) return;
+    const names = teamInputs(form).map(function (i) { return i.value; });
+    names.splice(index, 1);
+    renderTeams(form, true, names, Math.min(index, names.length - 1));
+  };
 
   G.handlers.submit['create-guild'] = function (form) {
     clearErrors(form);
@@ -159,6 +343,7 @@
       const c = G.api.classify(err);
       if (c.view === 'signin') { G.app.requireSignin(); return; }
       if (err.code === 'conflict') { G.app.handleError(err); return; }
+      if (err.field === 'teamNames' && typeof err.index === 'number' && showFieldError(form, 'teamNames:' + err.index, c.text)) return;
       if (err.field && showFieldError(form, err.field, c.text)) return;
       if (err.code === 'server_taken') { showFieldError(form, 'serverId', c.text); return; }
       if (err.code === 'reauth_required') {
@@ -211,5 +396,9 @@
     browserTimeZone: browserTimeZone,
     allTimeZones: allTimeZones,
     createHtml: createHtml,
+    realmFieldsHtml: realmFieldsHtml,
+    teamsFieldsHtml: teamsFieldsHtml,
+    validate: validate,
+    setOptions: function (create) { createOptions = readOptions(create); },
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

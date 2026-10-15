@@ -9,7 +9,7 @@
   G.pages = G.pages || {};
 
   const SERVER_ACCESS_LABELS = { owner: 'Owner', administrator: 'Administrator', manage_server: 'Manage Server' };
-  const GAME_VERSIONS = { 'tbc-anniversary': 'TBC Anniversary' };
+  const GAME_VERSIONS = { tbc: 'TBC Anniversary', classic: 'Classic Era', forever: 'WoW Forever' };
 
   ui.esc = function (s) { return esc(s); };
 
@@ -21,6 +21,12 @@
   };
 
   ui.gameVersionLabel = function (v) { return Object.prototype.hasOwnProperty.call(GAME_VERSIONS, v) ? GAME_VERSIONS[v] : String(v == null ? '' : v); };
+  // The realm line under a guild name: the realm, or "<Ruleset> ruleset" for a ruleset (WoW Forever).
+  ui.realmLine = function (guild) {
+    const g = guild || {};
+    const realm = String(g.realm == null ? '' : g.realm);
+    return g.realmKind === 'ruleset' ? realm + ' ruleset' : realm;
+  };
   ui.serverAccessLabel = function (a) { return Object.prototype.hasOwnProperty.call(SERVER_ACCESS_LABELS, a) ? SERVER_ACCESS_LABELS[a] : String(a == null ? '' : a); };
 
   // A person's avatar: the initials always render; the Discord image (when the server sent one) sits over them.

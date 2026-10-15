@@ -71,7 +71,7 @@ const names = list => list.map(e => e.person.displayName);
 
 function guildData(can, overrides) {
   return Object.assign({
-    guild: { id: 'g1', name: 'Ravens', realm: 'Firemaw', region: 'EU', timeZone: 'Europe/Berlin', gameVersion: 'tbc-anniversary', createdAt: NOW },
+    guild: { id: 'g1', name: 'Ravens', realm: 'Firemaw', region: 'EU', timeZone: 'Europe/Berlin', gameVersion: 'tbc', realmKind: 'realm', realmSlug: null, createdAt: NOW },
     teams: JSON.parse(JSON.stringify(TEAMS)),
     me: { roles: [{ role: 'officer' }], can },
   }, overrides || {});
@@ -575,9 +575,9 @@ function assertEscaped(out, label) {
     assert(/name="serverId" value="s1" checked/.test(ok) && /name="serverId" value="s2">/.test(ok));
     assert(ok.includes('>Owner<') && ok.includes('>Manage Server<'));
     assert(/<option value="Europe\/Berlin" selected>/.test(ok));
-    for (const r of ['US', 'EU', 'KR', 'TW']) assert(ok.includes(`<option value="${r}">`), r);
+    for (const r of ['US', 'EU', 'KR', 'TW']) assert(ok.includes(`<option value="${r}"`), r);
     assert(!/data-key="create-guild" disabled/.test(ok));
-    assert(ok.includes('value="Team A"') && ok.includes('25-man') && ok.includes('TBC Anniversary'));
+    assert(ok.includes('name="multipleTeams"') && !ok.includes('name="teamName"'));
     const stale = G.pages.create.createHtml({ me: meData({ create: { allowed: true, stale: true, servers } }), timeZones: ['UTC'], defaultTimeZone: '' });
     assert(stale.includes('Sign in again to refresh your server list') && stale.includes('href="/auth/login"'));
     assert(/data-key="create-guild" disabled/.test(stale));
@@ -603,6 +603,148 @@ function assertEscaped(out, label) {
     assert(G.pages.empty.emptyHtml('nights').includes('Raid-Helper sign-ups') && G.pages.empty.emptyHtml('nights').includes('Warcraft Logs'));
     assert(G.pages.empty.emptyHtml('attendance').includes('each person') && G.pages.empty.emptyHtml('attendance').includes('each team'));
     assert(G.pages.empty.emptyHtml('bogus').includes('Roster'));
+  });
+
+  // ── Create guild v2 ────────────────────────────────────────────
+  const realmsModule = await import('./worker/realms.js');
+  const CREATE_OPTIONS = plain({
+    versions: realmsModule.GAME_VERSIONS, regions: realmsModule.REGIONS, realms: realmsModule.REALMS, rulesets: realmsModule.FOREVER_RULESETS,
+  });
+  const CREATE_SERVERS = [{ id: 's1', name: 'Ravens HQ', iconUrl: null, access: 'owner' }];
+  const createPage = () => G.pages.create.createHtml({
+    me: meData({ create: { allowed: true, stale: false, servers: CREATE_SERVERS, options: CREATE_OPTIONS } }), timeZones: ['UTC'], defaultTimeZone: 'UTC',
+  });
+  const optionValues = out => [...out.matchAll(/<option value="([^"]*)"/g)].map(m => m[1]);
+  const idxOf = (out, needle) => { const i = out.indexOf(needle); assert(i >= 0, needle); return i; };
+
+  await check('create guild v2: field order is server, game version, region, realm, guild name, time zone, then raid teams', () => {
+    const out = createPage();
+    const order = ['Discord server</legend>', 'for="cg-version"', 'for="cg-region"', 'for="cg-realm"', 'for="cg-name"', 'for="cg-timezone"', 'Raid teams</legend>'];
+    const at = order.map(n => idxOf(out, n));
+    assert.deepEqual(at.slice().sort((a, b) => a - b), at, 'fields are in the approved order');
+    assert.deepEqual(optionValues(out.slice(idxOf(out, 'id="cg-version"'), idxOf(out, 'id="cg-region"'))), ['tbc', 'classic', 'forever']);
+    for (const label of ['TBC Anniversary', 'Classic Era', 'WoW Forever']) assert(out.includes('>' + label + '</option>'), label);
+    assert(!out.includes('value="Team A"') && !out.includes('name="teamName"'), 'no team name field until several teams');
+  });
+
+  await check('create guild v2: realm options follow version + region, read "Name - Type", and end with Other (type it)', () => {
+    const { realmFieldsHtml } = G.pages.create;
+    const tbcUs = realmFieldsHtml('tbc', 'US', {});
+    assert.deepEqual(optionValues(tbcUs), ['Dreamscythe', 'Nightslayer', 'Maladath (AU)', '__other__']);
+    assert(tbcUs.includes('>Dreamscythe - PvE</option>') && tbcUs.includes('>Maladath (AU) - PvP</option>') && tbcUs.includes('>Other (type it)</option>'));
+    assert(!tbcUs.includes('Doomhowl') && !tbcUs.includes('id="cg-realm-other"'), 'Hardcore is Classic Era; no text field while a listed realm is picked');
+    assert.deepEqual(optionValues(realmFieldsHtml('tbc', 'EU', {})), ['Thunderstrike', 'Spineshatter', '__other__']);
+    assert(realmFieldsHtml('classic', 'US', {}).includes('>Doomhowl - Hardcore</option>'));
+    assert(realmFieldsHtml('classic', 'EU', {}).includes('>Soulseeker - Hardcore</option>'));
+    const eraKr = optionValues(realmFieldsHtml('classic', 'KR', {}));
+    assert.equal(eraKr.length, realmsModule.REALMS.classic.KR.length + 1);
+    assert(realmFieldsHtml('classic', 'US', {}).includes('<label class="gs-label" for="cg-realm">Realm</label>'));
+  });
+
+  await check('create guild v2: Other (type it) reveals a Realm name text field and keeps what was typed; KR/TW TBC shows the hint', () => {
+    const { realmFieldsHtml } = G.pages.create;
+    const other = realmFieldsHtml('tbc', 'US', { choice: '__other__', other: 'My "Realm" <b>' });
+    assert(/<option value="__other__" selected>Other \(type it\)<\/option>/.test(other));
+    assert(other.includes('for="cg-realm-other">Realm name</label>') && other.includes('id="cg-realm-other"'));
+    assert(other.includes('value="My &quot;Realm&quot; &lt;b&gt;"') && !other.includes('<b>'), 'typed text is escaped and kept');
+    for (const region of ['KR', 'TW']) {
+      const out = realmFieldsHtml('tbc', region, {});
+      assert.deepEqual(optionValues(out), ['__other__'], region);
+      assert(out.includes('No TBC Anniversary realms in this region.') && out.includes('id="cg-realm-other"'), region);
+    }
+    assert(!realmFieldsHtml('classic', 'US', {}).includes('No TBC Anniversary realms'));
+    assert(!realmFieldsHtml('tbc', 'US', {}).includes('No TBC Anniversary realms'));
+    assert(!/value="Dreamscythe" selected/.test(realmFieldsHtml('tbc', 'EU', { choice: 'Dreamscythe' })), 'a choice that left the list falls back to the first realm');
+  });
+
+  await check('create guild v2: WoW Forever swaps Realm for a Ruleset select (Normal, PvP, RP, Hardcore) and never offers Other', () => {
+    const out = G.pages.create.realmFieldsHtml('forever', 'EU', {});
+    assert(out.includes('for="cg-realm">Ruleset</label>') && !out.includes('>Realm</label>'));
+    assert.deepEqual(optionValues(out), ['Normal', 'PvP', 'RP', 'Hardcore']);
+    assert(!out.includes('Other (type it)') && !out.includes('cg-realm-other'));
+    assert(/<option value="RP" selected>/.test(G.pages.create.realmFieldsHtml('forever', 'US', { choice: 'RP' })));
+    assert(!/value="Dreamscythe"/.test(G.pages.create.realmFieldsHtml('forever', 'US', { choice: 'Dreamscythe' })));
+  });
+
+  await check('create guild v2: the teams radio starts on one team (helper text only); several teams shows two name fields, Add another team, and Remove from the third', () => {
+    const page = createPage();
+    assert(/name="multipleTeams" value="one" checked/.test(page) && /name="multipleTeams" value="many" data-change/.test(page));
+    assert(page.includes('Does your guild run more than one raid team?') && page.includes('>No, one team<') && page.includes('>Yes, several teams<'));
+    assert(page.includes('ll set up one team for you. You can add more later in Guild settings.'));
+    const { teamsFieldsHtml } = G.pages.create;
+    const two = teamsFieldsHtml(true, []);
+    assert(two.includes('>Team 1 name</label>') && two.includes('>Team 2 name</label>') && !two.includes('Team 3'));
+    assert(two.includes('Add another team') && two.includes('All teams are 25-man.') && !two.includes('cg-team-remove'));
+    const three = teamsFieldsHtml(true, ['Mon', 'Thu', 'Sun']);
+    assert(three.includes('>Team 3 name</label>') && three.includes('data-action="cg-team-remove" data-index="2"') && three.includes('aria-label="Remove team 3"'));
+    assert(!three.includes('data-index="0"') && !three.includes('data-index="1"'), 'only the third and later teams can be removed');
+    assert(three.includes('value="Mon"') && three.includes('value="Sun"'), 'typed names are kept');
+    const ten = teamsFieldsHtml(true, Array.from({ length: 10 }, (_, i) => 'T' + i));
+    assert(!ten.includes('Add another team') && ten.includes('>Team 10 name</label>'), 'the add button goes away at 10 teams');
+    assert(!teamsFieldsHtml(false, ['kept']).includes('Team 1 name'));
+  });
+
+  await check('create guild v2: client validation (realm, ruleset, team names: empty, long, duplicate)', () => {
+    const { validate } = G.pages.create;
+    const ok = { serverId: 's1', gameVersion: 'tbc', region: 'US', realm: 'Nightslayer', name: 'Ravens', multipleTeams: false };
+    assert.deepEqual(plain(validate(ok)), {});
+    assert.equal(validate(Object.assign({}, ok, { realm: '' })).realm, 'Enter your realm.');
+    assert.equal(validate(Object.assign({}, ok, { gameVersion: 'forever', realm: '' })).realm, 'Pick a ruleset.');
+    assert.equal(validate(Object.assign({}, ok, { realm: 'x'.repeat(65) })).realm, 'The realm name can be at most 64 characters.');
+    const several = validate(Object.assign({}, ok, { multipleTeams: true, teamNames: ['Mon', 'mon', '', 'y'.repeat(41)] }));
+    assert.deepEqual(Object.keys(several).sort(), ['teamNames:1', 'teamNames:2', 'teamNames:3']);
+    assert.equal(several['teamNames:1'], 'Each team needs a different name.');
+    assert.deepEqual(plain(validate(Object.assign({}, ok, { multipleTeams: true, teamNames: ['Mon', 'Thu'] }))), {});
+  });
+
+  await check('create guild v2: server-sent options and typed values are escaped', () => {
+    const hostile = '<img src=x onerror=1>"\'&';
+    const opts = { versions: [{ key: 'tbc', label: hostile }], regions: ['US'], realms: { tbc: { US: [{ name: hostile, slug: 's', type: hostile }] } }, rulesets: [hostile] };
+    const out = G.pages.create.createHtml({ me: meData({ create: { allowed: true, stale: false, servers: CREATE_SERVERS, options: opts } }), timeZones: ['UTC'], defaultTimeZone: 'UTC' });
+    assert(!out.includes('<img'), 'no raw tag from option data');
+    G.pages.create.setOptions({ options: opts });
+    assert(!G.pages.create.realmFieldsHtml('forever', 'US', {}).includes('<img'));
+    assert(!G.pages.create.teamsFieldsHtml(true, [hostile, hostile + '2']).includes('<img'));
+    G.pages.create.setOptions({ options: CREATE_OPTIONS });
+  });
+
+  await check('gameVersionLabel and realmLine: tbc / classic / forever labels; Forever shows "<Ruleset> ruleset"', () => {
+    assert.equal(G.ui.gameVersionLabel('tbc'), 'TBC Anniversary');
+    assert.equal(G.ui.gameVersionLabel('classic'), 'Classic Era');
+    assert.equal(G.ui.gameVersionLabel('forever'), 'WoW Forever');
+    assert.equal(G.ui.realmLine({ realm: 'Nightslayer', realmKind: 'realm' }), 'Nightslayer');
+    assert.equal(G.ui.realmLine({ realm: 'PvP', realmKind: 'ruleset' }), 'PvP ruleset');
+    const forever = guildData({}, { guild: { id: 'g1', name: 'Ravens', realm: 'Hardcore', realmKind: 'ruleset', realmSlug: null, region: 'EU', timeZone: 'UTC', gameVersion: 'forever', createdAt: NOW } });
+    const out = G.shell.render({ me: meData(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: forever, teamId: 't1', collapsed: false }, '<p>x</p>');
+    assert(out.includes('Hardcore ruleset') && out.includes('WoW Forever'));
+  });
+
+  await check('one-team guild: no team picker in the sidebar, drawer or phone header, and no team in the breadcrumb; a second team brings it back', () => {
+    const oneTeam = [{ id: 't1', name: 'Main team', size: 25, archived: false, players: 0, leads: [] }, { id: 't9', name: 'Old', size: 25, archived: true, players: 0, leads: [] }];
+    const route = { name: 'section', gid: 'g1', section: 'roster' };
+    const render = teams => {
+      const gd = guildData({}, { teams });
+      return { out: G.shell.render({ me: meData(), route, guildData: gd, teamId: 't1', collapsed: false }, '<p>x</p>'), gd };
+    };
+    const single = render(oneTeam);
+    assert(!single.out.includes('data-change="team-pick"') && !single.out.includes('gs-team-select'), 'no picker anywhere');
+    assert(single.out.includes('class="gs-phone-guild"'), 'the phone header names the guild instead');
+    assert.deepEqual(plain(G.shell.breadcrumbItems({ route, guildData: single.gd, teamId: 't1' })).map(c => c.label), ['Ravens', 'Roster']);
+    const two = render(oneTeam.concat([{ id: 't2', name: 'Alts', size: 25, archived: false, players: 0, leads: [] }]));
+    assert(two.out.includes('id="gs-team-select"') && two.out.includes('id="gs-team-select-drawer"') && two.out.includes('id="gs-team-select-phone"'));
+    assert.deepEqual(plain(G.shell.breadcrumbItems({ route, guildData: two.gd, teamId: 't1' })).map(c => c.label), ['Ravens', 'Main team', 'Roster']);
+  });
+
+  await check('one-team guild: Team Lead shows without a team name in the roles dialog and the Roles column; two teams keep the names', () => {
+    const one = [{ id: 't1', name: 'Main <team>', size: 25, archived: false, players: 0, leads: [] }, { id: 't9', name: 'Old', size: 25, archived: true, players: 0, leads: [] }];
+    const e = entry(person('u9', 'Lead'), [{ role: 'team_lead', teamId: 't1' }], NOW);
+    const dialog = G.pages.people.rolesDialogHtml(e, one, 'Ravens');
+    assert(/name="teamLead"[^>]*><label[^>]*>Team Lead<\/label>/.test(dialog), 'single checkbox says Team Lead');
+    assert(!dialog.includes('Team Lead: ') && !dialog.includes('Main &lt;team&gt;'));
+    assert.deepEqual(plain(G.peopleSort.roleLabels(e.roles, one)).map(r => r.label), ['Team Lead']);
+    assert(G.ui.roleChipsHtml(e.roles, one).includes('>Team Lead<'));
+    assert(G.pages.people.rolesDialogHtml(e, TEAMS, 'Ravens').includes('Team Lead: Team A'), 'two active teams keep the names');
+    assert.deepEqual(plain(G.peopleSort.roleLabels(e.roles, TEAMS)).map(r => r.label), ['Team Lead: Team A']);
   });
 
   // ── guild.html, guild.css, source hygiene ──────────────────────

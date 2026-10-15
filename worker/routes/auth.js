@@ -6,6 +6,7 @@ import {
 } from '../discord.js';
 import { base64url, isId, newId } from '../ids.js';
 import { shapeRoles } from '../permissions.js';
+import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
 import { parsePrefs, personFromSession, toPerson } from '../person.js';
 import {
   MANAGEABLE_TTL_MS, SESSION_TTL_MS, STATE_COOKIE, clearSessionCookie, clearStateCookie, hashToken,
@@ -205,7 +206,13 @@ export async function me(ctx) {
         .filter((row) => row.has_master !== 1)
         .map((row) => ({ guildId: row.id, guildName: row.name, serverId: row.discord_server_id, serverName: serverNames.get(row.discord_server_id) || '' }));
     }
-    create = { allowed: true, stale: manageable.stale, servers, claimable };
+    create = {
+      allowed: true,
+      stale: manageable.stale,
+      servers,
+      claimable,
+      options: { versions: GAME_VERSIONS, regions: REGIONS, realms: REALMS, rulesets: FOREVER_RULESETS },
+    };
   }
 
   const impact = await deleteImpact(db, userId);

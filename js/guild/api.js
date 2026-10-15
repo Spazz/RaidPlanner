@@ -23,6 +23,7 @@
     this.code = typeof b.error === 'string' ? b.error : (status === 0 ? 'network' : 'error');
     this.message = typeof b.message === 'string' && b.message ? b.message : defaultMessage(status);
     this.field = typeof b.field === 'string' ? b.field : null;
+    this.index = typeof b.index === 'number' ? b.index : null;
     this.retryAfter = typeof b.retryAfter === 'number' ? b.retryAfter : null;
     this.body = b;
   }

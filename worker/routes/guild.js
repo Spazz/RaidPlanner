@@ -4,9 +4,12 @@ import { isAllowlisted } from '../discord.js';
 import { newId } from '../ids.js';
 import { loadGuildContext } from '../permissions.js';
 import { readManageable } from '../session.js';
+import { FOREVER_RULESETS, REGIONS, findRealm, isVersion } from '../realms.js';
 import { loadTeams } from './teams.js';
 
-const REGIONS = ['US', 'EU', 'KR', 'TW'];
+const SINGLE_TEAM_NAME = 'Main team';
+const MAX_TEAMS_AT_CREATE = 10;
+const MIN_TEAMS_WHEN_SEVERAL = 2;
 const SNOWFLAKE = /^\d{1,25}$/;
 
 export function guildView(row) {
@@ -14,6 +17,8 @@ export function guildView(row) {
     id: row.id,
     name: row.name,
     realm: row.realm,
+    realmKind: row.realm_kind,
+    realmSlug: row.realm_slug,
     region: row.region,
     timeZone: row.time_zone,
     gameVersion: row.game_version,
@@ -48,6 +53,48 @@ function canonicalTimeZone(value) {
   }
 }
 
+// -> { realm, realmKind, realmSlug } for the chosen version and region.
+function readRealm(body, gameVersion) {
+  if (gameVersion === 'forever') {
+    if (typeof body.realm !== 'string' || !FOREVER_RULESETS.includes(body.realm)) {
+      throw new HttpError(400, 'bad_request', 'Pick a ruleset.', { field: 'realm' });
+    }
+    return { realm: body.realm, realmKind: 'ruleset', realmSlug: null };
+  }
+  const typed = cleanText(body.realm, 'realm', { max: 64 });
+  const listed = findRealm(gameVersion, body.region, typed);
+  return { realm: listed ? listed.name : typed, realmKind: 'realm', realmSlug: listed ? listed.slug : null };
+}
+
+// -> the team names to create. One team is always "Main team"; several need 2-10 unique names.
+function readTeamNames(body) {
+  if (typeof body.multipleTeams !== 'boolean') {
+    throw new HttpError(400, 'bad_request', 'Say whether your guild runs more than one raid team.', { field: 'multipleTeams' });
+  }
+  if (!body.multipleTeams) return [SINGLE_TEAM_NAME];
+  const raw = body.teamNames;
+  if (!Array.isArray(raw) || raw.length < MIN_TEAMS_WHEN_SEVERAL || raw.length > MAX_TEAMS_AT_CREATE) {
+    throw new HttpError(400, 'bad_request', `Enter ${MIN_TEAMS_WHEN_SEVERAL} to ${MAX_TEAMS_AT_CREATE} team names.`, { field: 'teamNames' });
+  }
+  const seen = new Set();
+  return raw.map((entry, index) => {
+    if (typeof entry !== 'string') {
+      throw new HttpError(400, 'bad_request', 'Each team name must be text.', { field: 'teamNames', index });
+    }
+    let name;
+    try {
+      name = cleanText(entry, 'teamNames', { max: 40 });
+    } catch {
+      throw new HttpError(400, 'bad_request', 'Each team name must be 1 to 40 characters of plain text.', { field: 'teamNames', index });
+    }
+    if (seen.has(name.toLowerCase())) {
+      throw new HttpError(400, 'bad_request', 'Each team needs a different name.', { field: 'teamNames', index });
+    }
+    seen.add(name.toLowerCase());
+    return name;
+  });
+}
+
 export async function createGuild(ctx) {
   const { db, env, body, session } = ctx;
   if (!isAllowlisted(env, session.user.discordId)) {
@@ -61,9 +108,11 @@ export async function createGuild(ctx) {
   const serverId = typeof body.serverId === 'string' ? body.serverId : '';
   if (!SNOWFLAKE.test(serverId)) throw new HttpError(400, 'bad_request', 'Pick a Discord server.', { field: 'serverId' });
   const name = cleanText(body.name, 'name', { max: 60 });
-  const realm = cleanText(body.realm, 'realm', { max: 40 });
-  const teamName = cleanText(body.teamName, 'teamName', { max: 40 });
+  if (!isVersion(body.gameVersion)) throw new HttpError(400, 'bad_request', 'Pick a game version.', { field: 'gameVersion' });
+  const gameVersion = body.gameVersion;
   if (!REGIONS.includes(body.region)) throw new HttpError(400, 'bad_request', 'Pick a region.', { field: 'region' });
+  const { realm, realmKind, realmSlug } = readRealm(body, gameVersion);
+  const teamNames = readTeamNames(body);
   const timeZone = canonicalTimeZone(body.timeZone);
   if (!timeZone) throw new HttpError(400, 'bad_request', 'Pick a valid time zone.', { field: 'timeZone' });
 
@@ -76,15 +125,16 @@ export async function createGuild(ctx) {
   const userId = session.user.id;
   const now = ctx.now();
   const guildId = newId('g', ctx.randomBytes);
-  const teamId = newId('t', ctx.randomBytes);
+  const teamIds = teamNames.map(() => newId('t', ctx.randomBytes));
   try {
     await db.batch([
       db.prepare(
-        `INSERT INTO guilds (id, name, realm, region, discord_server_id, time_zone, game_version, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'tbc-anniversary', ?, ?)`,
-      ).bind(guildId, name, realm, body.region, serverId, timeZone, userId, now),
-      db.prepare('INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES (?, ?, ?, 25, 0, ?)')
-        .bind(teamId, guildId, teamName, now),
+        `INSERT INTO guilds (id, name, realm, realm_kind, realm_slug, region, discord_server_id, time_zone, game_version, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(guildId, name, realm, realmKind, realmSlug, body.region, serverId, timeZone, gameVersion, userId, now),
+      ...teamNames.map((teamName, i) => db.prepare(
+        'INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES (?, ?, ?, 25, 0, ?)',
+      ).bind(teamIds[i], guildId, teamName, now)),
       db.prepare(
         `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
          VALUES (?, ?, ?, 'guild_master', NULL, ?, ?)`,
@@ -94,7 +144,7 @@ export async function createGuild(ctx) {
          ON CONFLICT(user_id, server_id) DO UPDATE SET seen_at = excluded.seen_at`,
       ).bind(userId, serverId, now),
       auditStatement(ctx, {
-        guildId, actorUserId: userId, action: 'guild.create', entityType: 'guild', entityId: guildId, after: { teamId },
+        guildId, actorUserId: userId, action: 'guild.create', entityType: 'guild', entityId: guildId, after: { teamId: teamIds[0], teamIds },
       }),
     ]);
   } catch (error) {

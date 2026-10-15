@@ -36,11 +36,13 @@ CREATE INDEX idx_user_servers_server ON user_servers(server_id);
 CREATE TABLE guilds (
   id                  TEXT PRIMARY KEY,
   name                TEXT NOT NULL,
-  realm               TEXT NOT NULL,
+  realm               TEXT NOT NULL,  -- the realm name, or for WoW Forever the ruleset
+  realm_kind          TEXT NOT NULL CHECK (realm_kind IN ('realm', 'ruleset')),
+  realm_slug          TEXT,           -- NULL for rulesets and realms that are not in worker/realms.js
   region              TEXT NOT NULL CHECK (region IN ('US', 'EU', 'KR', 'TW')),
   discord_server_id   TEXT NOT NULL UNIQUE,
   time_zone           TEXT NOT NULL,
-  game_version        TEXT NOT NULL DEFAULT 'tbc-anniversary',
+  game_version        TEXT NOT NULL CHECK (game_version IN ('tbc', 'classic', 'forever')),
   created_by          TEXT REFERENCES users(id) ON DELETE SET NULL,
   created_at          INTEGER NOT NULL
 );

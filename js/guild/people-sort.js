@@ -38,12 +38,14 @@
     const byId = {};
     (Array.isArray(teams) ? teams : []).forEach(function (t) { if (t && t.id != null) byId[String(t.id)] = t; });
     const out = [];
+    // A guild with exactly one active team shows a bare "Team Lead" (the team is implied).
+    const oneTeam = (Array.isArray(teams) ? teams : []).filter(function (t) { return t && !t.archived; }).length === 1;
     normalizeRoles(roles).forEach(function (r) {
       if (r.role === 'guild_master') out.push({ kind: 'guild_master', label: ROLE_NAMES.guild_master });
       else if (r.role === 'officer') out.push({ kind: 'officer', label: ROLE_NAMES.officer });
       else if (r.role === 'team_lead') {
         const team = r.teamId != null ? byId[r.teamId] : null;
-        out.push({ kind: 'team_lead', label: team ? ROLE_NAMES.team_lead + ': ' + team.name : ROLE_NAMES.team_lead });
+        out.push({ kind: 'team_lead', label: team && !oneTeam ? ROLE_NAMES.team_lead + ': ' + team.name : ROLE_NAMES.team_lead });
       }
     });
     if (!out.length) out.push({ kind: 'member', label: ROLE_NAMES.member });

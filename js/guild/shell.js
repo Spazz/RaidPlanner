@@ -80,7 +80,7 @@
 
   function teamSelectHtml(teams, teamId, id) {
     const active = activeTeams(teams);
-    if (!active.length) return '';
+    if (active.length < 2) return '';
     return '<label class="gs-sr" for="' + esc(id) + '">Team</label><span class="gs-select-wrap"><select class="gs-team-select" id="' + esc(id) + '" data-change="team-pick" data-key="team-pick">' +
       active.map(function (t) { return '<option value="' + esc(t.id) + '"' + (t.id === teamId ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') +
       '</select>' + ic('chevronDown', 18) + '</span>';
@@ -88,7 +88,7 @@
 
   function guildHeadHtml(ctx, selectId) {
     const g = ctx.guildData.guild;
-    return '<div class="gs-side-head"><div class="gs-side-guild"><span class="gs-side-name">' + esc(g.name) + '</span><span class="gs-side-realm">' + esc(g.realm) + '</span></div>' +
+    return '<div class="gs-side-head"><div class="gs-side-guild"><span class="gs-side-name">' + esc(g.name) + '</span><span class="gs-side-realm">' + esc(G.ui.realmLine(g)) + '</span></div>' +
       '<div><span class="gs-badge">' + esc(G.ui.gameVersionLabel(g.gameVersion)) + '</span></div>' +
       teamSelectHtml(ctx.guildData.teams, ctx.teamId, selectId) + '</div>';
   }
@@ -136,7 +136,8 @@
     if (!gd || !gd.guild) return [{ label: 'Raidsmith' }];
     crumbs.push({ label: gd.guild.name, href: guildHref(gd.guild.id, 'roster') });
     if (r.name === 'section') {
-      const team = activeTeams(gd.teams).filter(function (t) { return t.id === ctx.teamId; })[0];
+      const active = activeTeams(gd.teams);
+      const team = active.length > 1 ? active.filter(function (t) { return t.id === ctx.teamId; })[0] : null;
       if (team) crumbs.push({ label: team.name });
       crumbs.push({ label: { roster: 'Roster', nights: 'Raid nights', attendance: 'Attendance', loot: 'Loot' }[r.section] || 'Roster' });
     } else if (r.name === 'settings') {
@@ -188,7 +189,7 @@
   function settingsFrameHtml(ctx, activeTab, innerHtml) {
     const gd = ctx.guildData;
     const tabs = settingsTabs(gd.me && gd.me.can);
-    return '<div class="gs-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Guild settings</h1><p class="gs-sub">' + esc(gd.guild.name) + ' - ' + esc(gd.guild.realm) + '</p></div>' +
+    return '<div class="gs-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Guild settings</h1><p class="gs-sub">' + esc(gd.guild.name) + ' - ' + esc(G.ui.realmLine(gd.guild)) + '</p></div>' +
       '<nav aria-label="Guild settings sections"><ul class="gs-subtabs">' + tabs.map(function (t) {
         const active = t.tab === activeTab;
         return '<li><a class="gs-subtab' + (active ? ' is-active' : '') + '" href="' + esc(G.router.format({ name: 'settings', gid: gd.guild.id, tab: t.tab })) + '"' + (active ? ' aria-current="page"' : '') + '>' + esc(t.label) + '</a></li>';

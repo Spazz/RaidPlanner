@@ -235,6 +235,79 @@ check('Worker source follows the rules: ES modules, explicit ./x.js imports, Web
   }
 });
 
+check('worker/realms.js: the data shape, dated header with sources, the three versions and four regions', async () => {
+  const source = read('worker/realms.js');
+  assert(/^\/\/ Realm lists as of 2026-10-14\./.test(source), 'dated header');
+  for (const needle of ['Warcraft Logs', '2024-11-21', 'warcraft.wiki.gg', 'may be stale', 'WoW Forever has no realms']) assert(source.includes(needle), needle);
+  assert(!source.includes('Годовщина'), 'the unverified Russian entry is left out');
+  const realms = await import('./worker/realms.js');
+  assert.deepEqual(realms.GAME_VERSIONS, [
+    { key: 'tbc', label: 'TBC Anniversary' }, { key: 'classic', label: 'Classic Era' }, { key: 'forever', label: 'WoW Forever' },
+  ]);
+  assert.deepEqual(realms.FOREVER_RULESETS, ['Normal', 'PvP', 'RP', 'Hardcore']);
+  assert.deepEqual(Object.keys(realms.REALMS), ['tbc', 'classic', 'forever']);
+  for (const version of Object.keys(realms.REALMS)) {
+    assert.deepEqual(Object.keys(realms.REALMS[version]), ['US', 'EU', 'KR', 'TW'], version);
+    for (const [region, list] of Object.entries(realms.REALMS[version])) {
+      assert(Array.isArray(list), `${version} ${region}`);
+      for (const realm of list) {
+        assert(typeof realm.name === 'string' && realm.name.trim() === realm.name && realm.name.length >= 1 && realm.name.length <= 64, `${version} ${region} name`);
+        assert(typeof realm.slug === 'string' && realm.slug, `${version} ${region} ${realm.name}: slug`);
+        assert(realm.type === undefined || (typeof realm.type === 'string' && realm.type), `${version} ${region} ${realm.name}: type`);
+        assert.deepEqual(Object.keys(realm).filter((key) => !['name', 'slug', 'type'].includes(key)), [], `${realm.name}: only name, slug, type`);
+      }
+    }
+  }
+  assert.deepEqual(realms.REALMS.forever, { US: [], EU: [], KR: [], TW: [] }, 'Forever has no realms');
+});
+
+check('worker/realms.js: no duplicate names or slugs per version + region, and no realm is listed under two versions in one region', async () => {
+  const { REALMS } = await import('./worker/realms.js');
+  for (const [version, regions] of Object.entries(REALMS)) {
+    for (const [region, list] of Object.entries(regions)) {
+      const names = list.map((realm) => realm.name.toLowerCase());
+      assert.equal(new Set(names).size, names.length, `${version} ${region}: duplicate name`);
+      const slugs = list.map((realm) => realm.slug);
+      assert.equal(new Set(slugs).size, slugs.length, `${version} ${region}: duplicate slug`);
+    }
+  }
+  for (const region of ['US', 'EU', 'KR', 'TW']) {
+    const tbc = new Set(REALMS.tbc[region].map((realm) => realm.name.toLowerCase()));
+    for (const realm of REALMS.classic[region]) assert(!tbc.has(realm.name.toLowerCase()), `${region} ${realm.name} is in both TBC and Classic Era`);
+  }
+});
+
+check('worker/realms.js: TBC Anniversary realms are exactly the approved list; Anniversary Hardcore realms sit under Classic Era', async () => {
+  const { REALMS, findRealm, isVersion } = await import('./worker/realms.js');
+  const brief = (list) => list.map(({ name, type }) => [name, type]);
+  assert.deepEqual(brief(REALMS.tbc.US), [['Dreamscythe', 'PvE'], ['Nightslayer', 'PvP'], ['Maladath (AU)', 'PvP']]);
+  assert.deepEqual(brief(REALMS.tbc.EU), [['Thunderstrike', 'PvE'], ['Spineshatter', 'PvP']]);
+  assert.deepEqual(REALMS.tbc.KR, []);
+  assert.deepEqual(REALMS.tbc.TW, []);
+  assert(REALMS.classic.US.some((realm) => realm.name === 'Doomhowl' && realm.type === 'Hardcore'));
+  assert(REALMS.classic.EU.some((realm) => realm.name === 'Soulseeker' && realm.type === 'Hardcore'));
+  assert(!JSON.stringify(REALMS.tbc).includes('Hardcore'));
+  for (const region of ['US', 'EU', 'KR', 'TW']) assert(REALMS.classic[region].length > 0, `Classic Era ${region} has realms`);
+  assert.equal(findRealm('tbc', 'US', ' NIGHTslayer ').slug, 'nightslayer');
+  assert.equal(findRealm('tbc', 'US', 'Doomhowl'), null);
+  assert.equal(findRealm('classic', 'US', 'doomhowl').name, 'Doomhowl');
+  assert.equal(findRealm('forever', 'US', 'Normal'), null);
+  assert.equal(findRealm('nope', 'US', 'x'), null);
+  assert.equal(findRealm('tbc', 'US', 5), null);
+  assert(isVersion('tbc') && isVersion('classic') && isVersion('forever'));
+  assert(!isVersion('tbc-anniversary') && !isVersion(undefined) && !isVersion('toString'));
+});
+
+check('migration 0001: guilds carry game_version (tbc / classic / forever, no default), realm_kind and a nullable realm_slug', () => {
+  const sql = read('migrations/0001_foundation.sql');
+  const table = sql.slice(sql.indexOf('CREATE TABLE guilds'), sql.indexOf(');', sql.indexOf('CREATE TABLE guilds')));
+  assert(/game_version\s+TEXT NOT NULL CHECK \(game_version IN \('tbc', 'classic', 'forever'\)\),/.test(table));
+  assert(!/game_version[^\n]*DEFAULT/.test(table), 'no default version');
+  assert(/realm_kind\s+TEXT NOT NULL CHECK \(realm_kind IN \('realm', 'ruleset'\)\)/.test(table));
+  assert(/realm_slug\s+TEXT,/.test(table) && !/realm_slug\s+TEXT NOT NULL/.test(table));
+  assert(!sql.includes('tbc-anniversary'));
+});
+
 check('Worker SQL binds values and never concatenates them into SQL text', () => {
   for (const file of walk('worker').filter((f) => f.endsWith('.js'))) {
     for (const match of read(file).matchAll(/prepare\(\s*`([^`]*)`/g)) {
