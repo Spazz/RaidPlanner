@@ -10,3 +10,10 @@
 /README.md
 /CHANGELOG.md
 /tools/
+# Guild tracker files that only the Cloudflare Worker deployment uses
+/worker/
+/migrations/
+/wrangler.jsonc
+/_headers
+/.assetsignore
+/.env.example

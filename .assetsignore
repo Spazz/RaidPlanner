@@ -1,0 +1,22 @@
+# Files the static-assets upload must never serve. Anchored (/) so nothing deeper is hit by accident.
+# scenarios.js stays served: the ?dev roster picker fetches it.
+/.env*
+/.dev.vars*
+/.wrangler/
+/node_modules/
+/worker/
+/migrations/
+/api/
+/wrangler.jsonc
+/package.json
+/tests/
+/tools/
+/.github/
+/*-tests.js
+/tests.js
+/*-scenarios.js
+/*.md
+/gruul_dps_data.txt
+/.git*
+/.vercelignore
+/vercel.json

@@ -114,3 +114,25 @@
 !readiness-tests.js
 !import-copy-tests.js
 !labels-tests.js
+# Guild tracker (Cloudflare Worker + D1, local first): config, Worker, migration, tools, page, scripts, suites
+!wrangler.jsonc
+!.assetsignore
+!_headers
+!.env.example
+!worker/
+!worker/package.json
+!worker/*.js
+!worker/routes/
+!worker/routes/*.js
+!migrations/
+!migrations/*.sql
+!tests/d1-fake.js
+!tools/guild-dev.js
+!tools/fake-discord.js
+!guild.html
+!guild.css
+!js/guild/
+!js/guild/*.js
+!guild-ui-tests.js
+!guild-worker-tests.js
+!guild-config-tests.js

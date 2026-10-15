@@ -3,6 +3,8 @@
   "version": "4.4.2",
   "private": true,
   "scripts": {
-    "test": "node tests/run-all.js"
+    "test": "node tests/run-all.js",
+    "guild:dev": "node tools/guild-dev.js dev",
+    "guild:migrate": "node tools/guild-dev.js migrate"
   }
 }

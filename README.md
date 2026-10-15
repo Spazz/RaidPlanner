@@ -154,6 +154,35 @@ Vercel deploys from GitHub `main`: **pushing to `main` deploys to production**, 
 
 `.vercelignore` keeps tests, CI files and docs out of the deployment; `deploy-tests.js` checks it can never exclude something the page loads.
 
+## Guild tracker (local)
+
+The guild tracker (`guild.html`, the Worker in `worker/`, D1 migrations in `migrations/`) runs locally on Cloudflare's Wrangler. Nothing here is deployed: Vercel still serves the planner only (`.vercelignore` keeps the Worker files out), and the tracker lives on the `guild/slice-1` branch.
+
+**Run it.** Node 22 or newer. Fill `.env` from `.env.example` (names only; `.env` is never committed or served), then:
+
+```
+npm run guild:migrate     # applies migrations/ to the local D1
+npm run guild:dev         # Worker + local D1 + static files on http://localhost:8787
+```
+
+Both wrap `tools/guild-dev.js`, which runs `npx --yes wrangler@4.146.0` with `WRANGLER_SEND_METRICS=false` and `--persist-to ~/.raidsmith-dev/wrangler-state` (outside OneDrive, so the SQLite files are not synced). Wrangler is pinned at **4.146.0** here and in the tool; a test checks the two agree. Extra arguments pass through: `npm run guild:dev -- --port 8788`. Nothing needs a Cloudflare login.
+
+**Without real Discord credentials.** `node tools/fake-discord.js` starts a fake of Discord's OAuth and two API calls on `127.0.0.1:8790` (configure the fake user and servers with flags or `FAKE_DISCORD_*` variables). Point the Worker at it with `npm run guild:dev -- --var DISCORD_API_BASE:http://127.0.0.1:8790` and put the fake user's id in `GUILD_CREATOR_ALLOWLIST` (also a `--var`). The Worker honours `DISCORD_API_BASE` only for `https://discord.com` or a local `http://localhost:<port>` / `http://127.0.0.1:<port>`, and it is never set in `wrangler.jsonc`.
+
+**Limits under `wrangler dev`.** The short links (`/api/share`, `/tbc/:id`, `/classic/:id`, `/forever/:id`) are Vercel features and do not work on `localhost:8787`; use the long `#r=` links there. The planner pages, `/faq`, `/whats-new` and the guild tracker work.
+
+**What Wrangler 4.146.0 does here (checked 2026-10-14).**
+
+- `main` inside `assets.directory: "."` is accepted with no error or warning.
+- Wrangler does **not** exclude `.env`, `.wrangler/`, `node_modules/` or `worker/` from the assets: without `.assetsignore` every one of them is served. `.assetsignore` hides them, and `guild-config-tests.js` pins its patterns.
+- `_headers` and `.assetsignore` are never served themselves; `_headers` applies to the assets (the CSP matches `vercel.json` plus the Discord CDN for avatars).
+- Default `html_handling` serves `/faq` from `faq.html` (`/faq.html` redirects to `/faq`), so `/guild` serves `guild.html`.
+- `--var KEY:VALUE` overrides a value from `.env`, and `dev --env-file <path>` exists.
+- Local D1, `d1 migrations apply --local` and `dev` run with no Cloudflare login.
+- `run_worker_first` routes (`/api/guild`, `/api/guild/*`, `/auth/*`) reach the Worker; everything else is served as a static asset.
+
+**Tests.** `guild-worker-tests.js` runs the Worker over `tests/d1-fake.js` (a `node:sqlite` stand-in for D1 that runs the real migration and copies D1's limits), `guild-config-tests.js` pins the config files, and `guild-ui-tests.js` covers the page.
+
 ## Releases
 
 User-visible changes get an entry at the top of `CHANGELOG` in `js/changelog.js` and a matching bump of `APP_VERSION` there and `version` in `package.json` (a test checks they agree). `whats-new.html` lists every release; the header's What's new link shows a "New" badge until someone opens that page, once per version (the stored version is under `pp_whats_new_dismissed_v1`).

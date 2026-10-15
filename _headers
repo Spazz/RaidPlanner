@@ -1,0 +1,5 @@
+# Static-asset headers for the Cloudflare Worker deployment (same as vercel.json, plus the Discord CDN for avatars).
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://cdn.discordapp.com; connect-src 'self' https://raid-helper.dev https://raid-helper.xyz; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
