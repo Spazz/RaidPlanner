@@ -12,19 +12,32 @@
   }
 
   function activeRow(team, canEdit) {
-    const actions = canEdit
-      ? '<button type="button" class="gs-btn gs-btn-sm" data-action="team-rename" data-team="' + esc(team.id) + '" data-key="rename-' + esc(team.id) + '" aria-label="Rename ' + esc(team.name) + '">Rename</button>' +
-        '<button type="button" class="gs-btn gs-btn-sm" data-action="team-archive" data-team="' + esc(team.id) + '" data-key="archive-' + esc(team.id) + '" aria-label="Archive ' + esc(team.name) + '">Archive</button>'
-      : '';
+    const actions = teamActionsHtml(team, canEdit);
     return '<tr><th scope="row" class="gs-cell-strong">' + esc(team.name) + '</th><td>' + esc(team.size) + '-man</td><td>' + esc(team.players == null ? 0 : team.players) + '</td><td>' + leadsText(team) +
       '</td><td><div class="gs-row-actions">' + actions + '</div></td></tr>';
+  }
+
+  function teamActionsHtml(team, canEdit) {
+    if (!canEdit) return '';
+    return '<button type="button" class="gs-btn gs-btn-sm" data-action="team-rename" data-team="' + esc(team.id) + '" data-key="rename-' + esc(team.id) + '" aria-label="Rename ' + esc(team.name) + '">Rename</button>' +
+      '<button type="button" class="gs-btn gs-btn-sm" data-action="team-archive" data-team="' + esc(team.id) + '" data-key="archive-' + esc(team.id) + '" aria-label="Archive ' + esc(team.name) + '">Archive</button>';
+  }
+
+  // Phone layout (600 px and below): one card per team, like the People cards.
+  function activeCard(team, canEdit) {
+    const n = team.players == null ? 0 : team.players;
+    return '<li class="gs-team-card"><span class="gs-team-name">' + esc(team.name) + '</span>' +
+      '<span class="gs-card-line gs-muted">' + esc(team.size) + '-man - ' + esc(n) + (n === 1 ? ' player' : ' players') + '</span>' +
+      '<span class="gs-card-line">' + leadsText(team) + '</span>' +
+      '<div class="gs-row-actions">' + teamActionsHtml(team, canEdit) + '</div></li>';
   }
 
   function archivedRow(team, canEdit) {
     const action = canEdit
       ? '<button type="button" class="gs-btn gs-btn-sm" data-action="team-restore" data-team="' + esc(team.id) + '" data-key="restore-' + esc(team.id) + '" aria-label="Restore ' + esc(team.name) + '">Restore</button>'
       : '';
-    return '<li class="gs-archived-item"><span class="gs-cell-strong">' + esc(team.name) + '</span><span class="gs-muted">' + esc(team.size) + '-man</span>' + action + '</li>';
+    const n = team.players == null ? 0 : team.players;
+    return '<li class="gs-archived-item"><span class="gs-cell-strong gs-archived-name">' + esc(team.name) + '</span><span class="gs-muted">' + esc(team.size) + '-man - ' + esc(n) + (n === 1 ? ' player' : ' players') + '</span>' + action + '</li>';
   }
 
   // opts: { guildData, alert }
@@ -38,12 +51,13 @@
       (canEdit ? '<button type="button" class="gs-btn" data-action="team-add" data-key="team-add">Add team</button>' : '') + '</div>' +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       (active.length
-        ? '<div class="gs-table-wrap"><table class="gs-table gs-table-teams" aria-label="Teams"><thead><tr><th scope="col">Team</th><th scope="col">Size</th><th scope="col">Players</th><th scope="col">Team Lead</th><th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' +
-          active.map(function (t) { return activeRow(t, canEdit); }).join('') + '</tbody></table></div>'
+        ? '<div class="gs-table-wrap gs-teams-table"><table class="gs-table gs-table-teams" aria-label="Teams"><thead><tr><th scope="col">Team</th><th scope="col">Size</th><th scope="col">Players</th><th scope="col">Team Lead</th><th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' +
+          active.map(function (t) { return activeRow(t, canEdit); }).join('') + '</tbody></table></div>' +
+          '<ul class="gs-team-cards" aria-label="Teams">' + active.map(function (t) { return activeCard(t, canEdit); }).join('') + '</ul>'
         : '<p class="gs-empty">No active teams.' + (canEdit ? ' Add a team to get started.' : '') + '</p>') +
       '<p class="gs-fine">' + esc(NOTE) + '</p>' +
       (archived.length
-        ? '<h2 class="gs-h2" id="archived-heading">Archived teams (' + archived.length + ')</h2><div class="gs-panel gs-panel-flush"><ul class="gs-archived" aria-labelledby="archived-heading">' + archived.map(function (t) { return archivedRow(t, canEdit); }).join('') + '</ul></div>'
+        ? '<h2 class="gs-h2" id="archived-heading">Archived teams (' + archived.length + ')</h2><div class="gs-panel gs-panel-flush gs-archived-wrap"><ul class="gs-archived" aria-labelledby="archived-heading">' + archived.map(function (t) { return archivedRow(t, canEdit); }).join('') + '</ul></div>'
         : '') +
       '</section>';
   }
@@ -121,6 +135,7 @@
     const fail = function (err) {
       G.ui.setBusy(form, false);
       const c = G.api.classify(err);
+      if (err.code === 'conflict') { G.ui.closeDialogOf(form); G.app.handleError(err); return; }
       if (c.view === 'signin') { G.ui.closeDialogOf(form); G.app.requireSignin(); return; }
       if (c.view === 'message') { G.ui.closeDialogOf(form); G.app.showFailure(c.title, c.text); return; }
       if (err.code === 'team_name_taken') { G.ui.setText('dlg-team-name-error', c.text); form.elements.name.setAttribute('aria-invalid', 'true'); form.elements.name.focus(); return; }

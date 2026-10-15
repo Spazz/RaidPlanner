@@ -694,10 +694,208 @@ function assertEscaped(out, label) {
     for (const m of markup.matchAll(/'(gs-[a-z0-9_-]+)(?: [^']*)?'/g)) used.add(m[1]);
     ['gs-chip-guild_master', 'gs-chip-officer', 'gs-chip-team_lead', 'gs-chip-member'].forEach(c => used.add(c)); // built from the role kind
     const defined = new Set([...css.matchAll(/\.(gs-[a-z0-9_-]+)/g)].map(m => m[1]));
-    const notClasses = ['gs-team-select-drawer', 'gs-page-alert']; // element ids passed as plain strings
+    const notClasses = ['gs-team-select-drawer', 'gs-team-select-phone', 'gs-page-alert']; // element ids passed as plain strings
     const baseStyled = ['gs-chip-officer', 'gs-chip-team_lead']; // look like the base .gs-chip
     const missing = [...used].filter(c => !defined.has(c) && !notClasses.includes(c) && !baseStyled.includes(c));
     assert.deepEqual(missing, [], 'classes with no CSS');
+  });
+
+  // ── Fix round 1 ──────────────────────────────────────────────
+  const CLAIMABLE = [{ guildId: 'g9', guildName: 'Night Owls', serverId: 's9', serverName: 'Owl Roost' }];
+  const claimMe = extra => meData({ create: { allowed: true, stale: false, servers: [], claimable: CLAIMABLE }, ...(extra || {}) });
+  const createFor = me => G.pages.create.createHtml({ me, timeZones: ['UTC'], defaultTimeZone: 'UTC' });
+
+  await check('claim: Create guild lists each claimable guild with its server and a two-step Claim', () => {
+    const out = createFor(claimMe());
+    assert(out.includes('Guilds without a Guild Master'));
+    assert(out.includes('Night Owls') && out.includes('Owl Roost'));
+    assert(/data-action="claim-ask"[^>]*>Claim</.test(out), 'Claim button');
+    // step 2 is hidden until Claim is pressed, and says what happens
+    assert(/id="claim-confirm-0"[^>]*hidden/.test(out), 'confirm starts hidden');
+    assert(out.includes('You become Guild Master of Night Owls.'));
+    assert(out.includes('data-action="claim-go"') && out.includes('data-gid="g9"') && out.includes('data-action="claim-cancel"'));
+    assert(out.indexOf('Guilds without a Guild Master') < out.indexOf('data-submit="create-guild"'), 'claim section sits above the form');
+  });
+
+  await check('claim: nothing is listed when claimable is empty or absent', () => {
+    for (const create of [{ allowed: true, stale: false, servers: [] }, { allowed: true, stale: false, servers: [], claimable: [] }]) {
+      assert(!createFor(meData({ create })).includes('Guilds without a Guild Master'));
+    }
+  });
+
+  await check('claim: guild and server names are escaped everywhere they appear', () => {
+    const hostile = [{ guildId: 'g"><img src=x onerror=1>', guildName: HOSTILE + QUOTES, serverId: 's', serverName: HOSTILE + QUOTES }];
+    const out = createFor(meData({ create: { allowed: true, stale: false, servers: [], claimable: hostile } }));
+    assertEscaped(out, 'claim');
+    assert(out.includes('Guilds without a Guild Master'));
+  });
+
+  await check('claim: the claim button is wired to POST /api/guild/:gid/claim with an empty JSON body, then opens People and roles', () => {
+    const src = read('js/guild/pages-create.js');
+    assert(/G\.handlers\.click\['claim-go'\]/.test(src) && /G\.handlers\.click\['claim-ask'\]/.test(src) && /G\.handlers\.click\['claim-cancel'\]/.test(src));
+    assert(/G\.api\.post\('\/api\/guild\/' \+ encodeURIComponent\(gid\) \+ '\/claim', \{\}\)/.test(src));
+    assert(/afterGuildClaimed/.test(src));
+    const app = read('js/guild/app.js');
+    assert(/app\.afterGuildClaimed = function \(res, guildName\)[\s\S]*?afterGuildCreated\(res,/.test(app));
+    // afterGuildCreated lands on People and roles
+    assert(/tab: 'people'/.test(app.slice(app.indexOf('app.afterGuildCreated'))));
+  });
+
+  await check('claim: the No guild page links to Create guild only when something is claimable', () => {
+    const withClaim = G.pages.signin.noGuildHtml(claimMe());
+    assert(withClaim.includes('A guild on one of your servers has no Guild Master. You can claim it.'));
+    assert(/<a href="#\/new">A guild on one of your servers/.test(withClaim));
+    const without = G.pages.signin.noGuildHtml(meData({ create: { allowed: true, stale: false, servers: [], claimable: [] } }));
+    assert(!without.includes('no Guild Master'));
+    assert(!G.pages.signin.noGuildHtml(meData()).includes('no Guild Master'));
+  });
+
+  await check('removedFrom: the No guild page says who removed access and drops the "no guild on your servers" claim', () => {
+    const me = meData({ guilds: [], removedFrom: [{ id: 'g1', name: 'Ravens' }, { id: 'g2', name: 'Owls' }] });
+    const out = G.pages.signin.noGuildHtml(me);
+    assert(out.includes('An officer removed your access to <strong>Ravens</strong> and <strong>Owls</strong>.'));
+    assert(!out.includes('None of your Discord servers has a guild on Raidsmith'));
+    assert(out.indexOf('An officer removed') < out.indexOf('Ask an officer to restore your access'), 'removal note sits above the lead');
+    // without removals the usual text stays
+    const plainOut = G.pages.signin.noGuildHtml(meData({ guilds: [] }));
+    assert(plainOut.includes('None of your Discord servers has a guild on Raidsmith'));
+    assert(!plainOut.includes('An officer removed'));
+    assertEscaped(G.pages.signin.noGuildHtml(meData({ guilds: [], removedFrom: [{ id: 'x', name: HOSTILE + QUOTES }] })), 'removedFrom');
+  });
+
+  await check('autoPromote: Delete my data names who becomes Guild Master, or says the guild will have none', () => {
+    const impact = { handOverFirst: [], guildsDeleted: [], autoPromote: [
+      { id: 'g1', name: 'Ravens', to: person('u2', 'Brightmane') },
+      { id: 'g2', name: 'Owls', to: null },
+    ] };
+    const out = G.pages.privacy.deleteBoxHtml(impact, '');
+    assert(out.includes('<strong>Brightmane</strong> becomes Guild Master of <strong>Ravens</strong>.'));
+    assert(out.includes('<strong>Owls</strong> will have no Guild Master until an admin of its Discord server claims it.'));
+    // both lines live inside the confirm group
+    const confirm = out.slice(out.indexOf('id="delete-confirm"'));
+    assert(confirm.includes('becomes Guild Master of') && confirm.includes('will have no Guild Master'));
+    const none = G.pages.privacy.deleteBoxHtml({ handOverFirst: [], guildsDeleted: [] }, '');
+    assert(!none.includes('becomes Guild Master') && !none.includes('will have no Guild Master'));
+    assert(!G.pages.privacy.deleteBoxHtml({ handOverFirst: [], guildsDeleted: [], autoPromote: [] }, '').includes('delete-autopromote'));
+  });
+
+  await check('autoPromote: names are escaped', () => {
+    const impact = { handOverFirst: [], guildsDeleted: [], autoPromote: [{ id: 'g1', name: HOSTILE + QUOTES, to: person('u2', HOSTILE + QUOTES) }, { id: 'g2', name: HOSTILE, to: null }] };
+    assertEscaped(G.pages.privacy.deleteBoxHtml(impact, ''), 'autoPromote');
+  });
+
+  // A tiny fake document: enough for closeOverlays.
+  function fakeDoc(dialogs, menu, toggle) {
+    return {
+      querySelectorAll: sel => (sel === 'dialog[open]' ? dialogs : []),
+      getElementById: id => (id === 'gs-account-menu' ? menu : null),
+      querySelector: sel => (sel === '[data-action="toggle-menu"]' ? toggle : null),
+    };
+  }
+
+  await check('route change: closeOverlays closes every open dialog (drawer included) and the avatar menu', () => {
+    const closed = [];
+    const dlg = name => ({ open: true, close() { closed.push(name); this.open = false; } });
+    const attrs = {};
+    const menu = { hidden: false };
+    const toggle = { setAttribute: (k, v) => { attrs[k] = v; } };
+    G.app.closeOverlays(fakeDoc([dlg('edit-roles'), dlg('gs-drawer')], menu, toggle));
+    assert.deepEqual(closed, ['edit-roles', 'gs-drawer']);
+    assert.equal(menu.hidden, true);
+    assert.equal(attrs['aria-expanded'], 'false');
+    // nothing open: nothing happens
+    G.app.closeOverlays(fakeDoc([], { hidden: true }, toggle));
+  });
+
+  await check('route change: route() calls closeOverlays before it loads anything', () => {
+    const app = read('js/guild/app.js');
+    const body = app.slice(app.indexOf('  function route() {'));
+    assert(body.indexOf('closeOverlays()') > 0 && body.indexOf('closeOverlays()') < body.indexOf('state.loaded ?'));
+  });
+
+  await check('conflict: handleError reloads the page data and shows the server message', () => {
+    const app = read('js/guild/app.js');
+    assert(/err\.code === 'conflict'\) \{ app\.reloadAfterConflict\(c\.text\)/.test(app));
+    const reload = app.slice(app.indexOf('app.reloadAfterConflict'), app.indexOf('app.refreshGuild'));
+    assert(/loadMe\(\)/.test(reload) && /fetchGuild\(r\.gid\)/.test(reload) && /\/people'/.test(reload));
+    assert(/state\.pageAlert = text;[\s\S]*render\(\)/.test(reload));
+    // dialogs close first so the message is visible on the reloaded page
+    for (const f of ['pages-settings-people.js', 'pages-settings-teams.js']) {
+      assert(/err\.code === 'conflict'\) \{ G\.ui\.closeDialogOf\(form\); G\.app\.handleError\(err\); return; \}/.test(read('js/guild/' + f)), f);
+    }
+    // the Create guild page shows the alert (claim conflicts land here)
+    assert(G.pages.create.createHtml({ me: claimMe(), timeZones: ['UTC'], defaultTimeZone: 'UTC', alert: 'Someone claimed it first.' }).includes('Someone claimed it first.'));
+  });
+
+  await check('B-Phone header: logo, team picker and avatar menu; no hamburger; More opens the drawer', () => {
+    const out = shellHtml(ALL_CAN);
+    const header = out.slice(out.indexOf('<header class="gs-topbar">'), out.indexOf('</header>'));
+    assert(header.includes('gs-phone-brand') && header.includes('gs-logo'), 'logo');
+    assert(header.includes('id="gs-team-select-phone"') && header.includes('data-change="team-pick"'), 'team picker');
+    assert(header.includes('data-action="toggle-menu"'), 'avatar menu');
+    assert(!header.includes('Open menu') && !header.includes('menu-btn') && !header.includes('data-action="open-drawer"'), 'no hamburger');
+    assert(!read('guild.css').includes('gs-menu-btn'));
+    assert(out.includes('data-action="open-drawer"') && out.includes('aria-label="More"'), 'More tab opens the drawer');
+    // a guild without an active team shows its name instead of a picker
+    const gd = guildData(ALL_CAN, { teams: [] });
+    const bare = G.shell.render({ me: meData(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: null, collapsed: false }, '');
+    assert(/<div class="gs-phone-pick"><span class="gs-phone-guild">Ravens<\/span>/.test(bare));
+  });
+
+  await check('Teams phone cards: one card per active team with the same actions, hidden table on phones', () => {
+    const out = G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.teams': 'guild' }) });
+    const cards = out.slice(out.indexOf('<ul class="gs-team-cards"'), out.indexOf('</ul>', out.indexOf('<ul class="gs-team-cards"')));
+    assert.equal((cards.match(/<li class="gs-team-card">/g) || []).length, 2, 'two active teams');
+    assert(cards.includes('Team A') && cards.includes('25-man - 0 players') && cards.includes('Mistvale') && cards.includes('No team lead'));
+    assert(cards.includes('data-action="team-rename"') && cards.includes('data-action="team-archive"'));
+    assert(!cards.includes('Old Team'), 'archived teams stay in their own list');
+    const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
+    assert(/\.gs-people-table, \.gs-teams-table \{ display: none; \}/.test(phone));
+    assert(/\.gs-team-cards \{ display: flex;/.test(phone));
+    assert(/\.gs-team-cards \{ display: none; \}/.test(css.slice(0, css.indexOf('@media (max-width: 600px)'))), 'cards start hidden');
+    const readOnly = G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.access': 'guild' }) });
+    assert(!readOnly.slice(readOnly.indexOf('gs-team-cards')).includes('team-rename'));
+    assertEscaped(G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.teams': 'guild' }, { teams: [{ id: 't"x', name: HOSTILE + QUOTES, size: 25, archived: false, players: 1, leads: [] }] }) }), 'team card');
+  });
+
+  await check('autoPromote items are plain wrapped sentences (non-flex list); archived teams use the same card layout on phones', () => {
+    const out = G.pages.privacy.deleteBoxHtml({ handOverFirst: [], guildsDeleted: [], autoPromote: [{ id: 'g1', name: 'Ravens', to: null }] }, '');
+    assert(out.includes('<ul class="gs-sentences" id="delete-autopromote">') && !out.includes('gs-bullets'));
+    assert(/\.gs-sentences li \{ display: block;/.test(css));
+    const t = G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.teams': 'guild' }) });
+    assert(t.includes('Old Team</span><span class="gs-muted">25-man - 0 players</span><button'));
+    const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
+    assert(/\.gs-archived-item, \.gs-archived-item \+ \.gs-archived-item \{ box-sizing: border-box; flex-direction: column;/.test(phone));
+    assert(/\.gs-archived-wrap \{ padding: 0;/.test(phone));
+  });
+
+  await check('B4: Make Guild Master step 2 is one dialog-footer row', () => {
+    const entry0 = entry(person('u2', 'Brightmane'), [{ role: 'officer' }], NOW, { actions: { editRoles: true, makeGuildMaster: true, removeAccess: true } });
+    const out = G.pages.people.rolesDialogHtml(entry0, TEAMS, 'Ravens');
+    const confirm = out.slice(out.indexOf('id="dlg-gm-confirm"'));
+    assert(/<div class="gs-dialog-actions"><button[^>]*data-action="gm-cancel">Cancel<\/button><button[^>]*data-action="gm-confirm">Make Guild Master<\/button><\/div>/.test(confirm));
+    assert(/\.gs-gm \.gs-dialog-actions \{ flex-wrap: nowrap; \}/.test(css));
+  });
+
+  await check('B5: People rows show the Discord username as muted text when it differs from the display name', () => {
+    const different = entry(person('u7', 'Fancy Name', { username: 'plainuser' }), [], NOW);
+    const same = entry(person('u8', 'Same', { username: 'Same' }), [], NOW);
+    const out = G.pages.people.tableHtml({ people: [different, same], teams: TEAMS, sort: { column: 'person', dir: 'asc' }, query: '', now: NOW });
+    assert(out.includes('<span class="gs-person-user">@plainuser</span>'));
+    assert.equal((out.match(/gs-person-user">/g) || []).length, 2, 'table and card, not for the matching name');
+    assertEscaped(G.pages.people.tableHtml({ people: [entry(person('u9', 'X', { username: HOSTILE + QUOTES }), [], NOW)], teams: TEAMS, sort: { column: 'person', dir: 'asc' }, query: '', now: NOW }), 'username');
+  });
+
+  await check('B7: the YOU badge sits inline beside the name', () => {
+    const out = G.pages.people.tableHtml({ people: PEOPLE, teams: TEAMS, sort: { column: 'person', dir: 'asc' }, query: '', now: NOW });
+    assert(out.includes('<span class="gs-person-line"><span class="gs-person-name">Thornvald</span><span class="gs-you">you</span></span>'));
+    assert(/\.gs-person-line \{ display: flex; flex-wrap: wrap; align-items: center;/.test(css));
+  });
+
+  await check('B6: phone avatar menu items and the drawer close button are 44 px', () => {
+    const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
+    assert(/\.gs-menu-item \{ height: 44px; \}/.test(phone));
+    assert(/\.gs-drawer-top \.gs-icon-btn \{ width: 44px; height: 44px; \}/.test(css));
   });
 
   await check('csp-tests.js scans guild.html alongside the other pages', () => {

@@ -93,6 +93,12 @@
       teamSelectHtml(ctx.guildData.teams, ctx.teamId, selectId) + '</div>';
   }
 
+  // The phone header's team picker; a guild with no active team shows its name instead.
+  function phonePickHtml(ctx) {
+    const select = teamSelectHtml(ctx.guildData.teams, ctx.teamId, 'gs-team-select-phone');
+    return '<div class="gs-phone-pick">' + (select || '<span class="gs-phone-guild">' + esc(ctx.guildData.guild.name) + '</span>') + '</div>';
+  }
+
   function sidebarHtml(ctx) {
     const gd = ctx.guildData;
     const collapsed = !!ctx.collapsed;
@@ -193,11 +199,8 @@
   function render(ctx, mainHtml) {
     const hasGuild = !!(ctx.guildData && ctx.guildData.guild);
     const crumbs = breadcrumbItems(ctx);
-    const phoneTitle = hasGuild
-      ? '<button type="button" class="gs-icon-btn gs-menu-btn" data-action="open-drawer" data-key="menu-btn" aria-haspopup="dialog" aria-label="Open menu">' + ic('menu', 22) + '</button>' +
-        '<div class="gs-phone-title"><span class="gs-phone-guild">' + esc(ctx.guildData.guild.name) + '</span><span class="gs-phone-team">' +
-        esc((activeTeams(ctx.guildData.teams).filter(function (t) { return t.id === ctx.teamId; })[0] || {}).name || ctx.guildData.guild.realm) + '</span></div>'
-      : '<span class="gs-phone-brand">' + G.icons.logo + '</span>';
+    // Phone header follows board B-Phone: logo, team picker, avatar menu. More (bottom tab) opens the drawer.
+    const phoneTitle = '<span class="gs-phone-brand">' + G.icons.logo + '</span>' + (hasGuild ? phonePickHtml(ctx) : '');
     return '<div class="gs-app' + (ctx.collapsed && hasGuild ? ' is-collapsed' : '') + (hasGuild ? ' has-guild' : '') + '">' +
       '<aside class="gs-rail" aria-label="Guilds"><div class="gs-rail-logo">' + G.icons.logo + '</div><div class="gs-rail-line" aria-hidden="true"></div>' + tilesHtml(ctx.me, hasGuild ? ctx.guildData.guild.id : null, ctx.route) + '</aside>' +
       (hasGuild ? sidebarHtml(ctx) : '') +
@@ -217,6 +220,7 @@
     settingsFrameHtml: settingsFrameHtml,
     accountMenuHtml: accountMenuHtml,
     sidebarHtml: sidebarHtml,
+    phonePickHtml: phonePickHtml,
     render: render,
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

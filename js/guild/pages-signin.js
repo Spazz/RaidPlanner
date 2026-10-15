@@ -28,12 +28,25 @@
   }
 
   // Main area for a signed-in user with no guild yet.
+  // removedFrom (guilds that blocked this person) replaces the "no guild on your servers" claim; claimable
+  // (guilds with no Guild Master on a server they manage) adds a line linking to Create guild.
   function noGuildHtml(me) {
     const u = me.user;
     const canCreate = !!(me.create && me.create.allowed);
+    const removed = Array.isArray(me.removedFrom) ? me.removedFrom : [];
+    const claimable = G.pages.create ? G.pages.create.claimableList(me) : [];
+    const removedNote = removed.length
+      ? '<p class="gs-warn gs-removed-note" id="removed-note" role="status">An officer removed your access to ' + G.ui.joinNames(removed) + '.</p>'
+      : '';
+    const lead = removed.length
+      ? 'Ask an officer to restore your access, then sign in again to check.'
+      : 'None of your Discord servers has a guild on Raidsmith. If your guild is setting one up, ask an officer, then sign in again to check.';
+    const claimNote = claimable.length && canCreate
+      ? '<p class="gs-lead gs-claim-note"><a href="#/new">A guild on one of your servers has no Guild Master. You can claim it.</a></p>'
+      : '';
     return '<div class="gs-card-wrap"><div class="gs-card">' +
-      '<h1 class="gs-h1 gs-h1-lg" tabindex="-1">You\'re not in a Raidsmith guild yet</h1>' +
-      '<p class="gs-lead">None of your Discord servers has a guild on Raidsmith. If your guild is setting one up, ask an officer, then sign in again to check.</p>' +
+      '<h1 class="gs-h1 gs-h1-lg" tabindex="-1">You\'re not in a Raidsmith guild yet</h1>' + removedNote +
+      '<p class="gs-lead">' + lead + '</p>' + claimNote +
       '<div class="gs-actions"><a class="gs-btn" href="/auth/login">Sign in again</a>' +
       (canCreate ? '<a class="gs-btn gs-btn-molten" href="#/new">Create a guild</a>' : '') +
       '<a class="gs-btn' + (canCreate ? '' : ' gs-btn-molten') + '" href="/">Open the planner</a></div>' +

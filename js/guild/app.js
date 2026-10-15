@@ -106,8 +106,24 @@
     failWith('Could not load this page', c.text, true);
   }
 
+  // A route change leaves nothing open behind it: every dialog (the More drawer too) and the avatar menu.
+  // `doc` is injectable for tests.
+  function closeOverlays(doc) {
+    const d = doc || (typeof document !== 'undefined' ? document : null);
+    if (!d) return;
+    const open = d.querySelectorAll('dialog[open]');
+    for (let i = 0; i < open.length; i++) open[i].close();
+    const menu = d.getElementById('gs-account-menu');
+    if (menu && !menu.hidden) {
+      menu.hidden = true;
+      const btn = d.querySelector('[data-action="toggle-menu"]');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
   function route() {
     const token = ++routeToken;
+    closeOverlays();
     const r = G.router.parse(window.location.hash);
     state.failure = null;
     state.pageAlert = '';
@@ -197,7 +213,7 @@
       case 'signin':
         return state.me.guilds && state.me.guilds.length ? P.signin.loadingHtml() : P.signin.noGuildHtml(state.me);
       case 'new':
-        return P.create.createHtml({ me: state.me, timeZones: timeZones(), defaultTimeZone: P.create.browserTimeZone() });
+        return P.create.createHtml({ me: state.me, timeZones: timeZones(), defaultTimeZone: P.create.browserTimeZone(), alert: state.pageAlert });
       case 'privacy':
         return P.privacy.privacyHtml({ me: state.me, message: state.privacyMessage });
       case 'section':
@@ -254,6 +270,7 @@
   // ── actions other modules call ──
   app.render = render;
   app.go = go;
+  app.closeOverlays = closeOverlays;
   app.loadMe = loadMe;
 
   app.requireSignin = function () {
@@ -271,8 +288,25 @@
     const c = G.api.classify(err);
     if (c.view === 'signin') { app.requireSignin(); return; }
     if (c.view === 'message') { app.showFailure(c.title, c.text); return; }
+    if (err && err.code === 'conflict') { app.reloadAfterConflict(c.text); return; }
     if (o.pageAlert) { state.pageAlert = c.text; render(); return; }
     if (o.sinkId) G.ui.setText(o.sinkId, c.text);
+  };
+
+  // 409 conflict: a guarded write lost a race. Show the server's message and re-read what the page shows.
+  app.reloadAfterConflict = function (text) {
+    const r = G.router.parse(window.location.hash);
+    const jobs = [loadMe()];
+    if (r.gid) {
+      jobs.push(fetchGuild(r.gid));
+      if (r.name === 'settings' && r.tab === 'people') {
+        jobs.push(G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) { state.people[r.gid] = res; return res; }));
+      }
+    }
+    return Promise.all(jobs.map(function (p) { return p.catch(function () { return null; }); })).then(function () {
+      state.pageAlert = text;
+      render();
+    });
   };
 
   app.refreshGuild = function (gid) {
@@ -285,6 +319,10 @@
     loadMe().then(function () {
       go(G.router.format({ name: 'settings', gid: res.guild.id, tab: 'people' }));
     });
+  };
+
+  app.afterGuildClaimed = function (res, guildName) {
+    app.afterGuildCreated(res, 'You are now Guild Master of ' + guildName + '.');
   };
 
   app.afterAccountDeleted = function () {
@@ -306,7 +344,7 @@
     const menu = document.getElementById('gs-account-menu');
     if (!menu || menu.hidden) return;
     menu.hidden = true;
-    const btn = root.querySelector('[data-action="toggle-menu"]');
+    const btn = root && root.querySelector('[data-action="toggle-menu"]');
     if (btn) { btn.setAttribute('aria-expanded', 'false'); if (refocus) btn.focus(); }
   }
 
