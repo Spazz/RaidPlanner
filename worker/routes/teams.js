@@ -1,0 +1,89 @@
+import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.js';
+import { auditStatement } from '../audit.js';
+import { newId } from '../ids.js';
+import { loadGuildContext, requireAction } from '../permissions.js';
+import { toPerson } from '../person.js';
+
+const MAX_TEAM_NAME = 40;
+const TEAM_NAME_TAKEN = 'Another active team in this guild already has that name.';
+
+export function teamView(row, leads = []) {
+  return { id: row.id, name: row.name, size: row.size, archived: row.archived === 1, players: 0, leads };
+}
+
+// Every team of the guild (archived ones included), with the unblocked Team Leads of each.
+export async function loadTeams(db, guildId) {
+  const [teamResult, leadResult] = await db.batch([
+    db.prepare('SELECT id, name, size, archived FROM teams WHERE guild_id = ? ORDER BY created_at, id').bind(guildId),
+    db.prepare(
+      `SELECT ra.team_id, u.id, u.discord_id, u.username, u.global_name, u.avatar
+         FROM role_assignments ra JOIN users u ON u.id = ra.user_id
+        WHERE ra.guild_id = ? AND ra.role_id = 'team_lead'
+          AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ra.guild_id AND b.user_id = ra.user_id)
+        ORDER BY u.username, u.id`,
+    ).bind(guildId),
+  ]);
+  return teamResult.results.map((team) => teamView(
+    team,
+    leadResult.results.filter((lead) => lead.team_id === team.id).map(toPerson),
+  ));
+}
+
+export async function createTeam(ctx) {
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  requireAction(guildContext, 'guild.teams');
+  const name = cleanText(ctx.body.name, 'name', { max: MAX_TEAM_NAME });
+  const id = newId('t', ctx.randomBytes);
+  try {
+    await ctx.db.batch([
+      ctx.db.prepare('INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES (?, ?, ?, 25, 0, ?)')
+        .bind(id, guildContext.guild.id, name, ctx.now()),
+      auditStatement(ctx, {
+        guildId: guildContext.guild.id, actorUserId: ctx.session.user.id, action: 'team.create', entityType: 'team', entityId: id,
+      }),
+    ]);
+  } catch (error) {
+    if (isUniqueViolation(error)) throw new HttpError(409, 'team_name_taken', TEAM_NAME_TAKEN, { field: 'name' });
+    throw error;
+  }
+  return jsonResponse({ team: teamView({ id, name, size: 25, archived: 0 }) }, 201);
+}
+
+export async function patchTeam(ctx) {
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  requireAction(guildContext, 'guild.teams');
+  const current = await ctx.db.prepare('SELECT id, name, size, archived FROM teams WHERE id = ? AND guild_id = ?')
+    .bind(ctx.params.tid, guildContext.guild.id).first();
+  if (!current) throw new HttpError(404, 'not_found', 'That team does not exist.');
+
+  const { body } = ctx;
+  if (body.name === undefined && body.archived === undefined) {
+    throw new HttpError(400, 'bad_request', 'Send a name, archived, or both.');
+  }
+  const name = body.name === undefined ? current.name : cleanText(body.name, 'name', { max: MAX_TEAM_NAME });
+  if (body.archived !== undefined && typeof body.archived !== 'boolean') {
+    throw new HttpError(400, 'bad_request', 'archived must be true or false.');
+  }
+  const archived = body.archived === undefined ? current.archived : (body.archived ? 1 : 0);
+
+  const audit = (action) => auditStatement(ctx, {
+    guildId: guildContext.guild.id, actorUserId: ctx.session.user.id, action, entityType: 'team', entityId: current.id,
+  });
+  const statements = [];
+  if (name !== current.name) statements.push(audit('team.rename'));
+  if (archived !== current.archived) statements.push(audit(archived ? 'team.archive' : 'team.restore'));
+  if (statements.length) {
+    try {
+      await ctx.db.batch([
+        ctx.db.prepare('UPDATE teams SET name = ?, archived = ? WHERE id = ? AND guild_id = ?')
+          .bind(name, archived, current.id, guildContext.guild.id),
+        ...statements,
+      ]);
+    } catch (error) {
+      if (isUniqueViolation(error)) throw new HttpError(409, 'team_name_taken', TEAM_NAME_TAKEN, { field: 'name' });
+      throw error;
+    }
+  }
+  const team = (await loadTeams(ctx.db, guildContext.guild.id)).find((entry) => entry.id === current.id);
+  return jsonResponse({ team });
+}
