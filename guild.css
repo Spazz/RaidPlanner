@@ -283,6 +283,9 @@ body.guild-page {
 .gs-claim-confirm[hidden] { display: none; }
 .gs-claim-note { margin: 12px 0 0; }
 .gs-removed-note { margin: 16px 0 0; }
+.gs-claim-banner { margin: 0 0 var(--sp-4); }
+.gs-claim-banner[role] { max-width: 1200px; }
+.gs-dialog-actions[hidden] { display: none; }
 
 /* ── Coming-next pages ──────────────────────────────────────── */
 .gs-empty-card { max-width: 640px; box-sizing: border-box; background: var(--bg-panel); border: 1px solid var(--border-subtle); padding: var(--sp-8); display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-4); }

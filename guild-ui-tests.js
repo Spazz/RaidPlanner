@@ -869,6 +869,34 @@ function assertEscaped(out, label) {
     assert(/\.gs-archived-wrap \{ padding: 0;/.test(phone));
   });
 
+  await check('O1: a viewer who can claim the guild they are viewing sees a claim notice on its pages and settings', () => {
+    const me = meData({ create: { allowed: true, stale: false, servers: [], claimable: [{ guildId: 'g1', guildName: 'Ravens', serverId: 's', serverName: 'S' }] } });
+    const gd = guildData(ALL_CAN);
+    const roster = G.shell.render({ me, route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: 't1', collapsed: false }, '<p>main</p>');
+    const settings = G.shell.render({ me, route: { name: 'settings', gid: 'g1', tab: 'teams' }, guildData: gd, teamId: 't1', collapsed: false }, '<p>main</p>');
+    for (const out of [roster, settings]) {
+      const main = out.slice(out.indexOf('<main'));
+      assert(main.indexOf('This guild has no Guild Master. You can claim it.') > 0 && main.indexOf('This guild has no Guild Master') < main.indexOf('<p>main</p>'), 'notice above the page');
+      assert(main.includes('href="#/new"'));
+    }
+    assert(!shellHtml(ALL_CAN).includes('This guild has no Guild Master'), 'not claimable: no notice');
+    const other = meData({ create: { allowed: true, stale: false, servers: [], claimable: [{ guildId: 'g9', guildName: 'X', serverId: 's', serverName: 'S' }] } });
+    assert(!G.shell.render({ me: other, route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: 't1', collapsed: false }, '').includes('This guild has no Guild Master'), 'other guild: no notice');
+    assertEscaped(G.shell.render({ me: meData({ create: { allowed: true, claimable: [{ guildId: HOSTILE }] } }), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: 't1', collapsed: false }, ''), 'claim notice');
+  });
+
+  await check('O2: Make Guild Master step 2 hides the roles-form Cancel/Save footer and Cancel restores it', () => {
+    const entry0 = entry(person('u2', 'Brightmane'), [{ role: 'officer' }], NOW, { actions: { editRoles: true, makeGuildMaster: true, removeAccess: true } });
+    const out = G.pages.people.rolesDialogHtml(entry0, TEAMS, 'Ravens');
+    assert(out.includes('id="dlg-roles-footer"'));
+    const src = read('js/guild/pages-settings-people.js');
+    const ask = src.slice(src.indexOf("click['gm-ask']"), src.indexOf("click['gm-cancel']"));
+    const cancel = src.slice(src.indexOf("click['gm-cancel']"), src.indexOf("click['gm-confirm']"));
+    assert(/dlg-roles-footer[\s\S]*footer\.hidden = true/.test(ask));
+    assert(/dlg-roles-footer[\s\S]*footer\.hidden = false/.test(cancel));
+    assert(/\.gs-dialog-actions\[hidden\] \{ display: none; \}/.test(css));
+  });
+
   await check('B4: Make Guild Master step 2 is one dialog-footer row', () => {
     const entry0 = entry(person('u2', 'Brightmane'), [{ role: 'officer' }], NOW, { actions: { editRoles: true, makeGuildMaster: true, removeAccess: true } });
     const out = G.pages.people.rolesDialogHtml(entry0, TEAMS, 'Ravens');

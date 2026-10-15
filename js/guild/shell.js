@@ -195,6 +195,14 @@
       }).join('') + '</ul></nav>' + innerHtml + '</div>';
   }
 
+  // Shown at the top of a guild's pages when the viewer can claim it (/auth/me create.claimable lists it).
+  function claimNoticeHtml(ctx) {
+    const list = ctx.me && ctx.me.create && Array.isArray(ctx.me.create.claimable) ? ctx.me.create.claimable : [];
+    const gid = ctx.guildData && ctx.guildData.guild ? ctx.guildData.guild.id : null;
+    if (!gid || !list.some(function (c) { return c && c.guildId === gid; })) return '';
+    return '<div class="gs-notice gs-claim-banner" role="status"><span>This guild has no Guild Master. You can claim it.</span><a href="#/new">Claim it on Create guild</a></div>';
+  }
+
   // The whole signed-in page. A guild context (ctx.guildData) adds the sidebar, phone tabs and drawer.
   function render(ctx, mainHtml) {
     const hasGuild = !!(ctx.guildData && ctx.guildData.guild);
@@ -205,7 +213,7 @@
       '<aside class="gs-rail" aria-label="Guilds"><div class="gs-rail-logo">' + G.icons.logo + '</div><div class="gs-rail-line" aria-hidden="true"></div>' + tilesHtml(ctx.me, hasGuild ? ctx.guildData.guild.id : null, ctx.route) + '</aside>' +
       (hasGuild ? sidebarHtml(ctx) : '') +
       '<div class="gs-col"><header class="gs-topbar">' + phoneTitle + '<div class="gs-crumbs-wrap">' + breadcrumbHtml(crumbs) + '</div>' + accountMenuHtml(ctx) + '</header>' +
-      '<main class="gs-main" id="gs-main">' + mainHtml + '</main></div>' +
+      '<main class="gs-main" id="gs-main">' + (hasGuild ? claimNoticeHtml(ctx) : '') + mainHtml + '</main></div>' +
       (hasGuild ? tabsHtml(ctx) + drawerHtml(ctx) : '') + '</div>';
   }
 
@@ -221,6 +229,7 @@
     accountMenuHtml: accountMenuHtml,
     sidebarHtml: sidebarHtml,
     phonePickHtml: phonePickHtml,
+    claimNoticeHtml: claimNoticeHtml,
     render: render,
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));
