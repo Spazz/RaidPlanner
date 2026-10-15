@@ -274,8 +274,12 @@ check('tools/fake-discord.js answers the OAuth and API calls the Worker makes', 
     await fetch(`${base}/__fake/set?id=9&username=second&servers=${encodeURIComponent('[]')}`);
     assert.equal(fake.state.user.id, '9');
   } finally {
+    // Wait for the server to finish closing, then let the keep-alive sockets undici's fetch
+    // opened drain, so nothing is still closing when the process ends.
+    const closed = new Promise((resolve) => fake.server.close(resolve));
     fake.server.closeAllConnections();
-    fake.server.close();
+    await closed;
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
 });
 
@@ -292,7 +296,7 @@ async function main() {
     }
   }
   console.log(`\n${passed} passed, ${failed} failed`);
-  if (failed) process.exit(1);
+  if (failed) process.exitCode = 1;
 }
 
-main().catch((error) => { console.error(error); process.exit(1); });
+main().catch((error) => { console.error(error); process.exitCode = 1; });
