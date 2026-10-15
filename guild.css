@@ -292,6 +292,8 @@ body.guild-page {
 .gs-bullets li { display: flex; align-items: flex-start; gap: 12px; font-size: 16px; line-height: 1.5; color: var(--text-primary); }
 .gs-bullets li::before { content: ""; flex: none; width: 6px; height: 6px; margin-top: 9px; background: var(--accent-gold-dim); }
 .gs-bullets-plain { gap: 4px; }
+.gs-sentences { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.gs-sentences li { display: block; font-size: 15px; line-height: 1.5; color: var(--text-primary); }
 .gs-bullets-plain li { font-size: 15px; color: var(--text-secondary); }
 
 /* ── Privacy ────────────────────────────────────────────────── */
@@ -357,6 +359,10 @@ body.guild-page {
   .gs-team-cards { display: flex; flex-direction: column; gap: var(--sp-2); list-style: none; }
   .gs-team-card { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px; display: flex; flex-direction: column; gap: 4px; }
   .gs-team-name { font-weight: 600; font-size: 17px; line-height: 1.2; color: var(--text-primary); overflow-wrap: anywhere; }
+  .gs-archived-wrap { padding: 0; background: none; border: 0; overflow: visible; }
+  .gs-archived { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .gs-archived-item, .gs-archived-item + .gs-archived-item { box-sizing: border-box; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-subtle); }
+  .gs-archived-name { font-weight: 600; font-size: 17px; line-height: 1.2; }
   .gs-team-card .gs-row-actions { justify-content: flex-start; margin-top: var(--sp-2); }
   .gs-person-card .gs-you { align-self: flex-start; }
   .gs-phone-sort { display: flex; flex-direction: column; gap: 6px; flex: 1 1 100%; }

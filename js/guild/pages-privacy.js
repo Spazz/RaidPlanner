@@ -30,7 +30,7 @@
   // One line per guild whose Guild Master seat changes when the account is deleted (deleteImpact.autoPromote).
   function autoPromoteHtml(list) {
     if (!list.length) return '';
-    return '<ul class="gs-bullets gs-bullets-plain" id="delete-autopromote">' + list.map(function (e) {
+    return '<ul class="gs-sentences" id="delete-autopromote">' + list.map(function (e) {
       const guild = '<strong>' + esc(e && e.name) + '</strong>';
       if (e && e.to && e.to.displayName) return '<li><strong>' + esc(e.to.displayName) + '</strong> becomes Guild Master of ' + guild + '.</li>';
       return '<li>' + guild + ' will have no Guild Master until an admin of its Discord server claims it.</li>';

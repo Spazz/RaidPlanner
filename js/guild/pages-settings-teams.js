@@ -36,7 +36,8 @@
     const action = canEdit
       ? '<button type="button" class="gs-btn gs-btn-sm" data-action="team-restore" data-team="' + esc(team.id) + '" data-key="restore-' + esc(team.id) + '" aria-label="Restore ' + esc(team.name) + '">Restore</button>'
       : '';
-    return '<li class="gs-archived-item"><span class="gs-cell-strong">' + esc(team.name) + '</span><span class="gs-muted">' + esc(team.size) + '-man</span>' + action + '</li>';
+    const n = team.players == null ? 0 : team.players;
+    return '<li class="gs-archived-item"><span class="gs-cell-strong gs-archived-name">' + esc(team.name) + '</span><span class="gs-muted">' + esc(team.size) + '-man - ' + esc(n) + (n === 1 ? ' player' : ' players') + '</span>' + action + '</li>';
   }
 
   // opts: { guildData, alert }
@@ -56,7 +57,7 @@
         : '<p class="gs-empty">No active teams.' + (canEdit ? ' Add a team to get started.' : '') + '</p>') +
       '<p class="gs-fine">' + esc(NOTE) + '</p>' +
       (archived.length
-        ? '<h2 class="gs-h2" id="archived-heading">Archived teams (' + archived.length + ')</h2><div class="gs-panel gs-panel-flush"><ul class="gs-archived" aria-labelledby="archived-heading">' + archived.map(function (t) { return archivedRow(t, canEdit); }).join('') + '</ul></div>'
+        ? '<h2 class="gs-h2" id="archived-heading">Archived teams (' + archived.length + ')</h2><div class="gs-panel gs-panel-flush gs-archived-wrap"><ul class="gs-archived" aria-labelledby="archived-heading">' + archived.map(function (t) { return archivedRow(t, canEdit); }).join('') + '</ul></div>'
         : '') +
       '</section>';
   }

@@ -858,6 +858,17 @@ function assertEscaped(out, label) {
     assertEscaped(G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.teams': 'guild' }, { teams: [{ id: 't"x', name: HOSTILE + QUOTES, size: 25, archived: false, players: 1, leads: [] }] }) }), 'team card');
   });
 
+  await check('autoPromote items are plain wrapped sentences (non-flex list); archived teams use the same card layout on phones', () => {
+    const out = G.pages.privacy.deleteBoxHtml({ handOverFirst: [], guildsDeleted: [], autoPromote: [{ id: 'g1', name: 'Ravens', to: null }] }, '');
+    assert(out.includes('<ul class="gs-sentences" id="delete-autopromote">') && !out.includes('gs-bullets'));
+    assert(/\.gs-sentences li \{ display: block;/.test(css));
+    const t = G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.teams': 'guild' }) });
+    assert(t.includes('Old Team</span><span class="gs-muted">25-man - 0 players</span><button'));
+    const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
+    assert(/\.gs-archived-item, \.gs-archived-item \+ \.gs-archived-item \{ box-sizing: border-box; flex-direction: column;/.test(phone));
+    assert(/\.gs-archived-wrap \{ padding: 0;/.test(phone));
+  });
+
   await check('B4: Make Guild Master step 2 is one dialog-footer row', () => {
     const entry0 = entry(person('u2', 'Brightmane'), [{ role: 'officer' }], NOW, { actions: { editRoles: true, makeGuildMaster: true, removeAccess: true } });
     const out = G.pages.people.rolesDialogHtml(entry0, TEAMS, 'Ravens');
