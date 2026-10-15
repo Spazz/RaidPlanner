@@ -6,7 +6,7 @@
 const APP_VERSION = '4.4.2';
 const CHANGELOG = [
   { version: '4.4.2', date: '2026-10-14', title: 'A different Raid-Helper event always gets its own plan', changes: [
-    'Loading a different Raid-Helper event now always opens its own plan, even from a plan opened by a share link or started empty. Your other plan stays as it was.',
+    'Loading a different Raid-Helper event now always opens its own plan, also when the open plan came from a share link or a pasted player list. Your other plan stays as it was.',
     'Filling a layout of Open slots from an event still works as before.',
   ] },
   { version: '4.4.1', date: '2026-10-13', title: 'Party Planner is now Raidsmith', changes: [
