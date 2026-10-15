@@ -942,6 +942,7 @@ async function fetchRosterJson(url, report, context = 'import') {
 
 // Import from anything the user can paste. Returns true when a roster loaded.
 // `report(msg, isError)` receives progress and errors; success is toasted.
+// Every import path must go through here so a different event never merges into the open plan.
 async function importFromText(raw, report = (m) => showToast(m)) {
   const src = normalizeImportSource(raw);
   if (src.error) { report(src.error, true); return false; }
@@ -1008,12 +1009,12 @@ async function importFromText(raw, report = (m) => showToast(m)) {
       return true;
     }
   }
-  // A different event than the one the open plan is linked to starts that
-  // event's own plan. Without this, an open plan with Open-slot requests takes
-  // the fill-my-layout path and absorbs the other event's sign-ups under its
-  // own name, notes and seats. Pasted JSON carries the event ID as `id`.
+  // An import adopts the open plan only when it is linked to this same event, or
+  // when it has no event link and holds no players (Open slots only, or empty:
+  // the fill-my-layout flow). Any other open plan is kept and a fresh one starts.
+  // Pasted JSON carries the event ID as `id`.
   const incomingEventId = src.eventId || (/^\d{6,}$/.test(String(metadata.id || '')) ? String(metadata.id) : null);
-  const previousPlan = State.sourceEventId && incomingEventId !== State.sourceEventId ? PlanStore.capture() : null;
+  const previousPlan = (State.sourceEventId ? incomingEventId !== State.sourceEventId : PlanStore.holdsPlayers()) ? PlanStore.capture() : null;
   if (previousPlan) PlanStore.startFresh();
   // Filling a planned layout is a sync (logged below); a fresh import clears the log.
   const beforeImport = ChangeLog.snapshot();

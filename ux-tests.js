@@ -290,7 +290,7 @@ return { ${exported.join(', ')} };
         importAddonString: () => { calls.addon++; return { success: true, playerCount: 5 }; },
         importRaidHelper: () => { calls.importRaidHelper++; return { success: false, error: 'stub stops here' }; },
       },
-      PlanStore: { nameFor: () => 'Name', read: () => [] },
+      PlanStore: { nameFor: () => 'Name', read: () => [], holdsPlayers: () => false },
       document: { getElementById: () => ({ value: '' }) },
       initGroups: () => 0, commit() {}, showToast() {}, rememberImport: () => '',
       maybeSuggestVersionSwitch() {},

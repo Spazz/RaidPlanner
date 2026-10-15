@@ -19,10 +19,10 @@ const read = rel => fs.readFileSync(path.join(app.ROOT, rel), 'utf8');
 let passed = 0;
 function check(name, fn) { fn(); passed++; console.log('PASS  ' + name); }
 
-check('APP_VERSION, package.json and the newest changelog entry all say 4.4.1', () => {
-  assert.equal(APP_VERSION, '4.4.1');
-  assert.equal(JSON.parse(read('package.json')).version, '4.4.1');
-  assert.equal(CHANGELOG[0].version, '4.4.1');
+check('APP_VERSION, package.json and the newest changelog entry agree, and the 4.4.1 rebrand entry exists', () => {
+  assert.equal(JSON.parse(read('package.json')).version, APP_VERSION);
+  assert.equal(CHANGELOG[0].version, APP_VERSION);
+  assert.equal(CHANGELOG.find(e => e.version === '4.4.1').title, 'Party Planner is now Raidsmith');
   assert.equal(JSON.parse(read('package.json')).name, 'raidsmith-web');
 });
 

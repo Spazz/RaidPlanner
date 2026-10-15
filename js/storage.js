@@ -261,6 +261,12 @@ const PlanStore = {
     }
     return true;
   },
+  // True when a real player sits in the roster, a group, the bench or unplaced.
+  // Open-slot requests live in State.preferredSlots, never in these, so a layout
+  // of Open slots only is not "holding players".
+  holdsPlayers() {
+    return State.roster.length > 0 || State.groups.some(g => g.length > 0) || State.bench.length > 0 || State.unplaced.length > 0;
+  },
   // Empty every per-plan field (roster, layout, Open-slot requests, notes and
   // the features keyed by player) so whatever loads next starts clean. The
   // plan ID is the caller's call: Clear keeps it, a new plan replaces it.

@@ -3051,12 +3051,79 @@ describe('OpenSlots: under Classic faction lock a Horde raid is never offered a 
   assert(firstPlan && firstPlan.data.groups.flat().every(p=>p.name!=='OtherPriest'),'first event plan keeps its own roster');
   // A leader who only planned Open slots (no linked event) fills them from an event: the date still comes along.
   State.sourceEventId=null; State.eventStartTime=null; State.planId=null; State.rosterName=NO_ROSTER_NAME;
+  State.roster=[]; State.groups=[]; State.bench=[]; State.unplaced=[];
   State.preferredSlots=[{group:0,class:'PRIEST',spec:'Holy'}];
   payload={id:'111222333',title:'Planned event',startTime:1790600000,signUps:[{name:'PlannedPriest',className:'Priest',specName:'Holy'}]};
   assert(await context.importFromText('https://raid-helper.xyz/event/111222333'), 'event fills planned Open slots');
   assertEqual(State.eventStartTime,1790600000*1000,'Open-slot fill stores the event start time');
   assertEqual(ChangeLog.entries.length,1,'filling planned Open slots is a logged sync');
   assert(ChangeLog.entries[0].items.some(i=>i.kind==='added'&&i.name==='PlannedPriest'),'the fill lists who arrived');
+  // A different event never merges into an open plan that has no event link
+  // (opened from a share link, started empty, a pasted list) once it holds players.
+  const planA=()=>{
+    resetState();
+    const a=[{uid:'pA1',name:'AlphaMage',class:'MAGE',spec:'Arcane',role:'caster_dps',groupNumber:1},
+      {uid:'pA2',name:'AlphaRogue',class:'ROGUE',spec:'Combat',role:'melee_dps',groupNumber:1}];
+    State.roster=a.slice(); State.groups=[a.slice()]; State.bench=[]; State.unplaced=[];
+    State.sourceEventId=null; State.planId='plan:unlinked-A'; State.eventStartTime=null;
+    State.rosterName='Plan A'; State.notes='Plan A notes'; State.sizeBenched=[];
+    State.playerConstraints=[{a:'AlphaMage',b:'AlphaRogue',type:'together'}];
+    State.drummers=[{player:'AlphaMage',drum:''}];
+    PP.PlanStore.save(storage,PP.PlanStore.capture());
+    return JSON.stringify(PP.PlanStore.read(storage).find(p=>p.data.planId==='plan:unlinked-A').data);
+  };
+  const storedA=()=>{ const e=PP.PlanStore.read(storage).find(p=>p.data.planId==='plan:unlinked-A'); return e && JSON.stringify(e.data); };
+  const eventB=(id)=>({id,title:'Event B',startTime:1790700000,signUps:[
+    {name:'BetaPriest',className:'Priest',specName:'Holy'},
+    {name:'BetaRogue',className:'Rogue',specName:'Combat'}]});
+  const assertFreshB=(label)=>{
+    assertEqual(State.planId,'event:444555666',label+': event B gets its own plan');
+    assertEqual([...State.roster,...State.bench].map(p=>p.name).sort().join(),'BetaPriest,BetaRogue',label+': only event B sign-ups');
+    assertEqual(State.notes,'',label+': no inherited notes');
+    assertEqual(State.playerConstraints.length,0,label+': no inherited constraints');
+    assertEqual(State.drummers.length,0,label+': no inherited drummers');
+    assertEqual(State.preferredSlots.filter(p=>!p.auto).length,0,label+': no inherited Open-slot requests');
+  };
+  let before=planA();
+  payload=eventB('444555666');
+  assert(await context.importFromText('https://raid-helper.xyz/event/444555666'),'event B imports over an unlinked plan');
+  assertFreshB('unlinked plan, URL');
+  assertEqual(storedA(),before,'unlinked plan, URL: plan A is stored unchanged');
+
+  before=planA();
+  State.preferredSlots=[{group:0,class:'PRIEST',spec:'Holy'}];
+  PP.PlanStore.save(storage,PP.PlanStore.capture()); before=storedA();
+  payload=eventB('444555666');
+  assert(await context.importFromText('https://raid-helper.xyz/event/444555666'),'event B imports over an unlinked plan with Open slots');
+  assertFreshB('unlinked plan with Open slots');
+  assertEqual(storedA(),before,'unlinked plan with Open slots: plan A is stored unchanged');
+
+  before=planA();
+  payload=eventB('444555666');
+  assert(await context.importFromText(JSON.stringify(payload)),'pasted event B JSON imports over an unlinked plan');
+  assertEqual([...State.roster,...State.bench].map(p=>p.name).sort().join(),'BetaPriest,BetaRogue','pasted JSON: only event B sign-ups');
+  assertEqual(State.notes,'','pasted JSON: no inherited notes');
+  assertEqual(State.playerConstraints.length,0,'pasted JSON: no inherited constraints');
+  assert(State.planId!=='plan:unlinked-A','pasted JSON: event B does not reuse plan A id');
+  assertEqual(storedA(),before,'pasted JSON: plan A is stored unchanged');
+
+  planA();
+  const shareCode=Import.exportShareString();
+  resetState(); State.sourceEventId=null; State.planId=null; State.notes=''; State.playerConstraints=[]; State.drummers=[];
+  assert(Import.importAddonString(shareCode).success,'share code loads');
+  State.sourceEventId=null; State.planId=null;
+  payload=eventB('444555666');
+  assert(await context.importFromText('https://raid-helper.xyz/event/444555666'),'event B imports after a share code');
+  assertEqual([...State.roster,...State.bench].map(p=>p.name).sort().join(),'BetaPriest,BetaRogue','share code plan: only event B sign-ups');
+  assertEqual(State.planId,'event:444555666','share code plan: event B gets its own plan');
+  assertEqual(State.playerConstraints.length,0,'share code plan: no inherited constraints');
+
+  before=planA();
+  const captureA=JSON.stringify(PP.PlanStore.capture());
+  payload={id:'777888999',title:'Broken event',signUps:[]};
+  assert(!(await context.importFromText('https://raid-helper.xyz/event/777888999')),'a failed event B import reports failure');
+  assertEqual(JSON.stringify(PP.PlanStore.capture()),captureA,'a failed import restores the unlinked plan exactly');
+  assertEqual(storedA(),before,'a failed import leaves plan A stored unchanged');
   payload.startTime=undefined;
   State.sourceEventId='111222333'; State.planId='event:111222333';
   PP.PlanSession.ready=false;

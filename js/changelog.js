@@ -3,8 +3,12 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.4.1';
+const APP_VERSION = '4.4.2';
 const CHANGELOG = [
+  { version: '4.4.2', date: '2026-10-14', title: 'A different Raid-Helper event always gets its own plan', changes: [
+    'Loading a different Raid-Helper event now always opens its own plan, even from a plan opened by a share link or started empty. Your other plan stays as it was.',
+    'Filling a layout of Open slots from an event still works as before.',
+  ] },
   { version: '4.4.1', date: '2026-10-13', title: 'Party Planner is now Raidsmith', changes: [
     'The app is now called Raidsmith, with a new anvil logo and a new tab icon.',
     'Primary buttons are now molten amber, and Optimize flashes an ember glow when it rebuilds your groups.',
