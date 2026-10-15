@@ -136,7 +136,7 @@
       '<p class="gs-fine" id="dlg-help">Officers manage the whole guild. Team Leads manage their team\'s roster, raid nights and attendance, including officer notes.</p>' +
       gm +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button>' +
+      '<div class="gs-dialog-actions" id="dlg-roles-footer"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button>' +
       (canEdit ? '<button type="submit" class="gs-btn gs-btn-molten">Save</button>' : '') + '</div></form>';
   }
 
@@ -218,12 +218,16 @@
 
   G.handlers.click['gm-ask'] = function (el) {
     el.hidden = true;
+    const footer = document.getElementById('dlg-roles-footer');
+    if (footer) footer.hidden = true;
     const box = document.getElementById('dlg-gm-confirm');
     if (box) { box.hidden = false; const first = box.querySelector('button'); if (first) first.focus(); }
   };
   G.handlers.click['gm-cancel'] = function () {
     const box = document.getElementById('dlg-gm-confirm');
     const ask = document.getElementById('dlg-gm-ask');
+    const footer = document.getElementById('dlg-roles-footer');
+    if (footer) footer.hidden = false;
     if (box) box.hidden = true;
     if (ask) { ask.hidden = false; ask.focus(); }
   };
