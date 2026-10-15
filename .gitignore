@@ -136,3 +136,6 @@
 !guild-ui-tests.js
 !guild-worker-tests.js
 !guild-config-tests.js
+!guild-roster-worker-tests.js
+!guild-roster-ui-tests.js
+!tools/fake-sources.js
