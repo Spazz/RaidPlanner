@@ -1,0 +1,132 @@
+// ── PAGE: PRIVACY & MY DATA ─────────────────────────────────────
+// The policy copy (board copy with the spec's fixes), plus Delete my data for signed-in users. The delete box
+// reads /auth/me deleteImpact: a sole Guild Master with other members must hand over first; a solo Guild Master
+// also deletes the guild, named in the confirm and echoed back as deleteGuildIds.
+(function (G) {
+  'use strict';
+
+  const CONTACT = '[Contact]';
+
+  function section(id, title, body) {
+    return '<section aria-labelledby="' + id + '"><h2 class="gs-h2 gs-h2-plain" id="' + id + '">' + esc(title) + '</h2>' + body + '</section>';
+  }
+
+  function paragraphs(list) {
+    return '<div class="gs-prose">' + list.map(function (t) { return '<p>' + esc(t) + '</p>'; }).join('') + '</div>';
+  }
+
+  function bullets(list) {
+    return '<ul class="gs-bullets gs-bullets-plain">' + list.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>';
+  }
+
+  function guildLinks(list) {
+    const names = (Array.isArray(list) ? list : []).map(function (g) {
+      return '<a href="' + esc(G.router.format({ name: 'settings', gid: g.id, tab: 'people' })) + '"><strong>' + esc(g.name) + '</strong></a>';
+    });
+    if (names.length <= 1) return names.join('');
+    return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+  }
+
+  // impact: /auth/me deleteImpact { handOverFirst: [{id,name}], guildsDeleted: [{id,name}] }
+  function deleteBoxHtml(impact, message) {
+    const hand = impact && Array.isArray(impact.handOverFirst) ? impact.handOverFirst : [];
+    const gone = impact && Array.isArray(impact.guildsDeleted) ? impact.guildsDeleted : [];
+    const blocked = hand.length > 0;
+    const intro = paragraphs([
+      'Deletes your sign-in and all Discord data Raidsmith holds: your Discord ID, username and avatar, and the Discord ID and nickname on your Raid-Helper sign-ups.',
+      'Delete my data also lifts any access block on you.',
+      'If you are the only Guild Master of a guild, hand over first. If nobody else has joined, the guild is deleted too.',
+      'Roster records stay with the guild, unlinked, once the guild keeps them: your roster entry, characters, attendance and officer notes would no longer be linked to your Discord account. To remove those, ask your guild\'s officers.',
+    ]);
+    let impactHtml = '';
+    if (blocked) {
+      impactHtml += '<p class="gs-warn" id="delete-blocked" role="alert">You are the only Guild Master of ' + guildLinks(hand) +
+        ', and other people have joined. Hand over first: open People and roles, edit another person\'s roles and choose Make Guild Master. Then you can delete your data.</p>';
+    }
+    if (gone.length) {
+      impactHtml += '<p class="gs-warn" id="delete-guilds">Nobody else has joined ' + G.ui.joinNames(gone) + '. Deleting your data also deletes ' + (gone.length === 1 ? 'that guild' : 'those guilds') + ', with its teams and roles.</p>';
+    }
+    const confirm = blocked ? '' :
+      '<div id="delete-confirm" role="group" aria-label="Confirm deleting your data" hidden>' +
+      '<p class="gs-confirm-text">This deletes your sign-in and your Discord data now.' + (gone.length ? ' It also deletes ' + G.ui.joinNames(gone) + '.' : '') + ' Roster records stay with the guild, unlinked. To remove those, ask your guild\'s officers.</p>' +
+      '<div class="gs-check"><input type="checkbox" id="delete-understand" data-change="delete-understand"><label for="delete-understand">I understand</label></div>' +
+      '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-danger" id="delete-go" data-action="delete-go" data-key="delete-go" disabled>Delete my data</button>' +
+      '<button type="button" class="gs-btn" data-action="delete-cancel">Cancel</button></div></div>';
+    return '<section class="gs-danger-box" aria-labelledby="privacy-delete"><h2 class="gs-h2 gs-h2-plain" id="privacy-delete">Delete my data</h2>' + intro + impactHtml +
+      G.ui.alertHtml(message || '', 'delete-error') +
+      '<div><button type="button" class="gs-btn gs-btn-danger-outline" id="delete-open" data-action="delete-open" data-key="delete-open" aria-expanded="false" aria-controls="delete-confirm"' +
+      (blocked ? ' disabled aria-describedby="delete-blocked"' : '') + '>Delete my data</button></div>' + confirm + '</section>';
+  }
+
+  // opts: { me (or null when signed out), message }
+  function privacyHtml(opts) {
+    const o = opts || {};
+    const me = o.me || null;
+    return '<div class="gs-page gs-page-narrow"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Privacy &amp; my data</h1></div>' +
+      section('privacy-keeps-you', 'What Raidsmith keeps about you', paragraphs([
+        'From Discord, when you sign in: your Discord ID, username and avatar. Not your email, not your messages.',
+        'Your server list is checked at each sign-in to find your guilds. Only the result is kept. For guild creators, the servers they can manage are kept for 30 minutes after sign-in.',
+      ])) +
+      section('privacy-guild-keeps', 'What your guild keeps', bullets([
+        'Your roster entry: status, join and trial dates, characters, specs and team.',
+        'Officer notes: only officers and team leads see them.',
+        'Your attendance for each raid night.',
+      ])) +
+      section('privacy-comes-from', 'Where it comes from', bullets([
+        'Raid-Helper sign-ups: Discord ID, nickname and sign-up status.',
+        'Public Warcraft Logs reports: only who was present in which boss pulls. The report itself is not kept.',
+        'Your officers\' own entries.',
+      ])) +
+      section('privacy-who-sees', 'Who can see it', paragraphs([
+        'Members see the guild\'s roster and raid nights, and the attendance of the teams they have a character on. Officers and team leads also see officer notes. Nobody outside the guild sees any of it.',
+      ])) +
+      section('privacy-cookies', 'Cookies', paragraphs([
+        'Two cookies: one keeps you signed in for 30 days, and a second lasts 10 minutes while you sign in. No ads, no tracking.',
+      ])) +
+      section('privacy-stored', 'Where it is stored', paragraphs(['Raidsmith runs on Cloudflare.'])) +
+      (me ? deleteBoxHtml(me.deleteImpact, o.message) : '') +
+      '<p class="gs-prose-line">Questions about your data: ' + esc(CONTACT) + '</p></div>';
+  }
+
+  G.handlers.click['delete-open'] = function (el) {
+    const box = document.getElementById('delete-confirm');
+    if (!box) return;
+    box.hidden = !box.hidden;
+    el.setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
+    if (!box.hidden) { const cb = document.getElementById('delete-understand'); if (cb) cb.focus(); }
+  };
+
+  G.handlers.click['delete-cancel'] = function () {
+    const box = document.getElementById('delete-confirm');
+    const open = document.getElementById('delete-open');
+    const cb = document.getElementById('delete-understand');
+    const go = document.getElementById('delete-go');
+    if (cb) cb.checked = false;
+    if (go) go.disabled = true;
+    if (box) box.hidden = true;
+    if (open) { open.setAttribute('aria-expanded', 'false'); open.focus(); }
+  };
+
+  G.handlers.change['delete-understand'] = function (el) {
+    const go = document.getElementById('delete-go');
+    if (go) go.disabled = !el.checked;
+  };
+
+  G.handlers.click['delete-go'] = function (el) {
+    const me = G.app.state.me;
+    if (!me || el.disabled) return;
+    const ids = ((me.deleteImpact && me.deleteImpact.guildsDeleted) || []).map(function (g) { return g.id; });
+    el.disabled = true;
+    G.api.del('/auth/me', { deleteGuildIds: ids }).then(function () {
+      G.app.afterAccountDeleted();
+    }, function (err) {
+      const c = G.api.classify(err);
+      if (c.view === 'signin') { G.app.requireSignin(); return; }
+      // 409 (hand over first / the guild list changed): show the server's message and re-read the impact.
+      G.app.state.privacyMessage = c.text;
+      G.app.loadMe().then(function () { G.app.render(); });
+    });
+  };
+
+  G.pages.privacy = { CONTACT: CONTACT, privacyHtml: privacyHtml, deleteBoxHtml: deleteBoxHtml };
+})(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

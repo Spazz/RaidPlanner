@@ -1,0 +1,353 @@
+/* ========================================
+   RAIDSMITH GUILD - roster, attendance and settings pages
+   Loaded after app.css; uses only its :root tokens. Flat (radius 0 except avatars), dark only.
+   Phone breakpoint: max-width 600px (bottom tabs + More drawer).
+   ======================================== */
+
+/* ── Page frame ─────────────────────────────────────────────── */
+body.guild-page {
+  display: block;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+.guild-page a { color: var(--accent-gold); }
+.guild-page a:hover { color: var(--accent-gold-bright); }
+.guild-page a:focus-visible,
+.guild-page button:focus-visible,
+.guild-page input:focus-visible,
+.guild-page select:focus-visible,
+.guild-page textarea:focus-visible,
+.guild-page [tabindex]:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.guild-page .gs-h1:focus { outline: none; }
+.guild-page input::placeholder { color: var(--text-muted); opacity: 1; }
+
+.gs-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.gs-muted { color: var(--text-muted); }
+.gs-nowrap { white-space: nowrap; }
+.gs-loading { padding: var(--sp-8); color: var(--text-secondary); font-size: 16px; }
+.gs-noscript { padding: var(--sp-6); color: var(--text-secondary); }
+
+.gs-app { display: flex; min-height: 100vh; background: var(--bg-page); }
+.gs-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+.gs-main { flex: 1 1 auto; box-sizing: border-box; padding: var(--sp-8); }
+.gs-main-center { display: flex; align-items: center; justify-content: center; padding: 48px var(--sp-6) 72px; min-height: calc(100vh - 56px); }
+
+/* ── Public header (signed out) ─────────────────────────────── */
+.gs-public-head { min-height: 56px; box-sizing: border-box; background: var(--bg-deepest); border-bottom: 1px solid var(--border-subtle); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-4); padding: 0 var(--sp-6); }
+.gs-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.guild-page a.gs-brand { color: var(--text-primary); }
+.gs-brand-name { font-family: var(--font-cond); font-weight: 700; font-size: 23px; line-height: 1; letter-spacing: 0.02em; }
+.gs-public-links { display: flex; align-items: center; gap: var(--sp-5); }
+.guild-page a.gs-planner-link { color: var(--text-muted); text-decoration: none; font: 600 17px/1 var(--font-cond); letter-spacing: 0.03em; }
+.guild-page a.gs-planner-link:hover { color: var(--text-primary); }
+.gs-logo { display: block; flex: none; }
+.gs-logo-dots { fill: var(--ember); }
+.gs-logo-anvil { fill: var(--accent-gold); }
+.gs-icon { flex: none; }
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.gs-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  box-sizing: border-box; min-height: 38px; margin: 0; padding: 0 var(--sp-4);
+  background: var(--btn-secondary-bg); border: 1px solid var(--border-medium); border-radius: 0;
+  color: var(--text-primary); font: 600 15px/1 var(--font-cond); letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
+  cursor: pointer; white-space: nowrap;
+}
+.guild-page a.gs-btn { color: var(--text-primary); }
+.gs-btn:hover { background: var(--btn-secondary-hover); }
+.gs-btn[disabled] { cursor: not-allowed; opacity: 0.5; }
+.gs-btn-molten, .guild-page a.gs-btn-molten { background: var(--molten); border-color: var(--molten); color: var(--text-on-molten); font-weight: 700; }
+.gs-btn-molten:hover, .guild-page a.gs-btn-molten:hover { background: var(--molten-hover); border-color: var(--molten-hover); color: var(--text-on-molten); }
+.gs-btn-block { width: 100%; min-height: 48px; font-size: 18px; margin-top: 28px; }
+.gs-btn-sm { min-height: 34px; padding: 0 14px; font-size: 14px; }
+.gs-btn-danger { background: var(--danger); border-color: var(--danger); color: var(--text-on-accent); font-weight: 700; }
+.gs-btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
+.gs-btn-danger-outline { border-color: var(--danger); color: var(--danger); font-weight: 700; }
+.gs-btn-danger-outline:hover { background: var(--bg-card-hover); }
+.gs-btn-danger-text { border-color: transparent; color: var(--danger); padding: 0 10px; }
+.gs-linkbtn { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; color: var(--accent-gold); font: inherit; text-decoration: underline; cursor: pointer; }
+.gs-linkbtn:hover { color: var(--accent-gold-bright); }
+.gs-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; color: var(--text-primary); cursor: pointer; }
+
+.gs-badge { display: inline-block; padding: 2px 6px; border: 1px solid var(--border-accent); color: var(--accent-gold); font: 600 11px/1.3 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+
+/* ── Avatars ────────────────────────────────────────────────── */
+.gs-avatar { position: relative; flex: none; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; background: var(--bg-card-hover); border: 1px solid var(--border-medium); color: var(--text-primary); font: 600 14px/1 var(--font-cond); letter-spacing: 0.04em; }
+.gs-avatar-md { width: 36px; height: 36px; }
+.gs-avatar-lg { width: 40px; height: 40px; font-size: 15px; }
+.gs-avatar-btn .gs-avatar-md { width: 34px; height: 34px; background: var(--border-accent); border-color: var(--border-accent); color: var(--accent-gold-bright); font-size: 15px; }
+.gs-avatar-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+/* ── Guild rail ─────────────────────────────────────────────── */
+.gs-rail { position: sticky; top: 0; align-self: flex-start; width: 64px; flex: 0 0 64px; height: 100vh; box-sizing: border-box; background: var(--bg-deepest); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; overflow-y: auto; }
+.gs-rail-logo { height: 56px; flex: none; display: flex; align-items: center; justify-content: center; }
+.gs-rail-line { height: 1px; margin: 0 12px; background: var(--border-subtle); }
+.gs-tiles { list-style: none; display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: 12px 9px; }
+.gs-tile { display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 44px; height: 44px; margin: 0; padding: 0; background: var(--bg-card); border: 2px solid var(--bg-card); color: var(--text-muted); text-decoration: none; font: 700 16px/1 var(--font-cond); letter-spacing: 0.04em; }
+.guild-page a.gs-tile { color: var(--text-muted); }
+.guild-page a.gs-tile:hover { color: var(--text-primary); background: var(--bg-card-hover); }
+.guild-page a.gs-tile.is-active { background: var(--bg-card-hover); border-color: var(--accent-gold); color: var(--accent-gold-bright); }
+.gs-tile-add { background: transparent; border: 1px dashed var(--border-medium); }
+.guild-page a.gs-tile-add.is-active { border-style: solid; }
+
+/* ── Sidebar ────────────────────────────────────────────────── */
+.gs-sidebar { position: sticky; top: 0; align-self: flex-start; width: 232px; flex: 0 0 232px; height: 100vh; box-sizing: border-box; background: var(--bg-frame); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; overflow-y: auto; }
+.gs-side-head { padding: 14px 20px 16px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid var(--border-subtle); }
+.gs-side-guild { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gs-side-name { font-weight: 600; font-size: 16px; line-height: 1.3; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-side-realm { font-size: 14px; line-height: 1.3; color: var(--text-muted); overflow-wrap: anywhere; }
+.gs-select-wrap { position: relative; display: block; }
+.gs-select-wrap .gs-icon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.gs-team-select { width: 100%; height: 38px; box-sizing: border-box; padding: 0 34px 0 12px; background: var(--bg-card); border: 1px solid var(--border-medium); border-radius: 0; color: var(--text-primary); font: 600 16px/1 var(--font-cond); letter-spacing: 0.03em; color-scheme: dark; -webkit-appearance: none; appearance: none; cursor: pointer; }
+.gs-nav-list { list-style: none; padding: var(--sp-2) 0; display: flex; flex-direction: column; gap: 2px; }
+.gs-nav-link { position: relative; display: flex; align-items: center; gap: 12px; height: 40px; box-sizing: border-box; padding: 0 20px; text-decoration: none; font: 600 17px/1 var(--font-cond); letter-spacing: 0.03em; }
+.guild-page a.gs-nav-link { color: var(--text-secondary); }
+.guild-page a.gs-nav-link:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.guild-page a.gs-nav-link.is-active { background: var(--bg-card-hover); color: var(--accent-gold); }
+.gs-nav-link.is-active::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent-gold); }
+.gs-nav-sep { height: 1px; margin: var(--sp-2) 20px; background: var(--border-subtle); }
+.gs-label-short { display: none; }
+.gs-side-foot { margin-top: auto; border-top: 1px solid var(--border-subtle); }
+.gs-collapse { width: 100%; height: 44px; box-sizing: border-box; margin: 0; padding: 0 20px; display: flex; align-items: center; gap: 12px; background: transparent; border: 0; border-radius: 0; color: var(--text-muted); font: 600 15px/1 var(--font-cond); letter-spacing: 0.03em; text-align: left; cursor: pointer; }
+.gs-collapse:hover { color: var(--text-primary); background: var(--bg-card-hover); }
+
+/* Collapsed: icon rail with the short label under each icon */
+.is-collapsed .gs-sidebar { width: 76px; flex-basis: 76px; }
+.is-collapsed .gs-side-head { display: none; }
+.is-collapsed .gs-nav-list { padding-top: 64px; }
+.is-collapsed .gs-nav-link { flex-direction: column; justify-content: center; gap: 5px; height: 64px; padding: 0 4px; font-size: 13px; letter-spacing: 0.05em; }
+.is-collapsed .gs-label-full { display: none; }
+.is-collapsed .gs-label-short { display: block; }
+.is-collapsed .gs-nav-sep { margin: var(--sp-2) 12px; }
+.is-collapsed .gs-collapse { justify-content: center; padding: 0; }
+.is-collapsed .gs-collapse .gs-label-full { display: none; }
+
+/* ── Top bar, breadcrumb, account menu ──────────────────────── */
+.gs-topbar { min-height: 56px; box-sizing: border-box; background: var(--bg-deepest); border-bottom: 1px solid var(--border-subtle); display: flex; flex-wrap: nowrap; align-items: center; gap: var(--sp-2) var(--sp-4); padding: 0 var(--sp-6); }
+.gs-crumbs-wrap { flex: 1 1 auto; min-width: 0; }
+.gs-crumbs { list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: 15px; line-height: 1.3; color: var(--text-muted); }
+.guild-page .gs-crumbs a { color: var(--text-muted); text-decoration: none; }
+.guild-page .gs-crumbs a:hover { color: var(--text-primary); }
+.gs-crumbs .is-current { color: var(--text-primary); font-weight: 500; }
+.gs-menu-btn, .gs-phone-title, .gs-phone-brand { display: none; }
+.gs-account { position: relative; margin-left: auto; flex: none; }
+.gs-avatar-btn { display: inline-flex; align-items: center; gap: var(--sp-1); margin: 0; padding: 0; background: none; border: 0; border-radius: 0; color: var(--text-muted); cursor: pointer; }
+.gs-avatar-btn[aria-expanded="true"] { color: var(--text-primary); }
+.gs-avatar-btn[aria-expanded="true"] .gs-avatar { box-shadow: 0 0 0 2px var(--accent-gold); }
+.gs-menu { position: absolute; right: 0; top: calc(100% + var(--sp-2)); z-index: 30; width: 280px; max-width: calc(100vw - 24px); box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-medium); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+.gs-menu-head { display: flex; align-items: center; gap: 12px; padding: var(--sp-4); }
+.gs-menu-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gs-menu-name { font-weight: 600; font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
+.gs-menu-sub { font-size: 14px; line-height: 1.25; color: var(--text-muted); overflow-wrap: anywhere; }
+.gs-menu-sep { height: 1px; background: var(--border-medium); }
+.gs-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; height: 40px; box-sizing: border-box; margin: 0; padding: 0 var(--sp-4); background: transparent; border: 0; border-radius: 0; text-align: left; text-decoration: none; font: 600 16px/1 var(--font-cond); letter-spacing: 0.03em; cursor: pointer; }
+.guild-page .gs-menu-item, .guild-page a.gs-menu-item { color: var(--text-primary); }
+.gs-menu-item:hover, .gs-menu-item:focus-visible { background: var(--bg-card-hover); }
+
+/* ── Page content ───────────────────────────────────────────── */
+.gs-page { display: flex; flex-direction: column; gap: var(--sp-6); max-width: 1200px; }
+.gs-page-narrow { max-width: 760px; gap: 26px; }
+.gs-page-head { display: block; }
+.gs-h1 { margin: 0; font: 700 28px/1.1 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent-gold); }
+.gs-h1-lg { font-size: 30px; line-height: 1.15; }
+.gs-h2 { margin: 0; font: 700 20px/1.1 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-primary); }
+.gs-h2-lg { font: 600 24px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: none; }
+.gs-h2-plain { font: 600 20px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: none; margin: 0 0 var(--sp-2); }
+.gs-sub { margin: 6px 0 0; font-size: 15px; line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
+.gs-lead { margin: 12px 0 0; font-size: 17px; line-height: 1.5; color: var(--text-secondary); }
+.gs-lead-sm { margin-top: 6px; font-size: 16px; }
+.gs-fine { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-muted); }
+.gs-empty { margin: 0; padding: var(--sp-4); background: var(--bg-panel); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+
+.gs-subtabs { list-style: none; display: flex; flex-wrap: wrap; gap: 0 28px; border-bottom: 1px solid var(--border-subtle); }
+.gs-subtabs li { margin-bottom: -1px; }
+.gs-subtab { display: flex; align-items: center; height: 44px; box-sizing: border-box; padding: 0 4px; border-bottom: 3px solid transparent; text-decoration: none; font: 600 17px/1 var(--font-cond); letter-spacing: 0.05em; text-transform: uppercase; }
+.guild-page a.gs-subtab { color: var(--text-secondary); }
+.guild-page a.gs-subtab.is-active { color: var(--accent-gold); border-bottom-color: var(--accent-gold); }
+
+.gs-section { display: flex; flex-direction: column; gap: var(--sp-4); }
+.gs-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* ── Cards (sign in, no guild, messages) ────────────────────── */
+.gs-card-wrap { display: flex; justify-content: center; width: 100%; padding: 48px 0 72px; box-sizing: border-box; }
+.gs-main-center .gs-card-wrap { padding: 0; }
+.gs-card { width: 100%; max-width: 520px; box-sizing: border-box; background: var(--bg-panel); border: 1px solid var(--border-subtle); border-top: 3px solid var(--accent-gold); padding: 40px; display: flex; flex-direction: column; }
+.gs-card .gs-actions { margin-top: 28px; }
+.gs-card-foot { margin: 28px 0 0; padding: 20px 0 0; border-top: 1px solid var(--border-subtle); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 14px; line-height: 1.5; color: var(--text-muted); }
+.gs-link-list { list-style: none; margin: 28px 0 0; padding: 20px 0 0; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
+.gs-link-list li { font-size: 15px; line-height: 1.4; }
+.gs-link-list-note { color: var(--text-secondary); }
+.gs-card .gs-fine { margin-top: 16px; }
+.gs-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+.gs-card .gs-actions { gap: 12px; }
+
+.gs-alert { margin: 12px 0 0; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--danger); color: var(--text-primary); font-size: 15px; line-height: 1.4; }
+.gs-form .gs-alert, .gs-section .gs-alert, .gs-dialog-form .gs-alert { margin: 0; }
+.gs-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 12px 0 0; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border-accent); color: var(--text-primary); font-size: 15px; line-height: 1.4; }
+.gs-section .gs-notice { margin: 0; }
+.gs-warn { margin: 0; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--warning); color: var(--text-primary); font-size: 15px; line-height: 1.5; }
+
+/* ── Forms ──────────────────────────────────────────────────── */
+.gs-form { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-4); }
+.gs-panel { box-sizing: border-box; background: var(--bg-panel); border: 1px solid var(--border-subtle); padding: 18px var(--sp-6) 22px; }
+.gs-panel-flush { padding: 0; overflow-x: auto; }
+.gs-fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.gs-legend { margin: 0 0 14px; padding: 0; font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-gold); }
+.gs-dialog-form .gs-legend { margin-bottom: var(--sp-2); font: 600 13px/1.2 var(--font-cond); letter-spacing: 0.06em; color: var(--text-muted); }
+.gs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: var(--sp-4) var(--sp-6); }
+.gs-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.gs-label { display: block; font: 600 14px/1.3 var(--font-body); color: var(--text-secondary); }
+.gs-input { width: 100%; height: 40px; box-sizing: border-box; padding: 0 12px; background: var(--bg-input); border: 1px solid var(--border-medium); border-radius: 0; color: var(--text-primary); font: 400 16px/1 var(--font-body); color-scheme: dark; }
+.gs-input[aria-invalid="true"] { border-color: var(--danger); }
+.gs-input-search { height: 38px; padding-left: 38px; font-size: 15px; -webkit-appearance: none; appearance: none; }
+.gs-field-error { margin: 0; font-size: 14px; line-height: 1.4; color: var(--danger-bright); }
+.gs-static { display: flex; align-items: center; min-height: 40px; font-size: 16px; line-height: 1.3; }
+.gs-server-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px; }
+.gs-server { display: flex; align-items: center; gap: 12px; box-sizing: border-box; padding: 14px var(--sp-4); background: var(--bg-card); border: 1px solid var(--border-medium); cursor: pointer; }
+.gs-server:has(input:checked) { background: var(--bg-card-hover); border-color: var(--accent-gold); box-shadow: inset 0 0 0 1px var(--accent-gold); }
+.gs-server input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--accent-gold); cursor: pointer; }
+.gs-server-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-weight: 600; font-size: 16px; line-height: 1.3; }
+.gs-fieldset .gs-fine { margin-top: 12px; }
+.gs-check { display: flex; align-items: center; gap: 12px; min-height: 40px; }
+.gs-check input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--accent-gold); cursor: pointer; }
+.gs-check label { font-size: 16px; line-height: 1.3; cursor: pointer; }
+
+/* ── Tables ─────────────────────────────────────────────────── */
+.gs-table-wrap { background: var(--bg-panel); border: 1px solid var(--border-subtle); overflow-x: auto; }
+.gs-table { width: 100%; min-width: 980px; border-collapse: collapse; font-size: 15px; line-height: 1.3; }
+.gs-table-teams { min-width: 720px; }
+.gs-table th { padding: 10px var(--sp-4); text-align: left; font: 600 13px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); background: var(--bg-frame); border-bottom: 1px solid var(--border-medium); white-space: nowrap; }
+.gs-table td, .gs-table th[scope="row"] { padding: 12px var(--sp-4); vertical-align: middle; border-bottom: 1px solid var(--border-subtle); }
+.gs-table tbody tr:last-child td, .gs-table tbody tr:last-child th { border-bottom: 0; }
+.gs-table td { color: var(--text-secondary); }
+.gs-table th.gs-cell-strong, .gs-cell-strong { font: 600 15px/1.3 var(--font-body); text-transform: none; letter-spacing: 0; color: var(--text-primary); background: transparent; }
+.gs-table-teams td, .gs-table-teams th[scope="row"] { padding: 14px var(--sp-4); }
+.gs-row-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--sp-2); }
+.gs-lead-name { font-weight: 600; color: var(--text-primary); }
+.gs-sort { display: inline-flex; align-items: center; margin: 0; padding: 4px 0; background: none; border: 0; border-radius: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.gs-sort:hover, th[aria-sort] .gs-sort { color: var(--accent-gold-bright); }
+.gs-sort-ind { display: inline-block; width: 0; height: 0; margin-left: 6px; }
+.gs-sort[data-dir="asc"] .gs-sort-ind { border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid currentColor; }
+.gs-sort[data-dir="desc"] .gs-sort-ind { border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; }
+
+.gs-person { display: inline-flex; align-items: center; gap: 12px; min-width: 0; }
+.gs-person-name { font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-person-dim .gs-person-name { color: var(--text-secondary); }
+.gs-person-dim .gs-avatar { background: var(--bg-card); border-color: var(--border-subtle); color: var(--text-muted); }
+.gs-you { margin-left: var(--sp-2); padding: 1px 6px; border: 1px solid var(--border-medium); color: var(--text-muted); font: 600 11px/1.3 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; }
+.gs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gs-chip { display: inline-block; padding: 2px 8px; background: var(--bg-card-hover); border: 1px solid var(--border-medium); color: var(--text-secondary); font: 600 12px/1.4 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.gs-chip-guild_master { background: color-mix(in srgb, var(--accent-gold) 12%, var(--bg-deepest)); border-color: var(--border-accent); color: var(--accent-gold); }
+.gs-chip-member { background: var(--bg-frame); color: var(--text-muted); }
+
+.gs-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.gs-count { margin: 0; font-size: 16px; line-height: 1.3; color: var(--text-secondary); }
+.gs-search { position: relative; flex: 0 1 280px; min-width: 200px; }
+.gs-search .gs-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.gs-phone-sort, .gs-person-cards { display: none; }
+
+.gs-removed, .gs-archived { list-style: none; }
+.gs-removed-item, .gs-archived-item { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 12px var(--sp-4); }
+.gs-removed-item + .gs-removed-item, .gs-archived-item + .gs-archived-item { border-top: 1px solid var(--border-subtle); }
+.gs-removed-text { flex: 1 1 240px; min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+.gs-removed-item .gs-btn, .gs-archived-item .gs-btn { margin-left: auto; }
+.gs-archived-item .gs-cell-strong { flex: 0 1 auto; overflow-wrap: anywhere; }
+
+/* ── Dialogs ────────────────────────────────────────────────── */
+.gs-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); box-sizing: border-box; margin: auto; padding: 0; background: var(--bg-frame); border: 1px solid var(--border-medium); color: var(--text-primary); overflow-y: auto; }
+.gs-dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
+.gs-dialog-form { padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-5); }
+.gs-dialog-title { margin: 0; font: 700 24px/1.15 var(--font-cond); letter-spacing: 0.02em; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
+.gs-gm { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding-top: var(--sp-4); border-top: 1px solid var(--border-subtle); }
+.gs-gm .gs-legend { margin: 0; }
+.gs-gm [id="dlg-gm-confirm"] { display: flex; flex-direction: column; gap: 12px; }
+
+/* ── Coming-next pages ──────────────────────────────────────── */
+.gs-empty-card { max-width: 640px; box-sizing: border-box; background: var(--bg-panel); border: 1px solid var(--border-subtle); padding: var(--sp-8); display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-4); }
+.gs-empty-card .gs-lead { margin: 0; }
+.gs-empty-icon { width: 56px; height: 56px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; background: var(--bg-card); border: 1px solid var(--border-medium); color: var(--accent-gold); }
+.gs-bullets { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.gs-bullets li { display: flex; align-items: flex-start; gap: 12px; font-size: 16px; line-height: 1.5; color: var(--text-primary); }
+.gs-bullets li::before { content: ""; flex: none; width: 6px; height: 6px; margin-top: 9px; background: var(--accent-gold-dim); }
+.gs-bullets-plain { gap: 4px; }
+.gs-bullets-plain li { font-size: 15px; color: var(--text-secondary); }
+
+/* ── Privacy ────────────────────────────────────────────────── */
+.gs-prose { display: flex; flex-direction: column; gap: 6px; }
+.gs-prose p, .gs-prose-line { margin: 0; font-size: 15px; line-height: 1.5; color: var(--text-secondary); }
+.gs-danger-box { box-sizing: border-box; background: var(--bg-panel); border: 1px solid var(--danger); padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+.gs-danger-box .gs-h2 { margin-bottom: 0; }
+.gs-danger-box .gs-alert { margin: 0; }
+#delete-confirm { border-top: 1px solid var(--border-subtle); padding-top: 18px; display: flex; flex-direction: column; gap: 14px; }
+#delete-confirm[hidden] { display: none; }
+.gs-confirm-text { margin: 0; font-size: 15px; line-height: 1.5; color: var(--text-primary); }
+
+/* ── Phone bottom tabs and More drawer ──────────────────────── */
+.gs-tabs, .gs-drawer { display: none; }
+.gs-drawer[open] { display: flex; }
+.gs-drawer { position: fixed; left: 0; top: 0; margin: 0; padding: 0; width: min(296px, 100%); height: 100%; max-width: none; max-height: none; box-sizing: border-box; background: var(--bg-frame); border: 0; border-right: 1px solid var(--border-subtle); color: var(--text-primary); }
+.gs-drawer::backdrop { background: rgba(0, 0, 0, 0.6); }
+.gs-drawer-rail { width: 64px; flex: 0 0 64px; box-sizing: border-box; background: var(--bg-deepest); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; align-items: center; padding-top: 13px; overflow-y: auto; }
+.gs-drawer-rail .gs-tiles { padding-top: 24px; }
+.gs-drawer-panel { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.gs-drawer-top { display: flex; justify-content: flex-end; padding: var(--sp-2) var(--sp-2) 0; }
+.gs-drawer .gs-select-wrap { max-width: 100%; }
+
+@media (max-width: 600px) {
+  .gs-rail, .gs-sidebar { display: none; }
+  .gs-app.has-guild .gs-col { padding-bottom: 64px; }
+  .gs-main { padding: var(--sp-4); }
+  .gs-main-center { padding: 24px var(--sp-4) 48px; }
+  .gs-public-head { padding: 0 var(--sp-4); }
+  .gs-topbar { padding: 0 12px 0 var(--sp-2); gap: var(--sp-2); }
+  .gs-app:not(.has-guild) .gs-topbar { padding-left: var(--sp-4); }
+  .gs-menu-btn { display: inline-flex; width: 44px; height: 44px; }
+  .gs-phone-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+  .gs-phone-guild { font-weight: 600; font-size: 14px; line-height: 1.15; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gs-phone-team { font-size: 12px; line-height: 1.15; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gs-phone-brand { display: flex; }
+  .gs-crumbs-wrap { display: none; }
+  .gs-app:not(.has-guild) .gs-crumbs-wrap { display: block; }
+  .gs-app.has-guild .gs-crumbs-wrap { display: none; }
+  .gs-avatar-btn { min-width: 44px; min-height: 44px; justify-content: center; }
+
+  .gs-tabs { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: 64px; box-sizing: border-box; background: var(--bg-frame); border-top: 1px solid var(--border-subtle); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .gs-tabs-list { list-style: none; height: 100%; display: flex; }
+  .gs-tabs-list li { flex: 1 1 0; display: flex; min-width: 0; }
+  .gs-tab { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; text-decoration: none; font: 600 12px/1 var(--font-cond); letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; }
+  .guild-page a.gs-tab, .gs-tab { color: var(--text-secondary); }
+  .guild-page a.gs-tab.is-active { background: var(--bg-card-hover); color: var(--accent-gold); }
+  .gs-tab.is-active::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--accent-gold); }
+
+  .gs-nav-link { height: 44px; }
+  .gs-btn, .gs-btn-sm { min-height: 44px; }
+  .gs-input, .gs-input-search { height: 44px; }
+  .gs-team-select { height: 44px; }
+  .gs-check { min-height: 44px; }
+  .gs-linkbtn { min-height: 44px; }
+  .gs-card { padding: 28px 20px; }
+  .gs-panel { padding: 16px; }
+  .gs-h1 { font-size: 26px; }
+  .gs-h1-lg { font-size: 26px; }
+
+  .gs-people-table { display: none; }
+  .gs-phone-sort { display: flex; flex-direction: column; gap: 6px; flex: 1 1 100%; }
+  .gs-search { flex: 1 1 100%; }
+  .gs-person-cards { display: flex; flex-direction: column; gap: var(--sp-2); list-style: none; }
+  .gs-person-card { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px; display: flex; align-items: flex-start; gap: 12px; }
+  .gs-card-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .gs-card-body .gs-person-name { font-size: 17px; line-height: 1.2; }
+  .gs-card-line { font-size: 15px; line-height: 1.3; }
+  .gs-card-body .gs-row-actions { justify-content: flex-start; margin-top: var(--sp-2); }
+  .gs-dialog-actions { justify-content: stretch; }
+  .gs-dialog-actions .gs-btn { flex: 1 1 auto; }
+  .gs-removed-item .gs-btn, .gs-archived-item .gs-btn { margin-left: 0; }
+}
+
+@media (min-width: 601px) {
+  .gs-drawer { display: none !important; }
+}

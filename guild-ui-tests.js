@@ -1,0 +1,709 @@
+/**
+ * Raidsmith guild UI - tests for guild.html, guild.css and js/guild/*.js
+ * Run: node guild-ui-tests.js
+ *
+ * The guild scripts are classic scripts sharing one `Guild` namespace. Their render functions return HTML
+ * strings, so they run here in a vm sandbox with no DOM: the page's own script list (guild.html) is loaded in
+ * order, exactly as the browser does.
+ */
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+let passed = 0, failed = 0;
+async function check(name, fn) {
+  try {
+    await fn();
+    passed++;
+    console.log(`PASS  ${name}`);
+  } catch (e) {
+    failed++;
+    console.log(`FAIL  ${name}\n      ${e.message}`);
+  }
+}
+
+const ROOT = __dirname;
+const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
+const html = read('guild.html');
+const css = read('guild.css');
+const appCss = read('app.css');
+
+// Every <script src> in guild.html, in order.
+const scriptSrcs = [...html.matchAll(/<script\b([^>]*)>/gi)].map(m => (m[1].match(/\bsrc\s*=\s*"([^"]*)"/i) || [])[1]).filter(Boolean);
+
+function loadGuild() {
+  const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error };
+  vm.createContext(sandbox);
+  for (const src of scriptSrcs) {
+    vm.runInContext(read(src.replace(/^\//, '')), sandbox, { filename: src });
+  }
+  return sandbox;
+}
+const ctx = loadGuild();
+const G = ctx.Guild;
+// Values built inside the sandbox have the sandbox's Object/Array prototypes; compare them as plain JSON.
+const plain = v => JSON.parse(JSON.stringify(v));
+
+// ── fixtures ─────────────────────────────────────────────────────
+const NOW = new Date(2026, 9, 14, 12, 0, 0).getTime();
+const DAY = 86400000;
+function person(id, displayName, extra) {
+  return Object.assign({ id, username: displayName.toLowerCase(), displayName, avatarUrl: null, initials: displayName.slice(0, 2).toUpperCase() }, extra || {});
+}
+function entry(p, roles, lastSeenAt, extra) {
+  return Object.assign({ person: p, roles, roster: null, lastSeenAt, isMe: false, actions: { editRoles: true, makeGuildMaster: false, removeAccess: true } }, extra || {});
+}
+const TEAMS = [
+  { id: 't1', name: 'Team A', size: 25, archived: false, players: 0, leads: [person('u3', 'Mistvale')] },
+  { id: 't2', name: 'Team B', size: 25, archived: false, players: 0, leads: [] },
+  { id: 't3', name: 'Old Team', size: 25, archived: true, players: 0, leads: [] },
+];
+const PEOPLE = [
+  entry(person('u1', 'Thornvald'), [{ role: 'guild_master' }], NOW, { isMe: true, actions: { editRoles: false, makeGuildMaster: false, removeAccess: false } }),
+  entry(person('u2', 'Brightmane'), [{ role: 'officer' }], NOW - DAY),
+  entry(person('u3', 'Mistvale'), [{ role: 'team_lead', teamId: 't1' }], NOW - 5 * DAY),
+  entry(person('u4', 'Stormjaw'), [], NOW - 30 * DAY),
+  entry(person('u5', 'Aelith'), [], null),
+  entry(person('u6', 'Kaelith'), [{ role: 'officer' }, { role: 'team_lead', teamId: 't2' }], NOW - 2 * DAY),
+];
+const names = list => list.map(e => e.person.displayName);
+
+function guildData(can, overrides) {
+  return Object.assign({
+    guild: { id: 'g1', name: 'Ravens', realm: 'Firemaw', region: 'EU', timeZone: 'Europe/Berlin', gameVersion: 'tbc-anniversary', createdAt: NOW },
+    teams: JSON.parse(JSON.stringify(TEAMS)),
+    me: { roles: [{ role: 'officer' }], can },
+  }, overrides || {});
+}
+const ALL_CAN = { 'guild.teams': 'guild', 'guild.access': 'guild', 'guild.roles': 'guild' };
+function meData(extra) {
+  return Object.assign({
+    user: Object.assign(person('u1', 'Thornvald'), { prefs: { sidebarCollapsed: false, lastGuildId: 'g1' } }),
+    guilds: [{ id: 'g1', name: 'Ravens', realm: 'Firemaw', region: 'EU', roles: [{ role: 'officer' }] }],
+    create: { allowed: false },
+    deleteImpact: { handOverFirst: [], guildsDeleted: [] },
+  }, extra || {});
+}
+function shellHtml(can, route, collapsed) {
+  const gd = guildData(can);
+  return G.shell.render({ me: meData(), route: route || { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: 't1', collapsed: !!collapsed }, '<p>main</p>');
+}
+
+const HOSTILE = '<img src=x onerror=1>';
+const QUOTES = '"\' onfocus="alert(1)" x=\'';
+function assertEscaped(out, label) {
+  assert(!out.includes('<img src=x'), `${label}: raw tag leaked`);
+  assert(!out.includes(' onfocus="alert(1)"'), `${label}: attribute break-out leaked`);
+  assert(!/<script/i.test(out), `${label}: script tag leaked`);
+}
+
+// ── router ───────────────────────────────────────────────────────
+(async () => {
+  await check('router: parse recognises every documented route', () => {
+    const p = h => plain(G.router.parse(h));
+    assert.deepEqual(p(''), { name: 'home' });
+    assert.deepEqual(p('#'), { name: 'home' });
+    assert.deepEqual(p('#/'), { name: 'home' });
+    assert.deepEqual(p('#/signin'), { name: 'signin', error: null });
+    assert.deepEqual(p('#/signin?error=denied'), { name: 'signin', error: 'denied' });
+    assert.deepEqual(p('#/new'), { name: 'new' });
+    assert.deepEqual(p('#/privacy'), { name: 'privacy' });
+    assert.deepEqual(p('#/g/g_abc-1/roster'), { name: 'section', gid: 'g_abc-1', section: 'roster' });
+    assert.deepEqual(p('#/g/g1/nights'), { name: 'section', gid: 'g1', section: 'nights' });
+    assert.deepEqual(p('#/g/g1/attendance'), { name: 'section', gid: 'g1', section: 'attendance' });
+    assert.deepEqual(p('#/g/g1/loot'), { name: 'section', gid: 'g1', section: 'loot' });
+    assert.deepEqual(p('#/g/g1'), { name: 'section', gid: 'g1', section: 'roster' });
+    assert.deepEqual(p('#/g/g1/settings'), { name: 'settings', gid: 'g1', tab: null });
+    assert.deepEqual(p('#/g/g1/settings/teams'), { name: 'settings', gid: 'g1', tab: 'teams' });
+    assert.deepEqual(p('#/g/g1/settings/people'), { name: 'settings', gid: 'g1', tab: 'people' });
+  });
+
+  await check('router: format and parse round-trip for every route shape', () => {
+    const routes = [
+      { name: 'home' }, { name: 'signin', error: null }, { name: 'signin', error: 'state' }, { name: 'signin', error: 'discord' },
+      { name: 'new' }, { name: 'privacy' },
+      ...['roster', 'nights', 'attendance', 'loot'].map(section => ({ name: 'section', gid: 'g_Ab-9', section })),
+      { name: 'settings', gid: 'g1', tab: null }, { name: 'settings', gid: 'g1', tab: 'teams' }, { name: 'settings', gid: 'g1', tab: 'people' },
+    ];
+    for (const r of routes) assert.deepEqual(plain(G.router.parse(G.router.format(r))), r, JSON.stringify(r));
+  });
+
+  await check('router: unknown paths, bad ids and unknown error codes do not become routes', () => {
+    for (const h of ['#/nope', '#/g', '#/g/g1/roster/extra', '#/g/g1/settings/billing', '#/g/g1/bank', '#/g/a%2Fb/roster', '#/g/%E0%A4%A/roster', '#/g/<x>/roster', '#/privacy/x']) {
+      assert.equal(G.router.parse(h).name, 'notfound', h);
+    }
+    assert.equal(G.router.parse('#/signin?error=<script>').error, null);
+    assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'bogus' }), '#/g/g1/roster');
+    assert.equal(G.router.format({ name: 'whatever' }), '#/');
+  });
+
+  // ── api ────────────────────────────────────────────────────────
+  function fakeFetch(status, body, headers) {
+    const calls = [];
+    const fn = (url, init) => {
+      calls.push({ url, init });
+      return Promise.resolve({ ok: status >= 200 && status < 300, status, headers: { get: k => (headers || {})[k] || null }, text: () => Promise.resolve(body == null ? '' : JSON.stringify(body)) });
+    };
+    fn.calls = calls;
+    return fn;
+  }
+
+  await check('api: non-GET requests send credentials, a JSON content type and a JSON body ({} when empty)', async () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      const f = fakeFetch(200, { ok: true });
+      await G.api.request(method, '/x', undefined, f);
+      const c = f.calls[0];
+      assert.equal(c.init.method, method);
+      assert.equal(c.init.credentials, 'same-origin');
+      assert.equal(c.init.headers['Content-Type'], 'application/json');
+      assert.equal(c.init.body, '{}');
+    }
+    const f = fakeFetch(200, { a: 1 });
+    const out = await G.api.request('POST', '/x', { name: 'n' }, f);
+    assert.equal(f.calls[0].init.body, '{"name":"n"}');
+    assert.deepEqual(plain(out), { a: 1 });
+  });
+
+  await check('api: GET sends no body and no content type', async () => {
+    const f = fakeFetch(200, { ok: 1 });
+    await G.api.request('GET', '/auth/me', undefined, f);
+    assert.equal(f.calls[0].init.body, undefined);
+    assert.equal(f.calls[0].init.headers['Content-Type'], undefined);
+    assert.equal(f.calls[0].init.credentials, 'same-origin');
+  });
+
+  await check('api: error responses become ApiError with code, message, field and retryAfter', async () => {
+    const f = fakeFetch(409, { error: 'team_name_taken', message: 'That team name is taken.', field: 'name' });
+    await assert.rejects(() => G.api.request('POST', '/x', {}, f), e => e.status === 409 && e.code === 'team_name_taken' && e.message === 'That team name is taken.' && e.field === 'name');
+    const f2 = fakeFetch(429, { error: 'rate_limited', message: 'Slow down', retryAfter: 12 });
+    await assert.rejects(() => G.api.request('POST', '/x', {}, f2), e => e.retryAfter === 12);
+    const f3 = fakeFetch(429, { error: 'rate_limited' }, { 'Retry-After': '7' });
+    await assert.rejects(() => G.api.request('POST', '/x', {}, f3), e => e.retryAfter === 7);
+    const f4 = () => Promise.reject(new Error('offline'));
+    await assert.rejects(() => G.api.request('GET', '/x', undefined, f4), e => e.status === 0 && e.code === 'network' && /connection/i.test(e.message));
+    const f5 = fakeFetch(500, null);
+    await assert.rejects(() => G.api.request('GET', '/x', undefined, f5), e => e.status === 500 && e.message.length > 0);
+  });
+
+  await check('api: classify maps 401 to sign-in, 403 access errors to a message page, 429 to the retry text', () => {
+    const E = (status, code, extra) => new G.api.ApiError(status, Object.assign({ error: code, message: 'Server says so.' }, extra || {}));
+    assert.equal(G.api.classify(E(401, 'signed_out')).view, 'signin');
+    for (const code of ['access_removed', 'not_member', 'forbidden']) {
+      const c = G.api.classify(E(403, code));
+      assert.equal(c.view, 'message', code);
+      assert.equal(c.text, 'Server says so.');
+      assert(c.title.length > 0);
+    }
+    assert.equal(G.api.classify(E(403, 'cross_site')).view, 'inline');
+    assert.equal(G.api.classify(E(403, 'reauth_required')).view, 'inline');
+    assert.equal(G.api.classify(E(429, 'rate_limited', { retryAfter: 12 })).text, 'Too many changes, try again in 12 s');
+    assert.equal(G.api.classify(E(429, 'rate_limited', { retryAfter: 11.2 })).text, 'Too many changes, try again in 12 s');
+    assert.match(G.api.classify(E(429, 'rate_limited')).text, /^Too many changes, try again in/);
+    const c409 = G.api.classify(E(409, 'server_taken'));
+    assert.equal(c409.view, 'inline');
+    assert.equal(c409.text, 'Server says so.');
+  });
+
+  // ── people-sort ────────────────────────────────────────────────
+  await check('people-sort: default is Roles asc - Guild Master, Officer, Team Lead, Member, then name', () => {
+    const out = names(G.peopleSort.sortPeople(PEOPLE, G.peopleSort.DEFAULT_SORT));
+    assert.deepEqual(out, ['Thornvald', 'Brightmane', 'Kaelith', 'Mistvale', 'Aelith', 'Stormjaw']);
+    assert.deepEqual(plain(G.peopleSort.DEFAULT_SORT), { column: 'roles', dir: 'asc' });
+    assert.deepEqual(names(G.peopleSort.sortPeople(PEOPLE, undefined)), out);
+  });
+
+  await check('people-sort: Roles desc reverses the rank order', () => {
+    const out = names(G.peopleSort.sortPeople(PEOPLE, { column: 'roles', dir: 'desc' }));
+    assert.deepEqual(out, ['Aelith', 'Stormjaw', 'Mistvale', 'Brightmane', 'Kaelith', 'Thornvald']);
+  });
+
+  await check('people-sort: Person sorts by display name in both directions, case-insensitively', () => {
+    const mixed = [entry(person('a', 'zed'), []), entry(person('b', 'Alpha'), []), entry(person('c', 'bravo'), [])];
+    assert.deepEqual(names(G.peopleSort.sortPeople(mixed, { column: 'person', dir: 'asc' })), ['Alpha', 'bravo', 'zed']);
+    assert.deepEqual(names(G.peopleSort.sortPeople(mixed, { column: 'person', dir: 'desc' })), ['zed', 'bravo', 'Alpha']);
+  });
+
+  await check('people-sort: Last seen puts the newest first (asc) and the oldest first (desc); never-seen sorts last either way', () => {
+    const asc = names(G.peopleSort.sortPeople(PEOPLE, { column: 'lastSeen', dir: 'asc' }));
+    assert.deepEqual(asc, ['Thornvald', 'Brightmane', 'Kaelith', 'Mistvale', 'Stormjaw', 'Aelith']);
+    const desc = names(G.peopleSort.sortPeople(PEOPLE, { column: 'lastSeen', dir: 'desc' }));
+    assert.deepEqual(desc, ['Stormjaw', 'Mistvale', 'Kaelith', 'Brightmane', 'Thornvald', 'Aelith']);
+  });
+
+  await check('people-sort: Roster sorts linked names and always puts Not linked last; all-null falls back to name', () => {
+    const linked = [
+      entry(person('a', 'Anna'), [], NOW, { roster: 'Zeta' }),
+      entry(person('b', 'Ben'), [], NOW, { roster: null }),
+      entry(person('c', 'Cleo'), [], NOW, { roster: { name: 'Alpha' } }),
+    ];
+    assert.deepEqual(names(G.peopleSort.sortPeople(linked, { column: 'roster', dir: 'asc' })), ['Cleo', 'Anna', 'Ben']);
+    assert.deepEqual(names(G.peopleSort.sortPeople(linked, { column: 'roster', dir: 'desc' })), ['Anna', 'Cleo', 'Ben']);
+    assert.deepEqual(names(G.peopleSort.sortPeople(PEOPLE, { column: 'roster', dir: 'desc' })), ['Aelith', 'Brightmane', 'Kaelith', 'Mistvale', 'Stormjaw', 'Thornvald']);
+  });
+
+  await check('people-sort: sorting never mutates its input and an unknown column falls back to the default', () => {
+    const copy = names(PEOPLE);
+    G.peopleSort.sortPeople(PEOPLE, { column: 'person', dir: 'desc' });
+    assert.deepEqual(names(PEOPLE), copy);
+    assert.deepEqual(names(G.peopleSort.sortPeople(PEOPLE, { column: 'bogus', dir: 'asc' })), names(G.peopleSort.sortPeople(PEOPLE, G.peopleSort.DEFAULT_SORT)));
+  });
+
+  await check('people-sort: nextSort starts a new column ascending and flips the active column; ariaSort follows', () => {
+    assert.deepEqual(plain(G.peopleSort.nextSort({ column: 'roles', dir: 'asc' }, 'person')), { column: 'person', dir: 'asc' });
+    assert.deepEqual(plain(G.peopleSort.nextSort({ column: 'person', dir: 'asc' }, 'person')), { column: 'person', dir: 'desc' });
+    assert.deepEqual(plain(G.peopleSort.nextSort({ column: 'person', dir: 'desc' }, 'person')), { column: 'person', dir: 'asc' });
+    assert.deepEqual(plain(G.peopleSort.nextSort({ column: 'person', dir: 'desc' }, 'nope')), { column: 'person', dir: 'desc' });
+    assert.equal(G.peopleSort.ariaSort({ column: 'roles', dir: 'asc' }, 'roles'), 'ascending');
+    assert.equal(G.peopleSort.ariaSort({ column: 'roles', dir: 'desc' }, 'roles'), 'descending');
+    assert.equal(G.peopleSort.ariaSort({ column: 'roles', dir: 'asc' }, 'person'), null);
+  });
+
+  await check('people-sort: roleLabels shows Member for no roles and names the team on Team Lead (archived teams too)', () => {
+    assert.deepEqual(plain(G.peopleSort.roleLabels([], TEAMS)).map(r => r.label), ['Member']);
+    assert.deepEqual(plain(G.peopleSort.roleLabels([{ role: 'team_lead', teamId: 't3' }, { role: 'officer' }], TEAMS)).map(r => r.label), ['Officer', 'Team Lead: Old Team']);
+    assert.deepEqual(plain(G.peopleSort.roleLabels([{ role: 'team_lead', teamId: 'gone' }], TEAMS)).map(r => r.label), ['Team Lead']);
+  });
+
+  await check('people-sort: filterPeople matches display name or username, case-insensitively', () => {
+    assert.deepEqual(names(G.peopleSort.filterPeople(PEOPLE, 'ELITH')), ['Aelith', 'Kaelith']);
+    assert.equal(G.peopleSort.filterPeople(PEOPLE, '').length, PEOPLE.length);
+    assert.equal(G.peopleSort.filterPeople(PEOPLE, 'zzz').length, 0);
+  });
+
+  await check('people table: Not linked shows for a null roster, a role-less person shows Member, headers carry aria-sort', () => {
+    const out = G.pages.people.tableHtml({ people: PEOPLE, teams: TEAMS, sort: { column: 'person', dir: 'desc' }, query: '', now: NOW });
+    assert(out.includes('Not linked'));
+    assert(out.includes('>Member<'));
+    assert(out.includes('aria-sort="descending"'));
+    assert.equal((out.match(/aria-sort=/g) || []).length, 1);
+    for (const col of ['person', 'roster', 'roles', 'lastSeen']) assert(out.includes(`data-action="sort" data-col="${col}"`), col);
+    assert(/<button type="button" class="gs-sort"/.test(out));
+    const order = ['Thornvald', 'Stormjaw', 'Mistvale', 'Kaelith', 'Brightmane', 'Aelith'];
+    let at = out.indexOf('<tbody>');
+    for (const n of order) { const i = out.indexOf('<span class="gs-person-name">' + n, at); assert(i > at, n); at = i; }
+  });
+
+  await check('people table: Last seen is relative text with the date in a title', () => {
+    const out = G.pages.people.tableHtml({ people: PEOPLE, teams: TEAMS, sort: G.peopleSort.DEFAULT_SORT, query: '', now: NOW });
+    assert(out.includes('>Today<'));
+    assert(out.includes('>Yesterday<'));
+    assert(out.includes('>5 days ago<'));
+    assert(out.includes('>Not yet<'));
+    assert(/<span title="[^"]+">Today<\/span>/.test(out));
+    assert.equal(G.ui.relativeTime(NOW - 20 * DAY, NOW), G.ui.formatDate(NOW - 20 * DAY));
+  });
+
+  // ── can-driven visibility ──────────────────────────────────────
+  await check('visibility: hasAction accepts "guild" and a non-empty team list, and nothing else', () => {
+    assert.equal(G.shell.hasAction({ a: 'guild' }, 'a'), true);
+    assert.equal(G.shell.hasAction({ a: ['t1'] }, 'a'), true);
+    assert.equal(G.shell.hasAction({ a: [] }, 'a'), false);
+    assert.equal(G.shell.hasAction({}, 'a'), false);
+    assert.equal(G.shell.hasAction(undefined, 'a'), false);
+    assert.equal(G.shell.hasAction({ a: 'nope' }, 'a'), false);
+    assert.equal(G.shell.hasAction({ toString: 'guild' }, 'hasOwnProperty'), false);
+  });
+
+  await check('visibility: the Guild settings nav item needs guild.teams, guild.access or guild.roles', () => {
+    for (const can of [{ 'guild.teams': 'guild' }, { 'guild.access': 'guild' }, { 'guild.roles': 'guild' }]) {
+      assert.equal(G.shell.canSeeSettings(can), true, JSON.stringify(can));
+      assert(shellHtml(can).includes('Guild settings'), JSON.stringify(can));
+    }
+    for (const can of [{}, { 'roster.view': 'guild' }, { 'attendance.view': ['t1'] }, { 'guild.teams': [] }]) {
+      assert.equal(G.shell.canSeeSettings(can), false, JSON.stringify(can));
+      assert(!shellHtml(can).includes('Guild settings'), JSON.stringify(can));
+    }
+  });
+
+  await check('visibility: Guild settings tabs follow the actions (Teams: guild.teams; People: guild.access or guild.roles)', () => {
+    const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
+    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people']);
+    assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people']);
+    assert.deepEqual(tabs(ALL_CAN), ['teams', 'people']);
+    assert.deepEqual(tabs({}), []);
+    const frame = G.shell.settingsFrameHtml({ guildData: guildData({ 'guild.access': 'guild' }) }, 'people', '<p>x</p>');
+    assert(frame.includes('People and roles'));
+    assert(!/>Teams</.test(frame));
+    const nav = G.shell.navItems('g1', { 'guild.access': 'guild' }).find(i => i.key === 'settings');
+    assert.equal(nav.href, '#/g/g1/settings/people');
+  });
+
+  await check('visibility: the phone tabs never list settings; the drawer follows the same rule as the sidebar', () => {
+    const out = shellHtml(ALL_CAN);
+    const tabs = out.slice(out.indexOf('<nav class="gs-tabs"'), out.indexOf('</nav>', out.indexOf('<nav class="gs-tabs"')));
+    for (const label of ['Roster', 'Raid nights', 'Attendance', 'Loot', 'More']) assert(tabs.includes(`aria-label="${label}"`), label);
+    assert(!tabs.includes('Guild settings'));
+    const drawer = out.slice(out.indexOf('<dialog class="gs-drawer"'));
+    assert(drawer.includes('Guild settings'));
+    assert(!shellHtml({}).slice(shellHtml({}).indexOf('<dialog class="gs-drawer"')).includes('Guild settings'));
+  });
+
+  await check('visibility: team buttons show only with guild.teams', () => {
+    const withTeams = G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.teams': 'guild' }) });
+    assert(withTeams.includes('data-action="team-add"'));
+    assert(withTeams.includes('data-action="team-rename"'));
+    assert(withTeams.includes('data-action="team-archive"'));
+    assert(withTeams.includes('data-action="team-restore"'));
+    const without = G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.access': 'guild' }) });
+    for (const a of ['team-add', 'team-rename', 'team-archive', 'team-restore']) assert(!without.includes(`data-action="${a}"`), a);
+    assert(without.includes('Team A'));
+  });
+
+  await check('teams page: archived teams are listed apart, with the locked-to-one-team note', () => {
+    const out = G.pages.teams.teamsHtml({ guildData: guildData(ALL_CAN) });
+    assert(out.includes('Each character is locked to one team. Archived teams keep their history.'));
+    const activePart = out.slice(0, out.indexOf('Archived teams ('));
+    assert(activePart.includes('Team A') && activePart.includes('Team B') && !activePart.includes('Old Team'));
+    assert(out.slice(out.indexOf('Archived teams (')).includes('Old Team'));
+    assert(out.includes('aria-label="Archive Team A"') && out.includes('aria-label="Rename Team B"') && out.includes('aria-label="Restore Old Team"'));
+  });
+
+  await check('visibility: person row actions come only from the server actions flags', () => {
+    const rows = [
+      entry(person('a', 'Both'), [], NOW, { actions: { editRoles: true, makeGuildMaster: false, removeAccess: true } }),
+      entry(person('b', 'EditOnly'), [], NOW, { actions: { editRoles: true, makeGuildMaster: false, removeAccess: false } }),
+      entry(person('c', 'RemoveOnly'), [], NOW, { actions: { editRoles: false, makeGuildMaster: false, removeAccess: true } }),
+      entry(person('d', 'GmOnly'), [], NOW, { actions: { editRoles: false, makeGuildMaster: true, removeAccess: false } }),
+      entry(person('e', 'None'), [], NOW, { actions: { editRoles: false, makeGuildMaster: false, removeAccess: false } }),
+      entry(person('f', 'NoFlags'), [{ role: 'guild_master' }], NOW, { actions: undefined }),
+    ];
+    const out = G.pages.people.tableHtml({ people: rows, teams: TEAMS, sort: { column: 'person', dir: 'asc' }, query: '', now: NOW });
+    const has = (what, name) => out.includes(`aria-label="${what} ${name}"`);
+    assert(has('Edit roles for', 'Both') && has('Remove access for', 'Both'));
+    assert(has('Edit roles for', 'EditOnly') && !has('Remove access for', 'EditOnly'));
+    assert(!has('Edit roles for', 'RemoveOnly') && has('Remove access for', 'RemoveOnly'));
+    assert(has('Edit roles for', 'GmOnly') && !has('Remove access for', 'GmOnly'));
+    assert(!has('Edit roles for', 'None') && !has('Remove access for', 'None'));
+    assert(!has('Edit roles for', 'NoFlags') && !has('Remove access for', 'NoFlags'));
+  });
+
+  await check('visibility: Restore access shows only when the removed row allows it', () => {
+    const removed = [
+      { person: person('r1', 'Allowed'), roles: [], removedBy: person('u1', 'Thornvald'), removedAt: NOW, reason: 'Left the guild', actions: { restoreAccess: true } },
+      { person: person('r2', 'Denied'), roles: [], removedBy: null, removedAt: NOW, reason: '', actions: { restoreAccess: false } },
+    ];
+    const out = G.pages.people.removedHtml({ removed });
+    assert(out.includes('aria-label="Restore access for Allowed"'));
+    assert(!out.includes('Restore access for Denied'));
+    assert(out.includes('Access removed (2)'));
+    assert(/Removed by Thornvald on [A-Z][a-z]{2} \d{1,2}, \d{4} - Left the guild/.test(out));
+    assert(/Removed on [A-Z][a-z]{2} \d{1,2}, \d{4}</.test(out));
+    assert.equal(G.pages.people.removedHtml({ removed: [] }), '');
+  });
+
+  await check('visibility: Make Guild Master is in Edit roles only when the server allows it; Save only when roles are editable', () => {
+    const base = entry(person('u2', 'Brightmane'), [{ role: 'officer' }], NOW);
+    const withGm = G.pages.people.rolesDialogHtml(Object.assign({}, base, { actions: { editRoles: true, makeGuildMaster: true, removeAccess: true } }), TEAMS, 'Ravens');
+    assert(withGm.includes('Make Guild Master') && withGm.includes('data-action="gm-confirm"'));
+    assert(withGm.includes('You become an Officer'));
+    const without = G.pages.people.rolesDialogHtml(base, TEAMS, 'Ravens');
+    assert(!without.includes('Make Guild Master') && !without.includes('gm-confirm'));
+    assert(without.includes('type="submit"'));
+    const gmOnly = G.pages.people.rolesDialogHtml(Object.assign({}, base, { actions: { editRoles: false, makeGuildMaster: true, removeAccess: false } }), TEAMS, 'Ravens');
+    assert(!gmOnly.includes('type="submit"') && gmOnly.includes('<fieldset class="gs-fieldset" disabled>'));
+  });
+
+  await check('roles dialog: Officer plus Team Lead per active team, pre-checked from the current roles', () => {
+    const e = entry(person('u6', 'Kaelith'), [{ role: 'officer' }, { role: 'team_lead', teamId: 't2' }], NOW);
+    const out = G.pages.people.rolesDialogHtml(e, TEAMS, 'Ravens');
+    assert(/name="officer" checked/.test(out));
+    assert(/name="teamLead" value="t2" checked/.test(out));
+    assert(/name="teamLead" value="t1"(?! checked)/.test(out));
+    assert(!out.includes('value="t3"'), 'archived team must not be offered');
+    assert(out.includes('Officer: whole guild') && out.includes('Team Lead: Team A') && out.includes('Team Lead: Team B'));
+    assert(out.includes('id="dlg-title"') && out.includes('Edit roles for Kaelith'));
+  });
+
+  await check('remove dialog: optional reason capped at 200 characters, names the person and the guild', () => {
+    const out = G.pages.people.removeDialogHtml(entry(person('u4', 'Stormjaw'), [], NOW), 'Ravens');
+    assert(out.includes("Remove Stormjaw's access?"));
+    assert(out.includes("Stormjaw can't open Ravens's pages"));
+    assert(/name="reason" maxlength="200"/.test(out));
+    assert(out.includes('Reason (optional)'));
+  });
+
+  await check('visibility: the Add a guild tile needs create.allowed; guild tiles come from /auth/me', () => {
+    const base = { me: meData(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildData(ALL_CAN), teamId: 't1', collapsed: false };
+    assert(!G.shell.render(base, '').includes('Add a guild'));
+    const allowed = G.shell.render(Object.assign({}, base, { me: meData({ create: { allowed: true, stale: false, servers: [] } }) }), '');
+    assert(allowed.includes('aria-label="Add a guild"') && allowed.includes('href="#/new"'));
+    assert(allowed.includes('aria-label="Ravens"') && allowed.includes('aria-current="true"'));
+  });
+
+  await check('shell: collapsed state, toggle label and aria-expanded follow the prefs flag; sidebar team picker lists active teams only', () => {
+    const open = shellHtml(ALL_CAN, null, false);
+    assert(!open.includes('gs-app is-collapsed') && open.includes('aria-expanded="true" aria-label="Collapse sidebar"'));
+    const shut = shellHtml(ALL_CAN, null, true);
+    assert(shut.includes('gs-app is-collapsed') && shut.includes('aria-expanded="false" aria-label="Expand sidebar"'));
+    assert(/<option value="t1" selected>Team A<\/option><option value="t2">Team B<\/option><\/select>/.test(open));
+    assert(!open.includes('Old Team'));
+  });
+
+  await check('shell: breadcrumb names guild, team and page; settings breadcrumb names the tab', () => {
+    const gd = guildData(ALL_CAN);
+    const crumbs = (route, teamId) => plain(G.shell.breadcrumbItems({ route, guildData: gd, teamId }).map(c => c.label));
+    assert.deepEqual(crumbs({ name: 'section', gid: 'g1', section: 'nights' }, 't1'), ['Ravens', 'Team A', 'Raid nights']);
+    assert.deepEqual(crumbs({ name: 'settings', gid: 'g1', tab: 'people' }, 't1'), ['Ravens', 'Guild settings', 'People and roles']);
+    assert.deepEqual(crumbs({ name: 'new' }, null), ['Create a guild']);
+    assert.deepEqual(crumbs({ name: 'privacy' }, null), ['Privacy & my data']);
+  });
+
+  await check('avatar menu: Privacy & my data, Open the planner and Sign out only (deferred items left out)', () => {
+    const menu = G.shell.accountMenuHtml({ me: meData(), guildData: guildData(ALL_CAN) });
+    assert(menu.includes('href="#/privacy"') && menu.includes('href="/"') && menu.includes('data-action="sign-out"'));
+    for (const gone of ['My profile', 'My characters', 'Linked accounts', 'Switch guild']) assert(!menu.includes(gone), gone);
+    assert.equal((menu.match(/role="menuitem"/g) || []).length, 3);
+    assert(menu.includes('aria-haspopup="menu"') && menu.includes('aria-expanded="false"'));
+  });
+
+  // ── hostile names ──────────────────────────────────────────────
+  await check('hostile names: people table, removed list and dialogs come out escaped', () => {
+    const bad = person('x1', HOSTILE + QUOTES, { avatarUrl: 'https://cdn.discordapp.com/a.png" onerror="x' });
+    const e = entry(bad, [{ role: 'team_lead', teamId: 't9' }], NOW);
+    const teams = [{ id: 't9', name: HOSTILE + QUOTES, size: 25, archived: false }];
+    const table = G.pages.people.tableHtml({ people: [e], teams, sort: G.peopleSort.DEFAULT_SORT, query: '', now: NOW });
+    assertEscaped(table, 'table');
+    assert(table.includes('&lt;img src=x onerror=1&gt;'));
+    assert(table.includes('&quot;'));
+    assertEscaped(G.pages.people.rolesDialogHtml(e, teams, HOSTILE + QUOTES), 'roles dialog');
+    assertEscaped(G.pages.people.removeDialogHtml(e, HOSTILE + QUOTES), 'remove dialog');
+    assertEscaped(G.pages.people.removedHtml({ removed: [{ person: bad, roles: [], removedBy: bad, removedAt: NOW, reason: HOSTILE + QUOTES, actions: { restoreAccess: true } }] }), 'removed');
+    assertEscaped(G.pages.people.peopleHtml({ guildData: guildData(ALL_CAN), data: { signedInCount: 1, people: [e], removed: [] }, sort: G.peopleSort.DEFAULT_SORT, query: HOSTILE + QUOTES, notice: HOSTILE, alert: HOSTILE, now: NOW }), 'people page');
+  });
+
+  await check('hostile names: shell, teams page, team dialog, create page, privacy and messages come out escaped', () => {
+    const gd = guildData(ALL_CAN, {
+      guild: { id: 'g1', name: HOSTILE + QUOTES, realm: HOSTILE + QUOTES, region: 'EU', timeZone: 'UTC', gameVersion: HOSTILE, createdAt: NOW },
+      teams: [{ id: 't1', name: HOSTILE + QUOTES, size: 25, archived: false, players: 1, leads: [person('u3', HOSTILE + QUOTES)] }, { id: 't2', name: HOSTILE, size: 25, archived: true, players: 0, leads: [] }],
+    });
+    const me = meData({ user: Object.assign(person('u1', HOSTILE + QUOTES), { username: HOSTILE, prefs: {} }), guilds: [{ id: 'g1', name: HOSTILE + QUOTES, realm: 'x', region: 'EU', roles: [] }] });
+    const shell = G.shell.render({ me, route: { name: 'settings', gid: 'g1', tab: 'teams' }, guildData: gd, teamId: 't1', collapsed: false }, G.pages.teams.teamsHtml({ guildData: gd, alert: HOSTILE }));
+    assertEscaped(shell, 'shell + teams');
+    assertEscaped(G.pages.teams.teamDialogHtml('rename', gd.teams[0], HOSTILE + QUOTES), 'team dialog');
+    const create = G.pages.create.createHtml({ me: meData({ create: { allowed: true, stale: false, servers: [{ id: '1" onfocus="alert(1)" x="', name: HOSTILE + QUOTES, iconUrl: null, access: HOSTILE }] } }), timeZones: [HOSTILE + QUOTES, 'UTC'], defaultTimeZone: HOSTILE + QUOTES });
+    assertEscaped(create, 'create');
+    assertEscaped(G.pages.signin.noGuildHtml(me), 'no guild');
+    assertEscaped(G.pages.signin.messageHtml(HOSTILE + QUOTES, HOSTILE + QUOTES, {}), 'message');
+    assertEscaped(G.pages.signin.signinHtml({ error: HOSTILE, notice: HOSTILE + QUOTES }), 'signin');
+    assertEscaped(G.pages.privacy.privacyHtml({ me: meData({ deleteImpact: { handOverFirst: [{ id: 'g" onfocus="alert(1)" x="', name: HOSTILE + QUOTES }], guildsDeleted: [{ id: 'g2', name: HOSTILE + QUOTES }] } }), message: HOSTILE + QUOTES }), 'privacy');
+  });
+
+  // ── Delete my data ─────────────────────────────────────────────
+  await check('delete: handOverFirst blocks the button and names the guilds', () => {
+    const out = G.pages.privacy.deleteBoxHtml({ handOverFirst: [{ id: 'g1', name: 'Ravens' }, { id: 'g2', name: 'Owls' }], guildsDeleted: [] }, '');
+    assert(/id="delete-open"[^>]*\bdisabled\b/.test(out), 'open button disabled');
+    assert(out.includes('delete-blocked') && out.includes('<strong>Ravens</strong>') && out.includes('<strong>Owls</strong>') && out.includes('Make Guild Master'));
+    assert(!out.includes('id="delete-confirm"') && !out.includes('id="delete-go"'), 'no confirm path while blocked');
+    assert(out.includes('href="#/g/g1/settings/people"'));
+  });
+
+  await check('delete: with nothing in the way the confirm needs "I understand" before the button enables', () => {
+    const out = G.pages.privacy.deleteBoxHtml({ handOverFirst: [], guildsDeleted: [] }, '');
+    assert(!/id="delete-open"[^>]*\bdisabled\b/.test(out));
+    assert(/id="delete-confirm"[^>]* hidden/.test(out));
+    assert(/id="delete-go"[^>]* disabled/.test(out));
+    assert(out.includes('I understand') && out.includes('id="delete-understand"'));
+    assert(!out.includes('delete-guilds'));
+  });
+
+  await check('delete: guildsDeleted are listed in the warning and in the confirm', () => {
+    const out = G.pages.privacy.deleteBoxHtml({ handOverFirst: [], guildsDeleted: [{ id: 'g1', name: 'Ravens' }, { id: 'g2', name: 'Owls' }] }, '');
+    assert(out.includes('id="delete-guilds"') && out.includes('<strong>Ravens</strong> and <strong>Owls</strong>'));
+    const confirm = out.slice(out.indexOf('id="delete-confirm"'));
+    assert(confirm.includes('It also deletes <strong>Ravens</strong> and <strong>Owls</strong>'));
+    assert(out.includes('those guilds'));
+  });
+
+  await check('delete: the request echoes deleteGuildIds from deleteImpact.guildsDeleted', async () => {
+    const calls = [];
+    const realDel = G.api.del;
+    G.api.del = (p, b) => { calls.push([p, plain(b)]); return new Promise(() => {}); };
+    G.app.state.me = meData({ deleteImpact: { handOverFirst: [], guildsDeleted: [{ id: 'g1', name: 'Ravens' }, { id: 'g2', name: 'Owls' }] } });
+    const btn = { disabled: false };
+    G.handlers.click['delete-go'](btn);
+    assert.deepEqual(calls, [['/auth/me', { deleteGuildIds: ['g1', 'g2'] }]]);
+    assert.equal(btn.disabled, true);
+    G.app.state.me = meData();
+    G.handlers.click['delete-go']({ disabled: false });
+    assert.deepEqual(calls[1], ['/auth/me', { deleteGuildIds: [] }]);
+    G.api.del = realDel;
+    G.app.state.me = null;
+  });
+
+  await check('delete: a server message shows in the delete box; signed-out visitors get the policy without the delete box', () => {
+    const msg = G.pages.privacy.deleteBoxHtml({ handOverFirst: [], guildsDeleted: [] }, 'Hand over Ravens first.');
+    assert(/id="delete-error"[^>]*>Hand over Ravens first\.<\/p>/.test(msg));
+    assert(!/id="delete-error"[^>]* hidden/.test(msg));
+    const out = G.pages.privacy.privacyHtml({ me: null });
+    assert(!out.includes('Delete my data') && out.includes('Questions about your data: [Contact]'));
+  });
+
+  await check('privacy copy carries the spec fixes', () => {
+    const out = G.pages.privacy.privacyHtml({ me: meData() }).replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+    for (const s of [
+      "Members see the guild's roster and raid nights, and the attendance of the teams they have a character on.",
+      'kept for 30 minutes after sign-in',
+      'Two cookies: one keeps you signed in for 30 days, and a second lasts 10 minutes while you sign in.',
+      'lifts any access block',
+      'Roster records stay with the guild, unlinked, once the guild keeps them',
+      'hand over first',
+      'Privacy & my data',
+    ]) assert(out.toLowerCase().includes(s.toLowerCase()), s);
+    assert(out.includes('If nobody else has joined, the guild is deleted too.'));
+  });
+
+  // ── other pages ────────────────────────────────────────────────
+  await check('sign in: a plain link to /auth/login, no button handler needed', () => {
+    const out = G.pages.signin.signinHtml({});
+    assert(/<a class="gs-btn gs-btn-molten[^"]*" href="\/auth\/login">/.test(out));
+    assert(out.includes('Sign in with Discord') && out.includes('href="#/privacy"') && out.includes('Open the planner'));
+    assert(G.pages.signin.signinHtml({ error: 'denied' }).includes('cancelled'));
+    assert(!G.pages.signin.signinHtml({ error: 'nope' }).includes('role="alert"'));
+  });
+
+  await check('no guild: Create a guild shows only for allowlisted accounts', () => {
+    assert(!G.pages.signin.noGuildHtml(meData()).includes('Create a guild'));
+    assert(G.pages.signin.noGuildHtml(meData({ create: { allowed: true, stale: false, servers: [] } })).includes('href="#/new"'));
+    assert(G.pages.signin.noGuildHtml(meData()).includes('Sign in again'));
+  });
+
+  await check('create guild: radios from servers with access badges; stale list shows the sign-in link and disables Create', () => {
+    const servers = [{ id: 's1', name: 'Ravens HQ', iconUrl: null, access: 'owner' }, { id: 's2', name: 'Other', iconUrl: null, access: 'manage_server' }];
+    const ok = G.pages.create.createHtml({ me: meData({ create: { allowed: true, stale: false, servers } }), timeZones: ['Europe/Berlin', 'UTC'], defaultTimeZone: 'Europe/Berlin' });
+    assert(/name="serverId" value="s1" checked/.test(ok) && /name="serverId" value="s2">/.test(ok));
+    assert(ok.includes('>Owner<') && ok.includes('>Manage Server<'));
+    assert(/<option value="Europe\/Berlin" selected>/.test(ok));
+    for (const r of ['US', 'EU', 'KR', 'TW']) assert(ok.includes(`<option value="${r}">`), r);
+    assert(!/data-key="create-guild" disabled/.test(ok));
+    assert(ok.includes('value="Team A"') && ok.includes('25-man') && ok.includes('TBC Anniversary'));
+    const stale = G.pages.create.createHtml({ me: meData({ create: { allowed: true, stale: true, servers } }), timeZones: ['UTC'], defaultTimeZone: '' });
+    assert(stale.includes('Sign in again to refresh your server list') && stale.includes('href="/auth/login"'));
+    assert(/data-key="create-guild" disabled/.test(stale));
+    assert(G.pages.create.createHtml({ me: meData(), timeZones: [] }).includes('You cannot create a guild'));
+    assert(G.pages.create.createHtml({ me: meData({ create: { allowed: true, stale: false, servers: [] } }), timeZones: [] }).includes('No servers to list'));
+  });
+
+  await check('create guild: a browser time zone missing from the list is still offered and selected', () => {
+    const out = G.pages.create.createHtml({ me: meData({ create: { allowed: true, stale: false, servers: [{ id: 's1', name: 'X', access: 'owner' }] } }), timeZones: ['UTC'], defaultTimeZone: 'Mars/Base' });
+    assert(/<option value="Mars\/Base" selected>/.test(out));
+  });
+
+  await check('coming-next pages: Roster, Raid nights, Attendance and Loot use one pattern with their own copy', () => {
+    const seen = new Set();
+    for (const key of ['roster', 'nights', 'attendance', 'loot']) {
+      const out = G.pages.empty.emptyHtml(key);
+      assert(out.includes('gs-empty-card') && out.includes('Nothing to set up yet.'), key);
+      seen.add(out.match(/<h2[^>]*>([^<]*)</)[1]);
+    }
+    assert.equal(seen.size, 4);
+    assert(G.pages.empty.emptyHtml('loot').includes('Loot tracking comes next') && G.pages.empty.emptyHtml('loot').includes('Gargul award history'));
+    assert(G.pages.empty.emptyHtml('roster').includes('Mains and Alts'));
+    assert(G.pages.empty.emptyHtml('nights').includes('Raid-Helper sign-ups') && G.pages.empty.emptyHtml('nights').includes('Warcraft Logs'));
+    assert(G.pages.empty.emptyHtml('attendance').includes('each person') && G.pages.empty.emptyHtml('attendance').includes('each team'));
+    assert(G.pages.empty.emptyHtml('bogus').includes('Roster'));
+  });
+
+  // ── guild.html, guild.css, source hygiene ──────────────────────
+  const jsDir = path.join(ROOT, 'js', 'guild');
+  const jsFiles = fs.readdirSync(jsDir).filter(f => f.endsWith('.js')).sort();
+
+  await check('guild.html: no inline script, no inline style, no on* attributes, noindex, own stylesheet after app.css', () => {
+    const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
+    assert(scripts.length > 0);
+    for (const m of scripts) {
+      assert(/\bsrc\s*=\s*"/i.test(m[1]), 'script without src');
+      assert.equal(m[2].trim(), '', 'inline script body');
+    }
+    assert(!/<style\b/i.test(html), '<style> element');
+    assert(!/\sstyle\s*=/i.test(html), 'style attribute');
+    assert(!/\son[a-z]{3,}\s*=/i.test(html), 'on* attribute');
+    assert(/<meta name="robots" content="noindex">/.test(html));
+    assert(!/property="og:/.test(html), 'no og tags');
+    assert(/<title>Raidsmith guild<\/title>/.test(html));
+    assert(html.indexOf('href="/app.css"') > 0 && html.indexOf('href="/guild.css"') > html.indexOf('href="/app.css"'));
+    assert(html.includes('id="guild-root"') && html.includes('id="guild-dialogs"'));
+  });
+
+  await check('guild.html loads /js/util.js first, then exactly the scripts in js/guild/ (none missing, none extra)', () => {
+    assert.equal(scriptSrcs[0], '/js/util.js');
+    const guildScripts = scriptSrcs.slice(1);
+    assert(guildScripts.every(s => /^\/js\/guild\/[\w-]+\.js$/.test(s)), 'unexpected script path');
+    assert.deepEqual([...guildScripts].sort(), jsFiles.map(f => '/js/guild/' + f));
+    assert.equal(new Set(guildScripts).size, guildScripts.length, 'duplicate script');
+    assert.equal(scriptSrcs[scriptSrcs.length - 1], '/js/guild/app.js', 'app.js starts the page, so it loads last');
+    for (const s of scriptSrcs) assert(fs.existsSync(path.join(ROOT, s.replace(/^\//, ''))), s);
+  });
+
+  await check('guild scripts: no module syntax and every file uses the one Guild namespace', () => {
+    for (const f of jsFiles) {
+      const text = read('js/guild/' + f);
+      assert(!/^\s*(import|export)\s/m.test(text), f + ' uses modules');
+      assert(/window\.Guild = window\.Guild \|\| \{\}/.test(text), f + ' namespace');
+    }
+  });
+
+  await check('guild files: no non-ASCII characters outside comments (no Unicode symbols in strings or markup)', () => {
+    const files = ['guild.html', 'guild.css', ...jsFiles.map(f => 'js/guild/' + f)];
+    for (const f of files) {
+      read(f).split('\n').forEach((line, i) => {
+        const t = line.trim();
+        if (t.startsWith('//') || t.startsWith('/*') || t.startsWith('*')) return;
+        assert(!/[^\x00-\x7f]/.test(line), `${f}:${i + 1} has a non-ASCII character`);
+      });
+    }
+  });
+
+  await check('guild scripts: no inline style or on* attribute built into a template string', () => {
+    for (const f of jsFiles) {
+      read('js/guild/' + f).split('\n').forEach((line, i) => {
+        assert(!/[\s`'"]style\s*=\s*(?:["'`\\]|\$\{)/.test(line), `${f}:${i + 1} inline style`);
+        assert(!/[\s`'"]on[a-z]{3,}\s*=\s*(?:["'`\\]|\$\{)/i.test(line), `${f}:${i + 1} inline handler`);
+        assert(!/setAttribute\(\s*['"`](?:style|on[a-z]+)['"`]/i.test(line), `${f}:${i + 1} setAttribute`);
+      });
+    }
+  });
+
+  await check('guild.css: every var(--x) is defined in app.css, with no fallback tricks and no new custom properties', () => {
+    const defined = new Set([...appCss.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
+    const used = [...css.matchAll(/var\(\s*(--[\w-]+)\s*([,)])/g)];
+    assert(used.length > 50, 'expected the stylesheet to use the tokens');
+    assert.deepEqual([...new Set(used.filter(m => !defined.has(m[1])).map(m => m[1]))], [], 'undefined tokens');
+    assert.deepEqual([...css.matchAll(/(^|[;{\s])(--[\w-]+)\s*:/g)].map(m => m[2]), [], 'guild.css must not define custom properties');
+  });
+
+  await check('guild.css: dark flat design, phone breakpoint at 600px, visible focus ring, 44px touch targets', () => {
+    assert(/@media \(max-width: 600px\)/.test(css));
+    assert(/outline: 2px solid var\(--accent-gold\); outline-offset: 2px/.test(css));
+    const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
+    assert(/\.gs-btn, \.gs-btn-sm \{ min-height: 44px; \}/.test(phone));
+    assert(/\.gs-input, \.gs-input-search \{ height: 44px; \}/.test(phone));
+    const radii = [...css.matchAll(/border-radius:\s*([^;]+);/g)].map(m => m[1].trim());
+    assert(radii.length > 0 && radii.every(r => r === '0' || r === '50%'), 'only avatars are round: ' + radii.join(','));
+    assert(!/prefers-color-scheme\s*:\s*light/.test(css));
+  });
+
+  await check('guild.css has a rule for every gs- class the markup builders use', () => {
+    const markup = ['shell.js', 'ui.js', 'icons.js', 'pages-signin.js', 'pages-create.js', 'pages-settings-teams.js', 'pages-settings-people.js', 'pages-empty.js', 'pages-privacy.js']
+      .map(f => read('js/guild/' + f)).join('\n');
+    const used = new Set();
+    for (const m of markup.matchAll(/class="([^"]*)"/g)) {
+      for (const c of m[1].split(/\s+/)) if (/^gs-[a-z0-9_-]+$/.test(c)) used.add(c);
+    }
+    for (const m of markup.matchAll(/'(gs-[a-z0-9_-]+)(?: [^']*)?'/g)) used.add(m[1]);
+    ['gs-chip-guild_master', 'gs-chip-officer', 'gs-chip-team_lead', 'gs-chip-member'].forEach(c => used.add(c)); // built from the role kind
+    const defined = new Set([...css.matchAll(/\.(gs-[a-z0-9_-]+)/g)].map(m => m[1]));
+    const notClasses = ['gs-team-select-drawer', 'gs-page-alert']; // element ids passed as plain strings
+    const baseStyled = ['gs-chip-officer', 'gs-chip-team_lead']; // look like the base .gs-chip
+    const missing = [...used].filter(c => !defined.has(c) && !notClasses.includes(c) && !baseStyled.includes(c));
+    assert.deepEqual(missing, [], 'classes with no CSS');
+  });
+
+  await check('csp-tests.js scans guild.html alongside the other pages', () => {
+    assert(/\['index\.html', 'faq\.html', 'whats-new\.html', 'guild\.html'\]/.test(read('csp-tests.js')));
+  });
+
+  console.log(`\n${passed} passed, ${failed} failed`);
+  if (failed) process.exit(1);
+})();
