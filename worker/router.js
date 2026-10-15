@@ -1,15 +1,22 @@
 import { PARAM_SOURCE } from './ids.js';
 
-// Routes: { method, path: '/api/guild/:gid/teams', auth, handler }. Params are regex-checked,
-// so a malformed id never reaches a handler (it is a plain 404).
+// Routes: { method, path: '/api/guild/:gid/teams', auth, handler }. A route matches on its shape alone
+// (any single path segment per parameter), so the caller can check the session first; the format of each
+// parameter is then checked with paramsAreValid() and a malformed id is a plain 404.
 function compile(route) {
   const names = [];
   const source = route.path.replace(/:([a-z]+)/g, (_, name) => {
     if (!PARAM_SOURCE[name]) throw new Error(`unknown route parameter :${name}`);
     names.push(name);
-    return `(${PARAM_SOURCE[name]})`;
+    return '([^/]+)';
   });
   return { ...route, names, pattern: new RegExp(`^${source}$`) };
+}
+
+const STRICT = Object.fromEntries(Object.entries(PARAM_SOURCE).map(([name, source]) => [name, new RegExp(`^${source}$`)]));
+
+export function paramsAreValid(params) {
+  return Object.entries(params).every(([name, value]) => STRICT[name].test(value));
 }
 
 export function createRouter(routes) {

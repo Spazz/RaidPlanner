@@ -3,10 +3,10 @@ import {
 } from './http.js';
 import { defaultRandomBytes } from './ids.js';
 import { checkRateLimit } from './ratelimit.js';
-import { createRouter } from './router.js';
+import { createRouter, paramsAreValid } from './router.js';
 import { loadSession } from './session.js';
 import { callback, deleteMe, login, logout, me, updatePrefs } from './routes/auth.js';
-import { createGuild, getGuild } from './routes/guild.js';
+import { claimGuild, createGuild, getGuild } from './routes/guild.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles } from './routes/people.js';
 import { createTeam, patchTeam } from './routes/teams.js';
 
@@ -19,6 +19,7 @@ const ROUTES = [
   { method: 'POST', path: '/auth/logout', auth: true, handler: logout },
   { method: 'POST', path: '/api/guild', auth: true, handler: createGuild },
   { method: 'GET', path: '/api/guild/:gid', auth: true, handler: getGuild },
+  { method: 'POST', path: '/api/guild/:gid/claim', auth: true, handler: claimGuild },
   { method: 'POST', path: '/api/guild/:gid/teams', auth: true, handler: createTeam },
   { method: 'PATCH', path: '/api/guild/:gid/teams/:tid', auth: true, handler: patchTeam },
   { method: 'GET', path: '/api/guild/:gid/people', auth: true, handler: getPeople },
@@ -39,6 +40,8 @@ export function createApp(deps) {
     randomBytes: deps.randomBytes || defaultRandomBytes,
   };
   const log = deps.log || ((message) => console.error(message));
+  // Handlers log through this: it never throws and never gets secrets, codes or tokens.
+  base.log = (message) => { try { log(message); } catch { /* logging must not throw */ } };
 
   async function dispatch(request) {
     const url = new URL(request.url);
@@ -57,6 +60,7 @@ export function createApp(deps) {
     if (match.route.auth) {
       ctx.session = await loadSession(ctx);
       if (!ctx.session) throw new HttpError(401, 'signed_out', 'Sign in to continue.');
+      if (!paramsAreValid(match.params)) throw new HttpError(404, 'not_found', 'Not found.');
       if (request.method !== 'GET') {
         const limit = await checkRateLimit(ctx.db, ctx.session.user.id, ctx.now());
         if (limit.limited) {

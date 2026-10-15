@@ -53,12 +53,17 @@ export function allows(can, action, teamId) {
   return teamId !== undefined && scope.includes(teamId);
 }
 
+// An action is granted by 'guild', or by a non-empty list of team ids. An empty list grants nothing.
+export function isGranted(scope) {
+  return scope === 'guild' || (Array.isArray(scope) && scope.length > 0);
+}
+
 export function requireAction(guildContext, action) {
-  if (!guildContext.can[action]) throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
+  if (!isGranted(guildContext.can[action])) throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
 }
 
 export function requireAnyAction(guildContext, actions) {
-  if (!actions.some((action) => guildContext.can[action])) {
+  if (!actions.some((action) => isGranted(guildContext.can[action]))) {
     throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
   }
 }

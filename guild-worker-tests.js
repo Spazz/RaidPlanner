@@ -292,8 +292,9 @@ check('login: redirects to the canonical origin first, then to Discord with prom
   assert.equal(location.searchParams.get('client_id'), 'client-id');
   assert.equal(location.searchParams.get('redirect_uri'), `${ORIGIN}/auth/callback`);
   const cookie = login.headers.getSetCookie()[0];
-  assert.match(cookie, /^rs_state=[A-Za-z0-9_-]+;/);
-  for (const part of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/auth', 'Max-Age=600']) assert(cookie.includes(part), part);
+  assert.match(cookie, /^__Host-rs_state=[A-Za-z0-9_-]{22}.[A-Za-z0-9_-]{43};/);
+  for (const part of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/', 'Max-Age=600']) assert(cookie.includes(part), part);
+  assert(!cookie.includes('Domain'), '__Host- cookies carry no Domain');
   assert.equal(cookie.split(';')[0].split('=')[1], location.searchParams.get('state'));
 });
 
@@ -302,14 +303,14 @@ check('callback: a missing or mismatched state is rejected and the state cookie 
   w.discord.next = { user: { id: '1', username: 'x' }, servers: [] };
   for (const [jar, query] of [
     [newJar(), '?code=abc&state=abc'],
-    [{ rs_state: 'right' }, '?code=abc&state=wrong'],
-    [{ rs_state: 'right' }, '?code=abc'],
+    [{ '__Host-rs_state': 'right' }, '?code=abc&state=wrong'],
+    [{ '__Host-rs_state': 'right' }, '?code=abc'],
     [{}, '?code=abc'],
   ]) {
     const response = await w.req('GET', `/auth/callback${query}`, { jar });
     assert.equal(response.status, 302);
     assert.equal(response.headers.get('Location'), '/guild#/signin?error=state');
-    assert(response.headers.getSetCookie().some((c) => c.startsWith('rs_state=;') && c.includes('Max-Age=0') && c.includes('Path=/auth')));
+    assert(response.headers.getSetCookie().some((c) => c.startsWith('__Host-rs_state=;') && c.includes('Max-Age=0') && c.includes('Path=/;')));
     assert(!response.headers.getSetCookie().some((c) => c.startsWith('__Host-rs_session')));
   }
   assert.equal(w.discord.calls.length, 0, 'Discord is never called without a valid state');
@@ -323,7 +324,7 @@ check('callback: the state cookie is single use; denied and Discord failures red
   const state = new URL(login.headers.get('Location')).searchParams.get('state');
   const denied = await w.req('GET', `/auth/callback?error=access_denied&state=${state}`, { jar });
   assert.equal(denied.headers.get('Location'), '/guild#/signin?error=denied');
-  assert(!jar.rs_state, 'cookie cleared');
+  assert(!jar['__Host-rs_state'], 'cookie cleared');
   const replay = await w.req('GET', `/auth/callback?code=abc&state=${state}`, { jar });
   assert.equal(replay.headers.get('Location'), '/guild#/signin?error=state');
 
@@ -445,19 +446,20 @@ check('constant-time compare, cookie parsing and serialization', async () => {
 // ---------------------------------------------------------------------------
 // Account: me, prefs, privacy of ids
 
-check('GET /auth/me: shape, the Discord id never leaves the server, avatar url built after a regex check', async () => {
+check('GET /auth/me: shape, the Discord id appears only inside avatar urls, avatar url built after a regex check', async () => {
   const w = await makeWorld();
   const hash = 'a'.repeat(32);
   const { jar } = await signIn(w, { ...PEOPLE.bob, avatar: hash }, []);
   const me = await w.call(jar, 'GET', '/auth/me');
   assert.equal(me.status, 200);
-  assert.deepEqual(Object.keys(me.json).sort(), ['create', 'deleteImpact', 'guilds', 'user']);
+  assert.deepEqual(Object.keys(me.json).sort(), ['create', 'deleteImpact', 'guilds', 'removedFrom', 'user']);
   assert.deepEqual(Object.keys(me.json.user).sort(), ['avatarUrl', 'displayName', 'id', 'initials', 'prefs', 'username']);
   assert.equal(me.json.user.displayName, 'bob', 'falls back to the username');
   assert.equal(me.json.user.avatarUrl, `https://cdn.discordapp.com/avatars/${PEOPLE.bob.id}/${hash}.png?size=64`);
   assert.deepEqual(me.json.user.prefs, { sidebarCollapsed: false, lastGuildId: null });
   assert.deepEqual(me.json.create, { allowed: false });
-  assert.deepEqual(me.json.deleteImpact, { handOverFirst: [], guildsDeleted: [] });
+  assert.deepEqual(me.json.deleteImpact, { handOverFirst: [], guildsDeleted: [], autoPromote: [] });
+  assert.deepEqual(me.json.removedFrom, []);
   assert(ID.user.test(me.json.user.id));
 
   const hostile = await signIn(w, { ...PEOPLE.carol, avatar: '../../evil' }, []);
@@ -545,7 +547,7 @@ check('create guild: a stale manageable list gets reauth_required; a server outs
   assert.equal(stale.status, 403);
   assert.equal(stale.json.error, 'reauth_required');
   const me = (await w.call(jar, 'GET', '/auth/me')).json;
-  assert.deepEqual(me.create, { allowed: true, stale: true, servers: [] });
+  assert.deepEqual(me.create, { allowed: true, stale: true, servers: [], claimable: [] });
   const [row] = await w.rows('SELECT manageable_servers FROM sessions');
   assert.equal(row.manageable_servers, null, 'a stale list is dropped');
   await signIn(w, PEOPLE.alice, [manageable(SERVER_A)], jar);
@@ -904,7 +906,7 @@ check('delete my data: a solo Guild Master deletes the guild too, after the conf
   const guildId = created.json.guild.id;
   await w.call(jar, 'POST', `/api/guild/${guildId}/teams`, { name: 'Second' });
   const me = (await w.call(jar, 'GET', '/auth/me')).json;
-  assert.deepEqual(me.deleteImpact, { handOverFirst: [], guildsDeleted: [{ id: guildId, name: 'Ember' }] });
+  assert.deepEqual(me.deleteImpact, { handOverFirst: [], guildsDeleted: [{ id: guildId, name: 'Ember' }], autoPromote: [] });
 
   for (const echo of [[], ['g_AAAAAAAAAAAAAAAAAAAAAA'], [guildId, 'g_AAAAAAAAAAAAAAAAAAAAAA']]) {
     const mismatch = await w.call(jar, 'DELETE', '/auth/me', { deleteGuildIds: echo });
@@ -1000,17 +1002,25 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   const solo = await w.call(frank, 'POST', '/api/guild', { ...GUILD_BODY, serverId: SERVER_B, name: 'Solo' });
   assert.equal(solo.status, 201);
   assert.equal((await w.call(frank, 'DELETE', '/auth/me', { deleteGuildIds: [solo.json.guild.id] })).status, 200);
+  // A claim (a guild left without a Guild Master) and an automatic promotion (the departed Guild Master deletes their data).
+  const frankAgain = (await signIn(w, PEOPLE.frank, [manageable(SERVER_B)])).jar;
+  const orphan = await w.call(frankAgain, 'POST', '/api/guild', { ...GUILD_BODY, serverId: SERVER_B, name: 'Orphan' });
+  assert.equal(orphan.status, 201);
+  w.db.sqlite.exec(`DELETE FROM role_assignments WHERE role_id = 'guild_master' AND guild_id = '${orphan.json.guild.id}'`);
+  assert.equal((await w.call(frankAgain, 'POST', `/api/guild/${orphan.json.guild.id}/claim`, {})).status, 200);
+  await signIn(w, PEOPLE.bob, [], s.jars.bob);
+  assert.equal((await w.call(s.jars.bob, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
 
   const { AUDIT_ACTIONS } = await load('worker/audit.js');
   const written = await baseline();
   assert.deepEqual([...new Set(written)].sort(), [...AUDIT_ACTIONS].sort());
   assert.deepEqual(AUDIT_ACTIONS.slice().sort(), [
-    'access.remove', 'access.restore', 'account.delete', 'guild.create', 'guild.delete', 'guild_master.transfer',
-    'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore',
+    'access.remove', 'access.restore', 'account.delete', 'guild.claim', 'guild.create', 'guild.delete',
+    'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore',
   ]);
   const rows = await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, created_at FROM audit_log WHERE action IN ('account.delete', 'guild.delete')");
   assert(rows.every((row) => row.guild_id === null));
-  const sample = await w.rows("SELECT before, after FROM audit_log WHERE action IN ('roles.set', 'guild_master.transfer', 'access.remove')");
+  const sample = await w.rows("SELECT before, after FROM audit_log WHERE action IN ('roles.set', 'guild_master.transfer', 'access.remove', 'guild.claim', 'guild_master.auto_promote')");
   for (const row of sample) assert(!/because|alice|bob|@/.test(`${row.before}${row.after}`), 'internal ids and flags only');
 });
 
@@ -1146,6 +1156,434 @@ check('people: response contract (signedInCount, people, roster null, removed) a
   assert.equal(removed.reason, 'no show');
   assert(!JSON.stringify(response.json).match(/"1001"|"1002"/), 'no Discord ids');
 });
+
+// ---------------------------------------------------------------------------
+// Fix round 1: security review decisions
+
+// Runs `interleave()` right before the first db.batch that holds a statement matching `re`
+// (a concurrent request landing between a handler's reads and its write batch).
+function hookBatch(db, re, interleave) {
+  const real = db.batch.bind(db);
+  let done = false;
+  db.batch = async (statements) => {
+    if (!done && statements.some((statement) => re.test(statement.sql))) {
+      done = true;
+      interleave();
+    }
+    return real(statements);
+  };
+}
+
+check('d1 fake: meta.changes counts the statement\'s own rows, not foreign-key cascades, and is 0 after a read', async () => {
+  const s = await scenario();
+  const { db } = s.w;
+  assert(await s.w.count('teams') >= 1 && await s.w.count('role_assignments') >= 1, 'the guild has children');
+  const removal = await db.prepare('DELETE FROM guilds WHERE id = ?').bind(s.guildId).run();
+  assert.equal(removal.meta.changes, 1, 'the cascade through teams, roles and audit rows is not counted');
+  assert.equal(await s.w.count('teams'), 0);
+  const read = await db.prepare('SELECT 1 AS one').all();
+  assert.equal(read.meta.changes, 0, 'changes() is stale after a SELECT; the fake reports 0');
+});
+
+check('callback: a state the Worker did not sign is rejected before any Discord call (matching cookie or not)', async () => {
+  const w = await makeWorld();
+  const other = await makeWorld({ env: { DISCORD_CLIENT_SECRET: 'another-secret' } });
+  const foreign = new URL((await other.req('GET', '/auth/login')).headers.get('Location')).searchParams.get('state');
+  const mine = new URL((await w.req('GET', '/auth/login')).headers.get('Location')).searchParams.get('state');
+  const [nonce] = mine.split('.');
+  const forged = ['aaaa', `${nonce}.${'x'.repeat(43)}`, `${nonce}.`, `${nonce}.${mine.split('.')[1]}.extra`, foreign];
+  for (const state of forged) {
+    const jar = { '__Host-rs_state': state };
+    const response = await w.req('GET', `/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { jar });
+    assert.equal(response.headers.get('Location'), '/guild#/signin?error=state', state);
+  }
+  assert.equal(w.discord.calls.length, 0, 'not one outbound Discord request for any forged state');
+  w.discord.next = { user: { id: '1', username: 'x' }, servers: [] };
+  const ok = await w.req('GET', `/auth/callback?code=abc&state=${encodeURIComponent(mine)}`, { jar: { '__Host-rs_state': mine } });
+  assert.equal(ok.headers.get('Location'), '/guild', 'the genuine state still works');
+});
+
+check('the creator\'s server list never outlives 30 minutes: dropped on the next request and purged at any sign-in', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const alice = (await signIn(w, PEOPLE.alice, [manageable(SERVER_A)])).jar;
+  w.advance(30 * 60 * 1000 + 1);
+  await signIn(w, PEOPLE.bob, []);
+  assert.equal(await w.count('sessions', 'manageable_servers IS NOT NULL'), 0, 'the callback batch purged it');
+
+  await signIn(w, PEOPLE.alice, [manageable(SERVER_A)], alice);
+  assert.equal(await w.count('sessions', 'manageable_servers IS NOT NULL'), 1);
+  w.advance(31 * 60 * 1000);
+  const me = await w.call(alice, 'GET', '/auth/me');
+  assert.equal(me.json.create.stale, true);
+  assert.equal(await w.count('sessions', 'manageable_servers IS NOT NULL'), 0, 'loadSession dropped it');
+});
+
+check('permissions: requireAction passes only for "guild" or a non-empty list of team ids', async () => {
+  const { requireAction, requireAnyAction } = await load('worker/permissions.js');
+  const context = (can) => ({ can });
+  assert.throws(() => requireAction(context({ 'attendance.view': [] }), 'attendance.view'), (error) => error.status === 403 && error.code === 'forbidden');
+  assert.throws(() => requireAction(context({}), 'attendance.view'), (error) => error.status === 403);
+  requireAction(context({ 'attendance.view': 'guild' }), 'attendance.view');
+  requireAction(context({ 'attendance.view': ['t_AAAAAAAAAAAAAAAAAAAAAA'] }), 'attendance.view');
+  assert.throws(() => requireAnyAction(context({ a: [], b: undefined }), ['a', 'b']), (error) => error.status === 403);
+  requireAnyAction(context({ a: [], b: 'guild' }), ['a', 'b']);
+});
+
+check('isUniqueViolation reads error.message and error.cause.message', async () => {
+  const { isUniqueViolation } = await load('worker/http.js');
+  assert(isUniqueViolation(new Error('D1_ERROR: UNIQUE constraint failed: teams.id')));
+  assert(isUniqueViolation(new Error('D1_ERROR: Failed query', { cause: new Error('UNIQUE constraint failed: teams.id: SQLITE_CONSTRAINT') })));
+  assert(!isUniqueViolation(new Error('D1_ERROR: other', { cause: new Error('FOREIGN KEY constraint failed') })));
+  assert(!isUniqueViolation(null) && !isUniqueViolation(undefined) && !isUniqueViolation({}));
+});
+
+check('callback: Discord failures are logged by message, never with the code, token or secret', async () => {
+  const w = await makeWorld();
+  w.discord.failToken = true;
+  const jar = newJar();
+  const state = new URL((await w.req('GET', '/auth/login', { jar })).headers.get('Location')).searchParams.get('state');
+  const failed = await w.req('GET', `/auth/callback?code=SECRETCODE&state=${encodeURIComponent(state)}`, { jar });
+  assert.equal(failed.headers.get('Location'), '/guild#/signin?error=discord');
+  assert.equal(w.logs.length, 1);
+  assert.match(w.logs[0], /token exchange failed/);
+  assert(!/SECRETCODE|client-secret|tok\d/.test(w.logs[0]), w.logs[0]);
+});
+
+check('create guild: the time zone is an IANA name, stored in canonical form', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
+  for (const bad of ['+05:00', 'America/../x', 'Not/AZone', '', 'a'.repeat(65), 'America/New York', '../etc', 5, null]) {
+    const response = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, timeZone: bad });
+    assert.equal(response.status, 400, String(bad));
+    assert.equal(response.json.field, 'timeZone');
+  }
+  const created = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, timeZone: 'america/new_york' });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  assert.equal(created.json.guild.timeZone, 'America/New_York');
+  assert.equal((await w.rows('SELECT time_zone FROM guilds'))[0].time_zone, 'America/New_York');
+});
+
+check('teams: at most 50 active teams per guild (create and restore); archived teams do not count', async () => {
+  const s = await scenario();
+  const now = Date.now();
+  for (let i = 0; i < 49; i++) {
+    s.w.db.sqlite.exec(`INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES ('t_cap${String(i).padStart(18, '0')}', '${s.guildId}', 'Filler ${i}', 25, 0, ${now})`);
+  }
+  assert.equal(await s.w.count('teams', 'guild_id = ? AND archived = 0', s.guildId), 50);
+  const over = await s.w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'One too many' });
+  assert.equal(over.status, 400);
+  assert.equal(over.json.error, 'bad_request');
+  assert.equal(over.json.field, 'name');
+  assert.equal(await s.w.count('teams', 'guild_id = ?', s.guildId), 50);
+  assert.equal(await s.w.count('audit_log', "action = 'team.create'"), 0, 'no audit row for a refused team');
+
+  assert.equal((await s.w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { archived: true })).status, 200);
+  const created = await s.w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'Fits now' });
+  assert.equal(created.status, 201);
+  const restore = await s.w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { archived: false });
+  assert.equal(restore.status, 400, 'restoring would make 51');
+  assert.equal(restore.json.field, 'name');
+});
+
+check('B9: the session is checked before route parameters, so a malformed id signed out is 401', async () => {
+  const s = await scenario();
+  const { w } = s;
+  for (const [method, route] of [
+    ['GET', '/api/guild/not-an-id'], ['GET', '/api/guild/not-an-id/people'], ['POST', '/api/guild/x/teams'],
+    ['PATCH', '/api/guild/x/teams/y'], ['PUT', '/api/guild/x/people/y/roles'], ['POST', '/api/guild/x/claim'],
+  ]) {
+    const response = await w.call(newJar(), method, route, method === 'GET' ? undefined : {});
+    assert.equal(response.status, 401, `${method} ${route}`);
+    assert.equal(response.json.error, 'signed_out');
+  }
+  const signedIn = await w.call(s.alice, 'GET', '/api/guild/not-an-id');
+  assert.equal(signedIn.status, 404, 'signed in, the malformed id is a plain 404');
+  assert.equal((await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/zzz`, { name: 'x' })).status, 404);
+  assert.equal((await w.call(newJar(), 'GET', '/api/nothing/here')).status, 404, 'an unknown route is still 404');
+});
+
+check('set roles: roles can be removed from anyone who holds one (left the server, blocked); grants still need a current member', async () => {
+  const s = await scenario();
+  await s.setRoles('carol', { officer: true, teamLeadTeamIds: [s.teamId] });
+  await signIn(s.w, PEOPLE.carol, [], s.jars.carol); // carol left the Discord server
+  const grant = await s.setRoles('carol', { officer: true, teamLeadTeamIds: [] });
+  assert.equal(grant.status, 200, 'dropping the team lead role is a demotion');
+  assert.equal(await s.w.count('role_assignments', "user_id = ? AND role_id = 'team_lead'", s.ids.carol), 0);
+  const regrant = await s.setRoles('carol', { officer: true, teamLeadTeamIds: [s.teamId] });
+  assert.equal(regrant.status, 404, 'a grant to someone who left is refused');
+  const demote = await s.setRoles('carol', { officer: false, teamLeadTeamIds: [] });
+  assert.equal(demote.status, 200, JSON.stringify(demote.json));
+  assert.equal(await s.w.count('role_assignments', 'user_id = ?', s.ids.carol), 0);
+  assert.equal(await s.w.count('audit_log', "action = 'roles.set'"), 3);
+
+  await s.setRoles('dave', { officer: true, teamLeadTeamIds: [s.teamId] });
+  await s.w.call(s.alice, 'POST', `${s.peoplePath('dave')}/block`, {});
+  assert.equal((await s.setRoles('dave', { officer: true, teamLeadTeamIds: [s.teamId, s.teamId] })).status, 200, 'no change is a no-op');
+  assert.equal((await s.setRoles('dave', { officer: false, teamLeadTeamIds: [s.teamId] })).status, 200, 'officer removed while blocked');
+  assert.equal((await s.setRoles('dave', { officer: false, teamLeadTeamIds: [] })).status, 200);
+  assert.equal(await s.w.count('role_assignments', 'user_id = ?', s.ids.dave), 0);
+  assert.equal((await s.setRoles('erin', { officer: false, teamLeadTeamIds: [] })).status, 200, 'nothing to change for a current member');
+  await signIn(s.w, PEOPLE.erin, [], s.jars.erin);
+  assert.equal((await s.setRoles('erin', { officer: false, teamLeadTeamIds: [] })).status, 404, 'no role, not a member: not found');
+});
+
+check('races: a concurrent duplicate grant answers with the fresh people list, not a 500', async () => {
+  const s = await scenario();
+  hookBatch(s.w.db, /INSERT INTO audit_log/, () => {
+    s.w.db.sqlite.exec(`INSERT INTO role_assignments VALUES ('ra_race','${s.guildId}','${s.ids.carol}','officer',NULL,NULL,1)`);
+  });
+  const response = await s.setRoles('carol', { officer: true, teamLeadTeamIds: [] });
+  assert.equal(response.status, 200, JSON.stringify(response.json));
+  assert.deepEqual(response.json.people.find((entry) => entry.person.username === 'carol').roles, [{ role: 'officer' }]);
+  assert.equal(await s.w.count('role_assignments', "user_id = ? AND role_id = 'officer'", s.ids.carol), 1);
+});
+
+check('races: set roles by someone who stopped being Guild Master mid-request writes nothing (409 conflict)', async () => {
+  const s = await scenario();
+  hookBatch(s.w.db, /INSERT INTO audit_log/, () => {
+    s.w.db.sqlite.exec(`UPDATE role_assignments SET user_id = '${s.ids.bob}' WHERE role_id = 'guild_master' AND guild_id = '${s.guildId}';
+                        INSERT INTO role_assignments VALUES ('ra_z','${s.guildId}','${s.ids.alice}','officer',NULL,NULL,1)`);
+  });
+  const response = await s.setRoles('carol', { officer: true, teamLeadTeamIds: [] });
+  assert.equal(response.status, 409);
+  assert.equal(response.json.error, 'conflict');
+  assert.equal(await s.w.count('role_assignments', 'user_id = ?', s.ids.carol), 0);
+  assert.equal(await s.w.count('audit_log', "action = 'roles.set'"), 0);
+});
+
+check('races: an Officer cannot remove access from someone who became an Officer mid-request, or after losing their own role', async () => {
+  const s = await scenario();
+  await s.setRoles('bob', { officer: true, teamLeadTeamIds: [] });
+  hookBatch(s.w.db, /INSERT INTO guild_blocks/, () => {
+    s.w.db.sqlite.exec(`INSERT INTO role_assignments VALUES ('ra_y','${s.guildId}','${s.ids.carol}','officer',NULL,NULL,1)`);
+  });
+  const raced = await s.w.call(s.jars.bob, 'POST', `${s.peoplePath('carol')}/block`, { reason: '' });
+  assert.equal(raced.status, 409);
+  assert.equal(raced.json.error, 'conflict');
+  assert.equal(await s.w.count('guild_blocks'), 0);
+  assert.equal(await s.w.count('audit_log', "action = 'access.remove'"), 0);
+
+  hookBatch(s.w.db, /INSERT INTO guild_blocks/, () => {
+    s.w.db.sqlite.exec(`DELETE FROM role_assignments WHERE user_id = '${s.ids.bob}'`);
+  });
+  const demoted = await s.w.call(s.jars.bob, 'POST', `${s.peoplePath('dave')}/block`, {});
+  assert.equal(demoted.status, 409, 'bob lost the Officer role between the check and the write');
+  assert.equal(await s.w.count('guild_blocks'), 0);
+
+  // Restore access carries the same guards.
+  await s.setRoles('bob', { officer: true, teamLeadTeamIds: [] });
+  await s.w.call(s.alice, 'POST', `${s.peoplePath('erin')}/block`, {});
+  hookBatch(s.w.db, /INSERT INTO audit_log/, () => {
+    s.w.db.sqlite.exec(`DELETE FROM role_assignments WHERE user_id = '${s.ids.bob}'`);
+  });
+  const restore = await s.w.call(s.jars.bob, 'DELETE', `${s.peoplePath('erin')}/block`, {});
+  assert.equal(restore.status, 409);
+  assert.equal(await s.w.count('guild_blocks'), 1, 'the block is still there');
+  assert.equal(await s.w.count('audit_log', "action = 'access.restore'"), 0);
+});
+
+check('races: Delete my data does not delete a guild that someone joined after the impact check', async () => {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
+  const alice = (await signIn(w, PEOPLE.alice, [manageable(SERVER_A)])).jar;
+  const created = await w.call(alice, 'POST', '/api/guild', GUILD_BODY);
+  const ids = (await w.call(alice, 'GET', '/auth/me')).json.deleteImpact.guildsDeleted.map((entry) => entry.id);
+  assert.deepEqual(ids, [created.json.guild.id]);
+  hookBatch(w.db, /DELETE FROM guilds/, () => {
+    w.db.sqlite.exec(`INSERT INTO users VALUES ('u_joiner','1002','bob',NULL,NULL,'{}',1,1);
+                      INSERT INTO user_servers VALUES ('u_joiner','${SERVER_A}',1)`);
+  });
+  const del = await w.call(alice, 'DELETE', '/auth/me', { deleteGuildIds: ids });
+  assert.equal(del.status, 200);
+  assert.equal(await w.count('guilds'), 1, 'the guild survives: a member joined');
+  assert.equal(await w.count('audit_log', "action = 'guild.delete'"), 0, 'and no guild.delete row was written');
+  assert.equal(await w.count('user_servers', 'user_id = ?', 'u_joiner'), 1, 'the joiner keeps their membership');
+  assert.equal(await w.count('audit_log', "action = 'account.delete'"), 1);
+});
+
+check('delete my data: a deleted guild takes the server memberships (blocked people too) with it', async () => {
+  const s = await scenario();
+  for (const name of ['bob', 'carol', 'dave', 'erin']) await s.w.call(s.alice, 'POST', `${s.peoplePath(name)}/block`, { reason: 'x' });
+  const impact = (await s.w.call(s.alice, 'GET', '/auth/me')).json.deleteImpact;
+  assert.deepEqual(impact.guildsDeleted, [{ id: s.guildId, name: 'Ember' }]);
+  const del = await s.w.call(s.alice, 'DELETE', '/auth/me', { deleteGuildIds: [s.guildId] });
+  assert.equal(del.status, 200);
+  assert.equal(await s.w.count('guilds'), 0);
+  assert.equal(await s.w.count('user_servers'), 0, 'no stale membership rows for a server without a guild');
+  const frank = (await signIn(s.w, PEOPLE.frank, [manageable(SERVER_A)])).jar;
+  const again = await s.w.call(frank, 'POST', '/api/guild', GUILD_BODY);
+  assert.equal(again.status, 201);
+  const bob = await s.w.call(s.jars.bob, 'GET', `/api/guild/${again.json.guild.id}`);
+  assert.equal(bob.status, 403, 'bob is not a member of the new guild until he signs in again');
+  assert.equal(bob.json.error, 'not_member');
+});
+
+// A guild whose Guild Master left the Discord server, with Officers in a known order:
+// erin (earliest, left the server), dave (blocked), carol (the expected successor), bob.
+async function departedMasterScenario() {
+  const s = await scenario();
+  const grant = async (name) => { s.w.advance(1000); assert.equal((await s.setRoles(name, { officer: true, teamLeadTeamIds: [] })).status, 200); };
+  await grant('erin');
+  await grant('dave');
+  await grant('carol');
+  await grant('bob');
+  assert.equal((await s.w.call(s.alice, 'POST', `${s.peoplePath('dave')}/block`, {})).status, 200);
+  await signIn(s.w, PEOPLE.erin, [], s.jars.erin);
+  await signIn(s.w, PEOPLE.alice, [], s.alice); // the Guild Master left the Discord server
+  return s;
+}
+
+check('delete my data: a departed Guild Master is not blocked; the earliest current, unblocked Officer is promoted, as predicted', async () => {
+  const s = await departedMasterScenario();
+  const impact = (await s.w.call(s.alice, 'GET', '/auth/me')).json.deleteImpact;
+  assert.deepEqual(impact.handOverFirst, [], 'a departed Guild Master need not hand over');
+  assert.deepEqual(impact.guildsDeleted, []);
+  assert.equal(impact.autoPromote.length, 1);
+  assert.deepEqual(Object.keys(impact.autoPromote[0]).sort(), ['id', 'name', 'to']);
+  assert.equal(impact.autoPromote[0].id, s.guildId);
+  assert.equal(impact.autoPromote[0].to.id, s.ids.carol, 'erin left, dave is blocked: carol is next');
+  assert.deepEqual(Object.keys(impact.autoPromote[0].to).sort(), ['avatarUrl', 'displayName', 'id', 'initials', 'username']);
+
+  const del = await s.w.call(s.alice, 'DELETE', '/auth/me', { deleteGuildIds: [] });
+  assert.equal(del.status, 200, JSON.stringify(del.json));
+  const masters = await s.w.rows("SELECT user_id, assigned_by FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master'", s.guildId);
+  assert.deepEqual(masters.map((row) => row.user_id), [impact.autoPromote[0].to.id], 'the batch did what the impact predicted');
+  assert.equal(masters[0].assigned_by, null);
+  assert.equal(await s.w.count('role_assignments', "user_id = ? AND role_id = 'officer'", s.ids.carol), 0, 'the new Guild Master drops the Officer row');
+  assert.equal(await s.w.count('role_assignments', "role_id = 'officer'"), 3, 'the others keep theirs');
+  assert.equal(await s.w.count('role_assignments', 'user_id = ?', s.ids.alice), 0);
+  const [audit] = await s.w.rows("SELECT guild_id, actor_user_id, entity_id, before, after FROM audit_log WHERE action = 'guild_master.auto_promote'");
+  assert.equal(audit.guild_id, s.guildId);
+  assert.equal(audit.entity_id, s.guildId);
+  assert.deepEqual(JSON.parse(audit.after), { guildMasterUserId: s.ids.carol });
+  assert(!/alice|carol|bob/.test(`${audit.before}${audit.after}`.replace(/u_[A-Za-z0-9_-]{22}/g, '')), 'ids only');
+  const carol = await s.w.call(s.jars.carol, 'GET', `${s.guildPath}/people`);
+  assert.equal(carol.status, 200);
+  assert.deepEqual(carol.json.people.find((entry) => entry.isMe).roles, [{ role: 'guild_master' }]);
+});
+
+check('delete my data: with no eligible Officer the guild is left without a Guild Master and can be claimed', async () => {
+  const s = await scenario();
+  await signIn(s.w, PEOPLE.alice, [], s.alice);
+  const impact = (await s.w.call(s.alice, 'GET', '/auth/me')).json.deleteImpact;
+  assert.deepEqual(impact.autoPromote, [{ id: s.guildId, name: 'Ember', to: null }]);
+  assert.equal((await s.w.call(s.alice, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
+  assert.equal(await s.w.count('role_assignments', "role_id = 'guild_master'"), 0);
+  const [audit] = await s.w.rows("SELECT after FROM audit_log WHERE action = 'guild_master.auto_promote'");
+  assert.deepEqual(JSON.parse(audit.after), { guildMasterUserId: null });
+
+  const frank = (await signIn(s.w, PEOPLE.frank, [manageable(SERVER_A)])).jar;
+  const me = (await s.w.call(frank, 'GET', '/auth/me')).json;
+  assert.deepEqual(me.create.claimable, [{ guildId: s.guildId, guildName: 'Ember', serverId: SERVER_A, serverName: 'Server 01' }]);
+  assert.deepEqual(me.create.servers, [], 'the server still has a guild, so it is not offered for creation');
+});
+
+check('deleteImpact.autoPromote predicts exactly what the batch does (same SQL criteria), across several guild shapes', async () => {
+  for (const shape of ['earliest-current', 'only-departed', 'blocked-first', 'tie-on-time']) {
+    const s = await scenario();
+    const officer = async (name, advance = 1000) => {
+      s.w.advance(advance);
+      assert.equal((await s.setRoles(name, { officer: true, teamLeadTeamIds: [] })).status, 200);
+    };
+    if (shape === 'earliest-current') { await officer('bob'); await officer('carol'); }
+    if (shape === 'only-departed') { await officer('bob'); await signIn(s.w, PEOPLE.bob, [], s.jars.bob); }
+    if (shape === 'blocked-first') {
+      await officer('bob'); await officer('carol');
+      await s.w.call(s.alice, 'POST', `${s.peoplePath('bob')}/block`, {});
+    }
+    if (shape === 'tie-on-time') { await officer('bob', 0); await officer('carol', 0); await officer('dave', 0); }
+    await signIn(s.w, PEOPLE.alice, [], s.alice);
+    const impact = (await s.w.call(s.alice, 'GET', '/auth/me')).json.deleteImpact;
+    assert.equal(impact.autoPromote.length, 1, shape);
+    const predicted = impact.autoPromote[0].to ? impact.autoPromote[0].to.id : null;
+    assert.equal((await s.w.call(s.alice, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200, shape);
+    const actual = (await s.w.rows("SELECT user_id FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master'", s.guildId)).map((row) => row.user_id);
+    assert.deepEqual(actual, predicted ? [predicted] : [], shape);
+    if (shape === 'earliest-current') assert.equal(predicted, s.ids.bob);
+    if (shape === 'blocked-first') assert.equal(predicted, s.ids.carol);
+    if (shape === 'only-departed') assert.equal(predicted, null);
+  }
+});
+
+check('GET /auth/me: removedFrom lists the guilds that blocked the caller, and they are not in guilds', async () => {
+  const s = await scenario();
+  await s.w.call(s.alice, 'POST', `${s.peoplePath('dave')}/block`, { reason: 'x' });
+  const me = (await s.w.call(s.jars.dave, 'GET', '/auth/me')).json;
+  assert.deepEqual(me.removedFrom, [{ id: s.guildId, name: 'Ember' }]);
+  assert.deepEqual(me.guilds, []);
+  assert.deepEqual((await s.w.call(s.jars.bob, 'GET', '/auth/me')).json.removedFrom, []);
+});
+
+check('claim: an allowlisted manager takes a guild that has no Guild Master (no membership row needed); every other case is refused', async () => {
+  const s = await scenario();
+  const { w } = s;
+  const claim = (jar, guildId = s.guildId) => w.call(jar, 'POST', `/api/guild/${guildId}/claim`, {});
+  const frank = (await signIn(w, PEOPLE.frank, [manageable(SERVER_A)])).jar;
+  assert.deepEqual((await w.call(s.alice, 'GET', '/auth/me')).json.create.claimable, [], 'a guild with a Guild Master is not claimable');
+  const taken = await claim(frank);
+  assert.equal(taken.status, 409);
+  assert.equal(taken.json.error, 'conflict');
+
+  w.db.sqlite.exec(`DELETE FROM role_assignments WHERE role_id = 'guild_master'`);
+  assert.equal((await claim(s.jars.bob)).json.error, 'not_allowed_to_create');
+  const unrelated = (await signIn(w, PEOPLE.frank, [manageable(SERVER_B)], newJar())).jar;
+  const outside = await claim(unrelated);
+  assert.equal(outside.status, 404, 'the guild\'s server is not in the caller\'s manageable list');
+  assert.equal(outside.json.error, 'not_found');
+  assert.equal((await claim(frank, 'g_AAAAAAAAAAAAAAAAAAAAAA')).status, 404);
+  assert.equal(await w.count('role_assignments', "role_id = 'guild_master'"), 0);
+
+  // A blocked person cannot claim.
+  w.db.sqlite.exec(`INSERT INTO guild_blocks VALUES ('${s.guildId}', '${(await w.rows('SELECT id FROM users WHERE discord_id = ?', PEOPLE.frank.id))[0].id}', NULL, NULL, 1)`);
+  const blocked = await claim(frank);
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.json.error, 'access_removed');
+  w.db.sqlite.exec('DELETE FROM guild_blocks');
+
+  // A stale list needs a fresh sign-in.
+  w.advance(31 * 60 * 1000);
+  const stale = await claim(frank);
+  assert.equal(stale.status, 403);
+  assert.equal(stale.json.error, 'reauth_required');
+  const fresh = (await signIn(w, PEOPLE.frank, [manageable(SERVER_A)], frank)).jar;
+
+  // No existing user_servers row: the claim writes it.
+  w.db.sqlite.exec('DELETE FROM user_servers WHERE user_id = (SELECT id FROM users WHERE discord_id = \'1006\')');
+  assert.equal(await w.count('user_servers', 'user_id = (SELECT id FROM users WHERE discord_id = ?)', PEOPLE.frank.id), 0);
+  assert.equal((await w.call(fresh, 'GET', '/auth/me')).json.create.claimable.length, 1);
+  const done = await claim(fresh);
+  assert.equal(done.status, 200, JSON.stringify(done.json));
+  assert.deepEqual(Object.keys(done.json).sort(), ['guild', 'me', 'teams']);
+  assert.deepEqual(done.json.me.roles, [{ role: 'guild_master' }]);
+  assert.equal(done.json.me.can['guild.roles'], 'guild');
+  assert.equal(await w.count('user_servers', 'user_id = (SELECT id FROM users WHERE discord_id = ?) AND server_id = ?', PEOPLE.frank.id, SERVER_A), 1);
+  const [audit] = await w.rows("SELECT guild_id, entity_id, after FROM audit_log WHERE action = 'guild.claim'");
+  assert.equal(audit.guild_id, s.guildId);
+  const frankId = (await w.rows('SELECT id FROM users WHERE discord_id = ?', PEOPLE.frank.id))[0].id;
+  assert.deepEqual(JSON.parse(audit.after), { guildMasterUserId: frankId });
+  assert.deepEqual((await w.rows("SELECT user_id FROM role_assignments WHERE role_id = 'guild_master'")).map((row) => row.user_id), [frankId]);
+  assert.equal(await w.count('role_assignments', "guild_id = ? AND role_id = 'guild_master'", s.guildId), 1);
+
+  const second = await claim(fresh);
+  assert.equal(second.status, 409, 'a second claim finds a Guild Master');
+  assert.equal(await w.count('audit_log', "action = 'guild.claim'"), 1);
+});
+
+check('claim: a Guild Master who appears between the check and the write wins (guarded INSERT, 409, no side effects)', async () => {
+  const s = await scenario();
+  s.w.db.sqlite.exec(`DELETE FROM role_assignments WHERE role_id = 'guild_master'`);
+  const frank = (await signIn(s.w, PEOPLE.frank, [manageable(SERVER_A)])).jar;
+  s.w.db.sqlite.exec(`DELETE FROM user_servers WHERE user_id = (SELECT id FROM users WHERE discord_id = '1006')`);
+  hookBatch(s.w.db, /INSERT INTO role_assignments/, () => {
+    s.w.db.sqlite.exec(`INSERT INTO role_assignments VALUES ('ra_late','${s.guildId}','${s.ids.bob}','guild_master',NULL,NULL,1)`);
+  });
+  const lost = await s.w.call(frank, 'POST', `${s.guildPath}/claim`, {});
+  assert.equal(lost.status, 409);
+  assert.equal(lost.json.error, 'conflict');
+  assert.deepEqual((await s.w.rows("SELECT user_id FROM role_assignments WHERE role_id = 'guild_master'")).map((row) => row.user_id), [s.ids.bob]);
+  assert.equal(await s.w.count('user_servers', 'user_id = (SELECT id FROM users WHERE discord_id = ?)', PEOPLE.frank.id), 0, 'no membership row for the loser');
+  assert.equal(await s.w.count('audit_log', "action = 'guild.claim'"), 0);
+});
+
 
 // ---------------------------------------------------------------------------
 

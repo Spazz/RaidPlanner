@@ -7,7 +7,7 @@ function initialsOf(name) {
   return (Array.from(words[0])[0] + Array.from(words[1])[0]).toUpperCase();
 }
 
-// { id, username, displayName, avatarUrl | null, initials }. The Discord ID never leaves the server.
+// { id, username, displayName, avatarUrl | null, initials }. The Discord ID appears only inside avatarUrl (members of one Discord server already see each other's IDs).
 export function toPerson(row) {
   const displayName = row.global_name || row.username;
   return {

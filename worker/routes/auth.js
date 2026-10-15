@@ -6,10 +6,10 @@ import {
 } from '../discord.js';
 import { base64url, isId, newId } from '../ids.js';
 import { shapeRoles } from '../permissions.js';
-import { parsePrefs, personFromSession } from '../person.js';
+import { parsePrefs, personFromSession, toPerson } from '../person.js';
 import {
   MANAGEABLE_TTL_MS, SESSION_TTL_MS, STATE_COOKIE, clearSessionCookie, clearStateCookie, hashToken,
-  newSessionToken, presentedToken, readManageable, sessionCookie, stateCookie,
+  newSessionToken, presentedToken, readManageable, sessionCookie, signState, stateCookie, verifyState,
 } from '../session.js';
 
 const ERROR_REDIRECT = (reason) => `/guild#/signin?error=${reason}`;
@@ -22,7 +22,7 @@ export async function login(ctx) {
   const canonical = canonicalOrigin(env);
   if (!isConfigured(env)) return redirectResponse(ERROR_REDIRECT('discord'));
   if (new URL(ctx.request.url).origin !== canonical) return redirectResponse(`${canonical}/auth/login`);
-  const state = base64url(ctx.randomBytes(16));
+  const state = await signState(env, base64url(ctx.randomBytes(16)));
   return redirectResponse(authorizeUrl(env, state), [stateCookie(state)]);
 }
 
@@ -35,10 +35,12 @@ export async function callback(ctx) {
 
   const state = url.searchParams.get('state');
   if (!cookieState || !state || !safeEqual(state, cookieState)) return fail('state');
+  if (!isConfigured(env)) return fail('discord');
+  // A state this Worker did not sign never reaches an outbound Discord call.
+  if (!await verifyState(env, state)) return fail('state');
   if (url.searchParams.get('error')) return fail('denied');
   const code = url.searchParams.get('code');
   if (!code || code.length > 512) return fail('state');
-  if (!isConfigured(env)) return fail('discord');
 
   let discordUser;
   let servers;
@@ -48,7 +50,8 @@ export async function callback(ctx) {
     servers = await fetchDiscordGuilds(env, ctx.fetch, accessToken);
     // The token is used only here; revoking it is best effort.
     await revokeToken(env, ctx.fetch, accessToken);
-  } catch {
+  } catch (error) {
+    ctx.log(`sign-in: Discord step failed: ${error && error.message}`);
     return fail('discord');
   }
 
@@ -78,6 +81,10 @@ export async function callback(ctx) {
           WHERE g.discord_server_id IN (SELECT value FROM json_each(?))`,
       ).bind(discordUser.id, now, JSON.stringify(servers.map((server) => server.id))),
       db.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now),
+      // The creator's server list lives 30 minutes; no session keeps one longer.
+      db.prepare(
+        'UPDATE sessions SET manageable_servers = NULL, manageable_until = NULL WHERE manageable_until IS NOT NULL AND manageable_until <= ?',
+      ).bind(now),
       ...(earlier ? [db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await hashToken(earlier))] : []),
       db.prepare(
         `INSERT INTO sessions (token_hash, user_id, created_at, expires_at, manageable_servers, manageable_until)
@@ -87,7 +94,8 @@ export async function callback(ctx) {
         manageable ? JSON.stringify(manageable) : null, manageable ? now + MANAGEABLE_TTL_MS : null,
       ),
     ]);
-  } catch {
+  } catch (error) {
+    ctx.log(`sign-in: saving the session failed: ${error && error.message}`);
     return fail('discord');
   }
   return redirectResponse('/guild', [clear, sessionCookie(token)]);
@@ -96,27 +104,66 @@ export async function callback(ctx) {
 // ---------------------------------------------------------------------------
 // Account
 
-// Guilds the person leads, split by whether anyone else has joined.
+// SQL fragment: the user (a column expression) is a current, unblocked member of the guild.
+// One definition feeds both the delete-impact query and the statements the delete batch runs,
+// so what /auth/me predicts is what DELETE /auth/me does.
+function currentMemberSql(userExpr, guildIdExpr, serverIdExpr) {
+  return `(EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = ${userExpr} AND us.server_id = ${serverIdExpr})
+      AND NOT EXISTS (SELECT 1 FROM guild_blocks bl WHERE bl.guild_id = ${guildIdExpr} AND bl.user_id = ${userExpr}))`;
+}
+
+// The Officer who would become Guild Master: earliest assigned_at among current, unblocked members.
+// `?` is the departing user (excluded).
+const SUCCESSOR_SQL = `SELECT so.user_id FROM role_assignments so
+      WHERE so.guild_id = g.id AND so.role_id = 'officer' AND so.user_id != ?
+        AND ${currentMemberSql('so.user_id', 'g.id', 'g.discord_server_id')}
+      ORDER BY so.assigned_at, so.id LIMIT 1`;
+
+const OTHERS_SQL = `EXISTS (SELECT 1 FROM user_servers us
+         WHERE us.server_id = g.discord_server_id AND us.user_id != ?
+           AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = us.user_id))`;
+
+// Guilds the person leads, split three ways:
+//  - handOverFirst: others have joined and the person is still a current member (they must hand over)
+//  - autoPromote:   others have joined but the person has left the server or is blocked; the earliest
+//                   Officer who is a current member takes over (to = null: no one can, the guild has no GM)
+//  - guildsDeleted: nobody else has joined
 async function deleteImpact(db, userId) {
   const result = await db.prepare(
-    `SELECT g.id, g.name,
-            EXISTS (SELECT 1 FROM user_servers us
-                     WHERE us.server_id = g.discord_server_id AND us.user_id != ?
-                       AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = us.user_id)) AS has_others
+    `SELECT g.id, g.name, g.discord_server_id,
+            ${OTHERS_SQL} AS has_others,
+            ${currentMemberSql('?', 'g.id', 'g.discord_server_id')} AS self_member,
+            (${SUCCESSOR_SQL}) AS successor_id
        FROM guilds g
        JOIN role_assignments ra ON ra.guild_id = g.id AND ra.role_id = 'guild_master' AND ra.user_id = ?
       ORDER BY g.name, g.id`,
-  ).bind(userId, userId).all();
+  ).bind(userId, userId, userId, userId, userId).all();
+  const rows = result.results;
+  const successorIds = [...new Set(rows.map((row) => row.successor_id).filter(Boolean))];
+  const people = new Map();
+  if (successorIds.length) {
+    const found = await db.prepare(
+      'SELECT id, discord_id, username, global_name, avatar FROM users WHERE id IN (SELECT value FROM json_each(?))',
+    ).bind(JSON.stringify(successorIds)).all();
+    for (const row of found.results) people.set(row.id, row);
+  }
+  const brief = (row) => ({ id: row.id, name: row.name });
   return {
-    handOverFirst: result.results.filter((row) => row.has_others === 1).map((row) => ({ id: row.id, name: row.name })),
-    guildsDeleted: result.results.filter((row) => row.has_others !== 1).map((row) => ({ id: row.id, name: row.name })),
+    handOverFirst: rows.filter((row) => row.has_others === 1 && row.self_member === 1).map(brief),
+    guildsDeleted: rows.filter((row) => row.has_others !== 1).map(brief),
+    autoPromote: rows.filter((row) => row.has_others === 1 && row.self_member !== 1).map((row) => ({
+      ...brief(row),
+      to: row.successor_id && people.has(row.successor_id) ? toPerson(people.get(row.successor_id)) : null,
+    })),
+    // Server ids of the deleted guilds, for the batch (never sent to the browser).
+    deletedServerIds: rows.filter((row) => row.has_others !== 1).map((row) => row.discord_server_id),
   };
 }
 
 export async function me(ctx) {
   const { db, session, env } = ctx;
   const userId = session.user.id;
-  const [guildResult, assignmentResult] = await db.batch([
+  const [guildResult, assignmentResult, removedResult] = await db.batch([
     db.prepare(
       `SELECT g.id, g.name, g.realm, g.region FROM guilds g
          JOIN user_servers us ON us.server_id = g.discord_server_id AND us.user_id = ?
@@ -124,6 +171,10 @@ export async function me(ctx) {
         ORDER BY g.name, g.id`,
     ).bind(userId, userId),
     db.prepare('SELECT guild_id, role_id, team_id FROM role_assignments WHERE user_id = ?').bind(userId),
+    db.prepare(
+      `SELECT g.id, g.name FROM guild_blocks b JOIN guilds g ON g.id = b.guild_id
+        WHERE b.user_id = ? ORDER BY g.name, g.id`,
+    ).bind(userId),
   ]);
   const guilds = guildResult.results.map((guild) => ({
     id: guild.id,
@@ -137,30 +188,34 @@ export async function me(ctx) {
   if (isAllowlisted(env, session.user.discordId)) {
     const manageable = readManageable(session, ctx.now());
     let servers = [];
+    let claimable = [];
     if (manageable.servers.length) {
+      // A stale list was already dropped by loadSession; readManageable returns no servers for it.
       const taken = await db.prepare(
-        'SELECT discord_server_id FROM guilds WHERE discord_server_id IN (SELECT value FROM json_each(?))',
+        `SELECT g.id, g.name, g.discord_server_id,
+                EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.guild_id = g.id AND ra.role_id = 'guild_master') AS has_master
+           FROM guilds g WHERE g.discord_server_id IN (SELECT value FROM json_each(?))`,
       ).bind(JSON.stringify(manageable.servers.map((server) => server.id))).all();
       const takenIds = new Set(taken.results.map((row) => row.discord_server_id));
       servers = manageable.servers
         .filter((server) => !takenIds.has(server.id))
         .map((server) => ({ id: server.id, name: server.name, iconUrl: serverIconUrl(server.id, server.icon), access: server.access }));
+      const serverNames = new Map(manageable.servers.map((server) => [server.id, server.name]));
+      claimable = taken.results
+        .filter((row) => row.has_master !== 1)
+        .map((row) => ({ guildId: row.id, guildName: row.name, serverId: row.discord_server_id, serverName: serverNames.get(row.discord_server_id) || '' }));
     }
-    if (manageable.stale && session.manageableServers) {
-      // The list is only kept for 30 minutes; drop it once it is stale.
-      try {
-        await db.prepare('UPDATE sessions SET manageable_servers = NULL, manageable_until = NULL WHERE token_hash = ?')
-          .bind(session.tokenHash).run();
-      } catch { /* best effort */ }
-    }
-    create = { allowed: true, stale: manageable.stale, servers };
+    create = { allowed: true, stale: manageable.stale, servers, claimable };
   }
+
+  const impact = await deleteImpact(db, userId);
 
   return jsonResponse({
     user: { ...personFromSession(session.user), prefs: parsePrefs(session.user.prefs) },
     guilds,
     create,
-    deleteImpact: await deleteImpact(db, userId),
+    deleteImpact: { handOverFirst: impact.handOverFirst, guildsDeleted: impact.guildsDeleted, autoPromote: impact.autoPromote },
+    removedFrom: removedResult.results.map((row) => ({ id: row.id, name: row.name })),
   });
 }
 
@@ -216,14 +271,48 @@ export async function deleteMe(ctx) {
       { guilds: impact.guildsDeleted });
   }
 
+  const now = ctx.now();
+  // A guild is deleted only while nobody else is a current member (the same test as the impact query).
+  const noOthers = (guildId) => ({ sql: `EXISTS (SELECT 1 FROM guilds g WHERE g.id = ? AND NOT ${OTHERS_SQL})`, params: [guildId, userId] });
   const statements = [
     auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'account.delete', entityType: 'user', entityId: userId }),
     ...expected.map((guildId) => auditStatement(ctx, {
       guildId: null, actorUserId: userId, action: 'guild.delete', entityType: 'guild', entityId: guildId,
-    })),
+    }, noOthers(guildId))),
   ];
   if (expected.length) {
-    statements.push(db.prepare('DELETE FROM guilds WHERE id IN (SELECT value FROM json_each(?))').bind(JSON.stringify(expected)));
+    statements.push(db.prepare(
+      `DELETE FROM guilds WHERE id IN (
+         SELECT g.id FROM guilds g WHERE g.id IN (SELECT value FROM json_each(?)) AND NOT ${OTHERS_SQL})`,
+    ).bind(JSON.stringify(expected), userId));
+    // Servers whose guild is gone keep no membership rows (blocked people included).
+    statements.push(db.prepare(
+      `DELETE FROM user_servers WHERE server_id IN (SELECT value FROM json_each(?))
+         AND NOT EXISTS (SELECT 1 FROM guilds WHERE discord_server_id = user_servers.server_id)`,
+    ).bind(JSON.stringify(impact.deletedServerIds)));
+  }
+  for (const guild of impact.autoPromote) {
+    const toId = guild.to ? guild.to.id : null;
+    statements.push(
+      db.prepare("DELETE FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master' AND user_id = ?").bind(guild.id, userId),
+      db.prepare(
+        `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
+         SELECT ?, g.id, (${SUCCESSOR_SQL}), 'guild_master', NULL, NULL, ? FROM guilds g
+          WHERE g.id = ? AND (${SUCCESSOR_SQL}) IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM role_assignments x WHERE x.guild_id = g.id AND x.role_id = 'guild_master')`,
+      ).bind(newId('ra', ctx.randomBytes), userId, now, guild.id, userId),
+      // The new Guild Master does not also keep the Officer row.
+      db.prepare(
+        `DELETE FROM role_assignments WHERE guild_id = ? AND role_id = 'officer'
+           AND user_id IN (SELECT user_id FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master')`,
+      ).bind(guild.id, guild.id),
+      auditStatement(ctx, {
+        guildId: guild.id, actorUserId: userId, action: 'guild_master.auto_promote', entityType: 'guild', entityId: guild.id,
+        before: { guildMasterUserId: userId }, after: { guildMasterUserId: toId },
+      }, toId
+        ? { sql: "EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master' AND user_id = ?)", params: [guild.id, toId] }
+        : { sql: "NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master')", params: [guild.id] }),
+    );
   }
   // Sessions, servers, roles and blocks cascade; actor columns become NULL.
   statements.push(db.prepare('DELETE FROM users WHERE id = ?').bind(userId));

@@ -144,6 +144,9 @@ export function cleanText(value, field, { min = 1, max }) {
   return text;
 }
 
+// D1 wraps the SQLite error; the text can sit on error.message or error.cause.message.
 export function isUniqueViolation(error) {
-  return /UNIQUE constraint failed/i.test(String(error && error.message));
+  const text = [error && error.message, error && error.cause && error.cause.message]
+    .filter((part) => part !== undefined && part !== null).map(String).join(' ');
+  return /UNIQUE constraint failed/i.test(text);
 }

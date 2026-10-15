@@ -107,6 +107,10 @@ async function peopleReply(ctx, guildContext) {
   return jsonResponse(peopleResponse(await loadModel(ctx.db, guildContext), guildContext));
 }
 
+function conflict() {
+  return new HttpError(409, 'conflict', 'That changed while you were working on it. Reload and try again.');
+}
+
 function notFound() {
   return new HttpError(404, 'not_found', 'That person was not found.');
 }
@@ -118,14 +122,49 @@ function findTarget(model, userId) {
   return entry;
 }
 
-// Role changes need a current, unblocked member who is not the Guild Master.
+function isCurrentMember(entry) {
+  return entry.isMember && !entry.block;
+}
+
+// Role changes reach a current, unblocked member, or anyone who still holds a role here (so a demotion
+// always works). The person is never the viewer or the Guild Master.
 function findRoleTarget(model, userId, guildContext) {
   const entry = model.byId.get(userId);
-  if (!entry || entry.block || !entry.isMember) throw notFound();
+  if (!entry || !(isCurrentMember(entry) || entry.assignments.length)) throw notFound();
   if (entry.id === guildContext.userId || entry.rank === ROLE_RANK.guild_master) {
     throw new HttpError(403, 'forbidden', 'You cannot change that person\'s roles.');
   }
   return entry;
+}
+
+const and = (...guards) => ({
+  sql: guards.map((guard) => `(${guard.sql})`).join(' AND '),
+  params: guards.flatMap((guard) => guard.params),
+});
+
+// True while the acting user still holds a role that grants the action guild-wide.
+function actorHolds(action, guildId, actorId) {
+  return {
+    sql: `EXISTS (SELECT 1 FROM role_assignments ra JOIN role_permissions rp ON rp.role_id = ra.role_id
+            WHERE ra.guild_id = ? AND ra.user_id = ? AND rp.action = ? AND rp.scope = 'guild')`,
+    params: [guildId, actorId, action],
+  };
+}
+
+// True while the actor's best role is strictly senior to the target's (this also rules out the actor
+// themself and the Guild Master). A person with no role counts as Member.
+function actorOutranks(guildId, actorId, targetId) {
+  const rank = `COALESCE((SELECT MIN(r.rank) FROM role_assignments ra JOIN roles r ON r.id = ra.role_id
+                            WHERE ra.guild_id = ? AND ra.user_id = ?), ${ROLE_RANK.member})`;
+  return { sql: `${rank} < ${rank}`, params: [guildId, actorId, guildId, targetId] };
+}
+
+// True while the target still holds a role here (used when a change only removes roles).
+function holderGuard(guildContext, userId) {
+  return {
+    sql: 'EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND user_id = ?)',
+    params: [guildContext.guild.id, userId],
+  };
 }
 
 // SQL (plus params) that is true while the target is still an unblocked member and not the Guild Master.
@@ -189,13 +228,24 @@ export async function setRoles(ctx) {
   const addedTeams = wanted.teamLeadTeamIds.filter((id) => !before.teamLeadTeamIds.includes(id));
   const officerChange = before.officer !== wanted.officer;
   if (!officerChange && !removedTeams.length && !addedTeams.length) return peopleReply(ctx, guildContext);
+  // Grants need a current, unblocked member; removing roles works for anyone who holds one.
+  const grants = (officerChange && wanted.officer) || addedTeams.length > 0;
+  if (grants && !isCurrentMember(target)) throw notFound();
 
   const guildId = guildContext.guild.id;
   const userId = target.id;
   const actorId = ctx.session.user.id;
   const now = ctx.now();
-  const guard = memberGuard(guildContext, userId);
-  const statements = [];
+  const guard = and(
+    grants ? memberGuard(guildContext, userId) : holderGuard(guildContext, userId),
+    actorHolds('guild.roles', guildId, actorId),
+    actorOutranks(guildId, actorId, userId),
+  );
+  // The audit row goes first: it is evaluated against the state the guard was built for, before the
+  // deletes below remove the very roles the guard looks at.
+  const statements = [auditStatement(ctx, {
+    guildId, actorUserId: actorId, action: 'roles.set', entityType: 'user', entityId: userId, before, after: wanted,
+  }, guard)];
   const insert = (teamId, role) => ctx.db.prepare(
     `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
      SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}${teamId ? ' AND EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)' : ''}`,
@@ -214,12 +264,16 @@ export async function setRoles(ctx) {
   }
   if (officerChange && wanted.officer) statements.push(insert(null, 'officer'));
   for (const teamId of addedTeams) statements.push(insert(teamId, 'team_lead'));
-  statements.push(auditStatement(ctx, {
-    guildId, actorUserId: actorId, action: 'roles.set', entityType: 'user', entityId: userId, before, after: wanted,
-  }, guard));
 
-  const results = await ctx.db.batch(statements);
-  if (results[results.length - 1].meta.changes !== 1) throw notFound();
+  let results;
+  try {
+    results = await ctx.db.batch(statements);
+  } catch (error) {
+    // A concurrent identical grant won the unique index: answer from the fresh state.
+    if (isUniqueViolation(error)) return peopleReply(ctx, guildContext);
+    throw error;
+  }
+  if (results[0].meta.changes !== 1) throw conflict();
   return peopleReply(ctx, guildContext);
 }
 
@@ -229,6 +283,7 @@ export async function makeGuildMaster(ctx) {
   if (!guildContext.isGuildMaster) throw new HttpError(403, 'forbidden', 'Only the Guild Master can hand over the guild.');
   const model = await loadModel(ctx.db, guildContext);
   const target = findRoleTarget(model, ctx.params.uid, guildContext);
+  if (!isCurrentMember(target)) throw notFound();
 
   const guildId = guildContext.guild.id;
   const oldMasterId = guildContext.userId;
@@ -240,7 +295,9 @@ export async function makeGuildMaster(ctx) {
     params: [guildId, targetId],
   };
 
-  const results = await ctx.db.batch([
+  let results;
+  try {
+    results = await ctx.db.batch([
     // The swap: one guarded UPDATE. Zero changes means the target or the viewer changed under us.
     ctx.db.prepare(
       `UPDATE role_assignments SET user_id = ?, assigned_by = ?, assigned_at = ?
@@ -258,7 +315,12 @@ export async function makeGuildMaster(ctx) {
       guildId, actorUserId: oldMasterId, action: 'guild_master.transfer', entityType: 'user', entityId: targetId,
       before: { guildMasterUserId: oldMasterId }, after: { guildMasterUserId: targetId },
     }, targetIsMaster),
-  ]);
+    ]);
+  } catch (error) {
+    // A concurrent identical hand-over won the unique index: answer from the fresh state.
+    if (!isUniqueViolation(error)) throw error;
+    return peopleReply(ctx, await loadGuildContext(ctx.db, oldMasterId, guildId));
+  }
   if (results[0].meta.changes !== 1) {
     throw new HttpError(409, 'conflict', 'The guild changed while you were handing it over. Reload and try again.');
   }
@@ -281,19 +343,32 @@ export async function blockPerson(ctx) {
   if (!hierarchyAllows(guildContext, target)) throw new HttpError(403, 'forbidden', 'You cannot remove that person\'s access.');
   if (target.block) return peopleReply(ctx, guildContext);
 
+  const guildId = guildContext.guild.id;
+  const now = ctx.now();
+  // One guarded INSERT: the actor still holds the right and still outranks the target (an Officer cannot
+  // remove an Officer or the Guild Master). The audit row follows only if the block was written.
+  const guard = and(actorHolds('guild.access', guildId, guildContext.userId), actorOutranks(guildId, guildContext.userId, target.id));
+  let results;
   try {
-    await ctx.db.batch([
-      ctx.db.prepare('INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at) VALUES (?, ?, ?, ?, ?)')
-        .bind(guildContext.guild.id, target.id, guildContext.userId, reason, ctx.now()),
+    results = await ctx.db.batch([
+      ctx.db.prepare(
+        `INSERT INTO guild_blocks (guild_id, user_id, blocked_by, reason, created_at)
+         SELECT ?, ?, ?, ?, ? WHERE ${guard.sql}`,
+      ).bind(guildId, target.id, guildContext.userId, reason, now, ...guard.params),
       // The reason text stays out of the audit log.
       auditStatement(ctx, {
-        guildId: guildContext.guild.id, actorUserId: guildContext.userId, action: 'access.remove', entityType: 'user',
+        guildId, actorUserId: guildContext.userId, action: 'access.remove', entityType: 'user',
         entityId: target.id, before: { blocked: false }, after: { blocked: true, reasonSet: reason !== null },
+      }, {
+        sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND blocked_by = ? AND created_at = ?)',
+        params: [guildId, target.id, guildContext.userId, now],
       }),
     ]);
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
+    return peopleReply(ctx, guildContext);
   }
+  if (results[0].meta.changes !== 1) throw conflict();
   return peopleReply(ctx, guildContext);
 }
 
@@ -305,16 +380,30 @@ export async function restorePerson(ctx) {
   if (!hierarchyAllows(guildContext, target)) throw new HttpError(403, 'forbidden', 'You cannot restore that person\'s access.');
   if (!target.block) return peopleReply(ctx, guildContext);
 
+  const guildId = guildContext.guild.id;
   const stillBlocked = {
     sql: 'EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)',
-    params: [guildContext.guild.id, target.id],
+    params: [guildId, target.id],
   };
-  await ctx.db.batch([
+  // The same actor guards as removing access, on the audit row and on the DELETE.
+  const guard = and(
+    stillBlocked,
+    actorHolds('guild.access', guildId, guildContext.userId),
+    actorOutranks(guildId, guildContext.userId, target.id),
+  );
+  const results = await ctx.db.batch([
     auditStatement(ctx, {
-      guildId: guildContext.guild.id, actorUserId: guildContext.userId, action: 'access.restore', entityType: 'user',
+      guildId, actorUserId: guildContext.userId, action: 'access.restore', entityType: 'user',
       entityId: target.id, before: { blocked: true }, after: { blocked: false },
-    }, stillBlocked),
-    ctx.db.prepare('DELETE FROM guild_blocks WHERE guild_id = ? AND user_id = ?').bind(guildContext.guild.id, target.id),
+    }, guard),
+    ctx.db.prepare(`DELETE FROM guild_blocks WHERE guild_id = ? AND user_id = ? AND ${guard.sql}`)
+      .bind(guildId, target.id, ...guard.params),
   ]);
+  if (results[1].meta.changes !== 1) {
+    // Someone else restoring first is fine. If the block is still there, the actor lost the right.
+    const still = await ctx.db.prepare('SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?')
+      .bind(guildId, target.id).first();
+    if (still) throw conflict();
+  }
   return peopleReply(ctx, guildContext);
 }

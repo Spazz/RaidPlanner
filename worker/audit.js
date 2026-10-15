@@ -13,6 +13,8 @@ export const AUDIT_ACTIONS = [
   'access.restore',
   'account.delete',
   'guild.delete',
+  'guild.claim',
+  'guild_master.auto_promote',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

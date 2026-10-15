@@ -117,11 +117,15 @@ class D1Fake {
       const before = this.sqlite.prepare('SELECT total_changes() AS n').get().n;
       const rows = prepared.all(...values).map((row) => ({ ...row }));
       const after = this.sqlite.prepare('SELECT total_changes() AS n').get().n;
+      // changes() counts the statement's own rows only. total_changes() also counts foreign-key
+      // cascades, which D1 does not report in meta.changes. changes() is stale after a SELECT, so a
+      // statement that wrote nothing at all reports 0.
+      const changes = after === before ? 0 : Number(this.sqlite.prepare('SELECT changes() AS n').get().n);
       const lastRowId = this.sqlite.prepare('SELECT last_insert_rowid() AS id').get().id;
       return {
         results: rows,
         success: true,
-        meta: { changes: after - before, last_row_id: Number(lastRowId), duration: 0, rows_read: rows.length, rows_written: after - before },
+        meta: { changes, last_row_id: Number(lastRowId), duration: 0, rows_read: rows.length, rows_written: after - before },
       };
     } catch (error) {
       if (error && /^D1_ERROR/.test(error.message)) throw error;

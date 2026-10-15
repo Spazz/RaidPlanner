@@ -5,6 +5,9 @@ import { loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
 
 const MAX_TEAM_NAME = 40;
+export const MAX_ACTIVE_TEAMS = 50;
+const TEAM_CAP_MESSAGE = `A guild can have at most ${MAX_ACTIVE_TEAMS} active teams. Archive one first.`;
+const ACTIVE_TEAM_COUNT = 'SELECT COUNT(*) AS n FROM teams WHERE guild_id = ? AND archived = 0';
 const TEAM_NAME_TAKEN = 'Another active team in this guild already has that name.';
 
 export function teamView(row, leads = []) {
@@ -34,18 +37,24 @@ export async function createTeam(ctx) {
   requireAction(guildContext, 'guild.teams');
   const name = cleanText(ctx.body.name, 'name', { max: MAX_TEAM_NAME });
   const id = newId('t', ctx.randomBytes);
+  const guildId = guildContext.guild.id;
+  let results;
   try {
-    await ctx.db.batch([
-      ctx.db.prepare('INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES (?, ?, ?, 25, 0, ?)')
-        .bind(id, guildContext.guild.id, name, ctx.now()),
+    results = await ctx.db.batch([
+      // One guarded INSERT enforces the cap; the audit row follows only if the team exists.
+      ctx.db.prepare(
+        `INSERT INTO teams (id, guild_id, name, size, archived, created_at)
+         SELECT ?, ?, ?, 25, 0, ? WHERE (${ACTIVE_TEAM_COUNT}) < ${MAX_ACTIVE_TEAMS}`,
+      ).bind(id, guildId, name, ctx.now(), guildId),
       auditStatement(ctx, {
-        guildId: guildContext.guild.id, actorUserId: ctx.session.user.id, action: 'team.create', entityType: 'team', entityId: id,
-      }),
+        guildId, actorUserId: ctx.session.user.id, action: 'team.create', entityType: 'team', entityId: id,
+      }, { sql: 'EXISTS (SELECT 1 FROM teams WHERE id = ?)', params: [id] }),
     ]);
   } catch (error) {
     if (isUniqueViolation(error)) throw new HttpError(409, 'team_name_taken', TEAM_NAME_TAKEN, { field: 'name' });
     throw error;
   }
+  if (results[0].meta.changes !== 1) throw new HttpError(400, 'bad_request', TEAM_CAP_MESSAGE, { field: 'name' });
   return jsonResponse({ team: teamView({ id, name, size: 25, archived: 0 }) }, 201);
 }
 
@@ -65,6 +74,11 @@ export async function patchTeam(ctx) {
     throw new HttpError(400, 'bad_request', 'archived must be true or false.');
   }
   const archived = body.archived === undefined ? current.archived : (body.archived ? 1 : 0);
+
+  if (current.archived === 1 && archived === 0) {
+    const count = await ctx.db.prepare(ACTIVE_TEAM_COUNT).bind(guildContext.guild.id).first('n');
+    if (count >= MAX_ACTIVE_TEAMS) throw new HttpError(400, 'bad_request', TEAM_CAP_MESSAGE, { field: 'name' });
+  }
 
   const audit = (action) => auditStatement(ctx, {
     guildId: guildContext.guild.id, actorUserId: ctx.session.user.id, action, entityType: 'team', entityId: current.id,
