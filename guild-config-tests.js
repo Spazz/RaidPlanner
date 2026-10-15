@@ -138,7 +138,8 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
 
 check('.vercelignore keeps the Worker files off Vercel and uses no negation', () => {
   const entries = lines('.vercelignore');
-  for (const required of ['/worker/', '/migrations/', '/wrangler.jsonc', '/_headers', '/.assetsignore', '/.env.example']) {
+  for (const required of ['/worker/', '/migrations/', '/wrangler.jsonc', '/_headers', '/.assetsignore', '/.env.example',
+    '/.env*', '/.dev.vars*', '/.wrangler/']) {
     assert(entries.includes(required), required);
   }
   assert(entries.every((entry) => !entry.startsWith('!')));
@@ -168,15 +169,52 @@ check('the Wrangler pin in the README equals the one in tools/guild-dev.js; the 
 
   assert(dev.stateDir().startsWith(os.homedir()));
   assert(path.relative(ROOT, dev.stateDir()).startsWith('..'), 'the local D1 lives outside the repo (and OneDrive)');
-  const dir = dev.buildCommand('dev', ['--var', 'A:B']);
-  assert.equal(dir.command, 'npx');
-  assert.deepEqual(dir.args.slice(0, 3), ['--yes', `wrangler@${dev.WRANGLER_VERSION}`, 'dev']);
-  assert(dir.args.includes('--persist-to') && dir.args.includes(dev.stateDir()));
+  const dir = dev.buildCommand('dev', ['--var', 'A:B'], {});
+  const from = dir.args.indexOf('--yes');
+  assert(from >= 0);
+  assert.deepEqual(dir.args.slice(from, from + 3), ['--yes', `wrangler@${dev.WRANGLER_VERSION}`, 'dev']);
+  assert(dir.args.includes('--persist-to') && dir.args.includes(dev.stateDir({})));
   assert.deepEqual(dir.args.slice(-2), ['--var', 'A:B']);
-  const migrate = dev.buildCommand('migrate');
-  assert.deepEqual(migrate.args.slice(2, 7), ['d1', 'migrations', 'apply', 'DB', '--local']);
+  const migrate = dev.buildCommand('migrate', [], {});
+  const at = migrate.args.indexOf('d1');
+  assert.deepEqual(migrate.args.slice(at, at + 5), ['d1', 'migrations', 'apply', 'DB', '--local']);
   assert.throws(() => dev.buildCommand('deploy'), /usage/);
   assert(!/--remote/.test(read('tools/guild-dev.js').replace(/^\s*\/?\*.*$/gm, '')), 'the tool never talks to Cloudflare');
+});
+
+check('guild-dev: a state dir with spaces stays one argument; --state / RAIDSMITH_DEV_STATE override it; --persist-to is passed once', () => {
+  const dev = require('./tools/guild-dev.js');
+  const persistCount = (plan) => plan.args.filter((arg) => arg === '--persist-to' || arg.startsWith('--persist-to=') || arg === '"--persist-to"').length;
+  const spaced = path.join(os.tmpdir(), 'dir with spaces', 'state');
+
+  const viaArg = dev.buildCommand('dev', ['--state', spaced, '--port', '8788'], {});
+  assert.equal(persistCount(viaArg), 1);
+  assert(!viaArg.args.includes('--state'), '--state is consumed here, not passed to Wrangler');
+  const value = viaArg.args[viaArg.args.indexOf('--persist-to') + 1];
+  if (viaArg.shell) assert.equal(value, `"${path.resolve(spaced)}"`, 'quoted for cmd.exe');
+  else assert.equal(value, path.resolve(spaced), 'one argv element, no shell splitting');
+  assert.deepEqual(viaArg.args.slice(-2), ['--port', '8788']);
+
+  const viaEquals = dev.buildCommand('migrate', [`--state=${spaced}`], {});
+  assert.equal(persistCount(viaEquals), 1);
+
+  const viaEnv = dev.buildCommand('dev', [], { RAIDSMITH_DEV_STATE: spaced });
+  assert.equal(persistCount(viaEnv), 1);
+  assert(viaEnv.args.some((arg) => arg.includes('dir with spaces')));
+  assert.equal(dev.stateDir({ RAIDSMITH_DEV_STATE: spaced }), path.resolve(spaced));
+
+  const argBeatsEnv = dev.buildCommand('dev', ['--state', os.tmpdir()], { RAIDSMITH_DEV_STATE: spaced });
+  assert(!argBeatsEnv.args.some((arg) => arg.includes('dir with spaces')));
+
+  const own = dev.buildCommand('dev', ['--persist-to', os.tmpdir(), '--port', '1'], {});
+  assert.equal(persistCount(own), 1, 'a --persist-to you pass replaces ours instead of doubling it');
+  assert.throws(() => dev.buildCommand('dev', ['--state'], {}), /needs a directory/);
+
+  assert.equal(dev.quoteForShell('a b'), '"a b"');
+  assert.equal(dev.quoteForShell('plain'), 'plain');
+  if (!dev.buildCommand('dev', [], {}).shell) assert.equal(dev.buildCommand('dev', [], {}).command, process.execPath, 'no shell: node runs npx-cli.js');
+  const readme = read('README.md');
+  assert(readme.includes('--state') && readme.includes('RAIDSMITH_DEV_STATE'), 'README documents the override');
 });
 
 check('Worker source follows the rules: ES modules, explicit ./x.js imports, Web APIs only', () => {
@@ -202,7 +240,7 @@ check('Worker SQL binds values and never concatenates them into SQL text', () =>
     for (const match of read(file).matchAll(/prepare\(\s*`([^`]*)`/g)) {
       const placeholders = [...match[1].matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]);
       for (const expression of placeholders) {
-        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|COLUMNS|teamId \? [^}]*)$/.test(expression.trim()),
+        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|COLUMNS|OTHERS_SQL|SUCCESSOR_SQL|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|currentMemberSql\('[^']*', '[^']*', '[^']*'\)|teamId \? [^}]*)$/.test(expression.trim()),
           `${file}: interpolated SQL ${expression}`);
       }
     }

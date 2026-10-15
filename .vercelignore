@@ -17,3 +17,7 @@
 /_headers
 /.assetsignore
 /.env.example
+# Local secrets and Wrangler state never ship
+/.env*
+/.dev.vars*
+/.wrangler/

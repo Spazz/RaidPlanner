@@ -167,6 +167,8 @@ npm run guild:dev         # Worker + local D1 + static files on http://localhost
 
 Both wrap `tools/guild-dev.js`, which runs `npx --yes wrangler@4.146.0` with `WRANGLER_SEND_METRICS=false` and `--persist-to ~/.raidsmith-dev/wrangler-state` (outside OneDrive, so the SQLite files are not synced). Wrangler is pinned at **4.146.0** here and in the tool; a test checks the two agree. Extra arguments pass through: `npm run guild:dev -- --port 8788`. Nothing needs a Cloudflare login.
 
+To use a different database (a fresh one for a check, say), pass `--state <dir>` or set `RAIDSMITH_DEV_STATE=<dir>`; `--state` wins, then a `--persist-to` you pass yourself, then the variable, then the default. Exactly one `--persist-to` reaches Wrangler. The tool runs npm's `npx-cli.js` with Node directly (no shell), so a home directory with spaces works; if that script cannot be found it falls back to `npx` and quotes the arguments for Windows.
+
 **Without real Discord credentials.** `node tools/fake-discord.js` starts a fake of Discord's OAuth and two API calls on `127.0.0.1:8790` (configure the fake user and servers with flags or `FAKE_DISCORD_*` variables). Point the Worker at it with `npm run guild:dev -- --var DISCORD_API_BASE:http://127.0.0.1:8790` and put the fake user's id in `GUILD_CREATOR_ALLOWLIST` (also a `--var`). The Worker honours `DISCORD_API_BASE` only for `https://discord.com` or a local `http://localhost:<port>` / `http://127.0.0.1:<port>`, and it is never set in `wrangler.jsonc`.
 
 **Limits under `wrangler dev`.** The short links (`/api/share`, `/tbc/:id`, `/classic/:id`, `/forever/:id`) are Vercel features and do not work on `localhost:8787`; use the long `#r=` links there. The planner pages, `/faq`, `/whats-new` and the guild tracker work.
