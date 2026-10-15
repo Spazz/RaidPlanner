@@ -22,13 +22,37 @@
       '<p class="gs-field-error" id="' + id + '-error" role="alert" hidden></p></div>';
   }
 
-  // opts: { me, timeZones, defaultTimeZone }
+  // Guilds on the viewer's servers that have no Guild Master: /auth/me create.claimable.
+  function claimableList(me) {
+    const c = me && me.create && me.create.claimable;
+    return Array.isArray(c) ? c : [];
+  }
+
+  function claimHtml(claimable) {
+    if (!claimable.length) return '';
+    return '<section class="gs-claim" aria-labelledby="claim-heading"><h2 class="gs-h2" id="claim-heading">Guilds without a Guild Master</h2>' +
+      '<p class="gs-fine">You manage the Discord server of each guild below. Claim a guild to become its Guild Master.</p>' +
+      '<ul class="gs-claim-list">' + claimable.map(function (g, i) {
+        const cid = 'claim-confirm-' + i;
+        return '<li class="gs-claim-item"><div class="gs-claim-main"><div class="gs-claim-text"><span class="gs-claim-guild">' + esc(g.guildName) + '</span>' +
+          '<span class="gs-claim-server gs-muted">' + esc(g.serverName) + '</span></div>' +
+          '<button type="button" class="gs-btn" data-action="claim-ask" data-key="claim-' + esc(g.guildId) + '" aria-expanded="false" aria-controls="' + cid + '" aria-label="Claim ' + esc(g.guildName) + '">Claim</button></div>' +
+          '<div class="gs-claim-confirm" id="' + cid + '" role="group" aria-label="Confirm claiming ' + esc(g.guildName) + '" hidden>' +
+          '<p class="gs-confirm-text">You become Guild Master of ' + esc(g.guildName) + '.</p>' +
+          '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="claim-go" data-gid="' + esc(g.guildId) + '" data-name="' + esc(g.guildName) + '">Claim ' + esc(g.guildName) + '</button>' +
+          '<button type="button" class="gs-btn" data-action="claim-cancel">Cancel</button></div></div></li>';
+      }).join('') + '</ul></section>';
+  }
+
+  // opts: { me, timeZones, defaultTimeZone, alert }
   function createHtml(opts) {
     const o = opts || {};
     const create = (o.me && o.me.create) || { allowed: false };
     if (!create.allowed) {
       return G.pages.signin.messageHtml('You cannot create a guild', 'This account is not set up to create a guild. If your guild already exists, open it from the list on the left, or sign in again.');
     }
+    const claim = claimHtml(claimableList(o.me));
+    const alertHtml = o.alert ? G.ui.alertHtml(o.alert, 'gs-page-alert') : '';
     const servers = Array.isArray(create.servers) ? create.servers : [];
     const stale = !!create.stale;
     let zones = Array.isArray(o.timeZones) ? o.timeZones.slice() : [];
@@ -50,7 +74,7 @@
       : '';
     const disabled = stale || !servers.length;
 
-    return '<form class="gs-form" data-submit="create-guild" aria-label="Create a guild" novalidate>' +
+    return alertHtml + claim + '<form class="gs-form" data-submit="create-guild" aria-label="Create a guild" novalidate>' +
       '<div><h1 class="gs-h1" tabindex="-1">Create a guild</h1><p class="gs-lead gs-lead-sm">Pick your guild\'s Discord server. Everyone in that server who signs in becomes a Member.</p></div>' +
       staleBanner +
       '<div class="gs-panel"><fieldset class="gs-fieldset"><legend class="gs-legend">Discord server</legend>' + serverList +
@@ -134,6 +158,7 @@
       G.ui.setBusy(form, false);
       const c = G.api.classify(err);
       if (c.view === 'signin') { G.app.requireSignin(); return; }
+      if (err.code === 'conflict') { G.app.handleError(err); return; }
       if (err.field && showFieldError(form, err.field, c.text)) return;
       if (err.code === 'server_taken') { showFieldError(form, 'serverId', c.text); return; }
       if (err.code === 'reauth_required') {
@@ -144,7 +169,43 @@
     });
   };
 
+  G.handlers.click['claim-ask'] = function (el) {
+    const item = el.closest('.gs-claim-item');
+    const box = item && item.querySelector('.gs-claim-confirm');
+    if (!box) return;
+    box.hidden = false;
+    el.hidden = true;
+    const first = box.querySelector('button');
+    if (first) first.focus();
+  };
+
+  G.handlers.click['claim-cancel'] = function (el) {
+    const item = el.closest('.gs-claim-item');
+    if (!item) return;
+    const box = item.querySelector('.gs-claim-confirm');
+    const ask = item.querySelector('[data-action="claim-ask"]');
+    if (box) box.hidden = true;
+    if (ask) { ask.hidden = false; ask.focus(); }
+  };
+
+  G.handlers.click['claim-go'] = function (el) {
+    if (el.disabled) return;
+    const gid = el.getAttribute('data-gid');
+    const name = el.getAttribute('data-name') || '';
+    const box = el.closest('.gs-claim-confirm');
+    const btns = box ? box.querySelectorAll('button') : [el];
+    for (let i = 0; i < btns.length; i++) btns[i].disabled = true;
+    G.api.post('/api/guild/' + encodeURIComponent(gid) + '/claim', {}).then(function (res) {
+      G.app.afterGuildClaimed(res, name);
+    }, function (err) {
+      for (let i = 0; i < btns.length; i++) btns[i].disabled = false;
+      G.app.handleError(err, { pageAlert: true });
+    });
+  };
+
   G.pages.create = {
+    claimHtml: claimHtml,
+    claimableList: claimableList,
     REGIONS: REGIONS,
     CREATED_NOTICE: CREATED_NOTICE,
     browserTimeZone: browserTimeZone,

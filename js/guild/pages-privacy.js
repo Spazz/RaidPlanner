@@ -27,10 +27,21 @@
     return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
   }
 
-  // impact: /auth/me deleteImpact { handOverFirst: [{id,name}], guildsDeleted: [{id,name}] }
+  // One line per guild whose Guild Master seat changes when the account is deleted (deleteImpact.autoPromote).
+  function autoPromoteHtml(list) {
+    if (!list.length) return '';
+    return '<ul class="gs-bullets gs-bullets-plain" id="delete-autopromote">' + list.map(function (e) {
+      const guild = '<strong>' + esc(e && e.name) + '</strong>';
+      if (e && e.to && e.to.displayName) return '<li><strong>' + esc(e.to.displayName) + '</strong> becomes Guild Master of ' + guild + '.</li>';
+      return '<li>' + guild + ' will have no Guild Master until an admin of its Discord server claims it.</li>';
+    }).join('') + '</ul>';
+  }
+
+  // impact: /auth/me deleteImpact { handOverFirst: [{id,name}], guildsDeleted: [{id,name}], autoPromote: [{id,name,to}] }
   function deleteBoxHtml(impact, message) {
     const hand = impact && Array.isArray(impact.handOverFirst) ? impact.handOverFirst : [];
     const gone = impact && Array.isArray(impact.guildsDeleted) ? impact.guildsDeleted : [];
+    const promote = impact && Array.isArray(impact.autoPromote) ? impact.autoPromote : [];
     const blocked = hand.length > 0;
     const intro = paragraphs([
       'Deletes your sign-in and all Discord data Raidsmith holds: your Discord ID, username and avatar, and the Discord ID and nickname on your Raid-Helper sign-ups.',
@@ -49,6 +60,7 @@
     const confirm = blocked ? '' :
       '<div id="delete-confirm" role="group" aria-label="Confirm deleting your data" hidden>' +
       '<p class="gs-confirm-text">This deletes your sign-in and your Discord data now.' + (gone.length ? ' It also deletes ' + G.ui.joinNames(gone) + '.' : '') + ' Roster records stay with the guild, unlinked. To remove those, ask your guild\'s officers.</p>' +
+      autoPromoteHtml(promote) +
       '<div class="gs-check"><input type="checkbox" id="delete-understand" data-change="delete-understand"><label for="delete-understand">I understand</label></div>' +
       '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-danger" id="delete-go" data-action="delete-go" data-key="delete-go" disabled>Delete my data</button>' +
       '<button type="button" class="gs-btn" data-action="delete-cancel">Cancel</button></div></div>';
@@ -128,5 +140,5 @@
     });
   };
 
-  G.pages.privacy = { CONTACT: CONTACT, privacyHtml: privacyHtml, deleteBoxHtml: deleteBoxHtml };
+  G.pages.privacy = { CONTACT: CONTACT, privacyHtml: privacyHtml, deleteBoxHtml: deleteBoxHtml, autoPromoteHtml: autoPromoteHtml };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

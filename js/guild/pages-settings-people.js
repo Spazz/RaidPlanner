@@ -10,9 +10,15 @@
     return n === 1 ? '1 person has signed in' : n + ' people have signed in';
   }
 
+  // Name, a compact "you" badge on the same line, and the Discord username underneath when it differs.
+  function personTextHtml(p, isMe) {
+    const user = p.username && p.username !== p.displayName ? '<span class="gs-person-user">@' + esc(p.username) + '</span>' : '';
+    return '<span class="gs-person-text"><span class="gs-person-line"><span class="gs-person-name">' + esc(p.displayName) + '</span>' + (isMe ? '<span class="gs-you">you</span>' : '') + '</span>' + user + '</span>';
+  }
+
   function nameCellHtml(entry) {
     const p = entry.person;
-    return '<span class="gs-person">' + G.ui.avatarHtml(p, 'gs-avatar-md') + '<span class="gs-person-name">' + esc(p.displayName) + '</span>' + (entry.isMe ? '<span class="gs-you">you</span>' : '') + '</span>';
+    return '<span class="gs-person">' + G.ui.avatarHtml(p, 'gs-avatar-md') + personTextHtml(p, entry.isMe) + '</span>';
   }
 
   function rosterCellHtml(entry) {
@@ -58,7 +64,7 @@
         '</td><td><div class="gs-row-actions">' + rowActionsHtml(e) + '</div></td></tr>';
     }).join('');
     const cards = rows.map(function (e) {
-      return '<li class="gs-person-card">' + G.ui.avatarHtml(e.person, 'gs-avatar-lg') + '<div class="gs-card-body"><span class="gs-person-name">' + esc(e.person.displayName) + '</span>' + (e.isMe ? '<span class="gs-you">you</span>' : '') +
+      return '<li class="gs-person-card">' + G.ui.avatarHtml(e.person, 'gs-avatar-lg') + '<div class="gs-card-body">' + personTextHtml(e.person, e.isMe) +
         '<span class="gs-card-line">' + rosterCellHtml(e) + '</span><div class="gs-chips">' + G.ui.roleChipsHtml(e.roles, opts.teams) + '</div>' +
         '<span class="gs-card-line gs-muted">Last seen: ' + lastSeenHtml(e, opts.now) + '</span><div class="gs-row-actions">' + rowActionsHtml(e) + '</div></div></li>';
     }).join('');
@@ -77,7 +83,7 @@
       const restore = r.actions && r.actions.restoreAccess
         ? '<button type="button" class="gs-btn gs-btn-sm" data-action="person-restore" data-uid="' + esc(r.person.id) + '" data-key="restore-access-' + esc(r.person.id) + '" aria-label="Restore access for ' + esc(r.person.displayName) + '">Restore access</button>'
         : '';
-      return '<li class="gs-removed-item"><span class="gs-person gs-person-dim">' + G.ui.avatarHtml(r.person, 'gs-avatar-md') + '<span class="gs-person-name">' + esc(r.person.displayName) + '</span></span>' +
+      return '<li class="gs-removed-item"><span class="gs-person gs-person-dim">' + G.ui.avatarHtml(r.person, 'gs-avatar-md') + personTextHtml(r.person, false) + '</span>' +
         '<span class="gs-removed-text">' + esc(text) + '</span>' + restore + '</li>';
     }).join('') + '</ul></div>';
   }
@@ -121,8 +127,8 @@
       ? '<div class="gs-gm"><h3 class="gs-legend">Guild Master</h3>' +
         '<button type="button" class="gs-btn" id="dlg-gm-ask" data-action="gm-ask">Make Guild Master</button>' +
         '<div id="dlg-gm-confirm" hidden><p class="gs-fine">Make ' + esc(name) + ' the Guild Master of ' + esc(guildName) + '? You become an Officer.</p>' +
-        '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="gm-confirm">Yes, make ' + esc(name) + ' Guild Master</button>' +
-        '<button type="button" class="gs-btn" data-action="gm-cancel">Keep things as they are</button></div></div></div>'
+        '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="gm-cancel">Cancel</button>' +
+        '<button type="button" class="gs-btn gs-btn-molten" data-action="gm-confirm">Make Guild Master</button></div></div></div>'
       : '';
     return '<form class="gs-dialog-form" data-submit="roles-form" data-uid="' + esc(entry.person.id) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Edit roles for ' + esc(name) + '</h2>' +
@@ -175,6 +181,7 @@
     }, function (err) {
       G.ui.setBusy(form, false);
       const c = G.api.classify(err);
+      if (err.code === 'conflict') { G.ui.closeDialogOf(form); G.app.handleError(err); return; }
       if (c.view === 'signin') { G.ui.closeDialogOf(form); G.app.requireSignin(); return; }
       if (c.view === 'message') { G.ui.closeDialogOf(form); G.app.showFailure(c.title, c.text); return; }
       G.ui.setText('dlg-error', c.text);
