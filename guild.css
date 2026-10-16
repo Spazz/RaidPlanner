@@ -395,3 +395,173 @@ body.guild-page {
 @media (min-width: 601px) {
   .gs-drawer { display: none !important; }
 }
+
+/* ── Roster (Phase 2): class colours, chips, roster table, person record, import pages ───── */
+.gs-class-warrior, .guild-page a.gs-class-warrior { color: var(--class-warrior); }
+.gs-class-paladin, .guild-page a.gs-class-paladin { color: var(--class-paladin); }
+.gs-class-hunter, .guild-page a.gs-class-hunter { color: var(--class-hunter); }
+.gs-class-rogue, .guild-page a.gs-class-rogue { color: var(--class-rogue); }
+.gs-class-priest, .guild-page a.gs-class-priest { color: var(--class-priest); }
+.gs-class-shaman, .guild-page a.gs-class-shaman { color: #3d8fe0; }
+.gs-class-mage, .guild-page a.gs-class-mage { color: var(--class-mage); }
+.gs-class-warlock, .guild-page a.gs-class-warlock { color: var(--class-warlock); }
+.gs-class-druid, .guild-page a.gs-class-druid { color: var(--class-druid); }
+.gs-char-name { font-weight: 600; overflow-wrap: anywhere; }
+.guild-page a.gs-char-link { font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.guild-page a.gs-char-link:hover { text-decoration: underline; }
+.gs-char-cell { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.gs-char-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gs-char-sub { display: block; font: 400 13px/1.3 var(--font-body); color: var(--text-muted); overflow-wrap: anywhere; }
+
+.gs-role-dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.gs-role-tank { background: var(--role-tank); }
+.gs-role-healer { background: var(--role-healer); }
+.gs-role-dps { background: var(--role-dps); }
+
+.gs-chip-status { background: var(--bg-card-hover); border-color: var(--bg-card-hover); color: var(--text-secondary); }
+.gs-status-raider, .gs-status-trial, .gs-status-reserve { color: var(--text-secondary); }
+.gs-status-inactive { color: var(--text-muted); }
+.gs-chip-trial { white-space: nowrap; }
+.gs-trial-ends { background: #4a4228; border-color: #4a4228; color: #f2e3b0; }
+.gs-trial-ended { background: #3a2510; border-color: #6b4318; color: #ffb86b; }
+.gs-chip-main { background: #4a4228; border-color: #4a4228; color: #f2e3b0; }
+.gs-chip-plain { background: transparent; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 14px; }
+.gs-status-cell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+
+.gs-nav-badge { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 6px; background: var(--molten); color: var(--text-on-molten); font: 700 13px/20px var(--font-cond); text-align: center; }
+.is-collapsed .gs-nav-badge { right: 10px; top: 8px; transform: none; }
+.gs-tab .gs-nav-badge { right: calc(50% - 26px); top: 6px; transform: none; }
+
+.gs-roster-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 24px; }
+.gs-roster-actions { display: flex; align-items: center; gap: 12px; }
+.gs-import-menu { position: relative; }
+.gs-import-menu .gs-menu { left: 0; right: auto; width: 260px; }
+.gs-trial-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; box-sizing: border-box; padding: 12px 16px; background: #2a1d10; border: 1px solid #6b4318; }
+.gs-trial-strip-text { margin: 0; font-size: 16px; line-height: 1.4; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-roster-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.gs-segs { display: flex; flex-wrap: wrap; }
+.gs-seg { box-sizing: border-box; min-height: 38px; margin: 0 -1px 0 0; padding: 0 14px; background: transparent; border: 1px solid var(--border-medium); border-radius: 0; color: var(--text-secondary); font: 600 15px/1 var(--font-cond); letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; }
+.gs-seg:hover { background: var(--bg-card-hover); }
+.gs-seg[aria-pressed="true"] { position: relative; background: var(--bg-card-hover); border-color: var(--accent-gold); color: var(--accent-gold); }
+.gs-seg-count { color: var(--text-muted); }
+.gs-seg[aria-pressed="true"] .gs-seg-count { color: var(--accent-gold-bright); }
+.gs-roster-status { display: flex; align-items: center; gap: 8px; }
+.gs-roster-status .gs-input { width: auto; min-width: 150px; }
+.gs-table-roster { min-width: 1040px; }
+.gs-roster-cards, .gs-char-cards { display: none; list-style: none; }
+
+.gs-person-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 24px; }
+.gs-person-title { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.gs-person-h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.gs-person-h1 .gs-you { margin-left: 0; }
+.gs-person-discord { margin: 0; font-size: 15px; line-height: 1.4; color: var(--text-secondary); overflow-wrap: anywhere; }
+.gs-trial-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; box-sizing: border-box; padding: 16px 20px; border: 1px solid var(--border-accent); background: #2a2616; }
+.gs-trial-bar.is-ended { background: #2a1d10; border-color: #6b4318; }
+.gs-trial-bar-text { margin: 0; font-size: 16px; line-height: 1.4; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-member-note { max-width: 640px; }
+.gs-person-cols { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px; }
+.gs-person-main { flex: 2 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.gs-person-side { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.gs-card-sec { box-sizing: border-box; min-width: 0; background: var(--bg-panel); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; }
+.gs-card-sec-head { box-sizing: border-box; min-height: 60px; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border-subtle); }
+.gs-card-sec-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.gs-card-sec .gs-table-wrap { border: 0; }
+.gs-table-chars { min-width: 600px; }
+.gs-textarea { height: auto; padding: 10px 12px; line-height: 1.45; resize: vertical; font-family: var(--font-body); }
+.gs-icon-btn-danger { color: var(--danger); }
+.gs-icon-btn-danger:hover { background: var(--bg-card-hover); }
+.gs-delete-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: var(--sp-4); border-top: 1px solid var(--border-subtle); }
+.gs-delete-row .gs-fine { flex: 1 1 280px; }
+.gs-radios { display: flex; flex-wrap: wrap; gap: 0 24px; }
+.gs-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gs-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gs-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+
+.gs-h3 { margin: 0; font: 700 17px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-primary); }
+.gs-import-page { padding-bottom: var(--sp-4); }
+.gs-import-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; max-width: 760px; }
+.gs-import-form .gs-field { flex: 1 1 320px; }
+.gs-import-page .gs-alert { margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.gs-import-result { display: flex; flex-direction: column; gap: var(--sp-4); }
+.gs-import-result-head { display: flex; flex-direction: column; gap: 12px; }
+.gs-field-inline { flex-direction: row; align-items: center; gap: 12px; }
+.gs-field-inline .gs-input { width: auto; min-width: 140px; }
+.gs-input-sm { height: 34px; font-size: 15px; padding: 0 8px; }
+.gs-table-import { min-width: 880px; }
+.gs-table-import input[type="checkbox"], .gs-alt input[type="checkbox"] { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--accent-gold); cursor: pointer; }
+.gs-tick { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
+.gs-main-cell { display: flex; align-items: center; gap: 10px; }
+.gs-main-fields { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.gs-alts { display: flex; flex-direction: column; gap: 6px; }
+.gs-alt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gs-alt label { display: inline-flex; align-items: center; min-height: 34px; cursor: pointer; }
+.gs-note-line { display: block; font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.gs-note-error { color: var(--danger-bright); }
+.gs-showing { display: flex; align-items: center; gap: 12px; }
+.gs-fold { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border-subtle); background: var(--bg-panel); }
+.gs-fold .gs-h3 { text-transform: none; }
+.gs-fold-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; box-sizing: border-box; min-height: 48px; margin: 0; padding: 0 16px; background: transparent; border: 0; border-radius: 0; color: var(--text-primary); font: 600 17px/1.2 var(--font-cond); letter-spacing: 0.03em; text-align: left; cursor: pointer; }
+.gs-fold-btn:hover { background: var(--bg-card-hover); }
+.gs-fold-btn[aria-expanded="true"] .gs-icon { transform: rotate(180deg); }
+.gs-fold-list { list-style: none; border-top: 1px solid var(--border-subtle); }
+.gs-fold-list[hidden] { display: none; }
+.gs-fold-item { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 24px; padding: 12px 16px; }
+.gs-fold-item + .gs-fold-item { border-top: 1px solid var(--border-subtle); }
+.gs-fold-who { display: flex; flex-direction: column; gap: 2px; flex: 0 1 240px; min-width: 0; }
+.gs-fold-item .gs-alts { flex: 1 1 280px; }
+.gs-known { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.gs-known-list { list-style: none; display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; background: var(--bg-panel); border: 1px solid var(--border-subtle); }
+.gs-known-list[hidden] { display: none; }
+.gs-choice { display: flex; flex-wrap: wrap; gap: 8px; }
+.gs-choice .gs-input { width: auto; max-width: 100%; }
+.gs-import-bar { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; box-sizing: border-box; padding: 12px 16px; background: var(--bg-frame); border: 1px solid var(--border-medium); }
+.gs-import-sum { margin: 0; font-size: 15px; line-height: 1.4; color: var(--text-secondary); }
+.gs-archived-item .gs-btn + .gs-btn { margin-left: 0; }
+.gs-flush { margin: 0; }
+.gs-table-chars .gs-row-actions { flex-wrap: nowrap; }
+.gs-details-form { gap: 14px; }
+.gs-person-page { gap: 20px; }
+.gs-import-alert { margin: 0; }
+
+@media (max-width: 600px) {
+  .gs-roster-head { flex-direction: column; align-items: stretch; }
+  .gs-roster-actions { width: 100%; }
+  .gs-roster-actions > .gs-btn, .gs-import-menu { flex: 1 1 0; }
+  .gs-import-menu .gs-btn { width: 100%; }
+  .gs-import-menu .gs-menu { width: min(260px, calc(100vw - 32px)); }
+  .gs-trial-strip .gs-btn { width: 100%; }
+  .gs-roster-filters { flex-direction: column; align-items: stretch; }
+  .gs-segs { width: 100%; }
+  .gs-seg { flex: 1 1 0; min-height: 44px; padding: 0 6px; }
+  .gs-roster-status { width: 100%; }
+  .gs-roster-status .gs-input { flex: 1 1 auto; }
+  .gs-roster-table, .gs-char-table { display: none; }
+  .gs-roster-cards, .gs-char-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .gs-roster-card, .gs-char-card { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .gs-char-card .gs-row-actions { justify-content: flex-start; }
+  .gs-card-sec-body { padding: 16px; }
+  .gs-card-sec-head { padding: 12px 16px; }
+  .gs-person-head, .gs-person-cols { gap: 12px; }
+  .gs-trial-bar .gs-row-actions { justify-content: flex-start; width: 100%; }
+  .gs-icon-btn-danger { width: 44px; height: 44px; }
+  .gs-grid-2 { grid-template-columns: 1fr; }
+  .gs-input-sm { height: 44px; }
+  .gs-field-inline { flex-direction: column; align-items: stretch; gap: 6px; }
+  .gs-field-inline .gs-input { width: 100%; }
+  .gs-alt label { min-height: 44px; }
+  .gs-alt input[type="checkbox"] { width: 24px; height: 24px; }
+  .gs-fold-btn { min-height: 48px; }
+  .gs-import-bar { bottom: 64px; }
+  .gs-import-bar .gs-actions { width: 100%; }
+  .gs-import-bar .gs-actions > * { flex: 1 1 auto; }
+  .gs-import-bar .gs-btn { white-space: normal; text-align: center; line-height: 1.2; padding-top: 6px; padding-bottom: 6px; }
+  .gs-choice .gs-input { width: 100%; }
+  .gs-table-stack, .gs-table-import { min-width: 0; }
+  .gs-table-stack thead { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .gs-table-stack, .gs-table-stack tbody, .gs-table-stack tr, .gs-table-stack td, .gs-table-stack th[scope="row"] { display: block; width: 100%; box-sizing: border-box; }
+  .gs-table-stack tr { padding: 12px; border-bottom: 1px solid var(--border-medium); }
+  .gs-table-stack td, .gs-table-stack th[scope="row"] { padding: 4px 0; border-bottom: 0; }
+  .gs-table-stack td[data-label]::before { content: attr(data-label); display: block; font: 600 12px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+  .gs-table-stack td[data-label="Add"]::before { content: none; }
+  .gs-table-stack td:empty { display: none; }
+}

@@ -590,19 +590,19 @@ function assertEscaped(out, label) {
     assert(/<option value="Mars\/Base" selected>/.test(out));
   });
 
-  await check('coming-next pages: Roster, Raid nights, Attendance and Loot use one pattern with their own copy', () => {
+  await check('coming-next pages: Raid nights, Attendance and Loot use one pattern with their own copy (the Roster stub is gone)', () => {
     const seen = new Set();
-    for (const key of ['roster', 'nights', 'attendance', 'loot']) {
+    for (const key of ['nights', 'attendance', 'loot']) {
       const out = G.pages.empty.emptyHtml(key);
       assert(out.includes('gs-empty-card') && out.includes('Nothing to set up yet.'), key);
       seen.add(out.match(/<h2[^>]*>([^<]*)</)[1]);
     }
-    assert.equal(seen.size, 4);
+    assert.equal(seen.size, 3);
+    assert(!('roster' in G.pages.empty.PAGES), 'the roster stub is gone');
     assert(G.pages.empty.emptyHtml('loot').includes('Loot tracking comes next') && G.pages.empty.emptyHtml('loot').includes('Gargul award history'));
-    assert(G.pages.empty.emptyHtml('roster').includes('Mains and Alts'));
     assert(G.pages.empty.emptyHtml('nights').includes('Raid-Helper sign-ups') && G.pages.empty.emptyHtml('nights').includes('Warcraft Logs'));
     assert(G.pages.empty.emptyHtml('attendance').includes('each person') && G.pages.empty.emptyHtml('attendance').includes('each team'));
-    assert(G.pages.empty.emptyHtml('bogus').includes('Roster'));
+    assert(G.pages.empty.emptyHtml('bogus').includes('Raid nights'));
   });
 
   // ── Create guild v2 ────────────────────────────────────────────
@@ -827,7 +827,7 @@ function assertEscaped(out, label) {
   });
 
   await check('guild.css has a rule for every gs- class the markup builders use', () => {
-    const markup = ['shell.js', 'ui.js', 'icons.js', 'pages-signin.js', 'pages-create.js', 'pages-settings-teams.js', 'pages-settings-people.js', 'pages-empty.js', 'pages-privacy.js']
+    const markup = ['shell.js', 'ui.js', 'icons.js', 'pages-signin.js', 'pages-create.js', 'pages-settings-teams.js', 'pages-settings-people.js', 'pages-empty.js', 'pages-privacy.js', 'pages-roster.js', 'pages-person.js', 'pages-import.js']
       .map(f => read('js/guild/' + f)).join('\n');
     const used = new Set();
     for (const m of markup.matchAll(/class="([^"]*)"/g)) {
@@ -1005,7 +1005,7 @@ function assertEscaped(out, label) {
     assert(out.includes('<ul class="gs-sentences" id="delete-autopromote">') && !out.includes('gs-bullets'));
     assert(/\.gs-sentences li \{ display: block;/.test(css));
     const t = G.pages.teams.teamsHtml({ guildData: guildData({ 'guild.teams': 'guild' }) });
-    assert(t.includes('Old Team</span><span class="gs-muted">25-man - 0 players</span><button'));
+    assert(t.includes('Old Team</span><span class="gs-muted">25-man - 0 players</span><a class="gs-btn gs-btn-sm" href="#/g/g1/roster?team=t3" aria-label="Open roster of Old Team">Open roster</a><button'));
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
     assert(/\.gs-archived-item, \.gs-archived-item \+ \.gs-archived-item \{ box-sizing: border-box; flex-direction: column;/.test(phone));
     assert(/\.gs-archived-wrap \{ padding: 0;/.test(phone));

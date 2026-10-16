@@ -21,10 +21,14 @@
     return '<span class="gs-person">' + G.ui.avatarHtml(p, 'gs-avatar-md') + personTextHtml(p, entry.isMe) + '</span>';
   }
 
-  function rosterCellHtml(entry) {
+  // roster: null | { personId, name, class } (the person's Main). A linked person opens their record, in the class colour.
+  function rosterCellHtml(entry, gid) {
     if (entry.roster == null) return '<span class="gs-muted">Not linked</span>';
     const r = entry.roster;
-    return esc(typeof r === 'string' ? r : (r && r.name) || '');
+    if (typeof r === 'string') return esc(r);
+    const name = esc((r && r.name) || '');
+    if (!r || !r.personId || !gid) return name;
+    return '<a class="gs-char-link ' + G.ui.classClass(r.class) + '" href="' + esc(G.router.format({ name: 'person', gid: gid, pid: r.personId })) + '">' + name + '</a>';
   }
 
   function lastSeenHtml(entry, now) {
@@ -53,19 +57,19 @@
       esc(COLUMN_LABELS[column]) + '<span class="gs-sort-ind" aria-hidden="true"></span></button></th>';
   }
 
-  // opts: { people, teams, sort, query, now }. The table (wide screens) and the card list (phones) share the rows.
+  // opts: { people, teams, sort, query, now, gid }. The table (wide screens) and the card list (phones) share the rows.
   function tableHtml(opts) {
     const rows = G.peopleSort.sortPeople(G.peopleSort.filterPeople(opts.people, opts.query), opts.sort);
     if (!rows.length) {
       return '<p class="gs-empty">' + (opts.query ? 'No one matches your search.' : 'No one has signed in yet.') + '</p>';
     }
     const body = rows.map(function (e) {
-      return '<tr><td>' + nameCellHtml(e) + '</td><td>' + rosterCellHtml(e) + '</td><td><div class="gs-chips">' + G.ui.roleChipsHtml(e.roles, opts.teams) + '</div></td><td class="gs-nowrap">' + lastSeenHtml(e, opts.now) +
+      return '<tr><td>' + nameCellHtml(e) + '</td><td>' + rosterCellHtml(e, opts.gid) + '</td><td><div class="gs-chips">' + G.ui.roleChipsHtml(e.roles, opts.teams) + '</div></td><td class="gs-nowrap">' + lastSeenHtml(e, opts.now) +
         '</td><td><div class="gs-row-actions">' + rowActionsHtml(e) + '</div></td></tr>';
     }).join('');
     const cards = rows.map(function (e) {
       return '<li class="gs-person-card">' + G.ui.avatarHtml(e.person, 'gs-avatar-lg') + '<div class="gs-card-body">' + personTextHtml(e.person, e.isMe) +
-        '<span class="gs-card-line">' + rosterCellHtml(e) + '</span><div class="gs-chips">' + G.ui.roleChipsHtml(e.roles, opts.teams) + '</div>' +
+        '<span class="gs-card-line">' + rosterCellHtml(e, opts.gid) + '</span><div class="gs-chips">' + G.ui.roleChipsHtml(e.roles, opts.teams) + '</div>' +
         '<span class="gs-card-line gs-muted">Last seen: ' + lastSeenHtml(e, opts.now) + '</span><div class="gs-row-actions">' + rowActionsHtml(e) + '</div></div></li>';
     }).join('');
     return '<div class="gs-table-wrap gs-people-table"><table class="gs-table" aria-label="People who have signed in"><thead><tr>' +
@@ -104,7 +108,7 @@
       '<div class="gs-search"><label class="gs-sr" for="people-search">Search people</label>' + G.icons.icon('search', 18) +
       '<input class="gs-input gs-input-search" type="search" id="people-search" placeholder="Search people" data-input="people-search" autocomplete="off" value="' + esc(opts.query || '') + '"></div>' +
       sortSelectHtml(opts.sort) + '</div>' +
-      '<div id="people-table">' + tableHtml({ people: data.people, teams: teams, sort: opts.sort, query: opts.query, now: opts.now }) + '</div>' +
+      '<div id="people-table">' + tableHtml({ people: data.people, teams: teams, sort: opts.sort, query: opts.query, now: opts.now, gid: opts.guildData.guild.id }) + '</div>' +
       removedHtml({ removed: data.removed }) + '</section>';
   }
 
@@ -273,7 +277,7 @@
     const c = ctxGuild();
     const host = document.getElementById('people-table');
     if (!c || !host) return;
-    host.innerHTML = tableHtml({ people: c.data.people, teams: c.gd.teams, sort: s.peopleSort, query: s.peopleQuery, now: Date.now() });
+    host.innerHTML = tableHtml({ people: c.data.people, teams: c.gd.teams, sort: s.peopleSort, query: s.peopleQuery, now: Date.now(), gid: c.gid });
   };
 
   G.handlers.click['dismiss-notice'] = function () {
