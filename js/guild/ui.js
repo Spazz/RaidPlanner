@@ -204,12 +204,13 @@
     el.hidden = !text;
   };
 
-  ui.focusByKey = function (key) {
+  // opts.preventScroll: a re-render puts focus back where it was without scrolling the page to it.
+  ui.focusByKey = function (key, opts) {
     if (!key) return false;
     const nodes = document.querySelectorAll('[data-key]');
     for (let i = 0; i < nodes.length; i++) {
       if (nodes[i].getAttribute('data-key') !== key) continue;
-      nodes[i].focus();
+      nodes[i].focus(opts && opts.preventScroll ? { preventScroll: true } : undefined);
       if (document.activeElement === nodes[i]) return true;
     }
     return false;

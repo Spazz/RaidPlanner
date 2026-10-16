@@ -643,7 +643,7 @@
       const h = main && main.querySelector ? main.querySelector('h1') : null;
       if (h) h.focus();
     } else if (key) {
-      G.ui.focusByKey(key);
+      G.ui.focusByKey(key, { preventScroll: true });
     }
     if (state.loaded) firstRender = false;
   }

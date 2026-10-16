@@ -892,6 +892,17 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(drawer.shown, 1, 'a closed drawer stays closed');
   });
 
+  await check('fix2: focus put back after a render never scrolls the page (phone drawer -> How it works)', async () => {
+    const env = makeEnv({ url: '/' });
+    await settle();
+    const seen = [];
+    const btn = { getAttribute: n => (n === 'data-key' ? 'menu-btn' : null), focus(opts) { seen.push(opts); env.documentFake.activeElement = btn; } };
+    env.documentFake.activeElement = btn;
+    env.documentFake.lists['[data-key]'] = [btn];
+    env.G.app.render();
+    assert.deepEqual(plain(seen), [{ preventScroll: true }]);
+  });
+
   await check('fix1 nit: the late chrome-guild answer does not re-render once a guild section is showing', async () => {
     let env = null;
     let writesAtFetch = -1;
