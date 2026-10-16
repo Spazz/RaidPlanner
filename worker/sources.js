@@ -1,7 +1,7 @@
 // Outbound reads for the two imports: a Raid-Helper event and a Warcraft Logs report. The fetch is injected
 // (ctx.fetch). Nothing here is stored; callers copy only what an officer adds.
 import { HttpError } from './http.js';
-import { DEFAULT_WCL_FLAVOUR, WCL_FLAVOURS } from './roster-data.js';
+import { DEFAULT_WCL_FLAVOUR, WCL_CLASS, WCL_FLAVOURS, ownValue } from './roster-data.js';
 
 const RAID_HELPER_DEFAULT_BASE = 'https://raid-helper.dev';
 const LOCAL_BASE = /^http:\/\/(?:localhost|127\.0\.0\.1):\d{1,5}$/;
@@ -210,11 +210,11 @@ async function wclToken(ctx, flavour, forceNew = false) {
 
 const WCL_QUERY = 'query($code: String!) { reportData { report(code: $code) { title startTime zone { name } masterData { actors(type: "Player") { name type subType server } } } } }';
 
-async function postGraphql(ctx, flavour, code, token) {
+async function postGraphql(ctx, flavour, query, variables, token) {
   return fetchWithTimeout(ctx, wclUrl(ctx.env, flavour, '/api/v2/client'), {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ query: WCL_QUERY, variables: { code } }),
+    body: JSON.stringify({ query, variables }),
   }, wclDown);
 }
 
@@ -224,12 +224,11 @@ export function requireWclConfigured(env) {
   }
 }
 
-// -> { title, zone | null, startTime (ms | null), actors: [{ name, subType, server | null }] } (Pets are not filtered here).
-export async function fetchWclReport(ctx, flavour, code) {
-  if (!isWclFlavour(flavour) || !isWclCode(code)) throw new Error('fetchWclReport needs a validated flavour and code');
+// One GraphQL call (a 401 refetches the token once) -> the `reportData` object. Errors map to the Phase 2 error codes.
+async function wclData(ctx, flavour, query, variables) {
   requireWclConfigured(ctx.env);
-  let response = await postGraphql(ctx, flavour, code, await wclToken(ctx, flavour));
-  if (response.status === 401) response = await postGraphql(ctx, flavour, code, await wclToken(ctx, flavour, true));
+  let response = await postGraphql(ctx, flavour, query, variables, await wclToken(ctx, flavour));
+  if (response.status === 401) response = await postGraphql(ctx, flavour, query, variables, await wclToken(ctx, flavour, true));
   if (!response.ok) throw wclDown();
   let body;
   try { body = JSON.parse(await readCapped(response, WCL_MAX_BYTES)); } catch { throw wclDown(); }
@@ -242,18 +241,120 @@ export async function fetchWclReport(ctx, flavour, code) {
     if (/does not exist|not found/i.test(text)) throw new HttpError(404, 'not_found', 'Warcraft Logs has no report with that code.');
     throw wclDown();
   }
-  const report = body.data && body.data.reportData && body.data.reportData.report;
+  return body.data && body.data.reportData ? body.data.reportData : null;
+}
+
+const finiteMs = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+};
+
+// -> { title, zone | null, startTime (ms | null), actors: [{ name, subType, server | null }] } (Pets are not filtered here).
+export async function fetchWclReport(ctx, flavour, code) {
+  if (!isWclFlavour(flavour) || !isWclCode(code)) throw new Error('fetchWclReport needs a validated flavour and code');
+  const data = await wclData(ctx, flavour, WCL_QUERY, { code });
+  const report = data && data.report;
   if (report === null || report === undefined) throw new HttpError(404, 'not_found', 'Warcraft Logs has no report with that code.');
   const actors = report.masterData && Array.isArray(report.masterData.actors) ? report.masterData.actors : [];
-  const startMs = Number(report.startTime);
   return {
     title: cleanLine(report.title, 100),
     zone: report.zone && typeof report.zone.name === 'string' ? cleanLine(report.zone.name, 60) : null,
-    startTime: Number.isFinite(startMs) && startMs > 0 ? startMs : null,
+    startTime: finiteMs(report.startTime),
     actors: actors.filter((actor) => actor && typeof actor.name === 'string').map((actor) => ({
       name: actor.name,
       subType: typeof actor.subType === 'string' ? actor.subType : '',
       server: typeof actor.server === 'string' && actor.server.trim() ? cleanLine(actor.server, 40) : null,
     })),
+  };
+}
+
+// Raid attendance reads only what presence needs: the fights (boss pulls with the players in them) and who they were.
+// No title, events, damage, healing or gear is requested, so none can be stored.
+const WCL_PULLS_QUERY = 'query($code: String!) { reportData { report(code: $code) { startTime endTime zone { name } owner { name } '
+  + 'fights { id name encounterID kill startTime endTime friendlyPlayers } masterData { actors(type: "Player") { id name server subType } } } } }';
+
+// -> { startTime, endTime | null, zone | null, owner | null,
+//      pulls: [{ fightId, encounterId, name, kill, startedAt, endedAt, players: [{ name, server | null, class }] }] }
+// Boss pulls only (encounterID > 0); a fight whose `kill` is null is still being uploaded and is skipped. startedAt is absolute
+// (report start + the fight's offset). Pets and unknown sub types are dropped.
+export async function fetchWclPulls(ctx, flavour, code) {
+  if (!isWclFlavour(flavour) || !isWclCode(code)) throw new Error('fetchWclPulls needs a validated flavour and code');
+  const data = await wclData(ctx, flavour, WCL_PULLS_QUERY, { code });
+  const report = data && data.report;
+  if (report === null || report === undefined) throw new HttpError(404, 'not_found', 'Warcraft Logs has no report with that code.');
+  const startTime = finiteMs(report.startTime);
+  if (startTime === null) throw wclDown();
+  const actors = new Map();
+  for (const actor of report.masterData && Array.isArray(report.masterData.actors) ? report.masterData.actors : []) {
+    const classId = actor && typeof actor.subType === 'string' ? ownValue(WCL_CLASS, actor.subType) : undefined;
+    if (!classId || typeof actor.name !== 'string' || !Number.isInteger(actor.id)) continue;
+    actors.set(actor.id, {
+      name: actor.name,
+      server: typeof actor.server === 'string' && actor.server.trim() ? cleanLine(actor.server, 40) : null,
+      class: classId,
+    });
+  }
+  const pulls = [];
+  for (const fight of Array.isArray(report.fights) ? report.fights : []) {
+    if (!fight || !Number.isInteger(fight.id) || !(Number(fight.encounterID) > 0)) continue;
+    if (fight.kill === null || fight.kill === undefined) continue;
+    const offset = Number(fight.startTime);
+    const endOffset = Number(fight.endTime);
+    if (!Number.isFinite(offset) || !Number.isFinite(endOffset) || endOffset < offset) continue;
+    const seen = new Set();
+    const players = [];
+    for (const id of Array.isArray(fight.friendlyPlayers) ? fight.friendlyPlayers : []) {
+      const actor = actors.get(id);
+      if (!actor || seen.has(id)) continue;
+      seen.add(id);
+      players.push(actor);
+    }
+    pulls.push({
+      fightId: fight.id,
+      encounterId: Number(fight.encounterID),
+      name: cleanLine(fight.name, 60) || 'Boss',
+      kill: fight.kill === true,
+      startedAt: startTime + offset,
+      endedAt: startTime + endOffset,
+      players,
+    });
+  }
+  pulls.sort((a, b) => a.startedAt - b.startedAt || a.fightId - b.fightId);
+  return {
+    startTime,
+    endTime: finiteMs(report.endTime),
+    zone: report.zone && typeof report.zone.name === 'string' ? cleanLine(report.zone.name, 60) : null,
+    owner: report.owner && typeof report.owner.name === 'string' ? cleanLine(report.owner.name, 40) || null : null,
+    pulls,
+  };
+}
+
+const WCL_LIST_FIELDS = 'data { code title startTime endTime zone { name } owner { name } } has_more_pages';
+
+// guildRef: { id } (the Warcraft Logs guild id) or { name, serverSlug, serverRegion }.
+// -> { reports: [{ code, title, startTime, endTime | null, zone | null, owner | null }], hasMore }. Titles are shown, never stored.
+export async function listWclReports(ctx, flavour, guildRef, page) {
+  if (!isWclFlavour(flavour)) throw new Error('listWclReports needs a validated flavour');
+  if (!Number.isInteger(page) || page < 1 || page > 1000) throw new Error('listWclReports needs a page from 1');
+  const byId = !!guildRef && Number.isInteger(guildRef.id);
+  const query = byId
+    ? `query($guildID: Int, $page: Int) { reportData { reports(guildID: $guildID, limit: 25, page: $page) { ${WCL_LIST_FIELDS} } } }`
+    : `query($guildName: String, $guildServerSlug: String, $guildServerRegion: String, $page: Int) { reportData { reports(guildName: $guildName, guildServerSlug: $guildServerSlug, guildServerRegion: $guildServerRegion, limit: 25, page: $page) { ${WCL_LIST_FIELDS} } } }`;
+  const variables = byId
+    ? { guildID: guildRef.id, page }
+    : { guildName: guildRef.name, guildServerSlug: guildRef.serverSlug, guildServerRegion: guildRef.serverRegion, page };
+  const data = await wclData(ctx, flavour, query, variables);
+  const list = data && data.reports;
+  if (!list || !Array.isArray(list.data)) throw new HttpError(404, 'not_found', 'Warcraft Logs has no guild with those details.');
+  return {
+    reports: list.data.filter((entry) => entry && isWclCode(entry.code) && finiteMs(entry.startTime) !== null).map((entry) => ({
+      code: entry.code,
+      title: cleanLine(entry.title, 100),
+      startTime: finiteMs(entry.startTime),
+      endTime: finiteMs(entry.endTime),
+      zone: entry.zone && typeof entry.zone.name === 'string' ? cleanLine(entry.zone.name, 60) : null,
+      owner: entry.owner && typeof entry.owner.name === 'string' ? cleanLine(entry.owner.name, 40) || null : null,
+    })),
+    hasMore: list.has_more_pages === true,
   };
 }

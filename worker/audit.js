@@ -24,6 +24,18 @@ export const AUDIT_ACTIONS = [
   'character.delete',
   'character.main',
   'roster.import',
+  'raid.create',
+  'raid.delete',
+  'raid.event',
+  'raid.report',
+  'raid.plan',
+  'raid.manual',
+  'attendance.decide',
+  'attendance.undo',
+  'attendance.link',
+  'attendance.guest',
+  'policy.update',
+  'wcl.settings',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

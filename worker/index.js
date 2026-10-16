@@ -14,8 +14,17 @@ import {
   removeCharacter, saveNotes,
 } from './routes/roster.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
+import {
+  createRaid, deleteEvent, deleteManual, deletePlan, deleteRaid, deleteReport, getRaid, listRaids, putEvent, putManual, putPlan, putReport,
+  recomputeRoute,
+} from './routes/raids.js';
+import {
+  deleteDecision, getBackfillReports, getPersonAttendance, getPolicy, getReview, getTeamAttendance, postDecision, postUnmatched, putPolicy,
+  putWclSettings,
+} from './routes/attendance.js';
 
 const COMMIT_MAX_BODY = 64 * 1024;
+const PLAN_MAX_BODY = 32 * 1024;
 
 const ROUTES = [
   { method: 'GET', path: '/guild', auth: false, handler: guildPageRedirect },
@@ -52,6 +61,29 @@ const ROUTES = [
   { method: 'PATCH', path: '/api/guild/:gid/roster/:pid/characters/:cid', auth: true, handler: patchCharacter },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/characters/:cid', auth: true, handler: removeCharacter },
   { method: 'POST', path: '/api/guild/:gid/roster/:pid/characters/:cid/main', auth: true, handler: makeMain },
+  { method: 'GET', path: '/api/guild/:gid/raids', auth: true, handler: listRaids },
+  { method: 'POST', path: '/api/guild/:gid/raids', auth: true, handler: createRaid },
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid', auth: true, handler: getRaid },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid', auth: true, handler: deleteRaid },
+  { method: 'PUT', path: '/api/guild/:gid/raids/:rid/event', auth: true, handler: putEvent },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/event', auth: true, handler: deleteEvent },
+  { method: 'PUT', path: '/api/guild/:gid/raids/:rid/reports', auth: true, handler: putReport },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/reports/:code', auth: true, handler: deleteReport },
+  { method: 'PUT', path: '/api/guild/:gid/raids/:rid/plan', auth: true, handler: putPlan, maxBody: PLAN_MAX_BODY },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/plan', auth: true, handler: deletePlan },
+  { method: 'PUT', path: '/api/guild/:gid/raids/:rid/manual', auth: true, handler: putManual, maxBody: PLAN_MAX_BODY },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/manual', auth: true, handler: deleteManual },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/recompute', auth: true, handler: recomputeRoute },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/decisions', auth: true, handler: postDecision },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/decisions/:pid', auth: true, handler: deleteDecision },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/unmatched', auth: true, handler: postUnmatched },
+  { method: 'GET', path: '/api/guild/:gid/attendance/policy', auth: true, handler: getPolicy },
+  { method: 'PUT', path: '/api/guild/:gid/attendance/policy', auth: true, handler: putPolicy },
+  { method: 'PUT', path: '/api/guild/:gid/attendance/wcl', auth: true, handler: putWclSettings },
+  { method: 'GET', path: '/api/guild/:gid/attendance/review', auth: true, handler: getReview },
+  { method: 'GET', path: '/api/guild/:gid/attendance/team', auth: true, handler: getTeamAttendance },
+  { method: 'GET', path: '/api/guild/:gid/attendance/person/:pid', auth: true, handler: getPersonAttendance },
+  { method: 'GET', path: '/api/guild/:gid/attendance/backfill/reports', auth: true, handler: getBackfillReports },
 ];
 
 // deps: { db, env, fetch, now, randomBytes, log } -> { handle(request) }

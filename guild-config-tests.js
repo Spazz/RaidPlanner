@@ -131,6 +131,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
     'wrangler.jsonc', '.assetsignore', '_headers', '.env.example', 'guild.css', 'js/guild/api.js', 'js/guild/shell.js',
     'guild-ui-tests.js', 'guild-worker-tests.js', 'guild-config-tests.js', 'tests/d1-fake.js', 'tools/guild-dev.js', 'tools/fake-discord.js',
     'guild-roster-worker-tests.js', 'guild-roster-ui-tests.js', 'guild-shell-tests.js', 'tests/guild-scripts.js', 'tools/fake-sources.js', 'migrations/0002_roster.sql',
+    'guild-attendance-worker-tests.js', 'migrations/0003_attendance.sql',
     'migrations/0001_foundation.sql', 'worker/package.json',
     ...walk('worker'), ...walk('migrations'),
   ]);
