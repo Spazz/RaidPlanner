@@ -127,6 +127,7 @@
 !migrations/
 !migrations/*.sql
 !tests/d1-fake.js
+!tests/guild-scripts.js
 !tools/guild-dev.js
 !tools/fake-discord.js
 !guild.html
