@@ -31,11 +31,11 @@ const load = (files, before) => { const p = pageOf(files, before); return app.fr
 const GOOD = { 'js/a.js': 'const A = 1;', 'js/b.js': `${MARKER}\nconst B = 2;\n// END` };
 
 check('the real index.html loads: ordered script files, logic half stops at the marker', () => {
-  assert.ok(app.scripts.length >= 2 && app.scripts.every(s => /^\/js\/(?:rules\/)?[\w-]+\.js$/.test(s)), app.scripts.join());
+  assert.ok(app.scripts.length >= 2 && app.scripts.every(s => /^\/js\/(?:rules\/|guild\/)?[\w-]+\.js$/.test(s)), app.scripts.join());
   assert.ok(app.logic.length > 1000 && app.logic.length < app.script.length);
   assert.ok(!app.logic.includes(MARKER));
   assert.ok(app.script.includes(MARKER));
-  assert.ok(app.css.length > 1000 && app.stylesheets.includes('/app.css'));
+  assert.ok(app.css.length > 1000 && app.stylesheets.includes('/app.css') && app.stylesheets.includes('/guild.css'));
 });
 
 check('real-page chunks the suites slice out exist', () => {

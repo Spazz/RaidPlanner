@@ -2207,7 +2207,8 @@ const FocusTrap = {
     const { modalEl, trigger, handler } = this.active;
     modalEl.removeEventListener('keydown', handler);
     this.active = null;
-    if (trigger && typeof trigger.focus === 'function' && document.body.contains(trigger)) trigger.focus();
+    // No focus moves while a guild page covers the planner (PP.shell.setActive closes the planner's overlays).
+    if (trigger && typeof trigger.focus === 'function' && document.body.contains(trigger) && (typeof plannerActive !== 'function' || plannerActive())) trigger.focus();
   },
 };
 
@@ -2309,6 +2310,7 @@ function scheduleSpotlightQueue() {
   spotlightTimer = setTimeout(attempt, SPOTLIGHT_DELAY_MS);
 }
 function runSpotlightQueue() {
+  if (typeof plannerActive === 'function' && !plannerActive()) return; // a guild page covers the planner: no tips
   if (document.querySelector('.spotlight-callout')) return;
   for (const def of SPOTLIGHT_DEFS) {
     if (!Spotlight.shouldShow(localStorage, def.id)) continue;

@@ -190,8 +190,7 @@ textarea.import-field { min-height: 130px; resize: vertical; font-family: Consol
 .attendance-version-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .attendance-version-tabs button { font: 500 11px var(--font-body); padding: 5px 12px; background: var(--bg-card); border: 1px solid var(--border-medium); color: var(--text-secondary); cursor: pointer; text-transform: uppercase; letter-spacing: .04em; }
 .attendance-version-tabs button[aria-pressed="true"] { color: var(--accent-gold); border-color: var(--accent-gold-dim); }
-/* The "New" header badge, the release notes list and the version comparison (backlog-2 #9) */
-.new-badge { display: inline-block; margin-left: 4px; padding: 1px 7px; font: 700 10px var(--font-body); text-transform: uppercase; letter-spacing: .05em; background: var(--accent-gold); color: #201a08; border-radius: 10px; vertical-align: middle; }
+/* The release notes list and the version comparison (backlog-2 #9) */
 .whats-new-list { list-style: none; display: flex; flex-direction: column; gap: 8px; padding: 0; margin: 0; }
 .whats-new-list li { font-size: 13px; color: var(--text-secondary); line-height: 1.5; padding-left: 18px; position: relative; }
 .whats-new-list li::before { content: '\2192'; position: absolute; left: 0; color: var(--accent-gold); }
@@ -300,7 +299,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; }
   .steps { grid-template-columns: 1fr; }
-  .game-header-links { display: none; }
 }
 
 /* ── Main frame ── */
@@ -355,11 +353,6 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   font-size: 15px; font-weight: 600; flex-shrink: 0;
   color: var(--text-primary); letter-spacing: 0.12em;
 }
-/* The anvil mark is the planner's way home (planner-home), same look as the era band's mark. */
-.planner-home { display: flex; align-items: center; flex-shrink: 0; text-decoration: none; cursor: pointer; }
-.planner-home .game-header-mark { width: 26px; height: 26px; }
-.planner-home:hover .game-header-mark { color: var(--accent-gold-bright); }
-.planner-home:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 .title-diamond { display: none; }
 .title-edition { font-family: var(--font-cond); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
 .title-right { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; flex-shrink: 0; }
@@ -1691,20 +1684,10 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .addon-frame { width:min(1280px,100%); }
 }
 
-/* The game switcher is shared by both views and sits outside the planner zoom. */
-body { flex-direction:column; align-items:center; justify-content:flex-start; padding-top:0; }
-.game-header { width:calc(100% + 32px); background:#101113; border-bottom:1px solid #34332d; }
-/* The +32px bleed cancels body's 16px side padding, which drops to 0 at <=1100px. */
-@media(max-width:1100px) { .game-header { width:100%; } }
-.game-header-inner { max-width:1480px; margin:auto; display:flex; align-items:center; height:56px; padding:0 32px; }
-.game-header-brand { display:flex; align-items:center; gap:12px; padding-right:32px; color:#e5e0d3; flex-shrink:0; }
+/* The anvil mark (the hero wordmark on phones). */
 .game-header-mark { width:34px; height:34px; display:grid; place-items:center; color:var(--accent-gold); }
 .game-header-mark .mark-svg { display:block; width:100%; height:100%; }
-.game-header-brand strong { display:block; font:700 18px var(--font-cond); letter-spacing:.09em; text-transform:uppercase; }
-/* The brand is the way home (brand-home): same look as before, plus a pointer, a gold hover and a focus ring. */
-.game-header-brand { cursor:pointer; text-decoration:none; }
-.game-header-brand:hover strong, .game-header-brand:hover .game-header-mark { color:var(--accent-gold-bright); }
-.game-header-brand:focus-visible { outline:2px solid var(--accent-gold); outline-offset:2px; }
+/* The game switcher (Classic / TBC / Forever) lives in the shell's top bar, outside the planner zoom. */
 .game-version-nav { display:flex; gap:2px; padding:3px; border:1px solid var(--border-subtle); background:#17181a; }
 .game-version-tab { --game-color:var(--version-classic); appearance:none; border:0; border-bottom:3px solid transparent; background:transparent; color:#a7aaa4; padding:5px 18px 4px; text-align:center; cursor:pointer; position:relative; transition:background .15s,color .15s; }
 .game-version-tab[data-version="tbc"] { --game-color:#abd47d; }
@@ -1714,28 +1697,10 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 .game-version-tab[aria-pressed="true"] { color:var(--game-color); border-bottom-color:var(--game-color); background:#232526; }
 .game-version-tab .game-name { font:700 18px var(--font-cond); letter-spacing:.045em; text-transform:uppercase; white-space:nowrap; }
 .game-beta { display:inline-block; vertical-align:middle; padding:3px 5px; margin-left:7px; border:1px solid #65577e; color:var(--camp-accent); font:600 9px var(--font-body); letter-spacing:.06em; }
-/* Landing links in the band (What's new, How it works, FAQ): hidden below 900px and on phones. */
-.game-header-links { display:flex; gap:22px; align-items:center; margin-left:auto; }
-.game-header-links a { font-family:var(--font-cond); text-transform:uppercase; letter-spacing:.1em; font-size:14px; color:var(--text-muted); text-decoration:none; }
-.game-header-links a:hover { color:var(--text-primary); }
-/* The wordmark in the hero is for phones only: the phone era band keeps just the mark. */
+/* The wordmark in the hero is for phones only (the shell's menu button and top bar carry no wordmark there). */
 .hero-wordmark { display:none; }
 @media(max-width:900px) {
-  .game-header-inner { padding:0 16px; }
-  .game-header-brand { padding-right:20px; }
   .game-version-tab { min-width:0; padding:5px 14px 4px; }
-  .game-header-links { display:none; }
-}
-@media(max-width:600px) {
-  .game-header { width:100%; }
-  .game-header-inner { padding:0; flex-wrap:wrap; }
-  .game-header-brand { width:100%; padding:10px 14px; gap:9px; border-bottom:1px solid #27292b; }
-  .game-header-mark { width:26px; height:26px; }
-  .game-header-brand strong { font-size:15px; }
-  .game-version-nav { width:100%; gap:0; }
-  .game-version-tab { padding:12px 10px 10px; text-align:center; }
-  .game-version-tab .game-name { font-size:20px; }
-  .game-beta { font-size:8px; margin-left:3px; padding:2px 3px; }
 }
 
 #campfire-panel { padding:18px; border-bottom:1px solid var(--border-medium); background:#1d1b20; }
@@ -1878,13 +1843,7 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   /* The toast sits at the top, under the 40px header and above the player editor sheet (z-index 200). */
   .toast { zoom: 1; top: calc(env(safe-area-inset-top, 0px) + 44px); bottom: auto; left: 12px; right: 12px; font-size: 13px; z-index: 300; transform: translateY(-10px); }
 
-  /* Version header: one 40px row (mark + Classic | TBC | Forever). */
-  .game-header-inner { flex-wrap: nowrap; align-items: center; height: 40px; padding: 0 12px; gap: 10px; }
-  .game-header-brand { width: auto; padding: 0; border-bottom: 0; flex-shrink: 0; }
-  .game-header-brand > div, .game-header-links { display: none; }
-  /* 44px x 44px tap area around the 22px mark: it reaches the screen edge (12px padding) and stops at the first tab (10px gap). */
-  .game-header-brand { position: relative; }
-  .game-header-brand::before { content: ''; position: absolute; top: -11px; left: -12px; width: 44px; height: 44px; }
+  /* Version tabs in the shell's top bar: Classic | TBC | Forever fill the row between the menu button and the account. */
   .game-header-mark { width: 26px; height: 26px; }
   .game-version-nav { flex: 1; width: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; padding: 0; background: none; height: 28px; border: 1px solid var(--border-subtle); }
   .game-version-tab { min-width: 0; padding: 0; display: flex; align-items: center; justify-content: center; border-bottom: 0; color: var(--text-secondary); }
@@ -1901,14 +1860,9 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
      carries its own "Back to my raid" button. */
   .title-bar { display: none; }
   .toolbar { display: none; }
-  /* Line 1 of the context row: P mark home link, plan name / Edit toggle, version button. */
-  .phone-summary-line1 { display: flex; align-items: center; gap: 10px; }
+  /* Line 1 of the context row (plan name / Edit toggle, version button) sits in the shell's top bar. */
   .phone-summary-line1 > .phone-summary { flex: 1; width: auto; min-width: 0; }
-  #phone-home-slot, #phone-version-slot { display: flex; align-items: center; flex-shrink: 0; }
-  /* 44px x 44px tap area around the 22px mark, above the toggle's own hit area. */
-  .planner-home { position: relative; z-index: 1; }
-  .planner-home::before { content: ''; position: absolute; top: -11px; left: -12px; width: 44px; height: 44px; }
-  .planner-home .game-header-mark { width: 26px; height: 26px; }
+  #phone-version-slot { display: flex; align-items: center; flex-shrink: 0; }
   .version-btn { min-height: 32px; padding: 0 10px; position: relative; }
   /* 44px tall tap area around the 32px button (the row stays as tall as before). */
   .version-btn::before { content: ''; position: absolute; inset: -6px 0; }
@@ -2119,7 +2073,8 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
   .tray-tabs { flex-wrap: wrap; overflow-x: visible; }
 }
 
-/* The static site pages (faq.html, whats-new.html): the landing layout under the same header, with the site links kept on every width. */
+/* The static site pages (faq.html, whats-new.html): the landing layout inside the shell's main column. */
+.site-page .gs-col > .landing { margin: 0 auto; padding-left: 16px; padding-right: 16px; }
 .site-page .landing { padding-top: 32px; }
 .page-title {
   font-family: var(--font-cond); font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
@@ -2130,15 +2085,67 @@ body { flex-direction:column; align-items:center; justify-content:flex-start; pa
 .site-page .whats-new-list li { font-size: 15px; }
 .faq a.link-btn { text-decoration: none; }
 .faq-status { margin-left: 8px; font-size: 13px; color: var(--text-muted); }
-.site-page .game-header-links { display: flex; }
-@media (max-width: 900px) { .site-page .game-header-inner { height: auto; min-height: 56px; flex-wrap: wrap; padding: 6px 16px; row-gap: 4px; } }
-@media (max-width: 600px) {
-  .site-page .game-header-inner { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px 12px; gap: 4px 12px; }
-  .site-page .game-header-brand > div { display: block; }
-  .site-page .game-header-brand { padding: 0; width: auto; border-bottom: 0; }
-  .site-page .game-header-links { gap: 12px; margin-left: auto; }
-  .site-page .game-header-links a { font-size: 13px; letter-spacing: .04em; }
-  .site-page .landing { padding-top: 20px; }
-}
+@media (max-width: 600px) { .site-page .landing { padding-top: 20px; } }
 .site-page .whats-new-version:first-child { margin-top: 0; }
-.game-header-links a[aria-current="page"] { color: var(--text-primary); }
+
+/* ══════════════════════════════════════════════════════════════
+   PLANNER INSIDE THE SHELL (step 2b)
+   js/guild/ draws the rail, sidebar and top bar around the planner; the planner keeps its own DOM inside
+   #planner-root and its pieces of the top bar inside #shell-topbar-plan. body.shell-section-* and
+   body.shell-pending are set by the shell; body[data-planner-view] by showView.
+   ══════════════════════════════════════════════════════════════ */
+
+/* #planner-root reproduces the column the planner had as the body: centred, the same side gutters (none
+   at <=1100px but the safe areas), no top gap (the top bar sits above it). */
+.planner-root {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding: 0 max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
+}
+@media (max-width: 1100px) {
+  .planner-root { padding: 0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
+}
+
+/* The planner's slot in the top bar: nothing on a guild section or a static page, version tabs on the
+   landing, the plan's header row on the plan (desktop) and line 1 of the phone context row (phone). */
+#shell-topbar-plan { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: var(--sp-3); }
+body.shell-section-guild #shell-topbar-plan, body.shell-section-page #shell-topbar-plan { display: none; }
+#shell-topbar-plan .game-version-nav,
+#shell-topbar-plan .title-bar,
+#shell-topbar-plan .phone-summary-line1 { display: none; }
+body[data-planner-view="landing"] #shell-topbar-plan .game-version-nav { display: flex; flex-shrink: 0; }
+/* The header row at the planner's scale (the frame it came from is zoomed 1.5); the plan name gives way first. */
+#shell-topbar-plan .title-bar { flex: 1 1 0; min-width: 0; zoom: 1.5; padding: 0; background: transparent; border-bottom: 0; gap: var(--sp-3); }
+#shell-topbar-plan .roster-name-wrap { min-width: 0; }
+#shell-topbar-plan .roster-name { max-width: 100%; }
+#shell-topbar-plan #roster-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (min-width: 601px) {
+  body[data-planner-view="app"] #shell-topbar-plan .title-bar { display: flex; }
+}
+@media (max-width: 600px) {
+  #shell-topbar-plan { gap: var(--sp-2); }
+  body[data-planner-view="landing"] #shell-topbar-plan .game-version-nav { flex: 1 1 0; min-width: 0; }
+  body[data-planner-view="app"] #shell-topbar-plan .phone-summary-line1 { display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 0; }
+}
+
+/* Landing modes: signed out (or How it works) = the full landing; signed in = the compact planner home;
+   while the session question is open only the import card shows. */
+.landing-compact-head, .landing-compact-help { display: none; }
+.landing-compact-head h2 { font: 700 28px var(--font-cond); letter-spacing: .03em; text-transform: uppercase; color: var(--text-primary); }
+.landing-compact-head h2:focus { outline: none; }
+.landing-compact-head p { margin-top: 4px; font-size: 16px; color: var(--text-secondary); }
+.landing-compact-help { font-size: 15px; color: var(--text-secondary); }
+.landing-compact-help a { color: var(--accent-gold); }
+.landing-compact-help a:hover { color: var(--accent-gold-bright); }
+body:not(.is-signed-out):not(.landing-full) #landing-view .hero-copy,
+body:not(.is-signed-out):not(.landing-full) #landing-view #how-it-works,
+body:not(.is-signed-out):not(.landing-full) #landing-view #version-comparison,
+body:not(.is-signed-out):not(.landing-full) #landing-view .landing-footer { display: none; }
+body:not(.is-signed-out):not(.landing-full):not(.shell-pending) #landing-view .landing-compact-head,
+body:not(.is-signed-out):not(.landing-full):not(.shell-pending) #landing-view .landing-compact-help { display: block; }
+body:not(.is-signed-out):not(.landing-full) #landing-view .hero { grid-template-columns: minmax(0, 680px); }
+body.shell-pending #landing-view .hero-copy,
+body.shell-pending #landing-view #how-it-works,
+body.shell-pending #landing-view #version-comparison,
+body.shell-pending #landing-view .landing-footer { display: none; }
+body.shell-pending #landing-view .hero { grid-template-columns: minmax(0, 680px); }

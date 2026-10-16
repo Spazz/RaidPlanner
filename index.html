@@ -25,26 +25,117 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><g fill='%23ffb35c'><circle cx='9' cy='14' r='3'/><circle cx='16.5' cy='9' r='3'/><circle cx='24' cy='7' r='3'/><circle cx='31.5' cy='9' r='3'/><circle cx='39' cy='14' r='3'/></g><path d='M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z' transform='translate(0 -1)' fill='%23e0b53d'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/guild.css">
 </head>
-<body>
-
-<header class="game-header" id="era-band">
-  <div class="game-header-inner">
-    <a href="/" class="game-header-brand" id="brand-home" aria-label="Raidsmith home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true"><svg class="mark-svg" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="9" cy="14" r="3" fill="#ffb35c"/><circle cx="16.5" cy="9" r="3" fill="#ffb35c"/><circle cx="24" cy="7" r="3" fill="#ffb35c"/><circle cx="31.5" cy="9" r="3" fill="#ffb35c"/><circle cx="39" cy="14" r="3" fill="#ffb35c"/><path d="M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z" transform="translate(0 -1)" fill="currentColor"/></svg></span><div><strong>Raidsmith</strong></div></a>
-    <nav class="game-version-nav" aria-label="Game version">
-      <button type="button" class="game-version-tab" data-version="classic" aria-pressed="false" aria-label="WoW Classic"><span class="game-name">Classic</span></button>
-      <button type="button" class="game-version-tab" data-version="tbc" aria-pressed="true" aria-label="TBC Anniversary"><span class="game-name">TBC</span></button>
-      <button type="button" class="game-version-tab" data-version="forever" aria-pressed="false" aria-label="WoW Forever Beta"><span class="game-name">Forever<span class="game-beta">Beta</span></span></button>
-    </nav>
-    <nav class="game-header-links" aria-label="Site">
-      <a href="/whats-new.html" id="nav-whats-new">What's new<span class="new-badge" id="whats-new-badge" hidden>New</span></a>
-      <a href="#how-it-works">How it works</a>
-      <a href="/faq.html">FAQ</a>
-    </nav>
-  </div>
-</header>
+<body class="guild-page shell-pending" data-page="app">
+<div id="guild-root" class="gs-app">
+  <div id="shell-rail"></div>
+  <div id="shell-sidebar"></div>
+  <div class="gs-col">
+    <header class="gs-topbar" id="shell-topbar">
+      <div id="shell-topbar-lead"></div>
+      <div id="shell-topbar-plan" class="planner-topbar">
+        <nav class="game-version-nav" aria-label="Game version">
+          <button type="button" class="game-version-tab" data-version="classic" aria-pressed="false" aria-label="WoW Classic"><span class="game-name">Classic</span></button>
+          <button type="button" class="game-version-tab" data-version="tbc" aria-pressed="true" aria-label="TBC Anniversary"><span class="game-name">TBC</span></button>
+          <button type="button" class="game-version-tab" data-version="forever" aria-pressed="false" aria-label="WoW Forever Beta"><span class="game-name">Forever<span class="game-beta">Beta</span></span></button>
+        </nav>
+        <!-- Header row: title · plan name + status · Share and the menu (nav slim-down). -->
+        <div class="title-bar">
+          <h1 class="sr-only" tabindex="-1">Raidsmith</h1>
+          <div class="roster-name-wrap plan-only">
+            <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">
+              <span id="roster-name-text">No Roster Loaded</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+            <span class="roster-status-line" id="roster-status-line"></span>
+          </div>
+          <div class="title-right plan-only">
+            <div class="menu-wrap" id="version-menu-wrap">
+              <button type="button" class="btn version-btn" id="btn-version-menu" data-version="tbc" aria-haspopup="menu" aria-expanded="false" aria-label="Game version: TBC Anniversary" title="Switch game version"><span id="version-btn-text">TBC</span> <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+              <div class="menu" id="version-menu" role="menu" aria-label="Game version" hidden>
+                <button type="button" class="menu-item" role="menuitemradio" aria-checked="false" data-version="classic">WoW Classic<span class="menu-check" aria-hidden="true">&#10003;</span></button>
+                <button type="button" class="menu-item" role="menuitemradio" aria-checked="true" data-version="tbc">TBC Anniversary<span class="menu-check" aria-hidden="true">&#10003;</span></button>
+                <button type="button" class="menu-item" role="menuitemradio" aria-checked="false" data-version="forever">WoW Forever<span class="game-beta">Beta</span><span class="menu-check" aria-hidden="true">&#10003;</span></button>
+              </div>
+            </div>
+            <div class="menu-wrap">
+              <button type="button" class="btn share-btn" id="btn-share-menu" aria-haspopup="menu" aria-expanded="false">Share <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+              <div class="menu" id="share-menu" role="menu" aria-label="Share" hidden>
+                <div role="group" aria-labelledby="menu-heading-game">
+                  <div class="menu-heading" id="menu-heading-game">Into the game</div>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt" aria-label="Copy for MRT: the seated groups as an MRT Raid Groups import string" aria-keyshortcuts="G">Copy for MRT<kbd class="menu-kbd" aria-hidden="true">G</kbd></button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt-note" aria-label="Copy MRT note: the assignments as an MRT note" aria-keyshortcuts="M">Copy MRT note<kbd class="menu-kbd" aria-hidden="true">M</kbd></button>
+                </div>
+                <div class="menu-sep"></div>
+                <div role="group" aria-labelledby="menu-heading-raid">
+                  <div class="menu-heading" id="menu-heading-raid">Send to the raid</div>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-share" aria-label="Copy live link: everyone with it sees and edits this plan" aria-keyshortcuts="L">Copy live link<kbd class="menu-kbd" aria-hidden="true">L</kbd></button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat" aria-label="Copy raid chat text: the groups as plain text for Discord or raid chat" aria-keyshortcuts="C">Copy raid chat text<kbd class="menu-kbd" aria-hidden="true">C</kbd></button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat-compact" aria-label="Copy compact chat text: sized for in-game raid chat">Copy compact chat text</button>
+                </div>
+                <div class="menu-sep"></div>
+                <div role="group" aria-labelledby="menu-heading-other">
+                  <div class="menu-heading" id="menu-heading-other">Other</div>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-print-sheet" aria-label="Print raid sheet: opens a printable sheet">Print raid sheet</button>
+                </div>
+                <div class="menu-sep"></div>
+                <button type="button" class="menu-item" role="menuitem" id="btn-share-main" title="Share and export (E)" aria-keyshortcuts="E"><span class="btn-label">Share and export&hellip;</span><kbd class="menu-kbd" aria-hidden="true">E</kbd></button>
+              </div>
+            </div>
+            <div class="menu-wrap">
+              <button type="button" class="btn btn-secondary btn-icon" id="btn-settings-menu" aria-haspopup="menu" aria-expanded="false" aria-label="Menu: plan, sign-ups and data" title="Menu">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"></path></svg>
+              </button>
+              <div class="menu" id="settings-menu" role="menu" aria-label="Plan, sign-ups and data" hidden>
+                <div role="group" aria-labelledby="menu-heading-plan">
+                  <div class="menu-heading" id="menu-heading-plan">Plan</div>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-new-plan" aria-label="Start a new plan from the import screen">New plan&hellip;</button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-load" aria-label="Load a saved roster or recent import"><span class="btn-label">Open saved plan&hellip;</span></button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-save" aria-label="Save a copy of the current plan" title="Save a copy (Ctrl+S). Your plan also saves itself as you edit." aria-keyshortcuts="Control+S Meta+S"><span class="btn-label">Save a copy</span><kbd class="menu-kbd" aria-hidden="true">Ctrl+S</kbd></button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-templates" aria-label="Save or apply a comp template">Comp templates&hellip;</button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-split-plan" disabled>Split into two raids<small id="split-plan-reason"></small></button>
+                  <button type="button" class="menu-item menu-item-danger" role="menuitem" id="btn-clear" aria-label="Clear all players and groups">Clear board</button>
+                </div>
+                <div class="menu-sep"></div>
+                <div role="group" aria-labelledby="menu-heading-signups">
+                  <div class="menu-heading" id="menu-heading-signups">Sign-ups</div>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-refresh" hidden aria-label="Pull the latest sign-ups from Raid-Helper" title="Pull the latest sign-ups from Raid-Helper">Refresh from Raid-Helper</button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-attendance" aria-label="View attendance and reliability history from saved rosters">Attendance history</button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-random" aria-label="Generate a random roster">Random test roster</button>
+                </div>
+                <div class="menu-sep"></div>
+                <div role="group" aria-labelledby="menu-heading-data">
+                  <div class="menu-heading" id="menu-heading-data">Data &amp; help</div>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-export-backup" aria-label="Download a backup of every saved roster, template and plan stored in this browser">Export data backup</button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-import-backup" aria-label="Restore a Raidsmith data backup file">Import data backup&hellip;</button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-shortcuts-help" title="Keyboard shortcuts (?)">Keyboard shortcuts</button>
+                  <button type="button" class="menu-item" role="menuitem" id="btn-show-tips-again" aria-label="Show the first-run feature tips again">Show tips again</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      <div class="phone-summary-line1">
+        <button type="button" class="phone-summary" id="phone-summary-toggle" aria-expanded="false" aria-controls="phone-context-body">
+          <span class="phone-summary-main" id="phone-summary-main"></span>
+          <span class="phone-summary-edit"><span id="phone-summary-edit-label">Edit</span> <span aria-hidden="true" id="phone-summary-chevron">&#9662;</span></span>
+        </button>
+        <div id="phone-version-slot"></div>
+      </div>
+      </div>
+      <div id="shell-topbar-account"></div>
+    </header>
+    <div id="shell-banner"></div>
+    <main class="gs-main" id="gs-main" hidden></main>
+    <div id="planner-root" class="planner-root">
 <main class="landing" id="landing-view">
-  <h1 class="sr-only">Raidsmith</h1>
+  <h1 class="sr-only" tabindex="-1">Raidsmith</h1>
+  <div id="planner-notice"></div>
+  <div class="landing-compact-head">
+    <h2 tabindex="-1">Planner</h2>
+    <p>Import sign-ups or open a saved plan. Plans save in this browser.</p>
+  </div>
 
   <section class="hero">
     <div class="hero-copy">
@@ -102,6 +193,8 @@
     </div>
   </section>
 
+  <p class="landing-compact-help">New to Raidsmith? <a href="#how-it-works" data-action="how-it-works">How it works</a></p>
+
   <section class="landing-section" id="how-it-works">
     <div class="section-title">How it works</div>
     <div class="steps">
@@ -136,84 +229,6 @@
 </main>
 
 <main class="addon-frame" id="app" hidden>
-  <!-- Header row: title · plan name + status · Share and the menu (nav slim-down). -->
-  <div class="title-bar">
-    <h1 class="sr-only">Raidsmith</h1>
-    <a href="/" class="planner-home" id="planner-home" aria-label="Raidsmith home: load a different plan" title="Home: load a different plan"><span class="game-header-mark" aria-hidden="true"><svg class="mark-svg" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="9" cy="14" r="3" fill="#ffb35c"/><circle cx="16.5" cy="9" r="3" fill="#ffb35c"/><circle cx="24" cy="7" r="3" fill="#ffb35c"/><circle cx="31.5" cy="9" r="3" fill="#ffb35c"/><circle cx="39" cy="14" r="3" fill="#ffb35c"/><path d="M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z" transform="translate(0 -1)" fill="currentColor"/></svg></span></a>
-    <div class="roster-name-wrap plan-only">
-      <button type="button" class="roster-name link-btn" id="roster-name" title="Rename this plan">
-        <span id="roster-name-text">No Roster Loaded</span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-      </button>
-      <span class="roster-status-line" id="roster-status-line"></span>
-    </div>
-    <div class="title-right plan-only">
-      <div class="menu-wrap" id="version-menu-wrap">
-        <button type="button" class="btn version-btn" id="btn-version-menu" data-version="tbc" aria-haspopup="menu" aria-expanded="false" aria-label="Game version: TBC Anniversary" title="Switch game version"><span id="version-btn-text">TBC</span> <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
-        <div class="menu" id="version-menu" role="menu" aria-label="Game version" hidden>
-          <button type="button" class="menu-item" role="menuitemradio" aria-checked="false" data-version="classic">WoW Classic<span class="menu-check" aria-hidden="true">&#10003;</span></button>
-          <button type="button" class="menu-item" role="menuitemradio" aria-checked="true" data-version="tbc">TBC Anniversary<span class="menu-check" aria-hidden="true">&#10003;</span></button>
-          <button type="button" class="menu-item" role="menuitemradio" aria-checked="false" data-version="forever">WoW Forever<span class="game-beta">Beta</span><span class="menu-check" aria-hidden="true">&#10003;</span></button>
-        </div>
-      </div>
-      <div class="menu-wrap">
-        <button type="button" class="btn share-btn" id="btn-share-menu" aria-haspopup="menu" aria-expanded="false">Share <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
-        <div class="menu" id="share-menu" role="menu" aria-label="Share" hidden>
-          <div role="group" aria-labelledby="menu-heading-game">
-            <div class="menu-heading" id="menu-heading-game">Into the game</div>
-            <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt" aria-label="Copy for MRT: the seated groups as an MRT Raid Groups import string" aria-keyshortcuts="G">Copy for MRT<kbd class="menu-kbd" aria-hidden="true">G</kbd></button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-copy-mrt-note" aria-label="Copy MRT note: the assignments as an MRT note" aria-keyshortcuts="M">Copy MRT note<kbd class="menu-kbd" aria-hidden="true">M</kbd></button>
-          </div>
-          <div class="menu-sep"></div>
-          <div role="group" aria-labelledby="menu-heading-raid">
-            <div class="menu-heading" id="menu-heading-raid">Send to the raid</div>
-            <button type="button" class="menu-item" role="menuitem" id="btn-share" aria-label="Copy live link: everyone with it sees and edits this plan" aria-keyshortcuts="L">Copy live link<kbd class="menu-kbd" aria-hidden="true">L</kbd></button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat" aria-label="Copy raid chat text: the groups as plain text for Discord or raid chat" aria-keyshortcuts="C">Copy raid chat text<kbd class="menu-kbd" aria-hidden="true">C</kbd></button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-copy-chat-compact" aria-label="Copy compact chat text: sized for in-game raid chat">Copy compact chat text</button>
-          </div>
-          <div class="menu-sep"></div>
-          <div role="group" aria-labelledby="menu-heading-other">
-            <div class="menu-heading" id="menu-heading-other">Other</div>
-            <button type="button" class="menu-item" role="menuitem" id="btn-print-sheet" aria-label="Print raid sheet: opens a printable sheet">Print raid sheet</button>
-          </div>
-          <div class="menu-sep"></div>
-          <button type="button" class="menu-item" role="menuitem" id="btn-share-main" title="Share and export (E)" aria-keyshortcuts="E"><span class="btn-label">Share and export&hellip;</span><kbd class="menu-kbd" aria-hidden="true">E</kbd></button>
-        </div>
-      </div>
-      <div class="menu-wrap">
-        <button type="button" class="btn btn-secondary btn-icon" id="btn-settings-menu" aria-haspopup="menu" aria-expanded="false" aria-label="Menu: plan, sign-ups and data" title="Menu">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"></path></svg>
-        </button>
-        <div class="menu" id="settings-menu" role="menu" aria-label="Plan, sign-ups and data" hidden>
-          <div role="group" aria-labelledby="menu-heading-plan">
-            <div class="menu-heading" id="menu-heading-plan">Plan</div>
-            <button type="button" class="menu-item" role="menuitem" id="btn-new-plan" aria-label="Start a new plan from the import screen">New plan&hellip;</button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-load" aria-label="Load a saved roster or recent import"><span class="btn-label">Open saved plan&hellip;</span></button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-save" aria-label="Save a copy of the current plan" title="Save a copy (Ctrl+S). Your plan also saves itself as you edit." aria-keyshortcuts="Control+S Meta+S"><span class="btn-label">Save a copy</span><kbd class="menu-kbd" aria-hidden="true">Ctrl+S</kbd></button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-templates" aria-label="Save or apply a comp template">Comp templates&hellip;</button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-split-plan" disabled>Split into two raids<small id="split-plan-reason"></small></button>
-            <button type="button" class="menu-item menu-item-danger" role="menuitem" id="btn-clear" aria-label="Clear all players and groups">Clear board</button>
-          </div>
-          <div class="menu-sep"></div>
-          <div role="group" aria-labelledby="menu-heading-signups">
-            <div class="menu-heading" id="menu-heading-signups">Sign-ups</div>
-            <button type="button" class="menu-item" role="menuitem" id="btn-refresh" hidden aria-label="Pull the latest sign-ups from Raid-Helper" title="Pull the latest sign-ups from Raid-Helper">Refresh from Raid-Helper</button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-attendance" aria-label="View attendance and reliability history from saved rosters">Attendance history</button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-random" aria-label="Generate a random roster">Random test roster</button>
-          </div>
-          <div class="menu-sep"></div>
-          <div role="group" aria-labelledby="menu-heading-data">
-            <div class="menu-heading" id="menu-heading-data">Data &amp; help</div>
-            <button type="button" class="menu-item" role="menuitem" id="btn-export-backup" aria-label="Download a backup of every saved roster, template and plan stored in this browser">Export data backup</button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-import-backup" aria-label="Restore a Raidsmith data backup file">Import data backup&hellip;</button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-shortcuts-help" title="Keyboard shortcuts (?)">Keyboard shortcuts</button>
-            <button type="button" class="menu-item" role="menuitem" id="btn-show-tips-again" aria-label="Show the first-run feature tips again">Show tips again</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Action row: Optimize · Undo · Redo · Raid size · ideal comp · notes. -->
   <div class="toolbar">
     <button class="btn btn-primary plan-only" id="btn-optimize" aria-label="Optimize group composition" title="Optimize (O)"><span class="btn-label">Optimize</span><span class="spark" aria-hidden="true"></span><span class="spark" aria-hidden="true"></span><span class="spark" aria-hidden="true"></span><span class="spark" aria-hidden="true"></span><span class="spark" aria-hidden="true"></span></button>
@@ -242,14 +257,6 @@
   <!-- Phone context row: line 1 plan name (+ Edit), line 2 seated count · Raid size · readiness link. -->
   <div class="phone-context-panel" id="phone-context-panel">
     <div class="phone-summary-wrap" id="phone-summary-wrap">
-      <div class="phone-summary-line1">
-        <div id="phone-home-slot"></div>
-        <button type="button" class="phone-summary" id="phone-summary-toggle" aria-expanded="false" aria-controls="phone-context-body">
-          <span class="phone-summary-main" id="phone-summary-main"></span>
-          <span class="phone-summary-edit"><span id="phone-summary-edit-label">Edit</span> <span aria-hidden="true" id="phone-summary-chevron">&#9662;</span></span>
-        </button>
-        <div id="phone-version-slot"></div>
-      </div>
       <div class="phone-summary-line2">
         <span class="phone-summary-sub" id="phone-summary-sub"></span>
         <div id="raid-size-phone-slot"></div>
@@ -530,7 +537,12 @@
   <h3 id="confirm-heading"></h3>
   <p id="confirm-message"></p>
   <div class="import-buttons"><button type="button" class="btn btn-secondary" id="btn-confirm-cancel" autofocus>Cancel</button><button type="button" class="btn btn-primary" id="btn-confirm-ok">Continue</button></div>
-</dialog>
+    </div>
+  </div>
+  <div id="shell-tabs"></div>
+  <div id="shell-drawer"></div>
+</div>
+<div id="guild-dialogs"></div>
 
 <div class="drag-ghost" id="drag-ghost"></div>
 <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -559,6 +571,23 @@
 <script src="/js/modals.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/site-pages.js"></script>
+<script src="/js/guild/icons.js"></script>
+<script src="/js/guild/api.js"></script>
+<script src="/js/guild/router.js"></script>
+<script src="/js/guild/people-sort.js"></script>
+<script src="/js/guild/roster-sort.js"></script>
+<script src="/js/guild/ui.js"></script>
+<script src="/js/guild/shell.js"></script>
+<script src="/js/guild/pages-signin.js"></script>
+<script src="/js/guild/pages-create.js"></script>
+<script src="/js/guild/pages-settings-teams.js"></script>
+<script src="/js/guild/pages-settings-people.js"></script>
+<script src="/js/guild/pages-empty.js"></script>
+<script src="/js/guild/pages-roster.js"></script>
+<script src="/js/guild/pages-person.js"></script>
+<script src="/js/guild/pages-import.js"></script>
+<script src="/js/guild/pages-privacy.js"></script>
+<script src="/js/guild/app.js"></script>
 <div id="buff-tooltip-portal"></div>
 </body>
 </html>

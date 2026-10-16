@@ -502,10 +502,9 @@ check('the phone hit areas add up to 44px and do not overlap their neighbours', 
   const tabHeight = px(nav, /height: (\d+)px/) - 2 * px(nav, /border: (\d+)px/);
   const tabInset = px(rule('.game-version-tab::before'), /inset: -(\d+)px 0/);
   assert.ok(tabHeight + 2 * tabInset >= 44, `tabs reach ${tabHeight + 2 * tabInset}px`);
-  const headerHeight = px(rule('.game-header-inner'), /height: (\d+)px/);
-  const tabOvershoot = (tabHeight + 2 * tabInset - headerHeight) / 2; // how far the tab hit area spills below the header
-  // Plan-name toggle: its row plus the upward inset reach 44px; the inset stays inside the wrap's top padding
-  // (past the tabs' spill) and nothing extends down into line 2.
+  // The tabs sit alone in the shell's top bar on the landing view, so their hit area has no neighbour to overlap.
+  // Plan-name toggle (line 1, in the shell's top bar): its row plus the upward inset reach 44px, and nothing
+  // extends down into line 2.
   const summary = phoneBlock.replace(/\r\n/g, '\n').match(/\.phone-summary \{\n[^}]*\}/)[0]; // the multi-line rule
   const before = rule('.phone-summary::before').match(/inset: -(\d+)px -(\d+)px (-?\d+)/);
   const rowHeight = px(summary, /min-height: (\d+)px/);
@@ -513,8 +512,6 @@ check('the phone hit areas add up to 44px and do not overlap their neighbours', 
   const down = Number(before[3]);
   assert.ok(rowHeight + up + down >= 44, `plan-name toggle reaches ${rowHeight + up + down}px`);
   assert.equal(down, 0, 'the toggle hit area does not reach into line 2');
-  const wrapTop = px(rule('.phone-summary-wrap'), /padding: (\d+)px/);
-  assert.ok(up + tabOvershoot <= wrapTop, `toggle (${up}px up) clears the tabs (${tabOvershoot}px spill) within ${wrapTop}px of padding`);
 });
 
 check('the buff icon fallback label stays visible on phones at 9px', () => {
