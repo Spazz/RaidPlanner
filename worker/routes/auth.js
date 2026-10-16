@@ -13,7 +13,9 @@ import {
   newSessionToken, presentedToken, readManageable, sessionCookie, signState, stateCookie, verifyState,
 } from '../session.js';
 
-const ERROR_REDIRECT = (reason) => `/guild#/signin?error=${reason}`;
+// Fixed targets inside the app shell (index.html); the hash router reads them. No user input reaches a Location header.
+const HOME_REDIRECT = '/#/';
+const ERROR_REDIRECT = (reason) => `/#/signin?error=${reason}`;
 
 // ---------------------------------------------------------------------------
 // Sign in
@@ -25,6 +27,11 @@ export async function login(ctx) {
   if (new URL(ctx.request.url).origin !== canonical) return redirectResponse(`${canonical}/auth/login`);
   const state = await signState(env, base64url(ctx.randomBytes(16)));
   return redirectResponse(authorizeUrl(env, state), [stateCookie(state)]);
+}
+
+// The old guild page address: the app shell lives at / now.
+export function guildPageRedirect() {
+  return redirectResponse(HOME_REDIRECT);
 }
 
 export async function callback(ctx) {
@@ -99,7 +106,7 @@ export async function callback(ctx) {
     ctx.log(`sign-in: saving the session failed: ${error && error.message}`);
     return fail('discord');
   }
-  return redirectResponse('/guild', [clear, sessionCookie(token)]);
+  return redirectResponse(HOME_REDIRECT, [clear, sessionCookie(token)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -237,6 +244,13 @@ export async function updatePrefs(ctx) {
     prefs.sidebarCollapsed = body.sidebarCollapsed;
     changed = true;
   }
+  if (body.planSidebarCollapsed !== undefined) {
+    if (typeof body.planSidebarCollapsed !== 'boolean') {
+      throw new HttpError(400, 'bad_request', 'planSidebarCollapsed must be true or false.', { field: 'planSidebarCollapsed' });
+    }
+    prefs.planSidebarCollapsed = body.planSidebarCollapsed;
+    changed = true;
+  }
   if (body.lastGuildId !== undefined) {
     if (body.lastGuildId !== null) {
       const belongs = isId('g', body.lastGuildId) && await db.prepare(
@@ -249,7 +263,7 @@ export async function updatePrefs(ctx) {
     prefs.lastGuildId = body.lastGuildId;
     changed = true;
   }
-  if (!changed) throw new HttpError(400, 'bad_request', 'Send sidebarCollapsed, lastGuildId, or both.');
+  if (!changed) throw new HttpError(400, 'bad_request', 'Send sidebarCollapsed, planSidebarCollapsed, lastGuildId, or any of them.');
   await db.prepare('UPDATE users SET prefs = ? WHERE id = ?').bind(JSON.stringify(prefs), session.user.id).run();
   return jsonResponse({ prefs });
 }

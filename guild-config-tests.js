@@ -64,7 +64,7 @@ check('.assetsignore hides secrets, Worker source and dev files, but not anythin
     assert(ignored(secret), `${secret} must not be served`);
   }
   const served = ['index.html', 'faq.html', 'whats-new.html', 'buff-priorities.html', 'app.css', 'scenarios.js', 'og-image.png',
-    'guild.html', 'guild.css', 'js/app.js', 'js/rules/tbc.js', 'js/guild/api.js', 'icons/warrior.jpg'];
+    'guild.css', 'js/app.js', 'js/rules/tbc.js', 'js/guild/api.js', 'icons/warrior.jpg'];
   for (const file of served) assert(!ignored(file), `${file} must be served`);
   for (const file of fs.readdirSync(path.join(ROOT, 'js')).filter((f) => f.endsWith('.js'))) assert(!ignored(`js/${file}`), `js/${file}`);
   for (const rule of patterns) assert(!rule.includes('scenarios.js') || rule === '/*-scenarios.js', 'scenarios.js stays served');
@@ -99,7 +99,7 @@ check('wrangler.jsonc: Worker entry, assets, run_worker_first, D1 binding, and n
   assert.equal(config.main, 'worker/index.js');
   assert.match(config.compatibility_date, /^\d{4}-\d{2}-\d{2}$/);
   assert.deepEqual(config.assets, {
-    directory: '.', binding: 'ASSETS', run_worker_first: ['/api/guild', '/api/guild/*', '/auth/*'],
+    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/api/guild', '/api/guild/*', '/auth/*'],
   });
   assert.deepEqual(config.d1_databases, [{ binding: 'DB', database_name: 'raidsmith', database_id: 'local-raidsmith', migrations_dir: 'migrations' }]);
   assert.equal(config.vars, undefined);
@@ -128,9 +128,9 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
   const git = spawnSync('git', ['--version'], { cwd: ROOT });
   if (git.status !== 0) return; // no git on this machine: the whitelist cannot be probed
   const files = new Set([
-    'wrangler.jsonc', '.assetsignore', '_headers', '.env.example', 'guild.html', 'guild.css', 'js/guild/api.js', 'js/guild/shell.js',
+    'wrangler.jsonc', '.assetsignore', '_headers', '.env.example', 'guild.css', 'js/guild/api.js', 'js/guild/shell.js',
     'guild-ui-tests.js', 'guild-worker-tests.js', 'guild-config-tests.js', 'tests/d1-fake.js', 'tools/guild-dev.js', 'tools/fake-discord.js',
-    'guild-roster-worker-tests.js', 'guild-roster-ui-tests.js', 'tools/fake-sources.js', 'migrations/0002_roster.sql',
+    'guild-roster-worker-tests.js', 'guild-roster-ui-tests.js', 'guild-shell-tests.js', 'tests/guild-scripts.js', 'tools/fake-sources.js', 'migrations/0002_roster.sql',
     'migrations/0001_foundation.sql', 'worker/package.json',
     ...walk('worker'), ...walk('migrations'),
   ]);
@@ -148,7 +148,7 @@ check('.vercelignore keeps the Worker files off Vercel and uses no negation', ()
     assert(entries.includes(required), required);
   }
   assert(entries.every((entry) => !entry.startsWith('!')));
-  for (const kept of ['guild.html', 'guild.css', 'js/guild']) assert(!entries.some((entry) => entry.replace(/^\//, '').replace(/\/$/, '') === kept), `${kept} is not ignored`);
+  for (const kept of ['guild.css', 'js/guild']) assert(!entries.some((entry) => entry.replace(/^\//, '').replace(/\/$/, '') === kept), `${kept} is not ignored`);
 });
 
 check('package.json: version and name untouched, guild scripts run tools/guild-dev.js', () => {

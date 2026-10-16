@@ -2,7 +2,7 @@
  * Raidsmith guild UI, Phase 2 (roster) - tests for the roster, person record and import pages.
  * Run: node guild-roster-ui-tests.js
  *
- * Same approach as guild-ui-tests.js: the page's own script list (guild.html) is loaded in a vm sandbox with no DOM,
+ * Same approach as guild-ui-tests.js: the pages' shared guild script list (tests/guild-scripts.js) is loaded in a vm sandbox with no DOM,
  * and the render functions return HTML strings. Mock API data follows the Phase 2 response contract
  * (tasks/guild-phase2-spec.md, "Response contract") field for field. Handlers that talk to the API run against a
  * stubbed G.api; render() is a no-op without a page, so the state they leave behind is what is asserted.
@@ -26,9 +26,9 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const html = read('guild.html');
+const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
 const css = read('guild.css');
-const scriptSrcs = [...html.matchAll(/<script\b([^>]*)>/gi)].map(m => (m[1].match(/\bsrc\s*=\s*"([^"]*)"/i) || [])[1]).filter(Boolean);
+const scriptSrcs = GUILD_SCRIPTS;
 
 function loadGuild() {
   const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, setTimeout };
@@ -1126,14 +1126,14 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.equal(st.status, 'ready');
   });
 
-  await check('overlays: closeOverlays closes every open dialog, and route() runs it again before the final render', () => {
+  await check('overlays: closeOverlays closes every open dialog, and the guild route runs it again before the final render', () => {
     let closed = 0;
     const dlg = { close: () => { closed++; } };
     const fakeDoc = { querySelectorAll: () => [dlg, dlg], getElementById: () => null };
     G.app.closeOverlays(fakeDoc);
     assert.equal(closed, 2);
     const src = read('js/guild/app.js');
-    assert(/closeOverlays\(\);[^\n]*\n\s*render\(true\);/.test(src), 'route() closes dialogs just before it renders');
+    assert(/closeOverlays\(\);[^\n]*\n\s*render\(true\);/.test(src), 'the guild route closes dialogs just before it renders');
   });
 
   await check('trial flags are for officers: roster chips need can.edit and the home team; members see the status chip only', () => {

@@ -24,7 +24,8 @@ export function personFromSession(user) {
   return toPerson({ id: user.id, discord_id: user.discordId, username: user.username, global_name: user.globalName, avatar: user.avatar });
 }
 
-const DEFAULT_PREFS = { sidebarCollapsed: false, lastGuildId: null };
+// planSidebarCollapsed: the sidebar while a plan is open in the planner (collapsed unless the person chose otherwise).
+const DEFAULT_PREFS = { sidebarCollapsed: false, planSidebarCollapsed: true, lastGuildId: null };
 
 export function parsePrefs(raw) {
   let stored = {};
@@ -32,6 +33,7 @@ export function parsePrefs(raw) {
   if (!stored || typeof stored !== 'object') stored = {};
   return {
     sidebarCollapsed: stored.sidebarCollapsed === true,
+    planSidebarCollapsed: stored.planSidebarCollapsed !== false,
     lastGuildId: typeof stored.lastGuildId === 'string' ? stored.lastGuildId : DEFAULT_PREFS.lastGuildId,
   };
 }

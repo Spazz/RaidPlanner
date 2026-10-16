@@ -130,7 +130,7 @@
 !tests/guild-scripts.js
 !tools/guild-dev.js
 !tools/fake-discord.js
-!guild.html
+!guild-shell-tests.js
 !guild.css
 !js/guild/
 !js/guild/*.js

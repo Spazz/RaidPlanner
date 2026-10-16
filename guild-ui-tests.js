@@ -1,10 +1,10 @@
 /**
- * Raidsmith guild UI - tests for guild.html, guild.css and js/guild/*.js
+ * Raidsmith guild UI - tests for guild.css and js/guild/*.js
  * Run: node guild-ui-tests.js
  *
  * The guild scripts are classic scripts sharing one `Guild` namespace. Their render functions return HTML
- * strings, so they run here in a vm sandbox with no DOM: the page's own script list (guild.html) is loaded in
- * order, exactly as the browser does.
+ * strings, so they run here in a vm sandbox with no DOM: the pages' shared guild script list (tests/guild-scripts.js)
+ * is loaded in order, exactly as the browser does. guild-shell-tests.js drives the shell against fake documents.
  */
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -25,12 +25,12 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const html = read('guild.html');
+const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
 const css = read('guild.css');
 const appCss = read('app.css');
 
-// Every <script src> in guild.html, in order.
-const scriptSrcs = [...html.matchAll(/<script\b([^>]*)>/gi)].map(m => (m[1].match(/\bsrc\s*=\s*"([^"]*)"/i) || [])[1]).filter(Boolean);
+// The guild scripts in load order (the pages load them after their own scripts).
+const scriptSrcs = GUILD_SCRIPTS;
 
 function loadGuild() {
   const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error };
@@ -338,7 +338,8 @@ function assertEscaped(out, label) {
   await check('visibility: the phone tabs never list settings; the drawer follows the same rule as the sidebar', () => {
     const out = shellHtml(ALL_CAN);
     const tabs = out.slice(out.indexOf('<nav class="gs-tabs"'), out.indexOf('</nav>', out.indexOf('<nav class="gs-tabs"')));
-    for (const label of ['Roster', 'Raid nights', 'Attendance', 'Loot', 'More']) assert(tabs.includes(`aria-label="${label}"`), label);
+    for (const label of ['Roster', 'Raid nights', 'Attendance', 'Loot', 'Planner']) assert(tabs.includes(`aria-label="${label}"`), label);
+    assert(!tabs.includes('More'), 'the More tab is gone');
     assert(!tabs.includes('Guild settings'));
     const drawer = out.slice(out.indexOf('<dialog class="gs-drawer"'));
     assert(drawer.includes('Guild settings'));
@@ -439,9 +440,9 @@ function assertEscaped(out, label) {
 
   await check('shell: collapsed state, toggle label and aria-expanded follow the prefs flag; sidebar team picker lists active teams only', () => {
     const open = shellHtml(ALL_CAN, null, false);
-    assert(!open.includes('gs-app is-collapsed') && open.includes('aria-expanded="true" aria-label="Collapse sidebar"'));
+    assert(open.includes('aria-expanded="true" aria-label="Collapse sidebar"'));
     const shut = shellHtml(ALL_CAN, null, true);
-    assert(shut.includes('gs-app is-collapsed') && shut.includes('aria-expanded="false" aria-label="Expand sidebar"'));
+    assert(shut.includes('aria-expanded="false" aria-label="Expand sidebar"'));
     assert(/<option value="t1" selected>Team A<\/option><option value="t2">Team B<\/option><\/select>/.test(open));
     assert(!open.includes('Old Team'));
   });
@@ -455,11 +456,12 @@ function assertEscaped(out, label) {
     assert.deepEqual(crumbs({ name: 'privacy' }, null), ['Privacy & my data']);
   });
 
-  await check('avatar menu: Privacy & my data, Open the planner and Sign out only (deferred items left out)', () => {
+  await check('avatar menu: Privacy & my data and Sign out only (no Open the planner: the sidebar has it)', () => {
     const menu = G.shell.accountMenuHtml({ me: meData(), guildData: guildData(ALL_CAN) });
-    assert(menu.includes('href="#/privacy"') && menu.includes('href="/"') && menu.includes('data-action="sign-out"'));
-    for (const gone of ['My profile', 'My characters', 'Linked accounts', 'Switch guild']) assert(!menu.includes(gone), gone);
-    assert.equal((menu.match(/role="menuitem"/g) || []).length, 3);
+    assert(menu.includes('href="#/privacy"') && menu.includes('data-action="sign-out"'));
+    for (const gone of ['My profile', 'My characters', 'Linked accounts', 'Switch guild', 'Open the planner']) assert(!menu.includes(gone), gone);
+    assert(!menu.includes('href="/"'));
+    assert.equal((menu.match(/role="menuitem"/g) || []).length, 2);
     assert(menu.includes('aria-haspopup="menu"') && menu.includes('aria-expanded="false"'));
   });
 
@@ -756,31 +758,18 @@ function assertEscaped(out, label) {
   const jsDir = path.join(ROOT, 'js', 'guild');
   const jsFiles = fs.readdirSync(jsDir).filter(f => f.endsWith('.js')).sort();
 
-  await check('guild.html: no inline script, no inline style, no on* attributes, noindex, own stylesheet after app.css', () => {
-    const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
-    assert(scripts.length > 0);
-    for (const m of scripts) {
-      assert(/\bsrc\s*=\s*"/i.test(m[1]), 'script without src');
-      assert.equal(m[2].trim(), '', 'inline script body');
-    }
-    assert(!/<style\b/i.test(html), '<style> element');
-    assert(!/\sstyle\s*=/i.test(html), 'style attribute');
-    assert(!/\son[a-z]{3,}\s*=/i.test(html), 'on* attribute');
-    assert(/<meta name="robots" content="noindex">/.test(html));
-    assert(!/property="og:/.test(html), 'no og tags');
-    assert(/<title>Raidsmith guild<\/title>/.test(html));
-    assert(html.indexOf('href="/app.css"') > 0 && html.indexOf('href="/guild.css"') > html.indexOf('href="/app.css"'));
-    assert(html.includes('id="guild-root"') && html.includes('id="guild-dialogs"'));
-  });
-
-  await check('guild.html loads /js/util.js first, then exactly the scripts in js/guild/ (none missing, none extra)', () => {
+  await check('guild script list: /js/util.js first, then exactly the scripts in js/guild/ (none missing, none extra), app.js last', () => {
     assert.equal(scriptSrcs[0], '/js/util.js');
     const guildScripts = scriptSrcs.slice(1);
     assert(guildScripts.every(s => /^\/js\/guild\/[\w-]+\.js$/.test(s)), 'unexpected script path');
     assert.deepEqual([...guildScripts].sort(), jsFiles.map(f => '/js/guild/' + f));
     assert.equal(new Set(guildScripts).size, guildScripts.length, 'duplicate script');
-    assert.equal(scriptSrcs[scriptSrcs.length - 1], '/js/guild/app.js', 'app.js starts the page, so it loads last');
+    assert.equal(scriptSrcs[scriptSrcs.length - 1], '/js/guild/app.js', 'app.js starts the shell, so it loads last');
     for (const s of scriptSrcs) assert(fs.existsSync(path.join(ROOT, s.replace(/^\//, ''))), s);
+  });
+
+  await check('guild.html is gone (the shell lives in index.html, faq.html and whats-new.html)', () => {
+    assert(!fs.existsSync(path.join(ROOT, 'guild.html')));
   });
 
   await check('guild scripts: no module syntax and every file uses the one Guild namespace', () => {
@@ -792,7 +781,7 @@ function assertEscaped(out, label) {
   });
 
   await check('guild files: no non-ASCII characters outside comments (no Unicode symbols in strings or markup)', () => {
-    const files = ['guild.html', 'guild.css', ...jsFiles.map(f => 'js/guild/' + f)];
+    const files = ['guild.css', ...jsFiles.map(f => 'js/guild/' + f)];
     for (const f of files) {
       read(f).split('\n').forEach((line, i) => {
         const t = line.trim();
@@ -934,7 +923,7 @@ function assertEscaped(out, label) {
   // A tiny fake document: enough for closeOverlays.
   function fakeDoc(dialogs, menu, toggle) {
     return {
-      querySelectorAll: sel => (sel === 'dialog[open]' ? dialogs : []),
+      querySelectorAll: sel => (sel === '#shell-drawer dialog[open], #guild-dialogs dialog[open]' ? dialogs : []),
       getElementById: id => (id === 'gs-account-menu' ? menu : null),
       querySelector: sel => (sel === '[data-action="toggle-menu"]' ? toggle : null),
     };
@@ -954,9 +943,9 @@ function assertEscaped(out, label) {
     G.app.closeOverlays(fakeDoc([], { hidden: true }, toggle));
   });
 
-  await check('route change: route() calls closeOverlays before it loads anything', () => {
+  await check('route change: the guild route calls closeOverlays before it loads anything', () => {
     const app = read('js/guild/app.js');
-    const body = app.slice(app.indexOf('  function route() {'));
+    const body = app.slice(app.indexOf('  function routeGuild() {'));
     assert(body.indexOf('closeOverlays()') > 0 && body.indexOf('closeOverlays()') < body.indexOf('state.loaded ?'));
   });
 
@@ -974,15 +963,17 @@ function assertEscaped(out, label) {
     assert(G.pages.create.createHtml({ me: claimMe(), timeZones: ['UTC'], defaultTimeZone: 'UTC', alert: 'Someone claimed it first.' }).includes('Someone claimed it first.'));
   });
 
-  await check('B-Phone header: logo, team picker and avatar menu; no hamburger; More opens the drawer', () => {
+  await check('A2 phone header: menu button first, then the team picker; avatar menu; no More tab; the drawer opens from the menu button', () => {
     const out = shellHtml(ALL_CAN);
     const header = out.slice(out.indexOf('<header class="gs-topbar">'), out.indexOf('</header>'));
-    assert(header.includes('gs-phone-brand') && header.includes('gs-logo'), 'logo');
+    assert(header.indexOf('data-action="open-drawer"') >= 0 && header.includes('aria-label="Open menu"') && header.includes('aria-controls="gs-drawer"'), 'menu button');
+    assert(header.indexOf('data-action="open-drawer"') < header.indexOf('id="gs-team-select-phone"'), 'the button leads');
     assert(header.includes('id="gs-team-select-phone"') && header.includes('data-change="team-pick"'), 'team picker');
     assert(header.includes('data-action="toggle-menu"'), 'avatar menu');
-    assert(!header.includes('Open menu') && !header.includes('menu-btn') && !header.includes('data-action="open-drawer"'), 'no hamburger');
-    assert(!read('guild.css').includes('gs-menu-btn'));
-    assert(out.includes('data-action="open-drawer"') && out.includes('aria-label="More"'), 'More tab opens the drawer');
+    assert(!header.includes('gs-phone-brand'), 'the logo no longer sits in the phone header');
+    assert(!read('guild.css').includes('gs-phone-brand') && !read('guild.css').includes('gs-public-head'));
+    const tabs = out.slice(out.indexOf('<nav class="gs-tabs"'), out.indexOf('</nav>', out.indexOf('<nav class="gs-tabs"')));
+    assert(!tabs.includes('open-drawer') && !tabs.includes('More'), 'no More tab');
     // a guild without an active team shows its name instead of a picker
     const gd = guildData(ALL_CAN, { teams: [] });
     const bare = G.shell.render({ me: meData(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: null, collapsed: false }, '');
@@ -1022,9 +1013,8 @@ function assertEscaped(out, label) {
     const roster = G.shell.render({ me, route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: 't1', collapsed: false }, '<p>main</p>');
     const settings = G.shell.render({ me, route: { name: 'settings', gid: 'g1', tab: 'teams' }, guildData: gd, teamId: 't1', collapsed: false }, '<p>main</p>');
     for (const out of [roster, settings]) {
-      const main = out.slice(out.indexOf('<main'));
-      assert(main.indexOf('This guild has no Guild Master. You can claim it.') > 0 && main.indexOf('This guild has no Guild Master') < main.indexOf('<p>main</p>'), 'notice above the page');
-      assert(main.includes('href="#/new"'));
+      assert(out.indexOf('This guild has no Guild Master. You can claim it.') > out.indexOf('</header>') && out.indexOf('This guild has no Guild Master') < out.indexOf('<main'), 'notice sits in the banner slot, above the page');
+      assert(out.includes('href="#/new"'));
     }
     assert(!shellHtml(ALL_CAN).includes('This guild has no Guild Master'), 'not claimable: no notice');
     const other = meData({ create: { allowed: true, stale: false, servers: [], claimable: [{ guildId: 'g9', guildName: 'X', serverId: 's', serverName: 'S' }] } });
@@ -1073,8 +1063,8 @@ function assertEscaped(out, label) {
     assert(/\.gs-drawer-top \.gs-icon-btn \{ width: 44px; height: 44px; \}/.test(css));
   });
 
-  await check('csp-tests.js scans guild.html alongside the other pages', () => {
-    assert(/\['index\.html', 'faq\.html', 'whats-new\.html', 'guild\.html'\]/.test(read('csp-tests.js')));
+  await check('csp-tests.js scans the three pages that carry the shell (guild.html is gone)', () => {
+    assert(/\['index\.html', 'faq\.html', 'whats-new\.html'\]/.test(read('csp-tests.js')));
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

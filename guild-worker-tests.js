@@ -298,6 +298,17 @@ check('login: redirects to the canonical origin first, then to Discord with prom
   assert.equal(cookie.split(';')[0].split('=')[1], location.searchParams.get('state'));
 });
 
+check('GET /guild redirects to the app shell at /#/ (fixed target, no query echoed, no cookies)', async () => {
+  const w = await makeWorld();
+  for (const target of ['/guild', '/guild?next=https://evil.example/']) {
+    const response = await w.req('GET', target);
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get('Location'), '/#/');
+    assert.equal(response.headers.getSetCookie().length, 0);
+  }
+  assert.equal((await w.req('POST', '/guild')).status, 405, 'GET only');
+});
+
 check('callback: a missing or mismatched state is rejected and the state cookie is cleared', async () => {
   const w = await makeWorld();
   w.discord.next = { user: { id: '1', username: 'x' }, servers: [] };
@@ -309,7 +320,7 @@ check('callback: a missing or mismatched state is rejected and the state cookie 
   ]) {
     const response = await w.req('GET', `/auth/callback${query}`, { jar });
     assert.equal(response.status, 302);
-    assert.equal(response.headers.get('Location'), '/guild#/signin?error=state');
+    assert.equal(response.headers.get('Location'), '/#/signin?error=state');
     assert(response.headers.getSetCookie().some((c) => c.startsWith('__Host-rs_state=;') && c.includes('Max-Age=0') && c.includes('Path=/;')));
     assert(!response.headers.getSetCookie().some((c) => c.startsWith('__Host-rs_session')));
   }
@@ -323,25 +334,25 @@ check('callback: the state cookie is single use; denied and Discord failures red
   const login = await w.req('GET', '/auth/login', { jar });
   const state = new URL(login.headers.get('Location')).searchParams.get('state');
   const denied = await w.req('GET', `/auth/callback?error=access_denied&state=${state}`, { jar });
-  assert.equal(denied.headers.get('Location'), '/guild#/signin?error=denied');
+  assert.equal(denied.headers.get('Location'), '/#/signin?error=denied');
   assert(!jar['__Host-rs_state'], 'cookie cleared');
   const replay = await w.req('GET', `/auth/callback?code=abc&state=${state}`, { jar });
-  assert.equal(replay.headers.get('Location'), '/guild#/signin?error=state');
+  assert.equal(replay.headers.get('Location'), '/#/signin?error=state');
 
   w.discord.failToken = true;
   const j2 = newJar();
   const l2 = await w.req('GET', '/auth/login', { jar: j2 });
   const s2 = new URL(l2.headers.get('Location')).searchParams.get('state');
   const failed = await w.req('GET', `/auth/callback?code=abc&state=${s2}`, { jar: j2 });
-  assert.equal(failed.headers.get('Location'), '/guild#/signin?error=discord');
+  assert.equal(failed.headers.get('Location'), '/#/signin?error=discord');
   assert.equal(await w.count('users'), 0);
 });
 
-check('callback: sets a hand-built 302 to /guild with the __Host- session cookie; the database holds only a hash', async () => {
+check('callback: sets a hand-built 302 to /#/ with the __Host- session cookie; the database holds only a hash', async () => {
   const w = await makeWorld();
   const { callback, jar } = await signIn(w, PEOPLE.bob, []);
   assert.equal(callback.status, 302);
-  assert.equal(callback.headers.get('Location'), '/guild');
+  assert.equal(callback.headers.get('Location'), '/#/');
   const cookie = callback.headers.getSetCookie().find((c) => c.startsWith('__Host-rs_session='));
   assert(cookie);
   for (const part of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/', `Max-Age=${30 * 24 * 60 * 60}`]) assert(cookie.includes(part), part);
@@ -382,7 +393,7 @@ check('sign-in revokes the Discord token (a failed revoke is ignored) and never 
   assert.equal(w.discord.revoked.length, 1);
   w.discord.failRevoke = true;
   const { callback } = await signIn(w, PEOPLE.carol, []);
-  assert.equal(callback.headers.get('Location'), '/guild');
+  assert.equal(callback.headers.get('Location'), '/#/');
   const dump = JSON.stringify(await w.rows('SELECT * FROM sessions'));
   assert(!/tokd/.test(dump));
 });
@@ -456,7 +467,7 @@ check('GET /auth/me: shape, the Discord id appears only inside avatar urls, avat
   assert.deepEqual(Object.keys(me.json.user).sort(), ['avatarUrl', 'displayName', 'id', 'initials', 'prefs', 'username']);
   assert.equal(me.json.user.displayName, 'bob', 'falls back to the username');
   assert.equal(me.json.user.avatarUrl, `https://cdn.discordapp.com/avatars/${PEOPLE.bob.id}/${hash}.png?size=64`);
-  assert.deepEqual(me.json.user.prefs, { sidebarCollapsed: false, lastGuildId: null });
+  assert.deepEqual(me.json.user.prefs, { sidebarCollapsed: false, planSidebarCollapsed: true, lastGuildId: null });
   assert.deepEqual(me.json.create, { allowed: false });
   assert.deepEqual(me.json.deleteImpact, { handOverFirst: [], guildsDeleted: [], autoPromote: [] });
   assert.deepEqual(me.json.removedFrom, []);
@@ -476,9 +487,18 @@ check('PATCH /auth/prefs: validates types, lastGuildId must be a guild you belon
   const dave = s.jars.dave;
   const ok = await s.w.call(dave, 'PATCH', '/auth/prefs', { sidebarCollapsed: true, lastGuildId: s.guildId });
   assert.equal(ok.status, 200);
-  assert.deepEqual(ok.json, { prefs: { sidebarCollapsed: true, lastGuildId: s.guildId } });
+  assert.deepEqual(ok.json, { prefs: { sidebarCollapsed: true, planSidebarCollapsed: true, lastGuildId: s.guildId } });
   assert.deepEqual((await s.w.call(dave, 'GET', '/auth/me')).json.user.prefs, ok.json.prefs);
   assert.equal((await s.w.call(dave, 'PATCH', '/auth/prefs', { sidebarCollapsed: 'yes' })).status, 400);
+  const plan = await s.w.call(dave, 'PATCH', '/auth/prefs', { planSidebarCollapsed: false });
+  assert.equal(plan.status, 200);
+  assert.deepEqual(plan.json.prefs, { sidebarCollapsed: true, planSidebarCollapsed: false, lastGuildId: s.guildId }, 'the plan-view collapse is its own key');
+  assert.deepEqual((await s.w.call(dave, 'GET', '/auth/me')).json.user.prefs, plan.json.prefs);
+  const badPlan = await s.w.call(dave, 'PATCH', '/auth/prefs', { planSidebarCollapsed: 'no' });
+  assert.equal(badPlan.status, 400);
+  assert.equal(badPlan.json.field, 'planSidebarCollapsed');
+  const empty = await s.w.call(dave, 'PATCH', '/auth/prefs', {});
+  assert(['sidebarCollapsed', 'planSidebarCollapsed', 'lastGuildId'].every((k) => empty.json.message.includes(k)), 'the message names all three keys');
   assert.equal((await s.w.call(dave, 'PATCH', '/auth/prefs', {})).status, 400);
   const outsider = (await signIn(s.w, PEOPLE.frank, [plain(SERVER_B)])).jar;
   const denied = await s.w.call(outsider, 'PATCH', '/auth/prefs', { lastGuildId: s.guildId });
@@ -1334,12 +1354,12 @@ check('callback: a state the Worker did not sign is rejected before any Discord 
   for (const state of forged) {
     const jar = { '__Host-rs_state': state };
     const response = await w.req('GET', `/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { jar });
-    assert.equal(response.headers.get('Location'), '/guild#/signin?error=state', state);
+    assert.equal(response.headers.get('Location'), '/#/signin?error=state', state);
   }
   assert.equal(w.discord.calls.length, 0, 'not one outbound Discord request for any forged state');
   w.discord.next = { user: { id: '1', username: 'x' }, servers: [] };
   const ok = await w.req('GET', `/auth/callback?code=abc&state=${encodeURIComponent(mine)}`, { jar: { '__Host-rs_state': mine } });
-  assert.equal(ok.headers.get('Location'), '/guild', 'the genuine state still works');
+  assert.equal(ok.headers.get('Location'), '/#/', 'the genuine state still works');
 });
 
 check('the creator\'s server list never outlives 30 minutes: dropped on the next request and purged at any sign-in', async () => {
@@ -1382,7 +1402,7 @@ check('callback: Discord failures are logged by message, never with the code, to
   const jar = newJar();
   const state = new URL((await w.req('GET', '/auth/login', { jar })).headers.get('Location')).searchParams.get('state');
   const failed = await w.req('GET', `/auth/callback?code=SECRETCODE&state=${encodeURIComponent(state)}`, { jar });
-  assert.equal(failed.headers.get('Location'), '/guild#/signin?error=discord');
+  assert.equal(failed.headers.get('Location'), '/#/signin?error=discord');
   assert.equal(w.logs.length, 1);
   assert.match(w.logs[0], /token exchange failed/);
   assert(!/SECRETCODE|client-secret|tok\d/.test(w.logs[0]), w.logs[0]);

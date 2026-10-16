@@ -5,7 +5,7 @@ import { defaultRandomBytes } from './ids.js';
 import { checkRateLimit, rateLimitMessage } from './ratelimit.js';
 import { createRouter, paramsAreValid } from './router.js';
 import { loadSession } from './session.js';
-import { callback, deleteMe, login, logout, me, updatePrefs } from './routes/auth.js';
+import { callback, deleteMe, guildPageRedirect, login, logout, me, updatePrefs } from './routes/auth.js';
 import { claimGuild, createGuild, getGuild } from './routes/guild.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles } from './routes/people.js';
 import { createTeam, patchTeam } from './routes/teams.js';
@@ -18,6 +18,7 @@ import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './ro
 const COMMIT_MAX_BODY = 64 * 1024;
 
 const ROUTES = [
+  { method: 'GET', path: '/guild', auth: false, handler: guildPageRedirect },
   { method: 'GET', path: '/auth/login', auth: false, handler: login },
   { method: 'GET', path: '/auth/callback', auth: false, handler: callback },
   { method: 'GET', path: '/auth/me', auth: true, handler: me },
