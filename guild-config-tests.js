@@ -13,6 +13,8 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const vm = require('node:vm');
+const { pathToFileURL } = require('node:url');
 
 const ROOT = __dirname;
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -92,6 +94,7 @@ check('_headers carries the vercel.json CSP plus the Discord CDN for avatars, no
 check('wrangler.jsonc: Worker entry, assets, run_worker_first, D1 binding, and no DISCORD_API_BASE or vars', () => {
   const raw = read('wrangler.jsonc');
   assert(!/DISCORD_API_BASE/.test(raw), 'DISCORD_API_BASE is a dev-only --var, never config');
+  assert(!/_API_BASE/.test(raw), 'no *_API_BASE (DISCORD, RAID_HELPER, WCL) is ever config: they are dev-only --vars for local fakes');
   const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
   assert.equal(config.main, 'worker/index.js');
   assert.match(config.compatibility_date, /^\d{4}-\d{2}-\d{2}$/);
@@ -117,7 +120,8 @@ check('.env.example lists names only and covers every secret the Worker reads', 
   for (const file of walk('worker')) {
     for (const match of read(file).matchAll(/\benv\.([A-Z][A-Z0-9_]+)/g)) used.add(match[1]);
   }
-  for (const name of used) assert(names.includes(name) || name === 'DISCORD_API_BASE' || name === 'DB', `${name} is read by the Worker`);
+  for (const name of used) assert(names.includes(name) || /^(?:DISCORD|RAID_HELPER|WCL)_API_BASE$/.test(name) || name === 'DB', `${name} is read by the Worker`);
+  assert(used.has('RAID_HELPER_API_BASE') && used.has('WCL_API_BASE') && !names.some((name) => name.endsWith('_API_BASE')), 'the API bases are dev-only vars, not secrets');
 });
 
 check('every guild-tracker file is whitelisted in .gitignore (so it can be committed)', () => {
@@ -126,6 +130,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
   const files = new Set([
     'wrangler.jsonc', '.assetsignore', '_headers', '.env.example', 'guild.html', 'guild.css', 'js/guild/api.js', 'js/guild/shell.js',
     'guild-ui-tests.js', 'guild-worker-tests.js', 'guild-config-tests.js', 'tests/d1-fake.js', 'tools/guild-dev.js', 'tools/fake-discord.js',
+    'guild-roster-worker-tests.js', 'guild-roster-ui-tests.js', 'tools/fake-sources.js', 'migrations/0002_roster.sql',
     'migrations/0001_foundation.sql', 'worker/package.json',
     ...walk('worker'), ...walk('migrations'),
   ]);
@@ -354,6 +359,55 @@ check('tools/fake-discord.js answers the OAuth and API calls the Worker makes', 
     await closed;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+});
+
+check('migration 0002: dates are checked with IS (a NULL date() must not pass), the Main and name indexes, both cap triggers', () => {
+  const sql = read('migrations/0002_roster.sql');
+  for (const column of ['joined_on', 'trial_start', 'trial_end']) {
+    assert(sql.includes(`${column} IS NULL OR date(${column}) IS ${column}`), column);
+  }
+  assert(/CREATE UNIQUE INDEX characters_one_main ON characters\(player_id\) WHERE is_main = 1;/.test(sql));
+  assert(/CREATE UNIQUE INDEX characters_guild_name ON characters\(guild_id, name_key, realm_key\);/.test(sql));
+  assert(/CREATE UNIQUE INDEX players_guild_discord ON players\(guild_id, discord_user_id\) WHERE discord_user_id IS NOT NULL;/.test(sql));
+  assert(/FOREIGN KEY \(guild_id, team_id\) REFERENCES teams\(guild_id, id\) ON DELETE RESTRICT/.test(sql));
+  assert(/FOREIGN KEY \(guild_id, player_id\) REFERENCES players\(guild_id, id\) ON DELETE CASCADE/.test(sql));
+  assert(/>= 1000[\s\S]*RAISE\(ABORT, 'person_limit'\)/.test(sql) && />= 20[\s\S]*RAISE\(ABORT, 'character_limit'\)/.test(sql));
+});
+
+check('worker/roster-data.js agrees with js/rules/catalog.js: classes, spec names (bar the Feral split), roles, Raid-Helper maps', async () => {
+  const context = {};
+  vm.runInNewContext(read('js/rules/catalog.js'), context, { filename: 'catalog.js' });
+  const catalog = JSON.parse(JSON.stringify(context.RulesData.catalog)); // plain objects of this realm
+  const data = await import(pathToFileURL(path.join(ROOT, 'worker', 'roster-data.js')).href);
+  assert.deepEqual(data.CLASSES.map((entry) => entry.id), catalog.classes, 'same classes, same order');
+  for (const entry of data.CLASSES) assert.equal(entry.name, entry.id[0] + entry.id.slice(1).toLowerCase());
+  const toRole = (role) => (role === 'tank' ? 'tank' : role === 'healer' ? 'healer' : 'dps');
+  for (const id of catalog.classes) {
+    const catalogSpecs = Object.values(catalog.specs[id]);
+    const expected = catalogSpecs.flatMap((spec) => (id === 'DRUID' && spec.name === 'Feral' ? ['Feral (DPS)', 'Feral (Tank)'] : [spec.name]));
+    assert.deepEqual(data.SPECS[id], expected, `${id} specs`);
+    for (const spec of catalogSpecs) {
+      if (id === 'DRUID' && spec.name === 'Feral') continue;
+      assert.equal(data.SPEC_ROLE[id][spec.name], toRole(spec.role), `${id} ${spec.name} role`);
+    }
+  }
+  assert.equal(data.SPEC_ROLE.DRUID['Feral (DPS)'], 'dps');
+  assert.equal(data.SPEC_ROLE.DRUID['Feral (Tank)'], 'tank');
+  for (const [key, entry] of Object.entries(catalog.raidHelperSpecMap)) {
+    const ours = data.RAID_HELPER_SPEC[key];
+    assert(ours, `RAID_HELPER_SPEC lacks ${key}`);
+    assert.equal(ours.class, entry.class, key);
+    const split = { Feral: 'Feral (DPS)', Guardian: 'Feral (Tank)' };
+    assert.equal(ours.spec, split[key] || entry.spec, key);
+    assert(data.SPECS[ours.class].includes(ours.spec), `${key} maps to a real spec`);
+  }
+  for (const key of Object.keys(data.RAID_HELPER_SPEC)) assert(key in catalog.raidHelperSpecMap, `${key} is not in the catalog`);
+  for (const [name, id] of Object.entries(catalog.raidHelperClassMap)) {
+    if (id) assert.equal(data.RAID_HELPER_CLASS[name], id, name);
+    else assert(!(name in data.RAID_HELPER_CLASS), `${name} carries no class`);
+  }
+  for (const meta of ['Tank', 'Bench', 'Tentative', 'Absence', 'Late']) assert(data.RAID_HELPER_META.includes(meta));
+  assert.deepEqual(Object.values(data.WCL_CLASS).sort(), [...catalog.classes].sort());
 });
 
 async function main() {

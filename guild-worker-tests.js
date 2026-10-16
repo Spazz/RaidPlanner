@@ -524,7 +524,7 @@ check('create guild: 201 returns the guild payload; the servers list drops the t
   const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A), manageable(SERVER_B)]);
   const created = await w.call(jar, 'POST', '/api/guild', GUILD_BODY);
   assert.equal(created.status, 201);
-  assert.deepEqual(Object.keys(created.json).sort(), ['guild', 'me', 'teams']);
+  assert.deepEqual(Object.keys(created.json).sort(), ['guild', 'me', 'rosterFlags', 'rosterOptions', 'teams']);
   assert.deepEqual(Object.keys(created.json.guild).sort(), ['createdAt', 'gameVersion', 'id', 'name', 'realm', 'realmKind', 'realmSlug', 'region', 'timeZone']);
   assert.equal(created.json.guild.gameVersion, 'tbc');
   assert(ID.guild.test(created.json.guild.id));
@@ -1148,11 +1148,15 @@ check('audit: exactly the audited actions are written, once each, in the writes\
 
   const { AUDIT_ACTIONS } = await load('worker/audit.js');
   const written = await baseline();
-  assert.deepEqual([...new Set(written)].sort(), [...AUDIT_ACTIONS].sort());
+  // The roster actions (Phase 2) are driven and pinned in guild-roster-worker-tests.js.
+  const ROSTER_ACTIONS = ['character.create', 'character.delete', 'character.main', 'character.update', 'person.create', 'person.delete',
+    'person.notes', 'person.update', 'roster.import'];
+  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action)).sort());
   assert.deepEqual(AUDIT_ACTIONS.slice().sort(), [
     'access.remove', 'access.restore', 'account.delete', 'guild.claim', 'guild.create', 'guild.delete',
     'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore',
-  ]);
+    ...ROSTER_ACTIONS,
+  ].sort());
   const rows = await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, created_at FROM audit_log WHERE action IN ('account.delete', 'guild.delete')");
   assert(rows.every((row) => row.guild_id === null));
   const sample = await w.rows("SELECT before, after FROM audit_log WHERE action IN ('roles.set', 'guild_master.transfer', 'access.remove', 'guild.claim', 'guild_master.auto_promote')");
@@ -1687,7 +1691,7 @@ check('claim: an allowlisted manager takes a guild that has no Guild Master (no 
   assert.equal((await w.call(fresh, 'GET', '/auth/me')).json.create.claimable.length, 1);
   const done = await claim(fresh);
   assert.equal(done.status, 200, JSON.stringify(done.json));
-  assert.deepEqual(Object.keys(done.json).sort(), ['guild', 'me', 'teams']);
+  assert.deepEqual(Object.keys(done.json).sort(), ['guild', 'me', 'rosterFlags', 'rosterOptions', 'teams']);
   assert.deepEqual(done.json.me.roles, [{ role: 'guild_master' }]);
   assert.equal(done.json.me.can['guild.roles'], 'guild');
   assert.equal(await w.count('user_servers', 'user_id = (SELECT id FROM users WHERE discord_id = ?) AND server_id = ?', PEOPLE.frank.id, SERVER_A), 1);
