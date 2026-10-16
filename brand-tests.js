@@ -220,6 +220,34 @@ check('the landing has no brand row of its own: version tabs in the top bar, no 
   assert.match(landing, /^<main class="landing" id="landing-view">\s*<h1 class="sr-only" tabindex="-1">Raidsmith<\/h1>/);
 });
 
+check('top-bar rules: the planner slot hides on guild sections and static pages, tabs on the landing, the header row on the plan', () => {
+  assert.match(css, /body\.shell-section-guild #shell-topbar-plan, body\.shell-section-page #shell-topbar-plan \{ display: none; \}/);
+  assert.match(css, /#shell-topbar-plan \{[^}]*flex: 1 1 0;[^}]*min-width: 0/);
+  assert.match(css, /body\[data-planner-view="landing"\] #shell-topbar-plan \.game-version-nav \{ display: flex/);
+  assert.match(css, /@media \(min-width: 601px\) \{\s*body\[data-planner-view="app"\] #shell-topbar-plan \.title-bar \{ display: flex; \}/);
+  assert.match(css, /@media \(max-width: 600px\) \{[^@]*body\[data-planner-view="app"\] #shell-topbar-plan \.phone-summary-line1 \{ display: flex/);
+  assert.match(css, /#shell-topbar-plan \.title-bar \{[^}]*zoom: 1\.5/, 'the header row keeps the planner scale');
+  assert.match(css, /#shell-topbar-plan #roster-name-text \{[^}]*text-overflow: ellipsis/, 'the plan name gives way first');
+  assert.ok(!/#shell-topbar-plan \{[^}]*position:\s*sticky/.test(css), 'the top bar is not sticky');
+});
+
+check('landing modes: full when signed out or on How it works, compact when signed in, only the import card while pending', () => {
+  assert.match(css, /\.landing-compact-head, \.landing-compact-help \{ display: none; \}/);
+  for (const part of ['.hero-copy', '#how-it-works', '#version-comparison', '.landing-footer']) {
+    assert.ok(css.includes('body:not(.is-signed-out):not(.landing-full) #landing-view ' + part), 'compact hides ' + part);
+    assert.ok(css.includes('body.shell-pending #landing-view ' + part), 'pending hides ' + part);
+  }
+  assert.match(css, /body:not\(\.is-signed-out\):not\(\.landing-full\):not\(\.shell-pending\) #landing-view \.landing-compact-head,/);
+});
+
+check('#planner-root reproduces the old body layout: centred column, 16px gutters above 1100px, safe areas only below', () => {
+  const rule = css.match(/\n\.planner-root \{([^}]*)\}/)[1];
+  assert.match(rule, /flex-direction: column/);
+  assert.match(rule, /align-items: center/);
+  assert.match(rule, /padding: 0 max\(16px, env\(safe-area-inset-right, 0px\)\) 8px max\(16px, env\(safe-area-inset-left, 0px\)\)/);
+  assert.match(css, /@media \(max-width: 1100px\) \{\s*\.planner-root \{ padding: 0 env\(safe-area-inset-right, 0px\) 0 env\(safe-area-inset-left, 0px\); \}/);
+});
+
 check('the hero wordmark is phone-only', () => {
   assert.match(html, /<div class="hero-copy">\s*<div class="hero-wordmark" aria-hidden="true">/);
   assert.match(css, /\.hero-wordmark\s*\{\s*display:\s*none/);

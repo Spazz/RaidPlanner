@@ -9,6 +9,7 @@
  * say "Save a copy" (the plan autosaves, so Save is not "the" save).
  */
 const assert = require('node:assert/strict');
+const vm = require('vm');
 const app = require('./tests/load-app');
 
 const chunk = app.slice('const SHORTCUT_BUTTONS', '// ── INITIALIZE');
@@ -29,7 +30,7 @@ function harness({ view = 'app', dialogOpen = false, menuOpen = false, editor = 
     for (const fn of handlers.keydown) fn(e);
     return e;
   };
-  return { clicks, press, api: ctx.api };
+  return { clicks, press, api: ctx.api, ctx };
 }
 
 let passed = 0;
@@ -69,6 +70,19 @@ check('shortcuts stay quiet while typing, with a dialog or menu or the player ed
   h.press('m', { altKey: true });
   h.press('g', { ctrlKey: true });
   assert.equal(h.clicks.length, 0, 'modifier combos are never eaten');
+});
+
+check('shortcuts stay off while a guild page covers the planner, and work again when it comes back', () => {
+  const h = harness();
+  assert.equal(vm.runInContext('plannerActive()', h.ctx), true, 'the planner is active by default (no shell)');
+  vm.runInContext('plannerSectionActive = false', h.ctx);
+  assert.equal(vm.runInContext('plannerActive()', h.ctx), false);
+  for (const key of ['g', 'm', 'l', 'c', 'o', 'e', '1', '?']) assert(!h.press(key).defaultPrevented, key);
+  assert(!h.press('z', { ctrlKey: true }).defaultPrevented && !h.press('s', { ctrlKey: true }).defaultPrevented, 'Ctrl+Z and Ctrl+S stay with the browser');
+  assert.equal(h.clicks.length, 0);
+  vm.runInContext('plannerSectionActive = true', h.ctx);
+  assert(h.press('g').defaultPrevented);
+  assert.equal(h.clicks.at(-1), 'btn-copy-mrt');
 });
 
 check('existing shortcuts are unchanged (1, 2, ?, Ctrl+Z/Y/S)', () => {

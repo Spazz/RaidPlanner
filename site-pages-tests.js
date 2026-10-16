@@ -147,6 +147,31 @@ check('the homepage has no era band; the shell\'s sidebar owns the links to the 
   for (const rel of sources) assert(!/(?:href=|['"`])["']?#(?:faq|whats-new)["'`]/.test(read(rel)), `${rel} still points at a moved anchor`);
 });
 
+check('index.html carries the shell skeleton: every id, in order, with the planner inside #planner-root', () => {
+  const at = id => { const i = indexHtml.indexOf('id="' + id + '"'); assert(i > 0, id + ' missing'); return i; };
+  for (const id of SHELL_IDS) at(id);
+  const order = ['guild-root', 'shell-rail', 'shell-sidebar', 'shell-topbar', 'shell-topbar-lead', 'shell-topbar-plan', 'shell-topbar-account', 'shell-banner', 'gs-main', 'planner-root', 'shell-tabs', 'shell-drawer', 'guild-dialogs'].map(at);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'the slots come in the spec order');
+  assert(indexHtml.includes('<body class="guild-page shell-pending" data-page="app">'));
+  assert(indexHtml.includes('<main class="gs-main" id="gs-main" hidden></main>'));
+  const rootStart = indexHtml.indexOf('<div id="planner-root" class="planner-root">');
+  const rootEnd = indexHtml.indexOf('<div id="shell-tabs">');
+  const root = indexHtml.slice(rootStart, rootEnd);
+  for (const part of ['id="landing-view"', 'id="app"', '<dialog id="share-dialog"', '<dialog id="confirm-dialog"', 'id="planner-notice"']) assert(root.includes(part), part + ' inside #planner-root');
+  const plan = indexHtml.slice(at('shell-topbar-plan'), at('shell-topbar-account'));
+  for (const part of ['class="game-version-nav"', 'class="title-bar"', 'id="roster-name"', 'id="btn-share-menu"', 'id="btn-settings-menu"', 'class="phone-summary-line1"', 'id="phone-summary-toggle"', 'id="phone-version-slot"']) assert(plan.includes(part), part + ' in the planner top bar');
+  assert(!plan.includes('phone-home-slot') && !plan.includes('planner-home'));
+  // The planner's other body-level pieces stay outside the shell.
+  const afterShell = indexHtml.slice(indexHtml.indexOf('<div id="guild-dialogs">'));
+  for (const id of ['drag-ghost', 'toast', 'sr-status', 'print-sheet', 'buff-tooltip-portal']) assert(afterShell.includes('id="' + id + '"'), id + ' stays at body level');
+  // Compact home: the notice slot, the head and the help line.
+  assert(/<div id="planner-notice"><\/div>/.test(indexHtml));
+  assert(/<h2 tabindex="-1">Planner<\/h2>\s*<p>Import sign-ups or open a saved plan\. Plans save in this browser\.<\/p>/.test(indexHtml));
+  assert(indexHtml.includes('New to Raidsmith? <a href="#how-it-works" data-action="how-it-works">How it works</a>'));
+  assert(indexHtml.includes('<h1 class="sr-only" tabindex="-1">Raidsmith</h1>'), 'the landing h1 and the title bar h1 can take focus');
+  assert.equal((indexHtml.match(/<h1 class="sr-only" tabindex="-1">/g) || []).length, 2);
+});
+
 check('index.html loads util.js first, site-pages.js after the planner scripts, then the guild tail; vercel.json only rewrites the plan links', () => {
   assert.equal(app.scripts[0], '/js/util.js');
   assert.equal(app.scripts[app.scripts.length - 1], '/js/guild/app.js');

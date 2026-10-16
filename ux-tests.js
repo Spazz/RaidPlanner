@@ -462,5 +462,97 @@ return { ${exported.join(', ')} };
     for (const card of cards) assert(/role="listitem"/.test(card), card);
   });
 
+  // ── Shell contract (step 2b): PP.shell, setActive(false) and the overlays it closes ──
+  const SHELL_DECL = 'let plannerSectionActive = true;\nfunction plannerActive() { return plannerSectionActive; }';
+  assert(app.script.replace(/\r\n/g, '\n').includes(SHELL_DECL), 'the gate is declared next to the shortcut table');
+  function makeShell(stateView = 'app') {
+    const log = [];
+    const classes = new Set();
+    const visible = (name, on = true) => ({ classList: { contains: c => c === 'visible' && on }, name });
+    const els = {
+      'mobile-more-sheet': visible('more'), 'save-overlay': visible('save'),
+      'btn-close-more-sheet': { click: () => log.push('close-more-sheet') },
+      'how-it-works': { scrollIntoView: () => log.push('scrollIntoView') },
+    };
+    const doc = {
+      getElementById: id => els[id] || null,
+      querySelectorAll: sel => {
+        if (sel === '.menu:not([hidden])') return [{ set hidden(v) { log.push('menu-hidden:' + v); } }];
+        if (sel === '[aria-haspopup="menu"][aria-expanded="true"]') return [{ setAttribute: (k, v) => log.push('expanded:' + k + '=' + v) }];
+        if (sel === '#planner-root dialog[open]') return [{ close: () => log.push('dialog-close') }, { close: () => log.push('dialog-close') }];
+        throw new Error('unexpected selector ' + sel);
+      },
+      body: { classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c) } },
+    };
+    const state = { view: stateView };
+    const deps = {
+      closePlayerEditor: () => log.push('player-editor'), closeBuffPicker: () => log.push('buff-picker'),
+      removeSpotlightCallout: () => log.push('spotlight-callout'), spotlightTimer: 7,
+      Menu: { closeAll: () => log.push('menu-closeAll') }, document: doc,
+      closeCoverageSheet: restore => log.push('coverage-sheet:' + restore), closeSaveOverlay: () => log.push('save-overlay'),
+      Modal: { settle: v => log.push('confirm-settle:' + v) }, State: state,
+      scheduleSpotlightQueue: () => log.push('schedule-spotlight'), showView: v => { state.view = v; log.push('showView:' + v); },
+      window: { scrollTo: () => log.push('scrollTo') },
+    };
+    const src = SHELL_DECL + '\n' + app.slice('function closePlannerOverlays()', '// ── EXPOSE FOR TESTING');
+    const api = bind(src, deps, ['PlannerShell', 'plannerActive', 'closePlannerOverlays']);
+    return { api, log, classes, state, els };
+  }
+
+  await check('PP.shell: isActive is true by default; setActive(false) closes every planner overlay kind and setActive(true) re-arms the tips', () => {
+    const { api, log } = makeShell('app');
+    const shell = api.PlannerShell;
+    assert.equal(shell.isActive(), true);
+    shell.setActive(false);
+    assert.equal(shell.isActive(), false);
+    for (const part of ['player-editor', 'buff-picker', 'spotlight-callout', 'menu-closeAll', 'menu-hidden:true', 'expanded:aria-expanded=false', 'coverage-sheet:false',
+      'close-more-sheet', 'save-overlay', 'dialog-close', 'confirm-settle:false']) {
+      assert(log.includes(part), part + ' closed');
+    }
+    assert.equal(log.filter(x => x === 'dialog-close').length, 2, 'every open planner dialog');
+    assert(!log.includes('schedule-spotlight'));
+    log.length = 0;
+    shell.setActive(false);
+    assert.equal(log.length, 0, 'a second setActive(false) is a no-op');
+    shell.setActive(true);
+    assert.equal(shell.isActive(), true);
+    assert.deepEqual(log, ['schedule-spotlight'], 'a plan is open: the tips are scheduled again');
+  });
+
+  await check('PP.shell: sheets that are not open are left alone, and the landing view does not schedule tips on return', () => {
+    const { api, log, els } = makeShell('landing');
+    els['mobile-more-sheet'] = { classList: { contains: () => false } };
+    els['save-overlay'] = { classList: { contains: () => false } };
+    api.PlannerShell.setActive(false);
+    assert(!log.includes('close-more-sheet') && !log.includes('save-overlay'));
+    log.length = 0;
+    api.PlannerShell.setActive(true);
+    assert.equal(log.length, 0, 'no plan open: nothing to schedule');
+  });
+
+  await check('PP.shell: home() shows the compact landing at the top, howItWorks() the full landing scrolled to its section, view() reports the view', () => {
+    const { api, log, classes, state } = makeShell('app');
+    const shell = api.PlannerShell;
+    assert.equal(shell.view(), 'app');
+    classes.add('landing-full');
+    shell.home();
+    assert.deepEqual(log, ['showView:landing', 'scrollTo']);
+    assert(!classes.has('landing-full'));
+    assert.equal(shell.view(), 'landing');
+    log.length = 0;
+    shell.howItWorks();
+    assert.deepEqual(log, ['showView:landing', 'scrollIntoView']);
+    assert(classes.has('landing-full'));
+    shell.howItWorks();
+    assert(classes.has('landing-full'), 'a second call works the same');
+    assert.equal(state.view, 'landing');
+  });
+
+  await check('the planner never reads PP.shell: it works with no guild scripts, and window.PP.shell is the only door', () => {
+    const planner = app.scripts.filter(s => !s.startsWith('/js/guild/')).map(s => require('fs').readFileSync(require('path').join(app.ROOT, s.slice(1)), 'utf8'));
+    for (const src of planner) assert(!/PP\.shell/.test(src.replace(/\/\/.*$/gm, '')), 'a planner script reads PP.shell');
+    assert(/window\.PP = \{[^}]*shell: PlannerShell/.test(app.script));
+  });
+
   console.log(`\n${passed} UX checks passed`);
 })().catch(e => { console.error(e); process.exit(1); });

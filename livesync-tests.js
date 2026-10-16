@@ -226,6 +226,22 @@ async function check(name, fn) {
     assert.equal(other.location.hash, '');
   });
 
+  await check('Syncing the address bar keeps a guild route (#/...) the shell shows on top of the open plan', async () => {
+    for (const hash of ['#/g/abc123/roster', '#/']) {
+      const env = makeEnv();
+      seedLinkedPlan(env);
+      env.location.hash = hash;
+      env.api.syncAddressBar();
+      assert.equal(env.location.pathname, '/tbc/aB3dE5g', 'the path still names the live link');
+      assert.equal(env.location.hash, hash);
+    }
+    const anchor = makeEnv();
+    seedLinkedPlan(anchor);
+    anchor.location.hash = '#how-it-works';
+    anchor.api.syncAddressBar();
+    assert.equal(anchor.location.hash, '', 'only #r= and #/ survive');
+  });
+
   await check('Poll 200 of an unchanged plan does not PUT or POST', async () => {
     const env = makeEnv();
     seedLinkedPlan(env);
