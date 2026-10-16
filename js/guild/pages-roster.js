@@ -84,21 +84,26 @@
     return '<span class="gs-char-cell">' + G.ui.roleDotHtml(s.role) + '<span class="gs-char-text">' + link + altTagHtml(p) + '</span></span>';
   }
 
-  function statusCellHtml(p) {
-    return '<span class="gs-status-cell">' + G.ui.statusChipHtml(p.status) + G.ui.trialChipHtml(p.trialFlag) + '</span>';
+  // Trial flag chips are for officers: shown when the viewer can edit this team and it is the person's home team.
+  function flagChipHtml(p, opts) {
+    return opts && opts.showFlags && p.main && p.main.team && p.main.team.id === opts.teamId ? G.ui.trialChipHtml(p.trialFlag) : '';
+  }
+
+  function statusCellHtml(p, opts) {
+    return '<span class="gs-status-cell">' + G.ui.statusChipHtml(p.status) + flagChipHtml(p, opts) + '</span>';
   }
 
   function offSpecHtml(s) { return s.offSpec ? esc(s.offSpec) : '<span class="gs-muted">-</span>'; }
 
-  function rowHtml(gid, p) {
+  function rowHtml(gid, p, opts) {
     const s = p.shown;
-    return '<tr><th scope="row" class="gs-cell-strong">' + nameCellHtml(gid, p) + '</th><td>' + esc(G.ui.className(s.class)) + (s.mainSpec ? ' &middot; ' + esc(s.mainSpec) : '') + '</td><td>' + offSpecHtml(s) + '</td><td>' + statusCellHtml(p) + '</td><td class="gs-nowrap">' +
+    return '<tr><th scope="row" class="gs-cell-strong">' + nameCellHtml(gid, p) + '</th><td>' + esc(G.ui.className(s.class)) + (s.mainSpec ? ' &middot; ' + esc(s.mainSpec) : '') + '</td><td>' + offSpecHtml(s) + '</td><td>' + statusCellHtml(p, opts) + '</td><td class="gs-nowrap">' +
       esc(G.ui.formatDay(p.joinedOn) || '-') + '</td><td><span class="gs-muted">-</span></td><td>' + esc(p.altCount || 0) + '</td><td>' + esc(G.ui.signInLabel(p.signIn)) + '</td></tr>';
   }
 
-  function cardHtml(gid, p) {
+  function cardHtml(gid, p, opts) {
     const s = p.shown;
-    const flag = G.ui.trialChipHtml(p.trialFlag);
+    const flag = flagChipHtml(p, opts);
     return '<li class="gs-roster-card"><div class="gs-card-top">' + nameCellHtml(gid, p) + G.ui.statusChipHtml(p.status) + '</div>' +
       '<div class="gs-card-line">' + G.ui.specLineHtml(s.class, s.mainSpec, s.offSpec) + '</div>' +
       '<div class="gs-card-meta">' + flag + '<span class="gs-fine">Alts ' + esc(p.altCount || 0) + ' &middot; Sign-in: ' + esc(G.ui.signInLabel(p.signIn)) + '</span></div></li>';
@@ -111,8 +116,8 @@
     return '<div class="gs-table-wrap gs-roster-table"><table class="gs-table gs-table-roster" aria-label="Roster"><thead><tr>' +
       G.rosterSort.COLUMNS.slice(0, 5).map(function (c) { return sortHeaderHtml(c, opts.sort); }).join('') +
       '<th scope="col">Attendance</th>' + sortHeaderHtml('alts', opts.sort) + sortHeaderHtml('signIn', opts.sort) +
-      '</tr></thead><tbody>' + rows.map(function (p) { return rowHtml(opts.gid, p); }).join('') + '</tbody></table></div>' +
-      '<ul class="gs-roster-cards" aria-label="Roster">' + rows.map(function (p) { return cardHtml(opts.gid, p); }).join('') + '</ul>';
+      '</tr></thead><tbody>' + rows.map(function (p) { return rowHtml(opts.gid, p, opts); }).join('') + '</tbody></table></div>' +
+      '<ul class="gs-roster-cards" aria-label="Roster">' + rows.map(function (p) { return cardHtml(opts.gid, p, opts); }).join('') + '</ul>';
   }
 
   function emptyHtml(gd, data) {
@@ -141,7 +146,7 @@
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       (people.length
         ? trialStripHtml(data) + filtersHtml(data, filter) +
-          '<div id="roster-results">' + resultsHtml({ gid: gd.guild.id, teamId: data.team && data.team.id, people: people, filter: filter, sort: view.sort }) + '</div>'
+          '<div id="roster-results">' + resultsHtml({ gid: gd.guild.id, teamId: data.team && data.team.id, people: people, filter: filter, sort: view.sort, showFlags: !!(data.can && data.can.edit) }) + '</div>'
         : emptyHtml(gd, data)) +
       '</div>';
   }
@@ -218,7 +223,7 @@
     const gd = currentGd();
     if (!host || !s.roster || !gd) return;
     const v = rosterUi();
-    host.innerHTML = resultsHtml({ gid: gd.guild.id, teamId: s.roster.data.team.id, people: s.roster.data.people, filter: { role: v.role, status: v.status, query: v.query }, sort: v.sort });
+    host.innerHTML = resultsHtml({ gid: gd.guild.id, teamId: s.roster.data.team.id, people: s.roster.data.people, filter: { role: v.role, status: v.status, query: v.query }, sort: v.sort, showFlags: !!(s.roster.data.can && s.roster.data.can.edit) });
   }
 
   G.handlers.click['roster-sort'] = function (el) {
@@ -276,6 +281,7 @@
     const gd = currentGd();
     if (!gd || !s.roster) return;
     loadLinkable(gd.guild.id).then(function (users) {
+      if (G.router.parse(window.location.hash).name !== 'section') return; // the page changed while the list loaded
       G.ui.openDialog(addPersonDialogHtml({ guildData: gd, teamId: s.roster.data.team.id, today: s.roster.data.today, linkable: users }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
       const input = document.getElementById('dlg-name');
       if (input) input.focus();

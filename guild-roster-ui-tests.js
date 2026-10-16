@@ -620,6 +620,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
       await tick();
       assert.deepEqual(calls[4], { verb: 'post', url: base + '/characters/c_8b/main', body: {} });
       G.handlers.click['char-remove'](el({ 'data-cid': 'c_8b' }));
+      G.handlers.submit['remove-char-form'](form({}, { 'data-cid': 'c_8b' }));
       await tick();
       assert.deepEqual(calls[5], { verb: 'del', url: base + '/characters/c_8b', body: {} });
       // delete the person: back to the roster with a notice and the new badge count
@@ -962,7 +963,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const out = G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE });
     assert(out.includes('3 changes: 2 Alts, 1 new person &middot; 2 skipped'));
     assert(out.includes('>Save 3 changes<'));
-    assert(/aria-label="Starting status for Fernwhisk"/.test(out) && /<option value="trial" selected>Trial<\/option>/.test(out));
+    assert(out.includes('Starting status for Fernwhisk') && /<option value="trial" selected>Trial<\/option>/.test(out));
     const fresh = wclState();
     fresh.choices = G.pages.import.wclInitChoices(WCL_PREVIEW);
     const c = G.pages.import.wclCounts(WCL_PREVIEW, fresh.choices);
@@ -976,7 +977,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const st = wclState();
     st.choices['grimtusk|'] = { action: 'other', personId: '', status: 'trial' };
     let out = G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE });
-    assert(out.includes('aria-label="Which person owns Grimtusk"') && out.includes('<option value="p_1">Ashcaller</option>'));
+    assert(out.includes('Which person owns Grimtusk') && out.includes('<option value="p_1">Ashcaller</option>'));
     assert.equal(G.pages.import.wclCounts(WCL_PREVIEW, st.choices).incomplete, 1);
     st.choices['grimtusk|'].personId = 'p_2';
     assert.equal(G.pages.import.wclCounts(WCL_PREVIEW, st.choices).alts, 3);
@@ -1035,6 +1036,125 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.equal(plain(commit.body).decisions.length, 2);
     assert.deepEqual(plain(hashes), ['#/g/g1/roster']);
     assert(s.rosterNotice.startsWith('Saved 2 changes'));
+  });
+
+  // ── fix round: search, confirm, labels, overlays, officer-only flags, row errors ──
+  await check('search: matches any name in row.names, accent-insensitive ("solv" finds Solvhand with an o-slash), falls back to shown/main', () => {
+    const f = (people, q) => names(G.rosterSort.filterPeople(people, { role: 'all', status: 'everyone', query: q }, 't_main'));
+    assert.deepEqual(f(PEOPLE, 'solv'), ['Sølvhand']);
+    assert.deepEqual(f(PEOPLE, 'SØLV'), ['Sølvhand']);
+    const withNames = plain(PEOPLE[0]);
+    withNames.names = ['Ashcaller', 'Embervein', 'Cindra'];
+    assert.equal(f([withNames], 'embervein').length, 1, 'an Alt name from row.names');
+    assert.equal(f([withNames], 'cindra').length, 1);
+    assert.equal(f([withNames], 'zzz').length, 0);
+    const old = plain(PEOPLE[0]);
+    assert.equal(f([old], 'ashcal').length, 1, 'no names array: shown / main');
+    const fold = G.rosterSort.fold;
+    assert.equal(fold('Éclair æon œuvre Straße ł đ þ ð'), 'eclair aeon oeuvre strasse l d th d');
+    assert.equal(fold('Gnøpe'), 'gnope');
+  });
+
+  await check('remove character: the button only opens a confirm; Remove sends the DELETE', async () => {
+    const rec = record();
+    const s = setupPerson(rec);
+    const out = G.pages.person.removeCharDialogHtml(rec, rec.characters[1]);
+    assert(out.includes('Remove Glimmerkin from Sølvhand' + String.fromCharCode(39) + 's characters?') && out.includes('>Cancel<') && out.includes('>Remove</button>'));
+    assert(out.includes('data-submit="remove-char-form"'));
+    const calls = [];
+    await withApi({ del: (...a) => { calls.push(a); return Promise.resolve(Object.assign(record(), { rosterFlags: { t_main: 2 } })); } }, async () => {
+      G.handlers.click['char-remove'](el({ 'data-cid': 'c_8b' }));
+      await tick();
+      assert.equal(calls.length, 0, 'no request before the confirm');
+      G.handlers.submit['remove-char-form']({ getAttribute: () => 'c_8b', querySelectorAll: () => [] });
+      await tick();
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], '/api/guild/g1/roster/p_8/characters/c_8b');
+    void s;
+  });
+
+  await check('conflicts on character and person writes re-render from body.current (moved teams)', async () => {
+    const s = setupPerson(record());
+    const fresh = record({ person: { version: 9, status: 'reserve', trialFlag: null } });
+    await withApi({ post: () => Promise.reject(new G.api.ApiError(409, { error: 'conflict', message: 'Moved.', current: fresh })) }, async () => {
+      G.handlers.click['char-main'](el({ 'data-cid': 'c_8b' }));
+      await tick();
+    });
+    assert.equal(s.person.record.person.version, 9);
+    assert(s.pageAlert.startsWith('Someone else changed this person.'));
+    s.pageAlert = '';
+    await withApi({ del: () => Promise.reject(new G.api.ApiError(409, { error: 'conflict', message: 'Moved.', current: record({ person: { version: 10 } }) })) }, async () => {
+      G.handlers.submit['remove-char-form']({ getAttribute: () => 'c_8b', querySelectorAll: () => [] });
+      await tick();
+    });
+    assert.equal(s.person.record.person.version, 10);
+    assert(s.pageAlert.startsWith('Someone else changed this person.'));
+  });
+
+  await check('Raid-Helper page header counts "N sign-ups", not Discord members', () => {
+    const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: rhState(rhPreview()) });
+    assert(out.includes('10 sign-ups') && !out.includes('Discord members'));
+  });
+
+  await check('Warcraft Logs selects all have ids and matching labels, unique per row', () => {
+    const st = wclState();
+    st.choices['grimtusk|'] = { action: 'other', personId: '', status: 'trial' };
+    st.choices['fernwhisk|'] = { action: 'new', personId: '', status: 'trial' };
+    const out = G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE });
+    const ids = [...out.matchAll(/<select[^>]*\sid="([^"]+)"/g)].map(m => m[1]);
+    assert(ids.length >= 7 && new Set(ids).size === ids.length, 'unique ids: ' + ids.join(','));
+    assert.equal(ids.length, (out.match(/<select/g) || []).length, 'every select has an id');
+    for (const id of ids.filter(i => i.startsWith('wcl-'))) assert(out.includes('for="' + id + '"'), 'label for ' + id);
+    assert(out.includes('What to do with Thornpaw') && out.includes('Which person owns Grimtusk') && out.includes('Starting status for Fernwhisk'));
+    assert(!/<select[^>]*data-change="wcl-[^>]*aria-label=/.test(out));
+  });
+
+  await check('Warcraft Logs commit: a 400 with field realm and an index marks that decision row', async () => {
+    const s = G.app.state;
+    s.guilds.g1 = guildData();
+    s.currentGid = 'g1';
+    const st = wclState();
+    st.choices['fernwhisk|'] = { action: 'new', personId: '', status: 'trial' };
+    await withApi({ post: () => Promise.reject(new G.api.ApiError(400, { error: 'bad_request', message: 'That realm is not on the list.', field: 'realm', index: 1 })) }, async () => {
+      G.handlers.click['wcl-commit']();
+      await tick();
+    });
+    // decisions: thornpaw (alt), embervein (alt), fernwhisk (new) -> index 1 is embervein
+    assert.equal(st.rowErrors['embervein|'], 'That realm is not on the list.');
+    assert(G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE }).includes('That realm is not on the list.'));
+    assert.equal(st.status, 'ready');
+  });
+
+  await check('overlays: closeOverlays closes every open dialog, and route() runs it again before the final render', () => {
+    let closed = 0;
+    const dlg = { close: () => { closed++; } };
+    const fakeDoc = { querySelectorAll: () => [dlg, dlg], getElementById: () => null };
+    G.app.closeOverlays(fakeDoc);
+    assert.equal(closed, 2);
+    const src = read('js/guild/app.js');
+    assert(/closeOverlays\(\);[^\n]*\n\s*render\(true\);/.test(src), 'route() closes dialogs just before it renders');
+  });
+
+  await check('trial flags are for officers: roster chips need can.edit and the home team; members see the status chip only', () => {
+    const gd = guildData();
+    const editor = rosterPage(gd, rosterData());
+    assert(editor.includes('Ends in 5 days'));
+    const member = rosterPage(guildData({ can: MEMBER_CAN, flags: {} }), rosterData({ can: { edit: false } }));
+    assert(!member.includes('Ends in 5 days') && !member.includes('Ended 2 days ago') && member.includes('>Trial<'));
+    const away = plain(PEOPLE).map(p => (p.shown.name === 'Frostwhisper' ? Object.assign(p, { main: Object.assign({}, p.main, { team: TEAM_WEEKEND }) }) : p));
+    const other = rosterPage(gd, rosterData({ people: away }));
+    assert(!other.includes('Ends in 5 days') && other.includes('Ended 2 days ago'), 'a trial of another home team shows no flag');
+  });
+
+  await check('trial flags are for officers: a member\'s record has no chip or trial bar, but read-only Details with the dates', () => {
+    const rec = record({ top: { can: { edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false } }, notes: null });
+    const out = personPage(rec, guildData({ can: MEMBER_CAN, flags: {} }));
+    assert(!out.includes('Ended 2 days ago') && !out.includes('gs-trial-bar') && out.includes('gs-status-trial">Trial<'));
+    assert(out.includes('<h2 class="gs-h2" id="details-h">Details</h2>') && out.includes('<dt>Joined</dt><dd>Sep 15, 2026</dd>') && out.includes('<dt>Trial start</dt>') && out.includes('<dt>Trial end</dt><dd>Oct 13, 2026</dd>'));
+    assert(!out.includes('<form') && !out.includes('<input'));
+    const officer = personPage(record());
+    assert(officer.includes('Ended 2 days ago') && officer.includes('gs-trial-bar'));
   });
 
   // ── hygiene ────────────────────────────────────────────────────

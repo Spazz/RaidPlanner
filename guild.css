@@ -519,6 +519,10 @@ body.guild-page {
 .gs-archived-item .gs-btn + .gs-btn { margin-left: 0; }
 .gs-flush { margin: 0; }
 .gs-table-chars .gs-row-actions { flex-wrap: nowrap; }
+.gs-dates { margin: 0; }
+.gs-date-row { display: flex; justify-content: space-between; gap: 12px; }
+.gs-date-row dt { color: var(--text-muted); }
+.gs-date-row dd { margin: 0; color: var(--text-primary); }
 .gs-details-form { gap: 14px; }
 .gs-person-page { gap: 20px; }
 .gs-import-alert { margin: 0; }

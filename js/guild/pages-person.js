@@ -36,7 +36,7 @@
   function headHtml(record, can) {
     const main = mainOf(record) || {};
     const p = record.person;
-    const chips = G.ui.statusChipHtml(p.status) + G.ui.trialChipHtml(p.trialFlag) +
+    const chips = G.ui.statusChipHtml(p.status) + (can.edit ? G.ui.trialChipHtml(p.trialFlag) : '') +
       (can.edit ? '' : (p.joinedOn ? '<span class="gs-chip gs-chip-plain">Joined ' + esc(G.ui.formatDay(p.joinedOn)) + '</span>' : ''));
     return '<div class="gs-person-head"><div class="gs-person-title"><div class="gs-person-h1">' + G.ui.roleDotHtml(main.role) +
       '<h1 class="gs-h1" tabindex="-1">' + esc(main.name) + '</h1>' + (p.isMe ? '<span class="gs-you">You</span>' : '') + '</div>' +
@@ -124,6 +124,15 @@
       '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten">Save changes</button></div></form></section>';
   }
 
+  // A member's read-only Details: the dates, no form.
+  function readOnlyDetailsHtml(record) {
+    const p = record.person;
+    const rows = [['Joined', p.joinedOn], ['Trial start', p.trialStart], ['Trial end', p.trialEnd]].filter(function (r) { return !!r[1]; });
+    if (!rows.length) return '';
+    return '<section class="gs-card-sec" aria-labelledby="details-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="details-h">Details</h2></div><dl class="gs-card-sec-body gs-dates">' +
+      rows.map(function (r) { return '<div class="gs-date-row"><dt>' + esc(r[0]) + '</dt><dd>' + esc(G.ui.formatDay(r[1])) + '</dd></div>'; }).join('') + '</dl></section>';
+  }
+
   // ── notes ──
   function notesHtml(record, can) {
     const n = record.notes;
@@ -156,7 +165,7 @@
       trialBarHtml(record, can) +
       (readOnly && record.person.isMe ? '<p class="gs-fine gs-member-note">' + esc(MEMBER_NOTE) + '</p>' : '') +
       '<div class="gs-person-cols"><div class="gs-person-main">' + charactersHtml(record, can, showTeam) + attendanceHtml(record) + '</div>' +
-      (can.edit || record.notes ? '<div class="gs-person-side">' + (can.edit ? detailsHtml(record, opts.linkable) : '') + notesHtml(record, can) + '</div>' : '') + '</div>' +
+      '<div class="gs-person-side">' + (can.edit ? detailsHtml(record, opts.linkable) : readOnlyDetailsHtml(record)) + notesHtml(record, can) + '</div></div>' +
       deleteHtml(record, can) + '</div>';
   }
 
@@ -209,6 +218,14 @@
       '<p class="gs-fine" id="dlg-tend-help">Officers get a flag 7 days before this date.</p><p class="gs-field-error" id="dlg-err-trialEnd" role="alert" hidden></p></div>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Extend trial</button></div></form>';
+  }
+
+  function removeCharDialogHtml(record, character) {
+    const person = (mainOf(record) || {}).name;
+    return '<form class="gs-dialog-form" data-submit="remove-char-form" data-cid="' + esc(character.id) + '" novalidate><h2 class="gs-dialog-title" id="dlg-title">Remove character</h2>' +
+      '<p class="gs-lead gs-lead-sm" id="dlg-text">Remove ' + esc(character.name) + ' from ' + esc(person) + "'s characters?</p>" +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Remove</button></div></form>';
   }
 
   function deleteDialogHtml(record) {
@@ -387,11 +404,15 @@
 
   G.handlers.click['char-remove'] = function (el) {
     const c = cur();
+    const ch = c ? charById(c, el.getAttribute('data-cid')) : null;
+    if (!ch) return;
+    G.ui.openDialog(removeCharDialogHtml(c.rec, ch), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+  };
+
+  G.handlers.submit['remove-char-form'] = function (form) {
+    const c = cur();
     if (!c) return;
-    el.disabled = true;
-    G.api.del(base(c) + '/characters/' + encodeURIComponent(el.getAttribute('data-cid')), {}).then(function (res) {
-      applyRecord(c, res);
-    }, function (err) { el.disabled = false; pageError(c, err); });
+    G.ui.runDialog(form, G.api.del(base(c) + '/characters/' + encodeURIComponent(form.getAttribute('data-cid')), {}), function (res) { applyRecord(c, res); }, function (err) { conflict(c, err); });
   };
 
   // delete person
@@ -422,6 +443,8 @@
     characterDialogHtml: characterDialogHtml,
     extendDialogHtml: extendDialogHtml,
     deleteDialogHtml: deleteDialogHtml,
+    removeCharDialogHtml: removeCharDialogHtml,
+    readOnlyDetailsHtml: readOnlyDetailsHtml,
     trialBarHtml: trialBarHtml,
     charactersHtml: charactersHtml,
     detailsHtml: detailsHtml,
