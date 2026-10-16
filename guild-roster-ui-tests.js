@@ -1,0 +1,1069 @@
+/**
+ * Raidsmith guild UI, Phase 2 (roster) - tests for the roster, person record and import pages.
+ * Run: node guild-roster-ui-tests.js
+ *
+ * Same approach as guild-ui-tests.js: the page's own script list (guild.html) is loaded in a vm sandbox with no DOM,
+ * and the render functions return HTML strings. Mock API data follows the Phase 2 response contract
+ * (tasks/guild-phase2-spec.md, "Response contract") field for field. Handlers that talk to the API run against a
+ * stubbed G.api; render() is a no-op without a page, so the state they leave behind is what is asserted.
+ */
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+let passed = 0, failed = 0;
+async function check(name, fn) {
+  try {
+    await fn();
+    passed++;
+    console.log(`PASS  ${name}`);
+  } catch (e) {
+    failed++;
+    console.log(`FAIL  ${name}\n      ${e.message}`);
+  }
+}
+
+const ROOT = __dirname;
+const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
+const html = read('guild.html');
+const css = read('guild.css');
+const scriptSrcs = [...html.matchAll(/<script\b([^>]*)>/gi)].map(m => (m[1].match(/\bsrc\s*=\s*"([^"]*)"/i) || [])[1]).filter(Boolean);
+
+function loadGuild() {
+  const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, setTimeout };
+  vm.createContext(sandbox);
+  for (const src of scriptSrcs) vm.runInContext(read(src.replace(/^\//, '')), sandbox, { filename: src });
+  return sandbox;
+}
+const ctx = loadGuild();
+ctx.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] }; // handlers touch the DOM only through these
+const G = ctx.Guild;
+const plain = v => JSON.parse(JSON.stringify(v));
+const tick = () => new Promise(r => setImmediate(r));
+
+const HOSTILE = '<img src=x onerror=1>';
+const QUOTES = '"\' onfocus="alert(1)" x=\'';
+function assertEscaped(out, label) {
+  assert(!out.includes('<img src=x'), `${label}: raw tag leaked`);
+  assert(!out.includes(' onfocus="alert(1)"'), `${label}: attribute break-out leaked`);
+  assert(!/<script/i.test(out), `${label}: script tag leaked`);
+}
+const stripTags = s => s.replace(/<[^>]*>/g, '');
+// Attribute NAMES only: quoted values are blanked first, so escaped hostile text inside a value is not a handler.
+function assertNoRawAttrs(out) {
+  for (const tag of out.match(/<[a-z][^<>]*>/gi) || []) {
+    const names = tag.replace(/="[^"]*"/g, '=""');
+    assert(!/\sstyle=/i.test(names), 'inline style attribute: ' + tag.slice(0, 80));
+    assert(!/\son[a-z]+=/i.test(names), 'inline event handler attribute: ' + tag.slice(0, 80));
+  }
+}
+
+// ── fixtures (contract shapes) ───────────────────────────────────
+const ROSTER_OPTIONS = {
+  classes: ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'].map(id => ({ id, name: id.charAt(0) + id.slice(1).toLowerCase() })),
+  specs: {
+    WARRIOR: ['Arms', 'Fury', 'Protection'], PALADIN: ['Holy', 'Protection', 'Retribution'], HUNTER: ['Beast Mastery', 'Marksmanship', 'Survival'],
+    ROGUE: ['Assassination', 'Combat', 'Subtlety'], PRIEST: ['Discipline', 'Holy', 'Shadow'], SHAMAN: ['Elemental', 'Enhancement', 'Restoration'],
+    MAGE: ['Arcane', 'Fire', 'Frost'], WARLOCK: ['Affliction', 'Demonology', 'Destruction'], DRUID: ['Balance', 'Feral (DPS)', 'Feral (Tank)', 'Restoration'],
+  },
+  roles: {
+    WARRIOR: { Arms: 'dps', Fury: 'dps', Protection: 'tank' }, PALADIN: { Holy: 'healer', Protection: 'tank', Retribution: 'dps' },
+    PRIEST: { Discipline: 'healer', Holy: 'healer', Shadow: 'dps' }, DRUID: { Balance: 'dps', 'Feral (DPS)': 'dps', 'Feral (Tank)': 'tank', Restoration: 'healer' },
+    MAGE: { Arcane: 'dps', Fire: 'dps', Frost: 'dps' }, WARLOCK: { Affliction: 'dps', Demonology: 'dps', Destruction: 'dps' },
+    HUNTER: { 'Beast Mastery': 'dps', Marksmanship: 'dps', Survival: 'dps' }, SHAMAN: { Elemental: 'dps', Enhancement: 'dps', Restoration: 'healer' },
+    ROGUE: { Assassination: 'dps', Combat: 'dps', Subtlety: 'dps' },
+  },
+};
+const TEAM_MAIN = { id: 't_main', name: 'Main team' };
+const TEAM_WEEKEND = { id: 't_weekend', name: 'Weekend team' };
+
+function guildData(opts) {
+  const o = Object.assign({ teams: [TEAM_MAIN], can: { 'roster.edit': 'guild', 'roster.notes.view': 'guild', 'roster.notes.edit': 'guild', 'guild.teams': 'guild' }, flags: { t_main: 2 } }, opts || {});
+  return {
+    guild: { id: 'g1', name: 'Bantr', realm: 'Normal', region: 'US', timeZone: 'America/New_York', gameVersion: 'forever', realmKind: 'ruleset', realmSlug: null, createdAt: 1 },
+    teams: o.teams.map(t => ({ id: t.id, name: t.name, size: 25, archived: !!t.archived, players: t.players == null ? 3 : t.players, leads: [] })),
+    me: { roles: [{ role: 'officer' }], can: o.can },
+    rosterOptions: ROSTER_OPTIONS,
+    rosterFlags: o.flags,
+  };
+}
+const MEMBER_CAN = { 'roster.view': 'guild' };
+
+function rp(id, name, cls, mainSpec, offSpec, status, extra) {
+  const e = extra || {};
+  const home = e.homeTeam || TEAM_MAIN;
+  const main = { id: 'c_' + id, name: e.mainName || name, class: e.mainClass || cls, team: home };
+  return {
+    id: 'p_' + id, status, joinedOn: e.joinedOn === undefined ? '2026-06-14' : e.joinedOn, trialStart: null, trialEnd: e.trialEnd || null, trialFlag: e.flag || null,
+    shown: { id: 'c_' + id + (e.alt ? 'a' : ''), name, class: cls, mainSpec, offSpec, role: e.role === undefined ? (ROSTER_OPTIONS.roles[cls] || {})[mainSpec] || null : e.role, isMain: !e.alt },
+    main: e.alt ? { id: 'c_' + id, name: e.mainName || 'Mainchar', class: e.mainClass || 'PALADIN', team: home } : main,
+    altCount: e.alts || 0, signIn: e.signIn || 'not_yet', isMe: !!e.isMe,
+  };
+}
+
+const PEOPLE = [
+  rp(1, 'Ashcaller', 'WARLOCK', 'Destruction', 'Affliction', 'raider', { alts: 2 }),
+  rp(2, 'Brightmane', 'PALADIN', 'Holy', 'Retribution', 'raider', { alts: 1 }),
+  rp(3, 'Corvane', 'WARRIOR', 'Fury', 'Protection', 'trial', { joinedOn: '2026-10-15', trialEnd: '2026-11-12', signIn: 'no_discord' }),
+  rp(5, 'Frostwhisper', 'MAGE', 'Frost', 'Fire', 'trial', { joinedOn: '2026-09-22', trialEnd: '2026-10-20', flag: { kind: 'ends', days: 5 } }),
+  rp(6, 'Kaelith', 'DRUID', 'Feral (Tank)', 'Restoration', 'raider'),
+  rp(7, 'Quickshade', 'ROGUE', 'Combat', null, 'raider', { joinedOn: null }),
+  rp(8, 'Sølvhand', 'PALADIN', 'Protection', 'Holy', 'trial', { joinedOn: '2026-09-15', trialEnd: '2026-10-13', flag: { kind: 'ended', days: -2 }, alts: 1, signIn: 'signed_in' }),
+  rp(9, 'Stormjaw', 'SHAMAN', 'Enhancement', 'Restoration', 'raider', { alts: 1 }),
+  rp(10, 'Solder', 'HUNTER', 'Marksmanship', 'Survival', 'reserve'),
+  rp(11, 'Sorin', 'PRIEST', 'Shadow', 'Holy', 'raider'),
+  rp(12, 'Oldtimer', 'WARRIOR', 'Arms', 'Fury', 'inactive'),
+];
+function rosterData(over) {
+  return Object.assign({ team: { id: 't_main', name: 'Main team', archived: false }, today: '2026-10-15', can: { edit: true }, people: PEOPLE.map(p => plain(p)) }, over || {});
+}
+const names = list => list.map(p => p.shown.name);
+const EDIT_FILTER = { role: 'all', status: 'active', query: '' };
+
+function view(over) { return Object.assign({ sort: G.rosterSort.DEFAULT_SORT, role: 'all', status: 'active', query: '' }, over || {}); }
+function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Object.assign({ guildData: gd, data, view: view(v) }, extra || {})); }
+
+// ── router ───────────────────────────────────────────────────────
+(async () => {
+  await check('router: the four roster routes parse and format, archived team in the hash', () => {
+    const p = h => plain(G.router.parse(h));
+    assert.deepEqual(p('#/g/g1/roster'), { name: 'section', gid: 'g1', section: 'roster' });
+    assert.deepEqual(p('#/g/g1/roster?team=t_old'), { name: 'section', gid: 'g1', section: 'roster', team: 't_old' });
+    assert.deepEqual(p('#/g/g1/roster/p/p_abc'), { name: 'person', gid: 'g1', pid: 'p_abc' });
+    assert.deepEqual(p('#/g/g1/roster/import/raid-helper'), { name: 'import', gid: 'g1', source: 'raid-helper' });
+    assert.deepEqual(p('#/g/g1/roster/import/wcl'), { name: 'import', gid: 'g1', source: 'wcl' });
+    for (const h of ['#/g/g1/roster/import', '#/g/g1/roster/import/other', '#/g/g1/roster/p', '#/g/g1/roster/p/a/b', '#/g/g1/nights/p/p_1', '#/g/g1/roster/p/<x>']) {
+      assert.equal(p(h).name, 'notfound', h);
+    }
+    for (const r of [{ name: 'section', gid: 'g1', section: 'roster', team: 't_old' }, { name: 'person', gid: 'g1', pid: 'p_abc' }, { name: 'import', gid: 'g1', source: 'wcl' }]) {
+      assert.deepEqual(p(G.router.format(r)), r);
+    }
+    assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'nights', team: 't_old' }), '#/g/g1/nights', 'team only rides on the roster route');
+  });
+
+  // ── sort and filter ────────────────────────────────────────────
+  await check('roster sort: Player A-Z by default, and Solvhand with an o-slash sorts with "So"', () => {
+    const sorted = names(G.rosterSort.sortPeople(PEOPLE, G.rosterSort.DEFAULT_SORT));
+    assert.deepEqual(sorted.slice(0, 3), ['Ashcaller', 'Brightmane', 'Corvane']);
+    const i = sorted.indexOf('Sølvhand');
+    assert(sorted.indexOf('Solder') < i && i < sorted.indexOf('Sorin') && sorted.indexOf('Sorin') < sorted.indexOf('Stormjaw'), sorted.join(','));
+    assert.deepEqual(names(G.rosterSort.sortPeople(PEOPLE, { column: 'player', dir: 'desc' }))[0], 'Stormjaw');
+  });
+
+  await check('roster sort: status order is Raider, Trial, Reserve, Inactive; empty dates and off specs sort last in both directions', () => {
+    const byStatus = G.rosterSort.sortPeople(PEOPLE, { column: 'status', dir: 'asc' }).map(p => p.status);
+    assert.deepEqual([...new Set(byStatus)], ['raider', 'trial', 'reserve', 'inactive']);
+    assert.equal(G.rosterSort.sortPeople(PEOPLE, { column: 'joined', dir: 'asc' }).pop().shown.name, 'Quickshade');
+    assert.equal(G.rosterSort.sortPeople(PEOPLE, { column: 'joined', dir: 'desc' }).pop().shown.name, 'Quickshade');
+    assert.equal(G.rosterSort.sortPeople(PEOPLE, { column: 'offSpec', dir: 'desc' }).pop().shown.name, 'Quickshade');
+    assert.equal(G.rosterSort.sortPeople(PEOPLE, { column: 'alts', dir: 'desc' })[0].shown.name, 'Ashcaller');
+    assert.deepEqual(plain(G.rosterSort.nextSort({ column: 'player', dir: 'asc' }, 'player')), { column: 'player', dir: 'desc' });
+    assert.deepEqual(plain(G.rosterSort.nextSort({ column: 'player', dir: 'desc' }, 'status')), { column: 'status', dir: 'asc' });
+    assert.equal(G.rosterSort.ariaSort({ column: 'status', dir: 'desc' }, 'status'), 'descending');
+    assert.equal(G.rosterSort.ariaSort({ column: 'status', dir: 'desc' }, 'joined'), null);
+  });
+
+  await check('roster filter: Active hides Inactive, Everyone shows all, and "Trials to decide" is the flagged people of this home team', () => {
+    const f = (status, extra) => names(G.rosterSort.filterPeople(PEOPLE, Object.assign({ role: 'all', query: '' }, extra || {}, { status }), 't_main'));
+    assert(!f('active').includes('Oldtimer') && f('active').length === 10);
+    assert.equal(f('everyone').length, 11);
+    assert.deepEqual(f('inactive'), ['Oldtimer']);
+    assert.deepEqual(f('trial').sort(), ['Corvane', 'Frostwhisper', 'Sølvhand']);
+    assert.deepEqual(f('decide').sort(), ['Frostwhisper', 'Sølvhand']);
+    const otherHome = plain(PEOPLE).map(p => (p.shown.name === 'Frostwhisper' ? Object.assign(p, { main: Object.assign({}, p.main, { team: TEAM_WEEKEND }) }) : p));
+    assert.deepEqual(names(G.rosterSort.trialsToDecide(otherHome, 't_main')), ['Sølvhand'], 'a trial whose home team is another team is not this team\'s to decide');
+    assert.deepEqual(f('active', { role: 'tank' }).sort(), ['Kaelith', 'Sølvhand']);
+    assert.deepEqual(f('active', { query: 'frost' }), ['Frostwhisper']);
+  });
+
+  await check('roster filter: role counts come from the active people only', () => {
+    const c = G.rosterSort.roleCounts(PEOPLE);
+    assert.deepEqual(plain(c), { all: 10, tank: 2, healer: 1, dps: 7 });
+    assert.equal(G.rosterSort.activeCount(PEOPLE), 10);
+    assert.equal(G.rosterSort.inactiveCount(PEOPLE), 1);
+  });
+
+  await check('roster filter: the search finds a person by their Main name when an Alt is shown', () => {
+    const alt = rp(20, 'Mistbrew', 'SHAMAN', 'Elemental', 'Restoration', 'raider', { alt: true, mainName: 'Mistvale', mainClass: 'SHAMAN', homeTeam: TEAM_MAIN });
+    assert.equal(G.rosterSort.filterPeople([alt], { role: 'all', status: 'active', query: 'mistvale' }, 't_main').length, 1);
+    assert.equal(G.rosterSort.filterPeople([alt], { role: 'all', status: 'active', query: 'mistbrew' }, 't_main').length, 1);
+    assert.equal(G.rosterSort.filterPeople([alt], { role: 'all', status: 'active', query: 'zzz' }, 't_main').length, 0);
+  });
+
+  // ── trial copy ─────────────────────────────────────────────────
+  await check('trial copy for -2..8 days: ends today / tomorrow / in n days, ended yesterday / n days ago, nothing past 7 days', () => {
+    const flagFor = d => (d < 0 ? { kind: 'ended', days: d } : d <= 7 ? { kind: 'ends', days: d } : null);
+    const expected = { '-2': 'Ended 2 days ago', '-1': 'Ended yesterday', 0: 'Ends today', 1: 'Ends tomorrow', 2: 'Ends in 2 days', 5: 'Ends in 5 days', 7: 'Ends in 7 days', 8: '' };
+    for (let d = -2; d <= 8; d++) {
+      const want = expected[String(d)];
+      if (want === undefined) continue;
+      assert.equal(G.ui.trialCopy(flagFor(d)), want, 'days ' + d);
+    }
+    assert.equal(G.ui.trialCopy(null), '');
+    assert.equal(G.ui.trialChipHtml(null), '');
+    assert(G.ui.trialChipHtml({ kind: 'ended', days: -2 }).includes('gs-trial-ended'));
+    assert(G.ui.trialChipHtml({ kind: 'ends', days: 5 }).includes('gs-trial-ends'));
+  });
+
+  await check('dates: formatDay and addDays work on calendar days with no time zone', () => {
+    assert.equal(G.ui.formatDay('2026-10-13'), 'Oct 13, 2026');
+    assert.equal(G.ui.formatDay('2026-13-01'), '');
+    assert.equal(G.ui.formatDay(null), '');
+    assert.equal(G.ui.addDays('2026-10-15', 28), '2026-11-12');
+    assert.equal(G.ui.addDays('2026-12-25', 14), '2027-01-08');
+  });
+
+  // ── roster page ────────────────────────────────────────────────
+  await check('roster page: header, counts, Import menu and Add person for editors, role counts, status choices, aria-sort', () => {
+    const out = rosterPage(guildData(), rosterData());
+    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Roster</h1>'));
+    assert(out.includes('Bantr &middot; 10 active, 1 inactive'));
+    assert(out.includes('data-action="roster-import-menu"') && out.includes('aria-haspopup="menu"'));
+    assert(out.includes('From a Raid-Helper event') && out.includes('href="#/g/g1/roster/import/raid-helper"'));
+    assert(out.includes('From a Warcraft Logs report') && out.includes('href="#/g/g1/roster/import/wcl"'));
+    assert(out.includes('data-action="roster-add"') && out.includes('>Add person<'));
+    assert(/data-role="all"[^>]*aria-pressed="true">All <span class="gs-seg-count">10<\/span>/.test(out));
+    assert(out.includes('Tanks <span class="gs-seg-count">2</span>') && out.includes('Healers <span class="gs-seg-count">1</span>') && out.includes('DPS <span class="gs-seg-count">7</span>'));
+    for (const label of ['Active', 'Raider', 'Trial', 'Reserve', 'Inactive', 'Trials to decide', 'Everyone']) assert(out.includes('>' + label + '</option>'), label);
+    assert(/<option value="active" selected>/.test(out));
+    assert(/<th scope="col" aria-sort="ascending"><button[^>]*data-col="player"/.test(out));
+    assert(!/aria-sort="[a-z]+"><button[^>]*data-col="status"/.test(out));
+    for (const col of ['mainSpec', 'offSpec', 'status', 'joined', 'alts', 'signIn']) assert(out.includes('data-col="' + col + '"'), col);
+    assert(out.includes('<th scope="col">Attendance</th>') && !out.includes('data-col="attendance"'), 'attendance is not sortable');
+    assert(!out.includes('Oldtimer'), 'the default status filter hides Inactive');
+    assert(out.includes('Jun 14, 2026') && out.includes('Sep 22, 2026'), 'joined dates read like Oct 13, 2026');
+  });
+
+  await check('roster page: a member sees the list but no Import, no Add person and no trial strip', () => {
+    const gd = guildData({ can: MEMBER_CAN, flags: {} });
+    const out = rosterPage(gd, rosterData({ can: { edit: false } }));
+    assert(!out.includes('roster-import-menu') && !out.includes('roster-add') && !out.includes('gs-trial-strip'));
+    assert(out.includes('Ashcaller'));
+  });
+
+  await check('roster page: the trial strip names flagged people of this home team and "Show them" is a real button', () => {
+    const out = rosterPage(guildData(), rosterData());
+    const strip = out.match(/<div class="gs-trial-strip"[\s\S]*?<\/div>/)[0];
+    assert.equal(stripTags(strip).replace(/\s+/g, ' ').trim(), '2 trials need a decision: Frostwhisper\'s ends in 5 days, Sølvhand\'s ended 2 days ago.Show them');
+    assert(strip.includes('<button type="button" class="gs-btn gs-btn-sm" data-action="roster-show-trials"'));
+    const none = rosterPage(guildData(), rosterData({ people: PEOPLE.filter(p => !p.trialFlag).map(p => plain(p)) }));
+    assert(!none.includes('gs-trial-strip'));
+    const one = rosterPage(guildData(), rosterData({ people: PEOPLE.filter(p => p.shown.name === 'Frostwhisper').map(p => plain(p)) }));
+    assert(one.includes('1 trial needs a decision'));
+  });
+
+  await check('roster page: trial chips ride next to the status chip, only for flagged trials', () => {
+    const out = rosterPage(guildData(), rosterData());
+    assert(out.includes('gs-trial-ends">Ends in 5 days</span>') && out.includes('gs-trial-ended">Ended 2 days ago</span>'));
+    assert.equal((out.match(/gs-trial-ends"/g) || []).length, 2, 'table row + phone card');
+  });
+
+  await check('roster page: an Alt shown for a person whose Main is on another team carries "Alt of <Main> (<team>)"', () => {
+    const alt = rp(30, 'Mistbrew', 'SHAMAN', 'Elemental', 'Restoration', 'raider', { alt: true, mainName: 'Mistvale', homeTeam: TEAM_MAIN });
+    const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND], flags: {} });
+    const out = rosterPage(gd, rosterData({ team: { id: 't_weekend', name: 'Weekend team', archived: false }, people: [alt] }));
+    assert(out.includes('Alt of Mistvale (Main team)'));
+    assert(out.includes('Weekend team &middot; 1 person'), 'several teams: <Team> - N people');
+    const plainRow = rosterPage(gd, rosterData({ team: { id: 't_weekend', name: 'Weekend team', archived: false }, people: [PEOPLE[0]] }));
+    assert(!plainRow.includes('Alt of'));
+  });
+
+  await check('roster page: the character name links to the record, in the class colour, with the role dot', () => {
+    const out = rosterPage(guildData(), rosterData());
+    assert(out.includes('<a class="gs-char-link gs-class-paladin" href="#/g/g1/roster/p/p_8">Sølvhand</a>'));
+    assert(out.includes('<span class="gs-role-dot gs-role-tank" role="img" aria-label="Tank"></span>'));
+    assert(out.includes('Warlock &middot; Destruction'), 'the spec text always names the class');
+    assert(out.includes('<span class="gs-muted">-</span>'), 'no off spec shows a dash');
+  });
+
+  await check('roster page: archived team shows the notice and offers no Add person or Import', () => {
+    const gd = guildData({ teams: [TEAM_MAIN, Object.assign({}, TEAM_WEEKEND, { archived: true })] });
+    const out = rosterPage(gd, rosterData({ team: { id: 't_weekend', name: 'Weekend team', archived: true } }));
+    assert(out.includes('Archived team.'));
+    assert(!out.includes('roster-add') && !out.includes('roster-import-menu'));
+    assert(out.includes('Weekend team &middot; 10 people'));
+  });
+
+  await check('roster page: the empty roster leads officers to the import, and tells members their officers have not added anyone', () => {
+    const empty = { people: [] };
+    const editor = rosterPage(guildData(), rosterData(empty));
+    assert(editor.includes('gs-empty-card') && editor.includes('Import from a Raid-Helper event') && editor.includes('gs-btn-molten') && editor.includes('>Add person<'));
+    assert(!editor.includes('gs-roster-filters'));
+    const member = rosterPage(guildData({ can: MEMBER_CAN, flags: {} }), rosterData({ people: [], can: { edit: false } }));
+    assert(member.includes('Your officers haven\'t added anyone yet.') && !member.includes('Import from') && !member.includes('Add person'));
+  });
+
+  await check('roster page: names, nicknames-as-team-names and notices are escaped', () => {
+    const bad = rp(40, HOSTILE, 'MAGE', 'Frost', 'Fire', 'raider', { mainName: QUOTES });
+    bad.main.team = { id: 't_main', name: HOSTILE };
+    const out = rosterPage(guildData(), rosterData({ people: [bad], team: { id: 't_main', name: HOSTILE, archived: true } }), {}, { notice: HOSTILE });
+    assertEscaped(out, 'roster');
+    assert(out.includes('&lt;img src=x'));
+  });
+
+  await check('roster page: no inline style, no inline handler, no non-ASCII markup of its own', () => {
+    const out = rosterPage(guildData(), rosterData()) + G.pages.roster.addPersonDialogHtml({ guildData: guildData(), teamId: 't_main', today: '2026-10-15', linkable: [] });
+    assertNoRawAttrs(out);
+  });
+
+  await check('phone roster: the cards list carries name, status, spec line, trial chip, Alts and Sign-in', () => {
+    const out = rosterPage(guildData(), rosterData());
+    const card = out.match(/<li class="gs-roster-card">(?:(?!<\/li>)[\s\S])*Frostwhisper[\s\S]*?<\/li>/)[0];
+    assert(card.includes('Mage &middot; Frost / Fire') && card.includes('Ends in 5 days') && card.includes('Alts 0 &middot; Sign-in: Not yet') && card.includes('>Trial<'));
+  });
+
+  // ── Add person dialog ──────────────────────────────────────────
+  await check('Add person dialog: fields, trial default with a 28-day end, and no Team select with one team', () => {
+    const out = G.pages.roster.addPersonDialogHtml({ guildData: guildData(), teamId: 't_main', today: '2026-10-15', linkable: [{ id: 'u_1', username: 'velanne', displayName: 'Velanne' }, { id: 'u_2', username: 'zed', displayName: 'Zed' }] });
+    assert(out.includes('Add person') && out.includes('Start with their Main character. You can add Alts on their record.'));
+    assert(out.includes('name="name"') && out.includes('name="class"') && out.includes('name="mainSpec"') && out.includes('name="offSpec"'));
+    assert(/id="dlg-status-trial" name="status" value="trial" checked/.test(out));
+    assert(out.includes('value="2026-11-12"') && out.includes('Officers get a flag 7 days before this date.'));
+    assert(out.includes('value="2026-10-15"'));
+    assert(out.includes('Lists members who have signed in to Raidsmith and are not on the roster yet.'));
+    assert(out.includes('<option value="u_1">Velanne (@velanne)</option>') && out.includes('>Not linked</option>'));
+    assert(!out.includes('name="teamId"'));
+    assert(out.includes('<option value="WARRIOR">Warrior</option>'));
+  });
+
+  await check('Add person dialog: a Team select appears only with several active teams, defaulting to the selected team', () => {
+    const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND, Object.assign({}, { id: 't_old', name: 'Old team', archived: true })] });
+    const out = G.pages.roster.addPersonDialogHtml({ guildData: gd, teamId: 't_weekend', today: '2026-10-15', linkable: [] });
+    assert(out.includes('name="teamId"'));
+    assert(out.includes('<option value="t_weekend" selected>Weekend team</option>') && out.includes('<option value="t_main">Main team</option>'));
+    assert(!out.includes('Old team'), 'archived teams are not targets');
+  });
+
+  await check('Add person dialog: linkable members are escaped', () => {
+    const out = G.pages.roster.addPersonDialogHtml({ guildData: guildData(), teamId: 't_main', today: '2026-10-15', linkable: [{ id: 'u_1', username: HOSTILE, displayName: QUOTES }] });
+    assertEscaped(out, 'add person');
+  });
+
+  // ── person record ──────────────────────────────────────────────
+  function charRec(id, name, cls, mainSpec, offSpec, isMain, team) {
+    return { id: 'c_' + id, name, realm: null, class: cls, mainSpec, offSpec, role: (ROSTER_OPTIONS.roles[cls] || {})[mainSpec] || null, isMain, team: Object.assign({ archived: false }, team || TEAM_MAIN) };
+  }
+  function record(over) {
+    const o = over || {};
+    return Object.assign({
+      today: '2026-10-15',
+      can: { edit: true, notesView: true, notesEdit: true, delete: true, addCharacter: true },
+      person: Object.assign({
+        id: 'p_8', status: 'trial', joinedOn: '2026-09-15', trialStart: '2026-09-15', trialEnd: '2026-10-13', trialFlag: { kind: 'ended', days: -2 }, isMe: false, version: 3,
+        discord: { signIn: 'signed_in', user: { id: 'u_8', username: 'solvhand', displayName: 'Solvhand', avatarUrl: null, initials: 'SO' }, nickname: 'Sølvhand/Glimmerkin' },
+        homeTeam: TEAM_MAIN,
+      }, o.person || {}),
+      characters: o.characters || [charRec(8, 'Sølvhand', 'PALADIN', 'Protection', 'Holy', true), charRec('8b', 'Glimmerkin', 'PRIEST', 'Holy', 'Discipline', false)],
+      notes: o.notes === undefined ? { text: 'Holds threat well on trash.', version: 1, updatedBy: { id: 'u_1', username: 'thornvald', displayName: 'Thornvald' }, updatedAt: Date.UTC(2026, 9, 10, 12) } : o.notes,
+    }, o.top || {});
+  }
+  const personPage = (rec, gd, linkable, alert) => G.pages.person.personHtml({ guildData: gd || guildData(), record: rec, linkable: linkable || [], alert: alert || '' });
+
+  await check('person record: header, chips, Discord line, trial bar with the three actions and the clearing note', () => {
+    const out = personPage(record());
+    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Sølvhand</h1>'));
+    assert(out.includes('Paladin &middot; Protection / Holy'));
+    assert(out.includes('gs-status-trial">Trial</span>') && out.includes('gs-trial-ended">Ended 2 days ago</span>'));
+    assert(out.includes('Discord: solvhand &middot; Signed in'));
+    assert(out.includes('Sølvhand\'s trial ended on Oct 13, 2026 (2 days ago).'));
+    assert(out.includes('>Make Raider<') && out.includes('>Extend trial<') && out.includes('>Set Inactive<'));
+    assert(out.includes('The flag clears when the status changes or the trial end date moves.'));
+    const ends = personPage(record({ person: { trialFlag: { kind: 'ends', days: 5 }, trialEnd: '2026-10-20' } }));
+    assert(ends.includes('trial ends on Oct 20, 2026 (in 5 days).'));
+    const noFlag = personPage(record({ person: { trialFlag: null } }));
+    assert(!noFlag.includes('gs-trial-bar'));
+  });
+
+  await check('person record: Discord line variants (not signed in yet, no Discord account)', () => {
+    const notYet = personPage(record({ person: { discord: { signIn: 'not_yet', user: null, nickname: 'Sølvhand/Glimmerkin' } } }));
+    assert(notYet.includes('Discord: Sølvhand/Glimmerkin &middot; Not signed in yet'));
+    const bare = personPage(record({ person: { discord: { signIn: 'no_discord', user: null, nickname: null } } }));
+    assert(bare.includes('No Discord account'));
+  });
+
+  await check('person record: characters card lists Main first, Edit / Make Main / remove per character, and Add character', () => {
+    const out = personPage(record());
+    assert(out.includes('data-action="char-add"') && out.includes('>Add character<'));
+    const table = out.match(/<table class="gs-table gs-table-chars"[\s\S]*?<\/table>/)[0];
+    assert(table.indexOf('Sølvhand') < table.indexOf('Glimmerkin'));
+    assert(table.includes('gs-chip gs-chip-main">Main</span>') && table.includes('<span class="gs-chip">Alt</span>'));
+    assert(table.includes('aria-label="Edit Sølvhand"') && table.includes('aria-label="Make Glimmerkin the Main"') && table.includes('aria-label="Remove Glimmerkin"'));
+    assert(!table.includes('aria-label="Remove Sølvhand"') && !table.includes('aria-label="Make Sølvhand the Main"'), 'the Main cannot be removed or made Main again');
+    assert(!table.includes('<th scope="col">Team</th>'), 'no Team column with one team');
+    assert(out.includes('Attendance shows here after the first raid night.'));
+  });
+
+  await check('person record: a Team column appears with several teams', () => {
+    const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND] });
+    const rec = record({ characters: [charRec(8, 'Sølvhand', 'PALADIN', 'Protection', 'Holy', true), charRec('8b', 'Glimmerkin', 'PRIEST', 'Holy', 'Discipline', false, TEAM_WEEKEND)] });
+    const out = personPage(rec, gd);
+    assert(out.includes('<th scope="col">Team</th>') && out.includes('<td>Weekend team</td>') && out.includes('<td>Main team</td>'));
+  });
+
+  await check('person record: Details form for editors (status, joined, trial dates, Discord from linkable) and Save changes', () => {
+    const out = personPage(record(), guildData(), [{ id: 'u_9', username: 'newbie', displayName: 'Newbie' }]);
+    assert(out.includes('data-submit="person-details-form"') && out.includes('>Save changes<'));
+    assert(/<option value="trial" selected>Trial<\/option>/.test(out));
+    assert(out.includes('name="joinedOn" value="2026-09-15"') && out.includes('name="trialStart" value="2026-09-15"') && out.includes('name="trialEnd" value="2026-10-13"'));
+    assert(/<option value="u_8" selected>Solvhand \(@solvhand\)<\/option>/.test(out) && out.includes('<option value="u_9">Newbie (@newbie)</option>') && out.includes('<option value="">Not linked</option>'));
+    assert(out.includes('Nickname on the Raid-Helper sign-up: Sølvhand/Glimmerkin.'));
+  });
+
+  await check('person record: notes with "Last edited by ... on ...", Save note, the Delete person block', () => {
+    const out = personPage(record());
+    assert(out.includes('Only officers and team leads see notes.'));
+    assert(out.includes('<textarea') && out.includes('Holds threat well on trash.'));
+    assert(out.includes('Last edited by Thornvald on Oct 10, 2026'));
+    assert(out.includes('>Save note<'));
+    assert(out.includes('data-action="person-delete"') && out.includes('>Delete person<'));
+    assert(out.includes('Their Discord sign-in is not affected.'));
+    const viewOnly = personPage(record({ top: { can: { edit: true, notesView: true, notesEdit: false, delete: false, addCharacter: true } } }));
+    assert(viewOnly.includes('readonly') && !viewOnly.includes('>Save note<') && !viewOnly.includes('person-delete'));
+    const noNotes = personPage(record({ notes: null }));
+    assert(!noNotes.includes('Officer notes'));
+  });
+
+  await check('person record: the delete confirm names the person and counts their characters', () => {
+    const out = G.pages.person.deleteDialogHtml(record());
+    assert(out.includes('Delete Sølvhand? This removes them and their 2 characters from the roster. It can\'t be undone.'));
+    assert(out.includes('data-submit="delete-person-form"') && out.includes('>Delete person<'));
+    const one = G.pages.person.deleteDialogHtml(record({ characters: [charRec(8, 'Sølvhand', 'PALADIN', 'Protection', 'Holy', true)] }));
+    assert(one.includes('their 1 character from') || one.includes('their 1 character '), one);
+  });
+
+  await check('person record: a member gets a read-only record, no notes, no buttons, and the note on their own record only', () => {
+    const memberRec = (isMe) => record({ person: { isMe, status: 'raider', trialFlag: null, discord: { signIn: 'signed_in', user: { id: 'u_8', username: 'solvhand', displayName: 'Solvhand', avatarUrl: null, initials: 'SO' }, nickname: null } },
+      top: { can: { edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false } }, notes: null });
+    const mine = personPage(memberRec(true), guildData({ can: MEMBER_CAN, flags: {} }));
+    assert(mine.includes('<span class="gs-you">You</span>'));
+    assert(mine.includes('Officers keep your status and characters up to date. Ask one of them if something is wrong.'));
+    assert(mine.includes('Your attendance shows here after the first raid night.'));
+    assert(mine.includes('Joined Sep 15, 2026'));
+    for (const banned of ['<button', '<form', '<textarea', 'Officer notes', 'Delete person', 'data-action=']) assert(!mine.includes(banned), banned);
+    const theirs = personPage(memberRec(false), guildData({ can: MEMBER_CAN, flags: {} }));
+    assert(!theirs.includes('gs-you') && !theirs.includes('Officers keep your status'));
+    assert(!theirs.includes('<button'));
+  });
+
+  await check('person record: names, nickname, notes and the author are escaped', () => {
+    const rec = record({
+      characters: [charRec(8, HOSTILE, 'PALADIN', 'Protection', 'Holy', true), charRec('8b', QUOTES, 'PRIEST', 'Holy', 'Discipline', false)],
+      person: { discord: { signIn: 'not_yet', user: null, nickname: HOSTILE } },
+      notes: { text: HOSTILE + QUOTES, version: 1, updatedBy: { id: 'u_1', username: 'x', displayName: HOSTILE }, updatedAt: 1 },
+    });
+    const out = personPage(rec) + G.pages.person.characterDialogHtml({ guildData: guildData(), record: rec, character: rec.characters[1], defaultTeamId: 't_main' }) + G.pages.person.deleteDialogHtml(rec) + G.pages.person.extendDialogHtml(rec);
+    assertEscaped(out, 'person');
+    assertNoRawAttrs(out);
+  });
+
+  await check('character dialogs: Add has Main or Alt with the "becomes an Alt" help; Edit prefills; a Team select only with several teams', () => {
+    const rec = record();
+    const add = G.pages.person.characterDialogHtml({ guildData: guildData(), record: rec, character: null, defaultTeamId: 't_main' });
+    assert(add.includes('Add a character for Sølvhand') && add.includes('name="mainOrAlt" value="alt" checked') && add.includes('value="main"') && add.includes('Choosing Main makes Sølvhand an Alt.'));
+    assert(!add.includes('name="teamId"'));
+    const edit = G.pages.person.characterDialogHtml({ guildData: guildData(), record: rec, character: rec.characters[1], defaultTeamId: 't_main' });
+    assert(edit.includes('Edit Glimmerkin') && edit.includes('value="Glimmerkin"') && /<option value="PRIEST" selected>/.test(edit) && /<option value="Holy" selected>/.test(edit) && /<option value="Discipline" selected>/.test(edit));
+    assert(!edit.includes('mainOrAlt'));
+    const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND] });
+    const many = G.pages.person.characterDialogHtml({ guildData: gd, record: rec, character: rec.characters[1], defaultTeamId: 't_main' });
+    assert(many.includes('name="teamId"') && /<option value="t_main" selected>/.test(many));
+  });
+
+  await check('Extend trial dialog: a date field starting 14 days past the current end (or today), and the 7-day flag note', () => {
+    const out = G.pages.person.extendDialogHtml(record());
+    assert(out.includes('Extend Sølvhand\'s trial') && out.includes('type="date"') && out.includes('value="2026-10-29"') && out.includes('Officers get a flag 7 days before this date.'));
+    const later = G.pages.person.extendDialogHtml(record({ person: { trialEnd: '2026-11-01' } }));
+    assert(later.includes('value="2026-11-15"'));
+  });
+
+  // ── behaviour against a stubbed API ────────────────────────────
+  function withApi(stubs, fn) {
+    const saved = {};
+    for (const k of Object.keys(stubs)) { saved[k] = G.api[k]; G.api[k] = stubs[k]; }
+    const savedGo = G.app.go;
+    const hashes = [];
+    G.app.go = h => hashes.push(h);
+    return Promise.resolve(fn(hashes)).finally(() => { for (const k of Object.keys(saved)) G.api[k] = saved[k]; G.app.go = savedGo; });
+  }
+  function setupPerson(rec, gd) {
+    const s = G.app.state;
+    s.guilds.g1 = gd || guildData();
+    s.currentGid = 'g1';
+    s.person = { gid: 'g1', pid: rec.person.id, record: rec };
+    s.pageAlert = '';
+    return s;
+  }
+  const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
+
+  await check('conflict: a stale save re-renders from ApiError.body.current and shows the standard message', async () => {
+    const stale = record();
+    const s = setupPerson(stale);
+    const fresh = record({ person: { status: 'raider', trialFlag: null, version: 4 } });
+    fresh.rosterFlags = { t_main: 0 };
+    let sent;
+    await withApi({
+      patch: (url, body) => { sent = { url, body }; return Promise.reject(new G.api.ApiError(409, { error: 'conflict', message: 'Changed.', current: fresh })); },
+    }, async () => {
+      G.handlers.click['person-status'](el({ 'data-status': 'raider' }));
+      await tick();
+    });
+    assert.equal(sent.url, '/api/guild/g1/roster/p_8');
+    assert.deepEqual(plain(sent.body), { expectedVersion: 3, status: 'raider' });
+    assert.equal(s.person.record.person.version, 4);
+    assert.equal(s.pageAlert, 'Someone else changed this person. The page now shows their version.');
+    const out = G.pages.person.personHtml({ guildData: s.guilds.g1, record: s.person.record, linkable: [], alert: s.pageAlert });
+    assert(out.includes('Someone else changed this person. The page now shows their version.') && out.includes('gs-status-raider">Raider</span>') && !out.includes('gs-trial-bar'));
+  });
+
+  await check('conflict: a stale notes save takes only { notes } from current', async () => {
+    const s = setupPerson(record());
+    const form = { elements: { text: { value: 'new text' } }, querySelectorAll: () => [] };
+    await withApi({
+      put: () => Promise.reject(new G.api.ApiError(409, { error: 'conflict', message: 'Changed.', current: { notes: { text: 'their text', version: 5, updatedBy: null, updatedAt: 0 } } })),
+    }, async () => {
+      G.handlers.submit['person-notes-form'](form);
+      await tick();
+    });
+    assert.equal(s.person.record.notes.text, 'their text');
+    assert.equal(s.person.record.notes.version, 5);
+    assert.equal(s.person.record.person.version, 3, 'the person part is untouched');
+    assert(s.pageAlert.startsWith('Someone else changed this person.'));
+  });
+
+  await check('badge: every mutation reply carrying rosterFlags refreshes the Roster nav badge', async () => {
+    const s = setupPerson(record());
+    const flagged = () => G.shell.render({ me: { user: { id: 'u1', username: 'a', displayName: 'A', prefs: {} }, guilds: [{ id: 'g1', name: 'Bantr' }], create: { allowed: false } }, route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: s.guilds.g1, teamId: 't_main', collapsed: false }, '');
+    assert(flagged().includes('aria-label="Roster, 2 trials to decide"') && flagged().includes('<span class="gs-nav-badge" aria-hidden="true">2</span>'));
+    const next = record({ person: { status: 'raider', trialFlag: null, version: 4 } });
+    next.rosterFlags = { t_main: 1 };
+    await withApi({ patch: () => Promise.resolve(next) }, async () => {
+      G.handlers.click['person-status'](el({ 'data-status': 'raider' }));
+      await tick();
+    });
+    assert.deepEqual(plain(s.guilds.g1.rosterFlags), { t_main: 1 });
+    assert(flagged().includes('aria-label="Roster, 1 trial to decide"'));
+    const cleared = record({ person: { status: 'inactive', trialFlag: null, version: 5 } });
+    cleared.rosterFlags = { t_main: 0 };
+    await withApi({ patch: () => Promise.resolve(cleared) }, async () => {
+      G.handlers.click['person-status'](el({ 'data-status': 'inactive' }));
+      await tick();
+    });
+    assert(!flagged().includes('gs-nav-badge'));
+    // a notes save and a delete carry flags too
+    await withApi({ put: () => Promise.resolve({ notes: { text: 'x', version: 2, updatedBy: null, updatedAt: 0 }, rosterFlags: { t_main: 3 } }) }, async () => {
+      G.handlers.submit['person-notes-form']({ elements: { text: { value: 'x' } }, querySelectorAll: () => [] });
+      await tick();
+    });
+    assert.equal(s.guilds.g1.rosterFlags.t_main, 3);
+  });
+
+  await check('badge: members never see it, and a team with no flags shows none', () => {
+    const base = { me: { user: { id: 'u1', username: 'a', displayName: 'A', prefs: {} }, guilds: [{ id: 'g1', name: 'Bantr' }], create: { allowed: false } }, route: { name: 'section', gid: 'g1', section: 'roster' }, teamId: 't_main', collapsed: false };
+    const member = G.shell.render(Object.assign({ guildData: guildData({ can: MEMBER_CAN, flags: { t_main: 2 } }) }, base), '');
+    assert(!member.includes('gs-nav-badge') && !member.includes('trials to decide'), 'even a stray flag is ignored without roster.edit');
+    const none = G.shell.render(Object.assign({ guildData: guildData({ flags: { t_main: 0 } }) }, base), '');
+    assert(!none.includes('gs-nav-badge'));
+    const other = G.shell.render(Object.assign({ guildData: guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND], flags: { t_weekend: 4 } }) }, base), '');
+    assert(!other.includes('gs-nav-badge'), 'the badge is for the selected team only');
+    const phone = G.shell.render(Object.assign({ guildData: guildData() }, base), '');
+    assert((phone.match(/gs-nav-badge/g) || []).length >= 3, 'sidebar, drawer and phone tab bar');
+  });
+
+  await check('shell: person and import pages keep Roster active and get breadcrumbs', () => {
+    const gd = guildData();
+    const crumbs = (route, personName) => G.shell.breadcrumbItems({ route, guildData: gd, teamId: 't_main', personName }).map(c => c.label);
+    assert.deepEqual(plain(crumbs({ name: 'person', gid: 'g1', pid: 'p_8' }, 'Sølvhand')), ['Bantr', 'Roster', 'Sølvhand']);
+    assert.deepEqual(plain(crumbs({ name: 'import', gid: 'g1', source: 'raid-helper' })), ['Bantr', 'Roster', 'Import from Raid-Helper']);
+    assert.deepEqual(plain(crumbs({ name: 'import', gid: 'g1', source: 'wcl' })), ['Bantr', 'Roster', 'Import from Warcraft Logs']);
+    const many = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND] });
+    assert.deepEqual(plain(G.shell.breadcrumbItems({ route: { name: 'person', gid: 'g1', pid: 'p_8' }, guildData: many, teamId: 't_weekend', personName: 'X' }).map(c => c.label)), ['Bantr', 'Weekend team', 'Roster', 'X']);
+    assert.deepEqual(plain(G.shell.breadcrumbItems({ route: { name: 'section', gid: 'g1', section: 'roster', team: 't_old' }, guildData: guildData({ teams: [TEAM_MAIN, { id: 't_old', name: 'Old team', archived: true }] }), teamId: 't_main' }).map(c => c.label)), ['Bantr', 'Old team', 'Roster']);
+    const nav = G.shell.render({ me: { user: { id: 'u1', username: 'a', displayName: 'A', prefs: {} }, guilds: [{ id: 'g1', name: 'Bantr' }], create: { allowed: false } }, route: { name: 'person', gid: 'g1', pid: 'p_8' }, guildData: gd, teamId: 't_main', collapsed: false, personName: 'Sølvhand' }, '');
+    assert(/class="gs-nav-link is-active" href="#\/g\/g1\/roster"/.test(nav));
+  });
+
+  await check('person page actions send the contract bodies (details diff, extend, add / edit character, make main, remove, delete)', async () => {
+    const s = setupPerson(record());
+    const calls = [];
+    const reply = () => Promise.resolve(Object.assign(record({ person: { version: s.person.record.person.version + 1 } }), { rosterFlags: { t_main: 2 } }));
+    const rec = verb => (url, body) => { calls.push({ verb, url, body: plain(body) }); return verb === 'del' && url.endsWith('/p_8') ? Promise.resolve({ deleted: true, rosterFlags: { t_main: 1 } }) : reply(); };
+    const field = v => ({ value: v, focus() {}, select() {}, setAttribute() {} });
+    const form = (extra, attrs) => ({ elements: extra, getAttribute: k => (attrs || {})[k], querySelector: () => null, querySelectorAll: () => [] });
+    const base = '/api/guild/g1/roster/p_8';
+    await withApi({ patch: rec('patch'), post: rec('post'), del: rec('del') }, async () => {
+      // details: only the changed fields go, an emptied date clears with null
+      G.handlers.submit['person-details-form'](form({ status: field('raider'), joinedOn: field('2026-09-15'), trialStart: field(''), trialEnd: field('2026-10-13'), linkUserId: field('u_8') }));
+      await tick();
+      assert.deepEqual(calls[0], { verb: 'patch', url: base, body: { expectedVersion: 3, status: 'raider', trialStart: null } });
+      // nothing changed: no request
+      const before = calls.length;
+      G.handlers.submit['person-details-form'](form({ status: field('trial'), joinedOn: field('2026-09-15'), trialStart: field('2026-09-15'), trialEnd: field('2026-10-13'), linkUserId: field('u_8') }));
+      await tick();
+      assert.equal(calls.length, before, 'unchanged details send nothing');
+      // extend trial
+      G.handlers.submit['extend-form'](form({ trialEnd: field('2026-10-29') }));
+      await tick();
+      assert.deepEqual(calls[1], { verb: 'patch', url: base, body: { expectedVersion: 4, trialEnd: '2026-10-29' } });
+      // add a character as the new Main
+      const addForm = form({ name: field('Velshade'), class: field('WARLOCK'), mainSpec: field('Affliction'), offSpec: field('') }, { 'data-mode': 'add' });
+      addForm.querySelector = sel => (sel.includes('mainOrAlt') ? { value: 'main' } : null);
+      G.handlers.submit['char-form'](addForm);
+      await tick();
+      assert.deepEqual(calls[2], { verb: 'post', url: base + '/characters', body: { name: 'Velshade', class: 'WARLOCK', mainSpec: 'Affliction', offSpec: null, teamId: 't_main', makeMain: true } });
+      // edit: PATCH of the character
+      G.handlers.submit['char-form'](form({ name: field('Glimmer'), class: field('PRIEST'), mainSpec: field('Holy'), offSpec: field('Discipline') }, { 'data-mode': 'edit', 'data-cid': 'c_8b' }));
+      await tick();
+      assert.deepEqual(calls[3], { verb: 'patch', url: base + '/characters/c_8b', body: { name: 'Glimmer', class: 'PRIEST', mainSpec: 'Holy', offSpec: 'Discipline' } });
+      // Make Main, remove
+      G.handlers.click['char-main'](el({ 'data-cid': 'c_8b' }));
+      await tick();
+      assert.deepEqual(calls[4], { verb: 'post', url: base + '/characters/c_8b/main', body: {} });
+      G.handlers.click['char-remove'](el({ 'data-cid': 'c_8b' }));
+      await tick();
+      assert.deepEqual(calls[5], { verb: 'del', url: base + '/characters/c_8b', body: {} });
+      // delete the person: back to the roster with a notice and the new badge count
+      G.handlers.submit['delete-person-form'](form({}));
+      await tick();
+      assert.deepEqual(calls[6], { verb: 'del', url: base, body: {} });
+    });
+    assert.equal(s.guilds.g1.rosterFlags.t_main, 1);
+    assert.equal(s.person, null);
+    assert(s.rosterNotice.startsWith('Deleted Sølvhand'));
+  });
+
+  await check('character form: client checks - a name and a class are required, and the off spec must differ from the main spec', async () => {
+    setupPerson(record());
+    const calls = [];
+    const field = v => ({ value: v, focus() {}, select() {}, setAttribute() {} });
+    const mk = (n, c, m, o) => ({ elements: { name: field(n), class: field(c), mainSpec: field(m), offSpec: field(o) }, getAttribute: () => 'add', querySelector: () => null, querySelectorAll: () => [] });
+    await withApi({ post: (...a) => { calls.push(a); return Promise.resolve(record()); } }, async () => {
+      G.handlers.submit['char-form'](mk('', 'MAGE', '', ''));
+      G.handlers.submit['char-form'](mk('Bob', '', '', ''));
+      G.handlers.submit['char-form'](mk('Bob', 'MAGE', 'Fire', 'Fire'));
+      await tick();
+    });
+    assert.equal(calls.length, 0);
+  });
+
+  // ── people and teams pages ─────────────────────────────────────
+  await check('People and roles: the Roster cell links to the Main\'s record in the class colour; null stays "Not linked"', () => {
+    const entry = (id, roster) => ({ person: { id, username: id, displayName: id, avatarUrl: null, initials: 'XX' }, roles: [], roster, lastSeenAt: null, isMe: false, actions: {} });
+    const out = G.pages.people.tableHtml({ gid: 'g1', people: [entry('u1', { personId: 'p_8', name: 'Sølvhand', class: 'PALADIN' }), entry('u2', null), entry('u3', { personId: 'p_9', name: HOSTILE, class: 'NOPE' })], teams: [], sort: { column: 'person', dir: 'asc' }, query: '', now: 0 });
+    assert(out.includes('<a class="gs-char-link gs-class-paladin" href="#/g/g1/roster/p/p_8">Sølvhand</a>'));
+    assert(out.includes('Not linked'));
+    assertEscaped(out, 'people roster cell');
+    assert(out.includes('<a class="gs-char-link " href="#/g/g1/roster/p/p_9">'), 'an unknown class gets no colour class');
+    const sorted = G.peopleSort.sortPeople([entry('u2', null), entry('u1', { personId: 'p_8', name: 'Sølvhand', class: 'PALADIN' })], { column: 'roster', dir: 'asc' });
+    assert.equal(sorted[0].person.id, 'u1');
+  });
+
+  await check('Teams: the player count shows, and archived teams with characters get an Open roster link', () => {
+    const gd = guildData({ teams: [{ id: 't_main', name: 'Main team', players: 23 }, { id: 't_old', name: 'Old team', archived: true, players: 4 }, { id: 't_empty', name: 'Empty team', archived: true, players: 0 }] });
+    const out = G.pages.teams.teamsHtml({ guildData: gd, alert: '' });
+    assert(out.includes('<td>23</td>') || out.includes('23 players'));
+    assert(out.includes('href="#/g/g1/roster?team=t_old"') && out.includes('aria-label="Open roster of Old team"'));
+    assert(out.includes('team=t_empty'), 'every archived team, even with no active players');
+    assert(out.includes('4 players'));
+  });
+
+  await check('Privacy: the Raid-Helper import sentence, word for word', () => {
+    const out = G.pages.privacy.privacyHtml({ me: null });
+    assert(out.includes(ctx.esc('Officers can import a Raid-Helper event. That stores each sign-up\'s Discord ID and nickname on the roster, linked to their roster entry, until an officer removes the person or the person signs in and deletes their data.')));
+  });
+
+  // ── Raid-Helper import ─────────────────────────────────────────
+  function rhRow(signupId, nickname, kind, main, alts, extra) {
+    const e = extra || {};
+    return {
+      signupId, nickname, kind, person: e.person || null, canAddAlts: e.canAddAlts === undefined ? kind === 'on_roster' : e.canAddAlts, signedIn: !!e.signedIn,
+      main: Object.assign({ name: null, class: null, spec: null, note: null, taken: null }, main),
+      alts: (alts || []).map(a => Object.assign({ taken: null }, a)),
+      ticked: e.ticked === undefined ? kind === 'new' : e.ticked,
+    };
+  }
+  const RH_ROWS = [
+    rhRow(101, 'Thornvald/Thornpaw', 'new', { name: 'Thornvald', class: 'WARRIOR', spec: 'Protection' }, [{ name: 'Thornpaw' }], { signedIn: true }),
+    rhRow(102, 'Kaelith', 'new', { name: 'Kaelith', class: 'DRUID', spec: 'Feral (Tank)' }, []),
+    rhRow(103, 'Sølvhand/Glimmerkin', 'new', { name: 'Sølvhand', class: 'PALADIN', spec: 'Protection' }, [{ name: 'Glimmerkin' }]),
+    rhRow(104, 'Frostwhisper', 'new', { name: 'Frostwhisper', class: 'MAGE', spec: 'Frost', note: 'tentative' }, []),
+    rhRow(105, 'Longstride', 'new', { name: 'Longstride', class: null, spec: null, note: 'absence' }, []),
+    rhRow(106, '123 456', 'new', { name: null, class: null, spec: null, note: 'no_class' }, []),
+    rhRow(107, 'Takenname', 'new', { name: 'Brightmane', class: 'PALADIN', spec: 'Holy', taken: { personId: 'p_2', name: 'Brightmane' } }, [{ name: 'Sunny', taken: { personId: 'p_77', name: 'Someone' } }]),
+    rhRow(108, 'Nodiscord', 'no_discord', { name: 'Nodiscord', class: 'ROGUE', spec: 'Combat' }, []),
+    rhRow(109, 'Velanne/Velshade', 'on_roster', { name: 'Velanne', class: 'PRIEST', spec: 'Shadow' }, [{ name: 'Velshade' }], { person: { id: 'p_20', name: 'Velanne' }, canAddAlts: true }),
+    rhRow(110, 'Ashcaller/Embervein', 'on_roster', { name: 'Ashcaller', class: 'WARLOCK', spec: 'Destruction' }, [{ name: 'Embervein' }], { person: { id: 'p_21', name: 'Ashcaller' }, canAddAlts: false }),
+  ];
+  const rhPreview = (over) => Object.assign({ event: { id: '1483258698854826006', title: 'Gruul and Mag', startTime: Date.UTC(2026, 9, 15, 19), otherServer: false }, rows: plain(RH_ROWS) }, over || {});
+  const rhState = (preview, over) => {
+    const st = G.pages.import.ensureState('rh', 'g1', 't_main');
+    Object.assign(st, { preview, rows: G.pages.import.rhInitRows(preview), rowErrors: {}, status: 'ready' }, over || {});
+    return st;
+  };
+
+  await check('Raid-Helper import: default ticks - new yes, taken / no_discord / on_roster no, Alts always unticked, Absence row ticked', () => {
+    const rows = G.pages.import.rhInitRows(rhPreview());
+    assert.equal(rows['101'].ticked, true);
+    assert.equal(rows['105'].ticked, true, 'an Absence row is ticked but needs a class');
+    assert.equal(rows['107'].ticked, false, 'a Main name another person already owns starts unticked');
+    assert.equal(rows['108'].ticked, false);
+    assert.equal(rows['109'].ticked, false);
+    assert.equal(rows['106'].name, '', 'a nickname with no usable first name starts with an empty Main name');
+    for (const r of Object.values(rows)) for (const a of r.alts) assert.equal(a.ticked, false);
+  });
+
+  await check('Raid-Helper import: footer counts people, ready, and who needs a class; "Add N people" counts ready new rows', () => {
+    const p = rhPreview();
+    const st = rhState(p);
+    const c = G.pages.import.rhCounts(p, st.rows);
+    assert.equal(c.people, 8, 'new + no_discord rows');
+    assert.equal(c.ready, 4, 'Thornvald, Kaelith, Solvhand, Frostwhisper');
+    assert.equal(c.needs, 2, 'Absence row (no class) and the row with no name');
+    assert.equal(c.needsName, true);
+    const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert(out.includes('8 people &middot; 4 ready &middot; 2 need a name and class before they can be added'));
+    assert(out.includes('>Add 4 people<'));
+    // pick a class for the Absence row and a name + class for the empty one
+    st.rows['105'].class = 'HUNTER';
+    st.rows['106'].name = 'Newguy';
+    st.rows['106'].class = 'MAGE';
+    const c2 = G.pages.import.rhCounts(p, st.rows);
+    assert.equal(c2.ready, 6);
+    assert.equal(c2.needs, 0);
+    assert(G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st }).includes('>Add 6 people<'));
+    assert(!G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st }).includes('before they can be added'));
+    // a ticked no_discord row counts once ticked
+    st.rows['108'].ticked = true;
+    assert.equal(G.pages.import.rhCounts(p, st.rows).ready, 7);
+  });
+
+  await check('Raid-Helper import: the Main name is an editable input, a classless sign-up gets a class picker, notes explain each row', () => {
+    const st = rhState(rhPreview());
+    const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st, });
+    assert(out.includes('<input class="gs-input gs-input-sm" type="text" id="rh-name-101"') && out.includes('value="Thornvald"'));
+    assert(/id="rh-name-106"[^>]*value=""/.test(out) || out.includes('id="rh-name-106"'));
+    assert(out.includes('aria-label="Main name for Thornvald/Thornpaw"'));
+    assert(/<option value="" selected>Pick a class<\/option>/.test(out));
+    assert(out.includes('Signed in: links to their account now') && out.includes('Tentative sign-up') && out.includes('Absence: the sign-up has no class') && out.includes('The sign-up has no class'));
+    assert(out.includes('Brightmane is already Brightmane\'s character'));
+    assert(out.includes('aria-label="Offer Thornpaw as an Alt"') && !/aria-label="Offer Thornpaw as an Alt"[^>]*checked/.test(out));
+    assert(/aria-label="Offer Sunny as an Alt"[^>]*disabled/.test(out), 'a taken Alt name is disabled');
+    assert(out.includes('aria-label="Class for Thornpaw"'));
+    assert(out.includes('<span class="gs-role-dot gs-role-tank"'));
+  });
+
+  await check('Raid-Helper import: only the first 8 rows show until "Show all"', () => {
+    const rows = [];
+    for (let i = 0; i < 12; i++) rows.push(rhRow(200 + i, 'Player' + i, 'new', { name: 'Player' + i, class: 'MAGE', spec: 'Fire' }, []));
+    const p = rhPreview({ rows });
+    const st = rhState(p);
+    const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert.equal((out.match(/id="rh-add-/g) || []).length, 8);
+    assert(out.includes('Showing 8 of 12') && out.includes('>Show all<'));
+    st.showAll = true;
+    const all = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert.equal((all.match(/id="rh-add-/g) || []).length, 12);
+    assert(all.includes('>Show fewer<'));
+    assert(G.pages.import.rhCounts(p, st.rows).ready === 12, 'hidden rows still count');
+  });
+
+  await check('Raid-Helper import: "Already on the roster" is a collapsed section; Alts are disabled without canAddAlts', () => {
+    const st = rhState(rhPreview());
+    const closed = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert(closed.includes('Already on the roster (2)') && /aria-expanded="false" aria-controls="rh-roster-list"/.test(closed) && /id="rh-roster-list" hidden/.test(closed));
+    assert(closed.includes('href="#/g/g1/roster/p/p_20"'));
+    assert(/aria-label="Offer Embervein as an Alt"[^>]*disabled/.test(closed) && closed.includes('You cannot add characters to this person.'));
+    assert(!/aria-label="Offer Velshade as an Alt"[^>]*disabled/.test(closed));
+    st.foldOpen = true;
+    const open = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert(/aria-expanded="true"/.test(open) && !/id="rh-roster-list" hidden/.test(open));
+  });
+
+  await check('Raid-Helper import: other-server notice above the table and the confirm on the primary button', () => {
+    const p = rhPreview();
+    p.event.otherServer = true;
+    const st = rhState(p);
+    const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert(out.includes('This event was posted in a different Discord server than Bantr\'s.'));
+    assert(out.indexOf('different Discord server') < out.indexOf('<table'));
+    assert(out.includes('>Add 4 people<'));
+    st.confirmOtherServer = true;
+    assert(G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st }).includes('>This event is from a different Discord server. Import anyway?<'));
+    const normal = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: rhState(rhPreview()) });
+    assert(!normal.includes('different Discord server'));
+  });
+
+  await check('Raid-Helper import: the commit body carries signup ids, Main, ticked Alts with a class - never a Discord ID', () => {
+    const p = rhPreview();
+    const st = rhState(p);
+    st.rows['103'].alts[0] = { ticked: true, class: 'PRIEST' };
+    st.rows['101'].alts[0] = { ticked: true, class: '' };      // ticked without a class is left out
+    st.rows['105'].class = 'HUNTER';
+    st.rows['109'].alts[0] = { ticked: true, class: 'WARLOCK' };  // on_roster row: Alts only
+    st.rows['110'].alts[0] = { ticked: true, class: 'MAGE' };     // canAddAlts false: never sent
+    const built = G.pages.import.rhCommitBody('t_main', p, st.rows, 'trial', false);
+    assert.deepEqual(plain(built.body).teamId, 't_main');
+    assert.equal(built.body.eventId, '1483258698854826006');
+    assert.equal(built.body.defaultStatus, 'trial');
+    assert.equal(built.body.acceptOtherServer, false);
+    const bySignup = Object.fromEntries(plain(built.body.rows).map(r => [r.signupId, r]));
+    assert.deepEqual(bySignup[103], { signupId: 103, main: { name: 'Sølvhand', class: 'PALADIN', spec: 'Protection' }, alts: [{ name: 'Glimmerkin', class: 'PRIEST' }] });
+    assert.deepEqual(bySignup[101].alts, []);
+    assert.deepEqual(bySignup[105].main, { name: 'Longstride', class: 'HUNTER', spec: null });
+    assert.deepEqual(bySignup[109], { signupId: 109, alts: [{ name: 'Velshade', class: 'WARLOCK' }] });
+    assert(!(110 in bySignup) && !(107 in bySignup) && !(108 in bySignup));
+    assert.deepEqual(plain(built.sent).slice(0, 2), ['101', '102']);
+    assert(!JSON.stringify(built.body).toLowerCase().includes('discord'), 'no Discord id key in the body');
+    const other = G.pages.import.rhCommitBody('t_main', p, st.rows, 'raider', true);
+    assert.equal(other.body.acceptOtherServer, true);
+  });
+
+  await check('Raid-Helper import: nicknames, titles and names are escaped', () => {
+    const rows = [rhRow(1, HOSTILE, 'new', { name: QUOTES, class: 'MAGE', spec: 'Fire' }, [{ name: HOSTILE }]), rhRow(2, QUOTES, 'on_roster', { name: 'X' }, [{ name: HOSTILE, taken: { personId: 'p_1', name: QUOTES } }], { person: { id: 'p_1', name: HOSTILE }, canAddAlts: true })];
+    const p = rhPreview({ rows });
+    p.event.title = HOSTILE;
+    p.event.otherServer = true;
+    const st = rhState(p, { error: HOSTILE, rowErrors: { 1: HOSTILE }, foldOpen: true });
+    const out = G.pages.import.raidHelperHtml({ guildData: Object.assign(guildData(), { guild: Object.assign({}, guildData().guild, { name: HOSTILE }) }), rh: st });
+    assertEscaped(out, 'raid-helper import');
+    assertNoRawAttrs(out);
+  });
+
+  await check('Raid-Helper import: commit errors map to the page - event_changed offers a reload, other_server asks for the confirm, name_taken marks its row', async () => {
+    const p = rhPreview();
+    const mkState = () => {
+      const s = G.app.state;
+      s.guilds.g1 = guildData();
+      s.currentGid = 'g1';
+      return rhState(JSON.parse(JSON.stringify(p)), {});
+    };
+    // event_changed -> message + "Load the event again"
+    let st = mkState();
+    await withApi({ post: () => Promise.reject(new G.api.ApiError(409, { error: 'event_changed', message: 'A sign-up is gone from the event.', index: 2 })) }, async () => {
+      G.handlers.click['rh-commit']();
+      await tick();
+    });
+    assert.equal(st.error, 'A sign-up is gone from the event.');
+    assert.equal(st.offerReload, true);
+    const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert(out.includes('Load the event again') && out.includes('A sign-up is gone from the event.'));
+    // other_server -> confirm state
+    st = mkState();
+    await withApi({ post: () => Promise.reject(new G.api.ApiError(409, { error: 'other_server', message: 'Different server.' })) }, async () => {
+      G.handlers.click['rh-commit']();
+      await tick();
+    });
+    assert.equal(st.preview.event.otherServer, true);
+    assert.equal(st.confirmOtherServer, true);
+    // name_taken with an index -> that row
+    st = mkState();
+    await withApi({ post: () => Promise.reject(new G.api.ApiError(409, { error: 'name_taken', message: 'Sølvhand is taken.', field: 'name', index: 2, owner: { personId: 'p_1', name: 'X' } })) }, async () => {
+      G.handlers.click['rh-commit']();
+      await tick();
+    });
+    assert.equal(st.rowErrors['103'], 'Sølvhand is taken.');
+    assert(G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st }).includes('Sølvhand is taken.'));
+  });
+
+  await check('Raid-Helper import: a successful commit sends the body, refreshes the badge, and returns to the roster with a notice', async () => {
+    const p = rhPreview();
+    const s = G.app.state;
+    s.guilds.g1 = guildData();
+    s.currentGid = 'g1';
+    rhState(p);
+    let sent;
+    let hashes;
+    await withApi({ post: (url, body) => { sent = { url, body }; return Promise.resolve({ ok: true, rosterFlags: { t_main: 5 } }); } }, async h => {
+      G.handlers.click['rh-commit']();
+      await tick();
+      hashes = h;
+    });
+    assert.equal(sent.url, '/api/guild/g1/roster/import/raid-helper/commit');
+    assert.equal(plain(sent.body).rows.length, 4);
+    assert.deepEqual(plain(hashes), ['#/g/g1/roster']);
+    assert.equal(s.guilds.g1.rosterFlags.t_main, 5);
+    assert(s.rosterNotice.startsWith('Added 4 people'));
+  });
+
+  await check('Raid-Helper import: "Load sign-ups" posts { teamId, source } and builds the state from the preview', async () => {
+    const s = G.app.state;
+    s.guilds.g1 = guildData();
+    s.currentGid = 'g1';
+    const st = G.pages.import.ensureState('rh', 'g1', 't_main');
+    st.link = 'https://raid-helper.dev/event/1483258698854826006';
+    let sent;
+    await withApi({ post: (url, body) => { sent = { url, body }; return Promise.resolve(rhPreview()); } }, async () => {
+      G.handlers.submit['rh-load']();
+      await tick();
+    });
+    assert.deepEqual(plain(sent), { url: '/api/guild/g1/roster/import/raid-helper/preview', body: { teamId: 't_main', source: 'https://raid-helper.dev/event/1483258698854826006' } });
+    assert.equal(st.status, 'ready');
+    assert.equal(Object.keys(st.rows).length, 10);
+    const failing = G.pages.import.ensureState('rh', 'g1', 't_main');
+    await withApi({ post: () => Promise.reject(new G.api.ApiError(403, { error: 'event_private', message: 'That event is private.' })) }, async () => {
+      G.handlers.submit['rh-load']();
+      await tick();
+    });
+    assert.equal(failing.error, 'That event is private.');
+    assert.equal(failing.preview, null);
+  });
+
+  await check('import pages: the page markup has the nickname form, labels and the Cancel link to the roster', () => {
+    const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: G.pages.import.ensureState('rh', 'g1', 't_other') });
+    assert(out.includes('Import from Raid-Helper') && out.includes('Everyone who signed up becomes a person on the roster, linked by their Discord account.'));
+    assert(out.includes('<label class="gs-label" for="rh-link">Raid-Helper event link</label>') && out.includes('>Load sign-ups<'));
+  });
+
+  // ── Warcraft Logs import ───────────────────────────────────────
+  const WCL_PREVIEW = {
+    report: { code: 'aBcD1234eFgH5678', flavour: 'fresh', title: 'Hyjal Summit', zone: 'Hyjal Summit', startTime: Date.UTC(2026, 9, 14, 19) },
+    matched: [{ name: 'Brightmane', class: 'PALADIN', person: { id: 'p_2', name: 'Brightmane' } }, { name: 'Ashcaller', class: 'WARLOCK', person: { id: 'p_1', name: 'Ashcaller' } }],
+    toDecide: [
+      { key: 'thornpaw|', name: 'Thornpaw', realm: null, class: 'HUNTER', otherRealm: false, suggestion: { personId: 'p_8', name: 'Thornvald' } },
+      { key: 'embervein|', name: 'Embervein', realm: null, class: 'MAGE', otherRealm: false, suggestion: { personId: 'p_1', name: 'Ashcaller' } },
+      { key: 'grimtusk|', name: 'Grimtusk', realm: null, class: 'WARRIOR', otherRealm: false, suggestion: null },
+      { key: 'fernwhisk|', name: 'Fernwhisk', realm: null, class: 'DRUID', otherRealm: false, suggestion: null },
+      { key: 'farlander|maladath', name: 'Farlander', realm: 'Maladath', class: 'ROGUE', otherRealm: true, suggestion: { personId: 'p_8', name: 'Thornvald' } },
+    ],
+  };
+  const wclState = (over) => {
+    const st = G.pages.import.ensureState('wcl', 'g1', 't_main');
+    Object.assign(st, { preview: plain(WCL_PREVIEW), choices: G.pages.import.wclInitChoices(WCL_PREVIEW), status: 'ready', error: '', knownOpen: false }, over || {});
+    return st;
+  };
+  const WCL_PEOPLE = [plain(PEOPLE[0]), plain(PEOPLE[1])];
+
+  await check('Warcraft Logs import: defaults - a suggestion is an Alt, no match is Skip, another realm is Skip', () => {
+    const c = G.pages.import.wclInitChoices(WCL_PREVIEW);
+    assert.equal(c['thornpaw|'].action, 'alt');
+    assert.equal(c['thornpaw|'].personId, 'p_8');
+    assert.equal(c['grimtusk|'].action, 'skip');
+    assert.equal(c['farlander|maladath'].action, 'skip', 'another realm never starts as an Alt');
+  });
+
+  await check('Warcraft Logs import: header chips, known-names fold, class only in "In the log", From <realm>, Match text', () => {
+    const st = wclState();
+    const out = G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE });
+    assert(out.includes('Hyjal Summit &middot; Oct 14, 2026 &middot; 7 players'));
+    assert(out.includes('2 on the roster') && out.includes('5 to decide'));
+    assert(out.includes('2 characters already on the roster') && /aria-expanded="false" aria-controls="wcl-known-list"/.test(out) && /id="wcl-known-list" hidden/.test(out));
+    assert(out.includes('In Thornvald\'s Discord nickname') && out.includes('No match'));
+    assert(out.includes('<td data-label="In the log">Hunter</td>'), 'class only, no spec');
+    assert(out.includes('From Maladath'));
+    assert(out.includes('Add as Alt of Thornvald') && out.includes('Add as Alt of someone else...') && out.includes('>New person<') && out.includes('Skip (not a guild member)'));
+    st.knownOpen = true;
+    assert(/aria-expanded="true"/.test(G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE })));
+  });
+
+  await check('Warcraft Logs import: the summary counts Alts, new people and skips; the button counts changes', () => {
+    const st = wclState();
+    st.choices['embervein|'] = { action: 'alt', personId: 'p_1', status: 'trial' };
+    st.choices['fernwhisk|'] = { action: 'new', personId: '', status: 'trial' };
+    const out = G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE });
+    assert(out.includes('3 changes: 2 Alts, 1 new person &middot; 2 skipped'));
+    assert(out.includes('>Save 3 changes<'));
+    assert(/aria-label="Starting status for Fernwhisk"/.test(out) && /<option value="trial" selected>Trial<\/option>/.test(out));
+    const fresh = wclState();
+    fresh.choices = G.pages.import.wclInitChoices(WCL_PREVIEW);
+    const c = G.pages.import.wclCounts(WCL_PREVIEW, fresh.choices);
+    assert.deepEqual(plain(c), { alts: 2, news: 0, skipped: 3, incomplete: 0 });
+    const none = Object.fromEntries(Object.keys(fresh.choices).map(k => [k, { action: 'skip', personId: '', status: 'trial' }]));
+    const emptyOut = G.pages.import.wclHtml({ guildData: guildData(), wcl: Object.assign(fresh, { choices: none }), people: WCL_PEOPLE });
+    assert(emptyOut.includes('No changes yet') && /data-action="wcl-commit"[^>]*disabled/.test(emptyOut));
+  });
+
+  await check('Warcraft Logs import: "Add as Alt of someone else" shows a person picker; an unpicked person is not a change', () => {
+    const st = wclState();
+    st.choices['grimtusk|'] = { action: 'other', personId: '', status: 'trial' };
+    let out = G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE });
+    assert(out.includes('aria-label="Which person owns Grimtusk"') && out.includes('<option value="p_1">Ashcaller</option>'));
+    assert.equal(G.pages.import.wclCounts(WCL_PREVIEW, st.choices).incomplete, 1);
+    st.choices['grimtusk|'].personId = 'p_2';
+    assert.equal(G.pages.import.wclCounts(WCL_PREVIEW, st.choices).alts, 3);
+    out = G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE });
+    assert(/<option value="p_2" selected>Brightmane<\/option>/.test(out));
+  });
+
+  await check('Warcraft Logs import: the commit body keeps report code / flavour and drops skips', () => {
+    const st = wclState();
+    st.choices['fernwhisk|'] = { action: 'new', personId: '', status: 'trial' };
+    st.choices['grimtusk|'] = { action: 'other', personId: 'p_2', status: 'trial' };
+    const body = plain(G.pages.import.wclCommitBody('t_main', st.preview, st.choices));
+    assert.deepEqual(body.report, { code: 'aBcD1234eFgH5678', flavour: 'fresh' });
+    assert.equal(body.teamId, 't_main');
+    const by = Object.fromEntries(body.decisions.map(d => [d.key, d]));
+    assert.deepEqual(by['thornpaw|'], { key: 'thornpaw|', name: 'Thornpaw', realm: null, class: 'HUNTER', action: 'alt', personId: 'p_8' });
+    assert.deepEqual(by['fernwhisk|'], { key: 'fernwhisk|', name: 'Fernwhisk', realm: null, class: 'DRUID', action: 'new', status: 'trial' });
+    assert.deepEqual(by['grimtusk|'], { key: 'grimtusk|', name: 'Grimtusk', realm: null, class: 'WARRIOR', action: 'alt', personId: 'p_2' });
+    assert(!('farlander|maladath' in by), 'a skipped other-realm row is not sent');
+  });
+
+  await check('Warcraft Logs import: names, report title and realm are escaped', () => {
+    const pv = plain(WCL_PREVIEW);
+    pv.report.title = HOSTILE;
+    pv.toDecide[0].name = QUOTES;
+    pv.toDecide[0].suggestion = { personId: 'p_8', name: HOSTILE };
+    pv.toDecide[4].realm = HOSTILE;
+    pv.matched[0].person.name = HOSTILE;
+    const st = wclState({ preview: pv, knownOpen: true, error: HOSTILE });
+    const out = G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: [Object.assign(plain(PEOPLE[0]), { main: { id: 'c_1', name: HOSTILE, class: 'WARLOCK', team: TEAM_MAIN } })] });
+    assertEscaped(out, 'wcl import');
+    assertNoRawAttrs(out);
+  });
+
+  await check('Warcraft Logs import: Load players posts { teamId, source }; a commit posts the decisions and returns to the roster', async () => {
+    const s = G.app.state;
+    s.guilds.g1 = guildData();
+    s.currentGid = 'g1';
+    const st = G.pages.import.ensureState('wcl', 'g1', 't_main');
+    st.link = 'https://fresh.warcraftlogs.com/reports/aBcD1234eFgH5678';
+    let sent;
+    await withApi({ post: (url, body) => { sent = { url, body }; return Promise.resolve(plain(WCL_PREVIEW)); } }, async () => {
+      G.handlers.submit['wcl-load']();
+      await tick();
+    });
+    assert.deepEqual(plain(sent), { url: '/api/guild/g1/roster/import/wcl/preview', body: { teamId: 't_main', source: 'https://fresh.warcraftlogs.com/reports/aBcD1234eFgH5678' } });
+    assert.equal(st.choices['thornpaw|'].action, 'alt');
+    let commit;
+    let hashes;
+    await withApi({ post: (url, body) => { commit = { url, body }; return Promise.resolve({ ok: true, rosterFlags: {} }); } }, async h => {
+      G.handlers.click['wcl-commit']();
+      await tick();
+      hashes = h;
+    });
+    assert.equal(commit.url, '/api/guild/g1/roster/import/wcl/commit');
+    assert.equal(plain(commit.body).decisions.length, 2);
+    assert.deepEqual(plain(hashes), ['#/g/g1/roster']);
+    assert(s.rosterNotice.startsWith('Saved 2 changes'));
+  });
+
+  // ── hygiene ────────────────────────────────────────────────────
+  await check('roster scripts: classic IIFEs on the one Guild namespace, ASCII only, no inline style or handlers in markup', () => {
+    for (const f of ['roster-sort.js', 'pages-roster.js', 'pages-person.js', 'pages-import.js']) {
+      const text = read('js/guild/' + f);
+      assert(/window\.Guild = window\.Guild \|\| \{\}/.test(text), f);
+      assert(!/^\s*(import|export)\s/m.test(text), f);
+      text.split('\n').forEach((line, i) => {
+        const t = line.trim();
+        if (t.startsWith('//')) return;
+        assert(!/[^\x00-\x7f]/.test(line), `${f}:${i + 1} has a non-ASCII character`);
+        assert(!/[\s`'"]style\s*=\s*["'`\\]/.test(line), `${f}:${i + 1} inline style`);
+      });
+    }
+    assert(scriptSrcs.includes('/js/guild/roster-sort.js') && scriptSrcs.indexOf('/js/guild/pages-import.js') < scriptSrcs.indexOf('/js/guild/app.js'));
+  });
+
+  await check('guild.css: class colours, Shaman #3d8fe0, trial chips, 44px phone targets for the new controls, no horizontal page overflow rules broken', () => {
+    for (const c of ['warrior', 'paladin', 'hunter', 'rogue', 'priest', 'shaman', 'mage', 'warlock', 'druid']) assert(css.includes('.gs-class-' + c), c);
+    assert(/\.gs-class-shaman[^{]*\{ color: #3d8fe0; \}/.test(css));
+    assert(css.includes('.gs-trial-ends') && css.includes('.gs-trial-ended') && css.includes('#4a4228') && css.includes('#3a2510'));
+    const phone = css.slice(css.lastIndexOf('@media (max-width: 600px)'));
+    assert(/\.gs-seg \{[^}]*min-height: 44px/.test(phone));
+    assert(/\.gs-input-sm \{ height: 44px; \}/.test(phone));
+    assert(/\.gs-roster-table, \.gs-char-table \{ display: none; \}/.test(phone));
+    assert(/\.gs-roster-cards, \.gs-char-cards \{ display: flex/.test(phone));
+  });
+
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exit(failed ? 1 : 0);
+})();
