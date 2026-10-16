@@ -234,7 +234,7 @@
       const ev = s.preview.event;
       const date = ev.startTime ? G.ui.formatDate(ev.startTime) : '';
       const members = (s.preview.rows || []).length;
-      result = '<section aria-labelledby="rh-result" class="gs-import-result"><div class="gs-import-result-head"><h2 class="gs-h2" id="rh-result">' + esc(ev.title) + (date ? ' &middot; ' + esc(date) : '') + ' &middot; ' + esc(plural(members, 'Discord member', 'Discord members')) + '</h2>' +
+      result = '<section aria-labelledby="rh-result" class="gs-import-result"><div class="gs-import-result-head"><h2 class="gs-h2" id="rh-result">' + esc(ev.title) + (date ? ' &middot; ' + esc(date) : '') + ' &middot; ' + esc(plural(members, 'sign-up', 'sign-ups')) + '</h2>' +
         (ev.otherServer ? '<div class="gs-warn" id="rh-other-server" role="status">This event was posted in a different Discord server than ' + esc(gd.guild.name) + '\'s.</div>' : '') +
         '<p class="gs-fine">The first name in each nickname becomes the Main, with the class and spec they signed up with. Other names in the nickname are offered as Alts: tick the ones that are characters and pick their class.</p>' +
         '<div class="gs-field gs-field-inline"><label class="gs-label" for="rh-start">New people start as</label><select class="gs-input" id="rh-start" data-change="rh-start" data-key="rh-start">' +
@@ -288,7 +288,15 @@
     return c.action;
   }
 
-  function choiceSelectHtml(d, c, people) {
+  // Element ids from a decision key (name|realm): letters and digits only, with the position-free key kept unique by a hash.
+  function idSafe(key) {
+    let h = 0;
+    const s = String(key);
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return s.replace(/[^A-Za-z0-9]/g, '').slice(0, 20) + '-' + h.toString(36);
+  }
+
+  function choiceSelectHtml(d, c, people, rowError) {
     const items = [];
     if (d.suggestion) items.push({ value: 'alt:' + (d.suggestion.personId || d.suggestion.id), label: 'Add as Alt of ' + d.suggestion.name });
     items.push({ value: 'other', label: 'Add as Alt of someone else...' });
@@ -296,20 +304,21 @@
     items.push({ value: 'skip', label: 'Skip (not a guild member)' });
     const value = choiceValue(d, c);
     let extra = '';
+    const sid = 'wcl-' + idSafe(d.key);
     if (value === 'other') {
       const opts = [{ value: '', label: 'Choose a person' }].concat((people || []).map(function (p) { return { value: p.id, label: p.main.name }; }));
-      extra = '<select class="gs-input gs-input-sm" data-change="wcl-person" data-key="wcl-person-' + esc(d.key) + '" data-choice="' + esc(d.key) + '" aria-label="Which person owns ' + esc(d.name) + '">' + G.ui.optionsHtml(opts, c.personId) + '</select>';
+      extra = '<label class="gs-sr" for="' + sid + '-person">Which person owns ' + esc(d.name) + '</label><select class="gs-input gs-input-sm" id="' + sid + '-person" data-change="wcl-person" data-key="wcl-person-' + esc(d.key) + '" data-choice="' + esc(d.key) + '">' + G.ui.optionsHtml(opts, c.personId) + '</select>';
     } else if (value === 'new') {
-      extra = '<select class="gs-input gs-input-sm" data-change="wcl-status" data-key="wcl-status-' + esc(d.key) + '" data-choice="' + esc(d.key) + '" aria-label="Starting status for ' + esc(d.name) + '">' +
+      extra = '<label class="gs-sr" for="' + sid + '-status">Starting status for ' + esc(d.name) + '</label><select class="gs-input gs-input-sm" id="' + sid + '-status" data-change="wcl-status" data-key="wcl-status-' + esc(d.key) + '" data-choice="' + esc(d.key) + '">' +
         G.ui.optionsHtml(START_STATUSES.map(function (v) { return { value: v, label: G.ui.statusLabel(v) }; }), c.status) + '</select>';
     }
-    return '<div class="gs-choice"><select class="gs-input gs-input-sm" data-change="wcl-choice" data-key="wcl-choice-' + esc(d.key) + '" data-choice="' + esc(d.key) + '" aria-label="What to do with ' + esc(d.name) + '">' + G.ui.optionsHtml(items, value) + '</select>' + extra + '</div>';
+    return '<div class="gs-choice"><label class="gs-sr" for="' + sid + '-choice">What to do with ' + esc(d.name) + '</label><select class="gs-input gs-input-sm" id="' + sid + '-choice" data-change="wcl-choice" data-key="wcl-choice-' + esc(d.key) + '" data-choice="' + esc(d.key) + '">' + G.ui.optionsHtml(items, value) + '</select>' + extra + '</div>' + (rowError ? '<span class="gs-note-line gs-note-error">' + esc(rowError) + '</span>' : '');
   }
 
-  function decideRowHtml(d, c, people) {
+  function decideRowHtml(d, c, people, rowError) {
     return '<tr><th scope="row" class="gs-cell-strong">' + G.ui.classNameHtml(d.name, d.class) + '</th><td data-label="In the log">' + esc(G.ui.className(d.class)) +
       (d.otherRealm ? '<span class="gs-char-sub">From ' + esc(d.realm) + '</span>' : '') + '</td><td data-label="Match">' +
-      (d.suggestion ? 'In ' + esc(d.suggestion.name) + '\'s Discord nickname' : 'No match') + '</td><td data-label="What to do">' + choiceSelectHtml(d, c, people) + '</td></tr>';
+      (d.suggestion ? 'In ' + esc(d.suggestion.name) + '\'s Discord nickname' : 'No match') + '</td><td data-label="What to do">' + choiceSelectHtml(d, c, people, rowError) + '</td></tr>';
   }
 
   function wclSummary(counts) {
@@ -345,7 +354,7 @@
           : '') +
         (decide.length
           ? '<h3 class="gs-h3">' + esc(decide.length + ' to decide') + '</h3><div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import" aria-label="' + esc(decide.length + ' to decide') + '"><thead><tr><th scope="col">Character</th><th scope="col">In the log</th><th scope="col">Match</th><th scope="col">What to do</th></tr></thead><tbody>' +
-            decide.map(function (d) { return decideRowHtml(d, s.choices[d.key] || { action: 'skip', status: 'trial' }, opts.people); }).join('') + '</tbody></table></div>'
+            decide.map(function (d) { return decideRowHtml(d, s.choices[d.key] || { action: 'skip', status: 'trial' }, opts.people, s.rowErrors && s.rowErrors[d.key]); }).join('') + '</tbody></table></div>'
           : '<p class="gs-empty">Everyone in this report is already on the roster.</p>') + '</section>';
       footer = '<div class="gs-import-bar" id="wcl-footer"><p class="gs-import-sum" role="status">' + wclSummary(counts) + '</p><div class="gs-actions"><a class="gs-btn" href="' + esc(rosterHref(gid)) + '">Cancel</a>' +
         '<button type="button" class="gs-btn gs-btn-molten" data-action="wcl-commit" data-key="wcl-commit"' + (!changes || s.status === 'saving' ? ' disabled' : '') + '>Save ' + esc(plural(changes, 'change', 'changes')) + '</button></div></div>';
@@ -368,7 +377,7 @@
     if (cur && cur.gid === gid && cur.teamId === teamId) return cur;
     s.imports[kind] = kind === 'rh'
       ? { gid: gid, teamId: teamId, link: '', status: 'idle', error: '', offerReload: false, preview: null, rows: {}, defaultStatus: 'raider', showAll: false, foldOpen: false, confirmOtherServer: false, rowErrors: {} }
-      : { gid: gid, teamId: teamId, link: '', status: 'idle', error: '', offerReload: false, preview: null, choices: {}, knownOpen: false };
+      : { gid: gid, teamId: teamId, link: '', status: 'idle', error: '', offerReload: false, preview: null, choices: {}, knownOpen: false, rowErrors: {} };
     return s.imports[kind];
   }
 
@@ -561,13 +570,23 @@
     if (!counts.alts && !counts.news) return;
     s.status = 'saving';
     s.error = '';
+    s.rowErrors = {};
     G.app.render();
-    G.api.post(apiBase(s.gid) + 'wcl/commit', wclCommitBody(s.teamId, s.preview, s.choices)).then(function (res) {
+    const built = wclCommitBody(s.teamId, s.preview, s.choices);
+    G.api.post(apiBase(s.gid) + 'wcl/commit', built).then(function (res) {
       s.status = 'ready';
       finish(s, 'Saved ' + plural(counts.alts + counts.news, 'change', 'changes') + ' from the Warcraft Logs report.', res);
     }, function (err) {
       s.status = 'ready';
-      if (failure(s, err, err && (err.code === 'name_taken' || err.code === 'already_on_roster'))) G.app.render();
+      const row = err && err.index != null ? built.decisions[err.index] : null;
+      if (row) {
+        s.rowErrors[row.key] = err.message;
+        s.error = 'One row could not be saved. Fix it and try again.';
+        s.offerReload = false;
+        G.app.render();
+        return;
+      }
+      if (failure(s, err, err && ['name_taken', 'already_on_roster', 'person_limit', 'character_limit'].indexOf(err.code) >= 0)) G.app.render();
     });
   };
 

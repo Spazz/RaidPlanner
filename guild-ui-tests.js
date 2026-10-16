@@ -197,9 +197,14 @@ function assertEscaped(out, label) {
     }
     assert.equal(G.api.classify(E(403, 'cross_site')).view, 'inline');
     assert.equal(G.api.classify(E(403, 'reauth_required')).view, 'inline');
-    assert.equal(G.api.classify(E(429, 'rate_limited', { retryAfter: 12 })).text, 'Too many changes, try again in 12 s');
-    assert.equal(G.api.classify(E(429, 'rate_limited', { retryAfter: 11.2 })).text, 'Too many changes, try again in 12 s');
-    assert.match(G.api.classify(E(429, 'rate_limited')).text, /^Too many changes, try again in/);
+    // The server's own 429 message wins; the retry hint follows it (seconds below a minute, minutes from 60 s).
+    assert.equal(G.api.classify(E(429, 'rate_limited', { retryAfter: 12 })).text, 'Server says so. Try again in 12 seconds.');
+    assert.equal(G.api.classify(E(429, 'rate_limited', { retryAfter: 11.2 })).text, 'Server says so. Try again in 12 seconds.');
+    assert.equal(G.api.classify(E(429, 'rate_limited', { retryAfter: 360 })).text, 'Server says so. Try again in 6 minutes.');
+    assert.equal(G.api.classify(E(503, 'rate_limited', { retryAfter: 60 })).text, 'Server says so. Try again in 1 minute.');
+    const bare = extra => new G.api.ApiError(429, Object.assign({ error: 'rate_limited' }, extra || {}));
+    assert.equal(G.api.classify(bare({ retryAfter: 12 })).text, 'Too many changes, try again in 12 s');
+    assert.match(G.api.classify(bare()).text, /^Too many changes, try again in/);
     const c409 = G.api.classify(E(409, 'server_taken'));
     assert.equal(c409.view, 'inline');
     assert.equal(c409.text, 'Server says so.');

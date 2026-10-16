@@ -48,11 +48,20 @@
     return shownOf(p).role === role;
   }
 
-  // The search looks at the names the list response carries: the shown character and the Main.
+  // Accent-insensitive folding for the search: NFD, marks stripped, then letters NFD leaves whole.
+  const FOLD_MAP = { '\u00f8': 'o', '\u00e6': 'ae', '\u0153': 'oe', '\u00df': 'ss', '\u0142': 'l', '\u0111': 'd', '\u00fe': 'th', '\u00f0': 'd' };
+  function fold(s) {
+    let out = text(s).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+    out = out.replace(/[\u00f8\u00e6\u0153\u00df\u0142\u0111\u00fe\u00f0]/g, function (c) { return FOLD_MAP[c]; });
+    return out;
+  }
+
+  // Any name in row.names (all the person's characters on this team); the shown and Main names when it is absent.
   function queryMatches(p, query) {
-    const q = text(query).trim().toLowerCase();
+    const q = fold(query).trim();
     if (!q) return true;
-    return nameOf(p).toLowerCase().indexOf(q) >= 0 || text(mainOf(p).name).toLowerCase().indexOf(q) >= 0;
+    const list = Array.isArray(p && p.names) && p.names.length ? p.names : [nameOf(p), mainOf(p).name];
+    return list.some(function (n) { return fold(n).indexOf(q) >= 0; });
   }
 
   // filter: { role, status, query }; teamId decides which people count as "Trials to decide".
@@ -140,6 +149,7 @@
     DEFAULT_FILTER: DEFAULT_FILTER,
     ROLES: ROLES,
     STATUS_FILTERS: STATUS_FILTERS,
+    fold: fold,
     isFlaggedHere: isFlaggedHere,
     trialsToDecide: trialsToDecide,
     filterPeople: filterPeople,

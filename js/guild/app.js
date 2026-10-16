@@ -151,6 +151,7 @@
       return resolveSignedIn(r, token);
     }).then(function () {
       if (token !== routeToken) return;
+      closeOverlays(); // a dialog opened while this route loaded (or restored by Back) must not outlive it
       render(true);
     });
   }

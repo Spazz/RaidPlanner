@@ -69,6 +69,11 @@
     if (status === 403 && MESSAGE_PAGE_TITLES[code]) return { view: 'message', title: MESSAGE_PAGE_TITLES[code], text: text };
     if (status === 429 || code === 'rate_limited') {
       const n = err && typeof err.retryAfter === 'number' && err.retryAfter > 0 ? Math.ceil(err.retryAfter) : 0;
+      const serverText = err && err.body && typeof err.body.message === 'string' ? err.body.message.trim() : '';
+      if (serverText) {
+        const hint = n >= 60 ? 'Try again in ' + Math.ceil(n / 60) + (Math.ceil(n / 60) === 1 ? ' minute' : ' minutes') : n ? 'Try again in ' + n + (n === 1 ? ' second' : ' seconds') : '';
+        return { view: 'inline', title: '', text: serverText + (hint ? (/[.!?]$/.test(serverText) ? ' ' : '. ') + hint + '.' : '') };
+      }
       return { view: 'inline', title: '', text: n ? 'Too many changes, try again in ' + n + ' s' : 'Too many changes, try again in a moment' };
     }
     return { view: 'inline', title: '', text: text };
