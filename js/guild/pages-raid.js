@@ -50,13 +50,14 @@
   // Flagged rows first (they need a decision), then by name.
   function sortedPeople(people) {
     return people.slice().sort(function (x, y) {
-      const fx = (x.flags && x.flags.length) || x.pending ? 0 : 1;
-      const fy = (y.flags && y.flags.length) || y.pending ? 0 : 1;
+      const fx = needsReview(x) ? 0 : 1;
+      const fy = needsReview(y) ? 0 : 1;
       return fx - fy || String(x.name).localeCompare(String(y.name), 'en');
     });
   }
 
-  function needsReview(row) { return !!((row.flags && row.flags.length) || row.pending); }
+  // The Worker sends needsReview; decided rows keep their flags, so flags alone do not mean "open".
+  function needsReview(row) { return !!(row && (row.needsReview || row.pending)); }
 
   function planText(p) { return p === 'bench' ? 'Bench' : p ? String(p) : '-'; }
 
@@ -298,10 +299,10 @@
   }
 
   // ── data ──
-  function setDetail(c, res) {
+  function setDetail(c, res, note) {
     G.app.applyFlags(c.gid, res);
     if (res && res.raid && res.sources) c.x.data = res;
-    a().note = '';
+    a().note = note || '';
     st().pageAlert = '';
     G.app.render();
   }
@@ -493,11 +494,15 @@
       if (!read.ok) { G.ui.setBusy(form, false); G.ui.setText('dlg-err-source', read.error); form.elements.source.focus(); return null; }
       return G.api.put(raidBase(c.gid, c.rid) + '/plan', { label: read.label, players: read.players }).then(function (res) {
         G.ui.closeDialogOf(form);
-        setDetail(c, res);
+        setDetail(c, res, read.skippedText);
+      }, function (err) {
+        const planText = G.planSource.describeError(err, read.players);
+        if (planText) { const e = new Error(planText); e.planText = planText; throw e; }
+        throw err;
       });
     }).catch(function (err) {
       G.ui.setBusy(form, false);
-      G.ui.setText('dlg-error', G.api.classify(err).text);
+      G.ui.setText('dlg-error', err && err.planText ? err.planText : G.api.classify(err).text);
     });
   };
 

@@ -14,7 +14,44 @@
   const SHORT_LINK = /\/(?:tbc|classic|forever)\/([0-9A-Za-z]{7})\/?(?:[?#]\S*)?$/;
   const BARE_CODE = /^[A-Za-z0-9_-]{8,}$/;
 
+  // The server's character-name rule (worker cleanCharacterName): 2 to 12 letters, each with at most two combining marks.
+  const NAME_PATTERN = /^(?:\p{L}\p{M}{0,2})+$/u;
+
   function fail(error) { return { ok: false, error: error }; }
+
+  function validName(raw) {
+    if (typeof raw !== 'string' || raw.length > 64) return false;
+    const text = raw.normalize('NFC').trim();
+    if (!NAME_PATTERN.test(text)) return false;
+    const n = Array.from(text).length;
+    return n >= 2 && n <= 12;
+  }
+
+  // Drops names the server would refuse and repeats (first one wins). -> { players, skipped: count }
+  function sanitize(players) {
+    const seen = {};
+    const kept = [];
+    let skipped = 0;
+    (players || []).forEach(function (p) {
+      if (!p || !validName(p.name)) { skipped++; return; }
+      const key = p.name.normalize('NFC').trim().toLowerCase();
+      if (seen[key]) { skipped++; return; }
+      seen[key] = true;
+      kept.push(p);
+    });
+    return { players: kept, skipped: skipped };
+  }
+
+  function skippedText(n) {
+    return n > 0 ? n + (n === 1 ? ' name was' : ' names were') + ' left out of the plan (not a valid character name, or listed twice).' : '';
+  }
+
+  // A 400 plan_invalid names the offending entry by index into the players that were sent.
+  function describeError(err, sent) {
+    if (!err || err.code !== 'plan_invalid') return null;
+    const entry = typeof err.index === 'number' && Array.isArray(sent) ? sent[err.index] : null;
+    return (entry && entry.name ? entry.name + ': ' : '') + (err.message || 'The plan could not be saved.');
+  }
 
   // What the pasted text is: { kind: 'string' | 'code' | 'short', value } or null.
   function classify(text) {
@@ -48,10 +85,12 @@
     if (!d.readPlayers) return fail('The plan reader is not available on this page. Open the planner once, then try again.');
     const parsed = d.readPlayers(str);
     if (!parsed || !parsed.success) return fail((parsed && parsed.error) || 'That plan link is damaged.');
-    const players = (parsed.players || []).map(function (p) { return { name: p.name, group: p.groupNumber }; });
-    if (!players.length) return fail('That plan has no players in it.');
-    if (players.length > MAX_PLAYERS) return fail('That plan lists ' + players.length + ' players; at most ' + MAX_PLAYERS + ' can be added.');
-    return { ok: true, label: String(parsed.name || 'Shared plan').slice(0, LABEL_MAX), players: players };
+    const all = (parsed.players || []).map(function (p) { return { name: p.name, group: p.groupNumber }; });
+    if (!all.length) return fail('That plan has no players in it.');
+    const clean = sanitize(all);
+    if (!clean.players.length) return fail('None of the names in that plan are valid character names.');
+    if (clean.players.length > MAX_PLAYERS) return fail('That plan lists ' + clean.players.length + ' players; at most ' + MAX_PLAYERS + ' can be added.');
+    return { ok: true, label: String(parsed.name || 'Shared plan').slice(0, LABEL_MAX), players: clean.players, skipped: clean.skipped, skippedText: skippedText(clean.skipped) };
   }
 
   function fromCode(code, d) {
@@ -77,5 +116,5 @@
     });
   }
 
-  G.planSource = { classify: classify, read: read, MAX_PLAYERS: MAX_PLAYERS };
+  G.planSource = { classify: classify, read: read, sanitize: sanitize, describeError: describeError, MAX_PLAYERS: MAX_PLAYERS };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

@@ -5,7 +5,6 @@
 (function (G) {
   'use strict';
 
-  const PAGE_HINT = 20;           // a full page of the list is at least this long; fewer rows = no older raids
   const REPORT_SHORT = 28;
   const RAID_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -120,7 +119,7 @@
     const teamId = G.app.teamFor(gd);
     if (!teamId) { a().raids = { gid: gid, teamId: null, data: null }; return null; }
     return G.api.get(A().apiBase(gid) + '/raids?team=' + encodeURIComponent(teamId)).then(function (data) {
-      a().raids = { gid: gid, teamId: teamId, data: data, more: Array.isArray(data.raids) && data.raids.length >= PAGE_HINT };
+      a().raids = { gid: gid, teamId: teamId, data: data, more: !!(data && data.hasMore) };
       return null;
     });
   }
@@ -141,7 +140,7 @@
     G.api.get(A().apiBase(x.gid) + '/raids?team=' + encodeURIComponent(x.teamId) + '&before=' + encodeURIComponent(last.raidOn)).then(function (res) {
       const more = Array.isArray(res.raids) ? res.raids : [];
       x.data.raids = x.data.raids.concat(more);
-      x.more = more.length >= PAGE_HINT;
+      x.more = !!(res && res.hasMore);
       G.app.render();
     }, function (err) { el.disabled = false; G.app.handleError(err, { pageAlert: true }); });
   };
@@ -304,7 +303,13 @@
     } else if (line.id === 'plan') {
       promise = G.planSource.read(f.plan, {}).then(function (read) {
         if (!read.ok) { const e = new Error(read.error); e.planError = true; throw e; }
-        return G.api.put(base + '/raids/' + encodeURIComponent(run.raidId) + '/plan', { label: read.label, players: read.players });
+        return G.api.put(base + '/raids/' + encodeURIComponent(run.raidId) + '/plan', { label: read.label, players: read.players }).then(function () {
+          if (read.skippedText) line.message = read.skippedText;
+        }, function (err) {
+          const planText = G.planSource.describeError(err, read.players);
+          if (planText) { const e = new Error(planText); e.planError = true; throw e; }
+          throw err;
+        });
       });
     } else {
       const body = { source: line.src.trim() };
