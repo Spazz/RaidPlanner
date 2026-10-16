@@ -2160,8 +2160,9 @@ function setPlannerActive(active) {
   const next = !!active;
   if (next === plannerSectionActive) return;
   plannerSectionActive = next;
-  if (!next) closePlannerOverlays();
-  else if (State.view === 'app') scheduleSpotlightQueue();
+  if (!next) { closePlannerOverlays(); return; }
+  Modal.flushDeferred();
+  if (State.view === 'app') scheduleSpotlightQueue();
 }
 
 const PlannerShell = {
@@ -2182,6 +2183,16 @@ const PlannerShell = {
   isActive: () => plannerActive(),
   setActive: setPlannerActive,
 };
+
+// The page starts with body.shell-pending (the landing hides what depends on the session) and the shell ends it. If
+// the shell never started (a guild script failed to load or threw while loading), the landing would stay on the
+// import card alone: once the page has loaded, show the signed-out landing instead.
+function shellFailsafe() {
+  if (window.Guild && window.Guild.app && window.Guild.app.started) return;
+  document.body.classList.remove('shell-pending');
+  document.body.classList.add('is-signed-out');
+}
+window.addEventListener('load', shellFailsafe);
 
 // ── EXPOSE FOR TESTING ──────────────────────────────────────────
 // ── BUFF TOOLTIP PORTAL ─────────────────────────────────────────

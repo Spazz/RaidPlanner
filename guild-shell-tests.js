@@ -70,6 +70,7 @@ function target(attrs, scoped) {
     const m = /^\[([\w-]+)\]$/.exec(sel);
     if (m) return Object.prototype.hasOwnProperty.call(attrs, m[1]) ? el : null;
     if (sel === '.gs-scope') return scoped === false ? null : el;
+    if (sel === 'a[href]') return Object.prototype.hasOwnProperty.call(attrs, 'href') ? el : null;
     return null;
   };
   return el;
@@ -78,7 +79,8 @@ function target(attrs, scoped) {
 const IDS = ['guild-root', 'shell-rail', 'shell-sidebar', 'shell-topbar-lead', 'shell-topbar-plan', 'shell-topbar-account', 'shell-banner',
   'gs-main', 'planner-root', 'planner-notice', 'shell-tabs', 'shell-drawer', 'guild-dialogs'];
 
-// opts: { page, url: '/path#hash', hint, storage, routes: { path: (init) => ({ status, body }) | 'hang' }, planner: bool, whatsNew: bool }
+// opts: { page, url: '/path#hash', hint, storage, routes: { path: (init) => ({ status, body }) | 'hang' }, planner: bool, whatsNew: bool,
+//         beforeApp: (sandbox, els) => void  (runs after every guild script but app.js, which starts the shell) }
 function makeEnv(opts) {
   const o = Object.assign({ page: 'app', url: '/', hint: false, storage: {}, routes: {}, planner: true, unseen: false }, opts || {});
   const els = {};
@@ -97,8 +99,13 @@ function makeEnv(opts) {
     removeItem: k => { delete store[k]; },
   };
   const listeners = { document: {}, window: {} };
-  const on = which => (name, fn) => { (listeners[which][name] = listeners[which][name] || []).push(fn); };
+  const captured = {};
+  const on = which => (name, fn, capture) => {
+    if (capture === true && which === 'document') { (captured[name] = captured[name] || []).push(fn); return; }
+    (listeners[which][name] = listeners[which][name] || []).push(fn);
+  };
   const fire = (which, name, ev) => (listeners[which][name] || []).slice().forEach(fn => fn(ev || {}));
+  const fireCapture = (name, ev) => (captured[name] || []).slice().forEach(fn => fn(ev || {}));
 
   const loc = { pathname: '/', search: '', _hash: '' };
   const setUrl = url => {
@@ -156,9 +163,12 @@ function makeEnv(opts) {
   if (o.planner && o.page === 'app') sandbox.PP = PP;
   sandbox.whatsNewSeen = () => !o.unseen;
   vm.createContext(sandbox);
-  for (const [src, text] of SOURCES) vm.runInContext(text, sandbox, { filename: src });
+  SOURCES.forEach(([src, text], i) => {
+    if (i === SOURCES.length - 1 && o.beforeApp) o.beforeApp(sandbox, els);
+    vm.runInContext(text, sandbox, { filename: src });
+  });
   const env = {
-    G: sandbox.Guild, sandbox, els, body, store, loc, history, fetchCalls, timers, plannerCalls, documentFake, listeners, fire,
+    G: sandbox.Guild, sandbox, els, body, store, loc, history, fetchCalls, timers, plannerCalls, documentFake, listeners, fire, fireCapture,
     setUnseen: v => { o.unseen = v; },
     html: id => els[id].innerHTML,
     fetched: needle => fetchCalls.filter(c => c.url.indexOf(needle) >= 0).length,
@@ -813,6 +823,169 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(!/\.gs-app:not\(\.has-guild\)/.test(css));
     assert(/\.is-collapsed \.gs-sidebar \.gs-label-full \{ display: none; \}/.test(css), 'collapse never reaches the drawer');
     assert(!/\.is-collapsed \.gs-(nav|label|collapse|new|side-head|side-brand)/.test(css), 'unscoped collapsed rule left');
+  });
+
+
+  // ── fix round 1 (2b-fix1) ──────────────────────────────────────
+  await check('fix1 #1: How it works reached from a guild section is not undone by the section-switch scroll and focus', async () => {
+    const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes() });
+    await settle();
+    env.plannerCalls.length = 0;
+    env.click({ 'data-action': 'how-it-works' });
+    await settle();
+    assert(env.plannerCalls.includes('howItWorks'));
+    assert(!env.plannerCalls.includes('scrollTo'), 'no scrollTo(0, 0) after the guide opened: ' + env.plannerCalls.join(','));
+    assert.equal(env.els['planner-root'].focused, 0);
+  });
+
+  await check('fix1 #2: arriving on #how-it-works while shell-pending scrolls again once the pending look ends', async () => {
+    const calls = [];
+    const env = makeEnv({
+      url: '/#how-it-works', hint: true, routes: signedInRoutes(),
+      beforeApp: sb => { sb.PP.shell.howItWorks = () => calls.push(sb.document.body.classList.contains('shell-pending') ? 'pending' : 'shown'); },
+    });
+    await settle();
+    assert.deepEqual(calls, ['pending', 'shown'], 'the guide is scrolled to once the section is visible');
+    assert(!env.body.classList.contains('shell-pending'));
+  });
+
+  await check('fix1 #3: the team picker on the planner section uses the guild the chrome shows (currentGid is null there)', async () => {
+    const two = guildBody();
+    two.teams.push({ id: 't2', name: 'Alts', size: 10, archived: false, lead: null });
+    const env = makeEnv({ url: '/', hint: true, routes: signedInRoutes(null, { '/api/guild/g1': { status: 200, body: two } }) });
+    await settle();
+    assert.equal(env.G.app.state.currentGid, null);
+    assert.equal(env.G.app.buildCtx(null).teamId, 't1');
+    const writes = env.els['shell-sidebar'].writes;
+    env.G.handlers.change['team-pick']({ value: 't2' });
+    assert.equal(env.store['raidsmith.guild.team.g1'], 't2');
+    assert.equal(env.G.app.buildCtx(null).teamId, 't2');
+    assert(env.els['shell-sidebar'].writes > writes, 'the chrome was drawn again');
+  });
+
+  await check('fix1 #4a: a throw on the first pass still ends shell-pending with the signed-out chrome', async () => {
+    const env = makeEnv({
+      url: '/',
+      beforeApp: sb => {
+        const real = sb.Guild.shell.slots;
+        let first = true;
+        sb.Guild.shell.slots = ctx => { if (first) { first = false; throw new Error('boom'); } return real(ctx); };
+      },
+    });
+    await settle();
+    assert(!env.body.classList.contains('shell-pending'));
+    assert(env.body.classList.contains('is-signed-out'));
+    assert.equal(env.G.app.started, true);
+  });
+
+  await check('fix1 #7: a render while the phone drawer is open opens the new drawer again', async () => {
+    const env = makeEnv({ url: '/' });
+    await settle();
+    const drawer = { open: true, shown: 0, showModal() { this.open = true; this.shown++; } };
+    env.els['gs-drawer'] = drawer;
+    Object.defineProperty(env.els['shell-drawer'], 'innerHTML', { get() { return this._html; }, set(v) { this._html = String(v); drawer.open = false; } });
+    env.G.app.render();
+    assert.equal(drawer.shown, 1, 'the destroyed dialog is opened again');
+    assert.equal(drawer.open, true);
+    drawer.open = false;
+    env.G.app.render();
+    assert.equal(drawer.shown, 1, 'a closed drawer stays closed');
+  });
+
+  await check('fix1 nit: the late chrome-guild answer does not re-render once a guild section is showing', async () => {
+    let env = null;
+    let writesAtFetch = -1;
+    const routes = signedInRoutes(null, { '/api/guild/g1': () => { env.G.app.state.section = 'guild'; writesAtFetch = env.els['shell-sidebar'].writes; return { status: 200, body: guildBody() }; } });
+    env = makeEnv({ url: '/', hint: true, routes });
+    await settle();
+    assert(writesAtFetch >= 0, 'the chrome guild was fetched');
+    assert.equal(env.els['shell-sidebar'].writes, writesAtFetch, 'no render after the answer');
+  });
+
+  await check('fix1 nit: an outside click in the capture phase closes the account menu (planner menus stop the bubble)', async () => {
+    const env = makeEnv({ url: '/' });
+    await settle();
+    const menu = new FakeEl('gs-account-menu');
+    menu.hidden = false;
+    env.els['gs-account-menu'] = menu;
+    env.fireCapture('click', { target: target({}) });
+    assert.equal(menu.hidden, true);
+    menu.hidden = false;
+    const inside = target({});
+    inside.closest = sel => (sel === '.gs-account' ? inside : null);
+    env.fireCapture('click', { target: inside });
+    assert.equal(menu.hidden, false, 'a click inside the account area keeps it');
+  });
+
+  await check('fix1 nit: planner:view redraws only when the collapse context changed', async () => {
+    const env = makeEnv({ url: '/' });
+    await settle();
+    const writes = env.els['shell-sidebar'].writes;
+    env.fire('document', 'planner:view', {});
+    assert.equal(env.els['shell-sidebar'].writes, writes, 'same context: no redraw');
+    env.body.attrs['data-planner-view'] = 'app';
+    env.fire('document', 'planner:view', {});
+    assert.equal(env.els['shell-sidebar'].writes, writes + 1, 'landing -> plan: redraw');
+    env.fire('document', 'planner:view', {});
+    assert.equal(env.els['shell-sidebar'].writes, writes + 1);
+  });
+
+  await check('fix1 nit: the no-guild notice shows with the planner only (the guild section has its own card with the same ids)', async () => {
+    const routes = signedInRoutes(null, { '/auth/me': { status: 200, body: meBody({ guilds: [], removedFrom: [{ id: 'g9', name: 'Owls' }] }) } });
+    const guild = makeEnv({ url: '/#/', hint: true, routes });
+    await settle();
+    assert.equal(guild.html('planner-notice'), '');
+    assert(guild.html('gs-main').includes('Owls'));
+    const planner = makeEnv({ url: '/', hint: true, routes });
+    await settle();
+    assert(planner.html('planner-notice').includes('Owls'));
+  });
+
+  await check('fix1 nit: focus falls back to the next displayed target, then #planner-root, when the title-bar h1 is not displayed', async () => {
+    const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(), beforeApp: sb => { sb.PP.shell.view = () => 'app'; } });
+    await settle();
+    const hidden = new FakeEl('h1');
+    hidden.getClientRects = () => [];
+    env.documentFake.selectors['#shell-topbar-plan h1'] = hidden;
+    env.click({ 'data-action': 'open-planner' });
+    await settle();
+    assert.equal(hidden.focused, 0, 'a hidden heading cannot take focus');
+    assert.equal(env.els['planner-root'].focused, 1);
+    assert.equal(env.els['planner-root'].getAttribute('tabindex'), '-1');
+    const shown = new FakeEl('h1');
+    shown.getClientRects = () => [{}];
+    env.documentFake.selectors['#shell-topbar-plan h1'] = shown;
+    env.G.app.go('#/g/g1/roster');
+    await settle();
+    env.click({ 'data-action': 'open-planner' });
+    await settle();
+    assert.equal(shown.focused, 1);
+  });
+
+  await check('fix1 nit: a link click that switches to a guild section scrolls to the top; Back / Forward does not', async () => {
+    const env = makeEnv({ url: '/', hint: true, routes: signedInRoutes() });
+    await settle();
+    env.plannerCalls.length = 0;
+    env.click({ href: '#/g/g1/roster' });
+    env.loc.hash = '#/g/g1/roster';
+    await settle();
+    assert(env.plannerCalls.includes('scrollTo'), 'link click: scrolled to the top');
+    const back = makeEnv({ url: '/', hint: true, routes: signedInRoutes() });
+    await settle();
+    back.plannerCalls.length = 0;
+    back.loc.hash = '#/g/g1/roster'; // no link click: the browser's Back / Forward
+    await settle();
+    assert(!back.plannerCalls.includes('scrollTo'), 'history move: the scroll position is the browser\'s');
+  });
+
+  await check('fix1 nit: app.css hides the empty #planner-notice slot; the phone version tabs have dividers and keep FOREVER + BETA on one line', () => {
+    const css = read('app.css');
+    assert(/#planner-notice:empty \{ display: none; \}/.test(css));
+    const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
+    assert(/\.game-version-tab \+ \.game-version-tab \{ border-left: 1px solid var\(--border-subtle\); \}/.test(phone), 'a divider between the cells');
+    assert(/\.game-version-nav \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) auto;/.test(phone), 'the Forever cell is as wide as its content');
+    assert(/\.game-version-tab \{[^}]*padding: 0 6px;[^}]*white-space: nowrap;/.test(phone));
+    assert(/@media \(max-width: 360px\) \{ \.game-beta \{ font-size: 7px; padding: 0 2px; \} \}/.test(phone), 'the tag shrinks before anything is dropped');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);
