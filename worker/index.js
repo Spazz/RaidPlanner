@@ -2,13 +2,20 @@ import {
   HttpError, errorBody, errorResponse, hasJsonContentType, isCrossSite, jsonResponse, readJsonBody,
 } from './http.js';
 import { defaultRandomBytes } from './ids.js';
-import { checkRateLimit } from './ratelimit.js';
+import { checkRateLimit, rateLimitMessage } from './ratelimit.js';
 import { createRouter, paramsAreValid } from './router.js';
 import { loadSession } from './session.js';
 import { callback, deleteMe, login, logout, me, updatePrefs } from './routes/auth.js';
 import { claimGuild, createGuild, getGuild } from './routes/guild.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles } from './routes/people.js';
 import { createTeam, patchTeam } from './routes/teams.js';
+import {
+  addCharacter, createPerson, deletePerson, getLinkable, getPerson, getRoster, makeMain, patchCharacter, patchPerson,
+  removeCharacter, saveNotes,
+} from './routes/roster.js';
+import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
+
+const COMMIT_MAX_BODY = 64 * 1024;
 
 const ROUTES = [
   { method: 'GET', path: '/auth/login', auth: false, handler: login },
@@ -27,6 +34,22 @@ const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/people/:uid/guild-master', auth: true, handler: makeGuildMaster },
   { method: 'POST', path: '/api/guild/:gid/people/:uid/block', auth: true, handler: blockPerson },
   { method: 'DELETE', path: '/api/guild/:gid/people/:uid/block', auth: true, handler: restorePerson },
+  { method: 'GET', path: '/api/guild/:gid/roster', auth: true, handler: getRoster },
+  { method: 'POST', path: '/api/guild/:gid/roster', auth: true, handler: createPerson },
+  // Literal paths are registered before `:pid`, so "linkable" and "import" are never read as a person id.
+  { method: 'GET', path: '/api/guild/:gid/roster/linkable', auth: true, handler: getLinkable },
+  { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/preview', auth: true, handler: previewRaidHelper },
+  { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/commit', auth: true, handler: commitRaidHelper, maxBody: COMMIT_MAX_BODY },
+  { method: 'POST', path: '/api/guild/:gid/roster/import/wcl/preview', auth: true, handler: previewWcl },
+  { method: 'POST', path: '/api/guild/:gid/roster/import/wcl/commit', auth: true, handler: commitWcl, maxBody: COMMIT_MAX_BODY },
+  { method: 'GET', path: '/api/guild/:gid/roster/:pid', auth: true, handler: getPerson },
+  { method: 'PATCH', path: '/api/guild/:gid/roster/:pid', auth: true, handler: patchPerson },
+  { method: 'DELETE', path: '/api/guild/:gid/roster/:pid', auth: true, handler: deletePerson },
+  { method: 'PUT', path: '/api/guild/:gid/roster/:pid/notes', auth: true, handler: saveNotes },
+  { method: 'POST', path: '/api/guild/:gid/roster/:pid/characters', auth: true, handler: addCharacter },
+  { method: 'PATCH', path: '/api/guild/:gid/roster/:pid/characters/:cid', auth: true, handler: patchCharacter },
+  { method: 'DELETE', path: '/api/guild/:gid/roster/:pid/characters/:cid', auth: true, handler: removeCharacter },
+  { method: 'POST', path: '/api/guild/:gid/roster/:pid/characters/:cid/main', auth: true, handler: makeMain },
 ];
 
 // deps: { db, env, fetch, now, randomBytes, log } -> { handle(request) }
@@ -55,7 +78,7 @@ export function createApp(deps) {
     if (request.method !== 'GET') {
       if (isCrossSite(request)) throw new HttpError(403, 'cross_site', 'Cross-site requests are not allowed.');
       if (!hasJsonContentType(request)) throw new HttpError(415, 'json_required', 'Content-Type must be application/json.');
-      ctx.body = await readJsonBody(request);
+      ctx.body = await readJsonBody(request, match.route.maxBody);
     }
     if (match.route.auth) {
       ctx.session = await loadSession(ctx);
@@ -64,8 +87,7 @@ export function createApp(deps) {
       if (request.method !== 'GET') {
         const limit = await checkRateLimit(ctx.db, ctx.session.user.id, ctx.now());
         if (limit.limited) {
-          throw new HttpError(429, 'rate_limited', 'Too many changes in a minute. Wait a moment and try again.',
-            { retryAfter: limit.retryAfter });
+          throw new HttpError(429, 'rate_limited', rateLimitMessage(`w:${ctx.session.user.id}`), { retryAfter: limit.retryAfter });
         }
       }
     }
@@ -78,7 +100,7 @@ export function createApp(deps) {
         return await dispatch(request);
       } catch (error) {
         if (error instanceof HttpError) {
-          const headers = error.status === 429 ? { 'Retry-After': String(error.extra.retryAfter) } : {};
+          const headers = error.extra.retryAfter !== undefined && (error.status === 429 || error.status === 503) ? { 'Retry-After': String(error.extra.retryAfter) } : {};
           return jsonResponse(errorBody(error.code, error.message, error.extra), error.status, headers);
         }
         // Never echo the error to the client.

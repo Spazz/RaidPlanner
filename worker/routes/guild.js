@@ -5,6 +5,8 @@ import { newId } from '../ids.js';
 import { loadGuildContext } from '../permissions.js';
 import { readManageable } from '../session.js';
 import { FOREVER_RULESETS, REGIONS, findRealm, isVersion } from '../realms.js';
+import { rosterOptions } from '../roster-data.js';
+import { guildToday, loadRosterFlags } from '../roster-view.js';
 import { loadTeams } from './teams.js';
 
 const SINGLE_TEAM_NAME = 'Main team';
@@ -27,17 +29,19 @@ export function guildView(row) {
 }
 
 // The body of GET /api/guild/:gid (and of the 201 from POST /api/guild).
-export async function guildPayload(db, guildContext) {
+export async function guildPayload(db, guildContext, nowMs = Date.now()) {
   return {
     guild: guildView(guildContext.guild),
     teams: await loadTeams(db, guildContext.guild.id),
     me: { roles: guildContext.roles, can: guildContext.can },
+    rosterOptions: rosterOptions(),
+    rosterFlags: await loadRosterFlags(db, guildContext, guildToday(guildContext.guild, nowMs)),
   };
 }
 
 export async function getGuild(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
-  return jsonResponse(await guildPayload(ctx.db, guildContext));
+  return jsonResponse(await guildPayload(ctx.db, guildContext, ctx.now()));
 }
 
 // IANA names only (Area/Location, UTC, Etc/GMT+5); offsets like "+05:00" are not names.
@@ -152,7 +156,7 @@ export async function createGuild(ctx) {
     throw error;
   }
   const guildContext = await loadGuildContext(db, userId, guildId);
-  return jsonResponse(await guildPayload(db, guildContext), 201);
+  return jsonResponse(await guildPayload(db, guildContext, ctx.now()), 201);
 }
 
 // POST /api/guild/:gid/claim: an allowlisted person who manages the guild's Discord server takes a guild
@@ -203,5 +207,5 @@ export async function claimGuild(ctx) {
   }
   if (results[0].meta.changes !== 1) throw conflict();
   const guildContext = await loadGuildContext(db, userId, guild.id);
-  return jsonResponse(await guildPayload(db, guildContext));
+  return jsonResponse(await guildPayload(db, guildContext, ctx.now()));
 }

@@ -14,7 +14,7 @@ const MAX_REASON = 200;
 async function loadModel(db, guildContext) {
   const guildId = guildContext.guild.id;
   const serverId = guildContext.guild.discord_server_id;
-  const [userResult, assignmentResult, blockResult] = await db.batch([
+  const [userResult, assignmentResult, blockResult, rosterResult] = await db.batch([
     db.prepare(
       `SELECT u.id, u.discord_id, u.username, u.global_name, u.avatar, u.last_seen_at,
               EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = u.id AND us.server_id = ?) AS is_member
@@ -27,11 +27,21 @@ async function loadModel(db, guildContext) {
     ).bind(serverId, serverId, guildId, guildId, guildId),
     db.prepare('SELECT user_id, role_id, team_id FROM role_assignments WHERE guild_id = ?').bind(guildId),
     db.prepare('SELECT user_id, blocked_by, reason, created_at FROM guild_blocks WHERE guild_id = ?').bind(guildId),
+    // The roster entry (the Main) of each person linked to a Discord account.
+    db.prepare(
+      `SELECT p.id AS person_id, p.discord_user_id, m.name, m.class FROM players p
+         JOIN characters m ON m.player_id = p.id AND m.is_main = 1
+        WHERE p.guild_id = ? AND p.discord_user_id IS NOT NULL`,
+    ).bind(guildId),
   ]);
+  const rosterByDiscord = new Map(rosterResult.results.map((row) => [row.discord_user_id, { personId: row.person_id, name: row.name, class: row.class }]));
 
   const byId = new Map();
   for (const row of userResult.results) {
-    byId.set(row.id, { id: row.id, row, person: toPerson(row), isMember: row.is_member === 1, assignments: [], block: null });
+    byId.set(row.id, {
+      id: row.id, row, person: toPerson(row), isMember: row.is_member === 1, assignments: [], block: null,
+      roster: rosterByDiscord.get(row.discord_id) || null,
+    });
   }
   for (const assignment of assignmentResult.results) {
     const entry = byId.get(assignment.user_id);
@@ -81,7 +91,7 @@ function peopleResponse(model, guildContext) {
     .map((entry) => ({
       person: entry.person,
       roles: entry.roles,
-      roster: null,
+      roster: entry.roster,
       lastSeenAt: entry.row.last_seen_at,
       isMe: entry.id === guildContext.userId,
       actions: actionsFor(guildContext, entry),

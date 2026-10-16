@@ -10,13 +10,13 @@ const TEAM_CAP_MESSAGE = `A guild can have at most ${MAX_ACTIVE_TEAMS} active te
 const ACTIVE_TEAM_COUNT = 'SELECT COUNT(*) AS n FROM teams WHERE guild_id = ? AND archived = 0';
 const TEAM_NAME_TAKEN = 'Another active team in this guild already has that name.';
 
-export function teamView(row, leads = []) {
-  return { id: row.id, name: row.name, size: row.size, archived: row.archived === 1, players: 0, leads };
+export function teamView(row, leads = [], players = 0) {
+  return { id: row.id, name: row.name, size: row.size, archived: row.archived === 1, players, leads };
 }
 
 // Every team of the guild (archived ones included), with the unblocked Team Leads of each.
 export async function loadTeams(db, guildId) {
-  const [teamResult, leadResult] = await db.batch([
+  const [teamResult, leadResult, countResult] = await db.batch([
     db.prepare('SELECT id, name, size, archived FROM teams WHERE guild_id = ? ORDER BY created_at, id').bind(guildId),
     db.prepare(
       `SELECT ra.team_id, u.id, u.discord_id, u.username, u.global_name, u.avatar
@@ -25,10 +25,17 @@ export async function loadTeams(db, guildId) {
           AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ra.guild_id AND b.user_id = ra.user_id)
         ORDER BY u.username, u.id`,
     ).bind(guildId),
+    // People who are not inactive with at least one character on the team (archived teams too).
+    db.prepare(
+      `SELECT c.team_id, COUNT(DISTINCT c.player_id) AS n FROM characters c JOIN players p ON p.id = c.player_id
+        WHERE c.guild_id = ? AND p.status != 'inactive' GROUP BY c.team_id`,
+    ).bind(guildId),
   ]);
+  const counts = new Map(countResult.results.map((row) => [row.team_id, row.n]));
   return teamResult.results.map((team) => teamView(
     team,
     leadResult.results.filter((lead) => lead.team_id === team.id).map(toPerson),
+    counts.get(team.id) || 0,
   ));
 }
 

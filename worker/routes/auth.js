@@ -323,7 +323,12 @@ export async function deleteMe(ctx) {
   }
   // Sessions, servers, roles and blocks cascade; actor columns become NULL.
   statements.push(db.prepare('DELETE FROM users WHERE id = ?').bind(userId));
-  statements.push(db.prepare('DELETE FROM rate_limits WHERE key = ?').bind(`w:${userId}`));
+  // The person on a roster who was linked to this account stays (officers own the roster); the link goes.
+  statements.push(db.prepare(
+    `UPDATE players SET discord_user_id = NULL, discord_nickname = NULL, version = version + 1, updated_at = ?
+      WHERE discord_user_id = ?`,
+  ).bind(now, session.user.discordId));
+  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?)').bind(`w:${userId}`, `imp:${userId}`));
   await db.batch(statements);
   return jsonResponse({ ok: true }, 200, {}, [clearSessionCookie()]);
 }
