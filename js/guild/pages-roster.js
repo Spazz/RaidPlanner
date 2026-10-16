@@ -58,7 +58,10 @@
       return '<button type="button" class="gs-seg" data-action="roster-role" data-role="' + r + '" data-key="role-' + r + '" aria-pressed="' + (f.role === r ? 'true' : 'false') + '">' +
         esc(ROLE_FILTER_LABELS[r]) + ' <span class="gs-seg-count">' + counts[r] + '</span></button>';
     }).join('');
-    const statusOpts = G.ui.optionsHtml(G.rosterSort.STATUS_FILTERS.map(function (s) { return { value: s, label: STATUS_FILTER_LABELS[s] }; }), f.status);
+    // Trial flags are for editors, so only they get the "Trials to decide" filter.
+    const canEdit = !!(data.can && data.can.edit);
+    const statuses = G.rosterSort.STATUS_FILTERS.filter(function (s) { return canEdit || s !== 'decide'; });
+    const statusOpts = G.ui.optionsHtml(statuses.map(function (s) { return { value: s, label: STATUS_FILTER_LABELS[s] }; }), f.status);
     return '<div class="gs-roster-filters"><div class="gs-search"><label class="gs-sr" for="roster-search">Search people or characters</label>' + G.icons.icon('search', 18) +
       '<input class="gs-input gs-input-search" type="search" id="roster-search" placeholder="Search people or characters" data-input="roster-search" autocomplete="off" value="' + esc(f.query) + '"></div>' +
       '<div class="gs-segs" role="group" aria-label="Filter by role">' + roleBtns + '</div>' +

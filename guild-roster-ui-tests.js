@@ -1142,6 +1142,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(editor.includes('Ends in 5 days'));
     const member = rosterPage(guildData({ can: MEMBER_CAN, flags: {} }), rosterData({ can: { edit: false } }));
     assert(!member.includes('Ends in 5 days') && !member.includes('Ended 2 days ago') && member.includes('>Trial<'));
+    assert(!member.includes('>Trials to decide</option>') && editor.includes('>Trials to decide</option>'), 'only editors get the Trials to decide filter');
     const away = plain(PEOPLE).map(p => (p.shown.name === 'Frostwhisper' ? Object.assign(p, { main: Object.assign({}, p.main, { team: TEAM_WEEKEND }) }) : p));
     const other = rosterPage(gd, rosterData({ people: away }));
     assert(!other.includes('Ends in 5 days') && other.includes('Ended 2 days ago'), 'a trial of another home team shows no flag');
