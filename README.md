@@ -156,13 +156,13 @@ Vercel deploys from GitHub `main`: **pushing to `main` deploys to production**, 
 
 ## Guild tracker (local)
 
-The guild tracker (`guild.html`, the Worker in `worker/`, D1 migrations in `migrations/`) runs locally on Cloudflare's Wrangler. Nothing here is deployed: Vercel still serves the planner only (`.vercelignore` keeps the Worker files out), and the tracker lives on the `guild/slice-1` branch.
+The guild tracker (the shell in `js/guild/` and `guild.css`, loaded by `index.html`, `faq.html` and `whats-new.html`; the Worker in `worker/`, D1 migrations in `migrations/`) runs locally on Cloudflare's Wrangler. Nothing here is deployed: Vercel still serves the planner only (`.vercelignore` keeps the Worker files out), and the tracker lives on the `guild/slice-1` branch.
 
 **Run it.** Node 22 or newer. Fill `.env` from `.env.example` (names only; `.env` is never committed or served), then:
 
 ```
 npm run guild:migrate     # applies migrations/ to the local D1
-npm run guild:dev         # Worker + local D1 + static files on http://localhost:8787
+npm run guild:dev         # Worker + local D1 + static files; the app is http://localhost:8787/
 ```
 
 Both wrap `tools/guild-dev.js`, which runs `npx --yes wrangler@4.146.0` with `WRANGLER_SEND_METRICS=false` and `--persist-to ~/.raidsmith-dev/wrangler-state` (outside OneDrive, so the SQLite files are not synced). Wrangler is pinned at **4.146.0** here and in the tool; a test checks the two agree. Extra arguments pass through: `npm run guild:dev -- --port 8788`. Nothing needs a Cloudflare login.
@@ -173,19 +173,19 @@ To use a different database (a fresh one for a check, say), pass `--state <dir>`
 
 **Without real Raid-Helper or Warcraft Logs.** `node tools/fake-sources.js [--port 8791] [--server-id <Discord server id>]` (or `FAKE_SOURCES_PORT`, `FAKE_SOURCES_SERVER_ID`) fakes the Raid-Helper v4 events API and the Warcraft Logs token + GraphQL endpoints with invented events and one invented report; its header comment lists the event ids and the report codes. `--server-id` is the Discord server the main event is posted in (default: the fake Discord's server `900000000000000001`). Point the Worker at it with `npm run guild:dev -- --var RAID_HELPER_API_BASE:http://127.0.0.1:8791 --var WCL_API_BASE:http://127.0.0.1:8791`, and set any `WCL_CLIENT_ID` / `WCL_CLIENT_SECRET` (the fake accepts anything). Like `DISCORD_API_BASE`, both bases are honoured only for `http://localhost:<port>` / `http://127.0.0.1:<port>` and are never set in `wrangler.jsonc`.
 
-**Limits under `wrangler dev`.** The short links (`/api/share`, `/tbc/:id`, `/classic/:id`, `/forever/:id`) are Vercel features and do not work on `localhost:8787`; use the long `#r=` links there. The planner pages, `/faq`, `/whats-new` and the guild tracker work.
+**Limits under `wrangler dev`.** The short links (`/api/share`, `/tbc/:id`, `/classic/:id`, `/forever/:id`) are Vercel features and do not work on `localhost:8787`; use the long `#r=` links there. The planner pages, `/faq`, `/whats-new` and the guild tracker work. The guild tracker is part of the app shell at `/` (guild pages are `/#/g/<id>/roster` and so on); the old `/guild` address redirects to `/#/`.
 
 **What Wrangler 4.146.0 does here (checked 2026-10-14).**
 
 - `main` inside `assets.directory: "."` is accepted with no error or warning.
 - Wrangler does **not** exclude `.env`, `.wrangler/`, `node_modules/` or `worker/` from the assets: without `.assetsignore` every one of them is served. `.assetsignore` hides them, and `guild-config-tests.js` pins its patterns.
 - `_headers` and `.assetsignore` are never served themselves; `_headers` applies to the assets (the CSP matches `vercel.json` plus the Discord CDN for avatars).
-- Default `html_handling` serves `/faq` from `faq.html` (`/faq.html` redirects to `/faq`), so `/guild` serves `guild.html`.
+- Default `html_handling` serves `/faq` from `faq.html` (`/faq.html` redirects to `/faq`), so the help pages link to `/faq.html` and `/whats-new.html` and the browser lands on `/faq` and `/whats-new`.
 - `--var KEY:VALUE` overrides a value from `.env`, and `dev --env-file <path>` exists.
 - Local D1, `d1 migrations apply --local` and `dev` run with no Cloudflare login.
-- `run_worker_first` routes (`/api/guild`, `/api/guild/*`, `/auth/*`) reach the Worker; everything else is served as a static asset.
+- `run_worker_first` routes (`/guild`, `/api/guild`, `/api/guild/*`, `/auth/*`) reach the Worker; everything else is served as a static asset.
 
-**Tests.** `guild-worker-tests.js` runs the Worker over `tests/d1-fake.js` (a `node:sqlite` stand-in for D1 that runs the real migration and copies D1's limits), `guild-config-tests.js` pins the config files, and `guild-ui-tests.js` covers the page.
+**Tests.** `guild-worker-tests.js` runs the Worker over `tests/d1-fake.js` (a `node:sqlite` stand-in for D1 that runs the real migration and copies D1's limits), `guild-config-tests.js` pins the config files, and `guild-ui-tests.js`, `guild-roster-ui-tests.js` and `guild-shell-tests.js` cover the shell (the last drives it against fake documents).
 
 ## Releases
 
