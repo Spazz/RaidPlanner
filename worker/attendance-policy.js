@@ -48,7 +48,7 @@ export const OUTCOMES = Object.freeze({
   present: Object.freeze({ letter: 'P', label: 'Present', fixedCredit: 1 }),
   bench: Object.freeze({ letter: 'B', label: 'Bench', fixedCredit: 1 }),
   missed: Object.freeze({ letter: 'M', label: 'Missed', fixedCredit: 0 }),
-  missed_notice: Object.freeze({ letter: 'N', label: 'Missed (with notice)', fixedCredit: 0 }),
+  missed_notice: Object.freeze({ letter: 'N', label: 'Missed with notice', fixedCredit: 0 }),
   late: Object.freeze({ letter: 'L', label: 'Late', fixedCredit: null }),
   left_early: Object.freeze({ letter: 'E', label: 'Left early', fixedCredit: null }),
   late_left: Object.freeze({ letter: 'LE', label: 'Late and left early', fixedCredit: null }),
