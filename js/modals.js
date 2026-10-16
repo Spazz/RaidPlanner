@@ -122,9 +122,15 @@ function renderManualChanges() {
 // Cancel holds the initial focus so Enter never confirms a destructive action by accident.
 const Modal = {
   resolver: null,
+  deferred: [], // confirms asked while the planner section was hidden behind a guild page
   confirm({ title = 'Are you sure?', message = '', confirmLabel = 'Continue', cancelLabel = 'Cancel' } = {}) {
     const dialog = document.getElementById('confirm-dialog');
     if (!dialog || typeof dialog.showModal !== 'function') return Promise.resolve(false);
+    // A modal dialog opened while a guild page covers the planner would leave the whole page inert behind an
+    // invisible dialog. It waits (unanswered) until the planner shows again.
+    if (typeof plannerActive === 'function' && !plannerActive()) {
+      return new Promise(resolve => this.deferred.push({ options: { title, message, confirmLabel, cancelLabel }, resolve }));
+    }
     this.settle(false);
     document.getElementById('confirm-heading').textContent = title;
     document.getElementById('confirm-message').textContent = message;
@@ -142,6 +148,16 @@ const Modal = {
     const resolve = this.resolver;
     this.resolver = null;
     if (resolve) resolve(result);
+  },
+  // The planner is showing again: ask the deferred confirms, one after the other.
+  flushDeferred() {
+    if (!this.deferred.length) return;
+    if (typeof plannerActive === 'function' && !plannerActive()) return;
+    const next = this.deferred.shift();
+    this.confirm(next.options).then(answer => {
+      next.resolve(answer);
+      this.flushDeferred();
+    });
   },
 };
 document.getElementById('btn-confirm-ok').addEventListener('click', () => document.getElementById('confirm-dialog').close('ok'));

@@ -107,6 +107,35 @@ return { ${exported.join(', ')} };
     assert.equal(await second, true);
   });
 
+
+  await check('fix1 #5: a Modal.confirm asked while the planner is hidden waits (unanswered) and is shown when the planner is active again', async () => {
+    let active = false;
+    const dom = makeConfirmDom();
+    const ctx = app.sandbox(['Modal'], { globals: { document: dom.document, plannerActive: () => active }, extraSource: modalSrc });
+    const { Modal } = ctx.api;
+    let first = null, second = null;
+    const p1 = Modal.confirm({ message: 'one' }).then(v => { first = v; });
+    const p2 = Modal.confirm({ message: 'two' }).then(v => { second = v; });
+    await Promise.resolve();
+    assert.equal(dom.el('confirm-dialog').shown, 0, 'no modal dialog behind an invisible page');
+    assert.equal(dom.el('confirm-dialog').open, false);
+    assert.equal(first, null, 'not auto-resolved');
+    Modal.flushDeferred();
+    assert.equal(dom.el('confirm-dialog').shown, 0, 'still hidden: still waiting');
+    active = true;
+    Modal.flushDeferred();
+    assert.equal(dom.el('confirm-dialog').shown, 1);
+    assert.equal(dom.el('confirm-message').textContent, 'one');
+    dom.el('confirm-dialog').close('ok');
+    await p1;
+    assert.equal(first, true, 'the first answer reaches its asker');
+    assert.equal(dom.el('confirm-dialog').shown, 2, 'then the next one is asked');
+    assert.equal(dom.el('confirm-message').textContent, 'two');
+    dom.el('confirm-dialog').close();
+    await p2;
+    assert.equal(second, false);
+  });
+
   await check('Modal.confirm resolves false when the dialog is unavailable', async () => {
     const dom = makeConfirmDom();
     const ctx = app.sandbox(['Modal'], { globals: { document: dom.document }, extraSource: modalSrc });
@@ -485,18 +514,19 @@ return { ${exported.join(', ')} };
       body: { classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c) } },
     };
     const state = { view: stateView };
+    const loadHandlers = [];
     const deps = {
       closePlayerEditor: () => log.push('player-editor'), closeBuffPicker: () => log.push('buff-picker'),
       removeSpotlightCallout: () => log.push('spotlight-callout'), spotlightTimer: 7,
       Menu: { closeAll: () => log.push('menu-closeAll') }, document: doc,
       closeCoverageSheet: restore => log.push('coverage-sheet:' + restore), closeSaveOverlay: () => log.push('save-overlay'),
-      Modal: { settle: v => log.push('confirm-settle:' + v) }, State: state,
+      Modal: { settle: v => log.push('confirm-settle:' + v), flushDeferred: () => log.push('flush-confirms') }, State: state,
       scheduleSpotlightQueue: () => log.push('schedule-spotlight'), showView: v => { state.view = v; log.push('showView:' + v); },
-      window: { scrollTo: () => log.push('scrollTo') },
+      window: { scrollTo: () => log.push('scrollTo'), addEventListener: (name, fn) => loadHandlers.push([name, fn]) },
     };
     const src = SHELL_DECL + '\n' + app.slice('function closePlannerOverlays()', '// ── EXPOSE FOR TESTING');
-    const api = bind(src, deps, ['PlannerShell', 'plannerActive', 'closePlannerOverlays']);
-    return { api, log, classes, state, els };
+    const api = bind(src, deps, ['PlannerShell', 'plannerActive', 'closePlannerOverlays', 'shellFailsafe']);
+    return { api, log, classes, state, els, win: deps.window, loadHandlers };
   }
 
   await check('PP.shell: isActive is true by default; setActive(false) closes every planner overlay kind and setActive(true) re-arms the tips', () => {
@@ -516,7 +546,7 @@ return { ${exported.join(', ')} };
     assert.equal(log.length, 0, 'a second setActive(false) is a no-op');
     shell.setActive(true);
     assert.equal(shell.isActive(), true);
-    assert.deepEqual(log, ['schedule-spotlight'], 'a plan is open: the tips are scheduled again');
+    assert.deepEqual(log, ['flush-confirms', 'schedule-spotlight'], 'deferred confirms are asked, and with a plan open the tips are scheduled again');
   });
 
   await check('PP.shell: sheets that are not open are left alone, and the landing view does not schedule tips on return', () => {
@@ -527,7 +557,7 @@ return { ${exported.join(', ')} };
     assert(!log.includes('close-more-sheet') && !log.includes('save-overlay'));
     log.length = 0;
     api.PlannerShell.setActive(true);
-    assert.equal(log.length, 0, 'no plan open: nothing to schedule');
+    assert.deepEqual(log, ['flush-confirms'], 'no plan open: nothing to schedule, deferred confirms still asked');
   });
 
   await check('PP.shell: home() shows the compact landing at the top, howItWorks() the full landing scrolled to its section, view() reports the view', () => {
@@ -546,6 +576,22 @@ return { ${exported.join(', ')} };
     shell.howItWorks();
     assert(classes.has('landing-full'), 'a second call works the same');
     assert.equal(state.view, 'landing');
+  });
+
+  await check('fix1 #4b: the planner clears shell-pending on window load when the guild shell never started', () => {
+    const { api, classes, win, loadHandlers } = makeShell('landing');
+    assert.deepEqual(loadHandlers.map(h => h[0]), ['load'], 'registered on window load');
+    classes.add('shell-pending');
+    win.Guild = { app: { started: true } };
+    loadHandlers[0][1]();
+    assert(classes.has('shell-pending') && !classes.has('is-signed-out'), 'the shell started: it owns the pending look');
+    win.Guild = undefined; // a guild script failed to load (404) or threw while loading
+    loadHandlers[0][1]();
+    assert(!classes.has('shell-pending') && classes.has('is-signed-out'));
+    classes.add('shell-pending'); classes.delete('is-signed-out');
+    win.Guild = { app: { started: false } }; // app.js evaluated but start() never ran
+    api.shellFailsafe();
+    assert(!classes.has('shell-pending') && classes.has('is-signed-out'));
   });
 
   await check('the planner never reads PP.shell: it works with no guild scripts, and window.PP.shell is the only door', () => {

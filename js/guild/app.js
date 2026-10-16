@@ -13,6 +13,7 @@
   const COLLAPSE_PREFS = { default: 'sidebarCollapsed', plan: 'planSidebarCollapsed' };
   const COLLAPSE_DEFAULTS = { default: false, plan: true };
   const SESSION_TIMEOUT_MS = 3000;
+  const NAV_CLICK_WINDOW_MS = 1000;
   // Actions the planner's own markup may carry too (the compact home's "How it works" link).
   const SHARED_ACTIONS = ['open-planner', 'how-it-works'];
   const SCOPED_SLOTS = ['shell-rail', 'shell-sidebar', 'shell-topbar-lead', 'shell-topbar-account', 'shell-banner', 'shell-tabs', 'shell-drawer', 'gs-main', 'planner-notice', 'guild-dialogs'];
@@ -44,7 +45,7 @@
     linkable: {},      // gid -> [person] from GET /roster/linkable
     imports: {},       // 'rh' | 'wcl' -> the import page's state (see pages-import.js)
   };
-  const app = G.app = { state: state };
+  const app = G.app = { state: state, started: false };
   let root = null;
   let routeToken = 0;
   let firstRender = true;
@@ -52,6 +53,8 @@
   let lastHref = null;
   let sessionPromise = null;
   let originalTitle = '';
+  let lastNavClickAt = 0;     // a plain click on a link just happened (its popstate is a navigation, not Back / Forward)
+  let lastCollapseContext = null;
 
   // ── small browser helpers (each guarded: storage may be blocked, the planner may be absent) ──
   function byId(id) { return typeof document !== 'undefined' && document.getElementById ? document.getElementById(id) : null; }
@@ -90,8 +93,15 @@
     });
   }
 
+  // Ends the pre-session look. A visit that arrived on #how-it-works scrolled while the landing's guide was still
+  // hidden by the pending state (nothing to scroll to), so it scrolls again now that the guide shows.
   function finishPending() {
-    if (typeof document !== 'undefined' && document.body) document.body.classList.remove('shell-pending');
+    if (typeof document === 'undefined' || !document.body) return;
+    const wasPending = document.body.classList.contains('shell-pending');
+    document.body.classList.remove('shell-pending');
+    if (!wasPending || state.section !== 'planner' || window.location.hash !== '#how-it-works') return;
+    const shell = plannerShell();
+    if (shell && shell.howItWorks) shell.howItWorks();
   }
 
   // Asks /auth/me only when it can matter: a guild route (need) or a browser that signed in before (the hint).
@@ -143,7 +153,10 @@
     const gid = state.me ? chromeGuildId() : null;
     if (!gid || state.guilds[gid] || state.chromeTried[gid]) return Promise.resolve();
     state.chromeTried[gid] = true;
-    return fetchGuild(gid).then(function () { render(); }, function () { /* the nav stays as it is */ });
+    return fetchGuild(gid).then(function () {
+      // A guild section draws #gs-main itself (a re-render could wipe typed form input) and does not use this guild.
+      if (state.section !== 'guild') render();
+    }, function () { /* the nav stays as it is */ });
   }
 
   // ── team choice (per-viewer convenience) ──
@@ -252,7 +265,10 @@
       ['planner', 'guild', 'page'].forEach(function (name) { document.body.classList.toggle('shell-section-' + name, name === section); });
     }
     showSection(section);
-    if (section === 'guild') return routeGuild();
+    if (section === 'guild') {
+      if (prev && prev !== 'guild' && !o.history && typeof window.scrollTo === 'function') window.scrollTo(0, 0);
+      return routeGuild();
+    }
     return routePlainSection(section, prev, o);
   }
 
@@ -273,20 +289,32 @@
     }
   }
 
+  function isDisplayed(el) {
+    return !!el && (!el.getClientRects || el.getClientRects().length > 0);
+  }
+
   // The planner's focus target on a section switch: the compact home's h2, else the sr-only h1 (landing) or the
-  // title-bar h1 (plan view).
+  // title-bar h1 (plan view). A target that is not displayed (the title bar's h1 on a phone) cannot take focus, so
+  // the next one is tried, and the planner root last.
   function focusPlannerTarget() {
     const shell = plannerShell();
     const view = shell && shell.view ? shell.view() : 'landing';
-    let el = null;
+    const selectors = [];
     if (view === 'app') {
-      el = document.querySelector('#shell-topbar-plan h1');
+      selectors.push('#shell-topbar-plan h1');
     } else {
       const cl = document.body.classList;
-      if (!cl.contains('is-signed-out') && !cl.contains('landing-full')) el = document.querySelector('#planner-root h2[tabindex="-1"]');
-      if (!el) el = document.querySelector('#planner-root h1');
+      if (!cl.contains('is-signed-out') && !cl.contains('landing-full')) selectors.push('#planner-root h2[tabindex="-1"]');
+      selectors.push('#planner-root h1');
     }
-    if (el && el.focus) el.focus();
+    for (let i = 0; i < selectors.length; i++) {
+      const el = document.querySelector(selectors[i]);
+      if (isDisplayed(el) && el.focus) { el.focus(); return; }
+    }
+    const planner = byId('planner-root');
+    if (!planner || !planner.focus) return;
+    if (!planner.getAttribute('tabindex')) planner.setAttribute('tabindex', '-1');
+    planner.focus();
   }
 
   // Planner section or a static help page: draw the chrome now, ask the session if it can matter, then draw again.
@@ -295,9 +323,13 @@
     closeOverlays();
     if (section === 'planner') {
       const shell = plannerShell();
-      if (shell && shell.howItWorks && window.location.hash === '#how-it-works') shell.howItWorks();
+      const guide = window.location.hash === '#how-it-works';
       document.title = originalTitle;
-      if (prev && prev !== 'planner' && !o.history) {
+      // How it works scrolls to its own section: the top-of-page scroll and the heading focus of a section switch
+      // would undo it.
+      if (guide) {
+        if (shell && shell.howItWorks) shell.howItWorks();
+      } else if (prev && prev !== 'planner' && !o.history) {
         if (typeof window.scrollTo === 'function') window.scrollTo(0, 0);
         focusPlannerTarget();
       }
@@ -548,6 +580,11 @@
     return { html: mainFor(r, ctx.guildData, ctx), center: false, title: titleFor(r, ctx.guildData) };
   }
 
+  function isDrawerOpen() {
+    const d = byId('gs-drawer');
+    return !!(d && d.open);
+  }
+
   function writeSlot(id, html) {
     const el = byId(id);
     if (!el) return;
@@ -571,7 +608,14 @@
     writeSlot('shell-topbar-account', s.account);
     writeSlot('shell-banner', s.banner);
     writeSlot('shell-tabs', s.tabs);
+    // The drawer is a modal <dialog> the rewrite destroys: an open one (phone) is opened again on the new markup.
+    const drawerWasOpen = isDrawerOpen();
     writeSlot('shell-drawer', s.drawer);
+    if (drawerWasOpen) {
+      const drawer = byId('gs-drawer');
+      if (drawer && !drawer.open && drawer.showModal) drawer.showModal();
+    }
+    lastCollapseContext = collapseContext();
     root.classList.toggle('has-guild', section === 'guild' && !!ctx.guildData);
     root.classList.toggle('is-collapsed', !!ctx.collapsed);
     document.body.classList.toggle('is-signed-out', state.loaded && !state.me);
@@ -587,11 +631,12 @@
         main.innerHTML = '';
       }
     }
-    // Signed in with no guild: the notice above the compact planner home.
+    // Signed in with no guild: the notice above the compact planner home. Only while the planner shows: the guild
+    // section's own no-guild card carries the same markup (and its ids).
     const notice = byId('planner-notice');
     if (notice) {
       if (notice.classList) notice.classList.add('gs-scope');
-      notice.innerHTML = state.me && Array.isArray(state.me.guilds) && !state.me.guilds.length ? G.pages.signin.noGuildNoticeHtml(state.me) : '';
+      notice.innerHTML = section === 'planner' && state.me && Array.isArray(state.me.guilds) && !state.me.guilds.length ? G.pages.signin.noGuildNoticeHtml(state.me) : '';
     }
 
     if (section === 'guild' && focusHeading === true && !firstRender) {
@@ -803,12 +848,15 @@
   };
 
   G.handlers.change['team-pick'] = function (sel) {
-    const gid = state.currentGid;
+    // The guild the picker belongs to: the open guild page's, else the one the planner / help-page chrome shows
+    // (currentGid is null, or a guild visited earlier, there).
+    const gid = state.section === 'guild' ? state.currentGid : chromeGuildId();
     if (!gid) return;
     state.teamByGuild[gid] = sel.value;
     storageSet(TEAM_KEY + gid, sel.value);
     const drawer = byId('gs-drawer');
     if (drawer && drawer.open) drawer.close();
+    if (state.section !== 'guild') { render(); return; }
     const r = G.router.parse(window.location.hash);
     if (r.name === 'section' && r.section === 'roster') { go(G.router.format({ name: 'section', gid: gid, section: 'roster' })); return; }
     if (r.name === 'import') { routeAll({ force: true }); return; }
@@ -835,10 +883,19 @@
     const t = ev.target;
     if (!t || !t.closest) return;
     if (!t.closest('.gs-import-menu')) closeImportMenu();
-    if (!t.closest('.gs-account')) closeMenu(false);
-    else if (t.closest('.gs-menu a')) closeMenu(false);
+    if (t.closest('.gs-menu a')) closeMenu(false);
+    const link = t.closest('a[href]');
+    if (link && isPlainClick(ev)) lastNavClickAt = Date.now();
     if (t.closest('.gs-drawer a')) G.handlers.click['close-drawer']();
     dispatch('click', 'data-action', ev);
+  }
+
+  // Capture phase: the planner's menus stop the click from bubbling (Menu.init), so an outside click is seen here
+  // to keep the account menu and a planner menu from being open together.
+  function onClickCapture(ev) {
+    const t = ev.target;
+    if (!t || !t.closest) return;
+    if (!t.closest('.gs-account')) closeMenu(false);
   }
 
   function onKeydown(ev) {
@@ -871,19 +928,39 @@
     state.page = bodyAttr('data-page') || 'app';
     originalTitle = document.title;
     SCOPED_SLOTS.forEach(function (id) { const el = byId(id); if (el && el.classList) el.classList.add('gs-scope'); });
+    app.started = true;
+    document.addEventListener('click', onClickCapture, true);
     document.addEventListener('click', onClick);
     document.addEventListener('keydown', onKeydown);
     document.addEventListener('submit', onSubmit);
     document.addEventListener('change', function (ev) { dispatch('change', 'data-change', ev); });
     document.addEventListener('input', function (ev) { dispatch('input', 'data-input', ev); });
     // The planner switches between its landing and a plan: the sidebar collapse context follows.
-    document.addEventListener('planner:view', function () { if (state.section === 'planner') render(); });
+    // Only a change of that context redraws (a redraw closes an open account menu).
+    document.addEventListener('planner:view', function () {
+      if (state.section === 'planner' && collapseContext() !== lastCollapseContext) render();
+    });
     window.addEventListener('hashchange', function () { routeAll(); });
-    window.addEventListener('popstate', function () { routeAll({ history: true }); });
+    // A click on a link fires popstate too; only a popstate with no link click just before it is Back / Forward.
+    window.addEventListener('popstate', function () { routeAll({ history: Date.now() - lastNavClickAt > NAV_CLICK_WINDOW_MS }); });
     // A page restored from the back/forward cache re-checks the What's new pill.
     window.addEventListener('pageshow', function (ev) { if (ev && ev.persisted) render(); });
-    routeAll({ force: true });
+    // Whatever goes wrong on the first pass, the page must leave its pending look: signed-out chrome.
+    try {
+      const first = routeAll({ force: true });
+      if (first && first.catch) first.catch(failSafeStart);
+    } catch (err) {
+      failSafeStart(err);
+    }
   };
+
+  function failSafeStart() {
+    state.me = null;
+    state.loaded = true;
+    finishPending();
+    if (document.body) document.body.classList.add('is-signed-out');
+    try { render(); } catch (e) { /* the chrome stays as the skeleton has it */ }
+  }
 
   if (typeof document !== 'undefined' && document.getElementById && document.getElementById('guild-root')) app.start();
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

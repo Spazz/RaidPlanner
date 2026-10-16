@@ -1845,8 +1845,9 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 
   /* Version tabs in the shell's top bar: Classic | TBC | Forever fill the row between the menu button and the account. */
   .game-header-mark { width: 26px; height: 26px; }
-  .game-version-nav { flex: 1; width: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; padding: 0; background: none; height: 28px; border: 1px solid var(--border-subtle); }
-  .game-version-tab { min-width: 0; padding: 0; display: flex; align-items: center; justify-content: center; border-bottom: 0; color: var(--text-secondary); }
+  .game-version-nav { flex: 1; width: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 0; padding: 0; background: none; height: 28px; border: 1px solid var(--border-subtle); }
+  .game-version-tab { min-width: 0; padding: 0 6px; display: flex; align-items: center; justify-content: center; white-space: nowrap; border-bottom: 0; color: var(--text-secondary); }
+  .game-version-tab + .game-version-tab { border-left: 1px solid var(--border-subtle); }
   .game-version-tab .game-name { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; }
   .game-version-tab[aria-pressed="true"] { background: var(--accent-gold); color: var(--text-on-accent); }
   .game-version-tab[aria-pressed="true"] .game-name { font-weight: 700; }
@@ -1854,6 +1855,7 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .game-version-tab:focus-visible { outline-offset: -3px; }
   .game-version-tab::before { content: ''; position: absolute; inset: -9px 0; }
   .game-beta { font-size: 8px; margin-left: 4px; padding: 1px 3px; }
+  @media (max-width: 360px) { .game-beta { font-size: 7px; padding: 0 2px; } }
 
   /* Header row and action row are hidden: their controls move to the context row, the
      bottom bar and the More sheet (initResponsiveChrome). The Reference comp banner
@@ -2105,6 +2107,8 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 @media (max-width: 1100px) {
   .planner-root { padding: 0 env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
 }
+/* The shell's notice slot adds no gap when it is empty (the landing, signed out). */
+#planner-notice:empty { display: none; }
 
 /* The planner's slot in the top bar: nothing on a guild section or a static page, version tabs on the
    landing, the plan's header row on the plan (desktop) and line 1 of the phone context row (phone). */
