@@ -7,6 +7,7 @@ import { readManageable } from '../session.js';
 import { FOREVER_RULESETS, REGIONS, findRealm, isVersion } from '../realms.js';
 import { rosterOptions } from '../roster-data.js';
 import { guildToday, loadRosterFlags } from '../roster-view.js';
+import { loadAttendanceFlags } from '../attendance-store.js';
 import { loadTeams } from './teams.js';
 
 const SINGLE_TEAM_NAME = 'Main team';
@@ -36,6 +37,7 @@ export async function guildPayload(db, guildContext, nowMs = Date.now()) {
     me: { roles: guildContext.roles, can: guildContext.can },
     rosterOptions: rosterOptions(),
     rosterFlags: await loadRosterFlags(db, guildContext, guildToday(guildContext.guild, nowMs)),
+    attendanceFlags: await loadAttendanceFlags(db, guildContext),
   };
 }
 

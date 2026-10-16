@@ -16,9 +16,14 @@
  *   444444444444444444  answers 200 with something that is not an event
  *   anything else       404
  * Warcraft Logs (POST /oauth/token, POST /api/v2/client; any client id and secret are accepted):
- *   report code Fake000000000001  a TBC report with players, a pet and a duplicate actor
+ *   report code Fake000000000001  a TBC report with players, a pet and a duplicate actor; as a raid log (query with `fights`) it has
+ *                                 6 boss pulls, with Quillfeather missing the first pull and Mendra leaving before the last
+ *   report code Fake000000000002  a second report of the same night (2 hours later, 2 pulls) with Wanderfell, a fill-in character
+ *   report code Fake000000000003  an older night (one week earlier), for the backfill list
  *   report code Priv000000000001  answers a permission error
  *   anything else                 { report: null }
+ *   A `reports(...)` query (the backfill list) answers the three reports above, two per page, owner "Fakeuploader" (the first) and
+ *   "Otheruploader"; `guildName` / `guildID` are accepted but not checked.
  * GET /__fake/requests lists what was asked; it listens on 127.0.0.1 only.
  */
 const http = require('node:http');
@@ -61,14 +66,52 @@ function buildEvent(id, serverId, title) {
 }
 
 const WCL_ACTORS = [
-  { name: 'Thornwick', type: 'Player', subType: 'Warrior', server: 'Dreamscythe' },
-  { name: 'Pyrelo', type: 'Player', subType: 'Mage', server: 'Dreamscythe' },
-  { name: 'Mendra', type: 'Player', subType: 'Shaman', server: 'Dreamscythe' },
-  { name: 'Wanderfell', type: 'Player', subType: 'Druid', server: 'Nightslayer' },
-  { name: 'Embertail', type: 'Player', subType: 'Pet', server: null },
-  { name: 'Pyrelo', type: 'Player', subType: 'Mage', server: 'Dreamscythe' },
-  { name: 'Quillfeather', type: 'Player', subType: 'Hunter', server: 'Dreamscythe' },
+  { id: 1, name: 'Thornwick', type: 'Player', subType: 'Warrior', server: 'Dreamscythe' },
+  { id: 2, name: 'Pyrelo', type: 'Player', subType: 'Mage', server: 'Dreamscythe' },
+  { id: 3, name: 'Mendra', type: 'Player', subType: 'Shaman', server: 'Dreamscythe' },
+  { id: 4, name: 'Wanderfell', type: 'Player', subType: 'Druid', server: 'Nightslayer' },
+  { id: 5, name: 'Embertail', type: 'Player', subType: 'Pet', server: null },
+  { id: 6, name: 'Pyrelo', type: 'Player', subType: 'Mage', server: 'Dreamscythe' },
+  { id: 7, name: 'Quillfeather', type: 'Player', subType: 'Hunter', server: 'Dreamscythe' },
 ];
+
+// Fight offsets are ms from the report start, like Warcraft Logs. friendlyPlayers are actor ids.
+function fight(id, name, encounterID, kill, start, seconds, players) {
+  return { id, name, encounterID, kill, startTime: start, endTime: start + seconds * 1000, friendlyPlayers: players };
+}
+const FULL = [1, 2, 3, 5, 7];
+const RAID_REPORTS = {
+  Fake000000000001: {
+    startTime: EVENT_START * 1000,
+    endTime: EVENT_START * 1000 + 3 * 3600 * 1000,
+    owner: { name: 'Fakeuploader' },
+    zone: { name: 'Gruul / Magtheridon' },
+    fights: [
+      fight(1, 'Trash', 0, false, 0, 120, FULL),
+      fight(2, 'High King Maulgar', 649, false, 300_000, 200, [1, 2, 3, 5]),
+      fight(3, 'High King Maulgar', 649, true, 700_000, 240, FULL),
+      fight(4, 'Gruul the Dragonkiller', 650, false, 1_200_000, 150, FULL),
+      fight(5, 'Gruul the Dragonkiller', 650, true, 1_600_000, 300, FULL),
+      fight(6, 'Magtheridon', 651, null, 2_400_000, 90, FULL),
+      fight(7, 'Magtheridon', 651, false, 2_600_000, 220, [1, 2, 5, 7]),
+    ],
+  },
+  Fake000000000002: {
+    startTime: (EVENT_START + 2 * 3600) * 1000,
+    endTime: (EVENT_START + 3 * 3600) * 1000,
+    owner: { name: 'Fakeuploader' },
+    zone: { name: 'Gruul / Magtheridon' },
+    fights: [fight(1, 'Magtheridon', 651, true, 60_000, 260, [1, 2, 3, 4, 5, 7])],
+  },
+  Fake000000000003: {
+    startTime: (EVENT_START - 7 * 86_400) * 1000,
+    endTime: (EVENT_START - 7 * 86_400 + 3600) * 1000,
+    owner: { name: 'Otheruploader' },
+    zone: { name: 'Karazhan' },
+    fights: [fight(1, 'Attumen the Huntsman', 652, true, 30_000, 180, FULL)],
+  },
+};
+const REPORT_LIST = ['Fake000000000001', 'Fake000000000002', 'Fake000000000003'];
 
 function createFakeSources(options = {}) {
   const serverId = options.serverId || '900000000000000001';
@@ -119,6 +162,22 @@ function createFakeSources(options = {}) {
         const code = payload && payload.variables && payload.variables.code;
         if (code === 'Priv000000000001') {
           return send(res, 200, { errors: [{ message: 'You do not have permission to view this report.' }], data: { reportData: { report: null } } });
+        }
+        const query = String(payload && payload.query);
+        if (/reports\s*\(/.test(query)) {
+          const page = Number(payload.variables && payload.variables.page) || 1;
+          const codes = REPORT_LIST.slice((page - 1) * 2, page * 2);
+          return send(res, 200, { data: { reportData: { reports: {
+            data: codes.map((id) => ({ code: id, title: `Fake report ${id.slice(-1)}`, startTime: RAID_REPORTS[id].startTime, endTime: RAID_REPORTS[id].endTime,
+              zone: RAID_REPORTS[id].zone, owner: RAID_REPORTS[id].owner })),
+            has_more_pages: page * 2 < REPORT_LIST.length,
+          } } } });
+        }
+        if (RAID_REPORTS[code] && /fights/.test(query)) {
+          const raid = RAID_REPORTS[code];
+          // Quillfeather (7) is late to Maulgar's first pull; Mendra (3) is gone for the last Magtheridon pull.
+          const fights = raid.fights.map((entry) => (entry.id === 2 && code === 'Fake000000000001' ? { ...entry, friendlyPlayers: [1, 2, 3, 5] } : entry));
+          return send(res, 200, { data: { reportData: { report: { ...raid, fights, masterData: { actors: WCL_ACTORS } } } } });
         }
         if (code !== 'Fake000000000001') return send(res, 200, { data: { reportData: { report: null } } });
         return send(res, 200, {

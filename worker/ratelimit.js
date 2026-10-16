@@ -6,6 +6,9 @@ export const IMPORT_LIMIT = 10;
 export const IMPORT_WINDOW_MS = 10 * 60 * 1000;
 export const WCL_GLOBAL_LIMIT = 60;
 export const WCL_GLOBAL_KEY = 'wcl:global';
+// Raid report fetches and the backfill list (per user): one report per request, a backfill is a dozen of them.
+export const WCL_RAID_LIMIT = 40;
+export const WCL_RAID_WINDOW_MS = 10 * 60 * 1000;
 const UNAVAILABLE_RETRY_SECONDS = 30;
 
 // Fixed window per key (default `w:<userId>`), one UPSERT ... RETURNING.
@@ -30,7 +33,7 @@ export async function checkRateLimit(db, userId, nowMs, { limit = RATE_LIMIT, wi
 
 // The 429 message depends on the window: import routes talk about imports.
 export function rateLimitMessage(key) {
-  return /^(?:imp|wcl):/.test(key)
+  return /^(?:imp|wcl|wclraid):/.test(key)
     ? 'Too many imports. Wait a moment and try again.'
     : 'Too many changes in a minute. Wait a moment and try again.';
 }

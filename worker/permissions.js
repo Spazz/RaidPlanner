@@ -2,7 +2,7 @@ import { HttpError } from './http.js';
 
 export const ACTIONS = [
   'roster.view', 'roster.edit', 'roster.notes.view', 'roster.notes.edit',
-  'nights.view', 'nights.edit', 'attendance.view', 'attendance.review',
+  'raids.view', 'raids.edit', 'attendance.view', 'attendance.review', 'attendance.policy',
   'guild.teams', 'guild.roles', 'guild.access', 'audit.view',
 ];
 
@@ -75,7 +75,7 @@ export function requireAnyAction(guildContext, actions) {
 export async function loadGuildContext(db, userId, guildId) {
   const [guildResult, blockResult, memberResult, assignmentResult, permissionResult, ownTeamResult] = await db.batch([
     db.prepare(
-      `SELECT id, name, realm, realm_kind, realm_slug, region, discord_server_id, time_zone, game_version, created_at
+      `SELECT id, name, realm, realm_kind, realm_slug, region, discord_server_id, time_zone, game_version, wcl_guild_id, created_at
          FROM guilds WHERE id = ?`,
     ).bind(guildId),
     db.prepare('SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?').bind(guildId, userId),
