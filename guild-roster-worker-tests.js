@@ -1266,7 +1266,7 @@ check('Raid-Helper preview: rows by Discord user, the class-bearing sign-up wins
 
   const call = rhCalls(s)[0];
   assert.equal(call.url, `https://raid-helper.dev/api/v4/events/${EVENT_ID}`);
-  assert.equal(call.init.redirect, 'error');
+  assert.equal(call.init.redirect, 'manual');
   assert(call.init.signal instanceof AbortSignal);
   s.w.sources.events.set(EVENT_ID, sampleEvent(OTHER_SERVER));
   s.w.advance(WINDOW);
@@ -1671,7 +1671,7 @@ check('Warcraft Logs preview: matched vs to-decide, pets and bad names dropped, 
   const call = wclCalls(s).find((c) => c.url.endsWith('/api/v2/client'));
   assert.equal(call.method, 'POST');
   assert.equal(call.url, 'https://fresh.warcraftlogs.com/api/v2/client');
-  assert.equal(call.init.redirect, 'error');
+  assert.equal(call.init.redirect, 'manual');
   const sent = JSON.parse(call.init.body);
   assert.deepEqual(sent.variables, { code: REPORT });
   assert.match(sent.query, /query\(\$code: String!\) \{ reportData \{ report\(code: \$code\)/);
@@ -2295,6 +2295,59 @@ check('fix 13: shape checks come before any database read; a missing WCL credent
   assert.deepEqual([off.status, off.json.error], [503, 'wcl_not_configured']);
   assert.equal(await s.w.count('rate_limits', "key LIKE 'imp:%' OR key LIKE 'wcl:%'"), 0, 'no import window was consumed');
   s.w.db.prepare = prepare;
+});
+
+// ---------------------------------------------------------------------------
+// Round W2: workerd runtime differences, roster search names
+
+check('workerd: no file under worker/ passes redirect: "error" to fetch (workerd allows only follow / manual)', async () => {
+  const fs = require('node:fs');
+  const walkDir = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => (
+    entry.isDirectory() ? walkDir(`${dir}/${entry.name}`) : [`${dir}/${entry.name}`]));
+  const offenders = walkDir('worker').filter((file) => file.endsWith('.js'))
+    .filter((file) => /redirect\s*:\s*['"]error['"]/.test(fs.readFileSync(path.join(ROOT, file), 'utf8')));
+  assert.deepEqual(offenders, []);
+});
+
+check('redirects: a 3xx from Raid-Helper, the WCL token endpoint or the WCL API is the source being unavailable, and fetch is asked for redirect manual', async () => {
+  const s = await scenario();
+  s.w.sources.rh.status = 302;
+  const rh = await preview(s, 'bob', { teamId: s.teamId, source: EVENT_ID });
+  assert.deepEqual([rh.status, rh.json.error], [502, 'raid_helper_unavailable']);
+  assert(rhCalls(s).every((call) => call.init.redirect === 'manual'));
+  s.w.sources.rh.status = null;
+  s.w.sources.reports.set(REPORT, sampleReport());
+  s.w.sources.wcl.httpStatus = 302;
+  s.w.advance(WINDOW);
+  const wcl = await wclPreview(s, 'bob', REPORT);
+  assert.deepEqual([wcl.status, wcl.json.error], [502, 'wcl_unavailable']);
+  assert(wclCalls(s).every((call) => call.init.redirect === 'manual'));
+  // The token endpoint redirecting.
+  const { resetWclTokenCache } = await load('worker/sources.js');
+  resetWclTokenCache();
+  s.w.sources.wcl.httpStatus = null;
+  const original = s.w.sources.fetch;
+  const t = await scenario();
+  t.w.sources.reports.set(REPORT, sampleReport());
+  const wrapped = t.w.sources.fetch;
+  t.w.sources.fetch = async (url, init) => (new URL(String(url)).pathname === '/oauth/token' ? new Response('', { status: 301, headers: { Location: 'https://evil.test/' } }) : wrapped(url, init));
+  void original;
+  const tok = await wclPreview(t, 'bob', REPORT);
+  assert.deepEqual([tok.status, tok.json.error], [502, 'wcl_unavailable']);
+});
+
+check('roster rows carry `names`: every character name of the person on the selected team, sorted', async () => {
+  const s = await scenario({ teams: 2 });
+  const [A, B] = s.teams;
+  const made = await addPerson(s, 'bob', A, 'Zandar');
+  await addAlt(s, 'bob', made.person.id, A, 'Brindle');
+  await addAlt(s, 'bob', made.person.id, B, 'Cassia');
+  const solo = await addPerson(s, 'bob', B, 'Aldric');
+  const listA = await s.call('bob', 'GET', `/roster?team=${A}`);
+  assert.deepEqual(listA.json.people.map((row) => [row.id, row.names]), [[made.person.id, ['Brindle', 'Zandar']]]);
+  const listB = await s.call('bob', 'GET', `/roster?team=${B}`);
+  const byId = Object.fromEntries(listB.json.people.map((row) => [row.id, row.names]));
+  assert.deepEqual(byId, { [made.person.id]: ['Cassia'], [solo.person.id]: ['Aldric'] });
 });
 
 // ---------------------------------------------------------------------------

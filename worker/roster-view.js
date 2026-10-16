@@ -198,6 +198,7 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
       trialFlag: trialFlag(player.status, player.trial_end, today),
       shown: { id: shown.id, name: shown.name, class: shown.class, mainSpec: shown.mainSpec, offSpec: shown.offSpec, role: shown.role, isMain: shown.isMain },
       main: { id: main.view.id, name: main.view.name, class: main.view.class, team: { id: main.view.team.id, name: main.view.team.name } },
+      names: onTeam.map((entry) => entry.view.name).sort((a, b) => a.localeCompare(b)),
       altCount: characters.length - 1,
       signIn: player.discord_user_id ? (signedIn.has(player.discord_user_id) ? 'signed_in' : 'not_yet') : 'no_discord',
       isMe: !!player.discord_user_id && player.discord_user_id === viewer.discordId,

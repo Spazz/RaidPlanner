@@ -84,12 +84,19 @@ export function parseWclSource(raw, gameVersion) {
 // ---------------------------------------------------------------------------
 // Fetching
 
+// Redirects are never followed. workerd accepts only "follow" and "manual" for `redirect`, so we ask for "manual"
+// and treat any redirect answer (3xx, an opaque redirect, or status 0) as the source being unavailable.
 async function fetchWithTimeout(ctx, url, init, failure) {
+  let response;
   try {
-    return await ctx.fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    response = await ctx.fetch(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   } catch {
     throw failure();
   }
+  if (!response || response.type === 'opaqueredirect' || response.status === 0 || (response.status >= 300 && response.status < 400)) {
+    throw failure();
+  }
+  return response;
 }
 
 // The body text, capped; null when it is over the cap.
@@ -127,7 +134,7 @@ export async function fetchRaidHelperEvent(ctx, id) {
   if (!isEventId(id)) throw new Error('fetchRaidHelperEvent needs a validated event id');
   const base = localBase(ctx.env.RAID_HELPER_API_BASE) || RAID_HELPER_DEFAULT_BASE;
   const response = await fetchWithTimeout(ctx, `${base}/api/v4/events/${id}`,
-    { method: 'GET', redirect: 'error', headers: { Accept: 'application/json' } }, raidHelperDown);
+    { method: 'GET', headers: { Accept: 'application/json' } }, raidHelperDown);
   if (response.status === 401 || response.status === 403) {
     throw new HttpError(403, 'event_private', 'That Raid-Helper event is private. Ask its leader to open it up.');
   }
@@ -184,7 +191,6 @@ async function wclToken(ctx, flavour, forceNew = false) {
   if (!forceNew && cached && cached.expiresAt > ctx.now()) return cached.token;
   const response = await fetchWithTimeout(ctx, wclUrl(ctx.env, flavour, '/oauth/token'), {
     method: 'POST',
-    redirect: 'error',
     headers: {
       Authorization: `Basic ${btoa(`${id}:${secret}`)}`,
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -207,7 +213,6 @@ const WCL_QUERY = 'query($code: String!) { reportData { report(code: $code) { ti
 async function postGraphql(ctx, flavour, code, token) {
   return fetchWithTimeout(ctx, wclUrl(ctx.env, flavour, '/api/v2/client'), {
     method: 'POST',
-    redirect: 'error',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ query: WCL_QUERY, variables: { code } }),
   }, wclDown);
