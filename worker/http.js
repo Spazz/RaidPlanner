@@ -85,10 +85,10 @@ export function hasJsonContentType(request) {
   return typeof type === 'string' && /^application\/json\s*(;|$)/i.test(type.trim());
 }
 
-// Reads at most MAX_BODY_BYTES; a JSON object is required.
-export async function readJsonBody(request) {
+// Reads at most maxBytes (default MAX_BODY_BYTES); a JSON object is required.
+export async function readJsonBody(request, maxBytes = MAX_BODY_BYTES) {
   const declared = Number(request.headers.get('Content-Length'));
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+  if (Number.isFinite(declared) && declared > maxBytes) {
     throw new HttpError(413, 'too_large', 'The request body is too large.');
   }
   const chunks = [];
@@ -99,7 +99,7 @@ export async function readJsonBody(request) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         try { await reader.cancel(); } catch { /* the stream is already closed */ }
         throw new HttpError(413, 'too_large', 'The request body is too large.');
       }

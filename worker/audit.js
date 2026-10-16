@@ -15,6 +15,15 @@ export const AUDIT_ACTIONS = [
   'guild.delete',
   'guild.claim',
   'guild_master.auto_promote',
+  'person.create',
+  'person.update',
+  'person.delete',
+  'person.notes',
+  'character.create',
+  'character.update',
+  'character.delete',
+  'character.main',
+  'roster.import',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

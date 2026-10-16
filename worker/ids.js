@@ -5,6 +5,8 @@ const PATTERNS = {
   t: /^t_[A-Za-z0-9_-]{22}$/,
   ra: /^ra_[A-Za-z0-9_-]{22}$/,
   al: /^al_[A-Za-z0-9_-]{22}$/,
+  p: /^p_[A-Za-z0-9_-]{22}$/,
+  c: /^c_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {
@@ -31,4 +33,6 @@ export const PARAM_SOURCE = {
   gid: 'g_[A-Za-z0-9_-]{22}',
   tid: 't_[A-Za-z0-9_-]{22}',
   uid: 'u_[A-Za-z0-9_-]{22}',
+  pid: 'p_[A-Za-z0-9_-]{22}',
+  cid: 'c_[A-Za-z0-9_-]{22}',
 };

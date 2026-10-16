@@ -20,8 +20,8 @@ export function shapeRoles(assignments) {
 // Pure. assignments: [{ role_id, team_id }]; rolePermissions: [{ role_id, action, scope }].
 // -> { roles: [{ role, teamId? }], can: { action: 'guild' | [teamIds] }, rank }
 // Every signed-in, unblocked member holds Member. An action that is not allowed is absent from `can`.
-// `own_teams` resolves to team IDs, which stay empty until characters exist (Phase 2).
-export function resolvePermissions(assignments, rolePermissions) {
+// `own_teams` resolves to the team ids of the viewer's own characters (ownTeamIds); it merges with team scope.
+export function resolvePermissions(assignments, rolePermissions, ownTeamIds = []) {
   const held = [{ role_id: 'member', team_id: null }, ...assignments];
   const guildWide = new Set();
   const teamScoped = new Map();
@@ -34,6 +34,7 @@ export function resolvePermissions(assignments, rolePermissions) {
       }
       if (!teamScoped.has(permission.action)) teamScoped.set(permission.action, new Set());
       if (permission.scope === 'team' && assignment.team_id) teamScoped.get(permission.action).add(assignment.team_id);
+      if (permission.scope === 'own_teams') for (const teamId of ownTeamIds) teamScoped.get(permission.action).add(teamId);
     }
   }
   const can = {};
@@ -72,7 +73,7 @@ export function requireAnyAction(guildContext, actions) {
 // guild exists (404) -> blocked (403 access_removed) -> in the guild's Discord server (403 not_member).
 // The guild id always comes from the URL.
 export async function loadGuildContext(db, userId, guildId) {
-  const [guildResult, blockResult, memberResult, assignmentResult, permissionResult] = await db.batch([
+  const [guildResult, blockResult, memberResult, assignmentResult, permissionResult, ownTeamResult] = await db.batch([
     db.prepare(
       `SELECT id, name, realm, realm_kind, realm_slug, region, discord_server_id, time_zone, game_version, created_at
          FROM guilds WHERE id = ?`,
@@ -84,6 +85,11 @@ export async function loadGuildContext(db, userId, guildId) {
     ).bind(userId, guildId),
     db.prepare('SELECT role_id, team_id FROM role_assignments WHERE guild_id = ? AND user_id = ?').bind(guildId, userId),
     db.prepare('SELECT role_id, action, scope FROM role_permissions').bind(),
+    // The teams of the characters of the person linked to this user (the Discord ID matches).
+    db.prepare(
+      `SELECT DISTINCT c.team_id FROM characters c JOIN players p ON p.id = c.player_id
+        WHERE p.guild_id = ? AND p.discord_user_id = (SELECT discord_id FROM users WHERE id = ?)`,
+    ).bind(guildId, userId),
   ]);
   const guild = guildResult.results[0];
   if (!guild) throw new HttpError(404, 'not_found', 'That guild does not exist.');
@@ -93,7 +99,7 @@ export async function loadGuildContext(db, userId, guildId) {
   if (!memberResult.results.length) {
     throw new HttpError(403, 'not_member', 'You are not in this guild\'s Discord server. Sign in again if you just joined.');
   }
-  const resolved = resolvePermissions(assignmentResult.results, permissionResult.results);
+  const resolved = resolvePermissions(assignmentResult.results, permissionResult.results, ownTeamResult.results.map((row) => row.team_id));
   return {
     userId,
     guild,

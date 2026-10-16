@@ -7,6 +7,8 @@
  *   - rejects more than 100 bound parameters, and BEGIN / SAVEPOINT / ATTACH / PRAGMA in prepared SQL
  *   - errors start with "D1_ERROR: "; batch() runs in order and rolls back everything on the first error
  *   - foreign keys ON; the real migration files run in order
+ *   - triggers (RAISE(ABORT) rolls a batch back whole), composite foreign keys, partial unique indexes and json_each run
+ *     natively; guild-roster-worker-tests.js pins each of them ('schema' and 'd1 fake parity' checks)
  */
 const fs = require('node:fs');
 const path = require('node:path');
