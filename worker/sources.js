@@ -84,12 +84,19 @@ export function parseWclSource(raw, gameVersion) {
 // ---------------------------------------------------------------------------
 // Fetching
 
+// Redirects are never followed. workerd accepts only "follow" and "manual" for `redirect`, so we ask for "manual"
+// and treat any redirect answer (3xx, an opaque redirect, or status 0) as the source being unavailable.
 async function fetchWithTimeout(ctx, url, init, failure) {
+  let response;
   try {
-    return await ctx.fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    response = await ctx.fetch(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   } catch {
     throw failure();
   }
+  if (!response || response.type === 'opaqueredirect' || response.status === 0 || (response.status >= 300 && response.status < 400)) {
+    throw failure();
+  }
+  return response;
 }
 
 // The body text, capped; null when it is over the cap.
@@ -127,7 +134,7 @@ export async function fetchRaidHelperEvent(ctx, id) {
   if (!isEventId(id)) throw new Error('fetchRaidHelperEvent needs a validated event id');
   const base = localBase(ctx.env.RAID_HELPER_API_BASE) || RAID_HELPER_DEFAULT_BASE;
   const response = await fetchWithTimeout(ctx, `${base}/api/v4/events/${id}`,
-    { method: 'GET', redirect: 'error', headers: { Accept: 'application/json' } }, raidHelperDown);
+    { method: 'GET', headers: { Accept: 'application/json' } }, raidHelperDown);
   if (response.status === 401 || response.status === 403) {
     throw new HttpError(403, 'event_private', 'That Raid-Helper event is private. Ask its leader to open it up.');
   }
@@ -184,7 +191,6 @@ async function wclToken(ctx, flavour, forceNew = false) {
   if (!forceNew && cached && cached.expiresAt > ctx.now()) return cached.token;
   const response = await fetchWithTimeout(ctx, wclUrl(ctx.env, flavour, '/oauth/token'), {
     method: 'POST',
-    redirect: 'error',
     headers: {
       Authorization: `Basic ${btoa(`${id}:${secret}`)}`,
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -207,18 +213,21 @@ const WCL_QUERY = 'query($code: String!) { reportData { report(code: $code) { ti
 async function postGraphql(ctx, flavour, code, token) {
   return fetchWithTimeout(ctx, wclUrl(ctx.env, flavour, '/api/v2/client'), {
     method: 'POST',
-    redirect: 'error',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ query: WCL_QUERY, variables: { code } }),
   }, wclDown);
 }
 
+export function requireWclConfigured(env) {
+  if (!env.WCL_CLIENT_ID || !env.WCL_CLIENT_SECRET) {
+    throw new HttpError(503, 'wcl_not_configured', 'Warcraft Logs imports are not set up on this server.');
+  }
+}
+
 // -> { title, zone | null, startTime (ms | null), actors: [{ name, subType, server | null }] } (Pets are not filtered here).
 export async function fetchWclReport(ctx, flavour, code) {
   if (!isWclFlavour(flavour) || !isWclCode(code)) throw new Error('fetchWclReport needs a validated flavour and code');
-  if (!ctx.env.WCL_CLIENT_ID || !ctx.env.WCL_CLIENT_SECRET) {
-    throw new HttpError(503, 'wcl_not_configured', 'Warcraft Logs imports are not set up on this server.');
-  }
+  requireWclConfigured(ctx.env);
   let response = await postGraphql(ctx, flavour, code, await wclToken(ctx, flavour));
   if (response.status === 401) response = await postGraphql(ctx, flavour, code, await wclToken(ctx, flavour, true));
   if (!response.ok) throw wclDown();
@@ -230,6 +239,7 @@ export async function fetchWclReport(ctx, flavour, code) {
     if (/permission|private|not authori[sz]ed|unauthori[sz]ed/i.test(text)) {
       throw new HttpError(403, 'report_private', 'That report is private or not available to Raidsmith.');
     }
+    if (/does not exist|not found/i.test(text)) throw new HttpError(404, 'not_found', 'Warcraft Logs has no report with that code.');
     throw wclDown();
   }
   const report = body.data && body.data.reportData && body.data.reportData.report;

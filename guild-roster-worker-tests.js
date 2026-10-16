@@ -906,7 +906,7 @@ check('permissions: every role x request in the spec table (Guild Master, Office
   await matrix('Raid-Helper preview for B', (who) => s.call(who, 'POST', '/roster/import/raid-helper/preview', { teamId: B, source: EVENT_ID }), ['alice', 'bob', 'dave']);
   s.w.sources.reports.set('Fake000000000001', { title: 'Log', startTime: 1, zone: null, masterData: { actors: [] } });
   await matrix('Warcraft Logs preview for A', (who) => s.call(who, 'POST', '/roster/import/wcl/preview', { teamId: A, source: 'Fake000000000001' }), ['alice', 'bob', 'carol']);
-  await matrix('Warcraft Logs commit for B', (who) => s.call(who, 'POST', '/roster/import/wcl/commit', { teamId: B, report: { code: 'Fake000000000001', flavour: 'fresh' }, decisions: [] }), ['alice', 'bob', 'dave'], 201);
+  await matrix('Warcraft Logs commit for B', (who) => s.call(who, 'POST', '/roster/import/wcl/commit', { teamId: B, report: { code: 'Fake000000000001', flavour: 'fresh' }, decisions: [] }), ['alice', 'bob', 'dave'], 200);
   await assertOneMain(s.w);
 });
 
@@ -1266,7 +1266,7 @@ check('Raid-Helper preview: rows by Discord user, the class-bearing sign-up wins
 
   const call = rhCalls(s)[0];
   assert.equal(call.url, `https://raid-helper.dev/api/v4/events/${EVENT_ID}`);
-  assert.equal(call.init.redirect, 'error');
+  assert.equal(call.init.redirect, 'manual');
   assert(call.init.signal instanceof AbortSignal);
   s.w.sources.events.set(EVENT_ID, sampleEvent(OTHER_SERVER));
   s.w.advance(WINDOW);
@@ -1415,7 +1415,7 @@ check('Raid-Helper commit: re-fetches the event; Discord IDs and nicknames come 
   assert.equal(alts.status, 201, JSON.stringify(alts.json));
   assert.deepEqual([alts.json.people, alts.json.characters], [0, 1]);
   assert.equal((await s.w.rows('SELECT discord_nickname, version, status FROM players WHERE discord_user_id = ?', DID(1)))[0].discord_nickname, 'Thornwick/Mendra/Newalt');
-  assert.deepEqual((await s.w.rows('SELECT version, status FROM players WHERE discord_user_id = ?', DID(1)))[0], { version: 2, status: 'trial' }, 'a status never changes');
+  assert.deepEqual((await s.w.rows('SELECT version, status FROM players WHERE discord_user_id = ?', DID(1)))[0], { version: 1, status: 'trial' }, 'a status never changes and a nickname refresh does not bump the version');
   assert.equal((await s.w.rows('SELECT version FROM players WHERE discord_user_id = ?', DID(3)))[0].version, 1, 'an unchanged nickname is not a write');
   await assertOneMain(s.w);
 });
@@ -1600,7 +1600,7 @@ check('Raid-Helper commit: permissions (Team Lead scope per row), and the import
   const t = await scenario();
   t.w.sources.events.set(EVENT_ID, sampleEvent());
   for (let i = 0; i < 5; i++) assert.equal((await preview(t, 'bob', { teamId: t.teamId, source: EVENT_ID })).status, 200);
-  for (let i = 0; i < 5; i++) assert.equal((await commit(t, 'bob', { teamId: t.teamId, eventId: EVENT_ID, defaultStatus: 'raider', rows: [] })).status, 201);
+  for (let i = 0; i < 5; i++) assert.equal((await commit(t, 'bob', { teamId: t.teamId, eventId: EVENT_ID, defaultStatus: 'raider', rows: [] })).status, 200);
   const limited = await preview(t, 'bob', { teamId: t.teamId, source: EVENT_ID });
   assert.equal(limited.status, 429);
   assert.equal(limited.json.error, 'rate_limited');
@@ -1671,7 +1671,7 @@ check('Warcraft Logs preview: matched vs to-decide, pets and bad names dropped, 
   const call = wclCalls(s).find((c) => c.url.endsWith('/api/v2/client'));
   assert.equal(call.method, 'POST');
   assert.equal(call.url, 'https://fresh.warcraftlogs.com/api/v2/client');
-  assert.equal(call.init.redirect, 'error');
+  assert.equal(call.init.redirect, 'manual');
   const sent = JSON.parse(call.init.body);
   assert.deepEqual(sent.variables, { code: REPORT });
   assert.match(sent.query, /query\(\$code: String!\) \{ reportData \{ report\(code: \$code\)/);
@@ -1809,7 +1809,7 @@ check('Warcraft Logs windows: the per-user import window and the shared wcl:glob
   assert.equal((await wclPreview(s, 'bob', REPORT)).status, 200, 'the 60th preview');
   const limited = await wclPreview(s, 'carol', REPORT);
   assert.equal(limited.status, 429);
-  assert.match(limited.json.message, /Too many imports/);
+  assert.match(limited.json.message, /^Warcraft Logs imports are busy for everyone right now\. Try again in \d+ minutes?\.$/);
   assert(limited.json.retryAfter >= 1 && limited.json.retryAfter <= 600);
   s.w.sources.events.set(EVENT_ID, sampleEvent());
   assert.equal((await preview(s, 'carol', { teamId: s.teamId, source: EVENT_ID })).status, 200, 'Raid-Helper is not counted against the shared WCL quota');
@@ -1896,7 +1896,7 @@ check('Warcraft Logs commit: alt / new / skip in one batch; fields validated lik
   assert.equal(await s.w.count('players'), 4);
   assert.equal(await s.w.count('characters'), 5);
   const empty = await wclCommit(s, 'bob', { teamId: A, decisions: [] });
-  assert.deepEqual([empty.status, empty.json.people, empty.json.characters], [201, 0, 0]);
+  assert.deepEqual([empty.status, empty.json.people, empty.json.characters], [200, 0, 0]);
   await assertOneMain(s.w);
 });
 
@@ -1984,6 +1984,370 @@ check('base URLs: RAID_HELPER_API_BASE and WCL_API_BASE are honoured only for lo
     await closed;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+});
+
+// ---------------------------------------------------------------------------
+// Security review fix round (guild/slice-2-fixw)
+
+const AVATAR = 'abcdef0123456789abcdef0123456789';
+const avatarOf = (discordId) => `https://cdn.discordapp.com/avatars/${discordId}/${AVATAR}.png?size=64`;
+
+// Runs `before` (raw SQL) once, right before the first db.batch whose statements match `pattern`: a concurrent writer.
+// Returns a restore function that answers whether the race fired.
+function raceBefore(w, pattern, before) {
+  const original = w.db.batch.bind(w.db);
+  let fired = false;
+  w.db.batch = async (statements) => {
+    if (!fired && statements.some((statement) => pattern.test(statement.sql))) { fired = true; before(); }
+    return original(statements);
+  };
+  return () => { w.db.batch = original; return fired; };
+}
+
+check('fix 1: avatar URLs (they carry a Discord ID) reach only guild.access / guild.roles holders; initials for everyone else', async () => {
+  const s = await scenario({ teams: 1 });
+  exec(s.w, `UPDATE users SET avatar = '${AVATAR}' WHERE id IN ('${s.ids.erin}', '${s.ids.bob}')`);
+  const made = await addPerson(s, 'bob', s.teamId, 'Aldric', { linkUserId: s.ids.erin });
+  const pid = made.person.id;
+  assert.equal((await s.call('bob', 'PUT', `/roster/${pid}/notes`, { text: 'hello', expectedNotesVersion: 0 })).status, 200);
+  const view = async (who) => (await s.call(who, 'GET', `/roster/${pid}`)).json;
+  for (const who of ['alice', 'bob']) {
+    const record = await view(who);
+    assert.equal(record.person.discord.user.avatarUrl, avatarOf(PEOPLE.erin.id), who);
+    assert.equal(record.notes.updatedBy.avatarUrl, avatarOf(PEOPLE.bob.id), who);
+  }
+  const lead = await view('carol');
+  assert.equal(lead.person.discord.user.avatarUrl, null, 'Team Lead');
+  assert.equal(lead.person.discord.user.initials, 'EE');
+  assert.equal(lead.notes.updatedBy.avatarUrl, null);
+  assert.equal(JSON.stringify(lead).includes(PEOPLE.erin.id), false, 'no Discord ID anywhere in a Team Lead response');
+  const member = await view('dave');
+  assert.equal(member.person.discord.user.avatarUrl, null, 'Member');
+  assert.equal(JSON.stringify(member).includes(PEOPLE.erin.id), false);
+  // The reply of a write goes through the same builder.
+  const patched = await s.call('carol', 'PATCH', `/roster/${pid}`, { expectedVersion: 1, status: 'trial' });
+  assert.equal(patched.status, 200);
+  assert.equal(patched.json.person.discord.user.avatarUrl, null);
+  // The linkable list.
+  const free = await s.call('bob', 'GET', '/roster/linkable');
+  const freeLead = await s.call('carol', 'GET', '/roster/linkable');
+  assert.equal(free.status, 200);
+  assert.equal(freeLead.status, 200);
+  assert(freeLead.json.users.length >= 1);
+  assert.deepEqual(freeLead.json.users.filter((user) => user.avatarUrl), []);
+  assert(free.json.users.some((user) => user.avatarUrl));
+});
+
+check('fix 2: the Warcraft Logs commit stores only a realm the guild accepts, in its canonical spelling (the three-Aldric scenario)', async () => {
+  const s = await scenario();
+  await addPerson(s, 'bob', s.teamId, 'Aldric');
+  const one = async (extra) => { s.w.advance(WINDOW); return wclCommit(s, 'bob', { decisions: [{ action: 'new', name: 'Aldric', class: 'MAGE', ...extra }] }); };
+  for (const realm of ['(x)', "'-", 'Other‮Realm', 'Nowhere', 'x'.repeat(41), 5]) {
+    const r = await one({ realm });
+    assert.deepEqual([r.status, r.json.error, r.json.field, r.json.index], [400, 'bad_request', 'realm', 0], String(realm));
+  }
+  const taken = await one({ realm: '​nightslayer ' });
+  assert.deepEqual([taken.status, taken.json.error], [409, 'name_taken'], 'invisible characters are stripped first: same realm, same name');
+  assert.equal(await s.w.count('characters'), 1, 'nothing stored by the refused commits');
+  const listed = await one({ realm: 'dreamscythe' });
+  assert.equal(listed.status, 201, JSON.stringify(listed.json));
+  assert.deepEqual((await s.w.rows("SELECT realm, realm_key FROM characters WHERE realm_key = 'dreamscythe'"))[0], { realm: 'Dreamscythe', realm_key: 'dreamscythe' });
+  const kept = await one({ realm: null, name: 'Brindle' });
+  assert.equal(kept.status, 201);
+  assert.equal((await s.w.rows("SELECT realm FROM characters WHERE name = 'Brindle'"))[0].realm, 'Nightslayer');
+  // A guild realm with a suffix: the typed spelling "maladath" maps to the guild's own.
+  const au = await scenario({ guildBody: { realm: 'Maladath (AU)' } });
+  const r = await wclCommit(au, 'bob', { decisions: [{ action: 'new', name: 'Cassia', class: 'MAGE', realm: 'maladath' }] });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  assert.equal((await au.w.rows("SELECT realm FROM characters WHERE name = 'Cassia'"))[0].realm, 'Maladath (AU)');
+  // A ruleset guild ignores the realm.
+  const ruleset = await secondGuild(s, { gameVersion: 'forever', realm: 'Hardcore' });
+  const ignored = await s.w.call(ruleset.frank, 'POST', `${ruleset.path}/roster/import/wcl/commit`, {
+    teamId: ruleset.teamId, report: { code: REPORT, flavour: 'www' }, decisions: [{ action: 'new', name: 'Dunmar', class: 'MAGE', realm: 'Whatever (x)' }],
+  });
+  assert.equal(ignored.status, 201, JSON.stringify(ignored.json));
+  assert.deepEqual((await s.w.rows("SELECT realm, realm_key FROM characters WHERE name = 'Dunmar'"))[0], { realm: null, realm_key: '' });
+  // The preview uses the same helper: canonical spelling, unknown realms are another realm, an empty key is dropped.
+  s.w.sources.reports.set(REPORT, { title: 'T', startTime: 1, zone: null, masterData: { actors: [
+    actor('Eliora', 'Mage', 'dreamscythe'), actor('Fenwick', 'Mage', 'Nowhere'), actor('Galdor', 'Mage', '(x)'), actor('Hestia', 'Mage', 'NIGHTSLAYER'),
+  ] } });
+  s.w.advance(WINDOW);
+  const view = await wclPreview(s, 'bob', REPORT);
+  assert.deepEqual(view.json.toDecide.map((row) => [row.name, row.realm, row.otherRealm]), [
+    ['Eliora', 'Dreamscythe', true], ['Fenwick', 'Nowhere', true], ['Hestia', 'Nightslayer', false],
+  ]);
+});
+
+check('fix 3 + 4: writes repeat the permission predicate; a person or character that moved is a 409 with `current`, a gone one a 404', async () => {
+  const s = await scenario({ teams: 2 });
+  const [A, B] = s.teams;
+  const mk = async (name) => {
+    const made = await addPerson(s, 'bob', A, name);
+    const alt = (await addAlt(s, 'bob', made.person.id, A, `${name}ing`)).json.characters.find((c) => !c.isMain);
+    return { pid: made.person.id, main: made.characters[0], alt };
+  };
+  const auditCount = (action) => s.w.count('audit_log', 'action = ?', action);
+  const moveTo = (id) => () => exec(s.w, `UPDATE characters SET team_id = '${B}' WHERE id = '${id}'`);
+
+  // Character PATCH by Carol (leads A); an officer moves the Alt to B first.
+  let p = await mk('Aldric');
+  let done = raceBefore(s.w, /UPDATE characters SET name/, moveTo(p.alt.id));
+  let r = await s.call('carol', 'PATCH', `/roster/${p.pid}/characters/${p.alt.id}`, { name: 'Renamed' });
+  assert.equal(done(), true);
+  assert.deepEqual([r.status, r.json.error], [409, 'conflict']);
+  assert.equal(r.json.current.characters.find((c) => c.id === p.alt.id).team.id, B);
+  assert.notEqual((await s.w.rows('SELECT name FROM characters WHERE id = ?', p.alt.id))[0].name, 'Renamed');
+  assert.equal(await auditCount('character.update'), 0, 'no audit row for a write that changed nothing');
+  // ... and when the character is gone: 404.
+  p = await mk('Aldricb');
+  done = raceBefore(s.w, /UPDATE characters SET name/, () => exec(s.w, `DELETE FROM characters WHERE id = '${p.alt.id}'`));
+  r = await s.call('carol', 'PATCH', `/roster/${p.pid}/characters/${p.alt.id}`, { name: 'Renamed' });
+  assert.deepEqual([r.status, r.json.error], [404, 'not_found']);
+  done();
+
+  // Character DELETE.
+  p = await mk('Brindle');
+  done = raceBefore(s.w, /DELETE FROM characters/, moveTo(p.alt.id));
+  r = await s.call('carol', 'DELETE', `/roster/${p.pid}/characters/${p.alt.id}`, {});
+  assert.equal(done(), true);
+  assert.deepEqual([r.status, r.json.error], [409, 'conflict']);
+  assert.equal(await s.w.count('characters', 'id = ?', p.alt.id), 1, 'the Alt is still there');
+  assert.equal(await auditCount('character.delete'), 0);
+
+  // Make Main.
+  p = await mk('Cassia');
+  done = raceBefore(s.w, /UPDATE characters SET is_main = 0/, moveTo(p.alt.id));
+  r = await s.call('carol', 'POST', `/roster/${p.pid}/characters/${p.alt.id}/main`, {});
+  assert.equal(done(), true);
+  assert.deepEqual([r.status, r.json.error], [409, 'conflict']);
+  await assertOneMain(s.w);
+
+  // Person PATCH, notes and DELETE by Carol after the Main moved to B.
+  p = await mk('Dunmar');
+  done = raceBefore(s.w, /UPDATE players SET status/, moveTo(p.main.id));
+  r = await s.call('carol', 'PATCH', `/roster/${p.pid}`, { expectedVersion: 1, status: 'reserve' });
+  assert.equal(done(), true);
+  assert.deepEqual([r.status, r.json.error], [409, 'conflict']);
+  assert.equal(r.json.current.person.homeTeam.id, B);
+  assert.equal((await s.w.rows('SELECT status FROM players WHERE id = ?', p.pid))[0].status, 'raider');
+
+  p = await mk('Eliora');
+  done = raceBefore(s.w, /UPDATE players SET notes/, moveTo(p.main.id));
+  r = await s.call('carol', 'PUT', `/roster/${p.pid}/notes`, { text: 'secret', expectedNotesVersion: 0 });
+  assert.equal(done(), true);
+  assert.deepEqual([r.status, r.json.error], [409, 'conflict']);
+  assert.equal((await s.w.rows('SELECT notes FROM players WHERE id = ?', p.pid))[0].notes, null);
+
+  p = await mk('Fenwick');
+  done = raceBefore(s.w, /DELETE FROM players/, moveTo(p.main.id));
+  r = await s.call('carol', 'DELETE', `/roster/${p.pid}`, {});
+  assert.equal(done(), true);
+  assert.deepEqual([r.status, r.json.error], [409, 'conflict']);
+  assert.equal(await s.w.count('players', 'id = ?', p.pid), 1);
+  assert.equal(await auditCount('person.delete'), 0);
+
+  // Gone: 404.
+  p = await mk('Galdor');
+  done = raceBefore(s.w, /DELETE FROM players/, () => exec(s.w, `DELETE FROM players WHERE id = '${p.pid}'`));
+  r = await s.call('carol', 'DELETE', `/roster/${p.pid}`, {});
+  assert.deepEqual([r.status, r.json.error], [404, 'not_found']);
+  done();
+
+  // Fix 4: the delete is judged by the returned rows, not meta.changes (D1 may count cascaded rows).
+  p = await mk('Hestia');
+  const original = s.w.db.batch.bind(s.w.db);
+  s.w.db.batch = async (statements) => {
+    const results = await original(statements);
+    if (statements.some((statement) => /DELETE FROM players/.test(statement.sql))) for (const result of results) result.meta.changes = 3;
+    return results;
+  };
+  r = await s.call('carol', 'DELETE', `/roster/${p.pid}`, {});
+  s.w.db.batch = original;
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(await s.w.count('players', 'id = ?', p.pid), 0);
+  await assertOneMain(s.w);
+});
+
+check('fix 6: an import that creates nothing and refreshes nothing writes no audit row and answers 200', async () => {
+  const s = await scenario();
+  s.w.sources.events.set(EVENT_ID, sampleEvent());
+  const before = await counts(s.w);
+  const rh = await commit(s, 'bob', { teamId: s.teamId, eventId: EVENT_ID, defaultStatus: 'raider', rows: [] });
+  const wcl = await wclCommit(s, 'bob', { decisions: [{ action: 'skip' }] });
+  assert.deepEqual([rh.status, rh.json.people, rh.json.characters, Object.keys(rh.json.rosterFlags).length], [200, 0, 0, 1]);
+  assert.deepEqual([wcl.status, wcl.json.people, wcl.json.characters], [200, 0, 0]);
+  assert.deepEqual(await counts(s.w), before);
+});
+
+check('fix 7: character names are letters with at most two marks each, measured after the case mapping', async () => {
+  const d = await load('worker/roster-data.js');
+  assert.equal(d.cleanCharacterName('ßa'), 'SSa');
+  assert.equal(d.cleanCharacterName('ß'.repeat(12)), null);
+  assert.equal(d.cleanCharacterName('ß'.repeat(11)), 'SS' + 'ß'.repeat(10), 'exactly 12 after the mapping');
+  for (const bad of ['́́', '́ab', 'Á́́́', 'A' + '́'.repeat(11), 'Ab1', 'A', 'a'.repeat(13), "A'b", '']) {
+    assert.equal(d.cleanCharacterName(bad), null, JSON.stringify(bad));
+  }
+  assert.equal(d.cleanCharacterName('  aldric '), 'Aldric');
+  assert.equal(d.cleanCharacterName('sølvhand'), 'Sølvhand');
+  assert.equal(d.cleanCharacterName('élan'), 'Élan');
+});
+
+check('fix 8: maps indexed by external text use own properties only', async () => {
+  const d = await load('worker/roster-data.js');
+  for (const key of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+    assert.equal(d.ownValue(d.RAID_HELPER_SPEC, key), undefined, key);
+    assert.equal(d.ownValue(d.WCL_CLASS, key), undefined, key);
+    assert.equal(d.roleOf('WARRIOR', key), null, key);
+    assert.equal(d.roleOf(key, 'Arms'), null, key);
+    assert.equal(d.isSpecOf(key, 'Arms'), false, key);
+  }
+  assert.equal(d.roleOf('WARRIOR', 'Arms'), 'dps');
+  const s = await scenario();
+  s.w.sources.events.set(EVENT_ID, rhEvent(EVENT_ID, SERVER_A, [
+    signUp(1, DID(1), 'Aldric', 'constructor', '__proto__'), signUp(2, DID(2), 'Brindle', 'Warrior', 'constructor'), signUp(3, DID(3), 'Cassia', '__proto__', 'toString'),
+  ]));
+  const r = await preview(s, 'bob', { teamId: s.teamId, source: EVENT_ID });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual(r.json.rows.map((row) => [row.main.name, row.main.class, row.main.spec, row.main.note]), [
+    ['Aldric', null, null, 'no_class'], ['Brindle', 'WARRIOR', null, null], ['Cassia', null, null, 'no_class'],
+  ]);
+  s.w.sources.reports.set(REPORT, { title: 'T', startTime: 1, zone: null, masterData: { actors: [
+    actor('Aldric', 'constructor'), actor('Brindle', '__proto__'), actor('Cassia', 'toString'), actor('Dunmar', 'Mage'),
+  ] } });
+  s.w.advance(WINDOW);
+  const wcl = await wclPreview(s, 'bob', REPORT);
+  assert.deepEqual(wcl.json.toDecide.map((row) => row.name), ['Dunmar']);
+});
+
+check('fix 9: a GraphQL error that says the report does not exist is a 404', async () => {
+  const s = await scenario();
+  s.w.sources.wcl.errors = [{ message: 'The report you requested does not exist.' }];
+  const r = await wclPreview(s, 'bob', REPORT);
+  assert.deepEqual([r.status, r.json.error], [404, 'not_found']);
+  s.w.advance(WINDOW);
+  s.w.sources.wcl.errors = [{ message: 'Report not found' }];
+  assert.equal((await wclPreview(s, 'bob', REPORT)).status, 404);
+});
+
+check('fix 10: "signed in" counts only users in this guild\'s Discord server and not blocked here', async () => {
+  const s = await scenario();
+  const made = await addPerson(s, 'bob', s.teamId, 'Aldric', { linkUserId: s.ids.erin });
+  const pid = made.person.id;
+  s.w.sources.events.set(EVENT_ID, rhEvent(EVENT_ID, SERVER_A, [signUp(1, PEOPLE.erin.id, 'Brindle', 'Warrior', 'Arms')]));
+  const state = async () => {
+    s.w.advance(WINDOW);
+    const list = await s.call('bob', 'GET', `/roster?team=${s.teamId}`);
+    const record = await s.call('bob', 'GET', `/roster/${pid}`);
+    const rh = await preview(s, 'bob', { teamId: s.teamId, source: EVENT_ID });
+    return [list.json.people[0].signIn, record.json.person.discord.signIn, record.json.person.discord.user && 'user', rh.json.rows[0].signedIn];
+  };
+  assert.deepEqual(await state(), ['signed_in', 'signed_in', 'user', true]);
+  exec(s.w, `INSERT INTO guild_blocks (guild_id, user_id, created_at) VALUES ('${s.guildId}', '${s.ids.erin}', 1)`);
+  assert.deepEqual(await state(), ['not_yet', 'not_yet', null, false], 'blocked here');
+  exec(s.w, `DELETE FROM guild_blocks WHERE user_id = '${s.ids.erin}'`);
+  exec(s.w, `DELETE FROM user_servers WHERE user_id = '${s.ids.erin}'`);
+  assert.deepEqual(await state(), ['not_yet', 'not_yet', null, false], 'left the Discord server');
+  exec(s.w, `INSERT INTO user_servers (user_id, server_id, seen_at) VALUES ('${s.ids.erin}', '${OTHER_SERVER}', 1)`);
+  assert.deepEqual(await state(), ['not_yet', 'not_yet', null, false], 'in another server only');
+});
+
+check('fix 11: zero-width, line-separator and word-joiner characters are stripped from nicknames and notes (newlines stay)', async () => {
+  const s = await scenario();
+  const made = await addPerson(s, 'bob', s.teamId, 'Aldric');
+  const text = 'a​b‌c‍d‎e‏f g h؜i﻿j⁠k‮l\nm';
+  const saved = await s.call('bob', 'PUT', `/roster/${made.person.id}/notes`, { text, expectedNotesVersion: 0 });
+  assert.equal(saved.status, 200, JSON.stringify(saved.json));
+  assert.equal(saved.json.notes.text, 'abcdefghijkl\nm');
+  s.w.sources.events.set(EVENT_ID, rhEvent(EVENT_ID, SERVER_A, [signUp(1, DID(1), 'Bri​ndle⁠  (Kes﻿trel)', 'Warrior', 'Arms')]));
+  const r = await commit(s, 'bob', { teamId: s.teamId, eventId: EVENT_ID, defaultStatus: 'raider', rows: [{ signupId: 1, main: { name: 'Brindle', class: 'WARRIOR' } }] });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  assert.equal((await s.w.rows('SELECT discord_nickname FROM players WHERE discord_user_id = ?', DID(1)))[0].discord_nickname, 'Brindle (Kestrel)');
+});
+
+check('fix 12: rosterFlags skip archived teams', async () => {
+  const s = await scenario({ teams: 2 });
+  const [A, B] = s.teams;
+  await addPerson(s, 'bob', A, 'Aldric', { status: 'trial', joinedOn: '2027-01-10', trialEnd: '2027-01-20' });
+  await addPerson(s, 'bob', B, 'Brindle', { status: 'trial', joinedOn: '2027-01-10', trialEnd: '2027-01-20' });
+  assert.equal((await s.call('alice', 'PATCH', `/teams/${B}`, { archived: true })).status, 200);
+  const other = await addPerson(s, 'bob', A, 'Cassia');
+  assert.deepEqual(other.rosterFlags, { [A]: 1 });
+  const guild = await s.call('bob', 'GET', '');
+  assert.deepEqual(guild.json.rosterFlags, { [A]: 1 });
+});
+
+check('fix 13: shape checks come before any database read; a missing WCL credential is a 503 that consumes no window', async () => {
+  const s = await scenario();
+  const seen = [];
+  const prepare = s.w.db.prepare.bind(s.w.db);
+  s.w.db.prepare = (sql) => { seen.push(sql); return prepare(sql); };
+  const rows = Array.from({ length: 101 }, (_, i) => ({ signupId: i + 1 }));
+  seen.length = 0;
+  const rh = await commit(s, 'bob', { teamId: s.teamId, eventId: EVENT_ID, defaultStatus: 'raider', rows });
+  assert.deepEqual([rh.status, rh.json.field], [400, 'rows']);
+  assert.equal(seen.some((sql) => /FROM guilds/.test(sql)), false, 'no guild read before the cap check');
+  seen.length = 0;
+  const wcl = await wclCommit(s, 'bob', { decisions: Array.from({ length: 101 }, () => ({ action: 'skip' })) });
+  assert.deepEqual([wcl.status, wcl.json.field], [400, 'decisions']);
+  assert.equal(seen.some((sql) => /FROM guilds/.test(sql)), false);
+  s.w.env.WCL_CLIENT_SECRET = '';
+  const off = await wclPreview(s, 'bob', REPORT);
+  assert.deepEqual([off.status, off.json.error], [503, 'wcl_not_configured']);
+  assert.equal(await s.w.count('rate_limits', "key LIKE 'imp:%' OR key LIKE 'wcl:%'"), 0, 'no import window was consumed');
+  s.w.db.prepare = prepare;
+});
+
+// ---------------------------------------------------------------------------
+// Round W2: workerd runtime differences, roster search names
+
+check('workerd: no file under worker/ passes redirect: "error" to fetch (workerd allows only follow / manual)', async () => {
+  const fs = require('node:fs');
+  const walkDir = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => (
+    entry.isDirectory() ? walkDir(`${dir}/${entry.name}`) : [`${dir}/${entry.name}`]));
+  const offenders = walkDir('worker').filter((file) => file.endsWith('.js'))
+    .filter((file) => /redirect\s*:\s*['"]error['"]/.test(fs.readFileSync(path.join(ROOT, file), 'utf8')));
+  assert.deepEqual(offenders, []);
+});
+
+check('redirects: a 3xx from Raid-Helper, the WCL token endpoint or the WCL API is the source being unavailable, and fetch is asked for redirect manual', async () => {
+  const s = await scenario();
+  s.w.sources.rh.status = 302;
+  const rh = await preview(s, 'bob', { teamId: s.teamId, source: EVENT_ID });
+  assert.deepEqual([rh.status, rh.json.error], [502, 'raid_helper_unavailable']);
+  assert(rhCalls(s).every((call) => call.init.redirect === 'manual'));
+  s.w.sources.rh.status = null;
+  s.w.sources.reports.set(REPORT, sampleReport());
+  s.w.sources.wcl.httpStatus = 302;
+  s.w.advance(WINDOW);
+  const wcl = await wclPreview(s, 'bob', REPORT);
+  assert.deepEqual([wcl.status, wcl.json.error], [502, 'wcl_unavailable']);
+  assert(wclCalls(s).every((call) => call.init.redirect === 'manual'));
+  // The token endpoint redirecting.
+  const { resetWclTokenCache } = await load('worker/sources.js');
+  resetWclTokenCache();
+  s.w.sources.wcl.httpStatus = null;
+  const original = s.w.sources.fetch;
+  const t = await scenario();
+  t.w.sources.reports.set(REPORT, sampleReport());
+  const wrapped = t.w.sources.fetch;
+  t.w.sources.fetch = async (url, init) => (new URL(String(url)).pathname === '/oauth/token' ? new Response('', { status: 301, headers: { Location: 'https://evil.test/' } }) : wrapped(url, init));
+  void original;
+  const tok = await wclPreview(t, 'bob', REPORT);
+  assert.deepEqual([tok.status, tok.json.error], [502, 'wcl_unavailable']);
+});
+
+check('roster rows carry `names`: every character name of the person on the selected team, sorted', async () => {
+  const s = await scenario({ teams: 2 });
+  const [A, B] = s.teams;
+  const made = await addPerson(s, 'bob', A, 'Zandar');
+  await addAlt(s, 'bob', made.person.id, A, 'Brindle');
+  await addAlt(s, 'bob', made.person.id, B, 'Cassia');
+  const solo = await addPerson(s, 'bob', B, 'Aldric');
+  const listA = await s.call('bob', 'GET', `/roster?team=${A}`);
+  assert.deepEqual(listA.json.people.map((row) => [row.id, row.names]), [[made.person.id, ['Brindle', 'Zandar']]]);
+  const listB = await s.call('bob', 'GET', `/roster?team=${B}`);
+  const byId = Object.fromEntries(listB.json.people.map((row) => [row.id, row.names]));
+  assert.deepEqual(byId, { [made.person.id]: ['Cassia'], [solo.person.id]: ['Aldric'] });
 });
 
 // ---------------------------------------------------------------------------

@@ -43,5 +43,11 @@ export async function enforceRateLimit(db, userId, nowMs, options) {
   if (result.unavailable) {
     throw new HttpError(503, 'rate_limited', 'Imports are paused for a moment. Try again shortly.', { retryAfter: result.retryAfter });
   }
+  if (key === WCL_GLOBAL_KEY) {
+    const minutes = Math.max(1, Math.ceil(result.retryAfter / 60));
+    throw new HttpError(429, 'rate_limited',
+      `Warcraft Logs imports are busy for everyone right now. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`,
+      { retryAfter: result.retryAfter });
+  }
   throw new HttpError(429, 'rate_limited', rateLimitMessage(key), { retryAfter: result.retryAfter });
 }

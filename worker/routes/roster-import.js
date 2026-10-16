@@ -1,20 +1,21 @@
 // The two roster imports: a Raid-Helper event and a Warcraft Logs report. A preview reads the source and
 // stores nothing; a commit validates every row, then writes people and characters in one batch.
-import { HttpError, cleanText, jsonResponse } from '../http.js';
+import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { isId, newId } from '../ids.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { IMPORT_LIMIT, IMPORT_WINDOW_MS, WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, enforceRateLimit } from '../ratelimit.js';
 import {
   CREATE_STATUSES, RAID_HELPER_CLASS, RAID_HELPER_SPEC, WCL_CLASS, cleanCharacterName, cleanNickname, isSpecOf, nameKey,
-  nicknameTokens, realmKey,
+  nicknameTokens, ownValue, realmKey, SINGLE_LINE_STRIP,
 } from '../roster-data.js';
 import { guildToday, loadRosterFlags } from '../roster-view.js';
 import {
   fetchRaidHelperEvent, fetchWclReport, isEventId, isWclCode, isWclFlavour, parseRaidHelperSource, parseWclSource,
+  requireWclConfigured,
 } from '../sources.js';
 import {
-  bad, constraintOf, limitError, nameTaken, readClass, readName, realmColumns, requireEdit, requireTarget,
+  bad, constraintOf, limitError, nameTaken, readClass, readName, realmColumns, requireEdit, requireTarget, resolveRealm,
 } from './roster.js';
 
 const MAX_COMMIT_ROWS = 100;
@@ -33,11 +34,16 @@ async function wclRate(ctx) {
   await enforceRateLimit(ctx.db, userId, ctx.now(), { key: WCL_GLOBAL_KEY, limit: WCL_GLOBAL_LIMIT, windowMs: WCL_GLOBAL_WINDOW_MS, failClosed: true });
 }
 
+// The body-shape checks that need no database run before this; this is the first read.
 async function startImport(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   const team = await requireTarget(ctx.db, guildContext.guild.id, ctx.body.teamId);
   requireEdit(guildContext, team.id);
   return { guildContext, team };
+}
+
+function requireTeamId(body) {
+  if (!isId('t', body.teamId)) throw bad('Pick a team.', 'teamId');
 }
 
 function readRows(body, field) {
@@ -89,6 +95,17 @@ async function loadPersonsByDiscord(db, guildId, discordIds) {
   return byDiscord;
 }
 
+// Discord IDs (of these) that belong to a user in this guild's Discord server who is not blocked here -> Set.
+async function loadSignedIn(db, guild, discordIds) {
+  const result = await db.prepare(
+    `SELECT u.discord_id FROM users u
+      WHERE u.discord_id IN (SELECT value FROM json_each(?))
+        AND EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = u.id AND us.server_id = ?)
+        AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ? AND b.user_id = u.id)`,
+  ).bind(JSON.stringify(discordIds), guild.discord_server_id, guild.id).all();
+  return new Set(result.results.map((row) => row.discord_id));
+}
+
 // Existing characters of the guild with any of these name keys on this realm key -> Map(nameKey -> { personId, name }).
 async function loadNameOwners(db, guildId, realmKeyValue, nameKeys) {
   const result = await db.prepare(
@@ -110,8 +127,8 @@ const takenOf = (owners, name) => {
 
 // One sign-up -> { classId, spec, note } (the planner's _resolveRaidHelperEntry rules, without guessing a spec).
 function resolveSignUp(signUp) {
-  const info = RAID_HELPER_SPEC[signUp.specName];
-  const classId = info ? info.class : (RAID_HELPER_CLASS[signUp.className] || null);
+  const info = ownValue(RAID_HELPER_SPEC, signUp.specName);
+  const classId = info ? info.class : (ownValue(RAID_HELPER_CLASS, signUp.className) || null);
   let note = null;
   if (signUp.className === 'Absence') note = 'absence';
   else if (signUp.className === 'Tentative') note = 'tentative';
@@ -155,10 +172,12 @@ function uniqueNames(lists) {
 }
 
 export async function previewRaidHelper(ctx) {
-  const { guildContext, team } = await startImport(ctx);
-  const { db, body } = ctx;
-  const guild = guildContext.guild;
+  const { body } = ctx;
+  requireTeamId(body);
   const eventId = parseRaidHelperSource(body.source);
+  const { guildContext, team } = await startImport(ctx);
+  const { db } = ctx;
+  const guild = guildContext.guild;
   await importRate(ctx);
   const event = await fetchRaidHelperEvent(ctx, eventId);
 
@@ -173,9 +192,9 @@ export async function previewRaidHelper(ctx) {
   const [people, owners, signedResult] = await Promise.all([
     loadPersonsByDiscord(db, guild.id, discordIds),
     loadNameOwners(db, guild.id, realm.key, allKeys),
-    db.prepare('SELECT discord_id FROM users WHERE discord_id IN (SELECT value FROM json_each(?))').bind(JSON.stringify(discordIds)).all(),
+    loadSignedIn(db, guild, discordIds),
   ]);
-  const signedIn = new Set(signedResult.results.map((row) => row.discord_id));
+  const signedIn = signedResult;
 
   const rows = groups.map((group, i) => {
     const { signUp, resolved } = group.chosen;
@@ -260,6 +279,10 @@ async function writeImport(ctx, guildContext, team, plan) {
   const guild = guildContext.guild;
   const now = ctx.now();
   const today = guildToday(guild, now);
+  // Nothing to create and nothing to refresh: no batch, no audit row.
+  if (!plan.people.length && !plan.characters.length && !plan.nicknameUpdates.length) {
+    return { status: 200, body: { people: 0, characters: 0, rosterFlags: await loadRosterFlags(db, guildContext, today) } };
+  }
   const statements = [];
   if (plan.people.length) {
     statements.push(db.prepare(
@@ -285,7 +308,7 @@ async function writeImport(ctx, guildContext, team, plan) {
     const json = JSON.stringify(plan.nicknameUpdates);
     statements.push(db.prepare(
       `UPDATE players SET discord_nickname = (SELECT json_extract(value, '$.nickname') FROM json_each(?) WHERE json_extract(value, '$.id') = players.id),
-              version = version + 1, updated_at = ?
+              updated_at = ?
         WHERE guild_id = ? AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?))`,
     ).bind(json, now, guild.id, json));
   }
@@ -308,9 +331,12 @@ async function writeImport(ctx, guildContext, team, plan) {
     throw error;
   }
   return {
-    people: plan.people.length,
-    characters: plan.characters.length,
-    rosterFlags: await loadRosterFlags(db, guildContext, today),
+    status: 201,
+    body: {
+      people: plan.people.length,
+      characters: plan.characters.length,
+      rosterFlags: await loadRosterFlags(db, guildContext, today),
+    },
   };
 }
 
@@ -330,9 +356,8 @@ function readCharacterPart(raw, index, field, { withSpec }) {
 }
 
 export async function commitRaidHelper(ctx) {
-  const { guildContext, team } = await startImport(ctx);
-  const { db, body } = ctx;
-  const guild = guildContext.guild;
+  const { body } = ctx;
+  requireTeamId(body);
   if (!isEventId(body.eventId)) throw bad('That event ID is not valid.', 'eventId');
   const status = readDefaultStatus(body.defaultStatus, 'defaultStatus', 'raider');
   if (body.acceptOtherServer !== undefined && typeof body.acceptOtherServer !== 'boolean') {
@@ -345,6 +370,9 @@ export async function commitRaidHelper(ctx) {
     seenSignUps.add(row.signupId);
     if (row.alts !== undefined && !Array.isArray(row.alts)) throw bad('alts must be a list.', 'alts', indexed(index));
   });
+  const { guildContext, team } = await startImport(ctx);
+  const { db } = ctx;
+  const guild = guildContext.guild;
   await importRate(ctx);
   const event = await fetchRaidHelperEvent(ctx, body.eventId);
   if (event.serverId !== guild.discord_server_id && body.acceptOtherServer !== true) {
@@ -393,7 +421,8 @@ export async function commitRaidHelper(ctx) {
     for (const alt of alts) newCharacter(playerId, alt, false, index);
   }
   await checkNames(db, guild.id, nameEntries);
-  return jsonResponse(await writeImport(ctx, guildContext, team, plan), 201);
+  const written = await writeImport(ctx, guildContext, team, plan);
+  return jsonResponse(written.body, written.status);
 }
 
 // ---------------------------------------------------------------------------
@@ -428,8 +457,11 @@ async function loadNicknameIndex(db, guildContext, team) {
 }
 
 export async function previewWcl(ctx) {
+  const { body } = ctx;
+  requireTeamId(body);
+  requireWclConfigured(ctx.env);
   const { guildContext, team } = await startImport(ctx);
-  const { db, body } = ctx;
+  const { db } = ctx;
   const guild = guildContext.guild;
   const { flavour, code } = parseWclSource(body.source, guild.game_version);
   await wclRate(ctx);
@@ -442,11 +474,16 @@ export async function previewWcl(ctx) {
   const toDecide = [];
   const seen = new Set();
   for (const actor of report.actors) {
-    const classId = WCL_CLASS[actor.subType];
+    const classId = ownValue(WCL_CLASS, actor.subType);
     const name = classId ? cleanCharacterName(actor.name) : null;
     if (!name) continue;
-    const realmText = isRealmGuild ? (actor.server || guild.realm) : null;
-    const actorRealmKey = isRealmGuild ? realmKey(realmText) : '';
+    // A realm the commit would accept is shown in its canonical spelling; any other realm is shown as sent (cleaned)
+    // and counts as another realm, which the commit refuses.
+    const resolved = isRealmGuild ? resolveRealm(guild, actor.server || null) : null;
+    const rawRealm = isRealmGuild ? String(actor.server || '').replace(SINGLE_LINE_STRIP, '').trim() : null;
+    const realmText = isRealmGuild ? (resolved ? resolved.realm : rawRealm) : null;
+    const actorRealmKey = isRealmGuild ? (resolved ? resolved.key : realmKey(rawRealm)) : '';
+    if (isRealmGuild && !actorRealmKey) continue;
     const key = `${nameKey(name)}|${actorRealmKey}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -461,7 +498,7 @@ export async function previewWcl(ctx) {
       name,
       realm: realmText,
       class: classId,
-      otherRealm: isRealmGuild && actorRealmKey !== guildRealmKey,
+      otherRealm: isRealmGuild && (!resolved || resolved.key !== guildRealmKey),
       suggestion: candidates.length === 1 ? { personId: candidates[0].personId, name: candidates[0].name } : null,
     });
   }
@@ -478,38 +515,33 @@ export async function previewWcl(ctx) {
 // Warcraft Logs commit
 
 export async function commitWcl(ctx) {
-  const { guildContext, team } = await startImport(ctx);
-  const { db, body } = ctx;
-  const guild = guildContext.guild;
+  const { body } = ctx;
+  requireTeamId(body);
   const report = body.report;
   if (!report || typeof report !== 'object' || !isWclCode(report.code) || !isWclFlavour(report.flavour)) {
     throw bad('That report is not valid.', 'report');
   }
   const decisions = readRows(body, 'decisions');
-  await importRate(ctx);
-
-  const plan = { people: [], characters: [], nicknameUpdates: [], source: 'wcl', ref: `${report.flavour}:${report.code}` };
-  const nameEntries = [];
   const actions = decisions.map((decision, index) => {
     if (!['alt', 'new', 'skip'].includes(decision.action)) throw bad('Pick alt, new or skip.', 'action', indexed(index));
     return { decision, index };
   });
+  const { guildContext, team } = await startImport(ctx);
+  const { db } = ctx;
+  const guild = guildContext.guild;
+  await importRate(ctx);
+
+  const plan = { people: [], characters: [], nicknameUpdates: [], source: 'wcl', ref: `${report.flavour}:${report.code}` };
+  const nameEntries = [];
   const alts = [];
   const created = [];
   for (const { decision, index } of actions) {
     if (decision.action === 'skip') continue;
     const name = readName(decision.name, 'name', indexed(index));
     const classId = readClass(decision.class, 'class', indexed(index));
-    let realm;
-    if (guild.realm_kind === 'ruleset') {
-      realm = realmColumns(guild);
-    } else {
-      let text = null;
-      if (decision.realm !== undefined && decision.realm !== null) {
-        try { text = cleanText(decision.realm, 'realm', { max: 40 }); } catch { throw bad('That realm is not valid.', 'realm', indexed(index)); }
-      }
-      realm = realmColumns(guild, text);
-    }
+    // A ruleset guild ignores `realm`; a realm guild accepts only its own realm or one on its realm list.
+    const realm = resolveRealm(guild, decision.realm);
+    if (!realm) throw bad('That realm is not valid.', 'realm', indexed(index));
     const character = { name, realm: realm.realm, realmKey: realm.key, class: classId, mainSpec: null, offSpec: null };
     nameEntries.push({ name, realmKey: realm.key, index });
     if (decision.action === 'alt') {
@@ -542,5 +574,6 @@ export async function commitWcl(ctx) {
     plan.characters.push({ id: newId('c', ctx.randomBytes), playerId, ...entry.character, isMain: true });
   }
   await checkNames(db, guild.id, nameEntries);
-  return jsonResponse(await writeImport(ctx, guildContext, team, plan), 201);
+  const written = await writeImport(ctx, guildContext, team, plan);
+  return jsonResponse(written.body, written.status);
 }

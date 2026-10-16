@@ -5,6 +5,12 @@ import { allows } from './permissions.js';
 import { toPerson } from './person.js';
 import { roleOf, todayIn, trialFlag } from './roster-data.js';
 
+// Avatar URLs carry the user's Discord ID, so only the people who can open People and roles (where avatars are
+// already shown) get them in roster responses; everyone else gets initials.
+export function canSeeAvatars(can) {
+  return allows(can, 'guild.access') || allows(can, 'guild.roles');
+}
+
 export function guildToday(guild, nowMs) {
   return todayIn(guild.time_zone, nowMs);
 }
@@ -36,10 +42,14 @@ export async function loadPersonData(db, guildId, personId) {
          FROM characters c JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
         WHERE c.player_id = ? AND c.guild_id = ?`,
     ).bind(personId, guildId),
+    // The linked user counts only while they are in this guild's Discord server and not blocked here.
     db.prepare(
-      `SELECT id, discord_id, username, global_name, avatar FROM users
-        WHERE discord_id = (SELECT discord_user_id FROM players WHERE id = ? AND guild_id = ?)`,
-    ).bind(personId, guildId),
+      `SELECT u.id, u.discord_id, u.username, u.global_name, u.avatar FROM users u
+        WHERE u.discord_id = (SELECT discord_user_id FROM players WHERE id = ? AND guild_id = ?)
+          AND EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = u.id
+                        AND us.server_id = (SELECT discord_server_id FROM guilds WHERE id = ?))
+          AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ? AND b.user_id = u.id)`,
+    ).bind(personId, guildId, guildId, guildId),
     db.prepare(
       `SELECT id, discord_id, username, global_name, avatar FROM users
         WHERE id = (SELECT notes_updated_by FROM players WHERE id = ? AND guild_id = ?)`,
@@ -68,7 +78,7 @@ export function notesView(data, guildContext, home) {
   return {
     text: player.notes || '',
     version: player.notes_version,
-    updatedBy: data.notesUser ? toPerson(data.notesUser) : null,
+    updatedBy: data.notesUser ? toPerson(data.notesUser, { avatar: canSeeAvatars(guildContext.can) }) : null,
     updatedAt: player.notes_updated_at,
   };
 }
@@ -100,7 +110,7 @@ export function buildPersonRecord(guildContext, data, today, viewer) {
       version: player.version,
       discord: {
         signIn: signInOf(player, data.linkedUser),
-        user: data.linkedUser ? toPerson(data.linkedUser) : null,
+        user: data.linkedUser ? toPerson(data.linkedUser, { avatar: canSeeAvatars(can) }) : null,
         nickname: edit ? player.discord_nickname : null,
       },
       homeTeam: home ? { id: home.id, name: home.name } : null,
@@ -123,7 +133,7 @@ export async function loadRosterFlags(db, guildContext, today) {
   if (!scope || (Array.isArray(scope) && !scope.length)) return {};
   const guildId = guildContext.guild.id;
   const [teamResult, trialResult] = await db.batch([
-    db.prepare('SELECT id FROM teams WHERE guild_id = ?').bind(guildId),
+    db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guildId),
     db.prepare(
       `SELECT m.team_id, p.status, p.trial_end FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
         WHERE p.guild_id = ? AND p.status = 'trial' AND p.trial_end IS NOT NULL`,
@@ -158,10 +168,13 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
          FROM players p JOIN characters c ON c.player_id = p.id JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
         WHERE p.guild_id = ? AND p.id IN (SELECT player_id FROM characters WHERE team_id = ? AND guild_id = ?)`,
     ).bind(guildId, team.id, guildId),
+    // Signed in = in this guild's Discord server and not blocked here.
     db.prepare(
-      `SELECT discord_id FROM users
-        WHERE discord_id IN (SELECT discord_user_id FROM players WHERE guild_id = ? AND discord_user_id IS NOT NULL)`,
-    ).bind(guildId),
+      `SELECT u.discord_id FROM users u
+        WHERE u.discord_id IN (SELECT discord_user_id FROM players WHERE guild_id = ? AND discord_user_id IS NOT NULL)
+          AND EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = u.id AND us.server_id = ?)
+          AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ? AND b.user_id = u.id)`,
+    ).bind(guildId, guildContext.guild.discord_server_id, guildId),
   ]);
   const signedIn = new Set(userResult.results.map((row) => row.discord_id));
   const byPlayer = new Map();
@@ -185,6 +198,7 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
       trialFlag: trialFlag(player.status, player.trial_end, today),
       shown: { id: shown.id, name: shown.name, class: shown.class, mainSpec: shown.mainSpec, offSpec: shown.offSpec, role: shown.role, isMain: shown.isMain },
       main: { id: main.view.id, name: main.view.name, class: main.view.class, team: { id: main.view.team.id, name: main.view.team.name } },
+      names: onTeam.map((entry) => entry.view.name).sort((a, b) => a.localeCompare(b)),
       altCount: characters.length - 1,
       signIn: player.discord_user_id ? (signedIn.has(player.discord_user_id) ? 'signed_in' : 'not_yet') : 'no_discord',
       isMe: !!player.discord_user_id && player.discord_user_id === viewer.discordId,
