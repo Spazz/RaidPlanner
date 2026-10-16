@@ -234,11 +234,11 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(G.shell.slots(can).tabs, '', 'no tabs without a guild');
   });
 
-  await check('nav matrix: member = Roster, Raid nights, Attendance, Loot, Planner, help group; tiles; five phone tabs', () => {
+  await check('nav matrix: member = Roster, Raids, Attendance, Loot, Planner, help group; tiles; five phone tabs', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(MEMBER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'nights', 'attendance', 'loot', 'planner', 'whats-new|sep', 'how-it-works', 'faq']);
-    assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'nights', 'attendance', 'loot', 'planner']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'whats-new|sep', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
     const s = G.shell.slots(ctx);
     assert(s.rail.includes('gs-tile is-active') && s.rail.includes('data-action="open-planner"'), 'tiles; the rail logo is a Planner link');
     assert(/<nav class="gs-tabs"/.test(s.tabs) && !s.tabs.includes('More') && s.tabs.includes('data-action="open-planner"'));
@@ -248,15 +248,15 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
   await check('nav matrix: officer / GM gets Guild settings (separated) before the help group; tabs stay five', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'nights', 'attendance', 'loot', 'planner', 'settings|sep', 'whats-new|sep', 'how-it-works', 'faq']);
-    assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'nights', 'attendance', 'loot', 'planner']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep', 'whats-new|sep', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
   });
 
   await check('nav: the guild nav shows on the planner section and the static pages, but the phone tabs only on guild sections', () => {
     const { G } = makeEnv();
     for (const section of ['planner', 'page']) {
       const ctx = { section, page: section === 'page' ? 'faq' : 'app', me: meBody(), route: null, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-      assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))).slice(0, 6), ['roster', 'nights', 'attendance', 'loot', 'planner', 'settings|sep'], section);
+      assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))).slice(0, 6), ['roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep'], section);
       assert.equal(G.shell.slots(ctx).tabs, '', section + ': no tabs');
     }
   });
@@ -372,11 +372,36 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(env.html('gs-main').includes('Main') || env.html('gs-main').length > 0);
   });
 
+  await check('attendance routes: Raids list, Raid detail, Attendance and Review load their data and render through the real router', async () => {
+    const can = Object.assign({}, OFFICER_CAN, { 'raids.view': 'guild', 'raids.edit': 'guild', 'attendance.view': 'guild', 'attendance.review': 'guild' });
+    const raid = { raid: { id: 'r1', team: 't1', raidOn: '2026-10-10', zone: 'BT', state: 'awaiting_log', openFlags: 0, stale: false }, can: { edit: true, review: true, seeAttendance: true }, sources: { event: null, reports: [], plan: null }, pulls: [], people: [], unmatched: [], signups: [] };
+    const routes = signedInRoutes(can, {
+      '/api/guild/g1/raids?team=t1': { status: 200, body: { team: 't1', raids: [{ id: 'r1', raidOn: '2026-10-10', zone: 'BT', bosses: { kills: 0, pulls: 0 }, sources: { event: false, reports: 0, plan: false }, counts: null, openFlags: 0, state: 'awaiting_log', stale: false }] } },
+      '/api/guild/g1/raids/r1': { status: 200, body: raid },
+      '/api/guild/g1/attendance/team?team=t1': { status: 200, body: { team: 't1', window: 8, policy: { switchWeeks: [8, 12] }, weeks: [], people: [], awaitingReview: 0, staleRaids: 0 } },
+      '/api/guild/g1/attendance/policy': { status: 200, body: { defaults: {}, guild: {}, teams: {}, resolved: {}, versions: { guild: 0, teams: {} }, wcl: { guildId: null, uploaders: {} } } },
+      '/api/guild/g1/attendance/review?team=t1': { status: 200, body: { team: 't1', raids: [], stale: [] } },
+    });
+    const env = makeEnv({ url: '/#/g/g1/raids', routes });
+    await settle();
+    assert(env.html('gs-main').includes('<h1 class="gs-h1" tabindex="-1">Raids</h1>') && env.html('gs-main').includes('Sat Oct 10'));
+    env.loc.hash = '#/g/g1/raids/r/r1';
+    await settle();
+    assert(env.html('gs-main').includes('Awaiting log') && env.html('shell-topbar-lead').includes('Sat Oct 10'));
+    env.loc.hash = '#/g/g1/attendance';
+    await settle();
+    assert(env.html('gs-main').includes('No attendance yet'));
+    env.loc.hash = '#/g/g1/attendance/review';
+    await settle();
+    assert(env.html('gs-main').includes('Nothing to review'));
+    assert(env.documentFake.title.startsWith('Review queue - Ravens'));
+  });
+
   await check('routeAll: idempotent - a hash-link click (popstate then hashchange) is one route; force re-runs', async () => {
     const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes() });
     await settle();
     assert.equal(env.fetched('/roster?team=t1'), 1);
-    env.loc.hash = '#/g/g1/nights';
+    env.loc.hash = '#/g/g1/raids';
     await settle();
     env.loc.hash = '#/g/g1/roster';
     await settle();
@@ -807,7 +832,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const selectors = [...css.matchAll(/(^|\})\s*([^{}@][^{}]*)\{/g)].map(m => m[2]).join(',').split(',').map(x => x.trim());
     const planner = selectors.filter(x => /(^|[\s>+~])#planner-root|#shell-topbar-plan|\.planner-|\.title-bar|\.landing\b|\.addon-frame/.test(x) && !/#planner-root\[hidden\]/.test(x));
     assert.deepEqual(planner, [], 'guild.css must not style planner markup');
-    assert(!/--[\w-]+\s*:/.test(css.replace(/var\(--[\w-]+/g, '')), 'no custom properties');
+    assert(!/--[\w-]+\s*:/.test(css.replace(/var\(--[\w-]+/g, '').replace(/--gs-out-[a-z_]+(-ink)?\s*:/g, '')), 'no custom properties (but the attendance outcome colours)');
   });
 
   await check('guild.css: phone A2 - menu button 44px on every page, drawer for everyone, tabs only with a guild, signed-out sign-in shortens', () => {

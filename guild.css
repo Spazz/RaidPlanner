@@ -598,3 +598,124 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-table-stack td[data-label="Add"]::before { content: none; }
   .gs-table-stack td:empty { display: none; }
 }
+
+/* ── Attendance (Phase 3): outcome tokens, grid cells, raids, review, settings ───── */
+/* Each outcome differs in LIGHTNESS from every other (CIE L* steps of about 9, dark to light) and its letter passes
+   4.5:1 on its background; the letter is always printed, so colour is never the only signal. Dark theme only. */
+:root {
+  --gs-out-missed_notice: #2c1515;  --gs-out-missed_notice-ink: #ffffff;
+  --gs-out-no_signup: #2c2f31;      --gs-out-no_signup-ink: #ffffff;
+  --gs-out-tentative: #354358;      --gs-out-tentative-ink: #ffffff;
+  --gs-out-missed: #973632;         --gs-out-missed-ink: #ffffff;
+  --gs-out-fill_in: #845aaf;        --gs-out-fill_in-ink: #ffffff;
+  --gs-out-bench: #4586d1;          --gs-out-bench-ink: #101213;
+  --gs-out-left_early: #ed7d1c;     --gs-out-left_early-ink: #101213;
+  --gs-out-late_left: #ed9bb7;      --gs-out-late_left-ink: #101213;
+  --gs-out-late: #edc85b;           --gs-out-late-ink: #101213;
+  --gs-out-present: #cbeed6;        --gs-out-present-ink: #101213;
+}
+.gs-out-missed_notice { background: var(--gs-out-missed_notice); color: var(--gs-out-missed_notice-ink); }
+.gs-out-no_signup { background: var(--gs-out-no_signup); color: var(--gs-out-no_signup-ink); }
+.gs-out-tentative { background: var(--gs-out-tentative); color: var(--gs-out-tentative-ink); }
+.gs-out-missed { background: var(--gs-out-missed); color: var(--gs-out-missed-ink); }
+.gs-out-fill_in { background: var(--gs-out-fill_in); color: var(--gs-out-fill_in-ink); }
+.gs-out-bench { background: var(--gs-out-bench); color: var(--gs-out-bench-ink); }
+.gs-out-left_early { background: var(--gs-out-left_early); color: var(--gs-out-left_early-ink); }
+.gs-out-late_left { background: var(--gs-out-late_left); color: var(--gs-out-late_left-ink); }
+.gs-out-late { background: var(--gs-out-late); color: var(--gs-out-late-ink); }
+.gs-out-present { background: var(--gs-out-present); color: var(--gs-out-present-ink); }
+.gs-out-none { background: var(--bg-card-hover); color: var(--text-secondary); }
+
+.gs-cell { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 26px; height: 26px; padding: 0 3px; font: 700 13px/1 var(--font-cond); letter-spacing: 0.02em; }
+.gs-cell.is-pending { outline: 1px dashed var(--accent-gold); outline-offset: -3px; }
+.gs-cell-blank { background: transparent; border: 1px dashed var(--border-medium); }
+.gs-outchip { display: inline-flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 15px; }
+.gs-pills { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.gs-pill { display: inline-block; padding: 2px 8px; border: 1px solid var(--border-medium); font: 600 12px/1.4 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; color: var(--text-secondary); }
+.gs-pill-ok { border-color: var(--success); color: var(--success); }
+.gs-pill-warn { border-color: #6b4318; background: #2a1d10; color: var(--warning); }
+.gs-pill-info { border-color: var(--border-accent); color: var(--accent-gold); }
+.gs-pill-muted { color: var(--text-muted); }
+.gs-chip-flag { background: #2a1d10; border-color: #6b4318; color: var(--warning); }
+.gs-chip-src, .gs-chip-signup { text-transform: none; letter-spacing: 0.02em; font-weight: 500; font-size: 13px; }
+.gs-raid-link { font-weight: 600; }
+
+.gs-legend-box, .gs-how { border: 1px solid var(--border-subtle); background: var(--bg-panel); padding: 10px 14px; }
+.gs-how summary { cursor: pointer; font: 600 15px/1.4 var(--font-cond); letter-spacing: 0.04em; color: var(--text-primary); }
+.gs-how .gs-bullets { margin-top: 10px; }
+.gs-legend-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
+.gs-legend-item { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary); }
+.gs-table-att { min-width: 0; width: auto; }
+.gs-table-att th, .gs-table-att td { padding: 6px 8px; }
+.gs-table-att th[scope="row"] { min-width: 160px; position: sticky; left: 0; background: var(--bg-panel); z-index: 1; }
+.gs-att-week { text-align: center; border-left: 1px solid var(--border-medium); }
+.gs-att-col { text-align: center; padding: 4px 2px; }
+.gs-att-col a, .gs-att-col span { display: inline-flex; flex-direction: column; align-items: center; font: 600 12px/1.2 var(--font-cond); letter-spacing: 0.02em; color: var(--text-muted); text-decoration: none; }
+.gs-att-wd { text-transform: uppercase; }
+.gs-att-cell { text-align: center; padding: 4px 2px; }
+.gs-att-name { display: inline-flex; align-items: center; gap: 8px; }
+.gs-streak { font-weight: 600; color: var(--text-secondary); }
+.gs-streak.is-flag { color: var(--danger-bright); }
+.gs-att-cards, .gs-raids-cards, .gs-pa-cards { display: none; list-style: none; }
+.gs-att-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0; }
+.gs-att-stats dt { font: 600 11px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.gs-att-stats dd { margin: 2px 0 0; color: var(--text-primary); }
+.gs-att-strip { display: flex; flex-wrap: wrap; gap: 4px; }
+.gs-att-teamblock { display: flex; flex-direction: column; gap: 12px; }
+.gs-summary { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 0; }
+.gs-summary-item dt { font: 600 12px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.gs-summary-item dd { margin: 2px 0 0; font: 700 24px/1.1 var(--font-cond); color: var(--text-primary); }
+.gs-table-raids { min-width: 760px; }
+.gs-table-raidpeople { min-width: 820px; }
+.gs-table-history { min-width: 640px; }
+.gs-table-backfill { min-width: 720px; }
+.gs-tick-cell { width: 52px; }
+.gs-outcell { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+
+.gs-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; }
+.gs-source-title { margin: 0; font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-source-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.gs-source-row { display: flex; flex-direction: column; gap: 6px; }
+.gs-code { font-family: ui-monospace, Consolas, monospace; color: var(--text-primary); }
+.gs-manual-line { margin: 0; }
+.gs-head-tools { display: inline-flex; align-items: center; gap: 12px; }
+.gs-review-list { list-style: none; }
+.gs-review-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 20px; }
+.gs-review-item + .gs-review-item { border-top: 1px solid var(--border-subtle); }
+.gs-review-who { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; flex: 1 1 260px; }
+.gs-review-who .gs-char-sub { flex-basis: 100%; }
+.gs-pick-list { list-style: none; max-height: 280px; overflow-y: auto; border: 1px solid var(--border-subtle); background: var(--bg-panel); padding: 4px 12px; }
+.gs-pick-item[hidden] { display: none; }
+.gs-dialog-wide { width: 100%; }
+.gs-dialog-sub { border-top: 1px solid var(--border-subtle); }
+
+.gs-run-lines { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.gs-run-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border-subtle); }
+.gs-run-status { min-width: 110px; font: 700 12px/1.3 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.gs-run-line.is-ok .gs-run-status { color: var(--success); }
+.gs-run-line.is-error .gs-run-status { color: var(--danger-bright); }
+.gs-run-msg { flex-basis: 100%; font-size: 14px; color: var(--text-secondary); }
+.gs-nr-row { display: flex; align-items: center; gap: 8px; }
+
+.gs-settings-att { display: flex; flex-direction: column; gap: 16px; }
+.gs-pol-form { display: flex; flex-direction: column; gap: 16px; }
+.gs-pol-field { display: flex; flex-direction: column; gap: 8px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.gs-pol-markers { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.gs-pol-markers:empty { display: none; }
+.gs-input-short { width: auto; max-width: 100%; min-width: 120px; }
+.gs-credit-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.gs-credit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gs-credit-row .gs-input { width: 140px; }
+.gs-credit-row .gs-input-short { width: 90px; min-width: 0; }
+.gs-flip { transform: rotate(180deg); }
+
+@media (max-width: 600px) {
+  .gs-raids-table, .gs-raid-people, .gs-pa-table, .gs-att-table { display: none; }
+  .gs-att-cards, .gs-raids-cards, .gs-pa-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .gs-att-card { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .gs-bf-table { overflow-x: auto; }
+  .gs-sources { grid-template-columns: 1fr; }
+  .gs-review-item { padding: 12px; }
+  .gs-credit-row .gs-input { width: 100%; }
+  .gs-run-status { min-width: 0; flex-basis: 100%; }
+}

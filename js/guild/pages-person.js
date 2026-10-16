@@ -1,5 +1,5 @@
 // ── PAGE: PERSON RECORD (R1 A, a full page) ─────────────────────
-// Header and chips, the trial bar, Characters, Attendance (placeholder), Details, Officer notes, Delete person.
+// Header and chips, the trial bar, Characters, Attendance (the card from pages-person-attendance.js), Details, Officer notes, Delete person.
 // Editors get the forms; a member gets a read-only record. The dialogs (Add / Edit character, Extend trial,
 // Delete) live here too. Every mutation answers with the whole person record, which replaces the page's copy;
 // a 409 conflict re-renders from ApiError.body.current.
@@ -99,9 +99,9 @@
       '<ul class="gs-char-cards" aria-label="Characters">' + cards + '</ul></section>';
   }
 
-  function attendanceHtml(record) {
-    const text = record.person.isMe ? 'Your attendance shows here after the first raid night.' : 'Attendance shows here after the first raid night.';
-    return '<section class="gs-card-sec" aria-labelledby="attendance-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="attendance-h">Attendance</h2></div><div class="gs-card-sec-body"><p class="gs-fine">' + esc(text) + '</p></div></section>';
+  // The Attendance card (pages-person-attendance.js): window and all-time %, the last raids, a link to the full history.
+  function attendanceHtml(record, gid, state) {
+    return G.pages.personAtt.cardHtml({ gid: gid, pid: record.person.id, record: record, state: state });
   }
 
   // ── details form ──
@@ -164,7 +164,7 @@
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       trialBarHtml(record, can) +
       (readOnly && record.person.isMe ? '<p class="gs-fine gs-member-note">' + esc(MEMBER_NOTE) + '</p>' : '') +
-      '<div class="gs-person-cols"><div class="gs-person-main">' + charactersHtml(record, can, showTeam) + attendanceHtml(record) + '</div>' +
+      '<div class="gs-person-cols"><div class="gs-person-main">' + charactersHtml(record, can, showTeam) + attendanceHtml(record, opts.guildData.guild.id, opts.attendance) + '</div>' +
       '<div class="gs-person-side">' + (can.edit ? detailsHtml(record, opts.linkable) : readOnlyDetailsHtml(record)) + notesHtml(record, can) + '</div></div>' +
       deleteHtml(record, can) + '</div>';
   }

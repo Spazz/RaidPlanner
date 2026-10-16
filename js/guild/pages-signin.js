@@ -20,7 +20,7 @@
     const notice = o.notice ? '<p class="gs-notice" role="status">' + esc(o.notice) + '</p>' : '';
     return card(
       '<h1 class="gs-h1 gs-h1-lg" tabindex="-1">Your guild\'s roster and attendance</h1>' +
-      '<p class="gs-lead">Sign in with Discord to see your guild\'s roster, raid nights and attendance.</p>' + notice + err +
+      '<p class="gs-lead">Sign in with Discord to see your guild\'s roster, raids and attendance.</p>' + notice + err +
       '<a class="gs-btn gs-btn-molten gs-btn-block" href="/auth/login">' + G.icons.icon('login', 22) + '<span>Sign in with Discord</span></a>' +
       '<p class="gs-fine">Raidsmith reads your Discord username, avatar and the list of servers you\'re in, to find your guild. It never reads or posts messages.</p>' +
       '<ul class="gs-link-list"><li><a href="#/privacy">Privacy &amp; my data</a></li>' +

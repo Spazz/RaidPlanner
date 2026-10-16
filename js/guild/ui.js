@@ -163,6 +163,26 @@
     return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
   };
 
+  // 'YYYY-MM-DD' -> 'Oct 10' and 'Sat Oct 10' (weekday from the calendar date, no time zone maths).
+  const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  ui.shortDay = function (s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s == null ? '' : s));
+    if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) return '';
+    return MONTHS[Number(m[2]) - 1] + ' ' + Number(m[3]);
+  };
+  ui.weekdayDay = function (s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s == null ? '' : s));
+    if (!m) return '';
+    const wd = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+    return WEEKDAYS[wd] + ' ' + ui.shortDay(s);
+  };
+  // A percentage 0..100 (teamMetrics gives one decimal) as '88%'; null / not a number as '-'.
+  ui.percent = function (v) {
+    if (typeof v !== 'number' || !isFinite(v)) return '-';
+    return Math.round(v) + '%';
+  };
+  ui.plural = function (n, one, many) { return n + ' ' + (n === 1 ? one : many); };
+
   // <option> list from [{ value, label }] with one selected value.
   ui.optionsHtml = function (items, selected) {
     return items.map(function (o) {

@@ -133,13 +133,13 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.deepEqual(p('#/g/g1/roster/p/p_abc'), { name: 'person', gid: 'g1', pid: 'p_abc' });
     assert.deepEqual(p('#/g/g1/roster/import/raid-helper'), { name: 'import', gid: 'g1', source: 'raid-helper' });
     assert.deepEqual(p('#/g/g1/roster/import/wcl'), { name: 'import', gid: 'g1', source: 'wcl' });
-    for (const h of ['#/g/g1/roster/import', '#/g/g1/roster/import/other', '#/g/g1/roster/p', '#/g/g1/roster/p/a/b', '#/g/g1/nights/p/p_1', '#/g/g1/roster/p/<x>']) {
+    for (const h of ['#/g/g1/roster/import', '#/g/g1/roster/import/other', '#/g/g1/roster/p', '#/g/g1/roster/p/a/b', '#/g/g1/raids/p/p_1', '#/g/g1/roster/p/<x>']) {
       assert.equal(p(h).name, 'notfound', h);
     }
     for (const r of [{ name: 'section', gid: 'g1', section: 'roster', team: 't_old' }, { name: 'person', gid: 'g1', pid: 'p_abc' }, { name: 'import', gid: 'g1', source: 'wcl' }]) {
       assert.deepEqual(p(G.router.format(r)), r);
     }
-    assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'nights', team: 't_old' }), '#/g/g1/nights', 'team only rides on the roster route');
+    assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'raids', team: 't_old' }), '#/g/g1/raids', 'team only rides on the roster route');
   });
 
   // ── sort and filter ────────────────────────────────────────────
@@ -391,7 +391,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(table.includes('aria-label="Edit Sølvhand"') && table.includes('aria-label="Make Glimmerkin the Main"') && table.includes('aria-label="Remove Glimmerkin"'));
     assert(!table.includes('aria-label="Remove Sølvhand"') && !table.includes('aria-label="Make Sølvhand the Main"'), 'the Main cannot be removed or made Main again');
     assert(!table.includes('<th scope="col">Team</th>'), 'no Team column with one team');
-    assert(out.includes('Attendance shows here after the first raid night.'));
+    assert(out.includes('Attendance shows here after the first raid.'));
   });
 
   await check('person record: a Team column appears with several teams', () => {
@@ -438,7 +438,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const mine = personPage(memberRec(true), guildData({ can: MEMBER_CAN, flags: {} }));
     assert(mine.includes('<span class="gs-you">You</span>'));
     assert(mine.includes('Officers keep your status and characters up to date. Ask one of them if something is wrong.'));
-    assert(mine.includes('Your attendance shows here after the first raid night.'));
+    assert(mine.includes('Your attendance shows here after the first raid.'));
     assert(mine.includes('Joined Sep 15, 2026'));
     for (const banned of ['<button', '<form', '<textarea', 'Officer notes', 'Delete person', 'data-action=']) assert(!mine.includes(banned), banned);
     const theirs = personPage(memberRec(false), guildData({ can: MEMBER_CAN, flags: {} }));
@@ -1178,7 +1178,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     for (const c of ['warrior', 'paladin', 'hunter', 'rogue', 'priest', 'shaman', 'mage', 'warlock', 'druid']) assert(css.includes('.gs-class-' + c), c);
     assert(/\.gs-class-shaman[^{]*\{ color: #3d8fe0; \}/.test(css));
     assert(css.includes('.gs-trial-ends') && css.includes('.gs-trial-ended') && css.includes('#4a4228') && css.includes('#3a2510'));
-    const phone = css.slice(css.lastIndexOf('@media (max-width: 600px)'));
+    const phone = css.split('@media (max-width: 600px)').filter(b => b.includes('.gs-seg {')).join('');
     assert(/\.gs-seg \{[^}]*min-height: 44px/.test(phone));
     assert(/\.gs-input-sm \{ height: 44px; \}/.test(phone));
     assert(/\.gs-roster-table, \.gs-char-table \{ display: none; \}/.test(phone));

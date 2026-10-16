@@ -1,31 +1,10 @@
-// ── PAGES: RAID NIGHTS, ATTENDANCE, LOOT (coming next) ──
-// These three share one empty-page pattern; the copy says in plain words what each will bring.
-// The Roster page is real as of Phase 2 (pages-roster.js), so it has no stub here.
+// ── PAGE: LOOT (coming next) ──
+// The empty-page pattern; the copy says in plain words what the page will bring.
+// Roster (Phase 2) and Raids / Attendance (Phase 3) are real pages with their own modules, so they have no stub here.
 (function (G) {
   'use strict';
 
   const PAGES = {
-    nights: {
-      title: 'Raid nights',
-      icon: 'nights',
-      heading: 'Raid nights come next',
-      lead: 'Soon this page shows each raid night:',
-      items: [
-        'The Raid-Helper sign-ups for the night',
-        'The Warcraft Logs report for the night',
-        'The raid plan for the night',
-      ],
-    },
-    attendance: {
-      title: 'Attendance',
-      icon: 'attendance',
-      heading: 'Attendance comes next',
-      lead: 'Soon this page tracks who showed up:',
-      items: [
-        'Attendance for each person',
-        'Attendance for each team',
-      ],
-    },
     loot: {
       title: 'Loot',
       icon: 'loot',
@@ -35,13 +14,13 @@
         'Gargul award history, imported after each raid',
         'ThatsMyBIS prio and wishlists for the guild',
         'softres.it reserves for pugs on the same night',
-        'Loot per player, per raid night, per item, and loot balance',
+        'Loot per player, per raid, per item, and loot balance',
       ],
     },
   };
 
   function emptyHtml(section) {
-    const key = Object.prototype.hasOwnProperty.call(PAGES, section) ? section : 'nights';
+    const key = Object.prototype.hasOwnProperty.call(PAGES, section) ? section : 'loot';
     const p = PAGES[key];
     return '<div class="gs-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">' + esc(p.title) + '</h1></div>' +
       '<section class="gs-empty-card" aria-labelledby="empty-heading-' + key + '"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon(p.icon, 28) + '</span>' +

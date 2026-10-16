@@ -2,6 +2,7 @@
 // scripts (minus /js/util.js, which each page already loads first); the page and guild suites check against this list.
 const GUILD_SCRIPTS = ['/js/util.js'].concat(['icons', 'api', 'router', 'people-sort', 'roster-sort', 'ui', 'shell',
   'pages-signin', 'pages-create', 'pages-settings-teams', 'pages-settings-people', 'pages-empty', 'pages-roster',
-  'pages-person', 'pages-import', 'pages-privacy', 'app'].map(function (n) { return '/js/guild/' + n + '.js'; }));
+  'pages-person', 'pages-import', 'plan-source', 'pages-attendance', 'pages-person-attendance', 'pages-raids', 'pages-raid',
+  'pages-review', 'pages-settings-attendance', 'pages-backfill', 'pages-privacy', 'app'].map(function (n) { return '/js/guild/' + n + '.js'; }));
 
 module.exports = { GUILD_SCRIPTS: GUILD_SCRIPTS };

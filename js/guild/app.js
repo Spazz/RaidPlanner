@@ -44,8 +44,17 @@
     person: null,      // { gid, pid, record } - GET /roster/p_... for the open person record
     linkable: {},      // gid -> [person] from GET /roster/linkable
     imports: {},       // 'rh' | 'wcl' -> the import page's state (see pages-import.js)
+    att: {},           // the attendance pages' state, one key per page module (see pages-attendance.js and its siblings)
   };
   const app = G.app = { state: state, started: false };
+  // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
+  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt' };
+  function attPageKey(r) {
+    if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : null);
+    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : null;
+    return Object.prototype.hasOwnProperty.call(ATT_ROUTE_PAGES, r.name) ? ATT_ROUTE_PAGES[r.name] : null;
+  }
+  app.attPageKey = attPageKey;
   let root = null;
   let routeToken = 0;
   let firstRender = true;
@@ -218,6 +227,7 @@
     state.people = {};
     state.chromeTried = {};
     state.lastGid = null;
+    state.att = {};
     state.failure = null;
     state.notice = '';
     setHint(false);
@@ -396,6 +406,8 @@
       if (r.name === 'section' && r.section === 'roster') return loadRoster(r, gd, token);
       if (r.name === 'person') return loadPerson(r, gd, token);
       if (r.name === 'import') return loadImport(r, gd, token);
+      const attKey = attPageKey(r);
+      if (attKey && r.name !== 'settings') return loadAttendance(attKey, r, gd);
       if (r.name !== 'settings') return null;
       const tabs = G.shell.settingsTabs(gd.me && gd.me.can);
       if (!tabs.length) { failWith('You cannot open this', 'Guild settings are for the people who run the guild.', false); return null; }
@@ -405,6 +417,7 @@
         window.history.replaceState(null, '', window.location.pathname + window.location.search + G.router.format({ name: 'settings', gid: r.gid, tab: tab }));
       }
       if (!tabs.some(function (t) { return t.tab === tab; })) { failWith('You cannot open this', 'Your role does not include this part of Guild settings.', false); return null; }
+      if (tab === 'attendance') return loadAttendance('settingsAtt', r, gd);
       if (tab !== 'people') return null;
       return G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) {
         state.people[r.gid] = res;
@@ -415,6 +428,14 @@
       handleLoadError(err);
       return null;
     });
+  }
+
+  // ── attendance routes ──
+  // The page module reads what it needs (it may reject with an ApiError, which the route's catch turns into a message).
+  function loadAttendance(key, r, gd) {
+    const page = G.pages[key];
+    if (!page || typeof page.load !== 'function') return null;
+    return Promise.resolve(page.load(r, gd)).then(function () { return null; });
   }
 
   // ── roster routes ──
@@ -454,8 +475,9 @@
     return G.api.get(rosterUrl(gid, '/' + encodeURIComponent(r.pid))).then(function (record) {
       if (token !== routeToken) return null;
       state.person = { gid: gid, pid: r.pid, record: record };
-      if (!(record.can && record.can.edit)) return null;
-      return G.pages.roster.loadLinkable(gid).then(function () { return null; });
+      const card = G.pages.personAtt.loadCard(gid, r.pid, gd);
+      if (!(record.can && record.can.edit)) return card.then(function () { return null; });
+      return Promise.all([card, G.pages.roster.loadLinkable(gid)]).then(function () { return null; });
     }).catch(function (err) {
       if (token !== routeToken) return null;
       state.person = null;
@@ -487,7 +509,12 @@
     let page = '';
     if (r.name === 'privacy') page = 'Privacy & my data';
     else if (r.name === 'new') page = 'Create a guild';
-    else if (r.name === 'section') page = { roster: 'Roster', nights: 'Raid nights', attendance: 'Attendance', loot: 'Loot' }[r.section] || '';
+    else if (r.name === 'section') page = { roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || '';
+    else if (r.name === 'raidnew') page = 'New raid';
+    else if (r.name === 'raid') page = 'Raid';
+    else if (r.name === 'review') page = 'Review queue';
+    else if (r.name === 'backfill') page = 'Backfill from Warcraft Logs';
+    else if (r.name === 'personatt') page = 'Attendance history';
     else if (r.name === 'person') page = 'Roster';
     else if (r.name === 'import') page = r.source === 'wcl' ? 'Import from Warcraft Logs' : 'Import from Raid-Helper';
     else if (r.name === 'settings') page = 'Guild settings';
@@ -521,10 +548,16 @@
         return P.privacy.privacyHtml({ me: state.me, message: state.privacyMessage });
       case 'section':
         if (!gd) return P.signin.loadingHtml();
-        return r.section === 'roster' ? rosterMain(gd) : P.empty.emptyHtml(r.section);
+        if (r.section === 'roster') return rosterMain(gd);
+        if (r.section === 'raids') return P.raids.main(r, gd, ctx);
+        if (r.section === 'attendance') return P.attendance.main(r, gd, ctx);
+        return P.empty.emptyHtml(r.section);
+      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt':
+        if (!gd) return P.signin.loadingHtml();
+        return P[attPageKey(r)].main(r, gd, ctx);
       case 'person': {
         if (!gd || !state.person || state.person.gid !== gd.guild.id || state.person.pid !== r.pid) return P.signin.loadingHtml();
-        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert });
+        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid) });
       }
       case 'import': {
         if (!gd) return P.signin.loadingHtml();
@@ -540,6 +573,7 @@
         if (!gd) return P.signin.loadingHtml();
         const tab = r.tab;
         if (tab === 'teams') return G.shell.settingsFrameHtml(ctx, 'teams', P.teams.teamsHtml({ guildData: gd, alert: state.pageAlert }));
+        if (tab === 'attendance') return P.settingsAtt.main(r, gd, ctx);
         if (tab === 'people') {
           if (!state.people[gd.guild.id]) return P.signin.loadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'people', P.people.peopleHtml({ guildData: gd, data: state.people[gd.guild.id], sort: state.peopleSort, query: state.peopleQuery, notice: state.notice, alert: state.pageAlert, now: Date.now() }));
@@ -549,6 +583,17 @@
       default:
         return P.signin.messageHtml('Page not found', 'That address does not match a Raidsmith guild page.', {});
     }
+  }
+
+  // The last breadcrumb of an attendance page that is named after its record (the raid's date, the person).
+  function leafNameFor(r) {
+    if (!r) return '';
+    if (r.name === 'raid') {
+      const x = state.att.raid;
+      return x && x.rid === r.rid && x.data && x.data.raid ? G.ui.weekdayDay(x.data.raid.raidOn) : '';
+    }
+    if (r.name === 'personatt') return G.pages.personAtt.nameFor(r);
+    return '';
   }
 
   // The shell context for the current section: who is looking, which guild's nav to draw, what is collapsed.
@@ -564,6 +609,7 @@
       route: r || null, guildData: gd, teamId: gd ? teamFor(gd) : null, collapsed: collapsedFor(collapseContext()),
       whatsNewUnseen: whatsNewUnseen(),
       personName: r && r.name === 'person' && state.person && state.person.pid === r.pid && state.person.record ? (G.pages.person.mainOf(state.person.record) || {}).name : '',
+      leafName: leafNameFor(r),
     };
   }
 
@@ -646,6 +692,7 @@
       G.ui.focusByKey(key, { preventScroll: true });
     }
     if (state.loaded) firstRender = false;
+    if (section === 'guild' && G.pages.raid && G.pages.raid.afterRender) G.pages.raid.afterRender();
   }
 
   // ── actions other modules call ──
@@ -660,10 +707,11 @@
   app.collapseContext = collapseContext;
   app.buildCtx = buildCtx;
 
-  // Every mutation reply that carries `rosterFlags` refreshes the Roster nav badge without a refetch.
+  // Every mutation reply that carries `rosterFlags` or `attendanceFlags` refreshes the nav badge without a refetch.
   app.applyFlags = function (gid, res) {
     const gd = state.guilds[gid];
     if (gd && res && res.rosterFlags && typeof res.rosterFlags === 'object') gd.rosterFlags = res.rosterFlags;
+    if (gd && res && res.attendanceFlags && typeof res.attendanceFlags === 'object') gd.attendanceFlags = res.attendanceFlags;
   };
 
   app.setPerson = function (gid, record) {
@@ -859,7 +907,7 @@
     if (state.section !== 'guild') { render(); return; }
     const r = G.router.parse(window.location.hash);
     if (r.name === 'section' && r.section === 'roster') { go(G.router.format({ name: 'section', gid: gid, section: 'roster' })); return; }
-    if (r.name === 'import') { routeAll({ force: true }); return; }
+    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill') { routeAll({ force: true }); return; }
     render();
   };
 
