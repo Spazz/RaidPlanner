@@ -140,3 +140,10 @@
 !guild-roster-worker-tests.js
 !guild-roster-ui-tests.js
 !tools/fake-sources.js
+# Phase 3 attendance (lane M): pure rules suites, fixture builder, anonymized goldens
+!guild-attendance-rules-tests.js
+!guild-attendance-schema-tests.js
+!tools/build-attendance-fixtures.js
+!tests/fixtures/
+!tests/fixtures/attendance/
+!tests/fixtures/attendance/*.json
