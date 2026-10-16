@@ -21,7 +21,14 @@
   }
 
   function canSeeSettings(can) {
-    return hasAction(can, 'guild.teams') || hasAction(can, 'guild.access') || hasAction(can, 'guild.roles');
+    return hasAction(can, 'guild.teams') || hasAction(can, 'guild.access') || hasAction(can, 'guild.roles') || hasAction(can, 'attendance.policy');
+  }
+
+  // Whether `can` reaches this team for an action ('guild' = every team, or a list of team ids).
+  function allowsTeam(can, action, teamId) {
+    if (!can || !Object.prototype.hasOwnProperty.call(can, action)) return false;
+    const v = can[action];
+    return v === 'guild' || (Array.isArray(v) && !!teamId && v.indexOf(teamId) >= 0);
   }
 
   // The Guild settings tabs this viewer may open (People and roles needs access or roles).
@@ -29,6 +36,7 @@
     const tabs = [];
     if (hasAction(can, 'guild.teams')) tabs.push({ tab: 'teams', label: 'Teams' });
     if (hasAction(can, 'guild.access') || hasAction(can, 'guild.roles')) tabs.push({ tab: 'people', label: 'People and roles' });
+    if (hasAction(can, 'attendance.policy')) tabs.push({ tab: 'attendance', label: 'Attendance' });
     return tabs;
   }
 
@@ -51,19 +59,31 @@
     return isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }
 
+  // Raids with open flags for the selected team, for people who can review them (a member's payload carries none).
+  function attendanceBadge(gd, teamId) {
+    if (!gd || !teamId || !hasAction(gd.me && gd.me.can, 'attendance.review')) return 0;
+    const n = gd.attendanceFlags && Object.prototype.hasOwnProperty.call(gd.attendanceFlags, teamId) ? Number(gd.attendanceFlags[teamId]) : 0;
+    return isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  function badgesOf(gd, teamId) { return { roster: rosterBadge(gd, teamId), attendance: attendanceBadge(gd, teamId) }; }
+
   function plannerItem() {
     return { key: 'planner', label: 'Planner', short: 'Planner', icon: 'planner', href: '/', action: 'open-planner' };
   }
 
-  // badge: the Roster nav item's count of trials to decide (0 = none). base: see guildHref.
-  function navItems(gid, can, badge, base) {
-    const n = badge > 0 ? badge : 0;
+  // badges: { roster, attendance } counts (a bare number is the Roster count; 0 = none). base: see guildHref.
+  function navItems(gid, can, badges, base) {
+    const bs = typeof badges === 'number' ? { roster: badges } : (badges || {});
+    const n = bs.roster > 0 ? bs.roster : 0;
+    const a = bs.attendance > 0 ? bs.attendance : 0;
     const b = base || '';
     const items = [
       { key: 'roster', label: 'Roster', short: 'Roster', icon: 'roster', href: guildHref(gid, 'roster', b), badge: n,
         ariaLabel: n ? 'Roster, ' + n + (n === 1 ? ' trial' : ' trials') + ' to decide' : 'Roster' },
-      { key: 'nights', label: 'Raid nights', short: 'Nights', icon: 'nights', href: guildHref(gid, 'nights', b) },
-      { key: 'attendance', label: 'Attendance', short: 'Attendance', icon: 'attendance', href: guildHref(gid, 'attendance', b) },
+      { key: 'raids', label: 'Raids', short: 'Raids', icon: 'raids', href: guildHref(gid, 'raids', b) },
+      { key: 'attendance', label: 'Attendance', short: 'Attendance', icon: 'attendance', href: guildHref(gid, 'attendance', b), badge: a,
+        ariaLabel: a ? 'Attendance, ' + a + (a === 1 ? ' raid' : ' raids') + ' to review' : 'Attendance' },
       { key: 'loot', label: 'Loot', short: 'Loot', icon: 'loot', href: guildHref(gid, 'loot', b) },
       plannerItem(),
     ];
@@ -89,18 +109,18 @@
 
   // The nav model, one function (tested as a matrix): the sidebar / drawer list for this viewer.
   // Signed out, or signed in with no guild (or its data not loaded yet): Planner, then the help group.
-  // With a guild: Roster, Raid nights, Attendance, Loot, Planner, [Guild settings], then the help group.
+  // With a guild: Roster, Raids, Attendance, Loot, Planner, [Guild settings], then the help group.
   function sidebarItems(ctx) {
     const gd = guildOf(ctx);
-    const own = gd ? navItems(gd.guild.id, gd.me && gd.me.can, rosterBadge(gd, ctx.teamId), baseOf(ctx)) : [plannerItem()];
+    const own = gd ? navItems(gd.guild.id, gd.me && gd.me.can, badgesOf(gd, ctx.teamId), baseOf(ctx)) : [plannerItem()];
     return own.concat(helpItems(ctx));
   }
 
-  // Phone tabs: guild sections of a viewer with a guild only. Roster, Nights, Attendance, Loot, Planner.
+  // Phone tabs: guild sections of a viewer with a guild only. Roster, Raids, Attendance, Loot, Planner.
   function tabItems(ctx) {
     const gd = guildOf(ctx);
     if (!gd || !signedIn(ctx) || sectionOf(ctx) !== 'guild') return [];
-    return navItems(gd.guild.id, null, rosterBadge(gd, ctx.teamId), baseOf(ctx));
+    return navItems(gd.guild.id, null, badgesOf(gd, ctx.teamId), baseOf(ctx));
   }
 
   // Whether the viewer has any guild tile to show (a guild, or the add button).
@@ -113,6 +133,8 @@
     if (!route) return false;
     if (item.key === 'settings') return route.name === 'settings';
     if (item.key === 'roster' && (route.name === 'person' || route.name === 'import')) return true;
+    if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid')) return true;
+    if (item.key === 'attendance' && (route.name === 'review' || route.name === 'backfill' || route.name === 'personatt')) return true;
     return route.name === 'section' && route.section === item.key;
   }
 
@@ -226,6 +248,14 @@
   }
 
   // ── breadcrumb ──
+  // The attendance pages that hang under Raids or Attendance: their parent section and the crumb text.
+  const ATT_LEAF = {
+    raidnew: { parent: 'raids', parentLabel: 'Raids', label: 'New raid' },
+    raid: { parent: 'raids', parentLabel: 'Raids', label: 'Raid' },
+    review: { parent: 'attendance', parentLabel: 'Attendance', label: 'Review queue' },
+    backfill: { parent: 'attendance', parentLabel: 'Attendance', label: 'Backfill from Warcraft Logs' },
+    personatt: { parent: 'attendance', parentLabel: 'Attendance', label: 'Person' },
+  };
   function breadcrumbItems(ctx) {
     const r = ctx.route || {};
     const gd = ctx.guildData;
@@ -236,7 +266,7 @@
     if (ctx.signedOut) return [{ label: 'Sign in' }];
     if (!gd || !gd.guild) return [{ label: 'Raidsmith' }];
     crumbs.push({ label: gd.guild.name, href: guildHref(gd.guild.id, 'roster', baseOf(ctx)) });
-    if (r.name === 'section' || r.name === 'person' || r.name === 'import') {
+    if (r.name === 'section' || r.name === 'person' || r.name === 'import' || ATT_LEAF[r.name]) {
       const active = activeTeams(gd.teams);
       // The team shows with several active teams, and always on an archived team's roster (?team= in the hash).
       const wanted = r.name === 'section' && r.section === 'roster' && r.team ? r.team : ctx.teamId;
@@ -244,7 +274,11 @@
       const team = active.length > 1 || (r.team && r.name === 'section') ? all.filter(function (t) { return t.id === wanted; })[0] : null;
       if (team) crumbs.push({ label: team.name });
       if (r.name === 'section') {
-        crumbs.push({ label: { roster: 'Roster', nights: 'Raid nights', attendance: 'Attendance', loot: 'Loot' }[r.section] || 'Roster' });
+        crumbs.push({ label: { roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || 'Roster' });
+      } else if (ATT_LEAF[r.name]) {
+        const leaf = ATT_LEAF[r.name];
+        crumbs.push({ label: leaf.parentLabel, href: guildHref(gd.guild.id, leaf.parent, baseOf(ctx)) });
+        crumbs.push({ label: ctx.leafName || leaf.label });
       } else {
         crumbs.push({ label: 'Roster', href: guildHref(gd.guild.id, 'roster', baseOf(ctx)) });
         crumbs.push({ label: r.name === 'person' ? (ctx.personName || 'Person') : (r.source === 'wcl' ? 'Import from Warcraft Logs' : 'Import from Raid-Helper') });
@@ -272,7 +306,12 @@
   function backLinkHtml(ctx) {
     const gd = guildOf(ctx);
     const r = ctx.route || {};
-    if (!gd || sectionOf(ctx) !== 'guild' || (r.name !== 'person' && r.name !== 'import' && r.name !== 'settings')) return '';
+    if (!gd || sectionOf(ctx) !== 'guild') return '';
+    const leaf = ATT_LEAF[r.name];
+    if (leaf) {
+      return '<a class="gs-back" href="' + esc(guildHref(gd.guild.id, leaf.parent, baseOf(ctx))) + '" aria-label="Back to ' + esc(leaf.parentLabel) + '">&lsaquo; ' + esc(leaf.parentLabel) + '</a>';
+    }
+    if (r.name !== 'person' && r.name !== 'import' && r.name !== 'settings') return '';
     return '<a class="gs-back" href="' + esc(guildHref(gd.guild.id, 'roster', baseOf(ctx))) + '" aria-label="Back to Roster">&lsaquo; Roster</a>';
   }
 
@@ -380,6 +419,8 @@
     tabItems: tabItems,
     hasTiles: hasTiles,
     rosterBadge: rosterBadge,
+    attendanceBadge: attendanceBadge,
+    allowsTeam: allowsTeam,
     breadcrumbItems: breadcrumbItems,
     settingsFrameHtml: settingsFrameHtml,
     accountMenuHtml: accountMenuHtml,

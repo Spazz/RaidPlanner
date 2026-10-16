@@ -137,7 +137,7 @@
     return '<form class="gs-dialog-form" data-submit="roles-form" data-uid="' + esc(entry.person.id) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Edit roles for ' + esc(name) + '</h2>' +
       '<fieldset class="gs-fieldset"' + (canEdit ? '' : ' disabled') + '><legend class="gs-legend">Roles</legend>' + checks + '</fieldset>' +
-      '<p class="gs-fine" id="dlg-help">Officers manage the whole guild. Team Leads manage their team\'s roster, raid nights and attendance, including officer notes.</p>' +
+      '<p class="gs-fine" id="dlg-help">Officers manage the whole guild. Team Leads manage their team\'s roster, raids and attendance, including officer notes.</p>' +
       gm +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions" id="dlg-roles-footer"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button>' +

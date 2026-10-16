@@ -46,7 +46,7 @@ check('index.html carries no inline <script> or <style>', () => {
 
 check('the page links /app.css and /guild.css and loads every js file as a plain classic script', () => {
   assert.deepEqual(app.stylesheets, ['/app.css', '/guild.css']);
-  assert.ok(app.scripts.length >= 6 && app.scripts.length <= 40, `${app.scripts.length} script files`);
+  assert.ok(app.scripts.length >= 6 && app.scripts.length <= 50, `${app.scripts.length} script files`);
   for (const src of app.scripts) assert.match(src, /^\/js\/(?:rules\/|guild\/)?[a-z0-9-]+\.js$/, `${src} must be root-absolute under /js/ (the rules data files under /js/rules/, the guild shell under /js/guild/)`);
   assert.equal(new Set(app.scripts).size, app.scripts.length, 'a script is loaded twice');
   for (const m of html.matchAll(/<script\b([^>]*)>/gi)) {

@@ -250,4 +250,27 @@ check('RosterEdit.UpdatePlayer leaves needsReview alone when nothing about the s
   assert.equal(player.needsReview, true, 'renaming alone should not silently clear an unresolved review flag');
 });
 
+// ── 10. readSharePlayers: names and groups out of a share string, nothing loaded (guild tracker plan source) ──
+check('Import.readSharePlayers returns names + group numbers (0 = bench) and leaves State untouched', () => {
+  resetState('tbc');
+  State.selectedRaid = 'bt';
+  State.groups = [
+    [{ uid: nextUid(), name: 'Tankard', class: 'WARRIOR', spec: 'Protection', role: 'tank', groupNumber: 1 }],
+    [{ uid: nextUid(), name: 'Healbot', class: 'PRIEST', spec: 'Holy', role: 'healer', groupNumber: 2 }],
+  ];
+  State.bench = [{ uid: nextUid(), name: 'Benchy', class: 'MAGE', spec: 'Fire', role: 'caster_dps', groupNumber: 0 }];
+  State.roster = State.groups.flat();
+  const str = Import.exportShareString();
+  const before = JSON.stringify([State.groups, State.bench]);
+  const res = Import.readSharePlayers(str);
+  assert.equal(res.success, true, res.error);
+  const byName = Object.fromEntries(res.players.map(p => [p.name, p.groupNumber]));
+  assert.deepEqual(byName, { Tankard: 1, Healbot: 2, Benchy: 0 });
+  assert.equal(JSON.stringify([State.groups, State.bench]), before, 'reading a share string never touches State');
+  assert.equal(Import.readSharePlayers('nonsense').success, false);
+  assert.equal(Import.readSharePlayers('PP:9:x').success, false);
+  assert.equal(Import.readSharePlayers('').success, false);
+  assert(!('data' in res), 'only names and groups come back');
+});
+
 console.log(`\nImport tests (Raid-Helper class-only sign-ups): ${passed} passed, 0 failed, ${passed} total`);

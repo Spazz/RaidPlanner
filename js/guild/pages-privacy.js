@@ -82,7 +82,7 @@
       section('privacy-guild-keeps', 'What your guild keeps', bullets([
         'Your roster entry: status, join and trial dates, characters, specs and team.',
         'Officer notes: only officers and team leads see them.',
-        'Your attendance for each raid night.',
+        'Your attendance for each raid.',
       ])) +
       section('privacy-comes-from', 'Where it comes from', bullets([
         'Raid-Helper sign-ups: Discord ID, nickname and sign-up status.',
@@ -90,9 +90,10 @@
         'Your officers\' own entries.',
       ]) + paragraphs([
         'Officers can import a Raid-Helper event. That stores each sign-up\'s Discord ID and nickname on the roster, linked to their roster entry, until an officer removes the person or the person signs in and deletes their data.',
+        'Raid-Helper sign-ups on a raid store each Discord ID and nickname until the person signs in and deletes their data. Warcraft Logs reports are read once; only who was present in each boss pull is kept, never the report.',
       ])) +
       section('privacy-who-sees', 'Who can see it', paragraphs([
-        'Members see the guild\'s roster and raid nights, and the attendance of the teams they have a character on. Officers and team leads also see officer notes. Nobody outside the guild sees any of it.',
+        'Members see the guild\'s roster and raids, and the attendance of the teams they have a character on. Officers and team leads also see officer notes. Nobody outside the guild sees any of it.',
       ])) +
       section('privacy-cookies', 'Cookies', paragraphs([
         'Two cookies: one keeps you signed in for 30 days, and a second lasts 10 minutes while you sign in. No ads, no tracking.',

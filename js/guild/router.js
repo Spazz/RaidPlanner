@@ -1,14 +1,15 @@
 // ── HASH ROUTES ─────────────────────────────────────────────────
 // Pure parse/format for the guild page. Routes:
 //   #/  #/signin[?error=..]  #/new  #/privacy
-//   #/g/:gid/{roster,nights,attendance,loot}  #/g/:gid/settings[/{teams,people}]
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,people,attendance}]
+//   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
 //   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl}
 //   (?team= only opens an archived team's roster; the shell's team picker decides otherwise)
 (function (G) {
   'use strict';
 
-  const SECTIONS = ['roster', 'nights', 'attendance', 'loot'];
-  const TABS = ['teams', 'people'];
+  const SECTIONS = ['roster', 'raids', 'attendance', 'loot'];
+  const TABS = ['teams', 'people', 'attendance'];
   const IMPORT_SOURCES = ['raid-helper', 'wcl'];
   const SIGNIN_ERRORS = ['denied', 'state', 'discord'];
   const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -58,6 +59,15 @@
       if (parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'person', gid: gid, pid: parts[4] };
       if (parts.length === 5 && parts[3] === 'import' && IMPORT_SOURCES.indexOf(parts[4]) >= 0) return { name: 'import', gid: gid, source: parts[4] };
     }
+    if (parts[2] === 'raids') {
+      if (parts.length === 4 && parts[3] === 'new') return { name: 'raidnew', gid: gid };
+      if (parts.length === 5 && parts[3] === 'r' && ID.test(parts[4])) return { name: 'raid', gid: gid, rid: parts[4] };
+    }
+    if (parts[2] === 'attendance') {
+      if (parts.length === 4 && parts[3] === 'review') return { name: 'review', gid: gid };
+      if (parts.length === 4 && parts[3] === 'backfill') return { name: 'backfill', gid: gid };
+      if (parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'personatt', gid: gid, pid: parts[4] };
+    }
     if (parts[2] === 'settings') {
       if (parts.length === 3) return { name: 'settings', gid: gid, tab: null };
       if (parts.length === 4 && TABS.indexOf(parts[3]) >= 0) return { name: 'settings', gid: gid, tab: parts[3] };
@@ -79,6 +89,11 @@
       }
       case 'person': return '#/g/' + encodeURIComponent(r.gid) + '/roster/p/' + encodeURIComponent(r.pid);
       case 'import': return '#/g/' + encodeURIComponent(r.gid) + '/roster/import/' + (IMPORT_SOURCES.indexOf(r.source) >= 0 ? r.source : 'raid-helper');
+      case 'raidnew': return '#/g/' + encodeURIComponent(r.gid) + '/raids/new';
+      case 'raid': return '#/g/' + encodeURIComponent(r.gid) + '/raids/r/' + encodeURIComponent(r.rid);
+      case 'review': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/review';
+      case 'backfill': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/backfill';
+      case 'personatt': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/p/' + encodeURIComponent(r.pid);
       case 'settings': return '#/g/' + encodeURIComponent(r.gid) + '/settings' + (TABS.indexOf(r.tab) >= 0 ? '/' + r.tab : '');
       default: return '#/';
     }

@@ -110,7 +110,7 @@ function assertEscaped(out, label) {
     assert.deepEqual(p('#/new'), { name: 'new' });
     assert.deepEqual(p('#/privacy'), { name: 'privacy' });
     assert.deepEqual(p('#/g/g_abc-1/roster'), { name: 'section', gid: 'g_abc-1', section: 'roster' });
-    assert.deepEqual(p('#/g/g1/nights'), { name: 'section', gid: 'g1', section: 'nights' });
+    assert.deepEqual(p('#/g/g1/raids'), { name: 'section', gid: 'g1', section: 'raids' });
     assert.deepEqual(p('#/g/g1/attendance'), { name: 'section', gid: 'g1', section: 'attendance' });
     assert.deepEqual(p('#/g/g1/loot'), { name: 'section', gid: 'g1', section: 'loot' });
     assert.deepEqual(p('#/g/g1'), { name: 'section', gid: 'g1', section: 'roster' });
@@ -123,7 +123,7 @@ function assertEscaped(out, label) {
     const routes = [
       { name: 'home' }, { name: 'signin', error: null }, { name: 'signin', error: 'state' }, { name: 'signin', error: 'discord' },
       { name: 'new' }, { name: 'privacy' },
-      ...['roster', 'nights', 'attendance', 'loot'].map(section => ({ name: 'section', gid: 'g_Ab-9', section })),
+      ...['roster', 'raids', 'attendance', 'loot'].map(section => ({ name: 'section', gid: 'g_Ab-9', section })),
       { name: 'settings', gid: 'g1', tab: null }, { name: 'settings', gid: 'g1', tab: 'teams' }, { name: 'settings', gid: 'g1', tab: 'people' },
     ];
     for (const r of routes) assert.deepEqual(plain(G.router.parse(G.router.format(r))), r, JSON.stringify(r));
@@ -338,7 +338,7 @@ function assertEscaped(out, label) {
   await check('visibility: the phone tabs never list settings; the drawer follows the same rule as the sidebar', () => {
     const out = shellHtml(ALL_CAN);
     const tabs = out.slice(out.indexOf('<nav class="gs-tabs"'), out.indexOf('</nav>', out.indexOf('<nav class="gs-tabs"')));
-    for (const label of ['Roster', 'Raid nights', 'Attendance', 'Loot', 'Planner']) assert(tabs.includes(`aria-label="${label}"`), label);
+    for (const label of ['Roster', 'Raids', 'Attendance', 'Loot', 'Planner']) assert(tabs.includes(`aria-label="${label}"`), label);
     assert(!tabs.includes('More'), 'the More tab is gone');
     assert(!tabs.includes('Guild settings'));
     const drawer = out.slice(out.indexOf('<dialog class="gs-drawer"'));
@@ -450,7 +450,7 @@ function assertEscaped(out, label) {
   await check('shell: breadcrumb names guild, team and page; settings breadcrumb names the tab', () => {
     const gd = guildData(ALL_CAN);
     const crumbs = (route, teamId) => plain(G.shell.breadcrumbItems({ route, guildData: gd, teamId }).map(c => c.label));
-    assert.deepEqual(crumbs({ name: 'section', gid: 'g1', section: 'nights' }, 't1'), ['Ravens', 'Team A', 'Raid nights']);
+    assert.deepEqual(crumbs({ name: 'section', gid: 'g1', section: 'raids' }, 't1'), ['Ravens', 'Team A', 'Raids']);
     assert.deepEqual(crumbs({ name: 'settings', gid: 'g1', tab: 'people' }, 't1'), ['Ravens', 'Guild settings', 'People and roles']);
     assert.deepEqual(crumbs({ name: 'new' }, null), ['Create a guild']);
     assert.deepEqual(crumbs({ name: 'privacy' }, null), ['Privacy & my data']);
@@ -550,7 +550,7 @@ function assertEscaped(out, label) {
   await check('privacy copy carries the spec fixes', () => {
     const out = G.pages.privacy.privacyHtml({ me: meData() }).replace(/&#39;/g, "'").replace(/&amp;/g, '&');
     for (const s of [
-      "Members see the guild's roster and raid nights, and the attendance of the teams they have a character on.",
+      "Members see the guild's roster and raids, and the attendance of the teams they have a character on.",
       'kept for 30 minutes after sign-in',
       'Two cookies: one keeps you signed in for 30 days, and a second lasts 10 minutes while you sign in.',
       'lifts any access block',
@@ -597,19 +597,12 @@ function assertEscaped(out, label) {
     assert(/<option value="Mars\/Base" selected>/.test(out));
   });
 
-  await check('coming-next pages: Raid nights, Attendance and Loot use one pattern with their own copy (the Roster stub is gone)', () => {
-    const seen = new Set();
-    for (const key of ['nights', 'attendance', 'loot']) {
-      const out = G.pages.empty.emptyHtml(key);
-      assert(out.includes('gs-empty-card') && out.includes('Nothing to set up yet.'), key);
-      seen.add(out.match(/<h2[^>]*>([^<]*)</)[1]);
-    }
-    assert.equal(seen.size, 3);
-    assert(!('roster' in G.pages.empty.PAGES), 'the roster stub is gone');
-    assert(G.pages.empty.emptyHtml('loot').includes('Loot tracking comes next') && G.pages.empty.emptyHtml('loot').includes('Gargul award history'));
-    assert(G.pages.empty.emptyHtml('nights').includes('Raid-Helper sign-ups') && G.pages.empty.emptyHtml('nights').includes('Warcraft Logs'));
-    assert(G.pages.empty.emptyHtml('attendance').includes('each person') && G.pages.empty.emptyHtml('attendance').includes('each team'));
-    assert(G.pages.empty.emptyHtml('bogus').includes('Raid nights'));
+  await check('coming-next page: Loot keeps the empty pattern; Raids and Attendance are real pages now (no stubs), the fallback is Loot', () => {
+    const out = G.pages.empty.emptyHtml('loot');
+    assert(out.includes('gs-empty-card') && out.includes('Nothing to set up yet.') && out.includes('Loot tracking comes next') && out.includes('Gargul award history'));
+    assert.deepEqual(Object.keys(G.pages.empty.PAGES), ['loot']);
+    assert(G.pages.empty.emptyHtml('bogus').includes('Loot tracking comes next'));
+    assert(!/raid night/i.test(out));
   });
 
   // ── Create guild v2 ────────────────────────────────────────────
@@ -803,10 +796,12 @@ function assertEscaped(out, label) {
 
   await check('guild.css: every var(--x) is defined in app.css, with no fallback tricks and no new custom properties', () => {
     const defined = new Set([...appCss.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
+    for (const m of css.matchAll(/(--gs-out-[a-z_]+(?:-ink)?)\s*:/g)) defined.add(m[1]); // the attendance outcome colours are guild.css's own
     const used = [...css.matchAll(/var\(\s*(--[\w-]+)\s*([,)])/g)];
     assert(used.length > 50, 'expected the stylesheet to use the tokens');
     assert.deepEqual([...new Set(used.filter(m => !defined.has(m[1])).map(m => m[1]))], [], 'undefined tokens');
-    assert.deepEqual([...css.matchAll(/(^|[;{\s])(--[\w-]+)\s*:/g)].map(m => m[2]), [], 'guild.css must not define custom properties');
+    // The only tokens guild.css owns are the attendance outcome colours (--gs-out-<outcome> and its -ink text colour).
+    assert.deepEqual([...css.matchAll(/(^|[;{\s])(--[\w-]+)\s*:/g)].map(m => m[2]).filter(n => !/^--gs-out-[a-z_]+(-ink)?$/.test(n)), [], 'guild.css must not define custom properties');
   });
 
   await check('guild.css: dark flat design, phone breakpoint at 600px, visible focus ring, 44px touch targets', () => {

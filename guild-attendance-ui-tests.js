@@ -1,0 +1,840 @@
+/**
+ * Raidsmith guild UI, Phase 3 (attendance) - tests for the Raids, Raid, Review, Attendance, Person attendance,
+ * Settings > Attendance and Backfill pages, the plan reader and the Raids rename.
+ * Run: node guild-attendance-ui-tests.js
+ *
+ * Same approach as guild-roster-ui-tests.js: tests/guild-scripts.js is loaded in a vm with no DOM; the render
+ * functions return HTML strings. Mock API data follows the Phase 3 spec's API contract (tasks/guild-phase3-spec.md).
+ */
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+let passed = 0, failed = 0;
+async function check(name, fn) {
+  try {
+    await fn();
+    passed++;
+    console.log(`PASS  ${name}`);
+  } catch (e) {
+    failed++;
+    console.log(`FAIL  ${name}\n      ${e.message}`);
+  }
+}
+
+const ROOT = __dirname;
+const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
+const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const css = read('guild.css');
+
+function loadGuild() {
+  const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, setTimeout };
+  vm.createContext(sandbox);
+  for (const src of GUILD_SCRIPTS) vm.runInContext(read(src.replace(/^\//, '')), sandbox, { filename: src });
+  return sandbox;
+}
+const ctx = loadGuild();
+ctx.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
+const G = ctx.Guild;
+const plain = v => JSON.parse(JSON.stringify(v));
+const stripTags = s => s.replace(/<[^>]*>/g, '');
+
+const HOSTILE = '<img src=x onerror=1>';
+const QUOTES = '"\' onfocus="alert(1)" x=\'';
+function assertEscaped(out, label) {
+  assert(!out.includes('<img src=x'), `${label}: raw tag leaked`);
+  assert(!out.includes(' onfocus="alert(1)"'), `${label}: attribute break-out leaked`);
+  assert(!/<script/i.test(out), `${label}: script tag leaked`);
+}
+function assertNoRawAttrs(out) {
+  for (const tag of out.match(/<[a-z][^<>]*>/gi) || []) {
+    const names = tag.replace(/="[^"]*"/g, '=""');
+    assert(!/\sstyle=/i.test(names), 'inline style attribute: ' + tag.slice(0, 80));
+    assert(!/\son[a-z]+=/i.test(names), 'inline event handler attribute: ' + tag.slice(0, 80));
+  }
+}
+
+// ── fixtures ─────────────────────────────────────────────────────
+const T1 = { id: 't1', name: 'Team KJ' };
+const T2 = { id: 't2', name: 'Weekend team' };
+const OFFICER_CAN = {
+  'roster.view': 'guild', 'raids.view': 'guild', 'raids.edit': 'guild', 'attendance.view': 'guild', 'attendance.review': 'guild',
+  'attendance.policy': 'guild', 'guild.teams': 'guild', 'roster.edit': 'guild',
+};
+const MEMBER_CAN = { 'roster.view': 'guild', 'raids.view': 'guild', 'attendance.view': ['t1'] };
+function gd(can, over) {
+  return Object.assign({
+    guild: { id: 'g1', name: 'Ravens', realm: 'Firemaw', region: 'US', timeZone: 'America/Chicago', gameVersion: 'tbc', realmKind: 'realm', realmSlug: null, createdAt: 1 },
+    teams: [T1, T2].map(t => ({ id: t.id, name: t.name, size: 25, archived: false, players: 3, leads: [] })),
+    me: { roles: [{ role: 'officer' }], can },
+    attendanceFlags: {},
+  }, over || {});
+}
+const ME = { user: { id: 'u1', username: 'me', displayName: 'Me' }, guilds: [{ id: 'g1', name: 'Ravens' }], create: { allowed: false } };
+
+function cell(raidId, date, weekStart, outcome, extra) {
+  return Object.assign({ raidId, date, weekStart, outcome, letter: G.pages.attendance.LETTERS[outcome], credit: outcome === 'missed' ? 0 : 1, via: null, pending: false, preStart: false }, extra || {});
+}
+function teamData(over) {
+  const raids = [
+    { weekStart: '2026-10-06', raids: [{ id: 'r3', raidOn: '2026-10-09', zone: 'BT' }, { id: 'r4', raidOn: '2026-10-10', zone: 'BT' }] },
+    { weekStart: '2026-09-29', raids: [{ id: 'r1', raidOn: '2026-10-02', zone: 'BT' }, { id: 'r2', raidOn: '2026-10-03', zone: 'BT' }] },
+  ];
+  const person = (id, name, cls, status, m, cells, extra) => Object.assign({ id, name, class: cls, status, isMe: false, pct: m, pctAll: m, signupRate: 100, streak: 0, streakFlag: false, lastAttended: '2026-10-10', counted: 4, pending: 0, cells }, extra || {});
+  return Object.assign({
+    team: 't1', today: '2026-10-12', window: 8, policy: { switchWeeks: [8, 12], streakFlagAt: 4, creditValues: [] },
+    weeks: raids, awaitingReview: 2, staleRaids: 0,
+    people: [
+      person('p_zz', 'Zzaps', 'DRUID', 'raider', 88.9, [cell('r1', '2026-10-02', '2026-09-29', 'present'), cell('r2', '2026-10-03', '2026-09-29', 'present'), cell('r3', '2026-10-09', '2026-10-06', 'late', { pending: true, credit: null, letter: 'L?' }), cell('r4', '2026-10-10', '2026-10-06', 'missed')], { streak: 4, streakFlag: true }),
+      person('p_aa', 'Aimersmay', 'HUNTER', 'raider', 100, [cell('r1', '2026-10-02', '2026-09-29', 'present'), cell('r2', '2026-10-03', '2026-09-29', 'bench'), cell('x9', '2026-10-07', '2026-10-06', 'fill_in', { via: 'Weekend team' })], { lastAttended: null, signupRate: null }),
+      person('p_old', 'Oldtimer', 'WARRIOR', 'inactive', 50, [cell('r1', '2026-10-02', '2026-09-29', 'present', { preStart: true, letter: '' })]),
+    ],
+  }, over || {});
+}
+
+// ── router and nav (the Raids rename) ────────────────────────────
+(async () => {
+  await check('router: every attendance route parses and formats back; bad ids and extra parts are notfound', () => {
+    const p = h => plain(G.router.parse(h));
+    assert.deepEqual(p('#/g/g1/raids'), { name: 'section', gid: 'g1', section: 'raids' });
+    assert.deepEqual(p('#/g/g1/raids/new'), { name: 'raidnew', gid: 'g1' });
+    assert.deepEqual(p('#/g/g1/raids/r/r_1'), { name: 'raid', gid: 'g1', rid: 'r_1' });
+    assert.deepEqual(p('#/g/g1/attendance'), { name: 'section', gid: 'g1', section: 'attendance' });
+    assert.deepEqual(p('#/g/g1/attendance/review'), { name: 'review', gid: 'g1' });
+    assert.deepEqual(p('#/g/g1/attendance/backfill'), { name: 'backfill', gid: 'g1' });
+    assert.deepEqual(p('#/g/g1/attendance/p/p_1'), { name: 'personatt', gid: 'g1', pid: 'p_1' });
+    assert.deepEqual(p('#/g/g1/settings/attendance'), { name: 'settings', gid: 'g1', tab: 'attendance' });
+    for (const bad of ['#/g/g1/nights', '#/g/g1/raids/r', '#/g/g1/raids/r/a/b', '#/g/g1/raids/r/<x>', '#/g/g1/raids/new/extra', '#/g/g1/attendance/review/x', '#/g/g1/attendance/p', '#/g/g1/attendance/p/a/b', '#/g/g1/attendance/other']) {
+      assert.equal(p(bad).name, 'notfound', bad);
+    }
+    for (const r of [{ name: 'raidnew', gid: 'g1' }, { name: 'raid', gid: 'g1', rid: 'r_1' }, { name: 'review', gid: 'g1' }, { name: 'backfill', gid: 'g1' }, { name: 'personatt', gid: 'g1', pid: 'p_1' }, { name: 'settings', gid: 'g1', tab: 'attendance' }]) {
+      assert.deepEqual(p(G.router.format(r)), r);
+    }
+  });
+
+  await check('rename: nav says Raids (short Raids), no "Raid nights" anywhere in the guild scripts and pages', () => {
+    const items = G.shell.navItems('g1', {}, 0, '');
+    const raids = items.find(i => i.key === 'raids');
+    assert.equal(raids.label, 'Raids');
+    assert.equal(raids.short, 'Raids');
+    assert.equal(raids.href, '#/g/g1/raids');
+    assert(!items.some(i => i.key === 'nights'));
+    for (const f of GUILD_SCRIPTS.filter(s => s.startsWith('/js/guild/'))) assert(!/raid nights?/i.test(read(f.slice(1))), f);
+  });
+
+  await check('nav: Attendance carries the open-flag count with an aria-label, on the sidebar and the phone tab; members never see it', () => {
+    const officer = gd(OFFICER_CAN, { attendanceFlags: { t1: 3, t2: 0 } });
+    const c = { section: 'guild', page: 'app', me: ME, route: { name: 'section', gid: 'g1', section: 'raids' }, guildData: officer, teamId: 't1' };
+    const s = G.shell.slots(c);
+    assert(s.sidebar.includes('aria-label="Attendance, 3 raids to review"') && s.sidebar.includes('<span class="gs-nav-badge" aria-hidden="true">3</span>'));
+    assert(s.tabs.includes('aria-label="Attendance, 3 raids to review"'));
+    const one = G.shell.slots(Object.assign({}, c, { guildData: gd(OFFICER_CAN, { attendanceFlags: { t1: 1 } }) }));
+    assert(one.sidebar.includes('Attendance, 1 raid to review'));
+    assert(!G.shell.slots(Object.assign({}, c, { teamId: 't2' })).sidebar.includes('to review'), 'selected team only');
+    const member = G.shell.slots(Object.assign({}, c, { guildData: gd(MEMBER_CAN, { attendanceFlags: { t1: 5 } }) }));
+    assert(!member.sidebar.includes('gs-nav-badge') && !member.tabs.includes('gs-nav-badge'));
+  });
+
+  await check('nav: the raid and attendance sub-pages keep their section active; breadcrumbs name the leaf', () => {
+    const c = r => ({ section: 'guild', page: 'app', me: ME, route: r, guildData: gd(OFFICER_CAN), teamId: 't1' });
+    const current = r => [...G.shell.slots(c(r)).sidebar.matchAll(/aria-label="([^"]*)" aria-current="page"/g)].map(m => m[1]);
+    assert.deepEqual(current({ name: 'raid', gid: 'g1', rid: 'r1' }), ['Raids']);
+    assert.deepEqual(current({ name: 'raidnew', gid: 'g1' }), ['Raids']);
+    assert.deepEqual(current({ name: 'review', gid: 'g1' }), ['Attendance']);
+    assert.deepEqual(current({ name: 'backfill', gid: 'g1' }), ['Attendance']);
+    assert.deepEqual(current({ name: 'personatt', gid: 'g1', pid: 'p_1' }), ['Attendance']);
+    const crumbs = (route, extra) => plain(G.shell.breadcrumbItems(Object.assign(c(route), extra || {})).map(x => x.label));
+    assert.deepEqual(crumbs({ name: 'raid', gid: 'g1', rid: 'r1' }, { leafName: 'Sat Oct 10' }), ['Ravens', 'Team KJ', 'Raids', 'Sat Oct 10']);
+    assert.deepEqual(crumbs({ name: 'raidnew', gid: 'g1' }), ['Ravens', 'Team KJ', 'Raids', 'New raid']);
+    assert.deepEqual(crumbs({ name: 'review', gid: 'g1' }), ['Ravens', 'Team KJ', 'Attendance', 'Review queue']);
+    assert.deepEqual(crumbs({ name: 'section', gid: 'g1', section: 'raids' }), ['Ravens', 'Team KJ', 'Raids']);
+    assert.deepEqual(crumbs({ name: 'settings', gid: 'g1', tab: 'attendance' }), ['Ravens', 'Guild settings', 'Attendance']);
+  });
+
+  await check('settings tabs: Attendance appears only with attendance.policy', () => {
+    assert(G.shell.settingsTabs(OFFICER_CAN).some(t => t.tab === 'attendance'));
+    assert(!G.shell.settingsTabs({ 'guild.teams': 'guild' }).some(t => t.tab === 'attendance'));
+    assert(G.shell.canSeeSettings({ 'attendance.policy': 'guild' }));
+    assert.equal(G.shell.allowsTeam({ 'attendance.view': ['t1'] }, 'attendance.view', 't1'), true);
+    assert.equal(G.shell.allowsTeam({ 'attendance.view': ['t1'] }, 'attendance.view', 't2'), false);
+    assert.equal(G.shell.allowsTeam({ 'attendance.view': 'guild' }, 'attendance.view', 't2'), true);
+  });
+
+  // ── plan reader ────────────────────────────────────────────────
+  const fakeDeps = (over) => Object.assign({
+    decode: code => (code === 'GOODCODE1' ? 'PP:2:x' : null),
+    readPlayers: s => (s === 'PP:2:x' ? { success: true, name: 'BT run', players: [{ name: 'Tank', groupNumber: 1 }, { name: 'Benchy', groupNumber: 0 }] } : { success: false, error: 'Share link is damaged' }),
+  }, over || {});
+
+  await check('plan source: long link, bare code and PP:2 string give names + groups only', async () => {
+    const want = { ok: true, label: 'BT run', players: [{ name: 'Tank', group: 1 }, { name: 'Benchy', group: 0 }] };
+    assert.deepEqual(plain(await G.planSource.read('https://raidsmith.example/#r=GOODCODE1', fakeDeps())), want);
+    assert.deepEqual(plain(await G.planSource.read('  GOODCODE1  ', fakeDeps())), want);
+    assert.deepEqual(plain(await G.planSource.read('PP:2:x', fakeDeps())), want);
+  });
+
+  await check('plan source: a short live link is fetched, and needs the live site when it cannot be', async () => {
+    const asked = [];
+    const deps = fakeDeps({ fetchShare: id => { asked.push(id); return Promise.resolve({ code: 'GOODCODE1' }); } });
+    const ok = await G.planSource.read('https://raidsmith.example/tbc/AbC1234', deps);
+    assert.equal(ok.ok, true);
+    assert.deepEqual(asked, ['AbC1234']);
+    const gone = await G.planSource.read('/tbc/AbC1234', fakeDeps({ fetchShare: () => Promise.resolve(null) }));
+    assert(!gone.ok && /expired/.test(gone.error));
+    const down = await G.planSource.read('/tbc/AbC1234', fakeDeps({ fetchShare: () => Promise.reject(new Error('x')) }));
+    assert(!down.ok && /live site/.test(down.error) && /#r=/.test(down.error));
+    const none = await G.planSource.read('/tbc/AbC1234', Object.assign(fakeDeps(), { fetchShare: null }));
+    assert(!none.ok && /live site/.test(none.error));
+  });
+
+  await check('plan source: damaged, empty, unknown and oversized plans come back as readable errors', async () => {
+    for (const text of ['', '   ', 'hello world', 'PP:2:bad', '#r=NOTACODE']) {
+      const r = await G.planSource.read(text, fakeDeps());
+      assert.equal(r.ok, false, text);
+      assert(typeof r.error === 'string' && r.error.length > 5, text);
+    }
+    const big = fakeDeps({ readPlayers: () => ({ success: true, name: 'Big', players: Array.from({ length: 81 }, (_, i) => ({ name: 'P' + i, groupNumber: 1 })) }) });
+    assert(/at most 80/.test((await G.planSource.read('PP:2:x', big)).error));
+    const none = fakeDeps({ readPlayers: () => ({ success: true, name: 'Empty', players: [] }) });
+    assert(/no players/.test((await G.planSource.read('PP:2:x', none)).error));
+    const noImport = await G.planSource.read('PP:2:x', { decode: null, readPlayers: null });
+    assert.equal(noImport.ok, false);
+  });
+
+  // ── outcome vocabulary, letters and colours ────────────────────
+  await check('letters: ten outcomes, one letter each; the legend names them all; cells carry letter + aria-label', () => {
+    const P = G.pages.attendance;
+    assert.deepEqual(plain(P.LETTERS), { present: 'P', bench: 'B', missed: 'M', missed_notice: 'N', late: 'L', left_early: 'E', late_left: 'LE', fill_in: 'F', tentative: 'T', no_signup: '-' });
+    assert.deepEqual(plain(P.OUTCOMES), Object.keys(P.LETTERS));
+    assert.equal(P.OUTCOME_LABELS.fill_in, 'Other team');
+    const legend = P.legendHtml();
+    for (const o of P.OUTCOMES) assert(legend.includes('>' + P.OUTCOME_LABELS[o] + '<'), o);
+    assert(legend.includes('Before joining'));
+    const c = P.cellHtml(cell('r1', '2026-10-10', '2026-10-06', 'missed_notice'), '2026-10-10');
+    assert(c.includes('>N<') && c.includes('aria-label="Sat Oct 10: Missed with notice"') && c.includes('role="img"') && c.includes('gs-out-missed_notice'));
+    const pend = P.cellHtml(cell('r1', '2026-10-10', '2026-10-06', 'late', { pending: true, letter: 'L?' }), '2026-10-10');
+    assert(pend.includes('>L?<') && !pend.includes('L??') && pend.includes('awaiting review'));
+    const pre = P.cellHtml(cell('r1', '2026-10-10', '2026-10-06', 'present', { preStart: true, letter: '' }), '2026-10-10');
+    assert(pre.includes('gs-cell-blank') && pre.includes('before joining') && !pre.includes('>P<'));
+    assert(P.cellHtml(null, '2026-10-10').includes('no record'));
+    assert(P.cellHtml(cell('x', '2026-10-07', '2026-10-06', 'fill_in', { via: 'Weekend team' })).includes('(Weekend team)'));
+  });
+
+  // The worker's table is the source of truth; it is not on this lane's branch, so the parity check runs after the merge.
+  await check('letters: parity with worker/attendance-policy.js LETTERS (skips when that module is not merged yet)', () => {
+    const file = path.join(ROOT, 'worker', 'attendance-policy.js');
+    if (!fs.existsSync(file)) { console.log('      (skipped: worker/attendance-policy.js is not on this branch yet; the check runs after the merge)'); return; }
+    const policy = require(file);
+    assert.deepEqual(plain(G.pages.attendance.LETTERS), plain(policy.LETTERS));
+    assert.deepEqual([...G.pages.attendance.OUTCOMES].sort(), [...policy.OUTCOME_IDS].sort());
+    for (const id of policy.OUTCOME_IDS) assert.equal(G.pages.attendance.OUTCOME_LABELS[id], policy.OUTCOMES[id].label, id + ' label');
+  });
+
+  function lin(v) { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  function lum(hex) { const n = parseInt(hex.slice(1), 16); return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255); }
+  function lstar(hex) { const y = lum(hex); return y > 0.008856 ? 116 * Math.cbrt(y) - 16 : 903.3 * y; }
+  function contrast(a, b) { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+
+  await check('outcome colours: every outcome differs in CIE L* by at least 8 and its letter passes 4.5:1', () => {
+    const token = name => { const m = new RegExp('--' + name + ':\\s*(#[0-9a-fA-F]{6})').exec(css); assert(m, 'missing --' + name); return m[1]; };
+    const rows = G.pages.attendance.OUTCOMES.map(o => ({ o, bg: token('gs-out-' + o), ink: token('gs-out-' + o + '-ink') }));
+    for (const r of rows) assert(contrast(r.bg, r.ink) >= 4.5, `${r.o} contrast ${contrast(r.bg, r.ink).toFixed(2)}`);
+    const sorted = rows.map(r => ({ o: r.o, l: lstar(r.bg) })).sort((a, b) => a.l - b.l);
+    for (let i = 1; i < sorted.length; i++) assert(sorted[i].l - sorted[i - 1].l >= 8, `${sorted[i - 1].o} vs ${sorted[i].o}: ${(sorted[i].l - sorted[i - 1].l).toFixed(1)}`);
+    for (const r of rows) assert(css.includes('.gs-out-' + r.o + ' {'), r.o + ' class');
+  });
+
+  // ── team attendance page ───────────────────────────────────────
+  const teamHtml = (data, over) => G.pages.attendance.attendanceHtml(Object.assign({ guildData: gd(OFFICER_CAN), teamId: 't1', data, view: { sort: G.pages.attendance.DEFAULT_SORT, includeInactive: false } }, over || {}));
+
+  await check('team page: header, window switch from the policy, legend, sortable columns with aria-sort, grid grouped by reset week newest right', () => {
+    const out = teamHtml(teamData());
+    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Attendance</h1>') && out.includes('Team KJ'));
+    assert(out.includes('aria-label="Time window"') && out.includes('>8 weeks<') && out.includes('>12 weeks<') && out.includes('>All time<'));
+    assert(/data-window="8"[^>]*aria-pressed="true"/.test(out) && /data-window="12"[^>]*aria-pressed="false"/.test(out));
+    assert(out.includes('aria-label="Legend"'));
+    assert(out.includes('aria-sort="ascending"') && (out.match(/aria-sort=/g) || []).length === 1, 'player A-Z by default');
+    for (const col of ['player', 'pct', 'all', 'signup', 'streak', 'last']) assert(out.includes('data-col="' + col + '"'), col);
+    const w1 = out.indexOf('Wk 9/29'), w2 = out.indexOf('Wk 10/6');
+    assert(w1 > 0 && w2 > w1, 'older week first, newest week right');
+    assert(/colspan="3" class="gs-att-week">Wk 10\/6/.test(out));
+    const names = [...out.matchAll(/<th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[1]);
+    assert.deepEqual(names, ['Aimersmay', 'Zzaps'], 'inactive hidden, A-Z');
+    assert(out.includes('href="#/g/g1/raids/r/r4"'), 'column header links to the raid');
+    assertNoRawAttrs(out);
+  });
+
+  await check('team page: percent shows one decimal rounded, a dash for null, streak flag text, pending marked, Other-team extra column', () => {
+    const out = teamHtml(teamData());
+    assert(out.includes('>89%<') || out.includes('89%'), 'Zzaps 88.9 -> 89%');
+    assert(out.includes('100%'));
+    const aimers = out.slice(out.indexOf('Aimersmay'));
+    assert(aimers.includes('>-</td>') || aimers.includes('-<'), 'null sign-up rate is a dash');
+    assert(out.includes('raids missed in a row, flagged') && out.includes('gs-streak is-flag'));
+    assert(out.includes('>L?<') && out.includes('1 raid awaiting review') === false && out.includes('awaiting review'));
+    assert(out.includes('>F<') && out.includes('Other-team attendance'), 'extra column for the Other-team cell');
+    assert(out.includes('2 raids awaiting review.'));
+  });
+
+  await check('team page: sorting by every metric, empty values last, ties by name; nextSort directions', () => {
+    const P = G.pages.attendance;
+    const d = teamData();
+    const order = (col, dir) => P.sortPeople(d.people, { column: col, dir }).map(p => p.name);
+    assert.deepEqual(order('player', 'asc'), ['Aimersmay', 'Oldtimer', 'Zzaps']);
+    assert.deepEqual(order('player', 'desc'), ['Zzaps', 'Oldtimer', 'Aimersmay']);
+    assert.deepEqual(order('pct', 'desc'), ['Aimersmay', 'Oldtimer', 'Zzaps'].sort((a, b) => ({ Aimersmay: 100, Oldtimer: 50, Zzaps: 88.9 }[b] - { Aimersmay: 100, Oldtimer: 50, Zzaps: 88.9 }[a])));
+    assert.deepEqual(order('signup', 'asc').slice(-1), ['Aimersmay'], 'null sign-up rate sorts last either way');
+    assert.deepEqual(order('signup', 'desc').slice(-1), ['Aimersmay']);
+    assert.deepEqual(order('streak', 'desc')[0], 'Zzaps');
+    assert.deepEqual(order('last', 'asc').slice(-1), ['Aimersmay'], 'never attended last');
+    assert.deepEqual(plain(P.nextSort({ column: 'player', dir: 'asc' }, 'player')), { column: 'player', dir: 'desc' });
+    assert.deepEqual(plain(P.nextSort({ column: 'player', dir: 'asc' }, 'pct')), { column: 'pct', dir: 'desc' });
+    assert.equal(P.ariaSort({ column: 'pct', dir: 'desc' }, 'pct'), 'descending');
+    const sortedHtml = teamHtml(teamData(), { view: { sort: { column: 'pct', dir: 'desc' }, includeInactive: false } });
+    assert(/aria-sort="descending"><button[^>]*data-col="pct"/.test(sortedHtml));
+  });
+
+  await check('team page: include-inactive shows the inactive person; member view has no review link; denied and empty states', () => {
+    const withInactive = teamHtml(teamData(), { view: { sort: G.pages.attendance.DEFAULT_SORT, includeInactive: true } });
+    assert(withInactive.includes('Oldtimer') && /id="att-inactive"[^>]*checked/.test(withInactive));
+    assert(teamHtml(teamData()).includes('Review queue (2)') && teamHtml(teamData()).includes('Backfill'));
+    const member = teamHtml(teamData(), { guildData: gd(MEMBER_CAN) });
+    assert(!member.includes('Review queue') && !member.includes('Backfill') && !member.includes('att-recalc'));
+    const denied = G.pages.attendance.attendanceHtml({ guildData: gd(MEMBER_CAN), teamId: 't2', denied: true });
+    assert(denied.includes('visible to the people who have a character') && !denied.includes('<table'));
+    const empty = teamHtml(teamData({ weeks: [], people: [], awaitingReview: 0 }));
+    assert(empty.includes('No attendance yet') && empty.includes('New raid') && empty.includes('Backfill from Warcraft Logs'));
+    const emptyMember = teamHtml(teamData({ weeks: [], people: [], awaitingReview: 0 }), { guildData: gd(MEMBER_CAN) });
+    assert(emptyMember.includes('Attendance shows here after the first raid is added.') && !emptyMember.includes('New raid'));
+  });
+
+  await check('team page: stale banner offers Recalculate to editors only; "How this is counted" lists the resolved policy', () => {
+    const stale = teamHtml(teamData({ staleRaids: 3 }));
+    assert(stale.includes('Rules or roster changed under 3 raids') && stale.includes('data-action="att-recalc"') && stale.includes('Recalculate 3 raids'));
+    assert(!teamHtml(teamData({ staleRaids: 3 }), { guildData: gd(MEMBER_CAN) }).includes('att-recalc'));
+    assert(teamHtml(teamData({ staleRaids: 3 }), { progress: { running: true, done: 1, total: 3 } }).includes('Recalculating 1 of 3'));
+    const policy = { defaults: {}, resolved: { t1: { expected: { mode: 'statuses', statuses: ['raider', 'trial'] }, tentative: 'asSignedUp', absence: 'excused', bench: 'excluded', fillIn: 'homeIfNoRaid', window: { defaultWeeks: 12 }, credit: { values: [{ id: 'full', label: 'Full', value: 1 }, { id: 'none', label: 'None', value: 0 }] }, streakFlagAt: 0 } } };
+    const out = teamHtml(teamData(), { policy });
+    assert(out.includes('How this is counted') && out.includes('Raider, Trial is expected') && out.includes('Tentative sign-up counts as signed up') && out.includes('left out of the percentage') && out.includes('last 12 full reset weeks') && out.includes('Full 100%, None 0%'));
+    assert(!out.includes('streak of'), 'streak line off at 0');
+  });
+
+  await check('team page: hostile names are escaped', () => {
+    const d = teamData();
+    d.people[0].name = HOSTILE + QUOTES;
+    assertEscaped(teamHtml(d), 'team page');
+    assertEscaped(teamHtml(d, { guildData: gd(OFFICER_CAN, { teams: [{ id: 't1', name: HOSTILE + QUOTES, size: 25, archived: false }, { id: 't2', name: 'B', size: 25, archived: false }] }) }), 'team name');
+  });
+
+  // ── raids list ─────────────────────────────────────────────────
+  const RAIDS = [
+    { id: 'r4', raidOn: '2026-10-10', zone: 'BT / Hyjal', bosses: { kills: 1, pulls: 17 }, sources: { event: true, reports: 2, plan: false }, counts: { present: 24, bench: 1, missed: 3 }, openFlags: 5, state: 'to_review', stale: false },
+    { id: 'r3', raidOn: '2026-10-09', zone: null, bosses: { kills: 0, pulls: 0 }, sources: { event: true, reports: 0, plan: true }, counts: null, openFlags: 0, state: 'awaiting_log', stale: false },
+    { id: 'r2', raidOn: '2026-10-03', zone: 'BT', bosses: { kills: 2, pulls: 4 }, sources: { event: false, reports: 1, plan: false }, counts: { present: 20, bench: 0, missed: 0 }, openFlags: 0, state: 'reviewed', stale: true },
+    { id: 'r1', raidOn: '2026-10-02', zone: 'BT', bosses: { kills: 0, pulls: 0 }, sources: { event: false, reports: 0, plan: false }, counts: { present: 5, bench: 0, missed: 1 }, openFlags: 1, state: 'manual', stale: false },
+  ];
+  const raidsHtml = (over) => G.pages.raids.raidsHtml(Object.assign({ guildData: gd(OFFICER_CAN), teamId: 't1', data: { team: 't1', today: '2026-10-12', raids: RAIDS } }, over || {}));
+
+  await check('raids list: columns, kills/wipes, source chips, counts, one status pill per state, stale pill', () => {
+    const out = raidsHtml();
+    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Raids</h1>'));
+    for (const col of ['Date', 'Zone', 'Bosses', 'Sources', 'Present / Bench / Missed', 'Status']) assert(out.includes('>' + col + '<'), col);
+    assert(out.includes('1 kill, 16 wipes') && out.includes('>Sign-ups<') && out.includes('Log x2') && out.includes('>Plan<'));
+    assert(out.includes('24 / 1 / 3') && out.includes('href="#/g/g1/raids/r/r4"') && out.includes('Sat Oct 10'));
+    assert(out.includes('5 to review') && out.includes('Awaiting log') && out.includes('>Reviewed<') && out.includes('No log - by hand') && out.includes('1 to review'));
+    assert(out.includes('>Recalculate<') && out.includes('Rules or roster changed under 1 raid'));
+    assert(out.includes('2 raids have open flags: Oct 10 and Oct 2.'), 'flag banner for reviewers');
+    assert(out.includes('New raid') && out.includes('Backfill from Warcraft Logs'));
+    assertNoRawAttrs(out);
+  });
+
+  await check('raids list: a member has no actions or counts column data; empty states for officers and members', () => {
+    const member = raidsHtml({ guildData: gd(MEMBER_CAN), data: { team: 't1', raids: RAIDS.map(r => Object.assign({}, r, { counts: null })) } });
+    assert(!member.includes('New raid') && !member.includes('open flags') && !member.includes('att-recalc'));
+    assert(member.includes('<td class="gs-nowrap">-</td>'));
+    assert(raidsHtml({ data: { team: 't1', raids: [] } }).includes('No raids yet') && raidsHtml({ data: { team: 't1', raids: [] } }).includes('New raid'));
+    assert(raidsHtml({ guildData: gd(MEMBER_CAN), data: { team: 't1', raids: [] } }).includes('Your officers haven\'t added a raid yet.'));
+    assert(raidsHtml({ more: true }).includes('data-action="raids-older"'));
+    const bad = RAIDS.map(r => Object.assign({}, r, { zone: HOSTILE + QUOTES }));
+    assertEscaped(raidsHtml({ data: { team: 't1', raids: bad } }), 'zone');
+  });
+
+  // ── new raid ───────────────────────────────────────────────────
+  await check('new raid: form fields, team select with several teams, manual mode hides the report rows; run lines list statuses and actions', () => {
+    const state = { gid: 'g1', form: { teamId: 't1', event: '', reports: ['', ''], plan: '', mode: 'log', date: '' }, run: null, error: '' };
+    const out = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN), state });
+    assert(out.includes('New raid') && out.includes('id="nr-team"') && out.includes('id="nr-event"') && out.includes('id="nr-plan"') && out.includes('nr-report-1') && out.includes('Remove report 2'));
+    assert(out.includes('No log - enter attendance by hand') && out.includes('type="date"'));
+    const manual = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN), state: Object.assign({}, state, { form: Object.assign({}, state.form, { mode: 'manual' }) }) });
+    assert(!manual.includes('nr-report-0') && manual.includes('tick who was present'));
+    const one = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN, { teams: [{ id: 't1', name: 'A', size: 25, archived: false }] }), state: Object.assign({}, state, { form: Object.assign({}, state.form, { reports: ['x'] }) }) });
+    assert(!one.includes('id="nr-team"') && !one.includes('Remove report'));
+    const run = { gid: 'g1', form: state.form, raidId: 'r9', running: false, lines: [
+      { id: 'raid', label: 'Create the raid', status: 'ok' },
+      { id: 'event', label: 'Raid-Helper event', status: 'error', message: 'Different Discord server.', accept: 'Import anyway' },
+      { id: 'report-0', label: 'Warcraft Logs report: ' + HOSTILE, status: 'error', message: 'A raid already exists.', openRaidId: 'r2' },
+      { id: 'report-1', label: 'Warcraft Logs report: b', status: 'error', message: 'No boss pulls.' },
+      { id: 'plan', label: 'Raidsmith plan', status: 'skipped' }] };
+    const lines = G.pages.raidNew.runLinesHtml('g1', run);
+    assert(lines.includes('aria-live="polite"') && lines.includes('Done') && lines.includes('Failed') && lines.includes('Waiting for the raid'));
+    assert(lines.includes('Import anyway') && lines.includes('Open that raid') && lines.includes('href="#/g/g1/raids/r/r2"') && lines.includes('data-line="report-1"') && lines.includes('>Retry<'));
+    assertEscaped(lines, 'run lines');
+    const done = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN), state: Object.assign({}, state, { run }) });
+    assert(done.includes('Open raid') && done.includes('href="#/g/g1/raids/r/r9"') && !done.includes('id="nr-event"'));
+  });
+
+  await check('new raid: lines follow the form (event with a date is its own step; blank report rows dropped; plan last)', () => {
+    const L = f => plain(G.pages.raidNew.buildLines(Object.assign({ teamId: 't1', event: '', reports: [''], plan: '', mode: 'log', date: '' }, f)).map(l => l.id));
+    assert.deepEqual(L({ event: '123456', date: '' }), ['raid']);
+    assert.deepEqual(L({ event: '123456', date: '2026-10-10' }), ['raid', 'event']);
+    assert.deepEqual(L({ date: '2026-10-10', reports: ['a', ' ', 'b'], plan: 'PP:2:x' }), ['raid', 'report-0', 'report-2', 'plan']);
+    assert.deepEqual(L({ date: '2026-10-10', reports: ['a'], mode: 'manual' }), ['raid']);
+  });
+
+  // ── raid detail ────────────────────────────────────────────────
+  function prow(id, name, extra) {
+    return Object.assign({ playerId: id, name, class: 'DRUID', signup: 'signed', plan: null, pulls: { present: 17, total: 17, missedFirst: false, missedLast: false }, outcome: 'present', credit: 1, pending: false, flags: [], decision: null }, extra || {});
+  }
+  function detail(over) {
+    return Object.assign({
+      raid: { id: 'r4', team: 't1', raidOn: '2026-10-10', startsAt: 1, zone: 'BT / Hyjal', state: 'to_review', openFlags: 3, stale: false, version: 1 },
+      can: { edit: true, review: true, seeAttendance: true, seeNicknames: true },
+      sources: { event: { id: '1483258698854826006', title: 'Sat BT', syncedAt: 1760000000000, signups: 28, otherServer: false }, reports: [{ code: 'WaghkY9zwDyvLX7m', flavour: 'fresh', startedAt: 1760000000000, pulls: 9 }, { code: 'h8VAwCFa79Jk1cvf', flavour: 'fresh', startedAt: 1760003000000, pulls: 8 }], plan: { label: 'BT run', players: 25 } },
+      pulls: [{ encounter: 'Illidan', kill: true, startedAt: 1 }, { encounter: 'Illidan', kill: false, startedAt: 2 }],
+      people: [
+        prow('p_b', 'Bravo'),
+        prow('p_k', 'Kanyan', { pulls: { present: 8, total: 17, missedFirst: true, missedLast: false }, outcome: 'late', credit: null, pending: true, flags: ['late'], signup: 'tentative' }),
+        prow('p_a', 'Alpha', { outcome: 'missed', credit: 0, flags: ['no_show'], pulls: { present: 0, total: 17, missedFirst: false, missedLast: false }, plan: 'G3', decision: { reason: 'Told the raid lead', by: 'Officer', at: 1 } }),
+        prow('p_t', 'Terani', { signup: 'bench', plan: 'bench', outcome: 'bench', credit: 1 }),
+      ],
+      unmatched: [{ key: 'taharah|dreamscythe', name: 'Taharah', realm: 'Dreamscythe', class: 'DRUID', pullsPresent: 17 }],
+      signups: [{ playerId: 'p_k', nickname: 'Kany', kind: 'tentative', source: 'raid_helper' }],
+    }, over || {});
+  }
+  const raidPage = (data, over) => G.pages.raid.raidHtml(Object.assign({ guildData: gd(OFFICER_CAN), data }, over || {}));
+
+  await check('raid detail: header, state pill, three source cards with actions, summary, flagged rows first under "Needs review"', () => {
+    const out = raidPage(detail());
+    assert(out.includes('Sat Oct 10 - BT / Hyjal') && out.includes('1 kill, 1 wipe') && out.includes('3 to review'));
+    assert(out.includes('Sat BT') && out.includes('28 sign-ups') && out.includes('data-op="event-refresh"') && out.includes('data-op="event-replace"') && out.includes('data-op="event-remove"'));
+    assert(out.includes('Warcraft Logs reports (2)') && out.includes('WaghkY9zwDyvLX7m') && out.includes('data-op="report-refresh"') && out.includes('data-code="h8VAwCFa79Jk1cvf"') && out.includes('data-op="report-add"'));
+    assert(out.includes('BT run') && out.includes('25 players') && out.includes('data-op="plan-replace"') && out.includes('data-op="plan-remove"'));
+    assert(/aria-pressed="true">Needs review/.test(out), 'defaults to Needs review when flags exist');
+    const body = out.slice(out.indexOf('<tbody>'), out.indexOf('</tbody>'));
+    const names = [...body.matchAll(/gs-char-link[^>]*>([^<]*)</g)].map(m => m[1]);
+    assert.deepEqual(names, ['Alpha', 'Kanyan'], 'only rows needing review, by name');
+    assert(body.includes('>Decide<') && body.includes('missed first') && body.includes('8/17') && body.includes('Kany') && body.includes('Pending'));
+    assert(body.includes('Decided: Told the raid lead (Officer)'));
+    assert(out.includes('Unmatched characters') && out.includes('data-action="unm-link"') && out.includes('data-action="unm-guest"'));
+    const all = raidPage(detail(), { filter: 'all' });
+    assert.deepEqual([...all.slice(all.indexOf('<tbody>')).matchAll(/gs-char-link[^>]*>([^<]*)</g)].map(m => m[1]).slice(0, 4), ['Alpha', 'Kanyan', 'Bravo', 'Terani']);
+    assert(all.includes('>Change<'));
+    assertNoRawAttrs(out);
+  });
+
+  await check('raid detail: a member sees header and sources only; no people table; no edit buttons', () => {
+    const member = detail({ people: null, unmatched: [], can: { edit: false, review: false, seeAttendance: false, seeNicknames: false } });
+    const out = raidPage(member, { guildData: gd(MEMBER_CAN) });
+    assert(out.includes('Attendance for this raid is visible to the team\'s members.') && !out.includes('<table'));
+    assert(!out.includes('data-op=') && !out.includes('Delete raid'));
+    const noDecide = raidPage(detail({ can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), { guildData: gd(MEMBER_CAN) });
+    assert(!noDecide.includes('>Decide<') && !noDecide.includes('data-op='));
+  });
+
+  await check('raid detail: awaiting log, manual state line with Edit / Remove, stale banner, No log action, escaping', () => {
+    const awaiting = raidPage(detail({ raid: Object.assign(detail().raid, { state: 'awaiting_log', openFlags: 0 }), people: [], sources: { event: null, reports: [], plan: null }, unmatched: [] }));
+    assert(awaiting.includes('Awaiting log') && awaiting.includes('data-op="manual-open"') && awaiting.includes('Mark as No log') && awaiting.includes('Link an event') && awaiting.includes('Add report') && awaiting.includes('Link a plan'));
+    const manual = raidPage(detail({ raid: Object.assign(detail().raid, { state: 'manual', openFlags: 0, manual: { reason: 'Nobody uploaded', by: 'Officer', at: 1760000000000 } }), sources: { event: null, reports: [], plan: null } }));
+    assert(manual.includes('No log - attendance entered by hand') && manual.includes('Nobody uploaded') && manual.includes('data-op="manual-edit"') && manual.includes('data-op="manual-remove"') && !manual.includes('data-op="report-add"') && !manual.includes('Mark as No log'));
+    assert(raidPage(detail({ raid: Object.assign(detail().raid, { stale: true }) })).includes('data-op="recompute"'));
+    const bad = detail({ people: [prow('p_x', HOSTILE + QUOTES, { flags: ['no_show'], decision: { reason: HOSTILE, by: QUOTES } })], unmatched: [{ key: 'k', name: HOSTILE, realm: QUOTES, class: 'MAGE', pullsPresent: 1 }] });
+    bad.raid.zone = HOSTILE;
+    assertEscaped(raidPage(bad), 'raid detail');
+  });
+
+  await check('decide: options per flag, credit only for late kinds, dialog fields, undo only when a decision exists', () => {
+    const R = G.pages.review;
+    assert.deepEqual(plain(R.decideOptions({ flags: ['no_show'] })), ['missed', 'missed_notice', 'bench', 'present']);
+    assert.deepEqual(plain(R.decideOptions({ flags: ['late'] })), ['late', 'present']);
+    assert.deepEqual(plain(R.decideOptions({ flags: ['left_early'] })), ['left_early', 'present']);
+    assert.deepEqual(plain(R.decideOptions({ flags: ['late', 'left_early'] })), ['late_left', 'present']);
+    assert.deepEqual(plain(R.decideOptions({ flags: [] })), ['present', 'bench', 'missed', 'missed_notice', 'late', 'left_early', 'late_left']);
+    assert(R.needsCredit('late') && R.needsCredit('left_early') && R.needsCredit('late_left') && !R.needsCredit('present') && !R.needsCredit('missed'));
+    const raid = detail().raid;
+    const late = R.decideDialogHtml({ raid, row: detail().people[1], credits: G.pages.attendance.DEFAULT_CREDITS, where: 'raid' });
+    assert(late.includes('Decide: Kanyan') && late.includes('In 8 of 17 pulls; missed the first pull') && late.includes('name="outcome"') && late.includes('name="creditId"') && late.includes('Half 50%'));
+    assert(!/id="dlg-credit-field" hidden/.test(late), 'credit shown when the first option is Late');
+    assert(late.includes('Reason (required)') && late.includes('data-flags="[&quot;late&quot;]"') && !late.includes('Undo the earlier decision'));
+    const noShow = R.decideDialogHtml({ raid, row: detail().people[2], credits: G.pages.attendance.DEFAULT_CREDITS, where: 'review' });
+    assert(/id="dlg-credit-field" hidden/.test(noShow) && noShow.includes('Signed up, not in the log'));
+    assert(noShow.includes('Undo the earlier decision') && noShow.includes('Told the raid lead') && noShow.includes('data-where="review"'));
+    assert.equal(R.creditValuesOf({ resolved: { t1: { credit: { values: [{ id: 'a', label: 'A', value: 1 }, { id: 'b', label: 'B', value: 0 }] } } } }, 't1')[1].id, 'b');
+    assert.equal(R.creditValuesOf(null, 't1').length, 3);
+  });
+
+  await check('manual dialog: candidates from sign-ups, plan, roster and other teams; ticks; reason; extras hidden until searched', () => {
+    const d = detail();
+    const rosters = [
+      { teamId: 't1', people: [{ id: 'p_r1', status: 'raider', main: { name: 'Rosterguy', class: 'MAGE' }, shown: {} }, { id: 'p_b', status: 'raider', main: { name: 'Bravo', class: 'DRUID' }, shown: {} }, { id: 'p_in', status: 'inactive', main: { name: 'Gone', class: 'MAGE' }, shown: {} }] },
+      { teamId: 't2', people: [{ id: 'p_o', status: 'raider', main: { name: 'Otherteam', class: 'ROGUE' }, shown: {} }] },
+    ];
+    const c = G.pages.raid.manualCandidates(d, rosters, { p_b: true });
+    const byId = Object.fromEntries(c.map(x => [x.id, x]));
+    assert(byId.p_k.tags.includes('Tentative') && byId.p_a.tags.includes('Plan: G3') && byId.p_t.tags.includes('Plan: bench'));
+    assert(byId.p_r1 && !byId.p_in, 'inactive home-team people are not listed');
+    assert.equal(byId.p_o.extra, true);
+    assert.equal(byId.p_b.ticked, true);
+    assert.equal(c[c.length - 1].id, 'p_o', 'other-team people last');
+    const out = G.pages.raid.manualDialogHtml({ data: d, candidates: c, reason: 'No uploader', edit: false });
+    assert(out.includes('Enter attendance by hand') && out.includes('value="No uploader"') && /value="p_b" checked/.test(out) && /class="gs-pick-item is-extra" data-name="otherteam" hidden/.test(out));
+    assert(out.includes('data-input="manual-search"') && out.includes('Reason there is no log (required)'));
+    assert.deepEqual(plain(G.pages.raid.manualTicked(detail({ raid: Object.assign(detail().raid, { state: 'manual', manual: { presentPlayerIds: ['p_b'] } }) }))), { p_b: true });
+    assertEscaped(G.pages.raid.manualDialogHtml({ data: d, candidates: [{ id: 'p_x', name: HOSTILE + QUOTES, class: 'MAGE', tags: [HOSTILE], extra: false, ticked: false }], reason: QUOTES }), 'manual dialog');
+  });
+
+  await check('source dialogs and confirms: labelled inputs, hidden confirm flag, escaped', () => {
+    const s = G.pages.raid.sourceDialogHtml({ submit: 'event-form', title: 'Link a Raid-Helper event', label: 'Event link or ID', button: 'Link event' });
+    assert(s.includes('data-submit="event-form"') && s.includes('for="dlg-source"') && s.includes('name="confirm"') && s.includes('id="dlg-submit"'));
+    const c = G.pages.raid.confirmDialogHtml({ op: 'report-remove', code: HOSTILE, title: 'T', text: 'x', button: 'Remove', danger: true });
+    assertEscaped(c, 'confirm');
+    assert(c.includes('gs-btn-danger'));
+  });
+
+  // ── review queue ───────────────────────────────────────────────
+  const REVIEW = {
+    team: 't1',
+    raids: [
+      { raid: { id: 'r4', raidOn: '2026-10-10', zone: 'BT' }, items: [prow('p_k', 'Kanyan', { flags: ['late'], pending: true, outcome: 'late' }), prow('p_a', 'Alpha', { flags: ['no_show'], outcome: 'missed' }), { key: 'taharah|dreamscythe', name: 'Taharah', realm: 'Dreamscythe', class: 'DRUID', pullsPresent: 17 }] },
+      { raid: { id: 'r3', raidOn: '2026-10-09', zone: 'BT' }, items: [{ key: 'swift|x', name: 'Swiftwolves', realm: 'X', class: 'SHAMAN', pullsPresent: 13 }] },
+    ],
+    stale: ['r2'],
+  };
+  const reviewHtml = (over) => G.pages.review.reviewHtml(Object.assign({ guildData: gd(OFFICER_CAN), teamId: 't1', data: REVIEW }, over || {}));
+
+  await check('review queue: grouped by raid, Decide for person flags, Link / Guest for unmatched, filter, stale banner', () => {
+    const out = reviewHtml();
+    assert(out.includes('Review queue') && out.includes('4 open flags on 2 raids') && out.includes('Sat Oct 10 - BT') && out.includes('Fri Oct 9 - BT'));
+    assert((out.match(/data-action="decide-open"/g) || []).length === 2 && (out.match(/data-action="unm-link"/g) || []).length === 2 && (out.match(/data-action="unm-guest"/g) || []).length === 2);
+    assert(out.includes('In 8 of 17 pulls') === false && out.includes('Signed up, not in the log'));
+    assert(out.includes('Druid on Dreamscythe, in 17 pulls, no linked person'));
+    assert(out.includes('href="#/g/g1/raids/r/r4"') && out.includes('Rules or roster changed under 1 raid'));
+    for (const f of ['All flags', 'No shows', 'Late or left early', 'Unmatched characters']) assert(out.includes('>' + f + '<'), f);
+    const noShows = reviewHtml({ filter: 'no_show' });
+    assert(noShows.includes('Alpha') && !noShows.includes('Kanyan') && !noShows.includes('Taharah') && !noShows.includes('Fri Oct 9'));
+    assert(reviewHtml({ filter: 'unmatched' }).includes('Swiftwolves'));
+    assertNoRawAttrs(out);
+  });
+
+  await check('review queue: empty state, note, and hostile names escaped', () => {
+    const empty = reviewHtml({ data: { team: 't1', raids: [], stale: [] }, note: 'Decision saved.' });
+    assert(empty.includes('Nothing to review') && empty.includes('Decision saved.') && !empty.includes('review-filter'));
+    const bad = JSON.parse(JSON.stringify(REVIEW));
+    bad.raids[0].items[0].name = HOSTILE + QUOTES;
+    bad.raids[0].items[2].name = HOSTILE; bad.raids[0].items[2].realm = QUOTES;
+    assertEscaped(reviewHtml({ data: bad }), 'review');
+    const link = G.pages.review.linkDialogHtml({ unm: bad.raids[0].items[2], raidId: 'r4', where: 'review', people: [{ id: 'p_1', status: 'raider', main: { name: HOSTILE, class: 'MAGE' }, shown: {} }] });
+    assertEscaped(link, 'link dialog');
+    assert(link.includes('data-submit="unm-link-form"') && link.includes('name="personId"') && link.includes('data-input="unm-search"'));
+    assertEscaped(G.pages.review.guestDialogHtml({ unm: bad.raids[0].items[2], raidId: 'r4', where: 'raid' }), 'guest dialog');
+  });
+
+  // ── handlers: decisions and the flow state (stubbed API) ───────
+  function stub(handler) {
+    const calls = [];
+    const real = ctx.Guild.api;
+    ctx.Guild.api = Object.assign({}, real, ['get', 'post', 'put', 'patch', 'del'].reduce((o, m) => { o[m] = (url, body) => { calls.push({ m, url, body: body && plain(body) }); return handler(m, url, body); }; return o; }, {}));
+    return { calls, restore() { ctx.Guild.api = real; } };
+  }
+  const el = (attrs, extra) => Object.assign({ getAttribute: k => (k in attrs ? attrs[k] : null), disabled: false }, extra || {});
+
+  await check('handlers: Decide validates the reason, posts the flags the officer saw and the credit id only for late kinds', async () => {
+    const S = ctx.Guild.app.state;
+    S.currentGid = 'g1'; S.guilds.g1 = gd(OFFICER_CAN);
+    const sent = [];
+    const s = stub((m, url, body) => { sent.push([m, url, plain(body)]); return Promise.resolve({ raid: { id: 'r4' }, sources: {}, attendanceFlags: { t1: 0 } }); });
+    let closed = 0;
+    const origRun = G.ui.runDialog;
+    G.ui.runDialog = (form, promise, ok) => promise.then(res => { closed++; ok(res); });
+    const errs = {};
+    const origSet = G.ui.setText;
+    G.ui.setText = (id, text) => { errs[id] = text; };
+    const form = (outcome, reason) => ({
+      getAttribute: k => ({ 'data-where': 'raid', 'data-rid': 'r4', 'data-pid': 'p_k', 'data-flags': '["late"]' })[k],
+      elements: { outcome: { value: outcome }, reason: { value: reason, focus() {} }, creditId: { value: 'half' } },
+    });
+    G.handlers.submit['decide-form'](form('late', 'ab'));
+    assert(/3 to 200/.test(errs['dlg-err-reason']) && !sent.length, 'short reason rejected');
+    G.handlers.submit['decide-form'](form('late', 'Told the raid lead'));
+    await new Promise(r => setImmediate(r));
+    assert.deepEqual(sent[0], ['post', '/api/guild/g1/raids/r4/decisions', { playerId: 'p_k', outcome: 'late', reason: 'Told the raid lead', expectedFlags: ['late'], creditId: 'half' }]);
+    G.handlers.submit['decide-form'](form('present', 'Was here'));
+    await new Promise(r => setImmediate(r));
+    assert(!('creditId' in sent[1][2]), 'no credit id for Present');
+    assert.equal(closed, 2);
+    assert.deepEqual(plain(S.guilds.g1.attendanceFlags), { t1: 0 }, 'the reply refreshes the badge');
+    G.ui.runDialog = origRun; G.ui.setText = origSet; s.restore();
+  });
+
+  // ── settings ───────────────────────────────────────────────────
+  const DEFAULTS = {
+    expected: { mode: 'signedUp', statuses: ['raider', 'trial'] }, noSignup: 'shown', tentative: 'asNoSignup', absence: 'missedWithNotice', bench: 'full', lateSignup: 'fullCreditNoFlag',
+    detection: { mode: 'pulls' }, credit: { values: [{ id: 'full', label: 'Full', value: 1 }, { id: 'half', label: 'Half', value: 0.5 }, { id: 'none', label: 'None', value: 0 }] },
+    fillIn: 'always', window: { defaultWeeks: 8, switchWeeks: [8, 12] }, effectiveStart: 'laterOfJoinAndFirst', streakFlagAt: 4, resetDay: null,
+  };
+  const POLICY_VIEW = { defaults: DEFAULTS, guild: { tentative: 'asSignedUp' }, teams: { t1: { window: { defaultWeeks: 12 } } }, resolved: {}, versions: { guild: 2, teams: { t1: 5 } }, resetDayDerived: 2, wcl: { guildId: 123, uploaders: { t1: ['Aimers', 'Bob'] } } };
+
+  await check('settings paths: get/set/del prune empty parents; guild scope saves only differences; consolidation keys decide staleness', () => {
+    const S = G.pages.settingsAtt;
+    const o = {};
+    S.setPath(o, 'window.defaultWeeks', 12);
+    S.setPath(o, 'tentative', 'asSignedUp');
+    assert.deepEqual(plain(o), { window: { defaultWeeks: 12 }, tentative: 'asSignedUp' });
+    assert.equal(S.getPath(o, 'window.defaultWeeks'), 12);
+    assert.equal(S.getPath(o, 'window.switchWeeks'), undefined);
+    S.delPath(o, 'window.defaultWeeks');
+    assert.deepEqual(plain(o), { tentative: 'asSignedUp' }, 'empty parent removed');
+    assert.deepEqual(plain(S.pruneToDifferences({ tentative: 'asNoSignup', bench: 'excluded', credit: { values: DEFAULTS.credit.values }, window: { defaultWeeks: 8, switchWeeks: [8, 12, 16] } }, DEFAULTS)), { bench: 'excluded', window: { switchWeeks: [8, 12, 16] } });
+    assert.equal(S.changesConsolidation({}, { tentative: 'asSignedUp' }), true);
+    assert.equal(S.changesConsolidation({}, { window: { defaultWeeks: 12 } }), false, 'windows are read live');
+    assert.equal(S.changesConsolidation({ streakFlagAt: 4 }, { streakFlagAt: 0, effectiveStart: 'joinDate' }), false);
+    assert.equal(S.changesConsolidation({ credit: { values: [1] } }, { credit: { values: [2] } }), true);
+    assert.equal(S.changesConsolidation({ fillIn: 'always' }, {}), true, 'removing an override can change results');
+    assert.equal(S.creditIdFor('Quarter!', ['full']), 'quarter');
+    assert.equal(S.creditIdFor('Full', ['full']), 'fulla');
+    assert.equal(S.creditIdFor('1', []), 'value');
+    assert.equal(S.versionFor(POLICY_VIEW, 'guild'), 2);
+    assert.equal(S.versionFor(POLICY_VIEW, 't2'), 0);
+  });
+
+  await check('settings form: guild scope shows effective values; team scope marks Inherited / Overridden with Reset; resetDay is guild-only', () => {
+    const S = G.pages.settingsAtt;
+    const guild = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: { view: POLICY_VIEW, scope: 'guild', draft: S.overrideFor(POLICY_VIEW, 'guild'), stale: 0 } });
+    for (const t of ['Who is expected', 'Sign-up handling', 'Late and left early', 'Credit values', 'Fill-ins', 'Windows', 'Reset day', 'Warcraft Logs']) assert(guild.includes('>' + t + '<'), t);
+    assert(guild.indexOf('Who is expected') < guild.indexOf('Sign-up handling') && guild.indexOf('Fill-ins') < guild.indexOf('Windows') && guild.indexOf('Windows') < guild.indexOf('Reset day'));
+    assert(/value="asSignedUp" checked/.test(guild) && /value="signedUp" checked/.test(guild));
+    assert(!guild.includes('Inherited') && !guild.includes('Overridden'));
+    assert(!guild.includes('id="pf-expected-statuses"'), 'statuses only in statuses mode');
+    assert(guild.includes('From the guild&#39;s region (Tuesday)') && guild.includes('Reset to defaults') && guild.includes('Look it up by name') === false);
+    assert(guild.includes('<option value="1">Monday</option>') && guild.includes('value="8, 12"'));
+    assert(guild.includes('id="pol-scope"') && guild.includes('>Guild default<') && guild.includes('>Team KJ override<'));
+    const team = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: { view: POLICY_VIEW, scope: 't1', draft: S.overrideFor(POLICY_VIEW, 't1'), stale: 0 } });
+    assert(/value="asSignedUp" checked/.test(team), 'inherits the guild override');
+    assert(team.includes('Overridden') && team.includes('data-path="window.defaultWeeks"') && team.includes('Inherited'));
+    assert((team.match(/data-action="pol-reset"/g) || []).length === 1, 'one overridden key, one Reset');
+    assert(team.includes('Set for the whole guild') && team.includes('Remove the team override'));
+    const weeks = team.match(/id="p-window-defaultWeeks"[^>]*value="(\d+)"/);
+    assert(weeks && weeks[1] === '12');
+    const statuses = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: { view: POLICY_VIEW, scope: 'guild', draft: { expected: { mode: 'statuses' } }, stale: 0 } });
+    assert(statuses.includes('id="pf-expected-statuses"') && /value="raider" checked/.test(statuses) && /value="reserve"(?! checked)/.test(statuses));
+    assertNoRawAttrs(guild);
+  });
+
+  await check('settings form: credit list limits (2..5), stale banner with count, WCL card, errors slots per path', () => {
+    const S = G.pages.settingsAtt;
+    const mk = (values, over) => S.settingsHtml({ guildData: gd(OFFICER_CAN), s: Object.assign({ view: POLICY_VIEW, scope: 'guild', draft: { credit: { values } }, stale: 0 }, over || {}) });
+    const two = mk(DEFAULTS.credit.values.slice(0, 2));
+    assert((two.match(/data-action="pol-credit-remove"[^>]*disabled/g) || []).length === 2, 'cannot go under 2');
+    const five = mk(Array.from({ length: 5 }, (_, i) => ({ id: 'v' + 'a'.repeat(i + 1), label: 'V' + i, value: 0.1 * i })));
+    assert(/data-action="pol-credit-add"[^>]*disabled/.test(five), 'cannot go over 5');
+    assert(five.includes('value="40"'), 'value shown as a percent');
+    assert(mk(DEFAULTS.credit.values, { stale: 4 }).includes('The rules changed under 4 raids') && mk(DEFAULTS.credit.values, { stale: 4 }).includes('data-action="pol-recalc"'));
+    assert(mk(DEFAULTS.credit.values).includes('id="perr-credit-values"') && mk(DEFAULTS.credit.values).includes('id="perr-expected-mode"'));
+    const wcl = S.wclCardHtml(gd(OFFICER_CAN), POLICY_VIEW, null);
+    assert(wcl.includes('id="wcl-guild"') && wcl.includes('value="123"') && wcl.includes('Aimers\nBob') && wcl.includes('Uploaders for Weekend team') && wcl.includes('data-submit="wcl-form"'));
+    assertEscaped(S.wclCardHtml(gd(OFFICER_CAN, { teams: [{ id: 't1', name: HOSTILE + QUOTES, size: 25, archived: false }] }), { wcl: { guildId: null, uploaders: { t1: [HOSTILE] } } }, null), 'wcl card');
+  });
+
+  await check('settings handlers: changes edit the draft override; Reset and Reset all clear it; credit edits keep ids', () => {
+    const S = ctx.Guild.app.state;
+    S.currentGid = 'g1'; S.guilds.g1 = gd(OFFICER_CAN);
+    const st = ctx.Guild.pages.attendance.attState();
+    st.settingsAtt = { gid: 'g1', view: POLICY_VIEW, scope: 't1', draft: {}, stale: 0 };
+    const H = G.handlers;
+    H.change['pol-change'](el({ 'data-path': 'fillIn', 'data-type': 'radio' }, { value: 'recordOnly' }));
+    H.change['pol-change'](el({ 'data-path': 'window.defaultWeeks', 'data-type': 'number' }, { value: '10' }));
+    H.change['pol-change'](el({ 'data-path': 'window.switchWeeks', 'data-type': 'list' }, { value: '10, 12' }));
+    H.change['pol-change'](el({ 'data-path': 'resetDay', 'data-type': 'resetday' }, { value: '' }));
+    const boxes = [{ checked: true, value: 'raider' }, { checked: false, value: 'trial' }, { checked: true, value: 'reserve' }];
+    H.change['pol-change'](el({ 'data-path': 'expected.statuses', 'data-type': 'checks' }, { closest: () => ({ querySelectorAll: () => boxes }) }));
+    assert.deepEqual(plain(st.settingsAtt.draft), { fillIn: 'recordOnly', window: { defaultWeeks: 10, switchWeeks: [10, 12] }, resetDay: null, expected: { statuses: ['raider', 'reserve'] } });
+    H.change['pol-credit'](el({ 'data-idx': '1', 'data-field': 'value' }, { value: '25' }));
+    H.change['pol-credit'](el({ 'data-idx': '1', 'data-field': 'label' }, { value: ' Quarter ' }));
+    assert.deepEqual(plain(st.settingsAtt.draft.credit.values[1]), { id: 'half', label: 'Quarter', value: 0.25 });
+    H.click['pol-credit-add']();
+    assert.equal(st.settingsAtt.draft.credit.values.length, 4);
+    assert.equal(new Set(st.settingsAtt.draft.credit.values.map(v => v.id)).size, 4);
+    H.click['pol-credit-remove'](el({ 'data-idx': '3' }));
+    H.click['pol-credit-move'](el({ 'data-idx': '0', 'data-dir': '1', 'data-key': 'pc-dn-0' }));
+    assert.deepEqual(st.settingsAtt.draft.credit.values.map(v => v.id), ['half', 'full', 'none']);
+    H.click['pol-reset'](el({ 'data-path': 'fillIn' }));
+    assert(!('fillIn' in st.settingsAtt.draft));
+    H.click['pol-reset-all']();
+    assert.deepEqual(plain(st.settingsAtt.draft), {});
+    H.change['pol-scope']({ value: 'guild' });
+    assert.deepEqual(plain(st.settingsAtt.draft), { tentative: 'asSignedUp' }, 'switching scope loads that level\'s override');
+  });
+
+  await check('settings save: sends the override + expectedVersion, guild scope prunes defaults, policy_invalid marks the field', async () => {
+    const st = ctx.Guild.pages.attendance.attState();
+    st.policy = {};
+    st.settingsAtt = { gid: 'g1', view: POLICY_VIEW, scope: 'guild', draft: { tentative: 'asNoSignup', bench: 'excluded' }, stale: 0 };
+    const s = stub((m, url) => (/raids/.test(url) ? Promise.resolve({ raids: [] }) : Promise.resolve(Object.assign({}, POLICY_VIEW, { guild: { bench: 'excluded' }, versions: { guild: 3, teams: {} } }))));
+    const form = { querySelectorAll: () => [], querySelector: () => null };
+    const origBusy = G.ui.setBusy; G.ui.setBusy = () => {};
+    G.handlers.submit['pol-form'](form);
+    await new Promise(r => setTimeout(r, 5));
+    assert.deepEqual(s.calls[0], { m: 'put', url: '/api/guild/g1/attendance/policy', body: { teamId: null, policy: { bench: 'excluded' }, expectedVersion: 2 } });
+    assert.equal(st.settingsAtt.view.versions.guild, 3);
+    assert.equal(st.polNotice, 'Attendance rules saved.');
+    assert(s.calls.some(c => /\/raids\?team=t1/.test(c.url)), 'a consolidation change looks for stale raids');
+    s.restore(); G.ui.setBusy = origBusy;
+  });
+
+  // ── backfill ───────────────────────────────────────────────────
+  const REPORTS = [
+    { code: 'AAAAAAAAAAAAAAAA', flavour: 'fresh', title: 'Sat BT part 1', zone: 'BT', owner: 'Aimers', startTime: 100, raidOn: '2026-10-10', alreadyAdded: null, matchesUploader: true },
+    { code: 'BBBBBBBBBBBBBBBB', flavour: 'fresh', title: 'Sat BT part 2', zone: 'BT', owner: 'Aimers', startTime: 200, raidOn: '2026-10-10', alreadyAdded: null, matchesUploader: true },
+    { code: 'CCCCCCCCCCCCCCCC', flavour: 'fresh', title: 'Fri BT', zone: 'BT', owner: 'Other', startTime: 50, raidOn: '2026-10-09', alreadyAdded: null, matchesUploader: false },
+    { code: 'DDDDDDDDDDDDDDDD', flavour: 'fresh', title: 'Old', zone: 'BT', owner: 'Aimers', startTime: 10, raidOn: '2026-10-02', alreadyAdded: 'r2', matchesUploader: true },
+  ];
+
+  await check('backfill: ticked reports group by date (oldest first, added ones ignored) and the preview counts them', () => {
+    const B = G.pages.backfill;
+    const groups = B.groupByDate(REPORTS, { AAAAAAAAAAAAAAAA: true, BBBBBBBBBBBBBBBB: true, CCCCCCCCCCCCCCCC: true, DDDDDDDDDDDDDDDD: true });
+    assert.deepEqual(plain(groups.map(g => [g.raidOn, g.reports.map(r => r.title)])), [['2026-10-09', ['Fri BT']], ['2026-10-10', ['Sat BT part 1', 'Sat BT part 2']]]);
+    assert.equal(B.previewText(groups), '2 raids from 3 reports');
+    assert.equal(B.previewText(B.groupByDate(REPORTS, { AAAAAAAAAAAAAAAA: true })), '1 raid from 1 report');
+    const lines = B.buildLines(groups, { '2026-10-10': ' 123456 ' });
+    assert.deepEqual(plain(lines.map(l => l.id)), ['raid:2026-10-09', 'report:2026-10-09:CCCCCCCCCCCCCCCC', 'raid:2026-10-10', 'report:2026-10-10:AAAAAAAAAAAAAAAA', 'report:2026-10-10:BBBBBBBBBBBBBBBB', 'event:2026-10-10']);
+    assert.equal(lines.at(-1).src, '123456');
+  });
+
+  await check('backfill page: rows, already-added disabled with link, uploader filter, preview with event inputs, create button', () => {
+    const bf = { gid: 'g1', teamId: 't1', reports: REPORTS, hasMore: true, page: 1, ticked: { AAAAAAAAAAAAAAAA: true, BBBBBBBBBBBBBBBB: true }, events: {}, filterUploaders: true, loaded: true, run: null, join: null };
+    const out = G.pages.backfill.backfillHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', bf, uploaders: ['Aimers'] });
+    assert(out.includes('Backfill from Warcraft Logs') && out.includes('Only reports uploaded by Aimers.') && /id="bf-filter"[^>]*checked/.test(out));
+    assert(!out.includes('Fri BT'), 'filtered by uploader');
+    assert(/id="bf-DDDDDDDDDDDDDDDD"[^>]*disabled/.test(out) && out.includes('href="#/g/g1/raids/r/r2"') && out.includes('Already added'));
+    assert(/id="bf-AAAAAAAAAAAAAAAA"[^>]*checked/.test(out));
+    assert(out.includes('1 raid from 2 reports') && out.includes('class="gs-input bf-event"') && out.includes('Create 1 raid') && out.includes('data-action="bf-more"'));
+    const unfiltered = G.pages.backfill.backfillHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', bf: Object.assign({}, bf, { filterUploaders: false }), uploaders: ['Aimers'] });
+    assert(unfiltered.includes('Fri BT'));
+    const none = G.pages.backfill.backfillHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', bf: Object.assign({}, bf, { filterUploaders: false }), uploaders: [] });
+    assert(!none.includes('id="bf-filter"'));
+    const bad = REPORTS.map(r => Object.assign({}, r, { title: HOSTILE + QUOTES, owner: QUOTES, zone: HOSTILE }));
+    assertEscaped(G.pages.backfill.backfillHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', bf: Object.assign({}, bf, { reports: bad, filterUploaders: false }), uploaders: [] }), 'backfill');
+    assert(G.pages.backfill.backfillHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', bf: Object.assign({}, bf, { reports: [], loaded: true }), uploaders: [] }).includes('No reports found'));
+  });
+
+  await check('backfill join step: people joined after their first attended raid, unticked by default, Select all, move button, review link', () => {
+    const B = G.pages.backfill;
+    const att = { people: [
+      { id: 'p_1', name: 'Early', class: 'MAGE', cells: [cell('r1', '2026-10-02', '2026-09-29', 'present'), cell('r2', '2026-10-03', '2026-09-29', 'present')] },
+      { id: 'p_2', name: 'Ontime', class: 'MAGE', cells: [cell('r2', '2026-10-03', '2026-09-29', 'present')] },
+      { id: 'p_3', name: 'Absent', class: 'MAGE', cells: [cell('r1', '2026-10-02', '2026-09-29', 'missed')] },
+      { id: 'p_4', name: 'Benchy', class: 'MAGE', cells: [cell('r1', '2026-10-02', '2026-09-29', 'bench')] },
+    ] };
+    const roster = { people: [{ id: 'p_1', joinedOn: '2026-10-08', version: 4 }, { id: 'p_2', joinedOn: '2026-10-03', version: 1 }, { id: 'p_3', joinedOn: '2026-10-08', version: 1 }, { id: 'p_4', joinedOn: '2026-10-05', version: 2 }] };
+    const c = B.joinCandidates(att, roster);
+    assert.deepEqual(plain(c).map(x => [x.id, x.first, x.joinedOn, x.version]), [['p_4', '2026-10-02', '2026-10-05', 2], ['p_1', '2026-10-02', '2026-10-08', 4]]);
+    const html = B.joinStepHtml('g1', { loading: false, people: c, ticked: {}, message: '' });
+    assert(!/type="checkbox"[^>]*checked/.test(html), 'unticked by default');
+    assert(html.includes('Select all') && /data-action="bf-join-move"[^>]*disabled/.test(html) && html.includes('Move join date back') && html.includes('href="#/g/g1/attendance/review"'));
+    const ticked = B.joinStepHtml('g1', { loading: false, people: c, ticked: { p_1: true }, message: 'Moved 1 join date back.' });
+    assert(/id="bj-p_1"[^>]*checked/.test(ticked) && !/data-action="bf-join-move"[^>]*disabled/.test(ticked) && ticked.includes('Moved 1 join date back.'));
+    assert(B.joinStepHtml('g1', { loading: false, people: [], ticked: {} }).includes('No one has a join date later'));
+  });
+
+  // ── person attendance ──────────────────────────────────────────
+  const PERSON = {
+    person: { id: 'p_aa', name: 'Aimersmay', status: 'raider', isMe: true },
+    window: 8,
+    teams: [{ team: { id: 't1', name: 'Team KJ' }, metrics: { pct: 100, pctAll: 96.4, signupRate: 90, cells: Array.from({ length: 10 }, (_, i) => cell('r' + i, '2026-10-' + String(i + 1).padStart(2, '0'), '2026-09-29', 'present')) },
+      cells: [
+        { raid: { id: 'r1', raidOn: '2026-10-10', zone: 'BT' }, outcome: 'present', credit: 1, via: null, reason: null },
+        { raid: { id: 'r0', raidOn: '2026-10-03', zone: 'BT' }, outcome: 'late', credit: null, via: null, reason: 'Told the raid lead' },
+        { raid: { id: 'r9', raidOn: '2026-10-07', zone: 'Hyjal' }, outcome: 'fill_in', credit: 1, via: 'Weekend team', reason: null },
+      ] }],
+  };
+
+  await check('person attendance: card shows window and all-time %, the last 8 cells and a Full history link; placeholders and denied states', () => {
+    const P = G.pages.personAtt;
+    const out = P.cardHtml({ gid: 'g1', pid: 'p_aa', record: { person: { isMe: true } }, state: { data: PERSON } });
+    assert(out.includes('8-week attendance') && out.includes('100%') && out.includes('All-time attendance') && out.includes('96%') && out.includes('Sign-up rate'));
+    assert((out.match(/class="gs-cell gs-out-present"/g) || []).length === 8, 'last 8 cells');
+    assert(out.includes('href="#/g/g1/attendance/p/p_aa"') && out.includes('Full history'));
+    assert(P.cardHtml({ gid: 'g1', pid: 'p', record: { person: { isMe: true } }, state: null }).includes('Your attendance shows here after the first raid.'));
+    assert(P.cardHtml({ gid: 'g1', pid: 'p', record: { person: {} }, state: null }).includes('Attendance shows here after the first raid.'));
+    assert(P.cardHtml({ gid: 'g1', pid: 'p', record: { person: {} }, state: { denied: true } }).includes('visible to the members of their team'));
+    assert(P.cardHtml({ gid: 'g1', pid: 'p', record: { person: { isMe: true } }, state: { data: { teams: [] } } }).includes('after the first raid'));
+  });
+
+  await check('person attendance: the person page renders the real card in place of the placeholder', () => {
+    const rec = { person: { id: 'p_aa', status: 'raider', isMe: true, joinedOn: null, discord: { signIn: 'not_yet' }, version: 1 }, characters: [{ id: 'c1', name: 'Aimersmay', class: 'HUNTER', isMain: true, role: 'dps', team: { id: 't1', name: 'Team KJ' } }], can: {}, notes: null };
+    const out = G.pages.person.personHtml({ guildData: gd(MEMBER_CAN), record: rec, linkable: null, attendance: { data: PERSON } });
+    assert(out.includes('8-week attendance') && out.includes('Full history'));
+    assert(G.pages.person.personHtml({ guildData: gd(MEMBER_CAN), record: rec, linkable: null }).includes('Your attendance shows here after the first raid.'));
+  });
+
+  await check('person history page: per-team block, newest first, via, officer reason column for reviewers only, escaped', () => {
+    const P = G.pages.personAtt;
+    const out = P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_aa', data: PERSON });
+    assert(out.includes('Aimersmay') && out.includes('Open in Roster') && out.includes('Attendance history') && out.includes('Team KJ'));
+    const rows = [...out.matchAll(/<th scope="row" class="gs-cell-strong gs-nowrap"><a[^>]*>([^<]*)</g)].map(m => m[1]);
+    assert.deepEqual(rows, ['Sat Oct 10', 'Wed Oct 7', 'Sat Oct 3']);
+    assert(out.includes('via Weekend team') && out.includes('Officer reason') && out.includes('Told the raid lead') && out.includes('Pending'));
+    assert(out.includes('>Other team<') && out.includes('href="#/g/g1/raids/r/r1"'));
+    const member = P.personAttHtml({ guildData: gd(MEMBER_CAN), pid: 'p_aa', data: PERSON });
+    assert(!member.includes('Officer reason') && !member.includes('Told the raid lead'));
+    assert(P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p', data: { person: { name: 'X' }, teams: [] } }).includes('Nothing to show'));
+    const bad = JSON.parse(JSON.stringify(PERSON));
+    bad.person.name = HOSTILE + QUOTES;
+    bad.teams[0].team.name = HOSTILE;
+    bad.teams[0].cells[1].reason = HOSTILE + QUOTES;
+    bad.teams[0].cells[2].via = HOSTILE;
+    assertEscaped(P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_aa', data: bad }), 'person history');
+    assertNoRawAttrs(out);
+  });
+
+  // ── guild payload, copy, safety ────────────────────────────────
+  await check('privacy page: the new Raid-Helper / Warcraft Logs sentences, and "raids" in place of "raid nights"', () => {
+    const out = G.pages.privacy.privacyHtml({ me: null });
+    assert(out.includes('Raid-Helper sign-ups on a raid store each Discord ID and nickname until the person signs in and deletes their data. Warcraft Logs reports are read once; only who was present in each boss pull is kept, never the report.'));
+    assert(out.includes('roster and raids, and the attendance') && !/raid night/i.test(out));
+  });
+
+  await check('applyFlags: attendanceFlags in a reply refresh the badge source without touching rosterFlags', () => {
+    const S = ctx.Guild.app.state;
+    S.guilds.g1 = gd(OFFICER_CAN, { rosterFlags: { t1: 1 }, attendanceFlags: { t1: 5 } });
+    ctx.Guild.app.applyFlags('g1', { attendanceFlags: { t1: 2 } });
+    assert.deepEqual(plain(S.guilds.g1.attendanceFlags), { t1: 2 });
+    assert.deepEqual(plain(S.guilds.g1.rosterFlags), { t1: 1 });
+  });
+
+  await check('safety: the new scripts have no inline styles or handlers, no non-ASCII characters, and the new script tags are on all three pages', () => {
+    const files = ['plan-source', 'pages-attendance', 'pages-person-attendance', 'pages-raids', 'pages-raid', 'pages-review', 'pages-settings-attendance', 'pages-backfill'].map(n => 'js/guild/' + n + '.js');
+    for (const f of files) {
+      read(f).split('\n').forEach((line, i) => {
+        assert(!/[\s`'"]style\s*=\s*(?:["'`\\]|\$\{)/.test(line), `${f}:${i + 1} inline style`);
+        assert(!/[\s`'"]on[a-z]{3,}\s*=\s*(?:["'`\\]|\$\{)/i.test(line), `${f}:${i + 1} inline handler`);
+        assert(!/setAttribute\(\s*['"`](?:style|on[a-z]+)['"`]/i.test(line), `${f}:${i + 1} setAttribute`);
+        if (!/^\s*\/\//.test(line)) assert(!/[^\x00-\x7f]/.test(line), `${f}:${i + 1} non-ASCII`);
+      });
+    }
+    const guildCss = css.slice(css.lastIndexOf('/*', css.indexOf('Attendance (Phase 3)'))).replace(/\/\*[\s\S]*?\*\//g, '');
+    assert(!/[^\x00-\x7f]/.test(guildCss));
+    for (const page of ['index.html', 'faq.html', 'whats-new.html']) {
+      const html = read(page);
+      for (const f of files) assert(html.includes('<script src="/' + f + '"></script>'), `${page} ${f}`);
+    }
+  });
+
+  await check('import: Import.readSharePlayers exists as the one public wrapper over _parseShareString', () => {
+    const src = read('js/import.js');
+    assert(/readSharePlayers\(str\)/.test(src) && /_parseShareString\(parts\)/.test(src));
+  });
+
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exit(failed ? 1 : 0);
+})();

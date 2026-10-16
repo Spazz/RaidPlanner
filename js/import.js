@@ -703,6 +703,18 @@ const Import = {
     return { success:true, name:parsed.name, playerCount:parsed.playerCount };
   },
 
+  // The players of a v2 share string, for the guild tracker's plan source: names and group numbers only
+  // (0 = bench). Pure, like _parseShareString: nothing is loaded into State.
+  readSharePlayers(str) {
+    const parts = String(str || '').trim().split(':');
+    if (parts[0] !== 'PP') return { success:false, error:'Not a Raidsmith share link' };
+    if (parts[1] !== '2') return { success:false, error:'Unknown share version: ' + parts[1] };
+    const parsed = this._parseShareString(parts);
+    if (!parsed.success) return parsed;
+    const all = [...parsed.data.players, ...parsed.data.bench];
+    return { success:true, name:parsed.name, players:all.map(p => ({ name:p.name, groupNumber:p.groupNumber })) };
+  },
+
   _importShareString(parts) {
     const parsed = this._parseShareString(parts);
     if (!parsed.success) return parsed;
