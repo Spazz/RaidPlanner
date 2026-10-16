@@ -300,13 +300,14 @@ check('login: redirects to the canonical origin first, then to Discord with prom
 
 check('GET /guild redirects to the app shell at /#/ (fixed target, no query echoed, no cookies)', async () => {
   const w = await makeWorld();
-  for (const target of ['/guild', '/guild?next=https://evil.example/']) {
+  for (const target of ['/guild', '/guild/', '/guild?next=https://evil.example/']) {
     const response = await w.req('GET', target);
     assert.equal(response.status, 302);
     assert.equal(response.headers.get('Location'), '/#/');
     assert.equal(response.headers.getSetCookie().length, 0);
   }
   assert.equal((await w.req('POST', '/guild')).status, 405, 'GET only');
+  assert.equal((await w.req('POST', '/guild/')).status, 405, 'GET only (trailing slash too)');
 });
 
 check('callback: a missing or mismatched state is rejected and the state cookie is cleared', async () => {

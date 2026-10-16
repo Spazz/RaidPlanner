@@ -19,6 +19,7 @@ const COMMIT_MAX_BODY = 64 * 1024;
 
 const ROUTES = [
   { method: 'GET', path: '/guild', auth: false, handler: guildPageRedirect },
+  { method: 'GET', path: '/guild/', auth: false, handler: guildPageRedirect },
   { method: 'GET', path: '/auth/login', auth: false, handler: login },
   { method: 'GET', path: '/auth/callback', auth: false, handler: callback },
   { method: 'GET', path: '/auth/me', auth: true, handler: me },
