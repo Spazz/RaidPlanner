@@ -5,10 +5,11 @@ import { isId, newId } from '../ids.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
 import {
-  CLASS_IDS, CREATE_STATUSES, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
+  CLASS_IDS, CREATE_STATUSES, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
 } from '../roster-data.js';
+import { findRealm } from '../realms.js';
 import {
-  guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply,
+  canSeeAvatars, guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply,
 } from '../roster-view.js';
 
 const MAX_NOTES = 4000;
@@ -92,6 +93,26 @@ export function realmColumns(guild, realmText = null) {
   return { realm, key: realmKey(realm) };
 }
 
+// The realm columns for a realm typed in a request, or null when it is not acceptable. A ruleset guild has no
+// realm (NULL, key ''). A realm guild accepts its own realm (any spelling with the same key) or a realm of its
+// game version and region (case-insensitive), and stores the canonical name. Control and bidi characters are
+// stripped first; a realm whose key is empty is refused.
+export function resolveRealm(guild, rawRealm) {
+  if (guild.realm_kind === 'ruleset') return { realm: null, key: '' };
+  if (rawRealm === undefined || rawRealm === null) return { realm: guild.realm, key: realmKey(guild.realm) };
+  if (typeof rawRealm !== 'string') return null;
+  const text = rawRealm.replace(SINGLE_LINE_STRIP, '').trim();
+  if (!text || Array.from(text).length > 40) return null;
+  const key = realmKey(text);
+  if (!key) return null;
+  const guildKey = realmKey(guild.realm);
+  if (guildKey && key === guildKey) return { realm: guild.realm, key: guildKey };
+  const listed = findRealm(guild.game_version, guild.region, text);
+  if (!listed) return null;
+  const listedKey = realmKey(listed.name);
+  return listedKey ? { realm: listed.name, key: listedKey } : null;
+}
+
 export async function findNameOwner(db, guildId, key, realmKeyValue) {
   const row = await db.prepare(
     `SELECT c.id AS character_id, c.player_id,
@@ -131,18 +152,23 @@ export function insertCharacter(db, guildId, row, now) {
 }
 
 // The two statements that move the Main (spec: "The Main invariant").
-export function makeMainStatements(db, playerId, characterId, now) {
+// homeTeamId / targetTeamId repeat the authorization inside the writes: the old Main must still be on the home
+// team and the new Main still on the team the caller was authorized against.
+export function makeMainStatements(db, playerId, characterId, now, { homeTeamId, targetTeamId }) {
   return [
     db.prepare(
-      `UPDATE characters SET is_main = 0, updated_at = ? WHERE player_id = ? AND is_main = 1
-         AND EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0)`,
-    ).bind(now, playerId, characterId, playerId),
+      `UPDATE characters SET is_main = 0, updated_at = ? WHERE player_id = ? AND is_main = 1 AND team_id = ?
+         AND EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id = ?)`,
+    ).bind(now, playerId, homeTeamId, characterId, playerId, targetTeamId),
     db.prepare(
-      `UPDATE characters SET is_main = 1, updated_at = ? WHERE id = ? AND player_id = ?
+      `UPDATE characters SET is_main = 1, updated_at = ? WHERE id = ? AND player_id = ? AND team_id = ?
          AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = ? AND is_main = 1)`,
-    ).bind(now, characterId, playerId, playerId),
+    ).bind(now, characterId, playerId, targetTeamId, playerId),
   ];
 }
+
+// Person writes below repeat the authorization inside the statement (SQL is written out, never interpolated):
+// "AND EXISTS (... is_main = 1 AND team_id = ?)" = the Main is still on the home team the caller was authorized against.
 
 function audit(ctx, guildContext, action, entityType, entityId, before, after, guard = null) {
   return auditStatement(ctx, {
@@ -204,7 +230,8 @@ export async function getLinkable(ctx) {
         AND NOT EXISTS (SELECT 1 FROM players p WHERE p.guild_id = ? AND p.discord_user_id = u.discord_id)
       ORDER BY u.username, u.id LIMIT 1000`,
   ).bind(guildContext.guild.discord_server_id, guildContext.guild.id, guildContext.guild.id).all();
-  return jsonResponse({ users: result.results.map(toPerson) });
+  const showAvatar = canSeeAvatars(guildContext.can);
+  return jsonResponse({ users: result.results.map((row) => toPerson(row, { avatar: showAvatar })) });
 }
 
 export async function getPerson(ctx) {
@@ -341,9 +368,10 @@ export async function patchPerson(ctx) {
         db.prepare(
           `UPDATE players SET status = ?, joined_on = ?, trial_start = ?, trial_end = ?, discord_user_id = ?, discord_nickname = ?,
                   version = version + 1, updated_at = ?
-            WHERE id = ? AND guild_id = ? AND version = ?`,
+            WHERE id = ? AND guild_id = ? AND version = ?
+              AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)`,
         ).bind(next.status, next.joinedOn, next.trialStart, next.trialEnd, next.discordUserId, next.nickname, now,
-          player.id, guildContext.guild.id, player.version),
+          player.id, guildContext.guild.id, player.version, home.id),
         audit(ctx, guildContext, 'person.update', 'person', player.id,
           { ...before, version: player.version },
           { ...snapshot(next), version: player.version + 1, changed },
@@ -361,7 +389,7 @@ export async function patchPerson(ctx) {
 
 function cleanNotes(raw) {
   if (typeof raw !== 'string') throw bad('Notes must be text.', 'text');
-  const text = raw.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f‪-‮⁦-⁩]/g, '').trimEnd();
+  const text = raw.replace(/\r\n?/g, '\n').replace(MULTI_LINE_STRIP, '').trimEnd();
   if (Array.from(text).length > MAX_NOTES) throw bad(`Notes can be at most ${MAX_NOTES} characters.`, 'text');
   return text;
 }
@@ -383,8 +411,9 @@ export async function saveNotes(ctx) {
   const results = await db.batch([
     db.prepare(
       `UPDATE players SET notes = ?, notes_updated_by = ?, notes_updated_at = ?, notes_version = notes_version + 1, updated_at = ?
-        WHERE id = ? AND guild_id = ? AND notes_version = ?`,
-    ).bind(text || null, ctx.session.user.id, now, now, player.id, guildContext.guild.id, player.notes_version),
+        WHERE id = ? AND guild_id = ? AND notes_version = ?
+          AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)`,
+    ).bind(text || null, ctx.session.user.id, now, now, player.id, guildContext.guild.id, player.notes_version, home.id),
     audit(ctx, guildContext, 'person.notes', 'person', player.id, { notesVersion: player.notes_version },
       { notesVersion: player.notes_version + 1 },
       CHANGED_ONE),
@@ -401,13 +430,27 @@ export async function deletePerson(ctx) {
   const teamIds = [...new Set(data.characters.map((entry) => entry.view.team.id))];
   for (const teamId of teamIds) requireEdit(guildContext, teamId);
   const { player } = data;
-  const exists = { sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ?)', params: [player.id, guildContext.guild.id] };
+  // The write repeats the authorization: the Main is still on the home team and every character is still on a team
+  // the caller was authorized against.
+  const stillAuthorized = 'EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?) AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND team_id NOT IN (SELECT value FROM json_each(?)))';
+  const guardParams = [home.id, JSON.stringify(teamIds)];
+  const exists = {
+    sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND guild_id = ? AND ' + stillAuthorized + ')',
+    params: [player.id, guildContext.guild.id, ...guardParams],
+  };
   const results = await db.batch([
     audit(ctx, guildContext, 'person.delete', 'person', player.id,
       { status: player.status, version: player.version, teamIds, homeTeamId: home.id, characterCount: data.characters.length }, null, exists),
-    db.prepare('DELETE FROM players WHERE id = ? AND guild_id = ?').bind(player.id, guildContext.guild.id),
+    db.prepare(
+      `DELETE FROM players WHERE id = ? AND guild_id = ?
+          AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)
+          AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND team_id NOT IN (SELECT value FROM json_each(?)))
+        RETURNING id`,
+    ).bind(player.id, guildContext.guild.id, ...guardParams),
   ]);
-  if (results[1].meta.changes !== 1) throw notFound();
+  if (results[1].results.length !== 1) {
+    return conflict(ctx, guildContext, player.id, 'Someone moved this person. The page now shows their current record.');
+  }
   const today = guildToday(guildContext.guild, ctx.now());
   return jsonResponse({ deleted: true, rosterFlags: await loadRosterFlags(db, guildContext, today) });
 }
@@ -419,6 +462,13 @@ function findCharacter(data, characterId) {
   const entry = data.characters.find((candidate) => candidate.row.id === characterId);
   if (!entry) throw notFound('That character was not found.');
   return entry;
+}
+
+// A guarded character write changed nothing: 404 when the person or character is gone, else 409 with the current record.
+async function characterMoved(ctx, guildContext, personId, characterId) {
+  const reread = await loadPersonData(ctx.db, guildContext.guild.id, personId);
+  if (!reread || !reread.characters.some((entry) => entry.row.id === characterId)) throw notFound('That character was not found.');
+  return conflict(ctx, guildContext, personId, 'Someone moved this character. The page now shows the current record.');
 }
 
 export async function addCharacter(ctx) {
@@ -449,7 +499,7 @@ export async function addCharacter(ctx) {
   ];
   if (body.makeMain === true) {
     statements.push(
-      ...makeMainStatements(db, player.id, characterId, now),
+      ...makeMainStatements(db, player.id, characterId, now, { homeTeamId: home.id, targetTeamId: team.id }),
       audit(ctx, guildContext, 'character.main', 'character', characterId,
         { mainCharacterId: data.characters.find((entry) => entry.row.is_main === 1).row.id }, { mainCharacterId: characterId }),
     );
@@ -502,12 +552,13 @@ export async function patchCharacter(ctx) {
   if (teamId !== current.team_id) changed.push('teamId');
   if (changed.length) {
     const now = ctx.now();
+    let results;
     try {
-      await db.batch([
+      results = await db.batch([
         db.prepare(
           `UPDATE characters SET name = ?, name_key = ?, class = ?, main_spec = ?, off_spec = ?, team_id = ?, updated_at = ?
-            WHERE id = ? AND player_id = ? AND guild_id = ?`,
-        ).bind(name, nameKey(name), classId, specs.mainSpec, specs.offSpec, teamId, now, current.id, data.player.id, guild.id),
+            WHERE id = ? AND player_id = ? AND guild_id = ? AND team_id = ?`,
+        ).bind(name, nameKey(name), classId, specs.mainSpec, specs.offSpec, teamId, now, current.id, data.player.id, guild.id, current.team_id),
         audit(ctx, guildContext, 'character.update', 'character', current.id,
           { teamId: current.team_id, class: current.class, mainSpec: current.main_spec, offSpec: current.off_spec },
           { teamId, class: classId, mainSpec: specs.mainSpec, offSpec: specs.offSpec, changed },
@@ -517,6 +568,7 @@ export async function patchCharacter(ctx) {
       if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realmColumns(guild, current.realm));
       mapCreateError(error);
     }
+    if (results[0].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, current.id);
   }
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));
 }
@@ -533,11 +585,11 @@ export async function makeMain(ctx) {
   const previous = data.characters.find((candidate) => candidate.row.is_main === 1).row;
   const now = ctx.now();
   const results = await db.batch([
-    ...makeMainStatements(db, data.player.id, target.id, now),
+    ...makeMainStatements(db, data.player.id, target.id, now, { homeTeamId: home.id, targetTeamId: target.team_id }),
     audit(ctx, guildContext, 'character.main', 'character', target.id, { mainCharacterId: previous.id }, { mainCharacterId: target.id },
       CHANGED_ONE),
   ]);
-  if (results[1].meta.changes !== 1) throw notFound('That character was not found.');
+  if (results[1].meta.changes !== 1) return characterMoved(ctx, guildContext, data.player.id, target.id);
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));
 }
 
@@ -548,19 +600,23 @@ export async function removeCharacter(ctx) {
   const entry = findCharacter(data, ctx.params.cid);
   const target = entry.row;
   requireEdit(guildContext, target.team_id);
-  const removable = { sql: 'EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0)', params: [target.id, data.player.id] };
+  const removable = {
+    sql: 'EXISTS (SELECT 1 FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id = ?)',
+    params: [target.id, data.player.id, target.team_id],
+  };
   const results = await db.batch([
     audit(ctx, guildContext, 'character.delete', 'character', target.id,
       { personId: data.player.id, teamId: target.team_id, class: target.class, mainSpec: target.main_spec, offSpec: target.off_spec }, null, removable),
-    db.prepare('DELETE FROM characters WHERE id = ? AND player_id = ? AND is_main = 0').bind(target.id, data.player.id),
+    db.prepare('DELETE FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id = ? RETURNING id')
+      .bind(target.id, data.player.id, target.team_id),
   ]);
-  if (results[1].meta.changes !== 1) {
+  if (results[1].results.length !== 1) {
     const reread = await loadPersonData(db, guildContext.guild.id, data.player.id);
     const again = reread && reread.characters.find((candidate) => candidate.row.id === target.id);
     if (again && again.row.is_main === 1) {
       throw new HttpError(409, 'main_character', 'Make another character the Main before removing this one.');
     }
-    throw notFound('That character was not found.');
+    return characterMoved(ctx, guildContext, data.player.id, target.id);
   }
   return jsonResponse(await personReply(ctx, guildContext, data.player.id));
 }

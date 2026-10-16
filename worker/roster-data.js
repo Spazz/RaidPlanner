@@ -33,12 +33,19 @@ export const STATUSES = ['raider', 'trial', 'reserve', 'inactive'];
 // A person can be created (or imported) in these; Inactive is only ever set on an existing person.
 export const CREATE_STATUSES = ['raider', 'trial', 'reserve'];
 
+// Own-property lookup for maps indexed by external text ('constructor' and '__proto__' are not keys) -> value or undefined.
+export function ownValue(map, key) {
+  return typeof key === 'string' && Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+}
+
 export function roleOf(classId, spec) {
-  return (SPEC_ROLE[classId] && SPEC_ROLE[classId][spec]) || null;
+  const specs = ownValue(SPEC_ROLE, classId);
+  return (specs && ownValue(specs, spec)) || null;
 }
 
 export function isSpecOf(classId, spec) {
-  return !!SPEC_ROLE[classId] && Object.prototype.hasOwnProperty.call(SPEC_ROLE[classId], spec);
+  const specs = ownValue(SPEC_ROLE, classId);
+  return !!specs && ownValue(specs, spec) !== undefined;
 }
 
 // Raid-Helper spec name -> { class, spec } (the keys of catalog.raidHelperSpecMap).
@@ -91,15 +98,20 @@ export const DEFAULT_WCL_FLAVOUR = { tbc: 'fresh', classic: 'classic' };
 // ---------------------------------------------------------------------------
 // Names
 
-const NAME_PATTERN = /^[\p{L}\p{M}]+$/u;
+// Letters, each followed by at most two combining marks; the first code point is a letter.
+const NAME_PATTERN = /^(?:\p{L}\p{M}{0,2})+$/u;
 
-// The WoW display form of a character name (first letter upper case, the rest lower case), or null.
+// The WoW display form of a character name (first letter upper case, the rest lower case), or null. The 2 to 12
+// code point limit is measured on the mapped form ('ß' upper-cases to 'SS').
 export function cleanCharacterName(raw) {
-  if (typeof raw !== 'string') return null;
+  if (typeof raw !== 'string' || raw.length > 64) return null;
   const text = raw.normalize('NFC').trim();
+  if (!NAME_PATTERN.test(text)) return null;
   const letters = Array.from(text);
-  if (letters.length < 2 || letters.length > 12 || !NAME_PATTERN.test(text)) return null;
-  return (letters[0].toUpperCase() + letters.slice(1).join('').toLowerCase()).normalize('NFC');
+  const mapped = (letters[0].toUpperCase() + letters.slice(1).join('').toLowerCase()).normalize('NFC');
+  const length = Array.from(mapped).length;
+  if (length < 2 || length > 12 || !NAME_PATTERN.test(mapped)) return null;
+  return mapped;
 }
 
 export function nameKey(name) {
@@ -139,10 +151,18 @@ export function nicknameTokens(nickname) {
   return found;
 }
 
-// Control characters and bidi overrides removed, trimmed, cut to 64 code points. null when nothing is left.
+// Invisible and direction-changing characters: zero-width and direction marks, line/paragraph separators, bidi
+// embeddings and isolates, the Arabic letter mark, the word joiner and the byte order mark.
+const INVISIBLE_CHARS = '\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2069\u061c\ufeff';
+// Single-line text: control characters (all of C0 and C1) plus the invisible ones.
+export const SINGLE_LINE_STRIP = new RegExp(`[\u0000-\u001f\u007f-\u009f${INVISIBLE_CHARS}]`, 'g');
+// Multi-line text keeps the tab and the newline.
+export const MULTI_LINE_STRIP = new RegExp(`[\u0000-\u0008\u000b-\u001f\u007f${INVISIBLE_CHARS}]`, 'g');
+
+// Control characters, bidi overrides and invisible characters removed, trimmed, cut to 64 code points. null when nothing is left.
 export function cleanNickname(raw) {
   if (typeof raw !== 'string') return null;
-  const text = raw.replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g, '').trim();
+  const text = raw.replace(SINGLE_LINE_STRIP, '').trim();
   const cut = Array.from(text).slice(0, 64).join('').trim();
   return cut || null;
 }

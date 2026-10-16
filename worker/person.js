@@ -8,13 +8,14 @@ function initialsOf(name) {
 }
 
 // { id, username, displayName, avatarUrl | null, initials }. The Discord ID appears only inside avatarUrl (members of one Discord server already see each other's IDs).
-export function toPerson(row) {
+// { avatar: false } returns avatarUrl null (initials only) for viewers who must not learn the Discord ID the URL carries.
+export function toPerson(row, { avatar = true } = {}) {
   const displayName = row.global_name || row.username;
   return {
     id: row.id,
     username: row.username,
     displayName,
-    avatarUrl: avatarUrl(row.discord_id, row.avatar),
+    avatarUrl: avatar === false ? null : avatarUrl(row.discord_id, row.avatar),
     initials: initialsOf(displayName),
   };
 }

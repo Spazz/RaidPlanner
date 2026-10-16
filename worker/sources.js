@@ -213,12 +213,16 @@ async function postGraphql(ctx, flavour, code, token) {
   }, wclDown);
 }
 
+export function requireWclConfigured(env) {
+  if (!env.WCL_CLIENT_ID || !env.WCL_CLIENT_SECRET) {
+    throw new HttpError(503, 'wcl_not_configured', 'Warcraft Logs imports are not set up on this server.');
+  }
+}
+
 // -> { title, zone | null, startTime (ms | null), actors: [{ name, subType, server | null }] } (Pets are not filtered here).
 export async function fetchWclReport(ctx, flavour, code) {
   if (!isWclFlavour(flavour) || !isWclCode(code)) throw new Error('fetchWclReport needs a validated flavour and code');
-  if (!ctx.env.WCL_CLIENT_ID || !ctx.env.WCL_CLIENT_SECRET) {
-    throw new HttpError(503, 'wcl_not_configured', 'Warcraft Logs imports are not set up on this server.');
-  }
+  requireWclConfigured(ctx.env);
   let response = await postGraphql(ctx, flavour, code, await wclToken(ctx, flavour));
   if (response.status === 401) response = await postGraphql(ctx, flavour, code, await wclToken(ctx, flavour, true));
   if (!response.ok) throw wclDown();
@@ -230,6 +234,7 @@ export async function fetchWclReport(ctx, flavour, code) {
     if (/permission|private|not authori[sz]ed|unauthori[sz]ed/i.test(text)) {
       throw new HttpError(403, 'report_private', 'That report is private or not available to Raidsmith.');
     }
+    if (/does not exist|not found/i.test(text)) throw new HttpError(404, 'not_found', 'Warcraft Logs has no report with that code.');
     throw wclDown();
   }
   const report = body.data && body.data.reportData && body.data.reportData.report;
