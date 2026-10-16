@@ -1,0 +1,1011 @@
+{
+  "guildTimeZone": "America/Chicago",
+  "teamId": "team1",
+  "persons": [
+    {
+      "id": "P001",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Aimersmay",
+          "key": "aimersmay|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P002",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000019",
+      "label": "Signup19",
+      "characters": [
+        {
+          "name": "Alliesha",
+          "key": "alliesha|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P003",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000020",
+      "label": "Signup20",
+      "characters": [
+        {
+          "name": "Apocálypse",
+          "key": "apocálypse|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P004",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000024",
+      "label": "Signup24",
+      "characters": [
+        {
+          "name": "Avocadototes",
+          "key": "avocadototes|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P005",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000027",
+      "label": "Signup27",
+      "characters": [
+        {
+          "name": "Azukl",
+          "key": "azukl|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P006",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000037",
+      "label": "Signup37",
+      "characters": [
+        {
+          "name": "Bearnnaked",
+          "key": "bearnnaked|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P007",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Biggietitus",
+          "key": "biggietitus|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P008",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Brezzers",
+          "key": "brezzers|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P009",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Chilease",
+          "key": "chilease|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P010",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000008",
+      "label": "Signup08",
+      "characters": [
+        {
+          "name": "Daolith",
+          "key": "daolith|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P011",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000003",
+      "label": "Signup03",
+      "characters": [
+        {
+          "name": "Daxxter",
+          "key": "daxxter|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P012",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000044",
+      "label": "Signup44",
+      "characters": [
+        {
+          "name": "Drenna",
+          "key": "drenna|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P013",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000034",
+      "label": "Signup34",
+      "characters": [
+        {
+          "name": "Esfir",
+          "key": "esfir|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P014",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Fabitotem",
+          "key": "fabitotem|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P015",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000007",
+      "label": "Signup07",
+      "characters": [
+        {
+          "name": "Fírefly",
+          "key": "fírefly|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P016",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000045",
+      "label": "Signup45",
+      "characters": [
+        {
+          "name": "Genow",
+          "key": "genow|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P017",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Gg",
+          "key": "gg|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P018",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Ghambacaz",
+          "key": "ghambacaz|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P019",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000047",
+      "label": "Signup47",
+      "characters": [
+        {
+          "name": "Gnòpe",
+          "key": "gnòpe|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P020",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Goatgrizz",
+          "key": "goatgrizz|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P021",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Guzwald",
+          "key": "guzwald|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P022",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000023",
+      "label": "Signup23",
+      "characters": [
+        {
+          "name": "Healthas",
+          "key": "healthas|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P023",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000043",
+      "label": "Signup43",
+      "characters": [
+        {
+          "name": "Hellsmouth",
+          "key": "hellsmouth|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P024",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000015",
+      "label": "Signup15",
+      "characters": [
+        {
+          "name": "Hinastorm",
+          "key": "hinastorm|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P025",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Jahworks",
+          "key": "jahworks|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P026",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000033",
+      "label": "Signup33",
+      "characters": [
+        {
+          "name": "Kajuk",
+          "key": "kajuk|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P027",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000016",
+      "label": "Signup16",
+      "characters": [
+        {
+          "name": "Kanyan",
+          "key": "kanyan|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P028",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000032",
+      "label": "Signup32",
+      "characters": [
+        {
+          "name": "Kashpatail",
+          "key": "kashpatail|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P029",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000014",
+      "label": "Signup14",
+      "characters": [
+        {
+          "name": "Kimmjungheal",
+          "key": "kimmjungheal|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P030",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000010",
+      "label": "Signup10",
+      "characters": [
+        {
+          "name": "Myztral",
+          "key": "myztral|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P031",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Nickxz",
+          "key": "nickxz|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P032",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000012",
+      "label": "Signup12",
+      "characters": [
+        {
+          "name": "Ohmnath",
+          "key": "ohmnath|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P033",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000017",
+      "label": "Signup17",
+      "characters": [
+        {
+          "name": "Originalgoat",
+          "key": "originalgoat|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P034",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000025",
+      "label": "Signup25",
+      "characters": [
+        {
+          "name": "Raawtotem",
+          "key": "raawtotem|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P035",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Roostmeister",
+          "key": "roostmeister|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P036",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Semperfidel",
+          "key": "semperfidel|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P037",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000004",
+      "label": "Signup04",
+      "characters": [
+        {
+          "name": "Signup04",
+          "key": "signup04|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P038",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000006",
+      "label": "Signup06",
+      "characters": [
+        {
+          "name": "Signup06",
+          "key": "signup06|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P039",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000009",
+      "label": "Signup09",
+      "characters": [
+        {
+          "name": "Signup09",
+          "key": "signup09|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P040",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000013",
+      "label": "Signup13",
+      "characters": [
+        {
+          "name": "Signup13",
+          "key": "signup13|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P041",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000018",
+      "label": "Signup18",
+      "characters": [
+        {
+          "name": "Signup18",
+          "key": "signup18|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P042",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000021",
+      "label": "Signup21",
+      "characters": [
+        {
+          "name": "Signup21",
+          "key": "signup21|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P043",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000022",
+      "label": "Signup22",
+      "characters": [
+        {
+          "name": "Signup22",
+          "key": "signup22|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P044",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000026",
+      "label": "Signup26",
+      "characters": [
+        {
+          "name": "Signup26",
+          "key": "signup26|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P045",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000029",
+      "label": "Signup29",
+      "characters": [
+        {
+          "name": "Signup29",
+          "key": "signup29|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P046",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000031",
+      "label": "Signup31",
+      "characters": [
+        {
+          "name": "Signup31",
+          "key": "signup31|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P047",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000035",
+      "label": "Signup35",
+      "characters": [
+        {
+          "name": "Signup35",
+          "key": "signup35|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P048",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000038",
+      "label": "Signup38",
+      "characters": [
+        {
+          "name": "Signup38",
+          "key": "signup38|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P049",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000039",
+      "label": "Signup39",
+      "characters": [
+        {
+          "name": "Signup39",
+          "key": "signup39|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P050",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000042",
+      "label": "Signup42",
+      "characters": [
+        {
+          "name": "Signup42",
+          "key": "signup42|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P051",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000046",
+      "label": "Signup46",
+      "characters": [
+        {
+          "name": "Signup46",
+          "key": "signup46|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P052",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000048",
+      "label": "Signup48",
+      "characters": [
+        {
+          "name": "Signup48",
+          "key": "signup48|",
+          "teamId": "team1",
+          "invented": true
+        }
+      ]
+    },
+    {
+      "id": "P053",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000030",
+      "label": "Signup30",
+      "characters": [
+        {
+          "name": "Soulavenger",
+          "key": "soulavenger|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P054",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Stallila",
+          "key": "stallila|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P055",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Starcks",
+          "key": "starcks|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P056",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000028",
+      "label": "Signup28",
+      "characters": [
+        {
+          "name": "Stîngz",
+          "key": "stîngz|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P057",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000002",
+      "label": "Signup02",
+      "characters": [
+        {
+          "name": "Sumlegend",
+          "key": "sumlegend|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P058",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Swiftwolves",
+          "key": "swiftwolves|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P059",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000041",
+      "label": "Signup41",
+      "characters": [
+        {
+          "name": "Sânga",
+          "key": "sânga|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P060",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Taharah",
+          "key": "taharah|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P061",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000040",
+      "label": "Signup40",
+      "characters": [
+        {
+          "name": "Terani",
+          "key": "terani|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P062",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000005",
+      "label": "Signup05",
+      "characters": [
+        {
+          "name": "Therhyme",
+          "key": "therhyme|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P063",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000011",
+      "label": "Signup11",
+      "characters": [
+        {
+          "name": "Voctave",
+          "key": "voctave|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P064",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Voxxe",
+          "key": "voxxe|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P065",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": null,
+      "label": null,
+      "characters": [
+        {
+          "name": "Xanisone",
+          "key": "xanisone|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P066",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000036",
+      "label": "Signup36",
+      "characters": [
+        {
+          "name": "Yesireadit",
+          "key": "yesireadit|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    },
+    {
+      "id": "P067",
+      "status": "raider",
+      "joinedOn": "2026-08-01",
+      "discordUserId": "990000000000000001",
+      "label": "Signup01",
+      "characters": [
+        {
+          "name": "Zzaps",
+          "key": "zzaps|",
+          "teamId": "team1",
+          "invented": false
+        }
+      ]
+    }
+  ]
+}
