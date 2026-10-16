@@ -26,7 +26,7 @@ function check(name, fn) {
 }
 
 const ROOT = __dirname;
-const sources = ['index.html', 'faq.html', 'whats-new.html', 'guild.html'].map(f => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')])
+const sources = ['index.html', 'faq.html', 'whats-new.html'].map(f => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')])
   .concat(fs.readdirSync(path.join(ROOT, 'js'), { recursive: true }).filter(f => f.endsWith('.js'))
     .map(f => ['js/' + f.replace(/\\/g, '/'), fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')]));
 
