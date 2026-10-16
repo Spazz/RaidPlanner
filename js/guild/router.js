@@ -2,11 +2,14 @@
 // Pure parse/format for the guild page. Routes:
 //   #/  #/signin[?error=..]  #/new  #/privacy
 //   #/g/:gid/{roster,nights,attendance,loot}  #/g/:gid/settings[/{teams,people}]
+//   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl}
+//   (?team= only opens an archived team's roster; the shell's team picker decides otherwise)
 (function (G) {
   'use strict';
 
   const SECTIONS = ['roster', 'nights', 'attendance', 'loot'];
   const TABS = ['teams', 'people'];
+  const IMPORT_SOURCES = ['raid-helper', 'wcl'];
   const SIGNIN_ERRORS = ['denied', 'state', 'discord'];
   const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -46,7 +49,15 @@
     if (head !== 'g' || !ID.test(parts[1])) return { name: 'notfound' };
     const gid = parts[1];
     if (parts.length === 2) return { name: 'section', gid: gid, section: 'roster' };
-    if (parts.length === 3 && SECTIONS.indexOf(parts[2]) >= 0) return { name: 'section', gid: gid, section: parts[2] };
+    if (parts.length === 3 && SECTIONS.indexOf(parts[2]) >= 0) {
+      const section = { name: 'section', gid: gid, section: parts[2] };
+      if (parts[2] === 'roster' && typeof query.team === 'string' && ID.test(query.team)) section.team = query.team;
+      return section;
+    }
+    if (parts[2] === 'roster') {
+      if (parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'person', gid: gid, pid: parts[4] };
+      if (parts.length === 5 && parts[3] === 'import' && IMPORT_SOURCES.indexOf(parts[4]) >= 0) return { name: 'import', gid: gid, source: parts[4] };
+    }
     if (parts[2] === 'settings') {
       if (parts.length === 3) return { name: 'settings', gid: gid, tab: null };
       if (parts.length === 4 && TABS.indexOf(parts[3]) >= 0) return { name: 'settings', gid: gid, tab: parts[3] };
@@ -61,11 +72,17 @@
       case 'signin': return '#/signin' + (SIGNIN_ERRORS.indexOf(r.error) >= 0 ? '?error=' + r.error : '');
       case 'new': return '#/new';
       case 'privacy': return '#/privacy';
-      case 'section': return '#/g/' + encodeURIComponent(r.gid) + '/' + (SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster');
+      case 'section': {
+        const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';
+        const team = section === 'roster' && typeof r.team === 'string' && ID.test(r.team) ? '?team=' + encodeURIComponent(r.team) : '';
+        return '#/g/' + encodeURIComponent(r.gid) + '/' + section + team;
+      }
+      case 'person': return '#/g/' + encodeURIComponent(r.gid) + '/roster/p/' + encodeURIComponent(r.pid);
+      case 'import': return '#/g/' + encodeURIComponent(r.gid) + '/roster/import/' + (IMPORT_SOURCES.indexOf(r.source) >= 0 ? r.source : 'raid-helper');
       case 'settings': return '#/g/' + encodeURIComponent(r.gid) + '/settings' + (TABS.indexOf(r.tab) >= 0 ? '/' + r.tab : '');
       default: return '#/';
     }
   }
 
-  G.router = { SECTIONS: SECTIONS, TABS: TABS, parse: parse, format: format };
+  G.router = { SECTIONS: SECTIONS, TABS: TABS, IMPORT_SOURCES: IMPORT_SOURCES, parse: parse, format: format };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

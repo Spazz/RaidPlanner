@@ -21,6 +21,7 @@
     more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
     close: '<path d="M18 6L6 18M6 6l12 12"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>',
+    trash: '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/><path d="M10 11v6M14 11v6"/>',
   };
 
   const LOGO = '<svg class="gs-logo" viewBox="0 0 48 48" width="30" height="30" aria-hidden="true" focusable="false"><g class="gs-logo-dots"><circle cx="9" cy="14" r="3"/><circle cx="16.5" cy="9" r="3"/><circle cx="24" cy="7" r="3"/><circle cx="31.5" cy="9" r="3"/><circle cx="39" cy="14" r="3"/></g><path d="M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z" transform="translate(0 -1)" class="gs-logo-anvil"/></svg>';

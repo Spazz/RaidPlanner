@@ -79,6 +79,123 @@
     return '<p class="gs-alert" role="alert"' + (id ? ' id="' + esc(id) + '"' : '') + (text ? '' : ' hidden') + '>' + esc(text) + '</p>';
   };
 
+  // ── roster helpers: class colours, trial copy, status, sign-in, calendar days ──
+  const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
+  const STATUS_LABELS = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', inactive: 'Inactive' };
+  const SIGN_IN_LABELS = { signed_in: 'Signed in', not_yet: 'Not yet', no_discord: 'No Discord' };
+  const ROLE_LABELS = { tank: 'Tank', healer: 'Healer', dps: 'DPS' };
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  ui.CLASS_IDS = CLASS_IDS;
+  ui.STATUS_LABELS = STATUS_LABELS;
+
+  // "WARRIOR" -> "Warrior"; anything else is shown as given.
+  ui.className = function (id) {
+    const s = String(id == null ? '' : id);
+    return CLASS_IDS.indexOf(s) >= 0 ? s.charAt(0) + s.slice(1).toLowerCase() : s;
+  };
+  // The CSS class that colours a character name; '' for anything that is not one of the nine classes.
+  const CLASS_CSS = {
+    WARRIOR: 'gs-class-warrior', PALADIN: 'gs-class-paladin', HUNTER: 'gs-class-hunter', ROGUE: 'gs-class-rogue', PRIEST: 'gs-class-priest',
+    SHAMAN: 'gs-class-shaman', MAGE: 'gs-class-mage', WARLOCK: 'gs-class-warlock', DRUID: 'gs-class-druid',
+  };
+  ui.classClass = function (id) {
+    return Object.prototype.hasOwnProperty.call(CLASS_CSS, id) ? CLASS_CSS[id] : '';
+  };
+  // A character name in its class colour. The spec text next to it always names the class too.
+  ui.classNameHtml = function (name, classId) {
+    const c = ui.classClass(classId);
+    return '<span class="gs-char-name' + (c ? ' ' + c : '') + '">' + esc(name) + '</span>';
+  };
+  // "Paladin - Protection / Holy" with the separator as an HTML dot; the off spec only when there is one.
+  ui.specLineHtml = function (classId, mainSpec, offSpec) {
+    let out = esc(ui.className(classId));
+    if (mainSpec) out += ' &middot; ' + esc(mainSpec) + (offSpec ? ' / ' + esc(offSpec) : '');
+    return out;
+  };
+
+  ui.statusLabel = function (s) { return Object.prototype.hasOwnProperty.call(STATUS_LABELS, s) ? STATUS_LABELS[s] : String(s == null ? '' : s); };
+  ui.statusChipHtml = function (s) {
+    const kind = Object.prototype.hasOwnProperty.call(STATUS_LABELS, s) ? s : 'raider';
+    return '<span class="gs-chip gs-chip-status gs-status-' + kind + '">' + esc(ui.statusLabel(s)) + '</span>';
+  };
+  ui.signInLabel = function (s) { return Object.prototype.hasOwnProperty.call(SIGN_IN_LABELS, s) ? SIGN_IN_LABELS[s] : ''; };
+  ui.roleLabel = function (r) { return Object.prototype.hasOwnProperty.call(ROLE_LABELS, r) ? ROLE_LABELS[r] : ''; };
+  ui.roleDotHtml = function (role) {
+    if (!Object.prototype.hasOwnProperty.call(ROLE_LABELS, role)) return '';
+    return '<span class="gs-role-dot gs-role-' + role + '" role="img" aria-label="' + ROLE_LABELS[role] + '"></span>';
+  };
+
+  // trialFlag = { kind: 'ends' | 'ended', days } from the Worker: 0 "Ends today", 1 "Ends tomorrow", n "Ends in n days",
+  // -1 "Ended yesterday", -n "Ended n days ago". null means no flag, so no words.
+  ui.trialCopy = function (flag) {
+    if (!flag || typeof flag !== 'object') return '';
+    const days = Number(flag.days);
+    if (!isFinite(days)) return '';
+    if (flag.kind === 'ended') {
+      const n = Math.abs(days);
+      return n === 1 ? 'Ended yesterday' : 'Ended ' + n + ' days ago';
+    }
+    if (flag.kind !== 'ends') return '';
+    if (days === 0) return 'Ends today';
+    if (days === 1) return 'Ends tomorrow';
+    return 'Ends in ' + days + ' days';
+  };
+  ui.trialChipHtml = function (flag) {
+    const t = ui.trialCopy(flag);
+    if (!t) return '';
+    return '<span class="gs-chip gs-chip-trial ' + (flag.kind === 'ended' ? 'gs-trial-ended' : 'gs-trial-ends') + '">' + esc(t) + '</span>';
+  };
+
+  // 'YYYY-MM-DD' -> 'Oct 13, 2026' with no time zone maths (the date is already the guild's calendar date).
+  ui.formatDay = function (s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s == null ? '' : s));
+    if (!m) return '';
+    const mo = Number(m[2]);
+    if (mo < 1 || mo > 12) return '';
+    return MONTHS[mo - 1] + ' ' + Number(m[3]) + ', ' + m[1];
+  };
+  // 'YYYY-MM-DD' plus n days.
+  ui.addDays = function (s, n) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s == null ? '' : s));
+    if (!m) return '';
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + n));
+    return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+  };
+
+  // <option> list from [{ value, label }] with one selected value.
+  ui.optionsHtml = function (items, selected) {
+    return items.map(function (o) {
+      return '<option value="' + esc(o.value) + '"' + (String(o.value) === String(selected == null ? '' : selected) ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+    }).join('');
+  };
+
+  // GET /api/guild/:gid -> rosterOptions { classes, specs, roles }; the nine classes stand in when it is missing.
+  ui.rosterOptions = function (gd) {
+    const ro = (gd && gd.rosterOptions) || {};
+    return {
+      classes: Array.isArray(ro.classes) && ro.classes.length ? ro.classes : CLASS_IDS.map(function (id) { return { id: id, name: ui.className(id) }; }),
+      specs: ro.specs && typeof ro.specs === 'object' ? ro.specs : {},
+      roles: ro.roles && typeof ro.roles === 'object' ? ro.roles : {},
+    };
+  };
+  ui.specsFor = function (options, classId) {
+    const list = options && options.specs && Object.prototype.hasOwnProperty.call(options.specs, classId) ? options.specs[classId] : [];
+    return Array.isArray(list) ? list : [];
+  };
+  ui.roleOfSpec = function (options, classId, spec) {
+    const byClass = options && options.roles && Object.prototype.hasOwnProperty.call(options.roles, classId) ? options.roles[classId] : null;
+    return byClass && spec && Object.prototype.hasOwnProperty.call(byClass, spec) ? byClass[spec] : null;
+  };
+  ui.classOptionsHtml = function (options, selected, placeholder) {
+    const items = [{ value: '', label: placeholder }].concat(options.classes.map(function (c) { return { value: c.id, label: c.name }; }));
+    return ui.optionsHtml(items, selected);
+  };
+  ui.specOptionsHtml = function (options, classId, selected, noneLabel) {
+    const items = [{ value: '', label: noneLabel }].concat(ui.specsFor(options, classId).map(function (s) { return { value: s, label: s }; }));
+    return ui.optionsHtml(items, selected);
+  };
+
   // ── DOM-only helpers (runtime, not used by the pure render functions) ──
   ui.setText = function (id, text) {
     const el = document.getElementById(id);
@@ -128,6 +245,39 @@
   ui.closeDialogOf = function (el) {
     const dlg = el && el.closest ? el.closest('dialog') : null;
     if (dlg && dlg.open) dlg.close();
+  };
+
+  // Shows a server error next to the field it names (`dlg-err-<field>` when the form has one), else in `dlg-error`.
+  ui.showFormError = function (form, err) {
+    const c = G.api.classify(err);
+    const fieldId = err && err.field ? 'dlg-err-' + err.field : '';
+    const sink = fieldId && form.querySelector('#' + fieldId) ? fieldId : 'dlg-error';
+    ui.setText(sink, c.text);
+    if (sink !== 'dlg-error' && err.field) {
+      const input = form.querySelector('[data-field="' + err.field + '"]');
+      if (input) { input.setAttribute('aria-invalid', 'true'); if (input.focus) input.focus(); }
+    }
+  };
+
+  // Runs one request from a dialog form: busy while it runs, closes the dialog on success (after onOk(res)),
+  // sends a lost race (409 conflict) to onConflict(err) or the page-wide handler, and shows other errors in the form.
+  ui.runDialog = function (form, promise, onOk, onConflict) {
+    ui.setBusy(form, true);
+    return promise.then(function (res) {
+      ui.closeDialogOf(form);
+      if (onOk) onOk(res);
+    }, function (err) {
+      ui.setBusy(form, false);
+      const c = G.api.classify(err);
+      if (err && err.code === 'conflict') {
+        ui.closeDialogOf(form);
+        if (onConflict) onConflict(err); else G.app.handleError(err);
+        return;
+      }
+      if (c.view === 'signin') { ui.closeDialogOf(form); G.app.requireSignin(); return; }
+      if (c.view === 'message') { ui.closeDialogOf(form); G.app.showFailure(c.title, c.text); return; }
+      ui.showFormError(form, err);
+    });
   };
 
   ui.setBusy = function (form, busy) {

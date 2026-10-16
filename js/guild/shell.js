@@ -33,9 +33,19 @@
 
   function guildHref(gid, section) { return G.router.format({ name: 'section', gid: gid, section: section }); }
 
-  function navItems(gid, can) {
+  // Flagged trials for the selected team, for officers and team leads only (a member's guild payload carries none).
+  function rosterBadge(gd, teamId) {
+    if (!gd || !teamId || !hasAction(gd.me && gd.me.can, 'roster.edit')) return 0;
+    const n = gd.rosterFlags && Object.prototype.hasOwnProperty.call(gd.rosterFlags, teamId) ? Number(gd.rosterFlags[teamId]) : 0;
+    return isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  // badge: the Roster nav item's count of trials to decide (0 = none).
+  function navItems(gid, can, badge) {
+    const n = badge > 0 ? badge : 0;
     const items = [
-      { key: 'roster', label: 'Roster', short: 'Roster', icon: 'roster', href: guildHref(gid, 'roster') },
+      { key: 'roster', label: 'Roster', short: 'Roster', icon: 'roster', href: guildHref(gid, 'roster'), badge: n,
+        ariaLabel: n ? 'Roster, ' + n + (n === 1 ? ' trial' : ' trials') + ' to decide' : 'Roster' },
       { key: 'nights', label: 'Raid nights', short: 'Nights', icon: 'nights', href: guildHref(gid, 'nights') },
       { key: 'attendance', label: 'Attendance', short: 'Attendance', icon: 'attendance', href: guildHref(gid, 'attendance') },
       { key: 'loot', label: 'Loot', short: 'Loot', icon: 'loot', href: guildHref(gid, 'loot') },
@@ -52,15 +62,20 @@
   function isActiveItem(item, route) {
     if (!route) return false;
     if (item.key === 'settings') return route.name === 'settings';
+    if (item.key === 'roster' && (route.name === 'person' || route.name === 'import')) return true;
     return route.name === 'section' && route.section === item.key;
+  }
+
+  function navBadgeHtml(item) {
+    return item.badge > 0 ? '<span class="gs-nav-badge" aria-hidden="true">' + esc(item.badge) + '</span>' : '';
   }
 
   function navListHtml(items, route) {
     return '<ul class="gs-nav-list">' + items.map(function (item) {
       const active = isActiveItem(item, route);
       const sep = item.separated ? '<li class="gs-nav-sep" role="separator"></li>' : '';
-      return sep + '<li><a class="gs-nav-link' + (active ? ' is-active' : '') + '" href="' + esc(item.href) + '" aria-label="' + esc(item.label) + '"' + (active ? ' aria-current="page"' : '') + '>' +
-        ic(item.icon, 20) + '<span class="gs-label-full">' + esc(item.label) + '</span><span class="gs-label-short" aria-hidden="true">' + esc(item.short) + '</span></a></li>';
+      return sep + '<li><a class="gs-nav-link' + (active ? ' is-active' : '') + '" href="' + esc(item.href) + '" aria-label="' + esc(item.ariaLabel || item.label) + '"' + (active ? ' aria-current="page"' : '') + '>' +
+        ic(item.icon, 20) + '<span class="gs-label-full">' + esc(item.label) + '</span><span class="gs-label-short" aria-hidden="true">' + esc(item.short) + '</span>' + navBadgeHtml(item) + '</a></li>';
     }).join('') + '</ul>';
   }
 
@@ -103,7 +118,7 @@
     const gd = ctx.guildData;
     const collapsed = !!ctx.collapsed;
     return '<aside class="gs-sidebar" aria-label="Guild navigation">' + guildHeadHtml(ctx, 'gs-team-select') +
-      '<nav aria-label="Main">' + navListHtml(navItems(gd.guild.id, gd.me && gd.me.can), ctx.route) + '</nav>' +
+      '<nav aria-label="Main">' + navListHtml(navItems(gd.guild.id, gd.me && gd.me.can, rosterBadge(gd, ctx.teamId)), ctx.route) + '</nav>' +
       '<div class="gs-side-foot"><button type="button" class="gs-collapse" data-action="toggle-sidebar" data-key="toggle-sidebar" aria-expanded="' + (collapsed ? 'false' : 'true') + '" aria-label="' + (collapsed ? 'Expand sidebar' : 'Collapse sidebar') + '">' +
       ic(collapsed ? 'expand' : 'collapse', 20) + '<span class="gs-label-full">' + (collapsed ? 'Expand' : 'Collapse') + '</span></button></div></aside>';
   }
@@ -113,16 +128,16 @@
     return '<dialog class="gs-drawer" id="gs-drawer" aria-label="Main menu"><div class="gs-drawer-rail">' + G.icons.logo + tilesHtml(ctx.me, gd.guild.id, ctx.route) + '</div>' +
       '<div class="gs-drawer-panel"><div class="gs-drawer-top"><button type="button" class="gs-icon-btn" data-action="close-drawer" aria-label="Close menu">' + ic('close', 20) + '</button></div>' +
       guildHeadHtml(ctx, 'gs-team-select-drawer') +
-      '<nav aria-label="Main">' + navListHtml(navItems(gd.guild.id, gd.me && gd.me.can), ctx.route) + '</nav></div></dialog>';
+      '<nav aria-label="Main">' + navListHtml(navItems(gd.guild.id, gd.me && gd.me.can, rosterBadge(gd, ctx.teamId)), ctx.route) + '</nav></div></dialog>';
   }
 
   function tabsHtml(ctx) {
     const gid = ctx.guildData.guild.id;
-    const items = navItems(gid, null).filter(function (i) { return i.key !== 'planner'; });
+    const items = navItems(gid, null, rosterBadge(ctx.guildData, ctx.teamId)).filter(function (i) { return i.key !== 'planner'; });
     return '<nav class="gs-tabs" aria-label="Main"><ul class="gs-tabs-list">' + items.map(function (item) {
       const active = isActiveItem(item, ctx.route);
-      return '<li><a class="gs-tab' + (active ? ' is-active' : '') + '" href="' + esc(item.href) + '" aria-label="' + esc(item.label) + '"' + (active ? ' aria-current="page"' : '') + '>' +
-        ic(item.icon, 22) + '<span aria-hidden="true">' + esc(item.short) + '</span></a></li>';
+      return '<li><a class="gs-tab' + (active ? ' is-active' : '') + '" href="' + esc(item.href) + '" aria-label="' + esc(item.ariaLabel || item.label) + '"' + (active ? ' aria-current="page"' : '') + '>' +
+        ic(item.icon, 22) + '<span aria-hidden="true">' + esc(item.short) + '</span>' + navBadgeHtml(item) + '</a></li>';
     }).join('') + '<li><button type="button" class="gs-tab" data-action="open-drawer" data-key="more-tab" aria-haspopup="dialog" aria-label="More">' + ic('more', 22) + '<span aria-hidden="true">More</span></button></li></ul></nav>';
   }
 
@@ -135,11 +150,19 @@
     if (r.name === 'privacy') return [{ label: 'Privacy & my data' }];
     if (!gd || !gd.guild) return [{ label: 'Raidsmith' }];
     crumbs.push({ label: gd.guild.name, href: guildHref(gd.guild.id, 'roster') });
-    if (r.name === 'section') {
+    if (r.name === 'section' || r.name === 'person' || r.name === 'import') {
       const active = activeTeams(gd.teams);
-      const team = active.length > 1 ? active.filter(function (t) { return t.id === ctx.teamId; })[0] : null;
+      // The team shows with several active teams, and always on an archived team's roster (?team= in the hash).
+      const wanted = r.name === 'section' && r.section === 'roster' && r.team ? r.team : ctx.teamId;
+      const all = Array.isArray(gd.teams) ? gd.teams : [];
+      const team = active.length > 1 || (r.team && r.name === 'section') ? all.filter(function (t) { return t.id === wanted; })[0] : null;
       if (team) crumbs.push({ label: team.name });
-      crumbs.push({ label: { roster: 'Roster', nights: 'Raid nights', attendance: 'Attendance', loot: 'Loot' }[r.section] || 'Roster' });
+      if (r.name === 'section') {
+        crumbs.push({ label: { roster: 'Roster', nights: 'Raid nights', attendance: 'Attendance', loot: 'Loot' }[r.section] || 'Roster' });
+      } else {
+        crumbs.push({ label: 'Roster', href: guildHref(gd.guild.id, 'roster') });
+        crumbs.push({ label: r.name === 'person' ? (ctx.personName || 'Person') : (r.source === 'wcl' ? 'Import from Warcraft Logs' : 'Import from Raid-Helper') });
+      }
     } else if (r.name === 'settings') {
       const tabs = settingsTabs(gd.me && gd.me.can);
       const first = tabs[0];
@@ -224,6 +247,7 @@
     settingsTabs: settingsTabs,
     activeTeams: activeTeams,
     navItems: navItems,
+    rosterBadge: rosterBadge,
     breadcrumbItems: breadcrumbItems,
     publicHeaderHtml: publicHeaderHtml,
     settingsFrameHtml: settingsFrameHtml,
