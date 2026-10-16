@@ -21,6 +21,12 @@
     signinNotice: '',
     peopleSort: { column: G.peopleSort.DEFAULT_SORT.column, dir: G.peopleSort.DEFAULT_SORT.dir },
     peopleQuery: '',
+    roster: null,      // { gid, teamId, data } - GET /roster?team= for the open roster page
+    rosterUi: { sort: { column: G.rosterSort.DEFAULT_SORT.column, dir: G.rosterSort.DEFAULT_SORT.dir }, role: 'all', status: 'active', query: '' },
+    rosterNotice: '',
+    person: null,      // { gid, pid, record } - GET /roster/p_... for the open person record
+    linkable: {},      // gid -> [person] from GET /roster/linkable
+    imports: {},       // 'rh' | 'wcl' -> the import page's state (see pages-import.js)
   };
   const app = G.app = { state: state };
   let root = null;
@@ -72,6 +78,12 @@
     if (!active.some(function (t) { return t.id === id; })) id = active[0].id;
     state.teamByGuild[gid] = id;
     return id;
+  }
+
+  // Whether the viewer's roster.edit reaches this team ('guild' or a list of team ids).
+  function canEditTeam(gd, teamId) {
+    const v = gd && gd.me && gd.me.can ? gd.me.can['roster.edit'] : null;
+    return v === 'guild' || (Array.isArray(v) && v.indexOf(teamId) >= 0);
   }
 
   // ── navigation ──
@@ -130,6 +142,7 @@
     state.privacyMessage = r.name === 'privacy' ? state.privacyMessage : '';
     state.currentGid = r.gid || null;
     if (!(r.name === 'settings' && r.tab === 'people')) state.notice = '';
+    if (!(r.name === 'section' && r.section === 'roster')) state.rosterNotice = '';
 
     const ready = state.loaded ? Promise.resolve() : (render(), loadMe());
     return ready.then(function () {
@@ -167,6 +180,9 @@
         if (state.me && state.me.user) state.me.user.prefs = Object.assign({}, prefs(), { lastGuildId: r.gid });
         patchPrefs({ lastGuildId: r.gid });
       }
+      if (r.name === 'section' && r.section === 'roster') return loadRoster(r, gd, token);
+      if (r.name === 'person') return loadPerson(r, gd, token);
+      if (r.name === 'import') return loadImport(r, gd, token);
       if (r.name !== 'settings') return null;
       const tabs = G.shell.settingsTabs(gd.me && gd.me.can);
       if (!tabs.length) { failWith('You cannot open this', 'Guild settings are for the people who run the guild.', false); return null; }
@@ -188,6 +204,70 @@
     });
   }
 
+  // ── roster routes ──
+  function rosterUrl(gid, tail) { return '/api/guild/' + encodeURIComponent(gid) + '/roster' + (tail || ''); }
+
+  // Flagged-trial count for a team's badge: people whose home team is that team (the Worker sends it for editors only).
+  function setFlagFromRoster(gd, teamId, data) {
+    if (!gd || !data || !data.can || !data.can.edit) return;
+    gd.rosterFlags = Object.assign({}, gd.rosterFlags);
+    gd.rosterFlags[teamId] = G.rosterSort.trialsToDecide(data.people, teamId).length;
+  }
+
+  function fetchRoster(gid, teamId) {
+    return G.api.get(rosterUrl(gid, '?team=' + encodeURIComponent(teamId))).then(function (data) {
+      state.roster = { gid: gid, teamId: teamId, data: data };
+      setFlagFromRoster(state.guilds[gid], teamId, data);
+      return data;
+    });
+  }
+
+  function loadRoster(r, gd, token) {
+    const gid = gd.guild.id;
+    const teamId = r.team || teamFor(gd);
+    if (!teamId) { state.roster = { gid: gid, teamId: null, data: null }; return null; }
+    if (state.roster && state.roster.teamId !== teamId) {
+      state.rosterUi.role = 'all'; state.rosterUi.status = 'active'; state.rosterUi.query = '';
+    }
+    return fetchRoster(gid, teamId).then(function () { return null; }).catch(function (err) {
+      if (token !== routeToken) return null;
+      handleLoadError(err);
+      return null;
+    });
+  }
+
+  function loadPerson(r, gd, token) {
+    const gid = gd.guild.id;
+    return G.api.get(rosterUrl(gid, '/' + encodeURIComponent(r.pid))).then(function (record) {
+      if (token !== routeToken) return null;
+      state.person = { gid: gid, pid: r.pid, record: record };
+      if (!(record.can && record.can.edit)) return null;
+      return G.pages.roster.loadLinkable(gid).then(function () { return null; });
+    }).catch(function (err) {
+      if (token !== routeToken) return null;
+      state.person = null;
+      handleLoadError(err);
+      return null;
+    });
+  }
+
+  function loadImport(r, gd, token) {
+    const gid = gd.guild.id;
+    const teamId = teamFor(gd);
+    if (!teamId || !canEditTeam(gd, teamId)) {
+      failWith('You cannot open this', 'Importing is for the officers and team leads of this team.', false);
+      return null;
+    }
+    const kind = r.source === 'wcl' ? 'wcl' : 'rh';
+    G.pages.import.ensureState(kind, gid, teamId);
+    if (kind !== 'wcl') return null;
+    // The "Add as Alt of someone else" picker lists this team's people.
+    return fetchRoster(gid, teamId).then(function () { return null; }, function () {
+      if (token === routeToken) state.roster = null;
+      return null;
+    });
+  }
+
   // ── rendering ──
   function titleFor(r, gd) {
     const base = 'Raidsmith guild';
@@ -195,6 +275,8 @@
     if (r.name === 'privacy') page = 'Privacy & my data';
     else if (r.name === 'new') page = 'Create a guild';
     else if (r.name === 'section') page = { roster: 'Roster', nights: 'Raid nights', attendance: 'Attendance', loot: 'Loot' }[r.section] || '';
+    else if (r.name === 'person') page = 'Roster';
+    else if (r.name === 'import') page = r.source === 'wcl' ? 'Import from Warcraft Logs' : 'Import from Raid-Helper';
     else if (r.name === 'settings') page = 'Guild settings';
     if (gd && gd.guild && page) page += ' - ' + gd.guild.name;
     return page ? page + ' - ' + base : base;
@@ -203,6 +285,14 @@
   function timeZones() {
     if (!zoneCache) zoneCache = G.pages.create.allTimeZones();
     return zoneCache;
+  }
+
+  function rosterMain(gd) {
+    const P = G.pages;
+    const rs = state.roster;
+    if (!rs || rs.gid !== gd.guild.id) return P.signin.loadingHtml();
+    if (!rs.data) return P.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
+    return P.roster.rosterHtml({ guildData: gd, data: rs.data, view: state.rosterUi, notice: state.rosterNotice, alert: state.pageAlert });
   }
 
   function mainFor(r, gd, ctx) {
@@ -217,7 +307,22 @@
       case 'privacy':
         return P.privacy.privacyHtml({ me: state.me, message: state.privacyMessage });
       case 'section':
-        return gd ? P.empty.emptyHtml(r.section) : P.signin.loadingHtml();
+        if (!gd) return P.signin.loadingHtml();
+        return r.section === 'roster' ? rosterMain(gd) : P.empty.emptyHtml(r.section);
+      case 'person': {
+        if (!gd || !state.person || state.person.gid !== gd.guild.id || state.person.pid !== r.pid) return P.signin.loadingHtml();
+        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert });
+      }
+      case 'import': {
+        if (!gd) return P.signin.loadingHtml();
+        const kind = r.source === 'wcl' ? 'wcl' : 'rh';
+        const imp = state.imports[kind];
+        if (!imp || imp.gid !== gd.guild.id) return P.signin.loadingHtml();
+        if (kind === 'rh') return P.import.raidHelperHtml({ guildData: gd, rh: imp });
+        const people = state.roster && state.roster.gid === gd.guild.id && state.roster.teamId === imp.teamId && state.roster.data
+          ? state.roster.data.people.filter(function (p) { return p.main && p.main.team && p.main.team.id === imp.teamId; }) : [];
+        return P.import.wclHtml({ guildData: gd, wcl: imp, people: people });
+      }
       case 'settings': {
         if (!gd) return P.signin.loadingHtml();
         const tab = r.tab;
@@ -245,7 +350,8 @@
       return { html: html, title: titleFor(r, null) };
     }
     const gd = r.gid ? state.guilds[r.gid] || null : null;
-    const ctx = { me: state.me, route: r, guildData: gd, teamId: gd ? teamFor(gd) : null, collapsed: prefs().sidebarCollapsed === true };
+    const ctx = { me: state.me, route: r, guildData: gd, teamId: gd ? teamFor(gd) : null, collapsed: prefs().sidebarCollapsed === true,
+      personName: r.name === 'person' && state.person && state.person.pid === r.pid && state.person.record ? (G.pages.person.mainOf(state.person.record) || {}).name : '' };
     return { html: G.shell.render(ctx, mainFor(r, gd, ctx)), title: titleFor(r, gd) };
   }
 
@@ -272,6 +378,18 @@
   app.go = go;
   app.closeOverlays = closeOverlays;
   app.loadMe = loadMe;
+  app.teamFor = teamFor;
+
+  // Every mutation reply that carries `rosterFlags` refreshes the Roster nav badge without a refetch.
+  app.applyFlags = function (gid, res) {
+    const gd = state.guilds[gid];
+    if (gd && res && res.rosterFlags && typeof res.rosterFlags === 'object') gd.rosterFlags = res.rosterFlags;
+  };
+
+  app.setPerson = function (gid, record) {
+    if (!record || !record.person) return;
+    state.person = { gid: gid, pid: record.person.id, record: record };
+  };
 
   app.requireSignin = function () {
     resetSession();
@@ -375,6 +493,14 @@
     if (d && d.open) d.close();
   };
 
+  function closeImportMenu() {
+    const menu = document.getElementById('roster-import-list');
+    if (!menu || menu.hidden) return;
+    menu.hidden = true;
+    const btn = root && root.querySelector('[data-action="roster-import-menu"]');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
   G.handlers.click['sign-out'] = signOut;
   G.handlers.click.retry = function () { go(normalizedHash()); };
 
@@ -385,6 +511,9 @@
     try { window.localStorage.setItem(TEAM_KEY + gid, sel.value); } catch (e) { /* storage may be blocked */ }
     const drawer = document.getElementById('gs-drawer');
     if (drawer && drawer.open) drawer.close();
+    const r = G.router.parse(window.location.hash);
+    if (r.name === 'section' && r.section === 'roster') { go(G.router.format({ name: 'section', gid: gid, section: 'roster' })); return; }
+    if (r.name === 'import') { route(); return; }
     render();
   };
 
@@ -403,6 +532,7 @@
   function onClick(ev) {
     const t = ev.target;
     if (!t || !t.closest) return;
+    if (!t.closest('.gs-import-menu')) closeImportMenu();
     if (!t.closest('.gs-account')) closeMenu(false);
     else if (t.closest('.gs-menu a')) closeMenu(false);
     if (t.closest('.gs-drawer a')) G.handlers.click['close-drawer']();

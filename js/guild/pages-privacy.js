@@ -88,6 +88,8 @@
         'Raid-Helper sign-ups: Discord ID, nickname and sign-up status.',
         'Public Warcraft Logs reports: only who was present in which boss pulls. The report itself is not kept.',
         'Your officers\' own entries.',
+      ]) + paragraphs([
+        'Officers can import a Raid-Helper event. That stores each sign-up\'s Discord ID and nickname on the roster, linked to their roster entry, until an officer removes the person or the person signs in and deletes their data.',
       ])) +
       section('privacy-who-sees', 'Who can see it', paragraphs([
         'Members see the guild\'s roster and raid nights, and the attendance of the teams they have a character on. Officers and team leads also see officer notes. Nobody outside the guild sees any of it.',

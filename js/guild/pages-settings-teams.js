@@ -32,10 +32,16 @@
       '<div class="gs-row-actions">' + teamActionsHtml(team, canEdit) + '</div></li>';
   }
 
-  function archivedRow(team, canEdit) {
-    const action = canEdit
+  // Every archived team keeps a way (players counts non-inactive people only, so it can be 0 with characters left) to its roster: the roster page opens it with ?team= in the hash.
+  function openRosterLink(team, gid) {
+    if (!gid) return '';
+    return '<a class="gs-btn gs-btn-sm" href="' + esc(G.router.format({ name: 'section', gid: gid, section: 'roster', team: team.id })) + '" aria-label="Open roster of ' + esc(team.name) + '">Open roster</a>';
+  }
+
+  function archivedRow(team, canEdit, gid) {
+    const action = openRosterLink(team, gid) + (canEdit
       ? '<button type="button" class="gs-btn gs-btn-sm" data-action="team-restore" data-team="' + esc(team.id) + '" data-key="restore-' + esc(team.id) + '" aria-label="Restore ' + esc(team.name) + '">Restore</button>'
-      : '';
+      : '');
     const n = team.players == null ? 0 : team.players;
     return '<li class="gs-archived-item"><span class="gs-cell-strong gs-archived-name">' + esc(team.name) + '</span><span class="gs-muted">' + esc(team.size) + '-man - ' + esc(n) + (n === 1 ? ' player' : ' players') + '</span>' + action + '</li>';
   }
@@ -57,7 +63,7 @@
         : '<p class="gs-empty">No active teams.' + (canEdit ? ' Add a team to get started.' : '') + '</p>') +
       '<p class="gs-fine">' + esc(NOTE) + '</p>' +
       (archived.length
-        ? '<h2 class="gs-h2" id="archived-heading">Archived teams (' + archived.length + ')</h2><div class="gs-panel gs-panel-flush gs-archived-wrap"><ul class="gs-archived" aria-labelledby="archived-heading">' + archived.map(function (t) { return archivedRow(t, canEdit); }).join('') + '</ul></div>'
+        ? '<h2 class="gs-h2" id="archived-heading">Archived teams (' + archived.length + ')</h2><div class="gs-panel gs-panel-flush gs-archived-wrap"><ul class="gs-archived" aria-labelledby="archived-heading">' + archived.map(function (t) { return archivedRow(t, canEdit, gd.guild.id); }).join('') + '</ul></div>'
         : '') +
       '</section>';
   }
