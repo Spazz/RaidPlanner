@@ -19,12 +19,15 @@ function showView(view) {
   const app = document.getElementById('app');
   landing.hidden = view !== 'landing';
   app.hidden = view !== 'app';
-  // The era band is the landing's brand row; the planner's header row carries the version button instead.
-  const eraBand = document.getElementById('era-band');
-  if (eraBand) eraBand.hidden = view !== 'landing';
+  // The shell's top bar (version tabs on the landing, plan header row on the plan) follows this attribute.
+  document.body.dataset.plannerView = view;
+  document.dispatchEvent(new CustomEvent('planner:view', { detail: { view } }));
+  // The full landing (How it works) is a landing mode; opening the planner ends it.
+  if (view === 'app') document.body.classList.remove('landing-full');
   if (view === 'landing') renderLanding();
   else if (State.activeTab !== 'plan') switchTab('plan');
-  window.scrollTo(0, 0);
+  // A guild page on top of the planner must not scroll under the person's feet.
+  if (plannerActive()) window.scrollTo(0, 0);
   if (view === 'app') scheduleSpotlightQueue();
 }
 
@@ -284,21 +287,7 @@ const LandingSample = {
   document.getElementById('btn-resume').addEventListener('click', () => { showView('app'); RaidHelperSync.check(); });
   // "New plan…" (menu) goes back to the import screen; the planner keeps its plan meanwhile.
   document.getElementById('btn-new-plan').addEventListener('click', () => showView('landing'));
-  // The era-band brand is the way home. A plain left click stays in the app; a modified or middle click
-  // keeps the link's default so the start page opens in a new tab.
-  document.getElementById('brand-home').addEventListener('click', e => {
-    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-    e.preventDefault();
-    showView('landing');
-    window.scrollTo(0, 0);
-  });
-  // The planner header's P mark does the same.
-  document.getElementById('planner-home').addEventListener('click', e => {
-    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-    e.preventDefault();
-    showView('landing');
-    window.scrollTo(0, 0);
-  });
+  // The way home is the shell's Planner item and brand (js/guild/shell.js), which call PP.shell.home().
 })();
 
 (function initPlanChrome() {
@@ -445,7 +434,7 @@ function closeCoverageSheet(restoreFocus = true) {
 // element's original position lets it snap back to that exact spot when the
 // viewport widens again. Slots fill in list order.
 (function initResponsiveChrome() {
-  const slots = ['planner-home:phone-home-slot', 'version-menu-wrap:phone-version-slot', 'btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
+  const slots = ['version-menu-wrap:phone-version-slot', 'btn-undo:phone-bar-undo-slot', 'btn-optimize:phone-bar-optimize-slot', 'btn-share-main:phone-bar-share-slot',
     'raid-size-wrap:raid-size-phone-slot', 'roster-name:phone-plan-name-slot',
     'btn-redo:phone-sheet-quick-slot', 'btn-changes:phone-sheet-quick-slot',
     'btn-new-plan:phone-sheet-plan-slot', 'btn-load:phone-sheet-plan-slot', 'btn-save:phone-sheet-plan-slot', 'btn-templates:phone-sheet-plan-slot', 'btn-split-plan:phone-sheet-plan-slot', 'btn-clear:phone-sheet-plan-slot',
@@ -732,8 +721,9 @@ function liveLinkPath(id) {
 function syncAddressBar() {
   const link = currentLiveLink();
   const path = link ? liveLinkPath(link.entry.id) : '/';
-  // A pending #r= share link has not been read yet: keep it.
-  const hash = window.location.hash.startsWith('#r=') ? window.location.hash : '';
+  // A pending #r= share link has not been read yet: keep it. So is a guild route (#/...): the shell shows a
+  // guild section on top of the open plan's address.
+  const hash = (window.location.hash.startsWith('#r=') || window.location.hash.startsWith('#/')) ? window.location.hash : '';
   if (window.location.pathname !== path) history.replaceState(null, '', path + window.location.search + hash);
 }
 
@@ -2052,6 +2042,12 @@ document.getElementById('btn-back-to-raid').addEventListener('click', () => swit
 // ── GLOBAL KEYBOARD SHORTCUTS (feature-backlog-2.md #8) ──────────
 // Single-key shortcuts and the toolbar button each one clicks (SHORTCUTS_HELP lists them for people).
 const SHORTCUT_BUTTONS = { o: 'btn-optimize', e: 'btn-share-main', l: 'btn-share', g: 'btn-copy-mrt', m: 'btn-copy-mrt-note', c: 'btn-copy-chat' };
+
+// Whether the planner section is the one showing. The shell (js/guild/app.js) turns it off through
+// PP.shell.setActive while a guild page covers the planner; without the shell it stays on. Declared here,
+// ahead of the keydown handler, so the shortcut tests that slice this range resolve it.
+let plannerSectionActive = true;
+function plannerActive() { return plannerSectionActive; }
 const SHORTCUTS_HELP = [
   ['O', 'Optimize groups'],
   ['Ctrl/Cmd + Z', 'Undo'],
@@ -2097,6 +2093,7 @@ function isShortcutBlocked(target) {
 document.addEventListener('error', e => handleIconError(e.target), true);
 
 document.addEventListener('keydown', (e) => {
+  if (!plannerActive()) return; // a guild page is showing: the planner's keys stay off
   if (State.view !== 'app') return; // shortcuts only act on the planner, not the landing page
   if (isShortcutBlocked(e.target)) return;
   const mod = e.ctrlKey || e.metaKey;
@@ -2136,6 +2133,55 @@ window.addEventListener('storage', e => TabWatch.onStorage(e));
 // A share link pasted into the address bar of an already-open page only
 // changes the hash, so honour it there too.
 window.addEventListener('hashchange', () => { loadFromShareLink().then(opened => { if (opened) showView('app'); }); });
+
+// ── SHELL CONTRACT ──────────────────────────────────────────────
+// The page shell (js/guild/) shows the planner and the guild pages in one document. These are the planner's half
+// of that contract: go home, open How it works, report the view, and switch off while a guild page is showing.
+// Nothing here needs the shell, and the planner never reads it.
+
+// Closes every overlay the planner can have open, so nothing of it lingers behind a guild page.
+function closePlannerOverlays() {
+  closePlayerEditor();
+  closeBuffPicker();
+  removeSpotlightCallout();
+  clearTimeout(spotlightTimer);
+  Menu.closeAll();
+  document.querySelectorAll('.menu:not([hidden])').forEach(menu => { menu.hidden = true; });
+  document.querySelectorAll('[aria-haspopup="menu"][aria-expanded="true"]').forEach(btn => btn.setAttribute('aria-expanded', 'false'));
+  closeCoverageSheet(false);
+  if (document.getElementById('mobile-more-sheet').classList.contains('visible')) document.getElementById('btn-close-more-sheet').click();
+  if (document.getElementById('save-overlay').classList.contains('visible')) closeSaveOverlay();
+  // A pending Modal.confirm resolves as cancelled through the dialog's close event.
+  document.querySelectorAll('#planner-root dialog[open]').forEach(dialog => dialog.close());
+  Modal.settle(false);
+}
+
+function setPlannerActive(active) {
+  const next = !!active;
+  if (next === plannerSectionActive) return;
+  plannerSectionActive = next;
+  if (!next) closePlannerOverlays();
+  else if (State.view === 'app') scheduleSpotlightQueue();
+}
+
+const PlannerShell = {
+  // The compact landing (import card, saved plans).
+  home() {
+    showView('landing');
+    document.body.classList.remove('landing-full');
+    window.scrollTo(0, 0);
+  },
+  // The full landing, scrolled to its How it works section.
+  howItWorks() {
+    showView('landing');
+    document.body.classList.add('landing-full');
+    const section = document.getElementById('how-it-works');
+    if (section) section.scrollIntoView();
+  },
+  view: () => State.view,
+  isActive: () => plannerActive(),
+  setActive: setPlannerActive,
+};
 
 // ── EXPOSE FOR TESTING ──────────────────────────────────────────
 // ── BUFF TOOLTIP PORTAL ─────────────────────────────────────────
@@ -2215,4 +2261,4 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, Assignments, RaidPrep, PrintSheet, detectVersionFromTemplateId, getGroupBuffs, getBuffPriority, getRaidDebuffCoverage, getDrumsCoverage, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, Constraints, Drummers, RaidSplit, PlanStore };
 }
 // Also expose on window for browser-based tests
-window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, RaidSplit, PlanStore, SplitFlow };
+window.PP = { Config, Import, Optimizer, IdealComp, RosterEdit, Readiness, getGroupBuffs, getMissingBuffInsights, State, TOTEM_ELEMENTS, PALADIN_AURAS, BEST_AIR_TOTEM, BEST_PALADIN_AURA, NO_ROSTER_NAME, Backups, RaidSplit, PlanStore, SplitFlow, shell: PlannerShell };

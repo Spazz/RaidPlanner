@@ -107,6 +107,23 @@ check('the tip queue waits about 3 seconds and for a visible toast to hide', () 
   assert(/if \(view === 'app'\) scheduleSpotlightQueue\(\);/.test(script));
 });
 
+check('the tip queue stays off while a guild page covers the planner, and still runs with no shell code', () => {
+  const start = script.indexOf('function runSpotlightQueue');
+  const end = script.indexOf('function closePlayerEditor');
+  assert(start > 0 && end > start);
+  const run = plannerActive => {
+    const shown = [];
+    const factory = new Function('document', 'SPOTLIGHT_DEFS', 'Spotlight', 'localStorage', 'showSpotlightCallout', 'plannerActive',
+      script.slice(start, end) + '\nreturn runSpotlightQueue;');
+    factory({ querySelector: () => null }, [{ id: 'tip', anchor: () => ({}), text: 't' }], { shouldShow: () => true }, {},
+      id => { shown.push(id); return true; }, plannerActive)();
+    return shown;
+  };
+  assert.deepEqual(run(() => true), ['tip']);
+  assert.deepEqual(run(() => false), [], 'inactive: no tip');
+  assert.deepEqual(run(undefined), ['tip'], 'no shell code loaded: the gate is open');
+});
+
 check('attendance copy points at saved copies', () => {
   assert(html.includes('Built from your saved copies (Plan menu &gt; Save a copy) for the current game version.'));
   assert(html.includes("Recent imports and autosaved plans don't count, so this only reflects raids you saved on purpose."));

@@ -2,7 +2,8 @@
  * PartyPlanner Web - brand-is-home tests (4.3.1)
  * Run: node brand-tests.js
  *
- * The era-band brand is the way home; the planner title bar starts with the plan name.
+ * The era band is gone (step 2b): the shell's brand and Planner item are the way home, the planner's header row
+ * lives in the shell's top bar and starts with the plan name.
  */
 const fs = require('fs');
 const path = require('path');
@@ -25,67 +26,20 @@ check('btn-home and title-home are gone', () => {
   assert.ok(!/title-home/.test(html + css), 'title-home left in html or css');
 });
 
-check('the brand is an <a href="/" id="brand-home"> with the aria-label', () => {
-  const m = html.match(/<a [^>]*class="game-header-brand"[^>]*>/);
-  assert.ok(m, 'no <a class="game-header-brand">');
-  assert.match(m[0], /href="\/"/);
-  assert.match(m[0], /id="brand-home"/);
-  assert.match(m[0], /aria-label="Raidsmith home: load a different plan"/);
+check('the era band, the brand link and the planner-home link are gone, with their handlers and CSS', () => {
+  assert.ok(!/id="era-band"|class="game-header"|game-header-brand|game-header-links/.test(html), 'era band markup left in index.html');
+  assert.ok(!/brand-home|planner-home|phone-home-slot/.test(html + appJs + css), 'brand-home / planner-home / phone-home-slot left');
+  assert.ok(!/\.game-header(?![\w-])|\.game-header-(?:inner|brand|links)/.test(css), 'era band CSS left in app.css');
 });
 
-check('the title bar holds an h1.sr-only', () => {
+check('the title bar holds an h1.sr-only that can take focus', () => {
   const bar = html.slice(html.indexOf('<div class="title-bar">'));
-  assert.match(bar.slice(0, 200), /^<div class="title-bar">\s*<h1 class="sr-only">Raidsmith<\/h1>/);
+  assert.match(bar.slice(0, 200), /^<div class="title-bar">\s*<h1 class="sr-only" tabindex="-1">Raidsmith<\/h1>/);
 });
 
-check('brand has pointer, gold hover and focus-visible outline', () => {
-  assert.match(css, /\.game-header-brand\s*\{[^}]*cursor:\s*pointer/);
-  assert.match(css, /\.game-header-brand:hover strong[^{]*\{[^}]*var\(--accent-gold-bright\)/);
-  assert.match(css, /\.game-header-brand:focus-visible\s*\{[^}]*var\(--accent-gold\)/);
-});
-
-// Run the real handler with fake events.
-function runHandler(event, id = 'brand-home') {
-  const start = appJs.indexOf("document.getElementById('" + id + "').addEventListener('click', ");
-  assert.ok(start >= 0, id + ' click handler missing');
-  const end = appJs.indexOf('\n  });', start) + '\n  });'.length;
-  const calls = [];
-  let handler;
-  const sandbox = {
-    document: { getElementById: elId => ({ addEventListener: (t, fn) => { if (elId === id && t === 'click') handler = fn; } }) },
-    showView: v => calls.push('showView:' + v),
-    window: { scrollTo: () => calls.push('scrollTo') },
-  };
-  vm.runInNewContext(appJs.slice(start, end), sandbox);
-  assert.ok(handler, 'handler not registered');
-  const e = Object.assign({ button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false }, event, { preventDefault: () => calls.push('preventDefault') });
-  handler(e);
-  return calls;
-}
-check('a plain click prevents default, shows the landing and scrolls to the top', () => {
-  assert.deepEqual(runHandler({}), ['preventDefault', 'showView:landing', 'scrollTo']);
-});
-check('ctrl, meta, shift, alt and middle clicks keep the browser default', () => {
-  for (const ev of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
-    assert.deepEqual(runHandler(ev), [], JSON.stringify(ev));
-  }
-});
-
-check('#planner-home click: plain click goes to the landing; modified and middle clicks keep the default', () => {
-  assert.deepEqual(runHandler({}, 'planner-home'), ['preventDefault', 'showView:landing', 'scrollTo']);
-  for (const ev of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
-    assert.deepEqual(runHandler(ev, 'planner-home'), [], JSON.stringify(ev));
-  }
-});
-
-check('the phone block gives the brand a 44px x 44px tap area', () => {
+check('the phone block keeps the 44px tap area around the version button', () => {
   const at = css.indexOf('@media (max-width: 600px)');
-  const block = css.slice(css.indexOf('/* Version header: one 40px row', at));
-  const m = block.match(/\.game-header-brand::before\s*\{([^}]*)\}/);
-  assert.ok(m, 'no .game-header-brand::before in the phone block');
-  assert.match(m[1], /width:\s*44px/);
-  assert.match(m[1], /height:\s*44px/);
-  assert.match(m[1], /position:\s*absolute/);
+  const block = css.slice(css.indexOf('/* Version tabs in the shell', at));
   const v = block.match(/\.version-btn::before\s*\{([^}]*)\}/);
   assert.ok(v, 'no .version-btn::before in the phone block');
   assert.match(v[1], /inset:\s*-6px 0/, '32px button + 6px up and down = a 44px tall tap area');
@@ -115,28 +69,44 @@ function sliceBetween(src, from, to) {
   return src.slice(a, b);
 }
 
-check('showView hides the era band for the planner and shows it for the landing', () => {
+check('showView sets body[data-planner-view], fires planner:view, ends the full landing and scrolls only while the planner is active', () => {
   const body = sliceBetween(appJs, 'function showView(view) {', '\n}\n') + '\n}';
-  const band = { hidden: false };
-  const els = { 'landing-view': { hidden: false }, app: { hidden: true }, 'era-band': band };
+  const els = { 'landing-view': { hidden: false }, app: { hidden: true } };
+  const classes = new Set(['landing-full']);
+  const events = [];
+  const scrolls = [];
+  let active = true;
   const sandbox = {
-    State: { activeTab: 'plan' }, document: { getElementById: id => els[id] },
-    renderLanding() {}, switchTab() {}, scheduleSpotlightQueue() {}, window: { scrollTo() {} }, band,
+    State: { activeTab: 'plan' },
+    document: {
+      getElementById: id => els[id],
+      body: { dataset: {}, classList: { remove: c => classes.delete(c), add: c => classes.add(c), contains: c => classes.has(c) } },
+      dispatchEvent: e => { events.push(e.type + ':' + e.detail.view); return true; },
+    },
+    CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init.detail; } },
+    renderLanding() {}, switchTab() {}, scheduleSpotlightQueue() {}, plannerActive: () => active, window: { scrollTo: () => scrolls.push(1) },
   };
-  vm.runInNewContext(body + '\nshowView("app"); globalThis.afterApp = band.hidden; showView("landing"); globalThis.afterLanding = band.hidden;', sandbox);
-  assert.equal(sandbox.afterApp, true);
-  assert.equal(sandbox.afterLanding, false);
-  assert.match(html, /<header class="game-header" id="era-band">/);
+  vm.runInNewContext(body + '\nglobalThis.showView = showView;', sandbox);
+  sandbox.showView('app');
+  assert.equal(sandbox.document.body.dataset.plannerView, 'app');
+  assert.equal(els.app.hidden, false);
+  assert.equal(els['landing-view'].hidden, true);
+  assert.ok(!classes.has('landing-full'), 'opening the planner ends the full landing');
+  sandbox.showView('landing');
+  assert.equal(sandbox.document.body.dataset.plannerView, 'landing');
+  assert.deepEqual(events, ['planner:view:app', 'planner:view:landing']);
+  assert.equal(scrolls.length, 2);
+  active = false;
+  sandbox.showView('app');
+  assert.equal(scrolls.length, 2, 'no scroll while a guild page covers the planner');
+  assert.equal(sandbox.document.body.dataset.plannerView, 'app', 'the attribute still follows the view');
+  assert.ok(!/era-band|eraBand/.test(body), 'showView no longer touches the era band');
 });
 
-check('the title bar runs h1.sr-only, #planner-home (href "/", aria-label), then the plan name', () => {
+check('the title bar runs h1.sr-only, then the plan name', () => {
   const bar = html.slice(html.indexOf('<div class="title-bar">'));
-  const h1 = bar.indexOf('<h1 class="sr-only">'), home = bar.indexOf('id="planner-home"'), name = bar.indexOf('id="roster-name"');
-  assert.ok(h1 >= 0 && h1 < home && home < name, 'order h1, planner-home, roster-name');
-  const tag = bar.match(/<a [^>]*id="planner-home"[^>]*>/)[0];
-  assert.match(tag, /href="\/"/);
-  assert.match(tag, /aria-label="Raidsmith home: load a different plan"/);
-  assert.match(tag, /title="Home: load a different plan"/);
+  const h1 = bar.indexOf('<h1 class="sr-only" tabindex="-1">'), name = bar.indexOf('id="roster-name"');
+  assert.ok(h1 >= 0 && h1 < name, 'order h1, roster-name');
   assert.ok(!/title-home/.test(html + css));
 });
 
@@ -216,11 +186,13 @@ check('Menu keyboard navigation includes menuitemradio items', () => {
   assert.match(code, /closest\('\[role="menuitem"\], \[role="menuitemradio"\]'\)/);
 });
 
-check('the phone slot list moves #planner-home and the version wrap around the plan-name toggle', () => {
-  assert.match(appJs, /'planner-home:phone-home-slot', 'version-menu-wrap:phone-version-slot'/);
-  const wrap = html.slice(html.indexOf('id="phone-summary-wrap"'), html.indexOf('class="phone-summary-line2"'));
-  const a = wrap.indexOf('id="phone-home-slot"'), b = wrap.indexOf('id="phone-summary-toggle"'), c = wrap.indexOf('id="phone-version-slot"');
-  assert.ok(a > 0 && a < b && b < c, 'home slot, toggle, version slot');
+check('the phone slot list moves the version wrap beside the plan-name toggle in the top bar', () => {
+  assert.match(appJs, /const slots = \['version-menu-wrap:phone-version-slot', 'btn-undo:phone-bar-undo-slot'/);
+  const bar = sliceBetween(html, 'id="shell-topbar-plan"', 'id="shell-topbar-account"');
+  const line1 = bar.indexOf('class="phone-summary-line1"'), b = bar.indexOf('id="phone-summary-toggle"'), c = bar.indexOf('id="phone-version-slot"');
+  assert.ok(line1 > 0 && line1 < b && b < c, 'line 1, toggle, version slot');
+  const wrap = html.slice(html.indexOf('id="phone-summary-wrap"'), html.indexOf('id="phone-context-body"'));
+  assert.ok(!wrap.includes('phone-summary-line1') && wrap.includes('class="phone-summary-line2"'), 'the wrap keeps line 2 only');
 });
 
 check('the Share menu has three headed groups, then Share and export last', () => {
@@ -236,25 +208,50 @@ check('the Share menu has three headed groups, then Share and export last', () =
   assert.ok(after.indexOf('</div>') > after.indexOf('btn-share-main'));
 });
 
-check('the landing has one brand row: links in the era band, no landing-nav, no Features, no cards', () => {
-  const band = sliceBetween(html, '<header class="game-header"', '</header>');
-  for (const id of ['nav-whats-new', 'whats-new-badge']) assert.ok(band.includes('id="' + id + '"'), id + ' in the band');
-  assert.match(band, /href="#how-it-works"/);
-  assert.match(band, /href="\/whats-new\.html" id="nav-whats-new"/);
-  assert.match(band, /href="\/faq\.html"/);
+check('the landing has no brand row of its own: version tabs in the top bar, no landing-nav, no Features, no cards', () => {
+  const bar = sliceBetween(html, 'id="shell-topbar-plan"', 'id="shell-topbar-account"');
+  assert.match(bar, /<nav class="game-version-nav" aria-label="Game version">/);
+  assert.equal((bar.match(/class="game-version-tab"/g) || []).length, 3);
   assert.ok(!/href="#(?:faq|whats-new)"/.test(html), 'no link to the moved sections');
-  assert.ok(!band.includes('Choose your era') && !band.includes('Your raid. Your rules.') && !band.includes('game-eyebrow'));
   assert.ok(!html.includes('landing-nav') && !html.includes('landing-brand') && !/>Features</.test(html) && !html.includes('class="features"') && !html.includes('id="features"'));
   assert.ok(!/\.landing-nav|\.features|\.feature\b/.test(css), 'dead CSS removed');
   const landing = sliceBetween(html, '<main class="landing" id="landing-view">', '</main>');
   assert.equal((landing.match(/<h1[ >]/g) || []).length, 1);
-  assert.match(landing, /^<main class="landing" id="landing-view">\s*<h1 class="sr-only">Raidsmith<\/h1>/);
+  assert.match(landing, /^<main class="landing" id="landing-view">\s*<h1 class="sr-only" tabindex="-1">Raidsmith<\/h1>/);
+});
+
+check('top-bar rules: the planner slot hides on guild sections and static pages, tabs on the landing, the header row on the plan', () => {
+  assert.match(css, /body\.shell-section-guild #shell-topbar-plan, body\.shell-section-page #shell-topbar-plan \{ display: none; \}/);
+  assert.match(css, /#shell-topbar-plan \{[^}]*flex: 1 1 0;[^}]*min-width: 0/);
+  assert.match(css, /body\[data-planner-view="landing"\] #shell-topbar-plan \.game-version-nav \{ display: flex/);
+  assert.match(css, /@media \(min-width: 601px\) \{\s*body\[data-planner-view="app"\] #shell-topbar-plan \.title-bar \{ display: flex; \}/);
+  assert.match(css, /@media \(max-width: 600px\) \{[^@]*body\[data-planner-view="app"\] #shell-topbar-plan \.phone-summary-line1 \{ display: flex/);
+  assert.match(css, /#shell-topbar-plan \.title-bar \{[^}]*zoom: 1\.5/, 'the header row keeps the planner scale');
+  assert.match(css, /#shell-topbar-plan #roster-name-text \{[^}]*text-overflow: ellipsis/, 'the plan name gives way first');
+  assert.ok(!/#shell-topbar-plan \{[^}]*position:\s*sticky/.test(css), 'the top bar is not sticky');
+});
+
+check('landing modes: full when signed out or on How it works, compact when signed in, only the import card while pending', () => {
+  assert.match(css, /\.landing-compact-head, \.landing-compact-help \{ display: none; \}/);
+  for (const part of ['.hero-copy', '#how-it-works', '#version-comparison', '.landing-footer']) {
+    assert.ok(css.includes('body:not(.is-signed-out):not(.landing-full) #landing-view ' + part), 'compact hides ' + part);
+    assert.ok(css.includes('body.shell-pending #landing-view ' + part), 'pending hides ' + part);
+  }
+  assert.match(css, /body:not\(\.is-signed-out\):not\(\.landing-full\):not\(\.shell-pending\) #landing-view \.landing-compact-head,/);
+});
+
+check('#planner-root reproduces the old body layout: centred column, 16px gutters above 1100px, safe areas only below', () => {
+  const rule = css.match(/\n\.planner-root \{([^}]*)\}/)[1];
+  assert.match(rule, /flex-direction: column/);
+  assert.match(rule, /align-items: center/);
+  assert.match(rule, /padding: 0 max\(16px, env\(safe-area-inset-right, 0px\)\) 8px max\(16px, env\(safe-area-inset-left, 0px\)\)/);
+  assert.match(css, /@media \(max-width: 1100px\) \{\s*\.planner-root \{ padding: 0 env\(safe-area-inset-right, 0px\) 0 env\(safe-area-inset-left, 0px\); \}/);
 });
 
 check('the hero wordmark is phone-only', () => {
   assert.match(html, /<div class="hero-copy">\s*<div class="hero-wordmark" aria-hidden="true">/);
   assert.match(css, /\.hero-wordmark\s*\{\s*display:\s*none/);
-  const block = css.slice(css.indexOf('/* Version header: one 40px row'));
+  const block = css.slice(css.indexOf('/* Version tabs in the shell'));
   assert.match(block, /\.hero-wordmark\s*\{\s*display:\s*flex/);
 });
 

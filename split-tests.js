@@ -2,8 +2,9 @@
  * PartyPlanner Web - index.html split tests
  * Run: node split-tests.js
  *
- * index.html is a thin page: one stylesheet (app.css) and the app as ordered
- * classic <script src> files under js/ (no build step, no defer/async/module).
+ * index.html is a thin page: two stylesheets (app.css, then guild.css for the shell around the planner) and the app
+ * as ordered classic <script src> files under js/ (no build step, no defer/async/module); the planner's scripts
+ * come first, then the guild shell's (js/guild/, the list in tests/guild-scripts.js).
  * These checks pin that shape:
  *   - the page references only root-absolute files that exist and are whitelisted in .gitignore
  *     (relative paths would break on the /<version>/<id> live-link rewrite)
@@ -22,6 +23,7 @@ const path = require('path');
 const vm = require('vm');
 const { execFileSync } = require('child_process');
 const app = require('./tests/load-app');
+const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
 
 let passed = 0;
 let skipped = 0;
@@ -42,20 +44,22 @@ check('index.html carries no inline <script> or <style>', () => {
   assert.ok(![...html.matchAll(/<script\b([^>]*)>/gi)].some(m => !/\bsrc\s*=/.test(m[1])), 'inline <script> found');
 });
 
-check('the page links /app.css and loads every js file as a plain classic script', () => {
-  assert.deepEqual(app.stylesheets, ['/app.css']);
-  assert.ok(app.scripts.length >= 6 && app.scripts.length <= 20, `${app.scripts.length} script files`);
-  for (const src of app.scripts) assert.match(src, /^\/js\/(?:rules\/)?[a-z0-9-]+\.js$/, `${src} must be root-absolute under /js/ (the rules data files under /js/rules/)`);
+check('the page links /app.css and /guild.css and loads every js file as a plain classic script', () => {
+  assert.deepEqual(app.stylesheets, ['/app.css', '/guild.css']);
+  assert.ok(app.scripts.length >= 6 && app.scripts.length <= 40, `${app.scripts.length} script files`);
+  for (const src of app.scripts) assert.match(src, /^\/js\/(?:rules\/|guild\/)?[a-z0-9-]+\.js$/, `${src} must be root-absolute under /js/ (the rules data files under /js/rules/, the guild shell under /js/guild/)`);
   assert.equal(new Set(app.scripts).size, app.scripts.length, 'a script is loaded twice');
   for (const m of html.matchAll(/<script\b([^>]*)>/gi)) {
     assert.ok(!/\b(?:defer|async)\b/i.test(m[1]) && !/type\s*=/i.test(m[1]), `script tag must be plain: ${m[0]}`);
   }
 });
 
-// js/rules/ holds the rules data files: one glob line whitelists the directory's scripts, every other file has its own line.
+// js/rules/ holds the rules data files and js/guild/ the guild shell: one glob line whitelists each directory's
+// scripts, every other file has its own line.
 const DATA_DIR = 'js/rules';
+const GUILD_DIR = 'js/guild';
 const whitelisted = file => gitignoreLines.includes(`!${file}`)
-  || (path.posix.dirname(file) === DATA_DIR && gitignoreLines.includes(`!${DATA_DIR}/*.js`));
+  || ([DATA_DIR, GUILD_DIR].includes(path.posix.dirname(file)) && gitignoreLines.includes(`!${path.posix.dirname(file)}/*.js`));
 const scriptsIn = dir => fs.readdirSync(path.join(ROOT, dir)).filter(f => f.endsWith('.js')).map(f => `/${dir}/${f}`);
 
 check('every referenced file exists, is non-empty and is whitelisted in .gitignore', () => {
@@ -65,8 +69,15 @@ check('every referenced file exists, is non-empty and is whitelisted in .gitigno
   }
   assert.ok(gitignoreLines.includes('!js/'), '.gitignore must un-ignore the js/ directory');
   assert.ok(gitignoreLines.includes(`!${DATA_DIR}/`), `.gitignore must un-ignore the ${DATA_DIR}/ directory`);
-  const onDisk = [...scriptsIn('js'), ...scriptsIn(DATA_DIR)].sort();
-  assert.deepEqual(onDisk, [...app.scripts].sort(), 'js/ or js/rules/ holds a file the page does not load (or vice versa)');
+  assert.ok(gitignoreLines.includes(`!${GUILD_DIR}/`), `.gitignore must un-ignore the ${GUILD_DIR}/ directory`);
+  const onDisk = [...scriptsIn('js'), ...scriptsIn(DATA_DIR), ...scriptsIn(GUILD_DIR)].sort();
+  assert.deepEqual(onDisk, [...app.scripts].sort(), 'js/, js/rules/ or js/guild/ holds a file the page does not load (or vice versa)');
+});
+
+check('the page ends with the guild scripts in the order of tests/guild-scripts.js', () => {
+  const tail = GUILD_SCRIPTS.slice(1); // util.js is the page's first script
+  assert.deepEqual(app.scripts.slice(app.scripts.length - tail.length), tail);
+  assert.equal(app.scripts[0], GUILD_SCRIPTS[0]);
 });
 
 check('the page head still carries the fonts and icon links', () => {
@@ -108,8 +119,11 @@ function lenientBrowser() {
     construct: () => stub(),
   });
   const store = { getItem: () => null, setItem() {}, removeItem() {} };
+  // There is no #guild-root in the stub, so the guild shell loads its modules and does not boot.
+  const doc = stub();
+  const document = new Proxy(doc, { get: (target, key) => (key === 'getElementById' ? id => (id === 'guild-root' ? null : target.getElementById(id)) : target[key]) });
   const g = {
-    TextEncoder, TextDecoder, console, URL, URLSearchParams, document: stub(),
+    TextEncoder, TextDecoder, console, URL, URLSearchParams, document,
     location: { search: '', hash: '', pathname: '/', href: 'http://localhost/' },
     navigator: { userAgent: '', clipboard: stub() }, localStorage: store, sessionStorage: store,
     matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
@@ -126,7 +140,8 @@ function lenientBrowser() {
 
 check('the whole page runs in page order against a lenient DOM stub, and exposes window.PP', () => {
   const ctx = runPage(app.scripts, lenientBrowser());
-  assert.ok(ctx.window.PP && ctx.window.PP.State && ctx.window.PP.Optimizer, 'window.PP not exposed by the last script');
+  assert.ok(ctx.window.PP && ctx.window.PP.State && ctx.window.PP.Optimizer, 'window.PP not exposed by the planner scripts');
+  assert.ok(ctx.window.PP.shell && typeof ctx.window.PP.shell.setActive === 'function', 'window.PP.shell (the shell contract) is exposed');
 });
 
 check('the load-order check is sensitive: loading modals.js and app.js swapped fails', () => {

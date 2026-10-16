@@ -2,27 +2,31 @@
  * Raidsmith Web - static site pages tests
  * Run: node site-pages-tests.js
  *
- * faq.html and whats-new.html are plain pages under the same header and footer as the
- * planner's homepage. They load only the scripts they need (js/util.js, js/changelog.js,
- * js/site-pages.js, and js/storage.js for the FAQ's "Show tips again"). These checks pin:
- * the page shell (head, one h1, site header without version tabs, footer), no inline code
- * (strict CSP), the 16 FAQ questions, that the homepage lost its kicker, version note,
+ * faq.html and whats-new.html are plain pages that draw the same shell (rail, sidebar, top bar; js/guild/)
+ * and footer as the planner's homepage. They load the scripts they need (js/util.js, js/changelog.js,
+ * js/site-pages.js, and js/storage.js for the FAQ's "Show tips again") followed by the guild shell scripts
+ * (tests/guild-scripts.js). These checks pin: the page shell (head, one h1, the shell skeleton ids, footer),
+ * no inline code (strict CSP), the 16 FAQ questions, that the homepage lost its kicker, version note,
  * What's new banner and FAQ section, that every link to them is repointed, that the files are
- * whitelisted and deployed, and the behavior of js/site-pages.js: the header badge, the
- * dismissal by visiting What's new, the full release list and the tips reset.
+ * whitelisted and deployed, and the behavior of js/site-pages.js: the dismissal by visiting What's new,
+ * the full release list and the tips reset (the New pill itself belongs to the shell).
  */
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const app = require('./tests/load-app');
+const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const GUILD_TAIL = GUILD_SCRIPTS.slice(1); // util.js is loaded by each page first
+// The ids lane S renders into (spec section 3); the planner's own slot and root exist on index.html only.
+const SHELL_IDS = ['guild-root', 'shell-rail', 'shell-sidebar', 'shell-topbar', 'shell-topbar-lead', 'shell-topbar-account', 'shell-banner', 'gs-main', 'shell-tabs', 'shell-drawer', 'guild-dialogs'];
 
 const ROOT = app.ROOT;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const SITE = 'https://raidsmith.vercel.app';
 const PAGES = {
-  'faq.html': { title: 'FAQ - Raidsmith', h1: 'Frequently asked questions', scripts: ['/js/util.js', '/js/changelog.js', '/js/storage.js', '/js/site-pages.js'] },
-  'whats-new.html': { title: "What's new - Raidsmith", h1: "What's new", scripts: ['/js/util.js', '/js/changelog.js', '/js/site-pages.js'] },
+  'faq.html': { title: 'FAQ - Raidsmith', h1: 'Frequently asked questions', scripts: ['/js/util.js', '/js/changelog.js', '/js/storage.js', '/js/site-pages.js', ...GUILD_TAIL] },
+  'whats-new.html': { title: "What's new - Raidsmith", h1: "What's new", scripts: ['/js/util.js', '/js/changelog.js', '/js/site-pages.js', ...GUILD_TAIL] },
 };
 const indexHtml = app.html.replace(/\r\n/g, '\n');
 
@@ -53,23 +57,22 @@ for (const [file, spec] of Object.entries(PAGES)) {
     assert.equal(meta(html, 'name', 'twitter:image'), `${SITE}/og-image.png`);
     assert.equal(meta(html, 'property', 'og:site_name'), 'Raidsmith');
     assert.equal(meta(html, 'property', 'og:image:alt'), meta(indexHtml, 'property', 'og:image:alt'));
-    assert(html.includes('<link rel="stylesheet" href="/app.css">'));
+    assert(html.includes('<link rel="stylesheet" href="/app.css">\n<link rel="stylesheet" href="/guild.css">'));
     assert(/<link href="https:\/\/fonts\.googleapis\.com\/css2\?family=Barlow:[^"]+" rel="stylesheet">/.test(html));
     assert(html.includes('<link rel="icon" href="data:image/svg+xml,'));
     assert(html.indexOf('rel="preconnect"') < html.indexOf('fonts.googleapis.com/css2'));
   });
 
-  check(`${file}: one h1, a main landmark, the site header (brand + three links, no version tabs) and the footer`, () => {
+  check(`${file}: one h1, the shell skeleton (no era band), the page's own main, and the footer`, () => {
     assert.equal((html.match(/<h1[ >]/g) || []).length, 1);
     assert(html.includes(`<h1 class="page-title">${spec.h1}</h1>`));
-    assert.equal((html.match(/<main[ >]/g) || []).length, 1);
-    const band = html.slice(html.indexOf('<header class="game-header" id="era-band">'), html.indexOf('</header>'));
-    assert(band.includes('<a href="/" class="game-header-brand" id="brand-home"'));
-    assert(band.includes('<strong>Raidsmith</strong>') && band.includes('class="mark-svg"'));
-    assert(!band.includes('game-version'), 'the version tabs belong to the planner');
-    const nav = band.match(/<nav class="game-header-links" aria-label="Site">([\s\S]*?)<\/nav>/)[1];
-    assert.deepEqual([...nav.matchAll(/href="([^"]+)"/g)].map(m => m[1]), ['/whats-new.html', '/#how-it-works', '/faq.html']);
-    assert(nav.includes('id="whats-new-badge" hidden>New</span>'));
+    // The page's own <main class="landing"> plus the shell's hidden #gs-main.
+    assert.equal((html.match(/<main[ >]/g) || []).length, 2);
+    assert(html.includes('<main class="landing">') && html.includes('<main class="gs-main" id="gs-main" hidden></main>'));
+    assert(html.includes(`<body class="site-page guild-page shell-pending" data-page="${file.replace('.html', '')}">`), 'body classes and data-page');
+    for (const id of SHELL_IDS) assert(html.includes(`id="${id}"`), id + ' in the skeleton');
+    assert(!html.includes('shell-topbar-plan') && !html.includes('planner-root'), 'the planner pieces belong to index.html');
+    assert(!/era-band|game-header|whats-new-badge|brand-home|game-version/.test(html), 'no era band, header badge or version tabs');
     const footer = html.match(/<footer class="landing-footer">[\s\S]*?<\/footer>/)[0];
     const indexFooter = indexHtml.match(/<footer class="landing-footer">[\s\S]*?<\/footer>/)[0];
     assert.equal(footer, indexFooter, 'the same footer as the homepage');
@@ -84,9 +87,11 @@ for (const [file, spec] of Object.entries(PAGES)) {
     assert(!/<style\b/i.test(html) && !/\sstyle\s*=/.test(html) && !/\son[a-z]{3,}\s*=/i.test(html), 'no inline style or handler');
     const ignore = read('.gitignore').split('\n').map(l => l.trim());
     const vercelIgnore = read('.vercelignore').split('\n').map(l => l.trim());
-    for (const rel of [file, ...scripts.map(s => s.slice(1))]) {
+    // js/guild/*.js is whitelisted as a glob, the other files one by one.
+    const whitelisted = rel => ignore.includes('!' + rel) || (/^js\/guild\/[\w-]+\.js$/.test(rel) && ignore.includes('!js/guild/*.js'));
+    for (const rel of [file, 'guild.css', ...scripts.map(s => s.slice(1))]) {
       assert(fs.statSync(path.join(ROOT, rel)).size > 0, rel);
-      assert(ignore.includes('!' + rel), `.gitignore has no "!${rel}" line`);
+      assert(whitelisted(rel), `.gitignore has no "!${rel}" line`);
       assert(!vercelIgnore.includes('/' + rel), `${rel} must not be excluded from the deploy`);
     }
   });
@@ -135,17 +140,46 @@ check('the homepage lost the kicker, the version note, the What\'s new banner an
   assert(app.css.indexOf('.hero-kicker') < 0 && app.css.indexOf('#landing-version-note') < 0 && app.css.indexOf('.whats-line') < 0);
 });
 
-check('the homepage header links to the pages, the badge stays on the What\'s new link, and nothing points at the old anchors', () => {
-  const band = indexHtml.slice(indexHtml.indexOf('<header class="game-header"'), indexHtml.indexOf('</header>'));
-  assert(band.includes('<a href="/whats-new.html" id="nav-whats-new">What\'s new<span class="new-badge" id="whats-new-badge" hidden>New</span></a>'));
-  assert(band.includes('<a href="/faq.html">FAQ</a>') && band.includes('<a href="#how-it-works">How it works</a>'));
+check('the homepage has no era band; the shell\'s sidebar owns the links to the pages, and nothing points at the old anchors', () => {
+  assert(!/era-band|game-header-links|whats-new-badge|nav-whats-new/.test(indexHtml), 'the header links moved to the shell');
+  assert(indexHtml.includes('<a href="#how-it-works" data-action="how-it-works">How it works</a>'), 'the compact home links to How it works');
   const sources = ['index.html', 'README.md', 'faq.html', 'whats-new.html', ...fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).map(f => 'js/' + f)];
   for (const rel of sources) assert(!/(?:href=|['"`])["']?#(?:faq|whats-new)["'`]/.test(read(rel)), `${rel} still points at a moved anchor`);
 });
 
-check('index.html loads util.js first and site-pages.js last; vercel.json only rewrites the plan links', () => {
+check('index.html carries the shell skeleton: every id, in order, with the planner inside #planner-root', () => {
+  const at = id => { const i = indexHtml.indexOf('id="' + id + '"'); assert(i > 0, id + ' missing'); return i; };
+  for (const id of SHELL_IDS) at(id);
+  const order = ['guild-root', 'shell-rail', 'shell-sidebar', 'shell-topbar', 'shell-topbar-lead', 'shell-topbar-plan', 'shell-topbar-account', 'shell-banner', 'gs-main', 'planner-root', 'shell-tabs', 'shell-drawer', 'guild-dialogs'].map(at);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'the slots come in the spec order');
+  assert(indexHtml.includes('<body class="guild-page shell-pending" data-page="app">'));
+  assert(indexHtml.includes('<main class="gs-main" id="gs-main" hidden></main>'));
+  const rootStart = indexHtml.indexOf('<div id="planner-root" class="planner-root">');
+  const rootEnd = indexHtml.indexOf('<div id="shell-tabs">');
+  const root = indexHtml.slice(rootStart, rootEnd);
+  for (const part of ['id="landing-view"', 'id="app"', '<dialog id="share-dialog"', '<dialog id="confirm-dialog"', 'id="planner-notice"']) assert(root.includes(part), part + ' inside #planner-root');
+  const plan = indexHtml.slice(at('shell-topbar-plan'), at('shell-topbar-account'));
+  for (const part of ['class="game-version-nav"', 'class="title-bar"', 'id="roster-name"', 'id="btn-share-menu"', 'id="btn-settings-menu"', 'class="phone-summary-line1"', 'id="phone-summary-toggle"', 'id="phone-version-slot"']) assert(plan.includes(part), part + ' in the planner top bar');
+  assert(!plan.includes('phone-home-slot') && !plan.includes('planner-home'));
+  // The planner's other body-level pieces stay outside the shell.
+  const afterShell = indexHtml.slice(indexHtml.indexOf('<div id="guild-dialogs">'));
+  for (const id of ['drag-ghost', 'toast', 'sr-status', 'print-sheet', 'buff-tooltip-portal']) assert(afterShell.includes('id="' + id + '"'), id + ' stays at body level');
+  // Compact home: the notice slot, the head and the help line.
+  assert(/<div id="planner-notice"><\/div>/.test(indexHtml));
+  assert(/<h2 tabindex="-1">Planner<\/h2>\s*<p>Import sign-ups or open a saved plan\. Plans save in this browser\.<\/p>/.test(indexHtml));
+  assert(indexHtml.includes('New to Raidsmith? <a href="#how-it-works" data-action="how-it-works">How it works</a>'));
+  assert(indexHtml.includes('<h1 class="sr-only" tabindex="-1">Raidsmith</h1>'), 'the landing h1 and the title bar h1 can take focus');
+  assert.equal((indexHtml.match(/<h1 class="sr-only" tabindex="-1">/g) || []).length, 2);
+});
+
+check('index.html loads util.js first, site-pages.js after the planner scripts, then the guild tail; vercel.json only rewrites the plan links', () => {
   assert.equal(app.scripts[0], '/js/util.js');
-  assert.equal(app.scripts[app.scripts.length - 1], '/js/site-pages.js');
+  assert.equal(app.scripts[app.scripts.length - 1], '/js/guild/app.js');
+  const tailAt = app.scripts.length - GUILD_TAIL.length;
+  assert.deepEqual(app.scripts.slice(tailAt), GUILD_TAIL, 'the page\'s guild script tail equals tests/guild-scripts.js');
+  assert.equal(app.scripts[tailAt - 1], '/js/site-pages.js');
+  assert.equal(app.scripts.length - GUILD_TAIL.length, 18, 'the 18 planner scripts, in the same order as before');
+  assert.deepEqual(app.stylesheets, ['/app.css', '/guild.css']);
   assert(app.scripts.indexOf('/js/util.js') < app.scripts.indexOf('/js/changelog.js'));
   const config = JSON.parse(read('vercel.json'));
   const re = /^\/(tbc|classic|forever)\/[^/]+$/;
@@ -173,53 +207,36 @@ function openPage(file, data = {}, ids = {}) {
   };
   const document = { getElementById: id => els[id] || null, defaultView: { addEventListener: (t, fn) => { listeners[t] = fn; } } };
   const ctx = vm.createContext({ document, localStorage: store, navigator: { userAgent: 'TestAgent' }, console });
-  const scripts = [...read(file).matchAll(/<script src="([^"]+)"/g)].map(m => m[1]);
+  // The page's own scripts only: the guild shell has its own suites and needs a real document.
+  const scripts = [...read(file).matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => !s.startsWith('/js/guild/'));
   for (const src of scripts) vm.runInContext(read(src.slice(1)), ctx, { filename: src });
   return { els, data, listeners, ctx };
 }
 
-check('a page with the header badge shows it until the current release was seen, and hides it after', () => {
-  const CH = app.sandbox(['APP_VERSION']).api;
+check('site-pages.js leaves the New pill to the shell: it never looks for #whats-new-badge or listens for pageshow', () => {
+  const src = read('js/site-pages.js');
+  assert(!/whats-new-badge|pageshow|whatsNewSeen/.test(src));
   const fresh = openPage('faq.html', {}, { 'whats-new-badge': fakeEl({ hidden: true }) });
-  assert.equal(fresh.els['whats-new-badge'].hidden, false, 'nothing stored: the badge shows');
-  assert.deepEqual(fresh.data, {}, 'showing the badge stores nothing');
-  const old = openPage('faq.html', { pp_whats_new_dismissed_v1: 'true' }, { 'whats-new-badge': fakeEl({ hidden: true }) });
-  assert.equal(old.els['whats-new-badge'].hidden, false, 'the pre-versioned value covers nothing');
-  const seen = openPage('faq.html', { pp_whats_new_dismissed_v1: CH.APP_VERSION }, { 'whats-new-badge': fakeEl() });
-  assert.equal(seen.els['whats-new-badge'].hidden, true);
-  const older = openPage('faq.html', { pp_whats_new_dismissed_v1: '0.0.1' }, { 'whats-new-badge': fakeEl({ hidden: true }) });
-  assert.equal(older.els['whats-new-badge'].hidden, false, 'an older dismissal brings the badge back once');
+  assert.equal(fresh.els['whats-new-badge'].hidden, true, 'untouched');
+  assert.deepEqual(fresh.data, {}, 'opening the FAQ stores nothing');
+  assert.equal(fresh.listeners.pageshow, undefined);
 });
 
-check('visiting What\'s new lists every release, stores the current version under the original key and hides the badge', () => {
+check('visiting What\'s new lists every release and stores the current version under the original key', () => {
   const CH = app.sandbox(['APP_VERSION', 'CHANGELOG']).api;
-  const page = openPage('whats-new.html', {}, { 'whats-new-badge': fakeEl({ hidden: true }), 'whats-new-body': fakeEl() });
+  const page = openPage('whats-new.html', {}, { 'whats-new-body': fakeEl() });
   assert.equal((page.els['whats-new-body'].innerHTML.match(/<h3 /g) || []).length, CH.CHANGELOG.length);
   assert(page.els['whats-new-body'].innerHTML.includes(`v${CH.APP_VERSION}`));
   assert.equal(page.data.pp_whats_new_dismissed_v1, CH.APP_VERSION);
-  assert.equal(page.els['whats-new-badge'].hidden, true);
-  // The next page that has the badge no longer shows it.
-  const home = openPage('faq.html', page.data, { 'whats-new-badge': fakeEl({ hidden: true }) });
-  assert.equal(home.els['whats-new-badge'].hidden, true);
 });
 
-check('the page still works when localStorage throws, and Back from the cache refreshes a stale badge', () => {
-  const CH = app.sandbox(['APP_VERSION']).api;
-  const els = { 'whats-new-badge': fakeEl({ hidden: true }), 'whats-new-body': fakeEl() };
+check('the page still works when localStorage throws', () => {
+  const els = { 'whats-new-body': fakeEl() };
   const document = { getElementById: id => els[id] || null, defaultView: { addEventListener() {} } };
   const broken = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('full'); } };
   const ctx = vm.createContext({ document, localStorage: broken, navigator: { userAgent: 'x' }, console });
   for (const src of ['js/util.js', 'js/changelog.js', 'js/site-pages.js']) vm.runInContext(read(src), ctx);
   assert(els['whats-new-body'].innerHTML.includes('<h3 '), 'the list renders without storage');
-
-  const data = {};
-  const page = openPage('faq.html', data, { 'whats-new-badge': fakeEl({ hidden: true }) });
-  assert.equal(page.els['whats-new-badge'].hidden, false);
-  data.pp_whats_new_dismissed_v1 = CH.APP_VERSION; // another tab visited What's new
-  page.listeners.pageshow({ persisted: false });
-  assert.equal(page.els['whats-new-badge'].hidden, false, 'a normal load does not recheck');
-  page.listeners.pageshow({ persisted: true });
-  assert.equal(page.els['whats-new-badge'].hidden, true);
 });
 
 check('faq.html loads storage.js standalone, and "Show tips again" clears the one-time tips and says so', () => {
@@ -244,7 +261,7 @@ check('the footer feedback link gets the version and browser on every page', () 
   }
 });
 
-check('site-pages.js is the last script of the homepage and its auto-run is a no-op under Node', () => {
+check('site-pages.js is the last planner script of the homepage and its auto-run is a no-op under Node', () => {
   const src = read('js/site-pages.js');
   assert(src.includes('try { initSitePage(document, localStorage, navigator); } catch {}'));
   vm.runInNewContext(src + '\nthis.ok = typeof initSitePage;', Object.assign(vm.createContext({}), {}));

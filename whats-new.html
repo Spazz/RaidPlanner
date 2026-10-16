@@ -25,19 +25,19 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><g fill='%23ffb35c'><circle cx='9' cy='14' r='3'/><circle cx='16.5' cy='9' r='3'/><circle cx='24' cy='7' r='3'/><circle cx='31.5' cy='9' r='3'/><circle cx='39' cy='14' r='3'/></g><path d='M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z' transform='translate(0 -1)' fill='%23e0b53d'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/guild.css">
 </head>
-<body class="site-page">
-
-<header class="game-header" id="era-band">
-  <div class="game-header-inner">
-    <a href="/" class="game-header-brand" id="brand-home" aria-label="Raidsmith home" title="Home"><span class="game-header-mark" aria-hidden="true"><svg class="mark-svg" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="9" cy="14" r="3" fill="#ffb35c"/><circle cx="16.5" cy="9" r="3" fill="#ffb35c"/><circle cx="24" cy="7" r="3" fill="#ffb35c"/><circle cx="31.5" cy="9" r="3" fill="#ffb35c"/><circle cx="39" cy="14" r="3" fill="#ffb35c"/><path d="M5 26c0-2 1.6-3.6 3.6-3.6H42V30c0 2.2-1.8 4-4 4h-5.5l2.6 5H37v5H13v-5h4l2.6-5H17c-6.6 0-12-3.6-12-8Z" transform="translate(0 -1)" fill="currentColor"/></svg></span><div><strong>Raidsmith</strong></div></a>
-    <nav class="game-header-links" aria-label="Site">
-      <a href="/whats-new.html" id="nav-whats-new" aria-current="page">What's new<span class="new-badge" id="whats-new-badge" hidden>New</span></a>
-      <a href="/#how-it-works">How it works</a>
-      <a href="/faq.html">FAQ</a>
-    </nav>
-  </div>
-</header>
+<body class="site-page guild-page shell-pending" data-page="whats-new">
+<div id="guild-root" class="gs-app">
+  <div id="shell-rail"></div>
+  <div id="shell-sidebar"></div>
+  <div class="gs-col">
+    <header class="gs-topbar" id="shell-topbar">
+      <div id="shell-topbar-lead"></div>
+      <div id="shell-topbar-account"></div>
+    </header>
+    <div id="shell-banner"></div>
+    <main class="gs-main" id="gs-main" hidden></main>
 <main class="landing">
   <h1 class="page-title">What's new</h1>
   <section class="landing-section" id="whats-new">
@@ -51,9 +51,31 @@
     <a class="footer-link" id="feedback-link" href="https://github.com/Spazz/RaidPlanner/issues/new" target="_blank" rel="noopener">Report a problem or suggest a feature</a>
   </footer>
 </main>
+  </div>
+  <div id="shell-tabs"></div>
+  <div id="shell-drawer"></div>
+</div>
+<div id="guild-dialogs"></div>
 
 <script src="/js/util.js"></script>
 <script src="/js/changelog.js"></script>
 <script src="/js/site-pages.js"></script>
+<script src="/js/guild/icons.js"></script>
+<script src="/js/guild/api.js"></script>
+<script src="/js/guild/router.js"></script>
+<script src="/js/guild/people-sort.js"></script>
+<script src="/js/guild/roster-sort.js"></script>
+<script src="/js/guild/ui.js"></script>
+<script src="/js/guild/shell.js"></script>
+<script src="/js/guild/pages-signin.js"></script>
+<script src="/js/guild/pages-create.js"></script>
+<script src="/js/guild/pages-settings-teams.js"></script>
+<script src="/js/guild/pages-settings-people.js"></script>
+<script src="/js/guild/pages-empty.js"></script>
+<script src="/js/guild/pages-roster.js"></script>
+<script src="/js/guild/pages-person.js"></script>
+<script src="/js/guild/pages-import.js"></script>
+<script src="/js/guild/pages-privacy.js"></script>
+<script src="/js/guild/app.js"></script>
 </body>
 </html>
