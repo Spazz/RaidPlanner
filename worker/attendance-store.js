@@ -161,17 +161,19 @@ export async function loadDay(db, guildId, raidId) {
     db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guildId),
     bind('SELECT raid_id, player_id, outcome, credit, credit_id, reason, flags FROM attendance_decisions WHERE raid_id IN (SELECT id FROM day)'),
     // Every character of every person involved: on a team of the day, in a log, a sign-up, a manual tick, a stored row or the plan.
-    bind(`, who AS (
+    // D1 allows at most 5 terms in one compound SELECT, so the people are gathered in two CTEs of at most 4 terms each.
+    bind(`, who_by_character AS (
             SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id IN (SELECT team_id FROM raids WHERE id IN (SELECT id FROM day))
             UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_presence WHERE raid_id IN (SELECT id FROM day))
-            UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_plan WHERE raid_id IN (SELECT id FROM day))
-            UNION SELECT player_id FROM raid_signups WHERE raid_id IN (SELECT id FROM day) AND player_id IS NOT NULL
+            UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_plan WHERE raid_id IN (SELECT id FROM day))),
+          who_by_row AS (
+            SELECT player_id FROM raid_signups WHERE raid_id IN (SELECT id FROM day) AND player_id IS NOT NULL
             UNION SELECT player_id FROM raid_manual WHERE raid_id IN (SELECT id FROM day)
             UNION SELECT player_id FROM attendance WHERE raid_id IN (SELECT id FROM day)
             UNION SELECT player_id FROM attendance_decisions WHERE raid_id IN (SELECT id FROM day))
           SELECT c.player_id, c.name_key, c.realm_key, c.team_id, c.is_main, p.status, p.joined_on
             FROM characters c JOIN players p ON p.id = c.player_id
-           WHERE c.guild_id = ?1 AND c.player_id IN (SELECT player_id FROM who)`),
+           WHERE c.guild_id = ?1 AND (c.player_id IN (SELECT player_id FROM who_by_character) OR c.player_id IN (SELECT player_id FROM who_by_row))`),
   ]);
   return {
     raids: raidResult.results,

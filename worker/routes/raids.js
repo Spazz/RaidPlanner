@@ -230,6 +230,7 @@ export async function listRaids(ctx) {
     ctx.db.prepare(
       `SELECT r.id, r.raid_on, r.zone, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
               (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
+              (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = r.id) AS attendance_rows,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id) AS pulls,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id AND p.kill = 1) AS kills,
               (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = r.id AND a.outcome IN ('present', 'late', 'left_early', 'late_left', 'fill_in')) AS present,
@@ -284,6 +285,34 @@ function readOptionalDate(value) {
 }
 
 const present = (value) => value !== undefined && value !== null && value !== '';
+const MAX_CREATE_REPORTS = 10;
+
+// The report sources of a create: reportSource (one) and/or reportSources (a list), parsed and de-duplicated by code.
+function readReportSources(ctx, guild, body) {
+  let sources = [];
+  if (present(body.reportSource)) sources.push(body.reportSource);
+  if (body.reportSources !== undefined && body.reportSources !== null) {
+    if (!Array.isArray(body.reportSources)) throw bad('reportSources must be a list.', 'reportSources');
+    sources = sources.concat(body.reportSources);
+  }
+  if (sources.length > MAX_CREATE_REPORTS) throw bad(`Add at most ${MAX_CREATE_REPORTS} reports at once.`, 'reportSources');
+  const parsed = [];
+  for (const source of sources) {
+    const one = parseWclSource(source, guild.game_version);
+    if (!parsed.some((entry) => entry.code === one.code)) parsed.push(one);
+  }
+  if (parsed.length) requireWclConfigured(ctx.env);
+  return parsed;
+}
+
+// The first of these report codes that already sits on a raid of the guild (for the 409 on a create).
+async function firstTakenCode(db, guildId, fetched) {
+  for (const entry of fetched) {
+    const row = await db.prepare('SELECT 1 AS taken FROM raid_reports WHERE guild_id = ? AND code = ?').bind(guildId, entry.code).first();
+    if (row) return entry.code;
+  }
+  return fetched.length ? fetched[0].code : null;
+}
 
 export async function createRaid(ctx) {
   const { body, db } = ctx;
@@ -295,7 +324,7 @@ export async function createRaid(ctx) {
   const guild = guildContext.guild;
   const teamId = body.teamId;
   if (!allows(guildContext.can, 'raids.edit', teamId)) throw forbidden();
-  const parsedReport = present(body.reportSource) ? await readReport(ctx, guild, body.reportSource) : null;
+  const parsedReports = readReportSources(ctx, guild, body);
   if (raidOnInput !== null && raidOnInput > guildToday(guild, ctx.now())) throw bad('A raid date cannot be in the future.', 'raidOn');
 
   let event = null;
@@ -307,9 +336,13 @@ export async function createRaid(ctx) {
     }
     requireEventStarted(ctx, event, 'eventSource');
   }
-  const report = parsedReport ? await fetchReport(ctx, parsedReport.flavour, parsedReport.code) : null;
+  // Everything is fetched and parsed before the first write: a failed source leaves nothing behind.
+  const fetched = [];
+  for (const parsed of parsedReports) fetched.push({ ...parsed, report: await fetchReport(ctx, parsed.flavour, parsed.code) });
+  fetched.sort((a, b) => a.report.pulls[0].startedAt - b.report.pulls[0].startedAt || (a.code < b.code ? -1 : 1));
+  const firstReport = fetched.length ? fetched[0].report : null;
 
-  const anchorMs = event && event.startTime ? event.startTime : (report ? report.pulls[0].startedAt : null);
+  const anchorMs = event && event.startTime ? event.startTime : (firstReport ? firstReport.pulls[0].startedAt : null);
   const raidOn = anchorMs !== null ? localDate(anchorMs, guild.time_zone) : raidOnInput;
   if (!raidOn) throw bad('Say which date this raid was on.', 'raidOn');
   if (raidOn < EARLIEST_RAID_DATE) throw bad('That date is before World of Warcraft existed.', 'raidOn');
@@ -323,7 +356,7 @@ export async function createRaid(ctx) {
                           log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'log', 0, '', 1, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)`,
-    ).bind(raidId, guild.id, teamId, raidOn, startsAt, report ? report.zone : null, event ? eventId : null, event ? event.title : null,
+    ).bind(raidId, guild.id, teamId, raidOn, startsAt, firstReport ? firstReport.zone : null, event ? eventId : null, event ? event.title : null,
       event ? event.serverId : null, event ? now : null, ctx.session.user.id, now, now, teamId, guild.id),
   ];
   let eventCount = 0;
@@ -332,12 +365,11 @@ export async function createRaid(ctx) {
     statements.push(...built.statements);
     eventCount = built.count;
   }
-  let reportCount = 0;
-  if (report) {
-    const built = reportStatements(db, guild, raidId, report, parsedReport.flavour, parsedReport.code, now, guard);
+  for (const entry of fetched) {
+    const built = reportStatements(db, guild, raidId, entry.report, entry.flavour, entry.code, now, guard);
     statements.push(...built.statements);
-    reportCount = 1;
   }
+  const reportCount = fetched.length;
   // A new raid changes the fill-in pass of the other teams' raids on the same date: they show "Recalculate" (only when the raid went in).
   statements.push(
     bumpDayStatement(db, guild.id, raidOn, raidId, guard),
@@ -348,12 +380,20 @@ export async function createRaid(ctx) {
     results = await db.batch(statements);
   } catch (error) {
     const kind = uniqueKind(error);
-    if (kind) throw await conflictFor(ctx, guild, kind, { teamId, raidOn, eventId, code: parsedReport && parsedReport.code });
+    if (kind) throw await conflictFor(ctx, guild, kind, { teamId, raidOn, eventId, code: kind === 'report' ? await firstTakenCode(db, guild.id, fetched) : null });
     throw error;
   }
   if (results[0].meta.changes !== 1) throw bad('That team does not exist in this guild.', 'teamId');
-  if (event || report) return recomputeAndReply(ctx, guildContext, raidId, 201);
-  return raidReply(ctx, guildContext, raidId, 201);
+  if (!event && !reportCount) return raidReply(ctx, guildContext, raidId, 201);
+  // The raid and its evidence are saved. A recompute that fails leaves the raid stale ("needs recalculation"), never half-created.
+  let recomputeFailed = false;
+  try {
+    await recomputeRaid(ctx, guild, raidId);
+  } catch {
+    recomputeFailed = true;
+  }
+  const reply = await loadRaidDetail(ctx, guildContext, raidId);
+  return jsonResponse(recomputeFailed ? { ...reply, recomputeFailed: true } : reply, 201);
 }
 
 // ---------------------------------------------------------------------------

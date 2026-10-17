@@ -1584,6 +1584,161 @@ check('nav badge: the guild payload carries attendanceFlags per reviewable team 
 });
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Fix round 2
+
+check('R2-1: the D1 fake enforces the 5-term compound SELECT limit per nesting level, and no SQL string in worker/ breaks it', async () => {
+  const { createD1Fake, maxCompoundTerms, scrub, MAX_COMPOUND_TERMS } = require('./tests/d1-fake');
+  const terms = (sql) => maxCompoundTerms(scrub(sql));
+  assert.equal(MAX_COMPOUND_TERMS, 5);
+  const chain = (n) => Array.from({ length: n }, (_, i) => `SELECT ${i + 1}`).join(' UNION ');
+  assert.equal(terms(chain(5)), 5);
+  assert.equal(terms(chain(7)), 7);
+  assert.equal(terms(`SELECT 1 FROM (${chain(5)}) UNION SELECT 2 UNION SELECT 3`), 5, 'a parenthesised chain counts on its own level');
+  assert.equal(terms(`WITH a AS (${chain(4)}), b AS (${chain(4)}) SELECT 1 WHERE 1 IN (SELECT * FROM a) OR 1 IN (SELECT * FROM b)`), 4);
+  assert.equal(terms("SELECT 'a UNION b' UNION SELECT 1"), 2, 'string literals are ignored');
+  const db = createD1Fake();
+  db.prepare(chain(5));
+  assert.throws(() => db.prepare(chain(6)), /D1_ERROR: too many terms in compound SELECT/);
+  assert.throws(() => db.prepare(chain(7)), /too many terms in compound SELECT/);
+  assert.throws(() => db.prepare(`SELECT 1 WHERE 1 IN (${chain(6)})`), /too many terms/);
+  assert.throws(() => db.prepare(`SELECT '${'x'.repeat(100_001)}'`), /statement too long/);
+  // The shape that broke on real D1 (the 7-term who CTE of loadDay) is refused.
+  assert.throws(() => db.prepare('WITH who AS (SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7) SELECT * FROM who'), /too many terms/);
+  db.close();
+
+  // Every SQL-looking string literal in worker/ (static; interpolations stay as ${...}).
+  const fs = require('node:fs');
+  const files = [];
+  const walk = (dir) => { for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, entry.name); if (entry.isDirectory()) walk(p); else if (p.endsWith('.js')) files.push(p); } };
+  walk(path.join(ROOT, 'worker'));
+  let scanned = 0;
+  for (const file of files) {
+    const text = fs.readFileSync(file, 'utf8');
+    for (const match of text.matchAll(/`((?:[^`\\]|\\.)*)`|'((?:[^'\\\n]|\\.)*)'/g)) {
+      const sql = match[1] !== undefined ? match[1] : match[2];
+      if (!/\b(SELECT|INSERT|UPDATE|DELETE)\b/.test(sql) || !/\b(FROM|INTO|SET|WHERE)\b/.test(sql)) continue;
+      scanned++;
+      assert(terms(sql) <= MAX_COMPOUND_TERMS, `${path.relative(ROOT, file)}: ${terms(sql)} compound terms in: ${sql.slice(0, 80).replace(/\s+/g, ' ')}`);
+      assert(Buffer.byteLength(sql) < 100_000, `${path.relative(ROOT, file)}: statement over 100 KB`);
+    }
+  }
+  assert(scanned > 100, `scanned ${scanned} SQL strings`);
+});
+
+check('R2-1: loadDay (the recompute read) runs on the strict fake with people found by team, log, plan, sign-up, tick, row and decision', async () => {
+  const s = await raidWorld();
+  const { id } = await fullRaid(s);
+  const sizes = s.w.db.statementLog.map((entry) => entry.values.length);
+  assert(Math.max(...sizes) <= 100);
+  const r = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  assert.deepEqual([r.status, r.json.raid.state, r.json.raid.stale], [200, 'to_review', false]);
+  assert.equal(r.json.people.length, 7);
+});
+
+check('R2-2: a create whose report or event cannot be fetched writes nothing and a retry succeeds', async () => {
+  const s = await raidWorld();
+  const counts = async () => [await s.w.count('raids'), await s.w.count('raid_signups'), await s.w.count('raid_reports'), await s.w.count('audit_log', "action = 'raid.create'")];
+  // Event is fine, the report is unknown to Warcraft Logs.
+  const noReport = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: EVENT_ID, reportSource: R2 });
+  assert.deepEqual([noReport.status, noReport.json.error], [404, 'not_found']);
+  assert.deepEqual(await counts(), [0, 0, 0, 0]);
+  // The second of two reports fails: the first is not left behind either.
+  const half = await s.call('bob', 'POST', '/raids', { teamId: s.A, reportSources: [R1, R2] });
+  assert.equal(half.status, 404);
+  assert.deepEqual(await counts(), [0, 0, 0, 0]);
+  // The event fails (404), the report is fine.
+  const noEvent = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: '999999999', reportSource: R1 });
+  assert.notEqual(noEvent.status, 201);
+  assert.deepEqual(await counts(), [0, 0, 0, 0]);
+  // Retry once the source is there: no raid_exists / event_exists / report_exists.
+  s.w.sources.reports.set(R2, report1({ startTime: RH_START * 1000 + 3_600_000 }));
+  const ok = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: EVENT_ID, reportSources: [R2, R1] });
+  assert.equal(ok.status, 201, JSON.stringify(ok.json));
+  assert.deepEqual(ok.json.sources.reports.map((x) => x.code), [R1, R2], 'two reports on one raid, earliest first');
+  assert.equal(ok.json.raid.startsAt, RH_START * 1000, 'the event anchors the raid');
+  assert.deepEqual(await counts(), [1, 6, 2, 1]);
+  assert.equal(ok.json.recomputeFailed, undefined);
+  // Bad lists are refused before any fetch.
+  const calls = s.w.sources.calls.length;
+  assert.equal((await s.call('bob', 'POST', '/raids', { teamId: s.B, reportSources: 'x' })).json.field, 'reportSources');
+  assert.equal((await s.call('bob', 'POST', '/raids', { teamId: s.B, reportSources: Array(11).fill(R1) })).json.field, 'reportSources');
+  assert.equal(s.w.sources.calls.length, calls);
+});
+
+check('R2-2/3: a recompute that fails after a create leaves the raid saved and stale, never reviewed; retrying the create is a plain raid_exists', async () => {
+  const s = await raidWorld();
+  const original = s.w.db.batch;
+  let broken = true;
+  s.w.db.batch = function batch(statements) {
+    if (broken && statements[0] && /INSERT INTO attendance_write_guard/.test(statements[0].sql)) return Promise.reject(new Error('D1_ERROR: boom'));
+    return original.call(this, statements);
+  };
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: EVENT_ID, reportSource: R1 });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  assert.equal(made.json.recomputeFailed, true);
+  const id = made.json.raid.id;
+  assert.deepEqual([made.json.raid.state, made.json.raid.stale, made.json.sources.reports.length], ['stale', true, 1]);
+  assert.equal(await fpOf(s, id), '');
+  assert.equal(await s.w.count('attendance'), 0);
+  // List, detail and review queue all say so.
+  const list = (await s.call('bob', 'GET', `/raids?team=${s.A}`)).json.raids[0];
+  assert.deepEqual([list.state, list.stale, list.bosses.kills], ['stale', true, 1]);
+  assert.deepEqual([(await s.call('bob', 'GET', s.raid(id))).json.raid.state], ['stale']);
+  const q = (await s.call('bob', 'GET', `/attendance/review?team=${s.A}`)).json;
+  assert.deepEqual(q.stale, [id]);
+  const again = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: EVENT_ID, reportSource: R1 });
+  assert.equal(again.status, 409);
+  broken = false;
+  const fixed = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  assert.deepEqual([fixed.status, fixed.json.raid.state, fixed.json.raid.stale], [200, 'to_review', false]);
+  s.w.db.batch = original;
+});
+
+check('R2-3: a raid with a log never reads "reviewed" while its fingerprint is empty or it has no attendance rows (list, detail, review queue)', async () => {
+  const { raidState, isStale } = await load('worker/attendance-view.js');
+  const log = { log_mode: 'log', open_flags: 0, policy_fp: 'abcd1234', attendance_rows: 3 };
+  assert.equal(raidState(log, 1), 'reviewed');
+  assert.equal(raidState({ ...log, policy_fp: '' }, 1), 'stale');
+  assert.equal(raidState({ ...log, attendance_rows: 0 }, 1), 'stale');
+  assert.equal(raidState({ ...log, open_flags: 2, policy_fp: '' }, 1), 'stale');
+  assert.equal(raidState({ ...log, attendance_rows: undefined }, 1), 'reviewed', 'a query that does not count rows skips that check');
+  assert.equal(raidState({ ...log, policy_fp: '' }, 0), 'awaiting_log');
+  assert.equal(raidState({ log_mode: 'manual', open_flags: 0, policy_fp: '' }, 0), 'manual');
+  assert.equal(isStale({ ...log, attendance_rows: 0 }, 'stale', { fingerprint: () => 'abcd1234' }), true);
+
+  const s = await raidWorld();
+  const { id } = await fullRaid(s);
+  const states = async () => ({
+    list: (await s.call('bob', 'GET', `/raids?team=${s.A}`)).json.raids[0],
+    detail: (await s.call('bob', 'GET', s.raid(id))).json.raid,
+    review: (await s.call('bob', 'GET', `/attendance/review?team=${s.A}`)).json,
+  });
+  const first = await states();
+  assert.deepEqual([first.list.state, first.detail.state], ['to_review', 'to_review']);
+  // Stored results gone but the fingerprint looks fresh: still not reviewed.
+  exec(s.w, `UPDATE raids SET open_flags = 0 WHERE id = '${id}'`);
+  exec(s.w, `DELETE FROM attendance WHERE raid_id = '${id}'`);
+  let now = await states();
+  assert.deepEqual([now.list.state, now.list.stale, now.detail.state, now.detail.stale], ['stale', true, 'stale', true]);
+  assert.deepEqual(now.review.stale, [id]);
+  // Flags still open on a stale raid: the review queue marks it.
+  exec(s.w, `UPDATE raids SET open_flags = 2, policy_fp = '' WHERE id = '${id}'`);
+  now = await states();
+  assert.deepEqual([now.list.state, now.review.raids[0].raid.stale], ['stale', true]);
+  const fixed = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  assert.deepEqual([fixed.json.raid.state, fixed.json.raid.stale], ['to_review', false]);
+});
+
+check('R2-4/5: the fake event starts in the past (the create route refuses a future event), and the README names DISCORD_REDIRECT_URI for a second local Worker', async () => {
+  const fs = require('node:fs');
+  const source = fs.readFileSync(path.join(ROOT, 'tools', 'fake-sources.js'), 'utf8');
+  const start = Number(/const EVENT_START = ([\d_]+);/.exec(source)[1].replace(/_/g, ''));
+  assert(start * 1000 < Date.UTC(2026, 9, 1), 'EVENT_START is a fixed date before today');
+  const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  assert(/second local Worker[\s\S]{0,200}--var DISCORD_REDIRECT_URI:http:\/\/localhost:<port>\/auth\/callback/.test(readme));
+});
+
 async function main() {
   let passed = 0;
   let failed = 0;
