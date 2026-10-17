@@ -1,6 +1,6 @@
 // ── HASH ROUTES ─────────────────────────────────────────────────
 // Pure parse/format for the guild page. Routes:
-//   #/  #/signin[?error=..]  #/new  #/privacy
+//   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,people,attendance}]
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
@@ -54,6 +54,7 @@
       if (head === 'signin') return { name: 'signin', error: SIGNIN_ERRORS.indexOf(query.error) >= 0 ? query.error : null };
       if (head === 'new') return { name: 'new' };
       if (head === 'privacy') return { name: 'privacy' };
+      if (head === 'roadmap') return { name: 'roadmap' };
       if (head === 'planner') {
         const raid = plannerRaid(query.raid);
         return raid ? { name: 'planner', gid: raid.gid, rid: raid.rid } : { name: 'planner' };
@@ -95,6 +96,7 @@
       case 'signin': return '#/signin' + (SIGNIN_ERRORS.indexOf(r.error) >= 0 ? '?error=' + r.error : '');
       case 'new': return '#/new';
       case 'privacy': return '#/privacy';
+      case 'roadmap': return '#/roadmap';
       case 'planner': return '#/planner' + (isId(r.gid) && isId(r.rid) ? '?raid=' + r.gid + '.' + r.rid : '');
       case 'section': {
         const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';

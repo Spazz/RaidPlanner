@@ -151,3 +151,7 @@
 !tests/fixtures/
 !tests/fixtures/attendance/
 !tests/fixtures/attendance/*.json
+# Future enhancements page: the idea-box triage tool and the roadmap page / worker suites (the page data is js/guild/roadmap-data.js, covered by the js/guild glob)
+!tools/roadmap-ideas.js
+!guild-roadmap-tests.js
+!guild-roadmap-worker-tests.js

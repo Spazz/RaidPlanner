@@ -335,7 +335,7 @@ export async function deleteMe(ctx) {
         : { sql: "NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master')", params: [guild.id] }),
     );
   }
-  // Sessions, servers, roles and blocks cascade; actor columns become NULL.
+  // Sessions, servers, roles and blocks cascade; actor columns become NULL (roadmap_ideas.submitted_by too: the ideas stay, unlinked).
   statements.push(db.prepare('DELETE FROM users WHERE id = ?').bind(userId));
   // The person on a roster who was linked to this account stays (officers own the roster); the link goes.
   statements.push(db.prepare(
@@ -344,7 +344,7 @@ export async function deleteMe(ctx) {
   ).bind(now, session.user.discordId));
   // Raid sign-ups keep the person link (outcomes recompute the same) but lose the Discord ID and nickname.
   statements.push(db.prepare('UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ?').bind(session.user.discordId));
-  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?, ?)').bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`));
+  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?)').bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`));
   await db.batch(statements);
   return jsonResponse({ ok: true }, 200, {}, [clearSessionCookie()]);
 }

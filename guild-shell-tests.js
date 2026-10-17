@@ -209,10 +209,10 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
 
 (async () => {
   // ── nav matrix ─────────────────────────────────────────────────
-  await check('nav matrix: signed out = Planner, separator, What\'s new, How it works, FAQ; no rail, no tabs', () => {
+  await check('nav matrix: signed out = Planner, separator, What\'s new, Future enhancements, How it works, FAQ; no rail, no tabs', () => {
     const { G } = makeEnv();
     const ctx = { section: 'planner', page: 'app', me: null, signedOut: true, guildData: null };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['planner', 'whats-new|sep', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['planner', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
     const s = G.shell.slots(ctx);
     assert.equal(s.rail, '', 'no guild rail');
     assert.equal(s.tabs, '', 'no phone tabs');
@@ -227,7 +227,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const base = { section: 'planner', page: 'app', guildData: null };
     const cannot = Object.assign({ me: meBody({ guilds: [] }) }, base);
     const can = Object.assign({ me: meBody({ guilds: [], create: { allowed: true } }) }, base);
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(cannot))), ['planner', 'whats-new|sep', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(cannot))), ['planner', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
     assert.equal(G.shell.slots(cannot).rail, '');
     const withAdd = G.shell.slots(can);
     assert(withAdd.rail.includes('gs-tile-add') && withAdd.rail.includes('href="#/new"') && !withAdd.rail.includes('href="#/g/'), 'add button only');
@@ -237,7 +237,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
   await check('nav matrix: member = Roster, Raids, Attendance, Loot, Planner, help group; tiles; five phone tabs', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(MEMBER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'whats-new|sep', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
     assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
     const s = G.shell.slots(ctx);
     assert(s.rail.includes('gs-tile is-active') && s.rail.includes('data-action="open-planner"'), 'tiles; the rail logo is a Planner link');
@@ -248,7 +248,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
   await check('nav matrix: officer / GM gets Guild settings (separated) before the help group; tabs stay five', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep', 'whats-new|sep', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
     assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
   });
 
@@ -293,7 +293,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const links = hrefsOf(s.sidebar + s.rail + s.drawer + s.account);
     assert(links.length > 10);
     assert(links.every(h => /^(\/|https?:)/.test(h)), 'relative link left: ' + links.filter(h => !/^(\/|https?:)/.test(h)).join(','));
-    assert(links.includes('/#/g/g1/roster') && links.includes('/#how-it-works') && links.includes('/') && links.includes('/#/g/g1/settings/teams') && links.includes('/#/privacy'));
+    assert(links.includes('/#/g/g1/roster') && links.includes('/#how-it-works') && links.includes('/#/roadmap') && links.includes('/') && links.includes('/#/g/g1/settings/teams') && links.includes('/#/privacy'));
     assert.deepEqual(plain(G.shell.breadcrumbItems(ctx)), [{ label: 'FAQ' }]);
     assert(s.lead.includes('class="gs-phone-title">FAQ<') && s.lead.includes('aria-label="Open menu"'));
     const wn = G.shell.slots(Object.assign({}, ctx, { page: 'whats-new' }));
@@ -1053,6 +1053,191 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(/\.game-version-nav \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) auto;/.test(phone), 'the Forever cell is as wide as its content');
     assert(/\.game-version-tab \{[^}]*padding: 0 6px;[^}]*white-space: nowrap;/.test(phone));
     assert(/@media \(max-width: 360px\) \{ \.game-beta \{ font-size: 7px; padding: 0 2px; \} \}/.test(phone), 'the tag shrinks before anything is dropped');
+  });
+
+  // ── Future enhancements (#/roadmap) ────────────────────────────
+  const IDEA_ROW = (id, extra) => Object.assign({ id, title: 'Idea ' + id, details: null, area: 'planner', status: 'new', roadmapId: null, triageNote: null, createdAt: Date.UTC(2026, 9, 17, 12), mine: true }, extra || {});
+  const ideaEls = (sb, els) => {
+    for (const id of ['rm-ideas', 'rm-status', 'rm-form-error', 'rm-title-error', 'rm-area-error', 'rm-details-error', 'rm-item-loot-history']) els[id] = new FakeEl(id);
+    for (const id of ['rm-form-error', 'rm-title-error', 'rm-area-error', 'rm-details-error']) els[id].hidden = true; // the markup starts them hidden
+  };
+  // A form the way the browser hands it over: the three fields by name, and a field lookup by id for the inline errors.
+  function fakeForm(values) {
+    const field = value => ({ value, attrs: {}, focused: 0, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; }, focus() { this.focused++; } });
+    const form = { elements: { title: field(values.title), area: field(values.area), details: field(values.details) } };
+    form.querySelector = sel => {
+      const byId = /^#rm-(title|area|details)$/.exec(sel);
+      if (byId) return form.elements[byId[1]];
+      if (sel === '[aria-invalid="true"]') return Object.values(form.elements).filter(f => f.attrs['aria-invalid'] === 'true')[0] || null;
+      return null;
+    };
+    form.querySelectorAll = () => [];
+    return form;
+  }
+
+  await check('roadmap: signed out gets the page in the signed-out shell, a sign-in link instead of the form, and asks the Worker nothing about ideas', async () => {
+    const env = makeEnv({ url: '/#/roadmap', routes: { '/auth/me': { status: 401, body: { error: 'signed_out' } } } });
+    await settle();
+    const main = env.html('gs-main');
+    assert(main.includes('Future enhancements') && main.includes('<a href="/auth/login">Sign in to suggest an idea</a>'));
+    assert(main.includes('Loot history') && !main.includes('data-submit="roadmap-idea"'));
+    assert(!env.els['gs-main'].classList.contains('gs-main-center'));
+    assert.equal(env.documentFake.title, 'Future enhancements - Raidsmith guild');
+    assert.equal(env.fetched('/api/roadmap'), 0);
+    assert(env.html('shell-sidebar').includes('href="#/roadmap" aria-label="Future enhancements" aria-current="page"'));
+    assert(env.html('shell-topbar-account').includes('Sign in with Discord'));
+    assert(env.html('shell-topbar-lead').includes('Future enhancements'));
+  });
+
+  await check('roadmap: signed in shows the form at once and the submitted ideas when they arrive; the last guild\'s nav stays', async () => {
+    const env = makeEnv({
+      url: '/#/roadmap', hint: true, beforeApp: ideaEls,
+      routes: signedInRoutes(MEMBER_CAN, { 'GET /api/roadmap/ideas': { status: 200, body: { ideas: [IDEA_ROW('ri_1'), IDEA_ROW('ri_2', { mine: false, status: 'declined', triageNote: 'Out of scope.' })] } } }),
+    });
+    await settle();
+    const main = env.html('gs-main');
+    assert(main.includes('data-submit="roadmap-idea"') && main.includes('In progress') && !main.includes('Sign in to suggest an idea'));
+    assert.equal(env.fetched('/api/roadmap/ideas'), 1);
+    const ideas = env.html('rm-ideas');
+    assert(ideas.includes('Submitted ideas') && ideas.includes('Idea ri_1') && ideas.includes('Note: Out of scope.') && ideas.includes('Yours'));
+    const side = env.html('shell-sidebar');
+    assert(side.includes('href="#/g/g1/roster"') && side.includes('Ravens'), 'the guild nav is drawn, as on the planner');
+    assert(side.includes('href="#/roadmap" aria-label="Future enhancements" aria-current="page"'));
+    assert(env.html('shell-tabs').includes('gs-tabs'), 'the guild tabs show on a phone');
+    assert.equal(env.G.app.state.currentGid, null);
+    assert.equal(env.fetched('/api/guild/g1'), 1);
+  });
+
+  await check('roadmap: when the ideas cannot be loaded the page still shows, with an error line and Try again for that part only', async () => {
+    let fail = true;
+    const env = makeEnv({
+      url: '/#/roadmap', hint: true, beforeApp: ideaEls,
+      routes: signedInRoutes(MEMBER_CAN, { 'GET /api/roadmap/ideas': () => (fail ? { status: 500, body: {} } : { status: 200, body: { ideas: [IDEA_ROW('ri_9')] } }) }),
+    });
+    await settle();
+    assert(env.html('gs-main').includes('In progress') && env.html('gs-main').includes('Loot history') && !env.html('gs-main').includes('Could not load this page'));
+    assert(env.G.app.state.failure === null);
+    assert(env.html('rm-ideas').includes('The submitted ideas could not be loaded.') && env.html('rm-ideas').includes('data-action="roadmap-ideas-retry"'));
+    fail = false;
+    env.click({ 'data-action': 'roadmap-ideas-retry' });
+    await settle();
+    assert.equal(env.fetched('/api/roadmap/ideas'), 2);
+    assert(env.html('rm-ideas').includes('Idea ri_9') && !env.html('rm-ideas').includes('could not be loaded'));
+  });
+
+  await check('roadmap: the area filter and the Shipped box re-render the page and keep their state; a jump to an item clears what hides it', async () => {
+    const env = makeEnv({ url: '/#/roadmap', beforeApp: ideaEls, routes: { '/auth/me': { status: 401, body: {} } } });
+    await settle();
+    const cards = () => (env.html('gs-main').match(/<li class="gs-rm-card"/g) || []).length;
+    const all = cards();
+    env.click({ 'data-action': 'roadmap-area', 'data-area': 'loot' });
+    assert(cards() > 0 && cards() < all);
+    assert(/data-area="loot"[^>]*aria-pressed="true"/.test(env.html('gs-main')));
+    env.click({ 'data-action': 'roadmap-area', 'data-area': 'nope' });
+    assert.equal(cards(), all, 'an unknown area is All');
+    assert(!/<details[^>]* open/.test(env.html('gs-main')));
+    env.click({ 'data-action': 'roadmap-shipped' });
+    env.click({ 'data-action': 'roadmap-area', 'data-area': 'planner' });
+    assert(/<details class="gs-how gs-rm-shipped" open>/.test(env.html('gs-main')), 'a re-render keeps Shipped open');
+    env.click({ 'data-action': 'roadmap-shipped' });
+    env.click({ 'data-action': 'roadmap-area', 'data-area': 'platform' });
+    assert(!/<details[^>]* open/.test(env.html('gs-main')), 'closed again');
+    const jump = env.click({ 'data-action': 'roadmap-goto', 'data-item': 'loot-history' });
+    assert.equal(jump.prevented, 1);
+    assert(/data-area="all"[^>]*aria-pressed="true"/.test(env.html('gs-main')), 'the filter that hid the item is cleared');
+    assert.equal(env.els['rm-item-loot-history'].focused, 1, 'the item takes focus');
+    env.click({ 'data-action': 'roadmap-goto', 'data-item': 'discord-signin-roles-shell' });
+    assert(/<details class="gs-how gs-rm-shipped" open>/.test(env.html('gs-main')), 'a shipped item opens Shipped');
+    env.click({ 'data-action': 'roadmap-goto', 'data-item': 'not-an-item' });
+  });
+
+  await check('roadmap: submitting an idea posts it trimmed, thanks the person, empties the form and puts the idea at the top of the list', async () => {
+    const posted = [];
+    const env = makeEnv({
+      url: '/#/roadmap', hint: true, beforeApp: ideaEls,
+      routes: signedInRoutes(MEMBER_CAN, {
+        'GET /api/roadmap/ideas': { status: 200, body: { ideas: [IDEA_ROW('ri_old')] } },
+        'POST /api/roadmap/ideas': init => { posted.push(JSON.parse(init.body)); return { status: 201, body: { idea: IDEA_ROW('ri_new', { title: 'Dark mode' }) } }; },
+      }),
+    });
+    await settle();
+    const form = fakeForm({ title: '  Dark mode ', area: 'planner', details: ' Because. ' });
+    env.G.handlers.submit['roadmap-idea'](form);
+    await settle();
+    assert.deepEqual(posted, [{ title: 'Dark mode', area: 'planner', details: 'Because.' }]);
+    assert.equal(env.els['rm-status'].textContent, 'Thanks - your idea is saved and will be reviewed.');
+    assert.deepEqual([form.elements.title.value, form.elements.area.value, form.elements.details.value], ['', '', '']);
+    assert.deepEqual(JSON.parse(JSON.stringify(env.G.app.state.roadmap.draft)), { title: '', area: '', details: '' });
+    const ideas = env.html('rm-ideas');
+    assert(ideas.indexOf('Dark mode') > 0 && ideas.indexOf('Dark mode') < ideas.indexOf('Idea ri_old'));
+    env.G.handlers.input['roadmap-draft']({ getAttribute: () => 'title', value: 'typing again' });
+    assert.equal(env.els['rm-status'].textContent, '', 'typing clears the thanks line');
+    assert.equal(env.G.app.state.roadmap.draft.title, 'typing again');
+    const noDetails = fakeForm({ title: 'Only a title', area: 'loot', details: '   ' });
+    env.G.handlers.submit['roadmap-idea'](noDetails);
+    await settle();
+    assert.deepEqual(posted[1], { title: 'Only a title', area: 'loot' }, 'empty details are not sent');
+  });
+
+  await check('roadmap: an invalid form posts nothing and says which field; a server refusal lands next to its field or in the form', async () => {
+    let reply = { status: 400, body: { error: 'bad_request', field: 'title', message: 'The title must be 3 to 120 characters.' } };
+    const env = makeEnv({
+      url: '/#/roadmap', hint: true, beforeApp: ideaEls,
+      routes: signedInRoutes(MEMBER_CAN, { 'GET /api/roadmap/ideas': { status: 200, body: { ideas: [] } }, 'POST /api/roadmap/ideas': () => reply }),
+    });
+    await settle();
+    const bad = fakeForm({ title: 'ab', area: '', details: '' });
+    env.G.handlers.submit['roadmap-idea'](bad);
+    await settle();
+    assert.equal(env.fetchCalls.filter(c => c.method === 'POST').length, 0);
+    assert(env.els['rm-title-error'].textContent.includes('3 to 120') && env.els['rm-title-error'].hidden === false);
+    assert(env.els['rm-area-error'].textContent.includes('Pick the area'));
+    assert.equal(env.els['rm-details-error'].hidden, true);
+    assert.equal(bad.elements.title.attrs['aria-invalid'], 'true');
+    assert.equal(bad.elements.title.focused, 1, 'focus goes to the first field with a problem');
+    assert.equal(env.els['rm-status'].textContent, '');
+
+    const refused = fakeForm({ title: 'Long enough', area: 'loot', details: '' });
+    env.G.handlers.submit['roadmap-idea'](refused);
+    await settle();
+    assert.equal(env.els['rm-title-error'].textContent, 'The title must be 3 to 120 characters.');
+    assert.equal(refused.elements.title.attrs['aria-invalid'], 'true');
+    assert.equal(refused.elements.title.value, 'Long enough', 'what was typed stays');
+    reply = { status: 429, body: { error: 'rate_limited', message: 'You have suggested a lot of ideas this hour. Come back a little later.', retryAfter: 120 } };
+    env.G.handlers.submit['roadmap-idea'](fakeForm({ title: 'Long enough', area: 'loot', details: '' }));
+    await settle();
+    assert.equal(env.els['rm-form-error'].textContent, 'You have suggested a lot of ideas this hour. Come back a little later. Try again in 2 minutes.');
+    assert.equal(env.els['rm-form-error'].hidden, false);
+    assert.equal(env.els['rm-status'].textContent, '');
+  });
+
+  await check('roadmap: the form draft survives a re-render, and signing out forgets it', async () => {
+    const env = makeEnv({ url: '/#/roadmap', hint: true, beforeApp: ideaEls, routes: signedInRoutes(MEMBER_CAN, { 'GET /api/roadmap/ideas': { status: 200, body: { ideas: [] } } }) });
+    await settle();
+    env.G.handlers.input['roadmap-draft']({ getAttribute: () => 'title', value: 'Half-typed "idea"' });
+    env.G.handlers.change['roadmap-draft']({ getAttribute: () => 'area', value: 'raids' });
+    env.click({ 'data-action': 'roadmap-area', 'data-area': 'loot' });
+    assert(env.html('gs-main').includes('value="Half-typed &quot;idea&quot;"') && env.html('gs-main').includes('<option value="raids" selected>'));
+    env.G.app.requireSignin();
+    assert.equal(env.G.app.state.roadmap, null);
+  });
+
+  await check('roadmap: the sidebar team picker works on the roadmap page (it uses the chrome guild, not a guild page\'s)', async () => {
+    const two = guildBody();
+    two.teams.push({ id: 't2', name: 'Alts', size: 10, archived: false, lead: null });
+    const env = makeEnv({ url: '/#/roadmap', hint: true, beforeApp: ideaEls, routes: signedInRoutes(null, { '/api/guild/g1': { status: 200, body: two }, 'GET /api/roadmap/ideas': { status: 200, body: { ideas: [] } } }) });
+    await settle();
+    assert(env.html('shell-sidebar').includes('gs-team-select'));
+    const writes = env.els['shell-sidebar'].writes;
+    env.G.handlers.change['team-pick']({ value: 't2' });
+    assert.equal(env.store['raidsmith.guild.team.g1'], 't2');
+    assert(env.els['shell-sidebar'].writes > writes, 'the chrome was drawn again');
+  });
+
+  await check('roadmap: the static pages link to it with an absolute address', async () => {
+    const env = makeEnv({ page: 'faq', url: '/faq.html' });
+    await settle();
+    assert(env.html('shell-sidebar').includes('href="/#/roadmap" aria-label="Future enhancements"'));
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

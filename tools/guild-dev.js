@@ -3,6 +3,7 @@
  * Runs the guild tracker locally: Wrangler (pinned) with the local D1 kept outside OneDrive.
  *   node tools/guild-dev.js migrate [wrangler args]   apply migrations/ to the local D1
  *   node tools/guild-dev.js dev     [wrangler args]   start the Worker, local D1 and static files
+ *   node tools/guild-dev.js execute [wrangler args]   run SQL on the local D1 (--command / --file); tools/roadmap-ideas.js uses this
  * Other arguments pass straight through, e.g.
  *   npm run guild:dev -- --var DISCORD_API_BASE:http://127.0.0.1:8790 --port 8788
  * The local D1 lives in <home>/.raidsmith-dev/wrangler-state unless you point it elsewhere (a fresh
@@ -17,6 +18,12 @@ const { spawn } = require('node:child_process');
 
 const WRANGLER_VERSION = '4.146.0';
 const STATE_ENV = 'RAIDSMITH_DEV_STATE';
+// The Wrangler command each mode runs. Every one is --local: nothing here talks to Cloudflare.
+const WRANGLER_MODES = {
+  migrate: ['d1', 'migrations', 'apply', 'DB', '--local'],
+  dev: ['dev'],
+  execute: ['d1', 'execute', 'DB', '--local'],
+};
 
 function defaultStateDir() {
   return path.join(os.homedir(), '.raidsmith-dev', 'wrangler-state');
@@ -73,9 +80,9 @@ function npxScript() {
 
 // -> { command, args, shell } for the call that runs Wrangler.
 function buildCommand(mode, extraArgs = [], env = process.env) {
-  if (mode !== 'migrate' && mode !== 'dev') throw new Error('usage: guild-dev.js migrate|dev [wrangler args]');
+  if (!Object.prototype.hasOwnProperty.call(WRANGLER_MODES, mode)) throw new Error('usage: guild-dev.js migrate|dev|execute [wrangler args]');
   const { dir, passthrough } = resolveState(extraArgs, env);
-  const wrangler = mode === 'migrate' ? ['d1', 'migrations', 'apply', 'DB', '--local'] : ['dev'];
+  const wrangler = WRANGLER_MODES[mode];
   const npxArgs = ['--yes', `wrangler@${WRANGLER_VERSION}`, ...wrangler, '--persist-to', dir, ...passthrough];
   const script = npxScript();
   if (script) return { command: process.execPath, args: [script, ...npxArgs], shell: false };

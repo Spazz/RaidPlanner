@@ -48,6 +48,7 @@
       'Delete my data also lifts any access block on you.',
       'If you are the only Guild Master of a guild, hand over first. If nobody else has joined, the guild is deleted too.',
       'Roster records stay with the guild, unlinked, once the guild keeps them: your roster entry, characters, attendance and officer notes would no longer be linked to your Discord account. To remove those, ask your guild\'s officers.',
+      'Ideas you suggested on the Future enhancements page stay, no longer linked to you.',
     ]);
     let impactHtml = '';
     if (blocked) {
@@ -78,6 +79,7 @@
       section('privacy-keeps-you', 'What Raidsmith keeps about you', paragraphs([
         'From Discord, when you sign in: your Discord ID, username and avatar. Not your email, not your messages.',
         'Your server list is checked at each sign-in to find your guilds. Only the result is kept. For guild creators, the servers they can manage are kept for 30 minutes after sign-in.',
+        'Ideas you suggest on the Future enhancements page: the title, details and area you write, linked to your account. Everyone who is signed in can read an idea, without your name.',
       ])) +
       section('privacy-guild-keeps', 'What your guild keeps', bullets([
         'Your roster entry: status, join and trial dates, characters, specs and team.',

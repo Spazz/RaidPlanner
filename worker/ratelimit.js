@@ -4,6 +4,9 @@ export const RATE_LIMIT = 60;
 export const RATE_WINDOW_MS = 60 * 1000;
 export const IMPORT_LIMIT = 10;
 export const IMPORT_WINDOW_MS = 10 * 60 * 1000;
+// The idea box on the Future enhancements page (per user).
+export const IDEA_LIMIT = 20;
+export const IDEA_WINDOW_MS = 60 * 60 * 1000;
 export const WCL_GLOBAL_LIMIT = 60;
 export const WCL_GLOBAL_KEY = 'wcl:global';
 // Raid report fetches and the backfill list (per user): one report per request, a backfill is a dozen of them.
@@ -33,6 +36,7 @@ export async function checkRateLimit(db, userId, nowMs, { limit = RATE_LIMIT, wi
 
 // The 429 message depends on the window: import routes talk about imports.
 export function rateLimitMessage(key) {
+  if (/^idea:/.test(key)) return 'You have suggested a lot of ideas this hour. Come back a little later.';
   return /^(?:imp|wcl|wclraid):/.test(key)
     ? 'Too many imports. Wait a moment and try again.'
     : 'Too many changes in a minute. Wait a moment and try again.';

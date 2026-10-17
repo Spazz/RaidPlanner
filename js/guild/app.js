@@ -45,6 +45,7 @@
     linkable: {},      // gid -> [person] from GET /roster/linkable
     imports: {},       // 'rh' | 'wcl' -> the import page's state (see pages-import.js)
     att: {},           // the attendance pages' state, one key per page module (see pages-attendance.js and its siblings)
+    roadmap: null,     // the Future enhancements page's state: filter, form draft, submitted ideas (see pages-roadmap.js)
   };
   const app = G.app = { state: state, started: false };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
@@ -236,6 +237,7 @@
     state.chromeTried = {};
     state.lastGid = null;
     state.att = {};
+    state.roadmap = null;
     state.failure = null;
     state.notice = '';
     setHint(false);
@@ -400,6 +402,11 @@
     if (r.name === 'privacy') {
       return loadMe().then(function () { return null; });
     }
+    if (r.name === 'roadmap') {
+      // The roadmap shows at once and the submitted ideas fill in beside it. It has no guild: the nav is the last guild's, as on the planner.
+      G.pages.roadmap.load();
+      return ensureChromeGuild().then(function () { return null; });
+    }
     if (!r.gid) return null;
 
     state.currentGid = r.gid;
@@ -517,6 +524,7 @@
     const base = 'Raidsmith guild';
     let page = '';
     if (r.name === 'privacy') page = 'Privacy & my data';
+    else if (r.name === 'roadmap') page = 'Future enhancements';
     else if (r.name === 'new') page = 'Create a guild';
     else if (r.name === 'section') page = { roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || '';
     else if (r.name === 'raidnew') page = 'New raid';
@@ -555,6 +563,8 @@
         return P.create.createHtml({ me: state.me, timeZones: timeZones(), defaultTimeZone: P.create.browserTimeZone(), alert: state.pageAlert });
       case 'privacy':
         return P.privacy.privacyHtml({ me: state.me, message: state.privacyMessage });
+      case 'roadmap':
+        return P.roadmap.roadmapHtml({ me: state.me, view: P.roadmap.viewState() });
       case 'section':
         if (!gd) return P.signin.loadingHtml();
         if (r.section === 'roster') return rosterMain(gd);
@@ -610,7 +620,9 @@
     const me = state.me;
     let gd = null;
     if (me) {
-      const gid = state.section === 'guild' ? (r && r.gid) : chromeGuildId();
+      // The roadmap has no guild of its own: like the planner and the help pages it draws the nav of the viewer's last guild.
+      const own = r && r.name === 'roadmap' ? chromeGuildId() : (r && r.gid);
+      const gid = state.section === 'guild' ? own : chromeGuildId();
       gd = gid ? state.guilds[gid] || null : null;
     }
     return {
@@ -628,6 +640,7 @@
     if (state.bootError) return { html: G.pages.signin.messageHtml('Could not load Raidsmith', state.bootError, { retry: true }), center: true, title: titleFor(r, null) };
     if (!state.me) {
       if (r.name === 'privacy') return { html: G.pages.privacy.privacyHtml({ me: null }), center: false, title: titleFor(r, null) };
+      if (r.name === 'roadmap') return { html: G.pages.roadmap.roadmapHtml({ me: null, view: G.pages.roadmap.viewState() }), center: false, title: titleFor(r, null) };
       const html = G.pages.signin.signinHtml({ error: r.name === 'signin' ? r.error : null, notice: state.signinNotice });
       state.signinNotice = '';
       return { html: html, center: true, title: titleFor(r, null) };
@@ -913,7 +926,7 @@
   G.handlers.change['team-pick'] = function (sel) {
     // The guild the picker belongs to: the open guild page's, else the one the planner / help-page chrome shows
     // (currentGid is null, or a guild visited earlier, there).
-    const gid = state.section === 'guild' ? state.currentGid : chromeGuildId();
+    const gid = state.section === 'guild' && state.currentGid ? state.currentGid : chromeGuildId();
     if (!gid) return;
     state.teamByGuild[gid] = sel.value;
     storageSet(TEAM_KEY + gid, sel.value);

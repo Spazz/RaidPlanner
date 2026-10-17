@@ -99,7 +99,7 @@ check('wrangler.jsonc: Worker entry, assets, run_worker_first, D1 binding, and n
   assert.equal(config.main, 'worker/index.js');
   assert.match(config.compatibility_date, /^\d{4}-\d{2}-\d{2}$/);
   assert.deepEqual(config.assets, {
-    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/guild/', '/api/guild', '/api/guild/*', '/auth/*'],
+    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/guild/', '/api/guild', '/api/guild/*', '/api/roadmap/*', '/auth/*'],
   });
   assert.deepEqual(config.d1_databases, [{ binding: 'DB', database_name: 'raidsmith', database_id: 'local-raidsmith', migrations_dir: 'migrations' }]);
   assert.equal(config.vars, undefined);
@@ -132,6 +132,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
     'guild-ui-tests.js', 'guild-worker-tests.js', 'guild-config-tests.js', 'tests/d1-fake.js', 'tools/guild-dev.js', 'tools/fake-discord.js',
     'guild-roster-worker-tests.js', 'guild-roster-ui-tests.js', 'guild-shell-tests.js', 'tests/guild-scripts.js', 'tools/fake-sources.js', 'migrations/0002_roster.sql',
     'guild-attendance-worker-tests.js', 'migrations/0003_attendance.sql',
+    'guild-roadmap-tests.js', 'guild-roadmap-worker-tests.js', 'tools/roadmap-ideas.js', 'js/guild/roadmap-data.js', 'js/guild/pages-roadmap.js',
     'migrations/0001_foundation.sql', 'worker/package.json',
     ...walk('worker'), ...walk('migrations'),
   ]);

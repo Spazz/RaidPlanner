@@ -95,13 +95,14 @@
     return items;
   }
 
-  // What's new, How it works, FAQ: at the bottom of every sidebar. The first one starts the separated help group.
+  // What's new, Future enhancements, How it works, FAQ: at the bottom of every sidebar. The first one starts the separated help group.
   function helpItems(ctx) {
     const base = baseOf(ctx);
     const unseen = !!(ctx && ctx.whatsNewUnseen);
     return [
       { key: 'whats-new', label: 'What\'s new', short: 'What\'s new', icon: 'whatsnew', href: '/whats-new.html', separated: true, isNew: unseen,
         ariaLabel: unseen ? 'What\'s new, new' : 'What\'s new' },
+      { key: 'roadmap', label: 'Future enhancements', short: 'Roadmap', icon: 'roadmap', href: base + G.router.format({ name: 'roadmap' }) },
       { key: 'how-it-works', label: 'How it works', short: 'Guide', icon: 'guide', href: base + '#how-it-works', action: 'how-it-works' },
       { key: 'faq', label: 'FAQ', short: 'FAQ', icon: 'faq', href: '/faq.html' },
     ];
@@ -132,6 +133,7 @@
   function isActiveItem(item, route) {
     if (!route) return false;
     if (item.key === 'settings') return route.name === 'settings';
+    if (item.key === 'roadmap') return route.name === 'roadmap';
     if (item.key === 'roster' && (route.name === 'person' || route.name === 'import')) return true;
     if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid')) return true;
     if (item.key === 'attendance' && (route.name === 'review' || route.name === 'backfill' || route.name === 'personatt')) return true;
@@ -263,6 +265,7 @@
     if (ctx.section === 'page') return [{ label: PAGE_NAMES[ctx.page] || 'Raidsmith' }];
     if (r.name === 'new') return [{ label: 'Create a guild' }];
     if (r.name === 'privacy') return [{ label: 'Privacy & my data' }];
+    if (r.name === 'roadmap') return [{ label: 'Future enhancements' }];
     if (ctx.signedOut) return [{ label: 'Sign in' }];
     if (!gd || !gd.guild) return [{ label: 'Raidsmith' }];
     crumbs.push({ label: gd.guild.name, href: guildHref(gd.guild.id, 'roster', baseOf(ctx)) });

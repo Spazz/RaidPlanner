@@ -9,6 +9,7 @@ import { callback, deleteMe, guildPageRedirect, login, logout, me, updatePrefs }
 import { claimGuild, createGuild, getGuild } from './routes/guild.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles } from './routes/people.js';
 import { createTeam, patchTeam } from './routes/teams.js';
+import { createIdea, listIdeas } from './routes/roadmap.js';
 import {
   addCharacter, createPerson, deletePerson, getLinkable, getPerson, getRoster, makeMain, patchCharacter, patchPerson,
   removeCharacter, saveNotes,
@@ -85,6 +86,9 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/attendance/team', auth: true, handler: getTeamAttendance },
   { method: 'GET', path: '/api/guild/:gid/attendance/person/:pid', auth: true, handler: getPersonAttendance },
   { method: 'GET', path: '/api/guild/:gid/attendance/backfill/reports', auth: true, handler: getBackfillReports },
+  // App-wide (no guild): the idea box on the Future enhancements page.
+  { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
+  { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },
 ];
 
 // deps: { db, env, fetch, now, randomBytes, log } -> { handle(request) }

@@ -173,6 +173,15 @@ To use a different database (a fresh one for a check, say), pass `--state <dir>`
 
 **Without real Raid-Helper or Warcraft Logs.** `node tools/fake-sources.js [--port 8791] [--server-id <Discord server id>]` (or `FAKE_SOURCES_PORT`, `FAKE_SOURCES_SERVER_ID`) fakes the Raid-Helper v4 events API and the Warcraft Logs token + GraphQL endpoints with invented events and one invented report; its header comment lists the event ids and the report codes. `--server-id` is the Discord server the main event is posted in (default: the fake Discord's server `900000000000000001`). Point the Worker at it with `npm run guild:dev -- --var RAID_HELPER_API_BASE:http://127.0.0.1:8791 --var WCL_API_BASE:http://127.0.0.1:8791`, and set any `WCL_CLIENT_ID` / `WCL_CLIENT_SECRET` (the fake accepts anything). Like `DISCORD_API_BASE`, both bases are honoured only for `http://localhost:<port>` / `http://127.0.0.1:<port>` and are never set in `wrangler.jsonc`. For the raid log (attendance) it also serves fights with `friendlyPlayers` and an `owner` on `Fake000000000001` (6 boss pulls, one player late, one gone before the last pull), a second report of the same night (`Fake000000000002`, with a player who belongs to another team: the fill-in case), an older night (`Fake000000000003`) and the report list for the backfill (`reports(...)`, two per page); the header comment of `tools/fake-sources.js` lists them. Attendance never stores a report, only who was in each boss pull; the backfill list shows report titles but does not keep them.
 
+**Future enhancements and the idea box.** The roadmap page (`#/roadmap`, signed in or out) draws `js/guild/roadmap-data.js`: add an item there (the fields are documented at its top) to put it on the page. Signed-in people also get a Suggest an idea form; the ideas are app-wide rows in `roadmap_ideas` (migration `0007`). Triage them from the terminal against the same local D1 the dev server uses (`--state <dir>` and `RAIDSMITH_DEV_STATE` work as above; it runs `tools/guild-dev.js execute`, which is always `--local`):
+
+```
+node tools/roadmap-ideas.js list [--status new]
+node tools/roadmap-ideas.js mark <ideaId> <added|declined|done> [--roadmap <itemId>] [--note "..."]
+```
+
+`list` prints JSON, newest first. `mark` changes one idea and prints it; `--roadmap` must be an id in `roadmap-data.js` (add the item first). Run `npm run guild:migrate` once after pulling migration `0007`.
+
 **Limits under `wrangler dev`.** The short links (`/api/share`, `/tbc/:id`, `/classic/:id`, `/forever/:id`) are Vercel features and do not work on `localhost:8787`; use the long `#r=` links there. The planner pages, `/faq`, `/whats-new` and the guild tracker work. The guild tracker is part of the app shell at `/` (guild pages are `/#/g/<id>/roster` and so on); the old `/guild` address redirects to `/#/`.
 
 **What Wrangler 4.146.0 does here (checked 2026-10-14).**
@@ -183,9 +192,9 @@ To use a different database (a fresh one for a check, say), pass `--state <dir>`
 - Default `html_handling` serves `/faq` from `faq.html` (`/faq.html` redirects to `/faq`), so the help pages link to `/faq.html` and `/whats-new.html` and the browser lands on `/faq` and `/whats-new`.
 - `--var KEY:VALUE` overrides a value from `.env`, and `dev --env-file <path>` exists.
 - Local D1, `d1 migrations apply --local` and `dev` run with no Cloudflare login.
-- `run_worker_first` routes (`/guild`, `/api/guild`, `/api/guild/*`, `/auth/*`) reach the Worker; everything else is served as a static asset.
+- `run_worker_first` routes (`/guild`, `/api/guild`, `/api/guild/*`, `/api/roadmap/*`, `/auth/*`) reach the Worker; everything else is served as a static asset.
 
-**Tests.** `guild-attendance-worker-tests.js` drives the raid, attendance, policy and backfill routes over the same D1 fake (Raid-Helper and Warcraft Logs faked in process). `guild-worker-tests.js` runs the Worker over `tests/d1-fake.js` (a `node:sqlite` stand-in for D1 that runs the real migration and copies D1's limits), `guild-config-tests.js` pins the config files, and `guild-ui-tests.js`, `guild-roster-ui-tests.js` and `guild-shell-tests.js` cover the shell (the last drives it against fake documents).
+**Tests.** `guild-attendance-worker-tests.js` drives the raid, attendance, policy and backfill routes over the same D1 fake (Raid-Helper and Warcraft Logs faked in process). `guild-worker-tests.js` runs the Worker over `tests/d1-fake.js` (a `node:sqlite` stand-in for D1 that runs the real migration and copies D1's limits), `guild-roadmap-tests.js` and `guild-roadmap-worker-tests.js` cover the roadmap page, its data file, the idea box routes and the triage tool, `guild-config-tests.js` pins the config files, and `guild-ui-tests.js`, `guild-roster-ui-tests.js` and `guild-shell-tests.js` cover the shell (the last drives it against fake documents).
 
 ## Releases
 
