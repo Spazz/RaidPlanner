@@ -269,7 +269,7 @@ RulesData.forever = {
     BATTLE_SHOUT: {
       name: 'Battle Shout',
       spellId: 25289,
-      desc: 'Increases melee attack power of nearby party members by 139 for 3 minutes (melee only; hunters gain nothing). Raid-wide in Forever.',
+      desc: 'Increases melee attack power of raid members by 139 for 3 minutes (melee only; hunters gain nothing). Raid-wide in Forever.',
       buffType: 'passive',
       scope: 'raid',
       sourceClass: 'WARRIOR',
@@ -291,7 +291,7 @@ RulesData.forever = {
     TRUESHOT_AURA: {
       name: 'Trueshot Aura',
       spellId: 20906,
-      desc: 'Marksmanship talent (21-point, row 4); higher ranks are trained once the talent is known. Increases ranged attack power of nearby party members by 75 at rank 4 (the level-60 rank 5 reads 50 in the beta). Ranged attack power only. Raid-wide in Forever.',
+      desc: 'Marksmanship talent (21-point, row 4); higher ranks are trained once the talent is known. Increases ranged attack power of raid members by 75 at rank 4 (the level-60 rank 5 reads 50 in the beta). Ranged attack power only. Raid-wide in Forever.',
       buffType: 'passive',
       scope: 'raid',
       sourceClass: 'HUNTER',
