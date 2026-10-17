@@ -291,7 +291,7 @@ check('schema: one Main per person, a name is unique per guild + realm key, and 
   fails(w, charSql('c3', 'g1', 'p1', 'g1_t1', 'Aldric'), /UNIQUE constraint failed/);
   exec(w, charSql('c3', 'g1', 'p1', 'g1_t1', 'Aldric', { realmKey: 'otherrealm' }));
   for (const [column, value] of [['joined_on', '2026-19-39'], ['trial_start', '2026-02-30'], ['trial_end', 'tomorrow'],
-    ['discord_user_id', '1234567890123456a'], ['discord_user_id', '1234567890123456'], ['discord_user_id', '123456789012345678901'], ['discord_nickname', 'x'.repeat(65)]]) {
+    ['left_on', '2026-02-30'], ['left_reason', 'quit'], ['discord_user_id', '1234567890123456a'], ['discord_user_id', '1234567890123456'], ['discord_user_id', '123456789012345678901'], ['discord_nickname', 'x'.repeat(65)]]) {
     fails(w, playerSql('px', 'g1', `${column}|'${value}'`), /CHECK constraint failed/);
   }
   fails(w, playerSql('px', 'g1', "trial_start, trial_end|'2026-05-02', '2026-05-01'"), /CHECK constraint failed/);
@@ -473,7 +473,7 @@ check('create person: the record shape, defaults, the Main in the same batch, tr
   const { id: pid, ...person } = record.person;
   assert.match(pid, /^p_[A-Za-z0-9_-]{22}$/);
   assert.deepEqual(person, {
-    status: 'raider', joinedOn: '2027-01-15', trialStart: null, trialEnd: null, trialFlag: null, isMe: false, version: 1,
+    status: 'raider', joinedOn: '2027-01-15', trialStart: null, trialEnd: null, leftOn: null, leftReason: null, trialFlag: null, isMe: false, version: 1,
     discord: { signIn: 'no_discord', user: null, nickname: null }, homeTeam: { id: s.teamId, name: 'Main team' },
   });
   assert.equal(record.characters.length, 1);
@@ -716,6 +716,60 @@ check('delete person: removes the person and every character; the nav counts com
   const [row] = await s.w.rows("SELECT before, after FROM audit_log WHERE action = 'person.delete'");
   assert.deepEqual(JSON.parse(row.before).teamIds.sort(), [alpha, bravo].sort());
   assert.equal(row.after, null);
+  await assertOneMain(s.w);
+});
+
+check('update person: Inactive records an optional reason and a left-on date; reactivating clears both; audit keeps them', async () => {
+  const s = await scenario();
+  const first = await addPerson(s, 'bob', s.teamId, 'Aldric');
+  const pid = first.person.id;
+  const patch = (body) => s.call('bob', 'PATCH', `/roster/${pid}`, body);
+  const today = (await s.call('bob', 'GET', `/roster/${pid}`)).json.today;
+  assert.equal(today, '2027-01-15');
+  assert.deepEqual([first.person.leftOn, first.person.leftReason], [null, null]);
+
+  // Inactive with nothing else: left on defaults to today in the guild's time zone, no reason.
+  const gone = await patch({ expectedVersion: 1, status: 'inactive' });
+  assert.equal(gone.status, 200, JSON.stringify(gone.json));
+  assert.deepEqual([gone.json.person.status, gone.json.person.leftOn, gone.json.person.leftReason, gone.json.person.version], ['inactive', today, null, 2]);
+  const listed = (await s.call('bob', 'GET', `/roster?team=${s.teamId}`)).json.people.find((p) => p.id === pid);
+  assert.deepEqual([listed.leftOn, listed.leftReason], [today, null], 'the roster list carries both fields');
+
+  // Changing them while inactive: reason alone keeps the date; an explicit null clears the date.
+  const kicked = await patch({ expectedVersion: 2, leftReason: 'kicked' });
+  assert.deepEqual([kicked.json.person.leftOn, kicked.json.person.leftReason], [today, 'kicked']);
+  const dated = await patch({ expectedVersion: 3, leftOn: '2027-01-02' });
+  assert.deepEqual([dated.json.person.leftOn, dated.json.person.leftReason, dated.json.person.version], ['2027-01-02', 'kicked', 4]);
+  const undated = await patch({ expectedVersion: 4, leftOn: null, leftReason: null });
+  assert.deepEqual([undated.json.person.leftOn, undated.json.person.leftReason], [null, null]);
+
+  const rejects = async (body, field) => {
+    const r = await patch({ expectedVersion: 5, ...body });
+    assert.equal(r.status, 400, JSON.stringify([body, r.json]));
+    assert.equal(r.json.field, field, JSON.stringify(r.json));
+  };
+  await rejects({ leftReason: 'quit' }, 'leftReason');
+  await rejects({ leftOn: '2027-02-30' }, 'leftOn');
+  await rejects({ leftOn: 'yesterday' }, 'leftOn');
+  await rejects({ status: 'raider', leftOn: '2027-01-02' }, 'leftOn');
+  await rejects({ status: 'trial', leftReason: 'break' }, 'leftReason');
+
+  // Reactivation clears both; the fields are refused on a person who is not inactive.
+  const back = await patch({ expectedVersion: 5, status: 'raider' });
+  assert.deepEqual([back.json.person.status, back.json.person.leftOn, back.json.person.leftReason], ['raider', null, null]);
+  const stale = await patch({ expectedVersion: 6, leftOn: '2027-01-02' });
+  assert.equal(stale.status, 400);
+  assert.equal(stale.json.field, 'leftOn', 'a raider has no left-on date');
+
+  // Straight into Inactive with both values; then straight out again, with the values still in the audit trail.
+  const both = await patch({ expectedVersion: 6, status: 'inactive', leftOn: '2027-01-05', leftReason: 'break' });
+  assert.deepEqual([both.json.person.leftOn, both.json.person.leftReason], ['2027-01-05', 'break']);
+  assert.equal((await patch({ expectedVersion: 7, status: 'reserve' })).status, 200);
+  const trail = (await s.w.rows("SELECT before, after FROM audit_log WHERE action = 'person.update' ORDER BY rowid")).map((row) => [JSON.parse(row.before), JSON.parse(row.after)]);
+  assert.deepEqual([trail[0][0].leftOn, trail[0][1].leftOn, trail[0][1].leftReason], [null, today, null]);
+  assert.deepEqual([trail[1][1].leftReason, trail[1][1].changed], ['kicked', ['leftReason']]);
+  const outOf = trail[trail.length - 1];
+  assert.deepEqual([outOf[0].leftOn, outOf[0].leftReason, outOf[1].leftOn, outOf[1].leftReason], ['2027-01-05', 'break', null, null]);
   await assertOneMain(s.w);
 });
 

@@ -671,7 +671,11 @@
       if (section === 'guild') {
         const v = guildView(r, ctx);
         if (main.classList) { main.classList.add('gs-scope'); main.classList.toggle('gs-main-center', v.center); }
+        // Scroll boxes inside #gs-main (data-scroll-key) keep their position across the rewrite.
+        const scrolls = {};
+        if (main.querySelectorAll) main.querySelectorAll('[data-scroll-key]').forEach(function (el) { scrolls[el.getAttribute('data-scroll-key')] = el.scrollTop; });
         main.innerHTML = v.html;
+        if (main.querySelectorAll) main.querySelectorAll('[data-scroll-key]').forEach(function (el) { const t = scrolls[el.getAttribute('data-scroll-key')]; if (t) el.scrollTop = t; });
         document.title = v.title;
       } else if (main.innerHTML) {
         main.innerHTML = '';

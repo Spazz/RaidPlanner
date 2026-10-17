@@ -543,6 +543,23 @@ function teamData(over) {
     assertEscaped(G.pages.review.guestDialogHtml({ unm: bad.raids[0].items[2], raidId: 'r4', where: 'raid' }), 'guest dialog');
   });
 
+  await check('unmatched actions: Link to person, Add as new person, Mark as guest; person dialog defaults to Raider and the raid date; link dialog offers Make Main', () => {
+    const out = reviewHtml();
+    assert(out.includes('>Link to person...<') && !out.includes('Link as Alt'));
+    assert((out.match(/data-action="unm-person"/g) || []).length === 2 && out.includes('>Add as new person...<') && out.includes('data-key="unm-person-r4taharah|dreamscythe"'));
+    assert(out.indexOf('data-action="unm-link"') < out.indexOf('data-action="unm-person"') && out.indexOf('data-action="unm-person"') < out.indexOf('data-action="unm-guest"'));
+    const unm = REVIEW.raids[0].items[2];
+    const dlg = G.pages.review.personDialogHtml({ unm: unm, raidId: 'r4', raidOn: '2026-10-10', where: 'review' });
+    assert(dlg.includes('data-submit="unm-person-form"') && dlg.includes('Add Taharah as a new person') && dlg.includes('with this character as their Main'));
+    assert(/<option value="raider" selected>Raider</.test(dlg) && dlg.includes('value="trial"') && dlg.includes('value="reserve"'));
+    assert(dlg.includes('type="date"') && dlg.includes('name="joinedOn" value="2026-10-10"') && dlg.includes('>Add person<') && dlg.includes('gs-btn-molten'));
+    assertEscaped(G.pages.review.personDialogHtml({ unm: Object.assign({}, unm, { name: HOSTILE + QUOTES }), raidId: 'r4', raidOn: QUOTES, where: 'review' }), 'person dialog');
+    const link = G.pages.review.linkDialogHtml({ unm: unm, raidId: 'r4', where: 'review', people: [{ id: 'p_1', status: 'raider', main: { name: 'Mainy', class: 'MAGE' }, shown: {} }] });
+    assert(link.includes('Link Taharah to a person') && link.includes('as an Alt, or as their Main'));
+    assert(link.includes('id="unm-make-main"') && link.includes('name="makeMain"') && link.includes('data-change="unm-make-main"') && link.includes('Make this their Main (their current Main becomes an Alt)'));
+    assert(link.includes('id="unm-link-submit"') && link.includes('>Add as Alt<') && link.includes('data-person-name="Mainy"'));
+  });
+
   // ── handlers: decisions and the flow state (stubbed API) ───────
   function stub(handler) {
     const calls = [];

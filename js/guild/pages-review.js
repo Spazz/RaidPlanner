@@ -101,16 +101,32 @@
       const shown = p.shown || {};
       const main = p.main || {};
       const name = main.name || shown.name || '';
-      return '<li class="gs-pick-item" data-name="' + esc(String(name).toLowerCase()) + '"><div class="gs-check"><input type="radio" name="personId" id="pick-' + esc(p.id) + '" value="' + esc(p.id) + '"><label for="pick-' + esc(p.id) + '">' +
+      return '<li class="gs-pick-item" data-name="' + esc(String(name).toLowerCase()) + '"><div class="gs-check"><input type="radio" name="personId" id="pick-' + esc(p.id) + '" value="' + esc(p.id) + '" data-person-name="' + esc(name) + '"><label for="pick-' + esc(p.id) + '">' +
         G.ui.classNameHtml(name, main.class || shown.class) + ' <span class="gs-fine">' + esc(G.ui.statusLabel(p.status)) + (main.class ? ' &middot; ' + esc(G.ui.className(main.class)) : '') + '</span></label></div></li>';
     }).join('');
     return '<form class="gs-dialog-form" data-submit="unm-link-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
-      '<h2 class="gs-dialog-title" id="dlg-title">Link ' + esc(u.name) + ' as an Alt</h2>' +
-      '<p class="gs-fine" id="dlg-help">' + esc(unmatchedEvidence(u)) + '. Pick the person this character belongs to; it is added to their record as a new Alt.</p>' +
+      '<h2 class="gs-dialog-title" id="dlg-title">Link ' + esc(u.name) + ' to a person</h2>' +
+      '<p class="gs-fine" id="dlg-help">' + esc(unmatchedEvidence(u)) + '. Pick the person this character belongs to; it is added to their record as an Alt, or as their Main.</p>' +
       '<div class="gs-field"><label class="gs-label" for="unm-search">Search people</label><input class="gs-input" type="search" id="unm-search" data-input="unm-search" autocomplete="off"></div>' +
       '<ul class="gs-pick-list" aria-label="People">' + (list || '<li class="gs-fine">No one on this roster yet.</li>') + '</ul>' +
-      '<p class="gs-field-error" id="dlg-err-personId" role="alert" hidden></p><p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Add as Alt</button></div></form>';
+      '<p class="gs-field-error" id="dlg-err-personId" role="alert" hidden></p>' +
+      '<div class="gs-field"><div class="gs-check"><input type="checkbox" id="unm-make-main" name="makeMain" data-change="unm-make-main"><label for="unm-make-main">Make this their Main (their current Main becomes an Alt)</label></div></div>' +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten" id="unm-link-submit">Add as Alt</button></div></form>';
+  }
+
+  // opts: { unm, raidId, raidOn, where }
+  function personDialogHtml(opts) {
+    const u = opts.unm;
+    const statuses = ['raider', 'trial', 'reserve'].map(function (s) { return { value: s, label: G.ui.statusLabel(s) }; });
+    return '<form class="gs-dialog-form" data-submit="unm-person-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
+      '<h2 class="gs-dialog-title" id="dlg-title">Add ' + esc(u.name) + ' as a new person</h2>' +
+      '<p class="gs-fine" id="dlg-help">' + esc(unmatchedEvidence(u)) + '. They are added to the roster with this character as their Main.</p>' +
+      '<div class="gs-field"><label class="gs-label" for="unm-status">Status</label><select class="gs-input" id="unm-status" name="status">' + G.ui.optionsHtml(statuses, 'raider') + '</select></div>' +
+      '<div class="gs-field"><label class="gs-label" for="unm-joined">Joined</label><input class="gs-input" type="date" id="unm-joined" name="joinedOn" value="' + esc(opts.raidOn || '') + '">' +
+      '<p class="gs-field-error" id="dlg-err-joinedOn" role="alert" hidden></p></div>' +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Add person</button></div></form>';
   }
 
   function guestDialogHtml(opts) {
@@ -131,7 +147,8 @@
 
   function itemActionsHtml(raidId, item, where) {
     if (isUnmatched(item)) {
-      return '<button type="button" class="gs-btn gs-btn-sm" data-action="unm-link" data-rid="' + esc(raidId) + '" data-ukey="' + esc(item.key) + '" data-where="' + esc(where) + '" data-key="unm-link-' + esc(raidId + item.key) + '">Link as Alt...</button>' +
+      return '<button type="button" class="gs-btn gs-btn-sm" data-action="unm-link" data-rid="' + esc(raidId) + '" data-ukey="' + esc(item.key) + '" data-where="' + esc(where) + '" data-key="unm-link-' + esc(raidId + item.key) + '">Link to person...</button>' +
+        '<button type="button" class="gs-btn gs-btn-sm" data-action="unm-person" data-rid="' + esc(raidId) + '" data-ukey="' + esc(item.key) + '" data-where="' + esc(where) + '" data-key="unm-person-' + esc(raidId + item.key) + '">Add as new person...</button>' +
         '<button type="button" class="gs-btn gs-btn-sm" data-action="unm-guest" data-rid="' + esc(raidId) + '" data-ukey="' + esc(item.key) + '" data-where="' + esc(where) + '" data-key="unm-guest-' + esc(raidId + item.key) + '">Mark as guest</button>';
     }
     return '<button type="button" class="gs-btn gs-btn-sm" data-action="decide-open" data-rid="' + esc(raidId) + '" data-pid="' + esc(item.playerId) + '" data-where="' + esc(where) + '" data-key="decide-' + esc(raidId + item.playerId) + '">Decide</button>';
@@ -241,6 +258,18 @@
       return r ? (r.teamId || idOf(r.team) || null) : null;
     }
     return s.review && s.review.teamId || null;
+  }
+
+  // The raid's date: a new person's Joined date starts there.
+  function raidOnOf(where, rid) {
+    const s = a();
+    if (where === 'raid') {
+      const d = s.raid && s.raid.data;
+      return d && d.raid && d.raid.id === rid ? d.raid.raidOn || '' : '';
+    }
+    const rv = s.review && s.review.data;
+    const g = rv ? (rv.raids || []).filter(function (x) { return x.raid && x.raid.id === rid; })[0] : null;
+    return g && g.raid ? g.raid.raidOn || '' : '';
   }
 
   function reloadReview() {
@@ -364,6 +393,19 @@
     for (let i = 0; i < items.length; i++) items[i].hidden = !!q && items[i].getAttribute('data-name').indexOf(q) < 0;
   };
 
+  G.handlers.change['unm-make-main'] = function (el) {
+    const submit = document.getElementById('unm-link-submit');
+    if (submit) submit.textContent = el.checked ? 'Make Main' : 'Add as Alt';
+  };
+
+  G.handlers.click['unm-person'] = function (el) {
+    const where = el.getAttribute('data-where');
+    const rid = el.getAttribute('data-rid');
+    const unm = findUnmatched(where, rid, el.getAttribute('data-ukey'));
+    if (!unm) return;
+    G.ui.openDialog(personDialogHtml({ unm: unm, raidId: rid, raidOn: raidOnOf(where, rid), where: where }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+  };
+
   G.handlers.click['unm-guest'] = function (el) {
     const where = el.getAttribute('data-where');
     const rid = el.getAttribute('data-rid');
@@ -386,8 +428,27 @@
     if (!picked) { G.ui.setText('dlg-err-personId', 'Pick the person this character belongs to.'); return; }
     const name = form.getAttribute('data-name');
     const where = form.getAttribute('data-where');
-    G.ui.runDialog(form, G.api.post(A().apiBase(gid) + '/raids/' + encodeURIComponent(form.getAttribute('data-rid')) + '/unmatched', { key: form.getAttribute('data-key'), action: 'alt', personId: picked.value }), function (res) {
-      afterWrite(where, gid, res, unmatchedNote(res, 'Added ' + name + ' as an Alt.'));
+    const makeMain = !!(form.elements.makeMain && form.elements.makeMain.checked);
+    const body = { key: form.getAttribute('data-key'), action: 'alt', personId: picked.value };
+    if (makeMain) body.makeMain = true;
+    const personName = picked.getAttribute('data-person-name') || 'their';
+    G.ui.runDialog(form, G.api.post(A().apiBase(gid) + '/raids/' + encodeURIComponent(form.getAttribute('data-rid')) + '/unmatched', body), function (res) {
+      afterWrite(where, gid, res, unmatchedNote(res, makeMain ? name + ' is now ' + personName + "'s Main." : 'Added ' + name + ' as an Alt.'));
+    });
+  };
+
+  G.handlers.submit['unm-person-form'] = function (form) {
+    const gd = currentGd();
+    if (!gd) return;
+    const gid = gd.guild.id;
+    const joinedOn = String(form.elements.joinedOn.value || '').trim();
+    G.ui.setText('dlg-err-joinedOn', '');
+    if (!joinedOn) { G.ui.setText('dlg-err-joinedOn', 'Joined needs a date.'); form.elements.joinedOn.focus(); return; }
+    const name = form.getAttribute('data-name');
+    const where = form.getAttribute('data-where');
+    const body = { key: form.getAttribute('data-key'), action: 'person', status: form.elements.status.value, joinedOn: joinedOn };
+    G.ui.runDialog(form, G.api.post(A().apiBase(gid) + '/raids/' + encodeURIComponent(form.getAttribute('data-rid')) + '/unmatched', body), function (res) {
+      afterWrite(where, gid, res, unmatchedNote(res, 'Added ' + name + ' as a new person.'));
     });
   };
 
@@ -409,6 +470,7 @@
     evidenceText: evidenceText,
     decideDialogHtml: decideDialogHtml,
     linkDialogHtml: linkDialogHtml,
+    personDialogHtml: personDialogHtml,
     guestDialogHtml: guestDialogHtml,
     reviewHtml: reviewHtml,
     itemActionsHtml: itemActionsHtml,

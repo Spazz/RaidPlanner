@@ -93,7 +93,7 @@
   }
 
   function statusCellHtml(p, opts) {
-    return '<span class="gs-status-cell">' + G.ui.statusChipHtml(p.status) + flagChipHtml(p, opts) + '</span>';
+    return '<span class="gs-status-cell">' + G.ui.statusChipHtml(p.status, p) + flagChipHtml(p, opts) + '</span>';
   }
 
   function offSpecHtml(s) { return s.offSpec ? esc(s.offSpec) : '<span class="gs-muted">-</span>'; }
@@ -107,7 +107,7 @@
   function cardHtml(gid, p, opts) {
     const s = p.shown;
     const flag = flagChipHtml(p, opts);
-    return '<li class="gs-roster-card"><div class="gs-card-top">' + nameCellHtml(gid, p) + G.ui.statusChipHtml(p.status) + '</div>' +
+    return '<li class="gs-roster-card"><div class="gs-card-top">' + nameCellHtml(gid, p) + G.ui.statusChipHtml(p.status, p) + '</div>' +
       '<div class="gs-card-line">' + G.ui.specLineHtml(s.class, s.mainSpec, s.offSpec) + '</div>' +
       '<div class="gs-card-meta">' + flag + '<span class="gs-fine">Alts ' + esc(p.altCount || 0) + ' &middot; Sign-in: ' + esc(G.ui.signInLabel(p.signIn)) + '</span></div></li>';
   }

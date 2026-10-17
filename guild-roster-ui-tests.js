@@ -1148,6 +1148,60 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(!other.includes('Ends in 5 days') && other.includes('Ended 2 days ago'), 'a trial of another home team shows no flag');
   });
 
+  await check('inactive: the Reason and Left on fields show only for Inactive (default today, or the stored values) and the status reads "Inactive - Kicked, left Oct 12, 2026"', async () => {
+    // A trial: fields present but hidden, the date defaults to today.
+    const trial = personPage(record());
+    assert(/<select class="gs-input" id="det-status" name="status" data-change="person-status-change">/.test(trial));
+    assert(/id="det-reason-field" hidden>/.test(trial) && /id="det-lefton-field" hidden>/.test(trial));
+    assert(trial.includes('name="leftOn" value="2026-10-15"'));
+    assert(trial.includes('<option value="" selected>No reason</option>') && ['Left guild', 'Kicked', 'Break', 'Other'].every(t => trial.includes('>' + t + '</option>')));
+    // An inactive person: fields shown with the stored values.
+    const gone = personPage(record({ person: { status: 'inactive', trialFlag: null, leftReason: 'kicked', leftOn: '2026-10-12' } }));
+    assert(/id="det-reason-field">/.test(gone) && /id="det-lefton-field">/.test(gone));
+    assert(gone.includes('<option value="kicked" selected>Kicked</option>') && gone.includes('name="leftOn" value="2026-10-12"'));
+    assert(gone.includes('gs-status-inactive">Inactive - Kicked, left Oct 12, 2026<'));
+    // The select toggles the fields.
+    const fields = { 'det-reason-field': { hidden: true }, 'det-lefton-field': { hidden: true } };
+    const saved = ctx.document;
+    ctx.document = { getElementById: id => fields[id] || null };
+    try {
+      G.handlers.change['person-status-change']({ value: 'inactive' });
+      assert(!fields['det-reason-field'].hidden && !fields['det-lefton-field'].hidden);
+      G.handlers.change['person-status-change']({ value: 'raider' });
+      assert(fields['det-reason-field'].hidden && fields['det-lefton-field'].hidden);
+    } finally { ctx.document = saved; }
+  });
+
+  await check('inactive text drops the parts that are null', () => {
+    const text = (reason, day) => G.ui.statusText({ status: 'inactive', leftReason: reason, leftOn: day });
+    assert.equal(text(null, null), 'Inactive');
+    assert.equal(text('break', null), 'Inactive - Break');
+    assert.equal(text(null, '2026-10-12'), 'Inactive, left Oct 12, 2026');
+    assert.equal(text('left', '2026-10-12'), 'Inactive - Left guild, left Oct 12, 2026');
+    assert.equal(G.ui.statusText({ status: 'raider', leftReason: 'kicked', leftOn: '2026-10-12' }), 'Raider', 'only Inactive carries the detail');
+    assert.equal(text('<b>', null), 'Inactive', 'an unknown reason shows nothing');
+    const old = Object.assign({}, PEOPLE[10], { leftReason: 'kicked', leftOn: '2026-10-12' });
+    const out = rosterPage(guildData(), rosterData({ people: [old] }), { status: 'inactive' });
+    assert(out.includes('Inactive - Kicked, left Oct 12, 2026'), 'the roster list shows it');
+  });
+
+  await check('details save sends leftOn / leftReason only for Inactive: both when entering it, the changed one while in it, none otherwise', async () => {
+    const s = setupPerson(record());
+    const calls = [];
+    const reply = () => Promise.resolve(Object.assign(record({ person: { version: s.person.record.person.version + 1 } }), { rosterFlags: { t_main: 2 } }));
+    const field = v => ({ value: v, focus() {}, select() {}, setAttribute() {} });
+    const form = extra => ({ elements: extra, getAttribute: () => null, querySelector: () => null, querySelectorAll: () => [] });
+    const base = { joinedOn: field('2026-09-15'), trialStart: field('2026-09-15'), trialEnd: field('2026-10-13'), linkUserId: field('u_8') };
+    await withApi({ patch: (url, body) => { calls.push(plain(body)); return reply(); } }, async () => {
+      G.handlers.submit['person-details-form'](form(Object.assign({ status: field('inactive'), leftReason: field(''), leftOn: field('2026-10-15') }, base)));
+      await tick();
+      assert.deepEqual(calls[0], { expectedVersion: 3, status: 'inactive', leftOn: '2026-10-15', leftReason: null });
+      G.handlers.submit['person-details-form'](form(Object.assign({ status: field('raider'), leftReason: field('kicked'), leftOn: field('2026-10-15') }, base)));
+      await tick();
+      assert.deepEqual(calls[1], { expectedVersion: 4, status: 'raider' }, 'hidden fields are not sent');
+    });
+  });
+
   await check('trial flags are for officers: a member\'s record has no chip or trial bar, but read-only Details with the dates', () => {
     const rec = record({ top: { can: { edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false } }, notes: null });
     const out = personPage(rec, guildData({ can: MEMBER_CAN, flags: {} }));

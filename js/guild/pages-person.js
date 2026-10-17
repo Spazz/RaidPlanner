@@ -36,7 +36,7 @@
   function headHtml(record, can) {
     const main = mainOf(record) || {};
     const p = record.person;
-    const chips = G.ui.statusChipHtml(p.status) + (can.edit ? G.ui.trialChipHtml(p.trialFlag) : '') +
+    const chips = G.ui.statusChipHtml(p.status, p) + (can.edit ? G.ui.trialChipHtml(p.trialFlag) : '') +
       (can.edit ? '' : (p.joinedOn ? '<span class="gs-chip gs-chip-plain">Joined ' + esc(G.ui.formatDay(p.joinedOn)) + '</span>' : ''));
     return '<div class="gs-person-head"><div class="gs-person-title"><div class="gs-person-h1">' + G.ui.roleDotHtml(main.role) +
       '<h1 class="gs-h1" tabindex="-1">' + esc(main.name) + '</h1>' + (p.isMe ? '<span class="gs-you">You</span>' : '') + '</div>' +
@@ -112,9 +112,13 @@
     if (d.user && d.user.id) users.push(d.user);
     (Array.isArray(linkable) ? linkable : []).forEach(function (u) { if (!d.user || u.id !== d.user.id) users.push(u); });
     const statusOpts = G.ui.optionsHtml(['raider', 'trial', 'reserve', 'inactive'].map(function (s) { return { value: s, label: G.ui.statusLabel(s) }; }), p.status);
+    const inactive = p.status === 'inactive';
+    const reasonOpts = G.ui.optionsHtml([{ value: '', label: 'No reason' }].concat(Object.keys(G.ui.LEFT_REASONS).map(function (k) { return { value: k, label: G.ui.LEFT_REASONS[k] }; })), p.leftReason || '');
     return '<section class="gs-card-sec" aria-labelledby="details-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="details-h">Details</h2></div>' +
       '<form class="gs-card-sec-body gs-details-form" data-submit="person-details-form" novalidate>' +
-      '<div class="gs-field"><label class="gs-label" for="det-status">Status</label><select class="gs-input" id="det-status" name="status">' + statusOpts + '</select></div>' +
+      '<div class="gs-field"><label class="gs-label" for="det-status">Status</label><select class="gs-input" id="det-status" name="status" data-change="person-status-change">' + statusOpts + '</select></div>' +
+      '<div class="gs-field" id="det-reason-field"' + (inactive ? '' : ' hidden') + '><label class="gs-label" for="det-reason">Reason</label><select class="gs-input" id="det-reason" name="leftReason">' + reasonOpts + '</select></div>' +
+      '<div class="gs-field" id="det-lefton-field"' + (inactive ? '' : ' hidden') + '><label class="gs-label" for="det-lefton">Left on</label><input class="gs-input" type="date" id="det-lefton" name="leftOn" value="' + esc(inactive ? p.leftOn || '' : record.today || '') + '"></div>' +
       '<div class="gs-field"><label class="gs-label" for="det-joined">Joined</label><input class="gs-input" type="date" id="det-joined" name="joinedOn" value="' + esc(p.joinedOn || '') + '"></div>' +
       '<div class="gs-field"><label class="gs-label" for="det-tstart">Trial start</label><input class="gs-input" type="date" id="det-tstart" name="trialStart" value="' + esc(p.trialStart || '') + '"></div>' +
       '<div class="gs-field"><label class="gs-label" for="det-tend">Trial end</label><input class="gs-input" type="date" id="det-tend" name="trialEnd" value="' + esc(p.trialEnd || '') + '"></div>' +
@@ -304,6 +308,14 @@
     G.ui.runDialog(form, G.api.patch(base(c), { expectedVersion: c.rec.person.version, trialEnd: v }), function (res) { applyRecord(c, res); }, function (err) { conflict(c, err); });
   };
 
+  // The Reason and Left on fields belong to Inactive only.
+  G.handlers.change['person-status-change'] = function (el) {
+    ['det-reason-field', 'det-lefton-field'].forEach(function (id) {
+      const field = document.getElementById(id);
+      if (field) field.hidden = el.value !== 'inactive';
+    });
+  };
+
   G.handlers.submit['person-details-form'] = function (form) {
     const c = cur();
     if (!c) return;
@@ -314,6 +326,11 @@
     ['joinedOn', 'trialStart', 'trialEnd'].forEach(function (k) {
       if (date(k) !== (p[k] || null)) body[k] = date(k);
     });
+    if (form.elements.status.value === 'inactive' && form.elements.leftOn && form.elements.leftReason) {
+      const entering = p.status !== 'inactive';
+      if (entering || date('leftOn') !== (p.leftOn || null)) body.leftOn = date('leftOn');
+      if (entering || date('leftReason') !== (p.leftReason || null)) body.leftReason = date('leftReason');
+    }
     const linked = p.discord && p.discord.user ? p.discord.user.id : '';
     if (form.elements.linkUserId.value !== linked) body.linkUserId = form.elements.linkUserId.value || null;
     G.ui.setText('det-error', '');

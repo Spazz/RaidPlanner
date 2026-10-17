@@ -41,8 +41,8 @@ async function modules() {
 
 // Synthetic evidence: persons are named by id, a character key is "<id>|".
 const key = (id) => `${id}|`;
-const person = (id, { status = 'raider', joinedOn = '2026-08-01', team = 'T1', extra = [] } = {}) => ({
-  playerId: id, status, joinedOn, characters: [{ key: key(id), teamId: team }, ...extra],
+const person = (id, { status = 'raider', joinedOn = '2026-08-01', leftOn = null, team = 'T1', extra = [] } = {}) => ({
+  playerId: id, status, joinedOn, leftOn, characters: [{ key: key(id), teamId: team }, ...extra],
 });
 const pull = (startedAt, ...ids) => ({ startedAt, kill: false, keys: ids.map(key) });
 const evidence = (over = {}) => ({
@@ -462,6 +462,39 @@ check('consolidation rows 10 and 11: No sign-up is shown (or hidden); inactive p
   // An inactive person who raids anyway is in the log and gets a row.
   const raided = consolidate.consolidateRaid(evidence({ people: [person('gone', { status: 'inactive' })], pulls: [pull(100, 'gone'), pull(200, 'gone')] }), policy.resolvePolicy(null, null, 'US'));
   assert.equal(rowOf(raided, 'gone').outcome, 'present');
+});
+
+check('consolidation: an inactive person with a left-on date is still expected up to and including that day, skipped after it', async () => {
+  const { policy, consolidate } = await modules();
+  const p = policy.resolvePolicy(null, null, 'US');
+  const run = (leftOn, signups = []) => consolidate.consolidateRaid(evidence({ // the raid is 2026-10-10
+    people: [person('a'), person('gone', { status: 'inactive', leftOn })], signups, pulls: [pull(100, 'a'), pull(200, 'a')],
+  }), p);
+  // Left on the raid day, or after it: no sign-up shows as No sign-up, a sign-up that did not show is a no-show.
+  for (const leftOn of ['2026-10-10', '2026-10-17']) {
+    assert.equal(rowOf(run(leftOn), 'gone').outcome, 'no_signup', 'no sign-up, left ' + leftOn);
+    const missed = rowOf(run(leftOn, [signup('gone', 'signed')]), 'gone');
+    assert.deepEqual([missed.outcome, missed.flags], ['missed', ['no_show']], 'signed up and absent, left ' + leftOn);
+  }
+  // Left before the raid: skipped like any inactive person; no left-on date: skipped too.
+  assert.equal(rowOf(run('2026-10-09'), 'gone'), undefined);
+  assert.equal(rowOf(run(null), 'gone'), undefined);
+  // A sign-up still earns a row after they left (the existing rule).
+  assert.equal(rowOf(run('2026-10-09', [signup('gone', 'absence')]), 'gone').outcome, 'missed_notice');
+  // Active people ignore the field.
+  const active = consolidate.consolidateRaid(evidence({ people: [person('r', { leftOn: '2026-01-01' })] }), p);
+  assert.equal(rowOf(active, 'r').outcome, 'no_signup');
+});
+
+check('metrics: the sign-up rate of an inactive person stops at their left-on date', async () => {
+  const { policy, metrics } = await modules();
+  const p = policy.resolvePolicy(null, null, 'US');
+  const raids = raidsOn('2026-09-15', '2026-09-22', '2026-09-29', '2026-10-06');
+  const rows = [mRow('r2026-09-15', 'a', 'present', 1, { signupKind: 'signed' }), mRow('r2026-09-22', 'a', 'present', 1, { signupKind: 'signed' })];
+  const rate = (person) => metrics.teamMetrics(metricsInput({ people: [person], raids, rows, policy: p, windowWeeks: 'all' })).people.a.signupRate;
+  assert.equal(rate({ id: 'a', joinedOn: '2026-01-01', status: 'raider' }), 50);
+  assert.equal(rate({ id: 'a', joinedOn: '2026-01-01', status: 'inactive', leftOn: '2026-09-22' }), 100, 'raids after 9/22 are not in the denominator');
+  assert.equal(rate({ id: 'a', joinedOn: '2026-01-01', status: 'inactive', leftOn: null }), 50, 'no left-on date: unchanged');
 });
 
 check('consolidation: no log and not manual gives no rows (Awaiting log); a log with no match flags every name', async () => {

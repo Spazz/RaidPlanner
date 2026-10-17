@@ -171,7 +171,7 @@ export async function loadDay(db, guildId, raidId) {
             UNION SELECT player_id FROM raid_manual WHERE raid_id IN (SELECT id FROM day)
             UNION SELECT player_id FROM attendance WHERE raid_id IN (SELECT id FROM day)
             UNION SELECT player_id FROM attendance_decisions WHERE raid_id IN (SELECT id FROM day))
-          SELECT c.player_id, c.name_key, c.realm_key, c.team_id, c.is_main, p.status, p.joined_on
+          SELECT c.player_id, c.name_key, c.realm_key, c.team_id, c.is_main, p.status, p.joined_on, p.left_on
             FROM characters c JOIN players p ON p.id = c.player_id
            WHERE c.guild_id = ?1 AND (c.player_id IN (SELECT player_id FROM who_by_character) OR c.player_id IN (SELECT player_id FROM who_by_row))`),
   ]);
@@ -210,7 +210,7 @@ export function consolidateDay(guild, loaded) {
   const people = new Map();
   const charactersByName = new Map();
   for (const row of loaded.characters) {
-    if (!people.has(row.player_id)) people.set(row.player_id, { playerId: row.player_id, status: row.status, joinedOn: row.joined_on, homeTeamId: null, characters: [] });
+    if (!people.has(row.player_id)) people.set(row.player_id, { playerId: row.player_id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on, homeTeamId: null, characters: [] });
     if (row.is_main === 1) people.get(row.player_id).homeTeamId = row.team_id;
     people.get(row.player_id).characters.push({ key: keyOf(row.name_key, row.realm_key), teamId: row.team_id });
     if (!charactersByName.has(row.name_key)) charactersByName.set(row.name_key, []);

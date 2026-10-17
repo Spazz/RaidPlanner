@@ -30,6 +30,8 @@ export const SPEC_ROLE = {
 export const SPECS = Object.fromEntries(Object.entries(SPEC_ROLE).map(([id, specs]) => [id, Object.keys(specs)]));
 
 export const STATUSES = ['raider', 'trial', 'reserve', 'inactive'];
+// Why a person went Inactive (optional; only kept while the status is Inactive).
+export const LEFT_REASONS = ['left', 'kicked', 'break', 'other'];
 // A person can be created (or imported) in these; Inactive is only ever set on an existing person.
 export const CREATE_STATUSES = ['raider', 'trial', 'reserve'];
 

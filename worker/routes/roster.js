@@ -5,7 +5,7 @@ import { isId, newId } from '../ids.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
 import {
-  CLASS_IDS, CREATE_STATUSES, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
+  CLASS_IDS, CREATE_STATUSES, LEFT_REASONS, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
 } from '../roster-data.js';
 import { findRealm } from '../realms.js';
 import { markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
@@ -328,9 +328,11 @@ export async function patchPerson(ctx) {
   const joinedOn = readDateField(body, 'joinedOn');
   const trialStart = readDateField(body, 'trialStart');
   const trialEnd = readDateField(body, 'trialEnd');
+  const leftOn = readDateField(body, 'leftOn');
+  if (body.leftReason !== undefined && body.leftReason !== null && !LEFT_REASONS.includes(body.leftReason)) throw bad('Pick a reason.', 'leftReason');
   let link;
   if (body.linkUserId !== undefined && body.linkUserId !== null) link = await resolveLinkUser(db, guildContext, body.linkUserId, player.id);
-  const keys = ['status', 'joinedOn', 'trialStart', 'trialEnd', 'linkUserId'];
+  const keys = ['status', 'joinedOn', 'trialStart', 'trialEnd', 'linkUserId', 'leftOn', 'leftReason'];
   if (!keys.some((key) => body[key] !== undefined)) throw bad('Send a field to change.', 'status');
 
   const next = {
@@ -338,9 +340,22 @@ export async function patchPerson(ctx) {
     joinedOn: joinedOn === undefined ? player.joined_on : joinedOn,
     trialStart: trialStart === undefined ? player.trial_start : trialStart,
     trialEnd: trialEnd === undefined ? player.trial_end : trialEnd,
+    leftOn: null,
+    leftReason: null,
     discordUserId: player.discord_user_id,
     nickname: player.discord_nickname,
   };
+  // Left on / reason belong to Inactive only: set on the way in (left on defaults to today), kept while inactive, cleared on the way out.
+  if (next.status !== 'inactive') {
+    if (leftOn !== undefined && leftOn !== null) throw bad('Left on only applies to an inactive person.', 'leftOn');
+    if (body.leftReason !== undefined && body.leftReason !== null) throw bad('A reason only applies to an inactive person.', 'leftReason');
+  } else if (player.status !== 'inactive') {
+    next.leftOn = leftOn === undefined ? guildToday(guildContext.guild, ctx.now()) : leftOn;
+    next.leftReason = body.leftReason === undefined ? null : body.leftReason;
+  } else {
+    next.leftOn = leftOn === undefined ? player.left_on : leftOn;
+    next.leftReason = body.leftReason === undefined ? player.left_reason : body.leftReason;
+  }
   if (next.trialStart && next.trialEnd && next.trialEnd < next.trialStart) {
     throw bad('The trial end must be on or after the trial start.', 'trialEnd');
   }
@@ -356,31 +371,35 @@ export async function patchPerson(ctx) {
   if (next.joinedOn !== player.joined_on) changed.push('joinedOn');
   if (next.trialStart !== player.trial_start) changed.push('trialStart');
   if (next.trialEnd !== player.trial_end) changed.push('trialEnd');
+  if (next.leftOn !== player.left_on) changed.push('leftOn');
+  if (next.leftReason !== player.left_reason) changed.push('leftReason');
   if (next.discordUserId !== player.discord_user_id) changed.push('link');
   if (changed.length) {
     const now = ctx.now();
     const snapshot = (state) => ({
-      status: state.status, joinedOn: state.joinedOn, trialStart: state.trialStart, trialEnd: state.trialEnd, linked: !!state.discordUserId,
+      status: state.status, joinedOn: state.joinedOn, trialStart: state.trialStart, trialEnd: state.trialEnd,
+      leftOn: state.leftOn, leftReason: state.leftReason, linked: !!state.discordUserId,
     });
     const before = snapshot({
-      status: player.status, joinedOn: player.joined_on, trialStart: player.trial_start, trialEnd: player.trial_end, discordUserId: player.discord_user_id,
+      status: player.status, joinedOn: player.joined_on, trialStart: player.trial_start, trialEnd: player.trial_end,
+      leftOn: player.left_on, leftReason: player.left_reason, discordUserId: player.discord_user_id,
     });
     let results;
     try {
       results = await db.batch([
         db.prepare(
-          `UPDATE players SET status = ?, joined_on = ?, trial_start = ?, trial_end = ?, discord_user_id = ?, discord_nickname = ?,
+          `UPDATE players SET status = ?, joined_on = ?, trial_start = ?, trial_end = ?, left_on = ?, left_reason = ?, discord_user_id = ?, discord_nickname = ?,
                   version = version + 1, updated_at = ?
             WHERE id = ? AND guild_id = ? AND version = ?
               AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)`,
-        ).bind(next.status, next.joinedOn, next.trialStart, next.trialEnd, next.discordUserId, next.nickname, now,
+        ).bind(next.status, next.joinedOn, next.trialStart, next.trialEnd, next.leftOn, next.leftReason, next.discordUserId, next.nickname, now,
           player.id, guildContext.guild.id, player.version, home.id),
         audit(ctx, guildContext, 'person.update', 'person', player.id,
           { ...before, version: player.version },
           { ...snapshot(next), version: player.version + 1, changed },
           CHANGED_ONE),
-        // Status, join date and the Discord link decide who is expected and which sign-ups are theirs: their teams' raids need recalculating.
-        ...(changed.some((key) => ['status', 'joinedOn', 'link'].includes(key)) ? [markPersonRaidsStale(db, guildContext.guild.id, player.id)] : []),
+        // Status, join and left dates and the Discord link decide who is expected and which sign-ups are theirs: their teams' raids need recalculating.
+        ...(changed.some((key) => ['status', 'joinedOn', 'leftOn', 'link'].includes(key)) ? [markPersonRaidsStale(db, guildContext.guild.id, player.id)] : []),
       ]);
     } catch (error) {
       mapCreateError(error);

@@ -128,7 +128,9 @@ export function consolidateRaid(evidence, policy) {
   for (const person of people) {
     const kind = kinds.get(person.playerId) || null;
     const entry = stats.get(person.playerId);
-    if (person.status === 'inactive' && !kind && !inLog.has(person.playerId)) continue;
+    // Inactive people have no row unless they signed up or raided; one with a left-on date is still expected up to and including that day.
+    const leftYet = person.status === 'inactive' && !(person.leftOn && raid.raidOn <= person.leftOn);
+    if (leftYet && !kind && !inLog.has(person.playerId)) continue;
     const auto = autoResult(ctx, person, kind);
     if (!auto) continue;
 

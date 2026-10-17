@@ -724,6 +724,55 @@ check('unmatched: link as an Alt (new character on the raid\'s team, other raids
   assert.equal(await s.w.count('audit_log', "action IN ('attendance.link', 'attendance.guest', 'character.create') AND entity_type IN ('raid', 'character')"), 3);
 });
 
+check('unmatched: add as a new person (Main on the raid\'s team, status and joined date, name conflict) and link as the Main', async () => {
+  const s = await raidWorld();
+  const { id } = await fullRaid(s);
+  const key = 'zorgax|nightslayer';
+  const call = (who, body) => s.call(who, 'POST', s.raid(id, '/unmatched'), body);
+  assert.equal((await call('carol', { key, action: 'bogus' })).json.message, 'Pick alt, person or guest.');
+  assert.equal((await call('carol', { key, action: 'person', status: 'inactive' })).status, 400, 'inactive is not a starting status');
+  assert.equal((await call('carol', { key, action: 'person', joinedOn: '2027-13-40' })).status, 400);
+  assert.equal((await call('erin', { key, action: 'person' })).status, 403);
+  // alt + makeMain: a non-boolean is refused, true swaps the Main.
+  const refused = await call('carol', { key, action: 'alt', personId: s.p.fenwick, makeMain: 'yes' });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.json.field, 'makeMain');
+  const swapped = await call('carol', { key, action: 'alt', personId: s.p.fenwick, makeMain: true });
+  assert.equal(swapped.status, 200, JSON.stringify(swapped.json));
+  const mains = await s.w.rows(`SELECT name, is_main FROM characters WHERE player_id = '${s.p.fenwick}' ORDER BY name`);
+  assert.deepEqual(mains.map((m) => [m.name, m.is_main]), [['Fenwick', 0], ['Zorgax', 1]]);
+  assert.equal(await s.w.count('audit_log', "action = 'character.main'"), 1);
+  // A new person: defaults are Raider and the raid's date.
+  const third = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-02' });
+  s.w.sources.reports.set(R3, wclReport({
+    startTime: Date.parse('2027-01-02T20:00:00Z'),
+    actors: [[1, 'Aldric', 'Warrior'], [2, 'Visitor', 'Mage'], [3, 'Nomad', 'Hunter'], [4, 'Drifter', 'Rogue']],
+    fights: [[1, 'Gruul', 650, true, 0, 100, [1, 2, 3, 4]]],
+  }));
+  const withLog = await s.call('bob', 'PUT', s.raid(third.json.raid.id, '/reports'), { source: R3 });
+  assert.deepEqual(withLog.json.unmatched.map((u) => u.name).sort(), ['Drifter', 'Nomad', 'Visitor']);
+  const tid = third.json.raid.id;
+  const post = (who, body) => s.call(who, 'POST', s.raid(tid, '/unmatched'), body);
+  const plain = await post('bob', { key: 'visitor|nightslayer', action: 'person' });
+  assert.equal(plain.status, 200, JSON.stringify(plain.json));
+  assert.equal(plain.json.raid.unmatched.map((u) => u.name).includes('Visitor'), false);
+  const visitor = (await s.w.rows("SELECT p.status, p.joined_on, p.trial_start, p.trial_end, c.team_id, c.class, c.is_main, c.main_spec, c.off_spec FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name = 'Visitor'"))[0];
+  assert.deepEqual([visitor.status, visitor.joined_on, visitor.trial_start, visitor.trial_end, visitor.team_id, visitor.class, visitor.is_main, visitor.main_spec, visitor.off_spec],
+    ['raider', '2027-01-02', null, null, s.A, 'MAGE', 1, null, null]);
+  const trial = await post('bob', { key: 'nomad|nightslayer', action: 'person', status: 'trial', joinedOn: '2026-12-20' });
+  assert.equal(trial.status, 200, JSON.stringify(trial.json));
+  const nomad = (await s.w.rows("SELECT p.status, p.joined_on, p.trial_start, p.trial_end FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name = 'Nomad'"))[0];
+  assert.deepEqual([nomad.status, nomad.joined_on, nomad.trial_start, nomad.trial_end], ['trial', '2026-12-20', '2026-12-20', null]);
+  assert.equal(await s.w.count('audit_log', "action = 'person.create' AND entity_type = 'person' AND after LIKE '%attendance%'"), 2);
+  // The name was taken after the log was read: 409 name_taken, nothing written.
+  await addPerson(s, 'bob', s.B, 'Drifter');
+  const people = await s.w.count('players');
+  const taken = await post('bob', { key: 'drifter|nightslayer', action: 'person' });
+  assert.equal(taken.status, 409);
+  assert.equal(taken.json.error, 'name_taken');
+  assert.equal(await s.w.count('players'), people);
+});
+
 check('review queue: flagged rows and unmatched names per raid, stale raids listed; only reviewers of that team may read it', async () => {
   const s = await raidWorld();
   const { id } = await fullRaid(s);
@@ -1195,7 +1244,7 @@ check('A: decisions are their own rows; a recompute never writes or deletes them
   // Brindle loses her sign-up and goes inactive: she has no attendance row at all, and the decision stays.
   s.w.sources.events.set(EVENT_ID, rhEvent(EVENT_ID, SERVER_A, eventSignUps().filter((x) => x.id !== 2)));
   assert.equal((await s.call('bob', 'PUT', s.raid(id, '/event'), { source: EVENT_ID })).status, 200);
-  assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p.brindle}`, { expectedVersion: 1, status: 'inactive' })).status, 200);
+  assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p.brindle}`, { expectedVersion: 1, status: 'inactive', leftOn: null })).status, 200); // no left-on date: never expected again
   const gone = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
   assert.equal(byName(gone.json).Brindle, undefined, 'no row');
   assert.equal(await s.w.count('attendance', 'player_id = ?', s.p.brindle), 0);

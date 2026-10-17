@@ -84,7 +84,7 @@
       return '<section class="gs-card-sec" aria-labelledby="bf-join-h">' + head + '<div class="gs-card-sec-body"><p class="gs-fine">' + esc(js.message || 'No one has a join date later than their first attended raid.') + '</p>' + reviewLinkHtml(gid) + '</div></section>';
     }
     return '<section class="gs-card-sec" aria-labelledby="bf-join-h">' + head + '<div class="gs-card-sec-body"><p class="gs-fine">These people attended before their join date, so those raids would not count. Tick the ones to move back to their first raid.</p>' +
-      '<ul class="gs-pick-list">' + list.map(function (p) {
+      '<ul class="gs-pick-list" data-scroll-key="bf-join-list">' + list.map(function (p) {
         return '<li class="gs-pick-item"><div class="gs-check"><input type="checkbox" id="bj-' + esc(p.id) + '" data-change="bf-join-tick" data-pid="' + esc(p.id) + '" data-key="bj-' + esc(p.id) + '"' + (js.ticked[p.id] ? ' checked' : '') + '><label for="bj-' + esc(p.id) + '">' +
           G.ui.classNameHtml(p.name, p.class) + ' <span class="gs-fine">joined ' + esc(G.ui.formatDay(p.joinedOn)) + ', first raid ' + esc(G.ui.formatDay(p.first)) + '</span></label></div></li>';
       }).join('') + '</ul><div class="gs-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="bf-join-all" data-key="bf-join-all">Select all</button>' +

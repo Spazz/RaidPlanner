@@ -82,12 +82,14 @@
   // ── roster helpers: class colours, trial copy, status, sign-in, calendar days ──
   const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
   const STATUS_LABELS = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', inactive: 'Inactive' };
+  const LEFT_REASONS = { left: 'Left guild', kicked: 'Kicked', break: 'Break', other: 'Other' };
   const SIGN_IN_LABELS = { signed_in: 'Signed in', not_yet: 'Not yet', no_discord: 'No Discord' };
   const ROLE_LABELS = { tank: 'Tank', healer: 'Healer', dps: 'DPS' };
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   ui.CLASS_IDS = CLASS_IDS;
   ui.STATUS_LABELS = STATUS_LABELS;
+  ui.LEFT_REASONS = LEFT_REASONS;
 
   // "WARRIOR" -> "Warrior"; anything else is shown as given.
   ui.className = function (id) {
@@ -115,9 +117,18 @@
   };
 
   ui.statusLabel = function (s) { return Object.prototype.hasOwnProperty.call(STATUS_LABELS, s) ? STATUS_LABELS[s] : String(s == null ? '' : s); };
-  ui.statusChipHtml = function (s) {
+  // The status as text; an inactive person (p = { status, leftReason, leftOn }) gets the reason and the day: "Inactive - Kicked, left Oct 12, 2026".
+  ui.statusText = function (p) {
+    const label = ui.statusLabel(p && p.status);
+    if (!p || p.status !== 'inactive') return label;
+    const reason = Object.prototype.hasOwnProperty.call(LEFT_REASONS, p.leftReason) ? LEFT_REASONS[p.leftReason] : '';
+    const day = ui.formatDay(p.leftOn);
+    return label + (reason ? ' - ' + reason : '') + (day ? ', left ' + day : '');
+  };
+  // detail (optional) = the person, so an inactive chip carries the reason and the day.
+  ui.statusChipHtml = function (s, detail) {
     const kind = Object.prototype.hasOwnProperty.call(STATUS_LABELS, s) ? s : 'raider';
-    return '<span class="gs-chip gs-chip-status gs-status-' + kind + '">' + esc(ui.statusLabel(s)) + '</span>';
+    return '<span class="gs-chip gs-chip-status gs-status-' + kind + '">' + esc(detail ? ui.statusText(detail) : ui.statusLabel(s)) + '</span>';
   };
   ui.signInLabel = function (s) { return Object.prototype.hasOwnProperty.call(SIGN_IN_LABELS, s) ? SIGN_IN_LABELS[s] : ''; };
   ui.roleLabel = function (r) { return Object.prototype.hasOwnProperty.call(ROLE_LABELS, r) ? ROLE_LABELS[r] : ''; };

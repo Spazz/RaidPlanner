@@ -25,7 +25,7 @@ function effectiveStart(person, firstAttended, policy) {
 }
 
 // input: {
-//   people: [{ id, joinedOn }], raids: [{ id, raidOn, hasSignups }],
+//   people: [{ id, joinedOn, status?, leftOn? }], raids: [{ id, raidOn, hasSignups }],
 //   rows: [{ raidId, playerId, outcome, credit, signupKind, attended, viaRaidId, viaTeamId? }]   // EFFECTIVE outcome / credit
 //   borrowed: [{ playerId, raidId, raidOn, teamId }],   // host-side fill-in rows with credit 1 and credit_team_id = this team
 //   policy (resolved), today (YYYY-MM-DD), resetDay (0..6; default policy.resetDay),
@@ -128,6 +128,7 @@ export function teamMetrics(input) {
     for (const raid of raids) {
       if (!inWindow(raid.raidOn) || !raid.hasSignups) continue;
       if (start !== null && raid.raidOn < start) continue;
+      if (person.status === 'inactive' && person.leftOn && raid.raidOn > person.leftOn) continue; // after they left
       rateRaids++;
       if (SIGNUP_KINDS.has(signedKinds.get(raid.id))) rateSigned++;
     }
