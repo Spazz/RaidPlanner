@@ -155,8 +155,9 @@
 !tests/fixtures/
 !tests/fixtures/attendance/
 !tests/fixtures/attendance/*.json
-# Phase 4 loot history (lane W): the Worker suite
+# Phase 4 loot history (lane W): the Worker suite; the integrator's contract suite (pages against the real Worker)
 !guild-loot-worker-tests.js
+!guild-loot-contract-tests.js
 # Future enhancements page: the idea-box triage tool and the roadmap page / worker suites (the page data is js/guild/roadmap-data.js, covered by the js/guild glob)
 !tools/roadmap-ideas.js
 !guild-roadmap-tests.js

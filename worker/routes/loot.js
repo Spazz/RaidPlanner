@@ -376,7 +376,12 @@ export async function getLootItems(ctx) {
     item.count++;
     if (item.itemName === null && row.item_name !== null) item.itemName = row.item_name;
     if (item.quality === null && row.item_quality !== null) item.quality = row.item_quality;
-    item.awards.push({ id: row.id, raidId: row.raid_id, raidOn: row.raid_on, awardedAt: row.awarded_at, tag: row.tag, match: matched.match });
+    // The winner and the tag's origin ride along (beyond the spec's list): a guest or a name the roster does not know has no person in
+    // `match`, so the By item list could not name them otherwise.
+    item.awards.push({
+      id: row.id, raidId: row.raid_id, raidOn: row.raid_on, awardedAt: row.awarded_at, tag: row.tag, tagSetBy: row.tag_set_at === null ? null : 'officer',
+      winner: { name: row.winner_name, realm: row.winner_realm, class: row.winner_class || matched.characterClass }, match: matched.match,
+    });
   }
   return jsonResponse({ items: [...items.values()] });
 }

@@ -1079,12 +1079,16 @@ check('by item: grouped by item, most recent first, the awards of an item newest
   const token = r.json.items.find((i) => i.itemId === 28770);
   assert.deepEqual(Object.keys(token), ['itemId', 'itemName', 'quality', 'count', 'lastAwardedAt', 'awards']);
   assert.deepEqual([token.itemName, token.quality, token.count, token.lastAwardedAt], ['Tier Token', 4, 3, at('2027-01-12', '20:15')]);
-  assert.deepEqual(Object.keys(token.awards[0]), ['id', 'raidId', 'raidOn', 'awardedAt', 'tag', 'match']);
+  // The spec lists id, raidId, raidOn, awardedAt, tag and match; the winner and tagSetBy are added so a guest or an unknown name can be shown by name.
+  assert.deepEqual(Object.keys(token.awards[0]), ['id', 'raidId', 'raidOn', 'awardedAt', 'tag', 'tagSetBy', 'winner', 'match']);
+  assert.deepEqual(token.awards[0].winner, { name: 'Aldric', realm: 'Nightslayer', class: 'WARRIOR' });
   assert.deepEqual(token.awards.map((a) => [a.raidId, a.raidOn, a.tag, a.match.kind, a.match.personName]), [
     [s.r2, '2027-01-12', 'MS', 'character', 'Aldric'], [s.r1, '2027-01-05', 'MS', 'character', 'Aldric'], [s.r0, '2026-11-03', 'MS', 'character', 'Aldric'],
   ]);
   assert.deepEqual(r.json.items.find((i) => i.itemId === 30006).awards[0].match, { kind: 'guest' });
+  assert.equal(r.json.items.find((i) => i.itemId === 30006).awards[0].winner.name, 'Visitor', 'a guest is named');
   assert.deepEqual(r.json.items.find((i) => i.itemId === 30005).awards[0].match, { kind: 'unmatched' });
+  assert.equal(r.json.items.find((i) => i.itemId === 30005).awards[0].winner.name, 'Zorgax', 'a name the roster does not know is named');
   assert.equal(JSON.stringify(r.json).includes('Wanderfell'), false, 'only this team\'s raids');
   assert.deepEqual((await s.call('erin', 'GET', `/loot/items?team=${s.A}`)).json, r.json);
   assert.equal((await s.call('dave', 'GET', `/loot/items?team=${s.A}`)).status, 403);
