@@ -215,8 +215,7 @@ export async function getReview(ctx) {
     bind(`SELECT name_key, realm_key FROM characters WHERE guild_id = ?1 AND name_key IN
             (SELECT name_key FROM raid_presence WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0))`),
     ctx.db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
-    bind(`SELECT id, team_id, policy_fp, log_mode, open_flags, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports,
-                 (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = raids.id) AS attendance_rows
+    bind(`SELECT id, team_id, policy_fp, log_mode, open_flags, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id = ?2`),
     policyRowsStatement(ctx.db, guild.id),
   ]);
@@ -460,8 +459,7 @@ export async function getTeamAttendance(ctx) {
   const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult] = await ctx.db.batch([
     policyRowsStatement(ctx.db, guild.id),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
-                 (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports,
-                 (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = raids.id) AS attendance_rows
+                 (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id = ?2 ORDER BY raid_on, id`),
     bind(`SELECT raid_id, player_id, outcome, credit, signup_kind, attended, needs_review, via_raid_id, flags FROM attendance WHERE guild_id = ?1 AND team_id = ?2`),
     bind(`SELECT a.raid_id, a.player_id, r.raid_on, r.team_id AS host_team_id FROM attendance a JOIN raids r ON r.id = a.raid_id
@@ -543,8 +541,7 @@ export async function getPersonAttendance(ctx) {
     bind('SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind('SELECT * FROM attendance WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
-                 (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports,
-                 (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = raids.id) AS attendance_rows
+                 (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id IN
               (SELECT team_id FROM characters WHERE player_id = ?2 UNION SELECT team_id FROM attendance WHERE player_id = ?2)
            ORDER BY raid_on, id`),

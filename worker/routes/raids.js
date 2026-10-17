@@ -230,7 +230,6 @@ export async function listRaids(ctx) {
     ctx.db.prepare(
       `SELECT r.id, r.raid_on, r.zone, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
               (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
-              (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = r.id) AS attendance_rows,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id) AS pulls,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id AND p.kill = 1) AS kills,
               (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = r.id AND a.outcome IN ('present', 'late', 'left_early', 'late_left', 'fill_in')) AS present,

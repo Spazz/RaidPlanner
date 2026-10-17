@@ -1695,14 +1695,13 @@ check('R2-2/3: a recompute that fails after a create leaves the raid saved and s
   s.w.db.batch = original;
 });
 
-check('R2-3: a raid with a log never reads "reviewed" while its fingerprint is empty or it has no attendance rows (list, detail, review queue)', async () => {
+check('R2-3: a raid with a log never reads "reviewed" while its fingerprint is empty (list, detail, review queue); an empty roster with a current fingerprint is not stale (live check 2026-10-16)', async () => {
   const { raidState, isStale } = await load('worker/attendance-view.js');
-  const log = { log_mode: 'log', open_flags: 0, policy_fp: 'abcd1234', attendance_rows: 3 };
+  const log = { log_mode: 'log', open_flags: 0, policy_fp: 'abcd1234' };
   assert.equal(raidState(log, 1), 'reviewed');
   assert.equal(raidState({ ...log, policy_fp: '' }, 1), 'stale');
-  assert.equal(raidState({ ...log, attendance_rows: 0 }, 1), 'stale');
+  assert.equal(raidState({ ...log, open_flags: 25 }, 1), 'to_review', 'all unmatched on an empty roster: to review, not stale');
   assert.equal(raidState({ ...log, open_flags: 2, policy_fp: '' }, 1), 'stale');
-  assert.equal(raidState({ ...log, attendance_rows: undefined }, 1), 'reviewed', 'a query that does not count rows skips that check');
   assert.equal(raidState({ ...log, policy_fp: '' }, 0), 'awaiting_log');
   assert.equal(raidState({ log_mode: 'manual', open_flags: 0, policy_fp: '' }, 0), 'manual');
   assert.deepEqual([isStale('stale'), isStale('reviewed'), isStale('awaiting_log')], [true, false, false]);
@@ -1723,9 +1722,8 @@ check('R2-3: a raid with a log never reads "reviewed" while its fingerprint is e
   });
   const first = await states();
   assert.deepEqual([first.list.state, first.detail.state], ['to_review', 'to_review']);
-  // Stored results gone but the fingerprint looks fresh: still not reviewed.
-  exec(s.w, `UPDATE raids SET open_flags = 0 WHERE id = '${id}'`);
-  exec(s.w, `DELETE FROM attendance WHERE raid_id = '${id}'`);
+  // A failed recompute after an input write leaves the fingerprint empty: never reviewed.
+  exec(s.w, `UPDATE raids SET open_flags = 0, policy_fp = '' WHERE id = '${id}'`);
   let now = await states();
   assert.deepEqual([now.list.state, now.list.stale, now.detail.state, now.detail.stale], ['stale', true, 'stale', true]);
   assert.deepEqual(now.review.stale, [id]);

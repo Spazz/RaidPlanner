@@ -7,14 +7,14 @@ import { findUnmatched, makePolicyResolver, presenceKey } from './attendance-sto
 export const OUTCOME_PRESENT = ['present', 'late', 'left_early', 'late_left', 'fill_in'];
 
 // 'stale' = the stored results do not match the raid's inputs or its team's current policy (a recompute failed or never ran,
-// or the policy/roster changed since): never shown as reviewed. attendance_rows is the raid's stored attendance row count; a
-// query that does not select it skips the empty-rows check. With a resolver, a live fingerprint mismatch is stale too.
+// or the policy/roster changed since): never shown as reviewed.
+// With a resolver, a live fingerprint mismatch is stale too.
 export function raidState(raid, reports, resolver = null) {
   const manual = raid.log_mode === 'manual';
   if (!manual && !reports) return 'awaiting_log';
   if (resolver && raid.policy_fp !== resolver.fingerprint(raid.team_id)) return 'stale';
   if (manual) return raid.open_flags > 0 ? 'to_review' : 'manual';
-  if (raid.policy_fp === '' || raid.attendance_rows === 0) return 'stale';
+  if (raid.policy_fp === '') return 'stale';
   return raid.open_flags > 0 ? 'to_review' : 'reviewed';
 }
 
@@ -48,8 +48,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const bind = (sql) => db.prepare(sql).bind(guild.id, raidId);
   const [raidResult, reportResult, pullResult, signupResult, planResult, attendanceResult, characterResult, presenceResult, guestResult,
     policyResult, userResult, teamResult, flagResult, decisionResult, manualResult] = await db.batch([
-    bind(`SELECT r.*, t.name AS team_name, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
-                 (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = r.id) AS attendance_rows
+    bind(`SELECT r.*, t.name AS team_name, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
             FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id WHERE r.guild_id = ?1 AND r.id = ?2`),
     bind(`SELECT code, flavour, started_at, ended_at, owner, synced_at,
                  (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = raid_reports.raid_id AND p.report_code = raid_reports.code) AS pulls
