@@ -122,7 +122,7 @@ function assertEscaped(out, label) {
   await check('router: format and parse round-trip for every route shape', () => {
     const routes = [
       { name: 'home' }, { name: 'signin', error: null }, { name: 'signin', error: 'state' }, { name: 'signin', error: 'discord' },
-      { name: 'new' }, { name: 'privacy' },
+      { name: 'new' }, { name: 'privacy' }, { name: 'planner' }, { name: 'planner', gid: 'g_Ab-9', rid: 'r_1-x' },
       ...['roster', 'raids', 'attendance', 'loot'].map(section => ({ name: 'section', gid: 'g_Ab-9', section })),
       { name: 'settings', gid: 'g1', tab: null }, { name: 'settings', gid: 'g1', tab: 'teams' }, { name: 'settings', gid: 'g1', tab: 'people' },
     ];
@@ -134,6 +134,11 @@ function assertEscaped(out, label) {
       assert.equal(G.router.parse(h).name, 'notfound', h);
     }
     assert.equal(G.router.parse('#/signin?error=<script>').error, null);
+    // a planner address with a bad raid is the plain planner; the format drops half a raid
+    for (const h of ['#/planner?raid=g1', '#/planner?raid=g1.r1.x', '#/planner?raid=g%2F1.r1', '#/planner?raid=.r1', '#/planner?raid=<x>.r1']) assert.deepEqual(plain(G.router.parse(h)), { name: 'planner' }, h);
+    assert.equal(G.router.parse('#/planner/x').name, 'notfound');
+    assert.equal(G.router.format({ name: 'planner', gid: 'g1' }), '#/planner');
+    assert.equal(G.router.format({ name: 'planner', gid: 'g1', rid: 'r1' }), '#/planner?raid=g1.r1');
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'bogus' }), '#/g/g1/roster');
     assert.equal(G.router.format({ name: 'whatever' }), '#/');
   });

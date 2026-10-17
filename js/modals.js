@@ -1177,6 +1177,8 @@ const RaidHelperSync = {
     const eventId = State.sourceEventId;
     const planId = State.planId;
     if (!eventId) return null;
+    // A plan opened from a guild raid reads the raid's sign-ups from the guild, not the event (names differ).
+    if (RaidLink.isRaidPlan(planId)) return RaidContext.fetchDiff(report);
     const json = await fetchRosterJson(this.eventsApiUrl(eventId), report, 'refresh');
     if (json == null || State.sourceEventId !== eventId || State.planId !== planId) return null;
     const diff = Import.diffRaidHelperSignUps(json);
@@ -1198,7 +1200,7 @@ const RaidHelperSync = {
   // User-initiated pull: re-reads the event and merges into the plan.
   async refresh() {
     if (!State.sourceEventId) { showToast('This roster is not linked to a Raid-Helper event'); return; }
-    showToast('Checking Raid-Helper...');
+    showToast(RaidLink.isRaidPlan(State.planId) ? 'Checking the raid sign-ups...' : 'Checking Raid-Helper...');
     const diff = await this.fetchDiff((msg, isError) => { if (isError) showToast(msg); });
     if (!diff) return;
     this.apply(diff, 'Refreshed');
@@ -1209,6 +1211,7 @@ const RaidHelperSync = {
   // has a plan; `lead` opens the toast.
   apply(diff, lead) {
     this.hideBanner();
+    Import.claimHandAdded(diff);
     if (diff.eventStartTime) State.eventStartTime = diff.eventStartTime;
     // Logged as one Changes entry, including anyone initGroups benches for room.
     const { result: counts, entry } = ChangeLog.track('sync', 'Sign-up sync', () => {

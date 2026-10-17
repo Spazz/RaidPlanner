@@ -473,6 +473,37 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.deepEqual(env.history.calls.filter(c => c[0] === 'push'), []);
   });
 
+  await check('Planner for a raid: #/planner?raid=<gid>.<rid> is the planner section and hands the address to the planner; any other address (a guild page, the Planner link) leaves the raid', async () => {
+    const seen = [];
+    const env = makeEnv({ url: '/tbc/abc1234#/planner?raid=g1.r9', routes: signedInRoutes(), beforeApp: sb => { sb.RaidContext = { route: h => seen.push(h) }; } });
+    await settle();
+    assert.equal(env.G.app.state.section, 'planner');
+    assert.equal(env.els['planner-root'].hidden, false);
+    assert.equal(env.els['gs-main'].hidden, true);
+    assert.deepEqual(seen, ['#/planner?raid=g1.r9'], 'a reload opens the raid again');
+    // The Planner link opens the planner normally: the address drops the raid and the planner is told.
+    env.click({ 'data-action': 'open-planner' });
+    assert.equal(env.loc.hash, '');
+    assert.equal(seen[seen.length - 1], '');
+    assert(env.plannerCalls.includes('home'));
+    // A guild page leaves the raid too (Back to raid, the sidebar, the browser's Back).
+    env.loc.hash = '#/planner?raid=g1.r9';
+    await settle();
+    assert.equal(seen[seen.length - 1], '#/planner?raid=g1.r9');
+    env.loc.hash = '#/g/g1/raids/r/r9';
+    await settle();
+    assert.equal(env.G.app.state.section, 'guild');
+    assert.equal(seen[seen.length - 1], '#/g/g1/raids/r/r9');
+    // From a guild page, the Planner link pushes the plain address and the planner is told there is no raid.
+    env.click({ 'data-action': 'open-planner' });
+    await settle();
+    assert.deepEqual([env.G.app.state.section, seen[seen.length - 1]], ['planner', '']);
+    // Without the planner's RaidContext (a static page, a failed script) nothing breaks.
+    const bare = makeEnv({ url: '/#/planner?raid=g1.r9', routes: signedInRoutes() });
+    await settle();
+    assert.equal(bare.G.app.state.section, 'planner');
+  });
+
   await check('Planner link: modified and middle clicks keep the browser default; on static pages it is a plain link', async () => {
     const env = makeEnv({ url: '/tbc/abc1234#/g/g1/roster', routes: signedInRoutes() });
     await settle();

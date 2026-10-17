@@ -75,6 +75,7 @@
 !headers-tests.js
 !csp-tests.js
 !livesync-tests.js
+!raidcontext-tests.js
 !security-tests.js
 !state-persistence-tests.js
 !plan-state-tests.js

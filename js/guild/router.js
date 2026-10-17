@@ -1,6 +1,7 @@
 // ── HASH ROUTES ─────────────────────────────────────────────────
 // Pure parse/format for the guild page. Routes:
 //   #/  #/signin[?error=..]  #/new  #/privacy
+//   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,people,attendance}]
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
 //   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl}
@@ -16,6 +17,14 @@
 
   function decode(s) {
     try { return decodeURIComponent(s); } catch (e) { return null; }
+  }
+
+  const isId = function (v) { return typeof v === 'string' && ID.test(v); };
+
+  // The planner's raid context 'gid.rid' -> { gid, rid }, or null.
+  function plannerRaid(raid) {
+    const parts = typeof raid === 'string' ? raid.split('.') : [];
+    return parts.length === 2 && isId(parts[0]) && isId(parts[1]) ? { gid: parts[0], rid: parts[1] } : null;
   }
 
   function parseQuery(q) {
@@ -45,6 +54,10 @@
       if (head === 'signin') return { name: 'signin', error: SIGNIN_ERRORS.indexOf(query.error) >= 0 ? query.error : null };
       if (head === 'new') return { name: 'new' };
       if (head === 'privacy') return { name: 'privacy' };
+      if (head === 'planner') {
+        const raid = plannerRaid(query.raid);
+        return raid ? { name: 'planner', gid: raid.gid, rid: raid.rid } : { name: 'planner' };
+      }
       return { name: 'notfound' };
     }
     if (head !== 'g' || !ID.test(parts[1])) return { name: 'notfound' };
@@ -82,6 +95,7 @@
       case 'signin': return '#/signin' + (SIGNIN_ERRORS.indexOf(r.error) >= 0 ? '?error=' + r.error : '');
       case 'new': return '#/new';
       case 'privacy': return '#/privacy';
+      case 'planner': return '#/planner' + (isId(r.gid) && isId(r.rid) ? '?raid=' + r.gid + '.' + r.rid : '');
       case 'section': {
         const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';
         const team = section === 'roster' && typeof r.team === 'string' && ID.test(r.team) ? '?team=' + encodeURIComponent(r.team) : '';

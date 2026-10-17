@@ -580,6 +580,7 @@ const RosterEdit = {
       role,
       groupNumber: groupIdx + 1,
       imported: false,
+      handAdded: true, // no sign-up behind this player: a Raid-Helper re-sync keeps them (see Import.diffRaidHelperSignUps)
     };
     groups[groupIdx].push(player);
     this.syncRoster();

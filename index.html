@@ -333,6 +333,14 @@
     <button type="button" class="rb-bar" id="btn-readiness-expand" aria-label="Expand readiness" aria-expanded="false" aria-controls="readiness-banner"><span class="rb-chips compact" id="readiness-chips-min"></span><span class="rb-arrow" aria-hidden="true">&#9660;</span></button>
   </div>
   <span class="sr-only" id="autosave-status" role="status"></span>
+  <!-- Opened from a raid of the guild tracker (Plan in Planner): names the raid, saves the plan back to it, returns to its page. -->
+  <div class="sync-banner raid-context-banner" id="raid-context-banner" hidden>
+    <span class="raid-context-main"><strong id="raid-context-text"></strong><span class="raid-context-status" id="raid-context-status" role="status"></span></span>
+    <div class="sync-banner-actions">
+      <button type="button" class="btn btn-primary" id="btn-raid-save">Save to raid</button>
+      <button type="button" class="link-btn" id="btn-raid-back">Back to raid</button>
+    </div>
+  </div>
   <div class="sync-banner" id="sync-banner" hidden aria-live="polite">
     <span id="sync-banner-text"></span>
     <div class="sync-banner-actions">

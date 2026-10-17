@@ -223,12 +223,13 @@ const Import = {
   // groups, the bench and the unplaced list, since saved rosters carry no
   // Raid-Helper IDs.
   //   added:    sign-ups not in the plan            -> bench / unplaced by status
-  //   removed:  plan members no longer signed up    -> will be dropped
+  //   removed:  plan members no longer signed up    -> will be dropped (players added by hand, `handAdded`, are kept)
   //   changed:  same person, new class/spec/role    -> updated in place
   //   restatus: same person, new sign-up status     -> {player, status, backfill};
   //             people off the raid move to the matching tray tab
   //   demoted:  seated player newly marked Bench/Tentative/Late/Absent -> unseated
   //   promoted: benched player now confirmed        -> reported, left on the bench
+  //   claimed:  hand-added players that now have a sign-up -> become sign-up players (no report)
   // A status on a player saved before statuses existed is a silent `backfill`,
   // never reported as a change by itself.
   diffRaidHelperSignUps(jsonStr) {
@@ -244,7 +245,7 @@ const Import = {
       if (!current.has(key(p.name))) current.set(key(p.name), p);
     }
 
-    const diff = { success:true, added:[], removed:[], changed:[], restatus:[], demoted:[], promoted:[] };
+    const diff = { success:true, added:[], removed:[], changed:[], restatus:[], demoted:[], promoted:[], claimed:[] };
     // A rescheduled event moves the date exports show; absent from the response, the stored one stays.
     const eventStartTime = PlanStore.eventStart(data);
     if (eventStartTime) diff.eventStartTime = eventStartTime;
@@ -255,6 +256,7 @@ const Import = {
       seen.add(k);
       const player = current.get(k);
       if (!player) { diff.added.push(entry); continue; }
+      if (player.handAdded) diff.claimed.push(player);
       // An entry without a class (an Absence, usually) says nothing about spec.
       if (entry.class && (player.class !== entry.class || player.spec !== entry.spec || player.role !== entry.role)) {
         diff.changed.push({ player, class:entry.class, spec:entry.spec, role:entry.role, needsReview:entry.needsReview, reviewReason:entry.reviewReason });
@@ -265,8 +267,14 @@ const Import = {
       else if (!isSeated && entry.category === 'raider') diff.promoted.push(player);
       if (statusChanged) diff.restatus.push({ player, status: entry.status, backfill: player.signupStatus === undefined });
     }
-    for (const [k, player] of current) if (!seen.has(k)) diff.removed.push(player);
+    // Someone added by hand (a pug, a fill-in) never had a sign-up to withdraw, so a sign-up list without them is no reason to drop them.
+    for (const [k, player] of current) if (!seen.has(k) && !player.handAdded) diff.removed.push(player);
     return diff;
+  },
+
+  // A hand-added player who now has a sign-up is a sign-up player from here on: leaving the sign-ups removes them.
+  claimHandAdded(diff) {
+    for (const player of (diff && diff.claimed) || []) delete player.handAdded;
   },
 
   hasRaidHelperChanges(diff) {
@@ -319,6 +327,7 @@ const Import = {
       else { delete change.player.needsReview; delete change.player.reviewReason; }
       clearOverrides(change.player); // an override for the old spec's buff no longer applies
     }
+    this.claimHandAdded(diff);
     for (const { player, status } of (diff.restatus || [])) player.signupStatus = status;
     for (const player of diff.demoted) {
       if (player.groupNumber >= 1) vacated.push({ name: player.name, groupNumber: player.groupNumber, gone: false });
@@ -544,6 +553,7 @@ const Import = {
     const constraints = Constraints.clean(State.playerConstraints);
     const drummers = Drummers.clean(State.drummers);
     const statuses = this._shareStatuses();
+    const handAdded = [...State.groups.flat(), ...(State.bench || [])].filter(p => p.handAdded).map(p => p.name);
     const unplaced = (State.unplaced || []).map(p => ({ name:p.name, class:p.class, spec:p.spec, role:p.role, signupStatus:p.signupStatus }));
     const parts = ['PP', '2', State.selectedRaid, encodeURIComponent(name), encode(State.bench || [])];
     for (const g of State.groups) parts.push(encode(g));
@@ -551,7 +561,7 @@ const Import = {
     // along when present, so a plain TBC share link (the common case) stays
     // byte-for-byte as compact as before — byte-identical when unused.
     const eventStartTime = PlanStore.cleanEventStart(State.eventStartTime);
-    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length || drummers.length || statuses || unplaced.length || encodeNames || eventStartTime) {
+    if (State.gameVersion !== 'tbc' || State.preferredSlots.length || State.preserveGroupOrder || notes || hasAssignments || hasBackups || constraints.length || drummers.length || statuses || handAdded.length || unplaced.length || encodeNames || eventStartTime) {
       while (parts.length < 5 + Config.Raids[State.selectedRaid].groups) parts.push('');
       const tail = {gameVersion:State.gameVersion, campfires:State.campfires, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder};
       if (encodeNames) tail.encodedNames = true;
@@ -561,6 +571,7 @@ const Import = {
       if (constraints.length) tail.playerConstraints = constraints;
       if (drummers.length) tail.drummers = drummers;
       if (statuses) tail.signupStatuses = statuses;
+      if (handAdded.length) tail.handAdded = handAdded;
       if (unplaced.length) tail.unplaced = unplaced;
       if (eventStartTime) tail.eventStartTime = eventStartTime;
       parts.push(encodeURIComponent(JSON.stringify(tail)));
@@ -675,6 +686,8 @@ const Import = {
       for (const p of [...players, ...bench]) {
         if (SignupStatus.clean(statuses[p.name])) p.signupStatus = statuses[p.name];
       }
+      const handAdded = Array.isArray(planning.handAdded) ? new Set(planning.handAdded.filter(n => typeof n === 'string')) : new Set();
+      for (const p of [...players, ...bench]) if (handAdded.has(p.name)) p.handAdded = true;
       unplaced = SignupStatus.cleanUnplaced(planning.unplaced);
       eventStartTime = PlanStore.cleanEventStart(planning.eventStartTime);
     }
@@ -798,10 +811,12 @@ const Import = {
       players: State.roster.map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber,
         ...(p.signupStatus ? { signupStatus:p.signupStatus } : {}),
+        ...(p.handAdded ? { handAdded:true } : {}),
       })),
       bench: (State.bench || []).map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:0,
         ...(p.signupStatus ? { signupStatus:p.signupStatus } : {}),
+        ...(p.handAdded ? { handAdded:true } : {}),
       })),
       unplaced: (State.unplaced || []).map(p => ({
         name:p.name, class:p.class, spec:p.spec, role:p.role, signupStatus:p.signupStatus,
@@ -836,6 +851,7 @@ const Import = {
     for (const p of PlayerIdentity.cleanList(data.players)) {
       const player = { uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role, groupNumber:p.groupNumber, imported:true };
       if (SignupStatus.clean(p.signupStatus)) player.signupStatus = p.signupStatus;
+      if (p.handAdded === true) player.handAdded = true;
       const g = player.groupNumber;
       if (Number.isInteger(g) && g >= 1 && g <= numGroups) { roster.push(player); groups[g-1].push(player); }
       else { player.groupNumber = 0; misplaced.push(player); }
@@ -844,6 +860,7 @@ const Import = {
       uid: p.uid || nextUid(), name:p.name, class:p.class, spec:p.spec, role:p.role,
       groupNumber: 0, imported: true,
       ...(SignupStatus.clean(p.signupStatus) ? { signupStatus:p.signupStatus } : {}),
+      ...(p.handAdded === true ? { handAdded:true } : {}),
     })).concat(misplaced);
     State.unplaced = SignupStatus.cleanUnplaced(data.unplaced);
     State.roster = roster;

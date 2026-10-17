@@ -474,6 +474,8 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-seg:hover { background: var(--bg-card-hover); }
 .gs-seg[aria-pressed="true"] { position: relative; background: var(--bg-card-hover); border-color: var(--accent-gold); color: var(--accent-gold); }
 .gs-seg-count { color: var(--text-muted); }
+.gs-raid-tabs { margin-bottom: var(--sp-3); }
+.gs-table-upcoming { min-width: 640px; }
 .gs-seg[aria-pressed="true"] .gs-seg-count { color: var(--accent-gold-bright); }
 .gs-roster-status { display: flex; align-items: center; gap: 8px; }
 .gs-roster-status .gs-input { width: auto; min-width: 150px; }

@@ -208,7 +208,15 @@
   // ── navigation ──
   function sectionFor() {
     if (state.page !== 'app') return 'page';
-    return String(window.location.hash || '').indexOf('#/') === 0 ? 'guild' : 'planner';
+    const hash = String(window.location.hash || '');
+    return hash.indexOf('#/') === 0 && G.router.parse(hash).name !== 'planner' ? 'guild' : 'planner';
+  }
+
+  // The planner opened for a raid (#/planner?raid=<gid>.<rid>) hands the raid to the planner (RaidContext in js/app.js), which
+  // loads the plan and shows its banner; any other address leaves the raid. A no-op where the planner is not on the page.
+  function syncRaidContext() {
+    if (typeof RaidContext === 'undefined' || !RaidContext || typeof RaidContext.route !== 'function') return;
+    RaidContext.route(String(window.location.hash || ''));
   }
 
   function go(hash, replace) {
@@ -275,6 +283,7 @@
       ['planner', 'guild', 'page'].forEach(function (name) { document.body.classList.toggle('shell-section-' + name, name === section); });
     }
     showSection(section);
+    syncRaidContext();
     if (section === 'guild') {
       if (prev && prev !== 'guild' && !o.history && typeof window.scrollTo === 'function') window.scrollTo(0, 0);
       return routeGuild();
@@ -854,10 +863,12 @@
     }
     const shell = plannerShell();
     if (shell && shell.home) shell.home();
-    if (window.location.hash === '#how-it-works') {
+    const hash = String(window.location.hash || '');
+    if (hash === '#how-it-works' || hash.indexOf('#/planner') === 0) {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
       lastHref = String(window.location.href);
     }
+    syncRaidContext();
     render();
   };
 

@@ -172,6 +172,7 @@ function teamData(over) {
     assert.deepEqual(plain(await G.planSource.read('https://raidsmith.example/#r=GOODCODE1', fakeDeps())), want);
     assert.deepEqual(plain(await G.planSource.read('  GOODCODE1  ', fakeDeps())), want);
     assert.deepEqual(plain(await G.planSource.read('PP:2:x', fakeDeps())), want);
+    for (const text of ['https://raidsmith.example/#r=GOODCODE1', 'GOODCODE1', 'PP:2:x']) assert.equal((await G.planSource.read(text, fakeDeps())).live, undefined, 'only a live link carries a live id');
   });
 
   await check('plan source: a short live link is fetched, and needs the live site when it cannot be', async () => {
@@ -179,6 +180,7 @@ function teamData(over) {
     const deps = fakeDeps({ fetchShare: id => { asked.push(id); return Promise.resolve({ code: 'GOODCODE1' }); } });
     const ok = await G.planSource.read('https://raidsmith.example/tbc/AbC1234', deps);
     assert.equal(ok.ok, true);
+    assert.equal(ok.live, 'AbC1234', 'the raid keeps the live link id');
     assert.deepEqual(asked, ['AbC1234']);
     const gone = await G.planSource.read('/tbc/AbC1234', fakeDeps({ fetchShare: () => Promise.resolve(null) }));
     assert(!gone.ok && /expired/.test(gone.error));
@@ -383,6 +385,68 @@ function teamData(over) {
     assertEscaped(lines, 'run lines');
     const done = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN), state: Object.assign({}, state, { run }) });
     assert(done.includes('Open raid') && done.includes('href="#/g/g1/raids/r/r9"') && !done.includes('id="nr-event"'));
+  });
+
+  // ── future raids ───────────────────────────────────────────────
+  const UP = [
+    { id: 'u1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, zone: 'Black Temple', title: null, eventSourced: true, eventId: '1483258698854826006', otherServer: false, signups: { signed: 21, late: 2, bench: 2, tentative: 0, absence: 1 }, planned: true },
+    { id: 'u2', raidOn: '2026-10-31', startsAt: Date.UTC(2026, 10, 1, 0, 30), upcoming: true, zone: 'Karazhan', title: 'Prog night', eventSourced: false, eventId: null, otherServer: false, signups: { signed: 0, late: 0, bench: 0, tentative: 0, absence: 0 }, planned: false },
+  ];
+  const withUp = (over) => raidsHtml(Object.assign({ data: { team: 't1', today: '2026-10-17', raids: RAIDS, upcoming: UP } }, over || {}));
+
+  await check('raids tabs: Upcoming (n) and Past (n) buttons, opens on Upcoming when there is one, else Past; the chosen tab wins', () => {
+    const out = withUp();
+    assert(out.includes('>Upcoming (2)<') && out.includes('>Past (4)<'));
+    assert(/data-tab="upcoming"[^>]*aria-pressed="true"/.test(out) && /data-tab="past"[^>]*aria-pressed="false"/.test(out));
+    assert(out.includes('Upcoming raids') && !out.includes('Present / Bench / Missed') && out.includes('2 upcoming raids, soonest first'));
+    const past = withUp({ tab: 'past' });
+    assert(/data-tab="past"[^>]*aria-pressed="true"/.test(past) && past.includes('Present / Bench / Missed') && past.includes('4 raids, newest first') && !past.includes('Refresh sign-ups'));
+    const none = raidsHtml();
+    assert(none.includes('>Upcoming (0)<') && /data-tab="past"[^>]*aria-pressed="true"/.test(none));
+    assert(raidsHtml({ tab: 'upcoming' }).includes('No upcoming raids.'));
+    assert(withUp({ more: true, tab: 'past' }).includes('>Past (4+)<'));
+    assert(raidsHtml({ data: { team: 't1', raids: [], upcoming: UP } }).includes('>Past (0)<'));
+    assert(raidsHtml({ data: { team: 't1', raids: [], upcoming: UP }, tab: 'past' }).includes('No past raids yet.'));
+    assert(raidsHtml({ data: { team: 't1', raids: [], upcoming: [] } }).includes('No raids yet'));
+  });
+
+  await check('raids upcoming: columns, date and time, event hint, sign-up counts, plan status, Refresh sign-ups for event raids only', () => {
+    const out = withUp();
+    for (const col of ['Date', 'Event', 'Sign-ups', 'Plan']) assert(out.includes('>' + col + '<'), col);
+    assert(out.indexOf('u1') < out.indexOf('u2'), 'soonest first');
+    assert(out.includes('href="#/g/g1/raids/r/u1"') && out.includes('Sat Oct 24, '));
+    assert(out.includes('Black Temple <span class="gs-fine">(Raid-Helper)</span>') && out.includes('>Prog night<'));
+    assert(out.includes('23 signed, 2 bench, 1 absent') && out.includes('No sign-ups yet'));
+    assert(out.includes('>Planned<') && out.includes('>Not planned<'));
+    assert.equal(out.split('data-action="raids-refresh"').length - 1, 2, 'one button in the table, one on the card');
+    assert(/data-action="raids-refresh" data-rid="u1"/.test(out) && !/data-action="raids-refresh" data-rid="u2"/.test(out));
+    const member = withUp({ guildData: gd(MEMBER_CAN) });
+    assert(!member.includes('raids-refresh') && !member.includes('raids-plan'));
+    assert.equal(G.pages.raids.signupsText(null), '-');
+    assertEscaped(withUp({ data: { team: 't1', raids: RAIDS, upcoming: UP.map(u => Object.assign({}, u, { title: HOSTILE + QUOTES, zone: HOSTILE + QUOTES })) } }), 'upcoming');
+    assertNoRawAttrs(out);
+  });
+
+  await check('new raid: Start time, Zone and Title show only for a date from today on; a later date drops the attendance source; the body carries them', () => {
+    const base = { teamId: 't1', event: '', reports: [''], plan: '', mode: 'log', date: '', time: '20:00', zone: '', title: '' };
+    const html = (f, extra) => G.pages.raidNew.raidNewHtml(Object.assign({ guildData: gd(OFFICER_CAN), state: { gid: 'g1', form: Object.assign({}, base, f), run: null, error: '' }, today: '2026-10-17' }, extra || {}));
+    const shown = (out, id) => !new RegExp('id="' + id + '"[^>]*hidden').test(out);
+    const past = html({ date: '2026-10-10' });
+    assert(!shown(past, 'nr-time-field') && !shown(past, 'nr-zone-field') && !shown(past, 'nr-title-field'));
+    assert(!shown(html({}), 'nr-time-field'));
+    const today = html({ date: '2026-10-17' });
+    assert(shown(today, 'nr-time-field') && shown(today, 'nr-zone-field') && shown(today, 'nr-title-field') && today.includes('type="time"') && today.includes('value="20:00"'));
+    assert(!/id="nr-source"[^>]*hidden/.test(today) && !/id="nr-reports"[^>]*hidden/.test(today));
+    const later = html({ date: '2026-10-24', zone: 'Karazhan' });
+    assert(shown(later, 'nr-time-field') && /id="nr-source"[^>]*hidden/.test(later) && /id="nr-reports"[^>]*hidden/.test(later));
+    assert(!shown(html({ date: '2026-10-24', event: '123456' }), 'nr-time-field') && shown(html({ date: '2026-10-24', event: '123456' }), 'nr-zone-field'));
+    assert(!shown(html({ date: '2026-10-24', mode: 'manual' }), 'nr-time-field') === false, 'a later date ignores manual mode');
+    assert(!shown(html({ date: '2026-10-17', mode: 'manual' }), 'nr-time-field'), 'manual today hides the when-fields');
+    const body = (f, today) => plain(G.pages.raidNew.createBody(Object.assign({}, base, f), false, today));
+    assert.deepEqual(body({ date: '2026-10-24', zone: 'Karazhan', title: ' Prog night ' }, '2026-10-17'), { teamId: 't1', raidOn: '2026-10-24', startTime: '20:00', zone: 'Karazhan', title: 'Prog night' });
+    assert.deepEqual(body({ date: '2026-10-10', zone: 'Karazhan' }, '2026-10-17'), { teamId: 't1', raidOn: '2026-10-10' });
+    assert.deepEqual(body({ date: '2026-10-24', event: '123456' }, '2026-10-17'), { teamId: 't1', raidOn: '2026-10-24', eventSource: '123456' });
+    assert.deepEqual(body({ date: '2026-10-24' }), { teamId: 't1', raidOn: '2026-10-24' });
   });
 
   await check('new raid: one create step carries the event and every report; only the plan is a second step', () => {
@@ -1046,6 +1110,77 @@ function teamData(over) {
     assert(html.includes('Raid date (optional)'));
     A.nr = null;
     G.app.render = saveRender;
+  });
+
+  await check('raid detail (upcoming): start time, sign-ups, plan status, Refresh sign-ups; no attendance parts', () => {
+    const up = detail({
+      raid: { id: 'u1', team: 't1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, title: 'Prog night', zone: 'Black Temple', state: 'awaiting_log', openFlags: 0, stale: false, version: 1 },
+      people: [], unmatched: [], pulls: [],
+      sources: { event: { id: '1483258698854826006', title: 'Sat BT', syncedAt: 1760000000000, signups: 2, otherServer: false }, reports: [], plan: null },
+      signups: [{ source: 'raid_helper', kind: 'signed', className: 'Warrior', specName: 'Arms', position: 1, playerId: 'p_b', matched: true, nickname: 'Bravo' },
+        { source: 'raid_helper', kind: 'bench', className: 'Bench', specName: null, position: 2, playerId: null, matched: false, nickname: null }],
+    });
+    const out = raidPage(up);
+    assert(out.includes('Starts Sat Oct 24, ') && out.includes('Prog night') && out.includes('>Upcoming<') && out.includes('>Not planned<'));
+    assert(out.includes('Attendance starts after the raid.') && out.includes('Sign-ups') && out.includes('Bravo') && out.includes('Warrior'));
+    assert(out.includes('Refresh sign-ups') && out.includes('data-op="event-refresh"'));
+    assert(!out.includes('Mark as No log') && !out.includes('Recalculate') && !out.includes('Warcraft Logs reports') && !out.includes('Needs review') && !out.includes('>People<'));
+    assert(raidPage(up, { guildData: gd(MEMBER_CAN), data: Object.assign({}, up, { can: { edit: false, review: false, seeAttendance: false, seeNicknames: false }, signups: [] }) }).includes('visible to the team'));
+    assertEscaped(raidPage(Object.assign({}, up, { signups: [{ source: 'raid_helper', kind: 'signed', className: HOSTILE + QUOTES, specName: HOSTILE, position: 1, matched: false, nickname: HOSTILE + QUOTES }] })), 'upcoming signups');
+  });
+
+  await check('Plan in Planner: a button on each upcoming row and card for those who may edit (event or not), and on the upcoming raid page next to Refresh sign-ups; never for a member or a past raid', () => {
+    const out = withUp();
+    assert.equal(out.split('data-action="raids-plan"').length - 1, 4, 'two raids, a table row and a card each');
+    assert(/data-action="raids-plan" data-rid="u1"/.test(out) && /data-action="raids-plan" data-rid="u2"/.test(out));
+    assert(out.includes('>Plan in Planner<'));
+    assert(!withUp({ guildData: gd(MEMBER_CAN) }).includes('raids-plan'));
+    assert(!withUp({ tab: 'past' }).includes('raids-plan'));
+    assertNoRawAttrs(out);
+    const up = detail({
+      raid: { id: 'u1', team: 't1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, title: null, zone: 'Black Temple', state: 'awaiting_log', openFlags: 0, stale: false, version: 1 },
+      people: [], unmatched: [], pulls: [], signups: [],
+    });
+    const page = raidPage(up);
+    assert(page.includes('data-op="plan-in-planner"') && page.includes('>Plan in Planner<'));
+    assert(page.indexOf('data-op="plan-in-planner"') < page.indexOf('data-op="event-refresh"'), 'Plan in Planner leads, Refresh sign-ups follows');
+    const noEvent = raidPage(Object.assign({}, up, { sources: { event: null, reports: [], plan: null } }));
+    assert(noEvent.includes('data-op="plan-in-planner"') && !noEvent.includes('Refresh sign-ups'));
+    assert(!raidPage(Object.assign({}, up, { can: { edit: false, review: false, seeAttendance: false, seeNicknames: false } }), { guildData: gd(MEMBER_CAN) }).includes('plan-in-planner'));
+    assert(!raidPage(detail()).includes('plan-in-planner'), 'a past raid has no Plan in Planner');
+  });
+
+  await check('Plan in Planner: an event raid takes its sign-ups from Raid-Helper first, then the address becomes #/planner?raid=; a failed refresh stays here; a raid without an event goes straight there', async () => {
+    const saved = { put: G.api.put, handleError: G.app.handleError, applyFlags: G.app.applyFlags };
+    const calls = [];
+    const errors = [];
+    ctx.window = { location: { hash: '' } };
+    G.app.applyFlags = () => {};
+    G.app.handleError = (err) => errors.push(err);
+    G.pages.attendance.attState().raids = { gid: 'g1', teamId: 't1', data: { upcoming: UP, raids: [] } };
+    const click = (rid) => { const el = { disabled: false, getAttribute: k => (k === 'data-rid' ? rid : null) }; G.handlers.click['raids-plan'](el); return el; };
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    try {
+      G.api.put = (url, body) => { calls.push([url, plain(body)]); return Promise.resolve({}); };
+      click('u1');
+      await tick();
+      assert.deepEqual(calls, [[G.pages.attendance.apiBase('g1') + '/raids/u1/event', { source: '1483258698854826006', acceptOtherServer: false }]]);
+      assert.equal(ctx.window.location.hash, '#/planner?raid=g1.u1');
+      ctx.window.location.hash = '';
+      calls.length = 0;
+      click('u2');
+      await tick();
+      assert.deepEqual([calls.length, ctx.window.location.hash], [0, '#/planner?raid=g1.u2'], 'no event: no refresh');
+      ctx.window.location.hash = '';
+      G.api.put = () => Promise.reject(new G.api.ApiError(500, null));
+      const el = click('u1');
+      await tick();
+      assert.deepEqual([ctx.window.location.hash, el.disabled, errors.length], ['', false, 1], 'a failed refresh does not open the Planner');
+    } finally {
+      Object.assign(G.api, { put: saved.put });
+      Object.assign(G.app, { handleError: saved.handleError, applyFlags: saved.applyFlags });
+      delete ctx.window;
+    }
   });
 
   await check('R3-1: the manual line shows only "No log - attendance entered by hand" without the officer\'s name, date and reason', () => {

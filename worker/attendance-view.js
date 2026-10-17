@@ -154,7 +154,10 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       teamId: raid.team_id,
       raidOn: raid.raid_on,
       startsAt: raid.starts_at,
+      upcoming: raid.starts_at > ctx.now(),
+      title: raid.title || raid.event_title || null,
       zone: raid.zone,
+      planLive: allows(can, 'raids.edit', teamId) ? raid.plan_live || null : null, // an edit link to the plan: only for those who may edit
       state,
       openFlags: raid.open_flags,
       stale: isStale(state),

@@ -15,8 +15,8 @@ import {
 } from './routes/roster.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
 import {
-  createRaid, deleteEvent, deleteManual, deletePlan, deleteRaid, deleteReport, getRaid, listRaids, putEvent, putManual, putPlan, putReport,
-  recomputeRoute,
+  createRaid, deleteEvent, deleteManual, deletePlan, deleteRaid, deleteReport, getPlanner, getRaid, listRaids, putEvent, putManual, putPlan,
+  putReport, recomputeRoute,
 } from './routes/raids.js';
 import {
   deleteDecision, getBackfillReports, getPersonAttendance, getPolicy, getReview, getTeamAttendance, postDecision, postUnmatched, putPolicy,
@@ -69,6 +69,7 @@ const ROUTES = [
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/event', auth: true, handler: deleteEvent },
   { method: 'PUT', path: '/api/guild/:gid/raids/:rid/reports', auth: true, handler: putReport },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/reports/:code', auth: true, handler: deleteReport },
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/planner', auth: true, handler: getPlanner },
   { method: 'PUT', path: '/api/guild/:gid/raids/:rid/plan', auth: true, handler: putPlan, maxBody: PLAN_MAX_BODY },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/plan', auth: true, handler: deletePlan },
   { method: 'PUT', path: '/api/guild/:gid/raids/:rid/manual', auth: true, handler: putManual, maxBody: PLAN_MAX_BODY },

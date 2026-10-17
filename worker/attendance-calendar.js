@@ -25,6 +25,22 @@ export function localDate(ms, timeZone) {
   return `${pick('year')}-${pick('month')}-${pick('day')}`;
 }
 
+// The instant (epoch ms) of a guild-local date + 'HH:MM' in an IANA time zone; null when that wall time does not exist
+// (the skipped hour of a spring-forward day). An ambiguous time (the repeated hour of a fall-back day) takes the first.
+export function localTimeToMs(date, time, timeZone) {
+  const wallMs = Date.parse(`${date}T${time}:00Z`);
+  if (!Number.isFinite(wallMs)) throw new RangeError('localTimeToMs needs a YYYY-MM-DD date and an HH:MM time');
+  const formatter = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const wallOf = (ms) => {
+    const parts = formatter.formatToParts(new Date(ms));
+    const pick = (type) => Number(parts.find((part) => part.type === type).value);
+    return Date.UTC(pick('year'), pick('month') - 1, pick('day'), pick('hour'), pick('minute'), pick('second'));
+  };
+  let guess = wallMs;
+  for (let i = 0; i < 2; i++) guess = wallMs - (wallOf(guess) - guess);
+  return wallOf(guess) === wallMs ? guess : null;
+}
+
 // date + days (negative goes back).
 export function addDays(date, days) {
   return fromDayNumber(toDayNumber(date) + days);

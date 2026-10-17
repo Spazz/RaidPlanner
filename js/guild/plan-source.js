@@ -2,7 +2,8 @@
 // Reads a Raidsmith plan out of what an officer pastes and returns only names + groups; the server never sees the
 // plan link or anything else in it. Accepts a long link (...#r=<code>), a bare share code, a PP:2:... share string,
 // or a short live link (/tbc/<7 characters>), which is fetched from /api/share (needs the live site).
-//   G.planSource.read(text, deps) -> Promise<{ ok: true, label, players: [{ name, group }] } | { ok: false, error }>
+//   G.planSource.read(text, deps) -> Promise<{ ok: true, label, players: [{ name, group }], live? } | { ok: false, error }>
+//   (live: the 7-character id of a pasted short live link; the raid keeps it so the Planner can reopen the plan)
 //   deps (all optional; the page passes none): decode(code) -> string|null, readPlayers(str) -> { success, name, players, error },
 //   fetchShare(id) -> Promise<{ code } | null>. Defaults use the planner's Import (loaded on index.html) and fetch.
 (function (G) {
@@ -110,7 +111,9 @@
     return Promise.resolve().then(function () { return d.fetchShare(c.value); }).then(function (remote) {
       if (!remote) return fail('That share link has expired or does not exist.');
       if (typeof remote.code !== 'string') return fail('The share link answered in a form this page cannot read.');
-      return fromCode(remote.code, d);
+      const result = fromCode(remote.code, d);
+      if (result.ok) result.live = c.value;
+      return result;
     }, function () {
       return fail('Could not open that short link from here (it needs the live site). Paste the long link (the one with #r=) instead.');
     });

@@ -1,5 +1,6 @@
 // ── PAGES: RAIDS LIST and NEW RAID ──────────────────────────────
-// The list of one team's raids (GET /raids?team=, newest first) with status pills, and the New raid page, which
+// The list of one team's raids (GET /raids?team=): Upcoming (raids that have not started, soonest first) and Past (newest first, with
+// status pills) tabs, and the New raid page, which
 // runs its calls in order (create raid, event, each report, plan) with a status line per source. A failure stops that
 // source only: the raid exists, the page links to it and offers Retry. Dates are the guild's calendar dates.
 (function (G) {
@@ -7,6 +8,8 @@
 
   const REPORT_SHORT = 28;
   const RAID_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const RAID_TIME = /^\d{2}:\d{2}$/;
+  const DEFAULT_START = '20:00';
 
   function A() { return G.pages.attendance; }
   function st() { return G.app.state; }
@@ -24,6 +27,7 @@
     const flags = r.openFlags > 0 ? r.openFlags : 0;
     if (r.stale || r.state === 'stale') return '<span class="gs-pills">' + pillHtml('warn', 'Needs recalculation') + '</span>';
     switch (r.state) {
+      case 'upcoming': pills.push(pillHtml('info', 'Upcoming')); break;
       case 'awaiting_log': pills.push(pillHtml('muted', 'Awaiting log')); break;
       case 'manual':
         pills.push(pillHtml('info', 'No log - by hand'));
@@ -68,6 +72,73 @@
       '<div class="gs-card-meta">' + sourceChipsHtml(r.sources) + (r.counts ? '<span class="gs-fine">Present ' + esc(r.counts.present || 0) + ' &middot; Bench ' + esc(r.counts.bench || 0) + ' &middot; Missed ' + esc(r.counts.missed || 0) + '</span>' : '') + '</div></li>';
   }
 
+  // ── upcoming ──
+  function timeText(ms, timeZone) {
+    if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    try { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timeZone || undefined }); } catch (e) { return ''; }
+  }
+
+  // 'Sat Oct 17, 8:00 PM': the raid's guild-local date and its start time in the guild's time zone.
+  function whenText(r, gd) {
+    const day = G.ui.weekdayDay(r.raidOn) || r.raidOn;
+    const time = timeText(r.startsAt, gd && gd.guild ? gd.guild.timeZone : '');
+    return time ? day + ', ' + time : day;
+  }
+
+  // '23 signed, 2 bench' (late counts as signed); '-' when the viewer may not see counts.
+  function signupsText(s) {
+    if (!s) return '-';
+    const signed = (s.signed || 0) + (s.late || 0);
+    if (!signed && !s.bench && !s.tentative && !s.absence) return 'No sign-ups yet';
+    const parts = [signed + ' signed'];
+    if (s.bench) parts.push(s.bench + ' bench');
+    if (s.tentative) parts.push(s.tentative + ' tentative');
+    if (s.absence) parts.push(s.absence + ' absent');
+    return parts.join(', ');
+  }
+
+  function eventCellHtml(r) {
+    const name = r.title || r.zone;
+    return (name ? esc(name) : '<span class="gs-muted">-</span>') + (r.eventSourced ? ' <span class="gs-fine">(Raid-Helper)</span>' : '');
+  }
+
+  function planPillHtml(r) { return r.planned ? pillHtml('ok', 'Planned') : pillHtml('muted', 'Not planned'); }
+
+  function upcomingActionsHtml(r, canEdit) {
+    if (!canEdit) return '';
+    const plan = '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-plan" data-rid="' + esc(r.id) + '" data-key="rp-' + esc(r.id) + '">Plan in Planner</button>';
+    if (!r.eventSourced || !r.eventId) return plan;
+    return plan + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-refresh" data-rid="' + esc(r.id) + '" data-key="rr-' + esc(r.id) + '">Refresh sign-ups</button>';
+  }
+
+  function upcomingRowHtml(gd, r, canEdit) {
+    return '<tr><th scope="row" class="gs-cell-strong gs-nowrap"><a href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a></th>' +
+      '<td>' + eventCellHtml(r) + '</td><td>' + esc(signupsText(r.signups)) + '</td><td>' + planPillHtml(r) + '</td>' +
+      '<td><div class="gs-row-actions">' + upcomingActionsHtml(r, canEdit) + '</div></td></tr>';
+  }
+
+  function upcomingCardHtml(gd, r, canEdit) {
+    const actions = upcomingActionsHtml(r, canEdit);
+    return '<li class="gs-roster-card"><div class="gs-card-top"><a class="gs-raid-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a>' + planPillHtml(r) + '</div>' +
+      '<div class="gs-card-line">' + eventCellHtml(r) + '</div><div class="gs-card-meta"><span class="gs-fine">' + esc(signupsText(r.signups)) + '</span></div>' +
+      (actions ? '<div class="gs-row-actions">' + actions + '</div>' : '') + '</li>';
+  }
+
+  function upcomingHtml(gd, upcoming, canEdit) {
+    if (!upcoming.length) return '<p class="gs-empty">No upcoming raids.' + (canEdit ? ' Use New raid to add one.' : '') + '</p>';
+    return '<div class="gs-table-wrap gs-raids-table"><table class="gs-table gs-table-upcoming" aria-label="Upcoming raids"><thead><tr><th scope="col">Date</th><th scope="col">Event</th><th scope="col">Sign-ups</th>' +
+      '<th scope="col">Plan</th><th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + upcoming.map(function (r) { return upcomingRowHtml(gd, r, canEdit); }).join('') + '</tbody></table></div>' +
+      '<ul class="gs-roster-cards gs-raids-cards" aria-label="Upcoming raids">' + upcoming.map(function (r) { return upcomingCardHtml(gd, r, canEdit); }).join('') + '</ul>';
+  }
+
+  // The Upcoming / Past switch (the same pressed-button group as the roster and attendance filters).
+  function tabsHtml(tab, upcomingCount, pastLabel) {
+    function one(id, label) {
+      return '<button type="button" class="gs-seg" data-action="raids-tab" data-tab="' + id + '" data-key="rt-' + id + '" aria-pressed="' + (tab === id ? 'true' : 'false') + '">' + esc(label) + '</button>';
+    }
+    return '<div class="gs-segs gs-raid-tabs" role="group" aria-label="Raids">' + one('upcoming', 'Upcoming (' + upcomingCount + ')') + one('past', 'Past (' + pastLabel + ')') + '</div>';
+  }
+
   function flagBannerHtml(gd, teamId, raids) {
     const flagged = raids.filter(function (r) { return r.openFlags > 0; });
     if (!flagged.length || !G.shell.allowsTeam(gd.me && gd.me.can, 'attendance.review', teamId)) return '';
@@ -88,24 +159,31 @@
       '<h2 class="gs-h2 gs-h2-lg" id="raids-empty-h">No raids yet</h2>' + body + '</section>';
   }
 
-  // opts: { guildData, teamId, data (GET /raids?team=) , progress, alert, more (bool) }
+  // opts: { guildData, teamId, data (GET /raids?team=) , progress, alert, more (bool), tab ('upcoming' | 'past'; default: Upcoming when there is one) }
   function raidsHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
     const data = opts.data || { raids: [] };
     const raids = Array.isArray(data.raids) ? data.raids : [];
+    const upcoming = Array.isArray(data.upcoming) ? data.upcoming : [];
+    const tab = opts.tab === 'upcoming' || opts.tab === 'past' ? opts.tab : (upcoming.length ? 'upcoming' : 'past');
     const canEdit = G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', opts.teamId);
     const several = G.shell.activeTeams(gd.teams).length > 1;
     const team = A().teamOf(gd, opts.teamId);
-    const sub = (several && team ? esc(team.name) : esc(gd.guild.name)) + ' &middot; ' + esc(plural(raids.length, 'raid', 'raids')) + ', newest first';
+    const sub = (several && team ? esc(team.name) : esc(gd.guild.name)) + ' &middot; ' + (tab === 'upcoming'
+      ? esc(plural(upcoming.length, 'upcoming raid', 'upcoming raids')) + ', soonest first' : esc(plural(raids.length, 'raid', 'raids')) + ', newest first');
     const staleCount = raids.filter(function (r) { return r.stale; }).length;
     const actions = canEdit ? '<div class="gs-roster-actions"><a class="gs-btn" href="' + esc(G.router.format({ name: 'backfill', gid: gid })) + '">Backfill from Warcraft Logs</a>' +
       '<a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'raidnew', gid: gid })) + '">New raid</a></div>' : '';
     let body;
-    if (!raids.length) {
+    if (!raids.length && !upcoming.length) {
       body = emptyHtml(gd, canEdit);
+    } else if (tab === 'upcoming') {
+      body = tabsHtml(tab, upcoming.length, raids.length + (opts.more ? '+' : '')) + upcomingHtml(gd, upcoming, canEdit);
+    } else if (!raids.length) {
+      body = tabsHtml(tab, upcoming.length, '0') + '<p class="gs-empty">No past raids yet.</p>';
     } else {
-      body = '<div class="gs-table-wrap gs-raids-table"><table class="gs-table gs-table-raids" aria-label="Raids"><thead><tr><th scope="col">Date</th><th scope="col">Zone</th><th scope="col">Bosses</th><th scope="col">Sources</th>' +
+      body = tabsHtml(tab, upcoming.length, raids.length + (opts.more ? '+' : '')) + '<div class="gs-table-wrap gs-raids-table"><table class="gs-table gs-table-raids" aria-label="Raids"><thead><tr><th scope="col">Date</th><th scope="col">Zone</th><th scope="col">Bosses</th><th scope="col">Sources</th>' +
         '<th scope="col">Present / Bench / Missed</th><th scope="col">Status</th></tr></thead><tbody>' + raids.map(function (r) { return rowHtml(gid, r); }).join('') + '</tbody></table></div>' +
         '<ul class="gs-roster-cards gs-raids-cards" aria-label="Raids">' + raids.map(function (r) { return cardHtml(gid, r); }).join('') + '</ul>' +
         (opts.more ? '<div class="gs-actions"><button type="button" class="gs-btn" data-action="raids-older" data-key="raids-older">Show older raids</button></div>' : '');
@@ -118,8 +196,9 @@
     const gid = gd.guild.id;
     const teamId = G.app.teamFor(gd);
     if (!teamId) { a().raids = { gid: gid, teamId: null, data: null }; return null; }
+    const kept = a().raids && a().raids.gid === gid && a().raids.teamId === teamId ? a().raids.tab : null;
     return G.api.get(A().apiBase(gid) + '/raids?team=' + encodeURIComponent(teamId)).then(function (data) {
-      a().raids = { gid: gid, teamId: teamId, data: data, more: !!(data && data.hasMore) };
+      a().raids = { gid: gid, teamId: teamId, data: data, more: !!(data && data.hasMore), tab: kept || null };
       return null;
     });
   }
@@ -128,8 +207,56 @@
     const x = a().raids;
     if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
     if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
-    return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, progress: a().recalc, alert: st().pageAlert });
+    return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, tab: x.tab, progress: a().recalc, alert: st().pageAlert });
   }
+
+  G.handlers.click['raids-tab'] = function (el) {
+    const x = a().raids;
+    if (!x) return;
+    x.tab = el.getAttribute('data-tab') === 'past' ? 'past' : 'upcoming';
+    G.app.render();
+  };
+
+  // Refresh sign-ups: the event is imported again (PUT .../event with the raid's own event id), then the upcoming list is read again.
+  G.handlers.click['raids-refresh'] = function (el) {
+    const x = a().raids;
+    if (!x || !x.data) return;
+    const row = (x.data.upcoming || []).filter(function (r) { return r.id === el.getAttribute('data-rid'); })[0];
+    if (!row || !row.eventId) return;
+    el.disabled = true;
+    G.api.put(A().apiBase(x.gid) + '/raids/' + encodeURIComponent(row.id) + '/event', { source: row.eventId, acceptOtherServer: !!row.otherServer }).then(function (res) {
+      G.app.applyFlags(x.gid, res);
+      return G.api.get(A().apiBase(x.gid) + '/raids?team=' + encodeURIComponent(x.teamId));
+    }).then(function (res) {
+      x.data.upcoming = Array.isArray(res.upcoming) ? res.upcoming : [];
+      st().pageAlert = '';
+      G.app.render();
+    }, function (err) { el.disabled = false; G.app.handleError(err, { pageAlert: true }); });
+  };
+
+  // Plan in Planner: an event-sourced raid takes its sign-ups from Raid-Helper again first (the call Refresh sign-ups makes), then the
+  // Planner opens on the raid (#/planner?raid=<gid>.<rid>, which survives a reload). event: { id, otherServer } or null. A failed
+  // refresh keeps the officer on this page with the error.
+  function planInPlanner(gid, rid, event) {
+    const open = function () { window.location.hash = G.router.format({ name: 'planner', gid: gid, rid: rid }); };
+    if (!event || !event.id) { open(); return Promise.resolve(); }
+    return G.api.put(A().apiBase(gid) + '/raids/' + encodeURIComponent(rid) + '/event', { source: event.id, acceptOtherServer: !!event.otherServer }).then(function (res) {
+      G.app.applyFlags(gid, res);
+      open();
+    });
+  }
+
+  G.handlers.click['raids-plan'] = function (el) {
+    const x = a().raids;
+    if (!x || !x.data) return;
+    const row = (x.data.upcoming || []).filter(function (r) { return r.id === el.getAttribute('data-rid'); })[0];
+    if (!row) return;
+    el.disabled = true;
+    planInPlanner(x.gid, row.id, row.eventSourced && row.eventId ? { id: row.eventId, otherServer: !!row.otherServer } : null).then(null, function (err) {
+      el.disabled = false;
+      G.app.handleError(err, { pageAlert: true });
+    });
+  };
 
   G.handlers.click['raids-older'] = function (el) {
     const x = a().raids;
@@ -149,11 +276,34 @@
   function newState() { return a().nr || null; }
 
   function freshForm(gd) {
-    return { teamId: G.app.teamFor(gd) || '', event: '', reports: [''], plan: '', mode: 'log', date: '' };
+    return { teamId: G.app.teamFor(gd) || '', event: '', reports: [''], plan: '', mode: 'log', date: '', time: DEFAULT_START, zone: '', title: '' };
   }
 
   function editableTeams(gd) {
     return G.shell.activeTeams(gd.teams).filter(function (t) { return G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', t.id); });
+  }
+
+  // The guild's calendar date today (en-CA writes YYYY-MM-DD); '' when the time zone is unusable.
+  function guildTodayOf(gd) {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: gd && gd.guild && gd.guild.timeZone ? gd.guild.timeZone : undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    } catch (e) { return ''; }
+  }
+
+  // The raid names of the guild's game version (the planner's raid list, planning templates left out) for the Zone select.
+  function zonesOf(gd) {
+    const rules = typeof RulesData !== 'undefined' && RulesData && gd && gd.guild ? RulesData[gd.guild.gameVersion] : null;
+    const raids = rules && rules.raids ? rules.raids : {};
+    return Object.keys(raids).filter(function (k) { return raids[k].tier !== 'Planning templates'; }).map(function (k) { return raids[k].name; });
+  }
+
+  // What the New raid form shows for its date: a date from today on adds Start time, Zone and Title; a date after today is a raid
+  // that has not happened, so the attendance source and report rows go.
+  function whenFlags(f, today) {
+    const dated = !!f.date && !!today && f.date >= today;
+    const future = dated && f.date > today;
+    const manual = f.mode === 'manual' && !future;
+    return { dated: dated, future: future, manual: manual, showWhen: dated && !manual, showTime: dated && !manual && !String(f.event || '').trim() };
   }
 
   function loadNew(r, gd) {
@@ -205,7 +355,14 @@
     const f = nr.form;
     const teams = editableTeams(gd);
     const run = nr.run;
-    const manual = f.mode === 'manual';
+    const today = opts.today || guildTodayOf(gd);
+    const flags = whenFlags(f, today);
+    const manual = flags.manual;
+    const hideFuture = flags.future ? ' hidden' : '';
+    const zones = zonesOf(gd);
+    const whenFields = '<div class="gs-field" id="nr-time-field"' + (flags.showTime ? '' : ' hidden') + '><label class="gs-label" for="nr-time">Start time</label><input class="gs-input" type="time" id="nr-time" data-key="nr-time" value="' + esc(f.time == null ? DEFAULT_START : f.time) + '" aria-describedby="nr-time-help"><p class="gs-fine" id="nr-time-help">The guild\'s local time.</p></div>' +
+      '<div class="gs-field" id="nr-zone-field"' + (flags.showWhen ? '' : ' hidden') + '><label class="gs-label" for="nr-zone">Zone (optional)</label><select class="gs-input" id="nr-zone" data-key="nr-zone">' + G.ui.optionsHtml([{ value: '', label: 'No zone yet' }].concat(zones.map(function (z) { return { value: z, label: z }; })), f.zone || '') + '</select></div>' +
+      '<div class="gs-field" id="nr-title-field"' + (flags.showWhen ? '' : ' hidden') + '><label class="gs-label" for="nr-title">Title (optional)</label><input class="gs-input" type="text" id="nr-title" data-key="nr-title" maxlength="100" autocomplete="off" value="' + esc(f.title || '') + '"></div>';
     const teamField = teams.length > 1
       ? '<div class="gs-field"><label class="gs-label" for="nr-team">Team</label><select class="gs-input" id="nr-team" data-key="nr-team">' + G.ui.optionsHtml(teams.map(function (t) { return { value: t.id, label: t.name }; }), f.teamId) + '</select></div>' : '';
     const done = run && !run.running;
@@ -215,15 +372,15 @@
         (raidId ? '<div class="gs-actions"><a class="gs-btn gs-btn-molten" href="' + esc(raidHref(gid, raidId)) + '">Open raid</a>' + (done ? '<button type="button" class="gs-btn" data-action="nr-another" data-key="nr-another">Add another raid</button>' : '') + '</div>' : '') + '</div></section>'
       : '';
     const form = run ? '' : '<form class="gs-card-sec" data-submit="nr-create-form" novalidate><div class="gs-card-sec-body">' + teamField +
-      '<fieldset class="gs-fieldset"><legend class="gs-legend">Attendance source</legend><div class="gs-radios">' +
+      '<fieldset class="gs-fieldset" id="nr-source" data-future-hide' + hideFuture + '><legend class="gs-legend">Attendance source</legend><div class="gs-radios">' +
       '<div class="gs-check"><input type="radio" id="nr-mode-log" name="nr-mode" value="log"' + (manual ? '' : ' checked') + ' data-change="nr-mode"><label for="nr-mode-log">Warcraft Logs report</label></div>' +
       '<div class="gs-check"><input type="radio" id="nr-mode-manual" name="nr-mode" value="manual"' + (manual ? ' checked' : '') + ' data-change="nr-mode"><label for="nr-mode-manual">No log - enter attendance by hand</label></div></div></fieldset>' +
-      '<div class="gs-field"><label class="gs-label" for="nr-event">Raid-Helper event (optional)</label><input class="gs-input" type="text" id="nr-event" data-key="nr-event" placeholder="Event link or ID" autocomplete="off" value="' + esc(f.event) + '" aria-describedby="nr-event-help">' +
-      '<p class="gs-fine" id="nr-event-help">The sign-ups. The event\'s start time also sets the raid date.</p></div>' +
-      '<div class="gs-field"><label class="gs-label" for="nr-date">Raid date' + (f.event.trim() || (!manual && f.reports.some(function (v) { return v.trim(); })) ? ' (optional)' : '') + '</label><input class="gs-input" type="date" id="nr-date" data-key="nr-date" value="' + esc(f.date) + '" aria-describedby="nr-date-help">' +
-      '<p class="gs-fine" id="nr-date-help">Needed unless a Raid-Helper event or a Warcraft Logs report gives the date. The guild\'s calendar date.</p></div>' +
-      (manual ? '<p class="gs-fine">After the raid is created you tick who was present and give a reason.</p>'
-        : '<fieldset class="gs-fieldset" id="nr-reports"><legend class="gs-legend">Warcraft Logs reports (optional)</legend>' + f.reports.map(function (v, i) { return reportRowHtml(v, i, f.reports.length); }).join('') +
+      '<div class="gs-field"><label class="gs-label" for="nr-event">Raid-Helper event (optional)</label><input class="gs-input" type="text" id="nr-event" data-key="nr-event" data-input="nr-when" placeholder="Event link or ID" autocomplete="off" value="' + esc(f.event) + '" aria-describedby="nr-event-help">' +
+      '<p class="gs-fine" id="nr-event-help">The sign-ups. The event\'s start time also sets the raid date and time. A future event is fine.</p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="nr-date">Raid date' + (f.event.trim() || (!manual && f.reports.some(function (v) { return v.trim(); })) ? ' (optional)' : '') + '</label><input class="gs-input" type="date" id="nr-date" data-key="nr-date" data-input="nr-when" value="' + esc(f.date) + '" aria-describedby="nr-date-help">' +
+      '<p class="gs-fine" id="nr-date-help">Needed unless a Raid-Helper event or a Warcraft Logs report gives the date. The guild\'s calendar date. A date from today on can be a raid that has not happened yet.</p></div>' + whenFields +
+      (manual ? '<p class="gs-fine" data-future-hide' + hideFuture + '>After the raid is created you tick who was present and give a reason.</p>'
+        : '<fieldset class="gs-fieldset" id="nr-reports" data-future-hide' + hideFuture + '><legend class="gs-legend">Warcraft Logs reports (optional)</legend>' + f.reports.map(function (v, i) { return reportRowHtml(v, i, f.reports.length); }).join('') +
           '<div><button type="button" class="gs-btn gs-btn-sm" data-action="nr-add-report" data-key="nr-add-report">Add another report</button></div></fieldset>') +
       '<div class="gs-field"><label class="gs-label" for="nr-plan">Raidsmith plan (optional)</label><textarea class="gs-input gs-textarea" id="nr-plan" data-key="nr-plan" rows="2" placeholder="Plan link or share code" autocomplete="off">' + esc(f.plan) + '</textarea></div>' +
       '<p class="gs-alert" id="nr-error" role="alert"' + (nr.error ? '' : ' hidden') + '>' + esc(nr.error) + '</p>' +
@@ -237,6 +394,23 @@
     return raidNewHtml({ guildData: gd, state: nr });
   }
 
+  // The date and event inputs show or hide the when-fields in place (a re-render on blur could swallow the click on Create raid).
+  function applyWhen() {
+    if (typeof document === 'undefined') return;
+    syncForm();
+    const nr = newState();
+    const gd = currentGd();
+    if (!nr || !gd) return;
+    const flags = whenFlags(nr.form, guildTodayOf(gd));
+    const set = function (id, hide) { const el = document.getElementById(id); if (el) el.hidden = hide; };
+    set('nr-time-field', !flags.showTime);
+    set('nr-zone-field', !flags.showWhen);
+    set('nr-title-field', !flags.showWhen);
+    Array.prototype.forEach.call(document.querySelectorAll('[data-future-hide]'), function (el) { el.hidden = flags.future; });
+  }
+
+  G.handlers.input['nr-when'] = applyWhen;
+
   // Reads the form's fields into state (before a re-render drops them).
   function syncForm() {
     const nr = newState();
@@ -247,6 +421,9 @@
     if (val('nr-event') != null) f.event = val('nr-event');
     if (val('nr-date') != null) f.date = val('nr-date');
     if (val('nr-plan') != null) f.plan = val('nr-plan');
+    if (val('nr-time') != null) f.time = val('nr-time');
+    if (val('nr-zone') != null) f.zone = val('nr-zone');
+    if (val('nr-title') != null) f.title = val('nr-title');
     const reports = document.querySelectorAll('.nr-report');
     if (reports.length) f.reports = Array.prototype.map.call(reports, function (el) { return el.value; });
     const mode = document.querySelector('input[name="nr-mode"]:checked');
@@ -290,14 +467,14 @@
     line.openRaidId = '';
     let promise;
     if (line.id === 'raid') {
-      promise = G.api.post(base + '/raids', createBody(f, run.acceptOtherServer)).then(function (res) { run.raidId = res.raid.id; });
+      promise = G.api.post(base + '/raids', createBody(f, run.acceptOtherServer, run.today)).then(function (res) { run.raidId = res.raid.id; });
     } else if (!run.raidId) {
       line.status = 'skipped';
       return Promise.resolve();
     } else if (line.id === 'plan') {
       promise = G.planSource.read(f.plan, {}).then(function (read) {
         if (!read.ok) { const e = new Error(read.error); e.planError = true; throw e; }
-        return G.api.put(base + '/raids/' + encodeURIComponent(run.raidId) + '/plan', { label: read.label, players: read.players }).then(function () {
+        return G.api.put(base + '/raids/' + encodeURIComponent(run.raidId) + '/plan', { label: read.label, players: read.players, live: read.live }).then(function () {
           if (read.skippedText) line.message = read.skippedText;
         }, function (err) {
           const planText = G.planSource.describeError(err, read.players);
@@ -351,13 +528,19 @@
     return f.reports.map(function (v) { return v.trim(); }).filter(Boolean);
   }
 
-  // The body of the one POST /raids: the date comes from the event or the first pull when there is one.
-  function createBody(f, acceptOtherServer) {
+  // The body of the one POST /raids: the date comes from the event or the first pull when there is one. With today (the guild's
+  // calendar date), a date from today on also sends the start time (not with an event: it sets the time), zone and title.
+  function createBody(f, acceptOtherServer, today) {
     const body = { teamId: f.teamId };
     const reports = reportSourcesOf(f);
     if (f.date) body.raidOn = f.date;
     if (f.event.trim()) body.eventSource = f.event.trim();
     if (reports.length) body.reportSources = reports;
+    if (today && whenFlags(f, today).showWhen) {
+      if (f.time && !f.event.trim()) body.startTime = f.time;
+      if (f.zone) body.zone = f.zone;
+      if (String(f.title || '').trim()) body.title = String(f.title).trim();
+    }
     if (acceptOtherServer) body.acceptOtherServer = true;
     return body;
   }
@@ -377,12 +560,17 @@
     const gd = currentGd();
     if (!nr || !gd) return;
     const f = nr.form;
+    const today = guildTodayOf(gd);
+    const flags = whenFlags(f, today);
+    // A raid that has not happened yet has no log and no hand-entered attendance.
+    if (flags.future) { f.mode = 'log'; f.reports = ['']; }
     nr.error = '';
     if (!f.teamId) nr.error = 'Choose a team.';
     else if (f.date && !RAID_DATE.test(f.date)) nr.error = 'Enter the raid date as a calendar date.';
+    else if (flags.showTime && !RAID_TIME.test(f.time || '')) nr.error = 'Enter the start time of the raid.';
     else if (!f.event.trim() && !f.date && !reportSourcesOf(f).length) nr.error = 'Enter the raid date, a Raid-Helper event, or a Warcraft Logs report that gives it.';
-    if (nr.error) { G.app.render(); G.ui.focusByKey('nr-date'); return; }
-    nr.run = { gid: gd.guild.id, form: JSON.parse(JSON.stringify(f)), lines: buildLines(f), raidId: null, running: true, acceptOtherServer: false };
+    if (nr.error) { G.app.render(); G.ui.focusByKey(/start time/.test(nr.error) ? 'nr-time' : 'nr-date'); return; }
+    nr.run = { gid: gd.guild.id, form: JSON.parse(JSON.stringify(f)), lines: buildLines(f), raidId: null, running: true, acceptOtherServer: false, today: today };
     G.app.render();
     runPending(nr.run);
   };
@@ -399,6 +587,9 @@
     runPending(nr.run);
   };
 
-  G.pages.raids = { raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, load: loadList, main: mainList };
+  G.pages.raids = {
+    raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, signupsText: signupsText, planPillHtml: planPillHtml,
+    planInPlanner: planInPlanner, load: loadList, main: mainList,
+  };
   G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

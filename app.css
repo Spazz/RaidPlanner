@@ -260,6 +260,11 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .sync-banner strong { color: var(--accent-gold-bright); }
 .sync-banner-actions { display: flex; align-items: center; gap: var(--sp-4); }
 .sync-banner-actions .btn { padding: 5px 12px; font-size: 11px; }
+/* The raid the plan was opened from (guild tracker): its name, then the outcome of the last Save to raid. */
+.raid-context-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.raid-context-status { color: var(--text-secondary); }
+.raid-context-status:empty { display: none; }
+.raid-context-status.error { color: var(--danger); }
 
 /* Sections */
 .landing-section { display: flex; flex-direction: column; gap: 16px; }

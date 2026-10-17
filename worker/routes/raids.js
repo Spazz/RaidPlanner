@@ -2,17 +2,20 @@
 // plan, or officer-entered attendance). Every write recomputes the date's attendance through attendance-store.js.
 import { HttpError, cleanText, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
-import { localDate } from '../attendance-calendar.js';
+import { localDate, localTimeToMs } from '../attendance-calendar.js';
 import {
   bumpDayStatement, loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid,
 } from '../attendance-store.js';
 import { loadRaidDetail, raidState, isStale } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
+import { zonesFor } from '../raid-zones.js';
 import {
   WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, WCL_RAID_LIMIT, WCL_RAID_WINDOW_MS, enforceRateLimit,
 } from '../ratelimit.js';
-import { cleanCharacterName, cleanNickname, isRealDate, nameKey, realmKey, SINGLE_LINE_STRIP } from '../roster-data.js';
+import {
+  RAID_HELPER_CLASS, RAID_HELPER_SPEC, cleanCharacterName, cleanNickname, isRealDate, nameKey, ownValue, realmKey, SINGLE_LINE_STRIP,
+} from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
 import {
   fetchRaidHelperEvent, fetchWclPulls, parseRaidHelperSource, parseWclSource, requireWclConfigured,
@@ -27,6 +30,10 @@ const PAGE_SIZE = 50;
 const WCL_GLOBAL_WINDOW_MS = 10 * 60 * 1000;
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const EARLIEST_RAID_DATE = '2004-11-23'; // World of Warcraft's release: nothing was raided before it
+const START_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const MAX_TITLE = 100;
+const SIGNUP_KINDS = ['signed', 'late', 'bench', 'tentative', 'absence'];
+const LIVE_ID = /^[0-9A-Za-z]{7}$/; // the id of a live share link (js/livesync.js LiveLinks.ID)
 
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
 const notFound = () => new HttpError(404, 'not_found', 'That raid does not exist.');
@@ -204,13 +211,6 @@ async function fetchReport(ctx, flavour, code) {
   return report;
 }
 
-// A Raid-Helper event that has not started has nothing to take attendance from yet.
-function requireEventStarted(ctx, event, field) {
-  if (event.startTime && event.startTime > ctx.now()) {
-    throw new HttpError(400, 'raid_in_future', 'That event has not started yet. Add it once the raid has happened.', { field });
-  }
-}
-
 const noonUtc = (date) => Date.parse(`${date}T12:00:00Z`);
 
 // ---------------------------------------------------------------------------
@@ -225,36 +225,61 @@ export async function listRaids(ctx) {
   const before = params.get('before');
   if (before !== null && !isRealDate(before)) throw bad('before needs a date.', 'before');
   const guild = guildContext.guild;
-  const [teamResult, raidResult, policyResult] = await ctx.db.batch([
+  const now = ctx.now();
+  const [teamResult, raidResult, policyResult, upcomingResult] = await ctx.db.batch([
     ctx.db.prepare('SELECT id, name, archived FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
     ctx.db.prepare(
-      `SELECT r.id, r.raid_on, r.zone, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
+      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
               (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id) AS pulls,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id AND p.kill = 1) AS kills,
               (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = r.id AND a.outcome IN ('present', 'late', 'left_early', 'late_left', 'fill_in')) AS present,
               (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = r.id AND a.outcome = 'bench') AS bench,
               (SELECT COUNT(*) FROM attendance a WHERE a.raid_id = r.id AND a.outcome IN ('missed', 'missed_notice')) AS missed
-         FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND (? IS NULL OR r.raid_on < ?)
+         FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND (? IS NULL OR r.raid_on < ?) AND r.starts_at <= ?
         ORDER BY r.raid_on DESC LIMIT ?`,
-    ).bind(guild.id, teamId, before, before, PAGE_SIZE + 1),
+    ).bind(guild.id, teamId, before, before, now, PAGE_SIZE + 1),
     policyRowsStatement(ctx.db, guild.id),
+    // Raids that have not started: all of them, soonest first, outside the paging of the past ones.
+    ctx.db.prepare(
+      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live,
+${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND s.source = 'raid_helper' AND s.kind = '${kind}') AS n_${kind}`).join(',\n')}
+         FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND r.starts_at > ?
+        ORDER BY r.starts_at, r.id`,
+    ).bind(guild.id, teamId, now),
   ]);
   const team = teamResult.results[0];
   if (!team) throw bad('That team does not exist in this guild.', 'team');
   const resolver = makePolicyResolver(guild, policyResult.results);
   const seeCounts = allows(guildContext.can, 'attendance.view', team.id);
+  const canEdit = allows(guildContext.can, 'raids.edit', team.id);
   const page = raidResult.results.slice(0, PAGE_SIZE);
   return jsonResponse({
     team: { id: team.id, name: team.name, archived: team.archived === 1 },
-    today: guildToday(guild, ctx.now()),
-    can: { edit: allows(guildContext.can, 'raids.edit', team.id) },
+    today: guildToday(guild, now),
+    can: { edit: canEdit },
     hasMore: raidResult.results.length > PAGE_SIZE,
+    upcoming: upcomingResult.results.map((row) => ({
+      id: row.id,
+      raidOn: row.raid_on,
+      startsAt: row.starts_at,
+      upcoming: true,
+      zone: row.zone,
+      title: row.title || row.event_title || null,
+      eventSourced: row.event_id !== null,
+      eventId: row.event_id,
+      otherServer: row.event_server !== null && row.event_server !== guild.discord_server_id,
+      signups: seeCounts ? Object.fromEntries(SIGNUP_KINDS.map((kind) => [kind, row[`n_${kind}`]])) : null,
+      planned: row.plan_synced !== null,
+      planLive: canEdit ? row.plan_live : null, // the id is an edit link to the plan: only for those who may edit
+    })),
     raids: page.map((row) => {
       const state = raidState(row, row.reports, resolver);
       return {
         id: row.id,
         raidOn: row.raid_on,
+        startsAt: row.starts_at,
+        upcoming: false,
         zone: row.zone,
         bosses: { kills: row.kills, pulls: row.pulls },
         sources: { event: row.event_synced !== null, reports: row.reports, plan: row.plan_synced !== null },
@@ -284,6 +309,25 @@ function readOptionalDate(value) {
 }
 
 const present = (value) => value !== undefined && value !== null && value !== '';
+
+// A hand-made raid's optional start time ('HH:MM', guild-local), title and zone (one of the version's raid names).
+function readStartTime(value) {
+  if (!present(value)) return null;
+  if (typeof value !== 'string' || !START_TIME.test(value)) throw bad('startTime needs a time like 20:00.', 'startTime');
+  return value;
+}
+
+function readTitle(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') throw bad('title must be text.', 'title');
+  return trimText(value, MAX_TITLE) || null;
+}
+
+function readZone(value, guild) {
+  if (!present(value)) return null;
+  if (typeof value !== 'string' || !zonesFor(guild.game_version).includes(value)) throw bad('Pick a zone from the list.', 'zone');
+  return value;
+}
 const MAX_CREATE_REPORTS = 10;
 
 // The report sources of a create: reportSource (one) and/or reportSources (a list), parsed and de-duplicated by code.
@@ -318,13 +362,15 @@ export async function createRaid(ctx) {
   if (!isId('t', body.teamId)) throw bad('Pick a team.', 'teamId');
   const eventId = present(body.eventSource) ? parseRaidHelperSource(body.eventSource) : null;
   const raidOnInput = readOptionalDate(body.raidOn);
+  const startTimeInput = readStartTime(body.startTime);
+  const titleInput = readTitle(body.title);
   if (body.acceptOtherServer !== undefined && typeof body.acceptOtherServer !== 'boolean') throw bad('acceptOtherServer must be true or false.', 'acceptOtherServer');
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
   const guild = guildContext.guild;
   const teamId = body.teamId;
   if (!allows(guildContext.can, 'raids.edit', teamId)) throw forbidden();
   const parsedReports = readReportSources(ctx, guild, body);
-  if (raidOnInput !== null && raidOnInput > guildToday(guild, ctx.now())) throw bad('A raid date cannot be in the future.', 'raidOn');
+  const zoneInput = readZone(body.zone, guild);
 
   let event = null;
   if (eventId) {
@@ -333,7 +379,6 @@ export async function createRaid(ctx) {
     if (event.serverId !== guild.discord_server_id && body.acceptOtherServer !== true) {
       throw new HttpError(409, 'other_server', 'That event was posted in a different Discord server.');
     }
-    requireEventStarted(ctx, event, 'eventSource');
   }
   // Everything is fetched and parsed before the first write: a failed source leaves nothing behind.
   const fetched = [];
@@ -345,17 +390,23 @@ export async function createRaid(ctx) {
   const raidOn = anchorMs !== null ? localDate(anchorMs, guild.time_zone) : raidOnInput;
   if (!raidOn) throw bad('Say which date this raid was on.', 'raidOn');
   if (raidOn < EARLIEST_RAID_DATE) throw bad('That date is before World of Warcraft existed.', 'raidOn');
-  const startsAt = anchorMs !== null ? anchorMs : noonUtc(raidOn);
+  let startsAt = anchorMs !== null ? anchorMs : noonUtc(raidOn);
+  // No event or report to say when: the typed start time (guild-local) on the raid's date.
+  if (anchorMs === null && startTimeInput !== null) {
+    const typed = localTimeToMs(raidOn, startTimeInput, guild.time_zone);
+    if (typed === null) throw bad('That time does not exist on that date (the clocks change).', 'startTime');
+    startsAt = typed;
+  }
   const raidId = newId('r', ctx.randomBytes);
   const now = ctx.now();
   const guard = raidExists(raidId);
   const statements = [
     db.prepare(
-      `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, event_id, event_title, event_server, event_synced,
+      `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, event_id, event_title, title, event_server, event_synced,
                           log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'log', 0, '', 1, ?, ?, ?
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'log', 0, '', 1, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)`,
-    ).bind(raidId, guild.id, teamId, raidOn, startsAt, firstReport ? firstReport.zone : null, event ? eventId : null, event ? event.title : null,
+    ).bind(raidId, guild.id, teamId, raidOn, startsAt, zoneInput || (firstReport ? firstReport.zone : null), event ? eventId : null, event ? event.title : null, titleInput,
       event ? event.serverId : null, event ? now : null, ctx.session.user.id, now, now, teamId, guild.id),
   ];
   let eventCount = 0;
@@ -410,9 +461,10 @@ export async function putEvent(ctx) {
   if (event.serverId !== guild.discord_server_id && body.acceptOtherServer !== true) {
     throw new HttpError(409, 'other_server', 'That event was posted in a different Discord server.');
   }
-  requireEventStarted(ctx, event, 'source');
   const now = ctx.now();
   const anchorless = raid.event_synced === null && raid.reports === 0;
+  // An upcoming raid follows its event's start time while the event stays on the raid's date (a re-import after a reschedule).
+  const retime = anchorless || (raid.starts_at > now && event.startTime && localDate(event.startTime, guild.time_zone) === raid.raid_on);
   const guard = raidExists(raid.id);
   const built = eventSignupStatements(db, guild, raid.id, event, guard);
   try {
@@ -421,7 +473,7 @@ export async function putEvent(ctx) {
         `UPDATE raids SET event_id = ?, event_title = ?, event_server = ?, event_synced = ?,
                 starts_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE starts_at END, updated_at = ?, version = version + 1, policy_fp = ''
           WHERE id = ? AND guild_id = ?`,
-      ).bind(eventId, event.title, event.serverId, now, anchorless ? 1 : 0, event.startTime, event.startTime, now, raid.id, guild.id),
+      ).bind(eventId, event.title, event.serverId, now, retime ? 1 : 0, event.startTime, event.startTime, now, raid.id, guild.id),
       ...built.statements,
       raidAudit(ctx, guildContext, 'raid.event', raid.id, { event: raid.event_id !== null }, { eventId, signups: built.count }, guard),
     ]);
@@ -540,12 +592,15 @@ function readPlan(body) {
     seen.add(nameKey(name));
     return { name, nameKey: nameKey(name), group: entry.group };
   });
-  return { label, rows };
+  // The live share link the plan came from. Left out, the raid keeps no live link (a pasted long link or code has none).
+  const live = body.live === undefined || body.live === null ? null : body.live;
+  if (live !== null && (typeof live !== 'string' || !LIVE_ID.test(live))) throw bad('live must be a live link id.', 'live');
+  return { label, rows, live };
 }
 
 export async function putPlan(ctx) {
   const { db } = ctx;
-  const { label, rows } = readPlan(ctx.body);
+  const { label, rows, live } = readPlan(ctx.body);
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const now = ctx.now();
@@ -556,9 +611,9 @@ export async function putPlan(ctx) {
       `INSERT INTO raid_plan (raid_id, name, name_key, group_number)
        SELECT ?, json_extract(value, '$.name'), json_extract(value, '$.nameKey'), json_extract(value, '$.group') FROM json_each(?) WHERE ${guard.sql}`,
     ).bind(raid.id, JSON.stringify(rows), ...guard.params),
-    db.prepare('UPDATE raids SET plan_label = ?, plan_synced = ?, updated_at = ?, version = version + 1, policy_fp = \'\' WHERE id = ? AND guild_id = ?')
-      .bind(label, now, now, raid.id, guildContext.guild.id),
-    raidAudit(ctx, guildContext, 'raid.plan', raid.id, { plan: raid.plan_synced !== null }, { players: rows.length }),
+    db.prepare('UPDATE raids SET plan_label = ?, plan_live = ?, plan_synced = ?, updated_at = ?, version = version + 1, policy_fp = \'\' WHERE id = ? AND guild_id = ?')
+      .bind(label, live, now, now, raid.id, guildContext.guild.id),
+    raidAudit(ctx, guildContext, 'raid.plan', raid.id, { plan: raid.plan_synced !== null }, { players: rows.length, live: live !== null }),
   ]);
   return recomputeAndReply(ctx, guildContext, raid.id);
 }
@@ -571,12 +626,84 @@ export async function deletePlan(ctx) {
     const now = ctx.now();
     await db.batch([
       db.prepare('DELETE FROM raid_plan WHERE raid_id = ?').bind(raid.id),
-      db.prepare('UPDATE raids SET plan_label = NULL, plan_synced = NULL, updated_at = ?, version = version + 1, policy_fp = \'\' WHERE id = ? AND guild_id = ?')
+      db.prepare('UPDATE raids SET plan_label = NULL, plan_live = NULL, plan_synced = NULL, updated_at = ?, version = version + 1, policy_fp = \'\' WHERE id = ? AND guild_id = ?')
         .bind(now, raid.id, guildContext.guild.id),
       raidAudit(ctx, guildContext, 'raid.plan', raid.id, { plan: true }, { plan: false }),
     ]);
   }
   return recomputeAndReply(ctx, guildContext, raid.id);
+}
+
+// ---------------------------------------------------------------------------
+// Planner seed
+
+// The class a Raid-Helper sign-up stands for (its spec decides first, as in the Planner's import), or null for Absence/Bench/no class.
+function signUpClassId(row) {
+  const spec = ownValue(RAID_HELPER_SPEC, row.spec_name);
+  return spec ? spec.class : (ownValue(RAID_HELPER_CLASS, row.class_name) || null);
+}
+
+// The name the Planner shows for a sign-up. characters: the person's characters ({ name, class, is_main }), [] when the
+// sign-up is not on the roster. Their Main when it is of the signed-up class; else their Alt of that class (several: the one
+// named like the Discord nickname, else the first by name); otherwise their Main; not on the roster (or no Main): the Discord nickname.
+export function plannerName(row, characters) {
+  const list = Array.isArray(characters) ? characters : [];
+  const main = list.find((character) => character.is_main === 1);
+  if (!main) return row.nickname;
+  const classId = signUpClassId(row);
+  if (!classId || main.class === classId) return main.name;
+  const alts = classId ? list.filter((character) => character.is_main !== 1 && character.class === classId) : [];
+  if (!alts.length) return main.name;
+  const nick = nameKey(row.nickname || '');
+  const sorted = [...alts].sort((a, b) => (nameKey(a.name) < nameKey(b.name) ? -1 : nameKey(a.name) > nameKey(b.name) ? 1 : 0));
+  return (sorted.find((character) => nameKey(character.name) === nick) || sorted[0]).name;
+}
+
+// GET /raids/:rid/planner: what the Planner needs to plan this raid - the raid, its live plan link and the Raid-Helper
+// sign-ups with the name each one gets in the Planner. For those who may edit the raid.
+export async function getPlanner(ctx) {
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const raid = await loadRaid(ctx, guildContext, { edit: true });
+  const guild = guildContext.guild;
+  const [signupResult, characterResult] = await ctx.db.batch([
+    ctx.db.prepare(
+      `SELECT signup_id, nickname, kind, class_name, spec_name, position, player_id FROM raid_signups
+        WHERE raid_id = ? AND source = 'raid_helper' ORDER BY position, signup_id`,
+    ).bind(raid.id),
+    ctx.db.prepare(
+      `SELECT player_id, name, class, is_main FROM characters
+        WHERE guild_id = ? AND player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper' AND player_id IS NOT NULL)`,
+    ).bind(guild.id, raid.id),
+  ]);
+  const charactersByPlayer = new Map();
+  for (const row of characterResult.results) {
+    if (!charactersByPlayer.has(row.player_id)) charactersByPlayer.set(row.player_id, []);
+    charactersByPlayer.get(row.player_id).push(row);
+  }
+  return jsonResponse({
+    raid: {
+      id: raid.id,
+      raidOn: raid.raid_on,
+      startsAt: raid.starts_at,
+      title: raid.title || raid.event_title || null,
+      zone: raid.zone,
+      eventId: raid.event_id,
+      teamId: raid.team_id,
+      gameVersion: guild.game_version,
+      timeZone: guild.time_zone,
+    },
+    livePlan: raid.plan_live,
+    signups: signupResult.results.map((row) => ({
+      key: row.signup_id,
+      name: plannerName(row, row.player_id ? charactersByPlayer.get(row.player_id) : null),
+      discordName: row.nickname,
+      personId: row.player_id,
+      className: row.class_name,
+      specName: row.spec_name,
+      kind: row.kind,
+      position: row.position,
+    })),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -592,6 +719,7 @@ export async function putManual(ctx) {
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext, { edit: true });
+  if (raid.starts_at > ctx.now()) throw new HttpError(409, 'raid_not_started', 'Enter attendance by hand once the raid has happened.');
   if (raid.reports > 0) throw new HttpError(409, 'raid_has_log', 'This raid has a report. Remove it before entering attendance by hand.');
   if (ids.length) {
     const found = await db.prepare('SELECT COUNT(*) AS n FROM players WHERE guild_id = ? AND id IN (SELECT value FROM json_each(?))').bind(guild.id, JSON.stringify(ids)).first('n');

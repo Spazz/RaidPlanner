@@ -3,6 +3,8 @@
 // table with sign-up / plan / log / outcome side by side, the unmatched characters, and the dialogs that change
 // the raid (event, report, plan, manual attendance, delete). GET /raids/:rid; every write answers with the detail.
 // The Decide and Unmatched dialogs live in pages-review.js and work here too (where = 'raid').
+// A raid that has not started (raid.upcoming) shows its start time, sign-ups, event and plan instead, with a note that attendance
+// starts after the raid.
 (function (G) {
   'use strict';
 
@@ -34,7 +36,31 @@
   function statePill(data) {
     const r = data.raid || {};
     const flags = r.openFlags > 0 ? r.openFlags : 0;
-    return G.pages.raids.statePillsHtml({ state: r.state, openFlags: flags, stale: !!r.stale });
+    return G.pages.raids.statePillsHtml({ state: r.upcoming ? 'upcoming' : r.state, openFlags: flags, stale: !!r.stale });
+  }
+
+  function isUpcoming(data) { return !!(data.raid && data.raid.upcoming); }
+
+  // The Raid-Helper sign-ups of an upcoming raid: counts, then one row each (the nickname only for those who may see it).
+  function signupsSectionHtml(data) {
+    const see = !!(data.can && data.can.seeAttendance);
+    let body;
+    if (!see) {
+      body = '<p class="gs-empty">Sign-ups are visible to the team\'s members.</p>';
+    } else {
+      const list = (Array.isArray(data.signups) ? data.signups : []).filter(function (s) { return s.source === 'raid_helper'; });
+      const count = function (kinds) { return list.filter(function (s) { return kinds.indexOf(s.kind) >= 0; }).length; };
+      const items = [['Signed', count(['signed', 'late'])], ['Bench', count(['bench'])], ['Tentative', count(['tentative'])], ['Absent', count(['absence'])]];
+      body = !list.length ? '<p class="gs-empty">No sign-ups yet.</p>'
+        : '<dl class="gs-summary">' + items.map(function (i) { return '<div class="gs-summary-item"><dt>' + esc(i[0]) + '</dt><dd>' + esc(i[1]) + '</dd></div>'; }).join('') + '</dl>' +
+          '<div class="gs-table-wrap"><table class="gs-table" aria-label="Sign-ups"><thead><tr><th scope="col">Sign-up</th><th scope="col">Class</th><th scope="col">Status</th><th scope="col">On the roster</th></tr></thead><tbody>' +
+          list.map(function (s) {
+            return '<tr><th scope="row" class="gs-cell-strong">' + (s.nickname ? esc(s.nickname) : '<span class="gs-muted">Hidden</span>') + '</th><td>' +
+              (s.className ? esc(s.className) + (s.specName ? ' <span class="gs-fine">' + esc(s.specName) + '</span>' : '') : '<span class="gs-muted">-</span>') + '</td><td><span class="gs-chip gs-chip-signup">' +
+              esc(A().KIND_LABELS[s.kind] || s.kind) + '</span></td><td>' + (s.matched ? 'Yes' : '<span class="gs-muted">No</span>') + '</td></tr>';
+          }).join('') + '</tbody></table></div>';
+    }
+    return '<section class="gs-card-sec" aria-labelledby="sgn-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="sgn-h">Sign-ups</h2></div><div class="gs-card-sec-body">' + body + '</div></section>';
   }
 
   function isManual(data) { return !!(data.raid && data.raid.state === 'manual') || !!(data.raid && data.raid.manual); }
@@ -182,11 +208,18 @@
     const several = G.shell.activeTeams(gd.teams).length > 1;
     const b = bossCounts(data);
     const bosses = G.pages.raids.bossesText(b);
-    const tools = edit
+    const upcoming = isUpcoming(data);
+    const ev = data.sources && data.sources.event;
+    const tools = edit && upcoming
+      ? '<div class="gs-roster-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="raid-op" data-op="plan-in-planner" data-key="plan-in-planner">Plan in Planner</button>' +
+        (ev ? btn('event-refresh', 'Refresh sign-ups', '', 'event-refresh-top') : '') +
+        '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="raid-op" data-op="raid-delete" data-key="raid-delete">Delete raid</button></div>'
+      : edit
       ? '<div class="gs-roster-actions">' + (!isManual(data) && !hasReports(data) ? btn('manual-open', 'Mark as No log') : '') + btn('recompute', 'Recalculate') +
         '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="raid-op" data-op="raid-delete" data-key="raid-delete">Delete raid</button></div>' : '';
     return '<div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + (r.zone ? ' - ' + esc(r.zone) : '') + '</h1>' +
-      '<p class="gs-sub">' + (several && team ? esc(team.name) + ' &middot; ' : '') + esc(bosses) + '</p><div class="gs-chips">' + statePill(data) + '</div></div>' + tools + '</div>';
+      '<p class="gs-sub">' + (several && team ? esc(team.name) + ' &middot; ' : '') + (upcoming ? (r.title ? esc(r.title) + ' &middot; ' : '') + 'Starts ' + esc(G.pages.raids.whenText(r, gd)) : esc(bosses)) + '</p><div class="gs-chips">' + statePill(data) +
+      (upcoming ? G.pages.raids.planPillHtml({ planned: !!(data.sources && data.sources.plan) }) : '') + '</div></div>' + tools + '</div>';
   }
 
   // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress }
@@ -196,6 +229,11 @@
     const data = opts.data;
     const edit = !!(data.can && data.can.edit);
     const people = Array.isArray(data.people) ? data.people : null;
+    if (isUpcoming(data)) {
+      return '<div class="gs-page gs-raid-page">' + headHtml(gd, data) + G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
+        '<div class="gs-notice" role="status"><span>Attendance starts after the raid.</span></div>' +
+        '<div class="gs-sources">' + eventCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' + signupsSectionHtml(data) + '</div>';
+    }
     let people_html;
     if (people === null) {
       people_html = '<p class="gs-empty">Attendance for this raid is visible to the team\'s members.</p>';
@@ -386,6 +424,10 @@
     switch (op) {
       case 'recompute': runDirect(el, G.api.post(base + '/recompute', {}), c); break;
       case 'event-refresh': if (ev) runDirect(el, G.api.put(base + '/event', { source: ev.id, acceptOtherServer: !!ev.otherServer }), c); break;
+      case 'plan-in-planner':
+        el.disabled = true;
+        G.pages.raids.planInPlanner(c.gid, c.rid, ev).then(null, function (err) { el.disabled = false; pageError(err); });
+        break;
       case 'report-refresh': runDirect(el, G.api.put(base + '/reports', { source: code }), c); break;
       case 'event-replace':
         G.ui.openDialog(sourceDialogHtml({ submit: 'event-form', title: ev ? 'Replace the Raid-Helper event' : 'Link a Raid-Helper event', label: 'Event link or ID', button: ev ? 'Replace event' : 'Link event', help: 'The sign-ups are read from the event. Decisions already made are kept.' }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
@@ -497,7 +539,7 @@
     G.ui.setBusy(form, true);
     G.planSource.read(text, {}).then(function (read) {
       if (!read.ok) { G.ui.setBusy(form, false); G.ui.setText('dlg-err-source', read.error); form.elements.source.focus(); return null; }
-      return G.api.put(raidBase(c.gid, c.rid) + '/plan', { label: read.label, players: read.players }).then(function (res) {
+      return G.api.put(raidBase(c.gid, c.rid) + '/plan', { label: read.label, players: read.players, live: read.live }).then(function (res) {
         G.ui.closeDialogOf(form);
         setDetail(c, res, read.skippedText);
       }, function (err) {

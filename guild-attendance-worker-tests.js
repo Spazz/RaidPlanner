@@ -438,12 +438,13 @@ check('create: from an event (date, sign-ups linked by Discord ID, kinds), 201 d
   assert.equal(await s.w.count('audit_log', "action = 'raid.create'"), 1);
 });
 
-check('create: the date comes from the event, else the first pull, else raidOn (a real date, not in the future)', async () => {
+check('create: the date comes from the event, else the first pull, else raidOn (a real date; a future one is an upcoming raid)', async () => {
   const s = await raidWorld();
   const noDate = await s.call('bob', 'POST', '/raids', { teamId: s.A });
   assert.deepEqual([noDate.status, noDate.json.field], [400, 'raidOn']);
   assert.equal((await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-02-30' })).status, 400);
-  assert.equal((await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2099-01-01' })).json.field, 'raidOn');
+  const farFuture = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2099-01-01' });
+  assert.deepEqual([farFuture.status, farFuture.json.raid.upcoming], [201, true]);
   const manualDate = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-05' });
   assert.deepEqual([manualDate.status, manualDate.json.raid.raidOn], [201, '2027-01-05']);
   // A report alone: the first pull decides.
@@ -1396,17 +1397,16 @@ check('E: recompute links sign-ups whose Discord ID had no person at ingest; per
   void bPerson;
 });
 
-check('F: a Raid-Helper event that has not started is refused (raid_in_future), and a raid date cannot precede World of Warcraft', async () => {
+check('F: a Raid-Helper event that has not started imports as an upcoming raid, and a raid date cannot precede World of Warcraft', async () => {
   const s = await raidWorld();
   const future = '444444444444444444';
   s.w.sources.events.set(future, rhEvent(future, SERVER_A, eventSignUps(), { startTime: Math.floor(s.w.clock.now / 1000) + 3600 }));
-  const refused = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: future });
-  assert.deepEqual([refused.status, refused.json.error], [400, 'raid_in_future']);
-  assert.equal(await s.w.count('raids'), 0);
-  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-10' });
-  const onRaid = await s.call('bob', 'PUT', s.raid(made.json.raid.id, '/event'), { source: future });
-  assert.deepEqual([onRaid.status, onRaid.json.error], [400, 'raid_in_future']);
-  assert.equal(await s.w.count('raid_signups'), 0);
+  const imported = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: future });
+  assert.deepEqual([imported.status, imported.json.raid.upcoming, imported.json.raid.state], [201, true, 'awaiting_log']);
+  assert.equal(imported.json.raid.startsAt, (Math.floor(s.w.clock.now / 1000) + 3600) * 1000);
+  assert.equal(await s.w.count('raids'), 1);
+  assert.equal(await s.w.count('raid_signups'), 6);
+  assert.equal(await s.w.count('attendance'), 0, 'a raid that has not started has no attendance rows');
   for (const bad of ['2004-11-22', '1999-01-01', '0001-01-01']) {
     const r = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: bad });
     assert.deepEqual([r.status, r.json.field], [400, 'raidOn'], bad);
@@ -1896,6 +1896,243 @@ check('R3-5: the fake sources have a character present from the first pull who m
   } finally {
     await new Promise((resolve) => fake.server.close(resolve));
   }
+});
+
+// ---------------------------------------------------------------------------
+// Future raids
+
+const futureEvent = (s, id, offsetSeconds, signUps = eventSignUps(), extra = {}) => {
+  const startTime = Math.floor(s.w.clock.now / 1000) + offsetSeconds;
+  s.w.sources.events.set(id, rhEvent(id, SERVER_A, signUps, { startTime, ...extra }));
+  return startTime;
+};
+
+check('future: a raid made by hand takes a guild-local start time, a zone from the version\'s list and a title, and is upcoming until it starts', async () => {
+  const s = await raidWorld();
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-02-10', startTime: '20:00', zone: 'Karazhan', title: '  Prog night  ' });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const raid = made.json.raid;
+  assert.deepEqual(
+    [raid.raidOn, raid.startsAt, raid.upcoming, raid.zone, raid.title, raid.state],
+    ['2027-02-10', Date.parse('2027-02-11T01:00:00Z'), true, 'Karazhan', 'Prog night', 'awaiting_log'],
+  );
+  assert.equal((await s.call('bob', 'GET', s.raid(raid.id))).json.raid.upcoming, true);
+  assert.equal(await s.w.count('attendance'), 0);
+  const bad = [[{ startTime: '25:00' }, 'startTime'], [{ startTime: '8pm' }, 'startTime'], [{ zone: 'Nowhere' }, 'zone'], [{ title: 5 }, 'title'],
+    [{ raidOn: '2027-03-14', startTime: '02:30' }, 'startTime']];
+  for (const [extra, field] of bad) {
+    const r = await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-02-11', ...extra });
+    assert.deepEqual([r.status, r.json.field], [400, field], JSON.stringify(extra));
+  }
+  assert.equal(await s.w.count('raids'), 1, 'a refused create writes nothing');
+  // A past date with a time is not upcoming; without a time the raid sits at noon UTC; a blank title is no title.
+  const past = await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-05', startTime: '20:00', zone: 'Gruul\'s Lair', title: '   ' });
+  assert.deepEqual([past.status, past.json.raid.upcoming, past.json.raid.title, past.json.raid.startsAt], [201, false, null, Date.parse('2027-01-06T01:00:00Z')]);
+  const noTime = await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-02-12' });
+  assert.deepEqual([noTime.json.raid.startsAt, noTime.json.raid.zone], [Date.parse('2027-02-12T12:00:00Z'), null]);
+  // The zone list follows the guild's game version.
+  const classic = await scenario({ guildBody: { gameVersion: 'classic', realm: 'Mankrik' } });
+  const wrongZone = await classic.call('alice', 'POST', '/raids', { teamId: classic.teamId, raidOn: '2027-02-10', zone: 'Karazhan' });
+  assert.deepEqual([wrongZone.status, wrongZone.json.field], [400, 'zone']);
+  const rightZone = await classic.call('alice', 'POST', '/raids', { teamId: classic.teamId, raidOn: '2027-02-10', zone: 'Molten Core' });
+  assert.deepEqual([rightZone.status, rightZone.json.raid.zone], [201, 'Molten Core']);
+});
+
+check('future: the Worker\'s zone lists match the raid names of the three rules files', async () => {
+  const fs = require('node:fs');
+  const vm = require('node:vm');
+  const sandbox = {};
+  vm.createContext(sandbox);
+  for (const file of ['catalog', 'tbc', 'classic', 'forever']) vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'rules', `${file}.js`), 'utf8'), sandbox);
+  const { RAID_ZONES } = await load('worker/raid-zones.js');
+  for (const version of ['tbc', 'classic', 'forever']) {
+    const names = Object.values(sandbox.RulesData[version].raids).filter((raid) => raid.tier !== 'Planning templates').map((raid) => raid.name);
+    assert.deepEqual(RAID_ZONES[version], names, version);
+  }
+});
+
+check('future: the raid list answers upcoming raids (all of them, soonest first) apart from the paged past ones, with sign-up counts and plan status', async () => {
+  const s = await raidWorld();
+  const eventId = '555555555555555555';
+  futureEvent(s, eventId, 2 * 86400);
+  const later = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-03-01', startTime: '19:30', zone: 'Gruul\'s Lair' });
+  const soon = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: eventId });
+  assert.equal(soon.status, 201, JSON.stringify(soon.json));
+  const otherTeam = await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-02-20', startTime: '20:00' });
+  const past = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-05' });
+  const list = await s.call('bob', 'GET', `/raids?team=${s.A}`);
+  assert.equal(list.status, 200, JSON.stringify(list.json));
+  assert.deepEqual(list.json.upcoming.map((row) => row.id), [soon.json.raid.id, later.json.raid.id]);
+  assert.deepEqual(list.json.raids.map((row) => [row.id, row.upcoming]), [[past.json.raid.id, false]]);
+  assert(!list.json.upcoming.some((row) => row.id === otherTeam.json.raid.id), 'another team\'s raid is not on this list');
+  const [first, second] = list.json.upcoming;
+  assert.deepEqual(first.signups, { signed: 4, late: 0, bench: 1, tentative: 0, absence: 1 });
+  assert.deepEqual([first.eventSourced, first.eventId, first.title, first.planned, first.upcoming], [true, eventId, 'Test Raid', false, true]);
+  assert.deepEqual(second.signups, { signed: 0, late: 0, bench: 0, tentative: 0, absence: 0 });
+  assert.deepEqual([second.eventSourced, second.eventId, second.title, second.zone, second.startsAt], [false, null, null, 'Gruul\'s Lair', Date.parse('2027-03-02T00:30:00Z')]);
+  // A plan makes it Planned (and does not add to the sign-up counts).
+  const planned = await s.call('bob', 'PUT', s.raid(soon.json.raid.id, '/plan'), { label: 'Prog', players: [{ name: 'Aldric', group: 1 }] });
+  assert.equal(planned.status, 200, JSON.stringify(planned.json));
+  const again = (await s.call('bob', 'GET', `/raids?team=${s.A}`)).json.upcoming[0];
+  assert.deepEqual([again.planned, again.signups.signed], [true, 4]);
+  // Paging the past leaves the upcoming list whole.
+  const older = await s.call('bob', 'GET', `/raids?team=${s.A}&before=2027-01-05`);
+  assert.deepEqual([older.json.raids.length, older.json.upcoming.length], [0, 2]);
+  // Sign-up counts are for the people who may see the team's attendance.
+  const dave = await s.call('dave', 'GET', `/raids?team=${s.A}`);
+  if (dave.status === 200) assert.equal(dave.json.upcoming[0].signups, null);
+});
+
+check('future: re-importing the event refreshes the sign-ups and follows a reschedule on the same day; when the start passes the raid is past', async () => {
+  const s = await raidWorld();
+  const eventId = '555555555555555555';
+  const start = futureEvent(s, eventId, 3600);
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: eventId });
+  const id = made.json.raid.id;
+  assert.deepEqual([made.json.raid.startsAt, made.json.sources.event.signups], [start * 1000, 6]);
+  // A new sign-up and a start an hour later, still the same guild-local day.
+  futureEvent(s, eventId, 7200, [...eventSignUps(), signUp(7, DID(7), 'Newcomer', 'Priest', 'Holy')]);
+  const refreshed = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId });
+  assert.equal(refreshed.status, 200, JSON.stringify(refreshed.json));
+  assert.deepEqual([refreshed.json.sources.event.signups, refreshed.json.raid.startsAt, refreshed.json.raid.upcoming], [7, (Math.floor(s.w.clock.now / 1000) + 7200) * 1000, true]);
+  assert.equal((await s.call('bob', 'GET', `/raids?team=${s.A}`)).json.upcoming[0].signups.signed, 5);
+  // Moved to another day: the raid keeps its date and time.
+  futureEvent(s, eventId, 3 * 86400);
+  const moved = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId });
+  assert.deepEqual([moved.status, moved.json.raid.startsAt], [200, (Math.floor(s.w.clock.now / 1000) + 7200) * 1000]);
+  // Time passes: the raid leaves Upcoming for Past and awaits its log.
+  s.w.advance(3 * 3600 * 1000);
+  const list = (await s.call('bob', 'GET', `/raids?team=${s.A}`)).json;
+  assert.deepEqual([list.upcoming.length, list.raids.map((row) => [row.id, row.upcoming, row.state])], [0, [[id, false, 'awaiting_log']]]);
+  assert.equal((await s.call('bob', 'GET', s.raid(id))).json.raid.upcoming, false);
+});
+
+check('future: manual attendance is refused until the raid has started (409 raid_not_started)', async () => {
+  const s = await raidWorld();
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-16', startTime: '20:00' });
+  const id = made.json.raid.id;
+  const refused = await s.call('bob', 'PUT', s.raid(id, '/manual'), { reason: 'Voice chat only', presentPlayerIds: [] });
+  assert.deepEqual([refused.status, refused.json.error], [409, 'raid_not_started']);
+  assert.equal(await s.w.count('raids', "log_mode = 'manual'"), 0);
+  s.w.advance(14 * 3600 * 1000);
+  const allowed = await s.call('bob', 'PUT', s.raid(id, '/manual'), { reason: 'Voice chat only', presentPlayerIds: [] });
+  assert.deepEqual([allowed.status, allowed.json.raid.upcoming, allowed.json.raid.state], [200, false, 'manual']);
+});
+
+// ---------------------------------------------------------------------------
+// Planner seed and the plan's live link
+
+check('planner seed: an Alt of the signed-up class, else the Main, else the Discord nickname; Absence/Bench keep their kind; only Raid-Helper rows', async () => {
+  const s = await raidWorld();
+  // Brindle (Warrior Main) has one Mage Alt; Cassia has two (none named like her nickname); Fenwick has two and one is named like his sign-up.
+  assert.equal((await addAlt(s, 'bob', s.p.brindle, s.A, 'Brindlex')).status, 201);
+  assert.equal((await addAlt(s, 'bob', s.p.cassia, s.A, 'Zedmage')).status, 201);
+  assert.equal((await addAlt(s, 'bob', s.p.cassia, s.A, 'Aamage')).status, 201);
+  assert.equal((await addAlt(s, 'bob', s.p.fenwick, s.A, 'Qmage')).status, 201);
+  assert.equal((await addAlt(s, 'bob', s.p.fenwick, s.A, 'Zedfen')).status, 201);
+  assert.equal((await addAlt(s, 'bob', s.p.dunmar, s.A, 'Dunmage')).status, 201);
+  const eventId = '555555555555555555';
+  s.w.sources.events.set(eventId, rhEvent(eventId, SERVER_A, [
+    signUp(1, DID(1), 'Aldric', 'Warrior', 'Arms'),            // Main is a Warrior: the Main
+    signUp(2, DID(2), 'Brindle', 'Mage', 'Fire'),              // one Mage Alt
+    signUp(3, DID(3), 'Cassia', 'Mage', 'Frost'),              // two Mage Alts, none named like the nickname: first by name
+    signUp(4, DID(4), 'Dunmar', 'Absence', undefined),         // no class: the Main, kind kept
+    signUp(5, DID(5), 'Eliora', 'Bench', undefined),           // no class: the Main
+    signUp(6, '299999999999999999', 'Stranger', 'Rogue', 'Combat'), // not on the roster: the Discord nickname
+    signUp(7, DID(6), 'ZEDFEN', 'Mage', 'Arcane'),             // two Mage Alts, one named like the nickname (case-insensitive)
+    signUp(8, DID(2), 'Brindle', 'Tank', 'Protection'),        // a Tank sign-up resolves its class from the spec: Warrior = the Main's class, so the Main
+    signUp(9, DID(1), 'Aldric', 'Druid', 'Balance'),           // no Druid Alt: the Main
+  ]));
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: eventId });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const id = made.json.raid.id;
+  // A plan row is derived data and never part of the seed.
+  assert.equal((await s.call('bob', 'PUT', s.raid(id, '/plan'), { label: 'Plan', players: [{ name: 'Aldric', group: 1 }] })).status, 200);
+  const res = await s.call('bob', 'GET', s.raid(id, '/planner'));
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  assert.deepEqual(res.json.signups.map((x) => [x.key, x.name, x.discordName, x.kind, x.className, x.specName, x.position]), [
+    [1, 'Aldric', 'Aldric', 'signed', 'Warrior', 'Arms', 1],
+    [2, 'Brindlex', 'Brindle', 'signed', 'Mage', 'Fire', 2],
+    [3, 'Aamage', 'Cassia', 'signed', 'Mage', 'Frost', 3],
+    [4, 'Dunmar', 'Dunmar', 'absence', 'Absence', null, 4],
+    [5, 'Eliora', 'Eliora', 'bench', 'Bench', null, 5],
+    [6, 'Stranger', 'Stranger', 'signed', 'Rogue', 'Combat', 6],
+    [7, 'Zedfen', 'ZEDFEN', 'signed', 'Mage', 'Arcane', 7],
+    [8, 'Brindle', 'Brindle', 'signed', 'Tank', 'Protection', 8],
+    [9, 'Aldric', 'Aldric', 'signed', 'Druid', 'Balance', 9],
+  ]);
+  assert.deepEqual(res.json.signups.map((x) => x.personId === null), [false, false, false, false, false, true, false, false, false]);
+  assert.equal(res.json.signups[0].personId, s.p.aldric);
+  assert.deepEqual(res.json.raid, {
+    id, raidOn: made.json.raid.raidOn, startsAt: made.json.raid.startsAt, title: 'Test Raid', zone: null, eventId, teamId: s.A, gameVersion: 'tbc', timeZone: NY,
+  });
+  assert.equal(res.json.livePlan, null);
+  // A raid made by hand has no sign-ups and no event.
+  const hand = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-03-01', startTime: '19:30', zone: 'Karazhan', title: 'Prog' });
+  const empty = await s.call('bob', 'GET', s.raid(hand.json.raid.id, '/planner'));
+  assert.deepEqual([empty.status, empty.json.signups, empty.json.raid.eventId, empty.json.raid.title, empty.json.raid.zone], [200, [], null, 'Prog', 'Karazhan']);
+});
+
+check('planner seed: needs raids.edit on the raid\'s team (403), the raid must be in this guild (404), signed out is 401', async () => {
+  const s = await raidWorld();
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-03-01' });
+  const id = made.json.raid.id;
+  for (const [who, status] of [['bob', 200], ['alice', 200], ['carol', 200], ['dave', 403], ['erin', 403]]) {
+    assert.equal((await s.call(who, 'GET', s.raid(id, '/planner'))).status, status, who);
+  }
+  assert.equal((await s.call('bob', 'GET', s.raid('r_missing', '/planner'))).status, 404);
+  const other = await secondGuild(s);
+  assert.equal((await s.w.call(other.frank, 'GET', `${other.path}/raids/${id}/planner`)).status, 404, 'another guild\'s raid id');
+  assert.equal((await s.w.call(newJar(), 'GET', `${s.guildPath}/raids/${id}/planner`)).status, 401);
+});
+
+check('plan live link: PUT stores the live id, PUT without it clears it, DELETE clears it; it is shown to editors only and must be a 7-character id', async () => {
+  const s = await raidWorld();
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-03-01', startTime: '19:30' });
+  const id = made.json.raid.id;
+  const plan = { label: 'Prog plan', players: [{ name: 'Aldric', group: 1 }, { name: 'Brindle', group: 0 }] };
+  const put = (body) => s.call('bob', 'PUT', s.raid(id, '/plan'), body);
+  for (const live of ['short', 'toolonglive', 'ab-defg', 42, '']) {
+    const refused = await put({ ...plan, live });
+    // '' is not a link id either
+    assert.deepEqual([refused.status, refused.json.field], [400, 'live'], JSON.stringify(live));
+  }
+  assert.equal(await s.w.count('raids', 'plan_live IS NOT NULL'), 0, 'a refused plan stores nothing');
+  const stored = await put({ ...plan, live: 'Ab3dEfG' });
+  assert.equal(stored.status, 200, JSON.stringify(stored.json));
+  assert.equal(stored.json.raid.planLive, 'Ab3dEfG');
+  assert.deepEqual((await s.w.rows('SELECT plan_live FROM raids WHERE id = ?', id)).map((r) => r.plan_live), ['Ab3dEfG']);
+  assert.equal((await s.call('bob', 'GET', s.raid(id))).json.raid.planLive, 'Ab3dEfG');
+  assert.equal((await s.call('bob', 'GET', s.raid(id, '/planner'))).json.livePlan, 'Ab3dEfG');
+  assert.equal((await s.call('bob', 'GET', `/raids?team=${s.A}`)).json.upcoming.find((r) => r.id === id).planLive, 'Ab3dEfG');
+  assert.equal((await s.call('erin', 'GET', s.raid(id))).json.raid.planLive, null, 'a member sees no live link');
+  assert.equal((await s.call('erin', 'GET', `/raids?team=${s.A}`)).json.upcoming.find((r) => r.id === id).planLive, null);
+  const audit = await s.w.rows("SELECT after FROM audit_log WHERE action = 'raid.plan' ORDER BY rowid DESC LIMIT 1");
+  assert.deepEqual(JSON.parse(audit[0].after), { players: 2, live: true });
+  assert.equal(JSON.stringify(audit).includes('Ab3dEfG'), false, 'the link id is not written to the audit log');
+  // A plan pasted as a long link or code carries no live id: it replaces the link.
+  const replaced = await put(plan);
+  assert.deepEqual([replaced.status, replaced.json.raid.planLive], [200, null]);
+  assert.equal(await s.w.count('raids', 'plan_live IS NOT NULL'), 0);
+  assert.equal((await put({ ...plan, live: 'Zz9Yy8X' })).json.raid.planLive, 'Zz9Yy8X');
+  const removed = await s.call('bob', 'DELETE', s.raid(id, '/plan'), {});
+  assert.deepEqual([removed.status, removed.json.raid.planLive, removed.json.sources.plan], [200, null, null]);
+  assert.equal(await s.w.count('raids', 'plan_live IS NOT NULL OR plan_label IS NOT NULL'), 0);
+  assert.equal((await s.call('erin', 'PUT', s.raid(id, '/plan'), { ...plan, live: 'Ab3dEfG' })).status, 403);
+});
+
+check('plannerName: a Main and an Alt that share the signed-up class -> the Main name; a different class -> the Alt; no Main -> the Discord nickname', async () => {
+  const { plannerName } = await load('worker/routes/raids.js');
+  const main = { name: 'Mainmage', class: 'MAGE', is_main: 1 };
+  const alt = { name: 'Altmage', class: 'MAGE', is_main: 0 };
+  const rogue = { name: 'Altrogue', class: 'ROGUE', is_main: 0 };
+  const row = (className, specName) => ({ nickname: 'Nick', class_name: className, spec_name: specName });
+  assert.equal(plannerName(row('Mage', 'Fire'), [alt, main, rogue]), 'Mainmage', 'Main and Alt share the signed-up class');
+  assert.equal(plannerName(row('Mage', 'Fire'), [main, alt]), 'Mainmage');
+  assert.equal(plannerName(row('Rogue', 'Combat'), [main, alt, rogue]), 'Altrogue');
+  assert.equal(plannerName(row('Warlock', 'Destruction'), [main, alt, rogue]), 'Mainmage', 'no Alt of that class: the Main');
+  assert.equal(plannerName(row('Mage', 'Fire'), [alt]), 'Nick', 'no Main: the Discord nickname');
+  assert.equal(plannerName(row('Mage', 'Fire'), null), 'Nick', 'not on the roster: the Discord nickname');
 });
 
 async function main() {

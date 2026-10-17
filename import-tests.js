@@ -273,4 +273,23 @@ check('Import.readSharePlayers returns names + group numbers (0 = bench) and lea
   assert(!('data' in res), 'only names and groups come back');
 });
 
+// ── Re-sync keeps hand-added players ──
+check('diffRaidHelperSignUps + applyRaidHelperSync: a hand-added player (no sign-up) is kept, a signed-up one who withdrew is removed, a hand-added player who signs up is claimed', () => {
+  resetState('tbc');
+  const mk = (name, extra = {}) => ({ uid: nextUid(), name, class: 'MAGE', spec: 'Fire', role: 'caster_dps', groupNumber: 1, signupStatus: 'confirmed', ...extra });
+  const gone = mk('Gone'), pug = mk('Pug', { signupStatus: undefined, handAdded: true }), late = mk('LateJoin', { signupStatus: undefined, handAdded: true });
+  State.groups = [[gone, pug, late]];
+  State.bench = [];
+  State.roster = State.groups.flat();
+  const diff = Import.diffRaidHelperSignUps(JSON.stringify({ signUps: [{ name: 'LateJoin', className: 'Mage', specName: 'Fire', id: 1 }] }));
+  assert.equal(diff.removed.map(p => p.name).join(","), ['Gone'].join(","));
+  assert.equal(diff.claimed.map(p => p.name).join(","), ['LateJoin'].join(","));
+  Import.applyRaidHelperSync(diff);
+  assert.equal(State.roster.map(p => p.name).join(","), ['Pug', 'LateJoin'].join(","));
+  assert.equal(pug.handAdded, true);
+  assert(!late.handAdded, 'a player who signed up is a sign-up player from here on');
+  const again = Import.diffRaidHelperSignUps(JSON.stringify({ signUps: [] }));
+  assert.equal(again.removed.map(p => p.name).join(","), ['LateJoin'].join(","));
+});
+
 console.log(`\nImport tests (Raid-Helper class-only sign-ups): ${passed} passed, 0 failed, ${passed} total`);

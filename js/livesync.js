@@ -131,3 +131,49 @@ function timeoutSignal(ms) {
   return controller.signal;
 }
 
+// ── GUILD RAID LINK (pure half) ──────────────────────────────────
+// A plan opened from a raid of the guild tracker ("Plan in Planner") is the plan 'raid:<raid id>': one per raid and game
+// version, so opening the raid again finds it. The raid's sign-ups (GET /api/guild/:gid/raids/:rid/planner, named as the
+// guild chose) stand in for the Raid-Helper event: seedToRaidHelper writes them in the event export's shape, so the roster
+// is built, re-synced and merged by the Raid-Helper code in import.js. The network and screen half is RaidContext in app.js.
+const RaidLink = {
+  RAID_ID: /^[A-Za-z0-9_-]{1,64}$/,
+  planId(rid) {
+    return typeof rid === 'string' && this.RAID_ID.test(rid) ? 'raid:' + rid : null;
+  },
+  isRaidPlan(planId) {
+    return typeof planId === 'string' && planId.startsWith('raid:') && this.RAID_ID.test(planId.slice(5));
+  },
+  // The Raid-Helper export (JSON text) of a planner seed. A sign-up keeps its class, spec and meta class (Bench, Tentative,
+  // Late, Absence) as signed up; only its name is the guild's choice.
+  seedToRaidHelper(seed) {
+    const raid = (seed && seed.raid) || {};
+    const list = seed && Array.isArray(seed.signups) ? seed.signups : [];
+    const signUps = list.filter(s => s && typeof s.name === 'string' && s.name).map((s, i) => ({
+      id: s.key != null ? s.key : i + 1,
+      name: s.name,
+      className: typeof s.className === 'string' ? s.className : '',
+      specName: typeof s.specName === 'string' ? s.specName : '',
+      position: Number.isFinite(s.position) ? s.position : i + 1,
+    }));
+    return JSON.stringify({ title: raid.title || '', startTime: raid.startsAt, signUps });
+  },
+  // 'Sat, Oct 24, 8:00 PM' in the guild's time zone; '' when the raid has no usable start.
+  whenText(raid) {
+    const ms = raid && raid.startsAt;
+    if (!Number.isFinite(ms)) return '';
+    const options = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+    try { return new Date(ms).toLocaleString('en-US', { ...options, timeZone: raid.timeZone || undefined }); } catch { return new Date(ms).toLocaleString('en-US', options); }
+  },
+  // 'Planning Sat, Oct 24, 8:00 PM - Black Temple'
+  bannerText(raid) {
+    const r = raid || {};
+    const name = r.title || r.zone || '';
+    return 'Planning ' + (this.whenText(r) || r.raidOn || 'this raid') + (name ? ' - ' + name : '');
+  },
+  // The label the raid page shows for the saved plan (at most 80 characters).
+  planLabel(raid) {
+    const r = raid || {};
+    return ((r.title || r.zone || 'Raid') + ' ' + (r.raidOn || '')).trim().slice(0, 80);
+  },
+};
