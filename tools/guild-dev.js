@@ -21,7 +21,8 @@ const STATE_ENV = 'RAIDSMITH_DEV_STATE';
 // The Wrangler command each mode runs. Every one is --local: nothing here talks to Cloudflare.
 const WRANGLER_MODES = {
   migrate: ['d1', 'migrations', 'apply', 'DB', '--local'],
-  dev: ['dev'],
+  // --test-scheduled serves /__scheduled so the daily Cron Trigger (Battle.net 30-day purge) can be run by hand.
+  dev: ['dev', '--test-scheduled'],
   execute: ['d1', 'execute', 'DB', '--local'],
 };
 

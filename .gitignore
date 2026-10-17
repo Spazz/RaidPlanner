@@ -155,3 +155,7 @@
 !tools/roadmap-ideas.js
 !guild-roadmap-tests.js
 !guild-roadmap-worker-tests.js
+# Phase 5 Battle.net: the local fake of Battle.net's OAuth + the two Blizzard API calls, and the Worker / page suites (the Worker, migration 0009 and the pages are covered by the globs above)
+!tools/fake-battlenet.js
+!guild-bnet-worker-tests.js
+!guild-bnet-ui-tests.js

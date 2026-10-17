@@ -22,9 +22,9 @@ import {
 const MAX_COMMIT_ROWS = 100;
 const WCL_GLOBAL_WINDOW_MS = 10 * 60 * 1000;
 
-const indexed = (index) => ({ index });
+export const indexed = (index) => ({ index });
 
-async function importRate(ctx) {
+export async function importRate(ctx) {
   const userId = ctx.session.user.id;
   await enforceRateLimit(ctx.db, userId, ctx.now(), { key: `imp:${userId}`, limit: IMPORT_LIMIT, windowMs: IMPORT_WINDOW_MS });
 }
@@ -36,14 +36,14 @@ async function wclRate(ctx) {
 }
 
 // The body-shape checks that need no database run before this; this is the first read.
-async function startImport(ctx) {
+export async function startImport(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   const team = await requireTarget(ctx.db, guildContext.guild.id, ctx.body.teamId);
   requireEdit(guildContext, team.id);
   return { guildContext, team };
 }
 
-function requireTeamId(body) {
+export function requireTeamId(body) {
   if (!isId('t', body.teamId)) throw bad('Pick a team.', 'teamId');
 }
 
@@ -58,7 +58,7 @@ function readRows(body, field) {
   return rows;
 }
 
-function readDefaultStatus(raw, field, fallback, extra = {}) {
+export function readDefaultStatus(raw, field, fallback, extra = {}) {
   const status = raw === undefined ? fallback : raw;
   if (!CREATE_STATUSES.includes(status)) throw bad('Pick raider, trial or reserve.', field, extra);
   return status;
@@ -251,7 +251,7 @@ export async function previewRaidHelper(ctx) {
 
 // entries: [{ name, realmKey, index }] -> 400 name_taken for a repeat inside the request, 409 name_taken for a name
 // the roster already holds (owner included).
-async function checkNames(db, guildId, entries) {
+export async function checkNames(db, guildId, entries) {
   const seen = new Set();
   for (const entry of entries) {
     const key = `${nameKey(entry.name)}|${entry.realmKey}`;
@@ -275,7 +275,7 @@ async function checkNames(db, guildId, entries) {
 
 // plan: { people: [{ id, status, discord, nickname }], characters: [{ id, playerId, name, realm, realmKey, class, mainSpec, offSpec, isMain }],
 //         nicknameUpdates: [{ id, nickname }], source, ref }
-async function writeImport(ctx, guildContext, team, plan) {
+export async function writeImport(ctx, guildContext, team, plan) {
   const { db } = ctx;
   const guild = guildContext.guild;
   const now = ctx.now();

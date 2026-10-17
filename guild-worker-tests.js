@@ -1175,11 +1175,13 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   // The attendance actions (Phase 3) are driven and pinned in guild-attendance-worker-tests.js.
   const ATTENDANCE_ACTIONS = ['raid.create', 'raid.delete', 'raid.event', 'raid.report', 'raid.plan', 'raid.manual', 'attendance.decide',
     'attendance.undo', 'attendance.link', 'attendance.guest', 'policy.update', 'wcl.settings'];
-  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action)).sort());
+  // The Battle.net actions (Phase 5) are driven and pinned in guild-bnet-worker-tests.js.
+  const BNET_ACTIONS = ['bnet.link', 'bnet.unlink', 'bnet.settings', 'claim.create', 'claim.withdraw', 'claim.approve', 'claim.reject'];
+  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action)).sort());
   assert.deepEqual(AUDIT_ACTIONS.slice().sort(), [
     'access.remove', 'access.restore', 'account.delete', 'guild.claim', 'guild.create', 'guild.delete',
     'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore',
-    ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS,
+    ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...BNET_ACTIONS,
   ].sort());
   const rows = await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, created_at FROM audit_log WHERE action IN ('account.delete', 'guild.delete')");
   assert(rows.every((row) => row.guild_id === null));

@@ -123,3 +123,36 @@ export async function verifyState(env, state) {
   if (parts.length !== 2 || !NONCE_PATTERN.test(parts[0])) return false;
   return safeEqual(parts[1], await stateMac(env, parts[0]));
 }
+
+// ---------------------------------------------------------------------------
+// Battle.net link state: the same nonce + MAC idea, but keyed from the Battle.net client secret and BOUND TO THE SIGNED-IN USER, so a
+// state copied from one member's browser is refused in another's. Its own short-lived cookie, apart from the sign-in one.
+
+export const BNET_STATE_COOKIE = '__Host-rs_bnet_state';
+
+export function bnetStateCookie(state) {
+  return serializeCookie(BNET_STATE_COOKIE, state, { maxAge: STATE_TTL_SECONDS, path: '/' });
+}
+
+export function clearBnetStateCookie() {
+  return serializeCookie(BNET_STATE_COOKIE, '', { maxAge: 0, path: '/' });
+}
+
+async function bnetStateMac(env, userId, nonce) {
+  const secret = new TextEncoder().encode(`raidsmith-bnet-state:${env.BNET_CLIENT_SECRET}`);
+  const keyBytes = await crypto.subtle.digest('SHA-256', secret);
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${userId}.${nonce}`));
+  return base64url(new Uint8Array(mac));
+}
+
+export async function signBnetState(env, userId, nonce) {
+  return `${nonce}.${await bnetStateMac(env, userId, nonce)}`;
+}
+
+export async function verifyBnetState(env, userId, state) {
+  if (typeof state !== 'string' || !env.BNET_CLIENT_SECRET || typeof userId !== 'string') return false;
+  const parts = state.split('.');
+  if (parts.length !== 2 || !NONCE_PATTERN.test(parts[0])) return false;
+  return safeEqual(parts[1], await bnetStateMac(env, userId, parts[0]));
+}

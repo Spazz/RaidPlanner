@@ -6,6 +6,10 @@ import { checkRateLimit, rateLimitMessage } from './ratelimit.js';
 import { createRouter, paramsAreValid } from './router.js';
 import { loadSession } from './session.js';
 import { callback, deleteMe, guildPageRedirect, login, logout, me, updatePrefs } from './routes/auth.js';
+import { bnetCallback, bnetLogin, createClaims, disconnectBnet, getBnet, withdrawClaim } from './routes/bnet.js';
+import { approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
+import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
+import { runScheduled } from './bnet-purge.js';
 import { claimGuild, createGuild, getGuild } from './routes/guild.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles } from './routes/people.js';
 import { createTeam, patchTeam } from './routes/teams.js';
@@ -35,6 +39,11 @@ const ROUTES = [
   { method: 'GET', path: '/auth/me', auth: true, handler: me },
   { method: 'DELETE', path: '/auth/me', auth: true, handler: deleteMe },
   { method: 'PATCH', path: '/auth/prefs', auth: true, handler: updatePrefs },
+  // Battle.net link (Phase 5). login and callback are browser navigations: they read the session themselves and redirect instead of answering JSON.
+  { method: 'GET', path: '/auth/bnet/login', auth: false, handler: bnetLogin },
+  { method: 'GET', path: '/auth/bnet/callback', auth: false, handler: bnetCallback },
+  { method: 'GET', path: '/auth/bnet', auth: true, handler: getBnet },
+  { method: 'DELETE', path: '/auth/bnet', auth: true, handler: disconnectBnet },
   { method: 'POST', path: '/auth/logout', auth: true, handler: logout },
   { method: 'POST', path: '/api/guild', auth: true, handler: createGuild },
   { method: 'GET', path: '/api/guild/:gid', auth: true, handler: getGuild },
@@ -54,6 +63,8 @@ const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/commit', auth: true, handler: commitRaidHelper, maxBody: COMMIT_MAX_BODY },
   { method: 'POST', path: '/api/guild/:gid/roster/import/wcl/preview', auth: true, handler: previewWcl },
   { method: 'POST', path: '/api/guild/:gid/roster/import/wcl/commit', auth: true, handler: commitWcl, maxBody: COMMIT_MAX_BODY },
+  { method: 'POST', path: '/api/guild/:gid/roster/import/bnet/preview', auth: true, handler: previewBnetRoster },
+  { method: 'POST', path: '/api/guild/:gid/roster/import/bnet/commit', auth: true, handler: commitBnetRoster, maxBody: COMMIT_MAX_BODY },
   { method: 'GET', path: '/api/guild/:gid/roster/:pid', auth: true, handler: getPerson },
   { method: 'PATCH', path: '/api/guild/:gid/roster/:pid', auth: true, handler: patchPerson },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid', auth: true, handler: deletePerson },
@@ -86,6 +97,14 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/attendance/team', auth: true, handler: getTeamAttendance },
   { method: 'GET', path: '/api/guild/:gid/attendance/person/:pid', auth: true, handler: getPersonAttendance },
   { method: 'GET', path: '/api/guild/:gid/attendance/backfill/reports', auth: true, handler: getBackfillReports },
+  // Battle.net (Phase 5): character claims and the guild's Battle.net settings.
+  { method: 'GET', path: '/api/guild/:gid/claims', auth: true, handler: listClaims },
+  { method: 'POST', path: '/api/guild/:gid/claims', auth: true, handler: createClaims },
+  { method: 'DELETE', path: '/api/guild/:gid/claims/:clid', auth: true, handler: withdrawClaim },
+  { method: 'POST', path: '/api/guild/:gid/claims/:clid/approve', auth: true, handler: approveClaim },
+  { method: 'POST', path: '/api/guild/:gid/claims/:clid/reject', auth: true, handler: rejectClaim },
+  { method: 'GET', path: '/api/guild/:gid/bnet', auth: true, handler: getBnetSettings },
+  { method: 'PUT', path: '/api/guild/:gid/bnet', auth: true, handler: putBnetSettings },
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },
@@ -153,5 +172,9 @@ export function createApp(deps) {
 export default {
   fetch(request, env) {
     return createApp({ db: env.DB, env }).handle(request);
+  },
+  // The daily Cron Trigger (wrangler.jsonc triggers.crons): the 30-day rule for Battle.net data.
+  scheduled(event, env, ctx) {
+    ctx.waitUntil(runScheduled({ db: env.DB, now: Date.now, log: (message) => console.log(message) }));
   },
 };

@@ -7,6 +7,9 @@
     "binding": "ASSETS",
     "run_worker_first": ["/guild", "/guild/", "/api/guild", "/api/guild/*", "/api/roadmap/*", "/auth/*"]
   },
+  // Daily at 04:17 UTC: the 30-day rule for Battle.net data (worker/bnet-purge.js). The dev tool starts Wrangler with --test-scheduled, so locally:
+  //   curl "http://localhost:8787/__scheduled?cron=17+4+*+*+*"
+  "triggers": { "crons": ["17 4 * * *"] },
   "d1_databases": [
     {
       "binding": "DB",

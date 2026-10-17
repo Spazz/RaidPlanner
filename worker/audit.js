@@ -36,6 +36,13 @@ export const AUDIT_ACTIONS = [
   'attendance.guest',
   'policy.update',
   'wcl.settings',
+  'bnet.link',
+  'bnet.unlink',
+  'bnet.settings',
+  'claim.create',
+  'claim.withdraw',
+  'claim.approve',
+  'claim.reject',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';
