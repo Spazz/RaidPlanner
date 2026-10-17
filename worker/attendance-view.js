@@ -6,19 +6,19 @@ import { findUnmatched, makePolicyResolver, presenceKey } from './attendance-sto
 
 export const OUTCOME_PRESENT = ['present', 'late', 'left_early', 'late_left', 'fill_in'];
 
-// 'stale' = a log is stored but its results are not (a recompute failed or never ran): never shown as reviewed.
-// attendance_rows is the raid's stored attendance row count; a query that does not select it skips the empty-rows check.
-export function raidState(raid, reports) {
-  if (raid.log_mode === 'manual') return raid.open_flags > 0 ? 'to_review' : 'manual';
-  if (!reports) return 'awaiting_log';
+// 'stale' = the stored results do not match the raid's inputs or its team's current policy (a recompute failed or never ran,
+// or the policy/roster changed since): never shown as reviewed. attendance_rows is the raid's stored attendance row count; a
+// query that does not select it skips the empty-rows check. With a resolver, a live fingerprint mismatch is stale too.
+export function raidState(raid, reports, resolver = null) {
+  const manual = raid.log_mode === 'manual';
+  if (!manual && !reports) return 'awaiting_log';
+  if (resolver && raid.policy_fp !== resolver.fingerprint(raid.team_id)) return 'stale';
+  if (manual) return raid.open_flags > 0 ? 'to_review' : 'manual';
   if (raid.policy_fp === '' || raid.attendance_rows === 0) return 'stale';
   return raid.open_flags > 0 ? 'to_review' : 'reviewed';
 }
 
-// A raid with no log has no results to go stale; every other raid is stale when its fingerprint differs from the team's current one.
-export function isStale(raid, state, resolver) {
-  return state === 'stale' || (state !== 'awaiting_log' && raid.policy_fp !== resolver.fingerprint(raid.team_id));
-}
+export const isStale = (state) => state === 'stale';
 
 // The character a person is shown as on a team: the Main there, else the first by name there, else their Main elsewhere.
 export function displayCharacter(characters, teamId) {
@@ -81,7 +81,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const review = allows(can, 'attendance.review', teamId);
   const seeNicknames = allows(can, 'roster.edit', teamId);
   const resolver = makePolicyResolver(guild, policyResult.results);
-  const state = raidState(raid, raid.reports);
+  const state = raidState(raid, raid.reports, resolver);
   const users = new Map(userResult.results.map((row) => [row.id, row]));
   const decisions = new Map(decisionResult.results.map((row) => [row.player_id, row]));
 
@@ -158,11 +158,11 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       zone: raid.zone,
       state,
       openFlags: raid.open_flags,
-      stale: isStale(raid, state, resolver),
+      stale: isStale(state),
       version: raid.version,
       manual: raid.log_mode === 'manual'
         ? {
-          reason: raid.manual_reason, by: manualBy ? userName(manualBy) : null, at: raid.manual_at,
+          reason: review ? raid.manual_reason : null, by: review && manualBy ? userName(manualBy) : null, at: raid.manual_at,
           presentPlayerIds: seeAttendance ? manualResult.results.map((row) => row.player_id) : [],
         }
         : null,

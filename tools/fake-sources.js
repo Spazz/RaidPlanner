@@ -17,8 +17,9 @@
  *   anything else       404
  * Warcraft Logs (POST /oauth/token, POST /api/v2/client; any client id and secret are accepted):
  *   report code Fake000000000001  a TBC report with players, a pet and a duplicate actor; as a raid log (query with `fights`) it has
- *                                 6 boss pulls, with Quillfeather missing the first pull and Mendra leaving before the last
- *   report code Fake000000000002  a second report of the same night (2 hours later, 2 pulls) with Wanderfell, a fill-in character
+ *                                 6 boss pulls, with Quillfeather missing the first pull and Mendra leaving before the last;
+ *                                 Lastcall is in all of them (he misses only the last pull once report 2 is on the same raid)
+ *   report code Fake000000000002  a second report of the same night (2 hours later, 1 pull) with Wanderfell, a fill-in character (not Lastcall)
  *   report code Fake000000000003  an older night (one week earlier), for the backfill list
  *   report code Priv000000000001  answers a permission error
  *   anything else                 { report: null }
@@ -73,6 +74,8 @@ const WCL_ACTORS = [
   { id: 5, name: 'Embertail', type: 'Player', subType: 'Pet', server: null },
   { id: 6, name: 'Pyrelo', type: 'Player', subType: 'Mage', server: 'Dreamscythe' },
   { id: 7, name: 'Quillfeather', type: 'Player', subType: 'Hunter', server: 'Dreamscythe' },
+  // Lastcall is in every pull of the first report and not in the second one: with both reports on a raid, he misses only the last pull.
+  { id: 8, name: 'Lastcall', type: 'Player', subType: 'Rogue', server: 'Nightslayer' },
 ];
 
 // Fight offsets are ms from the report start, like Warcraft Logs. friendlyPlayers are actor ids.
@@ -80,6 +83,7 @@ function fight(id, name, encounterID, kill, start, seconds, players) {
   return { id, name, encounterID, kill, startTime: start, endTime: start + seconds * 1000, friendlyPlayers: players };
 }
 const FULL = [1, 2, 3, 5, 7];
+const FULL_1 = [...FULL, 8];
 const RAID_REPORTS = {
   Fake000000000001: {
     startTime: EVENT_START * 1000,
@@ -87,13 +91,13 @@ const RAID_REPORTS = {
     owner: { name: 'Fakeuploader' },
     zone: { name: 'Gruul / Magtheridon' },
     fights: [
-      fight(1, 'Trash', 0, false, 0, 120, FULL),
-      fight(2, 'High King Maulgar', 649, false, 300_000, 200, [1, 2, 3, 5]),
-      fight(3, 'High King Maulgar', 649, true, 700_000, 240, FULL),
-      fight(4, 'Gruul the Dragonkiller', 650, false, 1_200_000, 150, FULL),
-      fight(5, 'Gruul the Dragonkiller', 650, true, 1_600_000, 300, FULL),
-      fight(6, 'Magtheridon', 651, null, 2_400_000, 90, FULL),
-      fight(7, 'Magtheridon', 651, false, 2_600_000, 220, [1, 2, 5, 7]),
+      fight(1, 'Trash', 0, false, 0, 120, FULL_1),
+      fight(2, 'High King Maulgar', 649, false, 300_000, 200, [1, 2, 3, 5, 8]),
+      fight(3, 'High King Maulgar', 649, true, 700_000, 240, FULL_1),
+      fight(4, 'Gruul the Dragonkiller', 650, false, 1_200_000, 150, FULL_1),
+      fight(5, 'Gruul the Dragonkiller', 650, true, 1_600_000, 300, FULL_1),
+      fight(6, 'Magtheridon', 651, null, 2_400_000, 90, FULL_1),
+      fight(7, 'Magtheridon', 651, false, 2_600_000, 220, [1, 2, 5, 7, 8]),
     ],
   },
   Fake000000000002: {
@@ -176,7 +180,7 @@ function createFakeSources(options = {}) {
         if (RAID_REPORTS[code] && /fights/.test(query)) {
           const raid = RAID_REPORTS[code];
           // Quillfeather (7) is late to Maulgar's first pull; Mendra (3) is gone for the last Magtheridon pull.
-          const fights = raid.fights.map((entry) => (entry.id === 2 && code === 'Fake000000000001' ? { ...entry, friendlyPlayers: [1, 2, 3, 5] } : entry));
+          const fights = raid.fights.map((entry) => (entry.id === 2 && code === 'Fake000000000001' ? { ...entry, friendlyPlayers: [1, 2, 3, 5, 8] } : entry));
           return send(res, 200, { data: { reportData: { report: { ...raid, fights, masterData: { actors: WCL_ACTORS } } } } });
         }
         if (code !== 'Fake000000000001') return send(res, 200, { data: { reportData: { report: null } } });

@@ -1705,7 +1705,14 @@ check('R2-3: a raid with a log never reads "reviewed" while its fingerprint is e
   assert.equal(raidState({ ...log, attendance_rows: undefined }, 1), 'reviewed', 'a query that does not count rows skips that check');
   assert.equal(raidState({ ...log, policy_fp: '' }, 0), 'awaiting_log');
   assert.equal(raidState({ log_mode: 'manual', open_flags: 0, policy_fp: '' }, 0), 'manual');
-  assert.equal(isStale({ ...log, attendance_rows: 0 }, 'stale', { fingerprint: () => 'abcd1234' }), true);
+  assert.deepEqual([isStale('stale'), isStale('reviewed'), isStale('awaiting_log')], [true, false, false]);
+  // With the team's live fingerprint, a mismatch is stale whatever the stored result says (a policy change).
+  const live = (fp) => ({ fingerprint: () => fp });
+  assert.equal(raidState(log, 1, live('abcd1234')), 'reviewed');
+  assert.equal(raidState(log, 1, live('other000')), 'stale');
+  assert.equal(raidState({ ...log, open_flags: 3 }, 1, live('other000')), 'stale');
+  assert.equal(raidState({ log_mode: 'manual', open_flags: 0, policy_fp: 'abcd1234' }, 0, live('other000')), 'stale');
+  assert.equal(raidState({ ...log, policy_fp: 'zzz' }, 0, live('other000')), 'awaiting_log');
 
   const s = await raidWorld();
   const { id } = await fullRaid(s);
@@ -1737,6 +1744,111 @@ check('R2-4/5: the fake event starts in the past (the create route refuses a fut
   assert(start * 1000 < Date.UTC(2026, 9, 1), 'EVENT_START is a fixed date before today');
   const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
   assert(/second local Worker[\s\S]{0,200}--var DISCORD_REDIRECT_URI:http:\/\/localhost:<port>\/auth\/callback/.test(readme));
+});
+
+// ---------------------------------------------------------------------------
+// Fix round 3
+
+check('R3-1: officer reasons and names (manual, decisions) reach only reviewers of the raid\'s team, in the raid detail and in every other view', async () => {
+  const s = await raidWorld();
+  s.w.advance(2 * 86_400_000);
+  const made = await s.call('carol', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-03' });
+  const manualId = made.json.raid.id;
+  assert.equal((await s.call('carol', 'PUT', s.raid(manualId, '/manual'), { reason: 'Logger was off', presentPlayerIds: [s.p.aldric] })).status, 200);
+  const { id, detail } = await fullRaid(s);
+  const brindle = byName(detail).Brindle.playerId;
+  assert.equal((await decide(s, 'bob', id, { playerId: brindle, outcome: 'bench', reason: 'Private reason', expectedFlags: ['no_show'] })).status, 200);
+  assert.equal((await s.call('bob', 'DELETE', s.raid(id, `/decisions/${brindle}`), { reason: 'Undo reason text' })).status, 200);
+  assert.equal((await decide(s, 'bob', id, { playerId: brindle, outcome: 'bench', reason: 'Second private reason', expectedFlags: ['no_show'] })).status, 200);
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.fenwick}'`);
+  const SECRETS = ['Logger was off', 'rivate reason', 'Undo reason text', 'Carol C', 'Dave D', '"bob"'];
+  // dave (Team Lead of Bravo) and erin (a Member of Alpha) are not reviewers of Alpha.
+  for (const who of ['dave', 'erin']) {
+    const views = [
+      (await s.call(who, 'GET', s.raid(manualId))).json,
+      (await s.call(who, 'GET', s.raid(id))).json,
+      (await s.call(who, 'GET', `/raids?team=${s.A}`)).json,
+      (await s.call(who, 'GET', `/attendance/team?team=${s.A}&window=all`)).json,
+      (await s.call(who, 'GET', `/attendance/person/${brindle}`)).json,
+    ];
+    const text = JSON.stringify(views);
+    for (const secret of SECRETS) assert(!text.includes(secret), `${who} sees "${secret}"`);
+    assert.deepEqual([views[0].raid.manual.reason, views[0].raid.manual.by], [null, null], who);
+  }
+  assert.equal((await s.call('dave', 'GET', s.raid(manualId))).json.raid.state, 'manual');
+  // Reviewers of Alpha (an officer and Alpha's Team Lead) still get both.
+  for (const who of ['bob', 'carol']) {
+    const manual = (await s.call(who, 'GET', s.raid(manualId))).json.raid.manual;
+    assert.deepEqual([manual.reason, manual.by], ['Logger was off', 'Carol C'], who);
+    assert.equal(byName((await s.call(who, 'GET', s.raid(id))).json).Brindle.decision.reason, 'Second private reason');
+  }
+  // A Team Lead of Bravo reviews Bravo only: a Bravo raid's reason is hers to see, Alpha's is not.
+  const bravo = await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-05' });
+  assert.equal((await s.call('bob', 'PUT', s.raid(bravo.json.raid.id, '/manual'), { reason: 'Bravo reason', presentPlayerIds: [s.p.wander] })).status, 200);
+  assert.equal((await s.call('dave', 'GET', s.raid(bravo.json.raid.id))).json.raid.manual.reason, 'Bravo reason');
+});
+
+check('R3-2: every stale cause (policy change, stored fingerprint, failed recompute) is state "stale" in the detail and the list, for every viewer; a recalculation clears it', async () => {
+  const s = await raidWorld();
+  const { id, detail } = await fullRaid(s);
+  assert.equal((await decide(s, 'bob', id, { playerId: byName(detail).Brindle.playerId, outcome: 'bench', reason: 'Told us', expectedFlags: ['no_show'] })).status, 200);
+  const listRow = async (who = 'bob') => (await s.call(who, 'GET', `/raids?team=${s.A}`)).json.raids[0];
+  const detailRaid = async (who = 'bob') => (await s.call(who, 'GET', s.raid(id))).json.raid;
+  assert.deepEqual([(await listRow()).stale, (await listRow()).state], [false, 'to_review']);
+  // A policy change: the stored state is "reviewed"-like, the live fingerprint differs.
+  await s.call('bob', 'PUT', '/attendance/policy', { teamId: null, policy: { tentative: 'asSignedUp' }, expectedVersion: 0 });
+  for (const who of ['bob', 'erin']) {
+    const row = await listRow(who);
+    assert.deepEqual([row.state, row.stale], ['stale', true], `list, ${who}`);
+    const one = await detailRaid(who);
+    assert.deepEqual([one.state, one.stale], ['stale', true], `detail, ${who}`);
+  }
+  assert.deepEqual((await s.call('bob', 'GET', `/attendance/review?team=${s.A}`)).json.stale, [id]);
+  const fixed = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  assert.deepEqual([fixed.json.raid.state, fixed.json.raid.stale], ['to_review', false]);
+  // A recompute that never landed (empty fingerprint) and a fingerprint from another policy are stale too.
+  exec(s.w, `UPDATE raids SET policy_fp = '' WHERE id = '${id}'`);
+  assert.deepEqual([(await listRow()).state, (await detailRaid()).state], ['stale', 'stale']);
+  exec(s.w, `UPDATE raids SET policy_fp = 'deadbeef' WHERE id = '${id}'`);
+  assert.deepEqual([(await listRow()).state, (await listRow()).stale, (await detailRaid()).state], ['stale', true, 'stale']);
+  // A raid with no log has no results to go stale.
+  const empty = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-04' });
+  assert.deepEqual([empty.json.raid.state, empty.json.raid.stale], ['awaiting_log', false]);
+});
+
+check('R3-3: POST /raids with reportSources only (no event, no date) takes the date from the first pull, and a failing source writes nothing', async () => {
+  const s = await raidWorld();
+  const first = await s.call('bob', 'POST', '/raids', { teamId: s.A, reportSources: [R1] });
+  assert.equal(first.status, 201, JSON.stringify(first.json));
+  assert.match(first.json.raid.raidOn, /^\d{4}-\d\d-\d\d$/);
+  assert(first.json.pulls.length > 0 && first.json.sources.reports.length === 1);
+  const before = await s.w.count('raids');
+  const bad = await s.call('bob', 'POST', '/raids', { teamId: s.A, reportSources: [R3, 'Nope000000000009'] });
+  assert(bad.status >= 400, JSON.stringify(bad.json));
+  assert.equal(await s.w.count('raids'), before, 'no empty raid is left behind');
+  assert.equal(await s.w.count('raid_reports'), 1);
+});
+
+check('R3-5: the fake sources have a character present from the first pull who misses only the last pull: Left early with its flag', async () => {
+  const { createFakeSources } = require('./tools/fake-sources.js');
+  const fake = createFakeSources({ serverId: SERVER_A });
+  await new Promise((resolve) => fake.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${fake.server.address().port}`;
+  try {
+    const s = await raidWorld();
+    s.w.env.WCL_API_BASE = base;
+    s.w.env.RAID_HELPER_API_BASE = base;
+    const lastcall = await addPerson(s, 'bob', s.A, 'Lastcall');
+    const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, reportSources: ['Fake000000000001', 'Fake000000000002'] });
+    assert.equal(made.status, 201, JSON.stringify(made.json));
+    const row = byName(made.json).Lastcall;
+    assert.equal(row.playerId, lastcall.person.id);
+    assert.deepEqual([row.outcome, row.flags, row.pulls.missedFirst, row.pulls.missedLast], ['left_early', ['left_early'], false, true]);
+    assert.equal(row.pulls.present, row.pulls.total - 1);
+    assert.equal(row.needsReview, true);
+  } finally {
+    await new Promise((resolve) => fake.server.close(resolve));
+  }
 });
 
 async function main() {

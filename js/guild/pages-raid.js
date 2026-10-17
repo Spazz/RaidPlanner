@@ -34,7 +34,7 @@
   function statePill(data) {
     const r = data.raid || {};
     const flags = r.openFlags > 0 ? r.openFlags : 0;
-    return G.pages.raids.statePillsHtml({ state: r.state, openFlags: flags, stale: false });
+    return G.pages.raids.statePillsHtml({ state: r.state, openFlags: flags, stale: !!r.stale });
   }
 
   function isManual(data) { return !!(data.raid && data.raid.state === 'manual') || !!(data.raid && data.raid.manual); }
@@ -76,7 +76,10 @@
   }
 
   function outcomeCellHtml(row, canReview, rid) {
-    const decided = row.decision ? '<span class="gs-char-sub">Decided' + (row.decision.reason ? ': ' + esc(row.decision.reason) : '') + (row.decision.by ? ' (' + esc(row.decision.by) + ')' : '') + '</span>' : '';
+    // A stored decision whose flags no longer match is not applied: no "Decided" note, only a muted hint for reviewers.
+    let decided = '';
+    if (row.decision && row.decision.applied) decided = '<span class="gs-char-sub">Decided' + (row.decision.reason ? ': ' + esc(row.decision.reason) : '') + (row.decision.by ? ' (' + esc(row.decision.by) + ')' : '') + '</span>';
+    else if (row.decision && canReview) decided = '<span class="gs-char-sub gs-muted">An earlier decision no longer applies</span>';
     const button = canReview && row.outcome
       ? '<button type="button" class="gs-btn gs-btn-sm" data-action="decide-open" data-rid="' + esc(rid) + '" data-pid="' + esc(row.playerId) + '" data-where="raid" data-key="decide-' + esc(row.playerId) + '">' + (needsReview(row) ? 'Decide' : 'Change') + '</button>' : '';
     return '<div class="gs-outcell">' + A().outcomeChipHtml(row.outcome, row.pending) + '<span class="gs-fine">' + esc(A().creditText(row.credit, row.pending)) + '</span>' + A().flagChipsHtml(row.flags) + button + '</div>' + decided;
@@ -165,7 +168,9 @@
   function manualLineHtml(data, edit) {
     if (!isManual(data)) return '';
     const m = data.raid.manual || {};
-    const who = [m.by ? 'by ' + m.by : '', m.at ? 'on ' + G.ui.formatDate(m.at) : ''].filter(Boolean).join(' ');
+    // Who entered it and why are for reviewers; the server leaves them out for everyone else, and then the date goes too.
+    const detailed = !!(m.by || m.reason);
+    const who = detailed ? [m.by ? 'by ' + m.by : '', m.at ? 'on ' + G.ui.formatDate(m.at) : ''].filter(Boolean).join(' ') : '';
     return '<div class="gs-notice gs-manual-line" role="status"><span><strong>No log - attendance entered by hand</strong>' + (who ? ' ' + esc(who) : '') + (m.reason ? '. Reason: ' + esc(m.reason) : '') + '.</span>' +
       (edit ? '<span class="gs-row-actions">' + btn('manual-edit', 'Edit') + btn('manual-remove', 'Remove') + '</span>' : '') + '</div>';
   }

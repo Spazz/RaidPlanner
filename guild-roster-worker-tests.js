@@ -1958,7 +1958,7 @@ check('base URLs: RAID_HELPER_API_BASE and WCL_API_BASE are honoured only for lo
     }
     const report = await wclPreview(s, 'bob', 'Fake000000000001');
     assert.equal(report.status, 200, JSON.stringify(report.json));
-    assert.deepEqual(report.json.toDecide.map((row) => [row.name, row.otherRealm]).sort(), [['Mendra', true], ['Pyrelo', true], ['Quillfeather', true], ['Thornwick', true], ['Wanderfell', false]].sort());
+    assert.deepEqual(report.json.toDecide.map((row) => [row.name, row.otherRealm]).sort(), [['Lastcall', false], ['Mendra', true], ['Pyrelo', true], ['Quillfeather', true], ['Thornwick', true], ['Wanderfell', false]].sort());
     s.w.advance(WINDOW);
     assert.equal((await wclPreview(s, 'bob', 'Priv000000000001')).json.error, 'report_private');
     s.w.advance(WINDOW);
