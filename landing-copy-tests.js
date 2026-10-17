@@ -68,7 +68,7 @@ check('the version tab names TBC Anniversary, and the homepage has no kicker or 
 check('every version has a short toastNote; the long note stays', () => {
   assert.equal(GameVersions.tbc.toastNote, 'TBC Anniversary party buffs and optimization rules.');
   assert.equal(GameVersions.classic.toastNote, 'WoW Classic Era rules, faction-aware: Horde shamans, Alliance paladins.');
-  assert.equal(GameVersions.forever.toastNote, 'WoW Forever beta rules, data as of 2026-10-10. The landing page has the details.');
+  assert.equal(GameVersions.forever.toastNote, 'WoW Forever beta rules, data as of 2026-10-16. The landing page has the details.');
   for (const v of Object.values(GameVersions)) assert(v.note && v.note !== v.toastNote);
   assert(script.includes('(GameVersions[version].toastNote || GameVersions[version].note)'));
 });

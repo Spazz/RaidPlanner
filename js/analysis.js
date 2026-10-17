@@ -19,13 +19,33 @@ function getGroupBuffs(players, groupIndex, groups = State.groups, mode = State.
   }
 
   const priorityOf = (id) => getBuffPriority(Config.Buffs[id], dominantRole);
-  const value = Optimizer.buffValueFn(players, groupIndex, groups, mode);
-  const overrideFor = groupIndex === undefined ? null : (player, slot) => {
-    const ov = State.buffOverrides[`${groupIndex}:${player.uid}:${slot}`];
-    return ov && Config.Buffs[ov.buffId] ? ov.buffId : undefined;
+  // Raid-wide buffs (scope 'raid', Forever only) reach every group, so a group also lists the ones another group's
+  // provider casts. Groups are resolved in order and a raid-wide totem one group already drops is not dropped again
+  // (two shamans in two groups give Windfury and Grace of Air, not Windfury twice). The scorer sees none of this.
+  const raidTaken = new Set();
+  const raidSources = new Map();
+  const resolveFor = (group, gi) => {
+    const value = Optimizer.buffValueFn(group, gi, groups, mode);
+    const overrideFor = gi === undefined ? null : (player, slot) => {
+      const ov = State.buffOverrides[`${gi}:${player.uid}:${slot}`];
+      return ov && Config.Buffs[ov.buffId] ? ov.buffId : undefined;
+    };
+    const overridden = new Set();
+    const sources = Optimizer.resolveBuffSources(group, value, { overrideFor, overridden, preferSpecAura: true, raidTaken });
+    for (const [id, player] of sources) {
+      if (Config.Buffs[id].scope !== 'raid') continue;
+      raidTaken.add(id);
+      if (!raidSources.has(id)) raidSources.set(id, player);
+    }
+    return { sources, overridden };
   };
-  const overridden = new Set();
-  const sources = Optimizer.resolveBuffSources(players, value, { overrideFor, overridden, preferSpecAura: true });
+  const crossGroup = groupIndex !== undefined && Array.isArray(groups) && Object.values(Config.Buffs).some(b => b.scope === 'raid');
+  if (crossGroup) groups.forEach((g, gi) => { if (gi < groupIndex) resolveFor(g, gi); });
+  const { sources, overridden } = resolveFor(players, groupIndex);
+  if (crossGroup) {
+    groups.forEach((g, gi) => { if (gi > groupIndex) resolveFor(g, gi); });
+    for (const [id, player] of raidSources) if (!sources.has(id)) sources.set(id, player);
+  }
 
   // The scorer credits a Restoration shaman with both Mana Spring and Mana Tide,
   // but the badge row shows one water totem per shaman: the cooldown replaces
@@ -40,7 +60,7 @@ function getGroupBuffs(players, groupIndex, groups = State.groups, mode = State.
 
   const buffList = [];
   for (const [id, player] of sources) {
-    buffList.push({ id, buff: Config.Buffs[id], sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: overridden.has(id) });
+    buffList.push({ id, buff: Config.Buffs[id], sourceUid: player.uid, sourceName: player.name, sourceClass: player.class, sourceSpec: player.spec, isOverride: overridden.has(id), raidWide: Config.Buffs[id].scope === 'raid' });
   }
   buffList.sort((a, b) => priorityOf(b.id) - priorityOf(a.id));
   return buffList;
@@ -351,7 +371,8 @@ function explainPlacement(player, group, groupIndex, allGroups, mode) {
 
   // What this player personally provides to the group.
   for (const b of buffList) {
-    if (b.sourceUid !== player.uid) continue;
+    // Raid-wide buffs reach every group wherever their provider sits, so they are no reason to be in this group.
+    if (b.sourceUid !== player.uid || b.raidWide) continue;
     const recipients = group.filter(p => p.uid !== player.uid && (b.buff.benefitsRoles || []).includes(p.role));
     reasons.push({ kind:'provides', text: recipients.length
       ? `Provides ${b.buff.name} to ${recipients.length} other group member${recipients.length === 1 ? '' : 's'}`
@@ -362,7 +383,7 @@ function explainPlacement(player, group, groupIndex, allGroups, mode) {
   // carry nonzero value for this player's class/spec/role, so a Feral druid
   // doesn't get credited with "receiving" Windfury (0 value, no imbues in form).
   for (const b of buffList) {
-    if (b.sourceUid === player.uid) continue;
+    if (b.sourceUid === player.uid || b.raidWide) continue;
     if (receivesBuff(b.id, player)) reasons.push({ kind:'receives', text:`Receives ${b.buff.name} from ${nick(b.sourceName)}` });
   }
 
@@ -374,7 +395,9 @@ function explainPlacement(player, group, groupIndex, allGroups, mode) {
   const looksLikeTankGroup = counts.tank > 0 && counts.healer > 0;
 
   if (rules.rules && rules.rules.meleeWantsWindfury && player.class === 'SHAMAN' && identity === 'melee_dps') {
-    reasons.push({ kind:'convention', text:'Keeps Windfury coverage in this melee group' });
+    reasons.push({ kind:'convention', text: Config.Buffs.WINDFURY && Config.Buffs.WINDFURY.scope === 'raid'
+      ? 'Sits with the melee as a tie-break (Windfury reaches the whole raid)'
+      : 'Keeps Windfury coverage in this melee group' });
   }
   if (player.role === 'healer' && looksLikeTankGroup) {
     reasons.push({ kind:'convention', text:'Healing is cross-group, so healers ride with the tank group by convention' });

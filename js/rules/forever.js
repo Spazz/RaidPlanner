@@ -2,7 +2,8 @@
    RAIDSMITH WEB - rules data: WoW Forever (beta)
    ----------------------------------------------------------------
    WoW Forever (beta): party buffs and raid debuffs with their weights, the optimizer tuning numbers and
-   raids. Rules follow the beta data of 2026-10-10 (build 1.60.1.70338); Forever has no faction lock.
+   raids. Rules follow the beta data of 2026-10-10 (build 1.60.1.70338) plus the development notes of 2026-10-16 (Blizzard
+   forum post #6: seven buffs became raid-wide); Forever has no faction lock.
 
    Source of truth: this file IS the source of truth for these rules and is edited by hand. It was generated
    once on 2026-10-11 from the then-live tables by tools/generate-rules-data.js (now a guarded record of the
@@ -25,13 +26,14 @@
 var RulesData = typeof RulesData === 'undefined' ? {} : RulesData;
 
 RulesData.forever = {
-  // Party buffs the optimizer places, in display order. buffType drives the slot rule in code: one totem per element
+  // Party and raid-wide buffs, in display order. A party buff is what the optimizer places; a raid-wide buff (scope 'raid')
+  // reaches every group wherever its provider sits, so it never drives placement (same rule as Bloodlust). buffType drives the slot rule in code: one totem per element
   // per shaman, one aura per paladin, one shout per warrior; a passive is always on when its provider is present.
   // weight.dps is what a recipient gains: the exact CLASS:Spec key first, then the bare class name, then the role name,
   // else 0 (multiplied by the recipient's specDpsWeight); weight.dps: {} (a buff worth nothing to any recipient's DPS)
   // is written out on purpose, the key is explicit; weight.mitigation is the value to a tank (per CLASS:Spec, '*' = any
   // tank); weight.sustain is one number for healer groups. exclusiveBuffs lists the ids that share one slot per party
-  // with this one (the better-valued member wins). priority only orders the buff list per role in the UI. spellId is
+  // with this one (the better-valued member wins); Forever lists none today. priority only orders the buff list per role in the UI. spellId is
   // the max-rank spell, a verification handle.
   //
   // Vanilla/Classic Era baseline (no new classes or specs - the six new race/class combos and the Skyborne race only
@@ -41,34 +43,41 @@ RulesData.forever = {
   //
   // Tranquil Air Totem, Wrath of Air Totem and Totem of Wrath do not exist in Forever and are left out of the buffs (no
   // Tranquil Air, no Wrath of Air/Totem of Wrath). The totems listed here cover three elements: air, earth and water.
-  // The fire element exists in Forever too (Flametongue Totem) but is not modeled yet, see the known gaps below.
+  // Since the 2026-10-16 development notes Windfury, Grace of Air and Strength of Earth are raid-wide, and Grace of Air is no
+  // longer exclusive with Windfury: two shamans give the raid both air totems, one shaman still drops one per element.
+  // The fire element exists in Forever too (Flametongue Totem, raid-wide and exclusive with Windfury) but is not modeled
+  // yet, see the known gaps below.
   // Sanctity Aura and Improved Devotion/Retribution/Concentration Aura were removed; auras carry no healing-taken
   // rider.
   //
   // The weights started as Classic's (the recipient DPS-weight ordering is the same: no new classes or specs) and
-  // differ only where Forever's buff catalog does: Tranquil Air is dropped (it does not exist); Leader of the Pack and
-  // Moonkin Aura are the same crit aura for every role; Windfury is worth something to Ferals (it is a party buff whose
-  // procs work in Cat and Bear form, so Classic's 'DRUID:Feral': 0, a weapon-enchant rule, is overridden); Trueshot
-  // Aura buffs ranged attack power only and Battle Shout melee only; Sanctity Aura does not exist; the paladin auras
+  // differ only where Forever's buff catalog does: Tranquil Air is dropped (it does not exist); Leader of the Pack
+  // buffs melee and ranged crit and Moonkin Aura spell crit only; Windfury is worth something to Ferals (its procs work in
+  // Cat and Bear form, so Classic's 'DRUID:Feral': 0, a weapon-enchant rule, is overridden); Trueshot Aura buffs ranged
+  // attack power only and Battle Shout melee only; Sanctity Aura does not exist; the paladin auras
   // carry no healing-taken rider, so the sustain weights equal Classic's. A trailing "research-forever W<n>" comment on
   // a weight names the item of the 2026-10-10 audit (tasks/research-forever.md, "Audit 2026-10-10") that states why it
   // is what it is, and "audit CONFIRMED" refers to that audit's list of unchanged facts. The audit gives facts, not
   // weight values. A weight without a comment has no audit item behind it.
   //
   // Known gaps, not modeled yet: hunter pet effects (Wolf Furious Howl party AP, Tallstrider armor, Carrion Bird AP;
-  // need a per-player pet tag), Flametongue Totem, Healing Stream Totem, Vampiric Embrace, Vindication.
+  // need a per-player pet tag), Flametongue Totem, Healing Stream Totem, Vampiric Embrace, Vindication, Salvation and
+  // Mass Salvation, the Fire/Frost/Shadow Resistance Auras, Dark Inspiration (tasks/research-forever.md, "Audit 2026-10-16").
   buffs: {
-    // Windfury Totem is a party-wide buff in Forever, no longer a weapon enchant, and its procs work in Cat/Bear form
-    // (Blizzard 09-30 and 10-07), so a Feral gets value from it ('DRUID:Feral' weights, unlike Classic's 0).
-    // preferSpec: 'Enhancement' is kept on purpose as a placement convention (keep melee together), not a value claim:
-    // every shaman spec drops the same totem.
+    // Windfury Totem is a buff in Forever, no longer a weapon enchant, and its procs work in Cat/Bear form (Blizzard
+    // 09-30 and 10-07), so a Feral gets value from it ('DRUID:Feral' weights, unlike Classic's 0). Raid-wide since the
+    // development notes of 2026-10-16 ("Grace of Air Totem, Strength of Earth Totem, Windfury Totem, and Flametongue Totem
+    // are now Raid wide"), so it is not scored per group; conventions.meleeWantsWindfury* and meleeGroupWindfuryBias keep a
+    // tie-break nudge toward a shaman in a melee group.
+    // preferSpec: 'Enhancement' is kept on purpose (earlier user decision), not a value claim: every shaman spec drops the
+    // same totem.
     WINDFURY: {
       name: 'Windfury Totem',
       spellId: 10614,
-      desc: 'Party-wide buff in Forever (no longer a weapon enchant): each main-hand hit has a 20% chance to grant an extra attack with 246 extra attack power. Works in Cat and Bear form. A party has only one of Windfury, Grace of Air and Flametongue Totem, even from two shamans. Party, 30 yards, 5 min.',
+      desc: 'Raid-wide buff in Forever (no longer a weapon enchant): each main-hand hit has a 20% chance to grant an extra attack with 246 extra attack power. Works in Cat and Bear form. Not active alongside Flametongue Totem, but it no longer excludes Grace of Air. 5 min.',
       buffType: 'totem',
       totemElement: 'air',
-      scope: 'party',
+      scope: 'raid',
       sourceClass: 'SHAMAN',
       preferSpec: 'Enhancement',
       targetRoles: ['tank', 'melee_dps'],
@@ -94,20 +103,17 @@ RulesData.forever = {
           'DRUID:Feral': 3, // research-forever W4: Windfury works for Ferals in Forever
         },
       },
-      // A party gets only one of Windfury / Grace of Air / Flametongue even from two shamans (Blizzard 10-07: "Parties
-      // cannot benefit from this totem at the same time as Grace of Air or Flametongue Totem"; dev notes 09-24: no
-      // stacking "even if used by different Shamans in the same group"), so a second shaman in a group adds only
-      // earth/water totems. Buff ids that occupy one shared slot per group: resolveGroupBuffs and getGroupBuffs keep
-      // only the higher-value member of each listed set.
-      exclusiveBuffs: ['GRACE_OF_AIR'],
+      // No exclusiveBuffs: the dev notes of 2026-10-16 say "Grace of Air Totem is no longer exclusive with Windfury Totem
+      // and Flametongue Totem. Windfury Totem and Flametongue Totem retain their exclusivity." Flametongue is not modeled,
+      // so Windfury has no exclusive partner left.
     },
     GRACE_OF_AIR: {
       name: 'Grace of Air Totem',
       spellId: 25359,
-      desc: 'Increases agility of nearby party members by 89. Not active alongside Windfury Totem in the same party. Party, 30 yards.',
+      desc: 'Increases agility of the raid by 89. Raid-wide in Forever, and no longer exclusive with Windfury Totem.',
       buffType: 'totem',
       totemElement: 'air',
-      scope: 'party',
+      scope: 'raid',
       sourceClass: 'SHAMAN',
       targetRoles: ['tank', 'melee_dps', 'ranged_dps'],
       priority: 60,
@@ -123,15 +129,14 @@ RulesData.forever = {
           'DRUID:Feral': 8,
         },
       },
-      exclusiveBuffs: ['WINDFURY'],
     },
     STRENGTH_OF_EARTH: {
       name: 'Strength of Earth Totem',
       spellId: 25361,
-      desc: 'Increases strength of nearby party members by 53. Party, 30 yards.',
+      desc: 'Increases strength of the raid by 53. Raid-wide in Forever.',
       buffType: 'totem',
       totemElement: 'earth',
-      scope: 'party',
+      scope: 'raid',
       sourceClass: 'SHAMAN',
       targetRoles: ['tank', 'melee_dps'],
       priority: 55,
@@ -259,13 +264,14 @@ RulesData.forever = {
         mitigation: { '*': 1 },
       },
     },
-    // Battle Shout is a plain passive here (no warrior shout slot) and buffs melee only.
+    // Battle Shout is a plain passive here (no warrior shout slot) and buffs melee only. Raid-wide since the development
+    // notes of 2026-10-16 ("Battle Shout is now Raid wide"); only its reach changed, not who profits.
     BATTLE_SHOUT: {
       name: 'Battle Shout',
       spellId: 25289,
-      desc: 'Increases melee attack power of nearby party members by 139 for 3 minutes (melee only; hunters gain nothing). Party, 20 yards (30 with Booming Voice), not raid-wide.',
+      desc: 'Increases melee attack power of raid members by 139 for 3 minutes (melee only; hunters gain nothing). Raid-wide in Forever.',
       buffType: 'passive',
-      scope: 'party',
+      scope: 'raid',
       sourceClass: 'WARRIOR',
       targetRoles: ['tank', 'melee_dps'],
       priority: {
@@ -281,13 +287,13 @@ RulesData.forever = {
       },
     },
     // Trueshot Aura is the Marksmanship 21-point talent in Forever and buffs ranged attack power only (sourceSpec,
-    // targetRoles).
+    // targetRoles). Raid-wide since the development notes of 2026-10-16 ("Trueshot Aura is now Raid wide").
     TRUESHOT_AURA: {
       name: 'Trueshot Aura',
       spellId: 20906,
-      desc: 'Marksmanship talent (21-point, row 4); higher ranks are trained once the talent is known. Increases ranged attack power of nearby party members by 75 at rank 4 (the level-60 rank 5 reads 50 in the beta). Ranged attack power only. Party, 45 yards.',
+      desc: 'Marksmanship talent (21-point, row 4); higher ranks are trained once the talent is known. Increases ranged attack power of raid members by 75 at rank 4 (the level-60 rank 5 reads 50 in the beta). Ranged attack power only. Raid-wide in Forever.',
       buffType: 'passive',
-      scope: 'party',
+      scope: 'raid',
       sourceClass: 'HUNTER',
       sourceSpec: 'Marksmanship',
       targetRoles: ['ranged_dps'],
@@ -296,29 +302,29 @@ RulesData.forever = {
         dps: { ranged_dps: 4 }, // research-forever W1: ranged attack power only (no melee_dps key)
       },
     },
-    // Leader of the Pack and Moonkin Aura are the same +3% all-school crit aura in Forever (melee, ranged AND spell
-    // crit) and mutually exclusive (exclusiveBuffs), so each is worth something to every role, unlike Classic's
-    // melee-only LotP and caster-only Moonkin they were copied from. The weights are scaled to the priority values.
+    // Leader of the Pack and Moonkin Aura were one shared +3% all-school crit aura until the development notes of 2026-10-16
+    // ("Moonkin Aura now only increases Spell Critical Strike chance, and is Raid wide." / "Leader of the Pack now only
+    // increases Melee and Ranged Critical Strike chance, and is Raid wide."). They now cover different kinds of crit, so each
+    // buffs only its own roles. The notes do not say whether the two stack; they are no longer exclusive here, which is
+    // INFERRED from the split and not confirmed by Blizzard (tasks/research-forever.md, "Audit 2026-10-16").
     LEADER_OF_THE_PACK: {
       name: 'Leader of the Pack',
       spellId: 17007,
-      desc: 'Feral 21-point talent. While in Cat, Bear or Dire Bear Form, increases critical strike chance (melee, ranged and spell) of nearby party members by 3%. Mutually exclusive with Moonkin Aura — a group with both only benefits from one. Party, 45 yards.',
+      desc: 'Feral 21-point talent. While in Cat, Bear or Dire Bear Form, increases melee and ranged critical strike chance of the raid by 3% (no longer spell crit). Raid-wide in Forever. Stacking with Moonkin Aura is inferred from the split, not confirmed by Blizzard.',
       buffType: 'passive',
-      scope: 'party',
+      scope: 'raid',
       sourceClass: 'DRUID',
       sourceSpec: 'Feral',
-      targetRoles: ['tank', 'melee_dps', 'ranged_dps', 'caster_dps'],
+      targetRoles: ['tank', 'melee_dps', 'ranged_dps'],
       priority: {
         melee_dps: 78,
         ranged_dps: 78,
-        caster_dps: 70,
         tank: 65,
       },
       weight: {
         dps: {
           melee_dps: 4,
-          ranged_dps: 4, // research-forever, audit CONFIRMED: +3% crit for spells and attacks
-          caster_dps: 3, // research-forever, audit CONFIRMED: +3% crit for spells and attacks
+          ranged_dps: 4, // research-forever, audit CONFIRMED: +3% crit for attacks (spells dropped 2026-10-16)
           tank: 2,
         },
         mitigation: {
@@ -326,35 +332,31 @@ RulesData.forever = {
           '*': 2,
         },
       },
-      // Leader of the Pack / Moonkin Aura are one crit aura: a group with both only benefits from one (exclusiveBuffs;
-      // the higher-value member is kept).
-      exclusiveBuffs: ['MOONKIN_AURA'],
     },
-    // See Leader of the Pack: the same crit aura, one shared slot.
+    // Moonkin Aura: spell crit only since 2026-10-16, so it serves casters and healers (a healer's spells crit too); melee,
+    // ranged and tanks get nothing from it. The healer weight (2) is half the caster weight (4): healer spells gain from crit
+    // through heal crit only, and 2 is the same floor Concentration Aura (caster 1, healer 2) and Mana Spring (2, 2) already
+    // give a healer. A healer's roleDpsWeight is 1.0, so the received value is 2 x 1.0 = 2.0, still below every caster spec's
+    // (4 x specDpsWeight: 2.4 for Balance up to 3.8 for Fire).
     MOONKIN_AURA: {
       name: 'Moonkin Aura',
       spellId: 24907,
-      desc: 'While in Moonkin Form, increases critical strike chance (melee, ranged and spell) of nearby party members by 3%. Mutually exclusive with Leader of the Pack — a group with both only benefits from one. Party, 45 yards.',
+      desc: 'While in Moonkin Form, increases spell critical strike chance of the raid by 3% (no longer melee or ranged crit). Raid-wide in Forever. Stacking with Leader of the Pack is inferred from the split, not confirmed by Blizzard.',
       buffType: 'passive',
-      scope: 'party',
+      scope: 'raid',
       sourceClass: 'DRUID',
       sourceSpec: 'Balance',
-      targetRoles: ['tank', 'melee_dps', 'ranged_dps', 'caster_dps'],
+      targetRoles: ['caster_dps', 'healer'],
       priority: {
         caster_dps: 72,
-        melee_dps: 60,
-        ranged_dps: 60,
-        tank: 50,
+        healer: 60,
       },
       weight: {
         dps: {
           caster_dps: 4,
-          melee_dps: 2, // research-forever, audit CONFIRMED: +3% crit for spells and attacks
-          ranged_dps: 2, // research-forever, audit CONFIRMED: +3% crit for spells and attacks
-          tank: 1,
+          healer: 2, // lower than the caster weight: healers gain heal crit only
         },
       },
-      exclusiveBuffs: ['LEADER_OF_THE_PACK'],
     },
     BLOOD_PACT: {
       name: 'Blood Pact',
@@ -555,7 +557,8 @@ RulesData.forever = {
   // Default air totem per recipient role.
   //
   // No Tranquil Air exists for casters/healers to fall back to - Grace of Air (agility) is the only other air totem, so
-  // it's the least-bad default.
+  // it's the least-bad default. Both air totems are raid-wide and no longer exclusive (2026-10-16), so this is only the
+  // pick a lone shaman makes; with two shamans the raid gets both.
   bestAirTotem: {
     tank: 'WINDFURY',
     melee_dps: 'WINDFURY',
@@ -586,14 +589,15 @@ RulesData.forever = {
   // Providers spread one per group instead of two stacking in one group while another group has none
   // (Optimizer.spreadProviders). spec may be a list; no spec = any spec of the class.
   //
-  // Same single-point-of-failure spreading as Classic (Optimizer.spreadProviders/_spreadPass), plus the Feral/Balance
-  // druid crit auras - now mutually exclusive with each other (see exclusiveBuffs), so a group needs exactly one
-  // crit-aura druid, not one of each. The array form of spec groups Feral and Balance together for _spreadPass's
-  // matcher (one druid of either spec already satisfies a group; a second of either is surplus).
+  // Same single-point-of-failure spreading as Classic (Optimizer.spreadProviders/_spreadPass), narrowed on 2026-10-16:
+  // only providers of a PARTY-scoped buff are spread. The Feral/Balance druid entry is gone (Leader of the Pack and Moonkin
+  // Aura are raid-wide, so a druid never needs to sit in a particular group). SHAMAN stays for the water totems (Mana
+  // Spring, Mana Tide are party buffs: the caster/healer spread pass); Optimizer.spreadProviders no longer spreads shamans
+  // over the melee groups, because Windfury, Grace of Air and Strength of Earth are raid-wide. PALADIN stays: the auras
+  // are party buffs.
   spreadProviders: [
     { class: 'SHAMAN' },
     { class: 'PALADIN' },
-    { class: 'DRUID', spec: ['Feral', 'Balance'] },
   ],
 
   // true: Shaman is Horde-only and Paladin Alliance-only; false: both classes exist on both factions.
@@ -633,8 +637,9 @@ RulesData.forever = {
 
     // meleeWantsWindfury: Shaman exists on both factions - no faction gate needed.
     //
-    // flag: charge a melee group that has no shaman (meleeWantsWindfuryCost) and explain its shaman as keeping Windfury
-    // coverage; trades Windfury coverage against the shaman's other seats; off: no fixture moves.
+    // flag: charge a melee group that has no shaman a tie-break cost (meleeWantsWindfuryCost) and explain its shaman as a
+    // tie-break seat; Windfury is raid-wide since 2026-10-16, so this is a nudge, never a coverage rule (see the cost);
+    // trades a shaman's melee-group seat against its other seats only when nothing else differs; off: no fixture moves.
     meleeWantsWindfury: true,
     // ferociousInspiration: a TBC-only Beast Mastery talent; it does not exist in Forever.
     //
@@ -650,20 +655,27 @@ RulesData.forever = {
 
     // ---- Windfury and shamans ----
 
-    // 6 is the cost Classic and Forever have always used; TBC raised it to 13 on 2026-10-10 (comp rule 1, see tbc.js).
+    // 6 was the cost Classic and Forever had always used (TBC: 13, comp rule 1, see tbc.js). Forever's Windfury became
+    // raid-wide on 2026-10-16, so a melee group without a shaman misses nothing; user decision 2026-10-16 "keep but
+    // weaken": this is a tie-break only. Scale: the smallest party-buff credit a placement can gain is Retribution Aura's
+    // 0.25 for one tank (mitigation 1 x modeConfig.max_dps.mit 0.25). Worst swing of one shaman move: two groups of 4 melee
+    // (a 5-seat group with the shaman), each swinging 4 x 0.7 (structure) x (cost x dpsWeight <= 1.0 + meleeGroupWindfuryBias)
+    // = 2.8 x 0.04 = 0.112, so 0.224 for both groups, strictly below 0.25 at cost 0.02 + bias 0.02.
     //
     // points per melee DPS (x dpsWeight x structure) in a melee group with no shaman (while meleeWantsWindfury is on);
-    // trades Windfury coverage against the shaman's other seats; x2: no fixture moves.
-    meleeWantsWindfuryCost: 6,
+    // trades a shaman's melee-group seat against its other seats only on a tie; x2: no fixture moves.
+    meleeWantsWindfuryCost: 0.02,
     // multiplier: Windfury's value in a group holding an Enhancement shaman is scaled by 1 + this; trades an Enh
     // shaman's Windfury against an Ele or Resto shaman's; 0 -> 0.4 moves foreverMixed40.
     enhWindfuryBonus: 0,
-    // Same Windfury-over-Grace-of-Air structural nudge as Classic - see conventions.meleeGroupWindfuryBias in
-    // classic.js for the full rationale.
+    // Was Classic's Windfury-over-Grace-of-Air structural nudge (8). Windfury is raid-wide and no longer exclusive with Grace of
+    // Air (2026-10-16), so it only breaks ties now: a small bonus for a shaman in a melee group, sized with
+    // meleeWantsWindfuryCost (see there for the 0.25 ceiling arithmetic).
     //
-    // points per non-shaman melee DPS (x structure) added to Windfury's value in a melee-identity group; trades
-    // Windfury against Grace of Air for the shaman's air totem; x2 moves foreverMixed40.
-    meleeGroupWindfuryBias: 8,
+    // points per non-shaman melee DPS (x structure) added where Windfury is dropped in a melee-identity group (the air
+    // totem pick of a group and, as Windfury is raid-wide, the group score); trades a shaman's melee-group seat against its
+    // other seats only on a tie; x2: no fixture moves.
+    meleeGroupWindfuryBias: 0.02,
     // points (x structure) for a group holding both a Retribution Paladin and an Enhancement Shaman; trades the pair
     // against the Ret's seat in a shaman-less group; 0 -> 8 moves foreverMixed40.
     retEnhPairBonus: 0,

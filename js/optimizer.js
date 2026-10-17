@@ -156,6 +156,18 @@ function dpsWeightFor(player) {
   return r != null ? r : 0.8;
 }
 
+// True for a buff whose data says scope 'raid' (Rulesets.compile copies the scope onto the compiled buff only for
+// raid-wide ones, so Classic and TBC, which have none, never take a raid-wide path).
+function isRaidWideBuff(buffId) {
+  const buff = Config.Buffs[buffId];
+  return !!buff && buff.scope === 'raid';
+}
+
+// True when the player can cast the buff (its class, and its spec when the buff names one).
+function isBuffSource(buff, player) {
+  return player.class === buff.sourceClass && (!buff.sourceSpec || player.spec === buff.sourceSpec);
+}
+
 function dpsValueFor(buffId, player) {
   const v = (activeRules().dpsValue || {})[buffId];
   if (!v) return 0;
@@ -222,7 +234,7 @@ const Optimizer = {
       const seats = raid ? Math.min(raid.size, State.groups.length * RosterEdit.MAX_GROUP_SIZE) : 0;
       if (State.groups.flat().length + this._sizeBenchedPlayers().length + State.preferredSlots.length < seats) {
         this._optimizeSeats(true);
-        State.preferredSlots.push(...OpenSlots.choose().map(p => ({ group: -1, class: p.class, spec: p.spec, auto: true })));
+        State.preferredSlots.push(...OpenSlots.choose().map(p => ({ group: -1, class: p.class, spec: p.spec, auto: true, ...(p.alts.length ? { alts: p.alts } : {}) })));
       }
       this._optimizeSeats();
     });
@@ -311,17 +323,25 @@ const Optimizer = {
     const { gameVersion, numGroups, raidSize, mode = 'max_dps', max = 5, constraints = [], drummers = [], draft = false } = opts;
     const faction = opts.faction !== undefined ? opts.faction : Faction.detect(players);
     return LayoutScope.run({ gameVersion, faction, constraints, drummers }, () => {
-      // Over capacity: decide WHO sits first (floors, greedy, bench trades),
-      // then lay the seated set out exactly as a seated-only run would. The
-      // selection search takes a different path than a plain layout of the same
-      // players, so laying out from its intermediate board would leave the next
-      // Optimize click (which never sees the bench) in a different local optimum
-      // and reshuffle a board the first click just produced.
-      let seated = players, bench = [];
-      if (players.length > numGroups * max) {
-        ({ seated, bench } = this.selectSeated(players, numGroups, raidSize, max, mode));
-      }
-      return { groups: this.arrange(seated, numGroups, raidSize, max, mode, draft), bench };
+      // Raid-wide buffs are valued over the players the current step plans (see raidWideValues): everyone while the
+      // seats are chosen, the seated set once they are laid out, exactly as a seated-only run would (so the next Optimize
+      // click reproduces this board).
+      const outerRaidScope = this._raidScope;
+      try {
+        this._raidScope = { pool: players, byMode: {} };
+        // Over capacity: decide WHO sits first (floors, greedy, bench trades),
+        // then lay the seated set out exactly as a seated-only run would. The
+        // selection search takes a different path than a plain layout of the same
+        // players, so laying out from its intermediate board would leave the next
+        // Optimize click (which never sees the bench) in a different local optimum
+        // and reshuffle a board the first click just produced.
+        let seated = players, bench = [];
+        if (players.length > numGroups * max) {
+          ({ seated, bench } = this.selectSeated(players, numGroups, raidSize, max, mode));
+        }
+        this._raidScope = { pool: seated, byMode: {} };
+        return { groups: this.arrange(seated, numGroups, raidSize, max, mode, draft), bench };
+      } finally { this._raidScope = outerRaidScope; }
     });
   },
 
@@ -491,7 +511,11 @@ const Optimizer = {
     // players need Windfury exactly as much as a 'melee_dps'-seeded group's
     // do. Melee coverage runs first and always wins ties over caster
     // coverage below, per this task's stated priority order.
-    this._spreadPass(groups, specs, 'melee_dps', { mode });
+    // Only providers with a PARTY-scoped buff for melee are spread over the melee groups: a raid-wide buff (Forever's
+    // Windfury, Leader of the Pack, ...) reaches every group wherever its provider sits, so spreading for it would
+    // be placement driven by a buff that has no placement value (the same rule as Bloodlust).
+    const meleeSpecs = specs.filter(s => this.providesPartyBuffTo(s, 'melee_dps'));
+    if (meleeSpecs.length) this._spreadPass(groups, meleeSpecs, 'melee_dps', { mode });
 
     // Surplus shamans (more shamans than melee-identity groups) then cover
     // caster groups with Mana Spring. This used to be left entirely to
@@ -607,6 +631,15 @@ const Optimizer = {
       }
       if (!moved) break; // nothing resolvable this round (locks, or every swap costs a sole provider) — stop rather than spin
     }
+  },
+
+  // True when a provider entry of rules.spreadProviders ({ class, spec? }, spec a name or a list) has at least one
+  // party-scoped buff that benefits `role`. Every Classic and TBC buff is party-scoped, so there it is true for any
+  // provider that has a buff for the role at all.
+  providesPartyBuffTo(spec, role) {
+    const specs = spec.spec === undefined ? null : [].concat(spec.spec);
+    return Object.values(Config.Buffs).some(b => b.sourceClass === spec.class && b.scope !== 'raid'
+      && (!b.sourceSpec || !specs || specs.includes(b.sourceSpec)) && (b.benefitsRoles || []).includes(role));
   },
 
   // One rebalancing pass for a single target role. Repeatedly finds a group
@@ -1076,9 +1109,17 @@ const Optimizer = {
         }
         for (const el of Object.keys(byElement)) {
           if (fixed && fixed.has(el)) continue;
-          let best = null, bestV = 0;
-          for (const id of byElement[el]) {
-            if (sources.has(id)) continue; // another shaman already provides it
+          const open = byElement[el].filter(id => !sources.has(id)); // another shaman of this group may already drop one
+          // A raid-wide totem (scope 'raid') outranks a party totem for the slot: it reaches every group, so it is
+          // dropped whatever this group's own members would gain. Versions with no raid-wide totem take the plain path.
+          // Display only (opts.raidTaken): a raid-wide totem another group already drops is passed over for one that
+          // nobody drops yet, so two shamans in two groups give Windfury and Grace of Air; if none is left the shaman
+          // repeats one rather than dropping a party totem the scorer does not credit.
+          const raidWide = open.filter(id => isRaidWideBuff(id));
+          const fresh = raidWide.filter(id => !(opts && opts.raidTaken && opts.raidTaken.has(id)));
+          const pool = fresh.length ? fresh : raidWide.length ? raidWide : open;
+          let best = null, bestV = raidWide.length ? -1 : 0;
+          for (const id of pool) {
             const v = valueFn(id);
             if (v > bestV) { bestV = v; best = id; }
           }
@@ -1175,12 +1216,77 @@ const Optimizer = {
       if (id === 'WINDFURY' && rules.rules.enhWindfuryBonus && v > 0 && group.some(p => p.class === 'SHAMAN' && p.spec === 'Enhancement')) {
         v *= 1 + rules.rules.enhWindfuryBonus;
       }
-      if (id === 'WINDFURY' && rules.rules.meleeGroupWindfuryBias && roleIdentity === 'melee_dps') {
-        const meleeCount = group.reduce((n, p) => n + (p.role === 'melee_dps' && p.class !== 'SHAMAN' ? 1 : 0), 0);
-        if (meleeCount > 0) v += rules.rules.meleeGroupWindfuryBias * meleeCount * cfg.structure;
-      }
+      if (id === 'WINDFURY') v += this.windfuryGroupBias(group, roleIdentity, cfg);
       return v;
     };
+  },
+
+  // What each raid-wide buff (scope 'raid') is worth to the whole raid: { value: { id: points }, rank: { id: n } }.
+  // value is the buff's summed received value over the pool (everyone being planned inside plan(), else the board),
+  // scaled by the mode like the party buffs (dpsValueFor x cfg.dps, tank mitigation x cfg.mit). rank orders the raid-wide
+  // totems of one element by value: a shaman drops one totem per element, so the 2nd-ranked air totem only exists with a
+  // 2nd shaman.
+  raidWideValues(groups, mode, cfg) {
+    const scope = this._raidScope;
+    if (scope && scope.byMode[mode]) return scope.byMode[mode];
+    const rules = activeRules();
+    const ids = rules.raidWide || [];
+    const pool = scope ? scope.pool : groups.flat();
+    const value = {}, rank = {};
+    for (const id of ids) {
+      let v = 0;
+      for (const m of pool) {
+        v += dpsValueFor(id, m) * cfg.dps;
+        if (m.role === 'tank') v += mitValueFor(id, m) * cfg.mit;
+      }
+      value[id] = v;
+    }
+    for (const id of ids) {
+      rank[id] = 1;
+      const element = rules.totemElements[id];
+      if (!element) continue;
+      for (const other of ids) {
+        if (other === id || rules.totemElements[other] !== element) continue;
+        if (value[other] > value[id] || (value[other] === value[id] && ids.indexOf(other) < ids.indexOf(id))) rank[id]++;
+      }
+    }
+    const out = { value, rank };
+    if (scope) scope.byMode[mode] = out;
+    return out;
+  },
+
+  // The part of a raid-wide buff's value this group is credited with: the buff's value to the whole raid (raidWideValues)
+  // split over the providers on the board, so each provider carries its share wherever it sits. The sum over all groups
+  // is the same for every placement of the board's players, which is why a raid-wide buff never drives placement; it does
+  // change with WHO is seated, so the bench and Open-slot suggestions still value a Marksmanship Hunter's Trueshot Aura or
+  // a second shaman's second air totem. No-op where the ruleset has no raid-wide buff (Classic, TBC).
+  raidWideCredit(group, groups, mode, cfg) {
+    const ids = activeRules().raidWide;
+    if (!ids || !ids.length) return 0;
+    let credit = 0, values = null;
+    for (const id of ids) {
+      const buff = Config.Buffs[id];
+      let mine = 0;
+      for (const p of group) if (isBuffSource(buff, p)) mine++;
+      if (!mine) continue;
+      let total = 0;
+      for (const g of groups) for (const p of g) if (isBuffSource(buff, p)) total++;
+      if (!total) continue;
+      values = values || this.raidWideValues(groups, mode, cfg);
+      if (total < values.rank[id]) continue;
+      credit += values.value[id] * Math.min(1, mine / total);
+    }
+    return credit;
+  },
+
+  // rules.meleeGroupWindfuryBias: points per non-shaman melee DPS (x structure) added to Windfury in a melee-identity
+  // group; 0 = off. buffValueFn adds it to Windfury's value, and groupScore adds it on its own where Windfury is
+  // raid-wide (a raid-wide buff is not scored per group).
+  windfuryGroupBias(group, roleIdentity, cfg) {
+    const bias = activeRules().rules.meleeGroupWindfuryBias;
+    if (!bias || roleIdentity !== 'melee_dps') return 0;
+    const meleeCount = group.reduce((n, p) => n + (p.role === 'melee_dps' && p.class !== 'SHAMAN' ? 1 : 0), 0);
+    return meleeCount > 0 ? bias * meleeCount * cfg.structure : 0;
   },
 
   // The single objective all phases share. Higher = better group.
@@ -1195,7 +1301,16 @@ const Optimizer = {
     const buffValue = this.buffValueFn(group, gi, groups, mode);
 
     let score = 0;
-    for (const id of this.resolveGroupBuffs(group, buffValue)) score += buffValue(id);
+    for (const id of this.resolveGroupBuffs(group, buffValue)) {
+      // A raid-wide buff (scope 'raid') reaches every group wherever its provider sits, so it never drives placement
+      // and is not scored here. Windfury keeps only its small melee-group nudge (meleeGroupWindfuryBias).
+      if (isRaidWideBuff(id)) {
+        if (id === 'WINDFURY') score += this.windfuryGroupBias(group, roleIdentity, cfg);
+        continue;
+      }
+      score += buffValue(id);
+    }
+    score += this.raidWideCredit(group, groups, mode, cfg);
 
     // Ferocious Inspiration stacks multiplicatively per BM Hunter (1.03^n) —
     // the only party buff that does. resolveGroupBuffs dedupes it like any
@@ -1820,6 +1935,8 @@ const SCHOOL_CASTERS = {
 // manual once edited. Every Open slot, manual or auto, is then seated by the
 // full layout like a real player (Optimizer._optimizeSeats).
 const OpenSlots = {
+  ALTS_MAX: 2,
+
   // Classes the raid can bring: under a faction lock (Classic) no Paladin for
   // Horde or Shaman for Alliance, same as the Random roster's list.
   candidates() {
@@ -1898,6 +2015,22 @@ const OpenSlots = {
     return member.role === 'melee_dps' || member.role === 'ranged_dps' || member.role === 'tank';
   },
 
+  // The next ALTS_MAX distinct class+spec picks behind the winner of one seat, from the same pool and the same
+  // gain choose() ranked it on. gap = how far below the winner, in whole percent of the winner's gain (6 = "-6%").
+  // A winner whose gain is <= 0 has no sensible percentage, so gap is null and the UI shows no number.
+  _runnerUps(best) {
+    const key = c => c.class + '|' + c.spec;
+    const seen = new Set([key(best.candidate)]);
+    const alts = [];
+    for (const { candidate, gain } of best.ranked) {
+      if (alts.length >= this.ALTS_MAX) break;
+      if (seen.has(key(candidate))) continue;
+      seen.add(key(candidate));
+      alts.push({ class: candidate.class, spec: candidate.spec, gap: best.gain > 0 ? Math.max(0, Math.round((best.gain - gain) / best.gain * 100)) : null });
+    }
+    return alts;
+  },
+
   // The specs to suggest for the raid's empty seats: tank/healer floors first,
   // then whatever adds the most (party-buff gain in its group + _raidValue),
   // one at a time so each pick sees the last. A pick is priced in a group
@@ -1905,7 +2038,7 @@ const OpenSlots = {
   // seat elsewhere, on a scratch board that never grows past the party size.
   // That only prices the spec: where the slot sits is decided by the full
   // layout optimize() runs next. A seat no spec fits by convention still
-  // gets the best spec regardless. Returns picks as { class, spec }.
+  // gets the best spec regardless. Returns picks as { class, spec, alts } (alts: see _runnerUps).
   choose() {
     if (!GameVersions[State.gameVersion].modeled) return [];
     const raid = Config.Raids[State.selectedRaid];
@@ -1954,8 +2087,10 @@ const OpenSlots = {
       const rooms = board.map((g, gi) => g.length >= max ? roomIn(gi) : null);
       const bestPick = (conventional) => {
         let best = null;
+        const ranked = [];
         for (const candidate of pool) {
           const raidValue = this._raidValue(candidate, board.flat(), mode);
+          let own = null; // this candidate at its best group: what the runner-ups are ranked on
           for (let gi = 0; gi < board.length; gi++) {
             if (conventional && !fits(candidate, gi)) continue;
             const room = board[gi].length >= max ? rooms[gi] : null;
@@ -1963,8 +2098,12 @@ const OpenSlots = {
             const base = room ? room.without : board[gi];
             const gain = scoreWith(gi, [...base, candidate]) - scoreWith(gi, base) - (room ? room.cost : 0) + raidValue;
             if (!best || gain > best.gain) best = { candidate, gi, room, gain };
+            if (!own || gain > own.gain) own = { candidate, gain };
           }
+          if (own) ranked.push(own);
         }
+        // Stable sort: on a tie the earlier candidate stays first, as the winner above does.
+        if (best) best.ranked = ranked.sort((a, b) => b.gain - a.gain);
         return best;
       };
       const best = bestPick(true) || bestPick(false);
@@ -1975,7 +2114,7 @@ const OpenSlots = {
         board[room.gj].push(room.m);
       }
       board[gi].push(this.standIn(candidate));
-      picks.push({ class: candidate.class, spec: candidate.spec });
+      picks.push({ class: candidate.class, spec: candidate.spec, alts: this._runnerUps(best) });
     }
     return picks;
   },

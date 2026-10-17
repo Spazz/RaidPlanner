@@ -711,6 +711,30 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .preferred-slot .player-spec { font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .preferred-slot img { opacity: .65; }
 .preferred-badge { color: var(--preferred-color); font-size: 9px; letter-spacing: .08em; border: 1px solid currentColor; border-radius: 3px; padding: 2px 4px; }
+/* Suggestion stack: a suggested Open slot with runner-ups. The top pick sits in front, the runner-ups peek out behind it
+   (dashed, in their own class colour); clicking fans it into one card per spec, with how far each trails the best. */
+.player-slot.preferred-stack { position: relative; display: block; border: 0; background: none; padding: 0 6px 6px 0; min-height: 0; cursor: default; }
+.preferred-stack .stack-card {
+  appearance: none; position: relative; display: flex; align-items: center; gap: var(--sp-1); width: 100%; min-height: 24px;
+  margin: 0; padding: 2px var(--sp-2); font: inherit; color: inherit; text-align: left; cursor: pointer;
+  border: 1px dashed var(--preferred-color);
+  background-color: var(--bg-card); background-image: linear-gradient(color-mix(in srgb, var(--preferred-color) 9%, transparent), color-mix(in srgb, var(--preferred-color) 9%, transparent));
+}
+.preferred-stack .stack-card:hover { background-image: linear-gradient(color-mix(in srgb, var(--preferred-color) 16%, transparent), color-mix(in srgb, var(--preferred-color) 16%, transparent)); }
+.preferred-stack .stack-card:focus-visible, .preferred-stack .stack-other:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
+.preferred-stack .stack-peek {
+  position: absolute; inset: 0 6px 6px 0; border: 1px dashed var(--preferred-color); border-radius: 2px;
+  background-color: var(--bg-card); background-image: linear-gradient(color-mix(in srgb, var(--preferred-color) 7%, transparent), color-mix(in srgb, var(--preferred-color) 7%, transparent));
+  pointer-events: none;
+}
+.preferred-stack .stack-peek-1 { transform: translate(3px, 3px); }
+.preferred-stack .stack-peek-2 { transform: translate(6px, 6px); opacity: .8; }
+.preferred-stack.preferred-fan { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 3px 0; }
+.stack-gap { color: var(--preferred-color); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.preferred-fan .stack-other {
+  appearance: none; align-self: flex-start; margin: 0; padding: 2px var(--sp-2); font: inherit; font-size: 11px;
+  color: var(--accent-gold); background: none; border: 0; text-decoration: underline; cursor: pointer;
+}
 /* Planned bench backup indicator — shown on both the seated player's card
    ("Backup: Name") and the benched backup's own card ("-> Name"). */
 .backup-badge { flex-shrink:0; font-size: 9px; letter-spacing: .04em; color: var(--accent-gold-bright); border: 1px solid var(--accent-gold-dim); border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
@@ -1956,6 +1980,10 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   .group-header h3 { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; }
   .group-role-tag { font-size: 12px; letter-spacing: 0.1em; }
   .player-slot { padding: 4px 10px; gap: 8px; min-height: 38px; }
+  .player-slot.preferred-stack { padding: 0 6px 6px 0; min-height: 0; }
+  .player-slot.preferred-fan { padding: 3px 0; }
+  .preferred-stack .stack-card { padding: 4px 10px; gap: 8px; min-height: 38px; }
+  .preferred-fan .stack-other { padding: 10px; min-height: 38px; }
   .role-icon { width: 22px; height: 22px; }
   .player-name { font-size: 14px; }
   .player-spec { font-size: 11px; }

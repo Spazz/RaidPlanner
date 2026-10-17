@@ -63,7 +63,20 @@ const PreferredSlots = {
           !Object.values(Config.Specs[p.class] || {}).some(s => s.name === p.spec)) return false;
       counts[p.group] = (counts[p.group] || 0) + 1;
       return counts[p.group] <= 5;
-    }).map(p => ({group:p.group, class:p.class, spec:p.spec, ...(p.auto === true ? {auto:true} : {})}));
+    }).map(p => ({group:p.group, class:p.class, spec:p.spec, ...(p.auto === true ? {auto:true} : {}), ...(p.auto === true ? this.cleanAlts(p.alts, p) : {})}));
+  },
+  // A suggested slot's runner-up specs, [{class, spec, gap}] (gap: whole percent below the top pick, or null).
+  // Old plans and links carry none; anything malformed is dropped rather than failing the load.
+  cleanAlts(alts, top) {
+    const seen = new Set([top.class + '|' + top.spec]);
+    const kept = [];
+    for (const a of Array.isArray(alts) ? alts : []) {
+      if (kept.length >= 2 || !a || !Object.values(Config.Specs[a.class] || {}).some(s => s.name === a.spec)) continue;
+      if (seen.has(a.class + '|' + a.spec)) continue;
+      seen.add(a.class + '|' + a.spec);
+      kept.push({class:a.class, spec:a.spec, gap:Number.isFinite(a.gap) && a.gap >= 0 ? Math.round(a.gap) : null});
+    }
+    return kept.length ? {alts:kept} : {};
   },
   forGroup(group) { return State.preferredSlots.filter(p => p.group === group); },
   // Slots the leader set by hand. Optimize keeps these and replaces the
@@ -79,8 +92,8 @@ const PreferredSlots = {
       // A suggested Open gives its seat up to the leader's own request.
       if (seated + requests.length >= 5) this.remove(requests.filter(p => p.auto).pop());
     }
-    // Editing a suggested slot makes it the leader's own: never auto-replaced.
-    if (existing) { Object.assign(existing, {class:classFile, spec}); delete existing.auto; }
+    // Editing a suggested slot makes it the leader's own: never auto-replaced, and its runner-ups go.
+    if (existing) { Object.assign(existing, {class:classFile, spec}); delete existing.auto; delete existing.alts; }
     else State.preferredSlots.push({group, class:classFile, spec});
     State.preserveGroupOrder = true;
     return true;

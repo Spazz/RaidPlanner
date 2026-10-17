@@ -79,13 +79,13 @@ A version file is one plain object literal, `RulesData.<version> = { ... }`, loa
 | `buffType` | The slot rule the optimizer applies. | `totem` (one per element per shaman), `paladinAura` (one per paladin), `warriorShout` (one per warrior), `passive` (always on while its provider is in the group). |
 | `totemElement` | The element a totem occupies. | `air`, `earth`, `water`, `fire`; totems only. |
 | `cooldownTotem` | Mana Tide: credited on top of the shaman's standing water totem instead of occupying the slot. | `true`; totems only. |
-| `scope` | Where it applies. | `party` (everything the optimizer places) or `raid` (accepted, not used yet). |
+| `scope` | Where it applies. | `party` (everything the optimizer places) or `raid`: reaches every group wherever its provider sits, so the scorer does not count it per group and spreadProviders does not spread for it (Forever, 2026-10-16: Battle Shout, Trueshot Aura, Moonkin Aura, Leader of the Pack, Windfury, Grace of Air, Strength of Earth). |
 | `sourceClass`, `sourceSpec` | Who provides it; `sourceSpec` only when the buff is talent-gated. | A class of the catalog; a spec of that class. |
 | `preferSpec` | A placement hint shown in the UI; the scorer ignores it. | A spec of `sourceClass`. |
 | `targetRoles` | The roles that gain from it. | Any of `tank`, `healer`, `melee_dps`, `ranged_dps`, `caster_dps`. |
 | `priority` | The order of a group's buff badges (higher first) for the group's most common role. | A number, or a map role -> number. |
 | `weight` | What the optimizer scores, see below. | `{ dps, mitigation, sustain }`, each optional. |
-| `exclusiveBuffs` | Ids that share one slot per party with this one (Forever: Windfury and Grace of Air); the better-valued member wins. | Buff ids of the same version; both members list each other. |
+| `exclusiveBuffs` | Ids that share one slot per party with this one (none in Forever since 2026-10-16); the better-valued member wins. | Buff ids of the same version; both members list each other. |
 
 **How `weight` is applied.** `weight.dps` is what a recipient gains. Its key is looked up on the recipient in this order: the exact `CLASS:Spec` (`PALADIN:Retribution`), then the bare class (`WARLOCK`), then the role (`melee_dps`); no match is 0. The number is then multiplied by the recipient's own DPS weight: `specDpsWeight` for its `CLASS:Spec`, else `roleDpsWeight` for its role (0.8 when the role is missing too), so the strongest DPS is placed where it gets buffed first. `dps: {}` is written out for a buff that is worth nothing to anyone's DPS. `weight.mitigation` is what a tank gains, keyed by the tank's `CLASS:Spec` with `'*'` as the fallback for any other tank (not multiplied by the DPS weight). `weight.sustain` is one number for the tank group's healers, counted per healer present (at most `sustainHealers`).
 

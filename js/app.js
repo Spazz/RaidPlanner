@@ -2031,8 +2031,8 @@ const IdealComp = {
   // Forever reference comps — no faction lock, so unlike Classic these mix
   // Shaman totems and Paladin auras in the SAME roster (tasks/research-forever.md
   // Browser verification: six new race/class combos put both classes on both
-  // factions). Feral (LotP) and Balance (Moonkin) druids are never paired in
-  // the same group here since the two auras are mutually exclusive in Forever.
+  // factions). Feral (LotP) and Balance (Moonkin) druids are raid-wide in
+  // Forever (2026-10-16 notes), so where they sit is only a layout choice here.
   buildForever40Man() {
     const groups = [
       [ // Melee A — Shaman Windfury, Feral crit aura

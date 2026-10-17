@@ -92,7 +92,8 @@ function stackingViolation(groups, matches) {
 }
 
 function providerMatchers(rules) {
-  return (rules.rules.spreadProviders || []).map(spec => ({
+  // A provider whose melee buffs are all raid-wide (Forever's shaman since 2026-10-16) is not spread over the melee groups.
+  return (rules.rules.spreadProviders || []).filter(spec => Optimizer.providesPartyBuffTo(spec, 'melee_dps')).map(spec => ({
     label: spec.class + (spec.spec ? ':' + (Array.isArray(spec.spec) ? spec.spec.join('/') : spec.spec) : ''),
     matches: p => p.class === spec.class && (!spec.spec || (Array.isArray(spec.spec) ? spec.spec.includes(p.spec) : p.spec === spec.spec)),
   }));
@@ -122,6 +123,9 @@ for (const [key, fixture] of Object.entries(FIXTURES)) {
   console.log(`\n=== ${fixture.label} (${totalPlayers} sign-ups, ${raidInfo.groups} groups) ===`);
 
   for (const mode of MODES) {
+    // Forever gates on max_dps only (project rule, 4.2.0: tank_mit/balanced/relaxed are deprecated). Since the 2026-10-16
+    // data its shaman and druid auras are raid-wide, so relaxed (no refinement) may leave a melee DPS without a shaman.
+    if (fixture.version === 'forever' && mode !== 'max_dps') continue;
     State.gameVersion = fixture.version;
     State.selectedRaid = fixture.raid;
     State.optimizerMode = mode;
