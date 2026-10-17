@@ -14,13 +14,15 @@
 //   https://github.com/papa-smurf/Gargul/blob/7cc1fc1713ca74375398c36fb48d4dca2c7d32a6/Classes/Exporter.lua
 //   https://github.com/papa-smurf/Gargul/blob/7cc1fc1713ca74375398c36fb48d4dca2c7d32a6/Classes/AwardedLoot.lua
 // The checks mirror the Worker's (worker/loot-import.js readAwards), which refuses a whole request for one bad row:
-// checksum 8-40 printable ASCII without spaces, item id 1..2147483647, time 2004-11-23..2100 in ms, a 2-12 letter winner.
+// checksum 8-40 printable ASCII without spaces, item id 1..2147483647, time 2004-11-23..2100 in ms, a 2-12 letter winner (a disenchant has none).
 // Facts the parser relies on (they differ from the first plan notes in two places):
 //   - timestamp is epoch SECONDS (GetServerTime), UTC.
 //   - checksum is a 20-digit string (two string hashes joined, cut to 20, right-padded with "0"); entries that predate
 //     checksums have none (Exporter.lua l.246 invents one only for the non-raw formats), so they are skipped here.
 //   - awardedTo is "Name-Realm" (addRealm always appends the realm; the realm has spaces and hyphens removed). A disenchanted
-//     item has awardedTo "||de||" (Exporter.disenchantedItemIdentifier) and no winner.
+//     item has awardedTo "||de||" (Exporter.disenchantedItemIdentifier) and no winner. It is kept as an award with winnerName,
+//     winnerRealm and winnerClass null and disenchanted true (Gargul's winnerClass on such an entry is only the PRIEST fallback);
+//     the Worker stores it with the tag DE and no winner.
 //   - winnerClass is a NUMBER (Constants.UnitClasses: 1 WARRIOR, 2 PALADIN, 3 HUNTER, 4 ROGUE, 5 PRIEST, 7 SHAMAN, 8 MAGE,
 //     9 WARLOCK, 11 DRUID), not the class name, and Gargul falls back to PRIEST when it cannot tell, so it is only a hint.
 //   - OS / SR / WL / PL / TMB are booleans (the other export formats print 1 / 0, so 1 is read as true too).
@@ -131,8 +133,8 @@
     if (!itemId) return { reason: 'Missing item ID' };
 
     if (typeof row.awardedTo !== 'string' || !row.awardedTo.trim()) return { reason: 'Missing winner' };
-    if (row.awardedTo.trim() === DISENCHANT_MARK) return { reason: 'Disenchanted item (no winner)' };
-    const winner = parseWinner(row.awardedTo);
+    const disenchanted = row.awardedTo.trim() === DISENCHANT_MARK;
+    const winner = disenchanted ? { name: null, realm: null } : parseWinner(row.awardedTo);
     if (!winner) return { reason: 'Winner name is not a character name' };
 
     const awardedAt = timeOf(row.timestamp);
@@ -151,7 +153,8 @@
       awardedAt: awardedAt,
       winnerName: winner.name,
       winnerRealm: winner.realm,
-      winnerClass: classOf(row.winnerClass),
+      winnerClass: disenchanted ? null : classOf(row.winnerClass),
+      disenchanted: disenchanted,
       rollType: rollType || null,
       flags: FLAG_KEYS.filter(function (k) { return truthy(row[k]); }),
       awardedBy: by || null,

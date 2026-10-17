@@ -19,12 +19,6 @@
     updated: '2026-10-17',
     items: [
       // ── In progress ──
-      {
-        id: 'loot-history',
-        title: 'Loot history (Phase 4)',
-        summary: 'Import the Gargul Detailed JSON export for each raid, then see loot per player, per raid and per item, plus a loot balance (main-spec items per raid attended). Officers tag each drop (MS, OS, DE or Bank), and Loot settings choose who sees loot and how the balance counts.',
-        area: 'loot', status: 'in_progress', source: 'user', added: '2026-10-17',
-      },
 
       // ── Next up ──
       {
@@ -83,6 +77,13 @@
         id: 'pre-raid-loot-board',
         title: 'Pre-raid loot board',
         summary: 'Before the raid, see the ThatsMyBIS prio and softres.it reserves for the raid\'s roster in one place. Paste a TMB or softres export to load them.',
+        area: 'loot', status: 'idea', source: 'backlog', added: '2026-10-17',
+      },
+      {
+        id: 'loot-without-gargul-export',
+        title: 'Loot for items without a Gargul export',
+        summary: 'Officers add a loot award by hand when there is no Gargul export for it: pick the raid, the item, the winner and the tag.',
+        why: 'Loot only gets into Raidsmith through a Gargul export today, so a drop awarded outside Gargul is missing from the history and the balance.',
         area: 'loot', status: 'idea', source: 'backlog', added: '2026-10-17',
       },
       {
@@ -254,6 +255,12 @@
         title: 'Battle.net character link and guild roster import',
         summary: 'Members link Battle.net from the avatar menu, see their characters per guild and claim the ones that are theirs. Officers approve claims in the Review queue and can import the guild roster from Battle.net after a preview. Data follows the 30-day rule and Disconnect deletes it at once. WoW Forever has no Battle.net character data yet; it turns on when Blizzard publishes a namespace.',
         area: 'battlenet', status: 'done', source: 'user', added: '2026-10-17', shipped: '2026-10-17',
+      },
+      {
+        id: 'loot-history',
+        title: 'Loot history (Phase 4)',
+        summary: 'Import the Gargul Detailed JSON export for each raid, disenchanted items included, then see loot per player, per raid and per item, plus a loot balance (main-spec items per raid attended). Officers tag each drop (MS, OS, DE or Bank), and Loot settings choose who sees loot and how the balance counts.',
+        area: 'loot', status: 'done', source: 'user', added: '2026-10-17', shipped: '2026-10-17',
       },
       {
         id: 'future-raids-planner-link',

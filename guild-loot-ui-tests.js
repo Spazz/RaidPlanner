@@ -538,11 +538,13 @@ function withState(fn) {
   });
 
   // ── the Gargul import panel ────────────────────────────────────
-  const COUNTS = { new: 6, update: 1, same: 2, otherRaid: 1, otherDay: 3 };
+  const COUNTS = { new: 7, update: 1, same: 2, otherRaid: 1, otherDay: 3 };
   function previewRows() {
     const parsed = G.gargul.parse(FIXTURE_TEXT);
-    const statuses = ['new', 'new', 'new', 'update', 'same', 'same', 'otherRaid', 'otherDay', 'otherDay', 'otherDay', 'new', 'new', 'new'];
-    return { parsed, rows: parsed.awards.map((a, i) => Object.assign({}, a, { status: statuses[i], match: i % 3 === 0 ? { kind: 'unmatched' } : { kind: 'character', personId: 'p_x', personName: a.winnerName, characterName: a.winnerName }, tag: a.flags.includes('OS') ? 'OS' : 'MS' })) };
+    const statuses = ['new', 'new', 'new', 'update', 'same', 'same', 'otherRaid', 'otherDay', 'otherDay', 'otherDay', 'new', 'new', 'new', 'new'];
+    // The disenchant of the fixture (row 14 of the paste) has no winner: the Worker answers match.kind 'disenchanted' and the tag DE.
+    const match = (a, i) => (a.disenchanted ? { kind: 'disenchanted' } : i % 3 === 0 ? { kind: 'unmatched' } : { kind: 'character', personId: 'p_x', personName: a.winnerName, characterName: a.winnerName });
+    return { parsed, rows: parsed.awards.map((a, i) => Object.assign({}, a, { status: statuses[i], match: match(a, i), tag: a.disenchanted ? 'DE' : a.flags.includes('OS') ? 'OS' : 'MS' })) };
   }
   function panel(over) {
     const x = okState();
@@ -565,19 +567,23 @@ function withState(fn) {
   await check('import panel: preview stage shows counts, status chips, the skipped rows, the other-day checkbox (off) and the Import button', () => {
     const { parsed, rows } = previewRows();
     const out = panel({ stage: 'preview', parsed, preview: { rows, counts: COUNTS } });
-    assert(out.includes('13 awards read from 15 rows.') && out.includes('2 rows were left out of the paste'));
-    assert(out.includes('Row 9 (Eye of Gruul to Halric-Ashmere): Missing checksum') && out.includes('Row 14') && out.includes('Disenchanted item (no winner)'));
-    for (const [label, n] of [['New', 6], ['Updated', 1], ['Unchanged', 2], ['On other raids', 1], ['On other days', 3]]) assert(out.includes('<dt>' + label + '</dt><dd>' + n + '</dd>'), label);
+    assert(out.includes('14 awards read from 15 rows.') && out.includes('1 row was left out of the paste'));
+    assert(out.includes('Row 9 (Eye of Gruul to Halric-Ashmere): Missing checksum') && !out.includes('Row 14') && !out.includes('Disenchanted item (no winner)'), 'the disenchant is no longer left out');
+    for (const [label, n] of [['New', 7], ['Updated', 1], ['Unchanged', 2], ['On other raids', 1], ['On other days', 3]]) assert(out.includes('<dt>' + label + '</dt><dd>' + n + '</dd>'), label);
     for (const chip of ['>New<', '>Update<', '>Same<', '>Other raid<', '>Other day<']) assert(out.includes('gs-pill') && out.includes(chip), chip);
     assert(out.includes('<input type="checkbox" id="gl-other" data-change="loot-other" data-key="gl-other"><label for="gl-other">Include 3 awards from other days</label>'), 'unchecked');
-    assert(out.includes('>Import 7 awards<') && !/data-action="loot-commit"[^>]*disabled/.test(out));
+    assert(out.includes('>Import 8 awards<') && !/data-action="loot-commit"[^>]*disabled/.test(out));
     const previewList = out.slice(out.indexOf('data-scroll-key="loot-preview"'));
-    assert(previewList.length > 0 && (previewList.slice(0, previewList.indexOf('</ul>')).match(/<li class="gs-loot-row"/g) || []).length === 13);
+    const previewHtml = previewList.slice(0, previewList.indexOf('</ul>'));
+    assert(previewList.length > 0 && (previewHtml.match(/<li class="gs-loot-row"/g) || []).length === 14);
+    const deRow = previewHtml.split('<li class="gs-loot-row"').filter(r => r.includes('id="loot-74190331205118463934"'));
+    assert.equal(deRow.length, 1, 'the disenchant is a row of the preview');
+    assert(stripTags(deRow[0]).includes('Disenchanted') && deRow[0].includes('>DE<') && !deRow[0].includes('Not on roster') && !deRow[0].includes('<select'), 'named as a disenchant, tagged DE, no winner chip');
     assert(out.includes('Oct 10, 8:12 PM'), 'date and time in the guild zone');
     assert(out.includes('Not on roster') && out.includes('data-action="loot-back"'));
     const included = panel({ stage: 'preview', parsed, preview: { rows, counts: COUNTS }, includeOtherDay: true });
-    assert(included.includes(' checked><label for="gl-other">') && included.includes('>Import 10 awards<'));
-    const nothing = panel({ stage: 'preview', parsed, preview: { rows, counts: { new: 0, update: 0, same: 13, otherRaid: 0, otherDay: 0 } } });
+    assert(included.includes(' checked><label for="gl-other">') && included.includes('>Import 11 awards<'));
+    const nothing = panel({ stage: 'preview', parsed, preview: { rows, counts: { new: 0, update: 0, same: 14, otherRaid: 0, otherDay: 0 } } });
     assert(/data-action="loot-commit"[^>]*disabled/.test(nothing) && nothing.includes('There is nothing new to import.') && !nothing.includes('gl-other'));
     assert(panel({ stage: 'preview', parsed, preview: { rows, counts: COUNTS }, busy: true }).includes('Importing...'));
     assertNoRawAttrs(out);
@@ -610,17 +616,20 @@ function withState(fn) {
     const x = raidSetup(S);
     x.ui.open = true; x.ui.text = FIXTURE_TEXT;
     const done = countRenders();
-    const s = stub((m, url, body) => Promise.resolve({ rows: body.awards.map(a => Object.assign({}, a, { status: 'new', match: { kind: 'unmatched' }, tag: 'MS' })), counts: { new: 13, update: 0, same: 0, otherRaid: 0, otherDay: 0 } }));
+    const s = stub((m, url, body) => Promise.resolve({ rows: body.awards.map(a => Object.assign({}, a, { status: 'new', match: { kind: 'unmatched' }, tag: 'MS' })), counts: { new: 14, update: 0, same: 0, otherRaid: 0, otherDay: 0 } }));
     G.handlers.click['loot-preview']();
     await tick();
     assert.equal(s.calls.length, 1);
     assert.deepEqual([s.calls[0].m, s.calls[0].url], ['post', '/api/guild/g1/raids/r1/loot/preview']);
-    assert.equal(s.calls[0].body.awards.length, 13);
+    assert.equal(s.calls[0].body.awards.length, 14);
     assert.deepEqual(Object.keys(s.calls[0].body), ['awards']);
     assert.equal(s.calls[0].body.awards[0].checksum, '74190331205118463920');
+    const sentDe = s.calls[0].body.awards.filter(a => a.disenchanted);
+    assert.equal(sentDe.length, 1, 'the disenchant goes to the Worker as an award of its own');
+    assert.deepEqual([sentDe[0].winnerName, sentDe[0].winnerRealm, sentDe[0].winnerClass, sentDe[0].checksum], [null, null, null, '74190331205118463934']);
     assert.equal(x.ui.stage, 'preview');
-    assert.equal(x.ui.preview.rows.length, 13);
-    assert.equal(x.ui.parsed.skipped.length, 2);
+    assert.equal(x.ui.preview.rows.length, 14);
+    assert.equal(x.ui.parsed.skipped.length, 1);
     assert.equal(x.ui.text, '', 'the big paste is dropped once read');
     assert.equal(x.ui.busy, false);
     assert(renders >= 2);
@@ -694,7 +703,7 @@ function withState(fn) {
     G.handlers.click['loot-commit']();
     await tick();
     assert.equal(s.calls[0].body.includeOtherDay, false);
-    assert.equal(s.calls[0].body.awards.length, 13);
+    assert.equal(s.calls[0].body.awards.length, 14);
     assert.deepEqual(plain(x.ui.result), { inserted: 6, updated: 1, unchanged: 2, skippedOtherRaid: 1, skippedOtherDay: 3 });
     assert.equal(x.data.awards.length, 1);
     s.restore();
@@ -838,8 +847,11 @@ function withState(fn) {
     assert.equal(R.stateFor('g1', 'other'), null);
     const ui = R.stateFor('g1', 'r1').ui;
     ui.open = true;
+    await R.loadFor(gdata, DETAIL, { keepUi: true });
+    assert.equal(R.stateFor('g1', 'r1').ui, ui, 'Try again on the card keeps the open panel');
     await R.loadFor(gdata, DETAIL);
-    assert.equal(R.stateFor('g1', 'r1').ui, ui, 'a reload of the same raid keeps the open panel');
+    assert.notEqual(R.stateFor('g1', 'r1').ui, ui, 'opening the raid page again starts the panel afresh');
+    assert.deepEqual(plain(R.stateFor('g1', 'r1').ui), plain(R.freshUi()));
     s.restore();
     s = stub(() => Promise.resolve({}));
     await R.loadFor(gdata, { raid: Object.assign({}, DETAIL.raid, { upcoming: true, id: 'r9' }) });
@@ -1170,6 +1182,221 @@ function withState(fn) {
     await tick();
     assert.deepEqual(posts.calls[0], { m: 'post', url: '/api/guild/g1/raids/r1/unmatched', body: { key: 'veyla|ashmere', action: 'guest' } });
     posts.restore(); G.ui.openDialog = realOpen; G.ui.runDialog = realRun; G.app.render = realRender;
+  }));
+
+  // ── disenchants: an award nobody won ───────────────────────────
+  // The Worker answers match.kind 'disenchanted', winner { name: null, realm: null, class: null } and the tag DE.
+  const DE_AWARD = award('d1', { itemId: 22520, itemName: "The Phylactery of Kel'Thuzad", awardedAt: 1791774300000, winner: { name: null, realm: null, class: null }, match: { kind: 'disenchanted' }, tag: 'DE', rollType: null });
+
+  await check('disenchants: the winner column reads Disenchanted (no link, no chip, no name); the tag is the DE chip even for an editor', () => {
+    const L = G.pages.loot;
+    assert.equal(L.isDisenchanted(DE_AWARD), true);
+    assert.equal(L.isDisenchanted(AWARDS[0]), false);
+    assert.equal(L.isDisenchanted(null), false);
+    const winner = L.winnerHtml('g1', DE_AWARD.winner, DE_AWARD.match);
+    assert.equal(stripTags(winner), 'Disenchanted');
+    assert(!winner.includes('href') && !winner.includes('gs-chip') && !winner.includes('null'));
+    const editor = L.awardRowHtml(gd(OFFICER_CAN), DE_AWARD, { edit: true, when: 'time' });
+    assert(stripTags(editor).includes('Disenchanted') && editor.includes('>DE<'));
+    assert(!editor.includes('data-change="loot-tag"') && !editor.includes('<select'), 'an officer cannot re-tag a disenchant: no select, the chip stays');
+    assert(editor.includes('data-action="loot-note" data-aid="d1"') && editor.includes('data-action="loot-delete" data-aid="d1"'), 'a note and delete still work');
+    assert(editor.includes('href="https://www.wowhead.com/tbc/item=22520"') && editor.includes('Kel&#39;Thuzad'), 'the item is still linked and escaped');
+    const viewer = L.awardRowHtml(gd(MEMBER_CAN), DE_AWARD, { when: 'time' });
+    assert(stripTags(viewer).includes('Disenchanted') && viewer.includes('>DE<') && !viewer.includes('data-action'));
+    // The person pages show a character, never a disenchant, but the row builder must not break on one.
+    assert(stripTags(L.awardRowHtml(gd(OFFICER_CAN), DE_AWARD, { character: true, when: 'date' })).includes('Disenchanted'));
+    // A normal award keeps its select.
+    assert(L.awardRowHtml(gd(OFFICER_CAN), AWARDS[0], { edit: true }).includes('data-change="loot-tag"'));
+    // Hostile text in the item name stays escaped on a disenchant.
+    assertEscaped(L.awardRowHtml(gd(OFFICER_CAN), Object.assign({}, DE_AWARD, { itemName: HOSTILE, note: HOSTILE + QUOTES }), { edit: true }), 'disenchant');
+  });
+
+  await check('disenchants: the raid card lists them, counts them as items and not as winners off the roster; the delete dialog names the item; the preview labels the row', withState(async (S) => {
+    const state = okState();
+    state.data.awards = AWARDS.concat([DE_AWARD]);
+    const out = raidPage(state);
+    assert(out.includes('5 items') && (out.match(/<li class="gs-loot-row"/g) || []).length === 5);
+    assert(stripTags(out.slice(out.indexOf('id="loot-d1"'))).includes('Disenchanted'));
+    assert(out.includes('1 award goes to a winner who is not on the roster'), 'only Veyla; the disenchant is nobody\'s');
+    assert(!out.includes('2 awards go to a winner'));
+    // The delete dialog does not say "awarded to null".
+    const gdata = gd(OFFICER_CAN);
+    S.guilds.g1 = gdata; S.currentGid = 'g1';
+    S.att.raid = { gid: 'g1', rid: 'r1', data: DETAIL };
+    S.att.raidLoot = state;
+    const opened = [];
+    const realOpen = G.ui.openDialog;
+    G.ui.openDialog = html => { opened.push(html); return null; };
+    G.handlers.click['loot-delete'](el({ 'data-aid': 'd1' }));
+    G.ui.openDialog = realOpen;
+    assert(opened[0].includes('Delete this award?') && opened[0].includes("The Phylactery of Kel&#39;Thuzad (disenchanted) is removed") && !opened[0].includes('awarded to'), opened[0]);
+    // A refused row of a paste is named as a disenchant, not "to null".
+    const R = G.pages.raidLoot;
+    const parsed = { awards: [{ itemName: 'Warp Slicer', itemId: 9, winnerName: null, disenchanted: true }, { itemName: null, itemId: 10, winnerName: null, disenchanted: true }], awardRows: [3, 5] };
+    assert.equal(R.describeError(new G.api.ApiError(400, { message: 'Award 1: x', field: 'awards', index: 0 }), parsed), 'Row 3 of the paste (Warp Slicer (disenchanted)) was refused: x');
+    assert.equal(R.describeError(new G.api.ApiError(400, { message: 'Award 2: x', field: 'awards', index: 1 }), parsed), 'Row 5 of the paste (item 10 (disenchanted)) was refused: x');
+    assert(!/null/.test(R.describeError(new G.api.ApiError(400, { message: 'Award 2: x', field: 'awards', index: 1 }), parsed)));
+  }));
+
+  await check('disenchants: By raid has a Disenchanted column and card figure; By item names the item\'s disenchant; an older reply without the count still renders', () => {
+    const L = G.pages.loot;
+    const raids = { raids: [
+      { raidId: 'r2', raidOn: '2026-10-11', title: 'BT clear', zone: 'Black Temple', awards: 9, counted: 7, unmatched: 2, disenchanted: 3 },
+      { raidId: 'r1', raidOn: '2026-10-10', title: null, zone: 'Gruul', awards: 4, counted: 4, unmatched: 0, disenchanted: 0 },
+    ] };
+    const out = L.lootHtml(pageOpts({ view: 'raids', data: raids }));
+    assert(out.includes('<th scope="col">Disenchanted</th>'));
+    const rows = out.split('<tr>').filter(r => r.includes('gs-raid-link'));
+    assert(rows[0].includes('<td class="gs-num">3</td>') && rows[1].includes('<span class="gs-muted">-</span>'), 'a count, or a dash for none');
+    assert.equal((out.match(/<dt>Disenchanted<\/dt><dd>3<\/dd>/g) || []).length, 1, 'the phone card shows it only when there is one');
+    assert(!out.includes('<dt>Disenchanted</dt><dd>0</dd>'));
+    const old = L.lootHtml(pageOpts({ view: 'raids', data: { raids: [{ raidId: 'r2', raidOn: '2026-10-11', title: null, zone: 'Gruul', awards: 1, counted: 1, unmatched: 0 }] } }));
+    assert(old.includes('href="#/g/g1/raids/r/r2"') && !old.includes('undefined') && !old.includes('NaN'));
+    const items = { items: [{ itemId: 22520, itemName: "The Phylactery of Kel'Thuzad", quality: 4, count: 2, lastAwardedAt: 1791774300000, awards: [
+      { id: 'd1', raidId: 'r2', raidOn: '2026-10-11', awardedAt: 1791774300000, tag: 'DE', tagSetBy: null, winner: { name: null, realm: null, class: null }, match: { kind: 'disenchanted' } },
+      { id: 'a5', raidId: 'r1', raidOn: '2026-10-10', awardedAt: 1791681160000, tag: 'MS', tagSetBy: null, winner: AWARDS[0].winner, match: AWARDS[0].match },
+    ] }] };
+    const byItem = L.lootHtml(pageOpts({ view: 'items', data: items }));
+    const subrows = [...byItem.matchAll(/<li class="gs-loot-subrow">([\s\S]*?)<\/li>/g)].map(m => stripTags(m[1]));
+    assert.equal(subrows.length, 2);
+    assert(subrows[0].includes('Disenchanted') && subrows[0].includes('DE') && !subrows[0].includes('Not on roster') && !subrows[0].includes('Guest'));
+    assert(subrows[1].includes('Thoren'));
+    assertNoRawAttrs(byItem);
+  });
+
+  // ── Link / Add as new person for a winner whose class nobody knows ──
+  const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
+  const classOptionsOf = html => [...html.slice(html.indexOf('id="unm-class"')).split('</select>')[0].matchAll(/<option value="([A-Z]*)"/g)].map(m => m[1]);
+
+  await check('review dialogs: Link and Add as new person ask for the class (a required select of the nine) when the name has none; a known class asks nothing; guests never', () => {
+    const R = G.pages.review;
+    const known = { kind: 'unmatched', key: 'veyla|ashmere', name: 'Veyla', realm: 'Ashmere', class: 'MAGE', awards: 2 };
+    const unknown = { kind: 'unmatched', key: 'classless|ashmere', name: 'Classless', realm: 'Ashmere', class: null, awards: 1 };
+    const gdata = gd(OFFICER_CAN);
+    const people = [{ id: 'p_t', status: 'raider', main: { name: 'Thoren', class: 'PALADIN' } }];
+    const link = unm => R.linkDialogHtml({ unm, people, raidId: 'r1', where: 'review', guildData: gdata });
+    const person = unm => R.personDialogHtml({ unm, raidId: 'r1', raidOn: '2026-10-10', where: 'review', guildData: gdata });
+    for (const [label, html] of [['link', link(unknown)], ['person', person(unknown)]]) {
+      assert(/<select class="gs-input" id="unm-class" name="class" data-field="class" aria-describedby="unm-class-help">/.test(html), label);
+      assert(html.includes('<label class="gs-label" for="unm-class">Class (required)</label>') && html.includes('id="dlg-err-class" role="alert" hidden'), label);
+      assert.deepEqual(classOptionsOf(html), [''].concat(CLASS_IDS), label + ': a placeholder and the nine classes');
+      assert(html.includes('>Pick a class<') && html.includes('Neither the loot nor the log says which class Classless plays.'), label);
+      assert(!/id="unm-class"[^>]*required/.test(html), label + ': the page checks it, the browser does not (novalidate)');
+      assertNoRawAttrs(html);
+    }
+    for (const html of [link(known), person(known), link({ kind: 'unmatched', key: 'a|b', name: 'Ruvik', class: 'SHAMAN', awards: 1 })]) {
+      assert(!html.includes('unm-class') && !html.includes('name="class"'));
+    }
+    assert(!R.guestDialogHtml({ unm: unknown, raidId: 'r1', where: 'review' }).includes('unm-class'));
+    // No guild data (a render outside a loaded guild) still offers the nine classes; a hostile name is escaped.
+    assert.deepEqual(classOptionsOf(R.personDialogHtml({ unm: unknown, raidId: 'r1', raidOn: '2026-10-10', where: 'review' })), [''].concat(CLASS_IDS));
+    assertEscaped(person(Object.assign({}, unknown, { name: HOSTILE })), 'class field');
+    assertEscaped(link(Object.assign({}, unknown, { name: QUOTES })), 'class field');
+    // The roster option list of the guild wins when it has one.
+    const custom = gd(OFFICER_CAN, { rosterOptions: { classes: [{ id: 'MAGE', name: 'Mage' }, { id: 'DRUID', name: 'Druid' }], specs: {}, roles: {} } });
+    assert.deepEqual(classOptionsOf(R.personDialogHtml({ unm: unknown, raidId: 'r1', raidOn: '2026-10-10', where: 'review', guildData: custom })), ['', 'MAGE', 'DRUID']);
+  });
+
+  await check('review actions: a name without a class is sent with the class picked in the dialog; none picked says so and sends nothing; a known class sends none', withState(async (S) => {
+    const g1 = gd(OFFICER_CAN);
+    S.guilds.g1 = g1; S.currentGid = 'g1';
+    const groups = [{ raid: { id: 'r1', raidOn: '2026-10-10', zone: 'Gruul', title: null }, items: [
+      { kind: 'unmatched', key: 'classless|ashmere', name: 'Classless', realm: 'Ashmere', class: null, awards: 1 },
+      { kind: 'unmatched', key: 'veyla|ashmere', name: 'Veyla', realm: 'Ashmere', class: 'MAGE', awards: 2 },
+    ] }];
+    S.att.review = { gid: 'g1', teamId: 't1', data: REVIEW, loot: groups, filter: 'all' };
+    const opened = [];
+    const realOpen = G.ui.openDialog, realRun = G.ui.runDialog, realSet = G.ui.setText, realRender = G.app.render;
+    G.ui.openDialog = html => { opened.push(html); return null; };
+    G.ui.runDialog = (form, promise, ok) => promise.then(ok);
+    G.app.render = () => {};
+    const errs = {};
+    G.ui.setText = (id, text) => { errs[id] = text; };
+    // The dialogs open with the select for Classless only.
+    G.handlers.click['unm-person'](el({ 'data-where': 'review', 'data-rid': 'r1', 'data-ukey': 'classless|ashmere' }));
+    G.handlers.click['unm-person'](el({ 'data-where': 'review', 'data-rid': 'r1', 'data-ukey': 'veyla|ashmere' }));
+    assert(opened[0].includes('id="unm-class"') && !opened[1].includes('id="unm-class"'));
+
+    const focused = [];
+    const classSelect = value => ({ value, focus() { focused.push('class'); } });
+    const personForm = (key, name, cls) => ({
+      getAttribute: k => ({ 'data-rid': 'r1', 'data-key': key, 'data-name': name, 'data-where': 'review' })[k],
+      elements: Object.assign({ joinedOn: { value: '2026-10-10', focus() {} }, status: { value: 'raider' } }, cls === undefined ? {} : { class: classSelect(cls) }),
+    });
+    const s = stub(() => Promise.resolve({ staleRaids: 0, attendanceFlags: {} }));
+    const posts = () => s.calls.filter(c => c.m === 'post');   // a write reloads the review queue with a GET
+    // Nothing picked: a message next to the select, focus on it, no request.
+    G.handlers.submit['unm-person-form'](personForm('classless|ashmere', 'Classless', ''));
+    await tick();
+    assert.equal(posts().length, 0);
+    assert(/class/i.test(errs['dlg-err-class']) && errs['dlg-err-class'].length > 5, errs['dlg-err-class']);
+    assert.deepEqual(focused, ['class']);
+    // Picked: the class goes with the request, and the message is cleared.
+    G.handlers.submit['unm-person-form'](personForm('classless|ashmere', 'Classless', 'MAGE'));
+    await tick();
+    assert.equal(errs['dlg-err-class'], '');
+    assert.deepEqual(posts()[0], { m: 'post', url: '/api/guild/g1/raids/r1/unmatched', body: { key: 'classless|ashmere', action: 'person', status: 'raider', joinedOn: '2026-10-10', class: 'MAGE' } });
+    // A known class: the dialog has no select, and the body has no class.
+    G.handlers.submit['unm-person-form'](personForm('veyla|ashmere', 'Veyla'));
+    await tick();
+    assert.deepEqual(posts()[1].body, { key: 'veyla|ashmere', action: 'person', status: 'raider', joinedOn: '2026-10-10' });
+
+    // Link: the same, with the person picked and "make Main" optional.
+    const linkForm = (key, name, cls, makeMain) => ({
+      getAttribute: k => ({ 'data-rid': 'r1', 'data-key': key, 'data-name': name, 'data-where': 'review' })[k],
+      querySelector: () => ({ value: 'p_t', getAttribute: () => 'Thoren' }),
+      elements: Object.assign({ makeMain: { checked: !!makeMain } }, cls === undefined ? {} : { class: classSelect(cls) }),
+    });
+    G.handlers.submit['unm-link-form'](linkForm('classless|ashmere', 'Classless', ''));
+    await tick();
+    assert.equal(posts().length, 2, 'no request without a class');
+    assert(/class/i.test(errs['dlg-err-class']));
+    G.handlers.submit['unm-link-form'](linkForm('classless|ashmere', 'Classless', 'DRUID', true));
+    await tick();
+    assert.deepEqual(posts()[2].body, { key: 'classless|ashmere', action: 'alt', personId: 'p_t', makeMain: true, class: 'DRUID' });
+    G.handlers.submit['unm-link-form'](linkForm('veyla|ashmere', 'Veyla'));
+    await tick();
+    assert.deepEqual(posts()[3].body, { key: 'veyla|ashmere', action: 'alt', personId: 'p_t' });
+    s.restore(); G.ui.openDialog = realOpen; G.ui.runDialog = realRun; G.ui.setText = realSet; G.app.render = realRender;
+  }));
+
+  await check('raid page: coming back to a raid starts the import panel afresh (no stale "done" result); the card\'s Try again keeps it', withState(async (S) => {
+    const gdata = gd(OFFICER_CAN);
+    S.guilds.g1 = gdata; S.currentGid = 'g1';
+    const R = G.pages.raidLoot;
+    const detailFor = rid => Object.assign({}, DETAIL, { raid: Object.assign({}, DETAIL.raid, { id: rid }) });
+    const s = stub((m, url) => Promise.resolve(/loot$/.test(url) ? { awards: AWARDS, canEdit: true } : detailFor(url.split('/').pop())));
+    const view = { name: 'raid', gid: 'g1', rid: 'r1' };
+    await G.pages.raid.load(view, gdata);
+    // The officer imports: the panel ends on its result line.
+    const first = R.stateFor('g1', 'r1');
+    Object.assign(first.ui, { open: true, stage: 'done', result: { inserted: 8, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 5 }, text: 'old paste' });
+    assert(G.pages.raid.main(view, gdata).includes('Imported 8 new awards.'), 'the result shows while the officer is on the page');
+    // They leave and come back to the same raid: the route loads the page again.
+    await G.pages.raid.load(view, gdata);
+    const again = R.stateFor('g1', 'r1');
+    assert.notEqual(again.ui, first.ui);
+    assert.deepEqual(plain(again.ui), plain(R.freshUi()), 'closed, input stage, nothing pasted, no result');
+    const html = G.pages.raid.main(view, gdata);
+    assert(!html.includes('Imported 8 new awards.') && !html.includes('id="gl-result"') && !html.includes('gl-title'), 'the old result is gone');
+    assert(html.includes('data-action="loot-import-open"'), 'the Import button is back');
+    // Another raid does not inherit it either.
+    Object.assign(again.ui, { open: true, stage: 'done', result: { inserted: 1 } });
+    await G.pages.raid.load({ name: 'raid', gid: 'g1', rid: 'r2' }, gdata);
+    assert.deepEqual(plain(R.stateFor('g1', 'r2').ui), plain(R.freshUi()));
+    // Try again (a failed load of the awards) reloads the awards and leaves the panel alone.
+    await G.pages.raid.load(view, gdata);
+    const open = R.stateFor('g1', 'r1');
+    Object.assign(open.ui, { open: true, text: 'half typed' });
+    G.pages.attendance.attState().raid = { gid: 'g1', rid: 'r1', data: DETAIL };
+    const realRender = G.app.render;
+    G.app.render = () => {};
+    G.handlers.click['loot-reload']();
+    await tick();
+    G.app.render = realRender;
+    assert.equal(R.stateFor('g1', 'r1').ui, open.ui, 'the same panel object');
+    assert.deepEqual([R.stateFor('g1', 'r1').ui.open, R.stateFor('g1', 'r1').ui.text], [true, 'half typed']);
+    s.restore();
   }));
 
   // ── pages and safety ───────────────────────────────────────────

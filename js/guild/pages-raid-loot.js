@@ -142,12 +142,15 @@
   }
 
   // ── data ──
-  function loadFor(gd, detail) {
+  // Opening the raid page starts the import panel afresh (closed, nothing pasted, no old result). Only the card's own "Try again"
+  // (opts.keepUi) keeps the panel the officer was working in while the awards load again.
+  function loadFor(gd, detail, opts) {
     const gid = gd.guild.id;
     const raid = detail && detail.raid;
     if (!raid || raid.upcoming) { a().raidLoot = { gid: gid, rid: raid && raid.id, status: 'none' }; return Promise.resolve(null); }
     const prev = a().raidLoot;
-    const ui = prev && prev.gid === gid && prev.rid === raid.id && prev.ui ? prev.ui : freshUi();
+    const keep = !!(opts && opts.keepUi) && prev && prev.gid === gid && prev.rid === raid.id && prev.ui;
+    const ui = keep ? prev.ui : freshUi();
     return G.api.loot.raid(gid, raid.id).then(function (res) {
       a().raidLoot = { gid: gid, rid: raid.id, status: 'ok', data: res, ui: ui };
       return null;
@@ -219,7 +222,8 @@
     if (!parsed || index < 0 || index >= parsed.awards.length) return base;
     const award = parsed.awards[index];
     const row = parsed.awardRows && parsed.awardRows[index];
-    const label = award.itemName ? award.itemName + ' to ' + award.winnerName : 'item ' + award.itemId + ' to ' + award.winnerName;
+    const who = award.winnerName ? ' to ' + award.winnerName : ' (disenchanted)';
+    const label = (award.itemName || 'item ' + award.itemId) + who;
     return 'Row ' + (row || index + 1) + ' of the paste (' + label + ') was refused: ' + base.replace(/^Award \d+: /, '');
   }
 
@@ -241,7 +245,7 @@
     const gd = currentGd();
     const r = a().raid;
     if (!gd || !r) return;
-    loadFor(gd, r.data).then(function () { G.app.render(); });
+    loadFor(gd, r.data, { keepUi: true }).then(function () { G.app.render(); });
   };
 
   G.handlers.click['loot-import-open'] = function () {
@@ -402,7 +406,7 @@
     if (!award) return;
     G.ui.openDialog('<form class="gs-dialog-form" data-submit="loot-delete-form" data-aid="' + esc(award.id) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Delete this award?</h2>' +
-      '<p class="gs-confirm-text" id="dlg-text">' + esc((award.itemName || 'This item') + ' awarded to ' + L().winnerText(award.winner)) + ' is removed from the raid and from the balance. Importing the same Gargul export again adds it back.</p>' +
+      '<p class="gs-confirm-text" id="dlg-text">' + esc((award.itemName || 'This item') + (L().isDisenchanted(award) ? ' (disenchanted)' : ' awarded to ' + L().winnerText(award.winner))) + ' is removed from the raid and from the balance. Importing the same Gargul export again adds it back.</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Delete award</button></div></form>', { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
   };

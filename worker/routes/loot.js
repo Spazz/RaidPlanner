@@ -106,13 +106,18 @@ const INSERT_AWARDS = `INSERT INTO loot_awards (id, guild_id, raid_id, team_id, 
          json_extract(value, '$.flags'), json_extract(value, '$.tag'), json_extract(value, '$.awardedBy'), ?, ?, ?
     FROM json_each(?)`;
 
-// An officer's tag (tag_set_at) is never overwritten; the automatic one follows the award.
+// An officer's tag (tag_set_at) is never overwritten; the automatic one follows the award. The exception: an award that gains or loses
+// its winner (Gargul edited it to or from a disenchant) takes the automatic tag again and forgets the officer's, because a no-winner award
+// can only be DE. (SET expressions read the stored row, so `loot_awards.winner_name` below is the winner before this update.)
 const UPDATE_AWARDS = `UPDATE loot_awards SET
     item_id = json_extract(j.value, '$.itemId'), item_name = json_extract(j.value, '$.itemName'), item_quality = json_extract(j.value, '$.quality'),
     awarded_at = json_extract(j.value, '$.awardedAt'), winner_name = json_extract(j.value, '$.name'), winner_name_key = json_extract(j.value, '$.nameKey'),
     winner_realm = json_extract(j.value, '$.realm'), winner_realm_key = json_extract(j.value, '$.realmKey'), winner_class = json_extract(j.value, '$.class'),
     roll_type = json_extract(j.value, '$.rollType'), flags = json_extract(j.value, '$.flags'), awarded_by = json_extract(j.value, '$.awardedBy'),
-    tag = CASE WHEN loot_awards.tag_set_at IS NULL THEN json_extract(j.value, '$.tag') ELSE loot_awards.tag END,
+    tag = CASE WHEN loot_awards.tag_set_at IS NULL OR (json_extract(j.value, '$.name') IS NULL) <> (loot_awards.winner_name IS NULL)
+               THEN json_extract(j.value, '$.tag') ELSE loot_awards.tag END,
+    tag_set_by = CASE WHEN (json_extract(j.value, '$.name') IS NULL) <> (loot_awards.winner_name IS NULL) THEN NULL ELSE loot_awards.tag_set_by END,
+    tag_set_at = CASE WHEN (json_extract(j.value, '$.name') IS NULL) <> (loot_awards.winner_name IS NULL) THEN NULL ELSE loot_awards.tag_set_at END,
     updated_at = ?
   FROM json_each(?) j
   WHERE loot_awards.guild_id = ? AND loot_awards.raid_id = ? AND loot_awards.checksum = json_extract(j.value, '$.checksum')`;
@@ -187,6 +192,8 @@ export async function patchLoot(ctx) {
   const hasNote = body.note !== undefined;
   if (!hasTag && !hasNote) throw bad('Send a tag, a note, or both.', 'tag');
   if (hasTag && !(typeof body.tag === 'string' && LOOT_TAGS.includes(body.tag))) throw bad('Pick MS, OS, DE or BANK.', 'tag');
+  // Nobody won a disenchanted item, so it cannot be MS, OS or Bank.
+  if (hasTag && award.winner_name === null && body.tag !== 'DE') throw bad('A disenchanted item can only be tagged DE.', 'tag');
   let note = null;
   if (hasNote && body.note !== null) note = cleanText(body.note, 'note', { min: 0, max: MAX_NOTE }) || null;
   const now = ctx.now();
@@ -290,7 +297,7 @@ export async function getBalance(ctx) {
             AND p.id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`),
     bind(`SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1
             AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id = ?2)`),
-    bind('SELECT raid_id, tag, winner_name_key, winner_realm_key FROM loot_awards WHERE guild_id = ?1 AND team_id = ?2'),
+    bind('SELECT raid_id, tag, winner_name_key, winner_realm_key FROM loot_awards WHERE guild_id = ?1 AND team_id = ?2 AND winner_name_key IS NOT NULL'),
   ]);
   const { guildContext, guild, team, access } = loaded;
   // Under "own loot only" a viewer sees their row and the team average, so they must be on the team.
@@ -358,6 +365,7 @@ export async function getLootRaids(ctx) {
       awards: entries.length,
       counted: entries.filter((entry) => entry.matched.match.kind === 'character' && countTags.includes(entry.row.tag)).length,
       unmatched: entries.filter((entry) => entry.matched.match.kind === 'unmatched').length,
+      disenchanted: entries.filter((entry) => entry.matched.match.kind === 'disenchanted').length,
     }];
   }).sort((a, b) => (a.raidOn < b.raidOn ? 1 : a.raidOn > b.raidOn ? -1 : a.raidId.localeCompare(b.raidId)));
   return jsonResponse({ raids });

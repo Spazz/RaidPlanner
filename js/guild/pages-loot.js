@@ -99,11 +99,17 @@
     return String(x.name == null ? '' : x.name) + (x.realm ? '-' + x.realm : '');
   }
 
+  // A disenchanted item has no winner: the Worker answers match.kind 'disenchanted' (winner.name is null) and the tag DE.
+  function isDisenchanted(award) {
+    return !!award && !!award.match && award.match.kind === 'disenchanted';
+  }
+
   // The winner of an award: the person (a link to their loot) when a roster character matched, else the Gargul name with a
-  // chip saying why there is no person. `match` is the Worker's { kind, personId, personName, characterName, ... }.
+  // chip saying why there is no person; "Disenchanted" for an item nobody won. `match` is the Worker's { kind, personId, personName, characterName, ... }.
   function winnerHtml(gid, winner, match) {
     const w = winner || {};
     const m = match || {};
+    if (m.kind === 'disenchanted') return '<span class="gs-char-text"><span class="gs-muted">Disenchanted</span></span>';
     if (m.kind === 'character') {
       const name = m.personName || m.characterName || w.name || '';
       const sub = m.characterName && m.personName && m.characterName !== m.personName ? '<span class="gs-char-sub">' + esc(m.characterName) + '</span>' : '';
@@ -119,6 +125,7 @@
   // The character that won it, as the person pages show it (no link: the page is already that person's).
   function characterHtml(award) {
     const m = award.match || {};
+    if (m.kind === 'disenchanted') return winnerHtml(null, award.winner, m);
     return '<span class="gs-char-text">' + G.ui.classNameHtml(m.characterName || winnerText(award.winner), (award.winner || {}).class) + '</span>';
   }
 
@@ -138,7 +145,8 @@
     return '<li class="gs-loot-row" id="loot-' + esc(a1.id) + '"><span class="gs-loot-when">' + when + '</span>' +
       '<span class="gs-loot-item">' + itemHtml({ itemId: a1.itemId, itemName: a1.itemName, quality: a1.quality }, gd.guild.gameVersion) + rollNote + noteLine + '</span>' +
       '<span class="gs-loot-who"><span class="gs-sr">Winner: </span>' + (o.character ? characterHtml(a1) : winnerHtml(gid, a1.winner, a1.match)) + '</span>' +
-      '<span class="gs-loot-tag"><span class="gs-sr">Tag: </span>' + (o.edit ? tagSelectHtml(a1) : tagChipHtml(a1.tag, a1.tagSetBy)) + '</span>' +
+      // Nobody won a disenchanted item, so it stays DE: officers get the chip, not the tag select.
+      '<span class="gs-loot-tag"><span class="gs-sr">Tag: </span>' + (o.edit && !isDisenchanted(a1) ? tagSelectHtml(a1) : tagChipHtml(a1.tag, a1.tagSetBy)) + '</span>' +
       '<span class="gs-loot-flags">' + (o.status || '') + flagChipsHtml(a1.flags) + '</span>' + actions + '</li>';
   }
 
@@ -310,14 +318,20 @@
     const title = function (x) { return [x.title, x.zone].filter(Boolean).join(' - '); };
     const body = list.map(function (x) {
       return '<tr><th scope="row" class="gs-cell-strong"><a class="gs-raid-link" href="' + esc(href(x)) + '">' + esc(G.ui.weekdayDay(x.raidOn) || x.raidOn) + '</a></th><td>' + (title(x) ? esc(title(x)) : '<span class="gs-muted">-</span>') + '</td>' +
-        '<td class="gs-num">' + esc(count(num(x.awards))) + '</td><td class="gs-num">' + esc(count(num(x.counted))) + '</td><td>' + unmatchedChip(x.unmatched) + '</td></tr>';
+        '<td class="gs-num">' + esc(count(num(x.awards))) + '</td><td class="gs-num">' + esc(count(num(x.counted))) + '</td><td class="gs-num">' + disenchantedCell(x.disenchanted) + '</td><td>' + unmatchedChip(x.unmatched) + '</td></tr>';
     }).join('');
     const cards = list.map(function (x) {
       return '<li class="gs-loot-card"><div class="gs-card-top"><a class="gs-raid-link" href="' + esc(href(x)) + '">' + esc(G.ui.weekdayDay(x.raidOn) || x.raidOn) + '</a>' + unmatchedChip(x.unmatched) + '</div>' +
-        (title(x) ? '<p class="gs-fine">' + esc(title(x)) + '</p>' : '') + '<dl class="gs-att-stats"><div><dt>Awards</dt><dd>' + esc(count(num(x.awards))) + '</dd></div><div><dt>Counted</dt><dd>' + esc(count(num(x.counted))) + '</dd></div></dl></li>';
+        (title(x) ? '<p class="gs-fine">' + esc(title(x)) + '</p>' : '') + '<dl class="gs-att-stats"><div><dt>Awards</dt><dd>' + esc(count(num(x.awards))) + '</dd></div><div><dt>Counted</dt><dd>' + esc(count(num(x.counted))) + '</dd></div>' +
+        (num(x.disenchanted) > 0 ? '<div><dt>Disenchanted</dt><dd>' + esc(count(num(x.disenchanted))) + '</dd></div>' : '') + '</dl></li>';
     }).join('');
-    return '<div class="gs-table-wrap gs-loot-table"><table class="gs-table gs-table-lootraids" aria-label="Loot by raid"><thead><tr><th scope="col">Raid</th><th scope="col">Zone</th><th scope="col">Awards</th><th scope="col">Counted</th><th scope="col">Winners not on the roster</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
+    return '<div class="gs-table-wrap gs-loot-table"><table class="gs-table gs-table-lootraids" aria-label="Loot by raid"><thead><tr><th scope="col">Raid</th><th scope="col">Zone</th><th scope="col">Awards</th><th scope="col">Counted</th><th scope="col">Disenchanted</th><th scope="col">Winners not on the roster</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
       '<ul class="gs-loot-cards" aria-label="Loot by raid">' + cards + '</ul>';
+  }
+
+  // Items nobody won (Gargul's disenchants) on a raid; a dash when there are none.
+  function disenchantedCell(n) {
+    return num(n) > 0 ? esc(count(num(n))) : '<span class="gs-muted">-</span>';
   }
 
   function unmatchedChip(n) {
@@ -440,6 +454,7 @@
     tagSelectHtml: tagSelectHtml,
     flagChipsHtml: flagChipsHtml,
     winnerText: winnerText,
+    isDisenchanted: isDisenchanted,
     winnerHtml: winnerHtml,
     awardRowHtml: awardRowHtml,
     totalsHtml: totalsHtml,

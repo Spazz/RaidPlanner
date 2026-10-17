@@ -8,6 +8,7 @@
  */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createD1Fake } = require('./tests/d1-fake');
@@ -66,9 +67,9 @@ function absorbCookies(jar, response) {
   }
 }
 
-async function makeWorld({ allowlist = [] } = {}) {
+async function makeWorld({ allowlist = [], migrationsDir } = {}) {
   const { createApp } = await load('worker/index.js');
-  const db = createD1Fake();
+  const db = migrationsDir ? createD1Fake({ migrationsDir }) : createD1Fake();
   const discord = makeDiscord();
   const clock = { now: 1_800_100_800_000 }; // 2027-01-16T12:00Z, a Saturday: 2027-01-05 and 2027-01-12 (Tuesdays) are past raids
   let counter = 0;
@@ -129,8 +130,8 @@ const GUILD_BODY = { serverId: SERVER_A, gameVersion: 'tbc', region: 'US', realm
 
 // Alice (Guild Master) creates the guild; Bob (Officer), Carol (Team Lead of the first team), Dave (Team Lead of the second team, when
 // there is one) and Erin (Member) sign in. Frank runs a second guild on SERVER_B.
-async function scenario({ teams = 1, guildBody = {} } = {}) {
-  const w = await makeWorld({ allowlist: [PEOPLE.alice.id, PEOPLE.frank.id] });
+async function scenario({ teams = 1, guildBody = {}, migrationsDir } = {}) {
+  const w = await makeWorld({ allowlist: [PEOPLE.alice.id, PEOPLE.frank.id], migrationsDir });
   const alice = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
   const body = { ...GUILD_BODY, ...guildBody };
   if (teams > 1) { body.multipleTeams = true; body.teamNames = ['Alpha', 'Bravo', 'Charlie'].slice(0, teams); }
@@ -190,8 +191,8 @@ const award = (n, over = {}) => ({
 // Two teams (A = Alpha, B = Bravo), five people, six raids, and every award the balance tests count. Erin is linked to Brindle.
 //   A 2027-01-05 r1 (Aldric, Brindle, Cassia, and Wanderfell as a fill-in), B 2027-01-05 rb (nobody ticked), A 2027-01-12 r2
 //   (Aldric, Brindle), A 2026-11-03 r0 (Aldric), A 2027-02-02 up (not started).
-async function lootWorld({ imported = true } = {}) {
-  const s = await scenario({ teams: 2 });
+async function lootWorld({ imported = true, migrationsDir } = {}) {
+  const s = await scenario({ teams: 2, migrationsDir });
   const [A, B] = s.teams;
   s.A = A; s.B = B;
   s.p = {};
@@ -405,7 +406,8 @@ check('import rules: readAwards cleans and refuses, the automatic tag, the raid-
   assert.deepEqual(one.flags, ['OS', 'TMB'], 'known flags only, in the stored order');
   assert.equal(one.itemName, 'Sword', 'control characters are stripped');
   assert.equal(one.tag, 'OS');
-  assert.deepEqual(Object.keys(normalizedOf(one)), ['checksum', 'itemId', 'itemName', 'quality', 'awardedAt', 'winnerName', 'winnerRealm', 'winnerClass', 'rollType', 'flags', 'awardedBy']);
+  assert.deepEqual(Object.keys(normalizedOf(one)), ['checksum', 'itemId', 'itemName', 'quality', 'awardedAt', 'winnerName', 'winnerRealm', 'winnerClass', 'disenchanted', 'rollType', 'flags', 'awardedBy']);
+  assert.equal(one.disenchanted, false, 'an award with a winner is not a disenchant');
   const [bare] = readAwards([{ checksum: 'abcdefgh', itemId: 5, awardedAt: at('2027-01-05', '20:00'), winnerName: 'Aldric' }], guild);
   assert.deepEqual([bare.itemName, bare.quality, bare.winnerRealm, bare.winnerClass, bare.rollType, bare.awardedBy, bare.flags], [null, null, null, null, null, null, []]);
   assert.deepEqual([bare.storedRealm, bare.realmKey], ['Nightslayer', 'nightslayer'], 'a missing realm is the guild\'s own');
@@ -575,7 +577,7 @@ check('preview: classifies new / update / same / otherRaid / otherDay, matches w
     [paste[0].checksum, 'new', 'MS'], [paste[1].checksum, 'new', 'OS'], [paste[2].checksum, 'new', 'MS'], [paste[3].checksum, 'otherDay', 'MS'],
   ]);
   const first = preview.json.rows[0];
-  assert.deepEqual(Object.keys(first), ['checksum', 'itemId', 'itemName', 'quality', 'awardedAt', 'winnerName', 'winnerRealm', 'winnerClass', 'rollType', 'flags', 'awardedBy', 'status', 'match', 'tag']);
+  assert.deepEqual(Object.keys(first), ['checksum', 'itemId', 'itemName', 'quality', 'awardedAt', 'winnerName', 'winnerRealm', 'winnerClass', 'disenchanted', 'rollType', 'flags', 'awardedBy', 'status', 'match', 'tag']);
   assert.deepEqual(first.match, { kind: 'character', personId: s.p.aldric, personName: 'Aldric', characterId: first.match.characterId, characterName: 'Aldric', isMain: true });
   assert.equal(preview.json.rows[2].match.kind, 'unmatched');
   assert.deepEqual(preview.json.rows[2].match, { kind: 'unmatched' });
@@ -1057,11 +1059,11 @@ check('by raid: newest first, counted = matched awards with a counted tag, unmat
   const r = await s.call('bob', 'GET', `/loot/raids?team=${s.A}`);
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.deepEqual(Object.keys(r.json), ['raids']);
-  assert.deepEqual(Object.keys(r.json.raids[0]), ['raidId', 'raidOn', 'title', 'zone', 'awards', 'counted', 'unmatched']);
-  assert.deepEqual(r.json.raids.map((x) => [x.raidId, x.raidOn, x.title, x.awards, x.counted, x.unmatched]), [
-    [s.r2, '2027-01-12', null, 2, 2, 0],
-    [s.r1, '2027-01-05', 'Gruul night', 6, 2, 1],   // Aldric MS, Brindle MS (OS, DE, an unmatched winner and a guest do not count)
-    [s.r0, '2026-11-03', null, 1, 1, 0],
+  assert.deepEqual(Object.keys(r.json.raids[0]), ['raidId', 'raidOn', 'title', 'zone', 'awards', 'counted', 'unmatched', 'disenchanted']);
+  assert.deepEqual(r.json.raids.map((x) => [x.raidId, x.raidOn, x.title, x.awards, x.counted, x.unmatched, x.disenchanted]), [
+    [s.r2, '2027-01-12', null, 2, 2, 0, 0],
+    [s.r1, '2027-01-05', 'Gruul night', 6, 2, 1, 0],   // Aldric MS, Brindle MS (OS, DE, an unmatched winner and a guest do not count)
+    [s.r0, '2026-11-03', null, 1, 1, 0, 0],
   ]);
   assert.deepEqual((await s.call('bob', 'GET', `/loot/raids?team=${s.B}`)).json.raids.map((x) => [x.raidId, x.awards]), [[s.rb, 1]]);
   assert.deepEqual((await s.call('erin', 'GET', `/loot/raids?team=${s.A}`)).json, r.json, 'a member of the team sees the same');
@@ -1248,6 +1250,313 @@ check('policy: GET shape for any member, PUT needs loot.policy, validation names
   assert.equal(audits[0].entity_type, 'policy');
   assert.deepEqual(JSON.parse(audits[0].after), { scope: 'guild', version: 1, changed: ['balance'], values: { balance: { countTags: ['MS', 'OS'] } } });
   assert.equal(await s.w.count('audit_log', "action = 'policy.update'"), 0, 'the attendance audit action is not reused');
+});
+
+// ---------------------------------------------------------------------------
+// Disenchants (Gargul's "||de||"): an award nobody won
+// A disenchant is a normalized award with winnerName / winnerRealm / winnerClass null and disenchanted true. It is stored with NULL
+// winner_name / winner_name_key, the tag DE, and read as match.kind 'disenchanted' (never unmatched, never in the balance).
+
+const disenchant = (n, over = {}) => award(n, { winnerName: null, winnerRealm: null, winnerClass: null, disenchanted: true, rollType: null, ...over });
+
+check('disenchants: readAwards takes a no-winner award only when disenchanted is true (tag DE, no keys); the classification follows a change of winner', async () => {
+  const { readAwards, normalizedOf, classifyAward } = await load('worker/loot-import.js');
+  const guild = { realm: 'Nightslayer', realm_kind: 'realm' };
+  const ruleset = { realm: 'Normal', realm_kind: 'ruleset' };
+  const shape = (a) => [a.winnerName, a.winnerRealm, a.winnerClass, a.disenchanted, a.nameKey, a.storedRealm, a.realmKey, a.tag];
+  const none = [null, null, null, true, null, null, '', 'DE'];
+  assert.deepEqual(shape(readAwards([disenchant(1)], guild)[0]), none);
+  assert.deepEqual(shape(readAwards([disenchant(1)], ruleset)[0]), none, 'a ruleset guild has no realm either way');
+  const [bare] = readAwards([{ checksum: 'abcdefgh', itemId: 5, awardedAt: at('2027-01-05', '20:00'), disenchanted: true, flags: ['OS'], rollType: 'OS' }], guild);
+  assert.deepEqual(shape(bare), none, 'absent winner fields are fine, and the flags do not change the tag');
+  assert.deepEqual([normalizedOf(bare).winnerName, normalizedOf(bare).disenchanted], [null, true]);
+  assert.equal(readAwards([award(1, { disenchanted: false })], guild)[0].disenchanted, false);
+  assert.equal(readAwards([award(1, { disenchanted: null })], guild)[0].disenchanted, false);
+  assert.equal(readAwards([disenchant(1), disenchant(1, { itemName: 'later' }), disenchant(2)], guild).length, 2, 'the same checksum twice counts once');
+
+  const refuse = (over, field, make = disenchant) => assert.throws(() => readAwards([make(1, over)], guild),
+    (error) => error.status === 400 && error.extra.field === 'awards' && error.extra.index === 0 && error.extra.awardField === field, `${field} ${JSON.stringify(over)}`);
+  refuse({ winnerName: 'Aldric' }, 'winnerName');
+  refuse({ winnerRealm: 'Nightslayer' }, 'winnerRealm');
+  refuse({ winnerClass: 'WARRIOR' }, 'winnerClass');
+  refuse({ disenchanted: 'yes' }, 'disenchanted');
+  refuse({ disenchanted: 1 }, 'disenchanted');
+  refuse({ disenchanted: false }, 'winnerName');                    // no winner and not a disenchant
+  refuse({ disenchanted: undefined }, 'winnerName');
+  refuse({ disenchanted: 'true', winnerName: 'Aldric' }, 'disenchanted', award);
+
+  const raid = { id: 'r_1', raid_on: '2027-01-05' };
+  const NY = 'America/New_York';
+  const [d] = readAwards([disenchant(1)], guild);
+  const [normal] = readAwards([award(1)], guild);
+  const stored = (over = {}) => ({
+    raid_id: 'r_1', checksum: d.checksum, item_id: d.itemId, item_name: d.itemName, item_quality: d.quality, awarded_at: d.awardedAt, winner_name: null, winner_name_key: null,
+    winner_realm: null, winner_realm_key: '', winner_class: null, roll_type: null, awarded_by: d.awardedBy, flags: '[]', tag: 'DE', tag_set_at: null, ...over,
+  });
+  const withWinner = { winner_name: 'Aldric', winner_name_key: 'aldric', winner_realm: 'Nightslayer', winner_realm_key: 'nightslayer', winner_class: 'WARRIOR', roll_type: 'MS' };
+  assert.deepEqual(classifyAward(d, null, raid, NY), { status: 'new', tag: 'DE' });
+  assert.deepEqual(classifyAward(d, stored(), raid, NY), { status: 'same', tag: 'DE' });
+  assert.deepEqual(classifyAward(d, stored({ tag_set_at: 9 }), raid, NY), { status: 'same', tag: 'DE' }, 'an officer-confirmed DE on a no-winner award is no difference');
+  // Gargul edited the winner away: the officer's tag on the old award is dropped, because a no-winner award can only be DE.
+  assert.deepEqual(classifyAward(d, stored({ ...withWinner, tag: 'OS', tag_set_at: 9 }), raid, NY), { status: 'update', tag: 'DE' });
+  assert.deepEqual(classifyAward(d, stored({ ...withWinner, tag: 'MS' }), raid, NY), { status: 'update', tag: 'DE' });
+  // ...and edited back: the automatic tag returns whatever an officer confirmed on the disenchant.
+  assert.deepEqual(classifyAward(normal, stored({ tag_set_at: 9 }), raid, NY), { status: 'update', tag: 'MS' });
+  assert.deepEqual(classifyAward(normal, stored(), raid, NY), { status: 'update', tag: 'MS' });
+  // A normal award with an officer's tag keeps it, as before.
+  assert.deepEqual(classifyAward(normal, stored({ ...withWinner, tag: 'BANK', tag_set_at: 9 }), raid, NY), { status: 'same', tag: 'BANK' });
+});
+
+check('disenchants: previewed and imported with no winner and the tag DE; listed as Disenchanted; ignored by the review queue, the balance and the person pages', async () => {
+  const s = await lootWorld();
+  const de = disenchant(30, { itemId: 28830, itemName: 'Dragonspine Trophy', awardedAt: at('2027-01-05', '21:10') });
+  const balanceBefore = (await s.call('bob', 'GET', `/loot/balance?team=${s.A}`)).json;
+  const aldricBefore = (await s.call('bob', 'GET', `/loot/person/${s.p.aldric}`)).json;
+
+  const preview = await s.call('bob', 'POST', s.loot(s.r1, '/preview'), { awards: [de, award(31, { awardedAt: at('2027-01-05', '21:20') })] });
+  assert.equal(preview.status, 200, JSON.stringify(preview.json));
+  assert.deepEqual(preview.json.counts, { new: 2, update: 0, same: 0, otherRaid: 0, otherDay: 0 });
+  const row0 = preview.json.rows[0];
+  assert.deepEqual([row0.status, row0.tag, row0.match, row0.disenchanted, row0.winnerName, row0.winnerRealm, row0.winnerClass], ['new', 'DE', { kind: 'disenchanted' }, true, null, null, null]);
+  assert.equal(preview.json.rows[1].disenchanted, false);
+  assert.equal(await s.w.count('loot_awards', 'checksum = ?', de.checksum), 0, 'a preview writes nothing');
+
+  const done = await s.import('bob', s.r1, [de]);
+  assert.equal(done.status, 200, JSON.stringify(done.json));
+  assert.deepEqual([done.json.inserted, done.json.updated, done.json.unchanged], [1, 0, 0]);
+  const view = done.json.awards.find((a) => a.itemId === 28830);
+  assert.deepEqual(view, {
+    id: view.id, raidId: s.r1, raidOn: '2027-01-05', teamId: s.A, itemId: 28830, itemName: 'Dragonspine Trophy', quality: 4, awardedAt: at('2027-01-05', '21:10'),
+    winner: { name: null, realm: null, class: null }, match: { kind: 'disenchanted' }, tag: 'DE', tagSetBy: null, flags: [], rollType: null, note: null, awardedBy: 'Bobby-Nightslayer',
+  });
+  const stored = (await s.w.rows('SELECT * FROM loot_awards WHERE checksum = ?', de.checksum))[0];
+  assert.deepEqual([stored.winner_name, stored.winner_name_key, stored.winner_realm, stored.winner_realm_key, stored.winner_class, stored.tag, stored.tag_set_by, stored.tag_set_at],
+    [null, null, null, '', null, 'DE', null, null]);
+  const again = await s.import('bob', s.r1, [de]);
+  assert.deepEqual([again.json.inserted, again.json.updated, again.json.unchanged], [0, 0, 1], 'a repeat changes nothing');
+
+  // The raid list: editors and members see the row; the winner is nobody.
+  const editor = (await s.call('bob', 'GET', s.loot(s.r1))).json;
+  assert.equal(editor.awards.length, 7);
+  assert.deepEqual(editor.awards.find((a) => a.itemId === 28830).match, { kind: 'disenchanted' });
+  assert.equal((await s.call('erin', 'GET', s.loot(s.r1))).json.awards.find((a) => a.itemId === 28830).tag, 'DE');
+  // The review queue still lists only the winner nobody matches.
+  const queue = (await s.call('bob', 'GET', `/attendance/review?team=${s.A}`)).json.lootUnmatched;
+  assert.deepEqual(queue.map((g) => g.items.map((i) => i.name)), [['Zorgax']]);
+  // By raid: the award counts as an award, never as unmatched or counted; the new column counts it.
+  const raids = (await s.call('bob', 'GET', `/loot/raids?team=${s.A}`)).json.raids;
+  assert.deepEqual(raids.find((x) => x.raidId === s.r1), { raidId: s.r1, raidOn: '2027-01-05', title: 'Gruul night', zone: null, awards: 7, counted: 2, unmatched: 1, disenchanted: 1 });
+  assert.deepEqual(raids.filter((x) => x.raidId !== s.r1).map((x) => x.disenchanted), [0, 0]);
+  // By item: named as a disenchant (no winner at all), tag DE.
+  const items = (await s.call('bob', 'GET', `/loot/items?team=${s.A}`)).json.items;
+  const item = items.find((i) => i.itemId === 28830);
+  assert.deepEqual([item.count, item.awards.length], [1, 1]);
+  assert.deepEqual([item.awards[0].winner, item.awards[0].match, item.awards[0].tag], [{ name: null, realm: null, class: null }, { kind: 'disenchanted' }, 'DE']);
+  // The balance and the person pages are exactly what they were.
+  assert.deepEqual((await s.call('bob', 'GET', `/loot/balance?team=${s.A}`)).json, balanceBefore);
+  assert.deepEqual((await s.call('bob', 'GET', `/loot/person/${s.p.aldric}`)).json, aldricBefore);
+  // "Own loot only": a member sees nobody's disenchant (it is nobody's).
+  assert.equal((await s.call('bob', 'PUT', '/loot/policy', { teamId: null, override: { visibility: { members: 'own' } }, version: 0 })).status, 200);
+  assert.equal((await s.call('erin', 'GET', s.loot(s.r1))).json.awards.some((a) => a.match.kind === 'disenchanted'), false);
+  assert.equal((await s.call('erin', 'GET', `/loot/raids?team=${s.A}`)).json.raids.every((x) => x.disenchanted === 0), true);
+  assert.equal(JSON.stringify((await s.call('erin', 'GET', `/loot/items?team=${s.A}`)).json).includes('28830'), false);
+});
+
+check('disenchants: only DE can be the tag of a no-winner award (PATCH refuses the rest); a note and delete work; the check in the table says the same', async () => {
+  const s = await lootWorld();
+  await s.import('bob', s.r1, [disenchant(30, { itemId: 28830, awardedAt: at('2027-01-05', '21:10') })]);
+  const id = (await s.w.rows('SELECT id FROM loot_awards WHERE winner_name IS NULL'))[0].id;
+  const patch = (body, who = 'bob') => s.call(who, 'PATCH', `/loot/${id}`, body);
+  for (const tag of ['MS', 'OS', 'BANK']) {
+    const r = await patch({ tag });
+    assert.equal(r.status, 400, tag);
+    assert.deepEqual([r.json.error, r.json.field], ['bad_request', 'tag']);
+    assert.match(r.json.message, /can only be tagged DE/);
+  }
+  assert.equal((await patch({ tag: 'MS', note: 'must not stick' })).status, 400);
+  const untouched = (await s.w.rows('SELECT tag, tag_set_by, tag_set_at, note FROM loot_awards WHERE id = ?', id))[0];
+  assert.deepEqual(untouched, { tag: 'DE', tag_set_by: null, tag_set_at: null, note: null }, 'a refused request writes nothing');
+  assert.equal((await patch({ tag: 'DE' }, 'erin')).status, 403);
+  const same = await patch({ tag: 'DE' });
+  assert.deepEqual([same.status, same.json.award.tag, same.json.award.tagSetBy, same.json.award.match], [200, 'DE', 'officer', { kind: 'disenchanted' }]);
+  const noted = await patch({ note: 'Shattered for the enchanter' });
+  assert.deepEqual([noted.status, noted.json.award.note], [200, 'Shattered for the enchanter']);
+  // A winner-ful award can still be re-tagged DE, and back.
+  const normal = s.awardId[3];
+  assert.equal((await s.call('bob', 'PATCH', `/loot/${normal}`, { tag: 'DE' })).status, 200);
+  assert.equal((await s.call('bob', 'PATCH', `/loot/${normal}`, { tag: 'MS' })).status, 200);
+  // The table refuses what the route refuses: no winner, no tag but DE; a name without a key (or the reverse).
+  const bare = (over) => s.w.db.sqlite.prepare(`INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, awarded_at, winner_name, winner_name_key, tag, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?, 1, 1)`).run(over.id, s.guildId, s.r1, s.A, over.checksum, over.name, over.key, over.tag);
+  assert.throws(() => bare({ id: 'lo_n1', checksum: 'nullnull1', name: null, key: null, tag: 'MS' }), /CHECK/);
+  assert.throws(() => bare({ id: 'lo_n2', checksum: 'nullnull2', name: null, key: 'aldric', tag: 'DE' }), /CHECK/);
+  assert.throws(() => bare({ id: 'lo_n3', checksum: 'nullnull3', name: 'Aldric', key: null, tag: 'MS' }), /CHECK/);
+  assert.throws(() => bare({ id: 'lo_n4', checksum: 'nullnull4', name: '', key: '', tag: 'MS' }), /CHECK/);
+  bare({ id: 'lo_n5', checksum: 'nullnull5', name: null, key: null, tag: 'DE' });
+  const removed = await s.call('bob', 'DELETE', `/loot/${id}`, {});
+  assert.deepEqual([removed.status, removed.json], [200, { ok: true }]);
+});
+
+check('disenchants: an award edited in Gargul to or from a disenchant keeps its checksum and its note, and takes the automatic tag again', async () => {
+  const s = await lootWorld({ imported: false });
+  const first = award(1, { awardedAt: at('2027-01-05', '20:10') });
+  assert.equal((await s.import('bob', s.r1, [first])).status, 200);
+  const id = (await s.w.rows('SELECT id FROM loot_awards'))[0].id;
+  assert.equal((await s.call('bob', 'PATCH', `/loot/${id}`, { tag: 'OS', note: 'keep this note' })).status, 200);
+  const state = async () => (await s.w.rows('SELECT id, winner_name, winner_name_key, winner_realm_key, tag, tag_set_by, tag_set_at, note FROM loot_awards'))[0];
+
+  // The winner is removed in Gargul (same checksum): an update, tag DE, the officer's OS is gone, the note stays.
+  const edited = { ...disenchant(1), awardedAt: first.awardedAt };
+  const preview = await s.call('bob', 'POST', s.loot(s.r1, '/preview'), { awards: [edited] });
+  assert.deepEqual([preview.json.counts.update, preview.json.rows[0].status, preview.json.rows[0].tag], [1, 'update', 'DE']);
+  const toDe = await s.import('bob', s.r1, [edited]);
+  assert.deepEqual([toDe.status, toDe.json.inserted, toDe.json.updated], [200, 0, 1], JSON.stringify(toDe.json));
+  assert.deepEqual(await state(), { id, winner_name: null, winner_name_key: null, winner_realm_key: '', tag: 'DE', tag_set_by: null, tag_set_at: null, note: 'keep this note' });
+  const view = toDe.json.awards.find((a) => a.id === id);
+  assert.deepEqual([view.match, view.tagSetBy, view.winner], [{ kind: 'disenchanted' }, null, { name: null, realm: null, class: null }]);
+  assert.deepEqual((await s.import('bob', s.r1, [edited])).json.unchanged, 1, 'the same paste again is no change');
+
+  // An officer confirms DE, then Gargul gives the item to someone: back to the automatic tag.
+  assert.equal((await s.call('bob', 'PATCH', `/loot/${id}`, { tag: 'DE' })).status, 200);
+  assert.equal((await state()).tag_set_by, s.ids.bob);
+  const back = await s.import('bob', s.r1, [{ ...first, winnerName: 'Brindle', flags: ['OS'], rollType: 'OS' }]);
+  assert.deepEqual([back.json.inserted, back.json.updated], [0, 1]);
+  assert.deepEqual(await state(), { id, winner_name: 'Brindle', winner_name_key: 'brindle', winner_realm_key: 'nightslayer', tag: 'OS', tag_set_by: null, tag_set_at: null, note: 'keep this note' });
+  assert.equal(back.json.awards.find((a) => a.id === id).match.personName, 'Brindle');
+  // From here an officer's tag is kept again.
+  assert.equal((await s.call('bob', 'PATCH', `/loot/${id}`, { tag: 'BANK' })).status, 200);
+  await s.import('bob', s.r1, [{ ...first, winnerName: 'Brindle', itemName: 'Renamed' }]);
+  assert.deepEqual([(await state()).tag, (await state()).tag_set_by], ['BANK', s.ids.bob]);
+});
+
+check('disenchants: a ruleset guild (no realm) records them too, and a character named Null does not pick them up', async () => {
+  const s = await scenario({ guildBody: { gameVersion: 'forever', realm: 'Normal' } });
+  const nullPerson = await addPerson(s, 'bob', s.teamId, 'Null');
+  const raid = (await s.call('bob', 'POST', '/raids', { teamId: s.teamId, raidOn: '2027-01-05' })).json.raid.id;
+  const done = await s.call('bob', 'POST', `/raids/${raid}/loot`, { awards: [disenchant(1), award(2, { winnerName: 'Aldric', winnerRealm: null })] });
+  assert.equal(done.status, 200, JSON.stringify(done.json));
+  const byItem = [...done.json.awards].sort((a, b) => a.itemId - b.itemId);
+  assert.deepEqual(byItem.map((a) => [a.match.kind, a.tag, a.winner.name]), [['disenchanted', 'DE', null], ['unmatched', 'MS', 'Aldric']]);
+  const stored = (await s.w.rows('SELECT winner_name_key, winner_realm_key, winner_realm FROM loot_awards WHERE winner_name IS NULL'))[0];
+  assert.deepEqual([stored.winner_name_key, stored.winner_realm_key, stored.winner_realm], [null, '', null]);
+  // In a ruleset guild a real winner's key is "name|" too: the disenchant must not be taken for Null.
+  const balance = (await s.call('bob', 'GET', `/loot/balance?team=${s.teamId}`)).json;
+  const mine = balance.people.find((p) => p.personId === nullPerson.person.id);
+  assert.deepEqual([mine.items.DE.all, mine.items.MS.all], [0, 0]);
+  assert.deepEqual((await s.call('bob', 'GET', `/loot/person/${nullPerson.person.id}`)).json.awards, []);
+  const queue = (await s.call('bob', 'GET', `/attendance/review?team=${s.teamId}`)).json.lootUnmatched;
+  assert.deepEqual(queue.map((g) => g.items.map((i) => i.name)), [['Aldric']]);
+});
+
+check('migration 0011: an existing 0008 database is rebuilt in place -- rows, indexes, foreign keys and checks survive and the winner columns become nullable', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'raidsmith-mig-'));
+  try {
+    const migrations = path.join(ROOT, 'migrations');
+    const rebuild = '0011_loot_disenchant.sql';
+    assert(fs.existsSync(path.join(migrations, rebuild)));
+    for (const name of fs.readdirSync(migrations)) if (name.endsWith('.sql') && name < rebuild) fs.copyFileSync(path.join(migrations, name), path.join(dir, name));
+    const s = await lootWorld({ migrationsDir: dir });
+    const columns = async () => s.w.rows('SELECT name, type, "notnull" AS nn, dflt_value, pk FROM pragma_table_info(\'loot_awards\') ORDER BY cid');
+    const indexes = async () => s.w.rows('SELECT name, sql FROM sqlite_master WHERE type = \'index\' AND tbl_name = \'loot_awards\' AND sql IS NOT NULL ORDER BY name');
+    const foreignKeys = async () => s.w.rows('SELECT "table", "from", "to", on_update, on_delete FROM pragma_foreign_key_list(\'loot_awards\') ORDER BY id, seq');
+    const uniques = async () => s.w.rows('SELECT "unique", origin FROM pragma_index_list(\'loot_awards\') WHERE "unique" = 1 ORDER BY seq');
+    const before = { columns: await columns(), indexes: await indexes(), fks: await foreignKeys(), uniques: await uniques(), rows: await s.w.rows('SELECT * FROM loot_awards ORDER BY id') };
+    const apiBefore = (await s.call('bob', 'GET', s.loot(s.r1))).json;
+    const flag = (list, name) => list.find((c) => c.name === name).nn;
+    assert.deepEqual([flag(before.columns, 'winner_name'), flag(before.columns, 'winner_name_key')], [1, 1], 'the 0008 table needs a winner');
+    assert(before.rows.length >= 8);
+    assert.throws(() => exec(s.w, `INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, awarded_at, tag, created_at, updated_at)
+      VALUES ('lo_de', '${s.guildId}', '${s.r1}', '${s.A}', 'dedededede', 1, 1, 'DE', 1, 1)`), /NOT NULL/);
+
+    exec(s.w, fs.readFileSync(path.join(migrations, rebuild), 'utf8'));
+
+    const after = { columns: await columns(), indexes: await indexes(), fks: await foreignKeys(), uniques: await uniques(), rows: await s.w.rows('SELECT * FROM loot_awards ORDER BY id') };
+    assert.deepEqual(after.rows, before.rows, 'every row, every column, as it was');
+    assert.deepEqual(after.indexes, before.indexes, 'the four named indexes are back, with the same definitions');
+    assert.deepEqual(after.fks, before.fks, 'guild, user and (guild, team, raid) foreign keys with their ON DELETE actions');
+    assert.deepEqual(after.uniques, before.uniques, 'UNIQUE (guild_id, checksum) and the primary key');
+    assert.deepEqual(after.columns.filter((c) => !['winner_name', 'winner_name_key'].includes(c.name)), before.columns.filter((c) => !['winner_name', 'winner_name_key'].includes(c.name)), 'no other column changed');
+    assert.deepEqual([flag(after.columns, 'winner_name'), flag(after.columns, 'winner_name_key')], [0, 0], 'the winner columns are nullable now');
+    // PRAGMA is refused in prepared SQL (like D1), so these go straight to SQLite.
+    const pragma = (sql) => s.w.db.sqlite.prepare(sql).all();
+    assert.deepEqual(pragma('PRAGMA foreign_key_check'), [], 'no dangling reference');
+    assert.equal(pragma('PRAGMA foreign_keys')[0].foreign_keys, 1);
+    assert.equal(pragma('PRAGMA defer_foreign_keys')[0].defer_foreign_keys, 0, 'the deferral is switched off again');
+    assert.deepEqual((await s.call('bob', 'GET', s.loot(s.r1))).json, apiBefore, 'the pages read the same answer');
+
+    // The old rules still hold on the new table, and the new one lets a disenchant in.
+    exec(s.w, `INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, awarded_at, tag, created_at, updated_at)
+      VALUES ('lo_de', '${s.guildId}', '${s.r1}', '${s.A}', 'dedededede', 1, 1, 'DE', 1, 1)`);
+    assert.throws(() => exec(s.w, `INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, awarded_at, tag, created_at, updated_at)
+      VALUES ('lo_ms', '${s.guildId}', '${s.r1}', '${s.A}', 'msmsmsmsms', 1, 1, 'MS', 1, 1)`), /CHECK/);
+    assert.throws(() => exec(s.w, `UPDATE loot_awards SET checksum = 'short' WHERE id = 'lo_de'`), /CHECK/);
+    assert.throws(() => exec(s.w, `UPDATE loot_awards SET checksum = (SELECT checksum FROM loot_awards WHERE id != 'lo_de' LIMIT 1) WHERE id = 'lo_de'`), /UNIQUE/);
+    assert.throws(() => exec(s.w, `UPDATE loot_awards SET raid_id = '${s.rb}' WHERE id = 'lo_de'`), /FOREIGN KEY/);
+    exec(s.w, `DELETE FROM raids WHERE id = '${s.r1}'`);
+    assert.equal(await s.w.count('loot_awards', 'raid_id = ?', s.r1), 0, 'a raid delete still takes its awards');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Link / Add as new person for a name nobody knows the class of
+
+check('review: a loot-only winner with no class is added or linked with an explicit class; a class the loot knows wins; bad classes are refused', async () => {
+  const s = await lootWorld({ imported: false });
+  await s.import('bob', s.r1, [
+    award(1, { winnerName: 'Classless', winnerClass: null }), award(2, { winnerName: 'Linkless', winnerClass: null }), award(3, { winnerName: 'Knownone', winnerClass: 'PRIEST' }),
+    award(4, { winnerName: 'Badclass', winnerClass: null }), award(5, { winnerName: 'Guestling', winnerClass: null }),
+  ]);
+  const post = (name, body) => s.call('bob', 'POST', `/raids/${s.r1}/unmatched`, { key: `${name.toLowerCase()}|nightslayer`, ...body });
+  const characterOf = async (name) => (await s.w.rows('SELECT class, is_main, player_id, team_id FROM characters WHERE name = ?', name))[0];
+
+  // No class anywhere: 400 naming the class field, for both actions, and nothing is written.
+  for (const body of [{ action: 'person' }, { action: 'alt', personId: s.p.dunmar }]) {
+    const r = await post('Classless', body);
+    assert.equal(r.status, 400, body.action);
+    assert.deepEqual([r.json.error, r.json.field], ['bad_request', 'class']);
+    assert.match(r.json.message, /class/i);
+  }
+  assert.equal(await characterOf('Classless'), undefined);
+  // A class that is not one of the nine.
+  for (const bad of ['DEMON', 'warrior', '', 5, true, {}, ['MAGE']]) {
+    const r = await post('Badclass', { action: 'person', class: bad });
+    assert.equal(r.status, 400, JSON.stringify(bad));
+    assert.equal(r.json.field, 'class');
+  }
+  assert.equal((await post('Badclass', { action: 'alt', personId: s.p.dunmar, class: 'DEATHKNIGHT' })).status, 400);
+  assert.equal(await characterOf('Badclass'), undefined);
+
+  // Add as new person with a class.
+  const added = await post('Classless', { action: 'person', status: 'raider', class: 'MAGE' });
+  assert.equal(added.status, 200, JSON.stringify(added.json));
+  const classless = await characterOf('Classless');
+  assert.deepEqual([classless.class, classless.is_main, classless.team_id], ['MAGE', 1, s.A]);
+  const created = (await s.w.rows("SELECT after FROM audit_log WHERE action = 'person.create' ORDER BY created_at DESC, rowid DESC LIMIT 1"))[0];
+  assert.equal(JSON.parse(created.after).class, 'MAGE');
+  // Link to a person (as an Alt) with a class.
+  const linked = await post('Linkless', { action: 'alt', personId: s.p.dunmar, class: 'DRUID' });
+  assert.equal(linked.status, 200, JSON.stringify(linked.json));
+  const linkless = await characterOf('Linkless');
+  assert.deepEqual([linkless.class, linkless.is_main, linkless.player_id], ['DRUID', 0, s.p.dunmar]);
+  // A class the loot already carries wins over the one sent; a null class is the same as none.
+  assert.equal((await post('Knownone', { action: 'person', class: 'MAGE' })).status, 200);
+  assert.equal((await characterOf('Knownone')).class, 'PRIEST');
+  // A guest needs no class, and a valid one that comes along is ignored.
+  assert.equal((await post('Guestling', { action: 'guest', class: 'MAGE' })).status, 200);
+  assert.equal(await characterOf('Guestling'), undefined);
+  assert.equal((await post('Guestling', { action: 'guest', class: 'DEMON' })).status, 400, 'a bad class is refused whatever the action');
+
+  // The loot follows: the classless winners are people now, and the award shows the class they were given.
+  const awards = (await s.call('bob', 'GET', s.loot(s.r1))).json.awards;
+  const by = (name) => awards.find((a) => a.winner.name === name);
+  assert.deepEqual([by('Classless').match.kind, by('Classless').winner.class], ['character', 'MAGE']);
+  assert.deepEqual([by('Linkless').match.personName, by('Linkless').winner.class], ['Dunmar', 'DRUID']);
+  const queue = (await s.call('bob', 'GET', `/attendance/review?team=${s.A}`)).json.lootUnmatched;
+  assert.deepEqual(queue[0].items.map((i) => i.name), ['Badclass']);
+  // Dave leads another team: still no.
+  assert.equal((await s.call('dave', 'POST', `/raids/${s.r1}/unmatched`, { key: 'badclass|nightslayer', action: 'person', class: 'MAGE' })).status, 403);
 });
 
 // ---------------------------------------------------------------------------

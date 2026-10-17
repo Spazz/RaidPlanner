@@ -11,7 +11,7 @@ import {
 import { displayCharacter, groupBy, isStale, loadRaidDetail, raidState } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
-import { CREATE_STATUSES, cleanCharacterName, DEFAULT_WCL_FLAVOUR, isRealDate, nameKey } from '../roster-data.js';
+import { CLASS_IDS, CREATE_STATUSES, cleanCharacterName, DEFAULT_WCL_FLAVOUR, isRealDate, nameKey } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
 import { listWclReports, requireWclConfigured } from '../sources.js';
 import {
@@ -220,11 +220,12 @@ export async function getReview(ctx) {
     bind(`SELECT id, team_id, policy_fp, log_mode, open_flags, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id = ?2`),
     policyRowsStatement(ctx.db, guild.id),
-    // Loot winners nobody matches (no character, not a guest), per raid. Only shown to those who may edit the team's loot.
+    // Loot winners nobody matches (no character, not a guest), per raid. Only shown to those who may edit the team's loot. A disenchanted
+    // item has no winner (winner_name_key NULL) and is never listed.
     bind(`SELECT a.raid_id, r.raid_on, r.zone, MAX(a.winner_name) AS name, a.winner_name_key AS name_key, MAX(a.winner_realm) AS realm,
                  a.winner_realm_key AS realm_key, MAX(a.winner_class) AS class, COUNT(*) AS awards
             FROM loot_awards a JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id
-           WHERE a.guild_id = ?1 AND a.team_id = ?2
+           WHERE a.guild_id = ?1 AND a.team_id = ?2 AND a.winner_name_key IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.name_key = a.winner_name_key AND c.realm_key = a.winner_realm_key)
              AND NOT EXISTS (SELECT 1 FROM attendance_guests g WHERE g.guild_id = ?1 AND g.name_key = a.winner_name_key AND g.realm_key = a.winner_realm_key)
            GROUP BY a.raid_id, a.winner_name_key, a.winner_realm_key`),
@@ -377,6 +378,9 @@ export async function postUnmatched(ctx) {
   if (body.action === 'alt' && !isId('p', body.personId)) throw bad('Pick the person this character belongs to.', 'personId');
   if (body.action === 'alt' && body.makeMain !== undefined && typeof body.makeMain !== 'boolean') throw bad('makeMain must be true or false.', 'makeMain');
   if (body.action === 'person' && body.status !== undefined && !CREATE_STATUSES.includes(body.status)) throw bad('Pick raider, trial or reserve.', 'status');
+  // A class sent with the decision stands in for a name whose log row and loot row both lack one (a loot-only winner). A class the log or
+  // the loot knows wins over it.
+  if (body.class !== undefined && body.class !== null && !(typeof body.class === 'string' && CLASS_IDS.includes(body.class))) throw bad('Pick one of the nine classes.', 'class');
   if (body.action === 'person' && body.joinedOn !== undefined && body.joinedOn !== null && !isRealDate(body.joinedOn)) throw bad('Joined needs a date.', 'joinedOn');
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
   const guild = guildContext.guild;
@@ -392,6 +396,7 @@ export async function postUnmatched(ctx) {
      ORDER BY (class IS NULL), source LIMIT 1`,
   ).bind(raid.id, guild.id, keyName, keyRealm).first();
   if (!presence) throw new HttpError(404, 'not_found', 'That name is not in this raid\'s log or loot.');
+  const characterClass = presence.class || body.class || null;
   const now = ctx.now();
   const statements = [];
   let mainIndex = -1;
@@ -410,7 +415,8 @@ export async function postUnmatched(ctx) {
     const team = await requireTarget(db, guild.id, raid.team_id, 'team');
     const name = cleanCharacterName(presence.name);
     const realm = resolveRealm(guild, presence.realm);
-    if (!name || !presence.class) throw bad('That name cannot be added as a character.', 'key');
+    if (!name) throw bad('That name cannot be added as a character.', 'key');
+    if (!characterClass) throw bad('Pick this character\'s class.', 'class');
     if (!realm) throw bad('That realm is not valid for this guild.', 'key');
     const status = body.status === undefined ? 'raider' : body.status;
     const joinedOn = body.joinedOn === undefined || body.joinedOn === null ? raid.raid_on : body.joinedOn;
@@ -426,13 +432,13 @@ export async function postUnmatched(ctx) {
       ).bind(playerId, guild.id, status, joinedOn, trialStart, ctx.session.user.id, now, now),
       stale,
       insertCharacter(db, guild.id, {
-        id: characterId, playerId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: presence.class,
+        id: characterId, playerId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: characterClass,
         mainSpec: null, offSpec: null, isMain: true,
       }, now),
       auditStatement(ctx, {
         guildId: guild.id, actorUserId: ctx.session.user.id, action: 'person.create', entityType: 'person', entityId: playerId,
         after: {
-          status, joinedOn, trialStart, trialEnd: null, version: 1, linked: false, characterId, teamId: team.id, class: presence.class,
+          status, joinedOn, trialStart, trialEnd: null, version: 1, linked: false, characterId, teamId: team.id, class: characterClass,
           mainSpec: null, offSpec: null, via: 'attendance',
         },
       }),
@@ -452,18 +458,19 @@ export async function postUnmatched(ctx) {
     if (!allows(guildContext.can, 'roster.edit', home.team_id)) throw forbidden();
     const name = cleanCharacterName(presence.name);
     const realm = resolveRealm(guild, presence.realm);
-    if (!name || !presence.class) throw bad('That name cannot be added as a character.', 'key');
+    if (!name) throw bad('That name cannot be added as a character.', 'key');
+    if (!characterClass) throw bad('Pick this character\'s class.', 'class');
     if (!realm) throw bad('That realm is not valid for this guild.', 'key');
     const characterId = newId('c', ctx.randomBytes);
     statements.push(
       insertCharacter(db, guild.id, {
-        id: characterId, playerId: body.personId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: presence.class,
+        id: characterId, playerId: body.personId, teamId: team.id, name, realm: realm.realm, realmKey: realm.key, class: characterClass,
         mainSpec: null, offSpec: null, isMain: false,
       }, now),
       stale,
       auditStatement(ctx, {
         guildId: guild.id, actorUserId: ctx.session.user.id, action: 'character.create', entityType: 'character', entityId: characterId,
-        after: { personId: body.personId, teamId: team.id, class: presence.class, makeMain: false, via: 'attendance' },
+        after: { personId: body.personId, teamId: team.id, class: characterClass, makeMain: false, via: 'attendance' },
       }),
       auditStatement(ctx, {
         guildId: guild.id, actorUserId: ctx.session.user.id, action: 'attendance.link', entityType: 'raid', entityId: raid.id,

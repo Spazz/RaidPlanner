@@ -91,18 +91,20 @@ export function matchStatements(db, guildId, nameKeys) {
     db.prepare(
       `SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters
         WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT value FROM json_each(?2)))`,
-    ).bind(guildId, JSON.stringify([...new Set(nameKeys)])),
+    ).bind(guildId, JSON.stringify([...new Set(nameKeys.filter((key) => key !== null))])),
     db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guildId),
   ];
 }
 
 // -> (award row) => { match, characterClass }. match is the contract's { kind, personId?, personName?, characterId?, characterName?, isMain? };
 // the person is shown as their character on the award's team (the Main there, else any there, else their Main).
+// An award with no winner (a disenchant: winner_name_key NULL) is { kind: 'disenchanted' }: no person, never unmatched.
 export function makeMatcher(characterRows, guestRows) {
   const byKey = new Map(characterRows.map((row) => [keyOf(row.name_key, row.realm_key), row]));
   const byPlayer = groupBy(characterRows, 'player_id');
   const guests = new Set(guestRows.map((row) => keyOf(row.name_key, row.realm_key)));
   return (award) => {
+    if (award.winner_name_key === null) return { match: { kind: 'disenchanted' }, characterClass: null };
     const key = keyOf(award.winner_name_key, award.winner_realm_key);
     const character = byKey.get(key);
     if (character) {

@@ -63,21 +63,49 @@ check('fixture: 15 entries, two raid days, every flag, a realm-less name, one en
   assert(FIXTURE.every(e => Object.keys(e).every(k => /^[A-Za-z]+$/.test(k))), 'camelCase / upper case keys like Gargul writes');
 });
 
-check('fixture: parses to 13 awards and 2 skipped rows with their reasons', () => {
+check('fixture: parses to 14 awards (one of them a disenchant) and 1 skipped row with its reason', () => {
   const r = P.parse(FIXTURE_TEXT);
   assert.equal(r.ok, true);
   assert.equal(r.rows, 15);
-  assert.equal(r.awards.length, 13);
-  assert.deepEqual(plain(r.skipped.map(s => [s.index, s.reason])), [[9, 'Missing checksum'], [14, 'Disenchanted item (no winner)']]);
+  assert.equal(r.awards.length, 14);
+  assert.deepEqual(plain(r.skipped.map(s => [s.index, s.reason])), [[9, 'Missing checksum']]);
   assert(r.skipped[0].label.includes('Eye of Gruul') && r.skipped[0].label.includes('Halric-Ashmere'));
+  assert.deepEqual(plain(r.awardRows), [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15], 'the disenchant keeps its row number (14)');
 });
 
 check('fixture: the first award is fully normalized (seconds to ms, link to name and quality, class number to name)', () => {
   const a = P.parse(FIXTURE_TEXT).awards[0];
   assert.deepEqual(plain(a), {
     checksum: '74190331205118463920', itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4, awardedAt: 1791681160000,
-    winnerName: 'Thoren', winnerRealm: 'Ashmere', winnerClass: 'PALADIN', rollType: 'MS', flags: ['PL', 'TMB'], awardedBy: 'Lootmaster-Ashmere',
+    winnerName: 'Thoren', winnerRealm: 'Ashmere', winnerClass: 'PALADIN', disenchanted: false, rollType: 'MS', flags: ['PL', 'TMB'], awardedBy: 'Lootmaster-Ashmere',
   });
+});
+
+check('disenchant: awardedTo "||de||" becomes an award with no winner and disenchanted true (Gargul\'s PRIEST class fallback is dropped)', () => {
+  const r = P.parse(FIXTURE_TEXT);
+  const de = r.awards.find(a => a.checksum === '74190331205118463934');
+  assert.deepEqual(plain(de), {
+    checksum: '74190331205118463934', itemId: 22520, itemName: 'The Phylactery of Kel\'Thuzad', quality: 4, awardedAt: 1791774300000,
+    winnerName: null, winnerRealm: null, winnerClass: null, disenchanted: true, rollType: null, flags: [], awardedBy: 'Lootmaster-Ashmere',
+  });
+  assert.equal(r.awards.filter(a => a.disenchanted).length, 1, 'only the ||de|| row');
+  assert(r.awards.filter(a => !a.disenchanted).every(a => typeof a.winnerName === 'string' && a.winnerClass !== undefined), 'every other award keeps its winner');
+  const spaced = one({ awardedTo: '  ||de||  ', winnerClass: 5, OS: true, winningRollType: undefined });
+  assert.equal(spaced.awards.length, 1);
+  assert.deepEqual(plain([spaced.awards[0].winnerName, spaced.awards[0].winnerRealm, spaced.awards[0].winnerClass, spaced.awards[0].disenchanted, spaced.awards[0].flags]), [null, null, null, true, ['OS']], 'flags are kept as Gargul wrote them');
+  assert.equal(one({ awardedTo: 'Thoren-Ashmere' }).awards[0].disenchanted, false, 'a normal award says so');
+  assert.equal(one({ awardedTo: '||DE||' }).awards.length, 0, 'the mark is exactly ||de||; anything else must be a character name');
+  assert.equal(one({ awardedTo: '||de||' }).skipped.length, 0);
+});
+
+check('disenchant: the other row checks still apply (checksum, item and time are needed; a duplicate checksum is reported)', () => {
+  const reason = over => one(Object.assign({ awardedTo: '||de||' }, over)).skipped.map(s => s.reason)[0];
+  assert.equal(reason({ checksum: undefined }), 'Missing checksum');
+  assert.equal(reason({ itemID: undefined, itemLink: undefined }), 'Missing item ID');
+  assert.equal(reason({ timestamp: undefined }), 'Missing or invalid award time');
+  const dup = P.parse(JSON.stringify([entry({ awardedTo: '||de||' }), entry({ awardedTo: 'Thoren-Ashmere' })]));
+  assert.deepEqual(plain(dup.skipped.map(s => [s.index, s.reason])), [[2, 'Duplicate checksum in this paste']]);
+  assert.equal(dup.awards[0].disenchanted, true, 'the first one stays');
 });
 
 check('fixture: flags, qualities, classes, realm-less and other-realm winners come through', () => {
@@ -94,19 +122,19 @@ check('fixture: flags, qualities, classes, realm-less and other-realm winners co
   assert.equal(by('Nimue').quality, 5, 'a legendary');
   assert.equal(by('Ruvik').winnerClass, 'SHAMAN');
   assert(awards.every(a => a.awardedAt > 1.79e12 && a.awardedAt < 1.80e12));
-  assert.equal(new Set(awards.map(a => a.checksum)).size, 13, 'checksums are unique');
+  assert.equal(new Set(awards.map(a => a.checksum)).size, 14, 'checksums are unique');
 });
 
 check('fixture: every award has exactly the keys of the Worker contract', () => {
-  const keys = ['awardedAt', 'awardedBy', 'checksum', 'flags', 'itemId', 'itemName', 'quality', 'rollType', 'winnerClass', 'winnerName', 'winnerRealm'];
+  const keys = ['awardedAt', 'awardedBy', 'checksum', 'disenchanted', 'flags', 'itemId', 'itemName', 'quality', 'rollType', 'winnerClass', 'winnerName', 'winnerRealm'];
   for (const a of P.parse(FIXTURE_TEXT).awards) assert.deepEqual(Object.keys(a).sort(), keys);
 });
 
 check('input: a BOM, surrounding whitespace and pretty printing are fine', () => {
   const r = P.parse(BOM + '\n\n  ' + FIXTURE_TEXT + '  \n');
   assert.equal(r.ok, true);
-  assert.equal(r.awards.length, 13);
-  assert.equal(P.parse(JSON.stringify(FIXTURE)).awards.length, 13, 'compact too (Gargul writes it on one line)');
+  assert.equal(r.awards.length, 14);
+  assert.equal(P.parse(JSON.stringify(FIXTURE)).awards.length, 14, 'compact too (Gargul writes it on one line)');
 });
 
 check('input: an object holding the array, a keyed AwardHistory table, a single array property', () => {
@@ -158,7 +186,6 @@ check('rows: missing or malformed checksum, item, winner and time are skipped wi
   assert.equal(reason({ awardedTo: undefined }), 'Missing winner');
   assert.equal(reason({ awardedTo: '   ' }), 'Missing winner');
   assert.equal(reason({ awardedTo: 42 }), 'Missing winner');
-  assert.equal(reason({ awardedTo: '||de||' }), 'Disenchanted item (no winner)');
   assert.equal(reason({ awardedTo: 'R2D2-Ashmere' }), 'Winner name is not a character name');
   assert.equal(reason({ timestamp: undefined }), 'Missing or invalid award time');
   assert.equal(reason({ timestamp: 'soon' }), 'Missing or invalid award time');
@@ -180,7 +207,8 @@ check('rows: the Worker\'s own limits are applied here, so one bad row never fai
   assert.equal(bad.awards.length, bad.awardRows.length);
   for (const a of P.parse(FIXTURE_TEXT).awards) {
     assert(Number.isInteger(a.awardedAt) && Number.isInteger(a.itemId) && (a.quality === null || Number.isInteger(a.quality)) && Array.isArray(a.flags));
-    assert(/^[A-Z]+$/.test(a.winnerClass) && a.winnerName.length >= 2 && a.winnerName.length <= 12);
+    if (a.disenchanted) assert(a.winnerName === null && a.winnerRealm === null && a.winnerClass === null, 'a disenchant has no winner at all');
+    else assert(/^[A-Z]+$/.test(a.winnerClass) && a.winnerName.length >= 2 && a.winnerName.length <= 12);
     assert((a.itemName || '').length <= 100 && (a.rollType || '').length <= 24 && (a.awardedBy || '').length <= 64);
   }
 });

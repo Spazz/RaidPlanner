@@ -35,8 +35,10 @@ export function autoTag(flags, rollType) {
 
 // The browser's normalized awards -> the cleaned awards the Worker stores, or a 400 naming the first bad one.
 // The same checksum twice in one paste counts once (the first). guild: { realm, realm_kind }.
-// -> [{ checksum, itemId, itemName, quality, awardedAt, winnerName, winnerRealm, winnerClass, rollType, flags, awardedBy,
+// -> [{ checksum, itemId, itemName, quality, awardedAt, winnerName, winnerRealm, winnerClass, disenchanted, rollType, flags, awardedBy,
 //       nameKey, storedRealm, realmKey, tag }]  (nameKey / storedRealm / realmKey / tag are what the Worker adds)
+// A disenchanted item (disenchanted: true, which Gargul writes as the winner "||de||") has NO winner: winnerName / winnerRealm /
+// winnerClass must be null or absent, nameKey and storedRealm are null, realmKey is '' and the tag is DE. Any other award needs a winner.
 export function readAwards(list, guild) {
   if (!Array.isArray(list)) throw new HttpError(400, 'bad_request', 'Send the awards as a list.', { field: 'awards' });
   if (!list.length) throw new HttpError(400, 'bad_request', 'Send at least one award.', { field: 'awards' });
@@ -51,20 +53,31 @@ export function readAwards(list, guild) {
     if (!Number.isInteger(raw.awardedAt) || raw.awardedAt < EARLIEST_MS || raw.awardedAt > LATEST_MS) throw invalid(index, 'awardedAt', 'awardedAt must be a time in milliseconds.');
     const quality = raw.quality === undefined ? null : raw.quality;
     if (quality !== null && !(Number.isInteger(quality) && quality >= 0 && quality <= 7)) throw invalid(index, 'quality', 'quality must be a whole number from 0 to 7.');
-    const name = cleanCharacterName(raw.winnerName);
-    if (!name) throw invalid(index, 'winnerName', 'the winner needs a character name (2 to 12 letters).');
-    const winnerClass = raw.winnerClass === undefined ? null : raw.winnerClass;
-    if (winnerClass !== null && !(typeof winnerClass === 'string' && CLASS_IDS.includes(winnerClass))) throw invalid(index, 'winnerClass', 'winnerClass must be a class.');
+    if (raw.disenchanted !== undefined && raw.disenchanted !== null && typeof raw.disenchanted !== 'boolean') throw invalid(index, 'disenchanted', 'disenchanted must be true or false.');
+    const disenchanted = raw.disenchanted === true;
+    // Nobody won a disenchanted item; any other award needs a character name.
+    let name = null;
+    let winnerClass = null;
+    if (disenchanted) {
+      for (const field of ['winnerName', 'winnerRealm', 'winnerClass']) {
+        if (raw[field] !== undefined && raw[field] !== null) throw invalid(index, field, 'a disenchanted item has no winner.');
+      }
+    } else {
+      name = cleanCharacterName(raw.winnerName);
+      if (!name) throw invalid(index, 'winnerName', 'the winner needs a character name (2 to 12 letters).');
+      winnerClass = raw.winnerClass === undefined ? null : raw.winnerClass;
+      if (winnerClass !== null && !(typeof winnerClass === 'string' && CLASS_IDS.includes(winnerClass))) throw invalid(index, 'winnerClass', 'winnerClass must be a class.');
+    }
     if (raw.flags !== undefined && raw.flags !== null && !Array.isArray(raw.flags)) throw invalid(index, 'flags', 'flags must be a list.');
     // Flags this version does not know are dropped, not refused: a newer Gargul can add one.
     const flags = AWARD_FLAGS.filter((flag) => (raw.flags || []).includes(flag));
-    const winnerRealm = optionalText(raw.winnerRealm, 40, index, 'winnerRealm');
+    const winnerRealm = disenchanted ? null : optionalText(raw.winnerRealm, 40, index, 'winnerRealm');
     const rollType = optionalText(raw.rollType, 24, index, 'rollType');
 
-    // A realm guild reads a missing realm as its own; a ruleset guild has no realm at all.
-    const storedRealm = isRealmGuild ? (winnerRealm || guild.realm) : null;
-    const realmKeyValue = isRealmGuild ? realmKey(storedRealm) : '';
-    if (isRealmGuild && !realmKeyValue) throw invalid(index, 'winnerRealm', 'the winner\'s realm is not valid.');
+    // A realm guild reads a missing realm as its own; a ruleset guild has no realm at all; a disenchant has no winner, so none.
+    const storedRealm = isRealmGuild && !disenchanted ? (winnerRealm || guild.realm) : null;
+    const realmKeyValue = storedRealm === null ? '' : realmKey(storedRealm);
+    if (storedRealm !== null && !realmKeyValue) throw invalid(index, 'winnerRealm', 'the winner\'s realm is not valid.');
 
     if (seen.has(raw.checksum)) return;
     seen.add(raw.checksum);
@@ -77,13 +90,14 @@ export function readAwards(list, guild) {
       winnerName: name,
       winnerRealm,
       winnerClass,
+      disenchanted,
       rollType,
       flags,
       awardedBy: optionalText(raw.awardedBy, 64, index, 'awardedBy'),
-      nameKey: nameKey(name),
+      nameKey: disenchanted ? null : nameKey(name),
       storedRealm,
       realmKey: realmKeyValue,
-      tag: autoTag(flags, rollType),
+      tag: disenchanted ? 'DE' : autoTag(flags, rollType),
     });
   });
   return awards;
@@ -91,8 +105,8 @@ export function readAwards(list, guild) {
 
 // The normalized fields the preview echoes back (without what the Worker adds).
 export function normalizedOf(award) {
-  const { checksum, itemId, itemName, quality, awardedAt, winnerName, winnerRealm, winnerClass, rollType, flags, awardedBy } = award;
-  return { checksum, itemId, itemName, quality, awardedAt, winnerName, winnerRealm, winnerClass, rollType, flags, awardedBy };
+  const { checksum, itemId, itemName, quality, awardedAt, winnerName, winnerRealm, winnerClass, disenchanted, rollType, flags, awardedBy } = award;
+  return { checksum, itemId, itemName, quality, awardedAt, winnerName, winnerRealm, winnerClass, disenchanted, rollType, flags, awardedBy };
 }
 
 function localHour(ms, timeZone) {
@@ -119,14 +133,19 @@ function sameFields(row, award) {
     && row.roll_type === award.rollType && row.awarded_by === award.awardedBy && sameFlags(row.flags, award.flags);
 }
 
+// True when an award gains or loses its winner between the stored row and the incoming one (a Gargul award edited to or from a
+// disenchant). The tag of a no-winner award is DE by rule, not an officer's choice, so such a change drops the officer's tag.
+const winnerStateChanged =(existing, award) => (existing.winner_name === null) !== (award.winnerName === null);
+
 // What an import does with one award. existing: the stored row with the award's checksum in this guild, or null.
 // raid: { id, raid_on }. -> { status: 'new' | 'update' | 'same' | 'otherRaid' | 'otherDay', tag }
-//   otherRaid: the checksum is on another raid (skipped); same / update: it is on THIS raid (an update keeps the officer's tag and note);
-//   otherDay: new, but not from the raid's day (written only when the officer ticks them in); new: written.
+//   otherRaid: the checksum is on another raid (skipped); same / update: it is on THIS raid (an update keeps the officer's tag and note,
+//   unless the award gained or lost its winner); otherDay: new, but not from the raid's day (written only when the officer ticks them in);
+//   new: written.
 export function classifyAward(award, existing, raid, timeZone) {
   if (existing && existing.raid_id !== raid.id) return { status: 'otherRaid', tag: existing.tag };
   if (existing) {
-    const tag = existing.tag_set_at === null ? award.tag : existing.tag;
+    const tag = existing.tag_set_at === null || winnerStateChanged(existing, award) ? award.tag : existing.tag;
     const changed = !sameFields(existing, award) || tag !== existing.tag;
     return { status: changed ? 'update' : 'same', tag };
   }
