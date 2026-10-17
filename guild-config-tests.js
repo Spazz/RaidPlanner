@@ -131,7 +131,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
     'wrangler.jsonc', '.assetsignore', '_headers', '.env.example', 'guild.css', 'js/guild/api.js', 'js/guild/shell.js',
     'guild-ui-tests.js', 'guild-worker-tests.js', 'guild-config-tests.js', 'tests/d1-fake.js', 'tools/guild-dev.js', 'tools/fake-discord.js',
     'guild-roster-worker-tests.js', 'guild-roster-ui-tests.js', 'guild-shell-tests.js', 'tests/guild-scripts.js', 'tools/fake-sources.js', 'migrations/0002_roster.sql',
-    'guild-attendance-worker-tests.js', 'migrations/0003_attendance.sql',
+    'guild-attendance-worker-tests.js', 'migrations/0003_attendance.sql', 'guild-loot-worker-tests.js', 'migrations/0008_loot.sql',
     'migrations/0001_foundation.sql', 'worker/package.json',
     ...walk('worker'), ...walk('migrations'),
   ]);
@@ -320,7 +320,7 @@ check('Worker SQL binds values and never concatenates them into SQL text', () =>
     for (const match of read(file).matchAll(/prepare\(\s*`([^`]*)`/g)) {
       const placeholders = [...match[1].matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]);
       for (const expression of placeholders) {
-        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|COLUMNS|OTHERS_SQL|SUCCESSOR_SQL|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|currentMemberSql\('[^']*', '[^']*', '[^']*'\)|teamId \? [^}]*)$/.test(expression.trim()),
+        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|COLUMNS|OTHERS_SQL|SUCCESSOR_SQL|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|AWARD_SELECT|currentMemberSql\('[^']*', '[^']*', '[^']*'\)|teamId \? [^}]*)$/.test(expression.trim()),
           `${file}: interpolated SQL ${expression}`);
       }
     }

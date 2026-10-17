@@ -185,7 +185,7 @@ To use a different database (a fresh one for a check, say), pass `--state <dir>`
 - Local D1, `d1 migrations apply --local` and `dev` run with no Cloudflare login.
 - `run_worker_first` routes (`/guild`, `/api/guild`, `/api/guild/*`, `/auth/*`) reach the Worker; everything else is served as a static asset.
 
-**Tests.** `guild-attendance-worker-tests.js` drives the raid, attendance, policy and backfill routes over the same D1 fake (Raid-Helper and Warcraft Logs faked in process). `guild-worker-tests.js` runs the Worker over `tests/d1-fake.js` (a `node:sqlite` stand-in for D1 that runs the real migration and copies D1's limits), `guild-config-tests.js` pins the config files, and `guild-ui-tests.js`, `guild-roster-ui-tests.js` and `guild-shell-tests.js` cover the shell (the last drives it against fake documents).
+**Tests.** `guild-attendance-worker-tests.js` drives the raid, attendance, policy and backfill routes over the same D1 fake (Raid-Helper and Warcraft Logs faked in process). `guild-loot-worker-tests.js` does the same for the loot history (Gargul import, tags, balance, the views, visibility and the loot policy). `guild-worker-tests.js` runs the Worker over `tests/d1-fake.js` (a `node:sqlite` stand-in for D1 that runs the real migration and copies D1's limits), `guild-config-tests.js` pins the config files, and `guild-ui-tests.js`, `guild-roster-ui-tests.js` and `guild-shell-tests.js` cover the shell (the last drives it against fake documents).
 
 ## Releases
 

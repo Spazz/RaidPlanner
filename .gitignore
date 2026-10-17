@@ -151,3 +151,5 @@
 !tests/fixtures/
 !tests/fixtures/attendance/
 !tests/fixtures/attendance/*.json
+# Phase 4 loot history (lane W): the Worker suite
+!guild-loot-worker-tests.js

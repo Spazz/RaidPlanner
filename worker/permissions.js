@@ -3,6 +3,7 @@ import { HttpError } from './http.js';
 export const ACTIONS = [
   'roster.view', 'roster.edit', 'roster.notes.view', 'roster.notes.edit',
   'raids.view', 'raids.edit', 'attendance.view', 'attendance.review', 'attendance.policy',
+  'loot.view', 'loot.edit', 'loot.policy',
   'guild.teams', 'guild.roles', 'guild.access', 'audit.view',
 ];
 

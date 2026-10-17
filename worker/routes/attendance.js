@@ -205,7 +205,7 @@ export async function getReview(ctx) {
   const team = await requireTeam(ctx.db, guild.id, new URL(ctx.request.url).searchParams.get('team'));
   if (!allows(guildContext.can, 'attendance.review', team.id)) throw forbidden();
   const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, team.id);
-  const [raidResult, rowResult, characterResult, presenceResult, knownResult, guestResult, allRaidResult, policyResult] = await ctx.db.batch([
+  const [raidResult, rowResult, characterResult, presenceResult, knownResult, guestResult, allRaidResult, policyResult, lootResult] = await ctx.db.batch([
     bind(`SELECT id, raid_on, zone, open_flags FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${REVIEW_RAIDS}`),
     bind(`SELECT * FROM attendance WHERE guild_id = ?1 AND team_id = ?2 AND needs_review = 1
             AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)`),
@@ -220,6 +220,14 @@ export async function getReview(ctx) {
     bind(`SELECT id, team_id, policy_fp, log_mode, open_flags, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id = ?2`),
     policyRowsStatement(ctx.db, guild.id),
+    // Loot winners nobody matches (no character, not a guest), per raid. Only shown to those who may edit the team's loot.
+    bind(`SELECT a.raid_id, r.raid_on, r.zone, MAX(a.winner_name) AS name, a.winner_name_key AS name_key, MAX(a.winner_realm) AS realm,
+                 a.winner_realm_key AS realm_key, MAX(a.winner_class) AS class, COUNT(*) AS awards
+            FROM loot_awards a JOIN raids r ON r.id = a.raid_id AND r.guild_id = a.guild_id
+           WHERE a.guild_id = ?1 AND a.team_id = ?2
+             AND NOT EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.name_key = a.winner_name_key AND c.realm_key = a.winner_realm_key)
+             AND NOT EXISTS (SELECT 1 FROM attendance_guests g WHERE g.guild_id = ?1 AND g.name_key = a.winner_name_key AND g.realm_key = a.winner_realm_key)
+           GROUP BY a.raid_id, a.winner_name_key, a.winner_realm_key`),
   ]);
   const resolver = makePolicyResolver(guild, policyResult.results);
   const charactersByPlayer = groupBy(characterResult.results, 'player_id');
@@ -249,7 +257,22 @@ export async function getReview(ctx) {
     const unmatched = findUnmatched(presenceByRaid.get(raid.id) || [], characterKeys, guestKeys).map((entry) => ({ kind: 'unmatched', ...entry }));
     return { raid: { id: raid.id, raidOn: raid.raid_on, zone: raid.zone, openFlags: raid.open_flags, stale: staleIds.has(raid.id) }, items: [...people, ...unmatched] };
   });
-  return jsonResponse({ team: { id: team.id, name: team.name }, raids, stale });
+  return jsonResponse({ team: { id: team.id, name: team.name }, raids, stale, lootUnmatched: lootUnmatchedGroups(guildContext, team.id, lootResult.results) });
+}
+
+// The loot winners nobody matches, newest raid first: [{ raid: { id, raidOn, zone }, items: [{ kind: 'unmatched', key, name, realm, class, awards }] }].
+// The same item shape as a raid's unmatched log names, so the same Link / Add as new person / Mark as guest dialogs act on them.
+function lootUnmatchedGroups(guildContext, teamId, rows) {
+  if (!allows(guildContext.can, 'loot.edit', teamId)) return [];
+  return [...groupBy(rows, 'raid_id').values()]
+    .map((group) => ({
+      raid: { id: group[0].raid_id, raidOn: group[0].raid_on, zone: group[0].zone },
+      items: group
+        .map((row) => ({ kind: 'unmatched', key: presenceKey(row.name_key, row.realm_key), name: row.name, realm: row.realm, class: row.class, awards: row.awards }))
+        .sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key)),
+    }))
+    .sort((a, b) => (a.raid.raidOn < b.raid.raidOn ? 1 : a.raid.raidOn > b.raid.raidOn ? -1 : a.raid.id.localeCompare(b.raid.id)))
+    .slice(0, REVIEW_RAIDS);
 }
 
 // ---------------------------------------------------------------------------
@@ -360,10 +383,15 @@ export async function postUnmatched(ctx) {
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'attendance.review', raid.team_id)) throw forbidden();
   const [keyName, keyRealm] = body.key.split('|');
+  // The name is in the raid's log (presence) or among its loot winners; a row that knows the class wins.
   const presence = await db.prepare(
-    'SELECT name, realm, class FROM raid_presence WHERE raid_id = ? AND guild_id = ? AND name_key = ? AND realm_key = ? LIMIT 1',
+    `SELECT name, realm, class FROM (
+       SELECT name, realm, class, 0 AS source FROM raid_presence WHERE raid_id = ?1 AND guild_id = ?2 AND name_key = ?3 AND realm_key = ?4
+       UNION ALL
+       SELECT winner_name, winner_realm, winner_class, 1 FROM loot_awards WHERE raid_id = ?1 AND guild_id = ?2 AND winner_name_key = ?3 AND winner_realm_key = ?4)
+     ORDER BY (class IS NULL), source LIMIT 1`,
   ).bind(raid.id, guild.id, keyName, keyRealm).first();
-  if (!presence) throw new HttpError(404, 'not_found', 'That name is not in this raid\'s log.');
+  if (!presence) throw new HttpError(404, 'not_found', 'That name is not in this raid\'s log or loot.');
   const now = ctx.now();
   const statements = [];
   let mainIndex = -1;
@@ -489,7 +517,7 @@ function readWindow(params, policy, { lenient = false } = {}) {
   throw bad('Pick one of the offered windows.', 'window');
 }
 
-const windowStartFor = (today, resetDay, weeks) => (weeks === 'all' ? null : addDays(weekStart(today, resetDay), -7 * (weeks - 1)));
+export const windowStartFor = (today, resetDay, weeks) => (weeks === 'all' ? null : addDays(weekStart(today, resetDay), -7 * (weeks - 1)));
 
 // A raid counts toward the sign-up rate only when it has a sign-up source and results (an "awaiting log" raid has no rows to count).
 const metricsRaid = (row) => ({

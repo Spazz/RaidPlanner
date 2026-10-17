@@ -22,6 +22,10 @@ import {
   deleteDecision, getBackfillReports, getPersonAttendance, getPolicy, getReview, getTeamAttendance, postDecision, postUnmatched, putPolicy,
   putWclSettings,
 } from './routes/attendance.js';
+import {
+  LOOT_MAX_BODY, commitLoot, deleteLoot, getBalance, getLootItems, getLootPolicy, getLootRaids, getPersonLoot, getRaidLoot, patchLoot,
+  previewLoot, putLootPolicy,
+} from './routes/loot.js';
 
 const COMMIT_MAX_BODY = 64 * 1024;
 const PLAN_MAX_BODY = 32 * 1024;
@@ -85,6 +89,18 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/attendance/team', auth: true, handler: getTeamAttendance },
   { method: 'GET', path: '/api/guild/:gid/attendance/person/:pid', auth: true, handler: getPersonAttendance },
   { method: 'GET', path: '/api/guild/:gid/attendance/backfill/reports', auth: true, handler: getBackfillReports },
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/loot', auth: true, handler: getRaidLoot },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/loot/preview', auth: true, handler: previewLoot, maxBody: LOOT_MAX_BODY },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/loot', auth: true, handler: commitLoot, maxBody: LOOT_MAX_BODY },
+  // Literal paths are registered before `:aid`, so "balance", "raids", "items", "person" and "policy" are never read as an award id.
+  { method: 'GET', path: '/api/guild/:gid/loot/balance', auth: true, handler: getBalance },
+  { method: 'GET', path: '/api/guild/:gid/loot/raids', auth: true, handler: getLootRaids },
+  { method: 'GET', path: '/api/guild/:gid/loot/items', auth: true, handler: getLootItems },
+  { method: 'GET', path: '/api/guild/:gid/loot/person/:pid', auth: true, handler: getPersonLoot },
+  { method: 'GET', path: '/api/guild/:gid/loot/policy', auth: true, handler: getLootPolicy },
+  { method: 'PUT', path: '/api/guild/:gid/loot/policy', auth: true, handler: putLootPolicy },
+  { method: 'PATCH', path: '/api/guild/:gid/loot/:aid', auth: true, handler: patchLoot },
+  { method: 'DELETE', path: '/api/guild/:gid/loot/:aid', auth: true, handler: deleteLoot },
 ];
 
 // deps: { db, env, fetch, now, randomBytes, log } -> { handle(request) }
