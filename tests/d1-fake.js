@@ -4,7 +4,8 @@
  *   - plain-object rows; first() is null without a row; first(col) throws on an unknown column
  *   - all()/run() return { results, success, meta: { changes, last_row_id, ... } }; RETURNING works
  *   - rejects a wrong number of bindings, undefined, booleans, objects, BigInt, named parameters
- *   - rejects more than 100 bound parameters, and BEGIN / SAVEPOINT / ATTACH / PRAGMA in prepared SQL
+ *   - rejects more than 100 bound parameters, SQL over 100 KB, a compound SELECT (UNION / INTERSECT / EXCEPT) of more than 5 terms
+ *     at one nesting level (node:sqlite exposes no setLimit; D1's limit is 5, SQLite's own 500), and BEGIN / SAVEPOINT / ATTACH / PRAGMA in prepared SQL
  *   - errors start with "D1_ERROR: "; batch() runs in order and rolls back everything on the first error
  *   - foreign keys ON; the real migration files run in order
  *   - triggers (RAISE(ABORT) rolls a batch back whole), composite foreign keys, partial unique indexes and json_each run
@@ -15,6 +16,8 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
 const MAX_BOUND_PARAMETERS = 100;
+const MAX_COMPOUND_TERMS = 5; // D1: "too many terms in compound SELECT" above this
+const MAX_SQL_BYTES = 100_000;
 const FORBIDDEN_STATEMENT = /\b(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|ATTACH|DETACH|PRAGMA)\b/i;
 
 function d1Error(message) {
@@ -28,6 +31,22 @@ function scrub(sql) {
     .replace(/"(?:[^"]|"")*"/g, '""')
     .replace(/--[^\n]*/g, ' ')
     .replace(/\/\*[\s\S]*?\*\//g, ' ');
+}
+
+// The largest number of terms in any one compound SELECT (operators at one parenthesis level + 1), counted on scrubbed SQL.
+function maxCompoundTerms(scrubbed) {
+  const stack = [0];
+  let most = 1;
+  for (const match of scrubbed.matchAll(/\(|\)|\b(?:UNION|INTERSECT|EXCEPT)\b/gi)) {
+    const token = match[0];
+    if (token === '(') stack.push(0);
+    else if (token === ')') { if (stack.length > 1) stack.pop(); }
+    else {
+      stack[stack.length - 1] += 1;
+      most = Math.max(most, stack[stack.length - 1] + 1);
+    }
+  }
+  return most;
 }
 
 function countParameters(scrubbed) {
@@ -104,6 +123,9 @@ class D1Fake {
 
   prepare(sql) {
     if (typeof sql !== 'string' || !sql.trim()) throw d1Error('empty SQL');
+    if (Buffer.byteLength(sql) > MAX_SQL_BYTES) throw d1Error('statement too long (over 100 KB)');
+    const terms = maxCompoundTerms(scrub(sql));
+    if (terms > MAX_COMPOUND_TERMS) throw d1Error(`too many terms in compound SELECT (${terms} > ${MAX_COMPOUND_TERMS}): SQLITE_ERROR`);
     if (FORBIDDEN_STATEMENT.test(scrub(sql))) throw d1Error('BEGIN, SAVEPOINT, ATTACH and PRAGMA are not allowed in prepared SQL');
     return new FakeStatement(this, sql);
   }
@@ -164,4 +186,4 @@ function createD1Fake({ migrationsDir = path.join(__dirname, '..', 'migrations')
   return db;
 }
 
-module.exports = { createD1Fake, MAX_BOUND_PARAMETERS };
+module.exports = { createD1Fake, MAX_BOUND_PARAMETERS, MAX_COMPOUND_TERMS, maxCompoundTerms, scrub };

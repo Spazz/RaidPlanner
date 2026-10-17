@@ -708,7 +708,8 @@ function teamData(over) {
     assert.equal(B.previewText(groups), '2 raids from 3 reports');
     assert.equal(B.previewText(B.groupByDate(REPORTS, { AAAAAAAAAAAAAAAA: true })), '1 raid from 1 report');
     const lines = B.buildLines(groups, { '2026-10-10': ' 123456 ' });
-    assert.deepEqual(plain(lines.map(l => l.id)), ['raid:2026-10-09', 'report:2026-10-09:CCCCCCCCCCCCCCCC', 'raid:2026-10-10', 'report:2026-10-10:AAAAAAAAAAAAAAAA', 'report:2026-10-10:BBBBBBBBBBBBBBBB', 'event:2026-10-10']);
+    assert.deepEqual(plain(lines.map(l => l.id)), ['raid:2026-10-09', 'raid:2026-10-10', 'event:2026-10-10']);
+    assert.deepEqual(plain(lines[1].codes), ['AAAAAAAAAAAAAAAA', 'BBBBBBBBBBBBBBBB']);
     assert.equal(lines.at(-1).src, '123456');
   });
 
@@ -942,6 +943,45 @@ function teamData(over) {
     assert.deepEqual(plain(R.manualTicked(d)), { p_t: true });
     delete d.raid.manual.presentPlayerIds;
     assert(R.manualTicked(d).p_b === true);
+  });
+
+  await check('R2: backfill creates each raid with ONE POST /raids that carries its reports; a failed add writes nothing and is reported as failed', async () => {
+    const posts = [];
+    const puts = [];
+    let failNext = true;
+    G.api.post = (url, body) => {
+      posts.push({ url, body });
+      if (failNext) return Promise.reject(new G.api.ApiError(404, { error: 'not_found', message: 'Warcraft Logs does not have that report.' }));
+      return Promise.resolve({ raid: { id: 'r_new' + posts.length } });
+    };
+    G.api.put = (url, body) => { puts.push({ url, body }); return Promise.resolve({}); };
+    G.api.get = () => Promise.resolve({ people: [], roster: [] });
+    const saveRender = G.app.render;
+    G.app.render = () => {};
+    G.app.state.guilds.g1 = gd(OFFICER_CAN); G.app.state.currentGid = 'g1';
+    const bf = { gid: 'g1', teamId: 't1', reports: REPORTS, hasMore: false, page: 1, ticked: { AAAAAAAAAAAAAAAA: true, BBBBBBBBBBBBBBBB: true }, events: {}, filterUploaders: true, loaded: true, run: null, join: null };
+    G.pages.attendance.attState().backfill = bf;
+    G.handlers.click['bf-create']();
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(puts.length, 0, 'no second call to add a report');
+    assert.equal(posts.length, 1);
+    assert.deepEqual(plain(posts[0].body), { teamId: 't1', raidOn: '2026-10-10', reportSources: ['AAAAAAAAAAAAAAAA', 'BBBBBBBBBBBBBBBB'] });
+    assert.deepEqual(plain(bf.run.lines.map(l => [l.id, l.status])), [['raid:2026-10-10', 'error']]);
+    assert.equal(bf.run.created, 0);
+    failNext = false;
+    G.handlers.click['bf-retry']({ getAttribute: (name) => (name === 'data-line' ? 'raid:2026-10-10' : null) });
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(posts.length, 2);
+    assert.deepEqual(plain(bf.run.lines.map(l => l.status)), ['ok']);
+    assert.equal(bf.run.created, 1);
+    assert.equal(puts.length, 0);
+    G.app.render = saveRender;
+  });
+
+  await check('R2: a stale-state raid shows "Needs recalculation", never "Reviewed"', () => {
+    const html = G.pages.raids.statePillsHtml({ state: 'stale', openFlags: 0, stale: true });
+    assert(html.includes('Needs recalculation') && !html.includes('Reviewed') && !html.includes('>Recalculate<'));
+    assert(G.pages.raids.statePillsHtml({ state: 'reviewed', openFlags: 0, stale: true }).includes('>Recalculate<'));
   });
 
   await check('fix: backfill sends expectedVersion from the roster list row version', () => {

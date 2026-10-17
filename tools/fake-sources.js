@@ -37,7 +37,7 @@ function readArgs(argv) {
   return args;
 }
 
-const EVENT_START = 1_800_100_000; // epoch seconds
+const EVENT_START = 1_789_000_000; // epoch seconds: 2026-09-10 00:26Z, a fixed past date (the create route refuses an event that has not started)
 
 function signUp(id, userId, name, className, specName, position) {
   return { id, userId, name, className, specName, status: 'primary', position, entryTime: EVENT_START - 86_400 };

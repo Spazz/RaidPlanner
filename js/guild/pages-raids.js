@@ -30,9 +30,10 @@
         break;
       case 'to_review': pills.push(pillHtml('warn', flags + ' to review')); break;
       case 'reviewed': pills.push(pillHtml('ok', 'Reviewed')); break;
+      case 'stale': pills.push(pillHtml('warn', 'Needs recalculation')); break;
       default: pills.push(pillHtml('muted', String(r.state == null ? '' : r.state).replace(/_/g, ' ')));
     }
-    if (r.stale) pills.push(pillHtml('warn', 'Recalculate'));
+    if (r.stale && r.state !== 'stale') pills.push(pillHtml('warn', 'Recalculate'));
     return '<span class="gs-pills">' + pills.join('') + '</span>';
   }
 

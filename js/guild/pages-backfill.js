@@ -1,7 +1,7 @@
 // ── PAGE: BACKFILL FROM WARCRAFT LOGS ───────────────────────────
 // Lists the team's Warcraft Logs reports (25 per page, GET /attendance/backfill/reports), lets an officer tick some,
-// groups the ticked ones by guild-local date ("3 raids from 4 reports") and creates the raids in a loop: create the raid,
-// add its reports, then the optional Raid-Helper event. Afterwards: people whose join date is later than their first
+// groups the ticked ones by guild-local date ("3 raids from 4 reports") and creates the raids in a loop: one POST /raids
+// per date carries all of its reports (a failed add writes nothing), then the optional Raid-Helper event. Afterwards: people whose join date is later than their first
 // attended raid (UNTICKED by default; "Move join date back" writes the roster) and a link to the review queue.
 (function (G) {
   'use strict';
@@ -196,8 +196,8 @@
     const lines = [];
     groups.forEach(function (g) {
       const day = G.ui.weekdayDay(g.raidOn) || g.raidOn;
-      lines.push({ id: 'raid:' + g.raidOn, group: g.raidOn, kind: 'raid', label: day + ': create the raid', status: 'pending' });
-      g.reports.forEach(function (r) { lines.push({ id: 'report:' + g.raidOn + ':' + r.code, group: g.raidOn, kind: 'report', code: r.code, label: day + ': report ' + (r.title || r.code), status: 'pending' }); });
+      const codes = g.reports.map(function (r) { return r.code; });
+      lines.push({ id: 'raid:' + g.raidOn, group: g.raidOn, kind: 'raid', codes: codes, label: day + ': create the raid with ' + plural(codes.length, 'report', 'reports'), status: 'pending' });
       if (String(events[g.raidOn] || '').trim()) lines.push({ id: 'event:' + g.raidOn, group: g.raidOn, kind: 'event', src: String(events[g.raidOn]).trim(), label: day + ': Raid-Helper event', status: 'pending' });
     });
     return lines;
@@ -211,17 +211,24 @@
     line.openRaidId = '';
     let p;
     if (line.kind === 'raid') {
-      p = G.api.post(base + '/raids', { teamId: run.teamId, raidOn: line.group }).then(function (res) { run.raidIds[line.group] = res.raid.id; run.created += 1; }, function (err) {
-        if (err && err.code === 'raid_exists' && err.body && err.body.raidId) { run.raidIds[line.group] = err.body.raidId; line.message = 'A raid already exists on this date; adding to it.'; return; }
+      p = G.api.post(base + '/raids', { teamId: run.teamId, raidOn: line.group, reportSources: line.codes }).then(function (res) { run.raidIds[line.group] = res.raid.id; run.created += 1; }, function (err) {
+        if (err && err.code === 'raid_exists' && err.body && err.body.raidId) {
+          // The date already has a raid: add the reports to it one by one (each is its own write).
+          run.raidIds[line.group] = err.body.raidId;
+          line.message = 'A raid already exists on this date; adding to it.';
+          return line.codes.reduce(function (chain, code) {
+            return chain.then(function () {
+              const body = { source: code };
+              if (line.confirmFar) body.confirmFar = true;
+              return G.api.put(base + '/raids/' + encodeURIComponent(err.body.raidId) + '/reports', body);
+            });
+          }, Promise.resolve());
+        }
         throw err;
       });
     } else if (!run.raidIds[line.group]) {
       line.status = 'skipped';
       return Promise.resolve();
-    } else if (line.kind === 'report') {
-      const body = { source: line.code };
-      if (line.confirmFar) body.confirmFar = true;
-      p = G.api.put(base + '/raids/' + encodeURIComponent(run.raidIds[line.group]) + '/reports', body);
     } else {
       p = G.api.put(base + '/raids/' + encodeURIComponent(run.raidIds[line.group]) + '/event', { source: line.src, acceptOtherServer: !!line.acceptOtherServer });
     }
@@ -270,7 +277,7 @@
     if (!bf || !bf.run || bf.run.running) return;
     const line = bf.run.lines.filter(function (l) { return l.id === el.getAttribute('data-line'); })[0];
     if (!line) return;
-    if (el.getAttribute('data-accept') === '1') { if (line.kind === 'report') line.confirmFar = true; if (line.kind === 'event') line.acceptOtherServer = true; }
+    if (el.getAttribute('data-accept') === '1') { if (line.kind === 'raid') line.confirmFar = true; if (line.kind === 'event') line.acceptOtherServer = true; }
     line.status = 'pending';
     runPending(bf);
   };
