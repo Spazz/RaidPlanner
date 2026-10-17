@@ -10,6 +10,8 @@ const PATTERNS = {
   r: /^r_[A-Za-z0-9_-]{22}$/,
   ap: /^ap_[A-Za-z0-9_-]{22}$/,
   ri: /^ri_[A-Za-z0-9_-]{22}$/,
+  lo: /^lo_[A-Za-z0-9_-]{22}$/,
+  lp: /^lp_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {
@@ -39,6 +41,7 @@ export const PARAM_SOURCE = {
   pid: 'p_[A-Za-z0-9_-]{22}',
   cid: 'c_[A-Za-z0-9_-]{22}',
   rid: 'r_[A-Za-z0-9_-]{22}',
+  aid: 'lo_[A-Za-z0-9_-]{22}',
   // A Warcraft Logs report code (DELETE /raids/:rid/reports/:code).
   code: '[A-Za-z0-9]{16}',
 };

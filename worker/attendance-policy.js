@@ -5,7 +5,7 @@
 
 const STATUSES = ['raider', 'trial', 'reserve'];
 
-function deepFreeze(value) {
+export function deepFreeze(value) {
   if (value && typeof value === 'object') {
     for (const inner of Object.values(value)) deepFreeze(inner);
     Object.freeze(value);
@@ -79,9 +79,9 @@ export function decisionOutcomesFor(flags) {
 // ---------------------------------------------------------------------------
 // Validation
 
-const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+export const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isWeeks = (value) => Number.isInteger(value) && value >= 1 && value <= 52;
-const oneOf = (allowed, reserved = []) => (value) => {
+export const oneOf = (allowed, reserved = []) => (value) => {
   if (typeof value !== 'string') return `must be one of: ${allowed.join(', ')}`;
   if (reserved.includes(value)) return `"${value}" is reserved and not built yet`;
   return allowed.includes(value) ? null : `must be one of: ${allowed.join(', ')}`;
@@ -144,7 +144,7 @@ const SCHEMA = {
   resetDay: (value) => (value === null || (Number.isInteger(value) && value >= 0 && value <= 6) ? null : 'must be null (from the region) or a whole number from 0 (Sunday) to 6'),
 };
 
-function walk(schema, value, path, errors) {
+export function walk(schema, value, path, errors) {
   for (const key of Object.keys(value)) {
     const here = path ? `${path}.${key}` : key;
     if (!Object.prototype.hasOwnProperty.call(schema, key)) {
@@ -190,13 +190,13 @@ export function validateOverride(override, scope = 'guild', base = DEFAULT_POLIC
 // ---------------------------------------------------------------------------
 // Resolve and fingerprint
 
-function clone(value) {
+export function clone(value) {
   if (Array.isArray(value)) return value.map(clone);
   if (isPlainObject(value)) return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, clone(inner)]));
   return value;
 }
 
-function mergeInto(target, source) {
+export function mergeInto(target, source) {
   for (const [key, value] of Object.entries(source)) {
     if (isPlainObject(value) && isPlainObject(target[key])) mergeInto(target[key], value);
     else target[key] = clone(value);
