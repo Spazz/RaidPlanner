@@ -28,12 +28,6 @@
 
       // ── Next up ──
       {
-        id: 'battlenet-link-roster-import',
-        title: 'Battle.net character link and guild roster import',
-        summary: 'A Battle.net sign-in link imports a member\'s characters, and officers can import the guild roster. Imported data follows the 30-day data rule. Planned decisions (made by Claude, open to change): members claim characters and officers approve each claim, the guild roster is previewed before import, rank names are labels officers set, and disconnecting deletes the link and character list at once.',
-        area: 'battlenet', status: 'next', source: 'user', added: '2026-10-17',
-      },
-      {
         id: 'native-signups',
         title: 'Native Raidsmith sign-ups',
         summary: 'Raiders sign up for upcoming raids in Raidsmith itself, and a weekly raid schedule per team creates those raids. The Raid-Helper import stays for guilds that use it. Planned decisions (made by Claude, open to change): members sign themselves up as signed, late, tentative or absent, officers can edit any sign-up and lock sign-ups early, the schedule fills the next two weeks, and Raid-Helper rows are never counted twice.',
@@ -103,6 +97,13 @@
         summary: 'The runner-up cards behind a suggested Open slot get easier to see.',
         why: 'They are faint today.',
         area: 'planner', status: 'idea', source: 'backlog', added: '2026-10-17',
+      },
+      {
+        id: 'pending-claims-badge',
+        title: 'Badge for pending character claims',
+        summary: 'Officers see a badge on the Review queue in the navigation when members have character claims waiting.',
+        why: 'Officers get no nav badge for claims today, so a claim waits until someone opens the Review queue.',
+        area: 'battlenet', status: 'idea', source: 'backlog', added: '2026-10-17',
       },
 
       // ── Product Manager proposals (in the PM's priority order) ──
@@ -248,6 +249,12 @@
       },
 
       // ── Shipped ──
+      {
+        id: 'battlenet-link-roster-import',
+        title: 'Battle.net character link and guild roster import',
+        summary: 'Members link Battle.net from the avatar menu, see their characters per guild and claim the ones that are theirs. Officers approve claims in the Review queue and can import the guild roster from Battle.net after a preview. Data follows the 30-day rule and Disconnect deletes it at once. WoW Forever has no Battle.net character data yet; it turns on when Blizzard publishes a namespace.',
+        area: 'battlenet', status: 'done', source: 'user', added: '2026-10-17', shipped: '2026-10-17',
+      },
       {
         id: 'future-raids-planner-link',
         title: 'Future raids and the Planner link',
