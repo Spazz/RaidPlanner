@@ -2,15 +2,17 @@
 // Pure parse/format for the guild page. Routes:
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,people,attendance}]
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,people,attendance,loot}]
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
+//   #/g/:gid/loot[?view=raids|items]  #/g/:gid/loot/p/:pid  (Balance is the default view)
 //   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl}
 //   (?team= only opens an archived team's roster; the shell's team picker decides otherwise)
 (function (G) {
   'use strict';
 
   const SECTIONS = ['roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'people', 'attendance'];
+  const TABS = ['teams', 'people', 'attendance', 'loot'];
+  const LOOT_VIEWS = ['raids', 'items'];
   const IMPORT_SOURCES = ['raid-helper', 'wcl'];
   const SIGNIN_ERRORS = ['denied', 'state', 'discord'];
   const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -67,6 +69,7 @@
     if (parts.length === 3 && SECTIONS.indexOf(parts[2]) >= 0) {
       const section = { name: 'section', gid: gid, section: parts[2] };
       if (parts[2] === 'roster' && typeof query.team === 'string' && ID.test(query.team)) section.team = query.team;
+      if (parts[2] === 'loot' && LOOT_VIEWS.indexOf(query.view) >= 0) section.view = query.view;
       return section;
     }
     if (parts[2] === 'roster') {
@@ -82,6 +85,7 @@
       if (parts.length === 4 && parts[3] === 'backfill') return { name: 'backfill', gid: gid };
       if (parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'personatt', gid: gid, pid: parts[4] };
     }
+    if (parts[2] === 'loot' && parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'lootperson', gid: gid, pid: parts[4] };
     if (parts[2] === 'settings') {
       if (parts.length === 3) return { name: 'settings', gid: gid, tab: null };
       if (parts.length === 4 && TABS.indexOf(parts[3]) >= 0) return { name: 'settings', gid: gid, tab: parts[3] };
@@ -101,7 +105,8 @@
       case 'section': {
         const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';
         const team = section === 'roster' && typeof r.team === 'string' && ID.test(r.team) ? '?team=' + encodeURIComponent(r.team) : '';
-        return '#/g/' + encodeURIComponent(r.gid) + '/' + section + team;
+        const view = section === 'loot' && LOOT_VIEWS.indexOf(r.view) >= 0 ? '?view=' + r.view : '';
+        return '#/g/' + encodeURIComponent(r.gid) + '/' + section + team + view;
       }
       case 'person': return '#/g/' + encodeURIComponent(r.gid) + '/roster/p/' + encodeURIComponent(r.pid);
       case 'import': return '#/g/' + encodeURIComponent(r.gid) + '/roster/import/' + (IMPORT_SOURCES.indexOf(r.source) >= 0 ? r.source : 'raid-helper');
@@ -110,10 +115,11 @@
       case 'review': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/review';
       case 'backfill': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/backfill';
       case 'personatt': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/p/' + encodeURIComponent(r.pid);
+      case 'lootperson': return '#/g/' + encodeURIComponent(r.gid) + '/loot/p/' + encodeURIComponent(r.pid);
       case 'settings': return '#/g/' + encodeURIComponent(r.gid) + '/settings' + (TABS.indexOf(r.tab) >= 0 ? '/' + r.tab : '');
       default: return '#/';
     }
   }
 
-  G.router = { SECTIONS: SECTIONS, TABS: TABS, IMPORT_SOURCES: IMPORT_SOURCES, parse: parse, format: format };
+  G.router = { SECTIONS: SECTIONS, TABS: TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, parse: parse, format: format };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

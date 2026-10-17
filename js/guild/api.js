@@ -89,4 +89,28 @@
     patch: function (path, body) { return request('PATCH', path, body); },
     del: function (path, body) { return request('DELETE', path, body); },
   };
+
+  // Every loot call in one place (Phase 4 spec, section 5). They go through G.api.get / post / ... at call time, so a
+  // test that replaces those methods sees them.
+  function guildPath(gid, tail) { return '/api/guild/' + encodeURIComponent(gid) + tail; }
+  function teamQuery(teamId, weeks) {
+    return '?team=' + encodeURIComponent(teamId) + (weeks != null ? '&weeks=' + encodeURIComponent(weeks) : '');
+  }
+  G.api.loot = {
+    raid: function (gid, rid) { return G.api.get(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot')); },
+    preview: function (gid, rid, awards) { return G.api.post(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot/preview'), { awards: awards }); },
+    commit: function (gid, rid, awards, includeOtherDay) {
+      return G.api.post(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot'), { awards: awards, includeOtherDay: !!includeOtherDay });
+    },
+    update: function (gid, aid, body) { return G.api.patch(guildPath(gid, '/loot/' + encodeURIComponent(aid)), body); },
+    remove: function (gid, aid) { return G.api.del(guildPath(gid, '/loot/' + encodeURIComponent(aid)), {}); },
+    balance: function (gid, teamId, weeks) { return G.api.get(guildPath(gid, '/loot/balance' + teamQuery(teamId, weeks))); },
+    raids: function (gid, teamId) { return G.api.get(guildPath(gid, '/loot/raids' + teamQuery(teamId))); },
+    items: function (gid, teamId) { return G.api.get(guildPath(gid, '/loot/items' + teamQuery(teamId))); },
+    person: function (gid, pid) { return G.api.get(guildPath(gid, '/loot/person/' + encodeURIComponent(pid))); },
+    policy: function (gid) { return G.api.get(guildPath(gid, '/loot/policy')); },
+    savePolicy: function (gid, teamId, override, version) {
+      return G.api.put(guildPath(gid, '/loot/policy'), { teamId: teamId, override: override, version: version });
+    },
+  };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

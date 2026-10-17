@@ -143,6 +143,10 @@
 !guild-attendance-worker-tests.js
 !guild-attendance-ui-tests.js
 !guild-roster-ui-tests.js
+# Phase 4 loot (lane U): the Gargul parser and loot pages suites, the hand-made Gargul export they read
+!guild-loot-parser-tests.js
+!guild-loot-ui-tests.js
+!tests/fixtures/gargul-detailed-sample.json
 !tools/fake-sources.js
 # Phase 3 attendance (lane M): pure rules suites, fixture builder, anonymized goldens
 !guild-attendance-rules-tests.js

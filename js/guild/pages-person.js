@@ -1,5 +1,5 @@
 // ── PAGE: PERSON RECORD (R1 A, a full page) ─────────────────────
-// Header and chips, the trial bar, Characters, Attendance (the card from pages-person-attendance.js), Details, Officer notes, Delete person.
+// Header and chips, the trial bar, Characters, Attendance (the card from pages-person-attendance.js), Loot (pages-person-loot.js), Details, Officer notes, Delete person.
 // Editors get the forms; a member gets a read-only record. The dialogs (Add / Edit character, Extend trial,
 // Delete) live here too. Every mutation answers with the whole person record, which replaces the page's copy;
 // a 409 conflict re-renders from ApiError.body.current.
@@ -168,7 +168,7 @@
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       trialBarHtml(record, can) +
       (readOnly && record.person.isMe ? '<p class="gs-fine gs-member-note">' + esc(MEMBER_NOTE) + '</p>' : '') +
-      '<div class="gs-person-cols"><div class="gs-person-main">' + charactersHtml(record, can, showTeam) + attendanceHtml(record, opts.guildData.guild.id, opts.attendance) + '</div>' +
+      '<div class="gs-person-cols"><div class="gs-person-main">' + charactersHtml(record, can, showTeam) + attendanceHtml(record, opts.guildData.guild.id, opts.attendance) + G.pages.personLoot.cardFor(opts.guildData, record, record.person.id) + '</div>' +
       '<div class="gs-person-side">' + (can.edit ? detailsHtml(record, opts.linkable) : readOnlyDetailsHtml(record)) + notesHtml(record, can) + '</div></div>' +
       deleteHtml(record, can) + '</div>';
   }

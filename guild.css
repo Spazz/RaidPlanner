@@ -752,3 +752,63 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-rm-filters .gs-seg { flex: 0 1 auto; padding: 0 12px; }
   .gs-rm-card { padding: 12px; }
 }
+
+/* ── Loot (Phase 4): item quality, award rows, the Gargul import panel, balance and item lists ───── */
+/* WoW's quality colours, with rare and epic lightened so each passes 4.5:1 on the panel and card backgrounds; the item name is always printed. */
+.gs-q-0, .guild-page a.gs-q-0 { color: #9d9d9d; }
+.gs-q-1, .guild-page a.gs-q-1 { color: #ffffff; }
+.gs-q-2, .guild-page a.gs-q-2 { color: #1eff00; }
+.gs-q-3, .guild-page a.gs-q-3 { color: #4a9bff; }
+.gs-q-4, .guild-page a.gs-q-4 { color: #c27aff; }
+.gs-q-5, .guild-page a.gs-q-5 { color: #ff8000; }
+.gs-q-6, .guild-page a.gs-q-6 { color: #e6cc80; }
+.gs-q-7, .guild-page a.gs-q-7 { color: #00ccff; }
+.gs-item { font-weight: 600; overflow-wrap: anywhere; }
+.guild-page a.gs-item { text-decoration: none; }
+.guild-page a.gs-item:hover { text-decoration: underline; }
+.gs-num { font-variant-numeric: tabular-nums; }
+
+.gs-chip-tag { background: var(--bg-card-hover); }
+.gs-chip-tag.is-os { background: #4a4228; border-color: #4a4228; color: #f2e3b0; }
+.gs-chip-tag.is-de, .gs-chip-tag.is-bank { background: var(--bg-frame); color: var(--text-muted); }
+
+.gs-loot-list { list-style: none; display: flex; flex-direction: column; }
+.gs-loot-row { display: grid; grid-template-columns: 96px minmax(0, 2fr) minmax(0, 1.4fr) minmax(96px, auto) minmax(0, 1.4fr) auto; align-items: center; gap: 6px 16px; padding: 10px 0; }
+.gs-loot-row + .gs-loot-row { border-top: 1px solid var(--border-subtle); }
+.gs-loot-when { font-size: 14px; color: var(--text-muted); white-space: nowrap; }
+.gs-loot-item, .gs-loot-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gs-loot-who { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.gs-loot-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.gs-loot-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
+.gs-loot-tagsel { width: auto; min-width: 130px; }
+.gs-loot-tag { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.gs-loot-page .gs-roster-filters { align-items: center; }
+.gs-loot-sec .gs-notice { margin: 0; }
+.gs-settings-loot .gs-pol-form { max-width: 760px; }
+.gs-loot-import { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-4); background: var(--bg-card); border: 1px solid var(--border-medium); }
+.gs-loot-import .gs-alert { margin: 0; }
+.gs-loot-paste { font-family: ui-monospace, Consolas, monospace; font-size: 14px; }
+.gs-loot-preview { max-height: 420px; overflow-y: auto; color-scheme: dark; padding: 0 var(--sp-4); background: var(--bg-panel); border: 1px solid var(--border-subtle); }
+.gs-table-loot { min-width: 560px; }
+.gs-table-lootraids { min-width: 640px; }
+.gs-loot-cards { display: none; list-style: none; }
+.gs-loot-items { list-style: none; display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border-subtle); }
+.gs-loot-itemrow + .gs-loot-itemrow { border-top: 1px solid var(--border-subtle); }
+.gs-loot-item summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; padding: 12px var(--sp-4); cursor: pointer; }
+.gs-loot-item summary:hover { background: var(--bg-card-hover); }
+.gs-loot-item-name { min-width: 0; }
+.gs-loot-sublist { list-style: none; padding: 0 var(--sp-4) var(--sp-3); }
+.gs-loot-subrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+.gs-loot-subrow > a { min-width: 110px; }
+
+@media (max-width: 600px) {
+  .gs-loot-table { display: none; }
+  .gs-loot-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .gs-loot-card { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .gs-loot-row { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 12px 0; }
+  .gs-loot-actions { justify-content: flex-start; }
+  .gs-loot-tagsel { width: 100%; }
+  .gs-loot-preview { padding: 0 var(--sp-2); }
+  .gs-loot-import { padding: var(--sp-3); }
+  .gs-loot-subrow > a { min-width: 0; flex-basis: 100%; }
+}
