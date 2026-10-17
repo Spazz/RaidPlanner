@@ -46,6 +46,8 @@
     imports: {},       // 'rh' | 'wcl' -> the import page's state (see pages-import.js)
     att: {},           // the attendance pages' state, one key per page module (see pages-attendance.js and its siblings)
     roadmap: null,     // the Future enhancements page's state: filter, form draft, submitted ideas (see pages-roadmap.js)
+    bnet: null,        // Linked accounts / My characters: { data: GET /auth/bnet, notice, alert } (see pages-bnet.js)
+    bnetSettings: null, // Guild settings > Battle.net: { gid, data: GET /api/guild/:gid/bnet, notice } (see pages-settings-bnet.js)
   };
   const app = G.app = { state: state, started: false };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
@@ -238,6 +240,9 @@
     state.lastGid = null;
     state.att = {};
     state.roadmap = null;
+    state.bnet = null;
+    state.bnetSettings = null;
+    state.imports = {};
     state.failure = null;
     state.notice = '';
     setHint(false);
@@ -407,6 +412,14 @@
       G.pages.roadmap.load();
       return ensureChromeGuild().then(function () { return null; });
     }
+    if (r.name === 'linked' || r.name === 'characters') {
+      // Battle.net (Phase 5): no guild of its own, so the nav is the last guild's. The page reads GET /auth/bnet fresh on every visit.
+      return G.pages.bnet.load().then(function () { return ensureChromeGuild(); }).then(function () { return null; }).catch(function (err) {
+        if (token !== routeToken) return null;
+        handleLoadError(err);
+        return null;
+      });
+    }
     if (!r.gid) return null;
 
     state.currentGid = r.gid;
@@ -434,6 +447,7 @@
       }
       if (!tabs.some(function (t) { return t.tab === tab; })) { failWith('You cannot open this', 'Your role does not include this part of Guild settings.', false); return null; }
       if (tab === 'attendance') return loadAttendance('settingsAtt', r, gd);
+      if (tab === 'battlenet') return G.pages.settingsBnet.load(r.gid).then(function () { return null; });
       if (tab !== 'people') return null;
       return G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) {
         state.people[r.gid] = res;
@@ -509,6 +523,11 @@
       failWith('You cannot open this', 'Importing is for the officers and team leads of this team.', false);
       return null;
     }
+    if (r.source === 'bnet') {
+      // The Battle.net page first reads the guild's settings (is it set up, is the version supported, which guild and realm will be read).
+      const bnet = G.pages.importBnet.ensureState(gid, teamId);
+      return G.pages.importBnet.loadInfo(bnet).then(function () { return null; });
+    }
     const kind = r.source === 'wcl' ? 'wcl' : 'rh';
     G.pages.import.ensureState(kind, gid, teamId);
     if (kind !== 'wcl') return null;
@@ -525,6 +544,8 @@
     let page = '';
     if (r.name === 'privacy') page = 'Privacy & my data';
     else if (r.name === 'roadmap') page = 'Future enhancements';
+    else if (r.name === 'linked') page = 'Linked accounts';
+    else if (r.name === 'characters') page = 'My characters';
     else if (r.name === 'new') page = 'Create a guild';
     else if (r.name === 'section') page = { roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || '';
     else if (r.name === 'raidnew') page = 'New raid';
@@ -533,7 +554,7 @@
     else if (r.name === 'backfill') page = 'Backfill from Warcraft Logs';
     else if (r.name === 'personatt') page = 'Attendance history';
     else if (r.name === 'person') page = 'Roster';
-    else if (r.name === 'import') page = r.source === 'wcl' ? 'Import from Warcraft Logs' : 'Import from Raid-Helper';
+    else if (r.name === 'import') page = { wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net' }[r.source] || 'Import from Raid-Helper';
     else if (r.name === 'settings') page = 'Guild settings';
     if (gd && gd.guild && page) page += ' - ' + gd.guild.name;
     return page ? page + ' - ' + base : base;
@@ -565,6 +586,10 @@
         return P.privacy.privacyHtml({ me: state.me, message: state.privacyMessage });
       case 'roadmap':
         return P.roadmap.roadmapHtml({ me: state.me, view: P.roadmap.viewState() });
+      case 'linked':
+        return P.bnet.linkedHtml({ data: state.bnet ? state.bnet.data : null, error: r.error, notice: state.bnet ? state.bnet.notice : '', alert: state.bnet ? state.bnet.alert : '' });
+      case 'characters':
+        return P.bnet.charactersHtml({ data: state.bnet ? state.bnet.data : null, notice: state.bnet ? state.bnet.notice : '', alert: state.bnet ? state.bnet.alert : '' });
       case 'section':
         if (!gd) return P.signin.loadingHtml();
         if (r.section === 'roster') return rosterMain(gd);
@@ -580,6 +605,10 @@
       }
       case 'import': {
         if (!gd) return P.signin.loadingHtml();
+        if (r.source === 'bnet') {
+          const bnet = state.imports.bnet;
+          return bnet && bnet.gid === gd.guild.id ? P.importBnet.bnetHtml({ guildData: gd, bnet: bnet }) : P.signin.loadingHtml();
+        }
         const kind = r.source === 'wcl' ? 'wcl' : 'rh';
         const imp = state.imports[kind];
         if (!imp || imp.gid !== gd.guild.id) return P.signin.loadingHtml();
@@ -593,6 +622,11 @@
         const tab = r.tab;
         if (tab === 'teams') return G.shell.settingsFrameHtml(ctx, 'teams', P.teams.teamsHtml({ guildData: gd, alert: state.pageAlert }));
         if (tab === 'attendance') return P.settingsAtt.main(r, gd, ctx);
+        if (tab === 'battlenet') {
+          const x = state.bnetSettings;
+          if (!x || x.gid !== gd.guild.id) return P.signin.loadingHtml();
+          return G.shell.settingsFrameHtml(ctx, 'battlenet', P.settingsBnet.settingsHtml({ guildData: gd, data: x.data, alert: state.pageAlert, notice: x.notice }));
+        }
         if (tab === 'people') {
           if (!state.people[gd.guild.id]) return P.signin.loadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'people', P.people.peopleHtml({ guildData: gd, data: state.people[gd.guild.id], sort: state.peopleSort, query: state.peopleQuery, notice: state.notice, alert: state.pageAlert, now: Date.now() }));
@@ -621,7 +655,7 @@
     let gd = null;
     if (me) {
       // The roadmap has no guild of its own: like the planner and the help pages it draws the nav of the viewer's last guild.
-      const own = r && r.name === 'roadmap' ? chromeGuildId() : (r && r.gid);
+      const own = r && (r.name === 'roadmap' || r.name === 'linked' || r.name === 'characters') ? chromeGuildId() : (r && r.gid);
       const gid = state.section === 'guild' ? own : chromeGuildId();
       gd = gid ? state.guilds[gid] || null : null;
     }

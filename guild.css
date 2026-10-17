@@ -752,3 +752,27 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-rm-filters .gs-seg { flex: 0 1 auto; padding: 0 12px; }
   .gs-rm-card { padding: 12px; }
 }
+
+/* ── Battle.net (Phase 5): Linked accounts, My characters, character claims, the guild roster import, Guild settings ── */
+.gs-table-bnet { min-width: 640px; }
+.gs-table-bnet-import { min-width: 760px; }
+.gs-bnet-state { font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.gs-bnet-yours { color: var(--success); }
+.gs-bnet-taken, .gs-bnet-other_realm { color: var(--text-muted); }
+.gs-claim-item { align-items: flex-start; }
+.gs-claim-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gs-claim-plan.is-blocked { color: var(--warning); }
+.gs-bnet-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 24px; }
+.gs-bnet-ranks-filter { border: 0; padding: 0; margin: 0; min-width: 0; }
+.gs-bnet-rank-list { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.gs-bnet-rank-list .gs-check { min-height: 36px; }
+.gs-bnet-form { max-width: 760px; margin: 0; }
+.gs-bnet-ranks { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 24px; }
+.gs-bnet-ranks .gs-field-inline { justify-content: space-between; }
+.gs-bnet-ranks .gs-field-inline .gs-input { flex: 1 1 auto; min-width: 0; }
+@media (max-width: 600px) {
+  .gs-table-bnet, .gs-table-bnet-import { min-width: 0; }
+  .gs-claim-form { width: 100%; }
+  .gs-claim-form .gs-input { flex: 1 1 140px; }
+  .gs-bnet-ranks { grid-template-columns: 1fr; }
+}

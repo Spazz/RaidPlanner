@@ -172,12 +172,12 @@ export async function fetchUserInfo(ctx, accessToken) {
   if (!response.ok) throw statusError(response, 'user info');
   const body = await readJson(response, SMALL_BODY, 'user info');
   const id = body && (body.id ?? body.sub);
-  const battletag = body && typeof body.battletag === 'string' ? body.battletag.replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '').trim() : '';
+  const battletag = body && typeof body.battletag === 'string' ? body.battletag.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim() : '';
   if (!/^\d{1,20}$/.test(String(id)) || !battletag || battletag.length > 64) throw new BnetError('unavailable', 'unexpected user info');
   return { id: String(id), battletag };
 }
 
-const lines = (value, max) => Array.from(String(value).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '').trim()).slice(0, max).join('');
+const lines = (value, max) => Array.from(String(value).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim()).slice(0, max).join('');
 
 // Realm slugs are ASCII; anything else in a slug is refused (it goes into a URL path).
 const REALM_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -187,14 +187,14 @@ export const isRealmSlug = (value) => typeof value === 'string' && value.length 
 // realm slug is returned as ''. For a guild name use guildSlug.
 export function realmSlugOf(name) {
   if (typeof name !== 'string') return '';
-  const slug = name.normalize('NFC').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const slug = name.normalize('NFC').toLowerCase().replace(/['\u2019]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return isRealmSlug(slug) ? slug : '';
 }
 
 // A guild name -> its URL slug: lower case, apostrophes dropped, runs of anything but letters and digits become one hyphen.
 export function guildSlug(name) {
   if (typeof name !== 'string') return '';
-  const slug = name.normalize('NFC').toLowerCase().replace(/['’]/g, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+  const slug = name.normalize('NFC').toLowerCase().replace(/['\u2019]/g, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
   return Array.from(slug).length <= 60 ? slug : '';
 }
 

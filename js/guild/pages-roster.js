@@ -31,7 +31,9 @@
       '<div class="gs-menu" id="roster-import-list" role="menu" aria-label="Import" hidden>' +
       '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'raid-helper')) + '"><span>From a Raid-Helper event</span></a>' +
       '<div class="gs-menu-sep" role="separator"></div>' +
-      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'wcl')) + '"><span>From a Warcraft Logs report</span></a></div></div>';
+      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'wcl')) + '"><span>From a Warcraft Logs report</span></a>' +
+      '<div class="gs-menu-sep" role="separator"></div>' +
+      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'bnet')) + '"><span>From the Battle.net guild roster</span></a></div></div>';
   }
 
   function headHtml(gd, data) {
@@ -366,5 +368,6 @@
     linkOptionsHtml: linkOptionsHtml,
     personHref: personHref,
     importHref: importHref,
+    importMenuHtml: importMenuHtml,
   });
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));
