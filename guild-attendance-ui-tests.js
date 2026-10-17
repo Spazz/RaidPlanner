@@ -168,7 +168,7 @@ function teamData(over) {
   }, over || {});
 
   await check('plan source: long link, bare code and PP:2 string give names + groups only', async () => {
-    const want = { ok: true, label: 'BT run', players: [{ name: 'Tank', group: 1 }, { name: 'Benchy', group: 0 }] };
+    const want = { ok: true, label: 'BT run', players: [{ name: 'Tank', group: 1 }, { name: 'Benchy', group: 0 }], skipped: 0, skippedText: '' };
     assert.deepEqual(plain(await G.planSource.read('https://raidsmith.example/#r=GOODCODE1', fakeDeps())), want);
     assert.deepEqual(plain(await G.planSource.read('  GOODCODE1  ', fakeDeps())), want);
     assert.deepEqual(plain(await G.planSource.read('PP:2:x', fakeDeps())), want);
@@ -194,7 +194,7 @@ function teamData(over) {
       assert.equal(r.ok, false, text);
       assert(typeof r.error === 'string' && r.error.length > 5, text);
     }
-    const big = fakeDeps({ readPlayers: () => ({ success: true, name: 'Big', players: Array.from({ length: 81 }, (_, i) => ({ name: 'P' + i, groupNumber: 1 })) }) });
+    const big = fakeDeps({ readPlayers: () => ({ success: true, name: 'Big', players: Array.from({ length: 81 }, (_, i) => ({ name: 'Pp' + String.fromCharCode(97 + (i % 26)) + String.fromCharCode(97 + Math.floor(i / 26)), groupNumber: 1 })) }) });
     assert(/at most 80/.test((await G.planSource.read('PP:2:x', big)).error));
     const none = fakeDeps({ readPlayers: () => ({ success: true, name: 'Empty', players: [] }) });
     assert(/no players/.test((await G.planSource.read('PP:2:x', none)).error));
@@ -394,7 +394,7 @@ function teamData(over) {
 
   // ── raid detail ────────────────────────────────────────────────
   function prow(id, name, extra) {
-    return Object.assign({ playerId: id, name, class: 'DRUID', signup: 'signed', plan: null, pulls: { present: 17, total: 17, missedFirst: false, missedLast: false }, outcome: 'present', credit: 1, pending: false, flags: [], decision: null }, extra || {});
+    return Object.assign({ playerId: id, name, class: 'DRUID', signup: 'signed', plan: null, pulls: { present: 17, total: 17, missedFirst: false, missedLast: false }, outcome: 'present', credit: 1, pending: false, needsReview: false, flags: [], decision: null }, extra || {});
   }
   function detail(over) {
     return Object.assign({
@@ -404,7 +404,7 @@ function teamData(over) {
       pulls: [{ encounter: 'Illidan', kill: true, startedAt: 1 }, { encounter: 'Illidan', kill: false, startedAt: 2 }],
       people: [
         prow('p_b', 'Bravo'),
-        prow('p_k', 'Kanyan', { pulls: { present: 8, total: 17, missedFirst: true, missedLast: false }, outcome: 'late', credit: null, pending: true, flags: ['late'], signup: 'tentative' }),
+        prow('p_k', 'Kanyan', { pulls: { present: 8, total: 17, missedFirst: true, missedLast: false }, outcome: 'late', credit: null, pending: true, needsReview: true, flags: ['late'], signup: 'tentative' }),
         prow('p_a', 'Alpha', { outcome: 'missed', credit: 0, flags: ['no_show'], pulls: { present: 0, total: 17, missedFirst: false, missedLast: false }, plan: 'G3', decision: { reason: 'Told the raid lead', by: 'Officer', at: 1 } }),
         prow('p_t', 'Terani', { signup: 'bench', plan: 'bench', outcome: 'bench', credit: 1 }),
       ],
@@ -423,13 +423,14 @@ function teamData(over) {
     assert(/aria-pressed="true">Needs review/.test(out), 'defaults to Needs review when flags exist');
     const body = out.slice(out.indexOf('<tbody>'), out.indexOf('</tbody>'));
     const names = [...body.matchAll(/gs-char-link[^>]*>([^<]*)</g)].map(m => m[1]);
-    assert.deepEqual(names, ['Alpha', 'Kanyan'], 'only rows needing review, by name');
+    assert.deepEqual(names, ['Kanyan'], 'only rows with needsReview (a decided row keeps its flags but is closed)');
     assert(body.includes('>Decide<') && body.includes('missed first') && body.includes('8/17') && body.includes('Kany') && body.includes('Pending'));
-    assert(body.includes('Decided: Told the raid lead (Officer)'));
     assert(out.includes('Unmatched characters') && out.includes('data-action="unm-link"') && out.includes('data-action="unm-guest"'));
     const all = raidPage(detail(), { filter: 'all' });
-    assert.deepEqual([...all.slice(all.indexOf('<tbody>')).matchAll(/gs-char-link[^>]*>([^<]*)</g)].map(m => m[1]).slice(0, 4), ['Alpha', 'Kanyan', 'Bravo', 'Terani']);
-    assert(all.includes('>Change<'));
+    assert.deepEqual([...all.slice(all.indexOf('<tbody>')).matchAll(/gs-char-link[^>]*>([^<]*)</g)].map(m => m[1]).slice(0, 4), ['Kanyan', 'Alpha', 'Bravo', 'Terani']);
+    assert(all.includes('>Change<') && all.includes('Decided: Told the raid lead (Officer)'));
+    assert.equal((body.match(/>Decide</g) || []).length, 1);
+    assert(/Needs review <span class="gs-seg-count">1</.test(out), 'the Worker sends needsReview; decided rows are not counted');
     assertNoRawAttrs(out);
   });
 
@@ -459,7 +460,8 @@ function teamData(over) {
     assert.deepEqual(plain(R.decideOptions({ flags: ['late'] })), ['late', 'present']);
     assert.deepEqual(plain(R.decideOptions({ flags: ['left_early'] })), ['left_early', 'present']);
     assert.deepEqual(plain(R.decideOptions({ flags: ['late', 'left_early'] })), ['late_left', 'present']);
-    assert.deepEqual(plain(R.decideOptions({ flags: [] })), ['present', 'bench', 'missed', 'missed_notice', 'late', 'left_early', 'late_left']);
+    assert.deepEqual(plain(R.decideOptions({ flags: [] })), ['present', 'bench', 'missed', 'missed_notice']);
+    assert.deepEqual(plain(R.decideOptions({ flags: ['late', 'no_show'] })), ['missed', 'missed_notice', 'bench', 'present']);
     assert(R.needsCredit('late') && R.needsCredit('left_early') && R.needsCredit('late_left') && !R.needsCredit('present') && !R.needsCredit('missed'));
     const raid = detail().raid;
     const late = R.decideDialogHtml({ raid, row: detail().people[1], credits: G.pages.attendance.DEFAULT_CREDITS, where: 'raid' });
@@ -749,18 +751,23 @@ function teamData(over) {
   // ── person attendance ──────────────────────────────────────────
   const PERSON = {
     person: { id: 'p_aa', name: 'Aimersmay', status: 'raider', isMe: true },
-    window: 8,
-    teams: [{ team: { id: 't1', name: 'Team KJ' }, metrics: { pct: 100, pctAll: 96.4, signupRate: 90, cells: Array.from({ length: 10 }, (_, i) => cell('r' + i, '2026-10-' + String(i + 1).padStart(2, '0'), '2026-09-29', 'present')) },
+    teams: [{ team: { id: 't1', name: 'Team KJ' }, window: 8, metrics: { pct: 100, pctAll: 96.4, signupRate: 90 },
       cells: [
         { raid: { id: 'r1', raidOn: '2026-10-10', zone: 'BT' }, outcome: 'present', credit: 1, via: null, reason: null },
         { raid: { id: 'r0', raidOn: '2026-10-03', zone: 'BT' }, outcome: 'late', credit: null, via: null, reason: 'Told the raid lead' },
-        { raid: { id: 'r9', raidOn: '2026-10-07', zone: 'Hyjal' }, outcome: 'fill_in', credit: 1, via: 'Weekend team', reason: null },
+        { raid: { id: 'r9', raidOn: '2026-10-07', zone: 'Hyjal' }, outcome: 'fill_in', credit: 1, via: { id: 't2', name: 'Weekend team' }, reason: null },
       ] }],
   };
 
+  const PERSON_BIG = (() => {
+    const big = plain(PERSON);
+    big.teams[0].cells = Array.from({ length: 10 }, (_, i) => ({ raid: { id: 'r' + i, raidOn: '2026-10-' + String(i + 1).padStart(2, '0'), zone: 'BT' }, outcome: 'present', letter: 'P', credit: 1, pending: false, preStart: false, via: null, reason: null }));
+    return big;
+  })();
+
   await check('person attendance: card shows window and all-time %, the last 8 cells and a Full history link; placeholders and denied states', () => {
     const P = G.pages.personAtt;
-    const out = P.cardHtml({ gid: 'g1', pid: 'p_aa', record: { person: { isMe: true } }, state: { data: PERSON } });
+    const out = P.cardHtml({ gid: 'g1', pid: 'p_aa', record: { person: { isMe: true } }, state: { data: PERSON_BIG } });
     assert(out.includes('8-week attendance') && out.includes('100%') && out.includes('All-time attendance') && out.includes('96%') && out.includes('Sign-up rate'));
     assert((out.match(/class="gs-cell gs-out-present"/g) || []).length === 8, 'last 8 cells');
     assert(out.includes('href="#/g/g1/attendance/p/p_aa"') && out.includes('Full history'));
@@ -772,7 +779,7 @@ function teamData(over) {
 
   await check('person attendance: the person page renders the real card in place of the placeholder', () => {
     const rec = { person: { id: 'p_aa', status: 'raider', isMe: true, joinedOn: null, discord: { signIn: 'not_yet' }, version: 1 }, characters: [{ id: 'c1', name: 'Aimersmay', class: 'HUNTER', isMain: true, role: 'dps', team: { id: 't1', name: 'Team KJ' } }], can: {}, notes: null };
-    const out = G.pages.person.personHtml({ guildData: gd(MEMBER_CAN), record: rec, linkable: null, attendance: { data: PERSON } });
+    const out = G.pages.person.personHtml({ guildData: gd(MEMBER_CAN), record: rec, linkable: null, attendance: { data: PERSON_BIG } });
     assert(out.includes('8-week attendance') && out.includes('Full history'));
     assert(G.pages.person.personHtml({ guildData: gd(MEMBER_CAN), record: rec, linkable: null }).includes('Your attendance shows here after the first raid.'));
   });
@@ -833,6 +840,113 @@ function teamData(over) {
   await check('import: Import.readSharePlayers exists as the one public wrapper over _parseShareString', () => {
     const src = read('js/import.js');
     assert(/readSharePlayers\(str\)/.test(src) && /_parseShareString\(parts\)/.test(src));
+  });
+
+
+  // ── fix round 1: the UI reads the Worker's real shapes ────────
+  await check('fix: person attendance reads cells at teams[].cells and the window per team (number or all)', () => {
+    const P = G.pages.personAtt;
+    const two = plain(PERSON_BIG);
+    two.teams.push({ team: { id: 't2', name: 'Weekend team' }, window: 'all', metrics: { pct: 50, pctAll: 50, signupRate: 50 }, cells: [] });
+    two.teams[0].window = 4;
+    const out = P.cardHtml({ gid: 'g1', pid: 'p_aa', record: { person: {} }, state: { data: two } });
+    assert(out.includes('4-week attendance') && !out.includes('8-week attendance') && out.includes('Recent attendance'));
+    assert((out.match(/class="gs-cell gs-out-present"/g) || []).length === 8);
+    assert(!P.cardHtml({ gid: 'g1', pid: 'p_aa', record: { person: {} }, state: { data: Object.assign(plain(PERSON_BIG), { window: 12 }) } }).includes('12-week'), 'no top-level window');
+  });
+
+  await check('fix: team cells carry via {id, name}; the cell names the other team, a missing name still reads', () => {
+    const c = cell('x', '2026-10-07', '2026-10-06', 'fill_in', { via: { id: 't2', name: 'Weekend team' } });
+    assert(G.pages.attendance.cellHtml(c).includes('(Weekend team)'));
+    assert(G.pages.attendance.cellHtml(cell('x', '2026-10-07', '2026-10-06', 'fill_in', { via: { id: 't2', name: null } })).includes('(another team)'));
+  });
+
+  await check('fix: raid page - a decided row (flags kept, needsReview false) says Change; an open row says Decide', () => {
+    const open = prow('p_o', 'Opened', { outcome: 'late', credit: null, pending: true, needsReview: true, flags: ['late'] });
+    const closed = prow('p_c', 'Closed', { outcome: 'late', credit: 0.5, pending: false, needsReview: false, flags: ['late'], decision: { reason: 'ok', by: 'Officer', at: 1, applied: true } });
+    const noCredit = prow('p_n', 'Unpaid', { outcome: 'missed', credit: 0, pending: false, needsReview: true, flags: ['no_show'] });
+    const out = raidPage(detail({ people: [open, closed, noCredit] }), { filter: 'all' });
+    const row = n => out.slice(out.indexOf('<tbody>')).split('<tr>').find(r => r.includes('>' + n + '<'));
+    assert(row('Opened').includes('>Decide<') && row('Unpaid').includes('>Decide<') && row('Closed').includes('>Change<'));
+    assert(/Needs review <span class="gs-seg-count">2</.test(out) && out.includes('<dt>To review</dt><dd>2</dd>'));
+  });
+
+  await check('fix: paging uses hasMore from the reply, not the length of the page', async () => {
+    const calls = [];
+    const raids = Array.from({ length: 50 }, (_, i) => ({ id: 'r' + i, raidOn: '2026-10-' + String(i % 28 + 1).padStart(2, '0') }));
+    const src = read('js/guild/pages-raids.js') + read('js/guild/pages-attendance.js');
+    assert(!/PAGE_HINT/.test(src) && !/list\.length < 20/.test(src), 'no length guesses');
+    G.api.get = (url) => { calls.push(url); return Promise.resolve({ raids: [{ id: 'old', raidOn: '2026-01-01' }], hasMore: false }); };
+    const x = { gid: 'g1', teamId: 't1', data: { raids, hasMore: true }, more: true };
+    G.pages.attendance.attState().raids = x;
+    G.app.state.guilds.g1 = gd(OFFICER_CAN); G.app.state.currentGid = 'g1';
+    G.handlers.click['raids-older']({ disabled: false });
+    await new Promise(r => setTimeout(r, 0));
+    assert(/before=/.test(calls[0]));
+    assert.equal(x.more, false, 'hasMore false ends the paging');
+    assert.equal(x.data.raids.length, 51);
+  });
+
+  await check('fix: the attendance team page resets the window on a team change and falls back on a 400 window error', async () => {
+    const calls = [];
+    const A = G.pages.attendance;
+    A.attState().attUi = { sort: { column: 'player', dir: 'asc' }, includeInactive: false, window: 12, windowTeam: 't0' };
+    G.app.teamFor = () => 't1';
+    G.api.get = (url) => {
+      calls.push(url);
+      if (/window=/.test(url)) return Promise.reject(new G.api.ApiError(400, { error: 'invalid', message: 'Pick one of the offered windows.', field: 'window' }));
+      return Promise.resolve({ team: { id: 't1', name: 'Team KJ' }, window: 8, people: [], weeks: [], policy: {} });
+    };
+    A.attState().policy = { g1: {} };
+    await A.load({}, gd(OFFICER_CAN));
+    assert(!/window=/.test(calls[0]), 'team change: first request has no window');
+    A.attState().attUi.window = 99;
+    await A.load({}, gd(OFFICER_CAN));
+    assert(/window=99/.test(calls[1]) && !/window=/.test(calls[2]), 'a rejected window retries with the team default');
+    assert.equal(A.attState().attUi.window, null);
+  });
+
+  await check('fix: Link to a person lists the people of the raid\'s team, not the selected team', async () => {
+    const calls = [];
+    G.api.get = (url) => { calls.push(url); return Promise.resolve({ people: [] }); };
+    G.app.teamFor = () => 't_selected';
+    G.app.state.guilds.g1 = gd(OFFICER_CAN); G.app.state.currentGid = 'g1';
+    const att = G.pages.attendance.attState();
+    att.raid = { gid: 'g1', rid: 'r4', data: detail({ raid: Object.assign(detail().raid, { team: { id: 't_raid', name: 'Other' }, teamId: 't_raid' }) }) };
+    ctx.document.getElementById = () => null;
+    G.ui.openDialog = () => {};
+    const attrs = { 'data-where': 'raid', 'data-rid': 'r4', 'data-ukey': 'taharah|dreamscythe' };
+    G.handlers.click['unm-link']({ getAttribute: k => attrs[k], disabled: false });
+    await new Promise(r => setTimeout(r, 0));
+    assert(calls[0].endsWith('/roster?team=t_raid'), calls[0]);
+    att.review = { gid: 'g1', teamId: 't_rev', data: { raids: [] } };
+    assert.equal(G.pages.review.raidTeamOf('review', 'rX'), 't_rev');
+  });
+
+  await check('fix: plan source drops invalid and repeated names, counts them, and explains a plan_invalid index', async () => {
+    const players = [{ name: 'Tank', groupNumber: 1 }, { name: 'tank', groupNumber: 2 }, { name: 'X', groupNumber: 1 }, { name: 'Abcdefghijklm', groupNumber: 1 }, { name: 'Bad1', groupNumber: 1 }, { name: 'Zoe', groupNumber: 0 }, { name: 'Renée', groupNumber: 3 }];
+    const read1 = await G.planSource.read('PP:2:x', fakeDeps({ readPlayers: () => ({ success: true, name: 'N', players }) }));
+    assert.deepEqual(plain(read1.players).map(p => p.name), ['Tank', 'Zoe', 'Renée']);
+    assert.equal(read1.skipped, 4);
+    assert(/4 names were left out/.test(read1.skippedText));
+    const none = await G.planSource.read('PP:2:x', fakeDeps({ readPlayers: () => ({ success: true, name: 'N', players: [{ name: 'X1', groupNumber: 1 }] }) }));
+    assert.equal(none.ok, false);
+    const err = new G.api.ApiError(400, { error: 'plan_invalid', message: 'A character name is 2 to 12 letters.', field: 'players', index: 1 });
+    assert.equal(G.planSource.describeError(err, read1.players), 'Zoe: A character name is 2 to 12 letters.');
+    assert.equal(G.planSource.describeError(new G.api.ApiError(500, null), read1.players), null);
+  });
+
+  await check('fix: the manual dialog pre-ticks raid.manual.presentPlayerIds, falling back to outcomes only when absent', () => {
+    const R = G.pages.raid;
+    const d = detail({ raid: Object.assign(detail().raid, { state: 'manual', manual: { reason: 'r', by: 'O', at: 1, presentPlayerIds: ['p_t'] } }) });
+    assert.deepEqual(plain(R.manualTicked(d)), { p_t: true });
+    delete d.raid.manual.presentPlayerIds;
+    assert(R.manualTicked(d).p_b === true);
+  });
+
+  await check('fix: backfill sends expectedVersion from the roster list row version', () => {
+    const src = read('js/guild/pages-backfill.js');
+    assert(/expectedVersion: p\.version/.test(src) && /version: rp\.version/.test(src));
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

@@ -1,5 +1,5 @@
 // ── PAGES: PERSON ATTENDANCE (the card on the roster person page, and the full history page) ──
-// GET /attendance/person/:pid?window= -> { person, teams: [ { team, metrics, cells: [ { raid, outcome, credit, via, reason } ] } ] },
+// GET /attendance/person/:pid?window= -> { person, teams: [ { team, window, metrics, cells: [ { raid, outcome, credit, via, reason } ] } ] },
 // only the teams the viewer may see. Members open their own record; the officer reason shows to reviewers only.
 (function (G) {
   'use strict';
@@ -17,15 +17,16 @@
     return (r && typeof r === 'object' ? r.raidOn : null) || (c && (c.date || c.raidOn)) || '';
   }
   function raidIdOf(c) { return idOf(c && c.raid) || (c && c.raidId) || ''; }
-  function metricCells(t) { return t && t.metrics && Array.isArray(t.metrics.cells) ? t.metrics.cells : []; }
+  function metricCells(t) { return t && Array.isArray(t.cells) ? t.cells : []; }
 
-  function windowLabel(data) {
-    return typeof data.window === 'number' ? data.window + '-week attendance' : 'Recent attendance';
+  // The window is per team: teams[].window is a number of weeks or 'all'.
+  function windowLabel(team) {
+    return team && typeof team.window === 'number' ? team.window + '-week attendance' : 'Recent attendance';
   }
 
-  function tilesHtml(m, data) {
+  function tilesHtml(m, team) {
     const metrics = m || {};
-    return '<dl class="gs-summary"><div class="gs-summary-item"><dt>' + esc(windowLabel(data)) + '</dt><dd>' + esc(G.ui.percent(metrics.pct)) + '</dd></div>' +
+    return '<dl class="gs-summary"><div class="gs-summary-item"><dt>' + esc(windowLabel(team)) + '</dt><dd>' + esc(G.ui.percent(metrics.pct)) + '</dd></div>' +
       '<div class="gs-summary-item"><dt>All-time attendance</dt><dd>' + esc(G.ui.percent(metrics.pctAll)) + '</dd></div>' +
       '<div class="gs-summary-item"><dt>Sign-up rate</dt><dd>' + esc(G.ui.percent(metrics.signupRate)) + '</dd></div></dl>';
   }
@@ -48,7 +49,7 @@
     } else {
       const teams = Array.isArray(s.data.teams) ? s.data.teams : [];
       body = teams.length ? teams.map(function (t) {
-        return '<div class="gs-att-teamblock">' + (teams.length > 1 ? '<h3 class="gs-h3">' + esc(nameOfTeam(t.team)) + '</h3>' : '') + tilesHtml(t.metrics, s.data) + stripHtml(metricCells(t)) + '</div>';
+        return '<div class="gs-att-teamblock">' + (teams.length > 1 ? '<h3 class="gs-h3">' + esc(nameOfTeam(t.team)) + '</h3>' : '') + tilesHtml(t.metrics, t) + stripHtml(metricCells(t)) + '</div>';
       }).join('') + '<p class="gs-fine"><a href="' + esc(G.router.format({ name: 'personatt', gid: opts.gid, pid: opts.pid })) + '">Full history</a></p>'
         : '<p class="gs-fine">' + esc(isMe ? 'Your attendance shows here after the first raid.' : 'Attendance shows here after the first raid.') + '</p>';
     }
@@ -109,7 +110,7 @@
       const teamId = idOf(t.team);
       const showReason = G.shell.allowsTeam(gd.me && gd.me.can, 'attendance.review', teamId);
       const h = 'pa-team-' + i;
-      return '<section class="gs-card-sec" aria-labelledby="' + h + '"><div class="gs-card-sec-head"><h2 class="gs-h2" id="' + h + '">' + esc(nameOfTeam(t.team) || 'Team') + '</h2></div><div class="gs-card-sec-body">' + tilesHtml(t.metrics, data) +
+      return '<section class="gs-card-sec" aria-labelledby="' + h + '"><div class="gs-card-sec-head"><h2 class="gs-h2" id="' + h + '">' + esc(nameOfTeam(t.team) || 'Team') + '</h2></div><div class="gs-card-sec-body">' + tilesHtml(t.metrics, t) +
         (cells.length
           ? '<div class="gs-table-wrap gs-flush gs-pa-table"><table class="gs-table gs-table-history" aria-label="Raid by raid"><thead><tr><th scope="col">Raid</th><th scope="col">Zone</th><th scope="col">Outcome</th><th scope="col">Credit</th><th scope="col">Team</th>' + (showReason ? '<th scope="col">Officer reason</th>' : '') + '</tr></thead><tbody>' +
             cells.map(function (c) { return historyRowHtml(gid, c, showReason); }).join('') + '</tbody></table></div>' +

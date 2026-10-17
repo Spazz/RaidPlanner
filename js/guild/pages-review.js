@@ -33,7 +33,7 @@
     const flags = Array.isArray(row && row.flags) ? row.flags : [];
     if (flags.indexOf('no_show') >= 0) return ['missed', 'missed_notice', 'bench', 'present'];
     if (flags.indexOf('late') >= 0 || flags.indexOf('left_early') >= 0) return [lateOutcomeFor(flags), 'present'];
-    return ['present', 'bench', 'missed', 'missed_notice', 'late', 'left_early', 'late_left'];
+    return ['present', 'bench', 'missed', 'missed_notice'];
   }
 
   function needsCredit(outcome) { return LATE_TYPES.indexOf(outcome) >= 0; }
@@ -232,6 +232,17 @@
     return g ? (g.items || []).filter(function (i) { return isUnmatched(i) && i.key === key; })[0] || null : null;
   }
 
+  // The team the raid belongs to: the Worker creates the Alt on that team, so the people to pick from are that team's.
+  function raidTeamOf(where, rid) {
+    const s = a();
+    if (where === 'raid') {
+      const d = s.raid && s.raid.data;
+      const r = d && d.raid && d.raid.id === rid ? d.raid : null;
+      return r ? (r.teamId || idOf(r.team) || null) : null;
+    }
+    return s.review && s.review.teamId || null;
+  }
+
   function reloadReview() {
     const gd = currentGd();
     if (!gd) return Promise.resolve();
@@ -337,7 +348,7 @@
     const rid = el.getAttribute('data-rid');
     const unm = findUnmatched(where, rid, el.getAttribute('data-ukey'));
     if (!gd || !unm) return;
-    const teamId = G.app.teamFor(gd);
+    const teamId = raidTeamOf(where, rid) || G.app.teamFor(gd);
     el.disabled = true;
     G.api.get(A().apiBase(gd.guild.id) + '/roster?team=' + encodeURIComponent(teamId)).then(function (res) {
       el.disabled = false;
@@ -404,6 +415,7 @@
     isUnmatched: isUnmatched,
     noteHtml: noteHtml,
     unmatchedEvidence: unmatchedEvidence,
+    raidTeamOf: raidTeamOf,
     creditValuesOf: creditValuesOf,
     load: load,
     main: main,

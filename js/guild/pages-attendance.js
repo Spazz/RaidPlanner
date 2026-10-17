@@ -58,7 +58,8 @@
     }
     let letter = typeof cell.letter === 'string' && cell.letter ? cell.letter : letterOf(cell.outcome);
     if (cell.pending && letter.slice(-1) !== '?') letter += '?';
-    const via = cell.via ? ' (' + (typeof cell.via === 'object' ? cell.via.name : cell.via) + ')' : '';
+    const viaName = cell.via ? (typeof cell.via === 'object' ? cell.via.name : cell.via) : '';
+    const via = cell.via ? ' (' + (viaName || 'another team') + ')' : '';
     const text = day + ': ' + labelOf(cell.outcome) + via + (cell.pending ? ', awaiting review' : '');
     return '<span class="gs-cell ' + outClass(cell.outcome) + (cell.pending ? ' is-pending' : '') + '" role="img" aria-label="' + esc(text) + '" title="' + esc(text) + '">' + esc(letter) + '</span>';
   }
@@ -351,9 +352,19 @@
     const teamId = G.app.teamFor(gd);
     if (!teamId) { a.team = { gid: gid, teamId: null, data: null }; return null; }
     if (!G.shell.allowsTeam(gd.me && gd.me.can, 'attendance.view', teamId)) { a.team = { gid: gid, teamId: teamId, data: null, denied: true }; return null; }
-    const w = attView().window;
-    const q = '?team=' + encodeURIComponent(teamId) + (w != null ? '&window=' + encodeURIComponent(w) : '');
-    return Promise.all([G.api.get(apiBase(gid) + '/attendance/team' + q), loadPolicy(gid)]).then(function (res) {
+    const view = attView();
+    // A window belongs to one team (each team has its own offered weeks): a team change goes back to its default.
+    if (view.windowTeam !== teamId) { view.window = null; view.windowTeam = teamId; }
+    function fetchTeam(w) {
+      const q = '?team=' + encodeURIComponent(teamId) + (w != null ? '&window=' + encodeURIComponent(w) : '');
+      return G.api.get(apiBase(gid) + '/attendance/team' + q);
+    }
+    // A window the team does not offer is a 400 on 'window': fall back to the team's default.
+    const teamData = fetchTeam(view.window).catch(function (err) {
+      if (view.window != null && err && err.status === 400 && err.field === 'window') { view.window = null; return fetchTeam(null); }
+      throw err;
+    });
+    return Promise.all([teamData, loadPolicy(gid)]).then(function (res) {
       a.team = { gid: gid, teamId: teamId, data: res[0], denied: false };
       return null;
     });
@@ -378,7 +389,7 @@
       return G.api.get(apiBase(gid) + '/raids' + q).then(function (res) {
         const list = res && Array.isArray(res.raids) ? res.raids : [];
         list.forEach(function (x) { if (x.stale) ids.push(x.id); });
-        if (list.length < 20) return ids;
+        if (!res || !res.hasMore || !list.length) return ids;
         return page(list[list.length - 1].raidOn, n + 1);
       });
     }
