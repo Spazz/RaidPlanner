@@ -162,3 +162,7 @@
 !tools/roadmap-ideas.js
 !guild-roadmap-tests.js
 !guild-roadmap-worker-tests.js
+# Phase 6 native sign-ups + raid schedule: Worker, pages and contract suites
+!guild-signups-worker-tests.js
+!guild-signups-ui-tests.js
+!guild-signups-contract-tests.js
