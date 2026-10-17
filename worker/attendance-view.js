@@ -44,7 +44,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const guild = guildContext.guild;
   const bind = (sql) => db.prepare(sql).bind(guild.id, raidId);
   const [raidResult, reportResult, pullResult, signupResult, planResult, attendanceResult, characterResult, presenceResult, guestResult,
-    policyResult, userResult, teamResult, flagResult] = await db.batch([
+    policyResult, userResult, teamResult, flagResult, decisionResult, manualResult] = await db.batch([
     bind(`SELECT r.*, t.name AS team_name, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
             FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id WHERE r.guild_id = ?1 AND r.id = ?2`),
     bind(`SELECT code, flavour, started_at, ended_at, owner, synced_at,
@@ -62,10 +62,12 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
            WHERE raid_id = ?2 AND guild_id = ?1 GROUP BY name_key, realm_key`),
     db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
     db.prepare('SELECT id, team_id, policy, version FROM attendance_policies WHERE guild_id = ?').bind(guild.id),
-    bind(`SELECT id, username, global_name FROM users WHERE id IN (SELECT decided_by FROM attendance WHERE raid_id = ?2 AND decided_by IS NOT NULL)
+    bind(`SELECT id, username, global_name FROM users WHERE id IN (SELECT decided_by FROM attendance_decisions WHERE raid_id = ?2 AND decided_by IS NOT NULL)
              OR id = (SELECT manual_by FROM raids WHERE id = ?2 AND guild_id = ?1)`),
     db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guild.id),
     db.prepare('SELECT team_id, COUNT(*) AS n FROM raids WHERE guild_id = ? AND open_flags > 0 GROUP BY team_id').bind(guild.id),
+    bind('SELECT player_id, reason, flags, decided_by, decided_at FROM attendance_decisions WHERE raid_id = ?2 AND guild_id = ?1'),
+    bind('SELECT player_id FROM raid_manual WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY player_id'),
   ]);
   const raid = raidResult.results[0];
   if (!raid) throw new HttpError(404, 'not_found', 'That raid does not exist.');
@@ -77,6 +79,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const resolver = makePolicyResolver(guild, policyResult.results);
   const state = raidState(raid, raid.reports);
   const users = new Map(userResult.results.map((row) => [row.id, row]));
+  const decisions = new Map(decisionResult.results.map((row) => [row.player_id, row]));
 
   const charactersByPlayer = groupBy(characterResult.results, 'player_id');
   const characterKeys = new Set(characterResult.results.map((row) => presenceKey(row.name_key, row.realm_key)));
@@ -96,8 +99,10 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     people = attendanceResult.results.map((row) => {
       const character = displayCharacter(charactersByPlayer.get(row.player_id) || [], teamId);
       const flags = parseFlags(row.flags);
-      const decided = row.decided_at !== null && row.decided_at !== undefined;
-      const decidedBy = decided && row.decided_by ? users.get(row.decided_by) : null;
+      const made = decisions.get(row.player_id) || null;
+      const decided = !!made;
+      const decidedBy = decided && made.decided_by ? users.get(made.decided_by) : null;
+      const applied = decided && JSON.stringify([...parseFlags(made.flags)].sort()) === JSON.stringify([...flags].sort());
       return {
         playerId: row.player_id,
         name: character ? character.name : 'Unknown',
@@ -113,8 +118,8 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
         via: row.via_raid_id,
         source: row.presence_source,
         decision: decided ? (review
-          ? { reason: row.decided_reason, by: decidedBy ? userName(decidedBy) : null, at: row.decided_at, applied: row.decided_flags === row.flags }
-          : { at: row.decided_at, applied: row.decided_flags === row.flags }) : null,
+          ? { reason: made.reason, by: decidedBy ? userName(decidedBy) : null, at: made.decided_at, applied }
+          : { at: made.decided_at, applied }) : null,
       };
     }).sort((a, b) => (Number(b.needsReview) - Number(a.needsReview)) || a.name.localeCompare(b.name) || a.playerId.localeCompare(b.playerId));
   }
@@ -152,7 +157,10 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       stale: isStale(raid, state, resolver),
       version: raid.version,
       manual: raid.log_mode === 'manual'
-        ? { reason: raid.manual_reason, by: manualBy ? userName(manualBy) : null, at: raid.manual_at }
+        ? {
+          reason: raid.manual_reason, by: manualBy ? userName(manualBy) : null, at: raid.manual_at,
+          presentPlayerIds: seeAttendance ? manualResult.results.map((row) => row.player_id) : [],
+        }
         : null,
     },
     can: { edit: allows(can, 'raids.edit', teamId), review, seeAttendance, seeNicknames },

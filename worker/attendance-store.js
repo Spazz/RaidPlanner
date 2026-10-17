@@ -71,14 +71,45 @@ export async function loadPolicyResolver(db, guild) {
 // ---------------------------------------------------------------------------
 // Stale marking (rules or roster changed under stored results)
 
-// One UPDATE: every raid with presence of any of these names keeps its results but is marked for recalculation.
-// Returns a prepared statement for a db.batch (callers skip it when there are no keys).
-export function markRaidsStale(db, guildId, nameKeys, exceptRaidId = null) {
-  return db.prepare(
-    `UPDATE raids SET policy_fp = ''
-      WHERE guild_id = ? AND id != ? AND policy_fp != ''
-        AND id IN (SELECT raid_id FROM raid_presence WHERE guild_id = ? AND name_key IN (SELECT value FROM json_each(?)))`,
-  ).bind(guildId, exceptRaidId || '', guildId, JSON.stringify([...new Set(nameKeys)]));
+// A raid that holds any evidence a roster change can move: results, sign-ups, a plan, manual ticks or a log.
+const HAS_EVIDENCE = `(raids.log_mode = 'manual'
+    OR EXISTS (SELECT 1 FROM attendance x WHERE x.raid_id = raids.id)
+    OR EXISTS (SELECT 1 FROM raid_signups x WHERE x.raid_id = raids.id)
+    OR EXISTS (SELECT 1 FROM raid_plan x WHERE x.raid_id = raids.id)
+    OR EXISTS (SELECT 1 FROM raid_manual x WHERE x.raid_id = raids.id)
+    OR EXISTS (SELECT 1 FROM raid_reports x WHERE x.raid_id = raids.id))`;
+
+// One UPDATE for a db.batch: every raid whose log names one of these characters, and every raid of these teams that holds evidence
+// (a roster change moves "expected" and the team's rows without any presence), keeps its results but is marked for recalculation.
+// The version bump makes a recompute that read the old roster discard its write. Callers skip it when there is nothing to mark.
+const MARK_STALE_SQL = `UPDATE raids SET policy_fp = '', version = version + 1
+      WHERE guild_id = ? AND id != ?
+        AND (id IN (SELECT raid_id FROM raid_presence WHERE guild_id = ? AND name_key IN (SELECT value FROM json_each(?)))
+             OR (team_id IN (SELECT value FROM json_each(?)) AND ${HAS_EVIDENCE}))`;
+const MARK_PERSON_STALE_SQL = `UPDATE raids SET policy_fp = '', version = version + 1
+      WHERE guild_id = ?1
+        AND (id IN (SELECT raid_id FROM raid_presence WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM characters WHERE guild_id = ?1 AND player_id = ?2))
+             OR (team_id IN (SELECT team_id FROM characters WHERE guild_id = ?1 AND player_id = ?2) AND ${HAS_EVIDENCE}))`;
+
+export function markRaidsStale(db, guildId, nameKeys, exceptRaidId = null, teamIds = []) {
+  return db.prepare(MARK_STALE_SQL).bind(guildId, exceptRaidId || '', guildId, JSON.stringify([...new Set(nameKeys)]), JSON.stringify([...new Set(teamIds)]));
+}
+
+// A person's status, join date or Discord link changed: every raid of every team they have a character on, plus the raids naming them.
+export function markPersonRaidsStale(db, guildId, playerId) {
+  return db.prepare(MARK_PERSON_STALE_SQL).bind(guildId, playerId);
+}
+
+// Input writes put this in their own batch: the raid's results are out of date and no in-flight recompute may write over that.
+export function bumpRaidStatement(db, guildId, raidId) {
+  return db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ?").bind(raidId, guildId);
+}
+
+// The other raids of this raid's date lose or gain a neighbour: stale and re-versioned. `guard` ({ sql, params }) makes it conditional.
+export function bumpDayStatement(db, guildId, raidOn, exceptRaidId, guard = null) {
+  const sql = "UPDATE raids SET policy_fp = '', version = version + 1 WHERE guild_id = ? AND raid_on = ? AND id != ?";
+  if (!guard) return db.prepare(sql).bind(guildId, raidOn, exceptRaidId);
+  return db.prepare(sql + ' AND ' + guard.sql).bind(guildId, raidOn, exceptRaidId, ...guard.params);
 }
 
 // ---------------------------------------------------------------------------
@@ -112,8 +143,12 @@ const DAY_CTE = `WITH day AS (
 
 export async function loadDay(db, guildId, raidId) {
   const bind = (sql) => db.prepare(DAY_CTE + ' ' + sql).bind(guildId, raidId);
-  const [raidResult, policyResult, signupResult, planResult, pullResult, presenceResult, manualResult, guestResult, attendanceResult, characterResult] = await db.batch([
-    bind(`SELECT r.id, r.team_id, r.raid_on, r.log_mode, r.policy_fp,
+  const [, raidResult, policyResult, signupResult, planResult, pullResult, presenceResult, manualResult, guestResult, decisionResult, characterResult] = await db.batch([
+    // Sign-ups whose Discord ID had no person at ingest are linked now if one has appeared since.
+    bind(`UPDATE raid_signups SET player_id = (SELECT p.id FROM players p WHERE p.guild_id = raid_signups.guild_id AND p.discord_user_id = raid_signups.discord_user_id)
+           WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM day) AND source = 'raid_helper' AND player_id IS NULL AND discord_user_id IS NOT NULL
+             AND EXISTS (SELECT 1 FROM players p WHERE p.guild_id = raid_signups.guild_id AND p.discord_user_id = raid_signups.discord_user_id)`),
+    bind(`SELECT r.id, r.team_id, r.raid_on, r.log_mode, r.policy_fp, r.version,
                  (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
             FROM raids r WHERE r.id IN (SELECT id FROM day) ORDER BY r.id`),
     policyRowsStatement(db, guildId),
@@ -124,7 +159,7 @@ export async function loadDay(db, guildId, raidId) {
     bind('SELECT pull_id, raid_id, name, name_key, realm, realm_key, class FROM raid_presence WHERE raid_id IN (SELECT id FROM day)'),
     bind('SELECT raid_id, player_id FROM raid_manual WHERE raid_id IN (SELECT id FROM day)'),
     db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guildId),
-    bind('SELECT * FROM attendance WHERE raid_id IN (SELECT id FROM day)'),
+    bind('SELECT raid_id, player_id, outcome, credit, credit_id, reason, flags FROM attendance_decisions WHERE raid_id IN (SELECT id FROM day)'),
     // Every character of every person involved: on a team of the day, in a log, a sign-up, a manual tick, a stored row or the plan.
     bind(`, who AS (
             SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id IN (SELECT team_id FROM raids WHERE id IN (SELECT id FROM day))
@@ -132,7 +167,8 @@ export async function loadDay(db, guildId, raidId) {
             UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_plan WHERE raid_id IN (SELECT id FROM day))
             UNION SELECT player_id FROM raid_signups WHERE raid_id IN (SELECT id FROM day) AND player_id IS NOT NULL
             UNION SELECT player_id FROM raid_manual WHERE raid_id IN (SELECT id FROM day)
-            UNION SELECT player_id FROM attendance WHERE raid_id IN (SELECT id FROM day))
+            UNION SELECT player_id FROM attendance WHERE raid_id IN (SELECT id FROM day)
+            UNION SELECT player_id FROM attendance_decisions WHERE raid_id IN (SELECT id FROM day))
           SELECT c.player_id, c.name_key, c.realm_key, c.team_id, c.is_main, p.status, p.joined_on
             FROM characters c JOIN players p ON p.id = c.player_id
            WHERE c.guild_id = ?1 AND c.player_id IN (SELECT player_id FROM who)`),
@@ -146,7 +182,7 @@ export async function loadDay(db, guildId, raidId) {
     presence: presenceResult.results,
     manual: manualResult.results,
     guests: guestResult.results,
-    attendance: attendanceResult.results,
+    decisions: decisionResult.results,
     characters: characterResult.results,
   };
 }
@@ -191,7 +227,7 @@ export function consolidateDay(guild, loaded) {
   const planBy = group(loaded.plan);
   const pullsBy = group(loaded.pulls);
   const manualBy = group(loaded.manual);
-  const attendanceBy = group(loaded.attendance);
+  const decisionsBy = group(loaded.decisions);
   const keysByPull = new Map();
   const logPlayersByRaid = new Map();
   for (const row of loaded.presence) {
@@ -204,12 +240,8 @@ export function consolidateDay(guild, loaded) {
   const results = loaded.raids.map((raid) => {
     const plan = planSignups(raid.id, planBy.get(raid.id) || [], charactersByName, raid.team_id);
     const decisions = {};
-    for (const row of attendanceBy.get(raid.id) || []) {
-      if (row.decided_at === null || row.decided_at === undefined) continue;
-      decisions[row.player_id] = {
-        outcome: row.decided_outcome, credit: row.decided_credit, creditId: row.decided_credit_id, reason: row.decided_reason,
-        flags: parseJson(row.decided_flags, []),
-      };
+    for (const row of decisionsBy.get(raid.id) || []) {
+      decisions[row.player_id] = { outcome: row.outcome, credit: row.credit, creditId: row.credit_id, reason: row.reason, flags: parseJson(row.flags, []) };
     }
     const signups = [
       ...(signupsBy.get(raid.id) || []).map((row) => ({ playerId: row.player_id, kind: row.kind, source: row.source })),
@@ -245,9 +277,8 @@ export function consolidateDay(guild, loaded) {
 
 const bit = (value) => (value ? 1 : 0);
 
-function attendanceJson(guild, entry, previous) {
+function attendanceJson(entry) {
   return entry.rows.map((row) => {
-    const old = previous.get(`${entry.raid.id}|${row.playerId}`);
     return {
       raidId: entry.raid.id,
       teamId: entry.raid.team_id,
@@ -265,62 +296,77 @@ function attendanceJson(guild, entry, previous) {
       flags: JSON.stringify([...(row.flags || [])].sort()),
       creditTeamId: row.creditTeamId || null,
       needsReview: bit(row.needsReview),
-      decidedOutcome: old ? old.decided_outcome : null,
-      decidedCredit: old ? old.decided_credit : null,
-      decidedCreditId: old ? old.decided_credit_id : null,
-      decidedReason: old ? old.decided_reason : null,
-      decidedFlags: old ? old.decided_flags : null,
-      decidedBy: old ? old.decided_by : null,
-      decidedAt: old ? old.decided_at : null,
     };
   });
 }
 
 const ATTENDANCE_INSERT = `INSERT INTO attendance (raid_id, guild_id, team_id, player_id, outcome, credit, signup_kind, attended, presence_source, via_raid_id,
-    pulls_present, pulls_total, missed_first, missed_last, flags, credit_team_id, needs_review,
-    decided_outcome, decided_credit, decided_credit_id, decided_reason, decided_flags, decided_by, decided_at)
+    pulls_present, pulls_total, missed_first, missed_last, flags, credit_team_id, needs_review)
   SELECT json_extract(value, '$.raidId'), ?, json_extract(value, '$.teamId'), json_extract(value, '$.playerId'), json_extract(value, '$.outcome'),
          json_extract(value, '$.credit'), json_extract(value, '$.signupKind'), json_extract(value, '$.attended'), json_extract(value, '$.presenceSource'),
          json_extract(value, '$.viaRaidId'), json_extract(value, '$.pullsPresent'), json_extract(value, '$.pullsTotal'), json_extract(value, '$.missedFirst'),
-         json_extract(value, '$.missedLast'), json_extract(value, '$.flags'), json_extract(value, '$.creditTeamId'), json_extract(value, '$.needsReview'),
-         json_extract(value, '$.decidedOutcome'), json_extract(value, '$.decidedCredit'), json_extract(value, '$.decidedCreditId'),
-         json_extract(value, '$.decidedReason'), json_extract(value, '$.decidedFlags'), json_extract(value, '$.decidedBy'), json_extract(value, '$.decidedAt')
+         json_extract(value, '$.missedLast'), json_extract(value, '$.flags'), json_extract(value, '$.creditTeamId'), json_extract(value, '$.needsReview')
     FROM json_each(?)`;
 
+// The first statement of a recompute's write batch: fails the whole batch (CHECK attendance_stale on attendance_write_guard)
+// when the raids of the date are not exactly the ones, at the versions, the recompute read.
+function versionGuardStatement(db, guildId, raidOn, raids) {
+  const versions = raids.map((raid) => ({ id: raid.id, version: raid.version }));
+  return db.prepare(
+    `INSERT INTO attendance_write_guard (ok) SELECT 1
+      WHERE (SELECT COUNT(*) FROM raids WHERE guild_id = ? AND raid_on = ?) != ?
+         OR EXISTS (SELECT 1 FROM json_each(?) j WHERE NOT EXISTS (
+              SELECT 1 FROM raids r WHERE r.id = json_extract(j.value, '$.id') AND r.version = json_extract(j.value, '$.version') AND r.raid_on = ?))`,
+  ).bind(guildId, raidOn, versions.length, JSON.stringify(versions), raidOn);
+}
+
+const isStaleWrite = (error) => /attendance_stale/.test(`${error && error.message} ${error && error.cause && error.cause.message}`);
+
 // Recalculates every raid of the guild-local date of `raidId` (the fill-in pass spans the date) and writes the results:
-// two D1 calls (one read batch, one write batch). Decisions are kept. -> [{ id, openFlags, rows }] or null when the raid is gone.
+// two D1 calls (one read batch, one write batch). Officer decisions are only read, never written. Every input write bumps
+// raids.version, so a write batch that finds any version of the date changed aborts whole; the recompute then reads again once
+// and, if it loses again, leaves the raids stale (their input writes already set policy_fp = '').
+// -> [{ id, openFlags, rows }], null when the raid is gone, or [] when it lost the race twice (the raid stays stale).
 export async function recomputeRaid(ctx, guild, raidId) {
   const { db } = ctx;
-  const loaded = await loadDay(db, guild.id, raidId);
-  if (!loaded.raids.some((raid) => raid.id === raidId)) return null;
-  const day = consolidateDay(guild, loaded);
-  const previous = new Map(loaded.attendance.map((row) => [`${row.raid_id}|${row.player_id}`, row]));
-  const ids = day.results.map((entry) => entry.raid.id);
-  const attendance = day.results.flatMap((entry) => attendanceJson(guild, entry, previous));
-  const planRows = day.results.flatMap((entry) => entry.planSignups);
-  const raidState = day.results.map((entry) => ({ id: entry.raid.id, openFlags: entry.openFlags, fingerprint: entry.fingerprint }));
-  const now = ctx.now();
-  const statements = [
-    db.prepare("DELETE FROM raid_signups WHERE source = 'plan' AND raid_id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(ids)),
-  ];
-  if (planRows.length) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const loaded = await loadDay(db, guild.id, raidId);
+    if (!loaded.raids.some((raid) => raid.id === raidId)) return null;
+    const day = consolidateDay(guild, loaded);
+    const ids = day.results.map((entry) => entry.raid.id);
+    const attendance = day.results.flatMap((entry) => attendanceJson(entry));
+    const planRows = day.results.flatMap((entry) => entry.planSignups);
+    const raidState = day.results.map((entry) => ({ id: entry.raid.id, openFlags: entry.openFlags, fingerprint: entry.fingerprint }));
+    const now = ctx.now();
+    const statements = [
+      versionGuardStatement(db, guild.id, day.date, loaded.raids),
+      db.prepare("DELETE FROM raid_signups WHERE source = 'plan' AND raid_id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(ids)),
+    ];
+    if (planRows.length) {
+      statements.push(db.prepare(
+        `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, class_name, spec_name, position, guild_id, player_id)
+         SELECT json_extract(value, '$.raidId'), 'plan', json_extract(value, '$.signupId'), NULL, NULL, json_extract(value, '$.kind'), NULL, NULL,
+                json_extract(value, '$.position'), ?, json_extract(value, '$.playerId')
+           FROM json_each(?)`,
+      ).bind(guild.id, JSON.stringify(planRows)));
+    }
+    statements.push(db.prepare('DELETE FROM attendance WHERE raid_id IN (SELECT value FROM json_each(?))').bind(JSON.stringify(ids)));
+    if (attendance.length) statements.push(db.prepare(ATTENDANCE_INSERT).bind(guild.id, JSON.stringify(attendance)));
     statements.push(db.prepare(
-      `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, class_name, spec_name, position, guild_id, player_id)
-       SELECT json_extract(value, '$.raidId'), 'plan', json_extract(value, '$.signupId'), NULL, NULL, json_extract(value, '$.kind'), NULL, NULL,
-              json_extract(value, '$.position'), ?, json_extract(value, '$.playerId')
-         FROM json_each(?)`,
-    ).bind(guild.id, JSON.stringify(planRows)));
+      `UPDATE raids SET open_flags = (SELECT json_extract(value, '$.openFlags') FROM json_each(?) WHERE json_extract(value, '$.id') = raids.id),
+              policy_fp = (SELECT json_extract(value, '$.fingerprint') FROM json_each(?) WHERE json_extract(value, '$.id') = raids.id),
+              computed_at = ?
+        WHERE guild_id = ? AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?))`,
+    ).bind(JSON.stringify(raidState), JSON.stringify(raidState), now, guild.id, JSON.stringify(raidState)));
+    try {
+      await db.batch(statements);
+    } catch (error) {
+      if (isStaleWrite(error)) continue;
+      throw error;
+    }
+    return day.results.map((entry) => ({ id: entry.raid.id, openFlags: entry.openFlags, rows: entry.rows.length }));
   }
-  statements.push(db.prepare('DELETE FROM attendance WHERE raid_id IN (SELECT value FROM json_each(?))').bind(JSON.stringify(ids)));
-  if (attendance.length) statements.push(db.prepare(ATTENDANCE_INSERT).bind(guild.id, JSON.stringify(attendance)));
-  statements.push(db.prepare(
-    `UPDATE raids SET open_flags = (SELECT json_extract(value, '$.openFlags') FROM json_each(?) WHERE json_extract(value, '$.id') = raids.id),
-            policy_fp = (SELECT json_extract(value, '$.fingerprint') FROM json_each(?) WHERE json_extract(value, '$.id') = raids.id),
-            computed_at = ?
-      WHERE guild_id = ? AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?))`,
-  ).bind(JSON.stringify(raidState), JSON.stringify(raidState), now, guild.id, JSON.stringify(raidState)));
-  await db.batch(statements);
-  return day.results.map((entry) => ({ id: entry.raid.id, openFlags: entry.openFlags, rows: entry.rows.length }));
+  return [];
 }
 
 // ---------------------------------------------------------------------------

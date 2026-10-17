@@ -8,7 +8,7 @@ import {
   CLASS_IDS, CREATE_STATUSES, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
 } from '../roster-data.js';
 import { findRealm } from '../realms.js';
-import { markRaidsStale } from '../attendance-store.js';
+import { markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
 import {
   canSeeAvatars, guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply,
 } from '../roster-view.js';
@@ -290,7 +290,7 @@ export async function createPerson(ctx) {
         status, joinedOn, trialStart, trialEnd, version: 1, linked: !!link, characterId, teamId: team.id, class: classId, mainSpec, offSpec,
       }),
       // Raids whose logs name this character show "Recalculate".
-      markRaidsStale(db, guild.id, [nameKey(name)]),
+      markRaidsStale(db, guild.id, [nameKey(name)], null, [team.id]),
     ]);
   } catch (error) {
     if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realm);
@@ -379,6 +379,8 @@ export async function patchPerson(ctx) {
           { ...before, version: player.version },
           { ...snapshot(next), version: player.version + 1, changed },
           CHANGED_ONE),
+        // Status, join date and the Discord link decide who is expected and which sign-ups are theirs: their teams' raids need recalculating.
+        ...(changed.some((key) => ['status', 'joinedOn', 'link'].includes(key)) ? [markPersonRaidsStale(db, guildContext.guild.id, player.id)] : []),
       ]);
     } catch (error) {
       mapCreateError(error);
@@ -450,7 +452,7 @@ export async function deletePerson(ctx) {
           AND NOT EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND team_id NOT IN (SELECT value FROM json_each(?)))
         RETURNING id`,
     ).bind(player.id, guildContext.guild.id, ...guardParams),
-    markRaidsStale(db, guildContext.guild.id, data.characters.map((entry) => nameKey(entry.row.name))),
+    markRaidsStale(db, guildContext.guild.id, data.characters.map((entry) => nameKey(entry.row.name)), null, teamIds),
   ]);
   if (results[1].results.length !== 1) {
     return conflict(ctx, guildContext, player.id, 'Someone moved this person. The page now shows their current record.');
@@ -508,7 +510,7 @@ export async function addCharacter(ctx) {
         { mainCharacterId: data.characters.find((entry) => entry.row.is_main === 1).row.id }, { mainCharacterId: characterId }),
     );
   }
-  statements.push(markRaidsStale(db, guild.id, [nameKey(name)]));
+  statements.push(markRaidsStale(db, guild.id, [nameKey(name)], null, [team.id]));
   let results;
   try {
     results = await db.batch(statements);
@@ -569,7 +571,7 @@ export async function patchCharacter(ctx) {
           { teamId, class: classId, mainSpec: specs.mainSpec, offSpec: specs.offSpec, changed },
           CHANGED_ONE),
         // A rename or a move changes which raids' results depend on this character.
-        ...(changed.includes('name') || changed.includes('teamId') ? [markRaidsStale(db, guild.id, [nameKey(current.name), nameKey(name)])] : []),
+        ...(changed.includes('name') || changed.includes('teamId') ? [markRaidsStale(db, guild.id, [nameKey(current.name), nameKey(name)], null, [current.team_id, teamId])] : []),
       ]);
     } catch (error) {
       if (constraintOf(error) === 'character_name') await nameConflict(ctx, guildContext, name, realmColumns(guild, current.realm));
@@ -616,7 +618,7 @@ export async function removeCharacter(ctx) {
       { personId: data.player.id, teamId: target.team_id, class: target.class, mainSpec: target.main_spec, offSpec: target.off_spec }, null, removable),
     db.prepare('DELETE FROM characters WHERE id = ? AND player_id = ? AND is_main = 0 AND team_id = ? RETURNING id')
       .bind(target.id, data.player.id, target.team_id),
-    markRaidsStale(db, guildContext.guild.id, [nameKey(target.name)]),
+    markRaidsStale(db, guildContext.guild.id, [nameKey(target.name)], null, [target.team_id]),
   ]);
   if (results[1].results.length !== 1) {
     const reread = await loadPersonData(db, guildContext.guild.id, data.player.id);

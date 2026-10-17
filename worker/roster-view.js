@@ -162,7 +162,7 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
   const guildId = guildContext.guild.id;
   const [rowResult, userResult] = await db.batch([
     db.prepare(
-      `SELECT p.id AS player_id, p.status, p.joined_on, p.trial_start, p.trial_end, p.discord_user_id,
+      `SELECT p.id AS player_id, p.status, p.joined_on, p.trial_start, p.trial_end, p.discord_user_id, p.version,
               c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main,
               t.name AS team_name, t.archived AS team_archived
          FROM players p JOIN characters c ON c.player_id = p.id JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
@@ -196,6 +196,7 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
       trialStart: player.trial_start,
       trialEnd: player.trial_end,
       trialFlag: trialFlag(player.status, player.trial_end, today),
+      version: player.version,
       shown: { id: shown.id, name: shown.name, class: shown.class, mainSpec: shown.mainSpec, offSpec: shown.offSpec, role: shown.role, isMain: shown.isMain },
       main: { id: main.view.id, name: main.view.name, class: main.view.class, team: { id: main.view.team.id, name: main.view.team.name } },
       names: onTeam.map((entry) => entry.view.name).sort((a, b) => a.localeCompare(b)),

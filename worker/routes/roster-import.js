@@ -314,7 +314,7 @@ async function writeImport(ctx, guildContext, team, plan) {
     ).bind(json, now, guild.id, json));
   }
   // Raids whose logs name a new character show "Recalculate".
-  if (plan.characters.length) statements.push(markRaidsStale(db, guild.id, plan.characters.map((character) => nameKey(character.name))));
+  if (plan.characters.length) statements.push(markRaidsStale(db, guild.id, plan.characters.map((character) => nameKey(character.name)), null, [team.id]));
   statements.push(auditStatement(ctx, {
     guildId: guild.id, actorUserId: ctx.session.user.id, action: 'roster.import', entityType: 'team', entityId: team.id,
     after: { source: plan.source, ref: plan.ref, people: plan.people.length, characters: plan.characters.length },

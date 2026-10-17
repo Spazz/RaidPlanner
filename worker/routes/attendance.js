@@ -3,10 +3,10 @@
 import { HttpError, cleanText, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { addDays, localDate, weekStart } from '../attendance-calendar.js';
-import { DEFAULT_POLICY, REGION_RESET_DAY, validateOverride } from '../attendance-policy.js';
+import { DEFAULT_POLICY, REGION_RESET_DAY, resolvePolicy, validateOverride } from '../attendance-policy.js';
 import { teamMetrics } from '../attendance-metrics.js';
 import {
-  findUnmatched, isPlainObject, makePolicyResolver, markRaidsStale, policyRowsStatement, presenceKey, recomputeRaid,
+  bumpRaidStatement, findUnmatched, isPlainObject, makePolicyResolver, markRaidsStale, policyRowsStatement, presenceKey, recomputeRaid,
 } from '../attendance-store.js';
 import { displayCharacter, groupBy, isStale, loadRaidDetail, raidState } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
@@ -77,6 +77,12 @@ function policyErrors(result) {
   return [];
 }
 
+// Credit labels are stored the way cleanText returns them (trimmed).
+function withTrimmedLabels(policy) {
+  if (!isPlainObject(policy.credit) || !Array.isArray(policy.credit.values)) return policy;
+  return { ...policy, credit: { ...policy.credit, values: policy.credit.values.map((entry) => ({ ...entry, label: entry.label.trim() })) } };
+}
+
 function changedKeys(before, after) {
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   return [...keys].filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key])).sort();
@@ -97,20 +103,33 @@ export async function putPolicy(ctx) {
   // A team override is checked against the guild-level policy it sits on (the switch must include the default window).
   const errors = policyErrors(validateOverride(body.policy, teamId === null ? 'guild' : 'team', teamId === null ? DEFAULT_POLICY : resolver.resolved(null)));
   if (errors.length) throw new HttpError(400, 'policy_invalid', errors[0].message, { field: errors[0].path, errors });
+  const policyToSave = withTrimmedLabels(body.policy);
+  if (teamId === null) {
+    // Every team override sits on top of the new guild policy: none may be left invalid by this save.
+    const nextGuild = resolvePolicy(policyToSave, {}, guild.region);
+    for (const [overriddenTeamId, override] of Object.entries(resolver.overrides.teams)) {
+      const teamErrors = policyErrors(validateOverride(override, 'team', nextGuild));
+      if (!teamErrors.length) continue;
+      const teamRow = (await db.prepare('SELECT name FROM teams WHERE id = ? AND guild_id = ?').bind(overriddenTeamId, guild.id).first()) || { name: overriddenTeamId };
+      throw new HttpError(400, 'policy_invalid', `The ${teamRow.name} override would become invalid: ${teamErrors[0].message}`, {
+        field: teamErrors[0].path, teamId: overriddenTeamId, teamName: teamRow.name, errors: teamErrors.map((error) => ({ ...error, teamId: overriddenTeamId })),
+      });
+    }
+  }
   const existingId = teamId === null ? resolver.ids.guild : resolver.ids.teams[teamId] || null;
   const version = teamId === null ? resolver.versions.guild : (resolver.versions.teams[teamId] || 0);
   const conflict = () => new HttpError(409, 'conflict', 'Someone else changed the policy. The page now shows their version.', { current: publicPolicyView(view) });
   if (body.expectedVersion !== version) throw conflict();
 
   const before = teamId === null ? resolver.overrides.guild : (resolver.overrides.teams[teamId] || {});
-  const changed = changedKeys(before, body.policy);
+  const changed = changedKeys(before, policyToSave);
   const now = ctx.now();
-  const policyJson = JSON.stringify(body.policy);
+  const policyJson = JSON.stringify(policyToSave);
   const entryId = existingId || newId('ap', ctx.randomBytes);
   const audit = (guard) => auditStatement(ctx, {
     guildId: guild.id, actorUserId: ctx.session.user.id, action: 'policy.update', entityType: 'policy', entityId: entryId,
     before: { scope: teamId || 'guild', version, changed },
-    after: { scope: teamId || 'guild', version: version + 1, changed, values: Object.fromEntries(changed.filter((key) => key in body.policy).map((key) => [key, body.policy[key]])) },
+    after: { scope: teamId || 'guild', version: version + 1, changed, values: Object.fromEntries(changed.filter((key) => key in policyToSave).map((key) => [key, policyToSave[key]])) },
   }, guard);
   let results;
   try {
@@ -283,10 +302,16 @@ export async function postDecision(ctx) {
   }
   const now = ctx.now();
   const results = await db.batch([
+    // The decision is input: its own row, answering the flags the row had; a recompute never touches it.
     db.prepare(
-      `UPDATE attendance SET decided_outcome = ?, decided_credit = ?, decided_credit_id = ?, decided_reason = ?, decided_flags = ?,
-              decided_by = ?, decided_at = ? WHERE raid_id = ? AND player_id = ? AND guild_id = ? AND flags = ?`,
-    ).bind(body.outcome, credit, creditId, reason, row.flags, ctx.session.user.id, now, raid.id, row.player_id, guild.id, row.flags),
+      `INSERT INTO attendance_decisions (raid_id, player_id, guild_id, outcome, credit, credit_id, reason, flags, decided_by, decided_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM attendance WHERE raid_id = ? AND player_id = ? AND guild_id = ? AND flags = ?)
+       ON CONFLICT (raid_id, player_id) DO UPDATE SET outcome = excluded.outcome, credit = excluded.credit, credit_id = excluded.credit_id,
+              reason = excluded.reason, flags = excluded.flags, decided_by = excluded.decided_by, decided_at = excluded.decided_at`,
+    ).bind(raid.id, row.player_id, guild.id, body.outcome, credit, creditId, reason, row.flags, ctx.session.user.id, now,
+      raid.id, row.player_id, guild.id, row.flags),
+    db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1").bind(raid.id, guild.id),
     auditStatement(ctx, {
       guildId: guild.id, actorUserId: ctx.session.user.id, action: 'attendance.decide', entityType: 'raid', entityId: raid.id,
       before: { playerId: row.player_id, outcome: row.outcome, flags },
@@ -305,11 +330,8 @@ export async function deleteDecision(ctx) {
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'attendance.review', raid.team_id)) throw forbidden();
   const results = await db.batch([
-    db.prepare(
-      `UPDATE attendance SET decided_outcome = NULL, decided_credit = NULL, decided_credit_id = NULL, decided_reason = NULL, decided_flags = NULL,
-              decided_by = NULL, decided_at = NULL
-        WHERE raid_id = ? AND player_id = ? AND guild_id = ? AND decided_at IS NOT NULL`,
-    ).bind(raid.id, ctx.params.pid, guild.id),
+    db.prepare('DELETE FROM attendance_decisions WHERE raid_id = ? AND player_id = ? AND guild_id = ?').bind(raid.id, ctx.params.pid, guild.id),
+    db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1").bind(raid.id, guild.id),
     auditStatement(ctx, {
       guildId: guild.id, actorUserId: ctx.session.user.id, action: 'attendance.undo', entityType: 'raid', entityId: raid.id,
       before: { playerId: ctx.params.pid }, after: { playerId: ctx.params.pid, reason },
@@ -338,14 +360,15 @@ export async function postUnmatched(ctx) {
   if (!presence) throw new HttpError(404, 'not_found', 'That name is not in this raid\'s log.');
   const now = ctx.now();
   const statements = [];
-  const stale = markRaidsStale(db, guild.id, [keyName], raid.id);
+  const stale = markRaidsStale(db, guild.id, [keyName], raid.id, body.action === 'alt' ? [raid.team_id] : []);
 
   if (body.action === 'guest') {
     statements.push(
       db.prepare('INSERT INTO attendance_guests (guild_id, name_key, realm_key, name, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING')
         .bind(guild.id, keyName, keyRealm, presence.name, ctx.session.user.id, now),
       stale,
-      auditStatement(ctx, { guildId: guild.id, actorUserId: ctx.session.user.id, action: 'attendance.guest', entityType: 'raid', entityId: raid.id, after: { guest: true } }),
+      auditStatement(ctx, { guildId: guild.id, actorUserId: ctx.session.user.id, action: 'attendance.guest', entityType: 'raid', entityId: raid.id, after: { guest: true, nameKey: keyName } }),
+      bumpRaidStatement(db, guild.id, raid.id),
     );
   } else {
     if (!allows(guildContext.can, 'roster.edit', raid.team_id)) throw forbidden();
@@ -374,6 +397,7 @@ export async function postUnmatched(ctx) {
         guildId: guild.id, actorUserId: ctx.session.user.id, action: 'attendance.link', entityType: 'raid', entityId: raid.id,
         after: { personId: body.personId, characterId, teamId: team.id },
       }),
+      bumpRaidStatement(db, guild.id, raid.id),
     );
   }
   let results;
@@ -397,21 +421,31 @@ export async function postUnmatched(ctx) {
 
 const metricsOf = (result, personId) => (result && result.people && result.people[personId]) || null;
 
-function readWindow(params, policy) {
+// The window to show for one team's policy. `lenient` (the person view, which spans teams with different switch lists): a whole
+// number that this team does not offer falls back to the team's default window instead of a 400; anything else is still a 400.
+function readWindow(params, policy, { lenient = false } = {}) {
   const raw = params.get('window');
   if (raw === null || raw === '') return policy.window.defaultWeeks;
   if (raw === 'all') return 'all';
   const number = Number(raw);
-  if (!Number.isInteger(number) || !policy.window.switchWeeks.includes(number)) throw bad('Pick one of the offered windows.', 'window');
-  return number;
+  if (!Number.isInteger(number) || number < 1) throw bad('Pick one of the offered windows.', 'window');
+  if (policy.window.switchWeeks.includes(number)) return number;
+  if (lenient) return policy.window.defaultWeeks;
+  throw bad('Pick one of the offered windows.', 'window');
 }
 
 const windowStartFor = (today, resetDay, weeks) => (weeks === 'all' ? null : addDays(weekStart(today, resetDay), -7 * (weeks - 1)));
 
-const metricsRaid = (row) => ({ id: row.id, raidOn: row.raid_on, zone: row.zone, hasSignups: row.event_synced !== null || row.plan_synced !== null });
-const metricsRow = (row) => ({
+// A raid counts toward the sign-up rate only when it has a sign-up source and results (an "awaiting log" raid has no rows to count).
+const metricsRaid = (row) => ({
+  id: row.id,
+  raidOn: row.raid_on,
+  zone: row.zone,
+  hasSignups: (row.event_synced !== null || row.plan_synced !== null) && raidState(row, row.reports) !== 'awaiting_log',
+});
+const metricsRow = (row, hostTeamOf = new Map()) => ({
   raidId: row.raid_id, playerId: row.player_id, outcome: row.outcome, credit: row.credit, signupKind: row.signup_kind, attended: row.attended,
-  viaRaidId: row.via_raid_id,
+  viaRaidId: row.via_raid_id, viaTeamId: row.via_raid_id ? hostTeamOf.get(row.via_raid_id) || null : null,
 });
 
 export async function getTeamAttendance(ctx) {
@@ -421,7 +455,7 @@ export async function getTeamAttendance(ctx) {
   const team = await requireTeam(ctx.db, guild.id, params.get('team'));
   if (!allows(guildContext.can, 'attendance.view', team.id)) throw forbidden();
   const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, team.id);
-  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult] = await ctx.db.batch([
+  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult] = await ctx.db.batch([
     policyRowsStatement(ctx.db, guild.id),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
                  (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
@@ -433,7 +467,12 @@ export async function getTeamAttendance(ctx) {
              AND (p.id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR p.id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
     bind(`SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1
              AND (player_id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR player_id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
+    ctx.db.prepare('SELECT id, name FROM teams WHERE guild_id = ?').bind(guild.id),
+    bind(`SELECT id, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT via_raid_id FROM attendance WHERE guild_id = ?1 AND team_id = ?2 AND via_raid_id IS NOT NULL)`),
   ]);
+  const teamNames = new Map(teamResult.results.map((row) => [row.id, row.name]));
+  const hostTeamOf = new Map(hostResult.results.map((row) => [row.id, row.team_id]));
+  const viaOf = (value) => (typeof value === 'string' && teamNames.has(value) ? { id: value, name: teamNames.get(value) } : null);
   const resolver = makePolicyResolver(guild, policyResult.results);
   const policy = resolver.resolved(team.id);
   const resetDay = resolver.resetDay();
@@ -447,14 +486,14 @@ export async function getTeamAttendance(ctx) {
   const metrics = teamMetrics({
     people: peopleResult.results.map((row) => ({ id: row.id, status: row.status, joinedOn: row.joined_on })),
     raids: raids.map(metricsRaid),
-    rows: rowResult.results.map(metricsRow),
+    rows: rowResult.results.map((row) => metricsRow(row, hostTeamOf)),
     borrowed: borrowedResult.results.map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
     policy, today, resetDay, windowWeeks: weeks,
   });
   const people = peopleResult.results.map((row) => {
     const character = displayCharacter(charactersByPlayer.get(row.id) || [], team.id);
     const mine = metricsOf(metrics, row.id) || {};
-    const cells = Array.isArray(mine.cells) ? mine.cells.filter((cell) => inWindow(cell.date)) : [];
+    const cells = Array.isArray(mine.cells) ? mine.cells.filter((cell) => inWindow(cell.date)).map((cell) => ({ ...cell, via: viaOf(cell.via) })) : [];
     return {
       ...mine,
       cells,
@@ -485,15 +524,19 @@ export async function getTeamAttendance(ctx) {
   });
 }
 
+// A stored decision answers a row only while the row still has the flags it was made against.
+const decisionApplies = (decision, row) => !!decision && !!row
+  && JSON.stringify([...parseFlags(decision.flags)].sort()) === JSON.stringify([...parseFlags(row.flags)].sort());
+
 export async function getPersonAttendance(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   const guild = guildContext.guild;
   const params = new URL(ctx.request.url).searchParams;
   const personId = ctx.params.pid;
   const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, personId);
-  const [policyResult, playerResult, characterResult, rowResult, raidResult, borrowedResult, teamResult, hostResult] = await ctx.db.batch([
+  const [policyResult, playerResult, characterResult, rowResult, raidResult, borrowedResult, teamResult, hostResult, decisionResult] = await ctx.db.batch([
     policyRowsStatement(ctx.db, guild.id),
-    bind('SELECT id, status, joined_on FROM players WHERE guild_id = ?1 AND id = ?2'),
+    bind('SELECT id, status, joined_on, discord_user_id FROM players WHERE guild_id = ?1 AND id = ?2'),
     bind('SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind('SELECT * FROM attendance WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
@@ -505,7 +548,9 @@ export async function getPersonAttendance(ctx) {
            WHERE a.guild_id = ?1 AND a.player_id = ?2 AND a.credit_team_id IS NOT NULL AND a.credit = 1 AND a.outcome = 'fill_in'`),
     ctx.db.prepare('SELECT id, name FROM teams WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT via_raid_id FROM attendance WHERE player_id = ?2 AND via_raid_id IS NOT NULL)`),
+    bind('SELECT raid_id, reason, flags FROM attendance_decisions WHERE guild_id = ?1 AND player_id = ?2'),
   ]);
+  const decisionByRaid = new Map(decisionResult.results.map((row) => [row.raid_id, row]));
   const player = playerResult.results[0];
   if (!player) throw new HttpError(404, 'not_found', 'That person was not found.');
   const resolver = makePolicyResolver(guild, policyResult.results);
@@ -520,7 +565,7 @@ export async function getPersonAttendance(ctx) {
 
   const teams = visible.map((teamId) => {
     const policy = resolver.resolved(teamId);
-    const weeks = readWindow(params, policy);
+    const weeks = readWindow(params, policy, { lenient: true });
     const windowStart = windowStartFor(today, resetDay, weeks);
     const raids = raidResult.results.filter((raid) => raid.team_id === teamId);
     const raidById = new Map(raids.map((raid) => [raid.id, raid]));
@@ -531,7 +576,7 @@ export async function getPersonAttendance(ctx) {
     const metrics = metricsOf(teamMetrics({
       people: [{ id: player.id, status: player.status, joinedOn: player.joined_on }],
       raids: raids.map(metricsRaid),
-      rows: rows.map(metricsRow),
+      rows: rows.map((row) => metricsRow(row, hostTeamOf)),
       borrowed, policy, today, resetDay, windowWeeks: weeks,
     }), player.id) || {};
     const canReview = allows(guildContext.can, 'attendance.review', teamId);
@@ -550,14 +595,17 @@ export async function getPersonAttendance(ctx) {
           pending: !!cell.pending,
           preStart: !!cell.preStart,
           via: viaTeam ? { id: viaTeam, name: teamNames.get(viaTeam) || null } : null,
-          reason: canReview && row && row.decided_at !== null ? row.decided_reason : null,
+          reason: canReview && decisionApplies(decisionByRaid.get(cell.raidId), row) ? decisionByRaid.get(cell.raidId).reason : null,
         };
       });
     const { cells: _unused, ...summary } = metrics;
     return { team: { id: teamId, name: teamNames.get(teamId) || null }, window: weeks, metrics: summary, cells };
   });
   return jsonResponse({
-    person: { id: player.id, name: home ? home.name : 'Unknown', class: home ? home.class : null, status: player.status, joinedOn: player.joined_on },
+    person: {
+      id: player.id, name: home ? home.name : 'Unknown', class: home ? home.class : null, status: player.status, joinedOn: player.joined_on,
+      isMe: !!player.discord_user_id && player.discord_user_id === ctx.session.user.discordId,
+    },
     teams,
   });
 }

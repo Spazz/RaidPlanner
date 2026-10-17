@@ -131,7 +131,7 @@ async function makeWorld({ allowlist = [], env = {} } = {}) {
   const db = createD1Fake();
   const discord = makeDiscord();
   const sources = makeSources();
-  const clock = { now: 1_800_000_000_000 };
+  const clock = { now: 1_800_100_800_000 }; // just after RH_START: a Raid-Helper event that has not started is refused
   let counter = 0;
   const randomBytes = (length) => {
     counter++;
@@ -612,11 +612,10 @@ check('fill-in pass: the other team raids the same date, so the person\'s missed
   assert.deepEqual([host.outcome, host.credit], ['fill_in', null]);
   const counted = await s.w.rows("SELECT raid_id, credit FROM attendance WHERE player_id = ? AND credit = 1", s.p.wander);
   assert.deepEqual(counted.map((r) => r.raid_id), [b.json.raid.id], 'exactly one counted cell');
-  // Deleting the home raid leaves the host raid marked for recalculation.
+  // Deleting the home raid recalculates the remaining raids of that date (finding 3): the host raid is fresh and counts again.
   assert.equal((await s.call('bob', 'DELETE', s.raid(b.json.raid.id), {})).status, 200);
   const list = await s.call('bob', 'GET', `/raids?team=${s.A}`);
-  assert.equal(list.json.raids[0].stale, true);
-  assert.equal((await s.call('bob', 'POST', s.raid(id, '/recompute'), {})).json.raid.stale, false);
+  assert.equal(list.json.raids[0].stale, false);
   assert.equal(byName((await s.call('bob', 'GET', s.raid(id))).json).Wanderfell.credit, 1);
 });
 
@@ -1160,6 +1159,314 @@ check('audit: every attendance action is written, none holds a nickname, a Disco
     assert.equal(dump.includes(secret), false, `audit rows must not contain ${secret}`);
   }
   assert(dump.includes('Told us in Discord'), 'the officer reason is kept');
+});
+
+// ---------------------------------------------------------------------------
+// Fix round 1 (review findings 1-10): decisions are input, versions guard recompute, every input write leaves the raid stale
+
+// Runs `sql` just before every recompute write batch (the one whose first statement is the version guard) while `on` is true,
+// at most `times` times: a stand-in for a second request writing between this recompute's read and its write.
+function racing(w, { times = Infinity, sql = "UPDATE raids SET version = version + 1, policy_fp = ''" } = {}) {
+  const original = w.db.batch;
+  const state = { on: true, fired: 0, guarded: 0 };
+  w.db.batch = function batch(statements) {
+    if (state.on && statements[0] && /INSERT INTO attendance_write_guard/.test(statements[0].sql)) {
+      state.guarded++;
+      if (state.fired < times) { state.fired++; w.db.sqlite.exec(sql); }
+    }
+    return original.call(this, statements);
+  };
+  state.stop = () => { w.db.batch = original; };
+  return state;
+}
+const fpOf = async (s, raidId) => (await s.w.rows('SELECT policy_fp FROM raids WHERE id = ?', raidId))[0].policy_fp;
+
+check('A: decisions are their own rows; a recompute never writes or deletes them; one survives its row disappearing and reapplies when the row returns', async () => {
+  const s = await raidWorld();
+  const { id, detail } = await fullRaid(s);
+  const brindle = byName(detail).Brindle.playerId;
+  assert.equal((await decide(s, 'bob', id, { playerId: brindle, outcome: 'bench', reason: 'Told us', expectedFlags: ['no_show'] })).status, 200);
+  const stored = await s.w.rows('SELECT * FROM attendance_decisions WHERE raid_id = ?', id);
+  assert.deepEqual([stored.length, stored[0].flags, stored[0].outcome, stored[0].credit, stored[0].reason], [1, '["no_show"]', 'bench', 1, 'Told us']);
+  assert.equal((await decide(s, 'bob', id, { playerId: brindle, outcome: 'present', reason: 'Actually there', expectedFlags: ['no_show'] })).status, 200);
+  assert.equal(await s.w.count('attendance_decisions'), 1, 'deciding again replaces the one row');
+  assert.equal((await decide(s, 'bob', id, { playerId: brindle, outcome: 'bench', reason: 'Told us', expectedFlags: ['no_show'] })).status, 200);
+  const before = await s.w.rows('SELECT * FROM attendance_decisions WHERE raid_id = ?', id);
+  // Brindle loses her sign-up and goes inactive: she has no attendance row at all, and the decision stays.
+  s.w.sources.events.set(EVENT_ID, rhEvent(EVENT_ID, SERVER_A, eventSignUps().filter((x) => x.id !== 2)));
+  assert.equal((await s.call('bob', 'PUT', s.raid(id, '/event'), { source: EVENT_ID })).status, 200);
+  assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p.brindle}`, { expectedVersion: 1, status: 'inactive' })).status, 200);
+  const gone = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  assert.equal(byName(gone.json).Brindle, undefined, 'no row');
+  assert.equal(await s.w.count('attendance', 'player_id = ?', s.p.brindle), 0);
+  assert.deepEqual(await s.w.rows('SELECT * FROM attendance_decisions WHERE raid_id = ?', id), before, 'the decision row is untouched');
+  // She comes back with the same flags: the decision applies again.
+  s.w.sources.events.set(EVENT_ID, rhEvent(EVENT_ID, SERVER_A, eventSignUps()));
+  assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p.brindle}`, { expectedVersion: 2, status: 'raider' })).status, 200);
+  const back = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: EVENT_ID });
+  const row = byName(back.json).Brindle;
+  assert.deepEqual([row.outcome, row.credit, row.needsReview, row.decision.applied, row.decision.reason], ['bench', 1, false, true, 'Told us']);
+  assert.deepEqual(await s.w.rows('SELECT * FROM attendance_decisions WHERE raid_id = ?', id), before);
+  // A raid delete takes its decisions; undo removes the row and bumps the version.
+  const version = (await s.w.rows('SELECT version FROM raids WHERE id = ?', id))[0].version;
+  assert.equal((await s.call('bob', 'DELETE', s.raid(id, `/decisions/${brindle}`), { reason: 'Mistake' })).status, 200);
+  assert.equal(await s.w.count('attendance_decisions'), 0);
+  assert((await s.w.rows('SELECT version FROM raids WHERE id = ?', id))[0].version > version);
+});
+
+check('A: recompute is conditional on the versions it read: a bump (or a new raid on the date) between read and write aborts the write; one retry from a fresh read; losing twice leaves the raid stale', async () => {
+  const s = await raidWorld();
+  const { id } = await fullRaid(s);
+  const snapshot = async () => ({
+    rows: await s.w.rows('SELECT * FROM attendance ORDER BY raid_id, player_id'),
+    raid: (await s.w.rows('SELECT open_flags, computed_at FROM raids WHERE id = ?', id))[0],
+    signups: await s.w.count('raid_signups'),
+  });
+  const base = await snapshot();
+  s.w.advance(60_000);
+  // Lost once: the retry (a second read) wins and the raid is fresh.
+  let race = racing(s.w, { times: 1 });
+  let r = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  race.stop();
+  assert.deepEqual([r.status, r.json.raid.stale, race.guarded, race.fired], [200, false, 2, 1]);
+  assert.match(await fpOf(s, id), /^[0-9a-f]{8}$/);
+  // Lost twice: nothing written (computed_at, rows and plan sign-ups are as before), the raid shows as stale.
+  const mid = await snapshot();
+  s.w.advance(60_000);
+  race = racing(s.w);
+  r = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  race.stop();
+  assert.deepEqual([r.status, r.json.raid.stale, race.guarded], [200, true, 2]);
+  assert.equal(await fpOf(s, id), '');
+  assert.deepEqual(await snapshot(), { ...mid, raid: mid.raid });
+  assert.equal(base.signups, mid.signups);
+  // A raid appearing on the date between read and write also aborts it (the fill-in pass spans the date).
+  race = racing(s.w, {
+    times: 1,
+    sql: `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, created_at, updated_at)
+          SELECT 'r_race', guild_id, '${s.B}', raid_on, starts_at, 1, 1 FROM raids WHERE id = '${id}'`,
+  });
+  r = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  race.stop();
+  assert.deepEqual([race.guarded, r.json.raid.stale], [2, false]);
+  assert.match((await s.w.rows("SELECT policy_fp FROM raids WHERE id = 'r_race'"))[0].policy_fp, /^[0-9a-f]{8}$/, 'the retry saw and computed the new raid');
+});
+
+check('B: every input write leaves its raid stale in its own batch, so a recompute that never lands shows as stale', async () => {
+  const s = await raidWorld();
+  const { id, detail } = await fullRaid(s);
+  const manualId = (await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-10' })).json.raid.id;
+  const brindle = byName(detail).Brindle.playerId;
+  // Every recompute loses its race: the version moves under it, and policy_fp stays as the input write left it.
+  const original = s.w.db.batch;
+  const race = { on: true };
+  s.w.db.batch = function batch(statements) {
+    if (race.on && statements[0] && /INSERT INTO attendance_write_guard/.test(statements[0].sql)) s.w.db.sqlite.exec('UPDATE raids SET version = version + 1');
+    return original.call(this, statements);
+  };
+  const fresh = async (raidId) => {
+    race.on = false;
+    assert.equal((await s.call('bob', 'POST', s.raid(raidId, '/recompute'), {})).status, 200);
+    race.on = true;
+    assert.match(await fpOf(s, raidId), /^[0-9a-f]{8}$/, 'fresh before the write');
+  };
+  const cases = [
+    ['PUT event', id, () => s.call('bob', 'PUT', s.raid(id, '/event'), { source: EVENT_ID })],
+    ['PUT plan', id, () => s.call('bob', 'PUT', s.raid(id, '/plan'), { label: 'Plan', players: [{ name: 'Aldric', group: 1 }] })],
+    ['DELETE plan', id, () => s.call('bob', 'DELETE', s.raid(id, '/plan'), {})],
+    ['POST decision', id, () => decide(s, 'bob', id, { playerId: brindle, outcome: 'bench', reason: 'Told us', expectedFlags: ['no_show'] })],
+    ['DELETE decision', id, () => s.call('bob', 'DELETE', s.raid(id, `/decisions/${brindle}`), { reason: 'Mistake' })],
+    ['POST unmatched (guest)', id, () => s.call('bob', 'POST', s.raid(id, '/unmatched'), { key: 'zorgax|nightslayer', action: 'guest' })],
+    ['PUT report', id, () => s.call('bob', 'PUT', s.raid(id, '/reports'), { source: R1 })],
+    ['DELETE event', id, () => s.call('bob', 'DELETE', s.raid(id, '/event'), {})],
+    ['DELETE report', id, () => s.call('bob', 'DELETE', s.raid(id, `/reports/${R1}`), {})],
+    ['PUT manual', manualId, () => s.call('bob', 'PUT', s.raid(manualId, '/manual'), { reason: 'Logger was off', presentPlayerIds: [s.p.aldric] })],
+    ['DELETE manual', manualId, () => s.call('bob', 'DELETE', s.raid(manualId, '/manual'), { reason: 'Found the log' })],
+  ];
+  for (const [label, raidId, run] of cases) {
+    await fresh(raidId);
+    const response = await run();
+    assert.equal(response.status, 200, `${label}: ${JSON.stringify(response.json)}`);
+    assert.equal(await fpOf(s, raidId), '', `${label} left the raid stale`);
+  }
+  // A new raid on the date makes its neighbour stale; so does the unmatched link to an Alt.
+  await fresh(id);
+  const sibling = await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: (await s.call('bob', 'GET', s.raid(id))).json.raid.raidOn });
+  assert.equal(sibling.status, 201, JSON.stringify(sibling.json));
+  assert.equal(await fpOf(s, id), '', 'a new raid on the date');
+  s.w.db.batch = original;
+});
+
+check('D: the sign-up rate leaves out a raid that is still awaiting its log', async () => {
+  const s = await raidWorld();
+  await fullRaid(s);
+  exec(s.w, "UPDATE players SET joined_on = '2026-12-01'");
+  assert.equal((await s.call('bob', 'PUT', '/attendance/policy', { teamId: null, policy: { effectiveStart: 'joinDate' }, expectedVersion: 0 })).status, 200);
+  const other = '222222222222222222';
+  s.w.sources.events.set(other, rhEvent(other, SERVER_A, eventSignUps(), { startTime: RH_START - 7 * 86400 }));
+  const second = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: other });
+  assert.deepEqual([second.status, second.json.raid.state], [201, 'awaiting_log']);
+  const team = (await s.call('carol', 'GET', `/attendance/team?team=${s.A}`)).json;
+  assert.equal(team.people.find((p) => p.name === 'Aldric').signupRate, 100, 'one raid with results, signed up to it');
+  assert.equal(team.people.find((p) => p.name === 'Fenwick').signupRate, 0);
+  const person = (await s.call('bob', 'GET', `/attendance/person/${s.p.aldric}?window=all`)).json;
+  assert.equal(person.teams[0].metrics.signupRate, 100);
+});
+
+check('E: recompute links sign-ups whose Discord ID had no person at ingest; person status changes and roster additions mark every raid of the team stale', async () => {
+  const s = await raidWorld();
+  const { id, detail } = await fullRaid(s);
+  assert.equal(byName(detail).Fenwick.outcome, 'no_signup');
+  assert.equal((await s.w.rows("SELECT player_id FROM raid_signups WHERE raid_id = ? AND discord_user_id = '299999999999999999'", id))[0].player_id, null);
+  exec(s.w, `UPDATE players SET discord_user_id = '299999999999999999' WHERE id = '${s.p.fenwick}'`);
+  const linked = await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  assert.equal((await s.w.rows("SELECT player_id FROM raid_signups WHERE raid_id = ? AND discord_user_id = '299999999999999999'", id))[0].player_id, s.p.fenwick);
+  assert.equal(byName(linked.json).Fenwick.outcome, 'missed', 'signed up, not in the log');
+  // A status change marks the person\'s team raids stale (no log name involved).
+  assert.match(await fpOf(s, id), /^[0-9a-f]{8}$/);
+  const patch = await s.call('bob', 'PATCH', `/roster/${s.p.dunmar}`, { expectedVersion: 1, status: 'reserve' });
+  assert.equal(patch.status, 200, JSON.stringify(patch.json));
+  assert.equal(await fpOf(s, id), '');
+  // A raid with sign-ups only (no log, no presence) is reached too, and a person added to the team marks it.
+  const other = '222222222222222222';
+  s.w.sources.events.set(other, rhEvent(other, SERVER_A, eventSignUps(), { startTime: RH_START - 7 * 86400 }));
+  const awaiting = (await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: other })).json.raid.id;
+  const manual = (await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-02' })).json.raid.id;
+  assert.equal((await s.call('bob', 'PUT', s.raid(manual, '/manual'), { reason: 'Logger was off', presentPlayerIds: [s.p.aldric] })).status, 200);
+  const bRaid = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-02' })).json.raid.id;
+  assert.equal((await s.call('bob', 'PUT', s.raid(bRaid, '/manual'), { reason: 'Logger was off', presentPlayerIds: [] })).status, 200);
+  await s.call('bob', 'POST', s.raid(id, '/recompute'), {});
+  for (const raidId of [id, awaiting, manual, bRaid]) assert.match(await fpOf(s, raidId), /^[0-9a-f]{8}$/, raidId);
+  await addPerson(s, 'bob', s.A, 'Galdor');
+  assert.equal(await fpOf(s, id), '');
+  assert.equal(await fpOf(s, awaiting), '');
+  assert.equal(await fpOf(s, manual), '');
+  assert.match(await fpOf(s, bRaid), /^[0-9a-f]{8}$/, 'team B has no new person: its raid stays fresh');
+  const bPerson = await addPerson(s, 'bob', s.B, 'Hestia');
+  assert.equal(await fpOf(s, bRaid), '');
+  void bPerson;
+});
+
+check('F: a Raid-Helper event that has not started is refused (raid_in_future), and a raid date cannot precede World of Warcraft', async () => {
+  const s = await raidWorld();
+  const future = '444444444444444444';
+  s.w.sources.events.set(future, rhEvent(future, SERVER_A, eventSignUps(), { startTime: Math.floor(s.w.clock.now / 1000) + 3600 }));
+  const refused = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: future });
+  assert.deepEqual([refused.status, refused.json.error], [400, 'raid_in_future']);
+  assert.equal(await s.w.count('raids'), 0);
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-10' });
+  const onRaid = await s.call('bob', 'PUT', s.raid(made.json.raid.id, '/event'), { source: future });
+  assert.deepEqual([onRaid.status, onRaid.json.error], [400, 'raid_in_future']);
+  assert.equal(await s.w.count('raid_signups'), 0);
+  for (const bad of ['2004-11-22', '1999-01-01', '0001-01-01']) {
+    const r = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: bad });
+    assert.deepEqual([r.status, r.json.field], [400, 'raidOn'], bad);
+  }
+  assert.equal((await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2004-11-23' })).status, 201);
+  // A report whose pulls date before the game existed is refused the same way.
+  s.w.sources.reports.set(R2, report1({ startTime: Date.parse('2003-05-05T20:00:00Z') }));
+  const old = await s.call('bob', 'POST', '/raids', { teamId: s.A, reportSource: R2 });
+  assert.deepEqual([old.status, old.json.field], [400, 'raidOn']);
+});
+
+check('G: a guild policy save re-validates every team override on top of it; the person route falls back to a team\'s default window instead of a 400', async () => {
+  const s = await raidWorld();
+  const put = (who, body) => s.call(who, 'PUT', '/attendance/policy', body);
+  assert.equal((await put('bob', { teamId: s.B, policy: { window: { defaultWeeks: 12 } }, expectedVersion: 0 })).status, 200);
+  const refused = await put('bob', { teamId: null, policy: { window: { defaultWeeks: 8, switchWeeks: [8] } }, expectedVersion: 0 });
+  assert.deepEqual([refused.status, refused.json.error, refused.json.teamId, refused.json.field], [400, 'policy_invalid', s.B, 'window.defaultWeeks']);
+  assert.match(refused.json.message, /Bravo/);
+  assert.equal((await s.call('bob', 'GET', '/attendance/policy')).json.versions.guild, 0, 'nothing was saved');
+  assert.equal((await put('bob', { teamId: null, policy: { window: { defaultWeeks: 12, switchWeeks: [8, 12] } }, expectedVersion: 0 })).status, 200);
+  // A state the save no longer allows (written by hand): team B defaults to 12, the guild offers only 8.
+  exec(s.w, `UPDATE attendance_policies SET policy = '{"window":{"defaultWeeks":8,"switchWeeks":[8]}}' WHERE team_id IS NULL`);
+  assert.equal((await addAlt(s, 'bob', s.p.wander, s.A, 'Wanderalt')).status, 201);
+  const person = async (query) => (await s.call('bob', 'GET', `/attendance/person/${s.p.wander}${query}`)).json;
+  const lenient = await person('?window=12');
+  assert.deepEqual(Object.fromEntries(lenient.teams.map((t) => [t.team.id, t.window])), { [s.A]: 8, [s.B]: 12 }, 'each team falls back to its own default');
+  assert.deepEqual(Object.fromEntries((await person('?window=8')).teams.map((t) => [t.team.id, t.window])), { [s.A]: 8, [s.B]: 8 });
+  assert.deepEqual(Object.fromEntries((await person('')).teams.map((t) => [t.team.id, t.window])), { [s.A]: 8, [s.B]: 12 });
+  assert.equal((await s.call('bob', 'GET', `/attendance/person/${s.p.wander}?window=abc`)).status, 400, 'a malformed window is still refused');
+  assert.equal((await s.call('bob', 'GET', `/attendance/team?team=${s.A}&window=12`)).status, 400, 'the team page stays strict');
+});
+
+check('I: other UNIQUE failures are a plain 409, a report write on a raid that went manual is refused, the guest audit keeps the name key, credit labels follow cleanText, a refused create touches no neighbour', async () => {
+  const s = await raidWorld();
+  // 'other' UNIQUE: a unique index on zone makes a second raid with the same zone collide on something that is not the team, event or report.
+  const first = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-14' });
+  assert.equal((await s.call('bob', 'PUT', s.raid(first.json.raid.id, '/reports'), { source: R1, confirmFar: true })).status, 200);
+  exec(s.w, 'CREATE UNIQUE INDEX test_zone ON raids(guild_id, zone)');
+  const second = await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-13' });
+  s.w.sources.reports.set(R2, report1({ startTime: Date.parse('2027-01-13T20:00:00Z') }));
+  const clash = await s.call('bob', 'PUT', s.raid(second.json.raid.id, '/reports'), { source: R2 });
+  assert.deepEqual([clash.status, clash.json.error], [409, 'conflict']);
+  exec(s.w, 'DROP INDEX test_zone');
+  // The report guard: the raid went manual between the read and the write.
+  const third = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-12' });
+  const thirdId = third.json.raid.id;
+  s.w.sources.reports.set(R3, report1({ startTime: Date.parse('2027-01-12T20:00:00Z') }));
+  const original = s.w.db.batch;
+  s.w.db.batch = function batch(statements) {
+    if (statements.some((statement) => /INSERT INTO raid_reports/.test(statement.sql))) {
+      s.w.db.sqlite.exec(`UPDATE raids SET log_mode = 'manual', manual_reason = 'Logger broke', manual_at = 1 WHERE id = '${thirdId}'`);
+    }
+    return original.call(this, statements);
+  };
+  const raced = await s.call('bob', 'PUT', s.raid(thirdId, '/reports'), { source: R3 });
+  s.w.db.batch = original;
+  assert.deepEqual([raced.status, raced.json.error], [409, 'raid_is_manual']);
+  assert.equal(await s.w.count('raid_reports', 'raid_id = ?', thirdId) + await s.w.count('raid_pulls', 'raid_id = ?', thirdId), 0);
+  // The guest audit names the key.
+  assert.equal((await s.call('bob', 'POST', s.raid(first.json.raid.id, '/unmatched'), { key: 'zorgax|nightslayer', action: 'guest' })).status, 200);
+  const audit = (await s.w.rows("SELECT after FROM audit_log WHERE action = 'attendance.guest'"))[0];
+  assert.deepEqual(JSON.parse(audit.after), { guest: true, nameKey: 'zorgax' });
+  // Credit labels: trimmed like cleanText, control characters refused.
+  const put = (labels) => s.call('bob', 'PUT', '/attendance/policy', {
+    teamId: null, expectedVersion: 0,
+    policy: { credit: { values: labels.map((label, index) => ({ id: ['aaa', 'bbb', 'ccc'][index], label, value: index / 2 })) } },
+  });
+  assert.equal((await put(['Full', 'Half', 'Bad\u0007'])).json.error, 'policy_invalid');
+  assert.equal((await put(['Full', 'Half', '   '])).json.error, 'policy_invalid');
+  assert.equal((await put(['Full', 'Half', 'abcdefghijklm'])).json.error, 'policy_invalid');
+  const ok = await put(['  Full  ', 'Half', '  abcdefghijkl  ']);
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.deepEqual(ok.json.guild.credit.values.map((v) => v.label), ['Full', 'Half', 'abcdefghijkl']);
+  // A create that is refused (archived team) leaves the neighbouring raid alone.
+  const neighbour = await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-11' });
+  await s.call('bob', 'PUT', s.raid(neighbour.json.raid.id, '/plan'), { label: 'Plan', players: [{ name: 'Wanderfell', group: 1 }] });
+  const mark = (await s.w.rows('SELECT policy_fp, version FROM raids WHERE id = ?', neighbour.json.raid.id))[0];
+  exec(s.w, `UPDATE teams SET archived = 1 WHERE id = '${s.A}'`);
+  const refused = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-11' });
+  assert.deepEqual([refused.status, refused.json.field], [400, 'teamId']);
+  assert.deepEqual((await s.w.rows('SELECT policy_fp, version FROM raids WHERE id = ?', neighbour.json.raid.id))[0], mark);
+});
+
+check('J: the raid detail lists who was ticked on a manual raid, team-page Other-team cells name their team, the person view says isMe', async () => {
+  const s = await raidWorld();
+  const created = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: EVENT_ID });
+  const id = created.json.raid.id;
+  const ticks = [s.p.aldric, s.p.cassia, s.p.wander];
+  assert.equal((await s.call('carol', 'PUT', s.raid(id, '/manual'), { reason: 'Logger was off', presentPlayerIds: ticks })).status, 200);
+  const detail = (await s.call('bob', 'GET', s.raid(id))).json;
+  assert.deepEqual([...detail.raid.manual.presentPlayerIds].sort(), [...ticks].sort());
+  assert.deepEqual((await s.call('erin', 'GET', s.raid(id))).json.raid.manual.presentPlayerIds, [], 'a viewer who cannot see attendance gets no list');
+  assert.equal((await s.call('bob', 'GET', s.raid(id))).json.raid.manual.reason, 'Logger was off');
+  // Wanderfell (team B) ticked on team A's raid: an Other-team cell on team B's page with the host team as an object.
+  s.w.advance(86_400_000);
+  const b = (await s.call('bob', 'GET', `/attendance/team?team=${s.B}&window=all`)).json;
+  const cell = b.people.find((p) => p.name === 'Wanderfell').cells[0];
+  assert.deepEqual([cell.outcome, cell.via], ['fill_in', { id: s.A, name: 'Alpha' }]);
+  // His home row replaced by the host raid carries the same shape (via_raid_id resolves to the host team).
+  const home = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: detail.raid.raidOn })).json.raid.id;
+  s.w.sources.events.set('333333333333333333', rhEvent('333333333333333333', SERVER_A, [signUp(1, DID(7), 'Wanderfell', 'Druid', 'Feral')]));
+  assert.equal((await s.call('bob', 'PUT', s.raid(home, '/event'), { source: '333333333333333333' })).status, 200);
+  assert.equal((await s.call('bob', 'PUT', s.raid(home, '/manual'), { reason: 'Logger was off', presentPlayerIds: [] })).status, 200);
+  const replaced = (await s.call('bob', 'GET', `/attendance/team?team=${s.B}&window=all`)).json.people.find((p) => p.name === 'Wanderfell').cells;
+  assert.deepEqual(replaced.map((c) => [c.outcome, c.via]), [['fill_in', { id: s.A, name: 'Alpha' }]]);
+  // person.isMe
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.carol.id}' WHERE id = '${s.p.aldric}'`);
+  assert.equal((await s.call('carol', 'GET', `/attendance/person/${s.p.aldric}`)).json.person.isMe, true);
+  assert.equal((await s.call('bob', 'GET', `/attendance/person/${s.p.aldric}`)).json.person.isMe, false);
 });
 
 // ---------------------------------------------------------------------------

@@ -107,7 +107,11 @@ function checkCreditValues(value) {
     if (typeof entry.id !== 'string' || !/^[a-z]{2,12}$/.test(entry.id)) return 'id must be 2 to 12 lower-case letters';
     if (ids.has(entry.id)) return 'ids must be unique';
     ids.add(entry.id);
-    if (typeof entry.label !== 'string' || entry.label.trim().length < 1 || entry.label.length > 12) return 'label must be 1 to 12 characters';
+    // The rule http.js cleanText applies to every other piece of officer text: trimmed, 1 to 12 characters, no control characters.
+    if (typeof entry.label !== 'string') return 'label must be 1 to 12 characters';
+    const label = entry.label.trim();
+    const labelLength = Array.from(label).length;
+    if (labelLength < 1 || labelLength > 12 || /[\u0000-\u001f\u007f]/.test(label)) return 'label must be 1 to 12 characters of plain text';
     if (typeof entry.value !== 'number' || !Number.isFinite(entry.value) || entry.value < 0 || entry.value > 1) return 'value must be a number from 0 to 1';
   }
   return null;
