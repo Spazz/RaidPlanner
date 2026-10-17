@@ -40,6 +40,11 @@ export const AUDIT_ACTIONS = [
   'loot.update',
   'loot.delete',
   'loot.policy',
+  'signup.set',
+  'signup.remove',
+  'signup.lock',
+  'schedule.update',
+  'schedule.fill',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

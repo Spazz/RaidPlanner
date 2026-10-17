@@ -321,7 +321,7 @@ check('Worker SQL binds values and never concatenates them into SQL text', () =>
     for (const match of read(file).matchAll(/prepare\(\s*`([^`]*)`/g)) {
       const placeholders = [...match[1].matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]);
       for (const expression of placeholders) {
-        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|COLUMNS|OTHERS_SQL|SUCCESSOR_SQL|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|AWARD_SELECT|currentMemberSql\('[^']*', '[^']*', '[^']*'\)|teamId \? [^}]*)$/.test(expression.trim()),
+        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|COLUMNS|OTHERS_SQL|SUCCESSOR_SQL|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|AWARD_SELECT|MERGED_ROWS|CHARACTER_COLUMNS|currentMemberSql\('[^']*', '[^']*', '[^']*'\)|teamId \? [^}]*)$/.test(expression.trim()),
           `${file}: interpolated SQL ${expression}`);
       }
     }

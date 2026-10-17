@@ -12,6 +12,7 @@ const PATTERNS = {
   ri: /^ri_[A-Za-z0-9_-]{22}$/,
   lo: /^lo_[A-Za-z0-9_-]{22}$/,
   lp: /^lp_[A-Za-z0-9_-]{22}$/,
+  ts: /^ts_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {

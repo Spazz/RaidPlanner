@@ -6,7 +6,7 @@ import { localDate, localTimeToMs } from '../attendance-calendar.js';
 import {
   bumpDayStatement, loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid,
 } from '../attendance-store.js';
-import { loadRaidDetail, raidState, isStale } from '../attendance-view.js';
+import { displayCharacter, loadRaidDetail, raidState, isStale } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { zonesFor } from '../raid-zones.js';
@@ -14,9 +14,10 @@ import {
   WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, WCL_RAID_LIMIT, WCL_RAID_WINDOW_MS, enforceRateLimit,
 } from '../ratelimit.js';
 import {
-  RAID_HELPER_CLASS, RAID_HELPER_SPEC, cleanCharacterName, cleanNickname, isRealDate, nameKey, ownValue, realmKey, SINGLE_LINE_STRIP,
+  cleanCharacterName, cleanNickname, isRealDate, nameKey, realmKey, SINGLE_LINE_STRIP,
 } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
+import { closedReason, plannerName } from '../signups-data.js';
 import {
   fetchRaidHelperEvent, fetchWclPulls, parseRaidHelperSource, parseWclSource, requireWclConfigured,
 } from '../sources.js';
@@ -33,6 +34,11 @@ const EARLIEST_RAID_DATE = '2004-11-23'; // World of Warcraft's release: nothing
 const START_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MAX_TITLE = 100;
 const SIGNUP_KINDS = ['signed', 'late', 'bench', 'tentative', 'absence'];
+// The rows of a raid's merged sign-up list, for a query that names the raid_signups row `s`: a person's Raidsmith sign-up replaces their
+// Raid-Helper one (worker/signups-data.js mergeSignups does the same in code).
+const MERGED_ROWS = `s.source IN ('raid_helper', 'raidsmith') AND NOT (s.source = 'raid_helper' AND s.player_id IS NOT NULL AND EXISTS (
+  SELECT 1 FROM raid_signups n WHERE n.raid_id = s.raid_id AND n.source = 'raidsmith' AND n.player_id = s.player_id))`;
+export { plannerName }; // the Planner's name rule lives with the sign-up helpers (worker/signups-data.js); tests import it from here
 const LIVE_ID = /^[0-9A-Za-z]{7}$/; // the id of a live share link (js/livesync.js LiveLinks.ID)
 
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
@@ -226,7 +232,7 @@ export async function listRaids(ctx) {
   if (before !== null && !isRealDate(before)) throw bad('before needs a date.', 'before');
   const guild = guildContext.guild;
   const now = ctx.now();
-  const [teamResult, raidResult, policyResult, upcomingResult] = await ctx.db.batch([
+  const [teamResult, raidResult, policyResult, upcomingResult, mineResult, scheduleResult] = await ctx.db.batch([
     ctx.db.prepare('SELECT id, name, archived FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
     ctx.db.prepare(
       `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
@@ -242,22 +248,38 @@ export async function listRaids(ctx) {
     policyRowsStatement(ctx.db, guild.id),
     // Raids that have not started: all of them, soonest first, outside the paging of the past ones.
     ctx.db.prepare(
-      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live,
-${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND s.source = 'raid_helper' AND s.kind = '${kind}') AS n_${kind}`).join(',\n')}
+      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live, r.signups_locked,
+${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = '${kind}') AS n_${kind}`).join(',\n')}
          FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND r.starts_at > ?
         ORDER BY r.starts_at, r.id`,
     ).bind(guild.id, teamId, now),
+    // The viewer's own sign-up on each upcoming raid (their Raidsmith one wins over their Raid-Helper one, as in the merged list).
+    ctx.db.prepare(
+      `SELECT s.raid_id, s.source, s.kind, c.name AS character_name FROM raid_signups s LEFT JOIN characters c ON c.id = s.character_id
+        WHERE s.player_id = (SELECT id FROM players WHERE guild_id = ? AND discord_user_id = ?) AND s.source IN ('raid_helper', 'raidsmith')
+          AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at > ?)`,
+    ).bind(guild.id, ctx.session.user.discordId, guild.id, teamId, now),
+    ctx.db.prepare('SELECT schedule_weeks, schedule_auto, (SELECT COUNT(*) FROM team_schedules x WHERE x.team_id = teams.id) AS slots FROM teams WHERE id = ? AND guild_id = ?')
+      .bind(teamId, guild.id),
   ]);
   const team = teamResult.results[0];
   if (!team) throw bad('That team does not exist in this guild.', 'team');
   const resolver = makePolicyResolver(guild, policyResult.results);
   const seeCounts = allows(guildContext.can, 'attendance.view', team.id);
   const canEdit = allows(guildContext.can, 'raids.edit', team.id);
+  const canSelf = allows(guildContext.can, 'signups.self', team.id);
+  const mine = new Map();
+  for (const row of mineResult.results) {
+    if (!mine.has(row.raid_id) || row.source === 'raidsmith') mine.set(row.raid_id, { kind: row.kind, source: row.source, characterName: row.source === 'raidsmith' ? row.character_name : null });
+  }
+  const scheduleRow = scheduleResult.results[0];
   const page = raidResult.results.slice(0, PAGE_SIZE);
   return jsonResponse({
     team: { id: team.id, name: team.name, archived: team.archived === 1 },
     today: guildToday(guild, now),
-    can: { edit: canEdit },
+    can: { edit: canEdit, signup: canSelf },
+    // The weekly schedule, for those who can create raids from it: how many slots, the weeks it fills and whether opening Raids fills them.
+    schedule: canEdit && scheduleRow ? { slots: scheduleRow.slots, weeks: scheduleRow.schedule_weeks, auto: scheduleRow.schedule_auto === 1 } : null,
     hasMore: raidResult.results.length > PAGE_SIZE,
     upcoming: upcomingResult.results.map((row) => ({
       id: row.id,
@@ -270,6 +292,9 @@ ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s
       eventId: row.event_id,
       otherServer: row.event_server !== null && row.event_server !== guild.discord_server_id,
       signups: seeCounts ? Object.fromEntries(SIGNUP_KINDS.map((kind) => [kind, row[`n_${kind}`]])) : null,
+      locked: row.signups_locked === 1,
+      signupsOpen: !closedReason({ starts_at: row.starts_at, signups_locked: row.signups_locked }, now),
+      mine: mine.get(row.id) || null,
       planned: row.plan_synced !== null,
       planLive: canEdit ? row.plan_live : null, // the id is an edit link to the plan: only for those who may edit
     })),
@@ -637,42 +662,24 @@ export async function deletePlan(ctx) {
 // ---------------------------------------------------------------------------
 // Planner seed
 
-// The class a Raid-Helper sign-up stands for (its spec decides first, as in the Planner's import), or null for Absence/Bench/no class.
-function signUpClassId(row) {
-  const spec = ownValue(RAID_HELPER_SPEC, row.spec_name);
-  return spec ? spec.class : (ownValue(RAID_HELPER_CLASS, row.class_name) || null);
-}
+// GET /raids/:rid/planner: what the Planner needs to plan this raid - the raid, its live plan link and the sign-ups with the name each
+// one gets in the Planner. For those who may edit the raid. The sign-ups are the merged list: a person's Raidsmith sign-up replaces
+// their Raid-Helper one. A Raidsmith row is worded as Raid-Helper words it (the meta class for Late/Bench/Tentative/Absence, the
+// class otherwise, and the spec key), so the Planner's existing Raid-Helper code reads it unchanged; its name is the character chosen.
+const META_CLASS = { late: 'Late', bench: 'Bench', tentative: 'Tentative', absence: 'Absence' };
 
-// The name the Planner shows for a sign-up. characters: the person's characters ({ name, class, is_main }), [] when the
-// sign-up is not on the roster. Their Main when it is of the signed-up class; else their Alt of that class (several: the one
-// named like the Discord nickname, else the first by name); otherwise their Main; not on the roster (or no Main): the Discord nickname.
-export function plannerName(row, characters) {
-  const list = Array.isArray(characters) ? characters : [];
-  const main = list.find((character) => character.is_main === 1);
-  if (!main) return row.nickname;
-  const classId = signUpClassId(row);
-  if (!classId || main.class === classId) return main.name;
-  const alts = classId ? list.filter((character) => character.is_main !== 1 && character.class === classId) : [];
-  if (!alts.length) return main.name;
-  const nick = nameKey(row.nickname || '');
-  const sorted = [...alts].sort((a, b) => (nameKey(a.name) < nameKey(b.name) ? -1 : nameKey(a.name) > nameKey(b.name) ? 1 : 0));
-  return (sorted.find((character) => nameKey(character.name) === nick) || sorted[0]).name;
-}
-
-// GET /raids/:rid/planner: what the Planner needs to plan this raid - the raid, its live plan link and the Raid-Helper
-// sign-ups with the name each one gets in the Planner. For those who may edit the raid.
 export async function getPlanner(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const guild = guildContext.guild;
   const [signupResult, characterResult] = await ctx.db.batch([
     ctx.db.prepare(
-      `SELECT signup_id, nickname, kind, class_name, spec_name, position, player_id FROM raid_signups
-        WHERE raid_id = ? AND source = 'raid_helper' ORDER BY position, signup_id`,
+      `SELECT s.source, s.signup_id, s.nickname, s.kind, s.class_name, s.spec_name, s.position, s.player_id, s.character_id FROM raid_signups s
+        WHERE s.raid_id = ? AND ${MERGED_ROWS} ORDER BY s.position, s.source, s.signup_id`,
     ).bind(raid.id),
     ctx.db.prepare(
-      `SELECT player_id, name, class, is_main FROM characters
-        WHERE guild_id = ? AND player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper' AND player_id IS NOT NULL)`,
+      `SELECT id, player_id, name, class, is_main, team_id FROM characters
+        WHERE guild_id = ? AND player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND player_id IS NOT NULL)`,
     ).bind(guild.id, raid.id),
   ]);
   const charactersByPlayer = new Map();
@@ -693,16 +700,33 @@ export async function getPlanner(ctx) {
       timeZone: guild.time_zone,
     },
     livePlan: raid.plan_live,
-    signups: signupResult.results.map((row) => ({
-      key: row.signup_id,
-      name: plannerName(row, row.player_id ? charactersByPlayer.get(row.player_id) : null),
-      discordName: row.nickname,
-      personId: row.player_id,
-      className: row.class_name,
-      specName: row.spec_name,
-      kind: row.kind,
-      position: row.position,
-    })),
+    signups: signupResult.results.map((row) => {
+      const characters = row.player_id ? charactersByPlayer.get(row.player_id) : null;
+      if (row.source === 'raidsmith') {
+        const chosen = (characters || []).find((character) => character.id === row.character_id);
+        const shown = chosen || displayCharacter(characters || [], raid.team_id);
+        return {
+          key: `rs${row.signup_id}`,
+          name: shown ? shown.name : 'Unknown',
+          discordName: null,
+          personId: row.player_id,
+          className: row.kind === 'signed' ? row.class_name : META_CLASS[row.kind],
+          specName: row.spec_name,
+          kind: row.kind,
+          position: row.position,
+        };
+      }
+      return {
+        key: row.signup_id,
+        name: plannerName(row, characters),
+        discordName: row.nickname,
+        personId: row.player_id,
+        className: row.class_name,
+        specName: row.spec_name,
+        kind: row.kind,
+        position: row.position,
+      };
+    }),
   });
 }
 

@@ -335,6 +335,8 @@ export async function deleteMe(ctx) {
         : { sql: "NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master')", params: [guild.id] }),
     );
   }
+  // The free-text notes this account wrote on Raidsmith sign-ups go with it (the sign-up itself stays with the guild; updated_by is cleared below).
+  statements.push(db.prepare("UPDATE raid_signups SET note = NULL WHERE source = 'raidsmith' AND updated_by = ?").bind(userId));
   // Sessions, servers, roles and blocks cascade; actor columns become NULL (roadmap_ideas.submitted_by too: the ideas stay, unlinked).
   statements.push(db.prepare('DELETE FROM users WHERE id = ?').bind(userId));
   // The person on a roster who was linked to this account stays (officers own the roster); the link goes.
