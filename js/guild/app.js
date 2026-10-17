@@ -48,10 +48,10 @@
   };
   const app = G.app = { state: state, started: false };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
-  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt' };
+  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot' };
   function attPageKey(r) {
-    if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : null);
-    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : null;
+    if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : null));
+    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : null);
     return Object.prototype.hasOwnProperty.call(ATT_ROUTE_PAGES, r.name) ? ATT_ROUTE_PAGES[r.name] : null;
   }
   app.attPageKey = attPageKey;
@@ -427,6 +427,7 @@
       }
       if (!tabs.some(function (t) { return t.tab === tab; })) { failWith('You cannot open this', 'Your role does not include this part of Guild settings.', false); return null; }
       if (tab === 'attendance') return loadAttendance('settingsAtt', r, gd);
+      if (tab === 'loot') return loadAttendance('settingsLoot', r, gd);
       if (tab !== 'people') return null;
       return G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) {
         state.people[r.gid] = res;
@@ -484,7 +485,7 @@
     return G.api.get(rosterUrl(gid, '/' + encodeURIComponent(r.pid))).then(function (record) {
       if (token !== routeToken) return null;
       state.person = { gid: gid, pid: r.pid, record: record };
-      const card = G.pages.personAtt.loadCard(gid, r.pid, gd);
+      const card = Promise.all([G.pages.personAtt.loadCard(gid, r.pid, gd), G.pages.personLoot.loadCard(gid, r.pid)]);
       if (!(record.can && record.can.edit)) return card.then(function () { return null; });
       return Promise.all([card, G.pages.roster.loadLinkable(gid)]).then(function () { return null; });
     }).catch(function (err) {
@@ -524,6 +525,7 @@
     else if (r.name === 'review') page = 'Review queue';
     else if (r.name === 'backfill') page = 'Backfill from Warcraft Logs';
     else if (r.name === 'personatt') page = 'Attendance history';
+    else if (r.name === 'lootperson') page = 'Loot history';
     else if (r.name === 'person') page = 'Roster';
     else if (r.name === 'import') page = r.source === 'wcl' ? 'Import from Warcraft Logs' : 'Import from Raid-Helper';
     else if (r.name === 'settings') page = 'Guild settings';
@@ -560,8 +562,9 @@
         if (r.section === 'roster') return rosterMain(gd);
         if (r.section === 'raids') return P.raids.main(r, gd, ctx);
         if (r.section === 'attendance') return P.attendance.main(r, gd, ctx);
-        return P.empty.emptyHtml(r.section);
-      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt':
+        if (r.section === 'loot') return P.loot.main(r, gd, ctx);
+        return P.signin.messageHtml('Page not found', 'That address does not match a Raidsmith guild page.', {});
+      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson':
         if (!gd) return P.signin.loadingHtml();
         return P[attPageKey(r)].main(r, gd, ctx);
       case 'person': {
@@ -583,6 +586,7 @@
         const tab = r.tab;
         if (tab === 'teams') return G.shell.settingsFrameHtml(ctx, 'teams', P.teams.teamsHtml({ guildData: gd, alert: state.pageAlert }));
         if (tab === 'attendance') return P.settingsAtt.main(r, gd, ctx);
+        if (tab === 'loot') return P.settingsLoot.main(r, gd, ctx);
         if (tab === 'people') {
           if (!state.people[gd.guild.id]) return P.signin.loadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'people', P.people.peopleHtml({ guildData: gd, data: state.people[gd.guild.id], sort: state.peopleSort, query: state.peopleQuery, notice: state.notice, alert: state.pageAlert, now: Date.now() }));
@@ -602,6 +606,7 @@
       return x && x.rid === r.rid && x.data && x.data.raid ? G.ui.weekdayDay(x.data.raid.raidOn) : '';
     }
     if (r.name === 'personatt') return G.pages.personAtt.nameFor(r);
+    if (r.name === 'lootperson') return G.pages.personLoot.nameFor(r);
     return '';
   }
 
@@ -922,7 +927,7 @@
     if (state.section !== 'guild') { render(); return; }
     const r = G.router.parse(window.location.hash);
     if (r.name === 'section' && r.section === 'roster') { go(G.router.format({ name: 'section', gid: gid, section: 'roster' })); return; }
-    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill') { routeAll({ force: true }); return; }
+    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance' || r.section === 'loot')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill') { routeAll({ force: true }); return; }
     render();
   };
 

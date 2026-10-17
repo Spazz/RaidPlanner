@@ -1,6 +1,9 @@
 // ── PAGE: REVIEW QUEUE (+ the Decide and Unmatched dialogs the raid page shares) ──
 // Flags grouped by raid, each a compact row with Decide (no show, late, left early) or the two unmatched actions
-// (link the character as a new Alt, or mark it a guest). GET /attendance/review?team= . A decision is
+// (link the character as a new Alt, or mark it a guest). GET /attendance/review?team= . Loot winners nobody on the roster
+// matches get a group per raid of their own ("Loot winners not on the roster"), with the same three actions; the review
+// reply carries them as lootUnmatched: [{ raid: { id, raidOn, zone }, items: [{ kind: 'unmatched', key, name, realm, class,
+// awards }] }] (empty unless the viewer has loot.edit on the team). A decision is
 // POST /raids/:rid/decisions with the flags the officer saw (expectedFlags): a 409 flags_changed reloads the data.
 (function (G) {
   'use strict';
@@ -11,6 +14,7 @@
   const FILTERS = [
     { value: 'all', label: 'All flags' }, { value: 'no_show', label: 'No shows' },
     { value: 'late', label: 'Late or left early' }, { value: 'unmatched', label: 'Unmatched characters' },
+    { value: 'loot', label: 'Loot winners' },
   ];
 
   function A() { return G.pages.attendance; }
@@ -63,7 +67,7 @@
 
   function unmatchedEvidence(u) {
     const cls = u.class ? G.ui.className(u.class) + (u.realm ? ' on ' + u.realm : '') : (u.realm || '');
-    const pulls = typeof u.pullsPresent === 'number' ? 'in ' + plural(u.pullsPresent, 'pull', 'pulls') : '';
+    const pulls = typeof u.pullsPresent === 'number' ? 'in ' + plural(u.pullsPresent, 'pull', 'pulls') : (typeof u.awards === 'number' ? 'won ' + plural(u.awards, 'item', 'items') : '');
     return [cls, pulls, 'no linked person'].filter(Boolean).join(', ');
   }
 
@@ -133,7 +137,7 @@
     const u = opts.unm;
     return '<form class="gs-dialog-form" data-submit="unm-guest-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Mark ' + esc(u.name) + ' as a guest</h2>' +
-      '<p class="gs-fine" id="dlg-text">Guests are ignored in attendance on every raid, now and later. ' + esc(unmatchedEvidence(u)) + '.</p>' +
+      '<p class="gs-fine" id="dlg-text">Guests are ignored in attendance and in the loot balance on every raid, now and later. ' + esc(unmatchedEvidence(u)) + '.</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Mark as guest</button></div></form>';
   }
@@ -167,7 +171,17 @@
     return note ? '<div class="gs-notice" role="status"><span>' + esc(note) + '</span><button type="button" class="gs-linkbtn" data-action="att-note-dismiss" data-key="att-note-dismiss">Dismiss</button></div>' : '';
   }
 
-  // opts: { guildData, teamId, data (GET /attendance/review), filter, progress, alert, note }
+  function lootGroupHtml(gid, g) {
+    const r = g.raid || {};
+    return '<section class="gs-card-sec" aria-labelledby="rvl-' + esc(r.id) + '"><div class="gs-card-sec-head"><h2 class="gs-h2" id="rvl-' + esc(r.id) + '">' + esc(G.ui.weekdayDay(r.raidOn) || '') + ' - Loot winners not on the roster</h2>' +
+      '<span class="gs-head-tools"><span class="gs-fine">' + esc(plural(g.items.length, 'winner', 'winners')) + '</span><a class="gs-btn gs-btn-sm" href="' + esc(raidHref(gid, r.id)) + '">Open raid</a></span></div>' +
+      '<ul class="gs-review-list">' + g.items.map(function (u) {
+        return '<li class="gs-review-item"><div class="gs-review-who">' + G.ui.classNameHtml(u.name, u.class) + A().flagChipsHtml(['unmatched']) + '<span class="gs-char-sub">' + esc(unmatchedEvidence(u)) + '</span></div>' +
+          '<div class="gs-row-actions">' + itemActionsHtml(r.id, u, 'review') + '</div></li>';
+      }).join('') + '</ul></section>';
+  }
+
+  // opts: { guildData, teamId, data (GET /attendance/review), lootGroups: [{ raid, items }], filter, progress, alert, note }
   function reviewHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
@@ -175,19 +189,24 @@
     const filter = opts.filter || 'all';
     const several = G.shell.activeTeams(gd.teams).length > 1;
     const team = A().teamOf(gd, opts.teamId);
-    const groups = (Array.isArray(data.raids) ? data.raids : []).map(function (g) {
+    const groups = filter === 'loot' ? [] : (Array.isArray(data.raids) ? data.raids : []).map(function (g) {
       return { raid: g.raid, items: (g.items || []).filter(function (i) { return filter === 'all' || flagKind(i) === filter; }) };
     }).filter(function (g) { return g.items.length; });
-    const total = (data.raids || []).reduce(function (n, g) { return n + (g.items || []).length; }, 0);
+    const lootGroups = (Array.isArray(opts.lootGroups) ? opts.lootGroups : []).filter(function (g) { return g.items && g.items.length; });
+    const shownLoot = filter === 'all' || filter === 'loot' ? lootGroups : [];
+    const lootTotal = lootGroups.reduce(function (n, g) { return n + g.items.length; }, 0);
+    const flagTotal = (data.raids || []).reduce(function (n, g) { return n + (g.items || []).length; }, 0);
+    const total = flagTotal + lootTotal;
     const canEdit = G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', opts.teamId);
-    const sub = (several && team ? esc(team.name) + ' &middot; ' : '') + esc(plural(total, 'open flag', 'open flags')) + ' on ' + esc(plural((data.raids || []).length, 'raid', 'raids'));
+    const sub = (several && team ? esc(team.name) + ' &middot; ' : '') + esc(plural(flagTotal, 'open flag', 'open flags')) + ' on ' + esc(plural((data.raids || []).length, 'raid', 'raids')) +
+      (lootTotal ? ' &middot; ' + esc(plural(lootTotal, 'loot winner', 'loot winners')) + ' to link' : '');
     const filterField = total
       ? '<div class="gs-roster-status"><label class="gs-label" for="review-filter">Flag type</label><select class="gs-input" id="review-filter" data-change="review-filter" data-key="review-filter">' + G.ui.optionsHtml(FILTERS, filter) + '</select></div>' : '';
     let body;
     if (!total) {
       body = '<section class="gs-empty-card" aria-labelledby="review-empty-h"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('check', 28) + '</span><h2 class="gs-h2 gs-h2-lg" id="review-empty-h">Nothing to review</h2>' +
         '<p class="gs-lead gs-lead-sm">Every raid is reviewed. New flags show up here after a raid\'s log is added.</p></section>';
-    } else if (!groups.length) {
+    } else if (!groups.length && !shownLoot.length) {
       body = '<p class="gs-empty">No flags of that type.</p>';
     } else {
       body = groups.map(function (g) {
@@ -195,7 +214,7 @@
         return '<section class="gs-card-sec" aria-labelledby="rv-' + esc(r.id) + '"><div class="gs-card-sec-head"><h2 class="gs-h2" id="rv-' + esc(r.id) + '">' + esc(G.ui.weekdayDay(r.raidOn) || '') + (r.zone ? ' - ' + esc(r.zone) : '') + '</h2>' +
           '<span class="gs-head-tools"><span class="gs-fine">' + esc(plural(g.items.length, 'flag', 'flags')) + '</span><a class="gs-btn gs-btn-sm" href="' + esc(raidHref(gid, r.id)) + '">Open raid</a></span></div>' +
           '<ul class="gs-review-list">' + g.items.map(function (i) { return itemHtml(gid, r.id, i); }).join('') + '</ul></section>';
-      }).join('');
+      }).join('') + shownLoot.map(function (g) { return lootGroupHtml(gid, g); }).join('');
     }
     return '<div class="gs-page"><div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Review queue</h1><p class="gs-sub">' + sub + '</p></div>' + filterField + '</div>' +
       noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + A().staleBannerHtml((data.stale || []).length, canEdit, opts.progress) + body + '</div>';
@@ -210,7 +229,7 @@
       return Promise.reject(new G.api.ApiError(403, { error: 'forbidden', message: 'The review queue is for the officers and team leads of this team.' }));
     }
     return G.api.get(A().apiBase(gid) + '/attendance/review?team=' + encodeURIComponent(teamId)).then(function (data) {
-      a().review = { gid: gid, teamId: teamId, data: data, filter: a().review && a().review.gid === gid && a().review.teamId === teamId ? a().review.filter : 'all' };
+      a().review = { gid: gid, teamId: teamId, data: data, loot: Array.isArray(data && data.lootUnmatched) ? data.lootUnmatched : [], filter: a().review && a().review.gid === gid && a().review.teamId === teamId ? a().review.filter : 'all' };
       return null;
     });
   }
@@ -219,7 +238,7 @@
     const x = a().review;
     if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
     if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
-    return reviewHtml({ guildData: gd, teamId: x.teamId, data: x.data, filter: x.filter, progress: a().recalc, alert: st().pageAlert, note: a().note });
+    return reviewHtml({ guildData: gd, teamId: x.teamId, data: x.data, lootGroups: x.loot, filter: x.filter, progress: a().recalc, alert: st().pageAlert, note: a().note });
   }
 
   // ── behaviour shared by the review page and the raid page ──
@@ -246,7 +265,10 @@
     }
     const rv = s.review && s.review.data;
     const g = rv ? (rv.raids || []).filter(function (x) { return x.raid && x.raid.id === rid; })[0] : null;
-    return g ? (g.items || []).filter(function (i) { return isUnmatched(i) && i.key === key; })[0] || null : null;
+    const hit = g ? (g.items || []).filter(function (i) { return isUnmatched(i) && i.key === key; })[0] || null : null;
+    if (hit) return hit;
+    const lg = s.review ? (s.review.loot || []).filter(function (x) { return x.raid && x.raid.id === rid; })[0] : null;
+    return lg ? (lg.items || []).filter(function (i) { return isUnmatched(i) && i.key === key; })[0] || null : null;
   }
 
   // The team the raid belongs to: the Worker creates the Alt on that team, so the people to pick from are that team's.
@@ -269,7 +291,9 @@
     }
     const rv = s.review && s.review.data;
     const g = rv ? (rv.raids || []).filter(function (x) { return x.raid && x.raid.id === rid; })[0] : null;
-    return g && g.raid ? g.raid.raidOn || '' : '';
+    const lg = !g && s.review ? (s.review.loot || []).filter(function (x) { return x.raid && x.raid.id === rid; })[0] : null;
+    const hit = g || lg;
+    return hit && hit.raid ? hit.raid.raidOn || '' : '';
   }
 
   function reloadReview() {

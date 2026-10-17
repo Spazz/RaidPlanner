@@ -602,12 +602,11 @@ function assertEscaped(out, label) {
     assert(/<option value="Mars\/Base" selected>/.test(out));
   });
 
-  await check('coming-next page: Loot keeps the empty pattern; Raids and Attendance are real pages now (no stubs), the fallback is Loot', () => {
-    const out = G.pages.empty.emptyHtml('loot');
-    assert(out.includes('gs-empty-card') && out.includes('Nothing to set up yet.') && out.includes('Loot tracking comes next') && out.includes('Gargul award history'));
-    assert.deepEqual(Object.keys(G.pages.empty.PAGES), ['loot']);
-    assert(G.pages.empty.emptyHtml('bogus').includes('Loot tracking comes next'));
-    assert(!/raid night/i.test(out));
+  await check('coming-next page: gone. Roster, Raids, Attendance and Loot are all real pages (Phase 4), nothing is a stub any more', () => {
+    assert.equal(G.pages.empty, undefined, 'pages-empty.js was removed');
+    for (const key of ['roster', 'raids', 'attendance', 'loot']) assert(G.pages[key] || G.pages.signin, key);
+    assert.equal(typeof G.pages.loot.main, 'function');
+    assert(!read('js/guild/app.js').includes('coming next'));
   });
 
   // ── Create guild v2 ────────────────────────────────────────────
@@ -821,7 +820,7 @@ function assertEscaped(out, label) {
   });
 
   await check('guild.css has a rule for every gs- class the markup builders use', () => {
-    const markup = ['shell.js', 'ui.js', 'icons.js', 'pages-signin.js', 'pages-create.js', 'pages-settings-teams.js', 'pages-settings-people.js', 'pages-empty.js', 'pages-privacy.js', 'pages-roster.js', 'pages-person.js', 'pages-import.js']
+    const markup = ['shell.js', 'ui.js', 'icons.js', 'pages-signin.js', 'pages-create.js', 'pages-settings-teams.js', 'pages-settings-people.js', 'pages-privacy.js', 'pages-roster.js', 'pages-person.js', 'pages-import.js', 'pages-loot.js', 'pages-person-loot.js', 'pages-raid-loot.js', 'pages-settings-loot.js']
       .map(f => read('js/guild/' + f)).join('\n');
     const used = new Set();
     for (const m of markup.matchAll(/class="([^"]*)"/g)) {

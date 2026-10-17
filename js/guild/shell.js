@@ -21,7 +21,7 @@
   }
 
   function canSeeSettings(can) {
-    return hasAction(can, 'guild.teams') || hasAction(can, 'guild.access') || hasAction(can, 'guild.roles') || hasAction(can, 'attendance.policy');
+    return hasAction(can, 'guild.teams') || hasAction(can, 'guild.access') || hasAction(can, 'guild.roles') || hasAction(can, 'attendance.policy') || hasAction(can, 'loot.policy');
   }
 
   // Whether `can` reaches this team for an action ('guild' = every team, or a list of team ids).
@@ -37,6 +37,7 @@
     if (hasAction(can, 'guild.teams')) tabs.push({ tab: 'teams', label: 'Teams' });
     if (hasAction(can, 'guild.access') || hasAction(can, 'guild.roles')) tabs.push({ tab: 'people', label: 'People and roles' });
     if (hasAction(can, 'attendance.policy')) tabs.push({ tab: 'attendance', label: 'Attendance' });
+    if (hasAction(can, 'loot.policy')) tabs.push({ tab: 'loot', label: 'Loot' });
     return tabs;
   }
 
@@ -135,6 +136,7 @@
     if (item.key === 'roster' && (route.name === 'person' || route.name === 'import')) return true;
     if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid')) return true;
     if (item.key === 'attendance' && (route.name === 'review' || route.name === 'backfill' || route.name === 'personatt')) return true;
+    if (item.key === 'loot' && route.name === 'lootperson') return true;
     return route.name === 'section' && route.section === item.key;
   }
 
@@ -248,13 +250,14 @@
   }
 
   // ── breadcrumb ──
-  // The attendance pages that hang under Raids or Attendance: their parent section and the crumb text.
+  // The attendance and loot pages that hang under Raids, Attendance or Loot: their parent section and the crumb text.
   const ATT_LEAF = {
     raidnew: { parent: 'raids', parentLabel: 'Raids', label: 'New raid' },
     raid: { parent: 'raids', parentLabel: 'Raids', label: 'Raid' },
     review: { parent: 'attendance', parentLabel: 'Attendance', label: 'Review queue' },
     backfill: { parent: 'attendance', parentLabel: 'Attendance', label: 'Backfill from Warcraft Logs' },
     personatt: { parent: 'attendance', parentLabel: 'Attendance', label: 'Person' },
+    lootperson: { parent: 'loot', parentLabel: 'Loot', label: 'Person' },
   };
   function breadcrumbItems(ctx) {
     const r = ctx.route || {};

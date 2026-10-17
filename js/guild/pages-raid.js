@@ -4,7 +4,7 @@
 // the raid (event, report, plan, manual attendance, delete). GET /raids/:rid; every write answers with the detail.
 // The Decide and Unmatched dialogs live in pages-review.js and work here too (where = 'raid').
 // A raid that has not started (raid.upcoming) shows its start time, sign-ups, event and plan instead, with a note that attendance
-// starts after the raid.
+// starts after the raid. A past raid also carries the Loot card (pages-raid-loot.js), loaded with the detail.
 (function (G) {
   'use strict';
 
@@ -153,6 +153,11 @@
     }).join('') + '</ul></section>';
   }
 
+  // The Loot card of a past raid; nothing while its data is not loaded (or the viewer does not see loot).
+  function lootCardHtml(gd, data, loot) {
+    return G.pages.raidLoot ? G.pages.raidLoot.cardHtml({ guildData: gd, data: data, state: loot }) : '';
+  }
+
   // ── source cards ──
   function btn(op, label, extra, key) {
     return '<button type="button" class="gs-btn gs-btn-sm" data-action="raid-op" data-op="' + op + '"' + (extra || '') + ' data-key="' + esc(key || op) + '">' + esc(label) + '</button>';
@@ -222,7 +227,7 @@
       (upcoming ? G.pages.raids.planPillHtml({ planned: !!(data.sources && data.sources.plan) }) : '') + '</div></div>' + tools + '</div>';
   }
 
-  // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress }
+  // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress, loot (G.pages.raidLoot.stateFor) }
   function raidHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
@@ -253,7 +258,7 @@
       manualLineHtml(data, edit) +
       '<div class="gs-sources">' + eventCardHtml(data, edit) + reportsCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' +
       '<section class="gs-card-sec" aria-labelledby="ppl-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="ppl-h">People</h2></div><div class="gs-card-sec-body">' + people_html + '</div></section>' +
-      unmatchedBlockHtml(data) + '</div>';
+      lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + '</div>';
   }
 
   // ── dialogs ──
@@ -360,7 +365,9 @@
 
   function load(r, gd) {
     a().note = '';
-    return fetchDetail(gd.guild.id, r.rid).then(function () { return null; });
+    return fetchDetail(gd.guild.id, r.rid).then(function (data) {
+      return G.pages.raidLoot ? G.pages.raidLoot.loadFor(gd, data) : null;
+    }).then(function () { return null; });
   }
 
   function reload() {
@@ -373,7 +380,7 @@
   function main(r, gd) {
     const x = a().raid;
     if (!x || x.gid !== gd.guild.id || x.rid !== r.rid) return G.pages.signin.loadingHtml();
-    return raidHtml({ guildData: gd, data: x.data, filter: x.filter, alert: st().pageAlert, note: a().note, progress: a().recalc });
+    return raidHtml({ guildData: gd, data: x.data, filter: x.filter, alert: st().pageAlert, note: a().note, progress: a().recalc, loot: G.pages.raidLoot ? G.pages.raidLoot.stateFor(gd.guild.id, r.rid) : null });
   }
 
   function openManualDialog(c) {
