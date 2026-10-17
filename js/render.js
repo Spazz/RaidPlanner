@@ -278,7 +278,9 @@ function restorePlayerSlotFocus(key) {
   const target = slots.find(s => is(key.uid, s.dataset.uid) || is(key.unplacedUid, s.dataset.uid))
     || slots.find(s => is(key.unplacedUid, s.dataset.unplacedUid))
     || slots.find(s => is(key.group, s.dataset.group) && is(key.seat, s.dataset.slot));
-  if (target) target.focus({ preventScroll: true });
+  // A suggestion stack is a drop-target wrapper around real buttons: focus its first one.
+  const focusable = target && target.matches?.('.preferred-stack') ? target.querySelector('button') : target;
+  if (focusable) focusable.focus({ preventScroll: true });
 }
 
 // A swapped buff icon is rebuilt by the re-render too. The picker remembers which
@@ -295,7 +297,9 @@ function restoreBuffIconFocus() {
   const icons = [...document.querySelectorAll('.buff-icon.swappable')]
     .filter(i => i.dataset.group === key.group && key.buffIds.includes(i.dataset.buffId));
   const target = icons.find(i => i.dataset.uid === key.uid) || icons[0];
-  if (target) target.focus({ preventScroll: true });
+  // A suggestion stack is a drop-target wrapper around real buttons: focus its first one.
+  const focusable = target && target.matches?.('.preferred-stack') ? target.querySelector('button') : target;
+  if (focusable) focusable.focus({ preventScroll: true });
 }
 
 function seatedSlotHTML(p, gi, si) {
@@ -710,6 +714,40 @@ function commit(mutator) {
   return result;
 }
 
+// ── SUGGESTION STACKS ───────────────────────────────────────────
+// A suggested Open slot that carries runner-ups (PreferredSlots alts, set by OpenSlots.choose) draws as a stack: the
+// top pick in front, the runner-ups peeking out behind it. Clicking the stack fans it out in place into the top pick
+// and its runner-ups; a runner-up becomes the leader's own request, the top pick folds the fan, "Other spec..." opens
+// the Open-slot editor. Only one stack is open at a time (UI-only: folds and opens go through commit(), the one renderGroups caller). The wrapper stays a `.player-slot` so it is still a drop target.
+const SuggestionStack = {
+  open: null, // { group, slot } of the fanned stack, or null
+  isOpen(gi, si) { return !!this.open && this.open.group === gi && this.open.slot === si; },
+  set(gi, si) { this.open = gi == null ? null : { group: gi, slot: si }; commit(); },
+};
+// "-6%", "Best" for the top pick; no number when the gap could not be expressed (top gain <= 0), "-<1%" under a point.
+function suggestionGapLabel(gap) {
+  if (gap === 0) return '-<1%';
+  return Number.isFinite(gap) ? '-' + gap + '%' : '';
+}
+function suggestionStackHTML(preference, gi, si, isOpen) {
+  const alts = preference.alts;
+  const label = p => p.spec + ' ' + RosterEdit.ClassLabel(p.class);
+  const more = alts.length === 1 ? '+1 close option' : '+' + alts.length + ' close options';
+  const attrs = `data-group="${gi}" data-slot="${si}"`;
+  if (!isOpen) {
+    return `<div class="player-slot preferred-slot preferred-stack${preferredColorClass(preference.class)}" ${attrs}>
+      ${alts.map((a, i) => `<span class="stack-peek stack-peek-${alts.length - i}${preferredColorClass(a.class)}" aria-hidden="true"></span>`).join('')}
+      <button type="button" class="stack-card stack-front" data-stack-open aria-expanded="false" aria-label="Suggested ${esc(label(preference))}, ${alts.length} more option${alts.length === 1 ? '' : 's'}">
+        ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(label(preference))}</span><span class="player-spec" title="${more}">${more}</span></div><span class="preferred-badge">SUGGESTED</span></button></div>`;
+  }
+  const card = (p, gapText, attr, aria) => `<button type="button" class="stack-card${preferredColorClass(p.class)}" ${attr} aria-label="${esc(aria)}">
+      ${getSpecIcon(p)}<div class="player-info"><span class="player-name">${esc(label(p))}</span></div><span class="stack-gap">${gapText}</span></button>`;
+  return `<div class="player-slot preferred-slot preferred-stack preferred-fan${preferredColorClass(preference.class)}" ${attrs}>
+    ${card(preference, 'Best', 'data-stack-close aria-expanded="true"', 'Suggested ' + label(preference) + ', best pick. Fold the options')}
+    ${alts.map((a, i) => card(a, suggestionGapLabel(a.gap), `data-stack-pick="${i}"`, 'Use ' + label(a) + (suggestionGapLabel(a.gap) ? ', ' + suggestionGapLabel(a.gap) + ' behind the best pick' : ''))).join('')}
+    <button type="button" class="stack-other" data-stack-other>Other spec...</button></div>`;
+}
+
 function renderGroups() {
   ChangeLog.forPlan(State.planId); // before any card reads a highlight: another plan's log never paints this one
   const focusedSlot = capturePlayerSlotFocus();
@@ -739,6 +777,10 @@ function renderGroups() {
         slotsHTML += seatedSlotHTML(players[si], gi, si);
       } else if (PreferredSlots.forGroup(gi)[si - players.length]) {
         const preference = PreferredSlots.forGroup(gi)[si - players.length];
+        if (preference.auto && preference.alts?.length) {
+          slotsHTML += suggestionStackHTML(preference, gi, si, SuggestionStack.isOpen(gi, si));
+          continue;
+        }
         const specLine = preference.auto ? 'Suggested by Optimize' : 'Requested, awaiting sign-up';
         slotsHTML += `<div class="player-slot preferred-slot${preferredColorClass(preference.class)}" role="button" tabindex="0" data-group="${gi}" data-slot="${si}">
           ${getSpecIcon(preference)}<div class="player-info"><span class="player-name">${esc(preference.spec + ' ' + RosterEdit.ClassLabel(preference.class))}</span><span class="player-spec" title="${specLine}">${specLine}</span></div><span class="preferred-badge">${preference.auto ? 'SUGGESTED' : 'REQUESTED'}</span></div>`;
@@ -2778,14 +2820,43 @@ function activateSlotOnKey(e) {
   document.getElementById('groups-container').addEventListener('keydown', activateSlotOnKey);
   document.getElementById('groups-container').addEventListener('click', e => {
     if (e.target.closest('.buff-icon')) return;
-    const slot = e.target.closest('.player-slot');
+    let slot = e.target.closest('.player-slot');
     if (!slot) return;
     const gi = parseInt(slot.dataset.group);
     const si = parseInt(slot.dataset.slot);
     if (isNaN(gi)) return;
+    // Clicking anything but the fanned stack folds it first; the slot is then looked up again in the fresh markup.
+    if (SuggestionStack.open && !e.target.closest('.preferred-fan')) {
+      SuggestionStack.set(null);
+      slot = document.querySelector(`#groups-container .player-slot[data-group="${gi}"][data-slot="${si}"]`) || slot;
+    }
     const player = (State.groups[gi] || [])[si];
+    const preferenceIndex = si - (State.groups[gi] || []).length;
+    if (!player && slot.classList.contains('preferred-stack')) {
+      const preference = PreferredSlots.forGroup(gi)[preferenceIndex];
+      const control = e.target.closest('[data-stack-open], [data-stack-close], [data-stack-pick], [data-stack-other]');
+      if (!preference || !control) return;
+      if (control.hasAttribute('data-stack-open')) SuggestionStack.set(gi, si);
+      else if (control.hasAttribute('data-stack-close')) SuggestionStack.set(null);
+      else if (control.hasAttribute('data-stack-pick')) {
+        const alt = (preference.alts || [])[Number(control.dataset.stackPick)];
+        SuggestionStack.open = null;
+        if (alt && PreferredSlots.add(gi, alt.class, alt.spec, preference)) { commit(); showToast(`Requested ${alt.spec} ${RosterEdit.ClassLabel(alt.class)}`); }
+        else commit();
+      } else { SuggestionStack.open = null; commit(); showPlayerEditor(slot, { groupIdx: gi, preferenceIndex }); }
+      return;
+    }
     if (player) showPlayerEditor(slot, { uid: player.uid });
-    else showPlayerEditor(slot, { groupIdx: gi, preferenceIndex: si - (State.groups[gi] || []).length });
+    else showPlayerEditor(slot, { groupIdx: gi, preferenceIndex });
+  });
+
+  // One stack open at a time: a click outside the groups or Escape folds it. A target the groups handler just
+  // re-rendered away is detached (closest() finds nothing), so it is no outside click.
+  document.addEventListener('click', e => {
+    if (SuggestionStack.open && e.target.isConnected && !e.target.closest('#groups-container')) SuggestionStack.set(null);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && SuggestionStack.open) SuggestionStack.set(null);
   });
 
   document.getElementById('bench-section').addEventListener('click', e => {

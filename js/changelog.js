@@ -3,8 +3,12 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.4.3';
+const APP_VERSION = '4.4.4';
 const CHANGELOG = [
+  { version: '4.4.4', date: '2026-10-17', title: 'Open slots suggest the top 3 specs', changes: [
+    'A suggested Open slot now shows the two next-best specs stacked behind the top pick. Click it to see all three and how far behind each runner-up is (for example -3%).',
+    'Click a runner-up to make the slot that spec; it becomes a Requested slot that Optimize keeps. "Other spec..." still lets you pick any class and spec.',
+  ] },
   { version: '4.4.3', date: '2026-10-16', title: 'WoW Forever beta data refresh (Oct 16 notes)', changes: [
     'Forever: Battle Shout, Trueshot Aura, Moonkin Aura, Leader of the Pack and the Windfury, Grace of Air and Strength of Earth totems are now raid-wide, so they reach every group and no longer decide where a player sits.',
     'Forever: Moonkin Aura buffs spell crit only (casters and healers) and Leader of the Pack melee and ranged crit only. They no longer exclude each other; stacking is inferred, not confirmed by Blizzard.',

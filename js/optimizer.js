@@ -234,7 +234,7 @@ const Optimizer = {
       const seats = raid ? Math.min(raid.size, State.groups.length * RosterEdit.MAX_GROUP_SIZE) : 0;
       if (State.groups.flat().length + this._sizeBenchedPlayers().length + State.preferredSlots.length < seats) {
         this._optimizeSeats(true);
-        State.preferredSlots.push(...OpenSlots.choose().map(p => ({ group: -1, class: p.class, spec: p.spec, auto: true })));
+        State.preferredSlots.push(...OpenSlots.choose().map(p => ({ group: -1, class: p.class, spec: p.spec, auto: true, ...(p.alts.length ? { alts: p.alts } : {}) })));
       }
       this._optimizeSeats();
     });
@@ -1935,6 +1935,8 @@ const SCHOOL_CASTERS = {
 // manual once edited. Every Open slot, manual or auto, is then seated by the
 // full layout like a real player (Optimizer._optimizeSeats).
 const OpenSlots = {
+  ALTS_MAX: 2,
+
   // Classes the raid can bring: under a faction lock (Classic) no Paladin for
   // Horde or Shaman for Alliance, same as the Random roster's list.
   candidates() {
@@ -2013,6 +2015,22 @@ const OpenSlots = {
     return member.role === 'melee_dps' || member.role === 'ranged_dps' || member.role === 'tank';
   },
 
+  // The next ALTS_MAX distinct class+spec picks behind the winner of one seat, from the same pool and the same
+  // gain choose() ranked it on. gap = how far below the winner, in whole percent of the winner's gain (6 = "-6%").
+  // A winner whose gain is <= 0 has no sensible percentage, so gap is null and the UI shows no number.
+  _runnerUps(best) {
+    const key = c => c.class + '|' + c.spec;
+    const seen = new Set([key(best.candidate)]);
+    const alts = [];
+    for (const { candidate, gain } of best.ranked) {
+      if (alts.length >= this.ALTS_MAX) break;
+      if (seen.has(key(candidate))) continue;
+      seen.add(key(candidate));
+      alts.push({ class: candidate.class, spec: candidate.spec, gap: best.gain > 0 ? Math.max(0, Math.round((best.gain - gain) / best.gain * 100)) : null });
+    }
+    return alts;
+  },
+
   // The specs to suggest for the raid's empty seats: tank/healer floors first,
   // then whatever adds the most (party-buff gain in its group + _raidValue),
   // one at a time so each pick sees the last. A pick is priced in a group
@@ -2020,7 +2038,7 @@ const OpenSlots = {
   // seat elsewhere, on a scratch board that never grows past the party size.
   // That only prices the spec: where the slot sits is decided by the full
   // layout optimize() runs next. A seat no spec fits by convention still
-  // gets the best spec regardless. Returns picks as { class, spec }.
+  // gets the best spec regardless. Returns picks as { class, spec, alts } (alts: see _runnerUps).
   choose() {
     if (!GameVersions[State.gameVersion].modeled) return [];
     const raid = Config.Raids[State.selectedRaid];
@@ -2069,8 +2087,10 @@ const OpenSlots = {
       const rooms = board.map((g, gi) => g.length >= max ? roomIn(gi) : null);
       const bestPick = (conventional) => {
         let best = null;
+        const ranked = [];
         for (const candidate of pool) {
           const raidValue = this._raidValue(candidate, board.flat(), mode);
+          let own = null; // this candidate at its best group: what the runner-ups are ranked on
           for (let gi = 0; gi < board.length; gi++) {
             if (conventional && !fits(candidate, gi)) continue;
             const room = board[gi].length >= max ? rooms[gi] : null;
@@ -2078,8 +2098,12 @@ const OpenSlots = {
             const base = room ? room.without : board[gi];
             const gain = scoreWith(gi, [...base, candidate]) - scoreWith(gi, base) - (room ? room.cost : 0) + raidValue;
             if (!best || gain > best.gain) best = { candidate, gi, room, gain };
+            if (!own || gain > own.gain) own = { candidate, gain };
           }
+          if (own) ranked.push(own);
         }
+        // Stable sort: on a tie the earlier candidate stays first, as the winner above does.
+        if (best) best.ranked = ranked.sort((a, b) => b.gain - a.gain);
         return best;
       };
       const best = bestPick(true) || bestPick(false);
@@ -2090,7 +2114,7 @@ const OpenSlots = {
         board[room.gj].push(room.m);
       }
       board[gi].push(this.standIn(candidate));
-      picks.push({ class: candidate.class, spec: candidate.spec });
+      picks.push({ class: candidate.class, spec: candidate.spec, alts: this._runnerUps(best) });
     }
     return picks;
   },
