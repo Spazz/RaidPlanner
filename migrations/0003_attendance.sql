@@ -43,11 +43,12 @@ CREATE TABLE raids (
   open_flags     INTEGER NOT NULL DEFAULT 0,      -- undecided flagged rows + unmatched names; maintained by recompute
   policy_fp      TEXT NOT NULL DEFAULT '',        -- fingerprint of the consolidation rules used; '' = needs recalculating
   computed_at    INTEGER,
-  version        INTEGER NOT NULL DEFAULT 1,
+  version        INTEGER NOT NULL DEFAULT 1,      -- bumped by EVERY input write (event, reports, plan, manual, decisions, unmatched, other raids of the date); recompute only writes when it is unchanged
   created_by     TEXT REFERENCES users(id) ON DELETE SET NULL,
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL,
   UNIQUE (guild_id, id),
+  UNIQUE (guild_id, team_id, id),                  -- target of attendance's FK: a row's team is its raid's team
   CHECK (log_mode = 'log' OR manual_reason IS NOT NULL),
   FOREIGN KEY (guild_id, team_id) REFERENCES teams(guild_id, id) ON DELETE RESTRICT
 );
@@ -56,14 +57,15 @@ CREATE UNIQUE INDEX raids_event ON raids(guild_id, event_id) WHERE event_id IS N
 CREATE INDEX raids_flags ON raids(team_id) WHERE open_flags > 0;
 
 CREATE TABLE raid_reports (                        -- which WCL reports are merged; no report content
-  raid_id     TEXT NOT NULL REFERENCES raids(id) ON DELETE CASCADE,
+  raid_id     TEXT NOT NULL,
   guild_id    TEXT NOT NULL,
   code        TEXT NOT NULL CHECK (length(code) = 16 AND code NOT GLOB '*[^A-Za-z0-9]*'),
   flavour     TEXT NOT NULL CHECK (flavour IN ('www', 'classic', 'fresh')),
   started_at  INTEGER NOT NULL, ended_at INTEGER,
   owner       TEXT CHECK (owner IS NULL OR length(owner) <= 40),      -- uploader name, for the backfill filter
   synced_at   INTEGER NOT NULL,
-  PRIMARY KEY (raid_id, code)
+  PRIMARY KEY (raid_id, code),
+  FOREIGN KEY (guild_id, raid_id) REFERENCES raids(guild_id, id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX raid_reports_code ON raid_reports(guild_id, code);                 -- a report backs one raid
 
@@ -91,13 +93,14 @@ CREATE TABLE raid_presence (                       -- the character was in this 
   realm      TEXT,
   realm_key  TEXT NOT NULL DEFAULT '',
   class      TEXT CHECK (class IS NULL OR class IN ('WARRIOR','PALADIN','HUNTER','ROGUE','PRIEST','SHAMAN','MAGE','WARLOCK','DRUID')),
-  PRIMARY KEY (pull_id, name_key, realm_key)
+  PRIMARY KEY (pull_id, name_key, realm_key),
+  FOREIGN KEY (guild_id, raid_id) REFERENCES raids(guild_id, id) ON DELETE CASCADE
 );
 CREATE INDEX raid_presence_raid ON raid_presence(raid_id);
 CREATE INDEX raid_presence_name ON raid_presence(guild_id, name_key);      -- retro-matching after an Alt link
 
 CREATE TABLE raid_signups (
-  raid_id          TEXT NOT NULL REFERENCES raids(id) ON DELETE CASCADE,
+  raid_id          TEXT NOT NULL,
   source           TEXT NOT NULL DEFAULT 'raid_helper' CHECK (source IN ('raid_helper', 'plan', 'raidsmith')),   -- 'raidsmith' reserved, not built
   signup_id        INTEGER NOT NULL,              -- Raid-Helper sign-up id; plan rows: ordinal in the plan
   discord_user_id  TEXT,                          -- NULL after Delete my data
@@ -108,6 +111,7 @@ CREATE TABLE raid_signups (
   guild_id         TEXT NOT NULL,
   player_id        TEXT,                          -- Raid-Helper: from the Discord ID at ingest, survives the scrub; plan: from the character match
   PRIMARY KEY (raid_id, source, signup_id),
+  FOREIGN KEY (guild_id, raid_id) REFERENCES raids(guild_id, id) ON DELETE CASCADE,
   FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE SET NULL   -- plain FK: SQLite has no column-list SET NULL and guild_id must survive; the guild match is the triggers below
 );
 CREATE INDEX raid_signups_discord ON raid_signups(discord_user_id) WHERE discord_user_id IS NOT NULL;
@@ -121,10 +125,11 @@ WHEN NEW.player_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM players WHERE id = 
 BEGIN SELECT RAISE(ABORT, 'signup_person_guild'); END;
 
 CREATE TABLE raid_manual (                         -- who was present on a manual raid (log_mode = 'manual')
-  raid_id    TEXT NOT NULL REFERENCES raids(id) ON DELETE CASCADE,
+  raid_id    TEXT NOT NULL,
   guild_id   TEXT NOT NULL,
   player_id  TEXT NOT NULL,
   PRIMARY KEY (raid_id, player_id),
+  FOREIGN KEY (guild_id, raid_id) REFERENCES raids(guild_id, id) ON DELETE CASCADE,
   FOREIGN KEY (guild_id, player_id) REFERENCES players(guild_id, id) ON DELETE CASCADE
 );
 
@@ -136,8 +141,8 @@ CREATE TABLE raid_plan (                           -- names + group sent by the 
   PRIMARY KEY (raid_id, name_key)
 );
 
-CREATE TABLE attendance (                          -- the consolidated result; recomputed, decisions kept
-  raid_id           TEXT NOT NULL REFERENCES raids(id) ON DELETE CASCADE,
+CREATE TABLE attendance (                          -- the consolidated result; recomputed from scratch (officer decisions live in attendance_decisions)
+  raid_id           TEXT NOT NULL,
   guild_id          TEXT NOT NULL,
   team_id           TEXT NOT NULL,                 -- the raid's team (team queries without a join)
   player_id         TEXT NOT NULL,
@@ -152,15 +157,12 @@ CREATE TABLE attendance (                          -- the consolidated result; r
   flags             TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(flags)),    -- sorted types, e.g. ["left_early"]
   credit_team_id    TEXT,                          -- host-side fill_in row only: the team that receives the credit
   needs_review      INTEGER NOT NULL DEFAULT 0 CHECK (needs_review IN (0, 1)),
-  decided_outcome   TEXT, decided_credit REAL, decided_credit_id TEXT,
-  decided_reason    TEXT CHECK (decided_reason IS NULL OR length(decided_reason) BETWEEN 3 AND 200),
-  decided_flags     TEXT,                          -- the flags the decision answered; differs from flags -> reopened
-  decided_by        TEXT REFERENCES users(id) ON DELETE SET NULL,
-  decided_at        INTEGER,
   PRIMARY KEY (raid_id, player_id),
+  FOREIGN KEY (guild_id, team_id, raid_id) REFERENCES raids(guild_id, team_id, id) ON DELETE CASCADE,   -- the row's team is the raid's team
   FOREIGN KEY (guild_id, player_id) REFERENCES players(guild_id, id) ON DELETE CASCADE
 );
 CREATE INDEX attendance_player ON attendance(player_id);
+CREATE INDEX attendance_team_raid ON attendance(team_id, raid_id);
 CREATE INDEX attendance_credit_team ON attendance(credit_team_id) WHERE credit_team_id IS NOT NULL;
 CREATE INDEX attendance_review ON attendance(raid_id) WHERE needs_review = 1;
 
@@ -170,4 +172,26 @@ CREATE TABLE attendance_guests (                   -- characters an officer mark
   name       TEXT NOT NULL,
   created_by TEXT REFERENCES users(id) ON DELETE SET NULL, created_at INTEGER NOT NULL,
   PRIMARY KEY (guild_id, name_key, realm_key)
+);
+
+CREATE TABLE attendance_decisions (                -- officer decisions: input, never written or deleted by a recompute
+  raid_id     TEXT NOT NULL,
+  player_id   TEXT NOT NULL,
+  guild_id    TEXT NOT NULL,
+  outcome     TEXT NOT NULL CHECK (outcome IN ('present','bench','missed','missed_notice','late','left_early','late_left','fill_in','no_signup','tentative')),
+  credit      REAL CHECK (credit IS NULL OR (credit >= 0 AND credit <= 1)),
+  credit_id   TEXT,
+  reason      TEXT NOT NULL CHECK (length(reason) BETWEEN 3 AND 200),
+  flags       TEXT NOT NULL CHECK (json_valid(flags)),   -- sorted JSON of the flags the decision answered; a row with other flags reopens, the decision stays and reapplies when the flags return
+  decided_by  TEXT REFERENCES users(id) ON DELETE SET NULL,
+  decided_at  INTEGER NOT NULL,
+  PRIMARY KEY (raid_id, player_id),
+  FOREIGN KEY (guild_id, raid_id) REFERENCES raids(guild_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (guild_id, player_id) REFERENCES players(guild_id, id) ON DELETE CASCADE
+);
+
+-- A recompute writes its results in one db.batch whose first statement inserts into this table when any raid of the date
+-- changed since the recompute read it (or one appeared or went). The CHECK fails, the batch rolls back, nothing is written.
+CREATE TABLE attendance_write_guard (
+  ok INTEGER NOT NULL CONSTRAINT attendance_stale CHECK (ok = 0)
 );

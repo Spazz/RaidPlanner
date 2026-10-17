@@ -3,7 +3,9 @@
 import { HttpError, cleanText, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { localDate } from '../attendance-calendar.js';
-import { loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid } from '../attendance-store.js';
+import {
+  bumpDayStatement, loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid,
+} from '../attendance-store.js';
 import { loadRaidDetail, raidState, isStale } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
@@ -24,6 +26,7 @@ const PRESENCE_CHUNK = 400;
 const PAGE_SIZE = 50;
 const WCL_GLOBAL_WINDOW_MS = 10 * 60 * 1000;
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
+const EARLIEST_RAID_DATE = '2004-11-23'; // World of Warcraft's release: nothing was raided before it
 
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
 const notFound = () => new HttpError(404, 'not_found', 'That raid does not exist.');
@@ -68,10 +71,14 @@ function uniqueKind(error) {
   return 'other';
 }
 
+// Any UNIQUE failure that is not one of the three named ones: a plain 409, never mislabelled as a report conflict.
+const otherConflict = () => new HttpError(409, 'conflict', 'That conflicts with something already saved. Reload and try again.');
+
 async function conflictFor(ctx, guild, kind, { teamId, raidOn, eventId, code }) {
   let row = null;
   if (kind === 'raid') row = await ctx.db.prepare('SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND raid_on = ?').bind(guild.id, teamId, raidOn).first();
   if (kind === 'event') row = await ctx.db.prepare('SELECT id FROM raids WHERE guild_id = ? AND event_id = ?').bind(guild.id, eventId).first();
+  if (kind === 'other') return otherConflict();
   if (kind === 'report') row = await ctx.db.prepare('SELECT raid_id AS id FROM raid_reports WHERE guild_id = ? AND code = ?').bind(guild.id, code).first();
   const raidId = row ? row.id : null;
   if (kind === 'raid') return new HttpError(409, 'raid_exists', 'That team already has a raid on that date.', { raidId });
@@ -197,6 +204,13 @@ async function fetchReport(ctx, flavour, code) {
   return report;
 }
 
+// A Raid-Helper event that has not started has nothing to take attendance from yet.
+function requireEventStarted(ctx, event, field) {
+  if (event.startTime && event.startTime > ctx.now()) {
+    throw new HttpError(400, 'raid_in_future', 'That event has not started yet. Add it once the raid has happened.', { field });
+  }
+}
+
 const noonUtc = (date) => Date.parse(`${date}T12:00:00Z`);
 
 // ---------------------------------------------------------------------------
@@ -265,6 +279,7 @@ export async function getRaid(ctx) {
 function readOptionalDate(value) {
   if (value === undefined || value === null) return null;
   if (!isRealDate(value)) throw bad('raidOn needs a date.', 'raidOn');
+  if (value < EARLIEST_RAID_DATE) throw bad('That date is before World of Warcraft existed.', 'raidOn');
   return value;
 }
 
@@ -290,12 +305,14 @@ export async function createRaid(ctx) {
     if (event.serverId !== guild.discord_server_id && body.acceptOtherServer !== true) {
       throw new HttpError(409, 'other_server', 'That event was posted in a different Discord server.');
     }
+    requireEventStarted(ctx, event, 'eventSource');
   }
   const report = parsedReport ? await fetchReport(ctx, parsedReport.flavour, parsedReport.code) : null;
 
   const anchorMs = event && event.startTime ? event.startTime : (report ? report.pulls[0].startedAt : null);
   const raidOn = anchorMs !== null ? localDate(anchorMs, guild.time_zone) : raidOnInput;
   if (!raidOn) throw bad('Say which date this raid was on.', 'raidOn');
+  if (raidOn < EARLIEST_RAID_DATE) throw bad('That date is before World of Warcraft existed.', 'raidOn');
   const startsAt = anchorMs !== null ? anchorMs : noonUtc(raidOn);
   const raidId = newId('r', ctx.randomBytes);
   const now = ctx.now();
@@ -321,9 +338,9 @@ export async function createRaid(ctx) {
     statements.push(...built.statements);
     reportCount = 1;
   }
-  // A new raid changes the fill-in pass of the other teams' raids on the same date: they show "Recalculate".
+  // A new raid changes the fill-in pass of the other teams' raids on the same date: they show "Recalculate" (only when the raid went in).
   statements.push(
-    db.prepare("UPDATE raids SET policy_fp = '' WHERE guild_id = ? AND raid_on = ? AND id != ? AND policy_fp != ''").bind(guild.id, raidOn, raidId),
+    bumpDayStatement(db, guild.id, raidOn, raidId, guard),
     raidAudit(ctx, guildContext, 'raid.create', raidId, null, { teamId, raidOn, event: !!event, reports: reportCount, signups: eventCount }, guard),
   );
   let results;
@@ -354,6 +371,7 @@ export async function putEvent(ctx) {
   if (event.serverId !== guild.discord_server_id && body.acceptOtherServer !== true) {
     throw new HttpError(409, 'other_server', 'That event was posted in a different Discord server.');
   }
+  requireEventStarted(ctx, event, 'source');
   const now = ctx.now();
   const anchorless = raid.event_synced === null && raid.reports === 0;
   const guard = raidExists(raid.id);
@@ -362,14 +380,16 @@ export async function putEvent(ctx) {
     await db.batch([
       db.prepare(
         `UPDATE raids SET event_id = ?, event_title = ?, event_server = ?, event_synced = ?,
-                starts_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE starts_at END, updated_at = ?, version = version + 1
+                starts_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE starts_at END, updated_at = ?, version = version + 1, policy_fp = ''
           WHERE id = ? AND guild_id = ?`,
       ).bind(eventId, event.title, event.serverId, now, anchorless ? 1 : 0, event.startTime, event.startTime, now, raid.id, guild.id),
       ...built.statements,
       raidAudit(ctx, guildContext, 'raid.event', raid.id, { event: raid.event_id !== null }, { eventId, signups: built.count }, guard),
     ]);
   } catch (error) {
-    if (uniqueKind(error) === 'event') throw await conflictFor(ctx, guild, 'event', { eventId });
+    const kind = uniqueKind(error);
+    if (kind === 'event') throw await conflictFor(ctx, guild, 'event', { eventId });
+    if (kind) throw otherConflict();
     throw error;
   }
   return recomputeAndReply(ctx, guildContext, raid.id);
@@ -383,7 +403,7 @@ export async function deleteEvent(ctx) {
     const now = ctx.now();
     await db.batch([
       db.prepare(
-        `UPDATE raids SET event_id = NULL, event_title = NULL, event_server = NULL, event_synced = NULL, updated_at = ?, version = version + 1
+        `UPDATE raids SET event_id = NULL, event_title = NULL, event_server = NULL, event_synced = NULL, updated_at = ?, version = version + 1, policy_fp = ''
           WHERE id = ? AND guild_id = ?`,
       ).bind(now, raid.id, guildContext.guild.id),
       db.prepare("DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper'").bind(raid.id),
@@ -423,19 +443,25 @@ export async function putReport(ctx) {
     }
   }
   const now = ctx.now();
-  const guard = raidExists(raid.id);
+  const guard = { sql: "EXISTS (SELECT 1 FROM raids WHERE id = ? AND log_mode = 'log')", params: [raid.id] };
   const built = reportStatements(db, guild, raid.id, report, flavour, code, now, guard);
   try {
     await db.batch([
       ...built.statements,
       db.prepare(
-        `UPDATE raids SET zone = COALESCE(zone, ?), starts_at = CASE WHEN ? = 1 THEN ? ELSE starts_at END, updated_at = ?, version = version + 1
-          WHERE id = ? AND guild_id = ?`,
+        `UPDATE raids SET zone = COALESCE(zone, ?), starts_at = CASE WHEN ? = 1 THEN ? ELSE starts_at END, updated_at = ?, version = version + 1, policy_fp = ''
+          WHERE id = ? AND guild_id = ? AND log_mode = 'log'`,
       ).bind(report.zone, anchored ? 0 : 1, first, now, raid.id, guild.id),
       raidAudit(ctx, guildContext, 'raid.report', raid.id, { refreshed: refreshing }, { code, flavour, pulls: built.pulls }, guard),
     ]);
   } catch (error) {
-    if (uniqueKind(error) === 'report') throw await conflictFor(ctx, guild, 'report', { code });
+    const kind = uniqueKind(error);
+    if (kind === 'report') throw await conflictFor(ctx, guild, 'report', { code });
+    if (kind) throw otherConflict();
+    // The raid went manual (or was deleted) between the read and the write: the guarded report row was skipped.
+    if (/FOREIGN KEY constraint failed/i.test(errorText(error))) {
+      throw new HttpError(409, 'raid_is_manual', 'This raid changed while the report was loading. Reload and try again.');
+    }
     throw error;
   }
   return recomputeAndReply(ctx, guildContext, raid.id);
@@ -447,6 +473,8 @@ export async function deleteReport(ctx) {
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const results = await db.batch([
     db.prepare('DELETE FROM raid_reports WHERE raid_id = ? AND code = ? RETURNING code').bind(raid.id, ctx.params.code),
+    db.prepare("UPDATE raids SET policy_fp = '', version = version + 1, updated_at = ? WHERE id = ? AND guild_id = ? AND changes() = 1")
+      .bind(ctx.now(), raid.id, guildContext.guild.id),
     raidAudit(ctx, guildContext, 'raid.report', raid.id, { code: ctx.params.code }, { removed: true }, CHANGED_ONE),
   ]);
   if (results[0].results.length !== 1) throw new HttpError(404, 'not_found', 'That report is not on this raid.');
@@ -489,7 +517,7 @@ export async function putPlan(ctx) {
       `INSERT INTO raid_plan (raid_id, name, name_key, group_number)
        SELECT ?, json_extract(value, '$.name'), json_extract(value, '$.nameKey'), json_extract(value, '$.group') FROM json_each(?) WHERE ${guard.sql}`,
     ).bind(raid.id, JSON.stringify(rows), ...guard.params),
-    db.prepare('UPDATE raids SET plan_label = ?, plan_synced = ?, updated_at = ?, version = version + 1 WHERE id = ? AND guild_id = ?')
+    db.prepare('UPDATE raids SET plan_label = ?, plan_synced = ?, updated_at = ?, version = version + 1, policy_fp = \'\' WHERE id = ? AND guild_id = ?')
       .bind(label, now, now, raid.id, guildContext.guild.id),
     raidAudit(ctx, guildContext, 'raid.plan', raid.id, { plan: raid.plan_synced !== null }, { players: rows.length }),
   ]);
@@ -504,7 +532,7 @@ export async function deletePlan(ctx) {
     const now = ctx.now();
     await db.batch([
       db.prepare('DELETE FROM raid_plan WHERE raid_id = ?').bind(raid.id),
-      db.prepare('UPDATE raids SET plan_label = NULL, plan_synced = NULL, updated_at = ?, version = version + 1 WHERE id = ? AND guild_id = ?')
+      db.prepare('UPDATE raids SET plan_label = NULL, plan_synced = NULL, updated_at = ?, version = version + 1, policy_fp = \'\' WHERE id = ? AND guild_id = ?')
         .bind(now, raid.id, guildContext.guild.id),
       raidAudit(ctx, guildContext, 'raid.plan', raid.id, { plan: true }, { plan: false }),
     ]);
@@ -533,7 +561,7 @@ export async function putManual(ctx) {
   const now = ctx.now();
   const results = await db.batch([
     db.prepare(
-      `UPDATE raids SET log_mode = 'manual', manual_reason = ?, manual_by = ?, manual_at = ?, updated_at = ?, version = version + 1
+      `UPDATE raids SET log_mode = 'manual', manual_reason = ?, manual_by = ?, manual_at = ?, updated_at = ?, version = version + 1, policy_fp = ''
         WHERE id = ? AND guild_id = ? AND NOT EXISTS (SELECT 1 FROM raid_reports WHERE raid_id = raids.id)`,
     ).bind(reason, ctx.session.user.id, now, now, raid.id, guild.id),
     db.prepare('DELETE FROM raid_manual WHERE raid_id = ?').bind(raid.id),
@@ -556,7 +584,7 @@ export async function deleteManual(ctx) {
   if (raid.log_mode !== 'manual') throw new HttpError(409, 'conflict', 'This raid has no manual attendance.');
   await db.batch([
     db.prepare(
-      `UPDATE raids SET log_mode = 'log', manual_reason = NULL, manual_by = NULL, manual_at = NULL, updated_at = ?, version = version + 1
+      `UPDATE raids SET log_mode = 'log', manual_reason = NULL, manual_by = NULL, manual_at = NULL, updated_at = ?, version = version + 1, policy_fp = ''
         WHERE id = ? AND guild_id = ?`,
     ).bind(ctx.now(), raid.id, guildContext.guild.id),
     db.prepare('DELETE FROM raid_manual WHERE raid_id = ?').bind(raid.id),
@@ -580,10 +608,12 @@ export async function deleteRaid(ctx) {
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const results = await db.batch([
     raidAudit(ctx, guildContext, 'raid.delete', raid.id, { teamId: raid.team_id, raidOn: raid.raid_on, reports: raid.reports }, null, raidExists(raid.id)),
-    // Raids of other teams on the same date lose a host or a home raid: they show "Recalculate".
-    db.prepare("UPDATE raids SET policy_fp = '' WHERE guild_id = ? AND raid_on = ? AND id != ? AND policy_fp != ''").bind(guildContext.guild.id, raid.raid_on, raid.id),
+    // Raids of other teams on the same date lose a host or a home raid: stale, re-versioned, and recalculated below.
+    bumpDayStatement(db, guildContext.guild.id, raid.raid_on, raid.id),
     db.prepare('DELETE FROM raids WHERE id = ? AND guild_id = ? RETURNING id').bind(raid.id, guildContext.guild.id),
   ]);
   if (results[2].results.length !== 1) throw notFound();
+  const sibling = await db.prepare('SELECT id FROM raids WHERE guild_id = ? AND raid_on = ? ORDER BY id LIMIT 1').bind(guildContext.guild.id, raid.raid_on).first();
+  if (sibling) await recomputeRaid(ctx, guildContext.guild, sibling.id);
   return jsonResponse({ deleted: true, attendanceFlags: await loadAttendanceFlags(db, guildContext) });
 }

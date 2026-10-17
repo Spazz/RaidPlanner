@@ -213,6 +213,20 @@ check('policy: validateOverride rejects unknown keys at every depth, wrong types
   assert.equal(policy.validateOverride({}, 'region').ok, false, 'an unknown scope is refused');
 });
 
+check('policy: credit labels follow the cleanText rule (trimmed, 1 to 12 characters, no control characters)', async () => {
+  const policy = await load('worker/attendance-policy.js');
+  const labels = (...texts) => ({ credit: { values: texts.map((label, index) => ({ id: ['aaa', 'bbb', 'ccc'][index] || 'ddd', label, value: index === 0 ? 1 : 0 })) } });
+  const ok = (...texts) => policy.validateOverride(labels(...texts)).ok;
+  assert.equal(ok('Full', '  Half  '), true, 'surrounding spaces do not count');
+  assert.equal(ok('Full', '  abcdefghijkl  '), true, '12 characters once trimmed');
+  assert.equal(ok('Full', 'abcdefghijklm'), false);
+  assert.equal(ok('Full', '   '), false);
+  assert.equal(ok('Full', ''), false);
+  assert.equal(ok('Full', 'Ha\u0007lf'), false, 'a control character');
+  assert.equal(ok('Full', 'Ha\nlf'), false, 'a line break');
+  assert.equal(ok('Full', 5), false);
+});
+
 check('policy: reserved detection modes, the window rule, resetDay scope and the credit list limits', async () => {
   const { policy } = await modules();
   for (const mode of ['kills', 'share', 'minutes']) {

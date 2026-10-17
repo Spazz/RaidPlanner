@@ -170,7 +170,9 @@ check('reports and pulls: 16-character codes, flavours, a code backs one raid pe
   for (const bad of ['SHORT', 'AAAAAAAAAAAAAAAAA', 'AAAAAAAAAAAAAAA-', 'AAAAAAAAAAAAAA A']) fails(db, reportSql('r1', bad), /CHECK constraint failed/);
   fails(db, reportSql('r1', CODE_B, 'g1', 'retail'), /CHECK constraint failed/);
   exec(db, reportSql('r1', CODE_B, 'g1', 'classic'));
-  exec(db, reportSql('r2', 'CCCCCCCCCCCCCCCC', 'g2')); // the unique code index is per guild (raid r2 is in g1; the row only carries a guild_id)
+  fails(db, reportSql('r2', 'CCCCCCCCCCCCCCCC', 'g2'), /FOREIGN KEY constraint failed/); // the row's guild must be the raid's guild
+  exec(db, raidSql('r9', { guild: 'g2', team: 'g2_t1' }));
+  exec(db, reportSql('r9', CODE_A, 'g2')); // the unique code index is per guild: g2 may hold a report with g1's code
   exec(db, pullSql('r1', CODE_A, 1, 1));
   exec(db, pullSql('r1', CODE_A, 2, 2));
   fails(db, pullSql('r1', CODE_A, 1), /UNIQUE constraint failed/);
@@ -278,15 +280,68 @@ check('attendance rows: outcome, credit, source and review CHECKs; one row per r
   fails(db, attendanceSql('r1', 'p2', 'present', "presence_source|'robot'"), /CHECK constraint failed/);
   fails(db, attendanceSql('r1', 'p2', 'present', 'needs_review|2'), /CHECK constraint failed/);
   fails(db, attendanceSql('r1', 'p2', 'present', "flags|'not json'"), /CHECK constraint failed/);
-  fails(db, attendanceSql('r1', 'p2', 'present', "decided_reason|'ab'"), /CHECK constraint failed/);
-  fails(db, attendanceSql('r1', 'p2', 'present', `decided_reason|'${'r'.repeat(201)}'`), /CHECK constraint failed/);
   fails(db, attendanceSql('r1', 'q1', 'present'), /FOREIGN KEY constraint failed/); // a person of another guild
-  exec(db, attendanceSql('r1', 'p2', 'present', "presence_source, flags, decided_reason|'officer', '[\"left_early\"]', 'Told us ahead'"));
+  exec(db, attendanceSql('r1', 'p2', 'present', "presence_source, flags|'officer', '[\"left_early\"]'"));
   assert.equal(count(db, 'attendance'), 2);
   exec(db, "DELETE FROM players WHERE id = 'p2'");
   assert.equal(count(db, 'attendance'), 1, 'deleting a person cascades their attendance');
   exec(db, "DELETE FROM raids WHERE id = 'r1'");
   assert.equal(count(db, 'attendance'), 0, 'deleting a raid cascades its rows');
+});
+
+check('attendance rows belong to their raid\'s guild AND team (composite FK), and the same goes for reports, presence, sign-ups and manual ticks', () => {
+  const db = createD1Fake();
+  seed(db);
+  exec(db, raidSql('r1'));
+  exec(db, raidSql('r2', { team: 'g1_t2' }));
+  exec(db, attendanceSql('r1', 'p1'));
+  fails(db, "INSERT INTO attendance (raid_id, guild_id, team_id, player_id, outcome) VALUES ('r1', 'g1', 'g1_t2', 'p2', 'present')", /FOREIGN KEY constraint failed/); // team B row on team A's raid
+  fails(db, "INSERT INTO attendance (raid_id, guild_id, team_id, player_id, outcome) VALUES ('r1', 'g2', 'g1_t1', 'p2', 'present')", /FOREIGN KEY constraint failed/);
+  fails(db, "INSERT INTO attendance (raid_id, guild_id, team_id, player_id, outcome) VALUES ('nope', 'g1', 'g1_t1', 'p2', 'present')", /FOREIGN KEY constraint failed/);
+  exec(db, "INSERT INTO attendance (raid_id, guild_id, team_id, player_id, outcome) VALUES ('r2', 'g1', 'g1_t2', 'p2', 'present')");
+  fails(db, "UPDATE attendance SET team_id = 'g1_t1' WHERE raid_id = 'r2'", /FOREIGN KEY constraint failed/);
+  exec(db, reportSql('r1', CODE_A));
+  fails(db, reportSql('r1', CODE_B, 'g2'), /FOREIGN KEY constraint failed/);
+  exec(db, pullSql('r1', CODE_A, 1, 1));
+  fails(db, "INSERT INTO raid_presence (pull_id, raid_id, guild_id, name, name_key) VALUES (1, 'r1', 'g2', 'Kajuk', 'kajuk')", /FOREIGN KEY constraint failed/);
+  fails(db, signupSql('r1', 'raid_helper', 1, { guild: 'g2' }), /FOREIGN KEY constraint failed/);
+  fails(db, "INSERT INTO raid_manual (raid_id, guild_id, player_id) VALUES ('r1', 'g2', 'q1')", /FOREIGN KEY constraint failed/);
+  assert.deepEqual(rows(db, "SELECT name FROM pragma_index_info('attendance_team_raid') ORDER BY seqno"), [{ name: 'team_id' }, { name: 'raid_id' }]);
+});
+
+check('attendance_decisions: one per raid and person, CHECKs, cascades from the raid and the person, and an attendance row delete never touches it', () => {
+  const db = createD1Fake();
+  seed(db);
+  exec(db, raidSql('r1'));
+  const decision = (player) => `INSERT INTO attendance_decisions (raid_id, player_id, guild_id, outcome, credit, credit_id, reason, flags, decided_at)
+    VALUES ('r1', '${player}', 'g1', 'late', 0.5, 'half', 'Ten minutes late', '["late"]', 5)`;
+  exec(db, decision('p1'));
+  fails(db, decision('p1'), /UNIQUE constraint failed/);
+  fails(db, decision('q1'), /FOREIGN KEY constraint failed/); // a person of another guild
+  fails(db, "INSERT INTO attendance_decisions (raid_id, player_id, guild_id, outcome, reason, flags, decided_at) VALUES ('r1', 'p2', 'g2', 'late', 'Ten minutes', '[]', 5)", /FOREIGN KEY constraint failed/);
+  fails(db, "INSERT INTO attendance_decisions (raid_id, player_id, guild_id, outcome, reason, flags, decided_at) VALUES ('nope', 'p2', 'g1', 'late', 'Ten minutes', '[]', 5)", /FOREIGN KEY constraint failed/);
+  fails(db, decision('p2').replace("'late', 0.5", "'sick', 0.5"), /CHECK constraint failed/);
+  fails(db, decision('p2').replace('0.5', '1.5'), /CHECK constraint failed/);
+  fails(db, decision('p2').replace("'Ten minutes late'", "'ab'"), /CHECK constraint failed/);
+  fails(db, decision('p2').replace("'Ten minutes late'", `'${'r'.repeat(201)}'`), /CHECK constraint failed/);
+  fails(db, decision('p2').replace("'[\"late\"]'", "'not json'"), /CHECK constraint failed/);
+  // The attendance row comes and goes; the decision stays.
+  exec(db, attendanceSql('r1', 'p1', 'late'));
+  exec(db, "DELETE FROM attendance WHERE raid_id = 'r1'");
+  assert.equal(count(db, 'attendance_decisions'), 1);
+  assert(!rows(db, "SELECT name FROM pragma_table_info('attendance')").some((column) => column.name.startsWith('decided_')), 'attendance has no decided_* columns');
+  exec(db, decision('p2'));
+  exec(db, "DELETE FROM players WHERE id = 'p2'");
+  assert.equal(count(db, 'attendance_decisions'), 1, 'a person delete takes their decisions');
+  exec(db, "DELETE FROM raids WHERE id = 'r1'");
+  assert.equal(count(db, 'attendance_decisions'), 0, 'a raid delete takes its decisions');
+});
+
+check('attendance_write_guard: an insert violates the attendance_stale CHECK, so a guarded batch rolls back', () => {
+  const db = createD1Fake();
+  fails(db, 'INSERT INTO attendance_write_guard (ok) SELECT 1', /CHECK constraint failed: attendance_stale/);
+  exec(db, 'INSERT INTO attendance_write_guard (ok) SELECT 1 WHERE 1 = 0');
+  assert.equal(count(db, 'attendance_write_guard'), 0);
 });
 
 check('guests: one row per name and realm key per guild, cascaded with the guild; a guild delete removes every attendance table', () => {
@@ -304,9 +359,10 @@ check('guests: one row per name and realm key per guild, cascaded with the guild
   exec(db, `INSERT INTO raid_presence (pull_id, raid_id, guild_id, name, name_key) VALUES (1, 'r1', 'g1', 'Kajuk', 'kajuk')`);
   exec(db, signupSql('r1', 'raid_helper', 1, { player: 'p1' }));
   exec(db, attendanceSql('r1', 'p1'));
+  exec(db, "INSERT INTO attendance_decisions (raid_id, player_id, guild_id, outcome, reason, flags, decided_at) VALUES ('r1', 'p1', 'g1', 'present', 'Was there', '[]', 1)");
   exec(db, "INSERT INTO attendance_policies (id, guild_id, team_id, policy, updated_at) VALUES ('ap1', 'g1', NULL, '{}', 1)");
   exec(db, "DELETE FROM guilds WHERE id = 'g1'");
-  for (const table of ['raids', 'raid_reports', 'raid_pulls', 'raid_presence', 'raid_signups', 'raid_manual', 'raid_plan', 'attendance', 'attendance_policies']) assert.equal(count(db, table), 0, table);
+  for (const table of ['raids', 'raid_reports', 'raid_pulls', 'raid_presence', 'raid_signups', 'raid_manual', 'raid_plan', 'attendance', 'attendance_decisions', 'attendance_policies']) assert.equal(count(db, table), 0, table);
   assert.deepEqual(rows(db, 'SELECT guild_id FROM attendance_guests'), [{ guild_id: 'g2' }]);
 });
 

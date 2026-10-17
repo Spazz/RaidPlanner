@@ -809,6 +809,7 @@ check('GET /roster: one row per person with a character on the team, the shown c
   assert.deepEqual(alphaList.json.people.map((p) => p.shown.name), ['Aldric', 'Charis'], 'Aldric is a Main on Alpha; P2 shows its first Alt on Alpha by name');
   assert.deepEqual(first.shown, { id: p1.characters[0].id, name: 'Aldric', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, role: 'dps', isMain: true });
   assert.deepEqual([first.status, first.trialFlag, first.altCount, first.signIn, first.isMe, first.main.team], ['trial', { kind: 'ends', days: 2 }, 1, 'signed_in', true, { id: alpha, name: 'Alpha' }]);
+  assert.deepEqual([first.version, second.version], [1, 1], 'list rows carry the person version (the same one the person record has)');
   assert.deepEqual(second.shown, { id: second.shown.id, name: 'Charis', class: 'ROGUE', mainSpec: null, offSpec: null, role: null, isMain: false });
   assert.deepEqual([second.main.name, second.main.class, second.main.team, second.altCount, second.signIn, second.isMe], ['Cassia', 'PRIEST', { id: bravo, name: 'Bravo' }, 3, 'not_yet', false]);
   assert.equal(JSON.stringify(alphaList.json).includes('nickname'), false);
