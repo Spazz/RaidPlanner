@@ -3,7 +3,8 @@
 // (link the character as a new Alt, or mark it a guest). GET /attendance/review?team= . Loot winners nobody on the roster
 // matches get a group per raid of their own ("Loot winners not on the roster"), with the same three actions; the review
 // reply carries them as lootUnmatched: [{ raid: { id, raidOn, zone }, items: [{ kind: 'unmatched', key, name, realm, class,
-// awards }] }] (empty unless the viewer has loot.edit on the team). A decision is
+// awards }] }] (empty unless the viewer has loot.edit on the team). A name whose class nobody knows makes the Link and Add dialogs ask
+// for it (a required select, sent as `class` with the unmatched action). A decision is
 // POST /raids/:rid/decisions with the flags the officer saw (expectedFlags): a 409 flags_changed reloads the data.
 (function (G) {
   'use strict';
@@ -97,7 +98,26 @@
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Save decision</button></div></form>' + undo;
   }
 
-  // people: the roster rows of the raid's team (GET /roster?team=); unm: the unmatched entry.
+  // A loot winner can come without a class (Gargul only guesses it, and the log may not hold the name): the character cannot be
+  // created without one, so these dialogs ask. Nothing is shown when the entry already carries a class. gd: the guild data (class list).
+  function classFieldHtml(u, gd) {
+    if (u.class) return '';
+    return '<div class="gs-field"><label class="gs-label" for="unm-class">Class (required)</label><select class="gs-input" id="unm-class" name="class" data-field="class" aria-describedby="unm-class-help">' +
+      G.ui.classOptionsHtml(G.ui.rosterOptions(gd), '', 'Pick a class') + '</select>' +
+      '<p class="gs-fine" id="unm-class-help">Neither the loot nor the log says which class ' + esc(u.name) + ' plays.</p>' +
+      '<p class="gs-field-error" id="dlg-err-class" role="alert" hidden></p></div>';
+  }
+
+  // The class the officer picked in a dialog that asks for one: { missing } when the select is there but empty, { value } otherwise
+  // (null when the dialog has no class field, because the entry's class is known).
+  function classChoice(form) {
+    const select = form.elements && form.elements['class'];
+    if (!select) return { missing: false, value: null };
+    const value = String(select.value || '');
+    return value ? { missing: false, value: value } : { missing: true, value: null };
+  }
+
+  // people: the roster rows of the raid's team (GET /roster?team=); unm: the unmatched entry; guildData: for the class list.
   function linkDialogHtml(opts) {
     const u = opts.unm;
     const people = Array.isArray(opts.people) ? opts.people : [];
@@ -111,6 +131,7 @@
     return '<form class="gs-dialog-form" data-submit="unm-link-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Link ' + esc(u.name) + ' to a person</h2>' +
       '<p class="gs-fine" id="dlg-help">' + esc(unmatchedEvidence(u)) + '. Pick the person this character belongs to; it is added to their record as an Alt, or as their Main.</p>' +
+      classFieldHtml(u, opts.guildData) +
       '<div class="gs-field"><label class="gs-label" for="unm-search">Search people</label><input class="gs-input" type="search" id="unm-search" data-input="unm-search" autocomplete="off"></div>' +
       '<ul class="gs-pick-list" aria-label="People">' + (list || '<li class="gs-fine">No one on this roster yet.</li>') + '</ul>' +
       '<p class="gs-field-error" id="dlg-err-personId" role="alert" hidden></p>' +
@@ -119,13 +140,14 @@
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten" id="unm-link-submit">Add as Alt</button></div></form>';
   }
 
-  // opts: { unm, raidId, raidOn, where }
+  // opts: { unm, raidId, raidOn, where, guildData }
   function personDialogHtml(opts) {
     const u = opts.unm;
     const statuses = ['raider', 'trial', 'reserve'].map(function (s) { return { value: s, label: G.ui.statusLabel(s) }; });
     return '<form class="gs-dialog-form" data-submit="unm-person-form" data-rid="' + esc(opts.raidId) + '" data-key="' + esc(u.key) + '" data-name="' + esc(u.name) + '" data-where="' + esc(opts.where) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Add ' + esc(u.name) + ' as a new person</h2>' +
       '<p class="gs-fine" id="dlg-help">' + esc(unmatchedEvidence(u)) + '. They are added to the roster with this character as their Main.</p>' +
+      classFieldHtml(u, opts.guildData) +
       '<div class="gs-field"><label class="gs-label" for="unm-status">Status</label><select class="gs-input" id="unm-status" name="status">' + G.ui.optionsHtml(statuses, 'raider') + '</select></div>' +
       '<div class="gs-field"><label class="gs-label" for="unm-joined">Joined</label><input class="gs-input" type="date" id="unm-joined" name="joinedOn" value="' + esc(opts.raidOn || '') + '">' +
       '<p class="gs-field-error" id="dlg-err-joinedOn" role="alert" hidden></p></div>' +
@@ -405,8 +427,8 @@
     el.disabled = true;
     G.api.get(A().apiBase(gd.guild.id) + '/roster?team=' + encodeURIComponent(teamId)).then(function (res) {
       el.disabled = false;
-      G.ui.openDialog(linkDialogHtml({ unm: unm, people: res && res.people, raidId: rid, where: where }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
-      const s = document.getElementById('unm-search');
+      G.ui.openDialog(linkDialogHtml({ unm: unm, people: res && res.people, raidId: rid, where: where, guildData: gd }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+      const s = document.getElementById(unm.class ? 'unm-search' : 'unm-class') || document.getElementById('unm-search');
       if (s) s.focus();
     }, function (err) { el.disabled = false; G.app.handleError(err, { pageAlert: true }); });
   };
@@ -427,7 +449,7 @@
     const rid = el.getAttribute('data-rid');
     const unm = findUnmatched(where, rid, el.getAttribute('data-ukey'));
     if (!unm) return;
-    G.ui.openDialog(personDialogHtml({ unm: unm, raidId: rid, raidOn: raidOnOf(where, rid), where: where }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+    G.ui.openDialog(personDialogHtml({ unm: unm, raidId: rid, raidOn: raidOnOf(where, rid), where: where, guildData: currentGd() }), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
   };
 
   G.handlers.click['unm-guest'] = function (el) {
@@ -449,12 +471,16 @@
     const gid = gd.guild.id;
     const picked = form.querySelector('input[name="personId"]:checked');
     G.ui.setText('dlg-err-personId', '');
+    G.ui.setText('dlg-err-class', '');
     if (!picked) { G.ui.setText('dlg-err-personId', 'Pick the person this character belongs to.'); return; }
     const name = form.getAttribute('data-name');
     const where = form.getAttribute('data-where');
     const makeMain = !!(form.elements.makeMain && form.elements.makeMain.checked);
     const body = { key: form.getAttribute('data-key'), action: 'alt', personId: picked.value };
     if (makeMain) body.makeMain = true;
+    const choice = classChoice(form);
+    if (choice.missing) { G.ui.setText('dlg-err-class', 'Pick this character\'s class.'); form.elements['class'].focus(); return; }
+    if (choice.value) body.class = choice.value;
     const personName = picked.getAttribute('data-person-name') || 'their';
     G.ui.runDialog(form, G.api.post(A().apiBase(gid) + '/raids/' + encodeURIComponent(form.getAttribute('data-rid')) + '/unmatched', body), function (res) {
       afterWrite(where, gid, res, unmatchedNote(res, makeMain ? name + ' is now ' + personName + "'s Main." : 'Added ' + name + ' as an Alt.'));
@@ -471,6 +497,10 @@
     const name = form.getAttribute('data-name');
     const where = form.getAttribute('data-where');
     const body = { key: form.getAttribute('data-key'), action: 'person', status: form.elements.status.value, joinedOn: joinedOn };
+    G.ui.setText('dlg-err-class', '');
+    const choice = classChoice(form);
+    if (choice.missing) { G.ui.setText('dlg-err-class', 'Pick this character\'s class.'); form.elements['class'].focus(); return; }
+    if (choice.value) body.class = choice.value;
     G.ui.runDialog(form, G.api.post(A().apiBase(gid) + '/raids/' + encodeURIComponent(form.getAttribute('data-rid')) + '/unmatched', body), function (res) {
       afterWrite(where, gid, res, unmatchedNote(res, 'Added ' + name + ' as a new person.'));
     });
@@ -494,6 +524,8 @@
     evidenceText: evidenceText,
     decideDialogHtml: decideDialogHtml,
     linkDialogHtml: linkDialogHtml,
+    classFieldHtml: classFieldHtml,
+    classChoice: classChoice,
     personDialogHtml: personDialogHtml,
     guestDialogHtml: guestDialogHtml,
     reviewHtml: reviewHtml,

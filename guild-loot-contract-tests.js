@@ -109,7 +109,8 @@ function loadPages(world, jar) {
 }
 
 // ---------------------------------------------------------------------------
-// Scenario: Alice (Guild Master) runs the guild, Erin (Member) is linked to Thoren. One past raid with 13 awards.
+// Scenario: Alice (Guild Master) runs the guild, Erin (Member) is linked to Thoren. One past raid; the Gargul fixture holds 14 awards
+// (13 with a winner and one disenchant), 8 of them from the raid's own night.
 
 const FIXTURE = read('tests/fixtures/gargul-detailed-sample.json').replace(/-Ashmere/g, '-Nightslayer');
 const GUILD_BODY = { serverId: SERVER, gameVersion: 'tbc', region: 'US', realm: 'Nightslayer', name: 'Ember', timeZone: 'America/New_York', multipleTeams: false };
@@ -135,11 +136,11 @@ async function scenario() {
   const memberJar = await signIn(world, ERIN, [{ id: SERVER, name: 'Server', icon: null, owner: false, permissions: '0' }]);
   const guildData = await G.api.get(base);
   const parsed = G.gargul.parse(FIXTURE);
-  assert(parsed.ok && parsed.awards.length === 13, 'the fixture parses to 13 awards');
+  assert(parsed.ok && parsed.awards.length === 14, 'the fixture parses to 14 awards (one is a disenchant)');
   return { world, jar, memberJar, G, gid, teamId, base, people, raid, guildData, parsed, awards: plain(parsed.awards) };
 }
 
-// Imports the 8 awards of the raid's own night (the other 5 are the next day's), as the page does.
+// Imports the 8 awards of the raid's own night (the other 6, the disenchant among them, are the next day's), as the page does.
 async function importNight(s, include = false) {
   return s.G.api.loot.commit(s.gid, s.raid, s.awards, include);
 }
@@ -166,12 +167,15 @@ check('import: the pages\' parsed awards go through preview and commit; the prev
   const preview = await G.api.loot.preview(s.gid, s.raid, s.awards);
   assert.deepEqual(Object.keys(preview.counts).sort(), ['new', 'otherDay', 'otherRaid', 'same', 'update']);
   assert.equal(preview.counts.new, 8);
-  assert.equal(preview.counts.otherDay, 5);
-  assert.equal(preview.rows.length, 13);
+  assert.equal(preview.counts.otherDay, 6);
+  assert.equal(preview.rows.length, 14);
   for (const row of preview.rows) {
-    for (const key of ['checksum', 'itemId', 'itemName', 'quality', 'awardedAt', 'winnerName', 'winnerRealm', 'winnerClass', 'rollType', 'flags', 'status', 'match', 'tag']) assert(key in row, `preview row has ${key}`);
-    assert(['character', 'guest', 'unmatched'].includes(row.match.kind));
+    for (const key of ['checksum', 'itemId', 'itemName', 'quality', 'awardedAt', 'winnerName', 'winnerRealm', 'winnerClass', 'disenchanted', 'rollType', 'flags', 'status', 'match', 'tag']) assert(key in row, `preview row has ${key}`);
+    assert(['character', 'guest', 'unmatched', 'disenchanted'].includes(row.match.kind));
   }
+  const deRow = preview.rows.filter((row) => row.disenchanted);
+  assert.equal(deRow.length, 1, 'the ||de|| row of the fixture reaches the Worker as an award');
+  assert.deepEqual([deRow[0].match, deRow[0].tag, deRow[0].winnerName, deRow[0].status], [{ kind: 'disenchanted' }, 'DE', null, 'otherDay']);
   // The panel's own render of that answer: every winner is named, every row has its status chip.
   const gd = s.guildData;
   const ui = Object.assign(G.pages.raidLoot.freshUi(), { stage: 'preview', parsed: s.parsed, preview });
@@ -179,13 +183,15 @@ check('import: the pages\' parsed awards go through preview and commit; the prev
   const text = stripTags(html);
   for (const name of ['Thoren', 'Kaelith', 'Mirabel', 'Dorrin', 'Tarn']) assert(text.includes(name), `the preview names ${name}`);
   assert(/Import 8 awards/.test(text), 'the commit button counts the new awards');
-  assert(/Include 5 awards from other days/.test(text));
+  assert(/Include 6 awards from other days/.test(text));
+  assert(/Disenchanted/.test(text), 'the preview names the disenchant');
   const committed = await importNight(s);
-  assert.deepEqual([committed.inserted, committed.updated, committed.unchanged, committed.skippedOtherRaid, committed.skippedOtherDay], [8, 0, 0, 0, 5]);
-  assert.equal(G.pages.raidLoot.resultLine(committed), 'Imported 8 new awards. 5 awards from other days were left out.');
+  assert.deepEqual([committed.inserted, committed.updated, committed.unchanged, committed.skippedOtherRaid, committed.skippedOtherDay], [8, 0, 0, 0, 6]);
+  assert.equal(G.pages.raidLoot.resultLine(committed), 'Imported 8 new awards. 6 awards from other days were left out.');
   assert(Array.isArray(committed.awards) && committed.awards.length === 8);
   const again = await importNight(s, true);
-  assert.deepEqual([again.inserted, again.unchanged], [5, 8]);
+  assert.deepEqual([again.inserted, again.unchanged], [6, 8]);
+  assert.equal(again.awards.filter((award) => award.match.kind === 'disenchanted').length, 1);
 });
 
 check('import: a bad award is a 400 naming the award (field "awards", index) and the page words it as a row of the paste; an upcoming raid is 409 raid_not_started', async () => {
@@ -222,6 +228,14 @@ check('raid loot card: GET /raids/:rid/loot draws every winner by name (person, 
   for (const name of ['Thoren', 'Kaelith', 'Mirabel', 'Dorrin', 'Veyla', 'Brogan', 'Sylwen', 'Ruvik', 'Ysolde', 'Tarn', 'Nimue']) assert(text.includes(name), `the card names ${name}`);
   assert(/data-change="loot-tag"/.test(html), 'an editor gets the tag select');
   assert(/Review queue/.test(text), 'the card points at the review queue');
+  const offRoster = state.data.awards.filter((award) => award.match.kind === 'unmatched').length;
+  const noted = /(\d+) awards? go(?:es)? to a winner who is not on the roster/.exec(text);
+  assert(noted && Number(noted[1]) === offRoster && state.data.awards.some((award) => award.match.kind === 'disenchanted'), 'the disenchant has no winner, so it is not one of the winners off the roster');
+  const rowOf = (needle) => html.split('<li class="gs-loot-row"').filter((row) => row.includes(needle));
+  const deRows = rowOf('<span class="gs-muted">Disenchanted</span>');   // the tag selects also say Disenchanted, as an option
+  assert.equal(deRows.length, 1);
+  assert(!/data-change="loot-tag"/.test(deRows[0]) && />DE</.test(deRows[0]) && /loot-delete/.test(deRows[0]), 'no tag select on a disenchant, the chip and the delete button stay');
+  assert(!/null|undefined/.test(text), 'nothing reads null or undefined');
   assert(S.att.raidLoot === state, 'the state sits in the attendance bag');
 });
 
@@ -282,11 +296,16 @@ check('by raid and by item: the lists name every winner, also the ones not on th
   assert(guest.raid, 'Dorrin is marked a guest');
   await G.pages.loot.load({ name: 'section', gid: s.gid, section: 'loot', view: 'raids' }, s.guildData);
   const raidsText = stripTags(G.pages.loot.main({ name: 'section', gid: s.gid, section: 'loot', view: 'raids' }, s.guildData));
-  assert(/13/.test(raidsText) && /winners? not on the roster/.test(raidsText), raidsText);
+  assert(/14/.test(raidsText) && /winners? not on the roster/.test(raidsText), raidsText);
+  assert(/Disenchanted/.test(raidsText), 'the By raid table has a Disenchanted column');
+  const raidsRow = (await G.api.loot.raids(s.gid, s.teamId)).raids[0];
+  assert.deepEqual([raidsRow.awards, raidsRow.disenchanted], [14, 1]);
   await G.pages.loot.load({ name: 'section', gid: s.gid, section: 'loot', view: 'items' }, s.guildData);
   const itemsHtml = G.pages.loot.main({ name: 'section', gid: s.gid, section: 'loot', view: 'items' }, s.guildData);
   const names = [...itemsHtml.matchAll(/<li class="gs-loot-subrow">([\s\S]*?)<\/li>/g)].map((m) => stripTags(m[1]));
-  assert.equal(names.length, 13, 'every award is listed under its item');
+  assert.equal(names.length, 14, 'every award is listed under its item');
+  assert(names.some((line) => /Disenchanted/.test(line) && /DE/.test(line)), 'the disenchant is named as one');
+  assert(names.every((line) => !/null|undefined/.test(line)));
   // Every sub-row names its winner: a person, a guest or a name the roster does not know.
   for (const name of ['Dorrin', 'Veyla', 'Brogan', 'Ruvik', 'Ysolde', 'Tarn', 'Nimue']) {
     assert(names.some((line) => line.includes(name)), `the by-item list names ${name}`);
@@ -345,6 +364,7 @@ check('review queue: loot winners nobody matches arrive as lootUnmatched; Link /
   assert(Array.isArray(review.lootUnmatched) && review.lootUnmatched.length === 1, 'one raid has loot winners to link');
   const group = review.lootUnmatched[0];
   assert.deepEqual(Object.keys(group.raid).sort(), ['id', 'raidOn', 'zone']);
+  assert(group.items.every((item) => typeof item.name === 'string' && item.name.length > 1), 'the disenchant (no winner) is not a loot winner to link');
   const veyla = group.items.find((item) => item.name === 'Veyla');
   assert.deepEqual(Object.keys(veyla).sort(), ['awards', 'class', 'key', 'kind', 'name', 'realm']);
   const html = G.pages.review.reviewHtml({ guildData: s.guildData, teamId: s.teamId, data: review, lootGroups: review.lootUnmatched, filter: 'all' });
@@ -396,6 +416,72 @@ check('visibility: a member under "own" gets scope "own" (one row and the team a
   await M.pages.personLoot.loadCard(s.gid, s.people.Kaelith);
   const denied = M.pages.personLoot.cardFor(gd, { person: { isMe: false } }, s.people.Kaelith);
   assert(/not shown to you/.test(stripTags(denied)), 'someone else\'s card is a note, not an error');
+});
+
+check('disenchants: the Worker refuses another tag on a no-winner award (400 on the tag field), takes DE, a note and a delete, and the balance never attributes it', async () => {
+  const s = await scenario();
+  const { G } = s;
+  await importNight(s, true);
+  const de = (await G.api.loot.raid(s.gid, s.raid)).awards.find((award) => award.match.kind === 'disenchanted');
+  assert(de && de.winner.name === null && de.winner.realm === null && de.winner.class === null && de.tag === 'DE' && de.tagSetBy === null);
+  assert.equal(de.itemName, 'The Phylactery of Kel\'Thuzad');
+  for (const tag of ['MS', 'OS', 'BANK']) {
+    let error = null;
+    try { await G.api.loot.update(s.gid, de.id, { tag }); } catch (e) { error = e; }
+    assert(error && error.status === 400 && error.field === 'tag', `${tag} is refused on the tag field`);
+  }
+  assert.equal((await G.api.loot.update(s.gid, de.id, { tag: 'DE' })).award.tagSetBy, 'officer');
+  assert.equal((await G.api.loot.update(s.gid, de.id, { note: 'Shattered for the enchanter' })).award.note, 'Shattered for the enchanter');
+  const balance = await G.api.loot.balance(s.gid, s.teamId, null);
+  assert.equal(balance.people.reduce((sum, person) => sum + person.items.DE.all, 0), 0, 'nobody received the disenchant');
+  const gone = await G.api.loot.remove(s.gid, de.id);
+  assert.deepEqual(gone, { ok: true });
+  assert.equal((await G.api.loot.raid(s.gid, s.raid)).awards.length, 13);
+  // The same export again brings it back (its checksum is free) as a disenchant.
+  const back = await importNight(s, true);
+  assert.deepEqual([back.inserted, back.awards.filter((award) => award.match.kind === 'disenchanted').length], [1, 1]);
+});
+
+check('review queue: a loot winner with no class gets the class select, and the class picked there is what the Worker needs to add or link the character', async () => {
+  const s = await scenario();
+  const { G } = s;
+  await importNight(s, true);
+  const night = s.awards[0].awardedAt;
+  const classless = (checksum, name, itemId) => Object.assign({}, s.awards[0], { checksum, winnerName: name, winnerRealm: 'Nightslayer', winnerClass: null, itemId, itemName: null, quality: null, awardedAt: night + 1000 });
+  const done = await G.api.loot.commit(s.gid, s.raid, [classless('CLASSLESS0001', 'Nomad', 28830), classless('CLASSLESS0002', 'Roamer', 28831)], false);
+  assert.equal(done.inserted, 2);
+  const review = await G.api.get(`${s.base}/attendance/review?team=${encodeURIComponent(s.teamId)}`);
+  const items = review.lootUnmatched[0].items;
+  const nomad = items.find((item) => item.name === 'Nomad');
+  const roamer = items.find((item) => item.name === 'Roamer');
+  assert.deepEqual([nomad.class, roamer.class], [null, null]);
+  const R = G.pages.review;
+  const person = R.personDialogHtml({ unm: nomad, raidId: s.raid, raidOn: RAID_ON, where: 'review', guildData: s.guildData });
+  const link = R.linkDialogHtml({ unm: roamer, people: [], raidId: s.raid, where: 'review', guildData: s.guildData });
+  for (const html of [person, link]) {
+    assert(/<select[^>]*id="unm-class"[^>]*name="class"/.test(html) && /Class \(required\)/.test(html), 'the dialog asks for the class');
+  }
+  // The classes the select offers are exactly the ones the Worker takes.
+  const offered = [...person.slice(person.indexOf('id="unm-class"')).split('</select>')[0].matchAll(/<option value="([A-Z]+)"/g)].map((m) => m[1]);
+  assert.equal(offered.length, 9);
+  const post = (body) => G.api.post(`${s.base}/raids/${s.raid}/unmatched`, body);
+  let error = null;
+  try { await post({ key: nomad.key, action: 'person', status: 'raider', joinedOn: RAID_ON }); } catch (e) { error = e; }
+  assert(error && error.status === 400 && error.field === 'class', 'without a class the Worker names the class field');
+  for (const id of offered) {
+    error = null;
+    try { await post({ key: 'nobody|nightslayer', action: 'guest', class: id }); } catch (e) { error = e; }
+    assert(error && error.status === 404, `${id} passes the class check (the unknown name is the only problem)`);
+  }
+  await post({ key: nomad.key, action: 'person', status: 'raider', joinedOn: RAID_ON, class: 'ROGUE' });
+  await post({ key: roamer.key, action: 'alt', personId: s.people.Thoren, class: 'MAGE' });
+  const loot = (await G.api.loot.raid(s.gid, s.raid)).awards;
+  const nomadAward = loot.find((award) => award.winner.name === 'Nomad');
+  const roamerAward = loot.find((award) => award.winner.name === 'Roamer');
+  assert.deepEqual([nomadAward.match.kind, nomadAward.winner.class], ['character', 'ROGUE']);
+  assert.deepEqual([roamerAward.match.personName, roamerAward.winner.class], ['Thoren', 'MAGE']);
+  const after = await G.api.get(`${s.base}/attendance/review?team=${encodeURIComponent(s.teamId)}`);
+  assert(!after.lootUnmatched[0].items.some((item) => ['Nomad', 'Roamer'].includes(item.name)), 'both are out of the queue');
 });
 
 // ---------------------------------------------------------------------------
