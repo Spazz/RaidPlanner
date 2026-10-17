@@ -52,7 +52,7 @@
   const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot' };
   function attPageKey(r) {
     if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : null));
-    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : null);
+    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : null));
     return Object.prototype.hasOwnProperty.call(ATT_ROUTE_PAGES, r.name) ? ATT_ROUTE_PAGES[r.name] : null;
   }
   app.attPageKey = attPageKey;
@@ -435,6 +435,7 @@
       if (!tabs.some(function (t) { return t.tab === tab; })) { failWith('You cannot open this', 'Your role does not include this part of Guild settings.', false); return null; }
       if (tab === 'attendance') return loadAttendance('settingsAtt', r, gd);
       if (tab === 'loot') return loadAttendance('settingsLoot', r, gd);
+      if (tab === 'schedule') return loadAttendance('settingsSchedule', r, gd);
       if (tab !== 'people') return null;
       return G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) {
         state.people[r.gid] = res;
@@ -597,6 +598,7 @@
         if (tab === 'teams') return G.shell.settingsFrameHtml(ctx, 'teams', P.teams.teamsHtml({ guildData: gd, alert: state.pageAlert }));
         if (tab === 'attendance') return P.settingsAtt.main(r, gd, ctx);
         if (tab === 'loot') return P.settingsLoot.main(r, gd, ctx);
+        if (tab === 'schedule') return P.settingsSchedule.main(r, gd, ctx);
         if (tab === 'people') {
           if (!state.people[gd.guild.id]) return P.signin.loadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'people', P.people.peopleHtml({ guildData: gd, data: state.people[gd.guild.id], sort: state.peopleSort, query: state.peopleQuery, notice: state.notice, alert: state.pageAlert, now: Date.now() }));

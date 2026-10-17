@@ -4,7 +4,8 @@
 // the raid (event, report, plan, manual attendance, delete). GET /raids/:rid; every write answers with the detail.
 // The Decide and Unmatched dialogs live in pages-review.js and work here too (where = 'raid').
 // A raid that has not started (raid.upcoming) shows its start time, sign-ups, event and plan instead, with a note that attendance
-// starts after the raid. A past raid also carries the Loot card (pages-raid-loot.js), loaded with the detail.
+// starts after the raid. Every raid carries the Sign-ups panel (pages-raid-signups.js; a past raid's only for officers or when there
+// are sign-ups) and a past raid also the Loot card (pages-raid-loot.js), both loaded with the detail.
 (function (G) {
   'use strict';
 
@@ -41,26 +42,9 @@
 
   function isUpcoming(data) { return !!(data.raid && data.raid.upcoming); }
 
-  // The Raid-Helper sign-ups of an upcoming raid: counts, then one row each (the nickname only for those who may see it).
-  function signupsSectionHtml(data) {
-    const see = !!(data.can && data.can.seeAttendance);
-    let body;
-    if (!see) {
-      body = '<p class="gs-empty">Sign-ups are visible to the team\'s members.</p>';
-    } else {
-      const list = (Array.isArray(data.signups) ? data.signups : []).filter(function (s) { return s.source === 'raid_helper'; });
-      const count = function (kinds) { return list.filter(function (s) { return kinds.indexOf(s.kind) >= 0; }).length; };
-      const items = [['Signed', count(['signed', 'late'])], ['Bench', count(['bench'])], ['Tentative', count(['tentative'])], ['Absent', count(['absence'])]];
-      body = !list.length ? '<p class="gs-empty">No sign-ups yet.</p>'
-        : '<dl class="gs-summary">' + items.map(function (i) { return '<div class="gs-summary-item"><dt>' + esc(i[0]) + '</dt><dd>' + esc(i[1]) + '</dd></div>'; }).join('') + '</dl>' +
-          '<div class="gs-table-wrap"><table class="gs-table" aria-label="Sign-ups"><thead><tr><th scope="col">Sign-up</th><th scope="col">Class</th><th scope="col">Status</th><th scope="col">On the roster</th></tr></thead><tbody>' +
-          list.map(function (s) {
-            return '<tr><th scope="row" class="gs-cell-strong">' + (s.nickname ? esc(s.nickname) : '<span class="gs-muted">Hidden</span>') + '</th><td>' +
-              (s.className ? esc(s.className) + (s.specName ? ' <span class="gs-fine">' + esc(s.specName) + '</span>' : '') : '<span class="gs-muted">-</span>') + '</td><td><span class="gs-chip gs-chip-signup">' +
-              esc(A().KIND_LABELS[s.kind] || s.kind) + '</span></td><td>' + (s.matched ? 'Yes' : '<span class="gs-muted">No</span>') + '</td></tr>';
-          }).join('') + '</tbody></table></div>';
-    }
-    return '<section class="gs-card-sec" aria-labelledby="sgn-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="sgn-h">Sign-ups</h2></div><div class="gs-card-sec-body">' + body + '</div></section>';
+  // The Sign-ups panel (native Raidsmith sign-ups merged with Raid-Helper's); nothing while its data is not loaded.
+  function signupsPanelHtml(gd, data, signups) {
+    return G.pages.raidSignups ? G.pages.raidSignups.panelHtml({ guildData: gd, data: data, state: signups }) : '';
   }
 
   function isManual(data) { return !!(data.raid && data.raid.state === 'manual') || !!(data.raid && data.raid.manual); }
@@ -227,7 +211,7 @@
       (upcoming ? G.pages.raids.planPillHtml({ planned: !!(data.sources && data.sources.plan) }) : '') + '</div></div>' + tools + '</div>';
   }
 
-  // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress, loot (G.pages.raidLoot.stateFor) }
+  // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress, loot (G.pages.raidLoot.stateFor), signups (G.pages.raidSignups.stateFor) }
   function raidHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
@@ -237,7 +221,7 @@
     if (isUpcoming(data)) {
       return '<div class="gs-page gs-raid-page">' + headHtml(gd, data) + G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
         '<div class="gs-notice" role="status"><span>Attendance starts after the raid.</span></div>' +
-        '<div class="gs-sources">' + eventCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' + signupsSectionHtml(data) + '</div>';
+        signupsPanelHtml(gd, data, opts.signups) + '<div class="gs-sources">' + eventCardHtml(data, edit) + planCardHtml(data, edit) + '</div></div>';
     }
     let people_html;
     if (people === null) {
@@ -258,7 +242,7 @@
       manualLineHtml(data, edit) +
       '<div class="gs-sources">' + eventCardHtml(data, edit) + reportsCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' +
       '<section class="gs-card-sec" aria-labelledby="ppl-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="ppl-h">People</h2></div><div class="gs-card-sec-body">' + people_html + '</div></section>' +
-      lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + '</div>';
+      signupsPanelHtml(gd, data, opts.signups) + lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + '</div>';
   }
 
   // ── dialogs ──
@@ -353,6 +337,10 @@
     a().note = note || '';
     st().pageAlert = '';
     G.app.render();
+    // The event, the plan or the results changed: the sign-ups panel reads its list again.
+    if (G.pages.raidSignups && res && res.raid) {
+      G.pages.raidSignups.loadFor(c.gd, res).then(function () { G.app.render(); }, pageError);
+    }
   }
 
   function fetchDetail(gid, rid) {
@@ -366,7 +354,8 @@
   function load(r, gd) {
     a().note = '';
     return fetchDetail(gd.guild.id, r.rid).then(function (data) {
-      return G.pages.raidLoot ? G.pages.raidLoot.loadFor(gd, data) : null;
+      const signups = G.pages.raidSignups ? G.pages.raidSignups.loadFor(gd, data) : Promise.resolve(null);
+      return signups.then(function () { return G.pages.raidLoot ? G.pages.raidLoot.loadFor(gd, data) : null; });
     }).then(function () { return null; });
   }
 
@@ -380,7 +369,7 @@
   function main(r, gd) {
     const x = a().raid;
     if (!x || x.gid !== gd.guild.id || x.rid !== r.rid) return G.pages.signin.loadingHtml();
-    return raidHtml({ guildData: gd, data: x.data, filter: x.filter, alert: st().pageAlert, note: a().note, progress: a().recalc, loot: G.pages.raidLoot ? G.pages.raidLoot.stateFor(gd.guild.id, r.rid) : null });
+    return raidHtml({ guildData: gd, data: x.data, filter: x.filter, alert: st().pageAlert, note: a().note, progress: a().recalc, loot: G.pages.raidLoot ? G.pages.raidLoot.stateFor(gd.guild.id, r.rid) : null, signups: G.pages.raidSignups ? G.pages.raidSignups.stateFor(gd.guild.id, r.rid) : null });
   }
 
   function openManualDialog(c) {

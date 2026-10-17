@@ -2,7 +2,7 @@
 // Pure parse/format for the guild page. Routes:
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,people,attendance,loot}]
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,attendance,loot}]
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
 //   #/g/:gid/loot[?view=raids|items]  #/g/:gid/loot/p/:pid  (Balance is the default view)
 //   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl}
@@ -11,7 +11,7 @@
   'use strict';
 
   const SECTIONS = ['roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'people', 'attendance', 'loot'];
+  const TABS = ['teams', 'schedule', 'people', 'attendance', 'loot'];
   const LOOT_VIEWS = ['raids', 'items'];
   const IMPORT_SOURCES = ['raid-helper', 'wcl'];
   const SIGNIN_ERRORS = ['denied', 'state', 'discord'];

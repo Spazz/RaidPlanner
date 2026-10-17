@@ -1,6 +1,7 @@
 // ── PAGES: RAIDS LIST and NEW RAID ──────────────────────────────
-// The list of one team's raids (GET /raids?team=): Upcoming (raids that have not started, soonest first) and Past (newest first, with
-// status pills) tabs, and the New raid page, which
+// The list of one team's raids (GET /raids?team=): Upcoming (raids that have not started, soonest first, with the sign-up counts, the
+// viewer's own sign-up and a one-click Sign up) and Past (newest first, with status pills) tabs, "Create upcoming raids" from the team's
+// weekly schedule (also run by itself when the team's schedule says so), and the New raid page, which
 // runs its calls in order (create raid, event, each report, plan) with a status line per source. A failure stops that
 // source only: the raid exists, the page links to it and offers Retry. Dates are the guild's calendar dates.
 (function (G) {
@@ -111,24 +112,69 @@
     return plan + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-refresh" data-rid="' + esc(r.id) + '" data-key="rr-' + esc(r.id) + '">Refresh sign-ups</button>';
   }
 
-  function upcomingRowHtml(gd, r, canEdit) {
-    return '<tr><th scope="row" class="gs-cell-strong gs-nowrap"><a href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a></th>' +
-      '<td>' + eventCellHtml(r) + '</td><td>' + esc(signupsText(r.signups)) + '</td><td>' + planPillHtml(r) + '</td>' +
-      '<td><div class="gs-row-actions">' + upcomingActionsHtml(r, canEdit) + '</div></td></tr>';
+  // The viewer's own sign-up on an upcoming row: what they are down as, and a Sign up button while they may and are not already signed.
+  // canSignUp: the viewer has a character on the team (the Worker's can.signup).
+  function mineHtml(r, canSignUp) {
+    if (!canSignUp) return '';
+    const m = r.mine;
+    const label = m ? (A().KIND_LABELS[m.kind] || m.kind) : '';
+    const chip = m ? '<span class="gs-chip gs-chip-signup gs-su-mine">' + esc(label) + (m.characterName ? ' - ' + esc(m.characterName) : '') + '</span>' : '';
+    if (r.signupsOpen && !(m && m.kind === 'signed')) {
+      return chip + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>';
+    }
+    if (!r.signupsOpen && !m) return '<span class="gs-fine">Sign-ups closed</span>';
+    return chip;
   }
 
-  function upcomingCardHtml(gd, r, canEdit) {
+  function upcomingRowHtml(gd, r, canEdit, canSignUp) {
+    return '<tr><th scope="row" class="gs-cell-strong gs-nowrap"><a href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a></th>' +
+      '<td>' + eventCellHtml(r) + '</td><td>' + esc(signupsText(r.signups)) + '</td>' + (canSignUp ? '<td><div class="gs-row-actions">' + mineHtml(r, canSignUp) + '</div></td>' : '') +
+      '<td>' + planPillHtml(r) + '</td><td><div class="gs-row-actions">' + upcomingActionsHtml(r, canEdit) + '</div></td></tr>';
+  }
+
+  function upcomingCardHtml(gd, r, canEdit, canSignUp) {
     const actions = upcomingActionsHtml(r, canEdit);
+    const mine = mineHtml(r, canSignUp);
     return '<li class="gs-roster-card"><div class="gs-card-top"><a class="gs-raid-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a>' + planPillHtml(r) + '</div>' +
       '<div class="gs-card-line">' + eventCellHtml(r) + '</div><div class="gs-card-meta"><span class="gs-fine">' + esc(signupsText(r.signups)) + '</span></div>' +
-      (actions ? '<div class="gs-row-actions">' + actions + '</div>' : '') + '</li>';
+      (mine ? '<div class="gs-row-actions">' + mine + '</div>' : '') + (actions ? '<div class="gs-row-actions">' + actions + '</div>' : '') + '</li>';
   }
 
-  function upcomingHtml(gd, upcoming, canEdit) {
-    if (!upcoming.length) return '<p class="gs-empty">No upcoming raids.' + (canEdit ? ' Use New raid to add one.' : '') + '</p>';
+  function upcomingHtml(gd, upcoming, canEdit, canSignUp) {
+    if (!upcoming.length) return '<p class="gs-empty">No upcoming raids.' + (canEdit ? ' Use New raid to add one, or Create upcoming raids from the weekly schedule.' : '') + '</p>';
     return '<div class="gs-table-wrap gs-raids-table"><table class="gs-table gs-table-upcoming" aria-label="Upcoming raids"><thead><tr><th scope="col">Date</th><th scope="col">Event</th><th scope="col">Sign-ups</th>' +
-      '<th scope="col">Plan</th><th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + upcoming.map(function (r) { return upcomingRowHtml(gd, r, canEdit); }).join('') + '</tbody></table></div>' +
-      '<ul class="gs-roster-cards gs-raids-cards" aria-label="Upcoming raids">' + upcoming.map(function (r) { return upcomingCardHtml(gd, r, canEdit); }).join('') + '</ul>';
+      (canSignUp ? '<th scope="col">Your sign-up</th>' : '') + '<th scope="col">Plan</th><th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' +
+      upcoming.map(function (r) { return upcomingRowHtml(gd, r, canEdit, canSignUp); }).join('') + '</tbody></table></div>' +
+      '<ul class="gs-roster-cards gs-raids-cards" aria-label="Upcoming raids">' + upcoming.map(function (r) { return upcomingCardHtml(gd, r, canEdit, canSignUp); }).join('') + '</ul>';
+  }
+
+  // A sign-up view (the Worker's answer to a sign-up write) folded into its upcoming row: what the viewer is down as, the counts, whether it is open.
+  function applySignupView(x, rid, view) {
+    const row = ((x.data && x.data.upcoming) || []).filter(function (r) { return r.id === rid; })[0];
+    if (!row || !view) return;
+    const sig = view.me && view.me.signup;
+    row.mine = sig ? { kind: sig.kind, source: sig.source, characterName: sig.source === 'raidsmith' ? sig.name : null } : null;
+    if (view.counts) row.signups = { signed: view.counts.signed, late: view.counts.late, tentative: view.counts.tentative, bench: view.counts.bench, absence: view.counts.absence };
+    row.locked = !!(view.raid && view.raid.locked);
+    row.signupsOpen = !(view.raid && view.raid.closed);
+  }
+
+  // What "Create upcoming raids" did, in a sentence. res: { created, skipped, weeks }.
+  function fillText(res) {
+    const created = res && Array.isArray(res.created) ? res.created : [];
+    const skipped = res && Array.isArray(res.skipped) ? res.skipped : [];
+    const exists = skipped.filter(function (x) { return x.reason === 'exists'; }).length;
+    const noTime = skipped.filter(function (x) { return x.reason === 'no_such_time'; }).length;
+    const weeks = res && res.weeks ? res.weeks : 0;
+    const parts = [];
+    if (created.length) {
+      parts.push('Created ' + plural(created.length, 'upcoming raid', 'upcoming raids') + ': ' + created.map(function (x) { return G.ui.shortDay(x.raidOn); }).join(', ') + '.');
+      if (exists) parts.push(plural(exists, 'date already had', 'dates already had') + ' a raid.');
+    } else {
+      parts.push('Nothing new to create: the next ' + plural(weeks, 'week', 'weeks') + ' already have their raids.');
+    }
+    if (noTime) parts.push(plural(noTime, 'slot was', 'slots were') + ' skipped because that time does not exist on a day the clocks change.');
+    return parts.join(' ');
   }
 
   // The Upcoming / Past switch (the same pressed-button group as the roster and attendance filters).
@@ -151,7 +197,7 @@
   function emptyHtml(gd, canEdit) {
     const gid = gd.guild.id;
     const body = canEdit
-      ? '<p class="gs-lead gs-lead-sm">A raid is one team\'s raid on one date. Add one from its Raid-Helper event and Warcraft Logs report, or backfill past reports.</p>' +
+      ? '<p class="gs-lead gs-lead-sm">A raid is one team\'s raid on one date. Add one from its Raid-Helper event and Warcraft Logs report, backfill past reports, or set a weekly schedule and create the upcoming raids from it.</p>' +
         '<div class="gs-actions"><a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'raidnew', gid: gid })) + '">New raid</a>' +
         '<a class="gs-btn" href="' + esc(G.router.format({ name: 'backfill', gid: gid })) + '">Backfill from Warcraft Logs</a></div>'
       : '<p class="gs-lead gs-lead-sm">Your officers haven\'t added a raid yet.</p>';
@@ -159,7 +205,7 @@
       '<h2 class="gs-h2 gs-h2-lg" id="raids-empty-h">No raids yet</h2>' + body + '</section>';
   }
 
-  // opts: { guildData, teamId, data (GET /raids?team=) , progress, alert, more (bool), tab ('upcoming' | 'past'; default: Upcoming when there is one) }
+  // opts: { guildData, teamId, data (GET /raids?team=) , progress, alert, note, more (bool), tab ('upcoming' | 'past'; default: Upcoming when there is one) }
   function raidsHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
@@ -173,13 +219,16 @@
     const sub = (several && team ? esc(team.name) : esc(gd.guild.name)) + ' &middot; ' + (tab === 'upcoming'
       ? esc(plural(upcoming.length, 'upcoming raid', 'upcoming raids')) + ', soonest first' : esc(plural(raids.length, 'raid', 'raids')) + ', newest first');
     const staleCount = raids.filter(function (r) { return r.stale; }).length;
+    const hasSlots = !!(data.schedule && data.schedule.slots > 0);
     const actions = canEdit ? '<div class="gs-roster-actions"><a class="gs-btn" href="' + esc(G.router.format({ name: 'backfill', gid: gid })) + '">Backfill from Warcraft Logs</a>' +
+      '<a class="gs-btn" href="' + esc(G.router.format({ name: 'settings', gid: gid, tab: 'schedule' })) + '">Raid schedule</a>' +
+      (hasSlots ? '<button type="button" class="gs-btn" data-action="raids-fill" data-key="raids-fill">Create upcoming raids</button>' : '') +
       '<a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'raidnew', gid: gid })) + '">New raid</a></div>' : '';
     let body;
     if (!raids.length && !upcoming.length) {
       body = emptyHtml(gd, canEdit);
     } else if (tab === 'upcoming') {
-      body = tabsHtml(tab, upcoming.length, raids.length + (opts.more ? '+' : '')) + upcomingHtml(gd, upcoming, canEdit);
+      body = tabsHtml(tab, upcoming.length, raids.length + (opts.more ? '+' : '')) + upcomingHtml(gd, upcoming, canEdit, !!(data.can && data.can.signup));
     } else if (!raids.length) {
       body = tabsHtml(tab, upcoming.length, '0') + '<p class="gs-empty">No past raids yet.</p>';
     } else {
@@ -189,7 +238,8 @@
         (opts.more ? '<div class="gs-actions"><button type="button" class="gs-btn" data-action="raids-older" data-key="raids-older">Show older raids</button></div>' : '');
     }
     return '<div class="gs-page"><div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Raids</h1><p class="gs-sub">' + sub + '</p></div>' + actions + '</div>' +
-      G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + A().staleBannerHtml(staleCount, canEdit, opts.progress) + flagBannerHtml(gd, opts.teamId, raids) + body + '</div>';
+      G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (opts.note ? '<div class="gs-notice" role="status"><span>' + esc(opts.note) + '</span></div>' : '') +
+      A().staleBannerHtml(staleCount, canEdit, opts.progress) + flagBannerHtml(gd, opts.teamId, raids) + body + '</div>';
   }
 
   function loadList(r, gd) {
@@ -198,16 +248,41 @@
     if (!teamId) { a().raids = { gid: gid, teamId: null, data: null }; return null; }
     const kept = a().raids && a().raids.gid === gid && a().raids.teamId === teamId ? a().raids.tab : null;
     return G.api.get(A().apiBase(gid) + '/raids?team=' + encodeURIComponent(teamId)).then(function (data) {
-      a().raids = { gid: gid, teamId: teamId, data: data, more: !!(data && data.hasMore), tab: kept || null };
+      a().raids = { gid: gid, teamId: teamId, data: data, more: !!(data && data.hasMore), tab: kept || null, note: '' };
+      return autoFill(a().raids);
+    });
+  }
+
+  // Reads the list again (after a sign-up, or after raids were created); the older raids already paged in stay.
+  function reloadList(x) {
+    return G.api.get(A().apiBase(x.gid) + '/raids?team=' + encodeURIComponent(x.teamId)).then(function (data) {
+      const older = x.data && x.data.raids && x.data.raids.length > data.raids.length ? x.data.raids : null;
+      x.data = older ? Object.assign({}, data, { raids: older }) : data;
+      if (!older) x.more = !!data.hasMore;
       return null;
     });
+  }
+
+  // A team whose schedule says so gets its upcoming raids created when an officer opens Raids, once a day per browser session. It is best
+  // effort: a failure leaves the page as it loaded (the Create upcoming raids button is still there).
+  function autoFill(x) {
+    const sch = x.data && x.data.schedule;
+    const done = a().autoFilled || (a().autoFilled = {});
+    const key = x.gid + '|' + x.teamId + '|' + (x.data && x.data.today ? x.data.today : '');
+    if (!sch || !sch.auto || !(sch.slots > 0) || done[key]) return Promise.resolve(null);
+    done[key] = true;
+    return G.api.signups.fill(x.gid, x.teamId).then(function (res) {
+      if (!res || !res.created || !res.created.length) return null;
+      x.note = fillText(res);
+      return reloadList(x);
+    }).then(null, function () { return null; });
   }
 
   function mainList(r, gd) {
     const x = a().raids;
     if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
     if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
-    return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, tab: x.tab, progress: a().recalc, alert: st().pageAlert });
+    return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, tab: x.tab, progress: a().recalc, alert: st().pageAlert, note: x.note });
   }
 
   G.handlers.click['raids-tab'] = function (el) {
@@ -256,6 +331,38 @@
       el.disabled = false;
       G.app.handleError(err, { pageAlert: true });
     });
+  };
+
+  // One-click Sign up: the viewer's default character and main spec, as signed up. The row then shows what the Worker answered.
+  G.handlers.click['raids-signup'] = function (el) {
+    const x = a().raids;
+    if (!x || !x.data) return;
+    const rid = el.getAttribute('data-rid');
+    el.disabled = true;
+    G.api.signups.save(x.gid, rid, { kind: 'signed' }).then(function (view) {
+      applySignupView(x, rid, view);
+      st().pageAlert = '';
+      G.app.render();
+    }, function (err) {
+      el.disabled = false;
+      const show = function () { G.app.handleError(err, { pageAlert: true }); };
+      // The window closed since the list was read: show the list as it is now, with the reason.
+      if (err && err.code === 'signups_closed') reloadList(x).then(show, show); else show();
+    });
+  };
+
+  G.handlers.click['raids-fill'] = function (el) {
+    const x = a().raids;
+    if (!x || !x.teamId) return;
+    el.disabled = true;
+    G.api.signups.fill(x.gid, x.teamId).then(function (res) {
+      x.note = fillText(res);
+      return reloadList(x);
+    }).then(function () {
+      st().pageAlert = '';
+      x.tab = 'upcoming';
+      G.app.render();
+    }, function (err) { el.disabled = false; G.app.handleError(err, { pageAlert: true }); });
   };
 
   G.handlers.click['raids-older'] = function (el) {
@@ -589,7 +696,7 @@
 
   G.pages.raids = {
     raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, signupsText: signupsText, planPillHtml: planPillHtml,
-    planInPlanner: planInPlanner, load: loadList, main: mainList,
+    planInPlanner: planInPlanner, mineHtml: mineHtml, fillText: fillText, applySignupView: applySignupView, load: loadList, main: mainList,
   };
   G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

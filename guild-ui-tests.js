@@ -820,7 +820,7 @@ function assertEscaped(out, label) {
   });
 
   await check('guild.css has a rule for every gs- class the markup builders use', () => {
-    const markup = ['shell.js', 'ui.js', 'icons.js', 'pages-signin.js', 'pages-create.js', 'pages-settings-teams.js', 'pages-settings-people.js', 'pages-privacy.js', 'pages-roadmap.js', 'pages-roster.js', 'pages-person.js', 'pages-import.js', 'pages-loot.js', 'pages-person-loot.js', 'pages-raid-loot.js', 'pages-settings-loot.js']
+    const markup = ['shell.js', 'ui.js', 'icons.js', 'pages-signin.js', 'pages-create.js', 'pages-settings-teams.js', 'pages-settings-people.js', 'pages-privacy.js', 'pages-roadmap.js', 'pages-roster.js', 'pages-person.js', 'pages-import.js', 'pages-loot.js', 'pages-person-loot.js', 'pages-raid-loot.js', 'pages-settings-loot.js', 'pages-raid-signups.js', 'pages-settings-schedule.js']
       .map(f => read('js/guild/' + f)).join('\n');
     const used = new Set();
     for (const m of markup.matchAll(/class="([^"]*)"/g)) {
