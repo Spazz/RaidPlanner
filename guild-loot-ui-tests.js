@@ -135,13 +135,13 @@ function withState(fn) {
     }
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'loot', view: 'balance' }), '#/g/g1/loot');
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'roster', view: 'items' }), '#/g/g1/roster');
-    assert.deepEqual(plain(G.router.TABS), ['teams', 'people', 'attendance', 'loot']);
+    assert.deepEqual(plain(G.router.TABS), ['teams', 'people', 'attendance', 'loot', 'battlenet']);
   });
 
   await check('shell: the Loot settings tab needs loot.policy, and loot.policy alone opens Guild settings', () => {
     const allTabs = Object.assign({ 'guild.access': 'guild', 'guild.roles': 'guild' }, OFFICER_CAN);
-    assert.deepEqual(plain(G.shell.settingsTabs(allTabs).map(t => t.tab)), ['teams', 'people', 'attendance', 'loot']);
-    assert.equal(G.shell.settingsTabs(allTabs).pop().label, 'Loot');
+    assert.deepEqual(plain(G.shell.settingsTabs(allTabs).map(t => t.tab)), ['teams', 'people', 'attendance', 'loot', 'battlenet']);
+    assert.equal(G.shell.settingsTabs(allTabs).find(t => t.tab === 'loot').label, 'Loot');
     assert(!G.shell.settingsTabs({ 'guild.teams': 'guild', 'attendance.policy': 'guild' }).some(t => t.tab === 'loot'));
     assert.deepEqual(plain(G.shell.settingsTabs({ 'loot.policy': 'guild' }).map(t => t.tab)), ['loot']);
     assert.equal(G.shell.canSeeSettings({ 'loot.policy': 'guild' }), true);
@@ -1126,14 +1126,14 @@ function withState(fn) {
     assertEscaped(hostile, 'review loot');
   });
 
-  await check('review load: the loot winners arrive with the review reply (lootUnmatched), one request, nothing derived; a reply without them is fine', withState(async (S) => {
+  await check('review load: the loot winners arrive with the review reply (lootUnmatched), no request of their own, nothing derived; a reply without them is fine', withState(async (S) => {
     const g1 = gd(OFFICER_CAN);
     S.guilds.g1 = g1; S.currentGid = 'g1';
     const realTeamFor = ctx.Guild.app.teamFor;
     ctx.Guild.app.teamFor = () => 't1';
     let s = stub(() => Promise.resolve(Object.assign({}, REVIEW, { lootUnmatched: LOOT_GROUPS })));
     await G.pages.review.load(null, g1);
-    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/attendance/review?team=t1']);
+    assert.deepEqual(s.calls.map(c => c.url).filter(u => !u.endsWith('/claims')), ['/api/guild/g1/attendance/review?team=t1']);
     assert.deepEqual(plain(S.att.review.loot), plain(LOOT_GROUPS));
     assert(G.pages.review.main({ name: 'review', gid: 'g1' }, g1).includes('Loot winners not on the roster'));
     s.restore();

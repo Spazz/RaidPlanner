@@ -1309,6 +1309,106 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(env.html('shell-sidebar').includes('href="/#/roadmap" aria-label="Future enhancements"'));
   });
 
+  // ── Battle.net (Phase 5): the routes through the real router ──
+  const BNET_ME = { configured: true, link: { battletag: 'Tester#1234', linkedAt: 1, fetchedAt: 1, expiresAt: 2592000001 }, guilds: [{ guildId: 'g1', guildName: 'Ravens', gameVersion: 'tbc', region: 'EU', realm: 'Mistvale', realmKind: 'realm', supportLabel: 'TBC Anniversary', status: 'ok', message: null, characters: [{ name: 'Aldric', realm: 'Mistvale', realmSlug: 'mistvale', class: 'WARRIOR', level: 70, state: 'new', claim: null, claimable: true }] }] };
+  const BNET_SETTINGS = { configured: true, supported: true, supportLabel: 'TBC Anniversary', message: null, realmKind: 'realm', guildName: null, effectiveGuildName: 'Ravens', realmSlug: 'mistvale', realmNeeded: false, rankLabels: Array(10).fill(''), rankDefaults: ['Guild Master', 'Rank 1', 'Rank 2', 'Rank 3', 'Rank 4', 'Rank 5', 'Rank 6', 'Rank 7', 'Rank 8', 'Rank 9'], canEdit: true };
+
+  await check('Battle.net routes: #/linked and #/characters read GET /auth/bnet fresh, draw the last guild\'s nav, set the title and the crumb', async () => {
+    const env = makeEnv({ url: '/#/linked', routes: signedInRoutes(MEMBER_CAN, { '/auth/bnet': { status: 200, body: BNET_ME } }) });
+    await settle();
+    assert.equal(env.fetched('/auth/bnet'), 1);
+    assert(env.html('gs-main').includes('<h1 class="gs-h1" tabindex="-1">Linked accounts</h1>') && env.html('gs-main').includes('Tester#1234'));
+    assert.equal(env.documentFake.title, 'Linked accounts - Ravens - Raidsmith guild');
+    assert(env.html('shell-topbar-lead').includes('Linked accounts'));
+    assert(env.html('shell-sidebar').includes('Ravens'), 'the nav is the last guild\'s');
+    env.loc.hash = '#/characters';
+    await settle();
+    assert.equal(env.fetched('/auth/bnet'), 2, 'every visit asks again');
+    assert(env.html('gs-main').includes('<h1 class="gs-h1" tabindex="-1">My characters</h1>') && env.html('gs-main').includes('data-action="bnet-claim"'));
+    assert.equal(env.documentFake.title, 'My characters - Ravens - Raidsmith guild');
+    // the avatar menu reaches both
+    assert(env.html('shell-topbar-account').includes('href="#/characters"') && env.html('shell-topbar-account').includes('href="#/linked"'));
+  });
+
+  await check('Battle.net routes: the link\'s own errors show at #/linked?error=..; signed-out visitors get the sign-in card; a failed read is a retry page', async () => {
+    const env = makeEnv({ url: '/#/linked?error=denied', routes: signedInRoutes(MEMBER_CAN, { '/auth/bnet': { status: 200, body: Object.assign({}, BNET_ME, { link: null }) } }) });
+    await settle();
+    assert(env.html('gs-main').includes('id="bnet-link-error"') && env.html('gs-main').includes('Connect Battle.net'));
+    const out = makeEnv({ url: '/#/characters', routes: { '/auth/me': { status: 401, body: { error: 'signed_out' } } } });
+    await settle();
+    assert(out.html('gs-main').includes('Sign in with Discord') && !out.html('gs-main').includes('My characters</h1>'));
+    assert.equal(out.fetched('/auth/bnet'), 0);
+    const down = makeEnv({ url: '/#/characters', routes: signedInRoutes(MEMBER_CAN, { '/auth/bnet': { status: 500, body: {} } }) });
+    await settle();
+    assert(down.html('gs-main').includes('Could not load this page') && down.html('gs-main').includes('data-action="retry"'));
+  });
+
+  await check('Battle.net routes: the import page reads the guild\'s Battle.net settings first; members cannot open it', async () => {
+    const env = makeEnv({ url: '/#/g/g1/roster/import/bnet', routes: signedInRoutes(OFFICER_CAN, { '/api/guild/g1/bnet': { status: 200, body: BNET_SETTINGS } }) });
+    await settle();
+    assert.equal(env.fetched('/api/guild/g1/bnet'), 1);
+    const main = env.html('gs-main');
+    assert(main.includes('Import from Battle.net') && main.includes('data-action="bnet-load"') && main.includes('Reads <strong>Ravens</strong> on Mistvale (EU)'));
+    assert.equal(env.documentFake.title, 'Import from Battle.net - Ravens - Raidsmith guild');
+    assert(env.html('shell-topbar-lead').includes('Import from Battle.net'));
+    const member = makeEnv({ url: '/#/g/g1/roster/import/bnet', routes: signedInRoutes(MEMBER_CAN) });
+    await settle();
+    assert(member.html('gs-main').includes('You cannot open this'));
+    assert.equal(member.fetched('/api/guild/g1/bnet'), 0);
+  });
+
+  await check('Battle.net routes: the preview and a commit run through the real page and return to the roster with a notice', async () => {
+    const preview = { guild: { name: 'Ravens', realm: 'Mistvale' }, team: { id: 't1', name: 'Main' }, fetchedAt: 1, rankLabels: Array(10).fill(''), ranks: [{ rank: 0, label: 'Guild Master', count: 1 }], rows: [{ key: 'thornwick|mistvale', name: 'Thornwick', realm: 'Mistvale', realmSlug: 'mistvale', class: 'WARRIOR', level: 70, rank: 0, status: 'new', person: null }] };
+    let committed = null;
+    const env = makeEnv({ url: '/#/g/g1/roster/import/bnet', routes: signedInRoutes(OFFICER_CAN, {
+      '/api/guild/g1/bnet': { status: 200, body: BNET_SETTINGS },
+      'POST /api/guild/g1/roster/import/bnet/preview': { status: 200, body: preview },
+      'POST /api/guild/g1/roster/import/bnet/commit': init => { committed = JSON.parse(init.body); return { status: 201, body: { people: 1, characters: 1, rosterFlags: { t1: 0 } } }; },
+    }) });
+    await settle();
+    env.click({ 'data-action': 'bnet-load' });
+    await settle();
+    assert(env.html('gs-main').includes('Thornwick') && env.html('gs-main').includes('id="bnet-footer"'));
+    assert.deepEqual(plain(JSON.parse(env.fetchCalls.filter(c => c.url.endsWith('/bnet/preview'))[0].body)), { teamId: 't1' });
+    env.G.app.state.imports.bnet.ticked = { 'thornwick|mistvale': true };
+    env.click({ 'data-action': 'bnet-commit' });
+    await settle();
+    assert.deepEqual(plain(committed), { teamId: 't1', defaultStatus: 'trial', members: [{ name: 'Thornwick', realmSlug: 'mistvale' }] });
+    assert.equal(env.loc.hash, '#/g/g1/roster');
+    assert.equal(env.G.app.state.rosterNotice, 'Added 1 person from the Battle.net guild roster.');
+  });
+
+  await check('Battle.net routes: Guild settings > Battle.net reads GET /bnet for guild.teams holders and is not a tab for anyone else', async () => {
+    const env = makeEnv({ url: '/#/g/g1/settings/battlenet', routes: signedInRoutes(OFFICER_CAN, { '/api/guild/g1/bnet': { status: 200, body: BNET_SETTINGS } }) });
+    await settle();
+    assert.equal(env.fetched('/api/guild/g1/bnet'), 1);
+    const main = env.html('gs-main');
+    assert(main.includes('<h2 class="gs-h2" id="bnet-set-h">Battle.net</h2>') && main.includes('id="bnet-guild-name"') && main.includes('aria-current="page"'));
+    assert(main.includes('href="#/g/g1/settings/teams"'), 'the tab strip');
+    assert.equal(env.documentFake.title, 'Guild settings - Ravens - Raidsmith guild');
+    assert(env.html('shell-topbar-lead').includes('Battle.net'));
+    const lead = makeEnv({ url: '/#/g/g1/settings/battlenet', routes: signedInRoutes({ 'roster.view': 'guild', 'roster.edit': ['t1'], 'attendance.policy': 'guild' }) });
+    await settle();
+    assert(lead.html('gs-main').includes('Your role does not include this part of Guild settings.'));
+    assert.equal(lead.fetched('/api/guild/g1/bnet'), 0);
+  });
+
+  await check('Battle.net routes: the review queue lists Character claims for roster.edit and survives a failed claims read', async () => {
+    const can = Object.assign({}, OFFICER_CAN, { 'raids.view': 'guild', 'attendance.view': 'guild', 'attendance.review': 'guild' });
+    const claim = { id: 'cl_1', character: { name: 'Eliora', realm: 'Mistvale', class: 'PALADIN', level: 61 }, claimedAt: 1, claimant: { id: 'u2', username: 'erin', displayName: 'Erin E', avatarUrl: null, initials: 'EE' }, plan: { kind: 'new_person', reason: null, message: null, person: null, defaultTeamId: null, canDecide: true } };
+    const review = { status: 200, body: { team: 't1', raids: [], stale: [] } };
+    const env = makeEnv({ url: '/#/g/g1/attendance/review', routes: signedInRoutes(can, { '/api/guild/g1/attendance/review?team=t1': review, '/api/guild/g1/claims': { status: 200, body: { claims: [claim] } } }) });
+    await settle();
+    assert(env.html('gs-main').includes('id="claims-section"') && env.html('gs-main').includes('Eliora') && env.html('gs-main').includes('data-submit="claim-approve"'));
+    assert(!env.html('gs-main').includes('Nothing to review'));
+    const failing = makeEnv({ url: '/#/g/g1/attendance/review', routes: signedInRoutes(can, { '/api/guild/g1/attendance/review?team=t1': review, '/api/guild/g1/claims': { status: 500, body: {} } }) });
+    await settle();
+    assert(failing.html('gs-main').includes('id="claims-error"') && failing.html('gs-main').includes('Nothing to review'));
+    const teamLeadOnly = makeEnv({ url: '/#/g/g1/attendance/review', routes: signedInRoutes({ 'roster.view': 'guild', 'attendance.review': ['t1'], 'attendance.view': ['t1'] }, { '/api/guild/g1/attendance/review?team=t1': review }) });
+    await settle();
+    assert.equal(teamLeadOnly.fetched('/claims'), 0, 'no roster.edit, no claims read');
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed) process.exit(1);
 })();

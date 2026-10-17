@@ -326,12 +326,12 @@ function assertEscaped(out, label) {
     }
   });
 
-  await check('visibility: Guild settings tabs follow the actions (Teams: guild.teams; People: guild.access or guild.roles)', () => {
+  await check('visibility: Guild settings tabs follow the actions (Teams and Battle.net: guild.teams; People: guild.access or guild.roles)', () => {
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
-    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams', 'battlenet']);
     assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people']);
     assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people']);
-    assert.deepEqual(tabs(ALL_CAN), ['teams', 'people']);
+    assert.deepEqual(tabs(ALL_CAN), ['teams', 'people', 'battlenet']);
     assert.deepEqual(tabs({}), []);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData({ 'guild.access': 'guild' }) }, 'people', '<p>x</p>');
     assert(frame.includes('People and roles'));
@@ -461,12 +461,14 @@ function assertEscaped(out, label) {
     assert.deepEqual(crumbs({ name: 'privacy' }, null), ['Privacy & my data']);
   });
 
-  await check('avatar menu: Privacy & my data and Sign out only (no Open the planner: the sidebar has it)', () => {
+  await check('avatar menu: My characters, Linked accounts, Privacy & my data and Sign out (no Open the planner: the sidebar has it)', () => {
     const menu = G.shell.accountMenuHtml({ me: meData(), guildData: guildData(ALL_CAN) });
-    assert(menu.includes('href="#/privacy"') && menu.includes('data-action="sign-out"'));
-    for (const gone of ['My profile', 'My characters', 'Linked accounts', 'Switch guild', 'Open the planner']) assert(!menu.includes(gone), gone);
+    assert(menu.includes('href="#/characters"') && menu.includes('href="#/linked"') && menu.includes('href="#/privacy"') && menu.includes('data-action="sign-out"'));
+    assert(menu.indexOf('#/characters') < menu.indexOf('#/linked') && menu.indexOf('#/linked') < menu.indexOf('#/privacy'), 'in that order');
+    for (const gone of ['My profile', 'Switch guild', 'Open the planner']) assert(!menu.includes(gone), gone);
     assert(!menu.includes('href="/"'));
-    assert.equal((menu.match(/role="menuitem"/g) || []).length, 2);
+    assert.equal((menu.match(/role="menuitem"/g) || []).length, 4);
+    assert(G.icons.names.includes('link'));
     assert(menu.includes('aria-haspopup="menu"') && menu.includes('aria-expanded="false"'));
   });
 

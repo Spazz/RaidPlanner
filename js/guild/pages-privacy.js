@@ -44,7 +44,7 @@
     const promote = impact && Array.isArray(impact.autoPromote) ? impact.autoPromote : [];
     const blocked = hand.length > 0;
     const intro = paragraphs([
-      'Deletes your sign-in and all Discord data Raidsmith holds: your Discord ID, username and avatar, and the Discord ID and nickname on your Raid-Helper sign-ups.',
+      'Deletes your sign-in and all Discord data Raidsmith holds: your Discord ID, username and avatar, and the Discord ID and nickname on your Raid-Helper sign-ups. It also deletes your Battle.net link and character list, and the character claims you made.',
       'Delete my data also lifts any access block on you.',
       'If you are the only Guild Master of a guild, hand over first. If nobody else has joined, the guild is deleted too.',
       'Roster records stay with the guild, unlinked, once the guild keeps them: your roster entry, characters, attendance and officer notes would no longer be linked to your Discord account. To remove those, ask your guild\'s officers.',
@@ -60,7 +60,7 @@
     }
     const confirm = blocked ? '' :
       '<div id="delete-confirm" role="group" aria-label="Confirm deleting your data" hidden>' +
-      '<p class="gs-confirm-text">This deletes your sign-in and your Discord data now.' + (gone.length ? ' It also deletes ' + G.ui.joinNames(gone) + '.' : '') + ' Roster records stay with the guild, unlinked. To remove those, ask your guild\'s officers.</p>' +
+      '<p class="gs-confirm-text">This deletes your sign-in, your Discord data and your Battle.net data now.' + (gone.length ? ' It also deletes ' + G.ui.joinNames(gone) + '.' : '') + ' Roster records stay with the guild, unlinked. To remove those, ask your guild\'s officers.</p>' +
       autoPromoteHtml(promote) +
       '<div class="gs-check"><input type="checkbox" id="delete-understand" data-change="delete-understand"><label for="delete-understand">I understand</label></div>' +
       '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-danger" id="delete-go" data-action="delete-go" data-key="delete-go" disabled>Delete my data</button>' +
@@ -81,6 +81,12 @@
         'Your server list is checked at each sign-in to find your guilds. Only the result is kept. For guild creators, the servers they can manage are kept for 30 minutes after sign-in.',
         'Ideas you suggest on the Future enhancements page: the title, details and area you write, linked to your account. Everyone who is signed in can read an idea, without your name.',
       ])) +
+      section('privacy-battlenet', 'Battle.net, only if you connect it', paragraphs([
+        'When you connect Battle.net, Raidsmith keeps your Battle.net account number and BattleTag, and the list of your characters in the games your guilds play: name, realm, class and level. It never sees your password, and it does not keep the access token Battle.net gives it: the token is used once, while you connect.',
+        'Blizzard\'s rules allow Raidsmith to keep that data for 30 days at most, so it is deleted 30 days after you connect unless you connect again before then. Disconnect on Linked accounts to delete it at once, or delete all your data from this page.',
+        'A character you claim is sent to your guild\'s officers with your name. A claim nobody has decided is deleted after 30 days too, and a decided one 30 days after the decision. A character an officer approves becomes part of the guild\'s roster, like any other.',
+        'Officers can read their in-game guild\'s member list from Battle.net to fill the roster. That list is not kept: only the people they choose to add are saved.',
+      ])) +
       section('privacy-guild-keeps', 'What your guild keeps', bullets([
         'Your roster entry: status, join and trial dates, characters, specs and team.',
         'Officer notes: only officers and team leads see them.',
@@ -98,7 +104,7 @@
         'Members see the guild\'s roster and raids, and the attendance of the teams they have a character on. Officers and team leads also see officer notes. Nobody outside the guild sees any of it.',
       ])) +
       section('privacy-cookies', 'Cookies', paragraphs([
-        'Two cookies: one keeps you signed in for 30 days, and a second lasts 10 minutes while you sign in. No ads, no tracking.',
+        'Two cookies: one keeps you signed in for 30 days, and a second lasts 10 minutes while you sign in. Connecting Battle.net sets one more for 10 minutes while you connect. No ads, no tracking.',
       ])) +
       section('privacy-stored', 'Where it is stored', paragraphs(['Raidsmith runs on Cloudflare.'])) +
       (me ? deleteBoxHtml(me.deleteImpact, o.message) : '') +

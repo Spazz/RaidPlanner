@@ -112,7 +112,7 @@ check('.env.example lists names only and covers every secret the Worker reads', 
   assert(entries.length >= 5);
   for (const entry of entries) assert.match(entry, /^[A-Z][A-Z0-9_]*=$/, `names only: ${entry}`);
   const names = entries.map((entry) => entry.slice(0, -1));
-  for (const name of ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_REDIRECT_URI', 'GUILD_CREATOR_ALLOWLIST', 'WCL_CLIENT_ID', 'WCL_CLIENT_SECRET']) {
+  for (const name of ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_REDIRECT_URI', 'GUILD_CREATOR_ALLOWLIST', 'WCL_CLIENT_ID', 'WCL_CLIENT_SECRET', 'BNET_CLIENT_ID', 'BNET_CLIENT_SECRET', 'BNET_REDIRECT_URI']) {
     assert(names.includes(name), name);
   }
   assert(!names.includes('DISCORD_API_BASE'));
@@ -120,8 +120,8 @@ check('.env.example lists names only and covers every secret the Worker reads', 
   for (const file of walk('worker')) {
     for (const match of read(file).matchAll(/\benv\.([A-Z][A-Z0-9_]+)/g)) used.add(match[1]);
   }
-  for (const name of used) assert(names.includes(name) || /^(?:DISCORD|RAID_HELPER|WCL)_API_BASE$/.test(name) || name === 'DB', `${name} is read by the Worker`);
-  assert(used.has('RAID_HELPER_API_BASE') && used.has('WCL_API_BASE') && !names.some((name) => name.endsWith('_API_BASE')), 'the API bases are dev-only vars, not secrets');
+  for (const name of used) assert(names.includes(name) || /^(?:DISCORD|RAID_HELPER|WCL|BNET)_API_BASE$/.test(name) || name === 'DB', `${name} is read by the Worker`);
+  assert(used.has('RAID_HELPER_API_BASE') && used.has('WCL_API_BASE') && used.has('BNET_API_BASE') && !names.some((name) => name.endsWith('_API_BASE')), 'the API bases are dev-only vars, not secrets');
 });
 
 check('every guild-tracker file is whitelisted in .gitignore (so it can be committed)', () => {
@@ -133,6 +133,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
     'guild-roster-worker-tests.js', 'guild-roster-ui-tests.js', 'guild-shell-tests.js', 'tests/guild-scripts.js', 'tools/fake-sources.js', 'migrations/0002_roster.sql',
     'guild-attendance-worker-tests.js', 'migrations/0003_attendance.sql', 'guild-loot-worker-tests.js', 'guild-loot-contract-tests.js', 'migrations/0008_loot.sql',
     'guild-roadmap-tests.js', 'guild-roadmap-worker-tests.js', 'tools/roadmap-ideas.js', 'js/guild/roadmap-data.js', 'js/guild/pages-roadmap.js',
+    'guild-bnet-worker-tests.js', 'guild-bnet-ui-tests.js', 'tools/fake-battlenet.js', 'js/guild/pages-bnet.js', 'js/guild/pages-import-bnet.js', 'js/guild/pages-settings-bnet.js', 'migrations/0009_battlenet.sql',
     'migrations/0001_foundation.sql', 'worker/package.json',
     ...walk('worker'), ...walk('migrations'),
   ]);
@@ -321,7 +322,7 @@ check('Worker SQL binds values and never concatenates them into SQL text', () =>
     for (const match of read(file).matchAll(/prepare\(\s*`([^`]*)`/g)) {
       const placeholders = [...match[1].matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]);
       for (const expression of placeholders) {
-        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|COLUMNS|OTHERS_SQL|SUCCESSOR_SQL|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|AWARD_SELECT|currentMemberSql\('[^']*', '[^']*', '[^']*'\)|teamId \? [^}]*)$/.test(expression.trim()),
+        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|pending.sql|linked.sql|COLUMNS|OTHERS_SQL|SUCCESSOR_SQL|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|AWARD_SELECT|currentMemberSql\('[^']*', '[^']*', '[^']*'\)|teamId \? [^}]*)$/.test(expression.trim()),
           `${file}: interpolated SQL ${expression}`);
       }
     }

@@ -1,20 +1,22 @@
 // ── HASH ROUTES ─────────────────────────────────────────────────
 // Pure parse/format for the guild page. Routes:
-//   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap
+//   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,people,attendance,loot}]
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,people,attendance,loot,battlenet}]
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
 //   #/g/:gid/loot[?view=raids|items]  #/g/:gid/loot/p/:pid  (Balance is the default view)
-//   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl}
+//   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl,bnet}
 //   (?team= only opens an archived team's roster; the shell's team picker decides otherwise)
 (function (G) {
   'use strict';
 
   const SECTIONS = ['roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'people', 'attendance', 'loot'];
+  const TABS = ['teams', 'people', 'attendance', 'loot', 'battlenet'];
   const LOOT_VIEWS = ['raids', 'items'];
-  const IMPORT_SOURCES = ['raid-helper', 'wcl'];
+  const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet'];
   const SIGNIN_ERRORS = ['denied', 'state', 'discord'];
+  // Why the Battle.net link came back without linking (/auth/bnet/callback redirects to #/linked?error=..).
+  const LINKED_ERRORS = ['denied', 'state', 'bnet', 'not_configured', 'busy', 'taken'];
   const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
   function decode(s) {
@@ -57,6 +59,8 @@
       if (head === 'new') return { name: 'new' };
       if (head === 'privacy') return { name: 'privacy' };
       if (head === 'roadmap') return { name: 'roadmap' };
+      if (head === 'linked') return { name: 'linked', error: LINKED_ERRORS.indexOf(query.error) >= 0 ? query.error : null };
+      if (head === 'characters') return { name: 'characters' };
       if (head === 'planner') {
         const raid = plannerRaid(query.raid);
         return raid ? { name: 'planner', gid: raid.gid, rid: raid.rid } : { name: 'planner' };
@@ -101,6 +105,8 @@
       case 'new': return '#/new';
       case 'privacy': return '#/privacy';
       case 'roadmap': return '#/roadmap';
+      case 'linked': return '#/linked' + (LINKED_ERRORS.indexOf(r.error) >= 0 ? '?error=' + r.error : '');
+      case 'characters': return '#/characters';
       case 'planner': return '#/planner' + (isId(r.gid) && isId(r.rid) ? '?raid=' + r.gid + '.' + r.rid : '');
       case 'section': {
         const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';
@@ -121,5 +127,5 @@
     }
   }
 
-  G.router = { SECTIONS: SECTIONS, TABS: TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, parse: parse, format: format };
+  G.router = { SECTIONS: SECTIONS, TABS: TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, parse: parse, format: format };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

@@ -38,6 +38,7 @@
     if (hasAction(can, 'guild.access') || hasAction(can, 'guild.roles')) tabs.push({ tab: 'people', label: 'People and roles' });
     if (hasAction(can, 'attendance.policy')) tabs.push({ tab: 'attendance', label: 'Attendance' });
     if (hasAction(can, 'loot.policy')) tabs.push({ tab: 'loot', label: 'Loot' });
+    if (hasAction(can, 'guild.teams')) tabs.push({ tab: 'battlenet', label: 'Battle.net' });
     return tabs;
   }
 
@@ -261,6 +262,7 @@
     personatt: { parent: 'attendance', parentLabel: 'Attendance', label: 'Person' },
     lootperson: { parent: 'loot', parentLabel: 'Loot', label: 'Person' },
   };
+  const IMPORT_LABELS = { 'raid-helper': 'Import from Raid-Helper', wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net' };
   function breadcrumbItems(ctx) {
     const r = ctx.route || {};
     const gd = ctx.guildData;
@@ -270,6 +272,8 @@
     if (r.name === 'privacy') return [{ label: 'Privacy & my data' }];
     if (r.name === 'roadmap') return [{ label: 'Future enhancements' }];
     if (ctx.signedOut) return [{ label: 'Sign in' }];
+    if (r.name === 'linked') return [{ label: 'Linked accounts' }];
+    if (r.name === 'characters') return [{ label: 'My characters' }];
     if (!gd || !gd.guild) return [{ label: 'Raidsmith' }];
     crumbs.push({ label: gd.guild.name, href: guildHref(gd.guild.id, 'roster', baseOf(ctx)) });
     if (r.name === 'section' || r.name === 'person' || r.name === 'import' || ATT_LEAF[r.name]) {
@@ -287,7 +291,7 @@
         crumbs.push({ label: ctx.leafName || leaf.label });
       } else {
         crumbs.push({ label: 'Roster', href: guildHref(gd.guild.id, 'roster', baseOf(ctx)) });
-        crumbs.push({ label: r.name === 'person' ? (ctx.personName || 'Person') : (r.source === 'wcl' ? 'Import from Warcraft Logs' : 'Import from Raid-Helper') });
+        crumbs.push({ label: r.name === 'person' ? (ctx.personName || 'Person') : IMPORT_LABELS[r.source] || 'Import' });
       }
     } else if (r.name === 'settings') {
       const tabs = settingsTabs(gd.me && gd.me.can);
@@ -356,6 +360,8 @@
       '<div class="gs-menu" id="gs-account-menu" role="menu" aria-label="Account" hidden>' +
       '<div class="gs-menu-head">' + G.ui.avatarHtml(u, 'gs-avatar-lg') + '<div class="gs-menu-who"><span class="gs-menu-name">' + esc(u.displayName) + '</span><span class="gs-menu-sub">' + esc(sub) + '</span></div></div>' +
       '<div class="gs-menu-sep" role="separator"></div>' +
+      '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + '#/characters') + '">' + ic('roster', 20) + '<span>My characters</span></a>' +
+      '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + '#/linked') + '">' + ic('link', 20) + '<span>Linked accounts</span></a>' +
       '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + '#/privacy') + '">' + ic('lock', 20) + '<span>Privacy &amp; my data</span></a>' +
       '<button type="button" class="gs-menu-item" role="menuitem" data-action="sign-out">' + ic('logout', 20) + '<span>Sign out</span></button>' +
       '</div></div>';

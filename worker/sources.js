@@ -86,7 +86,7 @@ export function parseWclSource(raw, gameVersion) {
 
 // Redirects are never followed. workerd accepts only "follow" and "manual" for `redirect`, so we ask for "manual"
 // and treat any redirect answer (3xx, an opaque redirect, or status 0) as the source being unavailable.
-async function fetchWithTimeout(ctx, url, init, failure) {
+export async function fetchWithTimeout(ctx, url, init, failure) {
   let response;
   try {
     response = await ctx.fetch(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -100,7 +100,7 @@ async function fetchWithTimeout(ctx, url, init, failure) {
 }
 
 // The body text, capped; null when it is over the cap.
-async function readCapped(response, maxBytes) {
+export async function readCapped(response, maxBytes) {
   const declared = Number(response.headers.get('Content-Length'));
   if (Number.isFinite(declared) && declared > maxBytes) return null;
   if (!response.body) return '';
@@ -125,7 +125,7 @@ async function readCapped(response, maxBytes) {
 
 const raidHelperDown = () => new HttpError(502, 'raid_helper_unavailable', 'Raid-Helper did not answer. Try again in a moment.');
 
-const cleanLine = (value, max) => (typeof value === 'string'
+export const cleanLine = (value, max) => (typeof value === 'string'
   ? Array.from(value.replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '').trim()).slice(0, max).join('')
   : '');
 
