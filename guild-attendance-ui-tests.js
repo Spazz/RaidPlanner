@@ -331,7 +331,7 @@ function teamData(over) {
   const RAIDS = [
     { id: 'r4', raidOn: '2026-10-10', zone: 'BT / Hyjal', bosses: { kills: 1, pulls: 17 }, sources: { event: true, reports: 2, plan: false }, counts: { present: 24, bench: 1, missed: 3 }, openFlags: 5, state: 'to_review', stale: false },
     { id: 'r3', raidOn: '2026-10-09', zone: null, bosses: { kills: 0, pulls: 0 }, sources: { event: true, reports: 0, plan: true }, counts: null, openFlags: 0, state: 'awaiting_log', stale: false },
-    { id: 'r2', raidOn: '2026-10-03', zone: 'BT', bosses: { kills: 2, pulls: 4 }, sources: { event: false, reports: 1, plan: false }, counts: { present: 20, bench: 0, missed: 0 }, openFlags: 0, state: 'reviewed', stale: true },
+    { id: 'r2', raidOn: '2026-10-03', zone: 'BT', bosses: { kills: 2, pulls: 4 }, sources: { event: false, reports: 1, plan: false }, counts: { present: 20, bench: 0, missed: 0 }, openFlags: 0, state: 'stale', stale: true },
     { id: 'r1', raidOn: '2026-10-02', zone: 'BT', bosses: { kills: 0, pulls: 0 }, sources: { event: false, reports: 0, plan: false }, counts: { present: 5, bench: 0, missed: 1 }, openFlags: 1, state: 'manual', stale: false },
   ];
   const raidsHtml = (over) => G.pages.raids.raidsHtml(Object.assign({ guildData: gd(OFFICER_CAN), teamId: 't1', data: { team: 't1', today: '2026-10-12', raids: RAIDS } }, over || {}));
@@ -342,8 +342,9 @@ function teamData(over) {
     for (const col of ['Date', 'Zone', 'Bosses', 'Sources', 'Present / Bench / Missed', 'Status']) assert(out.includes('>' + col + '<'), col);
     assert(out.includes('1 kill, 16 wipes') && out.includes('>Sign-ups<') && out.includes('Log x2') && out.includes('>Plan<'));
     assert(out.includes('24 / 1 / 3') && out.includes('href="#/g/g1/raids/r/r4"') && out.includes('Sat Oct 10'));
-    assert(out.includes('5 to review') && out.includes('Awaiting log') && out.includes('>Reviewed<') && out.includes('No log - by hand') && out.includes('1 to review'));
-    assert(out.includes('>Recalculate<') && out.includes('Rules or roster changed under 1 raid'));
+    assert(out.includes('5 to review') && out.includes('Awaiting log') && out.includes('>Needs recalculation<') && !out.includes('>Reviewed<') && !out.includes('>Recalculate<</span>') && out.includes('No log - by hand') && out.includes('1 to review'));
+    assert(out.includes('Rules or roster changed under 1 raid'));
+    assert(G.pages.raids.statePillsHtml({ state: 'reviewed', openFlags: 0, stale: false }).includes('>Reviewed<'));
     assert(out.includes('2 raids have open flags: Oct 10 and Oct 2.'), 'flag banner for reviewers');
     assert(out.includes('New raid') && out.includes('Backfill from Warcraft Logs'));
     assertNoRawAttrs(out);
@@ -384,11 +385,12 @@ function teamData(over) {
     assert(done.includes('Open raid') && done.includes('href="#/g/g1/raids/r/r9"') && !done.includes('id="nr-event"'));
   });
 
-  await check('new raid: lines follow the form (event with a date is its own step; blank report rows dropped; plan last)', () => {
+  await check('new raid: one create step carries the event and every report; only the plan is a second step', () => {
     const L = f => plain(G.pages.raidNew.buildLines(Object.assign({ teamId: 't1', event: '', reports: [''], plan: '', mode: 'log', date: '' }, f)).map(l => l.id));
     assert.deepEqual(L({ event: '123456', date: '' }), ['raid']);
-    assert.deepEqual(L({ event: '123456', date: '2026-10-10' }), ['raid', 'event']);
-    assert.deepEqual(L({ date: '2026-10-10', reports: ['a', ' ', 'b'], plan: 'PP:2:x' }), ['raid', 'report-0', 'report-2', 'plan']);
+    assert.deepEqual(L({ event: '123456', date: '2026-10-10' }), ['raid']);
+    assert.deepEqual(L({ date: '2026-10-10', reports: ['a', ' ', 'b'], plan: 'PP:2:x' }), ['raid', 'plan']);
+    assert.deepEqual(L({ reports: ['a'] }), ['raid']);
     assert.deepEqual(L({ date: '2026-10-10', reports: ['a'], mode: 'manual' }), ['raid']);
   });
 
@@ -405,7 +407,7 @@ function teamData(over) {
       people: [
         prow('p_b', 'Bravo'),
         prow('p_k', 'Kanyan', { pulls: { present: 8, total: 17, missedFirst: true, missedLast: false }, outcome: 'late', credit: null, pending: true, needsReview: true, flags: ['late'], signup: 'tentative' }),
-        prow('p_a', 'Alpha', { outcome: 'missed', credit: 0, flags: ['no_show'], pulls: { present: 0, total: 17, missedFirst: false, missedLast: false }, plan: 'G3', decision: { reason: 'Told the raid lead', by: 'Officer', at: 1 } }),
+        prow('p_a', 'Alpha', { outcome: 'missed', credit: 0, flags: ['no_show'], pulls: { present: 0, total: 17, missedFirst: false, missedLast: false }, plan: 'G3', decision: { reason: 'Told the raid lead', by: 'Officer', at: 1, applied: true } }),
         prow('p_t', 'Terani', { signup: 'bench', plan: 'bench', outcome: 'bench', credit: 1 }),
       ],
       unmatched: [{ key: 'taharah|dreamscythe', name: 'Taharah', realm: 'Dreamscythe', class: 'DRUID', pullsPresent: 17 }],
@@ -449,7 +451,7 @@ function teamData(over) {
     const manual = raidPage(detail({ raid: Object.assign(detail().raid, { state: 'manual', openFlags: 0, manual: { reason: 'Nobody uploaded', by: 'Officer', at: 1760000000000 } }), sources: { event: null, reports: [], plan: null } }));
     assert(manual.includes('No log - attendance entered by hand') && manual.includes('Nobody uploaded') && manual.includes('data-op="manual-edit"') && manual.includes('data-op="manual-remove"') && !manual.includes('data-op="report-add"') && !manual.includes('Mark as No log'));
     assert(raidPage(detail({ raid: Object.assign(detail().raid, { stale: true }) })).includes('data-op="recompute"'));
-    const bad = detail({ people: [prow('p_x', HOSTILE + QUOTES, { flags: ['no_show'], decision: { reason: HOSTILE, by: QUOTES } })], unmatched: [{ key: 'k', name: HOSTILE, realm: QUOTES, class: 'MAGE', pullsPresent: 1 }] });
+    const bad = detail({ people: [prow('p_x', HOSTILE + QUOTES, { flags: ['no_show'], decision: { reason: HOSTILE, by: QUOTES, applied: true } })], unmatched: [{ key: 'k', name: HOSTILE, realm: QUOTES, class: 'MAGE', pullsPresent: 1 }] });
     bad.raid.zone = HOSTILE;
     assertEscaped(raidPage(bad), 'raid detail');
   });
@@ -981,7 +983,74 @@ function teamData(over) {
   await check('R2: a stale-state raid shows "Needs recalculation", never "Reviewed"', () => {
     const html = G.pages.raids.statePillsHtml({ state: 'stale', openFlags: 0, stale: true });
     assert(html.includes('Needs recalculation') && !html.includes('Reviewed') && !html.includes('>Recalculate<'));
-    assert(G.pages.raids.statePillsHtml({ state: 'reviewed', openFlags: 0, stale: true }).includes('>Recalculate<'));
+    // Whatever the stored state says, a stale raid shows that one pill (a policy change used to add a second one).
+    for (const state of ['reviewed', 'to_review', 'manual']) {
+      const both = G.pages.raids.statePillsHtml({ state, openFlags: 2, stale: true });
+      assert(both.includes('>Needs recalculation<') && !/Reviewed|Recalculate<|to review|by hand/.test(both), state);
+    }
+    assert(raidPage(detail({ raid: Object.assign(detail().raid, { state: 'stale', openFlags: 0, stale: true }) })).includes('>Needs recalculation<'));
+  });
+
+  await check('R3-3: the New raid page creates a report-only raid (no event, no date) with ONE POST /raids; the date stays required without a report or an event', async () => {
+    const posts = [];
+    const puts = [];
+    G.api.post = (url, body) => { posts.push({ url, body }); return Promise.resolve({ raid: { id: 'r_new' } }); };
+    G.api.put = (url, body) => { puts.push({ url, body }); return Promise.resolve({}); };
+    const saveRender = G.app.render;
+    G.app.render = () => {};
+    G.app.state.guilds.g1 = gd(OFFICER_CAN); G.app.state.currentGid = 'g1';
+    const A = G.pages.attendance.attState();
+    const form = (over) => Object.assign({ teamId: 't1', event: '', reports: ['AAAAAAAAAAAAAAAA', ' ', 'BBBBBBBBBBBBBBBB'], plan: '', mode: 'log', date: '' }, over || {});
+    A.nr = { gid: 'g1', form: form(), run: null, error: '' };
+    G.handlers.submit['nr-create-form']();
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(A.nr.error, '');
+    assert.equal(puts.length, 0, 'no second call for the reports');
+    assert.equal(posts.length, 1);
+    assert.deepEqual(plain(posts[0].body), { teamId: 't1', reportSources: ['AAAAAAAAAAAAAAAA', 'BBBBBBBBBBBBBBBB'] });
+    // The event rides in the same call, with the date when one was typed.
+    posts.length = 0;
+    A.nr = { gid: 'g1', form: form({ event: ' 123456 ', date: '2026-10-10' }), run: null, error: '' };
+    G.handlers.submit['nr-create-form']();
+    await new Promise(r => setTimeout(r, 0));
+    assert.deepEqual(plain(posts.map(p => p.body)), [{ teamId: 't1', raidOn: '2026-10-10', eventSource: '123456', reportSources: ['AAAAAAAAAAAAAAAA', 'BBBBBBBBBBBBBBBB'] }]);
+    assert.equal(puts.length, 0);
+    // Nothing that gives a date: refused, nothing sent. Manual mode drops the reports, so it needs the date too.
+    posts.length = 0;
+    A.nr = { gid: 'g1', form: form({ reports: ['', ''] }), run: null, error: '' };
+    G.handlers.submit['nr-create-form']();
+    assert.match(A.nr.error, /raid date/);
+    A.nr = { gid: 'g1', form: form({ mode: 'manual' }), run: null, error: '' };
+    G.handlers.submit['nr-create-form']();
+    assert.match(A.nr.error, /raid date/);
+    assert.equal(posts.length, 0);
+    assert.deepEqual(plain(G.pages.raidNew.createBody(form({ mode: 'manual', date: '2026-10-10' }), true)), { teamId: 't1', raidOn: '2026-10-10', acceptOtherServer: true });
+    const html = G.pages.raidNew.raidNewHtml({ guildData: gd(OFFICER_CAN), state: { gid: 'g1', form: form(), run: null, error: '' } });
+    assert(html.includes('Raid date (optional)'));
+    A.nr = null;
+    G.app.render = saveRender;
+  });
+
+  await check('R3-1: the manual line shows only "No log - attendance entered by hand" without the officer\'s name, date and reason', () => {
+    const base = detail().raid;
+    const hidden = raidPage(detail({ raid: Object.assign({}, base, { state: 'manual', openFlags: 0, manual: { reason: null, by: null, at: 1760000000000, presentPlayerIds: [] } }) }), { guildData: gd(MEMBER_CAN) });
+    assert(hidden.includes('No log - attendance entered by hand</strong>.') && !/Reason|by Officer|hand<\/strong> on/.test(hidden));
+    const shown = raidPage(detail({ raid: Object.assign({}, base, { state: 'manual', openFlags: 0, manual: { reason: 'Nobody uploaded', by: 'Officer', at: 1760000000000 } }) }));
+    assert(shown.includes('by Officer') && shown.includes('Reason: Nobody uploaded'));
+  });
+
+  await check('R3-4: "Decided" shows only for an applied decision; a stale one shows a muted hint to reviewers and nothing to others', () => {
+    const rows = (decision) => [prow('p_a', 'Alpha', { outcome: 'missed', credit: 0, flags: ['no_show'], decision })];
+    const applied = raidPage(detail({ people: rows({ reason: 'Told the raid lead', by: 'Officer', at: 1, applied: true }) }), { filter: 'all' });
+    assert(applied.includes('Decided: Told the raid lead (Officer)') && !applied.includes('no longer applies'));
+    const old = { reason: 'Told the raid lead', by: 'Officer', at: 1, applied: false };
+    const reviewer = raidPage(detail({ people: rows(old) }), { filter: 'all' });
+    assert(!reviewer.includes('Decided') && !reviewer.includes('Told the raid lead') && reviewer.includes('An earlier decision no longer applies'));
+    const noReview = { edit: false, review: false, seeAttendance: true, seeNicknames: false };
+    const member = raidPage(detail({ people: rows({ at: 1, applied: false }), can: noReview }), { guildData: gd(MEMBER_CAN), filter: 'all' });
+    assert(!member.includes('Decided') && !member.includes('no longer applies'));
+    const memberApplied = raidPage(detail({ people: rows({ at: 1, applied: true }), can: noReview }), { guildData: gd(MEMBER_CAN), filter: 'all' });
+    assert(memberApplied.includes('Decided') && !memberApplied.includes('Officer'));
   });
 
   await check('fix: backfill sends expectedVersion from the roster list row version', () => {

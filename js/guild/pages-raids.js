@@ -18,10 +18,11 @@
   // ── list ──
   function pillHtml(kind, text) { return '<span class="gs-pill gs-pill-' + kind + '">' + esc(text) + '</span>'; }
 
-  // The status pills of one list row: the state, plus open flags on a manual raid, plus "Recalculate" when stale.
+  // The status pills of one list row: the state, plus open flags on a manual raid. A stale raid shows only "Needs recalculation", whatever else its stored state says.
   function statePillsHtml(r) {
     const pills = [];
     const flags = r.openFlags > 0 ? r.openFlags : 0;
+    if (r.stale || r.state === 'stale') return '<span class="gs-pills">' + pillHtml('warn', 'Needs recalculation') + '</span>';
     switch (r.state) {
       case 'awaiting_log': pills.push(pillHtml('muted', 'Awaiting log')); break;
       case 'manual':
@@ -30,10 +31,8 @@
         break;
       case 'to_review': pills.push(pillHtml('warn', flags + ' to review')); break;
       case 'reviewed': pills.push(pillHtml('ok', 'Reviewed')); break;
-      case 'stale': pills.push(pillHtml('warn', 'Needs recalculation')); break;
       default: pills.push(pillHtml('muted', String(r.state == null ? '' : r.state).replace(/_/g, ' ')));
     }
-    if (r.stale && r.state !== 'stale') pills.push(pillHtml('warn', 'Recalculate'));
     return '<span class="gs-pills">' + pills.join('') + '</span>';
   }
 
@@ -221,8 +220,8 @@
       '<div class="gs-check"><input type="radio" id="nr-mode-manual" name="nr-mode" value="manual"' + (manual ? ' checked' : '') + ' data-change="nr-mode"><label for="nr-mode-manual">No log - enter attendance by hand</label></div></div></fieldset>' +
       '<div class="gs-field"><label class="gs-label" for="nr-event">Raid-Helper event (optional)</label><input class="gs-input" type="text" id="nr-event" data-key="nr-event" placeholder="Event link or ID" autocomplete="off" value="' + esc(f.event) + '" aria-describedby="nr-event-help">' +
       '<p class="gs-fine" id="nr-event-help">The sign-ups. The event\'s start time also sets the raid date.</p></div>' +
-      '<div class="gs-field"><label class="gs-label" for="nr-date">Raid date' + (f.event.trim() ? ' (optional)' : '') + '</label><input class="gs-input" type="date" id="nr-date" data-key="nr-date" value="' + esc(f.date) + '" aria-describedby="nr-date-help">' +
-      '<p class="gs-fine" id="nr-date-help">Needed unless a Raid-Helper event gives the date. The guild\'s calendar date.</p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="nr-date">Raid date' + (f.event.trim() || (!manual && f.reports.some(function (v) { return v.trim(); })) ? ' (optional)' : '') + '</label><input class="gs-input" type="date" id="nr-date" data-key="nr-date" value="' + esc(f.date) + '" aria-describedby="nr-date-help">' +
+      '<p class="gs-fine" id="nr-date-help">Needed unless a Raid-Helper event or a Warcraft Logs report gives the date. The guild\'s calendar date.</p></div>' +
       (manual ? '<p class="gs-fine">After the raid is created you tick who was present and give a reason.</p>'
         : '<fieldset class="gs-fieldset" id="nr-reports"><legend class="gs-legend">Warcraft Logs reports (optional)</legend>' + f.reports.map(function (v, i) { return reportRowHtml(v, i, f.reports.length); }).join('') +
           '<div><button type="button" class="gs-btn gs-btn-sm" data-action="nr-add-report" data-key="nr-add-report">Add another report</button></div></fieldset>') +
@@ -291,16 +290,10 @@
     line.openRaidId = '';
     let promise;
     if (line.id === 'raid') {
-      const body = { teamId: f.teamId };
-      if (f.date) body.raidOn = f.date;
-      if (f.event.trim() && !f.date) body.eventSource = f.event.trim();
-      if (run.acceptOtherServer) body.acceptOtherServer = true;
-      promise = G.api.post(base + '/raids', body).then(function (res) { run.raidId = res.raid.id; });
+      promise = G.api.post(base + '/raids', createBody(f, run.acceptOtherServer)).then(function (res) { run.raidId = res.raid.id; });
     } else if (!run.raidId) {
       line.status = 'skipped';
       return Promise.resolve();
-    } else if (line.id === 'event') {
-      promise = G.api.put(base + '/raids/' + encodeURIComponent(run.raidId) + '/event', { source: f.event.trim(), acceptOtherServer: !!line.acceptOtherServer });
     } else if (line.id === 'plan') {
       promise = G.planSource.read(f.plan, {}).then(function (read) {
         if (!read.ok) { const e = new Error(read.error); e.planError = true; throw e; }
@@ -313,9 +306,8 @@
         });
       });
     } else {
-      const body = { source: line.src.trim() };
-      if (line.confirmFar) body.confirmFar = true;
-      promise = G.api.put(base + '/raids/' + encodeURIComponent(run.raidId) + '/reports', body);
+      line.status = 'skipped';
+      return Promise.resolve();
     }
     return promise.then(function () { line.status = 'ok'; }, function (err) {
       line.status = 'error';
@@ -324,9 +316,8 @@
       if (c.view === 'signin') { G.app.requireSignin(); return; }
       line.message = c.text;
       const rid = err && err.body && err.body.raidId;
-      if (err && (err.code === 'raid_exists' || err.code === 'event_exists') && rid) line.openRaidId = rid;
+      if (err && (err.code === 'raid_exists' || err.code === 'event_exists' || err.code === 'report_exists') && rid) line.openRaidId = rid;
       if (err && err.code === 'other_server') line.accept = 'Import anyway';
-      if (err && err.code === 'report_not_same_night') line.accept = 'Add anyway';
     });
   }
 
@@ -354,14 +345,28 @@
     });
   }
 
+  // The non-blank report sources of the form; none in manual mode.
+  function reportSourcesOf(f) {
+    if (f.mode !== 'log') return [];
+    return f.reports.map(function (v) { return v.trim(); }).filter(Boolean);
+  }
+
+  // The body of the one POST /raids: the date comes from the event or the first pull when there is one.
+  function createBody(f, acceptOtherServer) {
+    const body = { teamId: f.teamId };
+    const reports = reportSourcesOf(f);
+    if (f.date) body.raidOn = f.date;
+    if (f.event.trim()) body.eventSource = f.event.trim();
+    if (reports.length) body.reportSources = reports;
+    if (acceptOtherServer) body.acceptOtherServer = true;
+    return body;
+  }
+
   function buildLines(f) {
-    const lines = [{ id: 'raid', label: f.event.trim() && !f.date ? 'Create the raid from the Raid-Helper event' : 'Create the raid', status: 'pending' }];
-    if (f.event.trim() && f.date) lines.push({ id: 'event', label: 'Raid-Helper event', status: 'pending' });
-    if (f.mode === 'log') {
-      f.reports.forEach(function (v, i) {
-        if (v.trim()) lines.push({ id: 'report-' + i, label: 'Warcraft Logs report: ' + shorten(v), src: v, status: 'pending' });
-      });
-    }
+    // One create call carries the event and every report, so a failed source writes nothing; only the plan is a second step.
+    const reports = reportSourcesOf(f);
+    const from = [f.event.trim() ? 'Raid-Helper event' : '', reports.length ? plural(reports.length, 'Warcraft Logs report', 'Warcraft Logs reports') : ''].filter(Boolean).join(' and ');
+    const lines = [{ id: 'raid', label: from ? 'Create the raid from the ' + from : 'Create the raid', status: 'pending' }];
     if (f.plan.trim()) lines.push({ id: 'plan', label: 'Raidsmith plan', status: 'pending' });
     return lines;
   }
@@ -375,7 +380,7 @@
     nr.error = '';
     if (!f.teamId) nr.error = 'Choose a team.';
     else if (f.date && !RAID_DATE.test(f.date)) nr.error = 'Enter the raid date as a calendar date.';
-    else if (!f.event.trim() && !f.date) nr.error = 'Enter the raid date, or a Raid-Helper event that has one.';
+    else if (!f.event.trim() && !f.date && !reportSourcesOf(f).length) nr.error = 'Enter the raid date, a Raid-Helper event, or a Warcraft Logs report that gives it.';
     if (nr.error) { G.app.render(); G.ui.focusByKey('nr-date'); return; }
     nr.run = { gid: gd.guild.id, form: JSON.parse(JSON.stringify(f)), lines: buildLines(f), raidId: null, running: true, acceptOtherServer: false };
     G.app.render();
@@ -389,13 +394,11 @@
     if (!line) return;
     if (el.getAttribute('data-accept') === '1') {
       if (line.id === 'raid') nr.run.acceptOtherServer = true;
-      if (line.id === 'event') line.acceptOtherServer = true;
-      if (line.id.indexOf('report-') === 0) line.confirmFar = true;
     }
     line.status = 'pending';
     runPending(nr.run);
   };
 
   G.pages.raids = { raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, load: loadList, main: mainList };
-  G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
+  G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

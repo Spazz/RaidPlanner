@@ -227,7 +227,7 @@ export async function getReview(ctx) {
   const characterKeys = new Set(knownResult.results.map((row) => presenceKey(row.name_key, row.realm_key)));
   const guestKeys = new Set(guestResult.results.map((row) => presenceKey(row.name_key, row.realm_key)));
   const stale = allRaidResult.results
-    .filter((raid) => isStale(raid, raidState(raid, raid.reports), resolver))
+    .filter((raid) => isStale(raidState(raid, raid.reports, resolver)))
     .map((raid) => raid.id);
   const staleIds = new Set(stale);
   const raids = raidResult.results.map((raid) => {
@@ -523,7 +523,7 @@ export async function getTeamAttendance(ctx) {
     weeks: [...weekMap.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([start, list]) => ({ weekStart: start, raids: list })),
     people,
     awaitingReview: raids.filter((raid) => raid.open_flags > 0).length,
-    staleRaids: raids.filter((raid) => isStale(raid, raidState(raid, raid.reports), resolver)).length,
+    staleRaids: raids.filter((raid) => isStale(raidState(raid, raid.reports, resolver))).length,
   });
 }
 

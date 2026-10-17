@@ -252,7 +252,7 @@ export async function listRaids(ctx) {
     can: { edit: allows(guildContext.can, 'raids.edit', team.id) },
     hasMore: raidResult.results.length > PAGE_SIZE,
     raids: page.map((row) => {
-      const state = raidState(row, row.reports);
+      const state = raidState(row, row.reports, resolver);
       return {
         id: row.id,
         raidOn: row.raid_on,
@@ -262,7 +262,7 @@ export async function listRaids(ctx) {
         counts: seeCounts ? { present: row.present, bench: row.bench, missed: row.missed } : null,
         openFlags: row.open_flags,
         state,
-        stale: isStale(row, state, resolver),
+        stale: isStale(state),
       };
     }),
   });
