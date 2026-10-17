@@ -1,6 +1,6 @@
 {
   "name": "raidsmith-web",
-  "version": "4.4.2",
+  "version": "4.4.3",
   "private": true,
   "scripts": {
     "test": "node tests/run-all.js"

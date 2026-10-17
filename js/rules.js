@@ -236,7 +236,7 @@ Object.defineProperty(Rulesets, 'compile', {
     }
 
     function compileBuffs(data, catalog) {
-      const out = { buffs: {}, totemElements: {}, paladinAuras: {}, shouts: [], cooldownTotems: [], dpsValue: {}, mitValue: {}, sustainValue: {} };
+      const out = { buffs: {}, totemElements: {}, paladinAuras: {}, shouts: [], cooldownTotems: [], raidWide: [], dpsValue: {}, mitValue: {}, sustainValue: {} };
       for (const [id, entry] of Object.entries(data.buffs || {})) {
         if (!Array.isArray(entry.targetRoles)) throw problem(`${id} has no targetRoles list`);
         if (!BUFF_TYPES.includes(entry.buffType)) throw problem(`${id} has unknown buffType "${entry.buffType}"`);
@@ -244,6 +244,8 @@ Object.defineProperty(Rulesets, 'compile', {
         const buff = { name: entry.name, sourceClass: entry.sourceClass };
         if (entry.sourceSpec) buff.sourceSpec = entry.sourceSpec;
         if (entry.preferSpec) buff.preferSpec = entry.preferSpec;
+        // Only a raid-wide buff carries its scope (the optimizer reads it); party is the default and is left off.
+        if (entry.scope === 'raid') { buff.scope = 'raid'; out.raidWide.push(id); }
         buff.benefitsRoles = [...entry.targetRoles];
         buff.priority = copy(entry.priority);
         buff.desc = entry.desc;
@@ -392,6 +394,7 @@ Object.defineProperty(Rulesets, 'compile', {
         paladinAuras: buffs.paladinAuras,
       };
       if (buffs.shouts.length) ruleset.shouts = buffs.shouts;
+      if (buffs.raidWide.length) ruleset.raidWide = buffs.raidWide;
       ruleset.bestAirTotem = copy(data.bestAirTotem || {});
       ruleset.bestPaladinAura = copy(data.bestPaladinAura || {});
       ruleset.rules = rules;
@@ -430,7 +433,7 @@ Rulesets.forever = Rulesets.compile(RulesData.forever, RulesData.catalog);
 const GameVersions = {
   tbc: { name:'WoW TBC', defaultRaid:'bt', raids:Object.keys(Rulesets.tbc.raids), note:'TBC party buffs and optimization rules.', toastNote:'TBC Anniversary party buffs and optimization rules.' },
   classic: { name:'WoW Classic', defaultRaid:'mc', raids:Object.keys(Rulesets.classic.raids), note:'WoW Classic Era party buffs, composition and optimizer rules. Faction-aware: Horde shamans, Alliance paladins.', toastNote:'WoW Classic Era rules, faction-aware: Horde shamans, Alliance paladins.' },
-  forever: { name:'WoW Forever (Beta)', defaultRaid:'f_ony', raids:Object.keys(Rulesets.forever.raids), note:'Rules follow WoW Forever beta data as of 2026-10-10 (build 1.60.1.70338): Paladin and Shaman on both factions (no faction lock), Trueshot Aura a Marksmanship talent, one Faerie Fire for every Druid, Leader of the Pack/Moonkin Aura one exclusive crit buff, one air totem per party, Sanctity Aura removed, and the confirmed Barrow Deeps/Hyjal Summit/Onyxia\'s Lair raids.', toastNote:'WoW Forever beta rules, data as of 2026-10-10. The landing page has the details.' },
+  forever: { name:'WoW Forever (Beta)', defaultRaid:'f_ony', raids:Object.keys(Rulesets.forever.raids), note:'Rules follow WoW Forever beta data as of 2026-10-16: Paladin and Shaman on both factions (no faction lock), Trueshot Aura a Marksmanship talent, one Faerie Fire for every Druid, Battle Shout, Trueshot Aura, Moonkin Aura (spell crit), Leader of the Pack (melee and ranged crit) and the Windfury, Grace of Air and Strength of Earth totems raid-wide, Sanctity Aura removed, and the confirmed Barrow Deeps/Hyjal Summit/Onyxia\'s Lair raids.', toastNote:'WoW Forever beta rules, data as of 2026-10-16. The landing page has the details.' },
 };
 // Raid ids are unique across versions (Classic's Onyxia is `ony`, Forever's `f_ony`; rules-data-tests.js checks it).
 Object.assign(Config.Raids, Rulesets.tbc.raids, Rulesets.classic.raids, Rulesets.forever.raids);

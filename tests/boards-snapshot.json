@@ -5001,59 +5001,59 @@
     "groups": [
       [
         "DRUID:Feral FP4",
-        "PALADIN:Protection FP3",
-        "SHAMAN:Enhancement FP26",
-        "WARRIOR:Fury FP16",
-        "WARRIOR:Fury FP18"
+        "HUNTER:Beast Mastery FP30",
+        "HUNTER:Marksmanship FP28",
+        "HUNTER:Marksmanship FP29",
+        "HUNTER:Survival FP31"
       ],
       [
         "PALADIN:Retribution FP24",
         "ROGUE:Assassination FP22",
+        "ROGUE:Assassination FP23",
         "ROGUE:Combat FP21",
+        "WARRIOR:Fury FP17"
+      ],
+      [
+        "PALADIN:Protection FP3",
+        "SHAMAN:Enhancement FP26",
         "SHAMAN:Enhancement FP27",
+        "WARRIOR:Protection FP1",
         "WARRIOR:Protection FP2"
       ],
       [
         "PALADIN:Retribution FP25",
-        "ROGUE:Assassination FP23",
-        "ROGUE:Combat FP20",
-        "SHAMAN:Restoration FP13",
-        "WARRIOR:Fury FP17"
-      ],
-      [
-        "HUNTER:Beast Mastery FP30",
-        "HUNTER:Marksmanship FP29",
-        "PALADIN:Holy FP9",
         "ROGUE:Combat FP19",
-        "SHAMAN:Restoration FP12"
+        "ROGUE:Combat FP20",
+        "WARRIOR:Fury FP16",
+        "WARRIOR:Fury FP18"
       ],
       [
-        "DRUID:Restoration FP14",
-        "DRUID:Restoration FP15",
+        "MAGE:Frost FP32",
         "PALADIN:Holy FP10",
-        "PRIEST:Holy FP6",
+        "PRIEST:Discipline FP8",
+        "SHAMAN:Restoration FP12",
         "WARLOCK:Destruction FP36"
       ],
       [
+        "MAGE:Arcane FP35",
         "MAGE:Fire FP34",
-        "PALADIN:Holy FP11",
-        "PRIEST:Holy FP7",
         "PRIEST:Shadow FP39",
+        "WARLOCK:Affliction FP38",
         "WARLOCK:Destruction FP37"
       ],
       [
-        "HUNTER:Marksmanship FP28",
-        "MAGE:Arcane FP35",
-        "MAGE:Frost FP32",
-        "MAGE:Frost FP33",
-        "WARLOCK:Affliction FP38"
+        "DRUID:Restoration FP15",
+        "PALADIN:Holy FP9",
+        "PRIEST:Holy FP6",
+        "PRIEST:Holy FP7",
+        "SHAMAN:Restoration FP13"
       ],
       [
-        "HUNTER:Survival FP31",
-        "PRIEST:Discipline FP8",
+        "DRUID:Restoration FP14",
+        "MAGE:Frost FP33",
+        "PALADIN:Holy FP11",
         "PRIEST:Holy FP5",
-        "WARRIOR:Protection FP0",
-        "WARRIOR:Protection FP1"
+        "WARRIOR:Protection FP0"
       ]
     ],
     "bench": [],
@@ -5064,18 +5064,18 @@
     "raid": "f_hyjal",
     "groups": [
       [
-        "DRUID:Feral FP11",
-        "PALADIN:Retribution FP9",
-        "ROGUE:Combat FP8",
-        "SHAMAN:Enhancement FP10",
-        "WARRIOR:Fury FP7"
-      ],
-      [
+        "DRUID:Restoration FP5",
         "HUNTER:Marksmanship FP12",
         "HUNTER:Survival FP13",
         "PALADIN:Protection FP1",
-        "SHAMAN:Restoration FP2",
-        "WARRIOR:Fury FP6"
+        "SHAMAN:Enhancement FP10"
+      ],
+      [
+        "DRUID:Feral FP11",
+        "PALADIN:Retribution FP9",
+        "ROGUE:Combat FP8",
+        "WARRIOR:Fury FP6",
+        "WARRIOR:Fury FP7"
       ],
       [
         "MAGE:Frost FP14",
@@ -5085,9 +5085,9 @@
         "WARLOCK:Destruction FP17"
       ],
       [
-        "DRUID:Restoration FP5",
         "PALADIN:Holy FP3",
         "PRIEST:Holy FP4",
+        "SHAMAN:Restoration FP2",
         "WARLOCK:Affliction FP18",
         "WARRIOR:Protection FP0"
       ]
@@ -5100,43 +5100,43 @@
     "raid": "f_hyjal",
     "groups": [
       [
-        "DRUID:Feral FP18",
         "PALADIN:Retribution FP15",
-        "SHAMAN:Enhancement FP16",
+        "SHAMAN:Enhancement FP17",
+        "WARRIOR:Fury FP10",
         "WARRIOR:Fury FP11",
         "WARRIOR:Fury FP12"
       ],
       [
         "DRUID:Feral FP19",
-        "PALADIN:Holy FP5",
-        "ROGUE:Combat FP14",
-        "SHAMAN:Restoration FP9",
-        "WARRIOR:Fury FP10"
+        "HUNTER:Marksmanship FP20",
+        "HUNTER:Survival FP21",
+        "PALADIN:Holy FP6",
+        "SHAMAN:Restoration FP7"
       ],
       [
-        "HUNTER:Marksmanship FP20",
         "MAGE:Fire FP24",
+        "PALADIN:Holy FP5",
         "SHAMAN:Elemental FP28",
         "WARLOCK:Destruction FP25",
         "WARLOCK:Destruction FP26"
       ],
       [
+        "DRUID:Feral FP18",
         "PALADIN:Protection FP2",
-        "ROGUE:Combat FP13",
-        "SHAMAN:Restoration FP7",
+        "SHAMAN:Enhancement FP16",
         "SHAMAN:Restoration FP8",
         "WARRIOR:Protection FP0"
       ]
     ],
     "bench": [
-      "HUNTER:Survival FP21",
       "MAGE:Frost FP22",
       "MAGE:Frost FP23",
-      "PALADIN:Holy FP6",
       "PRIEST:Holy FP3",
       "PRIEST:Holy FP4",
       "PRIEST:Shadow FP29",
-      "SHAMAN:Enhancement FP17",
+      "ROGUE:Combat FP13",
+      "ROGUE:Combat FP14",
+      "SHAMAN:Restoration FP9",
       "WARLOCK:Affliction FP27",
       "WARRIOR:Protection FP1"
     ],
@@ -5147,17 +5147,17 @@
     "raid": "f_barrow",
     "groups": [
       [
-        "HUNTER:Marksmanship FP8",
         "MAGE:Frost FP9",
         "PALADIN:Holy FP4",
-        "SHAMAN:Restoration FP3",
+        "PALADIN:Protection FP1",
+        "SHAMAN:Enhancement FP7",
         "WARRIOR:Protection FP0"
       ],
       [
-        "PALADIN:Protection FP1",
+        "HUNTER:Marksmanship FP8",
         "PRIEST:Holy FP2",
         "ROGUE:Combat FP6",
-        "SHAMAN:Enhancement FP7",
+        "SHAMAN:Restoration FP3",
         "WARRIOR:Fury FP5"
       ]
     ],

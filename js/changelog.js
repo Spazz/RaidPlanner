@@ -3,8 +3,14 @@
 // APP_VERSION (package.json carries the same number, changelog-tests.js checks both).
 // Shipping a user-visible change means adding an entry here and bumping both: the
 // "New" badge then appears once for everyone who dismissed an older version.
-const APP_VERSION = '4.4.2';
+const APP_VERSION = '4.4.3';
 const CHANGELOG = [
+  { version: '4.4.3', date: '2026-10-16', title: 'WoW Forever beta data refresh (Oct 16 notes)', changes: [
+    'Forever: Battle Shout, Trueshot Aura, Moonkin Aura, Leader of the Pack and the Windfury, Grace of Air and Strength of Earth totems are now raid-wide, so they reach every group and no longer decide where a player sits.',
+    'Forever: Moonkin Aura buffs spell crit only (casters and healers) and Leader of the Pack melee and ranged crit only. They no longer exclude each other; stacking is inferred, not confirmed by Blizzard.',
+    'Forever: Grace of Air no longer excludes Windfury, so two shamans give the raid both. A shaman in a melee group is now only a small tie-break, not a rule.',
+    'Forever groups may be laid out differently from before; Optimize again if you want the new layout.',
+  ] },
   { version: '4.4.2', date: '2026-10-14', title: 'A different Raid-Helper event always gets its own plan', changes: [
     'Loading a different Raid-Helper event now always opens its own plan, also when the open plan came from a share link or a pasted player list. Your other plan stays as it was.',
     'Filling a layout of Open slots from an event still works as before.',

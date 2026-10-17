@@ -96,12 +96,22 @@ check('parity: every shown buff is credited by the scorer and vice versa, with t
           const shown = displayed(group, gi), scored = credited(group, gi);
           const value = Optimizer.buffValueFn(group, gi, State.groups, mode);
           const isAura = (id) => activeRules().paladinAuras[id];
-          const nonAura = (map) => sorted(new Map([...map].filter(([id]) => !isAura(id))));
+          // A raid-wide buff (scope 'raid', Forever) is listed in every group wherever its provider sits, and the display
+          // spreads the raid-wide totems over the shamans of all groups, which a single group's scorer cannot see: it is
+          // checked below instead.
+          const isRaidWide = (id) => Config.Buffs[id].scope === 'raid';
+          const nonAura = (map) => sorted(new Map([...map].filter(([id]) => !isAura(id) && !isRaidWide(id))));
           const auraValues = (map) => [...map.keys()].filter(isAura).map(value).sort((a, b) => a - b);
           const where = `${gameVersion}/${mode}/${sc.id} group ${gi + 1}`;
           assert.deepEqual(nonAura(shown), nonAura(scored), `${where}: display and scorer disagree`);
           // Equally valued auras may differ by name (the display prefers a spec's own aura); their worth may not.
           assert.deepEqual(auraValues(shown), auraValues(scored), `${where}: display and scorer aura values disagree`);
+          // Every raid-wide buff some group's scorer credits is shown in this group too.
+          for (let g2 = 0; g2 < State.groups.length; g2++) {
+            for (const id of credited(State.groups[g2], g2).keys()) {
+              if (isRaidWide(id)) assert.ok(shown.has(id) || [...shown.keys()].some(x => isRaidWide(x) && activeRules().totemElements[x] === activeRules().totemElements[id] && activeRules().totemElements[id]), `${where}: raid-wide ${id} (group ${g2 + 1}) is not shown`);
+            }
+          }
         });
       }
     }

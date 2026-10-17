@@ -8,16 +8,19 @@
  * (tasks/research-forever.md "Browser verification" section, corrected by its
  * "Audit 2026-10-10"): Tranquil Air (and Wrath of Air/Totem of Wrath) absence,
  * Trueshot Aura a Marksmanship talent (ranged only), Sanctity Aura removed, one
- * Faerie Fire, one air totem per party, the Leader of the Pack/Moonkin Aura
- * exclusive crit slot, no faction lock (mixed Shaman+Paladin rosters are
+ * Faerie Fire, no faction lock (mixed Shaman+Paladin rosters are
  * normal), the three real raids, provider-spread across all 4 optimizer modes,
  * overflow-optimize idempotence, and a save/share round trip — plus
- * Classic/TBC spot-checks to prove nothing regressed.
+ * Classic/TBC spot-checks to prove nothing regressed. The 2026-10-16 development notes
+ * (tasks/research-forever.md "Audit 2026-10-16"): Battle Shout, Trueshot Aura, Moonkin Aura,
+ * Leader of the Pack, Windfury, Grace of Air and Strength of Earth are raid-wide, Grace of Air
+ * is not exclusive with Windfury, Leader of the Pack (melee/ranged crit) and Moonkin Aura
+ * (spell crit) are not exclusive, and the Windfury nudges stay below any party buff.
  */
 const assert = require('node:assert/strict');
 const app = require('./tests/load-app');
-const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'Optimizer', 'OpenSlots', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidDebuffCoverage', 'Faction', 'enforceRaidCapacity', 'nextUid', 'dpsValueFor']);
-const {State,Config,GameVersions,Rulesets,Import,Optimizer,OpenSlots,getGroupBuffs,getMissingBuffInsights,getRaidDebuffCoverage,Faction,enforceRaidCapacity,nextUid,dpsValueFor} = ctx.api;
+const ctx = app.sandbox(['State', 'Config', 'GameVersions', 'Rulesets', 'Import', 'Optimizer', 'OpenSlots', 'getGroupBuffs', 'getMissingBuffInsights', 'getRaidDebuffCoverage', 'Faction', 'enforceRaidCapacity', 'nextUid', 'dpsValueFor', 'RulesData']);
+const {State,Config,GameVersions,Rulesets,Import,Optimizer,OpenSlots,getGroupBuffs,getMissingBuffInsights,getRaidDebuffCoverage,Faction,enforceRaidCapacity,nextUid,dpsValueFor,RulesData} = ctx.api;
 
 function mk(cls, spec, role) {
   return { uid: nextUid(), name: cls + '-' + spec, class: cls, spec, role, imported: false };
@@ -103,13 +106,17 @@ check('Only a Marksmanship Hunter provides Trueshot Aura', () => {
   assert(getGroupBuffs(marksmanshipGroup, 0).map(b => b.id).includes('TRUESHOT_AURA'), 'a Marksmanship Hunter provides Trueshot Aura');
 });
 
-// ── 3. Leader of the Pack + Moonkin Aura share one exclusive crit slot ──
-check('A group with both a Feral and a Balance druid is credited with only one crit aura', () => {
+// ── 3. Leader of the Pack + Moonkin Aura: raid-wide, no longer one exclusive slot (2026-10-16) ──
+check('A group with both a Feral and a Balance druid gets both crit auras (stacking is inferred, not confirmed)', () => {
   const group = numberGroups([[mk('DRUID', 'Feral', 'melee_dps'), mk('DRUID', 'Balance', 'caster_dps'), mk('WARRIOR', 'Fury', 'melee_dps')]])[0];
   const buffs = getGroupBuffs(group, 0);
   const critBuffs = buffs.filter(b => b.id === 'LEADER_OF_THE_PACK' || b.id === 'MOONKIN_AURA');
-  assert.equal(critBuffs.length, 1, `expected exactly one crit aura, got ${critBuffs.map(b => b.id).join(',')}`);
+  assert.equal(critBuffs.length, 2, `expected both crit auras, got ${critBuffs.map(b => b.id).join(',')}`);
   assert(!getRaidDebuffCoverage([group]).has('LEADER_OF_THE_PACK'), 'sanity: crit auras are buffs, not debuffs');
+  assert.equal(Rulesets.forever.rules.exclusiveBuffs, undefined, 'Forever lists no exclusive buff set');
+  for (const id of ['LEADER_OF_THE_PACK', 'MOONKIN_AURA']) {
+    assert(/inferred from the split/.test(Rulesets.forever.buffs[id].desc), `${id} desc says stacking is inferred, not confirmed`);
+  }
 });
 check('A group with only a Feral druid still gets Leader of the Pack', () => {
   const group = numberGroups([[mk('DRUID', 'Feral', 'melee_dps'), mk('WARRIOR', 'Fury', 'melee_dps')]])[0];
@@ -204,7 +211,7 @@ check('Mixed Forever roster (Shaman+Paladin+crit druids): no stacking violation 
     assert.equal(State.groups.flat().filter(isCritDruid).length, 4, `mode ${mode}: all 4 crit druids should be seated`);
     assert(!hasStackingViolation(isShaman), `mode ${mode}: a group has 2+ shamans while another melee group has none`);
     assert(!hasStackingViolation(isPaladin), `mode ${mode}: a group has 2+ paladins while another melee group has none`);
-    assert(!hasStackingViolation(isCritDruid), `mode ${mode}: a group has 2+ crit druids while another melee group has none`);
+    // Crit druids are not spread any more: Leader of the Pack and Moonkin Aura are raid-wide (2026-10-16).
   }
 });
 
@@ -301,7 +308,7 @@ check('One Faerie Fire for every Druid spec', () => {
   assert(debuffs.FAERIE_FIRE.competesWith.includes('CURSE_RECKLESSNESS'), 'and Faerie Fire does not stack with it');
   assert(Config.DebuffAbbreviations.FAERIE_FIRE && Config.DebuffIcons.FAERIE_FIRE, 'the debuff catalog can draw it (abbreviation and icon)');
 });
-check('Two shamans in one party are credited with one air totem', () => {
+check('Two shamans in one party give Windfury and Grace of Air (no longer exclusive)', () => {
   State.gameVersion = 'forever';
   State.selectedRaid = 'f_ony';
   const enhancement = mk('SHAMAN', 'Enhancement', 'melee_dps');
@@ -310,8 +317,9 @@ check('Two shamans in one party are credited with one air totem', () => {
   const buffs = groupBuffs(group);
   const buffIds = buffs.map(b => b.id);
   assert(buffIds.includes('WINDFURY'), 'the party gets Windfury');
-  assert(!buffIds.includes('GRACE_OF_AIR'), 'the second shaman adds no second air totem');
-  assert(buffIds.includes('STRENGTH_OF_EARTH') && buffIds.includes('MANA_SPRING'), 'the shamans still add earth and water totems');
+  assert(buffIds.includes('GRACE_OF_AIR'), 'the second shaman adds Grace of Air');
+  assert(buffIds.includes('STRENGTH_OF_EARTH') || buffIds.includes('STONESKIN'), 'and an earth totem');
+  assert(buffIds.includes('MANA_SPRING'), 'and a water totem');
   for (const shaman of [enhancement, restoration]) {
     assert(buffs.some(b => b.sourceUid === shaman.uid), `${shaman.name} is credited with some buff`);
   }
@@ -354,6 +362,120 @@ check("Open-slot pricing counts Forever's Hunter's Mark for ranged DPS only", ()
   } finally {
     State.gameVersion = 'forever';
   }
+});
+
+// ── 2026-10-16: raid-wide buffs ──
+const RAID_WIDE_IDS = ['BATTLE_SHOUT', 'TRUESHOT_AURA', 'MOONKIN_AURA', 'LEADER_OF_THE_PACK', 'WINDFURY', 'GRACE_OF_AIR', 'STRENGTH_OF_EARTH'];
+check('Seven Forever buffs are raid-wide; every other Forever buff, and every Classic and TBC buff, is party-scoped', () => {
+  const data = RulesData.forever.buffs;
+  for (const id of RAID_WIDE_IDS) assert.equal(data[id].scope, 'raid', `${id} is raid-wide`);
+  for (const [id, entry] of Object.entries(data)) if (!RAID_WIDE_IDS.includes(id)) assert.equal(entry.scope, 'party', `${id} stays party-scoped`);
+  for (const id of RAID_WIDE_IDS) assert.equal(Rulesets.forever.buffs[id].scope, 'raid', `compiled ${id} carries the raid scope`);
+  for (const version of ['tbc', 'classic']) {
+    for (const [id, buff] of Object.entries(Rulesets[version].buffs)) assert.equal(buff.scope, undefined, `${version} ${id} has no raid scope`);
+  }
+  assert(!/not raid-wide|\bParty,/.test(RAID_WIDE_IDS.map(id => data[id].desc).join(' ')), 'no raid-wide desc still says "Party," or "not raid-wide"');
+});
+check('Windfury and Grace of Air are not exclusive; Flametongue stays unmodeled', () => {
+  const buffs = Rulesets.forever.buffs;
+  assert.equal(buffs.WINDFURY.exclusiveBuffs, undefined);
+  assert.equal(buffs.GRACE_OF_AIR.exclusiveBuffs, undefined);
+  assert(!buffs.FLAMETONGUE_TOTEM && !Object.values(buffs).some(b => /^Flametongue/.test(b.name)), 'Flametongue Totem is not modeled');
+  assert.equal(Rulesets.forever.rules.exclusiveBuffs, undefined, 'the compiled rules hold no exclusive set');
+  assert.equal(Rulesets.forever.buffs.WINDFURY.preferSpec, 'Enhancement', 'Windfury keeps preferSpec Enhancement (earlier user decision)');
+});
+check('Moonkin Aura is spell crit only: casters and healers, healers at a lower weight; Leader of the Pack is melee and ranged', () => {
+  const moon = Rulesets.forever.buffs.MOONKIN_AURA, lotp = Rulesets.forever.buffs.LEADER_OF_THE_PACK;
+  assert.deepEqual([...moon.benefitsRoles].sort(), ['caster_dps', 'healer']);
+  assert.deepEqual([...lotp.benefitsRoles].sort(), ['melee_dps', 'ranged_dps', 'tank']);
+  const dps = Rulesets.forever.dpsValue;
+  assert.deepEqual(Object.keys(dps.MOONKIN_AURA.role).sort(), ['caster_dps', 'healer']);
+  assert(dps.MOONKIN_AURA.role.healer > 0 && dps.MOONKIN_AURA.role.healer < dps.MOONKIN_AURA.role.caster_dps, 'healer weight is lower than the caster weight');
+  assert.equal(dps.LEADER_OF_THE_PACK.role.caster_dps, undefined, 'Leader of the Pack gives casters nothing');
+  assert.equal(lotp.priority.caster_dps, undefined);
+  assert(!moon.priority.melee_dps && !moon.priority.ranged_dps && !moon.priority.tank, 'Moonkin Aura has no melee, ranged or tank priority');
+  const caster = mk('MAGE', 'Frost', 'caster_dps'), healer = mk('PRIEST', 'Holy', 'healer'), melee = mk('WARRIOR', 'Fury', 'melee_dps'), hunter = mk('HUNTER', 'Marksmanship', 'ranged_dps');
+  State.gameVersion = 'forever';
+  assert(dpsValueFor('MOONKIN_AURA', caster) > dpsValueFor('MOONKIN_AURA', healer) && dpsValueFor('MOONKIN_AURA', healer) > 0);
+  assert.equal(dpsValueFor('MOONKIN_AURA', melee) + dpsValueFor('MOONKIN_AURA', hunter), 0, 'no melee or ranged credit from Moonkin Aura');
+  assert.equal(dpsValueFor('LEADER_OF_THE_PACK', caster), 0);
+  assert(dpsValueFor('LEADER_OF_THE_PACK', melee) > 0 && dpsValueFor('LEADER_OF_THE_PACK', hunter) > 0);
+});
+check('Raid-wide buffs reach every group: a shaman, a warrior, a Feral and a Balance druid in four groups are listed in all four', () => {
+  State.gameVersion = 'forever';
+  State.selectedRaid = 'f_ony';
+  const groups = numberGroups([
+    [mk('SHAMAN', 'Enhancement', 'melee_dps'), mk('ROGUE', 'Combat', 'melee_dps')],
+    [mk('SHAMAN', 'Elemental', 'caster_dps'), mk('MAGE', 'Fire', 'caster_dps')],
+    [mk('WARRIOR', 'Fury', 'melee_dps'), mk('DRUID', 'Feral', 'melee_dps'), mk('DRUID', 'Balance', 'caster_dps')],
+    [mk('HUNTER', 'Marksmanship', 'ranged_dps'), mk('PRIEST', 'Holy', 'healer')],
+  ]);
+  State.groups = groups; State.bench = []; State.buffOverrides = {};
+  for (let gi = 0; gi < groups.length; gi++) {
+    const ids = getGroupBuffs(groups[gi], gi, groups).map(b => b.id);
+    for (const id of ['BATTLE_SHOUT', 'TRUESHOT_AURA', 'MOONKIN_AURA', 'LEADER_OF_THE_PACK', 'WINDFURY', 'GRACE_OF_AIR', 'STRENGTH_OF_EARTH']) {
+      assert(ids.includes(id), `group ${gi + 1} lists ${id}`);
+    }
+  }
+});
+check('Raid-wide buffs are credited once per raid, wherever the provider sits: the credit never drives placement but does value the seat', () => {
+  State.gameVersion = 'forever';
+  State.optimizerMode = 'max_dps';
+  const cfg = Rulesets.forever.modeConfig.max_dps;
+  const total = groups => groups.reduce((sum, g) => sum + Optimizer.raidWideCredit(g, groups, 'max_dps', cfg), 0);
+  const build = (providerGroup) => {
+    const feral = mk('DRUID', 'Feral', 'melee_dps');
+    const groups = numberGroups([[mk('ROGUE', 'Combat', 'melee_dps'), mk('WARRIOR', 'Fury', 'melee_dps')], [mk('MAGE', 'Fire', 'caster_dps'), mk('MAGE', 'Frost', 'caster_dps')]]);
+    groups[providerGroup].push(feral);
+    return groups;
+  };
+  const inMelee = build(0), inCasters = build(1);
+  assert(total(inMelee) > 0, 'a seated Feral is credited with Leader of the Pack for the raid');
+  assert(Math.abs(total(inMelee) - total(inCasters)) < 1e-9, 'the same credit whichever group the Feral sits in');
+  const noFeral = numberGroups([[mk('ROGUE', 'Combat', 'melee_dps'), mk('WARRIOR', 'Fury', 'melee_dps')], [mk('MAGE', 'Fire', 'caster_dps'), mk('MAGE', 'Frost', 'caster_dps')]]);
+  assert(total(inMelee) > total(noFeral), 'seating the Feral raises the credit (the bench and Open slots see the seat)');
+  // A second shaman is what gives the raid its second air totem: the 2nd-ranked air totem is credited only then.
+  const shaman = () => mk('SHAMAN', 'Elemental', 'caster_dps');
+  const one = numberGroups([[shaman(), mk('MAGE', 'Fire', 'caster_dps')], [mk('WARRIOR', 'Fury', 'melee_dps'), mk('ROGUE', 'Combat', 'melee_dps')]]);
+  const two = numberGroups([[shaman(), mk('MAGE', 'Fire', 'caster_dps')], [shaman(), mk('WARRIOR', 'Fury', 'melee_dps'), mk('ROGUE', 'Combat', 'melee_dps')]]);
+  const gain = total(two) - total(one);
+  assert(gain > 0, 'a second shaman adds the second air totem');
+  assert(Optimizer.raidWideCredit(one[0], one, 'max_dps', cfg) > 0, 'the credit sits with the shaman group');
+});
+check('The Windfury nudges are strictly smaller than the smallest party-buff credit a placement can gain', () => {
+  const rules = Rulesets.forever.rules, cfg = Rulesets.forever.modeConfig.max_dps;
+  // Smallest party-buff credit: every party-scoped weight x the lowest spec weight it can reach, and each mitigation weight x modeConfig.mit.
+  let smallest = Infinity;
+  const specWeights = Object.values(Rulesets.forever.dpsWeight);
+  const roleWeights = Object.values(Rulesets.forever.dpsWeightByRole);
+  for (const [id, buff] of Object.entries(Rulesets.forever.buffs)) {
+    if (buff.scope === 'raid') continue;
+    const dps = Rulesets.forever.dpsValue[id];
+    if (dps) {
+      for (const part of ['key', 'class', 'role']) for (const base of Object.values(dps[part] || {})) {
+        if (base > 0) smallest = Math.min(smallest, base * Math.min(...specWeights, ...roleWeights));
+      }
+    }
+    for (const base of Object.values(Rulesets.forever.mitValue[id] || {})) if (base > 0) smallest = Math.min(smallest, base * cfg.mit);
+    if (Rulesets.forever.sustainValue[id] > 0) smallest = Math.min(smallest, Rulesets.forever.sustainValue[id] * cfg.structure);
+  }
+  assert(Number.isFinite(smallest) && smallest > 0);
+  // Worst swing of one shaman move: two groups, each with 4 melee DPS (5 seats with the shaman), at the top dpsWeight 1.0.
+  const perGroup = 4 * cfg.structure * (rules.meleeWantsWindfuryCost * 1.0 + rules.meleeGroupWindfuryBias);
+  assert(2 * perGroup < smallest, `nudge swing ${2 * perGroup} stays below the smallest party-buff credit ${smallest}`);
+  assert(rules.meleeWantsWindfuryCost > 0 && rules.meleeGroupWindfuryBias > 0, 'the nudges are kept, not removed');
+});
+check('Forever spreadProviders no longer lists the crit-aura druids, and Optimizer skips the melee pass for raid-wide-only providers', () => {
+  const spec = Rulesets.forever.rules.spreadProviders;
+  assert(!spec.some(s => s.class === 'DRUID'), 'no Feral/Balance spread');
+  State.gameVersion = 'forever';
+  assert.equal(Optimizer.providesPartyBuffTo({ class: 'SHAMAN' }, 'melee_dps'), false, 'every shaman buff for melee is raid-wide');
+  assert.equal(Optimizer.providesPartyBuffTo({ class: 'PALADIN' }, 'melee_dps'), true, 'Retribution Aura is a party aura');
+  assert.equal(Optimizer.providesPartyBuffTo({ class: 'SHAMAN' }, 'healer'), true, 'Mana Spring is a party totem');
+  State.gameVersion = 'classic';
+  assert.equal(Optimizer.providesPartyBuffTo({ class: 'SHAMAN' }, 'melee_dps'), true, 'Classic Windfury is still a party buff');
+  assert.equal(Optimizer.providesPartyBuffTo({ class: 'DRUID', spec: 'Feral' }, 'melee_dps'), true, 'Classic Leader of the Pack is still a party buff');
+  State.gameVersion = 'forever';
 });
 
 console.log(`\nForever ruleset tests: ${passed} passed, 0 failed, ${passed} total`);
