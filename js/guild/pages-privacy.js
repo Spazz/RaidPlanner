@@ -44,7 +44,7 @@
     const promote = impact && Array.isArray(impact.autoPromote) ? impact.autoPromote : [];
     const blocked = hand.length > 0;
     const intro = paragraphs([
-      'Deletes your sign-in and all Discord data Raidsmith holds: your Discord ID, username and avatar, and the Discord ID and nickname on your Raid-Helper sign-ups.',
+      'Deletes your sign-in and all Discord data Raidsmith holds: your Discord ID, username and avatar, the Discord ID and nickname on your Raid-Helper sign-ups, and the notes you wrote on sign-ups made in Raidsmith.',
       'Delete my data also lifts any access block on you.',
       'If you are the only Guild Master of a guild, hand over first. If nobody else has joined, the guild is deleted too.',
       'Roster records stay with the guild, unlinked, once the guild keeps them: your roster entry, characters, attendance and officer notes would no longer be linked to your Discord account. To remove those, ask your guild\'s officers.',
@@ -85,9 +85,11 @@
         'Your roster entry: status, join and trial dates, characters, specs and team.',
         'Officer notes: only officers and team leads see them.',
         'Your attendance for each raid.',
+        'The sign-ups you make in Raidsmith: the raid, your status, the character and spec you chose, and an optional note.',
       ])) +
       section('privacy-comes-from', 'Where it comes from', bullets([
         'Raid-Helper sign-ups: Discord ID, nickname and sign-up status.',
+        'Sign-ups you or an officer make in Raidsmith: only your roster entry, status, character, spec and note, no Discord ID or nickname.',
         'Public Warcraft Logs reports: only who was present in which boss pulls. The report itself is not kept.',
         'Your officers\' own entries.',
       ]) + paragraphs([

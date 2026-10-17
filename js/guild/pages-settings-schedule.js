@@ -141,7 +141,7 @@
     const s = cur();
     if (!gd || !s) return;
     const teamId = el.value;
-    G.api.signups.schedule(gd.guild.id, teamId).then(function (data) {
+    return G.api.signups.schedule(gd.guild.id, teamId).then(function (data) {
       adopt(gd.guild.id, teamId, data);
       st().pageAlert = '';
       G.app.render();
@@ -201,7 +201,7 @@
     s.busy = true;
     G.app.render();
     const teamId = s.teamId;
-    G.api.signups.saveSchedule(gd.guild.id, teamId, bodyOf(s.draft)).then(function (data) {
+    return G.api.signups.saveSchedule(gd.guild.id, teamId, bodyOf(s.draft)).then(function (data) {
       adopt(gd.guild.id, teamId, data, { note: 'Schedule saved.' });
       st().pageAlert = '';
       G.app.render();
@@ -223,7 +223,7 @@
     s.error = '';
     s.note = '';
     G.app.render();
-    G.api.signups.fill(gd.guild.id, s.teamId).then(function (res) {
+    return G.api.signups.fill(gd.guild.id, s.teamId).then(function (res) {
       s.busy = false;
       s.note = G.pages.raids.fillText(res);
       // The Raids page reads its list again when it opens; a list kept from before is dropped.

@@ -293,23 +293,23 @@
 
   function showError(c, err) {
     const cl = G.api.classify(err);
-    if (cl.view === 'signin') { G.app.requireSignin(); return; }
-    if (cl.view === 'message') { G.app.showFailure(cl.title, cl.text); return; }
+    if (cl.view === 'signin') { G.app.requireSignin(); return Promise.resolve(); }
+    if (cl.view === 'message') { G.app.showFailure(cl.title, cl.text); return Promise.resolve(); }
     c.x.ui.busy = false;
     c.x.ui.error = cl.text;
     // The window closed or the sign-up changed under the page: show what is true now, with the reason.
     if (err && (err.code === 'signups_closed' || err.status === 404)) {
-      G.api.signups.view(c.gid, c.rid).then(function (view) { c.x.data = view; c.x.ui.form = formFrom(view); G.app.render(); }, function () { G.app.render(); });
-      return;
+      return G.api.signups.view(c.gid, c.rid).then(function (view) { c.x.data = view; c.x.ui.form = formFrom(view); G.app.render(); }, function () { G.app.render(); });
     }
     G.app.render();
+    return Promise.resolve();
   }
 
   function run(c, promise) {
     c.x.ui.busy = true;
     c.x.ui.error = '';
     G.app.render();
-    return promise.then(function (view) { setView(c, view); }, function (err) { showError(c, err); });
+    return promise.then(function (view) { setView(c, view); }, function (err) { return showError(c, err); });
   }
 
   // The body a status button or Save details sends: the form as it stands.
@@ -326,19 +326,19 @@
   G.handlers.click['su-kind'] = function (el) {
     const c = cur();
     if (!c || !c.x.data.me) return;
-    run(c, G.api.signups.save(c.gid, c.rid, bodyFor(c, el.getAttribute('data-kind'))));
+    return run(c, G.api.signups.save(c.gid, c.rid, bodyFor(c, el.getAttribute('data-kind'))));
   };
 
   G.handlers.submit['su-details-form'] = function () {
     const c = cur();
     if (!c || !c.x.data.me || !c.x.data.me.signup) return;
-    run(c, G.api.signups.save(c.gid, c.rid, bodyFor(c, c.x.data.me.signup.kind)));
+    return run(c, G.api.signups.save(c.gid, c.rid, bodyFor(c, c.x.data.me.signup.kind)));
   };
 
   G.handlers.click['su-withdraw'] = function () {
     const c = cur();
     if (!c) return;
-    run(c, G.api.signups.withdraw(c.gid, c.rid));
+    return run(c, G.api.signups.withdraw(c.gid, c.rid));
   };
 
   G.handlers.change['su-char'] = function (el) {
@@ -365,7 +365,7 @@
   G.handlers.click['su-lock'] = function (el) {
     const c = cur();
     if (!c) return;
-    run(c, G.api.signups.lock(c.gid, c.rid, el.getAttribute('data-lock') === '1'));
+    return run(c, G.api.signups.lock(c.gid, c.rid, el.getAttribute('data-lock') === '1'));
   };
 
   G.handlers.click['su-retry'] = function () {
@@ -426,13 +426,13 @@
     const body = { kind: form.elements.kind.value, characterId: form.elements.character.value || undefined, spec: form.elements.spec.value || null, note: String(form.elements.note.value || '').trim() || null };
     G.ui.setText('dlg-error', '');
     G.ui.setText('dlg-err-note', '');
-    G.ui.runDialog(form, G.api.signups.savePerson(c.gid, c.rid, form.elements.person.value, body), function (view) { setView(c, view); });
+    return G.ui.runDialog(form, G.api.signups.savePerson(c.gid, c.rid, form.elements.person.value, body), function (view) { setView(c, view); });
   };
 
   G.handlers.submit['su-remove-form'] = function (form) {
     const c = cur();
     if (!c) return;
-    G.ui.runDialog(form, G.api.signups.removePerson(c.gid, c.rid, form.getAttribute('data-pid')), function (view) { setView(c, view); });
+    return G.ui.runDialog(form, G.api.signups.removePerson(c.gid, c.rid, form.getAttribute('data-pid')), function (view) { setView(c, view); });
   };
 
   G.pages.raidSignups = {

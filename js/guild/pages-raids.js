@@ -339,7 +339,7 @@
     if (!x || !x.data) return;
     const rid = el.getAttribute('data-rid');
     el.disabled = true;
-    G.api.signups.save(x.gid, rid, { kind: 'signed' }).then(function (view) {
+    return G.api.signups.save(x.gid, rid, { kind: 'signed' }).then(function (view) {
       applySignupView(x, rid, view);
       st().pageAlert = '';
       G.app.render();
@@ -355,7 +355,7 @@
     const x = a().raids;
     if (!x || !x.teamId) return;
     el.disabled = true;
-    G.api.signups.fill(x.gid, x.teamId).then(function (res) {
+    return G.api.signups.fill(x.gid, x.teamId).then(function (res) {
       x.note = fillText(res);
       return reloadList(x);
     }).then(function () {
