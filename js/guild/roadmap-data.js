@@ -22,6 +22,12 @@
 
       // ── Next up ──
       {
+        id: 'platform-accounts',
+        title: 'Raidsmith accounts with linked sign-ins',
+        summary: 'Your idea: sign in with Discord or Battle.net (more later), link the others from Linked accounts, and use guilds without a Discord account. Planned decisions (made by Claude, open to change): no passwords yet (no email service), an officer links a non-Discord account to a roster person to make it a member, and the Battle.net login id is kept while only the character list follows the 30-day rule.',
+        area: 'platform', status: 'next', source: 'user', added: '2026-10-17',
+      },
+      {
         id: 'native-signups',
         title: 'Native Raidsmith sign-ups',
         summary: 'Raiders sign up for upcoming raids in Raidsmith itself, and a weekly raid schedule per team creates those raids. The Raid-Helper import stays for guilds that use it. Planned decisions (made by Claude, open to change): members sign themselves up as signed, late, tentative or absent, officers can edit any sign-up and lock sign-ups early, the schedule fills the next two weeks, and Raid-Helper rows are never counted twice.',
