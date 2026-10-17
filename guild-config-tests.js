@@ -155,7 +155,8 @@ check('.vercelignore keeps the Worker files off Vercel and uses no negation', ()
 check('package.json: version and name untouched, guild scripts run tools/guild-dev.js', () => {
   const pkg = JSON.parse(read('package.json'));
   assert.equal(pkg.name, 'raidsmith-web');
-  assert.equal(pkg.version, '4.4.2');
+  // The guild work never bumps the version: it stays the Planner's own (APP_VERSION), so merging a main release keeps this green.
+  assert.equal(pkg.version, read('js/changelog.js').match(/APP_VERSION = '([^']+)'/)[1]);
   assert.equal(pkg.scripts.test, 'node tests/run-all.js');
   assert.equal(pkg.scripts['guild:dev'], 'node tools/guild-dev.js dev');
   assert.equal(pkg.scripts['guild:migrate'], 'node tools/guild-dev.js migrate');
