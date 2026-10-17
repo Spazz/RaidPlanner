@@ -328,9 +328,9 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert(t.includes("Approving creates a new person with Galdor as their Main, linked to Erin E's Discord account."));
     assert(t.includes("Brindle is already on the roster on Brindle's record. Approving links Erin E's Discord account to Brindle."));
     assert(t.includes("Dunmar is already on Erin E's record. Approving only closes the claim."));
-    assert(t.includes('Merge them by hand.') && out.includes('gs-claim-plan is-blocked'));
+    assert(t.includes('Merge them by hand.') && out.includes('gs-cclaim-plan is-blocked'));
     assert(t.includes('Claimed by Erin E 3 days ago') && t.includes('Paladin, level 61, Dreamscythe'));
-    const item = id => out.split('<li class="gs-review-item gs-claim-item">').slice(1).find(x => x.includes('data-claim="' + id + '"'));
+    const item = id => out.split('<li class="gs-review-item gs-cclaim-item">').slice(1).find(x => x.includes('data-claim="' + id + '"'));
     assert(item('cl_a').includes('name="teamId"') && !item('cl_a').includes('name="status"') && item('cl_a').includes('data-kind="add_alt"'));
     assert(item('cl_b').includes('name="teamId"') && item('cl_b').includes('name="status"') && /<option value="trial" selected>/.test(item('cl_b')));
     assert(!item('cl_c').includes('name="teamId"') && item('cl_c').includes('data-kind="link_person"') && item('cl_c').includes('>Approve<'));
@@ -344,7 +344,7 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     const lead = reviewOpts([claim('cl_a', 'Eliora', 'PALADIN', { defaultTeamId: 't1' }), claim('cl_b', 'Galdor', 'WARLOCK', { kind: 'new_person', person: null, defaultTeamId: null })], { 'roster.edit': ['t2'], 'attendance.review': ['t1'] });
     const out = G.pages.review.reviewHtml(lead);
     const opts = html => [...html.matchAll(/<option value="([^"]*)"( selected)?>/g)].map(m => m[1] + (m[2] ? '*' : ''));
-    const [a, b] = out.split('<li class="gs-review-item gs-claim-item">').slice(1);
+    const [a, b] = out.split('<li class="gs-review-item gs-cclaim-item">').slice(1);
     assert.deepEqual(opts(a.slice(a.indexOf('name="teamId"'), a.indexOf('</select>'))), ['t2*'], 'the lead of Bravo sees Bravo only; Alpha is not theirs, Old is archived');
     const officer = G.pages.review.reviewHtml(reviewOpts([claim('cl_a', 'Eliora', 'PALADIN', { defaultTeamId: 't2' })]));
     assert.deepEqual(opts(officer.slice(officer.indexOf('name="teamId"'), officer.indexOf('</select>'))), ['t1', 't2*']);
@@ -710,9 +710,9 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
   });
 
   await check('guild.css and files: the Battle.net classes exist, nothing sets inline styles, and the scripts load in order before app.js', () => {
-    for (const c of ['.gs-table-bnet', '.gs-bnet-state', '.gs-claim-form', '.gs-claim-plan.is-blocked', '.gs-bnet-filters', '.gs-bnet-ranks', '.gs-bnet-form']) assert(css.includes(c), c);
+    for (const c of ['.gs-table-bnet', '.gs-bnet-state', '.gs-cclaim-form', '.gs-cclaim-plan.is-blocked', '.gs-bnet-filters', '.gs-bnet-ranks', '.gs-bnet-form']) assert(css.includes(c), c);
     const phone = css.split('@media (max-width: 600px)').slice(1).join('');
-    assert(/\.gs-table-bnet, \.gs-table-bnet-import \{ min-width: 0; \}/.test(phone) && /\.gs-claim-form \{ width: 100%; \}/.test(phone));
+    assert(/\.gs-table-bnet, \.gs-table-bnet-import \{ min-width: 0; \}/.test(phone) && /\.gs-cclaim-form \{ width: 100%; \}/.test(phone));
     for (const f of ['pages-bnet.js', 'pages-import-bnet.js', 'pages-settings-bnet.js']) {
       read('js/guild/' + f).split('\n').forEach((line, i) => assert(!/[\s`'"]style\s*=\s*["'`\\]/.test(line), `${f}:${i + 1} inline style`));
       assert(GUILD_SCRIPTS.indexOf('/js/guild/' + f) > GUILD_SCRIPTS.indexOf('/js/guild/ui.js') && GUILD_SCRIPTS.indexOf('/js/guild/' + f) < GUILD_SCRIPTS.indexOf('/js/guild/app.js'), f);

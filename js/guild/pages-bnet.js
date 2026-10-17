@@ -18,7 +18,6 @@
   const NOT_SET_UP = 'Battle.net isn\'t set up on this server.';
 
   function st() { return G.app.state; }
-  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
   function bnetState() { return st().bnet; }
 
   function connectButton(label, molten) {

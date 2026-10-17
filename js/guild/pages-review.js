@@ -205,7 +205,7 @@
       ? '<label class="gs-sr" for="claim-status-' + id + '">Starting status for ' + esc(claim.character.name) + '</label><select class="gs-input gs-input-sm" id="claim-status-' + id + '" name="status" data-key="claim-status-' + id + '">' +
         G.ui.optionsHtml(CLAIM_STATUSES.map(function (v) { return { value: v, label: G.ui.statusLabel(v) }; }), 'trial') + '</select>'
       : '';
-    return '<form class="gs-claim-form" data-submit="claim-approve" data-claim="' + id + '" data-kind="' + esc(plan.kind) + '" novalidate>' + teamField + statusField +
+    return '<form class="gs-cclaim-form" data-submit="claim-approve" data-claim="' + id + '" data-kind="' + esc(plan.kind) + '" novalidate>' + teamField + statusField +
       '<button type="submit" class="gs-btn gs-btn-sm gs-btn-molten" data-key="claim-approve-' + id + '" aria-label="Approve the claim on ' + esc(claim.character.name) + '">Approve</button>' + reject + '</form>';
   }
 
@@ -213,10 +213,10 @@
     const c = claim.character || {};
     const detail = [G.ui.className(c.class), c.level != null ? 'level ' + c.level : '', c.realm].filter(Boolean).join(', ');
     const by = claim.claimant && claim.claimant.displayName ? claim.claimant.displayName : 'A member';
-    return '<li class="gs-review-item gs-claim-item"><div class="gs-review-who">' + G.ui.classNameHtml(c.name, c.class) +
+    return '<li class="gs-review-item gs-cclaim-item"><div class="gs-review-who">' + G.ui.classNameHtml(c.name, c.class) +
       '<span class="gs-char-sub">' + esc(detail) + '</span>' +
       '<span class="gs-char-sub">Claimed by <strong>' + esc(by) + '</strong> ' + esc(G.ui.relativeTime(claim.claimedAt)) + '</span>' +
-      '<span class="gs-char-sub gs-claim-plan' + (claim.plan && claim.plan.kind === 'blocked' ? ' is-blocked' : '') + '">' + esc(claimWords(claim)) + '</span></div>' +
+      '<span class="gs-char-sub gs-cclaim-plan' + (claim.plan && claim.plan.kind === 'blocked' ? ' is-blocked' : '') + '">' + esc(claimWords(claim)) + '</span></div>' +
       claimFormHtml(gd, claim) + '</li>';
   }
 

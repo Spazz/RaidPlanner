@@ -759,9 +759,11 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-bnet-state { font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
 .gs-bnet-yours { color: var(--success); }
 .gs-bnet-taken, .gs-bnet-other_realm { color: var(--text-muted); }
-.gs-claim-item { align-items: flex-start; }
-.gs-claim-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.gs-claim-plan.is-blocked { color: var(--warning); }
+.gs-cclaim-item { align-items: flex-start; }
+.gs-cclaim-item .gs-review-who { align-content: flex-start; }
+.gs-cclaim-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gs-cclaim-form .gs-input { width: auto; min-width: 140px; }
+.gs-cclaim-plan.is-blocked { color: var(--warning); }
 .gs-bnet-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 24px; }
 .gs-bnet-ranks-filter { border: 0; padding: 0; margin: 0; min-width: 0; }
 .gs-bnet-rank-list { display: flex; flex-wrap: wrap; gap: 4px 20px; }
@@ -772,7 +774,7 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-bnet-ranks .gs-field-inline .gs-input { flex: 1 1 auto; min-width: 0; }
 @media (max-width: 600px) {
   .gs-table-bnet, .gs-table-bnet-import { min-width: 0; }
-  .gs-claim-form { width: 100%; }
-  .gs-claim-form .gs-input { flex: 1 1 140px; }
+  .gs-cclaim-form { width: 100%; }
+  .gs-cclaim-form .gs-input { flex: 1 1 140px; }
   .gs-bnet-ranks { grid-template-columns: 1fr; }
 }
