@@ -1,4 +1,5 @@
-# Whitelist: everything is ignored unless listed below (new tracked files need a ! line)
+# Whitelist: everything is ignored unless listed below. Globs cover the folders that grow (js/guild, worker, migrations, tests, tools)
+# and every root *-tests.js suite, so a new guild file needs no line here; only a new root file or a new Planner script does.
 *
 !.gitignore
 !index.html
@@ -26,13 +27,9 @@
 # Rules data files (plain scripts that assign RulesData.*, loaded before js/rules.js): written once by tools/generate-rules-data.js, then edited by hand
 !js/rules/
 !js/rules/*.js
-!tools/
-!tools/generate-rules-data.js
-!tools/rules-report.js
-!tools/make-og-image.py
-!rebrand-tests.js
-!site-pages-tests.js
-!runnerups-tests.js
+# Guild shell scripts (the list and loader are js/guild/manifest.js and js/guild/load.js)
+!js/guild/
+!js/guild/*.js
 # Self-hosted spec/class/role/buff/debuff icons (one <slug>.jpg each, fetched once from the Wowhead CDN); icons-tests.js checks every slug the rule tables name is here
 !icons/
 !icons/*.jpg
@@ -41,148 +38,41 @@
 !api/
 !api/share.js
 # Test suites are tracked and served as static files; `npm test` (tests/run-all.js) runs them under Node; scenarios.js is also the ?dev roster picker data
+!*-tests.js
 !tests.js
-!loader-tests.js
-!split-tests.js
 !scenarios.js
-!scenario-tests.js
-!version-tests.js
-!brand-tests.js
-!landing-copy-tests.js
-!campfire-tests.js
-!classic-tests.js
-!features-tests.js
-!raidsize-tests.js
-!forever-tests.js
 !classic-forever-scenarios.js
-!assignments-tests.js
-!custom-assignments-tests.js
-!idealcomp-tests.js
-!rosters-tests.js
-!prep-tests.js
-!insights-tests.js
-!control-tests.js
-!input-tests.js
-!data-tests.js
-!saved-data-tests.js
-!import-tests.js
-!drums-tests.js
-!buffdata-tests.js
-!buffparity-tests.js
-!plan-tests.js
-!commit-tests.js
-!nav-tests.js
-!share-tests.js
-!headers-tests.js
-!csp-tests.js
-!livesync-tests.js
-!raidcontext-tests.js
-!security-tests.js
-!state-persistence-tests.js
-!plan-state-tests.js
-!a11y-tests.js
-!buffkeys-tests.js
-!icons-tests.js
-!touch-tests.js
-!mobile-tests.js
-!ux-tests.js
-!shouts-tests.js
-!shortcuts-tests.js
-!head-tests.js
-!deploy-tests.js
-!shards-tests.js
-!perf-tests.js
 !README.md
-!changelog-tests.js
-!changes-tests.js
-!boards-tests.js
-!rules-data-tests.js
-!mrt-tests.js
 !.vercelignore
-# Test runner, loader and CI (npm test; GitHub Actions runs it), the golden boards snapshot and the rosters two suites share
+# Test runner, loader, fakes, fixtures and golden snapshots (everything under tests/), the dev tools (tools/*.js, plus the OG image script) and CI (npm test; GitHub Actions runs it)
 !package.json
 !tests/
-!tests/load-app.js
-!tests/run-all.js
-!tests/shards.js
-!tests/boards-snapshot.json
-!tests/rules-ids-snapshot.json
-!tests/classic-forever-fixtures.js
+!tests/**
+!tools/
+!tools/*.js
+!tools/make-og-image.py
 !.github/
 !.github/workflows/
 !.github/workflows/test.yml
 # DPS reference data cited by the optimizer comments
 !gruul_dps_data.txt
-!readiness-tests.js
-!import-copy-tests.js
-!labels-tests.js
-# Guild tracker (Cloudflare Worker + D1, local first): config, Worker, migration, tools, page, scripts, suites
+# Guild tracker (Cloudflare Worker + D1, local first): config, Worker (any depth), migrations, page styles
 !wrangler.jsonc
 !.assetsignore
 !_headers
 !.env.example
 !worker/
+!worker/**/
+!worker/**/*.js
 !worker/package.json
-!worker/*.js
-!worker/routes/
-!worker/routes/*.js
 !migrations/
 !migrations/*.sql
-!tests/d1-fake.js
-!tests/guild-scripts.js
-!tools/guild-dev.js
-!tools/fake-discord.js
-!guild-shell-tests.js
 !guild.css
-!js/guild/
-!js/guild/*.js
-!guild-ui-tests.js
-!guild-worker-tests.js
-!guild-config-tests.js
-!guild-roster-worker-tests.js
-!guild-attendance-worker-tests.js
-!guild-attendance-ui-tests.js
-!guild-roster-ui-tests.js
-# Phase 4 loot (lane U): the Gargul parser and loot pages suites, the hand-made Gargul export they read
-!guild-loot-parser-tests.js
-!guild-loot-ui-tests.js
-!tests/fixtures/gargul-detailed-sample.json
-!tools/fake-sources.js
-# Phase 3 attendance (lane M): pure rules suites, fixture builder, anonymized goldens
-!guild-attendance-rules-tests.js
-!guild-attendance-schema-tests.js
-!tools/build-attendance-fixtures.js
-!tests/fixtures/
-!tests/fixtures/attendance/
-!tests/fixtures/attendance/*.json
-# Phase 4 loot history (lane W): the Worker suite; the integrator's contract suite (pages against the real Worker)
-!guild-loot-worker-tests.js
-!guild-loot-contract-tests.js
-# Future enhancements page: the idea-box triage tool and the roadmap page / worker suites (the page data is js/guild/roadmap-data.js, covered by the js/guild glob)
-!tools/roadmap-ideas.js
-!guild-roadmap-tests.js
-!guild-roadmap-worker-tests.js
-# Phase 5 Battle.net: the local fake of Battle.net's OAuth + the two Blizzard API calls, and the Worker / page suites (the Worker, migration 0009 and the pages are covered by the globs above)
-!tools/fake-battlenet.js
-!guild-bnet-worker-tests.js
-!guild-bnet-ui-tests.js
-# Phase 6 native sign-ups + raid schedule: Worker, pages and contract suites
-!guild-signups-worker-tests.js
-!guild-signups-ui-tests.js
-!guild-signups-contract-tests.js
-# Phase 7a accounts with linked sign-ins: the Worker suite (flows, membership rule, migration 0012 on a populated database) and the pages suite (the Worker files, the migration and the pages are covered by the globs above)
-!guild-accounts-worker-tests.js
-!guild-accounts-ui-tests.js
-# PM wave 1 (officer tools): activity log, attendance watch list, Needs attention home, trial review card, calendar feed - Worker, pages and contract suites
-!guild-wave1-worker-tests.js
-!guild-wave1-ui-tests.js
-!guild-wave1-contract-tests.js
-# Phase 7 Discord role mapping, role editor, guest links and the public page: Worker, pages and contract suites (the Worker files, migration 0014 and the pages are covered by the globs above)
-!guild-roles-worker-tests.js
-!guild-roles-ui-tests.js
-!guild-roles-contract-tests.js
-# PM wave 2 (sign-up lifecycle + raid sizes): Worker, pages and contract suites, and the Planner suite
-!guild-wave2-worker-tests.js
-!guild-wave2-ui-tests.js
-!guild-wave2-contract-tests.js
-!wave2-planner-tests.js
+
+# Never trackable, even where the globs above reach (tests/**, worker/**): secrets, Wrangler state, installed packages
+.env
+.env.*
+!.env.example
+.dev.vars*
+.wrangler/
+node_modules/

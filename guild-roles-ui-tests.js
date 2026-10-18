@@ -27,7 +27,7 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const { GUILD_SCRIPTS, guildScriptsOf } = require('./tests/guild-scripts');
 const css = read('guild.css');
 const NEW_FILES = ['pages-settings-roles', 'pages-settings-discord', 'pages-settings-guests', 'pages-settings-public', 'pages-view'];
 
@@ -244,7 +244,6 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert.deepEqual(p('#/guest/' + TOKEN + '?utm=1'), { name: 'guest', token: TOKEN }, 'a query is ignored');
     assert.equal(G.router.format({ name: 'guest', token: 'short' }), '#/', 'a token that is not valid never reaches the address');
     assert.equal(G.router.format({ name: 'public', gid: '' }), '#/');
-    assert.deepEqual(plain(G.router.TABS), ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'attendance', 'loot', 'battlenet', 'activity']);
     for (const tab of ['roles', 'discord', 'guests', 'public']) {
       assert.deepEqual(p('#/g/g1/settings/' + tab), { name: 'settings', gid: 'g1', tab });
       assert.equal(G.router.format({ name: 'settings', gid: 'g1', tab }), '#/g/g1/settings/' + tab);
@@ -264,9 +263,8 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'guests', 'public']);
     assert.deepEqual(tabs({ 'guild.roles': [] , 'guild.access': [] }), [], 'an empty team list is no permission');
     assert.deepEqual(tabs({}), []);
-    const all = { 'guild.teams': 'guild', 'raids.edit': 'guild', 'guild.access': 'guild', 'guild.roles': 'guild', 'attendance.policy': 'guild', 'loot.policy': 'guild' };
-    assert.deepEqual(tabs(all), ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'attendance', 'loot', 'battlenet']);
-    assert.deepEqual(labels(all), ['Teams', 'Raid schedule', 'People and roles', 'Roles', 'Discord roles', 'Guest links', 'Public page', 'Attendance', 'Loot', 'Battle.net']);
+    assert.deepEqual(labels({ 'guild.roles': 'guild' }), ['People and roles', 'Roles', 'Discord roles', 'Public page']);
+    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['People and roles', 'Guest links']);
     assert.equal(G.shell.canSeeSettings({ 'guild.roles': 'guild' }), true);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData() }, 'guests', '<p>x</p>');
     assert(/aria-current="page">Guest links</.test(frame) && frame.includes('href="#/g/g1/settings/guests"') && frame.includes('href="#/g/g1/settings/public"'));
@@ -1506,10 +1504,8 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     const at = n => GUILD_SCRIPTS.indexOf('/js/guild/' + n + '.js');
     for (const n of NEW_FILES) assert(at(n) > at('pages-settings-people') && at(n) < at('app'), n);
     assert(at('pages-settings-people') < at('pages-settings-roles') && at('pages-settings-roles') < at('pages-settings-discord') && at('pages-settings-discord') < at('pages-settings-guests') && at('pages-settings-guests') < at('pages-settings-public') && at('pages-settings-public') < at('pages-view'));
-    const order = page => [...read(page).matchAll(/<script src="(\/js\/guild\/[^"]+)"><\/script>/g)].map(m => m[1]);
+    const order = page => guildScriptsOf(read(page));
     for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert.deepEqual(order(page), GUILD_SCRIPTS.filter(s => s.indexOf('/js/guild/') === 0), page);
-    const gi = read('.gitignore');
-    for (const f of ['guild-roles-ui-tests.js', 'guild-roles-worker-tests.js']) assert(gi.includes('!' + f), f);
   });
 
   // =========================================================================

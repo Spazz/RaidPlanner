@@ -26,7 +26,7 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const { GUILD_SCRIPTS, guildScriptsOf } = require('./tests/guild-scripts');
 
 function loadGuild() {
   const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, RegExp, setTimeout };
@@ -135,12 +135,12 @@ function withState(fn) {
     }
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'loot', view: 'balance' }), '#/g/g1/loot');
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'roster', view: 'items' }), '#/g/g1/roster');
-    assert.deepEqual(plain(G.router.TABS), ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'attendance', 'loot', 'battlenet', 'activity']);
   });
 
   await check('shell: the Loot settings tab needs loot.policy, and loot.policy alone opens Guild settings', () => {
     const allTabs = Object.assign({ 'guild.access': 'guild', 'guild.roles': 'guild' }, OFFICER_CAN);
-    assert.deepEqual(plain(G.shell.settingsTabs(allTabs).map(t => t.tab)), ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'attendance', 'loot', 'battlenet']);
+    const shownTabs = plain(G.shell.settingsTabs(allTabs).map(t => t.tab));
+    assert(shownTabs.includes('loot') && shownTabs.indexOf('attendance') < shownTabs.indexOf('loot'), 'Loot follows Attendance');
     assert.equal(G.shell.settingsTabs(allTabs).find(t => t.tab === 'loot').label, 'Loot');
     assert(!G.shell.settingsTabs({ 'guild.teams': 'guild', 'attendance.policy': 'guild' }).some(t => t.tab === 'loot'));
     assert.deepEqual(plain(G.shell.settingsTabs({ 'loot.policy': 'guild' }).map(t => t.tab)), ['loot']);
@@ -1415,14 +1415,15 @@ function withState(fn) {
     const tail = GUILD_SCRIPTS.map(s => s.replace(/^\//, ''));
     for (const page of ['index.html', 'faq.html', 'whats-new.html']) {
       const html = read(page);
+      assert(!html.includes('pages-empty.js'), page + ' no longer loads the stub');
+      const loaded = guildScriptsOf(html);
       let at = -1;
       for (const n of names) {
-        const tag = '<script src="/js/guild/' + n + '.js"></script>';
-        assert(html.includes(tag), `${page} ${n}`);
-        assert(html.indexOf(tag) > at, `${page} ${n} is in list order`);
-        at = html.indexOf(tag);
+        const idx = loaded.indexOf('/js/guild/' + n + '.js');
+        assert(idx >= 0, `${page} ${n}`);
+        assert(idx > at, `${page} ${n} is in list order`);
+        at = idx;
       }
-      assert(!html.includes('pages-empty.js'), page + ' no longer loads the stub');
     }
     assert(tail.indexOf('js/guild/gargul.js') < tail.indexOf('js/guild/pages-raid-loot.js'), 'the parser loads before the page that calls it');
     assert(!fs.existsSync(path.join(ROOT, 'js/guild/pages-empty.js')));

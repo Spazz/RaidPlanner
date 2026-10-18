@@ -36,6 +36,11 @@ function toRegex(pattern) {
   return new RegExp(`^${anchored ? '' : '(?:.*/)?'}${body}${dir ? '/.*' : '(?:/.*)?'}$`);
 }
 
+// Cloudflare's run_worker_first patterns: a plain path matches exactly, "*" matches any run of characters (so "/api/*" reaches everything below /api/).
+function workerFirst(glob) {
+  return new RegExp(`^${glob.split('*').map((part) => part.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
+}
+
 function walk(dir, found = []) {
   for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
     const rel = `${dir}/${entry.name}`;
@@ -91,16 +96,31 @@ check('_headers carries the vercel.json CSP plus the Discord CDN for avatars, no
   assert(!/https:\/\/cdn\.discordapp\.com/.test(expected['Content-Security-Policy']), 'the planner CSP itself is unchanged');
 });
 
-check('wrangler.jsonc: Worker entry, assets, run_worker_first, D1 binding, and no DISCORD_API_BASE or vars', () => {
+check('wrangler.jsonc: Worker entry, assets, run_worker_first covers every Worker route (and no static file), D1 binding, and no DISCORD_API_BASE or vars', async () => {
   const raw = read('wrangler.jsonc');
   assert(!/DISCORD_API_BASE/.test(raw), 'DISCORD_API_BASE is a dev-only --var, never config');
   assert(!/_API_BASE/.test(raw), 'no *_API_BASE (DISCORD, RAID_HELPER, WCL) is ever config: they are dev-only --vars for local fakes');
   const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
   assert.equal(config.main, 'worker/index.js');
   assert.match(config.compatibility_date, /^\d{4}-\d{2}-\d{2}$/);
-  assert.deepEqual(config.assets, {
-    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/guild/', '/api/guild', '/api/guild/*', '/api/roadmap/*', '/api/me', '/api/guest', '/api/public/*', '/auth/*', '/cal/*'],
-  });
+  assert.deepEqual(Object.keys(config.assets).sort(), ['binding', 'directory', 'run_worker_first']);
+  assert.equal(config.assets.directory, '.');
+  assert.equal(config.assets.binding, 'ASSETS');
+  // run_worker_first is checked against the Worker's own route table (structural: a new route needs its path covered, nothing here lists paths):
+  // every route path must reach the Worker, every entry must match a route, and no static file may be pulled to the Worker.
+  const first = config.assets.run_worker_first;
+  const { ROUTES } = await import('./worker/index.js');
+  const reaches = (globs, path) => globs.some((glob) => workerFirst(glob).test(path));
+  const examples = ROUTES.map((route) => route.path.replace(/:[a-z]+/g, 'x'));
+  for (const path of examples) assert(reaches(first, path), `${path} is a Worker route but is not in run_worker_first (it would be served as a static file, or 404)`);
+  for (const glob of first) assert(examples.some((path) => workerFirst(glob).test(path)), `${glob} in run_worker_first matches no Worker route`);
+  for (const page of ['/', '/index.html', '/faq.html', '/whats-new.html', '/app.css', '/guild.css', '/scenarios.js', '/js/app.js', '/js/guild/api.js', '/icons/warrior.jpg', '/tbc/abc']) {
+    assert(!reaches(first, page), `${page} must stay a static asset (not run_worker_first)`);
+  }
+  // The matcher itself: dropping a prefix uncovers its routes, and a catch-all is caught.
+  assert(!reaches(first.filter((glob) => glob !== '/auth/*'), '/auth/login'));
+  assert(!reaches(first.filter((glob) => glob !== '/api/roadmap/*'), '/api/roadmap/ideas'));
+  assert(reaches(['/*'], '/index.html') && !reaches(['/api/guild'], '/api/guild/g1'));
   assert.deepEqual(config.d1_databases, [{ binding: 'DB', database_name: 'raidsmith', database_id: 'local-raidsmith', migrations_dir: 'migrations' }]);
   assert.equal(config.vars, undefined);
   assert.equal(fs.existsSync(path.join(ROOT, 'worker', 'index.js')), true);
@@ -124,26 +144,29 @@ check('.env.example lists names only and covers every secret the Worker reads', 
   assert(used.has('RAID_HELPER_API_BASE') && used.has('WCL_API_BASE') && used.has('BNET_API_BASE') && !names.some((name) => name.endsWith('_API_BASE')), 'the API bases are dev-only vars, not secrets');
 });
 
-check('every guild-tracker file is whitelisted in .gitignore (so it can be committed)', () => {
+check('every guild-tracker file is whitelisted in .gitignore (so it can be committed), and secrets, Wrangler state and packages stay ignored', () => {
   const git = spawnSync('git', ['--version'], { cwd: ROOT });
   if (git.status !== 0) return; // no git on this machine: the whitelist cannot be probed
+  // Structural: whatever is in these folders today is checked, so a new file needs no entry here (the .gitignore globs cover the folders).
   const files = new Set([
-    'wrangler.jsonc', '.assetsignore', '_headers', '.env.example', 'guild.css', 'js/guild/api.js', 'js/guild/shell.js',
-    'guild-ui-tests.js', 'guild-worker-tests.js', 'guild-config-tests.js', 'tests/d1-fake.js', 'tools/guild-dev.js', 'tools/fake-discord.js',
-    'guild-roster-worker-tests.js', 'guild-roster-ui-tests.js', 'guild-shell-tests.js', 'tests/guild-scripts.js', 'tools/fake-sources.js', 'migrations/0002_roster.sql',
-    'guild-attendance-worker-tests.js', 'migrations/0003_attendance.sql', 'guild-loot-worker-tests.js', 'guild-loot-contract-tests.js', 'migrations/0008_loot.sql',
-    'guild-roadmap-tests.js', 'guild-roadmap-worker-tests.js', 'tools/roadmap-ideas.js', 'js/guild/roadmap-data.js', 'js/guild/pages-roadmap.js',
-    'guild-bnet-worker-tests.js', 'guild-bnet-ui-tests.js', 'tools/fake-battlenet.js', 'js/guild/pages-bnet.js', 'js/guild/pages-import-bnet.js', 'js/guild/pages-settings-bnet.js', 'migrations/0009_battlenet.sql',
-    'guild-accounts-worker-tests.js', 'guild-accounts-ui-tests.js', 'js/guild/pages-accounts.js', 'migrations/0012_accounts.sql',
-    'guild-roles-worker-tests.js', 'guild-roles-ui-tests.js', 'guild-roles-contract-tests.js', 'migrations/0014_roles.sql',
-    'migrations/0001_foundation.sql', 'worker/package.json',
-    ...walk('worker'), ...walk('migrations'),
+    'wrangler.jsonc', '.assetsignore', '_headers', '.env.example', 'guild.css',
+    ...fs.readdirSync(ROOT).filter((name) => name.endsWith('-tests.js')),
+    ...fs.readdirSync(path.join(ROOT, 'js', 'guild')).map((name) => `js/guild/${name}`),
+    ...fs.readdirSync(path.join(ROOT, 'tools')).map((name) => `tools/${name}`),
+    ...walk('worker'), ...walk('migrations'), ...walk('tests'),
   ]);
-  const ignored = [...files].filter((file) => spawnSync('git', ['check-ignore', '-q', '--no-index', '--', file], { cwd: ROOT }).status === 0);
-  assert.deepEqual(ignored, [], 'add a ! line for these to .gitignore');
-  for (const secret of ['.env', '.dev.vars', '.wrangler/state/x', 'node_modules/x/index.js']) {
-    assert.equal(spawnSync('git', ['check-ignore', '-q', '--no-index', '--', secret], { cwd: ROOT }).status, 0, `${secret} stays ignored`);
-  }
+  assert(files.size > 100, `only ${files.size} files found`);
+  const probe = (list) => {
+    const run = spawnSync('git', ['check-ignore', '--no-index', '--stdin'], { cwd: ROOT, input: list.join('\n'), encoding: 'utf8' });
+    return run.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
+  };
+  assert.deepEqual(probe([...files]), [], 'a ! line (or a folder glob) is missing in .gitignore for these');
+  // The globs reach into tests/ and worker/, so secrets there must stay ignored too.
+  const secrets = ['.env', '.env.local', '.dev.vars', '.wrangler/state/x', 'node_modules/x/index.js', 'tests/.env', 'tests/.env.local',
+    'worker/.dev.vars', 'worker/routes/.dev.vars', 'worker/node_modules/x/index.js', 'tests/node_modules/x/index.js', 'tools/.env', 'migrations/.env'];
+  assert.deepEqual(probe(secrets).sort(), secrets.slice().sort(), 'every secret and state path stays ignored');
+  assert.deepEqual(probe(['.env.example', 'worker/package.json']), [], '.env.example is a tracked file, not a secret');
+  assert.deepEqual(probe(['scratch.js', 'notes.md', 'tmp.txt', 'buff-priorities.html']), ['scratch.js', 'notes.md', 'tmp.txt', 'buff-priorities.html'], 'a loose file in the root stays ignored until it is listed');
 });
 
 check('.vercelignore keeps the Worker files off Vercel and uses no negation', () => {

@@ -26,7 +26,7 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const { GUILD_SCRIPTS, guildScriptsOf } = require('./tests/guild-scripts');
 
 function loadGuild() {
   const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, RegExp, setTimeout };
@@ -674,12 +674,10 @@ class ApiErr extends Error {
     for (const name of ['pages-raid-signups', 'pages-settings-schedule']) {
       const src = '/js/guild/' + name + '.js';
       assert(GUILD_SCRIPTS.includes(src), name);
-      for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(read(page).includes('<script src="' + src + '"></script>'), name + ' in ' + page);
+      for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(guildScriptsOf(read(page)).includes(src), name + ' in ' + page);
     }
     assert(GUILD_SCRIPTS.indexOf('/js/guild/pages-raid-signups.js') > GUILD_SCRIPTS.indexOf('/js/guild/pages-raid.js'));
     assert(GUILD_SCRIPTS.indexOf('/js/guild/pages-settings-schedule.js') < GUILD_SCRIPTS.indexOf('/js/guild/app.js'));
-    const gi = read('.gitignore');
-    for (const f of ['guild-signups-worker-tests.js', 'guild-signups-ui-tests.js', 'guild-signups-contract-tests.js']) assert(gi.includes('!' + f), f);
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

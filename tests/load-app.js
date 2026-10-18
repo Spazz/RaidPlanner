@@ -19,6 +19,9 @@
  * app.fromHtml(htmlText, readSource) builds the same API from any page text;
  * readSource(path) returns the text of a local script/stylesheet (loader-tests.js
  * passes it fake files; the default reads from the repo root).
+ *
+ * The guild shell reaches the page through ONE tag, /js/guild/load.js, which injects the scripts js/guild/manifest.js lists.
+ * `scripts` names what the page really runs, so that tag stands for the loader, the manifest and the scripts it lists, in order.
  */
 const fs = require('fs');
 const os = require('os');
@@ -40,6 +43,9 @@ function attr(attrs, name) {
   return m ? (m[1] !== undefined ? m[1] : m[2]) : null;
 }
 
+const GUILD_LOADER = '/js/guild/load.js';
+const GUILD_MANIFEST = '/js/guild/manifest.js';
+
 /** True for http(s):// and protocol-relative URLs, which are never loaded from disk. */
 function isExternal(url) {
   return /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(url);
@@ -54,8 +60,8 @@ function fromHtml(html, readSource = readFromRoot) {
   if (inlineScripts.length) {
     throw new Error(`load-app: expected no inline <script> in index.html (the app lives in js/*.js), found ${inlineScripts.length}`);
   }
-  const scripts = scriptTags.map(m => attr(m[1], 'src')).filter(src => !isExternal(src));
-  if (!scripts.length) throw new Error('load-app: index.html loads no local <script src> files');
+  const tagged = scriptTags.map(m => attr(m[1], 'src')).filter(src => !isExternal(src));
+  if (!tagged.length) throw new Error('load-app: index.html loads no local <script src> files');
 
   /** Reads one local asset (script or stylesheet); fails loudly if it is missing or empty. */
   function readAsset(src) {
@@ -69,6 +75,18 @@ function fromHtml(html, readSource = readFromRoot) {
     if (typeof text !== 'string' || !text.trim()) throw new Error(`load-app: "${src}" referenced by index.html is empty`);
     return text.endsWith('\n') ? text : text + '\n';
   }
+
+  // The guild loader tag stands for the loader, the manifest and every script the manifest lists, in that order.
+  function guildScriptsOfManifest() {
+    const sandbox = { module: { exports: {} } };
+    vm.runInNewContext(readAsset(GUILD_MANIFEST), sandbox, { filename: GUILD_MANIFEST });
+    const list = sandbox.module.exports;
+    if (!Array.isArray(list) || !list.length || !list.every(s => typeof s === 'string')) {
+      throw new Error(`load-app: ${GUILD_MANIFEST} must export a non-empty array of script paths`);
+    }
+    return list;
+  }
+  const scripts = tagged.flatMap(src => (src === GUILD_LOADER ? [GUILD_LOADER, GUILD_MANIFEST, ...guildScriptsOfManifest()] : [src]));
 
   const script = scripts.map(readAsset).join('');
 

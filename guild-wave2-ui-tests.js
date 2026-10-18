@@ -31,7 +31,7 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const { GUILD_SCRIPTS, guildScriptsOf } = require('./tests/guild-scripts');
 
 function loadGuild() {
   const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, RegExp, setTimeout };
@@ -816,7 +816,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert(crumbs.find(c => c.label === 'Raids').href.endsWith('#/g/g1/raids'));
     const app = read('js/guild/app.js');
     assert(/ATT_ROUTE_PAGES = \{[^}]*away: 'away'/.test(app) && /case 'lootperson': case 'away':/.test(app) && /\['away', 'standing', 'raidRoster'\]\.forEach/.test(app));
-    for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(read(page).includes('<script src="/js/guild/pages-away.js"></script>'), page);
+    for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(guildScriptsOf(read(page)).includes('/js/guild/pages-away.js'), page);
     assert(GUILD_SCRIPTS.includes('/js/guild/pages-away.js') && GUILD_SCRIPTS.indexOf('/js/guild/pages-away.js') < GUILD_SCRIPTS.indexOf('/js/guild/app.js'));
     const menu = G.shell.accountMenuHtml({ me: { user: { displayName: 'A', username: 'a' }, identities: { discord: true } }, guildData: gd(MEMBER_CAN) });
     assert(menu.includes('href="#/g/g1/away"') && menu.includes('<span>Away notices</span>'));
@@ -1870,7 +1870,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     for (const name of ['pages-standing', 'pages-raid-roster']) {
       const src = '/js/guild/' + name + '.js';
       assert(GUILD_SCRIPTS.includes(src), name);
-      for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(read(page).includes('<script src="' + src + '"></script>'), name + ' in ' + page);
+      for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(guildScriptsOf(read(page)).includes(src), name + ' in ' + page);
       assert(GUILD_SCRIPTS.indexOf(src) < GUILD_SCRIPTS.indexOf('/js/guild/app.js'));
     }
     assert(GUILD_SCRIPTS.indexOf('/js/guild/pages-raid-roster.js') > GUILD_SCRIPTS.indexOf('/js/guild/pages-raid.js'));
@@ -1890,7 +1890,6 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert(/timeText\(ms, timeZone\)/.test(raids) && /timeZone: timeZone \|\| undefined/.test(raids));
     // No new page script: the lists in the pages and the test harness are unchanged by this lane.
     for (const f of GUILD_SCRIPTS) assert(fs.existsSync(path.join(ROOT, f.replace(/^\//, ''))), f);
-    assert(read('.gitignore').includes('!guild-wave2-ui-tests.js'));
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

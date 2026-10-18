@@ -1177,27 +1177,16 @@ check('audit: exactly the audited actions are written, once each, in the writes\
 
   const { AUDIT_ACTIONS } = await load('worker/audit.js');
   const written = await baseline();
-  // The roster actions (Phase 2) are driven and pinned in guild-roster-worker-tests.js.
-  const ROSTER_ACTIONS = ['character.create', 'character.delete', 'character.main', 'character.update', 'person.create', 'person.delete',
-    'person.notes', 'person.update', 'roster.import'];
-  // The attendance actions (Phase 3) are driven and pinned in guild-attendance-worker-tests.js.
-  const ATTENDANCE_ACTIONS = ['raid.create', 'raid.delete', 'raid.event', 'raid.report', 'raid.plan', 'raid.manual', 'attendance.decide',
-    'attendance.undo', 'attendance.link', 'attendance.guest', 'policy.update', 'wcl.settings', 'raid.settings'];
-  // The loot actions (Phase 4) are driven and pinned in guild-loot-worker-tests.js; the Battle.net actions (Phase 5) in guild-bnet-worker-tests.js.
-  const LOOT_ACTIONS = ['loot.import', 'loot.update', 'loot.delete', 'loot.policy'];
-  const BNET_ACTIONS = ['bnet.link', 'bnet.unlink', 'bnet.settings', 'claim.create', 'claim.withdraw', 'claim.approve', 'claim.reject'];
-  // The sign-up and schedule actions (Phase 6) are driven and pinned in guild-signups-worker-tests.js, the away notices (wave 2) in guild-wave2-worker-tests.js.
-  const SIGNUP_ACTIONS = ['signup.set', 'signup.remove', 'signup.lock', 'schedule.update', 'schedule.fill', 'away.set', 'away.remove', 'roster.publish', 'roster.unpublish', 'roster.decline'];
-  // The account actions (Phase 7a) are driven and pinned in guild-accounts-worker-tests.js.
-  const ACCOUNT_ACTIONS = ['discord.link', 'discord.unlink', 'person.account_link', 'person.account_unlink'];
-  // The role editor, Discord role mapping, guest link and public page actions (Phase 7) are driven and pinned in guild-roles-worker-tests.js.
-  const ROLES_ACTIONS = ['role.create', 'role.update', 'role.delete', 'role.reset', 'discord.maps', 'roles.discord_sync', 'guest.create', 'guest.revoke', 'public.update'];
-  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action) && !SIGNUP_ACTIONS.includes(action) && !ACCOUNT_ACTIONS.includes(action) && !ROLES_ACTIONS.includes(action)).sort());
-  assert.deepEqual(AUDIT_ACTIONS.slice().sort(), [
+  // The actions THIS scenario drives (teams, roles, access, guild lifecycle, account delete). Every other lane drives and pins its own actions in its own
+  // suite, so nothing here lists them: the audit list stays structural (unique, well-formed, each action has a group and a sentence in the wave 1 suite).
+  const BASE_ACTIONS = [
     'access.remove', 'access.restore', 'account.delete', 'guild.claim', 'guild.create', 'guild.delete',
     'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore', 'team.size',
-    ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...LOOT_ACTIONS, ...BNET_ACTIONS, ...SIGNUP_ACTIONS, ...ACCOUNT_ACTIONS, ...ROLES_ACTIONS,
-  ].sort());
+  ];
+  assert.deepEqual([...new Set(written)].sort(), BASE_ACTIONS);
+  assert(BASE_ACTIONS.every((action) => AUDIT_ACTIONS.includes(action)), 'every action this scenario writes is a declared audit action');
+  assert.equal(new Set(AUDIT_ACTIONS).size, AUDIT_ACTIONS.length, 'an audit action is declared twice');
+  for (const action of AUDIT_ACTIONS) assert.match(action, /^[a-z]+(?:_[a-z]+)*\.[a-z]+(?:_[a-z]+)*$/, `${action}: group.verb in lower case`);
   const rows = await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, created_at FROM audit_log WHERE action IN ('account.delete', 'guild.delete')");
   assert(rows.every((row) => row.guild_id === null));
   const sample = await w.rows("SELECT before, after FROM audit_log WHERE action IN ('roles.set', 'guild_master.transfer', 'access.remove', 'guild.claim', 'guild_master.auto_promote')");

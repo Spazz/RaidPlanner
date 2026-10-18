@@ -26,7 +26,7 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const { GUILD_SCRIPTS, guildScriptsOf } = require('./tests/guild-scripts');
 const css = read('guild.css');
 
 function loadGuild() {
@@ -732,9 +732,9 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     for (const f of ['pages-bnet.js', 'pages-import-bnet.js', 'pages-settings-bnet.js']) {
       read('js/guild/' + f).split('\n').forEach((line, i) => assert(!/[\s`'"]style\s*=\s*["'`\\]/.test(line), `${f}:${i + 1} inline style`));
       assert(GUILD_SCRIPTS.indexOf('/js/guild/' + f) > GUILD_SCRIPTS.indexOf('/js/guild/ui.js') && GUILD_SCRIPTS.indexOf('/js/guild/' + f) < GUILD_SCRIPTS.indexOf('/js/guild/app.js'), f);
-      for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(read(page).includes('<script src="/js/guild/' + f + '"></script>'), page + ' loads ' + f);
+      for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(guildScriptsOf(read(page)).includes('/js/guild/' + f), page + ' loads ' + f);
     }
-    const order = page => [...read(page).matchAll(/<script src="(\/js\/guild\/[^"]+)"><\/script>/g)].map(m => m[1]);
+    const order = page => guildScriptsOf(read(page));
     for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert.deepEqual(order(page), GUILD_SCRIPTS.filter(s => s.indexOf('/js/guild/') === 0), page);
     const noEm = ['pages-bnet.js', 'pages-import-bnet.js', 'pages-settings-bnet.js', 'tools/fake-battlenet.js', 'worker/battlenet.js'].map(f => f.indexOf('/') > 0 ? f : 'js/guild/' + f);
     for (const f of noEm) assert(!/[^\x00-\x7f]/.test(read(f).replace(/\u2500/g, '')), f + ' has non-ASCII text');

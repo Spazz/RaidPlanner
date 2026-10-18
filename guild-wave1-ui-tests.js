@@ -28,7 +28,7 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const { GUILD_SCRIPTS, guildScriptsOf } = require('./tests/guild-scripts');
 
 function loadGuild() {
   const sandbox = { console, Intl, Date, JSON, Math, Promise, Object, Array, String, Number, Error, RegExp, setTimeout };
@@ -1373,16 +1373,14 @@ function withState(fn) {
       assert(idx(name) < idx('app'), name + ' before app.js');
       for (const page of ['index.html', 'faq.html', 'whats-new.html']) {
         const html = read(page);
-        assert(html.includes('<script src="' + src + '"></script>'), name + ' in ' + page);
-        const scripts = [...html.matchAll(/<script src="(\/js\/guild\/[^"]+)"/g)].map(m => m[1]);
+        assert(guildScriptsOf(html).includes(src), name + ' in ' + page);
+        const scripts = guildScriptsOf(html);
         assert.deepEqual(scripts.filter(s => GUILD_SCRIPTS.includes(s)), GUILD_SCRIPTS.filter(s => scripts.includes(s)), page + ' loads them in the shared order');
       }
     }
     assert(idx('pages-person-trial') > idx('pages-person') && idx('pages-person-trial') > idx('pages-person-attendance'));
     assert(idx('pages-calendar') > idx('pages-raids'));
     assert(idx('pages-settings-activity') > idx('pages-settings-attendance') && idx('pages-attention') > idx('pages-attendance'));
-    const gi = read('.gitignore');
-    for (const f of ['guild-wave1-worker-tests.js', 'guild-wave1-ui-tests.js', 'guild-wave1-contract-tests.js']) assert(gi.includes('!' + f), f);
   });
 
   await check('guild.css: every gs- class the new pages use has a rule; the phone hides the Activity table; no custom properties, round corners or inline-style tricks were added', () => {

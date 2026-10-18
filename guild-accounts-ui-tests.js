@@ -26,7 +26,7 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const { GUILD_SCRIPTS, guildScriptsOf } = require('./tests/guild-scripts');
 const css = read('guild.css');
 
 function loadGuild() {
@@ -466,8 +466,8 @@ function withApi(stubs, fn) {
     }
     const at = n => GUILD_SCRIPTS.indexOf('/js/guild/' + n + '.js');
     assert(at('pages-accounts') > at('ui') && at('pages-accounts') < at('pages-bnet') && at('pages-bnet') < at('app'), 'pages-accounts.js loads before pages-bnet.js, which uses it');
-    for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(read(page).includes('<script src="/js/guild/pages-accounts.js"></script>'), page);
-    const order = page => [...read(page).matchAll(/<script src="(\/js\/guild\/[^"]+)"><\/script>/g)].map(m => m[1]);
+    for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(guildScriptsOf(read(page)).includes('/js/guild/pages-accounts.js'), page);
+    const order = page => guildScriptsOf(read(page));
     for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert.deepEqual(order(page), GUILD_SCRIPTS.filter(s => s.indexOf('/js/guild/') === 0), page);
   });
 

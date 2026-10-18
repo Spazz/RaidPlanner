@@ -16,8 +16,8 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const app = require('./tests/load-app');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
-const GUILD_TAIL = GUILD_SCRIPTS.slice(1); // util.js is loaded by each page first
+const { GUILD_LOADER, GUILD_MANIFEST, guildScriptsOf } = require('./tests/guild-scripts');
+// Each page ends with the one guild loader tag; it loads the scripts js/guild/manifest.js lists (util.js is each page's first script).
 // The ids lane S renders into (spec section 3); the planner's own slot and root exist on index.html only.
 const SHELL_IDS = ['guild-root', 'shell-rail', 'shell-sidebar', 'shell-topbar', 'shell-topbar-lead', 'shell-topbar-account', 'shell-banner', 'gs-main', 'shell-tabs', 'shell-drawer', 'guild-dialogs'];
 
@@ -25,8 +25,8 @@ const ROOT = app.ROOT;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const SITE = 'https://raidsmith.vercel.app';
 const PAGES = {
-  'faq.html': { title: 'FAQ - Raidsmith', h1: 'Frequently asked questions', scripts: ['/js/util.js', '/js/changelog.js', '/js/storage.js', '/js/site-pages.js', ...GUILD_TAIL] },
-  'whats-new.html': { title: "What's new - Raidsmith", h1: "What's new", scripts: ['/js/util.js', '/js/changelog.js', '/js/site-pages.js', ...GUILD_TAIL] },
+  'faq.html': { title: 'FAQ - Raidsmith', h1: 'Frequently asked questions', scripts: ['/js/util.js', '/js/changelog.js', '/js/storage.js', '/js/site-pages.js', GUILD_LOADER] },
+  'whats-new.html': { title: "What's new - Raidsmith", h1: "What's new", scripts: ['/js/util.js', '/js/changelog.js', '/js/site-pages.js', GUILD_LOADER] },
 };
 const indexHtml = app.html.replace(/\r\n/g, '\n');
 
@@ -84,12 +84,13 @@ for (const [file, spec] of Object.entries(PAGES)) {
       return m[1].match(/src="([^"]+)"/)[1];
     });
     assert.deepEqual(scripts, spec.scripts);
+    assert.deepEqual(guildScriptsOf(html), GUILD_MANIFEST, 'the guild scripts come from the manifest alone');
     assert(!/<style\b/i.test(html) && !/\sstyle\s*=/.test(html) && !/\son[a-z]{3,}\s*=/i.test(html), 'no inline style or handler');
     const ignore = read('.gitignore').split('\n').map(l => l.trim());
     const vercelIgnore = read('.vercelignore').split('\n').map(l => l.trim());
     // js/guild/*.js is whitelisted as a glob, the other files one by one.
     const whitelisted = rel => ignore.includes('!' + rel) || (/^js\/guild\/[\w-]+\.js$/.test(rel) && ignore.includes('!js/guild/*.js'));
-    for (const rel of [file, 'guild.css', ...scripts.map(s => s.slice(1))]) {
+    for (const rel of [file, 'guild.css', ...scripts.map(s => s.slice(1)), 'js/guild/manifest.js', ...GUILD_MANIFEST.map(s => s.slice(1))]) {
       assert(fs.statSync(path.join(ROOT, rel)).size > 0, rel);
       assert(whitelisted(rel), `.gitignore has no "!${rel}" line`);
       assert(!vercelIgnore.includes('/' + rel), `${rel} must not be excluded from the deploy`);
@@ -175,10 +176,11 @@ check('index.html carries the shell skeleton: every id, in order, with the plann
 check('index.html loads util.js first, site-pages.js after the planner scripts, then the guild tail; vercel.json only rewrites the plan links', () => {
   assert.equal(app.scripts[0], '/js/util.js');
   assert.equal(app.scripts[app.scripts.length - 1], '/js/guild/app.js');
-  const tailAt = app.scripts.length - GUILD_TAIL.length;
-  assert.deepEqual(app.scripts.slice(tailAt), GUILD_TAIL, 'the page\'s guild script tail equals tests/guild-scripts.js');
-  assert.equal(app.scripts[tailAt - 1], '/js/site-pages.js');
-  assert.equal(app.scripts.length - GUILD_TAIL.length, 18, 'the 18 planner scripts, in the same order as before');
+  const guildAt = app.scripts.indexOf(GUILD_LOADER); // the loader tag stands for the loader, the manifest and the manifest's scripts
+  assert.deepEqual(app.scripts.slice(guildAt), [GUILD_LOADER, '/js/guild/manifest.js', ...GUILD_MANIFEST], 'the page ends with the guild loader and what it runs');
+  assert.deepEqual(guildScriptsOf(app.html), GUILD_MANIFEST);
+  assert.equal(app.scripts[guildAt - 1], '/js/site-pages.js');
+  assert.equal(guildAt, 18, 'the 18 planner scripts, in the same order as before');
   assert.deepEqual(app.stylesheets, ['/app.css', '/guild.css']);
   assert(app.scripts.indexOf('/js/util.js') < app.scripts.indexOf('/js/changelog.js'));
   const config = JSON.parse(read('vercel.json'));

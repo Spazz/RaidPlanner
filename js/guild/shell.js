@@ -37,22 +37,27 @@
     return v === 'guild' || (Array.isArray(v) && !!teamId && v.indexOf(teamId) >= 0);
   }
 
-  // The Guild settings tabs this viewer may open (People and roles needs access or roles; Raid schedule is for whoever edits raids, and a Team Lead
-  // reaches it from the Raids page: canSeeSettings below, and so the sidebar item, is unchanged). Roles, Discord roles and Public page need guild.roles,
-  // Guest links needs guild.access.
+  // The Guild settings tabs in the order the tab bar shows them. A viewer sees a tab when they hold ANY of its `needs` actions (People and roles needs
+  // access or roles; Raid schedule is for whoever edits raids, and a Team Lead reaches it from the Raids page: canSeeSettings below, and so the sidebar
+  // item, is unchanged). Every tab here is a route tab in router.js and every action a Worker action: guild-structure-tests.js checks both.
+  const SETTINGS_TABS = [
+    { tab: 'teams', label: 'Teams', needs: ['guild.teams'] },
+    { tab: 'schedule', label: 'Raid schedule', needs: ['raids.edit'] },
+    { tab: 'people', label: 'People and roles', needs: ['guild.access', 'guild.roles'] },
+    { tab: 'roles', label: 'Roles', needs: ['guild.roles'] },
+    { tab: 'discord', label: 'Discord roles', needs: ['guild.roles'] },
+    { tab: 'guests', label: 'Guest links', needs: ['guild.access'] },
+    { tab: 'public', label: 'Public page', needs: ['guild.roles'] },
+    { tab: 'attendance', label: 'Attendance', needs: ['attendance.policy'] },
+    { tab: 'loot', label: 'Loot', needs: ['loot.policy'] },
+    { tab: 'battlenet', label: 'Battle.net', needs: ['guild.teams'] },
+    { tab: 'activity', label: 'Activity', needs: ['audit.view'] },
+  ];
+
   function settingsTabs(can) {
-    const tabs = [];
-    if (hasAction(can, 'guild.teams')) tabs.push({ tab: 'teams', label: 'Teams' });
-    if (hasAction(can, 'raids.edit')) tabs.push({ tab: 'schedule', label: 'Raid schedule' });
-    if (hasAction(can, 'guild.access') || hasAction(can, 'guild.roles')) tabs.push({ tab: 'people', label: 'People and roles' });
-    if (hasAction(can, 'guild.roles')) tabs.push({ tab: 'roles', label: 'Roles' }, { tab: 'discord', label: 'Discord roles' });
-    if (hasAction(can, 'guild.access')) tabs.push({ tab: 'guests', label: 'Guest links' });
-    if (hasAction(can, 'guild.roles')) tabs.push({ tab: 'public', label: 'Public page' });
-    if (hasAction(can, 'attendance.policy')) tabs.push({ tab: 'attendance', label: 'Attendance' });
-    if (hasAction(can, 'loot.policy')) tabs.push({ tab: 'loot', label: 'Loot' });
-    if (hasAction(can, 'guild.teams')) tabs.push({ tab: 'battlenet', label: 'Battle.net' });
-    if (hasAction(can, 'audit.view')) tabs.push({ tab: 'activity', label: 'Activity' });
-    return tabs;
+    return SETTINGS_TABS
+      .filter(function (def) { return def.needs.some(function (action) { return hasAction(can, action); }); })
+      .map(function (def) { return { tab: def.tab, label: def.label }; });
   }
 
   function activeTeams(teams) {
@@ -461,6 +466,7 @@
     canSeeSettings: canSeeSettings,
     canSeeAttention: canSeeAttention,
     homeBadge: homeBadge,
+    SETTINGS_TABS: SETTINGS_TABS,
     settingsTabs: settingsTabs,
     activeTeams: activeTeams,
     navItems: navItems,

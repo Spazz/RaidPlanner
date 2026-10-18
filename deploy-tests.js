@@ -12,6 +12,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const app = require('./tests/load-app');
+const { guildScriptsOf } = require('./tests/guild-scripts');
 
 const ROOT = app.ROOT;
 const lines = fs.readFileSync(path.join(ROOT, '.vercelignore'), 'utf8').split(/\r?\n/)
@@ -43,7 +44,9 @@ function runtimeFiles() {
   const files = new Set(['index.html', 'faq.html', 'whats-new.html', 'vercel.json', 'package.json', 'scenarios.js', 'og-image.png']);
   for (const src of [...app.scripts, ...app.stylesheets]) files.add(src.split(/[?#]/)[0].replace(/^\//, ''));
   for (const page of ['faq.html', 'whats-new.html']) {
-    for (const m of fs.readFileSync(path.join(ROOT, page), 'utf8').matchAll(/<script src="([^"]+)"/g)) files.add(m[1].replace(/^\//, ''));
+    const text = fs.readFileSync(path.join(ROOT, page), 'utf8');
+    for (const m of text.matchAll(/<script src="([^"]+)"/g)) files.add(m[1].replace(/^\//, ''));
+    for (const src of guildScriptsOf(text)) files.add(src.replace(/^\//, '')); // what the loader tag injects
   }
   for (const name of fs.readdirSync(path.join(ROOT, 'icons'))) files.add(`icons/${name}`);
   for (const name of fs.readdirSync(path.join(ROOT, 'api'))) files.add(`api/${name}`);

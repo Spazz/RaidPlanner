@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { pathToFileURL } = require('url');
 
 let passed = 0, failed = 0;
 async function check(name, fn) {
@@ -771,15 +772,39 @@ function assertEscaped(out, label) {
   // ── guild.html, guild.css, source hygiene ──────────────────────
   const jsDir = path.join(ROOT, 'js', 'guild');
   const jsFiles = fs.readdirSync(jsDir).filter(f => f.endsWith('.js')).sort();
+  // load.js and manifest.js are not shell scripts: the loader and the one list it injects (the other js/guild files are that list, exactly).
+  const LOADER_FILES = ['load.js', 'manifest.js'];
 
-  await check('guild script list: /js/util.js first, then exactly the scripts in js/guild/ (none missing, none extra), app.js last', () => {
+  await check('guild script list: /js/util.js first, then exactly the scripts in js/guild/ besides the loader pair (none missing, none extra), app.js last', () => {
     assert.equal(scriptSrcs[0], '/js/util.js');
     const guildScripts = scriptSrcs.slice(1);
     assert(guildScripts.every(s => /^\/js\/guild\/[\w-]+\.js$/.test(s)), 'unexpected script path');
-    assert.deepEqual([...guildScripts].sort(), jsFiles.map(f => '/js/guild/' + f));
+    assert.deepEqual([...guildScripts].sort(), jsFiles.filter(f => !LOADER_FILES.includes(f)).map(f => '/js/guild/' + f));
     assert.equal(new Set(guildScripts).size, guildScripts.length, 'duplicate script');
     assert.equal(scriptSrcs[scriptSrcs.length - 1], '/js/guild/app.js', 'app.js starts the shell, so it loads last');
     for (const s of scriptSrcs) assert(fs.existsSync(path.join(ROOT, s.replace(/^\//, ''))), s);
+  });
+
+  // Structural: the settings tabs are ONE array in shell.js (its order is the tab bar's order, a product decision). Adding a tab means adding it there and
+  // in the router; nothing in the suites lists the tabs.
+  await check('settings tabs: shell SETTINGS_TABS and router TABS name the same tabs, each is opened by Worker actions, and every action shows every tab in array order', async () => {
+    const defs = G.shell.SETTINGS_TABS;
+    const tabs = defs.map(def => def.tab);
+    assert.equal(new Set(tabs).size, tabs.length, 'a tab is listed twice');
+    assert.deepEqual([...tabs].sort(), plain(G.router.TABS).sort(), 'every route tab has a SETTINGS_TABS entry and every entry has a route');
+    const { ACTIONS } = await import(pathToFileURL(path.join(ROOT, 'worker', 'permissions.js')).href);
+    for (const def of defs) {
+      assert(def.label && /^[A-Z]/.test(def.label), def.tab + ' has a label');
+      assert(def.needs.length > 0, def.tab + ' needs at least one action');
+      for (const action of def.needs) assert(ACTIONS.includes(action), `${def.tab} needs ${action}, which is not a Worker action`);
+    }
+    const everything = Object.fromEntries(ACTIONS.map(action => [action, 'guild']));
+    assert.deepEqual(plain(G.shell.settingsTabs(everything)), plain(defs.map(def => ({ tab: def.tab, label: def.label }))));
+    assert.deepEqual(plain(G.shell.settingsTabs({})), []);
+    for (const tab of G.router.TABS) {
+      const route = { name: 'settings', gid: 'g1', tab };
+      assert.deepEqual(plain(G.router.parse(G.router.format(route))), route, tab + ' round-trips through the address');
+    }
   });
 
   await check('guild.html is gone (the shell lives in index.html, faq.html and whats-new.html)', () => {
@@ -790,7 +815,7 @@ function assertEscaped(out, label) {
     for (const f of jsFiles) {
       const text = read('js/guild/' + f);
       assert(!/^\s*(import|export)\s/m.test(text), f + ' uses modules');
-      assert(/window\.Guild = window\.Guild \|\| \{\}/.test(text), f + ' namespace');
+      if (!LOADER_FILES.includes(f)) assert(/window\.Guild = window\.Guild \|\| \{\}/.test(text), f + ' namespace');
     }
   });
 

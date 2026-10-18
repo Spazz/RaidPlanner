@@ -4,7 +4,7 @@
  *
  * index.html is a thin page: two stylesheets (app.css, then guild.css for the shell around the planner) and the app
  * as ordered classic <script src> files under js/ (no build step, no defer/async/module); the planner's scripts
- * come first, then the guild shell's (js/guild/, the list in tests/guild-scripts.js).
+ * come first, then ONE tag for the guild shell (js/guild/load.js, which injects the list in js/guild/manifest.js).
  * These checks pin that shape:
  *   - the page references only root-absolute files that exist and are whitelisted in .gitignore
  *     (relative paths would break on the /<version>/<id> live-link rewrite)
@@ -23,7 +23,7 @@ const path = require('path');
 const vm = require('vm');
 const { execFileSync } = require('child_process');
 const app = require('./tests/load-app');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const { GUILD_SCRIPTS, GUILD_MANIFEST, GUILD_LOADER, guildScriptsOf } = require('./tests/guild-scripts');
 
 let passed = 0;
 let skipped = 0;
@@ -46,7 +46,7 @@ check('index.html carries no inline <script> or <style>', () => {
 
 check('the page links /app.css and /guild.css and loads every js file as a plain classic script', () => {
   assert.deepEqual(app.stylesheets, ['/app.css', '/guild.css']);
-  assert.ok(app.scripts.length >= 6 && app.scripts.length <= 80, `${app.scripts.length} script files`);
+  assert.ok(app.scripts.length >= 6, `${app.scripts.length} script files`);
   for (const src of app.scripts) assert.match(src, /^\/js\/(?:rules\/|guild\/)?[a-z0-9-]+\.js$/, `${src} must be root-absolute under /js/ (the rules data files under /js/rules/, the guild shell under /js/guild/)`);
   assert.equal(new Set(app.scripts).size, app.scripts.length, 'a script is loaded twice');
   for (const m of html.matchAll(/<script\b([^>]*)>/gi)) {
@@ -74,9 +74,13 @@ check('every referenced file exists, is non-empty and is whitelisted in .gitigno
   assert.deepEqual(onDisk, [...app.scripts].sort(), 'js/, js/rules/ or js/guild/ holds a file the page does not load (or vice versa)');
 });
 
-check('the page ends with the guild scripts in the order of tests/guild-scripts.js', () => {
-  const tail = GUILD_SCRIPTS.slice(1); // util.js is the page's first script
+check('the page ends with the one guild loader tag; what it runs is the loader, the manifest and the scripts it lists, in order', () => {
+  const guildTags = [...html.matchAll(/<script\b[^>]*\bsrc="(\/js\/guild\/[^"]+)"/g)].map(m => m[1]);
+  assert.deepEqual(guildTags, [GUILD_LOADER], 'the page carries no plain guild script tag besides the loader');
+  assert.equal(html.lastIndexOf('<script'), html.indexOf('<script src="' + GUILD_LOADER + '"></script>'), 'the loader is the last script tag');
+  const tail = [GUILD_LOADER, '/js/guild/manifest.js'].concat(GUILD_MANIFEST);
   assert.deepEqual(app.scripts.slice(app.scripts.length - tail.length), tail);
+  assert.deepEqual(guildScriptsOf(html), GUILD_MANIFEST);
   assert.equal(app.scripts[0], GUILD_SCRIPTS[0]);
 });
 

@@ -51,7 +51,7 @@ import {
 const COMMIT_MAX_BODY = 64 * 1024;
 const PLAN_MAX_BODY = 32 * 1024;
 
-const ROUTES = [
+export const ROUTES = [
   { method: 'GET', path: '/guild', auth: false, handler: guildPageRedirect },
   { method: 'GET', path: '/guild/', auth: false, handler: guildPageRedirect },
   { method: 'GET', path: '/auth/login', auth: false, handler: login },

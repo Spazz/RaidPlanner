@@ -25,7 +25,7 @@ async function check(name, fn) {
 
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
-const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const { GUILD_SCRIPTS, guildScriptsOf } = require('./tests/guild-scripts');
 const css = read('guild.css');
 
 function loadGuild() {
@@ -917,7 +917,7 @@ function teamData(over) {
     assert(!/[^\x00-\x7f]/.test(guildCss));
     for (const page of ['index.html', 'faq.html', 'whats-new.html']) {
       const html = read(page);
-      for (const f of files) assert(html.includes('<script src="/' + f + '"></script>'), `${page} ${f}`);
+      for (const f of files) assert(guildScriptsOf(html).includes('/' + f), `${page} ${f}`);
     }
   });
 
