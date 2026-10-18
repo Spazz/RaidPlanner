@@ -735,6 +735,20 @@ check('guest link: a Forever guild takes a first name and a surname from a guest
   assert.equal((await send('Too Many Words')).status, 400);
 });
 
+check('migration 0023: a pasted list takes a Forever name of up to 25 characters and still refuses a one-letter name; the rows of the old table survived', async () => {
+  const s = await scenario({ version: 'forever' });
+  const rid = await s.raid('2027-01-12');
+  const insert = (position, name) => s.exec("INSERT INTO raid_loot_lists (raid_id, guild_id, source, position, kind, name, name_key, item_id, copies) VALUES (?, ?, 'softres', ?, 'sr', ?, ?, 1, 1)", rid, s.gid, position, name, name.toLowerCase());
+  await insert(0, 'Thrall Stormrage');
+  await insert(1, 'Abcdefghijkl Mnopqrstuvwx');
+  await assert.rejects(() => insert(2, 'A'), /CHECK/);
+  await assert.rejects(() => insert(3, 'Abcdefghijkl Mnopqrstuvwxy'), /CHECK/, '26 characters is too long');
+  const indexes = (await s.rows("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'raid_loot_lists' AND name = 'raid_loot_lists_item'"));
+  assert.equal(indexes.length, 1, 'the item index came back with the rebuilt table');
+  await s.ok('gm', 'DELETE', `/raids/${rid}`, {});
+  assert.equal((await s.rows('SELECT COUNT(*) AS n FROM raid_loot_lists'))[0].n, 0, 'the lists still go with their raid');
+});
+
 check('migration 0022: a guest sign-up needs the Raidsmith source; a link goes with its raid and its uses never go negative', async () => {
   const { s, rid, made } = await joinScenario();
   await assert.rejects(() => s.exec("INSERT INTO raid_signups (raid_id, source, signup_id, nickname, kind, position, guild_id, guest) VALUES (?, 'raid_helper', 1, 'Nope', 'signed', 1, ?, 1)", rid, s.gid), /CHECK/);

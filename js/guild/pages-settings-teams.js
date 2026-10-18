@@ -22,7 +22,17 @@
     if (!canEdit) return '';
     return '<button type="button" class="gs-btn gs-btn-sm" data-action="team-rename" data-team="' + esc(team.id) + '" data-key="rename-' + esc(team.id) + '" aria-label="Rename ' + esc(team.name) + '">Rename</button>' +
       '<button type="button" class="gs-btn gs-btn-sm" data-action="team-size" data-team="' + esc(team.id) + '" data-key="size-' + esc(team.id) + '" aria-label="Change the raid size of ' + esc(team.name) + '">Size</button>' +
+      launchToggleHtml(team) +
       '<button type="button" class="gs-btn gs-btn-sm" data-action="team-archive" data-team="' + esc(team.id) + '" data-key="archive-' + esc(team.id) + '" aria-label="Archive ' + esc(team.name) + '">Archive</button>';
+  }
+
+  // PM wave 8: the Roster's Launch tab is on for every team of a WoW Forever guild; any other guild turns it on per team ("launch team").
+  function launchToggleHtml(team) {
+    const gd = currentGuildData();
+    if (!gd || !gd.guild || gd.guild.gameVersion === 'forever') return '';
+    const on = team.launchTeam === true;
+    return '<button type="button" class="gs-btn gs-btn-sm" data-action="team-launch" data-team="' + esc(team.id) + '" data-key="launch-' + esc(team.id) + '" aria-pressed="' + (on ? 'true' : 'false') +
+      '" aria-label="' + esc('Launch funnel for ' + team.name + ': ' + (on ? 'on' : 'off')) + '">Launch ' + (on ? 'on' : 'off') + '</button>';
   }
 
   // Phone layout (600 px and below): one card per team, like the People cards.
@@ -122,6 +132,21 @@
     if (team) openTeamDialog('size', team);
   };
   G.handlers.click['dialog-cancel'] = function (el) { G.ui.closeDialogOf(el); };
+  G.handlers.click['team-launch'] = function (el) {
+    const gd = currentGuildData();
+    const team = gd ? findTeam(gd, el.getAttribute('data-team')) : null;
+    if (!team || el.disabled) return;
+    const enabled = team.launchTeam !== true;
+    el.disabled = true;
+    G.api.launch.mark(gd.guild.id, team.id, enabled).then(function () {
+      if (enabled) team.launchTeam = true; else delete team.launchTeam;
+      G.app.state.pageAlert = '';
+      G.app.render();
+    }, function (err) {
+      el.disabled = false;
+      G.app.handleError(err, { pageAlert: true });
+    });
+  };
 
   function patchTeam(gid, id, body, onError) {
     return G.api.patch('/api/guild/' + encodeURIComponent(gid) + '/teams/' + encodeURIComponent(id), body).then(function (res) {
@@ -191,5 +216,5 @@
     }
   };
 
-  G.pages.teams = { NOTE: NOTE, teamsHtml: teamsHtml, teamDialogHtml: teamDialogHtml };
+  G.pages.teams = { NOTE: NOTE, teamsHtml: teamsHtml, teamDialogHtml: teamDialogHtml, teamActionsHtml: teamActionsHtml };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

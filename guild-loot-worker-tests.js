@@ -1459,8 +1459,10 @@ check('migration 0011: an existing 0008 database is rebuilt in place -- rows, in
     assert(fs.existsSync(path.join(migrations, rebuild)));
     // Every migration but the one under test: the Worker needs the later account columns (0012) to sign anyone in, and 0011 touches only loot_awards.
     // 0019 (PM wave 5) adds a column to loot_awards, so it is held back too and applied after the rebuild below, in the order a real database sees them.
+    // 0023 (PM wave 8) rebuilds raid_loot_lists, which 0019 makes, so it waits for 0019 as well.
     const later = '0019_wave5.sql';
-    for (const name of fs.readdirSync(migrations)) if (name.endsWith('.sql') && name !== rebuild && name !== later) fs.copyFileSync(path.join(migrations, name), path.join(dir, name));
+    const afterLater = '0023_wave8_forever_names.sql';
+    for (const name of fs.readdirSync(migrations)) if (name.endsWith('.sql') && name !== rebuild && name !== later && name !== afterLater) fs.copyFileSync(path.join(migrations, name), path.join(dir, name));
     const s = await lootWorld({ migrationsDir: dir });
     const columns = async () => s.w.rows('SELECT name, type, "notnull" AS nn, dflt_value, pk FROM pragma_table_info(\'loot_awards\') ORDER BY cid');
     const indexes = async () => s.w.rows('SELECT name, sql FROM sqlite_master WHERE type = \'index\' AND tbl_name = \'loot_awards\' AND sql IS NOT NULL ORDER BY name');
@@ -1491,6 +1493,7 @@ check('migration 0011: an existing 0008 database is rebuilt in place -- rows, in
     assert.deepEqual((await s.call('bob', 'GET', s.loot(s.r1))).json, apiBefore, 'the pages read the same answer');
     // 0019 then adds the manual flag to the rebuilt table: every row is "not manual" and the answer is still the same.
     exec(s.w, fs.readFileSync(path.join(migrations, later), 'utf8'));
+    exec(s.w, fs.readFileSync(path.join(migrations, afterLater), 'utf8'));
     assert.deepEqual(await s.w.rows('SELECT DISTINCT manual FROM loot_awards'), [{ manual: 0 }]);
     assert.deepEqual((await s.call('bob', 'GET', s.loot(s.r1))).json, apiBefore, 'a stored award has no manual key');
 

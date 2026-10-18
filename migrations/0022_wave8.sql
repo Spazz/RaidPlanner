@@ -1,10 +1,10 @@
 -- Raidsmith guild tracker, PM wave 8 (WoW Forever launch readiness). Spec: tasks/guild-pm-wave8-spec.md.
--- Nothing that other tables reference is rebuilt (D1 cannot switch foreign keys off). ADD COLUMN and new tables only, with TWO exceptions: notification_log
--- and raid_loot_lists are leaves (no table references either), so a CHECK is widened by a copy, which cannot fire any ON DELETE action.
+-- Nothing that other tables reference is rebuilt (D1 cannot switch foreign keys off). ADD COLUMN and new tables only, with ONE exception: notification_log
+-- is a leaf (no table references it), so its kind CHECK is widened by a copy, which cannot fire any ON DELETE action.
 --
 -- 1. Forever surnames need almost no schema: characters.name / name_key and every other name column already hold any text, and the Worker's cleaner
 --    (worker/roster-data.js cleanCharacterName) decides what a name may be per game version. The one CHECK that said "2 to 12 letters" is the pasted
---    TMB / softres list (raid_loot_lists.name): it is rebuilt below for a first name, a space and a surname (25).
+--    TMB / softres list (raid_loot_lists.name): 0023_wave8_forever_names.sql widens it.
 -- 2. Raid duties (Raid leader, Loot master, Logger, Plan maker, one free-text extra) and the "upload the log" nudge (a notification_log kind).
 -- 3. The launch funnel: a team's "launch team" flag and the officer- or member-set parts of each person's row (level band, ready).
 -- 4. The guest sign-up link of a raid and the guest flag of a native sign-up (a sign-up with no roster person).
@@ -51,29 +51,6 @@ DROP TABLE notification_log;
 ALTER TABLE notification_log_w8 RENAME TO notification_log;
 CREATE UNIQUE INDEX notification_log_dedupe ON notification_log(guild_id, dedupe_key);
 CREATE INDEX notification_log_created ON notification_log(created_at);
-
--- raid_loot_lists with a name of up to 25 characters (a Forever first name and surname). A copy; nothing references the table.
-CREATE TABLE raid_loot_lists_w8 (
-  raid_id   TEXT NOT NULL,
-  guild_id  TEXT NOT NULL,
-  source    TEXT NOT NULL CHECK (source IN ('tmb', 'softres')),
-  position  INTEGER NOT NULL CHECK (position >= 0),
-  kind      TEXT NOT NULL CHECK (kind IN ('prio', 'wish', 'sr')),
-  name      TEXT NOT NULL CHECK (length(name) BETWEEN 2 AND 25),
-  name_key  TEXT NOT NULL CHECK (length(name_key) BETWEEN 1 AND 48),
-  item_id   INTEGER NOT NULL CHECK (item_id > 0),
-  item_name TEXT CHECK (item_name IS NULL OR length(item_name) <= 100),
-  prio      INTEGER CHECK (prio IS NULL OR prio BETWEEN 0 AND 9999),
-  copies    INTEGER NOT NULL DEFAULT 1 CHECK (copies BETWEEN 1 AND 20),
-  PRIMARY KEY (raid_id, source, position),
-  CHECK ((source = 'softres') = (kind = 'sr')),
-  FOREIGN KEY (guild_id, raid_id) REFERENCES raids(guild_id, id) ON DELETE CASCADE
-);
-INSERT INTO raid_loot_lists_w8 (raid_id, guild_id, source, position, kind, name, name_key, item_id, item_name, prio, copies)
-  SELECT raid_id, guild_id, source, position, kind, name, name_key, item_id, item_name, prio, copies FROM raid_loot_lists;
-DROP TABLE raid_loot_lists;
-ALTER TABLE raid_loot_lists_w8 RENAME TO raid_loot_lists;
-CREATE INDEX raid_loot_lists_item ON raid_loot_lists(raid_id, item_id);
 
 -- ---------------------------------------------------------------------------
 -- Launch readiness funnel

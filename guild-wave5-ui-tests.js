@@ -275,12 +275,12 @@ check('Actions menu: the two paste entries for an editor on an upcoming and a pa
   const lootOk = { gid: 'g1', rid: 'r4', status: 'ok', data: { awards: [], canEdit: true }, ui: G.pages.raidLoot.freshUi() };
   const page = (data, over) => G.pages.raid.raidHtml(Object.assign({ guildData: gd(OFFICER_CAN), data }, over || {}));
   const past = page(PAST(), { loot: lootOk, board: okState() });
-  assert.deepEqual(labelsOf(past), ['Recalculate attendance', 'Mark as No log', 'Import loot from Gargul', 'Add loot award', 'Loot prio (TMB)', 'Soft-reserves (softres)', 'Open in Planner', 'Delete raid']);
+  assert.deepEqual(labelsOf(past), ['Recalculate attendance', 'Mark as No log', 'Import loot from Gargul', 'Add loot award', 'Loot prio (TMB)', 'Soft-reserves (softres)', 'Set raid duties', 'Paste raid roster', 'Open in Planner', 'Delete raid']);
   assert(past.includes('data-action="board-open" data-list="tmb"') && past.includes('data-action="loot-add-open"'));
   const up = page(UPCOMING(), { board: okState({ rid: 'u1' }) });
-  assert.deepEqual(labelsOf(up), ['Loot prio (TMB)', 'Soft-reserves (softres)', 'Open in Planner', 'Delete raid']);
+  assert.deepEqual(labelsOf(up), ['Loot prio (TMB)', 'Soft-reserves (softres)', 'Set raid duties', 'Guest sign-up link', 'Open in Planner', 'Delete raid']);
   const openTmb = page(UPCOMING(), { board: okState({ rid: 'u1', ui: Object.assign(G.pages.raidBoard.freshUi(), { list: 'tmb' }) }) });
-  assert.deepEqual(labelsOf(openTmb), ['Soft-reserves (softres)', 'Open in Planner', 'Delete raid']);
+  assert.deepEqual(labelsOf(openTmb), ['Soft-reserves (softres)', 'Set raid duties', 'Guest sign-up link', 'Open in Planner', 'Delete raid']);
   const member = G.pages.raid.raidHtml({ guildData: gd(MEMBER_CAN), data: PAST({ can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), board: okState({ data: BOARD({ canEdit: false }) }) });
   assert(!member.includes('raid-actions'), 'no Actions menu for a viewer who cannot edit');
   assert(member.includes('id="board-h"') && !member.includes('data-action="board-open"'));

@@ -158,7 +158,7 @@ class ApiErr extends Error {
       assert.deepEqual(p(G.router.format(route)), route, JSON.stringify(route));
     }
     assert.equal(G.router.format({ name: 'apply', gid: 'bad id/' }), '#/', 'an address that is no id is not built');
-    assert.deepEqual(plain(G.router.ROSTER_TABS), ['intent', 'recruiting', 'applications']);
+    assert.deepEqual(plain(G.router.ROSTER_TABS), ['intent', 'recruiting', 'applications', 'launch']);
     assert.equal(G.router.isViewerRoute({ name: 'apply' }), true);
     assert.equal(G.router.isViewerRoute({ name: 'intent' }), false);
   });
@@ -173,7 +173,7 @@ class ApiErr extends Error {
     assert.deepEqual(crumbs({ name: 'applications', gid: 'g1' }).slice(-2), ['Roster', 'Applications']);
     assert.deepEqual(crumbs({ name: 'import', gid: 'g1', source: 'csv' }).slice(-2), ['Roster', 'Import from a CSV file']);
     assert.deepEqual(crumbs({ name: 'apply', gid: 'g1' }), ['Apply']);
-    for (const name of ['intent', 'recruiting', 'applications']) {
+    for (const name of ['intent', 'recruiting', 'applications', 'launch']) {
       const side = G.shell.sidebarHtml({ section: 'guild', route: { name, gid: 'g1' }, guildData: gd(OFFICER_CAN), teamId: 't1', me: { user: { id: 'u', username: 'u' }, guilds: [] }, attentionCount: 0 });
       const current = [...side.matchAll(/<a class="gs-nav-link is-active" href="([^"]+)"[^>]*aria-current="page">/g)].map(m => m[1]);
       assert.deepEqual(current, ['#/g/g1/roster'], name + ': the Roster item is the open one');
@@ -185,10 +185,10 @@ class ApiErr extends Error {
 
   await check('Roster tabs: everyone gets Roster and Intent, roster editors also Recruiting and Applications; the open tab is marked; a count sits beside Applications', () => {
     const member = G.pages.rosterTabs.html(gd(MEMBER_CAN), 'intent');
-    assert.deepEqual([...member.matchAll(/>([A-Za-z]+)<\/a>/g)].map(m => m[1]), ['Roster', 'Intent']);
+    assert.deepEqual([...member.matchAll(/>([A-Za-z]+)<\/a>/g)].map(m => m[1]), ['Roster', 'Intent', 'Launch'], 'a Forever guild also has Launch');
     assert(/<a class="gs-subtab is-active" href="#\/g\/g1\/roster\/intent" aria-current="page">Intent<\/a>/.test(member));
     const officer = G.pages.rosterTabs.html(gd(OFFICER_CAN), 'roster', 3);
-    assert.deepEqual([...officer.matchAll(/class="gs-subtab[^"]*" href="([^"]+)"/g)].map(m => m[1]), ['#/g/g1/roster', '#/g/g1/roster/intent', '#/g/g1/roster/recruiting', '#/g/g1/roster/applications']);
+    assert.deepEqual([...officer.matchAll(/class="gs-subtab[^"]*" href="([^"]+)"/g)].map(m => m[1]), ['#/g/g1/roster', '#/g/g1/roster/intent', '#/g/g1/roster/launch', '#/g/g1/roster/recruiting', '#/g/g1/roster/applications']);
     assert(officer.includes('aria-label="3 new applications">3</span>'));
     assert(!G.pages.rosterTabs.html(gd(OFFICER_CAN), 'roster', 0).includes('gs-tab-count'));
     assert(G.pages.roster.rosterHtml({ guildData: gd(OFFICER_CAN), data: { team: { id: 't1', name: 'Team KJ' }, people: [], can: { edit: true } }, view: {}, notice: '', alert: '' }).includes('aria-label="Roster sections"'), 'the roster page carries the strip');

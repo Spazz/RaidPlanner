@@ -197,7 +197,7 @@
     if (!route) return false;
     if (item.key === 'settings') return route.name === 'settings';
     if (item.key === 'roadmap') return route.name === 'roadmap';
-    if (item.key === 'roster' && (route.name === 'person' || route.name === 'import' || route.name === 'intent' || route.name === 'recruiting' || route.name === 'applications')) return true;
+    if (item.key === 'roster' && (route.name === 'person' || route.name === 'import' || route.name === 'intent' || route.name === 'recruiting' || route.name === 'applications' || route.name === 'launch')) return true;
     if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid' || route.name === 'away')) return true;
     if (item.key === 'attendance' && (route.name === 'review' || route.name === 'backfill' || route.name === 'personatt')) return true;
     if (item.key === 'loot' && route.name === 'lootperson') return true;
@@ -326,6 +326,7 @@
     intent: { parent: 'roster', parentLabel: 'Roster', label: 'Intent' },
     recruiting: { parent: 'roster', parentLabel: 'Roster', label: 'Recruiting' },
     applications: { parent: 'roster', parentLabel: 'Roster', label: 'Applications' },
+    launch: { parent: 'roster', parentLabel: 'Roster', label: 'Launch' },
   };
   const IMPORT_LABELS = { 'raid-helper': 'Import from Raid-Helper', wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net', csv: 'Import from a CSV file' };
   function breadcrumbItems(ctx) {
@@ -339,6 +340,7 @@
     if (r.name === 'guest' || r.name === 'view') return [{ label: 'Guest view' }];
     if (r.name === 'public') return [{ label: 'Public page' }];
     if (r.name === 'apply') return [{ label: 'Apply' }];
+    if (r.name === 'join') return [{ label: 'Join a raid' }];
     if (ctx.signedOut) return [{ label: 'Sign in' }];
     if (r.name === 'linked') return [{ label: 'Linked accounts' }];
     if (r.name === 'characters') return [{ label: 'My characters' }];

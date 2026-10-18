@@ -323,6 +323,7 @@
       if (board.canPaste(ctx.board, 'tmb')) items.push({ label: board.LISTS.tmb.label, key: 'mi-board-tmb', data: { action: 'board-open', list: 'tmb' } });
       if (board.canPaste(ctx.board, 'softres')) items.push({ label: board.LISTS.softres.label, key: 'mi-board-softres', data: { action: 'board-open', list: 'softres' } });
     }
+    if (G.pages.raidExtras) G.pages.raidExtras.menuItems(data).forEach(function (item) { items.push(item); }); // duties, a pasted roster, a guest sign-up link (wave 8)
     items.push({ label: 'Open in Planner', key: 'mi-plan-in-planner', data: { action: 'raid-op', op: 'plan-in-planner' } });
     if (roster && roster.canPublish(data, ctx.roster)) items.push({ label: 'Publish roster', key: 'mi-ro-publish', data: { action: 'roster-publish', op: 'publish' } });
     items.push({ separator: true }, { label: 'Delete raid', key: 'mi-raid-delete', danger: true, data: { action: 'raid-op', op: 'raid-delete' } });
@@ -349,7 +350,8 @@
     const line = parts.map(function (p) { return '<span>' + p + '</span>'; }).join('<span class="gs-sumsep" aria-hidden="true"></span>');
     const chips = '<span class="gs-sumchips">' + statePill(data) + (upcoming ? G.pages.raids.planPillHtml({ planned: !!(data.sources && data.sources.plan) }) : '') + '</span>';
     return '<div class="gs-roster-head gs-raidhead"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + (where ? ' - ' + esc(where) : '') + '</h1>' +
-      '<div class="gs-sub gs-sumline">' + line + (line ? '<span class="gs-sumsep" aria-hidden="true"></span>' : '') + chips + '</div></div>' + actionsMenuHtml(data, ctx) + '</div>';
+      '<div class="gs-sub gs-sumline">' + line + (line ? '<span class="gs-sumsep" aria-hidden="true"></span>' : '') + chips + '</div>' +
+      (G.pages.raidExtras ? G.pages.raidExtras.dutiesLineHtml(data) : '') + '</div>' + actionsMenuHtml(data, ctx) + '</div>';
   }
 
   // ── Raid settings (officers): the raid's own size and sign-up deadline ──
@@ -847,6 +849,8 @@
     sortedPeople: sortedPeople,
     needsReview: needsReview,
     reload: reload,
+    setDetail: setDetail,
+    current: cur,
     afterRender: afterRender,
     load: load,
     main: main,

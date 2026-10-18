@@ -1000,7 +1000,7 @@ export async function saveManual(ctx, guildContext, raid, { ids, reason, names =
   const { db } = ctx;
   const guild = guildContext.guild;
   const now = ctx.now();
-  const manualNow = { sql: "EXISTS (SELECT 1 FROM raids WHERE id = ? AND log_mode = 'manual')", params: [raid.id] };
+  const guard = { sql: "EXISTS (SELECT 1 FROM raids WHERE id = ? AND log_mode = 'manual')", params: [raid.id] };
   const statements = [
     db.prepare(
       `UPDATE raids SET log_mode = 'manual', manual_reason = ?, manual_by = ?, manual_at = ?, updated_at = ?, version = version + 1, policy_fp = ''
@@ -1009,8 +1009,8 @@ export async function saveManual(ctx, guildContext, raid, { ids, reason, names =
     db.prepare('DELETE FROM raid_manual WHERE raid_id = ?').bind(raid.id),
     db.prepare(
       `INSERT INTO raid_manual (raid_id, guild_id, player_id)
-       SELECT ?, ?, value FROM json_each(?) WHERE ${manualNow.sql}`,
-    ).bind(raid.id, guild.id, JSON.stringify(ids), ...manualNow.params),
+       SELECT ?, ?, value FROM json_each(?) WHERE ${guard.sql}`,
+    ).bind(raid.id, guild.id, JSON.stringify(ids), ...guard.params),
   ];
   if (names) {
     statements.push(
@@ -1018,8 +1018,8 @@ export async function saveManual(ctx, guildContext, raid, { ids, reason, names =
       db.prepare(
         `INSERT OR IGNORE INTO raid_manual_names (raid_id, guild_id, name, name_key, realm, realm_key)
          SELECT ?, ?, json_extract(value, '$.name'), json_extract(value, '$.nameKey'), json_extract(value, '$.realm'), json_extract(value, '$.realmKey')
-           FROM json_each(?) WHERE ${manualNow.sql}`,
-      ).bind(raid.id, guild.id, JSON.stringify(names.map((entry) => ({ ...entry, nameKey: nameKey(entry.name) }))), ...manualNow.params),
+           FROM json_each(?) WHERE ${guard.sql}`,
+      ).bind(raid.id, guild.id, JSON.stringify(names.map((entry) => ({ ...entry, nameKey: nameKey(entry.name) }))), ...guard.params),
     );
   }
   statements.push(raidAudit(

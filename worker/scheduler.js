@@ -2,7 +2,8 @@
 //   17 4 * * *     daily: the 30-day rule for Battle.net data (worker/bnet-purge.js), then the notification log's 90-day prune.
 //   */15 * * * *   every 15 minutes: the Raid-Helper refresh of upcoming raids (worker/event-refresh.js), THEN the Discord posts (worker/notify-run.js), so a
 //                  reminder is built from sign-ups that are at most a refresh old. Each run is bounded (see worker/notify.js) and every message is once-only
-//                  (notification_log), so a run that is repeated, overlapping or retried by Cloudflare sends nothing twice.
+//                  (notification_log), so a run that is repeated, overlapping or retried by Cloudflare sends nothing twice. The Logger's nudge (wave 8: a raid
+//                  with a named Logger and no report 5 hours after its start) is one more message kind of the same run.
 // Locally the dev tool starts Wrangler with --test-scheduled:  curl "http://127.0.0.1:<port>/__scheduled?cron=*/15+*+*+*+*"
 // An unknown cron string runs the daily work (what the only trigger did before this one existed).
 import { runScheduled as runBnetPurge } from './bnet-purge.js';

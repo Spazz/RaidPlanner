@@ -281,6 +281,30 @@
     set: function (gid, pid, body) { return G.api.put(guildPath(gid, '/roster/' + enc(pid) + '/rank'), body); },
     dismiss: function (gid, pid, body) { return G.api.post(guildPath(gid, '/roster/' + enc(pid) + '/rank/dismiss'), body); },
   };
+  // PM wave 8: raid duties, the Launch funnel, guest sign-up links (the officer's side, and the guest's: no account), and a pasted raid roster.
+  G.api.duties = {
+    get: function (gid, rid) { return G.api.get(raidPath(gid, rid, '/duties')); },
+    save: function (gid, rid, duties) { return G.api.put(raidPath(gid, rid, '/duties'), { duties: duties }); },
+  };
+  G.api.launch = {
+    get: function (gid, teamId) { return G.api.get(guildPath(gid, '/launch?team=' + enc(teamId))); },
+    set: function (gid, pid, body) { return G.api.put(guildPath(gid, '/launch/' + enc(pid)), body); },
+    mark: function (gid, teamId, enabled) { return G.api.put(guildPath(gid, '/teams/' + enc(teamId) + '/launch'), { enabled: !!enabled }); },
+  };
+  G.api.joinLinks = {
+    list: function (gid, rid) { return G.api.get(raidPath(gid, rid, '/join-links')); },
+    create: function (gid, rid, body) { return G.api.post(raidPath(gid, rid, '/join-links'), body || {}); },
+    revoke: function (gid, rid, jid) { return G.api.del(raidPath(gid, rid, '/join-links/' + enc(jid)), {}); },
+    removeGuest: function (gid, rid, signupId) { return G.api.del(raidPath(gid, rid, '/guests/' + enc(signupId)), {}); },
+  };
+  G.api.join = {
+    view: function (token) { return G.api.post('/api/join/view', { token: token }); },
+    submit: function (body) { return G.api.post('/api/join', body); },
+  };
+  G.api.pasteRoster = {
+    preview: function (gid, rid, text) { return G.api.post(raidPath(gid, rid, '/manual/paste/preview'), { text: text }); },
+    save: function (gid, rid, text, reason) { return G.api.post(raidPath(gid, rid, '/manual/paste'), reason ? { text: text, reason: reason } : { text: text }); },
+  };
   G.api.publicPage = {
     get: function (gid) { return G.api.get(guildPath(gid, '/public')); },
     save: function (gid, body) { return G.api.put(guildPath(gid, '/public'), body); },

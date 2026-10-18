@@ -15,7 +15,7 @@
 import { HttpError, jsonResponse, parseCookies, serializeCookie } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { oneLine } from '../apply-data.js';
-import { base64url, isId, newId } from '../ids.js';
+import { base64url, newId } from '../ids.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { checkRateLimit } from '../ratelimit.js';
 import { isSpecOf, nameKey, rosterOptions } from '../roster-data.js';
@@ -198,15 +198,16 @@ export async function submitJoin(ctx) {
   if (onRoster.results.length) throw new HttpError(409, 'on_roster', 'That character is on the guild\'s roster. Sign in with Discord to sign up.', { field: 'name' });
   if (listed.results.some((entry) => nameKey(entry.nickname || '') === key)) throw new HttpError(409, 'already_joined', 'That character is already signed up for this raid.', { field: 'name' });
 
-  const alive = `EXISTS (SELECT 1 FROM raid_join_links l JOIN raids r ON r.id = l.raid_id WHERE l.id = ? AND l.revoked_at IS NULL AND l.uses < l.max_uses AND r.starts_at > ?)`;
+  // The link must still work at the moment of the write (turned off, used up or started in between: nothing is stored).
+  const guard = { sql: 'EXISTS (SELECT 1 FROM raid_join_links l JOIN raids r ON r.id = l.raid_id WHERE l.id = ? AND l.revoked_at IS NULL AND l.uses < l.max_uses AND r.starts_at > ?)', params: [row.id, now] };
   const results = await db.batch([
     db.prepare(
       `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, standby, class_name, spec_name, position, guild_id, player_id,
                                  character_id, note, updated_by, created_at, updated_at, guest, join_link_id)
        SELECT ?, 'raidsmith', n.next, NULL, ?, 'signed', 0, ?, ?, n.next, ?, NULL, NULL, ?, NULL, ?, ?, 1, ?
          FROM (SELECT COALESCE(MAX(signup_id), 0) + 1 AS next FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith') n
-        WHERE ${alive} AND (SELECT COUNT(*) FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1) < ?`,
-    ).bind(row.raid_id, name, className, specKey, row.guild_id, note, now, now, row.id, row.raid_id, row.id, now, row.raid_id, GUESTS_PER_RAID),
+        WHERE ${guard.sql} AND (SELECT COUNT(*) FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1) < ?`,
+    ).bind(row.raid_id, name, className, specKey, row.guild_id, note, now, now, row.id, row.raid_id, ...guard.params, row.raid_id, GUESTS_PER_RAID),
     db.prepare('UPDATE raid_join_links SET uses = uses + 1 WHERE id = ? AND changes() = 1').bind(row.id),
     auditStatement(ctx, { guildId: row.guild_id, actorUserId: null, action: 'signup.guest', entityType: 'raid', entityId: row.raid_id, after: { class: classId, linkId: row.id } }, CHANGED_ONE),
   ]);

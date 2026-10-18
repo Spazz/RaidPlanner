@@ -90,6 +90,7 @@ export async function getLaunch(ctx) {
   const teamId = new URL(ctx.request.url).searchParams.get('team');
   if (!isId('t', teamId)) throw bad('Pick a team.', 'team');
   const team = await loadTeam(ctx.db, guildContext.guild.id, teamId);
+  if (!allows(guildContext.can, 'roster.view', team.id)) throw forbidden();
   return jsonResponse(await funnelPayload(ctx, guildContext, team));
 }
 

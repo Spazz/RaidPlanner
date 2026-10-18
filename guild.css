@@ -1306,3 +1306,31 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-rank-set .gs-input { flex: 1 1 auto; }
   .gs-rank-suggest .gs-btn { min-height: 44px; }
 }
+
+/* PM wave 8: the Launch funnel, raid duties, the guest sign-up link and its page, the pasted-roster preview */
+.gs-funnel { list-style: none; margin: 0 0 var(--sp-3); padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.gs-funnel-row { display: grid; grid-template-columns: minmax(130px, 200px) 1fr minmax(70px, auto); align-items: center; gap: 4px 12px; }
+.gs-funnel-label { color: var(--text-primary); }
+.gs-funnel-n { color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
+.gs-funnel-bar { width: 100%; height: 12px; appearance: none; -webkit-appearance: none; border: 0; background: var(--bg-card-hover); }
+.gs-funnel-bar::-webkit-progress-bar { background: var(--bg-card-hover); }
+.gs-funnel-bar::-webkit-progress-value { background: var(--gs-tone-signed); }
+.gs-funnel-bar::-moz-progress-bar { background: var(--gs-tone-signed); }
+.gs-duties-line { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
+.gs-duties-line strong { color: var(--text-primary); font-weight: 600; }
+.gs-duty-rows { display: flex; flex-direction: column; gap: 12px; }
+.gs-duty-row { display: grid; grid-template-columns: minmax(110px, 150px) 1fr; align-items: center; gap: 4px 12px; }
+.gs-duty-row .gs-label { margin: 0; }
+.gs-duty-extra { grid-column: 1 / -1; }
+.gs-paste-box { min-height: 160px; font-family: var(--font-body); }
+.gs-paste-list { list-style: none; margin: 0 0 var(--sp-3); padding: 0; display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.gs-join-link { display: flex; flex-direction: column; gap: 8px; margin: 0 0 var(--sp-3); padding: 12px; border: 1px solid var(--accent-gold); }
+.gs-join-link code { overflow-wrap: anywhere; user-select: all; }
+.gs-join-rows { list-style: none; margin: 0 0 var(--sp-3); padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gs-join-rows li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.gs-join-rows .gs-fine { margin: 0; }
+@media (max-width: 600px) {
+  .gs-funnel-row { grid-template-columns: 1fr auto; }
+  .gs-funnel-bar { grid-column: 1 / -1; grid-row: 2; }
+  .gs-duty-row { grid-template-columns: 1fr; }
+}

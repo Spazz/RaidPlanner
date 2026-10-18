@@ -1,15 +1,17 @@
 // ── PAGE PIECE: THE ROSTER'S TABS ───────────────────────────────
-// The strip under the Roster heading: Roster (the list), Intent (the class and spec intent board; everyone), Recruiting (recruitment needs) and
-// Applications (the inbox), the last two for people who can edit a roster. Each tab is a route of its own (router.js ROSTER_TABS).
+// The strip under the Roster heading: Roster (the list), Intent (the class and spec intent board; everyone), Launch (the launch funnel; a Forever guild or a
+// launch team), Recruiting (recruitment needs) and Applications (the inbox), the last two for people who can edit a roster. Each tab is a route of its own (router.js ROSTER_TABS).
 (function (G) {
   'use strict';
 
-  const LABELS = { roster: 'Roster', intent: 'Intent', recruiting: 'Recruiting', applications: 'Applications' };
+  const LABELS = { roster: 'Roster', intent: 'Intent', recruiting: 'Recruiting', applications: 'Applications', launch: 'Launch' };
 
   // -> [{ tab, label }] for this viewer (gd.me.can), in the order the strip shows them.
   function tabsFor(gd) {
     const edits = G.shell.hasAction(gd && gd.me && gd.me.can, 'roster.edit');
-    return ['roster', 'intent'].concat(edits ? ['recruiting', 'applications'] : []).map(function (tab) { return { tab: tab, label: LABELS[tab] }; });
+    // Launch (wave 8): a WoW Forever guild, or a team marked as a launch team (G.pages.launch.offered).
+    const launch = G.pages.launch && G.pages.launch.offered(gd) ? ['launch'] : [];
+    return ['roster', 'intent'].concat(launch, edits ? ['recruiting', 'applications'] : []).map(function (tab) { return { tab: tab, label: LABELS[tab] }; });
   }
 
   function hrefOf(gid, tab) {
