@@ -40,7 +40,7 @@ export async function getAttention(ctx) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -107,6 +107,14 @@ export async function getAttention(ctx) {
       `SELECT player_id, name, class, team_id, is_main FROM characters
         WHERE guild_id = ?1 AND player_id IN (SELECT id FROM players WHERE guild_id = ?1 AND status IN ('raider', 'trial'))`,
     ),
+    // Upcoming raids with a published roster where someone said they cannot make it.
+    bind(
+      `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, COUNT(*) AS n
+         FROM raid_roster rr JOIN raids r ON r.id = rr.raid_id
+        WHERE r.guild_id = ? AND r.starts_at > ? AND r.roster_published_at IS NOT NULL AND rr.status = 'declined'
+        GROUP BY r.id ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
+      now,
+    ),
   ]);
 
   // The watch list of each team: its people are those with a character on it or a row in its attendance.
@@ -153,6 +161,7 @@ export async function getAttention(ctx) {
     // Each raid is short against ITS size: its own, else its zone's in the guild's version, else the team's.
     upcoming: upcoming.results.map((row) => ({ ...row, size: effectiveRaidSize(row, teamSizes.get(row.team_id), guild.game_version) })),
     watch,
+    rosterDeclined: rosterDeclined.results,
   });
   return jsonResponse({ today, ...built });
 }

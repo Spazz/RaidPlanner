@@ -1184,7 +1184,7 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   const LOOT_ACTIONS = ['loot.import', 'loot.update', 'loot.delete', 'loot.policy'];
   const BNET_ACTIONS = ['bnet.link', 'bnet.unlink', 'bnet.settings', 'claim.create', 'claim.withdraw', 'claim.approve', 'claim.reject'];
   // The sign-up and schedule actions (Phase 6) are driven and pinned in guild-signups-worker-tests.js, the away notices (wave 2) in guild-wave2-worker-tests.js.
-  const SIGNUP_ACTIONS = ['signup.set', 'signup.remove', 'signup.lock', 'schedule.update', 'schedule.fill', 'away.set', 'away.remove'];
+  const SIGNUP_ACTIONS = ['signup.set', 'signup.remove', 'signup.lock', 'schedule.update', 'schedule.fill', 'away.set', 'away.remove', 'roster.publish', 'roster.unpublish', 'roster.decline'];
   // The account actions (Phase 7a) are driven and pinned in guild-accounts-worker-tests.js.
   const ACCOUNT_ACTIONS = ['discord.link', 'discord.unlink', 'person.account_link', 'person.account_unlink'];
   assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action) && !SIGNUP_ACTIONS.includes(action) && !ACCOUNT_ACTIONS.includes(action)).sort());

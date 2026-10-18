@@ -3995,6 +3995,353 @@ check('standing: a Raid-Helper sign-up wins - linking an event removes the stand
   assert.deepEqual(rows.map((r) => r.person), [s.p.eliora], 'Gorrim is in the event; Eliora gets her standing sign-up');
 });
 
+// ---- the published roster
+
+// The standing world plus Kestrel (Alpha, no Discord) and a raid on Tuesday 2027-01-19 20:00 (New York) of Alpha.
+async function rosterWorld() {
+  const s = await standingWorld();
+  const kestrel = await addPerson(s, 'bob', s.A, 'Kestrel', { class: 'ROGUE', mainSpec: 'Combat', offSpec: null });
+  s.p.kestrel = kestrel.person.id;
+  const raid = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-19', startTime: '20:00' });
+  s.rid = raid.id;
+  s.startsAt = raid.startsAt;
+  s.path = (route = '') => `/raids/${s.rid}${route}`;
+  s.plan = async (players, rid = s.rid) => {
+    const r = await s.call('bob', 'PUT', `/raids/${rid}/plan`, { label: 'Night plan', players });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    return r;
+  };
+  // Eliora in group 1, Gorrim in group 2, Kestrel on the bench, and a name no roster character carries.
+  s.basicPlan = () => s.plan([{ name: 'Eliora', group: 1 }, { name: 'Gorrim', group: 2 }, { name: 'Kestrel', group: 0 }, { name: 'Stranger', group: 3 }]);
+  s.publish = (who = 'bob', rid = s.rid) => s.call(who, 'POST', `/raids/${rid}/roster`, {});
+  s.roster = (who = 'bob', rid = s.rid) => s.call(who, 'GET', `/raids/${rid}/roster`);
+  s.answer = (who, what, rid = s.rid) => s.call(who, 'POST', `/raids/${rid}/roster/${what}`, {});
+  s.seat = async (name) => (await s.w.rows('SELECT * FROM raid_roster WHERE raid_id = ? AND name = ?', s.rid, name))[0];
+  s.signupOf = async (person) => (await s.w.rows("SELECT source, kind, standby, standing FROM raid_signups WHERE raid_id = ? AND player_id = ? ORDER BY source", s.rid, person));
+  return s;
+}
+
+check('roster: the pure rules - a plan name is matched to a person by character name (the raid\'s team first), class and spec come from the sign-up or the character', async () => {
+  const { buildSeats, keptSeats, planChanged, rosterCounts } = await load('worker/roster-publish.js');
+  const character = (extra) => ({ id: 'c_1', player_id: 'p_1', name_key: 'aldric', class: 'WARRIOR', main_spec: 'Arms', is_main: 1, team_id: 't_a', ...extra });
+  const plan = (...entries) => entries.map(([name, group]) => ({ name, name_key: name.toLowerCase(), group_number: group }));
+  // The spec the person signed up with wins when it is a spec of the class; a Raid-Helper spec key is read; a Raidsmith row replaces a Raid-Helper one.
+  const base = { plan: plan(['Aldric', 1]), characters: [character({})], teamId: 't_a' };
+  assert.deepEqual(buildSeats({ ...base, signups: [] }), [{ name: 'Aldric', nameKey: 'aldric', personId: 'p_1', className: 'WARRIOR', spec: 'Arms', group: 1, seq: 0 }]);
+  assert.equal(buildSeats({ ...base, signups: [{ player_id: 'p_1', source: 'raid_helper', spec_name: 'Fury' }] })[0].spec, 'Fury');
+  assert.equal(buildSeats({ ...base, signups: [{ player_id: 'p_1', source: 'raid_helper', spec_name: 'Fury' }, { player_id: 'p_1', source: 'raidsmith', spec_name: 'Protection' }] })[0].spec, 'Protection');
+  assert.equal(buildSeats({ ...base, signups: [{ player_id: 'p_1', source: 'raidsmith', spec_name: 'Holy1' }] })[0].spec, 'Arms', 'a spec of another class (a sign-up on an alt) is not used');
+  assert.equal(buildSeats({ ...base, signups: [{ player_id: 'p_2', source: 'raidsmith', spec_name: 'Fury' }] })[0].spec, 'Arms', 'someone else\'s sign-up is not used');
+  assert.equal(buildSeats({ ...base, characters: [character({ main_spec: null })], signups: [] })[0].spec, null, 'no sign-up and no main spec: no spec');
+  // Several characters with the name: the raid's team first, then a Main, then the lowest id.
+  const same = [
+    character({ id: 'c_9', player_id: 'p_far', team_id: 't_b', is_main: 1 }),
+    character({ id: 'c_5', player_id: 'p_alt', team_id: 't_a', is_main: 0 }),
+    character({ id: 'c_3', player_id: 'p_main', team_id: 't_a', is_main: 1 }),
+  ];
+  assert.equal(buildSeats({ ...base, characters: same, signups: [] })[0].personId, 'p_main');
+  assert.equal(buildSeats({ ...base, characters: same.slice(0, 2), signups: [] })[0].personId, 'p_alt', 'a character on the team beats a Main elsewhere');
+  assert.equal(buildSeats({ ...base, characters: same.slice(0, 1), signups: [] })[0].personId, 'p_far', 'a character elsewhere is still a match');
+  // A name with no character is a seat without a person; the plan order is kept.
+  const seats = buildSeats({ plan: plan(['Zed', 2], ['Aldric', 0], ['Mia', 1]), characters: [character({})], signups: [], teamId: 't_a' });
+  assert.deepEqual(seats.map((seat) => [seat.name, seat.personId, seat.className, seat.spec, seat.group, seat.seq]), [['Zed', null, null, null, 2, 0], ['Aldric', 'p_1', 'WARRIOR', 'Arms', 0, 1], ['Mia', null, null, null, 1, 2]]);
+  // Kept seats, plan changes, counts.
+  assert.equal(keptSeats(seats, [{ name_key: 'zed', group_number: 2 }, { name_key: 'aldric', group_number: 1 }, { name_key: 'gone', group_number: 0 }]), 1);
+  assert.equal(keptSeats(seats, []), 0);
+  const roster = [{ name_key: 'zed', group_number: 2 }, { name_key: 'aldric', group_number: 0 }];
+  assert.equal(planChanged(roster, plan(['Zed', 2], ['Aldric', 0])), false);
+  assert.equal(planChanged(roster, plan(['Aldric', 0], ['Zed', 2])), false, 'the order does not matter');
+  assert.equal(planChanged(roster, plan(['Zed', 2], ['Aldric', 1])), true, 'moved');
+  assert.equal(planChanged(roster, plan(['Zed', 2])), true, 'removed');
+  assert.equal(planChanged(roster, plan(['Zed', 2], ['Aldric', 0], ['Mia', 1])), true, 'added');
+  assert.deepEqual(rosterCounts([{ status: 'pending' }, { status: 'confirmed' }, { status: 'declined' }, { status: 'declined' }]), { pending: 1, confirmed: 1, declined: 2, total: 4 });
+});
+
+check('roster: publishing needs raids.edit, a plan and a raid that has not started; it snapshots the plan with the people it matches', async () => {
+  const s = await rosterWorld();
+  // No plan yet.
+  const none = await s.publish();
+  assert.deepEqual([none.status, none.json.error], [409, 'no_plan']);
+  await s.basicPlan();
+  // Who: an officer or the Team Lead of the raid's team.
+  for (const [who, status] of [['erin', 403], ['hank', 403], ['dave', 403]]) assert.deepEqual([who, (await s.publish(who)).status], [who, status]);
+  assert.equal((await s.w.call(newJar(), 'POST', `${s.guildPath}/raids/${s.rid}/roster`, {})).status, 401);
+  assert.equal(await s.w.count('raid_roster'), 0);
+  // Erin signed up as Discipline: the roster says so. Gorrim has no sign-up: her main spec.
+  assert.equal((await s.call('erin', 'PUT', s.path('/signup'), { kind: 'signed', spec: 'Discipline' })).status, 200);
+  s.w.advance(5000);
+  const published = await s.publish('bob');
+  assert.equal(published.status, 200, JSON.stringify(published.json));
+  const view = published.json;
+  assert.deepEqual(Object.keys(view).sort(), ['counts', 'entries', 'planChanged', 'published', 'publishedAt', 'publishedBy']);
+  assert.deepEqual([view.published, view.publishedAt, view.publishedBy, view.planChanged], [true, s.w.clock.now, 'bob', false]);
+  assert.deepEqual(view.entries.map((e) => [e.name, e.personId, e.class, e.spec, e.group, e.status, e.respondedAt]), [
+    ['Eliora', s.p.eliora, 'PRIEST', 'Discipline', 1, 'pending', null],
+    ['Gorrim', s.p.gorrim, 'PALADIN', 'Protection', 2, 'pending', null],
+    ['Kestrel', s.p.kestrel, 'ROGUE', 'Combat', 0, 'pending', null],
+    ['Stranger', null, null, null, 3, 'pending', null],
+  ]);
+  assert.deepEqual(view.counts, { pending: 4, confirmed: 0, declined: 0, total: 4 });
+  assert.deepEqual(Object.keys(view.entries[0]).sort(), ['class', 'group', 'name', 'personId', 'respondedAt', 'spec', 'status']);
+  const raid = (await s.w.rows('SELECT roster_published_at, roster_published_by FROM raids WHERE id = ?', s.rid))[0];
+  assert.deepEqual([raid.roster_published_at, raid.roster_published_by], [s.w.clock.now, s.ids.bob]);
+  assert.deepEqual(await s.audits('roster.publish'), [{ entity: s.rid, before: null, after: { players: 4, kept: 0 } }]);
+  // The officer read is the same; the plan is not touched by publishing.
+  assert.deepEqual((await s.roster('carol')).json, view, 'the Team Lead of the team reads the same');
+  assert.equal(await s.w.count('raid_plan', 'raid_id = ?', s.rid), 4);
+  // A raid that has started cannot be published (the plan is still there to read).
+  const past = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-12', startTime: '20:00' });
+  await s.plan([{ name: 'Eliora', group: 1 }], past.id);
+  const late = await s.publish('bob', past.id);
+  assert.deepEqual([late.status, late.json.error], [409, 'raid_started']);
+  assert.equal(await s.w.count('raid_roster', 'raid_id = ?', past.id), 0);
+  // Not a raid of this guild.
+  assert.equal((await s.publish('bob', 'r_AAAAAAAAAAAAAAAAAAAAAA')).status, 404);
+});
+
+check('roster: publishing again keeps the answers of the seats that did not change, resets the moved ones, drops the removed ones and says when the plan moved on', async () => {
+  const s = await rosterWorld();
+  await s.basicPlan();
+  assert.equal((await s.publish()).status, 200);
+  assert.equal((await s.answer('erin', 'confirm')).status, 200);   // Eliora
+  assert.equal((await s.answer('gina', 'decline')).status, 200);   // Gorrim
+  assert.deepEqual((await s.roster()).json.counts, { pending: 2, confirmed: 1, declined: 1, total: 4 });
+  // The plan changes: Gorrim moves to group 4, Kestrel goes, Mirabel comes; Eliora stays. Until published again the roster is the old one.
+  await s.plan([{ name: 'Eliora', group: 1 }, { name: 'Gorrim', group: 4 }, { name: 'Stranger', group: 3 }, { name: 'Mirabel', group: 2 }]);
+  const stale = (await s.roster()).json;
+  assert.equal(stale.planChanged, true);
+  assert.deepEqual(stale.entries.map((e) => [e.name, e.group]), [['Eliora', 1], ['Gorrim', 2], ['Kestrel', 0], ['Stranger', 3]]);
+  assert.deepEqual((await s.roster('erin')).json.mine.group, 1, 'members see the published seat, not the plan');
+  const again = await s.publish();
+  assert.equal(again.status, 200, JSON.stringify(again.json));
+  assert.equal(again.json.planChanged, false);
+  assert.deepEqual(again.json.entries.map((e) => [e.name, e.group, e.status]), [
+    ['Eliora', 1, 'confirmed'],   // unchanged: the answer stays
+    ['Gorrim', 4, 'pending'],     // moved: asks again
+    ['Stranger', 3, 'pending'],
+    ['Mirabel', 2, 'pending'],    // new
+  ]);
+  assert.equal(again.json.entries[0].respondedAt !== null, true, 'the answer time stays with the answer');
+  assert.equal(again.json.entries[1].respondedAt, null);
+  assert.deepEqual(again.json.counts, { pending: 3, confirmed: 1, declined: 0, total: 4 });
+  assert.equal((await s.seat('Kestrel')), undefined, 'a name no longer planned is gone');
+  assert.deepEqual((await s.audits('roster.publish')).map((a) => a.after), [{ players: 4, kept: 0 }, { players: 4, kept: 2 }], 'Eliora and Stranger kept their seats');
+  // Gorrim had said she cannot come and her sign-up is an Absence: the moved seat asks again, and confirming it gives the sign-up back.
+  assert.equal((await s.signupOf(s.p.gorrim)).find((r) => r.source === 'raidsmith').kind, 'absence');
+  assert.equal((await s.answer('gina', 'confirm')).status, 200);
+  assert.equal((await s.signupOf(s.p.gorrim)).find((r) => r.source === 'raidsmith').kind, 'signed');
+  // The plan is exactly as before: publishing a third time keeps all four.
+  assert.equal((await s.publish()).status, 200);
+  assert.deepEqual((await s.audits('roster.publish')).map((a) => a.after.kept), [0, 2, 4]);
+  assert.deepEqual((await s.roster()).json.counts, { pending: 2, confirmed: 2, declined: 0, total: 4 });
+});
+
+check('roster: a member sees only their own seat - group, name, class, spec, status - or the bench, or nothing', async () => {
+  const s = await rosterWorld();
+  const before = await s.roster('erin');
+  assert.deepEqual([before.status, before.json], [200, { published: false, publishedAt: null, mine: null }]);
+  await s.basicPlan();
+  await s.publish();
+  const eliora = (await s.roster('erin')).json;
+  assert.deepEqual(Object.keys(eliora).sort(), ['mine', 'published', 'publishedAt'], 'no entries, no counts, nothing about anybody else');
+  assert.deepEqual(eliora.mine, { group: 1, name: 'Eliora', class: 'PRIEST', spec: 'Holy', status: 'pending' });
+  assert.equal(eliora.published, true);
+  assert.deepEqual((await s.roster('gina')).json.mine, { group: 2, name: 'Gorrim', class: 'PALADIN', spec: 'Protection', status: 'pending' });
+  // Someone with no person, a person who is not on the roster, and a member of another team's raid see no seat.
+  assert.equal((await s.roster('hank')).json.mine, null);
+  assert.equal((await s.roster('dave')).json.mine, null);
+  // The bench is group 0: a member on it reads that.
+  await s.plan([{ name: 'Eliora', group: 0 }, { name: 'Gorrim', group: 1 }]);
+  await s.publish();
+  assert.deepEqual((await s.roster('erin')).json.mine.group, 0);
+  assert.equal((await s.roster('gina')).json.mine.group, 1);
+  assert.equal(await s.w.count('raid_roster', 'raid_id = ?', s.rid), 2);
+  // Signed out and another guild's raid.
+  assert.equal((await s.w.call(newJar(), 'GET', `${s.guildPath}/raids/${s.rid}/roster`)).status, 401);
+  assert.equal((await s.roster('erin', 'r_AAAAAAAAAAAAAAAAAAAAAA')).status, 404);
+});
+
+check('roster: "can\'t make it" turns the sign-up into an Absence (Raid-Helper row replaced, what it was remembered), confirming gives it back; the lock and the deadline do not apply', async () => {
+  const s = await rosterWorld();
+  await s.basicPlan();
+  // Eliora has a Raid-Helper sign-up only; Gorrim a Raidsmith Late; Kestrel (no Discord) none.
+  exec(s.w, `INSERT INTO raid_signups (raid_id, source, signup_id, kind, class_name, spec_name, position, guild_id, player_id, discord_user_id, nickname)
+             VALUES ('${s.rid}', 'raid_helper', 1, 'signed', 'Priest', 'Holy1', 1, '${s.guildId}', '${s.p.eliora}', '${PEOPLE.erin.id}', 'Eliora')`);
+  assert.equal((await s.call('gina', 'PUT', s.path('/signup'), { kind: 'late', note: 'traffic' })).status, 200);
+  assert.equal((await s.publish()).status, 200);
+  const raidKind = async (person) => ((await s.signupOf(person)).filter((r) => r.source === 'raidsmith')[0] || {}).kind || null;
+
+  // Decline: Erin's Raid-Helper row is replaced by an Absence; her seat says declined.
+  s.w.advance(3000);
+  const declined = await s.answer('erin', 'decline');
+  assert.equal(declined.status, 200, JSON.stringify(declined.json));
+  assert.deepEqual(declined.json.mine, { group: 1, name: 'Eliora', class: 'PRIEST', spec: 'Holy', status: 'declined' });
+  assert.deepEqual([await raidKind(s.p.eliora), (await s.signupOf(s.p.eliora)).find((r) => r.source === 'raidsmith').standing], ['absence', 0]);
+  assert.equal(await s.w.count('raid_signups', `raid_id = '${s.rid}' AND source = 'raid_helper'`), 1, 'the Raid-Helper row stays in the table; the Raidsmith one replaces it in every view');
+  const seat = await s.seat('Eliora');
+  assert.deepEqual([seat.status, seat.prev_kind, seat.responded_at], ['declined', 'signed', s.w.clock.now]);
+  const panel = (await s.call('bob', 'GET', s.path('/signups'))).json;
+  assert.deepEqual(panel.entries.filter((e) => e.personId === s.p.eliora).map((e) => [e.source, e.kind]), [['raidsmith', 'absence']]);
+  const officer = (await s.roster()).json;
+  assert.deepEqual([officer.entries[0].status, officer.entries[0].respondedAt, officer.counts.declined], ['declined', s.w.clock.now, 1]);
+  assert.deepEqual(await s.audits('roster.decline'), [{ entity: s.rid, before: null, after: { personId: s.p.eliora } }]);
+  // Saying it twice keeps what was remembered.
+  assert.equal((await s.answer('erin', 'decline')).status, 200);
+  assert.equal((await s.seat('Eliora')).prev_kind, 'signed');
+  // Confirm: the sign-up is back as it was (a Raidsmith 'signed' now), the answer is confirmed, nothing remembered any more. Not audited.
+  s.w.advance(3000);
+  const confirmed = await s.answer('erin', 'confirm');
+  assert.deepEqual([confirmed.status, confirmed.json.mine.status], [200, 'confirmed']);
+  assert.equal(await raidKind(s.p.eliora), 'signed');
+  const back = await s.seat('Eliora');
+  assert.deepEqual([back.status, back.prev_kind, back.responded_at], ['confirmed', null, s.w.clock.now]);
+  assert.equal((await s.audits('roster.decline')).length, 2, 'only declines are audited');
+  assert.equal(await s.w.count('audit_log', "action LIKE 'roster.%' AND action != 'roster.decline' AND action != 'roster.publish'"), 0);
+
+  // Gorrim: Late is remembered and comes back; the note stays.
+  assert.equal((await s.answer('gina', 'decline')).status, 200);
+  assert.equal(await raidKind(s.p.gorrim), 'absence');
+  assert.equal((await s.call('bob', 'GET', s.path('/signups'))).json.entries.find((e) => e.personId === s.p.gorrim).note, 'traffic');
+  assert.equal((await s.answer('gina', 'confirm')).status, 200);
+  assert.equal(await raidKind(s.p.gorrim), 'late');
+  // A confirm that was never preceded by a decline leaves the sign-up alone (Gorrim is Late, not Absent).
+  assert.equal((await s.answer('gina', 'confirm')).status, 200);
+  assert.equal(await raidKind(s.p.gorrim), 'late');
+  // Kestrel has no Discord, so nobody answers for him; and a person with no sign-up who declines gets an Absence, and confirming then makes it 'signed'.
+  assert.equal((await s.answer('hank', 'decline')).status, 403);
+  // The lock and the deadline do not apply: lock the raid, give the team a 48 hour deadline (long past), answer all the same.
+  assert.equal((await s.call('bob', 'POST', s.path('/signups/lock'), {})).status, 200);
+  assert.equal((await s.call('bob', 'PUT', `/teams/${s.A}/schedule`, { slots: [{ weekday: 2, startTime: '20:00' }], signupCloseHours: 48 })).status, 200);
+  assert.equal((await s.call('erin', 'PUT', s.path('/signup'), { kind: 'late' })).json.reason, 'locked', 'an ordinary sign-up change is shut');
+  const lockedDecline = await s.answer('erin', 'decline');
+  assert.equal(lockedDecline.status, 200, JSON.stringify(lockedDecline.json));
+  assert.equal(await raidKind(s.p.eliora), 'absence');
+  assert.equal((await s.answer('erin', 'confirm')).status, 200);
+  assert.equal(await raidKind(s.p.eliora), 'signed');
+  // The start ends it: 409 for both, nothing changes; the officer's read still works.
+  s.w.clock.now = s.startsAt;
+  for (const what of ['decline', 'confirm']) {
+    const r = await s.answer('erin', what);
+    assert.deepEqual([what, r.status, r.json.error], [what, 409, 'raid_started']);
+  }
+  assert.equal(await raidKind(s.p.eliora), 'signed');
+  assert.equal((await s.roster()).status, 200);
+  assert.equal((await s.publish()).json.error, 'raid_started');
+});
+
+check('roster: who may answer - a seated member of the raid\'s team, on a published roster, before the start', async () => {
+  const s = await rosterWorld();
+  await s.basicPlan();
+  // Not published yet.
+  const early = await s.answer('erin', 'confirm');
+  assert.deepEqual([early.status, early.json.error], [409, 'roster_not_published']);
+  await s.plan([{ name: 'Gorrim', group: 1 }, { name: 'Kestrel', group: 0 }]);
+  assert.equal((await s.publish()).status, 200);
+  // Erin has a person on Alpha but is not seated.
+  const notSeated = await s.answer('erin', 'decline');
+  assert.deepEqual([notSeated.status, notSeated.json.error], [409, 'not_on_roster']);
+  // No person, a Team Lead of another team and a signed-out request.
+  for (const who of ['hank', 'dave']) assert.deepEqual([who, (await s.answer(who, 'confirm')).status], [who, 403]);
+  assert.equal((await s.w.call(newJar(), 'POST', `${s.guildPath}/raids/${s.rid}/roster/confirm`, {})).status, 401);
+  // An officer who is also seated answers for themselves like anybody (Bob has no person here, so he cannot).
+  assert.equal((await s.answer('bob', 'confirm')).status, 403);
+  // Gorrim can.
+  assert.equal((await s.answer('gina', 'confirm')).status, 200);
+  assert.equal((await s.seat('Gorrim')).status, 'confirmed');
+  // Nothing was written for the refused ones.
+  assert.equal(await s.w.count('raid_signups', "source = 'raidsmith' AND player_id = ?", s.p.eliora), 0);
+  assert.equal(await s.w.count('audit_log', "action = 'roster.decline'"), 0);
+});
+
+check('roster: unpublishing takes the roster and its answers back (audited once); deleting the raid removes the roster', async () => {
+  const s = await rosterWorld();
+  await s.basicPlan();
+  await s.publish();
+  assert.equal((await s.answer('erin', 'decline')).status, 200);
+  assert.equal((await s.call('erin', 'DELETE', s.path('/roster'), {})).status, 403, 'a member cannot');
+  assert.equal((await s.call('dave', 'DELETE', s.path('/roster'), {})).status, 403);
+  const gone = await s.call('carol', 'DELETE', s.path('/roster'), {});
+  assert.equal(gone.status, 200, JSON.stringify(gone.json));
+  assert.deepEqual([gone.json.published, gone.json.publishedAt, gone.json.publishedBy, gone.json.entries, gone.json.counts, gone.json.planChanged],
+    [false, null, null, [], { pending: 0, confirmed: 0, declined: 0, total: 0 }, false]);
+  assert.equal(await s.w.count('raid_roster'), 0);
+  assert.deepEqual((await s.w.rows('SELECT roster_published_at AS a, roster_published_by AS b FROM raids WHERE id = ?', s.rid))[0], { a: null, b: null });
+  assert.deepEqual((await s.roster('erin')).json, { published: false, publishedAt: null, mine: null });
+  assert.equal((await s.signupOf(s.p.eliora)).find((r) => r.source === 'raidsmith').kind, 'absence', 'the Absence the decline made stays');
+  assert.equal((await s.audits('roster.unpublish')).length, 1);
+  // Again: nothing to take back, nothing audited.
+  assert.equal((await s.call('bob', 'DELETE', s.path('/roster'), {})).status, 200);
+  assert.equal((await s.audits('roster.unpublish')).length, 1);
+  // Publish, then delete the raid: the roster goes with it.
+  await s.publish();
+  assert.equal(await s.w.count('raid_roster'), 4);
+  assert.equal((await s.call('bob', 'DELETE', s.path(), {})).status, 200);
+  assert.equal(await s.w.count('raid_roster'), 0);
+});
+
+check('roster: the Raids list tells the viewer their seat on a published roster; Needs attention counts the seats that said they cannot come', async () => {
+  const s = await rosterWorld();
+  const other = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-21', startTime: '20:00' });
+  await s.basicPlan();
+  assert.equal((await s.call('erin', 'PUT', s.path('/signup'), { kind: 'signed' })).status, 200);
+  const mineOf = async (who, id = s.rid) => (await s.call(who, 'GET', `/raids?team=${s.A}`)).json.upcoming.find((row) => row.id === id).mine;
+  assert.equal('roster' in (await mineOf('erin')), false, 'unpublished: no seat');
+  assert.equal(await mineOf('gina'), null);
+  await s.publish();
+  assert.deepEqual(await mineOf('erin'), { kind: 'signed', source: 'raidsmith', characterName: 'Eliora', roster: { group: 1, status: 'pending' } });
+  // Gorrim is seated but has no sign-up: mine says so with a null kind.
+  assert.deepEqual(await mineOf('gina'), { kind: null, source: null, characterName: null, roster: { group: 2, status: 'pending' } });
+  assert.equal(await mineOf('hank'), null);
+  assert.equal(await mineOf('erin', other.id), null, 'another raid has no seat');
+  assert.equal((await s.answer('erin', 'confirm')).status, 200);
+  assert.deepEqual((await mineOf('erin')).roster, { group: 1, status: 'confirmed' });
+  assert.equal((await s.answer('gina', 'decline')).status, 200);
+  assert.deepEqual(await mineOf('gina'), { kind: 'absence', source: 'raidsmith', characterName: 'Gorrim', roster: { group: 2, status: 'declined' } });
+
+  // Needs attention: one item for the raid with the number of declined seats.
+  const items = async (who = 'bob') => (await s.call(who, 'GET', '/attention')).json;
+  const item = async (who) => (await items(who)).items.find((entry) => entry.kind === 'roster_declined');
+  const found = await item('bob');
+  assert.deepEqual([found.kind, found.severity, found.teamId, found.teamName, found.raidId, found.date, found.count, found.id, found.link, found.startsAt],
+    ['roster_declined', 'action', s.A, 'Alpha', s.rid, '2027-01-19', 1, `roster_declined:${s.rid}`, { name: 'raid', rid: s.rid }, s.startsAt]);
+  assert.deepEqual(Object.keys(found).sort(), ['count', 'date', 'id', 'kind', 'link', 'raidId', 'severity', 'startsAt', 'teamId', 'teamName', 'title', 'zone']);
+  assert.equal((await item('carol')).count, 1, 'the Team Lead of the team sees it');
+  assert.equal(await item('dave'), undefined, 'the Team Lead of another team does not');
+  assert.equal((await s.call('erin', 'GET', '/attention')).status, 403);
+  // It counts in the open-work total, and a second decline adds to the same item.
+  const total = (await items()).total;
+  assert.equal((await s.answer('erin', 'decline')).status, 200);
+  assert.deepEqual([(await item('bob')).count, (await items()).total], [2, total]);
+  // It goes when they confirm, when the roster is taken back, and when the raid has started.
+  assert.equal((await s.answer('erin', 'confirm')).status, 200);
+  assert.equal((await item('bob')).count, 1);
+  assert.equal((await s.answer('gina', 'confirm')).status, 200);
+  assert.equal(await item('bob'), undefined);
+  assert.equal((await s.answer('gina', 'decline')).status, 200);
+  assert.equal((await item('bob')).count, 1);
+  assert.equal((await s.call('bob', 'DELETE', s.path('/roster'), {})).status, 200);
+  assert.equal(await item('bob'), undefined);
+  await s.publish();
+  assert.equal(await item('bob'), undefined, 'a fresh publish asks everybody again');
+  assert.equal((await s.answer('erin', 'decline')).status, 200);
+  assert.equal((await item('bob')).count, 1);
+  s.w.clock.now = s.startsAt;
+  assert.equal(await item('bob'), undefined, 'a raid that has started is no longer open work');
+});
+
+check('roster: the pure Needs attention builder lists roster_declined items for those who edit raids on the team, soonest first, and ignores an archived team', async () => {
+  const { buildAttention, ATTENTION_KINDS } = await load('worker/attention.js');
+  assert(ATTENTION_KINDS.includes('roster_declined') && ATTENTION_KINDS.indexOf('roster_declined') < ATTENTION_KINDS.indexOf('unlocked'));
+  const NOW = Date.parse('2027-01-16T12:00:00Z');
+  const teams = [{ id: 't_a', name: 'Alpha', size: 25, archived: 0 }, { id: 't_b', name: 'Bravo', size: 25, archived: 0 }, { id: 't_c', name: 'Old', size: 25, archived: 1 }];
+  const base = { today: '2027-01-16', now: NOW, teams, allowsTeam: (action, teamId) => teamId !== 't_b' && action === 'raids.edit', granted: () => true, flaggedRaids: [], lootUnmatched: [], signupUnmatched: [], claims: 0, trials: [], noLoot: [], watch: [], upcoming: [] };
+  const row = (id, team, day, n) => ({ id, team_id: team, raid_on: `2027-01-${day}`, starts_at: NOW + day * 86400000, zone: 'Karazhan', title: null, event_title: 'Night', n });
+  const built = buildAttention({ ...base, rosterDeclined: [row('r_late', 't_a', 25, 1), row('r_soon', 't_a', 19, 3), row('r_bravo', 't_b', 20, 2), row('r_old', 't_c', 18, 1)] });
+  assert.deepEqual(built.items.map((item) => [item.id, item.count]), [['roster_declined:r_soon', 3], ['roster_declined:r_late', 1]]);
+  assert.deepEqual([built.items[0].title, built.items[0].zone, built.items[0].date, built.total], ['Night', 'Karazhan', '2027-01-19', 2]);
+  assert.deepEqual(buildAttention({ ...base }).items, [], 'the input is optional');
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';

@@ -58,6 +58,9 @@ export const AUDIT_ACTIONS = [
   'schedule.fill',
   'team.size',
   'raid.settings',
+  'roster.publish',
+  'roster.unpublish',
+  'roster.decline',
   'away.set',
   'away.remove',
 ];

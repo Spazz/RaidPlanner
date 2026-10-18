@@ -239,7 +239,7 @@ export async function listRaids(ctx) {
   const guild = guildContext.guild;
   const now = ctx.now();
   const today = guildToday(guild, now);
-  const [teamResult, raidResult, policyResult, upcomingResult, mineResult, scheduleResult, noticeResult, realResult] = await ctx.db.batch([
+  const [teamResult, raidResult, policyResult, upcomingResult, mineResult, scheduleResult, noticeResult, realResult, seatResult] = await ctx.db.batch([
     ctx.db.prepare('SELECT id, name, archived, size, signup_close_hours FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
     ctx.db.prepare(
       `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
@@ -277,6 +277,12 @@ export async function listRaids(ctx) {
     // Away notices from today on (worker/away.js): a virtual Absence on each upcoming raid they cover, for the people who have no real sign-up there.
     teamNoticesStatement(ctx.db, guild.id, teamId, ctx.session.user.id, today, '9999-12-31'),
     realSignupsStatement(ctx.db, guild.id, teamId, now, today, '9999-12-31'),
+    // The viewer's own seat on each published roster of the upcoming raids.
+    ctx.db.prepare(
+      `SELECT rr.raid_id, rr.group_number, rr.status FROM raid_roster rr
+        WHERE rr.player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')})
+          AND rr.raid_id IN (SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at > ?) ORDER BY rr.seq`,
+    ).bind(guild.id, ctx.session.user.id, ctx.session.user.id, guild.id, teamId, now),
   ]);
   const team = teamResult.results[0];
   if (!team) throw bad('That team does not exist in this guild.', 'team');
@@ -289,6 +295,10 @@ export async function listRaids(ctx) {
     if (!mine.has(row.raid_id) || row.source === 'raidsmith') mine.set(row.raid_id, { kind: row.kind, source: row.source, characterName: row.source === 'raidsmith' ? row.character_name : null, ...(row.source === 'raidsmith' && row.standing === 1 ? { standing: true } : {}) });
   }
   const scheduleRow = scheduleResult.results[0];
+  const seats = new Map();
+  for (const row of seatResult.results) if (!seats.has(row.raid_id)) seats.set(row.raid_id, { group: row.group_number, status: row.status });
+  // `mine` of a raid with a published roster says where the viewer sits (a person who is seated but has no sign-up gets kind null).
+  const withSeat = (row, own) => (seats.has(row.id) ? { ...(own || { kind: null, source: null, characterName: null }), roster: seats.get(row.id) } : own);
   const notices = readNotices(noticeResult.results);
   const realByRaid = new Map();
   for (const row of realResult.results) {
@@ -323,7 +333,7 @@ export async function listRaids(ctx) {
       signupsOpen: !closedReason({ starts_at: row.starts_at, signups_locked: row.signups_locked }, now, rowCloseHours(row)),
       closesAt: closesAtOf(row, rowCloseHours(row)),
       closeHours: rowCloseHours(row),
-      mine: mine.get(row.id) || (awayOf(row).some((entry) => ownPeople.has(entry.personId)) ? { kind: 'absence', source: 'away', characterName: null } : null),
+      mine: withSeat(row, mine.get(row.id) || (awayOf(row).some((entry) => ownPeople.has(entry.personId)) ? { kind: 'absence', source: 'away', characterName: null } : null)),
       planned: row.plan_synced !== null,
       planLive: canEdit ? row.plan_live : null, // the id is an edit link to the plan: only for those who may edit
     })),

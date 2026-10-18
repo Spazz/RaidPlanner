@@ -2,7 +2,7 @@
 // or team lead sees on the guild home page. Each item carries the fields its sentence needs and a `link` (a pages route without the guild id).
 // Which items a viewer gets follows their rights per team: `allowsTeam(action, teamId)` and `granted(action)` come from the permission check.
 
-export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'trial', 'watch', 'no_loot', 'low_signups', 'unlocked'];
+export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'trial', 'watch', 'no_loot', 'low_signups', 'roster_declined', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
 export const INFO_KINDS = ['unlocked'];  // listed, but not part of the open-work count
 export const TRIAL_DAYS = 7;
@@ -24,6 +24,7 @@ function daysBetween(from, to) {
 //   signupUnmatched: [{ raid_id, team_id, raid_on, zone, title, event_title, n }],
 //   claims: number, trials: [{ id, trial_end, name, class, team_id }],
 //   noLoot: [{ id, team_id, raid_on, zone, title, event_title }],
+//   rosterDeclined: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids with a published roster: n seats said "can't make it")
 //   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in, size (the raid's effective size; the team's when left out),
 //                close_hours (the sign-up deadline in hours before the start; 0 or left out = at the start) }],
 //   watch: [{ teamId, entries: [{ playerId, name, class, pct, previousPct, drop, reasons }] }] }
@@ -90,6 +91,11 @@ export function buildAttention(input) {
     if (row.signups_locked === 0 && !deadlinePassed && minutes > 0 && minutes <= UNLOCKED_MINUTES) {
       add('unlocked', { ...base('unlocked', row.team_id, 'info'), ...fields, minutes, id: `unlocked:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
     }
+  }
+
+  for (const row of input.rosterDeclined || []) {
+    if (!here('raids.edit', row.team_id)) continue;
+    add('roster_declined', { ...base('roster_declined', row.team_id), ...raidFields(row), startsAt: row.starts_at, count: row.n, id: `roster_declined:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
   }
 
   const items = [];

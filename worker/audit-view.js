@@ -25,7 +25,7 @@ export const ACTION_GROUP = Object.freeze({
   'person.account_link': 'roster', 'person.account_unlink': 'roster',
   'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'roster.import': 'roster',
   'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.manual': 'raids',
-  'schedule.update': 'raids', 'schedule.fill': 'raids', 'raid.settings': 'raids',
+  'schedule.update': 'raids', 'schedule.fill': 'raids', 'raid.settings': 'raids', 'roster.publish': 'raids', 'roster.unpublish': 'raids', 'roster.decline': 'signups',
   'away.set': 'signups', 'away.remove': 'signups',
   'attendance.decide': 'attendance', 'attendance.undo': 'attendance', 'attendance.link': 'attendance', 'attendance.guest': 'attendance',
   'policy.update': 'attendance', 'wcl.settings': 'attendance',
@@ -243,6 +243,9 @@ export function describeRow(row, names = {}) {
     case 'signup.remove': return `Removed the sign-up of ${person(before.personId)} from ${raidOn(ent)}`;
     case 'away.set': return `${before.kind === undefined ? 'Added' : 'Changed'} a notice for ${person(after.personId)} (${AWAY_LABEL[after.kind] || after.kind})`;
     case 'away.remove': return `Removed a notice of ${person(before.personId)} (${AWAY_LABEL[before.kind] || before.kind})`;
+    case 'roster.publish': return `Published the roster of ${onRaid(ent)} (${plural(Number(after.players) || 0, 'player', 'players')})`;
+    case 'roster.unpublish': return `Took back the published roster of ${onRaid(ent)}`;
+    case 'roster.decline': return `${person(after.personId)} can't make ${onRaid(ent)}`;
     case 'signup.lock': return after.locked ? `Closed sign-ups for ${onRaid(ent)}` : `Reopened sign-ups for ${onRaid(ent)}`;
 
     case 'bnet.link': return 'Linked a Battle.net account';

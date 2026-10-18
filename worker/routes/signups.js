@@ -222,8 +222,9 @@ function readBody(body, officer) {
 }
 
 // Writes (or replaces) one person's Raidsmith sign-up on the raid. self: the viewer's own (the window must be open, re-checked in the
-// statement); otherwise an officer's (any time). -> nothing; throws 4xx.
-async function writeSignup(ctx, guildContext, raid, personId, input, self) {
+// statement); otherwise an officer's (any time). options.roster: the person answering a published roster (worker/routes/roster-publish.js) - their own
+// characters, but neither the lock nor the deadline binds them, only the start. -> nothing; throws 4xx.
+export async function writeSignup(ctx, guildContext, raid, personId, input, self, options = {}) {
   const { db } = ctx;
   const guild = guildContext.guild;
   const teamId = raid.team_id;
@@ -258,9 +259,10 @@ async function writeSignup(ctx, guildContext, raid, personId, input, self) {
   const note = input.hasNote ? input.note : (existing ? existing.note : null);
 
   const now = ctx.now();
-  const guard = self
+  let guard = self
     ? { sql: WINDOW_OPEN_SQL, params: [raid.id, now] }
     : { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ?)', params: [raid.id] };
+  if (options.roster) guard = { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ? AND starts_at > ?)', params: [raid.id, now] };
   // Standby is stored as 'signed' + standby = 1; every other kind clears the flag (the table's CHECK keeps the pair honest). Any write is an edit, so a
   // sign-up a standing sign-up made is the member's own from here on (standing = 0) and is never removed by it.
   const stored = storedKind(input.kind);
@@ -283,7 +285,10 @@ async function writeSignup(ctx, guildContext, raid, personId, input, self) {
     statements.push(raidAudit(ctx, guildContext, 'signup.set', raid.id, existing ? { kind: 'set' } : null, { personId, kind: input.kind }, CHANGED_ONE));
   }
   const results = await db.batch(statements);
-  if (results[0].meta.changes !== 1) throw (await windowError(ctx, raid.id)) || closedError('locked', raid);
+  if (results[0].meta.changes !== 1) {
+    if (options.roster) throw new HttpError(409, 'raid_started', 'This raid has started: the roster can no longer be answered here. Ask an officer.');
+    throw (await windowError(ctx, raid.id)) || closedError('locked', raid);
+  }
   await recomputeIfEvidence(ctx, guild, raid);
 }
 

@@ -34,6 +34,7 @@ import {
 } from './routes/attendance.js';
 import { getAttention } from './routes/attention.js';
 import { getStanding, putStanding } from './routes/standing.js';
+import { confirmSeat, declineSeat, getPublishedRoster, publishRoster, unpublishRoster } from './routes/roster-publish.js';
 import { getAudit } from './routes/audit.js';
 import { createCalendarLink, getCalendarFeed, getCalendarStatus, revokeCalendarLink } from './routes/calendar.js';
 import { getTrialReview } from './routes/trial.js';
@@ -123,6 +124,12 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/teams/:tid/schedule', auth: true, handler: getSchedule },
   { method: 'PUT', path: '/api/guild/:gid/teams/:tid/schedule', auth: true, handler: putSchedule },
   { method: 'POST', path: '/api/guild/:gid/teams/:tid/schedule/raids', auth: true, handler: createScheduledRaids },
+  // The published roster of a raid: officers publish it, members see their own seat and answer it. Literal paths come before nothing else under /roster.
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/roster', auth: true, handler: getPublishedRoster },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/roster', auth: true, handler: publishRoster },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/roster', auth: true, handler: unpublishRoster },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/roster/confirm', auth: true, handler: confirmSeat },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/roster/decline', auth: true, handler: declineSeat },
   // Standing sign-ups (PM wave 2): a member's own weekday entries, which become sign-ups on the team's upcoming raids.
   { method: 'GET', path: '/api/guild/:gid/standing', auth: true, handler: getStanding },
   { method: 'PUT', path: '/api/guild/:gid/teams/:tid/standing', auth: true, handler: putStanding },
