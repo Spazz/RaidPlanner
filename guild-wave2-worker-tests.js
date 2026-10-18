@@ -2627,6 +2627,211 @@ check('calendar-feed: a date-only raid is an all-day event on its own date, a ti
   assert.deepEqual([after.DTSTART, 'DTSTART;VALUE=DATE' in after], ['20270120T060000Z', false]);
 });
 
+// ---------------------------------------------------------------------------
+// Volunteer standby (B4): a sign-up kind stored as 'signed' + standby = 1 and read as 'standby' everywhere
+
+// deadlineWorld (Alpha's raid on 2027-02-10 20:00, Eliora = Erin's person, Gorrim = Gina's) plus Nodisc, a rogue with no Discord ID whom an officer signs up.
+async function standbyWorld() {
+  const s = await deadlineWorld();
+  s.p.nodisc = (await addPerson(s, 'bob', s.A, 'Nodisc', { class: 'ROGUE', mainSpec: 'Combat', offSpec: null })).person.id;
+  s.officerSet = (key, body, rid = s.rid) => s.call('bob', 'PUT', s.raid(rid, `/signups/${s.p[key]}`), body);
+  s.stored = async (key) => (await s.w.rows("SELECT kind, standby, standing FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ?", s.rid, s.p[key]))[0];
+  return s;
+}
+
+check('standby: a member and an officer can sign up as standby - stored as signed + standby = 1, every other kind clears the flag, a bad kind names it in the 400', async () => {
+  const s = await standbyWorld();
+  let r = await s.mine({ kind: 'standby' });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual(await s.stored('eliora'), { kind: 'signed', standby: 1, standing: 0 });
+  assert.equal(r.json.me.signup.kind, 'standby', 'the view\'s me.signup says standby');
+  // Every other kind clears the flag (the CHECK on the table would refuse a late + standby pair), and back again.
+  for (const kind of ['late', 'signed', 'tentative', 'absence']) {
+    assert.equal((await s.mine({ kind })).status, 200, kind);
+    assert.deepEqual(await s.stored('eliora'), { kind, standby: 0, standing: 0 }, kind);
+    assert.equal((await s.mine({ kind: 'standby' })).status, 200);
+    assert.deepEqual(await s.stored('eliora'), { kind: 'signed', standby: 1, standing: 0 }, `standby after ${kind}`);
+  }
+  // An officer sets it for someone else and changes it away again; that is audited as a sign-up of kind standby.
+  assert.equal((await s.officerSet('nodisc', { kind: 'standby' })).status, 200);
+  assert.deepEqual(await s.stored('nodisc'), { kind: 'signed', standby: 1, standing: 0 });
+  assert.equal((await s.officerSet('eliora', { kind: 'bench' })).status, 200);
+  assert.deepEqual(await s.stored('eliora'), { kind: 'bench', standby: 0, standing: 0 });
+  assert.deepEqual((await s.audits('signup.set')).map((entry) => entry.after.kind), ['standby', 'bench']);
+  // Any edit makes a sign-up a standing sign-up made the member's own.
+  exec(s.w, `UPDATE raid_signups SET standing = 1 WHERE raid_id = '${s.rid}' AND player_id = '${s.p.nodisc}'`);
+  assert.equal((await s.officerSet('nodisc', { kind: 'standby' })).status, 200);
+  assert.equal((await s.stored('nodisc')).standing, 0, 'an edit through the sign-up routes clears standing, even to the same kind');
+  // The 400 for a bad kind lists standby, for members and for officers; a member still cannot bench.
+  for (const [response, field] of [[await s.mine({ kind: 'maybe' }), 'kind'], [await s.mine({ kind: 'bench' }), 'kind'], [await s.officerSet('nodisc', { kind: 'maybe' }), 'kind']]) {
+    assert.equal(response.status, 400);
+    assert.equal(response.json.field, field);
+    assert.match(response.json.message, /standby/);
+  }
+});
+
+check('standby: Raid-Helper rows can never be standby - the table refuses it, and an event import writes standby 0', async () => {
+  const s = await standbyWorld();
+  const event = '777777777777777701';
+  s.w.sources.events.set(event, rhEvent(event, SERVER_A, [signUp(1, PEOPLE.erin.id, 'Erin', 'Priest', 'Holy1'), signUp(2, DID(40), 'Stranger', 'Rogue', 'Combat')], { startTime: rhStart('2027-02-10T20:00:00-05:00') }));
+  assert.equal((await s.call('bob', 'PUT', s.path('/event'), { source: event })).status, 200);
+  assert.equal(await s.w.count('raid_signups', "source = 'raid_helper'"), 2);
+  assert.equal(await s.w.count('raid_signups', "source = 'raid_helper' AND standby = 1"), 0);
+  assert.throws(() => exec(s.w, `UPDATE raid_signups SET standby = 1 WHERE raid_id = '${s.rid}' AND source = 'raid_helper'`), /CHECK constraint failed/);
+  assert.throws(() => exec(s.w, `INSERT INTO raid_signups (raid_id, source, signup_id, nickname, kind, standby, position, guild_id) VALUES ('${s.rid}', 'raid_helper', 90, 'x', 'signed', 1, 90, '${s.guildId}')`), /CHECK constraint failed/);
+  // A Raidsmith row of any kind but signed cannot carry the flag either.
+  await s.mine({ kind: 'late' });
+  assert.throws(() => exec(s.w, `UPDATE raid_signups SET standby = 1 WHERE raid_id = '${s.rid}' AND source = 'raidsmith'`), /CHECK constraint failed/);
+});
+
+check('standby: the sign-ups view lists it in its own kind and role group; signed leaves it out, expected and the role and class tallies count it', async () => {
+  const s = await standbyWorld();
+  assert.equal((await s.mine({ kind: 'standby' })).status, 200);              // Eliora, Priest Holy: a healer
+  assert.equal((await s.mine({ kind: 'signed' }, 'gina')).status, 200);       // Gorrim, Paladin Protection: a tank
+  assert.equal((await s.officerSet('nodisc', { kind: 'standby' })).status, 200); // Nodisc, Rogue Combat: melee
+  const view = await s.view('bob');
+  const by = Object.fromEntries(view.entries.map((entry) => [entry.name, entry]));
+  assert.deepEqual([by.Eliora.kind, by.Eliora.role, by.Eliora.source], ['standby', 'healer', 'raidsmith']);
+  assert.deepEqual([by.Nodisc.kind, by.Nodisc.role, by.Gorrim.kind, by.Gorrim.role], ['standby', 'melee', 'signed', 'tank']);
+  assert.deepEqual(view.counts, {
+    signed: 1, late: 0, standby: 2, tentative: 0, bench: 0, absence: 0, expected: 3,
+    byRole: { tank: 1, healer: 1, melee: 1, ranged: 0, none: 0 }, byClass: { PALADIN: 1, PRIEST: 1, ROGUE: 1 },
+  });
+  const erin = await s.view('erin');
+  assert.equal(erin.me.signup.kind, 'standby');
+  assert.deepEqual(erin.counts.standby, 2, 'a member who may see the list sees the same counts');
+  // The pure counts: a Raid-Helper-shaped entry list.
+  const { countSignups, effectiveKind, storedKind } = await load('worker/signups-data.js');
+  assert.deepEqual([effectiveKind({ kind: 'signed', standby: 1 }), effectiveKind({ kind: 'signed', standby: 0 }), effectiveKind({ kind: 'late' }), effectiveKind({ kind: 'bench', standby: 0 })], ['standby', 'signed', 'late', 'bench']);
+  assert.deepEqual([storedKind('standby'), storedKind('late')], [{ kind: 'signed', standby: 1 }, { kind: 'late', standby: 0 }]);
+  const counts = countSignups([{ kind: 'standby', role: 'tank', classId: 'WARRIOR' }, { kind: 'signed', role: null, classId: null }, { kind: 'absence', role: 'tank', classId: 'WARRIOR' }]);
+  assert.deepEqual([counts.signed, counts.standby, counts.absence, counts.expected, counts.byRole.tank, counts.byRole.none, counts.byClass], [1, 1, 1, 2, 1, 1, { WARRIOR: 1 }]);
+});
+
+check('standby: the Raids list counts it apart from signed and tells the viewer, the raid detail lists the effective kind', async () => {
+  const s = await standbyWorld();
+  await s.mine({ kind: 'standby' });
+  await s.mine({ kind: 'signed' }, 'gina');
+  await s.officerSet('nodisc', { kind: 'standby' });
+  const list = await s.call('bob', 'GET', `/raids?team=${s.A}`);
+  const row = list.json.upcoming.find((raid) => raid.id === s.rid);
+  assert.deepEqual(row.signups, { signed: 1, late: 0, standby: 2, bench: 0, tentative: 0, absence: 0 });
+  const mine = await s.call('erin', 'GET', `/raids?team=${s.A}`);
+  assert.deepEqual(mine.json.upcoming.find((raid) => raid.id === s.rid).mine, { kind: 'standby', source: 'raidsmith', characterName: 'Eliora' });
+  const gina = await s.call('gina', 'GET', `/raids?team=${s.A}`);
+  assert.equal(gina.json.upcoming.find((raid) => raid.id === s.rid).mine.kind, 'signed', 'a plain sign-up is still signed');
+  const detail = await s.call('bob', 'GET', s.path());
+  assert.deepEqual(detail.json.signups.map((signup) => signup.kind).sort(), ['signed', 'standby', 'standby']);
+});
+
+check('standby: the calendar feed counts it ("Standby 2") and tells the member ("Your sign-up: Standby")', async () => {
+  const s = await standbyWorld();
+  await s.mine({ kind: 'standby' });
+  await s.mine({ kind: 'signed' }, 'gina');
+  await s.officerSet('nodisc', { kind: 'standby' });
+  const made = await s.call('erin', 'POST', '/calendar', { teamId: s.A });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const events = readIcs(await (await s.w.req('GET', new URL(made.json.url).pathname)).text());
+  const event = events.find((e) => e.UID === `${s.rid}@raidsmith`);
+  assert.match(event.DESCRIPTION, /^Signed 1, Standby 2\nYour sign-up: Standby\n/);
+  const { countsLine } = await load('worker/calendar-feed.js');
+  assert.equal(countsLine({ signed: 3, late: 1, standby: 2, bench: 0, tentative: 0, absence: 1 }), 'Signed 3, Late 1, Standby 2, Can\'t come 1');
+});
+
+check('standby: Needs attention counts a standby sign-up as one of the people coming (n_in)', async () => {
+  const s = await standbyWorld();
+  const soon = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-18', startTime: '20:00' });
+  s.rid = soon.id;
+  await s.mine({ kind: 'standby' });
+  await s.mine({ kind: 'signed' }, 'gina');
+  assert.deepEqual((await s.lows())[soon.id], [2, 25], 'a standby and a signed: two are in');
+  await s.mine({ kind: 'tentative' });
+  assert.deepEqual((await s.lows())[soon.id], [1, 25], 'tentative is not coming');
+  await s.mine({ kind: 'standby' });
+  assert.deepEqual((await s.lows())[soon.id], [2, 25]);
+});
+
+// ---- standby in the attendance results
+
+// Alpha with seven raiders, and a past raid (2027-01-15 20:00; the clock is 2027-01-16 12:00Z) with hand-entered attendance: only Aldric came.
+const ATT_ROSTER = [['aldric', 'Aldric', 'WARRIOR', 'Arms'], ['brindle', 'Brindle', 'MAGE', 'Fire'], ['cassia', 'Cassia', 'MAGE', 'Frost'], ['dunmar', 'Dunmar', 'WARRIOR', 'Fury'],
+  ['eliora', 'Eliora', 'PRIEST', 'Holy'], ['fenwick', 'Fenwick', 'ROGUE', 'Combat'], ['gorrim', 'Gorrim', 'PALADIN', 'Protection']];
+async function attWorld() {
+  const s = await laneWorld();
+  s.p = {};
+  s.names = {};
+  for (const [key, name, classId, spec] of ATT_ROSTER) {
+    s.p[key] = (await addPerson(s, 'bob', s.A, name, { class: classId, mainSpec: spec, offSpec: null })).person.id;
+    s.names[s.p[key]] = name;
+  }
+  s.sign = async (key, kind, rid, who = 'bob') => {
+    const r = await s.call(who, 'PUT', s.raid(rid, `/signups/${s.p[key]}`), { kind });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+  };
+  s.manual = async (rid, keys) => {
+    const r = await s.call('bob', 'PUT', s.raid(rid, '/manual'), { reason: 'Hand-entered for the test', presentPlayerIds: keys.map((key) => s.p[key]) });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+  };
+  s.plan = async (rid, players) => {
+    const r = await s.call('bob', 'PUT', s.raid(rid, '/plan'), { label: 'Plan', players });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+  };
+  s.recompute = async (rid) => assert.equal((await s.call('bob', 'POST', s.raid(rid, '/recompute'), {})).status, 200);
+  // { name: [outcome, credit, signup_kind, flags] } of a raid's stored attendance.
+  s.att = async (rid) => Object.fromEntries((await s.w.rows('SELECT player_id, outcome, credit, signup_kind, flags FROM attendance WHERE raid_id = ?', rid))
+    .map((row) => [s.names[row.player_id], [row.outcome, row.credit, row.signup_kind, JSON.parse(row.flags)]]));
+  return s;
+}
+
+check('standby: attendance - standby and attended is present, standby and absent is missed (no_show), a plan bench beats it, a plan seat makes it signed', async () => {
+  const s = await attWorld();
+  const rid = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-15', startTime: '20:00' })).id;
+  for (const key of ['aldric', 'brindle', 'cassia', 'dunmar']) await s.sign(key, 'standby', rid);
+  await s.sign('eliora', 'tentative', rid);
+  await s.sign('fenwick', 'signed', rid);
+  await s.manual(rid, ['aldric']);
+  await s.plan(rid, [{ name: 'Cassia', group: 0 }, { name: 'Dunmar', group: 1 }]);
+  assert.deepEqual(await s.att(rid), {
+    Aldric: ['present', 1, 'standby', []],
+    Brindle: ['missed', 0, 'standby', ['no_show']],
+    Cassia: ['bench', 1, 'bench', []],         // the plan's bench (rank 4) beats the volunteer standby (rank 3)
+    Dunmar: ['missed', 0, 'signed', ['no_show']], // a plan seat is a stronger kind than standby: she was signed in the plan
+    Eliora: ['tentative', null, 'tentative', []],
+    Fenwick: ['missed', 0, 'signed', ['no_show']],
+    Gorrim: ['no_signup', null, null, []],
+  });
+  // The bench policy decides the credit of the benched volunteer (excluded: not counted).
+  const policy = (await s.call('bob', 'GET', '/attendance/policy')).json;
+  assert.equal((await s.call('bob', 'PUT', '/attendance/policy', { policy: { bench: 'excluded' }, expectedVersion: policy.versions.guild })).status, 200);
+  await s.recompute(rid);
+  assert.deepEqual((await s.att(rid)).Cassia, ['bench', null, 'bench', []], 'excluded bench: credit null');
+  assert.deepEqual((await s.att(rid)).Brindle, ['missed', 0, 'standby', ['no_show']], 'a standby that did not come is still missed');
+});
+
+check('standby: the consolidation ranks it above tentative and absence, below late and signed and below a plan bench; the sign-up rate counts it', async () => {
+  const { consolidateRaid } = await load('worker/attendance-consolidate.js');
+  const { resolvePolicy } = await load('worker/attendance-policy.js');
+  const policy = resolvePolicy({}, {}, 'US');
+  const person = (playerId) => ({ playerId, status: 'raider', joinedOn: null, leftOn: null, homeTeamId: 't', characters: [{ key: `${playerId}|x`, teamId: 't' }] });
+  const evidence = (signups, extra = {}) => ({
+    raid: { id: 'r', teamId: 't', raidOn: '2027-01-15', hasLog: false, manual: true }, people: [person('p1')], signups, pulls: [], manualPresent: [], guests: [], decisions: {}, logPlayers: {}, ...extra,
+  });
+  const row = (signups) => consolidateRaid(evidence(signups), policy).rows[0];
+  const kinds = (list) => list.map((kind) => ({ playerId: 'p1', kind, source: 'raidsmith' }));
+  assert.deepEqual([row(kinds(['standby'])).outcome, row(kinds(['standby'])).signupKind, row(kinds(['standby'])).credit], ['missed', 'standby', 0]);
+  assert.equal(row(kinds(['tentative', 'standby'])).signupKind, 'standby', 'standby beats tentative');
+  assert.equal(row(kinds(['standby', 'absence'])).signupKind, 'standby', 'standby beats absence');
+  assert.equal(row(kinds(['standby', 'signed'])).signupKind, 'signed', 'signed beats standby');
+  assert.equal(row(kinds(['standby', 'late'])).signupKind, 'late', 'late beats standby');
+  assert.equal(row([{ playerId: 'p1', kind: 'standby', source: 'raidsmith' }, { playerId: 'p1', kind: 'bench', source: 'plan' }]).outcome, 'bench', 'a plan bench beats standby');
+  // The sign-up rate counts a standby as signed up.
+  const { teamMetrics } = await load('worker/attendance-metrics.js');
+  const raids = ['r1', 'r2', 'r3'].map((id, i) => ({ id, raidOn: `2027-01-0${i + 4}`, hasSignups: true }));
+  const rows = [['r1', 'standby'], ['r2', 'signed'], ['r3', 'tentative']].map(([raidId, signupKind]) => ({ raidId, playerId: 'a', outcome: 'missed', credit: 0, signupKind, attended: 0, viaRaidId: null }));
+  const metrics = teamMetrics({ people: [{ id: 'a', joinedOn: null }], raids, rows, borrowed: [], policy, today: '2027-01-16', resetDay: 2, windowWeeks: 'all' });
+  assert.equal(metrics.people.a.signupRate, 66.7, 'standby and signed count, tentative does not');
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';

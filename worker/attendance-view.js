@@ -56,7 +56,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
                  (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = raid_reports.raid_id AND p.report_code = raid_reports.code) AS pulls
             FROM raid_reports WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY started_at, code`),
     bind('SELECT encounter_name, kill, started_at FROM raid_pulls WHERE raid_id = ?2 ORDER BY started_at, id'),
-    bind('SELECT source, signup_id, kind, class_name, spec_name, position, player_id, nickname FROM raid_signups WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY position, source, signup_id'),
+    bind("SELECT source, signup_id, CASE WHEN kind = 'signed' AND standby = 1 THEN 'standby' ELSE kind END AS kind, class_name, spec_name, position, player_id, nickname FROM raid_signups WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY position, source, signup_id"),
     bind('SELECT name, name_key, group_number FROM raid_plan WHERE raid_id = ?2 ORDER BY rowid'),
     bind('SELECT * FROM attendance WHERE raid_id = ?2 AND guild_id = ?1'),
     bind(`SELECT c.player_id, c.name, c.name_key, c.realm_key, c.class, c.team_id, c.is_main FROM characters c

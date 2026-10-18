@@ -5,10 +5,21 @@ import {
   RAID_HELPER_CLASS, RAID_HELPER_SPEC, SPEC_ROLE, nameKey, ownValue, roleOf,
 } from './roster-data.js';
 
-// A member picks one of these for themselves; Bench is an officer's call.
-export const SELF_KINDS = ['signed', 'late', 'tentative', 'absence'];
-export const SIGNUP_KINDS = ['signed', 'late', 'tentative', 'bench', 'absence'];
+// A member picks one of these for themselves; Bench is an officer's call. 'standby' ("happy to sit out if needed") is a Raidsmith sign-up
+// stored as kind 'signed' + raid_signups.standby = 1 (so the kind CHECK and every older reader stay valid); every reader that needs the
+// kind derives the EFFECTIVE one: effectiveKind() here, `CASE WHEN s.kind = 'signed' AND s.standby = 1 THEN 'standby' ELSE s.kind END` in SQL.
+export const SELF_KINDS = ['signed', 'late', 'standby', 'tentative', 'absence'];
+export const SIGNUP_KINDS = ['signed', 'late', 'standby', 'tentative', 'bench', 'absence'];
 export const NOTE_MAX = 120;
+
+// The kinds that count as coming to the raid: the people "expected" in the counts, the role and class tallies and the attendance.
+export const EXPECTED_KINDS = ['signed', 'late', 'standby'];
+
+// The effective kind of a raid_signups row ({ kind, standby }): 'signed' with standby = 1 is 'standby', anything else is its kind.
+export const effectiveKind = (row) => (row.kind === 'signed' && row.standby === 1 ? 'standby' : row.kind);
+
+// The stored form of an effective kind: { kind, standby } for the kind column and the standby column.
+export const storedKind = (kind) => (kind === 'standby' ? { kind: 'signed', standby: 1 } : { kind, standby: 0 });
 
 export const ROLE_GROUPS = ['tank', 'healer', 'melee', 'ranged'];
 
@@ -107,7 +118,7 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
       key: row.player_id ? `p:${row.player_id}` : `x:${row.source}:${row.signup_id}`,
       personId: row.player_id || null,
       source: row.source,
-      kind: row.kind,
+      kind: effectiveKind(row),
       name,
       classId,
       className: classId ? raidHelperClassName(classId) : null,
@@ -129,13 +140,13 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
   return entries;
 }
 
-// { signed, late, tentative, bench, absence, expected, byRole, byClass } of a merged list. The role and class counts are of the
-// people expected to come (signed + late).
+// { signed, late, standby, tentative, bench, absence, expected, byRole, byClass } of a merged list (`signed` leaves the standby people out of it). The
+// role and class counts are of the people expected to come (signed + late + standby).
 export function countSignups(entries) {
-  const counts = { signed: 0, late: 0, tentative: 0, bench: 0, absence: 0, expected: 0, byRole: { tank: 0, healer: 0, melee: 0, ranged: 0, none: 0 }, byClass: {} };
+  const counts = { signed: 0, late: 0, standby: 0, tentative: 0, bench: 0, absence: 0, expected: 0, byRole: { tank: 0, healer: 0, melee: 0, ranged: 0, none: 0 }, byClass: {} };
   for (const entry of entries) {
     counts[entry.kind] += 1;
-    if (entry.kind !== 'signed' && entry.kind !== 'late') continue;
+    if (!EXPECTED_KINDS.includes(entry.kind)) continue;
     counts.expected += 1;
     counts.byRole[entry.role || 'none'] += 1;
     if (entry.classId) counts.byClass[entry.classId] = (counts.byClass[entry.classId] || 0) + 1;

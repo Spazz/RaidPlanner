@@ -1967,9 +1967,9 @@ check('future: the raid list answers upcoming raids (all of them, soonest first)
   assert.deepEqual(list.json.raids.map((row) => [row.id, row.upcoming]), [[past.json.raid.id, false]]);
   assert(!list.json.upcoming.some((row) => row.id === otherTeam.json.raid.id), 'another team\'s raid is not on this list');
   const [first, second] = list.json.upcoming;
-  assert.deepEqual(first.signups, { signed: 4, late: 0, bench: 1, tentative: 0, absence: 1 });
+  assert.deepEqual(first.signups, { signed: 4, late: 0, standby: 0, bench: 1, tentative: 0, absence: 1 });
   assert.deepEqual([first.eventSourced, first.eventId, first.title, first.planned, first.upcoming], [true, eventId, 'Test Raid', false, true]);
-  assert.deepEqual(second.signups, { signed: 0, late: 0, bench: 0, tentative: 0, absence: 0 });
+  assert.deepEqual(second.signups, { signed: 0, late: 0, standby: 0, bench: 0, tentative: 0, absence: 0 });
   assert.deepEqual([second.eventSourced, second.eventId, second.title, second.zone, second.startsAt], [false, null, null, 'Gruul\'s Lair', Date.parse('2027-03-02T00:30:00Z')]);
   // A plan makes it Planned (and does not add to the sign-up counts).
   const planned = await s.call('bob', 'PUT', s.raid(soon.json.raid.id, '/plan'), { label: 'Prog', players: [{ name: 'Aldric', group: 1 }] });

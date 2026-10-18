@@ -4,7 +4,7 @@ import { consolidateRaid, resolveFillIns } from './attendance-consolidate.js';
 import { REGION_RESET_DAY, consolidationFingerprint, resolvePolicy } from './attendance-policy.js';
 import { allows } from './permissions.js';
 
-export const SIGNUP_KINDS = ['signed', 'late', 'bench', 'tentative', 'absence'];
+export const SIGNUP_KINDS = ['signed', 'late', 'standby', 'bench', 'tentative', 'absence'];
 
 // ---------------------------------------------------------------------------
 // Policy rows -> resolved policies
@@ -152,7 +152,8 @@ export async function loadDay(db, guildId, raidId) {
                  (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
             FROM raids r WHERE r.id IN (SELECT id FROM day) ORDER BY r.id`),
     policyRowsStatement(db, guildId),
-    bind(`SELECT raid_id, source, signup_id, kind, player_id FROM raid_signups
+    // The kind is the effective one: a Raidsmith 'signed' with standby = 1 is a volunteer standby.
+    bind(`SELECT raid_id, source, signup_id, CASE WHEN kind = 'signed' AND standby = 1 THEN 'standby' ELSE kind END AS kind, player_id FROM raid_signups
            WHERE raid_id IN (SELECT id FROM day) AND source != 'plan' AND player_id IS NOT NULL`),
     bind(`SELECT raid_id, name, name_key, group_number FROM raid_plan WHERE raid_id IN (SELECT id FROM day) ORDER BY rowid`),
     bind('SELECT id, raid_id, started_at, kill FROM raid_pulls WHERE raid_id IN (SELECT id FROM day)'),

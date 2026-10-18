@@ -815,7 +815,7 @@ check('list: upcoming rows count the merged sign-ups, say what the viewer signed
   const list = (who) => s.call(who, 'GET', `/raids?team=${s.A}`);
   const row = (json) => json.upcoming.find((r) => r.id === s.raidId); // the event's raid sorts after the world's hand-made one
   const before = (await list('erin')).json;
-  assert.deepEqual(row(before).signups, { signed: 2, late: 0, tentative: 0, bench: 0, absence: 1 });
+  assert.deepEqual(row(before).signups, { signed: 2, late: 0, standby: 0, tentative: 0, bench: 0, absence: 1 });
   assert.deepEqual(row(before).mine, { kind: 'signed', source: 'raid_helper', characterName: null }, 'her Raid-Helper row');
   assert.deepEqual([row(before).signupsOpen, row(before).locked, before.can], [true, false, { edit: false, signup: true }]);
   assert.deepEqual(before.upcoming.map((r) => r.id).length, 2);
@@ -824,7 +824,7 @@ check('list: upcoming rows count the merged sign-ups, say what the viewer signed
   await s.mine({ kind: 'late', characterId: s.c.mirabel });
   await s.call('bob', 'PUT', s.path(`/signups/${s.p.nodisc}`), { kind: 'bench' });
   const after = row((await list('erin')).json);
-  assert.deepEqual(after.signups, { signed: 1, late: 1, tentative: 0, bench: 1, absence: 1 }, 'Erin is counted once, as Late');
+  assert.deepEqual(after.signups, { signed: 1, late: 1, standby: 0, tentative: 0, bench: 1, absence: 1 }, 'Erin is counted once, as Late');
   assert.deepEqual(after.mine, { kind: 'late', source: 'raidsmith', characterName: 'Mirabel' });
   // Someone with no character on the team: no counts, nothing to click.
   const hank = (await list('hank')).json;

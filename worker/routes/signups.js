@@ -12,7 +12,7 @@ import { raidSizeFields } from '../raid-zones.js';
 import { SINGLE_LINE_STRIP, isSpecOf } from '../roster-data.js';
 import {
   NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closeHoursOf, closedReason, closesAtOf, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey,
-  signUpSpecLabel, specChoices,
+  signUpSpecLabel, specChoices, storedKind,
 } from '../signups-data.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { bad } from './roster.js';
@@ -75,7 +75,7 @@ export async function buildView(ctx, guildContext, raid) {
   const statements = [
     ownPersonStatement(db, guild.id, userId),
     db.prepare(
-      `SELECT source, signup_id, kind, class_name, spec_name, position, player_id, nickname, character_id, note, updated_at FROM raid_signups
+      `SELECT source, signup_id, kind, standby, class_name, spec_name, position, player_id, nickname, character_id, note, updated_at FROM raid_signups
         WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') ORDER BY position, source, signup_id`,
     ).bind(raid.id),
     db.prepare(
@@ -171,7 +171,7 @@ export async function getMySignup(ctx) {
 function readBody(body, officer) {
   const kinds = officer ? SIGNUP_KINDS : SELF_KINDS;
   if (typeof body.kind !== 'string' || !kinds.includes(body.kind)) {
-    throw bad(officer ? 'Pick signed, late, tentative, bench or absence.' : 'Pick signed, late, tentative or absence.', 'kind');
+    throw bad(officer ? 'Pick signed, late, standby, tentative, bench or absence.' : 'Pick signed, late, standby, tentative or absence.', 'kind');
   }
   if (body.characterId !== undefined && body.characterId !== null && !isId('c', body.characterId)) throw bad('characterId must be a character id.', 'characterId');
   if (body.spec !== undefined && body.spec !== null && typeof body.spec !== 'string') throw bad('spec must be text.', 'spec');
@@ -232,17 +232,20 @@ async function writeSignup(ctx, guildContext, raid, personId, input, self) {
   const guard = self
     ? { sql: WINDOW_OPEN_SQL, params: [raid.id, now] }
     : { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ?)', params: [raid.id] };
+  // Standby is stored as 'signed' + standby = 1; every other kind clears the flag (the table's CHECK keeps the pair honest). Any write is an edit, so a
+  // sign-up a standing sign-up made is the member's own from here on (standing = 0) and is never removed by it.
+  const stored = storedKind(input.kind);
   const statements = [
     db.prepare(
-      `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, class_name, spec_name, position, guild_id, player_id,
+      `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, standby, class_name, spec_name, position, guild_id, player_id,
                                  character_id, note, updated_by, created_at, updated_at)
-       SELECT ?, 'raidsmith', n.next, NULL, NULL, ?, ?, ?, n.next, ?, ?, ?, ?, ?, ?, ?
+       SELECT ?, 'raidsmith', n.next, NULL, NULL, ?, ?, ?, ?, n.next, ?, ?, ?, ?, ?, ?, ?
          FROM (SELECT COALESCE(MAX(signup_id), 0) + 1 AS next FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith') n
         WHERE ${guard.sql}
        ON CONFLICT (raid_id, player_id) WHERE source = 'raidsmith' DO UPDATE SET
-         kind = excluded.kind, class_name = excluded.class_name, spec_name = excluded.spec_name, character_id = excluded.character_id,
-         note = excluded.note, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
-    ).bind(raid.id, input.kind, raidHelperClassName(character.class), spec ? raidHelperSpecKey(character.class, spec) : null, guild.id, personId,
+         kind = excluded.kind, standby = excluded.standby, standing = 0, class_name = excluded.class_name, spec_name = excluded.spec_name,
+         character_id = excluded.character_id, note = excluded.note, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+    ).bind(raid.id, stored.kind, stored.standby, raidHelperClassName(character.class), spec ? raidHelperSpecKey(character.class, spec) : null, guild.id, personId,
       character.id, note, ctx.session.user.id, now, now, raid.id, ...guard.params),
     // The results of this raid are out of date, and no recompute that read the old sign-ups may write over that.
     db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1").bind(raid.id, guild.id),

@@ -95,13 +95,13 @@ export function buildIcs(input) {
   return lines.map(foldLine).join(CRLF) + CRLF;
 }
 
-const KIND_LABEL = { signed: 'Signed', late: 'Late', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
+const KIND_LABEL = { signed: 'Signed', late: 'Late', standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
 export const signupKindLabel = (kind) => KIND_LABEL[kind] || kind;
 
-// The sign-up counts of a raid as one line: "Signed 21, Late 2, Bench 1" (only what is not zero), or "No sign-ups yet".
-// counts: { signed, late, tentative, bench, absence }; null when the viewer may not see counts.
+// The sign-up counts of a raid as one line: "Signed 21, Late 2, Standby 1" (only what is not zero), or "No sign-ups yet".
+// counts: { signed (standby left out), late, standby, tentative, bench, absence }; null when the viewer may not see counts.
 export function countsLine(counts) {
   if (!counts) return null;
-  const parts = ['signed', 'late', 'bench', 'tentative', 'absence'].filter((kind) => counts[kind] > 0).map((kind) => `${KIND_LABEL[kind]} ${counts[kind]}`);
+  const parts = ['signed', 'late', 'standby', 'bench', 'tentative', 'absence'].filter((kind) => counts[kind] > 0).map((kind) => `${KIND_LABEL[kind]} ${counts[kind]}`);
   return parts.length ? parts.join(', ') : 'No sign-ups yet';
 }

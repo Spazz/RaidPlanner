@@ -34,7 +34,7 @@ const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const EARLIEST_RAID_DATE = '2004-11-23'; // World of Warcraft's release: nothing was raided before it
 const START_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MAX_TITLE = 100;
-const SIGNUP_KINDS = ['signed', 'late', 'bench', 'tentative', 'absence'];
+const SIGNUP_KINDS = ['signed', 'late', 'standby', 'bench', 'tentative', 'absence']; // the effective kinds of the Raids list counts (`signed` leaves standby out)
 // The rows of a raid's merged sign-up list, for a query that names the raid_signups row `s`: a person's Raidsmith sign-up replaces their
 // Raid-Helper one (worker/signups-data.js mergeSignups does the same in code).
 export const MERGED_ROWS = `s.source IN ('raid_helper', 'raidsmith') AND NOT (s.source = 'raid_helper' AND s.player_id IS NOT NULL AND EXISTS (
@@ -253,13 +253,19 @@ export async function listRaids(ctx) {
     // Raids that have not started: all of them, soonest first, outside the paging of the past ones.
     ctx.db.prepare(
       `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.signup_close_hours, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live, r.signups_locked,
-${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = '${kind}') AS n_${kind}`).join(',\n')}
+              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'signed' AND s.standby = 0) AS n_signed,
+              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'late') AS n_late,
+              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'signed' AND s.standby = 1) AS n_standby,
+              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'bench') AS n_bench,
+              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'tentative') AS n_tentative,
+              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'absence') AS n_absence
          FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND r.starts_at > ?
         ORDER BY r.starts_at, r.id`,
     ).bind(guild.id, teamId, now),
     // The viewer's own sign-up on each upcoming raid (their Raidsmith one wins over their Raid-Helper one, as in the merged list).
     ctx.db.prepare(
-      `SELECT s.raid_id, s.source, s.kind, c.name AS character_name FROM raid_signups s LEFT JOIN characters c ON c.id = s.character_id
+      `SELECT s.raid_id, s.source, CASE WHEN s.kind = 'signed' AND s.standby = 1 THEN 'standby' ELSE s.kind END AS kind, c.name AS character_name
+         FROM raid_signups s LEFT JOIN characters c ON c.id = s.character_id
         WHERE s.player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}) AND s.source IN ('raid_helper', 'raidsmith')
           AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at > ?)`,
     ).bind(guild.id, ctx.session.user.id, ctx.session.user.id, guild.id, teamId, now),

@@ -4,8 +4,9 @@
 // No D1, no fetch, no clock, and the input is never mutated. The rule table is in tasks/guild-phase3-spec.md,
 // "Consolidation".
 
-// The strongest sign-up kind wins across sources (a plan placement beats a Raid-Helper Absence).
-const KIND_RANK = { signed: 5, late: 4, bench: 3, tentative: 2, absence: 1 };
+// The strongest sign-up kind wins across sources (a plan placement beats a Raid-Helper Absence). A volunteer standby ranks below a plan's bench (a
+// benched volunteer is benched) and above tentative; it is an expected kind like signed.
+const KIND_RANK = { signed: 6, late: 5, bench: 4, standby: 3, tentative: 2, absence: 1 };
 const REPLACEABLE_HOME_OUTCOMES = new Set(['missed', 'no_signup', 'tentative']);
 
 const byText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -22,7 +23,7 @@ function strongestKinds(signups) {
 }
 
 function isExpected(kind, policy) {
-  if (kind === 'signed' || kind === 'late') return true;
+  if (kind === 'signed' || kind === 'late' || kind === 'standby') return true;
   if (kind === 'tentative' && policy.tentative === 'asSignedUp') return true;
   return false;
 }

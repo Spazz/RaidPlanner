@@ -16,7 +16,7 @@ import { MERGED_ROWS } from './raids.js';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FEED_FILE = /^([A-Za-z0-9_-]{43})\.ics$/;
 const LAST_USED_INTERVAL_MS = 10 * 60 * 1000;
-const KINDS = ['signed', 'late', 'bench', 'tentative', 'absence'];
+const KINDS = ['signed', 'late', 'standby', 'bench', 'tentative', 'absence'];
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
 
 // The team of the request ({ team } query or { teamId } body) in this guild, and the viewer's right to see its raids.
@@ -100,13 +100,13 @@ export async function getCalendarFeed(ctx) {
          FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND r.starts_at >= ? AND r.starts_at <= ? ORDER BY r.starts_at, r.id`,
     ).bind(guild.id, link.team_id, from, to),
     db.prepare(
-      `SELECT s.raid_id, s.kind, COUNT(*) AS n FROM raid_signups s
+      `SELECT s.raid_id, CASE WHEN s.kind = 'signed' AND s.standby = 1 THEN 'standby' ELSE s.kind END AS kind, COUNT(*) AS n FROM raid_signups s
         WHERE s.raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND starts_at >= ?3 AND starts_at <= ?4) AND ${MERGED_ROWS}
-        GROUP BY s.raid_id, s.kind`,
+        GROUP BY s.raid_id, s.kind, s.standby`,
     ).bind(guild.id, link.team_id, from, to),
     // The viewer's own sign-up on each raid (their Raidsmith one wins over their Raid-Helper one, as in the merged list).
     db.prepare(
-      `SELECT s.raid_id, s.source, s.kind FROM raid_signups s
+      `SELECT s.raid_id, s.source, CASE WHEN s.kind = 'signed' AND s.standby = 1 THEN 'standby' ELSE s.kind END AS kind FROM raid_signups s
         WHERE s.player_id = ?1 AND s.source IN ('raid_helper', 'raidsmith')
           AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ?2 AND team_id = ?3 AND starts_at >= ?4 AND starts_at <= ?5)`,
     ).bind(own ? own.id : null, guild.id, link.team_id, from, to),

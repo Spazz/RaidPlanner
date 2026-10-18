@@ -84,7 +84,7 @@ export function collectRefs(rows) {
 
 const STATUS_LABEL = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', inactive: 'Inactive' };
 const LEFT_LABEL = { left: 'left the guild', kicked: 'kicked', break: 'on a break', other: 'other' };
-const KIND_LABEL = { signed: 'Signed', late: 'Late', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
+const KIND_LABEL = { signed: 'Signed', late: 'Late', standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
 const SOURCE_LABEL = { raid_helper: 'Raid-Helper', wcl: 'Warcraft Logs', bnet: 'Battle.net' };
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
