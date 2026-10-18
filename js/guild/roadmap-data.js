@@ -257,14 +257,14 @@
         title: 'Forever two-part character names',
         summary: 'WoW Forever characters have a first name and a surname. Raidsmith accepts, matches and shows both parts wherever a name is typed, imported or compared.',
         why: 'Blizzard says every Forever character has two names, and the roster name check takes one word of 2 to 12 letters, so Forever imports and sign-ups could be refused or mismatched before Dec 9. Inspired by: Blizzard naming article; Guild Order Forever recruiting wiki.',
-        area: 'roster', status: 'idea', source: 'pm', added: '2026-10-18',
+        area: 'roster', status: 'done', source: 'pm', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'raid-duties-log-nudge',
         title: 'Raid-night duties and a missing-log nudge',
         summary: 'Each raid names who leads, who records loot and who uploads the log, and these can rotate. If a raid ends with no log and no manual attendance, the duty holder and officers see it on Home.',
         why: 'Attendance, the review queue and loot all start from a log or an export, so one forgotten upload stalls the whole night. Inspired by: Guild Order raid leading guide; Guild Order Forever launch checklist.',
-        area: 'raids', status: 'idea', source: 'pm', added: '2026-10-18',
+        area: 'raids', status: 'done', source: 'pm', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'multi-version-discord-server',
@@ -278,14 +278,14 @@
         title: 'Launch readiness funnel for a new version',
         summary: 'Members mark where they are: name reserved, leveling, level 60, geared, raid ready, plus the nights they can raid. Officers see counts per class and role, week over week, against the team\'s raid size.',
         why: 'Hype overstates real commitment by about double, and the class intent board shows what people plan to play, not how many will be there on Dec 9. Inspired by: Guild Order Forever launch officer checklist.',
-        area: 'roster', status: 'idea', source: 'pm', added: '2026-10-18',
+        area: 'roster', status: 'done', source: 'pm', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'guest-signup-link',
         title: 'Guest sign-up link for fill-ins and allied guilds',
         summary: 'Officers share a link for one raid. Anyone can sign up with character name, class and spec, and officers approve them into the Planner as guests that never join the roster.',
         why: 'Forever opens with a 40-player Onyxia while small guilds compete for the same players, and today pugs are added by hand in the Planner. Inspired by: Raidify pug raids; oxm.gg PUG browser; Guild Order Forever recruiting wiki.',
-        area: 'signups', status: 'idea', source: 'pm', added: '2026-10-18',
+        area: 'signups', status: 'done', source: 'pm', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'availability-grid',
@@ -313,7 +313,7 @@
         title: 'Attendance from a pasted raid roster',
         summary: 'For a raid with no Warcraft Logs report, paste the in-game raid roster at the start and at the end. Raidsmith matches the names, marks late and left early, and fills the manual attendance.',
         why: 'Forever log support is unconfirmed, and the fallback Guild Order suggests is one officer marking the roster at pull and at the last boss. Inspired by: Guild Order Forever addon compatibility guide.',
-        area: 'attendance', status: 'idea', source: 'pm', added: '2026-10-18',
+        area: 'attendance', status: 'done', source: 'pm', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'loot-award-reasons',
