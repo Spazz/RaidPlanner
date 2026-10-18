@@ -101,7 +101,7 @@ function withApi(stubs, fn) {
       assert.equal(G.router.format({ name: 'linked', error: key }), '#/linked?error=' + key, key);
       assert(G.pages.bnet.LINK_ERROR_TEXT[key], 'words for ' + key);
     }
-    for (const key of ['discord_taken', 'has_discord', 'roster_conflict', 'discord']) assert(G.router.LINKED_ERRORS.includes(key), key);
+    for (const key of ['discord_taken', 'has_discord', 'has_bnet', 'roster_conflict', 'discord']) assert(G.router.LINKED_ERRORS.includes(key), key);
   });
 
   // ── the sign-in card ───────────────────────────────────────────
@@ -237,7 +237,7 @@ function withApi(stubs, fn) {
   await check('Linked accounts: Disconnect Discord asks first, sends DELETE /auth/discord and reloads; a refusal (last sign-in, a guild it would orphan) stays in the dialog', async () => {
     const dialog = G.pages.accounts.disconnectDiscordDialogHtml();
     const t = text(dialog);
-    assert(dialog.includes('data-submit="discord-disconnect-form"') && t.includes('You will sign in with Battle.net only') && t.includes('Your roster entries and attendance are not touched'));
+    assert(dialog.includes('data-submit="discord-disconnect-form"') && t.includes('You will sign in with Battle.net only') && t.includes('deletes your Discord ID, nickname and server list') && t.includes('Your roster entries and attendance are not deleted') && t.includes('an officer has linked your account'));
     assert(dialog.includes('id="dlg-error"') && dialog.includes('data-action="dialog-cancel"'));
     G.app.state.bnet = { data: bnetData(), notice: '', alert: '' };
     const calls = [];
@@ -331,6 +331,11 @@ function withApi(stubs, fn) {
       { id: 'u7', displayName: 'Ivan', avatarUrl: null, initials: 'IV', battletag: null, matchedBy: 'name' },
     ], 'Holly#1111');
     assert(text(found).includes('BattleTag match - Holly#1111') && text(found).includes('Name match') && (found.match(/data-action="account-pick"/g) || []).length === 2);
+    const twins = G.pages.person.accountResultsHtml([
+      { id: 'u6', displayName: 'Hollyhock', initials: 'HO', battletag: null, matchedBy: 'name', ambiguous: true },
+      { id: 'u7', displayName: 'Hollyhock', initials: 'HO', battletag: null, matchedBy: 'name', ambiguous: true },
+    ], 'Hollyhock');
+    assert(!twins.includes('data-action="account-pick"') && (twins.match(/Several accounts show this name\. Ask for the BattleTag\./g) || []).length === 2, 'no Link for look-alike names');
     assert(text(G.pages.person.accountResultsHtml([], 'Nobody#1')).includes('No account has exactly that BattleTag or name'));
     assert(text(G.pages.person.accountResultsHtml([], '')).includes('Nobody has sent a character claim that is waiting for a person'));
     assertEscaped(G.pages.person.accountResultsHtml([{ id: 'u8', displayName: HOSTILE + QUOTES, battletag: HOSTILE, matchedBy: 'name' }], 'x'), 'results');
@@ -441,7 +446,7 @@ function withApi(stubs, fn) {
       'They are how you sign in, so they stay while Battle.net is connected, and are refreshed every time you sign in with it',
       'it is deleted 30 days after you load it unless you load it again; your BattleTag stays until you disconnect',
       'an officer can link your account to your roster entry', 'there is no list of accounts', 'whose account an officer has linked to a roster entry',
-      'Deletes your account, the name you chose and every sign-in linked to it',
+      'Deletes your account, the name you chose and every sign-in linked to it', 'Disconnecting Discord deletes the Discord ID and nickname on roster entries and Raid-Helper sign-ups',
     ]) assert(t.toLowerCase().includes(s.toLowerCase()), s);
     assert(!t.includes('Sign in with Discord'));
   });

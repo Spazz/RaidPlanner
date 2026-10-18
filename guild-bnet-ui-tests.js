@@ -114,7 +114,7 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert.deepEqual(p('#/linked'), { name: 'linked', error: null });
     assert.deepEqual(p('#/linked?error=denied'), { name: 'linked', error: 'denied' });
     for (const e of G.router.LINKED_ERRORS) assert.equal(p('#/linked?error=' + e).error, e, e);
-    assert.deepEqual(plain(G.router.LINKED_ERRORS), ['denied', 'state', 'bnet', 'not_configured', 'busy', 'taken', 'discord', 'discord_taken', 'has_discord', 'roster_conflict']);
+    assert.deepEqual(plain(G.router.LINKED_ERRORS), ['denied', 'state', 'bnet', 'not_configured', 'busy', 'taken', 'discord', 'discord_taken', 'has_discord', 'has_bnet', 'roster_conflict']);
     assert.deepEqual(p('#/linked?error=<script>'), { name: 'linked', error: null });
     assert.deepEqual(p('#/characters'), { name: 'characters' });
     assert.deepEqual(p('#/g/g1/roster/import/bnet'), { name: 'import', gid: 'g1', source: 'bnet' });

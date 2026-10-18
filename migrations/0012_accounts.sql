@@ -11,7 +11,9 @@
 --        existing rows keep their Discord ID in it, new accounts store their own users.id. Nothing reads it.
 --      - a new nullable discord_id column takes over the name, and is filled from account_key. A unique index on it (SQLite lets NULLs repeat)
 --        keeps "one account per Discord ID" and is the target of the sign-in upsert.
---    No row of any other table is touched, so no cascade can fire.
+--    No row of any other table is touched, so no cascade can fire. Consequences: every INSERT INTO users must set account_key (this Worker does), so a Worker
+--    from before this migration cannot sign anyone in once it ran: deploy the two together. A foreign key added later with ALTER TABLE ... ADD COLUMN ...
+--    REFERENCES users(id) stays safe; only dropping users is not.
 -- 2. users.display_name: the name the account chose in Linked accounts (<= 32 characters). NULL = use the Discord or Battle.net name.
 -- 3. players.user_id: the Raidsmith account an officer linked to a roster person (or an approved Battle.net character claim linked). It is
 --    how an account WITHOUT Discord belongs to a roster person; a Discord account is still matched through players.discord_user_id.

@@ -75,7 +75,7 @@
   function disconnectDiscordDialogHtml() {
     return '<form class="gs-dialog-form" data-submit="discord-disconnect-form" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Disconnect Discord?</h2>' +
-      '<p class="gs-fine" id="dlg-help">You will sign in with Battle.net only. You stay in the guilds where your roster entry is linked to you; guilds that know you only through their Discord server will not show up until you connect Discord again or an officer links your account to your roster entry. Your roster entries and attendance are not touched.</p>' +
+      '<p class="gs-fine" id="dlg-help">You will sign in with Battle.net only. Raidsmith deletes your Discord ID, nickname and server list from everything it holds, as Delete my data does for Discord, so your roster entries stop being matched to your Discord and guilds that know you only through their Discord server disappear. You stay in a guild if an officer has linked your account to your roster entry there. Your roster entries and attendance are not deleted.</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Disconnect Discord</button></div></form>';
   }

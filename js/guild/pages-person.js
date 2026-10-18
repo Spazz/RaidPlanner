@@ -273,9 +273,12 @@
     }
     const how = { claim: 'Sent a character claim', battletag: 'BattleTag match', name: 'Name match' };
     return '<ul class="gs-account-results" aria-label="Accounts found">' + list.map(function (a) {
+      // A display name is free text: when several accounts show the same one there is no telling them apart here, so none can be linked from it.
+      const action = a.ambiguous
+        ? '<span class="gs-fine gs-account-ambiguous">Several accounts show this name. Ask for the BattleTag.</span>'
+        : '<button type="button" class="gs-btn gs-btn-sm gs-btn-molten" data-action="account-pick" data-uid="' + esc(a.id) + '" data-key="account-pick-' + esc(a.id) + '" aria-label="Link ' + esc(a.displayName) + '">Link</button>';
       return '<li class="gs-account-row">' + G.ui.avatarHtml(a, 'gs-avatar-md') + '<span class="gs-account-text"><span class="gs-account-name">' + esc(a.displayName) + '</span>' +
-        '<span class="gs-fine">' + esc(how[a.matchedBy] || '') + (a.battletag ? ' &middot; ' + esc(a.battletag) : '') + '</span></span>' +
-        '<button type="button" class="gs-btn gs-btn-sm gs-btn-molten" data-action="account-pick" data-uid="' + esc(a.id) + '" data-key="account-pick-' + esc(a.id) + '" aria-label="Link ' + esc(a.displayName) + '">Link</button></li>';
+        '<span class="gs-fine">' + esc(how[a.matchedBy] || '') + (a.battletag ? ' &middot; ' + esc(a.battletag) : '') + '</span></span>' + action + '</li>';
     }).join('') + '</ul>';
   }
 

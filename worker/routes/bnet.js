@@ -139,16 +139,22 @@ export async function bnetCallback(ctx) {
 
   try {
     if (mode === 'signin') return await finishSignin(ctx, info, snapshot, now, clear);
-    await db.batch([
+    // The same Battle.net account again refreshes its link; a DIFFERENT one never replaces it (disconnect first): swapping the sign-in of an
+    // account is not something a stolen session should be able to do in one step. The rows after the first apply only if the link is this one.
+    const here = { sql: 'EXISTS (SELECT 1 FROM bnet_links WHERE user_id = ? AND bnet_account_id = ?)', params: [session.user.id, info.id] };
+    const saved = await db.batch([
       db.prepare(
         `INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(user_id) DO UPDATE SET bnet_account_id = excluded.bnet_account_id, battletag = excluded.battletag,
-           linked_at = excluded.linked_at, snapshot = excluded.snapshot, snapshot_at = excluded.snapshot_at`,
+         ON CONFLICT(user_id) DO UPDATE SET battletag = excluded.battletag,
+           linked_at = excluded.linked_at, snapshot = excluded.snapshot, snapshot_at = excluded.snapshot_at
+         WHERE bnet_links.bnet_account_id = excluded.bnet_account_id`,
       ).bind(session.user.id, info.id, info.battletag, now, JSON.stringify(snapshot), now),
       // An account without Discord is named after its BattleTag; a new BattleTag renames it.
-      db.prepare('UPDATE users SET username = ? WHERE id = ? AND discord_id IS NULL').bind(bnetNameOf(info.battletag), session.user.id),
-      auditStatement(ctx, { guildId: null, actorUserId: session.user.id, action: 'bnet.link', entityType: 'user', entityId: session.user.id }),
+      db.prepare(`UPDATE users SET username = ? WHERE id = ? AND discord_id IS NULL AND ${here.sql}`)
+        .bind(bnetNameOf(info.battletag), session.user.id, ...here.params),
+      auditStatement(ctx, { guildId: null, actorUserId: session.user.id, action: 'bnet.link', entityType: 'user', entityId: session.user.id }, here),
     ]);
+    if (saved[0].meta.changes !== 1) return fail('has_bnet');
   } catch (error) {
     if (isUniqueViolation(error)) return fail('taken');
     ctx.log(`bnet ${mode}: saving failed: ${error && error.message}`);
@@ -181,8 +187,10 @@ async function finishSignin(ctx, info, snapshot, now, clear) {
   try {
     await db.batch([
       ...writes,
+      // The session is for whoever holds this Battle.net account at the moment of writing (a link deleted since the look-up gives no session).
       ...startSessionStatements(db, {
-        userId: { sql: '?', params: [userId] }, tokenHash: await hashToken(token), earlierHash: earlier ? await hashToken(earlier) : null, now, manageable: null,
+        userId: existingId ? { sql: '(SELECT user_id FROM bnet_links WHERE bnet_account_id = ?)', params: [info.id] } : { sql: '?', params: [userId] },
+        tokenHash: await hashToken(token), earlierHash: earlier ? await hashToken(earlier) : null, now, manageable: null,
       }),
     ]);
   } catch (error) {

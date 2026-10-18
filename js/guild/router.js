@@ -19,7 +19,7 @@
   // Why a Discord or Battle.net link came back without linking (redirects to #/linked?error=..). 'taken' is a Battle.net account that belongs to
   // another account, 'discord_taken' the same for Discord; 'has_discord' a second Discord on an account that has one; 'roster_conflict' a Discord
   // ID that would put two roster people of one guild on the account.
-  const LINKED_ERRORS = ['denied', 'state', 'bnet', 'not_configured', 'busy', 'taken', 'discord', 'discord_taken', 'has_discord', 'roster_conflict'];
+  const LINKED_ERRORS = ['denied', 'state', 'bnet', 'not_configured', 'busy', 'taken', 'discord', 'discord_taken', 'has_discord', 'has_bnet', 'roster_conflict'];
   const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
   function decode(s) {

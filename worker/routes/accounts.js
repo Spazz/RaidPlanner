@@ -50,13 +50,19 @@ export async function unlinkDiscord(ctx) {
   if (!bnet) {
     throw new HttpError(409, 'last_identity', 'Discord is the only way you sign in to this account. Connect Battle.net first, or delete your data on the privacy page.');
   }
-  // A Guild Master who would lose the guild (no roster person of theirs there) must hand over or link first: a guild nobody can open helps no one.
+  // A blocked account does not shed its Discord: signing in with that Discord again would make a fresh account that no block names.
+  const blockedAt = await db.prepare('SELECT 1 AS found FROM guild_blocks WHERE user_id = ?').bind(userId).first();
+  if (blockedAt) {
+    throw new HttpError(409, 'blocked_somewhere', 'An officer removed your access to a guild, so Discord cannot be disconnected right now.');
+  }
+  // A Guild Master who would lose the guild (no roster person linked to their account there) must hand over or get linked first: a guild nobody
+  // can open helps no one. Without Discord only an officer's link (players.user_id) keeps someone in a guild they are not in the server of.
   const leads = await db.prepare(
     `SELECT g.id, g.name FROM role_assignments ra JOIN guilds g ON g.id = ra.guild_id
       WHERE ra.user_id = ? AND ra.role_id = 'guild_master'
-        AND NOT EXISTS (SELECT 1 FROM players p WHERE p.guild_id = g.id AND (p.user_id = ? OR p.discord_user_id = ?))
+        AND NOT EXISTS (SELECT 1 FROM players p WHERE p.guild_id = g.id AND p.user_id = ?)
       ORDER BY g.name, g.id`,
-  ).bind(userId, userId, discordId).all();
+  ).bind(userId, userId).all();
   if (leads.results.length) {
     throw new HttpError(409, 'leads_guild',
       'You are the Guild Master of a guild you would lose access to without Discord. Hand it over first, or ask an officer to link your account to your roster entry there.',
@@ -68,25 +74,22 @@ export async function unlinkDiscord(ctx) {
   const guard = { sql: `EXISTS (SELECT 1 FROM users WHERE id = ? AND discord_id = ?) AND ${hasBnetSql('?')}`, params: [userId, discordId, userId] };
   const cleared = { sql: 'EXISTS (SELECT 1 FROM users WHERE id = ? AND discord_id IS NULL)', params: [userId] };
   const results = await db.batch([
-    // A roster person that belonged to the account only through the Discord ID it is leaving becomes an explicit link in the guilds the account
-    // is a member of right now, so disconnecting Discord does not unplug anyone from their roster entry. (The person keeps the Discord ID too:
-    // Raid-Helper sign-ups are matched on it.)
-    db.prepare(
-      `UPDATE players SET user_id = ?, version = version + 1, updated_at = ?
-        WHERE discord_user_id = ? AND user_id IS NULL
-          AND NOT EXISTS (SELECT 1 FROM players o WHERE o.guild_id = players.guild_id AND o.user_id = ?)
-          AND EXISTS (SELECT 1 FROM guilds g, (SELECT ? AS uid) c WHERE g.id = players.guild_id AND ${memberSql('c.uid', 'g.id', 'g.discord_server_id')})
-          AND ${guard.sql}`,
-    ).bind(userId, now, discordId, userId, userId, ...guard.params),
     // An account without Discord is named after its BattleTag.
     db.prepare(
       `UPDATE users SET discord_id = NULL, username = ?, global_name = NULL, avatar = NULL WHERE id = ? AND ${guard.sql}`,
     ).bind(bnetNameOf(bnet.battletag), userId, ...guard.params),
     db.prepare(`DELETE FROM user_servers WHERE user_id = ? AND ${cleared.sql}`).bind(userId, ...cleared.params),
+    // Disconnecting a sign-in deletes what Raidsmith holds from it, as Delete my data does: the Discord ID and nickname on roster people and on
+    // Raid-Helper sign-ups (the people and the attendance stay). An officer's account link (players.user_id) is a different thing and stays.
+    db.prepare(
+      `UPDATE players SET discord_user_id = NULL, discord_nickname = NULL, version = version + 1, updated_at = ?
+        WHERE discord_user_id = ? AND ${cleared.sql}`,
+    ).bind(now, discordId, ...cleared.params),
+    db.prepare(`UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ? AND ${cleared.sql}`).bind(discordId, ...cleared.params),
     db.prepare(`UPDATE sessions SET manageable_servers = NULL, manageable_until = NULL WHERE user_id = ? AND ${cleared.sql}`).bind(userId, ...cleared.params),
     auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'discord.unlink', entityType: 'user', entityId: userId }, cleared),
   ]);
-  if (results[1].meta.changes !== 1) throw conflict();
+  if (results[0].meta.changes !== 1) throw conflict();
   return jsonResponse({ ok: true, removed: true });
 }
 
@@ -95,8 +98,11 @@ export async function unlinkDiscord(ctx) {
 
 // GET /api/guild/:gid/accounts?q=  (roster.edit). Never a directory of accounts:
 //   no q    the accounts that sent a character claim in this guild and are not on any person of it yet;
-//   q       the accounts whose BattleTag or display name IS q (the whole string, any case), 3 to 64 characters, at most 5, rate limited.
-// Accounts blocked in the guild, or already a person's here, are left out. A BattleTag comes back only when it is what the officer typed.
+//   q       the accounts whose BattleTag or display name IS q (the whole string, any case), 3 to 64 characters, at most 5, rate limited. Only
+//           someone with roster.edit on the whole guild (an Officer) may ask: a Team Lead sees the claimants.
+// Accounts blocked in the guild, or already a person's here, are left out. A BattleTag comes back only when it is what the officer typed, and
+// never the Discord handle. A display name is free text, so several accounts can show the same one: those rows say `ambiguous` (the page
+// offers no Link for them: ask for the BattleTag).
 export async function lookupAccounts(ctx) {
   const { db } = ctx;
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
@@ -104,6 +110,9 @@ export async function lookupAccounts(ctx) {
   const guildId = guildContext.guild.id;
   const raw = new URL(ctx.request.url).searchParams.get('q');
   const q = typeof raw === 'string' ? raw.replace(SINGLE_LINE_STRIP, '').trim() : '';
+  if (q && guildContext.can['roster.edit'] !== 'guild') {
+    throw new HttpError(403, 'forbidden', 'Only an officer can look an account up by BattleTag or name. You can pick someone who sent a character claim.');
+  }
   if (q && (Array.from(q).length < MIN_LOOKUP || Array.from(q).length > MAX_LOOKUP)) {
     throw bad(`Type the whole BattleTag or name: ${MIN_LOOKUP} to ${MAX_LOOKUP} characters.`, 'q');
   }
@@ -127,9 +136,14 @@ export async function lookupAccounts(ctx) {
         ORDER BY u.id LIMIT ?`,
     ).bind(q, q, q, q, guildId, guildId, FOUND_MAX).all()).results;
   }
-  // Initials only: an avatar URL carries the account's Discord ID, which an officer has no business learning from a name they typed.
+  // Initials only: an avatar URL carries the account's Discord ID, which an officer has no business learning from a name they typed. The Discord
+  // handle (username) stays out too; the name shown is the display name the account chose, else its Discord name or BattleTag name.
+  const byName = rows.filter((row) => row.matched_by === 'name').length;
   return jsonResponse({
-    accounts: rows.map((row) => ({ ...toPerson(row, { avatar: false }), battletag: row.battletag, matchedBy: row.matched_by })),
+    accounts: rows.map((row) => ({
+      ...toPerson(row, { avatar: false }), username: '', battletag: row.battletag, matchedBy: row.matched_by,
+      ambiguous: row.matched_by === 'name' && byName > 1,
+    })),
   });
 }
 
@@ -176,6 +190,18 @@ export async function setPersonAccount(ctx) {
   if (player.discord_user_id && player.discord_user_id !== target.discord_id) {
     throw new HttpError(409, 'discord_linked',
       'This person is linked to a Discord account. Change that on the Discord account field, or ask the member to connect Discord to their account.', { field: 'userId' });
+  }
+  // Linking makes the account a member of the WHOLE guild, so a Team Lead (roster.edit on their team only) may link only an account that already
+  // is a member or has a character claim waiting here; letting anyone else in is an Officer's call.
+  if (guildContext.can['roster.edit'] !== 'guild') {
+    const known = await db.prepare(
+      `SELECT ${memberSql('u.id', 'gc.gid', 'gc.sid')} AS member,
+              EXISTS (SELECT 1 FROM character_claims cl WHERE cl.guild_id = gc.gid AND cl.user_id = u.id AND cl.status = 'pending') AS claimed
+         FROM users u, (SELECT ? AS gid, ? AS sid) gc WHERE u.id = ?`,
+    ).bind(guildId, guildContext.guild.discord_server_id, target.id).first();
+    if (!known || (known.member !== 1 && known.claimed !== 1)) {
+      throw new HttpError(403, 'forbidden', 'Only an officer can link an account that is not in this guild yet and has sent no character claim.');
+    }
   }
   const taken = await db.prepare(
     'SELECT id FROM players WHERE guild_id = ? AND id != ? AND (user_id = ? OR (discord_user_id IS NOT NULL AND discord_user_id = ?))',

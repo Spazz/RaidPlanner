@@ -78,7 +78,7 @@
     return '<div class="gs-page gs-page-narrow"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Privacy &amp; my data</h1></div>' +
       section('privacy-keeps-you', 'What Raidsmith keeps about you', paragraphs([
         'Your Raidsmith account is made the first time you sign in, with Discord or with Battle.net. It can hold both: you connect the second on Linked accounts, and either one signs you in to the same account. Raidsmith never merges two accounts, so a Discord or Battle.net account that already has its own Raidsmith account cannot be connected to another one. The name you pick there (up to 32 characters) is shown to the people in your guilds.',
-        'From Discord, when you sign in or connect it: your Discord ID, username and avatar. Not your email, not your messages.',
+        'From Discord, when you sign in or connect it: your Discord ID, username and avatar. Not your email, not your messages. Disconnecting Discord deletes the Discord ID and nickname on roster entries and Raid-Helper sign-ups, as deleting all your data does; the people and their attendance stay.',
         'Your server list is checked each time you sign in with Discord, or connect it. Only the result is kept. For guild creators, the servers they can manage are kept for 30 minutes after sign-in.',
         'Ideas you suggest on the Future enhancements page: the title, details and area you write, linked to your account. Everyone who is signed in can read an idea, without your name.',
       ])) +

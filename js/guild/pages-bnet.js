@@ -17,6 +17,7 @@
     discord: 'Discord could not finish connecting. Try again in a minute.',
     discord_taken: 'That Discord account is already connected to another Raidsmith account. Accounts are never merged: sign in with that one instead.',
     has_discord: 'A different Discord account is already connected here. Disconnect it first.',
+    has_bnet: 'A different Battle.net account is already connected here. Disconnect it first, then connect the other one.',
     roster_conflict: 'That Discord account is already on another roster entry in a guild where one of your roster entries is linked to you. Ask an officer to sort out the roster first.',
   };
   const CONNECT_HREF = '/auth/bnet/login';

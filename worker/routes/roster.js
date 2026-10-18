@@ -132,7 +132,7 @@ export function nameTaken(name, owner, extra = {}) {
 
 // -> { id, discord_id } of a member with a Discord account that the officer may link to a person (the person takes its Discord ID).
 // 409 already_linked when that member already belongs to another person of the guild, by Discord ID or by an officer's account link.
-export async function resolveLinkUser(db, guildContext, userId, exceptPlayerId = null) {
+export async function resolveLinkUser(db, guildContext, userId, exceptPlayerId = null, personAccountId = null) {
   if (!isId('u', userId)) throw bad('Pick a member to link.', 'linkUserId');
   const guildId = guildContext.guild.id;
   const user = await db.prepare(
@@ -140,6 +140,10 @@ export async function resolveLinkUser(db, guildContext, userId, exceptPlayerId =
       WHERE u.id = ? AND u.discord_id IS NOT NULL AND ${memberSql('u.id', 'gc.gid', 'gc.sid')}`,
   ).bind(guildId, guildContext.guild.discord_server_id, userId).first();
   if (!user) throw bad('That member is not in this guild\'s Discord server.', 'linkUserId');
+  // A person an officer linked to one account is not also another account's through its Discord ID.
+  if (personAccountId && personAccountId !== user.id) {
+    throw new HttpError(409, 'already_linked', 'That person is linked to a different Raidsmith account. Unlink it first.', { field: 'linkUserId' });
+  }
   const other = await db.prepare(
     'SELECT id FROM players WHERE guild_id = ? AND id != ? AND (discord_user_id = ? OR user_id = ?)',
   ).bind(guildId, exceptPlayerId || '', user.discord_id, user.id).first();
@@ -332,7 +336,7 @@ export async function patchPerson(ctx) {
   const leftOn = readDateField(body, 'leftOn');
   if (body.leftReason !== undefined && body.leftReason !== null && !LEFT_REASONS.includes(body.leftReason)) throw bad('Pick a reason.', 'leftReason');
   let link;
-  if (body.linkUserId !== undefined && body.linkUserId !== null) link = await resolveLinkUser(db, guildContext, body.linkUserId, player.id);
+  if (body.linkUserId !== undefined && body.linkUserId !== null) link = await resolveLinkUser(db, guildContext, body.linkUserId, player.id, player.user_id);
   const keys = ['status', 'joinedOn', 'trialStart', 'trialEnd', 'linkUserId', 'leftOn', 'leftReason'];
   if (!keys.some((key) => body[key] !== undefined)) throw bad('Send a field to change.', 'status');
 
