@@ -4,6 +4,7 @@ import { mayCreateGuilds } from '../discord.js';
 import { newId } from '../ids.js';
 import { GUILD_LIMIT_MESSAGE, LIMITS } from '../limits.js';
 import { loadGuildContext } from '../permissions.js';
+import { defaultTeamSize } from '../raid-zones.js';
 import { readManageable } from '../session.js';
 import { FOREVER_RULESETS, REGIONS, findRealm, isVersion } from '../realms.js';
 import { rosterOptions } from '../roster-data.js';
@@ -146,8 +147,8 @@ export async function createGuild(ctx) {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(guildId, name, realm, realmKind, realmSlug, body.region, serverId, timeZone, gameVersion, userId, now),
       ...teamNames.map((teamName, i) => db.prepare(
-        'INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES (?, ?, ?, 25, 0, ?)',
-      ).bind(teamIds[i], guildId, teamName, now)),
+        'INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES (?, ?, ?, ?, 0, ?)',
+      ).bind(teamIds[i], guildId, teamName, defaultTeamSize(gameVersion), now)),
       db.prepare(
         `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
          VALUES (?, ?, ?, 'guild_master', NULL, ?, ?)`,

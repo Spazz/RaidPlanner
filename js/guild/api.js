@@ -215,6 +215,42 @@
     view: function () { return G.api.get('/api/guest'); },
     leave: function () { return G.api.del('/auth/guest', {}); },
   };
+  // PM wave 3 (recruiting and the WoW Forever launch): the class and spec intent board, recruitment needs, the applications inbox with its public form,
+  // and the CSV roster import. Same rule: through G.api.get / post / ... at call time.
+  const enc = encodeURIComponent;
+  G.api.intent = {
+    get: function (gid, teamId, roundId) { return G.api.get(guildPath(gid, '/intent?team=' + enc(teamId) + (roundId ? '&round=' + enc(roundId) : ''))); },
+    open: function (gid, teamId, body) { return G.api.post(guildPath(gid, '/teams/' + enc(teamId) + '/intent'), body); },
+    close: function (gid, iid) { return G.api.patch(guildPath(gid, '/intent/' + enc(iid)), { status: 'closed' }); },
+    pick: function (gid, iid, pid, body) { return G.api.put(guildPath(gid, '/intent/' + enc(iid) + '/picks/' + enc(pid)), body); },
+    unpick: function (gid, iid, pid, kind) { return G.api.del(guildPath(gid, '/intent/' + enc(iid) + '/picks/' + enc(pid)), { kind: kind }); },
+  };
+  G.api.recruiting = {
+    get: function (gid, teamId) { return G.api.get(guildPath(gid, '/recruiting?team=' + enc(teamId))); },
+    saveTargets: function (gid, teamId, targets) { return G.api.put(guildPath(gid, '/teams/' + enc(teamId) + '/recruiting'), { targets: targets }); },
+  };
+  G.api.applications = {
+    settings: function (gid) { return G.api.get(guildPath(gid, '/applications/settings')); },
+    saveSettings: function (gid, body) { return G.api.put(guildPath(gid, '/applications/settings'), body); },
+    list: function (gid, status, teamId) {
+      const parts = [];
+      if (status) parts.push('status=' + enc(status));
+      if (teamId) parts.push('team=' + enc(teamId));
+      return G.api.get(guildPath(gid, '/applications' + (parts.length ? '?' + parts.join('&') : '')));
+    },
+    update: function (gid, apid, body) { return G.api.patch(guildPath(gid, '/applications/' + enc(apid)), body); },
+    accept: function (gid, apid, body) { return G.api.post(guildPath(gid, '/applications/' + enc(apid) + '/accept'), body || {}); },
+    remove: function (gid, apid) { return G.api.del(guildPath(gid, '/applications/' + enc(apid)), {}); },
+  };
+  // The applicant's side (no account needed): the form, and sending it.
+  G.api.apply = {
+    form: function (gid) { return G.api.get('/api/apply/' + enc(gid)); },
+    submit: function (gid, body) { return G.api.post('/api/apply/' + enc(gid), body); },
+  };
+  G.api.csvImport = {
+    preview: function (gid, body) { return G.api.post(guildPath(gid, '/roster/import/csv/preview'), body); },
+    commit: function (gid, body) { return G.api.post(guildPath(gid, '/roster/import/csv/commit'), body); },
+  };
   G.api.publicPage = {
     get: function (gid) { return G.api.get(guildPath(gid, '/public')); },
     save: function (gid, body) { return G.api.put(guildPath(gid, '/public'), body); },

@@ -73,6 +73,16 @@ export const AUDIT_ACTIONS = [
   'roster.decline',
   'away.set',
   'away.remove',
+  'intent.open',
+  'intent.close',
+  'intent.pick',
+  'intent.unpick',
+  'recruiting.targets',
+  'apply.settings',
+  'application.submit',
+  'application.update',
+  'application.accept',
+  'application.delete',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

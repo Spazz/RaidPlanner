@@ -57,6 +57,7 @@
     publicSettings: null, // Guild settings > Public page: { gid, data: GET /api/guild/:gid/public, notice } (see pages-settings-public.js)
     rolesList: {},     // gid -> GET /api/guild/:gid/roles, for the People page's "Other roles" (loaded with the People tab for people who can manage roles)
     view: null,        // the read-only guest / public page: { kind, gid, data, error } (see pages-view.js); null while it loads
+    apply: null,       // the application form: { gid, status, data, draft, busy, error, done } (see pages-apply.js); null until it is opened
   };
   const app = G.app = { state: state, started: false };
   // The Guild settings tabs of Phase 7: the state key each keeps its { gid, data, notice } in, and the page module in G.pages that loads and draws it.
@@ -67,10 +68,10 @@
     public: { state: 'publicSettings', page: 'settingsPublic' },
   };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
-  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', away: 'away' };
+  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'applications' };
   function attPageKey(r) {
     if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : (r.section === 'home' ? 'attention' : null)));
-    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : (r.tab === 'activity' ? 'settingsActivity' : null)));
+    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : (r.tab === 'activity' ? 'settingsActivity' : (r.tab === 'applications' ? 'settingsApply' : null))));
     return Object.prototype.hasOwnProperty.call(ATT_ROUTE_PAGES, r.name) ? ATT_ROUTE_PAGES[r.name] : null;
   }
   app.attPageKey = attPageKey;
@@ -324,6 +325,7 @@
     state.publicSettings = null;
     state.rolesList = {};
     state.view = null;
+    state.apply = null;
     state.imports = {};
     state.failure = null;
     state.notice = '';
@@ -484,7 +486,9 @@
     state.view = null;
     render();
     ensureSession(true).then(function () { if (token === routeToken) render(); });
-    return G.pages.view.load(r).then(function () {
+    // The application form is for people with and without an account; the account only travels with the application.
+    const loading = r.name === 'apply' ? G.pages.apply.load(r) : G.pages.view.load(r);
+    return loading.then(function () {
       if (token !== routeToken) return;
       // A redeemed guest link moved the address to #/view without a navigation: it is the current address now.
       lastHref = String(window.location.href);
@@ -558,6 +562,7 @@
       if (tab === 'battlenet') return G.pages.settingsBnet.load(r.gid).then(function () { return null; });
       if (tab === 'schedule') return loadAttendance('settingsSchedule', r, gd);
       if (tab === 'activity') return loadAttendance('settingsActivity', r, gd);
+      if (tab === 'applications') return loadAttendance('settingsApply', r, gd);
       if (Object.prototype.hasOwnProperty.call(ROLE_TABS, tab)) return G.pages[ROLE_TABS[tab].page].load(r.gid).then(function () { return null; });
       if (tab !== 'people') return null;
       const jobs = [G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) { state.people[r.gid] = res; })];
@@ -641,6 +646,14 @@
       const bnet = G.pages.importBnet.ensureState(gid, teamId);
       return G.pages.importBnet.loadInfo(bnet).then(function () { return null; });
     }
+    if (r.source === 'csv') {
+      G.pages.importCsv.ensureState(gid, teamId);
+      // The "Alt of someone else" picker lists this team's people.
+      return fetchRoster(gid, teamId).then(function () { return null; }, function () {
+        if (token === routeToken) state.roster = null;
+        return null;
+      });
+    }
     const kind = r.source === 'wcl' ? 'wcl' : 'rh';
     G.pages.import.ensureState(kind, gid, teamId);
     if (kind !== 'wcl') return null;
@@ -669,10 +682,14 @@
     else if (r.name === 'personatt') page = 'Attendance history';
     else if (r.name === 'lootperson') page = 'Loot history';
     else if (r.name === 'person') page = 'Roster';
-    else if (r.name === 'import') page = { wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net' }[r.source] || 'Import from Raid-Helper';
+    else if (r.name === 'import') page = { wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net', csv: 'Import from a CSV file' }[r.source] || 'Import from Raid-Helper';
     else if (r.name === 'settings') page = 'Guild settings';
     else if (r.name === 'guest' || r.name === 'view') page = 'Guest view';
     else if (r.name === 'public') page = 'Public page';
+    else if (r.name === 'apply') page = 'Apply';
+    else if (r.name === 'intent') page = 'Intent';
+    else if (r.name === 'recruiting') page = 'Recruiting';
+    else if (r.name === 'applications') page = 'Applications';
     if (gd && gd.guild && page) page += ' - ' + gd.guild.name;
     else if (G.router.isViewerRoute(r) && state.view && state.view.data && state.view.data.guild) page += ' - ' + state.view.data.guild.name;
     return page ? page + ' - ' + base : base;
@@ -716,7 +733,7 @@
         if (r.section === 'attendance') return P.attendance.main(r, gd, ctx);
         if (r.section === 'loot') return P.loot.main(r, gd, ctx);
         return P.signin.messageHtml('Page not found', 'That address does not match a Raidsmith guild page.', {});
-      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson': case 'away':
+      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson': case 'away': case 'intent': case 'recruiting': case 'applications':
         if (!gd) return P.signin.loadingHtml();
         return P[attPageKey(r)].main(r, gd, ctx);
       case 'person': {
@@ -728,6 +745,13 @@
         if (r.source === 'bnet') {
           const bnet = state.imports.bnet;
           return bnet && bnet.gid === gd.guild.id ? P.importBnet.bnetHtml({ guildData: gd, bnet: bnet }) : P.signin.loadingHtml();
+        }
+        if (r.source === 'csv') {
+          const csv = state.imports.csv;
+          if (!csv || csv.gid !== gd.guild.id) return P.signin.loadingHtml();
+          const csvPeople = state.roster && state.roster.gid === gd.guild.id && state.roster.teamId === csv.teamId && state.roster.data
+            ? state.roster.data.people.filter(function (p) { return p.main && p.main.team && p.main.team.id === csv.teamId; }) : [];
+          return P.importCsv.csvHtml({ guildData: gd, csv: csv, people: csvPeople });
         }
         const kind = r.source === 'wcl' ? 'wcl' : 'rh';
         const imp = state.imports[kind];
@@ -750,6 +774,7 @@
         }
         if (tab === 'schedule') return P.settingsSchedule.main(r, gd, ctx);
         if (tab === 'activity') return P.settingsActivity.main(r, gd, ctx);
+        if (tab === 'applications') return P.settingsApply.main(r, gd, ctx);
         if (tab === 'data') return P.settingsData.main(r, gd, ctx);
         if (Object.prototype.hasOwnProperty.call(ROLE_TABS, tab)) {
           const x = state[ROLE_TABS[tab].state];
@@ -804,6 +829,10 @@
   function guildView(r, ctx) {
     // The read-only pages come first: they do not wait for the sign-in question, and a visitor never sees the sign-in card.
     if (G.router.isViewerRoute(r)) {
+      if (r.name === 'apply') {
+        const form = state.apply && state.apply.gid === r.gid ? state.apply : null;
+        return { html: G.pages.apply.applyHtml({ state: form }), center: !!(form && (form.status === 'closed' || form.status === 'error')), title: titleFor(r, null) };
+      }
       const v = state.view;
       return { html: G.pages.view.viewHtml({ data: v ? v.data : null, kind: v ? v.kind : (r.name === 'public' ? 'public' : 'guest'), error: v ? v.error : null }), center: !!(v && v.error), title: titleFor(r, null) };
     }
@@ -1134,7 +1163,7 @@
     if (state.section !== 'guild') { render(); return; }
     const r = G.router.parse(window.location.hash);
     if (r.name === 'section' && r.section === 'roster') { go(G.router.format({ name: 'section', gid: gid, section: 'roster' })); return; }
-    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance' || r.section === 'loot')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill') { routeAll({ force: true }); return; }
+    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance' || r.section === 'loot')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill' || r.name === 'intent' || r.name === 'recruiting') { routeAll({ force: true }); return; }
     render();
   };
 

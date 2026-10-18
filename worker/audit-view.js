@@ -6,6 +6,7 @@ import { AUDIT_ACTIONS } from './audit.js';
 import { addDays, weekdayOf } from './attendance-calendar.js';
 import { OUTCOMES } from './attendance-policy.js';
 import { isId } from './ids.js';
+import { CLASSES } from './roster-data.js';
 
 export const AUDIT_GROUPS = Object.freeze([
   { id: 'roster', label: 'Roster' },
@@ -41,6 +42,9 @@ export const ACTION_GROUP = Object.freeze({
   // Phase 7: the role editor, the Discord role mapping and sync, guest links and the public page. Settings, like roles.set and access.*.
   'role.create': 'settings', 'role.update': 'settings', 'role.delete': 'settings', 'role.reset': 'settings',
   'discord.maps': 'settings', 'roles.discord_sync': 'settings', 'guest.create': 'settings', 'guest.revoke': 'settings', 'public.update': 'settings',
+  // PM wave 3: the intent board and recruitment needs and the applications inbox sit with the roster; the application switch and questions are settings.
+  'intent.open': 'roster', 'intent.close': 'roster', 'intent.pick': 'roster', 'intent.unpick': 'roster', 'recruiting.targets': 'roster',
+  'application.submit': 'roster', 'application.update': 'roster', 'application.accept': 'roster', 'application.delete': 'roster', 'apply.settings': 'settings',
 });
 
 export const groupOf = (action) => (Object.prototype.hasOwnProperty.call(ACTION_GROUP, action) ? ACTION_GROUP[action] : 'settings');
@@ -90,7 +94,9 @@ const STATUS_LABEL = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', ina
 const LEFT_LABEL = { left: 'left the guild', kicked: 'kicked', break: 'on a break', other: 'other' };
 const KIND_LABEL = { signed: 'Signed', late: 'Late', standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
 const AWAY_LABEL = { away: 'Away', late: 'Late', leaving: 'Leaving early' };
-const SOURCE_LABEL = { raid_helper: 'Raid-Helper', wcl: 'Warcraft Logs', bnet: 'Battle.net' };
+const SOURCE_LABEL = { raid_helper: 'Raid-Helper', wcl: 'Warcraft Logs', bnet: 'Battle.net', csv: 'a CSV file' };
+const CLASS_LABEL = Object.fromEntries(CLASSES.map((entry) => [entry.id, entry.name]));
+const APPLICATION_STATUS_LABEL = { new: 'New', reviewing: 'Reviewing', accepted: 'Accepted', declined: 'Declined' };
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const BUILTIN_ROLE_LABEL = { guild_master: 'Guild Master', officer: 'Officer', team_lead: 'Team Lead', member: 'Member', guest: 'Guest', public: 'Public' };
@@ -291,6 +297,28 @@ export function describeRow(row, names = {}) {
     case 'roster.unpublish': return `Took back the published roster of ${onRaid(ent)}`;
     case 'roster.decline': return `${person(after.personId)} can't make ${onRaid(ent)}`;
     case 'signup.lock': return after.locked ? `Closed sign-ups for ${onRaid(ent)}` : `Reopened sign-ups for ${onRaid(ent)}`;
+
+    case 'intent.open': return `Opened an intent round for ${team(after.teamId)}`;
+    case 'intent.close': return `Closed the intent round of ${team(after.teamId)}`;
+    case 'intent.pick': {
+      const planned = [CLASS_LABEL[after.class], after.spec].filter(Boolean).join(' ');
+      return `${person(after.personId)} picked ${after.kind === 'alt' ? 'an alt' : 'a main'} for the intent round of ${team(after.teamId)}${planned ? `: ${planned}` : ''}`;
+    }
+    case 'intent.unpick': return `Removed the ${after.kind === 'alt' ? 'alt' : 'main'} pick of ${person(after.personId)} from the intent round of ${team(after.teamId)}`;
+    case 'recruiting.targets': return `${after.custom ? 'Set' : 'Reset'} the recruiting targets of ${team(ent)}`;
+    case 'apply.settings': {
+      if (!after.enabled) return before.enabled ? 'Turned applications off' : 'Changed the application questions';
+      return before.enabled ? 'Changed the application questions' : 'Turned applications on';
+    }
+    case 'application.submit': return `Received an application for ${team(after.teamId)}`;
+    case 'application.update': {
+      const changed = Array.isArray(after.changed) ? after.changed : [];
+      const status = APPLICATION_STATUS_LABEL[after.status];
+      if (changed.includes('status') && status) return `Marked an application for ${team(after.teamId)} as ${status}`;
+      return `Edited the notes of an application for ${team(after.teamId)}`;
+    }
+    case 'application.accept': return `Accepted an application: ${person(after.personId)} joined ${team(after.teamId)} on trial`;
+    case 'application.delete': return `Deleted an application for ${team(before.teamId)}`;
 
     case 'bnet.link': return 'Linked a Battle.net account';
     case 'bnet.unlink': return 'Disconnected a Battle.net account';

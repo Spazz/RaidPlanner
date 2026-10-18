@@ -12,6 +12,7 @@
     { id: 'loot_unmatched', severity: 'action', heading: 'Loot winners nobody matches', chip: 'Loot' },
     { id: 'signup_unmatched', severity: 'action', heading: 'Sign-ups not linked to a person', chip: 'Sign-ups' },
     { id: 'claims', severity: 'action', heading: 'Character claims', chip: 'Claims' },
+    { id: 'applications', severity: 'action', heading: 'New applications', chip: 'Applications' },
     { id: 'trial', severity: 'action', heading: 'Trials', chip: 'Trial' },
     { id: 'watch', severity: 'action', heading: 'Attendance watch list', chip: 'Watch list' },
     { id: 'no_loot', severity: 'action', heading: 'Raids without loot', chip: 'No loot' },
@@ -20,13 +21,14 @@
     { id: 'unlocked', severity: 'info', heading: 'Sign-ups still open', chip: 'Open' },
   ];
   // Route names an item link may use (an address built from anything else falls back to the Roster).
-  const LINK_NAMES = ['raid', 'review', 'person', 'personatt'];
+  const LINK_NAMES = ['raid', 'review', 'person', 'personatt', 'applications'];
   // Where "and N more" goes for each kind: the page where that kind of work is done.
   const MORE_LINKS = {
     review: { name: 'review' },
     loot_unmatched: { name: 'review' },
     signup_unmatched: { name: 'section', section: 'raids' },
     claims: { name: 'review' },
+    applications: { name: 'applications' },
     trial: { name: 'section', section: 'roster' },
     watch: { name: 'section', section: 'attendance' },
     no_loot: { name: 'section', section: 'raids' },
@@ -64,6 +66,7 @@
       case 'loot_unmatched': return plural(n, 'loot winner', 'loot winners') + ' on ' + dayOf(it.date) + (n === 1 ? ' matches' : ' match') + ' nobody';
       case 'signup_unmatched': return plural(n, 'sign-up', 'sign-ups') + ' on ' + dayOf(it.date) + (n === 1 ? ' is' : ' are') + ' not linked to a person';
       case 'claims': return plural(n, 'character claim', 'character claims') + (n === 1 ? ' is' : ' are') + ' waiting';
+      case 'applications': return plural(n, 'new application', 'new applications') + ' waiting';
       case 'trial': {
         const days = Math.abs(num(it.days));
         const copy = G.ui.trialCopy({ kind: it.ended ? 'ended' : 'ends', days: days });

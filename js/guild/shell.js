@@ -48,6 +48,7 @@
     { tab: 'discord', label: 'Discord roles', needs: ['guild.roles'] },
     { tab: 'guests', label: 'Guest links', needs: ['guild.access'] },
     { tab: 'public', label: 'Public page', needs: ['guild.roles'] },
+    { tab: 'applications', label: 'Applications', needs: ['guild.teams'] },
     { tab: 'attendance', label: 'Attendance', needs: ['attendance.policy'] },
     { tab: 'loot', label: 'Loot', needs: ['loot.policy'] },
     { tab: 'battlenet', label: 'Battle.net', needs: ['guild.teams'] },
@@ -175,7 +176,7 @@
     if (!route) return false;
     if (item.key === 'settings') return route.name === 'settings';
     if (item.key === 'roadmap') return route.name === 'roadmap';
-    if (item.key === 'roster' && (route.name === 'person' || route.name === 'import')) return true;
+    if (item.key === 'roster' && (route.name === 'person' || route.name === 'import' || route.name === 'intent' || route.name === 'recruiting' || route.name === 'applications')) return true;
     if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid' || route.name === 'away')) return true;
     if (item.key === 'attendance' && (route.name === 'review' || route.name === 'backfill' || route.name === 'personatt')) return true;
     if (item.key === 'loot' && route.name === 'lootperson') return true;
@@ -301,8 +302,11 @@
     backfill: { parent: 'attendance', parentLabel: 'Attendance', label: 'Backfill from Warcraft Logs' },
     personatt: { parent: 'attendance', parentLabel: 'Attendance', label: 'Person' },
     lootperson: { parent: 'loot', parentLabel: 'Loot', label: 'Person' },
+    intent: { parent: 'roster', parentLabel: 'Roster', label: 'Intent' },
+    recruiting: { parent: 'roster', parentLabel: 'Roster', label: 'Recruiting' },
+    applications: { parent: 'roster', parentLabel: 'Roster', label: 'Applications' },
   };
-  const IMPORT_LABELS = { 'raid-helper': 'Import from Raid-Helper', wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net' };
+  const IMPORT_LABELS = { 'raid-helper': 'Import from Raid-Helper', wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net', csv: 'Import from a CSV file' };
   function breadcrumbItems(ctx) {
     const r = ctx.route || {};
     const gd = ctx.guildData;
@@ -313,6 +317,7 @@
     if (r.name === 'roadmap') return [{ label: 'Future enhancements' }];
     if (r.name === 'guest' || r.name === 'view') return [{ label: 'Guest view' }];
     if (r.name === 'public') return [{ label: 'Public page' }];
+    if (r.name === 'apply') return [{ label: 'Apply' }];
     if (ctx.signedOut) return [{ label: 'Sign in' }];
     if (r.name === 'linked') return [{ label: 'Linked accounts' }];
     if (r.name === 'characters') return [{ label: 'My characters' }];

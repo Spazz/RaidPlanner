@@ -24,6 +24,11 @@ export function zonesFor(gameVersion) {
 
 export const isRaidSize = (value) => Number.isInteger(value) && RAID_SIZES.includes(value);
 
+// The raid size a new team starts with, per game version: the size most guilds of that version raid at (TBC 25, Classic 40, WoW Forever 20).
+// Editable per team afterwards; a version nobody listed starts at 25.
+export const DEFAULT_TEAM_SIZES = { tbc: 25, classic: 40, forever: 20 };
+export const defaultTeamSize = (gameVersion) => (has(DEFAULT_TEAM_SIZES, gameVersion) ? DEFAULT_TEAM_SIZES[gameVersion] : 25);
+
 // The size of a zone in a game version, or null when the zone is not one of that version's raids (a free-text zone from a log, none at all).
 export function zoneSize(gameVersion, zone) {
   if (typeof zone !== 'string' || !has(RAID_ZONE_SIZES, gameVersion)) return null;

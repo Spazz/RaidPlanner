@@ -272,8 +272,9 @@ export async function checkNames(db, guildId, entries) {
   }
 }
 
-// plan: { people: [{ id, status, discord, nickname }], characters: [{ id, playerId, name, realm, realmKey, class, mainSpec, offSpec, isMain }],
+// plan: { people: [{ id, status, discord, nickname, joinedOn? }], characters: [{ id, playerId, name, realm, realmKey, class, mainSpec, offSpec, isMain, teamId? }],
 //         nicknameUpdates: [{ id, nickname }], source, ref }
+// joinedOn (a person's join date) and teamId (a character's team) are optional: without them the person joined today and the character is on `team`.
 export async function writeImport(ctx, guildContext, team, plan) {
   const { db } = ctx;
   const guild = guildContext.guild;
@@ -287,8 +288,8 @@ export async function writeImport(ctx, guildContext, team, plan) {
   if (plan.people.length) {
     statements.push(db.prepare(
       `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, discord_nickname, version, notes_version, created_by, created_at, updated_at)
-       SELECT json_extract(value, '$.id'), ?, json_extract(value, '$.status'), ?,
-              CASE WHEN json_extract(value, '$.status') = 'trial' THEN ? END, NULL,
+       SELECT json_extract(value, '$.id'), ?, json_extract(value, '$.status'), COALESCE(json_extract(value, '$.joinedOn'), ?),
+              CASE WHEN json_extract(value, '$.status') = 'trial' THEN COALESCE(json_extract(value, '$.joinedOn'), ?) END, NULL,
               json_extract(value, '$.discord'), json_extract(value, '$.nickname'), 1, 0, ?, ?, ?
          FROM json_each(?)`,
     ).bind(guild.id, today, today, ctx.session.user.id, now, now, JSON.stringify(plan.people)));
@@ -296,7 +297,7 @@ export async function writeImport(ctx, guildContext, team, plan) {
   if (plan.characters.length) {
     statements.push(db.prepare(
       `INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, main_spec, off_spec, is_main, created_at, updated_at)
-       SELECT json_extract(value, '$.id'), ?, json_extract(value, '$.playerId'), ?, json_extract(value, '$.name'), json_extract(value, '$.nameKey'),
+       SELECT json_extract(value, '$.id'), ?, json_extract(value, '$.playerId'), COALESCE(json_extract(value, '$.teamId'), ?), json_extract(value, '$.name'), json_extract(value, '$.nameKey'),
               json_extract(value, '$.realm'), json_extract(value, '$.realmKey'), json_extract(value, '$.class'), json_extract(value, '$.mainSpec'),
               json_extract(value, '$.offSpec'), json_extract(value, '$.isMain'), ?, ?
          FROM json_each(?)`,
@@ -313,7 +314,10 @@ export async function writeImport(ctx, guildContext, team, plan) {
     ).bind(json, now, guild.id, json));
   }
   // Raids whose logs name a new character show "Recalculate".
-  if (plan.characters.length) statements.push(markRaidsStale(db, guild.id, plan.characters.map((character) => nameKey(character.name)), null, [team.id]));
+  if (plan.characters.length) {
+    const teamIds = [team.id, ...plan.characters.map((character) => character.teamId).filter(Boolean)];
+    statements.push(markRaidsStale(db, guild.id, plan.characters.map((character) => nameKey(character.name)), null, teamIds));
+  }
   statements.push(auditStatement(ctx, {
     guildId: guild.id, actorUserId: ctx.session.user.id, action: 'roster.import', entityType: 'team', entityId: team.id,
     after: { source: plan.source, ref: plan.ref, people: plan.people.length, characters: plan.characters.length },
@@ -430,7 +434,7 @@ export async function commitRaidHelper(ctx) {
 // ---------------------------------------------------------------------------
 // Warcraft Logs preview
 
-async function loadGuildKeys(db, guildId) {
+export async function loadGuildKeys(db, guildId) {
   const result = await db.prepare(
     `SELECT c.name_key, c.realm_key, c.player_id,
             (SELECT m.name FROM characters m WHERE m.player_id = c.player_id AND m.is_main = 1) AS main_name
@@ -440,7 +444,7 @@ async function loadGuildKeys(db, guildId) {
 }
 
 // People in the viewer's scope whose stored nickname has the name as a token -> Map(nameKey -> [person]).
-async function loadNicknameIndex(db, guildContext, team) {
+export async function loadNicknameIndex(db, guildContext, team) {
   const result = await db.prepare(
     `SELECT p.id, p.discord_nickname, m.name AS main_name, m.team_id
        FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1

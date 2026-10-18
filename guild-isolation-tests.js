@@ -33,7 +33,7 @@ const ACCOUNT_ROUTES = new Set([
 // Routes that need no session. Each has a contract below (checked by name); anything else open fails until it is classified here.
 const OPEN_ROUTES = new Set([
   'GET /guild', 'GET /guild/', 'GET /auth/login', 'GET /auth/callback', 'GET /auth/providers', 'GET /auth/bnet/login', 'GET /auth/bnet/callback',
-  'POST /auth/guest', 'DELETE /auth/guest', 'GET /api/guest', 'GET /api/public/:gid', 'GET /cal/:cal',
+  'POST /auth/guest', 'DELETE /auth/guest', 'GET /api/guest', 'GET /api/public/:gid', 'GET /cal/:cal', 'GET /api/apply/:gid', 'POST /api/apply/:gid',
 ]);
 // Account routes that read and are safe to call for the "never lists the other guild" check.
 const ACCOUNT_READS = ['GET /auth/me', 'GET /auth/bnet', 'GET /api/roadmap/ideas'];
@@ -55,6 +55,8 @@ const VALID_BODIES = {
   'POST /api/guild/:gid/roster/import/wcl/commit': (ids) => ({ teamId: ids.tid, report: { code: REF, flavour: 'classic' }, decisions: [] }),
   'POST /api/guild/:gid/roster/import/bnet/preview': (ids) => ({ teamId: ids.tid }),
   'POST /api/guild/:gid/roster/import/bnet/commit': (ids) => ({ teamId: ids.tid, defaultStatus: 'trial', members: [] }),
+  'POST /api/guild/:gid/roster/import/csv/preview': (ids) => ({ teamId: ids.tid, text: 'name,class\nSomebody,Warrior\n' }),
+  'POST /api/guild/:gid/roster/import/csv/commit': (ids) => ({ teamId: ids.tid, rows: [] }),
   'PATCH /api/guild/:gid/raids/:rid': () => ({ size: 25 }),
   'PUT /api/guild/:gid/raids/:rid/event': () => ({ source: EVENT }),
   'PUT /api/guild/:gid/raids/:rid/plan': () => ({ label: 'A plan', players: [{ name: 'Someone', group: 1 }] }),
@@ -110,6 +112,11 @@ async function seedGuild(w, { label, serverId, gm, member, publicOn }) {
   const cal = await need(await w.call(jars.gm, 'POST', `${path}/calendar`, { teamId: tid }), 'calendar link');
   const calFile = new URL(cal.url).pathname.replace('/cal/', '');
   if (publicOn) await need(await w.call(jars.gm, 'PUT', `${path}/public`, { enabled: true, sections: ['roster', 'raids'] }), 'public page');
+  // PM wave 3: an intent round with a pick, and an application in the inbox.
+  const round = await need(await w.call(jars.gm, 'POST', `${path}/teams/${tid}/intent`, { title: `${label} intent title` }), 'intent round');
+  const iid = round.round.id;
+  await need(await w.call(jars.gm, 'PUT', `${path}/intent/${iid}/picks/${pid}`, { kind: 'main', class: 'WARRIOR', spec: 'Arms', note: `${label} intent note` }), 'intent pick');
+  const apid = `am_${(label + 'wwwwwwwwwwwwwwwwwwwwww').slice(0, 22)}`;
   const code = (label + 'AbCdEfGhIjKlMnOpQr').slice(0, 16).replace(/[^A-Za-z0-9]/g, 'x');
   const aid = `lo_${(label + 'xxxxxxxxxxxxxxxxxxxxxx').slice(0, 22)}`;
   const clid = `cl_${(label + 'yyyyyyyyyyyyyyyyyyyyyy').slice(0, 22)}`;
@@ -121,13 +128,17 @@ async function seedGuild(w, { label, serverId, gm, member, publicOn }) {
     INSERT INTO character_claims (id, guild_id, user_id, name, name_key, realm, realm_key, class, status, created_at)
       VALUES ('${clid}', '${gid}', '${uid}', '${label}claimant', '${label.toLowerCase()}claimant', 'Nightslayer', 'nightslayer', 'MAGE', 'pending', 1);
     INSERT INTO away_notices (id, guild_id, player_id, kind, starts_on, ends_on, reason, created_at, updated_at)
-      VALUES ('${nid}', '${gid}', '${pid}', 'away', '2026-12-01', '2026-12-02', '${label} away reason', 1, 1);`);
+      VALUES ('${nid}', '${gid}', '${pid}', 'away', '2026-12-01', '2026-12-02', '${label} away reason', 1, 1);
+    INSERT INTO applications (id, guild_id, team_id, status, char_name, name_key, realm, realm_key, class, spec, contact, answers, created_at, updated_at)
+      VALUES ('${apid}', '${gid}', '${tid}', 'new', '${label}hopeful', '${label.toLowerCase()}hopeful', 'Nightslayer', 'nightslayer', 'MAGE', 'Fire', '${label} contact', '[{"label":"${label} question","type":"short","answer":"${label} answer"}]', 1, 1);`);
+  if (publicOn) await need(await w.call(jars.gm, 'PUT', `${path}/applications/settings`, { enabled: true, questions: [{ label: `${label} open question`, type: 'short', required: false }] }), 'applications on');
   return {
-    label, serverId, gid, jars, ids: { gid, tid, uid, pid, cid, rid, rolid, lid, code, aid, clid, nid, cal: calFile },
+    label, serverId, gid, jars, ids: { gid, tid, uid, pid, cid, rid, rolid, lid, code, aid, clid, nid, iid, apid, cal: calFile },
     guestToken: link.created.token, calFile,
     // Words that only this guild's data contains. A response to anyone else must not carry one.
     words: [`Guild ${label}`, `${label}person`, `${label}title`, `${label}past`, `${label} council`, `${label} link`, `${label} officer note`, `${label} loot note`,
-      `${label} Trinket`, `${label}claimant`, `${label} away reason`, `${label}uploader`, code, gid, tid, pid, cid, rid, rolid, lid, aid, clid, nid],
+      `${label} Trinket`, `${label}claimant`, `${label} away reason`, `${label}uploader`, `${label} intent title`, `${label} intent note`, `${label}hopeful`, `${label} contact`,
+      `${label} question`, `${label} answer`, `${label} open question`, code, gid, tid, pid, cid, rid, rolid, lid, aid, clid, nid, iid, apid],
   };
 }
 
@@ -267,7 +278,7 @@ async function ownControl({ w, alpha }, routes) {
 function summarise(problems) {
   const seen = new Map();
   for (const text of problems) {
-    const key = text.replace(/\b(?:g|t|r|p|c|u|cr|gl|an|cl|lo)_[\w-]{22}\b/g, '<id>').replace(/^(alpha|beta) (gm|member)/, '$2').slice(0, 170);
+    const key = text.replace(/\b(?:g|t|r|p|c|u|cr|gl|an|cl|lo|ir|am)_[\w-]{22}\b/g, '<id>').replace(/^(alpha|beta) (gm|member)/, '$2').slice(0, 170);
     seen.set(key, (seen.get(key) || 0) + 1);
   }
   console.log([...seen].map(([key, n]) => `${n}x ${key}`).join('\n'));
@@ -356,6 +367,66 @@ check('the open routes show a visitor only the one guild their link, address or 
   assert.equal((await w.call(newJar(), 'GET', `/cal/${'A'.repeat(43)}.ics`)).status, 404, 'a token nobody made');
   assert.equal((await w.call(alpha.jars.gm, 'DELETE', `/api/guild/${alpha.gid}/calendar`, { teamId: alpha.ids.tid })).status, 200);
   assert.equal((await w.call(newJar(), 'GET', `/cal/${alpha.calFile}`)).status, 404, 'a turned-off feed is gone');
+});
+
+check('the apply routes (open): only a guild that takes applications answers, the form needs its cookie, an application lands in the guild it names - and its signed-in applicant is kept', async () => {
+  const f = await fixture();
+  const { w, alpha, beta } = f;
+  const only = (text, theirs, where) => {
+    for (const word of theirs.words) assert(!text.includes(word), `${where} leaked ${word}`);
+  };
+  // The form: Alpha takes applications (and says so to anybody); Beta does not, and looks like a guild that is not there.
+  const jar = newJar();
+  const form = await w.call(jar, 'GET', `/api/apply/${alpha.gid}`);
+  assert.equal(form.status, 200, form.text);
+  assert.equal(form.json.guild.name, 'Guild Alpha');
+  assert.deepEqual(form.json.questions.map((q) => q.label), ['Alpha open question']);
+  assert.equal(form.json.signedInAs, null);
+  only(form.text, beta, 'apply form of alpha');
+  assert(!/officer note|Alpha contact|Alphahopeful/.test(form.text), 'the form carries nothing of the inbox');
+  assert(Object.keys(jar).includes('__Host-rs_apply'), 'the form hands out its cookie');
+  const off = await w.call(newJar(), 'GET', `/api/apply/${beta.gid}`);
+  const gone = await w.call(newJar(), 'GET', '/api/apply/g_AAAAAAAAAAAAAAAAAAAAAA');
+  assert.deepEqual([off.status, off.json.error], [gone.status, gone.json.error], 'a guild that takes no applications looks like a guild that is not there');
+  assert.equal(off.status, 404);
+  assert.equal((await w.call(newJar(), 'GET', '/api/apply/not-an-id')).status, 404);
+
+  const body = (extra = {}) => ({ name: 'Alphaneo', class: 'MAGE', spec: 'Frost', teamId: alpha.ids.tid, answers: {}, ...extra });
+  const rowsOf = (gid) => w.rows('SELECT char_name, user_id, team_id, status FROM applications WHERE guild_id = ? ORDER BY created_at, id', gid);
+  const before = await rowsOf(alpha.gid);
+  // Without the cookie (a script that keeps none) nothing is stored; into the guild that takes none it is the same 404.
+  const bare = await w.call(newJar(), 'POST', `/api/apply/${alpha.gid}`, body());
+  assert.deepEqual([bare.status, bare.json.error], [400, 'cookies_required']);
+  assert.equal((await w.call(jar, 'POST', `/api/apply/${beta.gid}`, body({ teamId: beta.ids.tid }))).status, 404);
+  // The hidden field: said to work, stored nowhere.
+  const trap = await w.call(jar, 'POST', `/api/apply/${alpha.gid}`, body({ website: 'http://spam.example' }));
+  assert.equal(trap.status, 201);
+  assert.deepEqual(await rowsOf(alpha.gid), before, 'the honeypot stores nothing');
+  // A team of the other guild is not a team here.
+  const wrongTeam = await w.call(jar, 'POST', `/api/apply/${alpha.gid}`, body({ teamId: beta.ids.tid }));
+  assert.equal(wrongTeam.status, 400);
+  assert.equal(wrongTeam.json.field, 'teamId');
+  // A real application lands in Alpha, signed out ...
+  const sent = await w.call(jar, 'POST', `/api/apply/${alpha.gid}`, body());
+  assert.equal(sent.status, 201, sent.text);
+  const after = await rowsOf(alpha.gid);
+  assert.equal(after.length, before.length + 1);
+  assert.deepEqual(after[after.length - 1], { char_name: 'Alphaneo', user_id: null, team_id: alpha.ids.tid, status: 'new' });
+  assert.deepEqual(await rowsOf(beta.gid), await rowsOf(beta.gid), 'Beta is untouched');
+  assert.equal((await w.rows("SELECT COUNT(*) AS n FROM applications WHERE guild_id = ? AND char_name = 'Alphaneo'", beta.gid))[0].n, 0);
+  // ... and a signed-in member's account is kept with theirs.
+  const memberJar = alpha.jars.member;
+  assert.equal((await w.call(memberJar, 'GET', `/api/apply/${alpha.gid}`)).json.signedInAs, 'Alphamember');
+  const mine = await w.call(memberJar, 'POST', `/api/apply/${alpha.gid}`, body({ name: 'Alphaalt', class: 'ROGUE', spec: 'Combat' }));
+  assert.equal(mine.status, 201, mine.text);
+  assert.equal((await w.rows("SELECT user_id FROM applications WHERE char_name = 'Alphaalt'"))[0].user_id, alpha.ids.uid);
+  // This browser may send three an hour (it sent one above): the fourth waits.
+  w.advance(1000);
+  assert.equal((await w.call(jar, 'POST', `/api/apply/${alpha.gid}`, body({ name: 'Alphathree' }))).status, 201);
+  assert.equal((await w.call(jar, 'POST', `/api/apply/${alpha.gid}`, body({ name: 'Alphafour' }))).status, 201);
+  const fourth = await w.call(jar, 'POST', `/api/apply/${alpha.gid}`, body({ name: 'Alphafive' }));
+  assert.equal(fourth.status, 429, fourth.text);
+  assert(fourth.json.retryAfter > 0);
 });
 
 check('the walker catches a leaky route: one that answers the other guild\'s data to any member', async () => {

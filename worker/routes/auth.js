@@ -430,6 +430,10 @@ export async function deleteMe(ctx) {
   statements.push(db.prepare("UPDATE raid_signups SET note = NULL WHERE source = 'raidsmith' AND updated_by = ?").bind(userId));
   // The reasons the account wrote on away notices go the same way; the notices stay with the person (they still excuse the raids they covered).
   statements.push(db.prepare('UPDATE away_notices SET reason = NULL WHERE created_by = ?').bind(userId));
+  // The applications this account sent go with it (the inbox row is the applicant's own data; a person an officer made from one stays on the roster),
+  // and so do the notes it wrote on intent picks (the picks stay with the person).
+  statements.push(db.prepare('DELETE FROM applications WHERE user_id = ?').bind(userId));
+  statements.push(db.prepare('UPDATE intent_picks SET note = NULL WHERE updated_by = ?').bind(userId));
   // The roster people linked to this account stay (officers own the roster); the link goes. The version moves so an officer's open page sees it.
   statements.push(db.prepare(
     'UPDATE players SET user_id = NULL, version = version + 1, updated_at = ? WHERE user_id = ?',

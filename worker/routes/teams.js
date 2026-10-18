@@ -4,14 +4,13 @@ import { newId } from '../ids.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
 import { LIMITS, TEAM_LIMIT_MESSAGE } from '../limits.js';
-import { RAID_SIZES, isRaidSize } from '../raid-zones.js';
+import { RAID_SIZES, defaultTeamSize, isRaidSize } from '../raid-zones.js';
 
 const MAX_TEAM_NAME = 40;
 export const MAX_ACTIVE_TEAMS = LIMITS.teams;
 const TEAM_CAP_MESSAGE = TEAM_LIMIT_MESSAGE;
 const ACTIVE_TEAM_COUNT = 'SELECT COUNT(*) AS n FROM teams WHERE guild_id = ? AND archived = 0';
 const TEAM_NAME_TAKEN = 'Another active team in this guild already has that name.';
-const DEFAULT_TEAM_SIZE = 25;
 const SIZE_MESSAGE = `size is ${RAID_SIZES.slice(0, -1).join(', ')} or ${RAID_SIZES[RAID_SIZES.length - 1]}.`;
 
 // A team's raid size (10 / 20 / 25 / 40). teams.size has no CHECK (a column cannot get one without rebuilding the table), so the Worker holds the rule.
@@ -53,7 +52,7 @@ export async function createTeam(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   requireAction(guildContext, 'guild.teams');
   const name = cleanText(ctx.body.name, 'name', { max: MAX_TEAM_NAME });
-  const size = ctx.body.size === undefined ? DEFAULT_TEAM_SIZE : readSize(ctx.body.size);
+  const size = ctx.body.size === undefined ? defaultTeamSize(guildContext.guild.game_version) : readSize(ctx.body.size);
   const id = newId('t', ctx.randomBytes);
   const guildId = guildContext.guild.id;
   let results;

@@ -351,6 +351,22 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('claim.withdraw', 'claim', 'cl_gone'), 'Withdrew a character claim'],
     [row('claim.approve', 'claim', 'cl_1'), 'Approved the claim for Mirabel'],
     [row('claim.reject', 'claim', 'cl_gone'), 'Rejected the claim for a character'],
+    // PM wave 3: the intent board, recruitment needs and the applications inbox.
+    [row('intent.open', 'intent', 'ir_1', null, { teamId: 't_a' }), 'Opened an intent round for Alpha'],
+    [row('intent.close', 'intent', 'ir_1', null, { teamId: 't_a' }), 'Closed the intent round of Alpha'],
+    [row('intent.pick', 'intent', 'ir_1', null, { personId: 'p_kael', teamId: 't_a', kind: 'main', class: 'WARRIOR', spec: 'Protection', role: 'tank' }), 'Kaelith picked a main for the intent round of Alpha: Warrior Protection'],
+    [row('intent.pick', 'intent', 'ir_1', null, { personId: 'p_kael', teamId: 't_a', kind: 'alt', class: 'MAGE', spec: 'Fire' }), 'Kaelith picked an alt for the intent round of Alpha: Mage Fire'],
+    [row('intent.unpick', 'intent', 'ir_1', null, { personId: 'p_kael', teamId: 't_a', kind: 'main' }), 'Removed the main pick of Kaelith from the intent round of Alpha'],
+    [row('recruiting.targets', 'team', 't_a', { custom: false }, { custom: true, teamId: 't_a' }), 'Set the recruiting targets of Alpha'],
+    [row('recruiting.targets', 'team', 't_a', { custom: true }, { custom: false, teamId: 't_a' }), 'Reset the recruiting targets of Alpha'],
+    [row('apply.settings', 'guild', 'g_1', { enabled: false, questions: 0 }, { enabled: true, questions: 2 }), 'Turned applications on'],
+    [row('apply.settings', 'guild', 'g_1', { enabled: true, questions: 2 }, { enabled: true, questions: 3 }), 'Changed the application questions'],
+    [row('apply.settings', 'guild', 'g_1', { enabled: true, questions: 2 }, { enabled: false, questions: 2 }), 'Turned applications off'],
+    [row('application.submit', 'application', 'am_1', null, { teamId: 't_b', signedIn: false }), 'Received an application for Bravo'],
+    [row('application.update', 'application', 'am_1', null, { teamId: 't_b', status: 'declined', changed: ['status'] }), 'Marked an application for Bravo as Declined'],
+    [row('application.update', 'application', 'am_1', null, { teamId: 't_b', status: 'new', changed: ['notes'] }), 'Edited the notes of an application for Bravo'],
+    [row('application.accept', 'application', 'am_1', null, { personId: 'p_thoren', teamId: 't_a', linked: true }), 'Accepted an application: Thoren joined Alpha on trial'],
+    [row('application.delete', 'application', 'am_1', { teamId: 't_b', status: 'declined' }), 'Deleted an application for Bravo'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {

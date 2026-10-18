@@ -70,8 +70,6 @@
       '</section>';
   }
 
-  const DEFAULT_SIZE = 25;
-
   // The Raid size select: 10 / 20 / 25 / 40. A team whose stored size is none of those (nothing stopped one before) must pick one before saving.
   function sizeFieldHtml(selected) {
     const known = G.ui.RAID_SIZES.indexOf(selected) >= 0;
@@ -83,7 +81,7 @@
   }
 
   // mode: 'add' (name and size), 'rename' (name), 'size' (size).
-  function teamDialogHtml(mode, team, gid) {
+  function teamDialogHtml(mode, team, gid, gameVersion) {
     const rename = mode === 'rename';
     const size = mode === 'size';
     const add = !rename && !size;
@@ -92,7 +90,7 @@
       (size ? '' : '<div class="gs-field"><label class="gs-label" for="dlg-team-name">Team name</label>' +
         '<input class="gs-input" type="text" id="dlg-team-name" name="name" autocomplete="off" required value="' + (rename ? esc(team.name) : '') + '">' +
         '<p class="gs-field-error" id="dlg-team-name-error" role="alert" hidden></p></div>') +
-      (rename ? '' : sizeFieldHtml(add ? DEFAULT_SIZE : team.size)) +
+      (rename ? '' : sizeFieldHtml(add ? G.ui.defaultTeamSize(gameVersion) : team.size)) +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">' + (add ? 'Add team' : 'Save') + '</button></div></form>';
   }
@@ -109,7 +107,7 @@
   function openTeamDialog(mode, team) {
     const gd = currentGuildData();
     if (!gd) return;
-    G.ui.openDialog(teamDialogHtml(mode, team, gd.guild.id), { labelledBy: 'dlg-title' });
+    G.ui.openDialog(teamDialogHtml(mode, team, gd.guild.id, gd.guild.gameVersion), { labelledBy: 'dlg-title' });
     const input = document.getElementById(mode === 'size' ? 'dlg-team-size' : 'dlg-team-name');
     if (input) { input.focus(); if (input.select) input.select(); }
   }

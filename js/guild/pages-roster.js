@@ -33,7 +33,9 @@
       '<div class="gs-menu-sep" role="separator"></div>' +
       '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'wcl')) + '"><span>From a Warcraft Logs report</span></a>' +
       '<div class="gs-menu-sep" role="separator"></div>' +
-      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'bnet')) + '"><span>From the Battle.net guild roster</span></a></div></div>';
+      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'bnet')) + '"><span>From the Battle.net guild roster</span></a>' +
+      '<div class="gs-menu-sep" role="separator"></div>' +
+      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'csv')) + '"><span>From a CSV file</span></a></div></div>';
   }
 
   function headHtml(gd, data) {
@@ -145,7 +147,7 @@
     const view = Object.assign({}, G.rosterSort.DEFAULT_FILTER, { sort: G.rosterSort.DEFAULT_SORT }, opts.view || {});
     const filter = { role: view.role, status: view.status, query: view.query };
     const archived = !!(data.team && data.team.archived);
-    return '<div class="gs-page">' + headHtml(gd, data) +
+    return '<div class="gs-page">' + headHtml(gd, data) + G.pages.rosterTabs.html(gd, 'roster') +
       (archived ? '<div class="gs-notice" role="status"><span>Archived team. Its characters stay on this roster, but no one can be added to it.</span></div>' : '') +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span><button type="button" class="gs-linkbtn" data-action="dismiss-roster-notice" data-key="dismiss-roster-notice">Dismiss</button></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +

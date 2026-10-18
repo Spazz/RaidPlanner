@@ -157,8 +157,8 @@ function withState(fn) {
     assert.deepEqual(tabs({ 'audit.view': 'guild' }), ['activity']);
     assert.equal(G.shell.settingsTabs({ 'audit.view': 'guild' })[0].label, 'Activity');
     assert.equal(G.shell.canSeeSettings({ 'audit.view': 'guild' }), true);
-    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'audit.view': 'guild' }), ['teams', 'battlenet', 'activity']);
-    assert.deepEqual(tabs(OFFICER_CAN), ['teams', 'schedule', 'attendance', 'battlenet', 'activity']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'audit.view': 'guild' }), ['teams', 'applications', 'battlenet', 'activity']);
+    assert.deepEqual(tabs(OFFICER_CAN), ['teams', 'schedule', 'applications', 'attendance', 'battlenet', 'activity']);
     assert(!tabs({ 'guild.teams': 'guild', 'attendance.policy': 'guild' }).includes('activity'));
     assert.equal(G.shell.canSeeSettings({ 'audit.edit': 'guild' }), false);
     const nav = G.shell.navItems('g1', { 'audit.view': 'guild' }, 0, '').find(i => i.key === 'settings');

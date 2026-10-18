@@ -213,17 +213,17 @@ async function openList(s, G, teamId) {
 check('sizes: Team settings sets the team size (PATCH); the Raids list counts against the zone\'s size (Hyjal 20, Barrow Deeps 10) or, with no zone, the team\'s', async () => {
   const s = await scenario({ version: 'forever' });
   const { A, E } = s;
-  // Team settings: the team starts at 25-man; the Size dialog is built from the real team, its submit is one PATCH, the list then says 40-man.
+  // Team settings: a WoW Forever team starts at 20-man (the version's usual size); the Size dialog is built from the real team, its submit is one PATCH, the list then says 40-man.
   pageState(s, A);
   let text = stripTags(A.pages.teams.teamsHtml({ guildData: A.guildData }));
-  assert(/25-man/.test(text), text);
+  assert(/20-man/.test(text), text);
   A.handlers.click['team-size'](el({ 'data-team': s.teamId }));
-  assert(/Raid size of /.test(A.dialogs[0]) && /<option value="25" selected>/.test(A.dialogs[0]), A.dialogs[0].slice(0, 300));
+  assert(/Raid size of /.test(A.dialogs[0]) && /<option value="20" selected>/.test(A.dialogs[0]), A.dialogs[0].slice(0, 300));
   await A.handlers.submit['team-form'](el({ 'data-gid': s.gid, 'data-mode': 'size', 'data-team': s.teamId }, { elements: { size: ctrl('40') } }));
   await settle();
   assert.equal((await s.rows('SELECT size FROM teams WHERE id = ?', s.teamId))[0].size, 40, 'stored');
   text = stripTags(A.pages.teams.teamsHtml({ guildData: A.guildData }));
-  assert(/40-man/.test(text) && !/25-man/.test(text), text);
+  assert(/40-man/.test(text) && !/20-man/.test(text), text);
 
   // Three upcoming raids: Hyjal Summit (zone size 20), Barrow Deeps (10), and one with no zone (the team's 40). Erin signs up to each.
   const hyjal = await s.raid({ raidOn: '2026-10-24', startTime: '20:00', zone: 'Hyjal Summit' });
