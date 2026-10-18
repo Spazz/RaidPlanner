@@ -907,6 +907,722 @@ check('audit route: the read is four D1 calls (session, guild context, rows + ac
   assert.equal(await counted(s.w, () => s.call('alice', 'GET', '/audit?format=csv')), 4);
 });
 
+// ===========================================================================
+// ROUTE: the watch list on GET /attendance/team, and policy.watch through GET / PUT /attendance/policy
+
+// Alpha: sixteen Tuesdays (2026-09-29 .. 2027-01-12, indexes 0..15); today is Saturday 2027-01-16, so the 8-week window starts 2026-11-24
+// (index 8) and the previous one is 2026-09-29 .. 2026-11-23 (indexes 0..7). Thoren was perfect before and missed six of the last eight;
+// Kaelith is steady; Dorrin missed one with notice; Mirabel is a reserve who misses everything.
+const TUESDAYS = Array.from({ length: 16 }, (_, i) => new Date(Date.UTC(2026, 8, 29) + i * 7 * DAY).toISOString().slice(0, 10));
+async function watchWorld() {
+  const s = await scenario();
+  for (const [name, status] of [['Thoren', 'raider'], ['Kaelith', 'raider'], ['Mirabel', 'reserve'], ['Dorrin', 'raider']]) await addPerson(s, 'bob', s.A, name, { status, joinedOn: '2026-09-01' });
+  s.raids = [];
+  for (const date of TUESDAYS) s.raids.push(await addRaid(s, s.A, date));
+  s.raids.forEach((raidId, i) => {
+    const thorenPresent = i < 10;
+    attend(s, raidId, s.A, s.p.Thoren, thorenPresent ? 'present' : 'missed', thorenPresent ? 1 : 0);
+    attend(s, raidId, s.A, s.p.Kaelith, 'present', 1);
+    attend(s, raidId, s.A, s.p.Mirabel, 'missed', 0);
+    attend(s, raidId, s.A, s.p.Dorrin, i === 12 ? 'missed_notice' : 'present', i === 12 ? 0 : 1);
+  });
+  s.team = (who = 'bob', query = '') => s.call(who, 'GET', `/attendance/team?team=${s.A}${query}`);
+  s.putPolicy = async (policy, teamId = null) => {
+    const view = (await s.call('alice', 'GET', '/attendance/policy')).json;
+    const expectedVersion = teamId ? (view.versions.teams[teamId] || 0) : view.versions.guild;
+    return s.call('alice', 'PUT', '/attendance/policy', { policy, expectedVersion, ...(teamId ? { teamId } : {}) });
+  };
+  return s;
+}
+
+check('watch list (team attendance): who is flagged and why, with the previous window and the missed / missed-with-notice counts', async () => {
+  const s = await watchWorld();
+  const r = await s.team('bob');
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const watch = r.json.watch;
+  assert.deepEqual([watch.below, watch.dropBy, watch.window, watch.previousFrom], [0.75, 0.15, 8, '2026-09-29']);
+  assert.deepEqual(watch.entries.map((e) => [e.name, e.class, e.status]), [['Thoren', 'WARRIOR', 'raider']], 'only Thoren: Mirabel is a reserve, Dorrin (87.5, down 12.5) and Kaelith are fine');
+  const thoren = watch.entries[0];
+  assert.equal(thoren.playerId, s.p.Thoren);
+  assert.deepEqual([thoren.pct, thoren.previousPct, thoren.drop, thoren.counted, thoren.missed, thoren.missedNotice], [25, 100, 75, 8, 6, 0]);
+  assert.deepEqual(thoren.reasons, ['below', 'drop']);
+  assert.deepEqual(Object.keys(thoren).sort(), ['class', 'counted', 'drop', 'missed', 'missedNotice', 'name', 'pct', 'playerId', 'previousPct', 'reasons', 'status']);
+  assert.deepEqual(r.json.people.map((p) => p.name).sort(), ['Dorrin', 'Kaelith', 'Mirabel', 'Thoren'], 'the page itself is unchanged');
+  assert(Array.isArray(r.json.weeks) && r.json.policy.switchWeeks.length);
+  assert.equal(await counted(s.w, () => s.team('bob')), 4, 'one batch more than the context; the watch list costs no extra call');
+});
+
+check('watch list (team attendance): only for those who may review the team; a member sees the page without it', async () => {
+  const s = await watchWorld();
+  assert.notEqual((await s.team('carol')).json.watch, null, 'a Team Lead of the team');
+  assert.notEqual((await s.team('alice')).json.watch, null);
+  assert.equal((await s.team('dave')).status, 403, 'a Team Lead of another team cannot open the page at all');
+  // Erin is the person behind Dorrin: she may view her team's attendance but not review it.
+  s.w.exec(`UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.Dorrin}'`);
+  const erin = await s.team('erin');
+  assert.equal(erin.status, 200);
+  assert.equal(erin.json.watch, null);
+  assert(erin.json.people.length > 0);
+  assert.equal((await s.team('gina')).status, 403);
+});
+
+check('watch list (team attendance): follows the page window; "all" has no previous window; thresholds can be turned off, one or both; a team override wins', async () => {
+  const s = await watchWorld();
+  const twelve = await s.team('bob', '&window=12');
+  assert.deepEqual([twelve.json.watch.window, twelve.json.watch.previousFrom], [12, '2026-08-04']);
+  const all = await s.team('bob', '&window=all');
+  assert.deepEqual([all.json.watch.window, all.json.watch.previousFrom], ['all', null]);
+  const thoren = all.json.watch.entries.find((e) => e.name === 'Thoren');
+  assert.deepEqual([thoren.pct, thoren.previousPct, thoren.drop, thoren.reasons], [62.5, null, null, ['below']]);
+
+  const view = (await s.call('alice', 'GET', '/attendance/policy')).json;
+  assert.deepEqual(view.defaults.watch, { below: 0.75, dropBy: 0.15 });
+  assert.deepEqual(view.resolved[s.A].watch, { below: 0.75, dropBy: 0.15 });
+
+  let saved = await s.putPolicy({ watch: { below: 0.5, dropBy: null } });
+  assert.equal(saved.status, 200, JSON.stringify(saved.json));
+  assert.deepEqual(saved.json.guild.watch, { below: 0.5, dropBy: null });
+  assert.deepEqual(saved.json.resolved[s.A].watch, { below: 0.5, dropBy: null });
+  let r = await s.team('bob');
+  assert.deepEqual([r.json.watch.below, r.json.watch.dropBy, r.json.watch.previousFrom], [0.5, null, null]);
+  assert.deepEqual(r.json.watch.entries.map((e) => [e.name, e.pct, e.previousPct, e.drop, e.reasons]), [['Thoren', 25, null, null, ['below']]]);
+
+  saved = await s.putPolicy({ watch: { below: null, dropBy: 0.1 } });
+  assert.equal(saved.status, 200);
+  r = await s.team('bob');
+  assert.deepEqual(r.json.watch.entries.map((e) => [e.name, e.reasons]), [['Thoren', ['drop']], ['Dorrin', ['drop']]], 'Dorrin fell 12.5 points, over the 10 point line');
+
+  saved = await s.putPolicy({ watch: { below: null, dropBy: null } });
+  assert.equal(saved.status, 200);
+  r = await s.team('bob');
+  assert.equal(r.json.watch, null, 'both off: no card');
+
+  // A team override sits on the guild's: Alpha asks for 90%, the guild itself still has both off.
+  saved = await s.putPolicy({ watch: { below: 0.9 } }, s.A);
+  assert.equal(saved.status, 200, JSON.stringify(saved.json));
+  assert.deepEqual(saved.json.resolved[s.A].watch, { below: 0.9, dropBy: null });
+  assert.deepEqual(saved.json.resolved[s.B].watch, { below: null, dropBy: null });
+  r = await s.team('carol');
+  assert.deepEqual(r.json.watch.entries.map((e) => [e.name, e.pct]), [['Thoren', 25], ['Dorrin', 87.5]]);
+});
+
+check('policy.watch through PUT /attendance/policy: bad values are a 400 naming watch.below / watch.dropBy', async () => {
+  const s = await watchWorld();
+  const bad = async (policy, field) => {
+    const r = await s.putPolicy(policy);
+    assert.equal(r.status, 400, JSON.stringify(policy));
+    assert.equal(r.json.error, 'policy_invalid');
+    assert.equal(r.json.field, field, JSON.stringify(policy));
+  };
+  await bad({ watch: { below: 1.5 } }, 'watch.below');
+  await bad({ watch: { below: -0.2 } }, 'watch.below');
+  await bad({ watch: { below: 0.7555 } }, 'watch.below');
+  await bad({ watch: { dropBy: '15' } }, 'watch.dropBy');
+  await bad({ watch: { dropBy: 15 } }, 'watch.dropBy');
+  await bad({ watch: { stuff: 1 } }, 'watch.stuff');
+  await bad({ watch: 0.5 }, 'watch');
+  // Only an officer-level right saves it, as for every policy key.
+  const view = (await s.call('alice', 'GET', '/attendance/policy')).json;
+  assert.equal((await s.call('carol', 'PUT', '/attendance/policy', { policy: { watch: { below: 0.5 } }, expectedVersion: view.versions.guild })).status, 403);
+  assert.equal((await s.call('bob', 'PUT', '/attendance/policy', { policy: { watch: { below: 0.5 } }, expectedVersion: view.versions.guild })).status, 200);
+  assert.equal(await s.w.count('audit_log', "action = 'policy.update'"), 1);
+});
+
+// ===========================================================================
+// ROUTE: GET /roster/:pid/trial (the trial review card)
+
+// Veyla: a trial who joined Tuesday 2027-01-05 and whose trial ends 2027-01-19. Raids on Alpha: 12-29 (before the trial), 01-05, 01-12, 01-14, 01-15.
+async function trialWorld() {
+  const s = await scenario();
+  await addPerson(s, 'bob', s.A, 'Veyla', { class: 'MAGE', mainSpec: 'Fire', status: 'trial', joinedOn: '2027-01-05', trialEnd: '2027-01-19' });
+  await addPerson(s, 'bob', s.A, 'Stranger', { class: 'ROGUE', mainSpec: 'Combat' });
+  s.raid = {};
+  for (const date of ['2026-12-29', '2027-01-05', '2027-01-12', '2027-01-14', '2027-01-15']) s.raid[date] = await addRaid(s, s.A, date);
+  attend(s, s.raid['2026-12-29'], s.A, s.p.Veyla, 'missed', 0);        // before the trial: left out
+  attend(s, s.raid['2027-01-05'], s.A, s.p.Veyla, 'present', 1);
+  attend(s, s.raid['2027-01-12'], s.A, s.p.Veyla, 'late', 0.5);
+  attend(s, s.raid['2027-01-14'], s.A, s.p.Veyla, 'missed_notice', 0);
+  attend(s, s.raid['2027-01-15'], s.A, s.p.Veyla, 'fill_in', 1);
+  const realmKey = (await s.w.rows('SELECT realm_key FROM characters WHERE player_id = ?', s.p.Veyla))[0].realm_key;
+  let n = 0;
+  s.award = (raidDate, winner, tag, itemName, extra = {}) => {
+    n++;
+    const key = winner === null ? null : winner.toLowerCase();
+    s.w.db.prepare(
+      `INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, item_name, awarded_at, winner_name, winner_name_key, winner_realm_key, tag, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(`lo_${String(n).padStart(22, 'x')}`, s.guildId, s.raid[raidDate], s.A, `check${String(n).padStart(6, '0')}`, 30000 + n, itemName, NOW, winner, key, realmKey, tag, NOW, NOW).run();
+  };
+  s.award('2026-12-29', 'Veyla', 'MS', 'Before The Trial');
+  s.award('2027-01-12', 'Veyla', 'MS', 'Robe of the Elder Scribes');
+  s.award('2027-01-15', 'Veyla', 'OS', 'Spellfire Belt');
+  s.award('2027-01-15', 'Veyla', 'BANK', 'Banked Thing');
+  s.award('2027-01-12', 'Stranger', 'MS', 'Someone Elses');
+  s.award('2027-01-12', null, 'DE', 'Disenchanted Thing');
+  s.trial = (who = 'bob', pid = s.p.Veyla) => s.call(who, 'GET', `/roster/${pid}/trial`);
+  return s;
+}
+
+check('trial review: attendance since the trial began, loot received, fill-ins, the dates and the flag', async () => {
+  const s = await trialWorld();
+  const r = await s.trial();
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.today, TODAY);
+  assert.equal(r.json.since, '2027-01-05');
+  assert.deepEqual(r.json.person, {
+    id: s.p.Veyla, name: 'Veyla', status: 'trial', joinedOn: '2027-01-05', trialStart: '2027-01-05', trialEnd: '2027-01-19', trialFlag: { kind: 'ends', days: 3 }, version: 1,
+  });
+  assert.deepEqual(r.json.attendance, {
+    team: { id: s.A, name: 'Alpha' }, raids: 4, pct: 62.5, present: 3, missed: 0, missedNotice: 1, late: 1, leftEarly: 0, fillIns: 1, pending: 0,
+  });
+  assert.deepEqual(r.json.loot.items.map((i) => [i.itemName, i.tag, i.raidOn]), [
+    ['Spellfire Belt', 'OS', '2027-01-15'], ['Banked Thing', 'BANK', '2027-01-15'], ['Robe of the Elder Scribes', 'MS', '2027-01-12'],
+  ], 'newest raid first; the award before the trial, someone else\'s and the disenchant are not hers');
+  assert.deepEqual([r.json.loot.total, r.json.loot.ms, r.json.loot.os, r.json.loot.de, r.json.loot.bank], [3, 1, 1, 0, 1]);
+  assert.deepEqual(r.json.loot.items[0], { itemId: r.json.loot.items[0].itemId, itemName: 'Spellfire Belt', tag: 'OS', raidOn: '2027-01-15' });
+  assert.equal(r.json.notes.excerpt, '');
+  assert.equal(r.json.notes.truncated, false);
+});
+
+check('trial review: who may open it (roster.edit on the home team), a missing person, and the since-date fallbacks', async () => {
+  const s = await trialWorld();
+  for (const who of ['alice', 'bob', 'carol']) assert.equal((await s.trial(who)).status, 200, who);
+  for (const who of ['dave', 'erin', 'gina']) {
+    const r = await s.trial(who);
+    assert.equal(r.status, 403, who);
+    assert.equal(r.json.error, 'forbidden');
+  }
+  assert.equal((await s.w.call({}, 'GET', `${s.base}/roster/${s.p.Veyla}/trial`)).status, 401);
+  assert.equal((await s.trial('bob', 'p_aaaaaaaaaaaaaaaaaaaaaa')).status, 404);
+  assert.equal((await s.trial('bob', 'nonsense')).status, 404);
+  // A person who is no longer a trial still answers (the card is the page's choice).
+  const made = (await s.call('bob', 'GET', `/roster/${s.p.Veyla}`)).json.person;
+  assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p.Veyla}`, { expectedVersion: made.version, status: 'raider' })).status, 200);
+  const raider = await s.trial();
+  assert.equal(raider.json.person.status, 'raider');
+  assert.equal(raider.json.person.trialFlag, null);
+  // No trial start: the join date. Neither: the whole history.
+  s.w.exec(`UPDATE players SET trial_start = NULL WHERE id = '${s.p.Veyla}'`);
+  assert.equal((await s.trial()).json.since, '2027-01-05');
+  s.w.exec(`UPDATE players SET joined_on = NULL WHERE id = '${s.p.Veyla}'`);
+  const all = await s.trial();
+  assert.equal(all.json.since, null);
+  assert.equal(all.json.attendance.raids, 5, 'every raid counts when there is no start');
+  assert.equal(all.json.loot.total, 4);
+});
+
+check('trial review: the notes excerpt is the first 300 characters at a word end; the other blocks do not depend on it', async () => {
+  const s = await trialWorld();
+  const short = 'Great attitude, needs to bring flasks.';
+  let saved = await s.call('bob', 'PUT', `/roster/${s.p.Veyla}/notes`, { text: short, expectedNotesVersion: 0 });
+  assert.equal(saved.status, 200, JSON.stringify(saved.json));
+  let r = await s.trial('carol');
+  assert.deepEqual(r.json.notes, { excerpt: short, truncated: false });
+  const long = `${'word '.repeat(120)}end`;
+  saved = await s.call('bob', 'PUT', `/roster/${s.p.Veyla}/notes`, { text: long, expectedNotesVersion: 1 });
+  assert.equal(saved.status, 200);
+  r = await s.trial();
+  assert.equal(r.json.notes.truncated, true);
+  assert(r.json.notes.excerpt.length <= 300 && r.json.notes.excerpt.length >= 260, String(r.json.notes.excerpt.length));
+  assert(/word$/.test(r.json.notes.excerpt), 'cut at a word end');
+  assert.equal(r.json.attendance.raids, 4);
+  const { excerptOf } = await load('worker/routes/trial.js');
+  assert.deepEqual(excerptOf(null), { excerpt: '', truncated: false });
+  assert.deepEqual(excerptOf(`${'x'.repeat(400)}`), { excerpt: 'x'.repeat(300), truncated: true }, 'no space to cut at: cut at 300');
+});
+
+// ===========================================================================
+// ROUTES: the calendar feed (GET/POST/DELETE /calendar, GET /cal/<token>.ics)
+
+// Reads an ICS body the way a calendar app would: unfold, split, collect the VEVENTs' properties (text unescaped). Fails on anything malformed.
+function parseIcs(text) {
+  assert(text.endsWith('\r\n'), 'ends with CRLF');
+  assert(!/(^|[^\r])\n/.test(text), 'every line break is CRLF');
+  for (const physical of text.split('\r\n')) assert(Buffer.byteLength(physical, 'utf8') <= 75, `a physical line over 75 octets: ${physical.slice(0, 40)}`);
+  const lines = text.replace(/\r\n[ \t]/g, '').split('\r\n');
+  assert.equal(lines.pop(), '');
+  assert.equal(lines[0], 'BEGIN:VCALENDAR');
+  assert.equal(lines[lines.length - 1], 'END:VCALENDAR');
+  const unescape = (value) => value.replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1');
+  const calendar = {};
+  const events = [];
+  let current = null;
+  for (const line of lines.slice(1, -1)) {
+    if (line === 'BEGIN:VEVENT') { assert.equal(current, null, 'no nested VEVENT'); current = {}; continue; }
+    if (line === 'END:VEVENT') { events.push(current); current = null; continue; }
+    const colon = line.indexOf(':');
+    assert(colon > 0, `a content line: ${line}`);
+    const name = line.slice(0, colon).split(';')[0];
+    (current || calendar)[name] = unescape(line.slice(colon + 1));
+  }
+  assert.equal(current, null, 'VEVENTs are closed');
+  for (const event of events) {
+    for (const required of ['UID', 'DTSTAMP', 'DTSTART', 'DTEND', 'SUMMARY']) assert(required in event, `${required} in ${JSON.stringify(event)}`);
+    for (const key of ['DTSTAMP', 'DTSTART', 'DTEND']) assert(/^\d{8}T\d{6}Z$/.test(event[key]), `${key} is UTC: ${event[key]}`);
+    assert(event.DTEND > event.DTSTART, 'the end is after the start');
+  }
+  assert.equal(new Set(events.map((e) => e.UID)).size, events.length, 'UIDs are unique');
+  return { calendar, events };
+}
+
+const FEED_PATH = /^\/cal\/([A-Za-z0-9_-]{43})\.ics$/;
+const utc = (text) => text.replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+
+async function calWorld() {
+  const s = await scenario();
+  await addPerson(s, 'bob', s.A, 'Eliora', { class: 'PRIEST', mainSpec: 'Holy' });
+  await addPerson(s, 'bob', s.A, 'Mirabel', { class: 'HUNTER', mainSpec: 'Marksmanship' });
+  await addPerson(s, 'bob', s.A, 'Kaelith', { class: 'ROGUE', mainSpec: 'Combat' });
+  s.w.exec(`UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.Eliora}'`);
+  const raid = (teamId, raidOn, extra = {}) => addRaid(s, teamId, raidOn, { startTime: '20:00', ...extra });
+  s.raid = {
+    old: await raid(s.A, '2026-12-16'),                                  // 2026-12-17T01:00Z, a little over 30 days before NOW: left out
+    past: await raid(s.A, '2026-12-18', { zone: 'Karazhan' }),           // 2026-12-19T01:00Z
+    recent: await raid(s.A, '2027-01-15'),                               // 2027-01-16T01:00Z
+    soon: await raid(s.A, '2027-01-18', { zone: 'Black Temple', title: 'Night 3, "bring flasks"; be on time' }), // 2027-01-19T01:00Z
+    far: await raid(s.A, '2027-03-15'),                                  // 2027-03-16T00:00Z (daylight time): inside 60 days
+    beyond: await raid(s.A, '2027-03-20'),                               // outside
+    other: await raid(s.B, '2027-01-18'),                                // another team
+  };
+  const signup = (raidId, id, playerId, kind, source = 'raid_helper') => s.w.exec(
+    `INSERT INTO raid_signups (raid_id, source, signup_id, kind, position, guild_id, player_id) VALUES ('${raidId}', '${source}', ${id}, '${kind}', ${id}, '${s.guildId}', ${playerId ? `'${playerId}'` : 'NULL'})`,
+  );
+  signup(s.raid.soon, 1, s.p.Mirabel, 'signed');
+  signup(s.raid.soon, 2, s.p.Kaelith, 'signed');
+  signup(s.raid.soon, 3, s.p.Eliora, 'signed');          // replaced by Eliora's own Late below
+  signup(s.raid.soon, 4, null, 'bench');
+  assert.equal((await s.call('erin', 'PUT', `/raids/${s.raid.soon}/signup`, { kind: 'late' })).status, 200);
+  s.create = async (who = 'erin', teamId = s.A) => {
+    const r = await s.call(who, 'POST', '/calendar', { teamId });
+    assert.equal(r.status, 201, JSON.stringify(r.json));
+    return r.json;
+  };
+  s.feed = (url, opts = {}) => s.w.req('GET', new URL(url).pathname, opts);
+  s.fetchIcs = async (url) => {
+    const r = await s.feed(url);
+    assert.equal(r.status, 200, `feed ${r.status}`);
+    return parseIcs(await r.text());
+  };
+  return s;
+}
+
+check('calendar: make, replace and turn off a link - one per person per team, the URL only in the answer that made it, only a hash is stored', async () => {
+  const s = await calWorld();
+  let status = await s.call('erin', 'GET', `/calendar?team=${s.A}`);
+  assert.deepEqual(status.json, { team: { id: s.A, name: 'Alpha' }, subscribed: false, createdAt: null, lastUsedAt: null });
+  s.w.advance(5000);
+  const made = await s.create();
+  assert.deepEqual(made.team, { id: s.A, name: 'Alpha' });
+  assert.deepEqual([made.subscribed, made.createdAt, made.lastUsedAt], [true, NOW + 5000, null]);
+  const token = FEED_PATH.exec(new URL(made.url).pathname)[1];
+  assert.equal(made.url, `${ORIGIN}/cal/${token}.ics`);
+  assert.equal(made.webcalUrl, `webcal://raidsmith.test/cal/${token}.ics`);
+  status = await s.call('erin', 'GET', `/calendar?team=${s.A}`);
+  assert.deepEqual(status.json, { team: { id: s.A, name: 'Alpha' }, subscribed: true, createdAt: NOW + 5000, lastUsedAt: null });
+  assert(!JSON.stringify(status.json).includes(token), 'the status never carries the link');
+  // Stored hashed: the table holds the SHA-256 and the token is in no column of any table.
+  const rows = await s.w.rows('SELECT * FROM calendar_tokens');
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].token_hash, rows[0].guild_id, rows[0].team_id, rows[0].user_id, rows[0].last_used_at], [sha256(token), s.guildId, s.A, s.ids.erin, null]);
+  assert(/^ct_[A-Za-z0-9_-]{22}$/.test(rows[0].id));
+  for (const table of ['calendar_tokens', 'sessions', 'audit_log', 'users', 'rate_limits']) {
+    assert(!JSON.stringify(await s.w.rows(`SELECT * FROM ${table}`)).includes(token), `${table} does not hold the token`);
+  }
+  assert.equal((await s.feed(made.url)).status, 200);
+
+  // Replacing: the old link stops at once, the new one works, still one row for this person and team.
+  s.w.advance(1000);
+  const second = await s.create();
+  assert.notEqual(second.url, made.url);
+  assert.equal((await s.feed(made.url)).status, 404);
+  assert.equal((await s.feed(second.url)).status, 200);
+  assert.equal(await s.w.count('calendar_tokens', 'user_id = ? AND team_id = ?', s.ids.erin, s.A), 1);
+  // A second team, a second person: independent links.
+  const teamB = await s.create('erin', s.B);
+  const gina = await s.create('gina', s.A);
+  assert.equal(await s.w.count('calendar_tokens'), 3);
+  assert.equal((await s.call('erin', 'DELETE', '/calendar', { teamId: s.A })).json.subscribed, false);
+  assert.equal((await s.feed(second.url)).status, 404, 'turned off');
+  assert.equal((await s.feed(teamB.url)).status, 200);
+  assert.equal((await s.feed(gina.url)).status, 200);
+  assert.deepEqual((await s.call('erin', 'GET', `/calendar?team=${s.A}`)).json.subscribed, false);
+  const again = await s.call('erin', 'DELETE', '/calendar', { teamId: s.A });
+  assert.deepEqual([again.status, again.json.subscribed], [200, false], 'turning off twice is fine');
+  assert.equal(await s.w.count('calendar_tokens'), 2);
+});
+
+check('calendar: the management routes - sign-in, team and guild checks', async () => {
+  const s = await calWorld();
+  for (const [method, route, body] of [['GET', `/calendar?team=${s.A}`], ['POST', '/calendar', { teamId: s.A }], ['DELETE', '/calendar', { teamId: s.A }]]) {
+    assert.equal((await s.w.call({}, method, `${s.base}${route}`, body)).status, 401, `${method} signed out`);
+  }
+  const bad = async (method, route, body, field) => {
+    const r = await s.call('erin', method, route, body);
+    assert.equal(r.status, 400, `${method} ${route} ${JSON.stringify(body)}`);
+    assert.equal(r.json.field, field);
+  };
+  await bad('GET', '/calendar', undefined, 'team');
+  await bad('GET', '/calendar?team=nope', undefined, 'team');
+  await bad('GET', '/calendar?team=t_aaaaaaaaaaaaaaaaaaaaaa', undefined, 'team');
+  await bad('POST', '/calendar', {}, 'team');
+  await bad('POST', '/calendar', { teamId: 't_aaaaaaaaaaaaaaaaaaaaaa' }, 'team');
+  await bad('DELETE', '/calendar', { teamId: 5 }, 'team');
+  // Everyone in the guild sees the raids of every team (raids.view is a Member right), so anyone may subscribe to either team.
+  for (const who of ['gina', 'dave', 'bob', 'alice', 'carol']) assert.equal((await s.call(who, 'POST', '/calendar', { teamId: s.B })).status, 201, who);
+  assert.equal((await s.call('erin', 'GET', `/calendar?team=${s.A}`, undefined)).status, 200);
+  // Another guild's team is not found here, even with a real id.
+  const jar = await signIn(s.w, PEOPLE.alice, [manageable(SERVER_A), manageable('900000000000000002')]);
+  const second = await s.w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, serverId: '900000000000000002', multipleTeams: false, name: 'Other Guild' });
+  assert.equal(second.status, 201, JSON.stringify(second.json));
+  const foreign = second.json.teams[0].id;
+  await bad('POST', '/calendar', { teamId: foreign }, 'team');
+  await bad('GET', `/calendar?team=${foreign}`, undefined, 'team');
+  assert.equal(await s.w.count('calendar_tokens', 'team_id = ?', foreign), 0);
+});
+
+check('calendar: the feed - the team\'s raids from 30 days back to 60 ahead, escaped and folded, counts and the viewer\'s own sign-up', async () => {
+  const s = await calWorld();
+  const made = await s.create();
+  const r = await s.feed(made.url);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('Content-Type'), 'text/calendar; charset=utf-8');
+  assert.equal(r.headers.get('Cache-Control'), 'private, max-age=900');
+  assert.equal(r.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal(r.headers.get('Referrer-Policy'), 'no-referrer');
+  assert(/noindex/.test(r.headers.get('X-Robots-Tag')));
+  assert(/^inline/.test(r.headers.get('Content-Disposition')));
+  assert.equal(r.headers.get('Set-Cookie'), null, 'a feed fetch sets nothing');
+  const text = await r.text();
+  const { calendar, events } = parseIcs(text);
+  assert.equal(calendar.VERSION, '2.0');
+  assert.equal(calendar.METHOD, 'PUBLISH');
+  assert.equal(calendar['X-WR-CALNAME'], 'Ember Guard - Alpha');
+  assert.deepEqual(events.map((e) => e.UID), [`${s.raid.past}@raidsmith`, `${s.raid.recent}@raidsmith`, `${s.raid.soon}@raidsmith`, `${s.raid.far}@raidsmith`], 'soonest first; the old one, the one beyond 60 days and the other team\'s are out');
+  const byRaid = Object.fromEntries(Object.entries(s.raid).map(([key, id]) => [key, events.find((e) => e.UID === `${id}@raidsmith`)]));
+  assert.deepEqual([byRaid.past.DTSTART, byRaid.past.DTEND], ['20261219T010000Z', '20261219T040000Z'], 'start in UTC, end three hours later when no log says otherwise');
+  assert.equal(byRaid.far.DTSTART, '20270316T000000Z', 'a date in daylight time is UTC-4');
+  assert.equal(byRaid.past.SUMMARY, 'Karazhan', 'no title: the zone');
+  assert.equal(byRaid.recent.SUMMARY, 'Raid', 'neither: plain Raid');
+  assert.equal(byRaid.soon.SUMMARY, 'Night 3, "bring flasks"; be on time', 'escaped on the wire, plain after reading');
+  assert(text.includes('SUMMARY:Night 3\\, "bring flasks"\\; be on time'), 'comma and semicolon are escaped in the file');
+  assert.equal(byRaid.soon.URL, `${ORIGIN}/#/g/${s.guildId}/raids/r/${s.raid.soon}`);
+  // Erin: counts of the merged list (her Late replaces her Raid-Helper Signed) and her own sign-up, then the page address.
+  assert.equal(byRaid.soon.DESCRIPTION, `Signed 2, Late 1, Bench 1\nYour sign-up: Late\n${byRaid.soon.URL}`);
+  assert.equal(byRaid.far.DESCRIPTION.split('\n')[0], 'No sign-ups yet');
+  assert.equal(byRaid.far.DESCRIPTION.split('\n')[1], 'Your sign-up: not yet', 'an open raid she has not answered');
+  assert(!byRaid.past.DESCRIPTION.includes('Your sign-up'), 'nothing to ask about a raid that is over');
+  // The same link for an officer-level viewer: counts, no personal lines.
+  const bob = await s.create('bob');
+  const bobEvents = (await s.fetchIcs(bob.url)).events;
+  assert.equal(bobEvents.find((e) => e.UID === `${s.raid.soon}@raidsmith`).DESCRIPTION, `Signed 2, Late 1, Bench 1\n${byRaid.soon.URL}`);
+  // A member with no character on the team sees the raids but not the sign-up counts (attendance.view is own-teams for members).
+  const gina = await s.create('gina');
+  const ginaSoon = (await s.fetchIcs(gina.url)).events.find((e) => e.UID === `${s.raid.soon}@raidsmith`);
+  assert.equal(ginaSoon.DESCRIPTION, byRaid.soon.URL);
+  assert.equal(ginaSoon.SUMMARY, byRaid.soon.SUMMARY);
+});
+
+check('calendar: a raid with a log ends when its last pull ended (if plausible); a long folded line stays valid', async () => {
+  const s = await calWorld();
+  const addLog = (raidId, code, endOffsetMs) => {
+    const startedAt = Date.parse('2026-12-19T01:00:00Z');
+    s.w.exec(`INSERT INTO raid_reports (raid_id, guild_id, code, flavour, started_at, synced_at) VALUES ('${raidId}', '${s.guildId}', '${code}', 'fresh', ${startedAt}, ${NOW})`);
+    s.w.exec(`INSERT INTO raid_pulls (raid_id, report_code, fight_id, encounter_id, encounter_name, kill, started_at, ended_at) VALUES ('${raidId}', '${code}', 1, 649, 'High King Maulgar', 1, ${startedAt + 600000}, ${startedAt + endOffsetMs})`);
+  };
+  addLog(s.raid.past, 'Aaaa000000000001', 4.5 * 3600000);
+  addLog(s.raid.recent, 'Aaaa000000000002', 40 * 3600000);
+  const made = await s.create();
+  const { events } = await s.fetchIcs(made.url);
+  const of = (id) => events.find((e) => e.UID === `${id}@raidsmith`);
+  assert.equal(of(s.raid.past).DTEND, '20261219T053000Z', 'the last boss pull ended 4.5 hours after the start');
+  assert.equal(of(s.raid.recent).DTEND, '20270116T040000Z', 'a pull 40 hours out is not believed: start + 3 hours');
+  // A title near the 100-character limit with multi-byte characters folds without breaking one.
+  s.w.exec(`UPDATE raids SET title = '${'Caf\u00e9 night '.repeat(7)}' WHERE id = '${s.raid.soon}'`);
+  const text = await (await s.feed(made.url)).text();
+  assert(text.split('\r\n').some((line) => line.startsWith(' ')), 'the long summary was folded');
+  const reread = parseIcs(text);
+  assert.equal(reread.events.find((e) => e.UID === `${s.raid.soon}@raidsmith`).SUMMARY, 'Caf\u00e9 night '.repeat(7), 'unfolded and unescaped, every character whole');
+});
+
+check('calendar: every fetch re-checks the person - blocked, out of the Discord server, deleted account, turned off: all the same plain 404', async () => {
+  const s = await calWorld();
+  const made = await s.create();
+  assert.equal((await s.feed(made.url)).status, 200);
+  // Blocked by an officer, then restored.
+  assert.equal((await s.call('alice', 'POST', `/people/${s.ids.erin}/block`, { reason: 'test' })).status, 200);
+  const blocked = await s.feed(made.url);
+  assert.equal(blocked.status, 404);
+  assert.equal((await s.call('alice', 'DELETE', `/people/${s.ids.erin}/block`, {})).status, 200);
+  assert.equal((await s.feed(made.url)).status, 200, 'restored: the same link works again');
+  // No longer in the guild's Discord server.
+  s.w.exec(`DELETE FROM user_servers WHERE user_id = '${s.ids.erin}'`);
+  assert.equal((await s.feed(made.url)).status, 404);
+  s.w.exec(`INSERT INTO user_servers (user_id, server_id, seen_at) VALUES ('${s.ids.erin}', '${SERVER_A}', ${NOW})`);
+  assert.equal((await s.feed(made.url)).status, 200);
+  // The same body for every kind of "no".
+  const unknown = await s.feed(`${ORIGIN}/cal/${'A'.repeat(43)}.ics`);
+  assert.equal(unknown.status, 404);
+  assert.equal(await unknown.text(), await blocked.text());
+  // An archived team still serves (its raids exist).
+  s.w.exec(`UPDATE teams SET archived = 1 WHERE id = '${s.A}'`);
+  assert.equal((await s.feed(made.url)).status, 200);
+  s.w.exec(`UPDATE teams SET archived = 0 WHERE id = '${s.A}'`);
+  // Delete my data: the account goes and its links with it.
+  assert.equal(await s.w.count('calendar_tokens', 'user_id = ?', s.ids.erin), 1);
+  const gone = await s.w.call(s.jars.erin, 'DELETE', '/auth/me', { deleteGuildIds: [] });
+  assert.equal(gone.status, 200, JSON.stringify(gone.json));
+  assert.equal(await s.w.count('calendar_tokens', 'user_id = ?', s.ids.erin), 0, 'Delete my data deletes the links');
+  assert.equal((await s.feed(made.url)).status, 404);
+});
+
+check('calendar: a malformed or unknown feed address is a 404 and reads nothing for the wrong shape', async () => {
+  const s = await calWorld();
+  const made = await s.create();
+  const token = FEED_PATH.exec(new URL(made.url).pathname)[1];
+  for (const path of [
+    `/cal/${token.slice(1)}.ics`, `/cal/${token}x.ics`, `/cal/${token}.ICS`, `/cal/${token}`, `/cal/${token}.ics.txt`, `/cal/${token}.ics/`, '/cal/', '/cal', '/cal/.ics',
+    `/cal/${token.slice(0, 42)}!.ics`, `/cal/${'A'.repeat(43)}.ics`, `/cal/..%2F${token}.ics`,
+  ]) {
+    const r = await s.w.req('GET', path);
+    assert.equal(r.status, 404, path);
+  }
+  const shapeOnly = await counted(s.w, () => s.w.req('GET', `/cal/${token.slice(1)}.ics`));
+  assert.equal(shapeOnly, 0, 'a wrong shape reads nothing');
+  // Only GET reads the feed.
+  assert.equal((await s.w.req('POST', `/cal/${token}.ics`, { body: {} })).status, 405);
+  assert.equal((await s.w.req('DELETE', `/cal/${token}.ics`, { body: {} })).status, 405);
+});
+
+check('calendar: last use is stamped (at most every ten minutes) and a feed fetch is three or four D1 calls', async () => {
+  const s = await calWorld();
+  const made = await s.create();
+  assert.equal(await counted(s.w, () => s.feed(made.url)), 4, 'link, guild context, rows, last-used stamp');
+  assert.equal((await s.call('erin', 'GET', `/calendar?team=${s.A}`)).json.lastUsedAt, NOW);
+  s.w.advance(5 * 60000);
+  assert.equal(await counted(s.w, () => s.feed(made.url)), 3, 'inside ten minutes there is no write');
+  assert.equal((await s.call('erin', 'GET', `/calendar?team=${s.A}`)).json.lastUsedAt, NOW);
+  s.w.advance(6 * 60000);
+  await s.feed(made.url);
+  assert.equal((await s.call('erin', 'GET', `/calendar?team=${s.A}`)).json.lastUsedAt, NOW + 11 * 60000);
+});
+
+// ===========================================================================
+// ROUTE: GET /attention (Needs attention)
+
+// One of everything. Today is Saturday 2027-01-16, 07:00 in New York.
+//  Alpha: Kaelith has slipped (the Tuesday raids), raid 01-13 has 3 open flags, raid 01-14 has loot (one winner on no roster), raid 01-15 has a
+//         log and no loot (Alpha has imported loot before), raid 12-30 would too but is over two weeks old, raid 01-11 has no log. Veyla's trial
+//         ends in 3 days, Later's in 10. Upcoming: today 07:30 (30 minutes), and Tuesday 01-19 with four sign-ups, two of them nobody on the roster.
+//  Bravo: raid 01-12 has 1 open flag, Tanis's trial ended 2 days ago, a raid tomorrow evening has no sign-ups; Bravo never imported loot.
+//  Guild: one character claim is waiting.
+async function attentionWorld() {
+  const s = await scenario();
+  for (const [name, status, extra] of [['Thoren', 'raider', {}], ['Kaelith', 'raider', {}], ['Veyla', 'trial', { joinedOn: '2026-12-20', trialEnd: '2027-01-19' }], ['Later', 'trial', { joinedOn: '2027-01-02', trialEnd: '2027-01-26' }]]) {
+    await addPerson(s, 'bob', s.A, name, { status, joinedOn: '2026-09-01', ...extra });
+  }
+  for (const [name, status, extra] of [['Dorrin', 'raider', {}], ['Tanis', 'trial', { joinedOn: '2026-12-20', trialEnd: '2027-01-14' }]]) {
+    await addPerson(s, 'bob', s.B, name, { status, joinedOn: '2026-09-01', ...extra });
+  }
+  // Watch list: sixteen Tuesdays; Thoren is perfect, Kaelith came to one of the last eight.
+  for (let i = 0; i < TUESDAYS.length; i++) {
+    const raidId = await addRaid(s, s.A, TUESDAYS[i]);
+    attend(s, raidId, s.A, s.p.Thoren, 'present', 1);
+    const came = i < 8 || i === 8;
+    attend(s, raidId, s.A, s.p.Kaelith, came ? 'present' : 'missed', came ? 1 : 0);
+  }
+  const manual = async (raidId) => assert.equal((await s.call('bob', 'PUT', `/raids/${raidId}/manual`, { reason: 'No log kept', presentPlayerIds: [s.p.Thoren] })).status, 200);
+  s.r = {
+    flag: await addRaid(s, s.A, '2027-01-13'),
+    loot: await addRaid(s, s.A, '2027-01-14'),
+    noLoot: await addRaid(s, s.A, '2027-01-15'),
+    old: await addRaid(s, s.A, '2026-12-30'),
+    noLog: await addRaid(s, s.A, '2027-01-11'),
+    bravoFlag: await addRaid(s, s.B, '2027-01-12'),
+    bravoNoLoot: await addRaid(s, s.B, '2027-01-15'),
+    unlocked: await addRaid(s, s.A, TODAY, { startTime: '07:30' }),
+    soon: await addRaid(s, s.A, '2027-01-19', { startTime: '20:00' }),
+    beyond: await addRaid(s, s.A, '2027-01-30', { startTime: '20:00' }),
+    bravoSoon: await addRaid(s, s.B, '2027-01-17', { startTime: '18:00' }),
+  };
+  for (const key of ['loot', 'noLoot', 'old']) await manual(s.r[key]);
+  await manual(s.r.bravoNoLoot);
+  s.w.exec(`UPDATE raids SET open_flags = 3 WHERE id = '${s.r.flag}'`);
+  s.w.exec(`UPDATE raids SET open_flags = 1 WHERE id = '${s.r.bravoFlag}'`);
+  const realmKey = (await s.w.rows('SELECT realm_key FROM characters WHERE player_id = ?', s.p.Thoren))[0].realm_key;
+  let n = 0;
+  const award = (raidId, teamId, winner) => {
+    n++;
+    s.w.db.prepare(
+      `INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, item_name, awarded_at, winner_name, winner_name_key, winner_realm_key, tag, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'MS', ?, ?)`,
+    ).bind(`lo_${String(n).padStart(22, 'y')}`, s.guildId, raidId, teamId, `attn${String(n).padStart(6, '0')}`, 40000 + n, `Item ${n}`, NOW, winner, winner.toLowerCase(), realmKey, NOW, NOW).run();
+  };
+  award(s.r.loot, s.A, 'Thoren');
+  award(s.r.loot, s.A, 'Stranger');
+  award(s.r.loot, s.A, 'Stranger');
+  const signup = (raidId, id, playerId, kind) => s.w.exec(
+    `INSERT INTO raid_signups (raid_id, source, signup_id, kind, position, guild_id, player_id) VALUES ('${raidId}', 'raid_helper', ${id}, '${kind}', ${id}, '${s.guildId}', ${playerId ? `'${playerId}'` : 'NULL'})`,
+  );
+  signup(s.r.soon, 1, s.p.Thoren, 'signed');
+  signup(s.r.soon, 2, s.p.Kaelith, 'late');
+  signup(s.r.soon, 3, null, 'signed');
+  signup(s.r.soon, 4, null, 'tentative');
+  signup(s.r.soon, 5, null, 'absence');   // an absence from nobody on the roster is nothing to link
+  s.w.exec(`INSERT INTO character_claims (id, guild_id, user_id, name, name_key, realm, realm_key, class, level, status, created_at)
+            VALUES ('cl_${'z'.repeat(22)}', '${s.guildId}', '${s.ids.erin}', 'Mirabel', 'mirabel', 'Nightslayer', '${realmKey}', 'HUNTER', 70, 'pending', ${NOW})`);
+  s.attention = (who = 'alice') => s.call(who, 'GET', '/attention');
+  s.ids2 = (r) => r.json.items.map((item) => item.id);
+  return s;
+}
+
+check('attention: every kind of open work for the Guild Master - fields, links, order, and the count that leaves out information', async () => {
+  const s = await attentionWorld();
+  const r = await s.attention();
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.today, TODAY);
+  const id = (kind, key) => (kind === 'claims' ? 'claims' : `${kind}:${key}`);
+  assert.deepEqual(r.json.items.map((i) => i.id), [
+    id('review', s.r.flag), id('review', s.r.bravoFlag),
+    id('loot_unmatched', s.r.loot),
+    id('signup_unmatched', s.r.soon),
+    'claims',
+    id('trial', s.p.Tanis), id('trial', s.p.Veyla),
+    `watch:${s.A}:${s.p.Kaelith}`,
+    id('no_loot', s.r.noLoot),
+    id('low_signups', s.r.unlocked), id('low_signups', s.r.bravoSoon), id('low_signups', s.r.soon),
+    id('unlocked', s.r.unlocked),
+  ]);
+  assert.deepEqual(r.json.more, {});
+  assert.equal(r.json.total, 12, 'twelve open items; the information item is not counted');
+  const item = (key) => r.json.items.find((i) => i.id === key);
+  assert.deepEqual(item(id('review', s.r.flag)), {
+    kind: 'review', severity: 'action', teamId: s.A, teamName: 'Alpha', raidId: s.r.flag, date: '2027-01-13', zone: null, title: null, count: 3,
+    id: id('review', s.r.flag), link: { name: 'raid', rid: s.r.flag },
+  });
+  assert.deepEqual(item(id('loot_unmatched', s.r.loot)).count, 1, 'one name, however many awards');
+  assert.deepEqual(item(id('loot_unmatched', s.r.loot)).link, { name: 'review' });
+  assert.deepEqual([item(id('signup_unmatched', s.r.soon)).count, item(id('signup_unmatched', s.r.soon)).link], [2, { name: 'raid', rid: s.r.soon }], 'two unmatched sign-ups; the absence and the roster people do not count');
+  assert.deepEqual(item('claims'), { kind: 'claims', severity: 'action', teamId: null, teamName: null, count: 1, id: 'claims', link: { name: 'review' } });
+  assert.deepEqual(
+    [item(id('trial', s.p.Tanis)).days, item(id('trial', s.p.Tanis)).ended, item(id('trial', s.p.Tanis)).name, item(id('trial', s.p.Tanis)).teamName, item(id('trial', s.p.Tanis)).trialEnd],
+    [-2, true, 'Tanis', 'Bravo', '2027-01-14'],
+  );
+  assert.deepEqual(item(id('trial', s.p.Veyla)).link, { name: 'person', pid: s.p.Veyla });
+  assert(!r.json.items.some((i) => i.personId === s.p.Later), 'a trial ending in 10 days is not yet');
+  const watch = item(`watch:${s.A}:${s.p.Kaelith}`);
+  assert.deepEqual([watch.name, watch.class, watch.pct, watch.previousPct, watch.drop, watch.reasons, watch.link], ['Kaelith', 'WARRIOR', 12.5, 100, 87.5, ['below', 'drop'], { name: 'personatt', pid: s.p.Kaelith }]);
+  assert.deepEqual([item(id('no_loot', s.r.noLoot)).date, item(id('no_loot', s.r.noLoot)).teamName], ['2027-01-15', 'Alpha']);
+  const ids = r.json.items.map((i) => i.id);
+  for (const left of [s.r.old, s.r.noLog, s.r.loot]) assert(!ids.includes(id('no_loot', left)), 'no_loot leaves out an old raid, a raid with no log and one with loot');
+  assert(!ids.includes(id('no_loot', s.r.bravoNoLoot)), 'Bravo never imported loot');
+  assert(!ids.includes(id('low_signups', s.r.beyond)), 'beyond the next 7 days');
+  const unlocked = item(id('unlocked', s.r.unlocked));
+  assert.deepEqual([unlocked.severity, unlocked.minutes, unlocked.teamName], ['info', 30, 'Alpha']);
+  const low = item(id('low_signups', s.r.soon));
+  assert.deepEqual([low.expected, low.size, low.date, low.startsAt], [3, 25, '2027-01-19', Date.parse('2027-01-20T01:00:00Z')], 'signed + late, the unmatched sign-up included (the tentative one is not)');
+  assert.deepEqual(item(id('low_signups', s.r.unlocked)).expected, 0);
+  // Same for an Officer (guild-wide rights).
+  assert.deepEqual(s.ids2(await s.attention('bob')), s.ids2(r));
+});
+
+check('attention: each viewer sees the teams they hold the matching right for; members are refused', async () => {
+  const s = await attentionWorld();
+  const id = (kind, key) => `${kind}:${key}`;
+  const carol = await s.attention('carol');
+  assert.deepEqual(carol.json.items.map((i) => i.id), [
+    id('review', s.r.flag), id('loot_unmatched', s.r.loot), id('signup_unmatched', s.r.soon), 'claims', id('trial', s.p.Veyla), `watch:${s.A}:${s.p.Kaelith}`,
+    id('no_loot', s.r.noLoot), id('low_signups', s.r.unlocked), id('low_signups', s.r.soon), id('unlocked', s.r.unlocked),
+  ], 'Alpha only');
+  assert.equal(carol.json.total, 9);
+  const dave = await s.attention('dave');
+  assert.deepEqual(dave.json.items.map((i) => i.id), [id('review', s.r.bravoFlag), 'claims', id('trial', s.p.Tanis), id('low_signups', s.r.bravoSoon)], 'Bravo only (the claim is the guild\'s)');
+  assert.equal(dave.json.total, 4);
+  for (const who of ['erin', 'gina']) {
+    const r = await s.attention(who);
+    assert.equal(r.status, 403, who);
+    assert.equal(r.json.error, 'forbidden');
+  }
+  assert.equal((await s.w.call({}, 'GET', `${s.base}/attention`)).status, 401);
+  assert.equal((await s.w.call(s.jars.alice, 'GET', '/api/guild/g_aaaaaaaaaaaaaaaaaaaaaa/attention')).status, 404);
+});
+
+check('attention: nothing open is an empty list; archived teams and information-only lists do not count', async () => {
+  const s = await scenario();
+  const empty = await s.call('alice', 'GET', '/attention');
+  assert.deepEqual([empty.status, empty.json.items, empty.json.more, empty.json.total, empty.json.today], [200, [], {}, 0, TODAY]);
+  // Only an information item: listed, total 0.
+  await addPerson(s, 'bob', s.A, 'Thoren');
+  const raidId = await addRaid(s, s.A, TODAY, { startTime: '07:30' });
+  s.w.exec(`UPDATE teams SET size = 1 WHERE id = '${s.A}'`);
+  s.w.exec(`INSERT INTO raid_signups (raid_id, source, signup_id, kind, position, guild_id, player_id) VALUES ('${raidId}', 'raid_helper', 1, 'signed', 1, '${s.guildId}', '${s.p.Thoren}')`);
+  const info = await s.call('alice', 'GET', '/attention');
+  assert.deepEqual(info.json.items.map((i) => [i.kind, i.severity]), [['unlocked', 'info']]);
+  assert.equal(info.json.total, 0);
+  // Locked: gone. Archived team: gone.
+  s.w.exec(`UPDATE raids SET signups_locked = 1 WHERE id = '${raidId}'`);
+  assert.deepEqual((await s.call('alice', 'GET', '/attention')).json.items, []);
+  s.w.exec(`UPDATE raids SET signups_locked = 0 WHERE id = '${raidId}'`);
+  s.w.exec(`UPDATE teams SET archived = 1 WHERE id = '${s.A}'`);
+  assert.deepEqual((await s.call('alice', 'GET', '/attention')).json.items, []);
+});
+
+check('attention: boundaries - a trial ending in 7 days is listed and in 8 is not; a loot gap needs loot imported before; the 14-day edge', async () => {
+  const s = await attentionWorld();
+  await addPerson(s, 'bob', s.A, 'Edgeseven', { status: 'trial', joinedOn: '2027-01-01', trialEnd: '2027-01-23' });
+  await addPerson(s, 'bob', s.A, 'Edgeeight', { status: 'trial', joinedOn: '2027-01-01', trialEnd: '2027-01-24' });
+  let r = await s.attention();
+  const trials = r.json.items.filter((i) => i.kind === 'trial').map((i) => [i.name, i.days]);
+  assert.deepEqual(trials, [['Tanis', -2], ['Veyla', 3], ['Edgeseven', 7]]);
+  // The raid on 2027-01-02 is exactly 14 days back: in. Move the old one (2026-12-30) there to see the edge, then one day further out.
+  s.w.exec(`UPDATE raids SET raid_on = '2027-01-02' WHERE id = '${s.r.old}'`);
+  assert(s.ids2(await s.attention()).includes(`no_loot:${s.r.old}`), 'exactly 14 days back is still listed');
+  s.w.exec(`UPDATE raids SET raid_on = '2027-01-01' WHERE id = '${s.r.old}'`);
+  assert(!s.ids2(await s.attention()).includes(`no_loot:${s.r.old}`), '15 days back is not');
+  // Once a raid has loot it leaves the list; once the team has none at all, the whole kind is gone.
+  s.w.exec(`DELETE FROM loot_awards`);
+  r = await s.attention();
+  assert(!r.json.items.some((i) => i.kind === 'no_loot' || i.kind === 'loot_unmatched'), 'a team that never imported loot is not asked to');
+});
+
+check('attention: at most ten of a kind, the rest counted in "more" and in the total; the list is read in one batch (four D1 calls)', async () => {
+  const s = await scenario();
+  for (let i = 0; i < 13; i++) {
+    const raidId = await addRaid(s, s.A, `2027-01-${String(i + 1).padStart(2, '0')}`);
+    s.w.exec(`UPDATE raids SET open_flags = ${i + 1} WHERE id = '${raidId}'`);
+  }
+  const r = await s.call('alice', 'GET', '/attention');
+  assert.equal(r.json.items.length, 10);
+  assert.deepEqual(r.json.more, { review: 3 });
+  assert.equal(r.json.total, 13);
+  assert.deepEqual(r.json.items.map((i) => i.date).slice(0, 2), ['2027-01-13', '2027-01-12'], 'newest first');
+  const w = await attentionWorld();
+  assert.equal(await counted(w.w, () => w.attention('alice')), 4, 'session, guild context, the teams, one batch for everything else');
+  assert.equal(await counted(w.w, () => w.attention('carol')), 4);
+});
+
+// ===========================================================================
+// SCHEMA: migration 0013
+
+check('migration 0013: calendar_tokens - a hash of 64 characters, one per person per team, gone with the user, the team or the guild', async () => {
+  const s = await calWorld();
+  const columns = (await s.w.rows("SELECT name FROM pragma_table_info('calendar_tokens')")).map((r) => r.name);
+  assert.deepEqual(columns, ['id', 'token_hash', 'guild_id', 'team_id', 'user_id', 'created_at', 'last_used_at']);
+  const insert = (id, hash, team, user) => `INSERT INTO calendar_tokens (id, token_hash, guild_id, team_id, user_id, created_at) VALUES ('${id}', '${hash}', '${s.guildId}', '${team}', '${user}', 1)`;
+  const hash = (c) => c.repeat(64);
+  s.w.exec(insert('ct_a', hash('a'), s.A, s.ids.gina));
+  assert.throws(() => s.w.exec(insert('ct_b', hash('b'), s.A, s.ids.gina)), /UNIQUE/, 'one per person per team');
+  assert.throws(() => s.w.exec(insert('ct_c', hash('a'), s.B, s.ids.gina)), /UNIQUE/, 'a hash is unique');
+  assert.throws(() => s.w.exec(insert('ct_d', 'short', s.B, s.ids.gina)), /CHECK/, 'a SHA-256 is 64 characters');
+  assert.throws(() => s.w.exec(insert('ct_e', hash('e'), 't_aaaaaaaaaaaaaaaaaaaaaa', s.ids.gina)), /FOREIGN KEY/, 'the team is in the guild');
+  s.w.exec(insert('ct_f', hash('f'), s.B, s.ids.gina));
+  s.w.exec(`DELETE FROM users WHERE id = '${s.ids.gina}'`);
+  assert.equal(await s.w.count('calendar_tokens', 'user_id = ?', s.ids.gina), 0, 'the account takes its links');
+  s.w.exec(insert('ct_g', hash('g'), s.B, s.ids.erin));
+  s.w.exec(`DELETE FROM guilds WHERE id = '${s.guildId}'`);
+  assert.equal(await s.w.count('calendar_tokens'), 0, 'the guild takes its links');
+  assert.equal(await s.w.count('calendar_tokens', 'id = ?', 'ct_g'), 0);
+});
+
 // ---- runner (keep last)
 async function main() {
   const filter = process.argv[2] || '';
