@@ -24,7 +24,7 @@ function daysBetween(from, to) {
 //   signupUnmatched: [{ raid_id, team_id, raid_on, zone, title, event_title, n }],
 //   claims: number, trials: [{ id, trial_end, name, class, team_id }],
 //   noLoot: [{ id, team_id, raid_on, zone, title, event_title }],
-//   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in }],
+//   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in, size (the raid's effective size; the team's when left out) }],
 //   watch: [{ teamId, entries: [{ playerId, name, class, pct, previousPct, drop, reasons }] }] }
 // -> { items, more: { kind: n }, total } (total counts the 'action' items only, hidden ones included)
 export function buildAttention(input) {
@@ -80,8 +80,9 @@ export function buildAttention(input) {
     if (!here('raids.edit', row.team_id)) continue;
     const team = teamById.get(row.team_id);
     const fields = { ...raidFields(row), startsAt: row.starts_at };
-    if (row.n_in < team.size) {
-      add('low_signups', { ...base('low_signups', row.team_id), ...fields, expected: row.n_in, size: team.size, id: `low_signups:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+    const size = row.size ?? team.size;
+    if (row.n_in < size) {
+      add('low_signups', { ...base('low_signups', row.team_id), ...fields, expected: row.n_in, size, id: `low_signups:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
     }
     const minutes = Math.ceil((row.starts_at - input.now) / 60000);
     if (row.signups_locked === 0 && minutes > 0 && minutes <= UNLOCKED_MINUTES) {

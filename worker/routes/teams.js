@@ -3,12 +3,21 @@ import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
+import { RAID_SIZES, isRaidSize } from '../raid-zones.js';
 
 const MAX_TEAM_NAME = 40;
 export const MAX_ACTIVE_TEAMS = 50;
 const TEAM_CAP_MESSAGE = `A guild can have at most ${MAX_ACTIVE_TEAMS} active teams. Archive one first.`;
 const ACTIVE_TEAM_COUNT = 'SELECT COUNT(*) AS n FROM teams WHERE guild_id = ? AND archived = 0';
 const TEAM_NAME_TAKEN = 'Another active team in this guild already has that name.';
+const DEFAULT_TEAM_SIZE = 25;
+const SIZE_MESSAGE = `size is ${RAID_SIZES.slice(0, -1).join(', ')} or ${RAID_SIZES[RAID_SIZES.length - 1]}.`;
+
+// A team's raid size (10 / 20 / 25 / 40). teams.size has no CHECK (a column cannot get one without rebuilding the table), so the Worker holds the rule.
+function readSize(value) {
+  if (!isRaidSize(value)) throw new HttpError(400, 'bad_request', SIZE_MESSAGE, { field: 'size' });
+  return value;
+}
 
 export function teamView(row, leads = [], players = 0) {
   return { id: row.id, name: row.name, size: row.size, archived: row.archived === 1, players, leads };
@@ -43,6 +52,7 @@ export async function createTeam(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   requireAction(guildContext, 'guild.teams');
   const name = cleanText(ctx.body.name, 'name', { max: MAX_TEAM_NAME });
+  const size = ctx.body.size === undefined ? DEFAULT_TEAM_SIZE : readSize(ctx.body.size);
   const id = newId('t', ctx.randomBytes);
   const guildId = guildContext.guild.id;
   let results;
@@ -51,8 +61,8 @@ export async function createTeam(ctx) {
       // One guarded INSERT enforces the cap; the audit row follows only if the team exists.
       ctx.db.prepare(
         `INSERT INTO teams (id, guild_id, name, size, archived, created_at)
-         SELECT ?, ?, ?, 25, 0, ? WHERE (${ACTIVE_TEAM_COUNT}) < ${MAX_ACTIVE_TEAMS}`,
-      ).bind(id, guildId, name, ctx.now(), guildId),
+         SELECT ?, ?, ?, ?, 0, ? WHERE (${ACTIVE_TEAM_COUNT}) < ${MAX_ACTIVE_TEAMS}`,
+      ).bind(id, guildId, name, size, ctx.now(), guildId),
       auditStatement(ctx, {
         guildId, actorUserId: ctx.session.user.id, action: 'team.create', entityType: 'team', entityId: id,
       }, { sql: 'EXISTS (SELECT 1 FROM teams WHERE id = ?)', params: [id] }),
@@ -62,7 +72,7 @@ export async function createTeam(ctx) {
     throw error;
   }
   if (results[0].meta.changes !== 1) throw new HttpError(400, 'bad_request', TEAM_CAP_MESSAGE, { field: 'name' });
-  return jsonResponse({ team: teamView({ id, name, size: 25, archived: 0 }) }, 201);
+  return jsonResponse({ team: teamView({ id, name, size, archived: 0 }) }, 201);
 }
 
 export async function patchTeam(ctx) {
@@ -73,31 +83,33 @@ export async function patchTeam(ctx) {
   if (!current) throw new HttpError(404, 'not_found', 'That team does not exist.');
 
   const { body } = ctx;
-  if (body.name === undefined && body.archived === undefined) {
-    throw new HttpError(400, 'bad_request', 'Send a name, archived, or both.');
+  if (body.name === undefined && body.archived === undefined && body.size === undefined) {
+    throw new HttpError(400, 'bad_request', 'Send a name, archived, size, or any of them.');
   }
   const name = body.name === undefined ? current.name : cleanText(body.name, 'name', { max: MAX_TEAM_NAME });
   if (body.archived !== undefined && typeof body.archived !== 'boolean') {
     throw new HttpError(400, 'bad_request', 'archived must be true or false.');
   }
   const archived = body.archived === undefined ? current.archived : (body.archived ? 1 : 0);
+  const size = body.size === undefined ? current.size : readSize(body.size);
 
   if (current.archived === 1 && archived === 0) {
     const count = await ctx.db.prepare(ACTIVE_TEAM_COUNT).bind(guildContext.guild.id).first('n');
     if (count >= MAX_ACTIVE_TEAMS) throw new HttpError(400, 'bad_request', TEAM_CAP_MESSAGE, { field: 'name' });
   }
 
-  const audit = (action) => auditStatement(ctx, {
-    guildId: guildContext.guild.id, actorUserId: ctx.session.user.id, action, entityType: 'team', entityId: current.id,
+  const audit = (action, before, after) => auditStatement(ctx, {
+    guildId: guildContext.guild.id, actorUserId: ctx.session.user.id, action, entityType: 'team', entityId: current.id, before, after,
   });
   const statements = [];
   if (name !== current.name) statements.push(audit('team.rename'));
   if (archived !== current.archived) statements.push(audit(archived ? 'team.archive' : 'team.restore'));
+  if (size !== current.size) statements.push(audit('team.size', { size: current.size }, { size }));
   if (statements.length) {
     try {
       await ctx.db.batch([
-        ctx.db.prepare('UPDATE teams SET name = ?, archived = ? WHERE id = ? AND guild_id = ?')
-          .bind(name, archived, current.id, guildContext.guild.id),
+        ctx.db.prepare('UPDATE teams SET name = ?, archived = ?, size = ? WHERE id = ? AND guild_id = ?')
+          .bind(name, archived, size, current.id, guildContext.guild.id),
         ...statements,
       ]);
     } catch (error) {

@@ -1145,6 +1145,8 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   await w.call(s.alice, 'PATCH', '/auth/prefs', { sidebarCollapsed: true });
   await w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'Main team' });
   await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { name: 'Main team', archived: false });
+  await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { size: 25 }); // the size it already has
+  await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { size: 15 }); // not a raid size
   await w.call(s.alice, 'PUT', `${s.peoplePath('bob')}/roles`, { officer: false, teamLeadTeamIds: [] });
   assert.deepEqual(await baseline(), ['guild.create']);
 
@@ -1152,6 +1154,7 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${team}`, { name: 'Renamed' });
   await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${team}`, { archived: true });
   await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${team}`, { archived: false });
+  await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${team}`, { size: 10 });
   await s.setRoles('bob', { officer: true, teamLeadTeamIds: [] });
   await w.call(s.jars.bob, 'POST', `${s.peoplePath('dave')}/block`, { reason: 'because' });
   await w.call(s.jars.bob, 'DELETE', `${s.peoplePath('dave')}/block`, {});
@@ -1176,7 +1179,7 @@ check('audit: exactly the audited actions are written, once each, in the writes\
     'person.notes', 'person.update', 'roster.import'];
   // The attendance actions (Phase 3) are driven and pinned in guild-attendance-worker-tests.js.
   const ATTENDANCE_ACTIONS = ['raid.create', 'raid.delete', 'raid.event', 'raid.report', 'raid.plan', 'raid.manual', 'attendance.decide',
-    'attendance.undo', 'attendance.link', 'attendance.guest', 'policy.update', 'wcl.settings'];
+    'attendance.undo', 'attendance.link', 'attendance.guest', 'policy.update', 'wcl.settings', 'raid.settings'];
   // The loot actions (Phase 4) are driven and pinned in guild-loot-worker-tests.js; the Battle.net actions (Phase 5) in guild-bnet-worker-tests.js.
   const LOOT_ACTIONS = ['loot.import', 'loot.update', 'loot.delete', 'loot.policy'];
   const BNET_ACTIONS = ['bnet.link', 'bnet.unlink', 'bnet.settings', 'claim.create', 'claim.withdraw', 'claim.approve', 'claim.reject'];
@@ -1187,7 +1190,7 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action) && !SIGNUP_ACTIONS.includes(action) && !ACCOUNT_ACTIONS.includes(action)).sort());
   assert.deepEqual(AUDIT_ACTIONS.slice().sort(), [
     'access.remove', 'access.restore', 'account.delete', 'guild.claim', 'guild.create', 'guild.delete',
-    'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore',
+    'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore', 'team.size',
     ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...LOOT_ACTIONS, ...BNET_ACTIONS, ...SIGNUP_ACTIONS, ...ACCOUNT_ACTIONS,
   ].sort());
   const rows = await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, created_at FROM audit_log WHERE action IN ('account.delete', 'guild.delete')");

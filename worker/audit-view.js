@@ -25,7 +25,7 @@ export const ACTION_GROUP = Object.freeze({
   'person.account_link': 'roster', 'person.account_unlink': 'roster',
   'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'roster.import': 'roster',
   'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.manual': 'raids',
-  'schedule.update': 'raids', 'schedule.fill': 'raids',
+  'schedule.update': 'raids', 'schedule.fill': 'raids', 'raid.settings': 'raids',
   'attendance.decide': 'attendance', 'attendance.undo': 'attendance', 'attendance.link': 'attendance', 'attendance.guest': 'attendance',
   'policy.update': 'attendance', 'wcl.settings': 'attendance',
   'loot.import': 'loot', 'loot.update': 'loot', 'loot.delete': 'loot', 'loot.policy': 'loot',
@@ -34,7 +34,7 @@ export const ACTION_GROUP = Object.freeze({
   'claim.create': 'bnet', 'claim.withdraw': 'bnet', 'claim.approve': 'bnet', 'claim.reject': 'bnet',
   'guild.create': 'settings', 'guild.claim': 'settings', 'guild.delete': 'settings', 'team.create': 'settings', 'team.rename': 'settings',
   'team.archive': 'settings', 'team.restore': 'settings', 'roles.set': 'settings', 'guild_master.transfer': 'settings',
-  'guild_master.auto_promote': 'settings', 'access.remove': 'settings', 'access.restore': 'settings', 'account.delete': 'settings',
+  'guild_master.auto_promote': 'settings', 'access.remove': 'settings', 'access.restore': 'settings', 'account.delete': 'settings', 'team.size': 'settings',
   // Written with no guild (the account's own sign-ins), so they never reach a guild's log; mapped so the action list stays complete.
   'discord.link': 'settings', 'discord.unlink': 'settings',
 });
@@ -133,6 +133,7 @@ export function describeRow(row, names = {}) {
     case 'team.rename': return `Renamed a team to ${team(ent)}`;
     case 'team.archive': return `Archived the team ${team(ent)}`;
     case 'team.restore': return `Restored the team ${team(ent)}`;
+    case 'team.size': return `Set the raid size of ${team(ent)} to ${after.size === undefined ? 'a new size' : after.size}`;
     case 'roles.set': {
       const parts = [];
       if (before.officer !== undefined && before.officer !== after.officer) parts.push(after.officer ? `Made ${user(ent)} an Officer` : `Removed ${user(ent)} as Officer`);
@@ -194,6 +195,14 @@ export function describeRow(row, names = {}) {
     case 'raid.manual':
       if (after.manual === false) return `Went back from hand-entered attendance on ${onRaid(ent)}`;
       return `Entered attendance by hand for ${onRaid(ent)}: ${Number(after.present) || 0} present`;
+    case 'raid.settings': {
+      const parts = [];
+      if (after.size !== undefined && after.size !== before.size) parts.push(`raid size ${after.size === null ? 'automatic' : after.size}`);
+      if (after.signupCloseHours !== undefined && after.signupCloseHours !== before.signupCloseHours) {
+        parts.push(after.signupCloseHours === null ? 'sign-up deadline back to the team default' : `sign-ups close ${plural(after.signupCloseHours, 'hour', 'hours')} before the start`);
+      }
+      return `Changed the settings of ${onRaid(ent)}${parts.length ? `: ${list(parts)}` : ''}`;
+    }
     case 'schedule.update': return `Changed the weekly raid schedule of ${team(ent)}`;
     case 'schedule.fill': {
       const dates = Array.isArray(after.dates) ? after.dates.length : 0;

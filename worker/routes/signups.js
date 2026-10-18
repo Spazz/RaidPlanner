@@ -8,6 +8,7 @@ import { displayCharacter } from '../attendance-view.js';
 import { isId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
+import { raidSizeFields } from '../raid-zones.js';
 import { SINGLE_LINE_STRIP, isSpecOf } from '../roster-data.js';
 import {
   NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closedReason, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey, signUpSpecLabel,
@@ -105,7 +106,10 @@ export async function buildView(ctx, guildContext, raid) {
   }
 
   return {
-    raid: { id: raid.id, teamId, startsAt: raid.starts_at, upcoming: raid.starts_at > ctx.now(), locked: raid.signups_locked === 1, closed },
+    raid: {
+      id: raid.id, teamId, startsAt: raid.starts_at, upcoming: raid.starts_at > ctx.now(), locked: raid.signups_locked === 1, closed,
+      ...raidSizeFields(raid, raid.team_size, guild.game_version),
+    },
     can: { edit, self: !!me, seeList, seeNicknames },
     me,
     counts: seeList ? countSignups(entries) : null,

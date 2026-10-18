@@ -1765,6 +1765,309 @@ check('migration 0015: the id prefixes an (away notice) and sg (standing sign-up
   }
 });
 
+// ---------------------------------------------------------------------------
+// Raid sizes (B1): the zone sizes, the effective size, the team's size setting, a raid's own size, "short on sign-ups"
+
+// Alpha (= A) and Bravo (= B); Bob is the Officer, Carol leads Alpha, Dave leads Bravo, Erin / Gina / Hank are Members. The clock is
+// 2027-01-16 12:00Z (Saturday). Raids are made by Bob on dates after it.
+async function laneWorld(opts = {}) {
+  const s = await scenario({ teams: 2, ...opts });
+  s.A = s.teams[0];
+  s.B = s.teams[1];
+  s.raid = (id, route = '') => `/raids/${id}${route}`;
+  s.makeRaid = async (body, who = 'bob') => {
+    const r = await s.call(who, 'POST', '/raids', body);
+    assert.equal(r.status, 201, JSON.stringify(r.json));
+    return r.json.raid;
+  };
+  s.audits = async (action) => (await s.w.rows('SELECT entity_id, before, after FROM audit_log WHERE action = ? ORDER BY rowid', action))
+    .map((row) => ({ entity: row.entity_id, before: row.before === null ? null : JSON.parse(row.before), after: row.after === null ? null : JSON.parse(row.after) }));
+  // Raid-Helper-style sign-up rows with no person: n of one kind, with sign-up ids from `first` (the merged list counts them like any other).
+  s.fill = (raidId, n, kind = 'signed', first = 100) => {
+    const values = Array.from({ length: n }, (_, i) => `('${raidId}', 'raid_helper', ${first + i}, 'x${i}', '${kind}', ${first + i}, '${s.guildId}')`).join(', ');
+    exec(s.w, `INSERT INTO raid_signups (raid_id, source, signup_id, nickname, kind, position, guild_id) VALUES ${values}`);
+  };
+  s.lows = async () => {
+    const r = await s.call('bob', 'GET', '/attention');
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    return Object.fromEntries(r.json.items.filter((item) => item.kind === 'low_signups').map((item) => [item.raidId, [item.expected, item.size]]));
+  };
+  return s;
+}
+
+check('sizes: the zone sizes of the Worker match the raid sizes of the three rules files, and the pure functions follow the precedence', async () => {
+  const vm = require('node:vm');
+  const sandbox = {};
+  vm.createContext(sandbox);
+  for (const file of ['catalog', 'tbc', 'classic', 'forever']) vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'rules', `${file}.js`), 'utf8'), sandbox);
+  const { RAID_ZONE_SIZES, RAID_ZONES, RAID_SIZES, zoneSize, zonesFor, isRaidSize, effectiveRaidSize, raidSizeFields } = await load('worker/raid-zones.js');
+  for (const version of ['tbc', 'classic', 'forever']) {
+    const raids = Object.values(sandbox.RulesData[version].raids).filter((raid) => raid.tier !== 'Planning templates');
+    assert.deepEqual(Object.entries(RAID_ZONE_SIZES[version]), raids.map((raid) => [raid.name, raid.size]), `${version}: every zone with the size the rules give it, in order`);
+    assert.deepEqual(RAID_ZONES[version], raids.map((raid) => raid.name), `${version}: the zone list is the keys of the size table`);
+    for (const raid of raids) assert.equal(zoneSize(version, raid.name), raid.size, `${version} ${raid.name}`);
+    for (const size of Object.values(RAID_ZONE_SIZES[version])) assert(RAID_SIZES.includes(size), `${version}: ${size} is a size a raid can have`);
+  }
+  assert.deepEqual(RAID_SIZES, [10, 20, 25, 40]);
+  // The three examples of the design.
+  assert.deepEqual([zoneSize('tbc', 'Karazhan'), zoneSize('tbc', 'Zul\'Aman'), zoneSize('tbc', 'Sunwell Plateau')], [10, 10, 25]);
+  assert.deepEqual([zoneSize('classic', 'Zul\'Gurub'), zoneSize('classic', 'Ruins of Ahn\'Qiraj'), zoneSize('classic', 'Molten Core')], [20, 20, 40]);
+  assert.deepEqual([zoneSize('forever', 'Barrow Deeps'), zoneSize('forever', 'Hyjal Summit'), zoneSize('forever', 'Onyxia\'s Lair')], [10, 20, 40]);
+  assert.equal(zoneSize('tbc', 'Hyjal Summit'), 25, 'the same zone name has the size of the guild\'s version');
+  // Not a zone of the version, no zone, no version, and names that are properties of every object.
+  for (const [version, zone] of [['tbc', 'Molten Core'], ['tbc', null], ['tbc', undefined], ['tbc', ''], ['tbc', '__proto__'], ['tbc', 'constructor'], ['nope', 'Karazhan'], [undefined, 'Karazhan'], ['__proto__', 'Karazhan']]) {
+    assert.equal(zoneSize(version, zone), null, `${version} / ${zone}`);
+  }
+  assert.deepEqual(zonesFor('tbc'), RAID_ZONES.tbc);
+  assert.deepEqual(zonesFor('nope'), []);
+  for (const size of RAID_SIZES) assert.equal(isRaidSize(size), true);
+  for (const bad of [15, 0, 5, 26, 41, -10, 10.5, '10', null, undefined, NaN, [10], {}]) assert.equal(isRaidSize(bad), false, String(bad));
+  // The precedence: the raid's own size, else the zone's, else the team's.
+  assert.equal(effectiveRaidSize({ size: 20, zone: 'Karazhan' }, 25, 'tbc'), 20, 'an override beats the zone');
+  assert.equal(effectiveRaidSize({ size: null, zone: 'Karazhan' }, 25, 'tbc'), 10, 'the zone beats the team');
+  assert.equal(effectiveRaidSize({ size: null, zone: 'Gruul\'s Lair' }, 10, 'tbc'), 25, 'a 25-player zone in a 10-player team');
+  assert.equal(effectiveRaidSize({ size: null, zone: null }, 40, 'classic'), 40, 'no zone: the team\'s');
+  assert.equal(effectiveRaidSize({ size: null, zone: 'Some report zone' }, 20, 'forever'), 20, 'a zone the version does not know: the team\'s');
+  assert.equal(effectiveRaidSize({ size: undefined, zone: 'Hyjal Summit' }, 25, 'forever'), 20);
+  assert.equal(effectiveRaidSize({ size: 15, zone: 'Karazhan' }, 25, 'tbc'), 10, 'a stored size that is no size (the CHECK forbids it) is ignored');
+  assert.deepEqual(raidSizeFields({ size: null, zone: 'Karazhan' }, 25, 'tbc'), { size: 10, sizeOverride: null });
+  assert.deepEqual(raidSizeFields({ size: 20, zone: 'Karazhan' }, 25, 'tbc'), { size: 20, sizeOverride: 20 });
+  assert.deepEqual(raidSizeFields({ size: undefined, zone: undefined }, 25, 'tbc'), { size: 25, sizeOverride: null });
+});
+
+check('sizes: a team\'s size is editable (10 / 20 / 25 / 40), alone or with the rest, audited as team.size, for those who manage teams', async () => {
+  const s = await laneWorld();
+  const patch = (who, body, team = s.A) => s.call(who, 'PATCH', `/teams/${team}`, body);
+  // The default, and the create body.
+  const created = await s.call('alice', 'POST', '/teams', { name: 'Forty', size: 40 });
+  assert.deepEqual([created.status, created.json.team.size], [201, 40]);
+  assert.equal((await s.call('alice', 'POST', '/teams', { name: 'Plain' })).json.team.size, 25, 'left out: 25 as before');
+  for (const [i, size] of [15, 0, '20', null, 25.5, [20], 'big'].entries()) {
+    const r = await s.call('alice', 'POST', '/teams', { name: `Bad ${i}`, size });
+    assert.deepEqual([r.status, r.json.error, r.json.field], [400, 'bad_request', 'size'], `create size ${JSON.stringify(size)}`);
+  }
+  assert.equal(await s.w.count('teams', "name LIKE 'Bad %'"), 0, 'a refused create writes nothing');
+
+  // size alone is a valid body; the team answers with it; one audit row with the sizes before and after.
+  const r = await patch('alice', { size: 20 });
+  assert.deepEqual([r.status, r.json.team.size, r.json.team.name], [200, 20, 'Alpha']);
+  assert.deepEqual(await s.audits('team.size'), [{ entity: s.A, before: { size: 25 }, after: { size: 20 } }]);
+  assert.equal((await s.w.rows('SELECT size FROM teams WHERE id = ?', s.A))[0].size, 20);
+  assert.equal((await s.call('alice', 'GET', '')).json.teams.find((team) => team.id === s.A).size, 20, 'the guild read shows it');
+  // The same size again changes nothing and writes nothing.
+  assert.equal((await patch('alice', { size: 20 })).status, 200);
+  assert.equal((await s.audits('team.size')).length, 1);
+  // With other fields: every change has its own row.
+  const both = await patch('bob', { name: 'Alpha Prime', size: 10 });
+  assert.deepEqual([both.status, both.json.team.name, both.json.team.size], [200, 'Alpha Prime', 10]);
+  assert.deepEqual((await s.audits('team.size')).map((a) => [a.before.size, a.after.size]), [[25, 20], [20, 10]]);
+  assert.equal((await s.audits('team.rename')).length, 1);
+  for (const size of [10, 20, 25, 40]) assert.equal((await patch('alice', { size })).json.team.size, size);
+  assert.equal((await patch('alice', { size: 25 })).json.team.size, 25);
+
+  // Validation: 400 with field 'size', nothing written.
+  const before = (await s.audits('team.size')).length;
+  for (const size of [15, 0, -10, 41, '20', null, 25.5, [20], {}, true]) {
+    const bad = await patch('alice', { size });
+    assert.deepEqual([bad.status, bad.json.error, bad.json.field], [400, 'bad_request', 'size'], JSON.stringify(size));
+  }
+  assert.equal((await s.audits('team.size')).length, before);
+  assert.equal((await s.w.rows('SELECT size FROM teams WHERE id = ?', s.A))[0].size, 25);
+  const empty = await patch('alice', {});
+  assert.deepEqual([empty.status, empty.json.message], [400, 'Send a name, archived, size, or any of them.']);
+  // A bad size next to a good name writes neither.
+  assert.equal((await patch('alice', { name: 'Should not stick', size: 15 })).status, 400);
+  assert.equal((await s.w.rows('SELECT name FROM teams WHERE id = ?', s.A))[0].name, 'Alpha Prime');
+
+  // Who: the right to manage teams (Guild Master, Officer). A Team Lead of the team and a Member cannot; signed out is 401.
+  for (const who of ['carol', 'erin']) assert.deepEqual([who, (await patch(who, { size: 40 })).status], [who, 403]);
+  assert.equal((await s.w.call(newJar(), 'PATCH', `${s.guildPath}/teams/${s.A}`, { size: 40 })).status, 401);
+  assert.equal((await s.w.rows('SELECT size FROM teams WHERE id = ?', s.A))[0].size, 25);
+});
+
+check('sizes: a raid is made with an optional size of its own; null or nothing means automatic', async () => {
+  const s = await laneWorld();
+  const own = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-10', startTime: '20:00', size: 10 });
+  assert.deepEqual([own.size, own.sizeOverride], [10, 10]);
+  const auto = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-11', startTime: '20:00' });
+  assert.deepEqual([auto.size, auto.sizeOverride], [25, null]);
+  const nul = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-12', startTime: '20:00', size: null });
+  assert.deepEqual([nul.size, nul.sizeOverride], [25, null]);
+  assert.deepEqual((await s.w.rows('SELECT raid_on, size FROM raids ORDER BY raid_on')).map((r) => [r.raid_on, r.size]), [['2027-02-10', 10], ['2027-02-11', null], ['2027-02-12', null]], 'stored only when sent');
+  for (const [i, size] of [15, 0, '20', 25.5, [10], 'x', false].entries()) {
+    const r = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: `2027-03-0${i + 1}`, size });
+    assert.deepEqual([r.status, r.json.error, r.json.field], [400, 'bad_request', 'size'], JSON.stringify(size));
+  }
+  assert.equal(await s.w.count('raids'), 3, 'a refused create writes nothing');
+  // A zone with a size and an explicit one: the explicit one wins.
+  const kara = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-13', startTime: '20:00', zone: 'Karazhan', size: 20 });
+  assert.deepEqual([kara.zone, kara.size, kara.sizeOverride], ['Karazhan', 20, 20]);
+  // A Team Lead of ANOTHER team still cannot create it.
+  assert.equal((await s.call('dave', 'POST', '/raids', { teamId: s.A, raidOn: '2027-02-20', size: 10 })).status, 403);
+});
+
+check('sizes: the effective size is the raid\'s own, else its zone\'s in the guild\'s version, else the team\'s - on the detail, both lists, the sign-ups view, the planner seed and the Raids read', async () => {
+  const s = await laneWorld();
+  assert.equal((await s.call('alice', 'PATCH', `/teams/${s.A}`, { size: 40 })).status, 200);
+  const kara = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-10', startTime: '20:00', zone: 'Karazhan' });          // the zone: 10
+  const gruul = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-11', startTime: '20:00', zone: 'Gruul\'s Lair' });    // the zone: 25 (not the team's 40)
+  const none = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-12', startTime: '20:00' });                            // the team: 40
+  const own = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-13', startTime: '20:00', zone: 'Karazhan', size: 20 }); // its own: 20
+  const past = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-05', startTime: '20:00', zone: 'Zul\'Aman' });         // a past raid: 10
+  assert.deepEqual([kara.size, gruul.size, none.size, own.size, past.size], [10, 25, 40, 20, 10], 'the create reply is the detail');
+  assert.deepEqual([kara.sizeOverride, gruul.sizeOverride, none.sizeOverride, own.sizeOverride, past.sizeOverride], [null, null, null, 20, null]);
+
+  for (const [raid, size, override] of [[kara, 10, null], [gruul, 25, null], [none, 40, null], [own, 20, 20], [past, 10, null]]) {
+    const detail = (await s.call('bob', 'GET', s.raid(raid.id))).json.raid;
+    assert.deepEqual([detail.size, detail.sizeOverride], [size, override], `detail ${raid.zone}`);
+    for (const who of ['erin', 'carol']) {
+      const view = await s.call(who, 'GET', s.raid(raid.id, '/signups'));
+      assert.deepEqual([view.json.raid.size, view.json.raid.sizeOverride], [size, override], `sign-ups view of ${who}`);
+    }
+    const seed = (await s.call('bob', 'GET', s.raid(raid.id, '/planner'))).json.raid;
+    assert.deepEqual([seed.size, seed.sizeOverride], [size, override], `planner seed ${raid.zone}`);
+  }
+  // The Raids read: the team's size, and the size of every row, upcoming and past.
+  const list = (await s.call('erin', 'GET', `/raids?team=${s.A}`)).json;
+  assert.deepEqual([list.team.size, list.team.name], [40, 'Alpha']);
+  assert.deepEqual(list.upcoming.map((row) => [row.zone, row.size, row.sizeOverride]), [['Karazhan', 10, null], ['Gruul\'s Lair', 25, null], [null, 40, null], ['Karazhan', 20, 20]]);
+  assert.deepEqual(list.raids.map((row) => [row.zone, row.size, row.sizeOverride]), [['Zul\'Aman', 10, null]]);
+  // Another team keeps its own size.
+  const bravo = await s.makeRaid({ teamId: s.B, raidOn: '2027-02-10', startTime: '20:00' });
+  assert.equal(bravo.size, 25);
+  assert.equal((await s.call('erin', 'GET', `/raids?team=${s.B}`)).json.team.size, 25);
+  // A zone from a log that the version does not know falls back to the team's size.
+  exec(s.w, `UPDATE raids SET zone = 'Some Other Zone' WHERE id = '${none.id}'`);
+  assert.equal((await s.call('bob', 'GET', s.raid(none.id))).json.raid.size, 40);
+});
+
+check('sizes: the same zone has the size of the guild\'s version (Classic and Forever)', async () => {
+  const forever = await laneWorld({ guildBody: { gameVersion: 'forever', realm: 'Normal' } });
+  const f = async (zone, day) => (await forever.makeRaid({ teamId: forever.A, raidOn: `2027-02-${day}`, startTime: '20:00', zone })).size;
+  assert.deepEqual([await f('Barrow Deeps', 10), await f('Hyjal Summit', 11), await f('Onyxia\'s Lair', 12)], [10, 20, 40]);
+  const classic = await laneWorld({ guildBody: { gameVersion: 'classic', realm: 'Mankrik' } });
+  const c = async (zone, day) => (await classic.makeRaid({ teamId: classic.A, raidOn: `2027-02-${day}`, startTime: '20:00', zone })).size;
+  assert.deepEqual([await c('Zul\'Gurub', 10), await c('Ruins of Ahn\'Qiraj', 11), await c('Molten Core', 12)], [20, 20, 40]);
+  const tbc = await laneWorld();
+  assert.equal((await tbc.makeRaid({ teamId: tbc.A, raidOn: '2027-02-10', startTime: '20:00', zone: 'Hyjal Summit' })).size, 25, 'Hyjal Summit is 25 in TBC and 20 in Forever');
+});
+
+check('sizes: PATCH /raids/:rid sets or clears a raid\'s size and sign-up deadline - raids.edit on the raid\'s team, audited as raid.settings, nothing recalculated', async () => {
+  const s = await laneWorld();
+  const raid = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-10', startTime: '20:00', zone: 'Karazhan' });
+  const patch = (who, body, id = raid.id) => s.call(who, 'PATCH', s.raid(id), body);
+  const row = async () => (await s.w.rows('SELECT size, signup_close_hours, version, policy_fp, updated_at FROM raids WHERE id = ?', raid.id))[0];
+  const start = await row();
+
+  // size alone: the reply is the raid detail with the new size.
+  s.w.advance(5000);
+  const r = await patch('bob', { size: 20 });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual([r.json.raid.id, r.json.raid.size, r.json.raid.sizeOverride, r.json.raid.zone], [raid.id, 20, 20, 'Karazhan']);
+  assert.deepEqual(Object.keys(r.json).sort(), Object.keys((await s.call('bob', 'GET', s.raid(raid.id))).json).sort(), 'the same shape as the detail read');
+  let now = await row();
+  assert.deepEqual([now.size, now.signup_close_hours], [20, null]);
+  assert.deepEqual([now.version, now.policy_fp], [start.version, start.policy_fp], 'no recompute is needed: the version and the fingerprint are untouched');
+  assert(now.updated_at > start.updated_at);
+  assert.deepEqual(await s.audits('raid.settings'), [{ entity: raid.id, before: { size: null, signupCloseHours: null }, after: { size: 20, signupCloseHours: null } }]);
+
+  // signupCloseHours alone keeps the size; both together; null clears one and keeps the other.
+  assert.equal((await patch('bob', { signupCloseHours: 12 })).status, 200);
+  now = await row();
+  assert.deepEqual([now.size, now.signup_close_hours], [20, 12]);
+  assert.equal((await patch('bob', { size: 40, signupCloseHours: 0 })).status, 200);
+  now = await row();
+  assert.deepEqual([now.size, now.signup_close_hours], [40, 0], '0 is a real value: closes at the start');
+  const cleared = await patch('bob', { size: null });
+  assert.deepEqual([cleared.status, cleared.json.raid.size, cleared.json.raid.sizeOverride], [200, 10, null], 'back to the zone\'s size');
+  now = await row();
+  assert.deepEqual([now.size, now.signup_close_hours], [null, 0]);
+  assert.equal((await patch('bob', { signupCloseHours: null })).status, 200);
+  now = await row();
+  assert.deepEqual([now.size, now.signup_close_hours], [null, null]);
+  const audits = await s.audits('raid.settings');
+  assert.equal(audits.length, 5);
+  assert.deepEqual(audits[4], { entity: raid.id, before: { size: null, signupCloseHours: 0 }, after: { size: null, signupCloseHours: null } });
+  // A change that changes nothing writes nothing and still answers the detail.
+  assert.equal((await patch('bob', { size: null, signupCloseHours: null })).status, 200);
+  assert.equal((await s.audits('raid.settings')).length, 5);
+
+  // Validation: 400 with the field, nothing written (not even the valid half of the body).
+  for (const [body, field] of [
+    [{ size: 15 }, 'size'], [{ size: 0 }, 'size'], [{ size: '20' }, 'size'], [{ size: 25.5 }, 'size'], [{ size: true }, 'size'],
+    [{ signupCloseHours: 73 }, 'signupCloseHours'], [{ signupCloseHours: -1 }, 'signupCloseHours'], [{ signupCloseHours: 1.5 }, 'signupCloseHours'],
+    [{ signupCloseHours: '24' }, 'signupCloseHours'], [{ signupCloseHours: true }, 'signupCloseHours'], [{ size: 20, signupCloseHours: 100 }, 'signupCloseHours'], [{ size: 15, signupCloseHours: 3 }, 'size'],
+  ]) {
+    const bad = await patch('bob', body);
+    assert.deepEqual([bad.status, bad.json.error, bad.json.field], [400, 'bad_request', field], JSON.stringify(body));
+  }
+  for (const body of [{}, { other: 1 }]) {
+    const none = await patch('bob', body);
+    assert.deepEqual([none.status, none.json.error, none.json.message], [400, 'bad_request', 'Send size, signupCloseHours, or both.'], JSON.stringify(body));
+  }
+  now = await row();
+  assert.deepEqual([now.size, now.signup_close_hours], [null, null]);
+  assert.equal((await s.audits('raid.settings')).length, 5);
+
+  // Who: raids.edit on the raid's team. The Officer, the Guild Master and the Team Lead of Alpha; not a Member, not Bravo's Team Lead.
+  for (const [who, status] of [['alice', 200], ['bob', 200], ['carol', 200], ['erin', 403], ['dave', 403], ['hank', 403]]) {
+    assert.deepEqual([who, (await patch(who, { size: 20 })).status], [who, status]);
+  }
+  assert.equal((await s.w.call(newJar(), 'PATCH', `${s.guildPath}/raids/${raid.id}`, { size: 10 })).status, 401);
+  assert.equal((await patch('bob', { size: 10 }, 'r_AAAAAAAAAAAAAAAAAAAAAA')).status, 404);
+  // Another guild's raid is a 404 for this guild's officers.
+  exec(s.w, "INSERT INTO guilds (id, name, realm, realm_kind, region, discord_server_id, time_zone, game_version, created_at) VALUES ('g_AAAAAAAAAAAAAAAAAAAAAA', 'Other', 'Mankrik', 'realm', 'US', 'srv-other', 'UTC', 'tbc', 1); INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES ('t_AAAAAAAAAAAAAAAAAAAAAA', 'g_AAAAAAAAAAAAAAAAAAAAAA', 'Elsewhere', 25, 0, 1); INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, created_at, updated_at) VALUES ('r_BBBBBBBBBBBBBBBBBBBBBB', 'g_AAAAAAAAAAAAAAAAAAAAAA', 't_AAAAAAAAAAAAAAAAAAAAAA', '2027-02-10', 1, 1, 1)");
+  assert.equal((await patch('bob', { size: 10 }, 'r_BBBBBBBBBBBBBBBBBBBBBB')).status, 404);
+  // A past raid can be changed too (a correction), and Bravo's Team Lead edits Bravo's raid.
+  const old = await s.makeRaid({ teamId: s.B, raidOn: '2027-01-05' });
+  assert.equal((await patch('bob', { size: 40 }, old.id)).json.raid.size, 40);
+  assert.equal((await patch('dave', { size: 10 }, old.id)).json.raid.size, 10);
+});
+
+check('sizes: Needs attention compares sign-ups with the raid\'s own size - a Karazhan raid of a 25 team needs 10, a Forever Hyjal Summit raid 20', async () => {
+  const { buildAttention } = await load('worker/attention.js');
+  // The pure half: row.size (the effective size) wins, the team's size is the fallback.
+  const NOW = Date.parse('2027-01-16T12:00:00Z');
+  const teams = [{ id: 't_a', name: 'Alpha', size: 25, archived: 0 }];
+  const base = { today: '2027-01-16', now: NOW, teams, allowsTeam: () => true, granted: () => true, flaggedRaids: [], lootUnmatched: [], signupUnmatched: [], claims: 0, trials: [], noLoot: [], watch: [] };
+  const upcoming = (id, extra) => ({ id, team_id: 't_a', raid_on: '2027-01-18', starts_at: NOW + 2 * 86400000, zone: null, title: null, event_title: null, signups_locked: 1, n_in: 9, ...extra });
+  const built = buildAttention({ ...base, upcoming: [upcoming('u_team'), upcoming('u_ten', { size: 10 }), upcoming('u_full', { size: 9 }), upcoming('u_nullsize', { size: null })] });
+  assert.deepEqual(built.items.map((item) => [item.raidId, item.expected, item.size]).sort(), [['u_nullsize', 9, 25], ['u_ten', 9, 10], ['u_team', 9, 25]].sort(), 'size null / left out = the team\'s; 9 of 9 is not short');
+
+  // The route: sign-ups are counted in the merged list, the size comes from the raid.
+  const s = await laneWorld();
+  const kara = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-18', startTime: '20:00', zone: 'Karazhan' });
+  const gruul = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-19', startTime: '20:00', zone: 'Gruul\'s Lair' });
+  const own = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-20', startTime: '20:00', zone: 'Karazhan', size: 20 });
+  const bare = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-21', startTime: '20:00' });
+  for (const raid of [kara, gruul, own, bare]) s.fill(raid.id, 9);
+  assert.deepEqual(await s.lows(), { [kara.id]: [9, 10], [gruul.id]: [9, 25], [own.id]: [9, 20], [bare.id]: [9, 25] }, '9 signed: short against 10 / 25 / 20 / 25');
+  // One late sign-up fills Karazhan (9 + 1 of 10); 16 more fill Gruul's Lair (25 of 25).
+  s.fill(kara.id, 1, 'late', 200);
+  s.fill(gruul.id, 16, 'signed', 300);
+  assert.deepEqual(await s.lows(), { [own.id]: [9, 20], [bare.id]: [9, 25] }, 'a full raid is not listed');
+  // Resizing the raid with PATCH changes the verdict at once; so does the team's size (only for the raid that has no size of its own).
+  assert.equal((await s.call('bob', 'PATCH', s.raid(kara.id), { size: 20 })).status, 200);
+  assert.deepEqual((await s.lows())[kara.id], [10, 20]);
+  assert.equal((await s.call('alice', 'PATCH', `/teams/${s.A}`, { size: 10 })).status, 200);
+  const resized = await s.lows();
+  assert.deepEqual([resized[bare.id], resized[own.id], resized[kara.id]], [[9, 10], [9, 20], [10, 20]], 'the team raids 10 now: 9 of 10 is short; the raids with a size of their own keep it');
+});
+
+check('sizes: Needs attention in a Forever guild - Hyjal Summit needs 20, Barrow Deeps 10, Onyxia\'s Lair 40', async () => {
+  const s = await laneWorld({ guildBody: { gameVersion: 'forever', realm: 'Normal' } });
+  const hyjal = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-18', startTime: '20:00', zone: 'Hyjal Summit' });
+  const barrow = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-19', startTime: '20:00', zone: 'Barrow Deeps' });
+  const ony = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-20', startTime: '20:00', zone: 'Onyxia\'s Lair' });
+  s.fill(hyjal.id, 19);
+  s.fill(barrow.id, 9);
+  s.fill(ony.id, 30);
+  assert.deepEqual(await s.lows(), { [hyjal.id]: [19, 20], [barrow.id]: [9, 10], [ony.id]: [30, 40] });
+  exec(s.w, `DELETE FROM raid_signups WHERE raid_id = '${hyjal.id}'`);
+  s.fill(hyjal.id, 20);
+  assert.equal((await s.lows())[hyjal.id], undefined, '20 of 20 is not short');
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';

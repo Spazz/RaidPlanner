@@ -10,7 +10,7 @@ import { displayCharacter, loadRaidDetail, raidState, isStale } from '../attenda
 import { isId, newId } from '../ids.js';
 import { ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
-import { zonesFor } from '../raid-zones.js';
+import { RAID_SIZES, isRaidSize, raidSizeFields, zonesFor } from '../raid-zones.js';
 import {
   WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, WCL_RAID_LIMIT, WCL_RAID_WINDOW_MS, enforceRateLimit,
 } from '../ratelimit.js';
@@ -18,7 +18,7 @@ import {
   cleanCharacterName, cleanNickname, isRealDate, nameKey, realmKey, SINGLE_LINE_STRIP,
 } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
-import { closedReason, plannerName } from '../signups-data.js';
+import { MAX_CLOSE_HOURS, closedReason, isCloseHours, plannerName } from '../signups-data.js';
 import {
   fetchRaidHelperEvent, fetchWclPulls, parseRaidHelperSource, parseWclSource, requireWclConfigured,
 } from '../sources.js';
@@ -59,7 +59,9 @@ const raidExists = (raidId) => ({ sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ?
 // The raid in this guild (404 for another guild's id) and the viewer's edit right on its team (403).
 export async function loadRaid(ctx, guildContext, { edit = false } = {}) {
   const raid = await ctx.db.prepare(
-    `SELECT r.*, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports FROM raids r WHERE r.id = ? AND r.guild_id = ?`,
+    `SELECT r.*, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
+            (SELECT t.size FROM teams t WHERE t.id = r.team_id) AS team_size
+       FROM raids r WHERE r.id = ? AND r.guild_id = ?`,
   ).bind(ctx.params.rid, guildContext.guild.id).first();
   if (!raid) throw notFound();
   if (edit && !allows(guildContext.can, 'raids.edit', raid.team_id)) throw forbidden();
@@ -234,9 +236,9 @@ export async function listRaids(ctx) {
   const guild = guildContext.guild;
   const now = ctx.now();
   const [teamResult, raidResult, policyResult, upcomingResult, mineResult, scheduleResult] = await ctx.db.batch([
-    ctx.db.prepare('SELECT id, name, archived FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
+    ctx.db.prepare('SELECT id, name, archived, size FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
     ctx.db.prepare(
-      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
+      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.size, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
               (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id) AS pulls,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id AND p.kill = 1) AS kills,
@@ -249,7 +251,7 @@ export async function listRaids(ctx) {
     policyRowsStatement(ctx.db, guild.id),
     // Raids that have not started: all of them, soonest first, outside the paging of the past ones.
     ctx.db.prepare(
-      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live, r.signups_locked,
+      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.size, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live, r.signups_locked,
 ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = '${kind}') AS n_${kind}`).join(',\n')}
          FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND r.starts_at > ?
         ORDER BY r.starts_at, r.id`,
@@ -276,7 +278,7 @@ ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s
   const scheduleRow = scheduleResult.results[0];
   const page = raidResult.results.slice(0, PAGE_SIZE);
   return jsonResponse({
-    team: { id: team.id, name: team.name, archived: team.archived === 1 },
+    team: { id: team.id, name: team.name, archived: team.archived === 1, size: team.size },
     today: guildToday(guild, now),
     can: { edit: canEdit, signup: canSelf },
     // The weekly schedule, for those who can create raids from it: how many slots, the weeks it fills and whether opening Raids fills them.
@@ -288,6 +290,7 @@ ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s
       startsAt: row.starts_at,
       upcoming: true,
       zone: row.zone,
+      ...raidSizeFields(row, team.size, guild.game_version),
       title: row.title || row.event_title || null,
       eventSourced: row.event_id !== null,
       eventId: row.event_id,
@@ -307,6 +310,7 @@ ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s
         startsAt: row.starts_at,
         upcoming: false,
         zone: row.zone,
+        ...raidSizeFields(row, team.size, guild.game_version),
         bosses: { kills: row.kills, pulls: row.pulls },
         sources: { event: row.event_synced !== null, reports: row.reports, plan: row.plan_synced !== null },
         counts: seeCounts ? { present: row.present, bench: row.bench, missed: row.missed } : null,
@@ -335,6 +339,20 @@ function readOptionalDate(value) {
 }
 
 const present = (value) => value !== undefined && value !== null && value !== '';
+
+// A raid's own size: left out or null = automatic (the zone's size, else the team's), otherwise one of the sizes a raid can have.
+function readRaidSize(value) {
+  if (value === undefined || value === null) return null;
+  if (!isRaidSize(value)) throw bad(`size is ${RAID_SIZES.slice(0, -1).join(', ')} or ${RAID_SIZES[RAID_SIZES.length - 1]}.`, 'size');
+  return value;
+}
+
+// A raid's own sign-up deadline in hours before the start: null = the team's.
+function readRaidCloseHours(value) {
+  if (value === null) return null;
+  if (!isCloseHours(value)) throw bad(`signupCloseHours is a whole number of hours from 0 to ${MAX_CLOSE_HOURS}, or null for the team default.`, 'signupCloseHours');
+  return value;
+}
 
 // A hand-made raid's optional start time ('HH:MM', guild-local), title and zone (one of the version's raid names).
 function readStartTime(value) {
@@ -390,6 +408,7 @@ export async function createRaid(ctx) {
   const raidOnInput = readOptionalDate(body.raidOn);
   const startTimeInput = readStartTime(body.startTime);
   const titleInput = readTitle(body.title);
+  const sizeInput = readRaidSize(body.size);
   if (body.acceptOtherServer !== undefined && typeof body.acceptOtherServer !== 'boolean') throw bad('acceptOtherServer must be true or false.', 'acceptOtherServer');
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
   const guild = guildContext.guild;
@@ -429,11 +448,11 @@ export async function createRaid(ctx) {
   const statements = [
     db.prepare(
       `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, event_id, event_title, title, event_server, event_synced,
-                          log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'log', 0, '', 1, ?, ?, ?
+                          log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at, size)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'log', 0, '', 1, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)`,
     ).bind(raidId, guild.id, teamId, raidOn, startsAt, zoneInput || (firstReport ? firstReport.zone : null), event ? eventId : null, event ? event.title : null, titleInput,
-      event ? event.serverId : null, event ? now : null, ctx.session.user.id, now, now, teamId, guild.id),
+      event ? event.serverId : null, event ? now : null, ctx.session.user.id, now, now, sizeInput, teamId, guild.id),
   ];
   let eventCount = 0;
   if (event) {
@@ -733,6 +752,7 @@ export async function getPlanner(ctx) {
       zone: raid.zone,
       eventId: raid.event_id,
       teamId: raid.team_id,
+      ...raidSizeFields(raid, raid.team_size, guild.game_version),
       gameVersion: guild.game_version,
       timeZone: guild.time_zone,
     },
@@ -819,6 +839,38 @@ export async function deleteManual(ctx) {
     raidAudit(ctx, guildContext, 'raid.manual', raid.id, { manual: true }, { manual: false, reason }),
   ]);
   return recomputeAndReply(ctx, guildContext, raid.id);
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+
+// PATCH /raids/:rid { size?, signupCloseHours? }: the raid's own size and sign-up deadline (hours before the start). null clears the override, so the zone's
+// size / the team's deadline apply again; a key left out is kept. Neither changes a result, so nothing is recalculated. -> the raid detail.
+export async function patchRaid(ctx) {
+  const { body, db } = ctx;
+  const hasSize = body.size !== undefined;
+  const hasHours = body.signupCloseHours !== undefined;
+  if (!hasSize && !hasHours) throw new HttpError(400, 'bad_request', 'Send size, signupCloseHours, or both.');
+  const size = hasSize ? readRaidSize(body.size) : null;
+  const hours = hasHours ? readRaidCloseHours(body.signupCloseHours) : null;
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const raid = await loadRaid(ctx, guildContext, { edit: true });
+  const nextSize = hasSize ? size : raid.size;
+  const nextHours = hasHours ? hours : raid.signup_close_hours;
+  if (nextSize !== raid.size || nextHours !== raid.signup_close_hours) {
+    await db.batch([
+      // CASE keeps the key that was not sent at whatever it is now, so two officers changing different keys do not undo each other.
+      db.prepare(
+        `UPDATE raids SET size = CASE WHEN ? = 1 THEN ? ELSE size END, signup_close_hours = CASE WHEN ? = 1 THEN ? ELSE signup_close_hours END, updated_at = ?
+          WHERE id = ? AND guild_id = ?`,
+      ).bind(hasSize ? 1 : 0, size, hasHours ? 1 : 0, hours, ctx.now(), raid.id, guildContext.guild.id),
+      raidAudit(
+        ctx, guildContext, 'raid.settings', raid.id,
+        { size: raid.size, signupCloseHours: raid.signup_close_hours }, { size: nextSize, signupCloseHours: nextHours }, CHANGED_ONE,
+      ),
+    ]);
+  }
+  return raidReply(ctx, guildContext, raid.id);
 }
 
 // ---------------------------------------------------------------------------

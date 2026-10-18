@@ -3,6 +3,7 @@
 import { HttpError } from './http.js';
 import { allows } from './permissions.js';
 import { findUnmatched, makePolicyResolver, presenceKey } from './attendance-store.js';
+import { raidSizeFields } from './raid-zones.js';
 
 export const OUTCOME_PRESENT = ['present', 'late', 'left_early', 'late_left', 'fill_in'];
 
@@ -48,7 +49,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const bind = (sql) => db.prepare(sql).bind(guild.id, raidId);
   const [raidResult, reportResult, pullResult, signupResult, planResult, attendanceResult, characterResult, presenceResult, guestResult,
     policyResult, userResult, teamResult, flagResult, decisionResult, manualResult] = await db.batch([
-    bind(`SELECT r.*, t.name AS team_name, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
+    bind(`SELECT r.*, t.name AS team_name, t.size AS team_size, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
             FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id WHERE r.guild_id = ?1 AND r.id = ?2`),
     bind(`SELECT code, flavour, started_at, ended_at, owner, synced_at,
                  (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = raid_reports.raid_id AND p.report_code = raid_reports.code) AS pulls
@@ -157,6 +158,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       upcoming: raid.starts_at > ctx.now(),
       title: raid.title || raid.event_title || null,
       zone: raid.zone,
+      ...raidSizeFields(raid, raid.team_size, guild.game_version),
       planLive: allows(can, 'raids.edit', teamId) ? raid.plan_live || null : null, // an edit link to the plan: only for those who may edit
       state,
       openFlags: raid.open_flags,

@@ -1199,10 +1199,11 @@ check('audit: every attendance action is written, none holds a nickname, a Disco
   await s.call('bob', 'DELETE', s.raid(second, '/plan'), {});
   await s.call('bob', 'PUT', '/attendance/policy', { teamId: null, policy: { tentative: 'asSignedUp' }, expectedVersion: 0 });
   await s.call('bob', 'PUT', '/attendance/wcl', { wclGuildId: 5, uploaders: { [s.A]: ['Uploader'] } });
+  await s.call('bob', 'PATCH', s.raid(second), { size: 20 });
   await s.call('bob', 'DELETE', s.raid(second), {});
   const written = (await s.w.rows("SELECT DISTINCT action FROM audit_log WHERE action LIKE 'raid.%' OR action LIKE 'attendance.%' OR action IN ('policy.update', 'wcl.settings')")).map((r) => r.action).sort();
   const expected = AUDIT_ACTIONS.filter((a) => /^(raid|attendance)\./.test(a) || ['policy.update', 'wcl.settings'].includes(a)).sort();
-  assert.equal(expected.length, 12);
+  assert.equal(expected.length, 13);
   assert.deepEqual(written, expected);
   const dump = (await s.w.rows('SELECT action, before, after FROM audit_log')).map((r) => `${r.before} ${r.after}`).join('\n');
   for (const secret of ['Stranger', DID(1), DID(5), '299999999999999999', PEOPLE.erin.id, 'Aldric', 'Zorgax', 'Visitor', 'Uploader', 'nightslayer']) {
@@ -2176,7 +2177,7 @@ check('planner seed: an Alt of the signed-up class, else the Main, else the Disc
   assert.deepEqual(res.json.signups.map((x) => x.personId === null), [false, false, false, false, false, true, false, false, false]);
   assert.equal(res.json.signups[0].personId, s.p.aldric);
   assert.deepEqual(res.json.raid, {
-    id, raidOn: made.json.raid.raidOn, startsAt: made.json.raid.startsAt, title: 'Test Raid', zone: null, eventId, teamId: s.A, gameVersion: 'tbc', timeZone: NY,
+    id, raidOn: made.json.raid.raidOn, startsAt: made.json.raid.startsAt, title: 'Test Raid', zone: null, eventId, teamId: s.A, size: 25, sizeOverride: null, gameVersion: 'tbc', timeZone: NY,
   });
   assert.equal(res.json.livePlan, null);
   // A raid made by hand has no sign-ups and no event.

@@ -56,6 +56,8 @@ export const AUDIT_ACTIONS = [
   'signup.lock',
   'schedule.update',
   'schedule.fill',
+  'team.size',
+  'raid.settings',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

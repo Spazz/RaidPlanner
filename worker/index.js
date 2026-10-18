@@ -25,7 +25,7 @@ import {
 } from './routes/roster.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
 import {
-  createRaid, deleteEvent, deleteManual, deletePlan, deleteRaid, deleteReport, getPlanner, getRaid, listRaids, putEvent, putManual, putPlan,
+  createRaid, deleteEvent, deleteManual, deletePlan, deleteRaid, deleteReport, getPlanner, getRaid, listRaids, patchRaid, putEvent, putManual, putPlan,
   putReport, recomputeRoute,
 } from './routes/raids.js';
 import {
@@ -96,6 +96,7 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/raids', auth: true, handler: listRaids },
   { method: 'POST', path: '/api/guild/:gid/raids', auth: true, handler: createRaid },
   { method: 'GET', path: '/api/guild/:gid/raids/:rid', auth: true, handler: getRaid },
+  { method: 'PATCH', path: '/api/guild/:gid/raids/:rid', auth: true, handler: patchRaid },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid', auth: true, handler: deleteRaid },
   { method: 'PUT', path: '/api/guild/:gid/raids/:rid/event', auth: true, handler: putEvent },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/event', auth: true, handler: deleteEvent },
