@@ -278,7 +278,7 @@ check('migration 0008: loot.* seeds are exactly the plan, the tables are there, 
   assert.deepEqual(rows.map((r) => `${r.action}:${r.role_id}:${r.scope}`), [
     'loot.edit:guild_master:guild', 'loot.edit:officer:guild', 'loot.edit:team_lead:team',
     'loot.policy:guild_master:guild', 'loot.policy:officer:guild',
-    'loot.view:guild_master:guild', 'loot.view:member:own_teams', 'loot.view:officer:guild', 'loot.view:team_lead:team',
+    'loot.view:guild_master:guild', 'loot.view:member:own_teams', 'loot.view:officer:guild', 'loot.view:public:guild', 'loot.view:team_lead:team', // public: Phase 7's ceiling of the public page
   ]);
   const tables = (await w.rows("SELECT name FROM sqlite_master WHERE type = 'table'")).map((r) => r.name);
   assert(tables.includes('loot_awards') && tables.includes('loot_policies'));

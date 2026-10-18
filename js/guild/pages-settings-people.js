@@ -1,6 +1,8 @@
 // ── PAGE: GUILD SETTINGS > PEOPLE AND ROLES ─────────────────────
 // One sortable table (phone: cards), then the Access removed list. Row actions come only from the server's
 // `actions` flags; every mutation returns the full people response, which replaces the page's data.
+// Roles a person holds come in two kinds: set by hand (the Edit roles boxes) and only given by Discord (listed read-only, "From Discord"). The guild's
+// own roles ("Other roles") are listed from state.rolesList[gid], which the People tab loads for people who can manage roles.
 (function (G) {
   'use strict';
 
@@ -43,6 +45,9 @@
     let html = '';
     if (a.editRoles || a.makeGuildMaster) {
       html += '<button type="button" class="gs-btn gs-btn-sm" data-action="person-edit-roles" data-uid="' + esc(id) + '" data-key="edit-' + esc(id) + '" aria-label="Edit roles for ' + esc(name) + '">Edit roles</button>';
+    }
+    if (a.syncDiscord) {
+      html += '<button type="button" class="gs-btn gs-btn-sm" data-action="person-sync" data-uid="' + esc(id) + '" data-key="sync-' + esc(id) + '" aria-label="Sync Discord roles for ' + esc(name) + '">Sync now</button>';
     }
     if (a.removeAccess) {
       html += '<button type="button" class="gs-btn gs-btn-sm gs-btn-danger-text" data-action="person-remove" data-uid="' + esc(id) + '" data-key="remove-' + esc(id) + '" aria-label="Remove access for ' + esc(name) + '">Remove access</button>';
@@ -101,10 +106,13 @@
   function peopleHtml(opts) {
     const data = opts.data || { people: [], removed: [], signedInCount: 0 };
     const teams = opts.guildData.teams;
+    // Sync everyone: the bot is set up and a Discord role is mapped (the Worker says so), and the viewer may sync.
+    const canSyncAll = !!(data.discord && data.discord.configured && data.discord.mapped) && G.shell.hasAction(opts.guildData.me && opts.guildData.me.can, 'guild.access');
     return '<section class="gs-section" aria-labelledby="people-heading"><h2 class="gs-sr" id="people-heading">People</h2>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span><button type="button" class="gs-linkbtn" data-action="dismiss-notice" data-key="dismiss-notice">Dismiss</button></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       '<div class="gs-toolbar"><p class="gs-count">' + esc(countText(data.signedInCount != null ? data.signedInCount : (data.people || []).length)) + '</p>' +
+      (canSyncAll ? '<button type="button" class="gs-btn gs-btn-sm" data-action="people-sync-all" data-key="sync-all">Sync everyone who signed in</button>' : '') +
       '<div class="gs-search"><label class="gs-sr" for="people-search">Search people</label>' + G.icons.icon('search', 18) +
       '<input class="gs-input gs-input-search" type="search" id="people-search" placeholder="Search people" data-input="people-search" autocomplete="off" value="' + esc(opts.query || '') + '"></div>' +
       sortSelectHtml(opts.sort) + '</div>' +
@@ -113,14 +121,50 @@
   }
 
   // ── dialogs ──
-  function rolesDialogHtml(entry, teams, guildName) {
-    const roles = G.peopleSort.normalizeRoles(entry.roles);
+  // A role of the Worker's GET /roles list that the guild made itself.
+  function isCustomListRole(r) {
+    return !!r && typeof r.id === 'string' && (r.kind === 'custom' || (r.kind === undefined && G.peopleSort.isCustomRoleId(r.id)));
+  }
+
+  function customCheckHtml(id, role, teamId, checked, label) {
+    return '<div class="gs-check"><input type="checkbox" id="' + id + '" name="customRole" data-role="' + esc(role.id) + '" data-team="' + esc(teamId || '') + '"' + (checked ? ' checked' : '') + '>' +
+      '<label for="' + id + '">' + esc(label) + '</label></div>';
+  }
+
+  // The "Other roles" boxes: the guild's own roles, one box each, or one per active team for a role that is given for a team.
+  function customChecksHtml(custom, hand, active) {
+    return custom.map(function (role, ri) {
+      if (!role.needsTeam) {
+        return customCheckHtml('dlg-role-custom-' + ri, role, '', hand.some(function (h) { return h.role === role.id; }), role.name);
+      }
+      if (!active.length) return '<p class="gs-fine">' + esc(role.name) + ' is given for one team, and there are no active teams.</p>';
+      return active.map(function (t, ti) {
+        return customCheckHtml('dlg-role-custom-' + ri + '-' + ti, role, t.id, hand.some(function (h) { return h.role === role.id && h.teamId === t.id; }), role.name + ': ' + t.name);
+      }).join('');
+    }).join('');
+  }
+
+  // entry: a person of the people list. customRoles (optional): the guild's own roles from GET /roles (anything else in that list is ignored).
+  // The boxes show what an officer set by hand; a role only Discord gives is listed under them, and ticking its box makes it permanent.
+  function rolesDialogHtml(entry, teams, guildName, customRoles) {
+    const all = G.peopleSort.normalizeRoles(entry.roles);
+    const roles = all.filter(function (r) { return !r.fromDiscord; });
+    const fromDiscord = all.filter(function (r) { return r.fromDiscord; });
     const isOfficer = roles.some(function (r) { return r.role === 'officer'; });
     const leadIds = roles.filter(function (r) { return r.role === 'team_lead' && r.teamId != null; }).map(function (r) { return r.teamId; });
     const a = entry.actions || {};
     const canEdit = !!a.editRoles;
     const name = entry.person.displayName;
     const active = G.shell.activeTeams(teams);
+    const custom = (Array.isArray(customRoles) ? customRoles : []).filter(isCustomListRole);
+    const others = custom.length
+      ? '<fieldset class="gs-fieldset gs-other-roles"' + (canEdit ? '' : ' disabled') + '><legend class="gs-legend">Other roles</legend>' + customChecksHtml(custom, roles, active) + '</fieldset>'
+      : '';
+    const discordLine = fromDiscord.length
+      ? '<p class="gs-fine gs-from-discord" id="dlg-from-discord">From Discord: ' + esc(fromDiscord.map(function (r) {
+        return G.peopleSort.roleLabels([{ role: r.role, name: r.name, teamId: r.teamId }], teams)[0].label;
+      }).join(', ')) + '. A role from Discord lasts only while Discord gives it. Tick its box to keep it.</p>'
+      : '';
     const checks = '<div class="gs-check"><input type="checkbox" id="dlg-role-officer" name="officer"' + (isOfficer ? ' checked' : '') + '><label for="dlg-role-officer">Officer: whole guild</label></div>' +
       (active.length
         ? active.map(function (t, i) {
@@ -134,9 +178,9 @@
         '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="gm-cancel">Cancel</button>' +
         '<button type="button" class="gs-btn gs-btn-molten" data-action="gm-confirm">Make Guild Master</button></div></div></div>'
       : '';
-    return '<form class="gs-dialog-form" data-submit="roles-form" data-uid="' + esc(entry.person.id) + '" novalidate>' +
+    return '<form class="gs-dialog-form" data-submit="roles-form" data-uid="' + esc(entry.person.id) + '"' + (custom.length ? ' data-custom="1"' : '') + ' novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Edit roles for ' + esc(name) + '</h2>' +
-      '<fieldset class="gs-fieldset"' + (canEdit ? '' : ' disabled') + '><legend class="gs-legend">Roles</legend>' + checks + '</fieldset>' +
+      '<fieldset class="gs-fieldset"' + (canEdit ? '' : ' disabled') + '><legend class="gs-legend">Roles</legend>' + checks + '</fieldset>' + others + discordLine +
       '<p class="gs-fine" id="dlg-help">Officers manage the whole guild. Team Leads manage their team\'s roster, raids and attendance, including officer notes.</p>' +
       gm +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
@@ -158,6 +202,13 @@
   function ctxGuild() {
     const s = G.app.state;
     return s.currentGid ? { gid: s.currentGid, gd: s.guilds[s.currentGid], data: s.people[s.currentGid] } : null;
+  }
+
+  // The guild's own roles, from the list the People tab loaded (the whole GET /roles answer, or just its roles).
+  function customRolesFor(gid) {
+    const v = G.app.state.rolesList ? G.app.state.rolesList[gid] : null;
+    const list = Array.isArray(v) ? v : (v && Array.isArray(v.roles) ? v.roles : []);
+    return list.filter(isCustomListRole);
   }
 
   function entryById(c, uid) {
@@ -196,7 +247,7 @@
     const c = ctxGuild();
     const entry = entryById(c, el.getAttribute('data-uid'));
     if (!entry) return;
-    G.ui.openDialog(rolesDialogHtml(entry, c.gd.teams, c.gd.guild.name), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+    G.ui.openDialog(rolesDialogHtml(entry, c.gd.teams, c.gd.guild.name, customRolesFor(c.gid)), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
   };
 
   G.handlers.click['person-remove'] = function (el) {
@@ -246,11 +297,99 @@
     });
   };
 
+  // ── Discord sync ──
+  const SYNC_PROBLEMS = {
+    bad_token: 'Discord did not accept the bot\'s token',
+    bot_missing: 'the bot is not in your Discord server',
+    rate_limited: 'Discord asked for a pause, so try again in a minute',
+  };
+  const SYNC_LIMIT = 400;
+
+  // sync: the `sync` part of the Sync now answer: { status: 'changed' | 'unchanged' | 'skipped', added, removed }.
+  function syncNotice(name, sync) {
+    const s = sync || {};
+    if (s.status === 'changed') return 'Synced ' + name + ': ' + G.ui.plural(Number(s.added) || 0, 'role', 'roles') + ' added, ' + (Number(s.removed) || 0) + ' removed.';
+    if (s.status === 'unchanged') return name + ' already matches Discord.';
+    return name + ' was left as is.';
+  }
+
+  G.handlers.click['person-sync'] = function (el) {
+    const c = ctxGuild();
+    if (!c) return;
+    const uid = el.getAttribute('data-uid');
+    const entry = entryById(c, uid);
+    const name = entry ? entry.person.displayName : 'This person';
+    el.disabled = true;
+    G.api.discord.syncPerson(c.gid, uid).then(function (res) {
+      const people = Object.assign({}, res);
+      delete people.sync;
+      G.app.state.people[c.gid] = people;
+      G.app.state.pageAlert = '';
+      G.app.state.notice = syncNotice(name, res && res.sync);
+      G.app.render();
+    }, function (err) {
+      el.disabled = false;
+      G.app.handleError(err, { pageAlert: true });
+    });
+  };
+
+  // Sync everyone: the call is repeated with the `next` cursor until it is null; totals add up across the calls.
+  function syncAllFrom(gid, totals, after, guard) {
+    return G.api.discord.syncAll(gid, after).then(function (res) {
+      const r = res || {};
+      ['processed', 'changed', 'unchanged', 'skipped', 'failed'].forEach(function (k) { totals[k] += Number(r[k]) || 0; });
+      if (r.problem) totals.problem = r.problem;
+      if (r.next && !r.problem && r.next !== after && guard < SYNC_LIMIT) return syncAllFrom(gid, totals, r.next, guard + 1);
+      return totals;
+    });
+  }
+
+  function reloadPeople(gid) {
+    return G.api.get('/api/guild/' + encodeURIComponent(gid) + '/people').then(function (res) {
+      G.app.state.people[gid] = res;
+    }, function () { /* the list stays as it was */ });
+  }
+
+  function syncAllNotice(t) {
+    let text = 'Synced ' + G.ui.plural(t.processed, 'person', 'people') + ': ' + t.changed + ' changed.';
+    if (t.failed > 0) text += ' ' + t.failed + ' could not be read.';
+    if (t.problem) text += ' It stopped early: ' + (Object.prototype.hasOwnProperty.call(SYNC_PROBLEMS, t.problem) ? SYNC_PROBLEMS[t.problem] : 'Discord could not be reached') + '.';
+    return text;
+  }
+
+  G.handlers.click['people-sync-all'] = function (el) {
+    const c = ctxGuild();
+    if (!c) return;
+    const totals = { processed: 0, changed: 0, unchanged: 0, skipped: 0, failed: 0, problem: null };
+    el.disabled = true;
+    syncAllFrom(c.gid, totals, null, 0).then(function () {
+      return reloadPeople(c.gid).then(function () {
+        G.app.state.pageAlert = '';
+        G.app.state.notice = syncAllNotice(totals);
+        G.app.render();
+      });
+    }, function (err) {
+      el.disabled = false;
+      const done = function () {
+        if (totals.processed > 0) G.app.state.notice = syncAllNotice(totals);
+        G.app.handleError(err, { pageAlert: true });
+      };
+      // Whoever was synced before the error is on the list now.
+      return totals.processed > 0 ? reloadPeople(c.gid).then(done) : done();
+    });
+  };
+
   G.handlers.submit['roles-form'] = function (form) {
     const c = ctxGuild();
     if (!c) return;
     const leadIds = Array.prototype.map.call(form.querySelectorAll('input[name="teamLead"]:checked'), function (i) { return i.value; });
     const body = { officer: !!form.elements.officer.checked, teamLeadTeamIds: leadIds };
+    // The guild's own roles are sent only when the dialog listed them; without `roles` the server leaves them as they are.
+    if (form.getAttribute && form.getAttribute('data-custom') === '1') {
+      body.roles = Array.prototype.map.call(form.querySelectorAll('input[name="customRole"]:checked'), function (box) {
+        return { roleId: box.getAttribute('data-role'), teamId: box.getAttribute('data-team') || null };
+      });
+    }
     runFromDialog(form, c.gid, G.api.put(peopleUrl(c.gid, form.getAttribute('data-uid'), '/roles'), body));
   };
 

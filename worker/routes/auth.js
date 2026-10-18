@@ -5,6 +5,8 @@ import {
   authorizeUrl, canonicalOrigin, exchangeCode, fetchDiscordGuilds, fetchDiscordUser,
   isAllowlisted, isConfigured, revokeToken, serverIconUrl,
 } from '../discord.js';
+import { botConfigured } from '../discord-bot.js';
+import { syncSignIn } from '../discord-sync.js';
 import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
 import { blockedSql, memberCandidatesSql, memberSql } from '../membership.js';
@@ -134,6 +136,11 @@ async function finishSignin(ctx, discordUser, servers, manageable, clear) {
     ...serverStatements(db, user.sql, user.params, servers, now),
     ...startSessionStatements(db, { userId: user, tokenHash, earlierHash: earlier ? await hashToken(earlier) : null, now, manageable }),
   ]);
+  // The roles Discord gives in the guilds that mapped them. Best effort: a failure never blocks the sign-in (worker/discord-sync.js).
+  if (botConfigured(ctx.env)) {
+    const signedInAs = await findUserByDiscord(db, discordUser.id);
+    if (signedInAs) await syncSignIn(ctx, signedInAs);
+  }
   return redirectResponse(HOME_REDIRECT, [clear, sessionCookie(token)]);
 }
 
@@ -172,6 +179,7 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
     }, linked)] : []),
   ]);
   if (results[0].meta.changes !== 1) return fail('roster_conflict');
+  await syncSignIn(ctx, userId);
   return redirectResponse(LINKED_REDIRECT, [clear]);
 }
 
@@ -180,8 +188,9 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
 
 // The member rule (worker/membership.js) for the guilds' lists below, with the departing or asking user as an expression.
 // The Officer who would become Guild Master: earliest assigned_at among current, unblocked members. `userExpr` is the departing user (excluded).
+// Only an Officer an officer made by hand counts: a role Discord gives (source 'discord') never decides who owns the guild.
 const successorSql = (userExpr) => `SELECT so.user_id FROM role_assignments so
-      WHERE so.guild_id = g.id AND so.role_id = 'officer' AND so.user_id != ${userExpr}
+      WHERE so.guild_id = g.id AND so.role_id = 'officer' AND so.source = 'manual' AND so.user_id != ${userExpr}
         AND ${memberSql('so.user_id', 'g.id', 'g.discord_server_id')}
       ORDER BY so.assigned_at, so.id LIMIT 1`;
 
@@ -235,7 +244,10 @@ export async function me(ctx) {
         WHERE ${memberSql('c.uid', 'g.id', 'g.discord_server_id')}
         ORDER BY g.name, g.id`,
     ).bind(userId),
-    db.prepare('SELECT guild_id, role_id, team_id FROM role_assignments WHERE user_id = ?').bind(userId),
+    db.prepare(
+      `SELECT ra.guild_id, ra.role_id, ra.team_id, ra.source, r.name AS role_name
+         FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.user_id = ?`,
+    ).bind(userId),
     db.prepare(
       `SELECT g.id, g.name FROM guild_blocks b JOIN guilds g ON g.id = b.guild_id
         WHERE b.user_id = ? ORDER BY g.name, g.id`,

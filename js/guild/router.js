@@ -3,7 +3,9 @@
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list; the shell sends viewers without officer actions on to Roster)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,attendance,loot,battlenet,activity}]
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,roles,discord,guests,public,attendance,loot,battlenet,activity}]
+//   #/guest/<token>  (a guest link: the page redeems it and moves to #/view)  #/view  (the guest view)  #/public/:gid  (a guild's public page)
+//   These three work signed out; they show a read-only view and never ask for a sign-in.
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
 //   #/g/:gid/loot[?view=raids|items]  #/g/:gid/loot/p/:pid  (Balance is the default view)
 //   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl,bnet}
@@ -13,7 +15,7 @@
 
   // 'home' is the guild's landing section: it has no path segment of its own (#/g/:gid); #/g/:gid/home is only an alias.
   const SECTIONS = ['home', 'roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'schedule', 'people', 'attendance', 'loot', 'battlenet', 'activity'];
+  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'attendance', 'loot', 'battlenet', 'activity'];
   const LOOT_VIEWS = ['raids', 'items'];
   const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet'];
   // Why a sign-in came back without signing in (/auth/callback and /auth/bnet/callback redirect to #/signin?error=..).
@@ -23,6 +25,8 @@
   // ID that would put two roster people of one guild on the account.
   const LINKED_ERRORS = ['denied', 'state', 'bnet', 'not_configured', 'busy', 'taken', 'discord', 'discord_taken', 'has_discord', 'has_bnet', 'roster_conflict'];
   const ID = /^[A-Za-z0-9_-]{1,64}$/;
+  // A guest link's token: 32 random bytes in base64url (what the Worker makes and POST /auth/guest accepts).
+  const GUEST_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
   function decode(s) {
     try { return decodeURIComponent(s); } catch (e) { return null; }
@@ -66,12 +70,15 @@
       if (head === 'roadmap') return { name: 'roadmap' };
       if (head === 'linked') return { name: 'linked', error: LINKED_ERRORS.indexOf(query.error) >= 0 ? query.error : null };
       if (head === 'characters') return { name: 'characters' };
+      if (head === 'view') return { name: 'view' };
       if (head === 'planner') {
         const raid = plannerRaid(query.raid);
         return raid ? { name: 'planner', gid: raid.gid, rid: raid.rid } : { name: 'planner' };
       }
       return { name: 'notfound' };
     }
+    if (head === 'guest' && parts.length === 2) return GUEST_TOKEN.test(parts[1]) ? { name: 'guest', token: parts[1] } : { name: 'notfound' };
+    if (head === 'public' && parts.length === 2) return ID.test(parts[1]) ? { name: 'public', gid: parts[1] } : { name: 'notfound' };
     if (head !== 'g' || !ID.test(parts[1])) return { name: 'notfound' };
     const gid = parts[1];
     if (parts.length === 2) return { name: 'section', gid: gid, section: 'home' };
@@ -112,6 +119,9 @@
       case 'roadmap': return '#/roadmap';
       case 'linked': return '#/linked' + (LINKED_ERRORS.indexOf(r.error) >= 0 ? '?error=' + r.error : '');
       case 'characters': return '#/characters';
+      case 'view': return '#/view';
+      case 'guest': return typeof r.token === 'string' && GUEST_TOKEN.test(r.token) ? '#/guest/' + r.token : '#/';
+      case 'public': return isId(r.gid) ? '#/public/' + encodeURIComponent(r.gid) : '#/';
       case 'planner': return '#/planner' + (isId(r.gid) && isId(r.rid) ? '?raid=' + r.gid + '.' + r.rid : '');
       case 'section': {
         const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';
@@ -133,5 +143,10 @@
     }
   }
 
-  G.router = { SECTIONS: SECTIONS, TABS: TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, parse: parse, format: format };
+  // The routes that read a guild without an account (a guest link, the guest view, a public page).
+  function isViewerRoute(route) {
+    return !!route && (route.name === 'guest' || route.name === 'view' || route.name === 'public');
+  }
+
+  G.router = { SECTIONS: SECTIONS, TABS: TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN, parse: parse, format: format, isViewerRoute: isViewerRoute };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

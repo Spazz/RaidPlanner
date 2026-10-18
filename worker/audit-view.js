@@ -37,6 +37,9 @@ export const ACTION_GROUP = Object.freeze({
   'guild_master.auto_promote': 'settings', 'access.remove': 'settings', 'access.restore': 'settings', 'account.delete': 'settings',
   // Written with no guild (the account's own sign-ins), so they never reach a guild's log; mapped so the action list stays complete.
   'discord.link': 'settings', 'discord.unlink': 'settings',
+  // Phase 7: the role editor, the Discord role mapping and sync, guest links and the public page. Settings, like roles.set and access.*.
+  'role.create': 'settings', 'role.update': 'settings', 'role.delete': 'settings', 'role.reset': 'settings',
+  'discord.maps': 'settings', 'roles.discord_sync': 'settings', 'guest.create': 'settings', 'guest.revoke': 'settings', 'public.update': 'settings',
 });
 
 export const groupOf = (action) => (Object.prototype.hasOwnProperty.call(ACTION_GROUP, action) ? ACTION_GROUP[action] : 'settings');
@@ -88,6 +91,7 @@ const KIND_LABEL = { signed: 'Signed', late: 'Late', tentative: 'Tentative', ben
 const SOURCE_LABEL = { raid_helper: 'Raid-Helper', wcl: 'Warcraft Logs', bnet: 'Battle.net' };
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const BUILTIN_ROLE_LABEL = { guild_master: 'Guild Master', officer: 'Officer', team_lead: 'Team Lead', member: 'Member', guest: 'Guest', public: 'Public' };
 const CHANGED_LABEL = {
   status: 'status', joinedOn: 'join date', trialStart: 'trial start', trialEnd: 'trial end', leftOn: 'left date', leftReason: 'reason for leaving',
   link: 'Discord link', teamId: 'team', class: 'class', mainSpec: 'main spec', offSpec: 'off spec',
@@ -105,6 +109,9 @@ export function dayLabel(date) {
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const list = (items) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
+// Two payloads are the same when their keys and values are, whatever the key order (the role editor's permission maps).
+const stableJson = (value) => JSON.stringify(value, (key, v) => (v && typeof v === 'object' && !Array.isArray(v)
+  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, v[k]])) : v));
 const humanChanged = (changed) => [...new Set((Array.isArray(changed) ? changed : []).map((key) => CHANGED_LABEL[key] || key))];
 
 // names: { person(id), character(id), team(id), raid(id), user(id), award(id), claim(id) } -> a display string or null. Each is optional.
@@ -148,6 +155,42 @@ export function describeRow(row, names = {}) {
     case 'guild_master.auto_promote': return after.guildMasterUserId ? `Guild Master passed to ${user(after.guildMasterUserId)}` : 'The guild has no Guild Master';
     case 'access.remove': return `Removed the access of ${user(ent)}`;
     case 'access.restore': return `Restored the access of ${user(ent)}`;
+
+    // Phase 7. A role's name comes from the row (a custom role can be renamed or deleted since); a built-in role has a fixed label.
+    case 'role.create': return `Created the role ${after.name || 'a role'}`;
+    case 'role.update': {
+      const was = before.name || BUILTIN_ROLE_LABEL[ent] || 'a role';
+      const now = after.name || was;
+      const permissionsChanged = stableJson(before.permissions) !== stableJson(after.permissions);
+      if (was !== now) return `Renamed the role ${was} to ${now}${permissionsChanged ? ' and changed its permissions' : ''}`;
+      return permissionsChanged ? `Changed the permissions of the role ${now}` : `Updated the role ${now}`;
+    }
+    case 'role.reset': return BUILTIN_ROLE_LABEL[ent] ? `Reset the role ${BUILTIN_ROLE_LABEL[ent]} to its defaults` : 'Reset a role to its defaults';
+    case 'role.delete': return `Deleted the role ${before.name || 'a role'}`;
+    case 'discord.maps': {
+      const was = Array.isArray(before.maps) ? before.maps.length : 0;
+      const now = Array.isArray(after.maps) ? after.maps.length : 0;
+      return `Changed the Discord role mapping: ${plural(now, 'Discord role', 'Discord roles')} mapped (was ${was})`;
+    }
+    case 'roles.discord_sync': {
+      const key = (pair) => `${pair && pair.roleId}|${(pair && pair.teamId) || ''}`;
+      const had = new Set((Array.isArray(before.roles) ? before.roles : []).map(key));
+      const has = new Set((Array.isArray(after.roles) ? after.roles : []).map(key));
+      const added = [...has].filter((k) => !had.has(k)).length;
+      const removed = [...had].filter((k) => !has.has(k)).length;
+      const parts = [];
+      if (added) parts.push(`${added} added`);
+      if (removed) parts.push(`${removed} removed`);
+      return `Synced the Discord roles of ${user(ent)}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+    }
+    case 'guest.create': return `Created a guest link for ${scopeText(after.teamId || 'guild')}${after.expiresAt ? '' : ' that does not expire'}`;
+    case 'guest.revoke': return 'Turned off a guest link';
+    case 'public.update': {
+      const sections = Array.isArray(after.sections) ? after.sections : [];
+      if (!after.enabled) return before.enabled ? 'Turned the public page off' : 'Changed the public page settings';
+      const shown = sections.length ? ` (${list(sections)})` : '';
+      return before.enabled ? `Changed what the public page shows${shown}` : `Turned the public page on${shown}`;
+    }
 
     case 'person.create': return `Added ${person(ent)} to the roster${STATUS_LABEL[after.status] ? ` as ${STATUS_LABEL[after.status]}` : ''}`;
     case 'person.update': {

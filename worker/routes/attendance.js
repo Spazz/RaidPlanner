@@ -545,9 +545,17 @@ export async function getTeamAttendance(ctx) {
   const params = new URL(ctx.request.url).searchParams;
   const team = await requireTeam(ctx.db, guild.id, params.get('team'));
   if (!allows(guildContext.can, 'attendance.view', team.id)) throw forbidden();
-  const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, team.id);
-  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult] = await ctx.db.batch([
-    policyRowsStatement(ctx.db, guild.id),
+  const includeWatch = allows(guildContext.can, 'attendance.review', team.id);
+  return jsonResponse(await teamAttendanceData(ctx.db, guild, team, params, ctx.now(), viewerOf(ctx), { includeWatch }));
+}
+
+// The team page's data: one team's weeks, people and metrics over the window in `params` (?window=). viewer: { userId, discordId } marks the viewer's own row
+// (isMe); null for someone with no account (a guest link, the public page). Callers check attendance.view for the team first.
+// options.includeWatch: add the Watch list (the caller has checked attendance.review on the team); off by default.
+export async function teamAttendanceData(db, guild, team, params, nowMs, viewer, options = {}) {
+  const bind = (sql) => db.prepare(sql).bind(guild.id, team.id);
+  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult] = await db.batch([
+    policyRowsStatement(db, guild.id),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
                  (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id = ?2 ORDER BY raid_on, id`),
@@ -558,7 +566,7 @@ export async function getTeamAttendance(ctx) {
              AND (p.id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR p.id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
     bind(`SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1
              AND (player_id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR player_id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
-    ctx.db.prepare('SELECT id, name FROM teams WHERE guild_id = ?').bind(guild.id),
+    db.prepare('SELECT id, name FROM teams WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT via_raid_id FROM attendance WHERE guild_id = ?1 AND team_id = ?2 AND via_raid_id IS NOT NULL)`),
   ]);
   const teamNames = new Map(teamResult.results.map((row) => [row.id, row.name]));
@@ -567,7 +575,7 @@ export async function getTeamAttendance(ctx) {
   const resolver = makePolicyResolver(guild, policyResult.results);
   const policy = resolver.resolved(team.id);
   const resetDay = resolver.resetDay();
-  const today = guildToday(guild, ctx.now());
+  const today = guildToday(guild, nowMs);
   const weeks = readWindow(params, policy);
   const windowStart = windowStartFor(today, resetDay, weeks);
   const inWindow = (date) => (windowStart === null || date >= windowStart) && date <= today;
@@ -592,7 +600,7 @@ export async function getTeamAttendance(ctx) {
       name: character ? character.name : 'Unknown',
       class: character ? character.class : null,
       status: row.status,
-      isMe: isOwnPlayer(row, viewerOf(ctx)),
+      isMe: viewer ? isOwnPlayer(row, viewer) : false,
     };
   }).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 
@@ -603,7 +611,9 @@ export async function getTeamAttendance(ctx) {
     if (!weekMap.has(start)) weekMap.set(start, []);
     weekMap.get(start).push({ id: raid.id, raidOn: raid.raid_on, zone: raid.zone });
   }
-  const watch = allows(guildContext.can, 'attendance.review', team.id)
+  // The Watch list (PM wave 1) is for viewers with attendance.review on this team: the caller decides (options.includeWatch). The guest link and the
+  // public page never ask for it, so the fail-closed default keeps it out of their view.
+  const watch = options.includeWatch
     ? watchView(watchList({
       people: peopleResult.results.map((row) => ({ id: row.id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on })),
       raids: raids.map(metricsRaid),
@@ -612,7 +622,7 @@ export async function getTeamAttendance(ctx) {
       policy, today, resetDay, windowWeeks: weeks,
     }), people)
     : null;
-  return jsonResponse({
+  return {
     team: { id: team.id, name: team.name },
     today,
     window: weeks,
@@ -622,7 +632,7 @@ export async function getTeamAttendance(ctx) {
     awaitingReview: raids.filter((raid) => raid.open_flags > 0).length,
     staleRaids: raids.filter((raid) => isStale(raidState(raid, raid.reports, resolver))).length,
     watch,
-  });
+  };
 }
 
 // The watch list as the team page draws it: the entries get their name, class and status. null while the policy has both thresholds off
@@ -641,6 +651,7 @@ function watchView(list, people) {
     }),
   };
 }
+
 
 // A stored decision answers a row only while the row still has the flags it was made against.
 const decisionApplies = (decision, row) => !!decision && !!row

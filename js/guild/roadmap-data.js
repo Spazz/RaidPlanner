@@ -28,12 +28,6 @@
         area: 'raids', status: 'next', source: 'user', added: '2026-10-17',
       },
       {
-        id: 'discord-roles-guest-links',
-        title: 'Discord role mapping, role editor and guest links',
-        summary: 'Discord server roles map to Raidsmith roles through a silent bot, officers edit roles in Raidsmith, and guest and public links are added. Planned decisions (made by Claude, open to change): the bot asks for no permissions, manual role assignments win over Discord-mapped ones, guest links expire and can be revoked, and the public page is off by default and never shows notes.',
-        area: 'discord', status: 'next', source: 'user', added: '2026-10-17',
-      },
-      {
         id: 'open-to-other-guilds',
         title: 'Open Raidsmith to other guilds',
         summary: 'Let other guilds create their own guild in Raidsmith. Today only people on an allowlist can create one. Planned decisions (made by Claude, open to change): any Discord server admin can create a guild unless the allowlist is set, new guilds get a setup checklist and size limits, the Guild Master can export or delete the guild\'s data, and there is no public guild directory.',
@@ -246,6 +240,13 @@
         title: 'Calendar feed for raids',
         summary: 'Raids has Subscribe in your calendar: a private link per person and team that adds the team\'s raids (30 days back, 60 ahead) to Google, Apple or Outlook Calendar, with the sign-up counts and your own sign-up in each event. The link is shown once, can be replaced or turned off, stops working when you leave the guild or lose access, and is deleted with your data.',
         area: 'raids', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-17',
+      },
+      {
+        id: 'discord-roles-guest-links',
+        title: 'Discord role mapping, role editor, guest links and the public page',
+        summary: 'Officers add a silent Raidsmith bot (it asks for no permissions) and map Discord roles to Officer, Team Lead of a team or their own roles; the mapping applies at every sign-in and with Sync now, and a role set by hand always wins. The Guild Master edits roles, officers make revocable read-only guest links, and a public page (off by default) can show roster, raids, attendance and loot, never notes or Discord names.',
+        why: 'Roles should follow Discord without trusting it blindly, and people without an account should be able to look.',
+        area: 'discord', status: 'done', source: 'user', added: '2026-10-17', shipped: '2026-10-17',
       },
       {
         id: 'event-move-updates-raid-date',

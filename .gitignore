@@ -177,3 +177,7 @@
 !guild-wave1-worker-tests.js
 !guild-wave1-ui-tests.js
 !guild-wave1-contract-tests.js
+# Phase 7 Discord role mapping, role editor, guest links and the public page: Worker, pages and contract suites (the Worker files, migration 0014 and the pages are covered by the globs above)
+!guild-roles-worker-tests.js
+!guild-roles-ui-tests.js
+!guild-roles-contract-tests.js

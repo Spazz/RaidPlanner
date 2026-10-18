@@ -330,9 +330,9 @@ function assertEscaped(out, label) {
   await check('visibility: Guild settings tabs follow the actions (Teams and Battle.net: guild.teams; People: guild.access or guild.roles)', () => {
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
     assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams', 'battlenet']);
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people']);
-    assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people']);
-    assert.deepEqual(tabs(ALL_CAN), ['teams', 'people', 'battlenet']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'guests']);
+    assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people', 'roles', 'discord', 'public']);
+    assert.deepEqual(tabs(ALL_CAN), ['teams', 'people', 'roles', 'discord', 'guests', 'public', 'battlenet']);
     assert.deepEqual(tabs({}), []);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData({ 'guild.access': 'guild' }) }, 'people', '<p>x</p>');
     assert(frame.includes('People and roles'));

@@ -163,4 +163,33 @@
     create: function (gid, teamId) { return G.api.post(guildPath(gid, '/calendar'), { teamId: teamId }); },
     revoke: function (gid, teamId) { return G.api.del(guildPath(gid, '/calendar'), { teamId: teamId }); },
   };
+  // Roles, Discord role mapping, guest links and the public page (Phase 7). Same rule: through G.api.get / post / ... at call time. Every role
+  // mutation answers with the full role list; the guest token comes back once, from guests.create.
+  G.api.roles = {
+    list: function (gid) { return G.api.get(guildPath(gid, '/roles')); },
+    create: function (gid, body) { return G.api.post(guildPath(gid, '/roles'), body); },
+    update: function (gid, rid, body) { return G.api.put(guildPath(gid, '/roles/' + encodeURIComponent(rid)), body); },
+    reset: function (gid, rid) { return G.api.post(guildPath(gid, '/roles/' + encodeURIComponent(rid) + '/reset'), {}); },
+    remove: function (gid, rid) { return G.api.del(guildPath(gid, '/roles/' + encodeURIComponent(rid)), {}); },
+  };
+  G.api.discord = {
+    get: function (gid) { return G.api.get(guildPath(gid, '/discord')); },
+    saveMaps: function (gid, maps) { return G.api.put(guildPath(gid, '/discord/maps'), { maps: maps }); },
+    syncPerson: function (gid, uid) { return G.api.post(guildPath(gid, '/people/' + encodeURIComponent(uid) + '/sync'), {}); },
+    syncAll: function (gid, after) { return G.api.post(guildPath(gid, '/discord/sync'), after ? { after: after } : {}); },
+  };
+  G.api.guests = {
+    list: function (gid) { return G.api.get(guildPath(gid, '/guest-links')); },
+    create: function (gid, body) { return G.api.post(guildPath(gid, '/guest-links'), body); },
+    revoke: function (gid, linkId) { return G.api.del(guildPath(gid, '/guest-links/' + encodeURIComponent(linkId)), {}); },
+    // The visitor's side (no account): redeem a token for the guest cookie, read the view, leave.
+    redeem: function (token) { return G.api.post('/auth/guest', { token: token }); },
+    view: function () { return G.api.get('/api/guest'); },
+    leave: function () { return G.api.del('/auth/guest', {}); },
+  };
+  G.api.publicPage = {
+    get: function (gid) { return G.api.get(guildPath(gid, '/public')); },
+    save: function (gid, body) { return G.api.put(guildPath(gid, '/public'), body); },
+    view: function (gid) { return G.api.get('/api/public/' + encodeURIComponent(gid)); },
+  };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));
