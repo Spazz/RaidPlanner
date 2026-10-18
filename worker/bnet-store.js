@@ -70,12 +70,13 @@ export async function loadMemberGuilds(db, userId) {
 // ---------------------------------------------------------------------------
 // Claims
 
-// What approving a pending claim would do, decided from the roster as it is now.
+// What approving a pending claim would do, decided from the roster as it is now. A person is the claimant's own when it is linked to their account
+// (players.user_id) or carries their Discord ID; approving that makes a person the claimant's ACCOUNT's (user_id) and, if the account has Discord, its Discord ID too.
 //   add_alt      the claimant already has a person: the character joins them as an Alt (the officer picks the team)
 //   new_person   the claimant has no person and the character is on no roster: a new person with it as Main (team and status picked)
-//   link_person  the character is on a person nobody has linked yet and the claimant has no person: the claimant's Discord account links to that person
+//   link_person  the character is on a person nobody has linked yet and the claimant has no person: the claimant's account links to that person
 //   already      the character is already on the claimant's own person: approving only closes the claim
-//   blocked      cannot be approved: reason not_member | taken (on a person linked to someone else) | other_person (on an unlinked person, but the claimant has their own)
+//   blocked      cannot be approved: reason not_member | taken (on a person linked to someone else, by account or Discord ID) | other_person (on an unlinked person, but the claimant has their own)
 // claims: character_claims rows (user_id, name_key, realm_key). -> Map(claim id -> { kind, reason, person: { id, name } | null, homeTeamId, defaultTeamId })
 export async function planClaims(db, guild, claims) {
   const plans = new Map();

@@ -9,7 +9,7 @@ import { loadGuildContext, isGranted } from '../permissions.js';
 import { personFromSession, toPerson } from '../person.js';
 import { enforceRateLimit } from '../ratelimit.js';
 import { SINGLE_LINE_STRIP } from '../roster-data.js';
-import { canSeeAvatars, homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
+import { homeTeamOf, loadPersonData, personReply } from '../roster-view.js';
 import { bad, constraintOf, requireEdit } from './roster.js';
 
 export const MAX_DISPLAY_NAME = 32;
@@ -127,9 +127,9 @@ export async function lookupAccounts(ctx) {
         ORDER BY u.id LIMIT ?`,
     ).bind(q, q, q, q, guildId, guildId, FOUND_MAX).all()).results;
   }
-  const showAvatar = canSeeAvatars(guildContext.can);
+  // Initials only: an avatar URL carries the account's Discord ID, which an officer has no business learning from a name they typed.
   return jsonResponse({
-    accounts: rows.map((row) => ({ ...toPerson(row, { avatar: showAvatar }), battletag: row.battletag, matchedBy: row.matched_by })),
+    accounts: rows.map((row) => ({ ...toPerson(row, { avatar: false }), battletag: row.battletag, matchedBy: row.matched_by })),
   });
 }
 

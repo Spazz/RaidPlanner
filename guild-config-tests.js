@@ -134,6 +134,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
     'guild-attendance-worker-tests.js', 'migrations/0003_attendance.sql', 'guild-loot-worker-tests.js', 'guild-loot-contract-tests.js', 'migrations/0008_loot.sql',
     'guild-roadmap-tests.js', 'guild-roadmap-worker-tests.js', 'tools/roadmap-ideas.js', 'js/guild/roadmap-data.js', 'js/guild/pages-roadmap.js',
     'guild-bnet-worker-tests.js', 'guild-bnet-ui-tests.js', 'tools/fake-battlenet.js', 'js/guild/pages-bnet.js', 'js/guild/pages-import-bnet.js', 'js/guild/pages-settings-bnet.js', 'migrations/0009_battlenet.sql',
+    'guild-accounts-worker-tests.js', 'guild-accounts-ui-tests.js', 'js/guild/pages-accounts.js', 'migrations/0012_accounts.sql',
     'migrations/0001_foundation.sql', 'worker/package.json',
     ...walk('worker'), ...walk('migrations'),
   ]);
