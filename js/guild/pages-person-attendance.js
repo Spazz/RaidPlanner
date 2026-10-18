@@ -117,7 +117,8 @@
             '<ul class="gs-roster-cards gs-pa-cards" aria-label="Raid by raid">' + cells.map(function (c) { return historyCardHtml(gid, c, showReason); }).join('') + '</ul>'
           : '<p class="gs-fine">No raids yet.</p>') + '</div></section>';
     }).join('');
-    return '<div class="gs-page gs-person-page">' + head + (blocks || '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">Nothing to show</h2><p class="gs-lead gs-lead-sm">There is no attendance you can see for this person yet.</p></section>') + '</div>';
+    const rank = G.pages.ranks ? G.pages.ranks.personBoxHtml(Object.assign({}, p, { id: opts.pid }), teams) : '';
+    return '<div class="gs-page gs-person-page">' + head + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + rank + (blocks || '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">Nothing to show</h2><p class="gs-lead gs-lead-sm">There is no attendance you can see for this person yet.</p></section>') + '</div>';
   }
 
   function load(r, gd) {
@@ -131,7 +132,7 @@
   function main(r, gd) {
     const x = a().personAtt;
     if (!x || x.gid !== gd.guild.id || x.pid !== r.pid) return G.pages.signin.loadingHtml();
-    return personAttHtml({ guildData: gd, pid: r.pid, data: x.data });
+    return personAttHtml({ guildData: gd, pid: r.pid, data: x.data, alert: G.app.state.pageAlert });
   }
 
   function nameFor(r) {

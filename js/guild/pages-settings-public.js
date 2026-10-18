@@ -8,6 +8,7 @@
   const SECTION_ITEMS = [
     { key: 'roster', label: 'Roster names and classes' },
     { key: 'raids', label: 'Upcoming and recent raids' },
+    { key: 'progress', label: 'Boss progress (first kills, wipes, best clear)' },
     { key: 'attendance', label: 'Attendance percentages' },
     { key: 'loot', label: 'Loot awards' },
   ];

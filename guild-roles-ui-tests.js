@@ -244,7 +244,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert.deepEqual(p('#/guest/' + TOKEN + '?utm=1'), { name: 'guest', token: TOKEN }, 'a query is ignored');
     assert.equal(G.router.format({ name: 'guest', token: 'short' }), '#/', 'a token that is not valid never reaches the address');
     assert.equal(G.router.format({ name: 'public', gid: '' }), '#/');
-    for (const tab of ['roles', 'discord', 'guests', 'public']) {
+    for (const tab of ['roles', 'discord', 'guests', 'dataaccess', 'public']) {
       assert.deepEqual(p('#/g/g1/settings/' + tab), { name: 'settings', gid: 'g1', tab });
       assert.equal(G.router.format({ name: 'settings', gid: 'g1', tab }), '#/g/g1/settings/' + tab);
     }
@@ -259,12 +259,12 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
     const labels = can => plain(G.shell.settingsTabs(can).map(t => t.label));
     assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people', 'roles', 'discord', 'public']);
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'guests']);
-    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'guests', 'public']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'guests', 'dataaccess']);
+    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'guests', 'dataaccess', 'public']);
     assert.deepEqual(tabs({ 'guild.roles': [] , 'guild.access': [] }), [], 'an empty team list is no permission');
     assert.deepEqual(tabs({}), []);
     assert.deepEqual(labels({ 'guild.roles': 'guild' }), ['People and roles', 'Roles', 'Discord roles', 'Public page']);
-    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['People and roles', 'Guest links']);
+    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['People and roles', 'Guest links', 'Data access']);
     assert.equal(G.shell.canSeeSettings({ 'guild.roles': 'guild' }), true);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData() }, 'guests', '<p>x</p>');
     assert(/aria-current="page">Guest links</.test(frame) && frame.includes('href="#/g/g1/settings/guests"') && frame.includes('href="#/g/g1/settings/public"'));

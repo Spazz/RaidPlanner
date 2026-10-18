@@ -4,6 +4,8 @@
 // saves with PUT /attendance/policy { teamId | null, policy, expectedVersion }. A Warcraft Logs card saves the guild ID
 // and each team's uploader names with PUT /attendance/wcl. GET /attendance/policy feeds both.
 // The Watch list group edits `watch: { below, dropBy }`: fractions 0..1 in the policy, typed as percent (blank = that check is off, stored as null).
+// The Rank ladder group (PM wave 7, guild default only) edits `ladder: { ranks: [{ id, name, rules }] }`: ranks lowest first; each rank after the first has the
+// rules for earning it (see worker/rank-ladder.js). A rank's id is made from its first name and never changes, since people carry it.
 (function (G) {
   'use strict';
 
@@ -11,6 +13,20 @@
   const CREDIT_MIN = 2;
   const CREDIT_MAX = 5;
   const UPLOADERS_MAX = 10;
+  const RANK_MIN = 2;
+  const RANK_MAX = 6;
+  const RANK_NAME_MAX = 20;
+  // The number rules of a rank: the key, its label, and the largest number the Worker takes.
+  const RANK_RULES = [
+    { key: 'minRaids', label: 'Raids attended, at least', max: 1000 },
+    { key: 'minWeeksAttended', label: 'Raid weeks attended, at least', max: 104 },
+    { key: 'minWeeksSinceJoin', label: 'Weeks since joining, at least', max: 520 },
+    { key: 'maxMissed', label: 'Missed without notice (main window), at most', max: 100 },
+  ];
+  const STARTER_LADDER = [
+    { id: 'member', name: 'Member', rules: {} },
+    { id: 'raider', name: 'Raider', rules: { minAttendance: 0.75, minWeeksAttended: 2, since: 'join' } },
+  ];
   // Keys that change stored outcomes: a save touching one of these can leave raids stale.
   const CONSOLIDATION_ROOTS = ['expected', 'noSignup', 'tentative', 'absence', 'bench', 'lateSignup', 'detection', 'credit', 'fillIn', 'resetDay'];
 
@@ -48,6 +64,11 @@
         help: 'The team\'s Attendance page lists people whose attendance in the main window is under this. Leave it empty to turn this check off.' },
       { path: 'watch.dropBy', type: 'percent', label: 'Flag a drop of (points)', min: 0, max: 100,
         help: 'Also lists people whose attendance fell by at least this many percentage points against the previous window of the same length. Leave it empty to turn this check off.' },
+    ] },
+    { id: 'ladder', title: 'Rank ladder', fields: [
+      { path: 'ladder.ranks', type: 'ladder', label: 'Ranks, lowest first', guildOnly: true,
+        guildNote: 'The rank ladder belongs to the whole guild, since a rank is a label on the person. Change it on the Guild default.',
+        help: 'Optional. The ladder only suggests: the team\'s Attendance page and Home show "Suggested: promote" or "Suggested: review", and an officer accepts it with one click or dismisses it for 30 days. Everyone starts on the first rank. A rank with no rules is only given by hand.' },
     ] },
     { id: 'reset', title: 'Reset day', fields: [
       { path: 'resetDay', type: 'reset', label: 'Weekly reset', guildOnly: true },
@@ -222,6 +243,43 @@
     }).join('') + '</ul><div><button type="button" class="gs-btn gs-btn-sm" data-action="pol-credit-add" data-key="pc-add"' + (values.length >= CREDIT_MAX ? ' disabled' : '') + '>Add value</button></div>';
   }
 
+  // ── the rank ladder editor ──
+  function rankRowHtml(rank, i, count) {
+    const rules = rank.rules && typeof rank.rules === 'object' ? rank.rules : {};
+    const first = i === 0;
+    const num = function (key, label, max) {
+      const id = 'pr-' + key + '-' + i;
+      return '<div class="gs-rank-rule"><label class="gs-label" for="' + id + '">' + esc(label) + '</label><input class="gs-input gs-input-short" type="number" id="' + id + '" min="0" max="' + max + '" step="1" placeholder="Off" value="' +
+        esc(typeof rules[key] === 'number' ? rules[key] : '') + '" data-change="pol-rank" data-idx="' + i + '" data-field="' + key + '" data-key="' + id + '"></div>';
+    };
+    const percentId = 'pr-minAttendance-' + i;
+    const since = rules.since === 'rank' ? 'rank' : 'join';
+    const body = first
+      ? '<p class="gs-fine">Everyone starts here.</p>'
+      : '<div class="gs-rank-rules"><p class="gs-fine">To earn ' + esc(rank.name || 'this rank') + ', a person needs all of these that are set (leave a box empty to turn that rule off):</p>' +
+        '<div class="gs-rank-rule"><label class="gs-label" for="' + percentId + '">Attendance in the main window, at least (percent)</label><input class="gs-input gs-input-short" type="number" id="' + percentId + '" min="0" max="100" step="0.1" placeholder="Off" value="' +
+        esc(percentOf(rules.minAttendance)) + '" data-change="pol-rank" data-idx="' + i + '" data-field="minAttendance" data-key="' + percentId + '"></div>' +
+        RANK_RULES.map(function (r) { return num(r.key, r.label, r.max); }).join('') +
+        '<div class="gs-rank-rule"><label class="gs-label" for="pr-since-' + i + '">Count raids and weeks from</label><select class="gs-input" id="pr-since-' + i + '" data-change="pol-rank" data-idx="' + i + '" data-field="since" data-key="pr-since-' + i + '">' +
+        G.ui.optionsHtml([{ value: 'join', label: 'When they joined' }, { value: 'rank', label: 'When they got the rank before this one' }], since) + '</select></div></div>';
+    return '<li class="gs-rank-row"><div class="gs-rank-head"><label class="gs-sr" for="pr-n-' + i + '">Name of rank ' + (i + 1) + '</label>' +
+      '<input class="gs-input" type="text" id="pr-n-' + i + '" value="' + esc(rank.name) + '" maxlength="' + RANK_NAME_MAX + '" data-change="pol-rank" data-idx="' + i + '" data-field="name" data-key="pr-n-' + i + '">' +
+      '<span class="gs-row-actions"><button type="button" class="gs-icon-btn" data-action="pol-rank-move" data-idx="' + i + '" data-dir="-1" data-key="pr-up-' + i + '" aria-label="Move ' + esc(rank.name) + ' up"' + (i === 0 ? ' disabled' : '') + '>' + G.icons.icon('chevronDown', 18).replace('class="gs-icon"', 'class="gs-icon gs-flip"') + '</button>' +
+      '<button type="button" class="gs-icon-btn" data-action="pol-rank-move" data-idx="' + i + '" data-dir="1" data-key="pr-dn-' + i + '" aria-label="Move ' + esc(rank.name) + ' down"' + (i === count - 1 ? ' disabled' : '') + '>' + G.icons.icon('chevronDown', 18) + '</button>' +
+      '<button type="button" class="gs-icon-btn gs-icon-btn-danger" data-action="pol-rank-remove" data-idx="' + i + '" data-key="pr-rm-' + i + '" aria-label="Remove ' + esc(rank.name) + '"' + (count <= RANK_MIN ? ' disabled' : '') + '>' + G.icons.icon('trash', 18) + '</button></span></div>' + body + '</li>';
+  }
+
+  function ladderHtml(field, eff) {
+    const ranks = Array.isArray(eff.value) ? eff.value : [];
+    if (!ranks.length) {
+      return '<p class="gs-fine" id="pr-none">No ladder yet. Start with Member and Raider and add the ranks your guild uses.</p>' +
+        '<div><button type="button" class="gs-btn gs-btn-sm" data-action="pol-rank-start" data-key="pr-start">Start a ladder</button></div>';
+    }
+    return '<ol class="gs-rank-list">' + ranks.map(function (r, i) { return rankRowHtml(r, i, ranks.length); }).join('') + '</ol>' +
+      '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="pol-rank-add" data-key="pr-add"' + (ranks.length >= RANK_MAX ? ' disabled' : '') + '>Add rank</button>' +
+      '<button type="button" class="gs-btn gs-btn-sm" data-action="pol-rank-off" data-key="pr-off">Turn the ladder off</button></div>';
+  }
+
   function resetDayHtml(field, eff, view) {
     const derived = view.resetDayDerived;
     const derivedName = typeof derived === 'number' && WEEKDAYS[derived] ? WEEKDAYS[derived] : (derived != null ? String(derived) : '');
@@ -235,7 +293,7 @@
     const get = function (p) { return effective(view, scope, draft, p).value; };
     if (field.when && !field.when(get)) return '';
     if (field.guildOnly && scope !== 'guild') {
-      return fieldShellHtml(field, scope, eff, '<p class="gs-fine">Set for the whole guild, so a reset week means the same for every team. Change it on the Guild default.</p>');
+      return fieldShellHtml(field, scope, eff, '<p class="gs-fine">' + esc(field.guildNote || 'Set for the whole guild, so a reset week means the same for every team. Change it on the Guild default.') + '</p>');
     }
     let inner;
     switch (field.type) {
@@ -246,6 +304,7 @@
       case 'list': inner = listHtml(field, eff); break;
       case 'credits': inner = creditsHtml(field, eff); break;
       case 'reset': inner = resetDayHtml(field, eff, view); break;
+      case 'ladder': inner = ladderHtml(field, eff); break;
       default: inner = '<p class="gs-fine">' + esc(field.text) + '</p>';
     }
     return fieldShellHtml(field, scope, eff, inner);
@@ -413,6 +472,83 @@
     setPath(s.draft, 'credit.values', values);
     G.app.render();
     G.ui.focusByKey(el.getAttribute('data-key').replace(/\d+$/, String(j)));
+  };
+
+  // The rank ladder: every edit rewrites the whole ranks list in the draft (the policy stores the list as one value).
+  function effectiveRanks(s) {
+    return clone(effective(s.view, s.scope, s.draft, 'ladder.ranks').value) || [];
+  }
+
+  function saveRanks(s, ranks) {
+    setPath(s.draft, 'ladder.ranks', ranks);
+    G.app.render();
+  }
+
+  G.handlers.click['pol-rank-start'] = function () {
+    const s = cur();
+    if (!s || s.scope !== 'guild') return;
+    saveRanks(s, clone(STARTER_LADDER));
+    G.ui.focusByKey('pr-n-0');
+  };
+
+  G.handlers.click['pol-rank-off'] = function () {
+    const s = cur();
+    if (!s || s.scope !== 'guild') return;
+    saveRanks(s, []);
+  };
+
+  G.handlers.click['pol-rank-add'] = function () {
+    const s = cur();
+    if (!s || s.scope !== 'guild') return;
+    const ranks = effectiveRanks(s);
+    if (ranks.length >= RANK_MAX) return;
+    ranks.push({ id: creditIdFor('rank', ranks.map(function (r) { return r.id; })), name: 'New rank', rules: { since: 'join' } });
+    saveRanks(s, ranks);
+    G.ui.focusByKey('pr-n-' + (ranks.length - 1));
+  };
+
+  G.handlers.click['pol-rank-remove'] = function (el) {
+    const s = cur();
+    if (!s || s.scope !== 'guild') return;
+    const ranks = effectiveRanks(s);
+    if (ranks.length <= RANK_MIN) return;
+    ranks.splice(Number(el.getAttribute('data-idx')), 1);
+    saveRanks(s, ranks);
+  };
+
+  G.handlers.click['pol-rank-move'] = function (el) {
+    const s = cur();
+    if (!s || s.scope !== 'guild') return;
+    const ranks = effectiveRanks(s);
+    const i = Number(el.getAttribute('data-idx'));
+    const j = i + Number(el.getAttribute('data-dir'));
+    if (j < 0 || j >= ranks.length) return;
+    const tmp = ranks[i]; ranks[i] = ranks[j]; ranks[j] = tmp;
+    saveRanks(s, ranks);
+    G.ui.focusByKey(el.getAttribute('data-key').replace(/\d+$/, String(j)));
+  };
+
+  G.handlers.change['pol-rank'] = function (el) {
+    const s = cur();
+    if (!s || s.scope !== 'guild') return;
+    const ranks = effectiveRanks(s);
+    const rank = ranks[Number(el.getAttribute('data-idx'))];
+    if (!rank) return;
+    const field = el.getAttribute('data-field');
+    if (field === 'name') {
+      rank.name = String(el.value).trim().slice(0, RANK_NAME_MAX) || rank.name;
+    } else {
+      rank.rules = rank.rules && typeof rank.rules === 'object' ? rank.rules : {};
+      if (field === 'since') rank.rules.since = el.value === 'rank' ? 'rank' : 'join';
+      else if (field === 'minAttendance') rank.rules.minAttendance = fractionOf(el.value);
+      else {
+        const def = RANK_RULES.filter(function (r) { return r.key === field; })[0];
+        if (!def) return;
+        const n = el.value === '' ? null : Math.round(Number(el.value));
+        rank.rules[field] = n === null || !isFinite(n) ? null : Math.max(0, Math.min(def.max, n));
+      }
+    }
+    saveRanks(s, ranks);
   };
 
   G.handlers.click['pol-reset'] = function (el) {

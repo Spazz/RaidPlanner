@@ -46,6 +46,7 @@ export function rateLimitMessage(key) {
   if (/^acct:/.test(key)) return 'Too many account look-ups. Wait a few minutes and try again.';
   if (/^exp:/.test(key)) return 'Too many guild data exports. Wait a few minutes and try again.';
   if (/^ntest:/.test(key)) return 'That team has had five test posts this hour. Try again later.';
+  if (/^api:/.test(key)) return 'This key has reached its limit of 60 requests an hour. Try again later.';
   return /^(?:imp|wcl|wclraid):/.test(key)
     ? 'Too many imports. Wait a moment and try again.'
     : 'Too many changes in a minute. Wait a moment and try again.';

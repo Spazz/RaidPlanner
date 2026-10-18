@@ -377,6 +377,15 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('notify.test', 'team', 't_b', null, { teamId: 't_b', result: 'sent' }), 'Sent a test post to the Discord webhook of Bravo: it arrived'],
     [row('notify.test', 'team', 't_b', null, { teamId: 't_b', result: 'disabled' }), 'Sent a test post to the Discord webhook of Bravo: Discord refused it and the webhook was turned off'],
     [row('notify.test', 'team', 't_b', null, { teamId: 't_b', result: 'failed' }), 'Sent a test post to the Discord webhook of Bravo: it did not arrive'],
+    // PM wave 7: data keys and the rank ladder.
+    [row('apikey.create', 'api_key', 'ak_1', null, { teamId: 't_a', datasets: ['roster', 'loot'], expiresAt: 1790000000000 }), 'Made a data key for Alpha (roster and loot)'],
+    [row('apikey.create', 'api_key', 'ak_2', null, { teamId: null, datasets: ['attendance'], expiresAt: null }), 'Made a data key for the whole guild (attendance) that does not expire'],
+    [row('apikey.revoke', 'api_key', 'ak_1'), 'Turned off a data key'],
+    [row('person.rank', 'person', 'p_thoren', { rank: 'raider', rankName: 'Raider' }, { rank: 'core', rankName: 'Core', via: 'accept', teamId: 't_a' }), 'Set the rank of Thoren to Core (accepted the suggestion)'],
+    [row('person.rank', 'person', 'p_thoren', { rank: 'core', rankName: 'Core' }, { rank: 'raider', rankName: 'Raider', via: 'manual', teamId: 't_a' }), 'Set the rank of Thoren to Raider'],
+    [row('person.rank', 'person', 'p_thoren', { rank: 'core', rankName: 'Core' }, { rank: null, rankName: null, via: 'manual', teamId: 't_a' }), 'Cleared the rank of Thoren'],
+    [row('rank.dismiss', 'person', 'p_kael', null, { kind: 'promote', to: 'core', toName: 'Core', until: 1, teamId: 't_a' }), 'Dismissed the suggestion to promote Kaelith to Core for 30 days'],
+    [row('rank.dismiss', 'person', 'p_kael', null, { kind: 'review', to: 'raider', toName: 'Raider', until: 1, teamId: 't_a' }), 'Dismissed the suggestion to review Kaelith for 30 days'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {

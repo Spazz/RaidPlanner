@@ -267,6 +267,20 @@
   G.api.reminders = {
     optOut: function (optOut) { return G.api.put('/auth/reminders', { optOut: !!optOut }); },
   };
+  // PM wave 7: read-only API keys (Guild settings > Data access; the token comes back once, from dataKeys.create), a team's progress board, and the rank
+  // ladder's accept / manual set / dismiss. Same rule: through G.api.get / post / ... at call time.
+  G.api.dataKeys = {
+    list: function (gid) { return G.api.get(guildPath(gid, '/api-keys')); },
+    create: function (gid, body) { return G.api.post(guildPath(gid, '/api-keys'), body); },
+    revoke: function (gid, kid) { return G.api.del(guildPath(gid, '/api-keys/' + enc(kid)), {}); },
+  };
+  G.api.progress = {
+    get: function (gid, teamId) { return G.api.get(guildPath(gid, '/teams/' + enc(teamId) + '/progress')); },
+  };
+  G.api.ranks = {
+    set: function (gid, pid, body) { return G.api.put(guildPath(gid, '/roster/' + enc(pid) + '/rank'), body); },
+    dismiss: function (gid, pid, body) { return G.api.post(guildPath(gid, '/roster/' + enc(pid) + '/rank/dismiss'), body); },
+  };
   G.api.publicPage = {
     get: function (gid) { return G.api.get(guildPath(gid, '/public')); },
     save: function (gid, body) { return G.api.put(guildPath(gid, '/public'), body); },

@@ -25,6 +25,8 @@ const PATTERNS = {
   am: /^am_[A-Za-z0-9_-]{22}$/,
   // PM wave 4: a notification log row.
   nl: /^nl_[A-Za-z0-9_-]{22}$/,
+  // PM wave 7: a read-only API key.
+  ak: /^ak_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {
@@ -69,4 +71,7 @@ export const PARAM_SOURCE = {
   code: '[A-Za-z0-9]{16}',
   // A calendar feed file name (GET /cal/:cal): a 43-character token and ".ics". The feed route checks it itself (it has no session).
   cal: '[A-Za-z0-9_-]{43}\\.ics',
+  // A read-only API key (PM wave 7), and the dataset file of GET /api/v1/:dataset ("roster.csv", "loot.json"; the route checks it itself, it has no session).
+  kid: 'ak_[A-Za-z0-9_-]{22}',
+  dataset: '[a-z]{3,12}\\.(?:csv|json)',
 };

@@ -148,6 +148,23 @@ export function resolveViewerPermissions(rolePermissions, roleId, { teamId = nul
   return can;
 }
 
+// Pure. What a read-only API key may read (PM wave 7): what the built-in Member role holds of the read actions, for the key's one team or (teamId null)
+// every active team. The same rows as everyone else (the guild's edits to Member apply), then confined like a viewer: read actions only. A Member
+// grant on "their own teams" reaches the key's teams, since the key stands in for a member of that scope. -> { action: 'guild' | [teamIds] }.
+export function resolveKeyPermissions(rolePermissions, { teamId = null, activeTeamIds = [] } = {}) {
+  const everyTeam = [...activeTeamIds].sort();
+  const reachTeams = teamId ? (everyTeam.includes(teamId) ? [teamId] : []) : everyTeam;
+  const can = {};
+  for (const permission of rolePermissions) {
+    if (permission.role_id !== 'member') continue;
+    const spec = Object.prototype.hasOwnProperty.call(ACTION_INFO, permission.action) ? ACTION_INFO[permission.action] : null;
+    if (!spec || !spec.view || !spec.scopes.includes(permission.scope)) continue;
+    const reach = permission.scope === 'guild' && !teamId ? 'guild' : reachTeams;
+    if (reach === 'guild' || reach.length) can[permission.action] = reach;
+  }
+  return can;
+}
+
 // True when `can` allows the action: guild-wide, or (with a team) that team.
 export function allows(can, action, teamId) {
   const scope = can[action];

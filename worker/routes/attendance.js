@@ -5,6 +5,7 @@ import { auditStatement } from '../audit.js';
 import { addDays, localDate, weekStart } from '../attendance-calendar.js';
 import { DEFAULT_POLICY, REGION_RESET_DAY, resolvePolicy, validateOverride } from '../attendance-policy.js';
 import { teamMetrics, watchList } from '../attendance-metrics.js';
+import { ladderOf, rankReview } from '../rank-ladder.js';
 import {
   bumpRaidStatement, findUnmatched, isPlainObject, makePolicyResolver, markRaidsStale, policyRowsStatement, presenceKey, recomputeRaid,
 } from '../attendance-store.js';
@@ -554,7 +555,7 @@ export async function getTeamAttendance(ctx) {
 // options.includeWatch: add the Watch list (the caller has checked attendance.review on the team); off by default.
 export async function teamAttendanceData(db, guild, team, params, nowMs, viewer, options = {}) {
   const bind = (sql) => db.prepare(sql).bind(guild.id, team.id);
-  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult] = await db.batch([
+  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult, dismissalResult] = await db.batch([
     policyRowsStatement(db, guild.id),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
                  (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
@@ -562,12 +563,14 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
     bind(`SELECT raid_id, player_id, outcome, credit, signup_kind, attended, needs_review, via_raid_id, flags FROM attendance WHERE guild_id = ?1 AND team_id = ?2`),
     bind(`SELECT a.raid_id, a.player_id, r.raid_on, r.team_id AS host_team_id FROM attendance a JOIN raids r ON r.id = a.raid_id
            WHERE a.guild_id = ?1 AND a.credit_team_id = ?2 AND a.credit = 1 AND a.outcome = 'fill_in'`),
-    bind(`SELECT p.id, p.status, p.joined_on, p.left_on, p.discord_user_id, p.user_id FROM players p WHERE p.guild_id = ?1
+    bind(`SELECT p.id, p.status, p.joined_on, p.left_on, p.discord_user_id, p.user_id, p.rank, p.rank_on FROM players p WHERE p.guild_id = ?1
              AND (p.id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR p.id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
     bind(`SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1
              AND (player_id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR player_id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
     db.prepare('SELECT id, name FROM teams WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT via_raid_id FROM attendance WHERE guild_id = ?1 AND team_id = ?2 AND via_raid_id IS NOT NULL)`),
+    // PM wave 7: the rank suggestions an officer dismissed for 30 days (only the ones still hidden).
+    db.prepare('SELECT player_id, kind, to_rank, until FROM rank_dismissals WHERE guild_id = ? AND until > ?').bind(guild.id, nowMs),
   ]);
   const teamNames = new Map(teamResult.results.map((row) => [row.id, row.name]));
   const hostTeamOf = new Map(hostResult.results.map((row) => [row.id, row.team_id]));
@@ -589,9 +592,24 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
     borrowed: borrowedResult.results.map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
     policy, today, resetDay, windowWeeks: weeks,
   });
+  // The rank ladder (PM wave 7): each person's rank, and for viewers who review attendance the suggestions (promote / review) not dismissed.
+  const ladder = ladderOf(policy);
+  const mainTeamOf = (playerId) => {
+    const main = (charactersByPlayer.get(playerId) || []).find((entry) => entry.is_main === 1);
+    return main ? main.team_id : null;
+  };
+  const review = ladder.length ? rankReview({
+    ladder, policy, today, resetDay, nowMs, teamId: team.id, homeTeamOf: mainTeamOf, metrics,
+    people: peopleResult.results.map((row) => ({ id: row.id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on, rank: row.rank, rankOn: row.rank_on })),
+    raids: raids.map(metricsRaid),
+    rows: rowResult.results.map((row) => metricsRow(row, hostTeamOf)),
+    borrowed: borrowedResult.results.map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
+    dismissals: new Map(dismissalResult.results.map((row) => [row.player_id, row])),
+  }) : null;
   const people = peopleResult.results.map((row) => {
     const character = displayCharacter(charactersByPlayer.get(row.id) || [], team.id);
     const mine = metricsOf(metrics, row.id) || {};
+    const ranked = review ? review.get(row.id) : null;
     const cells = Array.isArray(mine.cells) ? mine.cells.filter((cell) => inWindow(cell.date)).map((cell) => ({ ...cell, via: viaOf(cell.via) })) : [];
     return {
       ...mine,
@@ -601,6 +619,7 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
       class: character ? character.class : null,
       status: row.status,
       isMe: viewer ? isOwnPlayer(row, viewer) : false,
+      ...(ranked ? { rank: { id: ranked.rank.id, name: ranked.rank.name, set: ranked.rank.set }, ...(options.includeWatch && ranked.suggestion ? { rankSuggestion: ranked.suggestion } : {}) } : {}),
     };
   }).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 
@@ -632,6 +651,7 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
     awaitingReview: raids.filter((raid) => raid.open_flags > 0).length,
     staleRaids: raids.filter((raid) => isStale(raidState(raid, raid.reports, resolver))).length,
     watch,
+    ladder: ladder.map((rank) => ({ id: rank.id, name: rank.name })),
   };
 }
 
@@ -663,9 +683,9 @@ export async function getPersonAttendance(ctx) {
   const params = new URL(ctx.request.url).searchParams;
   const personId = ctx.params.pid;
   const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, personId);
-  const [policyResult, playerResult, characterResult, rowResult, raidResult, borrowedResult, teamResult, hostResult, decisionResult] = await ctx.db.batch([
+  const [policyResult, playerResult, characterResult, rowResult, raidResult, borrowedResult, teamResult, hostResult, decisionResult, dismissalResult] = await ctx.db.batch([
     policyRowsStatement(ctx.db, guild.id),
-    bind('SELECT id, status, joined_on, left_on, discord_user_id, user_id FROM players WHERE guild_id = ?1 AND id = ?2'),
+    bind('SELECT id, status, joined_on, left_on, discord_user_id, user_id, rank, rank_on FROM players WHERE guild_id = ?1 AND id = ?2'),
     bind('SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind('SELECT * FROM attendance WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
@@ -678,6 +698,8 @@ export async function getPersonAttendance(ctx) {
     ctx.db.prepare('SELECT id, name FROM teams WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT via_raid_id FROM attendance WHERE player_id = ?2 AND via_raid_id IS NOT NULL)`),
     bind('SELECT raid_id, reason, flags FROM attendance_decisions WHERE guild_id = ?1 AND player_id = ?2'),
+    // PM wave 7: a rank suggestion dismissed for 30 days.
+    ctx.db.prepare('SELECT player_id, kind, to_rank, until FROM rank_dismissals WHERE guild_id = ? AND player_id = ? AND until > ?').bind(guild.id, personId, ctx.now()),
   ]);
   const decisionByRaid = new Map(decisionResult.results.map((row) => [row.raid_id, row]));
   const player = playerResult.results[0];
@@ -709,6 +731,15 @@ export async function getPersonAttendance(ctx) {
       borrowed, policy, today, resetDay, windowWeeks: weeks,
     }), player.id) || {};
     const canReview = allows(guildContext.can, 'attendance.review', teamId);
+    // The rank ladder (PM wave 7): judged on the team of the person's Main, shown to whoever may review this team.
+    const ladder = ladderOf(policy);
+    const mainTeamId = (characterResult.results.find((row) => row.is_main === 1) || {}).team_id || null;
+    const ranked = ladder.length ? rankReview({
+      ladder, policy, today, resetDay, nowMs: ctx.now(), teamId, homeTeamOf: () => mainTeamId,
+      people: [{ id: player.id, status: player.status, joinedOn: player.joined_on, leftOn: player.left_on, rank: player.rank, rankOn: player.rank_on }],
+      raids: raids.map(metricsRaid), rows: rows.map((row) => metricsRow(row, hostTeamOf)), borrowed,
+      dismissals: new Map(dismissalResult.results.map((row) => [row.player_id, row])),
+    }).get(player.id) : null;
     const cells = (Array.isArray(metrics.cells) ? metrics.cells : [])
       .filter((cell) => (windowStart === null || cell.date >= windowStart) && cell.date <= today)
       .sort((a, b) => (a.date < b.date ? 1 : -1))
@@ -728,12 +759,25 @@ export async function getPersonAttendance(ctx) {
         };
       });
     const { cells: _unused, ...summary } = metrics;
-    return { team: { id: teamId, name: teamNames.get(teamId) || null }, window: weeks, metrics: summary, cells };
+    return {
+      team: { id: teamId, name: teamNames.get(teamId) || null }, window: weeks, metrics: summary, cells,
+      ...(ranked && canReview && ranked.suggestion ? { rankSuggestion: ranked.suggestion } : {}),
+    };
   });
+  // The person's rank (null while the guild has no ladder), and the team an officer sets it from (a team they review, the Main's team first).
+  const ladderRanks = ladderOf(resolver.resolved(null));
+  const currentRank = ladderRanks.length ? (ladderRanks.find((rank) => rank.id === player.rank) || ladderRanks[0]) : null;
+  const mainTeam = (characterResult.results.find((row) => row.is_main === 1) || {}).team_id || null;
+  const rankTeams = [mainTeam, ...visible].filter((teamId, i, all) => teamId && all.indexOf(teamId) === i && allows(guildContext.can, 'attendance.review', teamId));
   return jsonResponse({
     person: {
       id: player.id, name: home ? home.name : 'Unknown', class: home ? home.class : null, status: player.status, joinedOn: player.joined_on,
       isMe: isOwnPlayer(player, viewerOf(ctx)),
+      ...(currentRank ? {
+        rank: { id: currentRank.id, name: currentRank.name, set: ladderRanks.some((rank) => rank.id === player.rank), on: player.rank_on || null },
+        rankChoices: ladderRanks.map((rank) => ({ id: rank.id, name: rank.name })),
+        rankTeamId: rankTeams[0] || null,
+      } : {}),
     },
     teams,
   });

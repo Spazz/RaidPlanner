@@ -49,6 +49,8 @@ export const ACTION_GROUP = Object.freeze({
   'notify.update': 'settings', 'notify.disabled': 'settings',
   // PM wave 6: a test post to a team's webhook.
   'notify.test': 'settings',
+  // PM wave 7: read-only API keys are settings; a person's rank (set by hand, or by accepting the ladder's suggestion) and a dismissed suggestion sit with attendance.
+  'apikey.create': 'settings', 'apikey.revoke': 'settings', 'person.rank': 'attendance', 'rank.dismiss': 'attendance',
 });
 
 // Actions the Worker writes itself (no actor): the Activity log names "Raidsmith" for them instead of a former member.
@@ -206,6 +208,11 @@ export function describeRow(row, names = {}) {
     }
     case 'guest.create': return `Created a guest link for ${scopeText(after.teamId || 'guild')}${after.expiresAt ? '' : ' that does not expire'}`;
     case 'guest.revoke': return 'Turned off a guest link';
+    case 'apikey.create': {
+      const datasets = Array.isArray(after.datasets) ? after.datasets : [];
+      return `Made a data key for ${scopeText(after.teamId || 'guild')}${datasets.length ? ` (${list(datasets)})` : ''}${after.expiresAt ? '' : ' that does not expire'}`;
+    }
+    case 'apikey.revoke': return 'Turned off a data key';
     case 'public.update': {
       const sections = Array.isArray(after.sections) ? after.sections : [];
       if (!after.enabled) return before.enabled ? 'Turned the public page off' : 'Changed the public page settings';
@@ -226,6 +233,11 @@ export function describeRow(row, names = {}) {
       return other.length ? `Updated ${person(ent)}: ${list(other)}` : `Updated ${person(ent)}`;
     }
     case 'person.delete': return `Removed ${person(ent)} from the roster`;
+    case 'person.rank':
+      if (after.rank === null || after.rank === undefined) return `Cleared the rank of ${person(ent)}`;
+      return `Set the rank of ${person(ent)} to ${after.rankName || after.rank}${after.via === 'accept' ? ' (accepted the suggestion)' : ''}`;
+    case 'rank.dismiss':
+      return after.kind === 'review' ? `Dismissed the suggestion to review ${person(ent)} for 30 days` : `Dismissed the suggestion to promote ${person(ent)}${after.toName ? ` to ${after.toName}` : ''} for 30 days`;
     case 'person.notes': return `Edited the officer notes of ${person(ent)}`;
     // An officer's account link (Phase 7a): the account's name is looked up at read time; an account since deleted reads as "an account".
     case 'person.account_link': return `Linked ${person(ent)} to ${get('user', after.userId, null) ? `the account ${user(after.userId)}` : 'an account'}`;

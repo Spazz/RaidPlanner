@@ -34,6 +34,7 @@ const ACCOUNT_ROUTES = new Set([
 const OPEN_ROUTES = new Set([
   'GET /guild', 'GET /guild/', 'GET /auth/login', 'GET /auth/callback', 'GET /auth/providers', 'GET /auth/bnet/login', 'GET /auth/bnet/callback',
   'POST /auth/guest', 'DELETE /auth/guest', 'GET /api/guest', 'GET /api/public/:gid', 'GET /cal/:cal', 'GET /api/apply/:gid', 'POST /api/apply/:gid',
+  'GET /api/v1/:dataset',
 ]);
 // Account routes that read and are safe to call for the "never lists the other guild" check.
 const ACCOUNT_READS = ['GET /auth/me', 'GET /auth/bnet', 'GET /api/roadmap/ideas'];
@@ -111,6 +112,9 @@ async function seedGuild(w, { label, serverId, gm, member, publicOn }) {
   const lid = link.created.id;
   const cal = await need(await w.call(jars.gm, 'POST', `${path}/calendar`, { teamId: tid }), 'calendar link');
   const calFile = new URL(cal.url).pathname.replace('/cal/', '');
+  // PM wave 7: a read-only API key that reads all four datasets of the whole guild.
+  const apiKey = await need(await w.call(jars.gm, 'POST', `${path}/api-keys`, { name: `${label} key`, teamId: null, datasets: ['roster', 'attendance', 'loot', 'raids'], expiresIn: '30d' }), 'api key');
+  const kid = apiKey.created.id;
   if (publicOn) await need(await w.call(jars.gm, 'PUT', `${path}/public`, { enabled: true, sections: ['roster', 'raids'] }), 'public page');
   // PM wave 3: an intent round with a pick, and an application in the inbox.
   const round = await need(await w.call(jars.gm, 'POST', `${path}/teams/${tid}/intent`, { title: `${label} intent title` }), 'intent round');
@@ -133,12 +137,12 @@ async function seedGuild(w, { label, serverId, gm, member, publicOn }) {
       VALUES ('${apid}', '${gid}', '${tid}', 'new', '${label}hopeful', '${label.toLowerCase()}hopeful', 'Nightslayer', 'nightslayer', 'MAGE', 'Fire', '${label} contact', '[{"label":"${label} question","type":"short","answer":"${label} answer"}]', 1, 1);`);
   if (publicOn) await need(await w.call(jars.gm, 'PUT', `${path}/applications/settings`, { enabled: true, questions: [{ label: `${label} open question`, type: 'short', required: false }] }), 'applications on');
   return {
-    label, serverId, gid, jars, ids: { gid, tid, uid, pid, cid, rid, rolid, lid, code, aid, clid, nid, iid, apid, cal: calFile },
-    guestToken: link.created.token, calFile,
+    label, serverId, gid, jars, ids: { gid, tid, uid, pid, cid, rid, rolid, lid, code, aid, clid, nid, iid, apid, kid, cal: calFile },
+    guestToken: link.created.token, calFile, apiToken: apiKey.created.token,
     // Words that only this guild's data contains. A response to anyone else must not carry one.
     words: [`Guild ${label}`, `${label}person`, `${label}title`, `${label}past`, `${label} council`, `${label} link`, `${label} officer note`, `${label} loot note`,
       `${label} Trinket`, `${label}claimant`, `${label} away reason`, `${label}uploader`, `${label} intent title`, `${label} intent note`, `${label}hopeful`, `${label} contact`,
-      `${label} question`, `${label} answer`, `${label} open question`, code, gid, tid, pid, cid, rid, rolid, lid, aid, clid, nid, iid, apid],
+      `${label} question`, `${label} answer`, `${label} open question`, `${label} key`, apiKey.created.token, code, gid, tid, pid, cid, rid, rolid, lid, aid, clid, nid, iid, apid, kid],
   };
 }
 
@@ -367,6 +371,36 @@ check('the open routes show a visitor only the one guild their link, address or 
   assert.equal((await w.call(newJar(), 'GET', `/cal/${'A'.repeat(43)}.ics`)).status, 404, 'a token nobody made');
   assert.equal((await w.call(alpha.jars.gm, 'DELETE', `/api/guild/${alpha.gid}/calendar`, { teamId: alpha.ids.tid })).status, 200);
   assert.equal((await w.call(newJar(), 'GET', `/cal/${alpha.calFile}`)).status, 404, 'a turned-off feed is gone');
+
+  // /api/v1/:dataset - the key is the credential and names one guild: its CSV and JSON carry that guild's data and nothing of the other.
+  const csv = await w.call(newJar(), 'GET', `/api/v1/roster.csv?key=${alpha.apiToken}`);
+  assert.equal(csv.status, 200, csv.text);
+  assert(csv.text.includes('Alphaperson') && !csv.text.includes('Betaperson'), 'the roster of its own guild');
+  only(csv.text, beta, 'alpha roster csv');
+  for (const dataset of ['attendance', 'loot', 'raids']) {
+    const res = await w.call(newJar(), 'GET', `/api/v1/${dataset}.csv?key=${alpha.apiToken}`);
+    assert.equal(res.status, 200, `${dataset}: ${res.text}`);
+    only(res.text, beta, `alpha ${dataset} csv`);
+    assert(!/officer note|loot note|away reason|uploader/.test(res.text), `no officer text in ${dataset}`);
+  }
+  const bearer = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
+  const json = await w.call(newJar(), 'GET', '/api/v1/loot.json', undefined, bearer(alpha.apiToken));
+  assert.equal(json.status, 200, json.text);
+  assert.equal(json.json.guild, 'Guild Alpha');
+  assert(json.text.includes('Alpha Trinket'), 'its own loot');
+  only(json.text, beta, 'alpha loot json');
+  const betaCsv = await w.call(newJar(), 'GET', `/api/v1/roster.csv?key=${beta.apiToken}`);
+  assert.equal(betaCsv.status, 200);
+  only(betaCsv.text, alpha, 'beta roster csv');
+  // Not a session: a signed-in member of the other guild sending the cookie gets nothing without the key, and the key is checked, not the cookie.
+  assert.equal((await w.call(beta.jars.gm, 'GET', '/api/v1/roster.csv')).status, 401);
+  assert.equal((await w.call(newJar(), 'GET', '/api/v1/roster.json', undefined, bearer('rsk_' + 'A'.repeat(43)))).status, 401, 'a key nobody made');
+  assert.equal((await w.call(newJar(), 'GET', `/api/v1/roster.json?key=${alpha.apiToken}`)).status, 401, 'JSON takes the key in a header only');
+  // A key never reaches another guild's id: the dataset files take no guild id at all.
+  assert.equal((await w.call(newJar(), 'GET', `/api/v1/roster.csv?key=${alpha.apiToken}&guild=${beta.gid}&team=${beta.ids.tid}`)).text.includes('Betaperson'), false);
+  // Turned off, it stops at once.
+  assert.equal((await w.call(alpha.jars.gm, 'DELETE', `/api/guild/${alpha.gid}/api-keys/${alpha.ids.kid}`, {})).status, 200);
+  assert.equal((await w.call(newJar(), 'GET', `/api/v1/roster.csv?key=${alpha.apiToken}`)).status, 401, 'a turned-off key is gone');
 });
 
 check('the apply routes (open): only a guild that takes applications answers, the form needs its cookie, an application lands in the guild it names - and its signed-in applicant is kept', async () => {

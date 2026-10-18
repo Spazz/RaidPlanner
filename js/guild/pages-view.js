@@ -2,12 +2,12 @@
 // What a visitor with no account sees: a guild's roster, raids, attendance and loot, read-only, for the sections their one role (a guest link) or the
 // public page allows. Three addresses lead here: #/guest/<token> (redeems the link, then moves to #/view so the token leaves the address bar and the
 // history), #/view (the guest cookie's view) and #/public/<gid>. No sign-in, no account, nothing to change; the Worker sends only names, classes, dates,
-// percentages and loot awards. GET /api/guest, GET /api/public/:gid, POST /auth/guest, DELETE /auth/guest.
+// percentages, boss kills and loot awards. GET /api/guest, GET /api/public/:gid, POST /auth/guest, DELETE /auth/guest.
 (function (G) {
   'use strict';
 
-  const SECTION_ORDER = ['roster', 'raids', 'attendance', 'loot'];
-  const SECTION_TITLES = { roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' };
+  const SECTION_ORDER = ['roster', 'raids', 'progress', 'attendance', 'loot'];
+  const SECTION_TITLES = { roster: 'Roster', raids: 'Raids', progress: 'Progress', attendance: 'Attendance', loot: 'Loot' };
   const ASK_NEW_LINK = 'Ask the officer who sent it for a new link.';
   const NOTHING = 'Nothing is shared here yet.';
   const BADGES = { guest: 'Read-only guest view', public: 'Public page' };
@@ -124,7 +124,12 @@
     }));
   }
 
-  const BLOCKS = { roster: rosterBlock, raids: raidsBlock, attendance: attendanceBlock, loot: lootBlock };
+  // PM wave 7: the team's boss board (pages-progress.js), the public page's optional Progress section.
+  function progressBlock(entry) {
+    return G.pages.progress ? G.pages.progress.blockHtml(entry, 'vprog-' + String(entry && entry.team && entry.team.id || '')) : '';
+  }
+
+  const BLOCKS = { roster: rosterBlock, raids: raidsBlock, progress: progressBlock, attendance: attendanceBlock, loot: lootBlock };
 
   function sectionHtml(key, entries) {
     const id = 'view-' + key + '-h';

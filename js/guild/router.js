@@ -3,7 +3,7 @@
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list; the shell sends viewers without officer actions on to Roster)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,roles,discord,guests,public,attendance,loot,battlenet,activity,data}]
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,roles,discord,guests,dataaccess,public,attendance,loot,battlenet,activity,data}]
 //   #/guest/<token>  (a guest link: the page redeems it and moves to #/view)  #/view  (the guest view)  #/public/:gid  (a guild's public page)
 //   #/apply/:gid  (a guild's application form)
 //   These four work signed out; the first three show a read-only view and never ask for a sign-in, the form lets a signed-in applicant's account come along.
@@ -18,7 +18,7 @@
 
   // 'home' is the guild's landing section: it has no path segment of its own (#/g/:gid); #/g/:gid/home is only an alias.
   const SECTIONS = ['home', 'roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'applications', 'notifications', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
+  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'dataaccess', 'public', 'applications', 'notifications', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
   // The Roster's tabs after the roster list itself; each is a route of its own.
   const ROSTER_TABS = ['intent', 'recruiting', 'applications'];
   const LOOT_VIEWS = ['raids', 'items'];
