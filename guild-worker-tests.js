@@ -795,7 +795,7 @@ check('permissions over HTTP: Member, Team Lead, Officer and Guild Master are ea
   assert.deepEqual(lead.can['roster.edit'], [s.teamId]);
   assert.equal(lead.can['guild.teams'], undefined, 'not allowed -> absent');
   const member = (await s.w.call(s.jars.dave, 'GET', s.guildPath)).json.me;
-  assert.deepEqual(member, { roles: [], can: { 'roster.view': 'guild', 'raids.view': 'guild', 'signups.self': [], 'attendance.view': [], 'loot.view': [] } });
+  assert.deepEqual(member, { roles: [], can: { 'roster.view': 'guild', 'raids.view': 'guild', 'signups.self': [], 'attendance.view': [], 'loot.view': [] }, personId: null });
 });
 
 check('cross-guild denial: another guild is a 403, another guild\'s team id is a 400/404, and ids come from the URL', async () => {

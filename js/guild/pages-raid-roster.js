@@ -255,7 +255,7 @@
   };
 
   function declineDialogHtml(from, rid) {
-    return '<form class="gs-dialog-form" data-submit="roster-decline-form" data-from="' + (from === 'list' ? 'list' : 'page') + '" data-rid="' + esc(rid) + '" novalidate>' +
+    return '<form class="gs-dialog-form" data-submit="roster-decline-form" data-from="' + (from === 'list' || from === 'home' ? from : 'page') + '" data-rid="' + esc(rid) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Tell the officers you can\'t come?</h2><p class="gs-confirm-text" id="dlg-text">' + esc(DECLINE_TEXT) + '</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Can\'t come</button></div></form>';
@@ -274,6 +274,9 @@
     const rid = form.getAttribute('data-rid');
     if (form.getAttribute('data-from') === 'list') {
       return G.ui.runDialog(form, G.api.raidRoster.decline(gid, rid), function () { return refreshList(gid); });
+    }
+    if (form.getAttribute('data-from') === 'home') {
+      return G.ui.runDialog(form, G.api.raidRoster.decline(gid, rid), function () { return G.pages.homeMember.afterDecline(); });
     }
     const c = cur();
     if (!c) return;

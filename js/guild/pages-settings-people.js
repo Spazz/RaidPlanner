@@ -113,6 +113,7 @@
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       '<div class="gs-toolbar"><p class="gs-count">' + esc(countText(data.signedInCount != null ? data.signedInCount : (data.people || []).length)) + '</p>' +
       (canSyncAll ? '<button type="button" class="gs-btn gs-btn-sm" data-action="people-sync-all" data-key="sync-all">Sync everyone who signed in</button>' : '') +
+      G.pages.attention.inviteButtonHtml({ key: 'copy-invite-accounts' }) + '<p class="gs-sr" id="invite-status" role="status"></p>' +
       '<div class="gs-search"><label class="gs-sr" for="people-search">Search accounts</label>' + G.icons.icon('search', 18) +
       '<input class="gs-input gs-input-search" type="search" id="people-search" placeholder="Search accounts" data-input="people-search" autocomplete="off" value="' + esc(opts.query || '') + '"></div>' +
       sortSelectHtml(opts.sort) + '</div>' +

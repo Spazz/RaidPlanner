@@ -898,7 +898,7 @@
   };
 
   G.pages.raids = {
-    raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, timeNotSetHtml: timeNotSetHtml, momentText: momentText, closeNoteText: closeNoteText, zoneSizeText: zoneSizeText, signupsText: signupsText, planPillHtml: planPillHtml,
+    raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, timeNotSetHtml: timeNotSetHtml, momentText: momentText, deadlineHtml: deadlineHtml, closeNoteText: closeNoteText, zoneSizeText: zoneSizeText, signupsText: signupsText, planPillHtml: planPillHtml,
     planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, mineHtml: mineHtml, fillText: fillText, applySignupView: applySignupView, reloadList: reloadList, load: loadList, main: mainList,
   };
   G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };

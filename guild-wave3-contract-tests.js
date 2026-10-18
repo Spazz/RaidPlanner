@@ -331,7 +331,7 @@ check('applications: a signed-out and a signed-in applicant use the apply form, 
   A.app.state.att = {}; A.app.state.guilds = { [s.gid]: A.guildData };
   await A.pages.attention.load({ name: 'section', gid: s.gid, section: 'home' }, A.guildData);
   const home = stripTags(A.pages.attention.main({}, A.guildData));
-  assert(home.includes('2 new applications waiting') && home.includes('New applications'), home.slice(0, 500));
+  assert(home.includes('2 new applications waiting') && home.includes('Review'), home.slice(0, 500));
   const inbox = await open(s, A, 'applications');
   page = inbox();
   text = stripTags(page);

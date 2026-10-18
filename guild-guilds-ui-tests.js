@@ -92,9 +92,9 @@ function withState(fn) {
 
 (async () => {
   // ═══ the setup checklist on Home ═══════════════════════════════════
-  await check('checklist: six steps, each a link to its page, ticked from the data; the count and the Dismiss button are in words', () => {
-    const out = attnHtml(attention({ onboarding: onboarding(['roster', 'raid']) }));
-    assert(out.includes('class="gs-onboard"') && out.includes('Set up your guild'));
+  await check('checklist: six steps, each a link to its page, ticked from the data; the count and the Dismiss button are in words (the whole list until the guild has a raid)', () => {
+    const out = attnHtml(attention({ onboarding: onboarding(['teams', 'roster']) }));
+    assert(out.includes('class="gs-onboard" id="setup"') && out.includes('Set up your guild') && !out.includes('is-line'));
     assert(out.includes('2 of 6 steps done'));
     const links = [...out.matchAll(/<a class="gs-onboard-link" href="([^"]*)">([^<]*)(?:<span class="gs-sr"> \(done\)<\/span>)?<\/a>/g)].map(m => [m[1], m[2]]);
     assert.deepEqual(links, [
@@ -104,8 +104,9 @@ function withState(fn) {
     assert.equal((out.match(/class="gs-onboard-step is-done"/g) || []).length, 2, 'two steps are ticked');
     assert.equal((out.match(/<span class="gs-sr"> \(done\)<\/span>/g) || []).length, 2, 'a ticked step says so for a screen reader');
     assert.equal((out.match(/class="gs-onboard-dot is-done"/g) || []).length, 2);
-    assert(/<button type="button" class="gs-btn gs-btn-sm" data-action="onboarding-dismiss" data-key="onboarding-dismiss">Dismiss<\/button>/.test(out));
-    assert(out.indexOf('gs-onboard') < out.indexOf('Nothing needs you right now'), 'the card comes before the list');
+    assert(/<button type="button" class="gs-btn gs-btn-sm" data-action="onboarding-dismiss" data-key="onboarding-dismiss"><span>Dismiss<\/span><\/button>/.test(out));
+    assert(out.indexOf('gs-onboard') > out.indexOf('Nothing needs you right now'), 'the work comes first, the checklist after it');
+    assert(!out.includes('data-action="setup-toggle"'), 'no way to fold it before the guild has a raid');
     assertNoRawAttrs(out);
     // Every step is a real route of the router (a mistyped tab would fall back to "roster").
     for (const def of G.pages.attention.ONBOARDING) assert.notEqual(G.router.parse(G.router.format(Object.assign({}, def.route, { gid: 'g1' }))).name, 'notfound', def.id);
@@ -155,7 +156,7 @@ function withState(fn) {
     assert.equal(s.calls.length, 0);
     s.restore();
     // While it runs the button is disabled.
-    assert(/data-action="onboarding-dismiss" data-key="onboarding-dismiss" disabled>/.test(G.pages.attention.attentionHtml({ guildData: gd(['officer']), data: attention({ onboarding: onboarding([]) }), dismissing: true })));
+    assert(/disabled data-action="onboarding-dismiss" data-key="onboarding-dismiss"/.test(G.pages.attention.attentionHtml({ guildData: gd(['officer']), data: attention({ onboarding: onboarding([]) }), dismissing: true })));
     // Signed out in the middle of it: back to sign-in.
     S.att.attention = { gid: 'g1', data: attention({ onboarding: onboarding([]) }), refreshing: false, error: '' };
     let signedOut = 0;

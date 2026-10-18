@@ -8,7 +8,7 @@
 //   ui.listPageHtml({ head, barHtml, bodyHtml, footHtml })                                  T1 list page: head, segment / filter bar, table, footer line
 //   ui.objectPageHtml({ head, stages, nextStep, youHtml, sections })                        T2 object page: head, stage strip, next-step bar, You line, sections
 //   ui.settingsPageHtml({ groups, activeKey, view, listHref, title, purpose, savedHtml, bodyHtml, saveBarHtml })   T3 settings: group list + detail
-//   ui.homePageHtml({ head, attention, cards })                                             T4 home: needs-attention list first, then cards
+//   ui.homePageHtml({ head, noticesHtml, attention, cards, pageClass })  /  ui.attentionRowsHtml(items)   T4 home: needs-attention list first, then cards
 //   ui.flowPageHtml({ head, steps, current, bodyHtml, commitBarHtml })  /  ui.stepperHtml / ui.commitBarHtml     T5 flow: paste -> preview -> commit
 (function (G) {
   'use strict';
@@ -87,28 +87,38 @@
       (o.savedHtml || ui.savedStatusHtml('')) + '</header><div class="gs-sdetail-body">' + (o.bodyHtml || '') + '</div>' + (o.saveBarHtml || '') + '</div></div></div>';
   };
 
+  // The rows of an attention list (T4): a tone mark, a title with an optional muted line, and one secondary button. Used by Needs attention and by the
+  // officer Home's "For your information" card. items: [{ tone (warning | danger | info), title, text, action: buttonOpts }].
+  ui.attentionRowsHtml = function (items) {
+    const list = (Array.isArray(items) ? items : []).filter(Boolean);
+    return '<ul class="gs-attn2-list">' + list.map(function (it) {
+      const tone = it.tone === 'danger' || it.tone === 'info' ? it.tone : 'warning';
+      return '<li class="gs-attn2-item"><span class="gs-attn2-mark is-' + tone + '">' + icon(tone === 'info' ? 'info' : 'alert', 20) + '</span><div class="gs-attn2-text"><p class="gs-attn2-title">' + esc(it.title) + '</p>' +
+        (it.text ? '<p class="gs-attn2-line">' + esc(it.text) + '</p>' : '') + '</div>' + (it.action ? ui.buttonHtml(Object.assign({ variant: 'secondary' }, it.action)) : '') + '</li>';
+    }).join('') + '</ul>';
+  };
+
   // T4 - home. Officer: "Needs attention" first whenever it has items (one secondary button per row); with none it shrinks to one line. Member: the next
-  // raid and my attendance. attention: { title, items: [{ tone (warning | danger | info), title, text, action: buttonOpts }], goodText }; cards: [{ id, title, bodyHtml }].
+  // raid and my attendance. attention: { title, items, count (the badge; defaults to the rows shown), goodText }; cards: [{ id, title, bodyHtml, className }] or [{ html }] for a card that
+  // draws its own frame.
   ui.homePageHtml = function (opts) {
     const o = opts || {};
     const a = o.attention;
     let attention = '';
     if (a) {
       const items = (Array.isArray(a.items) ? a.items : []).filter(Boolean);
+      const count = Number.isFinite(a.count) && a.count >= items.length ? Math.floor(a.count) : items.length;
       attention = items.length
         ? '<section class="gs-attn2" aria-labelledby="attn-h"><div class="gs-attn2-head"><h2 class="gs-h2" id="attn-h">' + esc(a.title || 'Needs attention') + '</h2>' +
-          ui.countBadgeHtml(items.length, items.length + (items.length === 1 ? ' item needs' : ' items need') + ' attention') + '</div><ul class="gs-attn2-list">' + items.map(function (it) {
-            const tone = it.tone === 'danger' || it.tone === 'info' ? it.tone : 'warning';
-            return '<li class="gs-attn2-item"><span class="gs-attn2-mark is-' + tone + '">' + icon(tone === 'info' ? 'info' : 'alert', 20) + '</span><div class="gs-attn2-text"><p class="gs-attn2-title">' + esc(it.title) + '</p>' +
-              (it.text ? '<p class="gs-attn2-line">' + esc(it.text) + '</p>' : '') + '</div>' + (it.action ? ui.buttonHtml(Object.assign({ variant: 'secondary' }, it.action)) : '') + '</li>';
-          }).join('') + '</ul></section>'
+          ui.countBadgeHtml(count, count + (count === 1 ? ' item needs' : ' items need') + ' attention') + '</div>' + ui.attentionRowsHtml(items) + '</section>'
         : ui.emptyStateHtml({ kind: 'good', text: a.goodText || 'Nothing needs you.' });
     }
     const cards = (Array.isArray(o.cards) ? o.cards : []).filter(Boolean).map(function (c) {
+      if (c.html) return c.html; // a card that draws its own frame (the setup checklist)
       const id = esc(c.id || 'card-' + String(c.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'));
-      return '<section class="gs-hcard" id="' + id + '" aria-labelledby="' + id + '-h"><h2 class="gs-h2" id="' + id + '-h">' + esc(c.title) + '</h2><div class="gs-hcard-body">' + (c.bodyHtml || '') + '</div></section>';
+      return '<section class="gs-hcard' + (c.className ? ' ' + esc(c.className) : '') + '" id="' + id + '" aria-labelledby="' + id + '-h"><h2 class="gs-h2" id="' + id + '-h">' + esc(c.title) + '</h2><div class="gs-hcard-body">' + (c.bodyHtml || '') + '</div></section>';
     }).join('');
-    return '<div class="gs-page gs-home-page">' + ui.pageHeadHtml(o.head) + attention + cards + '</div>';
+    return '<div class="gs-page gs-home-page' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + attention + cards + '</div>';
   };
 
   // T5 - flow (imports, New raid): source -> preview -> commit. The stepper names the steps; the preview leads with a summary sentence; the sticky commit

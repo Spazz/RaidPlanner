@@ -1142,6 +1142,7 @@ const PlainRosterImport = {
     this.pending = null;
     if (!result.success) { showToast(importErrorMessage({ raw: result.error })); return; }
     State.planId = null;
+    State.rosterName = PlanStore.pastedName();
     ChangeLog.clear();
     const landingBox = document.getElementById('landing-import');
     if (landingBox) landingBox.value = '';

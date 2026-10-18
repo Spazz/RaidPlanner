@@ -319,7 +319,7 @@ check('Rank ladder: saved in the attendance settings, drawn on the Attendance pa
   const home = { name: 'section', gid: s.gid, section: 'home' };
   await A.pages.attention.load(home, A.guildData);
   const homeHtml = A.pages.attention.main(home, A.guildData);
-  assert(stripTags(homeHtml).includes('Brindle: suggested review (below Raider)') && stripTags(homeHtml).includes('Rank suggestions'), stripTags(homeHtml).slice(0, 800));
+  assert(stripTags(homeHtml).includes('Brindle: suggested review (below Raider)') && stripTags(homeHtml).includes('Open'), stripTags(homeHtml).slice(0, 800));
   assert(homeHtml.includes(`#/g/${s.gid}/attendance/p/${brindle}`));
   // The person's page: set a rank by hand.
   const personRoute = { name: 'personatt', gid: s.gid, pid: brindle };

@@ -254,21 +254,17 @@ check('onboarding: six steps that tick themselves from the guild\'s data, for th
   const { w } = s;
   const first = (await s.call('alice', 'GET', '/attention')).json;
   assert.deepEqual(first.onboarding.steps.map((step) => step.id), ['teams', 'roster', 'attendance', 'raid', 'officers', 'loot']);
-  assert.deepEqual([first.onboarding.done, first.onboarding.total], [0, 6]);
-  assert.deepEqual(stepsOf(first), { teams: false, roster: false, attendance: false, raid: false, officers: false, loot: false }, 'a new single-team guild has done nothing yet');
+  assert.deepEqual([first.onboarding.done, first.onboarding.total], [1, 6]);
+  assert.deepEqual(stepsOf(first), { teams: true, roster: false, attendance: false, raid: false, officers: false, loot: false }, 'Create a guild made the team: step 1 is done from the start');
   assert.equal(first.total, 0, 'the checklist never counts toward the Home badge');
 
-  // teams: a second team (or a renamed one, or a weekly schedule).
+  // teams: done while the guild has an active team, whatever it is called and however many there are.
   assert.equal((await s.call('alice', 'POST', '/teams', { name: 'Weekend' })).status, 201);
   assert.equal(stepsOf((await s.call('alice', 'GET', '/attention')).json).teams, true);
   assert.equal((await s.call('alice', 'PATCH', `/teams/${(await s.call('alice', 'GET', '')).json.teams[1].id}`, { archived: true })).status, 200);
-  assert.equal(stepsOf((await s.call('alice', 'GET', '/attention')).json).teams, false, 'an archived team does not count');
+  assert.equal(stepsOf((await s.call('alice', 'GET', '/attention')).json).teams, true, 'the Main team is still active');
   assert.equal((await s.call('alice', 'PATCH', `/teams/${s.teamId}`, { name: 'Raiders' })).status, 200);
-  assert.equal(stepsOf((await s.call('alice', 'GET', '/attention')).json).teams, true, 'a renamed Main team does');
-  assert.equal((await s.call('alice', 'PATCH', `/teams/${s.teamId}`, { name: 'Main team' })).status, 200);
-  assert.equal(stepsOf((await s.call('alice', 'GET', '/attention')).json).teams, false);
-  assert.equal((await s.call('alice', 'PUT', `/teams/${s.teamId}/schedule`, { slots: [{ weekday: 2, startTime: '20:00' }] })).status, 200);
-  assert.equal(stepsOf((await s.call('alice', 'GET', '/attention')).json).teams, true, 'a weekly schedule does');
+  assert.equal(stepsOf((await s.call('alice', 'GET', '/attention')).json).teams, true, 'a renamed team is still a team');
 
   // roster: any person.
   const added = await s.call('alice', 'POST', '/roster', { teamId: s.teamId, name: 'Thornwick', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' });

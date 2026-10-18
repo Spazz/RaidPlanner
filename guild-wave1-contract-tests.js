@@ -380,7 +380,7 @@ check('needs attention: the real answer draws every item with a sentence and a l
   assert(/No loot imported for/.test(text) && /of 25 signed up/.test(text));
   assert(/Alpha/.test(text), 'the team shows with several teams');
 
-  // The Home badge is the Worker's total, and only attention viewers get the Home item - the same rule the Worker enforces.
+  // The Home badge is the Worker's total, and only attention viewers get the count (the same rule the Worker enforces); everyone else has a Home page without one.
   const ctx = { guildData: gd, attentionCount: data.total, teamId: s.A, page: 'app', section: 'guild' };
   assert.equal(G.shell.homeBadge(ctx), data.total);
   assert.equal(G.shell.sidebarItems(ctx)[0].key, 'home');
@@ -390,7 +390,9 @@ check('needs attention: the real answer draws every item with a sentence and a l
     const answer = await s.pages[who].api.get(`${s.base}/attention`).then(() => 200, (e) => e.status);
     assert.equal(s.pages[who].shell.canSeeAttention(g.me.can), answer === 200, `${who}: the nav and the Worker agree (${answer})`);
     const items = s.pages[who].shell.sidebarItems({ guildData: g, attentionCount: 3, teamId: s.A, page: 'app', section: 'guild' });
-    assert.equal(items.some((item) => item.key === 'home'), answer === 200, `${who}: Home in the nav`);
+    const home = items.filter((item) => item.key === 'home');
+    assert.equal(home.length, 1, `${who}: every member has a Home in the nav`);
+    assert.equal(home[0].badge, answer === 200 ? 3 : 0, `${who}: only the officer Home counts open work`);
   }
   // A Team Lead sees only her team's items.
   const carolGd = await s.guildData('carol');

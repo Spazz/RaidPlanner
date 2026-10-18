@@ -1611,6 +1611,8 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 .manual-copy-text:focus { outline:none; border-color:var(--accent-gold); }
 .share-actions { display:flex; flex-direction:column; gap:12px; }
+.share-action { display:flex; flex-direction:column; gap:6px; }
+.share-caption { margin:0; font-size:13px; line-height:1.4; color:var(--text-muted); }
 .share-actions details { margin-top:12px; }
 .share-actions details button { display:block; margin-top:8px; width:100%; }
 .player-move { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:4px 8px; margin-bottom:12px; }
@@ -2161,6 +2163,10 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 /* The shell's notice slot adds no gap when it is empty (the landing, signed out). */
 #planner-notice:empty { display: none; }
+/* The import card's second tab and its heading read "Other plans on this device" once the viewer is in a guild (Upcoming raids to plan leads). */
+.lbl-guild { display: none; }
+body.has-planner-guild .lbl-solo { display: none; }
+body.has-planner-guild .lbl-guild { display: inline; }
 
 /* The planner's slot in the top bar: nothing on a guild section or a static page, version tabs on the
    landing, the plan's header row on the plan (desktop) and line 1 of the phone context row (phone). */

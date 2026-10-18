@@ -166,7 +166,7 @@ function withState(fn) {
     assert.equal(G.shell.settingsTabs({ 'audit.view': 'guild' })[0].tab, 'activity', 'and the first page there is the first one the viewer has');
   });
 
-  await check('shell: Home is the first sidebar and drawer item for attention viewers only, never a phone tab', () => {
+  await check('shell: Home is the first sidebar and drawer item for every guild member (the member Home or the officer list), never a phone tab', () => {
     const officer = shellCtx(OFFICER_CAN);
     assert.deepEqual(keys(G.shell.sidebarItems(officer)).slice(0, 3), ['home', 'roster', 'raids']);
     assert.deepEqual(keys(G.shell.tabItems(officer)), ['roster', 'raids', 'attendance', 'loot', 'planner'], 'the phone tabs stay five');
@@ -175,13 +175,13 @@ function withState(fn) {
     assert.equal(home.href, '#/g/g1');
     assert.equal(home.icon, 'home');
     assert(G.icons.names.includes('home') && G.icons.names.includes('arrow'));
-    assert.deepEqual(keys(G.shell.sidebarItems(shellCtx(MEMBER_CAN))).slice(0, 2), ['roster', 'raids'], 'a member has no Home');
+    assert.deepEqual(keys(G.shell.sidebarItems(shellCtx(MEMBER_CAN))).slice(0, 2), ['home', 'roster'], 'a member has a Home too');
     assert.deepEqual(keys(G.shell.sidebarItems(shellCtx(LEAD_CAN))).slice(0, 2), ['home', 'roster'], 'a team lead (team-list actions) does');
     const slots = G.shell.slots(officer);
     assert(slots.sidebar.indexOf('href="#/g/g1"') > 0 && slots.sidebar.indexOf('href="#/g/g1"') < slots.sidebar.indexOf('href="#/g/g1/roster"'));
     assert(slots.drawer.includes('href="#/g/g1"') && slots.drawer.includes('Home'), 'the drawer carries it');
     assert(!slots.tabs.includes('Home') && !slots.tabs.includes('href="#/g/g1"'), 'not in the tab bar');
-    assert(!G.shell.slots(shellCtx(MEMBER_CAN)).sidebar.includes('Home'));
+    assert(G.shell.slots(shellCtx(MEMBER_CAN)).sidebar.includes('href="#/g/g1"'), 'the member sidebar links to Home');
     const stat = G.shell.slots(Object.assign(shellCtx(OFFICER_CAN), { section: 'page', page: 'faq', route: null }));
     assert(stat.sidebar.includes('href="/#/g/g1"'), 'static pages link to Home absolutely');
   });
@@ -679,19 +679,22 @@ function withState(fn) {
     assert.equal(href(item('review', { link: { name: 'raid', rid: 'r_1', gid: 'g_evil' } })), '#/g/g1/raids/r/r_1', 'the item cannot name another guild');
   });
 
-  await check('Home: action items group by kind in the contract order, info items follow under "For your information"; each row is a full link with a chip, text and arrow', () => {
+  await check('Home: action items are rows in the contract order (a sentence, a muted line, one secondary button named for the kind), the info items follow under "For your information"', () => {
     const out = attnHtml(ATTN(FULL));
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Home</h1>'));
-    const order = ['Raids to review', 'Loot winners nobody matches', 'Sign-ups not linked to a person', 'Character claims', 'Trials', 'Attendance watch list', 'Raids without loot', 'Raids short on sign-ups', 'Sign-ups still open'];
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Home</h1>'));
+    const order = ['Review Sat Oct 17: 3 to decide', '3 loot winners on Sat Oct 17 match nobody', '2 sign-ups on Sat Oct 17 are not linked to a person', '3 character claims are waiting', 'trial ends in 3 days',
+      'Kaelith: 62% attendance, down 20 points', 'No loot imported for Sat Oct 10', 'Wed Oct 21: 18 of 25 signed up', 'Sign-ups for Wed Oct 21 are still open'];
     let at = -1;
-    for (const h of order) { const i = out.indexOf('>' + h + '</h3>'); assert(i > at, h + ' in order'); at = i; }
-    assert(out.indexOf('>Needs attention</h2>') > 0 && out.indexOf('>Needs attention</h2>') < out.indexOf('>Raids to review</h3>'));
-    assert(out.indexOf('>For your information</h2>') > out.indexOf('>Raids short on sign-ups</h3>') && out.indexOf('>For your information</h2>') < out.indexOf('>Sign-ups still open</h3>'), 'the info group is last');
-    assert(out.includes('<a class="gs-attn-item" href="#/g/g1/raids/r/r_1"><span class="gs-chip gs-chip-attn">Review</span><span class="gs-attn-text"><span class="gs-attn-line">Review Sat Oct 17: 3 to decide</span>'));
+    for (const sentence of order) { const i = out.indexOf(sentence); assert(i > at, sentence + ' in order'); at = i; }
+    const needs = out.indexOf('id="attn-h">Needs attention</h2>');
+    assert(needs > 0 && needs < out.indexOf(order[0]), 'Needs attention leads');
+    assert(out.indexOf('>For your information</h2>') > out.indexOf('Wed Oct 21: 18 of 25 signed up') && out.indexOf('>For your information</h2>') < out.indexOf('the raid starts in 45 minutes'), 'the info card is last');
+    assert(out.includes('<a class="gs-btn" href="#/g/g1/raids/r/r_1" aria-label="Review (Review Sat Oct 17: 3 to decide)"><span>Review</span></a>'), 'a secondary button per row, named for the kind and for the row');
     assert(out.includes('Thoren&#39;s trial ends in 3 days') && out.includes('href="#/g/g1/roster/p/p_t"') && out.includes('href="#/g/g1/attendance/p/p_k"'));
-    assert((out.match(/<svg class="gs-icon"/g) || []).length >= 9, 'an arrow on every row');
-    assert(out.includes('<button type="button" class="gs-btn" data-action="attn-refresh" data-key="attn-refresh">Refresh</button>'));
-    assert(out.includes('Ravens &middot; 8 items need you'));
+    assert.equal((out.match(/class="gs-btn gs-btn-molten/g) || []).length, 0, 'no primary on Home: the orange is for a primary action');
+    assert(out.includes('8 items need attention') && out.includes('gs-cbadge'), 'the gold count');
+    assert(/<button type="button" class="gs-btn" data-action="attn-refresh" data-key="attn-refresh"><span>Refresh<\/span><\/button>/.test(out));
+    assert(out.includes('Ravens - 8 items need you'));
     assert(out.includes('id="attn-status" role="status"'), 'a live region for the refresh result');
     assert(!out.includes('Nothing needs you right now'));
     assertNoRawAttrs(out);
@@ -699,45 +702,48 @@ function withState(fn) {
 
   await check('Home: the team name shows as a muted line only when the guild has several active teams; zone and title join it', () => {
     const several = attnHtml(ATTN(FULL));
-    assert(several.includes('<span class="gs-attn-meta">Team KJ &middot; Black Temple &middot; Prog night</span>'));
-    assert(several.includes('<span class="gs-attn-meta">Team KJ &middot; Karazhan</span>'));
+    assert(several.includes('<p class="gs-attn2-line">Team KJ - Black Temple - Prog night</p>'));
+    assert(several.includes('<p class="gs-attn2-line">Team KJ - Karazhan</p>'));
     const one = attnHtml(ATTN(FULL), {}, gd(OFFICER_CAN, null, ONE_TEAM));
     assert(!one.includes('Team KJ'), 'a one-team guild never names the team');
-    assert(one.includes('<span class="gs-attn-meta">Black Temple &middot; Prog night</span>') && one.includes('<span class="gs-attn-meta">Karazhan</span>'));
-    assert(!one.includes('<span class="gs-attn-meta"></span>'));
+    assert(one.includes('<p class="gs-attn2-line">Black Temple - Prog night</p>') && one.includes('<p class="gs-attn2-line">Karazhan</p>'));
+    assert(!one.includes('<p class="gs-attn2-line"></p>'));
     const same = attnHtml(ATTN([item('no_loot', { date: '2026-10-10', zone: 'Karazhan', title: 'Karazhan' })]), {}, gd(OFFICER_CAN, null, ONE_TEAM));
     assert.equal((same.match(/Karazhan/g) || []).length, 1, 'a title equal to the zone is shown once');
   });
 
   await check('Home: review items select their team first (data-action + data-team); other items are plain links', () => {
     const out = attnHtml(ATTN(FULL));
-    assert(out.includes('<a class="gs-attn-item" href="#/g/g1/attendance/review" data-action="attn-open" data-team="t1"><span class="gs-chip gs-chip-attn">Loot</span>'));
+    assert(out.includes('href="#/g/g1/attendance/review" aria-label="Link winners (3 loot winners on Sat Oct 17 match nobody)" data-action="attn-open" data-team="t1"><span>Link winners</span></a>'));
     assert((out.match(/data-action="attn-open"/g) || []).length === 1, 'only the item whose link is the review queue AND has a team');
-    assert(!/href="#\/g\/g1\/raids\/r\/r_1" data-action/.test(out));
-    const claims = out.slice(out.indexOf('3 character claims are waiting') - 400, out.indexOf('3 character claims are waiting'));
+    assert(!/href="#\/g\/g1\/raids\/r\/r_1"[^>]* data-action/.test(out));
+    const claims = out.slice(out.indexOf('3 character claims are waiting'), out.indexOf('trial ends in 3 days'));
     assert(!claims.includes('data-action="attn-open"'), 'a claim has no team to pick');
   });
 
-  await check('Home: empty state says nothing needs you; info items still list below it; "and N more" lines link to the page where the work is done', () => {
+  await check('Home: empty state is one good-news line; info items still list below it; "and N more" rows link to the page where the work is done', () => {
     const empty = attnHtml(ATTN([]));
-    assert(empty.includes('<h2 class="gs-h2 gs-h2-lg" id="attn-empty-h">Nothing needs you right now</h2>') && empty.includes('Nothing is waiting for you'));
+    assert(empty.includes('<div class="gs-empty-good" role="status">') && empty.includes('Nothing needs you right now') && empty.includes('Ravens - Nothing is waiting for you'));
     assert(!empty.includes('>Needs attention</h2>') && !empty.includes('For your information'));
     const infoOnly = attnHtml(ATTN([FULL[8]]));
     assert(infoOnly.includes('Nothing needs you right now') && infoOnly.includes('>For your information</h2>') && infoOnly.includes('the raid starts in 45 minutes'));
     assert(infoOnly.indexOf('Nothing needs you right now') < infoOnly.indexOf('For your information'));
-    const more = attnHtml(ATTN(FULL, { more: { review: 4, trial: 2, loot_unmatched: 1, claims: 5, watch: 1, signup_unmatched: 2, no_loot: 1, low_signups: 3, unlocked: 2 } }));
-    const want = { review: '#/g/g1/attendance/review', loot_unmatched: '#/g/g1/attendance/review', signup_unmatched: '#/g/g1/raids', claims: '#/g/g1/attendance/review', trial: '#/g/g1/roster', watch: '#/g/g1/attendance', no_loot: '#/g/g1/raids', low_signups: '#/g/g1/raids', unlocked: '#/g/g1/raids' };
     const counts = { review: 4, trial: 2, loot_unmatched: 1, claims: 5, watch: 1, signup_unmatched: 2, no_loot: 1, low_signups: 3, unlocked: 2 };
+    const more = attnHtml(ATTN(FULL, { more: counts }));
+    const want = { review: '#/g/g1/attendance/review', loot_unmatched: '#/g/g1/attendance/review', signup_unmatched: '#/g/g1/raids', claims: '#/g/g1/attendance/review', trial: '#/g/g1/roster', watch: '#/g/g1/attendance', no_loot: '#/g/g1/raids', low_signups: '#/g/g1/raids', unlocked: '#/g/g1/raids' };
     for (const k of Object.keys(want)) {
-      assert(new RegExp('<li class="gs-attn-more"><a href="' + want[k].replace(/\//g, '\\/') + '">and ' + counts[k] + ' more<span class="gs-sr"> [^<]+</span></a></li>').test(more), k);
+      const kind = G.pages.attention.KINDS.filter(x => x.id === k)[0];
+      const text = 'and ' + counts[k] + ' more: ' + kind.heading.charAt(0).toLowerCase() + kind.heading.slice(1);
+      assert(more.includes('<p class="gs-attn2-title">' + text + '</p>'), k);
+      assert(more.includes('<a class="gs-btn" href="' + want[k] + '" aria-label="See all (' + text + ')"><span>See all</span></a>'), k + ' link');
     }
     const onlyMore = attnHtml(ATTN([], { total: 4, more: { review: 4 } }));
-    assert(onlyMore.includes('>Raids to review</h3>') && onlyMore.includes('and 4 more'), 'hidden items alone still get their group');
+    assert(onlyMore.includes('and 4 more: raids to review') && onlyMore.includes('4 items need attention'), 'hidden items alone still get their row and the badge counts them');
     assert(!attnHtml(ATTN(FULL, { more: { review: 0 } })).includes('and 0 more'));
   });
 
   await check('Home: refreshing disables the button and a failed refresh shows the message; hostile strings in every field are escaped', () => {
-    assert(/data-action="attn-refresh" data-key="attn-refresh" disabled>Refreshing\.\.\.</.test(attnHtml(ATTN(FULL), { refreshing: true })));
+    assert(/aria-busy="true" disabled data-action="attn-refresh" data-key="attn-refresh"><span>Refreshing\.\.\.<\/span>/.test(attnHtml(ATTN(FULL), { refreshing: true })));
     assert(attnHtml(ATTN(FULL), { error: 'Could not reach Raidsmith.' }).includes('Could not reach Raidsmith.'));
     const bad = ATTN([
       item('review', { date: HOSTILE, count: HOSTILE, zone: HOSTILE + QUOTES, title: QUOTES, teamName: HOSTILE + QUOTES, link: { name: 'raid', rid: HOSTILE + QUOTES } }),
@@ -1395,7 +1401,7 @@ function withState(fn) {
     const notClasses = ['gs-page-alert']; // an element id passed to alertHtml as a plain string
     const missing = [...used].filter(c => !defined.has(c) && !notClasses.includes(c));
     assert.deepEqual(missing, [], 'classes with no CSS');
-    for (const c of ['gs-audit-table', 'gs-attn-item', 'gs-watch-item', 'gs-trial-card', 'gs-cal-url', 'gs-chip-attn']) assert(defined.has(c), c);
+    for (const c of ['gs-audit-table', 'gs-attn2-item', 'gs-watch-item', 'gs-trial-card', 'gs-cal-url', 'gs-onboard-line']) assert(defined.has(c), c);
     const phone = css.slice(css.indexOf('@media (max-width: 600px)', css.indexOf('PM wave 1')));
     assert(/\.gs-audit-table \{ display: none; \}/.test(phone), 'the Activity table gives way to the cards on a phone');
     assert(/\.gs-watch-item \{ grid-template-columns: minmax\(0, 1fr\)/.test(phone));

@@ -132,11 +132,11 @@
     <div id="planner-root" class="planner-root">
 <main class="landing" id="landing-view">
   <h1 class="sr-only" tabindex="-1">Raidsmith</h1>
-  <div id="planner-notice"></div>
   <div class="landing-compact-head">
     <h2 tabindex="-1">Planner</h2>
     <p>Import sign-ups or open a saved plan. Plans save in this browser.</p>
   </div>
+  <div id="planner-notice"></div>
 
   <section class="hero">
     <div class="hero-copy">
@@ -153,7 +153,7 @@
     <div class="import-card" id="import-card">
       <div class="import-tabs" role="tablist">
         <button type="button" class="import-tab active" role="tab" data-pane="import" aria-selected="true">Import roster</button>
-        <button type="button" class="import-tab" role="tab" data-pane="saved" aria-selected="false">Your plans</button>
+        <button type="button" class="import-tab" role="tab" data-pane="saved" aria-selected="false"><span class="lbl-solo">Your plans</span><span class="lbl-guild">Other plans on this device</span></button>
       </div>
 
       <div class="resume-banner" id="resume-banner" hidden>
@@ -174,7 +174,7 @@
 
       <div class="import-pane" data-pane="saved" hidden>
         <p class="saved-empty-note">Nothing on the anvil yet. Plans you import or start save here automatically, in this browser only.</p>
-        <h3 class="roster-section-heading saved-full">Your plans</h3>
+        <h3 class="roster-section-heading saved-full"><span class="lbl-solo">Your plans</span><span class="lbl-guild">Other plans on this device</span></h3>
         <div class="saved-list saved-full" id="landing-saved-list"></div>
         <div class="foot-note saved-full">Saved automatically in this browser only. Clearing site data removes them.</div>
         <div class="row-actions">
@@ -222,7 +222,7 @@
     <p class="guilds-lead">Raidsmith also keeps your guild's records: one place for your roster, raids, attendance and loot, with the planner built in.</p>
     <ul class="guild-points">
       <li class="step"><h3>Roster</h3><p>People, characters and alts, brought in from Raid-Helper, Warcraft Logs or Battle.net.</p></li>
-      <li class="step"><h3>Raids</h3><p>A weekly schedule, sign-ups and a published roster for every raid night.</p></li>
+      <li class="step"><h3>Raids</h3><p>A weekly schedule, sign-ups and a published line-up for every raid night.</p></li>
       <li class="step"><h3>Attendance</h3><p>Worked out from your Warcraft Logs reports, under the rules your guild sets.</p></li>
       <li class="step"><h3>Loot</h3><p>Gargul exports, who won what, and how the loot is spread.</p></li>
       <li class="step"><h3>Planner</h3><p>Raid groups built from any raid's sign-ups, saved with the raid.</p></li>
@@ -477,9 +477,15 @@
   <div class="history-dialog-header"><h3 id="share-heading">Share your plan</h3><button type="button" class="btn btn-secondary" id="close-share">Close</button></div>
   <p>Send your plan to the raid or bring it into the game.</p>
   <div class="share-actions">
-    <button type="button" class="btn btn-primary" data-share-action="btn-share">Copy live link</button>
-    <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt">Copy for MRT</button>
-    <button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt-note">Copy MRT note</button>
+    <div class="share-action">
+      <button type="button" class="btn btn-primary" data-share-action="btn-copy-mrt" aria-describedby="share-mrt-path">Copy for MRT</button>
+      <p class="share-caption" id="share-mrt-path">In MRT: Raid Groups &gt; Import &gt; "From ExRT export string"</p>
+    </div>
+    <div class="share-action"><button type="button" class="btn btn-secondary" data-share-action="btn-copy-mrt-note">Copy MRT note</button></div>
+    <div class="share-action">
+      <button type="button" class="btn btn-secondary" data-share-action="btn-share" aria-describedby="share-live-note">Copy live link</button>
+      <p class="share-caption" id="share-live-note">Anyone with the link sees and edits this plan.</p>
+    </div>
     <details><summary>More export formats</summary><button type="button" class="btn btn-secondary" data-share-action="btn-export-json">Download JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-json">Copy JSON</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat">Copy raid chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-copy-chat-compact">Copy compact chat text</button><button type="button" class="btn btn-secondary" data-share-action="btn-print-sheet">Print raid sheet</button></details>
   </div>
 </dialog>
@@ -545,7 +551,7 @@
 
 <dialog id="unplaced-dialog" class="history-dialog" aria-labelledby="unplaced-heading">
   <div class="history-dialog-header">
-    <h3 id="unplaced-heading">Seat this sign-up?</h3>
+    <h3 id="unplaced-heading">Add this sign-up to a group?</h3>
     <button type="button" class="btn btn-secondary" id="btn-unplaced-cancel">Cancel</button>
   </div>
   <p id="unplaced-message"></p>
@@ -555,7 +561,7 @@
     <label>Group<select id="unplaced-group"></select></label>
   </div>
   <div class="unplaced-dialog-error" id="unplaced-error" role="alert"></div>
-  <div class="import-buttons"><button type="button" class="btn btn-primary" id="btn-unplaced-confirm">Seat them anyway</button></div>
+  <div class="import-buttons"><button type="button" class="btn btn-primary" id="btn-unplaced-confirm">Add to a group anyway</button></div>
 </dialog>
 
 <dialog id="confirm-dialog" class="history-dialog" aria-labelledby="confirm-heading" aria-describedby="confirm-message">

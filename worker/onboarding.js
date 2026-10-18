@@ -1,6 +1,6 @@
 // The setup checklist on a guild's Home (Phase 8): six steps that tick themselves from the guild's own data, so there is no progress to save but the
 // "dismissed" flag (guilds.onboarding_dismissed_at, migration 0016). The page owns the wording and the links; this file says which steps are done.
-//   teams       the guild has more than one active team, or a team that is not the default "Main team", or a weekly raid schedule
+//   teams       the guild has an active team (Create a guild makes one, so this step is done from the start; the page offers the rename)
 //   roster      at least one person on the roster (any import, or added by hand)
 //   attendance  the attendance rules were saved once (a guild-wide or a team row exists)
 //   raid        at least one raid
@@ -9,7 +9,6 @@
 import { isGranted } from './permissions.js';
 
 export const ONBOARDING_STEPS = ['teams', 'roster', 'attendance', 'raid', 'officers', 'loot'];
-export const DEFAULT_TEAM_NAME = 'Main team';
 
 // Who is shown the card, and who may dismiss it: whoever sets the guild up (the Guild Master and everyone who may manage teams).
 export function sees(guildContext) {
@@ -23,8 +22,6 @@ export function onboardingStatement(db, guildContext) {
   return db.prepare(
     `SELECT g.onboarding_dismissed_at AS dismissed_at,
             (SELECT COUNT(*) FROM teams WHERE guild_id = g.id AND archived = 0) AS active_teams,
-            EXISTS (SELECT 1 FROM teams WHERE guild_id = g.id AND archived = 0 AND name != ?2) AS named_team,
-            EXISTS (SELECT 1 FROM team_schedules WHERE guild_id = g.id) AS has_schedule,
             EXISTS (SELECT 1 FROM players WHERE guild_id = g.id) AS has_people,
             EXISTS (SELECT 1 FROM attendance_policies WHERE guild_id = g.id) AS has_policy,
             EXISTS (SELECT 1 FROM raids WHERE guild_id = g.id) AS has_raid,
@@ -32,7 +29,7 @@ export function onboardingStatement(db, guildContext) {
               OR EXISTS (SELECT 1 FROM discord_role_maps WHERE guild_id = g.id) AS has_staff,
             EXISTS (SELECT 1 FROM loot_awards WHERE guild_id = g.id) AS has_loot
        FROM guilds g WHERE g.id = ?1`,
-  ).bind(guildContext.guild.id, DEFAULT_TEAM_NAME);
+  ).bind(guildContext.guild.id);
 }
 
 // -> null (not for this viewer, dismissed, or every step is done) or { steps: [{ id, done }], done, total }. result: the statement's D1 result, or undefined.
@@ -40,7 +37,7 @@ export function shapeOnboarding(result) {
   const row = result && result.results ? result.results[0] : null;
   if (!row || row.dismissed_at !== null) return null;
   const doneBy = {
-    teams: row.active_teams > 1 || row.named_team === 1 || row.has_schedule === 1,
+    teams: row.active_teams > 0,
     roster: row.has_people === 1,
     attendance: row.has_policy === 1,
     raid: row.has_raid === 1,

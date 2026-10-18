@@ -972,7 +972,7 @@ function renderInsightLine(id, insight) {
     const specLabel = p.spec ? `${esc(p.spec)}` : '';
     return `<div class="buff-row-insight bench">
       <span class="insight-text" title="Benched: ${short(p)}${specLabel ? ' (' + specLabel + ')' : ''}">Benched: <span class="insight-who ${color(p)}">${short(p)}</span>${specLabel ? ' (' + specLabel + ')' : ''}</span>
-      <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short(p)}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
+      <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Put ${short(p)} in a group; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
   if (insight.kind === 'shared') {
@@ -1039,7 +1039,7 @@ function renderUtilityInsightLine(item) {
     const specLabel = p.spec ? ` (${esc(p.spec)})` : '';
     return `<div class="buff-row-insight bench">
       <span class="insight-text" title="Benched: ${short}${specLabel}">Benched: <span class="insight-who ${color}">${short}</span>${specLabel}</span>
-      <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Seat ${short}; bench the lowest-value player in the same role if the raid is full">Swap In</button>
+      <button type="button" class="insight-btn" data-insight-swap="${esc(p.uid)}" title="Put ${short} in a group; bench the lowest-value player in the same role if the raid is full">Swap In</button>
     </div>`;
   }
   return `<div class="buff-row-insight none"><span class="insight-text" title="Nobody in roster">Nobody in roster</span></div>`;
@@ -1888,7 +1888,7 @@ const SignupTray = {
   TABS: [
     { id:'bench',     label:'Bench',     hint:'Drag onto a seat, or tap to pick a group or swap' },
     { id:'tentative', label:'Tentative', hint:'Marked Tentative on Raid-Helper' },
-    { id:'late',      label:'Late',      hint:'Marked Late on Raid-Helper. Seat them when they arrive' },
+    { id:'late',      label:'Late',      hint:'Marked Late on Raid-Helper. Add them to a group when they arrive' },
     { id:'absent',    label:'Absent',    hint:"Marked Absent. You'll confirm before seating them" },
     { id:'all',       label:'All',       hint:'Everyone not seated, tagged by status' },
   ],
@@ -2040,7 +2040,7 @@ const UnplacedDialog = {
     const needsClass = !entry.class;
     this.el('unplaced-message').textContent = needsClass
       ? `${name} is marked ${status} on Raid-Helper and didn't pick a class. Choose one to seat them.`
-      : `${name} is marked ${status} on Raid-Helper. Seat them anyway?`;
+      : `${name} is marked ${status} on Raid-Helper. Add them to a group anyway?`;
 
     const classSel = this.el('unplaced-class');
     const classes = Object.keys(Config.Specs);
@@ -2287,6 +2287,7 @@ function removeSpotlightCallout() {
   document.querySelectorAll('.spotlight-callout').forEach(el => el.remove());
 }
 // opts.side 'left' puts the callout to the left of opts.edgeEl (the drawer), level with the anchor.
+// opts.belowEl keeps the callout under that element (the page's top bar) so it never covers a control in it.
 function showSpotlightCallout(id, anchorEl, text, opts = {}) {
   if (!anchorEl || document.querySelector('.spotlight-callout')) return false;
   const rect = anchorEl.getBoundingClientRect();
@@ -2324,6 +2325,7 @@ function showSpotlightCallout(id, anchorEl, text, opts = {}) {
   const w = Math.min(260, window.innerWidth - 24);
   callout.style.width = w + 'px';
   let top = rect.bottom + 10;
+  if (opts.belowEl) top = Math.max(top, opts.belowEl.getBoundingClientRect().bottom + 10);
   let arrowClass = 'arrow-top';
   if (top + 90 > window.innerHeight) { top = Math.max(8, rect.top - 90); arrowClass = 'arrow-bottom'; }
   let left = Math.min(Math.max(8, rect.left), window.innerWidth - w - 8);
@@ -2354,9 +2356,9 @@ const SPOTLIGHT_DEFS = [
   // Anchorless while the Assignments tab is hidden (ASSIGNMENTS_TAB_ENABLED), so it never shows.
   { id: 'assignments-tab', text: 'New: assign who casts curses, blessings and other one-per-raid buffs here.', anchor: () => document.querySelector('.mode-tab[data-tab="assignments"]') },
   // A new id (was 'options-panel') so people who saw the old tip learn where the menus went.
-  { id: 'menu-panel-v2', text: 'Save a copy, templates, backups and shortcuts are in this menu.', anchor: () => document.getElementById('btn-settings-menu') },
+  { id: 'menu-panel-v2', text: 'Save a copy, templates, backups and shortcuts are in this menu.', anchor: () => document.getElementById('btn-settings-menu'), below: () => document.getElementById('shell-topbar') },
   // The gear menu holds Keyboard shortcuts; it is hidden on phones, so the tip skips them.
-  { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.getElementById('btn-settings-menu') },
+  { id: 'shortcuts-help', text: 'Press ? anytime for the full list of keyboard shortcuts.', anchor: () => document.getElementById('btn-settings-menu'), below: () => document.getElementById('shell-topbar') },
 ];
 // First-run tips wait until the import feedback is out of the way: about 3 seconds after the view opens,
 // and a further beat while a toast is still showing.
@@ -2376,7 +2378,7 @@ function runSpotlightQueue() {
   if (document.querySelector('.spotlight-callout')) return;
   for (const def of SPOTLIGHT_DEFS) {
     if (!Spotlight.shouldShow(localStorage, def.id)) continue;
-    if (showSpotlightCallout(def.id, def.anchor(), def.text)) return;
+    if (showSpotlightCallout(def.id, def.anchor(), def.text, def.below ? { belowEl: def.below() } : {})) return;
   }
 }
 

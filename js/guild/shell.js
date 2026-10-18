@@ -25,7 +25,7 @@
     return hasAction(can, 'guild.teams') || hasAction(can, 'guild.access') || hasAction(can, 'guild.roles') || hasAction(can, 'attendance.policy') || hasAction(can, 'loot.policy') || hasAction(can, 'audit.view');
   }
 
-  // Who gets the Home page (the needs-attention list): anyone who can act on one of its items. Everyone else lands on Roster.
+  // Who gets the officer Home (the needs-attention list): anyone who can act on one of its items. Everyone else gets the member Home (their next raid, attendance, loot).
   function canSeeAttention(can) {
     return hasAction(can, 'attendance.review') || hasAction(can, 'roster.edit') || hasAction(can, 'raids.edit') || hasAction(can, 'loot.edit');
   }
@@ -208,12 +208,12 @@
 
   // The nav model, one function (tested as a matrix): the sidebar / drawer list for this viewer.
   // Signed out, or signed in with no guild (or its data not loaded yet): Planner, then the Help item.
-  // With a guild: [Home, for people who can act on its items], Roster, Raids, Attendance, Loot, Planner, [Guild settings], then the one Help item.
+  // With a guild: Home (the officer list or the member's own page), Roster, Raids, Attendance, Loot, Planner, [Guild settings], then the one Help item.
   // Home is not one of the phone tabs (tabItems builds its five from navItems alone); the drawer carries it.
   function sidebarItems(ctx) {
     const gd = guildOf(ctx);
     const own = gd ? navItems(gd.guild.id, gd.me && gd.me.can, badgesOf(gd, ctx.teamId), baseOf(ctx)) : [plannerItem()];
-    if (gd && canSeeAttention(gd.me && gd.me.can)) own.unshift(homeItem(gd.guild.id, homeBadge(ctx), baseOf(ctx)));
+    if (gd) own.unshift(homeItem(gd.guild.id, homeBadge(ctx), baseOf(ctx))); // every member has a Home; only the officer one counts items
     return own.concat([helpGroup(ctx)]);
   }
 
@@ -443,7 +443,14 @@
     if (leaf) {
       return '<a class="gs-back" href="' + esc(guildHref(gd.guild.id, leaf.parent, baseOf(ctx))) + '" aria-label="Back to ' + esc(leaf.parentLabel) + '">&lsaquo; ' + esc(leaf.parentLabel) + '</a>';
     }
-    if (r.name !== 'person' && r.name !== 'import' && r.name !== 'settings') return '';
+    if (r.name === 'settings') {
+      // A settings page goes back to the list of pages; the list itself goes back to Home.
+      const toList = !!r.tab;
+      const label = toList ? 'Settings' : 'Home';
+      const href = toList ? baseOf(ctx) + G.router.format({ name: 'settings', gid: gd.guild.id, tab: null }) : guildHref(gd.guild.id, 'home', baseOf(ctx));
+      return '<a class="gs-back" href="' + esc(href) + '" aria-label="Back to ' + label + '">&lsaquo; ' + label + '</a>';
+    }
+    if (r.name !== 'person' && r.name !== 'import') return '';
     return '<a class="gs-back" href="' + esc(guildHref(gd.guild.id, 'roster', baseOf(ctx))) + '" aria-label="Back to Roster">&lsaquo; Roster</a>';
   }
 
@@ -478,11 +485,14 @@
       const roles = G.peopleSort.roleLabels(gd.me && gd.me.roles, gd.teams);
       sub = roles[0].label + ' - ' + gd.guild.name;
     }
+    // "My profile": the viewer's own person page in the guild in play (none while the account is on no roster).
+    const profileHref = gd && gd.guild && gd.me && gd.me.personId ? baseOf(ctx) + G.router.format({ name: 'person', gid: gd.guild.id, pid: gd.me.personId }) : '';
     return '<div class="gs-account"><button type="button" class="gs-avatar-btn" data-action="toggle-menu" data-key="account-menu" aria-label="Account menu" aria-haspopup="menu" aria-expanded="false" aria-controls="gs-account-menu">' +
       G.ui.avatarHtml(u, 'gs-avatar-md') + ic('chevronDown', 16) + '</button>' +
       '<div class="gs-menu" id="gs-account-menu" role="menu" aria-label="Account" hidden>' +
       '<div class="gs-menu-head">' + G.ui.avatarHtml(u, 'gs-avatar-lg') + '<div class="gs-menu-who"><span class="gs-menu-name">' + esc(u.displayName) + '</span><span class="gs-menu-sub">' + esc(sub) + '</span></div></div>' +
       '<div class="gs-menu-sep" role="separator"></div>' +
+      (profileHref ? '<a class="gs-menu-item" role="menuitem" href="' + esc(profileHref) + '">' + ic('roster', 20) + '<span>My profile</span></a>' : '') +
       '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + '#/characters') + '">' + ic('roster', 20) + '<span>My characters</span></a>' +
       (gd && gd.guild ? '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + G.router.format({ name: 'away', gid: gd.guild.id })) + '">' + ic('raids', 20) + '<span>Away notices</span></a>' : '') +
       '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + '#/linked') + '">' + ic('link', 20) + '<span>Linked accounts</span></a>' +
@@ -491,8 +501,12 @@
       '</div></div>';
   }
 
-  // Signed out: "Sign in or sign up" (desktop) / "Sign in" (phone). It opens the sign-in page, where Discord and Battle.net are offered.
+  // Signed out: "Sign in or sign up" (desktop) / "Sign in" (phone). It opens the sign-in page, where Discord and Battle.net are offered. On the planner
+  // (landing and board, where Load roster and Optimize are the primaries) it is a text link; a guild page or a help page keeps the button.
   function signinButtonHtml(ctx) {
+    if (sectionOf(ctx) === 'planner') {
+      return '<a class="gs-signin-link" href="' + esc(baseOf(ctx) + G.router.format({ name: 'signin' })) + '"><span class="gs-signin-full">Sign in or sign up</span><span class="gs-signin-short">Sign in</span></a>';
+    }
     return '<a class="gs-btn gs-btn-molten gs-signin-btn" href="' + esc(baseOf(ctx) + G.router.format({ name: 'signin' })) + '">' + ic('login', 18) + '<span class="gs-signin-full">Sign in or sign up</span><span class="gs-signin-short">Sign in</span></a>';
   }
 

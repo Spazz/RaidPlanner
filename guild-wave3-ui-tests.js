@@ -803,7 +803,7 @@ class ApiErr extends Error {
     assert.equal(G.pages.attention.itemText(item), '2 new applications waiting');
     assert.equal(G.pages.attention.itemText(Object.assign({}, item, { count: 1 })), '1 new application waiting');
     const out = G.pages.attention.attentionHtml({ guildData: S.guilds.g1, data: { today: '2026-10-18', total: 1, items: [item], more: {}, onboarding: null } });
-    assert(out.includes('href="#/g/g1/roster/applications"') && out.includes('New applications') && out.includes('>Applications</span>'), out.slice(0, 600));
+    assert(out.includes('href="#/g/g1/roster/applications"') && out.includes('2 new applications waiting') && out.includes('New applications') === false && out.includes('<span>Review</span>'), out.slice(0, 600));
     assertNoRawAttrs(out);
   }));
 

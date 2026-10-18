@@ -315,6 +315,11 @@ const PlanStore = {
     const day = new Date(this.eventStart(data) || Date.now()).toLocaleDateString();
     return (title || raidSizeLabel(State.selectedRaid) + (eventId ? ' · Event ' + eventId : '')) + ' · ' + day;
   },
+  // The name of a roster pasted as a plain list of players: "Pasted roster, Oct 18" (the topbar, the plans list and the recent imports read it).
+  pastedName(now) {
+    const day = new Date(now == null ? Date.now() : now).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return 'Pasted roster, ' + day;
+  },
 };
 
 // ── COMP TEMPLATES (backlog #1: Weekly Roster / Comp Templates) ──

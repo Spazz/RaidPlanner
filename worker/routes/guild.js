@@ -3,6 +3,7 @@ import { auditStatement } from '../audit.js';
 import { mayCreateGuilds } from '../discord.js';
 import { newId } from '../ids.js';
 import { GUILD_LIMIT_MESSAGE, LIMITS } from '../limits.js';
+import { ownPersonStatement } from '../membership.js';
 import { loadGuildContext } from '../permissions.js';
 import { defaultTeamSize } from '../raid-zones.js';
 import { readManageable } from '../session.js';
@@ -33,11 +34,13 @@ export function guildView(row) {
 
 // The body of GET /api/guild/:gid (and of the 201 from POST /api/guild).
 export async function guildPayload(db, guildContext, nowMs = Date.now()) {
+  // The roster person who is the viewer's (null when the account is on no roster yet): the member Home and "My profile" open their pages.
+  const own = await ownPersonStatement(db, guildContext.guild.id, guildContext.userId).first();
   return {
     // The Discord server's id is shown on Guild settings > General (read-only, to the Guild Master only).
     guild: guildContext.isGuildMaster ? { ...guildView(guildContext.guild), discordServerId: guildContext.guild.discord_server_id } : guildView(guildContext.guild),
     teams: await loadTeams(db, guildContext.guild.id),
-    me: { roles: guildContext.roles, can: guildContext.can },
+    me: { roles: guildContext.roles, can: guildContext.can, personId: own ? own.id : null },
     rosterOptions: rosterOptions(),
     rosterFlags: await loadRosterFlags(db, guildContext, guildToday(guildContext.guild, nowMs)),
     attendanceFlags: await loadAttendanceFlags(db, guildContext),

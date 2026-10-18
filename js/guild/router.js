@@ -2,7 +2,7 @@
 // Pure parse/format for the guild page. Routes:
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
-//   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list; the shell sends viewers without officer actions on to Roster)
+//   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list for officers, the member's own page for everyone else)
 //   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{general,teams,schedule,people,roles,discord,guests,dataaccess,public,applications,notifications,attendance,loot,battlenet,activity,data}]
 //   (settings: the bare address opens the first page on a wide screen and the list of pages on a phone; 'accounts' is read as 'people', the page's new name)
 //   #/guest/<token>  (a guest link: the page redeems it and moves to #/view)  #/view  (the guest view)  #/public/:gid  (a guild's public page)

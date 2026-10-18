@@ -304,11 +304,15 @@ function importEnv(fetchImpl) {
     const pane = html.slice(html.indexOf('data-pane="saved"'), html.indexOf('class="import-foot"'));
     assert(pane.includes('<p class="saved-empty-note">Nothing on the anvil yet. Plans you import or start save here automatically, in this browser only.</p>'));
     assert.equal((pane.match(/id="btn-landing-restore"/g) || []).length, 1, 'one restore button');
-    for (const hidden of ['>Your plans</h3>', 'id="landing-saved-list"', 'class="foot-note', '>Recent imports</h3>', 'Original import snapshots', 'id="landing-history-list"']) {
+    for (const hidden of ['<h3 class="roster-section-heading saved-full"><span class="lbl-solo">Your plans</span>', 'id="landing-saved-list"', 'class="foot-note', '>Recent imports</h3>', 'Original import snapshots', 'id="landing-history-list"']) {
       const at = pane.indexOf(hidden);
       assert(at >= 0, hidden);
       assert(/saved-full/.test(pane.slice(pane.lastIndexOf('<', at), at + 60)), hidden + ' is hidden when empty');
     }
+    // A guild member reads "Other plans on this device" in the tab and the heading (the Planner leads with their raids to plan); everyone else keeps "Your plans".
+    assert(pane.includes('<span class="lbl-solo">Your plans</span><span class="lbl-guild">Other plans on this device</span></h3>'));
+    assert(html.includes('data-pane="saved" aria-selected="false"><span class="lbl-solo">Your plans</span><span class="lbl-guild">Other plans on this device</span></button>'));
+    assert(/\.lbl-guild \{ display: none; \}/.test(app.css) && /body\.has-planner-guild \.lbl-solo \{ display: none; \}/.test(app.css) && /body\.has-planner-guild \.lbl-guild \{ display: inline; \}/.test(app.css));
     assert(/\.import-pane\.is-empty \.saved-full \{ display: none; \}/.test(app.css));
     assert(/\.import-pane:not\(\.is-empty\) \.saved-empty-note \{ display: none; \}/.test(app.css));
 

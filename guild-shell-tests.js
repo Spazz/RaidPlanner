@@ -202,6 +202,7 @@ const signedInRoutes = (can, extra) => Object.assign({
   '/auth/me': { status: 200, body: meBody() },
   '/api/guild/g1': { status: 200, body: guildBody(can) },
   '/api/guild/g1/roster?team=t1': { status: 200, body: ROSTER_BODY },
+  '/api/guild/g1/raids?team=t1': { status: 200, body: { team: { id: 't1', name: 'Main' }, today: '2026-10-17', can: { edit: false, signup: false }, upcoming: [], raids: [], hasMore: false } },
   'PATCH /auth/prefs': init => ({ status: 200, body: { prefs: Object.assign({}, USER.prefs, JSON.parse(init.body)) } }),
   'POST /auth/logout': { status: 200, body: {} },
 }, extra || {});
@@ -236,10 +237,11 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(G.shell.slots(can).tabs, '', 'no tabs without a guild');
   });
 
-  await check('nav matrix: member = Roster, Raids, Attendance, Loot, Planner, Help; tiles; five phone tabs', () => {
+  await check('nav matrix: member = Home, Roster, Raids, Attendance, Loot, Planner, Help; tiles; five phone tabs (no Home tab)', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(MEMBER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'help|sep']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'help|sep']);
+    assert.equal(G.shell.homeBadge(Object.assign({}, ctx, { attentionCount: 4 })), 0, 'the member Home counts nothing');
     assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
     const s = G.shell.slots(ctx);
     assert(s.rail.includes('gs-tile is-active') && s.rail.includes('data-action="open-planner"'), 'tiles; the rail logo is a Planner link');
@@ -315,11 +317,15 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     }
     const planner = G.shell.slots({ section: 'planner', page: 'app', me: null }).lead;
     assert(!planner.includes('gs-lead-phone') && !planner.includes('gs-crumbs-wrap'), 'planner: nothing after the button (the plan slot follows)');
-    for (const route of [{ name: 'person', gid: 'g1', pid: 'p1' }, { name: 'import', gid: 'g1', source: 'wcl' }, { name: 'settings', gid: 'g1', tab: 'teams' }]) {
+    for (const route of [{ name: 'person', gid: 'g1', pid: 'p1' }, { name: 'import', gid: 'g1', source: 'wcl' }]) {
       const lead = guild(route).lead;
       assert(lead.includes('class="gs-back" href="#/g/g1/roster" aria-label="Back to Roster">&lsaquo; Roster</a>'), route.name);
       assert(!lead.includes('gs-phone-pick'), route.name + ': the back link replaces the picker');
     }
+    // A settings page goes back to the list of settings pages (it used to say Roster); the list itself goes back to Home.
+    const settingsPage = guild({ name: 'settings', gid: 'g1', tab: 'teams' }).lead;
+    assert(settingsPage.includes('class="gs-back" href="#/g/g1/settings" aria-label="Back to Settings">&lsaquo; Settings</a>') && !settingsPage.includes('Roster') && !settingsPage.includes('gs-phone-pick'));
+    assert(guild({ name: 'settings', gid: 'g1', tab: null }).lead.includes('class="gs-back" href="#/g/g1" aria-label="Back to Home">&lsaquo; Home</a>'));
     assert(guild({ name: 'section', gid: 'g1', section: 'roster' }).lead.includes('gs-phone-pick'));
     assert(!guild({ name: 'section', gid: 'g1', section: 'roster' }).lead.includes('gs-back'));
     const abs = G.shell.slots({ section: 'page', page: 'faq', me: meBody(), route: null, guildData: guildBody(), teamId: 't1' });
@@ -495,7 +501,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     // #/ with a guild lands on the last guild's roster (the re-route inside resolveSignedIn)
     const home = makeEnv({ url: '/#/', routes: signedInRoutes() });
     await settle();
-    assert.equal(home.loc.hash, '#/g/g1/roster');
+    assert.equal(home.loc.hash, '#/g/g1', 'a member lands on their Home');
     assert.equal(home.G.app.state.section, 'guild');
     assert(home.html('gs-main').length > 0 && !home.html('gs-main').includes('Loading'));
     // retry after a failed session check asks /auth/me again
@@ -1427,7 +1433,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const env = makeEnv({ url: '/#/g/g1', routes: signedInRoutes(HOME_CAN, attentionRoute) });
     await settle();
     const main = env.html('gs-main');
-    assert(main.includes('<h1 class="gs-h1" tabindex="-1">Home</h1>') && main.includes('Review Sat Oct 17: 3 to decide') && main.includes('3 character claims') === false && main.includes('1 character claim is waiting'));
+    assert(main.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Home</h1>') && main.includes('Review Sat Oct 17: 3 to decide') && main.includes('3 character claims') === false && main.includes('1 character claim is waiting'));
     assert.equal(env.loc.hash, '#/g/g1', 'no redirect for an officer');
     assert.equal(env.documentFake.title, 'Home - Ravens - Raidsmith guild');
     assert(env.html('shell-topbar-lead').includes('>Home<'));
@@ -1443,20 +1449,24 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(alias.html('gs-main').includes('Review Sat Oct 17: 3 to decide') && alias.loc.hash === '#/g/g1/home');
   });
 
-  await check('Home route: members (and anyone without an officer action) are sent to Roster by a replaced address; they never ask for the list', async () => {
+  await check('Home route: members (and anyone without an officer action) stay on #/g/:gid and get their own Home; they never ask for the list', async () => {
     const env = makeEnv({ url: '/#/g/g1', routes: signedInRoutes(MEMBER_CAN, attentionRoute) });
     await settle();
-    assert.equal(env.loc.hash, '#/g/g1/roster');
-    assert.deepEqual(replaces(env), ['/#/g/g1/roster']);
-    assert(env.documentFake.title.startsWith('Roster - Ravens'));
+    assert.equal(env.loc.hash, '#/g/g1', 'no redirect to Roster');
+    assert.deepEqual(replaces(env), []);
+    assert(env.documentFake.title.startsWith('Home - Ravens'));
     assert.equal(env.fetched('/attention'), 0);
-    assert(!env.html('shell-sidebar').includes('>Home<') && !env.html('gs-main').includes('Needs attention'));
+    const side = env.html('shell-sidebar');
+    assert(side.includes('aria-label="Home" aria-current="page"') && !/gs-nav-badge/.test(side.slice(0, side.indexOf('href="#/g/g1/roster"'))), 'Home is first, current, and counts nothing for a member');
+    assert(env.html('gs-main').includes('Welcome back') && env.html('gs-main').includes('id="home-next"') && !env.html('gs-main').includes('Needs attention'));
+    assert.equal(env.fetched('/api/guild/g1/raids?team=t1'), 1, 'the next raid comes from the selected team upcoming list');
     const lead = makeEnv({ url: '/#/g/g1/home', routes: signedInRoutes({ 'roster.view': 'guild', 'raids.view': 'guild', 'audit.view': 'guild' }, attentionRoute) });
     await settle();
-    assert.equal(lead.loc.hash, '#/g/g1/roster', 'audit.view alone is not an item action');
+    assert.equal(lead.loc.hash, '#/g/g1/home', 'audit.view alone is not an item action: the member Home');
+    assert(lead.html('gs-main').includes('id="home-next"'));
   });
 
-  await check('Home route: the sign-in landing (#/ and #/signin) goes to #/g/:gid first; officers stay on Home, members move on to Roster', async () => {
+  await check('Home route: the sign-in landing (#/ and #/signin) goes to #/g/:gid first; officers and members both stay on Home', async () => {
     const officer = makeEnv({ url: '/#/', routes: signedInRoutes(HOME_CAN, attentionRoute) });
     await settle();
     assert.equal(officer.loc.hash, '#/g/g1');
@@ -1464,8 +1474,9 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(officer.html('gs-main').includes('Review Sat Oct 17: 3 to decide'));
     const member = makeEnv({ url: '/#/signin', routes: signedInRoutes(MEMBER_CAN, attentionRoute) });
     await settle();
-    assert.equal(member.loc.hash, '#/g/g1/roster');
-    assert.deepEqual(replaces(member), ['/#/g/g1', '/#/g/g1/roster']);
+    assert.equal(member.loc.hash, '#/g/g1');
+    assert.deepEqual(replaces(member), ['/#/g/g1']);
+    assert(member.html('gs-main').includes('Welcome back'));
   });
 
   await check('Home count: read in the background on a guild page without redrawing it, shown on the nav, not asked again within a minute, asked again after', async () => {

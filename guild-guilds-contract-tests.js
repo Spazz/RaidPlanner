@@ -63,14 +63,14 @@ const BODY = { serverId: S[0], gameVersion: 'tbc', region: 'US', realm: 'Nightsl
     state.guilds[gid] = guildData; state.currentGid = gid;
     await G.pages.attention.load({ name: 'section', gid, section: 'home' }, guildData);
     let html = G.pages.attention.main({}, guildData, {});
-    assert(html.includes('Set up your guild') && stripTags(html).includes('0 of 6 steps done'), stripTags(html).slice(0, 300));
+    assert(html.includes('Set up your guild') && stripTags(html).includes('1 of 6 steps done'), stripTags(html).slice(0, 300));
     const hrefs = [...html.matchAll(/class="gs-onboard-link" href="([^"]*)"/g)].map((m) => m[1]);
     assert.deepEqual(hrefs.map((href) => G.router.parse(href).name), ['settings', 'section', 'settings', 'raidnew', 'settings', 'section'], 'every link is a route the shell knows');
     // A person is added: the next read ticks "Import your roster".
     assert.equal((await w.call(jar, 'POST', `/api/guild/${gid}/roster`, { teamId: made.json.teams[0].id, name: 'Thornwick', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, status: 'raider' })).status, 201);
     await G.handlers.click['attn-refresh'](el({}));
     html = G.pages.attention.main({}, guildData, {});
-    assert(stripTags(html).includes('1 of 6 steps done'));
+    assert(stripTags(html).includes('2 of 6 steps done'));
     assert(/gs-onboard-step is-done"><span class="gs-onboard-mark" aria-hidden="true"><svg[^]*?<\/svg><\/span><a class="gs-onboard-link" href="#\/g\/[^"]*\/roster">Import your roster<span class="gs-sr"> \(done\)/.test(html), 'the roster step is ticked');
     // Dismiss.
     G.ui.announce = () => {}; G.ui.focusByKey = () => true; G.app.render = () => {};

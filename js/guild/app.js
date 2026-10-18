@@ -329,6 +329,7 @@
     state.bnet = null;
     state.bnetSettings = null;
     state.attention = {};
+    if (G.pages.plannerLanding) G.pages.plannerLanding.reset();
     sessionGen++;
     state.rolesSettings = null;
     state.discordSettings = null;
@@ -464,6 +465,17 @@
       if (token !== routeToken) return null;
       render();
       return ensureChromeGuild();
+    }).then(function () {
+      return token === routeToken ? refreshPlannerLanding() : null;
+    });
+  }
+
+  // The planner's landing leads with the viewer's upcoming raids to plan: read them (at most every few seconds) and draw them in.
+  function refreshPlannerLanding() {
+    if (state.section !== 'planner' || !state.me) return Promise.resolve(null);
+    return G.pages.plannerLanding.refresh().then(function (changed) {
+      if (changed && state.section === 'planner') render();
+      return null;
     });
   }
 
@@ -552,11 +564,6 @@
         patchPrefs({ lastGuildId: r.gid });
       }
       const onHome = r.name === 'section' && r.section === 'home';
-      if (onHome && !G.shell.canSeeAttention(gd.me && gd.me.can)) {
-        // Home is for people who can act on its items; everyone else starts on Roster.
-        window.history.replaceState(null, '', window.location.pathname + window.location.search + G.router.format({ name: 'section', gid: r.gid, section: 'roster' }));
-        return routeAll({ force: true });
-      }
       if (!onHome) ensureAttention(r.gid, false); // the Home page reads it fresh itself
       if (r.name === 'section' && r.section === 'roster') return loadRoster(r, gd, token);
       if (r.name === 'person') return loadPerson(r, gd, token);
@@ -935,7 +942,10 @@
     const notice = byId('planner-notice');
     if (notice) {
       if (notice.classList) notice.classList.add('gs-scope');
-      notice.innerHTML = section === 'planner' && state.me && Array.isArray(state.me.guilds) && !state.me.guilds.length ? G.pages.signin.noGuildNoticeHtml(state.me) : '';
+      const guilds = state.me && Array.isArray(state.me.guilds) ? state.me.guilds : null;
+      // No guild: the notice. A guild: "Upcoming raids to plan" for a viewer who may plan for one of its teams (pages-planner-landing.js).
+      notice.innerHTML = section === 'planner' && guilds ? (guilds.length ? G.pages.plannerLanding.html() : G.pages.signin.noGuildNoticeHtml(state.me)) : '';
+      if (document.body) document.body.classList.toggle('has-planner-guild', !!(guilds && guilds.length));
     }
 
     if (section === 'guild' && focusHeading === true && !firstRender) {
@@ -1037,6 +1047,7 @@
     });
   };
 
+  app.fetchGuild = fetchGuild;
   app.refreshGuild = function (gid) {
     return fetchGuild(gid).then(function () { render(); }, function () { /* the mutation already worked; keep the old copy */ });
   };
@@ -1308,8 +1319,9 @@
     document.addEventListener('input', function (ev) { dispatch('input', 'data-input', ev); });
     // The planner switches between its landing and a plan: the sidebar collapse context follows.
     // Only a change of that context redraws (a redraw closes an open account menu).
-    document.addEventListener('planner:view', function () {
+    document.addEventListener('planner:view', function (ev) {
       if (state.section === 'planner' && collapseContext() !== lastCollapseContext) render();
+      if (ev && ev.detail && ev.detail.view === 'landing') refreshPlannerLanding();
     });
     window.addEventListener('hashchange', function () { routeAll(); });
     // A click on a link fires popstate too; only a popstate with no link click just before it is Back / Forward.

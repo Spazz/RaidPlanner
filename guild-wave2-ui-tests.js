@@ -1855,12 +1855,11 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.equal(A.itemText(item()), 'Sat Oct 24: 2 line-up players can\'t come');
     assert.equal(A.itemText(item({ count: 1 })), 'Sat Oct 24: 1 line-up player can\'t come');
     assert.equal(A.itemHref('g1', item()), '#/g/g1/raids/r/u1');
-    assert(A.KINDS.some(k => k.id === 'roster_declined' && k.severity === 'action' && k.chip === 'Line-up'));
+    assert(A.KINDS.some(k => k.id === 'roster_declined' && k.severity === 'action' && k.action === 'Open raid'));
     const data = { today: '2026-10-18', total: 3, items: [item(), { id: 'x:1', kind: 'from_the_future', severity: 'action', teamId: 't1', teamName: 'Team KJ', date: '2026-10-24', link: { name: 'raid', rid: 'u1' } }, item({ id: 'rd:u2', raidId: 'u2', count: 1, date: '2026-10-31', link: { name: 'raid', rid: 'u2' } })], more: { roster_declined: 2 } };
     const out = ws(A.attentionHtml({ guildData: gd(OFFICER_CAN), data }));
-    assert(out.includes('id="attn-h-roster_declined">Line-up players who can&#39;t come</h3>'));
     assert(dec(out).includes('Sat Oct 24: 2 line-up players can\'t come') && dec(out).includes('Sat Oct 31: 1 line-up player can\'t come'));
-    assert(out.includes('href="#/g/g1/raids/r/u1"') && out.includes('<span class="gs-chip gs-chip-attn">Line-up</span>'));
+    assert(out.includes('href="#/g/g1/raids/r/u1"') && out.includes('<span>Open raid</span>'));
     assert(!out.includes('from_the_future') && !out.includes('from the future'), 'the unknown kind is skipped');
     assert(out.includes('and 2 more'), 'the hidden ones link on');
     assertNoRawAttrs(out);

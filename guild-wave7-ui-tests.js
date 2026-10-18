@@ -472,9 +472,9 @@ function keyData(extra) {
     assert.equal(A.itemText(review), 'Cora: suggested review (below Raider)');
     assert.equal(A.itemHref('g1', promote), '#/g/g1/attendance/p/p_1');
     const out = A.attentionHtml({ guildData: guildData(), data: { today: '2027-01-15', total: 2, items: [promote, review], more: { rank: 3 } } });
-    assert(text(out).includes('Rank suggestions') && text(out).includes('Bran: suggested promotion to Core') && text(out).includes('and 3 more'));
-    assert(out.includes('>Rank<'), 'the chip');
-    assert(/href="#\/g\/g1\/attendance"[^>]*>and 3 more/.test(out), 'where the rest is');
+    assert(text(out).includes('Bran: suggested promotion to Core') && text(out).includes('Cora: suggested review (below Raider)') && text(out).includes('and 3 more: rank suggestions'));
+    assert(/href="#\/g\/g1\/attendance\/p\/p_1" aria-label="Open \(Bran: suggested promotion to Core\)"><span>Open<\/span>/.test(out), 'a button per suggestion');
+    assert(/<a class="gs-btn" href="#\/g\/g1\/attendance" aria-label="See all \(and 3 more: rank suggestions\)"><span>See all<\/span>/.test(out), 'where the rest is');
   });
 
   // ladder editor on Guild settings > Attendance
