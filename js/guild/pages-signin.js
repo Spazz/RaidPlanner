@@ -33,16 +33,16 @@
     if (providers.bnet === true) {
       buttons.push('<a class="gs-btn' + (providers.discord === false ? ' gs-btn-molten' : '') + ' gs-btn-block" href="' + BNET_HREF + '">' + G.icons.icon('login', 22) + '<span>Continue with Battle.net</span></a>');
     }
-    const fine = (providers.discord !== false ? 'Discord: Raidsmith reads your username, avatar and the list of servers you\'re in, to find your guild. It never reads or posts messages. ' : '') +
-      (providers.bnet === true ? 'Battle.net: it reads your BattleTag, and your character list if you choose to share it. ' : '') +
-      (providers.discord !== false && providers.bnet === true
+    const reads = (providers.discord !== false ? 'Discord: Raidsmith reads your username, avatar and the list of servers you\'re in, to find your guild. It never reads or posts messages. ' : '') +
+      (providers.bnet === true ? 'Battle.net: it reads your BattleTag, and your character list if you choose to share it.' : '');
+    const fresh = (providers.discord !== false && providers.bnet === true
         ? 'New here? Either one makes your account the first time; connect the other later under Linked accounts.'
         : 'New here? Signing in makes your account the first time.');
     return card(
       '<h1 class="gs-h1 gs-h1-lg" tabindex="-1">Your guild\'s roster and attendance</h1>' +
       '<p class="gs-lead">Sign in to see your guild\'s roster, raids and attendance.</p>' + notice + err +
       '<div class="gs-signin-buttons">' + buttons.join('') + '</div>' +
-      '<p class="gs-fine" id="signin-fine">' + esc(fine) + '</p>' +
+      '<p class="gs-fine" id="signin-fine">' + esc(reads.trim()) + '</p><p class="gs-fine" id="signin-new">' + esc(fresh) + '</p>' +
       '<ul class="gs-link-list"><li><a href="#/privacy">Privacy &amp; my data</a></li>' +
       '<li class="gs-link-list-note">Planning a raid? The planner works without signing in. <a href="/" data-action="open-planner">Open the planner</a></li></ul>');
   }
@@ -85,7 +85,7 @@
       '<p class="gs-lead">' + p.lead + '</p>' + p.claimNote +
       '<div class="gs-actions">' + (p.discord ? '<a class="gs-btn" href="/auth/login">Sign in again</a>' : '<a class="gs-btn gs-btn-molten" href="#/linked">Connect Discord</a>') +
       (p.canCreate ? '<a class="gs-btn gs-btn-molten" href="#/new">Create a guild</a>' : '') +
-      '<a class="gs-btn' + (p.canCreate ? '' : ' gs-btn-molten') + '" href="/" data-action="open-planner">Open the planner</a></div>' +
+      '<a class="gs-btn' + (p.canCreate || !p.discord ? '' : ' gs-btn-molten') + '" href="/" data-action="open-planner">Open the planner</a></div>' +
       '<p class="gs-card-foot"><span>Signed in as ' + esc(u.displayName || u.username) + '</span><button type="button" class="gs-linkbtn" data-action="sign-out">Sign out</button></p>' +
       '</div></div>';
   }

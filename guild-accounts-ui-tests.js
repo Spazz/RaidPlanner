@@ -130,6 +130,8 @@ function withApi(stubs, fn) {
     assert(t.includes('isn\'t linked to a roster entry yet') && t.includes('the whole thing, like Name#1234') && t.includes('Or connect Discord'));
     assert(card.includes('href="#/linked"') && t.includes('Connect Discord') && !card.includes('Sign in again') && !card.includes('href="/auth/login"'));
     assert(t.includes('Signed in as Holly'));
+    assert(card.includes('class="gs-btn" href="/" data-action="open-planner"'), 'one primary button: Connect Discord, not the planner too');
+    assert(G.pages.signin.noGuildHtml(me()).includes('class="gs-btn gs-btn-molten" href="/" data-action="open-planner"'), 'a Discord account with nothing to create keeps the planner as its primary button');
     const notice = G.pages.signin.noGuildNoticeHtml(noDiscord);
     assert(notice.includes('Connect Discord') && !notice.includes('Sign in again'));
     // A Discord account (or an answer without identities, from before accounts) keeps today's card.
