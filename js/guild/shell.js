@@ -3,7 +3,8 @@
 // drawer. Pure string builders: slots(ctx) returns the HTML for each slot of the page skeleton (#shell-rail,
 // #shell-sidebar, #shell-topbar-lead, #shell-topbar-account, #shell-banner, #shell-tabs, #shell-drawer); app.js writes
 // them into the page and wires the events. The planner and the static help pages draw the same shell.
-//   ctx = { section, page, me, pending, signedOut, route, guildData, teamId, collapsed, whatsNewUnseen, personName }
+//   ctx = { section, page, me, pending, signedOut, route, guildData, teamId, collapsed, whatsNewUnseen, personName, attentionCount }
+//   attentionCount: the open-work count of the Home page (GET /attention total) for the guild in play; 0 until it is known.
 //   section: 'guild' (default) | 'planner' | 'page' (faq / whats-new); page: 'app' | 'faq' | 'whats-new'
 //   me: the /auth/me response (null = signed out); guildData: GET /api/guild/:gid (or null when no guild is in play).
 (function (G) {
@@ -21,7 +22,12 @@
   }
 
   function canSeeSettings(can) {
-    return hasAction(can, 'guild.teams') || hasAction(can, 'guild.access') || hasAction(can, 'guild.roles') || hasAction(can, 'attendance.policy') || hasAction(can, 'loot.policy');
+    return hasAction(can, 'guild.teams') || hasAction(can, 'guild.access') || hasAction(can, 'guild.roles') || hasAction(can, 'attendance.policy') || hasAction(can, 'loot.policy') || hasAction(can, 'audit.view');
+  }
+
+  // Who gets the Home page (the needs-attention list): anyone who can act on one of its items. Everyone else lands on Roster.
+  function canSeeAttention(can) {
+    return hasAction(can, 'attendance.review') || hasAction(can, 'roster.edit') || hasAction(can, 'raids.edit') || hasAction(can, 'loot.edit');
   }
 
   // Whether `can` reaches this team for an action ('guild' = every team, or a list of team ids).
@@ -41,6 +47,7 @@
     if (hasAction(can, 'attendance.policy')) tabs.push({ tab: 'attendance', label: 'Attendance' });
     if (hasAction(can, 'loot.policy')) tabs.push({ tab: 'loot', label: 'Loot' });
     if (hasAction(can, 'guild.teams')) tabs.push({ tab: 'battlenet', label: 'Battle.net' });
+    if (hasAction(can, 'audit.view')) tabs.push({ tab: 'activity', label: 'Activity' });
     return tabs;
   }
 
@@ -71,6 +78,19 @@
   }
 
   function badgesOf(gd, teamId) { return { roster: rosterBadge(gd, teamId), attendance: attendanceBadge(gd, teamId) }; }
+
+  // The Home count: open work across the viewer's teams (ctx.attentionCount, set from GET /attention), for attention viewers only.
+  function homeBadge(ctx) {
+    const gd = guildOf(ctx);
+    if (!gd || !canSeeAttention(gd.me && gd.me.can)) return 0;
+    const n = Number(ctx.attentionCount);
+    return isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  function homeItem(gid, count, base) {
+    return { key: 'home', label: 'Home', short: 'Home', icon: 'home', href: guildHref(gid, 'home', base), badge: count,
+      ariaLabel: count ? 'Home, ' + count + (count === 1 ? ' item needs' : ' items need') + ' attention' : 'Home' };
+  }
 
   function plannerItem() {
     return { key: 'planner', label: 'Planner', short: 'Planner', icon: 'planner', href: '/', action: 'open-planner' };
@@ -114,10 +134,12 @@
 
   // The nav model, one function (tested as a matrix): the sidebar / drawer list for this viewer.
   // Signed out, or signed in with no guild (or its data not loaded yet): Planner, then the help group.
-  // With a guild: Roster, Raids, Attendance, Loot, Planner, [Guild settings], then the help group.
+  // With a guild: [Home, for people who can act on its items], Roster, Raids, Attendance, Loot, Planner, [Guild settings], then the help group.
+  // Home is not one of the phone tabs (tabItems builds its five from navItems alone); the drawer carries it.
   function sidebarItems(ctx) {
     const gd = guildOf(ctx);
     const own = gd ? navItems(gd.guild.id, gd.me && gd.me.can, badgesOf(gd, ctx.teamId), baseOf(ctx)) : [plannerItem()];
+    if (gd && canSeeAttention(gd.me && gd.me.can)) own.unshift(homeItem(gd.guild.id, homeBadge(ctx), baseOf(ctx)));
     return own.concat(helpItems(ctx));
   }
 
@@ -142,7 +164,7 @@
     if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid')) return true;
     if (item.key === 'attendance' && (route.name === 'review' || route.name === 'backfill' || route.name === 'personatt')) return true;
     if (item.key === 'loot' && route.name === 'lootperson') return true;
-    return route.name === 'section' && route.section === item.key;
+    return route.name === 'section' && route.section === item.key; // Home included: its key is the 'home' section
   }
 
   // The current item: Planner on the planner section, FAQ / What's new on their pages, the section on guild pages.
@@ -178,7 +200,7 @@
     const canCreate = !!(me && me.create && me.create.allowed);
     const tiles = guilds.map(function (g) {
       const active = g.id === activeGuildId;
-      return '<li><a class="gs-tile' + (active ? ' is-active' : '') + '" href="' + esc(guildHref(g.id, 'roster', b)) + '" aria-label="' + esc(g.name) + '" title="' + esc(g.name) + '"' + (active ? ' aria-current="true"' : '') + '>' + esc(G.ui.initials(g.name)) + '</a></li>';
+      return '<li><a class="gs-tile' + (active ? ' is-active' : '') + '" href="' + esc(guildHref(g.id, 'home', b)) + '" aria-label="' + esc(g.name) + '" title="' + esc(g.name) + '"' + (active ? ' aria-current="true"' : '') + '>' + esc(G.ui.initials(g.name)) + '</a></li>';
     });
     if (canCreate) {
       const onNew = route && route.name === 'new';
@@ -280,13 +302,14 @@
     crumbs.push({ label: gd.guild.name, href: guildHref(gd.guild.id, 'roster', baseOf(ctx)) });
     if (r.name === 'section' || r.name === 'person' || r.name === 'import' || ATT_LEAF[r.name]) {
       const active = activeTeams(gd.teams);
-      // The team shows with several active teams, and always on an archived team's roster (?team= in the hash).
+      // The team shows with several active teams, and always on an archived team's roster (?team= in the hash). Home spans every team: no team crumb.
       const wanted = r.name === 'section' && r.section === 'roster' && r.team ? r.team : ctx.teamId;
       const all = Array.isArray(gd.teams) ? gd.teams : [];
-      const team = active.length > 1 || (r.team && r.name === 'section') ? all.filter(function (t) { return t.id === wanted; })[0] : null;
+      const onHome = r.name === 'section' && r.section === 'home';
+      const team = !onHome && (active.length > 1 || (r.team && r.name === 'section')) ? all.filter(function (t) { return t.id === wanted; })[0] : null;
       if (team) crumbs.push({ label: team.name });
       if (r.name === 'section') {
-        crumbs.push({ label: { roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || 'Roster' });
+        crumbs.push({ label: { home: 'Home', roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || 'Roster' });
       } else if (ATT_LEAF[r.name]) {
         const leaf = ATT_LEAF[r.name];
         crumbs.push({ label: leaf.parentLabel, href: guildHref(gd.guild.id, leaf.parent, baseOf(ctx)) });
@@ -425,6 +448,8 @@
   G.shell = {
     hasAction: hasAction,
     canSeeSettings: canSeeSettings,
+    canSeeAttention: canSeeAttention,
+    homeBadge: homeBadge,
     settingsTabs: settingsTabs,
     activeTeams: activeTeams,
     navItems: navItems,

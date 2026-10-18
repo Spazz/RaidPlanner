@@ -239,7 +239,8 @@ function showToast(msg, opts = {}) {
 // ── CLIPBOARD ───────────────────────────────────────────────────
 // Copies text and toasts the result. When the browser refuses (permission, an
 // insecure page, no focus) the text opens in a dialog instead, selected, so it
-// can still be copied by hand.
+// can still be copied by hand. Resolves true when the browser copied it and false
+// when the dialog took over (the guild shell's calendar link says which in its own words).
 function showManualCopy(text) {
   const dialog = document.getElementById('manual-copy-dialog');
   const area = document.getElementById('manual-copy-text');
@@ -252,7 +253,7 @@ function showManualCopy(text) {
 function copyText(text, successMessage) {
   let written;
   try { written = navigator.clipboard.writeText(text); } catch (err) { written = Promise.reject(err); }
-  return written.then(() => showToast(successMessage), () => showManualCopy(text));
+  return written.then(() => { showToast(successMessage); return true; }, () => { showManualCopy(text); return false; });
 }
 
 // ── VERSION AUTO-DETECT SUGGESTION (backlog #13) ──────────────────

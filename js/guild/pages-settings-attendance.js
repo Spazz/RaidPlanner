@@ -3,6 +3,7 @@
 // ("Guild default" or one team) as a draft override, shows "Inherited" / "Overridden" per key in a team scope, and
 // saves with PUT /attendance/policy { teamId | null, policy, expectedVersion }. A Warcraft Logs card saves the guild ID
 // and each team's uploader names with PUT /attendance/wcl. GET /attendance/policy feeds both.
+// The Watch list group edits `watch: { below, dropBy }`: fractions 0..1 in the policy, typed as percent (blank = that check is off, stored as null).
 (function (G) {
   'use strict';
 
@@ -41,6 +42,12 @@
       { path: 'window.switchWeeks', type: 'list', label: 'Window choices on the Attendance page', help: 'Up to 3 week counts, separated by commas. Must include the main window. "All time" is always offered.' },
       { path: 'effectiveStart', type: RADIO, label: 'When a person\'s raids start to count', options: [['laterOfJoinAndFirst', 'Later of join date and first attended raid'], ['joinDate', 'Join date']] },
       { path: 'streakFlagAt', type: 'number', label: 'Highlight a missed-raid streak of', min: 0, max: 20, help: '0 turns the highlight off.' },
+    ] },
+    { id: 'watch', title: 'Watch list', fields: [
+      { path: 'watch.below', type: 'percent', label: 'Flag people below (percent)', min: 0, max: 100,
+        help: 'The team\'s Attendance page lists people whose attendance in the main window is under this. Leave it empty to turn this check off.' },
+      { path: 'watch.dropBy', type: 'percent', label: 'Flag a drop of (points)', min: 0, max: 100,
+        help: 'Also lists people whose attendance fell by at least this many percentage points against the previous window of the same length. Leave it empty to turn this check off.' },
     ] },
     { id: 'reset', title: 'Reset day', fields: [
       { path: 'resetDay', type: 'reset', label: 'Weekly reset', guildOnly: true },
@@ -182,6 +189,23 @@
     return '<input class="gs-input gs-input-short" type="number" id="p-' + id + '" min="' + field.min + '" max="' + field.max + '" step="1" value="' + esc(eff.value) + '" data-change="pol-change" data-type="number" data-path="' + esc(field.path) + '" data-key="p-' + id + '" aria-label="' + esc(field.label) + '"' + (field.help ? ' aria-describedby="phelp-' + id + '"' : '') + '>';
   }
 
+  // A fraction in the policy (0.75) shown as percent (75); a blank box is null (the check is off). One decimal is kept (12.5).
+  function percentOf(fraction) {
+    return typeof fraction === 'number' && isFinite(fraction) ? Math.round(fraction * 1000) / 10 : '';
+  }
+
+  // The other way: typed percent -> fraction. Rounding through tenths of a percent keeps 75 as exactly 0.75 (no 0.7500000000000001).
+  function fractionOf(text) {
+    if (text === '' || text == null) return null;
+    const n = Number(text);
+    return isFinite(n) ? Math.round(n * 10) / 1000 : null;
+  }
+
+  function percentHtml(field, eff) {
+    const id = fid(field.path);
+    return '<input class="gs-input gs-input-short" type="number" id="p-' + id + '" min="' + field.min + '" max="' + field.max + '" step="0.1" placeholder="Off" value="' + esc(percentOf(eff.value)) + '" data-change="pol-change" data-type="percent" data-path="' + esc(field.path) + '" data-key="p-' + id + '" aria-label="' + esc(field.label) + '"' + (field.help ? ' aria-describedby="phelp-' + id + '"' : '') + '>';
+  }
+
   function listHtml(field, eff) {
     const id = fid(field.path);
     return '<input class="gs-input gs-input-short" type="text" id="p-' + id + '" value="' + esc((Array.isArray(eff.value) ? eff.value : []).join(', ')) + '" data-change="pol-change" data-type="list" data-path="' + esc(field.path) + '" data-key="p-' + id + '" aria-label="' + esc(field.label) + '" aria-describedby="phelp-' + id + '">';
@@ -218,6 +242,7 @@
       case RADIO: inner = radioHtml(field, eff); break;
       case 'checks': inner = checksHtml(field, eff); break;
       case 'number': inner = numberHtml(field, eff); break;
+      case 'percent': inner = percentHtml(field, eff); break;
       case 'list': inner = listHtml(field, eff); break;
       case 'credits': inner = creditsHtml(field, eff); break;
       case 'reset': inner = resetDayHtml(field, eff, view); break;
@@ -329,6 +354,7 @@
     let v;
     if (type === 'radio') v = el.value;
     else if (type === 'number') v = el.value === '' ? null : Number(el.value);
+    else if (type === 'percent') v = fractionOf(el.value);
     else if (type === 'resetday') v = el.value === '' ? null : Number(el.value);
     else if (type === 'list') v = String(el.value).split(',').map(function (x) { return x.trim(); }).filter(Boolean).map(Number);
     else if (type === 'checks') {
@@ -523,6 +549,8 @@
     pruneToDifferences: pruneToDifferences,
     changesConsolidation: changesConsolidation,
     effective: effective,
+    percentOf: percentOf,
+    fractionOf: fractionOf,
     creditIdFor: creditIdFor,
     settingsHtml: settingsHtml,
     wclCardHtml: wclCardHtml,

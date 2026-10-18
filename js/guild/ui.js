@@ -235,6 +235,13 @@
     el.hidden = !text;
   };
 
+  // Writes into a live region (role="status") that is already on the page, so a screen reader announces the change; a re-render alone
+  // replaces the region and is not reliably announced.
+  ui.announce = function (id, text) {
+    const el = typeof document !== 'undefined' && document.getElementById ? document.getElementById(id) : null;
+    if (el) el.textContent = text || '';
+  };
+
   // opts.preventScroll: a re-render puts focus back where it was without scrolling the page to it.
   ui.focusByKey = function (key, opts) {
     if (!key) return false;

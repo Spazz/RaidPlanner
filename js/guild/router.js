@@ -2,7 +2,8 @@
 // Pure parse/format for the guild page. Routes:
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,attendance,loot,battlenet}]
+//   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list; the shell sends viewers without officer actions on to Roster)
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,attendance,loot,battlenet,activity}]
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
 //   #/g/:gid/loot[?view=raids|items]  #/g/:gid/loot/p/:pid  (Balance is the default view)
 //   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl,bnet}
@@ -10,8 +11,9 @@
 (function (G) {
   'use strict';
 
-  const SECTIONS = ['roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'schedule', 'people', 'attendance', 'loot', 'battlenet'];
+  // 'home' is the guild's landing section: it has no path segment of its own (#/g/:gid); #/g/:gid/home is only an alias.
+  const SECTIONS = ['home', 'roster', 'raids', 'attendance', 'loot'];
+  const TABS = ['teams', 'schedule', 'people', 'attendance', 'loot', 'battlenet', 'activity'];
   const LOOT_VIEWS = ['raids', 'items'];
   const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet'];
   const SIGNIN_ERRORS = ['denied', 'state', 'discord'];
@@ -69,7 +71,7 @@
     }
     if (head !== 'g' || !ID.test(parts[1])) return { name: 'notfound' };
     const gid = parts[1];
-    if (parts.length === 2) return { name: 'section', gid: gid, section: 'roster' };
+    if (parts.length === 2) return { name: 'section', gid: gid, section: 'home' };
     if (parts.length === 3 && SECTIONS.indexOf(parts[2]) >= 0) {
       const section = { name: 'section', gid: gid, section: parts[2] };
       if (parts[2] === 'roster' && typeof query.team === 'string' && ID.test(query.team)) section.team = query.team;
@@ -112,6 +114,7 @@
         const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';
         const team = section === 'roster' && typeof r.team === 'string' && ID.test(r.team) ? '?team=' + encodeURIComponent(r.team) : '';
         const view = section === 'loot' && LOOT_VIEWS.indexOf(r.view) >= 0 ? '?view=' + r.view : '';
+        if (section === 'home') return '#/g/' + encodeURIComponent(r.gid);
         return '#/g/' + encodeURIComponent(r.gid) + '/' + section + team + view;
       }
       case 'person': return '#/g/' + encodeURIComponent(r.gid) + '/roster/p/' + encodeURIComponent(r.pid);

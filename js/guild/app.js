@@ -14,6 +14,7 @@
   const COLLAPSE_DEFAULTS = { default: false, plan: true };
   const SESSION_TIMEOUT_MS = 3000;
   const NAV_CLICK_WINDOW_MS = 1000;
+  const ATTENTION_MAX_AGE_MS = 60000; // the Home count is read again on a guild route change once it is older than this
   // Actions the planner's own markup may carry too (the compact home's "How it works" link).
   const SHARED_ACTIONS = ['open-planner', 'how-it-works'];
   const SCOPED_SLOTS = ['shell-rail', 'shell-sidebar', 'shell-topbar-lead', 'shell-topbar-account', 'shell-banner', 'shell-tabs', 'shell-drawer', 'gs-main', 'planner-notice', 'guild-dialogs'];
@@ -48,13 +49,14 @@
     roadmap: null,     // the Future enhancements page's state: filter, form draft, submitted ideas (see pages-roadmap.js)
     bnet: null,        // Linked accounts / My characters: { data: GET /auth/bnet, notice, alert } (see pages-bnet.js)
     bnetSettings: null, // Guild settings > Battle.net: { gid, data: GET /api/guild/:gid/bnet, notice } (see pages-settings-bnet.js)
+    attention: {},     // gid -> { data: GET /api/guild/:gid/attention (or null), at: ms }: the Home count for the nav badge (the Home page keeps its own copy in att.attention)
   };
   const app = G.app = { state: state, started: false };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
   const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot' };
   function attPageKey(r) {
-    if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : null));
-    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : null));
+    if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : (r.section === 'home' ? 'attention' : null)));
+    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : (r.tab === 'activity' ? 'settingsActivity' : null)));
     return Object.prototype.hasOwnProperty.call(ATT_ROUTE_PAGES, r.name) ? ATT_ROUTE_PAGES[r.name] : null;
   }
   app.attPageKey = attPageKey;
@@ -67,6 +69,8 @@
   let originalTitle = '';
   let lastNavClickAt = 0;     // a plain click on a link just happened (its popstate is a navigation, not Back / Forward)
   let lastCollapseContext = null;
+  let sessionGen = 0;         // bumped by resetSession: an answer that arrives after a sign-out is dropped
+  const attentionReads = {};  // gid -> the GET /attention in flight
 
   // ── small browser helpers (each guarded: storage may be blocked, the planner may be absent) ──
   function byId(id) { return typeof document !== 'undefined' && document.getElementById ? document.getElementById(id) : null; }
@@ -168,6 +172,7 @@
     return fetchGuild(gid).then(function () {
       // A guild section draws #gs-main itself (a re-render could wipe typed form input) and does not use this guild.
       if (state.section !== 'guild') render();
+      ensureAttention(gid, false); // the Home badge, once it arrives
     }, function () { /* the nav stays as it is */ });
   }
 
@@ -181,6 +186,53 @@
     if (!active.some(function (t) { return t.id === id; })) id = active[0].id;
     state.teamByGuild[gid] = id;
     return id;
+  }
+
+  function rememberTeam(gid, teamId) {
+    state.teamByGuild[gid] = teamId;
+    storageSet(TEAM_KEY + gid, teamId);
+  }
+
+  // Picks the team the guild pages work on (what the sidebar picker does); false when it is not one of the guild's active teams.
+  function selectTeam(gid, teamId) {
+    const gd = state.guilds[gid];
+    if (!gd || !G.shell.activeTeams(gd.teams).some(function (t) { return t.id === teamId; })) return false;
+    rememberTeam(gid, teamId);
+    return true;
+  }
+
+  // ── needs attention (Home): the count behind the nav badge ──
+  // GET /attention for people who can act on its items, kept per guild as { data, at }. It is read after the guild loads without holding the page
+  // back, again whenever the Home page opens (the page does that itself), and on a guild route change once the copy is older than a minute.
+  // A failed read keeps the last answer and is not tried again before the minute is up.
+  function attentionCountFor(gid) {
+    const e = state.attention[gid];
+    const n = e && e.data ? Number(e.data.total) : 0;
+    return isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  function setAttention(gid, data) {
+    const before = attentionCountFor(gid);
+    state.attention[gid] = { data: data, at: Date.now() };
+    if (attentionCountFor(gid) !== before) renderNav();
+  }
+
+  function ensureAttention(gid, force) {
+    const gd = state.guilds[gid];
+    if (!gd || !G.shell.canSeeAttention(gd.me && gd.me.can)) return Promise.resolve(null);
+    const known = state.attention[gid];
+    if (!force && known && Date.now() - known.at < ATTENTION_MAX_AGE_MS) return Promise.resolve(null);
+    if (attentionReads[gid]) return attentionReads[gid];
+    const gen = sessionGen;
+    const read = G.api.attention.get(gid).then(function (data) {
+      if (gen === sessionGen) setAttention(gid, data);
+      return null;
+    }, function () {
+      if (gen === sessionGen) state.attention[gid] = { data: known ? known.data : null, at: Date.now() };
+      return null;
+    }).then(function () { delete attentionReads[gid]; return null; });
+    attentionReads[gid] = read;
+    return read;
   }
 
   // Whether the viewer's roster.edit reaches this team ('guild' or a list of team ids).
@@ -242,6 +294,8 @@
     state.roadmap = null;
     state.bnet = null;
     state.bnetSettings = null;
+    state.attention = {};
+    sessionGen++;
     state.imports = {};
     state.failure = null;
     state.notice = '';
@@ -401,7 +455,7 @@
       if (!guilds.length) return null;
       const last = prefs().lastGuildId;
       const target = guilds.filter(function (g) { return g.id === last; })[0] || guilds[0];
-      window.history.replaceState(null, '', window.location.pathname + window.location.search + G.router.format({ name: 'section', gid: target.id, section: 'roster' }));
+      window.history.replaceState(null, '', window.location.pathname + window.location.search + G.router.format({ name: 'section', gid: target.id, section: 'home' }));
       return routeAll({ force: true });
     }
     if (r.name === 'privacy') {
@@ -432,6 +486,13 @@
         if (state.me && state.me.user) state.me.user.prefs = Object.assign({}, prefs(), { lastGuildId: r.gid });
         patchPrefs({ lastGuildId: r.gid });
       }
+      const onHome = r.name === 'section' && r.section === 'home';
+      if (onHome && !G.shell.canSeeAttention(gd.me && gd.me.can)) {
+        // Home is for people who can act on its items; everyone else starts on Roster.
+        window.history.replaceState(null, '', window.location.pathname + window.location.search + G.router.format({ name: 'section', gid: r.gid, section: 'roster' }));
+        return routeAll({ force: true });
+      }
+      if (!onHome) ensureAttention(r.gid, false); // the Home page reads it fresh itself
       if (r.name === 'section' && r.section === 'roster') return loadRoster(r, gd, token);
       if (r.name === 'person') return loadPerson(r, gd, token);
       if (r.name === 'import') return loadImport(r, gd, token);
@@ -450,6 +511,7 @@
       if (tab === 'loot') return loadAttendance('settingsLoot', r, gd);
       if (tab === 'battlenet') return G.pages.settingsBnet.load(r.gid).then(function () { return null; });
       if (tab === 'schedule') return loadAttendance('settingsSchedule', r, gd);
+      if (tab === 'activity') return loadAttendance('settingsActivity', r, gd);
       if (tab !== 'people') return null;
       return G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) {
         state.people[r.gid] = res;
@@ -507,7 +569,7 @@
     return G.api.get(rosterUrl(gid, '/' + encodeURIComponent(r.pid))).then(function (record) {
       if (token !== routeToken) return null;
       state.person = { gid: gid, pid: r.pid, record: record };
-      const card = Promise.all([G.pages.personAtt.loadCard(gid, r.pid, gd), G.pages.personLoot.loadCard(gid, r.pid)]);
+      const card = Promise.all([G.pages.personAtt.loadCard(gid, r.pid, gd), G.pages.personLoot.loadCard(gid, r.pid), G.pages.personTrial.loadCard(gid, r.pid, gd, record)]);
       if (!(record.can && record.can.edit)) return card.then(function () { return null; });
       return Promise.all([card, G.pages.roster.loadLinkable(gid)]).then(function () { return null; });
     }).catch(function (err) {
@@ -549,7 +611,7 @@
     else if (r.name === 'linked') page = 'Linked accounts';
     else if (r.name === 'characters') page = 'My characters';
     else if (r.name === 'new') page = 'Create a guild';
-    else if (r.name === 'section') page = { roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || '';
+    else if (r.name === 'section') page = { home: 'Home', roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || '';
     else if (r.name === 'raidnew') page = 'New raid';
     else if (r.name === 'raid') page = 'Raid';
     else if (r.name === 'review') page = 'Review queue';
@@ -595,6 +657,7 @@
         return P.bnet.charactersHtml({ data: state.bnet ? state.bnet.data : null, notice: state.bnet ? state.bnet.notice : '', alert: state.bnet ? state.bnet.alert : '' });
       case 'section':
         if (!gd) return P.signin.loadingHtml();
+        if (r.section === 'home') return P.attention.main(r, gd, ctx);
         if (r.section === 'roster') return rosterMain(gd);
         if (r.section === 'raids') return P.raids.main(r, gd, ctx);
         if (r.section === 'attendance') return P.attendance.main(r, gd, ctx);
@@ -605,7 +668,7 @@
         return P[attPageKey(r)].main(r, gd, ctx);
       case 'person': {
         if (!gd || !state.person || state.person.gid !== gd.guild.id || state.person.pid !== r.pid) return P.signin.loadingHtml();
-        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid) });
+        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid), trial: P.personTrial.cardState(gd.guild.id, r.pid) });
       }
       case 'import': {
         if (!gd) return P.signin.loadingHtml();
@@ -633,6 +696,7 @@
           return G.shell.settingsFrameHtml(ctx, 'battlenet', P.settingsBnet.settingsHtml({ guildData: gd, data: x.data, alert: state.pageAlert, notice: x.notice }));
         }
         if (tab === 'schedule') return P.settingsSchedule.main(r, gd, ctx);
+        if (tab === 'activity') return P.settingsActivity.main(r, gd, ctx);
         if (tab === 'people') {
           if (!state.people[gd.guild.id]) return P.signin.loadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'people', P.people.peopleHtml({ guildData: gd, data: state.people[gd.guild.id], sort: state.peopleSort, query: state.peopleQuery, notice: state.notice, alert: state.pageAlert, now: Date.now() }));
@@ -670,6 +734,7 @@
       section: state.section || 'guild', page: state.page, me: me, signedOut: state.loaded && !me, pending: !state.loaded,
       route: r || null, guildData: gd, teamId: gd ? teamFor(gd) : null, collapsed: collapsedFor(collapseContext()),
       whatsNewUnseen: whatsNewUnseen(),
+      attentionCount: gd ? attentionCountFor(gd.guild.id) : 0,
       personName: r && r.name === 'person' && state.person && state.person.pid === r.pid && state.person.record ? (G.pages.person.mainOf(state.person.record) || {}).name : '',
       leafName: leafNameFor(r),
     };
@@ -762,8 +827,26 @@
     if (section === 'guild' && G.pages.raid && G.pages.raid.afterRender) G.pages.raid.afterRender();
   }
 
+  // Redraws the nav slots only (sidebar and drawer): a late answer such as the Home count must not rewrite a page the person is typing in.
+  function renderNav() {
+    if (!root) return;
+    const r = (state.section || 'guild') === 'guild' ? G.router.parse(window.location.hash) : null;
+    const s = G.shell.slots(buildCtx(r));
+    writeSlot('shell-sidebar', s.sidebar);
+    const drawerWasOpen = isDrawerOpen();
+    writeSlot('shell-drawer', s.drawer);
+    if (drawerWasOpen) {
+      const drawer = byId('gs-drawer');
+      if (drawer && !drawer.open && drawer.showModal) drawer.showModal();
+    }
+  }
+
   // ── actions other modules call ──
   app.render = render;
+  app.selectTeam = selectTeam;
+  app.setAttention = setAttention;
+  app.ensureAttention = ensureAttention;
+  app.attentionCountFor = attentionCountFor;
   app.go = go;
   app.routeAll = routeAll;
   app.sectionFor = sectionFor;
@@ -969,8 +1052,7 @@
     // (currentGid is null, or a guild visited earlier, there).
     const gid = state.section === 'guild' && state.currentGid ? state.currentGid : chromeGuildId();
     if (!gid) return;
-    state.teamByGuild[gid] = sel.value;
-    storageSet(TEAM_KEY + gid, sel.value);
+    rememberTeam(gid, sel.value);
     const drawer = byId('gs-drawer');
     if (drawer && drawer.open) drawer.close();
     if (state.section !== 'guild') { render(); return; }

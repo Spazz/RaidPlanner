@@ -113,7 +113,8 @@ function assertEscaped(out, label) {
     assert.deepEqual(p('#/g/g1/raids'), { name: 'section', gid: 'g1', section: 'raids' });
     assert.deepEqual(p('#/g/g1/attendance'), { name: 'section', gid: 'g1', section: 'attendance' });
     assert.deepEqual(p('#/g/g1/loot'), { name: 'section', gid: 'g1', section: 'loot' });
-    assert.deepEqual(p('#/g/g1'), { name: 'section', gid: 'g1', section: 'roster' });
+    assert.deepEqual(p('#/g/g1'), { name: 'section', gid: 'g1', section: 'home' });
+    assert.deepEqual(p('#/g/g1/home'), { name: 'section', gid: 'g1', section: 'home' });
     assert.deepEqual(p('#/g/g1/settings'), { name: 'settings', gid: 'g1', tab: null });
     assert.deepEqual(p('#/g/g1/settings/teams'), { name: 'settings', gid: 'g1', tab: 'teams' });
     assert.deepEqual(p('#/g/g1/settings/people'), { name: 'settings', gid: 'g1', tab: 'people' });
@@ -123,7 +124,7 @@ function assertEscaped(out, label) {
     const routes = [
       { name: 'home' }, { name: 'signin', error: null }, { name: 'signin', error: 'state' }, { name: 'signin', error: 'discord' },
       { name: 'new' }, { name: 'privacy' }, { name: 'planner' }, { name: 'planner', gid: 'g_Ab-9', rid: 'r_1-x' },
-      ...['roster', 'raids', 'attendance', 'loot'].map(section => ({ name: 'section', gid: 'g_Ab-9', section })),
+      ...['home', 'roster', 'raids', 'attendance', 'loot'].map(section => ({ name: 'section', gid: 'g_Ab-9', section })),
       { name: 'settings', gid: 'g1', tab: null }, { name: 'settings', gid: 'g1', tab: 'teams' }, { name: 'settings', gid: 'g1', tab: 'people' },
     ];
     for (const r of routes) assert.deepEqual(plain(G.router.parse(G.router.format(r))), r, JSON.stringify(r));

@@ -3,6 +3,7 @@
 // pages-person-attendance and pages-raids use them. The page itself: header, window switch, legend, a sortable table
 // of people with the recent-raids grid grouped by reset week (phone: person cards), "How this is counted".
 // Data: GET /attendance/team?team=&window= and GET /attendance/policy (see the Phase 3 spec, API section).
+// Above the grid sits the Watch list card (data.watch: people under the policy's `watch` thresholds), for viewers who can review the team.
 // This file is safe to load alone (the letters-table parity test does): nothing here runs at load time.
 (function (G) {
   'use strict';
@@ -273,6 +274,54 @@
     return '<details class="gs-how"><summary>How this is counted</summary><ul class="gs-bullets">' + describePolicy(resolved).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul></details>';
   }
 
+  // ── the Watch list card ──
+  // data.watch is null (the viewer cannot review the team, or both thresholds are off) or { below, dropBy, window, previousFrom, entries }.
+  // A policy fraction as typed percent: 0.75 -> 75, 0.125 -> 12.5.
+  function watchPoints(fraction) { return Math.round(fraction * 1000) / 10; }
+
+  // "Below 75% or down 15+ points against the previous 8 weeks": only the checks that are on.
+  function watchRuleText(w) {
+    const hasBelow = typeof w.below === 'number';
+    const hasDrop = typeof w.dropBy === 'number';
+    const against = ' against the previous ' + (typeof w.window === 'number' ? plural(w.window, 'week', 'weeks') : 'period');
+    if (hasBelow && hasDrop) return 'Below ' + watchPoints(w.below) + '% or down ' + watchPoints(w.dropBy) + '+ points' + against;
+    if (hasBelow) return 'Below ' + watchPoints(w.below) + '%';
+    if (hasDrop) return 'Down ' + watchPoints(w.dropBy) + '+ points' + against;
+    return 'No watch rule is set';
+  }
+
+  function watchReasonChips(w, reasons) {
+    const labels = {
+      below: typeof w.below === 'number' ? 'Below ' + watchPoints(w.below) + '%' : 'Below the line',
+      drop: typeof w.dropBy === 'number' ? 'Down ' + watchPoints(w.dropBy) + '+ points' : 'Dropped',
+    };
+    return (Array.isArray(reasons) ? reasons : []).filter(function (r) { return has(labels, r); })
+      .map(function (r) { return '<span class="gs-chip gs-chip-flag">' + esc(labels[r]) + '</span>'; }).join('');
+  }
+
+  function watchEntryHtml(gid, w, e) {
+    const cls = G.ui.classClass(e.class);
+    const drop = typeof e.drop === 'number' && e.drop > 0 ? Math.round(e.drop) : 0;
+    const was = typeof e.previousPct === 'number' ? '<span class="gs-watch-was">was ' + esc(G.ui.percent(e.previousPct)) + (drop ? ', down ' + esc(plural(drop, 'point', 'points')) : '') + '</span>' : '';
+    const who = e.playerId ? '<a class="gs-char-link' + (cls ? ' ' + cls : '') + '" href="' + esc(G.router.format({ name: 'personatt', gid: gid, pid: e.playerId })) + '">' + esc(e.name) + '</a>' : G.ui.classNameHtml(e.name, e.class);
+    return '<li class="gs-watch-item"><div class="gs-watch-who">' + who +
+      '<span class="gs-char-sub">' + esc(G.ui.statusLabel(e.status)) + '</span></div>' +
+      '<div class="gs-watch-pct"><span class="gs-watch-num">' + esc(G.ui.percent(e.pct)) + '</span>' + was + '</div>' +
+      '<div class="gs-watch-counts">Missed ' + esc(e.missed || 0) + ', with notice ' + esc(e.missedNotice || 0) + (typeof e.counted === 'number' ? '<span class="gs-fine"> of ' + esc(plural(e.counted, 'raid', 'raids')) + '</span>' : '') + '</div>' +
+      '<div class="gs-pills">' + watchReasonChips(w, e.reasons) + '</div></li>';
+  }
+
+  // The card stays when nobody is on the list (an empty feature stays visible); no card at all when watch is null.
+  function watchHtml(gid, watch) {
+    if (!watch || typeof watch !== 'object') return '';
+    const entries = Array.isArray(watch.entries) ? watch.entries : [];
+    return '<section class="gs-card-sec gs-watch" aria-labelledby="att-watch-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="att-watch-h">Watch list</h2>' +
+      (entries.length ? '<span class="gs-fine">' + esc(plural(entries.length, 'person', 'people')) + '</span>' : '') + '</div><div class="gs-card-sec-body">' +
+      '<p class="gs-fine">' + esc(watchRuleText(watch)) + '</p>' +
+      (entries.length ? '<ul class="gs-watch-list" aria-label="Watch list">' + entries.map(function (e) { return watchEntryHtml(gid, watch, e); }).join('') + '</ul>'
+        : '<p class="gs-empty">Nobody is on the watch list.</p>') + '</div></section>';
+  }
+
   // ── stale raids: recalculate banner ──
   function staleBannerHtml(n, canEdit, progress) {
     if (progress && progress.running) {
@@ -329,7 +378,7 @@
       (sorted.length ? tableHtml(gd.guild.id, data, sorted, view) + cardsHtml(gd.guild.id, sorted) : '<p class="gs-empty">No one matches these filters.</p>');
     return '<div class="gs-page gs-att-page">' + headerHtml(gd, teamId, data) +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
-      staleBannerHtml(data.staleRaids || 0, canEdit, opts.progress) + body + howCountedHtml(opts.policy, teamId) + '</div>';
+      staleBannerHtml(data.staleRaids || 0, canEdit, opts.progress) + watchHtml(gd.guild.id, data.watch) + body + howCountedHtml(opts.policy, teamId) + '</div>';
   }
 
   // ── data ──
@@ -480,6 +529,8 @@
     describePolicy: describePolicy,
     howCountedHtml: howCountedHtml,
     staleBannerHtml: staleBannerHtml,
+    watchHtml: watchHtml,
+    watchRuleText: watchRuleText,
     attendanceHtml: attendanceHtml,
     apiBase: apiBase,
     attState: attState,
