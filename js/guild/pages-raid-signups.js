@@ -185,11 +185,11 @@
     const specText = entry.name ? (entry.spec || '') : [entry.className, entry.spec].filter(Boolean).join(' - ');
     return '<li class="gs-su-item' + (entry.isMe ? ' is-me' : '') + '"><span class="gs-su-who">' + name + (entry.isMe ? ' <span class="gs-chip gs-chip-main">You</span>' : '') + '</span>' +
       (specText ? '<span class="gs-su-spec">' + esc(specText) + '</span>' : '') +
-      (entry.kind === 'late' ? '<span class="gs-chip gs-chip-signup">Late</span>' : '') +
-      (entry.source === 'away' ? '<span class="gs-chip gs-chip-signup">Away (notice)</span>' : '') +
+      (entry.kind === 'late' ? G.ui.signupChipHtml('late') : '') +
+      (entry.source === 'away' ? G.ui.chipHtml({ tone: 'warning', label: 'Away (notice)' }) : '') +
       (entry.guest ? '<span class="gs-chip gs-chip-src">Guest</span>' : '') +
       (entry.standing ? '<span class="gs-chip gs-chip-src">standing</span>' : '') +
-      (entry.notice && noticeNote(entry.notice) ? '<span class="gs-chip gs-chip-signup">' + esc(noticeNote(entry.notice)) + '</span>' : '') +
+      (entry.notice && noticeNote(entry.notice) ? G.ui.chipHtml({ tone: 'warning', label: noticeNote(entry.notice) }) : '') +
       (entry.source === 'raid_helper' ? '<span class="gs-chip gs-chip-src">Raid-Helper</span>' : '') +
       (entry.nickname ? '<span class="gs-fine">' + esc(entry.nickname) + '</span>' : '') + toolsHtml(entry, edit) +
       (entry.note ? '<span class="gs-su-note">' + esc(entry.note) + '</span>' : '') + '</li>';
@@ -207,7 +207,7 @@
     const rest = (Array.isArray(view.notices) ? view.notices : []).filter(function (n) { return noticeNote(n) && !shown[n.personId]; });
     if (!rest.length) return '';
     return '<section class="gs-su-group" aria-labelledby="su-g-notices"><h3 class="gs-su-group-h" id="su-g-notices">Notices <span class="gs-su-count">' + rest.length + '</span></h3><ul class="gs-su-list">' +
-      rest.map(function (n) { return '<li class="gs-su-item"><span class="gs-su-who">' + esc(n.name) + '</span><span class="gs-chip gs-chip-signup">' + esc(noticeNote(n)) + '</span></li>'; }).join('') + '</ul></section>';
+      rest.map(function (n) { return '<li class="gs-su-item"><span class="gs-su-who">' + esc(n.name) + '</span>' + G.ui.chipHtml({ tone: 'warning', label: noticeNote(n) }) + '</li>'; }).join('') + '</ul></section>';
   }
 
   // Signed and Late by role, then Standby, Tentative, Bench and Can't come (people away by notice are in Can't come). Empty groups are left out.

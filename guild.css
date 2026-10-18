@@ -476,7 +476,8 @@ a.gs-signin-link:hover { color: var(--accent-gold-bright); }
 .guild-page a.gs-char-link:hover { text-decoration: underline; }
 .gs-char-cell { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .gs-char-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.gs-char-sub { display: block; font: 400 13px/1.3 var(--font-body); color: var(--text-muted); overflow-wrap: anywhere; }
+.gs-char-sub { display: block; font: 400 13px/1.3 var(--font-body); overflow-wrap: anywhere; }
+:where(.gs-char-sub) { color: var(--text-muted); } /* a .gs-class-* colour wins */
 
 
 .gs-chip-status { background: var(--bg-card-hover); border-color: var(--bg-card-hover); color: var(--text-secondary); }
@@ -809,7 +810,8 @@ a.gs-signin-link:hover { color: var(--accent-gold-bright); }
 .gs-table-raidpeople .gs-col-act { width: 108px; text-align: right; }
 .gs-who { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .gs-who-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.gs-classbadge { flex: none; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 28px; height: 28px; background: var(--bg-deepest); border: 1px solid currentColor; color: var(--text-secondary); font: 700 12px/1 var(--font-cond); letter-spacing: 0.04em; }
+.gs-classbadge { flex: none; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 28px; height: 28px; background: var(--bg-deepest); border: 1px solid currentColor; font: 700 12px/1 var(--font-cond); letter-spacing: 0.04em; }
+:where(.gs-classbadge) { color: var(--text-secondary); } /* zero specificity: a .gs-class-* colour wins */
 .gs-tag { display: inline-block; box-sizing: border-box; padding: 3px 8px; border: 1px solid; font: 600 13px/1.2 var(--font-body); white-space: nowrap; }
 .gs-tag-signed { color: var(--gs-tone-signed); background: var(--gs-tone-signed-bg); border-color: color-mix(in srgb, var(--gs-tone-signed) 35%, var(--gs-tone-signed-bg)); }
 .gs-tag-late { color: var(--gs-tone-late); background: var(--gs-tone-late-bg); border-color: color-mix(in srgb, var(--gs-tone-late) 35%, var(--gs-tone-late-bg)); }

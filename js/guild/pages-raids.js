@@ -225,7 +225,7 @@
     const m = r.mine;
     const label = m && m.kind ? (m.source === 'away' ? 'Away (notice)' : A().KIND_LABELS[m.kind] || m.kind) : '';
     // A seat on a published roster can come without any sign-up (kind null): the roster chip is then the whole row.
-    const chip = (m && m.kind ? '<span class="gs-chip gs-chip-signup">' + esc(label) + (m.characterName ? ' - ' + esc(m.characterName) : '') + '</span>' + (m.standing ? '<span class="gs-chip gs-chip-src">standing</span>' : '') : '') +
+    const chip = (m && m.kind ? G.ui.chipHtml(Object.assign({}, m.source === 'away' ? { tone: 'warning', label: label } : G.ui.SIGNUP_CHIPS[m.kind] || { tone: 'neutral', label: label }, { label: label + (m.characterName ? ' - ' + m.characterName : '') })) + (m.standing ? '<span class="gs-chip gs-chip-src">standing</span>' : '') : '') +
       (G.pages.raidRoster ? G.pages.raidRoster.listChipHtml(r) : '');
     if (r.signupsOpen && !(m && m.kind === 'signed')) {
       return chip + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>' + deadlineHtml(r, gd);

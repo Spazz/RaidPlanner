@@ -31,4 +31,19 @@ function stripOwnTokens(css) {
     .replace(/--mark\s*:/g, '');
 }
 
-module.exports = { frameworkBlock, ownTokenNames, stripOwnTokens };
+// Rules that set `color` where a .gs-class-* colour must be able to win (same specificity, later in the file, would beat it): the plain ones.
+// Only :where(...) selectors (zero specificity) may set it.
+function classColourOverrides(css) {
+  const bad = [];
+  for (const m of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}@]+)\{([^{}]*)\}/g)) {
+    const sel = m[1].trim();
+    if (!/(^|[^-\w])color\s*:/.test(m[2].replace(/(background|border)-color/g, ''))) continue;
+    for (const one of sel.split(',').map(x => x.trim())) {
+      if (/:(hover|focus)/.test(one)) continue; // a state colour is meant to replace the class colour
+      if (/\.gs-classbadge(?![\w-])|\.gs-char-sub(?![\w-])|\.gs-dtable-primary\s+a(?![\w-])/.test(one.replace(/:where\([^)]*\)/g, ''))) bad.push(one);
+    }
+  }
+  return bad;
+}
+
+module.exports = { frameworkBlock, ownTokenNames, stripOwnTokens, classColourOverrides };

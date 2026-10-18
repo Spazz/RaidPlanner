@@ -946,6 +946,10 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(!/--[\w-]+\s*:/.test(GuildCss.stripOwnTokens(css).replace(/var\(--[\w-]+/g, '')), 'no custom properties (but the framework tokens, the attendance outcome colours and the Raids tones)');
   });
 
+  await check('guild.css: no plain rule sets color on .gs-classbadge, .gs-char-sub or .gs-dtable-primary a (a class colour must win)', () => {
+    assert.deepEqual(GuildCss.classColourOverrides(read('guild.css')), []);
+  });
+
   await check('guild.css: phone A2 - menu button 44px on every page, drawer for everyone, tabs only with a guild, signed-out sign-in shortens', () => {
     const css = read('guild.css');
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));

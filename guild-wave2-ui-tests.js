@@ -1289,7 +1289,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert(out.includes('<h3 class="gs-su-group-h" id="su-g-standby">Standby <span class="gs-su-count">1</span></h3>'));
     assert(out.indexOf('id="su-g-tank"') < out.indexOf('id="su-g-standby"') && out.indexOf('id="su-g-standby"') < out.indexOf('id="su-g-absence"'));
     const absent = out.slice(out.indexOf('id="su-g-absence"'));
-    assert(absent.includes('Garrosh') && absent.includes('<span class="gs-chip gs-chip-signup">Away (notice)</span>'));
+    assert(absent.includes('Garrosh') && /gs-schip-warning[^>]*>.*?<\/svg>Away \(notice\)<\/span>/.test(absent));
     assert(!/data-action="su-(edit|remove)" data-pid="p_aw"/.test(out), 'nothing to edit or remove on an away entry');
     assert(/data-action="su-edit" data-pid="p_a"/.test(out), 'a real Absent sign-up still has its tools');
     // The Add dialog says the person is away and starts from a fresh sign-up.
@@ -1303,7 +1303,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   await check('panel: Late / Leaving notices - "Late 21:00" on a person\'s row, "Leaves 22:00" in a Notices group for people with no sign-up yet; escaped', () => {
     const v = view({ entries: [LATE_NOTICED, entry()], notices: [{ personId: 'p_ln', name: 'Kaelith', kind: 'late', atTime: '21:00' }, { personId: 'p_nn', name: 'Nodisc', kind: 'leaving', atTime: '22:00' }] });
     const out = ws(panel(v));
-    assert(out.includes('<span class="gs-chip gs-chip-signup">Late 21:00</span>'));
+    assert(/gs-schip-warning[^>]*>.*?<\/svg>Late 21:00<\/span>/.test(out));
     const notices = out.slice(out.indexOf('id="su-g-notices"'));
     assert(notices.includes('Nodisc') && notices.includes('Leaves 22:00') && !notices.includes('Kaelith'), 'Kaelith already shows hers on the row');
     assert(out.includes('<h3 class="gs-su-group-h" id="su-g-notices">Notices <span class="gs-su-count">1</span>'));
@@ -1339,7 +1339,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     const sb = listPage(LIST({ upcoming: [UP({ mine: { kind: 'standby', source: 'raidsmith', characterName: 'Eliora' } })] }));
     assert(sb.includes('Standby - Eliora') && /data-action="raids-signup"/.test(sb));
     const away = listPage(LIST({ upcoming: [UP({ mine: { kind: 'absence', source: 'away', characterName: null } })] }));
-    assert(away.includes('<span class="gs-chip gs-chip-signup">Away (notice)</span>') && /data-action="raids-signup"/.test(away), 'a real sign-up can override it');
+    assert(/gs-schip-warning[^>]*>.*?<\/svg>Away \(notice\)<\/span>/.test(away) && /data-action="raids-signup"/.test(away), 'a real sign-up can override it');
     assert(!away.includes('Absence'));
     const row = { id: 'u1', signups: {}, mine: null };
     G.pages.raids.applySignupView({ data: { upcoming: [row] } }, 'u1', view({ counts: Object.assign({}, COUNTS, { standby: 2 }) }));

@@ -201,7 +201,7 @@ class ApiErr extends Error {
     assert(!out.includes('No role yet'), 'an empty group is left out');
     assert(out.includes('class="gs-char-name gs-class-paladin">Thoren<') && out.includes('gs-class-priest">Eliora<'));
     assert(/Back by 8:15/.test(out) && out.includes('class="gs-su-note"'));
-    assert(out.includes('<span class="gs-chip gs-chip-signup">Late</span>'), 'Late is marked in its role group');
+    assert(/gs-schip-warning[^>]*>.*?<\/svg>Late<\/span>/.test(out), 'Late is marked in its role group');
     assert(out.includes('<span class="gs-chip gs-chip-src">Raid-Helper</span>'));
     assert(out.includes('Unmatched sign-up') && out.includes('Rogue - Subtlety'), 'a row nobody may name still says what was signed up');
     assert(out.includes('<span class="gs-chip gs-chip-main">You</span>') && out.includes('class="gs-su-item is-me"'));
