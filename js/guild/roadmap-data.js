@@ -22,6 +22,12 @@
 
       // ── Next up ──
       {
+        id: 'raids-ux-refresh',
+        title: 'Raids tab layout refresh',
+        summary: 'Your idea: the boxes at the top of the Raids pages are uneven and take too much room, so their actions move into a compact header with an action menu, and the player lists get class colours and clearer columns. A mockup comes first; built right after the sign-up lifecycle wave, which changes the same pages.',
+        area: 'raids', status: 'next', source: 'user', added: '2026-10-17',
+      },
+      {
         id: 'discord-roles-guest-links',
         title: 'Discord role mapping, role editor and guest links',
         summary: 'Discord server roles map to Raidsmith roles through a silent bot, officers edit roles in Raidsmith, and guest and public links are added. Planned decisions (made by Claude, open to change): the bot asks for no permissions, manual role assignments win over Discord-mapped ones, guest links expire and can be revoked, and the public page is off by default and never shows notes.',
