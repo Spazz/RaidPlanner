@@ -879,3 +879,14 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-sched-remove { justify-self: start; }
   .gs-sched-weeks { width: 100%; }
 }
+
+/* ── Accounts with linked sign-ins (Phase 7a) ──────────────── */
+.gs-signin-buttons { display: flex; flex-direction: column; gap: 12px; margin-top: 28px; }
+.gs-signin-buttons .gs-btn-block { margin-top: 0; }
+.gs-account-line { margin: 0; font-size: 16px; line-height: 1.4; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-field .gs-row-actions { justify-content: flex-start; }
+.gs-account-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gs-account-row { box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border-subtle); }
+.gs-account-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gs-account-ambiguous { flex: 0 1 14em; text-align: right; }
+.gs-account-name { font-weight: 600; font-size: 16px; line-height: 1.3; color: var(--text-primary); overflow-wrap: anywhere; }

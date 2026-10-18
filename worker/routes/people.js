@@ -1,6 +1,7 @@
 import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';
+import { boundMember, memberCandidatesSql, reachesGuildSql } from '../membership.js';
 import { ROLE_RANK, loadGuildContext, requireAction, requireAnyAction, shapeRoles } from '../permissions.js';
 import { toPerson } from '../person.js';
 
@@ -9,38 +10,41 @@ const TEAM_ID = /^t_[A-Za-z0-9_-]{22}$/;
 const MAX_REASON = 200;
 
 // ---------------------------------------------------------------------------
-// The people model: everyone who is in the guild's Discord server, holds a role, or is blocked.
+// The people model: everyone who is a member (in the guild's Discord server or linked to one of its people), holds a role, or is blocked.
 
 async function loadModel(db, guildContext) {
   const guildId = guildContext.guild.id;
   const serverId = guildContext.guild.discord_server_id;
   const [userResult, assignmentResult, blockResult, rosterResult] = await db.batch([
+    // is_member: in the Discord server or linked to a person (the block is read from guild_blocks below, not folded in here).
     db.prepare(
-      `SELECT u.id, u.discord_id, u.username, u.global_name, u.avatar, u.last_seen_at,
-              EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = u.id AND us.server_id = ?) AS is_member
-         FROM users u
+      `SELECT u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar, u.last_seen_at,
+              ${reachesGuildSql('u.id', 'gc.gid', 'gc.sid')} AS is_member
+         FROM users u, (SELECT ? AS gid, ? AS sid) gc
         WHERE u.id IN (
-          SELECT user_id FROM user_servers WHERE server_id = ?
-          UNION SELECT user_id FROM role_assignments WHERE guild_id = ?
-          UNION SELECT user_id FROM guild_blocks WHERE guild_id = ?
-          UNION SELECT blocked_by FROM guild_blocks WHERE guild_id = ? AND blocked_by IS NOT NULL)`,
-    ).bind(serverId, serverId, guildId, guildId, guildId),
+          SELECT user_id FROM (${memberCandidatesSql('gc.gid', 'gc.sid')})
+          UNION SELECT user_id FROM role_assignments WHERE guild_id = gc.gid
+          UNION SELECT user_id FROM guild_blocks WHERE guild_id = gc.gid
+          UNION SELECT blocked_by FROM guild_blocks WHERE guild_id = gc.gid AND blocked_by IS NOT NULL)`,
+    ).bind(guildId, serverId),
     db.prepare('SELECT user_id, role_id, team_id FROM role_assignments WHERE guild_id = ?').bind(guildId),
     db.prepare('SELECT user_id, blocked_by, reason, created_at FROM guild_blocks WHERE guild_id = ?').bind(guildId),
-    // The roster entry (the Main) of each person linked to a Discord account.
+    // The roster entry (the Main) of each person linked to an account (by an officer's link, or by the Discord ID they carry).
     db.prepare(
-      `SELECT p.id AS person_id, p.discord_user_id, m.name, m.class FROM players p
+      `SELECT p.id AS person_id, p.discord_user_id, p.user_id, m.name, m.class FROM players p
          JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ? AND p.discord_user_id IS NOT NULL`,
+        WHERE p.guild_id = ? AND (p.discord_user_id IS NOT NULL OR p.user_id IS NOT NULL)`,
     ).bind(guildId),
   ]);
-  const rosterByDiscord = new Map(rosterResult.results.map((row) => [row.discord_user_id, { personId: row.person_id, name: row.name, class: row.class }]));
+  const entryOf = (row) => ({ personId: row.person_id, name: row.name, class: row.class });
+  const rosterByUser = new Map(rosterResult.results.filter((row) => row.user_id).map((row) => [row.user_id, entryOf(row)]));
+  const rosterByDiscord = new Map(rosterResult.results.filter((row) => row.discord_user_id).map((row) => [row.discord_user_id, entryOf(row)]));
 
   const byId = new Map();
   for (const row of userResult.results) {
     byId.set(row.id, {
       id: row.id, row, person: toPerson(row), isMember: row.is_member === 1, assignments: [], block: null,
-      roster: rosterByDiscord.get(row.discord_id) || null,
+      roster: rosterByUser.get(row.id) || (row.discord_id ? rosterByDiscord.get(row.discord_id) : null) || null,
     });
   }
   for (const assignment of assignmentResult.results) {
@@ -179,11 +183,11 @@ function holderGuard(guildContext, userId) {
 
 // SQL (plus params) that is true while the target is still an unblocked member and not the Guild Master.
 function memberGuard(guildContext, userId) {
+  const member = boundMember(userId, guildContext.guild.id, guildContext.guild.discord_server_id);
   return {
-    sql: `EXISTS (SELECT 1 FROM user_servers WHERE user_id = ? AND server_id = ?)
-          AND NOT EXISTS (SELECT 1 FROM guild_blocks WHERE guild_id = ? AND user_id = ?)
+    sql: `${member.sql}
           AND NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = 'guild_master')`,
-    params: [userId, guildContext.guild.discord_server_id, guildContext.guild.id, userId, guildContext.guild.id, userId],
+    params: [...member.params, guildContext.guild.id, userId],
   };
 }
 

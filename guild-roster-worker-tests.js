@@ -474,7 +474,8 @@ check('create person: the record shape, defaults, the Main in the same batch, tr
   assert.match(pid, /^p_[A-Za-z0-9_-]{22}$/);
   assert.deepEqual(person, {
     status: 'raider', joinedOn: '2027-01-15', trialStart: null, trialEnd: null, leftOn: null, leftReason: null, trialFlag: null, isMe: false, version: 1,
-    discord: { signIn: 'no_discord', user: null, nickname: null }, homeTeam: { id: s.teamId, name: 'Main team' },
+    discord: { signIn: 'no_discord', user: null, nickname: null }, account: { user: null, via: null, linked: false },
+    homeTeam: { id: s.teamId, name: 'Main team' },
   });
   assert.equal(record.characters.length, 1);
   const { id: cid, ...main } = record.characters[0];

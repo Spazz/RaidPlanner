@@ -99,7 +99,7 @@ check('wrangler.jsonc: Worker entry, assets, run_worker_first, D1 binding, and n
   assert.equal(config.main, 'worker/index.js');
   assert.match(config.compatibility_date, /^\d{4}-\d{2}-\d{2}$/);
   assert.deepEqual(config.assets, {
-    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/guild/', '/api/guild', '/api/guild/*', '/api/roadmap/*', '/auth/*'],
+    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/guild/', '/api/guild', '/api/guild/*', '/api/roadmap/*', '/api/me', '/auth/*'],
   });
   assert.deepEqual(config.d1_databases, [{ binding: 'DB', database_name: 'raidsmith', database_id: 'local-raidsmith', migrations_dir: 'migrations' }]);
   assert.equal(config.vars, undefined);
@@ -134,6 +134,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
     'guild-attendance-worker-tests.js', 'migrations/0003_attendance.sql', 'guild-loot-worker-tests.js', 'guild-loot-contract-tests.js', 'migrations/0008_loot.sql',
     'guild-roadmap-tests.js', 'guild-roadmap-worker-tests.js', 'tools/roadmap-ideas.js', 'js/guild/roadmap-data.js', 'js/guild/pages-roadmap.js',
     'guild-bnet-worker-tests.js', 'guild-bnet-ui-tests.js', 'tools/fake-battlenet.js', 'js/guild/pages-bnet.js', 'js/guild/pages-import-bnet.js', 'js/guild/pages-settings-bnet.js', 'migrations/0009_battlenet.sql',
+    'guild-accounts-worker-tests.js', 'guild-accounts-ui-tests.js', 'js/guild/pages-accounts.js', 'migrations/0012_accounts.sql',
     'migrations/0001_foundation.sql', 'worker/package.json',
     ...walk('worker'), ...walk('migrations'),
   ]);
@@ -322,7 +323,8 @@ check('Worker SQL binds values and never concatenates them into SQL text', () =>
     for (const match of read(file).matchAll(/prepare\(\s*`([^`]*)`/g)) {
       const placeholders = [...match[1].matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]);
       for (const expression of placeholders) {
-        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|pending.sql|linked.sql|COLUMNS|OTHERS_SQL|SUCCESSOR_SQL|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|AWARD_SELECT|MERGED_ROWS|CHARACTER_COLUMNS|currentMemberSql\('[^']*', '[^']*', '[^']*'\)|teamId \? [^}]*)$/.test(expression.trim()),
+        // The membership helpers (worker/membership.js, identities.js) take fixed column expressions in quotes, never request data.
+        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|pending.sql|linked.sql|cleared\.sql|clash\.sql|member\.sql|onHomeTeam\.sql|userId\.sql|here\.sql|free|userSql|COLUMNS|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|AWARD_SELECT|MERGED_ROWS|CHARACTER_COLUMNS|(?:memberSql|reachesGuildSql|inServerSql|rosterLinkSql|blockedSql|memberCandidatesSql|ownPlayerSql|othersSql|successorSql|hasDiscordSql|hasBnetSql)\('[^']*'(?:, '[^']*')*\)|teamId \? [^}]*)$/.test(expression.trim()),
           `${file}: interpolated SQL ${expression}`);
       }
     }

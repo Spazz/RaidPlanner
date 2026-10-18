@@ -38,7 +38,7 @@ export function groupBy(rows, key) {
   return map;
 }
 
-const userName = (row) => row.global_name || row.username;
+const userName = (row) => row.display_name || row.global_name || row.username;
 const parseFlags = (text) => { try { const value = JSON.parse(text); return Array.isArray(value) ? value : []; } catch { return []; } };
 
 // One read batch + the shaping. -> the raid detail object (see tasks/guild-phase3-spec.md, API), or throws 404.
@@ -65,7 +65,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
            WHERE raid_id = ?2 AND guild_id = ?1 GROUP BY name_key, realm_key`),
     db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
     db.prepare('SELECT id, team_id, policy, version FROM attendance_policies WHERE guild_id = ?').bind(guild.id),
-    bind(`SELECT id, username, global_name FROM users WHERE id IN (SELECT decided_by FROM attendance_decisions WHERE raid_id = ?2 AND decided_by IS NOT NULL)
+    bind(`SELECT id, username, global_name, display_name FROM users WHERE id IN (SELECT decided_by FROM attendance_decisions WHERE raid_id = ?2 AND decided_by IS NOT NULL)
              OR id = (SELECT manual_by FROM raids WHERE id = ?2 AND guild_id = ?1)`),
     db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guild.id),
     db.prepare('SELECT team_id, COUNT(*) AS n FROM raids WHERE guild_id = ? AND open_flags > 0 GROUP BY team_id').bind(guild.id),

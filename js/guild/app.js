@@ -46,6 +46,7 @@
     imports: {},       // 'rh' | 'wcl' -> the import page's state (see pages-import.js)
     att: {},           // the attendance pages' state, one key per page module (see pages-attendance.js and its siblings)
     roadmap: null,     // the Future enhancements page's state: filter, form draft, submitted ideas (see pages-roadmap.js)
+    providers: null,   // GET /auth/providers: which sign-in buttons the sign-in page shows ({ discord, bnet }), read once while signed out
     bnet: null,        // Linked accounts / My characters: { data: GET /auth/bnet, notice, alert } (see pages-bnet.js)
     bnetSettings: null, // Guild settings > Battle.net: { gid, data: GET /api/guild/:gid/bnet, notice } (see pages-settings-bnet.js)
   };
@@ -129,6 +130,14 @@
     state.asked = true;
     sessionPromise = loadMe(SESSION_TIMEOUT_MS).then(finishPending, finishPending);
     return sessionPromise;
+  }
+
+  // The sign-in page offers Discord always and Battle.net where the server is set up for it. A failed read leaves Discord alone on the card.
+  function ensureProviders() {
+    if (state.providers) return Promise.resolve();
+    return G.api.get('/auth/providers').then(function (res) {
+      if (res && typeof res === 'object') state.providers = { discord: res.discord !== false, bnet: res.bnet === true };
+    }, function () { /* the card shows the Discord button */ });
   }
 
   function fetchGuild(gid) {
@@ -384,7 +393,8 @@
     const ready = state.loaded ? Promise.resolve() : (render(), ensureSession(true));
     return ready.then(function () {
       if (token !== routeToken) return null;
-      if (state.bootError || !state.me) return null;
+      if (state.bootError) return null;
+      if (!state.me) return ensureProviders();
       return resolveSignedIn(r, token);
     }).then(function () {
       if (token !== routeToken) return;
@@ -414,7 +424,7 @@
     }
     if (r.name === 'linked' || r.name === 'characters') {
       // Battle.net (Phase 5): no guild of its own, so the nav is the last guild's. The page reads GET /auth/bnet fresh on every visit.
-      return G.pages.bnet.load().then(function () { return ensureChromeGuild(); }).then(function () { return null; }).catch(function (err) {
+      return Promise.all([G.pages.bnet.load(), r.name === 'linked' ? loadMe() : null]).then(function () { return ensureChromeGuild(); }).then(function () { return null; }).catch(function (err) {
         if (token !== routeToken) return null;
         handleLoadError(err);
         return null;
@@ -590,7 +600,7 @@
       case 'roadmap':
         return P.roadmap.roadmapHtml({ me: state.me, view: P.roadmap.viewState() });
       case 'linked':
-        return P.bnet.linkedHtml({ data: state.bnet ? state.bnet.data : null, error: r.error, notice: state.bnet ? state.bnet.notice : '', alert: state.bnet ? state.bnet.alert : '' });
+        return P.bnet.linkedHtml({ data: state.bnet ? state.bnet.data : null, me: state.me, error: r.error, notice: state.bnet ? state.bnet.notice : '', alert: state.bnet ? state.bnet.alert : '' });
       case 'characters':
         return P.bnet.charactersHtml({ data: state.bnet ? state.bnet.data : null, notice: state.bnet ? state.bnet.notice : '', alert: state.bnet ? state.bnet.alert : '' });
       case 'section':
@@ -682,7 +692,7 @@
     if (!state.me) {
       if (r.name === 'privacy') return { html: G.pages.privacy.privacyHtml({ me: null }), center: false, title: titleFor(r, null) };
       if (r.name === 'roadmap') return { html: G.pages.roadmap.roadmapHtml({ me: null, view: G.pages.roadmap.viewState() }), center: false, title: titleFor(r, null) };
-      const html = G.pages.signin.signinHtml({ error: r.name === 'signin' ? r.error : null, notice: state.signinNotice });
+      const html = G.pages.signin.signinHtml({ error: r.name === 'signin' ? r.error : null, notice: state.signinNotice, providers: state.providers });
       state.signinNotice = '';
       return { html: html, center: true, title: titleFor(r, null) };
     }

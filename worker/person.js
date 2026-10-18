@@ -9,8 +9,10 @@ function initialsOf(name) {
 
 // { id, username, displayName, avatarUrl | null, initials }. The Discord ID appears only inside avatarUrl (members of one Discord server already see each other's IDs).
 // { avatar: false } returns avatarUrl null (initials only) for viewers who must not learn the Discord ID the URL carries.
+// displayName: the name the account chose, else its Discord global name, else its username (a Battle.net account's username is its BattleTag
+// without the number). A row from users must carry display_name; an account without Discord has discord_id NULL and so no avatar.
 export function toPerson(row, { avatar = true } = {}) {
-  const displayName = row.global_name || row.username;
+  const displayName = row.display_name || row.global_name || row.username;
   return {
     id: row.id,
     username: row.username,
@@ -21,7 +23,9 @@ export function toPerson(row, { avatar = true } = {}) {
 }
 
 export function personFromSession(user) {
-  return toPerson({ id: user.id, discord_id: user.discordId, username: user.username, global_name: user.globalName, avatar: user.avatar });
+  return toPerson({
+    id: user.id, discord_id: user.discordId, username: user.username, global_name: user.globalName, display_name: user.displayName, avatar: user.avatar,
+  });
 }
 
 // planSidebarCollapsed: the sidebar while a plan is open in the planner (collapsed unless the person chose otherwise).

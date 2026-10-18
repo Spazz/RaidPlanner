@@ -122,7 +122,7 @@
 
   function signinHtml() {
     return '<section class="gs-panel gs-rm-suggest" aria-labelledby="rm-suggest-h"><h2 class="gs-h2 gs-h2-plain" id="rm-suggest-h">Suggest an idea</h2>' +
-      '<p class="gs-rm-signin"><a href="/auth/login">Sign in to suggest an idea</a></p></section>';
+      '<p class="gs-rm-signin"><a href="#/signin">Sign in to suggest an idea</a></p></section>';
   }
 
   function ideaHtml(idea, items) {

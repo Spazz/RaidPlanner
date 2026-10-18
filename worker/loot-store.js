@@ -4,6 +4,7 @@
 import { displayCharacter, groupBy } from './attendance-view.js';
 import { isPlainObject } from './attendance-store.js';
 import { resolveLootPolicy } from './loot-policy.js';
+import { ownPersonStatement } from './membership.js';
 import { allows } from './permissions.js';
 
 // The newest awards a team-wide list reads (By raid, By item): a guard on the response size, far above a real team's history.
@@ -70,10 +71,8 @@ export function lootAccess(guildContext, resolver, teamId) {
   return { canEdit, level: 'own' };
 }
 
-// The person linked to the signed-in user (their Discord ID), if any.
-export function ownPersonStatement(db, guildId, discordId) {
-  return db.prepare('SELECT id FROM players WHERE guild_id = ? AND discord_user_id = ?').bind(guildId, discordId);
-}
+// The person who is the signed-in user's (linked to the account, or carrying its Discord ID) is resolved in worker/membership.js.
+export { ownPersonStatement };
 
 // ---------------------------------------------------------------------------
 // Awards and the match of their winners

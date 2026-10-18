@@ -22,12 +22,6 @@
 
       // ── Next up ──
       {
-        id: 'platform-accounts',
-        title: 'Raidsmith accounts with linked sign-ins',
-        summary: 'Your idea: sign in with Discord or Battle.net (more later), link the others from Linked accounts, and use guilds without a Discord account. Planned decisions (made by Claude, open to change): no passwords yet (no email service), an officer links a non-Discord account to a roster person to make it a member, and the Battle.net login id is kept while only the character list follows the 30-day rule.',
-        area: 'platform', status: 'next', source: 'user', added: '2026-10-17',
-      },
-      {
         id: 'discord-roles-guest-links',
         title: 'Discord role mapping, role editor and guest links',
         summary: 'Discord server roles map to Raidsmith roles through a silent bot, officers edit roles in Raidsmith, and guest and public links are added. Planned decisions (made by Claude, open to change): the bot asks for no permissions, manual role assignments win over Discord-mapped ones, guest links expire and can be revoked, and the public page is off by default and never shows notes.',
@@ -243,6 +237,14 @@
         area: 'platform', status: 'idea', source: 'pm', added: '2026-10-17',
       },
 
+      {
+        id: 'passkey-email-signin',
+        title: 'Passkey or email sign-in',
+        summary: 'Sign in to Raidsmith with a passkey or an emailed link, as another way into the same account next to Discord and Battle.net.',
+        why: 'Accounts hold Discord and Battle.net today; there is no password or email service yet.',
+        area: 'platform', status: 'idea', source: 'backlog', added: '2026-10-17',
+      },
+
       // ── Shipped ──
       {
         id: 'event-move-updates-raid-date',
@@ -255,6 +257,13 @@
         title: 'Native Raidsmith sign-ups',
         summary: 'Raiders sign up for upcoming raids in Raidsmith as signed, late, tentative or can\'t come, with their character, spec and a note, until the raid starts or an officer closes sign-ups. Officers edit any sign-up. A weekly schedule per team creates the upcoming raids. A sign-up here replaces the person\'s Raid-Helper one, so nobody is counted twice.',
         area: 'signups', status: 'done', source: 'user', added: '2026-10-17', shipped: '2026-10-17',
+      },
+      {
+        id: 'platform-accounts',
+        title: 'Raidsmith accounts with linked sign-ins',
+        summary: 'Sign in or sign up with Discord or Battle.net, connect the other on Linked accounts, and pick the name your account shows. A member is someone in the guild\'s Discord server or whose account an officer linked to a roster person, so Battle.net-only people can use a guild. Decisions (open to change): accounts are never merged, the last sign-in cannot be disconnected, and only the Battle.net character list follows the 30-day rule.',
+        why: 'Not everyone has Discord, and a sign-in should not decide who you are in the guild.',
+        area: 'platform', status: 'done', source: 'user', added: '2026-10-17', shipped: '2026-10-17',
       },
       {
         id: 'battlenet-link-roster-import',

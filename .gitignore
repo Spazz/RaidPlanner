@@ -170,3 +170,6 @@
 !guild-signups-worker-tests.js
 !guild-signups-ui-tests.js
 !guild-signups-contract-tests.js
+# Phase 7a accounts with linked sign-ins: the Worker suite (flows, membership rule, migration 0012 on a populated database) and the pages suite (the Worker files, the migration and the pages are covered by the globs above)
+!guild-accounts-worker-tests.js
+!guild-accounts-ui-tests.js

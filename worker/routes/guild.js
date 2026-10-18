@@ -103,6 +103,9 @@ function readTeamNames(body) {
 
 export async function createGuild(ctx) {
   const { db, env, body, session } = ctx;
+  if (!session.user.discordId) {
+    throw new HttpError(403, 'not_allowed_to_create', 'Creating a guild needs a Discord account: connect Discord on Linked accounts first.');
+  }
   if (!isAllowlisted(env, session.user.discordId)) {
     throw new HttpError(403, 'not_allowed_to_create', 'Creating a guild is limited to approved accounts for now.');
   }
@@ -165,6 +168,9 @@ export async function createGuild(ctx) {
 // that has no Guild Master. It needs no existing membership row; it writes one.
 export async function claimGuild(ctx) {
   const { db, env, session } = ctx;
+  if (!session.user.discordId) {
+    throw new HttpError(403, 'not_allowed_to_create', 'Claiming a guild needs a Discord account: connect Discord on Linked accounts first.');
+  }
   if (!isAllowlisted(env, session.user.discordId)) {
     throw new HttpError(403, 'not_allowed_to_create', 'Claiming a guild is limited to approved accounts for now.');
   }

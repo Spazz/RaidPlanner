@@ -13,8 +13,9 @@ import {
   AWARD_SELECT, LOOT_LIST_CAP, awardView, lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver, makeMatcher, matchStatements,
   ownPersonStatement, viewAwards,
 } from '../loot-store.js';
+import { isOwnPlayer } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
-import { guildToday } from '../roster-view.js';
+import { guildToday, viewerOf } from '../roster-view.js';
 import { windowStartFor } from './attendance.js';
 import { loadRaid } from './raids.js';
 import { bad, errorText } from './roster.js';
@@ -43,7 +44,7 @@ export async function getRaidLoot(ctx) {
   const [policyResult, awardResult, ownResult] = await db.batch([
     lootPolicyRowsStatement(db, guild.id),
     raidAwardsStatement(db, guild.id, raid.id),
-    ownPersonStatement(db, guild.id, ctx.session.user.discordId),
+    ownPersonStatement(db, guild.id, ctx.session.user.id),
   ]);
   const access = lootAccess(guildContext, makeLootPolicyResolver(policyResult.results), raid.team_id);
   if (access.level === 'none') throw forbidden();
@@ -252,7 +253,7 @@ async function loadTeamLoot(ctx, extra = () => []) {
   const results = await db.batch([
     db.prepare('SELECT id, name FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
     lootPolicyRowsStatement(db, guild.id),
-    ownPersonStatement(db, guild.id, ctx.session.user.discordId),
+    ownPersonStatement(db, guild.id, ctx.session.user.id),
     ...extra(bind, db, guild),
   ]);
   const team = results[0].results[0];
@@ -404,7 +405,7 @@ export async function getPersonLoot(ctx) {
   const personId = ctx.params.pid;
   const bind = (sql) => db.prepare(sql).bind(guild.id, personId);
   const [playerResult, characterResult, awardResult, policyResult, guestResult] = await db.batch([
-    bind('SELECT id, status, discord_user_id FROM players WHERE guild_id = ?1 AND id = ?2'),
+    bind('SELECT id, status, discord_user_id, user_id FROM players WHERE guild_id = ?1 AND id = ?2'),
     bind('SELECT player_id, id, name, name_key, realm_key, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`${AWARD_SELECT} WHERE a.guild_id = ?1 AND EXISTS (SELECT 1 FROM characters c WHERE c.guild_id = ?1 AND c.player_id = ?2
             AND c.name_key = a.winner_name_key AND c.realm_key = a.winner_realm_key) ORDER BY a.awarded_at DESC, a.id LIMIT ${LOOT_LIST_CAP}`),
@@ -414,7 +415,7 @@ export async function getPersonLoot(ctx) {
   const player = playerResult.results[0];
   if (!player) throw new HttpError(404, 'not_found', 'That person was not found.');
   const resolver = makeLootPolicyResolver(policyResult.results);
-  const isMe = !!player.discord_user_id && player.discord_user_id === ctx.session.user.discordId;
+  const isMe = isOwnPlayer(player, viewerOf(ctx));
   // Someone else's loot is shown per team, where the viewer may see the whole team.
   const teamIds = new Set([...characterResult.results.map((row) => row.team_id), ...awardResult.results.map((row) => row.team_id)]);
   const visibleTeams = new Set([...teamIds].filter((teamId) => lootAccess(guildContext, resolver, teamId).level === 'full'));

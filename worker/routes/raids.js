@@ -8,6 +8,7 @@ import {
 } from '../attendance-store.js';
 import { displayCharacter, loadRaidDetail, raidState, isStale } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
+import { ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { zonesFor } from '../raid-zones.js';
 import {
@@ -256,9 +257,9 @@ ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s
     // The viewer's own sign-up on each upcoming raid (their Raidsmith one wins over their Raid-Helper one, as in the merged list).
     ctx.db.prepare(
       `SELECT s.raid_id, s.source, s.kind, c.name AS character_name FROM raid_signups s LEFT JOIN characters c ON c.id = s.character_id
-        WHERE s.player_id = (SELECT id FROM players WHERE guild_id = ? AND discord_user_id = ?) AND s.source IN ('raid_helper', 'raidsmith')
+        WHERE s.player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}) AND s.source IN ('raid_helper', 'raidsmith')
           AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at > ?)`,
-    ).bind(guild.id, ctx.session.user.discordId, guild.id, teamId, now),
+    ).bind(guild.id, ctx.session.user.id, ctx.session.user.id, guild.id, teamId, now),
     ctx.db.prepare('SELECT schedule_weeks, schedule_auto, (SELECT COUNT(*) FROM team_schedules x WHERE x.team_id = teams.id) AS slots FROM teams WHERE id = ? AND guild_id = ?')
       .bind(teamId, guild.id),
   ]);

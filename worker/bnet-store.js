@@ -1,5 +1,6 @@
 // Battle.net data: the settings a guild keeps, the snapshot a member's link keeps, and the plan an officer's approval of a character claim
 // would carry out. D1 I/O only; the Blizzard calls are in battlenet.js.
+import { isOwnPlayer, memberSql } from './membership.js';
 import { REALMS } from './realms.js';
 
 // Blizzard's terms: stored Battle.net data is refreshed or deleted within 30 days.
@@ -56,26 +57,26 @@ export function realmDisplayName(gameVersion, region, slug, apiName) {
   return slug.split('-').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
 
-// The guilds a person belongs to (their Discord server has one, and they are not blocked there).
+// The guilds a person belongs to (worker/membership.js: in the guild's Discord server or linked to one of its people, and not blocked).
 export async function loadMemberGuilds(db, userId) {
   const result = await db.prepare(
-    `SELECT g.id, g.name, g.realm, g.realm_kind, g.realm_slug, g.region, g.game_version FROM guilds g
-       JOIN user_servers us ON us.server_id = g.discord_server_id AND us.user_id = ?
-      WHERE NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = ?)
+    `SELECT g.id, g.name, g.realm, g.realm_kind, g.realm_slug, g.region, g.game_version FROM guilds g, (SELECT ? AS uid) c
+      WHERE ${memberSql('c.uid', 'g.id', 'g.discord_server_id')}
       ORDER BY g.name, g.id`,
-  ).bind(userId, userId).all();
+  ).bind(userId).all();
   return result.results;
 }
 
 // ---------------------------------------------------------------------------
 // Claims
 
-// What approving a pending claim would do, decided from the roster as it is now.
+// What approving a pending claim would do, decided from the roster as it is now. A person is the claimant's own when it is linked to their account
+// (players.user_id) or carries their Discord ID; approving that makes a person the claimant's ACCOUNT's (user_id) and, if the account has Discord, its Discord ID too.
 //   add_alt      the claimant already has a person: the character joins them as an Alt (the officer picks the team)
 //   new_person   the claimant has no person and the character is on no roster: a new person with it as Main (team and status picked)
-//   link_person  the character is on a person nobody has linked yet and the claimant has no person: the claimant's Discord account links to that person
+//   link_person  the character is on a person nobody has linked yet and the claimant has no person: the claimant's account links to that person
 //   already      the character is already on the claimant's own person: approving only closes the claim
-//   blocked      cannot be approved: reason not_member | taken (on a person linked to someone else) | other_person (on an unlinked person, but the claimant has their own)
+//   blocked      cannot be approved: reason not_member | taken (on a person linked to someone else, by account or Discord ID) | other_person (on an unlinked person, but the claimant has their own)
 // claims: character_claims rows (user_id, name_key, realm_key). -> Map(claim id -> { kind, reason, person: { id, name } | null, homeTeamId, defaultTeamId })
 export async function planClaims(db, guild, claims) {
   const plans = new Map();
@@ -84,34 +85,34 @@ export async function planClaims(db, guild, claims) {
   const names = JSON.stringify([...new Set(claims.map((claim) => claim.name_key))]);
   const [userResult, personResult, ownerResult] = await db.batch([
     db.prepare(
-      `SELECT u.id, u.discord_id,
-              (EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = u.id AND us.server_id = ?)
-               AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ? AND b.user_id = u.id)) AS member
-         FROM users u WHERE u.id IN (SELECT value FROM json_each(?))`,
-    ).bind(guild.discord_server_id, guild.id, userIds),
+      `SELECT u.id, u.discord_id, ${memberSql('u.id', 'gc.gid', 'gc.sid')} AS member
+         FROM users u, (SELECT ? AS gid, ? AS sid) gc WHERE u.id IN (SELECT value FROM json_each(?))`,
+    ).bind(guild.id, guild.discord_server_id, userIds),
+    // The claimants' own people: linked to the account, or carrying its Discord ID.
     db.prepare(
-      `SELECT p.id, p.discord_user_id, m.name, m.team_id FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
-        WHERE p.guild_id = ? AND p.discord_user_id IN (SELECT u.discord_id FROM users u WHERE u.id IN (SELECT value FROM json_each(?)))`,
-    ).bind(guild.id, userIds),
+      `SELECT p.id, p.discord_user_id, p.user_id, m.name, m.team_id FROM players p JOIN characters m ON m.player_id = p.id AND m.is_main = 1
+        WHERE p.guild_id = ? AND (p.user_id IN (SELECT value FROM json_each(?))
+                                  OR p.discord_user_id IN (SELECT u.discord_id FROM users u WHERE u.id IN (SELECT value FROM json_each(?))))`,
+    ).bind(guild.id, userIds, userIds),
     db.prepare(
-      `SELECT c.name_key, c.realm_key, p.id AS player_id, p.discord_user_id, m.name AS main_name, m.team_id AS home_team_id
+      `SELECT c.name_key, c.realm_key, p.id AS player_id, p.discord_user_id, p.user_id, m.name AS main_name, m.team_id AS home_team_id
          FROM characters c JOIN players p ON p.id = c.player_id JOIN characters m ON m.player_id = p.id AND m.is_main = 1
         WHERE c.guild_id = ? AND c.name_key IN (SELECT value FROM json_each(?))`,
     ).bind(guild.id, names),
   ]);
   const users = new Map(userResult.results.map((row) => [row.id, row]));
-  const personByDiscord = new Map(personResult.results.map((row) => [row.discord_user_id, row]));
   const owners = new Map(ownerResult.results.map((row) => [`${row.name_key}|${row.realm_key}`, row]));
   for (const claim of claims) {
     const user = users.get(claim.user_id);
-    const own = user ? personByDiscord.get(user.discord_id) || null : null;
+    const viewer = user ? { userId: user.id, discordId: user.discord_id } : null;
+    const own = viewer ? personResult.results.find((row) => isOwnPlayer(row, viewer)) || null : null;
     const owner = owners.get(`${claim.name_key}|${claim.realm_key}`) || null;
     const blocked = (reason) => ({ kind: 'blocked', reason, person: owner ? { id: owner.player_id, name: owner.main_name } : null, homeTeamId: null, defaultTeamId: null });
     let plan;
     if (!user || user.member !== 1) plan = blocked('not_member');
-    else if (owner && owner.discord_user_id === user.discord_id) {
+    else if (owner && isOwnPlayer(owner, viewer)) {
       plan = { kind: 'already', reason: null, person: { id: owner.player_id, name: owner.main_name }, homeTeamId: owner.home_team_id, defaultTeamId: null };
-    } else if (owner && owner.discord_user_id) plan = blocked('taken');
+    } else if (owner && (owner.discord_user_id || owner.user_id)) plan = blocked('taken');
     else if (owner && own) plan = blocked('other_person');
     else if (owner) {
       plan = { kind: 'link_person', reason: null, person: { id: owner.player_id, name: owner.main_name }, homeTeamId: owner.home_team_id, defaultTeamId: null };
@@ -126,7 +127,7 @@ export async function planClaims(db, guild, claims) {
 }
 
 export const CLAIM_BLOCKED_TEXT = {
-  not_member: 'This member is no longer in the guild\'s Discord server, so the claim cannot be approved.',
+  not_member: 'This person is no longer in the guild (they left its Discord server or were unlinked from the roster), so the claim cannot be approved.',
   taken: 'That character is already on a person linked to someone else. Reject the claim, or fix the roster first.',
   other_person: 'That character is on a person nobody has linked, but the claimant already has their own person. Merge them by hand on the roster, then reject this claim.',
 };

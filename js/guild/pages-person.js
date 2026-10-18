@@ -1,5 +1,6 @@
 // ── PAGE: PERSON RECORD (R1 A, a full page) ─────────────────────
-// Header and chips, the trial bar, Characters, Attendance (the card from pages-person-attendance.js), Loot (pages-person-loot.js), Details, Officer notes, Delete person.
+// Header and chips, the trial bar, Characters, Attendance (the card from pages-person-attendance.js), Loot (pages-person-loot.js), Details (with the Discord
+// and Raidsmith account fields: an officer links the person to an account, found by a character claim or an exact BattleTag or name), Officer notes, Delete person.
 // Editors get the forms; a member gets a read-only record. The dialogs (Add / Edit character, Extend trial,
 // Delete) live here too. Every mutation answers with the whole person record, which replaces the page's copy;
 // a 409 conflict re-renders from ApiError.body.current.
@@ -25,12 +26,23 @@
   // ── header ──
   function discordLineHtml(record) {
     const d = record.person.discord || {};
+    const a = record.person.account || {};
+    let line;
     if (d.signIn === 'signed_in') {
       const u = d.user || {};
-      return 'Discord: ' + esc(u.username || u.displayName || '') + ' &middot; Signed in';
+      line = 'Discord: ' + esc(u.username || u.displayName || '') + ' &middot; Signed in';
+    } else if (d.signIn === 'not_yet') {
+      line = 'Discord: ' + (d.nickname ? esc(d.nickname) + ' &middot; ' : '') + 'Not signed in yet';
+    } else {
+      line = 'No Discord account';
     }
-    if (d.signIn === 'not_yet') return 'Discord: ' + (d.nickname ? esc(d.nickname) + ' &middot; ' : '') + 'Not signed in yet';
-    return 'No Discord account';
+    // An account an officer linked (it may have no Discord at all) gets its own words, unless it is the Discord account already named.
+    const sameAsDiscord = d.signIn === 'signed_in' && d.user && a.user && d.user.id === a.user.id;
+    if (a.user && a.via === 'link' && !sameAsDiscord) {
+      const account = 'Account: ' + esc(a.user.displayName) + ' &middot; Signed in';
+      return d.signIn === 'no_discord' ? account : line + ' &middot; ' + account;
+    }
+    return line;
   }
 
   function headHtml(record, can) {
@@ -124,8 +136,27 @@
       '<div class="gs-field"><label class="gs-label" for="det-tend">Trial end</label><input class="gs-input" type="date" id="det-tend" name="trialEnd" value="' + esc(p.trialEnd || '') + '"></div>' +
       '<div class="gs-field"><label class="gs-label" for="det-link">Discord account</label><select class="gs-input" id="det-link" name="linkUserId" aria-describedby="det-link-help">' + G.pages.roster.linkOptionsHtml(users, d.user ? d.user.id : '') + '</select>' +
       '<p class="gs-fine" id="det-link-help">' + (d.nickname ? 'Nickname on the Raid-Helper sign-up: ' + esc(d.nickname) + '. ' : '') + 'Lists members who have signed in to Raidsmith and are not on the roster yet.</p></div>' +
+      accountFieldHtml(record) +
       '<p class="gs-alert" id="det-error" role="alert" hidden></p>' +
       '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten">Save changes</button></div></form></section>';
+  }
+
+  // The Raidsmith account field: who this person is on Raidsmith besides the Discord account above. An officer's link can be changed here; one that
+  // comes through the Discord account is changed on the Discord field.
+  function accountFieldHtml(record) {
+    const a = (record.person && record.person.account) || {};
+    let body;
+    if (a.user && a.via === 'link') {
+      body = '<p class="gs-account-line" id="det-account-current"><strong>' + esc(a.user.displayName) + '</strong> <span class="gs-muted">linked by an officer</span></p>' +
+        '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="account-unlink-open" data-key="account-unlink">Unlink account</button></div>';
+    } else if (a.user) {
+      body = '<p class="gs-account-line" id="det-account-current"><strong>' + esc(a.user.displayName) + '</strong> <span class="gs-muted">through the Discord account above</span></p>';
+    } else {
+      body = '<p class="gs-account-line gs-muted" id="det-account-current">Not linked</p>' +
+        '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="account-link-open" data-key="account-link">Link account</button></div>';
+    }
+    return '<div class="gs-field" id="det-account-field"><span class="gs-label" id="det-account-label">Raidsmith account</span>' + body +
+      '<p class="gs-fine" id="det-account-help">For a member who signs in with Battle.net, or is not in the Discord server: linking their account lets them in to this guild and shows them their own record.</p></div>';
   }
 
   // A member's read-only Details: the dates, no form.
@@ -232,6 +263,46 @@
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Remove</button></div></form>';
   }
 
+  // Found accounts as rows: opts.accounts [{ id, displayName, avatarUrl, initials, battletag, matchedBy }], opts.query ('' = the claimants list).
+  function accountResultsHtml(accounts, query) {
+    const list = Array.isArray(accounts) ? accounts : [];
+    if (!list.length) {
+      return query
+        ? '<p class="gs-empty" id="dlg-acct-empty">No account has exactly that BattleTag or name. Type the whole BattleTag (like Name#1234) or the name exactly as the account shows it.</p>'
+        : '<p class="gs-empty" id="dlg-acct-empty">Nobody has sent a character claim that is waiting for a person. Type a whole BattleTag or an account name to look one up.</p>';
+    }
+    const how = { claim: 'Sent a character claim', battletag: 'BattleTag match', name: 'Name match' };
+    return '<ul class="gs-account-results" aria-label="Accounts found">' + list.map(function (a) {
+      // A display name is free text: when several accounts show the same one there is no telling them apart here, so none can be linked from it.
+      const action = a.ambiguous
+        ? '<span class="gs-fine gs-account-ambiguous">Several accounts show this name. Ask for the BattleTag.</span>'
+        : '<button type="button" class="gs-btn gs-btn-sm gs-btn-molten" data-action="account-pick" data-uid="' + esc(a.id) + '" data-key="account-pick-' + esc(a.id) + '" aria-label="Link ' + esc(a.displayName) + '">Link</button>';
+      return '<li class="gs-account-row">' + G.ui.avatarHtml(a, 'gs-avatar-md') + '<span class="gs-account-text"><span class="gs-account-name">' + esc(a.displayName) + '</span>' +
+        '<span class="gs-fine">' + esc(how[a.matchedBy] || '') + (a.battletag ? ' &middot; ' + esc(a.battletag) : '') + '</span></span>' + action + '</li>';
+    }).join('') + '</ul>';
+  }
+
+  function accountLinkDialogHtml(record, accounts) {
+    const name = (mainOf(record) || {}).name;
+    return '<form class="gs-dialog-form" data-submit="account-find-form" novalidate>' +
+      '<h2 class="gs-dialog-title" id="dlg-title">Link an account to ' + esc(name) + '</h2>' +
+      '<p class="gs-fine" id="dlg-help">Pick someone who sent a character claim, or type their whole BattleTag (like Name#1234) or the name their account shows. Raidsmith never lists accounts.</p>' +
+      '<div class="gs-field"><label class="gs-label" for="dlg-acct-q">BattleTag or name</label><input class="gs-input" type="text" id="dlg-acct-q" name="q" data-field="q" maxlength="64" autocomplete="off" aria-describedby="dlg-help">' +
+      '<p class="gs-field-error" id="dlg-err-q" role="alert" hidden></p></div>' +
+      '<div id="dlg-acct-results" aria-live="polite">' + accountResultsHtml(accounts, '') + '</div>' +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Close</button><button type="submit" class="gs-btn">Find</button></div></form>';
+  }
+
+  function accountUnlinkDialogHtml(record) {
+    const a = (record.person && record.person.account) || {};
+    const name = (mainOf(record) || {}).name;
+    return '<form class="gs-dialog-form" data-submit="account-unlink-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Unlink account</h2>' +
+      '<p class="gs-lead gs-lead-sm" id="dlg-text">Unlink ' + esc(a.user ? a.user.displayName : 'this account') + ' from ' + esc(name) + '? They keep their Raidsmith account, but they can no longer open this guild unless they are in its Discord server, and ' + esc(name) + ' is no longer theirs.</p>' +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Unlink account</button></div></form>';
+  }
+
   function deleteDialogHtml(record) {
     const name = (mainOf(record) || {}).name;
     const n = (record.characters || []).length;
@@ -249,6 +320,7 @@
     return s.person && gd && s.person.gid === s.currentGid ? { gid: s.currentGid, gd: gd, rec: s.person.record, pid: s.person.pid } : null;
   }
   function base(c) { return '/api/guild/' + encodeURIComponent(c.gid) + '/roster/' + encodeURIComponent(c.pid); }
+  function accountsUrl(c) { return '/api/guild/' + encodeURIComponent(c.gid) + '/accounts'; }
 
   function applyRecord(c, res) {
     G.app.applyFlags(c.gid, res);
@@ -369,6 +441,60 @@
     });
   };
 
+  // The Raidsmith account link (officers): a dialog finds the account, a click on one links it, Unlink asks first.
+  G.handlers.click['account-link-open'] = function () {
+    const c = cur();
+    if (!c) return;
+    // The claimants list (accounts that sent a claim and belong to no person yet) is what the dialog opens with.
+    G.api.get(accountsUrl(c)).then(function (res) {
+      return res && Array.isArray(res.accounts) ? res.accounts : [];
+    }, function () { return []; }).then(function (accounts) {
+      if (!cur()) return;
+      G.ui.openDialog(accountLinkDialogHtml(c.rec, accounts), { labelledBy: 'dlg-title', describedBy: 'dlg-help' });
+      const input = document.getElementById('dlg-acct-q');
+      if (input) input.focus();
+    });
+  };
+
+  G.handlers.submit['account-find-form'] = function (form) {
+    const c = cur();
+    if (!c) return;
+    const q = String(form.elements.q.value || '').trim();
+    G.ui.setText('dlg-err-q', '');
+    G.ui.setText('dlg-error', '');
+    const host = document.getElementById('dlg-acct-results');
+    G.ui.setBusy(form, true);
+    G.api.get(accountsUrl(c) + (q ? '?q=' + encodeURIComponent(q) : '')).then(function (res) {
+      G.ui.setBusy(form, false);
+      if (host) host.innerHTML = accountResultsHtml(res && res.accounts, q);
+    }, function (err) {
+      G.ui.setBusy(form, false);
+      const cl = G.api.classify(err);
+      if (cl.view === 'signin') { G.ui.closeDialogOf(form); G.app.requireSignin(); return; }
+      if (cl.view === 'message') { G.ui.closeDialogOf(form); G.app.showFailure(cl.title, cl.text); return; }
+      G.ui.setText(err && err.field === 'q' ? 'dlg-err-q' : 'dlg-error', cl.text);
+    });
+  };
+
+  G.handlers.click['account-pick'] = function (el) {
+    const c = cur();
+    const form = el.closest ? el.closest('form') : null;
+    if (!c || !form || el.disabled) return;
+    G.ui.runDialog(form, G.api.put(base(c) + '/account', { userId: el.getAttribute('data-uid') }), function (res) { applyRecord(c, res); }, function (err) { conflict(c, err); });
+  };
+
+  G.handlers.click['account-unlink-open'] = function () {
+    const c = cur();
+    if (!c) return;
+    G.ui.openDialog(accountUnlinkDialogHtml(c.rec), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+  };
+
+  G.handlers.submit['account-unlink-form'] = function (form) {
+    const c = cur();
+    if (!c) return;
+    G.ui.runDialog(form, G.api.put(base(c) + '/account', { userId: null }), function (res) { applyRecord(c, res); }, function (err) { conflict(c, err); });
+  };
+
   // characters
   function charById(c, cid) { return (c.rec.characters || []).filter(function (x) { return x.id === cid; })[0] || null; }
 
@@ -460,6 +586,10 @@
     characterDialogHtml: characterDialogHtml,
     extendDialogHtml: extendDialogHtml,
     deleteDialogHtml: deleteDialogHtml,
+    accountFieldHtml: accountFieldHtml,
+    accountLinkDialogHtml: accountLinkDialogHtml,
+    accountResultsHtml: accountResultsHtml,
+    accountUnlinkDialogHtml: accountUnlinkDialogHtml,
     removeCharDialogHtml: removeCharDialogHtml,
     readOnlyDetailsHtml: readOnlyDetailsHtml,
     trialBarHtml: trialBarHtml,

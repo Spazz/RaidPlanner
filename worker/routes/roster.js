@@ -2,6 +2,7 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { isId, newId } from '../ids.js';
+import { memberCandidatesSql, memberSql } from '../membership.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
 import {
@@ -10,7 +11,7 @@ import {
 import { findRealm } from '../realms.js';
 import { markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
 import {
-  canSeeAvatars, guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply,
+  canSeeAvatars, guildToday, homeTeamOf, loadPersonData, loadRosterFlags, loadRosterRows, personRecordFor, personReply, viewerOf,
 } from '../roster-view.js';
 
 const MAX_NOTES = 4000;
@@ -37,6 +38,7 @@ export function constraintOf(error) {
   if (/UNIQUE constraint failed/i.test(text)) {
     if (/characters\.name_key|characters_guild_name/.test(text)) return 'character_name';
     if (/players\.discord_user_id|players_guild_discord/.test(text)) return 'discord';
+    if (/players\.user_id|players_guild_user/.test(text)) return 'account';
     if (/characters\.player_id|characters_one_main/.test(text)) return 'one_main';
   }
   if (/FOREIGN KEY constraint failed/i.test(text)) return 'foreign_key';
@@ -128,18 +130,23 @@ export function nameTaken(name, owner, extra = {}) {
     { field: 'name', owner: owner ? { personId: owner.personId, name: owner.name } : null, ...extra });
 }
 
-// -> { id, discord_id } of a user the officer may link to a person. 409 already_linked when taken here.
-export async function resolveLinkUser(db, guildContext, userId, exceptPlayerId = null) {
+// -> { id, discord_id } of a member with a Discord account that the officer may link to a person (the person takes its Discord ID).
+// 409 already_linked when that member already belongs to another person of the guild, by Discord ID or by an officer's account link.
+export async function resolveLinkUser(db, guildContext, userId, exceptPlayerId = null, personAccountId = null) {
   if (!isId('u', userId)) throw bad('Pick a member to link.', 'linkUserId');
   const guildId = guildContext.guild.id;
   const user = await db.prepare(
-    `SELECT u.id, u.discord_id FROM users u
-       JOIN user_servers us ON us.user_id = u.id AND us.server_id = ?
-      WHERE u.id = ? AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ? AND b.user_id = u.id)`,
-  ).bind(guildContext.guild.discord_server_id, userId, guildId).first();
+    `SELECT u.id, u.discord_id FROM users u, (SELECT ? AS gid, ? AS sid) gc
+      WHERE u.id = ? AND u.discord_id IS NOT NULL AND ${memberSql('u.id', 'gc.gid', 'gc.sid')}`,
+  ).bind(guildId, guildContext.guild.discord_server_id, userId).first();
   if (!user) throw bad('That member is not in this guild\'s Discord server.', 'linkUserId');
-  const other = await db.prepare('SELECT id FROM players WHERE guild_id = ? AND discord_user_id = ? AND id != ?')
-    .bind(guildId, user.discord_id, exceptPlayerId || '').first();
+  // A person an officer linked to one account is not also another account's through its Discord ID.
+  if (personAccountId && personAccountId !== user.id) {
+    throw new HttpError(409, 'already_linked', 'That person is linked to a different Raidsmith account. Unlink it first.', { field: 'linkUserId' });
+  }
+  const other = await db.prepare(
+    'SELECT id FROM players WHERE guild_id = ? AND id != ? AND (discord_user_id = ? OR user_id = ?)',
+  ).bind(guildId, exceptPlayerId || '', user.discord_id, user.id).first();
   if (other) throw new HttpError(409, 'already_linked', 'That member is already linked to another person.', { field: 'linkUserId' });
   return user;
 }
@@ -186,7 +193,7 @@ async function conflict(ctx, guildContext, personId, message, pick = (record) =>
 function mapCreateError(error) {
   const kind = constraintOf(error);
   if (kind === 'person_limit' || kind === 'character_limit') throw limitError(kind);
-  if (kind === 'discord') throw new HttpError(409, 'already_linked', 'That member is already linked to another person.', { field: 'linkUserId' });
+  if (kind === 'discord' || kind === 'account') throw new HttpError(409, 'already_linked', 'That member is already linked to another person.', { field: 'linkUserId' });
   if (kind === 'foreign_key') throw notFound('That person or team no longer exists.');
   throw error;
 }
@@ -194,10 +201,6 @@ function mapCreateError(error) {
 async function nameConflict(ctx, guildContext, name, realm) {
   const owner = await findNameOwner(ctx.db, guildContext.guild.id, nameKey(name), realm.key);
   throw nameTaken(name, owner);
-}
-
-function viewerOf(ctx) {
-  return { discordId: ctx.session.user.discordId };
 }
 
 // ---------------------------------------------------------------------------
@@ -224,13 +227,15 @@ export async function getRoster(ctx) {
 export async function getLinkable(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   if (!isGranted(guildContext.can['roster.edit'])) throw forbidden();
+  // Members with a Discord account who belong to no person of this guild yet (neither by Discord ID nor by an officer's account link).
+  const guildId = guildContext.guild.id;
+  const serverId = guildContext.guild.discord_server_id;
   const result = await ctx.db.prepare(
-    `SELECT u.id, u.discord_id, u.username, u.global_name, u.avatar FROM users u
-       JOIN user_servers us ON us.user_id = u.id AND us.server_id = ?
-      WHERE NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ? AND b.user_id = u.id)
-        AND NOT EXISTS (SELECT 1 FROM players p WHERE p.guild_id = ? AND p.discord_user_id = u.discord_id)
+    `SELECT u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar FROM users u, (SELECT ? AS gid, ? AS sid) gc
+      WHERE u.id IN (${memberCandidatesSql('gc.gid', 'gc.sid')}) AND u.discord_id IS NOT NULL AND ${memberSql('u.id', 'gc.gid', 'gc.sid')}
+        AND NOT EXISTS (SELECT 1 FROM players p WHERE p.guild_id = gc.gid AND (p.discord_user_id = u.discord_id OR p.user_id = u.id))
       ORDER BY u.username, u.id LIMIT 1000`,
-  ).bind(guildContext.guild.discord_server_id, guildContext.guild.id, guildContext.guild.id).all();
+  ).bind(guildId, serverId).all();
   const showAvatar = canSeeAvatars(guildContext.can);
   return jsonResponse({ users: result.results.map((row) => toPerson(row, { avatar: showAvatar })) });
 }
@@ -331,7 +336,7 @@ export async function patchPerson(ctx) {
   const leftOn = readDateField(body, 'leftOn');
   if (body.leftReason !== undefined && body.leftReason !== null && !LEFT_REASONS.includes(body.leftReason)) throw bad('Pick a reason.', 'leftReason');
   let link;
-  if (body.linkUserId !== undefined && body.linkUserId !== null) link = await resolveLinkUser(db, guildContext, body.linkUserId, player.id);
+  if (body.linkUserId !== undefined && body.linkUserId !== null) link = await resolveLinkUser(db, guildContext, body.linkUserId, player.id, player.user_id);
   const keys = ['status', 'joinedOn', 'trialStart', 'trialEnd', 'linkUserId', 'leftOn', 'leftReason'];
   if (!keys.some((key) => body[key] !== undefined)) throw bad('Send a field to change.', 'status');
 

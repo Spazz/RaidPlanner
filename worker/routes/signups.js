@@ -6,6 +6,7 @@ import { HttpError, jsonResponse } from '../http.js';
 import { recomputeRaid } from '../attendance-store.js';
 import { displayCharacter } from '../attendance-view.js';
 import { isId } from '../ids.js';
+import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { SINGLE_LINE_STRIP, isSpecOf } from '../roster-data.js';
 import {
@@ -45,9 +46,10 @@ export async function buildView(ctx, guildContext, raid) {
   const seeList = allows(can, 'attendance.view', teamId);
   const seeNicknames = allows(can, 'roster.edit', teamId);
   const closed = closedReason(raid, ctx.now());
-  const discordId = ctx.session.user.discordId;
+  const userId = ctx.session.user.id;
+  // The viewer's own person is the one linked to their account or carrying their Discord ID (worker/membership.js), so an account that signs in with Battle.net only has one too.
   const statements = [
-    db.prepare('SELECT id FROM players WHERE guild_id = ? AND discord_user_id = ?').bind(guild.id, discordId),
+    ownPersonStatement(db, guild.id, userId),
     db.prepare(
       `SELECT source, signup_id, kind, class_name, spec_name, position, player_id, nickname, character_id, note, updated_at FROM raid_signups
         WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') ORDER BY position, source, signup_id`,
@@ -55,8 +57,8 @@ export async function buildView(ctx, guildContext, raid) {
     db.prepare(
       `SELECT ${CHARACTER_COLUMNS} FROM characters
         WHERE guild_id = ? AND (player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND player_id IS NOT NULL)
-                                OR player_id = (SELECT id FROM players WHERE guild_id = ? AND discord_user_id = ?))`,
-    ).bind(guild.id, raid.id, guild.id, discordId),
+                                OR player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}))`,
+    ).bind(guild.id, raid.id, guild.id, userId, userId),
   ];
   if (edit) {
     statements.push(db.prepare(
@@ -238,7 +240,7 @@ async function mySignupContext(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'signups.self', raid.team_id)) throw forbidden();
-  const person = await ctx.db.prepare('SELECT id FROM players WHERE guild_id = ? AND discord_user_id = ?').bind(guildContext.guild.id, ctx.session.user.discordId).first();
+  const person = await ownPersonStatement(ctx.db, guildContext.guild.id, ctx.session.user.id).first();
   if (!person) throw forbidden();
   const reason = closedReason(raid, ctx.now());
   if (reason) throw closedError(reason);

@@ -1,5 +1,6 @@
-// ── PAGES: LINKED ACCOUNTS, MY CHARACTERS (Battle.net, Phase 5) ──
-// Linked accounts (#/linked): connect or disconnect Battle.net. My characters (#/characters): the characters Battle.net lists for the
+// ── PAGES: LINKED ACCOUNTS, MY CHARACTERS (Battle.net, Phase 5; accounts, Phase 7a) ──
+// Linked accounts (#/linked): the name the account shows and Discord (pages-accounts.js), then connect or disconnect Battle.net. The last
+// sign-in of an account cannot be disconnected: its button is off and says why. My characters (#/characters): the characters Battle.net lists for the
 // person, grouped by the guilds they belong to, each with a Claim button. A claim is a request to the officers; nothing reaches the roster
 // until one approves it. GET /auth/bnet -> { configured, link, guilds: [{ guildId, status, characters }] }.
 // Pure parts: linkedHtml, charactersHtml, characterRowHtml, stateText. Connecting is a plain link to /auth/bnet/login (a full-page redirect).
@@ -12,7 +13,12 @@
     bnet: 'Battle.net could not finish connecting. Try again in a minute.',
     not_configured: 'Battle.net isn\'t set up on this server.',
     busy: 'You started the link a lot of times. Wait a few minutes, then connect again.',
-    taken: 'That Battle.net account is already connected to another Raidsmith member.',
+    taken: 'That Battle.net account is already connected to another Raidsmith account. Accounts are never merged: sign in with that one instead.',
+    discord: 'Discord could not finish connecting. Try again in a minute.',
+    discord_taken: 'That Discord account is already connected to another Raidsmith account. Accounts are never merged: sign in with that one instead.',
+    has_discord: 'A different Discord account is already connected here. Disconnect it first.',
+    has_bnet: 'A different Battle.net account is already connected here. Disconnect it first, then connect the other one.',
+    roster_conflict: 'That Discord account is already on another roster entry in a guild where one of your roster entries is linked to you. Ask an officer to sort out the roster first.',
   };
   const CONNECT_HREF = '/auth/bnet/login';
   const NOT_SET_UP = 'Battle.net isn\'t set up on this server.';
@@ -25,7 +31,9 @@
   }
 
   // ── Linked accounts ──
-  function battlenetCardHtml(data) {
+  // opts.onlyIdentity: Battle.net is the account's only sign-in, so it cannot be disconnected.
+  function battlenetCardHtml(data, opts) {
+    const only = !!(opts && opts.onlyIdentity);
     const head = function (chip) {
       return '<div class="gs-card-sec-head"><h2 class="gs-h2" id="linked-bnet">Battle.net</h2>' + chip + '</div>';
     };
@@ -39,27 +47,33 @@
     const link = data.link;
     if (!link) {
       return wrap('<span class="gs-pill gs-pill-muted">Not connected</span>',
-        '<p>Connect Battle.net to see your characters here and tell your officers which ones are yours.</p>' +
+        '<p>Connect Battle.net to see your characters here and tell your officers which ones are yours. You can also sign in with it.</p>' +
         '<ul class="gs-bullets gs-bullets-plain"><li>Raidsmith reads your BattleTag and your list of characters: name, realm, class and level. It never sees your password.</li>' +
-        '<li>It keeps that list for 30 days, then deletes it. Connect again to refresh it.</li>' +
-        '<li>Disconnect any time to delete it at once.</li></ul>' +
+        '<li>Your BattleTag stays while Battle.net is connected: it is how you sign in. Raidsmith keeps that list for 30 days, then deletes it. Connect again to refresh it.</li>' +
+        '<li>If this Battle.net account already has its own Raidsmith account, it cannot be connected here: accounts are never merged. Sign in with that one instead.</li>' +
+        '<li>Disconnect any time to delete both at once.</li></ul>' +
         '<div class="gs-actions">' + connectButton('Connect Battle.net', true) + '</div>');
     }
     return wrap('<span class="gs-pill gs-pill-ok">Connected</span>',
       '<p id="bnet-connected">Connected as <strong>' + esc(link.battletag) + '</strong>.</p>' +
-      '<p class="gs-fine" id="bnet-keeps">Your characters were loaded ' + esc(G.ui.formatDate(link.fetchedAt)) + '. Raidsmith deletes them on ' + esc(G.ui.formatDate(link.expiresAt)) + ' unless you connect again before then.</p>' +
-      '<div class="gs-actions"><a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'characters' })) + '" data-key="bnet-characters">My characters</a>' +
-      connectButton('Refresh characters', false) +
-      '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="bnet-disconnect-open" data-key="bnet-disconnect">Disconnect</button></div>');
+      (link.expired
+        ? '<p class="gs-fine" id="bnet-keeps">Your character list was loaded ' + esc(G.ui.formatDate(link.fetchedAt)) + ' and deleted after 30 days. Connect again to load it.</p>'
+        : '<p class="gs-fine" id="bnet-keeps">Your characters were loaded ' + esc(G.ui.formatDate(link.fetchedAt)) + '. Raidsmith deletes them on ' + esc(G.ui.formatDate(link.expiresAt)) + ' unless you connect again before then.</p>') +
+      (only ? '<p class="gs-fine" id="bnet-only">Battle.net is the only way you sign in right now, so it cannot be disconnected. Connect Discord first, or delete your data on the privacy page.</p>' : '') +
+      '<div class="gs-actions">' + (link.expired ? '' : '<a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'characters' })) + '" data-key="bnet-characters">My characters</a>') +
+      connectButton(link.expired ? 'Load my characters' : 'Refresh characters', !!link.expired) +
+      '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="bnet-disconnect-open" data-key="bnet-disconnect"' + (only ? ' disabled aria-describedby="bnet-only"' : '') + '>Disconnect</button></div>');
   }
 
-  // opts: { data (GET /auth/bnet or null), error (route error key), notice, alert }
+  // opts: { data (GET /auth/bnet or null), me (the /auth/me answer: adds the name and Discord cards), error (route error key), notice, alert }
   function linkedHtml(opts) {
     const o = opts || {};
     const err = o.error && Object.prototype.hasOwnProperty.call(LINK_ERROR_TEXT, o.error) ? '<p class="gs-alert" id="bnet-link-error" role="alert">' + esc(LINK_ERROR_TEXT[o.error]) + '</p>' : '';
+    const ids = o.me && o.me.user ? G.pages.accounts.identitiesOf(o.me) : null;
     return '<div class="gs-page gs-page-narrow"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Linked accounts</h1>' +
-      '<p class="gs-sub">Accounts you connect to Raidsmith.</p></div>' +
-      err + noticeHtml(o.notice) + G.ui.alertHtml(o.alert || '', 'gs-page-alert') + battlenetCardHtml(o.data) +
+      '<p class="gs-sub">How you sign in to Raidsmith. Your account can hold Discord and Battle.net; either one signs you in to the same account.</p></div>' +
+      err + noticeHtml(o.notice) + G.ui.alertHtml(o.alert || '', 'gs-page-alert') + (ids ? G.pages.accounts.profileCardsHtml(o.me) : '') +
+      battlenetCardHtml(o.data, { onlyIdentity: !!ids && !ids.discord }) +
       '<p class="gs-fine">What Raidsmith keeps, and how to delete it: <a href="#/privacy">Privacy &amp; my data</a>.</p></div>';
   }
 
@@ -119,6 +133,7 @@
   function guildBodyHtml(g) {
     if (g.status === 'unsupported') return '<p class="gs-empty" data-status="unsupported">' + esc(g.message || ('Battle.net doesn\'t offer character data for ' + g.supportLabel + ' yet.')) + '</p>';
     if (g.status === 'not_linked') return '<p class="gs-empty" data-status="not_linked">Connect Battle.net to see your characters here.</p><div class="gs-actions">' + connectButton('Connect Battle.net', true) + '</div>';
+    if (g.status === 'expired') return '<p class="gs-empty" data-status="expired">Your character list was deleted after 30 days, as Battle.net\'s rules ask. Connect again to load it.</p><div class="gs-actions">' + connectButton('Connect again', true) + '</div>';
     if (g.status === 'needs_refresh') return '<p class="gs-empty" data-status="needs_refresh">You joined this guild after you connected Battle.net. Connect again to load your characters for it.</p><div class="gs-actions">' + connectButton('Connect again', true) + '</div>';
     if (g.status === 'unavailable') return '<p class="gs-empty" data-status="unavailable">Battle.net did not give your characters for this guild when you connected. Connect again to try once more.</p><div class="gs-actions">' + connectButton('Connect again', true) + '</div>';
     if (!g.characters.length) {
@@ -211,7 +226,8 @@
 
   G.handlers.submit['bnet-disconnect-form'] = function (form) {
     G.ui.runDialog(form, G.api.del('/auth/bnet', {}), function () {
-      reload('Battle.net disconnected. Your BattleTag and character list are deleted.');
+      // The account's sign-ins changed too (Discord may be its last one now), so /auth/me is read again with the page.
+      G.pages.accounts.refresh('Battle.net disconnected. Your BattleTag and character list are deleted.');
     });
   };
 
@@ -222,6 +238,7 @@
     STATE_TEXT: STATE_TEXT,
     stateText: stateText,
     linkedHtml: linkedHtml,
+    battlenetCardHtml: battlenetCardHtml,
     charactersHtml: charactersHtml,
     characterRowHtml: characterRowHtml,
     guildCardHtml: guildCardHtml,

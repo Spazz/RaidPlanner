@@ -1454,7 +1454,8 @@ check('migration 0011: an existing 0008 database is rebuilt in place -- rows, in
     const migrations = path.join(ROOT, 'migrations');
     const rebuild = '0011_loot_disenchant.sql';
     assert(fs.existsSync(path.join(migrations, rebuild)));
-    for (const name of fs.readdirSync(migrations)) if (name.endsWith('.sql') && name < rebuild) fs.copyFileSync(path.join(migrations, name), path.join(dir, name));
+    // Every migration but the one under test: the Worker needs the later account columns (0012) to sign anyone in, and 0011 touches only loot_awards.
+    for (const name of fs.readdirSync(migrations)) if (name.endsWith('.sql') && name !== rebuild) fs.copyFileSync(path.join(migrations, name), path.join(dir, name));
     const s = await lootWorld({ migrationsDir: dir });
     const columns = async () => s.w.rows('SELECT name, type, "notnull" AS nn, dflt_value, pk FROM pragma_table_info(\'loot_awards\') ORDER BY cid');
     const indexes = async () => s.w.rows('SELECT name, sql FROM sqlite_master WHERE type = \'index\' AND tbl_name = \'loot_awards\' AND sql IS NOT NULL ORDER BY name');

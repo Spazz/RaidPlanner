@@ -3,6 +3,7 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { isId, newId } from '../ids.js';
+import { memberSql } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { IMPORT_LIMIT, IMPORT_WINDOW_MS, WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, enforceRateLimit } from '../ratelimit.js';
 import {
@@ -96,14 +97,12 @@ async function loadPersonsByDiscord(db, guildId, discordIds) {
   return byDiscord;
 }
 
-// Discord IDs (of these) that belong to a user in this guild's Discord server who is not blocked here -> Set.
+// Discord IDs (of these) that belong to an account that is a member of this guild (worker/membership.js) -> Set.
 async function loadSignedIn(db, guild, discordIds) {
   const result = await db.prepare(
-    `SELECT u.discord_id FROM users u
-      WHERE u.discord_id IN (SELECT value FROM json_each(?))
-        AND EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = u.id AND us.server_id = ?)
-        AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ? AND b.user_id = u.id)`,
-  ).bind(JSON.stringify(discordIds), guild.discord_server_id, guild.id).all();
+    `SELECT u.discord_id FROM users u, (SELECT ? AS gid, ? AS sid) gc
+      WHERE u.discord_id IN (SELECT value FROM json_each(?)) AND ${memberSql('u.id', 'gc.gid', 'gc.sid')}`,
+  ).bind(guild.id, guild.discord_server_id, JSON.stringify(discordIds)).all();
   return new Set(result.results.map((row) => row.discord_id));
 }
 
