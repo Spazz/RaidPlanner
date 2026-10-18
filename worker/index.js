@@ -56,6 +56,10 @@ import {
   previewLoot, putLootPolicy,
 } from './routes/loot.js';
 import { getLootBoard, postManualAward, putLootList } from './routes/loot-board.js';
+import { createApiKey, listApiKeys, revokeApiKey } from './routes/api-keys.js';
+import { getApiData } from './routes/api-v1.js';
+import { getTeamProgress } from './routes/progress.js';
+import { dismissRankSuggestion, putPersonRank } from './routes/ranks.js';
 
 const COMMIT_MAX_BODY = 64 * 1024;
 const PLAN_MAX_BODY = 32 * 1024;
@@ -245,6 +249,15 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/notifications', auth: true, handler: getNotifications },
   { method: 'PUT', path: '/api/guild/:gid/teams/:tid/notifications', auth: true, handler: putTeamNotifications },
   { method: 'POST', path: '/api/guild/:gid/teams/:tid/notifications/test', auth: true, handler: postTestNotification },
+  // PM wave 7: read-only API keys (Guild settings > Data access), the data they open (no session: the key is the credential, and it is the one place a
+  // key may sit in the address, for CSV), the team progress board, and the rank ladder's accept / dismiss. /api/v1/:dataset is classified in the isolation suite.
+  { method: 'GET', path: '/api/guild/:gid/api-keys', auth: true, handler: listApiKeys },
+  { method: 'POST', path: '/api/guild/:gid/api-keys', auth: true, handler: createApiKey },
+  { method: 'DELETE', path: '/api/guild/:gid/api-keys/:kid', auth: true, handler: revokeApiKey },
+  { method: 'GET', path: '/api/v1/:dataset', auth: false, handler: getApiData },
+  { method: 'GET', path: '/api/guild/:gid/teams/:tid/progress', auth: true, handler: getTeamProgress },
+  { method: 'PUT', path: '/api/guild/:gid/roster/:pid/rank', auth: true, handler: putPersonRank },
+  { method: 'POST', path: '/api/guild/:gid/roster/:pid/rank/dismiss', auth: true, handler: dismissRankSuggestion },
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },

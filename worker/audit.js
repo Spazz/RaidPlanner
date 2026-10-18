@@ -88,6 +88,10 @@ export const AUDIT_ACTIONS = [
   'notify.update',
   'notify.disabled',
   'notify.test',
+  'apikey.create',
+  'apikey.revoke',
+  'person.rank',
+  'rank.dismiss',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

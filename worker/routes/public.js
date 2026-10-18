@@ -1,5 +1,5 @@
 // The public page: a read-only view of a guild for anyone with the address, OFF until a Guild Master turns it on.
-//   GET/PUT /api/guild/:gid/public   (guild.roles)  the switch and the sections (roster, raids, attendance, loot)
+//   GET/PUT /api/guild/:gid/public   (guild.roles)  the switch and the sections (roster, raids, progress, attendance, loot)
 //   GET     /api/public/:gid         (nobody)       the view
 // Two things decide what a visitor sees: the sections ticked on this page, and the built-in Public role, which is the ceiling (a section whose read
 // action the Public role does not hold stays closed, whatever is ticked). The view itself is worker/viewer.js: names, classes, dates, percentages
@@ -7,10 +7,10 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { isId } from '../ids.js';
-import { SECTION_ACTIONS, canGrant, loadGuildContext, requireAction, resolveViewerPermissions } from '../permissions.js';
-import { buildView, loadGuildRow } from '../viewer.js';
+import { canGrant, loadGuildContext, requireAction, resolveViewerPermissions } from '../permissions.js';
+import { VIEW_SECTIONS, buildView, loadGuildRow } from '../viewer.js';
 
-const SECTIONS = Object.keys(SECTION_ACTIONS);
+const SECTIONS = Object.keys(VIEW_SECTIONS);
 
 const parseSections = (text) => {
   try {
@@ -36,7 +36,7 @@ async function settingsPayload(db, guildContext) {
     enabled: row.public_enabled === 1,
     sections: parseSections(row.public_sections),
     // allowed: which sections the Public role lets the page show (the others are shown as closed on the page).
-    allowed: Object.fromEntries(SECTIONS.map((section) => [section, ceiling[SECTION_ACTIONS[section]] === 'guild'])),
+    allowed: Object.fromEntries(SECTIONS.map((section) => [section, ceiling[VIEW_SECTIONS[section]] === 'guild'])),
     path: `/#/public/${guild.id}`,
   };
 }
@@ -65,7 +65,7 @@ export async function putPublicSettings(ctx) {
     if (closed.length) {
       throw new HttpError(400, 'bad_request', `The Public role does not allow ${closed.join(', ')}. Change it in Roles first.`, { field: 'sections' });
     }
-    if (!guildContext.isGuildMaster && sections.some((section) => !canGrant(guildContext.can, SECTION_ACTIONS[section], 'guild'))) {
+    if (!guildContext.isGuildMaster && sections.some((section) => !canGrant(guildContext.can, VIEW_SECTIONS[section], 'guild'))) {
       throw new HttpError(403, 'forbidden', 'You cannot make public what you cannot see yourself.', { field: 'sections' });
     }
   }
@@ -90,6 +90,6 @@ export async function getPublicView(ctx) {
   const ceiling = await publicCan(ctx.db, guild.id, teams);
   // The chosen sections, each only if the Public role holds its read action.
   const chosen = parseSections(guild.public_sections);
-  const can = Object.fromEntries(chosen.map((section) => [SECTION_ACTIONS[section], ceiling[SECTION_ACTIONS[section]]]).filter(([, scope]) => scope));
-  return jsonResponse({ viewer: { kind: 'public' }, ...(await buildView(ctx.db, guild, can, ctx.now())) });
+  const can = Object.fromEntries(chosen.map((section) => [VIEW_SECTIONS[section], ceiling[VIEW_SECTIONS[section]]]).filter(([, scope]) => scope));
+  return jsonResponse({ viewer: { kind: 'public' }, ...(await buildView(ctx.db, guild, can, ctx.now(), { only: chosen })) });
 }

@@ -2,7 +2,7 @@
 // or team lead sees on the guild home page. Each item carries the fields its sentence needs and a `link` (a pages route without the guild id).
 // Which items a viewer gets follows their rights per team: `allowsTeam(action, teamId)` and `granted(action)` come from the permission check.
 
-export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'no_loot', 'low_signups', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
+export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
 export const INFO_KINDS = ['unlocked'];  // listed, but not part of the open-work count
 export const TRIAL_DAYS = 7;
@@ -31,7 +31,8 @@ function daysBetween(from, to) {
 //   webhooksOff: [{ team_id, disabled_status }]   (teams whose Discord webhook Discord refused: the Worker switched it off)
 //   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in, size (the raid's effective size; the team's when left out),
 //                close_hours (the sign-up deadline in hours before the start; 0 or left out = at the start) }],
-//   watch: [{ teamId, entries: [{ playerId, name, class, pct, previousPct, drop, reasons }] }] }
+//   watch: [{ teamId, entries: [{ playerId, name, class, pct, previousPct, drop, reasons }] }],
+//   ranks: [{ teamId, entries: [{ playerId, name, class, kind ('promote' | 'review'), from: { id, name }, to: { id, name }, reasons: [text] }] }]   (PM wave 7: the rank ladder's suggestions) }
 // -> { items, more: { kind: n }, total } (total counts the 'action' items only, hidden ones included)
 export function buildAttention(input) {
   const teamById = new Map(input.teams.map((team) => [team.id, team]));
@@ -80,6 +81,15 @@ export function buildAttention(input) {
         ...base('watch', list.teamId), personId: entry.playerId, name: entry.name, class: entry.class, pct: entry.pct, previousPct: entry.previousPct,
         drop: entry.drop, reasons: entry.reasons, id: `watch:${list.teamId}:${entry.playerId}`, link: { name: 'personatt', pid: entry.playerId },
       }, [entry.pct]);
+    }
+  }
+  for (const list of input.ranks || []) {
+    if (!here('attendance.review', list.teamId)) continue;
+    for (const entry of list.entries) {
+      add('rank', {
+        ...base('rank', list.teamId), personId: entry.playerId, name: entry.name, class: entry.class, suggestion: entry.kind, from: entry.from, to: entry.to,
+        reasons: entry.reasons, id: `rank:${list.teamId}:${entry.playerId}`, link: { name: 'personatt', pid: entry.playerId },
+      }, [entry.kind === 'review' ? 1 : 0, entry.name]);
     }
   }
   for (const row of input.noLoot) {

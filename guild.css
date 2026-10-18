@@ -1283,3 +1283,26 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-notify-hours { margin-left: 0; max-width: none; }
   .gs-notify-form .gs-actions .gs-btn { flex: 1 1 auto; }
 }
+
+/* PM wave 7: the team progress board (Raids > Progress, the public page) and the rank ladder (Attendance, Attendance settings) */
+.gs-prog-board { display: flex; flex-direction: column; gap: var(--sp-4); }
+.gs-table-prog { min-width: 520px; }
+.gs-prog-best { margin: 0 0 var(--sp-2); }
+.gs-rank-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 4px; }
+.gs-rank-suggest { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.gs-rank-suggest-chip { white-space: normal; }
+.gs-rank-why { flex-basis: 100%; }
+.gs-rank-set { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: var(--sp-2); }
+.gs-rank-set .gs-label { margin: 0; }
+.gs-rank-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.gs-rank-row { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border-medium); }
+.gs-rank-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.gs-rank-head .gs-input { flex: 1 1 200px; min-width: 0; }
+.gs-rank-rules { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px 16px; }
+.gs-rank-rules > .gs-fine { grid-column: 1 / -1; margin: 0; }
+.gs-rank-rule { display: flex; flex-direction: column; gap: 4px; }
+@media (max-width: 600px) {
+  .gs-table-prog { min-width: 0; }
+  .gs-rank-set .gs-input { flex: 1 1 auto; }
+  .gs-rank-suggest .gs-btn { min-height: 44px; }
+}

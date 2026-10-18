@@ -36,6 +36,9 @@ export const DEFAULT_POLICY = deepFreeze({
   // The watch list on the team attendance page: below = flag a rolling % under this fraction, dropBy = flag a fall of this fraction against
   // the previous window of the same length. Each is a fraction 0..1, or null for off. Read live, so no raid ever goes stale over it.
   watch: { below: 0.75, dropBy: 0.15 },
+  // The rank ladder (PM wave 7): ordered ranks, lowest first, each with the rules for earning it (see worker/rank-ladder.js). Empty = no ladder. A guild
+  // setting like the reset day: a team override may not carry it. Read live, so no raid ever goes stale over it.
+  ladder: { ranks: [] },
 });
 
 // Reset day (0 = Sunday) by region: US Tuesday, EU Wednesday. KR / TW Thursday are unverified (spec, resolved item 8).
@@ -134,6 +137,49 @@ function checkWatchFraction(value) {
   return Math.abs(value * 1000 - Math.round(value * 1000)) < 1e-9 ? null : 'must have at most three decimals';
 }
 
+// The rank ladder (worker/rank-ladder.js): [] (off) or 2 to MAX_RANKS ranks, lowest first. A rank is { id, name, rules }; the first rank is where everyone
+// starts and its rules are never used. Each rule is null/absent (off) or a number; `since` says where raids and weeks are counted from.
+export const MAX_RANKS = 6;
+export const RANK_NAME_MAX = 20;
+const RULE_LIMITS = { minRaids: 1000, minWeeksAttended: 104, minWeeksSinceJoin: 520, maxMissed: 100 };
+export const RULE_KEYS = Object.freeze(['minAttendance', ...Object.keys(RULE_LIMITS), 'since']);
+
+function checkRankRules(rules) {
+  if (rules === undefined) return null;
+  if (!isPlainObject(rules)) return 'rules must be an object';
+  for (const [key, value] of Object.entries(rules)) {
+    if (!RULE_KEYS.includes(key)) return `unknown rule "${key}"`;
+    if (key === 'since') {
+      if (value !== 'join' && value !== 'rank') return 'since must be join or rank';
+    } else if (key === 'minAttendance') {
+      const message = checkWatchFraction(value);
+      if (message) return `minAttendance ${message}`;
+    } else if (value !== null && !(Number.isInteger(value) && value >= 0 && value <= RULE_LIMITS[key])) {
+      return `${key} must be a whole number from 0 to ${RULE_LIMITS[key]}, or null to turn it off`;
+    }
+  }
+  return null;
+}
+
+function checkRanks(value) {
+  if (!Array.isArray(value) || (value.length !== 0 && (value.length < 2 || value.length > MAX_RANKS))) return `must be empty (no ladder) or a list of 2 to ${MAX_RANKS} ranks`;
+  const ids = new Set();
+  for (const entry of value) {
+    if (!isPlainObject(entry)) return 'each rank must be { id, name, rules }';
+    for (const key of Object.keys(entry)) if (!['id', 'name', 'rules'].includes(key)) return `unknown key "${key}" in a rank`;
+    if (typeof entry.id !== 'string' || !/^[a-z]{2,12}$/.test(entry.id)) return 'a rank id is 2 to 12 lower-case letters';
+    if (ids.has(entry.id)) return 'rank ids must be unique';
+    ids.add(entry.id);
+    if (typeof entry.name !== 'string') return `a rank name must be 1 to ${RANK_NAME_MAX} characters`;
+    const name = entry.name.trim();
+    const length = Array.from(name).length;
+    if (length < 1 || length > RANK_NAME_MAX || /[\u0000-\u001f\u007f]/.test(name)) return `a rank name must be 1 to ${RANK_NAME_MAX} characters of plain text`;
+    const problem = checkRankRules(entry.rules);
+    if (problem) return problem;
+  }
+  return null;
+}
+
 // The schema: a function is a leaf validator (returns an error message or null), an object is a nested section.
 const SCHEMA = {
   expected: { mode: oneOf(['signedUp', 'statuses']), statuses: checkStatuses },
@@ -153,6 +199,7 @@ const SCHEMA = {
   streakFlagAt: (value) => (Number.isInteger(value) && value >= 0 && value <= 20 ? null : 'must be a whole number from 0 (off) to 20'),
   resetDay: (value) => (value === null || (Number.isInteger(value) && value >= 0 && value <= 6) ? null : 'must be null (from the region) or a whole number from 0 (Sunday) to 6'),
   watch: { below: checkWatchFraction, dropBy: checkWatchFraction },
+  ladder: { ranks: checkRanks },
 };
 
 export function walk(schema, value, path, errors) {
@@ -185,6 +232,10 @@ export function validateOverride(override, scope = 'guild', base = DEFAULT_POLIC
   if (scope === 'team' && Object.prototype.hasOwnProperty.call(override, 'resetDay')) {
     errors = errors.filter((error) => error.path !== 'resetDay');
     errors.push({ path: 'resetDay', message: 'the reset day is set for the whole guild, not per team' });
+  }
+  if (scope === 'team' && Object.prototype.hasOwnProperty.call(override, 'ladder')) {
+    errors = errors.filter((error) => !error.path.startsWith('ladder'));
+    errors.push({ path: 'ladder', message: 'the rank ladder is set for the whole guild, not per team' });
   }
   if (!errors.some((error) => error.path.startsWith('window.'))) {
     const windowOverride = isPlainObject(override.window) ? override.window : {};
@@ -226,7 +277,7 @@ export function resolvePolicy(guildOverride, teamOverride, region) {
   const resolved = clone(DEFAULT_POLICY);
   if (isPlainObject(guildOverride)) mergeInto(resolved, guildOverride);
   if (isPlainObject(teamOverride)) {
-    const { resetDay, ...rest } = teamOverride; // a team override never moves the reset day
+    const { resetDay, ladder, ...rest } = teamOverride; // a team override never moves the reset day or the rank ladder
     mergeInto(resolved, rest);
   }
   if (resolved.resetDay === null || resolved.resetDay === undefined) resolved.resetDay = regionResetDay(region);

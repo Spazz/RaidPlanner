@@ -1545,7 +1545,7 @@ check('public page: off by default (a 404 like a guild that does not exist), Gui
   assert.equal((await s.w.call({}, 'GET', '/api/public/nonsense')).status, 404);
   // The settings: off, nothing chosen, everything the Public role holds allowed.
   const settings = await s.call('alice', 'GET', '/public');
-  assert.deepEqual(settings.json, { enabled: false, sections: [], allowed: { roster: true, raids: true, attendance: true, loot: true }, path: `/#/public/${s.guildId}` });
+  assert.deepEqual(settings.json, { enabled: false, sections: [], allowed: { roster: true, raids: true, progress: true, attendance: true, loot: true }, path: `/#/public/${s.guildId}` });
   // Only the Guild Master (guild.roles).
   for (const who of ['bob', 'carol', 'dave']) {
     assert.equal((await s.call(who, 'GET', '/public')).status, 403, who);
@@ -1575,7 +1575,7 @@ check('public page: off by default (a 404 like a guild that does not exist), Gui
   assert.equal((await s.call('alice', 'PUT', '/roles/public', { permissions: noLoot })).status, 200);
   assert.deepEqual(Object.keys((await visit()).json.sections).sort(), ['attendance', 'raids', 'roster'], 'loot is closed by the ceiling');
   const closed = await s.call('alice', 'GET', '/public');
-  assert.deepEqual(closed.json.allowed, { roster: true, raids: true, attendance: true, loot: false });
+  assert.deepEqual(closed.json.allowed, { roster: true, raids: true, progress: true, attendance: true, loot: false });
   assert.deepEqual(closed.json.sections, ['roster', 'raids', 'attendance', 'loot'], 'the choice is kept');
   const refused = await s.call('alice', 'PUT', '/public', { enabled: true, sections: ['loot'] });
   assert.equal(refused.status, 400);

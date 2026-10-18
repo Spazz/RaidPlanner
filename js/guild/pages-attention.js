@@ -15,6 +15,7 @@
     { id: 'applications', severity: 'action', heading: 'New applications', chip: 'Applications' },
     { id: 'trial', severity: 'action', heading: 'Trials', chip: 'Trial' },
     { id: 'watch', severity: 'action', heading: 'Attendance watch list', chip: 'Watch list' },
+    { id: 'rank', severity: 'action', heading: 'Rank suggestions', chip: 'Rank' },
     { id: 'no_loot', severity: 'action', heading: 'Raids without loot', chip: 'No loot' },
     { id: 'low_signups', severity: 'action', heading: 'Raids short on sign-ups', chip: 'Low sign-ups' },
     { id: 'roster_declined', severity: 'action', heading: 'Rostered players who can\'t make it', chip: 'Roster' },
@@ -34,6 +35,7 @@
     applications: { name: 'applications' },
     trial: { name: 'section', section: 'roster' },
     watch: { name: 'section', section: 'attendance' },
+    rank: { name: 'section', section: 'attendance' },
     no_loot: { name: 'section', section: 'raids' },
     low_signups: { name: 'section', section: 'raids' },
     roster_declined: { name: 'section', section: 'raids' },
@@ -81,6 +83,12 @@
       case 'watch': {
         const drop = num(it.drop);
         return String(it.name == null ? '' : it.name) + ': ' + G.ui.percent(it.pct) + ' attendance' + (drop > 0 ? ', down ' + plural(Math.round(drop), 'point', 'points') : '');
+      }
+      case 'rank': {
+        const who = String(it.name == null ? '' : it.name);
+        const from = it.from && it.from.name ? it.from.name : 'the current rank';
+        const to = it.to && it.to.name ? it.to.name : 'the next rank';
+        return who + ': ' + (it.suggestion === 'review' ? 'suggested review (below ' + from + ')' : 'suggested promotion to ' + to);
       }
       case 'no_loot': return 'No loot imported for ' + dayOf(it.date);
       case 'low_signups': return dayOf(it.date) + ': ' + num(it.expected) + ' of ' + num(it.size) + ' signed up';

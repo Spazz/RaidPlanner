@@ -4,6 +4,7 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { addDays } from '../attendance-calendar.js';
 import { watchList } from '../attendance-metrics.js';
+import { ladderOf, rankReview } from '../rank-ladder.js';
 import { makePolicyResolver, policyRowsStatement } from '../attendance-store.js';
 import { displayCharacter, groupBy } from '../attendance-view.js';
 import { LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, buildAttention } from '../attention.js';
@@ -42,7 +43,7 @@ export async function getAttention(ctx) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, onboarding] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, dismissals, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -104,7 +105,7 @@ export async function getAttention(ctx) {
         WHERE a.guild_id = ? AND a.credit_team_id IN (SELECT value FROM json_each(?)) AND a.credit = 1 AND a.outcome = 'fill_in'`,
       watchJson,
     ),
-    bind("SELECT id, status, joined_on, left_on FROM players WHERE guild_id = ? AND status IN ('raider', 'trial')"),
+    bind("SELECT id, status, joined_on, left_on, rank, rank_on FROM players WHERE guild_id = ? AND status IN ('raider', 'trial')"),
     bind(
       `SELECT player_id, name, class, team_id, is_main FROM characters
         WHERE guild_id = ?1 AND player_id IN (SELECT id FROM players WHERE guild_id = ?1 AND status IN ('raider', 'trial'))`,
@@ -135,6 +136,8 @@ export async function getAttention(ctx) {
     ),
     // Teams whose Discord webhook Discord refused (404/401): the Worker switched it off.
     bind("SELECT team_id, disabled_status FROM team_notifications WHERE guild_id = ? AND webhook_url IS NOT NULL AND webhook_state = 'disabled'"),
+    // Rank suggestions an officer dismissed for 30 days (PM wave 7).
+    bind('SELECT player_id, kind, to_rank, until FROM rank_dismissals WHERE guild_id = ? AND until > ?', now),
     // The setup checklist's flags, for the people who set the guild up (no statement for anyone else: `onboarding` is then undefined).
     ...[onboardingStatement(db, guildContext)].filter(Boolean),
   ]);
@@ -147,27 +150,41 @@ export async function getAttention(ctx) {
   const raidsByTeam = groupBy(raids.results, 'team_id');
   const borrowedByTeam = groupBy(borrowed.results, 'credit_team_id');
   const playersById = new Map(people.results.map((row) => [row.id, row]));
+  const dismissalByPlayer = new Map(dismissals.results.map((row) => [row.player_id, row]));
+  const mainTeamOf = (playerId) => {
+    const main = (charactersByPlayer.get(playerId) || []).find((entry) => entry.is_main === 1);
+    return main ? main.team_id : null;
+  };
+  const ranks = [];
   const watch = watchTeams.map((teamId) => {
     const teamRows = rowsByTeam.get(teamId) || [];
     const onTeam = new Set([...teamRows.map((row) => row.player_id), ...characters.results.filter((row) => row.team_id === teamId).map((row) => row.player_id)]);
     const members = [...onTeam].filter((id) => playersById.has(id)).map((id) => {
       const row = playersById.get(id);
-      return { id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on };
+      return { id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on, rank: row.rank, rankOn: row.rank_on };
     });
-    const list = watchList({
+    const policy = resolver.resolved(teamId);
+    const input = {
       people: members,
       raids: (raidsByTeam.get(teamId) || []).map(metricsRaid),
       rows: teamRows.map((row) => metricsRow(row)),
       borrowed: (borrowedByTeam.get(teamId) || []).map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
-      policy: resolver.resolved(teamId), today, resetDay,
-    });
-    return {
-      teamId,
-      entries: list.entries.map((entry) => {
-        const character = displayCharacter(charactersByPlayer.get(entry.playerId) || [], teamId);
-        return { ...entry, name: character ? character.name : 'Unknown', class: character ? character.class : null };
-      }),
+      policy, today, resetDay,
     };
+    const list = watchList(input);
+    const nameOf = (playerId) => {
+      const character = displayCharacter(charactersByPlayer.get(playerId) || [], teamId);
+      return { name: character ? character.name : 'Unknown', class: character ? character.class : null };
+    };
+    // PM wave 7: the rank ladder's suggestions for this team's raiders and trials (a person is judged on the team of their Main).
+    const ladder = ladderOf(policy);
+    if (ladder.length) {
+      const review = rankReview({ ...input, ladder, nowMs: now, teamId, homeTeamOf: mainTeamOf, dismissals: dismissalByPlayer });
+      const entries = [];
+      for (const [playerId, entry] of review) if (entry.suggestion) entries.push({ playerId, ...nameOf(playerId), ...entry.suggestion });
+      if (entries.length) ranks.push({ teamId, entries });
+    }
+    return { teamId, entries: list.entries.map((entry) => ({ ...entry, ...nameOf(entry.playerId) })) };
   });
 
   const built = buildAttention({
@@ -183,6 +200,7 @@ export async function getAttention(ctx) {
     // Each raid is short against ITS size: its own, else its zone's in the guild's version, else the team's.
     upcoming: upcoming.results.map((row) => ({ ...row, size: effectiveRaidSize(row, teamSizes.get(row.team_id), guild.game_version) })),
     watch,
+    ranks,
     rosterDeclined: rosterDeclined.results,
     applications: applications.results,
     rosterPending: rosterPending.results,

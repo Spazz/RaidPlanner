@@ -46,7 +46,7 @@ export async function buildGuildExport(db, guildContext, nowMs) {
     db.prepare('SELECT id, name, size, archived, created_at FROM teams WHERE guild_id = ? ORDER BY created_at, id').bind(gid),
     db.prepare('SELECT team_id, weekday, start_time, zone, title FROM team_schedules WHERE guild_id = ? ORDER BY team_id, weekday').bind(gid),
     db.prepare(
-      `SELECT id, status, joined_on, trial_start, trial_end, left_on, left_reason, notes, created_at
+      `SELECT id, status, joined_on, trial_start, trial_end, left_on, left_reason, notes, rank, rank_on, created_at
          FROM players WHERE guild_id = ? ORDER BY created_at, id`,
     ).bind(gid),
     db.prepare(
@@ -123,6 +123,7 @@ export async function buildGuildExport(db, guildContext, nowMs) {
         trialEnd: player.trial_end,
         leftOn: player.left_on,
         leftReason: player.left_reason,
+        ...(player.rank ? { rank: player.rank, rankOn: player.rank_on } : {}), // PM wave 7: the rank id (the names are in the attendance policy's ladder)
         ...(notesAllowed && player.notes ? { notes: player.notes } : {}),
         characters: (charactersByPlayer.get(player.id) || []).map((row) => ({
           id: row.id,

@@ -270,12 +270,13 @@
     return parts.join(' ');
   }
 
-  // The Upcoming / Past switch (the same pressed-button group as the roster and attendance filters).
+  // The Upcoming / Past / Progress switch (the same pressed-button group as the roster and attendance filters). Progress is the team's boss board (pages-progress.js).
   function tabsHtml(tab, upcomingCount, pastLabel) {
     function one(id, label) {
       return '<button type="button" class="gs-seg" data-action="raids-tab" data-tab="' + id + '" data-key="rt-' + id + '" aria-pressed="' + (tab === id ? 'true' : 'false') + '">' + esc(label) + '</button>';
     }
-    return '<div class="gs-segs gs-raid-tabs" role="group" aria-label="Raids">' + one('upcoming', 'Upcoming (' + upcomingCount + ')') + one('past', 'Past (' + pastLabel + ')') + '</div>';
+    return '<div class="gs-segs gs-raid-tabs" role="group" aria-label="Raids">' + one('upcoming', 'Upcoming (' + upcomingCount + ')') + one('past', 'Past (' + pastLabel + ')') +
+      (G.pages.progress ? one('progress', 'Progress') : '') + '</div>';
   }
 
   function flagBannerHtml(gd, teamId, raids) {
@@ -298,19 +299,21 @@
       '<h2 class="gs-h2 gs-h2-lg" id="raids-empty-h">No raids yet</h2>' + body + '</section>';
   }
 
-  // opts: { guildData, teamId, data (GET /raids?team=) , progress, alert, note, more (bool), tab ('upcoming' | 'past'; default: Upcoming when there is one) }
+  // opts: { guildData, teamId, data (GET /raids?team=) , progress, alert, note, more (bool), tab ('upcoming' | 'past' | 'progress'; default: Upcoming when there is one),
+  //         progressHtml (the Progress tab's board, pages-progress.js) }
   function raidsHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
     const data = opts.data || { raids: [] };
     const raids = Array.isArray(data.raids) ? data.raids : [];
     const upcoming = Array.isArray(data.upcoming) ? data.upcoming : [];
-    const tab = opts.tab === 'upcoming' || opts.tab === 'past' ? opts.tab : (upcoming.length ? 'upcoming' : 'past');
+    const tab = opts.tab === 'upcoming' || opts.tab === 'past' || (opts.tab === 'progress' && G.pages.progress) ? opts.tab : (upcoming.length ? 'upcoming' : 'past');
     const canEdit = G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', opts.teamId);
     const several = G.shell.activeTeams(gd.teams).length > 1;
     const team = A().teamOf(gd, opts.teamId);
     const sub = (several && team ? esc(team.name) : esc(gd.guild.name)) + ' &middot; ' + (tab === 'upcoming'
-      ? esc(plural(upcoming.length, 'upcoming raid', 'upcoming raids')) + ', soonest first' : esc(plural(raids.length, 'raid', 'raids')) + ', newest first');
+      ? esc(plural(upcoming.length, 'upcoming raid', 'upcoming raids')) + ', soonest first'
+      : (tab === 'progress' ? 'Boss progress from the logged raids' : esc(plural(raids.length, 'raid', 'raids')) + ', newest first'));
     const staleCount = raids.filter(function (r) { return r.stale; }).length;
     const hasSlots = !!(data.schedule && data.schedule.slots > 0);
     // One primary button (New raid, officers) and a More menu with the rest, both the same size. Everyone who sees the list may subscribe to the
@@ -328,6 +331,8 @@
     let body;
     if (!raids.length && !upcoming.length) {
       body = emptyHtml(gd, canEdit);
+    } else if (tab === 'progress') {
+      body = tabsHtml(tab, upcoming.length, raids.length + (opts.more ? '+' : '')) + (opts.progressHtml || '');
     } else if (tab === 'upcoming') {
       body = tabsHtml(tab, upcoming.length, raids.length + (opts.more ? '+' : '')) + upcomingHtml(gd, upcoming, canEdit, !!(data.can && data.can.signup));
     } else if (!raids.length) {
@@ -347,7 +352,8 @@
     const gid = gd.guild.id;
     const teamId = G.app.teamFor(gd);
     if (!teamId) { a().raids = { gid: gid, teamId: null, data: null }; return null; }
-    const kept = a().raids && a().raids.gid === gid && a().raids.teamId === teamId ? a().raids.tab : null;
+    const keptTab = a().raids && a().raids.gid === gid && a().raids.teamId === teamId ? a().raids.tab : null;
+    const kept = keptTab === 'progress' ? null : keptTab; // the Progress board is read again when its tab is opened
     return G.api.get(A().apiBase(gid) + '/raids?team=' + encodeURIComponent(teamId)).then(function (data) {
       a().raids = { gid: gid, teamId: teamId, data: data, more: !!(data && data.hasMore), tab: kept || null, note: '' };
       return autoFill(a().raids);
@@ -384,6 +390,7 @@
     if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
     if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
     return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, tab: x.tab, progress: a().recalc, alert: st().pageAlert, note: x.note,
+      progressHtml: G.pages.progress ? G.pages.progress.tabHtml(x) : '',
       awayHtml: (G.pages.standing ? G.pages.standing.cardHtml({ guildData: gd, teamId: x.teamId, canSignUp: !!(x.data && x.data.can && x.data.can.signup), state: a().standing }) : '') +
         (G.pages.away ? G.pages.away.teamCardHtml({ guildData: gd, teamId: x.teamId, state: a().awayTeam }) : '') });
   }
@@ -391,7 +398,10 @@
   G.handlers.click['raids-tab'] = function (el) {
     const x = a().raids;
     if (!x) return;
-    x.tab = el.getAttribute('data-tab') === 'past' ? 'past' : 'upcoming';
+    const wanted = el.getAttribute('data-tab');
+    x.tab = wanted === 'past' ? 'past' : (wanted === 'progress' && G.pages.progress ? 'progress' : 'upcoming');
+    // The boss board is read when its tab opens (and again each time: kills land after every logged raid).
+    if (x.tab === 'progress') G.pages.progress.load(x).then(function () { if (a().raids === x && x.tab === 'progress') G.app.render(); });
     G.app.render();
   };
 

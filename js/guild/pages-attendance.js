@@ -194,6 +194,9 @@
       esc(label) + '<span class="gs-sort-ind" aria-hidden="true"></span></button></th>';
   }
 
+  // PM wave 7: the person's rank and the ladder's suggestion (pages-ranks.js); '' while the guild has no ladder.
+  function rankLine(p, teamId) { return G.pages.ranks ? G.pages.ranks.lineHtml(p, teamId) : ''; }
+
   function tableHtml(gid, data, people, view) {
     const grid = gridOf(data, people);
     const labels = { player: 'Player', pct: windowShort(data.window), all: 'All time %', signup: 'Sign-up rate', streak: 'Streak', last: 'Last attended' };
@@ -202,7 +205,7 @@
     const head2 = '<tr>' + grid.map(function (w) { return w.cols.map(function (c) { return colHeadHtml(gid, c); }).join(''); }).join('') + '</tr>';
     const rows = people.map(function (p) {
       const cm = cellMapOf(p);
-      return '<tr><th scope="row" class="gs-cell-strong">' + statName(p) + '<span class="gs-char-sub">' + esc(G.ui.statusLabel(p.status)) + '</span></th>' +
+      return '<tr><th scope="row" class="gs-cell-strong">' + statName(p) + '<span class="gs-char-sub">' + esc(G.ui.statusLabel(p.status)) + '</span>' + rankLine(p, data.team && data.team.id) + '</th>' +
         '<td class="gs-nowrap">' + pctHtml(p, 'pct') + '</td><td class="gs-nowrap">' + pctHtml(p, 'pctAll') + '</td><td class="gs-nowrap">' + pctHtml(p, 'signupRate') + '</td>' +
         '<td>' + streakHtml(p) + '</td><td class="gs-nowrap">' + esc(G.ui.shortDay(p.lastAttended) || '-') + '</td>' +
         grid.map(function (w) { return w.cols.map(function (c) { return '<td class="gs-att-cell">' + cellHtml(cm[c.id] || null, c.date) + '</td>'; }).join(''); }).join('') + '</tr>';
@@ -210,10 +213,10 @@
     return '<div class="gs-table-wrap gs-att-table"><table class="gs-table gs-table-att" aria-label="Team attendance"><thead>' + head1 + head2 + '</thead><tbody>' + rows + '</tbody></table></div>';
   }
 
-  function cardsHtml(gid, people) {
+  function cardsHtml(gid, people, teamId) {
     return '<ul class="gs-att-cards" aria-label="Team attendance">' + people.map(function (p) {
       const cells = (Array.isArray(p.cells) ? p.cells : []).slice().sort(function (a, b) { return dateOf(a) < dateOf(b) ? -1 : 1; }).slice(-PHONE_CELLS);
-      return '<li class="gs-att-card"><div class="gs-card-top">' + statName(p) + G.ui.statusChipHtml(p.status) + '</div>' +
+      return '<li class="gs-att-card"><div class="gs-card-top">' + statName(p) + G.ui.statusChipHtml(p.status) + '</div>' + rankLine(p, teamId) +
         '<dl class="gs-att-stats"><div><dt>Window</dt><dd>' + pctHtml(p, 'pct') + '</dd></div><div><dt>All time</dt><dd>' + pctHtml(p, 'pctAll') + '</dd></div>' +
         '<div><dt>Sign-up</dt><dd>' + pctHtml(p, 'signupRate') + '</dd></div><div><dt>Streak</dt><dd>' + streakHtml(p) + '</dd></div></dl>' +
         '<div class="gs-att-strip">' + cells.map(function (c) { return cellHtml(c, dateOf(c)); }).join('') + '</div></li>';
@@ -375,7 +378,7 @@
       '<div class="gs-check"><input type="checkbox" id="att-inactive" data-change="att-inactive"' + (view.includeInactive ? ' checked' : '') + '><label for="att-inactive">Include inactive</label></div></div>' +
       '<details class="gs-how gs-legend-box" open><summary>Legend</summary>' + legendHtml() + '</details>' +
       (data.awaitingReview > 0 ? '<p class="gs-fine" id="att-awaiting">' + esc(plural(data.awaitingReview, 'raid', 'raids')) + ' awaiting review. Their pending cells are marked with a question mark and left out of the percentage.</p>' : '') +
-      (sorted.length ? tableHtml(gd.guild.id, data, sorted, view) + cardsHtml(gd.guild.id, sorted) : '<p class="gs-empty">No one matches these filters.</p>');
+      (sorted.length ? tableHtml(gd.guild.id, data, sorted, view) + cardsHtml(gd.guild.id, sorted, teamId) : '<p class="gs-empty">No one matches these filters.</p>');
     return '<div class="gs-page gs-att-page">' + headerHtml(gd, teamId, data) +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       staleBannerHtml(data.staleRaids || 0, canEdit, opts.progress) + watchHtml(gd.guild.id, data.watch) + body + howCountedHtml(opts.policy, teamId) + '</div>';

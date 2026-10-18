@@ -47,6 +47,7 @@
     { tab: 'roles', label: 'Roles', needs: ['guild.roles'] },
     { tab: 'discord', label: 'Discord roles', needs: ['guild.roles'] },
     { tab: 'guests', label: 'Guest links', needs: ['guild.access'] },
+    { tab: 'dataaccess', label: 'Data access', needs: ['guild.access'] },
     { tab: 'public', label: 'Public page', needs: ['guild.roles'] },
     { tab: 'applications', label: 'Applications', needs: ['guild.teams'] },
     { tab: 'notifications', label: 'Notifications', needs: ['guild.teams'] },

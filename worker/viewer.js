@@ -4,14 +4,20 @@
 // accounts, sign-up sources or notes, attendance reasons and decisions, raid report codes, plan links, loot notes or tags.
 //   { guild: { name, realm, realmKind, region, gameVersion },
 //     teams: [{ id, name }],                      the teams at least one section shows
-//     sections: { roster?, raids?, attendance?, loot? }   each a list of { team, ... } for the teams the viewer may see }
+//     sections: { roster?, raids?, progress?, attendance?, loot? }   each a list of { team, ... } for the teams the viewer may see }
 // Cost: the roster, raids and loot of ALL the shown teams are read in one DB.batch (a handful of statements however many teams); attendance runs the
 // team page's own computation once per team.
 import { teamAttendanceData } from './routes/attendance.js';
 import { displayCharacter, groupBy } from './attendance-view.js';
 import { lootPolicyRowsStatement, makeLootPolicyResolver } from './loot-store.js';
 import { SECTION_ACTIONS, allows } from './permissions.js';
+import { buildProgress, publicProgress } from './progress.js';
+import { progressPullsStatement } from './progress-store.js';
 import { roleOf } from './roster-data.js';
+
+// Every section the read-only view can build, in the page's order, and the read action each needs. A guest link shows the four of SECTION_ACTIONS (a role
+// grants those); the public page can also tick Progress (PM wave 7: the team's boss kills), which rides on the raids read action.
+export const VIEW_SECTIONS = { roster: 'roster.view', raids: 'raids.view', progress: 'raids.view', attendance: 'attendance.view', loot: 'loot.view' };
 
 const MAX_VIEW_TEAMS = 12;
 const UPCOMING_LIMIT = 20;
@@ -26,7 +32,8 @@ export async function loadGuildRow(db, guildId) {
   ).bind(guildId).first();
 }
 
-// Per team: the statements that read it, and how to shape their results. `rows` are the results of this section's own statements, in order.
+// Per team: the statements that read it, and how to shape their results (shape(team, results, guild)). `results` are the results of this section's own
+// statements, in order.
 const SECTION_READS = {
   roster: {
     statements: (db, guild, team) => [db.prepare(
@@ -54,6 +61,11 @@ const SECTION_READS = {
       const shape = (row) => ({ raidOn: row.raid_on, startsAt: row.starts_at, zone: row.zone, title: row.title });
       return { team, upcoming: upcoming.results.map(shape), recent: recent.results.map(shape) };
     },
+  },
+  // PM wave 7: the team's boss kills, from the stored pulls (worker/progress.js). No raid ids, no report codes.
+  progress: {
+    statements: (db, guild, team) => [progressPullsStatement(db, guild.id, team.id)],
+    shape: (team, [result], guild) => ({ team, ...publicProgress(buildProgress(result.results, guild.game_version)) }),
   },
   loot: {
     statements: (db, guild, team) => [db.prepare(
@@ -88,8 +100,9 @@ async function attendanceSection(db, guild, team, nowMs) {
   };
 }
 
-// guild: loadGuildRow's row. can: { action: 'guild' | [teamIds] } from resolveViewerPermissions.
-export async function buildView(db, guild, can, nowMs) {
+// guild: loadGuildRow's row. can: { action: 'guild' | [teamIds] } from resolveViewerPermissions. only: the sections to build (the public page's ticked
+// ones; two sections can share a read action, so `can` alone cannot say), default the four a guest link can show.
+export async function buildView(db, guild, can, nowMs, { only = Object.keys(SECTION_ACTIONS) } = {}) {
   const [teamResult, lootPolicyResult] = await db.batch([
     db.prepare('SELECT id, name FROM teams WHERE guild_id = ? AND archived = 0 ORDER BY created_at, id').bind(guild.id),
     lootPolicyRowsStatement(db, guild.id),
@@ -98,7 +111,8 @@ export async function buildView(db, guild, can, nowMs) {
   const lootPolicy = makeLootPolicyResolver(lootPolicyResult.results);
   const visible = {};
   const shown = new Set();
-  for (const [section, action] of Object.entries(SECTION_ACTIONS)) {
+  for (const [section, action] of Object.entries(VIEW_SECTIONS)) {
+    if (!only.includes(section)) continue;
     let teams = teamRows.filter((team) => allows(can, action, team.id)).slice(0, MAX_VIEW_TEAMS).map((team) => ({ id: team.id, name: team.name }));
     // A team whose loot is private to each player ("own": a person sees only their own awards) shows no loot to someone who is nobody in particular.
     if (section === 'loot') teams = teams.filter((team) => lootPolicy.resolved(team.id).visibility.members !== 'own');
@@ -107,7 +121,7 @@ export async function buildView(db, guild, can, nowMs) {
 
   // One batch for everything the roster, raids and loot of every shown team need.
   const reads = [];
-  for (const section of ['roster', 'raids', 'loot']) {
+  for (const section of ['roster', 'raids', 'progress', 'loot']) {
     for (const team of visible[section] || []) {
       const statements = SECTION_READS[section].statements(db, guild, team, nowMs);
       reads.push({ section, team, from: 0, count: statements.length, statements });
@@ -121,14 +135,14 @@ export async function buildView(db, guild, can, nowMs) {
     const slice = results.slice(at, at + read.count);
     at += read.count;
     if (!sections[read.section]) sections[read.section] = [];
-    sections[read.section].push(SECTION_READS[read.section].shape(read.team, slice));
+    sections[read.section].push(SECTION_READS[read.section].shape(read.team, slice, guild));
   }
   if (visible.attendance) sections.attendance = await Promise.all(visible.attendance.map((team) => attendanceSection(db, guild, team, nowMs)));
 
   const shownTeams = new Set(Object.values(visible).flatMap((teams) => teams.map((team) => team.id)));
   // Keep the sections in the page's order whatever order they were built in.
   const ordered = {};
-  for (const section of Object.keys(SECTION_ACTIONS)) if (sections[section]) ordered[section] = sections[section];
+  for (const section of Object.keys(VIEW_SECTIONS)) if (sections[section]) ordered[section] = sections[section];
   return {
     guild: { name: guild.name, realm: guild.realm, realmKind: guild.realm_kind, region: guild.region, gameVersion: guild.game_version },
     teams: teamRows.filter((team) => shownTeams.has(team.id)).map((team) => ({ id: team.id, name: team.name })),
