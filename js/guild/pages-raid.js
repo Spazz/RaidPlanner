@@ -377,6 +377,10 @@
     if (typeof r.closeHours !== 'number') return '';
     const own = r.closeHoursOverride != null;
     const source = own ? ', set for this raid.' : ', the team\'s setting.';
+    // A raid with only a date has no start to count from: the Worker says when it closes instead, and why.
+    if (r.closesSource && typeof r.closesAt === 'number') {
+      return 'In effect: members can change their sign-up until ' + G.pages.raids.momentText(r.closesAt, gd) + ' (' + G.pages.raids.closeNoteText(r) + ')' + source;
+    }
     if (!(r.closeHours > 0)) return 'In effect: members can change their sign-up until the raid starts' + source;
     const when = typeof r.closesAt === 'number' ? G.pages.raids.momentText(r.closesAt, gd) : '';
     return 'In effect: members can change their sign-up until ' + hoursText(r.closeHours) + ' before the start' + (when ? ' (' + when + ')' : '') + source;

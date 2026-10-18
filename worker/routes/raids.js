@@ -21,6 +21,7 @@ import {
 import { guildToday } from '../roster-view.js';
 import { reconcileStanding, removeStandingOverRaidHelper } from '../standing.js';
 import { MAX_CLOSE_HOURS, closedReason, closesAtOf, isCloseHours, plannerName } from '../signups-data.js';
+import { SLOT_TIME_SQL, windowFieldsOf } from '../signup-window.js';
 import {
   fetchRaidHelperEvent, fetchWclPulls, parseRaidHelperSource, parseWclSource, requireWclConfigured,
 } from '../sources.js';
@@ -63,12 +64,14 @@ export async function loadRaid(ctx, guildContext, { edit = false } = {}) {
   const raid = await ctx.db.prepare(
     `SELECT r.*, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
             (SELECT t.size FROM teams t WHERE t.id = r.team_id) AS team_size,
-            (SELECT t.signup_close_hours FROM teams t WHERE t.id = r.team_id) AS team_close_hours
+            (SELECT t.signup_close_hours FROM teams t WHERE t.id = r.team_id) AS team_close_hours,
+            ${SLOT_TIME_SQL} AS slot_time
        FROM raids r WHERE r.id = ? AND r.guild_id = ?`,
   ).bind(ctx.params.rid, guildContext.guild.id).first();
   if (!raid) throw notFound();
   if (edit && !allows(guildContext.can, 'raids.edit', raid.team_id)) throw forbidden();
-  return raid;
+  // A raid with only a date has its member window start at the team slot time that day, else 18:00 (worker/signup-window.js).
+  return Object.assign(raid, windowFieldsOf(raid, guildContext.guild.time_zone));
 }
 
 export async function raidReply(ctx, guildContext, raidId, status = 200) {
@@ -256,6 +259,7 @@ export async function listRaids(ctx) {
     // Raids that have not started: all of them, soonest first, outside the paging of the past ones.
     ctx.db.prepare(
       `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.signup_close_hours, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.event_moved_on, r.plan_synced, r.plan_live, r.signups_locked,
+              ${SLOT_TIME_SQL} AS slot_time,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'signed' AND s.standby = 0) AS n_signed,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'late') AS n_late,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'signed' AND s.standby = 1) AS n_standby,
@@ -309,6 +313,8 @@ export async function listRaids(ctx) {
   const ownPeople = new Set(notices.filter((notice) => notice.own).map((notice) => notice.personId));
   const page = raidResult.results.slice(0, PAGE_SIZE);
   const rowCloseHours = (row) => row.signup_close_hours ?? team.signup_close_hours; // a raid's own sign-up deadline, else the team's
+  // What the sign-up window reads of a row: a raid with only a date starts its window at the team slot time that day, else 18:00 (worker/signup-window.js).
+  const windowOf = (row) => ({ starts_at: row.starts_at, signups_locked: row.signups_locked, ...windowFieldsOf(row, guild.time_zone) });
   return jsonResponse({
     team: { id: team.id, name: team.name, archived: team.archived === 1, size: team.size, signupCloseHours: team.signup_close_hours },
     today,
@@ -332,8 +338,8 @@ export async function listRaids(ctx) {
       otherServer: row.event_server !== null && row.event_server !== guild.discord_server_id,
       signups: seeCounts ? Object.fromEntries(SIGNUP_KINDS.map((kind) => [kind, row[`n_${kind}`] + (kind === 'absence' ? awayOf(row).length : 0)])) : null,
       locked: row.signups_locked === 1,
-      signupsOpen: !closedReason({ starts_at: row.starts_at, signups_locked: row.signups_locked }, now, rowCloseHours(row)),
-      closesAt: closesAtOf(row, rowCloseHours(row)),
+      signupsOpen: !closedReason(windowOf(row), now, rowCloseHours(row)),
+      closesAt: closesAtOf(windowOf(row), rowCloseHours(row)),
       closeHours: rowCloseHours(row),
       mine: withSeat(row, mine.get(row.id) || (awayOf(row).some((entry) => ownPeople.has(entry.personId)) ? { kind: 'absence', source: 'away', characterName: null } : null)),
       planned: row.plan_synced !== null,
@@ -791,6 +797,11 @@ const META_CLASS = { late: 'Late', bench: 'Bench', tentative: 'Tentative', absen
 // (the person's Late / Leaving notice), 'standby' (a volunteer standby). A row carries the strongest of its markers, in that order.
 const MARKER_MAX = 60;
 const ALSO_WINDOW_MS = 4 * 60 * 60 * 1000;
+// Fair bench: the seed says, per person, how many of the team last FAIR_RAIDS raids before this one they sat on the bench (an attendance Bench outcome, or
+// group 0 in the raid saved plan), so Optimize can bench the people who have sat out least (js/optimizer.js refineFairness). The raids counted are the team own,
+// already started, and earlier than this one.
+const FAIR_RAIDS = 4;
+const RECENT_RAIDS_SQL = `SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND id != ? AND starts_at < ? AND starts_at <= ? ORDER BY starts_at DESC, id DESC LIMIT ${FAIR_RAIDS}`;
 const marker = (kind, text) => ({ kind, text: text.replace(/[^\x20-\x7e]/g, '').trim().slice(0, MARKER_MAX) });
 
 export async function getPlanner(ctx) {
@@ -825,8 +836,25 @@ export async function getPlanner(ctx) {
           AND ${MERGED_ROWS} AND s.kind IN ('signed', 'late') AND s.player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ?2 AND player_id IS NOT NULL)`,
     ).bind(guild.id, raid.id, raid.starts_at, ALSO_WINDOW_MS));
   }
+  const fairAt = statements.length;
+  const recentBinds = [guild.id, raid.team_id, raid.id, raid.starts_at, ctx.now()];
+  statements.push(
+    ctx.db.prepare(RECENT_RAIDS_SQL).bind(...recentBinds),
+    ctx.db.prepare(`SELECT a.player_id, a.raid_id FROM attendance a WHERE a.raid_id IN (${RECENT_RAIDS_SQL}) AND a.outcome = 'bench'`).bind(...recentBinds),
+    ctx.db.prepare(
+      `SELECT c.player_id, p.raid_id FROM raid_plan p JOIN characters c ON c.guild_id = ? AND c.name_key = p.name_key
+        WHERE p.raid_id IN (${RECENT_RAIDS_SQL}) AND p.group_number = 0 AND c.player_id IS NOT NULL`,
+    ).bind(guild.id, ...recentBinds),
+  );
   const results = await ctx.db.batch(statements);
   const [signupResult, characterResult] = results;
+  const recentRaids = results[fairAt].results.length;
+  // personId -> the recent raids they sat out (either source counts once per raid)
+  const benchedIn = new Map();
+  for (const row of [...results[fairAt + 1].results, ...results[fairAt + 2].results]) {
+    if (!benchedIn.has(row.player_id)) benchedIn.set(row.player_id, new Set());
+    benchedIn.get(row.player_id).add(row.raid_id);
+  }
   const charactersByPlayer = new Map();
   for (const row of characterResult.results) {
     if (!charactersByPlayer.has(row.player_id)) charactersByPlayer.set(row.player_id, []);
@@ -895,6 +923,10 @@ export async function getPlanner(ctx) {
       position: row.position,
     });
   });
+  // The sit-out history of each real row's person, when the team has had a raid before this one (a first raid sends none, so the Planner stays as it was).
+  if (recentRaids > 0) {
+    for (const row of signups) if (row.personId) row.benchedRecently = benchedIn.has(row.personId) ? benchedIn.get(row.personId).size : 0;
+  }
   // The people an Away notice covers who have no sign-up: one virtual Absence row each, after every real row.
   effects.away.forEach(({ personId }, index) => {
     const shown = displayCharacter(charactersByPlayer.get(personId) || [], raid.team_id);
@@ -925,6 +957,7 @@ export async function getPlanner(ctx) {
       ...raidSizeFields(raid, raid.team_size, guild.game_version),
       gameVersion: guild.game_version,
       timeZone: guild.time_zone,
+      ...(recentRaids > 0 ? { recentRaids } : {}), // how many raids benchedRecently counts out of (at most four)
     },
     livePlan: raid.plan_live,
     signups,

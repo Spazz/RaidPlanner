@@ -135,6 +135,15 @@
     return day && time ? day + ', ' + time : day || time;
   }
 
+  // Why a raid that has only a date closes sign-ups when it does (raid.closesSource, set by the Worker for such a raid only): 'slot' = the team schedule slot
+  // time on that weekday, 'default' = 18:00 guild time because the team has no slot that day. '' for a raid with a start time.
+  function closeNoteText(raid) {
+    if (!raid || !raid.closesSource) return '';
+    const earlier = raid.closeHours > 0 ? ', ' + plural(raid.closeHours, 'hour', 'hours') + ' earlier' : '';
+    if (raid.closesSource === 'slot') return 'this raid has only a date, so sign-ups close at the time of the schedule slot that day' + earlier;
+    return 'this raid has only a date and the team has no schedule slot that day, so sign-ups close at 18:00 guild time' + earlier;
+  }
+
   // The same, short, for the Raids list: 'Thu 7:30 PM'.
   function momentShortText(ms, gd) {
     const zone = gd && gd.guild ? gd.guild.timeZone : '';
@@ -868,7 +877,7 @@
   };
 
   G.pages.raids = {
-    raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, timeNotSetHtml: timeNotSetHtml, momentText: momentText, zoneSizeText: zoneSizeText, signupsText: signupsText, planPillHtml: planPillHtml,
+    raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, timeNotSetHtml: timeNotSetHtml, momentText: momentText, closeNoteText: closeNoteText, zoneSizeText: zoneSizeText, signupsText: signupsText, planPillHtml: planPillHtml,
     planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, mineHtml: mineHtml, fillText: fillText, applySignupView: applySignupView, reloadList: reloadList, load: loadList, main: mainList,
   };
   G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };

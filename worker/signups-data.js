@@ -90,7 +90,7 @@ export function specChoices(character) {
 }
 
 // When a member's window closes and why it is closed ('started' | 'locked' | 'deadline' | null): worker/signup-window.js. Officers are not bound by it.
-export { MAX_CLOSE_HOURS, closeHoursOf, closedReason, closesAtOf, isCloseHours } from './signup-window.js';
+export { MAX_CLOSE_HOURS, closeHoursOf, closedReason, closesAtOf, isCloseHours, windowFieldsOf } from './signup-window.js';
 
 const ROLE_ORDER = { tank: 0, healer: 1, melee: 2, ranged: 3 };
 

@@ -13,8 +13,9 @@ import { raidSizeFields } from '../raid-zones.js';
 import { SINGLE_LINE_STRIP, isSpecOf } from '../roster-data.js';
 import {
   NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closeHoursOf, closedReason, closesAtOf, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey,
-  signUpSpecLabel, specChoices, storedKind,
+  signUpSpecLabel, specChoices, storedKind, windowFieldsOf,
 } from '../signups-data.js';
+import { SLOT_TIME_SQL } from '../signup-window.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { bad } from './roster.js';
 
@@ -32,17 +33,20 @@ function closedError(reason, raid) {
 }
 
 // A member's window in SQL, re-checked inside every member write: the raid is not locked and its start is more than the deadline hours away (the raid's own
-// number, else the team's). Binds (raidId, now). Must agree with closedReason in worker/signup-window.js: closed when starts_at - hours * 3600000 <= now.
+// number, else the team's). Binds (raidId, windowStart, now): windowStart is the raid's window_starts_at (a raid with only a date, see worker/signup-window.js),
+// NULL for any other raid. Must agree with closedReason in worker/signup-window.js: closed when (window start, else starts_at) - hours * 3600000 <= now.
 const WINDOW_OPEN_SQL = `EXISTS (SELECT 1 FROM raids WHERE id = ? AND raids.signups_locked = 0
-    AND raids.starts_at - COALESCE(raids.signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = raids.team_id), 0) * 3600000 > ?)`;
+    AND COALESCE(?, raids.starts_at) - COALESCE(raids.signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = raids.team_id), 0) * 3600000 > ?)`;
 
 // After a member's write found the window shut: the 409 to answer with, from the raid as it is now (null when it is open after all).
-async function windowError(ctx, raidId) {
-  const fresh = await ctx.db.prepare(
-    `SELECT starts_at, signups_locked, signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = raids.team_id) AS team_close_hours
-       FROM raids WHERE id = ?`,
+async function windowError(ctx, raidId, timeZone) {
+  const found = await ctx.db.prepare(
+    `SELECT r.raid_on, r.time_known, r.starts_at, r.signups_locked, r.signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = r.team_id) AS team_close_hours,
+            ${SLOT_TIME_SQL} AS slot_time
+       FROM raids r WHERE r.id = ?`,
   ).bind(raidId).first();
-  if (!fresh) return closedError('started', null);
+  if (!found) return closedError('started', null);
+  const fresh = { ...found, ...windowFieldsOf(found, timeZone) };
   const reason = closedReason(fresh, ctx.now());
   return reason ? closedError(reason, fresh) : null;
 }
@@ -159,7 +163,7 @@ export async function buildView(ctx, guildContext, raid) {
   return {
     raid: {
       id: raid.id, teamId, startsAt: raid.starts_at, timeKnown: raid.time_known !== 0, upcoming: raid.starts_at > ctx.now(), locked: raid.signups_locked === 1, closed,
-      closesAt: closesAtOf(raid, closeHours), closeHours, closeHoursOverride: raid.signup_close_hours, teamCloseHours: raid.team_close_hours,
+      closesAt: closesAtOf(raid, closeHours), ...(raid.window_source ? { closesSource: raid.window_source } : {}), closeHours, closeHoursOverride: raid.signup_close_hours, teamCloseHours: raid.team_close_hours,
       ...raidSizeFields(raid, raid.team_size, guild.game_version),
     },
     can: { edit, self: !!me, seeList, seeNicknames },
@@ -260,7 +264,7 @@ export async function writeSignup(ctx, guildContext, raid, personId, input, self
 
   const now = ctx.now();
   let guard = self
-    ? { sql: WINDOW_OPEN_SQL, params: [raid.id, now] }
+    ? { sql: WINDOW_OPEN_SQL, params: [raid.id, raid.window_starts_at ?? null, now] }
     : { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ?)', params: [raid.id] };
   if (options.roster) guard = { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ? AND starts_at > ?)', params: [raid.id, now] };
   // Standby is stored as 'signed' + standby = 1; every other kind clears the flag (the table's CHECK keeps the pair honest). Any write is an edit, so a
@@ -287,7 +291,7 @@ export async function writeSignup(ctx, guildContext, raid, personId, input, self
   const results = await db.batch(statements);
   if (results[0].meta.changes !== 1) {
     if (options.roster) throw new HttpError(409, 'raid_started', 'This raid has started: the roster can no longer be answered here. Ask an officer.');
-    throw (await windowError(ctx, raid.id)) || closedError('locked', raid);
+    throw (await windowError(ctx, raid.id, guild.time_zone)) || closedError('locked', raid);
   }
   await recomputeIfEvidence(ctx, guild, raid);
 }
@@ -330,14 +334,14 @@ export async function deleteMySignup(ctx) {
   const results = await ctx.db.batch([
     ctx.db.prepare(
       `DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? AND standing = 0 AND ${WINDOW_OPEN_SQL} RETURNING signup_id`,
-    ).bind(raid.id, personId, raid.id, now),
+    ).bind(raid.id, personId, raid.id, raid.window_starts_at ?? null, now),
     ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
-    ctx.db.prepare(`${TO_ABSENCE_SQL} AND ${WINDOW_OPEN_SQL} RETURNING signup_id`).bind(ctx.session.user.id, now, raid.id, personId, raid.id, now),
+    ctx.db.prepare(`${TO_ABSENCE_SQL} AND ${WINDOW_OPEN_SQL} RETURNING signup_id`).bind(ctx.session.user.id, now, raid.id, personId, raid.id, raid.window_starts_at ?? null, now),
     ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
   ]);
   if (!results[0].results.length && !results[2].results.length) {
     // Nothing deleted or converted: either there was no sign-up, or the window shut between the read and the write.
-    throw (await windowError(ctx, raid.id)) || new HttpError(404, 'not_found', 'You have not signed up here.');
+    throw (await windowError(ctx, raid.id, guildContext.guild.time_zone)) || new HttpError(404, 'not_found', 'You have not signed up here.');
   }
   await recomputeIfEvidence(ctx, guildContext.guild, raid);
   return viewReply(ctx, guildContext, raid);

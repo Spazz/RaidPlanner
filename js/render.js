@@ -1919,6 +1919,12 @@ const SignupTray = {
     }
   },
 
+  // The optimizer's reason for a player on the bench ('' unless a guild raid's sit-out history is loaded and the player is a confirmed raider left out).
+  benchReasonOf(p) {
+    if (!Fairness.active()) return '';
+    try { return Optimizer.benchReasons().get(p.uid) || ''; } catch { return ''; }
+  },
+
   slotHTML(entry, tab) {
     const p = entry.p;
     const displayName = (p.name || 'Unknown').split('-')[0];
@@ -1949,11 +1955,14 @@ const SignupTray = {
     const backupPrimary = Backups.primaryNameFor(p.name);
     const backupBadge = backupPrimary ? `<span class="backup-badge backup-badge-bench" title="Standby for ${esc(backupPrimary.split('-')[0])}" aria-label="Standby for ${esc(backupPrimary.split('-')[0])}">-&gt; ${esc(backupPrimary.split('-')[0])}</span>` : '';
     const reviewBadge = p.needsReview ? `<span class="review-badge" title="${esc(p.reviewReason || 'Needs review — spec was defaulted')}">Needs review</span>` : '';
-    return `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}${changedSlotClass(p)}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'on the bench'))}" data-bench-slot="${entry.bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
+    // Why the optimizer left a confirmed raider out, while a guild raid's sit-out history is loaded (Optimizer.benchReasons): fairness, a Standby volunteer, or the buff plan.
+    const reason = this.benchReasonOf(p);
+    return `<div class="player-slot bench-slot${p.needsReview ? ' needs-review' : ''}${changedSlotClass(p)}" draggable="true" role="button" tabindex="0" aria-label="${esc(playerSlotLabel(p, 'on the bench') + (reason ? ', ' + reason : ''))}" data-bench-slot="${entry.bi}" data-uid="${esc(p.uid)}" title="Click to edit, or drag into a group">
       ${getSpecIcon(p)}
       <div class="player-info">
         <span class="player-name ${color}">${esc(displayName)}</span>
         <span class="player-spec">${esc(specClass)}</span>
+        ${reason ? `<span class="bench-reason" title="${esc(reason)}">${esc(reason)}</span>` : ''}
       </div>
       ${changedTag(p)}
       ${tag}

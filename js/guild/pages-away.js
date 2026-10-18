@@ -93,7 +93,9 @@
     }
     const parts = split(d.notices, d.today);
     const o = { ctx: 'mine', today: d.today, gid: gid };
-    const full = Array.isArray(d.notices) && typeof d.max === 'number' && d.notices.length >= d.max;
+    // The cap counts the notices that are current or still ahead (the Worker's `active`); without it, every notice in the list.
+    const live = typeof d.active === 'number' ? d.active : (Array.isArray(d.notices) ? d.notices.length : 0);
+    const full = Array.isArray(d.notices) && typeof d.max === 'number' && live >= d.max;
     const add = '<button type="button" class="gs-btn gs-btn-molten" data-action="away-add" data-ctx="mine" data-key="an-add"' + (full ? ' disabled' : '') + '>Add a notice</button>';
     const body = parts.current.length
       ? listHtml(parts.current, o, 'Current and upcoming notices')

@@ -706,6 +706,8 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 .player-spec { font-size: 10.5px; color: var(--text-muted); line-height: 1.2; }
+/* The optimizer's reason a confirmed raider sits on the bench ("Benched: sat out 0 of last 4"), under the spec; only with a guild raid's sit-out history loaded. */
+.bench-reason { font-size: 10px; color: var(--accent-gold); line-height: 1.25; overflow-wrap: anywhere; }
 .empty-slot { opacity: 0.35; font-style: italic; cursor: default; }
 .empty-slot .player-name { color: var(--text-muted); font-weight: 400; }
 .empty-slot { cursor: pointer; opacity: .6; }
@@ -716,7 +718,8 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .preferred-slot img { opacity: .65; }
 .preferred-badge { color: var(--preferred-color); font-size: 9px; letter-spacing: .08em; border: 1px solid currentColor; border-radius: 3px; padding: 2px 4px; }
 /* Suggestion stack: a suggested Open slot with runner-ups. The top pick sits in front, the runner-ups peek out behind it
-   (dashed, in their own class colour); clicking fans it into one card per spec, with how far each trails the best. */
+   (in their own class colour, solid-edged and filled enough to read as cards; they used to be a faint dashed ghost); clicking fans it into one card
+   per spec, with how far each trails the best. The peeks stay inside the slot's bottom/right padding, so a stack is no taller than a single card. */
 .player-slot.preferred-stack { position: relative; display: block; border: 0; background: none; padding: 0 6px 6px 0; min-height: 0; cursor: default; }
 .preferred-stack .stack-card {
   appearance: none; position: relative; display: flex; align-items: center; gap: var(--sp-1); width: 100%; min-height: 24px;
@@ -727,12 +730,13 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .preferred-stack .stack-card:hover { background-image: linear-gradient(color-mix(in srgb, var(--preferred-color) 16%, transparent), color-mix(in srgb, var(--preferred-color) 16%, transparent)); }
 .preferred-stack .stack-card:focus-visible, .preferred-stack .stack-other:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
 .preferred-stack .stack-peek {
-  position: absolute; inset: 0 6px 6px 0; border: 1px dashed var(--preferred-color); border-radius: 2px;
-  background-color: var(--bg-card); background-image: linear-gradient(color-mix(in srgb, var(--preferred-color) 7%, transparent), color-mix(in srgb, var(--preferred-color) 7%, transparent));
+  position: absolute; inset: 0 6px 6px 0; border: 1px solid color-mix(in srgb, var(--preferred-color) 75%, transparent); border-radius: 2px;
+  background-color: var(--bg-card); background-image: linear-gradient(color-mix(in srgb, var(--preferred-color) 20%, transparent), color-mix(in srgb, var(--preferred-color) 20%, transparent));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .5);
   pointer-events: none;
 }
 .preferred-stack .stack-peek-1 { transform: translate(3px, 3px); }
-.preferred-stack .stack-peek-2 { transform: translate(6px, 6px); opacity: .8; }
+.preferred-stack .stack-peek-2 { transform: translate(6px, 6px); border-color: color-mix(in srgb, var(--preferred-color) 55%, transparent); background-image: linear-gradient(color-mix(in srgb, var(--preferred-color) 13%, transparent), color-mix(in srgb, var(--preferred-color) 13%, transparent)); }
 .preferred-stack.preferred-fan { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 3px 0; }
 .stack-gap { color: var(--preferred-color); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .preferred-fan .stack-other {

@@ -913,7 +913,7 @@ check('reject: officers and team leads reject, members cannot, a decided claim s
   assert.equal((await s.call('erin', 'POST', `/claims/${a.id}/reject`, {})).status, 403);
   assert.equal((await s.call('gina', 'POST', `/claims/${a.id}/reject`, {})).status, 403);
   const res = await s.call('dave', 'POST', `/claims/${a.id}/reject`, {});
-  assert.deepEqual(res.json, { claim: { id: a.id, status: 'rejected' } });
+  assert.deepEqual(res.json, { claim: { id: a.id, status: 'rejected' }, pendingClaims: 1 }, 'the reply carries the count that is left (the Attendance badge)');
   assert.equal((await s.call('bob', 'POST', `/claims/${a.id}/reject`, {})).json.error, 'claim_decided');
   assert.equal((await s.call('bob', 'POST', `/claims/${a.id}/approve`, approveBody('add_alt', { teamId: s.A }))).json.error, 'claim_decided');
   const [row] = await s.w.rows('SELECT status, team_id, decided_by, decided_at FROM character_claims WHERE id = ?', a.id);

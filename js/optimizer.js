@@ -217,6 +217,10 @@ function devMeasure(name, fn) {
 }
 
 const Optimizer = {
+  // How much raid total (the points groupScore sums) a bench choice may give up and still count as a tie: the bench refinement takes a trade only for more than
+  // this, and the fairness pass (refineFairness) and the Standby rule (refineBench) treat anything within it as equal value.
+  BENCH_TOLERANCE: 0.5,
+
   // Every Optimize replaces the previous run's suggested Open slots: drop
   // them and lay out the real players with the leader's own Open slots, then
   // suggest a spec for every seat still empty (OpenSlots.choose) and lay the
@@ -910,6 +914,10 @@ const Optimizer = {
     // whenever the raid total rises, then let the seated-only refinement
     // settle the new layout before the next trade is judged.
     if (this.refineBench(groups, overflow, raidSize, mode)) this.refineRounds(groups, max, mode);
+
+    // Fair bench and Standby volunteers (wave 6): among players of the same worth (within BENCH_TOLERANCE), bench the Standby volunteers first, then the people who
+    // have sat out least. Skipped, so the result is exactly the value-only one, unless a seed's sit-out history is loaded or a Standby volunteer is seated.
+    if ((Fairness.active() || groups.some(g => g.some(p => SignupMarker.isStandby(p)))) && this.refineFairness(groups, overflow, mode)) this.refineRounds(groups, max, mode);
 
     return { seated: groups.flat(), bench: overflow };
   },
@@ -1647,7 +1655,7 @@ const Optimizer = {
   // the raid's floors. The displaced player joins the overflow list so they
   // can be reconsidered. Returns true when at least one trade was made.
   refineBench(groups, overflow, raidSize, mode) {
-    const BENCH_THRESHOLD = 0.5;
+    const BENCH_THRESHOLD = this.BENCH_TOLERANCE;
     const floors = this.floorsFor(raidSize);
     const total = () => groups.reduce((sum, g, gi) => sum + this.groupScore(g, gi, groups, mode), 0);
     const roleCount = (role) => groups.reduce((n, g) => n + g.filter(p => p.role === role).length, 0);
@@ -1659,6 +1667,9 @@ const Optimizer = {
     for (let round = 0; round < 10; round++) {
       let best = null;
       const base = total();
+      // A Standby volunteer (SignupMarker) is traded in for a player who did not volunteer only when that gains the raid something it would otherwise lack: a
+      // party buff, raid debuff or utility no one else seated brings (raidCoverage). The raid-total gain above the tolerance alone is not enough (wave 6).
+      const covered = overflow.some(p => SignupMarker.isStandby(p)) ? this.raidCoverage(groups, mode) : null;
       for (let bi = 0; bi < overflow.length; bi++) {
         const incoming = overflow[bi];
         for (let gi = 0; gi < groups.length; gi++) {
@@ -1672,8 +1683,12 @@ const Optimizer = {
             }
             g[si] = incoming;
             const gain = total() - base;
+            let needed = true;
+            if (gain > BENCH_THRESHOLD && covered && SignupMarker.isStandby(incoming) && !SignupMarker.isStandby(out)) {
+              needed = [...this.raidCoverage(groups, mode)].some(id => !covered.has(id));
+            }
             g[si] = out;
-            if (gain > BENCH_THRESHOLD && (!best || gain > best.gain)) best = { bi, gi, si, gain };
+            if (gain > BENCH_THRESHOLD && needed && (!best || gain > best.gain)) best = { bi, gi, si, gain };
           }
         }
       }
@@ -1687,6 +1702,127 @@ const Optimizer = {
       traded = true;
     }
     return traded;
+  },
+
+  // Everything the seated board covers, as keys 'b:<party or raid-wide buff id>', 'd:<raid debuff id>' and 'u:<utility id>': what the raid would lose if a player left.
+  raidCoverage(groups, mode) {
+    const covered = new Set();
+    groups.forEach((g, gi) => {
+      for (const id of this.resolveGroupBuffs(g, this.buffValueFn(g, gi, groups, mode))) covered.add('b:' + id);
+    });
+    for (const id of getRaidDebuffCoverage(groups)) covered.add('d:' + id);
+    for (const u of Readiness.utilityCoverage(groups, [])) if (u.covered) covered.add('u:' + u.id);
+    return covered;
+  },
+
+  // The display name of a raidCoverage key.
+  coverageName(key) {
+    const table = key[0] === 'b' ? Config.Buffs : key[0] === 'd' ? Config.Debuffs : Config.Utilities;
+    const entry = table ? table[key.slice(2)] : null;
+    return (entry && entry.name) || key.slice(2);
+  },
+
+  // ── FAIR BENCH AND STANDBY (wave 6) ──────────────────────────
+  // Trades a benched player against a seated one of the same role when benching the seated one is fairer: the benched player is not a Standby volunteer
+  // while the seated one is (volunteers sit out first), or has sat out more of the team's recent raids (Fairness). Every trade is a tie in value: the raid total
+  // after all of them stays within BENCH_TOLERANCE of what the value-only choice reached, so fairness never costs the raid more than that. Seeded anchors
+  // and comp-template locks stay, Open-slot stand-ins are never traded, and a Standby volunteer never takes the seat of someone who did not volunteer here
+  // (refineBench does that, for a buff the raid would lack). Returns true when at least one trade was made.
+  refineFairness(groups, overflow, mode) {
+    const total = () => groups.reduce((sum, g, gi) => sum + this.groupScore(g, gi, groups, mode), 0);
+    const floor = total() - this.BENCH_TOLERANCE;
+    let traded = false;
+    for (let round = 0; round < 10; round++) {
+      let best = null;
+      for (let bi = 0; bi < overflow.length; bi++) {
+        const incoming = overflow[bi];
+        if (incoming.openSlot) continue;
+        const volunteer = SignupMarker.isStandby(incoming);
+        for (let gi = 0; gi < groups.length; gi++) {
+          const g = groups[gi];
+          for (let si = 0; si < g.length; si++) {
+            const out = g[si];
+            if (out.openSlot || out.role !== incoming.role || this.isPinned(out, gi, groups)) continue;
+            const outVolunteer = SignupMarker.isStandby(out);
+            if (volunteer && !outVolunteer) continue;
+            const rank = (outVolunteer && !volunteer ? 1000 : 0) + Fairness.benches(incoming) - Fairness.benches(out);
+            if (rank <= 0) continue;
+            g[si] = incoming;
+            const after = total();
+            g[si] = out;
+            if (after < floor) continue;
+            if (!best || rank > best.rank || (rank === best.rank && after > best.after)) best = { bi, gi, si, rank, after };
+          }
+        }
+      }
+      if (!best) break;
+      const g = groups[best.gi];
+      const incoming = overflow[best.bi];
+      const out = g[best.si];
+      g[best.si] = incoming;
+      overflow[best.bi] = out;
+      out.groupNumber = 0;
+      traded = true;
+    }
+    return traded;
+  },
+
+  // 'Benched: sat out 2 of last 4' (the phrase of a fairness reason); one raid on record reads 'Benched: sat out the last raid' / 'Benched: did not sit out the last raid'.
+  sitOutText(count) {
+    if (Fairness.window === 1) return count ? 'Benched: sat out the last raid' : 'Benched: did not sit out the last raid';
+    return 'Benched: sat out ' + count + ' of last ' + Fairness.window;
+  },
+
+  // Why each confirmed player on the bench is out, for the Bench tray: Map uid -> 'Benched: ...'. Only while a seed's sit-out history is loaded (Fairness), read from the
+  // board as it stands (so a manual move never leaves a stale reason) and cached until the board, the history or the mode changes.
+  //   a Standby volunteer: 'Benched: volunteered as standby'
+  //   seating him would cost the raid at most the tolerance (some seated player of his role is worth the same): fairness decided, 'Benched: sat out N of last M'
+  //   otherwise: 'Benched: buff plan needs <the buff, debuff or utility the raid would lose by seating him instead of the player it loses least by>', or
+  //   'Benched: lowest value for the raid' when no coverage is lost.
+  benchReasons() {
+    const none = new Map();
+    if (!Fairness.active() || !GameVersions[State.gameVersion].modeled) return none;
+    const groups = State.groups || [];
+    const bench = (State.bench || []).filter(p => p && p.signupStatus === 'confirmed' && !p.openSlot && p.role);
+    if (!bench.length || !groups.length) return none;
+    const mode = State.optimizerMode || 'max_dps';
+    const key = [State.gameVersion, State.selectedRaid, Fairness.version, mode, groups.map(g => g.map(p => p.uid).join(',')).join('|'), bench.map(p => p.uid).join(',')].join('#');
+    if (this._reasonCache && this._reasonCache.key === key) return this._reasonCache.map;
+    const map = new Map();
+    const raid = Config.Raids[State.selectedRaid];
+    const floors = this.floorsFor(raid ? raid.size : 25);
+    const roleCount = (role) => groups.reduce((n, g) => n + g.filter(p => p.role === role).length, 0);
+    const total = () => groups.reduce((sum, g, gi) => sum + this.groupScore(g, gi, groups, mode), 0);
+    const base = total();
+    const before = this.raidCoverage(groups, mode);
+    for (const b of bench) {
+      if (SignupMarker.isStandby(b)) { map.set(b.uid, 'Benched: volunteered as standby'); continue; }
+      let tie = false, closest = null;
+      for (let gi = 0; gi < groups.length; gi++) {
+        const g = groups[gi];
+        for (let si = 0; si < g.length; si++) {
+          const s = g[si];
+          if (s.openSlot || this.isPinned(s, gi, groups)) continue;
+          if (s.role !== b.role && (s.role === 'tank' || s.role === 'healer') && roleCount(s.role) - 1 < (floors[s.role] || 0)) continue;
+          g[si] = b;
+          const gain = total() - base;
+          g[si] = s;
+          if (s.role === b.role && gain >= -this.BENCH_TOLERANCE) tie = true;
+          if (!closest || gain > closest.gain) closest = { gi, si, gain };
+        }
+      }
+      if (tie) { map.set(b.uid, this.sitOutText(Fairness.benches(b))); continue; }
+      if (!closest) { map.set(b.uid, 'Benched: the raid is full'); continue; }
+      const g = groups[closest.gi];
+      const s = g[closest.si];
+      g[closest.si] = b;
+      const after = this.raidCoverage(groups, mode);
+      g[closest.si] = s;
+      const lost = [...before].filter(id => !after.has(id));
+      map.set(b.uid, lost.length ? 'Benched: buff plan needs ' + this.coverageName(lost[0]) : 'Benched: lowest value for the raid');
+    }
+    this._reasonCache = { key, map };
+    return map;
   },
 
   // ── PHASE 3c: 2-FOR-2 EXCHANGES ──────────────────────────────

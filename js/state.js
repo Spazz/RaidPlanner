@@ -643,3 +643,47 @@ const SignupMarker = {
   },
 };
 
+// ── SIT-OUT HISTORY (fair bench) ────────────────────────────────
+// The guild tracker's planner seed says, per person, in how many of the team's last raids (seed.raid.recentRaids, at most four) they sat on the bench
+// (signup.benchedRecently). When the raid is over-full the optimizer breaks a tie between players of the same worth toward benching whoever has sat
+// out least (Optimizer.refineFairness), and the Bench tray says why each player is out (Optimizer.benchReasons). Like the markers it is the guild's
+// note, not part of the plan: no share code, live link, saved roster or Undo step carries it. RaidContext loads it with every raid open and Refresh and
+// clears it when the raid context ends. Without it (no seed, or a team with no earlier raid) the optimizer behaves exactly as before.
+const Fairness = {
+  MAX_RAIDS: 8,
+  window: 0,              // raids counted (0 = nothing known)
+  byName: new Map(),      // lower-cased name -> times benched in the window
+  version: 0,             // bumped by every load/clear: caches of bench reasons key on it
+
+  key(name) { return String(name === undefined || name === null ? '' : name).trim().toLowerCase(); },
+  clear() {
+    if (!this.window && !this.byName.size) return;
+    this.window = 0;
+    this.byName = new Map();
+    this.version++;
+  },
+  // seed: GET /raids/:rid/planner -> the sit-out counts it carries; anything malformed is left out.
+  load(seed) {
+    this.clear();
+    const window = seed && seed.raid ? seed.raid.recentRaids : undefined;
+    if (!Number.isInteger(window) || window < 1 || window > this.MAX_RAIDS) return;
+    const byName = new Map();
+    for (const s of (seed && Array.isArray(seed.signups) ? seed.signups : [])) {
+      if (!s || typeof s.name !== 'string' || !Number.isInteger(s.benchedRecently)) continue;
+      const key = this.key(s.name);
+      if (key && !byName.has(key)) byName.set(key, Math.max(0, Math.min(window, s.benchedRecently)));
+    }
+    this.window = window;
+    this.byName = byName;
+    this.version++;
+  },
+  // True while a seed's history is loaded: the optimizer's fairness pass and the Bench tray's reasons run only then.
+  active() { return this.window > 0; },
+  // Times the player sat on the bench in the last `window` raids; 0 for someone the seed does not know (a new member, a hand-added player).
+  benches(player) {
+    if (!this.window || !player) return 0;
+    const n = this.byName.get(this.key(player.name));
+    return n === undefined ? 0 : n;
+  },
+};
+

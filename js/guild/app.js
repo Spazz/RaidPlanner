@@ -956,9 +956,10 @@
   app.collapseContext = collapseContext;
   app.buildCtx = buildCtx;
 
-  // Every mutation reply that carries `rosterFlags` or `attendanceFlags` refreshes the nav badge without a refetch.
+  // Every mutation reply that carries `rosterFlags`, `attendanceFlags` or `pendingClaims` refreshes the nav badge without a refetch.
   app.applyFlags = function (gid, res) {
     const gd = state.guilds[gid];
+    if (gd && res && typeof res.pendingClaims === 'number') gd.pendingClaims = res.pendingClaims;
     if (gd && res && res.rosterFlags && typeof res.rosterFlags === 'object') gd.rosterFlags = res.rosterFlags;
     if (gd && res && res.attendanceFlags && typeof res.attendanceFlags === 'object') gd.attendanceFlags = res.attendanceFlags;
   };

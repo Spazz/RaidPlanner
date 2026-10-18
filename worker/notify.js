@@ -165,6 +165,17 @@ const bulletList = (names) => {
   return shown.join('\n');
 };
 
+// The "Send a test post" message of Guild settings > Notifications: it names the team, pings nobody (no role, no people) and links nowhere.
+export function testBody(teamName) {
+  const team = safeText(teamName, 40);
+  return bodyOf({
+    embed: {
+      title: `Test post${team ? `: ${team}` : ''}`,
+      description: 'An officer sent this from Raidsmith to check that the webhook works. Nothing else was posted, and nobody was pinged.',
+    },
+  });
+}
+
 // raid: { starts_at, zone, title }; ctx: { teamName, link, roleId, size, counts: { signed, late, tentative, absence } }
 export function reminderBody(kind, raid, info) {
   const hours = kind === 'remind_2h' ? REMIND_NEAR_HOURS : REMIND_FAR_HOURS;

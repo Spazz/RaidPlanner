@@ -376,7 +376,8 @@ check('date-only raid: the raid page and the list say "Time not set"; the fetche
 
   let text = ws(stripTags((await openRaid(s, E, dateOnly))()));
   assert(text.includes('Time not set') && !/12:00/.test(text), text.slice(0, 500));
-  assert(!text.includes('Sign-ups Open until Sat Oct 24, '), 'no made-up time in the panel: ' + text.slice(0, 600));
+  // Wave 6: the panel does name the time its window closes at, with the reason - the team has no slot that Saturday, so 18:00 guild time (not a made-up start).
+  assert(text.includes('Sign-ups Open until Sat Oct 24, 6:00 PM (this raid has only a date and the team has no schedule slot that day, so sign-ups close at 18:00 guild time)'), text.slice(0, 600));
   text = ws(stripTags((await openRaid(s, E, timed))()));
   assert(text.includes('Starts Sun Oct 25, 8:00 PM') && !text.includes('Time not set'), text.slice(0, 500));
   text = ws(stripTags((await openList(s, E))()));

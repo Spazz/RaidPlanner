@@ -47,6 +47,8 @@ export const ACTION_GROUP = Object.freeze({
   'application.submit': 'roster', 'application.update': 'roster', 'application.accept': 'roster', 'application.delete': 'roster', 'apply.settings': 'settings',
   // PM wave 4: the Discord notification settings, and the Worker switching a dead webhook off (which has no actor).
   'notify.update': 'settings', 'notify.disabled': 'settings',
+  // PM wave 6: a test post to a team's webhook.
+  'notify.test': 'settings',
 });
 
 // Actions the Worker writes itself (no actor): the Activity log names "Raidsmith" for them instead of a former member.
@@ -340,6 +342,7 @@ export function describeRow(row, names = {}) {
       const changed = [...new Set((Array.isArray(after.changed) ? after.changed : []).map((key) => NOTIFY_LABEL[key] || key))];
       return `Changed the Discord notifications of ${team(after.teamId || ent)}${changed.length ? `: ${list(changed)}` : ''}`;
     }
+    case 'notify.test': return `Sent a test post to the Discord webhook of ${team(after.teamId || ent)}: ${after.result === 'sent' ? 'it arrived' : after.result === 'disabled' ? 'Discord refused it and the webhook was turned off' : 'it did not arrive'}`;
     case 'notify.disabled': return `Turned off the Discord webhook of ${team(after.teamId || ent)}: Discord answered ${Number(after.status) || 'with an error'}`;
 
     case 'bnet.link': return 'Linked a Battle.net account';

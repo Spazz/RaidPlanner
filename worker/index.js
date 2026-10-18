@@ -47,7 +47,7 @@ import { getAttention } from './routes/attention.js';
 import { getStanding, putStanding } from './routes/standing.js';
 import { confirmSeat, declineSeat, getPublishedRoster, publishRoster, unpublishRoster } from './routes/roster-publish.js';
 import { getAudit } from './routes/audit.js';
-import { getNotifications, putTeamNotifications } from './routes/notifications.js';
+import { getNotifications, postTestNotification, putTeamNotifications } from './routes/notifications.js';
 import { createCalendarLink, getCalendarFeed, getCalendarStatus, revokeCalendarLink } from './routes/calendar.js';
 import { getTrialReview } from './routes/trial.js';
 import { deleteNotice, getMyNotices, getNotices, postNotice, putNotice } from './routes/away.js';
@@ -244,6 +244,7 @@ export const ROUTES = [
   // PM wave 4: the Discord channel webhook of a team and what is posted to it. The webhook address is never sent back.
   { method: 'GET', path: '/api/guild/:gid/notifications', auth: true, handler: getNotifications },
   { method: 'PUT', path: '/api/guild/:gid/teams/:tid/notifications', auth: true, handler: putTeamNotifications },
+  { method: 'POST', path: '/api/guild/:gid/teams/:tid/notifications/test', auth: true, handler: postTestNotification },
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },

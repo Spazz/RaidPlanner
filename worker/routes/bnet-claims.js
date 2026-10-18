@@ -8,7 +8,7 @@ import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { toPerson } from '../person.js';
 import { CREATE_STATUSES } from '../roster-data.js';
 import { markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
-import { canSeeAvatars, guildToday, loadRosterFlags } from '../roster-view.js';
+import { canSeeAvatars, guildToday, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
 import { bad, constraintOf, limitError, requireTarget } from './roster.js';
 
 const MAX_LIST = 200;
@@ -159,6 +159,7 @@ export async function approveClaim(ctx) {
     outcome: plan.kind,
     personId,
     rosterFlags: await loadRosterFlags(db, guildContext, guildToday(guild, now)),
+    pendingClaims: await loadPendingClaims(db, guildContext),
   });
 }
 
@@ -178,5 +179,5 @@ export async function rejectClaim(ctx) {
     ).bind(ctx.session.user.id, now, claim.id, guildContext.guild.id),
   ]);
   if (results[1].meta.changes !== 1) throw new HttpError(409, 'claim_decided', 'Someone already decided this claim. Reload to see it.');
-  return jsonResponse({ claim: { id: claim.id, status: 'rejected' } });
+  return jsonResponse({ claim: { id: claim.id, status: 'rejected' }, pendingClaims: await loadPendingClaims(db, guildContext) });
 }

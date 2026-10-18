@@ -9,7 +9,7 @@ import { addDays, daysBetween, weekdayOf } from './attendance-calendar.js';
 import { SINGLE_LINE_STRIP, isRealDate } from './roster-data.js';
 
 export const AWAY_KINDS = ['away', 'late', 'leaving'];
-export const MAX_NOTICES = 30;        // per person
+export const MAX_NOTICES = 30;        // per person, counting only the notices that are current or still ahead (countsTowardCap)
 export const MAX_RANGE_DAYS = 366;    // a date range ends at most this many days after it starts
 export const REASON_MAX = 120;
 export const TEAM_WINDOW_DAYS = 28;   // the officers' "Away" list: the next four weeks
@@ -38,6 +38,15 @@ export function noticeCovers(notice, raidOn) {
   if (notice.weekday === null || notice.weekday === undefined) return to === null ? raidOn === notice.from : raidOn <= to; // a range has an end; without one only its first day
   if (to !== null && raidOn > to) return false;
   return weekdayOf(raidOn) === notice.weekday;
+}
+
+// Whether the notice counts toward the per-person cap (MAX_NOTICES) on the guild-local date `today`: while it is current or still ahead. A repeating
+// notice with no end always is; any other ends on its last day (`to`, else its first day), and one that ended before today no longer counts.
+// routes/away.js repeats this in SQL (COUNTS_TOWARD_CAP_SQL), so the two must agree.
+export function countsTowardCap(notice, today) {
+  const to = notice.to ?? null;
+  if (notice.weekday !== null && notice.weekday !== undefined && to === null) return true;
+  return (to ?? notice.from) >= today;
 }
 
 // The notices of a list that cover `raidOn`.

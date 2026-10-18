@@ -85,6 +85,10 @@
     if (v.closed === 'locked') return '<span class="gs-pill gs-pill-warn gs-su-status">Closed by an officer</span>';
     if (v.closed === 'started') return '<span class="gs-pill gs-pill-muted gs-su-status">The raid has started</span>';
     if (v.closed === 'deadline') return '<span class="gs-pill gs-pill-warn gs-su-status">Closed' + (typeof v.closesAt === 'number' ? ' ' + esc(G.pages.raids.momentText(v.closesAt, gd)) : '') + '</span>';
+    // A raid with only a date says which time it closes at and why.
+    if (v.closesSource && typeof v.closesAt === 'number') {
+      return '<span class="gs-pill gs-pill-ok gs-su-status">Open until ' + esc(G.pages.raids.momentText(v.closesAt, gd)) + ' (' + esc(G.pages.raids.closeNoteText(v)) + ')</span>';
+    }
     if (v.closeHours > 0 && typeof v.closesAt === 'number') {
       return '<span class="gs-pill gs-pill-ok gs-su-status">Open until ' + esc(G.pages.raids.momentText(v.closesAt, gd)) + ' (sign-ups close ' + esc(hoursText(v.closeHours)) + ' before the start)</span>';
     }

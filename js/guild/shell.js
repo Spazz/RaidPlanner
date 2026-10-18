@@ -94,7 +94,15 @@
     return isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }
 
-  function badgesOf(gd, teamId) { return { roster: rosterBadge(gd, teamId), attendance: attendanceBadge(gd, teamId) }; }
+  // Pending character claims (gd.pendingClaims: the Worker counts them for people who can decide them). They wait in the Review queue, which is under
+  // Attendance, so they add to its badge for the people who can open that queue for this team.
+  function claimsBadge(gd, teamId) {
+    if (!gd || !teamId || !hasAction(gd.me && gd.me.can, 'roster.edit') || !hasAction(gd.me && gd.me.can, 'attendance.review')) return 0;
+    const n = Number(gd.pendingClaims);
+    return isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  function badgesOf(gd, teamId) { return { roster: rosterBadge(gd, teamId), attendance: attendanceBadge(gd, teamId), claims: claimsBadge(gd, teamId) }; }
 
   // The Home count: open work across the viewer's teams (ctx.attentionCount, set from GET /attention), for attention viewers only.
   function homeBadge(ctx) {
@@ -113,18 +121,29 @@
     return { key: 'planner', label: 'Planner', short: 'Planner', icon: 'planner', href: '/', action: 'open-planner' };
   }
 
-  // badges: { roster, attendance } counts (a bare number is the Roster count; 0 = none). base: see guildHref.
+  // The Attendance item's label for a screen reader: the raids to review and the character claims waiting in the same queue.
+  function attendanceLabel(raids, claims) {
+    const parts = [];
+    if (raids) parts.push(raids + (raids === 1 ? ' raid' : ' raids'));
+    if (claims) parts.push(claims + (claims === 1 ? ' character claim' : ' character claims'));
+    return parts.length ? 'Attendance, ' + parts.join(' and ') + ' to review' : 'Attendance';
+  }
+
+  // badges: { roster, attendance, claims } counts (a bare number is the Roster count; 0 = none). Attendance shows its raids to review and the pending
+  // character claims together. base: see guildHref.
   function navItems(gid, can, badges, base) {
     const bs = typeof badges === 'number' ? { roster: badges } : (badges || {});
     const n = bs.roster > 0 ? bs.roster : 0;
-    const a = bs.attendance > 0 ? bs.attendance : 0;
+    const raids = bs.attendance > 0 ? bs.attendance : 0;
+    const claims = bs.claims > 0 ? bs.claims : 0;
+    const a = raids + claims;
     const b = base || '';
     const items = [
       { key: 'roster', label: 'Roster', short: 'Roster', icon: 'roster', href: guildHref(gid, 'roster', b), badge: n,
         ariaLabel: n ? 'Roster, ' + n + (n === 1 ? ' trial' : ' trials') + ' to decide' : 'Roster' },
       { key: 'raids', label: 'Raids', short: 'Raids', icon: 'raids', href: guildHref(gid, 'raids', b) },
       { key: 'attendance', label: 'Attendance', short: 'Attendance', icon: 'attendance', href: guildHref(gid, 'attendance', b), badge: a,
-        ariaLabel: a ? 'Attendance, ' + a + (a === 1 ? ' raid' : ' raids') + ' to review' : 'Attendance' },
+        ariaLabel: attendanceLabel(raids, claims) },
       { key: 'loot', label: 'Loot', short: 'Loot', icon: 'loot', href: guildHref(gid, 'loot', b) },
       plannerItem(),
     ];
@@ -486,6 +505,7 @@
     hasTiles: hasTiles,
     rosterBadge: rosterBadge,
     attendanceBadge: attendanceBadge,
+    claimsBadge: claimsBadge,
     allowsTeam: allowsTeam,
     breadcrumbItems: breadcrumbItems,
     settingsFrameHtml: settingsFrameHtml,

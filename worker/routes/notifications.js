@@ -1,14 +1,16 @@
 // Guild settings > Notifications (needs guild.teams): per team, the Discord channel webhook and what is posted to it (worker/notify.js).
 //   GET /api/guild/:gid/notifications          every active team's settings
 //   PUT /api/guild/:gid/teams/:tid/notifications   one team's settings; a field left out keeps its value
+//   POST /api/guild/:gid/teams/:tid/notifications/test   one test post to the team's webhook (five an hour per team); a refused webhook is switched off like a real post's
 // The webhook address is a secret: it is stored, used by the Worker and never sent back. The reply carries only `set`, a hint (".../<last 4>") and its state.
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
+import { TEST_POST_LIMIT, TEST_POST_WINDOW_MS, enforceRateLimit } from '../ratelimit.js';
 import {
   DEFAULT_NOREPLY_HOURS, NOREPLY_HOURS, parseRoleMention, parseWebhookUrl, webhookHint,
 } from '../notify.js';
-import { TEAM_NOTIFY_COLUMNS } from '../notify-store.js';
+import { TEAM_NOTIFY_COLUMNS, loadTeamNotify, sendTestPost, usable } from '../notify-store.js';
 import { bad } from './roster.js';
 
 const SWITCHES = [
@@ -118,4 +120,28 @@ export async function putTeamNotifications(ctx) {
   }
   const fresh = await db.prepare(`SELECT ${TEAM_NOTIFY_COLUMNS} FROM team_notifications WHERE team_id = ?`).bind(team.id).first();
   return jsonResponse({ team: teamView(team, fresh), options: { noreplyHours: NOREPLY_HOURS } });
+}
+
+// POST /api/guild/:gid/teams/:tid/notifications/test -> { result: 'sent' | 'disabled' | 'failed', status, team } (guild.teams). The post goes to the saved address, which
+// the reply never repeats. 409 no_webhook / webhook_off when there is nothing to post to (those do not use up one of the five an hour), 429 past the limit.
+export async function postTestNotification(ctx) {
+  const { db, env } = ctx;
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  requireAction(guildContext, 'guild.teams');
+  const guild = guildContext.guild;
+  const team = await db.prepare('SELECT id, name FROM teams WHERE id = ? AND guild_id = ? AND archived = 0').bind(ctx.params.tid, guild.id).first();
+  if (!team) throw new HttpError(404, 'not_found', 'That team does not exist.');
+  const settings = await loadTeamNotify(db, team.id);
+  if (!settings || settings.webhook_url === null) throw new HttpError(409, 'no_webhook', 'Save a webhook address for this team first.');
+  if (!usable(settings, env)) throw new HttpError(409, 'webhook_off', 'This webhook was switched off. Paste a new address and save it first.');
+  await enforceRateLimit(db, ctx.session.user.id, ctx.now(), { key: `ntest:${team.id}`, limit: TEST_POST_LIMIT, windowMs: TEST_POST_WINDOW_MS });
+
+  const sent = await sendTestPost(ctx, {
+    guildId: guild.id, teamId: team.id, teamName: team.name, webhookUrl: settings.webhook_url, actorUserId: ctx.session.user.id,
+  });
+  await db.batch([auditStatement(ctx, {
+    guildId: guild.id, actorUserId: ctx.session.user.id, action: 'notify.test', entityType: 'team', entityId: team.id, after: { teamId: team.id, result: sent.result },
+  })]);
+  const fresh = await loadTeamNotify(db, team.id);
+  return jsonResponse({ result: sent.result, status: sent.status, team: teamView(team, fresh) });
 }

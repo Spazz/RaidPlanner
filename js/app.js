@@ -1272,6 +1272,7 @@ const RaidContext = {
     c.opening = fetched.then(seed => (token === this.token ? this.apply(c, seed, token) : false), err => {
       if (token !== this.token) return false;
       this.current = null;
+      Fairness.clear();
       this.render();
       showToast(this.errorText(err));
       return false;
@@ -1283,13 +1284,15 @@ const RaidContext = {
     this.token++;
     if (!this.current) return;
     this.current = null;
+    Fairness.clear(); // the raid's sit-out history ends with the raid context
     this.render();
   },
 
   async apply(c, seed, token) {
-    if (!seed || !seed.raid) { this.current = null; this.render(); showToast('That raid could not be opened.'); return false; }
+    if (!seed || !seed.raid) { this.current = null; Fairness.clear(); this.render(); showToast('That raid could not be opened.'); return false; }
     c.seed = seed;
     c.seedJson = RaidLink.seedToRaidHelper(seed);
+    Fairness.load(seed); // before the plan is built: the bench choice reads it
     // A /<version>/<id> link being opened at page load owns the plan on screen until it is done.
     for (let i = 0; i < 100 && LiveSync.opening; i++) await new Promise(resolve => setTimeout(resolve, 100));
     const version = Object.prototype.hasOwnProperty.call(GameVersions, seed.raid.gameVersion) ? seed.raid.gameVersion : State.gameVersion;
@@ -1398,6 +1401,7 @@ const RaidContext = {
     if (this.current !== c || State.planId !== c.planId) return null;
     c.seed = seed;
     c.seedJson = RaidLink.seedToRaidHelper(seed);
+    Fairness.load(seed);
     const diff = Import.diffRaidHelperSignUps(c.seedJson);
     if (!diff.success) { report('Refresh failed: ' + diff.error, true); return null; }
     return diff;

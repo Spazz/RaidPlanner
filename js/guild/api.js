@@ -262,6 +262,7 @@
   G.api.notifications = {
     get: function (gid) { return G.api.get(guildPath(gid, '/notifications')); },
     save: function (gid, teamId, body) { return G.api.put(guildPath(gid, '/teams/' + enc(teamId) + '/notifications'), body); },
+    test: function (gid, teamId) { return G.api.post(guildPath(gid, '/teams/' + enc(teamId) + '/notifications/test'), {}); },
   };
   G.api.reminders = {
     optOut: function (optOut) { return G.api.put('/auth/reminders', { optOut: !!optOut }); },

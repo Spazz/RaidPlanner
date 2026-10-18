@@ -374,6 +374,9 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('notify.update', 'team', 't_a', { teamId: 't_a' }, { teamId: 't_a', changed: ['webhook', 'reminders', 'noreplyHours'] }), 'Changed the Discord notifications of Alpha: webhook, raid reminders and no-reply lead time'],
     [row('notify.update', 'team', 't_a', null, { teamId: 't_a', changed: [] }), 'Changed the Discord notifications of Alpha'],
     [row('notify.disabled', 'team', 't_b', null, { teamId: 't_b', status: 404 }), 'Turned off the Discord webhook of Bravo: Discord answered 404'],
+    [row('notify.test', 'team', 't_b', null, { teamId: 't_b', result: 'sent' }), 'Sent a test post to the Discord webhook of Bravo: it arrived'],
+    [row('notify.test', 'team', 't_b', null, { teamId: 't_b', result: 'disabled' }), 'Sent a test post to the Discord webhook of Bravo: Discord refused it and the webhook was turned off'],
+    [row('notify.test', 'team', 't_b', null, { teamId: 't_b', result: 'failed' }), 'Sent a test post to the Discord webhook of Bravo: it did not arrive'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {

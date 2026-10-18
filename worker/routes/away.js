@@ -10,7 +10,7 @@ import { addDays } from '../attendance-calendar.js';
 import { recomputeRaid } from '../attendance-store.js';
 import { displayCharacter } from '../attendance-view.js';
 import {
-  MAX_NOTICES, TEAM_WINDOW_DAYS, coveredDates, noticeCovers, noticeOfRow, validateNotice,
+  MAX_NOTICES, TEAM_WINDOW_DAYS, countsTowardCap, coveredDates, noticeCovers, noticeOfRow, validateNotice,
 } from '../away.js';
 import { isId, newId } from '../ids.js';
 import { reconcileStanding } from '../standing.js';
@@ -28,6 +28,8 @@ const notFound = () => new HttpError(404, 'not_found', 'That notice does not exi
 const NOTICE_SELECT = 'SELECT id, player_id, kind, at_time, starts_on, ends_on, weekday, reason, created_at FROM away_notices';
 const LIST_SQL = `${NOTICE_SELECT} WHERE guild_id = ? AND player_id = ? ORDER BY starts_on, created_at, id`;
 const BY_ID_SQL = `${NOTICE_SELECT} WHERE id = ? AND guild_id = ?`;
+// The notices that count toward the per-person cap (binds today, the guild-local date): current or still ahead - countsTowardCap in worker/away.js says the same.
+const COUNTS_TOWARD_CAP_SQL = '((weekday IS NOT NULL AND ends_on IS NULL) OR COALESCE(ends_on, starts_on) >= ?)';
 
 // The notice as the API shows it. `reason` only where the viewer is the person or an officer over them (every caller of this module is one of the two).
 const noticeView = (row, mine) => ({
@@ -142,8 +144,10 @@ export async function getMyNotices(ctx) {
   const guild = guildContext.guild;
   const personId = await ownPersonId(ctx, guildContext);
   const rows = personId ? await listFor(ctx, guildContext, personId) : [];
+  const today = guildToday(guild, ctx.now());
   return jsonResponse({
-    today: guildToday(guild, ctx.now()), timeZone: guild.time_zone, personId, notices: rows.map((row) => noticeView(row, true)), max: MAX_NOTICES,
+    today, timeZone: guild.time_zone, personId, notices: rows.map((row) => noticeView(row, true)), max: MAX_NOTICES,
+    active: rows.filter((row) => countsTowardCap(noticeOfRow(row), today)).length, // the count the cap applies to: notices that ended are not in it
   });
 }
 
@@ -224,7 +228,8 @@ export async function postNotice(ctx) {
   if (!personId) throw forbidden();
   const access = await personAccess(ctx, guildContext, personId, ownId);
   if (!access.own && !access.officer) throw forbidden();
-  const input = readInput(ctx, guildToday(guild, ctx.now()), access);
+  const today = guildToday(guild, ctx.now());
+  const input = readInput(ctx, today, access);
 
   const id = newId('an', ctx.randomBytes);
   const now = ctx.now();
@@ -235,15 +240,15 @@ export async function postNotice(ctx) {
     db.prepare(
       `INSERT INTO away_notices (id, guild_id, player_id, kind, at_time, starts_on, ends_on, weekday, reason, created_by, created_at, updated_at)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE ${guard.sql} AND (SELECT COUNT(*) FROM away_notices WHERE guild_id = ? AND player_id = ?) < ?
+        WHERE ${guard.sql} AND (SELECT COUNT(*) FROM away_notices WHERE guild_id = ? AND player_id = ? AND ${COUNTS_TOWARD_CAP_SQL}) < ?
        RETURNING id`,
-    ).bind(id, guild.id, personId, input.kind, input.atTime, input.from, input.to, input.weekday, input.reason, ctx.session.user.id, now, now, ...guard.params, guild.id, personId, MAX_NOTICES),
+    ).bind(id, guild.id, personId, input.kind, input.atTime, input.from, input.to, input.weekday, input.reason, ctx.session.user.id, now, now, ...guard.params, guild.id, personId, today, MAX_NOTICES),
   ];
   if (forOther) statements.push(awayAudit(ctx, guildContext, 'away.set', personId, null, { kind: input.kind, personId }, CHANGED_ONE));
   if (affected.length) statements.push(bumpStatement(db, guild.id, affected, { sql: 'EXISTS (SELECT 1 FROM away_notices WHERE id = ?)', params: [id] }));
   const results = await db.batch(statements);
   if (!results[0].results.length) {
-    const taken = await db.prepare('SELECT COUNT(*) AS n FROM away_notices WHERE guild_id = ? AND player_id = ?').bind(guild.id, personId).first('n');
+    const taken = await db.prepare(`SELECT COUNT(*) AS n FROM away_notices WHERE guild_id = ? AND player_id = ? AND ${COUNTS_TOWARD_CAP_SQL}`).bind(guild.id, personId, today).first('n');
     throw taken >= MAX_NOTICES ? tooMany(access.own) : forbidden();
   }
   await afterAwayChange(ctx, guildContext, personId, affected);

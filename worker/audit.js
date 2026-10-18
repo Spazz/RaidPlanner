@@ -87,6 +87,7 @@ export const AUDIT_ACTIONS = [
   'application.delete',
   'notify.update',
   'notify.disabled',
+  'notify.test',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

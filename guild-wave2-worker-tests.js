@@ -2979,7 +2979,7 @@ check('away: a member files, lists, changes and removes their own notice; the re
   // A repeating weekday with a time, no end.
   const late = await s.file('erin', { kind: 'late', from: '2027-01-21', weekday: 4, atTime: '21:00' });
   assert.deepEqual([late.kind, late.atTime, late.from, late.to, late.weekday, late.reason], ['late', '21:00', '2027-01-21', null, 4, null]);
-  assert.deepEqual(await s.mineList('erin'), { today: '2027-01-16', timeZone: 'America/New_York', personId: s.p.eliora, notices: [notice, late], max: 30 });
+  assert.deepEqual(await s.mineList('erin'), { today: '2027-01-16', timeZone: 'America/New_York', personId: s.p.eliora, notices: [notice, late], max: 30, active: 2 });
   // Change it: PUT replaces the fields.
   s.w.advance(1000);
   r = await s.put('erin', notice.id, { kind: 'leaving', from: '2027-01-20', to: '2027-01-24', atTime: '22:00', reason: null });
@@ -2992,7 +2992,7 @@ check('away: a member files, lists, changes and removes their own notice; the re
   assert.deepEqual([r.json.deleted, r.json.notices.map((entry) => entry.id)], [true, [notice.id]]);
   assert.equal((await s.stored()).length, 1);
   // A viewer with no roster person (the Guild Master) has none: an empty list, and nothing to write.
-  assert.deepEqual(await s.mineList('alice'), { today: '2027-01-16', timeZone: 'America/New_York', personId: null, notices: [], max: 30 });
+  assert.deepEqual(await s.mineList('alice'), { today: '2027-01-16', timeZone: 'America/New_York', personId: null, notices: [], max: 30, active: 0 });
   const nobody = await s.post('alice', { kind: 'away', from: '2027-01-20', to: '2027-01-21' });
   assert.deepEqual([nobody.status, nobody.json.error], [403, 'forbidden']);
   // Away ignores a time.

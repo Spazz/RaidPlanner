@@ -223,8 +223,9 @@ check('transient: Undo and a rebuilt copy keep the markers of the same plan, ano
 // ── Standby ──────────────────────────────────────────────────────
 // A Standby player (the guild's "happy to sit out if needed") is held out of the first pass of Optimizer.selectSeated as far
 // as the overflow (candidates - seats) needs (Optimizer.holdStandby), never below the tank/healer floors, and joins the
-// overflow list of the bench refinement (refineBench). That trade still pulls a held player back in when seating them raises
-// the raid total by more than its threshold (0.5): buff providers come back, a player who adds next to nothing stays out.
+// overflow list of the bench refinement (refineBench). That trade pulls a held player back in only when seating them raises
+// the raid total by more than its tolerance (0.5) AND brings a party buff, raid debuff or utility the raid would otherwise lack
+// (wave 6, Optimizer.raidCoverage): buff providers come back, a player who adds only value (a sixth healer) stays out.
 // T50's 25 primary sign-ups (2 tanks, 6 healers, 17 DPS) plus two more Destruction Warlocks named to sort first: 27 candidates.
 const T50 = Scenarios.scenarios.find(s => s.id === 'T50').entries.filter(e => !e[2]);
 const E27 = [...T50, ['destro', 'Aaa'], ['destro', 'Aab']];
@@ -304,15 +305,20 @@ check('Standby: the role floors win - Standby tank and healers at the floor stay
   assert(State.groups.flat().filter(p => p.role === 'healer').length >= 5, 'at least the floor of healers sits');
 });
 
-check('Standby: the bench refinement pulls a held Standby player back in when seating them is worth more than its threshold (buff providers, valuable healers); one who adds next to nothing stays out', () => {
-  // Elemental Shaman, Enhancement Shaman (Windfury), Restoration Shaman, Shadow Priest and a Holy Priest beyond the healer floor: each
-  // is held first, then traded back in (the raid total rises by 3 to 60 points against the 0.5 threshold), and two non-Standby players sit out.
-  for (const name of ['Stormcaller', 'Thunderfist', 'Spiritlink', 'Dreamless', 'Seraphine']) {
+check('Standby: the bench refinement pulls a held Standby player back in only when seating them brings a buff the raid would lack; one who adds only value stays out', () => {
+  // Elemental Shaman, Enhancement Shaman (Windfury), Restoration Shaman and Shadow Priest: each is held first, then traded back in (the raid total
+  // rises by 3 to 60 points against the 0.5 tolerance, and each brings a buff, debuff or utility nobody else seated has), and two non-Standby players sit out.
+  for (const name of ['Stormcaller', 'Thunderfist', 'Spiritlink', 'Dreamless']) {
     const benched = runEntries(E27, [name]);
     assert(seatedNames().includes(name), name + ' is seated again');
     assert.equal(benched.length, 2);
     assert.equal(State.bench.filter(p => SignupMarker.isStandby(p)).length, 0, name);
   }
+  // The Holy Priest beyond the healer floor is worth more to the raid total than the 0.5 tolerance (the old rule seated him again), but he brings nothing
+  // the raid lacks: the volunteer stays out and a player who did not volunteer sits.
+  const benched = runEntries(E27, ['Seraphine']);
+  assert(benched.includes('Seraphine') && benched.length === 2, benched.join(','));
+  assert.equal(standbySeated(), 0);
   // The only Affliction Warlock adds nothing the refinement can use: he stays out (test above).
 });
 

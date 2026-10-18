@@ -37,7 +37,7 @@ var Modal = { confirm: async () => true };
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'RaidContext', 'RaidLink', 'RaidHelperSync', 'currentShareCode',
-  'PlanSession', 'ChangeLog', 'currentLiveLink', 'initGroups', 'RosterEdit', 'LocalPicks'];
+  'PlanSession', 'ChangeLog', 'currentLiveLink', 'initGroups', 'RosterEdit', 'LocalPicks', 'Fairness'];
 
 function memoryStorage() {
   const data = {};
@@ -673,6 +673,44 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     assert.equal(env.api.State.eventStartTime, null);
     const known = await openSeed(SEED());
     assert.equal(known.api.State.eventStartTime, Date.UTC(2026, 9, 25, 0, 0));
+  });
+
+  // ── PM wave 6: the fair bench's sit-out history rides in the seed ──
+  await check('fair bench: the seed\'s recentRaids and benchedRecently load before the plan is built, Refresh replaces them, and leaving the raid forgets them', async () => {
+    const withHistory = (counts, window = 4) => SEED({
+      raid: Object.assign(SEED().raid, { recentRaids: window }),
+      signups: SIGNUPS().map(s => (counts[s.name] === undefined ? s : Object.assign({}, s, { benchedRecently: counts[s.name] }))),
+    });
+    const env = makeEnv();
+    let seed = withHistory({ Aldric: 2, Brindle: 0, Cassia: 4 });
+    guildRoute(env, () => seed);
+    const { State, RaidContext, Fairness, PlanStore } = env.api;
+    assert(!Fairness.active());
+    await RaidContext.route(HASH);
+    assert(Fairness.active() && Fairness.window === 4);
+    assert.deepEqual(plain(['Aldric', 'Brindle', 'Cassia', 'Fenwick'].map(name => Fairness.benches({ name }))), [2, 0, 4, 0]);
+    // Refresh in the planner reads the guild again: the history it carries replaces the old one.
+    seed = withHistory({ Aldric: 1, Fenwick: 3 }, 3);
+    const refreshed = await RaidContext.fetchDiff(() => {});
+    assert(refreshed && refreshed.success);
+    assert.deepEqual(plain([Fairness.window, ...['Aldric', 'Brindle', 'Cassia', 'Fenwick'].map(name => Fairness.benches({ name }))]), [3, 1, 0, 0, 3]);
+    // A seed without the fields (a team's first raid, an older Worker) has none.
+    seed = SEED();
+    await RaidContext.fetchDiff(() => {});
+    assert(!Fairness.active(), 'no recentRaids: no history');
+    seed = withHistory({ Aldric: 2 });
+    await RaidContext.fetchDiff(() => {});
+    assert(Fairness.active());
+    RaidContext.leave();
+    assert(!Fairness.active() && Fairness.byName.size === 0, 'the history ends with the raid context');
+    // Another plan opened over the raid ends the context and the history with it.
+    await RaidContext.route(HASH);
+    assert(Fairness.active());
+    const other = PlanStore.capture();
+    other.planId = 'plan:other';
+    assert(PlanStore.restore(other));
+    RaidContext.onCommit();
+    assert(!Fairness.active());
   });
 
   console.log(`\nRaid context tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

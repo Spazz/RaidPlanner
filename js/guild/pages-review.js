@@ -323,6 +323,7 @@
       : Promise.resolve([]);
     return Promise.all([G.api.get(A().apiBase(gid) + '/attendance/review?team=' + encodeURIComponent(teamId)), claims]).then(function (got) {
       const data = got[0];
+      if (Array.isArray(got[1])) gd.pendingClaims = got[1].length; // the Attendance badge counts these: it is right again as soon as the queue is
       a().review = { gid: gid, teamId: teamId, data: data, claims: got[1], loot: Array.isArray(data && data.lootUnmatched) ? data.lootUnmatched : [], filter: a().review && a().review.gid === gid && a().review.teamId === teamId ? a().review.filter : 'all' };
       return null;
     });

@@ -6,7 +6,7 @@
 // ctx: { db, env, fetch, now, randomBytes, log } (the Worker's request base, or the scheduler's).
 import { auditStatement } from './audit.js';
 import { newId } from './ids.js';
-import { LOG_KEEP_DAYS, RETRY_LIMIT, classifyReply, isWebhookUrl } from './notify.js';
+import { LOG_KEEP_DAYS, RETRY_LIMIT, classifyReply, isWebhookUrl, testBody } from './notify.js';
 
 const POST_TIMEOUT_MS = 5000;
 const DAY_MS = 86400000;
@@ -74,6 +74,31 @@ function finishStatement(ctx, spec, outcome, httpStatus, people) {
   ).bind(outcome, RETRY_LIMIT, httpStatus, people, sent ? ctx.now() : null, spec.guildId, spec.dedupeKey);
 }
 
+// The statements that switch a team's webhook off after Discord refused it (404 / 401 / 403) and say so in the audit log: the same for a real post and a
+// test post. Only the address that was refused goes off; a new one saved in the meantime stays on. actorUserId: the officer who sent a test post, null for a scheduled post.
+const disableStatements = (ctx, spec, status, actorUserId) => [
+  ctx.db.prepare(
+    "UPDATE team_notifications SET webhook_state = 'disabled', disabled_at = ?, disabled_status = ? WHERE team_id = ? AND guild_id = ? AND webhook_url = ? AND webhook_state = 'ok'",
+  ).bind(ctx.now(), status, spec.teamId, spec.guildId, spec.webhookUrl),
+  auditStatement(ctx, {
+    guildId: spec.guildId, actorUserId, action: 'notify.disabled', entityType: 'team', entityId: spec.teamId, after: { teamId: spec.teamId, status },
+  }, { sql: 'changes() = 1', params: [] }),
+];
+
+// "Send a test post": one message to the team's webhook, outside the dedupe log (the route rate-limits it). spec: { guildId, teamId, teamName, webhookUrl,
+// actorUserId } -> { result: 'sent' | 'disabled' | 'failed', status }. A reply that would switch a real post's webhook off (404 / 401 / 403) switches this one off
+// too; any other failure (a network error, 429, 5xx, a body Discord refused) is only reported. Never throws on a failed post.
+export async function sendTestPost(ctx, spec) {
+  if (!isWebhookUrl(spec.webhookUrl, ctx.env)) return { result: 'failed', status: null };
+  const status = await postJson(ctx, spec.webhookUrl, testBody(spec.teamName));
+  const outcome = classifyReply(status);
+  if (outcome === 'disable') {
+    await ctx.db.batch(disableStatements(ctx, spec, status, spec.actorUserId ?? null));
+    return { result: 'disabled', status };
+  }
+  return { result: outcome === 'sent' ? 'sent' : 'failed', status };
+}
+
 // spec: { guildId, teamId, raidId | null, kind, dedupeKey, webhookUrl, build: async () => { body, people } | null }
 // -> { result: 'sent' | 'retry' | 'failed' | 'disabled' | 'duplicate' | 'nothing' | 'skipped', status? }. Never throws.
 export async function notifyOnce(ctx, spec) {
@@ -88,12 +113,7 @@ export async function notifyOnce(ctx, spec) {
     if (outcome === 'disable') {
       await ctx.db.batch([
         finishStatement(ctx, spec, 'retry', status, built.people || 0), // never delivered: a new webhook may still deliver it
-        ctx.db.prepare(
-          "UPDATE team_notifications SET webhook_state = 'disabled', disabled_at = ?, disabled_status = ? WHERE team_id = ? AND guild_id = ? AND webhook_url = ? AND webhook_state = 'ok'",
-        ).bind(ctx.now(), status, spec.teamId, spec.guildId, spec.webhookUrl),
-        auditStatement(ctx, {
-          guildId: spec.guildId, actorUserId: null, action: 'notify.disabled', entityType: 'team', entityId: spec.teamId, after: { teamId: spec.teamId, status },
-        }, { sql: 'changes() = 1', params: [] }),
+        ...disableStatements(ctx, spec, status, null),
       ]);
       return { result: 'disabled', status };
     }

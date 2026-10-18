@@ -2,7 +2,7 @@
 // and the nav-badge counts. Every response that shows a person goes through here, so a member never gets a
 // field an officer would (notes, nicknames, flags) by taking a different route.
 import { isOwnPlayer, memberSql } from './membership.js';
-import { allows } from './permissions.js';
+import { allows, isGranted } from './permissions.js';
 import { toPerson } from './person.js';
 import { roleOf, todayIn, trialFlag } from './roster-data.js';
 
@@ -171,6 +171,14 @@ export async function loadRosterFlags(db, guildContext, today) {
     if (flags[row.team_id] !== undefined && trialFlag(row.status, row.trial_end, today)) flags[row.team_id]++;
   }
   return flags;
+}
+
+// The pending character claims of the guild, for the Attendance nav badge (the Review queue lists them): the same count the Needs attention item shows.
+// Only for people who can decide claims (roster.edit anywhere); 0 for everyone else.
+export async function loadPendingClaims(db, guildContext) {
+  if (!isGranted(guildContext.can['roster.edit'])) return 0;
+  const row = await db.prepare("SELECT COUNT(*) AS n FROM character_claims WHERE guild_id = ? AND status = 'pending'").bind(guildContext.guild.id).first();
+  return row ? row.n : 0;
 }
 
 // The reply for a person: the record plus the refreshed nav-badge counts.
