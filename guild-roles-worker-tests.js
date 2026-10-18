@@ -1176,7 +1176,7 @@ async function seedData(s) {
   const other = await s.call('alice', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-21', zone: 'Magtheridon\'s Lair' });
   assert.equal(other.status, 201, other.text);
   const award = (n, name, cls, extra) => `INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, item_name, item_quality, awarded_at, winner_name, winner_name_key, winner_realm, winner_realm_key, winner_class, roll_type, tag, note, awarded_by, created_at, updated_at)
-    VALUES ('lo_${n}', '${s.guildId}', '${raid.json.raid.id}', '${s.A}', 'checksum${n}xx', ${30000 + n}, 'Item ${n}', 4, ${1_799_000_000_000 + n}, ${name ? `'${name}'` : 'NULL'}, ${name ? `'${name.toLowerCase()}'` : 'NULL'}, ${name ? "'Dreamscythe'" : 'NULL'}, ${name ? "'dreamscythe'" : "''"}, ${cls ? `'${cls}'` : 'NULL'}, 'MS', ${extra}, 'SECRET LOOT NOTE', 'SecretMasterName', 1, 1)`;
+    VALUES ('lo_${String(n).padStart(22, '0')}', '${s.guildId}', '${raid.json.raid.id}', '${s.A}', 'checksum${n}xx', ${30000 + n}, 'Item ${n}', 4, ${1_799_000_000_000 + n}, ${name ? `'${name}'` : 'NULL'}, ${name ? `'${name.toLowerCase()}'` : 'NULL'}, ${name ? "'Dreamscythe'" : 'NULL'}, ${name ? "'dreamscythe'" : "''"}, ${cls ? `'${cls}'` : 'NULL'}, 'MS', ${extra}, 'SECRET LOOT NOTE', 'SecretMasterName', 1, 1)`;
   s.w.db.sqlite.exec(award(1, 'Thoren', 'PALADIN', "'MS'"));
   s.w.db.sqlite.exec(award(2, null, null, "'DE'"));
   return { people, raid: raid.json.raid.id, upcoming: upcoming.json.raid.id };
@@ -1643,6 +1643,60 @@ check('guest and public views go through the same permission resolution: one rol
   const afterRogue = await gst();
   assert.deepEqual(Object.keys(afterRogue.sections), ['roster'], 'the guest still gets only what it may read');
   assert(!JSON.stringify(afterRogue).toLowerCase().includes('secret'));
+});
+
+
+// ---------------------------------------------------------------------------
+// Custom roles on the real routes, and the guild-ownership edge
+
+check('a custom role works on the real routes: Loot council (loot.edit only) edits loot, nothing else, until the role changes; a guild.teams role adds teams but cannot run roles', async () => {
+  const s = await scenario();
+  await seedData(s);
+  const award = `lo_${'1'.padStart(22, '0')}`;
+  const patch = (who) => s.call(who, 'PATCH', `/loot/${award}`, { note: 'Went to the bank' });
+  assert.equal((await patch('dave')).status, 403, 'a Member cannot');
+  const council = await s.makeRole('Loot council', { 'loot.edit': 'guild' });
+  assert.equal((await s.setRoles('dave', { officer: false, teamLeadTeamIds: [], roles: [{ roleId: council, teamId: null }] })).status, 200);
+  const done = await patch('dave');
+  assert.equal(done.status, 200, done.text);
+  assert.equal(done.json.award.note, 'Went to the bank');
+  assert.equal((await patch('erin')).status, 403, 'only the holder');
+  // Dave still cannot do anything else an Officer can.
+  assert.equal((await s.call('dave', 'POST', '/teams', { name: 'Nope' })).status, 403);
+  assert.equal((await s.call('dave', 'GET', '/people')).status, 403);
+  assert.equal((await s.call('dave', 'POST', `/people/${s.ids.erin}/block`, { reason: '' })).status, 403);
+  assert.equal((await s.call('dave', 'POST', '/roster', { teamId: s.A, name: 'Nobody', class: 'MAGE', mainSpec: null, offSpec: null, status: 'raider' })).status, 403);
+  // Take loot.edit away and he is a Member again at once.
+  assert.equal((await s.call('alice', 'PUT', `/roles/${council}`, { name: 'Loot council', permissions: { 'guild.teams': 'guild' } })).status, 200);
+  assert.equal((await patch('dave')).status, 403);
+  assert.equal((await s.call('dave', 'POST', '/teams', { name: 'Charlie' })).status, 201, 'guild.teams works through a custom role');
+  // guild.roles is the Officer role\'s alone: a custom role cannot run roles, and rank stays Member so it cannot block or edit anyone.
+  assert.equal((await s.call('dave', 'PUT', `/people/${s.ids.erin}/roles`, { officer: true, teamLeadTeamIds: [] })).status, 403);
+  assert.equal((await s.call('dave', 'GET', '/roles')).status, 403);
+  // A team Raid-leader role: raids.edit for one team only.
+  const leader = await s.makeRole('Raid leader', { 'raids.edit': 'team', 'raids.view': 'guild' });
+  assert.equal((await s.setRoles('gina', { officer: false, teamLeadTeamIds: [], roles: [{ roleId: leader, teamId: s.A }] })).status, 200);
+  assert.equal((await s.call('gina', 'POST', '/raids', { teamId: s.A, raidOn: '2027-03-01' })).status, 201);
+  assert.equal((await s.call('gina', 'POST', '/raids', { teamId: s.B, raidOn: '2027-03-02' })).status, 403, 'not their team');
+});
+
+check('guild ownership: only an Officer made by hand can inherit the guild when the Guild Master leaves; one Discord gives never does', async () => {
+  const s = await scenario();
+  assert.equal((await s.setMaps([{ discordRoleId: D_OFFICERS, roleId: 'officer', teamId: null }])).status, 200);
+  assert.equal((await s.setRoles('bob', { officer: false, teamLeadTeamIds: [] })).status, 200, 'Bob is no longer a manual Officer');
+  s.discordRoles('dave', [D_OFFICERS]);
+  await s.signInAgain('dave');
+  assert.equal((await s.me('dave')).can['guild.access'], 'guild');
+  // The Guild Master has left the Discord server (the guild keeps other members): who would take over?
+  s.w.db.sqlite.exec(`DELETE FROM user_servers WHERE user_id = '${s.ids.alice}'`);
+  const impact = async () => (await s.w.call(s.jars.alice, 'GET', '/auth/me')).json.deleteImpact;
+  assert.deepEqual((await impact()).autoPromote.map((g) => [g.name, g.to]), [['Ember', null]], 'a Discord Officer does not count');
+  // An Officer set by hand does.
+  s.w.db.sqlite.exec(`INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, source, assigned_at) VALUES ('ra_hand', '${s.guildId}', '${s.ids.bob}', 'officer', NULL, 'manual', 5)`);
+  assert.equal((await impact()).autoPromote[0].to.id, s.ids.bob);
+  // And the delete does what the impact said.
+  assert.equal((await s.w.call(s.jars.alice, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
+  assert.deepEqual((await s.w.rows("SELECT user_id FROM role_assignments WHERE role_id = 'guild_master'")).map((r) => r.user_id), [s.ids.bob]);
 });
 
 

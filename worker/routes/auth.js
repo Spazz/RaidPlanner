@@ -188,8 +188,9 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
 
 // The member rule (worker/membership.js) for the guilds' lists below, with the departing or asking user as an expression.
 // The Officer who would become Guild Master: earliest assigned_at among current, unblocked members. `userExpr` is the departing user (excluded).
+// Only an Officer an officer made by hand counts: a role Discord gives (source 'discord') never decides who owns the guild.
 const successorSql = (userExpr) => `SELECT so.user_id FROM role_assignments so
-      WHERE so.guild_id = g.id AND so.role_id = 'officer' AND so.user_id != ${userExpr}
+      WHERE so.guild_id = g.id AND so.role_id = 'officer' AND so.source = 'manual' AND so.user_id != ${userExpr}
         AND ${memberSql('so.user_id', 'g.id', 'g.discord_server_id')}
       ORDER BY so.assigned_at, so.id LIMIT 1`;
 
