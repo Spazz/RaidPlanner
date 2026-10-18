@@ -90,19 +90,22 @@ const LivePoll = {
 };
 
 // What a live-link update must not wipe from this browser's copy: the totem and
-// aura picks (State.buffOverrides) are not part of the share code, and an open
-// editor, picker or Undo points at players by uid, which a re-import renews.
-// Players are matched by name; a pick follows its player to their new group
-// and is dropped if that player can no longer provide the buff.
+// aura picks (State.buffOverrides) and the sign-up markers (SignupMarker) are not
+// part of the share code, and an open editor, picker or Undo points at players by
+// uid, which a re-import renews. Players are matched by name; a pick follows its
+// player to their new group and is dropped if that player can no longer provide
+// the buff.
 const LocalPicks = {
   capture() {
     return {
       players: [...State.groups.flat(), ...(State.bench || [])].map(p => ({ name: p.name, uid: p.uid })),
       overrides: JSON.parse(JSON.stringify(State.buffOverrides || {})),
+      markers: SignupMarker.snapshot(), // the guild's notes on sign-ups are not in the share code either
     };
   },
   // Call once the update's players are in State.
   restore(snapshot) {
+    SignupMarker.reapply(snapshot.markers);
     const uidsByName = {};
     for (const p of snapshot.players) (uidsByName[p.name] ||= []).push(p.uid);
     for (const p of [...State.groups.flat(), ...(State.bench || [])]) {
@@ -145,7 +148,9 @@ const RaidLink = {
     return typeof planId === 'string' && planId.startsWith('raid:') && this.RAID_ID.test(planId.slice(5));
   },
   // The Raid-Helper export (JSON text) of a planner seed. A sign-up keeps its class, spec and meta class (Bench, Tentative,
-  // Late, Absence) as signed up; only its name is the guild's choice.
+  // Late, Absence) as signed up; only its name is the guild's choice. Its marker (the guild's note: away, also in another
+  // raid, late, leaving, standby) rides along as an extra field, which the importer reads (SignupMarker.clean) and a
+  // real Raid-Helper export never has. A raid with a date but no start time (timeKnown false) sends no startTime.
   seedToRaidHelper(seed) {
     const raid = (seed && seed.raid) || {};
     const list = seed && Array.isArray(seed.signups) ? seed.signups : [];
@@ -155,13 +160,33 @@ const RaidLink = {
       className: typeof s.className === 'string' ? s.className : '',
       specName: typeof s.specName === 'string' ? s.specName : '',
       position: Number.isFinite(s.position) ? s.position : i + 1,
+      ...(s.marker ? { marker: s.marker } : {}),
     }));
-    return JSON.stringify({ title: raid.title || '', startTime: raid.startsAt, signUps });
+    return JSON.stringify({ title: raid.title || '', startTime: raid.timeKnown === false ? undefined : raid.startsAt, signUps });
   },
-  // 'Sat, Oct 24, 8:00 PM' in the guild's time zone; '' when the raid has no usable start.
+  // The raid of the version's catalog a guild raid opens on, or null when the seed names neither a size nor a known
+  // zone (the sign-up count then sizes it, as for an event). The raid whose name is the zone, unless the raid's size
+  // says otherwise; else, by size: a planning template of that size (a raid without a zone is no particular instance),
+  // the version's default raid, or the first raid of that size.
+  raidKeyFor(raid, version) {
+    const profile = Object.prototype.hasOwnProperty.call(GameVersions, version) ? GameVersions[version] : null;
+    if (!profile || !raid) return null;
+    const size = Number.isInteger(raid.size) ? raid.size : null;
+    const zone = typeof raid.zone === 'string' ? raid.zone.trim().toLowerCase() : '';
+    const sized = key => !!Config.Raids[key] && Config.Raids[key].size === size;
+    const byZone = zone ? profile.raids.find(key => Config.Raids[key] && Config.Raids[key].name.toLowerCase() === zone) : null;
+    if (byZone && (size === null || sized(byZone))) return byZone;
+    if (size === null) return null;
+    return profile.raids.find(key => sized(key) && Config.Raids[key].tier === 'Planning templates')
+      || (sized(profile.defaultRaid) ? profile.defaultRaid : null)
+      || profile.raids.find(sized) || null;
+  },
+  // 'Sat, Oct 24, 8:00 PM' in the guild's time zone; '' when the raid has no usable start. A raid with a date but no
+  // start time (timeKnown false) carries noon UTC as its start: 'Sat, Oct 24', read in UTC so no zone moves the day.
   whenText(raid) {
     const ms = raid && raid.startsAt;
     if (!Number.isFinite(ms)) return '';
+    if (raid.timeKnown === false) return new Date(ms).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
     const options = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
     try { return new Date(ms).toLocaleString('en-US', { ...options, timeZone: raid.timeZone || undefined }); } catch { return new Date(ms).toLocaleString('en-US', options); }
   },

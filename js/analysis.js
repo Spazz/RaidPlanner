@@ -667,6 +667,7 @@ const RosterEdit = {
     const player = { uid: entry.uid, name: entry.name, class: classFile, spec: specName, role,
       groupNumber: groupIdx + 1, imported: true };
     if (entry.signupStatus) player.signupStatus = entry.signupStatus;
+    if (entry.marker) player.marker = entry.marker;
     groups[groupIdx].push(player);
     this.syncRoster();
     return { success:true, player };

@@ -18,6 +18,8 @@ const PATTERNS = {
   // A custom role (Phase 7) and a guest link.
   cr: /^cr_[A-Za-z0-9_-]{22}$/,
   gl: /^gl_[A-Za-z0-9_-]{22}$/,
+  an: /^an_[A-Za-z0-9_-]{22}$/,
+  sg: /^sg_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {
@@ -53,6 +55,8 @@ export const PARAM_SOURCE = {
   // A role: one of the guild's own (cr_...) or a built-in id; a guest link.
   rolid: '(?:cr_[A-Za-z0-9_-]{22}|guild_master|officer|team_lead|member|guest|public)',
   lid: 'gl_[A-Za-z0-9_-]{22}',
+  // An away notice (worker/routes/away.js).
+  nid: 'an_[A-Za-z0-9_-]{22}',
   // A Warcraft Logs report code (DELETE /raids/:rid/reports/:code).
   code: '[A-Za-z0-9]{16}',
   // A calendar feed file name (GET /cal/:cal): a 43-character token and ".ics". The feed route checks it itself (it has no session).

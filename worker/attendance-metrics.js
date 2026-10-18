@@ -4,7 +4,7 @@ import { addDays, weekStart } from './attendance-calendar.js';
 import { OUTCOMES } from './attendance-policy.js';
 
 const PICK_OUTCOMES = new Set(['late', 'left_early', 'late_left']);
-const SIGNUP_KINDS = new Set(['signed', 'late', 'bench']);
+const SIGNUP_KINDS = new Set(['signed', 'late', 'standby', 'bench']);
 
 const byText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const round1 = (value) => Math.round(value * 10) / 10;

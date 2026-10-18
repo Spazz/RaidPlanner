@@ -1200,10 +1200,11 @@ check('audit: every attendance action is written, none holds a nickname, a Disco
   await s.call('bob', 'DELETE', s.raid(second, '/plan'), {});
   await s.call('bob', 'PUT', '/attendance/policy', { teamId: null, policy: { tentative: 'asSignedUp' }, expectedVersion: 0 });
   await s.call('bob', 'PUT', '/attendance/wcl', { wclGuildId: 5, uploaders: { [s.A]: ['Uploader'] } });
+  await s.call('bob', 'PATCH', s.raid(second), { size: 20 });
   await s.call('bob', 'DELETE', s.raid(second), {});
   const written = (await s.w.rows("SELECT DISTINCT action FROM audit_log WHERE action LIKE 'raid.%' OR action LIKE 'attendance.%' OR action IN ('policy.update', 'wcl.settings')")).map((r) => r.action).sort();
   const expected = AUDIT_ACTIONS.filter((a) => /^(raid|attendance)\./.test(a) || ['policy.update', 'wcl.settings'].includes(a)).sort();
-  assert.equal(expected.length, 12);
+  assert.equal(expected.length, 13);
   assert.deepEqual(written, expected);
   const dump = (await s.w.rows('SELECT action, before, after FROM audit_log')).map((r) => `${r.before} ${r.after}`).join('\n');
   for (const secret of ['Stranger', DID(1), DID(5), '299999999999999999', PEOPLE.erin.id, 'Aldric', 'Zorgax', 'Visitor', 'Uploader', 'nightslayer']) {
@@ -1567,7 +1568,7 @@ check('request budgets: D1 calls (session, central write limiter, fail-closed wi
   await measure('POST /raids (no event)', async () => { id = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-02' })).json.raid.id; }, 6, 0);
   let aId;
   await measure('POST /raids with an event', async () => { aId = (await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: EVENT_ID })).json.raid.id; }, 8, 1);
-  await measure('PUT .../event', async () => { assert.equal((await s.call('bob', 'PUT', s.raid(aId, '/event'), { source: EVENT_ID })).status, 200); }, 9, 1);
+  await measure('PUT .../event', async () => { assert.equal((await s.call('bob', 'PUT', s.raid(aId, '/event'), { source: EVENT_ID })).status, 200); }, 10, 1); // 10: the standing sign-ups of the raid are reconciled (one read)
   await measure('PUT .../reports', async () => { assert.equal((await s.call('bob', 'PUT', s.raid(aId, '/reports'), { source: R1 })).status, 200); }, 11, 2);
   await measure('PUT .../plan', async () => { assert.equal((await s.call('bob', 'PUT', s.raid(aId, '/plan'), { label: 'Plan', players: [{ name: 'Aldric', group: 1 }] })).status, 200); }, 8, 0);
   const brindle = byName((await s.call('bob', 'GET', s.raid(aId))).json).Brindle.playerId;
@@ -1967,9 +1968,9 @@ check('future: the raid list answers upcoming raids (all of them, soonest first)
   assert.deepEqual(list.json.raids.map((row) => [row.id, row.upcoming]), [[past.json.raid.id, false]]);
   assert(!list.json.upcoming.some((row) => row.id === otherTeam.json.raid.id), 'another team\'s raid is not on this list');
   const [first, second] = list.json.upcoming;
-  assert.deepEqual(first.signups, { signed: 4, late: 0, bench: 1, tentative: 0, absence: 1 });
+  assert.deepEqual(first.signups, { signed: 4, late: 0, standby: 0, bench: 1, tentative: 0, absence: 1 });
   assert.deepEqual([first.eventSourced, first.eventId, first.title, first.planned, first.upcoming], [true, eventId, 'Test Raid', false, true]);
-  assert.deepEqual(second.signups, { signed: 0, late: 0, bench: 0, tentative: 0, absence: 0 });
+  assert.deepEqual(second.signups, { signed: 0, late: 0, standby: 0, bench: 0, tentative: 0, absence: 0 });
   assert.deepEqual([second.eventSourced, second.eventId, second.title, second.zone, second.startsAt], [false, null, null, 'Gruul\'s Lair', Date.parse('2027-03-02T00:30:00Z')]);
   // A plan makes it Planned (and does not add to the sign-up counts).
   const planned = await s.call('bob', 'PUT', s.raid(soon.json.raid.id, '/plan'), { label: 'Prog', players: [{ name: 'Aldric', group: 1 }] });
@@ -2177,7 +2178,7 @@ check('planner seed: an Alt of the signed-up class, else the Main, else the Disc
   assert.deepEqual(res.json.signups.map((x) => x.personId === null), [false, false, false, false, false, true, false, false, false]);
   assert.equal(res.json.signups[0].personId, s.p.aldric);
   assert.deepEqual(res.json.raid, {
-    id, raidOn: made.json.raid.raidOn, startsAt: made.json.raid.startsAt, title: 'Test Raid', zone: null, eventId, teamId: s.A, gameVersion: 'tbc', timeZone: NY,
+    id, raidOn: made.json.raid.raidOn, startsAt: made.json.raid.startsAt, title: 'Test Raid', zone: null, eventId, teamId: s.A, timeKnown: true, size: 25, sizeOverride: null, gameVersion: 'tbc', timeZone: NY,
   });
   assert.equal(res.json.livePlan, null);
   // A raid made by hand has no sign-ups and no event.

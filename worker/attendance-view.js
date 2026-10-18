@@ -3,6 +3,8 @@
 import { HttpError } from './http.js';
 import { allows } from './permissions.js';
 import { findUnmatched, makePolicyResolver, presenceKey } from './attendance-store.js';
+import { raidSizeFields } from './raid-zones.js';
+import { closeHoursOf, closesAtOf } from './signup-window.js';
 
 export const OUTCOME_PRESENT = ['present', 'late', 'left_early', 'late_left', 'fill_in'];
 
@@ -48,13 +50,13 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const bind = (sql) => db.prepare(sql).bind(guild.id, raidId);
   const [raidResult, reportResult, pullResult, signupResult, planResult, attendanceResult, characterResult, presenceResult, guestResult,
     policyResult, userResult, teamResult, flagResult, decisionResult, manualResult] = await db.batch([
-    bind(`SELECT r.*, t.name AS team_name, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
+    bind(`SELECT r.*, t.name AS team_name, t.size AS team_size, t.signup_close_hours AS team_close_hours, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
             FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id WHERE r.guild_id = ?1 AND r.id = ?2`),
     bind(`SELECT code, flavour, started_at, ended_at, owner, synced_at,
                  (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = raid_reports.raid_id AND p.report_code = raid_reports.code) AS pulls
             FROM raid_reports WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY started_at, code`),
     bind('SELECT encounter_name, kill, started_at FROM raid_pulls WHERE raid_id = ?2 ORDER BY started_at, id'),
-    bind('SELECT source, signup_id, kind, class_name, spec_name, position, player_id, nickname FROM raid_signups WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY position, source, signup_id'),
+    bind("SELECT source, signup_id, CASE WHEN kind = 'signed' AND standby = 1 THEN 'standby' ELSE kind END AS kind, class_name, spec_name, position, player_id, nickname FROM raid_signups WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY position, source, signup_id"),
     bind('SELECT name, name_key, group_number FROM raid_plan WHERE raid_id = ?2 ORDER BY rowid'),
     bind('SELECT * FROM attendance WHERE raid_id = ?2 AND guild_id = ?1'),
     bind(`SELECT c.player_id, c.name, c.name_key, c.realm_key, c.class, c.team_id, c.is_main FROM characters c
@@ -154,15 +156,21 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       teamId: raid.team_id,
       raidOn: raid.raid_on,
       startsAt: raid.starts_at,
+      timeKnown: raid.time_known !== 0, // false: only the date is known and startsAt is noon UTC
       upcoming: raid.starts_at > ctx.now(),
       title: raid.title || raid.event_title || null,
       zone: raid.zone,
+      ...raidSizeFields(raid, raid.team_size, guild.game_version),
       planLive: allows(can, 'raids.edit', teamId) ? raid.plan_live || null : null, // an edit link to the plan: only for those who may edit
       state,
       openFlags: raid.open_flags,
       stale: isStale(state),
       version: raid.version,
       signupsLocked: raid.signups_locked === 1,
+      closesAt: closesAtOf(raid), // when members' sign-ups close: the start less the deadline (the raid's own, else the team's)
+      closeHours: closeHoursOf(raid),
+      closeHoursOverride: raid.signup_close_hours,
+      teamCloseHours: raid.team_close_hours, // the team's default, for the page that edits the raid's own
       manual: raid.log_mode === 'manual'
         ? {
           reason: review ? raid.manual_reason : null, by: review && manualBy ? userName(manualBy) : null, at: raid.manual_at,

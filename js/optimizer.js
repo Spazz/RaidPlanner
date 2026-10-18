@@ -863,13 +863,19 @@ const Optimizer = {
     const pool = this.sortedPool(players);
     const groups = [];
     for (let i = 0; i < numGroups; i++) groups.push([]);
+    const floors = this.floorsFor(raidSize);
+
+    // Standby players (the guild's marker, SignupMarker) volunteered to sit out when the raid is over-full: as many as
+    // the overflow needs are held out of the first pass and join the overflow list below, where the bench refinement
+    // can still pull one back in when seating them raises the raid total more than its threshold.
+    const held = this.holdStandby(pool, numGroups * max, floors);
+    for (const p of held) pool.splice(pool.indexOf(p), 1);
 
     this.seedGroups(pool, groups, numGroups, raidSize, max, mode);
 
     // Role floors. The raid's minimum tanks and healers get a seat before DPS
     // compete for the rest, so a late-signing healer is never benched behind
     // a twelfth mage. Within a role the greedy scorer still picks who sits.
-    const floors = this.floorsFor(raidSize);
     for (const role of ['tank', 'healer']) {
       const have = groups.flat().filter(p => p.role === role).length;
       const need = Math.max(0, (floors[role] || 0) - have);
@@ -892,7 +898,7 @@ const Optimizer = {
     // eligible for the bench refinement below; Tentative/Bench sign-ups and
     // anyone benched by hand are not in this list and are never pulled in.
     const overflow = [];
-    for (const p of pool.splice(0)) { p.groupNumber = 0; overflow.push(p); }
+    for (const p of pool.splice(0).concat(held)) { p.groupNumber = 0; overflow.push(p); }
 
     this.refineRounds(groups, max, mode);
 
@@ -906,6 +912,21 @@ const Optimizer = {
     if (this.refineBench(groups, overflow, raidSize, mode)) this.refineRounds(groups, max, mode);
 
     return { seated: groups.flat(), bench: overflow };
+  },
+
+  // The Standby players selectSeated keeps out of the first pass: at most as many as the pool exceeds the seats, and
+  // never so many that a role is left with fewer players than its floor (tanks and healers are held only beyond the
+  // floors, counted on the pool that remains). Comp-template locked players stay. Without a Standby marker: none.
+  holdStandby(pool, seats, floors) {
+    const held = [];
+    const room = pool.length - seats;
+    for (const p of pool) {
+      if (held.length >= room) break;
+      if (!SignupMarker.isStandby(p) || p.locked) continue;
+      const left = pool.filter(q => q.role === p.role).length - held.filter(h => h.role === p.role).length - 1;
+      if (left >= (floors[p.role] || 0)) held.push(p);
+    }
+    return held;
   },
 
   // Seated-healer cap for over-capacity rosters, or null when the ruleset has

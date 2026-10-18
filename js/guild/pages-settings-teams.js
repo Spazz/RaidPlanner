@@ -1,5 +1,6 @@
 // ── PAGE: GUILD SETTINGS > TEAMS ────────────────────────────────
-// Add team, Rename, Archive, Restore. Archived teams are listed apart. Buttons show only with guild.teams.
+// Add team (name and raid size), Rename, change the raid Size (10 / 20 / 25 / 40; PATCH /teams/:tid { size }), Archive, Restore. Archived teams are
+// listed apart. Buttons show only with guild.teams.
 (function (G) {
   'use strict';
 
@@ -20,6 +21,7 @@
   function teamActionsHtml(team, canEdit) {
     if (!canEdit) return '';
     return '<button type="button" class="gs-btn gs-btn-sm" data-action="team-rename" data-team="' + esc(team.id) + '" data-key="rename-' + esc(team.id) + '" aria-label="Rename ' + esc(team.name) + '">Rename</button>' +
+      '<button type="button" class="gs-btn gs-btn-sm" data-action="team-size" data-team="' + esc(team.id) + '" data-key="size-' + esc(team.id) + '" aria-label="Change the raid size of ' + esc(team.name) + '">Size</button>' +
       '<button type="button" class="gs-btn gs-btn-sm" data-action="team-archive" data-team="' + esc(team.id) + '" data-key="archive-' + esc(team.id) + '" aria-label="Archive ' + esc(team.name) + '">Archive</button>';
   }
 
@@ -68,15 +70,31 @@
       '</section>';
   }
 
+  const DEFAULT_SIZE = 25;
+
+  // The Raid size select: 10 / 20 / 25 / 40. A team whose stored size is none of those (nothing stopped one before) must pick one before saving.
+  function sizeFieldHtml(selected) {
+    const known = G.ui.RAID_SIZES.indexOf(selected) >= 0;
+    const choices = known ? G.ui.sizeChoices() : [{ value: '', label: 'Choose a size' }].concat(G.ui.sizeChoices());
+    return '<div class="gs-field"><label class="gs-label" for="dlg-team-size">Raid size</label>' +
+      '<select class="gs-input" id="dlg-team-size" name="size" data-field="size" data-key="dlg-team-size" aria-describedby="dlg-team-size-help">' + G.ui.optionsHtml(choices, known ? selected : '') + '</select>' +
+      '<p class="gs-fine" id="dlg-team-size-help">How many players this team\'s raids are for. A raid in a zone with its own size, or one an officer sets, uses that instead.</p>' +
+      '<p class="gs-field-error" id="dlg-err-size" role="alert" hidden></p></div>';
+  }
+
+  // mode: 'add' (name and size), 'rename' (name), 'size' (size).
   function teamDialogHtml(mode, team, gid) {
     const rename = mode === 'rename';
-    return '<form class="gs-dialog-form" data-submit="team-form" data-mode="' + (rename ? 'rename' : 'add') + '" data-gid="' + esc(gid) + '"' + (rename ? ' data-team="' + esc(team.id) + '"' : '') + ' novalidate>' +
-      '<h2 class="gs-dialog-title" id="dlg-title">' + (rename ? 'Rename ' + esc(team.name) : 'Add team') + '</h2>' +
-      '<div class="gs-field"><label class="gs-label" for="dlg-team-name">Team name</label>' +
-      '<input class="gs-input" type="text" id="dlg-team-name" name="name" autocomplete="off" required value="' + (rename ? esc(team.name) : '') + '">' +
-      '<p class="gs-field-error" id="dlg-team-name-error" role="alert" hidden></p></div>' +
+    const size = mode === 'size';
+    const add = !rename && !size;
+    return '<form class="gs-dialog-form" data-submit="team-form" data-mode="' + (rename ? 'rename' : size ? 'size' : 'add') + '" data-gid="' + esc(gid) + '"' + (add ? '' : ' data-team="' + esc(team.id) + '"') + ' novalidate>' +
+      '<h2 class="gs-dialog-title" id="dlg-title">' + (rename ? 'Rename ' + esc(team.name) : size ? 'Raid size of ' + esc(team.name) : 'Add team') + '</h2>' +
+      (size ? '' : '<div class="gs-field"><label class="gs-label" for="dlg-team-name">Team name</label>' +
+        '<input class="gs-input" type="text" id="dlg-team-name" name="name" autocomplete="off" required value="' + (rename ? esc(team.name) : '') + '">' +
+        '<p class="gs-field-error" id="dlg-team-name-error" role="alert" hidden></p></div>') +
+      (rename ? '' : sizeFieldHtml(add ? DEFAULT_SIZE : team.size)) +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">' + (rename ? 'Save' : 'Add team') + '</button></div></form>';
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">' + (add ? 'Add team' : 'Save') + '</button></div></form>';
   }
 
   function currentGuildData() {
@@ -92,14 +110,18 @@
     const gd = currentGuildData();
     if (!gd) return;
     G.ui.openDialog(teamDialogHtml(mode, team, gd.guild.id), { labelledBy: 'dlg-title' });
-    const input = document.getElementById('dlg-team-name');
-    if (input) { input.focus(); input.select(); }
+    const input = document.getElementById(mode === 'size' ? 'dlg-team-size' : 'dlg-team-name');
+    if (input) { input.focus(); if (input.select) input.select(); }
   }
 
   G.handlers.click['team-add'] = function () { openTeamDialog('add', null); };
   G.handlers.click['team-rename'] = function (el) {
     const team = findTeam(currentGuildData(), el.getAttribute('data-team'));
     if (team) openTeamDialog('rename', team);
+  };
+  G.handlers.click['team-size'] = function (el) {
+    const team = findTeam(currentGuildData(), el.getAttribute('data-team'));
+    if (team) openTeamDialog('size', team);
   };
   G.handlers.click['dialog-cancel'] = function (el) { G.ui.closeDialogOf(el); };
 
@@ -132,25 +154,36 @@
   G.handlers.submit['team-form'] = function (form) {
     const gid = form.getAttribute('data-gid');
     const mode = form.getAttribute('data-mode');
-    const name = form.elements.name.value.trim();
+    const named = mode !== 'size';
+    const sized = mode !== 'rename';
+    const name = named ? form.elements.name.value.trim() : '';
+    const size = sized ? Number(form.elements.size.value) : null;
     G.ui.setText('dlg-team-name-error', '');
+    G.ui.setText('dlg-err-size', '');
     G.ui.setText('dlg-error', '');
-    if (!name) { G.ui.setText('dlg-team-name-error', 'Enter a team name.'); form.elements.name.focus(); return; }
-    G.ui.setBusy(form, true);
+    if (named && !name) { G.ui.setText('dlg-team-name-error', 'Enter a team name.'); form.elements.name.focus(); return; }
+    if (sized && G.ui.RAID_SIZES.indexOf(size) < 0) { G.ui.setText('dlg-err-size', 'Choose a size.'); form.elements.size.focus(); return; }
     const done = function () { G.ui.closeDialogOf(form); };
+    // The size the team has already needs no call.
+    const current = mode === 'size' ? findTeam(G.app.state.guilds[gid], form.getAttribute('data-team')) : null;
+    if (current && current.size === size) { done(); return; }
+    G.ui.setBusy(form, true);
     const fail = function (err) {
       G.ui.setBusy(form, false);
       const c = G.api.classify(err);
       if (err.code === 'conflict') { G.ui.closeDialogOf(form); G.app.handleError(err); return; }
       if (c.view === 'signin') { G.ui.closeDialogOf(form); G.app.requireSignin(); return; }
       if (c.view === 'message') { G.ui.closeDialogOf(form); G.app.showFailure(c.title, c.text); return; }
-      if (err.code === 'team_name_taken') { G.ui.setText('dlg-team-name-error', c.text); form.elements.name.setAttribute('aria-invalid', 'true'); form.elements.name.focus(); return; }
+      if (err.code === 'team_name_taken' && form.elements.name) { G.ui.setText('dlg-team-name-error', c.text); form.elements.name.setAttribute('aria-invalid', 'true'); form.elements.name.focus(); return; }
+      if (err.field === 'size' && form.elements.size) { G.ui.setText('dlg-err-size', c.text); form.elements.size.setAttribute('aria-invalid', 'true'); form.elements.size.focus(); return; }
       G.ui.setText('dlg-error', c.text);
     };
     if (mode === 'rename') {
       patchTeam(gid, form.getAttribute('data-team'), { name: name }, fail).then(function (ok) { if (ok) done(); });
+    } else if (mode === 'size') {
+      patchTeam(gid, form.getAttribute('data-team'), { size: size }, fail).then(function (ok) { if (ok) done(); });
     } else {
-      G.api.post('/api/guild/' + encodeURIComponent(gid) + '/teams', { name: name }).then(function (res) {
+      G.api.post('/api/guild/' + encodeURIComponent(gid) + '/teams', { name: name, size: size }).then(function (res) {
         const gd = G.app.state.guilds[gid];
         if (gd && res && res.team) gd.teams.push(Object.assign({ players: 0, leads: [] }, res.team));
         G.app.state.pageAlert = '';

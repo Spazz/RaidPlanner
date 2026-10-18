@@ -193,7 +193,7 @@
       '<p class="gs-fine">Removes ' + esc(name) + ' and their characters from the roster. Their Discord sign-in is not affected. Once they have attendance, set them to Inactive instead.</p></div>';
   }
 
-  // opts: { guildData, record (GET /roster/p_...), linkable: [person] | null, alert, attendance (card state), trial (Trial review card state) }
+  // opts: { guildData, record (GET /roster/p_...), linkable: [person] | null, alert, attendance (card state), trial (Trial review card state), away (the officers' Away notices section, HTML) }
   function personHtml(opts) {
     const record = opts.record;
     const can = Object.assign({ edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false }, record.can || {});
@@ -204,7 +204,7 @@
       trialBarHtml(record, can) +
       trialCardHtml(opts) +
       (readOnly && record.person.isMe ? '<p class="gs-fine gs-member-note">' + esc(MEMBER_NOTE) + '</p>' : '') +
-      '<div class="gs-person-cols"><div class="gs-person-main">' + charactersHtml(record, can, showTeam) + attendanceHtml(record, opts.guildData.guild.id, opts.attendance) + G.pages.personLoot.cardFor(opts.guildData, record, record.person.id) + '</div>' +
+      '<div class="gs-person-cols"><div class="gs-person-main">' + charactersHtml(record, can, showTeam) + attendanceHtml(record, opts.guildData.guild.id, opts.attendance) + (opts.away || '') + G.pages.personLoot.cardFor(opts.guildData, record, record.person.id) + '</div>' +
       '<div class="gs-person-side">' + (can.edit ? detailsHtml(record, opts.linkable) : readOnlyDetailsHtml(record)) + notesHtml(record, can) + '</div></div>' +
       deleteHtml(record, can) + '</div>';
   }

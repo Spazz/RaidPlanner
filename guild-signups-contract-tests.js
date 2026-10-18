@@ -310,7 +310,7 @@ check('Raids list: a member sees Your sign-up with a Sign up button that is one 
   html = E.pages.raids.main(route, E.guildData);
   const text = stripTags(html);
   assert(/Signed up - Thoren/.test(text), text);
-  assert(/1 signed/.test(text), 'the counts follow the answer');
+  assert(/1 \/ \d+ signed up/.test(text), 'the counts follow the answer, against the raid size');
   assert(!/data-action="raids-signup"/.test(html), 'signed up: no button');
   assert.equal(await s.world.db.prepare("SELECT COUNT(*) AS n FROM raid_signups WHERE source = 'raidsmith'").first('n'), 1);
   // Hank: no column, no counts.
@@ -322,7 +322,7 @@ check('Raids list: a member sees Your sign-up with a Sign up button that is one 
   pageState(s, A);
   await A.pages.raids.load(route, A.guildData);
   const officer = A.pages.raids.main(route, A.guildData);
-  assert(/1 signed/.test(stripTags(officer)) && /Raid schedule/.test(stripTags(officer)) && !/Your sign-up/.test(officer));
+  assert(/1 \/ \d+ signed up/.test(stripTags(officer)) && /Raid schedule/.test(stripTags(officer)) && !/Your sign-up/.test(officer));
   // Locked: the list says so.
   await A.api.signups.lock(s.gid, s.rid, true);
   pageState(s, E);

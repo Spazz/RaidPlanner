@@ -3,15 +3,17 @@
 // (one per person per raid) that REPLACES the person's Raid-Helper row everywhere it is shown or counted, so nothing counts twice.
 // The attendance recompute reads it with the other sources and is otherwise unchanged. Spec: tasks/guild-phase6-signups-spec.md.
 import { HttpError, jsonResponse } from '../http.js';
+import { raidAwayEffects, readNotices, teamCharactersStatement, teamNoticesStatement } from '../away-store.js';
 import { recomputeRaid } from '../attendance-store.js';
 import { displayCharacter } from '../attendance-view.js';
 import { isId } from '../ids.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
+import { raidSizeFields } from '../raid-zones.js';
 import { SINGLE_LINE_STRIP, isSpecOf } from '../roster-data.js';
 import {
-  NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closedReason, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey, signUpSpecLabel,
-  specChoices,
+  NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closeHoursOf, closedReason, closesAtOf, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey,
+  signUpSpecLabel, specChoices, storedKind,
 } from '../signups-data.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { bad } from './roster.js';
@@ -19,9 +21,31 @@ import { bad } from './roster.js';
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
 
-const closedError = (reason) => new HttpError(409, 'signups_closed', reason === 'started'
-  ? 'This raid has started: sign-ups can no longer be changed here. Ask an officer.'
-  : 'An officer has closed sign-ups for this raid. Ask an officer.', { reason });
+// 409 signups_closed: reason 'started' | 'locked' | 'deadline'; a deadline also says when the window closed (closesAt, epoch ms). raid: the row the reason came from.
+function closedError(reason, raid) {
+  if (reason === 'started') return new HttpError(409, 'signups_closed', 'This raid has started: sign-ups can no longer be changed here. Ask an officer.', { reason });
+  if (reason === 'deadline') {
+    const hours = closeHoursOf(raid);
+    return new HttpError(409, 'signups_closed', `Sign-ups closed ${hours} ${hours === 1 ? 'hour' : 'hours'} before the start of this raid. Ask an officer.`, { reason, closesAt: closesAtOf(raid) });
+  }
+  return new HttpError(409, 'signups_closed', 'An officer has closed sign-ups for this raid. Ask an officer.', { reason });
+}
+
+// A member's window in SQL, re-checked inside every member write: the raid is not locked and its start is more than the deadline hours away (the raid's own
+// number, else the team's). Binds (raidId, now). Must agree with closedReason in worker/signup-window.js: closed when starts_at - hours * 3600000 <= now.
+const WINDOW_OPEN_SQL = `EXISTS (SELECT 1 FROM raids WHERE id = ? AND raids.signups_locked = 0
+    AND raids.starts_at - COALESCE(raids.signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = raids.team_id), 0) * 3600000 > ?)`;
+
+// After a member's write found the window shut: the 409 to answer with, from the raid as it is now (null when it is open after all).
+async function windowError(ctx, raidId) {
+  const fresh = await ctx.db.prepare(
+    `SELECT starts_at, signups_locked, signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = raids.team_id) AS team_close_hours
+       FROM raids WHERE id = ?`,
+  ).bind(raidId).first();
+  if (!fresh) return closedError('started', null);
+  const reason = closedReason(fresh, ctx.now());
+  return reason ? closedError(reason, fresh) : null;
+}
 
 const CHARACTER_COLUMNS = 'id, player_id, name, class, main_spec, off_spec, is_main, team_id';
 
@@ -45,13 +69,14 @@ export async function buildView(ctx, guildContext, raid) {
   const self = allows(can, 'signups.self', teamId);
   const seeList = allows(can, 'attendance.view', teamId);
   const seeNicknames = allows(can, 'roster.edit', teamId);
-  const closed = closedReason(raid, ctx.now());
+  const closeHours = closeHoursOf(raid);
+  const closed = closedReason(raid, ctx.now(), closeHours);
   const userId = ctx.session.user.id;
   // The viewer's own person is the one linked to their account or carrying their Discord ID (worker/membership.js), so an account that signs in with Battle.net only has one too.
   const statements = [
     ownPersonStatement(db, guild.id, userId),
     db.prepare(
-      `SELECT source, signup_id, kind, class_name, spec_name, position, player_id, nickname, character_id, note, updated_at FROM raid_signups
+      `SELECT source, signup_id, kind, standby, standing, class_name, spec_name, position, player_id, nickname, character_id, note, updated_at FROM raid_signups
         WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') ORDER BY position, source, signup_id`,
     ).bind(raid.id),
     db.prepare(
@@ -60,12 +85,22 @@ export async function buildView(ctx, guildContext, raid) {
                                 OR player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}))`,
     ).bind(guild.id, raid.id, guild.id, userId, userId),
   ];
+  // An upcoming raid also reads the Away / Late / Leaving notices that cover its date (worker/away.js): a virtual Absence for the people who are away and have
+  // no sign-up, a note on those who are late or leaving. They come last, so the positions of the other results do not move.
+  const upcoming = raid.starts_at > ctx.now();
+  const awayAt = statements.length + (edit ? 1 : 0);
   if (edit) {
     statements.push(db.prepare(
       `SELECT p.id AS person_id, p.status, c.id, c.player_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, c.team_id
          FROM players p JOIN characters c ON c.player_id = p.id
         WHERE p.guild_id = ? AND p.status != 'inactive' AND p.id IN (SELECT player_id FROM characters WHERE guild_id = ? AND team_id = ?)`,
     ).bind(guild.id, guild.id, teamId));
+  }
+  if (upcoming) {
+    statements.push(
+      teamNoticesStatement(db, guild.id, teamId, userId, raid.raid_on, raid.raid_on),
+      teamCharactersStatement(db, guild.id, teamId, raid.raid_on, raid.raid_on),
+    );
   }
   const results = await db.batch(statements);
   const myPlayerId = results[0].results.length ? results[0].results[0].id : null;
@@ -74,7 +109,23 @@ export async function buildView(ctx, guildContext, raid) {
     if (!charactersByPlayer.has(row.player_id)) charactersByPlayer.set(row.player_id, []);
     charactersByPlayer.get(row.player_id).push(row);
   }
-  const entries = mergeSignups(results[1].results, charactersByPlayer, { teamId, seeNicknames, myPlayerId });
+  let effects = { away: [], notes: new Map() };
+  if (upcoming) {
+    const known = new Set(results[2].results.map((row) => row.id));
+    for (const row of results[awayAt + 1].results) {
+      if (known.has(row.id)) continue;
+      if (!charactersByPlayer.has(row.player_id)) charactersByPlayer.set(row.player_id, []);
+      charactersByPlayer.get(row.player_id).push(row);
+    }
+    effects = raidAwayEffects(readNotices(results[awayAt].results), raid.raid_on, new Set(results[1].results.map((row) => row.player_id).filter(Boolean)));
+  }
+  const entries = mergeSignups(results[1].results, charactersByPlayer, { teamId, seeNicknames, myPlayerId, away: effects.away, notes: effects.notes });
+  // Late / Leaving notices of people who have no entry at all.
+  const listed = new Set(entries.map((entry) => entry.personId).filter(Boolean));
+  const notices = [...effects.notes].filter(([personId]) => !listed.has(personId)).map(([personId, note]) => {
+    const shown = displayCharacter(charactersByPlayer.get(personId) || [], teamId);
+    return { personId, name: shown ? shown.name : null, kind: note.kind, atTime: note.atTime };
+  }).sort((a, b) => String(a.name).localeCompare(String(b.name)) || a.personId.localeCompare(b.personId));
 
   let me = null;
   if (self && myPlayerId) {
@@ -83,6 +134,7 @@ export async function buildView(ctx, guildContext, raid) {
     me = {
       personId: myPlayerId,
       signup: entries.find((entry) => entry.isMe) || null,
+      notice: effects.notes.has(myPlayerId) ? { kind: effects.notes.get(myPlayerId).kind, atTime: effects.notes.get(myPlayerId).atTime } : null,
       characters: mine.map(characterView),
       defaultCharacterId: shown ? shown.id : null,
       canChange: closed === null,
@@ -105,11 +157,16 @@ export async function buildView(ctx, guildContext, raid) {
   }
 
   return {
-    raid: { id: raid.id, teamId, startsAt: raid.starts_at, upcoming: raid.starts_at > ctx.now(), locked: raid.signups_locked === 1, closed },
+    raid: {
+      id: raid.id, teamId, startsAt: raid.starts_at, timeKnown: raid.time_known !== 0, upcoming: raid.starts_at > ctx.now(), locked: raid.signups_locked === 1, closed,
+      closesAt: closesAtOf(raid, closeHours), closeHours, closeHoursOverride: raid.signup_close_hours, teamCloseHours: raid.team_close_hours,
+      ...raidSizeFields(raid, raid.team_size, guild.game_version),
+    },
     can: { edit, self: !!me, seeList, seeNicknames },
     me,
     counts: seeList ? countSignups(entries) : null,
     entries: seeList ? entries : null,
+    notices: seeList ? notices : null,
     roster,
   };
 }
@@ -143,7 +200,7 @@ export async function getMySignup(ctx) {
 function readBody(body, officer) {
   const kinds = officer ? SIGNUP_KINDS : SELF_KINDS;
   if (typeof body.kind !== 'string' || !kinds.includes(body.kind)) {
-    throw bad(officer ? 'Pick signed, late, tentative, bench or absence.' : 'Pick signed, late, tentative or absence.', 'kind');
+    throw bad(officer ? 'Pick signed, late, standby, tentative, bench or absence.' : 'Pick signed, late, standby, tentative or absence.', 'kind');
   }
   if (body.characterId !== undefined && body.characterId !== null && !isId('c', body.characterId)) throw bad('characterId must be a character id.', 'characterId');
   if (body.spec !== undefined && body.spec !== null && typeof body.spec !== 'string') throw bad('spec must be text.', 'spec');
@@ -165,8 +222,9 @@ function readBody(body, officer) {
 }
 
 // Writes (or replaces) one person's Raidsmith sign-up on the raid. self: the viewer's own (the window must be open, re-checked in the
-// statement); otherwise an officer's (any time). -> nothing; throws 4xx.
-async function writeSignup(ctx, guildContext, raid, personId, input, self) {
+// statement); otherwise an officer's (any time). options.roster: the person answering a published roster (worker/routes/roster-publish.js) - their own
+// characters, but neither the lock nor the deadline binds them, only the start. -> nothing; throws 4xx.
+export async function writeSignup(ctx, guildContext, raid, personId, input, self, options = {}) {
   const { db } = ctx;
   const guild = guildContext.guild;
   const teamId = raid.team_id;
@@ -201,20 +259,24 @@ async function writeSignup(ctx, guildContext, raid, personId, input, self) {
   const note = input.hasNote ? input.note : (existing ? existing.note : null);
 
   const now = ctx.now();
-  const guard = self
-    ? { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ? AND starts_at > ? AND signups_locked = 0)', params: [raid.id, now] }
+  let guard = self
+    ? { sql: WINDOW_OPEN_SQL, params: [raid.id, now] }
     : { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ?)', params: [raid.id] };
+  if (options.roster) guard = { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ? AND starts_at > ?)', params: [raid.id, now] };
+  // Standby is stored as 'signed' + standby = 1; every other kind clears the flag (the table's CHECK keeps the pair honest). Any write is an edit, so a
+  // sign-up a standing sign-up made is the member's own from here on (standing = 0) and is never removed by it.
+  const stored = storedKind(input.kind);
   const statements = [
     db.prepare(
-      `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, class_name, spec_name, position, guild_id, player_id,
+      `INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, standby, class_name, spec_name, position, guild_id, player_id,
                                  character_id, note, updated_by, created_at, updated_at)
-       SELECT ?, 'raidsmith', n.next, NULL, NULL, ?, ?, ?, n.next, ?, ?, ?, ?, ?, ?, ?
+       SELECT ?, 'raidsmith', n.next, NULL, NULL, ?, ?, ?, ?, n.next, ?, ?, ?, ?, ?, ?, ?
          FROM (SELECT COALESCE(MAX(signup_id), 0) + 1 AS next FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith') n
         WHERE ${guard.sql}
        ON CONFLICT (raid_id, player_id) WHERE source = 'raidsmith' DO UPDATE SET
-         kind = excluded.kind, class_name = excluded.class_name, spec_name = excluded.spec_name, character_id = excluded.character_id,
-         note = excluded.note, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
-    ).bind(raid.id, input.kind, raidHelperClassName(character.class), spec ? raidHelperSpecKey(character.class, spec) : null, guild.id, personId,
+         kind = excluded.kind, standby = excluded.standby, standing = 0, class_name = excluded.class_name, spec_name = excluded.spec_name,
+         character_id = excluded.character_id, note = excluded.note, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+    ).bind(raid.id, stored.kind, stored.standby, raidHelperClassName(character.class), spec ? raidHelperSpecKey(character.class, spec) : null, guild.id, personId,
       character.id, note, ctx.session.user.id, now, now, raid.id, ...guard.params),
     // The results of this raid are out of date, and no recompute that read the old sign-ups may write over that.
     db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1").bind(raid.id, guild.id),
@@ -224,8 +286,8 @@ async function writeSignup(ctx, guildContext, raid, personId, input, self) {
   }
   const results = await db.batch(statements);
   if (results[0].meta.changes !== 1) {
-    const fresh = await db.prepare('SELECT starts_at, signups_locked FROM raids WHERE id = ?').bind(raid.id).first();
-    throw closedError(fresh ? closedReason(fresh, ctx.now()) : 'started');
+    if (options.roster) throw new HttpError(409, 'raid_started', 'This raid has started: the roster can no longer be answered here. Ask an officer.');
+    throw (await windowError(ctx, raid.id)) || closedError('locked', raid);
   }
   await recomputeIfEvidence(ctx, guild, raid);
 }
@@ -243,7 +305,7 @@ async function mySignupContext(ctx) {
   const person = await ownPersonStatement(ctx.db, guildContext.guild.id, ctx.session.user.id).first();
   if (!person) throw forbidden();
   const reason = closedReason(raid, ctx.now());
-  if (reason) throw closedError(reason);
+  if (reason) throw closedError(reason, raid);
   return { guildContext, raid, personId: person.id };
 }
 
@@ -254,16 +316,29 @@ export async function putMySignup(ctx) {
   return viewReply(ctx, guildContext, raid);
 }
 
+// Taking away a sign-up that a standing sign-up made (standing = 1) is the member's "not this time", not "no answer": it becomes their explicit Absence
+// (standing = 0, so the standing reconcile never makes it again). A hand-made sign-up (standing = 0) is deleted for real. The DELETE comes first and only
+// takes standing = 0 rows; the UPDATE then converts the standing = 1 row (it would otherwise match the DELETE's filter after being cleared).
+const TO_ABSENCE_SQL = `UPDATE raid_signups SET kind = 'absence', standby = 0, standing = 0, updated_by = ?, updated_at = ?
+                          WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? AND standing = 1`;
+const BUMP_SQL = "UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1";
+
 export async function deleteMySignup(ctx) {
   const { guildContext, raid, personId } = await mySignupContext(ctx);
+  const now = ctx.now();
+  const guildId = guildContext.guild.id;
   const results = await ctx.db.batch([
     ctx.db.prepare(
-      `DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ?
-          AND EXISTS (SELECT 1 FROM raids WHERE id = ? AND starts_at > ? AND signups_locked = 0) RETURNING signup_id`,
-    ).bind(raid.id, personId, raid.id, ctx.now()),
-    ctx.db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1").bind(raid.id, guildContext.guild.id),
+      `DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? AND standing = 0 AND ${WINDOW_OPEN_SQL} RETURNING signup_id`,
+    ).bind(raid.id, personId, raid.id, now),
+    ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
+    ctx.db.prepare(`${TO_ABSENCE_SQL} AND ${WINDOW_OPEN_SQL} RETURNING signup_id`).bind(ctx.session.user.id, now, raid.id, personId, raid.id, now),
+    ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
   ]);
-  if (!results[0].results.length) throw new HttpError(404, 'not_found', 'You have not signed up here.');
+  if (!results[0].results.length && !results[2].results.length) {
+    // Nothing deleted or converted: either there was no sign-up, or the window shut between the read and the write.
+    throw (await windowError(ctx, raid.id)) || new HttpError(404, 'not_found', 'You have not signed up here.');
+  }
   await recomputeIfEvidence(ctx, guildContext.guild, raid);
   return viewReply(ctx, guildContext, raid);
 }
@@ -279,12 +354,17 @@ export async function putPersonSignup(ctx) {
 export async function deletePersonSignup(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
+  const guildId = guildContext.guild.id;
+  // A standing sign-up becomes the person's Absence instead of going (see TO_ABSENCE_SQL); either way it is the same audited signup.remove.
   const results = await ctx.db.batch([
-    ctx.db.prepare("DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? RETURNING kind").bind(raid.id, ctx.params.pid),
-    ctx.db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1").bind(raid.id, guildContext.guild.id),
+    ctx.db.prepare("DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? AND standing = 0 RETURNING kind").bind(raid.id, ctx.params.pid),
+    ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
+    raidAudit(ctx, guildContext, 'signup.remove', raid.id, { personId: ctx.params.pid }, null, CHANGED_ONE),
+    ctx.db.prepare(`${TO_ABSENCE_SQL} RETURNING kind`).bind(ctx.session.user.id, ctx.now(), raid.id, ctx.params.pid),
+    ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
     raidAudit(ctx, guildContext, 'signup.remove', raid.id, { personId: ctx.params.pid }, null, CHANGED_ONE),
   ]);
-  if (!results[0].results.length) throw new HttpError(404, 'not_found', 'That person has no Raidsmith sign-up on this raid.');
+  if (!results[0].results.length && !results[3].results.length) throw new HttpError(404, 'not_found', 'That person has no Raidsmith sign-up on this raid.');
   await recomputeIfEvidence(ctx, guildContext.guild, raid);
   return viewReply(ctx, guildContext, raid);
 }

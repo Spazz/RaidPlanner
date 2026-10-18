@@ -167,7 +167,7 @@
     if (item.key === 'settings') return route.name === 'settings';
     if (item.key === 'roadmap') return route.name === 'roadmap';
     if (item.key === 'roster' && (route.name === 'person' || route.name === 'import')) return true;
-    if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid')) return true;
+    if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid' || route.name === 'away')) return true;
     if (item.key === 'attendance' && (route.name === 'review' || route.name === 'backfill' || route.name === 'personatt')) return true;
     if (item.key === 'loot' && route.name === 'lootperson') return true;
     return route.name === 'section' && route.section === item.key; // Home included: its key is the 'home' section
@@ -286,6 +286,7 @@
   // The attendance and loot pages that hang under Raids, Attendance or Loot: their parent section and the crumb text.
   const ATT_LEAF = {
     raidnew: { parent: 'raids', parentLabel: 'Raids', label: 'New raid' },
+    away: { parent: 'raids', parentLabel: 'Raids', label: 'Away notices' },
     raid: { parent: 'raids', parentLabel: 'Raids', label: 'Raid' },
     review: { parent: 'attendance', parentLabel: 'Attendance', label: 'Review queue' },
     backfill: { parent: 'attendance', parentLabel: 'Attendance', label: 'Backfill from Warcraft Logs' },
@@ -395,6 +396,7 @@
       '<div class="gs-menu-head">' + G.ui.avatarHtml(u, 'gs-avatar-lg') + '<div class="gs-menu-who"><span class="gs-menu-name">' + esc(u.displayName) + '</span><span class="gs-menu-sub">' + esc(sub) + '</span></div></div>' +
       '<div class="gs-menu-sep" role="separator"></div>' +
       '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + '#/characters') + '">' + ic('roster', 20) + '<span>My characters</span></a>' +
+      (gd && gd.guild ? '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + G.router.format({ name: 'away', gid: gd.guild.id })) + '">' + ic('raids', 20) + '<span>Away notices</span></a>' : '') +
       '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + '#/linked') + '">' + ic('link', 20) + '<span>Linked accounts</span></a>' +
       '<a class="gs-menu-item" role="menuitem" href="' + esc(baseOf(ctx) + '#/privacy') + '">' + ic('lock', 20) + '<span>Privacy &amp; my data</span></a>' +
       '<button type="button" class="gs-menu-item" role="menuitem" data-action="sign-out">' + ic('logout', 20) + '<span>Sign out</span></button>' +

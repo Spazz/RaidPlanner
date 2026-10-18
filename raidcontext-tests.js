@@ -37,7 +37,7 @@ var Modal = { confirm: async () => true };
 `;
 
 const NAMES = ['Import', 'State', 'LiveLinks', 'LiveSync', 'PlanStore', 'RaidContext', 'RaidLink', 'RaidHelperSync', 'currentShareCode',
-  'PlanSession', 'ChangeLog', 'currentLiveLink', 'initGroups', 'RosterEdit'];
+  'PlanSession', 'ChangeLog', 'currentLiveLink', 'initGroups', 'RosterEdit', 'LocalPicks'];
 
 function memoryStorage() {
   const data = {};
@@ -500,6 +500,179 @@ const spaces = s => String(s).replace(/[\u202f\u00a0]/g, ' ');
     assert.equal(env.els['raid-context-banner'].hidden, false);
     assert.equal(spaces(env.els['raid-context-text'].textContent), 'Planning Sat, Oct 24, 7:00 PM - Molten Core');
     assert.deepEqual(env.views, ['app']);
+  });
+
+  // ── PM wave 2: size, markers and date-only raids in the seed ──────
+  // A crowd of n sign-ups over a mix of classes every version knows (tanks and healers first, so the role floors are met).
+  const MIX = [['Warrior', 'Protection'], ['Paladin', 'Holy1'], ['Priest', 'Holy'], ['Shaman', 'Restoration1'], ['Druid', 'Restoration'],
+    ['Mage', 'Fire'], ['Rogue', 'Combat'], ['Warlock', 'Destruction'], ['Hunter', 'Marksmanship'], ['Warrior', 'Fury'], ['Priest', 'Shadow'], ['Mage', 'Frost']];
+  const crowd = n => Array.from({ length: n }, (_, i) => signup(i + 1, 'Raider' + String.fromCharCode(97 + Math.floor(i / 26)) + String.fromCharCode(97 + (i % 26)), ...MIX[i % MIX.length]));
+  const sizedSeed = (raid, signups) => SEED({ raid: Object.assign(SEED().raid, { title: null }, raid), signups });
+  const openSeed = async seed => {
+    const env = makeEnv();
+    guildRoute(env, () => seed);
+    await env.api.RaidContext.route(HASH);
+    return env;
+  };
+
+  await check('size: a Forever raid at Hyjal Summit (size 20) opens on f_hyjal with its 4 groups and 20 seated; the sign-up count does not shrink it', async () => {
+    const env = await openSeed(sizedSeed({ gameVersion: 'forever', zone: 'Hyjal Summit', size: 20 }, crowd(22)));
+    const { State } = env.api;
+    assert.deepEqual([State.gameVersion, State.selectedRaid, State.groups.length], ['forever', 'f_hyjal', 4]);
+    assert.deepEqual([State.groups.flat().length, State.bench.length], [20, 2]);
+  });
+
+  await check('size: a Forever raid with no zone and size 40 opens on the 40-player template with 8 groups', async () => {
+    const env = await openSeed(sizedSeed({ gameVersion: 'forever', zone: null, size: 40 }, crowd(12)));
+    const { State } = env.api;
+    assert.deepEqual([State.selectedRaid, State.groups.length, State.groups.flat().length], ['forever40', 8, 12]);
+  });
+
+  await check('size: a TBC 25 raid with 8 sign-ups stays 25-man; with no size and no zone the sign-up count still picks Karazhan, as before', async () => {
+    const sized = await openSeed(sizedSeed({ zone: null, size: 25 }, crowd(8)));
+    assert.deepEqual([sized.api.State.selectedRaid, sized.api.State.groups.length], ['bt', 5]);
+    const old = await openSeed(sizedSeed({ zone: null, size: null }, crowd(8)));
+    assert.deepEqual([old.api.State.selectedRaid, old.api.State.groups.length], ['kara', 2]);
+    const unknownSize = await openSeed(sizedSeed({ zone: null, size: 40 }, crowd(8)));
+    assert.equal(unknownSize.api.State.selectedRaid, 'kara', 'a size the version has no raid for leaves the old behaviour');
+  });
+
+  await check('size: the zone names the raid (within the seed\'s game version) unless the raid\'s size says otherwise; Classic uses its own templates', async () => {
+    const gruul = await openSeed(sizedSeed({ zone: 'Gruul\'s Lair', size: null }, crowd(8)));
+    assert.deepEqual([gruul.api.State.selectedRaid, gruul.api.State.groups.length], ['gruul', 5], 'a zone alone keeps its raid, even with 8 sign-ups');
+    const hyjalTbc = await openSeed(sizedSeed({ zone: 'Hyjal Summit', size: 25 }, crowd(8)));
+    assert.equal(hyjalTbc.api.State.selectedRaid, 'hyjal', 'the TBC Hyjal, not Forever\'s f_hyjal');
+    const overridden = await openSeed(sizedSeed({ zone: 'Black Temple', size: 10 }, crowd(8)));
+    assert.equal(overridden.api.State.selectedRaid, 'kara', 'a raid size set to 10 beats the zone\'s 25');
+    const wrongZoneSize = await openSeed(sizedSeed({ zone: 'Karazhan', size: 25 }, crowd(8)));
+    assert.equal(wrongZoneSize.api.State.selectedRaid, 'bt', 'Karazhan is not a 25-man: the version\'s default 25-man opens');
+    const classic = await openSeed(sizedSeed({ gameVersion: 'classic', zone: null, size: 20 }, crowd(30)));
+    assert.deepEqual([classic.api.State.selectedRaid, classic.api.State.groups.length], ['classic20', 4]);
+    const classicOld = await openSeed(sizedSeed({ gameVersion: 'classic', zone: null, size: null }, crowd(15)));
+    assert.equal(classicOld.api.State.selectedRaid, 'zg', 'no size, no zone: the 20-man heuristic as before');
+  });
+
+  await check('size: a plan already on this device keeps the raid template the user left it on; only a plan started from the sign-ups takes the raid\'s size', async () => {
+    const env = makeEnv();
+    let seed = sizedSeed({ zone: null, size: 25 }, crowd(8));
+    guildRoute(env, () => seed);
+    const { State, RaidContext } = env.api;
+    await RaidContext.route(HASH);
+    assert.equal(State.selectedRaid, 'bt');
+    State.selectedRaid = 'ssc';
+    env.ctx.commit();
+    RaidContext.leave();
+    seed = sizedSeed({ zone: 'Black Temple', size: 10 }, crowd(8));
+    await RaidContext.route(HASH);
+    assert.equal(State.selectedRaid, 'ssc', 'on screen: kept');
+    // Saved on this device, another plan on screen: still the saved plan's template.
+    RaidContext.leave();
+    env.api.Import.loadRoster({ gameVersion: 'tbc', raid: 'kara', name: 'Other', players: [{ name: 'Zorro', class: 'ROGUE', spec: 'Combat', role: 'melee_dps', groupNumber: 1 }] });
+    env.ctx.commit();
+    await RaidContext.route(HASH);
+    assert.equal(State.selectedRaid, 'ssc', 'saved: kept');
+  });
+
+  await check('markers: a marker reaches the player (seated, bench, Absent tray), the \'also\' sign-up waits on the bench as Signed up, and none of it is in the share code, the local save or the saved roster', async () => {
+    const env = makeEnv();
+    const withMarker = (s, kind, text) => ({ ...s, marker: { kind, text } });
+    const rows = () => [
+      withMarker(signup(1, 'Aldric', 'Warrior', 'Protection'), 'late', 'Late: 21:00'),
+      signup(2, 'Brindle', 'Mage', 'Fire'),
+      withMarker(signup(3, 'Cassia', 'Priest', 'Holy'), 'standby', 'Standby'),
+      withMarker(signup(4, 'Dunmar', 'Absence', null, 'absence'), 'away', 'Away: notice'),
+      withMarker(signup(5, 'Eliora', 'Mage', 'Arcane'), 'also', 'Also in: Team B raid'),
+      withMarker(signup(6, 'Fenwick', 'Rogue', 'Combat'), 'leaving', 'Leaves: 22:00'),
+    ];
+    let seed = SEED({ signups: rows() });
+    guildRoute(env, () => seed);
+    const { State, RaidContext, RaidHelperSync, Import, PlanSession, PlanStore } = env.api;
+    await RaidContext.route(HASH);
+    const marker = name => { const p = byName(State, name); return p && p.marker ? plain(p.marker) : null; };
+    assert.deepEqual(marker('Aldric'), { kind: 'late', text: 'Late: 21:00' });
+    assert.deepEqual(marker('Cassia'), { kind: 'standby', text: 'Standby' });
+    assert.deepEqual(marker('Fenwick'), { kind: 'leaving', text: 'Leaves: 22:00' });
+    assert.equal(marker('Brindle'), null);
+    assert(State.unplaced.includes(byName(State, 'Dunmar')) && marker('Dunmar').kind === 'away', 'Away arrives as Absent with its tag');
+    const eliora = byName(State, 'Eliora');
+    assert(State.bench.includes(eliora), 'the also-in-another-raid sign-up waits on the bench');
+    assert.deepEqual([eliora.signupStatus, eliora.groupNumber, marker('Eliora').kind], ['confirmed', 0, 'also']);
+    assert(State.groups.flat().includes(byName(State, 'Aldric')), 'a late marker changes no placement');
+
+    // Not in the share code, the local save or the saved roster.
+    env.ctx.commit();
+    const str = Import.decodeSharePayload(env.api.currentShareCode());
+    assert(!/marker|Standby|Late:|Away:|Also in/.test(str + JSON.stringify(Import.exportRoster())), 'no marker text in the share string or the saved roster');
+    State.notes = 'a real change, saved';
+    env.ctx.commit();
+    const saved = PlanStore.read(env.storage).find(p => p.data.planId === 'raid:r1');
+    assert(saved && saved.data.notes === 'a real change, saved' && !JSON.stringify(saved.data).includes('"marker"'), 'the local save carries no markers');
+    assert(Import.importAddonString(str).success);
+    assert(allPlayers(State).every(p => !p.marker), 'a plan read from a share code has no markers');
+    // Reopening the raid brings them back from the seed.
+    RaidContext.leave();
+    await RaidContext.route(HASH);
+    assert.equal(marker('Cassia').kind, 'standby', 'the next open applies them again');
+    assert.equal(marker('Eliora').kind, 'also');
+
+    // Refresh: a changed marker is replaced, a dropped one cleared, with no report and no plan change.
+    seed = SEED({ signups: rows().map(s => (s.name === 'Aldric' ? { ...s, marker: undefined } : s.name === 'Cassia' ? { ...s, marker: { kind: 'late', text: 'Late: 20:30' } } : s)) });
+    const undoDepth = PlanSession.undo.length;
+    const codeBefore = env.api.currentShareCode();
+    env.toasts.length = 0;
+    await RaidHelperSync.refresh();
+    assert.equal(marker('Aldric'), null, 'a marker the seed dropped is cleared');
+    assert.deepEqual(marker('Cassia'), { kind: 'late', text: 'Late: 20:30' });
+    assert.equal(PlanSession.undo.length, undoDepth, 'a marker alone is no plan change');
+    assert.equal(env.api.currentShareCode(), codeBefore);
+    assert(env.toasts.some(t => /^Refreshed\. Roster is up to date/.test(t)), env.toasts.join(' | '));
+    assert(!env.toasts.some(t => /new sign-up|withdrew|changed spec/.test(t)));
+  });
+
+  await check('markers: Undo keeps the markers of the plan on screen, and a live-link update does not wipe them', async () => {
+    const env = makeEnv();
+    guildRoute(env, () => SEED({ signups: [{ ...signup(1, 'Aldric', 'Warrior', 'Protection'), marker: { kind: 'standby', text: 'Standby' } }, signup(2, 'Brindle', 'Mage', 'Fire'), signup(3, 'Cassia', 'Priest', 'Holy')] }));
+    const { State, RaidContext, PlanSession, PlanStore, LocalPicks, Import } = env.api;
+    await RaidContext.route(HASH);
+    env.ctx.commit();
+    const group = byName(State, 'Brindle').groupNumber;
+    State.notes = 'a step to undo';
+    env.ctx.commit();
+    assert(PlanSession.undoLast(), 'one step to undo');
+    assert.equal(State.notes, '');
+    assert.equal(byName(State, 'Aldric').marker.kind, 'standby', 'Undo rebuilt the players and put the marker back');
+    assert.equal(byName(State, 'Brindle').groupNumber, group);
+    // A rebuilt copy from a live link keeps them through LocalPicks.
+    const picks = LocalPicks.capture();
+    assert(Import.importAddonString(Import.exportShareString()).success);
+    assert(allPlayers(State).every(p => !p.marker));
+    LocalPicks.restore(picks);
+    assert.equal(byName(State, 'Aldric').marker.kind, 'standby');
+    // Another plan's players get none of them.
+    const other = PlanStore.capture();
+    other.planId = 'plan:other';
+    assert(PlanStore.restore(other));
+    assert(allPlayers(State).every(p => !p.marker), 'markers belong to the plan they came with');
+  });
+
+  await check('date-only raid (timeKnown false): the banner shows the date without a made-up time, the plan claims no start time, and the seed JSON sends none', async () => {
+    const noon = Date.UTC(2026, 9, 24, 12, 0);
+    const raid = { startsAt: noon, timeKnown: false, timeZone: 'Pacific/Auckland' };
+    const { RaidLink } = makeEnv().api;
+    assert.equal(spaces(RaidLink.whenText(Object.assign({}, SEED().raid, raid))), 'Sat, Oct 24', 'read in UTC, so no zone moves the day');
+    assert.equal(spaces(RaidLink.bannerText(Object.assign({}, SEED().raid, raid))), 'Planning Sat, Oct 24 - Sat BT');
+    assert(!('startTime' in JSON.parse(RaidLink.seedToRaidHelper(SEED({ raid: Object.assign(SEED().raid, raid) })))));
+    // timeKnown true (or absent, as older seeds) is the same as before.
+    for (const known of [true, undefined]) assert.equal(spaces(RaidLink.whenText(Object.assign({}, SEED().raid, { timeKnown: known }))), 'Sat, Oct 24, 7:00 PM');
+    const env = await openSeed(SEED({ raid: Object.assign(SEED().raid, raid) }));
+    assert.equal(env.api.State.eventStartTime, null);
+    assert.equal(spaces(env.els['raid-context-text'].textContent), 'Planning Sat, Oct 24 - Sat BT');
+    // The re-sync of a reopened date-only raid does not set one either.
+    env.api.RaidContext.leave();
+    await env.api.RaidContext.route(HASH);
+    assert.equal(env.api.State.eventStartTime, null);
+    const known = await openSeed(SEED());
+    assert.equal(known.api.State.eventStartTime, Date.UTC(2026, 9, 25, 0, 0));
   });
 
   console.log(`\nRaid context tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

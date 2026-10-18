@@ -1148,6 +1148,8 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   await w.call(s.alice, 'PATCH', '/auth/prefs', { sidebarCollapsed: true });
   await w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'Main team' });
   await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { name: 'Main team', archived: false });
+  await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { size: 25 }); // the size it already has
+  await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { size: 15 }); // not a raid size
   await w.call(s.alice, 'PUT', `${s.peoplePath('bob')}/roles`, { officer: false, teamLeadTeamIds: [] });
   assert.deepEqual(await baseline(), ['guild.create']);
 
@@ -1155,6 +1157,7 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${team}`, { name: 'Renamed' });
   await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${team}`, { archived: true });
   await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${team}`, { archived: false });
+  await w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${team}`, { size: 10 });
   await s.setRoles('bob', { officer: true, teamLeadTeamIds: [] });
   await w.call(s.jars.bob, 'POST', `${s.peoplePath('dave')}/block`, { reason: 'because' });
   await w.call(s.jars.bob, 'DELETE', `${s.peoplePath('dave')}/block`, {});
@@ -1179,12 +1182,12 @@ check('audit: exactly the audited actions are written, once each, in the writes\
     'person.notes', 'person.update', 'roster.import'];
   // The attendance actions (Phase 3) are driven and pinned in guild-attendance-worker-tests.js.
   const ATTENDANCE_ACTIONS = ['raid.create', 'raid.delete', 'raid.event', 'raid.report', 'raid.plan', 'raid.manual', 'attendance.decide',
-    'attendance.undo', 'attendance.link', 'attendance.guest', 'policy.update', 'wcl.settings'];
+    'attendance.undo', 'attendance.link', 'attendance.guest', 'policy.update', 'wcl.settings', 'raid.settings'];
   // The loot actions (Phase 4) are driven and pinned in guild-loot-worker-tests.js; the Battle.net actions (Phase 5) in guild-bnet-worker-tests.js.
   const LOOT_ACTIONS = ['loot.import', 'loot.update', 'loot.delete', 'loot.policy'];
   const BNET_ACTIONS = ['bnet.link', 'bnet.unlink', 'bnet.settings', 'claim.create', 'claim.withdraw', 'claim.approve', 'claim.reject'];
-  // The sign-up and schedule actions (Phase 6) are driven and pinned in guild-signups-worker-tests.js.
-  const SIGNUP_ACTIONS = ['signup.set', 'signup.remove', 'signup.lock', 'schedule.update', 'schedule.fill'];
+  // The sign-up and schedule actions (Phase 6) are driven and pinned in guild-signups-worker-tests.js, the away notices (wave 2) in guild-wave2-worker-tests.js.
+  const SIGNUP_ACTIONS = ['signup.set', 'signup.remove', 'signup.lock', 'schedule.update', 'schedule.fill', 'away.set', 'away.remove', 'roster.publish', 'roster.unpublish', 'roster.decline'];
   // The account actions (Phase 7a) are driven and pinned in guild-accounts-worker-tests.js.
   const ACCOUNT_ACTIONS = ['discord.link', 'discord.unlink', 'person.account_link', 'person.account_unlink'];
   // The role editor, Discord role mapping, guest link and public page actions (Phase 7) are driven and pinned in guild-roles-worker-tests.js.
@@ -1192,7 +1195,7 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action) && !SIGNUP_ACTIONS.includes(action) && !ACCOUNT_ACTIONS.includes(action) && !ROLES_ACTIONS.includes(action)).sort());
   assert.deepEqual(AUDIT_ACTIONS.slice().sort(), [
     'access.remove', 'access.restore', 'account.delete', 'guild.claim', 'guild.create', 'guild.delete',
-    'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore',
+    'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore', 'team.size',
     ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...LOOT_ACTIONS, ...BNET_ACTIONS, ...SIGNUP_ACTIONS, ...ACCOUNT_ACTIONS, ...ROLES_ACTIONS,
   ].sort());
   const rows = await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, created_at FROM audit_log WHERE action IN ('account.delete', 'guild.delete')");

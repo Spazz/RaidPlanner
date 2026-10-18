@@ -158,6 +158,27 @@
     update: function (gid, pid, body) { return G.api.patch(rosterPath(gid, pid), body); },
     saveNotes: function (gid, pid, body) { return G.api.put(rosterPath(gid, pid, '/notes'), body); },
   };
+  // PM wave 2: away notices (mine, the team's next four weeks, one person's) and their writes.
+  G.api.away = {
+    mine: function (gid) { return G.api.get(guildPath(gid, '/away/mine')); },
+    team: function (gid, tid) { return G.api.get(guildPath(gid, '/away?team=' + encodeURIComponent(tid))); },
+    person: function (gid, pid) { return G.api.get(guildPath(gid, '/away?person=' + encodeURIComponent(pid))); },
+    add: function (gid, body) { return G.api.post(guildPath(gid, '/away'), body); },
+    save: function (gid, nid, body) { return G.api.put(guildPath(gid, '/away/' + encodeURIComponent(nid)), body); },
+    remove: function (gid, nid) { return G.api.del(guildPath(gid, '/away/' + encodeURIComponent(nid)), {}); },
+  };
+  // PM wave 2: standing sign-ups (mine, per team) and a raid's published roster (officers' publish / unpublish, a member's confirm / decline).
+  G.api.standing = {
+    get: function (gid) { return G.api.get(guildPath(gid, '/standing')); },
+    save: function (gid, tid, body) { return G.api.put(guildPath(gid, '/teams/' + encodeURIComponent(tid) + '/standing'), body); },
+  };
+  G.api.raidRoster = {
+    get: function (gid, rid) { return G.api.get(raidPath(gid, rid, '/roster')); },
+    publish: function (gid, rid) { return G.api.post(raidPath(gid, rid, '/roster'), {}); },
+    unpublish: function (gid, rid) { return G.api.del(raidPath(gid, rid, '/roster'), {}); },
+    confirm: function (gid, rid) { return G.api.post(raidPath(gid, rid, '/roster/confirm'), {}); },
+    decline: function (gid, rid) { return G.api.post(raidPath(gid, rid, '/roster/decline'), {}); },
+  };
   G.api.calendar = {
     status: function (gid, teamId) { return G.api.get(guildPath(gid, '/calendar?team=' + encodeURIComponent(teamId))); },
     create: function (gid, teamId) { return G.api.post(guildPath(gid, '/calendar'), { teamId: teamId }); },

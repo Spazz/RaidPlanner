@@ -181,3 +181,8 @@
 !guild-roles-worker-tests.js
 !guild-roles-ui-tests.js
 !guild-roles-contract-tests.js
+# PM wave 2 (sign-up lifecycle + raid sizes): Worker, pages and contract suites, and the Planner suite
+!guild-wave2-worker-tests.js
+!guild-wave2-ui-tests.js
+!guild-wave2-contract-tests.js
+!wave2-planner-tests.js

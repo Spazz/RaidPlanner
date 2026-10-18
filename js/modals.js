@@ -1213,6 +1213,7 @@ const RaidHelperSync = {
   apply(diff, lead) {
     this.hideBanner();
     Import.claimHandAdded(diff);
+    Import.applyMarkers(diff);
     if (diff.eventStartTime) State.eventStartTime = diff.eventStartTime;
     // Logged as one Changes entry, including anyone initGroups benches for room.
     const { result: counts, entry } = ChangeLog.track('sync', 'Sign-up sync', () => {

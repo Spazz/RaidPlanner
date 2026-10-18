@@ -410,6 +410,8 @@ export async function deleteMe(ctx) {
   // The free-text notes this account wrote on Raidsmith sign-ups go with it, whichever sign-in made them (the sign-up itself stays with the guild;
   // updated_by is cleared when the account row goes, so this runs first).
   statements.push(db.prepare("UPDATE raid_signups SET note = NULL WHERE source = 'raidsmith' AND updated_by = ?").bind(userId));
+  // The reasons the account wrote on away notices go the same way; the notices stay with the person (they still excuse the raids they covered).
+  statements.push(db.prepare('UPDATE away_notices SET reason = NULL WHERE created_by = ?').bind(userId));
   // The roster people linked to this account stay (officers own the roster); the link goes. The version moves so an officer's open page sees it.
   statements.push(db.prepare(
     'UPDATE players SET user_id = NULL, version = version + 1, updated_at = ? WHERE user_id = ?',

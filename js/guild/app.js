@@ -67,7 +67,7 @@
     public: { state: 'publicSettings', page: 'settingsPublic' },
   };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
-  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot' };
+  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', away: 'away' };
   function attPageKey(r) {
     if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : (r.section === 'home' ? 'attention' : null)));
     if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : (r.tab === 'activity' ? 'settingsActivity' : null)));
@@ -662,6 +662,7 @@
     else if (r.name === 'new') page = 'Create a guild';
     else if (r.name === 'section') page = { home: 'Home', roster: 'Roster', raids: 'Raids', attendance: 'Attendance', loot: 'Loot' }[r.section] || '';
     else if (r.name === 'raidnew') page = 'New raid';
+    else if (r.name === 'away') page = 'Away notices';
     else if (r.name === 'raid') page = 'Raid';
     else if (r.name === 'review') page = 'Review queue';
     else if (r.name === 'backfill') page = 'Backfill from Warcraft Logs';
@@ -715,12 +716,12 @@
         if (r.section === 'attendance') return P.attendance.main(r, gd, ctx);
         if (r.section === 'loot') return P.loot.main(r, gd, ctx);
         return P.signin.messageHtml('Page not found', 'That address does not match a Raidsmith guild page.', {});
-      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson':
+      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson': case 'away':
         if (!gd) return P.signin.loadingHtml();
         return P[attPageKey(r)].main(r, gd, ctx);
       case 'person': {
         if (!gd || !state.person || state.person.gid !== gd.guild.id || state.person.pid !== r.pid) return P.signin.loadingHtml();
-        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid), trial: P.personTrial.cardState(gd.guild.id, r.pid) });
+        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid), trial: P.personTrial.cardState(gd.guild.id, r.pid), away: P.away.personCardHtml({ guildData: gd, record: state.person.record, state: P.attendance.attState().awayPerson }) });
       }
       case 'import': {
         if (!gd) return P.signin.loadingHtml();
@@ -888,6 +889,8 @@
     }
     if (state.loaded) firstRender = false;
     if (section === 'guild' && G.pages.raid && G.pages.raid.afterRender) G.pages.raid.afterRender();
+    // Pieces that load their own data once the page they sit on is drawn: the officers' away card and person section, the standing sign-ups card, the roster.
+    if (section === 'guild') ['away', 'standing', 'raidRoster'].forEach(function (k) { if (G.pages[k] && G.pages[k].afterRender) G.pages[k].afterRender(r); });
   }
 
   // Redraws the nav slots only (sidebar and drawer): a late answer such as the Home count must not rewrite a page the person is typing in.

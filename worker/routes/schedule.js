@@ -9,6 +9,8 @@ import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { zonesFor } from '../raid-zones.js';
 import { SINGLE_LINE_STRIP } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
+import { MAX_CLOSE_HOURS, isCloseHours } from '../signups-data.js';
+import { reconcileStanding } from '../standing.js';
 import { MAX_SCHEDULE_WEEKS, MAX_SLOTS, START_TIME, planScheduledRaids } from '../schedule-plan.js';
 import { bad } from './roster.js';
 
@@ -18,7 +20,7 @@ const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permiss
 // The team in this guild (404 for another guild's) and the viewer's raids.edit on it when `edit`.
 async function loadTeam(ctx, guildContext, edit) {
   const team = await ctx.db.prepare(
-    'SELECT id, name, archived, schedule_weeks, schedule_auto FROM teams WHERE id = ? AND guild_id = ?',
+    'SELECT id, name, archived, schedule_weeks, schedule_auto, signup_close_hours FROM teams WHERE id = ? AND guild_id = ?',
   ).bind(ctx.params.tid, guildContext.guild.id).first();
   if (!team) throw new HttpError(404, 'not_found', 'That team does not exist.');
   if (edit && !allows(guildContext.can, 'raids.edit', team.id)) throw forbidden();
@@ -36,6 +38,7 @@ function view(guildContext, team, slotRows) {
     slots: slotRows.map((row) => ({ id: row.id, weekday: row.weekday, startTime: row.start_time, zone: row.zone, title: row.title })),
     weeks: team.schedule_weeks,
     auto: team.schedule_auto === 1,
+    signupCloseHours: team.signup_close_hours, // hours before a raid's start at which members' sign-ups close (0 = at the start)
     can: { edit: allows(guildContext.can, 'raids.edit', team.id) },
     timeZone: guild.time_zone,
     zones: zonesFor(guild.game_version),
@@ -51,6 +54,11 @@ export async function getSchedule(ctx) {
 
 function readWeeks(value, field) {
   if (!Number.isInteger(value) || value < 1 || value > MAX_SCHEDULE_WEEKS) throw bad(`${field} is 1 to ${MAX_SCHEDULE_WEEKS} weeks.`, field);
+  return value;
+}
+
+function readCloseHours(value) {
+  if (!isCloseHours(value)) throw bad(`signupCloseHours is a whole number of hours from 0 to ${MAX_CLOSE_HOURS}.`, 'signupCloseHours');
   return value;
 }
 
@@ -76,7 +84,7 @@ function readSlotBody(body, guild) {
   });
 }
 
-// PUT .../schedule: replaces the slots; `weeks` and `auto` are kept when left out.
+// PUT .../schedule: replaces the slots; `weeks`, `auto` and `signupCloseHours` (the team's sign-up deadline) are kept when left out.
 export async function putSchedule(ctx) {
   const { body, db } = ctx;
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
@@ -85,6 +93,7 @@ export async function putSchedule(ctx) {
   const weeks = body.weeks === undefined ? team.schedule_weeks : readWeeks(body.weeks, 'weeks');
   if (body.auto !== undefined && typeof body.auto !== 'boolean') throw bad('auto must be true or false.', 'auto');
   const auto = body.auto === undefined ? team.schedule_auto === 1 : body.auto;
+  const closeHours = body.signupCloseHours === undefined ? team.signup_close_hours : readCloseHours(body.signupCloseHours);
   if (team.archived === 1) throw new HttpError(409, 'team_archived', 'Restore the team before changing its schedule.');
   const guild = guildContext.guild;
   const now = ctx.now();
@@ -97,13 +106,14 @@ export async function putSchedule(ctx) {
        SELECT json_extract(value, '$.id'), ?, ?, json_extract(value, '$.weekday'), json_extract(value, '$.startTime'),
               json_extract(value, '$.zone'), json_extract(value, '$.title'), ? FROM json_each(?)`,
     ).bind(guild.id, team.id, now, JSON.stringify(rows)),
-    db.prepare('UPDATE teams SET schedule_weeks = ?, schedule_auto = ? WHERE id = ? AND guild_id = ?').bind(weeks, auto ? 1 : 0, team.id, guild.id),
+    db.prepare('UPDATE teams SET schedule_weeks = ?, schedule_auto = ?, signup_close_hours = ? WHERE id = ? AND guild_id = ?').bind(weeks, auto ? 1 : 0, closeHours, team.id, guild.id),
     auditStatement(ctx, {
       guildId: guild.id, actorUserId: ctx.session.user.id, action: 'schedule.update', entityType: 'team', entityId: team.id,
-      before: { slots: before.length, weeks: team.schedule_weeks, auto: team.schedule_auto === 1 }, after: { slots: slots.length, weeks, auto },
+      before: { slots: before.length, weeks: team.schedule_weeks, auto: team.schedule_auto === 1, signupCloseHours: team.signup_close_hours },
+      after: { slots: slots.length, weeks, auto, signupCloseHours: closeHours },
     }),
   ]);
-  const fresh = { ...team, schedule_weeks: weeks, schedule_auto: auto ? 1 : 0 };
+  const fresh = { ...team, schedule_weeks: weeks, schedule_auto: auto ? 1 : 0, signup_close_hours: closeHours };
   return jsonResponse(view(guildContext, fresh, await readSlots(db, team.id)));
 }
 
@@ -140,11 +150,12 @@ export async function createScheduledRaids(ctx) {
     const ids = toCreate.map((row) => row.id);
     const dates = toCreate.map((row) => row.raidOn);
     await db.batch([
-      // Each insert is conditional on the team still having no raid that date (two officers pressing the button at once create it once).
+      // A slot has a start time, so the raid's time is known (time_known 1). Each insert is conditional on the team still having no raid that date
+      // (two officers pressing the button at once create it once).
       db.prepare(
-        `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, title, log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at)
+        `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, title, log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at, time_known)
          SELECT json_extract(j.value, '$.id'), ?, ?, json_extract(j.value, '$.raidOn'), json_extract(j.value, '$.startsAt'), json_extract(j.value, '$.zone'),
-                json_extract(j.value, '$.title'), 'log', 0, '', 1, ?, ?, ?
+                json_extract(j.value, '$.title'), 'log', 0, '', 1, ?, ?, ?, 1
            FROM json_each(?) j
           WHERE EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)
             AND NOT EXISTS (SELECT 1 FROM raids x WHERE x.team_id = ? AND x.raid_on = json_extract(j.value, '$.raidOn'))`,
@@ -162,6 +173,8 @@ export async function createScheduledRaids(ctx) {
     ]);
     const made = (await db.prepare('SELECT id FROM raids WHERE id IN (SELECT value FROM json_each(?))').bind(JSON.stringify(ids)).all()).results.map((row) => row.id);
     created = toCreate.filter((row) => made.includes(row.id)).map((row) => ({ raidId: row.id, raidOn: row.raidOn, startsAt: row.startsAt, zone: row.zone, title: row.title }));
+    // The new raids start with the standing sign-ups of their weekday.
+    if (created.length) await reconcileStanding(ctx, guild, { teamIds: [team.id], raidIds: created.map((row) => row.raidId) });
     // A date another request created first: the team has a raid there now.
     for (const row of toCreate.filter((entry) => !made.includes(entry.id))) skipped.push({ raidOn: row.raidOn, reason: 'exists' });
   }

@@ -194,6 +194,13 @@
   };
   ui.plural = function (n, one, many) { return n + ' ' + (n === 1 ? one : many); };
 
+  // The sizes a team or a raid can have (the Worker's RAID_SIZES), as <option> items: '20-man', with an optional first "automatic" choice (value '').
+  ui.RAID_SIZES = [10, 20, 25, 40];
+  ui.sizeChoices = function (autoLabel) {
+    const sizes = ui.RAID_SIZES.map(function (n) { return { value: n, label: n + '-man' }; });
+    return autoLabel ? [{ value: '', label: autoLabel }].concat(sizes) : sizes;
+  };
+
   // <option> list from [{ value, label }] with one selected value.
   ui.optionsHtml = function (items, selected) {
     return items.map(function (o) {

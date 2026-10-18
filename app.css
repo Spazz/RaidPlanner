@@ -924,6 +924,17 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 .status-tentative { color: #d9a95b; }
 .status-late      { color: #7fb2e5; }
 .status-absent    { color: var(--danger); }
+/* The guild tracker's note on a sign-up (SignupMarker): away, also in another raid, late, leaving, standby. */
+.marker-tag {
+  flex: 0 1 auto; min-width: 0; max-width: 11em; padding: 1px 4px; border: 1px solid currentColor; border-radius: 3px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; cursor: default;
+  overflow: hidden; text-overflow: ellipsis; /* Late and Leaving show their text: a long one ends in an ellipsis, the tooltip has it all */
+}
+.marker-away    { color: var(--danger); }
+.marker-also    { color: #7fb2e5; }
+.marker-late    { color: #d9a95b; }
+.marker-leaving { color: #d9a95b; }
+.marker-standby { color: var(--accent-gold-dim); }
 .unplaced-slot { border-style: dashed; opacity: 0.7; }
 
 /* ── Changed players (ChangeLog highlights) ──

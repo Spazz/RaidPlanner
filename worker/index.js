@@ -29,7 +29,7 @@ import {
 } from './routes/roster.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
 import {
-  createRaid, deleteEvent, deleteManual, deletePlan, deleteRaid, deleteReport, getPlanner, getRaid, listRaids, putEvent, putManual, putPlan,
+  createRaid, deleteEvent, deleteManual, deletePlan, deleteRaid, deleteReport, getPlanner, getRaid, listRaids, patchRaid, putEvent, putManual, putPlan,
   putReport, recomputeRoute,
 } from './routes/raids.js';
 import {
@@ -37,9 +37,12 @@ import {
   putWclSettings,
 } from './routes/attendance.js';
 import { getAttention } from './routes/attention.js';
+import { getStanding, putStanding } from './routes/standing.js';
+import { confirmSeat, declineSeat, getPublishedRoster, publishRoster, unpublishRoster } from './routes/roster-publish.js';
 import { getAudit } from './routes/audit.js';
 import { createCalendarLink, getCalendarFeed, getCalendarStatus, revokeCalendarLink } from './routes/calendar.js';
 import { getTrialReview } from './routes/trial.js';
+import { deleteNotice, getMyNotices, getNotices, postNotice, putNotice } from './routes/away.js';
 import {
   LOOT_MAX_BODY, commitLoot, deleteLoot, getBalance, getLootItems, getLootPolicy, getLootRaids, getPersonLoot, getRaidLoot, patchLoot,
   previewLoot, putLootPolicy,
@@ -119,6 +122,7 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/raids', auth: true, handler: listRaids },
   { method: 'POST', path: '/api/guild/:gid/raids', auth: true, handler: createRaid },
   { method: 'GET', path: '/api/guild/:gid/raids/:rid', auth: true, handler: getRaid },
+  { method: 'PATCH', path: '/api/guild/:gid/raids/:rid', auth: true, handler: patchRaid },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid', auth: true, handler: deleteRaid },
   { method: 'PUT', path: '/api/guild/:gid/raids/:rid/event', auth: true, handler: putEvent },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/event', auth: true, handler: deleteEvent },
@@ -143,6 +147,15 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/teams/:tid/schedule', auth: true, handler: getSchedule },
   { method: 'PUT', path: '/api/guild/:gid/teams/:tid/schedule', auth: true, handler: putSchedule },
   { method: 'POST', path: '/api/guild/:gid/teams/:tid/schedule/raids', auth: true, handler: createScheduledRaids },
+  // The published roster of a raid: officers publish it, members see their own seat and answer it. Literal paths come before nothing else under /roster.
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/roster', auth: true, handler: getPublishedRoster },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/roster', auth: true, handler: publishRoster },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/roster', auth: true, handler: unpublishRoster },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/roster/confirm', auth: true, handler: confirmSeat },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/roster/decline', auth: true, handler: declineSeat },
+  // Standing sign-ups (PM wave 2): a member's own weekday entries, which become sign-ups on the team's upcoming raids.
+  { method: 'GET', path: '/api/guild/:gid/standing', auth: true, handler: getStanding },
+  { method: 'PUT', path: '/api/guild/:gid/teams/:tid/standing', auth: true, handler: putStanding },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/decisions', auth: true, handler: postDecision },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/decisions/:pid', auth: true, handler: deleteDecision },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/unmatched', auth: true, handler: postUnmatched },
@@ -181,6 +194,12 @@ const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/calendar', auth: true, handler: createCalendarLink },
   { method: 'DELETE', path: '/api/guild/:gid/calendar', auth: true, handler: revokeCalendarLink },
   { method: 'GET', path: '/cal/:cal', auth: false, handler: getCalendarFeed },
+  // PM wave 2: away notices. The literal /away/mine is registered before /away/:nid.
+  { method: 'GET', path: '/api/guild/:gid/away/mine', auth: true, handler: getMyNotices },
+  { method: 'GET', path: '/api/guild/:gid/away', auth: true, handler: getNotices },
+  { method: 'POST', path: '/api/guild/:gid/away', auth: true, handler: postNotice },
+  { method: 'PUT', path: '/api/guild/:gid/away/:nid', auth: true, handler: putNotice },
+  { method: 'DELETE', path: '/api/guild/:gid/away/:nid', auth: true, handler: deleteNotice },
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },

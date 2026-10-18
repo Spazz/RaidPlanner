@@ -2,20 +2,24 @@
 // Native Raidsmith sign-ups. GET /raids/:rid/signups answers with the merged list (a person's Raidsmith sign-up replaces their
 // Raid-Helper row), the viewer's own part (`me`) and, for officers, the team's people (`roster`). A member signs themselves up with
 // four big buttons (Sign up, Late, Tentative, Can't come) and a small form for the character, spec and a note, until the raid starts or
-// an officer closes sign-ups; officers edit or remove anyone's, add one for someone without Discord, and close or reopen sign-ups.
+// an officer closes sign-ups or the team's deadline (hours before the start) passes; officers edit or remove anyone's, add one for someone without
+// Discord, and close or reopen sign-ups. The counts read "expected / size" against the raid's size. A fifth button, Standby ("happy to sit out if
+// needed"), has its own group; a person away by notice is a virtual Absent entry (source 'away', "Away (notice)": nothing to edit, a real sign-up
+// replaces it), and Late / Leaving notices show as "Late 21:00" / "Leaves 22:00".
 // pages-raid.js draws the panel and loads its data; the state lives in the attendance state bag (a().raidSignups).
 (function (G) {
   'use strict';
 
   const NOTE_MAX = 120;
-  const KIND_LABELS = { signed: 'Signed up', late: 'Late', tentative: 'Tentative', bench: 'Bench', absence: 'Absent' };
-  // The four a member picks, with the words on the buttons.
-  const MY_KINDS = [['signed', 'Sign up'], ['late', 'Late'], ['tentative', 'Tentative'], ['absence', 'Can\'t come']];
-  const OFFICER_KINDS = [['signed', 'Signed up'], ['late', 'Late'], ['tentative', 'Tentative'], ['bench', 'Bench'], ['absence', 'Absent']];
+  const KIND_LABELS = { signed: 'Signed up', late: 'Late', standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Absent' };
+  // The five a member picks, with the words on the buttons.
+  const MY_KINDS = [['signed', 'Sign up'], ['late', 'Late'], ['standby', 'Standby'], ['tentative', 'Tentative'], ['absence', 'Can\'t come']];
+  const OFFICER_KINDS = [['signed', 'Signed up'], ['late', 'Late'], ['standby', 'Standby'], ['tentative', 'Tentative'], ['bench', 'Bench'], ['absence', 'Absent']];
   const ROLE_ORDER = ['tank', 'healer', 'melee', 'ranged', 'none'];
   const ROLE_LABELS = { tank: 'Tanks', healer: 'Healers', melee: 'Melee', ranged: 'Ranged', none: 'No role yet' };
-  const OTHER_ORDER = ['tentative', 'bench', 'absence'];
-  const OTHER_LABELS = { tentative: 'Tentative', bench: 'Bench', absence: 'Absent' };
+  const OTHER_ORDER = ['standby', 'tentative', 'bench', 'absence'];
+  const OTHER_LABELS = { standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Absent' };
+  const STANDBY_HINT = 'Standby: Happy to sit out if needed.';
   const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
 
   function st() { return G.app.state; }
@@ -70,28 +74,45 @@
   // ── view helpers ──
   function whenOf(detail, gd) {
     const r = detail && detail.raid ? detail.raid : {};
-    return G.pages.raids.whenText({ raidOn: r.raidOn, startsAt: r.startsAt }, gd);
+    return G.pages.raids.whenText({ raidOn: r.raidOn, startsAt: r.startsAt, timeKnown: r.timeKnown }, gd);
   }
 
+  function hoursText(n) { return plural(n, 'hour', 'hours'); }
+
+  // The pill text is long once a deadline is in it, so it may wrap (gs-su-status) instead of running off a phone's edge.
   function statusPillHtml(view, detail, gd) {
-    if (view.raid.closed === 'locked') return '<span class="gs-pill gs-pill-warn">Closed by an officer</span>';
-    if (view.raid.closed === 'started') return '<span class="gs-pill gs-pill-muted">The raid has started</span>';
-    return '<span class="gs-pill gs-pill-ok">Open until ' + esc(whenOf(detail, gd)) + '</span>';
+    const v = view.raid;
+    if (v.closed === 'locked') return '<span class="gs-pill gs-pill-warn gs-su-status">Closed by an officer</span>';
+    if (v.closed === 'started') return '<span class="gs-pill gs-pill-muted gs-su-status">The raid has started</span>';
+    if (v.closed === 'deadline') return '<span class="gs-pill gs-pill-warn gs-su-status">Closed' + (typeof v.closesAt === 'number' ? ' ' + esc(G.pages.raids.momentText(v.closesAt, gd)) : '') + '</span>';
+    if (v.closeHours > 0 && typeof v.closesAt === 'number') {
+      return '<span class="gs-pill gs-pill-ok gs-su-status">Open until ' + esc(G.pages.raids.momentText(v.closesAt, gd)) + ' (sign-ups close ' + esc(hoursText(v.closeHours)) + ' before the start)</span>';
+    }
+    return '<span class="gs-pill gs-pill-ok gs-su-status">Open until ' + esc(whenOf(detail, gd)) + '</span>';
   }
 
   function closedText(view) {
-    return view.raid.closed === 'locked'
-      ? 'An officer has closed sign-ups. Ask an officer if you need to change yours.'
-      : 'The raid has started, so sign-ups can no longer be changed here. Ask an officer if you need to change yours.';
+    if (view.raid.closed === 'locked') return 'An officer has closed sign-ups. Ask an officer if you need to change yours.';
+    if (view.raid.closed === 'deadline') return 'Sign-ups closed ' + hoursText(view.raid.closeHours) + ' before the start. Ask an officer if you need to change yours.';
+    return 'The raid has started, so sign-ups can no longer be changed here. Ask an officer if you need to change yours.';
   }
 
-  function sourceNoteHtml(sig) {
-    if (!sig) return '<p class="gs-fine">You have not signed up yet.</p>';
+  // "Late 21:00" / "Leaves 22:00": what a Late or Leaving early notice says about a raid.
+  function noticeNote(n) {
+    if (!n || !n.atTime) return '';
+    return (n.kind === 'leaving' ? 'Leaves ' : 'Late ') + n.atTime;
+  }
+
+  function sourceNoteHtml(sig, notice) {
+    const own = notice && noticeNote(notice) ? '<p class="gs-fine">Your notice for this raid: ' + esc(noticeNote(notice)) + '.</p>' : '';
+    if (!sig) return '<p class="gs-fine">You have not signed up yet.</p>' + own;
+    if (sig.source === 'away') return '<p class="gs-fine">You are away (notice). Choosing a status here overrides it.</p>' + own;
     if (sig.source === 'raid_helper') {
-      return '<p class="gs-fine">You are down as ' + esc(String(KIND_LABELS[sig.kind] || sig.kind).toLowerCase()) + ' on Raid-Helper. Choosing a status here saves a sign-up in Raidsmith that replaces it.</p>';
+      return '<p class="gs-fine">You are down as ' + esc(String(KIND_LABELS[sig.kind] || sig.kind).toLowerCase()) + ' on Raid-Helper. Choosing a status here saves a sign-up in Raidsmith that replaces it.</p>' + own;
     }
     return '<p class="gs-fine">You are down as <strong>' + esc(String(KIND_LABELS[sig.kind] || sig.kind).toLowerCase()) + '</strong>' +
-      (sig.name ? ' with ' + esc(sig.name) : '') + (sig.spec ? ' (' + esc(sig.spec) + ')' : '') + '.</p>';
+      (sig.name ? ' with ' + esc(sig.name) : '') + (sig.spec ? ' (' + esc(sig.spec) + ')' : '') + '.</p>' +
+      (sig.standing ? '<p class="gs-fine">This sign-up comes from your standing sign-up. Skip this week marks you absent for this raid only.</p>' : '') + own;
   }
 
   // The viewer's own part: four status buttons, then the character / spec / note form.
@@ -103,9 +124,11 @@
     const chars = Array.isArray(me.characters) ? me.characters : [];
     const form = ui.form || { characterId: null, spec: '', note: '' };
     const ch = myCharacter(view, ui);
+    // A person away by notice has not chosen a status: no button is pressed.
     const buttons = MY_KINDS.map(function (k) {
-      const on = sig && sig.kind === k[0];
-      return '<button type="button" class="gs-btn gs-su-kind' + (k[0] === 'signed' && !on ? ' gs-btn-molten' : '') + '" data-action="su-kind" data-kind="' + k[0] + '" data-key="su-kind-' + k[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '"' + (open && !ui.busy ? '' : ' disabled') + '>' + esc(k[1]) + '</button>';
+      const on = sig && sig.source !== 'away' && sig.kind === k[0];
+      return '<button type="button" class="gs-btn gs-su-kind' + (k[0] === 'signed' && !on ? ' gs-btn-molten' : '') + '" data-action="su-kind" data-kind="' + k[0] + '" data-key="su-kind-' + k[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '"' +
+        (k[0] === 'standby' ? ' aria-describedby="su-standby-hint"' : '') + (open && !ui.busy ? '' : ' disabled') + '>' + esc(k[1]) + '</button>';
     }).join('');
     const charField = chars.length > 1
       ? '<div class="gs-field"><label class="gs-label" for="su-char">Character</label><select class="gs-input" id="su-char" data-change="su-char" data-key="su-char"' + (open ? '' : ' disabled') + '>' +
@@ -116,13 +139,13 @@
         G.ui.optionsHtml([{ value: '', label: 'No spec' }].concat((ch.specs || []).map(function (s) { return { value: s, label: s }; })), form.spec) + '</select></div>'
       : '';
     const noteField = '<div class="gs-field"><label class="gs-label" for="su-note">Note (optional)</label><input class="gs-input" type="text" id="su-note" data-input="su-note" data-key="su-note" maxlength="' + NOTE_MAX + '" autocomplete="off" value="' + esc(form.note) + '"' + (open ? '' : ' disabled') + '></div>';
-    const save = sig && open
+    const save = sig && sig.source !== 'away' && open
       ? '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm" data-key="su-save"' + (ui.busy ? ' disabled' : '') + '>Save details</button>' +
-        (sig.source === 'raidsmith' ? '<button type="button" class="gs-btn gs-btn-sm" data-action="su-withdraw" data-key="su-withdraw"' + (ui.busy ? ' disabled' : '') + '>Remove my sign-up</button>' : '') + '</div>'
+        (sig.source === 'raidsmith' ? '<button type="button" class="gs-btn gs-btn-sm" data-action="su-withdraw" data-key="su-withdraw"' + (ui.busy ? ' disabled' : '') + '>' + (sig.standing ? 'Skip this week' : 'Remove my sign-up') + '</button>' : '') + '</div>'
       : '';
-    return '<div class="gs-su-me" role="group" aria-labelledby="su-me-h"><h3 class="gs-h3" id="su-me-h">Your sign-up</h3>' + sourceNoteHtml(sig) +
+    return '<div class="gs-su-me" role="group" aria-labelledby="su-me-h"><h3 class="gs-h3" id="su-me-h">Your sign-up</h3>' + sourceNoteHtml(sig, me.notice) +
       (open ? '' : '<p class="gs-notice" role="status">' + esc(closedText(view)) + '</p>') +
-      '<div class="gs-su-kinds" role="group" aria-label="Your status">' + buttons + '</div>' +
+      '<div class="gs-su-kinds" role="group" aria-label="Your status">' + buttons + '</div><p class="gs-fine" id="su-standby-hint">' + esc(STANDBY_HINT) + '</p>' +
       '<form class="gs-su-form" data-submit="su-details-form" novalidate><div class="gs-su-fields">' + charField + specField + noteField + '</div>' + save + '</form>' +
       '<p class="gs-alert" id="su-error" role="alert"' + (ui.error ? '' : ' hidden') + '>' + esc(ui.error) + '</p></div>';
   }
@@ -131,7 +154,9 @@
   function countsHtml(view) {
     const c = view.counts;
     if (!c) return '';
-    const items = [['Signed', c.signed], ['Late', c.late], ['Tentative', c.tentative], ['Bench', c.bench], ['Absent', c.absence]];
+    // The people expected (signed up and late) against the raid's size, first.
+    const sized = typeof view.raid.size === 'number' && view.raid.size > 0 && typeof c.expected === 'number';
+    const items = (sized ? [['Expected', c.expected + ' / ' + view.raid.size]] : []).concat([['Signed', c.signed], ['Late', c.late]]).concat(typeof c.standby === 'number' ? [['Standby', c.standby]] : [], [['Tentative', c.tentative], ['Bench', c.bench], ['Absent', c.absence]]);
     const classes = CLASS_IDS.filter(function (id) { return c.byClass && c.byClass[id] > 0; }).map(function (id) {
       return '<li class="gs-su-class">' + G.ui.classNameHtml(G.ui.className(id), id) + ' <span class="gs-su-count">' + esc(c.byClass[id]) + '</span></li>';
     }).join('');
@@ -140,7 +165,7 @@
   }
 
   function toolsHtml(entry, edit) {
-    if (!edit || !entry.personId) return '';
+    if (!edit || !entry.personId || entry.source === 'away') return ''; // an away notice is not a sign-up to change: a real sign-up replaces it
     return '<span class="gs-row-actions gs-su-tools"><button type="button" class="gs-btn gs-btn-sm" data-action="su-edit" data-pid="' + esc(entry.personId) + '" data-key="su-edit-' + esc(entry.personId) + '">Edit</button>' +
       (entry.source === 'raidsmith' ? '<button type="button" class="gs-btn gs-btn-sm" data-action="su-remove" data-pid="' + esc(entry.personId) + '" data-key="su-remove-' + esc(entry.personId) + '">Remove</button>' : '') + '</span>';
   }
@@ -152,6 +177,9 @@
     return '<li class="gs-su-item' + (entry.isMe ? ' is-me' : '') + '"><span class="gs-su-who">' + name + (entry.isMe ? ' <span class="gs-chip gs-chip-main">You</span>' : '') + '</span>' +
       (specText ? '<span class="gs-su-spec">' + esc(specText) + '</span>' : '') +
       (entry.kind === 'late' ? '<span class="gs-chip gs-chip-signup">Late</span>' : '') +
+      (entry.source === 'away' ? '<span class="gs-chip gs-chip-signup">Away (notice)</span>' : '') +
+      (entry.standing ? '<span class="gs-chip gs-chip-src">standing</span>' : '') +
+      (entry.notice && noticeNote(entry.notice) ? '<span class="gs-chip gs-chip-signup">' + esc(noticeNote(entry.notice)) + '</span>' : '') +
       (entry.source === 'raid_helper' ? '<span class="gs-chip gs-chip-src">Raid-Helper</span>' : '') +
       (entry.nickname ? '<span class="gs-fine">' + esc(entry.nickname) + '</span>' : '') + toolsHtml(entry, edit) +
       (entry.note ? '<span class="gs-su-note">' + esc(entry.note) + '</span>' : '') + '</li>';
@@ -162,11 +190,21 @@
       '<ul class="gs-su-list">' + entries.map(function (e) { return entryHtml(e, edit); }).join('') + '</ul></section>';
   }
 
-  // Signed and Late by role, then Tentative, Bench and Absent. Empty groups are left out.
+  // The Late / Leaving notices of people the list does not already show them on (they have no sign-up yet): one group, a line each.
+  function noticesGroupHtml(view, entries) {
+    const shown = {};
+    entries.forEach(function (e) { if (e.notice && e.personId) shown[e.personId] = true; });
+    const rest = (Array.isArray(view.notices) ? view.notices : []).filter(function (n) { return noticeNote(n) && !shown[n.personId]; });
+    if (!rest.length) return '';
+    return '<section class="gs-su-group" aria-labelledby="su-g-notices"><h3 class="gs-su-group-h" id="su-g-notices">Notices <span class="gs-su-count">' + rest.length + '</span></h3><ul class="gs-su-list">' +
+      rest.map(function (n) { return '<li class="gs-su-item"><span class="gs-su-who">' + esc(n.name) + '</span><span class="gs-chip gs-chip-signup">' + esc(noticeNote(n)) + '</span></li>'; }).join('') + '</ul></section>';
+  }
+
+  // Signed and Late by role, then Standby, Tentative, Bench and Absent (people away by notice are in Absent). Empty groups are left out.
   function listHtml(view) {
     const entries = Array.isArray(view.entries) ? view.entries : [];
     const edit = !!view.can.edit;
-    if (!entries.length) return '<p class="gs-empty">No sign-ups yet.</p>';
+    if (!entries.length) return '<p class="gs-empty">No sign-ups yet.</p>' + (noticesGroupHtml(view, entries) ? '<div class="gs-su-groups">' + noticesGroupHtml(view, entries) + '</div>' : '');
     const coming = entries.filter(function (e) { return e.kind === 'signed' || e.kind === 'late'; });
     const groups = ROLE_ORDER.map(function (role) {
       const list = coming.filter(function (e) { return (e.role || 'none') === role; });
@@ -176,6 +214,7 @@
       const list = entries.filter(function (e) { return e.kind === kind; });
       if (list.length) groups.push(groupHtml(OTHER_LABELS[kind], kind, list, edit));
     });
+    groups.push(noticesGroupHtml(view, entries));
     return '<div class="gs-su-groups">' + groups.join('') + '</div>';
   }
 
@@ -231,7 +270,8 @@
   // The starting values for a person: their sign-up, else their default character and its main spec.
   function dialogDefaults(view, person) {
     if (!person) return { characterId: '', spec: '', kind: 'signed', note: '' };
-    const entry = personEntry(view, person.personId);
+    const found = personEntry(view, person.personId);
+    const entry = found && found.source === 'away' ? null : found;
     const ch = (entry && entry.characterId ? person.characters.filter(function (c) { return c.id === entry.characterId; })[0] : null) ||
       (entry && entry.name ? person.characters.filter(function (c) { return c.name === entry.name; })[0] : null) || person.characters[0] || null;
     return { characterId: ch ? ch.id : '', spec: specOf(ch, entry && entry.spec), kind: entry ? entry.kind : 'signed', note: entry && entry.note ? entry.note : '' };
@@ -244,7 +284,7 @@
     const adding = !opts.personId;
     const d = dialogDefaults(view, person);
     const ch = person ? person.characters.filter(function (c) { return c.id === d.characterId; })[0] : null;
-    const people = (Array.isArray(view.roster) ? view.roster : []).map(function (p) { return { value: p.personId, label: p.name + (personEntry(view, p.personId) ? ' - ' + (KIND_LABELS[personEntry(view, p.personId).kind] || '') : '') }; });
+    const people = (Array.isArray(view.roster) ? view.roster : []).map(function (p) { return { value: p.personId, label: p.name + (personEntry(view, p.personId) ? ' - ' + (personEntry(view, p.personId).source === 'away' ? 'Away (notice)' : KIND_LABELS[personEntry(view, p.personId).kind] || '') : '') }; });
     return '<form class="gs-dialog-form" data-submit="su-edit-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">' + (adding ? 'Add a sign-up' : 'Change a sign-up') + '</h2>' +
       '<p class="gs-fine" id="dlg-help">' + (adding ? 'For someone who has not signed up themselves, or has no Discord.' : esc(person ? person.name : '')) + '</p>' +
       (adding

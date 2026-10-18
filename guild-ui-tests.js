@@ -468,7 +468,9 @@ function assertEscaped(out, label) {
     assert(menu.indexOf('#/characters') < menu.indexOf('#/linked') && menu.indexOf('#/linked') < menu.indexOf('#/privacy'), 'in that order');
     for (const gone of ['My profile', 'Switch guild', 'Open the planner']) assert(!menu.includes(gone), gone);
     assert(!menu.includes('href="/"'));
-    assert.equal((menu.match(/role="menuitem"/g) || []).length, 4);
+    assert.equal((menu.match(/role="menuitem"/g) || []).length, 5, 'with a guild current: Away notices joins them');
+    assert(menu.includes('href="#/g/g1/away"') && menu.indexOf('#/characters') < menu.indexOf('#/g/g1/away') && menu.indexOf('#/g/g1/away') < menu.indexOf('#/linked'));
+    assert.equal((G.shell.accountMenuHtml({ me: meData() }).match(/role="menuitem"/g) || []).length, 4, 'no guild current: the four of before');
     assert(G.icons.names.includes('link'));
     assert(menu.includes('aria-haspopup="menu"') && menu.includes('aria-expanded="false"'));
   });

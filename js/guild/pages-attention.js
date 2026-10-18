@@ -16,6 +16,7 @@
     { id: 'watch', severity: 'action', heading: 'Attendance watch list', chip: 'Watch list' },
     { id: 'no_loot', severity: 'action', heading: 'Raids without loot', chip: 'No loot' },
     { id: 'low_signups', severity: 'action', heading: 'Raids short on sign-ups', chip: 'Low sign-ups' },
+    { id: 'roster_declined', severity: 'action', heading: 'Rostered players who can\'t make it', chip: 'Roster' },
     { id: 'unlocked', severity: 'info', heading: 'Sign-ups still open', chip: 'Open' },
   ];
   // Route names an item link may use (an address built from anything else falls back to the Roster).
@@ -30,6 +31,7 @@
     watch: { name: 'section', section: 'attendance' },
     no_loot: { name: 'section', section: 'raids' },
     low_signups: { name: 'section', section: 'raids' },
+    roster_declined: { name: 'section', section: 'raids' },
     unlocked: { name: 'section', section: 'raids' },
   };
 
@@ -62,6 +64,7 @@
       }
       case 'no_loot': return 'No loot imported for ' + dayOf(it.date);
       case 'low_signups': return dayOf(it.date) + ': ' + num(it.expected) + ' of ' + num(it.size) + ' signed up';
+      case 'roster_declined': return dayOf(it.date) + ': ' + plural(n, 'rostered person', 'rostered people') + ' can\'t make it';
       case 'unlocked': return 'Sign-ups for ' + dayOf(it.date) + ' are still open and the raid starts in ' + plural(Math.round(num(it.minutes)), 'minute', 'minutes');
       default: return String(it.kind == null ? 'Needs attention' : it.kind).replace(/_/g, ' ');
     }

@@ -462,8 +462,8 @@ check('self: a member signs themselves up; defaults are the Main on the team and
   assert.deepEqual([row.kind, row.class_name, row.spec_name, row.character_id, row.player_id, row.note], ['signed', 'Priest', 'Holy', s.c.eliora, s.p.eliora, null]);
   assert.deepEqual([row.discord_user_id, row.nickname, row.updated_by === s.ids.erin, row.created_at > 0, row.updated_at === row.created_at], [null, null, true, true, true]);
   const v = put.json;
-  assert.deepEqual(Object.keys(v).sort(), ['can', 'counts', 'entries', 'me', 'raid', 'roster']);
-  assert.deepEqual(v.raid, { id: s.raidId, teamId: s.A, startsAt: s.startsAt, upcoming: true, locked: false, closed: null });
+  assert.deepEqual(Object.keys(v).sort(), ['can', 'counts', 'entries', 'me', 'notices', 'raid', 'roster']);
+  assert.deepEqual(v.raid, { id: s.raidId, teamId: s.A, startsAt: s.startsAt, timeKnown: true, upcoming: true, locked: false, closed: null, closesAt: s.startsAt, closeHours: 0, closeHoursOverride: null, teamCloseHours: 0, size: 25, sizeOverride: null });
   assert.deepEqual(v.can, { edit: false, self: true, seeList: true, seeNicknames: false });
   assert.equal(v.roster, null, 'the officers\' picker is for officers');
   assert.deepEqual(v.me.characters.map((c) => [c.name, c.isMain]), [['Eliora', true], ['Mirabel', false]], 'only the characters on the raid\'s team, the Main first');
@@ -815,7 +815,7 @@ check('list: upcoming rows count the merged sign-ups, say what the viewer signed
   const list = (who) => s.call(who, 'GET', `/raids?team=${s.A}`);
   const row = (json) => json.upcoming.find((r) => r.id === s.raidId); // the event's raid sorts after the world's hand-made one
   const before = (await list('erin')).json;
-  assert.deepEqual(row(before).signups, { signed: 2, late: 0, tentative: 0, bench: 0, absence: 1 });
+  assert.deepEqual(row(before).signups, { signed: 2, late: 0, standby: 0, tentative: 0, bench: 0, absence: 1 });
   assert.deepEqual(row(before).mine, { kind: 'signed', source: 'raid_helper', characterName: null }, 'her Raid-Helper row');
   assert.deepEqual([row(before).signupsOpen, row(before).locked, before.can], [true, false, { edit: false, signup: true }]);
   assert.deepEqual(before.upcoming.map((r) => r.id).length, 2);
@@ -824,7 +824,7 @@ check('list: upcoming rows count the merged sign-ups, say what the viewer signed
   await s.mine({ kind: 'late', characterId: s.c.mirabel });
   await s.call('bob', 'PUT', s.path(`/signups/${s.p.nodisc}`), { kind: 'bench' });
   const after = row((await list('erin')).json);
-  assert.deepEqual(after.signups, { signed: 1, late: 1, tentative: 0, bench: 1, absence: 1 }, 'Erin is counted once, as Late');
+  assert.deepEqual(after.signups, { signed: 1, late: 1, standby: 0, tentative: 0, bench: 1, absence: 1 }, 'Erin is counted once, as Late');
   assert.deepEqual(after.mine, { kind: 'late', source: 'raidsmith', characterName: 'Mirabel' });
   // Someone with no character on the team: no counts, nothing to click.
   const hank = (await list('hank')).json;
@@ -887,7 +887,7 @@ check('schedule: save and read the weekly slots; replace-all; weeks and auto are
   const audit = await s.w.rows("SELECT action, entity_type, entity_id, before, after FROM audit_log WHERE action = 'schedule.update' ORDER BY rowid");
   assert.equal(audit.length, 4);
   assert(audit.every((a) => a.entity_type === 'team' && a.entity_id === s.A));
-  assert.deepEqual([JSON.parse(audit[0].before), JSON.parse(audit[0].after)], [{ slots: 0, weeks: 2, auto: false }, { slots: 2, weeks: 3, auto: true }]);
+  assert.deepEqual([JSON.parse(audit[0].before), JSON.parse(audit[0].after)], [{ slots: 0, weeks: 2, auto: false, signupCloseHours: 0 }, { slots: 2, weeks: 3, auto: true, signupCloseHours: 0 }]);
   assert(!audit.some((a) => /Secret|Progression/.test(`${a.before}${a.after}`)));
 });
 

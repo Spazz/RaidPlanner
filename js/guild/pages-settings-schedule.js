@@ -1,6 +1,7 @@
 // ── PAGE: GUILD SETTINGS > RAID SCHEDULE ────────────────────────
 // A team's weekly raids: one slot per weekday (day, start time in the guild's time zone, an optional zone and title), how many
-// weeks "Create upcoming raids" fills (1 to 8), and whether it runs by itself when an officer opens Raids. The page edits a draft
+// weeks "Create upcoming raids" fills (1 to 8), whether it runs by itself when an officer opens Raids, and how many hours before the start
+// the team's members stop being able to change their sign-ups (0 to 72; 0 = at the start). The page edits a draft
 // of the saved schedule and saves it with PUT /teams/:tid/schedule; "Create upcoming raids" is POST /teams/:tid/schedule/raids and
 // uses the saved schedule. Everyone with raids.edit on a team may edit that team's schedule.
 (function (G) {
@@ -11,6 +12,7 @@
   const DEFAULT_TIME = '20:00';
   const TITLE_MAX = 100;
   const WEEK_CHOICES = [1, 2, 3, 4, 5, 6, 7, 8];
+  const MAX_CLOSE_HOURS = 72;
 
   function st() { return G.app.state; }
   function a() { return G.pages.attendance.attState(); }
@@ -29,7 +31,9 @@
   function draftFrom(data) {
     const slots = (data.slots || []).map(function (x) { return { weekday: x.weekday, startTime: x.startTime, zone: x.zone || '', title: x.title || '' }; });
     slots.sort(function (p, q) { return weekdayRank(p.weekday) - weekdayRank(q.weekday); });
-    return { slots: slots, weeks: data.weeks, auto: !!data.auto };
+    // The deadline is kept as typed (a string) so a half-typed value survives a re-render; null = the Worker did not send one (it is then left alone).
+    const hours = typeof data.signupCloseHours === 'number' ? String(data.signupCloseHours) : null;
+    return { slots: slots, weeks: data.weeks, auto: !!data.auto, signupCloseHours: hours };
   }
 
   // The weekday a new slot starts on: Tuesday (the US reset) when it is free, else the first free day, Monday first.
@@ -52,7 +56,18 @@
       '<button type="button" class="gs-btn gs-btn-sm gs-sched-remove" data-action="sched-remove" data-idx="' + i + '" data-key="sched-remove-' + i + '" aria-label="Remove slot ' + n + ' (' + esc(weekdayName(slot.weekday)) + ')">Remove</button></div>';
   }
 
-  // opts: { guildData, s: { teamId, data, draft, error, note, busy }, alert }
+  // The "Close sign-ups" field: whole hours, 0 to 72, with its one-line hint and the field's own error.
+  function closeFieldHtml(s) {
+    if (s.draft.signupCloseHours === null) return '';
+    const bad = !!s.closeError;
+    return '<div class="gs-field"><label class="gs-label" for="sched-close">Close sign-ups this many hours before the start</label>' +
+      '<input class="gs-input gs-sched-hours" type="number" id="sched-close" data-input="sched-close" data-key="sched-close" min="0" max="' + MAX_CLOSE_HOURS + '" step="1" inputmode="numeric" autocomplete="off" value="' + esc(s.draft.signupCloseHours) + '"' +
+      (bad ? ' aria-invalid="true"' : '') + ' aria-describedby="sched-close-hint' + (bad ? ' sched-close-error' : '') + '">' +
+      '<p class="gs-fine" id="sched-close-hint">Members can change their sign-up until then. 0 = until the raid starts (72 at most). Officers are never locked out, and a raid can set its own.</p>' +
+      '<p class="gs-field-error" id="sched-close-error" role="alert"' + (bad ? '' : ' hidden') + '>' + esc(s.closeError || '') + '</p></div>';
+  }
+
+  // opts: { guildData, s: { teamId, data, draft, error, closeError, note, busy }, alert }
   function scheduleHtml(opts) {
     const gd = opts.guildData;
     const s = opts.s;
@@ -75,6 +90,7 @@
       '<div class="gs-field"><label class="gs-label" for="sched-weeks">Create raids for the next</label><select class="gs-input gs-sched-weeks" id="sched-weeks" data-change="sched-weeks" data-key="sched-weeks">' +
       G.ui.optionsHtml(WEEK_CHOICES.map(function (n) { return { value: n, label: plural(n, 'week', 'weeks') }; }), s.draft.weeks) + '</select></div>' +
       '<div class="gs-check"><input type="checkbox" id="sched-auto" data-change="sched-auto" data-key="sched-auto"' + (s.draft.auto ? ' checked' : '') + '><label for="sched-auto">Create them by themselves when an officer opens Raids</label></div>' +
+      closeFieldHtml(s) +
       '<p class="gs-alert" id="sched-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p>' +
       '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="sched-save"' + (s.busy ? ' disabled' : '') + '>Save schedule</button>' +
       '<button type="button" class="gs-btn" data-action="sched-fill" data-key="sched-fill"' + (s.busy || !s.data.slots.length ? ' disabled' : '') + '>Create upcoming raids now</button></div>' +
@@ -83,7 +99,7 @@
 
   // ── data ──
   function adopt(gid, teamId, data, keep) {
-    a().settingsSchedule = Object.assign({ gid: gid, teamId: teamId, data: data, draft: draftFrom(data), error: '', note: '', busy: false }, keep || {});
+    a().settingsSchedule = Object.assign({ gid: gid, teamId: teamId, data: data, draft: draftFrom(data), error: '', closeError: '', note: '', busy: false }, keep || {});
   }
 
   function pickTeam(gd, prev) {
@@ -109,13 +125,23 @@
 
   function cur() { const s = a().settingsSchedule; return s && currentGd() ? s : null; }
 
-  // The draft as the Worker takes it: HH:MM, null for no zone / title.
+  // The draft as the Worker takes it: HH:MM, null for no zone / title; the deadline only when the Worker sent one.
   function bodyOf(draft) {
-    return {
+    const body = {
       slots: draft.slots.map(function (x) { return { weekday: x.weekday, startTime: x.startTime, zone: x.zone || null, title: String(x.title || '').trim() || null }; }),
       weeks: draft.weeks,
       auto: !!draft.auto,
     };
+    if (draft.signupCloseHours !== null && draft.signupCloseHours !== undefined) body.signupCloseHours = Number(draft.signupCloseHours);
+    return body;
+  }
+
+  // The deadline field's problem, or '': whole hours from 0 to 72.
+  function closeProblemOf(draft) {
+    if (draft.signupCloseHours === null || draft.signupCloseHours === undefined) return '';
+    const text = String(draft.signupCloseHours).trim();
+    if (!/^\d{1,2}$/.test(text) || Number(text) > MAX_CLOSE_HOURS) return 'Enter whole hours from 0 to ' + MAX_CLOSE_HOURS + ' (0 closes sign-ups when the raid starts).';
+    return '';
   }
 
   // A problem the Worker would refuse, found first so the message can name the slot.
@@ -190,13 +216,25 @@
     if (s) s.draft.auto = !!el.checked;
   };
 
+  G.handlers.input['sched-close'] = function (el) {
+    const s = cur();
+    if (s) s.draft.signupCloseHours = el.value;
+  };
+
   G.handlers.submit['sched-form'] = function () {
     const s = cur();
     const gd = currentGd();
     if (!s || !gd) return;
     const problem = problemOf(s.draft);
+    const closeProblem = closeProblemOf(s.draft);
     s.note = '';
-    if (problem) { s.error = problem; G.app.render(); return; }
+    s.closeError = closeProblem;
+    if (problem || closeProblem) {
+      s.error = problem;
+      G.app.render();
+      if (closeProblem && !problem) G.ui.focusByKey('sched-close');
+      return;
+    }
     s.error = '';
     s.busy = true;
     G.app.render();
@@ -210,6 +248,13 @@
       const cl = G.api.classify(err);
       if (cl.view === 'signin') { G.app.requireSignin(); return; }
       if (cl.view === 'message') { G.app.showFailure(cl.title, cl.text); return; }
+      // The deadline's own 400 sits next to the field; anything else is the form's message.
+      if (err && err.field === 'signupCloseHours' && s.draft.signupCloseHours !== null) {
+        s.closeError = cl.text;
+        G.app.render();
+        G.ui.focusByKey('sched-close');
+        return;
+      }
       s.error = describeError(err);
       G.app.render();
     });
@@ -245,6 +290,7 @@
     draftFrom: draftFrom,
     bodyOf: bodyOf,
     problemOf: problemOf,
+    closeProblemOf: closeProblemOf,
     nextFreeWeekday: nextFreeWeekday,
     editableTeams: editableTeams,
     load: load,

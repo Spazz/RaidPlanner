@@ -8,6 +8,7 @@ import { makePolicyResolver, policyRowsStatement } from '../attendance-store.js'
 import { displayCharacter, groupBy } from '../attendance-view.js';
 import { LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, buildAttention } from '../attention.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
+import { effectiveRaidSize } from '../raid-zones.js';
 import { guildToday } from '../roster-view.js';
 import { MERGED_ROWS } from './raids.js';
 import { metricsRaid, metricsRow } from './attendance.js';
@@ -34,11 +35,12 @@ export async function getAttention(ctx) {
   // limited to them; a Guild Master's list is every team.
   const teamResult = await db.prepare('SELECT id, name, size, archived FROM teams WHERE guild_id = ?').bind(guild.id).all();
   const teams = teamResult.results;
+  const teamSizes = new Map(teams.map((team) => [team.id, team.size]));
   const watchTeams = teams.filter((team) => team.archived === 0 && allows(can, 'attendance.review', team.id)).map((team) => team.id);
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -73,9 +75,11 @@ export async function getAttention(ctx) {
         ORDER BY r.raid_on DESC LIMIT ${READ_CAP}`,
       now, lootSince,
     ),
-    // Raids in the next week with how many are signed up or late (the merged list: a Raidsmith sign-up replaces the Raid-Helper one).
+    // Raids in the next week with how many are signed up or late (the merged list: a Raidsmith sign-up replaces the Raid-Helper one). r.size is the
+    // raid's own size (NULL = automatic): the effective one is worked out below.
     bind(
-      `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, r.signups_locked,
+      `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.size, r.title, r.event_title, r.signups_locked,
+              COALESCE(r.signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = r.team_id), 0) AS close_hours,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind IN ('signed', 'late')) AS n_in
          FROM raids r WHERE r.guild_id = ?1 AND r.starts_at > ?2 AND r.starts_at <= ?3 ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
       now, now + SIGNUP_LOOKAHEAD_DAYS * DAY_MS,
@@ -102,6 +106,14 @@ export async function getAttention(ctx) {
     bind(
       `SELECT player_id, name, class, team_id, is_main FROM characters
         WHERE guild_id = ?1 AND player_id IN (SELECT id FROM players WHERE guild_id = ?1 AND status IN ('raider', 'trial'))`,
+    ),
+    // Upcoming raids with a published roster where someone said they cannot make it.
+    bind(
+      `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, COUNT(*) AS n
+         FROM raid_roster rr JOIN raids r ON r.id = rr.raid_id
+        WHERE r.guild_id = ? AND r.starts_at > ? AND r.roster_published_at IS NOT NULL AND rr.status = 'declined'
+        GROUP BY r.id ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
+      now,
     ),
   ]);
 
@@ -146,8 +158,10 @@ export async function getAttention(ctx) {
     claims: claims.results[0] ? claims.results[0].n : 0,
     trials: trials.results,
     noLoot: noLoot.results,
-    upcoming: upcoming.results,
+    // Each raid is short against ITS size: its own, else its zone's in the guild's version, else the team's.
+    upcoming: upcoming.results.map((row) => ({ ...row, size: effectiveRaidSize(row, teamSizes.get(row.team_id), guild.game_version) })),
     watch,
+    rosterDeclined: rosterDeclined.results,
   });
   return jsonResponse({ today, ...built });
 }

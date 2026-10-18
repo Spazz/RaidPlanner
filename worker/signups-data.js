@@ -5,10 +5,22 @@ import {
   RAID_HELPER_CLASS, RAID_HELPER_SPEC, SPEC_ROLE, nameKey, ownValue, roleOf,
 } from './roster-data.js';
 
-// A member picks one of these for themselves; Bench is an officer's call.
-export const SELF_KINDS = ['signed', 'late', 'tentative', 'absence'];
-export const SIGNUP_KINDS = ['signed', 'late', 'tentative', 'bench', 'absence'];
+// A member picks one of these for themselves; Bench is an officer's call. 'standby' ("happy to sit out if needed") is a Raidsmith sign-up
+// stored as kind 'signed' + raid_signups.standby = 1 (so the kind CHECK and every older reader stay valid); every reader that needs the
+// kind derives the EFFECTIVE one: effectiveKind() here, `CASE WHEN s.kind = 'signed' AND s.standby = 1 THEN 'standby' ELSE s.kind END` in SQL.
+export const SELF_KINDS = ['signed', 'late', 'standby', 'tentative', 'absence'];
+export const SIGNUP_KINDS = ['signed', 'late', 'standby', 'tentative', 'bench', 'absence'];
 export const NOTE_MAX = 120;
+
+// The kinds that count as coming to the raid: the people "expected" in the counts, the role and class tallies and the attendance.
+export const EXPECTED_KINDS = ['signed', 'late', 'standby'];
+
+// The effective kind of a raid_signups row ({ kind, standby }): 'signed' with standby = 1 is 'standby', anything else is its kind.
+export const effectiveKind = (row) => (row.kind === 'signed' && row.standby === 1 ? 'standby' : row.kind);
+
+// The stored form of an effective kind: { kind, standby } for the kind column and the standby column.
+export const storedKind = (kind) => (kind === 'standby' ? { kind: 'signed', standby: 1 } : { kind, standby: 0 });
+
 export const ROLE_GROUPS = ['tank', 'healer', 'melee', 'ranged'];
 
 // The Raid-Helper class name of a class id ('PALADIN' -> 'Paladin'): how a native row stores its class.
@@ -77,18 +89,17 @@ export function specChoices(character) {
   return first.concat(all.filter((spec) => !first.includes(spec)));
 }
 
-// Why a member cannot change a sign-up on this raid: 'started' | 'locked' | null (open). Officers are not bound by it.
-export function closedReason(raid, now) {
-  if (raid.starts_at <= now) return 'started';
-  if (raid.signups_locked === 1) return 'locked';
-  return null;
-}
+// When a member's window closes and why it is closed ('started' | 'locked' | 'deadline' | null): worker/signup-window.js. Officers are not bound by it.
+export { MAX_CLOSE_HOURS, closeHoursOf, closedReason, closesAtOf, isCloseHours } from './signup-window.js';
 
 const ROLE_ORDER = { tank: 0, healer: 1, melee: 2, ranged: 3 };
 
 // The merged list of one raid. rows: raid_signups rows of the Raid-Helper and Raidsmith sources (not the plan's);
-// charactersByPlayer: Map personId -> [character rows]; opts: { teamId, seeNicknames, myPlayerId }.
+// charactersByPlayer: Map personId -> [character rows]; opts: { teamId, seeNicknames, myPlayerId, away, notes }.
 // A person with a Raidsmith sign-up is listed once, by it: it replaces their Raid-Helper row. Raid-Helper rows with no person stay as they are.
+// opts.away: [{ personId }] the people an Away notice covers who have no sign-up at all: each is listed as a VIRTUAL Absence (source 'away', key
+// `a:<personId>`, never stored; a real sign-up always wins, so a person with a row is skipped). opts.notes: Map personId -> { kind, atTime } of Late / Leaving
+// notices: a real entry of that person carries `notice: { kind, atTime }`.
 export function mergeSignups(rows, charactersByPlayer, opts) {
   const native = new Map();
   for (const row of rows) if (row.source === 'raidsmith' && row.player_id) native.set(row.player_id, row);
@@ -110,7 +121,7 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
       key: row.player_id ? `p:${row.player_id}` : `x:${row.source}:${row.signup_id}`,
       personId: row.player_id || null,
       source: row.source,
-      kind: row.kind,
+      kind: effectiveKind(row),
       name,
       classId,
       className: classId ? raidHelperClassName(classId) : null,
@@ -122,7 +133,38 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
       matched: !!row.player_id,
       isMe: !!opts.myPlayerId && row.player_id === opts.myPlayerId,
       nickname: opts.seeNicknames && row.source === 'raid_helper' ? row.nickname : null,
+      ...(row.source === 'raidsmith' && row.standing === 1 ? { standing: true } : {}), // made by a standing sign-up and not edited since (the key is only there then)
     });
+  }
+  const listed = new Set(entries.map((entry) => entry.personId).filter(Boolean));
+  for (const { personId } of opts.away || []) {
+    if (listed.has(personId)) continue;
+    listed.add(personId);
+    const shown = displayCharacter(characterRows(personId), opts.teamId);
+    const classId = shown ? shown.class : null;
+    entries.push({
+      key: `a:${personId}`,
+      personId,
+      source: 'away',
+      kind: 'absence',
+      name: shown ? shown.name : null,
+      classId,
+      className: classId ? raidHelperClassName(classId) : null,
+      spec: null,
+      role: classId ? roleGroup(classId, null) : null,
+      characterId: null,
+      note: null,
+      updatedAt: null,
+      matched: true,
+      isMe: !!opts.myPlayerId && personId === opts.myPlayerId,
+      nickname: null,
+    });
+  }
+  if (opts.notes) {
+    for (const entry of entries) {
+      const note = entry.personId && entry.source !== 'away' ? opts.notes.get(entry.personId) : null;
+      if (note) entry.notice = { kind: note.kind, atTime: note.atTime };
+    }
   }
   entries.sort((a, b) => {
     const ar = a.role === null ? 9 : ROLE_ORDER[a.role];
@@ -132,13 +174,13 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
   return entries;
 }
 
-// { signed, late, tentative, bench, absence, expected, byRole, byClass } of a merged list. The role and class counts are of the
-// people expected to come (signed + late).
+// { signed, late, standby, tentative, bench, absence, expected, byRole, byClass } of a merged list (`signed` leaves the standby people out of it). The
+// role and class counts are of the people expected to come (signed + late + standby).
 export function countSignups(entries) {
-  const counts = { signed: 0, late: 0, tentative: 0, bench: 0, absence: 0, expected: 0, byRole: { tank: 0, healer: 0, melee: 0, ranged: 0, none: 0 }, byClass: {} };
+  const counts = { signed: 0, late: 0, standby: 0, tentative: 0, bench: 0, absence: 0, expected: 0, byRole: { tank: 0, healer: 0, melee: 0, ranged: 0, none: 0 }, byClass: {} };
   for (const entry of entries) {
     counts[entry.kind] += 1;
-    if (entry.kind !== 'signed' && entry.kind !== 'late') continue;
+    if (!EXPECTED_KINDS.includes(entry.kind)) continue;
     counts.expected += 1;
     counts.byRole[entry.role || 'none'] += 1;
     if (entry.classId) counts.byClass[entry.classId] = (counts.byClass[entry.classId] || 0) + 1;

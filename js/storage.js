@@ -56,8 +56,13 @@ const ImportHistory = {
 // Full working plans preserve identities, overrides, and mode independently of export formats.
 const PlanStore = {
   key: 'pp_working_plans',
+  // The sign-up markers (SignupMarker) are the guild's note on a sign-up, not part of the plan: left out of what is
+  // saved, compared for changes and kept for Undo, so setting or clearing one is no plan change.
+  withoutMarkers(list) {
+    return Array.isArray(list) ? list.map(p => { if (!p || p.marker === undefined) return p; const { marker, ...rest } = p; return rest; }) : list;
+  },
   capture() {
-    return JSON.parse(JSON.stringify({planId:State.planId, groups:State.groups, bench:State.bench, unplaced:State.unplaced || [],
+    return JSON.parse(JSON.stringify({planId:State.planId, groups:Array.isArray(State.groups) ? State.groups.map(g => this.withoutMarkers(g)) : State.groups, bench:this.withoutMarkers(State.bench), unplaced:this.withoutMarkers(State.unplaced || []),
       campfires:State.campfires, gameVersion:State.gameVersion, selectedRaid:State.selectedRaid, rosterName:State.rosterName, sourceEventId:State.sourceEventId, eventStartTime:State.eventStartTime,
       optimizerMode:State.optimizerMode, buffOverrides:State.buffOverrides, preferredSlots:State.preferredSlots, preserveGroupOrder:State.preserveGroupOrder,
       notes:State.notes || '', sizeBenched:SizeBench.clean(State.sizeBenched),
@@ -234,6 +239,8 @@ const PlanStore = {
   },
   restore(data) {
     if (!this.valid(data)) return false;
+    // Undo and redo rebuild the players of the plan on screen: its sign-up markers go back on (another plan has none to carry).
+    const markers = data.planId === State.planId ? SignupMarker.snapshot() : null;
     Object.assign(State, JSON.parse(JSON.stringify(data)));
     State.gameVersion = data.gameVersion || versionForRaid(data.selectedRaid) || 'tbc';
     // Plans saved before the nav slim-down may name another strategy; Optimize only runs Max DPS now.
@@ -255,6 +262,7 @@ const PlanStore = {
     Backups.restore(data.backups);
     State.playerConstraints = Constraints.clean(data.playerConstraints);
     State.drummers = Drummers.clean(data.drummers);
+    SignupMarker.reapply(markers);
     for (const p of [...State.roster, ...State.bench, ...State.unplaced]) {
       const n = /^p(\d+)$/.exec(p.uid);
       if (n) _uid = Math.max(_uid, Number(n[1]));
