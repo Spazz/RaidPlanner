@@ -67,6 +67,9 @@
       '<p class="gs-field-error" id="sched-close-error" role="alert"' + (bad ? '' : ' hidden') + '>' + esc(s.closeError || '') + '</p></div>';
   }
 
+  // How many things differ from what is saved (the Save bar's count).
+  function changeCount(s) { return G.ui.saveBar.draftChanges(bodyOf(draftFrom(s.data)), bodyOf(s.draft)); }
+
   // opts: { guildData, s: { teamId, data, draft, error, closeError, note, busy }, alert }
   function scheduleHtml(opts) {
     const gd = opts.guildData;
@@ -84,7 +87,7 @@
     return '<div class="gs-sched">' + teamField +
       '<p class="gs-fine">The days this team raids each week, in the guild\'s time (' + esc(s.data.timeZone) + '). Create upcoming raids makes a raid for each of those days in the next weeks, skipping days that already have one, so it is safe to press again.</p>' +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (s.note ? '<div class="gs-notice" role="status"><span>' + esc(s.note) + '</span></div>' : '') +
-      '<form class="gs-sched-form" data-submit="sched-form" novalidate>' +
+      '<form class="gs-sched-form" id="sched-form" data-submit="sched-form" novalidate>' +
       '<div class="gs-sched-slots">' + rows + '</div>' +
       '<div class="gs-row-actions"><button type="button" class="gs-btn" data-action="sched-add" data-key="sched-add"' + (slots.length >= MAX_SLOTS ? ' disabled' : '') + '>Add a slot</button></div>' +
       '<div class="gs-field"><label class="gs-label" for="sched-weeks">Create raids for the next</label><select class="gs-input gs-sched-weeks" id="sched-weeks" data-change="sched-weeks" data-key="sched-weeks">' +
@@ -92,9 +95,9 @@
       '<div class="gs-check"><input type="checkbox" id="sched-auto" data-change="sched-auto" data-key="sched-auto"' + (s.draft.auto ? ' checked' : '') + '><label for="sched-auto">Create them by themselves when an officer opens Raids</label></div>' +
       closeFieldHtml(s) +
       '<p class="gs-alert" id="sched-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="sched-save"' + (s.busy ? ' disabled' : '') + '>Save schedule</button>' +
-      '<button type="button" class="gs-btn" data-action="sched-fill" data-key="sched-fill"' + (s.busy || !s.data.slots.length ? ' disabled' : '') + '>Create upcoming raids now</button></div>' +
-      '<p class="gs-fine">Create upcoming raids uses the saved schedule.</p></form></div>';
+      '<div class="gs-actions"><button type="button" class="gs-btn" data-action="sched-fill" data-key="sched-fill"' + (s.busy || !s.data.slots.length ? ' disabled' : '') + '>Create upcoming raids now</button></div>' +
+      '<p class="gs-fine">Create upcoming raids uses the saved schedule.</p>' +
+      G.ui.saveBarHtml({ count: changeCount(s), busy: s.busy, saveLabel: 'Save schedule', discardAttrs: { 'data-action': 'sched-discard', 'data-key': 'sched-discard' } }) + '</form></div>';
   }
 
   // ── data ──
@@ -181,6 +184,7 @@
     const field = el.getAttribute('data-field');
     if (!slot || !field) return;
     slot[field] = field === 'weekday' ? Number(el.value) : el.value;
+    G.ui.saveBar.setCount(null, changeCount(s));
   }
   G.handlers.change['sched-field'] = setField;
   G.handlers.input['sched-field'] = setField;
@@ -208,17 +212,32 @@
 
   G.handlers.change['sched-weeks'] = function (el) {
     const s = cur();
-    if (s) s.draft.weeks = Number(el.value);
+    if (!s) return;
+    s.draft.weeks = Number(el.value);
+    G.ui.saveBar.setCount(null, changeCount(s));
+  };
+
+  G.handlers.click['sched-discard'] = function () {
+    const s = cur();
+    if (!s) return;
+    s.draft = draftFrom(s.data);
+    s.error = '';
+    s.closeError = '';
+    G.app.render();
   };
 
   G.handlers.change['sched-auto'] = function (el) {
     const s = cur();
-    if (s) s.draft.auto = !!el.checked;
+    if (!s) return;
+    s.draft.auto = !!el.checked;
+    G.ui.saveBar.setCount(null, changeCount(s));
   };
 
   G.handlers.input['sched-close'] = function (el) {
     const s = cur();
-    if (s) s.draft.signupCloseHours = el.value;
+    if (!s) return;
+    s.draft.signupCloseHours = el.value;
+    G.ui.saveBar.setCount(null, changeCount(s));
   };
 
   G.handlers.submit['sched-form'] = function () {
@@ -240,7 +259,8 @@
     G.app.render();
     const teamId = s.teamId;
     return G.api.signups.saveSchedule(gd.guild.id, teamId, bodyOf(s.draft)).then(function (data) {
-      adopt(gd.guild.id, teamId, data, { note: 'Schedule saved.' });
+      adopt(gd.guild.id, teamId, data);
+      G.app.markSettingsSaved('schedule');
       st().pageAlert = '';
       G.app.render();
     }, function (err) {

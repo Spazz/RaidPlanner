@@ -73,11 +73,11 @@
     const team = anyTeamRole
       ? '<span class="gs-dmap-team" id="dmap-team-wrap-' + i + '"' + (chosen && chosen.needsTeam ? '' : ' hidden') + '>' +
         '<label class="gs-dmap-teamlabel" for="dmap-team-' + i + '">for team</label>' +
-        '<select class="gs-input" id="dmap-team-' + i + '" aria-label="' + esc(name) + ': for team" data-key="dmap-team-' + i + '">' + teamOptionsHtml(teams, map ? map.teamId : null) + '</select></span>'
+        '<select class="gs-input" id="dmap-team-' + i + '" aria-label="' + esc(name) + ': for team" name="mapteam-' + i + '" data-key="dmap-team-' + i + '">' + teamOptionsHtml(teams, map ? map.teamId : null) + '</select></span>'
       : '';
     return '<tr><th scope="row" class="gs-cell-strong">' + esc(name) + '</th><td data-label="Gives"><div class="gs-dmap-pick">' +
       '<label class="gs-sr" for="dmap-' + i + '">Raidsmith role given by ' + esc(name) + '</label>' +
-      '<select class="gs-input" id="dmap-' + i + '" data-change="discord-target" data-idx="' + i + '" data-discord-role="' + esc(discordRoleId) + '" data-role-name="' + esc(name) + '" data-key="dmap-' + i + '">' +
+      '<select class="gs-input" id="dmap-' + i + '" name="map-' + i + '" data-change="discord-target" data-idx="' + i + '" data-discord-role="' + esc(discordRoleId) + '" data-role-name="' + esc(name) + '" data-key="dmap-' + i + '">' +
       targetOptionsHtml(targets, chosen ? chosen.roleId : '') + '</select>' + team + '</div></td></tr>';
   }
 
@@ -112,15 +112,15 @@
       const any = rows.length || orphanRows.length;
       body = statusHtml(d) +
         (any
-          ? '<form class="gs-form gs-dmap-form" data-submit="discord-maps" novalidate>' +
+          ? '<form class="gs-form gs-dmap-form" id="discord-form" data-submit="discord-maps" novalidate' + G.ui.dirtyFormAttrs() + '>' +
             (rows.length ? '<h3 class="gs-h3" id="dmap-roles-h">Discord roles in your server</h3>' + tableHtml('Discord roles in your server', rows) : '') +
             (orphanRows.length ? '<h3 class="gs-h3" id="dmap-gone-h">' + esc(orphanHeading) + '</h3><p class="gs-fine">' + esc(orphanNote) + '</p>' + tableHtml(orphanHeading, orphanRows) : '') +
             '<p class="gs-alert" id="discord-form-error" role="alert" hidden></p>' +
-            '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="discord-save">Save mapping</button></div></form>'
+            G.ui.saveBarHtml({ saveLabel: 'Save mapping' }) + '</form>'
           : (bot.inServer === true ? '<p class="gs-empty" id="discord-empty">Your Discord server has no roles to map yet.</p>' : '')) +
         '<p class="gs-fine" id="discord-fine">' + esc(FINE_PRINT) + '</p>';
     }
-    return '<section class="gs-section" aria-labelledby="discord-set-h"><div class="gs-section-head"><h2 class="gs-h2" id="discord-set-h">Discord roles</h2></div>' +
+    return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions"></div>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + body + '</section>';
   }
@@ -179,9 +179,10 @@
       if (cur && cur.gid === x.gid) {
         cur.data.maps = res && Array.isArray(res.maps) ? res.maps : read.maps;
         cur.notice = cleared > 0
-          ? 'Saved. ' + (cleared === 1 ? '1 role assignment from a removed mapping was taken away.' : cleared + ' role assignments from removed mappings were taken away.')
-          : 'Saved.';
+          ? (cleared === 1 ? '1 role assignment from a removed mapping was taken away.' : cleared + ' role assignments from removed mappings were taken away.')
+          : '';
       }
+      G.app.markSettingsSaved('discord');
       st().pageAlert = '';
       G.app.render();
     }, function (err) {

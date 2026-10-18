@@ -546,7 +546,7 @@ check('create guild: 201 returns the guild payload; the servers list drops the t
   const created = await w.call(jar, 'POST', '/api/guild', GUILD_BODY);
   assert.equal(created.status, 201);
   assert.deepEqual(Object.keys(created.json).sort(), ['attendanceFlags', 'guild', 'me', 'pendingClaims', 'rosterFlags', 'rosterOptions', 'teams']);
-  assert.deepEqual(Object.keys(created.json.guild).sort(), ['createdAt', 'gameVersion', 'id', 'name', 'realm', 'realmKind', 'realmSlug', 'region', 'timeZone']);
+  assert.deepEqual(Object.keys(created.json.guild).sort(), ['createdAt', 'discordServerId', 'gameVersion', 'id', 'name', 'realm', 'realmKind', 'realmSlug', 'region', 'timeZone'], 'the Guild Master also gets the Discord server id (Guild settings > General shows it)');
   assert.equal(created.json.guild.gameVersion, 'tbc');
   assert(ID.guild.test(created.json.guild.id));
   assert.deepEqual(created.json.teams.map(({ id, ...rest }) => rest), [{ name: 'Main team', size: 25, archived: false, players: 0, leads: [] }]);
@@ -1272,7 +1272,7 @@ check('responses: a catch-all 500 never echoes the error; every response has the
   const wrongMethod = await collect(s.w.call(s.alice, 'PUT', `${s.guildPath}`, {}));
   assert.equal(wrongMethod.status, 405);
   assert.equal(wrongMethod.json.error, 'method_not_allowed');
-  assert.equal(wrongMethod.headers.get('Allow'), 'GET, DELETE');
+  assert.equal(wrongMethod.headers.get('Allow'), 'GET, PATCH, DELETE');
   responses.push(await s.w.req('GET', '/auth/login'));
   responses.push(await s.w.req('GET', '/auth/callback?state=x'));
 

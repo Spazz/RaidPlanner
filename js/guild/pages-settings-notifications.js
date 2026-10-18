@@ -56,7 +56,7 @@
     const w = team.webhook || {};
     return '<section class="gs-card-sec gs-notify-team" aria-labelledby="' + esc(idOf(team, 'h')) + '"><div class="gs-card-sec-head"><h3 class="gs-h2" id="' + esc(idOf(team, 'h')) + '">' + esc(team.name) + '</h3>' +
       (w.set ? '<span class="gs-pill ' + (w.state === 'disabled' ? 'gs-pill-warn' : 'gs-pill-ok') + '">' + (w.state === 'disabled' ? 'Switched off' : 'Webhook set') + '</span>' : '<span class="gs-pill gs-pill-muted">No webhook</span>') + '</div>' +
-      '<form class="gs-card-sec-body gs-notify-form" data-submit="notify-save" data-team="' + esc(team.id) + '" novalidate>' +
+      '<form class="gs-card-sec-body gs-notify-form" id="notify-form-' + esc(team.id) + '" data-submit="notify-save" data-team="' + esc(team.id) + '" novalidate' + G.ui.dirtyFormAttrs() + '>' +
       webhookStatusHtml(team) +
       '<div class="gs-field"><label class="gs-label" for="' + esc(idOf(team, 'url')) + '">' + (w.set ? 'New webhook address' : 'Webhook address') + '</label>' +
       '<input class="gs-input gs-code" type="text" id="' + esc(idOf(team, 'url')) + '" name="webhookUrl" autocomplete="off" spellcheck="false" placeholder="https://discord.com/api/webhooks/..." aria-describedby="' + esc(idOf(team, 'url-help')) + '">' +
@@ -66,11 +66,11 @@
       '<p class="gs-fine" id="' + esc(idOf(team, 'role-help')) + '">' + esc(MENTION_HELP) + '</p></div>' +
       '<fieldset class="gs-pol-field"><legend class="gs-label">What to post</legend>' + SWITCHES.map(function (item) { return switchHtml(team, item); }).join('') + '</fieldset>' +
       '<p class="gs-alert" id="' + esc(idOf(team, 'error')) + '" role="alert" hidden></p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="notify-save-' + esc(team.id) + '">Save ' + esc(team.name) + '</button>' +
+      '<div class="gs-actions">' +
       (w.set && w.state !== 'disabled' ? '<button type="button" class="gs-btn" data-action="notify-test" data-team="' + esc(team.id) + '" data-key="notify-test-' + esc(team.id) + '" aria-describedby="' + esc(idOf(team, 'test-help')) + '">Send a test post</button>' : '') +
       (w.set ? '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="notify-remove" data-team="' + esc(team.id) + '" data-key="notify-remove-' + esc(team.id) + '">Remove webhook</button>' : '') + '</div>' +
       (w.set && w.state !== 'disabled' ? '<p class="gs-fine" id="' + esc(idOf(team, 'test-help')) + '">' + esc(TEST_HELP) + '</p>' : '') +
-      '<p class="gs-fine gs-notify-test" id="' + esc(idOf(team, 'test')) + '" role="status"></p></form></section>';
+      '<p class="gs-fine gs-notify-test" id="' + esc(idOf(team, 'test')) + '" role="status"></p>' + G.ui.saveBarHtml({ saveLabel: 'Save ' + team.name }) + '</form></section>';
   }
 
   // opts: { guildData, data (GET /notifications or null), alert, notice }
@@ -80,7 +80,7 @@
     if (!d) body = G.pages.signin.loadingHtml();
     else if (!d.teams || !d.teams.length) body = '<p class="gs-empty">This guild has no active teams.</p>';
     else body = '<div class="gs-notify-teams">' + d.teams.map(teamHtml).join('') + '</div>';
-    return '<section class="gs-section" aria-labelledby="notify-h"><div class="gs-section-head"><h2 class="gs-h2" id="notify-h">Notifications</h2></div>' +
+    return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions"></div>' +
       '<p class="gs-lead gs-lead-sm">' + esc(INTRO) + '</p>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + body + '</section>';
@@ -116,6 +116,7 @@
         cur.data.teams = cur.data.teams.map(function (t) { return t.id === teamId ? res.team : t; });
         cur.notice = done(res.team);
       }
+      G.app.markSettingsSaved('notifications');
       st().pageAlert = '';
       G.app.render();
     }, function (err) {

@@ -7,6 +7,7 @@ import { effectiveKind } from '../signups-data.js';
 import { ownPersonStatement } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { announceRoster } from '../notify-run.js';
+import { loadTeamNotify, usable } from '../notify-store.js';
 import { buildSeats, keptSeats, planChanged, rosterCounts } from '../roster-publish.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { writeSignup } from './signups.js';
@@ -41,7 +42,18 @@ async function rosterReply(ctx, guildContext, raid) {
     })),
     counts: rosterCounts(rosterResult.results),
     planChanged: published && planChanged(rosterResult.results, planResult.results),
+    // Whether publishing also posts to the team's Discord channel (a usable webhook with line-up posts on): the raid page's Publish question says who is told.
+    discordPost: await announcesToDiscord(ctx, raid),
   };
+}
+
+async function announcesToDiscord(ctx, raid) {
+  try {
+    const settings = await loadTeamNotify(ctx.db, raid.team_id);
+    return usable(settings, ctx.env) && settings.post_roster === 1;
+  } catch {
+    return false;
+  }
 }
 
 export async function getPublishedRoster(ctx) {

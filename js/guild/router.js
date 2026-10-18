@@ -3,7 +3,8 @@
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list; the shell sends viewers without officer actions on to Roster)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,roles,discord,guests,dataaccess,public,attendance,loot,battlenet,activity,data}]
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{general,teams,schedule,people,roles,discord,guests,dataaccess,public,applications,notifications,attendance,loot,battlenet,activity,data}]
+//   (settings: the bare address opens the first page on a wide screen and the list of pages on a phone; 'accounts' is read as 'people', the page's new name)
 //   #/guest/<token>  (a guest link: the page redeems it and moves to #/view)  #/view  (the guest view)  #/public/:gid  (a guild's public page)
 //   #/apply/:gid  (a guild's application form)  #/join/<token>  (a raid's guest sign-up link: sign up as a Guest, no account)
 //   These four work signed out; the first three show a read-only view and never ask for a sign-in, the form lets a signed-in applicant's account come along.
@@ -18,8 +19,10 @@
 
   // 'home' is the guild's landing section: it has no path segment of its own (#/g/:gid); #/g/:gid/home is only an alias.
   const SECTIONS = ['home', 'roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'dataaccess', 'public', 'applications', 'notifications', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
+  const TABS = ['general', 'teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'dataaccess', 'public', 'applications', 'notifications', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
   // The Roster's tabs after the roster list itself; each is a route of its own.
+  // Names a settings page was or may be called by, read as the address it has had since it was built (Settings "People" became "Accounts").
+  const TAB_ALIASES = { accounts: 'people' };
   const ROSTER_TABS = ['intent', 'recruiting', 'applications', 'launch'];
   const LOOT_VIEWS = ['raids', 'items'];
   const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet', 'csv'];
@@ -113,6 +116,7 @@
     if (parts[2] === 'loot' && parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'lootperson', gid: gid, pid: parts[4] };
     if (parts[2] === 'settings') {
       if (parts.length === 3) return { name: 'settings', gid: gid, tab: null };
+      if (parts.length === 4 && TAB_ALIASES.hasOwnProperty(parts[3])) return { name: 'settings', gid: gid, tab: TAB_ALIASES[parts[3]] };
       if (parts.length === 4 && TABS.indexOf(parts[3]) >= 0) return { name: 'settings', gid: gid, tab: parts[3] };
     }
     return { name: 'notfound' };
@@ -161,5 +165,5 @@
     return !!route && (route.name === 'guest' || route.name === 'view' || route.name === 'public' || route.name === 'apply' || route.name === 'join');
   }
 
-  G.router = { SECTIONS: SECTIONS, TABS: TABS, ROSTER_TABS: ROSTER_TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN, parse: parse, format: format, isViewerRoute: isViewerRoute };
+  G.router = { SECTIONS: SECTIONS, TABS: TABS, TAB_ALIASES: TAB_ALIASES, ROSTER_TABS: ROSTER_TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN, parse: parse, format: format, isViewerRoute: isViewerRoute };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

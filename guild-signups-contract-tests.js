@@ -352,7 +352,8 @@ check('schedule: Settings > Raid schedule saves slots with the real validation a
   A.handlers.change['sched-weeks'](el({}, { value: '3' }));
   await A.handlers.submit['sched-form']();
   const sc = A.app.state.att.settingsSchedule;
-  assert.equal(sc.note, 'Schedule saved.');
+  assert.equal(sc.note, '', 'the page head says Saved at; there is no banner');
+  assert.equal(A.app.state.settingsSaved && A.app.state.settingsSaved.tab, 'schedule');
   assert.deepEqual(sc.data.slots.map((x) => [x.weekday, x.startTime, x.zone, x.title]), [[1, '19:30', null, null], [2, '20:00', 'Karazhan', 'Prog']]);
   assert.equal(sc.data.weeks, 3);
   // The Worker's own refusal reaches the page naming the slot.

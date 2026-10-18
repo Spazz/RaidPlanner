@@ -51,6 +51,9 @@
     return null;
   }
 
+  // How many things differ from what is saved (the Save bar's count).
+  function changeCount(x) { return G.ui.saveBar.draftChanges(bodyFrom(draftFrom(x.data)), bodyFrom(x.draft)); }
+
   function load(r, gd) {
     return G.api.applications.settings(gd.guild.id).then(function (data) {
       a().settingsApply = { gid: gd.guild.id, data: data, draft: draftFrom(data), note: '', error: '', busy: false };
@@ -83,18 +86,18 @@
     const draft = x.draft;
     const counts = d.counts || {};
     const full = draft.questions.length >= MAX_QUESTIONS;
-    return '<section class="gs-section" aria-labelledby="apply-h"><div class="gs-section-head"><h2 class="gs-h2" id="apply-h">Applications</h2></div>' +
+    return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions"></div>' +
       '<p class="gs-lead gs-lead-sm">' + esc(INTRO) + '</p>' + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '') +
       (d.enabled ? addressHtml(d, opts.origin == null ? G.ui.pageOrigin() : opts.origin) : '') +
-      '<form class="gs-apply-settings" data-submit="apply-settings-form" novalidate>' +
+      '<form class="gs-apply-settings" id="apply-form" data-submit="apply-settings-form" data-input="apply-dirty" data-change="apply-dirty" novalidate>' +
       '<div class="gs-check"><input type="checkbox" id="apply-enabled" name="enabled"' + (draft.enabled ? ' checked' : '') + '><label for="apply-enabled">Take applications</label></div>' +
       '<h3 class="gs-h3">Your questions (' + draft.questions.length + ' of ' + MAX_QUESTIONS + ')</h3>' +
       '<p class="gs-fine">Every application asks for the character name, class and spec, the realm and the team. These are on top of that.</p>' +
       (draft.questions.length ? '<ol class="gs-q-list">' + draft.questions.map(questionHtml).join('') + '</ol>' : '<p class="gs-empty">No questions yet.</p>') +
       '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="applyq-add" data-key="aq-add"' + (full ? ' disabled' : '') + '>Add a question</button></div>' +
       '<p class="gs-alert" id="apply-error" role="alert"' + (x.error ? '' : ' hidden') + '>' + esc(x.error || '') + '</p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="apply-save"' + (x.busy ? ' disabled' : '') + '>Save</button></div></form>' +
+      G.ui.saveBarHtml({ count: changeCount(x), busy: x.busy, discardAttrs: { 'data-action': 'apply-discard', 'data-key': 'apply-discard' } }) + '</form>' +
       (counts.new || counts.reviewing ? '<p class="gs-fine">' + esc((counts.new || 0) + ' new and ' + (counts.reviewing || 0) + ' being reviewed') + ' in <a href="' + esc(G.router.format({ name: 'applications', gid: opts.guildData.guild.id })) + '">the inbox</a>.</p>' : '') + '</section>';
   }
 
@@ -152,6 +155,22 @@
     G.app.render();
   };
 
+  // Typing, ticking or choosing in the form: the draft follows, and the Save bar with it (nothing is drawn again).
+  G.handlers.input['apply-dirty'] = G.handlers.change['apply-dirty'] = function () {
+    const x = cur();
+    if (!x) return;
+    sync(x);
+    G.ui.saveBar.setCount(null, changeCount(x));
+  };
+
+  G.handlers.click['apply-discard'] = function () {
+    const x = cur();
+    if (!x) return;
+    x.draft = draftFrom(x.data);
+    x.error = '';
+    G.app.render();
+  };
+
   G.handlers.click['apply-copy'] = function () {
     const input = document.getElementById('apply-url');
     G.ui.copyInput(input).then(function (copied) {
@@ -173,7 +192,8 @@
     G.app.render();
     G.api.applications.saveSettings(x.gid, bodyFrom(x.draft)).then(function (data) {
       x.data = data; x.draft = draftFrom(data); x.busy = false;
-      x.note = data.enabled ? 'Saved. Applications are on.' : 'Saved. Applications are off.';
+      x.note = data.enabled ? 'Applications are on.' : 'Applications are off.';
+      G.app.markSettingsSaved('applications');
       G.app.render();
     }, function (err) {
       x.busy = false;

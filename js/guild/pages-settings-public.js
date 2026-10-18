@@ -45,16 +45,16 @@
     } else {
       const origin = typeof opts.origin === 'string' ? opts.origin : G.ui.pageOrigin();
       body = '<p class="gs-fine" id="public-intro">' + esc(INTRO) + '</p>' +
-        '<form class="gs-form gs-public-form" data-submit="public-settings" novalidate>' +
+        '<form class="gs-form gs-public-form" id="public-form" data-submit="public-settings" novalidate' + G.ui.dirtyFormAttrs() + '>' +
         '<div class="gs-check"><input type="checkbox" id="public-enabled" name="enabled"' + (d.enabled ? ' checked' : '') + '><label for="public-enabled">Show a public page</label></div>' +
         '<fieldset class="gs-pol-field"><legend class="gs-label">What it shows</legend>' +
         SECTION_ITEMS.map(function (item) { return sectionHtml(item, d); }).join('') + '</fieldset>' +
         '<p class="gs-fine" id="public-never">' + esc(NEVER) + '</p>' +
         '<p class="gs-alert" id="public-form-error" role="alert" hidden></p>' +
-        '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="public-save">Save</button></div></form>' +
+        G.ui.saveBarHtml({}) + '</form>' +
         (d.enabled ? addressHtml(d, origin) : '');
     }
-    return '<section class="gs-section" aria-labelledby="public-set-h"><div class="gs-section-head"><h2 class="gs-h2" id="public-set-h">Public page</h2></div>' +
+    return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions"></div>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + body + '</section>';
   }
@@ -84,7 +84,8 @@
     G.ui.setBusy(form, true);
     G.api.publicPage.save(x.gid, { enabled: !!form.elements.enabled.checked, sections: sections }).then(function (res) {
       const cur = xs();
-      if (cur && cur.gid === x.gid) { cur.data = res; cur.notice = 'Saved.'; }
+      if (cur && cur.gid === x.gid) { cur.data = res; cur.notice = ''; }
+      G.app.markSettingsSaved('public');
       st().pageAlert = '';
       G.app.render();
     }, function (err) {

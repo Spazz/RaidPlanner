@@ -37,34 +37,64 @@
     return v === 'guild' || (Array.isArray(v) && !!teamId && v.indexOf(teamId) >= 0);
   }
 
-  // The Guild settings tabs in the order the tab bar shows them. A viewer sees a tab when they hold ANY of its `needs` actions (Accounts needs
-  // access or roles; Raid schedule is for whoever edits raids, and a Team Lead reaches it from the Raids page: canSeeSettings below, and so the sidebar
-  // item, is unchanged). Every tab here is a route tab in router.js and every action a Worker action: guild-structure-tests.js checks both.
+  // The Guild settings pages, in the order of the five groups the list shows (design framework T3). A viewer sees a page when they hold ANY of its `needs`
+  // actions (Accounts needs access or roles; Raid schedule is for whoever edits raids, and a Team Lead reaches it from the Raids page: canSeeSettings below,
+  // and so the sidebar item, is unchanged). Every page here is a route tab in router.js and every action a Worker action: guild-structure-tests.js checks both.
+  // `tab` is the address (#/g/:gid/settings/<tab>) and never changes with a label: 'people' is the page called Accounts. `purpose` is the one line under the
+  // page's heading. General is the Guild Master's to edit (the Worker says 403 to anyone else); an officer who reaches Guild settings reads it.
+  const SETTINGS_GROUPS = ['Guild', 'People and access', 'Sharing', 'Raid rules', 'Connections and data'];
   const SETTINGS_TABS = [
-    { tab: 'teams', label: 'Teams', needs: ['guild.teams'] },
-    { tab: 'schedule', label: 'Raid schedule', needs: ['raids.edit'] },
-    { tab: 'people', label: 'Accounts', needs: ['guild.access', 'guild.roles'] },
-    { tab: 'roles', label: 'Roles', needs: ['guild.roles'] },
-    { tab: 'discord', label: 'Discord roles', needs: ['guild.roles'] },
-    { tab: 'guests', label: 'Guest links', needs: ['guild.access'] },
-    { tab: 'dataaccess', label: 'Data access', needs: ['guild.access'] },
-    { tab: 'public', label: 'Public page', needs: ['guild.roles'] },
-    { tab: 'applications', label: 'Applications', needs: ['guild.teams'] },
-    { tab: 'notifications', label: 'Notifications', needs: ['guild.teams'] },
-    { tab: 'attendance', label: 'Attendance', needs: ['attendance.policy'] },
-    { tab: 'loot', label: 'Loot', needs: ['loot.policy'] },
-    { tab: 'battlenet', label: 'Battle.net', needs: ['guild.teams'] },
-    { tab: 'activity', label: 'Activity', needs: ['audit.view'] },
+    { tab: 'general', label: 'General', group: 'Guild', needs: ['guild.teams'], isNew: true,
+      purpose: 'Your guild\'s name, realm and time zone. Raid times everywhere read in this zone.' },
+    { tab: 'teams', label: 'Teams', group: 'Guild', needs: ['guild.teams'],
+      purpose: 'The raid teams of the guild. Each character is locked to one team.' },
+    { tab: 'schedule', label: 'Raid schedule', group: 'Guild', needs: ['raids.edit'],
+      purpose: 'The days each team raids every week, and when sign-ups close.' },
+    { tab: 'people', label: 'Accounts', group: 'People and access', needs: ['guild.access', 'guild.roles'],
+      purpose: 'The accounts that have signed in to this guild, and the roles they hold.' },
+    { tab: 'roles', label: 'Roles', group: 'People and access', needs: ['guild.roles'],
+      purpose: 'What each role may see and do. Add your own roles, or reset a built-in one.' },
+    { tab: 'discord', label: 'Discord roles', group: 'People and access', needs: ['guild.roles'],
+      purpose: 'Which Raidsmith role each role of your Discord server gives.' },
+    { tab: 'guests', label: 'Guest links', group: 'Sharing', needs: ['guild.access'],
+      purpose: 'Read-only links for people without an account.' },
+    { tab: 'public', label: 'Public page', group: 'Sharing', needs: ['guild.roles'],
+      purpose: 'A page anyone with the address can read, and what it shows.' },
+    { tab: 'dataaccess', label: 'Data access', group: 'Sharing', needs: ['guild.access'],
+      purpose: 'Read-only keys that let a spreadsheet or a script read your guild\'s data.' },
+    { tab: 'attendance', label: 'Attendance', group: 'Raid rules', needs: ['attendance.policy'],
+      purpose: 'What counts as present, how late and bench are treated, and when someone is on the watch list.' },
+    { tab: 'loot', label: 'Loot', group: 'Raid rules', needs: ['loot.policy'],
+      purpose: 'Who sees loot and how the balance counts.' },
+    { tab: 'notifications', label: 'Notifications', group: 'Raid rules', needs: ['guild.teams'],
+      purpose: 'What Raidsmith posts to each team\'s Discord channel.' },
+    { tab: 'applications', label: 'Applications', group: 'Raid rules', needs: ['guild.teams'],
+      purpose: 'Whether people can apply to the guild, and the questions they answer.' },
+    { tab: 'battlenet', label: 'Battle.net', group: 'Connections and data', needs: ['guild.teams'],
+      purpose: 'What the Battle.net guild roster import needs to know about the guild.' },
+    { tab: 'activity', label: 'Activity', group: 'Connections and data', needs: ['audit.view'],
+      purpose: 'What people changed in this guild, newest first.' },
     // Export and delete: the Guild Master's alone (not an action a role can be given), so it is shown by role, not by `needs`.
-    { tab: 'data', label: 'Guild data', needs: [], guildMasterOnly: true },
+    { tab: 'data', label: 'Guild data', group: 'Connections and data', needs: [], guildMasterOnly: true,
+      purpose: 'Download a copy of the guild, or delete it.' },
   ];
+
+  function isGuildMaster(roles) { return Array.isArray(roles) && roles.some(function (r) { return r && r.role === 'guild_master'; }); }
 
   // roles: the viewer's roles in this guild (guildData.me.roles); the Guild Master's tabs need it.
   function settingsTabs(can, roles) {
-    const master = Array.isArray(roles) && roles.some(function (r) { return r && r.role === 'guild_master'; });
+    const master = isGuildMaster(roles);
     return SETTINGS_TABS
       .filter(function (def) { return def.guildMasterOnly ? master : def.needs.some(function (action) { return hasAction(can, action); }); })
-      .map(function (def) { return { tab: def.tab, label: def.label }; });
+      .map(function (def) { return { tab: def.tab, label: def.label, group: def.group, purpose: def.purpose, isNew: !!def.isNew }; });
+  }
+
+  // The same pages as the five groups of the list (a group with no page for this viewer is left out): [{ label, items: [{ tab, label, purpose, isNew }] }].
+  function settingsGroups(can, roles) {
+    const tabs = settingsTabs(can, roles);
+    return SETTINGS_GROUPS.map(function (label) {
+      return { label: label, items: tabs.filter(function (t) { return t.group === label; }) };
+    }).filter(function (g) { return g.items.length > 0; });
   }
 
   function activeTeams(teams) {
@@ -149,9 +179,9 @@
       plannerItem(),
     ];
     if (canSeeSettings(can)) {
-      const first = settingsTabs(can)[0];
+      // The bare address: the app opens the first page on a wide screen and the list of pages on a phone.
       items.push({ key: 'settings', label: 'Guild settings', short: 'Settings', icon: 'settings', separated: true,
-        href: b + G.router.format({ name: 'settings', gid: gid, tab: first ? first.tab : null }) });
+        href: b + G.router.format({ name: 'settings', gid: gid, tab: null }) });
     }
     return items;
   }
@@ -474,15 +504,42 @@
     return divider + (signedIn(ctx) ? accountMenuHtml(ctx) : signinButtonHtml(ctx));
   }
 
-  // ── Guild settings frame: title, tab strip, then the tab's content ──
+  // ── Guild settings frame (T3): the five groups on the left, one page at a time beside them ──
+  // On a phone the list is the first screen (view 'list') and a page opens with a Back link (view 'detail'). innerHtml is the page's own content; a form page
+  // puts its Save bar inside its form (ui.saveBarHtml). ctx.settingsSavedAt (ms) is when the open page was last saved, for the head's "Saved at 8:14 PM ET".
+  function settingsFrameModel(ctx) {
+    const gd = ctx.guildData;
+    const can = gd.me && gd.me.can;
+    const roles = gd.me && gd.me.roles;
+    const gid = gd.guild.id;
+    const base = baseOf(ctx);
+    const groups = settingsGroups(can, roles);
+    const total = groups.reduce(function (n, g) { return n + g.items.length; }, 0);
+    return {
+      groups: groups.map(function (g) {
+        return { label: g.label, items: g.items.map(function (t) { return { key: t.tab, label: t.label, isNew: t.isNew, href: base + G.router.format({ name: 'settings', gid: gid, tab: t.tab }) }; }) };
+      }),
+      heading: 'Guild settings',
+      subline: gd.guild.name + ' - ' + total + (total === 1 ? ' page' : ' pages') + ' in ' + groups.length + (groups.length === 1 ? ' group' : ' groups'),
+      listHref: base + G.router.format({ name: 'settings', gid: gid, tab: null }),
+    };
+  }
+
   function settingsFrameHtml(ctx, activeTab, innerHtml) {
     const gd = ctx.guildData;
+    const model = settingsFrameModel(ctx);
     const tabs = settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles);
-    return '<div class="gs-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Guild settings</h1><p class="gs-sub">' + esc(gd.guild.name) + ' - ' + esc(G.ui.realmLine(gd.guild)) + '</p></div>' +
-      '<nav aria-label="Guild settings sections"><ul class="gs-subtabs">' + tabs.map(function (t) {
-        const active = t.tab === activeTab;
-        return '<li><a class="gs-subtab' + (active ? ' is-active' : '') + '" href="' + esc(G.router.format({ name: 'settings', gid: gd.guild.id, tab: t.tab })) + '"' + (active ? ' aria-current="page"' : '') + '>' + esc(t.label) + '</a></li>';
-      }).join('') + '</ul></nav>' + innerHtml + '</div>';
+    const cur = tabs.filter(function (t) { return t.tab === activeTab; })[0] || { label: 'Guild settings', purpose: '' };
+    const saved = typeof ctx.settingsSavedAt === 'number' ? G.ui.savedStatusHtml('Saved at ' + G.ui.timeInZone(ctx.settingsSavedAt, gd.guild.timeZone)) : G.ui.savedStatusHtml('');
+    return G.ui.settingsPageHtml({ groups: model.groups, activeKey: activeTab, view: 'detail', listHref: model.listHref, heading: model.heading, subline: model.subline,
+      title: cur.label, purpose: cur.purpose, savedHtml: saved, bodyHtml: innerHtml });
+  }
+
+  // The phone's first screen (and the wide screen's, if the window is narrowed and widened again on the bare address): the list of pages alone.
+  function settingsListHtml(ctx) {
+    const model = settingsFrameModel(ctx);
+    return G.ui.settingsPageHtml({ groups: model.groups, view: 'list', heading: model.heading, subline: model.subline, title: 'Guild settings',
+      purpose: 'Choose a page from the list.', bodyHtml: '' });
   }
 
   // Shown at the top of a guild's pages when the viewer can claim it (/auth/me create.claimable lists it).
@@ -524,7 +581,10 @@
     canSeeAttention: canSeeAttention,
     homeBadge: homeBadge,
     SETTINGS_TABS: SETTINGS_TABS,
+    SETTINGS_GROUPS: SETTINGS_GROUPS,
     settingsTabs: settingsTabs,
+    settingsGroups: settingsGroups,
+    isGuildMaster: isGuildMaster,
     activeTeams: activeTeams,
     navItems: navItems,
     helpItems: helpItems,
@@ -539,6 +599,7 @@
     allowsTeam: allowsTeam,
     breadcrumbItems: breadcrumbItems,
     settingsFrameHtml: settingsFrameHtml,
+    settingsListHtml: settingsListHtml,
     accountMenuHtml: accountMenuHtml,
     sidebarHtml: sidebarHtml,
     phonePickHtml: phonePickHtml,

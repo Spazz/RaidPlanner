@@ -82,7 +82,7 @@
             '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + keys.map(keyRowHtml).join('') + '</tbody></table></div>'
           : '<p class="gs-empty" id="dkeys-empty">No data keys yet.</p>');
     }
-    return '<section class="gs-section" aria-labelledby="dkeys-set-h"><div class="gs-section-head"><h2 class="gs-h2" id="dkeys-set-h">Data access</h2>' + head + '</div>' +
+    return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions">' + head + '</div>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + body + '</section>';
   }

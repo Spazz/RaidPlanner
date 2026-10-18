@@ -65,7 +65,7 @@
     const teams = Array.isArray(gd.teams) ? gd.teams : [];
     const active = teams.filter(function (t) { return !t.archived; });
     const archived = teams.filter(function (t) { return t.archived; });
-    return '<section class="gs-section" aria-labelledby="teams-heading"><div class="gs-section-head"><h2 class="gs-h2" id="teams-heading">Teams</h2>' +
+    return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions">' +
       (canEdit ? '<button type="button" class="gs-btn" data-action="team-add" data-key="team-add">Add team</button>' : '') + '</div>' +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       (active.length

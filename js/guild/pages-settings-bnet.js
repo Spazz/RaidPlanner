@@ -29,7 +29,7 @@
           '<input class="gs-input" type="text" id="' + id + '" name="rank' + rank + '" maxlength="24" autocomplete="off" placeholder="' + esc((d.rankDefaults || [])[rank] || '') + '" value="' + esc(label) + '"' + (d.canEdit ? '' : ' disabled') + '></div>';
       }).join('');
       body = status +
-        '<form class="gs-form gs-bnet-form" data-submit="bnet-settings" novalidate>' +
+        '<form class="gs-form gs-bnet-form" id="bnet-form" data-submit="bnet-settings" novalidate' + (d.canEdit ? G.ui.dirtyFormAttrs() : '') + '>' +
         '<div class="gs-field"><label class="gs-label" for="bnet-guild-name">In-game guild name</label>' +
         '<input class="gs-input" type="text" id="bnet-guild-name" name="guildName" maxlength="32" autocomplete="off" placeholder="' + esc(gd.guild.name) + '" value="' + esc(d.guildName || '') + '"' + (d.canEdit ? '' : ' disabled') + ' data-field="guildName">' +
         '<p class="gs-fine">Leave empty to use the Raidsmith guild name (' + esc(gd.guild.name) + ').</p><p class="gs-field-error" id="bnet-err-guildName" role="alert" hidden></p></div>' +
@@ -41,10 +41,10 @@
         '<fieldset class="gs-pol-field"><legend class="gs-label">Rank names</legend><p class="gs-fine">' + esc(NOTE) + '</p><div class="gs-bnet-ranks">' + labels + '</div>' +
         '<p class="gs-field-error" id="bnet-err-rankLabels" role="alert" hidden></p></fieldset>' +
         '<p class="gs-alert" id="bnet-form-error" role="alert" hidden></p>' +
-        (d.canEdit ? '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="bnet-save">Save</button></div>' : '<p class="gs-fine">Only people who can edit teams can change these.</p>') +
+        (d.canEdit ? G.ui.saveBarHtml({}) : '<p class="gs-fine">Only people who can edit teams can change these.</p>') +
         '</form>';
     }
-    return '<section class="gs-section" aria-labelledby="bnet-set-h"><div class="gs-section-head"><h2 class="gs-h2" id="bnet-set-h">Battle.net</h2></div>' +
+    return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions"></div>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + body + '</section>';
   }
@@ -71,7 +71,8 @@
     G.ui.setBusy(form, true);
     G.api.put('/api/guild/' + encodeURIComponent(x.gid) + '/bnet', formBody(form, x.data)).then(function (res) {
       xs().data = res;
-      xs().notice = 'Saved.';
+      xs().notice = '';
+      G.app.markSettingsSaved('battlenet');
       G.app.render();
     }, function (err) {
       G.ui.setBusy(form, false);

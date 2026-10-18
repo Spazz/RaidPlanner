@@ -31,46 +31,54 @@
   const CONSOLIDATION_ROOTS = ['expected', 'noSignup', 'tentative', 'absence', 'bench', 'lateSignup', 'detection', 'credit', 'fillIn', 'resetDay'];
 
   const RADIO = 'radio';
+  // The page is three sections with anchors (design framework T3) and one Save bar; every group sits in one of them.
+  const SECTIONS = [
+    { id: 'att-present', title: 'What counts as present', blurb: 'Who is expected at a raid, and how sign-ups and fill-ins count.' },
+    { id: 'att-late', title: 'Late and bench rules', blurb: 'How late and early leavers and the bench are credited.' },
+    { id: 'att-review', title: 'Review and watch list', blurb: 'The windows attendance is worked out over, who is flagged, ranks and the weekly reset.' },
+  ];
   const GROUPS = [
-    { id: 'expected', title: 'Who is expected', fields: [
+    { id: 'expected', section: 'att-present', title: 'Who is expected', fields: [
       { path: 'expected.mode', type: RADIO, label: 'Expected to attend', options: [['signedUp', 'Signed-up only'], ['statuses', 'Roster statuses']] },
       { path: 'expected.statuses', type: 'checks', label: 'Roster statuses expected', options: [['raider', 'Raider'], ['trial', 'Trial'], ['reserve', 'Reserve']], when: function (v) { return v('expected.mode') === 'statuses'; },
         help: 'Someone with one of these statuses who did not sign up counts as Missed.' },
       { path: 'noSignup', type: RADIO, label: 'No sign-up', options: [['shown', 'Shown, not counted in %'], ['hidden', 'Not shown']], help: 'A roster person who is not expected, did not sign up and was not in the log.' },
     ] },
-    { id: 'signups', title: 'Sign-up handling', fields: [
+    { id: 'signups', section: 'att-present', title: 'Sign-up handling', fields: [
       { path: 'tentative', type: RADIO, label: 'Tentative', options: [['asNoSignup', 'Same as no sign-up'], ['asSignedUp', 'Counts as signed up']] },
       { path: 'absence', type: RADIO, label: 'Absence', options: [['missedWithNotice', 'Missed, with notice'], ['excused', 'Left out of the %']] },
-      { path: 'bench', type: RADIO, label: 'Bench (plan or sign-up)', options: [['full', 'Full credit'], ['excluded', 'Left out of the %']] },
       { path: 'lateSignup', type: RADIO, label: 'Late sign-up', options: [['fullCreditNoFlag', 'Full credit if they arrive late (leaving early is still flagged)'], ['flagLikeOthers', 'Flag for review like anyone else']] },
     ] },
-    { id: 'late', title: 'Late and left early', fields: [
-      { path: 'detection.mode', type: 'fixed', label: 'Detection', text: 'Missed the raid\'s first or last boss pull (wipes count, all of the raid\'s logs together). Other ways to detect it are not built yet.' },
-    ] },
-    { id: 'credit', title: 'Credit values', fields: [
-      { path: 'credit.values', type: 'credits', label: 'Credit values the officer can pick for Late and Left early', help: '2 to 5 values. A value is 0 to 100 percent.' },
-    ] },
-    { id: 'fillin', title: 'Fill-ins', fields: [
+    { id: 'fillin', section: 'att-present', title: 'Fill-ins', fields: [
       { path: 'fillIn', type: RADIO, label: 'Raiding with another team', options: [['always', 'Always credit the home team (replaces a missed cell that day)'], ['homeIfNoRaid', 'Credit the home team only if it had no raid that day'], ['recordOnly', 'Record only, never counted']] },
     ] },
-    { id: 'windows', title: 'Windows', fields: [
+    { id: 'bench', section: 'att-late', title: 'Bench', fields: [
+      { path: 'bench', type: RADIO, label: 'Bench (plan or sign-up)', options: [['full', 'Full credit'], ['excluded', 'Left out of the %']] },
+    ] },
+    { id: 'late', section: 'att-late', title: 'Late and left early', fields: [
+      { path: 'detection.mode', type: 'fixed', label: 'Detection', text: 'Missed the raid\'s first or last boss pull (wipes count, all of the raid\'s logs together). Other ways to detect it are not built yet.' },
+    ] },
+    { id: 'credit', section: 'att-late', title: 'Credit values', fields: [
+      { path: 'credit.values', type: 'credits', label: 'Credit values the officer can pick for Late and Left early', help: '2 to 5 values. A value is 0 to 100 percent.' },
+    ] },
+    { id: 'windows', section: 'att-review', title: 'Windows', fields: [
       { path: 'window.defaultWeeks', type: 'number', label: 'Main window (full reset weeks)', min: 1, max: 52 },
       { path: 'window.switchWeeks', type: 'list', label: 'Window choices on the Attendance page', help: 'Up to 3 week counts, separated by commas. Must include the main window. "All time" is always offered.' },
       { path: 'effectiveStart', type: RADIO, label: 'When a person\'s raids start to count', options: [['laterOfJoinAndFirst', 'Later of join date and first attended raid'], ['joinDate', 'Join date']] },
       { path: 'streakFlagAt', type: 'number', label: 'Highlight a missed-raid streak of', min: 0, max: 20, help: '0 turns the highlight off.' },
     ] },
-    { id: 'watch', title: 'Watch list', fields: [
+    { id: 'watch', section: 'att-review', title: 'Watch list', fields: [
       { path: 'watch.below', type: 'percent', label: 'Flag people below (percent)', min: 0, max: 100,
         help: 'The team\'s Attendance page lists people whose attendance in the main window is under this. Leave it empty to turn this check off.' },
       { path: 'watch.dropBy', type: 'percent', label: 'Flag a drop of (points)', min: 0, max: 100,
         help: 'Also lists people whose attendance fell by at least this many percentage points against the previous window of the same length. Leave it empty to turn this check off.' },
     ] },
-    { id: 'ladder', title: 'Rank ladder', fields: [
+    { id: 'ladder', section: 'att-review', title: 'Rank ladder', fields: [
       { path: 'ladder.ranks', type: 'ladder', label: 'Ranks, lowest first', guildOnly: true,
         guildNote: 'The rank ladder belongs to the whole guild, since a rank is a label on the person. Change it on the Guild default.',
         help: 'Optional. The ladder only suggests: the team\'s Attendance page and Home show "Suggested: promote" or "Suggested: review", and an officer accepts it with one click or dismisses it for 30 days. Everyone starts on the first rank. A rank with no rules is only given by hand.' },
     ] },
-    { id: 'reset', title: 'Reset day', fields: [
+    { id: 'reset', section: 'att-review', title: 'Reset day', fields: [
       { path: 'resetDay', type: 'reset', label: 'Weekly reset', guildOnly: true },
     ] },
   ];
@@ -312,7 +320,22 @@
 
   function groupHtml(g, view, scope, draft) {
     const fields = g.fields.map(function (f) { return fieldHtml(f, view, scope, draft); }).join('');
-    return '<section class="gs-card-sec" aria-labelledby="pg-' + g.id + '"><div class="gs-card-sec-head"><h2 class="gs-h2" id="pg-' + g.id + '">' + esc(g.title) + '</h2></div><div class="gs-card-sec-body">' + fields + '</div></section>';
+    return '<section class="gs-card-sec" aria-labelledby="pg-' + g.id + '"><div class="gs-card-sec-head"><h3 class="gs-h2" id="pg-' + g.id + '">' + esc(g.title) + '</h3></div><div class="gs-card-sec-body">' + fields + '</div></section>';
+  }
+
+  // One headed section of the page: its blurb, then the group cards that belong to it (the section is a jump target of "On this page").
+  function sectionHtml(sec, view, scope, draft) {
+    const cards = GROUPS.filter(function (g) { return g.section === sec.id; }).map(function (g) { return groupHtml(g, view, scope, draft); }).join('');
+    return '<section class="gs-osection gs-att-section" id="' + sec.id + '" tabindex="-1" aria-labelledby="' + sec.id + '-h"><div class="gs-osection-head"><h2 class="gs-h2" id="' + sec.id + '-h">' + esc(sec.title) + '</h2></div>' +
+      '<div class="gs-osection-body"><p class="gs-fine">' + esc(sec.blurb) + '</p>' + cards + '</div></section>';
+  }
+
+  // "On this page": one jump link per section (and the Warcraft Logs card below the form).
+  function onPageHtml() {
+    const items = SECTIONS.concat([{ id: 'att-wcl', title: 'Warcraft Logs' }]);
+    return '<nav class="gs-onpage-nav" aria-label="On this page"><ul class="gs-onpage"><li class="gs-onpage-label">On this page</li>' + items.map(function (sec) {
+      return '<li><a href="#' + sec.id + '" data-action="jump" data-target="' + sec.id + '">' + esc(sec.title) + '</a></li>';
+    }).join('') + '</ul></nav>';
   }
 
   function uploadersText(view, tid) {
@@ -327,14 +350,18 @@
       const val = wclUi && wclUi.uploaders && has(wclUi.uploaders, t.id) ? wclUi.uploaders[t.id] : uploadersText(view, t.id);
       return '<div class="gs-field"><label class="gs-label" for="wcl-up-' + esc(t.id) + '">Uploaders for ' + esc(t.name) + '</label><textarea class="gs-input gs-textarea" id="wcl-up-' + esc(t.id) + '" data-tid="' + esc(t.id) + '" rows="2" aria-describedby="wcl-up-help">' + esc(val) + '</textarea></div>';
     }).join('');
-    return '<section class="gs-card-sec" aria-labelledby="pg-wcl"><div class="gs-card-sec-head"><h2 class="gs-h2" id="pg-wcl">Warcraft Logs</h2></div>' +
+    return '<section class="gs-card-sec" id="att-wcl" tabindex="-1" aria-labelledby="pg-wcl"><div class="gs-card-sec-head"><h2 class="gs-h2" id="pg-wcl">Warcraft Logs</h2></div>' +
       '<form class="gs-card-sec-body" data-submit="wcl-form" novalidate>' +
       '<div class="gs-field"><label class="gs-label" for="wcl-guild">Warcraft Logs guild ID (optional)</label><input class="gs-input gs-input-short" type="text" inputmode="numeric" id="wcl-guild" value="' + esc(wclUi && wclUi.guildId != null ? wclUi.guildId : gid) + '" aria-describedby="wcl-guild-help">' +
       '<p class="gs-fine" id="wcl-guild-help">Leave it empty to look the guild up by its name and realm.</p></div>' + fields +
       '<p class="gs-fine" id="wcl-up-help">One character name per line, at most ' + UPLOADERS_MAX + ' per team. The backfill list can filter to reports these people uploaded.</p>' +
       '<p class="gs-alert" id="wcl-error" role="alert" hidden></p><p class="gs-fine" id="wcl-ok" role="status" hidden></p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-sm">Save Warcraft Logs settings</button></div></form></section>';
+      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-sm">Save Warcraft Logs settings</button></div><p class="gs-fine">Saved on its own, apart from the rules above.</p></form></section>';
   }
+
+  // How many settings differ from what is saved at this level (the Save bar's count). The guild default stores only what differs from the built-in rules.
+  function normalized(s, o) { return s.scope === 'guild' ? pruneToDifferences(o, s.view.defaults || {}) : o; }
+  function changeCount(s) { return G.ui.saveBar.draftChanges(normalized(s, overrideFor(s.view, s.scope)), normalized(s, s.draft)); }
 
   // opts: { guildData, s: { view, scope, draft, wclUi, stale: n }, alert, notice, progress }
   function settingsHtml(opts) {
@@ -353,9 +380,11 @@
         ? (opts.progress && opts.progress.running
           ? '<div class="gs-notice" role="status"><span>Recalculating ' + esc(opts.progress.done) + ' of ' + esc(opts.progress.total) + '...</span></div>'
           : '<div class="gs-notice gs-stale-banner" role="status"><span>The rules changed under ' + esc(A().plural(s.stale, 'raid', 'raids')) + '. Their stored results are from before the change.</span><button type="button" class="gs-btn gs-btn-sm" data-action="pol-recalc" data-key="pol-recalc">Recalculate ' + esc(A().plural(s.stale, 'raid', 'raids')) + '</button></div>') : '') +
-      '<form class="gs-pol-form" data-submit="pol-form" novalidate>' + GROUPS.map(function (g) { return groupHtml(g, view, s.scope, s.draft); }).join('') +
+      onPageHtml() +
+      '<form class="gs-pol-form" id="pol-form" data-submit="pol-form" novalidate>' + SECTIONS.map(function (sec) { return sectionHtml(sec, view, s.scope, s.draft); }).join('') +
       '<p class="gs-fine">Changes apply to all raids; past officer decisions are kept.</p><p class="gs-alert" id="pol-error" role="alert" hidden></p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten">Save</button><button type="button" class="gs-btn" data-action="pol-reset-all" data-key="pol-reset-all">' + (s.scope === 'guild' ? 'Reset to defaults' : 'Remove the team override') + '</button></div></form>' +
+      '<div class="gs-actions"><button type="button" class="gs-btn" data-action="pol-reset-all" data-key="pol-reset-all">' + (s.scope === 'guild' ? 'Reset to defaults' : 'Remove the team override') + '</button></div>' +
+      G.ui.saveBarHtml({ count: changeCount(s), discardAttrs: { 'data-action': 'pol-discard', 'data-key': 'pol-discard' } }) + '</form>' +
       wclCardHtml(gd, view, s.wclUi) + '</div>';
   }
 
@@ -558,6 +587,14 @@
     G.app.render();
   };
 
+  G.handlers.click['pol-discard'] = function () {
+    const s = cur();
+    if (!s) return;
+    s.draft = overrideFor(s.view, s.scope);
+    st().pageAlert = '';
+    G.app.render();
+  };
+
   G.handlers.click['pol-reset-all'] = function () {
     const s = cur();
     if (!s) return;
@@ -592,7 +629,8 @@
       a().policy[gid] = view;
       const scope = s.scope;
       adopt(gid, view, scope, false);
-      a().polNotice = 'Attendance rules saved.';
+      a().polNotice = '';
+      G.app.markSettingsSaved('attendance');
       st().pageAlert = '';
       const teamIds = scope === 'guild' ? G.shell.activeTeams(gd.teams).map(function (t) { return t.id; }) : [scope];
       const needs = changesConsolidation(before, body);
@@ -679,6 +717,8 @@
 
   G.pages.settingsAtt = {
     GROUPS: GROUPS,
+    SECTIONS: SECTIONS,
+    changeCount: changeCount,
     getPath: getPath,
     setPath: setPath,
     delPath: delPath,

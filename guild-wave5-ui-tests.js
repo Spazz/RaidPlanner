@@ -275,19 +275,19 @@ check('Actions menu: the two paste entries for an editor on an upcoming and a pa
   const lootOk = { gid: 'g1', rid: 'r4', status: 'ok', data: { awards: [], canEdit: true }, ui: G.pages.raidLoot.freshUi() };
   const page = (data, over) => G.pages.raid.raidHtml(Object.assign({ guildData: gd(OFFICER_CAN), data }, over || {}));
   const past = page(PAST(), { loot: lootOk, board: okState() });
-  assert.deepEqual(labelsOf(past), ['Recalculate attendance', 'Mark as No log', 'Import loot from Gargul', 'Add loot award', 'Loot prio (TMB)', 'Soft-reserves (softres)', 'Set raid duties', 'Paste raid roster', 'Open in Planner', 'Delete raid']);
+  assert.deepEqual(labelsOf(past), ['Open in Planner', 'Recalculate attendance', 'Mark as No log', 'Import loot from Gargul', 'Add loot award', 'Loot prio (TMB)', 'Soft-reserves (softres)', 'Set raid duties', 'Paste raid roster', 'Delete raid']);
   assert(past.includes('data-action="board-open" data-list="tmb"') && past.includes('data-action="loot-add-open"'));
   const up = page(UPCOMING(), { board: okState({ rid: 'u1' }) });
-  assert.deepEqual(labelsOf(up), ['Loot prio (TMB)', 'Soft-reserves (softres)', 'Set raid duties', 'Guest sign-up link', 'Open in Planner', 'Delete raid']);
+  assert.deepEqual(labelsOf(up), ['Open in Planner', 'Loot prio (TMB)', 'Soft-reserves (softres)', 'Set raid duties', 'Guest sign-up link', 'Delete raid']);
   const openTmb = page(UPCOMING(), { board: okState({ rid: 'u1', ui: Object.assign(G.pages.raidBoard.freshUi(), { list: 'tmb' }) }) });
-  assert.deepEqual(labelsOf(openTmb), ['Soft-reserves (softres)', 'Set raid duties', 'Guest sign-up link', 'Open in Planner', 'Delete raid']);
+  assert.deepEqual(labelsOf(openTmb), ['Open in Planner', 'Soft-reserves (softres)', 'Set raid duties', 'Guest sign-up link', 'Delete raid']);
   const member = G.pages.raid.raidHtml({ guildData: gd(MEMBER_CAN), data: PAST({ can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), board: okState({ data: BOARD({ canEdit: false }) }) });
   assert(!member.includes('raid-actions'), 'no Actions menu for a viewer who cannot edit');
   assert(member.includes('id="board-h"') && !member.includes('data-action="board-open"'));
   assert(!page(UPCOMING(), {}).includes('board-h'), 'not loaded: no card');
   assert(page(UPCOMING(), { board: okState({ rid: 'u1' }) }).includes('id="board-h"'), 'the board is on an upcoming raid too');
-  // The card sits before the Loot card on a past raid and after the roster on an upcoming one.
-  assert(past.indexOf('id="board-h"') < past.indexOf('id="loot-h"') || !past.includes('id="loot-h"'));
+  // On a past raid the loot awards come first (post-raid mode leads with what is left to do) and the prios after the summaries; on an upcoming one the prios follow the plan and line-up.
+  assert(past.indexOf('id="loot-h"') < past.indexOf('id="board-h"') || !past.includes('id="loot-h"'));
 });
 
 check('load: the raid page loads the board after the loot; a 403 and a 404 draw nothing; another error shows a retry; coming back starts the panel afresh', withState(async (S) => {

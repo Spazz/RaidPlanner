@@ -116,11 +116,11 @@ function formFor(teamId, values) {
 
 (async () => {
   // ═══ Router and shell ═══════════════════════════════════════════
-  await check('router and shell: Notifications is a Guild settings tab for guild.teams, after Applications; the address round-trips', () => {
+  await check('router and shell: Notifications is a Guild settings tab for guild.teams, in the Raid rules group before Applications; the address round-trips', () => {
     assert.deepEqual(plain(G.router.parse('#/g/g1/settings/notifications')), { name: 'settings', gid: 'g1', tab: 'notifications' });
     assert.equal(G.router.format({ name: 'settings', gid: 'g1', tab: 'notifications' }), '#/g/g1/settings/notifications');
     const tabs = (can) => plain(G.shell.settingsTabs(can, []).map(t => t.tab));
-    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams', 'applications', 'notifications', 'battlenet']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['general', 'teams', 'notifications', 'applications', 'battlenet']);
     assert.deepEqual(tabs({ 'raids.edit': 'guild' }), ['schedule'], 'raid editing alone does not open it');
     assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'guests', 'dataaccess']);
     assert.equal(G.shell.SETTINGS_TABS.find(t => t.tab === 'notifications').label, 'Notifications');
@@ -136,7 +136,7 @@ function formFor(teamId, values) {
     const out = G.pages.settingsNotify.settingsHtml({ guildData: S.guilds.g1, data: data([saved, team({ id: 't2', name: 'Weekend team' })]) });
     assertNoRawAttrs(out);
     const text = stripTags(out);
-    assert(text.includes('Notifications') && text.includes('Nothing is posted until you switch a post on'));
+    assert(text.includes('Nothing is posted until you switch a post on'));
     assert(text.includes('Team KJ') && text.includes('Weekend team') && text.includes('Webhook set') && text.includes('No webhook'));
     assert(text.includes('Webhook saved, ending in .../AbCd'));
     assert(text.includes('The address is a secret. Raidsmith stores it and never shows it again'));

@@ -161,7 +161,7 @@ class ApiErr extends Error {
     assert.deepEqual(tabs({ 'raids.edit': ['t1'] }), ['schedule']);
     assert.deepEqual(tabs({ 'raids.edit': [] }), []);
     assert.deepEqual(tabs({ 'raids.view': 'guild' }), []);
-    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'guild.access': 'guild', 'raids.edit': 'guild', 'attendance.policy': 'guild' }), ['teams', 'schedule', 'people', 'guests', 'dataaccess', 'applications', 'notifications', 'attendance', 'battlenet']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'guild.access': 'guild', 'raids.edit': 'guild', 'attendance.policy': 'guild' }), ['general', 'teams', 'schedule', 'people', 'guests', 'dataaccess', 'attendance', 'notifications', 'applications', 'battlenet']);
     assert.equal(G.shell.settingsTabs({ 'raids.edit': 'guild' })[0].label, 'Raid schedule');
     assert.equal(G.shell.canSeeSettings({ 'raids.edit': ['t1'] }), false, 'a Team Lead alone does not get the Guild settings item: the Raids page links to the tab');
     const frame = G.shell.settingsFrameHtml({ guildData: gd(OFFICER_CAN) }, 'schedule', '<p>x</p>');
@@ -217,9 +217,13 @@ class ApiErr extends Error {
     const started = view({ raid: { id: 'u1', teamId: 't1', startsAt: STARTS, upcoming: false, locked: false, closed: 'started' }, me: Object.assign({}, view().me, { canChange: false, closed: 'started' }) });
     const past = DETAIL({ raid: Object.assign({}, DETAIL().raid, { upcoming: false }) });
     const pastOut = panel(started, { data: past });
-    assert(pastOut.includes('The raid has started') && pastOut.includes('The raid has started, so sign-ups can no longer be changed here.'));
+    assert(pastOut.includes('The raid has started'), 'the pill says so');
+    assert(!pastOut.includes('data-action="su-kind"') && !pastOut.includes('so sign-ups can no longer be changed here.') && !pastOut.includes('id="su-me"'), 'after the start there is no status form, not even a disabled one');
     assert.equal(panel(Object.assign({}, started, { entries: [] }), { data: past }), '', 'a past raid nobody signed up for: no panel for a member');
-    assert(panel(Object.assign({}, OFFICER_VIEW(), { entries: [] }), { data: past, guildData: gd(OFFICER_CAN) }).includes('data-action="su-add"'), 'officers still get the tools');
+    const officerPast = panel(Object.assign({}, OFFICER_VIEW(), { entries: ENTRIES }), { data: past, guildData: gd(OFFICER_CAN) });
+    assert(!officerPast.includes('data-action="su-add"') && !officerPast.includes('data-action="su-lock"'), 'after the start: no Add a sign-up and no Close sign-ups');
+    assert(officerPast.includes('data-action="su-edit"'), 'the officer still sees the sign-ups and can correct a row');
+    assert(panel(Object.assign({}, OFFICER_VIEW(), { entries: [] }), { data: past, guildData: gd(OFFICER_CAN) }).includes('No sign-ups yet.'), 'officers see the empty panel');
   });
 
   await check('panel (officer): Add a sign-up and Close sign-ups, Edit on every person row, Remove only on Raidsmith rows; the unmatched row has no tools; nicknames shown', () => {
@@ -596,7 +600,8 @@ class ApiErr extends Error {
     assert.equal(s.calls.length, 1);
     assert.deepEqual([s.calls[0].m, s.calls[0].url], ['put', '/api/guild/g1/teams/t1/schedule']);
     assert.deepEqual(s.calls[0].body, { slots: [{ weekday: 2, startTime: '20:00', zone: 'Karazhan', title: 'Prog' }, { weekday: 4, startTime: '20:30', zone: null, title: null }], weeks: 3, auto: true });
-    assert.equal(S.att.settingsSchedule.note, 'Schedule saved.');
+    assert.equal(S.att.settingsSchedule.note, '', 'the page head says Saved at; there is no banner');
+    assert.equal(G.app.state.settingsSaved && G.app.state.settingsSaved.tab, 'schedule');
     assert.equal(S.att.settingsSchedule.draft.weeks, 4);
     s.restore();
     // A duplicate weekday is caught here.

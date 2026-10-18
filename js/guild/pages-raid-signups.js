@@ -131,7 +131,7 @@
     // A person away by notice has not chosen a status: no button is pressed.
     const buttons = MY_KINDS.map(function (k) {
       const on = sig && sig.source !== 'away' && sig.kind === k[0];
-      return '<button type="button" class="gs-btn gs-su-kind' + (k[0] === 'signed' && !on ? ' gs-btn-molten' : '') + '" data-action="su-kind" data-kind="' + k[0] + '" data-key="su-kind-' + k[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '"' +
+      return '<button type="button" class="gs-btn gs-su-kind' + (k[0] === 'signed' && !on && !view.can.edit ? ' gs-btn-molten' : '') + '" data-action="su-kind" data-kind="' + k[0] + '" data-key="su-kind-' + k[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '"' +
         (k[0] === 'standby' ? ' aria-describedby="su-standby-hint"' : '') + (open && !ui.busy ? '' : ' disabled') + '>' + esc(k[1]) + '</button>';
     }).join('');
     const charField = chars.length > 1
@@ -147,7 +147,7 @@
       ? '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm" data-key="su-save"' + (ui.busy ? ' disabled' : '') + '>Save details</button>' +
         (sig.source === 'raidsmith' ? '<button type="button" class="gs-btn gs-btn-sm" data-action="su-withdraw" data-key="su-withdraw"' + (ui.busy ? ' disabled' : '') + '>' + (sig.standing ? 'Skip this week' : 'Remove my sign-up') + '</button>' : '') + '</div>'
       : '';
-    return '<div class="gs-su-me" role="group" aria-labelledby="su-me-h"><h3 class="gs-h3" id="su-me-h">Your sign-up</h3>' + sourceNoteHtml(sig, me.notice) +
+    return '<div class="gs-su-me" id="su-me" tabindex="-1" role="group" aria-labelledby="su-me-h"><h3 class="gs-h3" id="su-me-h">Your sign-up</h3>' + sourceNoteHtml(sig, me.notice) +
       (open ? '' : '<p class="gs-notice" role="status">' + esc(closedText(view)) + '</p>') +
       '<div class="gs-su-kinds" role="group" aria-label="Your status">' + buttons + '</div><p class="gs-fine" id="su-standby-hint">' + esc(STANDBY_HINT) + '</p>' +
       '<form class="gs-su-form" data-submit="su-details-form" novalidate><div class="gs-su-fields">' + charField + specField + noteField + '</div>' + save + '</form>' +
@@ -254,8 +254,9 @@
     const body = view.can.seeList
       ? countsHtml(view) + listHtml(view)
       : '<p class="gs-empty">Sign-ups are visible to the team\'s members.</p>';
-    return '<section class="gs-card-sec gs-su" aria-labelledby="su-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="su-h">Sign-ups</h2>' + statusPillHtml(view, detail, gd) + officerBarHtml(view) + '</div>' +
-      '<div class="gs-card-sec-body">' + mineHtml(view, x.ui || freshUi(view)) + body + '</div></section>';
+    // After the start sign-ups are a record: no status buttons or form (the You line of the raid page says what the viewer signed up as), and no Add a sign-up or Close sign-ups.
+    return '<section class="gs-card-sec gs-su" aria-labelledby="su-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="su-h">Sign-ups</h2>' + statusPillHtml(view, detail, gd) + (upcoming ? officerBarHtml(view) : '') + '</div>' +
+      '<div class="gs-card-sec-body">' + (upcoming ? mineHtml(view, x.ui || freshUi(view)) : '') + body + '</div></section>';
   }
 
   // ── officer dialog: add or change one person's sign-up ──

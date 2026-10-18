@@ -18,6 +18,7 @@
     '/js/guild/shell.js',
     '/js/guild/pages-signin.js',
     '/js/guild/pages-create.js',
+    '/js/guild/pages-settings-general.js',
     '/js/guild/pages-settings-teams.js',
     '/js/guild/pages-settings-people.js',
     '/js/guild/pages-settings-roles.js',

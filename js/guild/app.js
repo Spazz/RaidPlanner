@@ -61,6 +61,7 @@
     view: null,        // the read-only guest / public page: { kind, gid, data, error } (see pages-view.js); null while it loads
     apply: null,       // the application form: { gid, status, data, draft, busy, error, done } (see pages-apply.js); null until it is opened
     join: null,        // a raid's guest sign-up page: { token, status, data, draft, busy, error, done } (see pages-join.js); null until it is opened
+    settingsSaved: null, // { gid, tab, ms }: the Guild settings page last saved, for its head's "Saved at" (app.markSettingsSaved)
   };
   const app = G.app = { state: state, started: false };
   // The Guild settings tabs of Phase 7: the state key each keeps its { gid, data, notice } in, and the page module in G.pages that loads and draws it.
@@ -91,6 +92,11 @@
   let lastCollapseContext = null;
   let sessionGen = 0;         // bumped by resetSession: an answer that arrives after a sign-out is dropped
   const attentionReads = {};  // gid -> the GET /attention in flight
+
+  // The framework's phone breakpoint (guild.css): the settings list is its own screen at or below it.
+  function isPhoneWidth() {
+    try { return !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches); } catch (e) { return false; }
+  }
 
   // ── small browser helpers (each guarded: storage may be blocked, the planner may be absent) ──
   function byId(id) { return typeof document !== 'undefined' && document.getElementById ? document.getElementById(id) : null; }
@@ -562,6 +568,8 @@
       if (!tabs.length) { failWith('You cannot open this', 'Guild settings are for the people who run the guild.', false); return null; }
       let tab = r.tab;
       if (!tab) {
+        // A phone starts on the list of pages; a wide screen opens the first page.
+        if (isPhoneWidth()) return null;
         tab = tabs[0].tab;
         window.history.replaceState(null, '', window.location.pathname + window.location.search + G.router.format({ name: 'settings', gid: r.gid, tab: tab }));
       }
@@ -775,6 +783,8 @@
       case 'settings': {
         if (!gd) return P.signin.loadingHtml();
         const tab = r.tab;
+        if (!tab) return G.shell.settingsListHtml(ctx);
+        if (tab === 'general') return P.settingsGeneral.main(r, gd, ctx);
         if (tab === 'teams') return G.shell.settingsFrameHtml(ctx, 'teams', P.teams.teamsHtml({ guildData: gd, alert: state.pageAlert }));
         if (tab === 'attendance') return P.settingsAtt.main(r, gd, ctx);
         if (tab === 'loot') return P.settingsLoot.main(r, gd, ctx);
@@ -833,6 +843,7 @@
       attentionCount: gd ? attentionCountFor(gd.guild.id) : 0,
       personName: r && r.name === 'person' && state.person && state.person.pid === r.pid && state.person.record ? (G.pages.person.mainOf(state.person.record) || {}).name : '',
       leafName: leafNameFor(r),
+      settingsSavedAt: r && r.name === 'settings' && state.settingsSaved && state.settingsSaved.gid === r.gid && state.settingsSaved.tab === r.tab ? state.settingsSaved.ms : null,
     };
   }
 
@@ -912,6 +923,7 @@
         const scrolls = {};
         if (main.querySelectorAll) main.querySelectorAll('[data-scroll-key]').forEach(function (el) { scrolls[el.getAttribute('data-scroll-key')] = el.scrollTop; });
         main.innerHTML = v.html;
+        G.ui.saveBar.sync(main); // a form page's Save bar and the leave guard start from what was just drawn
         if (main.querySelectorAll) main.querySelectorAll('[data-scroll-key]').forEach(function (el) { const t = scrolls[el.getAttribute('data-scroll-key')]; if (t) el.scrollTop = t; });
         document.title = v.title;
       } else if (main.innerHTML) {
@@ -927,7 +939,9 @@
     }
 
     if (section === 'guild' && focusHeading === true && !firstRender) {
-      const h = main && main.querySelector ? main.querySelector('h1') : null;
+      let h = main && main.querySelector ? main.querySelector('h1') : null;
+      // A settings page on a phone hides the page's h1 (the list screen's); the page's own heading takes the focus then.
+      if (h && !isDisplayed(h) && main.querySelector) h = main.querySelector('#settings-title') || h;
       if (h) h.focus();
     } else if (key) {
       G.ui.focusByKey(key, { preventScroll: true });
@@ -954,6 +968,12 @@
 
   // ── actions other modules call ──
   app.render = render;
+  // A settings page was just saved: the next draw says "Saved at 8:14 PM ET" in its head (until another page opens).
+  app.markSettingsSaved = function (tab) {
+    const gid = state.currentGid;
+    if (!gid || !tab) return;
+    state.settingsSaved = { gid: gid, tab: tab, ms: Date.now() };
+  };
   app.selectTeam = selectTeam;
   app.setAttention = setAttention;
   app.ensureAttention = ensureAttention;

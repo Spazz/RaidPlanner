@@ -260,7 +260,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     const labels = can => plain(G.shell.settingsTabs(can).map(t => t.label));
     assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people', 'roles', 'discord', 'public']);
     assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'guests', 'dataaccess']);
-    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'guests', 'dataaccess', 'public']);
+    assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'guests', 'public', 'dataaccess']);
     assert.deepEqual(tabs({ 'guild.roles': [] , 'guild.access': [] }), [], 'an empty team list is no permission');
     assert.deepEqual(tabs({}), []);
     assert.deepEqual(labels({ 'guild.roles': 'guild' }), ['Accounts', 'Roles', 'Discord roles', 'Public page']);
@@ -797,14 +797,15 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
         { discordRoleId: '700000000000000002', roleId: 'team_lead', teamId: 't2' },
         { discordRoleId: '700000000000000004', roleId: 'cr_loot', teamId: null },
       ] }]]);
-      assert.equal(s.discordSettings.notice, 'Saved. 3 role assignments from removed mappings were taken away.');
+      assert.equal(s.discordSettings.notice, '3 role assignments from removed mappings were taken away.');
+      assert.equal(G.app.state.settingsSaved && G.app.state.settingsSaved.tab, 'discord');
       assert.deepEqual(plain(s.discordSettings.data.maps), maps);
       assert.equal(probe.renders(), 1);
     });
     await withApi({ put: () => okRes({ maps: [], cleared: 1 }) }, async () => { G.handlers.submit['discord-maps'](form); await settle(); });
-    assert.equal(s.discordSettings.notice, 'Saved. 1 role assignment from a removed mapping was taken away.');
+    assert.equal(s.discordSettings.notice, '1 role assignment from a removed mapping was taken away.');
     await withApi({ put: () => okRes({ maps: [], cleared: 0 }) }, async () => { G.handlers.submit['discord-maps'](form); await settle(); });
-    assert.equal(s.discordSettings.notice, 'Saved.');
+    assert.equal(s.discordSettings.notice, '', 'nothing was taken away, so there is nothing to say beyond Saved at in the page head');
     // a lost race (a role or team changed): the roles are read again and the message is the page's alert
     const fresh = discordData(null, { maps: [] });
     await withApi({ put: () => rejectWith(409, { error: 'conflict', message: 'A role or team changed while you were working on it. Reload and try again.' }), get: () => okRes(fresh) }, async probe => {
@@ -1035,7 +1036,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert(t.includes('Closed by the Public role (change it in Roles)') && (t.match(/Closed by the Public role/g) || []).length === 1);
     assert(out.includes('<fieldset') && out.includes('<legend class="gs-label">What it shows</legend>'));
     assert(out.includes('id="public-url" readonly') && out.includes('value="https://raidsmith.test/#/public/g1"') && out.includes('data-action="public-copy"'));
-    assert(out.includes('data-submit="public-settings"') && out.includes('>Save<'));
+    assert(out.includes('data-submit="public-settings"') && out.includes('data-dirty-form') && out.includes('data-savebar') && out.includes('>Save changes<'));
     const off = G.pages.settingsPublic.settingsHtml({ guildData: guildData(), data: publicData({ enabled: false }), origin: 'https://raidsmith.test' });
     assert(!off.includes('public-url') && !/<input type="checkbox" id="public-enabled" name="enabled" checked>/.test(off));
     const closedAndTicked = G.pages.settingsPublic.settingsHtml({ guildData: guildData(), data: publicData({ sections: ['attendance'] }) });
@@ -1060,7 +1061,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
       G.handlers.submit['public-settings'](form);
       await settle();
       assert.deepEqual(sent, [['/api/guild/g1/public', { enabled: true, sections: ['roster', 'attendance'] }]]);
-      assert.equal(s.publicSettings.notice, 'Saved.'); assert.equal(s.publicSettings.data, saved); assert.equal(probe.renders(), 1);
+      assert.equal(s.publicSettings.notice, ''); assert.equal(G.app.state.settingsSaved && G.app.state.settingsSaved.tab, 'public'); assert.equal(s.publicSettings.data, saved); assert.equal(probe.renders(), 1);
     });
     await withApi({ put: () => rejectWith(400, { error: 'bad_request', message: 'The Public role does not allow loot. Change it in Roles first.', field: 'sections' }) }, async () => {
       G.handlers.submit['public-settings'](form);

@@ -108,7 +108,7 @@
     const teams = opts.guildData.teams;
     // Sync everyone: the bot is set up and a Discord role is mapped (the Worker says so), and the viewer may sync.
     const canSyncAll = !!(data.discord && data.discord.configured && data.discord.mapped) && G.shell.hasAction(opts.guildData.me && opts.guildData.me.can, 'guild.access');
-    return '<section class="gs-section" aria-labelledby="people-heading"><h2 class="gs-sr" id="people-heading">Accounts</h2>' +
+    return '<section class="gs-section" aria-labelledby="settings-title">' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span><button type="button" class="gs-linkbtn" data-action="dismiss-notice" data-key="dismiss-notice">Dismiss</button></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       '<div class="gs-toolbar"><p class="gs-count">' + esc(countText(data.signedInCount != null ? data.signedInCount : (data.people || []).length)) + '</p>' +

@@ -10,6 +10,8 @@
   const STATUS_PILLS = { pending: 'info', confirmed: 'ok', declined: 'warn' };
   const PUBLISH_TEXT = 'Members will see their group and can confirm or say they can\'t come.';
   const REPUBLISH_TEXT = 'Members keep the answer they gave for a group that did not change. Everyone else is asked again.';
+  const TELL_DISCORD = 'The team\'s Discord channel also gets a post with the line-up.';
+  const TELL_NO_DISCORD = 'Nothing is posted to Discord: the team has no channel post for line-ups switched on.';
   const UNPUBLISH_TEXT = 'Members stop seeing their group, and the answers given so far are dropped.';
   const DECLINE_TEXT = 'Your sign-up for this raid becomes Can\'t come. You can change your mind until the raid starts.';
 
@@ -190,8 +192,13 @@
   };
 
   // ── officers: publish, re-publish, unpublish (each asks first) ──
-  function confirmDialogHtml(op) {
-    const text = op === 'unpublish' ? UNPUBLISH_TEXT : op === 'republish' ? REPUBLISH_TEXT : PUBLISH_TEXT;
+  // Publishing says who hears about it: members see the line-up on their raid page, and the team's Discord channel is posted to when its webhook has line-up posts on
+  // (the Worker tells the officer's reply: discordPost). Unpublishing posts nothing.
+  function tellText(discordPost) { return 'Who is told: members, on their raid page. ' + (discordPost ? TELL_DISCORD : TELL_NO_DISCORD); }
+
+  function confirmDialogHtml(op, discordPost) {
+    const base = op === 'unpublish' ? UNPUBLISH_TEXT : op === 'republish' ? REPUBLISH_TEXT : PUBLISH_TEXT;
+    const text = op === 'unpublish' ? base : base + ' ' + tellText(discordPost);
     const title = op === 'unpublish' ? 'Unpublish the line-up?' : op === 'republish' ? 'Publish the line-up again?' : 'Publish the line-up?';
     const button = op === 'unpublish' ? 'Unpublish line-up' : op === 'republish' ? 'Re-publish line-up' : 'Publish line-up';
     return '<form class="gs-dialog-form" data-submit="roster-confirm-form" data-op="' + esc(op) + '" novalidate>' +
@@ -204,7 +211,7 @@
     const c = cur();
     if (!c) return;
     const op = el.getAttribute('data-op');
-    G.ui.openDialog(confirmDialogHtml(op === 'unpublish' || op === 'republish' ? op : 'publish'), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+    G.ui.openDialog(confirmDialogHtml(op === 'unpublish' || op === 'republish' ? op : 'publish', !!(c.s.data && c.s.data.discordPost)), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
   };
 
   G.handlers.submit['roster-confirm-form'] = function (form) {

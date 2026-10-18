@@ -165,7 +165,7 @@ class ApiErr extends Error {
 
   await check('shell: Guild settings shows Applications to guild.teams; the Roster tabs hang under Roster in the breadcrumbs, the back link and the sidebar; Import offers a CSV file', () => {
     const tabs = can => plain(G.shell.settingsTabs(can, []).map(t => t.tab));
-    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams', 'applications', 'notifications', 'battlenet']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['general', 'teams', 'notifications', 'applications', 'battlenet']);
     assert.deepEqual(tabs({ 'roster.edit': 'guild' }), [], 'roster.edit alone does not open Guild settings');
     const crumbs = (route) => plain(G.shell.breadcrumbItems({ route, guildData: gd(OFFICER_CAN), signedOut: false, section: 'guild', teamId: 't1', me: { user: { id: 'u' } } }).map(c => c.label));
     assert.deepEqual(crumbs({ name: 'intent', gid: 'g1' }).slice(-2), ['Roster', 'Spec poll']);
@@ -555,7 +555,8 @@ class ApiErr extends Error {
       G.handlers.submit['apply-settings-form']();
       await settle();
       assert.deepEqual(api.calls.map(c => [c.m, c.url, c.body]), [['put', '/api/guild/g1/applications/settings', { enabled: true, questions: [{ label: 'Why?', type: 'short', required: false }] }]]);
-      assert.equal(x.note, 'Saved. Applications are on.');
+      assert.equal(x.note, 'Applications are on.');
+      assert.equal(G.app.state.settingsSaved && G.app.state.settingsSaved.tab, 'applications');
       assert.equal(x.draft.questions[0].id, 'qnewid');
     } finally { api.restore(); }
     api = stub(() => Promise.reject(new ApiErr(400, 'bad_request', { message: 'A question is 1 to 120 characters.', index: 0, field: 'questions' })));

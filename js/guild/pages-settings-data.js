@@ -31,7 +31,7 @@
         '<p>' + esc(DELETE_TEXT) + '</p><p class="gs-fine">Download the data first if you want a copy.</p>' +
         '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-danger-outline" data-action="guild-delete-open" data-key="guild-delete">Delete ' + esc(gd.guild.name) + '...</button></div></div>';
     }
-    return '<section class="gs-section" aria-labelledby="gdata-h"><div class="gs-section-head"><h2 class="gs-h2" id="gdata-h">Guild data</h2></div>' +
+    return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions"></div>' +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + body + '</section>';
   }
 

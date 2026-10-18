@@ -4073,7 +4073,8 @@ check('roster: publishing needs raids.edit, a plan and a raid that has not start
   const published = await s.publish('bob');
   assert.equal(published.status, 200, JSON.stringify(published.json));
   const view = published.json;
-  assert.deepEqual(Object.keys(view).sort(), ['counts', 'entries', 'planChanged', 'published', 'publishedAt', 'publishedBy']);
+  assert.deepEqual(Object.keys(view).sort(), ['counts', 'discordPost', 'entries', 'planChanged', 'published', 'publishedAt', 'publishedBy']);
+  assert.equal(view.discordPost, false, 'no webhook: nothing is posted to Discord');
   assert.deepEqual([view.published, view.publishedAt, view.publishedBy, view.planChanged], [true, s.w.clock.now, 'bob', false]);
   assert.deepEqual(view.entries.map((e) => [e.name, e.personId, e.class, e.spec, e.group, e.status, e.respondedAt]), [
     ['Eliora', s.p.eliora, 'PRIEST', 'Discipline', 1, 'pending', null],
@@ -4097,6 +4098,34 @@ check('roster: publishing needs raids.edit, a plan and a raid that has not start
   assert.equal(await s.w.count('raid_roster', 'raid_id = ?', past.id), 0);
   // Not a raid of this guild.
   assert.equal((await s.publish('bob', 'r_AAAAAAAAAAAAAAAAAAAAAA')).status, 404);
+});
+
+check('roster: the officer\'s reply says whether publishing also posts to Discord (a usable webhook with line-up posts on); a member\'s reply has no such field', async () => {
+  const s = await rosterWorld();
+  await s.basicPlan();
+  const HOOK = 'https://discord.com/api/webhooks/987654321098765432/abcdefghijklmnopqrstuvwxyz0123456789ABCDE';
+  assert.equal((await s.roster()).json.discordPost, false, 'no webhook');
+  const on = await s.call('bob', 'PUT', `/teams/${s.A}/notifications`, { webhookUrl: HOOK, roster: true });
+  assert.equal(on.status, 200, JSON.stringify(on.json));
+  assert.equal((await s.roster()).json.discordPost, true, 'a webhook with line-up posts on');
+  assert.equal((await s.call('bob', 'PUT', `/teams/${s.A}/notifications`, { roster: false })).status, 200);
+  assert.equal((await s.roster()).json.discordPost, false, 'line-up posts switched off');
+  assert.equal('discordPost' in (await s.roster('erin')).json, false, 'a member is told nothing about the channel');
+});
+
+check('raid detail: a person who joined the guild after the raid day is flagged joinedAfter (the raid page leaves them out of Everyone); the others carry no flag', async () => {
+  const s = await rosterWorld();
+  const raid = await s.makeRaid({ teamId: s.A, raidOn: '2026-03-03', startTime: '20:00' });
+  const manual = await s.call('bob', 'PUT', `/raids/${raid.id}/manual`, { reason: 'No uploader', presentPlayerIds: [s.p.eliora] });
+  assert.equal(manual.status, 200, JSON.stringify(manual.json));
+  exec(s.w, `UPDATE players SET joined_on = '2026-01-01'`);
+  const before = (await s.call('bob', 'GET', `/raids/${raid.id}`)).json;
+  assert(before.people.length >= 2, 'the team\'s people have rows');
+  assert(before.people.every((row) => !('joinedAfter' in row)), 'everyone joined before the day');
+  exec(s.w, `UPDATE players SET joined_on = '2026-06-01' WHERE id = '${s.p.gorrim}'`);
+  const after = (await s.call('bob', 'GET', `/raids/${raid.id}`)).json;
+  assert.deepEqual(after.people.filter((row) => row.joinedAfter).map((row) => row.playerId), [s.p.gorrim], 'only the later joiner');
+  assert(after.people.some((row) => row.playerId === s.p.eliora && !('joinedAfter' in row)), 'someone who joined before the day is not flagged');
 });
 
 check('roster: publishing again keeps the answers of the seats that did not change, resets the moved ones, drops the removed ones and says when the plan moved on', async () => {

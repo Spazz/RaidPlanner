@@ -293,11 +293,12 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
   // ═══ 3. The raid page: header and More menu ═══
   await check('raid page: the header is the title, one summary line (bosses, present / bench / missed, status chip) and ONE More button', () => {
     const out = raidPage(detail(), { loot: lootState(), roster: rosterState() });
-    assert(/<h1 class="gs-h1" tabindex="-1">Sat Oct 17 - Black Temple - 25<\/h1>/.test(out));
-    const line = out.slice(out.indexOf('gs-sumline'), out.indexOf('</div>', out.indexOf('gs-sumline')));
-    assert(line.includes('1 kill, 3 wipes') && line.includes('2 present, 1 bench, 1 missed') && line.includes('>Reviewed<'), line);
+    assert(/<h1 class="gs-h1" id="page-title" tabindex="-1">Sat Oct 17 - Black Temple - 25<\/h1>/.test(out));
+    const line = out.slice(out.indexOf('gs-pagehead-context'), out.indexOf('</p>', out.indexOf('gs-pagehead-context')));
+    assert(line.includes('1 kill, 3 wipes') && line.includes('2 present, 1 bench, 1 missed') && line.includes('linked to Raid-Helper'), line);
+    assert(out.includes('>Reviewed<'), 'the state chip sits beside the title');
     assert.equal((out.match(/data-action="menu-toggle"/g) || []).length, 1 + 3, 'the More button and the three source menus');
-    assert(/<button type="button" class="gs-btn gs-menu-trigger" id="raid-actions"[^>]*aria-haspopup="menu" aria-expanded="false"[^>]*><span>More<\/span>/.test(out));
+    assert(/<button type="button" class="gs-btn gs-menu-trigger has-phone-icon" id="raid-actions"[^>]*aria-haspopup="menu" aria-expanded="false"[^>]*aria-label="More"[^>]*><span class="gs-menu-text">More<\/span>/.test(out), 'one labelled More button (a dots button on a phone)');
     assert(!/<button(?![^>]*role="menuitem")[^>]*>(Recalculate|Delete raid|Plan in Planner|Mark as No log)<\/button>/.test(out), 'no loose action buttons in the header');
     assert(!out.includes('gs-roster-actions') && !out.includes('gs-btn-danger-outline'));
     assertNoRawAttrs(out);
@@ -307,8 +308,8 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     const out = raidPage(detail(), { loot: lootState(), roster: rosterState() });
     const menu = out.slice(out.indexOf('id="raid-actions-list"'), out.indexOf('</div></div>', out.indexOf('id="raid-actions-list"')));
     const labels = [...menu.matchAll(/role="menuitem"[^>]*>([^<]+)</g)].map(m => m[1]);
-    assert.deepEqual(labels, ['Recalculate attendance', 'Import loot from Gargul', 'Add loot award', 'Set raid duties', 'Open in Planner', 'Delete raid']);
-    assert(menu.indexOf('gs-menu-sep') > menu.indexOf('Open in Planner') && menu.indexOf('gs-menu-sep') < menu.indexOf('Delete raid'), 'Delete raid sits after a rule');
+    assert.deepEqual(labels, ['Open in Planner', 'Recalculate attendance', 'Import loot from Gargul', 'Add loot award', 'Set raid duties', 'Delete raid'], 'Open in Planner is first');
+    assert(menu.indexOf('gs-menu-sep') > menu.indexOf('Set raid duties') && menu.indexOf('gs-menu-sep') < menu.indexOf('Delete raid'), 'Delete raid sits after a rule, alone in its group');
     assert(/class="gs-menu-item is-danger"[^>]*data-op="raid-delete"/.test(menu));
     assert(menu.includes('data-action="loot-import-open"') && menu.includes('data-op="plan-in-planner"') && menu.includes('data-op="recompute"'));
     assert(!menu.includes('Mark as No log'), 'a raid with reports is not marked No log');
@@ -342,26 +343,28 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
   // ═══ 4. The source chips ═══
   await check('source chips: three equal chips in one strip, each with a dot, its name, one line of detail and a "..." menu with that source\'s actions', () => {
     const out = raidPage(detail(), {});
-    const strip = out.slice(out.indexOf('class="gs-srcstrip"'), out.indexOf('id="ppl-h"'));
-    assert.equal((strip.match(/class="gs-src"/g) || []).length, 3);
-    assert.equal((strip.match(/class="gs-src-dot"/g) || []).length, 3);
-    assert(strip.includes('>Raid-Helper<') && strip.includes('>Warcraft Logs<') && strip.includes('>Plan<'));
-    assert(strip.includes('>Team KJ Saturday - BT<') && strip.includes('30 sign-ups, synced today') && strip.includes('>2 reports<') && strip.includes('7 boss pulls') && strip.includes('>BT run<') && strip.includes('25 players'));
-    for (const label of ['Raid-Helper event actions', 'Warcraft Logs actions', 'Plan settings']) assert(strip.includes('aria-label="' + label + '"'), label);
-    assert(!strip.includes('gs-source') && !out.includes('gs-sources'), 'the three cards are gone');
-    const eventMenu = strip.slice(strip.indexOf('id="src-event-list"'), strip.indexOf('data-src="logs"'));
+    // The chips sit in their sections: the Raid-Helper event with the sign-ups, the logs with the attendance; the plan is a row of Plan and line-up with its Plan settings menu.
+    assert.equal((out.match(/class="gs-src"/g) || []).length, 2);
+    assert.equal((out.match(/class="gs-src-dot"/g) || []).length, 2);
+    assert(out.includes('>Raid-Helper<') && out.includes('>Warcraft Logs<') && out.includes('<span class="gs-prow-name">Plan</span>'));
+    assert(out.includes('>Team KJ Saturday - BT<') && out.includes('30 sign-ups, synced today') && out.includes('>2 reports<') && out.includes('7 boss pulls') && out.includes('>BT run<') && out.includes('25 players'));
+    for (const label of ['Raid-Helper event actions', 'Warcraft Logs actions', 'Plan settings']) assert(out.includes('aria-label="' + label + '"'), label);
+    assert(!out.includes('gs-source') && !out.includes('gs-sources'), 'the three cards are gone');
+    const listOf = id => out.slice(out.indexOf('id="' + id + '-list"'), out.indexOf('</div></div>', out.indexOf('id="' + id + '-list"')));
+    const eventMenu = listOf('src-event');
     assert.deepEqual(opsOf(eventMenu), ['event-refresh', 'event-replace', 'event-remove']);
     assert(/is-danger"[^>]*data-op="event-remove"/.test(eventMenu));
-    const logsMenu = strip.slice(strip.indexOf('id="src-logs-list"'), strip.indexOf('data-src="plan"'));
+    const logsMenu = listOf('src-logs');
     assert.deepEqual(opsOf(logsMenu), ['report-refresh', 'report-remove', 'report-refresh', 'report-remove', 'report-add']);
     assert(logsMenu.includes('data-code="WaghkY9zwDyvLX7m"') && logsMenu.includes('data-code="h8VAwCFa79Jk1cvf"') && logsMenu.includes('>Refresh h8VAwCFa79Jk1cvf<') && logsMenu.includes('>Remove WaghkY9zwDyvLX7m<'));
-    const planMenu = strip.slice(strip.indexOf('id="src-plan-list"'));
+    const planMenu = listOf('src-plan');
     assert.deepEqual(opsOf(planMenu), ['plan-replace', 'plan-remove']);
+    assert(/<button type="button" class="gs-linkbtn" data-action="raid-op" data-op="plan-in-planner"[^>]*>BT run<\/button>/.test(out), 'the plan name opens the Planner');
   });
 
   await check('source chips: an empty source is a dashed chip whose one action is a button; a hand-entered raid takes no report; nothing sits in the menus then', () => {
     const none = raidPage(detail({ raid: Object.assign(detail().raid, { state: 'awaiting_log' }), people: [], sources: { event: null, reports: [], plan: null } }), {});
-    assert.equal((none.match(/class="gs-src is-empty"/g) || []).length, 3);
+    assert.equal((none.match(/class="gs-src is-empty"/g) || []).length, 2, 'the event and the logs; the plan is a row');
     for (const [op, label] of [['event-replace', 'Link an event'], ['report-add', 'Add report'], ['plan-replace', 'Link a plan']]) {
       assert(new RegExp('<button type="button" class="gs-btn gs-btn-sm" data-action="raid-op" data-op="' + op + '" data-key="' + op + '">' + label + '</button>').test(none), label);
     }
@@ -390,7 +393,8 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     const up = detail({ raid: { id: 'u1', team: 't1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, title: 'Prog night', zone: 'Black Temple', state: 'awaiting_log', openFlags: 0, stale: false, version: 1 }, people: [], pulls: [], signups: [] });
     const out = raidPage(up, { roster: rosterState() });
     assert(out.includes('Prog night &middot; Starts Sat Oct 24, ') && out.includes('>Upcoming<') && out.includes('>Planned<'));
-    assert(out.indexOf('class="gs-srcstrip"') < out.indexOf('Attendance starts after the raid.'));
+    assert(out.indexOf('id="s-signups"') < out.indexOf('class="gs-srcstrip"') && out.indexOf('class="gs-srcstrip"') < out.indexOf('id="s-plan"'), 'the chip strip is in the Sign-ups section');
+    assert(out.includes('Opens when the raid starts at '), 'After the raid is locked until the start');
     assert(!out.includes('data-src="logs"'), 'no Warcraft Logs chip before the raid');
     assertNoRawAttrs(out);
   });

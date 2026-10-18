@@ -771,7 +771,8 @@ function teamData(over) {
     await new Promise(r => setTimeout(r, 5));
     assert.deepEqual(s.calls[0], { m: 'put', url: '/api/guild/g1/attendance/policy', body: { teamId: null, policy: { bench: 'excluded' }, expectedVersion: 2 } });
     assert.equal(st.settingsAtt.view.versions.guild, 3);
-    assert.equal(st.polNotice, 'Attendance rules saved.');
+    assert.equal(st.polNotice, '', 'the page head says Saved at; there is no banner');
+    assert.equal(G.app.state.settingsSaved && G.app.state.settingsSaved.tab, 'attendance');
     assert(s.calls.some(c => /\/raids\?team=t1/.test(c.url)), 'a consolidation change looks for stale raids');
     s.restore(); G.ui.setBusy = origBusy;
   });
@@ -1133,7 +1134,7 @@ function teamData(over) {
     const panel = v => ({ signups: { gid: 'g1', rid: 'u1', status: 'ok', data: v, ui: G.pages.raidSignups.freshUi(v) } });
     const out = raidPage(up, panel(view));
     assert(out.includes('Starts Sat Oct 24, ') && out.includes('Prog night') && out.includes('>Upcoming<') && out.includes('>Not planned<'));
-    assert(out.includes('Attendance starts after the raid.') && out.includes('Sign-ups') && out.includes('Bravo') && out.includes('Arms'));
+    assert(out.includes('Opens when the raid starts') && out.includes('Sign-ups') && out.includes('Bravo') && out.includes('Arms'), 'attendance waits for the start: a locked After the raid section');
     assert(out.includes('Refresh sign-ups') && out.includes('data-op="event-refresh"'));
     assert(!out.includes('Mark as No log') && !out.includes('Recalculate') && !out.includes('Warcraft Logs reports') && !out.includes('Needs review') && !out.includes('>People<'));
     const hidden = Object.assign({}, view, { can: { edit: false, self: false, seeList: false, seeNicknames: false }, counts: null, entries: null });

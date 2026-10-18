@@ -295,7 +295,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const links = hrefsOf(s.sidebar + s.rail + s.drawer + s.account);
     assert(links.length > 10);
     assert(links.every(h => /^(\/|https?:)/.test(h)), 'relative link left: ' + links.filter(h => !/^(\/|https?:)/.test(h)).join(','));
-    assert(links.includes('/#/g/g1/roster') && links.includes('/#how-it-works') && links.includes('/#/roadmap') && links.includes('/') && links.includes('/#/g/g1/settings/teams') && links.includes('/#/privacy'));
+    assert(links.includes('/#/g/g1/roster') && links.includes('/#how-it-works') && links.includes('/#/roadmap') && links.includes('/') && links.includes('/#/g/g1/settings') && links.includes('/#/privacy'));
     assert.deepEqual(plain(G.shell.breadcrumbItems(ctx)), [{ label: 'FAQ' }]);
     assert(s.lead.includes('class="gs-phone-title">FAQ<') && s.lead.includes('aria-label="Open menu"'));
     const wn = G.shell.slots(Object.assign({}, ctx, { page: 'whats-new' }));
@@ -1388,8 +1388,8 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     await settle();
     assert.equal(env.fetched('/api/guild/g1/bnet'), 1);
     const main = env.html('gs-main');
-    assert(main.includes('<h2 class="gs-h2" id="bnet-set-h">Battle.net</h2>') && main.includes('id="bnet-guild-name"') && main.includes('aria-current="page"'));
-    assert(main.includes('href="#/g/g1/settings/teams"'), 'the tab strip');
+    assert(main.includes('id="settings-title" tabindex="-1">Battle.net</h2>') && main.includes('id="bnet-guild-name"') && main.includes('aria-current="page"'));
+    assert(main.includes('href="#/g/g1/settings/teams"'), 'the list of pages');
     assert.equal(env.documentFake.title, 'Guild settings - Ravens - Raidsmith guild');
     assert(env.html('shell-topbar-lead').includes('Battle.net'));
     const lead = makeEnv({ url: '/#/g/g1/settings/battlenet', routes: signedInRoutes({ 'roster.view': 'guild', 'roster.edit': ['t1'], 'attendance.policy': 'guild' }) });
@@ -1594,6 +1594,43 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const none = makeEnv({ url: '/#/g/g1/attendance', routes: signedInRoutes(HOME_CAN, { '/api/guild/g1/attendance/team?team=t1': { status: 200, body: Object.assign({}, team, { watch: null }) }, '/api/guild/g1/attendance/policy': { status: 200, body: { defaults: {}, guild: {}, teams: {}, resolved: {}, versions: { guild: 0, teams: {} }, wcl: { guildId: null, uploaders: {} } } } }) });
     await settle();
     assert(!none.html('gs-main').includes('att-watch-h'));
+  });
+
+  await check('settings route: the bare address opens the first page on a wide screen and the list of pages alone on a phone; every old tab address still opens its page', async () => {
+    const wide = makeEnv({ url: '/#/g/g1/settings', routes: signedInRoutes(OFFICER_CAN) });
+    await settle();
+    assert.equal(wide.loc.hash, '#/g/g1/settings/general', 'the first page the viewer has');
+    const main = wide.html('gs-main');
+    assert(main.includes('is-view-detail') && main.includes('id="settings-title" tabindex="-1">General</h2>') && main.includes('id="page-title" tabindex="-1">Guild settings</h1>'));
+    assert(main.includes('Only the Guild Master can change the name, realm or time zone.') && !main.includes('data-submit="general-form"'), 'an officer reads General');
+    const phone = makeEnv({ url: '/#/g/g1/settings', routes: signedInRoutes(OFFICER_CAN), beforeApp: sb => { sb.matchMedia = q => ({ matches: /max-width: 760px/.test(q) }); } });
+    await settle();
+    assert.equal(phone.loc.hash, '#/g/g1/settings', 'a phone stays on the bare address: the list is its first screen');
+    const list = phone.html('gs-main');
+    assert(list.includes('is-view-list') && list.includes('Guild</h2>') && list.includes('href="#/g/g1/settings/general"') && list.includes('href="#/g/g1/settings/teams"') && !list.includes('aria-current="page"'));
+    assert.equal(phone.history.calls.filter(c => c[0] === 'replace').length, 0, 'no redirect');
+    // the Guild Master edits General: the form is there with the Save bar
+    const gmBody = Object.assign(guildBody(OFFICER_CAN), { me: { roles: [{ role: 'guild_master' }], can: OFFICER_CAN } });
+    gmBody.guild.timeZone = 'America/Chicago';
+    gmBody.guild.discordServerId = '900000000000000001';
+    const gm = makeEnv({ url: '/#/g/g1/settings/general', routes: signedInRoutes(OFFICER_CAN, { '/api/guild/g1': { status: 200, body: gmBody } }) });
+    await settle();
+    const gmMain = gm.html('gs-main');
+    assert(gmMain.includes('data-submit="general-form"') && gmMain.includes('data-dirty-form') && gmMain.includes('data-savebar') && gmMain.includes('ID 900000000000000001'));
+    assert(gmMain.includes('Realm'), 'a realm guild has the realm field');
+    // a viewer without guild.teams does not reach General
+    const lead = makeEnv({ url: '/#/g/g1/settings/general', routes: signedInRoutes({ 'roster.view': 'guild', 'raids.edit': 'guild' }) });
+    await settle();
+    assert(lead.html('gs-main').includes('Your role does not include this part of Guild settings.'));
+    // the old addresses
+    const can = Object.assign({}, OFFICER_CAN, { 'guild.roles': 'guild', 'attendance.policy': 'guild', 'loot.policy': 'guild', 'raids.edit': 'guild', 'audit.view': 'guild' });
+    const teams = makeEnv({ url: '/#/g/g1/settings/teams', routes: signedInRoutes(can) });
+    await settle();
+    const t = teams.html('gs-main');
+    assert(t.includes('id="settings-title" tabindex="-1">Teams</h2>') && t.includes('aria-current="page">Teams<') && (t.match(/class="gs-sgroup-h"/g) || []).length >= 4);
+    const accounts = makeEnv({ url: '/#/g/g1/settings/accounts', routes: signedInRoutes(can, { '/api/guild/g1/people': { status: 200, body: { people: [], removed: [], signedInCount: 0, roster: null } } }) });
+    await settle();
+    assert(accounts.html('gs-main').includes('id="settings-title" tabindex="-1">Accounts</h2>'), 'the Accounts name reads as the people address');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

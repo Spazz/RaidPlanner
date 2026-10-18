@@ -199,7 +199,7 @@ check('Loot board: an officer pastes the TMB and softres exports through the rea
 
   const page = await openRaid(s, A, up);
   assert.equal(page.S.att.raidBoard.status, 'ok');
-  assert.deepEqual(menuLabels(page.html()), ['Loot prio (TMB)', 'Soft-reserves (softres)', 'Set raid duties', 'Guest sign-up link', 'Open in Planner', 'Delete raid']);
+  assert.deepEqual(menuLabels(page.html()), ['Open in Planner', 'Loot prio (TMB)', 'Soft-reserves (softres)', 'Set raid duties', 'Guest sign-up link', 'Delete raid']);
   assert(boardText(page.html()).includes('Paste the ThatsMyBIS prios and the softres.it reserves of this raid'), 'nothing pasted yet');
 
   // TMB: Aldric and Brindle share prio 1 on the sword (Aldric already got it), Brindle is alone on the staff, Cassia (absent) and a stranger are on other items.

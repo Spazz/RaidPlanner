@@ -258,6 +258,7 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
   const row = (action, entityType, entityId, before, after) => ({ action, entityType, entityId, before, after });
   const cases = [
     [row('guild.create', 'guild', 'g_1', null, null), 'Created the guild'],
+    [row('guild.update', 'guild', 'g_1', { name: 'Ember' }, { name: 'Ember Raiders' }), 'Changed the name from "Ember" to "Ember Raiders"'],
     [row('guild.claim', 'guild', 'g_1'), 'Claimed the guild as Guild Master'],
     [row('guild.export', 'guild', 'g_1'), 'Downloaded the guild data'],
     [row('team.create', 'team', 't_a'), 'Created the team Alpha'],

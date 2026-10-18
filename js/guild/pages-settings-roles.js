@@ -78,7 +78,7 @@
         (d.canEditBuiltin ? '' : ' Only the Guild Master can change the built-in roles.') + '</p>' +
         '<ul class="gs-role-list" aria-label="Roles">' + rolesOf(d).map(function (r) { return roleCardHtml(r, d); }).join('') + '</ul>';
     }
-    return '<section class="gs-section" aria-labelledby="roles-set-h"><div class="gs-section-head"><h2 class="gs-h2" id="roles-set-h">Roles</h2>' + head + '</div>' +
+    return '<section class="gs-section" aria-labelledby="settings-title"><div class="gs-section-head gs-section-head-actions">' + head + '</div>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + body + '</section>';
   }

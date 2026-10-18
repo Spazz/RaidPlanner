@@ -34,7 +34,8 @@ export function guildView(row) {
 // The body of GET /api/guild/:gid (and of the 201 from POST /api/guild).
 export async function guildPayload(db, guildContext, nowMs = Date.now()) {
   return {
-    guild: guildView(guildContext.guild),
+    // The Discord server's id is shown on Guild settings > General (read-only, to the Guild Master only).
+    guild: guildContext.isGuildMaster ? { ...guildView(guildContext.guild), discordServerId: guildContext.guild.discord_server_id } : guildView(guildContext.guild),
     teams: await loadTeams(db, guildContext.guild.id),
     me: { roles: guildContext.roles, can: guildContext.can },
     rosterOptions: rosterOptions(),
@@ -168,6 +169,59 @@ export async function createGuild(ctx) {
   }
   const guildContext = await loadGuildContext(db, userId, guildId);
   return jsonResponse(await guildPayload(db, guildContext, ctx.now()), 201);
+}
+
+// PATCH /api/guild/:gid: the Guild Master edits the guild's name, its realm (a realm guild) and its time zone. Everything else about the guild is fixed
+// when it is created (game version, region, Discord server, and the ruleset of a Forever guild), because the buff and comp rules, the Battle.net
+// lookups and the sign-in all hang on it. Validation is the create route's. One audit row ('guild.update') carries only the values that changed.
+const FIXED_FIELDS = Object.freeze({
+  gameVersion: 'The game version is set when the guild is created. To change it, create a new guild.',
+  region: 'The region is set when the guild is created. To change it, create a new guild.',
+  serverId: 'The Discord server is set when the guild is created.',
+});
+
+export async function patchGuild(ctx) {
+  const { db, body, session } = ctx;
+  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid);
+  if (!guildContext.isGuildMaster) {
+    throw new HttpError(403, 'forbidden', 'Only the Guild Master can change the name, realm or time zone of the guild.');
+  }
+  const guild = guildContext.guild;
+  for (const [field, message] of Object.entries(FIXED_FIELDS)) {
+    if (body[field] !== undefined) throw new HttpError(400, 'bad_request', message, { field });
+  }
+  if (body.name === undefined && body.realm === undefined && body.timeZone === undefined) {
+    throw new HttpError(400, 'bad_request', 'Send a name, a realm, a time zone, or any of them.');
+  }
+  const name = body.name === undefined ? guild.name : cleanText(body.name, 'name', { max: 60 });
+  let { realm, realm_slug: realmSlug } = guild;
+  if (body.realm !== undefined) {
+    if (guild.realm_kind === 'ruleset') {
+      throw new HttpError(400, 'bad_request', 'The ruleset is set when the guild is created. To change it, create a new guild.', { field: 'realm' });
+    }
+    const read = readRealm({ realm: body.realm, region: guild.region }, guild.game_version);
+    realm = read.realm;
+    realmSlug = read.realmSlug;
+  }
+  let timeZone = guild.time_zone;
+  if (body.timeZone !== undefined) {
+    timeZone = canonicalTimeZone(body.timeZone);
+    if (!timeZone) throw new HttpError(400, 'bad_request', 'Pick a valid time zone.', { field: 'timeZone' });
+  }
+
+  const before = {};
+  const after = {};
+  if (name !== guild.name) { before.name = guild.name; after.name = name; }
+  if (realm !== guild.realm) { before.realm = guild.realm; after.realm = realm; }
+  if (timeZone !== guild.time_zone) { before.timeZone = guild.time_zone; after.timeZone = timeZone; }
+  if (Object.keys(after).length) {
+    await db.batch([
+      db.prepare('UPDATE guilds SET name = ?, realm = ?, realm_slug = ?, time_zone = ? WHERE id = ?').bind(name, realm, realmSlug, timeZone, guild.id),
+      auditStatement(ctx, { guildId: guild.id, actorUserId: session.user.id, action: 'guild.update', entityType: 'guild', entityId: guild.id, before, after }),
+    ]);
+  }
+  const fresh = await loadGuildContext(db, session.user.id, guild.id);
+  return jsonResponse(await guildPayload(db, fresh, ctx.now()));
 }
 
 // POST /api/guild/:gid/claim: a person who may create guilds (worker/discord.js mayCreateGuilds) and manages the guild's Discord server takes a guild

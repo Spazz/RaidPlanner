@@ -52,6 +52,10 @@
       g.fields.map(function (f) { return fieldHtml(f, scope, draft, view); }).join('') + '</div></section>';
   }
 
+  // How many settings differ from what is saved at this level (the Save bar's count). The guild default stores only what differs from the built-in rules.
+  function normalized(s, o) { return s.scope === 'guild' ? S().pruneToDifferences(o, s.view.defaults || {}) : o; }
+  function changeCount(s) { return G.ui.saveBar.draftChanges(normalized(s, S().overrideFor(s.view, s.scope)), normalized(s, s.draft)); }
+
   // opts: { guildData, s: { view, scope, draft }, alert, notice }
   function settingsHtml(opts) {
     const gd = opts.guildData;
@@ -66,7 +70,8 @@
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span></div>' : '') +
       '<form class="gs-pol-form" data-submit="lpol-form" novalidate>' + GROUPS.map(function (g) { return groupHtml(g, s.scope, s.draft, s.view); }).join('') +
       '<p class="gs-fine">Changes apply to all loot at once: the balance is worked out from the awards each time it is opened.</p><p class="gs-alert" id="lpol-error" role="alert" hidden></p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten">Save</button><button type="button" class="gs-btn" data-action="lpol-reset-all" data-key="lpol-reset-all">' + (s.scope === 'guild' ? 'Reset to defaults' : 'Remove the team override') + '</button></div></form></div>';
+      '<div class="gs-actions"><button type="button" class="gs-btn" data-action="lpol-reset-all" data-key="lpol-reset-all">' + (s.scope === 'guild' ? 'Reset to defaults' : 'Remove the team override') + '</button></div>' +
+      G.ui.saveBarHtml({ count: changeCount(s), discardAttrs: { 'data-action': 'lpol-discard', 'data-key': 'lpol-discard' } }) + '</form></div>';
   }
 
   // ── data ──
@@ -124,6 +129,14 @@
     G.app.render();
   };
 
+  G.handlers.click['lpol-discard'] = function () {
+    const s = cur();
+    if (!s) return;
+    s.draft = S().overrideFor(s.view, s.scope);
+    st().pageAlert = '';
+    G.app.render();
+  };
+
   G.handlers.click['lpol-reset-all'] = function () {
     const s = cur();
     if (!s) return;
@@ -160,7 +173,8 @@
     G.ui.setBusy(form, true);
     G.api.loot.savePolicy(gid, s.scope === 'guild' ? null : s.scope, body, S().versionFor(s.view, s.scope)).then(function (view) {
       adopt(gid, view, s.scope);
-      a().lootPolNotice = 'Loot rules saved.';
+      a().lootPolNotice = '';
+      G.app.markSettingsSaved('loot');
       st().pageAlert = '';
       G.app.render();
     }, function (err) {

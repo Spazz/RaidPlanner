@@ -48,23 +48,28 @@
   // T2 - object page (a raid, later a person). Header (no primary there), the stage strip, the next-step bar (the page's one primary), the viewer's own line
   // ("You are in Group 2 as Enhancement Shaman"), then the sections in the same order for every object. A locked section says when it opens.
   //   stages     ui.stageStripHtml options          nextStep   ui.nextStepHtml options (omit for none)
-  //   sections   [{ id, title, chipHtml, bodyHtml, locked (text: when it opens), actionsHtml }]; the id is the stage tile's jump target
+  //   noticesHtml  banners and notes between the header and the stage strip      afterYouHtml  a card that belongs right under the You line (a member's seat)
+  //   pageClass  an extra class on the page
+  //   sections   [{ id, title, chipHtml, bodyHtml, locked (text: when it opens), actionsHtml, bare }]; the id is the stage tile's jump target. A bare section is
+  //              only the jump target around bodyHtml, for a card that draws its own heading and tools.
   ui.objectPageHtml = function (opts) {
     const o = opts || {};
     const sections = (Array.isArray(o.sections) ? o.sections : []).filter(Boolean).map(function (s) {
       const id = esc(s.id);
+      if (s.bare) return '<div class="gs-osection-bare" id="' + id + '" tabindex="-1">' + (s.bodyHtml || '') + '</div>';
       return '<section class="gs-osection' + (s.locked ? ' is-locked' : '') + '" id="' + id + '" tabindex="-1" aria-labelledby="' + id + '-h"><div class="gs-osection-head"><h2 class="gs-h2" id="' + id + '-h">' + esc(s.title) + '</h2>' +
         (s.chipHtml || '') + (s.actionsHtml ? '<span class="gs-osection-actions">' + s.actionsHtml + '</span>' : '') + '</div>' +
         '<div class="gs-osection-body">' + (s.locked ? '<p class="gs-fine">' + esc(s.locked) + '</p>' : (s.bodyHtml || '')) + '</div></section>';
     }).join('');
-    return '<div class="gs-page gs-object-page">' + ui.pageHeadHtml(o.head) + (o.stages ? ui.stageStripHtml(o.stages) : '') + (o.nextStep ? ui.nextStepHtml(o.nextStep) : '') +
-      (o.youHtml ? '<div class="gs-youline">' + o.youHtml + '</div>' : '') + sections + '</div>';
+    return '<div class="gs-page gs-object-page' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + (o.stages ? ui.stageStripHtml(o.stages) : '') + (o.nextStep ? ui.nextStepHtml(o.nextStep) : '') +
+      (o.youHtml ? '<div class="gs-youline">' + o.youHtml + '</div>' : '') + (o.afterYouHtml || '') + sections + '</div>';
   };
 
   // T3 - settings: a grouped list of pages on the left and one page at a time (760 wide) beside it. On a phone the list is the first screen and the page
   // opens with a Back link; the Save bar sits above the tab bar. Every page has a heading and a one-line purpose, and the save status in its head.
   //   groups   [{ label, items: [{ key, label, href, isNew }] }]      activeKey  the open page
   //   view     'list' | 'detail' (phone: which pane shows; desktop shows both)       listHref  where the phone Back link goes
+  //   heading / subline   the page's h1 and its one line ("Vindicated - 16 pages in 5 groups"); on a phone it shows with the list only
   ui.settingsPageHtml = function (opts) {
     const o = opts || {};
     const groups = (Array.isArray(o.groups) ? o.groups : []).filter(Boolean).map(function (g, i) {
@@ -75,7 +80,8 @@
       }).join('') + '</ul></div>';
     }).join('');
     const view = o.view === 'list' ? 'list' : 'detail';
-    return '<div class="gs-page gs-settings-page is-view-' + view + '"><div class="gs-sgrid"><nav class="gs-slist" aria-label="Guild settings sections">' + groups + '</nav>' +
+    const head = o.heading ? '<header class="gs-shead"><h1 class="gs-h1" id="page-title" tabindex="-1">' + esc(o.heading) + '</h1>' + (o.subline ? '<p class="gs-sub">' + esc(o.subline) + '</p>' : '') + '</header>' : '';
+    return '<div class="gs-page gs-settings-page is-view-' + view + '">' + head + '<div class="gs-sgrid"><nav class="gs-slist" aria-label="Guild settings sections">' + groups + '</nav>' +
       '<div class="gs-sdetail">' + (o.listHref ? '<a class="gs-back-link gs-sback" href="' + esc(o.listHref) + '">' + icon('arrow', 16) + '<span>Settings</span></a>' : '') +
       '<header class="gs-sdetail-head"><div><h2 class="gs-h1 gs-sdetail-h" id="settings-title" tabindex="-1">' + esc(o.title) + '</h2>' + (o.purpose ? '<p class="gs-sub">' + esc(o.purpose) + '</p>' : '') + '</div>' +
       (o.savedHtml || ui.savedStatusHtml('')) + '</header><div class="gs-sdetail-body">' + (o.bodyHtml || '') + '</div>' + (o.saveBarHtml || '') + '</div></div></div>';

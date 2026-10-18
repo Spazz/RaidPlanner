@@ -157,12 +157,13 @@ function withState(fn) {
     assert.deepEqual(tabs({ 'audit.view': 'guild' }), ['activity']);
     assert.equal(G.shell.settingsTabs({ 'audit.view': 'guild' })[0].label, 'Activity');
     assert.equal(G.shell.canSeeSettings({ 'audit.view': 'guild' }), true);
-    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'audit.view': 'guild' }), ['teams', 'applications', 'notifications', 'battlenet', 'activity']);
-    assert.deepEqual(tabs(OFFICER_CAN), ['teams', 'schedule', 'applications', 'notifications', 'attendance', 'battlenet', 'activity']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'audit.view': 'guild' }), ['general', 'teams', 'notifications', 'applications', 'battlenet', 'activity']);
+    assert.deepEqual(tabs(OFFICER_CAN), ['general', 'teams', 'schedule', 'attendance', 'notifications', 'applications', 'battlenet', 'activity']);
     assert(!tabs({ 'guild.teams': 'guild', 'attendance.policy': 'guild' }).includes('activity'));
     assert.equal(G.shell.canSeeSettings({ 'audit.edit': 'guild' }), false);
     const nav = G.shell.navItems('g1', { 'audit.view': 'guild' }, 0, '').find(i => i.key === 'settings');
-    assert(nav && nav.href === '#/g/g1/settings/activity', 'the Guild settings item opens on the first tab the viewer has');
+    assert(nav && nav.href === '#/g/g1/settings', 'the Guild settings item opens the bare address');
+    assert.equal(G.shell.settingsTabs({ 'audit.view': 'guild' })[0].tab, 'activity', 'and the first page there is the first one the viewer has');
   });
 
   await check('shell: Home is the first sidebar and drawer item for attention viewers only, never a phone tab', () => {
@@ -346,7 +347,7 @@ function withState(fn) {
     assert(G.pages.settingsActivity.main({ name: 'settings', tab: 'activity' }, g, { guildData: g }).includes('Loading...'));
     S.att.settingsActivity = actState();
     const out = ws(G.pages.settingsActivity.main({ name: 'settings', tab: 'activity' }, g, { guildData: g }));
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Guild settings</h1>') && out.includes('aria-current="page">Activity<') && out.includes('Moved Thoren to Reserve'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Guild settings</h1>') && out.includes('aria-current="page">Activity<') && out.includes('Moved Thoren to Reserve'));
   }));
 
   await check('activity page: load() reads the list with the kept filters of the same guild; a 403 rejects (the route shows the message page)', withState(async (S) => {
@@ -471,7 +472,7 @@ function withState(fn) {
 
   await check('watch policy: the Watch list group edits two percent fields; stored fractions show as percent, null shows blank (off)', () => {
     const out = polHtml(polState(polView()));
-    assert(out.includes('<h2 class="gs-h2" id="pg-watch">Watch list</h2>'));
+    assert(out.includes('<h3 class="gs-h2" id="pg-watch">Watch list</h3>'));
     assert(out.indexOf('id="pg-windows"') < out.indexOf('id="pg-watch"') && out.indexOf('id="pg-watch"') < out.indexOf('id="pg-reset"'), 'between Windows and Reset day');
     const below = watchInput(out, 'below');
     assert(below.includes('type="number"') && below.includes('min="0"') && below.includes('max="100"') && below.includes('value="75"') && below.includes('data-type="percent"') && below.includes('data-path="watch.below"') && below.includes('placeholder="Off"'), below);

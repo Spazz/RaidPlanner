@@ -324,7 +324,8 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['put', '/api/guild/g1/teams/t1/schedule']]);
     assert.equal(s.calls[0].body.signupCloseHours, 12);
     assert.equal(S.att.settingsSchedule.draft.signupCloseHours, '12');
-    assert.equal(S.att.settingsSchedule.note, 'Schedule saved.');
+    assert.equal(S.att.settingsSchedule.note, '', 'the page head says Saved at; there is no banner');
+    assert.equal(G.app.state.settingsSaved && G.app.state.settingsSaved.tab, 'schedule');
     // Zero is a real answer.
     G.handlers.input['sched-close'](el({}, { value: '0' }));
     s.calls.length = 0;
@@ -525,7 +526,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('raid page: the title carries "zone - size"; a date-only raid says "Time not set" and shows no time; a timed one shows its start', () => {
     const timed = raidPage(DETAIL());
-    assert(/<h1 class="gs-h1" tabindex="-1">Sat Oct 24 - Hyjal Summit - 20<\/h1>/.test(timed));
+    assert(/<h1 class="gs-h1" id="page-title" tabindex="-1">Sat Oct 24 - Hyjal Summit - 20<\/h1>/.test(timed));
     assert(timed.includes('Prog night &middot; Starts Sat Oct 24, 8:00 PM') && !timed.includes('Time not set'));
     const noZone = raidPage(DETAIL(null, { zone: null, size: 25 }));
     assert(noZone.includes('>Sat Oct 24 - 25-player</h1>'));
@@ -1736,7 +1737,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     const officer = ws(G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN), data: PLANNED(), signups: null, roster: roState(ROSTER()) }));
     assert(!officer.includes('Your group') && officer.includes('id="ro-h"'), 'an officer sees the Roster card, not a seat');
     const member = ws(G.pages.raid.raidHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), signups: null, roster: roState(SEAT()) }));
-    assert(member.includes('Your group') && !member.includes('id="ro-h"') && member.indexOf('Your group') < member.indexOf('Attendance starts after the raid.'), 'the seat is on top, the officers\' card is not there');
+    assert(member.includes('Your group') && !member.includes('id="ro-h"') && member.indexOf('Your group') < member.indexOf('Opens when the raid starts'), 'the seat is on top, the officers\' card is not there');
   });
 
   await check('Your group: Confirm POSTs and shows the answer, then reads the Sign-ups panel again; a failure is shown in the card; Can\'t come asks first, then POSTs decline and the card says so', withState(async (S) => {

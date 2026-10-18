@@ -34,7 +34,7 @@ export const ACTION_GROUP = Object.freeze({
   'signup.set': 'signups', 'signup.remove': 'signups', 'signup.lock': 'signups',
   'bnet.link': 'bnet', 'bnet.unlink': 'bnet', 'bnet.settings': 'bnet',
   'claim.create': 'bnet', 'claim.withdraw': 'bnet', 'claim.approve': 'bnet', 'claim.reject': 'bnet',
-  'guild.create': 'settings', 'guild.claim': 'settings', 'guild.delete': 'settings', 'guild.export': 'settings', 'team.create': 'settings', 'team.rename': 'settings',
+  'guild.create': 'settings', 'guild.update': 'settings', 'guild.claim': 'settings', 'guild.delete': 'settings', 'guild.export': 'settings', 'team.create': 'settings', 'team.rename': 'settings',
   'team.archive': 'settings', 'team.restore': 'settings', 'roles.set': 'settings', 'guild_master.transfer': 'settings',
   'guild_master.auto_promote': 'settings', 'access.remove': 'settings', 'access.restore': 'settings', 'account.delete': 'settings', 'team.size': 'settings',
   // Written with no guild (the account's own sign-ins), so they never reach a guild's log; mapped so the action list stays complete.
@@ -157,6 +157,13 @@ export function describeRow(row, names = {}) {
 
   switch (row.action) {
     case 'guild.create': return 'Created the guild';
+    case 'guild.update': {
+      const parts = [];
+      if (after.name !== undefined) parts.push(`the name from ${before.name === undefined ? 'its old name' : `"${before.name}"`} to "${after.name}"`);
+      if (after.realm !== undefined) parts.push(`the realm from ${before.realm === undefined ? 'its old realm' : before.realm} to ${after.realm}`);
+      if (after.timeZone !== undefined) parts.push(`the time zone from ${before.timeZone === undefined ? 'its old zone' : before.timeZone} to ${after.timeZone}`);
+      return parts.length ? `Changed ${list(parts)}` : 'Changed the guild settings';
+    }
     case 'guild.claim': return 'Claimed the guild as Guild Master';
     case 'guild.delete': return 'Deleted the guild';
     case 'guild.export': return 'Downloaded the guild data';

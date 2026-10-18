@@ -50,7 +50,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const guild = guildContext.guild;
   const bind = (sql) => db.prepare(sql).bind(guild.id, raidId);
   const [raidResult, reportResult, pullResult, signupResult, planResult, attendanceResult, characterResult, presenceResult, guestResult,
-    policyResult, userResult, teamResult, flagResult, decisionResult, manualResult, dutyResult] = await db.batch([
+    policyResult, userResult, teamResult, flagResult, decisionResult, manualResult, dutyResult, laterResult] = await db.batch([
     bind(`SELECT r.*, t.name AS team_name, t.size AS team_size, t.signup_close_hours AS team_close_hours, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
                  ${SLOT_TIME_SQL} AS slot_time
             FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id WHERE r.guild_id = ?1 AND r.id = ?2`),
@@ -79,6 +79,8 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     bind('SELECT player_id, reason, flags, decided_by, decided_at FROM attendance_decisions WHERE raid_id = ?2 AND guild_id = ?1'),
     bind('SELECT player_id FROM raid_manual WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY player_id'),
     bind(DUTIES_SQL),
+    // People who joined the guild after this raid's day: the raid page leaves them out of "Everyone" unless they took part (they were not on the roster that day).
+    bind('SELECT id FROM players WHERE guild_id = ?1 AND joined_on > (SELECT raid_on FROM raids WHERE id = ?2 AND guild_id = ?1)'),
   ]);
   const raid = raidResult.results[0];
   if (!raid) throw new HttpError(404, 'not_found', 'That raid does not exist.');
@@ -106,6 +108,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     }
   }
 
+  const joinedLater = new Set(laterResult.results.map((row) => row.id));
   let people = null;
   if (seeAttendance) {
     people = attendanceResult.results.map((row) => {
@@ -129,6 +132,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
         flags,
         via: row.via_raid_id,
         source: row.presence_source,
+        ...(joinedLater.has(row.player_id) ? { joinedAfter: true } : {}), // joined the guild after this raid's day
         decision: decided ? (review
           ? { reason: made.reason, by: decidedBy ? userName(decidedBy) : null, at: made.decided_at, applied }
           : { at: made.decided_at, applied }) : null,

@@ -147,7 +147,7 @@ function withState(fn) {
     assert.equal(G.shell.canSeeSettings({ 'loot.policy': 'guild' }), true);
     assert.equal(G.shell.canSeeSettings({ 'loot.edit': 'guild', 'loot.view': 'guild' }), false);
     const items = G.shell.navItems('g1', { 'loot.policy': 'guild' }, 0, '');
-    assert(items.some(i => i.key === 'settings' && i.href === '#/g/g1/settings/loot'));
+    assert(items.some(i => i.key === 'settings' && i.href === '#/g/g1/settings'), 'the item opens the bare address: the app picks the first page or the list');
   });
 
   await check('shell: the Loot nav item keeps its section for the person loot page; breadcrumbs and back link name the leaf', () => {
@@ -1035,7 +1035,8 @@ function withState(fn) {
     await tick();
     assert.deepEqual(s.calls[0], { m: 'put', url: '/api/guild/g1/loot/policy', body: { teamId: null, override: { balance: { mode: 'count' } }, version: 2 } });
     assert.equal(S.att.settingsLoot.view.versions.guild, 3);
-    assert.equal(S.att.lootPolNotice, 'Loot rules saved.');
+    assert.equal(S.att.lootPolNotice, '', 'the page head says Saved at; there is no banner');
+    assert.equal(G.app.state.settingsSaved && G.app.state.settingsSaved.tab, 'loot');
     s.restore();
 
     S.att.settingsLoot = S0({ scope: 't1', draft: { visibility: { members: 'guild' } } });

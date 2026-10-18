@@ -331,16 +331,16 @@ function assertEscaped(out, label) {
 
   await check('visibility: Guild settings tabs follow the actions (Teams and Battle.net: guild.teams; People: guild.access or guild.roles)', () => {
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
-    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams', 'applications', 'notifications', 'battlenet']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['general', 'teams', 'notifications', 'applications', 'battlenet']);
     assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'guests', 'dataaccess']);
     assert.deepEqual(tabs({ 'guild.roles': 'guild' }), ['people', 'roles', 'discord', 'public']);
-    assert.deepEqual(tabs(ALL_CAN), ['teams', 'people', 'roles', 'discord', 'guests', 'dataaccess', 'public', 'applications', 'notifications', 'battlenet']);
+    assert.deepEqual(tabs(ALL_CAN), ['general', 'teams', 'people', 'roles', 'discord', 'guests', 'public', 'dataaccess', 'notifications', 'applications', 'battlenet']);
     assert.deepEqual(tabs({}), []);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData({ 'guild.access': 'guild' }) }, 'people', '<p>x</p>');
     assert(frame.includes('Accounts'));
     assert(!/>Teams</.test(frame));
     const nav = G.shell.navItems('g1', { 'guild.access': 'guild' }).find(i => i.key === 'settings');
-    assert.equal(nav.href, '#/g/g1/settings/people');
+    assert.equal(nav.href, '#/g/g1/settings', 'the bare address: the app opens the first page on a wide screen and the list on a phone');
   });
 
   await check('visibility: the phone tabs never list settings; the drawer follows the same rule as the sidebar', () => {
@@ -804,9 +804,11 @@ function assertEscaped(out, label) {
     const everything = Object.fromEntries(ACTIONS.map(action => [action, 'guild']));
     const master = [{ role: 'guild_master' }];
     const shown = defs => plain(defs.map(def => ({ tab: def.tab, label: def.label })));
-    assert.deepEqual(plain(G.shell.settingsTabs(everything)), shown(defs.filter(def => !def.guildMasterOnly)), 'the Guild Master tab needs the role, whatever the actions');
-    assert.deepEqual(plain(G.shell.settingsTabs(everything, [{ role: 'officer' }])), shown(defs.filter(def => !def.guildMasterOnly)));
-    assert.deepEqual(plain(G.shell.settingsTabs(everything, master)), shown(defs), 'the Guild Master sees every tab, in array order');
+    const seen = list => plain(list.map(t => ({ tab: t.tab, label: t.label })));
+    assert.deepEqual(seen(G.shell.settingsTabs(everything)), shown(defs.filter(def => !def.guildMasterOnly)), 'the Guild Master tab needs the role, whatever the actions');
+    assert.deepEqual(seen(G.shell.settingsTabs(everything, [{ role: 'officer' }])), shown(defs.filter(def => !def.guildMasterOnly)));
+    assert.deepEqual(seen(G.shell.settingsTabs(everything, master)), shown(defs), 'the Guild Master sees every tab, in array order');
+    for (const def of defs) assert(G.shell.SETTINGS_GROUPS.includes(def.group) && def.purpose && /\.$/.test(def.purpose), def.tab + ' is in one of the five groups and has a one-line purpose');
     assert.deepEqual(plain(G.shell.settingsTabs({})), []);
     assert.deepEqual(plain(G.shell.settingsTabs({}, master).map(t => t.tab)), plain(defs.filter(def => def.guildMasterOnly).map(def => def.tab)));
     for (const tab of G.router.TABS) {

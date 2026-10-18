@@ -304,7 +304,7 @@ check('applications: a signed-out and a signed-in applicant use the apply form, 
   x.draft.questions.push({ id: '', label: 'Why Ember?', type: 'long', options: '', required: true }, { id: '', label: 'Raid experience', type: 'choice', options: 'New\nVeteran', required: false });
   A.handlers.submit['apply-settings-form']();
   await settle();
-  assert.equal(x.note, 'Saved. Applications are on.');
+  assert.equal(x.note, 'Applications are on.');
   const questions = JSON.parse((await s.rows('SELECT apply_questions AS q FROM guilds'))[0].q);
   assert.deepEqual(questions.map((q) => [q.label, q.type, q.required]), [['Why Ember?', 'long', true], ['Raid experience', 'choice', false]]);
   assert(A.pages.settingsApply.main({}, A.guildData, { guildData: A.guildData }).includes(`/#/apply/${s.gid}`));

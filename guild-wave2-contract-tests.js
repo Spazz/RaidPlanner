@@ -247,7 +247,7 @@ check('raid settings: the officer\'s card sets a raid\'s own size and sign-up de
   const page = await openRaid(s, A, hyjal);
   let text = ws(stripTags(page()));
   assert(text.includes('Raid settings') && text.includes('In effect: 20 players, picked from the zone'), text.slice(0, 700));
-  assert(text.includes('Sat Oct 24 - Hyjal Summit - 20 Starts'), 'the title carries zone and size');
+  assert(text.includes('Sat Oct 24 - Hyjal Summit - 20') && text.includes('Starts Sat Oct 24'), 'the title carries zone and size');
   const form = (size, mode, hours) => ({ elements: { size: ctrl(size), hoursMode: ctrl(mode), hours: ctrl(hours) } });
   await A.handlers.submit['raid-settings-form'](form('40', 'custom', '12'));
   await settle();
@@ -322,7 +322,8 @@ check('deadline: Settings > Raid schedule saves "close sign-ups N hours before";
   A.handlers.click['sched-add'](el({}));                  // Tuesday 20:00 (the first free day after the US reset)
   A.handlers.input['sched-close'](ctrl('6'));
   await A.handlers.submit['sched-form']();
-  assert.equal(A.app.state.att.settingsSchedule.note, 'Schedule saved.');
+  assert.equal(A.app.state.att.settingsSchedule.note, '', 'the page head says Saved at; there is no banner');
+  assert.equal(A.app.state.settingsSaved && A.app.state.settingsSaved.tab, 'schedule');
   assert.equal((await s.rows('SELECT signup_close_hours FROM teams WHERE id = ?', s.teamId))[0].signup_close_hours, 6, 'stored on the team');
   assert.equal(A.app.state.att.settingsSchedule.data.signupCloseHours, 6, 'the page shows what the Worker answered');
   await A.handlers.click['sched-fill'](el({}));            // Tue Oct 20 and Tue Oct 27, 8:00 PM New York

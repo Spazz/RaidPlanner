@@ -133,8 +133,11 @@
     if (!d.configured) return '<p class="gs-warn" id="bnet-import-not-set-up" role="status">' + esc(NOT_SET_UP) + '</p>';
     if (!d.supported) return '<p class="gs-warn" id="bnet-import-unsupported" role="status">' + esc(d.message) + '</p>';
     if (d.realmNeeded) return '<p class="gs-warn" id="bnet-import-realm" role="status">Battle.net needs the realm this guild lives on.' + settingsLink + '</p>';
+    // The in-game guild name is on Guild settings > Battle.net; a realm guild's realm is on Guild settings > General (a Forever guild's realm is on Battle.net).
+    const generalHref = esc(G.router.format({ name: 'settings', gid: gd.guild.id, tab: 'general' }));
+    const realmFix = d.realmKind === 'ruleset' ? '' : (G.shell.isGuildMaster(gd.me && gd.me.roles) ? ' Wrong realm? <a href="' + generalHref + '">Change it in Guild settings &gt; General</a>.' : ' Wrong realm? Ask the Guild Master to change it in Guild settings.');
     return '<p class="gs-fine" id="bnet-import-target">Reads <strong>' + esc(d.effectiveGuildName) + '</strong> on ' + esc(d.realmKind === 'ruleset' ? d.realmSlug : gd.guild.realm) + ' (' + esc(gd.guild.region) + '). ' +
-      'Wrong guild name?' + (d.canEdit ? ' <a href="' + settingsHref + '">Change it in Guild settings</a>.' : ' Ask an officer to change it in Guild settings.') + '</p>';
+      'Wrong guild name?' + (d.canEdit ? ' <a href="' + settingsHref + '">Change it in Guild settings &gt; Battle.net</a>.' : ' Ask an officer to change it in Guild settings.') + realmFix + '</p>';
   }
 
   function errorHtml(s) {

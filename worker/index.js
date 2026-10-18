@@ -11,7 +11,7 @@ import { bnetCallback, bnetLogin, createClaims, disconnectBnet, getBnet, withdra
 import { approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
 import { runCron } from './scheduler.js';
-import { claimGuild, createGuild, getGuild } from './routes/guild.js';
+import { claimGuild, createGuild, getGuild, patchGuild } from './routes/guild.js';
 import { deleteGuild, dismissOnboarding, exportGuild } from './routes/guild-data.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
 import { createRole, deleteRole, getRoles, resetRole, updateRole } from './routes/roles.js';
@@ -93,6 +93,8 @@ export const ROUTES = [
   { method: 'POST', path: '/auth/logout', auth: true, handler: logout },
   { method: 'POST', path: '/api/guild', auth: true, handler: createGuild },
   { method: 'GET', path: '/api/guild/:gid', auth: true, handler: getGuild },
+  // Guild settings > General: the Guild Master edits the name, the realm (not a ruleset) and the time zone.
+  { method: 'PATCH', path: '/api/guild/:gid', auth: true, handler: patchGuild },
   { method: 'POST', path: '/api/guild/:gid/claim', auth: true, handler: claimGuild },
   // Phase 8: the Guild Master's copy of the guild's data, deleting the guild, and hiding the setup checklist on Home.
   { method: 'GET', path: '/api/guild/:gid/export', auth: true, handler: exportGuild },

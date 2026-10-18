@@ -18,6 +18,7 @@
 //   ui.fieldHtml({ id, name, label, kind, value, required, help, error, readonly, options, ... })  /  ui.checkFieldHtml(...)  /  ui.fieldErrorHtml(id, text)
 //   ui.setFieldError(root, id, text) / ui.clearFieldError / ui.focusFirstInvalid / ui.validateValues(values, rules) / ui.validateForm(form, rules)
 //   ui.saveBarHtml(opts) + ui.saveBar.{snapshot,diff,count,bind,update,markSaved}  /  ui.unsaved.{set,isDirty,clear,guardClick,install}
+//     a page that keeps a draft in state and redraws after every change: ui.saveBarHtml({ count, discardAttrs }) + ui.saveBar.{draftChanges,setCount,sync,paintStatus}
 //   ui.bannerHtml({ tone, title, text, actions, dismissible })  /  ui.toastHtml(text)  /  ui.toast(text, opts)
 //   ui.emptyStateHtml({ kind, icon, title, text, actions })  /  ui.loadingHtml({ label, rows })  /  ui.errorRegionHtml({ title, text, retry })
 //   ui.dialogHtml({ kind, title, text, bodyHtml, primary, cancel, back, step })                      form | confirm | destructive | step
@@ -400,10 +401,16 @@
   // Markup: put the bar inside the <form> (the Save button submits it) and give the form ui.dirtyFormAttrs(); the delegated listeners keep it current.
   ui.dirtyFormAttrs = function () { return ' data-dirty-form data-input="dirty-form" data-change="dirty-form"'; };
 
+  // opts: { text, saveLabel, discardLabel, busy, busyLabel } for a form whose values are read from its controls (ui.dirtyFormAttrs). A page that keeps a
+  // DRAFT in state and draws itself again after every change passes { count } (how many things differ from what is saved: 0 hides the bar) and
+  // { discardAttrs } (the data-action that puts the draft back); ui.saveBar.sync then keeps the leave guard in step after each draw.
   ui.saveBarHtml = function (opts) {
     const o = opts || {};
-    return '<div class="gs-savebar" role="region" aria-label="Unsaved changes" data-savebar hidden><span class="gs-savebar-text" role="status" data-savebar-text>' + esc(o.text || '1 unsaved change') + '</span>' +
-      '<span class="gs-savebar-actions">' + ui.buttonHtml({ label: o.discardLabel || 'Discard', variant: 'ghost', attrs: { 'data-action': 'savebar-discard', 'data-key': 'savebar-discard' } }) +
+    const stateful = typeof o.count === 'number';
+    const n = stateful ? Math.max(0, Math.floor(o.count)) : 0;
+    const discardAttrs = Object.assign({ 'data-action': 'savebar-discard', 'data-key': 'savebar-discard' }, o.discardAttrs || {});
+    return '<div class="gs-savebar" role="region" aria-label="Unsaved changes" data-savebar' + (stateful ? ' data-savebar-count="' + n + '"' : '') + (stateful && n > 0 ? '' : ' hidden') + '><span class="gs-savebar-text" role="status" data-savebar-text>' + esc(stateful ? ui.saveBar.text(n || 1) : (o.text || '1 unsaved change')) + '</span>' +
+      '<span class="gs-savebar-actions">' + ui.buttonHtml({ label: o.discardLabel || 'Discard', variant: 'ghost', attrs: discardAttrs }) +
       ui.buttonHtml({ label: o.saveLabel || 'Save changes', variant: 'primary', type: 'submit', busy: !!o.busy, busyLabel: o.busyLabel || 'Saving...', attrs: { 'data-key': 'savebar-save' } }) + '</span></div>';
   };
 
@@ -424,7 +431,8 @@
       const out = {};
       namedControls(form).forEach(function (el) {
         if (el.type === 'radio') { if (el.checked) out[el.name] = el.value; else if (!has(out, el.name)) out[el.name] = ''; return; }
-        out[el.name] = el.type === 'checkbox' ? (el.checked ? 'on' : '') : String(el.value == null ? '' : el.value);
+        if (el.type === 'checkbox') { out[el.value && el.value !== 'on' ? el.name + ':' + el.value : el.name] = el.checked ? 'on' : ''; return; }
+        out[el.name] = String(el.value == null ? '' : el.value);
       });
       return out;
     },
@@ -436,6 +444,67 @@
     },
     count: function (a, b) { return ui.saveBar.diff(a, b).length; },
     text: function (n) { return n === 1 ? '1 unsaved change' : n + ' unsaved changes'; },
+    // How many settings differ between two plain JSON drafts (a saved override and the edited one): every changed leaf counts once, and an item added to
+    // or removed from a list of objects counts once as a whole. Lists of plain values compare as one leaf.
+    draftChanges: function (saved, draft) {
+      const isObj = function (v) { return v !== null && typeof v === 'object' && !Array.isArray(v); };
+      const hasObj = function (v) { return Array.isArray(v) && v.some(isObj); };
+      let n = 0;
+      (function walk(a, b) {
+        if (isObj(a) || isObj(b)) {
+          const x = isObj(a) ? a : {}, y = isObj(b) ? b : {};
+          Object.keys(x).concat(Object.keys(y).filter(function (k) { return !has(x, k); })).forEach(function (k) { walk(x[k], y[k]); });
+        } else if (hasObj(a) || hasObj(b)) {
+          const x = Array.isArray(a) ? a : [], y = Array.isArray(b) ? b : [];
+          for (let i = 0; i < Math.max(x.length, y.length); i++) { if (i >= x.length || i >= y.length) n += 1; else walk(x[i], y[i]); }
+        } else if (JSON.stringify(a === undefined ? null : a) !== JSON.stringify(b === undefined ? null : b)) {
+          n += 1;
+        }
+      })(saved, draft);
+      return n;
+    },
+    // A draft page's bar after a change that does not redraw the page: shows or hides it for n changes and keeps the leave guard in step.
+    setCount: function (root, n) {
+      const scope = root || (typeof document !== 'undefined' ? document : null);
+      const bar = scope && scope.querySelector ? scope.querySelector('[data-savebar]') : null;
+      if (bar) {
+        bar.hidden = n === 0;
+        bar.setAttribute('data-savebar-count', String(n));
+        const text = bar.querySelector ? bar.querySelector('[data-savebar-text]') : null;
+        if (text && n > 0) text.textContent = ui.saveBar.text(n);
+      }
+      ui.unsaved.set('draft', n > 0);
+      ui.saveBar.paintStatus(n);
+      return n;
+    },
+    // After a page is drawn: every held-back form takes its values as saved, and a draft page's bar tells the leave guard whether it has changes.
+    sync: function (root) {
+      if (!root || !root.querySelectorAll) return;
+      const forms = root.querySelectorAll('form[data-dirty-form]');
+      for (let i = 0; i < forms.length; i++) ui.saveBar.bind(forms[i]);
+      const bars = root.querySelectorAll('[data-savebar-count]');
+      for (let i = 0; i < bars.length; i++) {
+        const n = Number(bars[i].getAttribute('data-savebar-count')) || 0;
+        ui.unsaved.set('draft', n > 0);
+        ui.saveBar.paintStatus(n);
+      }
+    },
+    // The head's save status follows the bar: "Unsaved changes" while there are some, what it said ("Saved at 8:14 PM ET") when there are none.
+    paintStatus: function (n) {
+      const doc = typeof document !== 'undefined' ? document : null;
+      const slot = doc && doc.querySelector ? doc.querySelector('[data-saved-status]') : null;
+      if (!slot) return;
+      if (n > 0) {
+        if (!slot.getAttribute('data-was')) slot.setAttribute('data-was', slot.textContent || '-');
+        slot.textContent = 'Unsaved changes';
+        slot.className = 'gs-saved-status is-unsaved';
+      } else if (slot.getAttribute('data-was')) {
+        const was = slot.getAttribute('data-was');
+        slot.setAttribute('data-was', '');
+        slot.textContent = was === '-' ? '' : was;
+        slot.className = 'gs-saved-status' + (was !== '-' ? ' is-saved' : '');
+      }
+    },
     // Takes the form's current values as "saved" (call after a render and after a Save).
     bind: function (form) {
       if (!form) return;
@@ -453,6 +522,7 @@
         if (text) text.textContent = ui.saveBar.text(n);
       }
       ui.unsaved.set(form.id || 'form', n > 0);
+      ui.saveBar.paintStatus(n);
       return n;
     },
     // After a successful Save: the new values are the saved ones, the bar leaves, the head says when (guild zone).

@@ -3,6 +3,7 @@ import { newId } from './ids.js';
 // The audited actions (nothing else writes the log).
 export const AUDIT_ACTIONS = [
   'guild.create',
+  'guild.update',
   'team.create',
   'team.rename',
   'team.archive',
