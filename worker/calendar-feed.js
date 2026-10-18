@@ -55,7 +55,7 @@ export function raidEnd(startsAt, lastPullEnd) {
   return startsAt + DEFAULT_RAID_MS;
 }
 
-// 20261017 (the DATE form of an all-day event) from '2026-10-17'.
+// The DATE form of an all-day event: 20261017 for the date 2026-10-17.
 export function formatDate(date) {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new RangeError(`not a YYYY-MM-DD date: ${date}`);
   return date.replace(/-/g, '');
