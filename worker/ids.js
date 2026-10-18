@@ -15,6 +15,8 @@ const PATTERNS = {
   cl: /^cl_[A-Za-z0-9_-]{22}$/,
   ts: /^ts_[A-Za-z0-9_-]{22}$/,
   ct: /^ct_[A-Za-z0-9_-]{22}$/,
+  an: /^an_[A-Za-z0-9_-]{22}$/,
+  sg: /^sg_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {

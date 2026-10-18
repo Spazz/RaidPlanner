@@ -1469,6 +1469,302 @@ const GOLDEN = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// WAVE 2 / LANE A: migration 0015 (the schema of the whole wave), then raid sizes, the sign-up deadline and date-only raids.
+
+const fs = require('node:fs');
+const os = require('node:os');
+
+const MIGRATIONS = path.join(ROOT, 'migrations');
+const NEW_COLUMNS = {
+  raids: ['size', 'signup_close_hours', 'time_known', 'roster_published_at', 'roster_published_by'],
+  teams: ['signup_close_hours'],
+  raid_signups: ['standby', 'standing'],
+};
+const NEW_TABLES = ['away_notices', 'standing_signups', 'raid_roster'];
+
+// A database that stopped at 0013 (everything before the wave: 0014 is another branch's), filled with rows of every old kind.
+function populatedBefore0015() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'raidsmith-0015-'));
+  for (const name of fs.readdirSync(MIGRATIONS)) if (name.endsWith('.sql') && name < '0014') fs.copyFileSync(path.join(MIGRATIONS, name), path.join(dir, name));
+  const db = createD1Fake({ migrationsDir: dir });
+  fs.rmSync(dir, { recursive: true, force: true });
+  db.sqlite.exec(`
+    INSERT INTO users (id, account_key, discord_id, username, global_name, avatar, prefs, created_at, last_seen_at)
+      VALUES ('u_a', '110000000000000001', '110000000000000001', 'alice', 'Alice A', NULL, '{}', 10, 20), ('u_b', '110000000000000002', '110000000000000002', 'bob', NULL, NULL, '{}', 11, 21);
+    INSERT INTO guilds (id, name, realm, realm_kind, region, discord_server_id, time_zone, game_version, created_by, created_at)
+      VALUES ('g_1', 'Ember', 'Dreamscythe', 'realm', 'US', 'srv1', 'UTC', 'tbc', 'u_a', 5), ('g_2', 'Other', 'Dreamscythe', 'realm', 'US', 'srv2', 'UTC', 'tbc', 'u_b', 5);
+    INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES ('t_1', 'g_1', 'Main', 25, 0, 5), ('t_2', 'g_1', 'Spare', 10, 0, 5), ('t_x', 'g_2', 'Elsewhere', 25, 0, 5);
+    INSERT INTO players (id, guild_id, status, created_at, updated_at) VALUES ('p_1', 'g_1', 'raider', 1, 1), ('p_2', 'g_1', 'raider', 1, 1), ('p_x', 'g_2', 'raider', 1, 1);
+    INSERT INTO characters (id, guild_id, player_id, team_id, name, name_key, realm, realm_key, class, is_main, created_at, updated_at)
+      VALUES ('c_1', 'g_1', 'p_1', 't_1', 'Aldric', 'aldric', 'Dreamscythe', 'dreamscythe', 'WARRIOR', 1, 1, 1),
+             ('c_2', 'g_1', 'p_2', 't_1', 'Brindle', 'brindle', 'Dreamscythe', 'dreamscythe', 'MAGE', 1, 1, 1);
+    INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, event_id, event_title, event_synced, log_mode, manual_reason, manual_by, manual_at, plan_label, plan_synced, created_by, created_at, updated_at)
+      VALUES ('r_event', 'g_1', 't_1', '2027-01-05', 1000, 'Karazhan', '123456789012345678', 'Event raid', 1, 'log', NULL, NULL, NULL, NULL, NULL, 'u_a', 1, 1),
+             ('r_report', 'g_1', 't_1', '2027-01-06', 2000, 'Gruul''s Lair', NULL, NULL, NULL, 'log', NULL, NULL, NULL, NULL, NULL, 'u_a', 1, 1),
+             ('r_plain', 'g_1', 't_1', '2027-01-07', 3000, NULL, NULL, NULL, NULL, 'log', NULL, NULL, NULL, 'My plan', 3, 'u_a', 1, 1),
+             ('r_manual', 'g_1', 't_1', '2027-01-08', 4000, NULL, NULL, NULL, NULL, 'manual', 'no logs today', 'u_b', 4, NULL, NULL, 'u_a', 1, 1),
+             ('r_other', 'g_1', 't_2', '2027-01-08', 5000, NULL, NULL, NULL, NULL, 'log', NULL, NULL, NULL, NULL, NULL, 'u_a', 1, 1);
+    INSERT INTO raid_reports (raid_id, guild_id, code, flavour, started_at, ended_at, owner, synced_at) VALUES ('r_report', 'g_1', 'Abcdefghij012345', 'www', 2000, 3000, 'Upl', 2);
+    INSERT INTO raid_pulls (raid_id, report_code, fight_id, encounter_id, encounter_name, kill, started_at, ended_at) VALUES ('r_report', 'Abcdefghij012345', 1, 649, 'Maulgar', 1, 2100, 2200);
+    INSERT INTO raid_signups (raid_id, source, signup_id, discord_user_id, nickname, kind, class_name, spec_name, position, guild_id, player_id)
+      VALUES ('r_event', 'raid_helper', 1, '110000000000000002', 'Bob', 'signed', 'Warrior', 'Arms1', 1, 'g_1', 'p_1'), ('r_event', 'raid_helper', 2, '299999999999999999', 'Stranger', 'late', 'Late', NULL, 2, 'g_1', NULL);
+    INSERT INTO raid_signups (raid_id, source, signup_id, kind, class_name, spec_name, position, guild_id, player_id, character_id, note, updated_by, created_at, updated_at)
+      VALUES ('r_plain', 'raidsmith', 1, 'tentative', 'Mage', 'Fire1', 1, 'g_1', 'p_2', 'c_2', 'maybe', 'u_b', 60, 61);
+    INSERT INTO raid_plan (raid_id, name, name_key, group_number) VALUES ('r_plain', 'Aldric', 'aldric', 1), ('r_plain', 'Brindle', 'brindle', 0);
+    INSERT INTO raid_manual (raid_id, guild_id, player_id) VALUES ('r_manual', 'g_1', 'p_1');
+    INSERT INTO attendance (raid_id, guild_id, team_id, player_id, outcome, credit, signup_kind, attended) VALUES ('r_report', 'g_1', 't_1', 'p_1', 'present', 1, 'signed', 1), ('r_manual', 'g_1', 't_1', 'p_1', 'present', 1, NULL, 1);
+    INSERT INTO team_schedules (id, guild_id, team_id, weekday, start_time, zone, title, created_at) VALUES ('ts_1', 'g_1', 't_1', 2, '20:00', 'Karazhan', 'Tuesday', 62);
+  `);
+  return db;
+}
+
+const tableDump = (db, table) => {
+  const columns = db.sqlite.prepare(`SELECT name FROM pragma_table_info('${table}') ORDER BY cid`).all().map((c) => c.name);
+  return { columns, rows: db.sqlite.prepare(`SELECT * FROM ${table} ORDER BY ${columns.map((c) => `"${c}"`).join(', ')}`).all().map((r) => ({ ...r })) };
+};
+const allTables = (db) => db.sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((t) => t.name);
+const without = (row, drop) => Object.fromEntries(Object.entries(row).filter(([key]) => !drop.includes(key)));
+const tryExec = (db, sql) => { try { db.sqlite.exec(sql); return null; } catch (error) { return String(error.message); } };
+
+check('migration 0015 on a populated 0013 database: every old row survives, time_known is backfilled, the foreign keys hold', async () => {
+  const db = populatedBefore0015();
+  try {
+    const tablesBefore = allTables(db);
+    const before = Object.fromEntries(tablesBefore.map((table) => [table, tableDump(db, table)]));
+    assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(), [], 'the seed itself is sound');
+    for (const table of ['raids', 'raid_signups', 'raid_reports', 'raid_plan', 'raid_manual', 'attendance', 'team_schedules', 'players', 'characters']) assert(before[table].rows.length > 0, `${table} is seeded`);
+
+    db.sqlite.exec(fs.readFileSync(path.join(MIGRATIONS, '0015_wave2.sql'), 'utf8'));
+
+    // The row count of every old table is unchanged, and so is every old column of every row.
+    const after = Object.fromEntries(tablesBefore.map((table) => [table, tableDump(db, table)]));
+    for (const table of tablesBefore) {
+      const added = NEW_COLUMNS[table] || [];
+      assert.deepEqual(after[table].columns, [...before[table].columns, ...added], `${table}: only the new columns were added, at the end`);
+      assert.equal(after[table].rows.length, before[table].rows.length, `${table}: row count`);
+      assert.deepEqual(after[table].rows.map((row) => without(row, added)), before[table].rows, `${table}: old values untouched`);
+    }
+    assert.deepEqual(allTables(db), [...tablesBefore, ...NEW_TABLES].sort(), 'exactly the three new tables were added');
+    for (const table of NEW_TABLES) assert.equal(db.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n, 0, `${table} starts empty`);
+
+    // time_known: 1 for the raids an event or a report anchors, NULL for the others (unknown reads as a real time).
+    const known = Object.fromEntries(after.raids.rows.map((row) => [row.id, row.time_known]));
+    assert.deepEqual(known, { r_event: 1, r_report: 1, r_plain: null, r_manual: null, r_other: null });
+    // The other new columns default to "nothing set": automatic size, the team's deadline, no published roster, team deadline 0, no standby, not standing.
+    for (const row of after.raids.rows) assert.deepEqual([row.size, row.signup_close_hours, row.roster_published_at, row.roster_published_by], [null, null, null, null], row.id);
+    assert.deepEqual(after.teams.rows.map((row) => row.signup_close_hours), [0, 0, 0]);
+    assert.deepEqual(after.raid_signups.rows.map((row) => [row.standby, row.standing]), [[0, 0], [0, 0], [0, 0]]);
+
+    // Nothing dangles, foreign keys are still on, and the new constraints point where the design says.
+    assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+    assert.equal(db.sqlite.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
+    const fks = (table) => db.sqlite.prepare(`SELECT "table" AS t, "from" AS f, "to" AS x, on_delete AS d FROM pragma_foreign_key_list('${table}') ORDER BY id, seq`).all().map((r) => `${r.f}->${r.t}.${r.x} ${r.d}`);
+    const has = (table, expected) => { for (const text of expected) assert(fks(table).includes(text), `${table}: ${text} in ${JSON.stringify(fks(table))}`); };
+    has('away_notices', ['guild_id->guilds.id CASCADE', 'guild_id->players.guild_id CASCADE', 'player_id->players.id CASCADE', 'created_by->users.id SET NULL']);
+    has('standing_signups', ['guild_id->guilds.id CASCADE', 'guild_id->teams.guild_id CASCADE', 'team_id->teams.id CASCADE', 'guild_id->players.guild_id CASCADE', 'player_id->players.id CASCADE', 'character_id->characters.id SET NULL']);
+    has('raid_roster', ['guild_id->raids.guild_id CASCADE', 'raid_id->raids.id CASCADE', 'player_id->players.id SET NULL']);
+    has('raids', ['roster_published_by->users.id SET NULL']);
+  } finally {
+    db.close();
+  }
+});
+
+check('migration 0015: the new columns and tables reject what the design forbids', async () => {
+  const db = populatedBefore0015();
+  try {
+    db.sqlite.exec(fs.readFileSync(path.join(MIGRATIONS, '0015_wave2.sql'), 'utf8'));
+    const rejects = (sql, pattern = /CHECK/, label = sql) => { const message = tryExec(db, sql); assert(message && pattern.test(message), `${label} -> ${message}`); };
+    const accepts = (sql) => { const message = tryExec(db, sql); assert.equal(message, null, `${sql} -> ${message}`); };
+
+    // raids
+    for (const size of [15, 0, 5, 26, -1]) rejects(`UPDATE raids SET size = ${size} WHERE id = 'r_plain'`);
+    for (const size of [10, 20, 25, 40, 'NULL']) accepts(`UPDATE raids SET size = ${size} WHERE id = 'r_plain'`);
+    for (const hours of [73, -1, 100]) rejects(`UPDATE raids SET signup_close_hours = ${hours} WHERE id = 'r_plain'`);
+    for (const hours of [0, 1, 24, 72, 'NULL']) accepts(`UPDATE raids SET signup_close_hours = ${hours} WHERE id = 'r_plain'`);
+    for (const value of [2, -1]) rejects(`UPDATE raids SET time_known = ${value} WHERE id = 'r_plain'`);
+    for (const value of [0, 1, 'NULL']) accepts(`UPDATE raids SET time_known = ${value} WHERE id = 'r_plain'`);
+    rejects("UPDATE raids SET roster_published_by = 'u_nobody' WHERE id = 'r_plain'", /FOREIGN KEY/);
+    accepts("UPDATE raids SET roster_published_at = 5, roster_published_by = 'u_b' WHERE id = 'r_plain'");
+    // teams
+    for (const hours of [73, -1]) rejects(`UPDATE teams SET signup_close_hours = ${hours} WHERE id = 't_1'`);
+    rejects("UPDATE teams SET signup_close_hours = NULL WHERE id = 't_1'", /NOT NULL/);
+    for (const hours of [0, 24, 72]) accepts(`UPDATE teams SET signup_close_hours = ${hours} WHERE id = 't_1'`);
+    // raid_signups: standby is a 'signed' Raidsmith row; standing is a Raidsmith row
+    for (const value of [2, -1]) rejects(`UPDATE raid_signups SET standby = ${value} WHERE raid_id = 'r_plain'`);
+    rejects("UPDATE raid_signups SET standby = 1 WHERE raid_id = 'r_plain'", /CHECK/, 'standby on a tentative row');
+    rejects("UPDATE raid_signups SET standby = 1 WHERE raid_id = 'r_event' AND signup_id = 1", /CHECK/, 'standby on a Raid-Helper row');
+    accepts("UPDATE raid_signups SET kind = 'signed', standby = 1 WHERE raid_id = 'r_plain'");
+    rejects("UPDATE raid_signups SET kind = 'late' WHERE raid_id = 'r_plain'", /CHECK/, 'changing the kind without clearing standby');
+    accepts("UPDATE raid_signups SET kind = 'late', standby = 0 WHERE raid_id = 'r_plain'");
+    rejects("UPDATE raid_signups SET standing = 2 WHERE raid_id = 'r_plain'");
+    rejects("UPDATE raid_signups SET standing = 1 WHERE raid_id = 'r_event' AND signup_id = 1", /CHECK/, 'standing on a Raid-Helper row');
+    accepts("UPDATE raid_signups SET standing = 1 WHERE raid_id = 'r_plain'");
+    accepts("UPDATE raid_signups SET standing = 0 WHERE raid_id = 'r_plain'");
+
+    // away_notices
+    const away = (extra = {}) => {
+      const row = { id: 'an_1', guild_id: 'g_1', player_id: 'p_1', kind: 'away', at_time: null, starts_on: '2027-02-01', ends_on: '2027-02-03', weekday: null, reason: null, created_by: null, ...extra };
+      const quote = (v) => (v === null ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
+      return `INSERT INTO away_notices (id, guild_id, player_id, kind, at_time, starts_on, ends_on, weekday, reason, created_by, created_at, updated_at) VALUES (${[row.id, row.guild_id, row.player_id, row.kind, row.at_time, row.starts_on, row.ends_on, row.weekday, row.reason, row.created_by].map(quote).join(', ')}, 1, 1)`;
+    };
+    rejects(away({ weekday: null, ends_on: null }), /CHECK/, 'a range with no end');
+    rejects(away({ ends_on: '2027-01-31' }), /CHECK/, 'ends before it starts');
+    rejects(away({ weekday: 2, ends_on: '2027-01-31' }), /CHECK/, 'a recurring notice that ends before it starts');
+    for (const time of ['25:00', '9:00', '12:60', '24:00', 'noon', '12-30']) rejects(away({ kind: 'late', at_time: time }), /CHECK/, `at_time ${time}`);
+    rejects(away({ kind: 'late' }), /CHECK/, 'Late with no time');
+    rejects(away({ kind: 'leaving' }), /CHECK/, 'Leaving with no time');
+    rejects(away({ kind: 'sick' }), /CHECK/);
+    rejects(away({ weekday: 7 }), /CHECK/);
+    rejects(away({ weekday: -1 }), /CHECK/);
+    rejects(away({ starts_on: '2027-02-30' }), /CHECK/);
+    rejects(away({ starts_on: 'tomorrow' }), /CHECK/);
+    rejects(away({ ends_on: 'soon' }), /CHECK/);
+    rejects(away({ reason: 'x'.repeat(121) }), /CHECK/);
+    rejects(away({ player_id: 'p_nobody' }), /FOREIGN KEY/, 'an unknown person');
+    rejects(away({ player_id: 'p_x' }), /FOREIGN KEY/, 'a person of another guild');
+    rejects(away({ guild_id: 'g_nobody' }), /FOREIGN KEY/);
+    rejects(away({ created_by: 'u_nobody' }), /FOREIGN KEY/);
+    accepts(away({ id: 'an_range' }));
+    accepts(away({ id: 'an_range1', starts_on: '2027-02-01', ends_on: '2027-02-01', reason: 'x'.repeat(120) }));
+    accepts(away({ id: 'an_recur', weekday: 4, ends_on: null }));
+    accepts(away({ id: 'an_recur2', weekday: 0, ends_on: '2027-06-01' }));
+    accepts(away({ id: 'an_late', kind: 'late', at_time: '21:00', created_by: 'u_a' }));
+    accepts(away({ id: 'an_left', kind: 'leaving', at_time: '23:59', weekday: 5, ends_on: null }));
+    rejects(away({ id: 'an_range' }), /UNIQUE/, 'a duplicate id');
+
+    // standing_signups
+    const standing = (extra = {}) => {
+      const row = { id: 'sg_1', guild_id: 'g_1', team_id: 't_1', player_id: 'p_1', weekday: 2, kind: 'signed', character_id: 'c_1', ...extra };
+      const quote = (v) => (v === null ? 'NULL' : typeof v === 'number' ? String(v) : `'${v}'`);
+      return `INSERT INTO standing_signups (id, guild_id, team_id, player_id, weekday, kind, character_id, created_at, updated_at) VALUES (${[row.id, row.guild_id, row.team_id, row.player_id, row.weekday, row.kind, row.character_id].map(quote).join(', ')}, 1, 1)`;
+    };
+    rejects(standing({ weekday: 7 }), /CHECK/);
+    rejects(standing({ weekday: -1 }), /CHECK/);
+    for (const kind of ['tentative', 'bench', 'absence', 'standby']) rejects(standing({ kind }), /CHECK/, `kind ${kind}`);
+    rejects(standing({ team_id: 't_x' }), /FOREIGN KEY/, 'a team of another guild');
+    rejects(standing({ player_id: 'p_x' }), /FOREIGN KEY/, 'a person of another guild');
+    rejects(standing({ character_id: 'c_nobody' }), /FOREIGN KEY/);
+    accepts(standing());
+    rejects(standing({ id: 'sg_dup' }), /UNIQUE/, 'the same person, team and weekday twice');
+    accepts(standing({ id: 'sg_2', weekday: 4, kind: 'late', character_id: null }));
+    accepts(standing({ id: 'sg_3', player_id: 'p_2', character_id: 'c_2' }));
+
+    // raid_roster
+    const roster = (extra = {}) => {
+      const row = { raid_id: 'r_plain', guild_id: 'g_1', name_key: 'aldric', name: 'Aldric', player_id: 'p_1', group_number: 1, class: 'WARRIOR', spec: 'Arms', status: 'pending', prev_kind: null, ...extra };
+      const quote = (v) => (v === null ? 'NULL' : typeof v === 'number' ? String(v) : `'${v}'`);
+      return `INSERT INTO raid_roster (raid_id, guild_id, name_key, name, player_id, group_number, class, spec, status, prev_kind) VALUES (${[row.raid_id, row.guild_id, row.name_key, row.name, row.player_id, row.group_number, row.class, row.spec, row.status, row.prev_kind].map(quote).join(', ')})`;
+    };
+    rejects(roster({ group_number: 9 }), /CHECK/);
+    rejects(roster({ group_number: -1 }), /CHECK/);
+    rejects(roster({ status: 'maybe' }), /CHECK/);
+    rejects(roster({ class: 'ROBOT' }), /CHECK/);
+    rejects(roster({ prev_kind: 'yes' }), /CHECK/);
+    rejects(roster({ name: '' }), /CHECK/);
+    rejects(roster({ raid_id: 'r_nobody' }), /FOREIGN KEY/);
+    rejects(roster({ guild_id: 'g_2', player_id: null }), /FOREIGN KEY/, 'a raid of another guild');
+    rejects(roster({ player_id: 'p_x' }), /roster_person_guild/, 'a person of another guild');
+    rejects(roster({ player_id: 'p_nobody' }), /roster_person_guild|FOREIGN KEY/, 'an unknown person');
+    accepts(roster());
+    rejects(roster({ player_id: 'p_2' }), /UNIQUE/, 'a character name seated twice');
+    rejects("UPDATE raid_roster SET player_id = 'p_x' WHERE name_key = 'aldric'", /roster_person_guild/);
+    accepts(roster({ name_key: 'brindle', name: 'Brindle', player_id: 'p_2', group_number: 0, class: 'MAGE', spec: null, status: 'declined', prev_kind: 'standby' }));
+    accepts(roster({ name_key: 'stranger', name: 'Stranger', player_id: null, class: null, spec: null }));
+    assert.equal(db.sqlite.prepare("SELECT seq FROM raid_roster WHERE name_key = 'aldric'").get().seq, 0, 'seq defaults to 0');
+    assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally {
+    db.close();
+  }
+});
+
+check('migration 0015: deleting a person, a team, a raid, a character, an account or the guild cascades into the new tables', async () => {
+  const seed = (db) => {
+    db.sqlite.exec(`
+      INSERT INTO away_notices (id, guild_id, player_id, kind, starts_on, ends_on, created_by, created_at, updated_at) VALUES
+        ('an_1', 'g_1', 'p_1', 'away', '2027-02-01', '2027-02-03', 'u_b', 1, 1), ('an_2', 'g_1', 'p_2', 'away', '2027-02-01', '2027-02-03', NULL, 1, 1);
+      INSERT INTO standing_signups (id, guild_id, team_id, player_id, weekday, kind, character_id, created_at, updated_at) VALUES
+        ('sg_1', 'g_1', 't_1', 'p_1', 2, 'signed', 'c_1', 1, 1), ('sg_2', 'g_1', 't_1', 'p_2', 2, 'late', 'c_2', 1, 1), ('sg_3', 'g_1', 't_2', 'p_2', 4, 'signed', NULL, 1, 1);
+      INSERT INTO raid_roster (raid_id, guild_id, name_key, name, player_id, group_number, class, status) VALUES
+        ('r_plain', 'g_1', 'aldric', 'Aldric', 'p_1', 1, 'WARRIOR', 'confirmed'), ('r_plain', 'g_1', 'brindle', 'Brindle', 'p_2', 0, 'MAGE', 'pending'),
+        ('r_event', 'g_1', 'aldric', 'Aldric', 'p_1', 2, 'WARRIOR', 'pending');
+      UPDATE raids SET roster_published_at = 9, roster_published_by = 'u_b' WHERE id = 'r_plain';
+    `);
+  };
+  const n = (db, sql) => db.sqlite.prepare(sql).get().n;
+  const fresh = () => {
+    const db = populatedBefore0015();
+    db.sqlite.exec(fs.readFileSync(path.join(MIGRATIONS, '0015_wave2.sql'), 'utf8'));
+    seed(db);
+    assert.deepEqual([n(db, 'SELECT COUNT(*) AS n FROM away_notices'), n(db, 'SELECT COUNT(*) AS n FROM standing_signups'), n(db, 'SELECT COUNT(*) AS n FROM raid_roster')], [2, 3, 3]);
+    return db;
+  };
+
+  let db = fresh();
+  try {
+    // A person: their notices and standing sign-ups go; their seats stay on the roster, unmatched (the snapshot keeps its names).
+    db.sqlite.exec("DELETE FROM attendance WHERE player_id = 'p_1'; DELETE FROM raid_manual WHERE player_id = 'p_1'; DELETE FROM raid_signups WHERE player_id = 'p_1'");
+    db.sqlite.exec("DELETE FROM players WHERE id = 'p_1'");
+    assert.deepEqual(db.sqlite.prepare('SELECT id FROM away_notices ORDER BY id').all().map((r) => r.id), ['an_2']);
+    assert.deepEqual(db.sqlite.prepare('SELECT id FROM standing_signups ORDER BY id').all().map((r) => r.id), ['sg_2', 'sg_3']);
+    assert.deepEqual(db.sqlite.prepare('SELECT raid_id, name_key, player_id FROM raid_roster ORDER BY raid_id, name_key').all().map((r) => [r.raid_id, r.name_key, r.player_id]),
+      [['r_event', 'aldric', null], ['r_plain', 'aldric', null], ['r_plain', 'brindle', 'p_2']]);
+    assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally { db.close(); }
+
+  db = fresh();
+  try {
+    // A character: the standing sign-up stays and forgets the choice.
+    db.sqlite.exec("DELETE FROM raid_signups WHERE character_id = 'c_2'; DELETE FROM characters WHERE id = 'c_2'");
+    assert.deepEqual(db.sqlite.prepare("SELECT id, character_id FROM standing_signups WHERE player_id = 'p_2' ORDER BY id").all().map((r) => [r.id, r.character_id]), [['sg_2', null], ['sg_3', null]]);
+  } finally { db.close(); }
+
+  db = fresh();
+  try {
+    // A team that nothing else holds: its standing sign-ups go with it (a raid or a character blocks the delete, as before).
+    db.sqlite.exec("DELETE FROM raids WHERE team_id = 't_2'; DELETE FROM teams WHERE id = 't_2'");
+    assert.deepEqual(db.sqlite.prepare('SELECT id FROM standing_signups ORDER BY id').all().map((r) => r.id), ['sg_1', 'sg_2']);
+    assert(/FOREIGN KEY/.test(tryExec(db, "DELETE FROM teams WHERE id = 't_1'")), 'a team with raids and characters still cannot be deleted');
+  } finally { db.close(); }
+
+  db = fresh();
+  try {
+    // A raid: its published roster goes, the other raid's stays.
+    db.sqlite.exec("DELETE FROM raids WHERE id = 'r_plain'");
+    assert.deepEqual(db.sqlite.prepare('SELECT raid_id, name_key FROM raid_roster').all().map((r) => `${r.raid_id}/${r.name_key}`), ['r_event/aldric']);
+  } finally { db.close(); }
+
+  db = fresh();
+  try {
+    // The account that published a roster or wrote a notice: the rows stay, the author is forgotten.
+    db.sqlite.exec("DELETE FROM users WHERE id = 'u_b'");
+    assert.equal(db.sqlite.prepare("SELECT roster_published_by AS v FROM raids WHERE id = 'r_plain'").get().v, null);
+    assert.equal(db.sqlite.prepare("SELECT roster_published_at AS v FROM raids WHERE id = 'r_plain'").get().v, 9);
+    assert.equal(db.sqlite.prepare("SELECT created_by AS v FROM away_notices WHERE id = 'an_1'").get().v, null);
+    assert.equal(n(db, 'SELECT COUNT(*) AS n FROM away_notices'), 2);
+  } finally { db.close(); }
+
+  db = fresh();
+  try {
+    // The guild: everything of the wave goes with it.
+    db.sqlite.exec("DELETE FROM characters WHERE guild_id = 'g_1'; DELETE FROM guilds WHERE id = 'g_1'");
+    for (const table of NEW_TABLES) assert.equal(n(db, `SELECT COUNT(*) AS n FROM ${table}`), 0, table);
+    assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally { db.close(); }
+});
+
+check('migration 0015: the id prefixes an (away notice) and sg (standing sign-up) exist', async () => {
+  const { newId, isId } = await load('worker/ids.js');
+  const bytes = (length) => Uint8Array.from({ length }, (_, i) => (i * 31 + 7) & 255);
+  for (const prefix of ['an', 'sg']) {
+    const id = newId(prefix, bytes);
+    assert(id.startsWith(`${prefix}_`) && id.length === 25, id);
+    assert(isId(prefix, id));
+    assert(!isId(prefix === 'an' ? 'sg' : 'an', id));
+    assert(!isId(prefix, `${prefix}_short`));
+  }
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';
