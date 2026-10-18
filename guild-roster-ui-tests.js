@@ -275,7 +275,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const out = rosterPage(guildData(), rosterData());
     assert(out.includes('<a class="gs-char-link gs-class-paladin" href="#/g/g1/roster/p/p_8">Sølvhand</a>'));
     assert(!out.includes('gs-role-dot'), 'no role dot');
-    assert(out.includes('Warlock &middot; Destruction'), 'the spec text always names the class');
+    assert(out.includes('<span class="gs-class-warlock">Warlock</span> &middot; Destruction'), 'the spec text always names the class');
     assert(out.includes('<span class="gs-muted gs-dash">-</span>'), 'no off spec shows a dash');
   });
 
@@ -313,7 +313,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const out = rosterPage(guildData(), rosterData());
     // One markup serves the table and the phone card (below 760 px the rows are cards, the first cell is the link and covers the card).
     const card = out.match(/<tr class="gs-dtable-row[^"]*"[^>]*>(?:(?!<\/tr>)[\s\S])*Frostwhisper[\s\S]*?<\/tr>/)[0];
-    assert(card.includes('Mage &middot; Frost') && card.includes('Ends in 5 days') && card.includes('data-label="Alts">0<') && card.includes('data-label="Sign-in"><span class="gs-muted">Not signed in</span>') && card.includes('>Trial<'));
+    assert(card.includes('<span class="gs-class-mage">Mage</span> &middot; Frost') && card.includes('Ends in 5 days') && card.includes('data-label="Alts">0<') && card.includes('data-label="Sign-in"><span class="gs-muted">Not signed in</span>') && card.includes('>Trial<'));
     assert(card.includes('has-mark is-mage') || out.includes('has-mark is-mage'), 'the class colour edge');
   });
 

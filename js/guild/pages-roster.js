@@ -122,7 +122,7 @@
       const s = p.shown;
       return { id: p.id, you: !!p.isMe, mark: s.class, cells: {
         player: nameCellHtml(opts.gid, p),
-        mainSpec: esc(G.ui.className(s.class)) + (s.mainSpec ? ' &middot; ' + esc(s.mainSpec) : ''),
+        mainSpec: '<span class="' + G.ui.classClass(s.class) + '">' + esc(G.ui.className(s.class)) + '</span>' + (s.mainSpec ? ' &middot; ' + esc(s.mainSpec) : ''),
         offSpec: offSpecHtml(s),
         status: statusCellHtml(p, opts),
         joined: esc(G.ui.formatDay(p.joinedOn) || '-'),
