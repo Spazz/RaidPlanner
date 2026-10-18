@@ -1,4 +1,4 @@
-// ── PAGE: GUILD SETTINGS > PEOPLE AND ROLES ─────────────────────
+// ── PAGE: GUILD SETTINGS > ACCOUNTS (the sign-in accounts and their roles) ──
 // One sortable table (phone: cards), then the Access removed list. Row actions come only from the server's
 // `actions` flags; every mutation returns the full people response, which replaces the page's data.
 // Roles a person holds come in two kinds: set by hand (the Edit roles boxes) and only given by Discord (listed read-only, "From Discord"). The guild's
@@ -9,7 +9,7 @@
   const COLUMN_LABELS = { person: 'Person', roster: 'Roster', roles: 'Roles', lastSeen: 'Last seen' };
 
   function countText(n) {
-    return n === 1 ? '1 person has signed in' : n + ' people have signed in';
+    return n === 1 ? '1 account has signed in' : n + ' accounts have signed in';
   }
 
   // Name, a compact "you" badge on the same line, and the Discord username underneath when it differs.
@@ -34,7 +34,7 @@
   }
 
   function lastSeenHtml(entry, now) {
-    const full = G.ui.formatDateTime(entry.lastSeenAt);
+    const full = G.ui.formatDateTime(entry.lastSeenAt, G.ui.guildZone());
     return '<span' + (full ? ' title="' + esc(full) + '"' : '') + '>' + esc(G.ui.relativeTime(entry.lastSeenAt, now)) + '</span>';
   }
 
@@ -77,10 +77,10 @@
         '<span class="gs-card-line">' + rosterCellHtml(e, opts.gid) + '</span><div class="gs-chips">' + G.ui.roleChipsHtml(e.roles, opts.teams) + '</div>' +
         '<span class="gs-card-line gs-muted">Last seen: ' + lastSeenHtml(e, opts.now) + '</span><div class="gs-row-actions">' + rowActionsHtml(e) + '</div></div></li>';
     }).join('');
-    return '<div class="gs-table-wrap gs-people-table"><table class="gs-table" aria-label="People who have signed in"><thead><tr>' +
+    return '<div class="gs-table-wrap gs-people-table"><table class="gs-table" aria-label="Accounts that have signed in"><thead><tr>' +
       sortHeaderHtml('person', opts.sort) + sortHeaderHtml('roster', opts.sort) + sortHeaderHtml('roles', opts.sort) + sortHeaderHtml('lastSeen', opts.sort) +
       '<th scope="col"><span class="gs-sr">Actions</span></th></tr></thead><tbody>' + body + '</tbody></table></div>' +
-      '<ul class="gs-person-cards" aria-label="People who have signed in">' + cards + '</ul>';
+      '<ul class="gs-person-cards" aria-label="Accounts that have signed in">' + cards + '</ul>';
   }
 
   function removedHtml(opts) {
@@ -108,13 +108,13 @@
     const teams = opts.guildData.teams;
     // Sync everyone: the bot is set up and a Discord role is mapped (the Worker says so), and the viewer may sync.
     const canSyncAll = !!(data.discord && data.discord.configured && data.discord.mapped) && G.shell.hasAction(opts.guildData.me && opts.guildData.me.can, 'guild.access');
-    return '<section class="gs-section" aria-labelledby="people-heading"><h2 class="gs-sr" id="people-heading">People</h2>' +
+    return '<section class="gs-section" aria-labelledby="people-heading"><h2 class="gs-sr" id="people-heading">Accounts</h2>' +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span><button type="button" class="gs-linkbtn" data-action="dismiss-notice" data-key="dismiss-notice">Dismiss</button></div>' : '') +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       '<div class="gs-toolbar"><p class="gs-count">' + esc(countText(data.signedInCount != null ? data.signedInCount : (data.people || []).length)) + '</p>' +
       (canSyncAll ? '<button type="button" class="gs-btn gs-btn-sm" data-action="people-sync-all" data-key="sync-all">Sync everyone who signed in</button>' : '') +
-      '<div class="gs-search"><label class="gs-sr" for="people-search">Search people</label>' + G.icons.icon('search', 18) +
-      '<input class="gs-input gs-input-search" type="search" id="people-search" placeholder="Search people" data-input="people-search" autocomplete="off" value="' + esc(opts.query || '') + '"></div>' +
+      '<div class="gs-search"><label class="gs-sr" for="people-search">Search accounts</label>' + G.icons.icon('search', 18) +
+      '<input class="gs-input gs-input-search" type="search" id="people-search" placeholder="Search accounts" data-input="people-search" autocomplete="off" value="' + esc(opts.query || '') + '"></div>' +
       sortSelectHtml(opts.sort) + '</div>' +
       '<div id="people-table">' + tableHtml({ people: data.people, teams: teams, sort: opts.sort, query: opts.query, now: opts.now, gid: opts.guildData.guild.id }) + '</div>' +
       removedHtml({ removed: data.removed }) + '</section>';

@@ -197,7 +197,7 @@ check('Settings > Notifications: an officer saves a team\'s webhook through the 
   // The Activity log says what changed in words, and never the address.
   const log = await A.api.get(`${s.base}/audit?group=settings`);
   const sentences = log.rows.filter((r) => r.action === 'notify.update').map((r) => r.text);
-  assert.deepEqual(sentences, ['Changed the Discord notifications of Alpha: webhook', 'Changed the Discord notifications of Alpha: webhook, mentioned role, roster posts, no-reply reminders and no-reply lead time'], 'newest first');
+  assert.deepEqual(sentences, ['Changed the Discord notifications of Alpha: webhook', 'Changed the Discord notifications of Alpha: webhook, mentioned role, line-up posts, no-reply reminders and no-reply lead time'], 'newest first');
   assert(!JSON.stringify(log).includes('abcdefghijklmnop'));
   // A member does not get the tab, and the Worker refuses the read.
   assert.deepEqual(plain(E.shell.settingsTabs(E.guildData.me.can, E.guildData.me.roles).map((t) => t.tab)), []);
@@ -249,7 +249,7 @@ check('Home and Raids: what the scheduler found - an event on another day, a web
   const html = A.pages.attention.main(view, A.guildData);
   const text = stripTags(html);
   const day = A.ui.weekdayDay;
-  assert(text.includes(`${day('2026-10-18')}: 2 rostered people haven't confirmed`), text.slice(0, 500));
+  assert(text.includes(`${day('2026-10-18')}: 2 line-up players haven't confirmed`), text.slice(0, 500));
   assert(text.includes(`${day('2026-10-18')}: Raid-Helper has the event on ${day('2026-10-19')}; the raid was not moved`));
   assert(text.includes('The Discord webhook of Alpha was switched off (Discord answered 404)'));
   for (const item of data.items.filter((i) => ['roster_pending', 'event_moved', 'webhook_off'].includes(i.kind))) {

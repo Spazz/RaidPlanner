@@ -1,6 +1,6 @@
 // ── PAGE: ROSTER > RECRUITING (recruitment needs) ───────────────
 // For the team on screen: how many tanks, healers, melee and ranged DPS the active roster (Raider and Trial mains) has against officer-set targets (the
-// defaults of the team's raid size until an officer sets them), the open intent round laid over the roster when there is one, which raid buffs and
+// defaults of the team's raid size until an officer sets them), the open spec poll laid over the roster when there is one, which raid buffs and
 // debuffs that roster misses (coverage.js, the Planner's rules), and a plain-text recruiting post to copy: guild, realm or ruleset, raid days from the
 // weekly schedule, the roles and classes the team needs and the apply link. GET /recruiting?team=, PUT /teams/:tid/recruiting.
 (function (G) {
@@ -17,7 +17,7 @@
   function currentGd() { const s = G.app.state; return s.currentGid ? s.guilds[s.currentGid] : null; }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
-  // The part of the answer the page reads: the roster with the open intent round laid over it, or the roster alone.
+  // The part of the answer the page reads: the roster with the open spec poll laid over it, or the roster alone.
   function sectionOf(data, useIntent) { return useIntent && data.intent ? data.intent : data.roster; }
 
   // ── the post ──
@@ -85,19 +85,19 @@
       const gap = need > 0 ? 'Need ' + need : need < 0 ? Math.abs(need) + ' over' : 'Full';
       return '<tr><th scope="row" class="gs-cell-strong">' + esc(ROLE_LABELS[role]) + '</th>' +
         '<td class="gs-num" data-label="On the roster">' + esc(data.roster.counts[role]) + '</td>' +
-        (showIntent ? '<td class="gs-num" data-label="With intent picks">' + esc(data.intent.counts[role]) + '</td>' : '') +
+        (showIntent ? '<td class="gs-num" data-label="With spec poll picks">' + esc(data.intent.counts[role]) + '</td>' : '') +
         '<td data-label="Target"><label class="gs-sr" for="rt-' + role + '">Target ' + esc(ROLE_LABELS[role]) + '</label><input class="gs-input gs-input-num" type="number" inputmode="numeric" min="0" max="99" step="1" id="rt-' + role + '" name="' + role + '" value="' + esc(data.targets[role]) + '" data-key="rt-' + role + '"></td>' +
         '<td data-label="Gap"><span class="gs-pill gs-pill-' + (need > 0 ? 'warn' : 'ok') + '">' + esc(gap) + '</span></td></tr>';
     }).join('');
-    return '<table class="gs-table gs-table-stack" aria-label="Roles against targets"><thead><tr><th scope="col">Role</th><th scope="col">On the roster</th>' + (showIntent ? '<th scope="col">With intent picks</th>' : '') +
+    return '<table class="gs-table gs-table-stack" aria-label="Roles against targets"><thead><tr><th scope="col">Role</th><th scope="col">On the roster</th>' + (showIntent ? '<th scope="col">With spec poll picks</th>' : '') +
       '<th scope="col">Target</th><th scope="col">Gap</th></tr></thead><tbody>' + rows + '</tbody></table>';
   }
 
   function needsHtml(data, x) {
     const section = sectionOf(data, x.useIntent);
     const toggle = data.intent
-      ? '<div class="gs-check"><input type="checkbox" id="rt-intent" data-change="recruiting-intent" data-key="rt-intent"' + (x.useIntent ? ' checked' : '') + '><label for="rt-intent">Count the open intent round (' + esc(data.intent.title) + ')</label></div>' +
-        '<p class="gs-fine">' + esc(plural(data.intent.replaced, 'main', 'mains')) + ' replaced by an intent pick.</p>'
+      ? '<div class="gs-check"><input type="checkbox" id="rt-intent" data-change="recruiting-intent" data-key="rt-intent"' + (x.useIntent ? ' checked' : '') + '><label for="rt-intent">Count the open spec poll (' + esc(data.intent.title) + ')</label></div>' +
+        '<p class="gs-fine">' + esc(plural(data.intent.replaced, 'main', 'mains')) + ' replaced by a spec poll pick.</p>'
       : '';
     return '<section class="gs-card-sec" aria-labelledby="rt-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="rt-h">Roles against the targets</h2>' +
       '<span class="gs-fine">' + esc(data.team.size + '-man, ' + plural(section.people, 'person', 'people')) + '</span></div><div class="gs-card-sec-body">' +
@@ -125,9 +125,9 @@
     const gd = opts.guildData;
     const x = opts.state;
     const data = x.data;
-    const head = '<div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Roster</h1><p class="gs-sub">' + esc(data.team.name) + ' &middot; Recruiting</p></div>' + G.pages.rosterTabs.html(gd, 'recruiting');
+    const head = '<div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Roster</h1><p class="gs-sub">' + esc(data.team.name) + ' &middot; Recruiting needs</p></div>' + G.pages.rosterTabs.html(gd, 'recruiting');
     return '<div class="gs-page">' + head + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '') +
-      needsHtml(data, x) + G.coverage.panelHtml(x.cov, { id: 'rt-cov', heading: 'Buffs and debuffs the roster misses', intro: x.useIntent && data.intent ? 'The roster with the intent picks laid over it.' : 'The active roster.' }) +
+      needsHtml(data, x) + G.coverage.panelHtml(x.cov, { id: 'rt-cov', heading: 'Buffs and debuffs the roster misses', intro: x.useIntent && data.intent ? 'The roster with the spec poll picks laid over it.' : 'The active roster.' }) +
       postHtml(data, x, gd) + '</div>';
   }
 

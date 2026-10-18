@@ -8,7 +8,7 @@ import { HOUR_MS, closesAtOf } from './signup-window.js';
 export const NOTIFY_KINDS = ['roster', 'loot', 'remind_24h', 'remind_2h', 'no_reply', 'confirm', 'log_nudge'];
 export const NOREPLY_HOURS = [6, 12, 24, 48];
 export const DEFAULT_NOREPLY_HOURS = 24;
-export const CONFIRM_HOURS = 6;            // the unconfirmed-roster reminder and its Needs attention count open this long before the raid
+export const CONFIRM_HOURS = 6;            // the unconfirmed-line-up reminder and its Needs attention count open this long before the raid
 export const REMIND_FAR_HOURS = 24;        // "Post upcoming raid reminders": 24 h and 2 h before the start
 export const REMIND_NEAR_HOURS = 2;
 export const REFRESH_WINDOW_HOURS = 48;    // inside it the event is refreshed every 2 h, before it every 12 h
@@ -215,7 +215,7 @@ export function confirmBody(raid, info) {
     embed: {
       title: `Confirm your spot: ${raidLabel(raid, info.teamName)}`,
       url: info.link || undefined,
-      description: clip(`The roster is published and the raid starts ${stamp(raid.starts_at)}. Please confirm your seat, or say you cannot make it.\n\nNot confirmed yet:\n${bulletList(names)}`, EMBED_DESCRIPTION_MAX),
+      description: clip(`The line-up is published and the raid starts ${stamp(raid.starts_at)}. Please confirm your group, or say you can't come.\n\nNot confirmed yet:\n${bulletList(names)}`, EMBED_DESCRIPTION_MAX),
     },
   });
 }
@@ -241,9 +241,9 @@ export function rosterBody(raid, info) {
   return bodyOf({
     roleId: info.roleId,
     embed: {
-      title: `Roster published: ${raidLabel(raid, info.teamName)}`,
+      title: `Line-up published: ${raidLabel(raid, info.teamName)}`,
       url: info.link || undefined,
-      description: `${info.seats.length} ${info.seats.length === 1 ? 'player' : 'players'}. The raid starts ${stamp(raid.starts_at)}. Open the raid page to confirm your seat.`,
+      description: `${info.seats.length} ${info.seats.length === 1 ? 'player' : 'players'}. The raid starts ${stamp(raid.starts_at)}. Open the raid page to confirm your group.`,
       fields,
     },
   });

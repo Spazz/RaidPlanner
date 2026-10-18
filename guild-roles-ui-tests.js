@@ -263,8 +263,8 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert.deepEqual(tabs({ 'guild.roles': 'guild', 'guild.access': 'guild' }), ['people', 'roles', 'discord', 'guests', 'dataaccess', 'public']);
     assert.deepEqual(tabs({ 'guild.roles': [] , 'guild.access': [] }), [], 'an empty team list is no permission');
     assert.deepEqual(tabs({}), []);
-    assert.deepEqual(labels({ 'guild.roles': 'guild' }), ['People and roles', 'Roles', 'Discord roles', 'Public page']);
-    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['People and roles', 'Guest links', 'Data access']);
+    assert.deepEqual(labels({ 'guild.roles': 'guild' }), ['Accounts', 'Roles', 'Discord roles', 'Public page']);
+    assert.deepEqual(labels({ 'guild.access': 'guild' }), ['Accounts', 'Guest links', 'Data access']);
     assert.equal(G.shell.canSeeSettings({ 'guild.roles': 'guild' }), true);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData() }, 'guests', '<p>x</p>');
     assert(/aria-current="page">Guest links</.test(frame) && frame.includes('href="#/g/g1/settings/guests"') && frame.includes('href="#/g/g1/settings/public"'));
@@ -1720,7 +1720,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     }
     const first = makeEnv({ url: '/#/g/g1/settings', routes: routes({ 'guild.roles': 'guild' }) });
     await settle();
-    assert.equal(first.loc.hash, '#/g/g1/settings/people', 'People and roles is still the first tab');
+    assert.equal(first.loc.hash, '#/g/g1/settings/people', 'Accounts is still the first tab');
   });
 
   await check('app: the People tab also reads the guild\'s roles for someone who can manage roles (a failed read leaves the page working); guild.access alone does not read them', async () => {

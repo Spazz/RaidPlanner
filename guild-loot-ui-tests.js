@@ -494,16 +494,16 @@ function withState(fn) {
   // ── the Loot card of a raid ────────────────────────────────────
   await check('raid card: award rows with time in the guild zone, quality item link, winner chips, tag select for editors, flag chips, note, delete', () => {
     const out = raidPage(okState());
-    assert(out.includes('<h2 class="gs-h2" id="loot-h">Loot</h2>') && out.includes('4 items'));
+    assert(out.includes('<h2 class="gs-h2" id="loot-h">Loot awards</h2>') && out.includes('4 items'));
     assert(out.includes('<ul class="gs-loot-list" aria-label="Loot awarded on this raid">') && (out.match(/<li class="gs-loot-row"/g) || []).length === 4);
-    assert(out.includes('8:12 PM') && out.includes('8:20 PM'), 'times in America/Chicago');
+    assert(out.includes('8:12 PM CT') && out.includes('8:20 PM CT'), 'times in America/Chicago, with the zone written');
     assert(out.includes('class="gs-item gs-q-4"') && out.includes('href="https://www.wowhead.com/tbc/item=28770"') && out.includes('class="gs-item gs-q-3"'));
     assert(out.includes('data-change="loot-tag" data-aid="a3"') && !/<span class="gs-loot-tag"><span class="gs-sr">Tag: <\/span><span class="gs-chip gs-chip-tag"/.test(out), 'editors get selects');
     assert(out.includes('Prio') && out.includes('Soft-res') && out.includes('Off-spec roll') && !/>TMB</.test(out.slice(out.indexOf('a1')).split('a2')[0]));
     assert(out.includes('Note: Rolled off-spec') && out.includes('>Edit note<') && out.includes('>Add note<'));
     assert(out.includes('data-action="loot-delete" data-aid="a1"') && out.includes('aria-label="Delete the award of Nathrezim Mindblade"'));
     assert(out.includes('>Guest<') && out.includes('Not on roster'));
-    assert(out.indexOf('Loot</h2>') > out.indexOf('People</h2>'), 'after the People card');
+    assert(out.indexOf('Loot awards</h2>') > out.indexOf('People</h2>'), 'after the People card');
     assertNoRawAttrs(out);
   });
 

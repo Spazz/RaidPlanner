@@ -65,7 +65,7 @@
     const meta = [];
     if (showTeam) meta.push('Wants ' + app.teamName);
     if (app.realm) meta.push(app.realm);
-    meta.push('Sent ' + G.ui.formatDateTime(app.createdAt));
+    meta.push('Sent ' + G.ui.formatDateTime(app.createdAt, G.ui.guildZone()));
     if (app.applicant) meta.push('Signed in as ' + app.applicant.displayName);
     return '<li class="gs-app-item" id="app-' + esc(app.id) + '"><div class="gs-app-head"><span class="gs-app-who">' + G.ui.classNameHtml(app.name, app.class) +
       ' <span class="gs-fine">' + esc(G.ui.className(app.class) + (app.spec ? ' - ' + app.spec : '')) + '</span></span>' +

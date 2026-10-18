@@ -1,10 +1,10 @@
 // ── PAGE PIECE: THE ROSTER'S TABS ───────────────────────────────
-// The strip under the Roster heading: Roster (the list), Intent (the class and spec intent board; everyone), Launch (the launch funnel; a Forever guild or a
-// launch team), Recruiting (recruitment needs) and Applications (the inbox), the last two for people who can edit a roster. Each tab is a route of its own (router.js ROSTER_TABS).
+// The strip under the Roster heading: Roster (the list), Spec poll (the class and spec poll; everyone), Launch (the launch funnel; a Forever guild or a
+// launch team), Recruiting needs (the role gaps) and Applications (the inbox), the last two for people who can edit a roster. Each tab is a route of its own (router.js ROSTER_TABS).
 (function (G) {
   'use strict';
 
-  const LABELS = { roster: 'Roster', intent: 'Intent', recruiting: 'Recruiting', applications: 'Applications', launch: 'Launch' };
+  const LABELS = { roster: 'Roster', intent: 'Spec poll', recruiting: 'Recruiting needs', applications: 'Applications', launch: 'Launch' };
 
   // -> [{ tab, label }] for this viewer (gd.me.can), in the order the strip shows them.
   function tabsFor(gd) {

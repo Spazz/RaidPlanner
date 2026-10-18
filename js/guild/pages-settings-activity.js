@@ -18,21 +18,9 @@
   function hasFilters(f) { return FILTERS.some(function (k) { return !!(f && f[k]); }); }
 
   // ── view ──
-  // A toLocaleString in the guild's time zone; a zone the browser does not know falls back to the viewer's own.
-  function inZone(ms, options, zone) {
-    const tries = zone ? [zone, undefined] : [undefined];
-    for (let i = 0; i < tries.length; i++) {
-      try { return new Date(ms).toLocaleString('en-US', tries[i] ? Object.assign({ timeZone: tries[i] }, options) : options); } catch (e) { /* try the next zone */ }
-    }
-    return '';
-  }
-
-  // 'Oct 17, 8:15 PM'; the year joins the text when the row is from another year than `now`.
+  // 'Sat Oct 17, 8:15 PM ET'; the year joins the text when the row is from another year than `now`.
   function whenText(ms, timeZone, now) {
-    if (typeof ms !== 'number' || !isFinite(ms)) return '';
-    const base = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
-    const sameYear = inZone(ms, { year: 'numeric' }, timeZone) === inZone(typeof now === 'number' ? now : Date.now(), { year: 'numeric' }, timeZone);
-    return inZone(ms, sameYear ? base : Object.assign({ year: 'numeric' }, base), timeZone);
+    return G.ui.dateTimeInZone(ms, timeZone, { year: 'auto', now: now });
   }
 
   function whoText(row) {

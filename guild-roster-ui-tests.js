@@ -780,7 +780,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     p.event.otherServer = true;
     const st = rhState(p);
     const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
-    assert(out.includes('This event was posted in a different Discord server than Bantr\'s.'));
+    assert(out.includes('This event was posted in a different Discord server than the Bantr server.'));
     assert(out.indexOf('different Discord server') < out.indexOf('<table'));
     assert(out.includes('>Add 4 people<'));
     st.confirmOtherServer = true;
@@ -1223,9 +1223,9 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(scriptSrcs.includes('/js/guild/roster-sort.js') && scriptSrcs.indexOf('/js/guild/pages-import.js') < scriptSrcs.indexOf('/js/guild/app.js'));
   });
 
-  await check('guild.css: class colours, Shaman #3d8fe0, trial chips, 44px phone targets for the new controls, no horizontal page overflow rules broken', () => {
+  await check('guild.css: class colours, Shaman text #4a9bff, trial chips, 44px phone targets for the new controls, no horizontal page overflow rules broken', () => {
     for (const c of ['warrior', 'paladin', 'hunter', 'rogue', 'priest', 'shaman', 'mage', 'warlock', 'druid']) assert(css.includes('.gs-class-' + c), c);
-    assert(/\.gs-class-shaman[^{]*\{ color: #3d8fe0; \}/.test(css));
+    assert(/\.gs-class-shaman[^{]*\{ color: var\(--class-shaman-text\); \}/.test(css) && /--class-shaman-text: #4a9bff;/.test(css));
     assert(css.includes('.gs-trial-ends') && css.includes('.gs-trial-ended') && css.includes('#4a4228') && css.includes('#3a2510'));
     const phone = css.split('@media (max-width: 600px)').filter(b => b.includes('.gs-seg {')).join('');
     assert(/\.gs-seg \{[^}]*min-height: 44px/.test(phone));

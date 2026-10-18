@@ -49,12 +49,9 @@
     return url ? '<a class="' + cls + '" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + '</a>' : '<span class="' + cls + '">' + esc(label) + '</span>';
   }
 
-  // "9:12 PM" in the guild's time zone (the raid date is the guild's calendar day); the viewer's zone when the zone is unknown.
+  // "9:12 PM ET" in the guild's time zone (the raid date is the guild's calendar day); the viewer's zone, named, when the zone is unknown.
   function timeText(ms, timeZone) {
-    if (typeof ms !== 'number' || !isFinite(ms)) return '';
-    try { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timeZone || undefined }); } catch (e) {
-      try { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); } catch (e2) { return ''; }
-    }
+    return G.ui.timeInZone(ms, timeZone);
   }
 
   // "Oct 10, 2026" in the guild's time zone.
@@ -66,13 +63,9 @@
     }
   }
 
-  // "Oct 10, 8:12 PM" in the guild's time zone, for lists that span several days.
+  // "Sat Oct 10, 8:12 PM ET" in the guild's time zone, for lists that span several days.
   function dateTimeText(ms, timeZone) {
-    if (typeof ms !== 'number' || !isFinite(ms)) return '';
-    const opts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
-    try { return new Date(ms).toLocaleString('en-US', Object.assign({ timeZone: timeZone || undefined }, opts)); } catch (e) {
-      try { return new Date(ms).toLocaleString('en-US', opts); } catch (e2) { return ''; }
-    }
+    return G.ui.dateTimeInZone(ms, timeZone);
   }
 
   function tagLabel(tag) { return has(TAG_LABELS, tag) ? TAG_LABELS[tag] : String(tag == null ? '' : tag); }

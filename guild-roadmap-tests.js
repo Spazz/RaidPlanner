@@ -114,9 +114,10 @@ const me = { user: { id: 'u1', username: 'alice', displayName: 'Alice' }, guilds
   await check('nav: Future enhancements sits in the help group for everyone, links to #/roadmap, and is the current item on the roadmap route', () => {
     for (const [label, ctx] of Object.entries(shells)) {
       const items = G.shell.sidebarItems(ctx);
-      const keys = items.map(i => i.key);
-      assert.deepEqual(plain(keys.slice(-4)), ['whats-new', 'roadmap', 'how-it-works', 'faq'], label);
-      const entry = items.filter(i => i.key === 'roadmap')[0];
+      const help = items[items.length - 1];
+      assert.equal(help.key, 'help', label + ': the one Help item closes the sidebar');
+      assert.deepEqual(plain(help.children.map(i => i.key)), ['whats-new', 'roadmap', 'how-it-works', 'faq'], label);
+      const entry = help.children.filter(i => i.key === 'roadmap')[0];
       assert.equal(entry.label, 'Future enhancements');
       assert.equal(entry.href, '#/roadmap');
       assert(G.icons.names.includes(entry.icon));
@@ -358,7 +359,8 @@ const me = { user: { id: 'u1', username: 'alice', displayName: 'Alice' }, guilds
     for (const m of read('js/guild/pages-roadmap.js').matchAll(/class="([^"]*)"/g)) for (const c of m[1].split(/\s+/)) if (/^gs-[a-z0-9_-]+$/.test(c)) used.add(c);
     const defined = new Set([...css.matchAll(/\.(gs-[a-z0-9_-]+)/g)].map(m => m[1]));
     assert.deepEqual([...used].filter(c => !defined.has(c)), []);
-    const block = css.slice(css.indexOf('Future enhancements (#/roadmap)'));
+    const from = css.indexOf('Future enhancements (#/roadmap)');
+    const block = css.slice(from, css.indexOf('/* ── Loot (Phase 4)', from)); // the roadmap section alone: the sections after it have their own tokens
     assert(/@media \(max-width: 600px\)/.test(block) && !/(^|[;{\s])--[\w-]+\s*:/.test(block));
   });
 

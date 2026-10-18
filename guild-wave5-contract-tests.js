@@ -221,7 +221,7 @@ check('Loot board: an officer pastes the TMB and softres exports through the rea
     ['prio:aldric:28770:1', 'prio:brindle:28770:1', 'wish:cassia:28770:2', 'prio:cassia:29000:1', 'prio:brindle:30311:1', 'prio:zorgax:30311:1']);
 
   let text = boardText(page.html());
-  assert(text.includes('Loot board') && text.includes('2 items'), text.slice(0, 300));
+  assert(text.includes('Loot prios') && text.includes('2 items'), text.slice(0, 300));
   assert(/TMB prios\s*:\s*6 rows, pasted/.test(text) && /Soft-reserves\s*:\s*not pasted/.test(text));
   assert(text.includes('In line: the 2 people signed up, placed or present on this raid.'));
   assert(text.includes('Prio #1 Aldric') && text.includes('Already got it'), 'the sword Aldric got on 2026-10-10 is greyed');

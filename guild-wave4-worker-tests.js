@@ -584,7 +584,7 @@ check('roster published: the team channel gets the groups once per publish (a se
   await s.ok('gm', 'POST', `/raids/${rid}/roster`, {}, 200);
   assert.equal(s.net.posts.length, 1);
   const e = embedOf(s.net.posts[0]);
-  assert.equal(e.title, 'Roster published: Gruul - Alpha');
+  assert.equal(e.title, 'Line-up published: Gruul - Alpha');
   assert.deepEqual(e.fields.map((f) => [f.name, f.value]), [['Group 1', 'Aldric, Bryn'], ['Bench', 'Cora']]);
   assert.equal(s.net.posts[0].body.content, '<@&123456789012345678>');
   assert.equal(e.url, `https://raidsmith.test/#/g/${s.gid}/raids/r/${rid}`);

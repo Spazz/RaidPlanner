@@ -150,8 +150,8 @@ function formFor(teamId, values) {
       assert(m, `switch ${key}`);
       assert.equal(!!m[1], on, `switch ${key}`);
     }
-    assert(text.includes('Post the roster when published') && text.includes('Post loot after an import') && text.includes('Post upcoming raid reminders (24 h and 2 h before)'));
-    assert(text.includes("Remind people who haven't answered") && text.includes("Remind rostered people who haven't confirmed (6 h before the raid)"));
+    assert(text.includes('Post the line-up when published') && text.includes('Post loot after an import') && text.includes('Post upcoming raid reminders (24 h and 2 h before)'));
+    assert(text.includes("Remind people who haven't answered") && text.includes("Remind people in the line-up who haven't confirmed (6 h before the raid)"));
     const hours = [...out.matchAll(/<select class="gs-input" id="notify-t1-hours"[^>]*>([\s\S]*?)<\/select>/g)][0][1];
     assert.deepEqual([...hours.matchAll(/<option value="(\d+)"( selected)?>([^<]*)<\/option>/g)].map(o => [o[1], !!o[2], o[3]]), [['6', false, '6 hours'], ['12', true, '12 hours'], ['24', false, '24 hours'], ['48', false, '48 hours']]);
     assert(out.includes('data-action="notify-remove" data-team="t1"') && !out.includes('data-action="notify-remove" data-team="t2"'), 'Remove only where there is a webhook');
@@ -276,8 +276,8 @@ function formFor(teamId, values) {
     S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
     const text = (item) => G.pages.attention.itemText(item);
     const day = G.ui.weekdayDay;
-    assert.equal(text({ kind: 'roster_pending', date: '2027-01-16', count: 3 }), `${day('2027-01-16')}: 3 rostered people haven't confirmed`);
-    assert.equal(text({ kind: 'roster_pending', date: '2027-01-16', count: 1 }), `${day('2027-01-16')}: 1 rostered person hasn't confirmed`);
+    assert.equal(text({ kind: 'roster_pending', date: '2027-01-16', count: 3 }), `${day('2027-01-16')}: 3 line-up players haven't confirmed`);
+    assert.equal(text({ kind: 'roster_pending', date: '2027-01-16', count: 1 }), `${day('2027-01-16')}: 1 line-up player hasn't confirmed`);
     assert.equal(text({ kind: 'event_moved', date: '2027-01-16', eventDate: '2027-01-18' }), `${day('2027-01-16')}: Raid-Helper has the event on ${day('2027-01-18')}; the raid was not moved`);
     assert.equal(text({ kind: 'webhook_off', teamName: 'Team KJ', status: 404 }), 'The Discord webhook of Team KJ was switched off (Discord answered 404)');
     assert.equal(text({ kind: 'webhook_off', teamName: 'Team KJ' }), 'The Discord webhook of Team KJ was switched off');
@@ -291,7 +291,7 @@ function formFor(teamId, values) {
     assert(out.includes('href="#/g/g1/raids/r/r_1"'));
     assert(out.includes('href="#/g/g1/settings/notifications"'), 'the webhook line opens the Notifications tab');
     const t = stripTags(out);
-    assert(t.includes("Rostered players who haven't confirmed") && t.includes('Raid-Helper events on another day') && t.includes('Discord webhooks switched off'));
+    assert(t.includes("Line-up players who haven't confirmed") && t.includes('Raid-Helper events on another day') && t.includes('Discord webhooks switched off'));
     assert(out.includes('>Discord</span>') && out.includes('>Event</span>'));
     assert(out.includes(G.router.format({ name: 'settings', gid: 'g1', tab: 'notifications' })) && t.includes('and 2 more'), 'and N more goes to the same place');
     // The page lists exactly the kinds the Worker produces.

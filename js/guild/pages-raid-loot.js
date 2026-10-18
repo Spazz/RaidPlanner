@@ -34,12 +34,12 @@
     return x && x.gid === gid && x.rid === rid ? x : null;
   }
 
-  // Whether the card offers "Import from Gargul" now (the raid page's Actions menu offers the same): loaded, allowed to edit, panel not open yet.
+  // Whether the card offers "Import from Gargul" now (the raid page's More menu offers the same): loaded, allowed to edit, panel not open yet.
   function canImport(x) {
     return !!(x && x.status === 'ok' && x.data && x.data.canEdit && x.ui && !x.ui.open);
   }
 
-  // Whether the card (and the raid page's Actions menu) offers "Add award" now: loaded and allowed to edit.
+  // Whether the card (and the raid page's More menu) offers "Add award" now: loaded and allowed to edit.
   function canAdd(x) {
     return !!(x && x.status === 'ok' && x.data && x.data.canEdit);
   }
@@ -139,7 +139,7 @@
     const teamId = idOf(opts.data.raid.team);
     const unmatched = awards.filter(function (w) { return w.match && w.match.kind === 'unmatched'; }).length;
     const review = L().allows(gd, 'attendance.review', teamId);
-    const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot</h2><span class="gs-head-tools"><span class="gs-fine">' + esc(plural(awards.length, 'item', 'items')) + '</span>' +
+    const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot awards</h2><span class="gs-head-tools"><span class="gs-fine">' + esc(plural(awards.length, 'item', 'items')) + '</span>' +
       (canImport(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-import-open" data-key="loot-import-open">Import from Gargul</button>' : '') +
       (canAdd(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-add-open" data-key="loot-add-open">Add award</button>' : '') + '</span></div>';
     const list = awards.length
@@ -176,12 +176,12 @@
 
   // can['loot.view'] does not say who sees loot (the loot policy decides on the Worker), so a 403 is told here, not guessed before.
   function deniedCardHtml() {
-    return '<section class="gs-card-sec gs-loot-sec" aria-labelledby="loot-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot</h2></div><div class="gs-card-sec-body">' +
+    return '<section class="gs-card-sec gs-loot-sec" aria-labelledby="loot-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot awards</h2></div><div class="gs-card-sec-body">' +
       '<p class="gs-fine">You can\'t see this team\'s loot.</p></div></section>';
   }
 
   function errorCardHtml(x) {
-    return '<section class="gs-card-sec gs-loot-sec" aria-labelledby="loot-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot</h2></div><div class="gs-card-sec-body">' +
+    return '<section class="gs-card-sec gs-loot-sec" aria-labelledby="loot-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot awards</h2></div><div class="gs-card-sec-body">' +
       G.ui.alertHtml(x.error || 'Could not load the loot.', 'loot-load-error') +
       '<div><button type="button" class="gs-btn gs-btn-sm" data-action="loot-reload" data-key="loot-reload">Try again</button></div></div></section>';
   }

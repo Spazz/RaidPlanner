@@ -1,5 +1,5 @@
 // ── PAGE: RAID DETAIL ───────────────────────────────────────────
-// One raid: the header (title, one summary line, one Actions menu), the source strip (one slim chip each for the Raid-Helper event, Warcraft Logs
+// One raid: the header (title, one summary line, one More menu), the source strip (one slim chip each for the Raid-Helper event, Warcraft Logs
 // reports and plan, with a "..." menu of that source's actions), the people table (class badge, sign-up tag, plan, boss-pull bar, outcome pill, Change
 // button; stacked cards on a phone), the unmatched characters, and the dialogs that change the raid (event, report, plan, manual attendance, delete).
 // The menus are ui.menuHtml / ui.menu. GET /raids/:rid; every write answers with the detail.
@@ -224,7 +224,7 @@
     return G.pages.raidLoot ? G.pages.raidLoot.cardHtml({ guildData: gd, data: data, state: loot }) : '';
   }
 
-  // The Loot board card (PM wave 5) of an upcoming or a past raid; nothing while its data is not loaded, when the loot visibility keeps the viewer out, or
+  // The Loot prios card (PM wave 5) of an upcoming or a past raid; nothing while its data is not loaded, when the loot visibility keeps the viewer out, or
   // when nothing was pasted and the viewer cannot paste.
   function boardCardHtml(gd, data, board) {
     return G.pages.raidBoard ? G.pages.raidBoard.cardHtml({ guildData: gd, data: data, state: board }) : '';
@@ -286,7 +286,7 @@
       return sourceChipHtml({ id: 'plan', name: 'Plan', title: 'none', linked: false, actions: edit ? btn('plan-replace', 'Link a plan') : '' });
     }
     return sourceChipHtml({ id: 'plan', name: 'Plan', title: p.label || 'Plan', detail: plural(p.players || 0, 'player', 'players'), linked: true,
-      actions: edit ? sourceMenuHtml('plan', 'Plan actions', [opItem('plan-replace', 'Replace plan'), { separator: true }, opItem('plan-remove', 'Remove plan', null, true)]) : '' });
+      actions: edit ? sourceMenuHtml('plan', 'Plan settings', [opItem('plan-replace', 'Replace plan'), { separator: true }, opItem('plan-remove', 'Remove plan', null, true)]) : '' });
   }
 
   // A raid that has not started has no log: the event and the plan only.
@@ -304,7 +304,7 @@
       (edit ? '<span class="gs-row-actions">' + btn('manual-edit', 'Edit') + btn('manual-remove', 'Remove') + '</span>' : '') + '</div>';
   }
 
-  // The one Actions menu of the page, for those who may edit the raid. Every action of the old button row and the cards is in it or on a source chip;
+  // The one More menu of the page, for those who may edit the raid. Every action of the old button row and the cards is in it or on a source chip;
   // Delete raid (the only destructive one) is set apart at the bottom. ctx: { loot, roster } (the loot and roster card states).
   function actionsMenuHtml(data, ctx) {
     if (!(data.can && data.can.edit)) return '';
@@ -325,12 +325,12 @@
     }
     if (G.pages.raidExtras) G.pages.raidExtras.menuItems(data).forEach(function (item) { items.push(item); }); // duties, a pasted roster, a guest sign-up link (wave 8)
     items.push({ label: 'Open in Planner', key: 'mi-plan-in-planner', data: { action: 'raid-op', op: 'plan-in-planner' } });
-    if (roster && roster.canPublish(data, ctx.roster)) items.push({ label: 'Publish roster', key: 'mi-ro-publish', data: { action: 'roster-publish', op: 'publish' } });
+    if (roster && roster.canPublish(data, ctx.roster)) items.push({ label: 'Publish line-up', key: 'mi-ro-publish', data: { action: 'roster-publish', op: 'publish' } });
     items.push({ separator: true }, { label: 'Delete raid', key: 'mi-raid-delete', danger: true, data: { action: 'raid-op', op: 'raid-delete' } });
-    return G.ui.menuHtml({ id: 'raid-actions', label: 'Actions', key: 'raid-actions', items: items });
+    return G.ui.menuHtml({ id: 'raid-actions', label: 'More', key: 'raid-actions', items: items });
   }
 
-  // Title, one summary line (team, bosses, present / bench / missed or the start time, status chips) and the Actions menu.
+  // Title, one summary line (team, bosses, present / bench / missed or the start time, status chips) and the More menu.
   function headHtml(gd, data, ctx) {
     const r = data.raid;
     const team = A().teamOf(gd, idOf(r.team));
@@ -409,7 +409,7 @@
       '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm gs-btn-molten" data-key="rs-save">Save settings</button></div></form></div></section>';
   }
 
-  // "Your seat" (members) and the Roster card (officers) of the published roster (pages-raid-roster.js); nothing while its data is not loaded.
+  // "Your group" (members) and the Line-up card (officers) of the published line-up (pages-raid-roster.js); nothing while its data is not loaded.
   function seatHtml(gd, data, roster) {
     return G.pages.raidRoster ? G.pages.raidRoster.seatHtml({ guildData: gd, data: data, state: roster }) : '';
   }
@@ -540,7 +540,7 @@
     if (res && res.raid && res.sources) c.x.data = res;
     a().note = note || '';
     st().pageAlert = '';
-    if (G.pages.raidRoster) G.pages.raidRoster.invalidate(); // a new plan: the roster is read again after the draw ("The plan changed since you published")
+    if (G.pages.raidRoster) G.pages.raidRoster.invalidate(); // a new plan: the line-up is read again after the draw ("The plan changed since you published")
     G.app.render();
     // The event, the plan or the results changed: the sign-ups panel reads its list again.
     if (G.pages.raidSignups && res && res.raid) {
@@ -740,8 +740,16 @@
     G.ui.runDialog(form, promise, function (res) { setDetail(c, res); });
   };
 
+  // Whether the form's own dialog is still open: the Move question replaces it (dialogs never stack), and then nothing is left to show an error in.
+  function dialogStillOpen(form) {
+    const dlg = form && form.closest ? form.closest('dialog') : null;
+    if (!dlg) return true; // not inside a dialog element (a test's stand-in): treat it as open
+    return dlg.open !== false && dlg.isConnected !== false;
+  }
+
   // The dialogs that take one source string. A second try after other_server / report_not_same_night confirms it.
-  function sourceSubmit(form, build) {
+  // notLinked (optional): what the page says when the officer answers Cancel to "Move this raid?" (the link dialog is gone by then).
+  function sourceSubmit(form, build, notLinked) {
     const c = cur();
     if (!c) return;
     const src = String(form.elements.source.value || '').trim();
@@ -753,11 +761,18 @@
     if (!call) return;
     G.ui.setBusy(form, true);
     call.then(function (res) {
-      if (res === G.pages.raids.MOVE_CANCELLED) { G.ui.setBusy(form, false); return; } // the officer said no to moving the raid: the dialog stays open
+      if (res === G.pages.raids.MOVE_CANCELLED) {
+        // The officer said no to moving the raid: nothing changed. The link dialog closed when the question opened, so the page says it.
+        G.ui.setBusy(form, false);
+        G.ui.closeDialogOf(form);
+        if (notLinked) { a().note = notLinked; st().pageAlert = ''; G.app.render(); }
+        return;
+      }
       G.ui.closeDialogOf(form);
       setDetail(c, res);
     }, function (err) {
       G.ui.setBusy(form, false);
+      if (!dialogStillOpen(form)) { pageError(err); return; } // an error after the Move question: no dialog left for it, so the page shows it
       const cl = G.api.classify(err);
       if (cl.view === 'signin') { G.ui.closeDialogOf(form); G.app.requireSignin(); return; }
       if (cl.view === 'message') { G.ui.closeDialogOf(form); G.app.showFailure(cl.title, cl.text); return; }
@@ -773,7 +788,7 @@
   G.handlers.submit['event-form'] = function (form) {
     sourceSubmit(form, function (c, src, confirmed) {
       return G.pages.raids.putEvent(c.gid, c.rid, src, confirmed);
-    });
+    }, 'Not linked. The event is on another day than the raid, and the raid was not moved.');
   };
 
   G.handlers.submit['report-form'] = function (form) {

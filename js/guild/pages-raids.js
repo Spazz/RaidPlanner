@@ -103,12 +103,12 @@
   }
 
   // ── upcoming ──
+  // '8:00 PM ET': the time in the guild's zone with the zone written next to it (G.ui.timeInZone).
   function timeText(ms, timeZone) {
-    if (typeof ms !== 'number' || !isFinite(ms)) return '';
-    try { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timeZone || undefined }); } catch (e) { return ''; }
+    return G.ui.timeInZone(ms, timeZone);
   }
 
-  // 'Sat Oct 17, 8:00 PM': the raid's guild-local date and its start time in the guild's time zone. A date-only raid (timeKnown === false: its
+  // 'Sat Oct 17, 8:00 PM ET': the raid's guild-local date and its start time in the guild's time zone. A date-only raid (timeKnown === false: its
   // startsAt is a placeholder noon) is the day alone, never a made-up time; callers add "time not set" (timeNotSetHtml).
   function whenText(r, gd) {
     const day = G.ui.weekdayDay(r.raidOn) || r.raidOn;
@@ -127,7 +127,7 @@
     try { return new Intl.DateTimeFormat('en-CA', { timeZone: timeZone || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms)); } catch (e) { return ''; }
   }
 
-  // A moment that is not a raid's start (the sign-up deadline) written like one, in the guild's time zone: 'Thu Oct 15, 7:30 PM'.
+  // A moment that is not a raid's start (the sign-up deadline) written like one, in the guild's time zone: 'Thu Oct 15, 7:30 PM ET'.
   function momentText(ms, gd) {
     const zone = gd && gd.guild ? gd.guild.timeZone : '';
     const day = G.ui.weekdayDay(dateOf(ms, zone));
@@ -144,7 +144,7 @@
     return 'this raid has only a date and the team has no schedule slot that day, so sign-ups close at 18:00 guild time' + earlier;
   }
 
-  // The same, short, for the Raids list: 'Thu 7:30 PM'.
+  // The same, short, for the Raids list: 'Thu 7:30 PM ET'.
   function momentShortText(ms, gd) {
     const zone = gd && gd.guild ? gd.guild.timeZone : '';
     const weekday = (G.ui.weekdayDay(dateOf(ms, zone)) || '').split(' ')[0];
@@ -163,7 +163,7 @@
     if (standby) parts.push(standby + ' standby');
     if (s.bench) parts.push(s.bench + ' bench');
     if (s.tentative) parts.push(s.tentative + ' tentative');
-    if (s.absence) parts.push(s.absence + ' absent');
+    if (s.absence) parts.push(s.absence + ' can\'t come');
     return parts.join(', ');
   }
 
@@ -627,12 +627,14 @@
       (count > 1 ? '<button type="button" class="gs-icon-btn" data-action="nr-remove-report" data-idx="' + i + '" data-key="nr-rm-' + i + '" aria-label="Remove report ' + (i + 1) + '">' + G.icons.icon('close', 18) + '</button>' : '') + '</div>';
   }
 
-  function runLinesHtml(gid, run, retryAction) {
+  // backAction (optional): a failed first step ("Create the raid") also offers "Back to the form", with what was typed kept.
+  function runLinesHtml(gid, run, retryAction, backAction) {
     const retry = retryAction || 'nr-retry';
     const words = { pending: 'Waiting', running: 'Working...', ok: 'Done', error: 'Failed', skipped: 'Waiting for the raid' };
     return '<ul class="gs-run-lines" aria-live="polite">' + run.lines.map(function (l) {
       let actions = '';
       if (l.status === 'error') {
+        if (backAction && l.id === 'raid' && !run.raidId) actions += '<button type="button" class="gs-btn gs-btn-sm" data-action="' + backAction + '" data-key="nr-back">Back to the form</button>';
         if (l.openRaidId) actions += '<a class="gs-btn gs-btn-sm" href="' + esc(raidHref(gid, l.openRaidId)) + '">Open that raid</a>';
         if (l.accept) actions += '<button type="button" class="gs-btn gs-btn-sm" data-action="' + retry + '" data-line="' + esc(l.id) + '" data-accept="1" data-key="nr-accept-' + esc(l.id) + '">' + esc(l.accept) + '</button>';
         else if (!l.openRaidId) actions += '<button type="button" class="gs-btn gs-btn-sm" data-action="' + retry + '" data-line="' + esc(l.id) + '" data-key="nr-retry-' + esc(l.id) + '">Retry</button>';
@@ -665,7 +667,7 @@
     const done = run && !run.running;
     const raidId = run && run.raidId;
     const runBlock = run
-      ? '<section class="gs-card-sec" aria-labelledby="nr-run-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="nr-run-h">Creating the raid</h2></div><div class="gs-card-sec-body">' + runLinesHtml(gid, run) +
+      ? '<section class="gs-card-sec" aria-labelledby="nr-run-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="nr-run-h">Creating the raid</h2></div><div class="gs-card-sec-body">' + runLinesHtml(gid, run, null, 'nr-back') +
         (raidId ? '<div class="gs-actions"><a class="gs-btn gs-btn-molten" href="' + esc(raidHref(gid, raidId)) + '">Open raid</a>' + (done ? '<button type="button" class="gs-btn" data-action="nr-another" data-key="nr-another">Add another raid</button>' : '') + '</div>' : '') + '</div></section>'
       : '';
     const form = run ? '' : '<form class="gs-card-sec" data-submit="nr-create-form" novalidate><div class="gs-card-sec-body">' + teamField +
@@ -743,6 +745,15 @@
     if (!nr || nr.form.reports.length < 2) return;
     nr.form.reports.splice(Number(el.getAttribute('data-idx')), 1);
     G.app.render();
+  };
+  // Back from a failed create: the form comes back with everything that was typed (the run only held a copy), the error line goes away.
+  G.handlers.click['nr-back'] = function () {
+    const nr = newState();
+    if (!nr || !nr.run || nr.run.running) return;
+    nr.run = null;
+    nr.error = '';
+    G.app.render();
+    G.ui.focusByKey('nr-date');
   };
   G.handlers.click['nr-another'] = function () {
     const gd = currentGd();

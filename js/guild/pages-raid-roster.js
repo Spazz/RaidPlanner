@@ -1,17 +1,17 @@
-// ── PAGE PIECE: THE PUBLISHED ROSTER OF A RAID ──────────────────
-// GET /raids/:rid/roster. Officers (raids.edit), once the raid has a plan, publish it as the roster (POST), publish it again when the plan changed, or
-// unpublish it (DELETE), and see who confirmed. A member with a seat gets "Your seat" at the top of the raid page and a chip on the Raids list, with Confirm
-// and Can't make it (POST .../roster/confirm and .../roster/decline; the decline asks first and turns the sign-up into Absent). The data loads itself after
+// ── PAGE PIECE: THE PUBLISHED LINE-UP OF A RAID ─────────────────
+// GET /raids/:rid/roster (the route keeps its name; the words on screen are "line-up", glossary D1). Officers (raids.edit), once the raid has a plan, publish it as
+// the line-up (POST), publish it again when the plan changed, or unpublish it (DELETE), and see who confirmed. A member with a group gets "Your group" at the top of
+// the raid page and a chip on the Raids list, with Confirm and Can't come (POST .../roster/confirm and .../roster/decline; the decline asks first and turns the sign-up into an Absence). The data loads itself after
 // the raid page is drawn (afterRender), so the raid page reads exactly what it did before; pages-raid.js draws the pieces and drops this copy when the raid changes.
 (function (G) {
   'use strict';
 
-  const STATUS_LABELS = { pending: 'Waiting', confirmed: 'Confirmed', declined: 'Can\'t make it' };
+  const STATUS_LABELS = { pending: 'Waiting', confirmed: 'Confirmed', declined: 'Can\'t come' };
   const STATUS_PILLS = { pending: 'info', confirmed: 'ok', declined: 'warn' };
   const PUBLISH_TEXT = 'Members will see their group and can confirm or say they can\'t come.';
-  const REPUBLISH_TEXT = 'Members keep the answer they gave for a seat that did not change. Everyone else is asked again.';
-  const UNPUBLISH_TEXT = 'Members stop seeing their seat, and the answers given so far are dropped.';
-  const DECLINE_TEXT = 'Your sign-up for this raid becomes Absent. You can change your mind until the raid starts.';
+  const REPUBLISH_TEXT = 'Members keep the answer they gave for a group that did not change. Everyone else is asked again.';
+  const UNPUBLISH_TEXT = 'Members stop seeing their group, and the answers given so far are dropped.';
+  const DECLINE_TEXT = 'Your sign-up for this raid becomes Can\'t come. You can change your mind until the raid starts.';
 
   function A() { return G.pages.attendance; }
   function a() { return A().attState(); }
@@ -19,7 +19,7 @@
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
   function pill(status) { return '<span class="gs-pill gs-pill-' + (STATUS_PILLS[status] || 'muted') + '">' + esc(STATUS_LABELS[status] || status) + '</span>'; }
 
-  // ── a member's seat ──
+  // ── a member's group ──
   // "Holy Paladin (Gorrim)": spec and class, then the character. Parts that are missing are left out.
   function seatWho(m) {
     const role = [m.spec, m.class ? G.ui.className(m.class) : ''].filter(Boolean).join(' ');
@@ -42,25 +42,25 @@
     const buttons = declined
       ? '<button type="button" class="gs-btn gs-btn-molten" data-action="seat-confirm" data-key="seat-confirm"' + (s.busy ? ' disabled' : '') + '>Confirm after all</button>'
       : (mine.status === 'pending' ? '<button type="button" class="gs-btn gs-btn-molten" data-action="seat-confirm" data-key="seat-confirm"' + (s.busy ? ' disabled' : '') + '>Confirm</button>' : '') +
-        '<button type="button" class="gs-btn" data-action="seat-decline" data-key="seat-decline"' + (s.busy ? ' disabled' : '') + '>Can\'t make it</button>';
-    return '<section class="gs-card-sec gs-seat" aria-labelledby="seat-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="seat-h">Your seat</h2>' + pill(mine.status) + '</div><div class="gs-card-sec-body">' +
+        '<button type="button" class="gs-btn" data-action="seat-decline" data-key="seat-decline"' + (s.busy ? ' disabled' : '') + '>Can\'t come</button>';
+    return '<section class="gs-card-sec gs-seat" aria-labelledby="seat-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="seat-h">Your group</h2>' + pill(mine.status) + '</div><div class="gs-card-sec-body">' +
       '<p class="gs-seat-line">' + esc(seatText(mine)) + '</p>' +
       (!mine.group && seatWho(mine).trim() ? '<p class="gs-fine">As ' + esc(seatWho(mine).trim()) + '</p>' : '') +
-      (declined ? '<p class="gs-fine">You told the officers you can\'t make it.</p>' : mine.status === 'confirmed' ? '<p class="gs-fine">You told the officers you\'re coming.</p>' : '<p class="gs-fine">Tell the officers if you\'re coming.</p>') +
+      (declined ? '<p class="gs-fine">You told the officers you can\'t come.</p>' : mine.status === 'confirmed' ? '<p class="gs-fine">You told the officers you\'re coming.</p>' : '<p class="gs-fine">Tell the officers if you\'re coming.</p>') +
       '<div class="gs-row-actions gs-seat-actions">' + buttons + '</div>' +
       '<p class="gs-alert" id="seat-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p></div></section>';
   }
 
   // ── the Raids list row ──
-  // "Group 3 - confirm?" / "Group 3 - confirmed" / "Bench - confirm?" with Confirm and Can't make it. r.mine.roster = { group, status }.
+  // "Group 3 - confirm?" / "Group 3 - confirmed" / "Bench - confirm?" with Confirm and Can't come. r.mine.roster = { group, status }.
   function listChipHtml(r) {
     const ro = r && r.mine && r.mine.roster;
     if (!ro) return '';
     const where = ro.group ? 'Group ' + ro.group : 'Bench';
-    const text = ro.status === 'confirmed' ? where + ' - confirmed' : ro.status === 'declined' ? where + ' - can\'t make it' : where + ' - confirm?';
+    const text = ro.status === 'confirmed' ? where + ' - confirmed' : ro.status === 'declined' ? where + ' - can\'t come' : where + ' - confirm?';
     const attrs = ' data-rid="' + esc(r.id) + '"';
     const confirm = ro.status === 'confirmed' ? '' : '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-roster" data-do="confirm"' + attrs + ' data-key="rc-' + esc(r.id) + '">' + (ro.status === 'declined' ? 'Confirm after all' : 'Confirm') + '</button>';
-    const decline = ro.status === 'declined' ? '' : '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-roster" data-do="decline"' + attrs + ' data-key="rd-' + esc(r.id) + '">Can\'t make it</button>';
+    const decline = ro.status === 'declined' ? '' : '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-roster" data-do="decline"' + attrs + ' data-key="rd-' + esc(r.id) + '">Can\'t come</button>';
     return '<span class="gs-chip gs-chip-' + (ro.status === 'declined' ? 'flag' : 'signup') + '">' + esc(text) + '</span>' + confirm + decline;
   }
 
@@ -79,10 +79,10 @@
 
   function countsText(c) {
     const x = c || {};
-    return (x.confirmed || 0) + ' confirmed, ' + (x.pending || 0) + ' waiting, ' + (x.declined || 0) + ' can\'t make it';
+    return (x.confirmed || 0) + ' confirmed, ' + (x.pending || 0) + ' waiting, ' + (x.declined || 0) + ' can\'t come';
   }
 
-  // Whether the roster can be published now (the raid page's Actions menu offers it too): an officer, a raid that has not started, a plan, nothing published yet.
+  // Whether the line-up can be published now (the raid page's More menu offers it too): an officer, a raid that has not started, a plan, nothing published yet.
   function canPublish(data, state) {
     if (!data || !data.can || !data.can.edit || !state || state.status !== 'ok' || !state.data || state.data.published) return false;
     return !!(data.raid && data.raid.upcoming && data.sources && data.sources.plan);
@@ -95,24 +95,24 @@
     const data = opts.data;
     if (!data.can || !data.can.edit || !s) return '';
     const upcoming = !!(data.raid && data.raid.upcoming);
-    const head = function (extra) { return '<div class="gs-card-sec-head"><h2 class="gs-h2" id="ro-h">Roster</h2>' + (extra || '') + '</div>'; };
+    const head = function (extra) { return '<div class="gs-card-sec-head"><h2 class="gs-h2" id="ro-h">Line-up</h2>' + (extra || '') + '</div>'; };
     const wrap = function (extra, body) { return '<section class="gs-card-sec gs-ro" aria-labelledby="ro-h">' + head(extra) + '<div class="gs-card-sec-body">' + body + '</div></section>'; };
     if (s.status === 'error') {
-      return upcoming ? wrap('', '<p class="gs-alert" role="alert">' + esc(s.message || 'Could not load the roster.') + '</p><div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="ro-retry" data-key="ro-retry">Try again</button></div>') : '';
+      return upcoming ? wrap('', '<p class="gs-alert" role="alert">' + esc(s.message || 'Could not load the line-up.') + '</p><div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="ro-retry" data-key="ro-retry">Try again</button></div>') : '';
     }
     if (s.status !== 'ok' || !s.data) return '';
     const d = s.data;
     const err = '<p class="gs-alert" id="ro-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p>';
     if (!d.published) {
       if (!upcoming || !(data.sources && data.sources.plan)) return '';
-      return wrap('', '<p class="gs-fine">Publish the plan as the roster. ' + esc(PUBLISH_TEXT) + '</p>' +
-        '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm gs-btn-molten" data-action="roster-publish" data-op="publish" data-key="ro-publish">Publish roster</button></div>' + err);
+      return wrap('', '<p class="gs-fine">Publish the plan as the line-up. ' + esc(PUBLISH_TEXT) + '</p>' +
+        '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm gs-btn-molten" data-action="roster-publish" data-op="publish" data-key="ro-publish">Publish line-up</button></div>' + err);
     }
     const entries = Array.isArray(d.entries) ? d.entries : [];
     const when = d.publishedAt && G.pages.raids.momentText ? G.pages.raids.momentText(d.publishedAt, gd) : '';
     const by = d.publishedBy ? (typeof d.publishedBy === 'object' ? d.publishedBy.displayName || d.publishedBy.name : d.publishedBy) : '';
     const actions = upcoming
-      ? '<span class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="roster-publish" data-op="republish" data-key="ro-republish">Re-publish roster</button>' +
+      ? '<span class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="roster-publish" data-op="republish" data-key="ro-republish">Re-publish line-up</button>' +
         '<button type="button" class="gs-btn gs-btn-sm" data-action="roster-publish" data-op="unpublish" data-key="ro-unpublish">Unpublish</button></span>'
       : '';
     const changed = d.planChanged && upcoming
@@ -125,7 +125,7 @@
     }).join('');
     return wrap(actions, '<p class="gs-fine">Published' + (when ? ' ' + esc(when) : '') + (by ? ' by ' + esc(by) : '') + '.</p>' +
       '<p class="gs-ro-counts" id="ro-counts">' + esc(countsText(d.counts)) + '</p>' + changed +
-      (groups ? '<div class="gs-su-groups">' + groups + '</div>' : '<p class="gs-empty">No one is on the roster.</p>') + err);
+      (groups ? '<div class="gs-su-groups">' + groups + '</div>' : '<p class="gs-empty">No one is in the line-up.</p>') + err);
   }
 
   // ── data ──
@@ -148,19 +148,19 @@
     });
   }
 
-  // The state of the open raid's roster, or null while it is not read for that raid.
+  // The state of the open raid's line-up, or null while it is not read for that raid.
   function stateFor(gid, rid) {
     const s = a().raidRoster;
     return s && s.gid === gid && s.rid === rid ? s : null;
   }
 
-  // The raid changed (a plan, an event or the results): the roster is read again after the next draw, the old copy stays until then.
+  // The raid changed (a plan, an event or the results): the line-up is read again after the next draw, the old copy stays until then.
   function invalidate() {
     const s = a().raidRoster;
     if (s) s.forRaid = null;
   }
 
-  // Called by the app after each render of a guild page: the raid page reads the roster once per raid detail. Officers always (a started raid shows the list); members
+  // Called by the app after each render of a guild page: the raid page reads the line-up once per raid detail. Officers always (a started raid shows the list); members
   // only before the start.
   function afterRender(r) {
     const gd = currentGd();
@@ -192,8 +192,8 @@
   // ── officers: publish, re-publish, unpublish (each asks first) ──
   function confirmDialogHtml(op) {
     const text = op === 'unpublish' ? UNPUBLISH_TEXT : op === 'republish' ? REPUBLISH_TEXT : PUBLISH_TEXT;
-    const title = op === 'unpublish' ? 'Unpublish the roster?' : op === 'republish' ? 'Publish the roster again?' : 'Publish the roster?';
-    const button = op === 'unpublish' ? 'Unpublish' : op === 'republish' ? 'Re-publish roster' : 'Publish roster';
+    const title = op === 'unpublish' ? 'Unpublish the line-up?' : op === 'republish' ? 'Publish the line-up again?' : 'Publish the line-up?';
+    const button = op === 'unpublish' ? 'Unpublish line-up' : op === 'republish' ? 'Re-publish line-up' : 'Publish line-up';
     return '<form class="gs-dialog-form" data-submit="roster-confirm-form" data-op="' + esc(op) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">' + esc(title) + '</h2><p class="gs-confirm-text" id="dlg-text">' + esc(text) + '</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
@@ -249,9 +249,9 @@
 
   function declineDialogHtml(from, rid) {
     return '<form class="gs-dialog-form" data-submit="roster-decline-form" data-from="' + (from === 'list' ? 'list' : 'page') + '" data-rid="' + esc(rid) + '" novalidate>' +
-      '<h2 class="gs-dialog-title" id="dlg-title">Tell the officers you can\'t make it?</h2><p class="gs-confirm-text" id="dlg-text">' + esc(DECLINE_TEXT) + '</p>' +
+      '<h2 class="gs-dialog-title" id="dlg-title">Tell the officers you can\'t come?</h2><p class="gs-confirm-text" id="dlg-text">' + esc(DECLINE_TEXT) + '</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Can\'t make it</button></div></form>';
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Can\'t come</button></div></form>';
   }
 
   G.handlers.click['seat-decline'] = function () {
@@ -292,7 +292,7 @@
     el.disabled = true;
     return G.api.raidRoster.confirm(gd.guild.id, rid).then(function () { return refreshList(gd.guild.id); }, function (err) {
       el.disabled = false;
-      // The raid started or the roster was taken down since the list was read: show the list as it is now, with the reason.
+      // The raid started or the line-up was taken down since the list was read: show the list as it is now, with the reason.
       const show = function () { G.app.handleError(err, { pageAlert: true }); };
       if (err && (err.code === 'raid_started' || err.code === 'roster_not_published' || err.code === 'not_on_roster')) { G.pages.raids.reloadList(x).then(show, show); return; }
       show();

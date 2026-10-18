@@ -37,13 +37,13 @@
     return v === 'guild' || (Array.isArray(v) && !!teamId && v.indexOf(teamId) >= 0);
   }
 
-  // The Guild settings tabs in the order the tab bar shows them. A viewer sees a tab when they hold ANY of its `needs` actions (People and roles needs
+  // The Guild settings tabs in the order the tab bar shows them. A viewer sees a tab when they hold ANY of its `needs` actions (Accounts needs
   // access or roles; Raid schedule is for whoever edits raids, and a Team Lead reaches it from the Raids page: canSeeSettings below, and so the sidebar
   // item, is unchanged). Every tab here is a route tab in router.js and every action a Worker action: guild-structure-tests.js checks both.
   const SETTINGS_TABS = [
     { tab: 'teams', label: 'Teams', needs: ['guild.teams'] },
     { tab: 'schedule', label: 'Raid schedule', needs: ['raids.edit'] },
-    { tab: 'people', label: 'People and roles', needs: ['guild.access', 'guild.roles'] },
+    { tab: 'people', label: 'Accounts', needs: ['guild.access', 'guild.roles'] },
     { tab: 'roles', label: 'Roles', needs: ['guild.roles'] },
     { tab: 'discord', label: 'Discord roles', needs: ['guild.roles'] },
     { tab: 'guests', label: 'Guest links', needs: ['guild.access'] },
@@ -156,12 +156,12 @@
     return items;
   }
 
-  // What's new, Future enhancements, How it works, FAQ: at the bottom of every sidebar. The first one starts the separated help group.
+  // What's new, Future enhancements, How it works, FAQ: the four pages the single Help item of every sidebar opens.
   function helpItems(ctx) {
     const base = baseOf(ctx);
     const unseen = !!(ctx && ctx.whatsNewUnseen);
     return [
-      { key: 'whats-new', label: 'What\'s new', short: 'What\'s new', icon: 'whatsnew', href: '/whats-new.html', separated: true, isNew: unseen,
+      { key: 'whats-new', label: 'What\'s new', short: 'What\'s new', icon: 'whatsnew', href: '/whats-new.html', isNew: unseen,
         ariaLabel: unseen ? 'What\'s new, new' : 'What\'s new' },
       { key: 'roadmap', label: 'Future enhancements', short: 'Roadmap', icon: 'roadmap', href: base + G.router.format({ name: 'roadmap' }) },
       { key: 'how-it-works', label: 'How it works', short: 'Guide', icon: 'guide', href: base + '#how-it-works', action: 'how-it-works' },
@@ -169,15 +169,22 @@
     ];
   }
 
+  // The one "Help" sidebar item (separated, at the bottom): a fold that opens What's new, Future enhancements, How it works and FAQ. It carries the
+  // neutral "New" mark while What's new is unseen, so the news is not hidden by the fold.
+  function helpGroup(ctx) {
+    const unseen = !!(ctx && ctx.whatsNewUnseen);
+    return { key: 'help', label: 'Help', short: 'Help', icon: 'faq', separated: true, isNew: unseen, ariaLabel: unseen ? 'Help, new' : 'Help', children: helpItems(ctx) };
+  }
+
   // The nav model, one function (tested as a matrix): the sidebar / drawer list for this viewer.
-  // Signed out, or signed in with no guild (or its data not loaded yet): Planner, then the help group.
-  // With a guild: [Home, for people who can act on its items], Roster, Raids, Attendance, Loot, Planner, [Guild settings], then the help group.
+  // Signed out, or signed in with no guild (or its data not loaded yet): Planner, then the Help item.
+  // With a guild: [Home, for people who can act on its items], Roster, Raids, Attendance, Loot, Planner, [Guild settings], then the one Help item.
   // Home is not one of the phone tabs (tabItems builds its five from navItems alone); the drawer carries it.
   function sidebarItems(ctx) {
     const gd = guildOf(ctx);
     const own = gd ? navItems(gd.guild.id, gd.me && gd.me.can, badgesOf(gd, ctx.teamId), baseOf(ctx)) : [plannerItem()];
     if (gd && canSeeAttention(gd.me && gd.me.can)) own.unshift(homeItem(gd.guild.id, homeBadge(ctx), baseOf(ctx)));
-    return own.concat(helpItems(ctx));
+    return own.concat([helpGroup(ctx)]);
   }
 
   // Phone tabs: guild sections of a viewer with a guild only. Roster, Raids, Attendance, Loot, Planner.
@@ -222,12 +229,26 @@
 
   function actionAttr(item) { return item.action ? ' data-action="' + esc(item.action) + '"' : ''; }
 
-  function navListHtml(items, ctx) {
+  function navLinkHtml(item, ctx) {
+    const active = isCurrentItem(item, ctx);
+    return '<li><a class="gs-nav-link' + (active ? ' is-active' : '') + '" href="' + esc(item.href) + '"' + actionAttr(item) + ' aria-label="' + esc(item.ariaLabel || item.label) + '"' + (active ? ' aria-current="page"' : '') + '>' +
+      ic(item.icon, 20) + '<span class="gs-label-full">' + esc(item.label) + '</span><span class="gs-label-short" aria-hidden="true">' + esc(item.short) + '</span>' + navBadgeHtml(item) + newMarkHtml(item) + '</a></li>';
+  }
+
+  // The Help fold: a button that shows or hides its pages (data-action="help-toggle" in app.js). It is open while one of its pages is the current one.
+  // listId keeps the ids unique when the sidebar and the phone drawer both draw it.
+  function foldHtml(item, ctx, listId) {
+    const open = item.children.some(function (child) { return isCurrentItem(child, ctx); });
+    const id = 'nav-fold-' + item.key + '-' + listId;
+    return '<li class="gs-nav-fold' + (open ? ' is-open' : '') + '"><button type="button" class="gs-nav-link gs-nav-foldbtn" data-action="help-toggle" data-key="' + esc(item.key) + '-toggle-' + esc(listId) + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + esc(id) + '" aria-label="' + esc(item.ariaLabel || item.label) + '">' +
+      ic(item.icon, 20) + '<span class="gs-label-full">' + esc(item.label) + '</span><span class="gs-label-short" aria-hidden="true">' + esc(item.short) + '</span>' + newMarkHtml(item) + ic('chevronDown', 16) + '</button>' +
+      '<ul class="gs-nav-sub" id="' + esc(id) + '"' + (open ? '' : ' hidden') + '>' + item.children.map(function (child) { return navLinkHtml(child, ctx); }).join('') + '</ul></li>';
+  }
+
+  function navListHtml(items, ctx, listId) {
     return '<ul class="gs-nav-list">' + items.map(function (item) {
-      const active = isCurrentItem(item, ctx);
       const sep = item.separated ? '<li class="gs-nav-sep" role="separator"></li>' : '';
-      return sep + '<li><a class="gs-nav-link' + (active ? ' is-active' : '') + '" href="' + esc(item.href) + '"' + actionAttr(item) + ' aria-label="' + esc(item.ariaLabel || item.label) + '"' + (active ? ' aria-current="page"' : '') + '>' +
-        ic(item.icon, 20) + '<span class="gs-label-full">' + esc(item.label) + '</span><span class="gs-label-short" aria-hidden="true">' + esc(item.short) + '</span>' + navBadgeHtml(item) + newMarkHtml(item) + '</a></li>';
+      return sep + (item.children ? foldHtml(item, ctx, listId || 'side') : navLinkHtml(item, ctx));
     }).join('') + '</ul>';
   }
 
@@ -279,7 +300,7 @@
   function sidebarHtml(ctx) {
     const collapsed = !!ctx.collapsed;
     return '<aside class="gs-sidebar" aria-label="Main navigation">' + headHtml(ctx, 'gs-team-select') +
-      '<nav aria-label="Main">' + navListHtml(sidebarItems(ctx), ctx) + '</nav>' +
+      '<nav aria-label="Main">' + navListHtml(sidebarItems(ctx), ctx, 'side') + '</nav>' +
       '<div class="gs-side-foot"><button type="button" class="gs-collapse" data-action="toggle-sidebar" data-key="toggle-sidebar" aria-expanded="' + (collapsed ? 'false' : 'true') + '" aria-label="' + (collapsed ? 'Expand sidebar' : 'Collapse sidebar') + '">' +
       ic(collapsed ? 'expand' : 'collapse', 20) + '<span class="gs-label-full">' + (collapsed ? 'Expand' : 'Collapse') + '</span></button></div></aside>';
   }
@@ -300,7 +321,7 @@
     return '<dialog class="gs-drawer" id="gs-drawer" aria-label="Main menu">' + rail +
       '<div class="gs-drawer-panel"><div class="gs-drawer-top"><button type="button" class="gs-icon-btn" data-action="close-drawer" aria-label="Close menu">' + ic('close', 20) + '</button></div>' +
       headHtml(ctx, 'gs-team-select-drawer') +
-      '<nav aria-label="Main">' + navListHtml(sidebarItems(ctx), ctx) + '</nav></div></dialog>';
+      '<nav aria-label="Main">' + navListHtml(sidebarItems(ctx), ctx, 'drawer') + '</nav></div></dialog>';
   }
 
   function tabsHtml(ctx) {
@@ -323,8 +344,8 @@
     backfill: { parent: 'attendance', parentLabel: 'Attendance', label: 'Backfill from Warcraft Logs' },
     personatt: { parent: 'attendance', parentLabel: 'Attendance', label: 'Person' },
     lootperson: { parent: 'loot', parentLabel: 'Loot', label: 'Person' },
-    intent: { parent: 'roster', parentLabel: 'Roster', label: 'Intent' },
-    recruiting: { parent: 'roster', parentLabel: 'Roster', label: 'Recruiting' },
+    intent: { parent: 'roster', parentLabel: 'Roster', label: 'Spec poll' },
+    recruiting: { parent: 'roster', parentLabel: 'Roster', label: 'Recruiting needs' },
     applications: { parent: 'roster', parentLabel: 'Roster', label: 'Applications' },
     launch: { parent: 'roster', parentLabel: 'Roster', label: 'Launch' },
   };
@@ -485,11 +506,15 @@
     };
   }
 
+  // "Skip to content": the first tab stop of every page. The static skeletons (index.html, faq.html, whats-new.html) carry the same link ahead of
+  // the rail, so it is first before any script runs; app.js sends a click on it to the visible main area (no hash change: the hash is the router's).
+  const SKIP_LINK_HTML = '<a class="gs-skip" href="#gs-main" data-skip-link>Skip to content</a>';
+
   // Every slot in page order plus the main HTML, as one string: for tests and previews (the page itself writes
   // each slot into its own element and never replaces the planner's markup).
   function render(ctx, mainHtml) {
     const s = slots(ctx);
-    return s.rail + s.sidebar + '<header class="gs-topbar">' + s.lead + s.account + '</header>' + s.banner +
+    return SKIP_LINK_HTML + s.rail + s.sidebar + '<header class="gs-topbar">' + s.lead + s.account + '</header>' + s.banner +
       '<main class="gs-main" id="gs-main">' + (mainHtml || '') + '</main>' + s.tabs + s.drawer;
   }
 
@@ -503,7 +528,9 @@
     activeTeams: activeTeams,
     navItems: navItems,
     helpItems: helpItems,
+    helpGroup: helpGroup,
     sidebarItems: sidebarItems,
+    SKIP_LINK_HTML: SKIP_LINK_HTML,
     tabItems: tabItems,
     hasTiles: hasTiles,
     rosterBadge: rosterBadge,

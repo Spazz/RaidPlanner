@@ -219,7 +219,7 @@ check('member: the raid page offers four buttons; Sign up, Late, a change of cha
   assert(/Late 1/.test(stripTags(page())));
   await E.handlers.click['su-kind'](el({ 'data-kind': 'absence' }));
   html = page();
-  assert(/Absent 1/.test(stripTags(html)) && /data-kind="absence"[^>]*aria-pressed="true"/.test(html));
+  assert(/Can&#39;t come 1/.test(stripTags(html)) && /data-kind="absence"[^>]*aria-pressed="true"/.test(html));
 
   await E.handlers.click['su-withdraw'](el({}));
   assert.equal(await s.world.db.prepare('SELECT COUNT(*) AS n FROM raid_signups').first('n'), 0);

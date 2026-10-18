@@ -27,6 +27,7 @@ async function check(name, fn) {
 const ROOT = __dirname;
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const GuildCss = require('./tests/guild-css');
 const css = read('guild.css');
 const appCss = read('app.css');
 
@@ -336,7 +337,7 @@ function assertEscaped(out, label) {
     assert.deepEqual(tabs(ALL_CAN), ['teams', 'people', 'roles', 'discord', 'guests', 'dataaccess', 'public', 'applications', 'notifications', 'battlenet']);
     assert.deepEqual(tabs({}), []);
     const frame = G.shell.settingsFrameHtml({ guildData: guildData({ 'guild.access': 'guild' }) }, 'people', '<p>x</p>');
-    assert(frame.includes('People and roles'));
+    assert(frame.includes('Accounts'));
     assert(!/>Teams</.test(frame));
     const nav = G.shell.navItems('g1', { 'guild.access': 'guild' }).find(i => i.key === 'settings');
     assert.equal(nav.href, '#/g/g1/settings/people');
@@ -458,7 +459,7 @@ function assertEscaped(out, label) {
     const gd = guildData(ALL_CAN);
     const crumbs = (route, teamId) => plain(G.shell.breadcrumbItems({ route, guildData: gd, teamId }).map(c => c.label));
     assert.deepEqual(crumbs({ name: 'section', gid: 'g1', section: 'raids' }, 't1'), ['Ravens', 'Team A', 'Raids']);
-    assert.deepEqual(crumbs({ name: 'settings', gid: 'g1', tab: 'people' }, 't1'), ['Ravens', 'Guild settings', 'People and roles']);
+    assert.deepEqual(crumbs({ name: 'settings', gid: 'g1', tab: 'people' }, 't1'), ['Ravens', 'Guild settings', 'Accounts']);
     assert.deepEqual(crumbs({ name: 'new' }, null), ['Create a guild']);
     assert.deepEqual(crumbs({ name: 'privacy' }, null), ['Privacy & my data']);
   });
@@ -851,16 +852,19 @@ function assertEscaped(out, label) {
     const defined = new Set([...appCss.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
     for (const m of css.matchAll(/(--gs-out-[a-z_]+(?:-ink)?)\s*:/g)) defined.add(m[1]); // the attendance outcome colours are guild.css's own
     for (const m of css.matchAll(/(--gs-tone-[a-z]+(?:-bg)?)\s*:/g)) defined.add(m[1]); // so are the Raids tones (sign-up tags, tally, bars)
+    for (const name of GuildCss.ownTokenNames(css)) defined.add(name); // and the design framework tokens (the first :root block) and a table row's --mark
     const used = [...css.matchAll(/var\(\s*(--[\w-]+)\s*([,)])/g)];
     assert(used.length > 50, 'expected the stylesheet to use the tokens');
     assert.deepEqual([...new Set(used.filter(m => !defined.has(m[1])).map(m => m[1]))], [], 'undefined tokens');
-    // The only tokens guild.css owns are the attendance outcome colours (--gs-out-<outcome> and its -ink text colour) and the Raids tones (--gs-tone-<tone> and its -bg).
-    assert.deepEqual([...css.matchAll(/(^|[;{\s])(--[\w-]+)\s*:/g)].map(m => m[2]).filter(n => !/^--gs-out-[a-z_]+(-ink)?$/.test(n) && !/^--gs-tone-[a-z]+(-bg)?$/.test(n)), [], 'guild.css must not define custom properties');
+    // The only tokens guild.css owns are the design framework tokens (its first :root block), the attendance outcome colours (--gs-out-<outcome> and its -ink text colour),
+    // the Raids tones (--gs-tone-<tone>, -bg and -edge) and a table row's --mark.
+    const own = GuildCss.ownTokenNames(css);
+    assert.deepEqual([...css.matchAll(/(^|[;{\s])(--[\w-]+)\s*:/g)].map(m => m[2]).filter(n => !own.has(n)), [], 'guild.css must not define custom properties');
   });
 
   await check('guild.css: dark flat design, phone breakpoint at 600px, visible focus ring, 44px touch targets', () => {
     assert(/@media \(max-width: 600px\)/.test(css));
-    assert(/outline: 2px solid var\(--accent-gold\); outline-offset: 2px/.test(css));
+    assert(/outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\)/.test(css) && /--focus-ring: 2px solid var\(--accent-gold\)/.test(css));
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
     assert(/\.gs-btn, \.gs-btn-sm \{ min-height: 44px; \}/.test(phone));
     assert(/\.gs-input, \.gs-input-search \{ height: 44px; \}/.test(phone));

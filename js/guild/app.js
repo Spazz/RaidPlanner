@@ -375,6 +375,7 @@
     const href = String(window.location.href);
     if (!o.force && href === lastHref) return Promise.resolve();
     lastHref = href;
+    G.ui.unsaved.clear(); // the address changed (the person chose to leave): a held-back form is gone with its page
     const prev = state.section;
     const section = sectionFor();
     state.section = section;
@@ -697,8 +698,8 @@
     else if (r.name === 'apply') page = 'Apply';
     else if (r.name === 'join') page = 'Join a raid';
     else if (r.name === 'launch') page = 'Launch';
-    else if (r.name === 'intent') page = 'Intent';
-    else if (r.name === 'recruiting') page = 'Recruiting';
+    else if (r.name === 'intent') page = 'Spec poll';
+    else if (r.name === 'recruiting') page = 'Recruiting needs';
     else if (r.name === 'applications') page = 'Applications';
     if (gd && gd.guild && page) page += ' - ' + gd.guild.name;
     else if (G.router.isViewerRoute(r) && state.view && state.view.data && state.view.data.guild) page += ' - ' + state.view.data.guild.name;
@@ -1077,6 +1078,27 @@
   };
 
   // Writes the current context's choice (plan view or everywhere else); works signed out (local key only).
+  // The Help fold of the sidebar and the drawer: shows or hides its four pages (the markup is shell.js foldHtml).
+  G.handlers.click['help-toggle'] = function (btn) {
+    const list = byId(btn.getAttribute('aria-controls'));
+    if (!list) return;
+    const open = !!list.hidden;
+    list.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+
+  // "Skip to content": focus the main area that is showing (the guild page, the planner, or a static page's own main), without touching the hash.
+  function focusMain() {
+    const shown = function (el) { return !!el && !el.hidden && isDisplayed(el); };
+    const candidates = [byId('gs-main'), byId('planner-root'), document.querySelector ? document.querySelector('main.landing') : null, document.querySelector ? document.querySelector('main') : null];
+    const target = candidates.filter(shown)[0];
+    if (!target) return false;
+    if (!target.getAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+    target.focus();
+    return true;
+  }
+
+  // Writes the current context's choice (plan view or everywhere else); works signed out (local key only).
   G.handlers.click['toggle-sidebar'] = function () {
     const context = collapseContext();
     const next = !collapsedFor(context);
@@ -1201,6 +1223,11 @@
   function onClick(ev) {
     const t = ev.target;
     if (!t || !t.closest) return;
+    if (t.closest('a[data-skip-link]') && isPlainClick(ev)) {
+      if (ev.preventDefault) ev.preventDefault();
+      focusMain();
+      return;
+    }
     if (!t.closest('.gs-import-menu')) closeImportMenu();
     if (t.closest('.gs-menu a')) closeMenu(false);
     G.ui.menu.itemClick(ev);
@@ -1215,6 +1242,7 @@
   function onClickCapture(ev) {
     const t = ev.target;
     if (!t || !t.closest) return;
+    if (G.ui.unsaved.guardClick(ev)) return; // a form with unsaved changes asks "Stay or Leave and discard" before an in-app link navigates
     if (!t.closest('.gs-account')) closeMenu(false);
     G.ui.menu.outsideClick(ev);
   }
@@ -1251,6 +1279,7 @@
     originalTitle = document.title;
     SCOPED_SLOTS.forEach(function (id) { const el = byId(id); if (el && el.classList) el.classList.add('gs-scope'); });
     app.started = true;
+    G.ui.unsaved.install(window);
     document.addEventListener('click', onClickCapture, true);
     document.addEventListener('click', onClick);
     document.addEventListener('keydown', onKeydown);

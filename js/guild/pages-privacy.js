@@ -56,7 +56,7 @@
     let impactHtml = '';
     if (blocked) {
       impactHtml += '<p class="gs-warn" id="delete-blocked" role="alert">You are the only Guild Master of ' + guildLinks(hand) +
-        ', and other people have joined. Hand over first: open People and roles, edit another person\'s roles and choose Make Guild Master. Then you can delete your data.</p>';
+        ', and other people have joined. Hand over first: open Accounts in Guild settings, edit another person\'s roles and choose Make Guild Master. Then you can delete your data.</p>';
     }
     if (gone.length) {
       impactHtml += '<p class="gs-warn" id="delete-guilds">Nobody else has joined ' + G.ui.joinNames(gone) + '. Deleting your data also deletes ' + (gone.length === 1 ? 'that guild' : 'those guilds') + ', with its teams and roles.</p>';
@@ -97,7 +97,7 @@
         'Officer notes: only officers and team leads see them.',
         'Your attendance for each raid.',
         'The sign-ups you make in Raidsmith: the raid, your status, the character and spec you chose, and an optional note.',
-        'Discord channel posts, only when an officer switches them on: the roster, loot and raid reminders, and reminders that list the people who haven\'t answered a raid or confirmed a seat, by character name. Raidsmith pings those whose Discord account it knows unless they chose Don\'t mention me in reminders on Linked accounts. It keeps a log of which posts it sent (no text, no names) for 90 days. The channel\'s webhook address is a secret: Raidsmith never shows it again, and officers can only replace or remove it.',
+        'Discord channel posts, only when an officer switches them on: the line-up, loot and raid reminders, and reminders that list the people who haven\'t answered a raid or confirmed their group, by character name. Raidsmith pings those whose Discord account it knows unless they chose Don\'t mention me in reminders on Linked accounts. It keeps a log of which posts it sent (no text, no names) for 90 days. The channel\'s webhook address is a secret: Raidsmith never shows it again, and officers can only replace or remove it.',
       ])) +
       section('privacy-comes-from', 'Where it comes from', bullets([
         'Raid-Helper sign-ups: Discord ID, nickname and sign-up status.',

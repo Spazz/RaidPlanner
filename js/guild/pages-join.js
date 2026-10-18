@@ -16,7 +16,7 @@
   function whenText(raid) {
     const day = G.ui.weekdayDay(raid.raidOn) || raid.raidOn;
     if (raid.timeKnown === false) return day;
-    return day + ', ' + new Date(raid.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return day + ', ' + G.ui.timeInZone(raid.startsAt, ''); // the guest's own zone, named: this page carries no guild zone
   }
 
   function raidLine(data) {

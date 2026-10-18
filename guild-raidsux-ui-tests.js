@@ -1,5 +1,5 @@
 /**
- * Raidsmith guild UI - the Raids tab redesign: the shared menu helper (ui.menuHtml / ui.menu), the raid page header with its one Actions menu,
+ * Raidsmith guild UI - the Raids tab redesign: the shared menu helper (ui.menuHtml / ui.menu), the raid page header with its one More menu,
  * the source chips, the people table (class badge, sign-up tags, pull bar, outcome pill, change button, phone cards), the Raids list header
  * (New raid + More) with its stacked bars, and the tone colours (contrast and lightness).
  * Run: node guild-raidsux-ui-tests.js
@@ -290,20 +290,20 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert(/addEventListener\('click', onClickCapture, true\)/.test(app) && /addEventListener\('keydown', onKeydown\)/.test(app));
   });
 
-  // ═══ 3. The raid page: header and Actions menu ═══
-  await check('raid page: the header is the title, one summary line (bosses, present / bench / missed, status chip) and ONE Actions button', () => {
+  // ═══ 3. The raid page: header and More menu ═══
+  await check('raid page: the header is the title, one summary line (bosses, present / bench / missed, status chip) and ONE More button', () => {
     const out = raidPage(detail(), { loot: lootState(), roster: rosterState() });
     assert(/<h1 class="gs-h1" tabindex="-1">Sat Oct 17 - Black Temple - 25<\/h1>/.test(out));
     const line = out.slice(out.indexOf('gs-sumline'), out.indexOf('</div>', out.indexOf('gs-sumline')));
     assert(line.includes('1 kill, 3 wipes') && line.includes('2 present, 1 bench, 1 missed') && line.includes('>Reviewed<'), line);
-    assert.equal((out.match(/data-action="menu-toggle"/g) || []).length, 1 + 3, 'the Actions button and the three source menus');
-    assert(/<button type="button" class="gs-btn gs-menu-trigger" id="raid-actions"[^>]*aria-haspopup="menu" aria-expanded="false"[^>]*><span>Actions<\/span>/.test(out));
+    assert.equal((out.match(/data-action="menu-toggle"/g) || []).length, 1 + 3, 'the More button and the three source menus');
+    assert(/<button type="button" class="gs-btn gs-menu-trigger" id="raid-actions"[^>]*aria-haspopup="menu" aria-expanded="false"[^>]*><span>More<\/span>/.test(out));
     assert(!/<button(?![^>]*role="menuitem")[^>]*>(Recalculate|Delete raid|Plan in Planner|Mark as No log)<\/button>/.test(out), 'no loose action buttons in the header');
     assert(!out.includes('gs-roster-actions') && !out.includes('gs-btn-danger-outline'));
     assertNoRawAttrs(out);
   });
 
-  await check('raid page: the Actions menu holds Recalculate, Import loot from Gargul, Open in Planner and Delete raid (danger, after a rule) for a past raid', () => {
+  await check('raid page: the More menu holds Recalculate, Import loot from Gargul, Open in Planner and Delete raid (danger, after a rule) for a past raid', () => {
     const out = raidPage(detail(), { loot: lootState(), roster: rosterState() });
     const menu = out.slice(out.indexOf('id="raid-actions-list"'), out.indexOf('</div></div>', out.indexOf('id="raid-actions-list"')));
     const labels = [...menu.matchAll(/role="menuitem"[^>]*>([^<]+)</g)].map(m => m[1]);
@@ -312,10 +312,10 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert(/class="gs-menu-item is-danger"[^>]*data-op="raid-delete"/.test(menu));
     assert(menu.includes('data-action="loot-import-open"') && menu.includes('data-op="plan-in-planner"') && menu.includes('data-op="recompute"'));
     assert(!menu.includes('Mark as No log'), 'a raid with reports is not marked No log');
-    assert(!menu.includes('Publish roster'), 'a past raid has no roster to publish');
+    assert(!menu.includes('Publish line-up'), 'a past raid has no line-up to publish');
   });
 
-  await check('raid page: Mark as No log is offered only without a log; Import loot only when the loot card would offer it; Publish roster only for an upcoming raid with a plan that is not published', () => {
+  await check('raid page: Mark as No log is offered only without a log; Import loot only when the loot card would offer it; Publish line-up only for an upcoming raid with a plan that is not published', () => {
     const awaiting = detail({ raid: Object.assign(detail().raid, { state: 'awaiting_log' }), people: [], sources: { event: null, reports: [], plan: null } });
     assert(raidPage(awaiting, { loot: lootState() }).includes('Mark as No log'));
     assert(!raidPage(detail(), {}).includes('Import loot from Gargul'), 'loot not loaded: not offered');
@@ -324,7 +324,7 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert(!raidPage(detail(), { loot: open }).includes('>Import loot from Gargul<'), 'the import panel is already open');
     const up = detail({ raid: { id: 'u1', team: 't1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, title: null, zone: 'Black Temple', state: 'awaiting_log', openFlags: 0, stale: false, version: 1 }, people: [], pulls: [], signups: [] });
     const publish = raidPage(up, { roster: rosterState() });
-    assert(/data-action="roster-publish" data-op="publish" data-key="mi-ro-publish">Publish roster</.test(publish));
+    assert(/data-action="roster-publish" data-op="publish" data-key="mi-ro-publish">Publish line-up</.test(publish));
     assert(!raidPage(up, { roster: rosterState({ published: true }) }).includes('data-key="mi-ro-publish"'), 'already published');
     assert(!raidPage(Object.assign({}, up, { sources: Object.assign({}, FULL_SOURCES, { plan: null }) }), { roster: rosterState() }).includes('data-key="mi-ro-publish"'), 'no plan');
     assert(!raidPage(up, {}).includes('data-key="mi-ro-publish"'), 'roster not loaded');
@@ -332,7 +332,7 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert(raidPage(up, { roster: rosterState() }).includes('Delete raid'));
   });
 
-  await check('raid page: a member gets no Actions menu and no source menus; the chips still say what is linked', () => {
+  await check('raid page: a member gets no More menu and no source menus; the chips still say what is linked', () => {
     const member = detail({ people: null, can: { edit: false, review: false, seeAttendance: false, seeNicknames: false } });
     const out = raidPage(member, { guildData: gd(MEMBER_CAN) });
     assert(!out.includes('menu-toggle') && !out.includes('data-op=') && !out.includes('Delete raid') && !out.includes('role="menu"'));
@@ -347,7 +347,7 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert.equal((strip.match(/class="gs-src-dot"/g) || []).length, 3);
     assert(strip.includes('>Raid-Helper<') && strip.includes('>Warcraft Logs<') && strip.includes('>Plan<'));
     assert(strip.includes('>Team KJ Saturday - BT<') && strip.includes('30 sign-ups, synced today') && strip.includes('>2 reports<') && strip.includes('7 boss pulls') && strip.includes('>BT run<') && strip.includes('25 players'));
-    for (const label of ['Raid-Helper event actions', 'Warcraft Logs actions', 'Plan actions']) assert(strip.includes('aria-label="' + label + '"'), label);
+    for (const label of ['Raid-Helper event actions', 'Warcraft Logs actions', 'Plan settings']) assert(strip.includes('aria-label="' + label + '"'), label);
     assert(!strip.includes('gs-source') && !out.includes('gs-sources'), 'the three cards are gone');
     const eventMenu = strip.slice(strip.indexOf('id="src-event-list"'), strip.indexOf('data-src="logs"'));
     assert.deepEqual(opsOf(eventMenu), ['event-refresh', 'event-replace', 'event-remove']);
@@ -372,7 +372,7 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert(!manualWithLog.includes('data-op="report-add"'), 'no Add report in the logs menu of a hand-entered raid');
   });
 
-  await check('every existing raid action is still reachable: the full set of ops sits in the Actions menu or a source menu, with its permission gate', () => {
+  await check('every existing raid action is still reachable: the full set of ops sits in the More menu or a source menu, with its permission gate', () => {
     const awaiting = detail({ raid: Object.assign(detail().raid, { state: 'awaiting_log' }), people: [], sources: { event: FULL_SOURCES.event, reports: [], plan: FULL_SOURCES.plan } });
     const all = new Set([...opsOf(raidPage(detail(), { loot: lootState() })), ...opsOf(raidPage(awaiting, { loot: lootState() }))]);
     for (const op of ['recompute', 'manual-open', 'plan-in-planner', 'raid-delete', 'event-refresh', 'event-replace', 'event-remove', 'report-refresh', 'report-remove', 'report-add', 'plan-replace', 'plan-remove']) assert(all.has(op), op + ' is reachable');

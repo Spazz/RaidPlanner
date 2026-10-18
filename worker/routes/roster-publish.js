@@ -12,7 +12,7 @@ import { loadRaid, raidAudit } from './raids.js';
 import { writeSignup } from './signups.js';
 
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
-const started = () => new HttpError(409, 'raid_started', 'This raid has started: its roster is frozen.');
+const started = () => new HttpError(409, 'raid_started', 'This raid has started: its line-up is frozen.');
 const userName = (row) => (row ? row.display_name || row.global_name || row.username : null);
 
 // The roster as the viewer may see it. Officers (raids.edit on the raid's team): everything. Everyone else: only whether it is published and their own seat.
@@ -128,14 +128,14 @@ async function answerContext(ctx) {
   if (!allows(guildContext.can, 'signups.self', raid.team_id)) throw forbidden();
   const person = await ownPersonStatement(db, guildContext.guild.id, ctx.session.user.id).first();
   if (!person) throw forbidden();
-  if (raid.roster_published_at === null) throw new HttpError(409, 'roster_not_published', 'This raid has no published roster.');
+  if (raid.roster_published_at === null) throw new HttpError(409, 'roster_not_published', 'This raid has no published line-up.');
   if (raid.starts_at <= ctx.now()) throw started();
   const [seatResult, signupResult] = await db.batch([
     db.prepare('SELECT name_key, status, prev_kind FROM raid_roster WHERE raid_id = ? AND player_id = ? ORDER BY seq').bind(raid.id, person.id),
     db.prepare("SELECT source, kind, standby FROM raid_signups WHERE raid_id = ? AND player_id = ? AND source IN ('raid_helper', 'raidsmith')").bind(raid.id, person.id),
   ]);
   const seat = seatResult.results[0];
-  if (!seat) throw new HttpError(409, 'not_on_roster', 'You are not on this roster.');
+  if (!seat) throw new HttpError(409, 'not_on_roster', 'You are not in this line-up.');
   const real = signupResult.results.find((row) => row.source === 'raidsmith') || signupResult.results[0] || null;
   return { guildContext, raid, personId: person.id, seat, current: real ? effectiveKind(real) : null };
 }

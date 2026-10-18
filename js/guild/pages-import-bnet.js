@@ -152,7 +152,7 @@
     const ready = !!(d && d.configured && d.supported && !d.realmNeeded);
     let result = '';
     if (s.preview) {
-      const when = G.ui.formatDateTime(s.preview.fetchedAt);
+      const when = G.ui.formatDateTime(s.preview.fetchedAt, gd.guild.timeZone);
       result = '<section aria-labelledby="bnet-result" class="gs-import-result"><div class="gs-import-result-head"><h2 class="gs-h2" id="bnet-result">' + esc(s.preview.guild.name) + ' &middot; ' +
         esc(plural(s.preview.rows.length, 'member', 'members')) + (when ? ' &middot; read ' + esc(when) : '') + '</h2>' +
         '<p class="gs-fine">Tick the characters to add. Each becomes a person with that character as Main; their Discord account is linked later, when they claim it on My characters. Battle.net data is not kept: only the people you add are saved.</p></div>' +

@@ -1,5 +1,5 @@
-// ── PAGE: ROSTER > INTENT (the class and spec intent board) ────
-// An officer opens an "Intent" round for a team (a title, an optional close date); the people of the team say what they plan to play: one main pick (class
+// ── PAGE: ROSTER > SPEC POLL (the class and spec poll; the route and API keep the name "intent") ────
+// An officer opens a spec poll round for a team (a title, an optional close date); the people of the team say what they plan to play: one main pick (class
 // and spec; the role follows from the spec), an optional alt pick, a note of up to 120 characters. The board adds the main picks up by role and class
 // against the team's raid size and role targets, and reads which raid buffs and debuffs the picked roster covers with the Planner's rules for the guild's
 // game version (coverage.js). Officers close the round; a closed round stays readable. GET /intent?team=&round=, POST /teams/:tid/intent,
@@ -74,11 +74,11 @@
   function emptyHtml(board, gd) {
     const edit = board.canEdit && !board.team.archived;
     return '<section class="gs-empty-card" aria-labelledby="intent-empty-h"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('roster', 28) + '</span>' +
-      '<h2 class="gs-h2 gs-h2-lg" id="intent-empty-h">No intent round yet</h2>' +
+      '<h2 class="gs-h2 gs-h2-lg" id="intent-empty-h">No spec poll yet</h2>' +
       '<p class="gs-lead gs-lead-sm">' + (edit
         ? 'Open a round to ask the team what they plan to play. They pick a class and spec, and this page adds the picks up against the raid size and shows which buffs and debuffs the raid would cover.'
-        : 'Your officers have not opened an intent round for this team yet.') + '</p>' +
-      (edit ? '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="intent-open" data-key="intent-open">Open an intent round</button></div>' : '') + '</section>';
+        : 'Your officers have not opened a spec poll for this team yet.') + '</p>' +
+      (edit ? '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="intent-open" data-key="intent-open">Open a spec poll</button></div>' : '') + '</section>';
   }
 
   function roundHtml(board, x) {
@@ -111,7 +111,7 @@
     }).join('');
     const classes = Object.keys(t.byClass).filter(function (id) { return t.byClass[id] > 0; }).sort(function (x, y) { return t.byClass[y] - t.byClass[x] || (x < y ? -1 : 1); });
     return '<section class="gs-card-sec" aria-labelledby="intent-totals-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="intent-totals-h">Against a ' + esc(size) + '-man raid</h2>' +
-      '<span class="gs-fine">' + esc(t.mains + ' of ' + size + ' seats picked') + '</span></div><div class="gs-card-sec-body">' +
+      '<span class="gs-fine">' + esc(t.mains + ' of ' + size + ' spots picked') + '</span></div><div class="gs-card-sec-body">' +
       '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="Main picks by role"><thead><tr><th scope="col">Role</th><th scope="col">Picked</th><th scope="col">Target</th><th scope="col">Gap</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<h3 class="gs-h3">By class</h3>' +
       (classes.length ? '<ul class="gs-intent-classes" aria-label="Main picks by class">' + classes.map(function (id) {
@@ -162,7 +162,7 @@
     const gd = opts.guildData;
     const x = opts.state;
     const board = x.board;
-    const head = '<div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Roster</h1><p class="gs-sub">' + esc(board.team.name) + ' &middot; Intent</p></div>' + G.pages.rosterTabs.html(gd, 'intent');
+    const head = '<div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Roster</h1><p class="gs-sub">' + esc(board.team.name) + ' &middot; Spec poll</p></div>' + G.pages.rosterTabs.html(gd, 'intent');
     const alert = G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '');
     if (!board.round) return '<div class="gs-page">' + head + alert + emptyHtml(board, gd) + '</div>';
     return '<div class="gs-page">' + head + alert + roundHtml(board, x) + totalsHtml(board) +
@@ -178,7 +178,7 @@
 
   // ── dialogs ──
   function openDialogHtml(gd, board) {
-    return '<form class="gs-dialog-form" data-submit="intent-open-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Open an intent round</h2>' +
+    return '<form class="gs-dialog-form" data-submit="intent-open-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Open a spec poll</h2>' +
       '<p class="gs-fine">' + esc(board.team.name) + ' picks what they plan to play. Only one round is open at a time.</p>' +
       '<div class="gs-field"><label class="gs-label" for="io-title">Title</label><input class="gs-input" type="text" id="io-title" name="title" maxlength="80" autocomplete="off" required data-field="title" value="' + esc(defaultTitle(gd.guild.gameVersion)) + '">' +
       '<p class="gs-field-error" id="dlg-err-title" role="alert" hidden></p></div>' +

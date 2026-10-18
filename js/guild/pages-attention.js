@@ -19,8 +19,8 @@
     { id: 'no_loot', severity: 'action', heading: 'Raids without loot', chip: 'No loot' },
     { id: 'low_signups', severity: 'action', heading: 'Raids short on sign-ups', chip: 'Low sign-ups' },
     { id: 'log_missing', severity: 'action', heading: 'Raids waiting for a log', chip: 'Log' },
-    { id: 'roster_declined', severity: 'action', heading: 'Rostered players who can\'t make it', chip: 'Roster' },
-    { id: 'roster_pending', severity: 'action', heading: 'Rostered players who haven\'t confirmed', chip: 'Roster' },
+    { id: 'roster_declined', severity: 'action', heading: 'Line-up players who can\'t come', chip: 'Line-up' },
+    { id: 'roster_pending', severity: 'action', heading: 'Line-up players who haven\'t confirmed', chip: 'Line-up' },
     { id: 'event_moved', severity: 'action', heading: 'Raid-Helper events on another day', chip: 'Event' },
     { id: 'webhook_off', severity: 'action', heading: 'Discord webhooks switched off', chip: 'Discord' },
     { id: 'unlocked', severity: 'info', heading: 'Sign-ups still open', chip: 'Open' },
@@ -94,8 +94,8 @@
       }
       case 'no_loot': return 'No loot imported for ' + dayOf(it.date);
       case 'low_signups': return dayOf(it.date) + ': ' + num(it.expected) + ' of ' + num(it.size) + ' signed up';
-      case 'roster_declined': return dayOf(it.date) + ': ' + plural(n, 'rostered person', 'rostered people') + ' can\'t make it';
-      case 'roster_pending': return dayOf(it.date) + ': ' + plural(n, 'rostered person hasn\'t', 'rostered people haven\'t') + ' confirmed';
+      case 'roster_declined': return dayOf(it.date) + ': ' + plural(n, 'line-up player', 'line-up players') + ' can\'t come';
+      case 'roster_pending': return dayOf(it.date) + ': ' + plural(n, 'line-up player hasn\'t', 'line-up players haven\'t') + ' confirmed';
       case 'log_missing': return 'Upload the log for ' + dayOf(it.date) + (it.loggerName ? ' (Logger: ' + String(it.loggerName) + ')' : '');
       case 'event_moved': return dayOf(it.date) + ': Raid-Helper has the event on ' + dayOf(it.eventDate) + '; the raid was not moved';
       case 'webhook_off': return 'The Discord webhook of ' + String(it.teamName == null ? 'a team' : it.teamName) + ' was switched off' + (it.status ? ' (Discord answered ' + num(it.status) + ')' : '');

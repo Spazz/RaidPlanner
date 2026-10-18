@@ -88,7 +88,7 @@
 
   function reminderCardHtml(me) {
     return '<section class="gs-card-sec" aria-labelledby="linked-reminders"><div class="gs-card-sec-head"><h2 class="gs-h2" id="linked-reminders">Discord reminders</h2></div>' +
-      '<div class="gs-card-sec-body"><p>When your officers switch on reminders, Raidsmith posts in your team\'s Discord channel who hasn\'t signed up for a raid or confirmed a roster seat, and pings the people whose Discord account it knows.</p>' +
+      '<div class="gs-card-sec-body"><p>When your officers switch on reminders, Raidsmith posts in your team\'s Discord channel who hasn\'t signed up for a raid or confirmed their group in the line-up, and pings the people whose Discord account it knows.</p>' +
       '<div class="gs-check"><input type="checkbox" id="reminder-optout" name="reminderOptOut" data-change="reminder-optout"' + (reminderOptOutOf(me) ? ' checked' : '') + '>' +
       '<label for="reminder-optout">Don\'t mention me in reminders</label></div>' +
       '<p class="gs-fine" id="reminder-optout-help">You are still listed by name, without a ping.</p>' +

@@ -42,7 +42,7 @@ export const ACTION_GROUP = Object.freeze({
   // Phase 7: the role editor, the Discord role mapping and sync, guest links and the public page. Settings, like roles.set and access.*.
   'role.create': 'settings', 'role.update': 'settings', 'role.delete': 'settings', 'role.reset': 'settings',
   'discord.maps': 'settings', 'roles.discord_sync': 'settings', 'guest.create': 'settings', 'guest.revoke': 'settings', 'public.update': 'settings',
-  // PM wave 3: the intent board and recruitment needs and the applications inbox sit with the roster; the application switch and questions are settings.
+  // PM wave 3: the spec poll (intent) and recruitment needs and the applications inbox sit with the roster; the application switch and questions are settings.
   'intent.open': 'roster', 'intent.close': 'roster', 'intent.pick': 'roster', 'intent.unpick': 'roster', 'recruiting.targets': 'roster',
   'application.submit': 'roster', 'application.update': 'roster', 'application.accept': 'roster', 'application.delete': 'roster', 'apply.settings': 'settings',
   // PM wave 4: the Discord notification settings, and the Worker switching a dead webhook off (which has no actor).
@@ -113,8 +113,8 @@ const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const BUILTIN_ROLE_LABEL = { guild_master: 'Guild Master', officer: 'Officer', team_lead: 'Team Lead', member: 'Member', guest: 'Guest', public: 'Public' };
 const NOTIFY_LABEL = {
-  webhook: 'webhook', roleMention: 'mentioned role', roster: 'roster posts', loot: 'loot posts', reminders: 'raid reminders', noreply: 'no-reply reminders',
-  noreplyHours: 'no-reply lead time', confirm: 'roster confirm reminders',
+  webhook: 'webhook', roleMention: 'mentioned role', roster: 'line-up posts', loot: 'loot posts', reminders: 'raid reminders', noreply: 'no-reply reminders',
+  noreplyHours: 'no-reply lead time', confirm: 'line-up confirm reminders',
 };
 const CHANGED_LABEL = {
   status: 'status', joinedOn: 'join date', trialStart: 'trial start', trialEnd: 'trial end', leftOn: 'left date', leftReason: 'reason for leaving',
@@ -337,18 +337,18 @@ export function describeRow(row, names = {}) {
     case 'signup.remove': return `Removed the sign-up of ${person(before.personId)} from ${raidOn(ent)}`;
     case 'away.set': return `${before.kind === undefined ? 'Added' : 'Changed'} a notice for ${person(after.personId)} (${AWAY_LABEL[after.kind] || after.kind})`;
     case 'away.remove': return `Removed a notice of ${person(before.personId)} (${AWAY_LABEL[before.kind] || before.kind})`;
-    case 'roster.publish': return `Published the roster of ${onRaid(ent)} (${plural(Number(after.players) || 0, 'player', 'players')})`;
-    case 'roster.unpublish': return `Took back the published roster of ${onRaid(ent)}`;
-    case 'roster.decline': return `${person(after.personId)} can't make ${onRaid(ent)}`;
+    case 'roster.publish': return `Published the line-up of ${onRaid(ent)} (${plural(Number(after.players) || 0, 'player', 'players')})`;
+    case 'roster.unpublish': return `Took back the published line-up of ${onRaid(ent)}`;
+    case 'roster.decline': return `${person(after.personId)} can't come to ${onRaid(ent)}`;
     case 'signup.lock': return after.locked ? `Closed sign-ups for ${onRaid(ent)}` : `Reopened sign-ups for ${onRaid(ent)}`;
 
-    case 'intent.open': return `Opened an intent round for ${team(after.teamId)}`;
-    case 'intent.close': return `Closed the intent round of ${team(after.teamId)}`;
+    case 'intent.open': return `Opened a spec poll for ${team(after.teamId)}`;
+    case 'intent.close': return `Closed the spec poll of ${team(after.teamId)}`;
     case 'intent.pick': {
       const planned = [CLASS_LABEL[after.class], after.spec].filter(Boolean).join(' ');
-      return `${person(after.personId)} picked ${after.kind === 'alt' ? 'an alt' : 'a main'} for the intent round of ${team(after.teamId)}${planned ? `: ${planned}` : ''}`;
+      return `${person(after.personId)} picked ${after.kind === 'alt' ? 'an alt' : 'a main'} for the spec poll of ${team(after.teamId)}${planned ? `: ${planned}` : ''}`;
     }
-    case 'intent.unpick': return `Removed the ${after.kind === 'alt' ? 'alt' : 'main'} pick of ${person(after.personId)} from the intent round of ${team(after.teamId)}`;
+    case 'intent.unpick': return `Removed the ${after.kind === 'alt' ? 'alt' : 'main'} pick of ${person(after.personId)} from the spec poll of ${team(after.teamId)}`;
     case 'recruiting.targets': return `${after.custom ? 'Set' : 'Reset'} the recruiting targets of ${team(ent)}`;
     case 'apply.settings': {
       if (!after.enabled) return before.enabled ? 'Turned applications off' : 'Changed the application questions';

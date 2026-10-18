@@ -235,7 +235,7 @@ check('sizes: Team settings sets the team size (PATCH); the Raids list counts ag
   text = ws(stripTags(list()));
   assert(text.includes('Hyjal Summit - 20 1 / 20 signed up'), text.slice(0, 900));
   assert(text.includes('Barrow Deeps - 10 1 / 10 signed up'), text.slice(0, 900));
-  assert(text.includes('Mon Oct 26, 8:00 PM 40-player 1 / 40 signed up'), 'no zone: the team\'s 40: ' + text.slice(0, 900));
+  assert(text.includes('Mon Oct 26, 8:00 PM ET 40-player 1 / 40 signed up'), 'no zone: the team\'s 40: ' + text.slice(0, 900));
 });
 
 check('raid settings: the officer\'s card sets a raid\'s own size and sign-up deadline (one PATCH), the page, the list and the member\'s panel follow, and Automatic / Team default clear them', async () => {
@@ -256,7 +256,7 @@ check('raid settings: the officer\'s card sets a raid\'s own size and sign-up de
   assert(text.includes('In effect: 40 players, set for this raid.') && text.includes('12 hours before the start') && text.includes('Raid settings saved.'), text.slice(0, 900));
   assert(ws(stripTags((await openList(s, E))())).includes('Hyjal Summit - 40 1 / 40 signed up'), 'the list follows the raid\'s own size');
   const panel = ws(stripTags((await openRaid(s, E, hyjal))()));
-  assert(panel.includes('Open until Sat Oct 24, 8:00 AM (sign-ups close 12 hours before the start)') && panel.includes('Expected 1 / 40'), panel.slice(0, 700));
+  assert(panel.includes('Open until Sat Oct 24, 8:00 AM ET (sign-ups close 12 hours before the start)') && panel.includes('Expected 1 / 40'), panel.slice(0, 700));
 
   await openRaid(s, A, hyjal);
   await A.handlers.submit['raid-settings-form'](form('', '', ''));
@@ -334,7 +334,7 @@ check('deadline: Settings > Raid schedule saves "close sign-ups N hours before";
   // Before the deadline (Tue 2:00 PM): the pill names it, and a sign-up works.
   const stale = await openRaid(s, E, rid);
   text = ws(stripTags(stale()));
-  assert(text.includes('Open until Tue Oct 20, 2:00 PM (sign-ups close 6 hours before the start)'), text.slice(0, 600));
+  assert(text.includes('Open until Tue Oct 20, 2:00 PM ET (sign-ups close 6 hours before the start)'), text.slice(0, 600));
   await E.handlers.click['su-kind'](el({ 'data-kind': 'signed' }));
   assert.equal((await s.rows("SELECT kind FROM raid_signups WHERE source = 'raidsmith'"))[0].kind, 'signed');
 
@@ -342,7 +342,7 @@ check('deadline: Settings > Raid schedule saves "close sign-ups N hours before";
   s.world.clock.now = Date.parse('2026-10-20T18:30:00Z');
   const closed = await openRaid(s, E, rid);
   text = ws(stripTags(closed()));
-  assert(text.includes('Closed Tue Oct 20, 2:00 PM') && text.includes('Sign-ups closed 6 hours before the start. Ask an officer if you need to change yours.'), text.slice(0, 700));
+  assert(text.includes('Closed Tue Oct 20, 2:00 PM ET') && text.includes('Sign-ups closed 6 hours before the start. Ask an officer if you need to change yours.'), text.slice(0, 700));
   assert(/data-kind="signed"[^>]*disabled/.test(closed()), 'the buttons are off');
   const refused = await E.api.signups.save(s.gid, rid, { kind: 'late' }).then(() => null, (e) => e);
   assert(refused && refused.status === 409 && refused.code === 'signups_closed' && refused.body.reason === 'deadline', JSON.stringify(refused && { s: refused.status, c: refused.code, body: refused.body }));
@@ -377,11 +377,11 @@ check('date-only raid: the raid page and the list say "Time not set"; the fetche
   let text = ws(stripTags((await openRaid(s, E, dateOnly))()));
   assert(text.includes('Time not set') && !/12:00/.test(text), text.slice(0, 500));
   // Wave 6: the panel does name the time its window closes at, with the reason - the team has no slot that Saturday, so 18:00 guild time (not a made-up start).
-  assert(text.includes('Sign-ups Open until Sat Oct 24, 6:00 PM (this raid has only a date and the team has no schedule slot that day, so sign-ups close at 18:00 guild time)'), text.slice(0, 600));
+  assert(text.includes('Sign-ups Open until Sat Oct 24, 6:00 PM ET (this raid has only a date and the team has no schedule slot that day, so sign-ups close at 18:00 guild time)'), text.slice(0, 600));
   text = ws(stripTags((await openRaid(s, E, timed))()));
-  assert(text.includes('Starts Sun Oct 25, 8:00 PM') && !text.includes('Time not set'), text.slice(0, 500));
+  assert(text.includes('Starts Sun Oct 25, 8:00 PM ET') && !text.includes('Time not set'), text.slice(0, 500));
   text = ws(stripTags((await openList(s, E))()));
-  assert(/Sat Oct 24[^]*?time not set/.test(text) && text.includes('Sun Oct 25, 8:00 PM'), text.slice(0, 700));
+  assert(/Sat Oct 24[^]*?time not set/.test(text) && text.includes('Sun Oct 25, 8:00 PM ET'), text.slice(0, 700));
 
   // The calendar link, fetched the way a calendar app would.
   const made = await E.api.calendar.create(s.gid, s.teamId);
@@ -487,7 +487,7 @@ check('away notices in the views: the officer\'s Raids card and the person secti
   const mineHtml = (await openRaid(s, E, rid))();
   assert(/You are away \(notice\)/.test(stripTags(mineHtml)) && !/Wedding|Work shift/.test(mineHtml), stripTags(mineHtml).slice(0, 800));
   const otherHtml = (await openRaid(s, N, rid))();
-  assert(stripTags(otherHtml).includes('Away (notice)') && /Absent 1/.test(stripTags(otherHtml)) && !/Wedding|Work shift/.test(otherHtml), stripTags(otherHtml).slice(0, 800));
+  assert(stripTags(otherHtml).includes('Away (notice)') && /Can(&#39;|')t come 1/.test(stripTags(otherHtml)) && !/Wedding|Work shift/.test(otherHtml), stripTags(otherHtml).slice(0, 800));
   assert.equal(await s.world.db.prepare('SELECT COUNT(*) AS n FROM raid_signups').first('n'), 0, 'an away notice is not a stored sign-up');
 
   // The officer removes the range notice from the card (asks first); the panel no longer shows Thoren away.
@@ -685,7 +685,7 @@ check('standing sign-ups: the Raids page card saves the days (one PUT); the sche
   assert((text.match(/Signed up - Thoren/g) || []).length >= 3 && />standing</.test(html), text.slice(0, 1200));
   const panel = await openRaid(s, E, raids[0].id);
   text = stripTags(panel());
-  assert(text.includes('This sign-up comes from your standing sign-up. Skip this week marks you absent for this raid only.') && text.includes('Skip this week'), text.slice(0, 900));
+  assert(text.includes('This sign-up comes from your standing sign-up. Skip this week sets you to Can\'t come for this raid only.') && text.includes('Skip this week'), text.slice(0, 900));
 });
 
 check('standing sign-ups: an Away notice filed before the fill prevents it, one filed after takes it away; Skip this week makes the raid Absent and it stays through the next reconcile', async () => {
@@ -710,7 +710,7 @@ check('standing sign-ups: an Away notice filed before the fill prevents it, one 
   await E.handlers.click['su-withdraw'](el({}));
   assert.deepEqual(await s.rows('SELECT kind, standing FROM raid_signups WHERE raid_id = ?', first), [{ kind: 'absence', standing: 0 }]);
   const text = stripTags(page());
-  assert(/Absent 1/.test(text) && /data-kind="absence"[^>]*aria-pressed="true"/.test(page()) && !/Skip this week/.test(text), text.slice(0, 900));
+  assert(/Can(&#39;|')t come 1/.test(text) && /data-kind="absence"[^>]*aria-pressed="true"/.test(page()) && !/Skip this week/.test(text), text.slice(0, 900));
   await A.api.signups.fill(s.gid, s.teamId);
   await E.api.standing.save(s.gid, s.teamId, { slots: [{ weekday: 2, kind: 'signed' }] });
   assert.deepEqual(await s.rows('SELECT kind, standing FROM raid_signups WHERE raid_id = ?', first), [{ kind: 'absence', standing: 0 }], 'still Absent');
@@ -770,20 +770,20 @@ async function rosterWorld() {
   return s;
 }
 
-check('published roster: the officer publishes the plan (it asks first); a member sees Your seat and the list chip, and Confirm is one request the chip follows', async () => {
+check('published line-up: the officer publishes the plan (it asks first); a member sees Your group and the list chip, and Confirm is one request the chip follows', async () => {
   const s = await rosterWorld();
   const { A, E } = s;
   let page = await openRaidWithRoster(s, A, s.rid);
   let text = stripTags(page());
-  assert(text.includes('Roster') && text.includes('Publish roster'), text.slice(text.indexOf('Roster'), text.indexOf('Roster') + 300));
-  assert(/Publish the roster\?/.test(await s.officerDo(page, 'publish')));
+  assert(text.includes('Line-up') && text.includes('Publish line-up'), text.slice(text.indexOf('Line-up'), text.indexOf('Line-up') + 300));
+  assert(/Publish the line-up\?/.test(await s.officerDo(page, 'publish')));
   text = ws(stripTags(page()));
-  assert(/Published .* by Alice A\./.test(text) && text.includes('0 confirmed, 4 waiting, 0 can\'t make it') && text.includes('Group 1') && text.includes('Bench'), text.slice(text.indexOf('Roster'), text.indexOf('Roster') + 700));
+  assert(/Published .* by Alice A\./.test(text) && text.includes('0 confirmed, 4 waiting, 0 can\'t come') && text.includes('Group 1') && text.includes('Bench'), text.slice(text.indexOf('Roster'), text.indexOf('Roster') + 700));
   assert.equal((await s.rows('SELECT COUNT(*) AS n FROM raid_roster'))[0].n, 4, 'the plan was copied onto the roster');
 
   page = await openRaidWithRoster(s, E, s.rid);
   text = stripTags(page());
-  assert(text.includes('Your seat') && text.includes('You\'re in Group 1 as Protection Paladin (Thoren)') && text.includes('Tell the officers if you\'re coming.'), text.slice(0, 900));
+  assert(text.includes('Your group') && text.includes('You\'re in Group 1 as Protection Paladin (Thoren)') && text.includes('Tell the officers if you\'re coming.'), text.slice(0, 900));
   assert(stripTags((await openList(s, E))()).includes('Group 1 - confirm?'), 'the Raids list row has the chip');
   page = await openRaidWithRoster(s, E, s.rid);
   await E.handlers.click['seat-confirm'](el({}));
@@ -794,7 +794,7 @@ check('published roster: the officer publishes the plan (it asks first); a membe
   assert(stripTags((await openList(s, E))()).includes('Group 1 - confirmed'), 'and follows the answer');
 });
 
-check('published roster: Can\'t make it asks, makes the sign-up Absent and reaches Home; Re-publish after a plan change keeps unchanged answers; Unpublish takes the roster down', async () => {
+check('published line-up: Can\'t come asks, makes the sign-up Absent and reaches Home; Re-publish after a plan change keeps unchanged answers; Unpublish takes the line-up down', async () => {
   const s = await rosterWorld();
   const { A, E, N } = s;
   let page = await openRaidWithRoster(s, A, s.rid);
@@ -805,37 +805,37 @@ check('published roster: Can\'t make it asks, makes the sign-up Absent and reach
   page = await openRaidWithRoster(s, N, s.rid);
   N.dialogs.length = 0;
   N.handlers.click['seat-decline'](el({}));
-  assert(/Tell the officers you can&#39;t make it\?|Tell the officers you can't make it\?/.test(N.dialogs[0]), N.dialogs[0]);
+  assert(/Tell the officers you can&#39;t make it\?|Tell the officers you can't come\?/.test(N.dialogs[0]), N.dialogs[0]);
   await N.handlers.submit['roster-decline-form'](dialogForm(N.dialogs[0], {}));
   await settle();
   assert.deepEqual(await s.rows("SELECT kind FROM raid_signups WHERE player_id = ? AND source = 'raidsmith'", s.people.Gorrim), [{ kind: 'absence' }]);
   assert.equal(await s.statusOf('Gorrim'), 'declined');
   let text = stripTags(page());
-  assert(text.includes('You told the officers you can\'t make it.') && /Absent 1/.test(text), text.slice(0, 900));
+  assert(text.includes('You told the officers you can\'t come.') && /Can(&#39;|')t come 1/.test(text), text.slice(0, 900));
   pageState(s, A);
   const home = { name: 'attention', gid: s.gid };
   await A.pages.attention.load(home, A.guildData);
-  assert(stripTags(A.pages.attention.main(home, A.guildData)).includes('Sat Oct 24: 1 rostered person can\'t make it'));
+  assert(stripTags(A.pages.attention.main(home, A.guildData)).includes('Sat Oct 24: 1 line-up player can\'t come'));
 
   // The officer's card counts the answers; the plan changes (Mirabel comes off the bench) and Re-publish keeps the answers of unchanged seats.
   page = await openRaidWithRoster(s, A, s.rid);
-  assert(ws(stripTags(page())).includes('1 confirmed, 2 waiting, 1 can\'t make it'));
+  assert(ws(stripTags(page())).includes('1 confirmed, 2 waiting, 1 can\'t come'));
   await s.plan(2, 2);
   page = await openRaidWithRoster(s, A, s.rid);
   assert(stripTags(page()).includes('The plan changed since you published.'));
-  assert(/Publish the roster again\?/.test(await s.officerDo(page, 'republish')));
+  assert(/Publish the line-up again\?/.test(await s.officerDo(page, 'republish')));
   text = ws(stripTags(page()));
-  assert(!text.includes('The plan changed since you published.') && text.includes('1 confirmed, 2 waiting, 1 can\'t make it') && text.includes('Thoren Protection Confirmed Gorrim Holy Can\'t make it Group 2 2 Kaelith Combat Waiting Mirabel Marksmanship Waiting'), text.slice(text.indexOf('Roster'), text.indexOf('Roster') + 600));
+  assert(!text.includes('The plan changed since you published.') && text.includes('1 confirmed, 2 waiting, 1 can\'t come') && text.includes('Thoren Protection Confirmed Gorrim Holy Can\'t come Group 2 2 Kaelith Combat Waiting Mirabel Marksmanship Waiting'), text.slice(text.indexOf('Roster'), text.indexOf('Roster') + 600));
   assert.equal(await s.statusOf('Thoren'), 'confirmed', 'the unchanged seat keeps its answer');
   assert(stripTags((await openRaidWithRoster(s, E, s.rid))()).includes('You told the officers you\'re coming.'));
 
   // Unpublish: the card is back to Publish, the member's seat is gone.
   page = await openRaidWithRoster(s, A, s.rid);
-  assert(/Unpublish the roster\?/.test(await s.officerDo(page, 'unpublish')));
+  assert(/Unpublish the line-up\?/.test(await s.officerDo(page, 'unpublish')));
   text = stripTags(page());
-  assert(text.includes('Publish roster') && !text.includes('Re-publish roster'), text.slice(text.indexOf('Roster'), text.indexOf('Roster') + 300));
+  assert(text.includes('Publish line-up') && !text.includes('Re-publish line-up'), text.slice(text.indexOf('Roster'), text.indexOf('Roster') + 300));
   assert.equal((await s.rows('SELECT COUNT(*) AS n FROM raid_roster'))[0].n, 0);
-  assert(!stripTags((await openRaidWithRoster(s, E, s.rid))()).includes('Your seat'));
+  assert(!stripTags((await openRaidWithRoster(s, E, s.rid))()).includes('Your group'));
 });
 
 // ---------------------------------------------------------------------------

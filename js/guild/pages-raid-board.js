@@ -1,9 +1,9 @@
-// ── PAGE PIECE: THE LOOT BOARD OF A RAID (+ the TMB / softres paste panels) ──
+// ── PAGE PIECE: THE LOOT PRIOS OF A RAID (+ the TMB / softres paste panels) ──
 // Upcoming and past raids. GET /raids/:rid/loot-board lines the raid's pasted ThatsMyBIS (TMB) prios and softres.it soft-reserves up against the people
 // expected on the raid: one row per item with who is in line (prio order first, then soft-reserve holders and pugs), roll-offs marked, items a player
 // already got on an earlier raid greyed out, and, once the raid is over, where each award went. Editors (loot.edit) paste the export text: the browser
 // decodes and normalizes it (js/guild/tmb.js, softres.js), the Worker keeps the rows (PUT /raids/:rid/loot-lists, a paste replaces that source's rows).
-// pages-raid.js draws the card, offers the same actions in its Actions menu and loads the data; the state lives in the attendance state bag (a().raidBoard).
+// pages-raid.js draws the card, offers the same actions in its More menu and loads the data; the state lives in the attendance state bag (a().raidBoard).
 (function (G) {
   'use strict';
 
@@ -38,7 +38,7 @@
 
   function canEdit(x) { return !!(x && x.status === 'ok' && x.data && x.data.canEdit); }
 
-  // Whether the Actions menu offers "Loot prio (TMB)" / "Soft-reserves (softres)" now: loaded, allowed to edit, that panel not open yet.
+  // Whether the More menu offers "Loot prio (TMB)" / "Soft-reserves (softres)" now: loaded, allowed to edit, that panel not open yet.
   function canPaste(x, list) { return canEdit(x) && !!x.ui && x.ui.list !== list; }
 
   function cur() {
@@ -200,7 +200,7 @@
       (edit ? LIST_KEYS.map(function (k) {
         return canPaste(x, k) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="board-open" data-list="' + k + '" data-key="board-open-' + k + '">' + esc(LISTS[k].short) + '</button>' : '';
       }).join('') : '');
-    const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="board-h">Loot board</h2><span class="gs-head-tools">' +
+    const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="board-h">Loot prios</h2><span class="gs-head-tools">' +
       (pasted ? '<span class="gs-fine">' + esc(plural((data.items || []).length, 'item', 'items')) + '</span>' : '') + tools + '</span></div>';
     let list;
     if (!pasted) {
@@ -220,15 +220,15 @@
   }
 
   function errorCardHtml(x) {
-    return '<section class="gs-card-sec gs-board-sec" aria-labelledby="board-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="board-h">Loot board</h2></div><div class="gs-card-sec-body">' +
-      G.ui.alertHtml(x.error || 'Could not load the loot board.', 'board-load-error') +
+    return '<section class="gs-card-sec gs-board-sec" aria-labelledby="board-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="board-h">Loot prios</h2></div><div class="gs-card-sec-body">' +
+      G.ui.alertHtml(x.error || 'Could not load the loot prios.', 'board-load-error') +
       '<div><button type="button" class="gs-btn gs-btn-sm" data-action="board-reload" data-key="board-reload">Try again</button></div></div></section>';
   }
 
   // The printable sheet (written into the page's #print-sheet): item, roll-off, who is in line. gd: the guild data; raid: the raid detail's raid.
   function printHtml(gd, raid, data, view) {
     const shown = visibleItems(data, view);
-    const title = 'Loot board - ' + (G.ui.weekdayDay(raid.raidOn) || raid.raidOn || '') + (raid.zone ? ' - ' + raid.zone : '');
+    const title = 'Loot prios - ' + (G.ui.weekdayDay(raid.raidOn) || raid.raidOn || '') + (raid.zone ? ' - ' + raid.zone : '');
     const rows = shown.map(function (item) {
       const line = item.line.map(function (e) {
         return entryLabel(e) + ' ' + e.name + (e.guest ? ' (guest)' : '') + (e.received ? ' (has it)' : '');

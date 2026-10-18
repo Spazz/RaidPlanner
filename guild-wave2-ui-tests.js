@@ -3,7 +3,7 @@
  * Add team select), Settings > Raid schedule (the "Close sign-ups ... hours before the start" field), the Raids list (zone and size, "18 / 20 signed
  * up", "time not set", the deadline beside Sign up, the Raid size select of New raid), the raid page (the title, "Time not set", the officers'
  * Raid settings card) and the Sign-ups panel ("Expected", the Open until / Closed pill, the deadline sentence and the 409 it answers with).
- * PM wave 2, part 3: standing sign-ups (Raids page card, Skip this week), the published roster (officers' Roster card, Your seat, the Raids list chip) and the Needs attention line.
+ * PM wave 2, part 3: standing sign-ups (Raids page card, Skip this week), the published roster (officers' Roster card, Your group, the Raids list chip) and the Needs attention line.
  * PM wave 2, part 2: the Away notices page, the officers' card and person section, and Standby / away notices in the Sign-ups panel and the Raids list.
  * Run: node guild-wave2-ui-tests.js
  *
@@ -408,32 +408,32 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert(/<a class="gs-raid-link" href="#\/g\/g1\/raids\/r\/u1">Sat Oct 24<\/a> <span class="gs-muted gs-time-unset">time not set<\/span>/.test(dateOnly), 'the phone card');
     assert(!/12:00|7:00 AM|\bAM\b|\bPM\b/.test(stripTags(dateOnly)), 'no time at all: ' + stripTags(dateOnly));
     const timed = listPage(LIST());
-    assert(timed.includes('>Sat Oct 24, 8:00 PM</a>') && !timed.includes('time not set'));
+    assert(timed.includes('>Sat Oct 24, 8:00 PM CT</a>') && !timed.includes('time not set'));
     const unknown = listPage(LIST({ upcoming: [UP({ timeKnown: undefined })] }));
     assert(unknown.includes('Sat Oct 24, 8:00 PM') && !unknown.includes('time not set'), 'an older reply is read as timed');
     const W = G.pages.raids.whenText;
-    assert.equal(ws(W({ raidOn: '2026-10-24', startsAt: STARTS, timeKnown: true }, gd(MEMBER_CAN))), 'Sat Oct 24, 8:00 PM');
+    assert.equal(ws(W({ raidOn: '2026-10-24', startsAt: STARTS, timeKnown: true }, gd(MEMBER_CAN))), 'Sat Oct 24, 8:00 PM CT');
     assert.equal(W({ raidOn: '2026-10-24', startsAt: NOON_UTC, timeKnown: false }, gd(MEMBER_CAN)), 'Sat Oct 24');
     assert.equal(G.pages.raids.timeNotSetHtml({ timeKnown: true }), '');
   });
 
   await check('Raids list: the count is "expected / size signed up" with the old breakdown after it; late counts as signed up; no size keeps the old words', () => {
     const T = G.pages.raids.signupsText;
-    assert.equal(T({ signed: 17, late: 1, bench: 2, tentative: 1, absence: 1 }, 20), '18 / 20 signed up, 2 bench, 1 tentative, 1 absent');
+    assert.equal(T({ signed: 17, late: 1, bench: 2, tentative: 1, absence: 1 }, 20), '18 / 20 signed up, 2 bench, 1 tentative, 1 can\'t come');
     assert.equal(T({ signed: 3, late: 0, bench: 0, tentative: 0, absence: 0 }, 10), '3 / 10 signed up');
     assert.equal(T({ signed: 0, late: 0, bench: 0, tentative: 2, absence: 0 }, 25), '0 / 25 signed up, 2 tentative');
     assert.equal(T({ signed: 0, late: 0, bench: 0, tentative: 0, absence: 0 }, 20), 'No sign-ups yet');
-    assert.equal(T({ signed: 21, late: 2, bench: 2, tentative: 0, absence: 1 }), '23 signed, 2 bench, 1 absent', 'no size: as before');
+    assert.equal(T({ signed: 21, late: 2, bench: 2, tentative: 0, absence: 1 }), '23 signed, 2 bench, 1 can\'t come', 'no size: as before');
     assert.equal(T(null, 20), '-');
     assert.equal(T({ signed: 4, late: 1, bench: 0, tentative: 0, absence: 0, expected: 7 }, 20), '7 / 20 signed up', 'a Worker that sends expected is believed');
     const out = listPage(LIST());
-    assert(out.includes('<td>18 / 20 signed up, 2 bench, 1 tentative, 1 absent</td>') && out.includes('<span class="gs-fine">18 / 20 signed up, 2 bench, 1 tentative, 1 absent</span>'));
+    assert(out.includes('<td>18 / 20 signed up, 2 bench, 1 tentative, 1 can&#39;t come</td>') && out.includes('<span class="gs-fine">18 / 20 signed up, 2 bench, 1 tentative, 1 can&#39;t come</span>'));
     assert(!listPage(LIST({ can: { edit: false, signup: false }, upcoming: [UP({ signups: null })] })).includes('signed up'), 'a viewer who may not see counts gets none');
   });
 
   await check('Raids list: the deadline beside Sign up - "Sign-ups close Fri 8:00 PM" in the guild\'s time zone while open and a deadline is set; "Sign-ups closed" and no button when closed', () => {
     const open = listPage(LIST({ upcoming: [UP({ closeHours: 24, closesAt: STARTS - 24 * HOUR })] }));
-    assert(open.includes('<span class="gs-fine">Sign-ups close Fri 8:00 PM</span>'), open.slice(open.indexOf('Your sign-up')));
+    assert(open.includes('<span class="gs-fine">Sign-ups close Fri 8:00 PM CT</span>'), open.slice(open.indexOf('Your sign-up')));
     assert.equal(open.split('Sign-ups close Fri 8:00 PM').length - 1, 2, 'table row and card');
     assert(/data-action="raids-signup" data-rid="u1"/.test(open) && open.indexOf('data-action="raids-signup"') < open.indexOf('Sign-ups close'), 'the button, then the deadline');
     // The guild's zone decides, not the browser's.
@@ -567,21 +567,21 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert(none.includes('id="rs-hours-help">In effect: members can change their sign-up until the raid starts, the team&#39;s setting.') || none.includes("In effect: members can change their sign-up until the raid starts, the team's setting."));
     assert(none.includes('data-change="rs-hours-mode"') && none.includes('<label class="gs-label" for="rs-hours">Hours before the start (0 = when the raid starts)</label>'));
     const team = raidPage(DETAIL(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR }));
-    assert(team.includes('>Team default (24 hours)<') && team.includes('until 24 hours before the start (Fri Oct 23, 8:00 PM)'), 'the team\'s deadline, written in Chicago time');
-    assert(team.includes('(Fri Oct 23, 8:00 PM), the team'));
+    assert(team.includes('>Team default (24 hours)<') && team.includes('until 24 hours before the start (Fri Oct 23, 8:00 PM CT)'), 'the team\'s deadline, written in Chicago time');
+    assert(team.includes('(Fri Oct 23, 8:00 PM CT), the team'));
     const one = raidPage(DETAIL(null, { closeHours: 1, closesAt: STARTS - HOUR }));
     assert(one.includes('>Team default (1 hour)<') && one.includes('until 1 hour before the start'));
     const own = raidPage(DETAIL(null, { closeHours: 6, closeHoursOverride: 6, closesAt: STARTS - 6 * HOUR }));
     assert.deepEqual(optionsOf(own, 'rs-hours-mode').filter(o => o.selected).map(o => o.value), ['custom']);
     assert(/id="rs-hours-field">/.test(own) && /id="rs-hours"[^>]*value="6"/.test(own), 'the box shows with the raid\'s own hours');
-    assert(own.includes('until 6 hours before the start (Sat Oct 24, 2:00 PM), set for this raid.'));
+    assert(own.includes('until 6 hours before the start (Sat Oct 24, 2:00 PM CT), set for this raid.'));
     assert(own.includes('>Set for this raid<'));
     // An own value of 0 is still an override.
     const zero = raidPage(DETAIL(null, { closeHours: 0, closeHoursOverride: 0 }));
     assert(/id="rs-hours"[^>]*value="0"/.test(zero) && zero.includes('until the raid starts, set for this raid.'));
     // The same moment in another zone.
     const nz = ws(G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN, null, 'Pacific/Auckland'), data: DETAIL(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR }), signups: null }));
-    assert(nz.includes('(Sat Oct 24, 2:00 PM)'));
+    assert(nz.includes('(Sat Oct 24, 2:00 PM UTC+13)'));
     // A past raid has no deadline to set, only the size.
     const past = raidPage(DETAIL(null, { upcoming: false, state: 'reviewed' }));
     assert(past.includes('id="rs-size"') && !past.includes('rs-hours') && !past.includes('Sign-up deadline'));
@@ -734,7 +734,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   await check('panel: the counts lead with "Expected 18 / 20" (the raid\'s size); a view without a size has the old row', () => {
     const out = ws(panel(view()));
     const text = stripTags(out);
-    assert(/Expected 18 \/ 20 Signed 17 Late 1 Tentative 1 Bench 1 Absent 1/.test(text), text.slice(0, 400));
+    assert(/Expected 18 \/ 20 Signed 17 Late 1 Tentative 1 Bench 1 Can&#39;t come 1/.test(text), text.slice(0, 400));
     assert(out.includes('<dt>Expected</dt><dd>18 / 20</dd>'));
     const noSize = stripTags(panel(view(null, { size: undefined })));
     assert(!noSize.includes('Expected') && /Signed 17 Late 1/.test(noSize));
@@ -745,13 +745,13 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('panel: the status pill - "Open until <deadline> (sign-ups close N hours before the start)" when a deadline is set; the old "Open until <start>" when not', () => {
     const none = ws(panel(view()));
-    assert(none.includes('gs-pill gs-pill-ok gs-su-status">Open until Sat Oct 24, 8:00 PM</span>') && !none.includes('sign-ups close'));
+    assert(none.includes('gs-pill gs-pill-ok gs-su-status">Open until Sat Oct 24, 8:00 PM CT</span>') && !none.includes('sign-ups close'));
     const d24 = ws(panel(view(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR })));
-    assert(d24.includes('>Open until Fri Oct 23, 8:00 PM (sign-ups close 24 hours before the start)</span>'), d24.slice(d24.indexOf('gs-pill')));
+    assert(d24.includes('>Open until Fri Oct 23, 8:00 PM CT (sign-ups close 24 hours before the start)</span>'), d24.slice(d24.indexOf('gs-pill')));
     assert(ws(panel(view(null, { closeHours: 1, closesAt: STARTS - HOUR }))).includes('(sign-ups close 1 hour before the start)'));
     // The guild's zone, not the browser's.
     const nz = ws(G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN, null, 'Pacific/Auckland'), data: DETAIL(), state: state(view(null, { closeHours: 24, closesAt: STARTS - 24 * HOUR })) }));
-    assert(nz.includes('Open until Sat Oct 24, 2:00 PM (sign-ups close 24 hours before the start)'));
+    assert(nz.includes('Open until Sat Oct 24, 2:00 PM UTC+13 (sign-ups close 24 hours before the start)'), 'a zone with no short name reads as an offset');
     // A date-only raid: the old pill has the day alone.
     const dateOnly = ws(G.pages.raidSignups.panelHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(null, { timeKnown: false, startsAt: NOON_UTC }), state: state(view(null, { timeKnown: false, startsAt: NOON_UTC })) }));
     assert(dateOnly.includes('>Open until Sat Oct 24</span>'), dateOnly.slice(dateOnly.indexOf('gs-pill')));
@@ -763,7 +763,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     const closedRaid = { closed: 'deadline', closeHours: 24, closesAt: STARTS - 24 * HOUR };
     const v = view({ me: Object.assign({}, view().me, { canChange: false, closed: 'deadline' }) }, closedRaid);
     const out = ws(panel(v));
-    assert(out.includes('gs-pill gs-pill-warn gs-su-status">Closed Fri Oct 23, 8:00 PM</span>'), out.slice(out.indexOf('gs-pill')));
+    assert(out.includes('gs-pill gs-pill-warn gs-su-status">Closed Fri Oct 23, 8:00 PM CT</span>'), out.slice(out.indexOf('gs-pill')));
     assert(out.includes('Sign-ups closed 24 hours before the start. Ask an officer if you need to change yours.'));
     assert(!out.includes('An officer has closed sign-ups') && !out.includes('The raid has started'));
     assert(/data-kind="signed"[^>]*disabled/.test(out) && /data-kind="absence"[^>]*disabled/.test(out) && /id="su-note"[^>]*disabled/.test(out));
@@ -901,8 +901,8 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.deepEqual(optionsOf(out, 'an-repeat'), [{ value: 'range', selected: true, label: 'A date range' }, { value: 'weekly', selected: false, label: 'Every week on one day' }]);
     assert.deepEqual(optionsOf(out, 'an-weekday').map(o => o.label), ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], 'the week reads Monday first');
     assert.deepEqual(optionsOf(out, 'an-weekday').filter(o => o.selected).map(o => o.value), ['0'], 'today is a Sunday');
-    assert(/id="an-from" name="from" data-field="from" min="2026-10-18" value="2026-10-18"/.test(out));
-    assert(/id="an-to" name="to" data-field="to" value=""/.test(out));
+    assert(/id="an-from" name="from" data-field="from" data-change="away-from-change" data-key="an-from" min="2026-10-18" value="2026-10-18"/.test(out));
+    assert(/id="an-to" name="to" data-field="to" value="2026-10-18"/.test(out), 'To starts as From: a one-day notice needs no second date');
     assert(/id="an-time-field" hidden>/.test(out) && /id="an-weekday-field" hidden>/.test(out));
     assert(out.includes('id="an-from-label" for="an-from">From<') && out.includes('id="an-to-label" for="an-to">To<') && out.includes('id="an-time-label" for="an-time">Leaving at<'));
     assert(/id="an-reason" name="reason" data-field="reason" maxlength="120" autocomplete="off" value=""/.test(out));
@@ -919,10 +919,10 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.deepEqual(optionsOf(out, 'an-repeat').filter(o => o.selected).map(o => o.value), ['weekly']);
     assert.deepEqual(optionsOf(out, 'an-weekday').filter(o => o.selected).map(o => o.value), ['2']);
     assert(/id="an-time" name="atTime" data-field="atTime" value="21:00"/.test(out) && !/id="an-time-field" hidden/.test(out) && !/id="an-weekday-field" hidden/.test(out));
-    assert(/name="from" data-field="from" min="2026-10-13" value="2026-10-13"/.test(out) && /name="to" data-field="to" value="2026-12-01"/.test(out));
+    assert(/name="from" data-field="from" data-change="away-from-change" data-key="an-from" min="2026-10-13" value="2026-10-13"/.test(out) && /name="to" data-field="to" value="2026-12-01"/.test(out));
     assert(out.includes('id="an-from-label" for="an-from">Starting<') && out.includes('id="an-to-label" for="an-to">Until (optional)<') && out.includes('>Arriving at<'));
     assert(/name="reason"[^>]*value="Work"/.test(out));
-    assert(/name="from" data-field="from" min="2026-10-18" value="2026-10-20"/.test(G.pages.away.dialogHtml({ mode: 'edit', ctx: 'mine', nid: 'an_1', notice: N_RANGE, today: TODAY, minToday: true })), 'a future start: min is today');
+    assert(/name="from" data-field="from" data-change="away-from-change" data-key="an-from" min="2026-10-18" value="2026-10-20"/.test(G.pages.away.dialogHtml({ mode: 'edit', ctx: 'mine', nid: 'an_1', notice: N_RANGE, today: TODAY, minToday: true })), 'a future start: min is today');
   });
 
   await check('away dialog: the kind and "When" selects show and hide the fields in place and rename their labels', withState(async () => {
@@ -964,7 +964,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.deepEqual(plain(P(v({ from: '' }))), { field: 'from', text: 'Pick the first day.' });
     assert.deepEqual(plain(P(v({ from: '', repeat: 'weekly' }))), { field: 'from', text: 'Pick the day it starts.' });
     assert.equal(P(v({ to: '' })).field, 'to');
-    assert.equal(P(v({ to: '' })).text, 'Pick the last day, or choose "Every week on one day".');
+    assert.equal(P(v({ to: '' })).text, 'Add a To date, or choose Every week on one day.');
     assert.equal(P(v({ repeat: 'weekly', to: '' })), null, 'a weekly notice may be open-ended');
     assert.deepEqual(plain(P(v({ to: '2026-10-19' }))), { field: 'to', text: 'The end cannot be before the start.' });
     assert.equal(P(v({ repeat: 'weekly', to: '2026-10-01' })).field, 'to');
@@ -1019,7 +1019,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     const form = dlgForm(FORM({ to: '' }), { 'data-ctx': 'mine', 'data-mode': 'add' });
     G.handlers.submit['away-form'](form);
     assert.equal(s.calls.length, 0);
-    assert.equal(els['dlg-err-to'].textContent, 'Pick the last day, or choose "Every week on one day".');
+    assert.equal(els['dlg-err-to'].textContent, 'Add a To date, or choose Every week on one day.');
     assert.equal(els['dlg-err-to'].hidden, false);
     assert.equal(form.elements.to.attrs['aria-invalid'], 'true');
     assert.equal(form.elements.to.focused, 1);
@@ -1285,7 +1285,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     const v = OFFICER_VIEW({ counts: PANEL_COUNTS, entries: [entry(), STANDBY_ENTRY, AWAY_ENTRY, entry({ key: 'p:p_a', personId: 'p_a', name: 'Veyla', kind: 'absence', role: null })] });
     const out = ws(panel(v, { guildData: gd(OFFICER_CAN) }));
     const text = stripTags(out);
-    assert(/Expected 19 \/ 20 Signed 17 Late 1 Standby 1 Tentative 1 Bench 1 Absent 2/.test(text), text.slice(0, 300));
+    assert(/Expected 19 \/ 20 Signed 17 Late 1 Standby 1 Tentative 1 Bench 1 Can&#39;t come 2/.test(text), text.slice(0, 300));
     assert(out.includes('<h3 class="gs-su-group-h" id="su-g-standby">Standby <span class="gs-su-count">1</span></h3>'));
     assert(out.indexOf('id="su-g-tank"') < out.indexOf('id="su-g-standby"') && out.indexOf('id="su-g-standby"') < out.indexOf('id="su-g-absence"'));
     const absent = out.slice(out.indexOf('id="su-g-absence"'));
@@ -1333,7 +1333,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids list: the count names Standby ("18 / 20 signed up, 2 standby"); the row chip says Standby or Away (notice), and Sign up stays offered to a person who is away; a sign-up answer folds the standby count in', () => {
     const T = G.pages.raids.signupsText;
-    assert.equal(T({ signed: 14, late: 1, standby: 2, bench: 1, tentative: 0, absence: 3 }, 20), '17 / 20 signed up, 2 standby, 1 bench, 3 absent', 'standby is expected');
+    assert.equal(T({ signed: 14, late: 1, standby: 2, bench: 1, tentative: 0, absence: 3 }, 20), '17 / 20 signed up, 2 standby, 1 bench, 3 can\'t come', 'standby is expected');
     assert.equal(T({ signed: 5, late: 0, standby: 2, bench: 0, tentative: 0, absence: 0 }), '5 signed, 2 standby');
     assert.equal(T({ signed: 0, late: 0, standby: 1, bench: 0, tentative: 0, absence: 0 }, 10), '1 / 10 signed up, 1 standby', 'only a standby is a sign-up');
     const sb = listPage(LIST({ upcoming: [UP({ mine: { kind: 'standby', source: 'raidsmith', characterName: 'Eliora' } })] }));
@@ -1526,7 +1526,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     const v = view({ me: Object.assign({}, view().me, { signup: standingMe }), entries: [standingMe, entry()] });
     const out = panel(v);
     assert(/data-action="su-withdraw" data-key="su-withdraw">Skip this week<\/button>/.test(out) && !out.includes('Remove my sign-up'));
-    assert(out.includes('This sign-up comes from your standing sign-up. Skip this week marks you absent for this raid only.'));
+    assert(out.includes('This sign-up comes from your standing sign-up. Skip this week sets you to Can\'t come for this raid only.'));
     assert(out.includes('<span class="gs-chip gs-chip-src">standing</span>'));
     const plainOne = panel(view());
     assert(plainOne.includes('>Remove my sign-up</button>') && !plainOne.includes('Skip this week') && !plainOne.includes('standing'));
@@ -1539,7 +1539,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['del', '/api/guild/g1/raids/u1/signup']]);
     assert.equal(x.data, absent);
     const after = panel(absent);
-    assert(/data-kind="absence"[^>]*aria-pressed="true"/.test(after) && after.includes('You are down as <strong>absent</strong>') && !after.includes('Skip this week'));
+    assert(/data-kind="absence"[^>]*aria-pressed="true"/.test(after) && after.includes('You are down as <strong>can&#39;t come</strong>') && !after.includes('Skip this week'));
     s.restore();
   }));
 
@@ -1554,9 +1554,9 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   const PLANNED = (over, rover) => DETAIL(Object.assign({ sources: { event: null, reports: [], plan: { label: 'Plan', players: 25, unmatched: [] } } }, over || {}), rover);
   const roCard = (data, state, can) => G.pages.raidRoster.cardHtml({ guildData: gd(can || OFFICER_CAN), data, state });
 
-  await check('Roster card (officers): not published with a plan - "Publish roster" and what it does; without a plan, or for a member, nothing', () => {
+  await check('Roster card (officers): not published with a plan - "Publish line-up" and what it does; without a plan, or for a member, nothing', () => {
     const out = roCard(PLANNED(), roState({ published: false }));
-    assert(out.includes('<h2 class="gs-h2" id="ro-h">Roster</h2>') && /data-action="roster-publish" data-op="publish" data-key="ro-publish">Publish roster<\/button>/.test(out));
+    assert(out.includes('<h2 class="gs-h2" id="ro-h">Line-up</h2>') && /data-action="roster-publish" data-op="publish" data-key="ro-publish">Publish line-up<\/button>/.test(out));
     assert(dec(out).includes('Members will see their group and can confirm or say they can\'t come.'));
     assert.equal(roCard(DETAIL(), roState({ published: false })), '', 'no plan yet');
     assert.equal(roCard(PLANNED({ can: { edit: false } }), roState({ published: false }), MEMBER_CAN), '', 'a member never sees the officers\' card');
@@ -1568,22 +1568,22 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assertNoRawAttrs(out);
   });
 
-  await check('Roster card (officers): published - when and by whom (guild time zone), "1 confirmed, 2 waiting, 1 can\'t make it", Group 1, Group 2, Bench with status chips; waiting names highlighted, can\'t-make-it in the warning style', () => {
+  await check('Roster card (officers): published - when and by whom (guild time zone), "1 confirmed, 2 waiting, 1 can\'t come", Group 1, Group 2, Bench with status chips; waiting names highlighted, can\'t-make-it in the warning style', () => {
     const out = ws(roCard(PLANNED(), roState(ROSTER())));
     const text = dec(stripTags(out));
-    assert(text.includes('Published Sat Oct 24, 5:00 PM by Alice.'), text.slice(0, 300));
-    assert(out.includes('<p class="gs-ro-counts" id="ro-counts">1 confirmed, 2 waiting, 1 can&#39;t make it</p>') || out.includes('<p class="gs-ro-counts" id="ro-counts">1 confirmed, 2 waiting, 1 can\'t make it</p>'));
+    assert(text.includes('Published Sat Oct 24, 5:00 PM CT by Alice.'), text.slice(0, 300));
+    assert(out.includes('<p class="gs-ro-counts" id="ro-counts">1 confirmed, 2 waiting, 1 can&#39;t come</p>'));
     assert(out.indexOf('id="ro-g-1"') < out.indexOf('id="ro-g-2"') && out.indexOf('id="ro-g-2"') < out.indexOf('id="ro-g-0"'), 'Bench last');
     assert(out.includes('<h3 class="gs-su-group-h" id="ro-g-1">Group 1 <span class="gs-su-count">1</span>') && out.includes('<h3 class="gs-su-group-h" id="ro-g-2">Group 2 <span class="gs-su-count">2</span>') && out.includes('id="ro-g-0">Bench <span class="gs-su-count">1</span>'));
     assert(/<li class="gs-su-item gs-ro-item is-confirmed"><span class="gs-su-who"><span class="gs-char-name gs-class-paladin">Thoren<\/span><\/span><span class="gs-su-spec">Protection<\/span><span class="gs-pill gs-pill-ok">Confirmed<\/span>/.test(out));
     assert(/gs-ro-item is-pending"><span class="gs-su-who"><span class="gs-char-name gs-class-priest">Eliora[\s\S]*?gs-pill gs-pill-info">Waiting</.test(out), 'waiting is highlighted');
-    assert(/gs-ro-item is-declined">[\s\S]*?Garrosh[\s\S]*?gs-pill gs-pill-warn">Can(&#39;|')t make it</.test(out), 'declined is a warning');
-    assert(/data-op="republish" data-key="ro-republish">Re-publish roster</.test(out) && /data-op="unpublish" data-key="ro-unpublish">Unpublish</.test(out));
+    assert(/gs-ro-item is-declined">[\s\S]*?Garrosh[\s\S]*?gs-pill gs-pill-warn">Can(&#39;|')t come</.test(out), 'declined is a warning');
+    assert(/data-op="republish" data-key="ro-republish">Re-publish line-up</.test(out) && /data-op="unpublish" data-key="ro-unpublish">Unpublish</.test(out));
     assert(!out.includes('The plan changed since you published.'));
     const changed = ws(roCard(PLANNED(), roState(ROSTER({ planChanged: true }))));
     assert(changed.includes('<div class="gs-notice" role="status"><span>The plan changed since you published.</span>') && /data-op="republish" data-key="ro-changed">Re-publish</.test(changed));
     assert(ws(roCard(PLANNED(), roState(ROSTER({ publishedBy: null, publishedAt: null })))).includes('Published.'));
-    assert(ws(roCard(PLANNED(), roState(ROSTER({ entries: [], counts: { pending: 0, confirmed: 0, declined: 0, total: 0 } })))).includes('No one is on the roster.'));
+    assert(ws(roCard(PLANNED(), roState(ROSTER({ entries: [], counts: { pending: 0, confirmed: 0, declined: 0, total: 0 } })))).includes('No one is in the line-up.'));
     assertNoRawAttrs(out);
     assertEscaped(roCard(PLANNED(), roState(ROSTER({ entries: [RENT({ name: HOSTILE + QUOTES, spec: HOSTILE, class: 'MAGE' })], publishedBy: HOSTILE + QUOTES }))), 'roster card');
   });
@@ -1599,9 +1599,9 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   await check('Roster dialogs: Publish says what members will see; Re-publish says what is kept; Unpublish is a danger button; the buttons open them', withState(async (S) => {
     const C = G.pages.raidRoster.confirmDialogHtml;
     const pub = C('publish');
-    assert(pub.includes('data-submit="roster-confirm-form" data-op="publish"') && pub.includes('Publish the roster?') && dec(pub).includes('Members will see their group and can confirm or say they can\'t come.') && pub.includes('gs-btn-molten">Publish roster<'));
-    assert(C('republish').includes('Members keep the answer they gave for a seat that did not change.') && C('republish').includes('>Re-publish roster<'));
-    assert(C('unpublish').includes('Unpublish the roster?') && C('unpublish').includes('gs-btn-danger">Unpublish<'));
+    assert(pub.includes('data-submit="roster-confirm-form" data-op="publish"') && pub.includes('Publish the line-up?') && dec(pub).includes('Members will see their group and can confirm or say they can\'t come.') && pub.includes('gs-btn-molten">Publish line-up<'));
+    assert(C('republish').includes('Members keep the answer they gave for a group that did not change.') && C('republish').includes('>Re-publish line-up<'));
+    assert(C('unpublish').includes('Unpublish the line-up?') && C('unpublish').includes('gs-btn-danger">Unpublish line-up<'));
     assertNoRawAttrs(pub);
     openRaid(S, view(), OFFICER_CAN, PLANNED());
     S.att.raidRoster = roState(ROSTER());
@@ -1637,7 +1637,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     await settle();
     assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['del', '/api/guild/g1/raids/u1/roster']]);
     assert.equal(state0.data.published, false);
-    assert(roCard(PLANNED(), state0).includes('Publish roster'));
+    assert(roCard(PLANNED(), state0).includes('Publish line-up'));
     s.restore();
     G.ui.runDialog = realRun;
     // A refusal shows in the dialog.
@@ -1697,28 +1697,28 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     S.att.raid = { gid: 'g1', rid: 'u1', data: PLANNED(), filter: null };
     S.att.raidRoster = roState(ROSTER());
     const page = ws(G.pages.raid.main(route, S.guilds.g1));
-    assert(page.includes('id="ro-h">Roster</h2>'));
+    assert(page.includes('id="ro-h">Line-up</h2>'));
   }));
 
   // ── a member's seat ──
   const SEAT = (over) => ({ published: true, publishedAt: STARTS - 3 * HOUR, mine: Object.assign({ group: 3, name: 'Gorrim', class: 'PALADIN', spec: 'Holy', status: 'pending' }, over || {}) });
   const seatCard = (data, detail, can) => ws(G.pages.raidRoster.seatHtml({ guildData: gd(can || MEMBER_CAN), data: detail || DETAIL({ can: { edit: false } }), state: roState(data) }));
 
-  await check('Your seat: "You\'re in Group 3 as Holy Paladin (Gorrim)" with the status and Confirm / Can\'t make it; the bench reads "You\'re on the bench"; confirmed and declined change the buttons and the sentence', () => {
+  await check('Your group: "You\'re in Group 3 as Holy Paladin (Gorrim)" with the status and Confirm / Can\'t come; the bench reads "You\'re on the bench"; confirmed and declined change the buttons and the sentence', () => {
     const out = seatCard(SEAT());
-    assert(out.includes('<h2 class="gs-h2" id="seat-h">Your seat</h2>') && out.includes('<span class="gs-pill gs-pill-info">Waiting</span>'));
+    assert(out.includes('<h2 class="gs-h2" id="seat-h">Your group</h2>') && out.includes('<span class="gs-pill gs-pill-info">Waiting</span>'));
     assert.equal(dec(stripTags(out)).includes('You\'re in Group 3 as Holy Paladin (Gorrim)'), true, stripTags(out));
-    assert(/data-action="seat-confirm" data-key="seat-confirm">Confirm<\/button>/.test(out) && /data-action="seat-decline" data-key="seat-decline">Can't make it<\/button>/.test(out));
+    assert(/data-action="seat-confirm" data-key="seat-confirm">Confirm<\/button>/.test(out) && /data-action="seat-decline" data-key="seat-decline">Can't come<\/button>/.test(out));
     assert(out.includes('id="seat-error" role="alert" hidden'));
     const bench = seatCard(SEAT({ group: 0 }));
     assert(dec(stripTags(bench)).includes('You\'re on the bench') && dec(stripTags(bench)).includes('As Holy Paladin (Gorrim)') && !bench.includes('Group 0'));
     const ok = seatCard(SEAT({ status: 'confirmed' }));
     assert(ok.includes('gs-pill-ok">Confirmed') && !ok.includes('data-action="seat-confirm"') && ok.includes('data-action="seat-decline"'));
     const no = seatCard(SEAT({ status: 'declined' }));
-    assert(dec(stripTags(no)).includes('You told the officers you can\'t make it.') && no.includes('gs-pill-warn') && /data-action="seat-confirm"[^>]*>Confirm after all</.test(no) && !no.includes('data-action="seat-decline"'));
+    assert(dec(stripTags(no)).includes('You told the officers you can\'t come.') && no.includes('gs-pill-warn') && /data-action="seat-confirm"[^>]*>Confirm after all</.test(no) && !no.includes('data-action="seat-decline"'));
     assert(dec(stripTags(seatCard(SEAT({ spec: null })))).includes('You\'re in Group 3 as Paladin (Gorrim)'));
     assert(dec(stripTags(seatCard(SEAT({ spec: null, class: null, name: null })))).includes('You\'re in Group 3') && !seatCard(SEAT({ spec: null, class: null, name: null })).includes(' as '));
-    assert(seatCard(SEAT(), null).includes('Your seat'));
+    assert(seatCard(SEAT(), null).includes('Your group'));
     const busy = G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: roState(SEAT(), { busy: true }) });
     assert(/data-action="seat-confirm"[^>]*disabled/.test(busy) && /data-action="seat-decline"[^>]*disabled/.test(busy));
     assert(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: roState(SEAT(), { error: HOSTILE + QUOTES }) }).includes('role="alert">&lt;img'));
@@ -1726,7 +1726,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assertNoRawAttrs(out);
   });
 
-  await check('Your seat: nothing when the roster is not published, the viewer has no seat (an officer\'s reply), the raid has started or the data is not there', () => {
+  await check('Your group: nothing when the roster is not published, the viewer has no seat (an officer\'s reply), the raid has started or the data is not there', () => {
     assert.equal(seatCard({ published: false, mine: null }), '');
     assert.equal(seatCard({ published: true, publishedAt: 1, mine: null }), '');
     assert.equal(seatCard(Object.assign(SEAT(), { published: false })), '');
@@ -1734,12 +1734,12 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.equal(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: null }), '');
     assert.equal(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: roState(null, { status: 'error' }) }), '');
     const officer = ws(G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN), data: PLANNED(), signups: null, roster: roState(ROSTER()) }));
-    assert(!officer.includes('Your seat') && officer.includes('id="ro-h"'), 'an officer sees the Roster card, not a seat');
+    assert(!officer.includes('Your group') && officer.includes('id="ro-h"'), 'an officer sees the Roster card, not a seat');
     const member = ws(G.pages.raid.raidHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), signups: null, roster: roState(SEAT()) }));
-    assert(member.includes('Your seat') && !member.includes('id="ro-h"') && member.indexOf('Your seat') < member.indexOf('Attendance starts after the raid.'), 'the seat is on top, the officers\' card is not there');
+    assert(member.includes('Your group') && !member.includes('id="ro-h"') && member.indexOf('Your group') < member.indexOf('Attendance starts after the raid.'), 'the seat is on top, the officers\' card is not there');
   });
 
-  await check('Your seat: Confirm POSTs and shows the answer, then reads the Sign-ups panel again; a failure is shown in the card; Can\'t make it asks first, then POSTs decline and the card says so', withState(async (S) => {
+  await check('Your group: Confirm POSTs and shows the answer, then reads the Sign-ups panel again; a failure is shown in the card; Can\'t come asks first, then POSTs decline and the card says so', withState(async (S) => {
     openRaid(S, view(), MEMBER_CAN, DETAIL({ can: { edit: false } }));
     const sc = S.att.raidRoster = roState(SEAT());
     let s = stub((m, url) => Promise.resolve(m === 'post' ? SEAT({ status: 'confirmed' }) : view()));
@@ -1758,7 +1758,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.equal(sc.busy, false);
     assert(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: sc }).includes('id="seat-error" role="alert">The raid has started.</p>'));
     s.restore();
-    // Can't make it asks first.
+    // Can't come asks first.
     sc.error = '';
     const opened = [];
     const realOpen = G.ui.openDialog; G.ui.openDialog = (html, o) => { opened.push({ html, o }); return null; };
@@ -1766,7 +1766,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     G.handlers.click['seat-decline'](el({}));
     G.ui.openDialog = realOpen;
     assert.equal(s.calls.length, 0, 'nothing sent yet');
-    assert(opened[0].html.includes("Tell the officers you can't make it?") && opened[0].html.includes('Your sign-up for this raid becomes Absent.') && opened[0].html.includes('data-submit="roster-decline-form" data-from="page" data-rid="u1"') && opened[0].html.includes('gs-btn-danger'));
+    assert(opened[0].html.includes("Tell the officers you can't come?") && opened[0].html.includes('Your sign-up for this raid becomes Can&#39;t come.') && opened[0].html.includes('data-submit="roster-decline-form" data-from="page" data-rid="u1"') && opened[0].html.includes('gs-btn-danger'));
     s.restore();
     const realRun = G.ui.runDialog; G.ui.runDialog = (form, promise, ok) => promise.then(ok);
     s = stub((m) => Promise.resolve(m === 'post' ? SEAT({ status: 'declined' }) : view()));
@@ -1775,7 +1775,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['post', '/api/guild/g1/raids/u1/roster/decline'], ['get', '/api/guild/g1/raids/u1/signups']]);
     assert.equal(sc.data.mine.status, 'declined');
     const card = ws(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: sc }));
-    assert(dec(stripTags(card)).includes('You told the officers you can\'t make it.') && card.includes('Confirm after all'));
+    assert(dec(stripTags(card)).includes('You told the officers you can\'t come.') && card.includes('Confirm after all'));
     // Confirm after all: the same call as Confirm.
     s.calls.length = 0;
     G.handlers.click['seat-confirm'](el({}));
@@ -1787,17 +1787,17 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   // ── the Raids list ──
   const mineRoster = (roster, over) => Object.assign({ kind: 'signed', source: 'raidsmith', characterName: 'Eliora', roster }, over || {});
 
-  await check('Raids list: a seat shows as "Group 3 - confirm?" / "Group 3 - confirmed" / "Bench - confirm?" with Confirm and Can\'t make it right there; a seat with no sign-up still shows and can sign up', () => {
+  await check('Raids list: a seat shows as "Group 3 - confirm?" / "Group 3 - confirmed" / "Bench - confirm?" with Confirm and Can\'t come right there; a seat with no sign-up still shows and can sign up', () => {
     const out = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'pending' }) })] }));
     assert(out.includes('<span class="gs-chip gs-chip-signup">Group 3 - confirm?</span>'));
-    assert(/data-action="raids-roster" data-do="confirm" data-rid="u1" data-key="rc-u1">Confirm<\/button>/.test(out) && /data-action="raids-roster" data-do="decline" data-rid="u1" data-key="rd-u1">Can't make it<\/button>/.test(out));
+    assert(/data-action="raids-roster" data-do="confirm" data-rid="u1" data-key="rc-u1">Confirm<\/button>/.test(out) && /data-action="raids-roster" data-do="decline" data-rid="u1" data-key="rd-u1">Can't come<\/button>/.test(out));
     assert.equal(out.split('data-do="confirm"').length - 1, 2, 'table row and card');
     const ok = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'confirmed' }) })] }));
     assert(ok.includes('Group 3 - confirmed') && !ok.includes('data-do="confirm"') && ok.includes('data-do="decline"'));
     const bench = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 0, status: 'pending' }) })] }));
     assert(bench.includes('Bench - confirm?') && !bench.includes('Group 0'));
     const no = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'declined' }) })] }));
-    assert(dec(no).includes('Group 3 - can\'t make it') && no.includes('gs-chip-flag') && />Confirm after all</.test(no) && !no.includes('data-do="decline"'));
+    assert(dec(no).includes('Group 3 - can\'t come') && no.includes('gs-chip-flag') && />Confirm after all</.test(no) && !no.includes('data-do="decline"'));
     const bare = listPage(LIST({ upcoming: [UP({ mine: { kind: null, source: null, characterName: null, roster: { group: 2, status: 'pending' } } })] }));
     assert(bare.includes('Group 2 - confirm?') && !bare.includes('null') && /data-action="raids-signup"/.test(bare), 'no sign-up chip, Sign up stays');
     const closed = listPage(LIST({ upcoming: [UP({ signupsOpen: false, mine: { kind: null, source: null, characterName: null, roster: { group: 2, status: 'pending' } } })] }));
@@ -1806,7 +1806,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assertNoRawAttrs(out);
   });
 
-  await check('Raids list: Confirm POSTs and reads the list again; Can\'t make it asks first (then POSTs decline and reads the list); a started raid or a taken-down roster re-reads the list and says why', withState(async (S) => {
+  await check('Raids list: Confirm POSTs and reads the list again; Can\'t come asks first (then POSTs decline and reads the list); a started raid or a taken-down roster re-reads the list and says why', withState(async (S) => {
     S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
     const x = S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'pending' }) })] }), more: false, tab: 'upcoming' };
     const confirmed = LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'confirmed' }) })] });
@@ -1848,18 +1848,18 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   }));
 
   // ── Needs attention ──
-  await check('Needs attention: "Sat Oct 24: 2 rostered people can\'t make it" links the raid; one person reads "1 rostered person"; an unknown future kind is skipped without breaking the list', () => {
+  await check('Needs attention: "Sat Oct 24: 2 line-up players can\'t come" links the raid; one person reads "1 line-up player"; an unknown future kind is skipped without breaking the list', () => {
     const A = G.pages.attention;
     const item = (over) => Object.assign({ id: 'rd:u1', kind: 'roster_declined', severity: 'action', teamId: 't1', teamName: 'Team KJ', raidId: 'u1', date: '2026-10-24', zone: 'Hyjal Summit', title: null, startsAt: STARTS, count: 2, link: { name: 'raid', rid: 'u1' } }, over || {});
-    assert.equal(A.itemText(item()), 'Sat Oct 24: 2 rostered people can\'t make it');
-    assert.equal(A.itemText(item({ count: 1 })), 'Sat Oct 24: 1 rostered person can\'t make it');
+    assert.equal(A.itemText(item()), 'Sat Oct 24: 2 line-up players can\'t come');
+    assert.equal(A.itemText(item({ count: 1 })), 'Sat Oct 24: 1 line-up player can\'t come');
     assert.equal(A.itemHref('g1', item()), '#/g/g1/raids/r/u1');
-    assert(A.KINDS.some(k => k.id === 'roster_declined' && k.severity === 'action' && k.chip === 'Roster'));
+    assert(A.KINDS.some(k => k.id === 'roster_declined' && k.severity === 'action' && k.chip === 'Line-up'));
     const data = { today: '2026-10-18', total: 3, items: [item(), { id: 'x:1', kind: 'from_the_future', severity: 'action', teamId: 't1', teamName: 'Team KJ', date: '2026-10-24', link: { name: 'raid', rid: 'u1' } }, item({ id: 'rd:u2', raidId: 'u2', count: 1, date: '2026-10-31', link: { name: 'raid', rid: 'u2' } })], more: { roster_declined: 2 } };
     const out = ws(A.attentionHtml({ guildData: gd(OFFICER_CAN), data }));
-    assert(out.includes('id="attn-h-roster_declined">Rostered players who can&#39;t make it</h3>') || out.includes('id="attn-h-roster_declined">Rostered players who can\'t make it</h3>'));
-    assert(dec(out).includes('Sat Oct 24: 2 rostered people can\'t make it') && dec(out).includes('Sat Oct 31: 1 rostered person can\'t make it'));
-    assert(out.includes('href="#/g/g1/raids/r/u1"') && out.includes('<span class="gs-chip gs-chip-attn">Roster</span>'));
+    assert(out.includes('id="attn-h-roster_declined">Line-up players who can&#39;t come</h3>'));
+    assert(dec(out).includes('Sat Oct 24: 2 line-up players can\'t come') && dec(out).includes('Sat Oct 31: 1 line-up player can\'t come'));
+    assert(out.includes('href="#/g/g1/raids/r/u1"') && out.includes('<span class="gs-chip gs-chip-attn">Line-up</span>'));
     assert(!out.includes('from_the_future') && !out.includes('from the future'), 'the unknown kind is skipped');
     assert(out.includes('and 2 more'), 'the hidden ones link on');
     assertNoRawAttrs(out);

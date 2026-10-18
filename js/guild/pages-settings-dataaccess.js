@@ -59,7 +59,7 @@
     return '<tr><th scope="row" class="gs-cell-strong"><span class="gs-guest-title">' + esc(key.name) + '</span><span class="gs-fine gs-guest-by">' + esc(madeByText(key)) + '</span></th>' +
       '<td data-label="Reads"><span class="gs-guest-role">' + esc(key.team ? key.team.name : 'Whole guild') + '</span><span class="gs-fine gs-guest-sections">' + esc(datasetsText(key.datasets)) + '</span></td>' +
       '<td data-label="Status">' + statusPillHtml(key) + '</td>' +
-      '<td data-label="Used">' + esc(usedText(key)) + (key.lastUsedAt ? '<span class="gs-fine gs-guest-last">Last used ' + esc(G.ui.formatDateTime(key.lastUsedAt)) + '</span>' : '') + '</td>' +
+      '<td data-label="Used">' + esc(usedText(key)) + (key.lastUsedAt ? '<span class="gs-fine gs-guest-last">Last used ' + esc(G.ui.formatDateTime(key.lastUsedAt, G.ui.guildZone())) + '</span>' : '') + '</td>' +
       '<td data-label="Ends">' + esc(endsText(key)) + '</td>' +
       '<td><div class="gs-row-actions">' + offButtonHtml(key) + '</div></td></tr>';
   }

@@ -265,7 +265,7 @@ function withState(fn) {
 
   await check('activity page: a row shows when (guild time zone), who, the sentence and a Details toggle with before / after JSON; table and phone cards', () => {
     const out = ws(actHtml(actState()));
-    assert(out.includes('Oct 17, 8:15 PM'), 'the time is in the guild zone, not UTC');
+    assert(out.includes('Sat Oct 17, 8:15 PM ET'), 'the time is in the guild zone, not UTC, and names it');
     assert(out.includes('>Alice<') && out.includes('Moved Thoren to Reserve'));
     assert((out.match(/<details class="gs-audit-details">/g) || []).length === 2, 'one toggle in the table, one in the card');
     assert(out.includes('<pre class="gs-audit-json">Before\n{\n  &quot;status&quot;: &quot;raider&quot;\n}\n\nAfter\n{\n  &quot;status&quot;: &quot;reserve&quot;\n}</pre>'), out.slice(out.indexOf('<pre'), out.indexOf('</pre>') + 6));
@@ -280,8 +280,8 @@ function withState(fn) {
 
   await check('activity page: the year joins the time when the row is from another year; an unknown zone falls back instead of throwing', () => {
     const P = G.pages.settingsActivity;
-    assert.equal(ws(P.whenText(AT, 'America/New_York', NOW)), 'Oct 17, 8:15 PM');
-    assert.equal(ws(P.whenText(AT, 'America/New_York', Date.UTC(2027, 0, 5))), 'Oct 17, 2026, 8:15 PM');
+    assert.equal(ws(P.whenText(AT, 'America/New_York', NOW)), 'Sat Oct 17, 8:15 PM ET');
+    assert.equal(ws(P.whenText(AT, 'America/New_York', Date.UTC(2027, 0, 5))), 'Sat Oct 17, 2026, 8:15 PM ET');
     assert(P.whenText(AT, 'Not/AZone', NOW).length > 0);
     assert(P.whenText(AT, '', NOW).length > 0);
     assert.equal(P.whenText(null, 'America/New_York', NOW), '');
@@ -1398,7 +1398,7 @@ function withState(fn) {
     const phone = css.slice(css.indexOf('@media (max-width: 600px)', css.indexOf('PM wave 1')));
     assert(/\.gs-audit-table \{ display: none; \}/.test(phone), 'the Activity table gives way to the cards on a phone');
     assert(/\.gs-watch-item \{ grid-template-columns: minmax\(0, 1fr\)/.test(phone));
-    const wave = css.slice(css.indexOf('PM wave 1'));
+    const wave = css.slice(css.indexOf('PM wave 1'), css.indexOf('\u2550\u2550 Design framework (Wave 0)')); // the sections up to the design framework's own
     assert(!/(^|[;{\s])--[\w-]+\s*:/.test(wave), 'no custom properties');
     assert(!/border-radius:\s*[^0]/.test(wave), 'flat corners');
     assert(!/!important/.test(wave));

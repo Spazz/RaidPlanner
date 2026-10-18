@@ -235,7 +235,7 @@
       const date = ev.startTime ? G.ui.formatDate(ev.startTime) : '';
       const members = (s.preview.rows || []).length;
       result = '<section aria-labelledby="rh-result" class="gs-import-result"><div class="gs-import-result-head"><h2 class="gs-h2" id="rh-result">' + esc(ev.title) + (date ? ' &middot; ' + esc(date) : '') + ' &middot; ' + esc(plural(members, 'sign-up', 'sign-ups')) + '</h2>' +
-        (ev.otherServer ? '<div class="gs-warn" id="rh-other-server" role="status">This event was posted in a different Discord server than ' + esc(gd.guild.name) + '\'s.</div>' : '') +
+        (ev.otherServer ? '<div class="gs-warn" id="rh-other-server" role="status">This event was posted in a different Discord server than the ' + esc(gd.guild.name) + ' server.</div>' : '') +
         '<p class="gs-fine">The first name in each nickname becomes the Main, with the class and spec they signed up with. Other names in the nickname are offered as Alts: tick the ones that are characters and pick their class.</p>' +
         '<div class="gs-field gs-field-inline"><label class="gs-label" for="rh-start">New people start as</label><select class="gs-input" id="rh-start" data-change="rh-start" data-key="rh-start">' +
         G.ui.optionsHtml(START_STATUSES.map(function (v) { return { value: v, label: G.ui.statusLabel(v) }; }), s.defaultStatus) + '</select></div></div>' +

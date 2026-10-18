@@ -1,6 +1,6 @@
 // -- PAGE: GUILD SETTINGS > NOTIFICATIONS ------------------------
-// Per team, a Discord channel webhook and what Raidsmith posts to it: the roster when it is published, loot after an import, raid reminders 24 h and 2 h
-// before, a reminder for people who have not answered a raid (N hours before its sign-up deadline) and one for rostered people who have not confirmed
+// Per team, a Discord channel webhook and what Raidsmith posts to it: the line-up when it is published, loot after an import, raid reminders 24 h and 2 h
+// before, a reminder for people who have not answered a raid (N hours before its sign-up deadline) and one for people in the line-up who have not confirmed
 // (6 h before). Everything is off until an officer switches it on. GET /api/guild/:gid/notifications, PUT /api/guild/:gid/teams/:tid/notifications
 // (guild.teams). The webhook address is a secret: it goes in through the field and never comes back, only its last four characters do.
 // Members opt out of being pinged by name on Linked accounts ("Don't mention me in reminders").
@@ -13,11 +13,11 @@
   const SECRET = 'The address is a secret. Raidsmith stores it and never shows it again, only its last four characters.';
   const MENTION_HELP = 'Optional. A role to ping in every post, written like <@&123456789012345678>. In Discord, turn on Developer Mode, then right-click the role and Copy Role ID.';
   const SWITCHES = [
-    { key: 'roster', label: 'Post the roster when published' },
+    { key: 'roster', label: 'Post the line-up when published' },
     { key: 'loot', label: 'Post loot after an import' },
     { key: 'reminders', label: 'Post upcoming raid reminders (24 h and 2 h before)' },
     { key: 'noreply', label: 'Remind people who haven\'t answered' },
-    { key: 'confirm', label: 'Remind rostered people who haven\'t confirmed (6 h before the raid)' },
+    { key: 'confirm', label: 'Remind people in the line-up who haven\'t confirmed (6 h before the raid)' },
   ];
 
   function st() { return G.app.state; }

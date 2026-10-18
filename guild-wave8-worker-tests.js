@@ -324,7 +324,7 @@ check('duties: the roster post lists them, in names a message can carry', async 
   assert.deepEqual(plain.embeds[0].fields.map((f) => f.name), ['Group 1', 'Bench'], 'without duties the post is what it was');
 });
 
-check('duties: publishing the roster posts the duties to the channel', async () => {
+check('duties: publishing the line-up posts the duties to the channel', async () => {
   const s = await scenario({ members: ['m1'] });
   const aldric = await s.person('Aldric', { link: 'm1' });
   await s.notify({ webhookUrl: HOOK, roster: true });
@@ -332,7 +332,7 @@ check('duties: publishing the roster posts the duties to the channel', async () 
   await s.ok('gm', 'PUT', `/raids/${rid}/duties`, { duties: [{ duty: 'leader', personId: aldric.pid }] });
   await s.ok('gm', 'PUT', `/raids/${rid}/plan`, { label: 'Plan', players: [{ name: 'Aldric', group: 1 }] });
   await s.ok('gm', 'POST', `/raids/${rid}/roster`, {}, 200);
-  const post = s.net.posts.find((entry) => /Roster published/.test(entry.body.embeds[0].title));
+  const post = s.net.posts.find((entry) => /Line-up published/.test(entry.body.embeds[0].title));
   assert(post, JSON.stringify(s.net.posts.map((p) => p.body.embeds[0].title)));
   assert.deepEqual(post.body.embeds[0].fields[0], { name: 'Duties', value: 'Raid leader: Aldric', inline: false });
 });

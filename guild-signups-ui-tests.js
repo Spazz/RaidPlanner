@@ -194,9 +194,9 @@ class ApiErr extends Error {
   await check('panel (member): counts, the class strip, and the list by role then by status with class colours; Late and Raid-Helper rows marked; notes shown', () => {
     const out = panel(view());
     const text = stripTags(out);
-    assert(/Signed 4 Late 1 Tentative 1 Bench 1 Absent 1/.test(text), text.slice(0, 500));
+    assert(/Signed 4 Late 1 Tentative 1 Bench 1 Can&#39;t come 1/.test(text), text.slice(0, 500));
     assert(/Paladin 1/.test(text) && /Priest 1/.test(text) && /Rogue 2/.test(text) && /Hunter 1/.test(text) && !/Mage 1/.test(stripTags(out.slice(out.indexOf('gs-su-classes'), out.indexOf('</ul>', out.indexOf('gs-su-classes'))))));
-    const order = ['Tanks', 'Healers', 'Melee', 'Ranged', 'Tentative', 'Bench', 'Absent'].map(t => out.indexOf('>' + t + ' <span'));
+    const order = ['Tanks', 'Healers', 'Melee', 'Ranged', 'Tentative', 'Bench', 'Can&#39;t come'].map(t => out.indexOf('>' + t + ' <span'));
     assert(order.every(i => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]), 'groups in role order, then status: ' + order);
     assert(!out.includes('No role yet'), 'an empty group is left out');
     assert(out.includes('class="gs-char-name gs-class-paladin">Thoren<') && out.includes('gs-class-priest">Eliora<'));

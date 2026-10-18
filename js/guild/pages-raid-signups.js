@@ -4,21 +4,21 @@
 // four big buttons (Sign up, Late, Tentative, Can't come) and a small form for the character, spec and a note, until the raid starts or
 // an officer closes sign-ups or the team's deadline (hours before the start) passes; officers edit or remove anyone's, add one for someone without
 // Discord, and close or reopen sign-ups. The counts read "expected / size" against the raid's size. A fifth button, Standby ("happy to sit out if
-// needed"), has its own group; a person away by notice is a virtual Absent entry (source 'away', "Away (notice)": nothing to edit, a real sign-up
+// needed"), has its own group; a person away by notice is a virtual Can't come entry (source 'away', "Away (notice)": nothing to edit, a real sign-up
 // replaces it), and Late / Leaving notices show as "Late 21:00" / "Leaves 22:00".
 // pages-raid.js draws the panel and loads its data; the state lives in the attendance state bag (a().raidSignups).
 (function (G) {
   'use strict';
 
   const NOTE_MAX = 120;
-  const KIND_LABELS = { signed: 'Signed up', late: 'Late', standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Absent' };
+  const KIND_LABELS = { signed: 'Signed up', late: 'Late', standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
   // The five a member picks, with the words on the buttons.
   const MY_KINDS = [['signed', 'Sign up'], ['late', 'Late'], ['standby', 'Standby'], ['tentative', 'Tentative'], ['absence', 'Can\'t come']];
-  const OFFICER_KINDS = [['signed', 'Signed up'], ['late', 'Late'], ['standby', 'Standby'], ['tentative', 'Tentative'], ['bench', 'Bench'], ['absence', 'Absent']];
+  const OFFICER_KINDS = [['signed', 'Signed up'], ['late', 'Late'], ['standby', 'Standby'], ['tentative', 'Tentative'], ['bench', 'Bench'], ['absence', 'Can\'t come']];
   const ROLE_ORDER = ['tank', 'healer', 'melee', 'ranged', 'none'];
   const ROLE_LABELS = { tank: 'Tanks', healer: 'Healers', melee: 'Melee', ranged: 'Ranged', none: 'No role yet' };
   const OTHER_ORDER = ['standby', 'tentative', 'bench', 'absence'];
-  const OTHER_LABELS = { standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Absent' };
+  const OTHER_LABELS = { standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
   const STANDBY_HINT = 'Standby: Happy to sit out if needed.';
   const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
 
@@ -116,7 +116,7 @@
     }
     return '<p class="gs-fine">You are down as <strong>' + esc(String(KIND_LABELS[sig.kind] || sig.kind).toLowerCase()) + '</strong>' +
       (sig.name ? ' with ' + esc(sig.name) : '') + (sig.spec ? ' (' + esc(sig.spec) + ')' : '') + '.</p>' +
-      (sig.standing ? '<p class="gs-fine">This sign-up comes from your standing sign-up. Skip this week marks you absent for this raid only.</p>' : '') + own;
+      (sig.standing ? '<p class="gs-fine">This sign-up comes from your standing sign-up. Skip this week sets you to Can\'t come for this raid only.</p>' : '') + own;
   }
 
   // The viewer's own part: four status buttons, then the character / spec / note form.
@@ -160,7 +160,7 @@
     if (!c) return '';
     // The people expected (signed up and late) against the raid's size, first.
     const sized = typeof view.raid.size === 'number' && view.raid.size > 0 && typeof c.expected === 'number';
-    const items = (sized ? [['Expected', c.expected + ' / ' + view.raid.size]] : []).concat([['Signed', c.signed], ['Late', c.late]]).concat(typeof c.standby === 'number' ? [['Standby', c.standby]] : [], [['Tentative', c.tentative], ['Bench', c.bench], ['Absent', c.absence]]);
+    const items = (sized ? [['Expected', c.expected + ' / ' + view.raid.size]] : []).concat([['Signed', c.signed], ['Late', c.late]]).concat(typeof c.standby === 'number' ? [['Standby', c.standby]] : [], [['Tentative', c.tentative], ['Bench', c.bench], ['Can\'t come', c.absence]]);
     const classes = CLASS_IDS.filter(function (id) { return c.byClass && c.byClass[id] > 0; }).map(function (id) {
       return '<li class="gs-su-class">' + G.ui.classNameHtml(G.ui.className(id), id) + ' <span class="gs-su-count">' + esc(c.byClass[id]) + '</span></li>';
     }).join('');
@@ -210,7 +210,7 @@
       rest.map(function (n) { return '<li class="gs-su-item"><span class="gs-su-who">' + esc(n.name) + '</span><span class="gs-chip gs-chip-signup">' + esc(noticeNote(n)) + '</span></li>'; }).join('') + '</ul></section>';
   }
 
-  // Signed and Late by role, then Standby, Tentative, Bench and Absent (people away by notice are in Absent). Empty groups are left out.
+  // Signed and Late by role, then Standby, Tentative, Bench and Can't come (people away by notice are in Can't come). Empty groups are left out.
   function listHtml(view) {
     const entries = Array.isArray(view.entries) ? view.entries : [];
     const edit = !!view.can.edit;

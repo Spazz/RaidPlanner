@@ -1,5 +1,5 @@
 // ── PAGE PIECES OF THE RAID: DUTIES, PASTE RAID ROSTER, GUEST SIGN-UP LINK ──
-// Three things an officer does from the raid page's Actions menu (pages-raid.js asks menuItems() and draws dutiesLineHtml()):
+// Three things an officer does from the raid page's More menu (pages-raid.js asks menuItems() and draws dutiesLineHtml()):
 //   Set raid duties          who is Raid leader, Loot master, Logger and Plan maker for this raid, and one duty in the officer's own words.
 //                            The raid header shows them and the Discord roster post lists them; the Logger is nudged when no log arrives.
 //   Paste raid roster        a raid with no log: paste who was there (names, /who, a raid frame), check who matched, save it as hand-entered attendance.
@@ -28,7 +28,7 @@
     }).join(' ') + '</p>';
   }
 
-  // The Actions menu's extra items for this raid (empty for anyone who may not edit it).
+  // The More menu's extra items for this raid (empty for anyone who may not edit it).
   function menuItems(data) {
     if (!(data && data.can && data.can.edit)) return [];
     const upcoming = !!(data.raid && data.raid.upcoming);

@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { GUILD_SCRIPTS } = require('./tests/guild-scripts');
+const GuildCss = require('./tests/guild-css');
 
 let passed = 0, failed = 0;
 async function check(name, fn) {
@@ -209,10 +210,10 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
 
 (async () => {
   // ── nav matrix ─────────────────────────────────────────────────
-  await check('nav matrix: signed out = Planner, separator, What\'s new, Future enhancements, How it works, FAQ; no rail, no tabs', () => {
+  await check('nav matrix: signed out = Planner, separator, the one Help item (What\'s new, Future enhancements, How it works, FAQ inside it); no rail, no tabs', () => {
     const { G } = makeEnv();
     const ctx = { section: 'planner', page: 'app', me: null, signedOut: true, guildData: null };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['planner', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['planner', 'help|sep']);
     const s = G.shell.slots(ctx);
     assert.equal(s.rail, '', 'no guild rail');
     assert.equal(s.tabs, '', 'no phone tabs');
@@ -228,17 +229,17 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const base = { section: 'planner', page: 'app', guildData: null };
     const cannot = Object.assign({ me: meBody({ guilds: [] }) }, base);
     const can = Object.assign({ me: meBody({ guilds: [], create: { allowed: true } }) }, base);
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(cannot))), ['planner', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(cannot))), ['planner', 'help|sep']);
     assert.equal(G.shell.slots(cannot).rail, '');
     const withAdd = G.shell.slots(can);
     assert(withAdd.rail.includes('gs-tile-add') && withAdd.rail.includes('href="#/new"') && !withAdd.rail.includes('href="#/g/'), 'add button only');
     assert.equal(G.shell.slots(can).tabs, '', 'no tabs without a guild');
   });
 
-  await check('nav matrix: member = Roster, Raids, Attendance, Loot, Planner, help group; tiles; five phone tabs', () => {
+  await check('nav matrix: member = Roster, Raids, Attendance, Loot, Planner, Help; tiles; five phone tabs', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(MEMBER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'help|sep']);
     assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
     const s = G.shell.slots(ctx);
     assert(s.rail.includes('gs-tile is-active') && s.rail.includes('data-action="open-planner"'), 'tiles; the rail logo is a Planner link');
@@ -246,10 +247,10 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(!s.sidebar.includes('Guild settings'));
   });
 
-  await check('nav matrix: officer / GM gets Home first and Guild settings (separated) before the help group; tabs stay five (no Home tab)', () => {
+  await check('nav matrix: officer / GM gets Home first and Guild settings (separated) before the Help item; tabs stay five (no Home tab)', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep', 'help|sep']);
     assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
   });
 
@@ -929,14 +930,14 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
       assert(!bare.test(css), 'page-wide rule left: ' + bare);
     }
     assert(/\.gs-scope a \{ color: var\(--accent-gold\); \}/.test(css));
-    assert(/\.gs-scope a:focus-visible,[\s\S]*?\{ outline: 2px solid var\(--accent-gold\); outline-offset: 2px; \}/.test(css));
+    assert(/\.gs-scope a:focus-visible,[\s\S]*?\{ outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\); \}/.test(css) && /--focus-ring: 2px solid var\(--accent-gold\);/.test(css) && /--focus-offset: 2px;/.test(css));
     assert(/\.gs-scope \.gs-h1:focus \{ outline: none; \}/.test(css) && /\.gs-scope input::placeholder/.test(css));
     assert(/#shell-rail, #shell-sidebar, #shell-banner, #shell-tabs, #shell-drawer \{ display: contents; \}/.test(css));
     assert(/#planner-root\[hidden\], #gs-main\[hidden\] \{ display: none !important; \}/.test(css));
     const selectors = [...css.matchAll(/(^|\})\s*([^{}@][^{}]*)\{/g)].map(m => m[2]).join(',').split(',').map(x => x.trim());
     const planner = selectors.filter(x => /(^|[\s>+~])#planner-root|#shell-topbar-plan|\.planner-|\.title-bar|\.landing\b|\.addon-frame/.test(x) && !/#planner-root\[hidden\]/.test(x));
     assert.deepEqual(planner, [], 'guild.css must not style planner markup');
-    assert(!/--[\w-]+\s*:/.test(css.replace(/var\(--[\w-]+/g, '').replace(/--gs-out-[a-z_]+(-ink)?\s*:/g, '').replace(/--gs-tone-[a-z]+(-bg)?\s*:/g, '')), 'no custom properties (but the attendance outcome colours and the Raids tones)');
+    assert(!/--[\w-]+\s*:/.test(GuildCss.stripOwnTokens(css).replace(/var\(--[\w-]+/g, '')), 'no custom properties (but the framework tokens, the attendance outcome colours and the Raids tones)');
   });
 
   await check('guild.css: phone A2 - menu button 44px on every page, drawer for everyone, tabs only with a guild, signed-out sign-in shortens', () => {

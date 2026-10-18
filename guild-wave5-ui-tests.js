@@ -142,7 +142,7 @@ check('api: board, saveList, manual and teamRoster hit the contract paths with t
 check('card: one row per item with the line in order, roll-off and "All have it" pills, SR copies, guest and "Already got it" chips, and where it went', () => {
   const out = card(okState());
   const text = stripTags(out);
-  assert(out.includes('id="board-h"') && text.includes('Loot board') && text.includes('3 items'));
+  assert(out.includes('id="board-h"') && text.includes('Loot prios') && text.includes('3 items'));
   const rows = out.split('<li class="gs-board-row').slice(1);
   assert.equal(rows.length, 3);
   assert(rows[0].includes('is-contested') && rows[0].includes('Roll-off') && !rows[0].includes('All have it'));
@@ -190,7 +190,7 @@ check('card: filters (roll-offs only, by player) keep the matching items and say
 
 check('card: who sees what - members only see pasted lists, nothing for denied / none, an error card retries, an editor with nothing pasted gets the buttons', () => {
   const empty = BOARD({ lists: { tmb: null, softres: null }, items: [], unmatched: [] });
-  assert.equal(card(okState({ data: Object.assign({}, empty, { canEdit: false }) }), PAST(), MEMBER_CAN).includes('Loot board'), false, 'a member sees nothing before anything is pasted');
+  assert.equal(card(okState({ data: Object.assign({}, empty, { canEdit: false }) }), PAST(), MEMBER_CAN).includes('Loot prios'), false, 'a member sees nothing before anything is pasted');
   const member = card(okState({ data: BOARD({ canEdit: false }) }), PAST(), MEMBER_CAN);
   assert(member.includes('Nathrezim Mindblade') && !member.includes('data-action="board-open"') && !member.includes('data-action="board-remove"') && !member.includes('bd-paste'));
   assert(member.includes('data-action="board-print"'), 'printing is for everyone who sees the board');
@@ -224,7 +224,7 @@ check('card: names, item names and notes from the data are escaped everywhere', 
 check('print sheet: item, roll-off and the line as plain text, respecting the filters', () => {
   const html = G.pages.raidBoard.printHtml(gd(OFFICER_CAN), PAST().raid, BOARD(), { contested: false, player: '' });
   const text = stripTags(html);
-  assert(text.startsWith('Loot board - ') && text.includes('Black Temple') && text.includes('Ravens - 3 items'));
+  assert(text.startsWith('Loot prios - ') && text.includes('Black Temple') && text.includes('Ravens - 3 items'));
   assert(text.includes('Nathrezim Mindblade Roll-off Prio #1 Aldric, Prio #1 Brindle, SR x2 Pugone (guest), Wish #2 Cassia'));
   assert(text.includes('Item 30311') && text.includes('Prio #1 Aldric (has it)'));
   const only = stripTags(G.pages.raidBoard.printHtml(gd(OFFICER_CAN), PAST().raid, BOARD(), { contested: true, player: '' }));

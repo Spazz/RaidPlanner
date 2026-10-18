@@ -43,9 +43,129 @@
     try { return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch (e) { return ''; }
   };
 
-  ui.formatDateTime = function (ms) {
+  // With a time zone (the guild's: guild.timeZone) the moment reads like every other time in the app, "Wed Oct 14, 8:12 PM ET" (the year only
+  // when it is not this year); without one it is the viewer's own zone, as before.
+  ui.formatDateTime = function (ms, timeZone) {
     if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    if (timeZone) { const zoned = ui.dateTimeInZone(ms, timeZone, { year: 'auto' }); if (zoned) return zoned; }
     try { return new Date(ms).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; }
+  };
+
+  // The time zone of the guild the page is showing ('' with no guild or no app, as in the suites): the zone times are written in.
+  ui.guildZone = function () {
+    try {
+      const s = G.app && G.app.state;
+      const gd = s && s.currentGid && s.guilds ? s.guilds[s.currentGid] : null;
+      return gd && gd.guild && typeof gd.guild.timeZone === 'string' ? gd.guild.timeZone : '';
+    } catch (e) { return ''; }
+  };
+
+  // ── TIMES IN THE GUILD'S ZONE ("8:00 PM ET") ──
+  // Every time a person reads is the guild's time with its zone written next to it: "Wed Oct 21, 8:00 PM ET" (ddd MMM D, h:mm A zone). The zone
+  // is the guild's (guild.timeZone, set in Settings, General), never the browser's. A date alone has no zone. The short zone names are ET, CT, MT,
+  // PT, AKT, GMT, CET and EET (the families, so one name covers winter and summer); a zone with no short name reads as an offset, "UTC+10".
+  // A missing or unknown zone falls back to the viewer's own zone, and the label then names that zone, so a time is never shown bare.
+  // The pieces are assembled from Intl parts: toLocaleTimeString puts a no-break space before "PM" in newer engines, and a plain space is wanted.
+  //   ui.zoneLabel(zone, ms)             "ET"           ui.timeInZone(ms, zone)      "8:00 PM ET"
+  //   ui.dayInZone(ms, zone)             "Wed Oct 21"   ui.dateTimeInZone(ms, zone, { year, noZone, now })   "Wed Oct 21, 8:00 PM ET"
+  //   ui.dayKeyInZone(ms, zone)          "2026-10-21"
+  const US_ZONE_FAMILY = { EST: 'ET', EDT: 'ET', CST: 'CT', CDT: 'CT', MST: 'MT', MDT: 'MT', PST: 'PT', PDT: 'PT', AKST: 'AKT', AKDT: 'AKT' };
+  const EUROPE_FAMILY = { 60: 'CET', 0: 'GMT', 120: 'EET' };
+
+  function validZone(zone) {
+    if (typeof zone !== 'string' || !zone) return '';
+    try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); return zone; } catch (e) { return ''; }
+  }
+
+  function viewerZone() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; }
+  }
+
+  function zonedParts(ms, zone, options) {
+    const out = {};
+    new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: zone }, options)).formatToParts(new Date(ms)).forEach(function (p) { out[p.type] = p.value; });
+    return out;
+  }
+
+  // The zone's offset from UTC at a moment, in minutes (+60 = one hour ahead).
+  function offsetMinutes(ms, zone) {
+    const p = zonedParts(ms, zone, { hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+    const asUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour) % 24, Number(p.minute), Number(p.second));
+    return Math.round((asUtc - Math.floor(ms / 1000) * 1000) / 60000);
+  }
+
+  // "ET", "CT", "CET", "UTC+10", "UTC+5:30" for a zone at a moment ('' when neither the zone nor the viewer's is known).
+  ui.zoneLabel = function (timeZone, ms) {
+    const zone = validZone(timeZone) || validZone(viewerZone());
+    if (!zone) return '';
+    const at = typeof ms === 'number' && isFinite(ms) ? ms : Date.now();
+    try {
+      if (zone === 'UTC' || zone === 'Etc/UTC') return 'UTC';
+      if (zone === 'GMT' || zone === 'Etc/GMT') return 'GMT';
+      if (/^Europe\//.test(zone)) {
+        const winter = offsetMinutes(Date.UTC(new Date(at).getUTCFullYear(), 0, 15), zone);
+        if (Object.prototype.hasOwnProperty.call(EUROPE_FAMILY, winter)) return EUROPE_FAMILY[winter];
+      }
+      const short = zonedParts(at, zone, { timeZoneName: 'short' }).timeZoneName || '';
+      if (Object.prototype.hasOwnProperty.call(US_ZONE_FAMILY, short)) return US_ZONE_FAMILY[short];
+      if (/^[A-Z]{2,5}$/.test(short) && short !== 'GMT' && short !== 'UTC') return short;
+      const offset = offsetMinutes(at, zone);
+      if (offset === 0) return 'UTC';
+      const abs = Math.abs(offset);
+      return 'UTC' + (offset < 0 ? '-' : '+') + Math.floor(abs / 60) + (abs % 60 ? ':' + String(abs % 60).padStart(2, '0') : '');
+    } catch (e) { return ''; }
+  };
+
+  function clockText(ms, zone) {
+    const p = zonedParts(ms, zone, { hour: 'numeric', minute: '2-digit', hour12: true });
+    return p.hour + ':' + p.minute + ' ' + String(p.dayPeriod || '').toUpperCase();
+  }
+
+  function dayText(ms, zone) {
+    const p = zonedParts(ms, zone, { weekday: 'short', month: 'short', day: 'numeric' });
+    return p.weekday + ' ' + p.month + ' ' + p.day;
+  }
+
+  function zoneOf(timeZone) { return validZone(timeZone) || validZone(viewerZone()); }
+
+  // "8:00 PM ET".
+  ui.timeInZone = function (ms, timeZone) {
+    if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    const zone = zoneOf(timeZone);
+    if (!zone) return '';
+    try { const label = ui.zoneLabel(zone, ms); return clockText(ms, zone) + (label ? ' ' + label : ''); } catch (e) { return ''; }
+  };
+
+  // "Wed Oct 21": the day alone, no zone.
+  ui.dayInZone = function (ms, timeZone) {
+    if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    const zone = zoneOf(timeZone);
+    if (!zone) return '';
+    try { return dayText(ms, zone); } catch (e) { return ''; }
+  };
+
+  // "Wed Oct 21, 8:00 PM ET". opts.year: true adds the year ("Wed Oct 21, 2026, 8:00 PM ET"), 'auto' adds it when it is not the current year
+  // (opts.now is the moment "now", for a test), opts.noZone leaves the zone label off.
+  ui.dateTimeInZone = function (ms, timeZone, opts) {
+    if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    const o = opts || {};
+    const zone = zoneOf(timeZone);
+    if (!zone) return '';
+    try {
+      const year = zonedParts(ms, zone, { year: 'numeric' }).year;
+      const thisYear = zonedParts(typeof o.now === 'number' ? o.now : Date.now(), zone, { year: 'numeric' }).year;
+      const withYear = o.year === true || (o.year === 'auto' && year !== thisYear);
+      const label = o.noZone ? '' : ui.zoneLabel(zone, ms);
+      return dayText(ms, zone) + (withYear ? ', ' + year : '') + ', ' + clockText(ms, zone) + (label ? ' ' + label : '');
+    } catch (e) { return ''; }
+  };
+
+  // The calendar day (YYYY-MM-DD) of a moment in a zone.
+  ui.dayKeyInZone = function (ms, timeZone) {
+    if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    const zone = zoneOf(timeZone);
+    if (!zone) return '';
+    try { const p = zonedParts(ms, zone, { year: 'numeric', month: '2-digit', day: '2-digit' }); return p.year + '-' + p.month + '-' + p.day; } catch (e) { return ''; }
   };
 
   // Calendar-day difference in the viewer's time zone: Today, Yesterday, N days ago, then a date.
@@ -95,7 +215,8 @@
   // button open it at the first / last item, ArrowDown / ArrowUp / Home / End move between items, Escape closes it and returns focus to
   // the button, Tab or a click outside closes it, and choosing an item closes it with focus back on the button (so a dialog the item
   // opens, and a re-render, return to the button). Items run their own data-action through the normal delegated handlers.
-  //   opts: { id, label, ariaLabel, icon ('more' for an icon-only "..." button), triggerClass, align ('left'), key, items }
+  //   opts: { id, label, ariaLabel, icon ('more' for an icon-only "..." button), phoneIcon (true: the labelled button turns into a 44 px dots icon button
+  //           on a phone, label "More" kept as its aria-label), triggerClass, align ('left'), key, items }
   //   item: { label, href } for a link, { label, data: { action: 'raid-op', op: 'recompute' }, key } for a button, { danger: true } to
   //         colour a destructive item, { separator: true } for a rule. Falsy entries are skipped; no items renders nothing.
   const MENU_DATA_NAME = /^[a-z][a-z0-9-]*$/;
@@ -114,9 +235,13 @@
     const items = (Array.isArray(o.items) ? o.items : []).filter(Boolean);
     if (!o.id || !items.some(function (i) { return !i.separator; })) return '';
     const iconOnly = !!o.icon;
-    const content = iconOnly ? G.icons.icon(o.icon, 18) : '<span>' + esc(o.label) + '</span>' + G.icons.icon('chevronDown', 16);
-    const trigger = '<button type="button" class="' + esc(o.triggerClass || 'gs-btn') + ' gs-menu-trigger' + (iconOnly ? ' is-icon' : '') + '" id="' + esc(o.id) + '" data-action="menu-toggle" data-key="' + esc(o.key || o.id) + '"' +
-      ' aria-haspopup="menu" aria-expanded="false" aria-controls="' + esc(o.id) + '-list"' + (o.ariaLabel ? ' aria-label="' + esc(o.ariaLabel) + '"' : '') + '>' + content + '</button>';
+    const phoneIcon = !iconOnly && !!o.phoneIcon;
+    const labelled = '<span>' + esc(o.label) + '</span>' + G.icons.icon('chevronDown', 16);
+    const content = iconOnly ? G.icons.icon(o.icon, 18)
+      : phoneIcon ? '<span class="gs-menu-text">' + esc(o.label) + '</span><span class="gs-menu-chev">' + G.icons.icon('chevronDown', 16) + '</span><span class="gs-menu-dots">' + G.icons.icon('more', 20) + '</span>' : labelled;
+    const ariaLabel = o.ariaLabel || (phoneIcon ? o.label : '');
+    const trigger = '<button type="button" class="' + esc(o.triggerClass || 'gs-btn') + ' gs-menu-trigger' + (iconOnly ? ' is-icon' : '') + (phoneIcon ? ' has-phone-icon' : '') + '" id="' + esc(o.id) + '" data-action="menu-toggle" data-key="' + esc(o.key || o.id) + '"' +
+      ' aria-haspopup="menu" aria-expanded="false" aria-controls="' + esc(o.id) + '-list"' + (ariaLabel ? ' aria-label="' + esc(ariaLabel) + '"' : '') + '>' + content + '</button>';
     const list = '<div class="gs-menu gs-menu-list' + (o.align === 'left' ? ' is-left' : '') + '" id="' + esc(o.id) + '-list" role="menu" aria-labelledby="' + esc(o.id) + '" hidden>' + items.map(menuItemHtml).join('') + '</div>';
     return '<div class="gs-menu-wrap" data-menu>' + trigger + list + '</div>';
   };
@@ -396,22 +521,38 @@
 
   // Opens a native modal <dialog>. Escape closes it; focus returns to the opener (or its data-key after a re-render).
   // An item of a menu is hidden again by then: focus goes back to the menu's button.
+  // Dialogs never stack: opening one while another is open REPLACES it (the old one closes without moving focus), and the new one inherits the old
+  // one's opener, so focus still returns to the control on the page that started the flow. A decision that follows another is a second step in
+  // the same dialog (ui.replaceDialogBody), not a dialog on a dialog.
+  let openDialogRecord = null;
   ui.openDialog = function (html, opts) {
     const o = opts || {};
     const host = document.getElementById('guild-dialogs');
     if (!host || typeof HTMLDialogElement === 'undefined') return null;
+    const prior = openDialogRecord && openDialogRecord.dlg && openDialogRecord.dlg.isConnected !== false ? openDialogRecord : null;
     let opener = (G.app && G.app.lastActionEl && G.app.lastActionEl.isConnected) ? G.app.lastActionEl : document.activeElement;
     const menuRoot = menuRootOf(opener);
     const menuButton = menuRoot ? menuParts(menuRoot).button : null;
     if (menuButton) opener = menuButton;
-    const returnKey = o.returnKey || (opener && opener.getAttribute ? opener.getAttribute('data-key') : null);
+    let returnKey = o.returnKey || (opener && opener.getAttribute ? opener.getAttribute('data-key') : null);
+    if (prior) {
+      // The control that started this dialog may sit inside the one being replaced; the page control that opened THAT one is the opener to return to.
+      const inside = prior.dlg.contains ? prior.dlg.contains(opener) : false;
+      if (inside || !opener) { opener = prior.opener; returnKey = o.returnKey || prior.returnKey; }
+      prior.replaced = true;
+      if (prior.dlg.open && prior.dlg.close) prior.dlg.close(); else if (prior.dlg.remove) prior.dlg.remove();
+    }
     const dlg = document.createElement('dialog');
     dlg.className = 'gs-dialog';
     if (o.labelledBy) dlg.setAttribute('aria-labelledby', o.labelledBy);
     if (o.describedBy) dlg.setAttribute('aria-describedby', o.describedBy);
     dlg.innerHTML = html;
+    const record = { dlg: dlg, opener: opener, returnKey: returnKey, replaced: false };
+    openDialogRecord = record;
     dlg.addEventListener('close', function () {
       dlg.remove();
+      if (openDialogRecord === record) openDialogRecord = null;
+      if (record.replaced) return;
       if (opener && opener.isConnected && opener.focus) {
         opener.focus();
         if (document.activeElement === opener) return;
@@ -423,6 +564,20 @@
     host.appendChild(dlg);
     dlg.showModal();
     return dlg;
+  };
+
+  // The second step of a dialog: the body is swapped in place (same dialog, same opener, focus to the new body's first control or its title).
+  ui.replaceDialogBody = function (dlg, html) {
+    if (!dlg) return dlg;
+    dlg.innerHTML = html;
+    const first = dlg.querySelector ? dlg.querySelector('[autofocus], input, select, textarea, button, [tabindex="-1"]') : null;
+    if (first && first.focus) first.focus();
+    return dlg;
+  };
+
+  // Whether a modal dialog is open right now (the page's own dialogs, not the phone drawer).
+  ui.dialogIsOpen = function () {
+    return !!(openDialogRecord && openDialogRecord.dlg && openDialogRecord.dlg.isConnected !== false && openDialogRecord.dlg.open !== false);
   };
 
   ui.closeDialogOf = function (el) {

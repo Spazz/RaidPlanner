@@ -7,7 +7,7 @@
   'use strict';
 
   const STAGES = [
-    { id: 'intent', label: 'Intent picked' },
+    { id: 'intent', label: 'Spec poll picked' },
     { id: 'character', label: 'Character created' },
     { id: 'level', label: 'Level band' },
     { id: 'ready', label: 'Attuned / ready' },
@@ -50,7 +50,7 @@
         '<progress class="gs-funnel-bar" max="' + esc(Math.max(people, 1)) + '" value="' + esc(n) + '" aria-labelledby="fn-' + s.id + '"></progress>' +
         '<span class="gs-funnel-n">' + esc(n) + ' of ' + esc(people) + '</span></li>';
     }).join('');
-    const gap = t.gap > 0 ? plural(t.gap, 'seat', 'seats') + ' short of the ' + size + '-man raid' : 'Enough people are ready for the ' + size + '-man raid';
+    const gap = t.gap > 0 ? plural(t.gap, 'spot', 'spots') + ' short of the ' + size + '-man raid' : 'Enough people are ready for the ' + size + '-man raid';
     return '<section class="gs-card-sec" aria-labelledby="launch-sum-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="launch-sum-h">The funnel</h2>' +
       '<span class="gs-pill gs-pill-' + (t.gap > 0 ? 'warn' : 'ok') + '">' + esc(t.stages.ready + ' ready') + '</span></div><div class="gs-card-sec-body">' +
       '<ul class="gs-funnel" aria-label="People at each stage">' + bars + '</ul>' +
@@ -61,12 +61,12 @@
     const rows = data.totals.roles.filter(function (r) { return r.role !== 'none' || r.people > 0; }).map(function (r) {
       const gap = r.gap === null ? '-' : (r.gap > 0 ? 'Need ' + r.gap : 'Covered');
       return '<tr><th scope="row" class="gs-cell-strong">' + esc(ROLE_LABELS[r.role]) + '</th><td class="gs-num" data-label="People">' + esc(r.people) + '</td>' +
-        '<td class="gs-num" data-label="Intent">' + esc(r.intent) + '</td><td class="gs-num" data-label="Character">' + esc(r.character) + '</td>' +
+        '<td class="gs-num" data-label="Spec poll">' + esc(r.intent) + '</td><td class="gs-num" data-label="Character">' + esc(r.character) + '</td>' +
         '<td class="gs-num" data-label="Level band">' + esc(r.level) + '</td><td class="gs-num" data-label="Ready">' + esc(r.ready) + '</td>' +
         '<td class="gs-num" data-label="Target">' + (r.target === null ? '-' : esc(r.target)) + '</td><td data-label="Gap">' + esc(gap) + '</td></tr>';
     }).join('');
     return '<section class="gs-card-sec" aria-labelledby="launch-roles-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="launch-roles-h">By role</h2></div><div class="gs-card-sec-body">' +
-      '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="The funnel by role"><thead><tr><th scope="col">Role</th><th scope="col">People</th><th scope="col">Intent</th>' +
+      '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="The funnel by role"><thead><tr><th scope="col">Role</th><th scope="col">People</th><th scope="col">Spec poll</th>' +
       '<th scope="col">Character</th><th scope="col">Level band</th><th scope="col">Ready</th><th scope="col">Target</th><th scope="col">Gap</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<p class="gs-fine">Target is the team\'s recruitment target for the role; Gap is how many more ready people it still needs.</p></div></section>';
   }
@@ -91,11 +91,11 @@
           '" aria-pressed="' + (row.ready ? 'true' : 'false') + '" aria-label="' + esc((row.ready ? 'Take the ready tick off ' : 'Mark as ready: ') + row.name) + '">' + (row.ready ? 'Ready' : 'Not ready') + '</button>'
         : yesNo(row.ready);
       return '<tr><th scope="row" class="gs-cell-strong">' + G.ui.classNameHtml(row.name, row.class) + (row.mine ? ' <span class="gs-fine">(you)</span>' : '') + '</th>' +
-        '<td data-label="Intent">' + pick + '</td><td data-label="Character">' + yesNo(row.flags.character) + '</td>' +
+        '<td data-label="Spec poll">' + pick + '</td><td data-label="Character">' + yesNo(row.flags.character) + '</td>' +
         '<td data-label="Level band">' + levelCell(data, row, canSet) + '</td><td data-label="Ready">' + ready + '</td></tr>';
     }).join('');
     if (!data.rows.length) return '<p class="gs-empty">Nobody on this team yet.</p>';
-    return '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="Launch readiness by person"><thead><tr><th scope="col">Player</th><th scope="col">Intent</th>' +
+    return '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="Launch readiness by person"><thead><tr><th scope="col">Player</th><th scope="col">Spec poll</th>' +
       '<th scope="col">Character</th><th scope="col">Level band</th><th scope="col">Ready</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
@@ -118,7 +118,7 @@
       ? '<div class="gs-actions"><button type="button" class="gs-btn" data-action="launch-team" data-enabled="false" data-key="launch-off">Turn the funnel off for this team</button></div>' : '';
     return '<div class="gs-page">' + head + alert + summaryHtml(data) + rolesHtml(data) +
       '<section class="gs-card-sec" aria-labelledby="launch-rows-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="launch-rows-h">People</h2></div><div class="gs-card-sec-body">' +
-      '<p class="gs-fine">' + (data.round ? 'Intent comes from "' + esc(data.round.title) + '". ' : 'No intent round yet: open one on the Intent tab. ') +
+      '<p class="gs-fine">' + (data.round ? 'The spec poll is "' + esc(data.round.title) + '". ' : 'No spec poll yet: open one on the Spec poll tab. ') +
       (data.canEdit ? 'You can set every row.' : 'You can set your own row.') + ' A level band set here wins over a Battle.net level.</p>' + rowsHtml(data) + off + '</div></section></div>';
   }
 

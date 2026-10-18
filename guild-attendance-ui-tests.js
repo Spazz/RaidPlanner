@@ -416,7 +416,7 @@ function teamData(over) {
     assert(out.indexOf('u1') < out.indexOf('u2'), 'soonest first');
     assert(out.includes('href="#/g/g1/raids/r/u1"') && out.includes('Sat Oct 24, '));
     assert(out.includes('Black Temple <span class="gs-fine">(Raid-Helper)</span>') && out.includes('>Prog night<'));
-    assert(out.includes('23 signed, 2 bench, 1 absent') && out.includes('No sign-ups yet'));
+    assert(out.includes('23 signed, 2 bench, 1 can&#39;t come') && out.includes('No sign-ups yet'));
     assert(out.includes('>Planned<') && out.includes('>Not planned<'));
     assert.equal(out.split('data-action="raids-refresh"').length - 1, 2, 'one button in the table, one on the card');
     assert(/data-action="raids-refresh" data-rid="u1"/.test(out) && !/data-action="raids-refresh" data-rid="u2"/.test(out));
@@ -1356,7 +1356,7 @@ function teamData(over) {
       s.answerYes();
       await settle();
       assert.deepEqual([att.raid.data.raid.raidOn, s.puts[s.puts.length - 1].moveRaid, s.errors.length], ['2026-10-29', true, 0]);
-      // The Link event dialog: Cancel keeps it open (and usable); Move raid closes it and applies the answer.
+      // The Link event dialog: the Move question replaces it (dialogs never stack), so Cancel leaves the page saying "Not linked"; Move raid applies the answer.
       att.raid.data = up;
       const form = { elements: { source: { value: EVENT_ID, focus() {} }, confirm: { value: '0' } }, closest: () => null, querySelectorAll: () => [] };
       s.closed = 0;
@@ -1364,7 +1364,8 @@ function teamData(over) {
       await settle();
       s.answerCancel();
       await settle();
-      assert.deepEqual([s.closed, att.raid.data.raid.raidOn], [0, '2026-10-27'], 'the link dialog stays open');
+      assert.deepEqual([s.closed, att.raid.data.raid.raidOn], [1, '2026-10-27'], 'the link dialog is closed, the raid stays where it was');
+      assert(/^Not linked\./.test(att.note), 'the page says Not linked: ' + att.note);
       G.handlers.submit['event-form'](form);
       await settle();
       s.answerYes();

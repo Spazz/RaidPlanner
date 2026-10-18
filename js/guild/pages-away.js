@@ -262,9 +262,9 @@
       field('weekday', '<label class="gs-label" for="an-weekday">Day of the week</label>',
         '<select class="gs-input" id="an-weekday" name="weekday" data-field="weekday">' + G.ui.optionsHtml(WEEKDAY_ORDER.map(function (d) { return { value: d, label: WEEKDAYS[d] }; }), weekday) + '</select>', ' id="an-weekday-field"' + (repeat === 'weekly' ? '' : ' hidden')) +
       field('from', '<label class="gs-label" id="an-from-label" for="an-from">' + esc(labels.from) + '</label>',
-        '<input class="gs-input" type="date" id="an-from" name="from" data-field="from"' + (minDate ? ' min="' + esc(minDate) + '"' : '') + ' value="' + esc(from) + '">') +
+        '<input class="gs-input" type="date" id="an-from" name="from" data-field="from" data-change="away-from-change" data-key="an-from"' + (minDate ? ' min="' + esc(minDate) + '"' : '') + ' value="' + esc(from) + '">') +
       field('to', '<label class="gs-label" id="an-to-label" for="an-to">' + esc(labels.to) + '</label>',
-        '<input class="gs-input" type="date" id="an-to" name="to" data-field="to" value="' + esc(n && n.to ? n.to : '') + '">') +
+        '<input class="gs-input" type="date" id="an-to" name="to" data-field="to" value="' + esc(n ? (n.to || '') : (repeat === 'range' ? from : '')) + '">') +
       field('reason', '<label class="gs-label" for="an-reason">Reason (optional)</label>',
         '<input class="gs-input" type="text" id="an-reason" name="reason" data-field="reason" maxlength="' + REASON_MAX + '" autocomplete="off" value="' + esc(n && n.reason ? n.reason : '') + '">') +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
@@ -291,10 +291,23 @@
     text('an-to-label', labels.to);
   }
 
+  // A date range's To starts as its From (one day is the usual notice) and follows From when From moves past it; a weekly notice's Until stays empty.
+  function followFrom(form) {
+    const e = form.elements;
+    if (!e.from || !e.to || !e.repeat || e.repeat.value === 'weekly' || !e.from.value) return;
+    if (!e.to.value || e.to.value < e.from.value) e.to.value = e.from.value;
+  }
+
   G.handlers.change['away-form-change'] = function (el) {
     const form = el && el.closest ? el.closest('form') : null;
     if (!form || !form.elements) return;
     applyForm(form.elements.kind.value, form.elements.repeat.value);
+    followFrom(form);
+  };
+
+  G.handlers.change['away-from-change'] = function (el) {
+    const form = el && el.closest ? el.closest('form') : null;
+    if (form && form.elements) followFrom(form);
   };
 
   // ── finding the notice a button belongs to ──
@@ -414,7 +427,7 @@
   function problemOf(v, needsPerson) {
     if (needsPerson && !v.person) return { field: 'personId', text: 'Choose a person.' };
     if (!DATE.test(v.from)) return { field: 'from', text: v.repeat === 'weekly' ? 'Pick the day it starts.' : 'Pick the first day.' };
-    if (v.repeat !== 'weekly' && !DATE.test(v.to)) return { field: 'to', text: 'Pick the last day, or choose "Every week on one day".' };
+    if (v.repeat !== 'weekly' && !DATE.test(v.to)) return { field: 'to', text: 'Add a To date, or choose Every week on one day.' };
     if (v.to && !DATE.test(v.to)) return { field: 'to', text: 'Pick a date.' };
     if (v.to && v.to < v.from) return { field: 'to', text: 'The end cannot be before the start.' };
     if (v.kind !== 'away' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(v.atTime)) return { field: 'atTime', text: v.kind === 'late' ? 'Say what time you arrive.' : 'Say what time you leave.' };

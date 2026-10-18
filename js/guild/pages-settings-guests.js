@@ -33,7 +33,7 @@
   }
 
   function lastUsedText(link) {
-    const when = G.ui.formatDateTime(link.lastUsedAt);
+    const when = G.ui.formatDateTime(link.lastUsedAt, G.ui.guildZone());
     return when ? 'Last opened ' + when : '';
   }
 

@@ -13,6 +13,8 @@
     '/js/guild/people-sort.js',
     '/js/guild/roster-sort.js',
     '/js/guild/ui.js',
+    '/js/guild/ui-kit.js',
+    '/js/guild/ui-templates.js',
     '/js/guild/shell.js',
     '/js/guild/pages-signin.js',
     '/js/guild/pages-create.js',

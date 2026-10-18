@@ -150,12 +150,12 @@ check('api: duties, launch, join links, the guest page and the pasted roster hit
 });
 
 check('Roster tabs: Launch for a WoW Forever guild or when a team is marked a launch team - and nowhere else', () => {
-  const labels = (data) => [...G.pages.rosterTabs.html(data, 'roster').matchAll(/>([A-Za-z]+)<\/a>/g)].map(m => m[1]);
-  assert.deepEqual(labels(gd(MEMBER, 'forever')), ['Roster', 'Intent', 'Launch']);
-  assert.deepEqual(labels(gd(OFFICER, 'forever')), ['Roster', 'Intent', 'Launch', 'Recruiting', 'Applications']);
-  assert.deepEqual(labels(gd(MEMBER, 'tbc')), ['Roster', 'Intent']);
-  assert.deepEqual(labels(gd(MEMBER, 'tbc', [Object.assign({}, TEAMS[0], { launchTeam: true })])), ['Roster', 'Intent', 'Launch']);
-  assert.deepEqual(labels(gd(MEMBER, 'tbc', [Object.assign({}, TEAMS[0], { launchTeam: true, archived: true })])), ['Roster', 'Intent'], 'an archived launch team does not count');
+  const labels = (data) => [...G.pages.rosterTabs.html(data, 'roster').matchAll(/>([A-Za-z ]+)<\/a>/g)].map(m => m[1]);
+  assert.deepEqual(labels(gd(MEMBER, 'forever')), ['Roster', 'Spec poll', 'Launch']);
+  assert.deepEqual(labels(gd(OFFICER, 'forever')), ['Roster', 'Spec poll', 'Launch', 'Recruiting needs', 'Applications']);
+  assert.deepEqual(labels(gd(MEMBER, 'tbc')), ['Roster', 'Spec poll']);
+  assert.deepEqual(labels(gd(MEMBER, 'tbc', [Object.assign({}, TEAMS[0], { launchTeam: true })])), ['Roster', 'Spec poll', 'Launch']);
+  assert.deepEqual(labels(gd(MEMBER, 'tbc', [Object.assign({}, TEAMS[0], { launchTeam: true, archived: true })])), ['Roster', 'Spec poll'], 'an archived launch team does not count');
   assert(G.pages.rosterTabs.html(gd(MEMBER, 'forever'), 'launch').includes('href="#/g/g1/roster/launch" aria-current="page">Launch'));
 });
 
@@ -189,10 +189,10 @@ check('launch page (officer): the four stages as bars with counts, the gap to th
   const out = G.pages.launch.launchHtml({ guildData: gd(OFFICER, 'forever'), state: launchState() });
   const t = text(out);
   assert(out.includes('<h1 class="gs-h1" tabindex="-1">Roster</h1>') && t.includes('Alpha - Launch'));
-  for (const label of ['Intent picked', 'Character created', 'Level band', 'Attuned / ready']) assert(t.includes(label), label);
+  for (const label of ['Spec poll picked', 'Character created', 'Level band', 'Attuned / ready']) assert(t.includes(label), label);
   assert(out.includes('<progress class="gs-funnel-bar" max="3" value="2" aria-labelledby="fn-intent"></progress>'));
   assert(out.includes('value="3" aria-labelledby="fn-character"') && out.includes('value="1" aria-labelledby="fn-ready"'));
-  assert(t.includes('19 seats short of the 20-man raid') && t.includes('1 person is at the top level band'));
+  assert(t.includes('19 spots short of the 20-man raid') && t.includes('1 person is at the top level band'));
   assert(t.includes('Tanks') && t.includes('Melee DPS') && t.includes('No pick yet') && t.includes('Need 2'));
   // A row per person; officers get a level select and a ready button on every one.
   assert.equal((out.match(/data-change="launch-band"/g) || []).length, 3);

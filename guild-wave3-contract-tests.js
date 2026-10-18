@@ -204,9 +204,9 @@ check('intent board: an officer opens a round, a member picks (main and alt) wit
   const { A, E } = s;
   // Nothing yet: the officer is offered the first round, the member is told to wait.
   let page = await open(s, A, 'intent');
-  assert(stripTags(page()).includes('No intent round yet') && page().includes('data-action="intent-open"'));
+  assert(stripTags(page()).includes('No spec poll yet') && page().includes('data-action="intent-open"'));
   let member = await open(s, E, 'intent');
-  assert(stripTags(member()).includes('Your officers have not opened an intent round'));
+  assert(stripTags(member()).includes('Your officers have not opened a spec poll'));
   // The officer opens the WoW Forever launch round.
   A.handlers.click['intent-open'](el({}));
   assert(A.dialogs[0].includes('value="WoW Forever launch"'));
@@ -235,7 +235,7 @@ check('intent board: an officer opens a round, a member picks (main and alt) wit
   page = await open(s, A, 'intent');
   const out = page();
   text = stripTags(out);
-  assert(text.includes('2 of 20 seats picked') && text.includes('Against a 20-man raid') && text.includes('Not picked yet (2)'), text.slice(0, 900));
+  assert(text.includes('2 of 20 spots picked') && text.includes('Against a 20-man raid') && text.includes('Not picked yet (2)'), text.slice(0, 900));
   const rows = [...out.matchAll(/<tr><th scope="row" class="gs-cell-strong">([^<]+)<\/th><td class="gs-num" data-label="Picked">(\d+)<\/td><td class="gs-num" data-label="Target">(\d+)<\/td><td data-label="Gap">([^<]*)<\/td><\/tr>/g)].map((m) => [m[1], +m[2], +m[3], m[4]]);
   assert.deepEqual(rows, [['Tanks', 1, 2, 'Need 1'], ['Healers', 1, 5, 'Need 4'], ['Melee DPS', 0, 7, 'Need 7'], ['Ranged DPS', 0, 6, 'Need 6']], 'forever 20-man defaults');
   assert(text.includes('Tanking at launch') && text.includes('Warrior Protection') && text.includes('Mage Fire') && text.includes('Priest Holy'));
@@ -257,7 +257,7 @@ check('intent board: an officer opens a round, a member picks (main and alt) wit
   assert.equal(E.errors.length + A.errors.length, 0);
 });
 
-check('recruitment needs: the counts from the real roster, the targets saved and reset, the intent round laid over, and the recruiting post with the schedule and the apply link', async () => {
+check('recruitment needs: the counts from the real roster, the targets saved and reset, the spec poll laid over, and the recruiting post with the schedule and the apply link', async () => {
   const s = await scenario({ version: 'tbc' });
   const { A, E } = s;
   await A.api.put(`${s.base}/teams/${s.teamId}/schedule`, { slots: [{ weekday: 2, startTime: '20:00', zone: 'Karazhan' }, { weekday: 4, startTime: '20:30' }], weeks: 2, auto: false });

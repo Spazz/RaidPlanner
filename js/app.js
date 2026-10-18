@@ -1443,7 +1443,10 @@ const RaidContext = {
       if (sent.length > guild.planSource.MAX_PLAYERS) throw new Error(`The plan has ${sent.length} players; a raid plan holds at most ${guild.planSource.MAX_PLAYERS}.`);
       await api.put(this.basePath(c) + '/plan', { label: RaidLink.planLabel(c.seed.raid), players: sent, live });
       const left = clean.skipped ? ` ${clean.skipped} ${clean.skipped === 1 ? 'name was' : 'names were'} left out (not a valid character name, or listed twice).` : '';
-      this.setStatus(`Saved to the raid at ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}.${left}`, false);
+      // The time is the guild's ("11:14 AM ET"), the same clock the raid page shows, not the browser's.
+      const gdata = guild.app && guild.app.state && guild.app.state.guilds ? guild.app.state.guilds[c.gid] : null;
+      const at = guild.ui && guild.ui.timeInZone ? guild.ui.timeInZone(Date.now(), gdata && gdata.guild ? gdata.guild.timeZone : '') : new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      this.setStatus(`Saved to the raid at ${at}.${left}`, false);
     } catch (err) {
       const planText = err && err.code === 'plan_invalid' && guild.planSource ? guild.planSource.describeError(err, sent) : null;
       this.setStatus(planText || (err && err.status !== undefined ? this.errorText(err) : (err && err.message) || 'The plan could not be saved to the raid.'), true);

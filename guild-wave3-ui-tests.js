@@ -168,8 +168,8 @@ class ApiErr extends Error {
     assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams', 'applications', 'notifications', 'battlenet']);
     assert.deepEqual(tabs({ 'roster.edit': 'guild' }), [], 'roster.edit alone does not open Guild settings');
     const crumbs = (route) => plain(G.shell.breadcrumbItems({ route, guildData: gd(OFFICER_CAN), signedOut: false, section: 'guild', teamId: 't1', me: { user: { id: 'u' } } }).map(c => c.label));
-    assert.deepEqual(crumbs({ name: 'intent', gid: 'g1' }).slice(-2), ['Roster', 'Intent']);
-    assert.deepEqual(crumbs({ name: 'recruiting', gid: 'g1' }).slice(-2), ['Roster', 'Recruiting']);
+    assert.deepEqual(crumbs({ name: 'intent', gid: 'g1' }).slice(-2), ['Roster', 'Spec poll']);
+    assert.deepEqual(crumbs({ name: 'recruiting', gid: 'g1' }).slice(-2), ['Roster', 'Recruiting needs']);
     assert.deepEqual(crumbs({ name: 'applications', gid: 'g1' }).slice(-2), ['Roster', 'Applications']);
     assert.deepEqual(crumbs({ name: 'import', gid: 'g1', source: 'csv' }).slice(-2), ['Roster', 'Import from a CSV file']);
     assert.deepEqual(crumbs({ name: 'apply', gid: 'g1' }), ['Apply']);
@@ -183,10 +183,10 @@ class ApiErr extends Error {
     assertNoRawAttrs(menu);
   });
 
-  await check('Roster tabs: everyone gets Roster and Intent, roster editors also Recruiting and Applications; the open tab is marked; a count sits beside Applications', () => {
+  await check('Roster tabs: everyone gets Roster and Spec poll, roster editors also Recruiting needs and Applications; the open tab is marked; a count sits beside Applications', () => {
     const member = G.pages.rosterTabs.html(gd(MEMBER_CAN), 'intent');
-    assert.deepEqual([...member.matchAll(/>([A-Za-z]+)<\/a>/g)].map(m => m[1]), ['Roster', 'Intent', 'Launch'], 'a Forever guild also has Launch');
-    assert(/<a class="gs-subtab is-active" href="#\/g\/g1\/roster\/intent" aria-current="page">Intent<\/a>/.test(member));
+    assert.deepEqual([...member.matchAll(/>([A-Za-z ]+)<\/a>/g)].map(m => m[1]), ['Roster', 'Spec poll', 'Launch'], 'a Forever guild also has Launch');
+    assert(/<a class="gs-subtab is-active" href="#\/g\/g1\/roster\/intent" aria-current="page">Spec poll<\/a>/.test(member));
     const officer = G.pages.rosterTabs.html(gd(OFFICER_CAN), 'roster', 3);
     assert.deepEqual([...officer.matchAll(/class="gs-subtab[^"]*" href="([^"]+)"/g)].map(m => m[1]), ['#/g/g1/roster', '#/g/g1/roster/intent', '#/g/g1/roster/launch', '#/g/g1/roster/recruiting', '#/g/g1/roster/applications']);
     assert(officer.includes('aria-label="3 new applications">3</span>'));
@@ -235,7 +235,7 @@ class ApiErr extends Error {
     assertEscaped(out, 'intent page');
     assertNoRawAttrs(out);
     const text = stripTags(out);
-    assert(text.includes('2 of 20 seats picked'), text.slice(0, 600));
+    assert(text.includes('2 of 20 spots picked'), text.slice(0, 600));
     assert(out.includes('Against a 20-man raid'));
     // The role table: picked vs target with the gap.
     const rows = [...out.matchAll(/<tr><th scope="row" class="gs-cell-strong">([^<]+)<\/th><td class="gs-num" data-label="Picked">(\d+)<\/td><td class="gs-num" data-label="Target">(\d+)<\/td><td data-label="Gap">([^<]*)<\/td><\/tr>/g)].map(m => [m[1], +m[2], +m[3], m[4]]);
@@ -258,9 +258,9 @@ class ApiErr extends Error {
     assert(!bystander.includes('data-action="intent-edit"'));
     assert(stripTags(bystander).includes('Only people on this team can pick'));
     const none = html(board({ round: null, rounds: [], picks: [], undecided: [], canPick: false, canEdit: false }));
-    assert(stripTags(none).includes('Your officers have not opened an intent round') && !none.includes('intent-open'));
+    assert(stripTags(none).includes('Your officers have not opened a spec poll') && !none.includes('intent-open'));
     const none2 = html(board({ round: null, rounds: [], picks: [], undecided: [], canPick: false, canEdit: true }));
-    assert(none2.includes('data-action="intent-open"') && stripTags(none2).includes('No intent round yet'));
+    assert(none2.includes('data-action="intent-open"') && stripTags(none2).includes('No spec poll yet'));
     const closed = html(board({ canPick: false, canEdit: false, round: Object.assign(board().round, { status: 'closed', closedAt: Date.UTC(2026, 10, 5) }), rounds: board().rounds.map(r => Object.assign({}, r, { status: 'closed' })), undecided: [] }));
     assert(closed.includes('gs-pill gs-pill-muted">Closed') && !closed.includes('intent-close') && !closed.includes('Not picked yet'));
     assert(closed.includes('data-action="intent-open"') === false, 'a member cannot open a new round');
@@ -362,7 +362,7 @@ class ApiErr extends Error {
     x.cov = COVERAGE;
     const out = G.pages.recruiting.recruitingHtml({ guildData: S.guilds.g1, state: x, alert: '' });
     assertNoRawAttrs(out);
-    assert(out.includes('aria-label="Roster sections"') && stripTags(out).includes('Recruiting'));
+    assert(out.includes('aria-label="Roster sections"') && stripTags(out).includes('Recruiting needs'));
     const rows = [...out.matchAll(/<tr><th scope="row" class="gs-cell-strong">([^<]+)<\/th><td class="gs-num" data-label="On the roster">(\d+)<\/td><td data-label="Target"><label[^>]*>[^<]*<\/label><input[^>]*value="(\d+)"[^>]*><\/td><td data-label="Gap"><span class="gs-pill gs-pill-(\w+)">([^<]+)<\/span>/g)].map(m => [m[1], +m[2], +m[3], m[4], m[5]]);
     assert.deepEqual(rows, [['Tanks', 1, 2, 'warn', 'Need 1'], ['Healers', 5, 5, 'ok', 'Full'], ['Melee DPS', 7, 7, 'ok', 'Full'], ['Ranged DPS', 6, 6, 'ok', 'Full']]);
     assert(stripTags(out).includes('2 mains have no spec set and are not counted') && stripTags(out).includes('against the usual targets for a 20-man raid'));
@@ -386,14 +386,14 @@ class ApiErr extends Error {
     assertEscaped(G.pages.recruiting.recruitingHtml({ guildData: S.guilds.g1, state: Object.assign(G.pages.recruiting.makeState('g1', 't1', Object.assign(RECRUIT(), { team: { id: 't1', name: HOSTILE + QUOTES, size: 20 } }), null), { cov: COVERAGE }), alert: '' }), 'recruiting page');
   }));
 
-  await check('recruiting: the open intent round is laid over the roster (a switch), targets are saved as numbers, reset goes back to the defaults, mistakes are caught first', withState(async (S) => {
+  await check('recruiting: the open spec poll is laid over the roster (a switch), targets are saved as numbers, reset goes back to the defaults, mistakes are caught first', withState(async (S) => {
     S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
     const data = RECRUIT();
     data.intent = { roundId: 'ir_1', title: 'Launch', replaced: 3, people: 10, counts: { tank: 2, healer: 5, melee: 6, ranged: 7 }, unknown: 0, gaps: { tank: 0, healer: 0, melee: 1, ranged: -1 }, specs: [{ class: 'MAGE', spec: 'Fire' }] };
     const x = S.att.recruiting = G.pages.recruiting.makeState('g1', 't1', data, null);
     assert.equal(x.useIntent, true, 'on by default while a round is open');
     let out = G.pages.recruiting.recruitingHtml({ guildData: S.guilds.g1, state: x, alert: '' });
-    assert(out.includes('With intent picks') && stripTags(out).includes('3 mains replaced by an intent pick') && out.includes('Count the open intent round (Launch)'));
+    assert(out.includes('With spec poll picks') && stripTags(out).includes('3 mains replaced by a spec poll pick') && out.includes('Count the open spec poll (Launch)'));
     assert(out.includes('Need 1') && out.includes('1 over'));
     G.handlers.change['recruiting-intent'](control('', { checked: false }));
     assert.equal(x.useIntent, false);
