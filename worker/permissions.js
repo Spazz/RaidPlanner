@@ -1,4 +1,5 @@
 import { HttpError } from './http.js';
+import { blockedSql, inServerSql, membershipOf, ownPlayerSql, rosterLinkSql } from './membership.js';
 
 export const ACTIONS = [
   'roster.view', 'roster.edit', 'roster.notes.view', 'roster.notes.edit',
@@ -71,34 +72,36 @@ export function requireAnyAction(guildContext, actions) {
 }
 
 // One DB.batch loads everything a guild route needs. Order of checks:
-// guild exists (404) -> blocked (403 access_removed) -> in the guild's Discord server (403 not_member).
-// The guild id always comes from the URL.
+// guild exists (404) -> blocked (403 access_removed) -> a member: in the guild's Discord server or linked to one of its people (403 not_member).
+// The membership rule is worker/membership.js's. The guild id always comes from the URL.
 export async function loadGuildContext(db, userId, guildId) {
-  const [guildResult, blockResult, memberResult, assignmentResult, permissionResult, ownTeamResult] = await db.batch([
+  const [guildResult, standingResult, assignmentResult, permissionResult, ownTeamResult] = await db.batch([
     db.prepare(
       `SELECT id, name, realm, realm_kind, realm_slug, region, discord_server_id, time_zone, game_version, wcl_guild_id, created_at
          FROM guilds WHERE id = ?`,
     ).bind(guildId),
-    db.prepare('SELECT 1 AS found FROM guild_blocks WHERE guild_id = ? AND user_id = ?').bind(guildId, userId),
     db.prepare(
-      `SELECT 1 AS found FROM user_servers
-        WHERE user_id = ? AND server_id = (SELECT discord_server_id FROM guilds WHERE id = ?)`,
+      `SELECT ${blockedSql('c.uid', 'g.id')} AS blocked, ${inServerSql('c.uid', 'g.discord_server_id')} AS in_server,
+              ${rosterLinkSql('c.uid', 'g.id')} AS linked
+         FROM (SELECT ? AS uid) c, guilds g WHERE g.id = ?`,
     ).bind(userId, guildId),
     db.prepare('SELECT role_id, team_id FROM role_assignments WHERE guild_id = ? AND user_id = ?').bind(guildId, userId),
     db.prepare('SELECT role_id, action, scope FROM role_permissions').bind(),
-    // The teams of the characters of the person linked to this user (the Discord ID matches).
+    // The teams of the characters of the person who is this user's (linked to the account, or matching its Discord ID).
     db.prepare(
       `SELECT DISTINCT c.team_id FROM characters c JOIN players p ON p.id = c.player_id
-        WHERE p.guild_id = ? AND p.discord_user_id = (SELECT discord_id FROM users WHERE id = ?)`,
-    ).bind(guildId, userId),
+        WHERE p.guild_id = ? AND ${ownPlayerSql('p', '?')}`,
+    ).bind(guildId, userId, userId),
   ]);
   const guild = guildResult.results[0];
   if (!guild) throw new HttpError(404, 'not_found', 'That guild does not exist.');
-  if (blockResult.results.length) {
+  const standing = standingResult.results[0];
+  const membership = membershipOf({ blocked: standing.blocked === 1, inServer: standing.in_server === 1, linked: standing.linked === 1 });
+  if (membership === 'blocked') {
     throw new HttpError(403, 'access_removed', 'An officer has removed your access to this guild.');
   }
-  if (!memberResult.results.length) {
-    throw new HttpError(403, 'not_member', 'You are not in this guild\'s Discord server. Sign in again if you just joined.');
+  if (membership !== 'member') {
+    throw new HttpError(403, 'not_member', 'You are not in this guild\'s Discord server, and no roster entry is linked to your account. Sign in again if you just joined the server, or ask an officer to link your account to your roster entry.');
   }
   const resolved = resolvePermissions(assignmentResult.results, permissionResult.results, ownTeamResult.results.map((row) => row.team_id));
   return {

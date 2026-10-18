@@ -49,7 +49,7 @@ export async function listClaims(ctx) {
   const guild = guildContext.guild;
   const result = await ctx.db.prepare(
     `SELECT cl.id, cl.user_id, cl.name, cl.name_key, cl.realm, cl.realm_key, cl.class, cl.level, cl.created_at,
-            u.discord_id, u.username, u.global_name, u.avatar
+            u.discord_id, u.username, u.global_name, u.display_name, u.avatar
        FROM character_claims cl JOIN users u ON u.id = cl.user_id
       WHERE cl.guild_id = ? AND cl.status = 'pending' ORDER BY cl.created_at, cl.id LIMIT ?`,
   ).bind(guild.id, MAX_LIST).all();
@@ -110,23 +110,23 @@ export async function approveClaim(ctx) {
     personId = newId('p', ctx.randomBytes);
     const today = guildToday(guild, now);
     writes.push(db.prepare(
-      `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, discord_nickname, version, notes_version, created_by, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, NULL, ?, NULL, 1, 0, ?, ?, ? WHERE ${pending.sql}`,
-    ).bind(personId, guild.id, status, today, status === 'trial' ? today : null, claim.discord_id, userId, now, now, ...pending.params));
+      `INSERT INTO players (id, guild_id, status, joined_on, trial_start, trial_end, discord_user_id, discord_nickname, user_id, version, notes_version, created_by, created_at, updated_at)
+       SELECT ?, ?, ?, ?, ?, NULL, ?, NULL, ?, 1, 0, ?, ?, ? WHERE ${pending.sql}`,
+    ).bind(personId, guild.id, status, today, status === 'trial' ? today : null, claim.discord_id, claim.user_id, userId, now, now, ...pending.params));
     writes.push(insertCharacter(personId, true));
   } else if (plan.kind === 'link_person') {
     writes.push(db.prepare(
-      `UPDATE players SET discord_user_id = ?, discord_nickname = NULL, version = version + 1, updated_at = ?
-        WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL AND ${pending.sql}
+      `UPDATE players SET discord_user_id = ?, user_id = ?, discord_nickname = NULL, version = version + 1, updated_at = ?
+        WHERE id = ? AND guild_id = ? AND discord_user_id IS NULL AND user_id IS NULL AND ${pending.sql}
           AND EXISTS (SELECT 1 FROM characters WHERE player_id = players.id AND is_main = 1 AND team_id = ?)`,
-    ).bind(claim.discord_id, now, plan.person.id, guild.id, ...pending.params, plan.homeTeamId));
+    ).bind(claim.discord_id, claim.user_id, now, plan.person.id, guild.id, ...pending.params, plan.homeTeamId));
     writes.push(markPersonRaidsStale(db, guild.id, plan.person.id));
   }
   if (team) writes.push(markRaidsStale(db, guild.id, [claim.name_key], null, [team.id]));
 
-  // The decision lands only if the claim is still pending and (for a link) the person really carries the claimant's Discord ID now.
+  // The decision lands only if the claim is still pending and (for a link) the person really belongs to the claimant's account now.
   const linked = plan.kind === 'link_person'
-    ? { sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND discord_user_id = ?)', params: [plan.person.id, claim.discord_id] }
+    ? { sql: 'EXISTS (SELECT 1 FROM players WHERE id = ? AND user_id = ?)', params: [plan.person.id, claim.user_id] }
     : { sql: '1 = 1', params: [] };
   const decided = { sql: `${pending.sql} AND ${linked.sql}`, params: [...pending.params, ...linked.params] };
   let results;
@@ -146,7 +146,7 @@ export async function approveClaim(ctx) {
     const kind = constraintOf(error);
     if (JOIN_GUARD_ERRORS[kind]) throw JOIN_GUARD_ERRORS[kind]();
     if (kind === 'character_name') throw new HttpError(409, 'name_taken', 'That character was added to the roster while you were deciding. Reload.');
-    if (kind === 'discord') throw new HttpError(409, 'claim_changed', 'The claimant was linked to a person while you were deciding. Reload.');
+    if (kind === 'discord' || kind === 'account') throw new HttpError(409, 'claim_changed', 'The claimant was linked to a person while you were deciding. Reload.');
     if (kind === 'foreign_key') throw new HttpError(404, 'not_found', 'The person or team for this claim no longer exists.');
     throw error;
   }

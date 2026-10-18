@@ -198,16 +198,16 @@ check('d1 fake: first() is null without a row, first(col) throws on an unknown c
 
 check('d1 fake: results carry success and meta.changes, RETURNING works, errors start with D1_ERROR', async () => {
   const db = createD1Fake();
-  const insert = await db.prepare('INSERT INTO users (id, discord_id, username, created_at, last_seen_at) VALUES (?, ?, ?, 1, 1) RETURNING id').bind('u_x', '1', 'x').run();
+  const insert = await db.prepare('INSERT INTO users (id, account_key, discord_id, username, created_at, last_seen_at) VALUES (?, ?, ?, ?, 1, 1) RETURNING id').bind('u_x', 'u_x', '1', 'x').run();
   assert.equal(insert.success, true);
   assert.equal(insert.meta.changes, 1);
   assert.deepEqual(insert.results, [{ id: 'u_x' }]);
-  await throwsD1(() => db.prepare('INSERT INTO users (id, discord_id, username, created_at, last_seen_at) VALUES (?, ?, ?, 1, 1)').bind('u_y', '1', 'y').run());
+  await throwsD1(() => db.prepare('INSERT INTO users (id, account_key, discord_id, username, created_at, last_seen_at) VALUES (?, ?, ?, ?, 1, 1)').bind('u_y', 'u_y', '1', 'y').run());
 });
 
 check('d1 fake: batch rolls back everything on the first error; foreign keys are on', async () => {
   const db = createD1Fake();
-  const user = (id, discord) => db.prepare('INSERT INTO users (id, discord_id, username, created_at, last_seen_at) VALUES (?, ?, ?, 1, 1)').bind(id, discord, id);
+  const user = (id, discord) => db.prepare('INSERT INTO users (id, account_key, discord_id, username, created_at, last_seen_at) VALUES (?, ?, ?, ?, 1, 1)').bind(id, id, discord, id);
   await throwsD1(() => db.batch([user('u_a', '1'), user('u_b', '2'), user('u_c', '1')]));
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM users').first()).n, 0);
   await throwsD1(() => db.prepare("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ('h', 'u_missing', 1, 2)").run());
@@ -464,7 +464,7 @@ check('GET /auth/me: shape, the Discord id appears only inside avatar urls, avat
   const { jar } = await signIn(w, { ...PEOPLE.bob, avatar: hash }, []);
   const me = await w.call(jar, 'GET', '/auth/me');
   assert.equal(me.status, 200);
-  assert.deepEqual(Object.keys(me.json).sort(), ['create', 'deleteImpact', 'guilds', 'removedFrom', 'user']);
+  assert.deepEqual(Object.keys(me.json).sort(), ['account', 'create', 'deleteImpact', 'guilds', 'identities', 'removedFrom', 'user']);
   assert.deepEqual(Object.keys(me.json.user).sort(), ['avatarUrl', 'displayName', 'id', 'initials', 'prefs', 'username']);
   assert.equal(me.json.user.displayName, 'bob', 'falls back to the username');
   assert.equal(me.json.user.avatarUrl, `https://cdn.discordapp.com/avatars/${PEOPLE.bob.id}/${hash}.png?size=64`);
@@ -1179,11 +1179,13 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   // The loot actions (Phase 4) are driven and pinned in guild-loot-worker-tests.js; the Battle.net actions (Phase 5) in guild-bnet-worker-tests.js.
   const LOOT_ACTIONS = ['loot.import', 'loot.update', 'loot.delete', 'loot.policy'];
   const BNET_ACTIONS = ['bnet.link', 'bnet.unlink', 'bnet.settings', 'claim.create', 'claim.withdraw', 'claim.approve', 'claim.reject'];
-  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action)).sort());
+  // The account actions (Phase 7a) are driven and pinned in guild-accounts-worker-tests.js.
+  const ACCOUNT_ACTIONS = ['discord.link', 'discord.unlink', 'person.account_link', 'person.account_unlink'];
+  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action) && !ACCOUNT_ACTIONS.includes(action)).sort());
   assert.deepEqual(AUDIT_ACTIONS.slice().sort(), [
     'access.remove', 'access.restore', 'account.delete', 'guild.claim', 'guild.create', 'guild.delete',
     'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore',
-    ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...LOOT_ACTIONS, ...BNET_ACTIONS,
+    ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...LOOT_ACTIONS, ...BNET_ACTIONS, ...ACCOUNT_ACTIONS,
   ].sort());
   const rows = await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, created_at FROM audit_log WHERE action IN ('account.delete', 'guild.delete')");
   assert(rows.every((row) => row.guild_id === null));
@@ -1556,7 +1558,7 @@ check('races: Delete my data does not delete a guild that someone joined after t
   const ids = (await w.call(alice, 'GET', '/auth/me')).json.deleteImpact.guildsDeleted.map((entry) => entry.id);
   assert.deepEqual(ids, [created.json.guild.id]);
   hookBatch(w.db, /DELETE FROM guilds/, () => {
-    w.db.sqlite.exec(`INSERT INTO users VALUES ('u_joiner','1002','bob',NULL,NULL,'{}',1,1);
+    w.db.sqlite.exec(`INSERT INTO users (id, account_key, discord_id, username, prefs, created_at, last_seen_at) VALUES ('u_joiner','u_joiner','1002','bob','{}',1,1);
                       INSERT INTO user_servers VALUES ('u_joiner','${SERVER_A}',1)`);
   });
   const del = await w.call(alice, 'DELETE', '/auth/me', { deleteGuildIds: ids });

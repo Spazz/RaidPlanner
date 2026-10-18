@@ -1,31 +1,54 @@
-import { HttpError, jsonResponse, redirectResponse, safeEqual, parseCookies } from '../http.js';
+import { HttpError, isUniqueViolation, jsonResponse, redirectResponse, safeEqual, parseCookies } from '../http.js';
 import { auditStatement } from '../audit.js';
+import { isConfigured as bnetConfigured } from '../battlenet.js';
 import {
   authorizeUrl, canonicalOrigin, exchangeCode, fetchDiscordGuilds, fetchDiscordUser,
   isAllowlisted, isConfigured, revokeToken, serverIconUrl,
 } from '../discord.js';
+import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
+import { blockedSql, memberCandidatesSql, memberSql } from '../membership.js';
 import { shapeRoles } from '../permissions.js';
 import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
 import { parsePrefs, personFromSession, toPerson } from '../person.js';
 import {
-  MANAGEABLE_TTL_MS, SESSION_TTL_MS, STATE_COOKIE, clearSessionCookie, clearStateCookie, hashToken,
-  newSessionToken, presentedToken, readManageable, sessionCookie, signState, stateCookie, verifyState,
+  STATE_COOKIE, clearSessionCookie, clearStateCookie, discordStateMode, hashToken, loadSession, newSessionToken, presentedToken, readManageable,
+  sessionCookie, signDiscordLinkState, signState, startSessionStatements, stateCookie, verifyDiscordLinkState, verifyState,
 } from '../session.js';
 
 // Fixed targets inside the app shell (index.html); the hash router reads them. No user input reaches a Location header.
 const HOME_REDIRECT = '/#/';
+const SIGNIN_REDIRECT = '/#/signin';
+const LINKED_REDIRECT = '/#/linked';
 const ERROR_REDIRECT = (reason) => `/#/signin?error=${reason}`;
+const LINKED_ERROR_REDIRECT = (reason) => `/#/linked?error=${reason}`;
 
 // ---------------------------------------------------------------------------
-// Sign in
+// Sign in and link
 
+// GET /auth/providers: which sign-in buttons the sign-in page may show (a provider shows only when this server is set up for it).
+export function providers(ctx) {
+  return jsonResponse({ discord: isConfigured(ctx.env), bnet: bnetConfigured(ctx.env) });
+}
+
+// ?mode=link connects Discord to the signed-in account; without it this is the sign-in (and sign-up) with Discord.
 export async function login(ctx) {
   const { env } = ctx;
+  const url = new URL(ctx.request.url);
+  const link = url.searchParams.get('mode') === 'link';
   const canonical = canonicalOrigin(env);
-  if (!isConfigured(env)) return redirectResponse(ERROR_REDIRECT('discord'));
-  if (new URL(ctx.request.url).origin !== canonical) return redirectResponse(`${canonical}/auth/login`);
-  const state = await signState(env, base64url(ctx.randomBytes(16)));
+  if (!isConfigured(env)) return redirectResponse(link ? LINKED_ERROR_REDIRECT('not_configured') : ERROR_REDIRECT('discord'));
+  if (url.origin !== canonical) return redirectResponse(`${canonical}/auth/login${link ? '?mode=link' : ''}`);
+  const nonce = base64url(ctx.randomBytes(16));
+  let state;
+  if (link) {
+    const session = await loadSession(ctx);
+    if (!session) return redirectResponse(SIGNIN_REDIRECT);
+    // Bound to the member who starts it, so a state copied into another browser is refused there.
+    state = await signDiscordLinkState(env, session.user.id, nonce);
+  } else {
+    state = await signState(env, nonce);
+  }
   return redirectResponse(authorizeUrl(env, state), [stateCookie(state)]);
 }
 
@@ -34,18 +57,26 @@ export function guildPageRedirect() {
   return redirectResponse(HOME_REDIRECT);
 }
 
+// One callback for both modes. The mode comes from the state alone, and only a state whose MAC checked out for that mode is believed.
 export async function callback(ctx) {
   const { env, db } = ctx;
   const url = new URL(ctx.request.url);
   const cookieState = parseCookies(ctx.request.headers.get('Cookie'))[STATE_COOKIE];
   const clear = clearStateCookie();
-  const fail = (reason) => redirectResponse(ERROR_REDIRECT(reason), [clear]);
-
   const state = url.searchParams.get('state');
+  const mode = discordStateMode(state);
+  const fail = (reason) => redirectResponse(mode === 'link' ? LINKED_ERROR_REDIRECT(reason) : ERROR_REDIRECT(reason), [clear]);
+
+  let session = null;
+  if (mode === 'link') {
+    session = await loadSession(ctx);
+    if (!session) return redirectResponse(ERROR_REDIRECT('state'), [clear]);
+  }
   if (!cookieState || !state || !safeEqual(state, cookieState)) return fail('state');
   if (!isConfigured(env)) return fail('discord');
-  // A state this Worker did not sign never reaches an outbound Discord call.
-  if (!await verifyState(env, state)) return fail('state');
+  // A state this Worker did not sign for this flow (and, for a link, for THIS member) never reaches an outbound Discord call.
+  const genuine = mode === 'link' ? await verifyDiscordLinkState(env, session.user.id, state) : await verifyState(env, state);
+  if (!genuine) return fail('state');
   if (url.searchParams.get('error')) return fail('denied');
   const code = url.searchParams.get('code');
   if (!code || code.length > 512) return fail('state');
@@ -59,77 +90,104 @@ export async function callback(ctx) {
     // The token is used only here; revoking it is best effort.
     await revokeToken(env, ctx.fetch, accessToken);
   } catch (error) {
-    ctx.log(`sign-in: Discord step failed: ${error && error.message}`);
+    ctx.log(`${mode === 'link' ? 'link' : 'sign-in'}: Discord step failed: ${error && error.message}`);
     return fail('discord');
   }
 
-  const now = ctx.now();
-  const token = newSessionToken(ctx.randomBytes);
-  const tokenHash = await hashToken(token);
   const manageable = isAllowlisted(env, discordUser.id)
     ? servers.filter((server) => server.access).map((server) => ({ id: server.id, name: server.name, icon: server.icon, access: server.access }))
     : null;
-  const earlier = presentedToken(ctx.request);
-  const userByDiscordId = '(SELECT id FROM users WHERE discord_id = ?)';
-
   try {
-    await db.batch([
-      db.prepare(
-        `INSERT INTO users (id, discord_id, username, global_name, avatar, prefs, created_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, '{}', ?, ?)
-         ON CONFLICT(discord_id) DO UPDATE SET
-           username = excluded.username, global_name = excluded.global_name,
-           avatar = excluded.avatar, last_seen_at = excluded.last_seen_at`,
-      ).bind(newId('u', ctx.randomBytes), discordUser.id, discordUser.username, discordUser.globalName, discordUser.avatar, now, now),
-      // Membership is the servers that have a Raidsmith guild; one JSON parameter, never an IN list.
-      db.prepare(`DELETE FROM user_servers WHERE user_id = ${userByDiscordId}`).bind(discordUser.id),
-      db.prepare(
-        `INSERT INTO user_servers (user_id, server_id, seen_at)
-         SELECT ${userByDiscordId}, g.discord_server_id, ? FROM guilds g
-          WHERE g.discord_server_id IN (SELECT value FROM json_each(?))`,
-      ).bind(discordUser.id, now, JSON.stringify(servers.map((server) => server.id))),
-      db.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now),
-      // The creator's server list lives 30 minutes; no session keeps one longer.
-      db.prepare(
-        'UPDATE sessions SET manageable_servers = NULL, manageable_until = NULL WHERE manageable_until IS NOT NULL AND manageable_until <= ?',
-      ).bind(now),
-      ...(earlier ? [db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await hashToken(earlier))] : []),
-      db.prepare(
-        `INSERT INTO sessions (token_hash, user_id, created_at, expires_at, manageable_servers, manageable_until)
-         VALUES (?, ${userByDiscordId}, ?, ?, ?, ?)`,
-      ).bind(
-        tokenHash, discordUser.id, now, now + SESSION_TTL_MS,
-        manageable ? JSON.stringify(manageable) : null, manageable ? now + MANAGEABLE_TTL_MS : null,
-      ),
-    ]);
+    if (mode === 'signin') return await finishSignin(ctx, discordUser, servers, manageable, clear);
+    return await finishLink(ctx, session, discordUser, servers, manageable, clear, fail);
   } catch (error) {
-    ctx.log(`sign-in: saving the session failed: ${error && error.message}`);
+    if (mode === 'link' && isUniqueViolation(error)) return fail('taken');
+    ctx.log(`${mode === 'link' ? 'link' : 'sign-in'}: saving failed: ${error && error.message}`);
     return fail('discord');
   }
+}
+
+// Replaces the account's servers that have a Raidsmith guild: one JSON parameter, never an IN list. userSql names the account.
+function serverStatements(db, userSql, userParams, servers, now, guard = { sql: '1 = 1', params: [] }) {
+  return [
+    db.prepare(`DELETE FROM user_servers WHERE user_id = ${userSql} AND ${guard.sql}`).bind(...userParams, ...guard.params),
+    // Membership is the servers that have a Raidsmith guild.
+    db.prepare(
+      `INSERT INTO user_servers (user_id, server_id, seen_at)
+       SELECT ${userSql}, g.discord_server_id, ? FROM guilds g
+        WHERE g.discord_server_id IN (SELECT value FROM json_each(?)) AND ${guard.sql}`,
+    ).bind(...userParams, now, JSON.stringify(servers.map((server) => server.id)), ...guard.params),
+  ];
+}
+
+// Sign in with Discord: the account that holds this Discord ID signs in; a Discord ID nobody holds becomes a NEW account. Either way the browser
+// gets a NEW session and the one it presented is deleted (no session fixation).
+async function finishSignin(ctx, discordUser, servers, manageable, clear) {
+  const { db } = ctx;
+  const now = ctx.now();
+  const token = newSessionToken(ctx.randomBytes);
+  const tokenHash = await hashToken(token);
+  const earlier = presentedToken(ctx.request);
+  const user = { sql: '(SELECT id FROM users WHERE discord_id = ?)', params: [discordUser.id] };
+  await db.batch([
+    upsertDiscordAccountStatement(db, { newUserId: newId('u', ctx.randomBytes), discord: discordUser, now }),
+    ...serverStatements(db, user.sql, user.params, servers, now),
+    ...startSessionStatements(db, { userId: user, tokenHash, earlierHash: earlier ? await hashToken(earlier) : null, now, manageable }),
+  ]);
   return redirectResponse(HOME_REDIRECT, [clear, sessionCookie(token)]);
+}
+
+// Connect Discord to the signed-in account. A Discord ID that belongs to ANOTHER account is refused (accounts are never merged); so is a second,
+// different Discord ID on an account that already has one, and a Discord ID that would put two roster people of one guild on the account.
+async function finishLink(ctx, session, discordUser, servers, manageable, clear, fail) {
+  const { db } = ctx;
+  const userId = session.user.id;
+  const now = ctx.now();
+  const holder = await findUserByDiscord(db, discordUser.id);
+  if (holder && holder !== userId) return fail('taken');
+  if (session.user.discordId && session.user.discordId !== discordUser.id) return fail('has_discord');
+  const clash = {
+    sql: `NOT EXISTS (SELECT 1 FROM players a JOIN players b ON b.guild_id = a.guild_id AND b.id != a.id
+                       WHERE a.user_id = ? AND b.discord_user_id = ?)`,
+    params: [userId, discordUser.id],
+  };
+  const stillClear = await db.prepare(`SELECT ${clash.sql} AS clear`).bind(...clash.params).first();
+  if (!stillClear || stillClear.clear !== 1) return fail('roster_conflict');
+
+  // The later statements apply only if the account really holds this Discord ID now (the UPDATE is guarded the same way).
+  const linked = { sql: 'EXISTS (SELECT 1 FROM users WHERE id = ? AND discord_id = ?)', params: [userId, discordUser.id] };
+  const firstLink = !session.user.discordId;
+  const results = await db.batch([
+    db.prepare(
+      `UPDATE users SET discord_id = ?, username = ?, global_name = ?, avatar = ?, last_seen_at = ?
+        WHERE id = ? AND (discord_id IS NULL OR discord_id = ?) AND ${clash.sql}`,
+    ).bind(discordUser.id, discordUser.username, discordUser.globalName, discordUser.avatar, now, userId, discordUser.id, ...clash.params),
+    ...serverStatements(db, '?', [userId], servers, now, linked),
+    // The creator's server list lives 30 minutes on this session, like after a sign-in.
+    ...(manageable ? [db.prepare(
+      `UPDATE sessions SET manageable_servers = ?, manageable_until = ? WHERE token_hash = ? AND ${linked.sql}`,
+    ).bind(JSON.stringify(manageable), now + 30 * 60 * 1000, session.tokenHash, ...linked.params)] : []),
+    ...(firstLink ? [auditStatement(ctx, {
+      guildId: null, actorUserId: userId, action: 'discord.link', entityType: 'user', entityId: userId,
+    }, linked)] : []),
+  ]);
+  if (results[0].meta.changes !== 1) return fail('roster_conflict');
+  return redirectResponse(LINKED_REDIRECT, [clear]);
 }
 
 // ---------------------------------------------------------------------------
 // Account
 
-// SQL fragment: the user (a column expression) is a current, unblocked member of the guild.
-// One definition feeds both the delete-impact query and the statements the delete batch runs,
-// so what /auth/me predicts is what DELETE /auth/me does.
-function currentMemberSql(userExpr, guildIdExpr, serverIdExpr) {
-  return `(EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = ${userExpr} AND us.server_id = ${serverIdExpr})
-      AND NOT EXISTS (SELECT 1 FROM guild_blocks bl WHERE bl.guild_id = ${guildIdExpr} AND bl.user_id = ${userExpr}))`;
-}
-
-// The Officer who would become Guild Master: earliest assigned_at among current, unblocked members.
-// `?` is the departing user (excluded).
-const SUCCESSOR_SQL = `SELECT so.user_id FROM role_assignments so
-      WHERE so.guild_id = g.id AND so.role_id = 'officer' AND so.user_id != ?
-        AND ${currentMemberSql('so.user_id', 'g.id', 'g.discord_server_id')}
+// The member rule (worker/membership.js) for the guilds' lists below, with the departing or asking user as an expression.
+// The Officer who would become Guild Master: earliest assigned_at among current, unblocked members. `userExpr` is the departing user (excluded).
+const successorSql = (userExpr) => `SELECT so.user_id FROM role_assignments so
+      WHERE so.guild_id = g.id AND so.role_id = 'officer' AND so.user_id != ${userExpr}
+        AND ${memberSql('so.user_id', 'g.id', 'g.discord_server_id')}
       ORDER BY so.assigned_at, so.id LIMIT 1`;
 
-const OTHERS_SQL = `EXISTS (SELECT 1 FROM user_servers us
-         WHERE us.server_id = g.discord_server_id AND us.user_id != ?
-           AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = us.user_id))`;
+// Another unblocked person can use the guild: somebody besides `userExpr` who is in its Discord server or linked to one of its people.
+const othersSql = (userExpr) => `EXISTS (SELECT 1 FROM (${memberCandidatesSql('g.id', 'g.discord_server_id')}) oc
+         WHERE oc.user_id != ${userExpr} AND NOT ${blockedSql('oc.user_id', 'g.id')})`;
 
 // Guilds the person leads, split three ways:
 //  - handOverFirst: others have joined and the person is still a current member (they must hand over)
@@ -139,19 +197,19 @@ const OTHERS_SQL = `EXISTS (SELECT 1 FROM user_servers us
 async function deleteImpact(db, userId) {
   const result = await db.prepare(
     `SELECT g.id, g.name, g.discord_server_id,
-            ${OTHERS_SQL} AS has_others,
-            ${currentMemberSql('?', 'g.id', 'g.discord_server_id')} AS self_member,
-            (${SUCCESSOR_SQL}) AS successor_id
-       FROM guilds g
-       JOIN role_assignments ra ON ra.guild_id = g.id AND ra.role_id = 'guild_master' AND ra.user_id = ?
+            ${othersSql('m.uid')} AS has_others,
+            ${memberSql('m.uid', 'g.id', 'g.discord_server_id')} AS self_member,
+            (${successorSql('m.uid')}) AS successor_id
+       FROM (SELECT ? AS uid) m, guilds g
+       JOIN role_assignments ra ON ra.guild_id = g.id AND ra.role_id = 'guild_master' AND ra.user_id = m.uid
       ORDER BY g.name, g.id`,
-  ).bind(userId, userId, userId, userId, userId).all();
+  ).bind(userId).all();
   const rows = result.results;
   const successorIds = [...new Set(rows.map((row) => row.successor_id).filter(Boolean))];
   const people = new Map();
   if (successorIds.length) {
     const found = await db.prepare(
-      'SELECT id, discord_id, username, global_name, avatar FROM users WHERE id IN (SELECT value FROM json_each(?))',
+      'SELECT id, discord_id, username, global_name, display_name, avatar FROM users WHERE id IN (SELECT value FROM json_each(?))',
     ).bind(JSON.stringify(successorIds)).all();
     for (const row of found.results) people.set(row.id, row);
   }
@@ -173,11 +231,10 @@ export async function me(ctx) {
   const userId = session.user.id;
   const [guildResult, assignmentResult, removedResult] = await db.batch([
     db.prepare(
-      `SELECT g.id, g.name, g.realm, g.region FROM guilds g
-         JOIN user_servers us ON us.server_id = g.discord_server_id AND us.user_id = ?
-        WHERE NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = ?)
+      `SELECT g.id, g.name, g.realm, g.region FROM guilds g, (SELECT ? AS uid) c
+        WHERE ${memberSql('c.uid', 'g.id', 'g.discord_server_id')}
         ORDER BY g.name, g.id`,
-    ).bind(userId, userId),
+    ).bind(userId),
     db.prepare('SELECT guild_id, role_id, team_id FROM role_assignments WHERE user_id = ?').bind(userId),
     db.prepare(
       `SELECT g.id, g.name FROM guild_blocks b JOIN guilds g ON g.id = b.guild_id
@@ -223,9 +280,14 @@ export async function me(ctx) {
   }
 
   const impact = await deleteImpact(db, userId);
+  const identities = await loadIdentities(db, userId);
 
   return jsonResponse({
     user: { ...personFromSession(session.user), prefs: parsePrefs(session.user.prefs) },
+    // The sign-ins linked to this account (null = not linked), and what the Linked accounts page needs besides: the name the person chose
+    // (null = none) and which providers this server is set up for. Nothing here is a token, a secret or another person's data.
+    identities: { discord: identities.discord, bnet: identities.bnet },
+    account: { customName: identities.customName, available: { discord: isConfigured(env), bnet: bnetConfigured(env) } },
     guilds,
     create,
     deleteImpact: { handOverFirst: impact.handOverFirst, guildsDeleted: impact.guildsDeleted, autoPromote: impact.autoPromote },
@@ -254,10 +316,8 @@ export async function updatePrefs(ctx) {
   if (body.lastGuildId !== undefined) {
     if (body.lastGuildId !== null) {
       const belongs = isId('g', body.lastGuildId) && await db.prepare(
-        `SELECT 1 AS found FROM guilds g
-           JOIN user_servers us ON us.server_id = g.discord_server_id AND us.user_id = ?
-          WHERE g.id = ? AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = g.id AND b.user_id = ?)`,
-      ).bind(session.user.id, body.lastGuildId, session.user.id).first();
+        `SELECT 1 AS found FROM guilds g, (SELECT ? AS uid) c WHERE g.id = ? AND ${memberSql('c.uid', 'g.id', 'g.discord_server_id')}`,
+      ).bind(session.user.id, body.lastGuildId).first();
       if (!belongs) throw new HttpError(400, 'bad_request', 'lastGuildId must be a guild you belong to.', { field: 'lastGuildId' });
     }
     prefs.lastGuildId = body.lastGuildId;
@@ -294,7 +354,7 @@ export async function deleteMe(ctx) {
 
   const now = ctx.now();
   // A guild is deleted only while nobody else is a current member (the same test as the impact query).
-  const noOthers = (guildId) => ({ sql: `EXISTS (SELECT 1 FROM guilds g WHERE g.id = ? AND NOT ${OTHERS_SQL})`, params: [guildId, userId] });
+  const noOthers = (guildId) => ({ sql: `EXISTS (SELECT 1 FROM guilds g WHERE g.id = ? AND NOT ${othersSql('?')})`, params: [guildId, userId] });
   const statements = [
     auditStatement(ctx, { guildId: null, actorUserId: userId, action: 'account.delete', entityType: 'user', entityId: userId }),
     ...expected.map((guildId) => auditStatement(ctx, {
@@ -304,7 +364,7 @@ export async function deleteMe(ctx) {
   if (expected.length) {
     statements.push(db.prepare(
       `DELETE FROM guilds WHERE id IN (
-         SELECT g.id FROM guilds g WHERE g.id IN (SELECT value FROM json_each(?)) AND NOT ${OTHERS_SQL})`,
+         SELECT g.id FROM guilds g WHERE g.id IN (SELECT value FROM json_each(?)) AND NOT ${othersSql('?')})`,
     ).bind(JSON.stringify(expected), userId));
     // Servers whose guild is gone keep no membership rows (blocked people included).
     statements.push(db.prepare(
@@ -318,8 +378,8 @@ export async function deleteMe(ctx) {
       db.prepare("DELETE FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master' AND user_id = ?").bind(guild.id, userId),
       db.prepare(
         `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
-         SELECT ?, g.id, (${SUCCESSOR_SQL}), 'guild_master', NULL, NULL, ? FROM guilds g
-          WHERE g.id = ? AND (${SUCCESSOR_SQL}) IS NOT NULL
+         SELECT ?, g.id, (${successorSql('?')}), 'guild_master', NULL, NULL, ? FROM guilds g
+          WHERE g.id = ? AND (${successorSql('?')}) IS NOT NULL
             AND NOT EXISTS (SELECT 1 FROM role_assignments x WHERE x.guild_id = g.id AND x.role_id = 'guild_master')`,
       ).bind(newId('ra', ctx.randomBytes), userId, now, guild.id, userId),
       // The new Guild Master does not also keep the Officer row.
@@ -335,16 +395,22 @@ export async function deleteMe(ctx) {
         : { sql: "NOT EXISTS (SELECT 1 FROM role_assignments WHERE guild_id = ? AND role_id = 'guild_master')", params: [guild.id] }),
     );
   }
-  // Sessions, servers, roles and blocks cascade; actor columns become NULL (roadmap_ideas.submitted_by too: the ideas stay, unlinked).
-  statements.push(db.prepare('DELETE FROM users WHERE id = ?').bind(userId));
-  // The person on a roster who was linked to this account stays (officers own the roster); the link goes.
+  // The roster people linked to this account stay (officers own the roster); the link goes. The version moves so an officer's open page sees it.
   statements.push(db.prepare(
-    `UPDATE players SET discord_user_id = NULL, discord_nickname = NULL, version = version + 1, updated_at = ?
-      WHERE discord_user_id = ?`,
-  ).bind(now, session.user.discordId));
-  // Raid sign-ups keep the person link (outcomes recompute the same) but lose the Discord ID and nickname.
-  statements.push(db.prepare('UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ?').bind(session.user.discordId));
-  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?)').bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`));
+    'UPDATE players SET user_id = NULL, version = version + 1, updated_at = ? WHERE user_id = ?',
+  ).bind(now, userId));
+  // Sessions, servers, roles, blocks, the Battle.net link and the claims cascade; actor columns become NULL (roadmap_ideas.submitted_by too: the ideas stay, unlinked).
+  statements.push(db.prepare('DELETE FROM users WHERE id = ?').bind(userId));
+  // A person linked through the Discord ID stays too, unlinked; an account that never had Discord has nothing to clear here.
+  if (session.user.discordId) {
+    statements.push(db.prepare(
+      `UPDATE players SET discord_user_id = NULL, discord_nickname = NULL, version = version + 1, updated_at = ?
+        WHERE discord_user_id = ?`,
+    ).bind(now, session.user.discordId));
+    // Raid sign-ups keep the person link (outcomes recompute the same) but lose the Discord ID and nickname.
+    statements.push(db.prepare('UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ?').bind(session.user.discordId));
+  }
+  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?)').bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`));
   await db.batch(statements);
   return jsonResponse({ ok: true }, 200, {}, [clearSessionCookie()]);
 }

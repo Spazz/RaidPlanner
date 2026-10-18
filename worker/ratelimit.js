@@ -37,6 +37,7 @@ export async function checkRateLimit(db, userId, nowMs, { limit = RATE_LIMIT, wi
 // The 429 message depends on the window: import routes talk about imports.
 export function rateLimitMessage(key) {
   if (/^idea:/.test(key)) return 'You have suggested a lot of ideas this hour. Come back a little later.';
+  if (/^acct:/.test(key)) return 'Too many account look-ups. Wait a few minutes and try again.';
   return /^(?:imp|wcl|wclraid):/.test(key)
     ? 'Too many imports. Wait a moment and try again.'
     : 'Too many changes in a minute. Wait a moment and try again.';

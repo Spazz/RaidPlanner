@@ -39,14 +39,15 @@ export function presentedToken(request) {
   return typeof token === 'string' && TOKEN_PATTERN.test(token) ? token : null;
 }
 
-// -> { tokenHash, user, manageableServers, manageableUntil } or null when signed out or expired.
+// -> { tokenHash, user, manageableServers, manageableUntil } or null when signed out or expired. user.discordId is null for an account
+// that has not linked Discord (it signed in with Battle.net).
 export async function loadSession({ db, request, now }) {
   const token = presentedToken(request);
   if (!token) return null;
   const tokenHash = await hashToken(token);
   const row = await db.prepare(
     `SELECT s.manageable_servers, s.manageable_until,
-            u.id, u.discord_id, u.username, u.global_name, u.avatar, u.prefs, u.last_seen_at
+            u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar, u.prefs, u.last_seen_at
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = ? AND s.expires_at > ?`,
   ).bind(tokenHash, now()).first();
@@ -77,6 +78,7 @@ export async function loadSession({ db, request, now }) {
       discordId: row.discord_id,
       username: row.username,
       globalName: row.global_name,
+      displayName: row.display_name,
       avatar: row.avatar,
       prefs: row.prefs,
     },
@@ -155,4 +157,77 @@ export async function verifyBnetState(env, userId, state) {
   const parts = state.split('.');
   if (parts.length !== 2 || !NONCE_PATTERN.test(parts[0])) return false;
   return safeEqual(parts[1], await bnetStateMac(env, userId, parts[0]));
+}
+
+// ---------------------------------------------------------------------------
+// The other sign-in states (accounts, Phase 7a). Each MODE has its own shape and its own key domain, so a state minted for one flow never
+// verifies in another, and the callback learns the mode only from a state whose MAC checked out:
+//   Discord sign-in   nonce.mac                (above)                     key raidsmith-state:
+//   Discord link      link.nonce.mac           bound to the signed-in user key raidsmith-discord-link-state:
+//   Battle.net link   nonce.mac                (above, bound to the user)  key raidsmith-bnet-state:
+//   Battle.net signin signin.nonce.mac                                     key raidsmith-bnet-signin-state:
+
+async function macOf(secret, domain, message) {
+  const keyBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${domain}:${secret}`));
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return base64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))));
+}
+
+// "link.<nonce>.<mac>" -> { nonce, mac } for a state of that mode, else null.
+function modeParts(state, mode) {
+  if (typeof state !== 'string') return null;
+  const parts = state.split('.');
+  if (parts.length !== 3 || parts[0] !== mode || !NONCE_PATTERN.test(parts[1])) return null;
+  return { nonce: parts[1], mac: parts[2] };
+}
+
+// Which Discord flow a state belongs to ('link' | 'signin'), by shape only. The callback verifies the MAC of that mode before it trusts it.
+export function discordStateMode(state) {
+  return modeParts(state, 'link') ? 'link' : 'signin';
+}
+
+export async function signDiscordLinkState(env, userId, nonce) {
+  return `link.${nonce}.${await macOf(env.DISCORD_CLIENT_SECRET, 'raidsmith-discord-link-state', `${userId}.${nonce}`)}`;
+}
+
+export async function verifyDiscordLinkState(env, userId, state) {
+  const parts = modeParts(state, 'link');
+  if (!parts || !env.DISCORD_CLIENT_SECRET || typeof userId !== 'string') return false;
+  return safeEqual(parts.mac, await macOf(env.DISCORD_CLIENT_SECRET, 'raidsmith-discord-link-state', `${userId}.${parts.nonce}`));
+}
+
+// Which Battle.net flow a state belongs to ('signin' | 'link'), by shape only.
+export function bnetStateMode(state) {
+  return modeParts(state, 'signin') ? 'signin' : 'link';
+}
+
+export async function signBnetSigninState(env, nonce) {
+  return `signin.${nonce}.${await macOf(env.BNET_CLIENT_SECRET, 'raidsmith-bnet-signin-state', nonce)}`;
+}
+
+export async function verifyBnetSigninState(env, state) {
+  const parts = modeParts(state, 'signin');
+  if (!parts || !env.BNET_CLIENT_SECRET) return false;
+  return safeEqual(parts.mac, await macOf(env.BNET_CLIENT_SECRET, 'raidsmith-bnet-signin-state', parts.nonce));
+}
+
+// Starting a session. The statements for one sign-in, to go into the same DB.batch as the user write:
+// expired sessions and stale creator lists are swept, the session the browser presented (if any) is deleted so a sign-in never keeps an
+// earlier token alive (session fixation), and the new session is inserted for the user the SQL expression `userId` names.
+// manageable: the creator's server list ([...] or null) kept 30 minutes on this session.
+export function startSessionStatements(db, { userId, tokenHash, earlierHash, now, manageable }) {
+  return [
+    db.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now),
+    db.prepare(
+      'UPDATE sessions SET manageable_servers = NULL, manageable_until = NULL WHERE manageable_until IS NOT NULL AND manageable_until <= ?',
+    ).bind(now),
+    ...(earlierHash ? [db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(earlierHash)] : []),
+    db.prepare(
+      `INSERT INTO sessions (token_hash, user_id, created_at, expires_at, manageable_servers, manageable_until)
+       VALUES (?, ${userId.sql}, ?, ?, ?, ?)`,
+    ).bind(
+      tokenHash, ...userId.params, now, now + SESSION_TTL_MS,
+      manageable ? JSON.stringify(manageable) : null, manageable ? now + MANAGEABLE_TTL_MS : null,
+    ),
+  ];
 }

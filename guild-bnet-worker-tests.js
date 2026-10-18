@@ -271,7 +271,7 @@ check('BNET_API_BASE is honoured only for localhost; the real hosts are oauth.ba
 check('schema: 0009 adds the link and claim tables, one open claim per character, one link per Battle.net account, and the guild settings columns', async () => {
   const w = await makeWorld();
   const exec = (sql) => w.db.sqlite.exec(sql);
-  exec(`INSERT INTO users (id, discord_id, username, created_at, last_seen_at) VALUES ('u1', '1', 'a', 1, 1), ('u2', '2', 'b', 1, 1)`);
+  exec(`INSERT INTO users (id, account_key, discord_id, username, created_at, last_seen_at) VALUES ('u1', 'u1', '1', 'a', 1, 1), ('u2', 'u2', '2', 'b', 1, 1)`);
   exec(`INSERT INTO guilds (id, name, realm, realm_kind, region, discord_server_id, time_zone, game_version, created_at) VALUES ('g1', 'G', 'R', 'realm', 'US', 'd1', 'UTC', 'tbc', 1)`);
   exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES ('u1', '123', 'A#1', 1, '{}', 1)`);
   assert.throws(() => exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES ('u2', '123', 'B#2', 1, '{}', 1)`), /UNIQUE constraint failed/);
@@ -1202,7 +1202,8 @@ check('roster import: previews and commits share the import rate limit of 10 per
 // ---------------------------------------------------------------------------
 // The 30-day rule, Delete my data
 
-check('30-day purge: links older than 30 days go, fresh ones stay; undecided and decided claims age out; roster records an approved claim made stay', async () => {
+// Phase 7a: the 30-day rule clears the character SNAPSHOT; the link (Battle.net account number and BattleTag) is the account's sign-in identity and stays.
+check('30-day purge: snapshots older than 30 days are cleared, fresh ones stay, the links stay; undecided and decided claims age out; roster records an approved claim made stay', async () => {
   const s = await scenario();
   await seedRoster(s);
   await link(s, 'erin');
@@ -1219,24 +1220,27 @@ check('30-day purge: links older than 30 days go, fresh ones stay; undecided and
   const at = s.w.clock.now;
   // 29 days 23 h after the first links: nothing is due yet.
   s.w.advance(20 * DAY - 60 * 60 * 1000);
-  assert.deepEqual(await purgeExpiredBnetData(s.w.db, s.w.clock.now), { links: 0, pendingClaims: 0, decidedClaims: 0 });
-  // Exactly 30 days: erin's and gina's links, and everything decided or waiting that long, are due; dave's is not.
+  assert.deepEqual(await purgeExpiredBnetData(s.w.db, s.w.clock.now), { snapshots: 0, pendingClaims: 0, decidedClaims: 0 });
+  // Exactly 30 days: erin's and gina's snapshots, and everything decided or waiting that long, are due; dave's is not.
   s.w.advance(60 * 60 * 1000);
   const logged = [];
   const result = await runScheduled({ db: s.w.db, now: () => s.w.clock.now, log: (m) => logged.push(m) });
-  assert.deepEqual(result, { links: 2, pendingClaims: 1, decidedClaims: 2 });
-  assert.deepEqual(logged, ['bnet purge: 2 links, 3 claims']);
-  assert.deepEqual((await s.w.rows('SELECT user_id FROM bnet_links')).map((r) => r.user_id), [s.ids.dave]);
+  assert.deepEqual(result, { snapshots: 2, pendingClaims: 1, decidedClaims: 2 });
+  assert.deepEqual(logged, ['bnet purge: 2 snapshots, 3 claims']);
+  const kept = async () => (await s.w.rows("SELECT user_id, battletag, snapshot != '{}' AS has_snapshot FROM bnet_links ORDER BY user_id")).map((r) => [r.user_id, r.battletag, r.has_snapshot]);
+  const expectedLinks = (daveHas) => [[s.ids.dave, TAG('dave'), daveHas], [s.ids.erin, TAG('erin'), 0], [s.ids.gina, TAG('gina'), 0]].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  assert.deepEqual(await kept(), expectedLinks(1), 'all three links (the sign-in identities) stay; only erin\'s and gina\'s snapshots are cleared');
   assert.equal(await s.w.count('character_claims'), 0);
   // What the approved claim made is the guild's own record and stays.
   assert.equal(await s.w.count('characters', "name = 'Galdor'"), 1);
   assert.equal(await s.w.count('players', 'discord_user_id = ?', PEOPLE.gina.id), 1);
   assert.equal(await s.w.count('players'), 4);
   await assertOneMain(s.w);
-  // Idempotent, and dave's goes 30 days after his refresh.
-  assert.deepEqual(await purgeExpiredBnetData(s.w.db, s.w.clock.now), { links: 0, pendingClaims: 0, decidedClaims: 0 });
-  assert.deepEqual(await purgeExpiredBnetData(s.w.db, at + 30 * DAY), { links: 1, pendingClaims: 0, decidedClaims: 0 });
-  assert.equal(await s.w.count('bnet_links'), 0);
+  // Idempotent (a cleared snapshot is not counted again), and dave's goes 30 days after his refresh.
+  assert.deepEqual(await purgeExpiredBnetData(s.w.db, s.w.clock.now), { snapshots: 0, pendingClaims: 0, decidedClaims: 0 });
+  assert.deepEqual(await purgeExpiredBnetData(s.w.db, at + 30 * DAY), { snapshots: 1, pendingClaims: 0, decidedClaims: 0 });
+  assert.deepEqual(await kept(), expectedLinks(0));
+  assert.equal(await s.w.count('bnet_links'), 3, 'no link is ever deleted by the purge');
 });
 
 check('30-day purge: the Worker\'s scheduled handler runs it through waitUntil and a failure is logged, never thrown', async () => {
@@ -1259,8 +1263,9 @@ check('30-day purge: the Worker\'s scheduled handler runs it through waitUntil a
     console.log = realLog;
   }
   assert.equal(waited.length, 1);
-  assert.equal(await s.w.count('bnet_links'), 0);
-  assert.deepEqual(lines, ['bnet purge: 1 links, 0 claims']);
+  assert.equal(await s.w.count('bnet_links'), 1, 'the link stays');
+  assert.equal(await s.w.count('bnet_links', "snapshot = '{}'"), 1, 'its snapshot is cleared');
+  assert.deepEqual(lines, ['bnet purge: 1 snapshots, 0 claims']);
   const { runScheduled } = await load('worker/bnet-purge.js');
   const broken = { batch: async () => { throw new Error('D1 is down'); }, prepare: () => ({ bind: () => ({}) }) };
   const logged = [];

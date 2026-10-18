@@ -1,6 +1,7 @@
 // The one redaction-aware builder for roster responses: the person record, the roster rows, the 409 `current`,
 // and the nav-badge counts. Every response that shows a person goes through here, so a member never gets a
 // field an officer would (notes, nicknames, flags) by taking a different route.
+import { isOwnPlayer, memberSql } from './membership.js';
 import { allows } from './permissions.js';
 import { toPerson } from './person.js';
 import { roleOf, todayIn, trialFlag } from './roster-data.js';
@@ -31,8 +32,10 @@ export function characterView(row) {
   };
 }
 
-// The player row, its characters (with their team), the linked user and the notes editor. null when the person
-// is not in this guild.
+// The player row, its characters (with their team), the accounts linked to the person and the notes editor. null when the person
+// is not in this guild. An account is linked by an officer (players.user_id: the "link" arm) or by the Discord ID the person carries (the
+// "discord" arm), and counts only while it is a member of the guild (worker/membership.js). linkedUser is the account of the Discord arm
+// (what the Discord line of the record shows), accountUser the account the person belongs to (the link arm first).
 export async function loadPersonData(db, guildId, personId) {
   const [playerResult, characterResult, userResult, editorResult] = await db.batch([
     db.prepare('SELECT * FROM players WHERE id = ? AND guild_id = ?').bind(personId, guildId),
@@ -42,16 +45,16 @@ export async function loadPersonData(db, guildId, personId) {
          FROM characters c JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
         WHERE c.player_id = ? AND c.guild_id = ?`,
     ).bind(personId, guildId),
-    // The linked user counts only while they are in this guild's Discord server and not blocked here.
     db.prepare(
-      `SELECT u.id, u.discord_id, u.username, u.global_name, u.avatar FROM users u
-        WHERE u.discord_id = (SELECT discord_user_id FROM players WHERE id = ? AND guild_id = ?)
-          AND EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = u.id
-                        AND us.server_id = (SELECT discord_server_id FROM guilds WHERE id = ?))
-          AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ? AND b.user_id = u.id)`,
-    ).bind(personId, guildId, guildId, guildId),
+      `SELECT u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar,
+              COALESCE(u.id = p.user_id, 0) AS by_link, COALESCE(p.discord_user_id IS NOT NULL AND u.discord_id = p.discord_user_id, 0) AS by_discord
+         FROM players p JOIN users u ON (u.id = p.user_id OR (p.discord_user_id IS NOT NULL AND u.discord_id = p.discord_user_id))
+        WHERE p.id = ? AND p.guild_id = ?
+          AND ${memberSql('u.id', 'p.guild_id', '(SELECT discord_server_id FROM guilds WHERE id = p.guild_id)')}
+        ORDER BY by_link DESC, u.id`,
+    ).bind(personId, guildId),
     db.prepare(
-      `SELECT id, discord_id, username, global_name, avatar FROM users
+      `SELECT id, discord_id, username, global_name, display_name, avatar FROM users
         WHERE id = (SELECT notes_updated_by FROM players WHERE id = ? AND guild_id = ?)`,
     ).bind(personId, guildId),
   ]);
@@ -59,7 +62,19 @@ export async function loadPersonData(db, guildId, personId) {
   if (!player) return null;
   const characters = characterResult.results.map((row) => ({ row, view: characterView(row) }));
   characters.sort((a, b) => (b.row.is_main - a.row.is_main) || byName(a.view, b.view));
-  return { player, characters, linkedUser: userResult.results[0] || null, notesUser: editorResult.results[0] || null };
+  const accounts = userResult.results;
+  return {
+    player,
+    characters,
+    linkedUser: accounts.find((row) => row.by_discord === 1) || null,
+    accountUser: accounts[0] || null,
+    notesUser: editorResult.results[0] || null,
+  };
+}
+
+// The signed-in user as the ownership tests want them: { userId, discordId } (discordId is null for an account without Discord).
+export function viewerOf(ctx) {
+  return { userId: ctx.session.user.id, discordId: ctx.session.user.discordId };
 }
 
 export function signInOf(player, linkedUser) {
@@ -108,12 +123,19 @@ export function buildPersonRecord(guildContext, data, today, viewer) {
       leftOn: player.left_on,
       leftReason: player.left_reason,
       trialFlag: trialFlag(player.status, player.trial_end, today),
-      isMe: !!player.discord_user_id && player.discord_user_id === viewer.discordId,
+      isMe: isOwnPlayer(player, viewer),
       version: player.version,
       discord: {
         signIn: signInOf(player, data.linkedUser),
         user: data.linkedUser ? toPerson(data.linkedUser, { avatar: canSeeAvatars(can) }) : null,
         nickname: edit ? player.discord_nickname : null,
+      },
+      // The Raidsmith account the person belongs to: via 'link' (an officer linked it, or an approved claim did) or 'discord' (the Discord ID matches).
+      // An officer can change a 'link'; a 'discord' one changes through the Discord account field.
+      account: {
+        user: data.accountUser ? toPerson(data.accountUser, { avatar: canSeeAvatars(can) }) : null,
+        via: data.accountUser ? (data.accountUser.by_link === 1 ? 'link' : 'discord') : null,
+        linked: !!player.user_id,
       },
       homeTeam: home ? { id: home.id, name: home.name } : null,
     },
@@ -126,7 +148,7 @@ export function buildPersonRecord(guildContext, data, today, viewer) {
 export async function personRecordFor(ctx, guildContext, personId) {
   const data = await loadPersonData(ctx.db, guildContext.guild.id, personId);
   if (!data) return null;
-  return buildPersonRecord(guildContext, data, guildToday(guildContext.guild, ctx.now()), { discordId: ctx.session.user.discordId });
+  return buildPersonRecord(guildContext, data, guildToday(guildContext.guild, ctx.now()), viewerOf(ctx));
 }
 
 // { [teamId]: n }: trial flags per HOME team, for the teams the viewer can edit; {} for everyone else.
@@ -164,21 +186,19 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
   const guildId = guildContext.guild.id;
   const [rowResult, userResult] = await db.batch([
     db.prepare(
-      `SELECT p.id AS player_id, p.status, p.joined_on, p.trial_start, p.trial_end, p.left_on, p.left_reason, p.discord_user_id, p.version,
+      `SELECT p.id AS player_id, p.status, p.joined_on, p.trial_start, p.trial_end, p.left_on, p.left_reason, p.discord_user_id, p.user_id, p.version,
               c.id, c.team_id, c.name, c.realm, c.class, c.main_spec, c.off_spec, c.is_main,
               t.name AS team_name, t.archived AS team_archived
          FROM players p JOIN characters c ON c.player_id = p.id JOIN teams t ON t.id = c.team_id AND t.guild_id = c.guild_id
         WHERE p.guild_id = ? AND p.id IN (SELECT player_id FROM characters WHERE team_id = ? AND guild_id = ?)`,
     ).bind(guildId, team.id, guildId),
-    // Signed in = in this guild's Discord server and not blocked here.
+    // Signed in = the person's account (linked by an officer, or matching the Discord ID they carry) is a member of this guild.
     db.prepare(
-      `SELECT u.discord_id FROM users u
-        WHERE u.discord_id IN (SELECT discord_user_id FROM players WHERE guild_id = ? AND discord_user_id IS NOT NULL)
-          AND EXISTS (SELECT 1 FROM user_servers us WHERE us.user_id = u.id AND us.server_id = ?)
-          AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ? AND b.user_id = u.id)`,
-    ).bind(guildId, guildContext.guild.discord_server_id, guildId),
+      `SELECT p.id AS player_id FROM players p JOIN users u ON (u.id = p.user_id OR (p.discord_user_id IS NOT NULL AND u.discord_id = p.discord_user_id))
+        WHERE p.guild_id = ? AND ${memberSql('u.id', 'p.guild_id', '?')}`,
+    ).bind(guildId, guildContext.guild.discord_server_id),
   ]);
-  const signedIn = new Set(userResult.results.map((row) => row.discord_id));
+  const signedIn = new Set(userResult.results.map((row) => row.player_id));
   const byPlayer = new Map();
   for (const row of rowResult.results) {
     if (!byPlayer.has(row.player_id)) byPlayer.set(row.player_id, { player: row, characters: [] });
@@ -205,8 +225,8 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
       main: { id: main.view.id, name: main.view.name, class: main.view.class, team: { id: main.view.team.id, name: main.view.team.name } },
       names: onTeam.map((entry) => entry.view.name).sort((a, b) => a.localeCompare(b)),
       altCount: characters.length - 1,
-      signIn: player.discord_user_id ? (signedIn.has(player.discord_user_id) ? 'signed_in' : 'not_yet') : 'no_discord',
-      isMe: !!player.discord_user_id && player.discord_user_id === viewer.discordId,
+      signIn: signedIn.has(player.player_id) ? 'signed_in' : (player.discord_user_id || player.user_id ? 'not_yet' : 'no_discord'),
+      isMe: isOwnPlayer(player, viewer),
     });
   }
   people.sort((a, b) => a.shown.name.localeCompare(b.shown.name) || a.id.localeCompare(b.id));

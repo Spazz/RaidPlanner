@@ -10,9 +10,10 @@ import {
 } from '../attendance-store.js';
 import { displayCharacter, groupBy, isStale, loadRaidDetail, raidState } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
+import { isOwnPlayer } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { CLASS_IDS, CREATE_STATUSES, cleanCharacterName, DEFAULT_WCL_FLAVOUR, isRealDate, nameKey } from '../roster-data.js';
-import { guildToday } from '../roster-view.js';
+import { guildToday, viewerOf } from '../roster-view.js';
 import { listWclReports, requireWclConfigured } from '../sources.js';
 import {
   bad, constraintOf, errorText, findNameOwner, insertCharacter, limitError, makeMainStatements, nameTaken, requireTarget, resolveRealm,
@@ -553,7 +554,7 @@ export async function getTeamAttendance(ctx) {
     bind(`SELECT raid_id, player_id, outcome, credit, signup_kind, attended, needs_review, via_raid_id, flags FROM attendance WHERE guild_id = ?1 AND team_id = ?2`),
     bind(`SELECT a.raid_id, a.player_id, r.raid_on, r.team_id AS host_team_id FROM attendance a JOIN raids r ON r.id = a.raid_id
            WHERE a.guild_id = ?1 AND a.credit_team_id = ?2 AND a.credit = 1 AND a.outcome = 'fill_in'`),
-    bind(`SELECT p.id, p.status, p.joined_on, p.left_on, p.discord_user_id FROM players p WHERE p.guild_id = ?1
+    bind(`SELECT p.id, p.status, p.joined_on, p.left_on, p.discord_user_id, p.user_id FROM players p WHERE p.guild_id = ?1
              AND (p.id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR p.id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
     bind(`SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1
              AND (player_id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR player_id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
@@ -591,7 +592,7 @@ export async function getTeamAttendance(ctx) {
       name: character ? character.name : 'Unknown',
       class: character ? character.class : null,
       status: row.status,
-      isMe: !!row.discord_user_id && row.discord_user_id === ctx.session.user.discordId,
+      isMe: isOwnPlayer(row, viewerOf(ctx)),
     };
   }).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 
@@ -626,7 +627,7 @@ export async function getPersonAttendance(ctx) {
   const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, personId);
   const [policyResult, playerResult, characterResult, rowResult, raidResult, borrowedResult, teamResult, hostResult, decisionResult] = await ctx.db.batch([
     policyRowsStatement(ctx.db, guild.id),
-    bind('SELECT id, status, joined_on, left_on, discord_user_id FROM players WHERE guild_id = ?1 AND id = ?2'),
+    bind('SELECT id, status, joined_on, left_on, discord_user_id, user_id FROM players WHERE guild_id = ?1 AND id = ?2'),
     bind('SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1 AND player_id = ?2'),
     bind('SELECT * FROM attendance WHERE guild_id = ?1 AND player_id = ?2'),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
@@ -694,7 +695,7 @@ export async function getPersonAttendance(ctx) {
   return jsonResponse({
     person: {
       id: player.id, name: home ? home.name : 'Unknown', class: home ? home.class : null, status: player.status, joinedOn: player.joined_on,
-      isMe: !!player.discord_user_id && player.discord_user_id === ctx.session.user.discordId,
+      isMe: isOwnPlayer(player, viewerOf(ctx)),
     },
     teams,
   });

@@ -5,7 +5,8 @@ import { defaultRandomBytes } from './ids.js';
 import { checkRateLimit, rateLimitMessage } from './ratelimit.js';
 import { createRouter, paramsAreValid } from './router.js';
 import { loadSession } from './session.js';
-import { callback, deleteMe, guildPageRedirect, login, logout, me, updatePrefs } from './routes/auth.js';
+import { callback, deleteMe, guildPageRedirect, login, logout, me, providers, updatePrefs } from './routes/auth.js';
+import { lookupAccounts, patchMe, setPersonAccount, unlinkDiscord } from './routes/accounts.js';
 import { bnetCallback, bnetLogin, createClaims, disconnectBnet, getBnet, withdrawClaim } from './routes/bnet.js';
 import { approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
@@ -40,9 +41,13 @@ const ROUTES = [
   { method: 'GET', path: '/guild/', auth: false, handler: guildPageRedirect },
   { method: 'GET', path: '/auth/login', auth: false, handler: login },
   { method: 'GET', path: '/auth/callback', auth: false, handler: callback },
+  { method: 'GET', path: '/auth/providers', auth: false, handler: providers },
   { method: 'GET', path: '/auth/me', auth: true, handler: me },
   { method: 'DELETE', path: '/auth/me', auth: true, handler: deleteMe },
   { method: 'PATCH', path: '/auth/prefs', auth: true, handler: updatePrefs },
+  // Accounts (Phase 7a): the name the account shows, and Discord as a linked sign-in (/auth/login?mode=link connects it, this disconnects it).
+  { method: 'PATCH', path: '/api/me', auth: true, handler: patchMe },
+  { method: 'DELETE', path: '/auth/discord', auth: true, handler: unlinkDiscord },
   // Battle.net link (Phase 5). login and callback are browser navigations: they read the session themselves and redirect instead of answering JSON.
   { method: 'GET', path: '/auth/bnet/login', auth: false, handler: bnetLogin },
   { method: 'GET', path: '/auth/bnet/callback', auth: false, handler: bnetCallback },
@@ -63,6 +68,7 @@ const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/roster', auth: true, handler: createPerson },
   // Literal paths are registered before `:pid`, so "linkable" and "import" are never read as a person id.
   { method: 'GET', path: '/api/guild/:gid/roster/linkable', auth: true, handler: getLinkable },
+  { method: 'GET', path: '/api/guild/:gid/accounts', auth: true, handler: lookupAccounts },
   { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/preview', auth: true, handler: previewRaidHelper },
   { method: 'POST', path: '/api/guild/:gid/roster/import/raid-helper/commit', auth: true, handler: commitRaidHelper, maxBody: COMMIT_MAX_BODY },
   { method: 'POST', path: '/api/guild/:gid/roster/import/wcl/preview', auth: true, handler: previewWcl },
@@ -72,6 +78,7 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/roster/:pid', auth: true, handler: getPerson },
   { method: 'PATCH', path: '/api/guild/:gid/roster/:pid', auth: true, handler: patchPerson },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid', auth: true, handler: deletePerson },
+  { method: 'PUT', path: '/api/guild/:gid/roster/:pid/account', auth: true, handler: setPersonAccount },
   { method: 'PUT', path: '/api/guild/:gid/roster/:pid/notes', auth: true, handler: saveNotes },
   { method: 'POST', path: '/api/guild/:gid/roster/:pid/characters', auth: true, handler: addCharacter },
   { method: 'PATCH', path: '/api/guild/:gid/roster/:pid/characters/:cid', auth: true, handler: patchCharacter },
