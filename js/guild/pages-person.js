@@ -73,10 +73,8 @@
     const flag = p.trialFlag;
     const verb = flag.kind === 'ended' ? 'ended' : 'ends';
     const text = esc(main.name) + '\'s trial ' + verb + ' on ' + esc(G.ui.formatDay(p.trialEnd)) + ' (' + esc(trialWhen(flag)) + ').';
-    return '<div class="gs-trial-bar ' + (flag.kind === 'ended' ? 'is-ended' : 'is-ends') + '" role="status"><p class="gs-trial-bar-text">' + text + '</p>' +
-      '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-molten gs-btn-sm" data-action="person-status" data-status="raider" data-key="trial-raider">Make Raider</button>' +
-      '<button type="button" class="gs-btn gs-btn-sm" data-action="person-extend" data-key="trial-extend">Extend trial</button>' +
-      '<button type="button" class="gs-btn gs-btn-sm" data-action="person-status" data-status="inactive" data-key="trial-inactive">Set Inactive</button></div></div>' +
+    // Text only: Promote / Extend / End live on the Trial review card below (pages-person-trial.js), the one set of trial buttons.
+    return '<div class="gs-trial-bar ' + (flag.kind === 'ended' ? 'is-ended' : 'is-ends') + '" role="status"><p class="gs-trial-bar-text">' + text + '</p></div>' +
       '<p class="gs-fine">' + esc(CHANGE_NOTE) + '</p>';
   }
 
@@ -251,17 +249,6 @@
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">' + (edit ? 'Save' : 'Add character') + '</button></div></form>';
   }
 
-  function extendDialogHtml(record) {
-    const main = mainOf(record) || {};
-    const p = record.person;
-    const start = p.trialEnd && p.trialEnd > record.today ? p.trialEnd : record.today;
-    return '<form class="gs-dialog-form" data-submit="extend-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Extend ' + esc(main.name) + '\'s trial</h2>' +
-      '<div class="gs-field"><label class="gs-label" for="dlg-tend">New trial end date</label><input class="gs-input" type="date" id="dlg-tend" name="trialEnd" data-field="trialEnd" value="' + esc(G.ui.addDays(start, 14)) + '" aria-describedby="dlg-tend-help">' +
-      '<p class="gs-fine" id="dlg-tend-help">Officers get a flag 7 days before this date.</p><p class="gs-field-error" id="dlg-err-trialEnd" role="alert" hidden></p></div>' +
-      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Extend trial</button></div></form>';
-  }
-
   function removeCharDialogHtml(record, character) {
     const person = (mainOf(record) || {}).name;
     return '<form class="gs-dialog-form" data-submit="remove-char-form" data-cid="' + esc(character.id) + '" novalidate><h2 class="gs-dialog-title" id="dlg-title">Remove character</h2>' +
@@ -352,40 +339,6 @@
     if (err && err.code === 'conflict') { conflict(c, err); return; }
     G.app.handleError(err, { pageAlert: true });
   }
-
-  function patchPerson(c, body, el) {
-    if (el) el.disabled = true;
-    return G.api.patch(base(c), Object.assign({ expectedVersion: c.rec.person.version }, body)).then(function (res) {
-      applyRecord(c, res);
-    }, function (err) {
-      if (el) el.disabled = false;
-      pageError(c, err);
-    });
-  }
-
-  G.handlers.click['person-status'] = function (el) {
-    const c = cur();
-    const status = el.getAttribute('data-status');
-    if (!c || ['raider', 'trial', 'reserve', 'inactive'].indexOf(status) < 0) return;
-    patchPerson(c, { status: status }, el);
-  };
-
-  G.handlers.click['person-extend'] = function () {
-    const c = cur();
-    if (!c) return;
-    G.ui.openDialog(extendDialogHtml(c.rec), { labelledBy: 'dlg-title' });
-    const input = document.getElementById('dlg-tend');
-    if (input) input.focus();
-  };
-
-  G.handlers.submit['extend-form'] = function (form) {
-    const c = cur();
-    if (!c) return;
-    G.ui.setText('dlg-err-trialEnd', '');
-    const v = form.elements.trialEnd.value;
-    if (!v) { G.ui.setText('dlg-err-trialEnd', 'Choose the new end date.'); form.elements.trialEnd.focus(); return; }
-    G.ui.runDialog(form, G.api.patch(base(c), { expectedVersion: c.rec.person.version, trialEnd: v }), function (res) { applyRecord(c, res); }, function (err) { conflict(c, err); });
-  };
 
   // The Reason and Left on fields belong to Inactive only.
   G.handlers.change['person-status-change'] = function (el) {
@@ -593,7 +546,6 @@
     mainOf: mainOf,
     personHtml: personHtml,
     characterDialogHtml: characterDialogHtml,
-    extendDialogHtml: extendDialogHtml,
     deleteDialogHtml: deleteDialogHtml,
     accountFieldHtml: accountFieldHtml,
     accountLinkDialogHtml: accountLinkDialogHtml,

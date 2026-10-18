@@ -69,7 +69,8 @@ function absorbCookies(jar, response) {
 const NOW = Date.parse('2027-01-16T12:00:00Z'); // Saturday 07:00 in America/New_York
 const TODAY = '2027-01-16';
 
-async function makeWorld() {
+// bnet: true also starts tools/fake-battlenet.js on a local port, so an account can sign in with Battle.net only (close the world when done).
+async function makeWorld({ bnet = false } = {}) {
   const { createApp } = await load('worker/index.js');
   const db = createD1Fake();
   const discord = makeDiscord();
@@ -85,10 +86,27 @@ async function makeWorld() {
     DISCORD_CLIENT_ID: 'client-id', DISCORD_CLIENT_SECRET: 'client-secret', DISCORD_REDIRECT_URI: `${ORIGIN}/auth/callback`,
     GUILD_CREATOR_ALLOWLIST: PEOPLE.alice.id,
   };
-  const app = createApp({ db, env, fetch: discord.fetch, now: () => clock.now, randomBytes, log: () => {} });
+  let fakeBnet = null;
+  if (bnet) {
+    (await load('worker/battlenet.js')).resetBnetTokenCache();
+    fakeBnet = require('./tools/fake-battlenet').createFakeBattlenet();
+    await new Promise((resolve) => fakeBnet.server.listen(0, '127.0.0.1', resolve));
+    Object.assign(env, {
+      BNET_CLIENT_ID: 'bnet-id', BNET_CLIENT_SECRET: 'bnet-secret', BNET_REDIRECT_URI: `${ORIGIN}/auth/bnet/callback`,
+      BNET_API_BASE: `http://127.0.0.1:${fakeBnet.server.address().port}`,
+    });
+  }
+  const fetchRouter = (url, init) => (fakeBnet && new URL(String(url)).hostname === '127.0.0.1' ? fetch(url, init) : discord.fetch(url, init));
+  const app = createApp({ db, env, fetch: fetchRouter, now: () => clock.now, randomBytes, log: () => {} });
   const world = {
-    db, discord, clock, env,
+    db, discord, clock, env, bnet: fakeBnet,
     advance(ms) { clock.now += ms; },
+    async close() {
+      if (!fakeBnet) return;
+      const closed = new Promise((resolve) => fakeBnet.server.close(resolve));
+      fakeBnet.server.closeAllConnections();
+      await closed;
+    },
     async req(method, urlPath, { jar, body, headers = {} } = {}) {
       const init = { method, headers: { ...headers } };
       if (jar && Object.keys(jar).length) init.headers.Cookie = Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
@@ -122,13 +140,23 @@ async function signIn(world, person, servers = []) {
   return jar;
 }
 
+// Battle.net sign-in or sign-up (nobody needs to be signed in): the new account's cookie jar.
+async function bnetSignIn(world, account) {
+  const jar = {};
+  world.bnet.state.account = account;
+  const login = await world.req('GET', '/auth/bnet/login?mode=signin', { jar });
+  const state = new URL(login.headers.get('Location')).searchParams.get('state');
+  await world.req('GET', `/auth/bnet/callback?code=abc&state=${encodeURIComponent(state)}`, { jar });
+  return jar;
+}
+
 const manageable = (id) => ({ id, name: `Server ${id.slice(-2)}`, icon: null, owner: true, permissions: '8' });
 const plain = (id) => ({ id, name: `Server ${id.slice(-2)}`, icon: null, owner: false, permissions: '0' });
 const GUILD_BODY = { serverId: SERVER_A, gameVersion: 'tbc', region: 'US', realm: 'Nightslayer', name: 'Ember Guard', timeZone: 'America/New_York', multipleTeams: true, teamNames: ['Alpha', 'Bravo'] };
 
 // Alice (Guild Master) makes the guild with two teams; Bob (Officer), Carol (Team Lead of Alpha), Dave (Team Lead of Bravo), Erin and Gina (Members).
-async function scenario({ who = ['bob', 'carol', 'dave', 'erin', 'gina'] } = {}) {
-  const w = await makeWorld();
+async function scenario({ who = ['bob', 'carol', 'dave', 'erin', 'gina'], bnet = false } = {}) {
+  const w = await makeWorld({ bnet });
   const alice = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
   const created = await w.call(alice, 'POST', '/api/guild', GUILD_BODY);
   assert.equal(created.status, 201, JSON.stringify(created.json));
@@ -250,6 +278,10 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('person.update', 'person', 'p_thoren', {}, { status: 'trial', changed: ['joinedOn', 'trialEnd'] }), 'Updated Thoren: join date and trial end'],
     [row('person.delete', 'person', 'p_gone', { status: 'raider' }), 'Removed a person from the roster'],
     [row('person.notes', 'person', 'p_thoren', { notesVersion: 1 }, { notesVersion: 2 }), 'Edited the officer notes of Thoren'],
+    [row('person.account_link', 'person', 'p_thoren', { userId: null }, { userId: 'u_erin' }), 'Linked Thoren to the account Erin E'],
+    [row('person.account_link', 'person', 'p_thoren', { userId: null }, { userId: 'u_gone' }), 'Linked Thoren to an account'],
+    [row('person.account_unlink', 'person', 'p_thoren', { userId: 'u_bob' }, { userId: null }), 'Unlinked the account bob from Thoren'],
+    [row('person.account_unlink', 'person', 'p_gone', { userId: 'u_gone' }, { userId: null }), 'Unlinked an account from a person'],
     [row('character.create', 'character', 'c_alt', null, { personId: 'p_thoren' }), 'Added the character Thorenmage to Thoren'],
     [row('character.update', 'character', 'c_th', {}, { changed: ['teamId', 'mainSpec'] }), 'Updated the character Thoren: team and main spec'],
     [row('character.delete', 'character', 'c_old', { personId: 'p_kael' }), 'Removed a character from Kaelith'],
@@ -299,11 +331,13 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     seen.add(input.action);
   }
   // Every audited action has at least one case, except the ones written with no guild (they never reach a guild's log).
-  const noGuild = ['account.delete', 'guild.delete', 'bnet.link', 'bnet.unlink'];
+  const noGuild = ['account.delete', 'guild.delete', 'bnet.link', 'bnet.unlink', 'discord.link', 'discord.unlink'];
   for (const action of AUDIT_ACTIONS) if (!noGuild.includes(action)) assert(seen.has(action), `no sentence test for ${action}`);
   // Nothing known: still a sentence, never a thrown error or "undefined".
   assert.equal(describeRow(row('person.update', 'person', 'p_x', null, null), {}), 'Updated a person');
   assert.equal(describeRow(row('mystery.action', 'x', 'y'), {}), 'mystery.action');
+  assert.equal(describeRow(row('discord.link', 'user', 'u_x'), {}), 'Linked a Discord account');
+  assert.equal(describeRow(row('discord.unlink', 'user', 'u_x'), {}), 'Disconnected a Discord account');
   assert.equal(describeRow(row('raid.create', 'raid', 'r_x'), {}), 'Created the raid on a raid');
 });
 
@@ -323,6 +357,10 @@ check('audit-view: collectRefs finds every id a sentence needs, ignores malforme
   assert.deepEqual([...refs.raids], [R]);
   assert.deepEqual([...refs.characters], [C]);
   assert.deepEqual([...refs.users], [U]);
+  // An account link names the account in userId (before / after).
+  const U2 = 'u_ffffffffffffffffffffff';
+  const linkRefs = collectRefs([{ actor: U, entityType: 'person', entityId: P, before: { userId: null }, after: { userId: U2 } }]);
+  assert.deepEqual([...linkRefs.users].sort(), [U, U2].sort());
 });
 
 check('audit-view: CSV fields are quoted, doubled-quote escaped, formula-neutralised; the file leads with a BOM and ends each row in CRLF', async () => {
@@ -756,6 +794,34 @@ check('audit route: newest first, a plain sentence from live names, the actor, d
   assert.deepEqual(r.json.actors.map((a) => a.displayName), ['Alice A', 'bob'], 'everyone with a row, by name');
   assert.deepEqual(r.json.actors.map((a) => a.id).sort(), [s.ids.alice, s.ids.bob].sort());
   assert.equal(r.json.next, null);
+});
+
+check('audit route: the name an account chose (display name) is the name shown - actor, actors list, sentences, CSV - and an officer\'s account link reads as a sentence', async () => {
+  const s = await scenario();
+  await addPerson(s, 'bob', s.A, 'Thoren');
+  s.w.exec(`UPDATE users SET display_name = 'Officer Bob' WHERE id = '${s.ids.bob}'`);
+  s.w.advance(1000);
+  const linked = await s.call('bob', 'PUT', `/roster/${s.p.Thoren}/account`, { userId: s.ids.erin });
+  assert.equal(linked.status, 200, JSON.stringify(linked.json));
+  const r = await s.call('alice', 'GET', '/audit');
+  assert.equal(r.status, 200);
+  const link = r.json.rows[0];
+  assert.deepEqual([link.action, link.group, link.text, link.actor.displayName], ['person.account_link', 'roster', 'Linked Thoren to the account Erin E', 'Officer Bob']);
+  assert.deepEqual(link.after, { userId: s.ids.erin });
+  assert.deepEqual(r.json.actors.map((a) => a.displayName), ['Alice A', 'Officer Bob']);
+  assert(r.json.rows.some((row) => row.action === 'roles.set' && row.text === 'Made Officer Bob an Officer'), 'sentences use the chosen name too');
+  // The chosen name wins over the Discord name for the linked account as well; no name chosen: the Discord name.
+  s.w.exec(`UPDATE users SET display_name = 'Erin the Healer' WHERE id = '${s.ids.erin}'`);
+  assert.equal((await s.call('alice', 'GET', '/audit')).json.rows[0].text, 'Linked Thoren to the account Erin the Healer');
+  s.w.advance(1000);
+  assert.equal((await s.call('bob', 'PUT', `/roster/${s.p.Thoren}/account`, { userId: null })).status, 200);
+  const unlinked = (await s.call('alice', 'GET', '/audit')).json.rows[0];
+  assert.deepEqual([unlinked.action, unlinked.text], ['person.account_unlink', 'Unlinked the account Erin the Healer from Thoren']);
+  const csv = await s.w.req('GET', `${s.base}/audit?format=csv`, { jar: s.jars.alice });
+  const csvText = await csv.text();
+  assert(csvText.includes('Officer Bob') && csvText.includes('Unlinked the account Erin the Healer from Thoren'));
+  // The two Discord sign-in actions have no guild, so they never reach a guild's log.
+  assert(!r.json.rows.some((row) => row.action.startsWith('discord.')));
 });
 
 check('audit route: a deleted person, raid or account reads as a generic sentence; a deleted actor is a null actor', async () => {
@@ -1375,6 +1441,60 @@ check('calendar: every fetch re-checks the person - blocked, out of the Discord 
   assert.equal((await s.feed(made.url)).status, 404);
 });
 
+check('calendar: a Battle.net-only account has a working feed once an officer links it to a person - the person is found through the account link, and unlinking ends the feed', async () => {
+  const s = await scenario({ bnet: true });
+  try {
+    await addPerson(s, 'bob', s.A, 'Holly', { class: 'MAGE', mainSpec: 'Fire' });
+    await addPerson(s, 'bob', s.A, 'Ivan', { class: 'ROGUE', mainSpec: 'Combat' });
+    const raid = await addRaid(s, s.A, '2027-01-18', { startTime: '20:00', zone: 'Karazhan' });
+    const signup = (id, playerId, kind) => s.w.exec(
+      `INSERT INTO raid_signups (raid_id, source, signup_id, kind, position, guild_id, player_id) VALUES ('${raid}', 'raid_helper', ${id}, '${kind}', ${id}, '${s.guildId}', '${playerId}')`,
+    );
+    signup(1, s.p.Holly, 'late');
+    signup(2, s.p.Ivan, 'signed');
+
+    // Holly signs up with Battle.net only: no Discord ID, not in the Discord server.
+    s.jars.holly = await bnetSignIn(s.w, { id: '700000001', battletag: 'Holly#1111' });
+    s.ids.holly = (await s.w.call(s.jars.holly, 'GET', '/auth/me')).json.user.id;
+    const account = (await s.w.rows('SELECT discord_id FROM users WHERE id = ?', s.ids.holly))[0];
+    assert.equal(account.discord_id, null, 'a Battle.net-only account');
+    assert.equal(await s.w.count('user_servers', 'user_id = ?', s.ids.holly), 0);
+
+    // Unlinked: she is no member, so she cannot make a link, and a link row that exists for her (planted here) is the same plain 404 as any other.
+    const refused = await s.call('holly', 'POST', '/calendar', { teamId: s.A });
+    assert.deepEqual([refused.status, refused.json.error], [403, 'not_member']);
+    const token = 'H'.repeat(43);
+    s.w.exec(`INSERT INTO calendar_tokens (id, token_hash, guild_id, team_id, user_id, created_at) VALUES ('ct_hhhhhhhhhhhhhhhhhhhhhh', '${sha256(token)}', '${s.guildId}', '${s.A}', '${s.ids.holly}', 1)`);
+    const planted = `${ORIGIN}/cal/${token}.ics`;
+    const feed = (url) => s.w.req('GET', new URL(url).pathname);
+    assert.equal((await feed(planted)).status, 404, 'not linked: no feed');
+
+    // An officer links the account to Holly's person: now she is a member, and "me" is the linked person.
+    const linked = await s.call('bob', 'PUT', `/roster/${s.p.Holly}/account`, { userId: s.ids.holly });
+    assert.equal(linked.status, 200, JSON.stringify(linked.json));
+    assert.equal((await feed(planted)).status, 200, 'linked: the same link works');
+    const made = await s.call('holly', 'POST', '/calendar', { teamId: s.A });
+    assert.equal(made.status, 201, JSON.stringify(made.json));
+    const response = await feed(made.json.url);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Content-Type'), 'text/calendar; charset=utf-8');
+    const text = await response.text();
+    const { events } = parseIcs(text);
+    assert.deepEqual(events.map((e) => e.UID), [raid + '@raidsmith'], 'the team raid and nothing else');
+    assert.equal(events[0].SUMMARY, 'Karazhan');
+    assert(events[0].DESCRIPTION.startsWith('Signed 1, Late 1\nYour sign-up: Late\n'), 'her own sign-up is found through the account link, not a Discord ID: ' + events[0].DESCRIPTION);
+    assert(!events[0].DESCRIPTION.includes('Your sign-up: Signed'), 'not the other person\'s');
+
+    // Unlinked again: the account loses the guild, and the feed with it.
+    assert.equal((await s.call('bob', 'PUT', `/roster/${s.p.Holly}/account`, { userId: null })).status, 200);
+    assert.equal((await feed(made.json.url)).status, 404, 'unlinked: no feed');
+    assert.equal((await feed(planted)).status, 404);
+    assert.equal((await s.call('holly', 'GET', `/calendar?team=${s.A}`)).status, 403);
+  } finally {
+    await s.w.close();
+  }
+});
+
 check('calendar: a malformed or unknown feed address is a 404 and reads nothing for the wrong shape', async () => {
   const s = await calWorld();
   const made = await s.create();
@@ -1640,6 +1760,6 @@ async function main() {
     }
   }
   console.log(`\n${passed} passed, ${failed} failed`);
-  process.exit(failed ? 1 : 0);
+  process.exitCode = failed ? 1 : 0; // let the event loop drain: process.exit() while the fake Battle.net server closes trips a libuv assertion on Windows
 }
 main();

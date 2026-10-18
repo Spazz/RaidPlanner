@@ -360,14 +360,15 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   }
   const personPage = (rec, gd, linkable, alert) => G.pages.person.personHtml({ guildData: gd || guildData(), record: rec, linkable: linkable || [], alert: alert || '' });
 
-  await check('person record: header, chips, Discord line, trial bar with the three actions and the clearing note', () => {
+  await check('person record: header, chips, Discord line, trial bar (text only, the decision buttons are on the Trial review card) and the clearing note', () => {
     const out = personPage(record());
     assert(out.includes('<h1 class="gs-h1" tabindex="-1">Sølvhand</h1>'));
     assert(out.includes('Paladin &middot; Protection / Holy'));
     assert(out.includes('gs-status-trial">Trial</span>') && out.includes('gs-trial-ended">Ended 2 days ago</span>'));
     assert(out.includes('Discord: solvhand &middot; Signed in'));
     assert(out.includes('Sølvhand\'s trial ended on Oct 13, 2026 (2 days ago).'));
-    assert(out.includes('>Make Raider<') && out.includes('>Extend trial<') && out.includes('>Set Inactive<'));
+    const bar = out.match(/<div class="gs-trial-bar[\s\S]*?<\/div>/)[0];
+    assert(!bar.includes('<button') && !/>Make Raider<|>Extend trial<|>Set Inactive<|data-action="person-(status|extend)"/.test(out), 'one set of trial buttons: the Trial review card has them, the banner is text');
     assert(out.includes('The flag clears when the status changes or the trial end date moves.'));
     const ends = personPage(record({ person: { trialFlag: { kind: 'ends', days: 5 }, trialEnd: '2026-10-20' } }));
     assert(ends.includes('trial ends on Oct 20, 2026 (in 5 days).'));
@@ -452,7 +453,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
       person: { discord: { signIn: 'not_yet', user: null, nickname: HOSTILE } },
       notes: { text: HOSTILE + QUOTES, version: 1, updatedBy: { id: 'u_1', username: 'x', displayName: HOSTILE }, updatedAt: 1 },
     });
-    const out = personPage(rec) + G.pages.person.characterDialogHtml({ guildData: guildData(), record: rec, character: rec.characters[1], defaultTeamId: 't_main' }) + G.pages.person.deleteDialogHtml(rec) + G.pages.person.extendDialogHtml(rec);
+    const out = personPage(rec) + G.pages.person.characterDialogHtml({ guildData: guildData(), record: rec, character: rec.characters[1], defaultTeamId: 't_main' }) + G.pages.person.deleteDialogHtml(rec);
     assertEscaped(out, 'person');
     assertNoRawAttrs(out);
   });
@@ -468,13 +469,6 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND] });
     const many = G.pages.person.characterDialogHtml({ guildData: gd, record: rec, character: rec.characters[1], defaultTeamId: 't_main' });
     assert(many.includes('name="teamId"') && /<option value="t_main" selected>/.test(many));
-  });
-
-  await check('Extend trial dialog: a date field starting 14 days past the current end (or today), and the 7-day flag note', () => {
-    const out = G.pages.person.extendDialogHtml(record());
-    assert(out.includes('Extend Sølvhand\'s trial') && out.includes('type="date"') && out.includes('value="2026-10-29"') && out.includes('Officers get a flag 7 days before this date.'));
-    const later = G.pages.person.extendDialogHtml(record({ person: { trialEnd: '2026-11-01' } }));
-    assert(later.includes('value="2026-11-15"'));
   });
 
   // ── behaviour against a stubbed API ────────────────────────────
@@ -495,6 +489,11 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     return s;
   }
   const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
+  // The Details form (the way to change a status now that the Trial review card owns the trial buttons): the dates and the link as the record has them.
+  const detailsStatusForm = status => {
+    const field = v => ({ value: v, focus() {}, select() {}, setAttribute() {} });
+    return { elements: { status: field(status), joinedOn: field('2026-09-15'), trialStart: field('2026-09-15'), trialEnd: field('2026-10-13'), linkUserId: field('u_8') }, getAttribute: () => null, querySelector: () => null, querySelectorAll: () => [] };
+  };
 
   await check('conflict: a stale save re-renders from ApiError.body.current and shows the standard message', async () => {
     const stale = record();
@@ -505,7 +504,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     await withApi({
       patch: (url, body) => { sent = { url, body }; return Promise.reject(new G.api.ApiError(409, { error: 'conflict', message: 'Changed.', current: fresh })); },
     }, async () => {
-      G.handlers.click['person-status'](el({ 'data-status': 'raider' }));
+      G.handlers.submit['person-details-form'](detailsStatusForm('raider'));
       await tick();
     });
     assert.equal(sent.url, '/api/guild/g1/roster/p_8');
@@ -538,7 +537,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const next = record({ person: { status: 'raider', trialFlag: null, version: 4 } });
     next.rosterFlags = { t_main: 1 };
     await withApi({ patch: () => Promise.resolve(next) }, async () => {
-      G.handlers.click['person-status'](el({ 'data-status': 'raider' }));
+      G.handlers.submit['person-details-form'](detailsStatusForm('raider'));
       await tick();
     });
     assert.deepEqual(plain(s.guilds.g1.rosterFlags), { t_main: 1 });
@@ -546,7 +545,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const cleared = record({ person: { status: 'inactive', trialFlag: null, version: 5 } });
     cleared.rosterFlags = { t_main: 0 };
     await withApi({ patch: () => Promise.resolve(cleared) }, async () => {
-      G.handlers.click['person-status'](el({ 'data-status': 'inactive' }));
+      G.handlers.submit['person-details-form'](detailsStatusForm('inactive'));
       await tick();
     });
     assert(!flagged().includes('gs-nav-badge'));
@@ -583,7 +582,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(/class="gs-nav-link is-active" href="#\/g\/g1\/roster"/.test(nav));
   });
 
-  await check('person page actions send the contract bodies (details diff, extend, add / edit character, make main, remove, delete)', async () => {
+  await check('person page actions send the contract bodies (details diff, add / edit character, make main, remove, delete)', async () => {
     const s = setupPerson(record());
     const calls = [];
     const reply = () => Promise.resolve(Object.assign(record({ person: { version: s.person.record.person.version + 1 } }), { rosterFlags: { t_main: 2 } }));
@@ -601,32 +600,28 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
       G.handlers.submit['person-details-form'](form({ status: field('trial'), joinedOn: field('2026-09-15'), trialStart: field('2026-09-15'), trialEnd: field('2026-10-13'), linkUserId: field('u_8') }));
       await tick();
       assert.equal(calls.length, before, 'unchanged details send nothing');
-      // extend trial
-      G.handlers.submit['extend-form'](form({ trialEnd: field('2026-10-29') }));
-      await tick();
-      assert.deepEqual(calls[1], { verb: 'patch', url: base, body: { expectedVersion: 4, trialEnd: '2026-10-29' } });
       // add a character as the new Main
       const addForm = form({ name: field('Velshade'), class: field('WARLOCK'), mainSpec: field('Affliction'), offSpec: field('') }, { 'data-mode': 'add' });
       addForm.querySelector = sel => (sel.includes('mainOrAlt') ? { value: 'main' } : null);
       G.handlers.submit['char-form'](addForm);
       await tick();
-      assert.deepEqual(calls[2], { verb: 'post', url: base + '/characters', body: { name: 'Velshade', class: 'WARLOCK', mainSpec: 'Affliction', offSpec: null, teamId: 't_main', makeMain: true } });
+      assert.deepEqual(calls[1], { verb: 'post', url: base + '/characters', body: { name: 'Velshade', class: 'WARLOCK', mainSpec: 'Affliction', offSpec: null, teamId: 't_main', makeMain: true } });
       // edit: PATCH of the character
       G.handlers.submit['char-form'](form({ name: field('Glimmer'), class: field('PRIEST'), mainSpec: field('Holy'), offSpec: field('Discipline') }, { 'data-mode': 'edit', 'data-cid': 'c_8b' }));
       await tick();
-      assert.deepEqual(calls[3], { verb: 'patch', url: base + '/characters/c_8b', body: { name: 'Glimmer', class: 'PRIEST', mainSpec: 'Holy', offSpec: 'Discipline' } });
+      assert.deepEqual(calls[2], { verb: 'patch', url: base + '/characters/c_8b', body: { name: 'Glimmer', class: 'PRIEST', mainSpec: 'Holy', offSpec: 'Discipline' } });
       // Make Main, remove
       G.handlers.click['char-main'](el({ 'data-cid': 'c_8b' }));
       await tick();
-      assert.deepEqual(calls[4], { verb: 'post', url: base + '/characters/c_8b/main', body: {} });
+      assert.deepEqual(calls[3], { verb: 'post', url: base + '/characters/c_8b/main', body: {} });
       G.handlers.click['char-remove'](el({ 'data-cid': 'c_8b' }));
       G.handlers.submit['remove-char-form'](form({}, { 'data-cid': 'c_8b' }));
       await tick();
-      assert.deepEqual(calls[5], { verb: 'del', url: base + '/characters/c_8b', body: {} });
+      assert.deepEqual(calls[4], { verb: 'del', url: base + '/characters/c_8b', body: {} });
       // delete the person: back to the roster with a notice and the new badge count
       G.handlers.submit['delete-person-form'](form({}));
       await tick();
-      assert.deepEqual(calls[6], { verb: 'del', url: base, body: {} });
+      assert.deepEqual(calls[5], { verb: 'del', url: base, body: {} });
     });
     assert.equal(s.guilds.g1.rosterFlags.t_main, 1);
     assert.equal(s.person, null);

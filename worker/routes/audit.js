@@ -19,7 +19,8 @@ const parseJson = (text) => {
   if (text === null || text === undefined) return null;
   try { return JSON.parse(text); } catch { return null; }
 };
-const userName = (row) => row.global_name || row.username;
+// The name an account shows: the one it chose (users.display_name, Phase 7a accounts), else its Discord or Battle.net name.
+const userName = (row) => row.display_name || row.global_name || row.username;
 const idsOf = (set) => JSON.stringify([...set]);
 
 // -> { group, actor, from, to, cursor, csv } or a 400 naming the field.
@@ -70,7 +71,7 @@ async function loadNames(db, guildId, refs, teams) {
     ).bind(guildId, idsOf(refs.persons)),
     db.prepare('SELECT id, name FROM characters WHERE guild_id = ?1 AND id IN (SELECT value FROM json_each(?2))').bind(guildId, idsOf(refs.characters)),
     db.prepare('SELECT id, raid_on, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT value FROM json_each(?2))').bind(guildId, idsOf(refs.raids)),
-    db.prepare('SELECT id, username, global_name FROM users WHERE id IN (SELECT value FROM json_each(?1))').bind(idsOf(refs.users)),
+    db.prepare('SELECT id, username, global_name, display_name FROM users WHERE id IN (SELECT value FROM json_each(?1))').bind(idsOf(refs.users)),
     db.prepare('SELECT id, item_name, item_id FROM loot_awards WHERE guild_id = ?1 AND id IN (SELECT value FROM json_each(?2))').bind(guildId, idsOf(refs.awards)),
     db.prepare('SELECT id, name FROM character_claims WHERE guild_id = ?1 AND id IN (SELECT value FROM json_each(?2))').bind(guildId, idsOf(refs.claims)),
   ]);
@@ -110,7 +111,7 @@ export async function getAudit(ctx) {
   const [rowResult, actorResult, teamResult] = await ctx.db.batch([
     rowsStatement(ctx.db, guild.id, filters, limit),
     ctx.db.prepare(
-      `SELECT id, username, global_name FROM users
+      `SELECT id, username, global_name, display_name FROM users
         WHERE id IN (SELECT actor_user_id FROM audit_log WHERE guild_id = ? AND actor_user_id IS NOT NULL GROUP BY actor_user_id)`,
     ).bind(guild.id),
     ctx.db.prepare('SELECT id, name, archived FROM teams WHERE guild_id = ?').bind(guild.id),

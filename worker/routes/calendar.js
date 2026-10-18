@@ -1,10 +1,12 @@
 // The calendar feed. A member makes ONE private link per team (POST /calendar), subscribes a calendar app to it, and can replace or turn it
 // off at any time. The link is /cal/<token>.ics: 32 random bytes, only their SHA-256 is stored (so the URL is shown once, in the answer to
-// the POST), and every fetch re-checks that the person is still in the guild's Discord server, not blocked, and may see the team's raids.
+// the POST), and every fetch re-checks that the account is still a member of the guild (worker/membership.js: in its Discord server or linked to a
+// roster person, and not blocked) and may see the team's raids.
 // The feed itself is reached with no cookie, so GET /cal/:cal is the one route here without a session; everything else is a normal guild route.
 import { HttpError, SECURITY_HEADERS, jsonResponse } from '../http.js';
 import { buildIcs, countsLine, FEED_AHEAD_DAYS, FEED_PAST_DAYS, raidEnd, signupKindLabel } from '../calendar-feed.js';
 import { isId, newId } from '../ids.js';
+import { ownPersonStatement } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { hashToken, newSessionToken } from '../session.js';
 import { bad } from './roster.js';
@@ -24,12 +26,6 @@ async function readTeam(ctx, guildContext, raw) {
   if (!allows(guildContext.can, 'raids.view', team.id)) throw forbidden();
   return team;
 }
-
-// The roster person this user is in a guild (their Discord link), or none. The feed's ONE lookup of "me": every other read here goes by the
-// person's id, so changing how a user maps to a person (the accounts work) is a change to this function alone.
-const ownPersonStatement = (db, guildId, userId) => db.prepare(
-  'SELECT id FROM players WHERE guild_id = ? AND discord_user_id = (SELECT discord_id FROM users WHERE id = ?)',
-).bind(guildId, userId);
 
 const statusOf = (team, row) => ({ team: { id: team.id, name: team.name }, subscribed: !!row, createdAt: row ? row.created_at : null, lastUsedAt: row ? row.last_used_at : null });
 
@@ -94,6 +90,7 @@ export async function getCalendarFeed(ctx) {
   const from = now - FEED_PAST_DAYS * DAY_MS;
   const to = now + FEED_AHEAD_DAYS * DAY_MS;
   const seeCounts = allows(can, 'attendance.view', link.team_id);
+  // "Me" is the membership rule's (worker/membership.js): the person linked to the account or carrying its Discord ID.
   const own = await ownPersonStatement(db, guild.id, link.user_id).first();
   const [teamResult, raidResult, countResult, mineResult] = await db.batch([
     db.prepare('SELECT name FROM teams WHERE id = ? AND guild_id = ?').bind(link.team_id, guild.id),

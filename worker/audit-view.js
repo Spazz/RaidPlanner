@@ -22,6 +22,7 @@ export const GROUP_IDS = AUDIT_GROUPS.map((group) => group.id);
 // action of audit.js has no entry, so a new action gets a conscious home.
 export const ACTION_GROUP = Object.freeze({
   'person.create': 'roster', 'person.update': 'roster', 'person.delete': 'roster', 'person.notes': 'roster',
+  'person.account_link': 'roster', 'person.account_unlink': 'roster',
   'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'roster.import': 'roster',
   'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.manual': 'raids',
   'schedule.update': 'raids', 'schedule.fill': 'raids',
@@ -34,6 +35,8 @@ export const ACTION_GROUP = Object.freeze({
   'guild.create': 'settings', 'guild.claim': 'settings', 'guild.delete': 'settings', 'team.create': 'settings', 'team.rename': 'settings',
   'team.archive': 'settings', 'team.restore': 'settings', 'roles.set': 'settings', 'guild_master.transfer': 'settings',
   'guild_master.auto_promote': 'settings', 'access.remove': 'settings', 'access.restore': 'settings', 'account.delete': 'settings',
+  // Written with no guild (the account's own sign-ins), so they never reach a guild's log; mapped so the action list stays complete.
+  'discord.link': 'settings', 'discord.unlink': 'settings',
 });
 
 export const groupOf = (action) => (Object.prototype.hasOwnProperty.call(ACTION_GROUP, action) ? ACTION_GROUP[action] : 'settings');
@@ -69,6 +72,7 @@ export function collectRefs(rows) {
       take(refs.raids, 'r', side.raidId);
       take(refs.characters, 'c', side.mainCharacterId);
       take(refs.users, 'u', side.guildMasterUserId);
+      take(refs.users, 'u', side.userId);
       for (const id of Array.isArray(side.teamLeadTeamIds) ? side.teamLeadTeamIds : []) take(refs.teams, 't', id);
     }
   }
@@ -159,6 +163,9 @@ export function describeRow(row, names = {}) {
     }
     case 'person.delete': return `Removed ${person(ent)} from the roster`;
     case 'person.notes': return `Edited the officer notes of ${person(ent)}`;
+    // An officer's account link (Phase 7a): the account's name is looked up at read time; an account since deleted reads as "an account".
+    case 'person.account_link': return `Linked ${person(ent)} to ${get('user', after.userId, null) ? `the account ${user(after.userId)}` : 'an account'}`;
+    case 'person.account_unlink': return `Unlinked ${get('user', before.userId, null) ? `the account ${user(before.userId)}` : 'an account'} from ${person(ent)}`;
     case 'character.create': return `Added the character ${character(ent)} to ${person(after.personId)}`;
     case 'character.update': {
       const other = humanChanged(after.changed);
@@ -227,6 +234,8 @@ export function describeRow(row, names = {}) {
 
     case 'bnet.link': return 'Linked a Battle.net account';
     case 'bnet.unlink': return 'Disconnected a Battle.net account';
+    case 'discord.link': return 'Linked a Discord account';
+    case 'discord.unlink': return 'Disconnected a Discord account';
     case 'bnet.settings': return 'Changed the Battle.net settings';
     case 'claim.create': return `Claimed ${get('claim', ent, 'a character')}`;
     case 'claim.withdraw': return 'Withdrew a character claim';

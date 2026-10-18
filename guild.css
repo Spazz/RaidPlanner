@@ -578,7 +578,6 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-card-sec-body { padding: 16px; }
   .gs-card-sec-head { padding: 12px 16px; }
   .gs-person-head, .gs-person-cols { gap: 12px; }
-  .gs-trial-bar .gs-row-actions { justify-content: flex-start; width: 100%; }
   .gs-icon-btn-danger { width: 44px; height: 44px; }
   .gs-grid-2 { grid-template-columns: 1fr; }
   .gs-input-sm { height: 44px; }

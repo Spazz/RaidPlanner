@@ -941,6 +941,12 @@ function withState(fn) {
     const state = { gid: 'g1', pid: 'p_t', data: TRIAL(), error: '' };
     const out = G.pages.person.personHtml({ guildData: g, record: record(), linkable: null, alert: '', attendance: null, trial: state });
     assert(out.indexOf('gs-trial-bar') > 0 && out.indexOf('gs-trial-bar') < out.indexOf('id="trial-card-h"') && out.indexOf('id="trial-card-h"') < out.indexOf('id="characters-h"'));
+    // ONE set of trial buttons: the card's. The banner above it is text only.
+    const bar = out.match(/<div class="gs-trial-bar[\s\S]*?<\/div>/)[0];
+    assert(bar.includes('trial ') && !bar.includes('<button'), 'the banner keeps its sentence, no buttons');
+    const buttons = (out.match(/<button[^>]*>(Promote to Raider|Extend trial|End trial|Make Raider|Set Inactive)</g) || []).map((b) => b.replace(/^[\s\S]*>([^>]+)<$/, '$1'));
+    assert.deepEqual(buttons, ['Promote to Raider', 'Extend trial', 'End trial'], 'the card\'s three buttons and no others');
+    assert(!/data-action="person-(status|extend)"/.test(out));
     assert(!G.pages.person.personHtml({ guildData: g, record: record(), linkable: null, alert: '', attendance: null }).includes('trial-card-h'));
     assert(!G.pages.person.personHtml({ guildData: g, record: record({ person: Object.assign({}, record().person, { status: 'raider' }) }), linkable: null, alert: '', attendance: null, trial: state }).includes('trial-card-h'));
   });
