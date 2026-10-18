@@ -52,7 +52,7 @@ export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) 
     ).bind(guild.id, userId, guild.discord_server_id),
   ]);
   const standing = standingResult.results[0];
-  if (!standing || !standing.discord_id) return { status: 'skipped', reason: 'no_discord' };
+  if (!standing) return { status: 'skipped', reason: 'no_discord' };
   if (standing.blocked === 1) return { status: 'skipped', reason: 'blocked' };
   if (standing.master === 1) return { status: 'skipped', reason: 'guild_master' };
   const maps = mapResult.results;
@@ -60,8 +60,9 @@ export async function syncMember(ctx, guild, userId, { actorId = userId } = {}) 
   if (!maps.length && !current.length) return { status: 'skipped', reason: 'no_mapping' };
 
   // Somebody who is not in the Discord server has no Discord roles: that needs no call. Otherwise ask Discord, and change nothing if it cannot answer.
+  // Somebody with no Discord connection (it was disconnected) has no Discord roles either, and what Discord gave them goes.
   let roleIds = [];
-  if (maps.length && standing.in_server === 1) {
+  if (maps.length && standing.in_server === 1 && standing.discord_id) {
     if (!botConfigured(env)) return { status: 'skipped', reason: 'not_configured' };
     const member = await fetchMemberRoleIds(env, ctx.fetch, guild.discord_server_id, standing.discord_id);
     if (!member.ok) return { status: 'failed', reason: member.reason };

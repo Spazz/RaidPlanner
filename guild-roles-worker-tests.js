@@ -1700,6 +1700,184 @@ check('guild ownership: only an Officer made by hand can inherit the guild when 
 });
 
 
+// ---------------------------------------------------------------------------
+// Findings of the independent security review, each pinned
+
+check('review: disconnecting Discord takes the roles Discord gave with it (and leaves the ones set by hand)', async () => {
+  const s = await scenario();
+  const council = await s.makeRole('Loot council', COUNCIL);
+  assert.equal((await s.setMaps([{ discordRoleId: D_OFFICERS, roleId: 'officer', teamId: null }])).status, 200);
+  assert.equal((await s.setRoles('dave', { officer: false, teamLeadTeamIds: [], roles: [{ roleId: council, teamId: null }] })).status, 200);
+  s.discordRoles('dave', [D_OFFICERS]);
+  await s.signInAgain('dave');
+  assert.deepEqual((await s.me('dave')).roles.map((r) => r.role), ['officer', council]);
+  // Dave has Battle.net too, so Discord can be disconnected, and an officer linked his account to a roster person (so he stays a member without Discord).
+  const person = await s.call('alice', 'POST', '/roster', { teamId: s.A, name: 'Davepal', class: 'MAGE', mainSpec: null, offSpec: null, status: 'raider' });
+  assert.equal((await s.call('alice', 'PUT', `/roster/${person.json.person.id}/account`, { userId: s.ids.dave })).status, 200);
+  s.w.db.sqlite.exec(`INSERT INTO bnet_links (user_id, bnet_account_id, battletag, linked_at, snapshot, snapshot_at) VALUES ('${s.ids.dave}', '777001', 'Dave#1234', 1, '{}', 1)`);
+  const gone = await s.w.call(s.jars.dave, 'DELETE', '/auth/discord', {});
+  assert.equal(gone.status, 200, gone.text);
+  assert.equal(await s.w.count('role_assignments', "user_id = ? AND source = 'discord'", s.ids.dave), 0, 'nothing could ever take the Discord-given Officer away later');
+  assert.deepEqual((await s.me('dave')).roles, [{ role: council, name: 'Loot council' }], 'the role set by hand stays');
+  assert.equal((await s.me('dave')).can['guild.access'], undefined);
+});
+
+check('review: re-pointing a mapping to another Discord role (or dropping one of two) clears what the old one gave; the next sign-in gives it back to those who still hold a mapped role', async () => {
+  const s = await scenario();
+  assert.equal((await s.setMaps([{ discordRoleId: D_OFFICERS, roleId: 'officer', teamId: null }])).status, 200);
+  s.discordRoles('dave', [D_OFFICERS]);
+  s.discordRoles('erin', [D_EXTRA]);
+  await s.signInAgain('dave');
+  assert.equal((await s.me('dave')).can['guild.access'], 'guild');
+  // Officer now comes from "Booster" instead of "Officers": Dave loses it at once; Erin gets it when she next signs in.
+  const moved = await s.setMaps([{ discordRoleId: D_EXTRA, roleId: 'officer', teamId: null }]);
+  assert.equal(moved.json.cleared, 1);
+  assert.equal((await s.me('dave')).can['guild.access'], undefined);
+  await s.signInAgain('erin');
+  assert.equal((await s.me('erin')).can['guild.access'], 'guild');
+  // Two Discord roles give Officer; one is dropped: Officer is cleared for everybody and returns for the holder of the remaining role.
+  assert.equal((await s.setMaps([{ discordRoleId: D_EXTRA, roleId: 'officer', teamId: null }, { discordRoleId: D_OFFICERS, roleId: 'officer', teamId: null }])).json.cleared, 1);
+  await s.signInAgain('dave');
+  await s.signInAgain('erin');
+  assert.equal((await s.me('dave')).can['guild.access'], 'guild');
+  const dropped = await s.setMaps([{ discordRoleId: D_EXTRA, roleId: 'officer', teamId: null }]);
+  assert.equal(dropped.json.cleared, 2, 'both Officers from Discord are cleared');
+  assert.equal((await s.me('dave')).can['guild.access'], undefined);
+  assert.equal((await s.call('bob', 'POST', `/people/${s.ids.erin}/sync`, {})).json.sync.status, 'changed');
+  assert.equal((await s.me('erin')).can['guild.access'], 'guild');
+  // A save that changes nothing clears nothing.
+  assert.equal((await s.setMaps([{ discordRoleId: D_EXTRA, roleId: 'officer', teamId: null }])).json.cleared, 0);
+  assert.equal((await s.me('erin')).can['guild.access'], 'guild');
+});
+
+check('review: a custom role that edits the whole roster does not also open the guild to any account (look-up by name and linking need guild.access too)', async () => {
+  const s = await scenario();
+  const data = await seedData(s);
+  const recruiter = await s.makeRole('Roster editor', { 'roster.edit': 'guild', 'roster.view': 'guild' });
+  assert.equal((await s.setRoles('dave', { officer: false, teamLeadTeamIds: [], roles: [{ roleId: recruiter, teamId: null }] })).status, 200);
+  const outsider = await signIn(s.w, PEOPLE.frank, [plain('900000000000000077')]);
+  const outsiderId = (await s.w.call(outsider, 'GET', '/auth/me')).json.user.id;
+  assert.equal((await s.w.call(outsider, 'GET', `${s.guildPath}`)).status, 403, 'not a member');
+  const lookup = await s.call('dave', 'GET', `/accounts?q=${encodeURIComponent('Frank F')}`);
+  assert.equal(lookup.status, 403);
+  const link = await s.call('dave', 'PUT', `/roster/${data.people.mirabel}/account`, { userId: outsiderId });
+  assert.equal(link.status, 403);
+  assert.equal((await s.w.call(outsider, 'GET', `${s.guildPath}`)).status, 403, 'still not a member');
+  // The Officer (roster.edit and guild.access) can.
+  assert.equal((await s.call('bob', 'GET', `/accounts?q=${encodeURIComponent('Frank F')}`)).status, 200);
+  assert.equal((await s.call('bob', 'PUT', `/roster/${data.people.mirabel}/account`, { userId: outsiderId })).status, 200);
+  assert.equal((await s.w.call(outsider, 'GET', `${s.guildPath}`)).status, 200);
+});
+
+check('review: the read-only view respects a team\'s private loot ("own" visibility), and the hand-out rule applies to guest links and the public page', async () => {
+  const s = await scenario();
+  await seedData(s);
+  assert.equal((await s.call('alice', 'PUT', '/public', { enabled: true, sections: ['roster', 'loot'] })).status, 200);
+  const visit = async () => (await s.w.call({}, 'GET', `/api/public/${s.guildId}`)).json;
+  assert.equal((await visit()).sections.loot.find((e) => e.team.id === s.A).awards.length, 2);
+  s.w.db.sqlite.exec(`INSERT INTO loot_policies (id, guild_id, team_id, policy, version, updated_by, updated_at) VALUES ('lp_${'a'.repeat(22)}', '${s.guildId}', '${s.A}', '{"visibility":{"members":"own"}}', 1, NULL, 1)`);
+  const hidden = await visit();
+  assert(!(hidden.sections.loot || []).some((e) => e.team.id === s.A), 'private loot is not published');
+  assert(!JSON.stringify(hidden).includes('Item 1'));
+  // Guest link with a role that sees loot: the same.
+  const council = await s.makeRole('Observer', { 'loot.view': 'guild' });
+  const { token } = (await s.call('alice', 'POST', '/guest-links', { roleId: council, expiresIn: '1d' })).json.created;
+  const jar = {};
+  await s.w.call(jar, 'POST', '/auth/guest', { token });
+  assert(!((await s.w.call(jar, 'GET', '/api/guest')).json.sections.loot || []).some((e) => e.team.id === s.A));
+  // The hand-out rule: an Officer who may run roles but cannot see attendance or loot cannot publish them.
+  const officer = (await s.call('alice', 'GET', '/roles')).json.roles.find((r) => r.id === 'officer');
+  const trimmed = { ...officer.permissions, 'guild.roles': 'guild' };
+  delete trimmed['attendance.view'];
+  delete trimmed['loot.view'];
+  assert.equal((await s.call('alice', 'PUT', '/roles/officer', { permissions: trimmed })).status, 200);
+  assert.equal((await s.call('bob', 'GET', `/attendance/team?team=${s.A}`)).status, 403, 'Bob cannot see attendance');
+  const wide = await s.call('bob', 'POST', '/guest-links', { expiresIn: '1d' });
+  assert.equal(wide.status, 403, 'the default Guest role shows attendance');
+  assert.match(wide.json.message, /more than you can see/);
+  assert.equal((await s.call('bob', 'POST', '/guest-links', { expiresIn: '1d', teamId: s.A })).status, 403);
+  assert.equal((await s.call('bob', 'PUT', '/public', { enabled: true, sections: ['attendance'] })).status, 403);
+  assert.equal((await s.call('bob', 'PUT', '/public', { enabled: true, sections: ['loot'] })).status, 403);
+  assert.equal((await s.call('bob', 'PUT', '/public', { enabled: true, sections: ['roster', 'raids'] })).status, 200, 'what he can see he can publish');
+  // The Public role loses a ticked section: switching the page off still works.
+  assert.equal((await s.call('alice', 'PUT', '/public', { enabled: true, sections: ['roster', 'raids', 'loot'] })).status, 200);
+  const publicRole = (await s.call('alice', 'GET', '/roles')).json.roles.find((r) => r.id === 'public');
+  const noLoot = { ...publicRole.permissions };
+  delete noLoot['loot.view'];
+  assert.equal((await s.call('alice', 'PUT', '/roles/public', { permissions: noLoot })).status, 200);
+  const settings = (await s.call('alice', 'GET', '/public')).json;
+  assert.equal((await s.call('alice', 'PUT', '/public', { enabled: false, sections: settings.sections })).status, 200, 'off is always allowed');
+  assert.equal((await s.w.call({}, 'GET', `/api/public/${s.guildId}`)).status, 404);
+  assert.equal((await s.call('alice', 'PUT', '/public', { enabled: true, sections: settings.sections })).status, 400, 'on again needs an allowed set');
+});
+
+check('review: role names cannot imitate a built-in (zero-width, bidi, full-width), team scope is refused where the role is held without a team, own_teams reaches no guest', async () => {
+  const s = await scenario();
+  const create = (name) => s.call('alice', 'POST', '/roles', { name, permissions: { 'loot.view': 'guild' } });
+  for (const name of ['Offi​cer', 'Guild⁠ Master', 'Officer‮']) assert.equal((await create(name)).status, 400, JSON.stringify(name));
+  assert.equal((await create('﻿Public')).status, 409, 'a byte-order mark is trimmed away: it is just Public');
+  const wide = await create('Ｏｆｆｉｃｅｒ');
+  assert.equal(wide.status, 409, 'a full-width Officer is Officer');
+  assert.equal(wide.json.error, 'role_name_taken');
+  assert.equal((await create('Raid élite')).status, 201, 'ordinary accented letters are fine');
+  assert.equal((await s.call('alice', 'POST', '/guest-links', { expiresIn: '1d', label: 'zero​width' })).status, 400);
+  // Officer and Member are held without a team.
+  for (const role of ['officer', 'member']) {
+    const r = await s.call('alice', 'PUT', `/roles/${role}`, { permissions: { 'loot.edit': 'team' } });
+    assert.equal(r.status, 400, role);
+    assert.match(r.json.message, /without a team/);
+  }
+  assert.equal((await s.call('alice', 'PUT', '/roles/team_lead', { permissions: { 'loot.edit': 'team' } })).status, 200, 'Team Lead is the team role');
+  // A custom role with "own teams" scope reaches nothing for a guest (a guest has no characters).
+  const own = await s.makeRole('Own teams viewer', { 'attendance.view': 'own_teams', 'roster.view': 'guild' });
+  const { token } = (await s.call('alice', 'POST', '/guest-links', { roleId: own, expiresIn: '1d' })).json.created;
+  const jar = {};
+  await s.w.call(jar, 'POST', '/auth/guest', { token });
+  assert.deepEqual(Object.keys((await s.w.call(jar, 'GET', '/api/guest')).json.sections), ['roster']);
+  const p = await load('worker/permissions.js');
+  assert.deepEqual(p.resolveViewerPermissions([{ role_id: 'x', action: 'attendance.view', scope: 'own_teams' }, { role_id: 'x', action: 'loot.view', scope: 'team' }], 'x', { activeTeamIds: ['t_a'] }), { 'loot.view': ['t_a'] });
+});
+
+check('review: a bot call that stalls cannot hold a sign-in for long, and the sign-in still succeeds', async () => {
+  const s = await scenario();
+  assert.equal((await s.setMaps([{ discordRoleId: D_OFFICERS, roleId: 'officer', teamId: null }])).status, 200);
+  const original = s.w.discord.fetch;
+  // The bot endpoint never answers unless the caller gives up (the signal).
+  const hanging = (url, init = {}) => {
+    if (/^Bot /.test((init.headers && init.headers.Authorization) || '')) {
+      return new Promise((resolve, reject) => {
+        if (!init.signal) return;
+        init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    }
+    return original(url, init);
+  };
+  const login = async () => {
+    s.w.discord.next = { user: { id: PEOPLE.dave.id, username: 'dave', global_name: 'Dave D', avatar: null }, servers: [plain(SERVER_A)] };
+    return s.w.req('GET', '/auth/login', { jar: s.jars.dave });
+  };
+  s.w.discord.fetch = hanging;
+  // The app was built with the original fetch; rebuild it with the hanging one over the same database.
+  const { createApp } = await load('worker/index.js');
+  const app = createApp({ db: s.w.db, env: s.w.env, fetch: hanging, now: () => s.w.clock.now, randomBytes: (n) => crypto.randomBytes(n), log: (m) => s.w.logs.push(m) });
+  s.discordRoles('dave', [D_OFFICERS]);
+  const started = Date.now();
+  const first = await login();
+  // AbortSignal.timeout's timer does not keep Node alive; this one does, so the test waits for the Worker to give up.
+  const keepAlive = setInterval(() => {}, 100);
+  let callback;
+  try {
+    callback = await app.handle(new Request(`${ORIGIN}/auth/callback?code=abc&state=${encodeURIComponent(stateOf(first))}`, { headers: { Cookie: Object.entries(s.jars.dave).map(([k, v]) => `${k}=${v}`).join('; ') } }));
+  } finally {
+    clearInterval(keepAlive);
+  }
+  assert.equal(callback.status, 302);
+  assert(Date.now() - started < 8000, 'gave up on the bot after a few seconds');
+  assert(s.w.logs.some((line) => /discord role sync at sign-in: unavailable/.test(line)));
+  assert.equal(await s.w.count('role_assignments', "user_id = ? AND source = 'discord'", s.ids.dave), 0, 'and changed nothing');
+});
+
+
 // @@CHECKS@@
 
 // ---------------------------------------------------------------------------

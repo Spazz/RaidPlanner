@@ -7,7 +7,7 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { isId } from '../ids.js';
-import { SECTION_ACTIONS, loadGuildContext, requireAction, resolveViewerPermissions } from '../permissions.js';
+import { SECTION_ACTIONS, canGrant, loadGuildContext, requireAction, resolveViewerPermissions } from '../permissions.js';
 import { buildView, loadGuildRow } from '../viewer.js';
 
 const SECTIONS = Object.keys(SECTION_ACTIONS);
@@ -59,9 +59,15 @@ export async function putPublicSettings(ctx) {
   const before = await settingsPayload(ctx.db, guildContext);
   // Nothing changes: nothing to write (and nothing for the audit log).
   if (before.enabled === body.enabled && JSON.stringify(before.sections) === JSON.stringify(sections)) return jsonResponse(before);
-  const closed = sections.filter((section) => !before.allowed[section]);
-  if (closed.length) {
-    throw new HttpError(400, 'bad_request', `The Public role does not allow ${closed.join(', ')}. Change it in Roles first.`, { field: 'sections' });
+  // Turning the page on (or changing what it shows) needs sections the Public role allows and the editor can see; turning it OFF always works.
+  if (body.enabled) {
+    const closed = sections.filter((section) => !before.allowed[section]);
+    if (closed.length) {
+      throw new HttpError(400, 'bad_request', `The Public role does not allow ${closed.join(', ')}. Change it in Roles first.`, { field: 'sections' });
+    }
+    if (!guildContext.isGuildMaster && sections.some((section) => !canGrant(guildContext.can, SECTION_ACTIONS[section], 'guild'))) {
+      throw new HttpError(403, 'forbidden', 'You cannot make public what you cannot see yourself.', { field: 'sections' });
+    }
   }
   const guildId = guildContext.guild.id;
   await ctx.db.batch([

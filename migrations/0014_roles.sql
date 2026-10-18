@@ -58,13 +58,18 @@ CREATE TABLE role_override_permissions (
   FOREIGN KEY (guild_id, role_id) REFERENCES role_overrides(guild_id, role_id) ON DELETE CASCADE
 );
 
+-- Three parts, each one an index-friendly query for a given guild (a single "r.guild_id = g.id OR r.guild_id IS NULL" join made the planner scan every
+-- permission row on every request): the system roles the guild has not edited, the guild's own roles, and the guild's edits.
+CREATE INDEX roles_guild ON roles(guild_id);
 CREATE VIEW effective_role_permissions AS
   SELECT g.id AS guild_id, rp.role_id, rp.action, rp.scope
-    FROM guilds g
-    JOIN roles r ON r.guild_id = g.id OR r.guild_id IS NULL
-    JOIN role_permissions rp ON rp.role_id = r.id
+    FROM guilds g CROSS JOIN roles r CROSS JOIN role_permissions rp
+   WHERE r.guild_id IS NULL AND rp.role_id = r.id
+     AND NOT EXISTS (SELECT 1 FROM role_overrides o WHERE o.guild_id = g.id AND o.role_id = r.id)
+  UNION ALL
+  SELECT r.guild_id, rp.role_id, rp.action, rp.scope
+    FROM roles r JOIN role_permissions rp ON rp.role_id = r.id
    WHERE r.guild_id IS NOT NULL
-      OR NOT EXISTS (SELECT 1 FROM role_overrides o WHERE o.guild_id = g.id AND o.role_id = r.id)
   UNION ALL
   SELECT guild_id, role_id, action, scope FROM role_override_permissions;
 

@@ -103,9 +103,15 @@ function readPermissions(value, roleId, custom) {
   }).sort((a, b) => a[0].localeCompare(b[0]));
 }
 
+// Invisible and direction-changing characters (zero-width, bidi marks) let a name look like another, so a name has none; and a built-in name is
+// compared after Unicode compatibility folding (a full-width "Officer" is still Officer).
+const FORMAT_CHARS = /[\p{Cf}\p{Zl}\p{Zp}]/u;
+
 function readName(value) {
   const name = cleanText(value, 'name', { max: MAX_NAME });
-  if (Object.values(BUILTIN_NAMES).some((builtin) => builtin.toLowerCase() === name.toLowerCase())) {
+  if (FORMAT_CHARS.test(name)) throw bad('Use plain letters, numbers and spaces in the name.', 'name');
+  const folded = name.normalize('NFKC').toLowerCase();
+  if (Object.values(BUILTIN_NAMES).some((builtin) => builtin.toLowerCase() === folded)) {
     throw new HttpError(409, 'role_name_taken', 'That name belongs to a built-in role.', { field: 'name' });
   }
   return name;

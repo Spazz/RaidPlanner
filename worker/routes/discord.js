@@ -18,6 +18,23 @@ const STAFF_TARGETS = [{ roleId: 'officer', name: 'Officer' }, { roleId: 'team_l
 
 const bad = (message, field) => new HttpError(400, 'bad_request', message, field ? { field } : {});
 
+const tupleKey = (roleId, teamId) => `${roleId}|${teamId || ''}`;
+
+// The (role, team) tuples whose set of Discord roles differs between two mappings: [{ discordRoleId, roleId, teamId }] -> ['officer|', 'team_lead|t_..'].
+function changedTuples(before, after) {
+  const sets = (maps) => {
+    const out = new Map();
+    for (const map of maps) {
+      const key = tupleKey(map.roleId, map.teamId);
+      out.set(key, [...(out.get(key) || []), map.discordRoleId].sort().join(','));
+    }
+    return out;
+  };
+  const was = sets(before);
+  const now = sets(after);
+  return [...new Set([...was.keys(), ...now.keys()])].filter((key) => was.get(key) !== now.get(key));
+}
+
 async function loadMaps(db, guildId) {
   const result = await db.prepare(
     'SELECT discord_role_id, role_id, team_id FROM discord_role_maps WHERE guild_id = ? ORDER BY discord_role_id',
@@ -104,13 +121,14 @@ export async function putMaps(ctx) {
       `INSERT INTO discord_role_maps (guild_id, discord_role_id, role_id, team_id)
        SELECT ?, json_extract(value, '$.discordRoleId'), json_extract(value, '$.roleId'), json_extract(value, '$.teamId') FROM json_each(?)`,
     ).bind(guild.id, JSON.stringify(maps))] : []),
-    // What Discord gave through a mapping that no longer exists goes at once; new mappings apply at each person's next sign-in or Sync now.
+    // What Discord gave through a mapping that changed goes at once: a Raidsmith role (and team) whose set of Discord roles is no longer the same
+    // (dropped, re-pointed to another Discord role, or one of two removed) is cleared for everybody, and the next sign-in or Sync now gives it back to
+    // those who still hold a mapped Discord role. Roles set by hand are never touched.
     ctx.db.prepare(
       `DELETE FROM role_assignments
         WHERE guild_id = ? AND source = 'discord'
-          AND NOT EXISTS (SELECT 1 FROM discord_role_maps m WHERE m.guild_id = role_assignments.guild_id AND m.role_id = role_assignments.role_id
-                             AND COALESCE(m.team_id, '') = COALESCE(role_assignments.team_id, ''))`,
-    ).bind(guild.id),
+          AND (role_id || '|' || COALESCE(team_id, '')) IN (SELECT value FROM json_each(?))`,
+    ).bind(guild.id, JSON.stringify(changedTuples(before, maps))),
   ];
   let results;
   try {

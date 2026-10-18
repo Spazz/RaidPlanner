@@ -8,7 +8,7 @@
 import { HttpError, cleanText, jsonResponse, parseCookies, serializeCookie } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { base64url, newId } from '../ids.js';
-import { SECTION_ACTIONS, loadGuildContext, requireAction, resolveViewerPermissions } from '../permissions.js';
+import { SECTION_ACTIONS, canGrant, loadGuildContext, requireAction, resolveViewerPermissions } from '../permissions.js';
 import { toPerson } from '../person.js';
 import { loadRolesData } from '../roles-store.js';
 import { hashToken } from '../session.js';
@@ -101,6 +101,16 @@ export async function createGuestLink(ctx) {
     throw new HttpError(400, 'bad_request', 'Pick how long the link works: 1 day, 7 days, 30 days or never.', { field: 'expiresIn' });
   }
   const label = body.label === undefined || body.label === null ? null : (cleanText(body.label, 'label', { min: 0, max: MAX_LABEL }) || null);
+  if (label !== null && /[\p{Cf}\p{Zl}\p{Zp}]/u.test(label)) throw new HttpError(400, 'bad_request', 'Use plain letters, numbers and spaces in the label.', { field: 'label' });
+  // Never publish more than you can see yourself: the link shows the role's read actions, so the maker must hold each one for what the link reaches.
+  if (!guildContext.isGuildMaster) {
+    for (const permission of rolesData.permissions.get(roleId) || []) {
+      if (!Object.values(SECTION_ACTIONS).includes(permission.action) || permission.scope === 'own_teams') continue;
+      if (!canGrant(guildContext.can, permission.action, teamId ? 'team' : 'guild', teamId)) {
+        throw new HttpError(403, 'forbidden', 'You cannot share more than you can see yourself.', { field: 'roleId' });
+      }
+    }
+  }
 
   const now = ctx.now();
   const expiresAt = EXPIRES_IN[body.expiresIn] === null ? null : now + EXPIRES_IN[body.expiresIn];

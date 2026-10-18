@@ -56,6 +56,8 @@ export function permissionProblem(roleId, custom, action, scope) {
   if (VIEWER_ROLES.includes(roleId) && !spec.view) return `${roleId === 'guest' ? 'Guest' : 'Public'} can only read: "${spec.label}" is not allowed.`;
   if (roleId === 'public' && scope !== 'guild') return 'The public page is not tied to a team: use the whole-guild scope.';
   if (roleId === 'guest' && scope === 'own_teams') return 'A guest has no characters: use the team or whole-guild scope.';
+  // Officer and Member are held without a team: a team-scoped permission would grant nothing to a person who holds them.
+  if ((roleId === 'officer' || roleId === 'member') && scope === 'team') return 'This role is held without a team: use the whole-guild scope.';
   return null;
 }
 
@@ -136,7 +138,8 @@ export function resolveViewerPermissions(rolePermissions, roleId, { teamId = nul
   for (const permission of rolePermissions) {
     if (permission.role_id !== roleId) continue;
     const spec = Object.prototype.hasOwnProperty.call(ACTION_INFO, permission.action) ? ACTION_INFO[permission.action] : null;
-    if (!spec || !spec.view || !spec.scopes.includes(permission.scope)) continue;
+    // A guest or the public has no characters, so "their own teams" reaches nothing.
+    if (!spec || !spec.view || !spec.scopes.includes(permission.scope) || permission.scope === 'own_teams') continue;
     let reach;
     if (teamId) reach = everyTeam.includes(teamId) ? [teamId] : [];
     else reach = permission.scope === 'guild' ? 'guild' : everyTeam;

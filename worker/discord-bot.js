@@ -7,6 +7,7 @@ import { apiBase } from './discord.js';
 
 const SNOWFLAKE = /^\d{1,25}$/;
 const MAX_ROLES = 250;
+const CALL_TIMEOUT_MS = 3000;
 
 export function botConfigured(env) {
   return typeof env.DISCORD_BOT_TOKEN === 'string' && env.DISCORD_BOT_TOKEN.trim() !== '';
@@ -27,8 +28,10 @@ export function inviteUrl(env, serverId) {
 async function botGet(env, fetchImpl, path) {
   let response;
   try {
+    // A call that stalls must not hold a sign-in: give up after a few seconds (the next sign-in tries again).
     response = await fetchImpl(`${apiBase(env)}${path}`, {
       headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN.trim()}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
     });
   } catch {
     return { ok: false, reason: 'unavailable' };

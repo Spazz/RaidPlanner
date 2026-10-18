@@ -79,6 +79,8 @@ export async function unlinkDiscord(ctx) {
       `UPDATE users SET discord_id = NULL, username = ?, global_name = NULL, avatar = NULL WHERE id = ? AND ${guard.sql}`,
     ).bind(bnetNameOf(bnet.battletag), userId, ...guard.params),
     db.prepare(`DELETE FROM user_servers WHERE user_id = ? AND ${cleared.sql}`).bind(userId, ...cleared.params),
+    // The roles Discord gave (Phase 7) go with the Discord connection: nothing could take them away later, and roles an officer set by hand stay.
+    db.prepare(`DELETE FROM role_assignments WHERE user_id = ? AND source = 'discord' AND ${cleared.sql}`).bind(userId, ...cleared.params),
     // Disconnecting a sign-in deletes what Raidsmith holds from it, as Delete my data does: the Discord ID and nickname on roster people and on
     // Raid-Helper sign-ups (the people and the attendance stay). An officer's account link (players.user_id) is a different thing and stays.
     db.prepare(
@@ -103,6 +105,10 @@ export async function unlinkDiscord(ctx) {
 // Accounts blocked in the guild, or already a person's here, are left out. A BattleTag comes back only when it is what the officer typed, and
 // never the Discord handle. A display name is free text, so several accounts can show the same one: those rows say `ambiguous` (the page
 // offers no Link for them: ask for the BattleTag).
+// Looking an account up by name, or linking one that is not in the guild yet, lets someone in: the Officer's call (roster.edit on the whole guild AND
+// guild.access, so a custom role that edits the whole roster does not also open the guild's door).
+const mayAdmitAccounts = (can) => can['roster.edit'] === 'guild' && can['guild.access'] === 'guild';
+
 export async function lookupAccounts(ctx) {
   const { db } = ctx;
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
@@ -110,7 +116,7 @@ export async function lookupAccounts(ctx) {
   const guildId = guildContext.guild.id;
   const raw = new URL(ctx.request.url).searchParams.get('q');
   const q = typeof raw === 'string' ? raw.replace(SINGLE_LINE_STRIP, '').trim() : '';
-  if (q && guildContext.can['roster.edit'] !== 'guild') {
+  if (q && !mayAdmitAccounts(guildContext.can)) {
     throw new HttpError(403, 'forbidden', 'Only an officer can look an account up by BattleTag or name. You can pick someone who sent a character claim.');
   }
   if (q && (Array.from(q).length < MIN_LOOKUP || Array.from(q).length > MAX_LOOKUP)) {
@@ -193,7 +199,7 @@ export async function setPersonAccount(ctx) {
   }
   // Linking makes the account a member of the WHOLE guild, so a Team Lead (roster.edit on their team only) may link only an account that already
   // is a member or has a character claim waiting here; letting anyone else in is an Officer's call.
-  if (guildContext.can['roster.edit'] !== 'guild') {
+  if (!mayAdmitAccounts(guildContext.can)) {
     const known = await db.prepare(
       `SELECT ${memberSql('u.id', 'gc.gid', 'gc.sid')} AS member,
               EXISTS (SELECT 1 FROM character_claims cl WHERE cl.guild_id = gc.gid AND cl.user_id = u.id AND cl.status = 'pending') AS claimed
