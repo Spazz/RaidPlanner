@@ -1109,7 +1109,7 @@ check('plan: group 1-8 is a sign-up, group 0 a bench, an unmatched name is liste
   const s = await raidWorld();
   // Same attendance twice: sign-ups from the plan on one raid, from Raid-Helper on the other (manual ticks, the same people).
   const plan = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-03' });
-  const event = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-04' });
+  const event = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-16' }); // the event's own guild-local day (RH_START): another day would ask to move the raid
   s.w.sources.events.set('444444444444444444', rhEvent('444444444444444444', SERVER_A, [
     signUp(1, DID(1), 'Aldric', 'Warrior', 'Arms'), signUp(2, DID(2), 'Brindle', 'Mage', 'Fire'), signUp(3, DID(5), 'Eliora', 'Bench', undefined),
   ]));
@@ -1195,7 +1195,7 @@ check('audit: every attendance action is written, none holds a nickname, a Disco
   await s.call('bob', 'PUT', s.raid(second, '/manual'), { reason: 'Logger was off', presentPlayerIds: [s.p.wander] });
   await s.call('bob', 'DELETE', s.raid(second, '/manual'), { reason: 'Found it' });
   s.w.sources.events.set('555555555555555555', rhEvent('555555555555555555', SERVER_A, eventSignUps()));
-  await s.call('bob', 'PUT', s.raid(second, '/event'), { source: '555555555555555555' });
+  await s.call('bob', 'PUT', s.raid(second, '/event'), { source: '555555555555555555', moveRaid: true }); // the event is on another day than the raid: moving it is the officer's yes
   await s.call('bob', 'DELETE', s.raid(second, '/plan'), {});
   await s.call('bob', 'PUT', '/attendance/policy', { teamId: null, policy: { tentative: 'asSignedUp' }, expectedVersion: 0 });
   await s.call('bob', 'PUT', '/attendance/wcl', { wclGuildId: 5, uploaders: { [s.A]: ['Uploader'] } });
@@ -1996,15 +1996,127 @@ check('future: re-importing the event refreshes the sign-ups and follows a resch
   assert.equal(refreshed.status, 200, JSON.stringify(refreshed.json));
   assert.deepEqual([refreshed.json.sources.event.signups, refreshed.json.raid.startsAt, refreshed.json.raid.upcoming], [7, (Math.floor(s.w.clock.now / 1000) + 7200) * 1000, true]);
   assert.equal((await s.call('bob', 'GET', `/raids?team=${s.A}`)).json.upcoming[0].signups.signed, 5);
-  // Moved to another day: the raid keeps its date and time.
+  // Moved to another day: the raid is asked first and keeps its date and time until the officer says yes (see the move checks below).
   futureEvent(s, eventId, 3 * 86400);
   const moved = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId });
-  assert.deepEqual([moved.status, moved.json.raid.startsAt], [200, (Math.floor(s.w.clock.now / 1000) + 7200) * 1000]);
+  assert.deepEqual([moved.status, moved.json.error], [409, 'event_other_day']);
+  const kept = (await s.call('bob', 'GET', s.raid(id))).json.raid;
+  assert.deepEqual([kept.raidOn, kept.startsAt], ['2027-01-16', (Math.floor(s.w.clock.now / 1000) + 7200) * 1000]);
   // Time passes: the raid leaves Upcoming for Past and awaits its log.
   s.w.advance(3 * 3600 * 1000);
   const list = (await s.call('bob', 'GET', `/raids?team=${s.A}`)).json;
   assert.deepEqual([list.upcoming.length, list.raids.map((row) => [row.id, row.upcoming, row.state])], [0, [[id, false, 'awaiting_log']]]);
   assert.equal((await s.call('bob', 'GET', s.raid(id))).json.raid.upcoming, false);
+});
+
+// ---------------------------------------------------------------------------
+// An event on another day than the raid: ask first, then move BOTH starts_at and raid_on
+
+const raidRow = async (s, id) => (await s.w.rows('SELECT raid_on, starts_at, event_id, event_synced, version FROM raids WHERE id = ?', id))[0];
+
+check('event on another day: a raid without a log is asked (409 event_other_day with the dates) and nothing changes; moveRaid: true moves starts_at AND raid_on', async () => {
+  const s = await raidWorld();
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-20', startTime: '20:00' });
+  const id = made.json.raid.id;
+  const before = await raidRow(s, id);
+  const eventId = '666666666666666666';
+  const start = futureEvent(s, eventId, 3 * 86400); // 2027-01-19 07:00 New York: a day before the raid
+  const asked = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId });
+  assert.equal(asked.status, 409, JSON.stringify(asked.json));
+  assert.deepEqual([asked.json.error, asked.json.eventStartsAt, asked.json.eventDate, asked.json.raidDate], ['event_other_day', start * 1000, '2027-01-19', '2027-01-20']);
+  assert.match(asked.json.message, /2027-01-19/);
+  assert.deepEqual(await raidRow(s, id), before, 'the raid row is untouched');
+  assert.deepEqual([await s.w.count('raid_signups', 'raid_id = ?', id), await s.w.count('audit_log', "action = 'raid.event'")], [0, 0], 'no sign-ups imported, nothing audited');
+  // An explicit no is the same as no flag.
+  const no = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId, moveRaid: false });
+  assert.deepEqual([no.status, no.json.error], [409, 'event_other_day']);
+  // Yes: the date and the time both follow the event, the sign-ups come in, the day is audited.
+  const yes = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId, moveRaid: true });
+  assert.equal(yes.status, 200, JSON.stringify(yes.json));
+  assert.deepEqual([yes.json.raid.raidOn, yes.json.raid.startsAt, yes.json.raid.upcoming, yes.json.sources.event.signups], ['2027-01-19', start * 1000, true, 6]);
+  const after = await raidRow(s, id);
+  assert.deepEqual([after.raid_on, after.starts_at, after.event_id, after.version > before.version], ['2027-01-19', start * 1000, eventId, true]);
+  const audit = (await s.w.rows("SELECT before, after FROM audit_log WHERE action = 'raid.event'")).map((r) => [JSON.parse(r.before), JSON.parse(r.after)]);
+  assert.deepEqual(audit, [[{ event: false, raidOn: '2027-01-20' }, { eventId, signups: 6, raidOn: '2027-01-19' }]]);
+  const list = (await s.call('bob', 'GET', `/raids?team=${s.A}`)).json;
+  assert.deepEqual(list.upcoming.map((row) => [row.id, row.raidOn]), [[id, '2027-01-19']]);
+  // The event the raid already follows moves again (a reschedule): the same question, the same yes.
+  const later = futureEvent(s, eventId, 5 * 86400); // 2027-01-21
+  assert.equal((await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId })).status, 409);
+  const again = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId, moveRaid: true });
+  assert.deepEqual([again.status, again.json.raid.raidOn, again.json.raid.startsAt], [200, '2027-01-21', later * 1000]);
+});
+
+check('event on another day: the same guild-local day never asks (the start time follows as before), moveRaid or not; the guild time zone decides the day', async () => {
+  const s = await raidWorld();
+  // 2027-01-20 20:00 New York is 2027-01-21 01:00 UTC: the event is on the raid's date in the guild's zone, on the next one in UTC.
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-20', startTime: '19:00' });
+  const id = made.json.raid.id;
+  const eventId = '666666666666666666';
+  const eveningStart = Date.parse('2027-01-21T01:00:00Z') / 1000;
+  s.w.sources.events.set(eventId, rhEvent(eventId, SERVER_A, eventSignUps(), { startTime: eveningStart }));
+  const same = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId });
+  assert.equal(same.status, 200, JSON.stringify(same.json));
+  assert.deepEqual([same.json.raid.raidOn, same.json.raid.startsAt], ['2027-01-20', eveningStart * 1000]);
+  // moveRaid on a same-day event changes nothing about the date either.
+  const flagged = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId, moveRaid: true });
+  assert.deepEqual([flagged.status, flagged.json.raid.raidOn], [200, '2027-01-20']);
+  assert.equal(await s.w.count('audit_log', "action = 'raid.event' AND after LIKE '%raidOn%'"), 0, 'no move, no raidOn in the audit');
+});
+
+check('event on another day: the team keeps one raid per day - a date it already has a raid on is 409 raid_date_taken; another team\'s raid there does not matter', async () => {
+  const s = await raidWorld();
+  const mine = (await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-20', startTime: '20:00' })).json.raid.id;
+  const taken = (await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-19', startTime: '20:00' })).json.raid.id;
+  const otherTeam = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-19', startTime: '20:00' })).json.raid.id;
+  const eventId = '666666666666666666';
+  futureEvent(s, eventId, 3 * 86400); // 2027-01-19
+  const before = await raidRow(s, mine);
+  const refused = await s.call('bob', 'PUT', s.raid(mine, '/event'), { source: eventId, moveRaid: true });
+  assert.equal(refused.status, 409, JSON.stringify(refused.json));
+  assert.deepEqual([refused.json.error, refused.json.raidId, refused.json.eventDate], ['raid_date_taken', taken, '2027-01-19']);
+  assert.deepEqual(await raidRow(s, mine), before, 'nothing moved, nothing linked');
+  assert.equal(await s.w.count('raid_signups', 'raid_id = ?', mine), 0);
+  // Without the flag the answer is still the question, not the refusal (the refusal only follows a yes).
+  assert.equal((await s.call('bob', 'PUT', s.raid(mine, '/event'), { source: eventId })).json.error, 'event_other_day');
+  // The date is free once the other raid goes; the other team's raid on that date never blocked anything.
+  assert.equal((await s.call('bob', 'DELETE', s.raid(taken))).status, 200);
+  const moved = await s.call('bob', 'PUT', s.raid(mine, '/event'), { source: eventId, moveRaid: true });
+  assert.deepEqual([moved.status, moved.json.raid.raidOn], [200, '2027-01-19']);
+  assert.equal((await raidRow(s, otherTeam)).raid_on, '2027-01-19');
+});
+
+check('event on another day: a raid WITH a log keeps its date and time (no question, no move); the flag is validated', async () => {
+  const s = await raidWorld();
+  const { id } = await fullRaid(s);
+  const before = await raidRow(s, id);
+  const eventId = '666666666666666666';
+  futureEvent(s, eventId, 3 * 86400);
+  const linked = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId });
+  assert.equal(linked.status, 200, JSON.stringify(linked.json));
+  const after = await raidRow(s, id);
+  assert.deepEqual([after.raid_on, after.starts_at, after.event_id], [before.raid_on, before.starts_at, eventId]);
+  const flagged = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId, moveRaid: true });
+  assert.deepEqual([flagged.status, (await raidRow(s, id)).raid_on], [200, before.raid_on], 'moveRaid does not move a raid that has a log');
+  const text = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId, moveRaid: 'yes' });
+  const number = await s.call('bob', 'PUT', s.raid(id, '/event'), { source: eventId, moveRaid: 1 });
+  assert.deepEqual([text.status, text.json.field, number.status], [400, 'moveRaid', 400]);
+});
+
+check('event on another day: a move re-versions the raids of both dates and recalculates the old one (fill-ins follow the new neighbours)', async () => {
+  const s = await raidWorld();
+  const moving = (await s.call('bob', 'POST', '/raids', { teamId: s.A, raidOn: '2027-01-20', startTime: '20:00' })).json.raid.id;
+  const oldNeighbour = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-20', startTime: '20:00' })).json.raid.id;
+  const newNeighbour = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-19', startTime: '20:00' })).json.raid.id;
+  const eventId = '666666666666666666';
+  futureEvent(s, eventId, 3 * 86400);
+  const versions = async () => ({ old: (await raidRow(s, oldNeighbour)).version, next: (await raidRow(s, newNeighbour)).version });
+  const before = await versions();
+  assert.equal((await s.call('bob', 'PUT', s.raid(moving, '/event'), { source: eventId, moveRaid: true })).status, 200);
+  const after = await versions();
+  assert(after.old > before.old && after.next > before.next, `both neighbours are re-versioned: ${JSON.stringify([before, after])}`);
+  assert.equal(await s.w.count('raids', "id = ? AND policy_fp = ''", oldNeighbour), 0, 'the old date was recalculated, not left stale');
+  assert.equal(await s.w.count('raids', "id = ? AND policy_fp = ''", newNeighbour), 0, 'the new date was recalculated too');
 });
 
 check('future: manual attendance is refused until the raid has started (409 raid_not_started)', async () => {

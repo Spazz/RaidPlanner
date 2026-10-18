@@ -398,9 +398,13 @@
   // ── operations ──
   function pageError(err) { G.app.handleError(err, { pageAlert: true }); }
 
+  // A cancelled move question (see G.pages.raids.putEvent) changes nothing: the button just comes back.
   function runDirect(el, promise, c) {
     if (el) el.disabled = true;
-    return promise.then(function (res) { setDetail(c, res); }, function (err) { if (el) el.disabled = false; pageError(err); });
+    return promise.then(function (res) {
+      if (res === G.pages.raids.MOVE_CANCELLED) { if (el) el.disabled = false; return; }
+      setDetail(c, res);
+    }, function (err) { if (el) el.disabled = false; pageError(err); });
   }
 
   G.handlers.click['raid-filter'] = function (el) {
@@ -419,10 +423,10 @@
     const ev = c.data.sources && c.data.sources.event;
     switch (op) {
       case 'recompute': runDirect(el, G.api.post(base + '/recompute', {}), c); break;
-      case 'event-refresh': if (ev) runDirect(el, G.api.put(base + '/event', { source: ev.id, acceptOtherServer: !!ev.otherServer }), c); break;
+      case 'event-refresh': if (ev) runDirect(el, G.pages.raids.putEvent(c.gid, c.rid, ev.id, ev.otherServer), c); break;
       case 'plan-in-planner':
         el.disabled = true;
-        G.pages.raids.planInPlanner(c.gid, c.rid, ev).then(null, function (err) { el.disabled = false; pageError(err); });
+        G.pages.raids.planInPlanner(c.gid, c.rid, ev).then(function (opened) { if (!opened) el.disabled = false; }, function (err) { el.disabled = false; pageError(err); });
         break;
       case 'report-refresh': runDirect(el, G.api.put(base + '/reports', { source: code }), c); break;
       case 'event-replace':
@@ -497,6 +501,7 @@
     if (!call) return;
     G.ui.setBusy(form, true);
     call.then(function (res) {
+      if (res === G.pages.raids.MOVE_CANCELLED) { G.ui.setBusy(form, false); return; } // the officer said no to moving the raid: the dialog stays open
       G.ui.closeDialogOf(form);
       setDetail(c, res);
     }, function (err) {
@@ -515,7 +520,7 @@
 
   G.handlers.submit['event-form'] = function (form) {
     sourceSubmit(form, function (c, src, confirmed) {
-      return G.api.put(raidBase(c.gid, c.rid) + '/event', { source: src, acceptOtherServer: confirmed });
+      return G.pages.raids.putEvent(c.gid, c.rid, src, confirmed);
     });
   };
 

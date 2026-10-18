@@ -292,32 +292,106 @@
     G.app.render();
   };
 
-  // Refresh sign-ups: the event is imported again (PUT .../event with the raid's own event id), then the upcoming list is read again.
+  // ── An event on another day than the raid ──
+  // PUT .../event answers 409 event_other_day (eventDate, raidDate: guild calendar dates) when the raid has no log and its event is on another
+  // day. Every place that links, replaces or refreshes an event (the raid page's Link / Replace / Refresh sign-ups and Plan in Planner, the
+  // Raids list's Refresh sign-ups and Plan in Planner) goes through putEvent: it asks, and sends the call again with moveRaid: true on a yes.
+  // Cancel (or Escape, or leaving the page) resolves MOVE_CANCELLED: nothing changed and the caller just stops.
+  const MOVE_CANCELLED = Object.freeze({ cancelled: true });
+  let moveAsk = null;
+
+  function dayOf(date) { return G.ui.weekdayDay(date) || String(date == null ? '' : date); }
+
+  function moveDialogHtml(err) {
+    const b = (err && err.body) || {};
+    return '<form class="gs-dialog-form" data-submit="raid-move-form" novalidate>' +
+      '<h2 class="gs-dialog-title" id="dlg-title">Move this raid?</h2>' +
+      '<p class="gs-confirm-text" id="dlg-text">This event is on ' + esc(dayOf(b.eventDate)) + ', the raid is on ' + esc(dayOf(b.raidDate)) + '. Move the raid to ' + esc(dayOf(b.eventDate)) + '?</p>' +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten" id="dlg-submit">Move raid</button></div></form>';
+  }
+
+  function settleMove(ask, yes) {
+    if (moveAsk !== ask) return;
+    moveAsk = null;
+    ask.resolve(yes);
+  }
+
+  // Opens the question; resolves true (Move raid) or false (Cancel, Escape, the page changed, or no dialog could open).
+  function confirmMove(err) {
+    return new Promise(function (resolve) {
+      if (moveAsk) settleMove(moveAsk, false);
+      const ask = { resolve: resolve };
+      moveAsk = ask;
+      const dlg = G.ui.openDialog(moveDialogHtml(err), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+      if (!dlg) { settleMove(ask, false); return; } // no dialog could open: nobody said yes
+      dlg.addEventListener('close', function () { settleMove(ask, false); });
+    });
+  }
+
+  G.handlers.submit['raid-move-form'] = function (form) {
+    if (moveAsk) settleMove(moveAsk, true);
+    G.ui.closeDialogOf(form);
+  };
+
+  // The one call: source = the event id or link, otherServer = acceptOtherServer. Resolves the raid detail, or MOVE_CANCELLED.
+  function putEvent(gid, rid, source, otherServer) {
+    const url = A().apiBase(gid) + '/raids/' + encodeURIComponent(rid) + '/event';
+    const body = { source: source, acceptOtherServer: !!otherServer };
+    return G.api.put(url, body).then(null, function (err) {
+      if (!err || err.code !== 'event_other_day') throw err;
+      return confirmMove(err).then(function (yes) {
+        if (!yes) return MOVE_CANCELLED;
+        return G.api.put(url, Object.assign({}, body, { moveRaid: true })).then(null, function (second) {
+          // The team has a raid on that day already: say which day, not the ISO date the Worker names.
+          if (second && second.code === 'raid_date_taken' && second.body && second.body.eventDate) {
+            second.message = 'This team already has a raid on ' + dayOf(second.body.eventDate) + ', so this raid cannot move there.';
+          }
+          throw second;
+        });
+      });
+    });
+  }
+
+  // Refresh sign-ups: the event is imported again (PUT .../event with the raid's own event id), then the upcoming list is read again. A raid
+  // that moved to its event's day is read with the past list too (it may have left Upcoming).
   G.handlers.click['raids-refresh'] = function (el) {
     const x = a().raids;
     if (!x || !x.data) return;
     const row = (x.data.upcoming || []).filter(function (r) { return r.id === el.getAttribute('data-rid'); })[0];
     if (!row || !row.eventId) return;
     el.disabled = true;
-    G.api.put(A().apiBase(x.gid) + '/raids/' + encodeURIComponent(row.id) + '/event', { source: row.eventId, acceptOtherServer: !!row.otherServer }).then(function (res) {
+    putEvent(x.gid, row.id, row.eventId, row.otherServer).then(function (res) {
+      if (res === MOVE_CANCELLED) { el.disabled = false; return null; }
       G.app.applyFlags(x.gid, res);
-      return G.api.get(A().apiBase(x.gid) + '/raids?team=' + encodeURIComponent(x.teamId));
-    }).then(function (res) {
-      x.data.upcoming = Array.isArray(res.upcoming) ? res.upcoming : [];
-      st().pageAlert = '';
-      G.app.render();
-    }, function (err) { el.disabled = false; G.app.handleError(err, { pageAlert: true }); });
+      const moved = !!(res && res.raid && res.raid.raidOn && res.raid.raidOn !== row.raidOn);
+      if (moved) {
+        return reloadList(x).then(function () {
+          x.note = 'Moved the raid to ' + dayOf(res.raid.raidOn) + '.';
+          st().pageAlert = '';
+          G.app.render();
+        });
+      }
+      return G.api.get(A().apiBase(x.gid) + '/raids?team=' + encodeURIComponent(x.teamId)).then(function (list) {
+        x.data.upcoming = Array.isArray(list.upcoming) ? list.upcoming : [];
+        st().pageAlert = '';
+        G.app.render();
+      });
+    }).then(null, function (err) { el.disabled = false; G.app.handleError(err, { pageAlert: true }); });
   };
 
-  // Plan in Planner: an event-sourced raid takes its sign-ups from Raid-Helper again first (the call Refresh sign-ups makes), then the
-  // Planner opens on the raid (#/planner?raid=<gid>.<rid>, which survives a reload). event: { id, otherServer } or null. A failed
-  // refresh keeps the officer on this page with the error.
+  // Plan in Planner: an event-sourced raid takes its sign-ups from Raid-Helper again first (the call Refresh sign-ups makes, with the same
+  // question when the event is on another day), then the Planner opens on the raid (#/planner?raid=<gid>.<rid>, which survives a reload).
+  // event: { id, otherServer } or null. A failed refresh keeps the officer on this page with the error. Resolves true when the Planner was
+  // opened, false when the officer answered Cancel to the move question (they stay here, nothing changed).
   function planInPlanner(gid, rid, event) {
     const open = function () { window.location.hash = G.router.format({ name: 'planner', gid: gid, rid: rid }); };
-    if (!event || !event.id) { open(); return Promise.resolve(); }
-    return G.api.put(A().apiBase(gid) + '/raids/' + encodeURIComponent(rid) + '/event', { source: event.id, acceptOtherServer: !!event.otherServer }).then(function (res) {
+    if (!event || !event.id) { open(); return Promise.resolve(true); }
+    return putEvent(gid, rid, event.id, event.otherServer).then(function (res) {
+      if (res === MOVE_CANCELLED) return false;
       G.app.applyFlags(gid, res);
       open();
+      return true;
     });
   }
 
@@ -327,7 +401,9 @@
     const row = (x.data.upcoming || []).filter(function (r) { return r.id === el.getAttribute('data-rid'); })[0];
     if (!row) return;
     el.disabled = true;
-    planInPlanner(x.gid, row.id, row.eventSourced && row.eventId ? { id: row.eventId, otherServer: !!row.otherServer } : null).then(null, function (err) {
+    planInPlanner(x.gid, row.id, row.eventSourced && row.eventId ? { id: row.eventId, otherServer: !!row.otherServer } : null).then(function (opened) {
+      if (!opened) el.disabled = false;
+    }, function (err) {
       el.disabled = false;
       G.app.handleError(err, { pageAlert: true });
     });
@@ -696,7 +772,7 @@
 
   G.pages.raids = {
     raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, signupsText: signupsText, planPillHtml: planPillHtml,
-    planInPlanner: planInPlanner, mineHtml: mineHtml, fillText: fillText, applySignupView: applySignupView, load: loadList, main: mainList,
+    planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, mineHtml: mineHtml, fillText: fillText, applySignupView: applySignupView, load: loadList, main: mainList,
   };
   G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

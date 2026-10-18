@@ -474,10 +474,15 @@ export async function createRaid(ctx) {
 // ---------------------------------------------------------------------------
 // Raid-Helper event
 
+// Link, replace or refresh the raid's Raid-Helper event. A raid without a log follows its event: on the same guild-local day the start time
+// follows (an upcoming raid, or one that never had an anchor); on ANOTHER day the raid is asked to move, and only moveRaid: true moves
+// BOTH starts_at and raid_on (409 event_other_day carries the two dates for the page to ask with). The team's one-raid-per-day rule (the
+// raids_team_day index) stands: a date the team already has a raid on is 409 raid_date_taken. A raid WITH a log keeps its date and time.
 export async function putEvent(ctx) {
   const { body, db } = ctx;
   const eventId = parseRaidHelperSource(body.source);
   if (body.acceptOtherServer !== undefined && typeof body.acceptOtherServer !== 'boolean') throw bad('acceptOtherServer must be true or false.', 'acceptOtherServer');
+  if (body.moveRaid !== undefined && typeof body.moveRaid !== 'boolean') throw bad('moveRaid must be true or false.', 'moveRaid');
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext, { edit: true });
@@ -487,26 +492,57 @@ export async function putEvent(ctx) {
     throw new HttpError(409, 'other_server', 'That event was posted in a different Discord server.');
   }
   const now = ctx.now();
+  const eventDate = event.startTime ? localDate(event.startTime, guild.time_zone) : null;
+  const otherDay = raid.reports === 0 && eventDate !== null && eventDate !== raid.raid_on;
+  if (otherDay && body.moveRaid !== true) {
+    throw new HttpError(
+      409, 'event_other_day',
+      `That event is on ${eventDate} and the raid is on ${raid.raid_on}. Send moveRaid to move the raid to the event's date.`,
+      { eventStartsAt: event.startTime, eventDate, raidDate: raid.raid_on },
+    );
+  }
+  if (otherDay) {
+    const taken = await db.prepare('SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND raid_on = ? AND id != ?').bind(guild.id, raid.team_id, eventDate, raid.id).first();
+    if (taken) throw new HttpError(409, 'raid_date_taken', `That team already has a raid on ${eventDate}, so this raid cannot move there.`, { raidId: taken.id, eventDate });
+  }
   const anchorless = raid.event_synced === null && raid.reports === 0;
   // An upcoming raid follows its event's start time while the event stays on the raid's date (a re-import after a reschedule).
-  const retime = anchorless || (raid.starts_at > now && event.startTime && localDate(event.startTime, guild.time_zone) === raid.raid_on);
+  const retime = otherDay || anchorless || (raid.starts_at > now && event.startTime && eventDate === raid.raid_on);
   const guard = raidExists(raid.id);
   const built = eventSignupStatements(db, guild, raid.id, event, guard);
+  // The raids of the two dates keep their fill-ins honest: the old date loses this raid, the new date gains it.
+  const neighbours = otherDay ? [bumpDayStatement(db, guild.id, raid.raid_on, raid.id, guard), bumpDayStatement(db, guild.id, eventDate, raid.id, guard)] : [];
   try {
     await db.batch([
       db.prepare(
         `UPDATE raids SET event_id = ?, event_title = ?, event_server = ?, event_synced = ?,
-                starts_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE starts_at END, updated_at = ?, version = version + 1, policy_fp = ''
+                starts_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE starts_at END,
+                raid_on = CASE WHEN ? = 1 THEN ? ELSE raid_on END, updated_at = ?, version = version + 1, policy_fp = ''
           WHERE id = ? AND guild_id = ?`,
-      ).bind(eventId, event.title, event.serverId, now, retime ? 1 : 0, event.startTime, event.startTime, now, raid.id, guild.id),
+      ).bind(eventId, event.title, event.serverId, now, retime ? 1 : 0, event.startTime, event.startTime, otherDay ? 1 : 0, eventDate, now, raid.id, guild.id),
+      ...neighbours,
       ...built.statements,
-      raidAudit(ctx, guildContext, 'raid.event', raid.id, { event: raid.event_id !== null }, { eventId, signups: built.count }, guard),
+      raidAudit(
+        ctx, guildContext, 'raid.event', raid.id,
+        otherDay ? { event: raid.event_id !== null, raidOn: raid.raid_on } : { event: raid.event_id !== null },
+        otherDay ? { eventId, signups: built.count, raidOn: eventDate } : { eventId, signups: built.count },
+        guard,
+      ),
     ]);
   } catch (error) {
     const kind = uniqueKind(error);
     if (kind === 'event') throw await conflictFor(ctx, guild, 'event', { eventId });
+    if (kind === 'raid') {
+      const row = await db.prepare('SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND raid_on = ?').bind(guild.id, raid.team_id, eventDate).first();
+      throw new HttpError(409, 'raid_date_taken', `That team already has a raid on ${eventDate}, so this raid cannot move there.`, { raidId: row ? row.id : null, eventDate });
+    }
     if (kind) throw otherConflict();
     throw error;
+  }
+  // The old date's other raids lose this one as a neighbour: recalculate their day too (the new date is recalculated by the reply below).
+  if (otherDay) {
+    const sibling = await db.prepare('SELECT id FROM raids WHERE guild_id = ? AND raid_on = ? ORDER BY id LIMIT 1').bind(guild.id, raid.raid_on).first();
+    if (sibling) await recomputeRaid(ctx, guild, sibling.id);
   }
   return recomputeAndReply(ctx, guildContext, raid.id);
 }

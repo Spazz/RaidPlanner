@@ -36,8 +36,13 @@ async function makeWorld() {
   const { createApp } = await import(pathToFileURL(path.join(ROOT, 'worker/index.js')).href);
   const db = createD1Fake();
   const discord = { next: null, tokens: new Map(), calls: 0 };
+  const events = new Map(); // Raid-Helper events by id (the Worker's GET /api/v4/events/:id)
   const discordFetch = async (url, init = {}) => {
     const u = new URL(String(url));
+    if (u.hostname === 'raid-helper.dev') {
+      const event = events.get(u.pathname.split('/').pop());
+      return event ? Response.json(event) : new Response('{}', { status: 404 });
+    }
     discord.calls++;
     if (u.pathname === '/api/oauth2/token') {
       const token = `tok${discord.calls}`;
@@ -65,7 +70,7 @@ async function makeWorld() {
     GUILD_CREATOR_ALLOWLIST: ALICE.id,
   };
   const app = createApp({ db, env, fetch: discordFetch, now: () => clock.now, randomBytes, log: () => {} });
-  return { db, clock, discord, app };
+  return { db, clock, discord, app, events };
 }
 
 function absorb(jar, response) {
@@ -410,6 +415,70 @@ check('schedule: a Team Lead (no Guild settings item) edits their own team\'s sc
   await assert.rejects(() => E.pages.settingsSchedule.load({ name: 'settings', tab: 'schedule' }, E.guildData), (e) => e.status === 403);
   const refused = await E.api.signups.saveSchedule(s.gid, s.teamId, { slots: [] }).then(() => null, (e) => e);
   assert(refused && refused.status === 403 && refused.code === 'forbidden');
+});
+
+check('event on another day: the real pages ask with the Worker\'s dates; Cancel leaves the raid alone, Move raid moves its day and time, and a day the team already has a raid on is refused in words', async () => {
+  const s = await scenario();
+  const { A, world } = s;
+  const eventId = '666666666666666666';
+  const setEvent = (iso) => world.events.set(eventId, { id: eventId, title: 'Black Temple', serverId: SERVER, startTime: Date.parse(iso) / 1000, signUps: [] });
+  const raidRow = async () => (await rows(world, 'SELECT raid_on, starts_at, event_id FROM raids WHERE id = ?', s.rid))[0];
+  const until = async (test) => { for (let i = 0; i < 400 && !test(); i++) await new Promise((r) => setTimeout(r, 5)); assert(test(), 'timed out waiting'); };
+  // The dialog shell needs a DOM: a fake dialog keeps the close listener (Cancel / Escape), the form's own submit is Move raid.
+  const closers = [];
+  A.dialogs.length = 0;
+  A.ui.openDialog = (html) => { A.dialogs.push(html); return { addEventListener: (type, fn) => { if (type === 'close') closers.push(fn); } }; };
+  const cancel = () => { while (closers.length) closers.shift()(); };
+  const errors = [];
+  A.app.handleError = (err) => errors.push(err);
+
+  // Link an event that is on Tuesday 2026-10-27 to the raid of Saturday 2026-10-24: the link dialog's submit asks.
+  setEvent('2026-10-28T00:00:00Z'); // 20:00 New York
+  await openRaid(s, A);
+  const form = { elements: { source: { value: eventId, focus() {} }, confirm: { value: '0' } }, closest: () => null, querySelectorAll: () => [] };
+  A.handlers.submit['event-form'](form);
+  await until(() => A.dialogs.length === 1);
+  assert(stripTags(A.dialogs[0]).includes('This event is on Tue Oct 27, the raid is on Sat Oct 24. Move the raid to Tue Oct 27?'), stripTags(A.dialogs[0]));
+  assert.deepEqual(await raidRow(), { raid_on: RAID_ON, starts_at: Date.parse('2026-10-25T00:00:00Z'), event_id: null }, 'asked, nothing written');
+  cancel();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(await raidRow(), { raid_on: RAID_ON, starts_at: Date.parse('2026-10-25T00:00:00Z'), event_id: null }, 'Cancel leaves the raid alone');
+  assert.equal(A.app.state.att.raid.data.raid.raidOn, RAID_ON);
+
+  A.handlers.submit['event-form'](form);
+  await until(() => A.dialogs.length === 2);
+  A.handlers.submit['raid-move-form']({ closest: () => null });
+  await until(() => A.app.state.att.raid.data.raid.raidOn === '2026-10-27');
+  assert.deepEqual(await raidRow(), { raid_on: '2026-10-27', starts_at: Date.parse('2026-10-28T00:00:00Z'), event_id: eventId }, 'the day AND the time moved');
+  const detail = A.app.state.att.raid.data;
+  assert.deepEqual([detail.raid.startsAt, detail.raid.upcoming, detail.sources.event.id], [Date.parse('2026-10-28T00:00:00Z'), true, eventId]);
+
+  // The Raids list: the event moved again, to Friday; Refresh sign-ups asks and the list shows the new day.
+  setEvent('2026-10-31T00:00:00Z'); // Fri 2026-10-30 20:00 New York
+  pageState(s, A);
+  await A.pages.raids.load({ name: 'section', section: 'raids', gid: s.gid }, A.guildData);
+  const x = A.app.state.att.raids;
+  assert.deepEqual(x.data.upcoming.map((r) => [r.id, r.raidOn]), [[s.rid, '2026-10-27']]);
+  const refresh = el({ 'data-rid': s.rid });
+  A.handlers.click['raids-refresh'](refresh);
+  await until(() => A.dialogs.length === 3);
+  assert(stripTags(A.dialogs[2]).includes('This event is on Fri Oct 30, the raid is on Tue Oct 27. Move the raid to Fri Oct 30?'), stripTags(A.dialogs[2]));
+  A.handlers.submit['raid-move-form']({ closest: () => null });
+  await until(() => x.data.upcoming[0].raidOn === '2026-10-30');
+  assert.equal(x.note, 'Moved the raid to Fri Oct 30.');
+  assert.equal((await raidRow()).raid_on, '2026-10-30');
+
+  // The team has a raid on 2026-11-06 already: moving there is refused, and the page says which day.
+  await A.api.post(s.base + '/raids', { teamId: s.teamId, raidOn: '2026-11-06', startTime: '20:00' });
+  setEvent('2026-11-07T01:00:00Z'); // Fri 2026-11-06 20:00 New York
+  refresh.disabled = false;
+  A.handlers.click['raids-refresh'](refresh);
+  await until(() => A.dialogs.length === 4);
+  A.handlers.submit['raid-move-form']({ closest: () => null });
+  await until(() => errors.length === 1);
+  assert.deepEqual([errors[0].code, errors[0].message], ['raid_date_taken', 'This team already has a raid on Fri Nov 6, so this raid cannot move there.']);
+  assert.equal((await raidRow()).raid_on, '2026-10-30', 'the raid stayed where it was');
+  assert.equal(refresh.disabled, false, 'the button is back');
 });
 
 check('Planner: the Worker\'s seed, read by the Planner\'s own Raid-Helper code, gives each Raidsmith sign-up the class, spec, role and status it was made with', async () => {

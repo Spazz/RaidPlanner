@@ -1196,6 +1196,185 @@ function teamData(over) {
     }
   });
 
+  // ── An event on another day than the raid: ask, then send the call again with moveRaid ──
+  const OTHER_DAY = (extra) => new G.api.ApiError(409, Object.assign({
+    error: 'event_other_day', message: 'That event is on 2026-10-29 and the raid is on 2026-10-27.', eventStartsAt: Date.UTC(2026, 9, 30, 0, 0), eventDate: '2026-10-29', raidDate: '2026-10-27',
+  }, extra || {}));
+  const EVENT_ID = '1483258698854826006';
+  const URL_U1 = () => G.pages.attendance.apiBase('g1') + '/raids/u1/event';
+  // The dialog shell needs a DOM: a fake dialog keeps the HTML and the close listener so a test can answer Cancel; the form's own submit is Move raid.
+  function fakeDialogs() {
+    const saved = { openDialog: G.ui.openDialog, closeDialogOf: G.ui.closeDialogOf, put: G.api.put, get: G.api.get, render: G.app.render, handleError: G.app.handleError, applyFlags: G.app.applyFlags };
+    const s = { opened: [], closers: [], closed: 0, puts: [], gets: [], renders: 0, errors: [], hash: '' };
+    G.ui.openDialog = (html) => { s.opened.push(html); const dlg = { addEventListener: (type, fn) => { if (type === 'close') s.closers.push(fn); } }; return dlg; };
+    G.ui.closeDialogOf = () => { s.closed++; s.closers.forEach((fn) => fn()); s.closers.length = 0; };
+    G.app.render = () => { s.renders++; };
+    G.app.applyFlags = () => {};
+    G.app.handleError = (err) => s.errors.push(err);
+    s.answerCancel = () => { s.closers.forEach((fn) => fn()); s.closers.length = 0; };
+    s.answerYes = () => G.handlers.submit['raid-move-form']({ closest: () => null });
+    s.restore = () => { Object.assign(G.ui, { openDialog: saved.openDialog, closeDialogOf: saved.closeDialogOf }); Object.assign(G.api, { put: saved.put, get: saved.get }); Object.assign(G.app, { render: saved.render, handleError: saved.handleError, applyFlags: saved.applyFlags }); delete ctx.window; };
+    ctx.window = { location: { get hash() { return s.hash; }, set hash(v) { s.hash = v; } } };
+    return s;
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  await check('move question: the dialog names both days and asks to move the raid; Cancel and Move raid are the two buttons; every date is escaped', () => {
+    const html = G.pages.raids.moveDialogHtml(OTHER_DAY());
+    assert(html.includes('data-submit="raid-move-form"') && html.includes('id="dlg-title">Move this raid?<'));
+    assert(html.includes('This event is on Thu Oct 29, the raid is on Tue Oct 27. Move the raid to Thu Oct 29?'), html);
+    assert(html.includes('data-action="dialog-cancel">Cancel<') && /id="dlg-submit">Move raid<\/button>/.test(html));
+    const hostile = G.pages.raids.moveDialogHtml(OTHER_DAY({ eventDate: HOSTILE, raidDate: HOSTILE + QUOTES }));
+    assertEscaped(hostile, 'move dialog');
+    assertNoRawAttrs(html);
+  });
+
+  await check('putEvent: the first call is the plain one; event_other_day opens the question and Move raid sends it again with moveRaid: true; the answer is the second call\'s', async () => {
+    const s = fakeDialogs();
+    try {
+      let n = 0;
+      G.api.put = (url, body) => { s.puts.push([url, plain(body)]); return ++n === 1 ? Promise.reject(OTHER_DAY()) : Promise.resolve({ raid: { raidOn: '2026-10-29' }, sources: {} }); };
+      const done = G.pages.raids.putEvent('g1', 'u1', EVENT_ID, false);
+      await settle();
+      assert.equal(s.opened.length, 1, 'asked once');
+      assert.deepEqual(s.puts, [[URL_U1(), { source: EVENT_ID, acceptOtherServer: false }]], 'nothing is resent before the answer');
+      s.answerYes();
+      const res = await done;
+      assert.deepEqual(s.puts[1], [URL_U1(), { source: EVENT_ID, acceptOtherServer: false, moveRaid: true }]);
+      assert.equal(res.raid.raidOn, '2026-10-29');
+      assert.equal(s.puts.length, 2);
+    } finally { s.restore(); }
+  });
+
+  await check('putEvent: Cancel (or Escape, or leaving the page) answers MOVE_CANCELLED and sends nothing; a dialog that cannot open counts as no', async () => {
+    const s = fakeDialogs();
+    try {
+      G.api.put = (url, body) => { s.puts.push([url, plain(body)]); return Promise.reject(OTHER_DAY()); };
+      const done = G.pages.raids.putEvent('g1', 'u1', EVENT_ID, true);
+      await settle();
+      s.answerCancel();
+      assert.equal(await done, G.pages.raids.MOVE_CANCELLED);
+      assert.deepEqual(s.puts, [[URL_U1(), { source: EVENT_ID, acceptOtherServer: true }]], 'acceptOtherServer rides along; no second call');
+      // No host element for the dialog (openDialog answers null): nobody said yes.
+      G.ui.openDialog = () => null;
+      assert.equal(await G.pages.raids.putEvent('g1', 'u1', EVENT_ID, false), G.pages.raids.MOVE_CANCELLED);
+    } finally { s.restore(); }
+  });
+
+  await check('putEvent: other errors pass through untouched (no question); a team that already has a raid that day is told by weekday; a second question replaces the first', async () => {
+    const s = fakeDialogs();
+    try {
+      G.api.put = () => Promise.reject(new G.api.ApiError(500, null));
+      await assert.rejects(G.pages.raids.putEvent('g1', 'u1', EVENT_ID, false), (e) => e.status === 500);
+      assert.equal(s.opened.length, 0);
+      let n = 0;
+      G.api.put = () => (++n === 1 ? Promise.reject(OTHER_DAY()) : Promise.reject(new G.api.ApiError(409, { error: 'raid_date_taken', message: 'That team already has a raid on 2026-10-29, so this raid cannot move there.', raidId: 'r_x', eventDate: '2026-10-29' })));
+      const done = G.pages.raids.putEvent('g1', 'u1', EVENT_ID, false);
+      await settle();
+      s.answerYes();
+      await assert.rejects(done, (e) => e.code === 'raid_date_taken' && e.message === 'This team already has a raid on Thu Oct 29, so this raid cannot move there.');
+      // Two questions at once (a double click): the first is answered no, the second stands.
+      G.api.put = () => Promise.reject(OTHER_DAY());
+      const first = G.pages.raids.putEvent('g1', 'u1', EVENT_ID, false);
+      await settle();
+      const second = G.pages.raids.putEvent('g1', 'u2', EVENT_ID, false);
+      await settle();
+      assert.equal(await first, G.pages.raids.MOVE_CANCELLED);
+      assert.equal(s.opened.length >= 3, true);
+      s.answerCancel();
+      assert.equal(await second, G.pages.raids.MOVE_CANCELLED);
+    } finally { s.restore(); }
+  });
+
+  await check('Plan in Planner on another day: the question first; Cancel keeps the officer here with the button back and no error; Move raid sends moveRaid and then opens the Planner', async () => {
+    const s = fakeDialogs();
+    try {
+      G.pages.attendance.attState().raids = { gid: 'g1', teamId: 't1', data: { upcoming: UP, raids: [] } };
+      const click = (rid) => { const el = { disabled: false, getAttribute: (k) => (k === 'data-rid' ? rid : null) }; G.handlers.click['raids-plan'](el); return el; };
+      G.api.put = (url, body) => { s.puts.push(plain(body)); return body.moveRaid ? Promise.resolve({}) : Promise.reject(OTHER_DAY()); };
+      const el = click('u1');
+      await settle();
+      assert.equal(el.disabled, true, 'busy while the question is open');
+      s.answerCancel();
+      await settle();
+      assert.deepEqual([s.hash, el.disabled, s.errors.length, s.puts.length], ['', false, 0, 1]);
+      const again = click('u1');
+      await settle();
+      s.answerYes();
+      await settle();
+      assert.deepEqual([s.hash, s.errors.length, s.puts[s.puts.length - 1].moveRaid], ['#/planner?raid=g1.u1', 0, true]);
+      assert.equal(again.disabled, true, 'the page is leaving: the button stays busy');
+    } finally { s.restore(); }
+  });
+
+  await check('Refresh sign-ups on the Raids list: Cancel changes nothing; Move raid reads the whole list again and says where the raid went', async () => {
+    const s = fakeDialogs();
+    try {
+      const x = { gid: 'g1', teamId: 't1', data: { upcoming: UP, raids: RAIDS } };
+      G.pages.attendance.attState().raids = x;
+      const click = () => { const el = { disabled: false, getAttribute: (k) => (k === 'data-rid' ? 'u1' : null) }; G.handlers.click['raids-refresh'](el); return el; };
+      G.api.put = (url, body) => { s.puts.push(plain(body)); return body.moveRaid ? Promise.resolve({ raid: { id: 'u1', raidOn: '2026-10-29' }, sources: {} }) : Promise.reject(OTHER_DAY()); };
+      G.api.get = (url) => { s.gets.push(url); return Promise.resolve({ team: { id: 't1' }, today: '2026-10-17', upcoming: [UP[1]], raids: RAIDS, hasMore: false }); };
+      const el = click();
+      await settle();
+      s.answerCancel();
+      await settle();
+      assert.deepEqual([el.disabled, s.gets.length, s.errors.length, x.data.upcoming.length], [false, 0, 0, 2]);
+      click();
+      await settle();
+      s.answerYes();
+      await settle();
+      await settle();
+      assert.deepEqual([s.gets.length, x.data.upcoming.map((r) => r.id), x.data.raids.map((r) => r.id), x.note], [1, ['u2'], RAIDS.map((r) => r.id), 'Moved the raid to Thu Oct 29.']);
+      assert.equal(s.errors.length, 0);
+    } finally { s.restore(); }
+  });
+
+  await check('raid page: Refresh sign-ups and the Link / Replace event dialog ask first; Cancel leaves the page and the dialog as they are, Move raid applies the answer', async () => {
+    const s = fakeDialogs();
+    const savedLoad = G.pages.raidSignups.loadFor;
+    G.pages.raidSignups.loadFor = () => Promise.resolve(null);
+    try {
+      const up = detail({
+        raid: { id: 'u1', team: 't1', raidOn: '2026-10-27', startsAt: Date.UTC(2026, 9, 28, 0, 0), upcoming: true, title: null, zone: 'Black Temple', state: 'awaiting_log', openFlags: 0, stale: false, version: 1 },
+        people: [], unmatched: [], pulls: [], signups: [], sources: { event: { id: EVENT_ID, title: 'Sat BT', syncedAt: 1760000000000, signups: 2, otherServer: false }, reports: [], plan: null },
+      });
+      G.app.state.guilds.g1 = gd(OFFICER_CAN); G.app.state.currentGid = 'g1';
+      const att = G.pages.attendance.attState();
+      att.raid = { gid: 'g1', rid: 'u1', data: up };
+      const moved = Object.assign({}, up, { raid: Object.assign({}, up.raid, { raidOn: '2026-10-29' }) });
+      G.api.put = (url, body) => { s.puts.push(plain(body)); return body.moveRaid ? Promise.resolve(moved) : Promise.reject(OTHER_DAY()); };
+      // Refresh sign-ups.
+      const btn = { disabled: false, getAttribute: (k) => (k === 'data-op' ? 'event-refresh' : null) };
+      G.handlers.click['raid-op'](btn);
+      await settle();
+      s.answerCancel();
+      await settle();
+      assert.deepEqual([btn.disabled, att.raid.data.raid.raidOn, s.renders], [false, '2026-10-27', 0], 'cancelled: the button is back and the page is as it was');
+      G.handlers.click['raid-op'](btn);
+      await settle();
+      s.answerYes();
+      await settle();
+      assert.deepEqual([att.raid.data.raid.raidOn, s.puts[s.puts.length - 1].moveRaid, s.errors.length], ['2026-10-29', true, 0]);
+      // The Link event dialog: Cancel keeps it open (and usable); Move raid closes it and applies the answer.
+      att.raid.data = up;
+      const form = { elements: { source: { value: EVENT_ID, focus() {} }, confirm: { value: '0' } }, closest: () => null, querySelectorAll: () => [] };
+      s.closed = 0;
+      G.handlers.submit['event-form'](form);
+      await settle();
+      s.answerCancel();
+      await settle();
+      assert.deepEqual([s.closed, att.raid.data.raid.raidOn], [0, '2026-10-27'], 'the link dialog stays open');
+      G.handlers.submit['event-form'](form);
+      await settle();
+      s.answerYes();
+      await settle();
+      await settle();
+      assert.deepEqual([att.raid.data.raid.raidOn, s.puts[s.puts.length - 1], s.errors.length], ['2026-10-29', { source: EVENT_ID, acceptOtherServer: false, moveRaid: true }, 0]);
+      assert(s.closed >= 2, 'both dialogs are closed after the move');
+    } finally { G.pages.raidSignups.loadFor = savedLoad; s.restore(); }
+  });
+
   await check('R3-1: the manual line shows only "No log - attendance entered by hand" without the officer\'s name, date and reason', () => {
     const base = detail().raid;
     const hidden = raidPage(detail({ raid: Object.assign({}, base, { state: 'manual', openFlags: 0, manual: { reason: null, by: null, at: 1760000000000, presentPlayerIds: [] } }) }), { guildData: gd(MEMBER_CAN) });

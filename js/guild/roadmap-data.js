@@ -61,12 +61,6 @@
         area: 'planner', status: 'idea', source: 'backlog', added: '2026-10-17',
       },
       {
-        id: 'event-move-updates-raid-date',
-        title: 'Moving a raid\'s event to another day updates its date',
-        summary: 'When the Raid-Helper event of a raid moves to another day, the raid\'s date follows it.',
-        area: 'raids', status: 'idea', source: 'backlog', added: '2026-10-17',
-      },
-      {
         id: 'forever-team-sizes',
         title: 'WoW Forever 10, 20 and 40-player teams',
         summary: 'Teams in a WoW Forever guild can be 10, 20 or 40 players.',
@@ -250,6 +244,12 @@
       },
 
       // ── Shipped ──
+      {
+        id: 'event-move-updates-raid-date',
+        title: 'Moving a raid\'s event to another day updates its date',
+        summary: 'When you link, replace or refresh the Raid-Helper event of a raid that has no log, and the event is on another day than the raid, Raidsmith asks "Move the raid to that day?" first. Move raid sets both the date and the start time; Cancel changes nothing. A day the team already has a raid on is refused, and a raid with a log keeps its date.',
+        area: 'raids', status: 'done', source: 'backlog', added: '2026-10-17', shipped: '2026-10-17',
+      },
       {
         id: 'native-signups',
         title: 'Native Raidsmith sign-ups',
