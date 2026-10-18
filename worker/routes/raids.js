@@ -2,6 +2,7 @@
 // plan, or officer-entered attendance). Every write recomputes the date's attendance through attendance-store.js.
 import { HttpError, cleanText, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
+import { raidAwayEffects, readNotices, realSignupsStatement, teamNoticesStatement } from '../away-store.js';
 import { localDate, localTimeToMs } from '../attendance-calendar.js';
 import {
   bumpDayStatement, loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid,
@@ -236,7 +237,8 @@ export async function listRaids(ctx) {
   if (before !== null && !isRealDate(before)) throw bad('before needs a date.', 'before');
   const guild = guildContext.guild;
   const now = ctx.now();
-  const [teamResult, raidResult, policyResult, upcomingResult, mineResult, scheduleResult] = await ctx.db.batch([
+  const today = guildToday(guild, now);
+  const [teamResult, raidResult, policyResult, upcomingResult, mineResult, scheduleResult, noticeResult, realResult] = await ctx.db.batch([
     ctx.db.prepare('SELECT id, name, archived, size, signup_close_hours FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
     ctx.db.prepare(
       `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
@@ -271,6 +273,9 @@ export async function listRaids(ctx) {
     ).bind(guild.id, ctx.session.user.id, ctx.session.user.id, guild.id, teamId, now),
     ctx.db.prepare('SELECT schedule_weeks, schedule_auto, (SELECT COUNT(*) FROM team_schedules x WHERE x.team_id = teams.id) AS slots FROM teams WHERE id = ? AND guild_id = ?')
       .bind(teamId, guild.id),
+    // Away notices from today on (worker/away.js): a virtual Absence on each upcoming raid they cover, for the people who have no real sign-up there.
+    teamNoticesStatement(ctx.db, guild.id, teamId, ctx.session.user.id, today, '9999-12-31'),
+    realSignupsStatement(ctx.db, guild.id, teamId, now, today, '9999-12-31'),
   ]);
   const team = teamResult.results[0];
   if (!team) throw bad('That team does not exist in this guild.', 'team');
@@ -283,11 +288,19 @@ export async function listRaids(ctx) {
     if (!mine.has(row.raid_id) || row.source === 'raidsmith') mine.set(row.raid_id, { kind: row.kind, source: row.source, characterName: row.source === 'raidsmith' ? row.character_name : null });
   }
   const scheduleRow = scheduleResult.results[0];
+  const notices = readNotices(noticeResult.results);
+  const realByRaid = new Map();
+  for (const row of realResult.results) {
+    if (!realByRaid.has(row.raid_id)) realByRaid.set(row.raid_id, new Set());
+    realByRaid.get(row.raid_id).add(row.player_id);
+  }
+  const awayOf = (row) => raidAwayEffects(notices, row.raid_on, realByRaid.get(row.id)).away;
+  const ownPeople = new Set(notices.filter((notice) => notice.own).map((notice) => notice.personId));
   const page = raidResult.results.slice(0, PAGE_SIZE);
   const rowCloseHours = (row) => row.signup_close_hours ?? team.signup_close_hours; // a raid's own sign-up deadline, else the team's
   return jsonResponse({
     team: { id: team.id, name: team.name, archived: team.archived === 1, size: team.size, signupCloseHours: team.signup_close_hours },
-    today: guildToday(guild, now),
+    today,
     can: { edit: canEdit, signup: canSelf },
     // The weekly schedule, for those who can create raids from it: how many slots, the weeks it fills and whether opening Raids fills them.
     schedule: canEdit && scheduleRow ? { slots: scheduleRow.slots, weeks: scheduleRow.schedule_weeks, auto: scheduleRow.schedule_auto === 1 } : null,
@@ -304,12 +317,12 @@ export async function listRaids(ctx) {
       eventSourced: row.event_id !== null,
       eventId: row.event_id,
       otherServer: row.event_server !== null && row.event_server !== guild.discord_server_id,
-      signups: seeCounts ? Object.fromEntries(SIGNUP_KINDS.map((kind) => [kind, row[`n_${kind}`]])) : null,
+      signups: seeCounts ? Object.fromEntries(SIGNUP_KINDS.map((kind) => [kind, row[`n_${kind}`] + (kind === 'absence' ? awayOf(row).length : 0)])) : null,
       locked: row.signups_locked === 1,
       signupsOpen: !closedReason({ starts_at: row.starts_at, signups_locked: row.signups_locked }, now, rowCloseHours(row)),
       closesAt: closesAtOf(row, rowCloseHours(row)),
       closeHours: rowCloseHours(row),
-      mine: mine.get(row.id) || null,
+      mine: mine.get(row.id) || (awayOf(row).some((entry) => ownPeople.has(entry.personId)) ? { kind: 'absence', source: 'away', characterName: null } : null),
       planned: row.plan_synced !== null,
       planLive: canEdit ? row.plan_live : null, // the id is an edit link to the plan: only for those who may edit
     })),

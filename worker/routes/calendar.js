@@ -5,10 +5,12 @@
 // The feed itself is reached with no cookie, so GET /cal/:cal is the one route here without a session; everything else is a normal guild route.
 import { HttpError, SECURITY_HEADERS, jsonResponse } from '../http.js';
 import { addDays } from '../attendance-calendar.js';
+import { raidAwayEffects, readNotices, realSignupsStatement, teamNoticesStatement } from '../away-store.js';
 import { buildIcs, countsLine, FEED_AHEAD_DAYS, FEED_PAST_DAYS, raidEnd, signupKindLabel } from '../calendar-feed.js';
 import { isId, newId } from '../ids.js';
 import { ownPersonStatement } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
+import { guildToday } from '../roster-view.js';
 import { hashToken, newSessionToken } from '../session.js';
 import { bad } from './roster.js';
 import { MERGED_ROWS } from './raids.js';
@@ -93,7 +95,8 @@ export async function getCalendarFeed(ctx) {
   const seeCounts = allows(can, 'attendance.view', link.team_id);
   // "Me" is the membership rule's (worker/membership.js): the person linked to the account or carrying its Discord ID.
   const own = await ownPersonStatement(db, guild.id, link.user_id).first();
-  const [teamResult, raidResult, countResult, mineResult] = await db.batch([
+  const today = guildToday(guild, now);
+  const [teamResult, raidResult, countResult, mineResult, noticeResult, realResult] = await db.batch([
     db.prepare('SELECT name FROM teams WHERE id = ? AND guild_id = ?').bind(link.team_id, guild.id),
     db.prepare(
       `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.title, r.event_title, (SELECT MAX(p.ended_at) FROM raid_pulls p WHERE p.raid_id = r.id) AS last_pull_end
@@ -110,6 +113,9 @@ export async function getCalendarFeed(ctx) {
         WHERE s.player_id = ?1 AND s.source IN ('raid_helper', 'raidsmith')
           AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ?2 AND team_id = ?3 AND starts_at >= ?4 AND starts_at <= ?5)`,
     ).bind(own ? own.id : null, guild.id, link.team_id, from, to),
+    // Away notices (worker/away.js): a person who is away and has no sign-up on an upcoming raid counts as can't come, and the viewer's own says so.
+    teamNoticesStatement(db, guild.id, link.team_id, link.user_id, today, '9999-12-31'),
+    realSignupsStatement(db, guild.id, link.team_id, now, today, '9999-12-31'),
   ]);
   const counts = new Map();
   for (const row of countResult.results) {
@@ -118,6 +124,13 @@ export async function getCalendarFeed(ctx) {
   }
   const mine = new Map();
   for (const row of mineResult.results) if (!mine.has(row.raid_id) || row.source === 'raidsmith') mine.set(row.raid_id, row.kind);
+  const notices = readNotices(noticeResult.results);
+  const realByRaid = new Map();
+  for (const row of realResult.results) {
+    if (!realByRaid.has(row.raid_id)) realByRaid.set(row.raid_id, new Set());
+    realByRaid.get(row.raid_id).add(row.player_id);
+  }
+  const ownPeople = new Set(notices.filter((notice) => notice.own).map((notice) => notice.personId));
   const canSignUp = allows(can, 'signups.self', link.team_id);
   const origin = new URL(ctx.request.url).origin;
   const team = teamResult.results[0];
@@ -128,9 +141,12 @@ export async function getCalendarFeed(ctx) {
     // time_known 0 = only the date is known (starts_at is noon UTC): an all-day event on the raid's own date. NULL is a raid from before the column: timed.
     const allDay = raid.time_known === 0;
     if (allDay) lines.push('Start time not set yet');
-    const countText = seeCounts ? countsLine(counts.get(raid.id) || Object.fromEntries(KINDS.map((kind) => [kind, 0]))) : null;
+    const away = raid.starts_at > now ? raidAwayEffects(notices, raid.raid_on, realByRaid.get(raid.id)).away : [];
+    const shown = counts.get(raid.id) || Object.fromEntries(KINDS.map((kind) => [kind, 0]));
+    const countText = seeCounts ? countsLine({ ...shown, absence: shown.absence + away.length }) : null;
     if (countText) lines.push(countText);
     if (mine.has(raid.id)) lines.push(`Your sign-up: ${signupKindLabel(mine.get(raid.id))}`);
+    else if (away.some((entry) => ownPeople.has(entry.personId))) lines.push('Your sign-up: Away (notice)');
     else if (canSignUp && raid.starts_at > now) lines.push('Your sign-up: not yet');
     lines.push(page);
     return {

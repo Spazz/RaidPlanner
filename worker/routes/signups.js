@@ -3,6 +3,7 @@
 // (one per person per raid) that REPLACES the person's Raid-Helper row everywhere it is shown or counted, so nothing counts twice.
 // The attendance recompute reads it with the other sources and is otherwise unchanged. Spec: tasks/guild-phase6-signups-spec.md.
 import { HttpError, jsonResponse } from '../http.js';
+import { raidAwayEffects, readNotices, teamCharactersStatement, teamNoticesStatement } from '../away-store.js';
 import { recomputeRaid } from '../attendance-store.js';
 import { displayCharacter } from '../attendance-view.js';
 import { isId } from '../ids.js';
@@ -84,12 +85,22 @@ export async function buildView(ctx, guildContext, raid) {
                                 OR player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}))`,
     ).bind(guild.id, raid.id, guild.id, userId, userId),
   ];
+  // An upcoming raid also reads the Away / Late / Leaving notices that cover its date (worker/away.js): a virtual Absence for the people who are away and have
+  // no sign-up, a note on those who are late or leaving. They come last, so the positions of the other results do not move.
+  const upcoming = raid.starts_at > ctx.now();
+  const awayAt = statements.length + (edit ? 1 : 0);
   if (edit) {
     statements.push(db.prepare(
       `SELECT p.id AS person_id, p.status, c.id, c.player_id, c.name, c.class, c.main_spec, c.off_spec, c.is_main, c.team_id
          FROM players p JOIN characters c ON c.player_id = p.id
         WHERE p.guild_id = ? AND p.status != 'inactive' AND p.id IN (SELECT player_id FROM characters WHERE guild_id = ? AND team_id = ?)`,
     ).bind(guild.id, guild.id, teamId));
+  }
+  if (upcoming) {
+    statements.push(
+      teamNoticesStatement(db, guild.id, teamId, userId, raid.raid_on, raid.raid_on),
+      teamCharactersStatement(db, guild.id, teamId, raid.raid_on, raid.raid_on),
+    );
   }
   const results = await db.batch(statements);
   const myPlayerId = results[0].results.length ? results[0].results[0].id : null;
@@ -98,7 +109,23 @@ export async function buildView(ctx, guildContext, raid) {
     if (!charactersByPlayer.has(row.player_id)) charactersByPlayer.set(row.player_id, []);
     charactersByPlayer.get(row.player_id).push(row);
   }
-  const entries = mergeSignups(results[1].results, charactersByPlayer, { teamId, seeNicknames, myPlayerId });
+  let effects = { away: [], notes: new Map() };
+  if (upcoming) {
+    const known = new Set(results[2].results.map((row) => row.id));
+    for (const row of results[awayAt + 1].results) {
+      if (known.has(row.id)) continue;
+      if (!charactersByPlayer.has(row.player_id)) charactersByPlayer.set(row.player_id, []);
+      charactersByPlayer.get(row.player_id).push(row);
+    }
+    effects = raidAwayEffects(readNotices(results[awayAt].results), raid.raid_on, new Set(results[1].results.map((row) => row.player_id).filter(Boolean)));
+  }
+  const entries = mergeSignups(results[1].results, charactersByPlayer, { teamId, seeNicknames, myPlayerId, away: effects.away, notes: effects.notes });
+  // Late / Leaving notices of people who have no entry at all.
+  const listed = new Set(entries.map((entry) => entry.personId).filter(Boolean));
+  const notices = [...effects.notes].filter(([personId]) => !listed.has(personId)).map(([personId, note]) => {
+    const shown = displayCharacter(charactersByPlayer.get(personId) || [], teamId);
+    return { personId, name: shown ? shown.name : null, kind: note.kind, atTime: note.atTime };
+  }).sort((a, b) => String(a.name).localeCompare(String(b.name)) || a.personId.localeCompare(b.personId));
 
   let me = null;
   if (self && myPlayerId) {
@@ -107,6 +134,7 @@ export async function buildView(ctx, guildContext, raid) {
     me = {
       personId: myPlayerId,
       signup: entries.find((entry) => entry.isMe) || null,
+      notice: effects.notes.has(myPlayerId) ? { kind: effects.notes.get(myPlayerId).kind, atTime: effects.notes.get(myPlayerId).atTime } : null,
       characters: mine.map(characterView),
       defaultCharacterId: shown ? shown.id : null,
       canChange: closed === null,
@@ -138,6 +166,7 @@ export async function buildView(ctx, guildContext, raid) {
     me,
     counts: seeList ? countSignups(entries) : null,
     entries: seeList ? entries : null,
+    notices: seeList ? notices : null,
     roster,
   };
 }

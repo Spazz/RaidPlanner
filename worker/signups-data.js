@@ -95,8 +95,11 @@ export { MAX_CLOSE_HOURS, closeHoursOf, closedReason, closesAtOf, isCloseHours }
 const ROLE_ORDER = { tank: 0, healer: 1, melee: 2, ranged: 3 };
 
 // The merged list of one raid. rows: raid_signups rows of the Raid-Helper and Raidsmith sources (not the plan's);
-// charactersByPlayer: Map personId -> [character rows]; opts: { teamId, seeNicknames, myPlayerId }.
+// charactersByPlayer: Map personId -> [character rows]; opts: { teamId, seeNicknames, myPlayerId, away, notes }.
 // A person with a Raidsmith sign-up is listed once, by it: it replaces their Raid-Helper row. Raid-Helper rows with no person stay as they are.
+// opts.away: [{ personId }] the people an Away notice covers who have no sign-up at all: each is listed as a VIRTUAL Absence (source 'away', key
+// `a:<personId>`, never stored; a real sign-up always wins, so a person with a row is skipped). opts.notes: Map personId -> { kind, atTime } of Late / Leaving
+// notices: a real entry of that person carries `notice: { kind, atTime }`.
 export function mergeSignups(rows, charactersByPlayer, opts) {
   const native = new Map();
   for (const row of rows) if (row.source === 'raidsmith' && row.player_id) native.set(row.player_id, row);
@@ -131,6 +134,36 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
       isMe: !!opts.myPlayerId && row.player_id === opts.myPlayerId,
       nickname: opts.seeNicknames && row.source === 'raid_helper' ? row.nickname : null,
     });
+  }
+  const listed = new Set(entries.map((entry) => entry.personId).filter(Boolean));
+  for (const { personId } of opts.away || []) {
+    if (listed.has(personId)) continue;
+    listed.add(personId);
+    const shown = displayCharacter(characterRows(personId), opts.teamId);
+    const classId = shown ? shown.class : null;
+    entries.push({
+      key: `a:${personId}`,
+      personId,
+      source: 'away',
+      kind: 'absence',
+      name: shown ? shown.name : null,
+      classId,
+      className: classId ? raidHelperClassName(classId) : null,
+      spec: null,
+      role: classId ? roleGroup(classId, null) : null,
+      characterId: null,
+      note: null,
+      updatedAt: null,
+      matched: true,
+      isMe: !!opts.myPlayerId && personId === opts.myPlayerId,
+      nickname: null,
+    });
+  }
+  if (opts.notes) {
+    for (const entry of entries) {
+      const note = entry.personId && entry.source !== 'away' ? opts.notes.get(entry.personId) : null;
+      if (note) entry.notice = { kind: note.kind, atTime: note.atTime };
+    }
   }
   entries.sort((a, b) => {
     const ar = a.role === null ? 9 : ROLE_ORDER[a.role];

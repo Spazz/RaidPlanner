@@ -3209,6 +3209,139 @@ check('away: notices go with the person (delete cascades), stay when the account
   assert.deepEqual((await s.stored()).map((r) => r.id), [gina.id]);
 });
 
+// ---------------------------------------------------------------------------
+// Away notices in the views (B5a / B5b): the virtual Absence, the Late / Leaving notes, the counts, `mine`, the calendar feed
+
+// awayWorld plus an upcoming Alpha raid on Thursday 2027-01-21 20:00 and a past one on Thursday 2027-01-14.
+async function awayRaidWorld() {
+  const s = await awayWorld();
+  s.up = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-21', startTime: '20:00' })).id;
+  s.past = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-14', startTime: '20:00' })).id;
+  s.view = async (who, rid = s.up) => (await s.call(who, 'GET', s.raid(rid, '/signups'))).json;
+  s.row = async (who, rid = s.up) => (await s.call(who, 'GET', `/raids?team=${s.A}`)).json.upcoming.find((raid) => raid.id === rid);
+  s.sign = (who, body, rid = s.up) => s.call(who, 'PUT', s.raid(rid, '/signup'), body);
+  return s;
+}
+
+check('away views: an Away notice is a virtual Absence on the sign-ups panel - never stored, counted, and a real sign-up always replaces it', async () => {
+  const s = await awayRaidWorld();
+  await s.file('erin', { kind: 'away', from: '2027-01-20', to: '2027-01-22', reason: 'secret holiday' });
+  const view = await s.view('bob');
+  const away = view.entries.find((entry) => entry.source === 'away');
+  assert.deepEqual(away, {
+    key: `a:${s.p.eliora}`, personId: s.p.eliora, source: 'away', kind: 'absence', name: 'Eliora', classId: 'PRIEST', className: 'Priest', spec: null, role: null,
+    characterId: null, note: null, updatedAt: null, matched: true, isMe: false, nickname: null,
+  });
+  assert.deepEqual([view.entries.length, view.counts.absence, view.counts.expected, view.notices], [1, 1, 0, []]);
+  assert.equal(await s.w.count('raid_signups'), 0, 'a virtual entry is never stored');
+  // The person's own view: it is hers, and me.signup is it.
+  const own = await s.view('erin');
+  assert.deepEqual([own.me.signup.key, own.me.signup.isMe, own.me.signup.source, own.me.signup.kind, own.counts.absence], [`a:${s.p.eliora}`, true, 'away', 'absence', 1]);
+  // A real sign-up of any kind replaces it at once (a Raidsmith one, then a Raid-Helper one in its place).
+  assert.equal((await s.sign('erin', { kind: 'signed' })).status, 200);
+  let after = await s.view('bob');
+  assert.deepEqual(after.entries.map((entry) => [entry.name, entry.source, entry.kind]), [['Eliora', 'raidsmith', 'signed']]);
+  assert.deepEqual([after.counts.absence, after.counts.signed], [0, 1]);
+  assert.equal((await s.sign('erin', { kind: 'absence' })).status, 200);
+  after = await s.view('bob');
+  assert.deepEqual(after.entries.map((entry) => [entry.source, entry.kind]), [['raidsmith', 'absence']], 'a real Absence is one entry, not two');
+  assert.equal((await s.call('erin', 'DELETE', s.raid(s.up, '/signup'), {})).status, 200);
+  assert.deepEqual((await s.view('bob')).entries.map((entry) => [entry.source, entry.kind]), [['away', 'absence']], 'delete the sign-up and the notice shows again');
+  const event = '777777777777777702';
+  s.w.sources.events.set(event, rhEvent(event, SERVER_A, [signUp(1, PEOPLE.erin.id, 'Erin', 'Priest', 'Holy1')], { startTime: rhStart('2027-01-21T20:00:00-05:00') }));
+  assert.equal((await s.call('bob', 'PUT', s.raid(s.up, '/event'), { source: event })).status, 200);
+  assert.deepEqual((await s.view('bob')).entries.map((entry) => [entry.source, entry.kind]), [['raid_helper', 'signed']], 'a Raid-Helper sign-up outranks the notice too');
+});
+
+check('away views: who gets an entry - the date must be covered, the person must have a character on the team and not be inactive; past raids get none', async () => {
+  const s = await awayRaidWorld();
+  const names = async () => (await s.view('bob')).entries.map((entry) => entry.name).sort();
+  await s.file('erin', { kind: 'away', from: '2027-01-22', to: '2027-01-23' });                      // the day after the raid
+  await s.file('gina', { kind: 'away', from: '2027-01-20', weekday: 3 });                           // Wednesdays: not Thursday
+  await s.file('hank', { kind: 'away', from: '2027-01-20', to: '2027-01-22' });                     // Bravo's person
+  assert.deepEqual(await names(), []);
+  await s.file('gina', { kind: 'away', from: '2027-01-17', weekday: 4, to: '2027-01-28' });         // Thursdays through the 28th: the 21st is in
+  assert.deepEqual(await names(), ['Gorrim']);
+  await s.file('bob', { kind: 'away', from: '2027-01-21', to: '2027-01-21', personId: s.p.nodisc });  // a one-day range on the day itself
+  assert.deepEqual(await names(), ['Gorrim', 'Nodisc']);
+  // The past raid (Thursday 2027-01-14) has no virtual entries though a notice covers it, and its counts do not change.
+  await s.file('bob', { kind: 'away', from: '2027-01-14', to: '2027-01-14', personId: s.p.nodisc });
+  const past = await s.view('bob', s.past);
+  assert.deepEqual([past.entries.length, past.counts.absence, past.notices], [0, 0, []]);
+  // Bravo's raid on the same night shows Hank, not Alpha's people.
+  const bravo = (await s.makeRaid({ teamId: s.B, raidOn: '2027-01-21', startTime: '20:00' })).id;
+  await s.file('hank', { kind: 'away', from: '2027-01-21', to: '2027-01-21' });
+  assert.deepEqual((await s.view('bob', bravo)).entries.map((entry) => entry.name), ['Wanderfell']);
+  assert.deepEqual(await names(), ['Gorrim', 'Nodisc'], 'Hank is not on Alpha');
+  // Gorrim goes inactive: no entry. A character on a second team: she is shown on both.
+  assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p.gorrim}`, { expectedVersion: 1, status: 'inactive', leftOn: null })).status, 200);
+  assert.deepEqual(await names(), ['Nodisc']);
+  assert.equal((await addAlt(s, 'bob', s.p.nodisc, s.B, 'Nodiscalt')).status, 201);
+  assert.deepEqual((await s.view('bob', bravo)).entries.map((entry) => entry.name), ['Nodiscalt', 'Wanderfell'], 'Nodisc has a character on Bravo too, and is shown by it there');
+});
+
+check('away views: Late and Leaving notices are a note on the person\'s entry, or on the panel\'s notices list when they have none - never a reason', async () => {
+  const s = await awayRaidWorld();
+  await s.file('gina', { kind: 'late', from: '2027-01-21', to: '2027-01-21', atTime: '21:00', reason: 'secret shift' });
+  await s.file('erin', { kind: 'leaving', from: '2027-01-17', weekday: 4, atTime: '22:30' });
+  await s.file('erin', { kind: 'late', from: '2027-01-17', weekday: 4, atTime: '20:45' });
+  let view = await s.view('bob');
+  assert.deepEqual(view.entries, [], 'no entry for a late or leaving notice');
+  assert.deepEqual(view.notices, [
+    { personId: s.p.eliora, name: 'Eliora', kind: 'late', atTime: '20:45' },   // a Late one beats a Leaving one
+    { personId: s.p.gorrim, name: 'Gorrim', kind: 'late', atTime: '21:00' },
+  ]);
+  assert(!JSON.stringify(view).includes('secret'));
+  assert.deepEqual((await s.view('gina')).me.notice, { kind: 'late', atTime: '21:00' }, 'a member who cannot see the list still sees their own');
+  // Once they sign up the note moves onto their entry.
+  assert.equal((await s.sign('gina', { kind: 'signed' })).status, 200);
+  view = await s.view('bob');
+  assert.deepEqual(view.entries.map((entry) => [entry.name, entry.kind, entry.notice]), [['Gorrim', 'signed', { kind: 'late', atTime: '21:00' }]]);
+  assert.deepEqual(view.notices.map((notice) => notice.name), ['Eliora']);
+  assert.deepEqual(view.counts.absence, 0, 'a note is not an absence');
+  // A person who is away AND late: the virtual Absence stands and carries no note.
+  await s.file('erin', { kind: 'away', from: '2027-01-21', to: '2027-01-21' });
+  view = await s.view('bob');
+  const erin = view.entries.find((entry) => entry.name === 'Eliora');
+  assert.deepEqual([erin.source, 'notice' in erin], ['away', false]);
+});
+
+check('away views: the Raids list counts the virtual Absences and tells the viewer ("mine"); a real sign-up replaces them', async () => {
+  const s = await awayRaidWorld();
+  await s.file('erin', { kind: 'away', from: '2027-01-21', to: '2027-01-21' });
+  await s.file('gina', { kind: 'away', from: '2027-01-20', weekday: 4 });
+  await s.file('hank', { kind: 'away', from: '2027-01-21', to: '2027-01-21' });
+  let row = await s.row('bob');
+  assert.deepEqual(row.signups, { signed: 0, late: 0, standby: 0, bench: 0, tentative: 0, absence: 2 });
+  assert.equal(row.mine, null, 'Bob has no notice');
+  assert.deepEqual((await s.row('erin')).mine, { kind: 'absence', source: 'away', characterName: null });
+  assert.deepEqual((await s.row('gina')).mine, { kind: 'absence', source: 'away', characterName: null });
+  assert.equal((await s.row('hank')).mine, null, 'Hank is not on Alpha: his notice is not on its raids');
+  // A real sign-up: counted once, as it is, and `mine` is the real one.
+  assert.equal((await s.sign('erin', { kind: 'signed' })).status, 200);
+  row = await s.row('bob');
+  assert.deepEqual([row.signups.absence, row.signups.signed], [1, 1]);
+  assert.deepEqual((await s.row('erin')).mine, { kind: 'signed', source: 'raidsmith', characterName: 'Eliora' });
+});
+
+check('away views: the calendar feed counts them ("Can\'t come 1") and tells the member ("Your sign-up: Away (notice)"); a real sign-up replaces it', async () => {
+  const s = await awayRaidWorld();
+  await s.file('erin', { kind: 'away', from: '2027-01-21', to: '2027-01-21' });
+  await s.file('bob', { kind: 'away', from: '2027-01-14', weekday: 4, personId: s.p.gorrim });  // an officer's: it covers the past raid too, but only the upcoming one counts it
+  const made = await s.call('erin', 'POST', '/calendar', { teamId: s.A });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const feed = async () => {
+    const events = readIcs(await (await s.w.req('GET', new URL(made.json.url).pathname)).text());
+    return Object.fromEntries(events.map((event) => [event.UID, event.DESCRIPTION.split('\n')]));
+  };
+  let lines = await feed();
+  assert.deepEqual(lines[`${s.up}@raidsmith`].slice(0, 2), ['Can\'t come 2', 'Your sign-up: Away (notice)']);
+  assert.deepEqual(lines[`${s.past}@raidsmith`].slice(0, 1), ['No sign-ups yet'], 'a raid that has started has no virtual entries');
+  assert.equal((await s.sign('erin', { kind: 'late' })).status, 200);
+  lines = await feed();
+  assert.deepEqual(lines[`${s.up}@raidsmith`].slice(0, 2), ['Late 1, Can\'t come 1', 'Your sign-up: Late']);
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';
