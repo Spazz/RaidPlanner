@@ -9,8 +9,7 @@ import {
 export const SELF_KINDS = ['signed', 'late', 'tentative', 'absence'];
 export const SIGNUP_KINDS = ['signed', 'late', 'tentative', 'bench', 'absence'];
 export const NOTE_MAX = 120;
-export const MAX_CLOSE_HOURS = 72; // a sign-up window closes at most three days before the start
-export const isCloseHours = (value) => Number.isInteger(value) && value >= 0 && value <= MAX_CLOSE_HOURS;
+
 export const ROLE_GROUPS = ['tank', 'healer', 'melee', 'ranged'];
 
 // The Raid-Helper class name of a class id ('PALADIN' -> 'Paladin'): how a native row stores its class.
@@ -79,12 +78,8 @@ export function specChoices(character) {
   return first.concat(all.filter((spec) => !first.includes(spec)));
 }
 
-// Why a member cannot change a sign-up on this raid: 'started' | 'locked' | null (open). Officers are not bound by it.
-export function closedReason(raid, now) {
-  if (raid.starts_at <= now) return 'started';
-  if (raid.signups_locked === 1) return 'locked';
-  return null;
-}
+// When a member's window closes and why it is closed ('started' | 'locked' | 'deadline' | null): worker/signup-window.js. Officers are not bound by it.
+export { MAX_CLOSE_HOURS, closeHoursOf, closedReason, closesAtOf, isCloseHours } from './signup-window.js';
 
 const ROLE_ORDER = { tank: 0, healer: 1, melee: 2, ranged: 3 };
 

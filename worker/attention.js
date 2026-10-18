@@ -24,7 +24,8 @@ function daysBetween(from, to) {
 //   signupUnmatched: [{ raid_id, team_id, raid_on, zone, title, event_title, n }],
 //   claims: number, trials: [{ id, trial_end, name, class, team_id }],
 //   noLoot: [{ id, team_id, raid_on, zone, title, event_title }],
-//   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in, size (the raid's effective size; the team's when left out) }],
+//   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in, size (the raid's effective size; the team's when left out),
+//                close_hours (the sign-up deadline in hours before the start; 0 or left out = at the start) }],
 //   watch: [{ teamId, entries: [{ playerId, name, class, pct, previousPct, drop, reasons }] }] }
 // -> { items, more: { kind: n }, total } (total counts the 'action' items only, hidden ones included)
 export function buildAttention(input) {
@@ -85,7 +86,8 @@ export function buildAttention(input) {
       add('low_signups', { ...base('low_signups', row.team_id), ...fields, expected: row.n_in, size, id: `low_signups:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
     }
     const minutes = Math.ceil((row.starts_at - input.now) / 60000);
-    if (row.signups_locked === 0 && minutes > 0 && minutes <= UNLOCKED_MINUTES) {
+    const deadlinePassed = (row.close_hours || 0) > 0 && row.starts_at - row.close_hours * 3600000 <= input.now; // members are shut out already
+    if (row.signups_locked === 0 && !deadlinePassed && minutes > 0 && minutes <= UNLOCKED_MINUTES) {
       add('unlocked', { ...base('unlocked', row.team_id, 'info'), ...fields, minutes, id: `unlocked:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
     }
   }

@@ -79,6 +79,7 @@ export async function getAttention(ctx) {
     // raid's own size (NULL = automatic): the effective one is worked out below.
     bind(
       `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.size, r.title, r.event_title, r.signups_locked,
+              COALESCE(r.signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = r.team_id), 0) AS close_hours,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind IN ('signed', 'late')) AS n_in
          FROM raids r WHERE r.guild_id = ?1 AND r.starts_at > ?2 AND r.starts_at <= ?3 ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
       now, now + SIGNUP_LOOKAHEAD_DAYS * DAY_MS,

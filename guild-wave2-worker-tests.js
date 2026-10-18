@@ -2068,6 +2068,327 @@ check('sizes: Needs attention in a Forever guild - Hyjal Summit needs 20, Barrow
   assert.equal((await s.lows())[hyjal.id], undefined, '20 of 20 is not short');
 });
 
+// ---------------------------------------------------------------------------
+// The sign-up deadline (B2): a member's window closes N hours before the start; the team's number, a raid's own number, officers never bound
+
+const HOUR = 3600000;
+
+// Alpha's raid on 2027-02-10 20:00 (New York) with Eliora (Erin's person) and Gorrim (Gina's) on Alpha. s.mine writes Erin's own sign-up.
+async function deadlineWorld() {
+  const s = await laneWorld();
+  s.p = {};
+  const person = async (key, name, classId, spec, discord) => {
+    const made = await addPerson(s, 'bob', s.A, name, { class: classId, mainSpec: spec, offSpec: null });
+    s.p[key] = made.person.id;
+    exec(s.w, `UPDATE players SET discord_user_id = '${discord}' WHERE id = '${made.person.id}'`);
+  };
+  await person('eliora', 'Eliora', 'PRIEST', 'Holy', PEOPLE.erin.id);
+  await person('gorrim', 'Gorrim', 'PALADIN', 'Protection', PEOPLE.gina.id);
+  const raid = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-10', startTime: '20:00' });
+  s.rid = raid.id;
+  s.startsAt = raid.startsAt;
+  s.path = (route = '') => s.raid(s.rid, route);
+  s.mine = (body, who = 'erin') => s.call(who, 'PUT', s.path('/signup'), body);
+  s.dropMine = (who = 'erin') => s.call(who, 'DELETE', s.path('/signup'), {});
+  s.view = async (who = 'erin') => (await s.call(who, 'GET', s.path('/signups'))).json;
+  s.teamHours = async (hours, team = s.A) => {
+    const r = await s.call('bob', 'PUT', `/teams/${team}/schedule`, { slots: [], signupCloseHours: hours });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    return r.json;
+  };
+  s.raidHours = async (hours) => {
+    const r = await s.call('bob', 'PATCH', s.path(), { signupCloseHours: hours });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    return r.json;
+  };
+  s.signedKind = async () => ((await s.w.rows("SELECT kind FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith'", s.rid))[0] || {}).kind || null;
+  // Runs `fn` with a change to the raid landing between the request's read and its write statement (the batch that holds `pattern`).
+  s.withRace = async (pattern, sql, fn) => {
+    const real = s.w.db.batch;
+    s.w.db.batch = function patched(statements) {
+      if (statements.some((statement) => pattern.test(statement.sql))) exec(s.w, sql);
+      return real.call(this, statements);
+    };
+    try { return await fn(); } finally { s.w.db.batch = real; }
+  };
+  return s;
+}
+
+check('deadline: closedReason and its helpers - the start, then the lock, then the deadline; the raid\'s number beats the team\'s', async () => {
+  const { closedReason, closeHoursOf, closesAtOf, isCloseHours, MAX_CLOSE_HOURS } = await load('worker/signups-data.js');
+  const START = Date.parse('2027-02-11T01:00:00Z');
+  assert.equal(MAX_CLOSE_HOURS, 72);
+  for (const ok of [0, 1, 24, 72]) assert.equal(isCloseHours(ok), true);
+  for (const bad of [-1, 73, 1.5, '24', null, undefined, NaN, true]) assert.equal(isCloseHours(bad), false, String(bad));
+  // The effective hours: the raid's own (0 counts), else the team's, else 0.
+  assert.equal(closeHoursOf({ signup_close_hours: null, team_close_hours: 24 }), 24);
+  assert.equal(closeHoursOf({ signup_close_hours: 0, team_close_hours: 24 }), 0, 'a raid\'s 0 beats the team\'s 24');
+  assert.equal(closeHoursOf({ signup_close_hours: 48, team_close_hours: 24 }), 48, 'longer than the team\'s');
+  assert.equal(closeHoursOf({ signup_close_hours: undefined, team_close_hours: undefined }), 0);
+  assert.equal(closeHoursOf({}), 0);
+  assert.equal(closesAtOf({ starts_at: START, signup_close_hours: null, team_close_hours: 24 }), START - 24 * HOUR);
+  assert.equal(closesAtOf({ starts_at: START }, 2), START - 2 * HOUR, 'hours can be given');
+  const raid = { starts_at: START, signups_locked: 0, signup_close_hours: null, team_close_hours: 24 };
+  const at = START - 24 * HOUR;
+  assert.equal(closedReason(raid, at - 1), null, 'one millisecond before the deadline it is open');
+  assert.equal(closedReason(raid, at), 'deadline', 'at the deadline it is closed');
+  assert.equal(closedReason(raid, START - 1), 'deadline');
+  assert.equal(closedReason(raid, START), 'started');
+  assert.equal(closedReason(raid, START + HOUR), 'started', 'the start wins over the deadline');
+  assert.equal(closedReason({ ...raid, signups_locked: 1 }, at - 1), 'locked', 'an officer\'s lock closes it before the deadline');
+  assert.equal(closedReason({ ...raid, signups_locked: 1 }, at + 1), 'locked', 'locked and past the deadline: the lock is what an officer undoes');
+  assert.equal(closedReason({ ...raid, signups_locked: 1 }, START), 'started');
+  assert.equal(closedReason({ ...raid, team_close_hours: 0 }, START - 1), null, 'the default is the start');
+  assert.equal(closedReason({ ...raid, signup_close_hours: 0 }, START - 1), null, 'the raid\'s 0 reopens it');
+  assert.equal(closedReason({ ...raid, signup_close_hours: 48 }, START - 30 * HOUR), 'deadline');
+  assert.equal(closedReason({ starts_at: START, signups_locked: 0 }, START - 1), null, 'a bare row (no team column) has no deadline');
+  assert.equal(closedReason({ starts_at: START, signups_locked: 0 }, START - 2 * HOUR, 1), null);
+  assert.equal(closedReason({ starts_at: START, signups_locked: 0 }, START - HOUR, 1), 'deadline', 'the hours argument');
+});
+
+check('deadline: the team\'s setting lives with the Raid schedule - read, saved (0 to 72), kept when left out, audited', async () => {
+  const s = await laneWorld();
+  const sched = (team = s.A) => `/teams/${team}/schedule`;
+  const put = (body, who = 'bob', team = s.A) => s.call(who, 'PUT', sched(team), body);
+  const empty = await s.call('erin', 'GET', sched());
+  assert.deepEqual([empty.status, empty.json.signupCloseHours], [200, 0], 'any member reads it; the default closes at the start');
+  assert.equal((await s.call('erin', 'GET', `/raids?team=${s.A}`)).json.team.signupCloseHours, 0);
+  const set = await put({ slots: [], signupCloseHours: 24 });
+  assert.deepEqual([set.status, set.json.signupCloseHours], [200, 24]);
+  assert.equal((await s.call('erin', 'GET', sched())).json.signupCloseHours, 24);
+  assert.equal((await s.w.rows('SELECT signup_close_hours AS h FROM teams WHERE id = ?', s.A))[0].h, 24);
+  assert.equal((await s.call('erin', 'GET', `/raids?team=${s.A}`)).json.team.signupCloseHours, 24);
+  // Left out, it is kept: a save of the slots alone does not reset it.
+  const kept = await put({ slots: [{ weekday: 2, startTime: '20:00' }], weeks: 3 });
+  assert.deepEqual([kept.json.signupCloseHours, kept.json.weeks], [24, 3]);
+  for (const hours of [0, 72, 1]) assert.equal((await put({ slots: [], signupCloseHours: hours })).json.signupCloseHours, hours);
+  // The other team has its own.
+  assert.equal((await s.call('bob', 'GET', sched(s.B))).json.signupCloseHours, 0);
+  // Validation: 400 with the field, nothing written.
+  for (const bad of [73, -1, 1.5, '24', null, true, [24], 100]) {
+    const r = await put({ slots: [], signupCloseHours: bad });
+    assert.deepEqual([r.status, r.json.error, r.json.field], [400, 'bad_request', 'signupCloseHours'], JSON.stringify(bad));
+  }
+  assert.equal((await s.w.rows('SELECT signup_close_hours AS h FROM teams WHERE id = ?', s.A))[0].h, 1);
+  // Audit: the counts, now with the deadline before and after.
+  const audit = (await s.audits('schedule.update')).map((a) => [a.before.signupCloseHours, a.after.signupCloseHours]);
+  assert.deepEqual(audit, [[0, 24], [24, 24], [24, 0], [0, 72], [72, 1]]);
+  // Who: raids.edit on the team (the Team Lead of Alpha, not Bravo's; not a Member).
+  assert.deepEqual([(await put({ slots: [], signupCloseHours: 5 }, 'carol')).status, (await put({ slots: [], signupCloseHours: 5 }, 'dave')).status, (await put({ slots: [], signupCloseHours: 5 }, 'erin')).status], [200, 403, 403]);
+  // An archived team is refused as before.
+  assert.equal((await s.call('alice', 'PATCH', `/teams/${s.B}`, { archived: true })).status, 200);
+  assert.equal((await put({ slots: [], signupCloseHours: 5 }, 'bob', s.B)).status, 409);
+});
+
+check('deadline: with the team at 24 hours a member\'s window closes exactly 24 hours before the start - write, change and delete', async () => {
+  const s = await deadlineWorld();
+  await s.teamHours(24);
+  const closesAt = s.startsAt - 24 * HOUR;
+  s.w.clock.now = closesAt - 1000;
+  const early = await s.view();
+  assert.deepEqual([early.raid.closed, early.raid.closesAt, early.raid.closeHours, early.raid.closeHoursOverride, early.me.canChange, early.me.closed], [null, closesAt, 24, null, true, null]);
+  assert.equal((await s.mine({ kind: 'signed' })).status, 200, 'a second before the deadline');
+  assert.equal((await s.mine({ kind: 'late', note: 'traffic' })).status, 200, 'a change a second before the deadline');
+  // The deadline itself: closed.
+  s.w.clock.now = closesAt;
+  const refused = await s.mine({ kind: 'absence' });
+  assert.deepEqual([refused.status, refused.json.error, refused.json.reason, refused.json.closesAt], [409, 'signups_closed', 'deadline', closesAt]);
+  assert.match(refused.json.message, /closed 24 hours before the start/);
+  assert.deepEqual(Object.keys(refused.json).sort(), ['closesAt', 'error', 'message', 'reason'], 'the 409 shape');
+  const del = await s.dropMine();
+  assert.deepEqual([del.status, del.json.error, del.json.reason, del.json.closesAt], [409, 'signups_closed', 'deadline', closesAt]);
+  assert.equal(await s.signedKind(), 'late', 'nothing changed');
+  assert.equal(await s.w.count('raid_signups', "note = 'traffic'"), 1);
+  // The view says so.
+  const closed = await s.view();
+  assert.deepEqual([closed.raid.closed, closed.raid.upcoming, closed.raid.locked, closed.me.canChange, closed.me.closed, closed.raid.closesAt], ['deadline', true, false, false, 'deadline', closesAt]);
+  assert.equal(closed.me.signup.kind, 'late', 'the sign-up is still listed');
+  // A person with no sign-up cannot start one either; a Member of another character's sign-up is unaffected by it.
+  const gina = await s.mine({ kind: 'signed' }, 'gina');
+  assert.deepEqual([gina.status, gina.json.reason], [409, 'deadline']);
+  // The start still reads 'started'.
+  s.w.clock.now = s.startsAt;
+  assert.equal((await s.mine({ kind: 'signed' })).json.reason, 'started');
+  assert.equal((await s.view()).raid.closed, 'started');
+});
+
+check('deadline: the default is the start (0), and a raid\'s own number beats the team\'s - shorter, longer, cleared', async () => {
+  const s = await deadlineWorld();
+  // Team 0: open up to the start.
+  s.w.clock.now = s.startsAt - 1000;
+  assert.equal((await s.mine({ kind: 'signed' })).status, 200);
+  const view0 = await s.view();
+  assert.deepEqual([view0.raid.closesAt, view0.raid.closeHours, view0.raid.closed], [s.startsAt, 0, null]);
+  // Team 24, raid override 0: the raid stays open to the start.
+  await s.teamHours(24);
+  assert.equal((await s.mine({ kind: 'late' })).json.reason, 'deadline', 'the team deadline applies');
+  const detail0 = await s.raidHours(0);
+  assert.deepEqual([detail0.raid.closeHours, detail0.raid.closeHoursOverride, detail0.raid.closesAt], [0, 0, s.startsAt]);
+  assert.equal((await s.mine({ kind: 'late' })).status, 200, 'the raid\'s 0 beats the team\'s 24');
+  const view1 = await s.view();
+  assert.deepEqual([view1.raid.closeHours, view1.raid.closeHoursOverride, view1.raid.closed], [0, 0, null]);
+  // Longer than the team: 48 hours before the start; now is 1 second before the start.
+  const detail48 = await s.raidHours(48);
+  assert.deepEqual([detail48.raid.closeHours, detail48.raid.closeHoursOverride, detail48.raid.closesAt], [48, 48, s.startsAt - 48 * HOUR]);
+  s.w.clock.now = s.startsAt - 30 * HOUR;
+  const refused = await s.mine({ kind: 'signed' });
+  assert.deepEqual([refused.status, refused.json.reason, refused.json.closesAt], [409, 'deadline', s.startsAt - 48 * HOUR]);
+  assert.match(refused.json.message, /closed 48 hours before/);
+  s.w.clock.now = s.startsAt - 48 * HOUR - 1;
+  assert.equal((await s.mine({ kind: 'signed' })).status, 200, 'a millisecond before the raid\'s deadline');
+  // Cleared: the team's 24 again.
+  const cleared = await s.raidHours(null);
+  assert.deepEqual([cleared.raid.closeHours, cleared.raid.closeHoursOverride], [24, null]);
+  s.w.clock.now = s.startsAt - 24 * HOUR;
+  assert.equal((await s.mine({ kind: 'signed' })).json.reason, 'deadline');
+  // The team's number moves the raid that has none; one hour is "1 hour".
+  await s.teamHours(1);
+  s.w.clock.now = s.startsAt - 30 * 60000;
+  const hour = await s.mine({ kind: 'signed' });
+  assert.deepEqual([hour.status, hour.json.reason], [409, 'deadline']);
+  assert.match(hour.json.message, /closed 1 hour before the start/);
+  s.w.clock.now = s.startsAt - 2 * HOUR;
+  assert.equal((await s.mine({ kind: 'signed' })).status, 200);
+});
+
+check('deadline: officers (raids.edit) are never bound - they add, change, remove and lock after the deadline, and after the start', async () => {
+  const s = await deadlineWorld();
+  await s.teamHours(24);
+  s.w.clock.now = s.startsAt - 2 * HOUR;
+  assert.equal((await s.mine({ kind: 'signed' })).json.reason, 'deadline');
+  for (const who of ['alice', 'bob', 'carol']) {
+    const put = await s.call(who, 'PUT', s.path(`/signups/${s.p.eliora}`), { kind: who === 'carol' ? 'late' : 'tentative' });
+    assert.equal(put.status, 200, `${who}: ${JSON.stringify(put.json)}`);
+    assert.equal(put.json.raid.closed, 'deadline', 'the view still says members are shut out');
+  }
+  assert.equal(await s.signedKind(), 'late');
+  assert.equal((await s.call('bob', 'DELETE', s.path(`/signups/${s.p.eliora}`), {})).status, 200);
+  assert.equal((await s.call('bob', 'PUT', s.path(`/signups/${s.p.gorrim}`), { kind: 'bench' })).status, 200);
+  assert.equal((await s.call('bob', 'POST', s.path('/signups/lock'), {})).status, 200);
+  assert.equal((await s.call('bob', 'POST', s.path('/signups/unlock'), {})).status, 200);
+  // A Team Lead of ANOTHER team and a Member are still refused for someone else's sign-up.
+  assert.equal((await s.call('dave', 'PUT', s.path(`/signups/${s.p.eliora}`), { kind: 'signed' })).status, 403);
+  // After the start too.
+  s.w.clock.now = s.startsAt + HOUR;
+  assert.equal((await s.call('bob', 'PUT', s.path(`/signups/${s.p.eliora}`), { kind: 'signed' })).status, 200);
+});
+
+check('deadline: the reason is the start, then the lock, then the deadline', async () => {
+  const s = await deadlineWorld();
+  await s.teamHours(24);
+  const closesAt = s.startsAt - 24 * HOUR;
+  s.w.clock.now = closesAt - 1000;
+  assert.equal((await s.mine({ kind: 'signed' })).status, 200);
+  // Locked, still before the deadline: locked.
+  assert.equal((await s.call('bob', 'POST', s.path('/signups/lock'), {})).status, 200);
+  const locked = await s.mine({ kind: 'late' });
+  assert.deepEqual([locked.status, locked.json.reason, locked.json.closesAt], [409, 'locked', undefined], 'the lock 409 keeps its shape');
+  assert.equal((await s.dropMine()).json.reason, 'locked');
+  // Locked and past the deadline: still the lock; unlocking leaves the deadline.
+  s.w.clock.now = closesAt + 1000;
+  assert.equal((await s.mine({ kind: 'late' })).json.reason, 'locked');
+  assert.deepEqual([(await s.view()).raid.closed, (await s.view()).me.closed], ['locked', 'locked']);
+  const unlocked = await s.call('bob', 'POST', s.path('/signups/unlock'), {});
+  assert.equal(unlocked.json.raid.closed, 'deadline');
+  assert.equal((await s.mine({ kind: 'late' })).json.reason, 'deadline');
+  // Past the start: started, whatever else.
+  assert.equal((await s.call('bob', 'POST', s.path('/signups/lock'), {})).status, 200);
+  s.w.clock.now = s.startsAt;
+  assert.equal((await s.mine({ kind: 'late' })).json.reason, 'started');
+  assert.equal((await s.view()).raid.closed, 'started');
+});
+
+check('deadline: the write statement re-checks it - a deadline that lands between the read and the write wins, for a change and for a delete', async () => {
+  const s = await deadlineWorld();
+  s.w.clock.now = s.startsAt - 10 * HOUR;
+  assert.equal((await s.mine({ kind: 'signed' })).status, 200);
+  // A change: the raid gets a 12-hour deadline after the request read it (now is 10 hours before the start, so it is already shut).
+  const raced = await s.withRace(/INSERT INTO raid_signups/, 'UPDATE raids SET signup_close_hours = 12', () => s.mine({ kind: 'late', note: 'raced' }));
+  assert.deepEqual([raced.status, raced.json.error, raced.json.reason, raced.json.closesAt], [409, 'signups_closed', 'deadline', s.startsAt - 12 * HOUR]);
+  assert.match(raced.json.message, /closed 12 hours before/);
+  assert.equal(await s.signedKind(), 'signed');
+  assert.equal(await s.w.count('raid_signups', "note = 'raced'"), 0);
+  assert.equal(await s.w.count('raid_signups', "source = 'raidsmith'"), 1);
+  // A first sign-up the same way (Gina has none).
+  exec(s.w, 'UPDATE raids SET signup_close_hours = NULL');
+  const racedNew = await s.withRace(/INSERT INTO raid_signups/, 'UPDATE raids SET signup_close_hours = 12', () => s.mine({ kind: 'signed' }, 'gina'));
+  assert.deepEqual([racedNew.status, racedNew.json.reason], [409, 'deadline']);
+  assert.equal(await s.w.count('raid_signups', "source = 'raidsmith'"), 1);
+  // A delete: refused with the deadline, not a 404, and the row stays.
+  exec(s.w, 'UPDATE raids SET signup_close_hours = NULL');
+  const racedDelete = await s.withRace(/DELETE FROM raid_signups/, 'UPDATE raids SET signup_close_hours = 12', () => s.dropMine());
+  assert.deepEqual([racedDelete.status, racedDelete.json.error, racedDelete.json.reason], [409, 'signups_closed', 'deadline']);
+  assert.equal(await s.signedKind(), 'signed');
+  // The team's number is read in the statement too: it changes after the request read the raid.
+  exec(s.w, 'UPDATE raids SET signup_close_hours = NULL');
+  const teamRace = await s.withRace(/INSERT INTO raid_signups/, `UPDATE teams SET signup_close_hours = 24 WHERE id = '${s.A}'`, () => s.mine({ kind: 'tentative' }));
+  assert.deepEqual([teamRace.status, teamRace.json.reason, teamRace.json.closesAt], [409, 'deadline', s.startsAt - 24 * HOUR]);
+  assert.equal(await s.signedKind(), 'signed');
+  // An officer's write goes through the same race untouched.
+  const officer = await s.withRace(/INSERT INTO raid_signups/, 'UPDATE raids SET signup_close_hours = 72', () => s.call('bob', 'PUT', s.path(`/signups/${s.p.eliora}`), { kind: 'bench' }));
+  assert.equal(officer.status, 200);
+  assert.equal(await s.signedKind(), 'bench');
+  // And a delete that finds no sign-up is still a 404 while the window is open.
+  exec(s.w, 'UPDATE raids SET signup_close_hours = NULL');
+  exec(s.w, `UPDATE teams SET signup_close_hours = 0 WHERE id = '${s.A}'`);
+  assert.equal((await s.dropMine()).status, 200);
+  const none = await s.dropMine();
+  assert.deepEqual([none.status, none.json.error], [404, 'not_found']);
+});
+
+check('deadline: the Raids list rows say whether sign-ups are open, when they close and for how many hours', async () => {
+  const s = await deadlineWorld();
+  await s.teamHours(24);
+  const own = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-11', startTime: '20:00' });
+  assert.equal((await s.call('bob', 'PATCH', s.raid(own.id), { signupCloseHours: 0 })).status, 200);
+  const locked = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-12', startTime: '20:00' });
+  assert.equal((await s.call('bob', 'POST', s.raid(locked.id, '/signups/lock'), {})).status, 200);
+  const rows = async () => Object.fromEntries((await s.call('erin', 'GET', `/raids?team=${s.A}`)).json.upcoming.map((row) => [row.id, row]));
+  s.w.clock.now = s.startsAt - 25 * HOUR;
+  let list = await rows();
+  assert.deepEqual([list[s.rid].signupsOpen, list[s.rid].closeHours, list[s.rid].closesAt], [true, 24, s.startsAt - 24 * HOUR]);
+  assert.deepEqual([list[own.id].signupsOpen, list[own.id].closeHours, list[own.id].closesAt], [true, 0, own.startsAt]);
+  assert.deepEqual([list[locked.id].signupsOpen, list[locked.id].locked, list[locked.id].closeHours], [false, true, 24]);
+  s.w.clock.now = s.startsAt - 24 * HOUR;
+  list = await rows();
+  assert.equal(list[s.rid].signupsOpen, false, 'the deadline closes the row');
+  assert.equal(list[own.id].signupsOpen, true, 'a raid with its own 0 stays open');
+  // A raid's number shows on its own row only; the team's on the others.
+  assert.equal((await s.call('bob', 'PATCH', s.raid(s.rid), { signupCloseHours: 2 })).status, 200);
+  list = await rows();
+  assert.deepEqual([list[s.rid].signupsOpen, list[s.rid].closeHours], [true, 2]);
+  assert.equal(list[locked.id].closeHours, 24);
+  // The detail carries the same three fields.
+  const detail = (await s.call('erin', 'GET', s.raid(s.rid))).json.raid;
+  assert.deepEqual([detail.closeHours, detail.closeHoursOverride, detail.closesAt], [2, 2, s.startsAt - 2 * HOUR]);
+  const plain = (await s.call('erin', 'GET', s.raid(own.id))).json.raid;
+  assert.deepEqual([plain.closeHours, plain.closeHoursOverride, plain.closesAt], [0, 0, own.startsAt]);
+  const teamOnly = (await s.call('erin', 'GET', s.raid(locked.id))).json.raid;
+  assert.deepEqual([teamOnly.closeHours, teamOnly.closeHoursOverride], [24, null]);
+});
+
+check('deadline: Needs attention does not call sign-ups "still open" once the deadline has shut them', async () => {
+  const { buildAttention } = await load('worker/attention.js');
+  const NOW = Date.parse('2027-01-16T12:00:00Z');
+  const base = { today: '2027-01-16', now: NOW, teams: [{ id: 't_a', name: 'Alpha', size: 25, archived: 0 }], allowsTeam: () => true, granted: () => true, flaggedRaids: [], lootUnmatched: [], signupUnmatched: [], claims: 0, trials: [], noLoot: [], watch: [] };
+  const row = (id, extra) => ({ id, team_id: 't_a', raid_on: '2027-01-16', starts_at: NOW + 40 * 60000, zone: null, title: null, event_title: null, signups_locked: 0, n_in: 25, ...extra });
+  const unlocked = (rows) => buildAttention({ ...base, upcoming: rows }).items.filter((item) => item.kind === 'unlocked').map((item) => item.raidId).sort();
+  // Within the last hour a deadline of one hour or more has always passed (the boundary, closing exactly now, counts as passed); 0 or none has not.
+  assert.deepEqual(unlocked([row('plain'), row('zero', { close_hours: 0 }), row('hour', { close_hours: 1 }), row('exact', { close_hours: 1, starts_at: NOW + 60 * 60000 })]), ['plain', 'zero'], 'a deadline that has passed hides it');
+});
+
+check('deadline: Needs attention (route) - the "unlocked" hint follows the team\'s deadline', async () => {
+  const s = await laneWorld();
+  // A raid starting in 40 minutes on the clock 2027-01-16 12:00Z: raid on the 16th at 07:40 New York.
+  const soon = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-16', startTime: '07:40' });
+  const kinds = async () => (await s.call('bob', 'GET', '/attention')).json.items.filter((item) => item.raidId === soon.id).map((item) => item.kind).sort();
+  assert.deepEqual(await kinds(), ['low_signups', 'unlocked']);
+  await s.call('bob', 'PUT', `/teams/${s.A}/schedule`, { slots: [], signupCloseHours: 1 });
+  assert.deepEqual(await kinds(), ['low_signups'], 'members are shut out an hour before: nothing is "still open"');
+  assert.equal((await s.call('bob', 'PATCH', s.raid(soon.id), { signupCloseHours: 0 })).status, 200);
+  assert.deepEqual(await kinds(), ['low_signups', 'unlocked'], 'the raid\'s own 0 reopens the hint');
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';

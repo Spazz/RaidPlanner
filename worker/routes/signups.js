@@ -11,8 +11,8 @@ import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { raidSizeFields } from '../raid-zones.js';
 import { SINGLE_LINE_STRIP, isSpecOf } from '../roster-data.js';
 import {
-  NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closedReason, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey, signUpSpecLabel,
-  specChoices,
+  NOTE_MAX, SELF_KINDS, SIGNUP_KINDS, closeHoursOf, closedReason, closesAtOf, countSignups, mergeSignups, raidHelperClassName, raidHelperSpecKey,
+  signUpSpecLabel, specChoices,
 } from '../signups-data.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { bad } from './roster.js';
@@ -20,9 +20,31 @@ import { bad } from './roster.js';
 const CHANGED_ONE = { sql: 'changes() = 1', params: [] };
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
 
-const closedError = (reason) => new HttpError(409, 'signups_closed', reason === 'started'
-  ? 'This raid has started: sign-ups can no longer be changed here. Ask an officer.'
-  : 'An officer has closed sign-ups for this raid. Ask an officer.', { reason });
+// 409 signups_closed: reason 'started' | 'locked' | 'deadline'; a deadline also says when the window closed (closesAt, epoch ms). raid: the row the reason came from.
+function closedError(reason, raid) {
+  if (reason === 'started') return new HttpError(409, 'signups_closed', 'This raid has started: sign-ups can no longer be changed here. Ask an officer.', { reason });
+  if (reason === 'deadline') {
+    const hours = closeHoursOf(raid);
+    return new HttpError(409, 'signups_closed', `Sign-ups closed ${hours} ${hours === 1 ? 'hour' : 'hours'} before the start of this raid. Ask an officer.`, { reason, closesAt: closesAtOf(raid) });
+  }
+  return new HttpError(409, 'signups_closed', 'An officer has closed sign-ups for this raid. Ask an officer.', { reason });
+}
+
+// A member's window in SQL, re-checked inside every member write: the raid is not locked and its start is more than the deadline hours away (the raid's own
+// number, else the team's). Binds (raidId, now). Must agree with closedReason in worker/signup-window.js: closed when starts_at - hours * 3600000 <= now.
+const WINDOW_OPEN_SQL = `EXISTS (SELECT 1 FROM raids WHERE id = ? AND raids.signups_locked = 0
+    AND raids.starts_at - COALESCE(raids.signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = raids.team_id), 0) * 3600000 > ?)`;
+
+// After a member's write found the window shut: the 409 to answer with, from the raid as it is now (null when it is open after all).
+async function windowError(ctx, raidId) {
+  const fresh = await ctx.db.prepare(
+    `SELECT starts_at, signups_locked, signup_close_hours, (SELECT t.signup_close_hours FROM teams t WHERE t.id = raids.team_id) AS team_close_hours
+       FROM raids WHERE id = ?`,
+  ).bind(raidId).first();
+  if (!fresh) return closedError('started', null);
+  const reason = closedReason(fresh, ctx.now());
+  return reason ? closedError(reason, fresh) : null;
+}
 
 const CHARACTER_COLUMNS = 'id, player_id, name, class, main_spec, off_spec, is_main, team_id';
 
@@ -46,7 +68,8 @@ export async function buildView(ctx, guildContext, raid) {
   const self = allows(can, 'signups.self', teamId);
   const seeList = allows(can, 'attendance.view', teamId);
   const seeNicknames = allows(can, 'roster.edit', teamId);
-  const closed = closedReason(raid, ctx.now());
+  const closeHours = closeHoursOf(raid);
+  const closed = closedReason(raid, ctx.now(), closeHours);
   const userId = ctx.session.user.id;
   // The viewer's own person is the one linked to their account or carrying their Discord ID (worker/membership.js), so an account that signs in with Battle.net only has one too.
   const statements = [
@@ -108,6 +131,7 @@ export async function buildView(ctx, guildContext, raid) {
   return {
     raid: {
       id: raid.id, teamId, startsAt: raid.starts_at, upcoming: raid.starts_at > ctx.now(), locked: raid.signups_locked === 1, closed,
+      closesAt: closesAtOf(raid, closeHours), closeHours, closeHoursOverride: raid.signup_close_hours,
       ...raidSizeFields(raid, raid.team_size, guild.game_version),
     },
     can: { edit, self: !!me, seeList, seeNicknames },
@@ -206,7 +230,7 @@ async function writeSignup(ctx, guildContext, raid, personId, input, self) {
 
   const now = ctx.now();
   const guard = self
-    ? { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ? AND starts_at > ? AND signups_locked = 0)', params: [raid.id, now] }
+    ? { sql: WINDOW_OPEN_SQL, params: [raid.id, now] }
     : { sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ?)', params: [raid.id] };
   const statements = [
     db.prepare(
@@ -227,10 +251,7 @@ async function writeSignup(ctx, guildContext, raid, personId, input, self) {
     statements.push(raidAudit(ctx, guildContext, 'signup.set', raid.id, existing ? { kind: 'set' } : null, { personId, kind: input.kind }, CHANGED_ONE));
   }
   const results = await db.batch(statements);
-  if (results[0].meta.changes !== 1) {
-    const fresh = await db.prepare('SELECT starts_at, signups_locked FROM raids WHERE id = ?').bind(raid.id).first();
-    throw closedError(fresh ? closedReason(fresh, ctx.now()) : 'started');
-  }
+  if (results[0].meta.changes !== 1) throw (await windowError(ctx, raid.id)) || closedError('locked', raid);
   await recomputeIfEvidence(ctx, guild, raid);
 }
 
@@ -247,7 +268,7 @@ async function mySignupContext(ctx) {
   const person = await ownPersonStatement(ctx.db, guildContext.guild.id, ctx.session.user.id).first();
   if (!person) throw forbidden();
   const reason = closedReason(raid, ctx.now());
-  if (reason) throw closedError(reason);
+  if (reason) throw closedError(reason, raid);
   return { guildContext, raid, personId: person.id };
 }
 
@@ -262,12 +283,14 @@ export async function deleteMySignup(ctx) {
   const { guildContext, raid, personId } = await mySignupContext(ctx);
   const results = await ctx.db.batch([
     ctx.db.prepare(
-      `DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ?
-          AND EXISTS (SELECT 1 FROM raids WHERE id = ? AND starts_at > ? AND signups_locked = 0) RETURNING signup_id`,
+      `DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? AND ${WINDOW_OPEN_SQL} RETURNING signup_id`,
     ).bind(raid.id, personId, raid.id, ctx.now()),
     ctx.db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1").bind(raid.id, guildContext.guild.id),
   ]);
-  if (!results[0].results.length) throw new HttpError(404, 'not_found', 'You have not signed up here.');
+  if (!results[0].results.length) {
+    // Nothing deleted: either there was no sign-up, or the window shut between the read and the write.
+    throw (await windowError(ctx, raid.id)) || new HttpError(404, 'not_found', 'You have not signed up here.');
+  }
   await recomputeIfEvidence(ctx, guildContext.guild, raid);
   return viewReply(ctx, guildContext, raid);
 }

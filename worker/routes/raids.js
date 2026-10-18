@@ -18,7 +18,7 @@ import {
   cleanCharacterName, cleanNickname, isRealDate, nameKey, realmKey, SINGLE_LINE_STRIP,
 } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
-import { MAX_CLOSE_HOURS, closedReason, isCloseHours, plannerName } from '../signups-data.js';
+import { MAX_CLOSE_HOURS, closedReason, closesAtOf, isCloseHours, plannerName } from '../signups-data.js';
 import {
   fetchRaidHelperEvent, fetchWclPulls, parseRaidHelperSource, parseWclSource, requireWclConfigured,
 } from '../sources.js';
@@ -60,7 +60,8 @@ const raidExists = (raidId) => ({ sql: 'EXISTS (SELECT 1 FROM raids WHERE id = ?
 export async function loadRaid(ctx, guildContext, { edit = false } = {}) {
   const raid = await ctx.db.prepare(
     `SELECT r.*, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
-            (SELECT t.size FROM teams t WHERE t.id = r.team_id) AS team_size
+            (SELECT t.size FROM teams t WHERE t.id = r.team_id) AS team_size,
+            (SELECT t.signup_close_hours FROM teams t WHERE t.id = r.team_id) AS team_close_hours
        FROM raids r WHERE r.id = ? AND r.guild_id = ?`,
   ).bind(ctx.params.rid, guildContext.guild.id).first();
   if (!raid) throw notFound();
@@ -236,7 +237,7 @@ export async function listRaids(ctx) {
   const guild = guildContext.guild;
   const now = ctx.now();
   const [teamResult, raidResult, policyResult, upcomingResult, mineResult, scheduleResult] = await ctx.db.batch([
-    ctx.db.prepare('SELECT id, name, archived, size FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
+    ctx.db.prepare('SELECT id, name, archived, size, signup_close_hours FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
     ctx.db.prepare(
       `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.size, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
               (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
@@ -251,7 +252,7 @@ export async function listRaids(ctx) {
     policyRowsStatement(ctx.db, guild.id),
     // Raids that have not started: all of them, soonest first, outside the paging of the past ones.
     ctx.db.prepare(
-      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.size, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live, r.signups_locked,
+      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.size, r.signup_close_hours, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live, r.signups_locked,
 ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = '${kind}') AS n_${kind}`).join(',\n')}
          FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND r.starts_at > ?
         ORDER BY r.starts_at, r.id`,
@@ -277,8 +278,9 @@ ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s
   }
   const scheduleRow = scheduleResult.results[0];
   const page = raidResult.results.slice(0, PAGE_SIZE);
+  const rowCloseHours = (row) => row.signup_close_hours ?? team.signup_close_hours; // a raid's own sign-up deadline, else the team's
   return jsonResponse({
-    team: { id: team.id, name: team.name, archived: team.archived === 1, size: team.size },
+    team: { id: team.id, name: team.name, archived: team.archived === 1, size: team.size, signupCloseHours: team.signup_close_hours },
     today: guildToday(guild, now),
     can: { edit: canEdit, signup: canSelf },
     // The weekly schedule, for those who can create raids from it: how many slots, the weeks it fills and whether opening Raids fills them.
@@ -297,7 +299,9 @@ ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s
       otherServer: row.event_server !== null && row.event_server !== guild.discord_server_id,
       signups: seeCounts ? Object.fromEntries(SIGNUP_KINDS.map((kind) => [kind, row[`n_${kind}`]])) : null,
       locked: row.signups_locked === 1,
-      signupsOpen: !closedReason({ starts_at: row.starts_at, signups_locked: row.signups_locked }, now),
+      signupsOpen: !closedReason({ starts_at: row.starts_at, signups_locked: row.signups_locked }, now, rowCloseHours(row)),
+      closesAt: closesAtOf(row, rowCloseHours(row)),
+      closeHours: rowCloseHours(row),
       mine: mine.get(row.id) || null,
       planned: row.plan_synced !== null,
       planLive: canEdit ? row.plan_live : null, // the id is an edit link to the plan: only for those who may edit

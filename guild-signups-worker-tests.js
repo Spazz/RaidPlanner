@@ -463,7 +463,7 @@ check('self: a member signs themselves up; defaults are the Main on the team and
   assert.deepEqual([row.discord_user_id, row.nickname, row.updated_by === s.ids.erin, row.created_at > 0, row.updated_at === row.created_at], [null, null, true, true, true]);
   const v = put.json;
   assert.deepEqual(Object.keys(v).sort(), ['can', 'counts', 'entries', 'me', 'raid', 'roster']);
-  assert.deepEqual(v.raid, { id: s.raidId, teamId: s.A, startsAt: s.startsAt, upcoming: true, locked: false, closed: null, size: 25, sizeOverride: null });
+  assert.deepEqual(v.raid, { id: s.raidId, teamId: s.A, startsAt: s.startsAt, upcoming: true, locked: false, closed: null, closesAt: s.startsAt, closeHours: 0, closeHoursOverride: null, size: 25, sizeOverride: null });
   assert.deepEqual(v.can, { edit: false, self: true, seeList: true, seeNicknames: false });
   assert.equal(v.roster, null, 'the officers\' picker is for officers');
   assert.deepEqual(v.me.characters.map((c) => [c.name, c.isMain]), [['Eliora', true], ['Mirabel', false]], 'only the characters on the raid\'s team, the Main first');
@@ -887,7 +887,7 @@ check('schedule: save and read the weekly slots; replace-all; weeks and auto are
   const audit = await s.w.rows("SELECT action, entity_type, entity_id, before, after FROM audit_log WHERE action = 'schedule.update' ORDER BY rowid");
   assert.equal(audit.length, 4);
   assert(audit.every((a) => a.entity_type === 'team' && a.entity_id === s.A));
-  assert.deepEqual([JSON.parse(audit[0].before), JSON.parse(audit[0].after)], [{ slots: 0, weeks: 2, auto: false }, { slots: 2, weeks: 3, auto: true }]);
+  assert.deepEqual([JSON.parse(audit[0].before), JSON.parse(audit[0].after)], [{ slots: 0, weeks: 2, auto: false, signupCloseHours: 0 }, { slots: 2, weeks: 3, auto: true, signupCloseHours: 0 }]);
   assert(!audit.some((a) => /Secret|Progression/.test(`${a.before}${a.after}`)));
 });
 

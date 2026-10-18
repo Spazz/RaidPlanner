@@ -4,6 +4,7 @@ import { HttpError } from './http.js';
 import { allows } from './permissions.js';
 import { findUnmatched, makePolicyResolver, presenceKey } from './attendance-store.js';
 import { raidSizeFields } from './raid-zones.js';
+import { closeHoursOf, closesAtOf } from './signup-window.js';
 
 export const OUTCOME_PRESENT = ['present', 'late', 'left_early', 'late_left', 'fill_in'];
 
@@ -49,7 +50,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const bind = (sql) => db.prepare(sql).bind(guild.id, raidId);
   const [raidResult, reportResult, pullResult, signupResult, planResult, attendanceResult, characterResult, presenceResult, guestResult,
     policyResult, userResult, teamResult, flagResult, decisionResult, manualResult] = await db.batch([
-    bind(`SELECT r.*, t.name AS team_name, t.size AS team_size, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
+    bind(`SELECT r.*, t.name AS team_name, t.size AS team_size, t.signup_close_hours AS team_close_hours, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
             FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id WHERE r.guild_id = ?1 AND r.id = ?2`),
     bind(`SELECT code, flavour, started_at, ended_at, owner, synced_at,
                  (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = raid_reports.raid_id AND p.report_code = raid_reports.code) AS pulls
@@ -165,6 +166,9 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       stale: isStale(state),
       version: raid.version,
       signupsLocked: raid.signups_locked === 1,
+      closesAt: closesAtOf(raid), // when members' sign-ups close: the start less the deadline (the raid's own, else the team's)
+      closeHours: closeHoursOf(raid),
+      closeHoursOverride: raid.signup_close_hours,
       manual: raid.log_mode === 'manual'
         ? {
           reason: review ? raid.manual_reason : null, by: review && manualBy ? userName(manualBy) : null, at: raid.manual_at,
