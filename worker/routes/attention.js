@@ -7,6 +7,7 @@ import { watchList } from '../attendance-metrics.js';
 import { makePolicyResolver, policyRowsStatement } from '../attendance-store.js';
 import { displayCharacter, groupBy } from '../attendance-view.js';
 import { LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, buildAttention } from '../attention.js';
+import { onboardingStatement, shapeOnboarding } from '../onboarding.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { effectiveRaidSize } from '../raid-zones.js';
 import { guildToday } from '../roster-view.js';
@@ -40,7 +41,7 @@ export async function getAttention(ctx) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -115,6 +116,8 @@ export async function getAttention(ctx) {
         GROUP BY r.id ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
       now,
     ),
+    // The setup checklist's flags, for the people who set the guild up (no statement for anyone else: `onboarding` is then undefined).
+    ...[onboardingStatement(db, guildContext)].filter(Boolean),
   ]);
 
   // The watch list of each team: its people are those with a character on it or a row in its attendance.
@@ -163,5 +166,6 @@ export async function getAttention(ctx) {
     watch,
     rosterDeclined: rosterDeclined.results,
   });
-  return jsonResponse({ today, ...built });
+  // The setup checklist (null for anyone who does not set the guild up, once dismissed, and once every step is done); it never counts toward `total`.
+  return jsonResponse({ today, ...built, onboarding: shapeOnboarding(onboarding) });
 }

@@ -3,11 +3,12 @@ import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
+import { LIMITS, TEAM_LIMIT_MESSAGE } from '../limits.js';
 import { RAID_SIZES, isRaidSize } from '../raid-zones.js';
 
 const MAX_TEAM_NAME = 40;
-export const MAX_ACTIVE_TEAMS = 50;
-const TEAM_CAP_MESSAGE = `A guild can have at most ${MAX_ACTIVE_TEAMS} active teams. Archive one first.`;
+export const MAX_ACTIVE_TEAMS = LIMITS.teams;
+const TEAM_CAP_MESSAGE = TEAM_LIMIT_MESSAGE;
 const ACTIVE_TEAM_COUNT = 'SELECT COUNT(*) AS n FROM teams WHERE guild_id = ? AND archived = 0';
 const TEAM_NAME_TAKEN = 'Another active team in this guild already has that name.';
 const DEFAULT_TEAM_SIZE = 25;
@@ -71,7 +72,7 @@ export async function createTeam(ctx) {
     if (isUniqueViolation(error)) throw new HttpError(409, 'team_name_taken', TEAM_NAME_TAKEN, { field: 'name' });
     throw error;
   }
-  if (results[0].meta.changes !== 1) throw new HttpError(400, 'bad_request', TEAM_CAP_MESSAGE, { field: 'name' });
+  if (results[0].meta.changes !== 1) throw new HttpError(409, 'team_limit', TEAM_CAP_MESSAGE, { field: 'name' });
   return jsonResponse({ team: teamView({ id, name, size, archived: 0 }) }, 201);
 }
 
@@ -95,7 +96,7 @@ export async function patchTeam(ctx) {
 
   if (current.archived === 1 && archived === 0) {
     const count = await ctx.db.prepare(ACTIVE_TEAM_COUNT).bind(guildContext.guild.id).first('n');
-    if (count >= MAX_ACTIVE_TEAMS) throw new HttpError(400, 'bad_request', TEAM_CAP_MESSAGE, { field: 'name' });
+    if (count >= MAX_ACTIVE_TEAMS) throw new HttpError(409, 'team_limit', TEAM_CAP_MESSAGE, { field: 'name' });
   }
 
   const audit = (action, before, after) => auditStatement(ctx, {

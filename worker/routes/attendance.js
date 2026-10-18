@@ -16,7 +16,7 @@ import { CLASS_IDS, CREATE_STATUSES, cleanCharacterName, DEFAULT_WCL_FLAVOUR, is
 import { guildToday, viewerOf } from '../roster-view.js';
 import { listWclReports, requireWclConfigured } from '../sources.js';
 import {
-  bad, constraintOf, errorText, findNameOwner, insertCharacter, limitError, makeMainStatements, nameTaken, requireTarget, resolveRealm,
+  bad, constraintOf, errorText, findNameOwner, insertCharacter, LIMIT_KINDS, limitError, makeMainStatements, nameTaken, requireTarget, resolveRealm,
 } from './roster.js';
 import { loadRaid, raidFetchRate, recomputeAndReply } from './raids.js';
 
@@ -495,7 +495,7 @@ export async function postUnmatched(ctx) {
     results = await db.batch(statements);
   } catch (error) {
     const kind = constraintOf(error);
-    if (kind === 'character_limit' || kind === 'person_limit') throw limitError(kind);
+    if (LIMIT_KINDS.includes(kind)) throw limitError(kind);
     if (kind === 'character_name') throw nameTaken(cleanCharacterName(presence.name) || presence.name, null);
     if (kind === 'foreign_key') throw new HttpError(404, 'not_found', 'That person no longer exists.');
     throw error;

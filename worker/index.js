@@ -12,6 +12,7 @@ import { approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
 import { runScheduled } from './bnet-purge.js';
 import { claimGuild, createGuild, getGuild } from './routes/guild.js';
+import { deleteGuild, dismissOnboarding, exportGuild } from './routes/guild-data.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
 import { createRole, deleteRole, getRoles, resetRole, updateRole } from './routes/roles.js';
 import { getDiscord, putMaps, syncEveryone } from './routes/discord.js';
@@ -72,6 +73,10 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild', auth: true, handler: createGuild },
   { method: 'GET', path: '/api/guild/:gid', auth: true, handler: getGuild },
   { method: 'POST', path: '/api/guild/:gid/claim', auth: true, handler: claimGuild },
+  // Phase 8: the Guild Master's copy of the guild's data, deleting the guild, and hiding the setup checklist on Home.
+  { method: 'GET', path: '/api/guild/:gid/export', auth: true, handler: exportGuild },
+  { method: 'DELETE', path: '/api/guild/:gid', auth: true, handler: deleteGuild },
+  { method: 'POST', path: '/api/guild/:gid/onboarding/dismiss', auth: true, handler: dismissOnboarding },
   { method: 'POST', path: '/api/guild/:gid/teams', auth: true, handler: createTeam },
   { method: 'PATCH', path: '/api/guild/:gid/teams/:tid', auth: true, handler: patchTeam },
   { method: 'GET', path: '/api/guild/:gid/people', auth: true, handler: getPeople },
@@ -205,9 +210,9 @@ export const ROUTES = [
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },
 ];
 
-// deps: { db, env, fetch, now, randomBytes, log } -> { handle(request) }
+// deps: { db, env, fetch, now, randomBytes, log, routes? } -> { handle(request) }. routes replaces ROUTES (the isolation suite adds a deliberately leaky route to see its walker catch it).
 export function createApp(deps) {
-  const router = createRouter(ROUTES);
+  const router = createRouter(deps.routes || ROUTES);
   const base = {
     db: deps.db,
     env: deps.env || {},

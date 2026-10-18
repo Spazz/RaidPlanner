@@ -69,6 +69,7 @@ export async function listClaims(ctx) {
 const JOIN_GUARD_ERRORS = {
   person_limit: () => limitError('person_limit'),
   character_limit: () => limitError('character_limit'),
+  guild_characters_cap: () => limitError('guild_characters_cap'),
 };
 
 // Body: { expectedKind, teamId (add_alt and new_person), status (new_person: raider | trial | reserve) }.

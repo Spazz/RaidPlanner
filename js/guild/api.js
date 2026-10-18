@@ -151,6 +151,13 @@
   G.api.attention = {
     get: function (gid) { return G.api.get(guildPath(gid, '/attention')); },
   };
+  // Phase 8 (other guilds): the Guild Master's copy of the guild's data and deleting the guild, and hiding the setup checklist on Home.
+  // exportUrl is a plain download link (the browser sends the session cookie; the Worker answers with a file).
+  G.api.guildData = {
+    exportUrl: function (gid) { return guildPath(gid, '/export'); },
+    remove: function (gid, confirmName) { return G.api.del(guildPath(gid, ''), { confirmName: confirmName }); },
+    dismissOnboarding: function (gid) { return G.api.post(guildPath(gid, '/onboarding/dismiss'), {}); },
+  };
   function rosterPath(gid, pid, tail) { return guildPath(gid, '/roster/' + encodeURIComponent(pid) + (tail || '')); }
   G.api.trial = {
     get: function (gid, pid) { return G.api.get(rosterPath(gid, pid, '/trial')); },

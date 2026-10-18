@@ -7,6 +7,9 @@ export const IMPORT_WINDOW_MS = 10 * 60 * 1000;
 // The idea box on the Future enhancements page (per user).
 export const IDEA_LIMIT = 20;
 export const IDEA_WINDOW_MS = 60 * 60 * 1000;
+// Guild data exports (per user): a whole-guild read.
+export const EXPORT_LIMIT = 5;
+export const EXPORT_WINDOW_MS = 15 * 60 * 1000;
 export const WCL_GLOBAL_LIMIT = 60;
 export const WCL_GLOBAL_KEY = 'wcl:global';
 // Raid report fetches and the backfill list (per user): one report per request, a backfill is a dozen of them.
@@ -38,6 +41,7 @@ export async function checkRateLimit(db, userId, nowMs, { limit = RATE_LIMIT, wi
 export function rateLimitMessage(key) {
   if (/^idea:/.test(key)) return 'You have suggested a lot of ideas this hour. Come back a little later.';
   if (/^acct:/.test(key)) return 'Too many account look-ups. Wait a few minutes and try again.';
+  if (/^exp:/.test(key)) return 'Too many guild data exports. Wait a few minutes and try again.';
   return /^(?:imp|wcl|wclraid):/.test(key)
     ? 'Too many imports. Wait a moment and try again.'
     : 'Too many changes in a minute. Wait a moment and try again.';

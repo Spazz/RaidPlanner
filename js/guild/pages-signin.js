@@ -62,6 +62,8 @@
     return {
       canCreate: canCreate,
       discord: discord,
+      // A guild belongs to a Discord server, so an account with Battle.net alone cannot create one until Discord is connected.
+      createNote: discord ? '' : '<p class="gs-fine" id="create-needs-discord">A guild of your own needs Discord too, because it belongs to a Discord server. <a href="#/linked">Connect Discord to create a guild.</a></p>',
       removedNote: removed.length
         ? '<p class="gs-warn gs-removed-note" id="removed-note" role="status">An officer removed your access to ' + G.ui.joinNames(removed) + '.</p>'
         : '',
@@ -82,7 +84,7 @@
     const p = noGuildParts(me);
     return '<div class="gs-card-wrap"><div class="gs-card">' +
       '<h1 class="gs-h1 gs-h1-lg" tabindex="-1">You\'re not in a Raidsmith guild yet</h1>' + p.removedNote +
-      '<p class="gs-lead">' + p.lead + '</p>' + p.claimNote +
+      '<p class="gs-lead">' + p.lead + '</p>' + p.claimNote + p.createNote +
       '<div class="gs-actions">' + (p.discord ? '<a class="gs-btn" href="/auth/login">Sign in again</a>' : '<a class="gs-btn gs-btn-molten" href="#/linked">Connect Discord</a>') +
       (p.canCreate ? '<a class="gs-btn gs-btn-molten" href="#/new">Create a guild</a>' : '') +
       '<a class="gs-btn' + (p.canCreate || !p.discord ? '' : ' gs-btn-molten') + '" href="/" data-action="open-planner">Open the planner</a></div>' +
@@ -95,16 +97,16 @@
     const p = noGuildParts(me);
     return '<div class="gs-notice gs-noguild-notice" role="status"><div class="gs-notice-body">' +
       '<h2 class="gs-notice-title">You\'re not in a Raidsmith guild yet</h2>' + p.removedNote +
-      '<p class="gs-notice-text">' + p.lead + '</p>' + p.claimNote + '</div>' +
+      '<p class="gs-notice-text">' + p.lead + '</p>' + p.claimNote + p.createNote + '</div>' +
       (p.discord ? '<a class="gs-btn gs-btn-sm" href="/auth/login">Sign in again</a>' : '<a class="gs-btn gs-btn-sm" href="#/linked">Connect Discord</a>') + '</div>';
   }
 
-  // A plain page that says why (access removed, not a member, forbidden, load failure).
+  // A plain page that says why (access removed, not a member, forbidden, load failure). opts.actionsHtml: buttons to put before Back to start.
   function messageHtml(title, text, opts) {
     const o = opts || {};
     return card('<h1 class="gs-h1 gs-h1-lg" tabindex="-1">' + esc(title) + '</h1><p class="gs-lead">' + esc(text) + '</p>' +
-      '<div class="gs-actions">' + (o.retry ? '<button type="button" class="gs-btn" data-action="retry">Try again</button>' : '') +
-      '<a class="gs-btn' + (o.retry ? '' : ' gs-btn-molten') + '" href="#/">Back to start</a></div>');
+      '<div class="gs-actions">' + (o.actionsHtml || '') + (o.retry ? '<button type="button" class="gs-btn" data-action="retry">Try again</button>' : '') +
+      '<a class="gs-btn' + (o.retry || o.actionsHtml ? '' : ' gs-btn-molten') + '" href="#/">Back to start</a></div>');
   }
 
   function loadingHtml() {

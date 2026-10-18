@@ -22,7 +22,7 @@ function check(name, fn) { checks.push({ name, fn }); }
 const usageError = (argv, pattern) => assert.throws(() => smoke.parseArgs(argv), (error) => error.usage === true && pattern.test(error.message), argv.join(' '));
 
 check('up: a name alone gives the defaults (first free port later, discord + sources)', () => {
-  assert.deepEqual(smoke.parseArgs(['up', '--name', 'proof']), { command: 'up', name: 'proof', port: null, fakes: ['discord', 'sources'], script: null, scriptArgs: [] });
+  assert.deepEqual(smoke.parseArgs(['up', '--name', 'proof']), { command: 'up', name: 'proof', port: null, fakes: ['discord', 'sources'], open: false, script: null, scriptArgs: [] });
 });
 
 check('up: --port and --with, also in the --flag=value form; discord is always on and the order is fixed', () => {
@@ -31,6 +31,16 @@ check('up: --port and --with, also in the --flag=value form; discord is always o
   assert.deepEqual(options.fakes, ['discord', 'sources', 'bnet']);
   assert.deepEqual(smoke.parseArgs(['up', '--name', 'x', '--with', 'discord']).fakes, ['discord']);
   assert.deepEqual(smoke.parseArgs(['up', '--with', 'bnet', '--name', 'x', '--port', '8790']).fakes, ['discord', 'bnet']);
+});
+
+check('up: --open means no creator allowlist and takes no value, only on up; the variable is still passed (a comma, nobody listed), so a local .env cannot fill it', () => {
+  assert.equal(smoke.parseArgs(['up', '--name', 'x', '--open']).open, true);
+  assert.equal(smoke.parseArgs(['up', '--open', '--name', 'x', '--port', '8792']).port, 8792);
+  usageError(['up', '--name', 'x', '--open=1'], /--open takes no value/);
+  usageError(['down', '--name', 'x', '--open'], /unknown option --open/);
+  const value = (args) => Object.fromEntries(args.filter((_, index) => index % 2 === 1).map((arg) => [arg.slice(0, arg.indexOf(':')), arg.slice(arg.indexOf(':') + 1)])).GUILD_CREATOR_ALLOWLIST;
+  assert.equal(value(smoke.workerVars(8792, ['discord'], '110000000000000001')), '110000000000000001');
+  assert.equal(value(smoke.workerVars(8792, ['discord'], '110000000000000001', true)), ',');
 });
 
 check('up: the port must be 8790-8799, so 8787 (the live localhost) and anything else is refused', () => {

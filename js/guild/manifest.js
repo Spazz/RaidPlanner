@@ -48,6 +48,7 @@
     '/js/guild/pages-settings-bnet.js',
     '/js/guild/pages-settings-schedule.js',
     '/js/guild/pages-settings-activity.js',
+    '/js/guild/pages-settings-data.js',
     '/js/guild/pages-attention.js',
     '/js/guild/pages-backfill.js',
     '/js/guild/pages-privacy.js',

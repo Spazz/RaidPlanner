@@ -35,6 +35,17 @@
     unlocked: { name: 'section', section: 'raids' },
   };
 
+  // The setup checklist (Phase 8): GET /attention sends onboarding: { steps: [{ id, done }], done, total } to the people who set the guild up, until it is
+  // dismissed or every step is done. The steps tick themselves from the guild's data; this table is the wording and the page each step opens.
+  const ONBOARDING = [
+    { id: 'teams', title: 'Set up your teams', hint: 'Name your raid teams, or give a team a weekly schedule.', route: { name: 'settings', tab: 'teams' } },
+    { id: 'roster', title: 'Import your roster', hint: 'From Raid-Helper, Warcraft Logs or Battle.net, or add people by hand.', route: { name: 'section', section: 'roster' } },
+    { id: 'attendance', title: 'Set the attendance rules', hint: 'What counts as present, late or absent, and when someone is on the watch list.', route: { name: 'settings', tab: 'attendance' } },
+    { id: 'raid', title: 'Add your first raid', hint: 'From a Warcraft Logs report, a Raid-Helper event or by hand.', route: { name: 'raidnew' } },
+    { id: 'officers', title: 'Invite your officers', hint: 'Give officers their role, by hand or from a Discord role.', route: { name: 'settings', tab: 'people' } },
+    { id: 'loot', title: 'Import loot', hint: 'Bring in a Gargul export for a raid.', route: { name: 'section', section: 'loot' } },
+  ];
+
   function st() { return G.app.state; }
   function a() { return G.pages.attendance.attState(); }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
@@ -122,7 +133,35 @@
     }).join('');
   }
 
-  // opts: { guildData, data (GET /attention), refreshing, error }
+  function onboardingStepOf(onboarding, id) {
+    const steps = onboarding && Array.isArray(onboarding.steps) ? onboarding.steps : [];
+    return steps.filter(function (s) { return s && s.id === id; })[0] || null;
+  }
+
+  // The checklist card. Every step is a link to its page; a finished step is ticked and says so in words. '' when there is nothing to show.
+  function onboardingHtml(gid, onboarding, busy) {
+    if (!onboarding || !Array.isArray(onboarding.steps) || !onboarding.steps.length) return '';
+    const total = ONBOARDING.length;
+    const done = ONBOARDING.filter(function (def) { const s = onboardingStepOf(onboarding, def.id); return !!(s && s.done); }).length;
+    const dots = ONBOARDING.map(function (def) {
+      const s = onboardingStepOf(onboarding, def.id);
+      return '<span class="gs-onboard-dot' + (s && s.done ? ' is-done' : '') + '"></span>';
+    }).join('');
+    const items = ONBOARDING.map(function (def, i) {
+      const s = onboardingStepOf(onboarding, def.id);
+      const isDone = !!(s && s.done);
+      const href = G.router.format(Object.assign({}, def.route, { gid: gid }));
+      return '<li class="gs-onboard-step' + (isDone ? ' is-done' : '') + '"><span class="gs-onboard-mark" aria-hidden="true">' + (isDone ? G.icons.icon('check', 16) : esc(i + 1)) + '</span>' +
+        '<a class="gs-onboard-link" href="' + esc(href) + '">' + esc(def.title) + (isDone ? '<span class="gs-sr"> (done)</span>' : '') + '</a>' +
+        '<span class="gs-onboard-hint">' + esc(def.hint) + '</span></li>';
+    }).join('');
+    return '<section class="gs-onboard" aria-labelledby="onb-h"><div class="gs-onboard-head"><div><h2 class="gs-h2" id="onb-h">Set up your guild</h2>' +
+      '<p class="gs-sub"><span class="gs-onboard-dots" aria-hidden="true">' + dots + '</span>' + esc(done + ' of ' + total + ' steps done') + '</p></div>' +
+      '<button type="button" class="gs-btn gs-btn-sm" data-action="onboarding-dismiss" data-key="onboarding-dismiss"' + (busy ? ' disabled' : '') + '>Dismiss</button></div>' +
+      '<ol class="gs-onboard-steps">' + items + '</ol></section>';
+  }
+
+  // opts: { guildData, data (GET /attention), refreshing, error, dismissing }
   function attentionHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
@@ -137,7 +176,7 @@
     const empty = actions ? '' : '<section class="gs-empty-card" aria-labelledby="attn-empty-h"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('check', 28) + '</span>' +
       '<h2 class="gs-h2 gs-h2-lg" id="attn-empty-h">Nothing needs you right now</h2><p class="gs-lead gs-lead-sm">Reviews, claims, trials and sign-ups that need an officer show up here.</p></section>';
     return '<div class="gs-page gs-attn-page">' + head + G.ui.alertHtml(opts.error || '', 'gs-page-alert') +
-      '<p class="gs-sr" id="attn-status" role="status"></p>' +
+      '<p class="gs-sr" id="attn-status" role="status"></p>' + onboardingHtml(gid, data.onboarding, !!opts.dismissing) +
       (actions ? '<section class="gs-attn-section" aria-labelledby="attn-todo-h"><h2 class="gs-h2" id="attn-todo-h">Needs attention</h2>' + actions + '</section>' : '') + empty +
       (info ? '<section class="gs-attn-section" aria-labelledby="attn-info-h"><h2 class="gs-h2" id="attn-info-h">For your information</h2>' + info + '</section>' : '') + '</div>';
   }
@@ -155,7 +194,7 @@
   function main(r, gd) {
     const x = a().attention;
     if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
-    return attentionHtml({ guildData: gd, data: x.data, refreshing: x.refreshing, error: x.error });
+    return attentionHtml({ guildData: gd, data: x.data, refreshing: x.refreshing, error: x.error, dismissing: x.dismissing });
   }
 
   // ── handlers ──
@@ -185,6 +224,32 @@
     });
   };
 
+  // Hides the checklist for everyone who sets the guild up (the Worker keeps it; the card does not come back).
+  G.handlers.click['onboarding-dismiss'] = function () {
+    const x = a().attention;
+    if (!x || x.dismissing) return null;
+    x.dismissing = true;
+    x.error = '';
+    G.app.render();
+    return G.api.guildData.dismissOnboarding(x.gid).then(function () {
+      x.dismissing = false;
+      if (x.data) x.data.onboarding = null;
+      G.app.render();
+      G.ui.announce('attn-status', 'The setup checklist is hidden.');
+      G.ui.focusByKey('attn-refresh', { preventScroll: true });
+      return null;
+    }, function (err) {
+      x.dismissing = false;
+      const c = G.api.classify(err);
+      if (c.view === 'signin') { G.app.requireSignin(); return null; }
+      if (c.view === 'message') { G.app.showFailure(c.title, c.text); return null; }
+      x.error = c.text;
+      G.app.render();
+      G.ui.focusByKey('onboarding-dismiss', { preventScroll: true });
+      return null;
+    });
+  };
+
   // The review queue shows the selected team's raids: choose the item's team, then let the link navigate as it would anyway.
   G.handlers.click['attn-open'] = function (el) {
     const gid = st().currentGid;
@@ -196,6 +261,8 @@
     KINDS: KINDS,
     itemText: itemText,
     itemHref: itemHref,
+    ONBOARDING: ONBOARDING,
+    onboardingHtml: onboardingHtml,
     attentionHtml: attentionHtml,
     load: load,
     main: main,

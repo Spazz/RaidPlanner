@@ -545,7 +545,7 @@
       const attKey = attPageKey(r);
       if (attKey && r.name !== 'settings') return loadAttendance(attKey, r, gd);
       if (r.name !== 'settings') return null;
-      const tabs = G.shell.settingsTabs(gd.me && gd.me.can);
+      const tabs = G.shell.settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles);
       if (!tabs.length) { failWith('You cannot open this', 'Guild settings are for the people who run the guild.', false); return null; }
       let tab = r.tab;
       if (!tab) {
@@ -750,6 +750,7 @@
         }
         if (tab === 'schedule') return P.settingsSchedule.main(r, gd, ctx);
         if (tab === 'activity') return P.settingsActivity.main(r, gd, ctx);
+        if (tab === 'data') return P.settingsData.main(r, gd, ctx);
         if (Object.prototype.hasOwnProperty.call(ROLE_TABS, tab)) {
           const x = state[ROLE_TABS[tab].state];
           if (!x || x.gid !== gd.guild.id) return P.signin.loadingHtml();
@@ -985,6 +986,15 @@
 
   app.afterGuildClaimed = function (res, guildName) {
     app.afterGuildCreated(res, 'You are now Guild Master of ' + guildName + '.');
+  };
+
+  // The Guild Master deleted a guild: forget what the page held of it, read the account's guilds again and go to the start (another guild's Home, or the
+  // no-guild card).
+  app.afterGuildDeleted = function (gid) {
+    delete state.guilds[gid];
+    delete state.attention[gid];
+    state.pageAlert = '';
+    loadMe().then(function () { go('#/', true); });
   };
 
   app.afterAccountDeleted = function () {

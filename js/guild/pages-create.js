@@ -131,13 +131,31 @@
       card('cg-teams-one', 'one', 'No, one team', !multiple) + card('cg-teams-many', 'many', 'Yes, several teams', multiple) + '</div>';
   }
 
+  // Why /auth/me create.allowed is false, in words. create.reason: needs_discord (a Battle.net-only account), reauth (the server list from the sign-in
+  // expired), no_server (no Discord server the account owns or administers is free); anything else (not_approved, or an older answer) is the plain refusal.
+  function cannotCreateHtml(create) {
+    const reason = create && create.reason;
+    const signin = G.pages.signin;
+    if (reason === 'needs_discord') {
+      return signin.messageHtml('Connect Discord to create a guild', 'A guild belongs to a Discord server, so creating one needs a Discord sign-in. Connect Discord to this account, then come back.',
+        { actionsHtml: '<a class="gs-btn gs-btn-molten" href="#/linked" data-key="create-connect-discord">Connect Discord</a>' });
+    }
+    if (reason === 'reauth') {
+      return signin.messageHtml('Sign in again to find your servers', 'Raidsmith looks at the Discord servers you manage when you sign in, and keeps that list for half an hour. Sign in with Discord again to create a guild.',
+        { actionsHtml: '<a class="gs-btn gs-btn-molten" href="/auth/login">Sign in with Discord</a>' });
+    }
+    if (reason === 'no_server') {
+      return signin.messageHtml('No Discord server to create a guild for', 'You can create a guild for a Discord server you own or administer (Administrator or Manage Server) that has no guild yet. Raidsmith found none on your account. If you were just given those rights, sign in again.',
+        { actionsHtml: '<a class="gs-btn" href="/auth/login">Sign in again</a>' });
+    }
+    return signin.messageHtml('You cannot create a guild', 'This account is not set up to create a guild. If your guild already exists, open it from the list on the left, or sign in again.');
+  }
+
   // opts: { me, timeZones, defaultTimeZone, alert }
   function createHtml(opts) {
     const o = opts || {};
     const create = (o.me && o.me.create) || { allowed: false };
-    if (!create.allowed) {
-      return G.pages.signin.messageHtml('You cannot create a guild', 'This account is not set up to create a guild. If your guild already exists, open it from the list on the left, or sign in again.');
-    }
+    if (!create.allowed) return cannotCreateHtml(create);
     createOptions = readOptions(create);
     const claim = claimHtml(claimableList(o.me));
     const alertHtml = o.alert ? G.ui.alertHtml(o.alert, 'gs-page-alert') : '';
@@ -163,11 +181,17 @@
     const staleBanner = stale
       ? '<p class="gs-alert" role="alert">Sign in again to refresh your server list. <a href="/auth/login">Sign in again</a></p>'
       : '';
-    const disabled = stale || !servers.length;
+    // One account may create a limited number of guilds (create.limit: { created, max }); at the limit the form stays but cannot be sent.
+    const limit = create.limit && typeof create.limit === 'object' ? create.limit : null;
+    const atLimit = !!limit && limit.created >= limit.max;
+    const limitBanner = atLimit
+      ? '<p class="gs-alert" id="cg-limit" role="alert">You have created ' + esc(limit.created) + ' guilds, the most one account can. Delete a guild you no longer use (Guild settings, Guild data) to make room.</p>'
+      : '';
+    const disabled = stale || !servers.length || atLimit;
 
     return alertHtml + claim + '<form class="gs-form" data-submit="create-guild" aria-label="Create a guild" novalidate>' +
       '<div><h1 class="gs-h1" tabindex="-1">Create a guild</h1><p class="gs-lead gs-lead-sm">Pick your guild\'s Discord server. Everyone in that server who signs in becomes a Member.</p></div>' +
-      staleBanner +
+      staleBanner + limitBanner +
       '<div class="gs-panel"><fieldset class="gs-fieldset"><legend class="gs-legend">Discord server</legend>' + serverList +
       '<p class="gs-field-error" id="cg-server-error" role="alert" hidden></p>' +
       '<p class="gs-fine">Only servers you own or administer are listed.</p></fieldset></div>' +
@@ -391,6 +415,7 @@
   G.pages.create = {
     claimHtml: claimHtml,
     claimableList: claimableList,
+    cannotCreateHtml: cannotCreateHtml,
     REGIONS: REGIONS,
     CREATED_NOTICE: CREATED_NOTICE,
     browserTimeZone: browserTimeZone,

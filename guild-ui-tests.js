@@ -795,12 +795,19 @@ function assertEscaped(out, label) {
     const { ACTIONS } = await import(pathToFileURL(path.join(ROOT, 'worker', 'permissions.js')).href);
     for (const def of defs) {
       assert(def.label && /^[A-Z]/.test(def.label), def.tab + ' has a label');
-      assert(def.needs.length > 0, def.tab + ' needs at least one action');
+      // The Guild Master's tab is shown by role (export and delete are not an action a role can be given), so it names no action.
+      if (def.guildMasterOnly) assert.deepEqual(plain(def.needs), [], def.tab + ' is shown by role, not by action');
+      else assert(def.needs.length > 0, def.tab + ' needs at least one action');
       for (const action of def.needs) assert(ACTIONS.includes(action), `${def.tab} needs ${action}, which is not a Worker action`);
     }
     const everything = Object.fromEntries(ACTIONS.map(action => [action, 'guild']));
-    assert.deepEqual(plain(G.shell.settingsTabs(everything)), plain(defs.map(def => ({ tab: def.tab, label: def.label }))));
+    const master = [{ role: 'guild_master' }];
+    const shown = defs => plain(defs.map(def => ({ tab: def.tab, label: def.label })));
+    assert.deepEqual(plain(G.shell.settingsTabs(everything)), shown(defs.filter(def => !def.guildMasterOnly)), 'the Guild Master tab needs the role, whatever the actions');
+    assert.deepEqual(plain(G.shell.settingsTabs(everything, [{ role: 'officer' }])), shown(defs.filter(def => !def.guildMasterOnly)));
+    assert.deepEqual(plain(G.shell.settingsTabs(everything, master)), shown(defs), 'the Guild Master sees every tab, in array order');
     assert.deepEqual(plain(G.shell.settingsTabs({})), []);
+    assert.deepEqual(plain(G.shell.settingsTabs({}, master).map(t => t.tab)), plain(defs.filter(def => def.guildMasterOnly).map(def => def.tab)));
     for (const tab of G.router.TABS) {
       const route = { name: 'settings', gid: 'g1', tab };
       assert.deepEqual(plain(G.router.parse(G.router.format(route))), route, tab + ' round-trips through the address');

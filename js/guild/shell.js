@@ -52,11 +52,15 @@
     { tab: 'loot', label: 'Loot', needs: ['loot.policy'] },
     { tab: 'battlenet', label: 'Battle.net', needs: ['guild.teams'] },
     { tab: 'activity', label: 'Activity', needs: ['audit.view'] },
+    // Export and delete: the Guild Master's alone (not an action a role can be given), so it is shown by role, not by `needs`.
+    { tab: 'data', label: 'Guild data', needs: [], guildMasterOnly: true },
   ];
 
-  function settingsTabs(can) {
+  // roles: the viewer's roles in this guild (guildData.me.roles); the Guild Master's tabs need it.
+  function settingsTabs(can, roles) {
+    const master = Array.isArray(roles) && roles.some(function (r) { return r && r.role === 'guild_master'; });
     return SETTINGS_TABS
-      .filter(function (def) { return def.needs.some(function (action) { return hasAction(can, action); }); })
+      .filter(function (def) { return def.guildMasterOnly ? master : def.needs.some(function (action) { return hasAction(can, action); }); })
       .map(function (def) { return { tab: def.tab, label: def.label }; });
   }
 
@@ -333,7 +337,7 @@
         crumbs.push({ label: r.name === 'person' ? (ctx.personName || 'Person') : IMPORT_LABELS[r.source] || 'Import' });
       }
     } else if (r.name === 'settings') {
-      const tabs = settingsTabs(gd.me && gd.me.can);
+      const tabs = settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles);
       const first = tabs[0];
       crumbs.push({ label: 'Guild settings', href: baseOf(ctx) + G.router.format({ name: 'settings', gid: gd.guild.id, tab: first ? first.tab : null }) });
       const cur = tabs.filter(function (t) { return t.tab === r.tab; })[0];
@@ -424,7 +428,7 @@
   // ── Guild settings frame: title, tab strip, then the tab's content ──
   function settingsFrameHtml(ctx, activeTab, innerHtml) {
     const gd = ctx.guildData;
-    const tabs = settingsTabs(gd.me && gd.me.can);
+    const tabs = settingsTabs(gd.me && gd.me.can, gd.me && gd.me.roles);
     return '<div class="gs-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Guild settings</h1><p class="gs-sub">' + esc(gd.guild.name) + ' - ' + esc(G.ui.realmLine(gd.guild)) + '</p></div>' +
       '<nav aria-label="Guild settings sections"><ul class="gs-subtabs">' + tabs.map(function (t) {
         const active = t.tab === activeTab;

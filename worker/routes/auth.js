@@ -3,13 +3,14 @@ import { auditStatement } from '../audit.js';
 import { isConfigured as bnetConfigured } from '../battlenet.js';
 import {
   authorizeUrl, canonicalOrigin, exchangeCode, fetchDiscordGuilds, fetchDiscordUser,
-  isAllowlisted, isConfigured, revokeToken, serverIconUrl,
+  creationIsOpen, isConfigured, mayCreateGuilds, revokeToken, serverIconUrl,
 } from '../discord.js';
 import { botConfigured } from '../discord-bot.js';
 import { syncSignIn } from '../discord-sync.js';
 import { findUserByDiscord, loadIdentities, upsertDiscordAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
 import { blockedSql, memberCandidatesSql, memberSql } from '../membership.js';
+import { LIMITS } from '../limits.js';
 import { shapeRoles } from '../permissions.js';
 import { FOREVER_RULESETS, GAME_VERSIONS, REALMS, REGIONS } from '../realms.js';
 import { parsePrefs, personFromSession, toPerson } from '../person.js';
@@ -96,7 +97,9 @@ export async function callback(ctx) {
     return fail('discord');
   }
 
-  const manageable = isAllowlisted(env, discordUser.id)
+  // The servers the account owns or administers, and nothing else of the list (never the permission bits): the session keeps them for 30 minutes
+  // so the create page and POST /api/guild can check the server the person picks. Kept for any Discord account when creation is open.
+  const manageable = mayCreateGuilds(env, discordUser.id)
     ? servers.filter((server) => server.access).map((server) => ({ id: server.id, name: server.name, icon: server.icon, access: server.access }))
     : null;
   try {
@@ -235,6 +238,49 @@ async function deleteImpact(db, userId) {
   };
 }
 
+// What /auth/me tells the page about starting or claiming a guild (Phase 8). allowed is true when the create page has something to offer:
+//   allowlist set    the account is on it (the pilot's override); the page works from the servers the sign-in kept
+//   allowlist empty  the account owns or administers a Discord server that is free for a new guild, or one whose guild has no Guild Master
+// allowed false carries a reason the page words: needs_discord (the account has no Discord sign-in), not_approved (an allowlist is set and this
+// account is not on it), reauth (open creation, and the server list kept from the sign-in has expired), no_server (open creation, and the account
+// owns or administers no server that is free).
+async function createPayload(ctx) {
+  const { db, env, session } = ctx;
+  if (!session.user.discordId) return { allowed: false, reason: 'needs_discord' };
+  if (!mayCreateGuilds(env, session.user.discordId)) return { allowed: false, reason: 'not_approved' };
+  const manageable = readManageable(session, ctx.now());
+  let servers = [];
+  let claimable = [];
+  if (manageable.servers.length) {
+    // A stale list was already dropped by loadSession; readManageable returns no servers for it.
+    const taken = await db.prepare(
+      `SELECT g.id, g.name, g.discord_server_id,
+              EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.guild_id = g.id AND ra.role_id = 'guild_master') AS has_master
+         FROM guilds g WHERE g.discord_server_id IN (SELECT value FROM json_each(?))`,
+    ).bind(JSON.stringify(manageable.servers.map((server) => server.id))).all();
+    const takenIds = new Set(taken.results.map((row) => row.discord_server_id));
+    servers = manageable.servers
+      .filter((server) => !takenIds.has(server.id))
+      .map((server) => ({ id: server.id, name: server.name, iconUrl: serverIconUrl(server.id, server.icon), access: server.access }));
+    const serverNames = new Map(manageable.servers.map((server) => [server.id, server.name]));
+    claimable = taken.results
+      .filter((row) => row.has_master !== 1)
+      .map((row) => ({ guildId: row.id, guildName: row.name, serverId: row.discord_server_id, serverName: serverNames.get(row.discord_server_id) || '' }));
+  }
+  if (creationIsOpen(env) && !servers.length && !claimable.length) {
+    return { allowed: false, reason: manageable.stale ? 'reauth' : 'no_server' };
+  }
+  const created = await db.prepare('SELECT COUNT(*) AS n FROM guilds WHERE created_by = ?').bind(session.user.id).first('n');
+  return {
+    allowed: true,
+    stale: manageable.stale,
+    servers,
+    claimable,
+    limit: { created, max: LIMITS.guildsPerAccount },
+    options: { versions: GAME_VERSIONS, regions: REGIONS, realms: REALMS, rulesets: FOREVER_RULESETS },
+  };
+}
+
 export async function me(ctx) {
   const { db, session, env } = ctx;
   const userId = session.user.id;
@@ -261,35 +307,7 @@ export async function me(ctx) {
     roles: shapeRoles(assignmentResult.results.filter((row) => row.guild_id === guild.id)),
   }));
 
-  let create = { allowed: false };
-  if (isAllowlisted(env, session.user.discordId)) {
-    const manageable = readManageable(session, ctx.now());
-    let servers = [];
-    let claimable = [];
-    if (manageable.servers.length) {
-      // A stale list was already dropped by loadSession; readManageable returns no servers for it.
-      const taken = await db.prepare(
-        `SELECT g.id, g.name, g.discord_server_id,
-                EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.guild_id = g.id AND ra.role_id = 'guild_master') AS has_master
-           FROM guilds g WHERE g.discord_server_id IN (SELECT value FROM json_each(?))`,
-      ).bind(JSON.stringify(manageable.servers.map((server) => server.id))).all();
-      const takenIds = new Set(taken.results.map((row) => row.discord_server_id));
-      servers = manageable.servers
-        .filter((server) => !takenIds.has(server.id))
-        .map((server) => ({ id: server.id, name: server.name, iconUrl: serverIconUrl(server.id, server.icon), access: server.access }));
-      const serverNames = new Map(manageable.servers.map((server) => [server.id, server.name]));
-      claimable = taken.results
-        .filter((row) => row.has_master !== 1)
-        .map((row) => ({ guildId: row.id, guildName: row.name, serverId: row.discord_server_id, serverName: serverNames.get(row.discord_server_id) || '' }));
-    }
-    create = {
-      allowed: true,
-      stale: manageable.stale,
-      servers,
-      claimable,
-      options: { versions: GAME_VERSIONS, regions: REGIONS, realms: REALMS, rulesets: FOREVER_RULESETS },
-    };
-  }
+  const create = await createPayload(ctx);
 
   const impact = await deleteImpact(db, userId);
   const identities = await loadIdentities(db, userId);
@@ -427,7 +445,7 @@ export async function deleteMe(ctx) {
     // Raid sign-ups keep the person link (outcomes recompute the same) but lose the Discord ID and nickname.
     statements.push(db.prepare('UPDATE raid_signups SET discord_user_id = NULL, nickname = NULL WHERE discord_user_id = ?').bind(session.user.discordId));
   }
-  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?)').bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`));
+  statements.push(db.prepare('DELETE FROM rate_limits WHERE key IN (?, ?, ?, ?, ?, ?, ?)').bind(`w:${userId}`, `imp:${userId}`, `wclraid:${userId}`, `idea:${userId}`, `bnet:${userId}`, `acct:${userId}`, `exp:${userId}`));
   await db.batch(statements);
   return jsonResponse({ ok: true }, 200, {}, [clearSessionCookie()]);
 }

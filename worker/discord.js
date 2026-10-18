@@ -131,7 +131,23 @@ export function avatarUrl(discordId, avatar) {
   return `https://cdn.discordapp.com/avatars/${discordId}/${avatar}.png?size=64`;
 }
 
+// The Discord IDs on GUILD_CREATOR_ALLOWLIST; [] when it is unset or blank.
+export function creatorAllowlist(env) {
+  if (typeof env.GUILD_CREATOR_ALLOWLIST !== 'string') return [];
+  return env.GUILD_CREATOR_ALLOWLIST.split(',').map((id) => id.trim()).filter(Boolean);
+}
+
 export function isAllowlisted(env, discordId) {
-  if (typeof env.GUILD_CREATOR_ALLOWLIST !== 'string') return false;
-  return env.GUILD_CREATOR_ALLOWLIST.split(',').map((id) => id.trim()).filter(Boolean).includes(discordId);
+  return creatorAllowlist(env).includes(discordId);
+}
+
+// Whether an allowlist limits who may create or claim a guild (the pilot's override). Without one, creation is open to anyone who administers a server.
+export const creationIsOpen = (env) => creatorAllowlist(env).length === 0;
+
+// Phase 8: who may start a guild or claim one. A Discord account is needed (a guild belongs to a Discord server). With an allowlist, only the listed
+// IDs; without one, any Discord account, and the real check is that the account owns or administers the server it picks (`access` on the servers
+// the sign-in read, see fetchDiscordGuilds / accessOf; worker/routes/auth.js keeps only those servers on the session for 30 minutes).
+export function mayCreateGuilds(env, discordId) {
+  if (typeof discordId !== 'string' || !discordId) return false;
+  return creationIsOpen(env) || isAllowlisted(env, discordId);
 }

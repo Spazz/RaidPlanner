@@ -33,7 +33,7 @@ export const ACTION_GROUP = Object.freeze({
   'signup.set': 'signups', 'signup.remove': 'signups', 'signup.lock': 'signups',
   'bnet.link': 'bnet', 'bnet.unlink': 'bnet', 'bnet.settings': 'bnet',
   'claim.create': 'bnet', 'claim.withdraw': 'bnet', 'claim.approve': 'bnet', 'claim.reject': 'bnet',
-  'guild.create': 'settings', 'guild.claim': 'settings', 'guild.delete': 'settings', 'team.create': 'settings', 'team.rename': 'settings',
+  'guild.create': 'settings', 'guild.claim': 'settings', 'guild.delete': 'settings', 'guild.export': 'settings', 'team.create': 'settings', 'team.rename': 'settings',
   'team.archive': 'settings', 'team.restore': 'settings', 'roles.set': 'settings', 'guild_master.transfer': 'settings',
   'guild_master.auto_promote': 'settings', 'access.remove': 'settings', 'access.restore': 'settings', 'account.delete': 'settings', 'team.size': 'settings',
   // Written with no guild (the account's own sign-ins), so they never reach a guild's log; mapped so the action list stays complete.
@@ -137,6 +137,7 @@ export function describeRow(row, names = {}) {
     case 'guild.create': return 'Created the guild';
     case 'guild.claim': return 'Claimed the guild as Guild Master';
     case 'guild.delete': return 'Deleted the guild';
+    case 'guild.export': return 'Downloaded the guild data';
     case 'account.delete': return 'Deleted an account';
     case 'team.create': return `Created the team ${team(ent)}`;
     case 'team.rename': return `Renamed a team to ${team(ent)}`;

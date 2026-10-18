@@ -3,7 +3,7 @@
 //   #/  #/signin[?error=..]  #/new  #/privacy  #/roadmap  #/linked[?error=..]  #/characters
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list; the shell sends viewers without officer actions on to Roster)
-//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,roles,discord,guests,public,attendance,loot,battlenet,activity}]
+//   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,roles,discord,guests,public,attendance,loot,battlenet,activity,data}]
 //   #/guest/<token>  (a guest link: the page redeems it and moves to #/view)  #/view  (the guest view)  #/public/:gid  (a guild's public page)
 //   These three work signed out; they show a read-only view and never ask for a sign-in.
 //   #/g/:gid/away  (my away notices)
@@ -16,7 +16,7 @@
 
   // 'home' is the guild's landing section: it has no path segment of its own (#/g/:gid); #/g/:gid/home is only an alias.
   const SECTIONS = ['home', 'roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'attendance', 'loot', 'battlenet', 'activity'];
+  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
   const LOOT_VIEWS = ['raids', 'items'];
   const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet'];
   // Why a sign-in came back without signing in (/auth/callback and /auth/bnet/callback redirect to #/signin?error=..).

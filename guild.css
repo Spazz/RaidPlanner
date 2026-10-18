@@ -1066,3 +1066,24 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-copy-row .gs-btn { width: 100%; }
   .gs-public-why { margin-left: 32px; }
 }
+/* Other guilds (Phase 8): the setup checklist on Home, the Guild data tab */
+.gs-onboard { box-sizing: border-box; background: var(--bg-panel); border: 1px solid var(--border-subtle); border-left: 3px solid var(--accent-gold); padding: 16px var(--sp-4) 8px; display: flex; flex-direction: column; gap: var(--sp-3); }
+.gs-onboard-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; }
+.gs-onboard-dots { display: inline-flex; gap: 4px; margin-right: 10px; vertical-align: middle; }
+.gs-onboard-dot { width: 18px; height: 6px; background: var(--border-subtle); }
+.gs-onboard-dot.is-done { background: var(--success); }
+.gs-onboard-steps { list-style: none; display: flex; flex-direction: column; margin: 0; padding: 0; }
+.gs-onboard-step { display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 12px; align-items: center; padding: 10px 0; }
+.gs-onboard-step + .gs-onboard-step { border-top: 1px solid var(--border-subtle); }
+.gs-onboard-mark { grid-row: 1 / span 2; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 14px; font-weight: 700; }
+.gs-onboard-step.is-done .gs-onboard-mark { border-color: var(--success); color: var(--success); }
+.gs-onboard-link { font-size: 16px; line-height: 1.35; font-weight: 600; overflow-wrap: anywhere; }
+.gs-onboard-step.is-done .gs-onboard-link { color: var(--text-secondary); font-weight: 400; text-decoration: line-through; }
+.gs-onboard-hint { font-size: 14px; line-height: 1.35; color: var(--text-muted); overflow-wrap: anywhere; }
+.gs-gdata-card { display: flex; flex-direction: column; gap: var(--sp-2); max-width: 720px; }
+.gs-gdata-card p { margin: 0; }
+.gs-gdata-danger { border-color: var(--danger); }
+@media (max-width: 600px) {
+  .gs-onboard-head .gs-btn { width: 100%; }
+  .gs-gdata-card .gs-actions .gs-btn { width: 100%; }
+}

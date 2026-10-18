@@ -1,7 +1,8 @@
 import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
-import { isAllowlisted } from '../discord.js';
+import { mayCreateGuilds } from '../discord.js';
 import { newId } from '../ids.js';
+import { GUILD_LIMIT_MESSAGE, LIMITS } from '../limits.js';
 import { loadGuildContext } from '../permissions.js';
 import { readManageable } from '../session.js';
 import { FOREVER_RULESETS, REGIONS, findRealm, isVersion } from '../realms.js';
@@ -11,7 +12,7 @@ import { loadAttendanceFlags } from '../attendance-store.js';
 import { loadTeams } from './teams.js';
 
 const SINGLE_TEAM_NAME = 'Main team';
-const MAX_TEAMS_AT_CREATE = 10;
+const MAX_TEAMS_AT_CREATE = LIMITS.teams;
 const MIN_TEAMS_WHEN_SEVERAL = 2;
 const SNOWFLAKE = /^\d{1,25}$/;
 
@@ -106,7 +107,8 @@ export async function createGuild(ctx) {
   if (!session.user.discordId) {
     throw new HttpError(403, 'not_allowed_to_create', 'Creating a guild needs a Discord account: connect Discord on Linked accounts first.');
   }
-  if (!isAllowlisted(env, session.user.discordId)) {
+  // Without an allowlist any Discord account may try; the server it picks must be one it owns or administers (checked below against the sign-in's list).
+  if (!mayCreateGuilds(env, session.user.discordId)) {
     throw new HttpError(403, 'not_allowed_to_create', 'Creating a guild is limited to approved accounts for now.');
   }
   const manageable = readManageable(session, ctx.now());
@@ -130,6 +132,8 @@ export async function createGuild(ctx) {
   }
   const taken = await db.prepare('SELECT 1 AS found FROM guilds WHERE discord_server_id = ?').bind(serverId).first();
   if (taken) throw new HttpError(409, 'server_taken', 'That Discord server already has a guild.', { field: 'serverId' });
+  const made = await db.prepare('SELECT COUNT(*) AS n FROM guilds WHERE created_by = ?').bind(session.user.id).first('n');
+  if (made >= LIMITS.guildsPerAccount) throw new HttpError(409, 'guild_limit', GUILD_LIMIT_MESSAGE);
 
   const userId = session.user.id;
   const now = ctx.now();
@@ -164,14 +168,14 @@ export async function createGuild(ctx) {
   return jsonResponse(await guildPayload(db, guildContext, ctx.now()), 201);
 }
 
-// POST /api/guild/:gid/claim: an allowlisted person who manages the guild's Discord server takes a guild
+// POST /api/guild/:gid/claim: a person who may create guilds (worker/discord.js mayCreateGuilds) and manages the guild's Discord server takes a guild
 // that has no Guild Master. It needs no existing membership row; it writes one.
 export async function claimGuild(ctx) {
   const { db, env, session } = ctx;
   if (!session.user.discordId) {
     throw new HttpError(403, 'not_allowed_to_create', 'Claiming a guild needs a Discord account: connect Discord on Linked accounts first.');
   }
-  if (!isAllowlisted(env, session.user.discordId)) {
+  if (!mayCreateGuilds(env, session.user.discordId)) {
     throw new HttpError(403, 'not_allowed_to_create', 'Claiming a guild is limited to approved accounts for now.');
   }
   const manageable = readManageable(session, ctx.now());

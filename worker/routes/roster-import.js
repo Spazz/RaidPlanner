@@ -17,7 +17,7 @@ import {
   requireWclConfigured,
 } from '../sources.js';
 import {
-  bad, constraintOf, limitError, nameTaken, readClass, readName, realmColumns, requireEdit, requireTarget, resolveRealm,
+  bad, constraintOf, LIMIT_KINDS, limitError, nameTaken, readClass, readName, realmColumns, requireEdit, requireTarget, resolveRealm,
 } from './roster.js';
 
 const MAX_COMMIT_ROWS = 100;
@@ -322,7 +322,7 @@ export async function writeImport(ctx, guildContext, team, plan) {
     await db.batch(statements);
   } catch (error) {
     const kind = constraintOf(error);
-    if (kind === 'person_limit' || kind === 'character_limit') throw limitError(kind);
+    if (LIMIT_KINDS.includes(kind)) throw limitError(kind);
     if (kind === 'character_name') {
       throw new HttpError(409, 'name_taken', 'A character name was taken while you were importing. Preview again.', { field: 'name' });
     }

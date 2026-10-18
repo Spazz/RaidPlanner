@@ -3,18 +3,20 @@
  * An isolated, seeded copy of the guild tracker for API and DOM checks. Nothing here touches port 8787 or the dev database
  * (~/.raidsmith-dev/wrangler-state): every run lives in its own state dir and its own ports, on 127.0.0.1 only.
  *
- *   node tools/guild-smoke.js up   --name <x> [--port 8790-8799] [--with discord,sources,bnet]
+ *   node tools/guild-smoke.js up   --name <x> [--port 8790-8799] [--with discord,sources,bnet] [--open]
  *   node tools/guild-smoke.js down --name <x>
  *   node tools/guild-smoke.js run  --name <x> <script.js> [script args]
  *
  * up    migrates a fresh state under <home>/.raidsmith-dev/chk-<x>, starts the fakes and the Worker (wrangler dev) in the background, seeds a guild
  *       through the real API and prints ONE JSON object on stdout (progress goes to stderr):
- *         { base, port, cookies: { gm, member, member2 }, ids: { guildId, teamId, people, altId, pastRaidId, upcomingRaidId, users },
+ *         { base, port, open, cookies: { gm, member, member2 }, ids: { guildId, teamId, people, altId, pastRaidId, upcomingRaidId, users },
  *           fakes: { discord, sources, bnet }, signIn: { gm, member, member2 }, state, logs }
  *       The seed: a Guild Master (gm) and two members signed in with the fake Discord (each cookie is a ready "Cookie:" header value), one team,
  *       three people with characters (Thornwick, Mendra, Quillfeather, linked to gm, member, member2; Thornwick also has an Alt), a past raid built
  *       from the fake Warcraft Logs report Fake000000000001 (or, without `sources`, a hand-entered one), and an upcoming raid member has signed up for.
  *       --with picks the optional fakes (default discord,sources; discord is always on because sign-in needs it; bnet adds the Battle.net fake).
+ *       --open starts the Worker with NO creator allowlist (Phase 8: any Discord server administrator may create a guild); the seed still comes from
+ *       the Guild Master user. Without it GUILD_CREATOR_ALLOWLIST is the Guild Master's Discord ID, as in the pilot.
  *       --port is the Worker's port (8790-8799, default the first free one); the fakes sit on port+10000 (Discord), +11000 (sources), +12000 (Battle.net).
  *       Every Worker secret is a placeholder passed with --var, so a local .env is never read for them and no real service is called.
  *   down  stops everything `up` started (process trees) and deletes the state dir. Safe to run twice.
@@ -43,7 +45,7 @@ const SESSION_COOKIE = '__Host-rs_session';
 const DISCORD_SERVER_ID = '900000000000000001';
 const WCL_REPORT = 'Fake000000000001';
 const USAGE = [
-  'usage: node tools/guild-smoke.js up   --name <x> [--port 8790-8799] [--with discord,sources,bnet]',
+  'usage: node tools/guild-smoke.js up   --name <x> [--port 8790-8799] [--with discord,sources,bnet] [--open]',
   '       node tools/guild-smoke.js down --name <x>',
   '       node tools/guild-smoke.js run  --name <x> <script.js> [script args]',
 ].join('\n');
@@ -56,11 +58,11 @@ function fail(message) {
   return error;
 }
 
-// -> { command, name, port | null, fakes: [...], script, scriptArgs }
+// -> { command, name, port | null, fakes: [...], open, script, scriptArgs }
 function parseArgs(argv) {
   const [command, ...rest] = argv;
   if (!COMMANDS.includes(command)) throw fail(`unknown command "${command || ''}"\n${USAGE}`);
-  const out = { command, name: null, port: null, fakes: DEFAULT_FAKES.slice(), script: null, scriptArgs: [] };
+  const out = { command, name: null, port: null, fakes: DEFAULT_FAKES.slice(), open: false, script: null, scriptArgs: [] };
   const seen = new Set();
   let index = 0;
   const value = (flag) => {
@@ -83,6 +85,10 @@ function parseArgs(argv) {
     if (flag === '--name') out.name = take();
     else if (flag === '--port' && command === 'up') out.port = readPort(take());
     else if (flag === '--with' && command === 'up') out.fakes = readFakes(take());
+    else if (flag === '--open' && command === 'up') {
+      if (inline !== null) throw fail('--open takes no value');
+      out.open = true;
+    }
     else throw fail(`unknown option ${flag} for ${command}\n${USAGE}`);
   }
   if (out.name === null) throw fail(`--name is required\n${USAGE}`);
@@ -120,7 +126,9 @@ const fakeUrl = (fake, workerPort) => `http://127.0.0.1:${fakePort(fake, workerP
 
 // The --var arguments for the Worker. Placeholders only: the fakes accept any client id and secret. A fake that is not started points at a refused
 // port, so nothing can reach a real service even with real credentials in .env.
-function workerVars(workerPort, fakes, gmDiscordId) {
+// open: no creator allowlist (any server administrator may create a guild). The variable is still passed, as a lone comma the Worker reads as nobody
+// listed, so a local .env can never fill it in.
+function workerVars(workerPort, fakes, gmDiscordId, open = false) {
   const refused = 'http://127.0.0.1:9';
   const base = (fake) => (fakes.includes(fake) ? fakeUrl(fake, workerPort) : refused);
   const vars = {
@@ -129,7 +137,7 @@ function workerVars(workerPort, fakes, gmDiscordId) {
     DISCORD_CLIENT_SECRET: 'smoke-secret',
     DISCORD_REDIRECT_URI: `http://127.0.0.1:${workerPort}/auth/callback`,
     DISCORD_BOT_TOKEN: 'fake-bot-token',
-    GUILD_CREATOR_ALLOWLIST: gmDiscordId,
+    GUILD_CREATOR_ALLOWLIST: open ? ',' : gmDiscordId,
     RAID_HELPER_API_BASE: base('sources'),
     WCL_API_BASE: base('sources'),
     WCL_CLIENT_ID: 'smoke-client',
@@ -364,7 +372,7 @@ async function up(options) {
     }
     await sleep(600);
 
-    const plan = dev.buildCommand('dev', ['--state', stateDir, '--port', String(port), '--ip', '127.0.0.1', ...workerVars(port, options.fakes, PEOPLE.gm.id)], {});
+    const plan = dev.buildCommand('dev', ['--state', stateDir, '--port', String(port), '--ip', '127.0.0.1', ...workerVars(port, options.fakes, PEOPLE.gm.id, options.open)], {});
     const worker = startDetached(plan, path.join(logs, 'worker.log'));
     pids.worker = worker.pid;
     started.push(worker.pid);
@@ -375,7 +383,7 @@ async function up(options) {
     const discord = fakeUrl('discord', port);
     const seeded = await seed(base, options.fakes, discord);
     const result = {
-      name: options.name, base, port, cookies: seeded.cookies, ids: seeded.ids,
+      name: options.name, base, port, open: options.open, cookies: seeded.cookies, ids: seeded.ids,
       fakes: Object.fromEntries(options.fakes.map((fake) => [fake, fakeUrl(fake, port)])),
       signIn: signInLinks(discord), state: stateDir, logs, pids,
     };
@@ -448,6 +456,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  parseArgs, readPort, readFakes, stateDirFor, isDeletableStateDir, fakePort, fakeUrl, workerVars, fromEnv, fromJson,
+  parseArgs, readPort, readFakes, stateDirFor, isDeletableStateDir, fakePort, fakeUrl, workerVars, fromEnv, fromJson, signIn,
   PORT_MIN, PORT_MAX, DEFAULT_FAKES, FAKES, STATE_FILE,
 };

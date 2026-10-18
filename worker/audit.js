@@ -13,6 +13,7 @@ export const AUDIT_ACTIONS = [
   'access.restore',
   'account.delete',
   'guild.delete',
+  'guild.export',
   'guild.claim',
   'guild_master.auto_promote',
   'person.create',

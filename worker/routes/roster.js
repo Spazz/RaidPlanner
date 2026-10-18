@@ -8,6 +8,7 @@ import { toPerson } from '../person.js';
 import {
   CLASS_IDS, CREATE_STATUSES, LEFT_REASONS, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
 } from '../roster-data.js';
+import { LIMITS } from '../limits.js';
 import { findRealm } from '../realms.js';
 import { markPersonRaidsStale, markRaidsStale } from '../attendance-store.js';
 import {
@@ -35,6 +36,7 @@ export function constraintOf(error) {
   const text = errorText(error);
   if (/person_limit/.test(text)) return 'person_limit';
   if (/character_limit/.test(text)) return 'character_limit';
+  if (/guild_characters_cap/.test(text)) return 'guild_characters_cap';
   if (/UNIQUE constraint failed/i.test(text)) {
     if (/characters\.name_key|characters_guild_name/.test(text)) return 'character_name';
     if (/players\.discord_user_id|players_guild_discord/.test(text)) return 'discord';
@@ -45,10 +47,13 @@ export function constraintOf(error) {
   return null;
 }
 
+// The cap triggers constraintOf names: people per guild, characters per person, characters per guild (worker/limits.js).
+export const LIMIT_KINDS = ['person_limit', 'character_limit', 'guild_characters_cap'];
+
 export function limitError(kind) {
-  return kind === 'person_limit'
-    ? new HttpError(409, 'person_limit', 'A guild can have at most 1000 people.')
-    : new HttpError(409, 'character_limit', 'A person can have at most 20 characters.');
+  if (kind === 'person_limit') return new HttpError(409, 'person_limit', `A guild can have at most ${LIMITS.people} people.`);
+  if (kind === 'guild_characters_cap') return new HttpError(409, 'guild_character_limit', `A guild can have at most ${LIMITS.characters} characters.`);
+  return new HttpError(409, 'character_limit', `A person can have at most ${LIMITS.charactersPerPerson} characters.`);
 }
 
 export function requireEdit(guildContext, teamId, extra = {}) {
@@ -192,7 +197,7 @@ async function conflict(ctx, guildContext, personId, message, pick = (record) =>
 
 function mapCreateError(error) {
   const kind = constraintOf(error);
-  if (kind === 'person_limit' || kind === 'character_limit') throw limitError(kind);
+  if (LIMIT_KINDS.includes(kind)) throw limitError(kind);
   if (kind === 'discord' || kind === 'account') throw new HttpError(409, 'already_linked', 'That member is already linked to another person.', { field: 'linkUserId' });
   if (kind === 'foreign_key') throw notFound('That person or team no longer exists.');
   throw error;

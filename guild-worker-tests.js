@@ -469,7 +469,7 @@ check('GET /auth/me: shape, the Discord id appears only inside avatar urls, avat
   assert.equal(me.json.user.displayName, 'bob', 'falls back to the username');
   assert.equal(me.json.user.avatarUrl, `https://cdn.discordapp.com/avatars/${PEOPLE.bob.id}/${hash}.png?size=64`);
   assert.deepEqual(me.json.user.prefs, { sidebarCollapsed: false, planSidebarCollapsed: true, lastGuildId: null });
-  assert.deepEqual(me.json.create, { allowed: false });
+  assert.deepEqual(me.json.create, { allowed: false, reason: 'no_server' }, 'no allowlist: open creation, and Bob manages no server');
   assert.deepEqual(me.json.deleteImpact, { handOverFirst: [], guildsDeleted: [], autoPromote: [] });
   assert.deepEqual(me.json.removedFrom, []);
   assert(ID.user.test(me.json.user.id));
@@ -531,7 +531,7 @@ check('create guild: only allowlisted users; the manageable list lives 30 minute
   assert.equal(session.manageable_until - session.created_at, 30 * 60 * 1000);
 
   const stranger = (await signIn(w, PEOPLE.bob, servers)).jar;
-  assert.deepEqual((await w.call(stranger, 'GET', '/auth/me')).json.create, { allowed: false });
+  assert.deepEqual((await w.call(stranger, 'GET', '/auth/me')).json.create, { allowed: false, reason: 'not_approved' });
   const [bobSession] = await w.rows('SELECT manageable_servers, manageable_until FROM sessions WHERE user_id = (SELECT id FROM users WHERE discord_id = ?)', PEOPLE.bob.id);
   assert.equal(bobSession.manageable_servers, null, 'not kept for people who cannot create');
   assert.equal(bobSession.manageable_until, null);
@@ -659,16 +659,17 @@ check('create guild v2: bad team names return teamNames with the index of the ba
   assert.equal(ten.json.teams.length, 10);
 });
 
-check('create guild v2: the 50-active-team cap still holds after a multi-team create', async () => {
+check('create guild v2: the 10-active-team cap still holds after a multi-team create', async () => {
   const w = await makeWorld({ allowlist: [PEOPLE.alice.id] });
   const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
   const created = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, multipleTeams: true, teamNames: Array.from({ length: 10 }, (_, i) => `Start ${i}`) });
   const path = `/api/guild/${created.json.guild.id}/teams`;
-  for (let i = 0; i < 40; i++) assert.equal((await w.call(jar, 'POST', path, { name: `Extra ${i}` })).status, 201, `team ${i}`);
   const over = await w.call(jar, 'POST', path, { name: 'One too many' });
-  assert.equal(over.status, 400);
+  assert.equal(over.status, 409);
+  assert.equal(over.json.error, 'team_limit');
   assert.equal(over.json.field, 'name');
-  assert.equal(await w.count('teams'), 50);
+  assert.match(over.json.message, /at most 10 active teams/);
+  assert.equal(await w.count('teams'), 10);
 });
 
 check('/auth/me create.options: sent to allowlisted creators only, from worker/realms.js', async () => {
@@ -677,7 +678,7 @@ check('/auth/me create.options: sent to allowlisted creators only, from worker/r
   const alice = (await signIn(w, PEOPLE.alice, [manageable(SERVER_A)])).jar;
   const bob = (await signIn(w, PEOPLE.bob, [manageable(SERVER_B)])).jar;
   const mine = (await w.call(alice, 'GET', '/auth/me')).json.create;
-  assert.deepEqual(Object.keys(mine).sort(), ['allowed', 'claimable', 'options', 'servers', 'stale']);
+  assert.deepEqual(Object.keys(mine).sort(), ['allowed', 'claimable', 'limit', 'options', 'servers', 'stale']);
   assert.deepEqual(Object.keys(mine.options).sort(), ['realms', 'regions', 'rulesets', 'versions']);
   assert.deepEqual(mine.options.versions, [
     { key: 'tbc', label: 'TBC Anniversary' }, { key: 'classic', label: 'Classic Era' }, { key: 'forever', label: 'WoW Forever' },
@@ -687,7 +688,7 @@ check('/auth/me create.options: sent to allowlisted creators only, from worker/r
   assert.deepEqual(mine.options.realms, JSON.parse(JSON.stringify(realms.REALMS)));
   assert.deepEqual(mine.options.realms.tbc.US.map((realm) => realm.name), ['Dreamscythe', 'Nightslayer', 'Maladath (AU)']);
   const theirs = (await w.call(bob, 'GET', '/auth/me')).json.create;
-  assert.deepEqual(theirs, { allowed: false }, 'no options for people who cannot create');
+  assert.deepEqual(theirs, { allowed: false, reason: 'not_approved' }, 'no options for people who cannot create');
   assert(!JSON.stringify(theirs).includes('Dreamscythe'));
 });
 
@@ -702,7 +703,7 @@ check('create guild: a stale manageable list gets reauth_required; a server outs
   assert.equal(stale.status, 403);
   assert.equal(stale.json.error, 'reauth_required');
   const me = (await w.call(jar, 'GET', '/auth/me')).json;
-  assert.deepEqual({ ...me.create, options: undefined }, { allowed: true, stale: true, servers: [], claimable: [], options: undefined });
+  assert.deepEqual({ ...me.create, options: undefined }, { allowed: true, stale: true, servers: [], claimable: [], limit: { created: 0, max: 5 }, options: undefined });
   assert.deepEqual(Object.keys(me.create.options).sort(), ['realms', 'regions', 'rulesets', 'versions']);
   const [row] = await w.rows('SELECT manageable_servers FROM sessions');
   assert.equal(row.manageable_servers, null, 'a stale list is dropped');
@@ -1268,10 +1269,10 @@ check('responses: a catch-all 500 never echoes the error; every response has the
   const missing = await collect(s.w.call(s.alice, 'GET', '/auth/nothing'));
   assert.equal(missing.status, 404);
   assert.equal(missing.json.error, 'not_found');
-  const wrongMethod = await collect(s.w.call(s.alice, 'DELETE', `${s.guildPath}`, {}));
+  const wrongMethod = await collect(s.w.call(s.alice, 'PUT', `${s.guildPath}`, {}));
   assert.equal(wrongMethod.status, 405);
   assert.equal(wrongMethod.json.error, 'method_not_allowed');
-  assert.equal(wrongMethod.headers.get('Allow'), 'GET');
+  assert.equal(wrongMethod.headers.get('Allow'), 'GET, DELETE');
   responses.push(await s.w.req('GET', '/auth/login'));
   responses.push(await s.w.req('GET', '/auth/callback?state=x'));
 
@@ -1434,25 +1435,26 @@ check('create guild: the time zone is an IANA name, stored in canonical form', a
   assert.equal((await w.rows('SELECT time_zone FROM guilds'))[0].time_zone, 'America/New_York');
 });
 
-check('teams: at most 50 active teams per guild (create and restore); archived teams do not count', async () => {
+check('teams: at most 10 active teams per guild (create and restore); archived teams do not count', async () => {
   const s = await scenario();
   const now = Date.now();
-  for (let i = 0; i < 49; i++) {
+  for (let i = 0; i < 9; i++) {
     s.w.db.sqlite.exec(`INSERT INTO teams (id, guild_id, name, size, archived, created_at) VALUES ('t_cap${String(i).padStart(18, '0')}', '${s.guildId}', 'Filler ${i}', 25, 0, ${now})`);
   }
-  assert.equal(await s.w.count('teams', 'guild_id = ? AND archived = 0', s.guildId), 50);
+  assert.equal(await s.w.count('teams', 'guild_id = ? AND archived = 0', s.guildId), 10);
   const over = await s.w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'One too many' });
-  assert.equal(over.status, 400);
-  assert.equal(over.json.error, 'bad_request');
+  assert.equal(over.status, 409);
+  assert.equal(over.json.error, 'team_limit');
   assert.equal(over.json.field, 'name');
-  assert.equal(await s.w.count('teams', 'guild_id = ?', s.guildId), 50);
+  assert.equal(await s.w.count('teams', 'guild_id = ?', s.guildId), 10);
   assert.equal(await s.w.count('audit_log', "action = 'team.create'"), 0, 'no audit row for a refused team');
 
   assert.equal((await s.w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { archived: true })).status, 200);
   const created = await s.w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'Fits now' });
   assert.equal(created.status, 201);
   const restore = await s.w.call(s.alice, 'PATCH', `${s.guildPath}/teams/${s.teamId}`, { archived: false });
-  assert.equal(restore.status, 400, 'restoring would make 51');
+  assert.equal(restore.status, 409, 'restoring would make 11');
+  assert.equal(restore.json.error, 'team_limit');
   assert.equal(restore.json.field, 'name');
 });
 

@@ -284,6 +284,10 @@ button.version-compare-col.here .go { color: var(--accent-gold-bright); }
 }
 .step h3 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 0.1em; font-size: 15px; color: var(--text-primary); }
 .step p { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.guilds-lead { font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
+.guild-points { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.guilds-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.guilds-note { font-size: 13px; line-height: 1.5; color: var(--text-secondary); flex: 1 1 260px; }
 .faq { display: flex; flex-direction: column; gap: 6px; }
 .faq details { background: var(--bg-panel); border: 1px solid var(--border-subtle); }
 .faq summary {
@@ -2189,6 +2193,9 @@ body:not(.is-signed-out):not(.landing-full) #landing-view .hero-copy,
 body:not(.is-signed-out):not(.landing-full) #landing-view #how-it-works,
 body:not(.is-signed-out):not(.landing-full) #landing-view #version-comparison,
 body:not(.is-signed-out):not(.landing-full) #landing-view .landing-footer { display: none; }
+/* The guild pitch is for visitors who are signed out: not in the compact signed-in home, and not before the session is known. */
+body:not(.is-signed-out) #landing-view #for-guilds,
+body.shell-pending #landing-view #for-guilds { display: none; }
 body:not(.is-signed-out):not(.landing-full):not(.shell-pending) #landing-view .landing-compact-head,
 body:not(.is-signed-out):not(.landing-full):not(.shell-pending) #landing-view .landing-compact-help { display: block; }
 body:not(.is-signed-out):not(.landing-full) #landing-view .hero { grid-template-columns: minmax(0, 680px); }

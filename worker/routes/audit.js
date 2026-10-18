@@ -100,7 +100,7 @@ async function loadNames(db, guildId, refs, teams) {
   };
 }
 
-const slugOf = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'guild';
+export const slugOf = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'guild';
 
 export async function getAudit(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
