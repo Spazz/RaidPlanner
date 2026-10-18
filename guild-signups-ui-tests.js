@@ -194,7 +194,7 @@ class ApiErr extends Error {
   await check('panel (member): counts, the class strip, and the list by role then by status with class colours; Late and Raid-Helper rows marked; notes shown', () => {
     const out = panel(view());
     const text = stripTags(out);
-    assert(/Signed 5 Late 1 Tentative 1 Bench 1 Absent 1/.test(text), text.slice(0, 500));
+    assert(/Signed 4 Late 1 Tentative 1 Bench 1 Absent 1/.test(text), text.slice(0, 500));
     assert(/Paladin 1/.test(text) && /Priest 1/.test(text) && /Rogue 2/.test(text) && /Hunter 1/.test(text) && !/Mage 1/.test(stripTags(out.slice(out.indexOf('gs-su-classes'), out.indexOf('</ul>', out.indexOf('gs-su-classes'))))));
     const order = ['Tanks', 'Healers', 'Melee', 'Ranged', 'Tentative', 'Bench', 'Absent'].map(t => out.indexOf('>' + t + ' <span'));
     assert(order.every(i => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]), 'groups in role order, then status: ' + order);
@@ -441,7 +441,7 @@ class ApiErr extends Error {
     const btn = id => new RegExp('data-action="raids-signup" data-rid="' + id + '"');
     assert(btn('u1').test(out) && !btn('u2').test(out) && btn('u3').test(out) && !btn('u4').test(out) && !btn('u5').test(out));
     assert.equal(out.split('data-action="raids-signup"').length - 1, 4, 'u1 and u3, a table row and a card each');
-    assert(out.includes('Signed up - Eliora') && out.includes('Absence - Eliora') && out.includes('gs-su-mine'));
+    assert(out.includes('Signed up - Eliora') && out.includes('Absence - Eliora') && out.includes('gs-su-cell'));
     assert(out.includes('Sign-ups closed') && />Late</.test(out));
     assert.equal(out.split('Sign-ups closed').length - 1, 2, 'u4 only, table and card');
     assert(G.pages.raids.mineHtml(UP(), false) === '' && !listPage(LIST({ can: { edit: false, signup: false } })).includes('Your sign-up'));

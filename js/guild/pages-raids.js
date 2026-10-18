@@ -118,7 +118,7 @@
     if (!canSignUp) return '';
     const m = r.mine;
     const label = m ? (A().KIND_LABELS[m.kind] || m.kind) : '';
-    const chip = m ? '<span class="gs-chip gs-chip-signup gs-su-mine">' + esc(label) + (m.characterName ? ' - ' + esc(m.characterName) : '') + '</span>' : '';
+    const chip = m ? '<span class="gs-chip gs-chip-signup">' + esc(label) + (m.characterName ? ' - ' + esc(m.characterName) : '') + '</span>' : '';
     if (r.signupsOpen && !(m && m.kind === 'signed')) {
       return chip + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>';
     }
@@ -128,7 +128,7 @@
 
   function upcomingRowHtml(gd, r, canEdit, canSignUp) {
     return '<tr><th scope="row" class="gs-cell-strong gs-nowrap"><a href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a></th>' +
-      '<td>' + eventCellHtml(r) + '</td><td>' + esc(signupsText(r.signups)) + '</td>' + (canSignUp ? '<td><div class="gs-row-actions">' + mineHtml(r, canSignUp) + '</div></td>' : '') +
+      '<td>' + eventCellHtml(r) + '</td><td>' + esc(signupsText(r.signups)) + '</td>' + (canSignUp ? '<td><div class="gs-su-cell">' + mineHtml(r, canSignUp) + '</div></td>' : '') +
       '<td>' + planPillHtml(r) + '</td><td><div class="gs-row-actions">' + upcomingActionsHtml(r, canEdit) + '</div></td></tr>';
   }
 
@@ -137,7 +137,7 @@
     const mine = mineHtml(r, canSignUp);
     return '<li class="gs-roster-card"><div class="gs-card-top"><a class="gs-raid-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a>' + planPillHtml(r) + '</div>' +
       '<div class="gs-card-line">' + eventCellHtml(r) + '</div><div class="gs-card-meta"><span class="gs-fine">' + esc(signupsText(r.signups)) + '</span></div>' +
-      (mine ? '<div class="gs-row-actions">' + mine + '</div>' : '') + (actions ? '<div class="gs-row-actions">' + actions + '</div>' : '') + '</li>';
+      (mine ? '<div class="gs-su-cell">' + mine + '</div>' : '') + (actions ? '<div class="gs-row-actions">' + actions + '</div>' : '') + '</li>';
   }
 
   function upcomingHtml(gd, upcoming, canEdit, canSignUp) {

@@ -131,12 +131,12 @@
   function countsHtml(view) {
     const c = view.counts;
     if (!c) return '';
-    const items = [['Signed', c.expected], ['Late', c.late], ['Tentative', c.tentative], ['Bench', c.bench], ['Absent', c.absence]];
+    const items = [['Signed', c.signed], ['Late', c.late], ['Tentative', c.tentative], ['Bench', c.bench], ['Absent', c.absence]];
     const classes = CLASS_IDS.filter(function (id) { return c.byClass && c.byClass[id] > 0; }).map(function (id) {
       return '<li class="gs-su-class">' + G.ui.classNameHtml(G.ui.className(id), id) + ' <span class="gs-su-count">' + esc(c.byClass[id]) + '</span></li>';
     }).join('');
     return '<dl class="gs-summary">' + items.map(function (i) { return '<div class="gs-summary-item"><dt>' + esc(i[0]) + '</dt><dd>' + esc(i[1]) + '</dd></div>'; }).join('') + '</dl>' +
-      (classes ? '<ul class="gs-su-classes" aria-label="Signed up, by class">' + classes + '</ul>' : '');
+      (classes ? '<ul class="gs-su-classes" aria-label="Signed up and late, by class">' + classes + '</ul>' : '');
   }
 
   function toolsHtml(entry, edit) {
@@ -153,8 +153,8 @@
       (specText ? '<span class="gs-su-spec">' + esc(specText) + '</span>' : '') +
       (entry.kind === 'late' ? '<span class="gs-chip gs-chip-signup">Late</span>' : '') +
       (entry.source === 'raid_helper' ? '<span class="gs-chip gs-chip-src">Raid-Helper</span>' : '') +
-      (entry.nickname ? '<span class="gs-fine">' + esc(entry.nickname) + '</span>' : '') +
-      (entry.note ? '<span class="gs-su-note">' + esc(entry.note) + '</span>' : '') + toolsHtml(entry, edit) + '</li>';
+      (entry.nickname ? '<span class="gs-fine">' + esc(entry.nickname) + '</span>' : '') + toolsHtml(entry, edit) +
+      (entry.note ? '<span class="gs-su-note">' + esc(entry.note) + '</span>' : '') + '</li>';
   }
 
   function groupHtml(title, id, entries, edit) {
