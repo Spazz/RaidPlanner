@@ -179,7 +179,7 @@ class ApiErr extends Error {
       assert.deepEqual(current, ['#/g/g1/roster'], name + ': the Roster item is the open one');
     }
     const menu = G.pages.roster.importMenuHtml('g1');
-    assert(menu.includes('href="#/g/g1/roster/import/csv"') && menu.includes('From a CSV file'));
+    assert(menu.includes('href="#/g/g1/roster/import/csv"') && menu.includes('Import from a CSV file'));
     assertNoRawAttrs(menu);
   });
 
@@ -738,11 +738,12 @@ class ApiErr extends Error {
     assert(text.includes('6 rows read') && text.includes('Alt of Newwarr') && text.includes('New person (Main)') && text.includes('On the roster') && text.includes('The class is missing.') && text.includes('A note.'));
     assert.deepEqual(optionsOf(out, 'csv-5-choice').map(o => [o.value, o.selected]), [['alt:p_t', true], ['other', false], ['new', false], ['skip', false]]);
     assert(optionsOf(out, 'csv-6-choice').every(o => o.value !== 'alt:p_t'), 'no suggestion for the orphan');
-    assert(/data-action="csv-commit"[^>]*>Save 4 changes<\/button>/.test(out) && !/data-action="csv-commit"[^>]*disabled/.test(out));
+    assert(/data-action="csv-commit"[^>]*><span>Save 4 changes<\/span><\/button>/.test(out) && !/<button[^>]*disabled[^>]*data-action="csv-commit"/.test(out));
+    assert(out.includes('id="csv-footer"') && out.includes('Nothing is saved yet.') && out.includes('data-action="csv-back"'), 'the T5 commit bar');
     csv.choices[6].pick = 'alt'; csv.choices[6].personId = '';
     const open = G.pages.importCsv.csvHtml({ guildData: S.guilds.g1, csv, people });
     assert.deepEqual(optionsOf(open, 'csv-6-person').map(o => o.value), ['', 'p_t', 'p_u']);
-    assert(/data-action="csv-commit"[^>]*disabled/.test(open), 'a row waits for an answer');
+    assert(/<button[^>]*disabled[^>]*data-action="csv-commit"/.test(open), 'a row waits for an answer');
     const hostile = CSV_PREVIEW(); hostile.rows[0].name = HOSTILE; hostile.rows[0].teamName = QUOTES; hostile.rows[3].problems = [HOSTILE];
     csv.preview = hostile; csv.choices = G.pages.importCsv.csvInitChoices(hostile); csv.error = HOSTILE;
     assertEscaped(G.pages.importCsv.csvHtml({ guildData: S.guilds.g1, csv, people }), 'csv page');
@@ -779,13 +780,15 @@ class ApiErr extends Error {
       await settle();
       assert.equal(api.calls[0].url, '/api/guild/g1/roster/import/csv/commit');
       assert.equal(api.calls[0].body.rows.length, 4);
-      assert.equal(S.went, '#/g/g1/roster');
-      assert.equal(S.rosterNotice, 'Added 2 people and 4 characters from the CSV file.');
+      assert.equal(S.went, undefined, 'the officer stays on the import page');
+      assert.equal(csv.result.title, 'Added 2 people and 4 characters from the CSV file.');
+      const done = G.pages.importCsv.csvHtml({ guildData: S.guilds.g1, csv, people: [] });
+      assert(done.includes('id="csv-result-banner"') && done.includes('Added 2 people and 4 characters') && done.includes('data-action="csv-again"') && !done.includes('id="csv-footer"'));
     } finally { api.restore(); }
     // A row error from the Worker marks the row (the index is into the rows that were sent).
     const csv2 = G.pages.importCsv.ensureState('g1', 't1');
     S.imports = { csv: csv2 };
-    csv2.preview = CSV_PREVIEW(); csv2.choices = G.pages.importCsv.csvInitChoices(csv2.preview); csv2.status = 'ready';
+    csv2.result = null; csv2.preview = CSV_PREVIEW(); csv2.choices = G.pages.importCsv.csvInitChoices(csv2.preview); csv2.status = 'ready';
     const api2 = stub(() => Promise.reject(new ApiErr(409, 'name_taken', { message: 'Newmage is already on the roster.', index: 1, field: 'name' })));
     try {
       await G.handlers.click['csv-commit']();

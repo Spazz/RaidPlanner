@@ -36,11 +36,18 @@ export function guildView(row) {
 export async function guildPayload(db, guildContext, nowMs = Date.now()) {
   // The roster person who is the viewer's (null when the account is on no roster yet): the member Home and "My profile" open their pages.
   const own = await ownPersonStatement(db, guildContext.guild.id, guildContext.userId).first();
+  // The teams the viewer's characters are on, and the team of their Main: the member Home reads its team from these, not from the shell's team picker.
+  const ownCharacters = own ? (await db.prepare('SELECT team_id, is_main FROM characters WHERE guild_id = ? AND player_id = ?').bind(guildContext.guild.id, own.id).all()).results || [] : [];
+  const mainRow = ownCharacters.find((row) => row.is_main === 1);
   return {
     // The Discord server's id is shown on Guild settings > General (read-only, to the Guild Master only).
     guild: guildContext.isGuildMaster ? { ...guildView(guildContext.guild), discordServerId: guildContext.guild.discord_server_id } : guildView(guildContext.guild),
     teams: await loadTeams(db, guildContext.guild.id),
-    me: { roles: guildContext.roles, can: guildContext.can, personId: own ? own.id : null },
+    me: {
+      roles: guildContext.roles, can: guildContext.can, personId: own ? own.id : null,
+      mainTeamId: mainRow ? mainRow.team_id : null,
+      teamIds: [...new Set(ownCharacters.map((row) => row.team_id).filter(Boolean))],
+    },
     rosterOptions: rosterOptions(),
     rosterFlags: await loadRosterFlags(db, guildContext, guildToday(guildContext.guild, nowMs)),
     attendanceFlags: await loadAttendanceFlags(db, guildContext),

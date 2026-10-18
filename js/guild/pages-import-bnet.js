@@ -103,12 +103,18 @@
     return table + '<p class="gs-fine" id="bnet-showing">Showing ' + esc(c.shown) + ' of ' + esc(c.total) + '.</p>';
   }
 
-  function footerHtml(gid, s) {
+  // The T5 commit bar of the Battle.net preview (redrawn as rows are ticked, so it keeps its id).
+  function commitOpts(gid, s) {
     const c = counts(s.preview, s.view, s.ticked);
-    const summary = c.tooMany ? esc(plural(c.ticked, 'character', 'characters')) + ' ticked: add at most ' + MAX_COMMIT + ' at a time' : esc(plural(c.ticked, 'character', 'characters')) + ' ticked';
-    return '<div class="gs-import-bar" id="bnet-footer"><p class="gs-import-sum" role="status">' + summary + '</p><div class="gs-actions"><a class="gs-btn" href="' + esc(rosterHref(gid)) + '">Cancel</a>' +
-      '<button type="button" class="gs-btn gs-btn-molten" data-action="bnet-commit" data-key="bnet-commit"' + (!c.ticked || c.tooMany || s.status === 'saving' ? ' disabled' : '') + '>Add ' + esc(plural(c.ticked, 'person', 'people')) + '</button></div></div>';
+    const summary = c.tooMany ? plural(c.ticked, 'character', 'characters') + ' ticked: add at most ' + MAX_COMMIT + ' at a time.' : plural(c.ticked, 'character', 'characters') + ' ticked.';
+    return {
+      id: 'bnet-footer', text: summary,
+      back: { attrs: { 'data-action': 'bnet-back', 'data-key': 'bnet-back' } }, cancel: { href: rosterHref(gid) },
+      commit: { label: 'Add ' + plural(c.ticked, 'person', 'people'), disabled: !c.ticked || c.tooMany || s.status === 'saving', attrs: { 'data-action': 'bnet-commit', 'data-key': 'bnet-commit' } },
+    };
   }
+
+  function footerHtml(gid, s) { return G.ui.commitBarHtml(commitOpts(gid, s)); }
 
   function filtersHtml(s) {
     const v = s.view;
@@ -161,11 +167,18 @@
         '<p class="gs-fine">Tick the characters to add. Each becomes a person with that character as Main; their Discord account is linked later, when they claim it on My characters. Battle.net data is not kept: only the people you add are saved.</p></div>' +
         filtersHtml(s) + '<div id="bnet-list">' + listHtml(s) + '</div></section>';
     }
-    return '<div class="gs-page gs-import-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Import from Battle.net</h1>' +
-      '<p class="gs-lead gs-lead-sm">Reads your in-game guild\'s member list from Battle.net and adds the characters you pick to the roster.</p></div>' +
-      infoHtml(gd, d) +
-      (ready ? '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="bnet-load" data-key="bnet-load"' + (s.status === 'loading' ? ' disabled' : '') + '>' + (s.preview ? 'Load the roster again' : 'Load the guild roster') + '</button></div>' : '') +
-      errorHtml(s) + result + (s.preview ? footerHtml(gid, s) : '') + '</div>';
+    const team = G.pages.attendance ? G.pages.attendance.teamOf(gd, s.teamId) : null;
+    return G.ui.importFlowHtml({
+      title: 'Import from Battle.net', context: gd.guild.name + (team ? ' - ' + team.name : ''), back: { href: rosterHref(gid), label: 'Roster' },
+      step: s.result ? 'result' : (s.preview ? 'preview' : 'source'),
+      alertHtml: errorHtml(s), sourcesHtml: G.ui.importSourcesHtml(gid, 'bnet'),
+      sourceHtml: '<p class="gs-lead gs-lead-sm">Reads your in-game guild\'s member list from Battle.net and adds the characters you pick to the roster.</p>' + infoHtml(gd, d) +
+        (ready ? '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="bnet-load" data-key="bnet-load"' + (s.status === 'loading' ? ' disabled' : '') + '>' + (s.status === 'loading' ? 'Reading...' : 'Preview guild roster') + '</button></div>' +
+          '<p class="gs-fine">Nothing is saved until you press the button on the next step.</p>' : ''),
+      previewHtml: result, resultHtml: s.result ? G.ui.importResultHtml({ id: 'bnet-result-banner', title: s.result.title, text: s.result.text, next: [
+        { label: 'Open roster', href: rosterHref(gid) }, { label: 'Import another', attrs: { 'data-action': 'bnet-again', 'data-key': 'bnet-again' } }] }) : '',
+      commit: s.preview ? commitOpts(gid, s) : null,
+    });
   }
 
   // ── state and behaviour ──
@@ -174,7 +187,7 @@
     if (!s.imports) s.imports = {};
     const c = s.imports.bnet;
     if (c && c.gid === gid && c.teamId === teamId) return c;
-    s.imports.bnet = { gid: gid, teamId: teamId, status: 'idle', error: '', offerReload: false, info: null, preview: null, view: newView(null), ticked: {}, defaultStatus: 'trial', rowErrors: {} };
+    s.imports.bnet = { gid: gid, teamId: teamId, status: 'idle', error: '', offerReload: false, info: null, preview: null, result: null, view: newView(null), ticked: {}, defaultStatus: 'trial', rowErrors: {} };
     return s.imports.bnet;
   }
 
@@ -210,6 +223,7 @@
     if (!s || s.status === 'loading') return;
     s.status = 'loading';
     s.error = '';
+    s.result = null;
     s.offerReload = false;
     G.app.render();
     G.api.post(apiBase(s.gid) + 'preview', { teamId: s.teamId }).then(function (res) {
@@ -224,6 +238,22 @@
       s.preview = null;
       if (failure(s, err, false)) G.app.render();
     });
+  };
+
+  // Back to the Source step (the guild's settings stay read); Import another starts afresh.
+  G.handlers.click['bnet-back'] = function () {
+    const s = cur();
+    if (!s) return;
+    s.preview = null; s.status = 'idle'; s.error = ''; s.offerReload = false; s.rowErrors = {};
+    G.app.render();
+  };
+  G.handlers.click['bnet-again'] = function () {
+    const s = cur();
+    if (!s) return;
+    const info = s.info;
+    st().imports.bnet = null;
+    ensureState(s.gid, s.teamId).info = info;
+    G.app.render();
   };
 
   G.handlers.input['bnet-min-level'] = function (el) {
@@ -264,9 +294,9 @@
       s.status = 'ready';
       const people = res && typeof res.people === 'number' ? res.people : c.ticked;
       G.app.applyFlags(s.gid, res);
-      st().rosterNotice = 'Added ' + plural(people, 'person', 'people') + ' from the Battle.net guild roster.';
-      st().imports.bnet = null;
-      G.app.go(rosterHref(s.gid));
+      s.result = { title: 'Added ' + plural(people, 'person', 'people') + ' from the Battle.net guild roster.', text: 'Each is a person with that character as Main. Their Discord account is linked when they claim it on My characters.' };
+      s.preview = null;
+      G.app.render();
     }, function (err) {
       s.status = 'ready';
       if (err && err.index != null && built.sent[err.index] != null && err.code !== 'roster_changed') {

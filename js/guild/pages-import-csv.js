@@ -150,7 +150,8 @@
       (s.fileName ? '<p class="gs-fine" id="csv-file-name">Loaded ' + esc(s.fileName) + '.</p>' : '') + '</div>' +
       '<div class="gs-field"><label class="gs-label" for="csv-status">Starting status when the file has none</label><select class="gs-input" id="csv-status" data-change="csv-start" data-key="csv-start">' +
       G.ui.optionsHtml(START_STATUSES.map(function (v) { return { value: v, label: G.ui.statusLabel(v) }; }), s.defaultStatus) + '</select></div>' +
-      '<button type="submit" class="gs-btn gs-btn-molten"' + (s.status === 'loading' ? ' disabled' : '') + '>Preview</button></form>';
+      '<button type="submit" class="gs-btn gs-btn-molten"' + (s.status === 'loading' ? ' disabled' : '') + '>Preview import</button></form>' +
+      '<p class="gs-fine">Nothing is saved until you press the button on the next step.</p>';
   }
 
   // opts: { guildData, csv (the page state), people (the roster list's people whose home team is the team) }
@@ -171,12 +172,22 @@
         '<span class="gs-chip">' + pv.totals.taken + ' on the roster</span><span class="gs-chip">' + plural(pv.totals.problems, 'problem', 'problems') + '</span></div></div>' +
         '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import" aria-label="Rows of the file"><thead><tr><th scope="col">Character</th><th scope="col">Team</th><th scope="col">Status</th><th scope="col">What happens</th></tr></thead><tbody>' +
         plan.rows.map(function (r) { return rowHtml(r, s.choices, opts.people, s.rowErrors, names); }).join('') + '</tbody></table></div></section>';
-      footer = '<div class="gs-import-bar" id="csv-footer"><p class="gs-import-sum" role="status">' + esc(csvSummary(plan)) + '</p><div class="gs-actions"><a class="gs-btn" href="' + esc(rosterHref(gid)) + '">Cancel</a>' +
-        '<button type="button" class="gs-btn gs-btn-molten" data-action="csv-commit" data-key="csv-commit"' + (!changes || plan.needs || s.status === 'saving' ? ' disabled' : '') + '>Save ' + esc(plural(changes, 'change', 'changes')) + '</button></div></div>';
+      footer = {
+        id: 'csv-footer', text: csvSummary(plan),
+        back: { attrs: { 'data-action': 'csv-back', 'data-key': 'csv-back' } }, cancel: { href: rosterHref(gid) },
+        commit: { label: 'Save ' + plural(changes, 'change', 'changes'), disabled: !changes || !!plan.needs || s.status === 'saving', attrs: { 'data-action': 'csv-commit', 'data-key': 'csv-commit' } },
+      };
     }
-    return '<div class="gs-page gs-import-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Import from a CSV file</h1>' +
-      '<p class="gs-lead gs-lead-sm">Adds the characters in a spreadsheet to the roster, at most ' + MAX_ROWS + ' at a time. Names already on the roster are skipped; you decide what the file leaves open.</p></div>' +
-      inputFormHtml(s) + errorHtml(s) + result + footer + '</div>';
+    const team = G.pages.attendance ? G.pages.attendance.teamOf(gd, s.teamId) : null;
+    return G.ui.importFlowHtml({
+      title: 'Import from a CSV file', context: gd.guild.name + (team ? ' - ' + team.name : ''), back: { href: rosterHref(gid), label: 'Roster' },
+      step: s.result ? 'result' : (s.preview ? 'preview' : 'source'),
+      alertHtml: errorHtml(s), sourcesHtml: G.ui.importSourcesHtml(gid, 'csv'),
+      sourceHtml: '<p class="gs-lead gs-lead-sm">Adds the characters in a spreadsheet to the roster, at most ' + MAX_ROWS + ' at a time. Names already on the roster are skipped; you decide what the file leaves open.</p>' + inputFormHtml(s),
+      previewHtml: result, resultHtml: s.result ? G.ui.importResultHtml({ id: 'csv-result-banner', title: s.result.title, text: s.result.text, next: [
+        { label: 'Open roster', href: rosterHref(gid) }, { label: 'Import another', attrs: { 'data-action': 'csv-again', 'data-key': 'csv-again' } }] }) : '',
+      commit: footer || null,
+    });
   }
 
   // ── behaviour ──
@@ -185,7 +196,7 @@
     if (!s.imports) s.imports = {};
     const cur = s.imports.csv;
     if (cur && cur.gid === gid && cur.teamId === teamId) return cur;
-    s.imports.csv = { gid: gid, teamId: teamId, text: '', fileName: '', defaultStatus: 'raider', status: 'idle', error: '', preview: null, choices: {}, rowErrors: {} };
+    s.imports.csv = { gid: gid, teamId: teamId, text: '', fileName: '', defaultStatus: 'raider', status: 'idle', error: '', preview: null, result: null, choices: {}, rowErrors: {} };
     return s.imports.csv;
   }
 
@@ -222,7 +233,7 @@
     const s = cur();
     if (!s) return;
     if (!s.text.trim()) { s.error = 'Paste a CSV or choose a file first.'; G.app.render(); return; }
-    s.status = 'loading'; s.error = '';
+    s.status = 'loading'; s.error = ''; s.result = null;
     G.app.render();
     G.api.csvImport.preview(s.gid, { teamId: s.teamId, text: s.text, defaultStatus: s.defaultStatus }).then(function (res) {
       s.status = 'ready'; s.preview = res; s.choices = csvInitChoices(res); s.rowErrors = {};
@@ -231,6 +242,21 @@
       s.status = 'idle'; s.preview = null;
       if (failure(s, err)) G.app.render();
     });
+  };
+
+  // Back keeps the text and the chosen file; Import another starts the page afresh.
+  G.handlers.click['csv-back'] = function () {
+    const s = cur();
+    if (!s) return;
+    s.preview = null; s.status = 'idle'; s.error = ''; s.rowErrors = {};
+    G.app.render();
+  };
+  G.handlers.click['csv-again'] = function () {
+    const s = cur();
+    if (!s) return;
+    st().imports.csv = null;
+    ensureState(s.gid, s.teamId);
+    G.app.render();
   };
 
   G.handlers.change['csv-tick'] = function (el) {
@@ -269,9 +295,9 @@
     G.api.csvImport.commit(s.gid, body).then(function (res) {
       s.status = 'ready';
       G.app.applyFlags(s.gid, res);
-      st().rosterNotice = 'Added ' + plural(res.people, 'person', 'people') + ' and ' + plural(res.characters, 'character', 'characters') + ' from the CSV file.';
-      st().imports.csv = null;
-      G.app.go(rosterHref(s.gid));
+      s.result = { title: 'Added ' + plural(res.people, 'person', 'people') + ' and ' + plural(res.characters, 'character', 'characters') + ' from the CSV file.', text: plan.skipped ? plural(plan.skipped, 'row was', 'rows were') + ' left out.' : '' };
+      s.preview = null;
+      G.app.render();
     }, function (err) {
       s.status = 'ready';
       const sent = err && err.index != null ? body.rows[err.index] : null;

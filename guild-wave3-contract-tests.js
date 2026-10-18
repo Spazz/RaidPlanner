@@ -388,11 +388,11 @@ check('CSV import: the page previews a pasted file against the real roster, asks
   assert(text.includes('5 rows read') && text.includes('Alt of Newwarr') && text.includes('On the roster') && text.includes('is not a class'), text.slice(0, 900));
   // The alt of "Thoren" is a question with Thoren suggested; the page preselected it.
   assert.deepEqual(plain(csv.choices[5]), { ticked: true, pick: 'alt', personId: s.people.Thoren });
-  assert(/data-action="csv-commit"[^>]*>Save 3 changes<\/button>/.test(page));
+  assert(/data-action="csv-commit"[^>]*><span>Save 3 changes<\/span><\/button>/.test(page));
   await A.handlers.click['csv-commit']();
   await settle();
-  assert.equal(A.went, '#/g/' + s.gid + '/roster');
-  assert.equal(A.app.state.rosterNotice, 'Added 1 person and 3 characters from the CSV file.');
+  assert.equal(A.went, undefined, 'the officer stays on the import page');
+  assert.equal(A.app.state.imports.csv.result.title, 'Added 1 person and 3 characters from the CSV file.');
   const chars = await s.rows("SELECT c.name, c.team_id, c.is_main, c.player_id, p.status, p.joined_on FROM characters c JOIN players p ON p.id = c.player_id WHERE c.name IN ('Newwarr', 'Newmage', 'Lonelyalt') ORDER BY c.name");
   const by = Object.fromEntries(chars.map((c) => [c.name, c]));
   assert.deepEqual([by.Newwarr.team_id, by.Newwarr.status, by.Newwarr.joined_on, by.Newwarr.is_main], [s.teamId, 'trial', '2026-10-01', 1]);

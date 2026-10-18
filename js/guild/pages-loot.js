@@ -169,11 +169,15 @@
       // The Worker's vsTeam is the window figure; the all-time one is worked out here from the all-time average.
       const serverVs = w === 'window' ? num(p.vsTeam) : null;
       return {
-        id: p.personId, name: p.name, class: p.class, status: p.status,
+        id: p.personId, name: p.name, class: p.class, status: p.status, isMe: !!p.isMe,
         raids: figure(p.raids, w), ms: itemFigure(p, 'MS', w), os: itemFigure(p, 'OS', w), counted: figure(p.counted, w),
         perRaid: perRaid, vs: serverVs != null ? serverVs : (perRaid != null && avg != null ? perRaid - avg : null),
       };
     });
+  }
+
+  function pinMine(rows) {
+    return rows.filter(function (r) { return r.isMe; }).concat(rows.filter(function (r) { return !r.isMe; }));
   }
 
   function defaultSort(mode) { return { column: mode === 'count' ? 'counted' : 'perRaid', dir: 'desc' }; }
@@ -239,7 +243,7 @@
     const link = r.id
       ? '<a class="gs-char-link ' + G.ui.classClass(r.class) + '" href="' + esc(G.router.format({ name: 'lootperson', gid: gid, pid: r.id })) + '">' + esc(r.name) + '</a>'
       : G.ui.classNameHtml(r.name, r.class);
-    return '<span class="gs-att-name">' + link + (r.status === 'inactive' ? '<span class="gs-chip gs-chip-plain">Inactive</span>' : '') + '</span>';
+    return '<span class="gs-att-name">' + link + (r.isMe ? '<span class="gs-you">You</span>' : '') + (r.status === 'inactive' ? '<span class="gs-chip gs-chip-plain">Inactive</span>' : '') + '</span>';
   }
 
   function balanceTableHtml(gid, rows, columns, sort) {
@@ -255,11 +259,11 @@
     };
     const head = columns.map(function (c) { return sortHeaderHtml(c, sort); }).join('');
     const body = rows.map(function (r) {
-      return '<tr><th scope="row" class="gs-cell-strong">' + nameCellHtml(gid, r) + '</th>' +
+      return '<tr' + (r.isMe ? ' class="is-you"' : '') + '><th scope="row" class="gs-cell-strong">' + nameCellHtml(gid, r) + '</th>' +
         columns.slice(1).map(function (c) { return '<td class="gs-nowrap gs-num">' + esc(cell(c, r)) + '</td>'; }).join('') + '</tr>';
     }).join('');
     const cards = rows.map(function (r) {
-      return '<li class="gs-loot-card"><div class="gs-card-top">' + nameCellHtml(gid, r) + '</div><dl class="gs-att-stats">' +
+      return '<li class="gs-loot-card' + (r.isMe ? ' is-you' : '') + '"><div class="gs-card-top">' + nameCellHtml(gid, r) + '</div><dl class="gs-att-stats">' +
         columns.slice(1).map(function (c) { return '<div><dt>' + esc(COLUMN_LABELS[c]) + '</dt><dd>' + esc(cell(c, r)) + '</dd></div>'; }).join('') + '</dl></li>';
     }).join('');
     return '<div class="gs-table-wrap gs-loot-table"><table class="gs-table gs-table-loot" aria-label="Loot balance"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
@@ -280,13 +284,19 @@
       '<h2 class="gs-h2 gs-h2-lg">You can\'t see this team\'s loot</h2><p class="gs-lead gs-lead-sm">Who sees the loot of ' + esc(team ? team.name : 'this team') + ' is set by the guild\'s officers in Guild settings.</p></section></div>';
   }
 
+  // The Balance view's window switch sits in the page's segment bar, and only when the table does (an empty view keeps just the view switch).
+  function balanceBarHtml(gd, teamId, data, ui) {
+    const rows = balanceRows(data, ui.window === 'all' ? 'all' : 'window');
+    return rows.length && totalAwards(data) > 0 ? windowSwitchHtml(data, ui) : '';
+  }
+
   function balanceBodyHtml(gd, teamId, data, ui) {
     const gid = gd.guild.id;
     const w = ui.window === 'all' ? 'all' : 'window';
     const mode = data.mode === 'count' ? 'count' : 'perRaid';
     const columns = mode === 'count' ? ['name', 'raids', 'ms', 'os', 'counted'] : COLUMNS;
     const rows = balanceRows(data, w);
-    const sorted = sortRows(rows, ui.sort || defaultSort(mode));
+    const sorted = pinMine(sortRows(rows, ui.sort || defaultSort(mode))); // the viewer's own row first ("You"), whatever the sort
     const avg = figure(data.teamAverage, w);
     const own = data.scope === 'own';
     const since = data.window && typeof data.window.from === 'string' && G.ui.formatDay(data.window.from) ? ' since ' + G.ui.formatDay(data.window.from) : '';
@@ -297,8 +307,7 @@
       ? '<dl class="gs-summary"><div class="gs-summary-item"><dt>Team average per raid</dt><dd>' + esc(fixed(avg, 2)) + '</dd></div></dl>' : '';
     if (!rows.length || !(totalAwards(data) > 0)) return emptyHtml(gd, teamId);
     const span = ui.window === 'all' ? 'All time. ' : (data.window && typeof data.window.weeks === 'number' ? 'Last ' + plural(data.window.weeks, 'full reset week', 'full reset weeks') + since + '. ' : '');
-    return '<div class="gs-roster-filters">' + windowSwitchHtml(data, ui) + '</div>' +
-      (own ? '<div class="gs-notice" role="status"><span>You see your own loot only. The team average is for comparison. Officers choose who sees what in Guild settings.</span></div>' : '') +
+    return (own ? '<div class="gs-notice" role="status"><span>You see your own loot only. The team average is for comparison. Officers choose who sees what in Guild settings.</span></div>' : '') +
       '<p class="gs-fine" id="loot-rules">' + esc(span + rules) + '</p>' +
       averageLine + balanceTableHtml(gid, sorted, columns, ui.sort || defaultSort(mode));
   }
@@ -357,13 +366,17 @@
     const several = G.shell.activeTeams(gd.teams).length > 1;
     const team = teamOf(gd, teamId);
     const people = Array.isArray(data.people) ? data.people : null;
-    const sub = (several && team ? esc(team.name) : esc(gd.guild.name)) + (view === 'balance' && people ? ' &middot; ' + esc(plural(people.length, 'person', 'people')) : '');
+    const context = (several && team ? team.name : gd.guild.name) + (view === 'balance' && people ? ' - ' + plural(people.length, 'person', 'people') : '');
+    const pageUi = opts.ui || { sort: null, window: null };
     let body;
     if (view === 'raids') body = raidsBodyHtml(gd, teamId, data);
     else if (view === 'items') body = itemsBodyHtml(gd, teamId, data);
-    else body = balanceBodyHtml(gd, teamId, data, opts.ui || { sort: null, window: null });
-    return '<div class="gs-page gs-loot-page"><div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Loot</h1><p class="gs-sub">' + sub + '</p></div></div>' +
-      G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + '<div class="gs-roster-filters">' + viewSwitchHtml(view) + '</div>' + body + '</div>';
+    else body = balanceBodyHtml(gd, teamId, data, pageUi);
+    return G.ui.listPageHtml({
+      head: { title: 'Loot', context: context }, pageClass: 'gs-loot-page',
+      noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'),
+      barHtml: viewSwitchHtml(view) + (view === 'balance' ? balanceBarHtml(gd, teamId, data, pageUi) : ''), bodyHtml: body,
+    });
   }
 
   // ── data ──

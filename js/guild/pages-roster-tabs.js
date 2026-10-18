@@ -29,5 +29,11 @@
     }).join('') + '</ul></nav>';
   }
 
-  G.pages.rosterTabs = { LABELS: LABELS, tabsFor: tabsFor, html: html, hrefOf: hrefOf };
+  // The head of every Roster page (design framework T1): the page head ("Roster", the team and the tab's name) and the tab strip under it.
+  function headHtml(gd, active, teamName, extra) {
+    const label = active === 'roster' ? '' : LABELS[active] || '';
+    return G.ui.pageHeadHtml(Object.assign({ title: 'Roster', context: [teamName, label].filter(Boolean).join(' - ') }, extra || {})) + html(gd, active, 0);
+  }
+
+  G.pages.rosterTabs = { LABELS: LABELS, tabsFor: tabsFor, html: html, headHtml: headHtml, hrefOf: hrefOf };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

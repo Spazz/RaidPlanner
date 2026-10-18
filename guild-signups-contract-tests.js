@@ -376,7 +376,7 @@ check('schedule: Settings > Raid schedule saves slots with the real validation a
   pageState(s, A);
   await A.pages.raids.load(list, A.guildData);
   const listHtml = A.pages.raids.main(list, A.guildData);
-  assert(/Create upcoming raids/.test(listHtml) && /Upcoming \(7\)/.test(listHtml));
+  assert(/Create upcoming raids/.test(listHtml) && /Upcoming <span class="gs-seg-count">7<\/span>/.test(listHtml));
   assert(/Mon, Oct 19, 7:30 PM|Mon Oct 19, 7:30 PM/.test(stripTags(listHtml)), stripTags(listHtml).slice(0, 600));
   // Again: nothing new. The button on the Raids page says so.
   await A.handlers.click['raids-fill'](el({}));

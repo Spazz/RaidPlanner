@@ -188,7 +188,7 @@ const launchState = (data) => ({ gid: 'g1', teamId: 't1', data: data || FUNNEL()
 check('launch page (officer): the four stages as bars with counts, the gap to the raid size, a table by role and a row per person with the controls', () => {
   const out = G.pages.launch.launchHtml({ guildData: gd(OFFICER, 'forever'), state: launchState() });
   const t = text(out);
-  assert(out.includes('<h1 class="gs-h1" tabindex="-1">Roster</h1>') && t.includes('Alpha - Launch'));
+  assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Roster</h1>') && t.includes('Alpha - Launch'));
   for (const label of ['Spec poll picked', 'Character created', 'Level band', 'Attuned / ready']) assert(t.includes(label), label);
   assert(out.includes('<progress class="gs-funnel-bar" max="3" value="2" aria-labelledby="fn-intent"></progress>'));
   assert(out.includes('value="3" aria-labelledby="fn-character"') && out.includes('value="1" aria-labelledby="fn-ready"'));

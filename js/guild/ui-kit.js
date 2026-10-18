@@ -251,7 +251,9 @@
   // edge and the tag YOU. The first column is the row's link. Numbers right-aligned, at most 7 columns. Over 10 rows show 10 and "Show all N"
   // (no pagination). Below 760 px the table becomes cards (every cell carries its column name in data-label; an empty cell is dropped), with no
   // text under 12 px and no sideways scroll.
-  //   columns: [{ key, label, align ('right'), primary (the row header cell), sort ('ascending' | 'descending' | true), sortAction, hideLabel (no label on a card) }]
+  //   columns: [{ key, label, align ('right'), primary (the row header cell), sort ('ascending' | 'descending' | true), sortAction, hideLabel (no label on a card),
+  //             srLabel (the head is read aloud but not drawn: a column of row actions), sortKey (the sort button's data-key; default sort-<key>),
+  //             headNote (a short muted count under the label, e.g. "24 not signed in") }]
   //   rows:    [{ id, you, cells: { <key>: html }, mark (a class id or role: the card edge), ariaLabel }]
   //   opts:    { label (the table's accessible name), limit (default 10), showAll (true: all rows), noun ('sign-ups'), showAllAction, emptyHtml }
   ui.dataTableHtml = function (opts) {
@@ -266,8 +268,9 @@
     const primaryKey = (columns.filter(function (c) { return c.primary; })[0] || columns[0]).key;
     const head = columns.map(function (c) {
       const dir = c.sort === 'ascending' || c.sort === 'descending' ? c.sort : '';
-      const inner = c.sort ? '<button type="button" class="gs-sort" data-action="' + esc(c.sortAction || 'table-sort') + '" data-sort="' + esc(c.key) + '"' + (dir ? ' data-dir="' + (dir === 'ascending' ? 'asc' : 'desc') + '"' : '') + '>' + esc(c.label) + '<span class="gs-sort-ind" aria-hidden="true"></span></button>' : esc(c.label);
-      return '<th scope="col" class="' + (c.align === 'right' ? 'is-right' : '') + '"' + (c.sort ? ' aria-sort="' + (dir || 'none') + '"' : '') + '>' + inner + '</th>';
+      const note = c.headNote ? '<span class="gs-th-note">' + esc(c.headNote) + '</span>' : '';
+      const inner = c.sort ? '<button type="button" class="gs-sort" data-action="' + esc(c.sortAction || 'table-sort') + '" data-sort="' + esc(c.key) + '" data-key="' + esc(c.sortKey || 'sort-' + c.key) + '"' + (dir ? ' data-dir="' + (dir === 'ascending' ? 'asc' : 'desc') + '"' : '') + '>' + esc(c.label) + note + '<span class="gs-sort-ind" aria-hidden="true"></span></button>' : esc(c.label) + note;
+      return '<th scope="col" class="' + (c.align === 'right' ? 'is-right' : '') + '"' + (c.sort ? ' aria-sort="' + (dir || 'none') + '"' : '') + '>' + (c.srLabel ? '<span class="gs-sr">' + inner + '</span>' : inner) + '</th>';
     }).join('');
     const body = shown.map(function (r) {
       const cells = columns.map(function (c) {

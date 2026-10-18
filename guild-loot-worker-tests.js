@@ -1004,14 +1004,14 @@ check('balance: the contract shape and the maths over the window and all time; C
   assert.deepEqual(b.window, { weeks: 8, switchWeeks: [8, 12], from: '2026-11-24' });
   assert.deepEqual([b.mode, b.countTags, b.scope], ['perRaid', ['MS'], 'team']);
   assert.deepEqual(b.people.map((p) => p.name), ['Aldric', 'Brindle', 'Cassia', 'Dunmar']);
-  assert.deepEqual(Object.keys(b.people[0]), ['personId', 'name', 'class', 'status', 'raids', 'items', 'counted', 'perRaid', 'vsTeam']);
+  assert.deepEqual(Object.keys(b.people[0]), ['personId', 'name', 'class', 'status', 'raids', 'items', 'counted', 'perRaid', 'vsTeam', 'isMe']);
   assert.deepEqual(Object.keys(b.people[0].items), ALL_TAGS);
   const aldric = row(b, s.p.aldric);
   assert.deepEqual(aldric, {
     personId: s.p.aldric, name: 'Aldric', class: 'WARRIOR', status: 'raider',
     raids: { window: 2, all: 3 },
     items: { MS: { window: 2, all: 3 }, OS: { window: 1, all: 1 }, DE: { window: 0, all: 0 }, BANK: { window: 0, all: 0 } },
-    counted: { window: 2, all: 3 }, perRaid: { window: 1, all: 1 }, vsTeam: 0.333,
+    counted: { window: 2, all: 3 }, perRaid: { window: 1, all: 1 }, vsTeam: 0.333, isMe: false,
   });
   assert.deepEqual(row(b, s.p.brindle).raids, { window: 2, all: 2 }, 'r0 was Aldric alone');
   assert.deepEqual([row(b, s.p.brindle).counted, row(b, s.p.brindle).vsTeam], [{ window: 2, all: 2 }, 0.333]);

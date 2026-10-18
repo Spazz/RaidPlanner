@@ -284,9 +284,9 @@
     const total = flagTotal + lootTotal;
     const canEdit = G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', opts.teamId);
     const claims = Array.isArray(opts.claims) ? opts.claims : [];
-    const sub = (several && team ? esc(team.name) + ' &middot; ' : '') + esc(plural(flagTotal, 'open flag', 'open flags')) + ' on ' + esc(plural((data.raids || []).length, 'raid', 'raids')) +
-      (lootTotal ? ' &middot; ' + esc(plural(lootTotal, 'loot winner', 'loot winners')) + ' to link' : '') +
-      (claims.length ? ' &middot; ' + esc(plural(claims.length, 'character claim', 'character claims')) : '');
+    // The flag count is the Attendance tab's badge: load() sets the badge from the same list, and every decision answers with the new badge numbers.
+    const sub = [several && team ? team.name : '', plural(flagTotal, 'open flag', 'open flags') + ' on ' + plural((data.raids || []).length, 'raid', 'raids'),
+      lootTotal ? plural(lootTotal, 'loot winner', 'loot winners') + ' to link' : '', claims.length ? plural(claims.length, 'character claim', 'character claims') : ''].filter(Boolean).join(' - ');
     const filterField = total
       ? '<div class="gs-roster-status"><label class="gs-label" for="review-filter">Flag type</label><select class="gs-input" id="review-filter" data-change="review-filter" data-key="review-filter">' + G.ui.optionsHtml(FILTERS, filter) + '</select></div>' : '';
     let body;
@@ -305,8 +305,11 @@
           '<ul class="gs-review-list">' + g.items.map(function (i) { return itemHtml(gid, r.id, i); }).join('') + '</ul></section>';
       }).join('') + shownLoot.map(function (g) { return lootGroupHtml(gid, g); }).join('');
     }
-    return '<div class="gs-page"><div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Review queue</h1><p class="gs-sub">' + sub + '</p></div>' + filterField + '</div>' +
-      noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + claimsSectionHtml(opts.guildData, opts.claims) + A().staleBannerHtml((data.stale || []).length, canEdit, opts.progress) + body + '</div>';
+    return G.ui.listPageHtml({
+      head: { title: 'Review queue', context: sub },
+      noticesHtml: noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + claimsSectionHtml(opts.guildData, opts.claims) + A().staleBannerHtml((data.stale || []).length, canEdit, opts.progress),
+      barHtml: filterField, bodyHtml: body,
+    });
   }
 
   function load(r, gd) {
@@ -324,6 +327,11 @@
     return Promise.all([G.api.get(A().apiBase(gid) + '/attendance/review?team=' + encodeURIComponent(teamId)), claims]).then(function (got) {
       const data = got[0];
       if (Array.isArray(got[1])) gd.pendingClaims = got[1].length; // the Attendance badge counts these: it is right again as soon as the queue is
+      // The badge counts open flags, and so does this page's header: when the whole list came (not cut at the Worker's 100 raids) the badge takes the page's number.
+      const listedRaids = Array.isArray(data && data.raids) ? data.raids : [];
+      if (listedRaids.length < 100 && gd.attendanceFlags && Object.prototype.hasOwnProperty.call(gd.attendanceFlags, teamId)) {
+        gd.attendanceFlags[teamId] = listedRaids.reduce(function (n, g) { return n + (g.items || []).length; }, 0);
+      }
       a().review = { gid: gid, teamId: teamId, data: data, claims: got[1], loot: Array.isArray(data && data.lootUnmatched) ? data.lootUnmatched : [], filter: a().review && a().review.gid === gid && a().review.teamId === teamId ? a().review.filter : 'all' };
       return null;
     });

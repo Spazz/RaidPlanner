@@ -245,7 +245,7 @@ check('Progress: the Raids tab draws the board from the stored pulls (first kill
   S.guilds = { [s.gid]: A.guildData };
   const list = await A.api.get(`${s.base}/raids?team=${s.teamId}`);
   const page = A.pages.raids.raidsHtml({ guildData: A.guildData, teamId: s.teamId, data: list, tab: 'progress', progressHtml: html });
-  assert(/data-tab="progress"[^>]*aria-pressed="true"/.test(page) && stripTags(page).includes('Boss progress from the logged raids'));
+  assert(/aria-pressed="true" data-action="raids-tab" data-value="progress"/.test(page) && stripTags(page).includes('Boss progress from the logged raids'));
   // The public page: off until ticked; then the board, without raid ids and report codes.
   const visitor = loadPages(s.world, {});
   await assert.rejects(visitor.api.get(`/api/public/${s.gid}`), (error) => error.status === 404);

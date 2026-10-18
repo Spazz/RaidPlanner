@@ -418,7 +418,7 @@ a.gs-signin-link:hover { color: var(--accent-gold-bright); }
   .gs-tabs-list li { flex: 1 1 0; display: flex; min-width: 0; }
   .gs-tab { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; text-decoration: none; font: 600 12px/1 var(--font-cond); letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; }
   .guild-page a.gs-tab, .gs-tab { color: var(--text-secondary); }
-  .guild-page a.gs-tab.is-active { background: var(--bg-card-hover); color: var(--accent-gold); }
+  .guild-page a.gs-tab.is-active, .guild-page button.gs-tab.is-active { background: var(--bg-card-hover); color: var(--accent-gold); }
   .gs-tab.is-active::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--accent-gold); }
 
   .gs-nav-link { height: 44px; }
@@ -499,8 +499,6 @@ a.gs-signin-link:hover { color: var(--accent-gold-bright); }
 
 .gs-roster-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 24px; }
 .gs-roster-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.gs-import-menu { position: relative; }
-.gs-import-menu .gs-menu { left: 0; right: auto; width: 260px; }
 .gs-trial-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; box-sizing: border-box; padding: 12px 16px; background: #2a1d10; border: 1px solid #6b4318; }
 .gs-trial-strip-text { margin: 0; font-size: 16px; line-height: 1.4; color: var(--text-primary); overflow-wrap: anywhere; }
 .gs-roster-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
@@ -597,9 +595,7 @@ a.gs-signin-link:hover { color: var(--accent-gold-bright); }
 @media (max-width: 600px) {
   .gs-roster-head { flex-direction: column; align-items: stretch; }
   .gs-roster-actions { width: 100%; }
-  .gs-roster-actions > .gs-btn, .gs-import-menu { flex: 1 1 0; }
-  .gs-import-menu .gs-btn { width: 100%; }
-  .gs-import-menu .gs-menu { width: min(260px, calc(100vw - 32px)); }
+  .gs-roster-actions > .gs-btn { flex: 1 1 0; }
   .gs-trial-strip .gs-btn { width: 100%; }
   .gs-roster-filters { flex-direction: column; align-items: stretch; }
   .gs-segs { width: 100%; }
@@ -1725,6 +1721,7 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
   .gs-dtable th[scope="row"] a::after { content: ""; position: absolute; inset: 0; }
   .gs-dtable td button, .gs-dtable td a, .gs-dtable td .gs-menu-wrap { position: relative; z-index: 1; }
   .gs-dtable-foot { padding: 0; }
+  .gs-dtable td:has(> .gs-dash:only-child) { display: none; } /* a dash that only fills a cell (no off spec) is not a line on the card */
   .gs-sgrid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .gs-settings-page.is-view-list .gs-sdetail { display: none; }
   .gs-settings-page.is-view-detail .gs-slist { display: none; }
@@ -1760,6 +1757,43 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
   .gs-dialog-actions { flex-direction: column-reverse; align-items: stretch; }
   .gs-dialog-actions .gs-btn { width: 100%; min-height: var(--control-h-lg); font-size: 18px; }
   .guild-page a.gs-char-link, .guild-page a.gs-raid-link { display: inline-flex; align-items: center; min-height: var(--control-h-phone); }
+  .gs-loot-card { position: relative; }
+  .guild-page .gs-loot-card a.gs-char-link::after { content: ""; position: absolute; inset: 0; } /* a row is one tap target: the person's link covers the Loot card */
   .gs-step + .gs-step::before { width: 12px; }
   .gs-skel-row { grid-template-columns: 70px minmax(0, 1fr) 50px; }
 }
+
+/* ══ Design framework (Wave 2): list pages on T1, imports on T5 ═════════════════════════
+   Attendance and Loot (the viewer's own row pinned, legend folded, the matrix at the page's full width with a sticky name column), the Raids list and the
+   Roster on the data table, the import flows (stepper, preview, commit bar), the phone More tab. */
+
+/* Attendance: the matrix is the one page that uses the whole column; the name column stays while the weeks scroll */
+.gs-att-page { max-width: none; }
+.gs-att-page .gs-table-att { width: 100%; min-width: 0; }
+.gs-table-att thead th:first-child { position: sticky; left: 0; z-index: 3; background: var(--bg-frame); }
+.gs-table-att th[scope="row"] { box-shadow: 1px 0 0 var(--border-subtle); }
+.gs-table-att tr.is-you td, .gs-table-att tr.is-you th[scope="row"] { background: var(--next-bg); }
+.gs-table-att tr.is-you th[scope="row"] { box-shadow: inset 3px 0 0 var(--accent-gold), 1px 0 0 var(--border-subtle); }
+.gs-att-card.is-you { background: var(--next-bg); box-shadow: inset 3px 0 0 var(--accent-gold); }
+.gs-legend-box > summary { min-height: 32px; display: flex; align-items: center; }
+
+/* Loot: the viewer's own row first, same gold edge as Attendance and the data table */
+.gs-table-loot tr.is-you td, .gs-table-loot tr.is-you th[scope="row"] { background: var(--next-bg); }
+.gs-table-loot tr.is-you th[scope="row"] { box-shadow: inset 3px 0 0 var(--accent-gold); }
+.gs-loot-card.is-you { background: var(--next-bg); box-shadow: inset 3px 0 0 var(--accent-gold); }
+
+/* Data table head note (the Roster's "24 not signed in") */
+.gs-th-note { margin-left: 6px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+
+/* T5 imports: the source switch, the inline commit bar of a panel, the result banner */
+.gs-import-sources { display: flex; flex-direction: column; gap: 8px; }
+.gs-import-sources-label { margin: 0; font: 600 14px/1.3 var(--font-body); color: var(--text-secondary); }
+.guild-page a.gs-seg-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.guild-page a.gs-seg-link:hover { color: var(--text-primary); }
+.guild-page a.gs-seg-link[aria-current="page"] { position: relative; background: var(--seg-on-bg); border-color: var(--accent-gold); color: var(--accent-gold-bright); }
+.gs-commitbar.is-inline { position: static; margin-top: 4px; }
+.gs-import-panel { display: flex; flex-direction: column; gap: 12px; }
+.gs-import-page .gs-banner { max-width: 760px; }
+
+/* the commit sentence of the pasted-roster dialog */
+.gs-commit-line { margin: 0 0 8px; font-size: 16px; line-height: 1.4; }

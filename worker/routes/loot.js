@@ -343,7 +343,9 @@ export async function getBalance(ctx) {
     mode: policy.balance.mode,
     countTags: policy.balance.countTags,
     scope: own ? 'own' : 'team',
-    people: own ? balance.people.filter((person) => person.personId === loaded.ownPersonId) : balance.people,
+    // `isMe` marks the viewer's own row: the page pins it first ("You").
+    people: (own ? balance.people.filter((person) => person.personId === loaded.ownPersonId) : balance.people)
+      .map((person) => ({ ...person, isMe: loaded.ownPersonId !== null && person.personId === loaded.ownPersonId })),
     teamAverage: balance.teamAverage,
   });
 }

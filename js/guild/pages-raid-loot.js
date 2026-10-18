@@ -82,11 +82,11 @@
       '<button type="button" class="gs-btn" data-action="loot-import-close" data-key="loot-import-close">Close</button></div>';
   }
 
+  // The Preview step's content (what was read, the counts, the rows); the commit bar below it is previewCommit.
   function previewStageHtml(ui, gd) {
     const p = ui.preview || { rows: [], counts: {} };
     const counts = p.counts || {};
     const parsed = ui.parsed || { awards: [], skipped: [], rows: 0 };
-    const importable = (counts.new || 0) + (counts.update || 0) + (ui.includeOtherDay ? counts.otherDay || 0 : 0);
     const other = counts.otherDay > 0
       ? '<div class="gs-check"><input type="checkbox" id="gl-other" data-change="loot-other" data-key="gl-other"' + (ui.includeOtherDay ? ' checked' : '') + '><label for="gl-other">Include ' + esc(plural(counts.otherDay, 'award', 'awards')) + ' from other days</label></div>' : '';
     const summary = '<dl class="gs-summary">' + COUNT_LABELS.map(function (c) {
@@ -96,11 +96,18 @@
       return L().awardRowHtml(gd, previewAward(row), { when: 'datetime', status: statusChip(row.status) });
     }).join('');
     return '<p class="gs-fine" id="gl-read">' + esc(plural(parsed.awards.length, 'award', 'awards') + ' read from ' + plural(parsed.rows, 'row', 'rows') + '.') + '</p>' + skippedHtml(parsed.skipped) + summary + other +
-      '<div class="gs-loot-preview" data-scroll-key="loot-preview"><ul class="gs-loot-list" aria-label="Preview of the import">' + rows + '</ul></div>' +
-      '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="loot-commit" data-key="loot-commit"' + (importable > 0 && !ui.busy ? '' : ' disabled') + '>' +
-      (ui.busy ? 'Importing...' : 'Import ' + esc(plural(importable, 'award', 'awards'))) + '</button>' +
-      '<button type="button" class="gs-btn" data-action="loot-back" data-key="loot-back">Back</button></div>' +
-      (importable > 0 ? '' : '<p class="gs-fine">There is nothing new to import.</p>');
+      '<div class="gs-loot-preview" data-scroll-key="loot-preview"><ul class="gs-loot-list" aria-label="Preview of the import">' + rows + '</ul></div>';
+  }
+
+  // The T5 commit bar of the Gargul preview: how many awards will be imported, Back (keeps the paste), Close, and the Primary.
+  function previewCommit(ui) {
+    const counts = (ui.preview && ui.preview.counts) || {};
+    const importable = (counts.new || 0) + (counts.update || 0) + (ui.includeOtherDay ? counts.otherDay || 0 : 0);
+    return {
+      text: importable > 0 ? plural(importable, 'award', 'awards') + ' will be imported.' : 'There is nothing new to import.',
+      back: { attrs: { 'data-action': 'loot-back', 'data-key': 'loot-back' } }, cancel: { label: 'Close', attrs: { 'data-action': 'loot-import-close', 'data-key': 'loot-import-close' } },
+      commit: { label: ui.busy ? 'Importing...' : 'Import ' + plural(importable, 'award', 'awards'), disabled: !(importable > 0 && !ui.busy), attrs: { 'data-action': 'loot-commit', 'data-key': 'loot-commit' } },
+    };
   }
 
   function resultLine(r) {
@@ -114,16 +121,17 @@
     return text;
   }
 
+  // The Gargul import is the T5 flow inside the raid's Loot card: Source (paste or file), Preview (the awards against this raid, commit bar), Import (inline result).
   function importPanelHtml(ui, gd) {
-    let body;
-    if (ui.stage === 'preview') body = previewStageHtml(ui, gd);
-    else if (ui.stage === 'done') {
-      body = '<p class="gs-notice" role="status" id="gl-result"><span>' + esc(resultLine(ui.result || {})) + '</span></p>' +
-        '<div class="gs-actions"><button type="button" class="gs-btn" data-action="loot-back" data-key="loot-again">Import another export</button><button type="button" class="gs-btn" data-action="loot-import-close" data-key="loot-import-close">Close</button></div>';
-    } else body = inputStageHtml(ui);
-    return '<div class="gs-loot-import" role="group" aria-labelledby="gl-title"><h3 class="gs-h3" id="gl-title">Import from Gargul</h3>' +
-      (ui.stage === 'input' ? '<p class="gs-fine" id="gl-help">In game, open /gl export, choose "Detailed (JSON)" in its settings, and copy the text. Paste it here or pick the saved file. Everything goes to this raid; awards from other days are listed and left out unless you include them.</p>' : '') +
-      G.ui.alertHtml(ui.error, 'gl-error') + body + '</div>';
+    return G.ui.importPanelHtml({
+      id: 'gl-title', title: 'Import from Gargul', step: ui.stage === 'preview' ? 'preview' : (ui.stage === 'done' ? 'result' : 'source'),
+      helpHtml: '<p class="gs-fine" id="gl-help">In game, open /gl export, choose "Detailed (JSON)" in its settings, and copy the text. Paste it here or pick the saved file. Everything goes to this raid; awards from other days are listed and left out unless you include them.</p>',
+      alertHtml: G.ui.alertHtml(ui.error, 'gl-error'),
+      sourceHtml: inputStageHtml(ui), previewHtml: ui.stage === 'preview' ? previewStageHtml(ui, gd) : '',
+      resultHtml: ui.stage === 'done' ? G.ui.importResultHtml({ id: 'gl-result', title: resultLine(ui.result || {}), next: [
+        { label: 'Import another export', attrs: { 'data-action': 'loot-back', 'data-key': 'loot-again' } }, { label: 'Close', attrs: { 'data-action': 'loot-import-close', 'data-key': 'loot-import-close' } }] }) : '',
+      commit: ui.stage === 'preview' ? previewCommit(ui) : null,
+    });
   }
 
   // opts: { guildData, data (the raid detail), state (stateFor) }

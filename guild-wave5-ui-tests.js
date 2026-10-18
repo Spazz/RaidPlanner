@@ -262,7 +262,8 @@ check('panel: preview stage counts what was read, says what it replaces, lists t
   const fresh = R.panelHtml(okState({ ui: Object.assign(R.freshUi(), { list: 'softres', stage: 'preview', parsed: soft }) }));
   assert(stripTags(fresh).includes('Read 3 reserves on 2 items by 2 characters. 1 hard-reserve is not used.') && !stripTags(fresh).includes('This replaces'));
   const busy = R.panelHtml(okState({ ui: Object.assign(R.freshUi(), { list: 'softres', stage: 'preview', parsed: soft, busy: true }) }));
-  assert(/data-action="board-save"[^>]* disabled>Saving\.\.\.</.test(busy));
+  assert(/<button[^>]*disabled[^>]*data-action="board-save"[^>]*><span>Saving\.\.\.<\/span>/.test(busy));
+  assert(out.includes('class="gs-commitbar is-inline"') && out.includes('Nothing is saved yet.') && /<li class="gs-step is-current" aria-current="step">(?:(?!<\/li>)[\s\S])*Preview/.test(out), 'the T5 commit bar and stepper, inside the panel');
   const done = R.panelHtml(okState({ ui: Object.assign(R.freshUi(), { list: 'tmb', stage: 'done', note: 'Saved 30 rows of the TMB prios. The board is up to date.' }) }));
   assert(done.includes('id="bd-result"') && stripTags(done).includes('Saved 30 rows') && done.includes('data-action="board-close"') && !done.includes('bd-paste'));
 });

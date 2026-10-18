@@ -116,14 +116,15 @@ export function bumpDayStatement(db, guildId, raidOn, exceptRaidId, guard = null
 // ---------------------------------------------------------------------------
 // Nav badge
 
-// { [teamId]: n } for the active teams the viewer can review; {} for everyone else.
+// { [teamId]: n } for the active teams the viewer can review; {} for everyone else. n counts open FLAGS (the unit the Review queue's header and the
+// Home list use), not the raids that carry them.
 export async function loadAttendanceFlags(db, guildContext) {
   const scope = guildContext.can['attendance.review'];
   if (!scope || (Array.isArray(scope) && !scope.length)) return {};
   const guildId = guildContext.guild.id;
   const [teamResult, countResult] = await db.batch([
     db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guildId),
-    db.prepare('SELECT team_id, COUNT(*) AS n FROM raids WHERE guild_id = ? AND open_flags > 0 GROUP BY team_id').bind(guildId),
+    db.prepare('SELECT team_id, SUM(open_flags) AS n FROM raids WHERE guild_id = ? AND open_flags > 0 GROUP BY team_id').bind(guildId),
   ]);
   const flags = {};
   for (const team of teamResult.results) {

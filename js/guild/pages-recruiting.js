@@ -125,7 +125,7 @@
     const gd = opts.guildData;
     const x = opts.state;
     const data = x.data;
-    const head = '<div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Roster</h1><p class="gs-sub">' + esc(data.team.name) + ' &middot; Recruiting needs</p></div>' + G.pages.rosterTabs.html(gd, 'recruiting');
+    const head = G.pages.rosterTabs.headHtml(gd, 'recruiting', data.team.name);
     return '<div class="gs-page">' + head + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '') +
       needsHtml(data, x) + G.coverage.panelHtml(x.cov, { id: 'rt-cov', heading: 'Buffs and debuffs the roster misses', intro: x.useIntent && data.intent ? 'The roster with the spec poll picks laid over it.' : 'The active roster.' }) +
       postHtml(data, x, gd) + '</div>';

@@ -346,8 +346,9 @@ function assertEscaped(out, label) {
   await check('visibility: the phone tabs never list settings; the drawer follows the same rule as the sidebar', () => {
     const out = shellHtml(ALL_CAN);
     const tabs = out.slice(out.indexOf('<nav class="gs-tabs"'), out.indexOf('</nav>', out.indexOf('<nav class="gs-tabs"')));
-    for (const label of ['Roster', 'Raids', 'Attendance', 'Loot', 'Planner']) assert(tabs.includes(`aria-label="${label}"`), label);
-    assert(!tabs.includes('More'), 'the More tab is gone');
+    // The framework's bar: Home, Raids, Attendance, Loot, More for someone with no raid or roster actions (an officer's has Roster, no Loot); Settings and Planner live under More, which opens the drawer.
+    for (const label of ['Home', 'Raids', 'Attendance', 'Loot']) assert(tabs.includes(`aria-label="${label}"`) || tabs.includes(`aria-label="${label},`), label);
+    assert(!tabs.includes('aria-label="Roster"') && !tabs.includes('aria-label="Planner"') && tabs.includes('data-action="open-drawer"') && tabs.includes('>More<'), 'More holds the rest');
     assert(!tabs.includes('Guild settings'));
     const drawer = out.slice(out.indexOf('<dialog class="gs-drawer"'));
     assert(drawer.includes('Guild settings'));
@@ -1018,7 +1019,7 @@ function assertEscaped(out, label) {
     assert(G.pages.create.createHtml({ me: claimMe(), timeZones: ['UTC'], defaultTimeZone: 'UTC', alert: 'Someone claimed it first.' }).includes('Someone claimed it first.'));
   });
 
-  await check('A2 phone header: menu button first, then the team picker; avatar menu; no More tab; the drawer opens from the menu button', () => {
+  await check('A2 phone header: menu button first, then the team picker; avatar menu; More is the last tab; the drawer opens from the menu button', () => {
     const out = shellHtml(ALL_CAN);
     const header = out.slice(out.indexOf('<header class="gs-topbar">'), out.indexOf('</header>'));
     assert(header.indexOf('data-action="open-drawer"') >= 0 && header.includes('aria-label="Open menu"') && header.includes('aria-controls="gs-drawer"'), 'menu button');
@@ -1028,7 +1029,7 @@ function assertEscaped(out, label) {
     assert(!header.includes('gs-phone-brand'), 'the logo no longer sits in the phone header');
     assert(!read('guild.css').includes('gs-phone-brand') && !read('guild.css').includes('gs-public-head'));
     const tabs = out.slice(out.indexOf('<nav class="gs-tabs"'), out.indexOf('</nav>', out.indexOf('<nav class="gs-tabs"')));
-    assert(!tabs.includes('open-drawer') && !tabs.includes('More'), 'no More tab');
+    assert(tabs.includes('data-action="open-drawer"') && tabs.includes('aria-controls="gs-drawer"') && tabs.includes('>More<'), 'the last tab is More: it opens the same drawer as the menu button');
     // a guild without an active team shows its name instead of a picker
     const gd = guildData(ALL_CAN, { teams: [] });
     const bare = G.shell.render({ me: meData(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: gd, teamId: null, collapsed: false }, '');

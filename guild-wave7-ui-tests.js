@@ -294,12 +294,12 @@ function keyData(extra) {
     const gd = guildData();
     const data = { raids: [{ id: 'r_1', raidOn: '2026-12-01', zone: "Gruul's Lair", state: 'reviewed', openFlags: 0, sources: {} }], upcoming: [], today: '2026-12-10', can: {} };
     const tabs = G.pages.raids.raidsHtml({ guildData: gd, teamId: 't1', data, tab: 'past' });
-    assert(/data-action="raids-tab" data-tab="progress"[^>]*aria-pressed="false">Progress</.test(tabs), 'the third button');
+    assert(/aria-pressed="false" data-action="raids-tab" data-value="progress"[^>]*>Progress</.test(tabs), 'the third button');
     const withBoard = G.pages.raids.raidsHtml({ guildData: gd, teamId: 't1', data, tab: 'progress', progressHtml: '<p id="the-board">Board</p>' });
-    assert(/data-tab="progress"[^>]*aria-pressed="true"/.test(withBoard) && withBoard.includes('id="the-board"') && text(withBoard).includes('Boss progress from the logged raids'));
+    assert(/aria-pressed="true" data-action="raids-tab" data-value="progress"/.test(withBoard) && withBoard.includes('id="the-board"') && text(withBoard).includes('Boss progress from the logged raids'));
     assert(!withBoard.includes('aria-label="Raids"><thead'), 'the list of past raids is not drawn under it');
     // An unknown tab falls back; the empty team has no tabs at all.
-    assert(/data-tab="past"[^>]*aria-pressed="true"/.test(G.pages.raids.raidsHtml({ guildData: gd, teamId: 't1', data, tab: 'nonsense' })));
+    assert(/aria-pressed="true" data-action="raids-tab" data-value="past"/.test(G.pages.raids.raidsHtml({ guildData: gd, teamId: 't1', data, tab: 'nonsense' })));
     // The click.
     const S = G.app.state;
     S.guilds.g1 = gd; S.currentGid = 'g1';

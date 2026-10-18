@@ -237,23 +237,23 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(G.shell.slots(can).tabs, '', 'no tabs without a guild');
   });
 
-  await check('nav matrix: member = Home, Roster, Raids, Attendance, Loot, Planner, Help; tiles; five phone tabs (no Home tab)', () => {
+  await check('nav matrix: member = Home, Roster, Raids, Attendance, Loot, Planner, Help; tiles; five phone tabs (Home, Raids, Attendance, Loot, More)', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(MEMBER_CAN), teamId: 't1' };
     assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'help|sep']);
     assert.equal(G.shell.homeBadge(Object.assign({}, ctx, { attentionCount: 4 })), 0, 'the member Home counts nothing');
-    assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
+    assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['home', 'raids', 'attendance', 'loot', 'more']);
     const s = G.shell.slots(ctx);
     assert(s.rail.includes('gs-tile is-active') && s.rail.includes('data-action="open-planner"'), 'tiles; the rail logo is a Planner link');
-    assert(/<nav class="gs-tabs"/.test(s.tabs) && !s.tabs.includes('More') && s.tabs.includes('data-action="open-planner"'));
+    assert(/<nav class="gs-tabs"/.test(s.tabs) && s.tabs.includes('data-action="open-drawer"') && !s.tabs.includes('data-action="open-planner"'), 'More opens the drawer; Planner lives there');
     assert(!s.sidebar.includes('Guild settings'));
   });
 
-  await check('nav matrix: officer / GM gets Home first and Guild settings (separated) before the Help item; tabs stay five (no Home tab)', () => {
+  await check('nav matrix: officer / GM gets Home first and Guild settings (separated) before the Help item; tabs are Home, Raids, Roster, Attendance, More', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
     assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep', 'help|sep']);
-    assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
+    assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['home', 'raids', 'roster', 'attendance', 'more']);
   });
 
   await check('nav: the guild nav shows on the planner section and the static pages, but the phone tabs only on guild sections', () => {
@@ -392,7 +392,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     });
     const env = makeEnv({ url: '/#/g/g1/raids', routes });
     await settle();
-    assert(env.html('gs-main').includes('<h1 class="gs-h1" tabindex="-1">Raids</h1>') && env.html('gs-main').includes('Sat Oct 10'));
+    assert(env.html('gs-main').includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Raids</h1>') && env.html('gs-main').includes('Sat Oct 10'));
     env.loc.hash = '#/g/g1/raids/r/r1';
     await settle();
     assert(env.html('gs-main').includes('Awaiting log') && env.html('shell-topbar-lead').includes('Sat Oct 10'));
@@ -427,7 +427,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     });
     const env = makeEnv({ url: '/#/g/g1/loot', routes });
     await settle();
-    assert(env.html('gs-main').includes('<h1 class="gs-h1" tabindex="-1">Loot</h1>') && env.html('gs-main').includes('Thoren') && env.html('gs-main').includes('data-col="perRaid"'));
+    assert(env.html('gs-main').includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Loot</h1>') && env.html('gs-main').includes('Thoren') && env.html('gs-main').includes('data-col="perRaid"'));
     assert(env.documentFake.title.startsWith('Loot - Ravens'));
     assert(/href="#\/g\/g1\/loot"[^>]*aria-current="page"/.test(env.html('shell-sidebar')), 'Loot is the current nav item');
     assert(!env.html('gs-main').includes('coming next'));
@@ -1368,7 +1368,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(member.fetched('/api/guild/g1/bnet'), 0);
   });
 
-  await check('Battle.net routes: the preview and a commit run through the real page and return to the roster with a notice', async () => {
+  await check('Battle.net routes: the preview and a commit run through the real page and end on an inline result with a link to the roster', async () => {
     const preview = { guild: { name: 'Ravens', realm: 'Mistvale' }, team: { id: 't1', name: 'Main' }, fetchedAt: 1, rankLabels: Array(10).fill(''), ranks: [{ rank: 0, label: 'Guild Master', count: 1 }], rows: [{ key: 'thornwick|mistvale', name: 'Thornwick', realm: 'Mistvale', realmSlug: 'mistvale', class: 'WARRIOR', level: 70, rank: 0, status: 'new', person: null }] };
     let committed = null;
     const env = makeEnv({ url: '/#/g/g1/roster/import/bnet', routes: signedInRoutes(OFFICER_CAN, {
@@ -1385,8 +1385,9 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     env.click({ 'data-action': 'bnet-commit' });
     await settle();
     assert.deepEqual(plain(committed), { teamId: 't1', defaultStatus: 'trial', members: [{ name: 'Thornwick', realmSlug: 'mistvale' }] });
-    assert.equal(env.loc.hash, '#/g/g1/roster');
-    assert.equal(env.G.app.state.rosterNotice, 'Added 1 person from the Battle.net guild roster.');
+    assert.equal(env.loc.hash, '#/g/g1/roster/import/bnet', 'the result is on the import page, not a notice on the next one');
+    assert(env.html('gs-main').includes('id="bnet-result-banner"') && env.html('gs-main').includes('Added 1 person from the Battle.net guild roster.') && env.html('gs-main').includes('href="#/g/g1/roster">'));
+    assert.equal(env.G.app.state.rosterNotice, '');
   });
 
   await check('Battle.net routes: Guild settings > Battle.net reads GET /bnet for guild.teams holders and is not a tab for anyone else', async () => {
@@ -1441,7 +1442,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(side.indexOf('href="#/g/g1"') > 0 && side.indexOf('href="#/g/g1"') < side.indexOf('href="#/g/g1/roster"'), 'Home first');
     assert(side.includes('aria-label="Home, 2 items need attention" aria-current="page"') && /gs-nav-badge" aria-hidden="true">2</.test(side));
     assert(env.html('shell-rail').includes('class="gs-tile is-active" href="#/g/g1"'), 'the rail tile goes to Home');
-    assert(!env.html('shell-tabs').includes('Home'), 'no Home tab');
+    assert(env.html('shell-tabs').includes('<a class="gs-tab is-active" href="#/g/g1"'), 'the Home tab is highlighted on Home');
     assert.equal(env.fetched('/api/guild/g1/attention'), 1, 'the page reads it once; no second background read');
     assert.equal(env.G.app.state.attention.g1.data.total, 2);
     const alias = makeEnv({ url: '/#/g/g1/home', routes: signedInRoutes(HOME_CAN, attentionRoute) });

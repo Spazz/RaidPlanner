@@ -1200,14 +1200,6 @@
     render();
   };
 
-  function closeImportMenu() {
-    const menu = byId('roster-import-list');
-    if (!menu || menu.hidden) return;
-    menu.hidden = true;
-    const btn = root && root.querySelector('[data-action="roster-import-menu"]');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-  }
-
   G.handlers.click['sign-out'] = signOut;
   G.handlers.click.retry = function () {
     if (state.bootError) {
@@ -1259,7 +1251,6 @@
       focusMain();
       return;
     }
-    if (!t.closest('.gs-import-menu')) closeImportMenu();
     if (t.closest('.gs-menu a')) closeMenu(false);
     G.ui.menu.itemClick(ev);
     const link = t.closest('a[href]');

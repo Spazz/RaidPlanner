@@ -250,7 +250,9 @@
   const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
   const STATUS_LABELS = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', inactive: 'Inactive' };
   const LEFT_REASONS = { left: 'Left guild', kicked: 'Kicked', break: 'Break', other: 'Other' };
-  const SIGN_IN_LABELS = { signed_in: 'Signed in', not_yet: 'Not yet', no_discord: 'No Discord' };
+  // Two reasons a person has not signed in (no account linked yet / no Discord ID to link by) read the same in a list: "Not signed in", in grey (the person's own
+  // page keeps the reason).
+  const SIGN_IN_LABELS = { signed_in: 'Signed in', not_yet: 'Not signed in', no_discord: 'Not signed in' };
   const ROLE_LABELS = { tank: 'Tank', healer: 'Healer', dps: 'DPS' };
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

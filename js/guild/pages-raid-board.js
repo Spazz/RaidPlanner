@@ -152,33 +152,41 @@
       '<textarea class="gs-input gs-textarea gs-loot-paste" id="bd-paste" name="paste" rows="5" spellcheck="false" autocomplete="off" aria-describedby="bd-help" data-input="board-paste" data-key="bd-paste">' + esc(ui.text) + '</textarea></div>' +
       '<div class="gs-field"><label class="gs-label" for="bd-file">Or choose the saved file (.txt)</label>' +
       '<input class="gs-input" type="file" id="bd-file" accept=".txt,.json,text/plain,application/json" data-change="board-file" data-key="bd-file"></div>' +
-      '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="board-read" data-key="board-read"' + (ui.busy ? ' disabled' : '') + '>' + (ui.busy ? 'Reading...' : 'Read') + '</button>' +
+      '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="board-read" data-key="board-read"' + (ui.busy ? ' disabled' : '') + '>' + (ui.busy ? 'Reading...' : 'Preview') + '</button>' +
       '<button type="button" class="gs-btn" data-action="board-close" data-key="board-close">Close</button></div>';
   }
 
+  // The Preview step's content; the commit bar below it is previewCommit.
   function previewStageHtml(ui, data) {
     const list = ui.list;
     const parsed = ui.parsed || { entries: [], stats: {} };
     const existing = data.lists && data.lists[list];
     const replace = existing ? '<p class="gs-notice" role="status"><span>This replaces the ' + esc(plural(existing.rows, 'row', 'rows')) + ' pasted ' + esc(G.ui.relativeTime(existing.importedAt).toLowerCase()) + '.</span></p>' : '';
-    return '<p class="gs-fine" id="bd-read">' + esc('Read ' + readLine(list, parsed)) + '</p>' + skippedHtml(parsed) + replace +
-      '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="board-save" data-key="board-save"' + (ui.busy ? ' disabled' : '') + '>' +
-      (ui.busy ? 'Saving...' : 'Save ' + esc(plural(parsed.entries.length, 'row', 'rows'))) + '</button>' +
-      '<button type="button" class="gs-btn" data-action="board-back" data-key="board-back">Back</button></div>';
+    return '<p class="gs-fine" id="bd-read">' + esc('Read ' + readLine(list, parsed)) + '</p>' + skippedHtml(parsed) + replace;
   }
 
+  // The T5 commit bar: how many rows will be saved, Back (keeps the paste to read again), Close, and the Primary.
+  function previewCommit(ui) {
+    const parsed = ui.parsed || { entries: [], stats: {} };
+    return {
+      text: plural(parsed.entries.length, 'row', 'rows') + ' will be saved.',
+      back: { attrs: { 'data-action': 'board-back', 'data-key': 'board-back' } }, cancel: { label: 'Close', attrs: { 'data-action': 'board-close', 'data-key': 'board-close' } },
+      commit: { label: ui.busy ? 'Saving...' : 'Save ' + plural(parsed.entries.length, 'row', 'rows'), disabled: !!ui.busy, attrs: { 'data-action': 'board-save', 'data-key': 'board-save' } },
+    };
+  }
+
+  // The TMB / softres paste is the T5 flow inside the raid's Loot prios card: Source (paste or file), Preview (what was read, commit bar), Import (inline result).
   function panelHtml(x) {
     const ui = x.ui;
     const list = ui.list;
     if (!list || !has(LISTS, list)) return '';
-    let body;
-    if (ui.stage === 'preview') body = previewStageHtml(ui, x.data);
-    else if (ui.stage === 'done') {
-      body = '<p class="gs-notice" role="status" id="bd-result"><span>' + esc(ui.note) + '</span></p>' +
-        '<div class="gs-actions"><button type="button" class="gs-btn" data-action="board-close" data-key="board-close">Close</button></div>';
-    } else body = inputStageHtml(ui, list);
-    return '<div class="gs-loot-import" role="group" aria-labelledby="bd-title"><h3 class="gs-h3" id="bd-title">' + esc(LISTS[list].label) + '</h3>' +
-      (ui.stage === 'input' ? '<p class="gs-fine" id="bd-help">' + esc(LISTS[list].help) + '</p>' : '') + G.ui.alertHtml(ui.error, 'bd-error') + body + '</div>';
+    return G.ui.importPanelHtml({
+      id: 'bd-title', title: LISTS[list].label, step: ui.stage === 'preview' ? 'preview' : (ui.stage === 'done' ? 'result' : 'source'),
+      helpHtml: '<p class="gs-fine" id="bd-help">' + esc(LISTS[list].help) + '</p>', alertHtml: G.ui.alertHtml(ui.error, 'bd-error'),
+      sourceHtml: inputStageHtml(ui, list), previewHtml: ui.stage === 'preview' ? previewStageHtml(ui, x.data) : '',
+      resultHtml: ui.stage === 'done' ? G.ui.importResultHtml({ id: 'bd-result', title: ui.note, next: [{ label: 'Close', attrs: { 'data-action': 'board-close', 'data-key': 'board-close' } }] }) : '',
+      commit: ui.stage === 'preview' ? previewCommit(ui) : null,
+    });
   }
 
   // ── card ──

@@ -162,7 +162,7 @@
     const gd = opts.guildData;
     const x = opts.state;
     const board = x.board;
-    const head = '<div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Roster</h1><p class="gs-sub">' + esc(board.team.name) + ' &middot; Spec poll</p></div>' + G.pages.rosterTabs.html(gd, 'intent');
+    const head = G.pages.rosterTabs.headHtml(gd, 'intent', board.team.name);
     const alert = G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '');
     if (!board.round) return '<div class="gs-page">' + head + alert + emptyHtml(board, gd) + '</div>';
     return '<div class="gs-page">' + head + alert + roundHtml(board, x) + totalsHtml(board) +

@@ -92,7 +92,7 @@
     const x = opts.state;
     const list = Array.isArray(x.data.applications) ? x.data.applications : [];
     const showTeam = G.shell.activeTeams(gd.teams).length > 1;
-    const head = '<div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Roster</h1><p class="gs-sub">' + esc(gd.guild.name) + ' &middot; Applications</p></div>' + G.pages.rosterTabs.html(gd, 'applications');
+    const head = G.pages.rosterTabs.headHtml(gd, 'applications', gd.guild.name);
     const canSettings = G.shell.hasAction(gd.me && gd.me.can, 'guild.teams');
     const settingsLink = canSettings ? ' <a href="' + esc(G.router.format({ name: 'settings', gid: gd.guild.id, tab: 'applications' })) + '">Applications settings</a>' : '';
     const empty = x.filter === 'open' && !countFor(x.data.counts, 'all')

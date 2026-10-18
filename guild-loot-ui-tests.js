@@ -157,7 +157,7 @@ function withState(fn) {
     assert.equal(G.shell.navItems('g1', {}, 0, '').find(i => i.key === 'loot').href, '#/g/g1/loot');
     const slots = G.shell.slots(ctxFor({ name: 'lootperson', gid: 'g1', pid: 'p_1' }, { leafName: 'Thoren' }));
     assert(slots.sidebar.includes('aria-current="page"') && /href="#\/g\/g1\/loot"[^>]*aria-current="page"/.test(slots.sidebar), 'Loot is the current item');
-    assert(slots.tabs.includes('aria-label="Loot"') && /aria-label="Loot" aria-current="page"/.test(slots.tabs), 'and the phone tab');
+    assert(/aria-label="Loot" aria-current="page"/.test(slots.tabs) || /<button type="button" class="gs-tab is-active" data-action="open-drawer"/.test(slots.tabs), 'and the phone tab: Loot for a member, More (which holds Loot) for an officer');
     const crumbs = G.shell.breadcrumbItems(ctxFor({ name: 'lootperson', gid: 'g1', pid: 'p_1' }, { leafName: 'Thoren' }));
     assert.deepEqual(plain(crumbs.map(c => c.label)), ['Ravens', 'Team KJ', 'Loot', 'Thoren']);
     assert.equal(crumbs[2].href, '#/g/g1/loot');
@@ -306,7 +306,8 @@ function withState(fn) {
 
   await check('balance: header, view switch, window switch from the team, rules line, average, table with sortable columns and aria-sort', () => {
     const out = G.pages.loot.lootHtml(pageOpts());
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Loot</h1>') && out.includes('Team KJ &middot; 4 people'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Loot</h1>') && out.includes('Team KJ - 4 people'));
+    assert(out.indexOf('data-action="loot-view"') < out.indexOf('data-action="loot-window"') && out.indexOf('data-action="loot-window"') < out.indexOf('class="gs-table-wrap gs-loot-table"') && out.includes('class="gs-listbar"'), 'the view switch and the window switch are the T1 segment bar, above the table');
     for (const [v, pressed] of [['balance', 'true'], ['raids', 'false'], ['items', 'false']]) assert(out.includes('data-action="loot-view" data-view="' + v + '"') && new RegExp('data-view="' + v + '" data-key="lview-' + v + '" aria-pressed="' + pressed + '"').test(out), v);
     for (const [w, pressed] of [['8', 'true'], ['12', 'false'], ['all', 'false']]) assert(new RegExp('data-window="' + w + '" data-key="lwin-' + w + '" aria-pressed="' + pressed + '"').test(out), w);
     assert(out.includes('Last 8 full reset weeks since Aug 18, 2026.') && out.includes('Counted items: MS.'));
@@ -572,7 +573,9 @@ function withState(fn) {
     for (const [label, n] of [['New', 7], ['Updated', 1], ['Unchanged', 2], ['On other raids', 1], ['On other days', 3]]) assert(out.includes('<dt>' + label + '</dt><dd>' + n + '</dd>'), label);
     for (const chip of ['>New<', '>Update<', '>Same<', '>Other raid<', '>Other day<']) assert(out.includes('gs-pill') && out.includes(chip), chip);
     assert(out.includes('<input type="checkbox" id="gl-other" data-change="loot-other" data-key="gl-other"><label for="gl-other">Include 3 awards from other days</label>'), 'unchecked');
-    assert(out.includes('>Import 8 awards<') && !/data-action="loot-commit"[^>]*disabled/.test(out));
+    assert(out.includes('>Import 8 awards<') && !/<button[^>]*disabled[^>]*data-action="loot-commit"/.test(out));
+    assert(out.includes('8 awards will be imported.') && out.includes('Nothing is saved yet.') && out.includes('class="gs-commitbar is-inline"'), 'the T5 commit bar, inside the panel');
+    assert(/<li class="gs-step is-current" aria-current="step">(?:(?!<\/li>)[\s\S])*Preview/.test(out), 'step 2 of 3');
     const previewList = out.slice(out.indexOf('data-scroll-key="loot-preview"'));
     const previewHtml = previewList.slice(0, previewList.indexOf('</ul>'));
     assert(previewList.length > 0 && (previewHtml.match(/<li class="gs-loot-row"/g) || []).length === 14);
@@ -584,7 +587,7 @@ function withState(fn) {
     const included = panel({ stage: 'preview', parsed, preview: { rows, counts: COUNTS }, includeOtherDay: true });
     assert(included.includes(' checked><label for="gl-other">') && included.includes('>Import 11 awards<'));
     const nothing = panel({ stage: 'preview', parsed, preview: { rows, counts: { new: 0, update: 0, same: 14, otherRaid: 0, otherDay: 0 } } });
-    assert(/data-action="loot-commit"[^>]*disabled/.test(nothing) && nothing.includes('There is nothing new to import.') && !nothing.includes('gl-other'));
+    assert(/<button[^>]*disabled[^>]*data-action="loot-commit"/.test(nothing) && nothing.includes('There is nothing new to import.') && !nothing.includes('gl-other'));
     assert(panel({ stage: 'preview', parsed, preview: { rows, counts: COUNTS }, busy: true }).includes('Importing...'));
     assertNoRawAttrs(out);
   });
@@ -1119,7 +1122,7 @@ function withState(fn) {
   await check('review page: a "Loot winners not on the roster" section per raid with Link / Add as new person / Mark as guest; the filter and counts', () => {
     const out = G.pages.review.reviewHtml(reviewOpts());
     assert(out.includes('Sat Oct 10 - Loot winners not on the roster') && !out.includes('Sun Oct 11 - Loot winners'), 'a raid with no winners has no section');
-    assert(out.includes('2 open flags on 1 raid &middot; 2 loot winners to link'));
+    assert(out.includes('2 open flags on 1 raid - 2 loot winners to link'));
     const section = out.slice(out.indexOf('Loot winners not on the roster'));
     assert(section.includes('Veyla') && section.includes('Mage on Ashmere, won 2 items, no linked person'));
     for (const act of ['unm-link', 'unm-person', 'unm-guest']) assert((section.match(new RegExp('data-action="' + act + '" data-rid="r1" data-ukey="', 'g')) || []).length === 2, act);

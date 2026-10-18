@@ -441,13 +441,13 @@ class ApiErr extends Error {
       UP({ id: 'u4', signupsOpen: false, locked: true }),
       UP({ id: 'u5', signupsOpen: false, locked: true, mine: { kind: 'late', source: 'raid_helper', characterName: null } }),
     ] }));
-    assert(out.includes('<th scope="col">Your sign-up</th>'));
+    assert(out.includes('<th scope="col" class="">Your sign-up</th>'));
     const btn = id => new RegExp('data-action="raids-signup" data-rid="' + id + '"');
     assert(btn('u1').test(out) && !btn('u2').test(out) && btn('u3').test(out) && !btn('u4').test(out) && !btn('u5').test(out));
-    assert.equal(out.split('data-action="raids-signup"').length - 1, 4, 'u1 and u3, a table row and a card each');
-    assert(out.includes('Signed up - Eliora') && out.includes('Absence - Eliora') && out.includes('gs-su-cell'));
+    assert.equal(out.split('data-action="raids-signup"').length - 1, 2, 'u1 and u3, one row each (it is the phone card too)');
+    assert(out.includes('Signed up - Eliora') && out.includes('Can&#39;t come - Eliora') && out.includes('gs-su-cell'), 'a not-coming sign-up is Can\'t come everywhere');
     assert(out.includes('Sign-ups closed') && />Late</.test(out));
-    assert.equal(out.split('Sign-ups closed').length - 1, 2, 'u4 only, table and card');
+    assert.equal(out.split('Sign-ups closed').length - 1, 1, 'u4 only');
     assert(G.pages.raids.mineHtml(UP(), false) === '' && !listPage(LIST({ can: { edit: false, signup: false } })).includes('Your sign-up'));
     assertNoRawAttrs(out);
   });

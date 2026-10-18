@@ -709,7 +709,7 @@ check('unmatched: link as an Alt (new character on the raid\'s team, other raids
   assert.deepEqual(linked.json.unmatched ?? linked.json.raid.unmatched, []);
   assert.equal(byName(linked.json.raid).Fenwick.outcome, 'present', 'Fenwick now has a character in the log');
   assert.equal(linked.json.raid.raid.openFlags, 3);
-  assert.equal(linked.json.attendanceFlags[s.A], 1);
+  assert.equal(linked.json.attendanceFlags[s.A], 3, 'the badge counts open FLAGS: the 3 on the raid above');
   const character = (await s.w.rows("SELECT team_id, class, is_main, player_id FROM characters WHERE name = 'Zorgax'"))[0];
   assert.deepEqual([character.team_id, character.class, character.is_main, character.player_id], [s.A, 'ROGUE', 0, s.p.fenwick]);
   assert.equal((await s.call('bob', 'GET', `/raids?team=${s.B}`)).json.raids[0].stale, true);
@@ -1622,12 +1622,14 @@ check('tools/fake-sources.js: the raid log (fights, friendlyPlayers, owner), a s
   }
 });
 
-check('nav badge: the guild payload carries attendanceFlags per reviewable team (open raids), {} for those who cannot review; a delete answers with them', async () => {
+check('nav badge: the guild payload carries attendanceFlags per reviewable team (open flags, summed over the raids of a team), {} for those who cannot review; a delete answers with them', async () => {
   const s = await raidWorld();
   const { id } = await fullRaid(s);
   const flags = async (who) => (await s.w.call(s.jars[who], 'GET', s.guildPath)).json.attendanceFlags;
-  assert.deepEqual(await flags('bob'), { [s.A]: 1, [s.B]: 0 });
-  assert.deepEqual(await flags('carol'), { [s.A]: 1 });
+  const openFlags = (await s.w.rows('SELECT SUM(open_flags) AS n FROM raids WHERE team_id = ?', s.A))[0].n;
+  assert(openFlags > 1, 'the raid carries more than one flag, so the unit shows: flags, not raids');
+  assert.deepEqual(await flags('bob'), { [s.A]: openFlags, [s.B]: 0 });
+  assert.deepEqual(await flags('carol'), { [s.A]: openFlags });
   assert.deepEqual(await flags('dave'), { [s.B]: 0 });
   assert.deepEqual(await flags('erin'), {});
   const gone = await s.call('bob', 'DELETE', s.raid(id), {});

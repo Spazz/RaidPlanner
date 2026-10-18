@@ -5,7 +5,7 @@
 (function (G) {
   'use strict';
 
-  const COLUMN_LABELS = { player: 'Player', mainSpec: 'Main spec', offSpec: 'Off spec', status: 'Status', joined: 'Joined', alts: 'Alts', signIn: 'Sign-in' };
+  const COLUMN_LABELS = { player: 'Player', mainSpec: 'Class and spec', offSpec: 'Off spec', status: 'Status', joined: 'Joined', alts: 'Alts', signIn: 'Sign-in' };
   const ROLE_FILTER_LABELS = { all: 'All', tank: 'Tanks', healer: 'Healers', dps: 'DPS' };
   const STATUS_FILTER_LABELS = { active: 'Active', raider: 'Raider', trial: 'Trial', reserve: 'Reserve', inactive: 'Inactive', decide: 'Trials to decide', everyone: 'Everyone' };
   const TRIAL_DAYS = 28;
@@ -17,31 +17,30 @@
   function severalTeams(gd) { return G.shell.activeTeams(gd && gd.teams).length > 1; }
 
   // ── header, strip, filters ──
-  function subHtml(gd, data) {
+  function contextText(gd, data) {
     const people = Array.isArray(data.people) ? data.people : [];
     const active = G.rosterSort.activeCount(people);
     if (severalTeams(gd) || (data.team && data.team.archived)) {
-      return esc(data.team && data.team.name) + ' &middot; ' + esc(plural(active, 'person', 'people'));
+      return (data.team && data.team.name || '') + ' - ' + plural(active, 'person', 'people');
     }
-    return esc(gd.guild.name) + ' &middot; ' + esc(active + ' active, ' + G.rosterSort.inactiveCount(people) + ' inactive');
+    return gd.guild.name + ' - ' + active + ' active, ' + G.rosterSort.inactiveCount(people) + ' inactive';
   }
 
-  function importMenuHtml(gid) {
-    return '<div class="gs-import-menu"><button type="button" class="gs-btn" data-action="roster-import-menu" data-key="roster-import" aria-haspopup="menu" aria-expanded="false" aria-controls="roster-import-list">Import' + G.icons.icon('chevronDown', 16) + '</button>' +
-      '<div class="gs-menu" id="roster-import-list" role="menu" aria-label="Import" hidden>' +
-      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'raid-helper')) + '"><span>From a Raid-Helper event</span></a>' +
-      '<div class="gs-menu-sep" role="separator"></div>' +
-      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'wcl')) + '"><span>From a Warcraft Logs report</span></a>' +
-      '<div class="gs-menu-sep" role="separator"></div>' +
-      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'bnet')) + '"><span>From the Battle.net guild roster</span></a>' +
-      '<div class="gs-menu-sep" role="separator"></div>' +
-      '<a class="gs-menu-item" role="menuitem" href="' + esc(importHref(gid, 'csv')) + '"><span>From a CSV file</span></a></div></div>';
+  // The Import choices are items of the page's one More menu; Add person is the one primary.
+  function importItems(gid) {
+    return [
+      { label: 'Import from a Raid-Helper event', href: importHref(gid, 'raid-helper'), key: 'mi-import-rh' },
+      { label: 'Import from a Warcraft Logs report', href: importHref(gid, 'wcl'), key: 'mi-import-wcl' },
+      { label: 'Import from the Battle.net guild roster', href: importHref(gid, 'bnet'), key: 'mi-import-bnet' },
+      { label: 'Import from a CSV file', href: importHref(gid, 'csv'), key: 'mi-import-csv' },
+    ];
   }
 
-  function headHtml(gd, data) {
+  function headOpts(gd, data) {
     const canAdd = !!(data.can && data.can.edit) && !(data.team && data.team.archived);
-    return '<div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Roster</h1><p class="gs-sub">' + subHtml(gd, data) + '</p></div>' +
-      (canAdd ? '<div class="gs-roster-actions">' + importMenuHtml(gd.guild.id) + '<button type="button" class="gs-btn gs-btn-molten" data-action="roster-add" data-key="roster-add">Add person</button></div>' : '') + '</div>';
+    return { title: 'Roster', context: contextText(gd, data),
+      more: canAdd ? { id: 'roster-more', key: 'roster-more', items: importItems(gd.guild.id) } : null,
+      primary: canAdd ? { label: 'Add person', attrs: { 'data-action': 'roster-add', 'data-key': 'roster-add' } } : null };
   }
 
   // "2 trials need a decision: Frostwhisper's ends in 5 days, Sølvhand's ended 2 days ago."
@@ -73,13 +72,8 @@
   }
 
   // ── table and cards ──
-  function sortHeaderHtml(column, sort) {
-    const aria = G.rosterSort.ariaSort(sort, column);
-    const dir = aria === 'descending' ? 'desc' : aria === 'ascending' ? 'asc' : '';
-    return '<th scope="col"' + (aria ? ' aria-sort="' + aria + '"' : '') + '><button type="button" class="gs-sort" data-action="roster-sort" data-col="' + column + '" data-key="rsort-' + column + '"' + (dir ? ' data-dir="' + dir + '"' : '') + '>' +
-      esc(COLUMN_LABELS[column]) + '<span class="gs-sort-ind" aria-hidden="true"></span></button></th>';
-  }
-
+  // The T1 data table: the person is the first column and the link (on a phone the whole card is), a class colour edge marks the card, the viewer's own row is
+  // first with the YOU tag. Sign-in says "Not signed in" in grey for everyone who has not signed in yet, with the count in the column head (not an alarm).
   function altTagHtml(p) {
     if (!p.shown || !p.main || p.shown.id === p.main.id) return '';
     return '<span class="gs-char-sub">Alt of ' + esc(p.main.name) + ' (' + esc(p.main.team && p.main.team.name) + ')</span>';
@@ -100,31 +94,43 @@
     return '<span class="gs-status-cell">' + G.ui.statusChipHtml(p.status, p) + flagChipHtml(p, opts) + '</span>';
   }
 
-  function offSpecHtml(s) { return s.offSpec ? esc(s.offSpec) : '<span class="gs-muted">-</span>'; }
+  // A person with no off spec shows a dash in the table; the phone card leaves the line out (.gs-dash).
+  function offSpecHtml(s) { return s.offSpec ? esc(s.offSpec) : '<span class="gs-muted gs-dash">-</span>'; }
 
-  function rowHtml(gid, p, opts) {
-    const s = p.shown;
-    return '<tr><th scope="row" class="gs-cell-strong">' + nameCellHtml(gid, p) + '</th><td>' + esc(G.ui.className(s.class)) + (s.mainSpec ? ' &middot; ' + esc(s.mainSpec) : '') + '</td><td>' + offSpecHtml(s) + '</td><td>' + statusCellHtml(p, opts) + '</td><td class="gs-nowrap">' +
-      esc(G.ui.formatDay(p.joinedOn) || '-') + '</td><td><span class="gs-muted">-</span></td><td>' + esc(p.altCount || 0) + '</td><td>' + esc(G.ui.signInLabel(p.signIn)) + '</td></tr>';
+  function signInCellHtml(p) {
+    const label = G.ui.signInLabel(p.signIn);
+    return p.signIn === 'signed_in' ? esc(label) : '<span class="gs-muted">' + esc(label) + '</span>';
   }
 
-  function cardHtml(gid, p, opts) {
-    const s = p.shown;
-    const flag = flagChipHtml(p, opts);
-    return '<li class="gs-roster-card"><div class="gs-card-top">' + nameCellHtml(gid, p) + G.ui.statusChipHtml(p.status, p) + '</div>' +
-      '<div class="gs-card-line">' + G.ui.specLineHtml(s.class, s.mainSpec, s.offSpec) + '</div>' +
-      '<div class="gs-card-meta">' + flag + '<span class="gs-fine">Alts ' + esc(p.altCount || 0) + ' &middot; Sign-in: ' + esc(G.ui.signInLabel(p.signIn)) + '</span></div></li>';
+  function sortFlag(sort, column) {
+    const aria = G.rosterSort.ariaSort(sort, column);
+    return aria === 'ascending' || aria === 'descending' ? aria : true;
   }
 
-  // opts: { gid, teamId, people, filter, sort }. The results block is the part the search box redraws.
+  // opts: { gid, teamId, people, filter, sort, showFlags }. The results block is the part the search box redraws.
   function resultsHtml(opts) {
     const rows = G.rosterSort.sortPeople(G.rosterSort.filterPeople(opts.people, opts.filter, opts.teamId), opts.sort);
-    if (!rows.length) return '<p class="gs-empty">No one matches these filters.</p>';
-    return '<div class="gs-table-wrap gs-roster-table"><table class="gs-table gs-table-roster" aria-label="Roster"><thead><tr>' +
-      G.rosterSort.COLUMNS.slice(0, 5).map(function (c) { return sortHeaderHtml(c, opts.sort); }).join('') +
-      '<th scope="col">Attendance</th>' + sortHeaderHtml('alts', opts.sort) + sortHeaderHtml('signIn', opts.sort) +
-      '</tr></thead><tbody>' + rows.map(function (p) { return rowHtml(opts.gid, p, opts); }).join('') + '</tbody></table></div>' +
-      '<ul class="gs-roster-cards" aria-label="Roster">' + rows.map(function (p) { return cardHtml(opts.gid, p, opts); }).join('') + '</ul>';
+    if (!rows.length) return G.ui.emptyStateHtml({ kind: 'filtered', title: 'No one matches these filters', text: 'Change the role or status above, or clear the search.' });
+    const notSignedIn = rows.filter(function (p) { return p.signIn !== 'signed_in'; }).length;
+    const key = function (column, extra) { return Object.assign({ key: column, label: COLUMN_LABELS[column], sort: sortFlag(opts.sort, column), sortAction: 'roster-sort', sortKey: 'rsort-' + column }, extra || {}); };
+    const columns = [
+      // On a phone the card names the person, then the class and spec and the status without labels (the value says what it is); the rest keep theirs.
+      key('player', { primary: true }), key('mainSpec', { hideLabel: true }), key('offSpec'), key('status', { hideLabel: true }), key('joined'), key('alts', { align: 'right' }),
+      key('signIn', { headNote: notSignedIn ? notSignedIn + ' not signed in' : '' }),
+    ];
+    const tableRows = rows.map(function (p) {
+      const s = p.shown;
+      return { id: p.id, you: !!p.isMe, mark: s.class, cells: {
+        player: nameCellHtml(opts.gid, p),
+        mainSpec: esc(G.ui.className(s.class)) + (s.mainSpec ? ' &middot; ' + esc(s.mainSpec) : ''),
+        offSpec: offSpecHtml(s),
+        status: statusCellHtml(p, opts),
+        joined: esc(G.ui.formatDay(p.joinedOn) || '-'),
+        alts: esc(p.altCount || 0),
+        signIn: signInCellHtml(p),
+      } };
+    });
+    return G.ui.dataTableHtml({ label: 'Roster', columns: columns, rows: tableRows, showAll: true, noun: 'people' });
   }
 
   function emptyHtml(gd, data) {
@@ -147,15 +153,17 @@
     const view = Object.assign({}, G.rosterSort.DEFAULT_FILTER, { sort: G.rosterSort.DEFAULT_SORT }, opts.view || {});
     const filter = { role: view.role, status: view.status, query: view.query };
     const archived = !!(data.team && data.team.archived);
-    return '<div class="gs-page">' + headHtml(gd, data) + G.pages.rosterTabs.html(gd, 'roster') +
+    const notices = G.pages.rosterTabs.html(gd, 'roster') +
       (archived ? '<div class="gs-notice" role="status"><span>Archived team. Its characters stay on this roster, but no one can be added to it.</span></div>' : '') +
       (opts.notice ? '<div class="gs-notice" role="status"><span>' + esc(opts.notice) + '</span><button type="button" class="gs-linkbtn" data-action="dismiss-roster-notice" data-key="dismiss-roster-notice">Dismiss</button></div>' : '') +
-      G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
-      (people.length
-        ? trialStripHtml(data) + filtersHtml(data, filter) +
-          '<div id="roster-results">' + resultsHtml({ gid: gd.guild.id, teamId: data.team && data.team.id, people: people, filter: filter, sort: view.sort, showFlags: !!(data.can && data.can.edit) }) + '</div>'
-        : emptyHtml(gd, data)) +
-      '</div>';
+      G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (people.length ? trialStripHtml(data) : '');
+    return G.ui.listPageHtml({
+      head: headOpts(gd, data), noticesHtml: notices,
+      barHtml: people.length ? filtersHtml(data, filter) : '',
+      bodyHtml: people.length
+        ? '<div id="roster-results" aria-live="off">' + resultsHtml({ gid: gd.guild.id, teamId: data.team && data.team.id, people: people, filter: filter, sort: view.sort, showFlags: !!(data.can && data.can.edit) }) + '</div>'
+        : emptyHtml(gd, data),
+    });
   }
 
   // A guild with no active team has no roster to show.
@@ -235,7 +243,7 @@
 
   G.handlers.click['roster-sort'] = function (el) {
     const v = rosterUi();
-    v.sort = G.rosterSort.nextSort(v.sort, el.getAttribute('data-col'));
+    v.sort = G.rosterSort.nextSort(v.sort, el.getAttribute('data-sort') || el.getAttribute('data-col'));
     G.app.render();
   };
   G.handlers.click['roster-role'] = function (el) {
@@ -260,15 +268,6 @@
   G.handlers.click['dismiss-roster-notice'] = function () {
     st().rosterNotice = '';
     G.app.render();
-  };
-
-  G.handlers.click['roster-import-menu'] = function (btn) {
-    const menu = document.getElementById('roster-import-list');
-    if (!menu) return;
-    const open = menu.hidden;
-    menu.hidden = !open;
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) { const first = menu.querySelector('[role="menuitem"]'); if (first) first.focus(); }
   };
 
   function loadLinkable(gid) {
@@ -370,6 +369,7 @@
     linkOptionsHtml: linkOptionsHtml,
     personHref: personHref,
     importHref: importHref,
-    importMenuHtml: importMenuHtml,
+    importItems: importItems,
+    importMenuHtml: function (gid) { return G.ui.menuHtml({ id: 'roster-more', label: 'More', items: importItems(gid) }); },
   });
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

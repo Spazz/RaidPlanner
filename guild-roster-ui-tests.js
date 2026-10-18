@@ -217,20 +217,22 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   // ── roster page ────────────────────────────────────────────────
   await check('roster page: header, counts, Import menu and Add person for editors, role counts, status choices, aria-sort', () => {
     const out = rosterPage(guildData(), rosterData());
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Roster</h1>'));
-    assert(out.includes('Bantr &middot; 10 active, 1 inactive'));
-    assert(out.includes('data-action="roster-import-menu"') && out.includes('aria-haspopup="menu"'));
-    assert(out.includes('From a Raid-Helper event') && out.includes('href="#/g/g1/roster/import/raid-helper"'));
-    assert(out.includes('From a Warcraft Logs report') && out.includes('href="#/g/g1/roster/import/wcl"'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Roster</h1>'));
+    assert(out.includes('Bantr - 10 active, 1 inactive'));
+    // The imports are items of the page's one More menu; Add person is the one primary.
+    assert(out.includes('id="roster-more"') && out.includes('aria-haspopup="menu"') && !out.includes('roster-import-menu'));
+    assert(out.includes('Import from a Raid-Helper event') && out.includes('href="#/g/g1/roster/import/raid-helper"'));
+    assert(out.includes('Import from a Warcraft Logs report') && out.includes('href="#/g/g1/roster/import/wcl"'));
     assert(out.includes('data-action="roster-add"') && out.includes('>Add person<'));
     assert(/data-role="all"[^>]*aria-pressed="true">All <span class="gs-seg-count">10<\/span>/.test(out));
     assert(out.includes('Tanks <span class="gs-seg-count">2</span>') && out.includes('Healers <span class="gs-seg-count">1</span>') && out.includes('DPS <span class="gs-seg-count">7</span>'));
     for (const label of ['Active', 'Raider', 'Trial', 'Reserve', 'Inactive', 'Trials to decide', 'Everyone']) assert(out.includes('>' + label + '</option>'), label);
     assert(/<option value="active" selected>/.test(out));
-    assert(/<th scope="col" aria-sort="ascending"><button[^>]*data-col="player"/.test(out));
-    assert(!/aria-sort="[a-z]+"><button[^>]*data-col="status"/.test(out));
-    for (const col of ['mainSpec', 'offSpec', 'status', 'joined', 'alts', 'signIn']) assert(out.includes('data-col="' + col + '"'), col);
-    assert(out.includes('<th scope="col">Attendance</th>') && !out.includes('data-col="attendance"'), 'attendance is not sortable');
+    assert(/<th scope="col" class="" aria-sort="ascending"><button[^>]*data-sort="player"/.test(out));
+    assert(!/aria-sort="(ascending|descending)"><button[^>]*data-sort="status"/.test(out));
+    for (const col of ['mainSpec', 'offSpec', 'status', 'joined', 'alts', 'signIn']) assert(out.includes('data-sort="' + col + '"') && out.includes('data-key="rsort-' + col + '"'), col);
+    assert(!out.includes('>Attendance<'), 'the placeholder Attendance column (a dash in every row) is gone');
+    assert(out.includes('gs-dtable') && out.includes('data-label="Joined"') && out.includes('data-label="Sign-in"') && !out.includes('data-label="Class and spec"') && !out.includes('data-label="Status"'), 'the T1 data table; on a card the class and spec and the status are not labelled (the value says what it is)');
     assert(!out.includes('Oldtimer'), 'the default status filter hides Inactive');
     assert(out.includes('Jun 14, 2026') && out.includes('Sep 22, 2026'), 'joined dates read like Oct 13, 2026');
   });
@@ -256,7 +258,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   await check('roster page: trial chips ride next to the status chip, only for flagged trials', () => {
     const out = rosterPage(guildData(), rosterData());
     assert(out.includes('gs-trial-ends">Ends in 5 days</span>') && out.includes('gs-trial-ended">Ended 2 days ago</span>'));
-    assert.equal((out.match(/gs-trial-ends"/g) || []).length, 2, 'table row + phone card');
+    assert.equal((out.match(/gs-trial-ends"/g) || []).length, 1, 'one row: the table is the phone card too');
   });
 
   await check('roster page: an Alt shown for a person whose Main is on another team carries "Alt of <Main> (<team>)"', () => {
@@ -264,7 +266,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND], flags: {} });
     const out = rosterPage(gd, rosterData({ team: { id: 't_weekend', name: 'Weekend team', archived: false }, people: [alt] }));
     assert(out.includes('Alt of Mistvale (Main team)'));
-    assert(out.includes('Weekend team &middot; 1 person'), 'several teams: <Team> - N people');
+    assert(out.includes('Weekend team - 1 person'), 'several teams: <Team> - N people');
     const plainRow = rosterPage(gd, rosterData({ team: { id: 't_weekend', name: 'Weekend team', archived: false }, people: [PEOPLE[0]] }));
     assert(!plainRow.includes('Alt of'));
   });
@@ -274,15 +276,15 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(out.includes('<a class="gs-char-link gs-class-paladin" href="#/g/g1/roster/p/p_8">Sølvhand</a>'));
     assert(out.includes('<span class="gs-role-dot gs-role-tank" role="img" aria-label="Tank"></span>'));
     assert(out.includes('Warlock &middot; Destruction'), 'the spec text always names the class');
-    assert(out.includes('<span class="gs-muted">-</span>'), 'no off spec shows a dash');
+    assert(out.includes('<span class="gs-muted gs-dash">-</span>'), 'no off spec shows a dash');
   });
 
   await check('roster page: archived team shows the notice and offers no Add person or Import', () => {
     const gd = guildData({ teams: [TEAM_MAIN, Object.assign({}, TEAM_WEEKEND, { archived: true })] });
     const out = rosterPage(gd, rosterData({ team: { id: 't_weekend', name: 'Weekend team', archived: true } }));
     assert(out.includes('Archived team.'));
-    assert(!out.includes('roster-add') && !out.includes('roster-import-menu'));
-    assert(out.includes('Weekend team &middot; 10 people'));
+    assert(!out.includes('roster-add') && !out.includes('roster-more') && !out.includes('Import from'));
+    assert(out.includes('Weekend team - 10 people'));
   });
 
   await check('roster page: the empty roster leads officers to the import, and tells members their officers have not added anyone', () => {
@@ -309,8 +311,10 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
 
   await check('phone roster: the cards list carries name, status, spec line, trial chip, Alts and Sign-in', () => {
     const out = rosterPage(guildData(), rosterData());
-    const card = out.match(/<li class="gs-roster-card">(?:(?!<\/li>)[\s\S])*Frostwhisper[\s\S]*?<\/li>/)[0];
-    assert(card.includes('Mage &middot; Frost / Fire') && card.includes('Ends in 5 days') && card.includes('Alts 0 &middot; Sign-in: Not yet') && card.includes('>Trial<'));
+    // One markup serves the table and the phone card (below 760 px the rows are cards, the first cell is the link and covers the card).
+    const card = out.match(/<tr class="gs-dtable-row[^"]*"[^>]*>(?:(?!<\/tr>)[\s\S])*Frostwhisper[\s\S]*?<\/tr>/)[0];
+    assert(card.includes('Mage &middot; Frost') && card.includes('Ends in 5 days') && card.includes('data-label="Alts">0<') && card.includes('data-label="Sign-in"><span class="gs-muted">Not signed in</span>') && card.includes('>Trial<'));
+    assert(card.includes('has-mark is-mage') || out.includes('has-mark is-mage'), 'the class colour edge');
   });
 
   // ── Add person dialog ──────────────────────────────────────────
@@ -693,7 +697,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   const rhPreview = (over) => Object.assign({ event: { id: '1483258698854826006', title: 'Gruul and Mag', startTime: Date.UTC(2026, 9, 15, 19), otherServer: false }, rows: plain(RH_ROWS) }, over || {});
   const rhState = (preview, over) => {
     const st = G.pages.import.ensureState('rh', 'g1', 't_main');
-    Object.assign(st, { preview, rows: G.pages.import.rhInitRows(preview), rowErrors: {}, status: 'ready' }, over || {});
+    Object.assign(st, { preview, rows: G.pages.import.rhInitRows(preview), rowErrors: {}, status: 'ready', result: null }, over || {});
     return st;
   };
 
@@ -717,7 +721,8 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.equal(c.needs, 2, 'Absence row (no class) and the row with no name');
     assert.equal(c.needsName, true);
     const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
-    assert(out.includes('8 people &middot; 4 ready &middot; 2 need a name and class before they can be added'));
+    assert(out.includes('8 people - 4 ready - 2 need a name and class before they can be added'));
+    assert(out.includes('id="rh-footer"') && out.includes('Nothing is saved yet.') && out.includes('data-action="rh-back"'), 'the T5 commit bar: count, nothing saved yet, Back');
     assert(out.includes('>Add 4 people<'));
     // pick a class for the Absence row and a name + class for the empty one
     st.rows['105'].class = 'HUNTER';
@@ -861,7 +866,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st }).includes('Sølvhand is taken.'));
   });
 
-  await check('Raid-Helper import: a successful commit sends the body, refreshes the badge, and returns to the roster with a notice', async () => {
+  await check('Raid-Helper import: a successful commit sends the body, refreshes the badge, and ends on an inline result (Open roster, Import another)', async () => {
     const p = rhPreview();
     const s = G.app.state;
     s.guilds.g1 = guildData();
@@ -876,9 +881,31 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     });
     assert.equal(sent.url, '/api/guild/g1/roster/import/raid-helper/commit');
     assert.equal(plain(sent.body).rows.length, 4);
-    assert.deepEqual(plain(hashes), ['#/g/g1/roster']);
+    assert.deepEqual(plain(hashes), [], 'the officer stays on the import page');
     assert.equal(s.guilds.g1.rosterFlags.t_main, 5);
-    assert(s.rosterNotice.startsWith('Added 4 people'));
+    const st = s.imports.rh;
+    assert(st.result.title.startsWith('Added 4 people') && st.preview === null);
+    const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert(out.includes('id="rh-result-banner"') && out.includes('Added 4 people') && out.includes('href="#/g/g1/roster"') && out.includes('data-action="rh-again"'));
+    assert(!out.includes('id="rh-footer"') && !out.includes('id="rh-link"'), 'no commit bar and no form on the result step');
+    G.handlers.click['rh-again']();
+    assert.equal(G.app.state.imports.rh.result, null, 'Import another starts afresh');
+    assert.equal(G.app.state.imports.rh.preview, null);
+  });
+
+  await check('Raid-Helper import: Back keeps the link and returns to the Source step; the stepper names Source, Preview, Import', () => {
+    const p = rhPreview();
+    const st = rhState(p, { link: 'https://raid-helper.dev/event/1', result: null });
+    G.app.state.currentGid = 'g1';
+    const preview = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert(/<li class="gs-step is-done"[^>]*>(?:(?!<\/li>)[\s\S])*Source/.test(preview) && /<li class="gs-step is-current" aria-current="step">(?:(?!<\/li>)[\s\S])*Preview/.test(preview), 'step 2 of 3');
+    assert(!preview.includes('id="rh-link"'), 'the form is not on the Preview step');
+    G.handlers.click['rh-back']();
+    assert.equal(st.preview, null);
+    assert.equal(st.link, 'https://raid-helper.dev/event/1');
+    const source = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: st });
+    assert(source.includes('value="https://raid-helper.dev/event/1"') && /<li class="gs-step is-current" aria-current="step">(?:(?!<\/li>)[\s\S])*Source/.test(source));
+    assert(source.includes('class="gs-import-sources"') && source.includes('href="#/g/g1/roster/import/wcl"') && source.includes('href="#/g/g1/roster/import/csv"') && source.includes('href="#/g/g1/roster/import/bnet"'), 'where is your roster: the four sources');
   });
 
   await check('Raid-Helper import: "Load sign-ups" posts { teamId, source } and builds the state from the preview', async () => {
@@ -907,7 +934,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   await check('import pages: the page markup has the nickname form, labels and the Cancel link to the roster', () => {
     const out = G.pages.import.raidHelperHtml({ guildData: guildData(), rh: G.pages.import.ensureState('rh', 'g1', 't_other') });
     assert(out.includes('Import from Raid-Helper') && out.includes('Everyone who signed up becomes a person on the roster, linked by their Discord account.'));
-    assert(out.includes('<label class="gs-label" for="rh-link">Raid-Helper event link</label>') && out.includes('>Load sign-ups<'));
+    assert(out.includes('<label class="gs-label" for="rh-link">Raid-Helper event link</label>') && out.includes('>Preview sign-ups<'));
   });
 
   // ── Warcraft Logs import ───────────────────────────────────────
@@ -924,7 +951,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   };
   const wclState = (over) => {
     const st = G.pages.import.ensureState('wcl', 'g1', 't_main');
-    Object.assign(st, { preview: plain(WCL_PREVIEW), choices: G.pages.import.wclInitChoices(WCL_PREVIEW), status: 'ready', error: '', knownOpen: false }, over || {});
+    Object.assign(st, { preview: plain(WCL_PREVIEW), choices: G.pages.import.wclInitChoices(WCL_PREVIEW), status: 'ready', error: '', knownOpen: false, result: null }, over || {});
     return st;
   };
   const WCL_PEOPLE = [plain(PEOPLE[0]), plain(PEOPLE[1])];
@@ -956,7 +983,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     st.choices['embervein|'] = { action: 'alt', personId: 'p_1', status: 'trial' };
     st.choices['fernwhisk|'] = { action: 'new', personId: '', status: 'trial' };
     const out = G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE });
-    assert(out.includes('3 changes: 2 Alts, 1 new person &middot; 2 skipped'));
+    assert(out.includes('3 changes: 2 Alts, 1 new person - 2 skipped.'));
     assert(out.includes('>Save 3 changes<'));
     assert(out.includes('Starting status for Fernwhisk') && /<option value="trial" selected>Trial<\/option>/.test(out));
     const fresh = wclState();
@@ -965,7 +992,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.deepEqual(plain(c), { alts: 2, news: 0, skipped: 3, incomplete: 0 });
     const none = Object.fromEntries(Object.keys(fresh.choices).map(k => [k, { action: 'skip', personId: '', status: 'trial' }]));
     const emptyOut = G.pages.import.wclHtml({ guildData: guildData(), wcl: Object.assign(fresh, { choices: none }), people: WCL_PEOPLE });
-    assert(emptyOut.includes('No changes yet') && /data-action="wcl-commit"[^>]*disabled/.test(emptyOut));
+    assert(emptyOut.includes('No changes yet') && /<button[^>]*disabled[^>]*data-action="wcl-commit"/.test(emptyOut));
   });
 
   await check('Warcraft Logs import: "Add as Alt of someone else" shows a person picker; an unpicked person is not a change', () => {
@@ -1007,7 +1034,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assertNoRawAttrs(out);
   });
 
-  await check('Warcraft Logs import: Load players posts { teamId, source }; a commit posts the decisions and returns to the roster', async () => {
+  await check('Warcraft Logs import: Preview players posts { teamId, source }; a commit posts the decisions and ends on an inline result', async () => {
     const s = G.app.state;
     s.guilds.g1 = guildData();
     s.currentGid = 'g1';
@@ -1029,8 +1056,11 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     });
     assert.equal(commit.url, '/api/guild/g1/roster/import/wcl/commit');
     assert.equal(plain(commit.body).decisions.length, 2);
-    assert.deepEqual(plain(hashes), ['#/g/g1/roster']);
-    assert(s.rosterNotice.startsWith('Saved 2 changes'));
+    assert.deepEqual(plain(hashes), []);
+    assert(st.result.title.startsWith('Saved 2 changes') && st.preview === null);
+    assert(G.pages.import.wclHtml({ guildData: guildData(), wcl: st, people: WCL_PEOPLE }).includes('id="wcl-result-banner"'));
+    G.handlers.click['wcl-again']();
+    assert.equal(G.app.state.imports.wcl.result, null);
   });
 
   // ── fix round: search, confirm, labels, overlays, officer-only flags, row errors ──

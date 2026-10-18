@@ -166,10 +166,10 @@ function withState(fn) {
     assert.equal(G.shell.settingsTabs({ 'audit.view': 'guild' })[0].tab, 'activity', 'and the first page there is the first one the viewer has');
   });
 
-  await check('shell: Home is the first sidebar and drawer item for every guild member (the member Home or the officer list), never a phone tab', () => {
+  await check('shell: Home is the first sidebar and drawer item for every guild member (the member Home or the officer list), and the first phone tab', () => {
     const officer = shellCtx(OFFICER_CAN);
     assert.deepEqual(keys(G.shell.sidebarItems(officer)).slice(0, 3), ['home', 'roster', 'raids']);
-    assert.deepEqual(keys(G.shell.tabItems(officer)), ['roster', 'raids', 'attendance', 'loot', 'planner'], 'the phone tabs stay five');
+    assert.deepEqual(keys(G.shell.tabItems(officer)), ['home', 'raids', 'roster', 'attendance', 'more'], 'the phone tabs stay five: Home, Raids, Roster, Attendance, More');
     const home = G.shell.sidebarItems(officer)[0];
     assert.equal(home.label, 'Home');
     assert.equal(home.href, '#/g/g1');
@@ -180,7 +180,7 @@ function withState(fn) {
     const slots = G.shell.slots(officer);
     assert(slots.sidebar.indexOf('href="#/g/g1"') > 0 && slots.sidebar.indexOf('href="#/g/g1"') < slots.sidebar.indexOf('href="#/g/g1/roster"'));
     assert(slots.drawer.includes('href="#/g/g1"') && slots.drawer.includes('Home'), 'the drawer carries it');
-    assert(!slots.tabs.includes('Home') && !slots.tabs.includes('href="#/g/g1"'), 'not in the tab bar');
+    assert(slots.tabs.includes('href="#/g/g1"') && slots.tabs.includes('>Home<'), 'the first tab of the bar (Home, Raids, Roster, Attendance, More)');
     assert(G.shell.slots(shellCtx(MEMBER_CAN)).sidebar.includes('href="#/g/g1"'), 'the member sidebar links to Home');
     const stat = G.shell.slots(Object.assign(shellCtx(OFFICER_CAN), { section: 'page', page: 'faq', route: null }));
     assert(stat.sidebar.includes('href="/#/g/g1"'), 'static pages link to Home absolutely');
@@ -580,7 +580,7 @@ function withState(fn) {
   await check('watch card: sits above the grid with the rule line and one row per person (class-coloured link to their history, %, was / down, counts, reason chips)', () => {
     const out = attHtml(GRID_DATA(WATCH));
     assert(out.includes('<h2 class="gs-h2" id="att-watch-h">Watch list</h2>'));
-    assert(out.indexOf('id="att-watch-h"') < out.indexOf('class="gs-roster-filters"') && out.indexOf('id="att-watch-h"') < out.indexOf('aria-label="Team attendance"'), 'above the grid');
+    assert(out.indexOf('id="att-watch-h"') < out.indexOf('class="gs-listbar"') && out.indexOf('id="att-watch-h"') < out.indexOf('aria-label="Team attendance"'), 'above the grid');
     assert(out.includes('<p class="gs-fine">Below 75% or down 15+ points against the previous 8 weeks</p>'));
     assert(out.includes('<span class="gs-fine">2 people</span>'));
     assert(out.includes('<a class="gs-char-link gs-class-paladin" href="#/g/g1/attendance/p/p_t">Thoren</a>') && out.includes('<a class="gs-char-link gs-class-rogue" href="#/g/g1/attendance/p/p_k">Kaelith</a>'));
@@ -593,11 +593,12 @@ function withState(fn) {
     assertNoRawAttrs(out);
   });
 
-  await check('watch card: an empty list keeps the card ("Nobody is on the watch list."); no watch (null / absent) draws no card', () => {
+  await check('watch card: an empty list is one phrase in the context line ("0 on the watch list"), no card; no watch (null / absent) draws neither', () => {
     const empty = attHtml(TEAM_DATA({ below: 0.75, dropBy: null, window: 8, previousFrom: null, entries: [] }));
-    assert(empty.includes('id="att-watch-h"') && empty.includes('<p class="gs-empty">Nobody is on the watch list.</p>') && !empty.includes('gs-watch-list'));
-    assert(!empty.includes('<span class="gs-fine">0 people</span>'));
-    assert(!attHtml(TEAM_DATA(null)).includes('att-watch-h'));
+    assert(!empty.includes('id="att-watch-h"') && !empty.includes('Nobody is on the watch list.') && !empty.includes('gs-watch-list'), 'no card for nobody (F11)');
+    assert(empty.includes('0 on the watch list'), 'the feature stays visible as one phrase');
+    assert(attHtml(GRID_DATA(WATCH)).includes('2 on the watch list') && attHtml(GRID_DATA(WATCH)).includes('id="att-watch-h"'), 'a list with people keeps the card');
+    assert(!attHtml(TEAM_DATA(null)).includes('att-watch-h') && !attHtml(TEAM_DATA(null)).includes('on the watch list'));
     const d = TEAM_DATA(null); delete d.watch;
     assert(!attHtml(d).includes('att-watch-h'), 'an older Worker without the field');
     assert.equal(G.pages.attendance.watchHtml('g1', null), '');
@@ -1164,7 +1165,7 @@ function withState(fn) {
     const list = (can, teamId) => G.pages.raids.raidsHtml({ guildData: gd(can), teamId, data: { raids: [], upcoming: [] } });
     const member = list(MEMBER_CAN, 't1');
     assert(/<button type="button" class="gs-menu-item" role="menuitem" tabindex="-1" data-action="cal-open" data-key="mi-cal-open">Subscribe in your calendar<\/button>/.test(member), 'a menu item of the More menu');
-    assert(member.includes('<div class="gs-roster-actions gs-raids-actions"><div class="gs-menu-wrap" data-menu><button') && !member.includes('raids-fill') && !member.includes('New raid'));
+    assert(member.includes('<div class="gs-pagehead-actions"><div class="gs-menu-wrap" data-menu><button') && !member.includes('raids-fill') && !member.includes('New raid'));
     const officer = list(OFFICER_CAN, 't1');
     assert(officer.includes('Backfill from Warcraft Logs') && officer.includes('>Raid schedule<') && officer.indexOf('data-action="cal-open"') > officer.indexOf('Raid schedule') && officer.indexOf('data-action="cal-open"') < officer.indexOf('>New raid<'));
     assert(!list(MEMBER_CAN, null).includes('cal-open'));

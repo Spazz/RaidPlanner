@@ -118,7 +118,8 @@
     return isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }
 
-  // Raids with open flags for the selected team, for people who can review them (a member's payload carries none).
+  // Open attendance flags for the selected team (the same count the Review queue's header and the Attendance page's Review queue link show), for people
+  // who can review them (a member's payload carries none).
   function attendanceBadge(gd, teamId) {
     if (!gd || !teamId || !hasAction(gd.me && gd.me.can, 'attendance.review')) return 0;
     const n = gd.attendanceFlags && Object.prototype.hasOwnProperty.call(gd.attendanceFlags, teamId) ? Number(gd.attendanceFlags[teamId]) : 0;
@@ -152,29 +153,29 @@
     return { key: 'planner', label: 'Planner', short: 'Planner', icon: 'planner', href: '/', action: 'open-planner' };
   }
 
-  // The Attendance item's label for a screen reader: the raids to review and the character claims waiting in the same queue.
-  function attendanceLabel(raids, claims) {
+  // The Attendance item's label for a screen reader: the flags to review and the character claims waiting in the same queue.
+  function attendanceLabel(flags, claims) {
     const parts = [];
-    if (raids) parts.push(raids + (raids === 1 ? ' raid' : ' raids'));
+    if (flags) parts.push(flags + (flags === 1 ? ' flag' : ' flags'));
     if (claims) parts.push(claims + (claims === 1 ? ' character claim' : ' character claims'));
     return parts.length ? 'Attendance, ' + parts.join(' and ') + ' to review' : 'Attendance';
   }
 
-  // badges: { roster, attendance, claims } counts (a bare number is the Roster count; 0 = none). Attendance shows its raids to review and the pending
+  // badges: { roster, attendance, claims } counts (a bare number is the Roster count; 0 = none). Attendance shows its flags to review and the pending
   // character claims together. base: see guildHref.
   function navItems(gid, can, badges, base) {
     const bs = typeof badges === 'number' ? { roster: badges } : (badges || {});
     const n = bs.roster > 0 ? bs.roster : 0;
-    const raids = bs.attendance > 0 ? bs.attendance : 0;
+    const flags = bs.attendance > 0 ? bs.attendance : 0;
     const claims = bs.claims > 0 ? bs.claims : 0;
-    const a = raids + claims;
+    const a = flags + claims;
     const b = base || '';
     const items = [
       { key: 'roster', label: 'Roster', short: 'Roster', icon: 'roster', href: guildHref(gid, 'roster', b), badge: n,
         ariaLabel: n ? 'Roster, ' + n + (n === 1 ? ' trial' : ' trials') + ' to decide' : 'Roster' },
       { key: 'raids', label: 'Raids', short: 'Raids', icon: 'raids', href: guildHref(gid, 'raids', b) },
       { key: 'attendance', label: 'Attendance', short: 'Attendance', icon: 'attendance', href: guildHref(gid, 'attendance', b), badge: a,
-        ariaLabel: attendanceLabel(raids, claims) },
+        ariaLabel: attendanceLabel(flags, claims) },
       { key: 'loot', label: 'Loot', short: 'Loot', icon: 'loot', href: guildHref(gid, 'loot', b) },
       plannerItem(),
     ];
@@ -209,7 +210,7 @@
   // The nav model, one function (tested as a matrix): the sidebar / drawer list for this viewer.
   // Signed out, or signed in with no guild (or its data not loaded yet): Planner, then the Help item.
   // With a guild: Home (the officer list or the member's own page), Roster, Raids, Attendance, Loot, Planner, [Guild settings], then the one Help item.
-  // Home is not one of the phone tabs (tabItems builds its five from navItems alone); the drawer carries it.
+  // Phone tabs are tabItems (Home, Raids, Roster or Loot, Attendance, More); the drawer carries the whole list.
   function sidebarItems(ctx) {
     const gd = guildOf(ctx);
     const own = gd ? navItems(gd.guild.id, gd.me && gd.me.can, badgesOf(gd, ctx.teamId), baseOf(ctx)) : [plannerItem()];
@@ -217,11 +218,21 @@
     return own.concat([helpGroup(ctx)]);
   }
 
-  // Phone tabs: guild sections of a viewer with a guild only. Roster, Raids, Attendance, Loot, Planner.
+  // "More" opens the phone drawer, which holds everything the four tabs leave out (Planner, Guild settings, Help, and whichever of Roster / Loot is not a tab).
+  function moreItem() {
+    return { key: 'more', label: 'More', short: 'More', icon: 'menu', href: '#', action: 'open-drawer', ariaLabel: 'More: open the menu' };
+  }
+
+  // Phone tabs (design framework, Phones boards): guild sections of a viewer with a guild only. An officer (anyone with the Needs attention list) gets
+  // Home, Raids, Roster, Attendance, More; a member gets Home, Raids, Attendance, Loot, More. Settings lives under More.
   function tabItems(ctx) {
     const gd = guildOf(ctx);
     if (!gd || !signedIn(ctx) || sectionOf(ctx) !== 'guild') return [];
-    return navItems(gd.guild.id, null, badgesOf(gd, ctx.teamId), baseOf(ctx));
+    const nav = navItems(gd.guild.id, null, badgesOf(gd, ctx.teamId), baseOf(ctx));
+    const pick = function (key) { return nav.filter(function (item) { return item.key === key; })[0]; };
+    const officer = canSeeAttention(gd.me && gd.me.can);
+    const home = homeItem(gd.guild.id, homeBadge(ctx), baseOf(ctx));
+    return (officer ? [home, pick('raids'), pick('roster'), pick('attendance')] : [home, pick('raids'), pick('attendance'), pick('loot')]).concat([moreItem()]);
   }
 
   // Whether the viewer has any guild tile to show (a guild, or the add button).
@@ -357,7 +368,13 @@
   function tabsHtml(ctx) {
     const items = tabItems(ctx);
     if (!items.length) return '';
+    // More is the current tab when the page is none of the other four (Guild settings, Loot for an officer, Roster for a member, Away notices...).
+    const onATab = items.some(function (item) { return item.key !== 'more' && isCurrentItem(item, ctx); });
     return '<nav class="gs-tabs" aria-label="Main"><ul class="gs-tabs-list">' + items.map(function (item) {
+      if (item.key === 'more') {
+        return '<li><button type="button" class="gs-tab' + (onATab ? '' : ' is-active') + '" data-action="open-drawer" data-key="tab-more" aria-haspopup="dialog" aria-controls="gs-drawer" aria-label="' + esc(item.ariaLabel) + '">' +
+          ic(item.icon, 22) + '<span aria-hidden="true">' + esc(item.short) + '</span></button></li>';
+      }
       const active = isCurrentItem(item, ctx);
       return '<li><a class="gs-tab' + (active ? ' is-active' : '') + '" href="' + esc(item.href) + '"' + actionAttr(item) + ' aria-label="' + esc(item.ariaLabel || item.label) + '"' + (active ? ' aria-current="page"' : '') + '>' +
         ic(item.icon, 22) + '<span aria-hidden="true">' + esc(item.short) + '</span>' + navBadgeHtml(item) + '</a></li>';

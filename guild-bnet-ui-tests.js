@@ -142,7 +142,7 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert.deepEqual(crumbs({ name: 'import', gid: 'g1', source: 'wcl' }).slice(-1), ['Import from Warcraft Logs']);
     assert.deepEqual(crumbs({ name: 'settings', gid: 'g1', tab: 'battlenet' }).slice(-2), ['Guild settings', 'Battle.net']);
     const menu = G.pages.roster.importMenuHtml ? G.pages.roster.importMenuHtml('g1') : '';
-    assert(menu.includes('href="#/g/g1/roster/import/bnet"') && menu.includes('From the Battle.net guild roster'), 'Import menu');
+    assert(menu.includes('href="#/g/g1/roster/import/bnet"') && menu.includes('Import from the Battle.net guild roster'), 'Import menu');
   });
 
   // ── Linked accounts ────────────────────────────────────────────
@@ -506,7 +506,7 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     const ticked = {}; rows.forEach(r => { ticked[r.key] = true; });
     assert.equal(I.counts(big, I.newView(big), ticked).tooMany, true);
     const footer = I.footerHtml('g1', { preview: big, view: I.newView(big), ticked, status: 'ready' });
-    assert(footer.includes('add at most 250 at a time') && /data-action="bnet-commit"[^>]* disabled/.test(footer));
+    assert(footer.includes('add at most 250 at a time') && /<button[^>]*disabled[^>]*data-action="bnet-commit"/.test(footer));
     assert.equal(I.MAX_COMMIT, 250);
   });
 
@@ -514,7 +514,7 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     const gd = guildData();
     const page = b => G.pages.importBnet.bnetHtml({ guildData: gd, bnet: b });
     const ready = page(importState());
-    assert(ready.includes('<h1 class="gs-h1" tabindex="-1">Import from Battle.net</h1>') && ready.includes('data-action="bnet-load"') && text(ready).includes('Load the guild roster'));
+    assert(ready.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Import from Battle.net</h1>') && ready.includes('data-action="bnet-load"') && text(ready).includes('Preview guild roster') && text(ready).includes('Nothing is saved until you press the button on the next step.'));
     assert(text(ready).includes('Reads Ember Company on Dreamscythe (US)') && ready.includes('href="#/g/g1/settings/battlenet"'));
     assert(!ready.includes('bnet-footer'));
     const loading = page(importState({ status: 'loading' }));
@@ -616,10 +616,11 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
       hashes = h;
     });
     assert.deepEqual(sent, ['/api/guild/g1/roster/import/bnet/commit', { teamId: 't1', defaultStatus: 'reserve', members: [{ name: 'Thornwick', realmSlug: 'dreamscythe' }, { name: 'Pyrelo', realmSlug: 'dreamscythe' }] }]);
-    assert.deepEqual(plain(hashes), ['#/g/g1/roster']);
-    assert.equal(G.app.state.rosterNotice, 'Added 2 people from the Battle.net guild roster.');
+    assert.deepEqual(plain(hashes), [], 'the officer stays on the import page');
+    assert.equal(b.result.title, 'Added 2 people from the Battle.net guild roster.');
     assert.equal(G.app.state.guilds.g1.rosterFlags.t1, 4);
-    assert.equal(G.app.state.imports.bnet, null);
+    const done = I.bnetHtml({ guildData: G.app.state.guilds.g1, bnet: b });
+    assert(done.includes('id="bnet-result-banner"') && done.includes('Added 2 people') && done.includes('href="#/g/g1/roster"') && done.includes('data-action="bnet-again"') && !done.includes('id="bnet-footer"'));
     delete fields['bnet-list']; delete fields['bnet-footer'];
   });
 

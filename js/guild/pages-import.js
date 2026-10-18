@@ -191,9 +191,9 @@
   }
 
   function summaryText(counts) {
-    let t = plural(counts.people, 'person', 'people') + ' &middot; ' + counts.ready + ' ready';
-    if (counts.needs) t += ' &middot; ' + counts.needs + (counts.needsName ? ' need a name and class' : ' need a class') + ' before they can be added';
-    return t;
+    let t = plural(counts.people, 'person', 'people') + ' - ' + counts.ready + ' ready';
+    if (counts.needs) t += ' - ' + counts.needs + (counts.needsName ? ' need a name and class' : ' need a class') + ' before they can be added';
+    return t + '.';
   }
 
   function addLabel(counts, confirming) {
@@ -203,18 +203,26 @@
     return 'Add 0 people';
   }
 
-  function footerHtml(gid, preview, state) {
+  // The T5 commit bar of the Raid-Helper preview (redrawn as the officer ticks and types, so it keeps its id).
+  function commitOpts(gid, preview, state) {
     const counts = rhCounts(preview, state.rows);
     const confirming = !!(preview.event.otherServer && state.confirmOtherServer);
     const nothing = counts.ready === 0 && counts.altsOnRoster === 0;
-    return '<div class="gs-import-bar" id="rh-footer"><p class="gs-import-sum" role="status">' + summaryText(counts) + '</p><div class="gs-actions"><a class="gs-btn" href="' + esc(rosterHref(gid)) + '">Cancel</a>' +
-      '<button type="button" class="gs-btn gs-btn-molten" data-action="rh-commit" data-key="rh-commit"' + (nothing || state.status === 'saving' ? ' disabled' : '') + '>' + esc(addLabel(counts, confirming)) + '</button></div></div>';
+    return {
+      id: 'rh-footer', text: summaryText(counts),
+      back: { attrs: { 'data-action': 'rh-back', 'data-key': 'rh-back' } }, cancel: { href: rosterHref(gid) },
+      commit: { label: addLabel(counts, confirming), disabled: nothing || state.status === 'saving', attrs: { 'data-action': 'rh-commit', 'data-key': 'rh-commit' } },
+    };
   }
 
+  function footerHtml(gid, preview, state) { return G.ui.commitBarHtml(commitOpts(gid, preview, state)); }
+
+  // The Source step: one input and the Primary, which waits for the input and says what it does.
   function loadFormHtml(idPrefix, label, placeholder, value, buttonLabel, action, busy) {
     return '<form class="gs-import-form" data-submit="' + action + '" novalidate><div class="gs-field"><label class="gs-label" for="' + idPrefix + '-link">' + esc(label) + '</label>' +
       '<input class="gs-input" type="text" id="' + idPrefix + '-link" name="link" data-input="' + idPrefix + '-link" autocomplete="off" spellcheck="false" placeholder="' + esc(placeholder) + '" value="' + esc(value) + '"></div>' +
-      '<button type="submit" class="gs-btn gs-btn-molten"' + (busy ? ' disabled' : '') + '>' + esc(buttonLabel) + '</button></form>';
+      '<button type="submit" class="gs-btn gs-btn-molten"' + (busy ? ' disabled' : '') + '>' + esc(buttonLabel) + '</button></form>' +
+      '<p class="gs-fine">Nothing is saved until you press the button on the next step.</p>';
   }
 
   function errorHtml(state, reloadAction) {
@@ -223,28 +231,46 @@
       (state.offerReload ? '<button type="button" class="gs-btn gs-btn-sm" data-action="' + reloadAction + '" data-key="' + reloadAction + '">Load the event again</button>' : '') + '</div>';
   }
 
+  // The Result step: counts and what happens next, inline (kind: 'rh' | 'wcl').
+  function resultStepHtml(gid, kind, result) {
+    return G.ui.importResultHtml({ id: kind + '-result-banner', title: result.title, text: result.text, next: [
+      { label: 'Open roster', href: rosterHref(gid) },
+      { label: 'Import another', attrs: { 'data-action': kind + '-again', 'data-key': kind + '-again' } },
+    ] });
+  }
+
+  function contextOf(gd, teamId) {
+    const team = G.pages.attendance ? G.pages.attendance.teamOf(gd, teamId) : null;
+    return gd.guild.name + (team ? ' - ' + team.name : '');
+  }
+
   // opts: { guildData, rh } where rh is the page state (see ensureState).
   function raidHelperHtml(opts) {
     const gd = opts.guildData;
     const s = opts.rh;
     const gid = gd.guild.id;
     const ro = G.ui.rosterOptions(gd);
-    let result = '';
+    let preview = '';
     if (s.preview) {
       const ev = s.preview.event;
       const date = ev.startTime ? G.ui.formatDate(ev.startTime) : '';
       const members = (s.preview.rows || []).length;
-      result = '<section aria-labelledby="rh-result" class="gs-import-result"><div class="gs-import-result-head"><h2 class="gs-h2" id="rh-result">' + esc(ev.title) + (date ? ' &middot; ' + esc(date) : '') + ' &middot; ' + esc(plural(members, 'sign-up', 'sign-ups')) + '</h2>' +
+      preview = '<section aria-labelledby="rh-result" class="gs-import-result"><div class="gs-import-result-head"><h2 class="gs-h2" id="rh-result">' + esc(ev.title) + (date ? ' &middot; ' + esc(date) : '') + ' &middot; ' + esc(plural(members, 'sign-up', 'sign-ups')) + '</h2>' +
         (ev.otherServer ? '<div class="gs-warn" id="rh-other-server" role="status">This event was posted in a different Discord server than the ' + esc(gd.guild.name) + ' server.</div>' : '') +
         '<p class="gs-fine">The first name in each nickname becomes the Main, with the class and spec they signed up with. Other names in the nickname are offered as Alts: tick the ones that are characters and pick their class.</p>' +
         '<div class="gs-field gs-field-inline"><label class="gs-label" for="rh-start">New people start as</label><select class="gs-input" id="rh-start" data-change="rh-start" data-key="rh-start">' +
         G.ui.optionsHtml(START_STATUSES.map(function (v) { return { value: v, label: G.ui.statusLabel(v) }; }), s.defaultStatus) + '</select></div></div>' +
         tableHtml(s.preview.rows || [], s, ro) + onRosterHtml(gid, s.preview.rows || [], s, ro) + '</section>';
     }
-    return '<div class="gs-page gs-import-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Import from Raid-Helper</h1>' +
-      '<p class="gs-lead gs-lead-sm">Everyone who signed up becomes a person on the roster, linked by their Discord account.</p></div>' +
-      loadFormHtml('rh', 'Raid-Helper event link', 'https://raid-helper.dev/event/...', s.link, 'Load sign-ups', 'rh-load', s.status === 'loading') +
-      errorHtml(s, 'rh-reload') + result + (s.preview ? footerHtml(gid, s.preview, s) : '') + '</div>';
+    return G.ui.importFlowHtml({
+      title: 'Import from Raid-Helper', context: contextOf(gd, s.teamId), back: { href: rosterHref(gid), label: 'Roster' },
+      step: s.result ? 'result' : (s.preview ? 'preview' : 'source'),
+      alertHtml: errorHtml(s, 'rh-reload'), sourcesHtml: G.ui.importSourcesHtml(gid, 'raid-helper'),
+      sourceHtml: '<p class="gs-lead gs-lead-sm">Everyone who signed up becomes a person on the roster, linked by their Discord account.</p>' +
+        loadFormHtml('rh', 'Raid-Helper event link', 'https://raid-helper.dev/event/...', s.link, 'Preview sign-ups', 'rh-load', s.status === 'loading'),
+      previewHtml: preview, resultHtml: s.result ? resultStepHtml(gid, 'rh', s.result) : '',
+      commit: s.preview ? commitOpts(gid, s.preview, s) : null,
+    });
   }
 
   // ── Warcraft Logs: pure state helpers ──
@@ -323,11 +349,20 @@
 
   function wclSummary(counts) {
     const changes = counts.alts + counts.news;
-    if (!changes) return 'No changes yet' + (counts.skipped ? ' &middot; ' + counts.skipped + ' skipped' : '');
+    if (!changes) return 'No changes yet' + (counts.skipped ? ' - ' + counts.skipped + ' skipped' : '') + '.';
     const parts = [];
     if (counts.alts) parts.push(plural(counts.alts, 'Alt', 'Alts'));
     if (counts.news) parts.push(plural(counts.news, 'new person', 'new people'));
-    return plural(changes, 'change', 'changes') + ': ' + parts.join(', ') + (counts.skipped ? ' &middot; ' + counts.skipped + ' skipped' : '');
+    return plural(changes, 'change', 'changes') + ': ' + parts.join(', ') + (counts.skipped ? ' - ' + counts.skipped + ' skipped' : '') + '.';
+  }
+
+  function wclCommitOpts(gid, counts, s) {
+    const changes = counts.alts + counts.news;
+    return {
+      id: 'wcl-footer', text: wclSummary(counts),
+      back: { attrs: { 'data-action': 'wcl-back', 'data-key': 'wcl-back' } }, cancel: { href: rosterHref(gid) },
+      commit: { label: 'Save ' + plural(changes, 'change', 'changes'), disabled: !changes || s.status === 'saving', attrs: { 'data-action': 'wcl-commit', 'data-key': 'wcl-commit' } },
+    };
   }
 
   // opts: { guildData, wcl, people } where people are the roster list's people whose home team is the team.
@@ -356,13 +391,16 @@
           ? '<h3 class="gs-h3">' + esc(decide.length + ' to decide') + '</h3><div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-import" aria-label="' + esc(decide.length + ' to decide') + '"><thead><tr><th scope="col">Character</th><th scope="col">In the log</th><th scope="col">Match</th><th scope="col">What to do</th></tr></thead><tbody>' +
             decide.map(function (d) { return decideRowHtml(d, s.choices[d.key] || { action: 'skip', status: 'trial' }, opts.people, s.rowErrors && s.rowErrors[d.key]); }).join('') + '</tbody></table></div>'
           : '<p class="gs-empty">Everyone in this report is already on the roster.</p>') + '</section>';
-      footer = '<div class="gs-import-bar" id="wcl-footer"><p class="gs-import-sum" role="status">' + wclSummary(counts) + '</p><div class="gs-actions"><a class="gs-btn" href="' + esc(rosterHref(gid)) + '">Cancel</a>' +
-        '<button type="button" class="gs-btn gs-btn-molten" data-action="wcl-commit" data-key="wcl-commit"' + (!changes || s.status === 'saving' ? ' disabled' : '') + '>Save ' + esc(plural(changes, 'change', 'changes')) + '</button></div></div>';
+      footer = wclCommitOpts(gid, counts, s);
     }
-    return '<div class="gs-page gs-import-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Import from Warcraft Logs</h1>' +
-      '<p class="gs-lead gs-lead-sm">Adds the characters in a report to the roster. Names already on the roster are skipped; you decide the rest.</p></div>' +
-      loadFormHtml('wcl', 'Warcraft Logs report link', 'https://fresh.warcraftlogs.com/reports/...', s.link, 'Load players', 'wcl-load', s.status === 'loading') +
-      errorHtml(s, 'wcl-reload') + result + footer + '</div>';
+    return G.ui.importFlowHtml({
+      title: 'Import from Warcraft Logs', context: contextOf(gd, s.teamId), back: { href: rosterHref(gid), label: 'Roster' },
+      step: s.result ? 'result' : (s.preview ? 'preview' : 'source'),
+      alertHtml: errorHtml(s, 'wcl-reload'), sourcesHtml: G.ui.importSourcesHtml(gid, 'wcl'),
+      sourceHtml: '<p class="gs-lead gs-lead-sm">Adds the characters in a report to the roster. Names already on the roster are skipped; you decide the rest.</p>' +
+        loadFormHtml('wcl', 'Warcraft Logs report link', 'https://fresh.warcraftlogs.com/reports/...', s.link, 'Preview players', 'wcl-load', s.status === 'loading'),
+      previewHtml: result, resultHtml: s.result ? resultStepHtml(gid, 'wcl', s.result) : '', commit: footer || null,
+    });
   }
 
   // ── behaviour ──
@@ -376,8 +414,8 @@
     const cur = s.imports[kind];
     if (cur && cur.gid === gid && cur.teamId === teamId) return cur;
     s.imports[kind] = kind === 'rh'
-      ? { gid: gid, teamId: teamId, link: '', status: 'idle', error: '', offerReload: false, preview: null, rows: {}, defaultStatus: 'raider', showAll: false, foldOpen: false, confirmOtherServer: false, rowErrors: {} }
-      : { gid: gid, teamId: teamId, link: '', status: 'idle', error: '', offerReload: false, preview: null, choices: {}, knownOpen: false, rowErrors: {} };
+      ? { gid: gid, teamId: teamId, link: '', status: 'idle', error: '', offerReload: false, preview: null, result: null, rows: {}, defaultStatus: 'raider', showAll: false, foldOpen: false, confirmOtherServer: false, rowErrors: {} }
+      : { gid: gid, teamId: teamId, link: '', status: 'idle', error: '', offerReload: false, preview: null, result: null, choices: {}, knownOpen: false, rowErrors: {} };
     return s.imports[kind];
   }
 
@@ -404,6 +442,7 @@
     if (!link) { state.error = kind === 'rh' ? 'Paste a Raid-Helper event link.' : 'Paste a Warcraft Logs report link.'; state.offerReload = false; G.app.render(); return; }
     state.status = 'loading';
     state.error = '';
+    state.result = null;
     state.offerReload = false;
     G.app.render();
     G.api.post(apiBase(state.gid) + (kind === 'rh' ? 'raid-helper' : 'wcl') + '/preview', { teamId: state.teamId, source: link }).then(function (res) {
@@ -426,6 +465,30 @@
     });
   }
 
+  // Back to the Source step with the link still in the box (the preview is read again on the next Preview); Import another starts the page afresh.
+  function backToSource(kind) {
+    const s = cur(kind);
+    if (!s) return;
+    s.preview = null;
+    s.status = 'idle';
+    s.error = '';
+    s.offerReload = false;
+    s.rowErrors = {};
+    G.app.render();
+  }
+
+  function importAnother(kind) {
+    const s = cur(kind);
+    if (!s) return;
+    st().imports[kind] = null;
+    ensureState(kind, s.gid, s.teamId);
+    G.app.render();
+  }
+
+  G.handlers.click['rh-back'] = function () { backToSource('rh'); };
+  G.handlers.click['wcl-back'] = function () { backToSource('wcl'); };
+  G.handlers.click['rh-again'] = function () { importAnother('rh'); };
+  G.handlers.click['wcl-again'] = function () { importAnother('wcl'); };
   G.handlers.submit['rh-load'] = function () { loadPreview('rh'); };
   G.handlers.submit['wcl-load'] = function () { loadPreview('wcl'); };
   G.handlers.click['rh-reload'] = function () { loadPreview('rh'); };
@@ -487,11 +550,14 @@
   G.handlers.click['rh-show-all'] = function () { const s = cur('rh'); if (s) { s.showAll = !s.showAll; G.app.render(); } };
   G.handlers.click['rh-fold'] = function () { const s = cur('rh'); if (s) { s.foldOpen = !s.foldOpen; G.app.render(); } };
 
+  // The Import step: the result is an inline banner on this page with the counts and one next step (Open roster / Import another), not a notice on the next page.
   function finish(state, text, res) {
     G.app.applyFlags(state.gid, res);
-    st().rosterNotice = text;
-    st().imports[state === st().imports.rh ? 'rh' : 'wcl'] = null;
-    G.app.go(rosterHref(state.gid));
+    state.result = { title: text, text: '' };
+    state.preview = null;
+    state.status = 'ready';
+    state.error = '';
+    G.app.render();
   }
 
   G.handlers.click['rh-commit'] = function () {

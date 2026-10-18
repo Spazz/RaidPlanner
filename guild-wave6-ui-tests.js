@@ -87,14 +87,14 @@ class ApiErr extends Error {
     const base = gd(OFFICER_CAN, { attendanceFlags: { t1: 2 }, pendingClaims: 3 });
     const item = attendanceItem(G.shell.sidebarItems(navCtx(base)));
     assert.equal(item.badge, 5);
-    assert.equal(item.ariaLabel, 'Attendance, 2 raids and 3 character claims to review');
+    assert.equal(item.ariaLabel, 'Attendance, 2 flags and 3 character claims to review');
     assert.equal(attendanceItem(G.shell.tabItems(navCtx(base))).badge, 5, 'also on the phone tabs');
     // Claims only.
     const claims = attendanceItem(G.shell.sidebarItems(navCtx(gd(OFFICER_CAN, { pendingClaims: 1 }))));
     assert.deepEqual([claims.badge, claims.ariaLabel], [1, 'Attendance, 1 character claim to review']);
     // Raids only: the label is as it was.
     const raids = attendanceItem(G.shell.sidebarItems(navCtx(gd(OFFICER_CAN, { attendanceFlags: { t1: 1 } }))));
-    assert.deepEqual([raids.badge, raids.ariaLabel], [1, 'Attendance, 1 raid to review']);
+    assert.deepEqual([raids.badge, raids.ariaLabel], [1, 'Attendance, 1 flag to review']);
     assert.deepEqual([attendanceItem(G.shell.sidebarItems(navCtx(gd(OFFICER_CAN)))).badge, attendanceItem(G.shell.sidebarItems(navCtx(gd(OFFICER_CAN)))).ariaLabel], [0, 'Attendance']);
     // Without roster.edit (can not decide a claim) or attendance.review (can not open the queue) the claims add nothing.
     for (const drop of ['roster.edit', 'attendance.review']) {

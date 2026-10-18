@@ -46,10 +46,21 @@
     });
   }
 
+  // The member's own team: the team of their Main, else the first team (in the guild's order) that has one of their characters. A viewer on no active
+  // team keeps the shell's selected team, so the page is never empty for someone who can see the guild.
+  function ownTeamOf(gd) {
+    const me = gd && gd.me ? gd.me : {};
+    const active = G.shell.activeTeams(gd && gd.teams);
+    if (me.mainTeamId && active.some(function (t) { return t.id === me.mainTeamId; })) return me.mainTeamId;
+    const ids = Array.isArray(me.teamIds) ? me.teamIds : [];
+    const first = active.filter(function (t) { return ids.indexOf(t.id) >= 0; })[0];
+    return first ? first.id : G.app.teamFor(gd);
+  }
+
   function load(r, gd) {
     const gid = gd.guild.id;
     const pid = gd.me && gd.me.personId ? gd.me.personId : null;
-    const teamId = G.app.teamFor(gd);
+    const teamId = ownTeamOf(gd);
     const own = function (path) { return pid ? card(G.api.get(apiBase(gid) + path + encodeURIComponent(pid))) : Promise.resolve(null); };
     return Promise.all([
       readNext(gid, teamId),
@@ -297,6 +308,7 @@
 
   G.pages.homeMember = {
     inText: inText,
+    ownTeamOf: ownTeamOf,
     summaryText: summaryText,
     homeHtml: homeHtml,
     afterDecline: afterDecline,

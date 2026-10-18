@@ -75,7 +75,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     bind(`SELECT id, username, global_name, display_name FROM users WHERE id IN (SELECT decided_by FROM attendance_decisions WHERE raid_id = ?2 AND decided_by IS NOT NULL)
              OR id = (SELECT manual_by FROM raids WHERE id = ?2 AND guild_id = ?1)`),
     db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guild.id),
-    db.prepare('SELECT team_id, COUNT(*) AS n FROM raids WHERE guild_id = ? AND open_flags > 0 GROUP BY team_id').bind(guild.id),
+    db.prepare('SELECT team_id, SUM(open_flags) AS n FROM raids WHERE guild_id = ? AND open_flags > 0 GROUP BY team_id').bind(guild.id),
     bind('SELECT player_id, reason, flags, decided_by, decided_at FROM attendance_decisions WHERE raid_id = ?2 AND guild_id = ?1'),
     bind('SELECT player_id FROM raid_manual WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY player_id'),
     bind(DUTIES_SQL),

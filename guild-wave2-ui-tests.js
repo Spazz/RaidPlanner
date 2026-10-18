@@ -391,11 +391,11 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids list: the event cell says "zone - size"; no zone is "20-player"; a title comes first; an older reply without a size shows the zone only', () => {
     const out = listPage(LIST({ upcoming: [UP(), UP({ id: 'u2', zone: null, size: 20 }), UP({ id: 'u3', title: 'Prog night', zone: 'Onyxia\'s Lair', size: 40 }), UP({ id: 'u4', size: undefined })] }));
-    assert(out.includes('<td>Hyjal Summit - 20</td>'), 'the table cell');
-    assert(out.includes('<td>20-player</td>'), 'no zone');
-    assert(out.includes('<td><span class="gs-ev-title">Prog night</span> &middot; Onyxia&#39;s Lair - 40</td>') || out.includes('<td><span class="gs-ev-title">Prog night</span> &middot; Onyxia\'s Lair - 40</td>'), 'a title first');
-    assert(out.includes('<td>Hyjal Summit</td>'), 'no size: as before');
-    assert(out.includes('<div class="gs-card-line">Hyjal Summit - 20</div>'), 'the phone card');
+    // One markup is the table and the phone card (below 760 px a row is a card; each cell carries its label).
+    assert(out.includes('<td class="" data-label="Raid">Hyjal Summit - 20</td>'), 'the cell');
+    assert(out.includes('<td class="" data-label="Raid">20-player</td>'), 'no zone');
+    assert(out.includes('<td class="" data-label="Raid"><span class="gs-ev-title">Prog night</span> &middot; Onyxia&#39;s Lair - 40</td>') || out.includes('<td class="" data-label="Raid"><span class="gs-ev-title">Prog night</span> &middot; Onyxia\'s Lair - 40</td>'), 'a title first');
+    assert(out.includes('<td class="" data-label="Raid">Hyjal Summit</td>'), 'no size: as before');
     assert.equal(G.pages.raids.zoneSizeText('Hyjal Summit', 20), 'Hyjal Summit - 20');
     assert.equal(G.pages.raids.zoneSizeText(null, 10), '10-player');
     assert.equal(G.pages.raids.zoneSizeText('', undefined), '');
@@ -405,8 +405,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids list: a date-only raid says "time not set" (muted) and never a made-up 12:00; a timed raid keeps its time', () => {
     const dateOnly = listPage(LIST({ upcoming: [UP({ timeKnown: false, startsAt: NOON_UTC })] }));
-    assert(/<a href="#\/g\/g1\/raids\/r\/u1">Sat Oct 24<\/a> <span class="gs-muted gs-time-unset">time not set<\/span>/.test(dateOnly), 'the table cell');
-    assert(/<a class="gs-raid-link" href="#\/g\/g1\/raids\/r\/u1">Sat Oct 24<\/a> <span class="gs-muted gs-time-unset">time not set<\/span>/.test(dateOnly), 'the phone card');
+    assert(/<a class="gs-raid-link" href="#\/g\/g1\/raids\/r\/u1">Sat Oct 24<\/a> <span class="gs-muted gs-time-unset">time not set<\/span>/.test(dateOnly), 'the date is the row link, and says the time is not set');
     assert(!/12:00|7:00 AM|\bAM\b|\bPM\b/.test(stripTags(dateOnly)), 'no time at all: ' + stripTags(dateOnly));
     const timed = listPage(LIST());
     assert(timed.includes('>Sat Oct 24, 8:00 PM CT</a>') && !timed.includes('time not set'));
@@ -428,14 +427,14 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.equal(T(null, 20), '-');
     assert.equal(T({ signed: 4, late: 1, bench: 0, tentative: 0, absence: 0, expected: 7 }, 20), '7 / 20 signed up', 'a Worker that sends expected is believed');
     const out = listPage(LIST());
-    assert(out.includes('<td>18 / 20 signed up, 2 bench, 1 tentative, 1 can&#39;t come</td>') && out.includes('<span class="gs-fine">18 / 20 signed up, 2 bench, 1 tentative, 1 can&#39;t come</span>'));
+    assert(out.includes('<td class="" data-label="Sign-ups">18 / 20 signed up, 2 bench, 1 tentative, 1 can&#39;t come</td>'));
     assert(!listPage(LIST({ can: { edit: false, signup: false }, upcoming: [UP({ signups: null })] })).includes('signed up'), 'a viewer who may not see counts gets none');
   });
 
   await check('Raids list: the deadline beside Sign up - "Sign-ups close Fri 8:00 PM" in the guild\'s time zone while open and a deadline is set; "Sign-ups closed" and no button when closed', () => {
     const open = listPage(LIST({ upcoming: [UP({ closeHours: 24, closesAt: STARTS - 24 * HOUR })] }));
     assert(open.includes('<span class="gs-fine">Sign-ups close Fri 8:00 PM CT</span>'), open.slice(open.indexOf('Your sign-up')));
-    assert.equal(open.split('Sign-ups close Fri 8:00 PM').length - 1, 2, 'table row and card');
+    assert.equal(open.split('Sign-ups close Fri 8:00 PM').length - 1, 1, 'one row (it is the phone card too)');
     assert(/data-action="raids-signup" data-rid="u1"/.test(open) && open.indexOf('data-action="raids-signup"') < open.indexOf('Sign-ups close'), 'the button, then the deadline');
     // The guild's zone decides, not the browser's.
     const auckland = listPage(LIST({ upcoming: [UP({ closeHours: 24, closesAt: STARTS - 24 * HOUR })] }), MEMBER_CAN, null, 'Pacific/Auckland');
@@ -456,10 +455,10 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids list: past rows show the size next to the zone; none is "10-player"; an older reply shows the zone', () => {
     const out = listPage(LIST({ upcoming: [], raids: [PAST(), PAST({ id: 'r8', zone: null, size: 25 }), PAST({ id: 'r7', size: undefined })] }), MEMBER_CAN, { tab: 'past' });
-    assert(out.includes('<td>Barrow Deeps - 10</td>') && out.includes('<td>25-player</td>') && out.includes('<td>Barrow Deeps</td>'));
-    assert(out.includes('Barrow Deeps - 10 &middot; 2 kills, 1 wipe') && out.includes('25-player &middot; '), 'the cards');
-    assert(out.includes('<span class="gs-muted">-</span>') === false, 'every row has a zone or a size here');
-    assert(listPage(LIST({ upcoming: [], raids: [PAST({ zone: null, size: undefined })] }), MEMBER_CAN, { tab: 'past' }).includes('<td><span class="gs-muted">-</span></td>'));
+    assert(out.includes('<td class="" data-label="Zone">Barrow Deeps - 10</td>') && out.includes('<td class="" data-label="Zone">25-player</td>') && out.includes('<td class="" data-label="Zone">Barrow Deeps</td>'));
+    assert(out.includes('<td class="" data-label="Bosses">2 kills, 1 wipe</td>'), 'the card carries the same facts');
+    assert(!/data-label="Zone"><span class="gs-muted">-/.test(out), 'every row has a zone or a size here');
+    assert(listPage(LIST({ upcoming: [], raids: [PAST({ zone: null, size: undefined })] }), MEMBER_CAN, { tab: 'past' }).includes('<td class="" data-label="Zone"><span class="gs-muted">-</span></td>'));
   });
 
   await check('Raids list: a 409 for the deadline reads the list again, shows the Worker\'s sentence and takes the button away', withState(async (S) => {
@@ -1514,7 +1513,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids list: a sign-up that comes from a standing sign-up carries a small "standing" tag; the one-click answer keeps it', () => {
     const out = listPage(LIST({ upcoming: [UP({ mine: { kind: 'signed', source: 'raidsmith', characterName: 'Eliora', standing: true } }), UP({ id: 'u2', mine: { kind: 'signed', source: 'raidsmith', characterName: 'Eliora' } })] }));
-    assert.equal(out.split('<span class="gs-chip gs-chip-src">standing</span>').length - 1, 2, 'u1 only: table row and card');
+    assert.equal(out.split('<span class="gs-chip gs-chip-src">standing</span>').length - 1, 1, 'u1 only');
     const row = { id: 'u1', signups: {}, mine: null };
     G.pages.raids.applySignupView({ data: { upcoming: [row] } }, 'u1', view({ me: Object.assign({}, view().me, { signup: entry({ standing: true, isMe: true }) }) }));
     assert.equal(row.mine.standing, true);
@@ -1792,7 +1791,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     const out = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'pending' }) })] }));
     assert(out.includes('<span class="gs-chip gs-chip-signup">Group 3 - confirm?</span>'));
     assert(/data-action="raids-roster" data-do="confirm" data-rid="u1" data-key="rc-u1">Confirm<\/button>/.test(out) && /data-action="raids-roster" data-do="decline" data-rid="u1" data-key="rd-u1">Can't come<\/button>/.test(out));
-    assert.equal(out.split('data-do="confirm"').length - 1, 2, 'table row and card');
+    assert.equal(out.split('data-do="confirm"').length - 1, 1, 'one row, which is the phone card too');
     const ok = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'confirmed' }) })] }));
     assert(ok.includes('Group 3 - confirmed') && !ok.includes('data-do="confirm"') && ok.includes('data-do="decline"'));
     const bench = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 0, status: 'pending' }) })] }));

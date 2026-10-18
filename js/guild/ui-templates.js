@@ -39,9 +39,10 @@
 
   // T1 - list page (Raids, Roster, Loot, Review queue, Applications, Away notices). The segment bar filters the same table and stays when the table is
   // empty (pass ui.emptyStateHtml as bodyHtml); the first column is the link; times carry the zone; the footer line says what the list is.
+  //   noticesHtml  banners and notes between the header and the segment bar      pageClass  an extra class on the page (e.g. the attendance matrix's full width)
   ui.listPageHtml = function (opts) {
     const o = opts || {};
-    return '<div class="gs-page gs-list-page">' + ui.pageHeadHtml(o.head) + (o.barHtml ? '<div class="gs-listbar">' + o.barHtml + '</div>' : '') +
+    return '<div class="gs-page gs-list-page' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + (o.barHtml ? '<div class="gs-listbar">' + o.barHtml + '</div>' : '') +
       '<div class="gs-listbody" aria-live="polite">' + (o.bodyHtml || '') + '</div>' + (o.footHtml ? '<p class="gs-listfoot">' + o.footHtml + '</p>' : '') + '</div>';
   };
 
@@ -137,20 +138,75 @@
     }).join('') + '</ol>';
   };
 
-  // opts: { text ("23 of 24 will be imported."), note (default "Nothing is saved yet."), back, cancel, commit: buttonOpts (the primary) }
+  // opts: { text ("23 of 24 will be imported."), note (default "Nothing is saved yet."), back, cancel, commit: buttonOpts (the primary), id (so a page can redraw the bar
+  //         as the person ticks rows), inline (inside a panel on a page: not sticky) }
   ui.commitBarHtml = function (opts) {
     const o = opts || {};
     const back = o.back ? ui.buttonHtml(Object.assign({ variant: 'ghost', label: 'Back' }, o.back)) : '';
     const cancel = o.cancel ? ui.buttonHtml(Object.assign({ variant: 'secondary', label: 'Cancel' }, o.cancel)) : '';
     const commit = o.commit ? ui.buttonHtml(Object.assign({ variant: 'primary' }, o.commit)) : '';
-    return '<div class="gs-commitbar" role="region" aria-label="Import"><p class="gs-commitbar-text"><strong>' + esc(o.text) + '</strong> <span class="gs-fine">' + esc(o.note === undefined ? 'Nothing is saved yet.' : o.note) + '</span></p>' +
+    return '<div class="gs-commitbar' + (o.inline ? ' is-inline' : '') + '"' + (o.id ? ' id="' + esc(o.id) + '"' : '') + ' role="region" aria-label="Import"><p class="gs-commitbar-text" role="status"><strong>' + esc(o.text) + '</strong> <span class="gs-fine">' + esc(o.note === undefined ? 'Nothing is saved yet.' : o.note) + '</span></p>' +
       '<span class="gs-commitbar-actions">' + back + cancel + commit + '</span></div>';
   };
 
   ui.flowPageHtml = function (opts) {
     const o = opts || {};
     const stepper = Array.isArray(o.steps) ? ui.stepperHtml({ steps: o.steps, current: o.current, label: o.stepsLabel }) : '';
-    return '<div class="gs-page gs-flow-page">' + ui.pageHeadHtml(o.head) + stepper + '<div class="gs-flowbody">' + (o.bodyHtml || '') + '</div>' + (o.commitBarHtml || '') + '</div>';
+    return '<div class="gs-page gs-flow-page' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + stepper + '<div class="gs-flowbody">' + (o.bodyHtml || '') + '</div>' + (o.commitBarHtml || '') + '</div>';
+  };
+
+  // ── T5 for the imports ──
+  // Every import (the four roster sources on their own pages; Gargul, TMB, softres and the pasted raid roster inside the raid page) walks the same three beats
+  // with the same words: Source (give it, press Preview; the error is one human sentence), Preview (what will happen, the row choices that import has, the commit
+  // bar that says how many will be imported and that nothing is saved yet), Import (an inline success banner with counts and one next step, never a toast).
+  // What each import shows in its Source and Preview is its own: it passes that markup in and keeps its own server calls.
+  ui.IMPORT_STEPS = ['Source', 'Preview', 'Import'];
+  const IMPORT_STEP_NUMBER = { source: 1, preview: 2, result: 4 };
+  const IMPORT_SOURCES = [
+    { key: 'raid-helper', label: 'Raid-Helper event' }, { key: 'wcl', label: 'Warcraft Logs' }, { key: 'csv', label: 'CSV file' }, { key: 'bnet', label: 'Battle.net' },
+  ];
+  ui.IMPORT_SOURCES = IMPORT_SOURCES;
+
+  function importStepOf(step) { return IMPORT_STEP_NUMBER[step] ? step : 'source'; }
+
+  // The roster imports' source switch: where is the roster? Links to the four import pages (the paste is the raid page's, the CSV text box covers a pasted list).
+  ui.importSourcesHtml = function (gid, active) {
+    return '<nav class="gs-import-sources" aria-label="Where is your roster?"><p class="gs-import-sources-label">Where is your roster?</p><div class="gs-segs">' + IMPORT_SOURCES.map(function (s) {
+      const here = s.key === active;
+      return '<a class="gs-seg gs-seg-link" href="' + esc(G.router.format({ name: 'import', gid: gid, source: s.key })) + '"' + (here ? ' aria-current="page"' : '') + '>' + esc(s.label) + '</a>';
+    }).join('') + '</div></nav>';
+  };
+
+  // The inline result of an import: a success banner with the counts, what was left alone, and one next step (buttonOpts; the first is the next step).
+  //   opts: { title ("Imported 23 people."), text ("20 new, 3 updated."), next: [buttonOpts], id }
+  ui.importResultHtml = function (opts) {
+    const o = opts || {};
+    return ui.bannerHtml({ tone: 'success', title: o.title, text: o.text, actions: o.next, dismissible: false, id: o.id });
+  };
+
+  // A whole page for one roster import.
+  //   opts: { title, context, back ({ href, label }), step ('source' | 'preview' | 'result'), alertHtml, sourcesHtml, sourceHtml, previewHtml, resultHtml,
+  //           commit (ui.commitBarHtml options, shown on the Preview step), pageClass }
+  ui.importFlowHtml = function (opts) {
+    const o = opts || {};
+    const step = importStepOf(o.step);
+    const body = (o.alertHtml || '') + (step === 'source' ? (o.sourcesHtml || '') + (o.sourceHtml || '') : (step === 'preview' ? (o.previewHtml || '') : (o.resultHtml || '')));
+    return ui.flowPageHtml({
+      head: { title: o.title, context: o.context, back: o.back }, steps: ui.IMPORT_STEPS, current: IMPORT_STEP_NUMBER[step], stepsLabel: 'Import steps',
+      bodyHtml: body, pageClass: 'gs-import-page' + (o.pageClass ? ' ' + o.pageClass : ''), commitBarHtml: step === 'preview' && o.commit ? ui.commitBarHtml(o.commit) : '',
+    });
+  };
+
+  // The same three beats as a panel inside another page (the raid page's Gargul, TMB, softres panels). The commit bar is part of the panel, not sticky.
+  //   opts: { id (the title's id; defaults to import-title), title, step, helpHtml (the Source step's help), alertHtml, sourceHtml, previewHtml, resultHtml, commit }
+  ui.importPanelHtml = function (opts) {
+    const o = opts || {};
+    const step = importStepOf(o.step);
+    const id = o.id || 'import-title';
+    const body = step === 'source' ? (o.helpHtml || '') + (o.alertHtml || '') + (o.sourceHtml || '') : (o.alertHtml || '') + (step === 'preview' ? (o.previewHtml || '') : (o.resultHtml || ''));
+    return '<div class="gs-loot-import gs-import-panel" role="group" aria-labelledby="' + esc(id) + '"><h3 class="gs-h3" id="' + esc(id) + '">' + esc(o.title) + '</h3>' +
+      ui.stepperHtml({ steps: ui.IMPORT_STEPS, current: IMPORT_STEP_NUMBER[step], label: 'Import steps' }) + body +
+      (step === 'preview' && o.commit ? ui.commitBarHtml(Object.assign({ inline: true }, o.commit)) : '') + '</div>';
   };
 
   ui.TEMPLATES = ['list', 'object', 'settings', 'home', 'flow'];

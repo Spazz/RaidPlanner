@@ -426,7 +426,7 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert(rowOf(out, 'Alliesha').includes('gs-tag-signed'));
     assert(rowOf(out, 'Daxxter').includes('class="gs-tag gs-tag-late">Late<') && rowOf(out, 'Daxxter').includes('<span class="gs-plan">G5</span>'));
     assert(rowOf(out, 'Terani').includes('class="gs-tag gs-tag-tentative">Tentative<') && rowOf(out, 'Terani').includes('<span class="gs-plan is-bench">Bench</span>'));
-    assert(rowOf(out, 'Aimers').includes('class="gs-tag gs-tag-absence">Absence<') && rowOf(out, 'Aimers').includes('<span class="gs-muted">-</span>'));
+    assert(rowOf(out, 'Aimers').includes('class="gs-tag gs-tag-absence">Can&#39;t come<') && rowOf(out, 'Aimers').includes('<span class="gs-muted">-</span>'));
     assert(rowOf(out, 'Bearnnaked').includes('class="gs-tag gs-tag-none">No sign-up<'));
     const kinds = detail({ people: ['standby', 'bench', 'strange'].map((k, i) => prow('p' + i, 'N' + i, { signup: k })) });
     const k = raidPage(kinds, { filter: 'all' });
@@ -488,13 +488,13 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
 
   await check('raids list: one primary New raid button and a More menu, the same size; Backfill, Raid schedule, Subscribe and My away notices live in More (in the mockup\'s order)', () => {
     const out = raidsHtml();
-    assert(/<div class="gs-roster-actions gs-raids-actions"><div class="gs-menu-wrap" data-menu><button type="button" class="gs-btn gs-btn-eq gs-menu-trigger" id="raids-more"[^>]*aria-expanded="false"[^>]*><span>More<\/span>/.test(out));
-    assert(/<a class="gs-btn gs-btn-molten gs-btn-eq" href="#\/g\/g1\/raids\/new">New raid<\/a><\/div>/.test(out));
+    // The T1 page head: the one More menu (a dots icon button on a phone, still named More) and the one primary, rightmost.
+    assert(/<div class="gs-pagehead-actions"><div class="gs-menu-wrap" data-menu><button type="button" class="gs-btn gs-menu-trigger has-phone-icon" id="raids-more"[^>]*aria-expanded="false"[^>]*aria-label="More"[^>]*><span class="gs-menu-text">More<\/span>/.test(out));
+    assert(/<a class="gs-btn gs-btn-molten" href="#\/g\/g1\/raids\/new"><span>New raid<\/span><\/a><\/div>/.test(out));
     const menu = out.slice(out.indexOf('id="raids-more-list"'), out.indexOf('</div></div>', out.indexOf('id="raids-more-list"')));
     assert.deepEqual([...menu.matchAll(/role="menuitem"[^>]*>([^<]+)</g)].map(m => m[1]), ['Backfill from Warcraft Logs', 'Raid schedule', 'Subscribe in your calendar', 'My away notices']);
     assert(menu.includes('href="#/g/g1/attendance/backfill"') && menu.includes('href="#/g/g1/settings/schedule"') && menu.includes('data-action="cal-open"') && menu.includes('href="#/g/g1/away"'));
-    assert(/\.gs-btn-eq \{ min-width: 128px; \}/.test(css), 'both buttons share one minimum width');
-    assert.equal((out.match(/gs-btn-eq/g) || []).length >= 2, true);
+    assert(/\.gs-menu-trigger\.has-phone-icon \{ width: var\(--control-h-phone\)/.test(css), 'on a phone More is a 44 px icon button beside the title');
     assertNoRawAttrs(out);
   });
 
@@ -511,7 +511,7 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
 
   await check('raids list: present / bench / missed is a small stacked bar plus the numbers; the shares add up to the bar; no counts for those who may not see them', () => {
     const out = raidsHtml();
-    const rows = out.slice(out.indexOf('<tbody>')).split('<tr>').map(r => r.split('</tr>')[0]);
+    const rows = out.slice(out.indexOf('<tbody>')).split('<tr class="gs-dtable-row"').map(r => r.split('</tr>')[0]);
     const first = rows[1];
     assert(first.includes('<span class="gs-stack"><svg class="gs-stackbar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false">') && first.includes('24 / 1 / 5'));
     const rects = [...first.matchAll(/<rect class="gs-sb-(\w+)" x="([\d.]+)" y="0" width="([\d.]+)" height="8"\/>/g)].map(m => ({ k: m[1], x: Number(m[2]), w: Number(m[3]) }));
@@ -519,9 +519,9 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assert.equal(rects[0].x, 0);
     assert(Math.abs(rects[0].w - 80) < 0.11 && Math.abs(rects[1].w - 3.3) < 0.11 && Math.abs(rects[2].w - 16.7) < 0.11, JSON.stringify(rects));
     assert(Math.abs(rects[0].x + rects[0].w - rects[1].x) < 0.11 && Math.abs(rects[1].x + rects[1].w - rects[2].x) < 0.11 && Math.abs(rects[2].x + rects[2].w - 100) < 0.2, 'segments touch and fill the bar');
-    assert(rows[2].includes('<td class="gs-nowrap">-</td>'), 'counts null: a dash');
+    assert(rows[2].includes('data-label="Present / Bench / Missed"><span class="gs-muted">-</span>'), 'counts null: a dash');
     assert(!rows[3].includes('<svg') && rows[3].includes('0 / 0 / 0'), 'an empty raid has no bar, only 0 / 0 / 0');
-    assert(out.includes('<span class="gs-stack"><svg') && out.includes('Present 24 &middot; Bench 1 &middot; Missed 5'), 'the phone card has the bar too');
+    assert(out.includes('<span class="gs-stack"><svg') && out.includes('24 / 1 / 5'), 'one markup: the phone card has the bar and the numbers too');
     assertNoRawAttrs(out);
   });
 
