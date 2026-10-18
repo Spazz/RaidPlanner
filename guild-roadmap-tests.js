@@ -153,7 +153,7 @@ const me = { user: { id: 'u1', username: 'alice', displayName: 'Alice' }, guilds
     assert.equal(count(out, '<h1'), 1);
     assert(out.includes('<h1 class="gs-h1" tabindex="-1">Future enhancements</h1>'));
     assert(out.includes('What&#39;s being built next and ideas under review. Updated as work ships.') || out.includes('What\'s being built next and ideas under review. Updated as work ships.'));
-    assert(out.includes('Last updated Oct 17, 2026'));
+    assert(out.includes('Last updated ' + G.ui.formatDay(G.roadmap.updated)));
     const at = ['In progress', 'Next up', 'Ideas', 'Shipped'].map(t => out.indexOf(`>${t} <span class="gs-rm-count">`));
     assert(at.every(i => i > 0) && at.every((i, n) => n === 0 || at[n - 1] < i), 'sections in order: ' + at.join(','));
     assert.equal(count(out, '<h2 '), 5, 'Suggest an idea (the sign-in line) and the four sections');

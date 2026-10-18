@@ -16,7 +16,7 @@
   'use strict';
 
   G.roadmap = {
-    updated: '2026-10-17',
+    updated: '2026-10-18',
     items: [
       // ── In progress ──
 
@@ -52,14 +52,14 @@
         id: 'raid-zone-sets-planner-size',
         title: 'Raid zone sets the Planner\'s raid size',
         summary: 'The zone chosen for a raid sets the raid size in the Planner, so nobody has to switch it by hand.',
-        area: 'planner', status: 'idea', source: 'backlog', added: '2026-10-17',
+        area: 'planner', status: 'done', source: 'backlog', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'forever-team-sizes',
         title: 'WoW Forever 10, 20 and 40-player teams',
         summary: 'Teams in a WoW Forever guild can be 10, 20 or 40 players.',
         why: 'Teams are fixed at 25 players today.',
-        area: 'guilds', status: 'idea', source: 'backlog', added: '2026-10-17',
+        area: 'guilds', status: 'done', source: 'backlog', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'pre-raid-loot-board',
@@ -101,21 +101,21 @@
         title: 'Away and late notices',
         summary: 'Raiders post dates they are away, a recurring weekly day off, or \'late, arriving 8:30\' / \'leaving at 10\'. Officers see who is away, and attendance tags it \'with notice\' automatically.',
         why: 'Today an absence exists only as a per-raid sign-up, so planned weeks have gaps nobody sees. Inspired by: oxm.gg Absence Calendar; Raid-Helper Absence status.',
-        area: 'signups', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'signups', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'planner-away-warnings',
         title: 'Warn in the Planner about away and double-booked players',
         summary: 'When you open a raid in the Planner, anyone who is away or already in another overlapping raid gets a marker, and Optimize leaves them out unless you drag them in.',
         why: 'Stops officers building a plan around people who cannot come. Needs away notices. Inspired by: oxm.gg officer conflict view; Raidify conflicts toggle.',
-        area: 'planner', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'planner', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'roster-confirm',
         title: 'Publish the roster and ask raiders to confirm',
         summary: 'After the plan is done, officers press Publish. Raiders see their group and role on the raid page and press Confirm or Can\'t make it. Unconfirmed names stay highlighted.',
         why: 'Closes the loop between the plan and the raid itself. Inspired by: oxm.gg Accept/Decline and \'You\'re rostered\' notices.',
-        area: 'raids', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'raids', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'fair-bench',
@@ -164,21 +164,21 @@
         title: 'Sign-up deadline with auto-lock',
         summary: 'A raid can close sign-ups automatically a set number of hours before the start, so the plan works from a stable list.',
         why: 'Phase 6 has manual lock and unlock only. Inspired by: oxm.gg sign-up deadlines; softres.it auto-lock.',
-        area: 'signups', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'signups', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'standby-volunteer',
         title: 'Volunteer standby',
         summary: 'A raider can mark \'happy to sit if someone needs the spot\'. Officers see them first when choosing the bench.',
         why: 'Lets raiders offer up a seat fairly. Inspired by: Raidify Standby.',
-        area: 'signups', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'signups', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'standing-signups',
         title: 'Standing sign-ups for weekly raids',
         summary: 'A raider says \'I am in every Tuesday and Thursday until I say otherwise\', and new raids from the schedule start with that sign-up.',
         why: 'Removes weekly clicking for the core group. Inspired by: Sesh Auto Join Next; Raid-Helper repeating events.',
-        area: 'signups', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'signups', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'discord-channel-posts',
@@ -210,6 +210,36 @@
         area: 'platform', status: 'idea', source: 'backlog', added: '2026-10-17',
       },
 
+      {
+        id: 'standby-stronger',
+        title: 'Standby players benched first',
+        summary: 'The Planner holds volunteer standby players out of its first pass, but its value trade can still seat one. Make standby a stronger preference so they sit before anyone who did not volunteer.',
+        area: 'planner', status: 'idea', source: 'backlog', added: '2026-10-18',
+      },
+      {
+        id: 'version-default-team-size',
+        title: 'Team size follows the game version',
+        summary: 'New teams start at 25 players. A WoW Forever guild would start at its common raid size instead, and Classic at 40.',
+        area: 'raids', status: 'idea', source: 'backlog', added: '2026-10-18',
+      },
+      {
+        id: 'date-only-deadline',
+        title: 'Sign-up deadline for raids without a start time',
+        summary: 'A raid created with only a date closes sign-ups at 12:00 UTC. Ask for a start time or use the team schedule time instead.',
+        area: 'signups', status: 'idea', source: 'backlog', added: '2026-10-18',
+      },
+      {
+        id: 'away-cap-ended',
+        title: 'Ended away notices stop counting toward the limit',
+        summary: 'A person can keep 30 away notices; ended ones still count. Only current and future notices should.',
+        area: 'signups', status: 'idea', source: 'backlog', added: '2026-10-18',
+      },
+      {
+        id: 'roster-confirm-reminder',
+        title: 'Remind raiders who have not confirmed their seat',
+        summary: 'After a roster is published, unconfirmed raiders get a reminder (Discord bot or on their next visit) before the raid.',
+        area: 'raids', status: 'idea', source: 'backlog', added: '2026-10-18',
+      },
       // ── Shipped ──
       {
         id: 'activity-log-page',
