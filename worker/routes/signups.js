@@ -316,16 +316,27 @@ export async function putMySignup(ctx) {
   return viewReply(ctx, guildContext, raid);
 }
 
+// Taking away a sign-up that a standing sign-up made (standing = 1) is the member's "not this time", not "no answer": it becomes their explicit Absence
+// (standing = 0, so the standing reconcile never makes it again). A hand-made sign-up (standing = 0) is deleted for real. The DELETE comes first and only
+// takes standing = 0 rows; the UPDATE then converts the standing = 1 row (it would otherwise match the DELETE's filter after being cleared).
+const TO_ABSENCE_SQL = `UPDATE raid_signups SET kind = 'absence', standby = 0, standing = 0, updated_by = ?, updated_at = ?
+                          WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? AND standing = 1`;
+const BUMP_SQL = "UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1";
+
 export async function deleteMySignup(ctx) {
   const { guildContext, raid, personId } = await mySignupContext(ctx);
+  const now = ctx.now();
+  const guildId = guildContext.guild.id;
   const results = await ctx.db.batch([
     ctx.db.prepare(
-      `DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? AND ${WINDOW_OPEN_SQL} RETURNING signup_id`,
-    ).bind(raid.id, personId, raid.id, ctx.now()),
-    ctx.db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1").bind(raid.id, guildContext.guild.id),
+      `DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? AND standing = 0 AND ${WINDOW_OPEN_SQL} RETURNING signup_id`,
+    ).bind(raid.id, personId, raid.id, now),
+    ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
+    ctx.db.prepare(`${TO_ABSENCE_SQL} AND ${WINDOW_OPEN_SQL} RETURNING signup_id`).bind(ctx.session.user.id, now, raid.id, personId, raid.id, now),
+    ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
   ]);
-  if (!results[0].results.length) {
-    // Nothing deleted: either there was no sign-up, or the window shut between the read and the write.
+  if (!results[0].results.length && !results[2].results.length) {
+    // Nothing deleted or converted: either there was no sign-up, or the window shut between the read and the write.
     throw (await windowError(ctx, raid.id)) || new HttpError(404, 'not_found', 'You have not signed up here.');
   }
   await recomputeIfEvidence(ctx, guildContext.guild, raid);
@@ -343,12 +354,17 @@ export async function putPersonSignup(ctx) {
 export async function deletePersonSignup(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
+  const guildId = guildContext.guild.id;
+  // A standing sign-up becomes the person's Absence instead of going (see TO_ABSENCE_SQL); either way it is the same audited signup.remove.
   const results = await ctx.db.batch([
-    ctx.db.prepare("DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? RETURNING kind").bind(raid.id, ctx.params.pid),
-    ctx.db.prepare("UPDATE raids SET policy_fp = '', version = version + 1 WHERE id = ? AND guild_id = ? AND changes() = 1").bind(raid.id, guildContext.guild.id),
+    ctx.db.prepare("DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ? AND standing = 0 RETURNING kind").bind(raid.id, ctx.params.pid),
+    ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
+    raidAudit(ctx, guildContext, 'signup.remove', raid.id, { personId: ctx.params.pid }, null, CHANGED_ONE),
+    ctx.db.prepare(`${TO_ABSENCE_SQL} RETURNING kind`).bind(ctx.session.user.id, ctx.now(), raid.id, ctx.params.pid),
+    ctx.db.prepare(BUMP_SQL).bind(raid.id, guildId),
     raidAudit(ctx, guildContext, 'signup.remove', raid.id, { personId: ctx.params.pid }, null, CHANGED_ONE),
   ]);
-  if (!results[0].results.length) throw new HttpError(404, 'not_found', 'That person has no Raidsmith sign-up on this raid.');
+  if (!results[0].results.length && !results[3].results.length) throw new HttpError(404, 'not_found', 'That person has no Raidsmith sign-up on this raid.');
   await recomputeIfEvidence(ctx, guildContext.guild, raid);
   return viewReply(ctx, guildContext, raid);
 }

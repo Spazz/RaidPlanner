@@ -9,6 +9,10 @@
 //     (inactive, or no character on the team) -> the row is deleted; if the entry's kind or character changed, the row follows it;
 //   - a row with standing = 0 (the member edited it: every write of the sign-up routes resets the flag) and any Raid-Helper row are never touched.
 // The lock and the deadline are for members' own writes: the system ignores them, but it never touches a raid that has started.
+// Taking a standing row away through the sign-up routes (DELETE .../signup, DELETE .../signups/:pid) turns it into the person's explicit Absence
+// (standing = 0), so nothing here brings it back. A row the member made by hand and deleted is gone for real: it can be made again by the next event that
+// reconciles that raid while the standing entry exists (PUT standing, a schedule fill, a new raid, an Away notice change, a Raid-Helper link or unlink) - the
+// create side only runs on those events and only for a person with no sign-up at all.
 import { weekdayOf } from './attendance-calendar.js';
 import { displayCharacter } from './attendance-view.js';
 import { noticeCovers, noticeOfRow } from './away.js';

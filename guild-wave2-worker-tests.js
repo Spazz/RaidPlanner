@@ -4342,6 +4342,71 @@ check('roster: the pure Needs attention builder lists roster_declined items for 
   assert.deepEqual(buildAttention({ ...base }).items, [], 'the input is optional');
 });
 
+check('standing: removing a standing sign-up through the sign-up routes turns it into the person\'s Absence, which nothing recreates; a hand-made one is deleted for real', async () => {
+  const s = await standingWorld();
+  await s.fillSchedule(s.A);
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }, { weekday: 4, kind: 'late', characterId: s.c.mirabel }])).status, 200);
+  const tue1 = await s.raidOn('2027-01-19');
+  const tue2 = await s.raidOn('2027-01-26');
+  const thu1 = await s.raidOn('2027-01-21');
+  const row = async (raid) => (await s.w.rows("SELECT signup_id, kind, standby, standing, character_id, class_name, updated_by FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND player_id = ?", raid, s.p.eliora))[0];
+  const before = await row(tue1);
+  const version = (await s.w.rows('SELECT version FROM raids WHERE id = ?', tue1))[0].version;
+  assert.deepEqual([before.kind, before.standing], ['signed', 1]);
+
+  // The member removes it: the row stays as an explicit Absence of theirs, with the character it had.
+  const gone = await s.call('erin', 'DELETE', `/raids/${tue1}/signup`, {});
+  assert.equal(gone.status, 200, JSON.stringify(gone.json));
+  assert.deepEqual([gone.json.me.signup.kind, gone.json.me.signup.source, 'standing' in gone.json.me.signup], ['absence', 'raidsmith', false]);
+  const after = await row(tue1);
+  assert.deepEqual([after.kind, after.standby, after.standing, after.signup_id, after.character_id, after.updated_by], ['absence', 0, 0, before.signup_id, before.character_id, s.ids.erin]);
+  assert.equal((await s.w.rows('SELECT version FROM raids WHERE id = ?', tue1))[0].version > version, true, 'the raid\'s results are marked out of date');
+  assert.equal(await s.w.count('audit_log', "action = 'signup.remove'"), 0, 'a member\'s own change is not audited');
+  const mine = (await s.call('erin', 'GET', `/raids?team=${s.A}`)).json.upcoming.find((r) => r.id === tue1).mine;
+  assert.deepEqual(mine, { kind: 'absence', source: 'raidsmith', characterName: 'Eliora' });
+  // Nothing brings it back: not the same set again, not a full reconcile, not an Away notice change, not a new raid, not a schedule fill.
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }, { weekday: 4, kind: 'late', characterId: s.c.mirabel }])).status, 200);
+  assert.deepEqual(await s.reconcile({}), { created: 0, updated: 0, deleted: 0 });
+  const notice = await s.call('erin', 'POST', '/away', { kind: 'away', from: '2027-02-01', to: '2027-02-01' });
+  assert.equal(notice.status, 201);
+  assert.equal((await s.call('erin', 'DELETE', `/away/${notice.json.notice.id}`, {})).status, 200);
+  await s.fillSchedule(s.A, 3);
+  assert.deepEqual([(await row(tue1)).kind, (await row(tue1)).standing], ['absence', 0]);
+  // The other rows are untouched, and the next removal of the now explicit Absence is a real delete.
+  assert.deepEqual([(await row(tue2)).kind, (await row(tue2)).standing, (await row(thu1)).standing], ['signed', 1, 1]);
+  assert.equal((await s.call('erin', 'DELETE', `/raids/${tue1}/signup`, {})).status, 200);
+  assert.equal(await row(tue1), undefined);
+  assert.equal((await s.call('erin', 'DELETE', `/raids/${tue1}/signup`, {})).status, 404, 'nothing left to remove');
+
+  // An officer removing a standing sign-up does the same, audited as signup.remove; removing the Absence then deletes it (audited again).
+  const byOfficer = await s.call('bob', 'DELETE', `/raids/${tue2}/signups/${s.p.eliora}`, {});
+  assert.equal(byOfficer.status, 200, JSON.stringify(byOfficer.json));
+  assert.deepEqual([(await row(tue2)).kind, (await row(tue2)).standing, (await row(tue2)).updated_by], ['absence', 0, s.ids.bob]);
+  assert.deepEqual(byOfficer.json.entries.filter((e) => e.personId === s.p.eliora).map((e) => [e.kind, 'standing' in e]), [['absence', false]]);
+  assert.deepEqual((await s.audits('signup.remove')).map((a) => [a.entity, a.before, a.after]), [[tue2, { personId: s.p.eliora }, null]]);
+  assert.deepEqual(await s.reconcile({}), { created: 1, updated: 0, deleted: 0 }, 'only the raid this test deleted for real above (tue1) is missing a sign-up now');
+  assert.equal((await s.call('bob', 'DELETE', `/raids/${tue2}/signups/${s.p.eliora}`, {})).status, 200);
+  assert.equal(await row(tue2), undefined);
+  assert.equal((await s.audits('signup.remove')).length, 2);
+  assert.equal((await s.call('bob', 'DELETE', `/raids/${tue2}/signups/${s.p.eliora}`, {})).status, 404);
+
+  // A hand-made sign-up (standing = 0) is deleted for real - and, as documented, the next event that reconciles the raid while the entry exists makes the
+  // standing sign-up again (here: saving the set); until then nothing does.
+  assert.equal((await s.call('erin', 'PUT', `/raids/${thu1}/signup`, { kind: 'tentative' })).status, 200);
+  assert.equal((await row(thu1)).standing, 0);
+  assert.equal((await s.call('erin', 'DELETE', `/raids/${thu1}/signup`, {})).status, 200);
+  assert.equal(await row(thu1), undefined, 'a real delete');
+  assert.deepEqual(await s.signups(`s.raid_id = '${thu1}'`), []);
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }, { weekday: 4, kind: 'late', characterId: s.c.mirabel }])).status, 200);
+  assert.deepEqual([(await row(thu1)).kind, (await row(thu1)).standing], ['late', 1], 'made again by the event, as documented');
+
+  // The window binds the member's removal of a standing sign-up like any other: a locked raid refuses it and keeps the row.
+  assert.equal((await s.call('bob', 'POST', `/raids/${thu1}/signups/lock`, {})).status, 200);
+  const refused = await s.call('erin', 'DELETE', `/raids/${thu1}/signup`, {});
+  assert.deepEqual([refused.status, refused.json.reason], [409, 'locked']);
+  assert.deepEqual([(await row(thu1)).kind, (await row(thu1)).standing], ['late', 1]);
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';
