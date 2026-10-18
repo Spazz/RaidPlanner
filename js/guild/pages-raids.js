@@ -127,8 +127,10 @@
   function signupsText(s, size) {
     if (!s) return '-';
     const signed = (s.signed || 0) + (s.late || 0);
-    if (!signed && !s.bench && !s.tentative && !s.absence) return 'No sign-ups yet';
-    const parts = [typeof size === 'number' && size > 0 ? (typeof s.expected === 'number' ? s.expected : signed) + ' / ' + size + ' signed up' : signed + ' signed'];
+    const standby = s.standby || 0;
+    if (!signed && !standby && !s.bench && !s.tentative && !s.absence) return 'No sign-ups yet';
+    const parts = [typeof size === 'number' && size > 0 ? (typeof s.expected === 'number' ? s.expected : signed + standby) + ' / ' + size + ' signed up' : signed + ' signed'];
+    if (standby) parts.push(standby + ' standby');
     if (s.bench) parts.push(s.bench + ' bench');
     if (s.tentative) parts.push(s.tentative + ' tentative');
     if (s.absence) parts.push(s.absence + ' absent');
@@ -163,7 +165,7 @@
   function mineHtml(r, canSignUp, gd) {
     if (!canSignUp) return '';
     const m = r.mine;
-    const label = m ? (A().KIND_LABELS[m.kind] || m.kind) : '';
+    const label = m ? (m.source === 'away' ? 'Away (notice)' : A().KIND_LABELS[m.kind] || m.kind) : '';
     const chip = m ? '<span class="gs-chip gs-chip-signup">' + esc(label) + (m.characterName ? ' - ' + esc(m.characterName) : '') + '</span>' : '';
     if (r.signupsOpen && !(m && m.kind === 'signed')) {
       return chip + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>' + deadlineHtml(r, gd);
@@ -200,7 +202,7 @@
     if (!row || !view) return;
     const sig = view.me && view.me.signup;
     row.mine = sig ? { kind: sig.kind, source: sig.source, characterName: sig.source === 'raidsmith' ? sig.name : null } : null;
-    if (view.counts) row.signups = { signed: view.counts.signed, late: view.counts.late, tentative: view.counts.tentative, bench: view.counts.bench, absence: view.counts.absence };
+    if (view.counts) row.signups = { signed: view.counts.signed, late: view.counts.late, standby: view.counts.standby || 0, tentative: view.counts.tentative, bench: view.counts.bench, absence: view.counts.absence };
     row.locked = !!(view.raid && view.raid.locked);
     row.signupsOpen = !(view.raid && view.raid.closed);
   }
@@ -272,7 +274,8 @@
       '<a class="gs-btn" href="' + esc(G.router.format({ name: 'settings', gid: gid, tab: 'schedule' })) + '">Raid schedule</a>' +
       (hasSlots ? '<button type="button" class="gs-btn" data-action="raids-fill" data-key="raids-fill">Create upcoming raids</button>' : '') : '';
     const newRaid = canEdit ? '<a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'raidnew', gid: gid })) + '">New raid</a>' : '';
-    const actions = editorActions || subscribe || newRaid ? '<div class="gs-roster-actions">' + editorActions + subscribe + newRaid + '</div>' : '';
+    const mineAway = '<a class="gs-btn" href="' + esc(G.router.format({ name: 'away', gid: gid })) + '">My away notices</a>';
+    const actions = '<div class="gs-roster-actions">' + editorActions + subscribe + mineAway + newRaid + '</div>';
     let body;
     if (!raids.length && !upcoming.length) {
       body = emptyHtml(gd, canEdit);
@@ -288,7 +291,7 @@
     }
     return '<div class="gs-page"><div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Raids</h1><p class="gs-sub">' + sub + '</p></div>' + actions + '</div>' +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (opts.note ? '<div class="gs-notice" role="status"><span>' + esc(opts.note) + '</span></div>' : '') +
-      A().staleBannerHtml(staleCount, canEdit, opts.progress) + flagBannerHtml(gd, opts.teamId, raids) + body + '</div>';
+      A().staleBannerHtml(staleCount, canEdit, opts.progress) + flagBannerHtml(gd, opts.teamId, raids) + body + (opts.awayHtml || '') + '</div>';
   }
 
   function loadList(r, gd) {
@@ -331,7 +334,8 @@
     const x = a().raids;
     if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
     if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
-    return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, tab: x.tab, progress: a().recalc, alert: st().pageAlert, note: x.note });
+    return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, tab: x.tab, progress: a().recalc, alert: st().pageAlert, note: x.note,
+      awayHtml: G.pages.away ? G.pages.away.teamCardHtml({ guildData: gd, teamId: x.teamId, state: a().awayTeam }) : '' });
   }
 
   G.handlers.click['raids-tab'] = function (el) {

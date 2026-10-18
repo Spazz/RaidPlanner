@@ -4,6 +4,7 @@
 //   #/planner[?raid=<gid>.<rid>]  (the planner section; with a raid it opens on that raid's sign-ups and plan)
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list; the shell sends viewers without officer actions on to Roster)
 //   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,attendance,loot,battlenet,activity}]
+//   #/g/:gid/away  (my away notices)
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
 //   #/g/:gid/loot[?view=raids|items]  #/g/:gid/loot/p/:pid  (Balance is the default view)
 //   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl,bnet}
@@ -85,6 +86,7 @@
       if (parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'person', gid: gid, pid: parts[4] };
       if (parts.length === 5 && parts[3] === 'import' && IMPORT_SOURCES.indexOf(parts[4]) >= 0) return { name: 'import', gid: gid, source: parts[4] };
     }
+    if (parts[2] === 'away' && parts.length === 3) return { name: 'away', gid: gid };
     if (parts[2] === 'raids') {
       if (parts.length === 4 && parts[3] === 'new') return { name: 'raidnew', gid: gid };
       if (parts.length === 5 && parts[3] === 'r' && ID.test(parts[4])) return { name: 'raid', gid: gid, rid: parts[4] };
@@ -122,6 +124,7 @@
       }
       case 'person': return '#/g/' + encodeURIComponent(r.gid) + '/roster/p/' + encodeURIComponent(r.pid);
       case 'import': return '#/g/' + encodeURIComponent(r.gid) + '/roster/import/' + (IMPORT_SOURCES.indexOf(r.source) >= 0 ? r.source : 'raid-helper');
+      case 'away': return '#/g/' + encodeURIComponent(r.gid) + '/away';
       case 'raidnew': return '#/g/' + encodeURIComponent(r.gid) + '/raids/new';
       case 'raid': return '#/g/' + encodeURIComponent(r.gid) + '/raids/r/' + encodeURIComponent(r.rid);
       case 'review': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/review';

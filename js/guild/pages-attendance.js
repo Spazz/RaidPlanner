@@ -19,7 +19,7 @@
     present: 'Present', bench: 'Bench', missed: 'Missed', missed_notice: 'Missed with notice', late: 'Late', left_early: 'Left early',
     late_left: 'Late and left early', fill_in: 'Other team', tentative: 'Tentative', no_signup: 'No sign-up',
   };
-  const KIND_LABELS = { signed: 'Signed up', late: 'Late', bench: 'Bench', tentative: 'Tentative', absence: 'Absence' };
+  const KIND_LABELS = { signed: 'Signed up', late: 'Late', standby: 'Standby', bench: 'Bench', tentative: 'Tentative', absence: 'Absence' };
   const FLAG_LABELS = { no_show: 'No show', late: 'Late', left_early: 'Left early', unmatched: 'Unmatched' };
   const DEFAULT_CREDITS = [{ id: 'full', label: 'Full', value: 1 }, { id: 'half', label: 'Half', value: 0.5 }, { id: 'none', label: 'None', value: 0 }];
   const ATTENDED_OUTCOMES = ['present', 'bench', 'late', 'left_early', 'late_left', 'fill_in'];

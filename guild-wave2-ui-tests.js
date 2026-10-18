@@ -3,6 +3,7 @@
  * Add team select), Settings > Raid schedule (the "Close sign-ups ... hours before the start" field), the Raids list (zone and size, "18 / 20 signed
  * up", "time not set", the deadline beside Sign up, the Raid size select of New raid), the raid page (the title, "Time not set", the officers'
  * Raid settings card) and the Sign-ups panel ("Expected", the Open until / Closed pill, the deadline sentence and the 409 it answers with).
+ * PM wave 2, part 2: the Away notices page, the officers' card and person section, and Standby / away notices in the Sign-ups panel and the Raids list.
  * Run: node guild-wave2-ui-tests.js
  *
  * Same approach as guild-signups-ui-tests.js and guild-wave1-ui-tests.js: tests/guild-scripts.js is loaded in a vm with no DOM; the render
@@ -792,9 +793,561 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     s.restore();
   }));
 
+  // ═══ 7. Away notices ═════════════════════════════════════════════
+  const TODAY = '2026-10-18'; // a Sunday
+  const notice = (over) => Object.assign({ id: 'an_1', personId: 'p_e', kind: 'away', atTime: null, from: '2026-10-20', to: '2026-10-27', weekday: null, reason: null, mine: true, createdAt: 1 }, over || {});
+  const N_RANGE = notice({ reason: 'Wedding' });
+  const N_WEEKLY = notice({ id: 'an_2', from: '2026-10-22', to: null, weekday: 4 });
+  const N_LATE = notice({ id: 'an_3', kind: 'late', atTime: '21:00', from: '2026-10-13', to: '2026-12-01', weekday: 2, reason: 'Work' });
+  const N_LEAVING = notice({ id: 'an_5', kind: 'leaving', atTime: '22:00', from: '2026-10-24', to: '2026-10-24' });
+  const N_PAST = notice({ id: 'an_4', from: '2026-09-01', to: '2026-09-05' });
+  const MINE = (over) => ({ gid: 'g1', data: Object.assign({ today: TODAY, timeZone: 'America/Chicago', personId: 'p_e', notices: [N_PAST, N_WEEKLY, N_RANGE, N_LATE], max: 30 }, over || {}), showPast: false, note: '' });
+  const minePage = (over, state, extra) => G.pages.away.mineHtml(Object.assign({ guildData: gd(MEMBER_CAN), state: Object.assign({ gid: 'g1', data: MINE(over).data, showPast: false, note: '' }, state || {}) }, extra || {}));
+
+  await check('away route: #/g/:gid/away parses and formats back; look-alikes are not found; it hangs under Raids in the breadcrumb and the page script is wired', () => {
+    const p = h => plain(G.router.parse(h));
+    assert.deepEqual(p('#/g/g1/away'), { name: 'away', gid: 'g1' });
+    assert.equal(G.router.format({ name: 'away', gid: 'g1' }), '#/g/g1/away');
+    assert.deepEqual(p(G.router.format({ name: 'away', gid: 'g1' })), { name: 'away', gid: 'g1' });
+    for (const bad of ['#/g/g1/away/x', '#/g/g1/aways', '#/away', '#/g/g1/Away']) assert.equal(p(bad).name, 'notfound', bad);
+    const crumbs = G.shell.breadcrumbItems({ route: { name: 'away', gid: 'g1' }, guildData: gd(MEMBER_CAN), teamId: 't1' });
+    assert.deepEqual(plain(crumbs.map(c => c.label)).slice(-2), ['Raids', 'Away notices']);
+    assert(crumbs.find(c => c.label === 'Raids').href.endsWith('#/g/g1/raids'));
+    const app = read('js/guild/app.js');
+    assert(/ATT_ROUTE_PAGES = \{[^}]*away: 'away'/.test(app) && /case 'lootperson': case 'away':/.test(app) && /G\.pages\.away\.afterRender\(r\)/.test(app));
+    for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(read(page).includes('<script src="/js/guild/pages-away.js"></script>'), page);
+    assert(GUILD_SCRIPTS.includes('/js/guild/pages-away.js') && GUILD_SCRIPTS.indexOf('/js/guild/pages-away.js') < GUILD_SCRIPTS.indexOf('/js/guild/app.js'));
+    const menu = G.shell.accountMenuHtml({ me: { user: { displayName: 'A', username: 'a' }, identities: { discord: true } }, guildData: gd(MEMBER_CAN) });
+    assert(menu.includes('href="#/g/g1/away"') && menu.includes('<span>Away notices</span>'));
+    assert(!G.shell.accountMenuHtml({ me: { user: { displayName: 'A', username: 'a' }, identities: { discord: true } } }).includes('Away notices'), 'no guild current: no item');
+  });
+
+  await check('away: a notice is one plain sentence - range, every weekday (from when it starts), Late with a time, Leaving early', () => {
+    const T = (n) => G.pages.away.noticeText(n, TODAY);
+    assert.equal(T(N_RANGE), 'Away Oct 20 - Oct 27');
+    assert.equal(T(N_WEEKLY), 'Away every Thursday from Oct 22');
+    assert.equal(T(N_LATE), 'Late, arriving 21:00, every Tuesday until Dec 1');
+    assert.equal(T(N_LEAVING), 'Leaving early, at 22:00, Oct 24');
+    assert.equal(T(notice({ weekday: 0, from: '2026-10-11', to: null })), 'Away every Sunday', 'a weekly notice that has started does not say from');
+    assert.equal(T(notice({ from: '2026-10-20', to: '2026-10-20' })), 'Away Oct 20');
+    assert.equal(T(notice({ weekday: 6, from: '2026-10-24', to: '2026-11-14', kind: 'leaving', atTime: '22:30' })), 'Leaving early, at 22:30, every Saturday from Oct 24 until Nov 14');
+    assert.equal(G.pages.away.isPast(N_PAST, TODAY), true);
+    assert.equal(G.pages.away.isPast(N_WEEKLY, TODAY), false, 'open-ended never ends');
+    assert.equal(G.pages.away.isPast(notice({ to: TODAY }), TODAY), false, 'the last day is still today');
+    const parts = G.pages.away.split([N_PAST, N_WEEKLY, N_RANGE, N_LATE], TODAY);
+    assert.deepEqual(parts.current.map(n => n.id), ['an_3', 'an_1', 'an_2'], 'soonest start first');
+    assert.deepEqual(parts.past.map(n => n.id), ['an_4']);
+  });
+
+  await check('away page: my notices as sentences with the reason, Edit and Remove; ended ones in a collapsed Past group; Add a notice; the guild\'s time zone is named', () => {
+    const out = minePage();
+    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Away notices</h1>') && out.includes('(America/Chicago)'));
+    assert(out.includes('<span class="gs-an-what">Away Oct 20 - Oct 27</span>') && out.includes('Reason: Wedding'));
+    assert(out.includes('Away every Thursday from Oct 22') && out.includes('Late, arriving 21:00, every Tuesday until Dec 1'));
+    assert(out.indexOf('Late, arriving') < out.indexOf('Away Oct 20') && out.indexOf('Away Oct 20') < out.indexOf('every Thursday'), 'by start date');
+    assert(/data-action="away-edit" data-ctx="mine" data-nid="an_1" data-key="an-edit-an_1" aria-label="Edit: Away Oct 20 - Oct 27">Edit<\/button>/.test(out));
+    assert(/data-action="away-remove" data-ctx="mine" data-nid="an_1" data-key="an-remove-an_1" aria-label="Remove: Away Oct 20 - Oct 27">Remove<\/button>/.test(out));
+    assert(/data-action="away-add" data-ctx="mine" data-key="an-add">Add a notice<\/button>/.test(out) && !/data-key="an-add" disabled/.test(out));
+    // The past group: collapsed, counted, opens on its button.
+    assert(/data-action="away-past"[^>]*aria-expanded="false" aria-controls="an-past-list"><span>Past \(1\)<\/span>/.test(out));
+    assert(/id="an-past-list" hidden>/.test(out) && out.indexOf('id="an-past-list"') < out.indexOf('Away Sep 1 - Sep 5'));
+    const open = minePage(null, { showPast: true });
+    assert(/aria-expanded="true"/.test(open) && /id="an-past-list">/.test(open));
+    assert.equal(minePage({ notices: [N_RANGE] }).includes('an-past'), false, 'nothing past: no group');
+    assertNoRawAttrs(out);
+    assert(minePage(null, { note: 'Notice saved.' }).includes('role="status"><span>Notice saved.</span>'));
+  });
+
+  await check('away page: empty states - no roster entry says who to ask; no notices says so; thirty is the most (Add is disabled and says why)', () => {
+    const none = minePage({ personId: null, notices: [] });
+    assert(none.includes('No roster entry yet') && none.includes('Ask an officer to link your account to your roster entry.') && !none.includes('away-add'));
+    const empty = minePage({ notices: [] });
+    assert(empty.includes('You have no away notices.') && empty.includes('away-add'));
+    assert(minePage({ notices: [N_PAST] }).includes('No current or upcoming notices.'));
+    const full = minePage({ notices: Array.from({ length: 30 }, (_, i) => notice({ id: 'an_x' + i, from: '2026-10-2' + (i % 10) })), max: 30 });
+    assert(/data-key="an-add" disabled/.test(full) && full.includes('You have 30 notices, the most there can be. Remove one to add another.'));
+  });
+
+  await check('away page: hostile reasons and names are escaped on the page, the card, the section and the dialogs', () => {
+    const evil = notice({ reason: HOSTILE + QUOTES });
+    assertEscaped(minePage({ notices: [evil, notice({ id: 'an_9', from: '2026-09-01', to: '2026-09-02', reason: HOSTILE })] }, { showPast: true }), 'my page');
+    const card = G.pages.away.teamCardHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', state: { gid: 'g1', teamId: 't1', status: 'ok', data: { today: TODAY, entries: [{ noticeId: 'an_1', personId: 'p_x', name: HOSTILE + QUOTES, class: 'MAGE', kind: 'away', atTime: null, from: '2026-10-20', to: '2026-10-27', weekday: null, reason: HOSTILE + QUOTES, dates: [] }] } } });
+    assertEscaped(card, 'team card');
+    assertEscaped(G.pages.away.dialogHtml({ mode: 'edit', ctx: 'team', nid: 'an_1', notice: evil, today: TODAY, who: HOSTILE + QUOTES }), 'edit dialog');
+    assertEscaped(G.pages.away.dialogHtml({ mode: 'add', ctx: 'team', people: [{ id: 'p_x', name: HOSTILE + QUOTES }], today: TODAY }), 'person picker');
+    assertEscaped(G.pages.away.removeDialogHtml(HOSTILE + QUOTES, 'mine', 'an_1', ''), 'remove dialog');
+  });
+
+  await check('away page: loading reads GET /away/mine and keeps the Past group open across a reload; before that, the loading page', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    assert.equal(G.pages.away.main({ name: 'away', gid: 'g1' }, S.guilds.g1), G.pages.signin.loadingHtml());
+    const s = stub(() => Promise.resolve(MINE().data));
+    await G.pages.away.load({ name: 'away', gid: 'g1' }, S.guilds.g1);
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['get', '/api/guild/g1/away/mine']]);
+    assert(G.pages.away.main({ name: 'away', gid: 'g1' }, S.guilds.g1).includes('Away Oct 20 - Oct 27'));
+    G.handlers.click['away-past'](el({}));
+    assert.equal(S.att.away.showPast, true);
+    await G.pages.away.load({ name: 'away', gid: 'g1' }, S.guilds.g1);
+    assert.equal(S.att.away.showPast, true, 'a reload does not close it');
+    s.restore();
+  }));
+
+  await check('away dialog: Add starts as Away for a date range from today (min = today for a member); the time and weekday fields are hidden; labels read From / To', () => {
+    const out = G.pages.away.dialogHtml({ mode: 'add', ctx: 'mine', today: TODAY, minToday: true });
+    assert(out.includes('data-submit="away-form"') && out.includes('data-ctx="mine"') && out.includes('data-mode="add"') && !out.includes('data-nid') && !out.includes('data-pid'));
+    assert(out.includes('Add an away notice') && out.includes('Only you and your officers see the reason.'));
+    assert.deepEqual(optionsOf(out, 'an-kind'), [{ value: 'away', selected: true, label: 'Away' }, { value: 'late', selected: false, label: 'Late' }, { value: 'leaving', selected: false, label: 'Leaving early' }]);
+    assert.deepEqual(optionsOf(out, 'an-repeat'), [{ value: 'range', selected: true, label: 'A date range' }, { value: 'weekly', selected: false, label: 'Every week on one day' }]);
+    assert.deepEqual(optionsOf(out, 'an-weekday').map(o => o.label), ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], 'the week reads Monday first');
+    assert.deepEqual(optionsOf(out, 'an-weekday').filter(o => o.selected).map(o => o.value), ['0'], 'today is a Sunday');
+    assert(/id="an-from" name="from" data-field="from" min="2026-10-18" value="2026-10-18"/.test(out));
+    assert(/id="an-to" name="to" data-field="to" value=""/.test(out));
+    assert(/id="an-time-field" hidden>/.test(out) && /id="an-weekday-field" hidden>/.test(out));
+    assert(out.includes('id="an-from-label" for="an-from">From<') && out.includes('id="an-to-label" for="an-to">To<') && out.includes('id="an-time-label" for="an-time">Leaving at<'));
+    assert(/id="an-reason" name="reason" data-field="reason" maxlength="120" autocomplete="off" value=""/.test(out));
+    for (const f of ['kind', 'atTime', 'weekday', 'from', 'to', 'reason']) assert(out.includes('id="dlg-err-' + f + '" role="alert" hidden'), f);
+    assert(out.includes('id="dlg-error" role="alert" hidden') && out.includes('data-change="away-form-change"'));
+    assertNoRawAttrs(out);
+    assert(!G.pages.away.dialogHtml({ mode: 'add', ctx: 'person', personId: 'p_x', today: TODAY, who: 'Thoren' }).includes(' min='), 'an officer is not held to today');
+  });
+
+  await check('away dialog: Edit starts from the notice - a weekly Late shows its time, day and end, with Starting / Until labels; a started notice keeps its start as min', () => {
+    const out = G.pages.away.dialogHtml({ mode: 'edit', ctx: 'mine', nid: 'an_3', notice: N_LATE, today: TODAY, minToday: true });
+    assert(out.includes('Change an away notice') && out.includes('data-mode="edit"') && out.includes('data-nid="an_3"'));
+    assert.deepEqual(optionsOf(out, 'an-kind').filter(o => o.selected).map(o => o.value), ['late']);
+    assert.deepEqual(optionsOf(out, 'an-repeat').filter(o => o.selected).map(o => o.value), ['weekly']);
+    assert.deepEqual(optionsOf(out, 'an-weekday').filter(o => o.selected).map(o => o.value), ['2']);
+    assert(/id="an-time" name="atTime" data-field="atTime" value="21:00"/.test(out) && !/id="an-time-field" hidden/.test(out) && !/id="an-weekday-field" hidden/.test(out));
+    assert(/name="from" data-field="from" min="2026-10-13" value="2026-10-13"/.test(out) && /name="to" data-field="to" value="2026-12-01"/.test(out));
+    assert(out.includes('id="an-from-label" for="an-from">Starting<') && out.includes('id="an-to-label" for="an-to">Until (optional)<') && out.includes('>Arriving at<'));
+    assert(/name="reason"[^>]*value="Work"/.test(out));
+    assert(/name="from" data-field="from" min="2026-10-18" value="2026-10-20"/.test(G.pages.away.dialogHtml({ mode: 'edit', ctx: 'mine', nid: 'an_1', notice: N_RANGE, today: TODAY, minToday: true })), 'a future start: min is today');
+  });
+
+  await check('away dialog: the kind and "When" selects show and hide the fields in place and rename their labels', withState(async () => {
+    const ids = ['an-time-field', 'an-weekday-field', 'an-time-label', 'an-from-label', 'an-to-label'];
+    ids.forEach(id => fakeEl(id));
+    els['an-time-field'].hidden = true; els['an-weekday-field'].hidden = true;
+    const form = { elements: { kind: control('late'), repeat: control('weekly') } };
+    G.handlers.change['away-form-change']({ closest: () => form });
+    assert.equal(els['an-time-field'].hidden, false);
+    assert.equal(els['an-weekday-field'].hidden, false);
+    assert.deepEqual([els['an-time-label'].textContent, els['an-from-label'].textContent, els['an-to-label'].textContent], ['Arriving at', 'Starting', 'Until (optional)']);
+    form.elements.kind.value = 'leaving'; form.elements.repeat.value = 'range';
+    G.handlers.change['away-form-change']({ closest: () => form });
+    assert.deepEqual([els['an-time-label'].textContent, els['an-from-label'].textContent, els['an-to-label'].textContent, els['an-weekday-field'].hidden], ['Leaving at', 'From', 'To', true]);
+    form.elements.kind.value = 'away';
+    G.handlers.change['away-form-change']({ closest: () => form });
+    assert.equal(els['an-time-field'].hidden, true);
+  }));
+
+  await check('away request body: a range sends from and to and no weekday; a weekly notice sends the weekday as a number and to only when given; Late and Leaving send the time; a blank reason sends nothing', () => {
+    const B = G.pages.away.bodyFrom;
+    const v = (o) => Object.assign({ kind: 'away', repeat: 'range', weekday: '4', from: '2026-10-20', to: '2026-10-27', atTime: '', reason: '', person: '' }, o || {});
+    assert.deepEqual(plain(B(v())), { kind: 'away', from: '2026-10-20', to: '2026-10-27' });
+    assert.deepEqual(plain(B(v({ reason: '  Wedding ' }))), { kind: 'away', from: '2026-10-20', to: '2026-10-27', reason: 'Wedding' });
+    const weekly = B(v({ repeat: 'weekly', to: '' }));
+    assert.deepEqual(plain(weekly), { kind: 'away', from: '2026-10-20', weekday: 4 });
+    assert.equal(typeof weekly.weekday, 'number');
+    assert(!('to' in weekly) && !('atTime' in weekly) && !('reason' in weekly) && !('personId' in weekly));
+    assert.deepEqual(plain(B(v({ repeat: 'weekly', weekday: '0', to: '2026-12-01', kind: 'late', atTime: '21:00', reason: 'Work' }))), { kind: 'late', from: '2026-10-20', weekday: 0, to: '2026-12-01', atTime: '21:00', reason: 'Work' }, 'Sunday is 0, not left out');
+    assert.deepEqual(plain(B(v({ kind: 'leaving', atTime: '22:00', atTimeUnused: 1, weekday: '2' }))), { kind: 'leaving', from: '2026-10-20', to: '2026-10-27', atTime: '22:00' }, 'a range ignores the weekday control');
+    assert.equal(B(v(), 'p_x').personId, 'p_x');
+    assert(!('atTime' in B(v({ kind: 'away', atTime: '21:00' }))), 'Away has no time');
+  });
+
+  await check('away validation: what the Worker would refuse is caught first and named at its field - no first day, no end for a range, end before start, no time for Late / Leaving, a long reason, no person', () => {
+    const P = G.pages.away.problemOf;
+    const v = (o) => Object.assign({ kind: 'away', repeat: 'range', weekday: '4', from: '2026-10-20', to: '2026-10-27', atTime: '', reason: '', person: 'p_x' }, o || {});
+    assert.equal(P(v(), true), null);
+    assert.deepEqual(plain(P(v({ from: '' }))), { field: 'from', text: 'Pick the first day.' });
+    assert.deepEqual(plain(P(v({ from: '', repeat: 'weekly' }))), { field: 'from', text: 'Pick the day it starts.' });
+    assert.equal(P(v({ to: '' })).field, 'to');
+    assert.equal(P(v({ to: '' })).text, 'Pick the last day, or choose "Every week on one day".');
+    assert.equal(P(v({ repeat: 'weekly', to: '' })), null, 'a weekly notice may be open-ended');
+    assert.deepEqual(plain(P(v({ to: '2026-10-19' }))), { field: 'to', text: 'The end cannot be before the start.' });
+    assert.equal(P(v({ repeat: 'weekly', to: '2026-10-01' })).field, 'to');
+    assert.deepEqual(plain(P(v({ kind: 'late', atTime: '' }))), { field: 'atTime', text: 'Say what time you arrive.' });
+    assert.deepEqual(plain(P(v({ kind: 'leaving', atTime: '25:00' }))), { field: 'atTime', text: 'Say what time you leave.' });
+    assert.equal(P(v({ kind: 'late', atTime: '21:00' })), null);
+    assert.deepEqual(plain(P(v({ reason: 'x'.repeat(121) }))), { field: 'reason', text: 'A reason is at most 120 characters.' });
+    assert.equal(P(v({ reason: 'x'.repeat(120) })), null);
+    assert.deepEqual(plain(P(v({ person: '' }), true)), { field: 'personId', text: 'Choose a person.' });
+    assert.equal(P(v({ person: '' }), false), null);
+  });
+
+  // A dialog form the handlers can read: controls by name, the error slots by id, the controls by data-field.
+  const dlgForm = (vals, attrs) => {
+    const controls = {};
+    for (const [k, val] of Object.entries(vals)) controls[k] = control(val);
+    return {
+      getAttribute: k => (attrs && k in attrs ? attrs[k] : null), elements: controls,
+      querySelector: sel => { const m = /^\[data-field="([^"]+)"\]$/.exec(sel); if (m) return controls[m[1] === 'personId' ? 'person' : m[1] === 'atTime' ? 'atTime' : m[1]] || null; const id = /^#(.+)$/.exec(sel); return id ? els[id[1]] || null : null; },
+      querySelectorAll: () => [],
+    };
+  };
+  const slotIds = ['kind', 'atTime', 'weekday', 'from', 'to', 'reason', 'personId', 'repeat'].map(f => 'dlg-err-' + f).concat(['dlg-error']);
+  const FORM = (o) => Object.assign({ kind: 'away', repeat: 'range', weekday: '4', from: '2026-10-20', to: '2026-10-27', atTime: '', reason: '', person: '' }, o || {});
+
+  await check('away form (mine): Add posts the body, replaces my list with the answer and says so; Edit puts the full body to the notice and never sends a person', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    S.att.away = { gid: 'g1', data: MINE().data, showPast: false, note: '' };
+    slotIds.forEach(id => fakeEl(id, { hidden: true }));
+    const realBusy = G.ui.setBusy, realClose = G.ui.closeDialogOf;
+    G.ui.setBusy = () => {}; G.ui.closeDialogOf = () => {};
+    const added = notice({ id: 'an_new', from: '2026-10-30', to: '2026-11-02', reason: 'Trip' });
+    let s = stub(() => Promise.resolve({ notice: added, notices: [added, N_RANGE] }));
+    G.handlers.submit['away-form'](dlgForm(FORM({ from: '2026-10-30', to: '2026-11-02', reason: ' Trip ' }), { 'data-ctx': 'mine', 'data-mode': 'add' }));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['post', '/api/guild/g1/away', { kind: 'away', from: '2026-10-30', to: '2026-11-02', reason: 'Trip' }]]);
+    assert.deepEqual(S.att.away.data.notices.map(n => n.id), ['an_new', 'an_1']);
+    assert.equal(S.att.away.note, 'Notice saved.');
+    s.restore();
+    s = stub(() => Promise.resolve({ notice: N_LATE, notices: [N_LATE] }));
+    G.handlers.submit['away-form'](dlgForm(FORM({ kind: 'late', repeat: 'weekly', weekday: '2', from: '2026-10-13', to: '', atTime: '21:30' }), { 'data-ctx': 'mine', 'data-mode': 'edit', 'data-nid': 'an_3' }));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['put', '/api/guild/g1/away/an_3', { kind: 'late', from: '2026-10-13', weekday: 2, atTime: '21:30' }]]);
+    s.restore();
+    G.ui.setBusy = realBusy; G.ui.closeDialogOf = realClose;
+  }));
+
+  await check('away form: a problem found here never leaves the browser - it shows at its field, marks it invalid and moves focus there', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    slotIds.forEach(id => fakeEl(id, { hidden: true }));
+    const s = stub(() => Promise.resolve({}));
+    const form = dlgForm(FORM({ to: '' }), { 'data-ctx': 'mine', 'data-mode': 'add' });
+    G.handlers.submit['away-form'](form);
+    assert.equal(s.calls.length, 0);
+    assert.equal(els['dlg-err-to'].textContent, 'Pick the last day, or choose "Every week on one day".');
+    assert.equal(els['dlg-err-to'].hidden, false);
+    assert.equal(form.elements.to.attrs['aria-invalid'], 'true');
+    assert.equal(form.elements.to.focused, 1);
+    // The next try clears it.
+    form.elements.to.value = '2026-10-27';
+    const realBusy = G.ui.setBusy, realClose = G.ui.closeDialogOf; G.ui.setBusy = () => {}; G.ui.closeDialogOf = () => {};
+    S.att.away = { gid: 'g1', data: MINE().data, showPast: false, note: '' };
+    G.handlers.submit['away-form'](form);
+    await settle();
+    assert.equal(els['dlg-err-to'].textContent, '');
+    assert.equal(s.calls.length, 1);
+    G.ui.setBusy = realBusy; G.ui.closeDialogOf = realClose;
+    s.restore();
+  }));
+
+  await check('away form: the Worker\'s 400 lands at the field it names (from, to, weekday, atTime, reason); a full list (409 too_many_notices) and other errors in the dialog', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    S.att.away = { gid: 'g1', data: MINE().data, showPast: false, note: '' };
+    const realBusy = G.ui.setBusy, realClose = G.ui.closeDialogOf; G.ui.setBusy = () => {}; G.ui.closeDialogOf = () => {};
+    for (const [field, message] of [['from', 'A notice cannot start before today.'], ['to', 'A date range is at most 366 days.'], ['atTime', 'Say what time you arrive.'], ['reason', 'A reason is at most 120 characters.'], ['weekday', 'weekday is 0 (Sunday) to 6 (Saturday).']]) {
+      slotIds.forEach(id => fakeEl(id, { hidden: true }));
+      const s = stub(() => Promise.reject(new ApiErr(400, 'bad_request', { message, field })));
+      const form = dlgForm(FORM({ kind: 'late', atTime: '21:00' }), { 'data-ctx': 'mine', 'data-mode': 'add' });
+      G.handlers.submit['away-form'](form);
+      await settle();
+      assert.equal(els['dlg-err-' + field].textContent, message, field);
+      assert.equal(els['dlg-error'].hidden, true, field);
+      assert.equal(form.elements[field].attrs['aria-invalid'], 'true', field);
+      assert.equal(form.elements[field].focused, 1, field);
+      s.restore();
+    }
+    slotIds.forEach(id => fakeEl(id, { hidden: true }));
+    const full = stub(() => Promise.reject(new ApiErr(409, 'too_many_notices', { message: 'You have 30 notices, the most there can be. Remove one first.', max: 30 })));
+    G.handlers.submit['away-form'](dlgForm(FORM(), { 'data-ctx': 'mine', 'data-mode': 'add' }));
+    await settle();
+    assert.equal(els['dlg-error'].textContent, 'You have 30 notices, the most there can be. Remove one first.');
+    full.restore();
+    G.ui.setBusy = realBusy; G.ui.closeDialogOf = realClose;
+  }));
+
+  await check('away remove: the dialog names the notice and asks first; Remove deletes it and shows the list the Worker answered with', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    S.att.away = { gid: 'g1', data: MINE().data, showPast: false, note: '' };
+    const opened = [];
+    const realOpen = G.ui.openDialog; G.ui.openDialog = (html, o) => { opened.push({ html, o }); return null; };
+    G.handlers.click['away-remove'](el({ 'data-ctx': 'mine', 'data-nid': 'an_1' }));
+    G.handlers.click['away-remove'](el({ 'data-ctx': 'mine', 'data-nid': 'an_nope' }));
+    G.ui.openDialog = realOpen;
+    assert.equal(opened.length, 1, 'an unknown notice opens nothing');
+    assert(opened[0].html.includes('Remove this notice?') && opened[0].html.includes('Away Oct 20 - Oct 27') && opened[0].html.includes('data-submit="away-remove-form"') && opened[0].html.includes('data-nid="an_1"'));
+    assert.equal(opened[0].o.describedBy, 'dlg-text');
+    const realRun = G.ui.runDialog; G.ui.runDialog = (form, promise, ok) => promise.then(ok);
+    const s = stub(() => Promise.resolve({ deleted: true, notices: [N_WEEKLY] }));
+    G.handlers.submit['away-remove-form'](el({ 'data-ctx': 'mine', 'data-nid': 'an_1' }));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['del', '/api/guild/g1/away/an_1']]);
+    assert.deepEqual(S.att.away.data.notices.map(n => n.id), ['an_2']);
+    assert.equal(S.att.away.note, 'Notice removed.');
+    s.restore(); G.ui.runDialog = realRun;
+  }));
+
+  await check('away Edit and Add buttons: they open the dialog for that notice / that person', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    S.att.away = { gid: 'g1', data: MINE().data, showPast: false, note: '' };
+    const opened = [];
+    const realOpen = G.ui.openDialog; G.ui.openDialog = (html, o) => { opened.push(html); return null; };
+    fakeEl('an-kind');
+    G.handlers.click['away-edit'](el({ 'data-ctx': 'mine', 'data-nid': 'an_3' }));
+    G.handlers.click['away-edit'](el({ 'data-ctx': 'mine', 'data-nid': 'an_nope' }));
+    G.handlers.click['away-add'](el({ 'data-ctx': 'mine' }));
+    G.ui.openDialog = realOpen;
+    assert.equal(opened.length, 2);
+    assert(opened[0].includes('Change an away notice') && opened[0].includes('data-nid="an_3"') && opened[0].includes('value="21:00"'));
+    assert(opened[1].includes('Add an away notice') && opened[1].includes('min="2026-10-18"'));
+    assert.equal(els['an-kind'].focused, 2);
+  }));
+
+  // ── the officers' card on the Raids page ──
+  const ENTRY = (over) => Object.assign({ noticeId: 'an_1', personId: 'p_x', name: 'Thoren', class: 'PALADIN', kind: 'away', atTime: null, from: '2026-10-20', to: '2026-10-27', weekday: null, reason: 'Wedding', dates: [] }, over || {});
+  const TEAMDATA = (entries) => ({ team: { id: 't1', name: 'Team KJ' }, today: TODAY, until: '2026-11-15', entries: entries || [ENTRY(), ENTRY({ noticeId: 'an_2', personId: 'p_y', name: 'Kaelith', class: 'ROGUE', kind: 'late', atTime: '21:00', from: '2026-10-22', to: null, weekday: 4, reason: null, dates: ['2026-10-22', '2026-10-29', '2026-11-05'] })] });
+  const teamCard = (state, can) => G.pages.away.teamCardHtml({ guildData: gd(can || OFFICER_CAN), teamId: 't1', state });
+
+  await check('Raids page (officers): "Away, next 4 weeks" lists name in class colour, what, the dates of a weekly one and the reason, with Edit / Remove and Add; nothing for members or while loading', () => {
+    const out = teamCard({ gid: 'g1', teamId: 't1', status: 'ok', data: TEAMDATA() });
+    assert(out.includes('<h2 class="gs-h2" id="an-team-h">Away, next 4 weeks</h2>') && out.includes('data-action="away-add" data-ctx="team" data-key="an-team-add">Add a notice<'));
+    assert(/<a class="gs-char-link gs-class-paladin" href="#\/g\/g1\/roster\/p\/p_x">Thoren<\/a>/.test(out) && /gs-class-rogue" href="#\/g\/g1\/roster\/p\/p_y">Kaelith</.test(out));
+    assert(out.includes('Away Oct 20 - Oct 27') && out.includes('Reason: Wedding'));
+    assert(out.includes('Late, arriving 21:00, every Thursday') && out.includes('Oct 22, Oct 29, Nov 5'), 'the dates of a weekly notice');
+    assert(!out.includes('Oct 21, Oct 22'), 'a range is not spelled out day by day');
+    assert(/data-action="away-edit" data-ctx="team" data-nid="an_1" data-key="an-edit-an_1" aria-label="Edit: Away Oct 20 - Oct 27 for Thoren">/.test(out));
+    assert(/data-action="away-remove" data-ctx="team" data-nid="an_2"/.test(out));
+    assert(teamCard({ gid: 'g1', teamId: 't1', status: 'ok', data: TEAMDATA([]) }).includes('No one has an away notice for the next 4 weeks.'));
+    assert.equal(teamCard({ gid: 'g1', teamId: 't1', status: 'loading', data: null }), '');
+    assert.equal(teamCard(null), '');
+    assert.equal(teamCard({ gid: 'g1', teamId: 't2', status: 'ok', data: TEAMDATA() }), '', 'another team\'s data');
+    assert.equal(teamCard({ gid: 'g1', teamId: 't1', status: 'ok', data: TEAMDATA() }, MEMBER_CAN), '', 'members have no card');
+    const err = teamCard({ gid: 'g1', teamId: 't1', status: 'error', message: 'Could not reach Raidsmith.' });
+    assert(err.includes('Could not reach Raidsmith.') && err.includes('data-action="away-team-retry"') && !err.includes('away-add'));
+    assertNoRawAttrs(out);
+  });
+
+  await check('Raids page: "My away notices" links to the page for everyone; the card is drawn under the list for officers', () => {
+    for (const can of [MEMBER_CAN, OFFICER_CAN]) {
+      const out = ws(G.pages.raids.raidsHtml({ guildData: gd(can), teamId: 't1', data: LIST({ can: { edit: can === OFFICER_CAN, signup: true } }), tab: 'upcoming' }));
+      assert(out.includes('<a class="gs-btn" href="#/g/g1/away">My away notices</a>'));
+    }
+    const withCard = ws(G.pages.raids.raidsHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', data: LIST({ can: { edit: true, signup: false } }), tab: 'upcoming', awayHtml: teamCard({ gid: 'g1', teamId: 't1', status: 'ok', data: TEAMDATA() }) }));
+    assert(withCard.indexOf('Away, next 4 weeks') > withCard.indexOf('Upcoming raids'));
+  });
+
+  await check('Raids page: the card loads itself once per list after the page is drawn (an officer), never for a member; Add reads the team\'s roster for the person picker (not the inactive)', withState(async (S) => {
+    S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
+    const route = { name: 'section', gid: 'g1', section: 'raids' };
+    const list = S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ can: { edit: true, signup: false } }), more: false, tab: 'upcoming' };
+    const s = stub((m, url) => Promise.resolve(url.includes('/away?team=') ? TEAMDATA() : { people: [
+      { id: 'p_b', main: { name: 'Zed' }, status: 'raider' }, { id: 'p_a', main: { name: 'Anna' }, status: 'trial' }, { id: 'p_i', main: { name: 'Gone' }, status: 'inactive' }, { id: 'p_c', shown: { name: 'Cleo' }, status: 'raider' }] }));
+    G.pages.away.afterRender(route);
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['get', '/api/guild/g1/away?team=t1']]);
+    assert.equal(S.att.awayTeam.status, 'ok');
+    assert.equal(S.att.awayTeam.data.entries.length, 2);
+    G.pages.away.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 1, 'drawn again: no second read');
+    S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ can: { edit: true, signup: false } }), more: false, tab: 'upcoming' };
+    G.pages.away.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 2, 'a fresh list reads again');
+    // Add: the roster, then the dialog with the picker.
+    const opened = [];
+    const realOpen = G.ui.openDialog; G.ui.openDialog = (html) => { opened.push(html); return null; };
+    s.calls.length = 0;
+    G.handlers.click['away-add'](el({ 'data-ctx': 'team' }));
+    await settle();
+    G.ui.openDialog = realOpen;
+    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/roster?team=t1']);
+    assert.deepEqual(optionsOf(opened[0], 'an-person').map(o => o.label), ['Choose a person', 'Anna', 'Cleo', 'Zed']);
+    assert(opened[0].includes('data-ctx="team"') && !opened[0].includes(' min='));
+    // A member's list never loads it.
+    S.att.awayTeam = null;
+    S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ can: { edit: false, signup: true } }), more: false, tab: 'upcoming' };
+    s.calls.length = 0;
+    G.pages.away.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 0);
+    s.restore();
+  }));
+
+  await check('Raids page card: Add for a person posts with their id and reads the card again; Edit puts without a person; a failed read is a card with Try again', withState(async (S) => {
+    S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
+    S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ can: { edit: true, signup: false } }) };
+    S.att.awayTeam = { gid: 'g1', teamId: 't1', status: 'ok', data: TEAMDATA(), message: '', forList: S.att.raids };
+    slotIds.forEach(id => fakeEl(id, { hidden: true }));
+    const realBusy = G.ui.setBusy, realClose = G.ui.closeDialogOf; G.ui.setBusy = () => {}; G.ui.closeDialogOf = () => {};
+    let s = stub((m, url) => Promise.resolve(m === 'get' ? TEAMDATA([ENTRY()]) : { notice: notice(), notices: [] }));
+    G.handlers.submit['away-form'](dlgForm(FORM({ person: 'p_x' }), { 'data-ctx': 'team', 'data-mode': 'add' }));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['post', '/api/guild/g1/away', { kind: 'away', from: '2026-10-20', to: '2026-10-27', personId: 'p_x' }], ['get', '/api/guild/g1/away?team=t1', undefined]]);
+    assert.equal(S.att.awayTeam.data.entries.length, 1, 'the card shows the new list');
+    s.calls.length = 0;
+    G.handlers.submit['away-form'](dlgForm(FORM({ person: '' }), { 'data-ctx': 'team', 'data-mode': 'add' }));
+    assert.equal(s.calls.length, 0, 'no person chosen');
+    assert.equal(els['dlg-err-personId'].textContent, 'Choose a person.');
+    G.handlers.submit['away-form'](dlgForm(FORM({ kind: 'leaving', atTime: '22:00', person: 'p_x' }), { 'data-ctx': 'team', 'data-mode': 'edit', 'data-nid': 'an_1' }));
+    await settle();
+    assert.deepEqual(s.calls[0] && [s.calls[0].m, s.calls[0].url, s.calls[0].body], ['put', '/api/guild/g1/away/an_1', { kind: 'leaving', from: '2026-10-20', to: '2026-10-27', atTime: '22:00' }]);
+    s.restore();
+    s = stub(() => Promise.reject(new ApiErr(0, 'network', { message: 'Could not reach Raidsmith.' })));
+    S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ can: { edit: true, signup: false } }) };
+    G.pages.away.afterRender({ name: 'section', gid: 'g1', section: 'raids' });
+    await settle();
+    assert.deepEqual([S.att.awayTeam.status, S.att.awayTeam.message], ['error', 'Could not reach Raidsmith.']);
+    s.restore();
+    G.ui.setBusy = realBusy; G.ui.closeDialogOf = realClose;
+  }));
+
+  // ── the officers' section on the person page ──
+  const RECORD = (can) => ({ person: { id: 'p_x', isMe: false, status: 'raider' }, characters: [{ id: 'c_1', name: 'Thoren', class: 'PALADIN', isMain: true, team: { id: 't1', name: 'Team KJ' } }], can: { edit: true } });
+  const personCard = (state, can, record) => G.pages.away.personCardHtml({ guildData: gd(can || OFFICER_CAN), record: record || RECORD(), state });
+
+  await check('person page (officers): an "Away notices" section with every notice (ended last), Edit / Remove and Add for that person; hidden for members, for a person on no team of theirs, and while loading or denied', () => {
+    const st = (over) => Object.assign({ gid: 'g1', pid: 'p_x', status: 'ok', data: { personId: 'p_x', today: TODAY, notices: [N_PAST, N_RANGE, N_WEEKLY] }, message: '' }, over || {});
+    const out = personCard(st());
+    assert(out.includes('<h2 class="gs-h2" id="an-person-h">Away notices</h2>') && /data-action="away-add" data-ctx="person" data-pid="p_x" data-key="an-person-add">Add a notice</.test(out));
+    assert(out.indexOf('Away Oct 20 - Oct 27') < out.indexOf('Away Sep 1 - Sep 5'), 'ended last');
+    assert(/data-action="away-edit" data-ctx="person" data-nid="an_1" data-pid="p_x"/.test(out) && /data-action="away-remove" data-ctx="person" data-nid="an_2" data-pid="p_x"/.test(out));
+    assert(personCard(st({ data: { personId: 'p_x', today: TODAY, notices: [] } })).includes('No away notices.'));
+    assert.equal(personCard(st(), MEMBER_CAN), '', 'a member has no raids.edit');
+    assert.equal(personCard(st(), { 'raids.edit': ['t9'] }), '', 'raids.edit on another team only');
+    assert(personCard(st(), { 'raids.edit': ['t1'] }) !== '', 'a lead of the person\'s team');
+    assert.equal(personCard(st({ status: 'loading' })), '');
+    assert.equal(personCard(st({ status: 'denied' })), '');
+    assert.equal(personCard(st({ pid: 'p_other' })), '');
+    assert.equal(personCard(null), '');
+    assert(personCard(st({ status: 'error', message: 'Down.' })).includes('data-action="away-person-retry"'));
+    assertNoRawAttrs(out);
+    assert.equal(G.pages.away.canEditPerson(gd(OFFICER_CAN), { characters: [] }), false);
+  });
+
+  await check('person page: the section loads itself once per record; Add posts with the person\'s id and replaces the list with the answer; a 403 hides it', withState(async (S) => {
+    S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
+    const rec = S.person = { gid: 'g1', pid: 'p_x', record: RECORD() };
+    const route = { name: 'person', gid: 'g1', pid: 'p_x' };
+    let s = stub(() => Promise.resolve({ personId: 'p_x', today: TODAY, notices: [N_RANGE] }));
+    G.pages.away.afterRender(route);
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['get', '/api/guild/g1/away?person=p_x']]);
+    G.pages.away.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 1);
+    slotIds.forEach(id => fakeEl(id, { hidden: true }));
+    const realBusy = G.ui.setBusy, realClose = G.ui.closeDialogOf; G.ui.setBusy = () => {}; G.ui.closeDialogOf = () => {};
+    s.restore();
+    const second = notice({ id: 'an_n2', from: '2026-11-01', to: '2026-11-03' });
+    s = stub(() => Promise.resolve({ notice: second, notices: [N_RANGE, second] }));
+    G.handlers.submit['away-form'](dlgForm(FORM({ from: '2026-11-01', to: '2026-11-03' }), { 'data-ctx': 'person', 'data-mode': 'add', 'data-pid': 'p_x' }));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['post', '/api/guild/g1/away', { kind: 'away', from: '2026-11-01', to: '2026-11-03', personId: 'p_x' }]]);
+    assert.deepEqual(S.att.awayPerson.data.notices.map(n => n.id), ['an_1', 'an_n2']);
+    s.restore();
+    G.ui.setBusy = realBusy; G.ui.closeDialogOf = realClose;
+    // Another person, refused.
+    S.person = { gid: 'g1', pid: 'p_y', record: RECORD() };
+    const denied = stub(() => Promise.reject(new ApiErr(403, 'forbidden', { message: 'No.' })));
+    G.pages.away.afterRender({ name: 'person', gid: 'g1', pid: 'p_y' });
+    await settle();
+    assert.equal(S.att.awayPerson.status, 'denied');
+    assert.equal(personCard(S.att.awayPerson), '');
+    denied.restore();
+    // A member's person page never asks.
+    S.guilds.g1 = gd(MEMBER_CAN);
+    S.person = { gid: 'g1', pid: 'p_z', record: RECORD() };
+    const none = stub(() => Promise.resolve({}));
+    G.pages.away.afterRender({ name: 'person', gid: 'g1', pid: 'p_z' });
+    await settle();
+    assert.equal(none.calls.length, 0);
+    none.restore();
+    assert(read('js/guild/pages-person.js').includes("(opts.away || '')") && /away: P\.away\.personCardHtml/.test(read('js/guild/app.js')));
+  }));
+
+  // ── the Sign-ups panel: Standby and away notices ──
+  const AWAY_ENTRY = entry({ key: 'a:p_aw', personId: 'p_aw', source: 'away', kind: 'absence', name: 'Garrosh', classId: 'WARRIOR', className: 'Warrior', spec: null, role: null, characterId: null, note: null });
+  const STANDBY_ENTRY = entry({ key: 'p:p_sb', personId: 'p_sb', kind: 'standby', name: 'Dorrin', classId: 'PRIEST', className: 'Priest', spec: 'Holy', role: 'healer', characterId: 'c_do' });
+  const LATE_NOTICED = entry({ key: 'p:p_ln', personId: 'p_ln', name: 'Kaelith', classId: 'ROGUE', className: 'Rogue', spec: 'Combat', role: 'melee', notice: { kind: 'late', atTime: '21:00' } });
+  const PANEL_COUNTS = Object.assign({}, COUNTS, { standby: 1, absence: 2, expected: 19 });
+
+  await check('panel: a fifth member button, Standby, with the one-line hint; the officer\'s status list has Standby', () => {
+    const out = panel(view());
+    assert(/data-action="su-kind" data-kind="standby" data-key="su-kind-standby" aria-pressed="false" aria-describedby="su-standby-hint">Standby<\/button>/.test(out));
+    assert(out.includes('<p class="gs-fine" id="su-standby-hint">Standby: Happy to sit out if needed.</p>'));
+    assert.deepEqual([...out.matchAll(/data-action="su-kind" data-kind="(\w+)"/g)].map(m => m[1]), ['signed', 'late', 'standby', 'tentative', 'absence']);
+    const mine = view({ me: Object.assign({}, view().me, { signup: entry({ kind: 'standby', isMe: true }) }) });
+    assert(/data-kind="standby"[^>]*aria-pressed="true"/.test(panel(mine)) && panel(mine).includes('You are down as <strong>standby</strong>'));
+    assert(/<option value="standby"/.test(G.pages.raidSignups.editDialogHtml({ view: OFFICER_VIEW(), personId: 'p_t' })), 'the officer dialog');
+    assert.equal(G.pages.attendance.KIND_LABELS.standby, 'Standby');
+    assert(/data-kind="standby"[^>]*disabled/.test(panel(view({ me: Object.assign({}, view().me, { canChange: false, closed: 'locked' }) }, { closed: 'locked', locked: true }))));
+  });
+  function OFFICER_VIEW(over) {
+    return view(Object.assign({ can: { edit: true, self: false, seeList: true, seeNicknames: true }, me: null, roster: [{ personId: 'p_t', name: 'Thoren', status: 'raider', characters: [{ id: 'c_th', name: 'Thoren', class: 'PALADIN', mainSpec: 'Protection', offSpec: null, isMain: true, teamId: 't1', specs: ['Protection', 'Holy'] }] }, { personId: 'p_aw', name: 'Garrosh', status: 'raider', characters: [{ id: 'c_ga', name: 'Garrosh', class: 'WARRIOR', mainSpec: 'Arms', offSpec: null, isMain: true, teamId: 't1', specs: ['Arms', 'Fury'] }] }] }, over || {}));
+  }
+
+  await check('panel: Standby is counted and has its own group (after the roles, before Tentative); a person away by notice is in Absent as "Away (notice)" with no Edit or Remove, even for an officer', () => {
+    const v = OFFICER_VIEW({ counts: PANEL_COUNTS, entries: [entry(), STANDBY_ENTRY, AWAY_ENTRY, entry({ key: 'p:p_a', personId: 'p_a', name: 'Veyla', kind: 'absence', role: null })] });
+    const out = ws(panel(v, { guildData: gd(OFFICER_CAN) }));
+    const text = stripTags(out);
+    assert(/Expected 19 \/ 20 Signed 17 Late 1 Standby 1 Tentative 1 Bench 1 Absent 2/.test(text), text.slice(0, 300));
+    assert(out.includes('<h3 class="gs-su-group-h" id="su-g-standby">Standby <span class="gs-su-count">1</span></h3>'));
+    assert(out.indexOf('id="su-g-tank"') < out.indexOf('id="su-g-standby"') && out.indexOf('id="su-g-standby"') < out.indexOf('id="su-g-absence"'));
+    const absent = out.slice(out.indexOf('id="su-g-absence"'));
+    assert(absent.includes('Garrosh') && absent.includes('<span class="gs-chip gs-chip-signup">Away (notice)</span>'));
+    assert(!/data-action="su-(edit|remove)" data-pid="p_aw"/.test(out), 'nothing to edit or remove on an away entry');
+    assert(/data-action="su-edit" data-pid="p_a"/.test(out), 'a real Absent sign-up still has its tools');
+    // The Add dialog says the person is away and starts from a fresh sign-up.
+    const dlg = G.pages.raidSignups.editDialogHtml({ view: v, personId: null });
+    assert(dlg.includes('Garrosh - Away (notice)'), dlg.slice(0, 400));
+    const forAway = G.pages.raidSignups.editDialogHtml({ view: v, personId: 'p_aw' });
+    assert(/<option value="signed" selected>/.test(forAway), 'starts as Signed up, not Absent');
+    assertNoRawAttrs(out);
+  });
+
+  await check('panel: Late / Leaving notices - "Late 21:00" on a person\'s row, "Leaves 22:00" in a Notices group for people with no sign-up yet; escaped', () => {
+    const v = view({ entries: [LATE_NOTICED, entry()], notices: [{ personId: 'p_ln', name: 'Kaelith', kind: 'late', atTime: '21:00' }, { personId: 'p_nn', name: 'Nodisc', kind: 'leaving', atTime: '22:00' }] });
+    const out = ws(panel(v));
+    assert(out.includes('<span class="gs-chip gs-chip-signup">Late 21:00</span>'));
+    const notices = out.slice(out.indexOf('id="su-g-notices"'));
+    assert(notices.includes('Nodisc') && notices.includes('Leaves 22:00') && !notices.includes('Kaelith'), 'Kaelith already shows hers on the row');
+    assert(out.includes('<h3 class="gs-su-group-h" id="su-g-notices">Notices <span class="gs-su-count">1</span>'));
+    assert(!panel(view({ entries: [entry()], notices: null })).includes('su-g-notices') && !panel(view({ entries: [entry()], notices: [] })).includes('su-g-notices'));
+    assert(panel(view({ entries: [], notices: [{ personId: 'p_nn', name: 'Nodisc', kind: 'leaving', atTime: '22:00' }] })).includes('No sign-ups yet.') && panel(view({ entries: [], notices: [{ personId: 'p_nn', name: 'Nodisc', kind: 'leaving', atTime: '22:00' }] })).includes('Leaves 22:00'));
+    assertEscaped(panel(view({ entries: [entry({ notice: { kind: 'late', atTime: HOSTILE } })], notices: [{ personId: 'p_nn', name: HOSTILE + QUOTES, kind: 'leaving', atTime: HOSTILE }] })), 'notices');
+  });
+
+  await check('panel: "You are away (notice). Choosing a status here overrides it." - no button pressed, nothing to save or remove; the viewer\'s own Late / Leaving notice is named; a status button still sends', withState(async (S) => {
+    const away = view({ me: Object.assign({}, view().me, { signup: Object.assign({}, AWAY_ENTRY, { isMe: true, name: 'Eliora' }), notice: null }) });
+    const out = panel(away);
+    assert(out.includes('You are away (notice). Choosing a status here overrides it.'));
+    assert(!/aria-pressed="true"/.test(out) && !out.includes('Save details') && !out.includes('su-withdraw'));
+    assert(!/data-kind="\w+"[^>]*disabled/.test(out), 'the buttons work');
+    const noticed = panel(view({ me: Object.assign({}, view().me, { notice: { kind: 'leaving', atTime: '22:00' } }) }));
+    assert(noticed.includes('Your notice for this raid: Leaves 22:00.') && noticed.includes('You are down as <strong>signed up</strong>'));
+    assert(panel(view({ me: Object.assign({}, view().me, { signup: null, notice: { kind: 'late', atTime: '21:00' } }) })).includes('Your notice for this raid: Late 21:00.'));
+    const x = openRaid(S, away);
+    const answer = view({ me: Object.assign({}, view().me, { signup: entry({ kind: 'standby', isMe: true }) }) });
+    const s = stub(() => Promise.resolve(answer));
+    G.handlers.click['su-kind'](el({ 'data-kind': 'standby' }));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['put', '/api/guild/g1/raids/u1/signup', { kind: 'standby', characterId: 'c_eli', spec: 'Holy', note: null }]]);
+    assert.equal(x.data, answer);
+    s.restore();
+  }));
+
+  await check('Raids list: the count names Standby ("18 / 20 signed up, 2 standby"); the row chip says Standby or Away (notice), and Sign up stays offered to a person who is away; a sign-up answer folds the standby count in', () => {
+    const T = G.pages.raids.signupsText;
+    assert.equal(T({ signed: 14, late: 1, standby: 2, bench: 1, tentative: 0, absence: 3 }, 20), '17 / 20 signed up, 2 standby, 1 bench, 3 absent', 'standby is expected');
+    assert.equal(T({ signed: 5, late: 0, standby: 2, bench: 0, tentative: 0, absence: 0 }), '5 signed, 2 standby');
+    assert.equal(T({ signed: 0, late: 0, standby: 1, bench: 0, tentative: 0, absence: 0 }, 10), '1 / 10 signed up, 1 standby', 'only a standby is a sign-up');
+    const sb = listPage(LIST({ upcoming: [UP({ mine: { kind: 'standby', source: 'raidsmith', characterName: 'Eliora' } })] }));
+    assert(sb.includes('Standby - Eliora') && /data-action="raids-signup"/.test(sb));
+    const away = listPage(LIST({ upcoming: [UP({ mine: { kind: 'absence', source: 'away', characterName: null } })] }));
+    assert(away.includes('<span class="gs-chip gs-chip-signup">Away (notice)</span>') && /data-action="raids-signup"/.test(away), 'a real sign-up can override it');
+    assert(!away.includes('Absence'));
+    const row = { id: 'u1', signups: {}, mine: null };
+    G.pages.raids.applySignupView({ data: { upcoming: [row] } }, 'u1', view({ counts: Object.assign({}, COUNTS, { standby: 2 }) }));
+    assert.equal(row.signups.standby, 2);
+  });
+
   // ═══ 6. The code itself ══════════════════════════════════════════
   await check('safety: ASCII in code and copy, no inline styles or handlers, no browser-zone date formatting in the changed pages (ui.js keeps its own older helpers), the sign-ups panel and schedule go through G.api.signups', () => {
-    const files = ['pages-settings-teams.js', 'pages-settings-schedule.js', 'pages-raids.js', 'pages-raid.js', 'pages-raid-signups.js', 'ui.js'];
+    const files = ['pages-settings-teams.js', 'pages-settings-schedule.js', 'pages-raids.js', 'pages-raid.js', 'pages-raid-signups.js', 'pages-away.js', 'ui.js'];
     for (const f of files) {
       const src = read('js/guild/' + f);
       assert(!/[^\x00-\x7f]/.test(src.split('\n').filter(line => !/^\s*\/\//.test(line)).join('\n')), f + ' is ASCII outside the comment lines');

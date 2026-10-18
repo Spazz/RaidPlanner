@@ -843,7 +843,7 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-su-me { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); background: var(--bg-card); border: 1px solid var(--border-medium); }
 .gs-su-me .gs-alert, .gs-su-me .gs-notice { margin: 0; }
 .gs-su-me .gs-h3 { margin: 0; }
-.gs-su-kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); }
+.gs-su-kinds { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-2); }
 .gs-su-kind { min-height: 52px; justify-content: center; font-size: 17px; }
 .gs-su-kind[aria-pressed="true"] { background: var(--bg-card-hover); border-color: var(--accent-gold); color: var(--accent-gold); }
 .gs-su-form { display: flex; flex-direction: column; gap: var(--sp-3); }
@@ -873,15 +873,24 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-time-unset { font-size: 14px; }
 .gs-ev-title { font-weight: 600; color: var(--text-primary); }
 .gs-rs .gs-su-fields { align-items: start; }
+.gs-an-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.gs-an-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--border-subtle); }
+.gs-an-item:last-child { border-bottom: 0; }
+.gs-an-text { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.gs-an-what { font-weight: 600; color: var(--text-primary); }
+.gs-an-who { font-weight: 600; }
+.gs-an-reason { overflow-wrap: anywhere; }
 
 @media (max-width: 600px) {
   .gs-su-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gs-su-kinds .gs-su-kind:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .gs-su-me { padding: var(--sp-3); }
   .gs-su-groups { grid-template-columns: minmax(0, 1fr); }
   .gs-su-tools { margin-left: 0; flex-basis: 100%; }
   .gs-sched-row { grid-template-columns: minmax(0, 1fr); }
   .gs-sched-remove { justify-self: start; }
   .gs-sched-weeks, .gs-sched-hours { width: 100%; }
+  .gs-an-item .gs-row-actions { justify-content: flex-start; }
 }
 
 /* ── Accounts with linked sign-ins (Phase 7a) ──────────────── */
