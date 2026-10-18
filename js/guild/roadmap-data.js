@@ -24,7 +24,7 @@
       {
         id: 'raids-ux-refresh',
         title: 'Raids tab layout refresh',
-        summary: 'Your idea: the boxes at the top of the Raids pages are uneven and take too much room, so their actions move into a compact header with an action menu, and the player lists get class colours and clearer columns. A mockup comes first; built right after the sign-up lifecycle wave, which changes the same pages.',
+        summary: 'Your idea: the boxes at the top of the Raids pages are uneven and take too much room, so their actions move into a compact header with an action menu, and the player lists get class colours and clearer columns. Mockup: claude.ai/artifact/Ro2RNXguBRMq3UXQMQ7NBx (A: source strip + Actions menu, B: tabs). Default A unless you pick B; built right after the sign-up lifecycle wave.',
         area: 'raids', status: 'next', source: 'user', added: '2026-10-17',
       },
       {
