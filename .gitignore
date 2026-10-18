@@ -170,3 +170,7 @@
 !guild-signups-worker-tests.js
 !guild-signups-ui-tests.js
 !guild-signups-contract-tests.js
+# PM wave 1 (officer tools): activity log, attendance watch list, Needs attention home, trial review card, calendar feed - Worker, pages and contract suites
+!guild-wave1-worker-tests.js
+!guild-wave1-ui-tests.js
+!guild-wave1-contract-tests.js

@@ -31,6 +31,10 @@ import {
   deleteDecision, getBackfillReports, getPersonAttendance, getPolicy, getReview, getTeamAttendance, postDecision, postUnmatched, putPolicy,
   putWclSettings,
 } from './routes/attendance.js';
+import { getAttention } from './routes/attention.js';
+import { getAudit } from './routes/audit.js';
+import { createCalendarLink, getCalendarFeed, getCalendarStatus, revokeCalendarLink } from './routes/calendar.js';
+import { getTrialReview } from './routes/trial.js';
 import {
   LOOT_MAX_BODY, commitLoot, deleteLoot, getBalance, getLootItems, getLootPolicy, getLootRaids, getPersonLoot, getRaidLoot, patchLoot,
   previewLoot, putLootPolicy,
@@ -74,6 +78,7 @@ const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/roster/import/bnet/preview', auth: true, handler: previewBnetRoster },
   { method: 'POST', path: '/api/guild/:gid/roster/import/bnet/commit', auth: true, handler: commitBnetRoster, maxBody: COMMIT_MAX_BODY },
   { method: 'GET', path: '/api/guild/:gid/roster/:pid', auth: true, handler: getPerson },
+  { method: 'GET', path: '/api/guild/:gid/roster/:pid/trial', auth: true, handler: getTrialReview },
   { method: 'PATCH', path: '/api/guild/:gid/roster/:pid', auth: true, handler: patchPerson },
   { method: 'DELETE', path: '/api/guild/:gid/roster/:pid', auth: true, handler: deletePerson },
   { method: 'PUT', path: '/api/guild/:gid/roster/:pid/notes', auth: true, handler: saveNotes },
@@ -138,6 +143,14 @@ const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/claims/:clid/reject', auth: true, handler: rejectClaim },
   { method: 'GET', path: '/api/guild/:gid/bnet', auth: true, handler: getBnetSettings },
   { method: 'PUT', path: '/api/guild/:gid/bnet', auth: true, handler: putBnetSettings },
+  // PM wave 1 (officer tools): the Activity log, the Needs attention home and the calendar feed. The feed file itself needs no session:
+  // the unguessable token in its address is the credential (worker/routes/calendar.js).
+  { method: 'GET', path: '/api/guild/:gid/audit', auth: true, handler: getAudit },
+  { method: 'GET', path: '/api/guild/:gid/attention', auth: true, handler: getAttention },
+  { method: 'GET', path: '/api/guild/:gid/calendar', auth: true, handler: getCalendarStatus },
+  { method: 'POST', path: '/api/guild/:gid/calendar', auth: true, handler: createCalendarLink },
+  { method: 'DELETE', path: '/api/guild/:gid/calendar', auth: true, handler: revokeCalendarLink },
+  { method: 'GET', path: '/cal/:cal', auth: false, handler: getCalendarFeed },
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },

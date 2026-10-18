@@ -33,6 +33,9 @@ export const DEFAULT_POLICY = deepFreeze({
   effectiveStart: 'laterOfJoinAndFirst',
   streakFlagAt: 4,
   resetDay: null,
+  // The watch list on the team attendance page: below = flag a rolling % under this fraction, dropBy = flag a fall of this fraction against
+  // the previous window of the same length. Each is a fraction 0..1, or null for off. Read live, so no raid ever goes stale over it.
+  watch: { below: 0.75, dropBy: 0.15 },
 });
 
 // Reset day (0 = Sunday) by region: US Tuesday, EU Wednesday. KR / TW Thursday are unverified (spec, resolved item 8).
@@ -124,6 +127,13 @@ function checkSwitchWeeks(value) {
   return null;
 }
 
+// A watch threshold: null (off) or a fraction from 0 to 1 with at most three decimals (75.5% is 0.755).
+function checkWatchFraction(value) {
+  if (value === null) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return 'must be a number from 0 to 1, or null to turn it off';
+  return Math.abs(value * 1000 - Math.round(value * 1000)) < 1e-9 ? null : 'must have at most three decimals';
+}
+
 // The schema: a function is a leaf validator (returns an error message or null), an object is a nested section.
 const SCHEMA = {
   expected: { mode: oneOf(['signedUp', 'statuses']), statuses: checkStatuses },
@@ -142,6 +152,7 @@ const SCHEMA = {
   effectiveStart: oneOf(['laterOfJoinAndFirst', 'joinDate']),
   streakFlagAt: (value) => (Number.isInteger(value) && value >= 0 && value <= 20 ? null : 'must be a whole number from 0 (off) to 20'),
   resetDay: (value) => (value === null || (Number.isInteger(value) && value >= 0 && value <= 6) ? null : 'must be null (from the region) or a whole number from 0 (Sunday) to 6'),
+  watch: { below: checkWatchFraction, dropBy: checkWatchFraction },
 };
 
 export function walk(schema, value, path, errors) {

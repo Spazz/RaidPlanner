@@ -170,3 +170,78 @@ export function personHistory(input) {
   });
   return { teams };
 }
+
+// ---------------------------------------------------------------------------
+// Cell summaries and the watch list
+
+// One person's cells over a date range, counted by the same rules as the rolling %.
+// cells: teamMetrics cells; opts: { policy, from (YYYY-MM-DD | null = from the start), to (YYYY-MM-DD) }.
+// -> { raids (counted), pct (0..100, one decimal, or null), present (counted with credit), missed, missedNotice, late, leftEarly, fillIns, pending }
+// missedNotice is counted even when the policy excuses it (the % leaves it out, the officer still wants to see it).
+export function summarizeCells(cells, opts) {
+  const { policy, from = null, to } = opts;
+  const out = { raids: 0, pct: null, present: 0, missed: 0, missedNotice: 0, late: 0, leftEarly: 0, fillIns: 0, pending: 0 };
+  let sum = 0;
+  for (const cell of cells || []) {
+    if (cell.preStart || cell.date > to || (from !== null && cell.date < from)) continue;
+    if (cell.outcome === 'missed_notice') out.missedNotice++;
+    if (cell.outcome === 'fill_in') out.fillIns++;
+    if (cell.outcome === 'late' || cell.outcome === 'late_left') out.late++;
+    if (cell.outcome === 'left_early' || cell.outcome === 'late_left') out.leftEarly++;
+    if (cell.pending) out.pending++;
+    if (!cellCounts(cell, policy)) continue;
+    out.raids++;
+    sum += cell.credit;
+    if (cell.credit > 0) out.present++;
+    if (cell.outcome === 'missed') out.missed++;
+  }
+  out.pct = out.raids ? round1((sum / out.raids) * 100) : null;
+  return out;
+}
+
+// A drop is only judged when the previous window counted at least this many raids (one raid at 100% then one at 0% is noise).
+export const WATCH_MIN_PREVIOUS = 2;
+
+// Who is on a team's watch list: the rolling % under policy.watch.below, or fallen by policy.watch.dropBy or more against the previous window
+// of the same length (the windowWeeks reset weeks that end the day before this window starts). input is teamMetrics' input, plus
+// statuses (default raider and trial: a reserve or an inactive person is not expected to come). No window ('all') has no previous window.
+// -> { below, dropBy, windowWeeks, previousFrom, entries: [{ playerId, pct, previousPct, drop, counted, missed, missedNotice, reasons }] },
+// lowest % first. Thresholds are fractions (0.75 is 75%); null is off, and with both off the list is empty.
+export function watchList(input) {
+  const policy = input.policy;
+  const watch = (policy && policy.watch) || {};
+  const below = typeof watch.below === 'number' ? watch.below : null;
+  const dropBy = typeof watch.dropBy === 'number' ? watch.dropBy : null;
+  const windowWeeks = input.windowWeeks === undefined ? policy.window.defaultWeeks : input.windowWeeks;
+  const result = { below, dropBy, windowWeeks, previousFrom: null, entries: [] };
+  if (below === null && dropBy === null) return result;
+
+  const statuses = input.statuses || ['raider', 'trial'];
+  const people = (input.people || []).filter((person) => statuses.includes(person.status));
+  const current = teamMetrics({ ...input, people, windowWeeks });
+  let previous = null;
+  if (dropBy !== null && windowWeeks !== 'all' && current.windowStart) {
+    previous = teamMetrics({ ...input, people, today: addDays(current.windowStart, -1), windowWeeks });
+    result.previousFrom = previous.windowStart;
+  }
+
+  for (const person of people) {
+    const mine = current.people[person.id];
+    if (!mine || mine.pct === null) continue;
+    const before = previous && previous.people[person.id];
+    const previousPct = before && before.counted >= WATCH_MIN_PREVIOUS ? before.pct : null;
+    const fall = previousPct === null ? 0 : Math.round((previousPct - mine.pct) * 10) / 10;
+    const reasons = [];
+    // Percentages carry one decimal: compare in tenths of a point so 74.9 is under 75 and 75.0 is not.
+    if (below !== null && Math.round(mine.pct * 10) < Math.round(below * 1000)) reasons.push('below');
+    if (dropBy !== null && fall > 0 && Math.round(fall * 10) >= Math.round(dropBy * 1000)) reasons.push('drop');
+    if (!reasons.length) continue;
+    const counts = summarizeCells(mine.cells, { policy, from: current.windowStart, to: input.today });
+    result.entries.push({
+      playerId: person.id, pct: mine.pct, previousPct, drop: fall > 0 ? fall : null, counted: mine.counted,
+      missed: counts.missed, missedNotice: counts.missedNotice, reasons,
+    });
+  }
+  result.entries.sort((a, b) => a.pct - b.pct || byText(a.playerId, b.playerId));
+  return result;
+}

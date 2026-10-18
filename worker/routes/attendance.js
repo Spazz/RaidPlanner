@@ -4,7 +4,7 @@ import { HttpError, cleanText, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { addDays, localDate, weekStart } from '../attendance-calendar.js';
 import { DEFAULT_POLICY, REGION_RESET_DAY, resolvePolicy, validateOverride } from '../attendance-policy.js';
-import { teamMetrics } from '../attendance-metrics.js';
+import { teamMetrics, watchList } from '../attendance-metrics.js';
 import {
   bumpRaidStatement, findUnmatched, isPlainObject, makePolicyResolver, markRaidsStale, policyRowsStatement, presenceKey, recomputeRaid,
 } from '../attendance-store.js';
@@ -527,13 +527,13 @@ function readWindow(params, policy, { lenient = false } = {}) {
 export const windowStartFor = (today, resetDay, weeks) => (weeks === 'all' ? null : addDays(weekStart(today, resetDay), -7 * (weeks - 1)));
 
 // A raid counts toward the sign-up rate only when it has a sign-up source and results (an "awaiting log" raid has no rows to count).
-const metricsRaid = (row) => ({
+export const metricsRaid = (row) => ({
   id: row.id,
   raidOn: row.raid_on,
   zone: row.zone,
   hasSignups: (row.event_synced !== null || row.plan_synced !== null) && raidState(row, row.reports) !== 'awaiting_log',
 });
-const metricsRow = (row, hostTeamOf = new Map()) => ({
+export const metricsRow = (row, hostTeamOf = new Map()) => ({
   raidId: row.raid_id, playerId: row.player_id, outcome: row.outcome, credit: row.credit, signupKind: row.signup_kind, attended: row.attended,
   viaRaidId: row.via_raid_id, viaTeamId: row.via_raid_id ? hostTeamOf.get(row.via_raid_id) || null : null,
 });
@@ -602,6 +602,15 @@ export async function getTeamAttendance(ctx) {
     if (!weekMap.has(start)) weekMap.set(start, []);
     weekMap.get(start).push({ id: raid.id, raidOn: raid.raid_on, zone: raid.zone });
   }
+  const watch = allows(guildContext.can, 'attendance.review', team.id)
+    ? watchView(watchList({
+      people: peopleResult.results.map((row) => ({ id: row.id, status: row.status, joinedOn: row.joined_on, leftOn: row.left_on })),
+      raids: raids.map(metricsRaid),
+      rows: rowResult.results.map((row) => metricsRow(row, hostTeamOf)),
+      borrowed: borrowedResult.results.map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
+      policy, today, resetDay, windowWeeks: weeks,
+    }), people)
+    : null;
   return jsonResponse({
     team: { id: team.id, name: team.name },
     today,
@@ -611,7 +620,25 @@ export async function getTeamAttendance(ctx) {
     people,
     awaitingReview: raids.filter((raid) => raid.open_flags > 0).length,
     staleRaids: raids.filter((raid) => isStale(raidState(raid, raid.reports, resolver))).length,
+    watch,
   });
+}
+
+// The watch list as the team page draws it: the entries get their name, class and status. null while the policy has both thresholds off
+// (the page shows no card); an empty list when it is on and nobody qualifies.
+function watchView(list, people) {
+  if (list.below === null && list.dropBy === null) return null;
+  const byId = new Map(people.map((person) => [person.id, person]));
+  return {
+    below: list.below,
+    dropBy: list.dropBy,
+    window: list.windowWeeks,
+    previousFrom: list.previousFrom,
+    entries: list.entries.map((entry) => {
+      const person = byId.get(entry.playerId) || {};
+      return { ...entry, name: person.name || 'Unknown', class: person.class || null, status: person.status || null };
+    }),
+  };
 }
 
 // A stored decision answers a row only while the row still has the flags it was made against.
