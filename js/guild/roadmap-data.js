@@ -30,7 +30,8 @@
       {
         id: 'open-to-other-guilds',
         title: 'Open Raidsmith to other guilds',
-        summary: 'Any Discord server owner, Administrator or Manage Server holder can create a guild (the creator allowlist still overrides when set). New guilds get a six-step setup checklist on Home. Guild Masters can export the guild data (no other members' private data) or delete the guild. Limits: 10 active teams, 5,000 characters, 5 guilds per account. A test walks every route to prove no guild can read or change another.',
+        summary: 'Any Discord server owner, Administrator or Manage Server holder can create a guild (the creator allowlist still overrides when set). New guilds get a six-step setup checklist on Home. Guild Masters can export the guild data (never other members\' private data) or delete the guild. Limits: 10 active teams, 5,000 characters, 5 guilds per account. A test walks every route to prove no guild can read or change another.',
+        area: 'guilds', status: 'done', source: 'user', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'move-to-cloudflare',
