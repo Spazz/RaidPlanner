@@ -85,14 +85,14 @@
         title: 'Bolder suggestion stacks in the Planner',
         summary: 'The runner-up cards behind a suggested Open slot get easier to see.',
         why: 'They are faint today.',
-        area: 'planner', status: 'idea', source: 'backlog', added: '2026-10-17',
+        area: 'planner', status: 'done', source: 'backlog', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'pending-claims-badge',
         title: 'Badge for pending character claims',
         summary: 'Officers see a badge on the Review queue in the navigation when members have character claims waiting.',
         why: 'Officers get no nav badge for claims today, so a claim waits until someone opens the Review queue.',
-        area: 'battlenet', status: 'idea', source: 'backlog', added: '2026-10-17',
+        area: 'battlenet', status: 'done', source: 'backlog', added: '2026-10-17', shipped: '2026-10-18',
       },
 
       // ── Product Manager proposals (in the PM's priority order) ──
@@ -122,7 +122,7 @@
         title: 'Fair bench suggestions in the Planner',
         summary: 'When more people sign up than there are seats, the Planner shows who sat out most recently and prefers them when the buff plan allows it, with the reason shown per seat.',
         why: 'Bench calls are the most argued decision in a 25-man, and Raidsmith already holds the bench history. Inspired by: oxm.gg Auto Split; Raidify Standby.',
-        area: 'planner', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'planner', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'recruitment-needs',
@@ -214,7 +214,7 @@
         id: 'standby-stronger',
         title: 'Standby players benched first',
         summary: 'The Planner holds volunteer standby players out of its first pass, but its value trade can still seat one. Make standby a stronger preference so they sit before anyone who did not volunteer.',
-        area: 'planner', status: 'idea', source: 'backlog', added: '2026-10-18',
+        area: 'planner', status: 'done', source: 'backlog', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'version-default-team-size',
@@ -226,13 +226,13 @@
         id: 'date-only-deadline',
         title: 'Sign-up deadline for raids without a start time',
         summary: 'A raid created with only a date closes sign-ups at 12:00 UTC. Ask for a start time or use the team schedule time instead.',
-        area: 'signups', status: 'idea', source: 'backlog', added: '2026-10-18',
+        area: 'signups', status: 'done', source: 'backlog', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'away-cap-ended',
         title: 'Ended away notices stop counting toward the limit',
         summary: 'A person can keep 30 away notices; ended ones still count. Only current and future notices should.',
-        area: 'signups', status: 'idea', source: 'backlog', added: '2026-10-18',
+        area: 'signups', status: 'done', source: 'backlog', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'roster-confirm-reminder',
@@ -244,7 +244,7 @@
         id: 'webhook-test-post',
         title: 'Send a test post to a Discord webhook',
         summary: 'A button on Guild settings > Notifications that posts a short test message, so officers know the webhook works before the first real post.',
-        area: 'discord', status: 'idea', source: 'backlog', added: '2026-10-18',
+        area: 'discord', status: 'done', source: 'backlog', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'discord-dm-reminders',
