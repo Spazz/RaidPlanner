@@ -129,14 +129,14 @@
         title: 'Recruitment needs from the buff plan',
         summary: 'A roster page shows which buffs and roles the active roster covers and what is missing. One button copies a recruiting post listing the open classes.',
         why: 'Only a tool with buff rules can say what to recruit. Inspired by: CODEX sheet composition targets; GuildOS recruiting line; oxm.gg Launch HQ.',
-        area: 'roster', status: 'in_progress', source: 'pm', added: '2026-10-17',
+        area: 'roster', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'class-intent-board',
         title: 'Class and spec intent board',
         summary: 'Members state the class, spec and role they plan to play for a date or new version. Officers see the totals against the buff plan.',
         why: 'WoW Forever launches 4 Nov 2026 with first raids 9 Dec; officers need this before then. Inspired by: oxm.gg Interest board.',
-        area: 'roster', status: 'in_progress', source: 'pm', added: '2026-10-17',
+        area: 'roster', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'no-reply-reminders',
@@ -150,14 +150,14 @@
         title: 'Applications inbox that ends in a Trial',
         summary: 'A public apply link with questions officers choose. Applications land in an inbox, and Accept creates a person with status Trial and trial dates.',
         why: 'Recruiting is the next officer chore after rosters and attendance. Inspired by: oxm.gg; Raidify; Guild Order; WoWAudit.',
-        area: 'roster', status: 'in_progress', source: 'pm', added: '2026-10-17',
+        area: 'roster', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'csv-roster-import',
         title: 'Roster import from a TMB or spreadsheet CSV',
         summary: 'Upload a TMB characters export or a spreadsheet CSV to create people, Mains, Alts and teams in one go, with a preview and the usual link-or-add questions.',
         why: 'Lowest-friction onboarding for other guilds. Inspired by: Raidify ThatsMyBis importer; CODEX sheet.',
-        area: 'roster', status: 'in_progress', source: 'pm', added: '2026-10-17',
+        area: 'roster', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'signup-deadline',
@@ -220,7 +220,7 @@
         id: 'version-default-team-size',
         title: 'Team size follows the game version',
         summary: 'New teams start at 25 players. A WoW Forever guild would start at its common raid size instead, and Classic at 40.',
-        area: 'raids', status: 'in_progress', source: 'backlog', added: '2026-10-18',
+        area: 'raids', status: 'done', source: 'backlog', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
         id: 'date-only-deadline',
