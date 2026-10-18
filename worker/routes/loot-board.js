@@ -9,7 +9,8 @@ import { LIST_SOURCES, buildBoard, expectedPeople, isListSource, readListRows } 
 import { LOOT_TAGS } from '../loot-policy.js';
 import { AWARD_SELECT, lootAccess, lootPolicyRowsStatement, makeLootPolicyResolver, viewAwards } from '../loot-store.js';
 import { allows, loadGuildContext } from '../permissions.js';
-import { cleanCharacterName, nameKey, realmKey } from '../roster-data.js';
+import { loadSurnameIndex, resolveName } from '../name-resolve.js';
+import { allowsSurname, cleanCharacterName, nameKey, realmKey } from '../roster-data.js';
 import { loadRaid } from './raids.js';
 import { bad } from './roster.js';
 
@@ -116,7 +117,9 @@ export async function putLootList(ctx) {
   if (!allows(guildContext.can, 'loot.edit', raid.team_id)) throw forbidden();
   if (!isListSource(body.source)) throw bad('Pick TMB or softres.', 'source');
   const source = body.source;
-  const rows = readListRows(source, body.rows);
+  const rows = readListRows(source, body.rows, {
+    gameVersion: guild.game_version, surnames: await loadSurnameIndex(db, guild), realmKey: guild.realm_kind !== 'ruleset' ? realmKey(guild.realm) : '',
+  });
   const now = ctx.now();
   const userId = ctx.session.user.id;
   const statements = [db.prepare('DELETE FROM raid_loot_lists WHERE raid_id = ? AND source = ?').bind(raid.id, source)];
@@ -179,8 +182,9 @@ export async function postManualAward(ctx) {
   const hasWinner = body.winnerName !== undefined && body.winnerName !== null && String(body.winnerName).trim() !== '';
   let winner = { name: null, nameKey: null, realm: null, realmKey: '' };
   if (hasWinner) {
-    const name = cleanCharacterName(body.winnerName);
-    if (!name) throw bad('The winner needs a character name (2 to 12 letters).', 'winnerName');
+    const cleaned = cleanCharacterName(body.winnerName, guild.game_version);
+    if (!cleaned) throw bad(allowsSurname(guild.game_version) ? 'The winner needs a character name (a first name and optional surname, 2 to 12 letters each).' : 'The winner needs a character name (2 to 12 letters).', 'winnerName');
+    let name = cleaned;
     let realm = null;
     let key = '';
     if (guild.realm_kind !== 'ruleset') {
@@ -189,6 +193,7 @@ export async function postManualAward(ctx) {
       key = realmKey(realm);
       if (!key || Array.from(realm).length > 40) throw bad('The winner\'s realm is not valid.', 'winnerRealm');
     }
+    name = resolveName(await loadSurnameIndex(db, guild), cleaned, key);
     winner = { name, nameKey: nameKey(name), realm, realmKey: key };
   } else if (tag !== 'DE') {
     throw bad('Pick the winner, or tag the item DE when nobody won it.', 'winnerName');

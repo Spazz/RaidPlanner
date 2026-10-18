@@ -61,7 +61,9 @@ export function plannerName(row, characters) {
   if (!alts.length) return main.name;
   const nick = nameKey(row.nickname || '');
   const sorted = [...alts].sort((a, b) => (nameKey(a.name) < nameKey(b.name) ? -1 : nameKey(a.name) > nameKey(b.name) ? 1 : 0));
-  return (sorted.find((character) => nameKey(character.name) === nick) || sorted[0]).name;
+  // Forever: a Discord nickname that is just the first word of an Alt's "First Surname" names that Alt too (after the full key).
+  const named = sorted.find((character) => nameKey(character.name) === nick) || (nick ? sorted.find((character) => nameKey(character.name).startsWith(`${nick} `)) : null);
+  return (named || sorted[0]).name;
 }
 
 // Ranged damage: all of Hunter, Mage and Warlock, and these specs. Every other damage spec is melee.
@@ -113,7 +115,10 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
     const classId = row.source === 'raidsmith' ? (ownValue(RAID_HELPER_CLASS, row.class_name) || null) : signUpClassId(row);
     const spec = signUpSpecLabel(row);
     let name;
-    if (row.source === 'raidsmith') name = shown ? shown.name : null;
+    // A guest (wave 8: signed up from a guest link, no person) is listed by the character name the guest typed.
+    const guest = row.source === 'raidsmith' && row.guest === 1;
+    if (guest) name = row.nickname;
+    else if (row.source === 'raidsmith') name = shown ? shown.name : null;
     else if (row.player_id && characters.length) name = plannerName(row, characters);
     else name = opts.seeNicknames ? row.nickname : null;
     const group = row.source === 'raid_helper' && row.class_name === 'Tank' ? 'tank' : roleGroup(classId, spec);
@@ -133,6 +138,7 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
       matched: !!row.player_id,
       isMe: !!opts.myPlayerId && row.player_id === opts.myPlayerId,
       nickname: opts.seeNicknames && row.source === 'raid_helper' ? row.nickname : null,
+      ...(guest ? { guest: true } : {}),
       ...(row.source === 'raidsmith' && row.standing === 1 ? { standing: true } : {}), // made by a standing sign-up and not edited since (the key is only there then)
     });
   }

@@ -20,13 +20,14 @@ function readSize(value) {
 }
 
 export function teamView(row, leads = [], players = 0) {
-  return { id: row.id, name: row.name, size: row.size, archived: row.archived === 1, players, leads };
+  // launchTeam (wave 8, the Roster's Launch tab) is there only for a team marked as a launch team.
+  return { id: row.id, name: row.name, size: row.size, archived: row.archived === 1, players, leads, ...(row.launch_team === 1 ? { launchTeam: true } : {}) };
 }
 
 // Every team of the guild (archived ones included), with the unblocked Team Leads of each.
 export async function loadTeams(db, guildId) {
   const [teamResult, leadResult, countResult] = await db.batch([
-    db.prepare('SELECT id, name, size, archived FROM teams WHERE guild_id = ? ORDER BY created_at, id').bind(guildId),
+    db.prepare('SELECT id, name, size, archived, launch_team FROM teams WHERE guild_id = ? ORDER BY created_at, id').bind(guildId),
     db.prepare(
       `SELECT DISTINCT ra.team_id, u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar
          FROM role_assignments ra JOIN users u ON u.id = ra.user_id

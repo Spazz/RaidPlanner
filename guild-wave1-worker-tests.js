@@ -377,6 +377,16 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('notify.test', 'team', 't_b', null, { teamId: 't_b', result: 'sent' }), 'Sent a test post to the Discord webhook of Bravo: it arrived'],
     [row('notify.test', 'team', 't_b', null, { teamId: 't_b', result: 'disabled' }), 'Sent a test post to the Discord webhook of Bravo: Discord refused it and the webhook was turned off'],
     [row('notify.test', 'team', 't_b', null, { teamId: 't_b', result: 'failed' }), 'Sent a test post to the Discord webhook of Bravo: it did not arrive'],
+    // PM wave 8: raid duties, the guest sign-up link, the launch funnel, a pasted roster.
+    [row('duties.set', 'raid', 'r_1', { duties: 0 }, { duties: ['logger', 'extra'] }), 'Set 2 duties for the raid on Tue Oct 21 (Alpha)'],
+    [row('duties.set', 'raid', 'r_1', { duties: 2 }, { duties: [] }), 'Cleared the duties of the raid on Tue Oct 21 (Alpha)'],
+    [row('join.create', 'raid', 'r_1', null, { maxUses: 5 }), 'Made a guest sign-up link for the raid on Tue Oct 21 (Alpha)'],
+    [row('join.revoke', 'raid', 'r_1'), 'Turned off a guest sign-up link of the raid on Tue Oct 21 (Alpha)'],
+    [row('signup.guest', 'raid', 'r_1', null, { class: 'MAGE' }), 'A guest signed up for the raid on Tue Oct 21 (Alpha) (Mage)'],
+    [row('signup.guest_remove', 'raid', 'r_1', { guest: true }), 'Removed a guest sign-up from the raid on Tue Oct 21 (Alpha)'],
+    [row('launch.update', 'person', 'p_kael', null, { teamId: 't_a', levelBand: '40-59', ready: false }), 'Updated the launch status of Kaelith on Alpha'],
+    [row('launch.team', 'team', 't_a', { launchTeam: false }, { launchTeam: true }), 'Turned on the Launch funnel for Alpha'],
+    [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 18, unmatched: 2, paste: true }), 'Entered attendance from a pasted roster for the raid on Tue Oct 21 (Alpha): 18 present, 2 names to review'],
     // PM wave 7: data keys and the rank ladder.
     [row('apikey.create', 'api_key', 'ak_1', null, { teamId: 't_a', datasets: ['roster', 'loot'], expiresAt: 1790000000000 }), 'Made a data key for Alpha (roster and loot)'],
     [row('apikey.create', 'api_key', 'ak_2', null, { teamId: null, datasets: ['attendance'], expiresAt: null }), 'Made a data key for the whole guild (attendance) that does not expire'],

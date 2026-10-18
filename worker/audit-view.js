@@ -51,10 +51,13 @@ export const ACTION_GROUP = Object.freeze({
   'notify.test': 'settings',
   // PM wave 7: read-only API keys are settings; a person's rank (set by hand, or by accepting the ladder's suggestion) and a dismissed suggestion sit with attendance.
   'apikey.create': 'settings', 'apikey.revoke': 'settings', 'person.rank': 'attendance', 'rank.dismiss': 'attendance',
+  // PM wave 8: raid duties, the Launch funnel, and the guest sign-up link (a guest signing up has no actor: the log names Raidsmith).
+  'duties.set': 'raids', 'launch.update': 'roster', 'launch.team': 'settings',
+  'join.create': 'signups', 'join.revoke': 'signups', 'signup.guest': 'signups', 'signup.guest_remove': 'signups',
 });
 
 // Actions the Worker writes itself (no actor): the Activity log names "Raidsmith" for them instead of a former member.
-export const SYSTEM_ACTIONS = Object.freeze(['notify.disabled']);
+export const SYSTEM_ACTIONS = Object.freeze(['notify.disabled', 'signup.guest']);
 
 export const groupOf = (action) => (Object.prototype.hasOwnProperty.call(ACTION_GROUP, action) ? ACTION_GROUP[action] : 'settings');
 
@@ -269,7 +272,18 @@ export function describeRow(row, names = {}) {
       return `Attached a plan of ${plural(Number(after.players) || 0, 'player', 'players')} to ${onRaid(ent)}`;
     case 'raid.manual':
       if (after.manual === false) return `Went back from hand-entered attendance on ${onRaid(ent)}`;
+      if (after.paste) return `Entered attendance from a pasted roster for ${onRaid(ent)}: ${Number(after.present) || 0} present, ${plural(Number(after.unmatched) || 0, 'name', 'names')} to review`;
       return `Entered attendance by hand for ${onRaid(ent)}: ${Number(after.present) || 0} present`;
+    case 'duties.set': {
+      const count = Array.isArray(after.duties) ? after.duties.length : 0;
+      return count ? `Set ${plural(count, 'duty', 'duties')} for ${onRaid(ent)}` : `Cleared the duties of ${onRaid(ent)}`;
+    }
+    case 'join.create': return `Made a guest sign-up link for ${onRaid(ent)}`;
+    case 'join.revoke': return `Turned off a guest sign-up link of ${onRaid(ent)}`;
+    case 'signup.guest': return `A guest signed up for ${onRaid(ent)}${after.class ? ` (${CLASS_LABEL[after.class] || after.class})` : ''}`;
+    case 'signup.guest_remove': return `Removed a guest sign-up from ${onRaid(ent)}`;
+    case 'launch.update': return `Updated the launch status of ${person(ent)}${after.teamId ? ` on ${team(after.teamId)}` : ''}`;
+    case 'launch.team': return `${after.launchTeam ? 'Turned on' : 'Turned off'} the Launch funnel for ${team(ent)}`;
     case 'raid.settings': {
       const parts = [];
       if (after.size !== undefined && after.size !== before.size) parts.push(`raid size ${after.size === null ? 'automatic' : after.size}`);

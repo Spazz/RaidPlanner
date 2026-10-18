@@ -65,6 +65,7 @@ function autoResult(ctx, person, kind) {
 
 // -> { rows, unmatched, openFlags }. evidence is described in the spec; two optional extras:
 //   evidence.logPlayers: { [key]: { name, realm, class } } for the unmatched entries (else the name comes from the key)
+//   evidence.manualKeys: the keys of the names a pasted roster listed (a manual raid only): see below
 //   people[].homeTeamId: the team of the person's Main, used for the Other-team credit of a manual tick
 export function consolidateRaid(evidence, policy) {
   const raid = evidence.raid || {};
@@ -107,6 +108,16 @@ export function consolidateRaid(evidence, policy) {
     }
     for (const owner of seen) stats.get(owner).pullsPresent++;
   });
+
+  // A pasted roster (wave 8, a raid with hand-entered attendance): a name that belongs to a person counts that person present, a name nobody owns
+  // (and no guest) is unmatched like a log name, once.
+  if (raid.manual) {
+    for (const key of evidence.manualKeys || []) {
+      const owner = personByKey.get(key);
+      if (owner !== undefined) manualSet.add(owner);
+      else if (!guests.has(key)) unmatchedCounts.set(key, 1);
+    }
+  }
 
   const inLog = new Set();
   if (raid.manual) {

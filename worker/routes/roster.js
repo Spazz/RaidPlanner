@@ -6,7 +6,7 @@ import { memberCandidatesSql, memberSql } from '../membership.js';
 import { allows, isGranted, loadGuildContext, requireAction } from '../permissions.js';
 import { toPerson } from '../person.js';
 import {
-  CLASS_IDS, CREATE_STATUSES, LEFT_REASONS, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
+  CLASS_IDS, CREATE_STATUSES, LEFT_REASONS, allowsSurname, MULTI_LINE_STRIP, SINGLE_LINE_STRIP, STATUSES, cleanCharacterName, isRealDate, isSpecOf, nameKey, realmKey,
 } from '../roster-data.js';
 import { LIMITS } from '../limits.js';
 import { findRealm } from '../realms.js';
@@ -69,9 +69,10 @@ export async function requireTarget(db, guildId, teamId, field = 'teamId') {
   return team;
 }
 
-export function readName(raw, field = 'name', extra = {}) {
-  const name = cleanCharacterName(raw);
-  if (!name) throw bad('A character name is 2 to 12 letters.', field, extra);
+// gameVersion: the guild's version; a Forever guild takes a first name and a surname ("Thrall Stormrage").
+export function readName(raw, field = 'name', extra = {}, gameVersion = undefined) {
+  const name = cleanCharacterName(raw, gameVersion);
+  if (!name) throw bad(allowsSurname(gameVersion) ? 'A character name is 2 to 12 letters, or a first name and a surname of 2 to 12 letters each.' : 'A character name is 2 to 12 letters.', field, extra);
   return name;
 }
 
@@ -262,7 +263,7 @@ export async function createPerson(ctx) {
   const guild = guildContext.guild;
   const team = await requireTarget(db, guild.id, body.teamId);
   requireEdit(guildContext, team.id);
-  const name = readName(body.name);
+  const name = readName(body.name, 'name', {}, guild.game_version);
   const classId = readClass(body.class);
   const { mainSpec, offSpec } = readSpecs(body.mainSpec, body.offSpec, classId);
   const status = body.status === undefined ? 'raider' : body.status;
@@ -514,7 +515,7 @@ export async function addCharacter(ctx) {
   const team = await requireTarget(db, guild.id, body.teamId);
   requireEdit(guildContext, team.id);
   requireEdit(guildContext, home.id);
-  const name = readName(body.name);
+  const name = readName(body.name, 'name', {}, guild.game_version);
   const classId = readClass(body.class);
   const { mainSpec, offSpec } = readSpecs(body.mainSpec, body.offSpec, classId);
   if (body.makeMain !== undefined && typeof body.makeMain !== 'boolean') throw bad('makeMain must be true or false.', 'makeMain');
@@ -562,7 +563,7 @@ export async function patchCharacter(ctx) {
   const keys = ['name', 'class', 'mainSpec', 'offSpec', 'teamId'];
   if (!keys.some((key) => body[key] !== undefined)) throw bad('Send a field to change.', 'name');
 
-  const name = body.name === undefined ? current.name : readName(body.name);
+  const name = body.name === undefined ? current.name : readName(body.name, 'name', {}, guild.game_version);
   const classId = body.class === undefined ? current.class : readClass(body.class);
   const specs = readSpecs(
     body.mainSpec === undefined ? current.main_spec : body.mainSpec,

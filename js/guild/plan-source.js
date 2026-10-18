@@ -20,21 +20,28 @@
 
   function fail(error) { return { ok: false, error: error }; }
 
-  function validName(raw) {
-    if (typeof raw !== 'string' || raw.length > 64) return false;
-    const text = raw.normalize('NFC').trim();
+  function validWord(text) {
     if (!NAME_PATTERN.test(text)) return false;
     const n = Array.from(text).length;
     return n >= 2 && n <= 12;
   }
 
+  // surname (a Forever guild): a first name and a surname, one space between, are one name too.
+  function validName(raw, surname) {
+    if (typeof raw !== 'string' || raw.length > (surname ? 96 : 64)) return false;
+    const text = raw.normalize('NFC').trim();
+    if (!surname) return validWord(text);
+    const words = text.split(/\s+/);
+    return words.length <= 2 && words.every(validWord);
+  }
+
   // Drops names the server would refuse and repeats (first one wins). -> { players, skipped: count }
-  function sanitize(players) {
+  function sanitize(players, surname) {
     const seen = {};
     const kept = [];
     let skipped = 0;
     (players || []).forEach(function (p) {
-      if (!p || !validName(p.name)) { skipped++; return; }
+      if (!p || !validName(p.name, surname)) { skipped++; return; }
       const key = p.name.normalize('NFC').trim().toLowerCase();
       if (seen[key]) { skipped++; return; }
       seen[key] = true;
@@ -88,7 +95,7 @@
     if (!parsed || !parsed.success) return fail((parsed && parsed.error) || 'That plan link is damaged.');
     const all = (parsed.players || []).map(function (p) { return { name: p.name, group: p.groupNumber }; });
     if (!all.length) return fail('That plan has no players in it.');
-    const clean = sanitize(all);
+    const clean = sanitize(all, d.surname);
     if (!clean.players.length) return fail('None of the names in that plan are valid character names.');
     if (clean.players.length > MAX_PLAYERS) return fail('That plan lists ' + clean.players.length + ' players; at most ' + MAX_PLAYERS + ' can be added.');
     return { ok: true, label: String(parsed.name || 'Shared plan').slice(0, LABEL_MAX), players: clean.players, skipped: clean.skipped, skippedText: skippedText(clean.skipped) };

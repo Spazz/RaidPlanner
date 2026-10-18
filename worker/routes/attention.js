@@ -10,6 +10,7 @@ import { displayCharacter, groupBy } from '../attendance-view.js';
 import { LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, buildAttention } from '../attention.js';
 import { onboardingStatement, shapeOnboarding } from '../onboarding.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
+import { LOG_GRACE_HOURS, LOG_NUDGE_LOOKBACK_DAYS, RAID_DURATION_HOURS } from '../duties.js';
 import { CONFIRM_HOURS } from '../notify.js';
 import { effectiveRaidSize } from '../raid-zones.js';
 import { guildToday } from '../roster-view.js';
@@ -43,7 +44,7 @@ export async function getAttention(ctx) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, dismissals, onboarding] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -138,6 +139,16 @@ export async function getAttention(ctx) {
     bind("SELECT team_id, disabled_status FROM team_notifications WHERE guild_id = ? AND webhook_url IS NOT NULL AND webhook_state = 'disabled'"),
     // Rank suggestions an officer dismissed for 30 days (PM wave 7).
     bind('SELECT player_id, kind, to_rank, until FROM rank_dismissals WHERE guild_id = ? AND until > ?', now),
+    // Past raids whose Logger (a raid duty) has not uploaded a log: five hours after the start, within the look-back (PM wave 8).
+    bind(
+      `SELECT r.id, r.team_id, r.raid_on, r.zone, r.title, r.event_title,
+              (SELECT c.name FROM characters c WHERE c.player_id = d.player_id ORDER BY c.is_main DESC, c.name_key LIMIT 1) AS logger_name
+         FROM raids r JOIN raid_duties d ON d.raid_id = r.id AND d.guild_id = r.guild_id AND d.duty = 'logger'
+        WHERE r.guild_id = ? AND r.time_known = 1 AND r.log_mode = 'log' AND r.starts_at <= ? AND r.starts_at > ?
+          AND NOT EXISTS (SELECT 1 FROM raid_reports x WHERE x.raid_id = r.id)
+        ORDER BY r.starts_at DESC, r.id LIMIT ${READ_CAP}`,
+      now - (RAID_DURATION_HOURS + LOG_GRACE_HOURS) * 3600000, now - LOG_NUDGE_LOOKBACK_DAYS * DAY_MS,
+    ),
     // The setup checklist's flags, for the people who set the guild up (no statement for anyone else: `onboarding` is then undefined).
     ...[onboardingStatement(db, guildContext)].filter(Boolean),
   ]);
@@ -206,6 +217,7 @@ export async function getAttention(ctx) {
     rosterPending: rosterPending.results,
     eventMoved: eventMoved.results,
     webhooksOff: webhooksOff.results,
+    logMissing: logMissing.results,
   });
   // The setup checklist (null for anyone who does not set the guild up, once dismissed, and once every step is done); it never counts toward `total`.
   return jsonResponse({ today, ...built, onboarding: shapeOnboarding(onboarding) });

@@ -27,6 +27,8 @@ const PATTERNS = {
   nl: /^nl_[A-Za-z0-9_-]{22}$/,
   // PM wave 7: a read-only API key.
   ak: /^ak_[A-Za-z0-9_-]{22}$/,
+  // PM wave 8: a guest sign-up link of a raid.
+  jl: /^jl_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {
@@ -73,5 +75,8 @@ export const PARAM_SOURCE = {
   cal: '[A-Za-z0-9_-]{43}\\.ics',
   // A read-only API key (PM wave 7), and the dataset file of GET /api/v1/:dataset ("roster.csv", "loot.json"; the route checks it itself, it has no session).
   kid: 'ak_[A-Za-z0-9_-]{22}',
+  // PM wave 8: a guest sign-up link (DELETE .../join-links/:jid) and a sign-up's number on its raid (DELETE .../guests/:sid).
+  jid: 'jl_[A-Za-z0-9_-]{22}',
+  sid: '[0-9]{1,9}',
   dataset: '[a-z]{3,12}\\.(?:csv|json)',
 };

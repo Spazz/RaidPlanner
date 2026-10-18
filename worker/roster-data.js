@@ -103,17 +103,31 @@ export const DEFAULT_WCL_FLAVOUR = { tbc: 'fresh', classic: 'classic' };
 // Letters, each followed by at most two combining marks; the first code point is a letter.
 const NAME_PATTERN = /^(?:\p{L}\p{M}{0,2})+$/u;
 
-// The WoW display form of a character name (first letter upper case, the rest lower case), or null. The 2 to 12
+// The WoW display form of one name word (first letter upper case, the rest lower case), or null. The 2 to 12
 // code point limit is measured on the mapped form ('ß' upper-cases to 'SS').
-export function cleanCharacterName(raw) {
-  if (typeof raw !== 'string' || raw.length > 64) return null;
-  const text = raw.normalize('NFC').trim();
+function cleanNameWord(text) {
   if (!NAME_PATTERN.test(text)) return null;
   const letters = Array.from(text);
   const mapped = (letters[0].toUpperCase() + letters.slice(1).join('').toLowerCase()).normalize('NFC');
   const length = Array.from(mapped).length;
   if (length < 2 || length > 12 || !NAME_PATTERN.test(mapped)) return null;
   return mapped;
+}
+
+// WoW Forever characters have a first name and a surname: only a guild on that version accepts a second word.
+export const allowsSurname = (gameVersion) => gameVersion === 'forever';
+
+// The WoW display form of a character name, or null. One word of 2 to 12 letters; a Forever guild (gameVersion 'forever')
+// also takes two such words with one space between them ("Thrall Stormrage"). Every other version: one word, as before.
+export function cleanCharacterName(raw, gameVersion) {
+  const surname = allowsSurname(gameVersion);
+  if (typeof raw !== 'string' || raw.length > (surname ? 96 : 64)) return null;
+  const text = raw.normalize('NFC').trim();
+  if (!surname) return cleanNameWord(text);
+  const words = text.split(/\s+/);
+  if (words.length > 2) return null;
+  const cleaned = words.map(cleanNameWord);
+  return cleaned.every(Boolean) ? cleaned.join(' ') : null;
 }
 
 export function nameKey(name) {
@@ -127,7 +141,7 @@ export function realmKey(realm) {
 }
 
 const TOKEN_SPLIT = /[\/\\()[\]{}|,;:&+\s-]+/;
-const STOP_WORDS = new Set([
+export const STOP_WORDS = new Set([
   'warrior', 'paladin', 'hunter', 'rogue', 'priest', 'shaman', 'mage', 'warlock', 'druid',
   'arms', 'fury', 'protection', 'holy', 'retribution', 'beast', 'mastery', 'beastmastery', 'marksmanship', 'survival',
   'assassination', 'combat', 'subtlety', 'discipline', 'shadow', 'elemental', 'enhancement', 'restoration',

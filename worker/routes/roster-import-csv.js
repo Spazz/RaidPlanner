@@ -6,6 +6,7 @@
 // The columns, the problems and the grouping rules are worker/csv-roster.js.
 import { HttpError, jsonResponse } from '../http.js';
 import { isId, newId } from '../ids.js';
+import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { allows } from '../permissions.js';
 import { CSV_MAX_ROWS, findColumns, mapRows, planRows, readCsvText } from '../csv-roster.js';
 import { isRealDate, isSpecOf, nameKey } from '../roster-data.js';
@@ -34,9 +35,9 @@ export async function previewCsv(ctx) {
   await importRate(ctx);
   const teams = (await db.prepare('SELECT id, name FROM teams WHERE guild_id = ? AND archived = 0 ORDER BY created_at, id').bind(guild.id).all()).results;
   const rows = mapRows(data, layout, {
-    defaultTeam: { id: team.id, name: team.name }, teams, realmGuild: guild.realm_kind !== 'ruleset', defaultStatus,
+    defaultTeam: { id: team.id, name: team.name }, teams, realmGuild: guild.realm_kind !== 'ruleset', defaultStatus, gameVersion: guild.game_version,
   }, layout.header ? 2 : 1);
-  const [keys, nicknames] = await Promise.all([loadGuildKeys(db, guild.id), loadNicknameIndex(db, guildContext, team)]);
+  const [keys, nicknames, surnames] = await Promise.all([loadGuildKeys(db, guild.id), loadNicknameIndex(db, guildContext, team), loadSurnameIndex(db, guild)]);
 
   const seen = new Set();
   for (const row of rows) {
@@ -48,6 +49,7 @@ export async function previewCsv(ctx) {
     row.realm = realm.realm;
     row.realmKey = realm.key;
     if (!allows(guildContext.can, 'roster.edit', row.teamId)) { row.problems.push(`You cannot add to ${row.teamName}.`); continue; }
+    row.name = resolveName(surnames, row.name, realm.key); // Forever: a one-word name that is one roster character's first word is that character
     const key = `${nameKey(row.name)}|${realm.key}`;
     if (seen.has(key)) { row.problems.push('This character is in the file twice.'); continue; }
     seen.add(key);
@@ -62,7 +64,7 @@ export async function previewCsv(ctx) {
     row.needsDecision = step.needsDecision;
     if (!step.needsDecision || !row.owner) continue;
     // Whose alt could this be? A character of that name on the roster, or one person whose Discord nickname names it.
-    const named = keys.get(`${nameKey(row.owner)}|${row.realmKey}`);
+    const named = keys.get(`${nameKey(resolveName(surnames, row.owner, row.realmKey))}|${row.realmKey}`);
     const candidates = nicknames.get(nameKey(row.owner)) || [];
     if (named) row.suggestion = { personId: named.id, name: named.name };
     else if (candidates.length === 1) row.suggestion = { personId: candidates[0].personId, name: candidates[0].name };
@@ -111,7 +113,7 @@ export async function commitCsv(ctx) {
   const read = new Map();
   for (const { row, index } of wanted) {
     const extra = indexed(index);
-    const name = readName(row.name, 'name', extra);
+    const name = readName(row.name, 'name', extra, guild.game_version);
     const classId = readClass(row.class, 'class', extra);
     let mainSpec = null;
     if (row.spec !== undefined && row.spec !== null) {

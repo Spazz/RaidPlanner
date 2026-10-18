@@ -80,7 +80,7 @@ export async function buildView(ctx, guildContext, raid) {
   const statements = [
     ownPersonStatement(db, guild.id, userId),
     db.prepare(
-      `SELECT source, signup_id, kind, standby, standing, class_name, spec_name, position, player_id, nickname, character_id, note, updated_at FROM raid_signups
+      `SELECT source, signup_id, kind, standby, standing, guest, class_name, spec_name, position, player_id, nickname, character_id, note, updated_at FROM raid_signups
         WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') ORDER BY position, source, signup_id`,
     ).bind(raid.id),
     db.prepare(

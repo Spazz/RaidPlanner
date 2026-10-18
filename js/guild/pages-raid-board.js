@@ -352,7 +352,7 @@
     ui.busy = true;
     ui.error = '';
     G.app.render();
-    G[LISTS[list].parser].parse(ui.text).then(function (parsed) {
+    G[LISTS[list].parser].parse(ui.text, { surname: c.gd.guild.gameVersion === 'forever' }).then(function (parsed) {
       ui.busy = false;
       if (!parsed.ok) { ui.error = parsed.error; G.app.render(); return; }
       if (!parsed.entries.length) {

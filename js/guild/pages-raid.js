@@ -788,7 +788,7 @@
     G.ui.setText('dlg-error', '');
     if (!text) { G.ui.setText('dlg-err-source', 'Paste a plan link or share code.'); form.elements.source.focus(); return; }
     G.ui.setBusy(form, true);
-    G.planSource.read(text, {}).then(function (read) {
+    G.planSource.read(text, { surname: currentGd() && currentGd().guild.gameVersion === 'forever' }).then(function (read) {
       if (!read.ok) { G.ui.setBusy(form, false); G.ui.setText('dlg-err-source', read.error); form.elements.source.focus(); return null; }
       return G.api.put(raidBase(c.gid, c.rid) + '/plan', { label: read.label, players: read.players, live: read.live }).then(function (res) {
         G.ui.closeDialogOf(form);

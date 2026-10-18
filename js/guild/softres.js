@@ -27,14 +27,15 @@
   function T() { return G.tmb; }
 
   // The decoded JSON -> { rows (reserving players read), entries, skipped, stats } or { error }.
-  function normalize(value) {
+  function normalize(value, opts) {
+    const surname = !!(opts && opts.surname);
     if (!isPlain(value) || !Array.isArray(value.softreserves)) return { error: 'No soft-reserves were found in this text. ' + HELP };
     const entries = [];
     const skipped = [];
     value.softreserves.forEach(function (player, index) {
       const label = 'player ' + (index + 1);
       if (!isPlain(player) || !Array.isArray(player.items)) { skipped.push({ label: label, reason: 'No list of items' }); return; }
-      const name = T().displayName(player.name);
+      const name = T().displayName(player.name, surname);
       if (!name) { skipped.push({ label: label, reason: 'Name is not a character name' }); return; }
       const copies = {};
       const order = [];
@@ -69,11 +70,11 @@
   }
 
   // text -> Promise of { ok, error, rows, entries: [{ name, itemId, copies, itemName? }], skipped: [{ label, reason }], stats }.
-  function parse(text) {
+  function parse(text, opts) {
     const empty = function (error) { return { ok: false, error: error, rows: 0, entries: [], skipped: [], stats: null }; };
     return T().decodePaste(text, 'softres.it', HELP).then(function (decoded) {
       if (!decoded.ok) return empty(decoded.error);
-      const n = normalize(decoded.value);
+      const n = normalize(decoded.value, opts);
       if (n.error) return empty(n.error);
       if (n.entries.length > MAX_ROWS) return empty('This export holds ' + n.entries.length + ' rows; at most ' + MAX_ROWS + ' fit on one raid.');
       return { ok: true, error: null, rows: n.rows, entries: n.entries, skipped: n.skipped.slice(0, SHOWN_SKIPPED), skippedCount: n.skipped.length, stats: n.stats };
