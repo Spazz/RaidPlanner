@@ -135,7 +135,7 @@ async function findWorkingLink(ctx, token) {
   if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) throw invalidLink();
   const row = await ctx.db.prepare(
     `SELECT l.id, l.guild_id, l.raid_id, l.max_uses, l.uses, l.revoked_at, r.team_id, r.raid_on, r.starts_at, r.time_known, r.zone, COALESCE(r.title, r.event_title) AS title,
-            t.name AS team_name, g.name AS guild_name, g.game_version, g.realm_kind,
+            t.name AS team_name, g.name AS guild_name, g.game_version, g.realm_kind, g.time_zone,
             (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND s.source = 'raidsmith' AND s.guest = 1) AS guests
        FROM raid_join_links l JOIN raids r ON r.id = l.raid_id AND r.guild_id = l.guild_id JOIN teams t ON t.id = r.team_id JOIN guilds g ON g.id = l.guild_id
       WHERE l.token_hash = ?`,
@@ -155,7 +155,8 @@ export async function viewJoin(ctx) {
   const row = await findWorkingLink(ctx, ctx.body.token);
   const minted = cookieOf(ctx.request) ? null : base64url(ctx.randomBytes(16));
   return jsonResponse({
-    guild: { name: row.guild_name, gameVersion: row.game_version, realmKind: row.realm_kind },
+    // timeZone: the guild's, so the page writes the raid's start the way the guild does ("8:00 PM ET"), not in the visitor's zone.
+    guild: { name: row.guild_name, gameVersion: row.game_version, realmKind: row.realm_kind, timeZone: row.time_zone },
     raid: { raidOn: row.raid_on, startsAt: row.starts_at, timeKnown: row.time_known !== 0, zone: row.zone, title: row.title, teamName: row.team_name },
     spotsLeft: spotsOf(row),
     rosterOptions: rosterOptions(),

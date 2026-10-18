@@ -1090,13 +1090,13 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
   await check('view (guest): the guild, the badge, the role, team and expiry, Leave, and a table per team for each section the Worker sent', () => {
     const out = G.pages.view.viewHtml({ data: viewData('guest'), kind: 'guest' });
     const t = text(out);
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Ember</h1>') && t.includes('Dreamscythe (US) - TBC Anniversary'));
-    assert(t.includes('Read-only guest view') && t.includes('Role: Guest') && t.includes('Alpha only') && t.includes('Link works until Oct 20, 2026'));
-    assert(out.includes('data-action="view-leave"') && out.includes('>Leave<') && out.includes('id="view-alert"'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Ember</h1>') && t.includes('Dreamscythe (US) - TBC Anniversary'));
+    assert(t.includes('Read-only') && t.includes('Guest link') && t.includes('Role: Guest') && t.includes('Alpha only') && t.includes('Link works until Oct 20, 2026'));
+    assert(out.includes('data-action="view-leave"') && out.includes('>Leave this link<') && out.includes('aria-label="More"') && out.includes('id="view-alert"'), 'Leave is behind the one More menu');
     assert.deepEqual([...out.matchAll(/<h2 class="gs-h2" id="view-[a-z]+-h">([^<]*)</g)].map(m => m[1]), ['Roster', 'Raids', 'Attendance', 'Loot']);
     // roster
     assert(out.includes('<span class="gs-char-name gs-class-paladin">Thoren</span>') && out.includes('<span class="gs-char-name gs-class-rogue">Kaelith</span>'));
-    assert(/<td data-label="Class">Paladin<\/td>/.test(out) && out.includes('aria-label="Tank"') && out.includes('aria-label="DPS"'));
+    assert(/<td class="" data-label="Class">Paladin<\/td>/.test(out) && out.includes('aria-label="Tank"') && out.includes('aria-label="DPS"'));
     assert(t.includes('No one on the roster yet.'));
     // raids
     assert(out.includes('>Upcoming</h4>') && out.includes('>Recent</h4>') && out.indexOf('>Upcoming</h4>') < out.indexOf('>Recent</h4>'));
@@ -1109,7 +1109,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert(out.includes('<span class="gs-item gs-q-4">Sword of Doom</span>') && out.includes('<span class="gs-item">Grey thing</span>'));
     assert(t.includes('Disenchanted') && out.includes('<span class="gs-char-name gs-class-paladin">Thoren</span>'));
     assert(t.includes('Oct 16, 2026'));
-    assert((out.match(/<table class="gs-table gs-table-stack gs-table-view"/g) || []).length === 5, 'roster, upcoming, recent, attendance, loot (a team with nobody has no table)');
+    assert((out.match(/<table class="gs-dtable"/g) || []).length === 5, 'roster, upcoming, recent, attendance, loot (a team with nobody has no table)');
     assert(out.includes('data-label="Winner"') && out.includes('data-label="Raids counted"'));
     assertNoRawAttrs(out);
   });
@@ -1129,8 +1129,8 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
   await check('view (public): the Public page badge, no Leave, no role or link details', () => {
     const out = G.pages.view.viewHtml({ data: viewData('public'), kind: 'public' });
     const t = text(out);
-    assert(t.includes('Public page') && !t.includes('Read-only guest view') && !out.includes('view-leave') && !t.includes('Link works') && !t.includes('Role:'));
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Ember</h1>') && out.includes('Thoren'));
+    assert(t.includes('Public page') && t.includes('Read-only') && !t.includes('Guest link') && !out.includes('view-leave') && !t.includes('Link works') && !t.includes('Role:'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Ember</h1>') && out.includes('Thoren'));
     assert(G.pages.view.viewHtml({ data: viewData('public') }).includes('Public page'), 'the kind is read from the answer when it is not passed');
     const ruleset = viewData('public'); ruleset.guild = { name: 'Fresh', realm: 'Normal', realmKind: 'ruleset', region: 'US', gameVersion: 'forever' };
     assert(text(G.pages.view.viewHtml({ data: ruleset, kind: 'public' })).includes('Normal ruleset - WoW Forever'));
@@ -1631,7 +1631,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert.deepEqual(order, ['POST /auth/guest', 'GET /api/guest']);
     assert.deepEqual(JSON.parse(env.fetchCalls.find(c => c.url === '/auth/guest').body), { token: TOKEN });
     const main = env.main();
-    assert(main.includes('Read-only guest view') && main.includes('Thoren') && main.includes('data-action="view-leave"'));
+    assert(main.includes('Read-only') && main.includes('Guest link') && main.includes('Thoren') && main.includes('data-action="view-leave"'));
     assert(!main.includes(TOKEN) && !env.html('shell-topbar-lead').includes(TOKEN) && !env.sandbox.document.title.includes(TOKEN));
     assert(!main.includes('Continue with Discord'));
     assert(env.html('shell-topbar-lead').includes('Guest view'));
@@ -1660,7 +1660,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     up = true;
     env.click({ 'data-action': 'retry' });
     await settle();
-    assert(env.main().includes('Read-only guest view'));
+    assert(env.main().includes('Read-only') && env.main().includes('Guest link'));
     assert.equal(env.loc.hash, '#/view');
   });
 

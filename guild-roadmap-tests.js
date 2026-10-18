@@ -152,7 +152,7 @@ const me = { user: { id: 'u1', username: 'alice', displayName: 'Alice' }, guilds
   await check('page: title, intro line, last updated, and the four sections in order; signed out sees the same sections', () => {
     const out = P.roadmapHtml({ me: null });
     assert.equal(count(out, '<h1'), 1);
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Future enhancements</h1>'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Future enhancements</h1>'));
     assert(out.includes('What&#39;s being built next and ideas under review. Updated as work ships.') || out.includes('What\'s being built next and ideas under review. Updated as work ships.'));
     assert(out.includes('Last updated ' + G.ui.formatDay(G.roadmap.updated)));
     const at = ['In progress', 'Next up', 'Ideas', 'Shipped'].map(t => out.indexOf(`>${t} <span class="gs-rm-count">`));
@@ -252,7 +252,7 @@ const me = { user: { id: 'u1', username: 'alice', displayName: 'Alice' }, guilds
     assert(/<label class="gs-label" for="rm-title">Title<\/label><input class="gs-input" type="text" id="rm-title" name="title"[^>]*maxlength="120"[^>]*required/.test(out));
     assert(/<label class="gs-label" for="rm-area">Area<\/label><select class="gs-input" id="rm-area" name="area"/.test(out));
     assert(/<label class="gs-label" for="rm-details">Details \(optional\)<\/label><textarea class="gs-input gs-textarea" id="rm-details" name="details" rows="4" maxlength="2000"/.test(out));
-    assert(/<button type="submit" class="gs-btn gs-btn-molten" data-key="rm-submit">Submit idea<\/button>/.test(out));
+    assert(/<button type="submit" class="gs-btn gs-btn-molten" data-key="rm-submit"><span>Submit idea<\/span><\/button>/.test(out));
     assert(out.includes('<span class="gs-rm-status" id="rm-status" role="status"></span>'));
     assert(out.includes('id="rm-title-error" role="alert" hidden') && out.includes('id="rm-area-error" role="alert" hidden') && out.includes('id="rm-details-error" role="alert" hidden'));
     assert(out.includes('<option value="" selected>Choose an area</option>'));
@@ -295,7 +295,7 @@ const me = { user: { id: 'u1', username: 'alice', displayName: 'Alice' }, guilds
     assert(inner({ status: 'loading', list: [], error: '' }).includes('Loading the submitted ideas...'));
     const failed = inner({ status: 'error', list: [], error: 'Could not reach Raidsmith. ' + HOSTILE });
     assert(failed.includes('role="alert">The submitted ideas could not be loaded. Could not reach Raidsmith.'));
-    assert(/data-action="roadmap-ideas-retry" data-key="rm-ideas-retry">Try again<\/button>/.test(failed));
+    assert(/data-action="roadmap-ideas-retry" data-key="rm-ideas-retry"><span>Try again<\/span><\/button>/.test(failed));
     assertEscaped(failed, 'error');
     assert(inner({ status: 'ok', list: [], error: '' }).includes('No ideas yet. Yours can be the first.'));
     assert(inner({ status: 'ok', list: [], error: '' }).startsWith('<h2 class="gs-h2 gs-h2-plain" id="rm-ideas-h">Submitted ideas</h2>'));
@@ -335,10 +335,10 @@ const me = { user: { id: 'u1', username: 'alice', displayName: 'Alice' }, guilds
     const list = Array.from({ length: 7 }, (_, i) => idea(`ri_${i}`));
     const shortened = P.ideasInnerHtml(view({ ideas: { status: 'ok', list, error: '' } }), []);
     assert.equal(count(shortened, '<li class="gs-rm-card"'), 5);
-    assert(/data-action="roadmap-ideas-all" data-key="rm-ideas-all" aria-expanded="false">Show all 7 ideas<\/button>/.test(shortened));
+    assert(/data-action="roadmap-ideas-all" data-key="rm-ideas-all" aria-expanded="false"><span>Show all 7 ideas<\/span><\/button>/.test(shortened));
     const all = P.ideasInnerHtml(view({ ideasAll: true, ideas: { status: 'ok', list, error: '' } }), []);
     assert.equal(count(all, '<li class="gs-rm-card"'), 7);
-    assert(/aria-expanded="true">Show fewer ideas<\/button>/.test(all));
+    assert(/aria-expanded="true"><span>Show fewer ideas<\/span><\/button>/.test(all));
     assert(!P.ideasInnerHtml(view({ ideas: { status: 'ok', list: list.slice(0, 5), error: '' } }), []).includes('roadmap-ideas-all'));
   });
 

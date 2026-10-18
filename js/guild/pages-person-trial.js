@@ -82,20 +82,20 @@
   }
 
   function actionsHtml() {
-    return '<div class="gs-actions gs-trial-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="trial-promote" data-key="trial-card-promote">Promote to Raider</button>' +
-      '<button type="button" class="gs-btn" data-action="trial-extend" data-key="trial-card-extend">Extend trial</button>' +
-      '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="trial-end" data-key="trial-card-end">End trial</button></div>';
+    return '<div class="gs-actions gs-trial-actions">' + G.ui.buttonHtml({ label: 'Promote to Raider', variant: 'primary', attrs: { 'data-action': 'trial-promote', 'data-key': 'trial-card-promote' } }) +
+      G.ui.buttonHtml({ label: 'Extend trial', attrs: { 'data-action': 'trial-extend', 'data-key': 'trial-card-extend' } }) +
+      G.ui.buttonHtml({ label: 'End trial', variant: 'danger-outline', attrs: { 'data-action': 'trial-end', 'data-key': 'trial-card-end' } }) + '</div>';
   }
 
-  // opts: { guildData, gid, pid, record (GET /roster/p_...), state: { data, error } | null }
-  function cardHtml(opts) {
+  // opts: { guildData, gid, pid, record (GET /roster/p_...), state: { data, error } | null }  ->  the Trial review section of the person page, or null
+  function sectionOf(opts) {
     const s = opts.state;
     const record = opts.record;
-    if (!s || s.none || !shows(record)) return '';
+    if (!s || s.none || !shows(record)) return null;
     const p = record.person;
     let body;
     if (s.error || !s.data) {
-      body = '<p class="gs-alert" role="alert">' + esc(s.error || 'Could not load the trial review.') + '</p><div class="gs-actions"><button type="button" class="gs-btn" data-action="trial-retry" data-key="trial-card-retry">Try again</button></div>';
+      body = '<p class="gs-alert" role="alert">' + esc(s.error || 'Could not load the trial review.') + '</p><div class="gs-actions">' + G.ui.buttonHtml({ label: 'Try again', attrs: { 'data-action': 'trial-retry', 'data-key': 'trial-card-retry' } }) + '</div>';
     } else {
       const d = s.data;
       const showTeam = G.shell.activeTeams(opts.guildData && opts.guildData.teams).length > 1;
@@ -103,20 +103,18 @@
         '<p class="gs-fine">' + (d.since ? 'Since ' + esc(G.ui.formatDay(d.since)) + ' (trial start)' : 'No trial start date is set.') + '</p>' +
         attendanceHtml(d.attendance, showTeam) + lootHtml(d.loot) + notesHtml(d.notes) + actionsHtml();
     }
-    return '<section class="gs-card-sec gs-trial-card" aria-labelledby="trial-card-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="trial-card-h">Trial review</h2>' +
-      G.ui.trialChipHtml(p.trialFlag) + '</div><div class="gs-card-sec-body">' + body + '</div></section>';
+    return { id: 'trial-card', title: 'Trial review', chipHtml: G.ui.trialChipHtml(p.trialFlag), bodyHtml: body };
+  }
+
+  function cardHtml(opts) {
+    const section = sectionOf(opts);
+    return section ? G.ui.objectSectionHtml(section) : '';
   }
 
   // ── dialogs ──
-  function footerHtml(submitClass, submitLabel) {
-    return '<p class="gs-alert" id="dlg-error" role="alert" hidden></p><div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button>' +
-      '<button type="submit" class="' + submitClass + '">' + esc(submitLabel) + '</button></div></form>';
-  }
-
   function promoteDialogHtml(record) {
     const name = nameOf(record);
-    return '<form class="gs-dialog-form" data-submit="trial-promote-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Promote ' + esc(name) + ' to Raider?</h2>' +
-      '<p class="gs-confirm-text" id="dlg-text">' + esc(name) + ' becomes a Raider and the trial is over.</p>' + footerHtml('gs-btn gs-btn-molten', 'Promote to Raider');
+    return G.ui.dialogHtml({ kind: 'confirm', title: 'Promote ' + name + ' to Raider?', text: name + ' becomes a Raider and the trial is over.', primary: { label: 'Promote to Raider' }, formAttrs: { 'data-submit': 'trial-promote-form' } });
   }
 
   // The date starts 14 days after the later of the current end and today; it must be after today.
@@ -124,21 +122,21 @@
     const p = record.person;
     const t = today || record.today || '';
     const start = p.trialEnd && p.trialEnd > t ? p.trialEnd : t;
-    return '<form class="gs-dialog-form" data-submit="trial-extend-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">Extend ' + esc(nameOf(record)) + '\'s trial</h2>' +
-      '<div class="gs-field"><label class="gs-label" for="dlg-tend">New trial end date</label><input class="gs-input" type="date" id="dlg-tend" name="trialEnd" data-field="trialEnd" min="' + esc(G.ui.addDays(t, 1)) + '" value="' + esc(G.ui.addDays(start, EXTEND_DAYS)) + '" aria-describedby="dlg-tend-help">' +
-      '<p class="gs-fine" id="dlg-tend-help">The date must be after today. Officers get a flag 7 days before it.</p><p class="gs-field-error" id="dlg-err-trialEnd" role="alert" hidden></p></div>' +
-      footerHtml('gs-btn gs-btn-molten', 'Extend trial');
+    const body = '<div class="gs-field"><label class="gs-label" for="dlg-tend">New trial end date</label><input class="gs-input" type="date" id="dlg-tend" name="trialEnd" data-field="trialEnd" min="' + esc(G.ui.addDays(t, 1)) + '" value="' + esc(G.ui.addDays(start, EXTEND_DAYS)) + '" aria-describedby="dlg-tend-help">' +
+      '<p class="gs-fine" id="dlg-tend-help">The date must be after today. Officers get a flag 7 days before it.</p><p class="gs-field-error" id="dlg-err-trialEnd" role="alert" hidden></p></div>';
+    return G.ui.dialogHtml({ kind: 'form', title: 'Extend ' + nameOf(record) + '\'s trial', bodyHtml: body, primary: { label: 'Extend trial' }, formAttrs: { 'data-submit': 'trial-extend-form' } });
   }
 
   // The note field is there only for people who may edit the officer notes: the note is saved into them.
   function endDialogHtml(record) {
     const name = nameOf(record);
     const canNotes = !!(record.can && record.can.notesEdit);
-    return '<form class="gs-dialog-form" data-submit="trial-end-form" novalidate><h2 class="gs-dialog-title" id="dlg-title">End ' + esc(name) + '\'s trial?</h2>' +
-      '<p class="gs-confirm-text" id="dlg-text">' + esc(name) + ' is set to Inactive with the reason Other. Their attendance and loot stay on record.</p>' +
-      (canNotes ? '<div class="gs-field"><label class="gs-label" for="dlg-note">Note (optional)</label><textarea class="gs-input gs-textarea" id="dlg-note" name="note" data-field="note" rows="3" maxlength="' + NOTE_MAX + '" aria-describedby="dlg-note-help"></textarea>' +
-        '<p class="gs-fine" id="dlg-note-help">Added to the officer notes as "Trial ended" with today\'s date. ' + NOTE_MAX + ' characters at most.</p></div>' : '') +
-      footerHtml('gs-btn gs-btn-danger', 'End trial');
+    const body = canNotes ? '<div class="gs-field"><label class="gs-label" for="dlg-note">Note (optional)</label><textarea class="gs-input gs-textarea" id="dlg-note" name="note" data-field="note" rows="3" maxlength="' + NOTE_MAX + '" aria-describedby="dlg-note-help"></textarea>' +
+      '<p class="gs-fine" id="dlg-note-help">Added to the officer notes as "Trial ended" with today\'s date. ' + NOTE_MAX + ' characters at most.</p></div>' : '';
+    return G.ui.dialogHtml({
+      kind: 'destructive', title: 'End ' + name + '\'s trial?', text: name + ' is set to Inactive with the reason Other. Their attendance and loot stay on record.', bodyHtml: body,
+      primary: { label: 'End trial' }, formAttrs: { 'data-submit': 'trial-end-form' },
+    });
   }
 
   // ── data ──
@@ -255,6 +253,7 @@
     NOTE_MAX: NOTE_MAX,
     NOTE_FAILED: NOTE_FAILED,
     shows: shows,
+    sectionOf: sectionOf,
     cardHtml: cardHtml,
     cardState: cardState,
     loadCard: loadCard,

@@ -243,7 +243,7 @@ function formFor(teamId, values) {
     assertNoRawAttrs(off);
     assert(stripTags(off).includes("Discord reminders") && stripTags(off).includes("Don't mention me in reminders") && stripTags(off).includes('You are still listed by name, without a ping.'));
     assert(/<input type="checkbox" id="reminder-optout" name="reminderOptOut" data-change="reminder-optout">/.test(off));
-    assert(/<input type="checkbox" id="reminder-optout" name="reminderOptOut" data-change="reminder-optout" checked>/.test(on));
+    assert(/<input type="checkbox" id="reminder-optout" name="reminderOptOut" checked data-change="reminder-optout">/.test(on));
     const cards = G.pages.accounts.profileCardsHtml(me(false));
     assert(cards.indexOf('id="linked-name"') < cards.indexOf('id="linked-discord"') && cards.indexOf('id="linked-discord"') < cards.indexOf('id="linked-reminders"'));
     assert.equal(G.pages.accounts.reminderOptOutOf({ user: {} }), false, 'an older answer without the field');

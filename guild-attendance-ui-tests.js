@@ -883,8 +883,8 @@ function teamData(over) {
   await check('person history page: per-team block, newest first, via, officer reason column for reviewers only, escaped', () => {
     const P = G.pages.personAtt;
     const out = P.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_aa', data: PERSON });
-    assert(out.includes('Aimersmay') && out.includes('Open in Roster') && out.includes('Attendance history') && out.includes('Team KJ'));
-    const rows = [...out.matchAll(/<th scope="row" class="gs-cell-strong gs-nowrap"><a[^>]*>([^<]*)</g)].map(m => m[1]);
+    assert(out.includes('Aimersmay') && out.includes('Roster record') && out.includes('Attendance history') && out.includes('Team KJ'));
+    const rows = [...out.matchAll(/<th scope="row" class="gs-dtable-primary"><a[^>]*>([^<]*)</g)].map(m => m[1]);
     assert.deepEqual(rows, ['Sat Oct 10', 'Wed Oct 7', 'Sat Oct 3']);
     assert(out.includes('via Weekend team') && out.includes('Officer reason') && out.includes('Told the raid lead') && out.includes('Pending'));
     assert(out.includes('>Other team<') && out.includes('href="#/g/g1/raids/r/r1"'));

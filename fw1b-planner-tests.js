@@ -114,7 +114,7 @@ const script = app.script.replace(/\r\n/g, '\n');
     for (const [name, text] of [['index.html', html], ['faq.html', faq], ['the planner scripts', plannerJs]]) {
       for (const re of [/Seat them/, /Seat this sign-up/, /published roster/i, /remaining seats/, /seated automatically/, /Seat \$\{/]) assert(!re.test(text), name + ' ' + re);
     }
-    assert(html.includes('Add this sign-up to a group?') && html.includes('Add to a group anyway') && html.includes('a published line-up for every raid night'));
+    assert(html.includes('Add this sign-up to a group?') && html.includes('Add to a group anyway') && html.includes('a published line-up for every raid.'));
     assert(plannerJs.includes('Add them to a group anyway?') && plannerJs.includes('Add them to a group when they arrive'));
   });
 

@@ -446,8 +446,12 @@ function withState(fn) {
     const planner = G.shell.slots({ section: 'planner', page: 'app', me: null, signedOut: true, guildData: null });
     assert(planner.account.includes('<a class="gs-signin-link" href="#/signin">') && planner.account.includes('Sign in or sign up') && planner.account.includes('>Sign in<'));
     assert(!planner.account.includes('gs-btn-molten') && !planner.account.includes('gs-signin-btn'));
-    const guildPage = G.shell.slots({ section: 'guild', page: 'app', me: null, signedOut: true, route: { name: 'signin' }, guildData: null });
-    assert(guildPage.account.includes('gs-btn gs-btn-molten gs-signin-btn'));
+    const guildPage = G.shell.slots({ section: 'guild', page: 'app', me: null, signedOut: true, route: { name: 'view' }, guildData: null });
+    assert(guildPage.account.includes('gs-btn gs-btn-molten gs-signin-btn'), 'a page with nothing of its own to press keeps the button');
+    for (const name of ['signin', 'home', 'join', 'apply']) {
+      const own = G.shell.slots({ section: 'guild', page: 'app', me: null, signedOut: true, route: { name }, guildData: null });
+      assert(own.account.includes('<a class="gs-signin-link"') && !own.account.includes('gs-btn-molten'), name + ': the page has its own primary, so one orange button per screen');
+    }
   });
 
   // ═══ 4. The Planner's landing for guild members ═══

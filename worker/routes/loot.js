@@ -433,7 +433,7 @@ export async function getPersonLoot(ctx) {
   const awards = awardResult.results.filter((row) => isMe || visibleTeams.has(row.team_id)).map((row) => awardView(row, matcher(row)));
   const totals = Object.fromEntries(LOOT_TAGS.map((tag) => [tag, awards.filter((award) => award.tag === tag).length]));
   const home = displayCharacter(characterResult.results, null);
-  return jsonResponse({ person: { id: player.id, name: home ? home.name : 'Unknown', status: player.status }, awards, totals });
+  return jsonResponse({ person: { id: player.id, name: home ? home.name : 'Unknown', class: home ? home.class : null, status: player.status, isMe }, awards, totals });
 }
 
 // ---------------------------------------------------------------------------

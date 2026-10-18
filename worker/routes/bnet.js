@@ -10,7 +10,7 @@ import {
 import { CLAIM_BATCH_MAX, DATA_TTL_MS, loadMemberGuilds, parseSnapshot, realmDisplayName } from '../bnet-store.js';
 import { bnetNameOf, findUserByBnet, hasDiscordSql, insertBnetAccountStatement } from '../identities.js';
 import { base64url, isId, newId } from '../ids.js';
-import { isOwnPlayer } from '../membership.js';
+import { isOwnPlayer, ownPersonStatement } from '../membership.js';
 import { loadGuildContext } from '../permissions.js';
 import { checkRateLimit } from '../ratelimit.js';
 import { cleanCharacterName, nameKey } from '../roster-data.js';
@@ -266,6 +266,8 @@ export async function getBnet(ctx) {
     const view = {
       guildId: guild.id, guildName: guild.name, gameVersion: guild.game_version, region: guild.region, realm: guild.realm, realmKind: guild.realm_kind,
       supportLabel: support.label, status: 'ok', message: null, characters: [],
+      // Is the viewer on this guild's roster already? My characters then says what Battle.net adds instead of asking them to connect it to see their own roster entry.
+      onRoster: !!(await ownPersonStatement(db, guild.id, session.user.id).first()),
     };
     guilds.push(view);
     if (!support.supported) { view.status = 'unsupported'; view.message = support.message; continue; }

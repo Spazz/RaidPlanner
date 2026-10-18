@@ -1467,7 +1467,7 @@ check('the read-only view never carries officer notes, Discord data or account d
     for (const secret of SECRETS) assert(!response.text.toLowerCase().includes(secret.toLowerCase()), `${label} view leaks ${secret}`);
     const view = response.json;
     assert.deepEqual(Object.keys(view).sort(), ['guild', 'sections', 'teams', 'viewer'], label);
-    assert.deepEqual(Object.keys(view.guild).sort(), ['gameVersion', 'name', 'realm', 'realmKind', 'region'], label);
+    assert.deepEqual(Object.keys(view.guild).sort(), ['gameVersion', 'name', 'realm', 'realmKind', 'region', 'timeZone'], label);
     assert.deepEqual(Object.keys(view.sections).sort(), ['attendance', 'loot', 'raids', 'roster'], label);
     for (const entry of view.sections.roster) {
       assert.deepEqual(Object.keys(entry).sort(), ['people', 'team']);

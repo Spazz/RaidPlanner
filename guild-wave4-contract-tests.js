@@ -211,13 +211,13 @@ check('Linked accounts: a member ticks "Don\'t mention me in reminders" on the r
   S.bnet = null;
   await E.app.loadMe();
   assert.equal(E.pages.accounts.reminderOptOutOf(S.me), false);
-  assert(!/reminder-optout" name="reminderOptOut" data-change="reminder-optout" checked/.test(E.pages.accounts.reminderCardHtml(S.me)));
+  assert(!/reminder-optout" name="reminderOptOut" checked data-change="reminder-optout"/.test(E.pages.accounts.reminderCardHtml(S.me)));
   const box = ctrl('on', { checked: true });
   E.handlers.change['reminder-optout'](box);
   await settle();
   assert.equal((await s.rows('SELECT COUNT(*) AS n FROM reminder_optouts'))[0].n, 1);
   assert.equal(E.pages.accounts.reminderOptOutOf(S.me), true, 'refresh read the new /auth/me');
-  assert(/reminder-optout" name="reminderOptOut" data-change="reminder-optout" checked/.test(E.pages.accounts.reminderCardHtml(S.me)));
+  assert(/reminder-optout" name="reminderOptOut" checked data-change="reminder-optout"/.test(E.pages.accounts.reminderCardHtml(S.me)));
   assert.equal(S.bnet.notice, "You won't be pinged in reminders.");
   E.handlers.change['reminder-optout'](ctrl('off', { checked: false }));
   await settle();

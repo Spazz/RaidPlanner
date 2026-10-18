@@ -104,7 +104,7 @@ const BODY = { serverId: S[0], gameVersion: 'tbc', region: 'US', realm: 'Nightsl
     for (let i = 0; i < 5; i++) assert.equal((await w.call(admin, 'POST', '/api/guild', { ...BODY, serverId: S[i], name: `Guild ${i}` })).status, 201);
     me = (await w.call(admin, 'GET', '/auth/me')).json;
     html = ctx.Guild.pages.create.createHtml({ me, timeZones: ['America/New_York'], defaultTimeZone: 'America/New_York' });
-    assert(html.includes('You have created 5 guilds') && /data-key="create-guild" disabled>/.test(html), 'at the limit');
+    assert(html.includes('You have created 5 guilds') && /disabled data-key="create-guild">/.test(html), 'at the limit');
   });
 
   await check('Guild data: the real export downloads, the real delete needs the typed name and takes the guild away', async () => {

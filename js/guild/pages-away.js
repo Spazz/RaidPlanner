@@ -1,5 +1,5 @@
 // ── PAGES: AWAY NOTICES ─────────────────────────────────────────
-// A member tells the officers when they will miss a raid (Away), arrive late (Late) or leave early (Leaving early), for a date range or for one
+// T1 list page (Away notices, the viewer's own notices) and a form dialog. A member tells the officers when they will miss a raid (Away), arrive late (Late) or leave early (Leaving early), for a date range or for one
 // weekday every week. Three places draw the same notices: the page "Away notices" (#/g/:gid/away, GET /away/mine: my own), the officers' card
 // "Away, next 4 weeks" on the Raids page (GET /away?team=) and the officers' section on a person's record (GET /away?person=). Add and Edit are one
 // dialog (POST /away, PUT /away/:nid), Remove asks first (DELETE /away/:nid). The officers' card and section load themselves after the page is
@@ -46,17 +46,25 @@
 
   // ── one notice in a list ──
   // o: { ctx ('mine' | 'team' | 'person'), today, pid (person ctx), who (team ctx: show the name) }
-  function rowHtml(n, o) {
+  function noticeAttrs(n, o, action, keyPrefix) {
     const id = n.id || n.noticeId;
+    const attrs = { 'data-action': action, 'data-ctx': o.ctx, 'data-nid': id, 'data-key': keyPrefix + id };
+    if (o.pid) attrs['data-pid'] = o.pid;
+    return attrs;
+  }
+
+  function noticeActionsHtml(n, o) {
+    const label = noticeText(n, o.today) + (o.who ? ' for ' + n.name : '');
+    return '<div class="gs-row-actions">' + G.ui.buttonHtml({ label: 'Edit', size: 'sm', ariaLabel: 'Edit: ' + label, attrs: noticeAttrs(n, o, 'away-edit', 'an-edit-') }) +
+      G.ui.buttonHtml({ label: 'Remove', size: 'sm', variant: 'ghost', ariaLabel: 'Remove: ' + label, attrs: noticeAttrs(n, o, 'away-remove', 'an-remove-') }) + '</div>';
+  }
+
+  function rowHtml(n, o) {
     const text = noticeText(n, o.today);
     const who = o.who ? '<span class="gs-an-who"><a class="gs-char-link ' + G.ui.classClass(n.class) + '" href="' + esc(G.router.format({ name: 'person', gid: o.gid, pid: n.personId })) + '">' + esc(n.name) + '</a></span>' : '';
     const dates = o.who && n.weekday != null && Array.isArray(n.dates) && n.dates.length ? '<span class="gs-fine">' + esc(n.dates.map(dayText).join(', ')) + '</span>' : '';
-    const attrs = ' data-ctx="' + esc(o.ctx) + '" data-nid="' + esc(id) + '"' + (o.pid ? ' data-pid="' + esc(o.pid) + '"' : '');
-    const label = text + (o.who ? ' for ' + n.name : '');
     return '<li class="gs-an-item"><div class="gs-an-text">' + who + '<span class="gs-an-what">' + esc(text) + '</span>' + dates +
-      (n.reason ? '<span class="gs-fine gs-an-reason">Reason: ' + esc(n.reason) + '</span>' : '') + '</div>' +
-      '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="away-edit"' + attrs + ' data-key="an-edit-' + esc(id) + '" aria-label="Edit: ' + esc(label) + '">Edit</button>' +
-      '<button type="button" class="gs-btn gs-btn-sm" data-action="away-remove"' + attrs + ' data-key="an-remove-' + esc(id) + '" aria-label="Remove: ' + esc(label) + '">Remove</button></div></li>';
+      (n.reason ? '<span class="gs-fine gs-an-reason">Reason: ' + esc(n.reason) + '</span>' : '') + '</div>' + noticeActionsHtml(n, o) + '</li>';
   }
 
   function listHtml(items, o, label) {
@@ -71,12 +79,24 @@
     return { current: current, past: past };
   }
 
-  // ── the page: my notices ──
+  // ── the page: my notices (T1) ──
+  // The notices as the data table (cards on a phone): the sentence is the row, then the reason, then Edit and Remove. They are all the viewer's own.
+  function tableHtml(items, o, label) {
+    const rows = items.map(function (n) {
+      return { id: n.id || n.noticeId, ariaLabel: noticeText(n, o.today), cells: {
+        what: esc(noticeText(n, o.today)), reason: n.reason ? esc(n.reason) : '', actions: noticeActionsHtml(n, o),
+      } };
+    });
+    return G.ui.dataTableHtml({ label: label, limit: 100, columns: [
+      { key: 'what', label: 'Notice', primary: true }, { key: 'reason', label: 'Reason' }, { key: 'actions', label: 'Row actions', srLabel: true, hideLabel: true },
+    ], rows: rows, noun: 'notices' });
+  }
+
   function pastHtml(past, o, open) {
     if (!past.length) return '';
     return '<section class="gs-fold" aria-labelledby="an-past-h"><h3 class="gs-h3" id="an-past-h"><button type="button" class="gs-fold-btn" data-action="away-past" data-key="an-past" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="an-past-list">' +
       '<span>Past (' + past.length + ')</span>' + G.icons.icon('chevronDown', 18) + '</button></h3>' +
-      '<div id="an-past-list"' + (open ? '' : ' hidden') + '>' + listHtml(past, o, 'Past notices') + '</div></section>';
+      '<div id="an-past-list"' + (open ? '' : ' hidden') + '>' + tableHtml(past, o, 'Past notices') + '</div></section>';
   }
 
   // opts: { guildData, state: { gid, data (GET /away/mine), showPast, note } , alert }
@@ -85,25 +105,31 @@
     const x = opts.state;
     const d = x.data || {};
     const gid = gd.guild.id;
-    const head = '<div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Away notices</h1><p class="gs-sub">Tell your officers when you will miss a raid, arrive late or leave early. Dates are the guild\'s calendar days' +
-      (d.timeZone ? ' (' + esc(d.timeZone) + ')' : '') + '.</p></div>';
+    const zone = d.timeZone || gd.guild.timeZone || '';
+    const context = 'Tell your officers when you will miss a raid, arrive late or leave early. Dates are the guild\'s calendar days' + (zone ? ' (' + zone + ')' : '') + '.';
+    const note = x.note ? G.ui.bannerHtml({ tone: 'success', text: x.note }) : '';
     if (!d.personId) {
-      return '<div class="gs-page gs-page-narrow">' + head + '<section class="gs-empty-card" aria-labelledby="an-none-h"><h2 class="gs-h2 gs-h2-lg" id="an-none-h">No roster entry yet</h2>' +
-        '<p class="gs-lead gs-lead-sm">Ask an officer to link your account to your roster entry. Away notices belong to your roster entry.</p></section></div>';
+      return G.ui.listPageHtml({
+        head: { title: 'Away notices', context: context },
+        noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'),
+        bodyHtml: G.ui.emptyStateHtml({ kind: 'first', icon: 'roster', title: 'No roster entry yet', text: 'Ask an officer to link your account to your roster entry. Away notices belong to your roster entry.' }),
+      });
     }
     const parts = split(d.notices, d.today);
     const o = { ctx: 'mine', today: d.today, gid: gid };
     // The cap counts the notices that are current or still ahead (the Worker's `active`); without it, every notice in the list.
     const live = typeof d.active === 'number' ? d.active : (Array.isArray(d.notices) ? d.notices.length : 0);
     const full = Array.isArray(d.notices) && typeof d.max === 'number' && live >= d.max;
-    const add = '<button type="button" class="gs-btn gs-btn-molten" data-action="away-add" data-ctx="mine" data-key="an-add"' + (full ? ' disabled' : '') + '>Add a notice</button>';
     const body = parts.current.length
-      ? listHtml(parts.current, o, 'Current and upcoming notices')
-      : '<p class="gs-empty">' + (parts.past.length ? 'No current or upcoming notices.' : 'You have no away notices.') + '</p>';
-    return '<div class="gs-page gs-page-narrow">' + head + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '') +
-      '<section class="gs-card-sec" aria-labelledby="an-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="an-h">Current and upcoming</h2>' + add + '</div><div class="gs-card-sec-body">' + body +
-      (full ? '<p class="gs-fine">You have ' + d.max + ' notices, the most there can be. Remove one to add another.</p>' : '') + '</div></section>' +
-      pastHtml(parts.past, o, !!x.showPast) + '</div>';
+      ? tableHtml(parts.current, o, 'Current and upcoming notices')
+      : G.ui.emptyStateHtml({ kind: parts.past.length ? 'filtered' : 'first', icon: 'roster', title: parts.past.length ? 'No current or upcoming notices' : 'You have no away notices',
+        text: parts.past.length ? 'Past notices are listed below.' : 'Add one when you will miss a raid, arrive late or leave early. Your officers see it on the Raids page.' });
+    return G.ui.listPageHtml({
+      head: { title: 'Away notices', context: context, primary: { label: 'Add a notice', disabled: full, attrs: { 'data-action': 'away-add', 'data-ctx': 'mine', 'data-key': 'an-add' } } },
+      noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + note,
+      bodyHtml: body + (full ? '<p class="gs-fine">You have ' + d.max + ' notices, the most there can be. Remove one to add another.</p>' : '') + pastHtml(parts.past, o, !!x.showPast),
+      footHtml: 'Only you and your officers see these notices and their reasons.',
+    });
   }
 
   function loadMine(r, gd) {
@@ -128,10 +154,10 @@
     const s = opts.state;
     if (!s || s.gid !== gd.guild.id || s.teamId !== opts.teamId || !G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', opts.teamId)) return '';
     if (s.status === 'loading') return '';
-    const add = '<button type="button" class="gs-btn gs-btn-sm" data-action="away-add" data-ctx="team" data-key="an-team-add">Add a notice</button>';
+    const add = G.ui.buttonHtml({ label: 'Add a notice', size: 'sm', attrs: { 'data-action': 'away-add', 'data-ctx': 'team', 'data-key': 'an-team-add' } });
     let body;
     if (s.status === 'error') {
-      body = '<p class="gs-alert" role="alert">' + esc(s.message || 'Could not load the away notices.') + '</p><div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="away-team-retry" data-key="an-team-retry">Try again</button></div>';
+      body = '<p class="gs-alert" role="alert">' + esc(s.message || 'Could not load the away notices.') + '</p><div class="gs-row-actions">' + G.ui.buttonHtml({ label: 'Try again', size: 'sm', attrs: { 'data-action': 'away-team-retry', 'data-key': 'an-team-retry' } }) + '</div>';
     } else {
       const d = s.data || {};
       const entries = Array.isArray(d.entries) ? d.entries : [];
@@ -166,24 +192,29 @@
     return (record && Array.isArray(record.characters) ? record.characters : []).some(function (c) { return c.team && G.shell.allowsTeam(can, 'raids.edit', c.team.id); });
   }
 
-  // opts: { guildData, record, state: a().awayPerson }
-  function personCardHtml(opts) {
+  // opts: { guildData, record, state: a().awayPerson }  ->  the Away notices section of the person page (T2), or null
+  function personSectionOf(opts) {
     const gd = opts.guildData;
     const record = opts.record;
     const s = opts.state;
     const pid = record && record.person ? record.person.id : null;
-    if (!s || !pid || s.gid !== gd.guild.id || s.pid !== pid || !canEditPerson(gd, record) || s.status === 'loading' || s.status === 'denied') return '';
+    if (!s || !pid || s.gid !== gd.guild.id || s.pid !== pid || !canEditPerson(gd, record) || s.status === 'loading' || s.status === 'denied') return null;
     let body;
     if (s.status === 'error') {
-      body = '<p class="gs-alert" role="alert">' + esc(s.message || 'Could not load the away notices.') + '</p><div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="away-person-retry" data-key="an-person-retry">Try again</button></div>';
+      body = '<p class="gs-alert" role="alert">' + esc(s.message || 'Could not load the away notices.') + '</p><div class="gs-row-actions">' + G.ui.buttonHtml({ label: 'Try again', size: 'sm', attrs: { 'data-action': 'away-person-retry', 'data-key': 'an-person-retry' } }) + '</div>';
     } else {
       const d = s.data || {};
       const parts = split(d.notices, d.today);
       const all = parts.current.concat(parts.past);
       body = all.length ? listHtml(all, { ctx: 'person', today: d.today, pid: pid, gid: gd.guild.id }, 'Away notices of this person') : '<p class="gs-fine">No away notices.</p>';
     }
-    return '<section class="gs-card-sec" aria-labelledby="an-person-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="an-person-h">Away notices</h2>' +
-      (s.status === 'error' ? '' : '<button type="button" class="gs-btn gs-btn-sm" data-action="away-add" data-ctx="person" data-pid="' + esc(pid) + '" data-key="an-person-add">Add a notice</button>') + '</div><div class="gs-card-sec-body">' + body + '</div></section>';
+    return { id: 'away', title: 'Away notices', bodyHtml: body,
+      actionsHtml: s.status === 'error' ? '' : G.ui.buttonHtml({ label: 'Add a notice', size: 'sm', attrs: { 'data-action': 'away-add', 'data-ctx': 'person', 'data-pid': pid, 'data-key': 'an-person-add' } }) };
+  }
+
+  function personCardHtml(opts) {
+    const section = personSectionOf(opts);
+    return section ? G.ui.objectSectionHtml(section) : '';
   }
 
   function loadPerson(gid, pid, forPerson) {
@@ -249,10 +280,7 @@
         '<select class="gs-input" id="an-person" name="person" data-field="personId"><option value="">Choose a person</option>' + G.ui.optionsHtml(opts.people.map(function (p) { return { value: p.id, label: p.name }; }), '') + '</select>')
       : '';
     const help = opts.who ? 'For ' + esc(opts.who) + '.' : 'Only you and your officers see the reason.';
-    return '<form class="gs-dialog-form" data-submit="away-form" data-ctx="' + esc(opts.ctx) + '" data-mode="' + (opts.mode === 'edit' ? 'edit' : 'add') + '"' +
-      (n ? ' data-nid="' + esc(opts.nid) + '"' : '') + (opts.personId ? ' data-pid="' + esc(opts.personId) + '"' : '') + ' novalidate>' +
-      '<h2 class="gs-dialog-title" id="dlg-title">' + (opts.mode === 'edit' ? 'Change an away notice' : 'Add an away notice') + '</h2>' +
-      '<p class="gs-fine" id="dlg-help">' + help + ' Dates are the guild\'s calendar days.</p>' + person +
+    const body = '<p class="gs-fine" id="dlg-help">' + help + ' Dates are the guild\'s calendar days.</p>' + person +
       field('kind', '<label class="gs-label" for="an-kind">What</label>',
         '<select class="gs-input" id="an-kind" name="kind" data-field="kind" data-change="away-form-change" data-key="an-kind">' + G.ui.optionsHtml(KIND_CHOICES.map(function (k) { return { value: k[0], label: k[1] }; }), kind) + '</select>') +
       field('atTime', '<label class="gs-label" id="an-time-label" for="an-time">' + esc(labels.time) + '</label>',
@@ -266,16 +294,18 @@
       field('to', '<label class="gs-label" id="an-to-label" for="an-to">' + esc(labels.to) + '</label>',
         '<input class="gs-input" type="date" id="an-to" name="to" data-field="to" value="' + esc(n ? (n.to || '') : (repeat === 'range' ? from : '')) + '">') +
       field('reason', '<label class="gs-label" for="an-reason">Reason (optional)</label>',
-        '<input class="gs-input" type="text" id="an-reason" name="reason" data-field="reason" maxlength="' + REASON_MAX + '" autocomplete="off" value="' + esc(n && n.reason ? n.reason : '') + '">') +
-      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten" id="dlg-submit">Save notice</button></div></form>';
+        '<input class="gs-input" type="text" id="an-reason" name="reason" data-field="reason" maxlength="' + REASON_MAX + '" autocomplete="off" value="' + esc(n && n.reason ? n.reason : '') + '">');
+    return G.ui.dialogHtml({
+      kind: 'form', title: opts.mode === 'edit' ? 'Change an away notice' : 'Add an away notice', bodyHtml: body, primary: { label: 'Save notice', attrs: { id: 'dlg-submit' } },
+      formAttrs: { 'data-submit': 'away-form', 'data-ctx': opts.ctx, 'data-mode': opts.mode === 'edit' ? 'edit' : 'add', 'data-nid': n ? opts.nid : null, 'data-pid': opts.personId || null },
+    });
   }
 
   function removeDialogHtml(text, ctx, nid, pid) {
-    return '<form class="gs-dialog-form" data-submit="away-remove-form" data-ctx="' + esc(ctx) + '" data-nid="' + esc(nid) + '"' + (pid ? ' data-pid="' + esc(pid) + '"' : '') + ' novalidate>' +
-      '<h2 class="gs-dialog-title" id="dlg-title">Remove this notice?</h2><p class="gs-confirm-text" id="dlg-text">' + esc(text) + '</p>' +
-      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Remove notice</button></div></form>';
+    return G.ui.dialogHtml({
+      kind: 'destructive', title: 'Remove this notice?', text: text, primary: { label: 'Remove notice' },
+      formAttrs: { 'data-submit': 'away-remove-form', 'data-ctx': ctx, 'data-nid': nid, 'data-pid': pid || null },
+    });
   }
 
   // The fields that depend on the kind and on "When" show or hide in place (a re-render would drop what was typed).
@@ -494,6 +524,7 @@
     split: split,
     mineHtml: mineHtml,
     teamCardHtml: teamCardHtml,
+    personSectionOf: personSectionOf,
     personCardHtml: personCardHtml,
     dialogHtml: dialogHtml,
     removeDialogHtml: removeDialogHtml,

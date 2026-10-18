@@ -116,7 +116,7 @@
       fieldHtml('rm-details', 'Details (optional)', '<textarea class="gs-input gs-textarea" id="rm-details" name="details" rows="4" maxlength="' + MAX_DETAILS + '" data-input="roadmap-draft"' + describedBy('rm-details', true) + '>' + esc(d.details) + '</textarea>',
         'What would it fix or make easier? Up to ' + MAX_DETAILS + ' characters.') +
       '<p class="gs-alert" id="rm-form-error" role="alert" hidden></p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="rm-submit">Submit idea</button>' +
+      '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Submit idea', variant: 'primary', type: 'submit', attrs: { 'data-key': 'rm-submit' } }) +
       '<span class="gs-rm-status" id="rm-status" role="status">' + esc(view.notice || '') + '</span></div></form></section>';
   }
 
@@ -147,12 +147,11 @@
     if (ideas.status === 'loading' && !list.length) body = '<p class="gs-fine" role="status">Loading the submitted ideas...</p>';
     else if (ideas.status === 'error') {
       body = '<p class="gs-alert" role="alert">The submitted ideas could not be loaded. ' + esc(ideas.error) + '</p>' +
-        '<div><button type="button" class="gs-btn gs-btn-sm" data-action="roadmap-ideas-retry" data-key="rm-ideas-retry">Try again</button></div>';
+        '<div>' + G.ui.buttonHtml({ label: 'Try again', size: 'sm', attrs: { 'data-action': 'roadmap-ideas-retry', 'data-key': 'rm-ideas-retry' } }) + '</div>';
     } else if (!list.length) body = '<p class="gs-empty">No ideas yet. Yours can be the first.</p>';
     if (shown.length) body += '<ul class="gs-rm-list">' + shown.map(function (idea) { return ideaHtml(idea, items); }).join('') + '</ul>';
     if (list.length > IDEAS_SHOWN) {
-      body += '<div><button type="button" class="gs-btn gs-btn-sm" data-action="roadmap-ideas-all" data-key="rm-ideas-all" aria-expanded="' + (view.ideasAll ? 'true' : 'false') + '">' +
-        (view.ideasAll ? 'Show fewer ideas' : 'Show all ' + list.length + ' ideas') + '</button></div>';
+      body += '<div>' + G.ui.buttonHtml({ label: view.ideasAll ? 'Show fewer ideas' : 'Show all ' + list.length + ' ideas', size: 'sm', attrs: { 'data-action': 'roadmap-ideas-all', 'data-key': 'rm-ideas-all', 'aria-expanded': view.ideasAll ? 'true' : 'false' } }) + '</div>';
     }
     return '<h2 class="gs-h2 gs-h2-plain" id="rm-ideas-h">Submitted ideas</h2>' + body;
   }
@@ -167,12 +166,14 @@
     const shown = filtered ? items.filter(function (item) { return item.area === view.area; }) : items;
     const updated = G.ui.formatDay(data.updated);
     const signedIn = !!(o.me && o.me.user);
-    return '<div class="gs-page gs-page-narrow gs-rm-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Future enhancements</h1>' +
-      '<p class="gs-lead gs-lead-sm">What\'s being built next and ideas under review. Updated as work ships.</p>' +
-      (updated ? '<p class="gs-sub">Last updated ' + esc(updated) + '</p>' : '') + '</div>' +
-      (signedIn ? formHtml(view) + '<section class="gs-rm-ideas" id="rm-ideas" aria-labelledby="rm-ideas-h">' + ideasInnerHtml(view, items) + '</section>' : signinHtml()) +
-      filtersHtml(items, filtered ? view.area : 'all') +
-      SECTIONS.map(function (section) { return sectionHtml(section, shown, filtered, view); }).join('') + '</div>';
+    // The reading page (Doc): the same header as every page, the roadmap below it. Nothing on the roadmap itself can be changed, so it says Read-only.
+    return G.ui.docPageHtml({
+      pageClass: 'gs-rm-page',
+      head: { title: 'Future enhancements', chipsHtml: G.ui.readOnlyChipHtml(), context: 'What\'s being built next and ideas under review. Updated as work ships.' + (updated ? ' Last updated ' + updated + '.' : '') },
+      bodyHtml: (signedIn ? formHtml(view) + '<section class="gs-rm-ideas" id="rm-ideas" aria-labelledby="rm-ideas-h">' + ideasInnerHtml(view, items) + '</section>' : signinHtml()) +
+        filtersHtml(items, filtered ? view.area : 'all') +
+        SECTIONS.map(function (section) { return sectionHtml(section, shown, filtered, view); }).join(''),
+    });
   }
 
   // ── loading and repainting the submitted ideas ──

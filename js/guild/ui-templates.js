@@ -7,6 +7,7 @@
 //   ui.pageHeadHtml({ title, context, contextHtml, chipsHtml, back, more, primary })      the header every template starts with
 //   ui.listPageHtml({ head, barHtml, bodyHtml, footHtml })                                  T1 list page: head, segment / filter bar, table, footer line
 //   ui.objectPageHtml({ head, stages, nextStep, youHtml, sections })                        T2 object page: head, stage strip, next-step bar, You line, sections
+//   ui.formPageHtml({ head, noticesHtml, bodyHtml, pageClass })  /  ui.docPageHtml(...)             T3 form page (one form, 760 wide) and the reading page
 //   ui.settingsPageHtml({ groups, activeKey, view, listHref, title, purpose, savedHtml, bodyHtml, saveBarHtml })   T3 settings: group list + detail
 //   ui.homePageHtml({ head, noticesHtml, attention, cards, pageClass })  /  ui.attentionRowsHtml(items)   T4 home: needs-attention list first, then cards
 //   ui.flowPageHtml({ head, steps, current, bodyHtml, commitBarHtml })  /  ui.stepperHtml / ui.commitBarHtml     T5 flow: paste -> preview -> commit
@@ -46,24 +47,42 @@
       '<div class="gs-listbody" aria-live="polite">' + (o.bodyHtml || '') + '</div>' + (o.footHtml ? '<p class="gs-listfoot">' + o.footHtml + '</p>' : '') + '</div>';
   };
 
-  // T2 - object page (a raid, later a person). Header (no primary there), the stage strip, the next-step bar (the page's one primary), the viewer's own line
+  // One section of an object page (the pieces that draw their own section, like a person's Attendance card, call this too, so every object's sections look the same).
+  ui.objectSectionHtml = function (s) {
+    if (!s) return '';
+    const id = esc(s.id);
+    if (s.bare) return '<div class="gs-osection-bare" id="' + id + '" tabindex="-1">' + (s.bodyHtml || '') + '</div>';
+    return '<section class="gs-osection' + (s.locked ? ' is-locked' : '') + '" id="' + id + '" tabindex="-1" aria-labelledby="' + id + '-h"><div class="gs-osection-head"><h2 class="gs-h2" id="' + id + '-h">' + esc(s.title) + '</h2>' +
+      (s.chipHtml || '') + (s.actionsHtml ? '<span class="gs-osection-actions">' + s.actionsHtml + '</span>' : '') + '</div>' +
+      '<div class="gs-osection-body">' + (s.locked ? '<p class="gs-fine">' + esc(s.locked) + '</p>' : (s.bodyHtml || '')) + '</div></section>';
+  };
+
+  // T2 - object page (a raid, a person). Header (no primary there), the stage strip, the next-step bar (the page's one primary), the viewer's own line
   // ("You are in Group 2 as Enhancement Shaman"), then the sections in the same order for every object. A locked section says when it opens.
   //   stages     ui.stageStripHtml options          nextStep   ui.nextStepHtml options (omit for none)
   //   noticesHtml  banners and notes between the header and the stage strip      afterYouHtml  a card that belongs right under the You line (a member's seat)
-  //   pageClass  an extra class on the page
+  //   pageClass  an extra class on the page      footHtml  what closes the page after the last section (a person's Delete row)
   //   sections   [{ id, title, chipHtml, bodyHtml, locked (text: when it opens), actionsHtml, bare }]; the id is the stage tile's jump target. A bare section is
   //              only the jump target around bodyHtml, for a card that draws its own heading and tools.
   ui.objectPageHtml = function (opts) {
     const o = opts || {};
-    const sections = (Array.isArray(o.sections) ? o.sections : []).filter(Boolean).map(function (s) {
-      const id = esc(s.id);
-      if (s.bare) return '<div class="gs-osection-bare" id="' + id + '" tabindex="-1">' + (s.bodyHtml || '') + '</div>';
-      return '<section class="gs-osection' + (s.locked ? ' is-locked' : '') + '" id="' + id + '" tabindex="-1" aria-labelledby="' + id + '-h"><div class="gs-osection-head"><h2 class="gs-h2" id="' + id + '-h">' + esc(s.title) + '</h2>' +
-        (s.chipHtml || '') + (s.actionsHtml ? '<span class="gs-osection-actions">' + s.actionsHtml + '</span>' : '') + '</div>' +
-        '<div class="gs-osection-body">' + (s.locked ? '<p class="gs-fine">' + esc(s.locked) + '</p>' : (s.bodyHtml || '')) + '</div></section>';
-    }).join('');
+    const sections = (Array.isArray(o.sections) ? o.sections : []).filter(Boolean).map(ui.objectSectionHtml).join('');
     return '<div class="gs-page gs-object-page' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + (o.stages ? ui.stageStripHtml(o.stages) : '') + (o.nextStep ? ui.nextStepHtml(o.nextStep) : '') +
-      (o.youHtml ? '<div class="gs-youline">' + o.youHtml + '</div>' : '') + (o.afterYouHtml || '') + sections + '</div>';
+      (o.youHtml ? '<div class="gs-youline">' + o.youHtml + '</div>' : '') + (o.afterYouHtml || '') + sections + (o.footHtml || '') + '</div>';
+  };
+
+  // T3 form page (one form on its own page, 760 wide): the header, notices, the form (fields from ui.fieldHtml, 44 px on a phone, inline validation) and, when the form
+  // has several fields, the Save bar inside the <form> (bodyHtml is then the whole <form>). Apply, the guest sign-up, Linked accounts and New raid are this page.
+  //   head ui.pageHeadHtml options   noticesHtml   bodyHtml   pageClass
+  ui.formPageHtml = function (opts) {
+    const o = opts || {};
+    return '<div class="gs-page gs-form-page gs-page-narrow' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + (o.bodyHtml || '') + '</div>';
+  };
+
+  // The reading page (Privacy, Future enhancements, Help): 760 wide, the same header, text sections, nothing to change. chipsHtml in the head can say Read-only.
+  ui.docPageHtml = function (opts) {
+    const o = opts || {};
+    return '<div class="gs-page gs-doc-page gs-page-narrow' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + (o.bodyHtml || '') + '</div>';
   };
 
   // T3 - settings: a grouped list of pages on the left and one page at a time (760 wide) beside it. On a phone the list is the first screen and the page

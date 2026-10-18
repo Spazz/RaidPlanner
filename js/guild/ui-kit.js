@@ -11,6 +11,7 @@
 //   ui.buttonHtml({ label, variant, size, block, href, attrs, ariaLabel, disabled, busy, icon })     variant: primary | secondary | ghost | danger-outline | danger | link
 //   ui.iconButtonHtml({ icon, ariaLabel, attrs, danger })                                           an icon-only button; the aria-label (naming the object) is required
 //   ui.chipHtml({ tone, label, icon })  /  ui.signupChipHtml(kind)  /  ui.tagHtml(label, mark)     status = icon + word + tint; tag = neutral outline
+//   ui.readOnlyChipHtml()                                                                           the "Read-only" chip of the guest, public and other reading pages
 //   ui.countBadgeHtml(n, label)  /  ui.newBadgeHtml()  /  ui.badgeHtml({ count, label, isNew })     gold count (gone at 0) vs neutral "New" (never both)
 //   ui.segmentsHtml({ label, items, selected, action })                                              joined buttons that change which rows show
 //   ui.stageStripHtml({ stages, ariaLabel, id })  /  ui.nextStepHtml({ title, text, primary, secondary })
@@ -118,6 +119,11 @@
   ui.SIGNUP_CHIPS = SIGNUP_CHIPS;
   ui.signupChipHtml = function (kind) {
     return has(SIGNUP_CHIPS, kind) ? ui.chipHtml(SIGNUP_CHIPS[kind]) : '';
+  };
+
+  // The chip on a page that can only be read (the guest view, the public page): grey, a dash and the word, so it is never a colour alone.
+  ui.readOnlyChipHtml = function () {
+    return ui.chipHtml({ tone: 'neutral', label: 'Read-only', icon: 'dash' });
   };
 
   // A neutral outline tag with an optional 6 px mark: a source, team or role colour. mark: info | success | gold | muted | tank | healer | dps, or a class
@@ -338,7 +344,12 @@
   function fieldParts(root, id) {
     const scope = root && root.querySelector ? root : (typeof document !== 'undefined' ? document : null);
     if (!scope) return { input: null, err: null };
-    return { input: scope.querySelector('#' + id), err: scope.querySelector('#' + id + '-err') };
+    // The form first, then the page by id (a form that is not in the page yet, or a page drawn without a form element, still finds its fields).
+    const find = function (elementId) {
+      const inForm = scope.querySelector ? scope.querySelector('#' + elementId) : null;
+      return inForm || (typeof document !== 'undefined' && document.getElementById ? document.getElementById(elementId) : null);
+    };
+    return { input: find(id), err: find(id + '-err') };
   }
   ui.setFieldError = function (root, id, text) {
     const p = fieldParts(root, id);
@@ -378,11 +389,12 @@
       list.map(function (e) { return '<li><a href="#' + esc(e.id) + '" data-action="jump" data-target="' + esc(e.id) + '">' + esc(e.message) + '</a></li>'; }).join('') + '</ul></div>';
   };
 
-  // Runtime: reads a form's named controls by id, applies the rules, shows each message, fills the summary slot ([data-error-summary-slot]) and
-  // focuses the first invalid field. Returns { ok, errors }.
-  ui.validateForm = function (form, rules) {
+  // Runtime: reads a form's named controls by id (or takes the values it is given, { <field id>: value }), applies the rules, shows each message, fills the summary
+  // slot ([data-error-summary-slot]) and focuses the first invalid field. Returns { ok, errors }.
+  ui.validateForm = function (form, rules, given) {
     const values = {};
     Object.keys(rules || {}).forEach(function (id) {
+      if (given && has(given, id)) { values[id] = given[id]; return; }
       const el = form && form.querySelector ? form.querySelector('#' + id) : null;
       values[id] = el ? (el.type === 'checkbox' ? !!el.checked : el.value) : '';
     });

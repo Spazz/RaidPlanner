@@ -261,9 +261,9 @@ function withState(fn) {
       options: { versions: [{ key: 'tbc', label: 'TBC Anniversary' }], regions: ['US'], realms: { tbc: { US: [{ name: 'Nightslayer' }] } }, rulesets: [] } });
     const full = G.pages.create.createHtml({ me: { create: create({ created: 5, max: 5 }) }, timeZones: ['UTC'], defaultTimeZone: 'UTC' });
     assert(full.includes('id="cg-limit"') && full.includes('You have created 5 guilds'));
-    assert(/data-key="create-guild" disabled>/.test(full), 'the Create button is off');
+    assert(/data-key="create-guild"[^>]*disabled|disabled[^>]*data-key="create-guild"/.test(full), 'the Create button is off');
     const room = G.pages.create.createHtml({ me: { create: create({ created: 4, max: 5 }) }, timeZones: ['UTC'], defaultTimeZone: 'UTC' });
-    assert(!room.includes('cg-limit') && !/data-key="create-guild" disabled/.test(room));
+    assert(!room.includes('cg-limit') && !/disabled[^>]*data-key="create-guild"/.test(room));
     const older = G.pages.create.createHtml({ me: { create: create(undefined) }, timeZones: ['UTC'], defaultTimeZone: 'UTC' });
     assert(!older.includes('cg-limit'), 'an answer without a limit is fine');
   });

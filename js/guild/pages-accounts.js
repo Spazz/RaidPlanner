@@ -1,5 +1,6 @@
 // ── PAGES: ACCOUNT CARDS (Phase 7a) ─────────────────────────────
-// The cards of the Linked accounts page that are about the account itself: the name it shows, and Discord as a linked sign-in.
+// The sections of the Linked accounts form page (T3) that are about the account itself: the name it shows (a form with the Save bar), Discord as a linked sign-in
+// and the reminder opt-out (a single toggle that saves on its own).
 // (The Battle.net card and the page frame are in pages-bnet.js, which puts these cards above its own.) A Raidsmith account holds one or
 // more sign-ins, Discord and Battle.net today; either can be connected or disconnected, but never the last one.
 // /auth/me gives { user, identities: { discord, bnet }, account: { customName, available } }.
@@ -33,51 +34,47 @@
   function nameCardHtml(me) {
     const custom = customNameOf(me);
     const shown = me && me.user ? me.user.displayName : '';
-    return '<section class="gs-card-sec" aria-labelledby="linked-name"><div class="gs-card-sec-head"><h2 class="gs-h2" id="linked-name">Your name</h2></div>' +
-      '<form class="gs-card-sec-body" data-submit="account-name-form" novalidate>' +
+    const body = '<form data-submit="account-name-form" id="account-name-form" novalidate' + G.ui.dirtyFormAttrs() + '>' +
       '<p id="account-shown">Shown as <strong>' + esc(shown) + '</strong>' + (custom ? '' : ' (' + esc(nameSourceText(me)) + ')') + '.</p>' +
-      '<div class="gs-field"><label class="gs-label" for="account-name">Display name</label>' +
-      '<input class="gs-input" type="text" id="account-name" name="displayName" maxlength="' + MAX_NAME + '" autocomplete="off" value="' + esc(custom) + '" aria-describedby="account-name-help">' +
-      '<p class="gs-fine" id="account-name-help">Up to ' + MAX_NAME + ' characters. Everyone in your guilds sees this name. Leave it empty to use ' + esc(nameSourceText(me)) + '.</p></div>' +
+      G.ui.fieldHtml({ id: 'account-name', name: 'displayName', label: 'Display name', kind: 'text', value: custom, maxlength: MAX_NAME, autocomplete: 'off',
+        help: 'Up to ' + MAX_NAME + ' characters. Everyone in your guilds sees this name. Leave it empty to use ' + nameSourceText(me) + '.' }) +
       '<p class="gs-alert" id="account-name-error" role="alert" hidden></p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="account-name-save">Save name</button>' +
-      (custom ? '<button type="button" class="gs-btn" data-action="account-name-reset" data-key="account-name-reset">Use ' + esc(nameSourceText(me)) + '</button>' : '') + '</div></form></section>';
+      (custom ? '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Use ' + nameSourceText(me), attrs: { 'data-action': 'account-name-reset', 'data-key': 'account-name-reset' } }) + '</div>' : '') +
+      G.ui.saveBarHtml({ saveLabel: 'Save name' }) + '</form>';
+    return G.ui.objectSectionHtml({ id: 'linked-name', title: 'Your name', bodyHtml: body });
   }
 
   function discordCardHtml(me) {
     const ids = identitiesOf(me);
     const avail = availableOf(me);
-    const head = function (chip) {
-      return '<div class="gs-card-sec-head"><h2 class="gs-h2" id="linked-discord">Discord</h2>' + chip + '</div>';
-    };
     const wrap = function (chip, body) {
-      return '<section class="gs-card-sec" aria-labelledby="linked-discord">' + head(chip) + '<div class="gs-card-sec-body">' + body + '</div></section>';
+      return G.ui.objectSectionHtml({ id: 'linked-discord', title: 'Discord', chipHtml: chip, bodyHtml: body });
     };
     if (!ids.discord) {
       if (!avail.discord) {
-        return wrap('<span class="gs-pill gs-pill-muted">Unavailable</span>', '<p class="gs-warn" id="discord-not-set-up" role="status">Discord isn\'t set up on this server.</p>');
+        return wrap(G.ui.chipHtml({ tone: 'neutral', label: 'Unavailable', icon: 'dash' }), '<p class="gs-warn" id="discord-not-set-up" role="status">Discord isn\'t set up on this server.</p>');
       }
-      return wrap('<span class="gs-pill gs-pill-muted">Not connected</span>',
+      return wrap(G.ui.chipHtml({ tone: 'none', label: 'Not connected' }),
         '<p>Connect Discord to join guilds through their Discord server, and to create a guild.</p>' +
         '<ul class="gs-bullets gs-bullets-plain"><li>Raidsmith reads your Discord username, avatar and the list of servers you are in, to find your guilds. It never reads or posts messages.</li>' +
         '<li>If this Discord account already has its own Raidsmith account, it cannot be connected here: accounts are never merged. Sign in with that one instead.</li></ul>' +
-        '<div class="gs-actions"><a class="gs-btn gs-btn-molten" href="' + CONNECT_DISCORD_HREF + '" data-key="discord-connect">' + G.icons.icon('link', 18) + '<span>Connect Discord</span></a></div>');
+        '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Connect Discord', href: CONNECT_DISCORD_HREF, icon: 'link', attrs: { 'data-key': 'discord-connect' } }) + '</div>');
     }
     const only = !ids.bnet;
     const who = ids.discord.username ? '<strong>@' + esc(ids.discord.username) + '</strong>' : 'Discord';
-    return wrap('<span class="gs-pill gs-pill-ok">Connected</span>',
+    return wrap(G.ui.chipHtml({ tone: 'success', label: 'Connected' }),
       '<p id="discord-connected">Connected as ' + who + '.</p>' +
       (only ? '<p class="gs-fine" id="discord-only">Discord is the only way you sign in right now, so it cannot be disconnected. Connect Battle.net first, or delete your data on the privacy page.</p>' : '') +
-      '<div class="gs-actions"><a class="gs-btn" href="' + CONNECT_DISCORD_HREF + '" data-key="discord-refresh">Refresh my servers</a>' +
-      '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="discord-disconnect-open" data-key="discord-disconnect"' + (only ? ' disabled aria-describedby="discord-only"' : '') + '>Disconnect</button></div>');
+      '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Refresh my servers', href: CONNECT_DISCORD_HREF, attrs: { 'data-key': 'discord-refresh' } }) +
+      G.ui.buttonHtml({ label: 'Disconnect', variant: 'danger-outline', disabled: only, attrs: { 'data-action': 'discord-disconnect-open', 'data-key': 'discord-disconnect', 'aria-describedby': only ? 'discord-only' : null } }) + '</div>');
   }
 
   function disconnectDiscordDialogHtml() {
-    return '<form class="gs-dialog-form" data-submit="discord-disconnect-form" novalidate>' +
-      '<h2 class="gs-dialog-title" id="dlg-title">Disconnect Discord?</h2>' +
-      '<p class="gs-fine" id="dlg-help">You will sign in with Battle.net only. Raidsmith deletes your Discord ID, nickname and server list from everything it holds, as Delete my data does for Discord, so your roster entries stop being matched to your Discord and guilds that know you only through their Discord server disappear. You stay in a guild if an officer has linked your account to your roster entry there. Your roster entries and attendance are not deleted.</p>' +
-      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Disconnect Discord</button></div></form>';
+    return G.ui.dialogHtml({
+      kind: 'destructive', title: 'Disconnect Discord?',
+      bodyHtml: '<p class="gs-fine" id="dlg-help">You will sign in with Battle.net only. Raidsmith deletes your Discord ID, nickname and server list from everything it holds, as Delete my data does for Discord, so your roster entries stop being matched to your Discord and guilds that know you only through their Discord server disappear. You stay in a guild if an officer has linked your account to your roster entry there. Your roster entries and attendance are not deleted.</p>',
+      primary: { label: 'Disconnect Discord' }, formAttrs: { 'data-submit': 'discord-disconnect-form' },
+    });
   }
 
   // "Don't mention me in reminders" (PM wave 4): the Discord channel reminders of a guild list people who haven't answered a raid or confirmed a roster, and ping
@@ -87,12 +84,11 @@
   }
 
   function reminderCardHtml(me) {
-    return '<section class="gs-card-sec" aria-labelledby="linked-reminders"><div class="gs-card-sec-head"><h2 class="gs-h2" id="linked-reminders">Discord reminders</h2></div>' +
-      '<div class="gs-card-sec-body"><p>When your officers switch on reminders, Raidsmith posts in your team\'s Discord channel who hasn\'t signed up for a raid or confirmed their group in the line-up, and pings the people whose Discord account it knows.</p>' +
-      '<div class="gs-check"><input type="checkbox" id="reminder-optout" name="reminderOptOut" data-change="reminder-optout"' + (reminderOptOutOf(me) ? ' checked' : '') + '>' +
-      '<label for="reminder-optout">Don\'t mention me in reminders</label></div>' +
+    return G.ui.objectSectionHtml({ id: 'linked-reminders', title: 'Discord reminders', bodyHtml:
+      '<p>When your officers switch on reminders, Raidsmith posts in your team\'s Discord channel who hasn\'t signed up for a raid or confirmed their group in the line-up, and pings the people whose Discord account it knows.</p>' +
+      G.ui.checkFieldHtml({ id: 'reminder-optout', name: 'reminderOptOut', label: 'Don\'t mention me in reminders', checked: reminderOptOutOf(me), attrs: { 'data-change': 'reminder-optout' } }) +
       '<p class="gs-fine" id="reminder-optout-help">You are still listed by name, without a ping.</p>' +
-      '<p class="gs-alert" id="reminder-optout-error" role="alert" hidden></p></div></section>';
+      '<p class="gs-alert" id="reminder-optout-error" role="alert" hidden></p>' });
   }
 
   // The cards above Battle.net on the Linked accounts page. '' when the page has no /auth/me answer (older callers).

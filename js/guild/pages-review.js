@@ -242,7 +242,7 @@
         G.ui.optionsHtml(CLAIM_STATUSES.map(function (v) { return { value: v, label: G.ui.statusLabel(v) }; }), 'trial') + '</select>'
       : '';
     return '<form class="gs-cclaim-form" data-submit="claim-approve" data-claim="' + id + '" data-kind="' + esc(plan.kind) + '" novalidate>' + teamField + statusField +
-      '<button type="submit" class="gs-btn gs-btn-sm gs-btn-molten" data-key="claim-approve-' + id + '" aria-label="Approve the claim on ' + esc(claim.character.name) + '">Approve</button>' + reject + '</form>';
+      '<button type="submit" class="gs-btn gs-btn-sm" data-key="claim-approve-' + id + '" aria-label="Approve the claim on ' + esc(claim.character.name) + '">Approve</button>' + reject + '</form>';
   }
 
   function claimItemHtml(gd, claim) {

@@ -265,7 +265,7 @@ check('join page: the raid, the form with a hidden field, a hint per game versio
   const state = (over) => Object.assign({ token: TOKEN, status: 'ok', data: JOIN_DATA(), draft: {}, busy: false, error: '', done: false, message: '', title: '' }, over || {});
   const out = G.pages.join.joinHtml({ state: state() });
   const t = text(out);
-  assert(out.includes('<h1 class="gs-h1" tabindex="-1">Sign up for Ravens</h1>'));
+  assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Sign up for Ravens</h1>'));
   assert(t.includes('Sunday Karazhan - Karazhan') && t.includes('Alpha') && t.includes('3 spots are left on the link.'));
   for (const name of ['name', 'class', 'spec', 'note', 'website']) assert(out.includes('name="' + name + '"'), name);
   assert(out.includes('data-submit="join-form"') && out.includes('class="gs-hp" aria-hidden="true"'));
@@ -303,10 +303,10 @@ check('join page: the form checks name, class and spec, sends the body with the 
   assert.deepEqual(plain(G.pages.join.problemOf({ name: 'Aldric', class: '', spec: '' })), { field: 'class', text: 'Choose a class.' });
   assert.deepEqual(plain(G.pages.join.bodyFrom({ name: 'Aldric', class: 'MAGE', spec: 'Fire', note: '' }, TOKEN, '')), { token: TOKEN, name: 'Aldric', class: 'MAGE', spec: 'Fire', website: '' });
   assert.deepEqual(plain(G.pages.join.bodyFrom({ name: 'Aldric', class: 'MAGE', spec: 'Fire', note: 'Hi' }, TOKEN, 'http://x')), { token: TOKEN, name: 'Aldric', class: 'MAGE', spec: 'Fire', note: 'Hi', website: 'http://x' });
-  const nameErr = field('jn-err-name');
+  const nameErr = field('jn-name-err');
   G.handlers.submit['join-form'](form({}));
   assert.equal(nameErr.hidden, false);
-  assert.equal(nameErr.textContent, 'Enter your character\'s name.');
+  assert(nameErr.innerHTML.includes('Enter your character&#39;s name.'), 'the message sits under the field and says what to do');
   nameErr.hidden = true;
   let answer = () => rejectWith(409, { error: 'on_roster', message: 'That character is on the guild\'s roster.', field: 'name' });
   const s = stub(() => answer());
@@ -314,7 +314,7 @@ check('join page: the form checks name, class and spec, sends the body with the 
   await settle();
   assert.equal(s.calls.length, 1);
   assert.equal(nameErr.hidden, false);
-  assert.match(nameErr.textContent, /on the guild's roster/);
+  assert.match(nameErr.innerHTML, /on the guild&#39;s roster/);
   assert.equal(x.done, false);
   answer = () => okRes({ ok: true, spotsLeft: 2 });
   G.handlers.submit['join-form'](form({ name: 'Aldric', class: 'MAGE', spec: 'Fire', note: 'From Beta' }));

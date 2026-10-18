@@ -114,7 +114,7 @@
     return '<section class="gs-card-sec" aria-labelledby="rt-post-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="rt-post-h">Recruiting post</h2></div><div class="gs-card-sec-body">' +
       '<label class="gs-label" for="rt-post">Plain text to paste into Discord or a forum</label>' +
       '<textarea class="gs-input gs-textarea" id="rt-post" rows="7" readonly data-key="rt-post">' + esc(text) + '</textarea>' +
-      '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm gs-btn-molten" data-action="recruiting-copy" data-key="rt-copy">Copy recruiting post</button>' +
+      '<div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="recruiting-copy" data-key="rt-copy">Copy recruiting post</button>' +
       '<span class="gs-fine" id="rt-copy-status" role="status"></span></div>' +
       (data.guild.applyEnabled ? '' : '<p class="gs-fine">Applications are off, so the post has no apply link. Turn them on in <a href="' + esc(G.router.format({ name: 'settings', gid: gd.guild.id, tab: 'applications' })) + '">Guild settings</a>.</p>') +
       '</div></section>';

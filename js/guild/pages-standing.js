@@ -86,7 +86,7 @@
       (s.note ? '<div class="gs-notice" role="status"><span>' + esc(s.note) + '</span></div>' : '') +
       '<form class="gs-st-form" data-submit="standing-form" novalidate aria-describedby="st-explain"><ul class="gs-st-list" aria-label="Days of the weekly schedule">' + rows + '</ul>' +
       '<p class="gs-alert" id="st-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p>' +
-      '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm gs-btn-molten" data-key="st-save"' + (s.busy ? ' disabled' : '') + '>Save standing sign-ups</button></div></form></div></section>';
+      '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm" data-key="st-save"' + (s.busy ? ' disabled' : '') + '>Save standing sign-ups</button></div></form></div></section>';
   }
 
   // ── data ──

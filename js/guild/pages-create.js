@@ -35,11 +35,12 @@
         const cid = 'claim-confirm-' + i;
         return '<li class="gs-claim-item"><div class="gs-claim-main"><div class="gs-claim-text"><span class="gs-claim-guild">' + esc(g.guildName) + '</span>' +
           '<span class="gs-claim-server gs-muted">' + esc(g.serverName) + '</span></div>' +
-          '<button type="button" class="gs-btn" data-action="claim-ask" data-key="claim-' + esc(g.guildId) + '" aria-expanded="false" aria-controls="' + cid + '" aria-label="Claim ' + esc(g.guildName) + '">Claim</button></div>' +
+          G.ui.buttonHtml({ label: 'Claim', ariaLabel: 'Claim ' + g.guildName, attrs: { 'data-action': 'claim-ask', 'data-key': 'claim-' + g.guildId, 'aria-expanded': 'false', 'aria-controls': cid } }) + '</div>' +
           '<div class="gs-claim-confirm" id="' + cid + '" role="group" aria-label="Confirm claiming ' + esc(g.guildName) + '" hidden>' +
           '<p class="gs-confirm-text">You become Guild Master of ' + esc(g.guildName) + '.</p>' +
-          '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="claim-go" data-gid="' + esc(g.guildId) + '" data-name="' + esc(g.guildName) + '">Claim ' + esc(g.guildName) + '</button>' +
-          '<button type="button" class="gs-btn" data-action="claim-cancel">Cancel</button></div></div></li>';
+          // The page's one primary is Create guild below; this confirm step is a secondary.
+          '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Claim ' + g.guildName, attrs: { 'data-action': 'claim-go', 'data-gid': g.guildId, 'data-name': g.guildName } }) +
+          G.ui.buttonHtml({ label: 'Cancel', variant: 'ghost', attrs: { 'data-action': 'claim-cancel' } }) + '</div></div></li>';
       }).join('') + '</ul></section>';
   }
 
@@ -102,7 +103,7 @@
     const id = 'cg-team-' + index;
     const input = '<input class="gs-input" type="text" id="' + id + '" name="teamName" value="' + esc(value) + '" maxlength="' + TEAM_NAME_MAX + '" autocomplete="off" required>';
     const remove = index >= MIN_SEVERAL
-      ? '<button type="button" class="gs-btn gs-btn-sm" data-action="cg-team-remove" data-index="' + index + '" data-key="cg-team-remove-' + index + '" aria-label="Remove team ' + n + '">Remove</button>'
+      ? G.ui.buttonHtml({ label: 'Remove', size: 'sm', ariaLabel: 'Remove team ' + n, attrs: { 'data-action': 'cg-team-remove', 'data-index': String(index), 'data-key': 'cg-team-remove-' + index } })
       : '';
     const control = remove ? '<div class="gs-team-row">' + input + remove + '</div>' : input;
     return fieldHtml(id, 'Team ' + n + ' name', control);
@@ -114,7 +115,7 @@
     const values = Array.isArray(names) ? names.slice() : [];
     while (values.length < MIN_SEVERAL) values.push('');
     const add = values.length < MAX_TEAMS
-      ? '<button type="button" class="gs-btn" data-action="cg-team-add" data-key="cg-team-add">Add another team</button>'
+      ? G.ui.buttonHtml({ label: 'Add another team', attrs: { 'data-action': 'cg-team-add', 'data-key': 'cg-team-add' } })
       : '';
     return '<div class="gs-grid">' + values.map(function (v, i) { return teamFieldHtml(i, v); }).join('') + '</div>' +
       '<p class="gs-field-error" id="cg-teams-error" role="alert" hidden></p>' +
@@ -138,15 +139,15 @@
     const signin = G.pages.signin;
     if (reason === 'needs_discord') {
       return signin.messageHtml('Connect Discord to create a guild', 'A guild belongs to a Discord server, so creating one needs a Discord sign-in. Connect Discord to this account, then come back.',
-        { actionsHtml: '<a class="gs-btn gs-btn-molten" href="#/linked" data-key="create-connect-discord">Connect Discord</a>' });
+        { actionsHtml: G.ui.buttonHtml({ label: 'Connect Discord', variant: 'primary', href: '#/linked', attrs: { 'data-key': 'create-connect-discord' } }) });
     }
     if (reason === 'reauth') {
       return signin.messageHtml('Sign in again to find your servers', 'Raidsmith looks at the Discord servers you manage when you sign in, and keeps that list for half an hour. Sign in with Discord again to create a guild.',
-        { actionsHtml: '<a class="gs-btn gs-btn-molten" href="/auth/login">Sign in with Discord</a>' });
+        { actionsHtml: G.ui.buttonHtml({ label: 'Sign in with Discord', variant: 'primary', href: '/auth/login' }) });
     }
     if (reason === 'no_server') {
       return signin.messageHtml('No Discord server to create a guild for', 'You can create a guild for a Discord server you own or administer (Administrator or Manage Server) that has no guild yet. Raidsmith found none on your account. If you were just given those rights, sign in again.',
-        { actionsHtml: '<a class="gs-btn" href="/auth/login">Sign in again</a>' });
+        { actionsHtml: G.ui.buttonHtml({ label: 'Sign in again', href: '/auth/login' }) });
     }
     return signin.messageHtml('You cannot create a guild', 'This account is not set up to create a guild. If your guild already exists, open it from the list on the left, or sign in again.');
   }
@@ -209,8 +210,8 @@
       '<div class="gs-teams-host" id="cg-teams-host">' + teamsFieldsHtml(false, []) + '</div>' +
       '</fieldset></div>' +
       '<p class="gs-alert" id="cg-form-error" role="alert" hidden></p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="create-guild"' + (disabled ? ' disabled' : '') + '>Create guild</button>' +
-      '<a href="#/">Cancel</a><span class="gs-fine">You become this guild\'s Guild Master.</span>' +
+      '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Create guild', variant: 'primary', type: 'submit', disabled: !!disabled, attrs: { 'data-key': 'create-guild' } }) +
+      G.ui.buttonHtml({ label: 'Cancel', variant: 'ghost', href: '#/' }) + '<span class="gs-fine">You become this guild\'s Guild Master.</span>' +
       '<a href="/auth/login" id="cg-reauth" hidden>Sign in again</a></div></form>';
   }
 

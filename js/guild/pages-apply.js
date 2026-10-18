@@ -1,8 +1,10 @@
-// ── PAGE: THE APPLICATION FORM (#/apply/:gid, works signed out) ─
+// ── PAGE: THE APPLICATION FORM (#/apply/:gid, works signed out; a T3 form page) ─
 // What an applicant sees: the guild, the officers' questions and a form for their character (name, class, spec, realm for a realm guild, the team they
 // want, how to reach them, the answers). No account is needed; an applicant who is signed in is told their account comes along and is linked if an
 // officer accepts them. GET /api/apply/:gid (also hands the browser the cookie the POST needs), POST /api/apply/:gid. A hidden "website" field catches
 // scripts: it stays empty for a person. The Worker limits applications per browser and per guild (worker/routes/applications.js).
+// Fields are the kit's (label above, 44 px on a phone, "(required)" in words) and are checked when the person leaves one and again on Send: the message sits under the
+// field and says what to do; Send focuses the first one.
 (function (G) {
   'use strict';
 
@@ -17,21 +19,25 @@
     return (guild.realmKind === 'ruleset' || !guild.region ? line : line + ' (' + guild.region + ')') + ' - ' + G.ui.gameVersionLabel(guild.gameVersion);
   }
 
-  function fieldError(id) { return '<p class="gs-field-error" id="ap-err-' + id + '" role="alert" hidden></p>'; }
+  // The field ids (ap-<name>) by the Worker's field names; an answer is ap-q-<question id>.
+  function fieldId(field) {
+    if (field === 'teamId') return 'ap-team';
+    if (typeof field === 'string' && field.indexOf('answers.') === 0) return 'ap-q-' + field.slice('answers.'.length);
+    return 'ap-' + field;
+  }
 
   function questionHtml(q, draft) {
     const id = 'ap-q-' + q.id;
     const value = draft && draft.answers && draft.answers[q.id] ? draft.answers[q.id] : '';
-    const req = q.required ? ' required' : '';
-    let control;
-    if (q.type === 'long') control = '<textarea class="gs-input gs-textarea" id="' + id + '" name="q:' + esc(q.id) + '" rows="4" maxlength="1500"' + req + '>' + esc(value) + '</textarea>';
-    else if (q.type === 'choice') control = '<select class="gs-input" id="' + id + '" name="q:' + esc(q.id) + '"' + req + '>' + G.ui.optionsHtml([{ value: '', label: 'Choose one' }].concat(q.options.map(function (o) { return { value: o, label: o }; })), value) + '</select>';
-    else control = '<input class="gs-input" type="text" id="' + id + '" name="q:' + esc(q.id) + '" maxlength="200" autocomplete="off"' + req + ' value="' + esc(value) + '">';
-    return '<div class="gs-field"><label class="gs-label" for="' + id + '">' + esc(q.label) + (q.required ? '' : ' <span class="gs-fine">(optional)</span>') + '</label>' + control + fieldError('answers.' + q.id) + '</div>';
+    const attrs = { 'data-change': 'apply-field' };
+    const base = { id: id, name: 'q:' + q.id, label: q.label + (q.required ? '' : ' (optional)'), required: !!q.required, value: value, attrs: attrs };
+    if (q.type === 'long') return G.ui.fieldHtml(Object.assign(base, { kind: 'textarea', rows: 4, maxlength: 1500 }));
+    if (q.type === 'choice') return G.ui.fieldHtml(Object.assign(base, { kind: 'select', options: [{ value: '', label: 'Choose one' }].concat(q.options.map(function (o) { return { value: o, label: o }; })) }));
+    return G.ui.fieldHtml(Object.assign(base, { kind: 'text', maxlength: 200, autocomplete: 'off' }));
   }
 
   function signinNoteHtml(data) {
-    if (data.signedInAs) return '<p class="gs-notice" role="status"><span>Signed in as ' + esc(data.signedInAs) + '. If an officer accepts you, your account is linked to your character.</span></p>';
+    if (data.signedInAs) return G.ui.bannerHtml({ tone: 'info', dismissible: false, text: 'Signed in as ' + data.signedInAs + '. If an officer accepts you, your account is linked to your character.' });
     return '<p class="gs-fine">You can apply without an account. If you sign in first, your account is linked to your character when an officer accepts you. <a href="' + esc(G.router.format({ name: 'signin' })) + '">Sign in</a>, then open this page again.</p>';
   }
 
@@ -40,27 +46,28 @@
     const d = x.draft || {};
     const options = optionsOf(data);
     const realmGuild = data.guild.realmKind !== 'ruleset';
+    const field = function (o) { return G.ui.fieldHtml(Object.assign({ attrs: { 'data-change': 'apply-field' } }, o)); };
     const team = data.teams.length > 1
-      ? '<div class="gs-field"><label class="gs-label" for="ap-team">Team</label><select class="gs-input" id="ap-team" name="teamId" required>' +
-        G.ui.optionsHtml([{ value: '', label: 'Choose a team' }].concat(data.teams.map(function (t) { return { value: t.id, label: t.name }; })), d.teamId || '') + '</select>' + fieldError('teamId') + '</div>'
+      ? field({ id: 'ap-team', name: 'teamId', label: 'Team', kind: 'select', required: true, value: d.teamId || '', options: [{ value: '', label: 'Choose a team' }].concat(data.teams.map(function (t) { return { value: t.id, label: t.name }; })) })
       : '';
+    const classSelect = G.ui.fieldHtml({ id: 'ap-class', name: 'class', label: 'Class', kind: 'select', required: true, value: d.class || '', attrs: { 'data-change': 'apply-class' },
+      options: G.ui.classChoices(options, 'Choose a class') });
     return '<form class="gs-apply-form" data-submit="apply-form" novalidate aria-describedby="ap-intro">' +
-      '<div class="gs-field"><label class="gs-label" for="ap-name">Character name</label><input class="gs-input" type="text" id="ap-name" name="name" maxlength="40" autocomplete="off" required aria-describedby="ap-name-hint" value="' + esc(d.name || '') + '">' +
-      '<p class="gs-fine" id="ap-name-hint">' + esc(data.guild.gameVersion === 'forever' ? NAME_HINT_FOREVER : NAME_HINT) + '</p>' + fieldError('name') + '</div>' +
-      '<div class="gs-field"><label class="gs-label" for="ap-class">Class</label><select class="gs-input" id="ap-class" name="class" data-change="apply-class" required>' + G.ui.classOptionsHtml(options, d.class || '', 'Choose a class') + '</select>' + fieldError('class') + '</div>' +
-      '<div class="gs-field"><label class="gs-label" for="ap-spec">Spec</label><select class="gs-input" id="ap-spec" name="spec" required>' + G.ui.specOptionsHtml(options, d.class || '', d.spec || '', 'Choose a spec') + '</select>' + fieldError('spec') + '</div>' +
-      (realmGuild ? '<div class="gs-field"><label class="gs-label" for="ap-realm">Realm</label><input class="gs-input" type="text" id="ap-realm" name="realm" maxlength="40" autocomplete="off" value="' + esc(d.realm === undefined ? data.guild.realm : d.realm) + '">' + fieldError('realm') + '</div>' : '') +
+      '<div data-error-summary-slot></div>' +
+      field({ id: 'ap-name', name: 'name', label: 'Character name', kind: 'text', required: true, value: d.name || '', maxlength: 40, autocomplete: 'off', help: data.guild.gameVersion === 'forever' ? NAME_HINT_FOREVER : NAME_HINT }) +
+      classSelect +
+      field({ id: 'ap-spec', name: 'spec', label: 'Spec', kind: 'select', required: true, value: d.spec || '', options: G.ui.specChoices(options, d.class || '', 'Choose a spec') }) +
+      (realmGuild ? field({ id: 'ap-realm', name: 'realm', label: 'Realm', kind: 'text', value: d.realm === undefined ? data.guild.realm : d.realm, maxlength: 40, autocomplete: 'off' }) : '') +
       team +
-      '<div class="gs-field"><label class="gs-label" for="ap-contact">How can the officers reach you? <span class="gs-fine">(optional)</span></label><input class="gs-input" type="text" id="ap-contact" name="contact" maxlength="100" autocomplete="off" placeholder="Discord name, BattleTag" value="' + esc(d.contact || '') + '">' + fieldError('contact') + '</div>' +
+      field({ id: 'ap-contact', name: 'contact', label: 'How can the officers reach you? (optional)', kind: 'text', value: d.contact || '', maxlength: 100, autocomplete: 'off', placeholder: 'Discord name, BattleTag' }) +
       data.questions.map(function (q) { return questionHtml(q, d); }).join('') +
       '<div class="gs-hp" aria-hidden="true"><label for="ap-website">Leave this empty</label><input type="text" id="ap-website" name="website" tabindex="-1" autocomplete="off" value=""></div>' +
       '<p class="gs-alert" id="ap-error" role="alert"' + (x.error ? '' : ' hidden') + '>' + esc(x.error || '') + '</p>' +
-      '<div class="gs-actions"><button type="submit" class="gs-btn gs-btn-molten" data-key="ap-submit"' + (x.busy ? ' disabled' : '') + '>Send application</button></div></form>';
+      '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Send application', variant: 'primary', type: 'submit', disabled: !!x.busy, attrs: { 'data-key': 'ap-submit' } }) + '</div></form>';
   }
 
   function doneHtml(data) {
-    return '<section class="gs-empty-card" aria-labelledby="ap-done-h"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('roster', 28) + '</span>' +
-      '<h2 class="gs-h2 gs-h2-lg" id="ap-done-h" tabindex="-1">Application sent</h2><p class="gs-lead gs-lead-sm">The officers of ' + esc(data.guild.name) + ' will look at it. You do not need to do anything else.</p></section>';
+    return G.ui.bannerHtml({ tone: 'success', dismissible: false, title: 'Application sent', text: 'The officers of ' + data.guild.name + ' will look at it. You do not need to do anything else.', id: 'ap-done-h' });
   }
 
   // opts: { state } (st().apply) -> the page.
@@ -72,8 +79,11 @@
     }
     if (x.status === 'error') return G.pages.signin.messageHtml('Could not open the form', x.message || 'Something went wrong. Try again in a moment.', { retry: true });
     const data = x.data;
-    return '<div class="gs-page gs-page-narrow gs-apply"><div class="gs-page-head"><div><h1 class="gs-h1" tabindex="-1">Apply to ' + esc(data.guild.name) + '</h1><p class="gs-sub">' + esc(whereText(data.guild)) + '</p></div></div>' +
-      (x.done ? doneHtml(data) : '<p class="gs-lead gs-lead-sm" id="ap-intro">Tell the officers who you play and a little about yourself.</p>' + signinNoteHtml(data) + formHtml(x)) + '</div>';
+    return G.ui.formPageHtml({
+      pageClass: 'gs-apply',
+      head: { title: 'Apply to ' + data.guild.name, context: whereText(data.guild) },
+      bodyHtml: x.done ? doneHtml(data) : '<p class="gs-lead gs-lead-sm" id="ap-intro">Tell the officers who you play and a little about yourself.</p>' + signinNoteHtml(data) + formHtml(x),
+    });
   }
 
   function load(route) {
@@ -103,6 +113,16 @@
     const form = sel.closest ? sel.closest('form') : null;
     if (!x || !form) return;
     form.elements.spec.innerHTML = G.ui.specOptionsHtml(optionsOf(x.data), sel.value, '', 'Choose a spec');
+    G.ui.setFieldError(form, 'ap-class', rulesFor(x.data)['ap-class'](sel.value));
+  };
+
+  // A field is checked when the person leaves it (the change event) and again on Send.
+  G.handlers.change['apply-field'] = function (el) {
+    const x = cur();
+    const form = el.closest ? el.closest('form') : null;
+    const rule = x && el.id ? rulesFor(x.data)[el.id] : null;
+    if (!form || !rule) return;
+    G.ui.setFieldError(form, el.id, rule(el.value));
   };
 
   function readForm(form, x) {
@@ -138,27 +158,45 @@
     return null;
   }
 
-  function showFieldError(form, field, text) {
-    const sink = typeof document !== 'undefined' ? document.getElementById('ap-err-' + field) : null;
-    if (sink) { sink.textContent = text; sink.hidden = false; return true; }
-    return false;
+  // The rules of the form by field id (ui.validateForm): what to do, not what is wrong.
+  function rulesFor(data) {
+    const blank = function (message) { return function (value) { return String(value == null ? '' : value).trim() ? '' : message; }; };
+    const rules = {
+      'ap-name': blank('Enter your character\'s name.'),
+      'ap-class': blank('Choose a class.'),
+      'ap-spec': blank('Choose a spec.'),
+    };
+    if (data.teams.length > 1) rules['ap-team'] = blank('Choose a team.');
+    data.questions.forEach(function (q) { if (q.required) rules['ap-q-' + q.id] = blank('Answer this question.'); });
+    return rules;
   }
 
-  function clearErrors() {
+  // Is there a message slot under that field? (A refusal that names a field nobody can see goes to the general line.)
+  function hasErrorSlot(form, id) {
+    const inForm = form && form.querySelector ? form.querySelector('#' + id + '-err') : null;
+    return !!(inForm || (typeof document !== 'undefined' && document.getElementById && document.getElementById(id + '-err')));
+  }
+
+  // The draft by field id: what the rules check (the form was just read into it).
+  function valuesOf(draft, data) {
+    const given = { 'ap-name': draft.name, 'ap-class': draft.class, 'ap-spec': draft.spec, 'ap-team': draft.teamId };
+    data.questions.forEach(function (q) { given['ap-q-' + q.id] = (draft.answers || {})[q.id] || ''; });
+    return given;
+  }
+
+  function clearErrors(form) {
     if (typeof document === 'undefined') return;
-    Array.prototype.forEach.call(document.querySelectorAll('.gs-apply [role="alert"]'), function (el) { el.hidden = true; el.textContent = ''; });
+    Array.prototype.forEach.call(document.querySelectorAll('.gs-apply .gs-field-error'), function (el) { el.hidden = true; el.textContent = ''; });
+    Array.prototype.forEach.call(document.querySelectorAll('.gs-apply [aria-invalid]'), function (el) { el.removeAttribute('aria-invalid'); });
+    G.ui.setText('ap-error', '');
   }
 
   G.handlers.submit['apply-form'] = function (form) {
     const x = cur();
     if (!x || x.busy) return;
-    clearErrors();
+    clearErrors(form);
     x.draft = readForm(form, x);
-    const problem = problemOf(x.draft, x.data);
-    if (problem) {
-      if (!showFieldError(form, problem.field, problem.text)) { x.error = problem.text; G.app.render(); }
-      return;
-    }
+    if (!G.ui.validateForm(form, rulesFor(x.data), valuesOf(x.draft, x.data)).ok) return;
     x.busy = true; x.error = '';
     const website = form.elements.website ? form.elements.website.value : '';
     G.ui.setBusy(form, true);
@@ -169,11 +207,11 @@
       x.busy = false;
       G.ui.setBusy(form, false);
       const text = G.api.classify(err).text;
-      if (err && err.field && showFieldError(form, err.field, text)) return;
+      if (err && err.field && hasErrorSlot(form, fieldId(err.field))) { G.ui.setFieldError(form, fieldId(err.field), text); G.ui.focusFirstInvalid(form); return; }
       x.error = text;
       G.ui.setText('ap-error', text);
     });
   };
 
-  G.pages.apply = { NAME_HINT: NAME_HINT, applyHtml: applyHtml, formHtml: formHtml, load: load, bodyFrom: bodyFrom, problemOf: problemOf };
+  G.pages.apply = { NAME_HINT: NAME_HINT, applyHtml: applyHtml, formHtml: formHtml, load: load, bodyFrom: bodyFrom, problemOf: problemOf, rulesFor: rulesFor, fieldId: fieldId };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

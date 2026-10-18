@@ -1,8 +1,9 @@
-// -- PAGE: THE READ-ONLY VIEW (GUEST LINK AND PUBLIC PAGE) -------
+// -- PAGE: THE READ-ONLY VIEW (GUEST LINK AND PUBLIC PAGE; T1 / T4 with no actions) -------
 // What a visitor with no account sees: a guild's roster, raids, attendance and loot, read-only, for the sections their one role (a guest link) or the
 // public page allows. Three addresses lead here: #/guest/<token> (redeems the link, then moves to #/view so the token leaves the address bar and the
 // history), #/view (the guest cookie's view) and #/public/<gid>. No sign-in, no account, nothing to change; the Worker sends only names, classes, dates,
-// percentages, boss kills and loot awards. GET /api/guest, GET /api/public/:gid, POST /auth/guest, DELETE /auth/guest.
+// percentages, boss kills and loot awards. The page carries the Read-only chip, the guild's zone on every time, and nothing to change (a guest's only action,
+// Leave, is in the More menu). GET /api/guest, GET /api/public/:gid, POST /auth/guest, DELETE /auth/guest.
 (function (G) {
   'use strict';
 
@@ -10,7 +11,7 @@
   const SECTION_TITLES = { roster: 'Roster', raids: 'Raids', progress: 'Progress', attendance: 'Attendance', loot: 'Loot' };
   const ASK_NEW_LINK = 'Ask the officer who sent it for a new link.';
   const NOTHING = 'Nothing is shared here yet.';
-  const BADGES = { guest: 'Read-only guest view', public: 'Public page' };
+  const BADGES = { guest: 'Guest link', public: 'Public page' };
 
   function st() { return G.app.state; }
   function listOf(v) { return Array.isArray(v) ? v : []; }
@@ -52,19 +53,21 @@
     return '<ul class="gs-view-meta" aria-label="About this link"><li>Role: ' + esc(role) + '</li><li>' + esc(team) + '</li><li>' + esc(until) + '</li></ul>';
   }
 
-  function headHtml(data, kind) {
+  // The head: the guild, where it plays, the Read-only chip and what kind of page this is; a guest's Leave is behind More.
+  function headOf(data, kind) {
     const viewer = data.viewer || {};
     const guest = (viewer.kind || kind) === 'guest';
-    return '<div class="gs-page-head gs-view-head"><div><h1 class="gs-h1" tabindex="-1">' + esc(data.guild && data.guild.name) + '</h1><p class="gs-sub">' + esc(whereText(data.guild)) + '</p></div>' +
-      '<div class="gs-view-badges"><span class="gs-badge">' + esc(guest ? BADGES.guest : BADGES.public) + '</span>' +
-      (guest ? '<button type="button" class="gs-btn gs-btn-sm" data-action="view-leave" data-key="view-leave">Leave</button>' : '') + '</div></div>' +
-      (guest ? guestMetaHtml(viewer) + '<p class="gs-alert" id="view-alert" role="alert" hidden></p>' : '');
+    return {
+      title: data.guild && data.guild.name, contextHtml: esc(whereText(data.guild)),
+      chipsHtml: '<span class="gs-sumchips">' + G.ui.readOnlyChipHtml() + G.ui.tagHtml(guest ? BADGES.guest : BADGES.public) + '</span>',
+      more: guest ? { id: 'view-actions', label: 'More', key: 'view-actions', items: [{ label: 'Leave this link', key: 'view-leave', data: { action: 'view-leave' } }] } : null,
+    };
   }
 
   // -- sections --
-  function tableHtml(label, columns, rows) {
-    return '<div class="gs-table-wrap"><table class="gs-table gs-table-stack gs-table-view" aria-label="' + esc(label) + '"><thead><tr>' +
-      columns.map(function (c) { return '<th scope="col">' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
+  // Every table is the data table (cards on a phone); a read-only page shows all its rows.
+  function tableHtml(label, columns, rows, noun) {
+    return G.ui.dataTableHtml({ label: label, columns: columns, rows: rows, showAll: true, noun: noun || 'rows' });
   }
 
   function teamName(entry) { return entry && entry.team && entry.team.name ? entry.team.name : 'Team'; }
@@ -72,26 +75,25 @@
   function rosterBlock(entry) {
     const people = listOf(entry.people);
     if (!people.length) return '<p class="gs-empty">No one on the roster yet.</p>';
-    return tableHtml('Roster of ' + teamName(entry), ['Name', 'Class', 'Role'], people.map(function (p) {
+    return tableHtml('Roster of ' + teamName(entry), [{ key: 'name', label: 'Name', primary: true }, { key: 'class', label: 'Class' }, { key: 'role', label: 'Role' }], people.map(function (p) {
       const role = G.ui.roleLabel(p.role);
-      return '<tr><th scope="row" class="gs-cell-strong">' + G.ui.classNameHtml(p.name, p.class) + '</th><td data-label="Class">' + esc(G.ui.className(p.class)) + '</td>' +
-        '<td data-label="Role">' + (role ? G.ui.roleDotHtml(p.role) + ' ' + esc(role) : '<span class="gs-muted">-</span>') + '</td></tr>';
-    }));
+      return { mark: p.class, cells: { name: G.ui.classNameHtml(p.name, p.class), class: esc(G.ui.className(p.class)), role: role ? G.ui.roleDotHtml(p.role) + ' ' + esc(role) : '<span class="gs-muted gs-dash">-</span>' } };
+    }), 'people');
   }
 
   function raidRows(raids) {
     return raids.map(function (r) {
-      return '<tr><th scope="row" class="gs-cell-strong">' + esc(G.ui.weekdayDay(r.raidOn)) + '</th><td data-label="Zone">' + esc(r.zone) + '</td>' +
-        '<td data-label="Title">' + (r.title ? esc(r.title) : '<span class="gs-muted">-</span>') + '</td></tr>';
+      return { cells: { date: esc(G.ui.weekdayDay(r.raidOn)), zone: esc(r.zone), title: r.title ? esc(r.title) : '<span class="gs-muted gs-dash">-</span>' } };
     });
   }
 
   function raidsBlock(entry) {
     const upcoming = listOf(entry.upcoming);
     const recent = listOf(entry.recent);
+    const columns = [{ key: 'date', label: 'Date', primary: true }, { key: 'zone', label: 'Zone' }, { key: 'title', label: 'Title' }];
     const part = function (heading, raids, none) {
       return '<h4 class="gs-view-sub">' + esc(heading) + '</h4>' +
-        (raids.length ? tableHtml(heading + ' raids of ' + teamName(entry), ['Date', 'Zone', 'Title'], raidRows(raids)) : '<p class="gs-empty">' + esc(none) + '</p>');
+        (raids.length ? tableHtml(heading + ' raids of ' + teamName(entry), columns, raidRows(raids), 'raids') : '<p class="gs-empty">' + esc(none) + '</p>');
     };
     return part('Upcoming', upcoming, 'No upcoming raids.') + part('Recent', recent, 'No recent raids.');
   }
@@ -105,23 +107,22 @@
     const people = listOf(entry.people);
     return '<p class="gs-fine gs-view-window">' + esc(windowText(entry.window, entry.raids)) + '</p>' +
       (people.length
-        ? tableHtml('Attendance of ' + teamName(entry), ['Name', 'Attendance', 'Raids counted'], people.map(function (p) {
-          return '<tr><th scope="row" class="gs-cell-strong">' + G.ui.classNameHtml(p.name, p.class) + '</th><td data-label="Attendance" class="gs-num">' + esc(G.ui.percent(p.pct)) + '</td>' +
-            '<td data-label="Raids counted">' + esc(G.ui.plural(Number(p.counted) || 0, 'raid', 'raids') + ' counted') + '</td></tr>';
-        }))
+        ? tableHtml('Attendance of ' + teamName(entry), [{ key: 'name', label: 'Name', primary: true }, { key: 'pct', label: 'Attendance', align: 'right' }, { key: 'counted', label: 'Raids counted' }], people.map(function (p) {
+          return { mark: p.class, cells: { name: G.ui.classNameHtml(p.name, p.class), pct: esc(G.ui.percent(p.pct)), counted: esc(G.ui.plural(Number(p.counted) || 0, 'raid', 'raids') + ' counted') } };
+        }), 'people')
         : '<p class="gs-empty">No attendance to show yet.</p>');
   }
 
   function qualityClass(q) { return typeof q === 'number' && q >= 0 && q <= 7 && Math.floor(q) === q ? ' gs-q-' + q : ''; }
 
-  function lootBlock(entry) {
+  // The award time is written in the guild's zone ("Wed Oct 14, 8:12 PM ET"): the public payload carries guild.timeZone.
+  function lootBlock(entry, zone) {
     const awards = listOf(entry.awards);
     if (!awards.length) return '<p class="gs-empty">No loot awarded yet.</p>';
-    return tableHtml('Loot of ' + teamName(entry), ['Item', 'Winner', 'Awarded'], awards.map(function (a) {
-      const winner = a.disenchanted ? '<span class="gs-muted">Disenchanted</span>' : (a.winner ? G.ui.classNameHtml(a.winner, a.winnerClass) : '<span class="gs-muted">-</span>');
-      return '<tr><th scope="row" class="gs-cell-strong"><span class="gs-item' + qualityClass(a.quality) + '">' + esc(a.itemName) + '</span></th><td data-label="Winner">' + winner + '</td>' +
-        '<td data-label="Awarded">' + esc(G.ui.formatDateTime(a.awardedAt)) + '</td></tr>';
-    }));
+    return tableHtml('Loot of ' + teamName(entry), [{ key: 'item', label: 'Item', primary: true }, { key: 'winner', label: 'Winner' }, { key: 'awarded', label: 'Awarded' }], awards.map(function (a) {
+      const winner = a.disenchanted ? '<span class="gs-muted">Disenchanted</span>' : (a.winner ? G.ui.classNameHtml(a.winner, a.winnerClass) : '<span class="gs-muted gs-dash">-</span>');
+      return { cells: { item: '<span class="gs-item' + qualityClass(a.quality) + '">' + esc(a.itemName) + '</span>', winner: winner, awarded: esc(G.ui.formatDateTime(a.awardedAt, zone)) } };
+    }), 'awards');
   }
 
   // PM wave 7: the team's boss board (pages-progress.js), the public page's optional Progress section.
@@ -131,13 +132,11 @@
 
   const BLOCKS = { roster: rosterBlock, raids: raidsBlock, progress: progressBlock, attendance: attendanceBlock, loot: lootBlock };
 
-  function sectionHtml(key, entries) {
-    const id = 'view-' + key + '-h';
+  function sectionOf(key, entries, zone) {
     const list = listOf(entries);
-    return '<section class="gs-section gs-view-section" aria-labelledby="' + id + '"><div class="gs-section-head"><h2 class="gs-h2" id="' + id + '">' + esc(SECTION_TITLES[key]) + '</h2></div>' +
-      (list.length
-        ? list.map(function (entry) { return '<div class="gs-view-team"><h3 class="gs-h3">' + esc(teamName(entry)) + '</h3>' + BLOCKS[key](entry) + '</div>'; }).join('')
-        : '<p class="gs-empty">Nothing to show here yet.</p>') + '</section>';
+    return { id: 'view-' + key, title: SECTION_TITLES[key], bodyHtml: list.length
+      ? list.map(function (entry) { return '<div class="gs-view-team"><h3 class="gs-h3">' + esc(teamName(entry)) + '</h3>' + BLOCKS[key](entry, zone) + '</div>'; }).join('')
+      : '<p class="gs-empty">Nothing to show here yet.</p>' };
   }
 
   // opts: { data (GET /api/guest or /api/public/:gid, or null while loading), kind ('guest' | 'public'), error }
@@ -149,8 +148,17 @@
     const data = o.data;
     const sections = data.sections && typeof data.sections === 'object' ? data.sections : {};
     const shown = SECTION_ORDER.filter(function (k) { return Object.prototype.hasOwnProperty.call(sections, k); });
-    return '<div class="gs-page gs-view">' + headHtml(data, kind) +
-      (shown.length ? shown.map(function (k) { return sectionHtml(k, sections[k]); }).join('') : '<p class="gs-empty" id="view-empty">' + esc(NOTHING) + '</p>') + '</div>';
+    const viewer = data.viewer || {};
+    const guest = (viewer.kind || kind) === 'guest';
+    const zone = data.guild && data.guild.timeZone ? data.guild.timeZone : '';
+    // T1 / T4 with no actions: the list page's header and sections, a Read-only chip, and a foot line that says what this is.
+    return G.ui.listPageHtml({
+      pageClass: 'gs-view',
+      head: headOf(data, kind),
+      noticesHtml: guest ? guestMetaHtml(viewer) + '<p class="gs-alert" id="view-alert" role="alert" hidden></p>' : '',
+      bodyHtml: shown.length ? shown.map(function (k) { return G.ui.objectSectionHtml(sectionOf(k, sections[k], zone)); }).join('') : '<p class="gs-empty" id="view-empty">' + esc(NOTHING) + '</p>',
+      footHtml: 'A read-only copy: nothing on this page can be changed.' + (zone ? ' Times are in ' + esc(G.ui.zoneLabel(zone)) + ', the guild\'s zone.' : ''),
+    });
   }
 
   // Moves a redeemed link's address to #/view: the token leaves the address bar and the history entry (replaceState, no new entry).

@@ -513,7 +513,7 @@ function assertEscaped(out, label) {
   // ── Delete my data ─────────────────────────────────────────────
   await check('delete: handOverFirst blocks the button and names the guilds', () => {
     const out = G.pages.privacy.deleteBoxHtml({ handOverFirst: [{ id: 'g1', name: 'Ravens' }, { id: 'g2', name: 'Owls' }], guildsDeleted: [] }, '');
-    assert(/id="delete-open"[^>]*\bdisabled\b/.test(out), 'open button disabled');
+    assert(/disabled[^>]*id="delete-open"/.test(out), 'open button disabled');
     assert(out.includes('delete-blocked') && out.includes('<strong>Ravens</strong>') && out.includes('<strong>Owls</strong>') && out.includes('Make Guild Master'));
     assert(!out.includes('id="delete-confirm"') && !out.includes('id="delete-go"'), 'no confirm path while blocked');
     assert(out.includes('href="#/g/g1/settings/people"'));
@@ -521,9 +521,9 @@ function assertEscaped(out, label) {
 
   await check('delete: with nothing in the way the confirm needs "I understand" before the button enables', () => {
     const out = G.pages.privacy.deleteBoxHtml({ handOverFirst: [], guildsDeleted: [] }, '');
-    assert(!/id="delete-open"[^>]*\bdisabled\b/.test(out));
+    assert(!/disabled[^>]*id="delete-open"/.test(out));
     assert(/id="delete-confirm"[^>]* hidden/.test(out));
-    assert(/id="delete-go"[^>]* disabled/.test(out));
+    assert(/ disabled[^>]*id="delete-go"/.test(out));
     assert(out.includes('I understand') && out.includes('id="delete-understand"'));
     assert(!out.includes('delete-guilds'));
   });
@@ -581,11 +581,11 @@ function assertEscaped(out, label) {
     assert(out.includes('Continue with Discord') && out.includes('href="#/privacy"') && out.includes('Open the planner'));
     assert(!out.includes('Battle.net') && !out.includes('/auth/bnet/login'), 'until the server says Battle.net is set up only Discord is offered');
     const both = G.pages.signin.signinHtml({ providers: { discord: true, bnet: true } });
-    assert(/<a class="gs-btn gs-btn-molten[^"]*" href="\/auth\/login">/.test(both) && /<a class="gs-btn gs-btn-block" href="\/auth\/bnet\/login\?mode=signin">/.test(both));
+    assert(/<a class="gs-btn gs-btn-molten[^"]*" href="\/auth\/login">/.test(both) && /<a class="gs-btn gs-btn-lg gs-btn-wide" href="\/auth\/bnet\/login\?mode=signin">/.test(both));
     assert(both.includes('Continue with Battle.net') && both.indexOf('Continue with Discord') < both.indexOf('Continue with Battle.net'));
     assert(both.includes('New here? Either one makes your account'));
     const bnetOnly = G.pages.signin.signinHtml({ providers: { discord: false, bnet: true } });
-    assert(!bnetOnly.includes('Continue with Discord') && /<a class="gs-btn gs-btn-molten gs-btn-block" href="\/auth\/bnet\/login\?mode=signin">/.test(bnetOnly));
+    assert(!bnetOnly.includes('Continue with Discord') && /<a class="gs-btn gs-btn-molten gs-btn-lg gs-btn-wide" href="\/auth\/bnet\/login\?mode=signin">/.test(bnetOnly));
     assert(!G.pages.signin.signinHtml({ providers: { discord: true, bnet: false } }).includes('Battle.net'));
     for (const key of G.router.parse('#/signin').error === null ? ['denied', 'state', 'discord', 'bnet', 'not_configured'] : []) {
       assert(G.pages.signin.signinHtml({ error: key }).includes('role="alert"'), key);
@@ -608,11 +608,11 @@ function assertEscaped(out, label) {
     assert(ok.includes('>Owner<') && ok.includes('>Manage Server<'));
     assert(/<option value="Europe\/Berlin" selected>/.test(ok));
     for (const r of ['US', 'EU', 'KR', 'TW']) assert(ok.includes(`<option value="${r}"`), r);
-    assert(!/data-key="create-guild" disabled/.test(ok));
+    assert(!/disabled data-key="create-guild"/.test(ok));
     assert(ok.includes('name="multipleTeams"') && !ok.includes('name="teamName"'));
     const stale = G.pages.create.createHtml({ me: meData({ create: { allowed: true, stale: true, servers } }), timeZones: ['UTC'], defaultTimeZone: '' });
     assert(stale.includes('Sign in again to refresh your server list') && stale.includes('href="/auth/login"'));
-    assert(/data-key="create-guild" disabled/.test(stale));
+    assert(/disabled data-key="create-guild"/.test(stale));
     assert(G.pages.create.createHtml({ me: meData(), timeZones: [] }).includes('You cannot create a guild'));
     assert(G.pages.create.createHtml({ me: meData({ create: { allowed: true, stale: false, servers: [] } }), timeZones: [] }).includes('No servers to list'));
   });
@@ -901,7 +901,7 @@ function assertEscaped(out, label) {
     const out = createFor(claimMe());
     assert(out.includes('Guilds without a Guild Master'));
     assert(out.includes('Night Owls') && out.includes('Owl Roost'));
-    assert(/data-action="claim-ask"[^>]*>Claim</.test(out), 'Claim button');
+    assert(/data-action="claim-ask"[^>]*><span>Claim<\/span>/.test(out), 'Claim button');
     // step 2 is hidden until Claim is pressed, and says what happens
     assert(/id="claim-confirm-0"[^>]*hidden/.test(out), 'confirm starts hidden');
     assert(out.includes('You become Guild Master of Night Owls.'));

@@ -427,7 +427,7 @@ check('away notices: the Away page adds a weekly and a range notice, lists them 
   pageState(s, E);
   const route = { name: 'away', gid: s.gid };
   await E.pages.away.load(route, E.guildData);
-  assert(/You have no away notices\./.test(stripTags(E.pages.away.main(route, E.guildData))));
+  assert(/You have no away notices/.test(stripTags(E.pages.away.main(route, E.guildData))));
   E.handlers.click['away-add'](el({ 'data-ctx': 'mine' }));
   assert(/Add an away notice/.test(E.dialogs[0]) && /value="2026-10-17"/.test(E.dialogs[0]), E.dialogs[0].slice(0, 300));
   await E.handlers.submit['away-form'](dialogForm(E.dialogs[0], { kind: 'away', repeat: 'range', weekday: '6', from: '2026-10-24', to: '2026-10-26', atTime: '', reason: 'Wedding' }));
@@ -441,7 +441,7 @@ check('away notices: the Away page adds a weekly and a range notice, lists them 
   const stored = await s.rows('SELECT kind, starts_on, ends_on, weekday, reason FROM away_notices ORDER BY starts_on');
   assert.deepEqual(stored.map((r) => [r.kind, r.starts_on, r.ends_on, r.weekday, r.reason]), [['away', '2026-10-22', null, 4, 'Work shift'], ['away', '2026-10-24', '2026-10-26', null, 'Wedding']]);
   let text = stripTags(E.pages.away.main(route, E.guildData));
-  assert(text.includes('Away every Thursday from Oct 22') && text.includes('Reason: Work shift') && text.includes('Away Oct 24 - Oct 26') && text.includes('Reason: Wedding') && text.includes('Notice saved.'), text);
+  assert(text.includes('Away every Thursday from Oct 22') && text.includes('Work shift') && text.includes('Away Oct 24 - Oct 26') && text.includes('Wedding') && text.includes('Notice saved.'), text);
 
   // Edit the range notice: the dialog starts from it; the submit is a PUT of the full body to that notice.
   const range = (await s.rows("SELECT id FROM away_notices WHERE reason = 'Wedding'"))[0].id;
@@ -451,7 +451,7 @@ check('away notices: the Away page adds a weekly and a range notice, lists them 
   assert.deepEqual(sent[2], { call: 'save', args: [range, { kind: 'away', from: '2026-10-24', to: '2026-10-25', reason: 'Wedding trip' }] });
   assert.deepEqual((await s.rows('SELECT ends_on, reason FROM away_notices WHERE id = ?', range))[0], { ends_on: '2026-10-25', reason: 'Wedding trip' });
   text = stripTags(E.pages.away.main(route, E.guildData));
-  assert(text.includes('Away Oct 24 - Oct 25') && text.includes('Reason: Wedding trip'), text);
+  assert(text.includes('Away Oct 24 - Oct 25') && text.includes('Wedding trip'), text);
 
   // Remove asks first, then deletes: the list and the stored notice lose it, the weekly one stays.
   E.handlers.click['away-remove'](el({ 'data-ctx': 'mine', 'data-nid': range }));

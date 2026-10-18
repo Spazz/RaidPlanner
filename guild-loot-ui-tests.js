@@ -902,9 +902,10 @@ function withState(fn) {
 
   await check('person loot page: header, totals, awards grouped by raid newest first with the character name and no self link', () => {
     const out = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_th', data: PERSON_LOOT });
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Thoren</h1>') && out.includes('Loot history') && out.includes('href="#/g/g1/roster/p/p_th"'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Thoren</h1>') && out.includes('Loot history') && out.includes('href="#/g/g1/roster/p/p_th"'));
     assert(out.includes('<dt>Main spec</dt><dd>5</dd>') && out.includes('<dt>Off-spec</dt><dd>1</dd>'));
-    assert.deepEqual([...out.matchAll(/<h2 class="gs-h2" id="pl-raid-\d+"><a href="([^"]*)">([^<]*)</g)].map(m => [m[1], m[2]]), [['#/g/g1/raids/r/r2', 'Sun Oct 11'], ['#/g/g1/raids/r/r1', 'Sat Oct 10'], ['#/g/g1/raids/r/r0', 'Sat Oct 3']]);
+    assert.deepEqual([...out.matchAll(/<h2 class="gs-h2" id="pl-raid-\d+-h">([^<]*)</g)].map(m => m[1]), ['Sun Oct 11', 'Sat Oct 10', 'Sat Oct 3']);
+    assert.deepEqual([...out.matchAll(/href="([^"]*)">Open raid</g)].map(m => m[1]), ['#/g/g1/raids/r/r2', '#/g/g1/raids/r/r1', '#/g/g1/raids/r/r0']);
     assert(out.includes('Thorenalt') && !out.includes('href="#/g/g1/loot/p/p_th"'), 'the character, not a link to this page');
     assert.deepEqual(plain(G.pages.personLoot.groupByRaid(PERSON_LOOT.awards).map(g => g.awards.length)), [2, 2, 2]);
     assert.deepEqual(plain(G.pages.personLoot.groupByRaid(null)), []);

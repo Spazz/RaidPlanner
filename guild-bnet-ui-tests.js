@@ -148,8 +148,9 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
   // ── Linked accounts ────────────────────────────────────────────
   await check('Linked accounts: not connected = what is read and kept, and a plain Connect link to /auth/bnet/login', () => {
     const out = G.pages.bnet.linkedHtml({ data: bnetData({ link: null }) });
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Linked accounts</h1>'));
-    assert(/<a class="gs-btn gs-btn-molten" href="\/auth\/bnet\/login"[^>]*>[\s\S]*Connect Battle\.net/.test(out));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Linked accounts</h1>'));
+    assert(/<a class="gs-btn" href="\/auth\/bnet\/login"[^>]*>[\s\S]*Connect Battle\.net/.test(out), 'a quiet link: connecting is optional, so it is not the page primary');
+    assert(!out.includes('gs-btn-molten'), 'one primary per screen: none on this page');
     const t = text(out);
     for (const s of ['Not connected', 'never sees your password', 'keeps that list for 30 days', 'Disconnect any time']) assert(t.includes(s), s);
     assert(!out.includes('data-action="bnet-disconnect-open"'));
@@ -207,9 +208,9 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
   // ── My characters ──────────────────────────────────────────────
   await check('My characters: one card per guild, class-coloured names, level, realm, and a status or action for every state', () => {
     const out = G.pages.bnet.charactersHtml({ data: bnetData() });
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">My characters</h1>'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">My characters</h1>'));
     assert(out.includes('id="chars-g1"') && text(out).includes('Ember') && text(out).includes('TBC Anniversary'));
-    const rows = out.split('<tr>').slice(1).filter(r => r.includes('<th scope="row"'));
+    const rows = out.split('<tr class="gs-dtable-row').slice(1).filter(r => r.includes('<th scope="row"'));
     assert.equal(rows.length, 7);
     const row = name => rows.find(r => r.includes('>' + name + '</span>'));
     assert(row('Aldric').includes('On your record') && !row('Aldric').includes('<button'));
@@ -222,13 +223,14 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert(row('Aldric').includes('gs-class-warrior') && row('Brindle').includes('gs-class-mage'));
     assert(row('Aldric').includes('>70<') && row('Fenwick').includes('>12<'));
     assert(row('Aldric').includes('data-label="Level"') && row('Aldric').includes('data-label="Realm"'), 'phone labels');
-    assert(out.includes('gs-table-stack'));
+    assert(out.includes('gs-dtable') && !out.includes('gs-btn-molten'), 'the data table (cards on a phone); Claim is a quiet button, not orange');
+    assert(out.indexOf('>Aldric</span>') < out.indexOf('>Brindle</span>'), 'the character already on your record is first');
     assertNoRawAttrs(out);
   });
 
   await check('My characters: a missing level shows a dash, an approved claim reads "Approved"', () => {
-    const none = G.pages.bnet.characterRowHtml('g1', character('Nolevel', 'DRUID', null));
-    assert(none.includes('gs-muted">-<'));
+    const none = G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ characters: [character('Nolevel', 'DRUID', null)] })] }) });
+    assert(none.includes('gs-muted gs-dash">-<'));
     assert.equal(G.pages.bnet.stateText(character('Aldric', 'WARRIOR', 70, { state: 'yours', claim: { id: 'cl_9', status: 'approved' }, claimable: false })), 'Approved');
     assert.equal(G.pages.bnet.stateText(character('X', 'MAGE', 1, { state: 'new', claim: { id: 'cl_9', status: 'approved' } })), '');
   });

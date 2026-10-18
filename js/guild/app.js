@@ -486,6 +486,7 @@
     state.failure = null;
     state.pageAlert = '';
     state.privacyMessage = r.name === 'privacy' ? state.privacyMessage : '';
+    if (r.name !== 'person') state.personSaved = null; // "Saved at 8:14 PM ET" on a person's Details lasts until another page opens
     state.currentGid = r.gid || null;
     if (!(r.name === 'settings' && r.tab === 'people')) state.notice = '';
     if (!(r.name === 'section' && r.section === 'roster')) state.rosterNotice = '';
@@ -764,7 +765,7 @@
         return P[attPageKey(r)].main(r, gd, ctx);
       case 'person': {
         if (!gd || !state.person || state.person.gid !== gd.guild.id || state.person.pid !== r.pid) return P.signin.loadingHtml();
-        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid), trial: P.personTrial.cardState(gd.guild.id, r.pid), away: P.away.personCardHtml({ guildData: gd, record: state.person.record, state: P.attendance.attState().awayPerson }) });
+        return P.person.personHtml({ guildData: gd, record: state.person.record, linkable: state.linkable[gd.guild.id] || null, alert: state.pageAlert, attendance: P.personAtt.cardState(gd.guild.id, r.pid), trial: P.personTrial.cardState(gd.guild.id, r.pid), away: P.away.personSectionOf({ guildData: gd, record: state.person.record, state: P.attendance.attState().awayPerson }), saved: state.personSaved && state.personSaved.gid === gd.guild.id && state.personSaved.pid === r.pid ? state.personSaved : null });
       }
       case 'import': {
         if (!gd) return P.signin.loadingHtml();

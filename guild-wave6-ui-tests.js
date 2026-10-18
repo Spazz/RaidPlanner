@@ -161,9 +161,9 @@ class ApiErr extends Error {
     };
     const full = html({});
     assert(full.includes('an-add'), 'the page drew');
-    assert(/data-key="an-add" disabled/.test(full), 'no `active`: every notice counts, as before');
-    assert(!/data-key="an-add" disabled/.test(html({ active: 12 })), 'twelve current notices: Add is open');
-    assert(/data-key="an-add" disabled/.test(html({ active: 30 })));
+    assert(/disabled data-action="away-add"/.test(full), 'no `active`: every notice counts, as before');
+    assert(!/disabled data-action="away-add"/.test(html({ active: 12 })), 'twelve current notices: Add is open');
+    assert(/disabled data-action="away-add"/.test(html({ active: 30 })));
   }));
 
   // ═══ Send a test post ═══════════════════════════════════════════

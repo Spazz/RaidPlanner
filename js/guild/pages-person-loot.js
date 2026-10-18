@@ -19,8 +19,8 @@
     return L().awardRowHtml(gd, award, { when: 'date', raidLink: true, character: true });
   }
 
-  // opts: { guildData, pid, record (the roster record), state: { data, denied } | null }
-  function cardHtml(opts) {
+  // opts: { guildData, pid, record (the roster record), state: { data, denied } | null }  ->  the section of the person page (T2)
+  function sectionOf(opts) {
     const s = opts.state;
     const gd = opts.guildData;
     const isMe = !!(opts.record && opts.record.person && opts.record.person.isMe);
@@ -36,8 +36,10 @@
           '<p class="gs-fine"><a href="' + esc(G.router.format({ name: 'lootperson', gid: gd.guild.id, pid: opts.pid })) + '">All loot</a></p>'
         : '<p class="gs-fine">' + esc(emptyLine(isMe)) + '</p>';
     }
-    return '<section class="gs-card-sec" aria-labelledby="loot-card-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-card-h">Loot</h2></div><div class="gs-card-sec-body">' + body + '</div></section>';
+    return { id: 'loot-card', title: 'Loot', bodyHtml: body };
   }
+
+  function cardHtml(opts) { return G.ui.objectSectionHtml(sectionOf(opts)); }
 
   // No pre-check on can['loot.view']: the loot policy (own / own teams / guild) decides on the Worker, so the card asks and
   // shows a short note on a 403.
@@ -56,10 +58,15 @@
     return c && c.gid === gid && c.pid === pid ? c : null;
   }
 
-  // The card HTML for the roster person page; '' while nothing is loaded.
-  function cardFor(gd, record, pid) {
+  // The section for the roster person page; null while nothing is loaded.
+  function sectionFor(gd, record, pid) {
     const c = cardState(gd.guild.id, pid);
-    return c ? cardHtml({ guildData: gd, pid: pid, record: record, state: c }) : '';
+    return c ? sectionOf({ guildData: gd, pid: pid, record: record, state: c }) : null;
+  }
+
+  function cardFor(gd, record, pid) {
+    const section = sectionFor(gd, record, pid);
+    return section ? G.ui.objectSectionHtml(section) : '';
   }
 
   // ── full page ──
@@ -74,23 +81,27 @@
     return groups;
   }
 
-  // opts: { guildData, pid, data (GET /loot/person/:pid) }
+  // opts: { guildData, pid, data (GET /loot/person/:pid) }  ->  T2: the person's header, the You line, the totals, one section per raid
   function personLootHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
     const data = opts.data || {};
     const p = data.person || {};
     const awards = Array.isArray(data.awards) ? data.awards : [];
-    const head = '<div class="gs-person-head"><div class="gs-person-title"><div class="gs-person-h1"><h1 class="gs-h1" tabindex="-1">' + esc(p.name || 'Person') + '</h1></div>' +
-      '<p class="gs-sub">Loot history</p>' + (p.status ? '<div class="gs-chips">' + G.ui.statusChipHtml(p.status) + '</div>' : '') + '</div>' +
-      '<p class="gs-person-discord"><a href="' + esc(G.router.format({ name: 'person', gid: gid, pid: opts.pid })) + '">Open in Roster</a></p></div>';
-    const groups = groupByRaid(awards).map(function (g, i) {
-      return '<section class="gs-card-sec" aria-labelledby="pl-raid-' + i + '"><div class="gs-card-sec-head"><h2 class="gs-h2" id="pl-raid-' + i + '"><a href="' + esc(G.router.format({ name: 'raid', gid: gid, rid: g.raidId })) + '">' + esc(G.ui.weekdayDay(g.raidOn) || g.raidOn || 'Raid') + '</a></h2>' +
-        '<span class="gs-fine">' + esc(L().plural(g.awards.length, 'item', 'items')) + '</span></div><div class="gs-card-sec-body"><ul class="gs-loot-list" aria-label="Loot of this raid">' +
-        g.awards.map(function (w) { return L().awardRowHtml(gd, w, { when: 'time', character: true }); }).join('') + '</ul></div></section>';
-    }).join('');
-    return '<div class="gs-page gs-person-page">' + head + L().totalsHtml(data.totals) +
-      (groups || '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">No loot yet</h2><p class="gs-lead gs-lead-sm">' + esc(emptyLine(false)) + '</p></section>') + '</div>';
+    const sections = [];
+    if (awards.length) sections.push({ id: 'pl-totals', title: 'Loot received', bodyHtml: L().totalsHtml(data.totals) });
+    groupByRaid(awards).forEach(function (g, i) {
+      sections.push({ id: 'pl-raid-' + i, title: G.ui.weekdayDay(g.raidOn) || g.raidOn || 'Raid', chipHtml: '<span class="gs-fine">' + esc(L().plural(g.awards.length, 'item', 'items')) + '</span>',
+        actionsHtml: g.raidId ? '<a class="gs-linkbtn" href="' + esc(G.router.format({ name: 'raid', gid: gid, rid: g.raidId })) + '">Open raid</a>' : '',
+        bodyHtml: '<ul class="gs-loot-list" aria-label="Loot of this raid">' + g.awards.map(function (w) { return L().awardRowHtml(gd, w, { when: 'time', character: true }); }).join('') + '</ul>' });
+    });
+    if (!awards.length) sections.push({ id: 'pl-none', title: 'No loot yet', bodyHtml: '<p class="gs-fine">' + esc(emptyLine(!!p.isMe)) + '</p>' });
+    return G.ui.objectPageHtml({
+      head: G.pages.personAtt.subHead({ gd: gd, pid: opts.pid, person: p, kind: 'loot' }),
+      youHtml: G.pages.personAtt.subYou(!!p.isMe, 'This is your loot. The guild\'s loot setting decides who else can see it.'),
+      pageClass: 'gs-person-page' + (p.isMe ? ' is-own' : ''),
+      sections: sections,
+    });
   }
 
   function load(r, gd) {
@@ -114,6 +125,8 @@
 
   G.pages.personLoot = {
     CARD_AWARDS: CARD_AWARDS,
+    sectionOf: sectionOf,
+    sectionFor: sectionFor,
     cardHtml: cardHtml,
     cardFor: cardFor,
     cardState: cardState,

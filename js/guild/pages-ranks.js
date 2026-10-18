@@ -43,18 +43,23 @@
 
   // The person's attendance page: the rank, a way to set it by hand (for whoever reviews a team of theirs), and the suggestions with their reasons.
   // person: the Worker's person { id, name, rank, rankChoices, rankTeamId }; teams: the answer's teams ({ team: { id }, rankSuggestion? }).
-  function personBoxHtml(person, teams) {
-    if (!person || !person.rank) return '';
+  function personBoxSection(person, teams) {
+    if (!person || !person.rank) return null;
     const choices = listOf(person.rankChoices);
     const suggested = listOf(teams).filter(function (t) { return t && t.rankSuggestion; })[0];
     const setter = person.rankTeamId && choices.length
       ? '<div class="gs-rank-set"><label class="gs-label" for="pa-rank">Rank</label><select class="gs-input gs-input-short" id="pa-rank" data-key="pa-rank">' +
         G.ui.optionsHtml(choices.map(function (c) { return { value: c.id, label: c.name }; }), person.rank.id) + '</select>' +
-        '<button type="button" class="gs-btn gs-btn-sm" data-action="rank-set" data-pid="' + esc(person.id) + '" data-team="' + esc(person.rankTeamId) + '" data-from="' + esc(person.rank.set ? person.rank.id : '') + '" data-key="rank-set">Set rank</button></div>'
+G.ui.buttonHtml({ label: 'Set rank', size: 'sm', attrs: { 'data-action': 'rank-set', 'data-pid': person.id, 'data-team': person.rankTeamId, 'data-from': person.rank.set ? person.rank.id : '', 'data-key': 'rank-set' } }) + '</div>'
       : '';
-    return '<section class="gs-card-sec gs-rank-box" aria-labelledby="pa-rank-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="pa-rank-h">Rank</h2>' + rankChipHtml(person.rank) + '</div><div class="gs-card-sec-body">' +
+    return { id: 'pa-rank-box', title: 'Rank', chipHtml: rankChipHtml(person.rank), bodyHtml:
       (suggested ? '<div class="gs-rank-line">' + suggestionHtml(suggested.rankSuggestion, { pid: person.id, name: person.name, teamId: suggested.team && suggested.team.id, rank: person.rank }) + '</div>' : '') +
-      setter + '<p class="gs-fine">A rank is a label. The ladder only suggests; an officer decides.</p><p class="gs-alert" id="rank-error" role="alert" hidden></p></div></section>';
+      setter + '<p class="gs-fine">A rank is a label. The ladder only suggests; an officer decides.</p><p class="gs-alert" id="rank-error" role="alert" hidden></p>' };
+  }
+
+  function personBoxHtml(person, teams) {
+    const section = personBoxSection(person, teams);
+    return section ? G.ui.objectSectionHtml(section) : '';
   }
 
   // -- behaviour --
@@ -105,5 +110,5 @@
     return G.api.ranks.set(gid, x.pid, { teamId: x.teamId, rank: select.value, via: 'manual', expectedRank: x.from || null }).then(function () { done(gid); }, function (err) { el.disabled = false; fail(err); });
   };
 
-  G.pages.ranks = { suggestionText: suggestionText, rankChipHtml: rankChipHtml, suggestionHtml: suggestionHtml, lineHtml: lineHtml, personBoxHtml: personBoxHtml };
+  G.pages.ranks = { suggestionText: suggestionText, rankChipHtml: rankChipHtml, suggestionHtml: suggestionHtml, lineHtml: lineHtml, personBoxSection: personBoxSection, personBoxHtml: personBoxHtml };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

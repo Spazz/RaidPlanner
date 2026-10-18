@@ -2,7 +2,7 @@
 // (permissions.js resolveViewerPermissions: the same rows and scopes as everyone else, read actions only) and from queries that name exactly the
 // columns they show, so a field that is not listed here cannot reach a visitor. Never in it: officer notes, Discord IDs, usernames or nicknames,
 // accounts, sign-up sources or notes, attendance reasons and decisions, raid report codes, plan links, loot notes or tags.
-//   { guild: { name, realm, realmKind, region, gameVersion },
+//   { guild: { name, realm, realmKind, region, gameVersion, timeZone },   timeZone: so the times on the page carry the guild's zone
 //     teams: [{ id, name }],                      the teams at least one section shows
 //     sections: { roster?, raids?, progress?, attendance?, loot? }   each a list of { team, ... } for the teams the viewer may see }
 // Cost: the roster, raids and loot of ALL the shown teams are read in one DB.batch (a handful of statements however many teams); attendance runs the
@@ -144,7 +144,7 @@ export async function buildView(db, guild, can, nowMs, { only = Object.keys(SECT
   const ordered = {};
   for (const section of Object.keys(VIEW_SECTIONS)) if (sections[section]) ordered[section] = sections[section];
   return {
-    guild: { name: guild.name, realm: guild.realm, realmKind: guild.realm_kind, region: guild.region, gameVersion: guild.game_version },
+    guild: { name: guild.name, realm: guild.realm, realmKind: guild.realm_kind, region: guild.region, gameVersion: guild.game_version, timeZone: guild.time_zone },
     teams: teamRows.filter((team) => shownTeams.has(team.id)).map((team) => ({ id: team.id, name: team.name })),
     sections: ordered,
   };

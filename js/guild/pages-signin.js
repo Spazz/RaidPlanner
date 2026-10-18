@@ -2,6 +2,7 @@
 // Sign in (signed out), No guild (signed in, none yet; also as a planner notice), and the plain-words message/loading pages.
 // Signing in and signing up are one step: "Continue with Discord" or "Continue with Battle.net" (the latter only where the server has it set
 // up, GET /auth/providers). An identity nobody holds makes a new account; a known one signs into its account.
+// These are the three centred message cards (the only centred pages): tokens and the kit's buttons, one primary per card.
 (function (G) {
   'use strict';
 
@@ -25,13 +26,13 @@
     const o = opts || {};
     const providers = o.providers && typeof o.providers === 'object' ? o.providers : { discord: true, bnet: false };
     const err = o.error && Object.prototype.hasOwnProperty.call(SIGNIN_ERROR_TEXT, o.error) ? '<p class="gs-alert" role="alert">' + esc(SIGNIN_ERROR_TEXT[o.error]) + '</p>' : '';
-    const notice = o.notice ? '<p class="gs-notice" role="status">' + esc(o.notice) + '</p>' : '';
+    const notice = o.notice ? G.ui.bannerHtml({ tone: 'info', text: o.notice, dismissible: false }) : '';
     const buttons = [];
     if (providers.discord !== false) {
-      buttons.push('<a class="gs-btn gs-btn-molten gs-btn-block" href="' + DISCORD_HREF + '">' + G.icons.icon('login', 22) + '<span>Continue with Discord</span></a>');
+      buttons.push(G.ui.buttonHtml({ label: 'Continue with Discord', variant: 'primary', size: 'lg', block: true, href: DISCORD_HREF, icon: 'login' }));
     }
     if (providers.bnet === true) {
-      buttons.push('<a class="gs-btn' + (providers.discord === false ? ' gs-btn-molten' : '') + ' gs-btn-block" href="' + BNET_HREF + '">' + G.icons.icon('login', 22) + '<span>Continue with Battle.net</span></a>');
+      buttons.push(G.ui.buttonHtml({ label: 'Continue with Battle.net', variant: providers.discord === false ? 'primary' : 'secondary', size: 'lg', block: true, href: BNET_HREF, icon: 'login' }));
     }
     const reads = (providers.discord !== false ? 'Discord: Raidsmith reads your username, avatar and the list of servers you\'re in, to find your guild. It never reads or posts messages. ' : '') +
       (providers.bnet === true ? 'Battle.net: it reads your BattleTag, and your character list if you choose to share it.' : '');
@@ -85,10 +86,11 @@
     return '<div class="gs-card-wrap"><div class="gs-card">' +
       '<h1 class="gs-h1 gs-h1-lg" tabindex="-1">You\'re not in a Raidsmith guild yet</h1>' + p.removedNote +
       '<p class="gs-lead">' + p.lead + '</p>' + p.claimNote + p.createNote +
-      '<div class="gs-actions">' + (p.discord ? '<a class="gs-btn" href="/auth/login">Sign in again</a>' : '<a class="gs-btn gs-btn-molten" href="#/linked">Connect Discord</a>') +
-      (p.canCreate ? '<a class="gs-btn gs-btn-molten" href="#/new">Create a guild</a>' : '') +
-      '<a class="gs-btn' + (p.canCreate || !p.discord ? '' : ' gs-btn-molten') + '" href="/" data-action="open-planner">Open the planner</a></div>' +
-      '<p class="gs-card-foot"><span>Signed in as ' + esc(u.displayName || u.username) + '</span><button type="button" class="gs-linkbtn" data-action="sign-out">Sign out</button></p>' +
+      // One primary: Connect Discord when there is no Discord, else Create a guild when the account may, else Open the planner.
+      '<div class="gs-actions">' + (p.discord ? G.ui.buttonHtml({ label: 'Sign in again', href: '/auth/login' }) : G.ui.buttonHtml({ label: 'Connect Discord', variant: 'primary', href: '#/linked' })) +
+      (p.canCreate ? G.ui.buttonHtml({ label: 'Create a guild', variant: 'primary', href: '#/new' }) : '') +
+      G.ui.buttonHtml({ label: 'Open the planner', variant: p.canCreate || !p.discord ? 'secondary' : 'primary', href: '/', attrs: { 'data-action': 'open-planner' } }) + '</div>' +
+      '<p class="gs-card-foot"><span>Signed in as ' + esc(u.displayName || u.username) + '</span>' + G.ui.buttonHtml({ label: 'Sign out', variant: 'link', attrs: { 'data-action': 'sign-out' } }) + '</p>' +
       '</div></div>';
   }
 
@@ -98,15 +100,15 @@
     return '<div class="gs-notice gs-noguild-notice" role="status"><div class="gs-notice-body">' +
       '<h2 class="gs-notice-title">You\'re not in a Raidsmith guild yet</h2>' + p.removedNote +
       '<p class="gs-notice-text">' + p.lead + '</p>' + p.claimNote + p.createNote + '</div>' +
-      (p.discord ? '<a class="gs-btn gs-btn-sm" href="/auth/login">Sign in again</a>' : '<a class="gs-btn gs-btn-sm" href="#/linked">Connect Discord</a>') + '</div>';
+      (p.discord ? G.ui.buttonHtml({ label: 'Sign in again', size: 'sm', href: '/auth/login' }) : G.ui.buttonHtml({ label: 'Connect Discord', size: 'sm', href: '#/linked' })) + '</div>';
   }
 
   // A plain page that says why (access removed, not a member, forbidden, load failure). opts.actionsHtml: buttons to put before Back to start.
   function messageHtml(title, text, opts) {
     const o = opts || {};
     return card('<h1 class="gs-h1 gs-h1-lg" tabindex="-1">' + esc(title) + '</h1><p class="gs-lead">' + esc(text) + '</p>' +
-      '<div class="gs-actions">' + (o.actionsHtml || '') + (o.retry ? '<button type="button" class="gs-btn" data-action="retry">Try again</button>' : '') +
-      '<a class="gs-btn' + (o.retry || o.actionsHtml ? '' : ' gs-btn-molten') + '" href="#/">Back to start</a></div>');
+      '<div class="gs-actions">' + (o.actionsHtml || '') + (o.retry ? G.ui.buttonHtml({ label: 'Try again', attrs: { 'data-action': 'retry' } }) : '') +
+      G.ui.buttonHtml({ label: 'Back to start', variant: o.retry || o.actionsHtml ? 'secondary' : 'primary', href: '#/' }) + '</div>');
   }
 
   function loadingHtml() {

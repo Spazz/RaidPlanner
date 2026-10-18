@@ -65,20 +65,21 @@
       '<div id="delete-confirm" role="group" aria-label="Confirm deleting your data" hidden>' +
       '<p class="gs-confirm-text">This deletes your sign-in, your Discord data and your Battle.net data now.' + (gone.length ? ' It also deletes ' + G.ui.joinNames(gone) + '.' : '') + ' Roster records stay with the guild, unlinked. To remove those, ask your guild\'s officers.</p>' +
       autoPromoteHtml(promote) +
-      '<div class="gs-check"><input type="checkbox" id="delete-understand" data-change="delete-understand"><label for="delete-understand">I understand</label></div>' +
-      '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-danger" id="delete-go" data-action="delete-go" data-key="delete-go" disabled>Delete my data</button>' +
-      '<button type="button" class="gs-btn" data-action="delete-cancel">Cancel</button></div></div>';
+      G.ui.checkFieldHtml({ id: 'delete-understand', label: 'I understand', attrs: { 'data-change': 'delete-understand' } }) +
+      '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Cancel', attrs: { 'data-action': 'delete-cancel' } }) +
+      G.ui.buttonHtml({ label: 'Delete my data', variant: 'danger', disabled: true, attrs: { id: 'delete-go', 'data-action': 'delete-go', 'data-key': 'delete-go' } }) + '</div></div>';
     return '<section class="gs-danger-box" aria-labelledby="privacy-delete"><h2 class="gs-h2 gs-h2-plain" id="privacy-delete">Delete my data</h2>' + intro + impactHtml +
       G.ui.alertHtml(message || '', 'delete-error') +
-      '<div><button type="button" class="gs-btn gs-btn-danger-outline" id="delete-open" data-action="delete-open" data-key="delete-open" aria-expanded="false" aria-controls="delete-confirm"' +
-      (blocked ? ' disabled aria-describedby="delete-blocked"' : '') + '>Delete my data</button></div>' + confirm + '</section>';
+      '<div>' + G.ui.buttonHtml({ label: 'Delete my data', variant: 'danger-outline', disabled: blocked,
+        attrs: { id: 'delete-open', 'data-action': 'delete-open', 'data-key': 'delete-open', 'aria-expanded': 'false', 'aria-controls': 'delete-confirm', 'aria-describedby': blocked ? 'delete-blocked' : null } }) + '</div>' + confirm + '</section>';
   }
 
   // opts: { me (or null when signed out), message }
   function privacyHtml(opts) {
     const o = opts || {};
     const me = o.me || null;
-    return '<div class="gs-page gs-page-narrow"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Privacy &amp; my data</h1></div>' +
+    // The reading page (Doc): the same header as every page, the policy below it, Delete my data last for a signed-in reader.
+    return G.ui.docPageHtml({ head: { title: 'Privacy & my data', context: 'What Raidsmith keeps, where it comes from, who can see it and how to delete it.' }, bodyHtml:
       section('privacy-keeps-you', 'What Raidsmith keeps about you', paragraphs([
         'Your Raidsmith account is made the first time you sign in, with Discord or with Battle.net. It can hold both: you connect the second on Linked accounts, and either one signs you in to the same account. Raidsmith never merges two accounts, so a Discord or Battle.net account that already has its own Raidsmith account cannot be connected to another one. The name you pick there (up to 32 characters) is shown to the people in your guilds.',
         'From Discord, when you sign in or connect it: your Discord ID, username and avatar. Not your email, not your messages. Disconnecting Discord deletes the Discord ID and nickname on roster entries and Raid-Helper sign-ups, as deleting all your data does; the people and their attendance stay. If a guild maps Discord roles to Raidsmith roles, signing in also reads your roles in that guild\'s Discord server and keeps the Raidsmith roles they map to, marked as given by Discord; leaving the Discord role, disconnecting Discord or deleting your data takes them away again.',
@@ -116,7 +117,7 @@
       ])) +
       section('privacy-stored', 'Where it is stored', paragraphs(['Raidsmith runs on Cloudflare.'])) +
       (me ? deleteBoxHtml(me.deleteImpact, o.message) : '') +
-      '<p class="gs-prose-line">Questions about your data: ' + esc(CONTACT) + '</p></div>';
+      '<p class="gs-prose-line">Questions about your data: ' + esc(CONTACT) + '</p>' });
   }
 
   G.handlers.click['delete-open'] = function (el) {

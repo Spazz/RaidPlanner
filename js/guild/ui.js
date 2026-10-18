@@ -396,13 +396,18 @@
     const byClass = options && options.roles && Object.prototype.hasOwnProperty.call(options.roles, classId) ? options.roles[classId] : null;
     return byClass && spec && Object.prototype.hasOwnProperty.call(byClass, spec) ? byClass[spec] : null;
   };
+  // The class and spec choices as { value, label } items (what ui.fieldHtml's select takes), and the same as <option> markup.
+  ui.classChoices = function (options, placeholder) {
+    return [{ value: '', label: placeholder }].concat(options.classes.map(function (c) { return { value: c.id, label: c.name }; }));
+  };
+  ui.specChoices = function (options, classId, noneLabel) {
+    return [{ value: '', label: noneLabel }].concat(ui.specsFor(options, classId).map(function (s) { return { value: s, label: s }; }));
+  };
   ui.classOptionsHtml = function (options, selected, placeholder) {
-    const items = [{ value: '', label: placeholder }].concat(options.classes.map(function (c) { return { value: c.id, label: c.name }; }));
-    return ui.optionsHtml(items, selected);
+    return ui.optionsHtml(ui.classChoices(options, placeholder), selected);
   };
   ui.specOptionsHtml = function (options, classId, selected, noneLabel) {
-    const items = [{ value: '', label: noneLabel }].concat(ui.specsFor(options, classId).map(function (s) { return { value: s, label: s }; }));
-    return ui.optionsHtml(items, selected);
+    return ui.optionsHtml(ui.specChoices(options, classId, noneLabel), selected);
   };
 
   // ── DOM-only helpers (runtime, not used by the pure render functions) ──

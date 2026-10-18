@@ -883,7 +883,10 @@ function withState(fn) {
     assert(out.includes('<span class="gs-item">Item 1</span>') && out.includes('<span class="gs-chip gs-chip-tag is-os">Off spec</span>') && out.includes('<span class="gs-chip gs-chip-tag">Main spec</span>') && out.includes('Oct 10'));
     assert(out.includes('<p class="gs-trial-note">Likes fire. Late twice.</p>') && out.includes('Shortened.'));
     for (const [action, label] of [['trial-promote', 'Promote to Raider'], ['trial-extend', 'Extend trial'], ['trial-end', 'End trial']]) {
-      assert(new RegExp('<button type="button" class="gs-btn[^"]*" data-action="' + action + '" data-key="[^"]+">' + label + '</button>').test(out), action);
+      assert(new RegExp('<button type="button" class="gs-btn[^"]*" data-action="' + action + '" data-key="[^"]+"><span>' + label + '</span></button>').test(out), action);
+    }
+    {
+      assert(out.includes('class="gs-btn gs-btn-molten" data-action="trial-promote"') && out.includes('class="gs-btn gs-btn-danger-outline" data-action="trial-end"'), 'Promote is the one primary, End trial a danger outline');
     }
     assert(out.includes('Attendance on Team KJ'), 'the guild has two teams, so the card names the one it counted');
     assertNoRawAttrs(out);
@@ -952,7 +955,7 @@ function withState(fn) {
     // ONE set of trial buttons: the card's. The banner above it is text only.
     const bar = out.match(/<div class="gs-trial-bar[\s\S]*?<\/div>/)[0];
     assert(bar.includes('trial ') && !bar.includes('<button'), 'the banner keeps its sentence, no buttons');
-    const buttons = (out.match(/<button[^>]*>(Promote to Raider|Extend trial|End trial|Make Raider|Set Inactive)</g) || []).map((b) => b.replace(/^[\s\S]*>([^>]+)<$/, '$1'));
+    const buttons = (out.match(/<button[^>]*><span>(Promote to Raider|Extend trial|End trial|Make Raider|Set Inactive)<\/span>/g) || []).map((b) => b.replace(/^[\s\S]*<span>([^<]+)<\/span>$/, '$1'));
     assert.deepEqual(buttons, ['Promote to Raider', 'Extend trial', 'End trial'], 'the card\'s three buttons and no others');
     assert(!/data-action="person-(status|extend)"/.test(out));
     assert(!G.pages.person.personHtml({ guildData: g, record: record(), linkable: null, alert: '', attendance: null }).includes('trial-card-h'));
@@ -1048,7 +1051,7 @@ function withState(fn) {
     openTrialPerson(S);
     const opened = captureDialogs();
     G.handlers.click['trial-extend'](el({}));
-    assert(opened[0].html.includes("Extend Thoren's trial") && opened[0].html.includes('type="date" id="dlg-tend" name="trialEnd"') && opened[0].html.includes('value="2026-11-07"') && opened[0].html.includes('min="2026-10-18"'), 'end 10-24 is after today: +14 from it');
+    assert(opened[0].html.includes('Extend Thoren&#39;s trial') && opened[0].html.includes('type="date" id="dlg-tend" name="trialEnd"') && opened[0].html.includes('value="2026-11-07"') && opened[0].html.includes('min="2026-10-18"'), 'end 10-24 is after today: +14 from it');
     S.person.record = record({ person: Object.assign({}, record().person, { trialEnd: '2026-10-10', trialFlag: { kind: 'ended', days: -7 } }) });
     G.handlers.click['trial-extend'](el({}));
     assert(opened[1].html.includes('value="2026-10-31"'), 'an end in the past: +14 from today');
@@ -1079,9 +1082,9 @@ function withState(fn) {
     openTrialPerson(S);
     const opened = captureDialogs();
     G.handlers.click['trial-end'](el({}));
-    assert(opened[0].html.includes("End Thoren's trial?") && opened[0].html.includes('<textarea class="gs-input gs-textarea" id="dlg-note" name="note" data-field="note" rows="3" maxlength="300"') && opened[0].html.includes('data-submit="trial-end-form"'));
+    assert(opened[0].html.includes('End Thoren&#39;s trial?') && opened[0].html.includes('<textarea class="gs-input gs-textarea" id="dlg-note" name="note" data-field="note" rows="3" maxlength="300"') && opened[0].html.includes('data-submit="trial-end-form"'));
     const noteless = G.pages.personTrial.endDialogHtml(record({}, { notesEdit: false }));
-    assert(!noteless.includes('<textarea') && noteless.includes('End trial</button>'), 'no note field for someone who cannot edit the notes');
+    assert(!noteless.includes('<textarea') && noteless.includes('End trial</span></button>'), 'no note field for someone who cannot edit the notes');
     // with a note
     let s = stub((m, url, body) => (m === 'patch' ? Promise.resolve(afterPatch({ notes: { text: 'Likes fire', version: 3 } })) : Promise.resolve({ notes: { text: body.text, version: 4 } })));
     await G.handlers.submit['trial-end-form'](form({ note: { value: '  Never showed up  ' } }));

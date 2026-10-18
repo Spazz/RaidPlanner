@@ -108,8 +108,8 @@ function withApi(stubs, fn) {
   await check('sign in: the choice depends on what the server offers, Discord first, one account either way, and every string is escaped', () => {
     const both = G.pages.signin.signinHtml({ providers: { discord: true, bnet: true } });
     assert(both.includes('class="gs-signin-buttons"'));
-    assert(/<a class="gs-btn gs-btn-molten gs-btn-block" href="\/auth\/login">[\s\S]*Continue with Discord/.test(both));
-    assert(/<a class="gs-btn gs-btn-block" href="\/auth\/bnet\/login\?mode=signin">[\s\S]*Continue with Battle\.net/.test(both));
+    assert(/<a class="gs-btn gs-btn-molten gs-btn-lg gs-btn-wide" href="\/auth\/login">[\s\S]*Continue with Discord/.test(both));
+    assert(/<a class="gs-btn gs-btn-lg gs-btn-wide" href="\/auth\/bnet\/login\?mode=signin">[\s\S]*Continue with Battle\.net/.test(both));
     const t = text(both);
     for (const s of ['Sign in to see your guild', 'Discord: Raidsmith reads your username', 'Battle.net: it reads your BattleTag', 'Either one makes your account the first time', 'Privacy & my data']) assert(t.includes(s), s);
     assert(!both.includes('Sign in with Discord'));
@@ -117,7 +117,7 @@ function withApi(stubs, fn) {
     assert(discordOnly.includes('Continue with Discord') && !discordOnly.includes('Battle.net') && text(discordOnly).includes('Signing in makes your account the first time'));
     assert(G.pages.signin.signinHtml({ providers: { discord: true, bnet: false } }).includes('Continue with Discord'));
     const bnetOnly = G.pages.signin.signinHtml({ providers: { discord: false, bnet: true } });
-    assert(!bnetOnly.includes('/auth/login') && bnetOnly.includes('gs-btn gs-btn-molten gs-btn-block'));
+    assert(!bnetOnly.includes('/auth/login') && bnetOnly.includes('gs-btn gs-btn-molten gs-btn-lg gs-btn-wide'));
     assert(G.pages.signin.signinHtml({ providers: { discord: true, bnet: true }, error: 'bnet' }).includes('Battle.net could not finish the sign-in'));
     assertEscaped(G.pages.signin.signinHtml({ providers: { discord: true, bnet: true }, notice: HOSTILE + QUOTES }), 'notice');
     assertNoRawAttrs(both);
@@ -157,7 +157,7 @@ function withApi(stubs, fn) {
   await check('Linked accounts: the name card shows where the name comes from, saves a custom one and can go back', () => {
     const plainName = G.pages.accounts.nameCardHtml(me());
     assert(text(plainName).includes('Shown as Gale G (your Discord name)'));
-    assert(/<input class="gs-input" type="text" id="account-name" name="displayName" maxlength="32"[^>]* value=""/.test(plainName));
+    assert(/<input class="gs-input" type="text" id="account-name" name="displayName"[^>]* value=""[^>]* maxlength="32"/.test(plainName));
     assert(plainName.includes('data-submit="account-name-form"') && !plainName.includes('account-name-reset'), 'nothing to reset');
     assert(text(plainName).includes('Up to 32 characters') && text(plainName).includes('Leave it empty to use your Discord name'));
     const custom = G.pages.accounts.nameCardHtml(me({ account: { customName: 'Ember Gale', available: { discord: true, bnet: true } }, user: Object.assign(person('u1', 'Ember Gale'), { prefs: {} }) }));
@@ -172,10 +172,10 @@ function withApi(stubs, fn) {
     assert(text(off).includes('Not connected') && off.includes('href="/auth/login?mode=link"') && text(off).includes('Connect Discord') && text(off).includes('accounts are never merged'));
     assert(!off.includes('discord-disconnect-open'));
     const on = G.pages.accounts.discordCardHtml(me());
-    assert(text(on).includes('Connected') && text(on).includes('Connected as @gale .') && on.includes('data-action="discord-disconnect-open"') && !/data-action="discord-disconnect-open"[^>]*disabled/.test(on));
+    assert(text(on).includes('Connected') && text(on).includes('Connected as @gale .') && on.includes('data-action="discord-disconnect-open"') && !/disabled[^>]*data-action="discord-disconnect-open"/.test(on));
     assert(on.includes('href="/auth/login?mode=link"') && text(on).includes('Refresh my servers'));
     const only = G.pages.accounts.discordCardHtml(onlyDiscord());
-    assert(/data-action="discord-disconnect-open"[^>]*disabled/.test(only) && only.includes('aria-describedby="discord-only"') && text(only).includes('Discord is the only way you sign in right now'));
+    assert(/disabled[^>]*data-action="discord-disconnect-open"/.test(only) && only.includes('aria-describedby="discord-only"') && text(only).includes('Discord is the only way you sign in right now'));
     const unavailable = G.pages.accounts.discordCardHtml(me({ identities: { discord: null, bnet: { battletag: 'X#1' } }, account: { customName: null, available: { discord: false, bnet: true } } }));
     assert(text(unavailable).includes('Unavailable') && unavailable.includes('id="discord-not-set-up"') && !unavailable.includes('mode=link'));
     assertEscaped(G.pages.accounts.discordCardHtml(me({ identities: { discord: { username: HOSTILE + QUOTES }, bnet: null } })), 'username');
@@ -183,11 +183,11 @@ function withApi(stubs, fn) {
 
   await check('Linked accounts: Battle.net cannot be disconnected while it is the only sign-in, and an expired character list says so', () => {
     const only = G.pages.bnet.linkedHtml({ data: bnetData({ link: { battletag: 'Holly#1111', linkedAt: T0, fetchedAt: T0, expiresAt: T0 + 30 * DAY, expired: false } }), me: onlyBnet() });
-    assert(/data-action="bnet-disconnect-open"[^>]*disabled/.test(only) && only.includes('aria-describedby="bnet-only"') && text(only).includes('Battle.net is the only way you sign in right now'));
+    assert(/disabled[^>]*data-action="bnet-disconnect-open"/.test(only) && only.includes('aria-describedby="bnet-only"') && text(only).includes('Battle.net is the only way you sign in right now'));
     const both = G.pages.bnet.linkedHtml({ data: bnetData(), me: me() });
-    assert(!/data-action="bnet-disconnect-open"[^>]*disabled/.test(both) && !both.includes('bnet-only'));
+    assert(!/disabled[^>]*data-action="bnet-disconnect-open"/.test(both) && !both.includes('bnet-only'));
     const withoutMe = G.pages.bnet.linkedHtml({ data: bnetData() });
-    assert(!/data-action="bnet-disconnect-open"[^>]*disabled/.test(withoutMe), 'unknown = not the last one');
+    assert(!/disabled[^>]*data-action="bnet-disconnect-open"/.test(withoutMe), 'unknown = not the last one');
     const expired = G.pages.bnet.linkedHtml({ data: bnetData({ link: { battletag: 'Gale#0009', linkedAt: T0, fetchedAt: T0, expiresAt: T0 + 30 * DAY, expired: true } }), me: me() });
     const t = text(expired);
     assert(t.includes('deleted after 30 days. Connect again to load it') && t.includes('Load my characters') && !expired.includes('data-key="bnet-characters"'));
@@ -292,24 +292,24 @@ function withApi(stubs, fn) {
 
   await check('person page: the header names a linked account, and the Details field shows Not linked + Link, an officer\'s link + Unlink, or the Discord one without a button', () => {
     const none = record();
-    assert.equal(text(G.pages.person.personHtml({ guildData: gd, record: none, linkable: [] }).match(/<p class="gs-person-discord">[\s\S]*?<\/p>/)[0]).trim(), 'No Discord account');
+    assert.equal(text(G.pages.person.personHtml({ guildData: gd, record: none, linkable: [] }).match(/<span class="gs-person-discord">[\s\S]*?<\/span>/)[0]).trim(), 'No Discord account');
     const html0 = G.pages.person.personHtml({ guildData: gd, record: none, linkable: [] });
     assert(html0.includes('id="det-account-field"') && html0.includes('Not linked') && html0.includes('data-action="account-link-open"') && !html0.includes('account-unlink-open'));
     assert(html0.includes('Raidsmith account'));
     const linked = record({ account: { user: holly, via: 'link', linked: true } });
     const html1 = G.pages.person.personHtml({ guildData: gd, record: linked, linkable: [] });
-    assert.equal(text(html1.match(/<p class="gs-person-discord">[\s\S]*?<\/p>/)[0]).trim(), 'Account: Holly - Signed in');
+    assert.equal(text(html1.match(/<span class="gs-person-discord">[\s\S]*?<\/span>/)[0]).trim(), 'Account: Holly - Signed in');
     assert(text(html1).includes('Holly linked by an officer') && html1.includes('data-action="account-unlink-open"') && !html1.includes('data-action="account-link-open"'));
     // A Discord member whose account also carries the officer's link: the Discord line is not repeated as an account.
     const both = record({ discord: { signIn: 'signed_in', user: person('u9', 'Gale'), nickname: null }, account: { user: person('u9', 'Gale'), via: 'link', linked: true } });
-    assert.equal(text(G.pages.person.personHtml({ guildData: gd, record: both, linkable: [] }).match(/<p class="gs-person-discord">[\s\S]*?<\/p>/)[0]).trim(), 'Discord: gale - Signed in');
+    assert.equal(text(G.pages.person.personHtml({ guildData: gd, record: both, linkable: [] }).match(/<span class="gs-person-discord">[\s\S]*?<\/span>/)[0]).trim(), 'Discord: gale - Signed in');
     // Through the Discord ID: shown, with no Unlink (that is the Discord field's).
     const viaDiscord = record({ discord: { signIn: 'signed_in', user: person('u9', 'Gale'), nickname: null }, account: { user: person('u9', 'Gale'), via: 'discord', linked: false } });
     const html2 = G.pages.person.personHtml({ guildData: gd, record: viaDiscord, linkable: [] });
     assert(text(html2).includes('Gale through the Discord account above') && !html2.includes('account-unlink-open') && !html2.includes('account-link-open'));
     // Discord not signed in yet, plus an account an officer linked: both lines.
     const mixed = record({ discord: { signIn: 'not_yet', user: null, nickname: 'Ally' }, account: { user: holly, via: 'link', linked: true } });
-    assert.equal(text(G.pages.person.personHtml({ guildData: gd, record: mixed, linkable: [] }).match(/<p class="gs-person-discord">[\s\S]*?<\/p>/)[0]).trim(), 'Discord: Ally - Not signed in yet - Account: Holly - Signed in');
+    assert.equal(text(G.pages.person.personHtml({ guildData: gd, record: mixed, linkable: [] }).match(/<span class="gs-person-discord">[\s\S]*?<\/span>/)[0]).trim(), 'Discord: Ally - Not signed in yet - Account: Holly - Signed in');
     // A member's read-only record has no field and no buttons.
     const member = record({ isMe: true }, { can: { edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false } });
     const html3 = G.pages.person.personHtml({ guildData: gd, record: member, linkable: null });

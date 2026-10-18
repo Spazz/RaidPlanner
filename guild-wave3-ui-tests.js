@@ -619,7 +619,7 @@ class ApiErr extends Error {
     assert.equal(G.pages.apply.problemOf(draft, FORM()), null);
     // A checked mistake never reaches the Worker.
     let api = stub(() => Promise.resolve({ ok: true }));
-    const nameErr = fakeEl('ap-err-name');
+    const nameErr = fakeEl('ap-name-err');
     try {
       await G.handlers.submit['apply-form']({ elements: Object.assign({}, form.elements, { name: control('') }), querySelectorAll: () => [] });
       assert.equal(api.calls.length, 0);
@@ -640,12 +640,12 @@ class ApiErr extends Error {
     } finally { api.restore(); }
     // A refusal that names a field is shown at the field.
     formState.done = false; formState.busy = false;
-    const realmErr = fakeEl('ap-err-realm');
+    const realmErr = fakeEl('ap-realm-err');
     api = stub(() => Promise.reject(new ApiErr(400, 'bad_request', { message: 'That realm is not valid.', field: 'realm' })));
     try {
       await G.handlers.submit['apply-form'](form);
       await settle();
-      assert.equal(realmErr.textContent, 'That realm is not valid.');
+      assert(realmErr.innerHTML.includes('That realm is not valid.') && realmErr.hidden === false);
       assert.equal(formState.done, false);
       assert.equal(formState.busy, false);
     } finally { api.restore(); }

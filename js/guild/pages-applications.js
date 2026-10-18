@@ -54,7 +54,7 @@
     };
     const open = app.status === 'new' || app.status === 'reviewing';
     return '<div class="gs-row-actions">' +
-      (open ? btn('app-accept', 'Accept', ' gs-btn-molten') : '') +
+      (open ? btn('app-accept', 'Accept') : '') +
       (app.status === 'new' ? btn('app-status-reviewing', 'Mark reviewing') : '') +
       (open ? btn('app-status-declined', 'Decline') : '') +
       (app.status === 'declined' ? btn('app-status-reviewing', 'Reopen') : '') +

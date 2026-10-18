@@ -519,9 +519,11 @@
   }
 
   // Signed out: "Sign in or sign up" (desktop) / "Sign in" (phone). It opens the sign-in page, where Discord and Battle.net are offered. On the planner
-  // (landing and board, where Load roster and Optimize are the primaries) it is a text link; a guild page or a help page keeps the button.
+  // (landing and board, where Load roster and Optimize are the primaries) it is a text link, and so it is on the pages that have a primary of their own (the sign-in
+  // card, the guest sign-up, the application form): one orange button per screen. A guild page or a help page keeps the button.
+  const OWN_PRIMARY_ROUTES = ['home', 'signin', 'join', 'apply'];
   function signinButtonHtml(ctx) {
-    if (sectionOf(ctx) === 'planner') {
+    if (sectionOf(ctx) === 'planner' || (ctx.route && OWN_PRIMARY_ROUTES.indexOf(ctx.route.name) >= 0)) {
       return '<a class="gs-signin-link" href="' + esc(baseOf(ctx) + G.router.format({ name: 'signin' })) + '"><span class="gs-signin-full">Sign in or sign up</span><span class="gs-signin-short">Sign in</span></a>';
     }
     return '<a class="gs-btn gs-btn-molten gs-signin-btn" href="' + esc(baseOf(ctx) + G.router.format({ name: 'signin' })) + '">' + ic('login', 18) + '<span class="gs-signin-full">Sign in or sign up</span><span class="gs-signin-short">Sign in</span></a>';

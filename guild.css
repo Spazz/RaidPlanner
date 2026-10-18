@@ -1797,3 +1797,37 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
 
 /* the commit sentence of the pasted-roster dialog */
 .gs-commit-line { margin: 0 0 8px; font-size: 16px; line-height: 1.4; }
+
+/* ══ Design framework (Wave 3): person pages on T2, Away / My characters / Linked accounts, the read-only and reading pages ═════════════════════════
+   The person pages are object pages (header, You line, sections); Away and My characters are list pages; Linked accounts, the application form and the guest
+   sign-up are form pages; the guest view, the public page, Privacy and the roadmap are read-only pages that say so. */
+
+/* A header context line made of several facts (Main, Alts, Discord) shows them side by side with a rule between */
+.gs-pagehead-context:has(> .gs-sumsep) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+
+/* The You line of a person: the sentence, then who can see the page */
+.gs-youline-sub { display: block; margin-top: 6px; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
+.gs-youline-act:empty { display: none; }
+
+/* Sections on a person page */
+.gs-details-form { display: flex; flex-direction: column; gap: 16px; }
+.gs-details-form .gs-savebar { margin: 4px -20px -20px; }
+.gs-person-page .gs-delete-row { margin-top: 4px; }
+.gs-char-sub { display: block; }
+.gs-dtable .gs-row-actions { justify-content: flex-end; }
+@media (min-width: 761px) {
+  .gs-osection-body > .gs-dtable-wrap:only-child { margin: -20px; border: 0; }
+}
+
+/* Lists of panels: the read-only view's sections and My characters' guilds */
+.gs-view .gs-listbody, .gs-chars-guilds { display: flex; flex-direction: column; gap: var(--sp-6); }
+.gs-view-meta { margin-top: 0; }
+
+/* Form pages (apply, guest sign-up, Linked accounts): fields stack at 760, the intro and the foot line are quiet */
+.gs-form-page .gs-apply-form { gap: var(--sp-4); }
+.gs-form-page .gs-osection { margin-bottom: 0; }
+.gs-form-page > .gs-osection + .gs-osection { margin-top: 0; }
+.gs-doc-page .gs-prose p { max-width: 68ch; }
+
+/* An away notice row (the officers' card and the person page) keeps its text and its two buttons on one line when there is room */
+.gs-an-item .gs-row-actions { flex: none; }

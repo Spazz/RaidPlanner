@@ -366,7 +366,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
 
   await check('person record: header, chips, Discord line, trial bar (text only, the decision buttons are on the Trial review card) and the clearing note', () => {
     const out = personPage(record());
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Sølvhand</h1>'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Sølvhand</h1>'));
     assert(out.includes('Paladin &middot; Protection / Holy'));
     assert(out.includes('gs-status-trial">Trial</span>') && out.includes('gs-trial-ended">Ended 2 days ago</span>'));
     assert(out.includes('Discord: solvhand &middot; Signed in'));
@@ -390,12 +390,13 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   await check('person record: characters card lists Main first, Edit / Make Main / remove per character, and Add character', () => {
     const out = personPage(record());
     assert(out.includes('data-action="char-add"') && out.includes('>Add character<'));
-    const table = out.match(/<table class="gs-table gs-table-chars"[\s\S]*?<\/table>/)[0];
+    const table = out.match(/<table class="gs-dtable" aria-label="Characters"[\s\S]*?<\/table>/)[0];
     assert(table.indexOf('Sølvhand') < table.indexOf('Glimmerkin'));
-    assert(table.includes('gs-chip gs-chip-main">Main</span>') && table.includes('<span class="gs-chip">Alt</span>'));
-    assert(table.includes('aria-label="Edit Sølvhand"') && table.includes('aria-label="Make Glimmerkin the Main"') && table.includes('aria-label="Remove Glimmerkin"'));
-    assert(!table.includes('aria-label="Remove Sølvhand"') && !table.includes('aria-label="Make Sølvhand the Main"'), 'the Main cannot be removed or made Main again');
-    assert(!table.includes('<th scope="col">Team</th>'), 'no Team column with one team');
+    assert(table.includes('gs-tag-mark is-gold') && table.includes('Main</span>') && table.includes('gs-tag gs-tag-plain">Alt</span>'));
+    assert(table.includes('aria-label="Edit Sølvhand"') && table.includes('aria-label="Edit Glimmerkin"'), 'one inline action: Edit');
+    assert(table.includes('aria-label="More actions for Glimmerkin"') && table.includes('data-action="char-main" data-cid="') && table.includes('data-action="char-remove" data-cid="'), 'Make Main and Remove sit in the row\'s More menu');
+    assert(!table.includes('More actions for Sølvhand') && !table.includes('data-action="char-remove" data-cid="c_8"'), 'the Main cannot be removed or made Main again');
+    assert(!table.includes('>Team</th>'), 'no Team column with one team');
     assert(out.includes('Attendance shows here after the first raid.'));
   });
 
@@ -403,14 +404,14 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND] });
     const rec = record({ characters: [charRec(8, 'Sølvhand', 'PALADIN', 'Protection', 'Holy', true), charRec('8b', 'Glimmerkin', 'PRIEST', 'Holy', 'Discipline', false, TEAM_WEEKEND)] });
     const out = personPage(rec, gd);
-    assert(out.includes('<th scope="col">Team</th>') && out.includes('<td>Weekend team</td>') && out.includes('<td>Main team</td>'));
+    assert(out.includes('>Team</th>') && out.includes('data-label="Team">Weekend team</td>') && out.includes('data-label="Team">Main team</td>'));
   });
 
   await check('person record: Details form for editors (status, joined, trial dates, Discord from linkable) and Save changes', () => {
     const out = personPage(record(), guildData(), [{ id: 'u_9', username: 'newbie', displayName: 'Newbie' }]);
-    assert(out.includes('data-submit="person-details-form"') && out.includes('>Save changes<'));
+    assert(out.includes('data-submit="person-details-form"') && out.includes('data-savebar') && out.includes('>Save details<'), 'the fields share one Save bar');
     assert(/<option value="trial" selected>Trial<\/option>/.test(out));
-    assert(out.includes('name="joinedOn" value="2026-09-15"') && out.includes('name="trialStart" value="2026-09-15"') && out.includes('name="trialEnd" value="2026-10-13"'));
+    assert(/name="joinedOn"[^>]* value="2026-09-15"/.test(out) && /name="trialStart"[^>]* value="2026-09-15"/.test(out) && /name="trialEnd"[^>]* value="2026-10-13"/.test(out));
     assert(/<option value="u_8" selected>Solvhand \(@solvhand\)<\/option>/.test(out) && out.includes('<option value="u_9">Newbie (@newbie)</option>') && out.includes('<option value="">Not linked</option>'));
     assert(out.includes('Nickname on the Raid-Helper sign-up: Sølvhand/Glimmerkin.'));
   });
@@ -431,7 +432,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
 
   await check('person record: the delete confirm names the person and counts their characters', () => {
     const out = G.pages.person.deleteDialogHtml(record());
-    assert(out.includes('Delete Sølvhand? This removes them and their 2 characters from the roster. It can\'t be undone.'));
+    assert(out.includes('Delete Sølvhand? This removes them and their 2 characters from the roster. It can&#39;t be undone.'));
     assert(out.includes('data-submit="delete-person-form"') && out.includes('>Delete person<'));
     const one = G.pages.person.deleteDialogHtml(record({ characters: [charRec(8, 'Sølvhand', 'PALADIN', 'Protection', 'Holy', true)] }));
     assert(one.includes('their 1 character from') || one.includes('their 1 character '), one);
@@ -1084,7 +1085,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const rec = record();
     const s = setupPerson(rec);
     const out = G.pages.person.removeCharDialogHtml(rec, rec.characters[1]);
-    assert(out.includes('Remove Glimmerkin from Sølvhand' + String.fromCharCode(39) + 's characters?') && out.includes('>Cancel<') && out.includes('>Remove</button>'));
+    assert(out.includes('Remove Glimmerkin from Sølvhand&#39;s characters?') && out.includes('>Cancel<') && out.includes('>Remove</span></button>'));
     assert(out.includes('data-submit="remove-char-form"'));
     const calls = [];
     await withApi({ del: (...a) => { calls.push(a); return Promise.resolve(Object.assign(record(), { rosterFlags: { t_main: 2 } })); } }, async () => {
@@ -1176,14 +1177,14 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   await check('inactive: the Reason and Left on fields show only for Inactive (default today, or the stored values) and the status reads "Inactive - Kicked, left Oct 12, 2026"', async () => {
     // A trial: fields present but hidden, the date defaults to today.
     const trial = personPage(record());
-    assert(/<select class="gs-input" id="det-status" name="status" data-change="person-status-change">/.test(trial));
+    assert(/<select class="gs-input" id="det-status" name="status"[^>]*data-change="person-status-change">/.test(trial));
     assert(/id="det-reason-field" hidden>/.test(trial) && /id="det-lefton-field" hidden>/.test(trial));
-    assert(trial.includes('name="leftOn" value="2026-10-15"'));
+    assert(/name="leftOn"[^>]* value="2026-10-15"/.test(trial));
     assert(trial.includes('<option value="" selected>No reason</option>') && ['Left guild', 'Kicked', 'Break', 'Other'].every(t => trial.includes('>' + t + '</option>')));
     // An inactive person: fields shown with the stored values.
     const gone = personPage(record({ person: { status: 'inactive', trialFlag: null, leftReason: 'kicked', leftOn: '2026-10-12' } }));
     assert(/id="det-reason-field">/.test(gone) && /id="det-lefton-field">/.test(gone));
-    assert(gone.includes('<option value="kicked" selected>Kicked</option>') && gone.includes('name="leftOn" value="2026-10-12"'));
+    assert(gone.includes('<option value="kicked" selected>Kicked</option>') && /name="leftOn"[^>]* value="2026-10-12"/.test(gone));
     assert(gone.includes('gs-status-inactive">Inactive - Kicked, left Oct 12, 2026<'));
     // The select toggles the fields.
     const fields = { 'det-reason-field': { hidden: true }, 'det-lefton-field': { hidden: true } };

@@ -1104,7 +1104,7 @@ check('person: awards newest first with totals by tag; the viewer\'s access deci
   const r = await s.call('bob', 'GET', `/loot/person/${s.p.aldric}`);
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.deepEqual(Object.keys(r.json), ['person', 'awards', 'totals']);
-  assert.deepEqual(r.json.person, { id: s.p.aldric, name: 'Aldric', status: 'raider' });
+  assert.deepEqual(r.json.person, { id: s.p.aldric, name: 'Aldric', class: 'WARRIOR', status: 'raider', isMe: false }, 'the person carries class and isMe (the page frames the viewer\'s own record as You)');
   assert.deepEqual(r.json.awards.map((a) => a.itemId), [28770, 30002, 28770, 28770]);
   assert.deepEqual(r.json.awards.map((a) => a.raidOn), ['2027-01-12', '2027-01-05', '2027-01-05', '2026-11-03']);
   assert.deepEqual(r.json.totals, { MS: 3, OS: 1, DE: 0, BANK: 0 });

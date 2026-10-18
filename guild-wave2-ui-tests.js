@@ -842,13 +842,13 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('away page: my notices as sentences with the reason, Edit and Remove; ended ones in a collapsed Past group; Add a notice; the guild\'s time zone is named', () => {
     const out = minePage();
-    assert(out.includes('<h1 class="gs-h1" tabindex="-1">Away notices</h1>') && out.includes('(America/Chicago)'));
-    assert(out.includes('<span class="gs-an-what">Away Oct 20 - Oct 27</span>') && out.includes('Reason: Wedding'));
+    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Away notices</h1>') && out.includes('(America/Chicago)'));
+    assert(out.includes('gs-dtable-primary">Away Oct 20 - Oct 27</th>') && out.includes('data-label="Reason">Wedding</td>'), 'the notice is the row (cards on a phone), the reason its own column');
     assert(out.includes('Away every Thursday from Oct 22') && out.includes('Late, arriving 21:00, every Tuesday until Dec 1'));
     assert(out.indexOf('Late, arriving') < out.indexOf('Away Oct 20') && out.indexOf('Away Oct 20') < out.indexOf('every Thursday'), 'by start date');
-    assert(/data-action="away-edit" data-ctx="mine" data-nid="an_1" data-key="an-edit-an_1" aria-label="Edit: Away Oct 20 - Oct 27">Edit<\/button>/.test(out));
-    assert(/data-action="away-remove" data-ctx="mine" data-nid="an_1" data-key="an-remove-an_1" aria-label="Remove: Away Oct 20 - Oct 27">Remove<\/button>/.test(out));
-    assert(/data-action="away-add" data-ctx="mine" data-key="an-add">Add a notice<\/button>/.test(out) && !/data-key="an-add" disabled/.test(out));
+    assert(/aria-label="Edit: Away Oct 20 - Oct 27" data-action="away-edit" data-ctx="mine" data-nid="an_1" data-key="an-edit-an_1"><span>Edit<\/span><\/button>/.test(out));
+    assert(/aria-label="Remove: Away Oct 20 - Oct 27" data-action="away-remove" data-ctx="mine" data-nid="an_1" data-key="an-remove-an_1"><span>Remove<\/span><\/button>/.test(out));
+    assert(/class="gs-btn gs-btn-molten" data-action="away-add" data-ctx="mine" data-key="an-add"><span>Add a notice<\/span><\/button>/.test(out) && !/disabled data-action="away-add"/.test(out), 'Add a notice is the page\'s one primary, in the header');
     // The past group: collapsed, counted, opens on its button.
     assert(/data-action="away-past"[^>]*aria-expanded="false" aria-controls="an-past-list"><span>Past \(1\)<\/span>/.test(out));
     assert(/id="an-past-list" hidden>/.test(out) && out.indexOf('id="an-past-list"') < out.indexOf('Away Sep 1 - Sep 5'));
@@ -856,17 +856,17 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert(/aria-expanded="true"/.test(open) && /id="an-past-list">/.test(open));
     assert.equal(minePage({ notices: [N_RANGE] }).includes('an-past'), false, 'nothing past: no group');
     assertNoRawAttrs(out);
-    assert(minePage(null, { note: 'Notice saved.' }).includes('role="status"><span>Notice saved.</span>'));
+    assert(/gs-banner-success[\s\S]*Notice saved\./.test(minePage(null, { note: 'Notice saved.' })), 'the result is an inline banner');
   });
 
   await check('away page: empty states - no roster entry says who to ask; no notices says so; thirty is the most (Add is disabled and says why)', () => {
     const none = minePage({ personId: null, notices: [] });
     assert(none.includes('No roster entry yet') && none.includes('Ask an officer to link your account to your roster entry.') && !none.includes('away-add'));
     const empty = minePage({ notices: [] });
-    assert(empty.includes('You have no away notices.') && empty.includes('away-add'));
-    assert(minePage({ notices: [N_PAST] }).includes('No current or upcoming notices.'));
+    assert(empty.includes('You have no away notices') && empty.includes('away-add'));
+    assert(minePage({ notices: [N_PAST] }).includes('No current or upcoming notices'));
     const full = minePage({ notices: Array.from({ length: 30 }, (_, i) => notice({ id: 'an_x' + i, from: '2026-10-2' + (i % 10) })), max: 30 });
-    assert(/data-key="an-add" disabled/.test(full) && full.includes('You have 30 notices, the most there can be. Remove one to add another.'));
+    assert(/disabled data-action="away-add"/.test(full) && full.includes('You have 30 notices, the most there can be. Remove one to add another.'));
   });
 
   await check('away page: hostile reasons and names are escaped on the page, the card, the section and the dialogs', () => {
@@ -1104,12 +1104,12 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids page (officers): "Away, next 4 weeks" lists name in class colour, what, the dates of a weekly one and the reason, with Edit / Remove and Add; nothing for members or while loading', () => {
     const out = teamCard({ gid: 'g1', teamId: 't1', status: 'ok', data: TEAMDATA() });
-    assert(out.includes('<h2 class="gs-h2" id="an-team-h">Away, next 4 weeks</h2>') && out.includes('data-action="away-add" data-ctx="team" data-key="an-team-add">Add a notice<'));
+    assert(out.includes('<h2 class="gs-h2" id="an-team-h">Away, next 4 weeks</h2>') && out.includes('data-action="away-add" data-ctx="team" data-key="an-team-add"><span>Add a notice<'));
     assert(/<a class="gs-char-link gs-class-paladin" href="#\/g\/g1\/roster\/p\/p_x">Thoren<\/a>/.test(out) && /gs-class-rogue" href="#\/g\/g1\/roster\/p\/p_y">Kaelith</.test(out));
     assert(out.includes('Away Oct 20 - Oct 27') && out.includes('Reason: Wedding'));
     assert(out.includes('Late, arriving 21:00, every Thursday') && out.includes('Oct 22, Oct 29, Nov 5'), 'the dates of a weekly notice');
     assert(!out.includes('Oct 21, Oct 22'), 'a range is not spelled out day by day');
-    assert(/data-action="away-edit" data-ctx="team" data-nid="an_1" data-key="an-edit-an_1" aria-label="Edit: Away Oct 20 - Oct 27 for Thoren">/.test(out));
+    assert(/aria-label="Edit: Away Oct 20 - Oct 27 for Thoren" data-action="away-edit" data-ctx="team" data-nid="an_1" data-key="an-edit-an_1">/.test(out));
     assert(/data-action="away-remove" data-ctx="team" data-nid="an_2"/.test(out));
     assert(teamCard({ gid: 'g1', teamId: 't1', status: 'ok', data: TEAMDATA([]) }).includes('No one has an away notice for the next 4 weeks.'));
     assert.equal(teamCard({ gid: 'g1', teamId: 't1', status: 'loading', data: null }), '');
@@ -1203,9 +1203,9 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   await check('person page (officers): an "Away notices" section with every notice (ended last), Edit / Remove and Add for that person; hidden for members, for a person on no team of theirs, and while loading or denied', () => {
     const st = (over) => Object.assign({ gid: 'g1', pid: 'p_x', status: 'ok', data: { personId: 'p_x', today: TODAY, notices: [N_PAST, N_RANGE, N_WEEKLY] }, message: '' }, over || {});
     const out = personCard(st());
-    assert(out.includes('<h2 class="gs-h2" id="an-person-h">Away notices</h2>') && /data-action="away-add" data-ctx="person" data-pid="p_x" data-key="an-person-add">Add a notice</.test(out));
+    assert(out.includes('<h2 class="gs-h2" id="away-h">Away notices</h2>') && /data-action="away-add" data-ctx="person" data-pid="p_x" data-key="an-person-add"><span>Add a notice</.test(out));
     assert(out.indexOf('Away Oct 20 - Oct 27') < out.indexOf('Away Sep 1 - Sep 5'), 'ended last');
-    assert(/data-action="away-edit" data-ctx="person" data-nid="an_1" data-pid="p_x"/.test(out) && /data-action="away-remove" data-ctx="person" data-nid="an_2" data-pid="p_x"/.test(out));
+    assert(/data-action="away-edit" data-ctx="person" data-nid="an_1"[^>]*data-pid="p_x"/.test(out) && /data-action="away-remove" data-ctx="person" data-nid="an_2"[^>]*data-pid="p_x"/.test(out));
     assert(personCard(st({ data: { personId: 'p_x', today: TODAY, notices: [] } })).includes('No away notices.'));
     assert.equal(personCard(st(), MEMBER_CAN), '', 'a member has no raids.edit');
     assert.equal(personCard(st(), { 'raids.edit': ['t9'] }), '', 'raids.edit on another team only');
@@ -1257,7 +1257,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     await settle();
     assert.equal(none.calls.length, 0);
     none.restore();
-    assert(read('js/guild/pages-person.js').includes("(opts.away || '')") && /away: P\.away\.personCardHtml/.test(read('js/guild/app.js')));
+    assert(read('js/guild/pages-person.js').includes('opts.away') && /away: P\.away\.personSectionOf/.test(read('js/guild/app.js')));
   }));
 
   // ── the Sign-ups panel: Standby and away notices ──

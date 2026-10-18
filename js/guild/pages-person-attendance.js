@@ -37,8 +37,8 @@
     return '<div class="gs-att-strip">' + last.map(function (c) { return A().cellHtml(c, dateOfCell(c)); }).join('') + '</div>';
   }
 
-  // opts: { gid, pid, record (the roster record), state: { data, denied } | null }
-  function cardHtml(opts) {
+  // opts: { gid, pid, record (the roster record), state: { data, denied } | null }  ->  the section of the person page (T2)
+  function sectionOf(opts) {
     const s = opts.state;
     const isMe = !!(opts.record && opts.record.person && opts.record.person.isMe);
     let body;
@@ -53,8 +53,10 @@
       }).join('') + '<p class="gs-fine"><a href="' + esc(G.router.format({ name: 'personatt', gid: opts.gid, pid: opts.pid })) + '">Full history</a></p>'
         : '<p class="gs-fine">' + esc(isMe ? 'Your attendance shows here after the first raid.' : 'Attendance shows here after the first raid.') + '</p>';
     }
-    return '<section class="gs-card-sec" aria-labelledby="attendance-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="attendance-h">Attendance</h2></div><div class="gs-card-sec-body">' + body + '</div></section>';
+    return { id: 'attendance', title: 'Attendance', bodyHtml: body };
   }
+
+  function cardHtml(opts) { return G.ui.objectSectionHtml(sectionOf(opts)); }
 
   function loadCard(gid, pid, gd) {
     const can = gd && gd.me && gd.me.can;
@@ -73,25 +75,46 @@
     return c && c.gid === gid && c.pid === pid && !c.none ? c : null;
   }
 
-  // ── full history page ──
-  function historyRowHtml(gid, cell, showReason) {
+  // ── full history page (T2: the person's header, the You line, one section per team) ──
+  function historyColumns(showReason) {
+    const cols = [{ key: 'raid', label: 'Raid', primary: true }, { key: 'zone', label: 'Zone' }, { key: 'outcome', label: 'Outcome' }, { key: 'credit', label: 'Credit' }, { key: 'team', label: 'Team' }];
+    if (showReason) cols.push({ key: 'reason', label: 'Officer reason' });
+    return cols;
+  }
+
+  function historyRow(gid, cell) {
     const date = dateOfCell(cell);
     const rid = raidIdOf(cell);
     const zone = cell.raid && typeof cell.raid === 'object' && cell.raid.zone ? cell.raid.zone : '';
     const pending = cell.credit == null && LATE_TYPES.indexOf(cell.outcome) >= 0;
     const via = cell.via ? 'via ' + (typeof cell.via === 'object' ? cell.via.name : cell.via) : '';
     const day = G.ui.weekdayDay(date) || date;
-    return '<tr><th scope="row" class="gs-cell-strong gs-nowrap">' + (rid ? '<a href="' + esc(G.router.format({ name: 'raid', gid: gid, rid: rid })) + '">' + esc(day) + '</a>' : esc(day)) + '</th>' +
-      '<td>' + (zone ? esc(zone) : '<span class="gs-muted">-</span>') + '</td><td>' + A().outcomeChipHtml(cell.outcome, pending) + '</td><td class="gs-nowrap">' + esc(A().creditText(cell.credit, pending)) + '</td>' +
-      '<td>' + (via ? esc(via) : '<span class="gs-muted">-</span>') + '</td>' + (showReason ? '<td>' + (cell.reason ? esc(cell.reason) : '<span class="gs-muted">-</span>') + '</td>' : '') + '</tr>';
+    const dash = '<span class="gs-muted gs-dash">-</span>';
+    return {
+      id: rid || date,
+      cells: {
+        raid: rid ? '<a href="' + esc(G.router.format({ name: 'raid', gid: gid, rid: rid })) + '">' + esc(day) + '</a>' : esc(day),
+        zone: zone ? esc(zone) : dash, outcome: A().outcomeChipHtml(cell.outcome, pending), credit: esc(A().creditText(cell.credit, pending)),
+        team: via ? esc(via) : dash, reason: cell.reason ? esc(cell.reason) : dash,
+      },
+    };
   }
 
-  function historyCardHtml(gid, cell, showReason) {
-    const date = dateOfCell(cell);
-    const pending = cell.credit == null && LATE_TYPES.indexOf(cell.outcome) >= 0;
-    const via = cell.via ? 'via ' + (typeof cell.via === 'object' ? cell.via.name : cell.via) : '';
-    return '<li class="gs-roster-card"><div class="gs-card-top"><span>' + esc(G.ui.weekdayDay(date) || date) + '</span>' + A().outcomeChipHtml(cell.outcome, pending) + '</div>' +
-      '<div class="gs-card-meta"><span class="gs-fine">' + esc(A().creditText(cell.credit, pending)) + '</span>' + (via ? '<span class="gs-fine">' + esc(via) + '</span>' : '') + '</div>' + (showReason && cell.reason ? '<div class="gs-fine">' + esc(cell.reason) + '</div>' : '') + '</li>';
+  // The head, You line and sections the three person pages share: opts { gd, pid, person (the Worker's), kind ('attendance' | 'loot') }.
+  function subHead(opts) {
+    const p = opts.person || {};
+    const name = p.name || (p.main && p.main.name) || 'Person';
+    const cls = p.class ? G.ui.className(p.class) : '';
+    const what = opts.kind === 'loot' ? 'Loot history' : 'Attendance history';
+    return G.pages.person.headOpts({
+      name: name, status: p.status, person: p, isMe: !!p.isMe,
+      contextHtml: '<span>' + esc(what) + '</span>' + (cls ? '<span class="gs-sumsep" aria-hidden="true"></span><span>Main: ' + G.ui.classNameHtml(cls, p.class) + '</span>' : ''),
+      back: { href: G.router.format({ name: 'person', gid: opts.gd.guild.id, pid: opts.pid }), label: 'Roster record' },
+    });
+  }
+
+  function subYou(isMe, text) {
+    return isMe ? '<span class="gs-youline-label">You</span> ' + esc(text) : '';
   }
 
   // opts: { guildData, pid, data (GET /attendance/person/:pid) }
@@ -100,25 +123,26 @@
     const gid = gd.guild.id;
     const data = opts.data;
     const p = data.person || {};
-    const name = p.name || (p.main && p.main.name) || 'Person';
     const teams = Array.isArray(data.teams) ? data.teams : [];
-    const head = '<div class="gs-person-head"><div class="gs-person-title"><div class="gs-person-h1"><h1 class="gs-h1" tabindex="-1">' + esc(name) + '</h1>' + (p.isMe ? '<span class="gs-you">You</span>' : '') + '</div>' +
-      '<p class="gs-sub">Attendance history</p>' + (p.status ? '<div class="gs-chips">' + G.ui.statusChipHtml(p.status) + '</div>' : '') + '</div>' +
-      '<p class="gs-person-discord"><a href="' + esc(G.router.format({ name: 'person', gid: gid, pid: opts.pid })) + '">Open in Roster</a></p></div>';
-    const blocks = teams.map(function (t, i) {
+    const sections = [];
+    const rank = G.pages.ranks ? G.pages.ranks.personBoxSection(Object.assign({}, p, { id: opts.pid }), teams) : null;
+    if (rank) sections.push(rank);
+    teams.forEach(function (t, i) {
       const cells = (Array.isArray(t.cells) ? t.cells : []).slice().sort(function (x, y) { return dateOfCell(x) < dateOfCell(y) ? 1 : -1; });
-      const teamId = idOf(t.team);
-      const showReason = G.shell.allowsTeam(gd.me && gd.me.can, 'attendance.review', teamId);
-      const h = 'pa-team-' + i;
-      return '<section class="gs-card-sec" aria-labelledby="' + h + '"><div class="gs-card-sec-head"><h2 class="gs-h2" id="' + h + '">' + esc(nameOfTeam(t.team) || 'Team') + '</h2></div><div class="gs-card-sec-body">' + tilesHtml(t.metrics, t) +
-        (cells.length
-          ? '<div class="gs-table-wrap gs-flush gs-pa-table"><table class="gs-table gs-table-history" aria-label="Raid by raid"><thead><tr><th scope="col">Raid</th><th scope="col">Zone</th><th scope="col">Outcome</th><th scope="col">Credit</th><th scope="col">Team</th>' + (showReason ? '<th scope="col">Officer reason</th>' : '') + '</tr></thead><tbody>' +
-            cells.map(function (c) { return historyRowHtml(gid, c, showReason); }).join('') + '</tbody></table></div>' +
-            '<ul class="gs-roster-cards gs-pa-cards" aria-label="Raid by raid">' + cells.map(function (c) { return historyCardHtml(gid, c, showReason); }).join('') + '</ul>'
-          : '<p class="gs-fine">No raids yet.</p>') + '</div></section>';
-    }).join('');
-    const rank = G.pages.ranks ? G.pages.ranks.personBoxHtml(Object.assign({}, p, { id: opts.pid }), teams) : '';
-    return '<div class="gs-page gs-person-page">' + head + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + rank + (blocks || '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">Nothing to show</h2><p class="gs-lead gs-lead-sm">There is no attendance you can see for this person yet.</p></section>') + '</div>';
+      const showReason = G.shell.allowsTeam(gd.me && gd.me.can, 'attendance.review', idOf(t.team));
+      const table = cells.length
+        ? G.ui.dataTableHtml({ label: 'Raid by raid', columns: historyColumns(showReason), rows: cells.map(function (c) { return historyRow(gid, c); }), showAll: true, noun: 'raids' })
+        : '<p class="gs-fine">No raids yet.</p>';
+      sections.push({ id: 'pa-team-' + i, title: nameOfTeam(t.team) || 'Team', bodyHtml: tilesHtml(t.metrics, t) + table });
+    });
+    if (!sections.length) sections.push({ id: 'pa-none', title: 'Nothing to show', bodyHtml: '<p class="gs-fine">There is no attendance you can see for this person yet.</p>' });
+    return G.ui.objectPageHtml({
+      head: subHead({ gd: gd, pid: opts.pid, person: p, kind: 'attendance' }),
+      noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'),
+      youHtml: subYou(!!p.isMe, 'This is your attendance. Your team and your officers can see it.'),
+      pageClass: 'gs-person-page' + (p.isMe ? ' is-own' : ''),
+      sections: sections,
+    });
   }
 
   function load(r, gd) {
@@ -142,5 +166,5 @@
     return p.name || (p.main && p.main.name) || '';
   }
 
-  G.pages.personAtt = { cardHtml: cardHtml, personAttHtml: personAttHtml, loadCard: loadCard, cardState: cardState, nameFor: nameFor, load: load, main: main };
+  G.pages.personAtt = { sectionOf: sectionOf, subHead: subHead, subYou: subYou, cardHtml: cardHtml, personAttHtml: personAttHtml, loadCard: loadCard, cardState: cardState, nameFor: nameFor, load: load, main: main };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

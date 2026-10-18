@@ -172,7 +172,7 @@ function assertNoRawAttrs(out) {
     const loot = read('js/guild/pages-loot.js');
     assert(loot.includes('G.ui.timeInZone(ms, timeZone)') && loot.includes('G.ui.dateTimeInZone(ms, timeZone)'));
     assert(read('js/guild/pages-settings-activity.js').includes("G.ui.dateTimeInZone(ms, timeZone, { year: 'auto', now: now })"));
-    assert(read('js/guild/pages-join.js').includes('G.ui.timeInZone(raid.startsAt'));
+    assert(read('js/guild/pages-join.js').includes('G.ui.dateTimeInZone(raid.startsAt, zone)') && read('js/guild/pages-join.js').includes('data.guild.timeZone'), 'the guest sign-up writes the start in the guild zone');
     assert(read('js/app.js').includes('guild.ui.timeInZone(Date.now()'), 'the Planner\'s "Saved to the raid at" uses the guild clock');
     for (const f of ['pages-applications', 'pages-settings-guests', 'pages-settings-dataaccess', 'pages-settings-people']) assert(read('js/guild/' + f + '.js').includes('G.ui.guildZone()'), f);
   });
