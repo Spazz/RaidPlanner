@@ -150,7 +150,7 @@ Vercel deploys from GitHub `main`: **pushing to `main` deploys to production**, 
 `vercel.json` carries:
 
 - **Rewrite** `/:version(tbc|classic|forever)/:id` to `/index.html`, so a live link opens the planner and the page fetches the plan.
-- **Headers** on every route: an enforced `Content-Security-Policy` (scripts and styles from the site, Google Fonts, connections only to the site and Raid-Helper, no inline scripts or styles), `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`.
+- **Headers** on every route: an enforced `Content-Security-Policy` (scripts and styles from the site, Google Fonts, connections only to the site, Raid-Helper and Wowhead's tooltip data, no inline scripts or styles; `wow.zamimg.com` is allowed for Wowhead's item tooltip script, stylesheet and icons, which only guild pages that show items load), `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`.
 
 `.vercelignore` keeps tests, CI files and docs out of the deployment; `deploy-tests.js` checks it can never exclude something the page loads.
 

@@ -1106,7 +1106,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert(t.includes('Thoren 92.5% -') === false && t.includes('93% 12 raids counted') && t.includes('Kaelith - 0 raids counted') || /Kaelith[\s\S]*?- 0 raids counted/.test(t));
     assert(t.includes('No attendance to show yet.'));
     // loot
-    assert(out.includes('<span class="gs-item gs-q-4">Sword of Doom</span>') && out.includes('<span class="gs-item">Grey thing</span>'));
+    assert(out.includes('<a class="gs-item gs-q-4" href="https://www.wowhead.com/tbc/item=30001" data-wowhead="item=30001&amp;domain=tbc" target="_blank" rel="noopener noreferrer">Sword of Doom</a>') && out.includes('class="gs-item" href="https://www.wowhead.com/tbc/item=30002"'), 'items are Wowhead links; an unknown quality has no colour class');
     assert(t.includes('Disenchanted') && out.includes('<span class="gs-char-name gs-class-paladin">Thoren</span>'));
     assert(t.includes('Oct 16, 2026'));
     assert((out.match(/<table class="gs-dtable"/g) || []).length === 5, 'roster, upcoming, recent, attendance, loot (a team with nobody has no table)');

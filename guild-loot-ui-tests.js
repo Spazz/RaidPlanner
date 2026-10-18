@@ -221,16 +221,17 @@ function withState(fn) {
   });
 
   // ── vocabulary ─────────────────────────────────────────────────
-  await check('items: quality colour class, Wowhead link by game version (tbc, classic; none for others), escaped names', () => {
+  await check('items: quality colour class, Wowhead link by game version (tbc, classic, forever; none for others), escaped names', () => {
     const L = G.pages.loot;
     assert.equal(L.itemUrl('tbc', 28770), 'https://www.wowhead.com/tbc/item=28770');
     assert.equal(L.itemUrl('classic', 28770), 'https://www.wowhead.com/classic/item=28770');
-    assert.equal(L.itemUrl('forever', 28770), null);
+    assert.equal(L.itemUrl('forever', 28770), 'https://www.wowhead.com/forever/item=28770');
+    assert.equal(L.itemUrl('retail', 28770), null);
     assert.equal(L.itemUrl('tbc', 0), null);
     const tbc = L.itemHtml({ itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4 }, 'tbc');
     assert(tbc.includes('class="gs-item gs-q-4"') && tbc.includes('href="https://www.wowhead.com/tbc/item=28770"') && tbc.includes('rel="noopener noreferrer"') && tbc.includes('target="_blank"'));
-    const forever = L.itemHtml({ itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4 }, 'forever');
-    assert(forever.startsWith('<span class="gs-item gs-q-4">') && !forever.includes('href'));
+    const unknown = L.itemHtml({ itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4 }, 'retail');
+    assert(unknown.startsWith('<span class="gs-item gs-q-4">') && !unknown.includes('href') && !unknown.includes('data-wowhead'), 'a version Wowhead is not asked about: plain text');
     assert(L.itemHtml({ itemId: 5 }, 'tbc').includes('>Item 5<'), 'no name: the id');
     assert(L.itemHtml({}, 'tbc').includes('Unknown item'));
     assert(!L.itemHtml({ itemId: 5, itemName: 'X', quality: 9 }, 'tbc').includes('gs-q-'), 'an unknown quality has no colour class');

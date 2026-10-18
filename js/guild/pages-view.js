@@ -113,15 +113,14 @@
         : '<p class="gs-empty">No attendance to show yet.</p>');
   }
 
-  function qualityClass(q) { return typeof q === 'number' && q >= 0 && q <= 7 && Math.floor(q) === q ? ' gs-q-' + q : ''; }
-
   // The award time is written in the guild's zone ("Wed Oct 14, 8:12 PM ET"): the public payload carries guild.timeZone.
-  function lootBlock(entry, zone) {
+  // Each item is a Wowhead link for the guild's game version (G.ui.itemLinkHtml).
+  function lootBlock(entry, zone, gameVersion) {
     const awards = listOf(entry.awards);
     if (!awards.length) return '<p class="gs-empty">No loot awarded yet.</p>';
     return tableHtml('Loot of ' + teamName(entry), [{ key: 'item', label: 'Item', primary: true }, { key: 'winner', label: 'Winner' }, { key: 'awarded', label: 'Awarded' }], awards.map(function (a) {
       const winner = a.disenchanted ? '<span class="gs-muted">Disenchanted</span>' : (a.winner ? G.ui.classNameHtml(a.winner, a.winnerClass) : '<span class="gs-muted gs-dash">-</span>');
-      return { cells: { item: '<span class="gs-item' + qualityClass(a.quality) + '">' + esc(a.itemName) + '</span>', winner: winner, awarded: esc(G.ui.formatDateTime(a.awardedAt, zone)) } };
+      return { cells: { item: G.ui.itemLinkHtml({ itemId: a.itemId, itemName: a.itemName, quality: a.quality }, gameVersion), winner: winner, awarded: esc(G.ui.formatDateTime(a.awardedAt, zone)) } };
     }), 'awards');
   }
 
@@ -132,10 +131,10 @@
 
   const BLOCKS = { roster: rosterBlock, raids: raidsBlock, progress: progressBlock, attendance: attendanceBlock, loot: lootBlock };
 
-  function sectionOf(key, entries, zone) {
+  function sectionOf(key, entries, zone, gameVersion) {
     const list = listOf(entries);
     return { id: 'view-' + key, title: SECTION_TITLES[key], bodyHtml: list.length
-      ? list.map(function (entry) { return '<div class="gs-view-team"><h3 class="gs-h3">' + esc(teamName(entry)) + '</h3>' + BLOCKS[key](entry, zone) + '</div>'; }).join('')
+      ? list.map(function (entry) { return '<div class="gs-view-team"><h3 class="gs-h3">' + esc(teamName(entry)) + '</h3>' + BLOCKS[key](entry, zone, gameVersion) + '</div>'; }).join('')
       : '<p class="gs-empty">Nothing to show here yet.</p>' };
   }
 
@@ -151,12 +150,13 @@
     const viewer = data.viewer || {};
     const guest = (viewer.kind || kind) === 'guest';
     const zone = data.guild && data.guild.timeZone ? data.guild.timeZone : '';
+    const gameVersion = data.guild ? data.guild.gameVersion : null;
     // T1 / T4 with no actions: the list page's header and sections, a Read-only chip, and a foot line that says what this is.
     return G.ui.listPageHtml({
       pageClass: 'gs-view',
       head: headOf(data, kind),
       noticesHtml: guest ? guestMetaHtml(viewer) + '<p class="gs-alert" id="view-alert" role="alert" hidden></p>' : '',
-      bodyHtml: shown.length ? shown.map(function (k) { return G.ui.objectSectionHtml(sectionOf(k, sections[k], zone)); }).join('') : '<p class="gs-empty" id="view-empty">' + esc(NOTHING) + '</p>',
+      bodyHtml: shown.length ? shown.map(function (k) { return G.ui.objectSectionHtml(sectionOf(k, sections[k], zone, gameVersion)); }).join('') : '<p class="gs-empty" id="view-empty">' + esc(NOTHING) + '</p>',
       footHtml: 'A read-only copy: nothing on this page can be changed.' + (zone ? ' Times are in ' + esc(G.ui.zoneLabel(zone)) + ', the guild\'s zone.' : ''),
     });
   }

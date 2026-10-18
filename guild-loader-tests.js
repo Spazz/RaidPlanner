@@ -8,7 +8,7 @@
  *   - the loader on a fake document: manifest first, then every listed script in order, each with async = false (so the
  *     browser keeps the order), a failed file reported without stopping the rest, a missing manifest reported
  *   - the three pages: the loader is their last script tag and no page repeats a guild script
- *   - the CSP the loader depends on: script-src 'self' only (same-origin src, nothing inline) in _headers and vercel.json,
+ *   - the CSP the loader depends on: script-src 'self' plus Wowhead's tooltip host (same-origin src, nothing inline) in _headers and vercel.json,
  *     and no CSP meta tag on the pages that could say otherwise
  */
 const assert = require('node:assert/strict');
@@ -133,12 +133,12 @@ check('pages: the guild loader is each page\'s last script tag, it appears once,
 });
 
 // ── The CSP the loader depends on ────────────────────────────────
-check('CSP: script-src is exactly \'self\' in _headers and vercel.json (same-origin src is allowed, no inline code needed), and the pages have no CSP meta tag', () => {
+check('CSP: script-src is \'self\' plus the Wowhead tooltip host in _headers and vercel.json (same-origin src is allowed, no inline code needed), and the pages have no CSP meta tag', () => {
   const headers = read('_headers').split('\n').find((line) => line.trim().startsWith('Content-Security-Policy:'));
   const vercel = JSON.parse(read('vercel.json')).headers[0].headers.find((header) => header.key === 'Content-Security-Policy').value;
   for (const policy of [headers.slice(headers.indexOf(':') + 1), vercel]) {
     const directive = policy.split(';').map((part) => part.trim()).find((part) => part.startsWith('script-src'));
-    assert.equal(directive, "script-src 'self'");
+    assert.equal(directive, "script-src 'self' https://wow.zamimg.com");
   }
   for (const page of PAGES) assert(!/http-equiv\s*=\s*["']?content-security-policy/i.test(read(page)), page + ' has a CSP meta tag');
 });

@@ -19,7 +19,6 @@
   const VIEWS = [{ value: 'balance', label: 'Balance' }, { value: 'raids', label: 'By raid' }, { value: 'items', label: 'By item' }];
   const COLUMNS = ['name', 'raids', 'ms', 'os', 'counted', 'perRaid', 'vs'];
   const COLUMN_LABELS = { name: 'Player', raids: 'Raids', ms: 'MS', os: 'OS', counted: 'Counted', perRaid: 'Per raid', vs: 'Vs team' };
-  const WOWHEAD = { tbc: 'https://www.wowhead.com/tbc/item=', classic: 'https://www.wowhead.com/classic/item=' };
 
   function has(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
@@ -33,21 +32,9 @@
   function currentGd() { const s = st(); return s.currentGid ? s.guilds[s.currentGid] : null; }
 
   // ── award vocabulary ──
-  // The Wowhead page of an item for this guild's game version; null for a version the spec does not name (no link then).
-  function itemUrl(gameVersion, itemId) {
-    return has(WOWHEAD, gameVersion) && itemId > 0 ? WOWHEAD[gameVersion] + encodeURIComponent(itemId) : null;
-  }
-
-  function qualityClass(q) { return typeof q === 'number' && q >= 0 && q <= 7 && Math.floor(q) === q ? ' gs-q-' + q : ''; }
-
-  // The item name in its quality colour, linked to Wowhead where the game version allows. The name is data: escaped.
-  function itemHtml(item, gameVersion) {
-    const it = item || {};
-    const label = it.itemName || (it.itemId ? 'Item ' + it.itemId : 'Unknown item');
-    const url = itemUrl(gameVersion, it.itemId);
-    const cls = 'gs-item' + qualityClass(it.quality);
-    return url ? '<a class="' + cls + '" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + '</a>' : '<span class="' + cls + '">' + esc(label) + '</span>';
-  }
+  // The item link, written in one place for every page (ui-kit.js: Wowhead link + data-wowhead hook, quality colour, escaped name).
+  function itemUrl(gameVersion, itemId) { return G.ui.itemUrl(gameVersion, itemId); }
+  function itemHtml(item, gameVersion) { return G.ui.itemLinkHtml(item, gameVersion); }
 
   // "9:12 PM ET" in the guild's time zone (the raid date is the guild's calendar day); the viewer's zone, named, when the zone is unknown.
   function timeText(ms, timeZone) {

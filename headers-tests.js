@@ -67,27 +67,29 @@ check('No directive allows inline code: style-src has no unsafe-inline and nothi
 check('The CSP carries the expected directives', () => {
   const policy = parsePolicy(CSP);
   assert.deepEqual(policy['default-src'], ["'self'"]);
-  assert.deepEqual(policy['script-src'], ["'self'"]);
-  assert.deepEqual(policy['style-src'], ["'self'", 'https://fonts.googleapis.com']);
+  assert.deepEqual(policy['script-src'], ["'self'", 'https://wow.zamimg.com']);
+  assert.deepEqual(policy['style-src'], ["'self'", 'https://fonts.googleapis.com', 'https://wow.zamimg.com']);
   assert.deepEqual(policy['font-src'], ['https://fonts.gstatic.com']);
-  assert.deepEqual(policy['img-src'], ["'self'", 'data:']);
+  assert.deepEqual(policy['style-src-attr'], ["'unsafe-hashes'", "'sha256-P8KEFiQjXYUW3n8OFx902OxKLCCDvr9cCfMQRT5lRXQ='"], 'one inline style value of the Wowhead tooltip markup, by hash');
+  assert.deepEqual(policy['img-src'], ["'self'", 'data:', 'https://wow.zamimg.com']);
   assert.deepEqual(policy['object-src'], ["'none'"]);
   assert.deepEqual(policy['base-uri'], ["'self'"]);
   assert.deepEqual(policy['frame-ancestors'], ["'none'"]);
 });
 
-check('script-src allows no inline script, eval or remote script host', () => {
+check('script-src allows no inline script, eval or remote script host except the Wowhead tooltip script host (guild item pages)', () => {
   const sources = parsePolicy(CSP)['script-src'];
-  assert.deepEqual(sources, ["'self'"]);
+  assert.deepEqual(sources, ["'self'", 'https://wow.zamimg.com']);
   const whole = CSP;
   assert(!/unsafe-eval|unsafe-inline|\*/.test(whole), 'no wildcard or unsafe keyword anywhere');
 });
 
-check('connect-src allows this site and the Raid-Helper hosts the import fetches from', () => {
+check('connect-src allows this site, the Raid-Helper hosts the import fetches from and the Wowhead tooltip data', () => {
   const sources = parsePolicy(CSP)['connect-src'];
   assert(sources.includes("'self'"), 'the /api/share calls');
   assert(sources.includes('https://raid-helper.dev'), 'the events API (normalizeImportSource)');
   assert(sources.includes('https://raid-helper.xyz'));
+  assert.deepEqual(sources, ["'self'", 'https://raid-helper.dev', 'https://raid-helper.xyz', 'https://nether.wowhead.com'], 'plus the Wowhead tooltip data host, nothing else');
 });
 
 check('Every external host index.html and js/ load a resource from is allowed by the policy', () => {

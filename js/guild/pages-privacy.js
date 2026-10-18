@@ -115,6 +115,7 @@
       section('privacy-cookies', 'Cookies', paragraphs([
         'Two cookies: one keeps you signed in for 30 days, and a second lasts 10 minutes while you sign in. Connecting Battle.net sets one more for 10 minutes while you connect or sign in with it. A visitor who opens a guest link, which needs no account, gets one more cookie that lasts as long as the link works (30 days at most) and only lets them read what the link allows. No ads, no tracking.',
       ])) +
+      section('privacy-wowhead', 'Item tooltips', paragraphs(['Pages that show items load Wowhead\'s tooltip script, which Wowhead may use to track visits.'])) +
       section('privacy-stored', 'Where it is stored', paragraphs(['Raidsmith runs on Cloudflare.'])) +
       (me ? deleteBoxHtml(me.deleteImpact, o.message) : '') +
       '<p class="gs-prose-line">Questions about your data: ' + esc(CONTACT) + '</p>' });

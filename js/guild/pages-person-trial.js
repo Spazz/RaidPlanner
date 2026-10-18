@@ -55,14 +55,15 @@
       .filter(function (x) { return num(x[0]) > 0; }).map(function (x) { return num(x[0]) + ' ' + x[1]; }).join(', ');
   }
 
-  function lootRowHtml(it) {
+  // gameVersion: the guild's, for the Wowhead item link (G.ui.itemLinkHtml); the trial payload has no quality, so Wowhead colours the link.
+  function lootRowHtml(it, gameVersion) {
     const tag = String(it && it.tag == null ? '' : it.tag);
     const label = Object.prototype.hasOwnProperty.call(TAG_LABELS, tag) ? TAG_LABELS[tag] : tag;
-    return '<li class="gs-trial-loot-row"><span class="gs-item">' + esc(it.itemName) + '</span>' + (label ? '<span class="gs-chip gs-chip-tag' + (tag && tag !== 'MS' ? ' is-' + esc(tag.toLowerCase()) : '') + '">' + esc(label) + '</span>' : '') +
+    return '<li class="gs-trial-loot-row">' + G.ui.itemLinkHtml({ itemId: it.itemId, itemName: it.itemName }, gameVersion) + (label ? '<span class="gs-chip gs-chip-tag' + (tag && tag !== 'MS' ? ' is-' + esc(tag.toLowerCase()) : '') + '">' + esc(label) + '</span>' : '') +
       (it.raidOn ? '<span class="gs-fine">' + esc(G.ui.shortDay(it.raidOn) || it.raidOn) + '</span>' : '') + '</li>';
   }
 
-  function lootHtml(loot) {
+  function lootHtml(loot, gameVersion) {
     if (!loot) return '';
     const total = num(loot.total);
     const items = Array.isArray(loot.items) ? loot.items : [];
@@ -70,7 +71,7 @@
     const split = lootSplit(loot);
     const shown = items.slice(0, LOOT_LISTED);
     return '<div class="gs-trial-block"><h3 class="gs-h3">Loot</h3><p class="gs-trial-sum">Loot received: ' + esc(total) + (split ? ' (' + esc(split) + ')' : '') + '</p>' +
-      (shown.length ? '<ul class="gs-trial-loot" aria-label="Loot received">' + shown.map(lootRowHtml).join('') + '</ul>' : '') +
+      (shown.length ? '<ul class="gs-trial-loot" aria-label="Loot received">' + shown.map(function (it) { return lootRowHtml(it, gameVersion); }).join('') + '</ul>' : '') +
       (total > shown.length ? '<p class="gs-fine">and ' + esc(total - shown.length) + ' more</p>' : '') + '</div>';
   }
 
@@ -101,7 +102,7 @@
       const showTeam = G.shell.activeTeams(opts.guildData && opts.guildData.teams).length > 1;
       body = '<p class="gs-trial-dates">' + esc(datesText(p)) + '</p>' +
         '<p class="gs-fine">' + (d.since ? 'Since ' + esc(G.ui.formatDay(d.since)) + ' (trial start)' : 'No trial start date is set.') + '</p>' +
-        attendanceHtml(d.attendance, showTeam) + lootHtml(d.loot) + notesHtml(d.notes) + actionsHtml();
+        attendanceHtml(d.attendance, showTeam) + lootHtml(d.loot, opts.guildData && opts.guildData.guild ? opts.guildData.guild.gameVersion : null) + notesHtml(d.notes) + actionsHtml();
     }
     return { id: 'trial-card', title: 'Trial review', chipHtml: G.ui.trialChipHtml(p.trialFlag), bodyHtml: body };
   }

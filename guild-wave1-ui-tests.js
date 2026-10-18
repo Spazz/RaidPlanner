@@ -880,7 +880,7 @@ function withState(fn) {
     const tile = (label, value) => assert(out.includes('<div class="gs-summary-item"><dt>' + label + '</dt><dd>' + value + '</dd></div>'), label + ' ' + value);
     tile('Raids counted', 6); tile('Attendance', '83%'); tile('Missed', 1); tile('Missed with notice', 1); tile('Late / left early', '1 / 0'); tile('Filled in elsewhere', 1);
     assert(out.includes('Loot received: 3 (2 main spec, 1 off spec)'));
-    assert(out.includes('<span class="gs-item">Item 1</span>') && out.includes('<span class="gs-chip gs-chip-tag is-os">Off spec</span>') && out.includes('<span class="gs-chip gs-chip-tag">Main spec</span>') && out.includes('Oct 10'));
+    assert(out.includes('data-wowhead="item=100&amp;domain=tbc" target="_blank" rel="noopener noreferrer">Item 1</a>') && out.includes('<span class="gs-chip gs-chip-tag is-os">Off spec</span>') && out.includes('<span class="gs-chip gs-chip-tag">Main spec</span>') && out.includes('Oct 10'));
     assert(out.includes('<p class="gs-trial-note">Likes fire. Late twice.</p>') && out.includes('Shortened.'));
     for (const [action, label] of [['trial-promote', 'Promote to Raider'], ['trial-extend', 'Extend trial'], ['trial-end', 'End trial']]) {
       assert(new RegExp('<button type="button" class="gs-btn[^"]*" data-action="' + action + '" data-key="[^"]+"><span>' + label + '</span></button>').test(out), action);

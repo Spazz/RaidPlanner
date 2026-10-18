@@ -932,6 +932,7 @@
         if (main.querySelectorAll) main.querySelectorAll('[data-scroll-key]').forEach(function (el) { scrolls[el.getAttribute('data-scroll-key')] = el.scrollTop; });
         main.innerHTML = v.html;
         G.ui.saveBar.sync(main); // a form page's Save bar and the leave guard start from what was just drawn
+        G.ui.refreshItemTooltips(main); // a page that shows item links loads Wowhead's tooltip script (once); any other page loads nothing
         if (main.querySelectorAll) main.querySelectorAll('[data-scroll-key]').forEach(function (el) { const t = scrolls[el.getAttribute('data-scroll-key')]; if (t) el.scrollTop = t; });
         document.title = v.title;
       } else if (main.innerHTML) {

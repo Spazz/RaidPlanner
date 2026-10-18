@@ -913,6 +913,18 @@ a.gs-signin-link:hover { color: var(--accent-gold-bright); }
 .gs-item { font-weight: 600; overflow-wrap: anywhere; }
 .guild-page a.gs-item { text-decoration: none; }
 .guild-page a.gs-item:hover { text-decoration: underline; }
+/* Wowhead's tooltip script (lazy, item pages only) adds the small item icon to a link as class icontinyl (18px of left padding, the icon as its background) and a
+   q<N> quality class where the page did not know the quality. Its stylesheet colours those !important, so the palette above is repeated to keep the contrast.
+   inline-block keeps a wrapped name beside its icon instead of under it; with no script the links are plain links and none of this applies. */
+.guild-page a.gs-item.icontinyl { display: inline-block; max-width: 100%; background-position: left 0.18em; }
+.guild-page a.gs-item.q0 { color: #9d9d9d !important; }
+.guild-page a.gs-item.q1 { color: #ffffff !important; }
+.guild-page a.gs-item.q2 { color: #1eff00 !important; }
+.guild-page a.gs-item.q3 { color: #4a9bff !important; }
+.guild-page a.gs-item.q4 { color: #c27aff !important; }
+.guild-page a.gs-item.q5 { color: #ff8000 !important; }
+.guild-page a.gs-item.q6 { color: #e6cc80 !important; }
+.guild-page a.gs-item.q7 { color: #00ccff !important; }
 .gs-num { font-variant-numeric: tabular-nums; }
 
 .gs-chip-tag { background: var(--bg-card-hover); }

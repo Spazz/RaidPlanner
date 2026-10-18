@@ -23,6 +23,8 @@
 //   ui.bannerHtml({ tone, title, text, actions, dismissible })  /  ui.toastHtml(text)  /  ui.toast(text, opts)
 //   ui.emptyStateHtml({ kind, icon, title, text, actions })  /  ui.loadingHtml({ label, rows })  /  ui.errorRegionHtml({ title, text, retry })
 //   ui.dialogHtml({ kind, title, text, bodyHtml, primary, cancel, back, step })                      form | confirm | destructive | step
+//   ui.itemLinkHtml({ itemId, itemName, quality }, gameVersion)  /  ui.itemUrl(gameVersion, itemId)  an item as a Wowhead link (data-wowhead hook), the ONE place items are written
+//   ui.refreshItemTooltips(root)                                                                    after a render: lazily loads Wowhead's tooltip script if root holds an item link
 (function (G) {
   'use strict';
 
@@ -700,6 +702,79 @@
     return '<div class="gs-banner gs-banner-danger gs-errregion" role="alert"><div class="gs-banner-body"><p class="gs-banner-title">' + esc(o.title) + '</p><p class="gs-banner-text">' +
       esc((o.text ? o.text + ' ' : '') + (o.safe === undefined ? 'Your data is safe.' : o.safe)) + '</p>' + retry + '</div></div>';
   };
+
+  // ── ITEM LINKS (Wowhead) ──
+  // The one place an item becomes markup. The link carries Wowhead's data-wowhead hook, so Wowhead's tooltip script (loaded the first time a rendered
+  // page holds such a link) adds the icon, the quality colour and the hover tooltip. Without the script (offline, blocked) it stays a plain link to the
+  // item's Wowhead page. Path and domain are the same word per game version: Wowhead's own tooltips.js (checked 2026-10-18) names WoW Forever
+  // "forever" (page path /forever/, data domain forever; the item pages and nether.wowhead.com tooltip data answer for it), TBC Classic "tbc" and Classic "classic".
+  const WOWHEAD_SITE = { tbc: 'tbc', classic: 'classic', forever: 'forever' };
+  const WOWHEAD_SCRIPT = 'https://wow.zamimg.com/js/tooltips.js';
+  const WOWHEAD_CONFIG = { colorLinks: true, iconizeLinks: true, renameLinks: true };
+
+  function itemIdOf(itemId) {
+    const n = Number(itemId);
+    return Number.isInteger(n) && n > 0 ? n : 0;
+  }
+
+  // The Wowhead page of an item for this guild's game version; null for an unknown version or item id (no link then).
+  ui.itemUrl = function (gameVersion, itemId) {
+    const id = itemIdOf(itemId);
+    return id && has(WOWHEAD_SITE, gameVersion) ? 'https://www.wowhead.com/' + WOWHEAD_SITE[gameVersion] + '/item=' + id : null;
+  };
+
+  ui.qualityClass = function (q) { return typeof q === 'number' && q >= 0 && q <= 7 && Math.floor(q) === q ? ' gs-q-' + q : ''; };
+
+  // The item name in its quality colour, linked to Wowhead where the game version allows. item: { itemId, itemName, quality }. The name is data: escaped.
+  // With no stored name the text is "Item <id>"; Wowhead's script renames the link to the real name once it has loaded.
+  ui.itemLinkHtml = function (item, gameVersion) {
+    const it = item || {};
+    const label = it.itemName || (it.itemId ? 'Item ' + it.itemId : 'Unknown item');
+    const cls = 'gs-item' + ui.qualityClass(it.quality);
+    const url = ui.itemUrl(gameVersion, it.itemId);
+    if (!url) return '<span class="' + cls + '">' + esc(label) + '</span>';
+    return '<a class="' + cls + '" href="' + esc(url) + '" data-wowhead="' + esc('item=' + itemIdOf(it.itemId) + '&domain=' + WOWHEAD_SITE[gameVersion]) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + '</a>';
+  };
+
+  // ── ITEM TOOLTIPS (Wowhead's script, loaded lazily) ──
+  // Nothing loads at start-up and no other page ever loads it: ui.refreshItemTooltips(root) is called after a render that may have added item links and
+  // does nothing unless root holds one. The first such call adds the script once (async); its config is set here, from this self-hosted file, because the
+  // CSP allows no inline script. Later calls only ask the script to scan the links again. If the script cannot load the links stay plain links.
+  let tooltipScript = 'idle'; // idle | loading | ready | failed
+
+  function rescanWowheadLinks() {
+    const w = typeof globalThis !== 'undefined' ? globalThis : null;
+    if (!w) return false;
+    try {
+      if (w.WH && w.WH.Tooltips && typeof w.WH.Tooltips.refreshLinks === 'function') { w.WH.Tooltips.refreshLinks(); return true; }
+      if (w.$WowheadPower && typeof w.$WowheadPower.refreshLinks === 'function') { w.$WowheadPower.refreshLinks(); return true; }
+    } catch (e) { /* a Wowhead-side error never breaks a page */ }
+    return false;
+  }
+
+  function loadWowheadScript() {
+    if (tooltipScript !== 'idle') return;
+    if (typeof document === 'undefined' || !document.createElement) return;
+    const host = document.head || document.documentElement;
+    if (!host || !host.appendChild) return;
+    globalThis.whTooltips = Object.assign({}, WOWHEAD_CONFIG);
+    const el = document.createElement('script');
+    el.async = true;
+    el.src = WOWHEAD_SCRIPT;
+    el.onload = function () { tooltipScript = 'ready'; rescanWowheadLinks(); };
+    el.onerror = function () { tooltipScript = 'failed'; };
+    tooltipScript = 'loading';
+    host.appendChild(el);
+  }
+
+  ui.refreshItemTooltips = function (root) {
+    const scope = root || (typeof document !== 'undefined' ? document : null);
+    if (!scope || typeof scope.querySelector !== 'function' || !scope.querySelector('a[data-wowhead]')) return false;
+    loadWowheadScript();
+    if (tooltipScript === 'ready') rescanWowheadLinks();
+    return true;
+  };
+  ui.itemTooltipsState = function () { return tooltipScript; };
 
   // ── DIALOGS ──
   // Four kinds: form, confirm, destructive and step. Native <dialog> (ui.openDialog): Esc closes, focus is trapped and returns to the opener. Width 520

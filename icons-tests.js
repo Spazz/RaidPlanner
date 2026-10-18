@@ -82,7 +82,8 @@ check('icon URLs are root-absolute /icons/ paths', () => {
 });
 
 check('no app source or stylesheet loads images from the CDN', () => {
-  assert(!/zamimg/.test(app.script), 'a script still references zamimg');
+  // The one CDN reference allowed is Wowhead's item tooltip script (guild item pages, guild-item-tooltips-tests.js): a script, not an image.
+  assert(!/zamimg/.test(app.script.split('https://wow.zamimg.com/js/tooltips.js').join('')), 'a script still references zamimg');
   assert(!/zamimg/.test(app.css), 'the stylesheet still references zamimg');
   assert(!/<img[^>]+src="https?:/i.test(app.html), 'index.html has a remote <img>');
 });
