@@ -36,6 +36,7 @@ import { getAttention } from './routes/attention.js';
 import { getAudit } from './routes/audit.js';
 import { createCalendarLink, getCalendarFeed, getCalendarStatus, revokeCalendarLink } from './routes/calendar.js';
 import { getTrialReview } from './routes/trial.js';
+import { deleteNotice, getMyNotices, getNotices, postNotice, putNotice } from './routes/away.js';
 import {
   LOOT_MAX_BODY, commitLoot, deleteLoot, getBalance, getLootItems, getLootPolicy, getLootRaids, getPersonLoot, getRaidLoot, patchLoot,
   previewLoot, putLootPolicy,
@@ -159,6 +160,12 @@ const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/calendar', auth: true, handler: createCalendarLink },
   { method: 'DELETE', path: '/api/guild/:gid/calendar', auth: true, handler: revokeCalendarLink },
   { method: 'GET', path: '/cal/:cal', auth: false, handler: getCalendarFeed },
+  // PM wave 2: away notices. The literal /away/mine is registered before /away/:nid.
+  { method: 'GET', path: '/api/guild/:gid/away/mine', auth: true, handler: getMyNotices },
+  { method: 'GET', path: '/api/guild/:gid/away', auth: true, handler: getNotices },
+  { method: 'POST', path: '/api/guild/:gid/away', auth: true, handler: postNotice },
+  { method: 'PUT', path: '/api/guild/:gid/away/:nid', auth: true, handler: putNotice },
+  { method: 'DELETE', path: '/api/guild/:gid/away/:nid', auth: true, handler: deleteNotice },
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },

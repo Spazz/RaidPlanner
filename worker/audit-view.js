@@ -26,6 +26,7 @@ export const ACTION_GROUP = Object.freeze({
   'character.create': 'roster', 'character.update': 'roster', 'character.delete': 'roster', 'character.main': 'roster', 'roster.import': 'roster',
   'raid.create': 'raids', 'raid.delete': 'raids', 'raid.event': 'raids', 'raid.report': 'raids', 'raid.plan': 'raids', 'raid.manual': 'raids',
   'schedule.update': 'raids', 'schedule.fill': 'raids', 'raid.settings': 'raids',
+  'away.set': 'signups', 'away.remove': 'signups',
   'attendance.decide': 'attendance', 'attendance.undo': 'attendance', 'attendance.link': 'attendance', 'attendance.guest': 'attendance',
   'policy.update': 'attendance', 'wcl.settings': 'attendance',
   'loot.import': 'loot', 'loot.update': 'loot', 'loot.delete': 'loot', 'loot.policy': 'loot',
@@ -85,6 +86,7 @@ export function collectRefs(rows) {
 const STATUS_LABEL = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', inactive: 'Inactive' };
 const LEFT_LABEL = { left: 'left the guild', kicked: 'kicked', break: 'on a break', other: 'other' };
 const KIND_LABEL = { signed: 'Signed', late: 'Late', standby: 'Standby', tentative: 'Tentative', bench: 'Bench', absence: 'Can\'t come' };
+const AWAY_LABEL = { away: 'Away', late: 'Late', leaving: 'Leaving early' };
 const SOURCE_LABEL = { raid_helper: 'Raid-Helper', wcl: 'Warcraft Logs', bnet: 'Battle.net' };
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -239,6 +241,8 @@ export function describeRow(row, names = {}) {
 
     case 'signup.set': return `Signed ${person(after.personId)} up as ${KIND_LABEL[after.kind] || after.kind} on ${raidOn(ent)}`;
     case 'signup.remove': return `Removed the sign-up of ${person(before.personId)} from ${raidOn(ent)}`;
+    case 'away.set': return `${before.kind === undefined ? 'Added' : 'Changed'} a notice for ${person(after.personId)} (${AWAY_LABEL[after.kind] || after.kind})`;
+    case 'away.remove': return `Removed a notice of ${person(before.personId)} (${AWAY_LABEL[before.kind] || before.kind})`;
     case 'signup.lock': return after.locked ? `Closed sign-ups for ${onRaid(ent)}` : `Reopened sign-ups for ${onRaid(ent)}`;
 
     case 'bnet.link': return 'Linked a Battle.net account';

@@ -49,6 +49,8 @@ export const PARAM_SOURCE = {
   aid: 'lo_[A-Za-z0-9_-]{22}',
   // A character claim (Battle.net, Phase 5).
   clid: 'cl_[A-Za-z0-9_-]{22}',
+  // An away notice (worker/routes/away.js).
+  nid: 'an_[A-Za-z0-9_-]{22}',
   // A Warcraft Logs report code (DELETE /raids/:rid/reports/:code).
   code: '[A-Za-z0-9]{16}',
   // A calendar feed file name (GET /cal/:cal): a 43-character token and ".ics". The feed route checks it itself (it has no session).

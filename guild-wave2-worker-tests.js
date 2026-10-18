@@ -2832,6 +2832,383 @@ check('standby: the consolidation ranks it above tentative and absence, below la
   assert.equal(metrics.people.a.signupRate, 66.7, 'standby and signed count, tentative does not');
 });
 
+// ---------------------------------------------------------------------------
+// Away notices (B5): the pure rules, then the routes
+
+check('away (pure): a range covers its first and last day; a recurring notice covers its weekday from its start to its end (or forever); the weekday maths ignores clock changes', async () => {
+  const { noticeCovers, coveredDates, coveringNotices, noticeOfRow } = await load('worker/away.js');
+  // A range across the US spring-forward Sunday (2027-03-14): both ends are in, the day before and after are out, the 14th is covered like any day.
+  const range = { from: '2027-03-10', to: '2027-03-16', weekday: null };
+  assert.deepEqual(['2027-03-09', '2027-03-10', '2027-03-14', '2027-03-16', '2027-03-17'].map((day) => noticeCovers(range, day)), [false, true, true, true, false]);
+  // A recurring Thursday (4) with an end date that is itself a Thursday: it covers that last Thursday and no later one.
+  const thursdays = { from: '2027-03-04', to: '2027-03-25', weekday: 4 };
+  assert.deepEqual(['2027-02-25', '2027-03-04', '2027-03-05', '2027-03-11', '2027-03-18', '2027-03-25', '2027-04-01'].map((day) => noticeCovers(thursdays, day)), [false, true, false, true, true, true, false]);
+  // Without an end date it never stops - across the leap day and the fall-back Sunday - but it starts at `from`.
+  const forever = { from: '2027-03-04', to: null, weekday: 4 };
+  assert.deepEqual(['2027-03-03', '2027-03-04', '2027-04-01', '2028-03-02', '2028-03-03'].map((day) => noticeCovers(forever, day)), [false, true, true, true, false]);
+  const sundays = { from: '2027-10-31', to: null, weekday: 0 };
+  assert.deepEqual(['2027-10-31', '2027-11-06', '2027-11-07', '2027-11-14'].map((day) => noticeCovers(sundays, day)), [true, false, true, true], 'the fall-back Sunday 2027-11-07 is a Sunday');
+  // A range without an end cannot be stored; read defensively it covers only its first day.
+  assert.deepEqual(['2027-03-10', '2027-03-11'].map((day) => noticeCovers({ from: '2027-03-10', to: null, weekday: null }, day)), [true, false]);
+  // The dates of a window (inclusive), oldest first, capped.
+  assert.deepEqual(coveredDates({ from: '2027-01-01', to: null, weekday: 4 }, '2027-01-16', '2027-02-12'), ['2027-01-21', '2027-01-28', '2027-02-04', '2027-02-11']);
+  assert.deepEqual(coveredDates({ from: '2027-01-01', to: null, weekday: 4 }, '2027-01-16', '2027-02-12', 2), ['2027-01-21', '2027-01-28']);
+  assert.deepEqual(coveredDates(range, '2027-03-01', '2027-03-11'), ['2027-03-10', '2027-03-11'], 'the window cuts the range');
+  assert.deepEqual(coveredDates(thursdays, '2027-03-19', '2027-04-30'), ['2027-03-25'], 'the end date cuts the recurrence');
+  assert.deepEqual(coveringNotices([range, thursdays, forever], '2027-03-11'), [range, thursdays, forever]);
+  assert.deepEqual(coveringNotices([range, thursdays, forever], '2027-03-16'), [range]);
+  assert.deepEqual(noticeOfRow({ id: 'an_x', player_id: 'p_x', kind: 'late', at_time: '21:00', starts_on: '2027-01-20', ends_on: null, weekday: 4, created_at: 5 }),
+    { id: 'an_x', personId: 'p_x', kind: 'late', atTime: '21:00', from: '2027-01-20', to: null, weekday: 4, createdAt: 5 });
+});
+
+check('away (pure): the effects on one raid - who is Away, who is Late or Leaving, and the sign-ups an attendance recompute adds', async () => {
+  const { raidNoticeEffects, attendanceAwaySignups } = await load('worker/away.js');
+  const n = (id, personId, kind, extra = {}) => ({ id, personId, kind, atTime: kind === 'away' ? null : '21:00', from: '2027-01-20', to: '2027-01-27', weekday: null, createdAt: 100, ...extra });
+  const notices = [
+    n('an_2', 'p1', 'away'), n('an_1', 'p1', 'away'), n('an_3', 'p2', 'away'),
+    n('an_4', 'p3', 'leaving', { atTime: '22:00' }), n('an_5', 'p3', 'late', { atTime: '21:30' }),
+    n('an_6', 'p4', 'late', { atTime: '21:30' }), n('an_7', 'p4', 'late', { atTime: '21:00' }),
+    n('an_8', 'p5', 'away', { from: '2027-02-01', to: '2027-02-02' }),
+  ];
+  const effects = raidNoticeEffects(notices, '2027-01-21', new Set(['p1', 'p3', 'p4', 'p5']));
+  assert.deepEqual(effects.away, [{ personId: 'p1', noticeId: 'an_1' }], 'p2 is not eligible, p5\'s notice is another week');
+  assert.deepEqual([...effects.notes.entries()], [['p3', { kind: 'late', atTime: '21:30', noticeId: 'an_5' }], ['p4', { kind: 'late', atTime: '21:00', noticeId: 'an_7' }]], 'Late before Leaving, then the earlier time');
+
+  // Attendance: only Away notices, a character on the team, still in the guild that day, filed before the raid began.
+  const raid = { raidOn: '2027-01-21', teamId: 't_a', startsAt: 1000 };
+  const person = (playerId, status, teamId = 't_a', leftOn = null) => ({ playerId, status, leftOn, characters: [{ teamId }] });
+  const people = [person('p1', 'raider'), person('p2', 'inactive'), person('p3', 'raider', 't_b'), person('p4', 'inactive', 't_a', '2027-01-21'), person('p5', 'inactive', 't_a', '2027-01-20'),
+    person('p6', 'raider'), person('p7', 'trial'), person('p8', 'raider'), person('p9', 'reserve')];
+  const away = (personId, extra = {}) => ({ personId, kind: 'away', from: '2027-01-20', to: '2027-01-27', weekday: null, createdAt: 500, ...extra });
+  const list = [away('p1'), away('p1', { createdAt: 900 }), away('p2'), away('p3'), away('p4'), away('p5'), away('p6', { createdAt: 1000 }), away('p7', { createdAt: 1001 }),
+    away('p8', { kind: 'late' }), away('p9', { weekday: 5, to: null }), away('p0')];
+  assert.deepEqual(attendanceAwaySignups(list, raid, people), [
+    { playerId: 'p1', kind: 'absence', source: 'away' },
+    { playerId: 'p4', kind: 'absence', source: 'away' },
+    { playerId: 'p6', kind: 'absence', source: 'away' },
+  ], 'p1 once; p2 inactive, p3 on another team, p5 left before, p7 filed after the start, p8 only late, p9 other weekday (2027-01-21 is a Thursday), p0 unknown');
+  assert.deepEqual(attendanceAwaySignups([away('p9', { weekday: 4, to: null })], raid, people), [{ playerId: 'p9', kind: 'absence', source: 'away' }], 'p9 on her weekday');
+});
+
+check('away (pure): a member cannot edit a notice to cover days that have passed; the input checks', async () => {
+  const { addsPastCoverage, validateNotice, MAX_RANGE_DAYS } = await load('worker/away.js');
+  const today = '2027-01-16'; // a Saturday
+  const thursdays = { from: '2027-01-07', to: null, weekday: 4 };
+  assert.equal(addsPastCoverage(thursdays, { ...thursdays, weekday: 5 }, today), true, 'Fridays 01-08 and 01-15 are new and past');
+  assert.equal(addsPastCoverage(thursdays, { ...thursdays, to: '2027-02-04' }, today), false, 'an end date only removes days');
+  assert.equal(addsPastCoverage(thursdays, { ...thursdays, kind: 'late' }, today), false);
+  assert.equal(addsPastCoverage({ ...thursdays, to: '2027-01-08' }, { ...thursdays, to: '2027-02-04' }, today), true, 'stretching the end back over 01-14 is past');
+  assert.equal(addsPastCoverage({ from: '2027-01-20', to: '2027-01-22', weekday: null }, { from: '2027-01-16', to: '2027-01-22', weekday: null }, today), false, 'today and later are not past');
+  assert.equal(addsPastCoverage({ from: '2027-01-20', to: '2027-01-22', weekday: null }, { from: '2027-01-14', to: '2027-01-22', weekday: null }, today), true);
+
+  const ok = (body, opts = {}) => validateNotice(body, { today, officer: false, ...opts });
+  const bad = (body, field, opts = {}) => {
+    const result = ok(body, opts);
+    assert.equal(result.ok, false, JSON.stringify(body));
+    assert.equal(result.field, field, `${JSON.stringify(body)} -> ${result.message}`);
+    assert.equal(typeof result.message, 'string');
+  };
+  assert.deepEqual(ok({ kind: 'away', from: '2027-01-16', to: '2027-01-16' }), { ok: true, value: { kind: 'away', from: '2027-01-16', to: '2027-01-16', weekday: null, atTime: null, reason: null } });
+  assert.deepEqual(ok({ kind: 'late', from: '2027-01-20', weekday: 4, atTime: '21:00', reason: '  work \n shift  ' }).value, { kind: 'late', from: '2027-01-20', to: null, weekday: 4, atTime: '21:00', reason: 'work  shift' });
+  assert.equal(ok({ kind: 'away', from: '2027-01-20', to: '2027-01-21', atTime: '99:99' }).value.atTime, null, 'Away ignores atTime');
+  assert.equal(ok({ kind: 'away', from: '2027-01-20', to: '2027-01-21', reason: '   ' }).value.reason, null, 'a blank reason is none');
+  assert.equal(ok({ kind: 'leaving', from: '2027-01-20', weekday: 2, atTime: '00:00' }).ok, true);
+  assert.equal(ok({ kind: 'leaving', from: '2027-01-20', weekday: 2, atTime: '23:59' }).ok, true);
+  assert.equal(ok({ kind: 'away', from: '2027-01-20', to: '2028-01-21' }).ok, true, `${MAX_RANGE_DAYS} days after the start is the last day allowed`);
+  bad(undefined, 'kind'); bad({}, 'kind'); bad({ kind: 'sick', from: '2027-01-20', to: '2027-01-21' }, 'kind'); bad({ kind: 5 }, 'kind');
+  bad({ kind: 'away', to: '2027-01-21' }, 'from'); bad({ kind: 'away', from: '2027-02-30', to: '2027-03-01' }, 'from'); bad({ kind: 'away', from: '20-1-2027', to: '2027-03-01' }, 'from');
+  bad({ kind: 'away', from: '2027-01-15', to: '2027-01-20' }, 'from'); // a member: not before today
+  bad({ kind: 'away', from: '2004-11-22', to: '2004-11-23' }, 'from', { officer: true });
+  bad({ kind: 'away', from: '2027-01-20' }, 'to');                                            // a range needs an end
+  bad({ kind: 'away', from: '2027-01-20', to: '2027-01-19' }, 'to');
+  bad({ kind: 'away', from: '2027-01-20', to: '2027-13-01' }, 'to');
+  bad({ kind: 'away', from: '2027-01-20', to: '2028-01-22' }, 'to');                         // 367 days
+  bad({ kind: 'away', from: '2027-01-20', weekday: 4, to: '2027-01-19' }, 'to');            // a recurring one with an end before the start
+  bad({ kind: 'away', from: '2027-01-20', weekday: 7 }, 'weekday'); bad({ kind: 'away', from: '2027-01-20', weekday: -1 }, 'weekday'); bad({ kind: 'away', from: '2027-01-20', weekday: '4' }, 'weekday');
+  bad({ kind: 'late', from: '2027-01-20', weekday: 4 }, 'atTime'); bad({ kind: 'late', from: '2027-01-20', weekday: 4, atTime: '24:00' }, 'atTime');
+  bad({ kind: 'leaving', from: '2027-01-20', weekday: 4, atTime: '9:00' }, 'atTime'); bad({ kind: 'leaving', from: '2027-01-20', weekday: 4, atTime: '20:60' }, 'atTime'); bad({ kind: 'late', from: '2027-01-20', weekday: 4, atTime: 2100 }, 'atTime');
+  bad({ kind: 'away', from: '2027-01-20', to: '2027-01-21', reason: 'x'.repeat(121) }, 'reason'); bad({ kind: 'away', from: '2027-01-20', to: '2027-01-21', reason: 7 }, 'reason');
+  assert.equal(ok({ kind: 'away', from: '2027-01-20', to: '2027-01-21', reason: 'x'.repeat(120) }).ok, true);
+  // Officers may date a notice in the past.
+  assert.equal(ok({ kind: 'away', from: '2026-12-01', to: '2026-12-05' }, { officer: true }).ok, true);
+  assert.equal(ok({ kind: 'away', from: '2026-12-01', to: '2026-12-05' }).ok, false);
+  // A member editing: the start may stay in the past, but the notice may not grow over the past.
+  const current = { from: '2027-01-07', to: null, weekday: 4 };
+  assert.equal(ok({ kind: 'away', from: '2027-01-07', weekday: 4, to: '2027-03-04' }, { current }).ok, true, 'same start, a new end');
+  assert.equal(ok({ kind: 'away', from: '2027-01-07', weekday: 5 }, { current }).field, 'from', 'another weekday would cover Fridays that are gone');
+  assert.equal(ok({ kind: 'away', from: '2027-01-08', weekday: 4 }, { current }).field, 'from', 'a new start in the past is refused');
+  assert.equal(ok({ kind: 'away', from: '2027-01-07', weekday: 5 }, { current, officer: true }).ok, true, 'an officer is not bound by it');
+});
+
+// Alpha (A) and Bravo (B); Bob (Officer), Carol (leads A), Dave (leads B), Erin / Gina / Hank (Members) whose persons are Eliora (A), Gorrim (A) and
+// Wanderfell (B); Nodisc (A) has no Discord ID. The clock is 2027-01-16 12:00Z, a Saturday, 07:00 in New York.
+async function awayWorld() {
+  const s = await laneWorld();
+  s.p = {};
+  const person = async (key, name, classId, spec, team, discord) => {
+    const made = await addPerson(s, 'bob', team, name, { class: classId, mainSpec: spec, offSpec: null });
+    s.p[key] = made.person.id;
+    if (discord) exec(s.w, `UPDATE players SET discord_user_id = '${discord}' WHERE id = '${made.person.id}'`);
+  };
+  await person('eliora', 'Eliora', 'PRIEST', 'Holy', s.A, PEOPLE.erin.id);
+  await person('gorrim', 'Gorrim', 'PALADIN', 'Protection', s.A, PEOPLE.gina.id);
+  await person('wander', 'Wanderfell', 'DRUID', 'Restoration', s.B, PEOPLE.hank.id);
+  await person('nodisc', 'Nodisc', 'ROGUE', 'Combat', s.A, null);
+  s.post = (who, body) => s.call(who, 'POST', '/away', body);
+  s.put = (who, id, body) => s.call(who, 'PUT', `/away/${id}`, body);
+  s.del = (who, id) => s.call(who, 'DELETE', `/away/${id}`, {});
+  s.mineList = async (who) => (await s.call(who, 'GET', '/away/mine')).json;
+  s.stored = (where = '1 = 1', ...values) => s.w.rows(`SELECT * FROM away_notices WHERE ${where} ORDER BY starts_on, id`, ...values);
+  // A notice somebody filed (the status must be 201), -> the notice.
+  s.file = async (who, body) => {
+    const r = await s.post(who, body);
+    assert.equal(r.status, 201, JSON.stringify(r.json));
+    return r.json.notice;
+  };
+  return s;
+}
+
+check('away: a member files, lists, changes and removes their own notice; the replies have the contract\'s shapes', async () => {
+  const s = await awayWorld();
+  let r = await s.post('erin', { kind: 'away', from: '2027-01-20', to: '2027-01-27', reason: '  Holiday\n in Spain ' });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  const notice = r.json.notice;
+  assert.match(notice.id, /^an_[A-Za-z0-9_-]{22}$/);
+  assert.deepEqual(notice, { id: notice.id, personId: s.p.eliora, kind: 'away', atTime: null, from: '2027-01-20', to: '2027-01-27', weekday: null, reason: 'Holiday in Spain', mine: true, createdAt: s.w.clock.now });
+  assert.deepEqual(r.json.notices, [notice]);
+  // A repeating weekday with a time, no end.
+  const late = await s.file('erin', { kind: 'late', from: '2027-01-21', weekday: 4, atTime: '21:00' });
+  assert.deepEqual([late.kind, late.atTime, late.from, late.to, late.weekday, late.reason], ['late', '21:00', '2027-01-21', null, 4, null]);
+  assert.deepEqual(await s.mineList('erin'), { today: '2027-01-16', timeZone: 'America/New_York', personId: s.p.eliora, notices: [notice, late], max: 30 });
+  // Change it: PUT replaces the fields.
+  s.w.advance(1000);
+  r = await s.put('erin', notice.id, { kind: 'leaving', from: '2027-01-20', to: '2027-01-24', atTime: '22:00', reason: null });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual(r.json.notice, { ...notice, kind: 'leaving', atTime: '22:00', to: '2027-01-24', reason: null });
+  assert.deepEqual(r.json.notices.map((entry) => entry.id), [notice.id, late.id]);
+  // Remove one.
+  r = await s.del('erin', late.id);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual([r.json.deleted, r.json.notices.map((entry) => entry.id)], [true, [notice.id]]);
+  assert.equal((await s.stored()).length, 1);
+  // A viewer with no roster person (the Guild Master) has none: an empty list, and nothing to write.
+  assert.deepEqual(await s.mineList('alice'), { today: '2027-01-16', timeZone: 'America/New_York', personId: null, notices: [], max: 30 });
+  const nobody = await s.post('alice', { kind: 'away', from: '2027-01-20', to: '2027-01-21' });
+  assert.deepEqual([nobody.status, nobody.json.error], [403, 'forbidden']);
+  // Away ignores a time.
+  const noTime = await s.file('erin', { kind: 'away', from: '2027-02-01', to: '2027-02-02', atTime: '21:00' });
+  assert.deepEqual([noTime.atTime, (await s.stored('id = ?', noTime.id))[0].at_time], [null, null]);
+});
+
+check('away: who may write for whom - a member for themselves, a team lead or officer for people on their teams, nobody for strangers', async () => {
+  const s = await awayWorld();
+  const body = { kind: 'away', from: '2027-01-20', to: '2027-01-21', reason: 'a private reason' };
+  // A member cannot name another person.
+  for (const who of ['erin', 'hank']) {
+    const r = await s.post(who, { ...body, personId: s.p.gorrim });
+    assert.deepEqual([r.status, r.json.error], [403, 'forbidden'], who);
+  }
+  assert.equal((await s.stored()).length, 0);
+  // ... but naming their own person is the same as leaving it out.
+  assert.equal((await s.post('erin', { ...body, personId: s.p.eliora })).status, 201);
+  // Carol leads Alpha: Gorrim (Alpha) yes, Wanderfell (Bravo) no. Dave leads Bravo: the other way round. The Officer (guild-wide) both. A made-up person: 403.
+  assert.equal((await s.post('carol', { ...body, personId: s.p.gorrim })).status, 201);
+  assert.equal((await s.post('carol', { ...body, personId: s.p.wander })).status, 403);
+  assert.equal((await s.post('dave', { ...body, personId: s.p.wander })).status, 201);
+  assert.equal((await s.post('dave', { ...body, personId: s.p.gorrim })).status, 403);
+  assert.equal((await s.post('bob', { ...body, personId: s.p.nodisc })).status, 201);
+  assert.equal((await s.post('bob', { ...body, personId: s.p.wander })).status, 201);
+  assert.equal((await s.post('bob', { ...body, personId: 'p_AAAAAAAAAAAAAAAAAAAAAA' })).status, 403);
+  const malformed = await s.post('bob', { ...body, personId: 'nope' });
+  assert.deepEqual([malformed.status, malformed.json.field], [400, 'personId']);
+  // A person with no characters is on no team: no officer can act for them (the person themselves still can).
+  exec(s.w, `DELETE FROM characters WHERE player_id = '${s.p.wander}'`);
+  assert.equal((await s.post('bob', { ...body, personId: s.p.wander })).status, 403);
+  assert.equal((await s.post('dave', { ...body, personId: s.p.wander })).status, 403);
+  assert.equal((await s.post('hank', body)).status, 201, 'Hank is still Wanderfell\'s person');
+  assert.equal((await s.call('bob', 'GET', `/away?person=${s.p.wander}`)).status, 403);
+
+  // PUT and DELETE: a notice of someone else is a plain 404 for a member (ids are not probed) and for an officer of another team; fine for the right officer.
+  const erins = (await s.stored('player_id = ?', s.p.eliora))[0];
+  const ginas = (await s.stored('player_id = ?', s.p.gorrim))[0];
+  const change = { kind: 'away', from: '2027-01-22', to: '2027-01-23' };
+  const stranger = await s.put('gina', erins.id, change);
+  assert.deepEqual([stranger.status, stranger.json.error], [404, 'not_found']);
+  assert.equal((await s.del('gina', erins.id)).status, 404);
+  assert.equal((await s.put('dave', ginas.id, change)).status, 404, 'a team lead of another team');
+  assert.equal((await s.del('dave', ginas.id)).status, 404);
+  assert.equal((await s.put('carol', ginas.id, change)).status, 200);
+  assert.equal((await s.put('bob', erins.id, change)).status, 200);
+  assert.equal((await s.del('carol', ginas.id)).status, 200);
+  assert.equal((await s.del('erin', erins.id)).status, 200, 'the owner may remove what an officer changed');
+  assert.equal((await s.del('erin', erins.id)).status, 404, 'gone');
+  assert.equal((await s.put('erin', 'an_AAAAAAAAAAAAAAAAAAAAAA', change)).status, 404);
+  assert.equal((await s.call('erin', 'DELETE', '/away/nope', {})).status, 404, 'a malformed id');
+  assert.equal((await s.w.call({}, 'GET', `${s.guildPath}/away/mine`)).status, 401, 'signed out');
+});
+
+check('away: the input is checked field by field through the routes, and nothing is stored for a refused write', async () => {
+  const s = await awayWorld();
+  const refused = async (who, body, field) => {
+    const r = await s.post(who, body);
+    assert.equal(r.status, 400, JSON.stringify(body));
+    assert.equal(r.json.error, 'bad_request');
+    assert.equal(r.json.field, field, JSON.stringify(r.json));
+  };
+  await refused('erin', { from: '2027-01-20', to: '2027-01-21' }, 'kind');
+  await refused('erin', { kind: 'busy', from: '2027-01-20', to: '2027-01-21' }, 'kind');
+  await refused('erin', { kind: 'away', to: '2027-01-21' }, 'from');
+  await refused('erin', { kind: 'away', from: '2027-01-15', to: '2027-01-21' }, 'from');   // a member: not before the guild's today (2027-01-16)
+  await refused('erin', { kind: 'away', from: '2027-01-20' }, 'to');
+  await refused('erin', { kind: 'away', from: '2027-01-20', to: '2027-01-19' }, 'to');
+  await refused('erin', { kind: 'away', from: '2027-01-20', to: '2028-01-22' }, 'to');
+  await refused('erin', { kind: 'away', from: '2027-01-20', weekday: 8 }, 'weekday');
+  await refused('erin', { kind: 'late', from: '2027-01-20', weekday: 2 }, 'atTime');
+  await refused('erin', { kind: 'leaving', from: '2027-01-20', weekday: 2, atTime: '7pm' }, 'atTime');
+  await refused('erin', { kind: 'away', from: '2027-01-20', to: '2027-01-21', reason: 'y'.repeat(121) }, 'reason');
+  await refused('bob', { kind: 'away', from: '2004-11-22', to: '2004-11-24', personId: s.p.eliora }, 'from');
+  await refused('erin', { kind: 'away', from: '2027-01-20', to: '2027-01-21', personId: 5 }, 'personId');
+  assert.equal((await s.stored()).length, 0);
+  // Today's date is accepted for a member (the first day that is); a range of 366 days and a reason of 120 characters too.
+  assert.equal((await s.post('erin', { kind: 'away', from: '2027-01-16', to: '2027-01-16' })).status, 201);
+  assert.equal((await s.post('erin', { kind: 'away', from: '2027-02-01', to: '2028-02-02', reason: 'z'.repeat(120) })).status, 201);
+  // An officer may enter a notice for the past.
+  assert.equal((await s.post('bob', { kind: 'away', from: '2026-12-01', to: '2026-12-05', personId: s.p.eliora })).status, 201);
+  // A reason is stripped to one line.
+  const lines = await s.file('gina', { kind: 'away', from: '2027-01-20', to: '2027-01-21', reason: 'a\r\nb\tc\u0007d' });
+  assert.equal(lines.reason, 'abcd');
+});
+
+check('away: at most 30 notices per person (409 too_many_notices), counted for the person - an officer\'s too - and freed by a delete', async () => {
+  const s = await awayWorld();
+  const day = (i) => `2027-03-${String(i + 1).padStart(2, '0')}`;
+  const id = (i) => `an_${String(i).padStart(22, 'x')}`;
+  const values = Array.from({ length: 30 }, (_, i) => `('${id(i)}', '${s.guildId}', '${s.p.eliora}', 'away', '${day(i)}', '${day(i)}', 1, 1)`).join(', ');
+  exec(s.w, `INSERT INTO away_notices (id, guild_id, player_id, kind, starts_on, ends_on, created_at, updated_at) VALUES ${values}`);
+  assert.equal((await s.stored('player_id = ?', s.p.eliora)).length, 30);
+  const body = { kind: 'away', from: '2027-05-01', to: '2027-05-02' };
+  let r = await s.post('erin', body);
+  assert.deepEqual([r.status, r.json.error, r.json.max], [409, 'too_many_notices', 30]);
+  r = await s.post('carol', { ...body, personId: s.p.eliora });
+  assert.deepEqual([r.status, r.json.error], [409, 'too_many_notices'], 'an officer is held to it for the person');
+  assert.equal((await s.stored('player_id = ?', s.p.eliora)).length, 30);
+  assert.equal((await s.post('gina', body)).status, 201, 'the limit is per person');
+  assert.equal((await s.del('erin', id(0))).status, 200);
+  assert.equal((await s.post('erin', body)).status, 201, 'one removed: one more fits');
+  assert.equal((await s.post('erin', body)).status, 409);
+  assert.equal((await s.mineList('erin')).notices.length, 30);
+});
+
+check('away: officers\' lists - the team\'s next four weeks, and one person\'s notices; reasons are for the person and the officers over them', async () => {
+  const s = await awayWorld();
+  await s.file('erin', { kind: 'away', from: '2027-01-20', to: '2027-01-22', reason: 'secret holiday' });
+  const refusedPast = await s.post('erin', { kind: 'late', from: '2027-01-05', weekday: 4, atTime: '21:00' });
+  assert.equal(refusedPast.status, 400, 'a member\'s start is not in the past');
+  const late = await s.file('erin', { kind: 'late', from: '2027-01-18', weekday: 4, atTime: '21:00' });
+  await s.file('gina', { kind: 'leaving', from: '2027-02-10', to: '2027-02-12', atTime: '22:00', reason: 'another secret' });
+  await s.file('gina', { kind: 'away', from: '2027-02-20', to: '2027-02-21' });                // beyond the four weeks (until 2027-02-13)
+  await s.file('hank', { kind: 'away', from: '2027-01-20', to: '2027-01-21' });                // Bravo
+  await s.file('bob', { kind: 'away', from: '2027-01-25', to: '2027-01-26', personId: s.p.nodisc, reason: 'by an officer' });
+  // The team list: Alpha's, sorted by name, with the dates of the window each covers.
+  const team = await s.call('carol', 'GET', `/away?team=${s.A}`);
+  assert.equal(team.status, 200, JSON.stringify(team.json));
+  assert.deepEqual([team.json.team, team.json.today, team.json.until], [{ id: s.A, name: 'Alpha' }, '2027-01-16', '2027-02-13']);
+  assert.deepEqual(team.json.entries.map((e) => [e.name, e.kind, e.atTime, e.from, e.to, e.weekday, e.reason]), [
+    ['Eliora', 'late', '21:00', '2027-01-18', null, 4, null],
+    ['Eliora', 'away', null, '2027-01-20', '2027-01-22', null, 'secret holiday'],
+    ['Gorrim', 'leaving', '22:00', '2027-02-10', '2027-02-12', null, 'another secret'],
+    ['Nodisc', 'away', null, '2027-01-25', '2027-01-26', null, 'by an officer'],
+  ]);
+  const holiday = team.json.entries[1];
+  assert.deepEqual([holiday.noticeId, holiday.personId, holiday.class, holiday.dates], [(await s.stored('reason = ?', 'secret holiday'))[0].id, s.p.eliora, 'PRIEST', ['2027-01-20', '2027-01-21', '2027-01-22']]);
+  assert.deepEqual(team.json.entries[0].dates, ['2027-01-21', '2027-01-28', '2027-02-04', '2027-02-11'], 'the Thursdays from the 18th on within the window');
+  assert.equal(team.json.entries[0].noticeId, late.id);
+  assert.equal(team.json.entries.every((e) => e.dates.length <= 28), true);
+  // Bravo's list is Hank's alone; an officer sees both; the lead of the other team and a member are refused.
+  assert.deepEqual((await s.call('dave', 'GET', `/away?team=${s.B}`)).json.entries.map((e) => e.name), ['Wanderfell']);
+  assert.deepEqual((await s.call('bob', 'GET', `/away?team=${s.B}`)).json.entries.map((e) => e.name), ['Wanderfell']);
+  assert.equal((await s.call('dave', 'GET', `/away?team=${s.A}`)).status, 403);
+  assert.equal((await s.call('erin', 'GET', `/away?team=${s.A}`)).status, 403);
+  assert.equal((await s.call('bob', 'GET', '/away?team=t_AAAAAAAAAAAAAAAAAAAAAA')).status, 400);
+  assert.equal((await s.call('bob', 'GET', '/away')).status, 400);
+  assert.equal((await s.call('bob', 'GET', `/away?team=${s.A}&person=${s.p.eliora}`)).status, 400);
+
+  // One person's notices: the person and the officers over them get them, reason included.
+  for (const [who, status] of [['erin', 200], ['carol', 200], ['bob', 200], ['dave', 403], ['gina', 403], ['hank', 403]]) {
+    const r = await s.call(who, 'GET', `/away?person=${s.p.eliora}`);
+    assert.equal(r.status, status, who);
+    if (status !== 200) continue;
+    assert.deepEqual([r.json.personId, r.json.today], [s.p.eliora, '2027-01-16']);
+    assert.deepEqual(r.json.notices.map((n) => [n.kind, n.reason, n.mine]), [['late', null, who === 'erin'], ['away', 'secret holiday', who === 'erin']]);
+  }
+  // Someone who is inactive is not listed.
+  assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p.gorrim}`, { expectedVersion: 1, status: 'inactive', leftOn: null })).status, 200);
+  assert.deepEqual((await s.call('carol', 'GET', `/away?team=${s.A}`)).json.entries.map((e) => e.name), ['Eliora', 'Eliora', 'Nodisc']);
+});
+
+check('away: the reason is in nothing a member who is not the person can read - the sign-up view, the Raids list, the raid, the Planner seed', async () => {
+  const s = await awayWorld();
+  const raid = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-21', startTime: '20:00' });
+  await s.file('erin', { kind: 'away', from: '2027-01-20', to: '2027-01-22', reason: 'secret holiday' });
+  await s.file('erin', { kind: 'late', from: '2027-01-21', to: '2027-01-21', atTime: '21:15', reason: 'secret shift' });
+  const everything = async (who) => JSON.stringify([
+    (await s.call(who, 'GET', s.raid(raid.id, '/signups'))).json, (await s.call(who, 'GET', `/raids?team=${s.A}`)).json, (await s.call(who, 'GET', s.raid(raid.id))).json,
+    (await s.call(who, 'GET', '/away/mine')).json, (await s.call(who, 'GET', '/attention')).json,
+  ]);
+  for (const who of ['gina', 'hank', 'dave', 'carol', 'bob']) assert(!(await everything(who)).includes('secret'), `${who} reads no reason there`);
+  assert((await s.call('erin', 'GET', '/away/mine')).json.notices.some((n) => n.reason === 'secret holiday'), 'the person does');
+  const seed = await s.call('bob', 'GET', s.raid(raid.id, '/planner'));
+  assert(!JSON.stringify(seed.json).includes('secret'), 'the Planner seed has no reason');
+});
+
+check('away: officers\' writes for someone else are audited (kind and person only); a member\'s own are not', async () => {
+  const s = await awayWorld();
+  const mine = await s.file('erin', { kind: 'away', from: '2027-01-20', to: '2027-01-22', reason: 'secret holiday' });
+  await s.put('erin', mine.id, { kind: 'away', from: '2027-01-20', to: '2027-01-23' });
+  await s.del('erin', mine.id);
+  assert.equal(await s.w.count('audit_log', "action LIKE 'away.%'"), 0, 'the member\'s own notices leave no trace in the log');
+  const theirs = await s.file('carol', { kind: 'late', from: '2027-01-20', weekday: 4, atTime: '21:00', reason: 'secret by carol', personId: s.p.gorrim });
+  s.w.advance(1000);
+  assert.equal((await s.put('bob', theirs.id, { kind: 'leaving', from: '2027-01-20', weekday: 4, atTime: '22:30' })).status, 200);
+  assert.equal((await s.del('carol', theirs.id)).status, 200);
+  const rows = await s.w.rows("SELECT actor_user_id, action, entity_type, entity_id, before, after FROM audit_log WHERE action LIKE 'away.%' ORDER BY rowid");
+  assert.deepEqual(rows.map((r) => [r.action, r.actor_user_id, r.entity_type, r.entity_id, r.before && JSON.parse(r.before), r.after && JSON.parse(r.after)]), [
+    ['away.set', s.ids.carol, 'person', s.p.gorrim, null, { kind: 'late', personId: s.p.gorrim }],
+    ['away.set', s.ids.bob, 'person', s.p.gorrim, { kind: 'late' }, { kind: 'leaving', personId: s.p.gorrim }],
+    ['away.remove', s.ids.carol, 'person', s.p.gorrim, { kind: 'leaving', personId: s.p.gorrim }, null],
+  ]);
+  assert(!JSON.stringify(rows).includes('secret') && !JSON.stringify(rows).includes('Gorrim'), 'no reason, no name');
+  // The Activity log phrases them with the person's name, looked up at read time.
+  const log = await s.call('alice', 'GET', '/audit');
+  assert.equal(log.status, 200, JSON.stringify(log.json));
+  assert.deepEqual(log.json.rows.filter((row) => row.action.startsWith('away.')).map((row) => [row.action, row.group, row.text]).sort(), [
+    ['away.remove', 'signups', 'Removed a notice of Gorrim (Leaving early)'],
+    ['away.set', 'signups', 'Added a notice for Gorrim (Late)'],
+    ['away.set', 'signups', 'Changed a notice for Gorrim (Leaving early)'],
+  ]);
+  // An officer writing for their own person is the person's own write: not audited.
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.bob.id}' WHERE id = '${s.p.nodisc}'`);
+  await s.file('bob', { kind: 'away', from: '2027-01-20', to: '2027-01-21' });
+  assert.equal(await s.w.count('audit_log', "action LIKE 'away.%'"), 3);
+});
+
+check('away: notices go with the person (delete cascades), stay when the account that wrote them is deleted, and Delete my data clears the reasons it wrote', async () => {
+  const s = await awayWorld();
+  const own = await s.file('erin', { kind: 'away', from: '2027-01-20', to: '2027-01-22', reason: 'erin\'s reason' });
+  const byCarol = await s.file('carol', { kind: 'away', from: '2027-01-25', to: '2027-01-26', reason: 'carol\'s reason', personId: s.p.eliora });
+  const gina = await s.file('gina', { kind: 'away', from: '2027-01-20', to: '2027-01-22', reason: 'gina\'s reason' });
+  // Erin deletes her account: her reason goes, her notice stays with Eliora (created_by is cleared with the account), Carol's keeps hers.
+  assert.equal((await s.w.call(s.jars.erin, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
+  assert.deepEqual((await s.stored('player_id = ?', s.p.eliora)).map((r) => [r.id, r.reason, r.created_by]), [[own.id, null, null], [byCarol.id, 'carol\'s reason', s.ids.carol]]);
+  // Carol's account too: the reason of the notice she wrote for someone else goes as well.
+  assert.equal((await s.w.call(s.jars.carol, 'DELETE', '/auth/me', { deleteGuildIds: [] })).status, 200);
+  assert.deepEqual((await s.stored('player_id = ?', s.p.eliora)).map((r) => [r.reason, r.created_by]), [[null, null], [null, null]]);
+  assert.equal((await s.stored('id = ?', gina.id))[0].reason, 'gina\'s reason', 'other accounts\' notices are untouched');
+  // Removing the person removes their notices.
+  exec(s.w, `DELETE FROM players WHERE id = '${s.p.eliora}'`);
+  assert.deepEqual((await s.stored()).map((r) => r.id), [gina.id]);
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';
