@@ -3445,6 +3445,205 @@ check('seed markers: no "also in another raid" when either start time is unknown
   assert.deepEqual(await marked(morning), ['Also in: Alpha raid']);
 });
 
+// ---------------------------------------------------------------------------
+// Away notices in the attendance results (B5c): "missed with notice" for a raid the person missed under an Away notice filed before it began
+
+// attWorld (Alpha with seven raiders) plus the notice helpers of awayWorld. Notices are filed by Bob (an officer: any date) unless the test says otherwise.
+async function attAwayWorld() {
+  const s = await attWorld();
+  s.post = (who, body) => s.call(who, 'POST', '/away', body);
+  s.put = (who, id, body) => s.call(who, 'PUT', `/away/${id}`, body);
+  s.del = (who, id) => s.call(who, 'DELETE', `/away/${id}`, {});
+  s.file = async (who, body) => {
+    const r = await s.post(who, body);
+    assert.equal(r.status, 201, JSON.stringify(r.json));
+    return r.json.notice;
+  };
+  s.notice = (key, body, who = 'bob') => s.file(who, { personId: s.p[key], ...body });
+  s.raidRow = async (rid) => (await s.w.rows('SELECT version, policy_fp, open_flags FROM raids WHERE id = ?', rid))[0];
+  s.setPolicy = async (policy) => {
+    const current = (await s.call('bob', 'GET', '/attendance/policy')).json;
+    const r = await s.call('bob', 'PUT', '/attendance/policy', { policy, expectedVersion: current.versions.guild });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+  };
+  return s;
+}
+const DAY = 86400000;
+
+check('away attendance: a missed raid under a covering Away notice is "missed with notice"; the policy decides the credit; attending, a real sign-up and the wrong date or weekday all beat or miss it', async () => {
+  const s = await attAwayWorld();
+  exec(s.w, `UPDATE players SET discord_user_id = '${PEOPLE.erin.id}' WHERE id = '${s.p.eliora}'`);
+  // The raid is Tuesday 2027-01-19 20:00; the clock (Saturday the 16th) is before it, so every notice below is filed in time.
+  const brindle = await s.notice('brindle', { kind: 'away', from: '2027-01-18', to: '2027-01-19' });
+  await s.notice('aldric', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });                         // came anyway
+  await s.notice('cassia', { kind: 'away', from: '2027-01-17', weekday: 2 });                              // every Tuesday, no end
+  await s.notice('dunmar', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });                         // but signed up
+  await s.file('erin', { kind: 'away', from: '2027-01-17', weekday: 2, to: '2027-01-26' });                 // Eliora's own: Tuesdays until the 26th
+  await s.notice('fenwick', { kind: 'away', from: '2027-01-17', weekday: 3 });                              // Wednesdays: not the 19th
+  await s.notice('gorrim', { kind: 'away', from: '2027-01-17', weekday: 2, to: '2027-01-18' });             // Tuesdays, but the end is before the 19th
+  const rid = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-19', startTime: '20:00' })).id;
+  const upcoming = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-26', startTime: '20:00' })).id;
+  await s.sign('dunmar', 'signed', rid);
+  s.w.advance(4 * DAY);                                                                                    // 2027-01-20 12:00Z: the raid has started
+  await s.manual(rid, ['aldric']);
+  const missedWithNotice = ['missed_notice', 0, 'absence', []];
+  assert.deepEqual(await s.att(rid), {
+    Aldric: ['present', 1, 'absence', []],                  // attended: present as always
+    Brindle: missedWithNotice,
+    Cassia: missedWithNotice,
+    Dunmar: ['missed', 0, 'signed', ['no_show']],          // a real sign-up wins: signed and absent is missed
+    Eliora: missedWithNotice,
+    Fenwick: ['no_signup', null, null, []],                 // the wrong weekday
+    Gorrim: ['no_signup', null, null, []],                  // the recurrence ended before the raid
+  });
+  const flagsAfter = await s.raidRow(rid);
+  assert.equal(flagsAfter.open_flags, 1, 'only the no-show of Dunmar needs a look: a notice needs no review');
+  // The policy decides the credit: excused is not counted.
+  await s.setPolicy({ absence: 'excused' });
+  await s.recompute(rid);
+  assert.deepEqual([(await s.att(rid)).Brindle, (await s.att(rid)).Dunmar], [['missed_notice', null, 'absence', []], ['missed', 0, 'signed', ['no_show']]]);
+  await s.setPolicy({ absence: 'missedWithNotice' });
+  await s.recompute(rid);
+  assert.deepEqual((await s.att(rid)).Brindle, missedWithNotice);
+
+  // Changing the notice recomputes the raid at once: new dates that miss the raid give back the plain result ...
+  const before = await s.raidRow(rid);
+  assert.notEqual(before.policy_fp, '');
+  s.w.advance(1000);
+  let r = await s.put('bob', brindle.id, { kind: 'away', from: '2027-01-20', to: '2027-01-21' });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual((await s.att(rid)).Brindle, ['no_signup', null, null, []]);
+  const after = await s.raidRow(rid);
+  assert.deepEqual([after.version > before.version, after.policy_fp === before.policy_fp, after.policy_fp !== ''], [true, true, true], 'bumped, recomputed in the request, not left stale');
+  // ... dates that cover it bring it back, and so does a Late notice NOT (it changes no result).
+  r = await s.put('bob', brindle.id, { kind: 'away', from: '2027-01-19', weekday: 2 });
+  assert.equal(r.status, 200);
+  assert.deepEqual((await s.att(rid)).Brindle, missedWithNotice);
+  const version = (await s.raidRow(rid)).version;
+  assert.equal((await s.put('bob', brindle.id, { kind: 'late', from: '2027-01-19', weekday: 2, atTime: '21:00' })).status, 200);
+  assert.deepEqual([(await s.att(rid)).Brindle, (await s.raidRow(rid)).version > version], [['no_signup', null, null, []], true], 'turning it into a Late notice removes the Away effect');
+  // Deleting the notice gives back exactly the result without it: nobody expected, no sign-up.
+  r = await s.put('bob', brindle.id, { kind: 'away', from: '2027-01-19', weekday: 2 });
+  assert.deepEqual((await s.att(rid)).Brindle, missedWithNotice);
+  assert.equal((await s.del('bob', brindle.id)).status, 200);
+  assert.deepEqual((await s.att(rid)).Brindle, ['no_signup', null, null, []]);
+  // ... and where the policy expects every raider, that is a plain miss.
+  await s.setPolicy({ expected: { mode: 'statuses' } });
+  await s.recompute(rid);
+  assert.deepEqual((await s.att(rid)).Brindle, ['missed', 0, null, ['no_show']]);
+  const again = await s.notice('brindle', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });
+  assert.deepEqual((await s.att(rid)).Brindle, ['missed', 0, null, ['no_show']], 'filed after the raid began: it does not count, the result is the same');
+  assert.equal(again.mine, false);
+  // A raid with no results yet is not touched by a notice: no recompute, no version bump.
+  const fresh = await s.raidRow(upcoming);
+  await s.notice('cassia', { kind: 'away', from: '2027-01-26', to: '2027-01-26' });
+  assert.deepEqual(await s.raidRow(upcoming), fresh);
+});
+
+check('away attendance: a notice filed after the raid began does not count - the boundary is created_at <= the raid\'s start', async () => {
+  const s = await attAwayWorld();
+  const rid = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-15', startTime: '20:00' })).id;  // started at 2027-01-16 01:00Z, before the clock
+  await s.manual(rid, ['aldric']);
+  const notice = await s.notice('brindle', { kind: 'away', from: '2027-01-15', to: '2027-01-15' });  // an officer files it afterwards
+  assert.deepEqual((await s.att(rid)).Brindle, ['no_signup', null, null, []]);
+  const startsAt = (await s.w.rows('SELECT starts_at FROM raids WHERE id = ?', rid))[0].starts_at;
+  exec(s.w, `UPDATE away_notices SET created_at = ${startsAt} WHERE id = '${notice.id}'`);
+  await s.recompute(rid);
+  assert.deepEqual((await s.att(rid)).Brindle, ['missed_notice', 0, 'absence', []], 'filed at the very start: in time');
+  exec(s.w, `UPDATE away_notices SET created_at = ${startsAt + 1} WHERE id = '${notice.id}'`);
+  await s.recompute(rid);
+  assert.deepEqual((await s.att(rid)).Brindle, ['no_signup', null, null, []], 'one millisecond later: too late');
+  // Editing the dates of a notice does not file it again (created_at stays), so an officer can still fix a typo.
+  exec(s.w, `UPDATE away_notices SET created_at = ${startsAt - 5} WHERE id = '${notice.id}'`);
+  s.w.advance(1000);
+  assert.equal((await s.put('bob', notice.id, { kind: 'away', from: '2027-01-14', to: '2027-01-16' })).status, 200);
+  assert.deepEqual((await s.att(rid)).Brindle, ['missed_notice', 0, 'absence', []]);
+  assert.equal((await s.w.rows('SELECT created_at FROM away_notices WHERE id = ?', notice.id))[0].created_at, startsAt - 5);
+});
+
+check('away attendance: only people on the raid\'s team who were still in the guild that day - inactive people and other teams\' people get no row', async () => {
+  const s = await attAwayWorld();
+  const add = async (key, name, team, classId = 'WARRIOR', spec = 'Arms') => {
+    s.p[key] = (await addPerson(s, 'bob', team, name, { class: classId, mainSpec: spec, offSpec: null })).person.id;
+    s.names[s.p[key]] = name;
+  };
+  await add('inactive', 'Inactiva', s.A); await add('leftlate', 'Leftlate', s.A); await add('leftearly', 'Leftearly', s.A); await add('bravo', 'Wanderfell', s.B, 'DRUID', 'Restoration');
+  const retire = async (key, leftOn) => assert.equal((await s.call('bob', 'PATCH', `/roster/${s.p[key]}`, { expectedVersion: 1, status: 'inactive', leftOn })).status, 200);
+  await retire('inactive', null); await retire('leftlate', '2027-01-19'); await retire('leftearly', '2027-01-18');
+  for (const key of ['inactive', 'leftlate', 'leftearly', 'bravo', 'brindle']) await s.notice(key, { kind: 'away', from: '2027-01-19', to: '2027-01-19' });
+  const rid = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-19', startTime: '20:00' })).id;
+  s.w.advance(4 * DAY);
+  await s.manual(rid, ['aldric']);
+  const rows = await s.att(rid);
+  assert.deepEqual(rows.Brindle, ['missed_notice', 0, 'absence', []]);
+  assert.deepEqual(rows.Leftlate, ['missed_notice', 0, 'absence', []], 'left on the 19th: still in the guild that day');
+  for (const name of ['Inactiva', 'Leftearly', 'Wanderfell']) assert.equal(name in rows, false, `${name} has no row`);
+});
+
+check('away attendance: two teams\' raids on one date - the fill-in pass is as before, a notice only adds the weakest sign-up of its own team\'s raid', async () => {
+  const s = await attAwayWorld();
+  const wander = (await addPerson(s, 'bob', s.B, 'Wanderfell', { class: 'DRUID', mainSpec: 'Restoration', offSpec: null })).person.id;
+  s.p.wander = wander; s.names[wander] = 'Wanderfell';
+  await s.notice('brindle', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });    // Alpha, stays home
+  await s.notice('dunmar', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });     // Alpha, but plays on Bravo's raid
+  await s.notice('wander', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });     // Bravo, stays home
+  const alpha = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-19', startTime: '20:00' })).id;
+  const bravo = (await s.makeRaid({ teamId: s.B, raidOn: '2027-01-19', startTime: '20:00' })).id;
+  s.w.advance(4 * DAY);
+  await s.manual(alpha, ['aldric']);
+  await s.manual(bravo, ['cassia', 'dunmar']);                                          // two Alpha raiders fill in on Bravo
+  const a = await s.att(alpha);
+  const b = await s.att(bravo);
+  assert.deepEqual([a.Aldric[0], a.Brindle, a.Wanderfell], ['present', ['missed_notice', 0, 'absence', []], undefined]);
+  assert.deepEqual([a.Cassia[0], a.Cassia[1]], ['fill_in', 1], 'Cassia has no notice: her Alpha cell becomes the fill-in, as before');
+  assert.deepEqual([a.Dunmar[0], a.Dunmar[1]], ['missed_notice', 0], 'a miss with notice is not replaced by a fill-in elsewhere - exactly what a real Absence sign-up does');
+  assert.deepEqual([b.Wanderfell, b.Cassia[0], b.Dunmar[0], b.Brindle], [['missed_notice', 0, 'absence', []], 'fill_in', 'fill_in', undefined]);
+});
+
+check('away attendance: the same on a raid with a Warcraft Logs report - the log decides who came, the notice only excuses who did not', async () => {
+  const s = await attAwayWorld();
+  await s.notice('aldric', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });
+  await s.notice('brindle', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });
+  const rid = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-19', startTime: '20:00' })).id;
+  s.w.advance(4 * DAY);
+  const code = 'LaneBAwayRpt0001';
+  s.w.sources.reports.set(code, logReport(Date.parse('2027-01-20T01:05:00Z'), [['Aldric', 'Dunmar'], ['Aldric', 'Dunmar'], ['Aldric', 'Dunmar']]));
+  const added = await s.call('bob', 'PUT', s.raid(rid, '/reports'), { source: code });
+  assert.equal(added.status, 200, JSON.stringify(added.json));
+  const rows = await s.att(rid);
+  assert.deepEqual([rows.Aldric[0], rows.Aldric[1], rows.Dunmar[0]], ['present', 1, 'present']);
+  assert.deepEqual(rows.Brindle, ['missed_notice', 0, 'absence', []]);
+  assert.deepEqual(rows.Cassia, ['no_signup', null, null, []]);
+  // Removing the notice of the one who stayed away recomputes the log raid too.
+  const brindle = (await s.w.rows("SELECT id FROM away_notices WHERE player_id = ?", s.p.brindle))[0].id;
+  assert.equal((await s.del('bob', brindle)).status, 200);
+  assert.deepEqual((await s.att(rid)).Brindle, ['no_signup', null, null, []]);
+});
+
+check('away attendance: a notice change recomputes the 20 newest dates and leaves older raids marked for recalculation, which one Recalculate fixes', async () => {
+  const s = await attAwayWorld();
+  const notice = await s.notice('brindle', { kind: 'away', from: '2027-01-19', to: '2027-02-09' });  // 22 days
+  const day = (i) => new Date(Date.parse('2027-01-19T00:00:00Z') + i * DAY).toISOString().slice(0, 10);
+  let writes = 0;
+  const tick = () => { if (++writes % 20 === 0) s.w.advance(61_000); };            // the central limit is 60 writes a minute
+  const ids = [];
+  for (let i = 0; i < 22; i++) { ids.push((await s.makeRaid({ teamId: s.A, raidOn: day(i), startTime: '20:00' })).id); tick(); }
+  s.w.advance(25 * DAY);                                                            // every raid has started (the sessions last 30 days)
+  for (const rid of ids) { await s.manual(rid, ['aldric']); tick(); }
+  for (const rid of ids) assert.deepEqual((await s.att(rid)).Brindle, ['missed_notice', 0, 'absence', []]);
+  s.w.advance(61_000);
+  assert.equal((await s.del('bob', notice.id)).status, 200);
+  const state = await s.w.rows('SELECT id, raid_on, policy_fp FROM raids ORDER BY raid_on');
+  const stale = state.filter((row) => row.policy_fp === '').map((row) => row.raid_on);
+  assert.deepEqual(stale, [day(0), day(1)], 'the two oldest dates wait for a recalculation');
+  assert.deepEqual((await s.att(ids[0])).Brindle, ['missed_notice', 0, 'absence', []], 'still the old result, honestly marked stale');
+  assert.deepEqual((await s.att(ids[2])).Brindle, ['no_signup', null, null, []]);
+  assert.deepEqual((await s.att(ids[21])).Brindle, ['no_signup', null, null, []]);
+  s.w.advance(1000);
+  await s.recompute(ids[0]);
+  assert.deepEqual((await s.att(ids[0])).Brindle, ['no_signup', null, null, []]);
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';

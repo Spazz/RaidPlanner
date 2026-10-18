@@ -1,6 +1,7 @@
 // Attendance I/O: the only place that turns D1 rows into the pure modules' input and writes their results back.
 // The pure modules (attendance-calendar / -policy / -consolidate / -metrics) never see the database.
 import { consolidateRaid, resolveFillIns } from './attendance-consolidate.js';
+import { attendanceAwaySignups, noticeOfRow } from './away.js';
 import { REGION_RESET_DAY, consolidationFingerprint, resolvePolicy } from './attendance-policy.js';
 import { allows } from './permissions.js';
 
@@ -143,12 +144,12 @@ const DAY_CTE = `WITH day AS (
 
 export async function loadDay(db, guildId, raidId) {
   const bind = (sql) => db.prepare(DAY_CTE + ' ' + sql).bind(guildId, raidId);
-  const [, raidResult, policyResult, signupResult, planResult, pullResult, presenceResult, manualResult, guestResult, decisionResult, characterResult] = await db.batch([
+  const [, raidResult, policyResult, signupResult, planResult, pullResult, presenceResult, manualResult, guestResult, decisionResult, characterResult, noticeResult] = await db.batch([
     // Sign-ups whose Discord ID had no person at ingest are linked now if one has appeared since.
     bind(`UPDATE raid_signups SET player_id = (SELECT p.id FROM players p WHERE p.guild_id = raid_signups.guild_id AND p.discord_user_id = raid_signups.discord_user_id)
            WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM day) AND source = 'raid_helper' AND player_id IS NULL AND discord_user_id IS NOT NULL
              AND EXISTS (SELECT 1 FROM players p WHERE p.guild_id = raid_signups.guild_id AND p.discord_user_id = raid_signups.discord_user_id)`),
-    bind(`SELECT r.id, r.team_id, r.raid_on, r.log_mode, r.policy_fp, r.version,
+    bind(`SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.log_mode, r.policy_fp, r.version,
                  (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports
             FROM raids r WHERE r.id IN (SELECT id FROM day) ORDER BY r.id`),
     policyRowsStatement(db, guildId),
@@ -175,6 +176,10 @@ export async function loadDay(db, guildId, raidId) {
           SELECT c.player_id, c.name_key, c.realm_key, c.team_id, c.is_main, p.status, p.joined_on, p.left_on
             FROM characters c JOIN players p ON p.id = c.player_id
            WHERE c.guild_id = ?1 AND (c.player_id IN (SELECT player_id FROM who_by_character) OR c.player_id IN (SELECT player_id FROM who_by_row))`),
+    // The Away notices that cover the day (worker/away.js): each one is one more, weakest, sign-up of its person for the raids of the day (consolidateDay).
+    bind(`SELECT id, player_id, kind, at_time, starts_on, ends_on, weekday, created_at FROM away_notices
+           WHERE guild_id = ?1 AND kind = 'away' AND starts_on <= (SELECT raid_on FROM raids WHERE id = ?2 AND guild_id = ?1)
+             AND (ends_on IS NULL OR ends_on >= (SELECT raid_on FROM raids WHERE id = ?2 AND guild_id = ?1))`),
   ]);
   return {
     raids: raidResult.results,
@@ -187,6 +192,7 @@ export async function loadDay(db, guildId, raidId) {
     guests: guestResult.results,
     decisions: decisionResult.results,
     characters: characterResult.results,
+    notices: noticeResult.results.map(noticeOfRow),
   };
 }
 
@@ -253,9 +259,12 @@ export function consolidateDay(guild, loaded) {
     for (const row of decisionsBy.get(raid.id) || []) {
       decisions[row.player_id] = { outcome: row.outcome, credit: row.credit, creditId: row.credit_id, reason: row.reason, flags: parseJson(row.flags, []) };
     }
+    // An Away notice filed before the raid began is the weakest sign-up of the person it covers (only for a person on the raid's team who was in the guild
+    // that day): it matters only when they have no other kind and are not in the log, and then the raid they missed is "missed with notice".
     const signups = [
       ...signupsOf(raid.id).map((row) => ({ playerId: row.player_id, kind: row.kind, source: row.source })),
       ...plan.map((row) => ({ playerId: row.playerId, kind: row.kind, source: 'plan' })),
+      ...attendanceAwaySignups(loaded.notices || [], { raidOn: raid.raid_on, teamId: raid.team_id, startsAt: raid.starts_at }, [...people.values()]),
     ];
     const evidence = {
       raid: { id: raid.id, teamId: raid.team_id, raidOn: raid.raid_on, hasLog: raid.reports > 0, manual: raid.log_mode === 'manual' },
