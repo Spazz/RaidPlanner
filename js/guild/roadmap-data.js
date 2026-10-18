@@ -290,7 +290,7 @@
       {
         id: 'availability-grid',
         title: 'Raid-night availability grid',
-        summary: 'Members tick the evenings and hours they can raid on a weekly grid. Officers see the overlap per night and use it to pick raid nights.',
+        summary: 'Members tick the evenings and hours they can raid on a weekly grid. Officers see the overlap per evening and use it to pick raid days.',
         why: 'A new Forever team has to choose nights before anyone has signed up for a raid, and away notices only cover exceptions. Inspired by: Guild Order Forever launch checklist; Blizzard forum recruiting posts that poll raid schedules.',
         area: 'signups', status: 'idea', source: 'pm', added: '2026-10-18',
       },
@@ -381,7 +381,7 @@
       {
         id: 'guild-polls',
         title: 'Quick polls for guild decisions',
-        summary: 'Officers ask members a question with a few options and a closing time (raid nights, move or split, faction), with named or anonymous answers.',
+        summary: 'Officers ask members a question with a few options and a closing time (raid days, move or split, faction), with named or anonymous answers.',
         why: 'The move, split or stay decision should be recorded early, and some guilds poll every major decision. Inspired by: Raid-Helper polls; Guild Order Forever launch checklist.',
         area: 'other', status: 'idea', source: 'pm', added: '2026-10-18',
       },
