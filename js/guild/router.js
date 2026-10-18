@@ -5,20 +5,24 @@
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list; the shell sends viewers without officer actions on to Roster)
 //   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,roles,discord,guests,public,attendance,loot,battlenet,activity,data}]
 //   #/guest/<token>  (a guest link: the page redeems it and moves to #/view)  #/view  (the guest view)  #/public/:gid  (a guild's public page)
-//   These three work signed out; they show a read-only view and never ask for a sign-in.
+//   #/apply/:gid  (a guild's application form)
+//   These four work signed out; the first three show a read-only view and never ask for a sign-in, the form lets a signed-in applicant's account come along.
 //   #/g/:gid/away  (my away notices)
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
 //   #/g/:gid/loot[?view=raids|items]  #/g/:gid/loot/p/:pid  (Balance is the default view)
-//   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl,bnet}
+//   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl,bnet,csv}
+//   #/g/:gid/roster/{intent,recruiting,applications}  (the Roster's other tabs: the class and spec intent board, recruitment needs, the applications inbox)
 //   (?team= only opens an archived team's roster; the shell's team picker decides otherwise)
 (function (G) {
   'use strict';
 
   // 'home' is the guild's landing section: it has no path segment of its own (#/g/:gid); #/g/:gid/home is only an alias.
   const SECTIONS = ['home', 'roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
+  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'applications', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
+  // The Roster's tabs after the roster list itself; each is a route of its own.
+  const ROSTER_TABS = ['intent', 'recruiting', 'applications'];
   const LOOT_VIEWS = ['raids', 'items'];
-  const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet'];
+  const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet', 'csv'];
   // Why a sign-in came back without signing in (/auth/callback and /auth/bnet/callback redirect to #/signin?error=..).
   const SIGNIN_ERRORS = ['denied', 'state', 'discord', 'bnet', 'not_configured'];
   // Why a Discord or Battle.net link came back without linking (redirects to #/linked?error=..). 'taken' is a Battle.net account that belongs to
@@ -80,6 +84,7 @@
     }
     if (head === 'guest' && parts.length === 2) return GUEST_TOKEN.test(parts[1]) ? { name: 'guest', token: parts[1] } : { name: 'notfound' };
     if (head === 'public' && parts.length === 2) return ID.test(parts[1]) ? { name: 'public', gid: parts[1] } : { name: 'notfound' };
+    if (head === 'apply' && parts.length === 2) return ID.test(parts[1]) ? { name: 'apply', gid: parts[1] } : { name: 'notfound' };
     if (head !== 'g' || !ID.test(parts[1])) return { name: 'notfound' };
     const gid = parts[1];
     if (parts.length === 2) return { name: 'section', gid: gid, section: 'home' };
@@ -92,6 +97,7 @@
     if (parts[2] === 'roster') {
       if (parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'person', gid: gid, pid: parts[4] };
       if (parts.length === 5 && parts[3] === 'import' && IMPORT_SOURCES.indexOf(parts[4]) >= 0) return { name: 'import', gid: gid, source: parts[4] };
+      if (parts.length === 4 && ROSTER_TABS.indexOf(parts[3]) >= 0) return { name: parts[3], gid: gid };
     }
     if (parts[2] === 'away' && parts.length === 3) return { name: 'away', gid: gid };
     if (parts[2] === 'raids') {
@@ -124,6 +130,8 @@
       case 'view': return '#/view';
       case 'guest': return typeof r.token === 'string' && GUEST_TOKEN.test(r.token) ? '#/guest/' + r.token : '#/';
       case 'public': return isId(r.gid) ? '#/public/' + encodeURIComponent(r.gid) : '#/';
+      case 'apply': return isId(r.gid) ? '#/apply/' + encodeURIComponent(r.gid) : '#/';
+      case 'intent': case 'recruiting': case 'applications': return '#/g/' + encodeURIComponent(r.gid) + '/roster/' + r.name;
       case 'planner': return '#/planner' + (isId(r.gid) && isId(r.rid) ? '?raid=' + r.gid + '.' + r.rid : '');
       case 'section': {
         const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';
@@ -146,10 +154,10 @@
     }
   }
 
-  // The routes that read a guild without an account (a guest link, the guest view, a public page).
+  // The routes that work without an account (a guest link, the guest view, a public page, an application form).
   function isViewerRoute(route) {
-    return !!route && (route.name === 'guest' || route.name === 'view' || route.name === 'public');
+    return !!route && (route.name === 'guest' || route.name === 'view' || route.name === 'public' || route.name === 'apply');
   }
 
-  G.router = { SECTIONS: SECTIONS, TABS: TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN, parse: parse, format: format, isViewerRoute: isViewerRoute };
+  G.router = { SECTIONS: SECTIONS, TABS: TABS, ROSTER_TABS: ROSTER_TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN, parse: parse, format: format, isViewerRoute: isViewerRoute };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

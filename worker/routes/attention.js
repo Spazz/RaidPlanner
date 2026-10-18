@@ -41,7 +41,7 @@ export async function getAttention(ctx) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, onboarding] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, applications, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -116,6 +116,8 @@ export async function getAttention(ctx) {
         GROUP BY r.id ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
       now,
     ),
+    // Applications nobody has looked at yet, per team.
+    bind("SELECT team_id, COUNT(*) AS n FROM applications WHERE guild_id = ? AND status = 'new' GROUP BY team_id"),
     // The setup checklist's flags, for the people who set the guild up (no statement for anyone else: `onboarding` is then undefined).
     ...[onboardingStatement(db, guildContext)].filter(Boolean),
   ]);
@@ -165,6 +167,7 @@ export async function getAttention(ctx) {
     upcoming: upcoming.results.map((row) => ({ ...row, size: effectiveRaidSize(row, teamSizes.get(row.team_id), guild.game_version) })),
     watch,
     rosterDeclined: rosterDeclined.results,
+    applications: applications.results,
   });
   // The setup checklist (null for anyone who does not set the guild up, once dismissed, and once every step is done); it never counts toward `total`.
   return jsonResponse({ today, ...built, onboarding: shapeOnboarding(onboarding) });

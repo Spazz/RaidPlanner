@@ -2,7 +2,7 @@
 // or team lead sees on the guild home page. Each item carries the fields its sentence needs and a `link` (a pages route without the guild id).
 // Which items a viewer gets follows their rights per team: `allowsTeam(action, teamId)` and `granted(action)` come from the permission check.
 
-export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'trial', 'watch', 'no_loot', 'low_signups', 'roster_declined', 'unlocked'];
+export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'no_loot', 'low_signups', 'roster_declined', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
 export const INFO_KINDS = ['unlocked'];  // listed, but not part of the open-work count
 export const TRIAL_DAYS = 7;
@@ -24,6 +24,7 @@ function daysBetween(from, to) {
 //   signupUnmatched: [{ raid_id, team_id, raid_on, zone, title, event_title, n }],
 //   claims: number, trials: [{ id, trial_end, name, class, team_id }],
 //   noLoot: [{ id, team_id, raid_on, zone, title, event_title }],
+//   applications: [{ team_id, n }]   (applications still marked New, per team)
 //   rosterDeclined: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids with a published roster: n seats said "can't make it")
 //   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in, size (the raid's effective size; the team's when left out),
 //                close_hours (the sign-up deadline in hours before the start; 0 or left out = at the start) }],
@@ -55,6 +56,10 @@ export function buildAttention(input) {
   }
   if (input.claims > 0 && input.granted('roster.edit')) {
     add('claims', { ...base('claims', null), count: input.claims, id: 'claims', link: { name: 'review' } }, [0]);
+  }
+  for (const row of input.applications || []) {
+    if (!here('roster.edit', row.team_id)) continue;
+    add('applications', { ...base('applications', row.team_id), count: row.n, id: `applications:${row.team_id}`, link: { name: 'applications' } }, [0]);
   }
   for (const row of input.trials) {
     if (!here('roster.edit', row.team_id)) continue;

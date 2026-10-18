@@ -8,7 +8,7 @@
 // A totem worth nothing to anyone in the group is credited by no one, so it is
 // not shown either (a lone shaman with nobody to buff shows no totem).
 function getGroupBuffs(players, groupIndex, groups = State.groups, mode = State.optimizerMode) {
-  if (!GameVersions[State.gameVersion].modeled) return [];
+  if (!GameVersions[activeVersion()].modeled) return [];
 
   // Determine dominant role
   const roleCounts = {};
@@ -97,6 +97,47 @@ function getRaidBuffCoverage(groups) {
   const covered = new Set();
   groups.forEach((g, gi) => getGroupBuffs(g, gi, groups).forEach(b => covered.add(b.id)));
   return covered;
+}
+
+// ── PLANNED-ROSTER COVERAGE (the guild pages) ──────────────────
+// Which party buffs and raid debuffs a roster nobody has placed yet would cover, by the Planner's own rules for a game version. The roster is laid
+// out by Optimizer.plan (the call Optimize makes, so a planned roster is read the way the board would arrange it) and the result is read with the
+// functions the coverage rail uses: getGroupBuffs per group, getRaidDebuffCoverage, factionRelevantBuffs. It reads and writes no State: the version
+// and faction travel through LayoutScope, so it is safe to call while a plan is open on the page.
+//   roster: [{ class, spec }] with the guild's spec labels ('Feral (DPS)' / 'Feral (Tank)' are the Planner's Feral druid as DPS or tank)
+//   -> null for a version the Planner does not model, else { gameVersion, seated, size, buffs: [{ id, name, covered, sourceClass, sourceSpec }],
+//      debuffs: [same] } with every buff and debuff of the version (the faction-relevant buffs), covered or not.
+function plannerPlayerFor(entry, index) {
+  if (!entry || typeof entry.class !== 'string' || typeof entry.spec !== 'string') return null;
+  const feral = entry.class === 'DRUID' && /^Feral/.test(entry.spec);
+  const specName = feral ? 'Feral' : entry.spec;
+  const specs = Config.Specs[entry.class];
+  const found = specs ? Object.values(specs).find(s => s.name === specName) : null;
+  if (!found) return null;
+  const role = feral && /(Tank)/.test(entry.spec) ? 'tank' : found.role;
+  return { uid: 'cov' + index, name: specName + ' ' + entry.class + ' ' + index, class: entry.class, spec: specName, role, imported: false };
+}
+
+function rosterBuffCoverage(roster, gameVersion, raidSize) {
+  const profile = GameVersions[gameVersion];
+  if (!profile || !profile.modeled) return null;
+  const size = Number.isInteger(raidSize) && raidSize > 0 ? raidSize : 25;
+  const players = (Array.isArray(roster) ? roster : []).map(plannerPlayerFor).filter(Boolean);
+  const numGroups = Math.max(1, Math.min(8, Math.ceil(size / 5)));
+  const groups = players.length ? Optimizer.plan(players, { gameVersion, numGroups, raidSize: size }).groups : [];
+  return LayoutScope.run({ gameVersion, faction: Faction.detect(groups.flat()), constraints: [], drummers: [] }, () => {
+    const coveredBuffs = new Set();
+    groups.forEach((g, gi) => getGroupBuffs(g, gi, groups, 'max_dps').forEach(b => coveredBuffs.add(b.id)));
+    const coveredDebuffs = getRaidDebuffCoverage(groups);
+    const row = (id, entry, covered) => ({ id, name: entry.name, covered: covered.has(id), sourceClass: entry.sourceClass, sourceSpec: entry.sourceSpec || null });
+    return {
+      gameVersion,
+      seated: groups.flat().length,
+      size,
+      buffs: Object.entries(factionRelevantBuffs()).map(([id, entry]) => row(id, entry, coveredBuffs)),
+      debuffs: Object.entries(Config.Debuffs).map(([id, entry]) => row(id, entry, coveredDebuffs)),
+    };
+  });
 }
 
 function canProvideBuff(entry, player) {

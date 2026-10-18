@@ -228,6 +228,8 @@
 
   // The sizes a team or a raid can have (the Worker's RAID_SIZES), as <option> items: '20-man', with an optional first "automatic" choice (value '').
   ui.RAID_SIZES = [10, 20, 25, 40];
+  // The size a new team starts with in a game version (the Worker's DEFAULT_TEAM_SIZES): TBC 25, Classic 40, WoW Forever 20.
+  ui.defaultTeamSize = function (gameVersion) { return gameVersion === 'classic' ? 40 : gameVersion === 'forever' ? 20 : 25; };
   ui.sizeChoices = function (autoLabel) {
     const sizes = ui.RAID_SIZES.map(function (n) { return { value: n, label: n + '-man' }; });
     return autoLabel ? [{ value: '', label: autoLabel }].concat(sizes) : sizes;

@@ -29,6 +29,12 @@ import {
   removeCharacter, saveNotes,
 } from './routes/roster.js';
 import { commitRaidHelper, commitWcl, previewRaidHelper, previewWcl } from './routes/roster-import.js';
+import { commitCsv, previewCsv } from './routes/roster-import-csv.js';
+import { closeIntent, deleteIntentPick, getIntent, openIntent, putIntentPick } from './routes/intent.js';
+import { getRecruiting, putRecruitTargets } from './routes/recruiting.js';
+import {
+  acceptApplication, deleteApplication, getApplyForm, getApplySettings, listApplications, patchApplication, putApplySettings, submitApplication,
+} from './routes/applications.js';
 import {
   createRaid, deleteEvent, deleteManual, deletePlan, deleteRaid, deleteReport, getPlanner, getRaid, listRaids, patchRaid, putEvent, putManual, putPlan,
   putReport, recomputeRoute,
@@ -51,6 +57,9 @@ import {
 
 const COMMIT_MAX_BODY = 64 * 1024;
 const PLAN_MAX_BODY = 32 * 1024;
+// The body limits of the CSV roster commit (500 rows) and of a public application (eight long answers).
+const CSV_MAX_BODY = 256 * 1024;
+const APPLY_MAX_BODY = 32 * 1024;
 
 export const ROUTES = [
   { method: 'GET', path: '/guild', auth: false, handler: guildPageRedirect },
@@ -114,6 +123,8 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/roster/import/wcl/commit', auth: true, handler: commitWcl, maxBody: COMMIT_MAX_BODY },
   { method: 'POST', path: '/api/guild/:gid/roster/import/bnet/preview', auth: true, handler: previewBnetRoster },
   { method: 'POST', path: '/api/guild/:gid/roster/import/bnet/commit', auth: true, handler: commitBnetRoster, maxBody: COMMIT_MAX_BODY },
+  { method: 'POST', path: '/api/guild/:gid/roster/import/csv/preview', auth: true, handler: previewCsv, maxBody: CSV_MAX_BODY },
+  { method: 'POST', path: '/api/guild/:gid/roster/import/csv/commit', auth: true, handler: commitCsv, maxBody: CSV_MAX_BODY },
   { method: 'GET', path: '/api/guild/:gid/roster/:pid', auth: true, handler: getPerson },
   { method: 'GET', path: '/api/guild/:gid/roster/:pid/trial', auth: true, handler: getTrialReview },
   { method: 'PATCH', path: '/api/guild/:gid/roster/:pid', auth: true, handler: patchPerson },
@@ -205,6 +216,23 @@ export const ROUTES = [
   { method: 'POST', path: '/api/guild/:gid/away', auth: true, handler: postNotice },
   { method: 'PUT', path: '/api/guild/:gid/away/:nid', auth: true, handler: putNotice },
   { method: 'DELETE', path: '/api/guild/:gid/away/:nid', auth: true, handler: deleteNotice },
+  // PM wave 3 (recruiting and the WoW Forever launch): the class and spec intent board, recruitment needs and the applications inbox. The apply form is
+  // public (no session needed; a signed-in applicant's account is kept). The literal /applications/settings is registered before /applications/:apid.
+  { method: 'GET', path: '/api/guild/:gid/intent', auth: true, handler: getIntent },
+  { method: 'POST', path: '/api/guild/:gid/teams/:tid/intent', auth: true, handler: openIntent },
+  { method: 'PATCH', path: '/api/guild/:gid/intent/:iid', auth: true, handler: closeIntent },
+  { method: 'PUT', path: '/api/guild/:gid/intent/:iid/picks/:pid', auth: true, handler: putIntentPick },
+  { method: 'DELETE', path: '/api/guild/:gid/intent/:iid/picks/:pid', auth: true, handler: deleteIntentPick },
+  { method: 'GET', path: '/api/guild/:gid/recruiting', auth: true, handler: getRecruiting },
+  { method: 'PUT', path: '/api/guild/:gid/teams/:tid/recruiting', auth: true, handler: putRecruitTargets },
+  { method: 'GET', path: '/api/apply/:gid', auth: false, handler: getApplyForm },
+  { method: 'POST', path: '/api/apply/:gid', auth: false, handler: submitApplication, maxBody: APPLY_MAX_BODY },
+  { method: 'GET', path: '/api/guild/:gid/applications/settings', auth: true, handler: getApplySettings },
+  { method: 'PUT', path: '/api/guild/:gid/applications/settings', auth: true, handler: putApplySettings },
+  { method: 'GET', path: '/api/guild/:gid/applications', auth: true, handler: listApplications },
+  { method: 'PATCH', path: '/api/guild/:gid/applications/:apid', auth: true, handler: patchApplication },
+  { method: 'POST', path: '/api/guild/:gid/applications/:apid/accept', auth: true, handler: acceptApplication },
+  { method: 'DELETE', path: '/api/guild/:gid/applications/:apid', auth: true, handler: deleteApplication },
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },
