@@ -54,7 +54,7 @@
   const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot' };
   function attPageKey(r) {
     if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : null));
-    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : null);
+    if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : null));
     return Object.prototype.hasOwnProperty.call(ATT_ROUTE_PAGES, r.name) ? ATT_ROUTE_PAGES[r.name] : null;
   }
   app.attPageKey = attPageKey;
@@ -449,6 +449,7 @@
       if (tab === 'attendance') return loadAttendance('settingsAtt', r, gd);
       if (tab === 'loot') return loadAttendance('settingsLoot', r, gd);
       if (tab === 'battlenet') return G.pages.settingsBnet.load(r.gid).then(function () { return null; });
+      if (tab === 'schedule') return loadAttendance('settingsSchedule', r, gd);
       if (tab !== 'people') return null;
       return G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) {
         state.people[r.gid] = res;
@@ -631,6 +632,7 @@
           if (!x || x.gid !== gd.guild.id) return P.signin.loadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'battlenet', P.settingsBnet.settingsHtml({ guildData: gd, data: x.data, alert: state.pageAlert, notice: x.notice }));
         }
+        if (tab === 'schedule') return P.settingsSchedule.main(r, gd, ctx);
         if (tab === 'people') {
           if (!state.people[gd.guild.id]) return P.signin.loadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'people', P.people.peopleHtml({ guildData: gd, data: state.people[gd.guild.id], sort: state.peopleSort, query: state.peopleQuery, notice: state.notice, alert: state.pageAlert, now: Date.now() }));

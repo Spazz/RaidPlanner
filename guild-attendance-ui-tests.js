@@ -1120,13 +1120,26 @@ function teamData(over) {
       signups: [{ source: 'raid_helper', kind: 'signed', className: 'Warrior', specName: 'Arms', position: 1, playerId: 'p_b', matched: true, nickname: 'Bravo' },
         { source: 'raid_helper', kind: 'bench', className: 'Bench', specName: null, position: 2, playerId: null, matched: false, nickname: null }],
     });
-    const out = raidPage(up);
+    // The sign-ups come from the panel (pages-raid-signups.js), with its own data: the merged list of GET /raids/:rid/signups.
+    const view = {
+      raid: { id: 'u1', teamId: 't1', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, locked: false, closed: null },
+      can: { edit: true, self: false, seeList: true, seeNicknames: true }, me: null, roster: [],
+      counts: { signed: 1, late: 0, tentative: 0, bench: 1, absence: 0, expected: 1, byRole: { tank: 0, healer: 0, melee: 1, ranged: 0, none: 0 }, byClass: { WARRIOR: 1 } },
+      entries: [
+        { key: 'p:p_b', personId: 'p_b', source: 'raid_helper', kind: 'signed', name: 'Bravo', classId: 'WARRIOR', className: 'Warrior', spec: 'Arms', role: 'melee', characterId: null, note: null, updatedAt: null, matched: true, isMe: false, nickname: 'Bravo' },
+        { key: 'x:raid_helper:2', personId: null, source: 'raid_helper', kind: 'bench', name: null, classId: null, className: null, spec: null, role: null, characterId: null, note: null, updatedAt: null, matched: false, isMe: false, nickname: null },
+      ],
+    };
+    const panel = v => ({ signups: { gid: 'g1', rid: 'u1', status: 'ok', data: v, ui: G.pages.raidSignups.freshUi(v) } });
+    const out = raidPage(up, panel(view));
     assert(out.includes('Starts Sat Oct 24, ') && out.includes('Prog night') && out.includes('>Upcoming<') && out.includes('>Not planned<'));
-    assert(out.includes('Attendance starts after the raid.') && out.includes('Sign-ups') && out.includes('Bravo') && out.includes('Warrior'));
+    assert(out.includes('Attendance starts after the raid.') && out.includes('Sign-ups') && out.includes('Bravo') && out.includes('Arms'));
     assert(out.includes('Refresh sign-ups') && out.includes('data-op="event-refresh"'));
     assert(!out.includes('Mark as No log') && !out.includes('Recalculate') && !out.includes('Warcraft Logs reports') && !out.includes('Needs review') && !out.includes('>People<'));
-    assert(raidPage(up, { guildData: gd(MEMBER_CAN), data: Object.assign({}, up, { can: { edit: false, review: false, seeAttendance: false, seeNicknames: false }, signups: [] }) }).includes('visible to the team'));
-    assertEscaped(raidPage(Object.assign({}, up, { signups: [{ source: 'raid_helper', kind: 'signed', className: HOSTILE + QUOTES, specName: HOSTILE, position: 1, matched: false, nickname: HOSTILE + QUOTES }] })), 'upcoming signups');
+    const hidden = Object.assign({}, view, { can: { edit: false, self: false, seeList: false, seeNicknames: false }, counts: null, entries: null });
+    assert(raidPage(up, Object.assign({ guildData: gd(MEMBER_CAN), data: Object.assign({}, up, { can: { edit: false, review: false, seeAttendance: false, seeNicknames: false }, signups: [] }) }, panel(hidden))).includes('visible to the team'));
+    const hostile = Object.assign({}, view, { entries: [Object.assign({}, view.entries[0], { name: HOSTILE + QUOTES, spec: HOSTILE, nickname: HOSTILE + QUOTES, note: HOSTILE })] });
+    assertEscaped(raidPage(up, panel(hostile)), 'upcoming signups');
   });
 
   await check('Plan in Planner: a button on each upcoming row and card for those who may edit (event or not), and on the upcoming raid page next to Refresh sign-ups; never for a member or a past raid', () => {

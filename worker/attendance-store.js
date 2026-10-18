@@ -226,6 +226,13 @@ export function consolidateDay(guild, loaded) {
     return map;
   };
   const signupsBy = group(loaded.signups);
+  // A person's Raidsmith sign-up replaces their Raid-Helper one (the merged list shows them once, and so does the attendance); the plan
+  // is a third source that still ranks by the strongest kind.
+  const signupsOf = (raidId) => {
+    const rows = signupsBy.get(raidId) || [];
+    const native = new Set(rows.filter((row) => row.source === 'raidsmith').map((row) => row.player_id));
+    return native.size ? rows.filter((row) => !(row.source === 'raid_helper' && native.has(row.player_id))) : rows;
+  };
   const planBy = group(loaded.plan);
   const pullsBy = group(loaded.pulls);
   const manualBy = group(loaded.manual);
@@ -246,7 +253,7 @@ export function consolidateDay(guild, loaded) {
       decisions[row.player_id] = { outcome: row.outcome, credit: row.credit, creditId: row.credit_id, reason: row.reason, flags: parseJson(row.flags, []) };
     }
     const signups = [
-      ...(signupsBy.get(raid.id) || []).map((row) => ({ playerId: row.player_id, kind: row.kind, source: row.source })),
+      ...signupsOf(raid.id).map((row) => ({ playerId: row.player_id, kind: row.kind, source: row.source })),
       ...plan.map((row) => ({ playerId: row.playerId, kind: row.kind, source: 'plan' })),
     ];
     const evidence = {

@@ -13,6 +13,7 @@ const PATTERNS = {
   lo: /^lo_[A-Za-z0-9_-]{22}$/,
   lp: /^lp_[A-Za-z0-9_-]{22}$/,
   cl: /^cl_[A-Za-z0-9_-]{22}$/,
+  ts: /^ts_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {

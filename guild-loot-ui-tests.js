@@ -135,12 +135,12 @@ function withState(fn) {
     }
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'loot', view: 'balance' }), '#/g/g1/loot');
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'roster', view: 'items' }), '#/g/g1/roster');
-    assert.deepEqual(plain(G.router.TABS), ['teams', 'people', 'attendance', 'loot', 'battlenet']);
+    assert.deepEqual(plain(G.router.TABS), ['teams', 'schedule', 'people', 'attendance', 'loot', 'battlenet']);
   });
 
   await check('shell: the Loot settings tab needs loot.policy, and loot.policy alone opens Guild settings', () => {
     const allTabs = Object.assign({ 'guild.access': 'guild', 'guild.roles': 'guild' }, OFFICER_CAN);
-    assert.deepEqual(plain(G.shell.settingsTabs(allTabs).map(t => t.tab)), ['teams', 'people', 'attendance', 'loot', 'battlenet']);
+    assert.deepEqual(plain(G.shell.settingsTabs(allTabs).map(t => t.tab)), ['teams', 'schedule', 'people', 'attendance', 'loot', 'battlenet']);
     assert.equal(G.shell.settingsTabs(allTabs).find(t => t.tab === 'loot').label, 'Loot');
     assert(!G.shell.settingsTabs({ 'guild.teams': 'guild', 'attendance.policy': 'guild' }).some(t => t.tab === 'loot'));
     assert.deepEqual(plain(G.shell.settingsTabs({ 'loot.policy': 'guild' }).map(t => t.tab)), ['loot']);
@@ -874,9 +874,10 @@ function withState(fn) {
   await check('raid page: the detail load fetches the loot after the detail, and the page main passes its state to the card', withState(async (S) => {
     const gdata = gd(OFFICER_CAN);
     S.guilds.g1 = gdata; S.currentGid = 'g1';
-    const s = stub((m, url) => Promise.resolve(/loot$/.test(url) ? { awards: AWARDS, canEdit: true } : DETAIL));
+    const SIGNUPS = { raid: { id: 'r1', teamId: 't1', startsAt: 1, upcoming: false, locked: false, closed: 'started' }, can: { edit: true, self: false, seeList: true, seeNicknames: true }, me: null, counts: null, entries: [], roster: [] };
+    const s = stub((m, url) => Promise.resolve(/loot$/.test(url) ? { awards: AWARDS, canEdit: true } : /signups$/.test(url) ? SIGNUPS : DETAIL));
     await G.pages.raid.load({ name: 'raid', gid: 'g1', rid: 'r1' }, gdata);
-    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/raids/r1', '/api/guild/g1/raids/r1/loot']);
+    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/raids/r1', '/api/guild/g1/raids/r1/signups', '/api/guild/g1/raids/r1/loot']);
     const out = G.pages.raid.main({ name: 'raid', gid: 'g1', rid: 'r1' }, gdata);
     assert(out.includes('id="loot-h"') && out.includes('Nathrezim Mindblade'));
     s.restore();
@@ -1430,8 +1431,11 @@ function withState(fn) {
   await check('safety: the loot code only ever calls the contract routes (every path in the pages comes from G.api.loot)', () => {
     const src = ['pages-loot', 'pages-person-loot', 'pages-raid-loot', 'pages-settings-loot'].map(n => read('js/guild/' + n + '.js')).join('\n');
     assert(!/G\.api\.(get|post|put|patch|del)\(/.test(src), 'loot pages go through G.api.loot, not raw paths');
+    // The loot block of api.js (the sign-up and schedule calls after it have their own routes and their own suite).
     const api = read('js/guild/api.js');
-    const paths = [...api.matchAll(/guildPath\(gid, '([^']*)'/g)].map(m => m[1]);
+    const lootBlock = api.slice(api.indexOf('G.api.loot = {'), api.indexOf('// Every sign-up and raid-schedule call'));
+    const paths = [...lootBlock.matchAll(/guildPath\(gid, '([^']*)'/g)].map(m => m[1]);
+    assert(paths.length >= 9, 'the loot block was found');
     const contract = ['/raids/', '/loot/', '/loot/balance', '/loot/raids', '/loot/items', '/loot/person/', '/loot/policy'];
     for (const p of paths) assert(contract.some(c => p.startsWith(c)), 'unknown route ' + p);
   });

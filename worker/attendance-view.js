@@ -162,6 +162,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       openFlags: raid.open_flags,
       stale: isStale(state),
       version: raid.version,
+      signupsLocked: raid.signups_locked === 1,
       manual: raid.log_mode === 'manual'
         ? {
           reason: review ? raid.manual_reason : null, by: review && manualBy ? userName(manualBy) : null, at: raid.manual_at,

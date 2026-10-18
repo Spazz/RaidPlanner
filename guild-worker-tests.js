@@ -745,15 +745,16 @@ check('permissions: every role x action x scope matches the plan table', async (
   const seeded = await s.w.rows('SELECT role_id, action, scope FROM role_permissions');
   const resolve = (assignments) => permissions.resolvePermissions(assignments, seeded);
   const ALL = permissions.ACTIONS;
-  const memberCan = { 'roster.view': 'guild', 'raids.view': 'guild', 'attendance.view': [], 'loot.view': [] };
+  // signups.self is own_teams only: nobody holds it guild-wide, so it is an empty list until they have a character on a team.
+  const memberCan = { 'roster.view': 'guild', 'raids.view': 'guild', 'signups.self': [], 'attendance.view': [], 'loot.view': [] };
 
   assert.deepEqual(resolve([]).can, memberCan);
   assert.deepEqual(resolve([{ role_id: 'officer', team_id: null }]).can,
-    Object.fromEntries(ALL.filter((action) => !['guild.roles', 'audit.view'].includes(action)).map((action) => [action, 'guild'])));
-  assert.deepEqual(resolve([{ role_id: 'guild_master', team_id: null }]).can, Object.fromEntries(ALL.map((action) => [action, 'guild'])));
+    { ...Object.fromEntries(ALL.filter((action) => !['guild.roles', 'audit.view', 'signups.self'].includes(action)).map((action) => [action, 'guild'])), 'signups.self': [] });
+  assert.deepEqual(resolve([{ role_id: 'guild_master', team_id: null }]).can, { ...Object.fromEntries(ALL.filter((action) => action !== 'signups.self').map((action) => [action, 'guild'])), 'signups.self': [] });
   const lead = resolve([{ role_id: 'team_lead', team_id: 't_b' }, { role_id: 'team_lead', team_id: 't_a' }]).can;
   assert.deepEqual(lead, {
-    'roster.view': 'guild', 'raids.view': 'guild',
+    'roster.view': 'guild', 'raids.view': 'guild', 'signups.self': [],
     'roster.edit': ['t_a', 't_b'], 'roster.notes.view': ['t_a', 't_b'], 'roster.notes.edit': ['t_a', 't_b'],
     'raids.edit': ['t_a', 't_b'], 'attendance.view': ['t_a', 't_b'], 'attendance.review': ['t_a', 't_b'],
     'loot.view': ['t_a', 't_b'], 'loot.edit': ['t_a', 't_b'],
@@ -790,7 +791,7 @@ check('permissions over HTTP: Member, Team Lead, Officer and Guild Master are ea
   assert.deepEqual(lead.can['roster.edit'], [s.teamId]);
   assert.equal(lead.can['guild.teams'], undefined, 'not allowed -> absent');
   const member = (await s.w.call(s.jars.dave, 'GET', s.guildPath)).json.me;
-  assert.deepEqual(member, { roles: [], can: { 'roster.view': 'guild', 'raids.view': 'guild', 'attendance.view': [], 'loot.view': [] } });
+  assert.deepEqual(member, { roles: [], can: { 'roster.view': 'guild', 'raids.view': 'guild', 'signups.self': [], 'attendance.view': [], 'loot.view': [] } });
 });
 
 check('cross-guild denial: another guild is a 403, another guild\'s team id is a 400/404, and ids come from the URL', async () => {
@@ -1179,11 +1180,13 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   // The loot actions (Phase 4) are driven and pinned in guild-loot-worker-tests.js; the Battle.net actions (Phase 5) in guild-bnet-worker-tests.js.
   const LOOT_ACTIONS = ['loot.import', 'loot.update', 'loot.delete', 'loot.policy'];
   const BNET_ACTIONS = ['bnet.link', 'bnet.unlink', 'bnet.settings', 'claim.create', 'claim.withdraw', 'claim.approve', 'claim.reject'];
-  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action)).sort());
+  // The sign-up and schedule actions (Phase 6) are driven and pinned in guild-signups-worker-tests.js.
+  const SIGNUP_ACTIONS = ['signup.set', 'signup.remove', 'signup.lock', 'schedule.update', 'schedule.fill'];
+  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action) && !SIGNUP_ACTIONS.includes(action)).sort());
   assert.deepEqual(AUDIT_ACTIONS.slice().sort(), [
     'access.remove', 'access.restore', 'account.delete', 'guild.claim', 'guild.create', 'guild.delete',
     'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore',
-    ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...LOOT_ACTIONS, ...BNET_ACTIONS,
+    ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...LOOT_ACTIONS, ...BNET_ACTIONS, ...SIGNUP_ACTIONS,
   ].sort());
   const rows = await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, created_at FROM audit_log WHERE action IN ('account.delete', 'guild.delete')");
   assert(rows.every((row) => row.guild_id === null));

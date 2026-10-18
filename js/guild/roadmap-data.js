@@ -28,12 +28,6 @@
         area: 'platform', status: 'next', source: 'user', added: '2026-10-17',
       },
       {
-        id: 'native-signups',
-        title: 'Native Raidsmith sign-ups',
-        summary: 'Raiders sign up for upcoming raids in Raidsmith itself, and a weekly raid schedule per team creates those raids. The Raid-Helper import stays for guilds that use it. Planned decisions (made by Claude, open to change): members sign themselves up as signed, late, tentative or absent, officers can edit any sign-up and lock sign-ups early, the schedule fills the next two weeks, and Raid-Helper rows are never counted twice.',
-        area: 'signups', status: 'next', source: 'user', added: '2026-10-17',
-      },
-      {
         id: 'discord-roles-guest-links',
         title: 'Discord role mapping, role editor and guest links',
         summary: 'Discord server roles map to Raidsmith roles through a silent bot, officers edit roles in Raidsmith, and guest and public links are added. Planned decisions (made by Claude, open to change): the bot asks for no permissions, manual role assignments win over Discord-mapped ones, guest links expire and can be revoked, and the public page is off by default and never shows notes.',
@@ -256,6 +250,12 @@
       },
 
       // ── Shipped ──
+      {
+        id: 'native-signups',
+        title: 'Native Raidsmith sign-ups',
+        summary: 'Raiders sign up for upcoming raids in Raidsmith as signed, late, tentative or can\'t come, with their character, spec and a note, until the raid starts or an officer closes sign-ups. Officers edit any sign-up. A weekly schedule per team creates the upcoming raids. A sign-up here replaces the person\'s Raid-Helper one, so nobody is counted twice.',
+        area: 'signups', status: 'done', source: 'user', added: '2026-10-17', shipped: '2026-10-17',
+      },
       {
         id: 'battlenet-link-roster-import',
         title: 'Battle.net character link and guild roster import',

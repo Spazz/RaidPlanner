@@ -113,4 +113,20 @@
       return G.api.put(guildPath(gid, '/loot/policy'), { teamId: teamId, override: override, version: version });
     },
   };
+
+  // Every sign-up and raid-schedule call in one place (tasks/guild-phase6-signups-spec.md, "API (as built)"). Like the loot calls they go
+  // through G.api.get / put / ... at call time, so a test that replaces those methods sees them.
+  function raidPath(gid, rid, tail) { return guildPath(gid, '/raids/' + encodeURIComponent(rid) + tail); }
+  function schedulePath(gid, tid, tail) { return guildPath(gid, '/teams/' + encodeURIComponent(tid) + '/schedule' + (tail || '')); }
+  G.api.signups = {
+    view: function (gid, rid) { return G.api.get(raidPath(gid, rid, '/signups')); },
+    save: function (gid, rid, body) { return G.api.put(raidPath(gid, rid, '/signup'), body); },
+    withdraw: function (gid, rid) { return G.api.del(raidPath(gid, rid, '/signup'), {}); },
+    savePerson: function (gid, rid, pid, body) { return G.api.put(raidPath(gid, rid, '/signups/' + encodeURIComponent(pid)), body); },
+    removePerson: function (gid, rid, pid) { return G.api.del(raidPath(gid, rid, '/signups/' + encodeURIComponent(pid)), {}); },
+    lock: function (gid, rid, locked) { return G.api.post(raidPath(gid, rid, locked ? '/signups/lock' : '/signups/unlock'), {}); },
+    schedule: function (gid, tid) { return G.api.get(schedulePath(gid, tid)); },
+    saveSchedule: function (gid, tid, body) { return G.api.put(schedulePath(gid, tid), body); },
+    fill: function (gid, tid, weeks) { return G.api.post(schedulePath(gid, tid, '/raids'), weeks == null ? {} : { weeks: weeks }); },
+  };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

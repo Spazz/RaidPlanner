@@ -31,10 +31,12 @@
     return v === 'guild' || (Array.isArray(v) && !!teamId && v.indexOf(teamId) >= 0);
   }
 
-  // The Guild settings tabs this viewer may open (People and roles needs access or roles).
+  // The Guild settings tabs this viewer may open (People and roles needs access or roles; Raid schedule is for whoever edits raids, and a Team Lead
+  // reaches it from the Raids page: canSeeSettings below, and so the sidebar item, is unchanged).
   function settingsTabs(can) {
     const tabs = [];
     if (hasAction(can, 'guild.teams')) tabs.push({ tab: 'teams', label: 'Teams' });
+    if (hasAction(can, 'raids.edit')) tabs.push({ tab: 'schedule', label: 'Raid schedule' });
     if (hasAction(can, 'guild.access') || hasAction(can, 'guild.roles')) tabs.push({ tab: 'people', label: 'People and roles' });
     if (hasAction(can, 'attendance.policy')) tabs.push({ tab: 'attendance', label: 'Attendance' });
     if (hasAction(can, 'loot.policy')) tabs.push({ tab: 'loot', label: 'Loot' });

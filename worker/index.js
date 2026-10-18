@@ -13,6 +13,10 @@ import { runScheduled } from './bnet-purge.js';
 import { claimGuild, createGuild, getGuild } from './routes/guild.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles } from './routes/people.js';
 import { createTeam, patchTeam } from './routes/teams.js';
+import { createScheduledRaids, getSchedule, putSchedule } from './routes/schedule.js';
+import {
+  deleteMySignup, deletePersonSignup, getMySignup, getSignups, lockSignups, putMySignup, putPersonSignup, unlockSignups,
+} from './routes/signups.js';
 import { createIdea, listIdeas } from './routes/roadmap.js';
 import {
   addCharacter, createPerson, deletePerson, getLinkable, getPerson, getRoster, makeMain, patchCharacter, patchPerson,
@@ -91,6 +95,19 @@ const ROUTES = [
   { method: 'PUT', path: '/api/guild/:gid/raids/:rid/manual', auth: true, handler: putManual, maxBody: PLAN_MAX_BODY },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/manual', auth: true, handler: deleteManual },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/recompute', auth: true, handler: recomputeRoute },
+  // Native sign-ups. Literal paths (lock, unlock) are registered before `:pid`.
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/signups', auth: true, handler: getSignups },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/signups/lock', auth: true, handler: lockSignups },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/signups/unlock', auth: true, handler: unlockSignups },
+  { method: 'PUT', path: '/api/guild/:gid/raids/:rid/signups/:pid', auth: true, handler: putPersonSignup },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/signups/:pid', auth: true, handler: deletePersonSignup },
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/signup', auth: true, handler: getMySignup },
+  { method: 'PUT', path: '/api/guild/:gid/raids/:rid/signup', auth: true, handler: putMySignup },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/signup', auth: true, handler: deleteMySignup },
+  // The weekly raid schedule of a team.
+  { method: 'GET', path: '/api/guild/:gid/teams/:tid/schedule', auth: true, handler: getSchedule },
+  { method: 'PUT', path: '/api/guild/:gid/teams/:tid/schedule', auth: true, handler: putSchedule },
+  { method: 'POST', path: '/api/guild/:gid/teams/:tid/schedule/raids', auth: true, handler: createScheduledRaids },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/decisions', auth: true, handler: postDecision },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/decisions/:pid', auth: true, handler: deleteDecision },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/unmatched', auth: true, handler: postUnmatched },
