@@ -30,8 +30,7 @@
       {
         id: 'open-to-other-guilds',
         title: 'Open Raidsmith to other guilds',
-        summary: 'Let other guilds create their own guild in Raidsmith. Today only people on an allowlist can create one. Planned decisions (made by Claude, open to change): any Discord server admin can create a guild unless the allowlist is set, new guilds get a setup checklist and size limits, the Guild Master can export or delete the guild\'s data, and there is no public guild directory.',
-        area: 'guilds', status: 'next', source: 'user', added: '2026-10-17',
+        summary: 'Any Discord server owner, Administrator or Manage Server holder can create a guild (the creator allowlist still overrides when set). New guilds get a six-step setup checklist on Home. Guild Masters can export the guild data (no other members' private data) or delete the guild. Limits: 10 active teams, 5,000 characters, 5 guilds per account. A test walks every route to prove no guild can read or change another.',
       },
       {
         id: 'move-to-cloudflare',
