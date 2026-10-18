@@ -319,7 +319,11 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
       claim('cl_d', 'Dunmar', 'HUNTER', { kind: 'already', person: { id: 'p3', name: 'Dunmar' }, defaultTeamId: null }),
       claim('cl_e', 'Cassia', 'PRIEST', { kind: 'blocked', reason: 'other_person', message: 'Merge them by hand.', person: null, defaultTeamId: null, canDecide: false }),
     ];
-    const out = G.pages.review.reviewHtml(reviewOpts(claims));
+    // The page words claim ages against the wall clock: pin it to T0 so '3 days ago' does not depend on the day the suite runs.
+    const realNow = Date.now;
+    Date.now = () => T0;
+    let out;
+    try { out = G.pages.review.reviewHtml(reviewOpts(claims)); } finally { Date.now = realNow; }
     assert(out.includes('id="claims-section"') && out.includes('<h2 class="gs-h2" id="claims-h">Character claims</h2>') && text(out).includes('5 claims waiting'));
     assert(out.indexOf('claims-section') < out.indexOf('review-no-flags'), 'claims come before the flags');
     assert(text(out).includes('No open attendance flags.') && !out.includes('Nothing to review'), 'the empty card only shows when nothing at all is waiting');
