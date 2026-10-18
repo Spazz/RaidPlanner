@@ -79,6 +79,38 @@
     return '<p class="gs-alert" role="alert"' + (id ? ' id="' + esc(id) + '"' : '') + (text ? '' : ' hidden') + '>' + esc(text) + '</p>';
   };
 
+  // ── MENUS: the one helper behind every "Actions", "More" and "..." button ──
+  // ui.menuHtml builds a real <button aria-haspopup="menu" aria-expanded> and its role="menu" list (hidden until opened); ui.menu is the
+  // behaviour, wired once in app.js: Enter / Space (the button's click) opens it and focuses the first item, ArrowDown / ArrowUp on the
+  // button open it at the first / last item, ArrowDown / ArrowUp / Home / End move between items, Escape closes it and returns focus to
+  // the button, Tab or a click outside closes it, and choosing an item closes it with focus back on the button (so a dialog the item
+  // opens, and a re-render, return to the button). Items run their own data-action through the normal delegated handlers.
+  //   opts: { id, label, ariaLabel, icon ('more' for an icon-only "..." button), triggerClass, align ('left'), key, items }
+  //   item: { label, href } for a link, { label, data: { action: 'raid-op', op: 'recompute' }, key } for a button, { danger: true } to
+  //         colour a destructive item, { separator: true } for a rule. Falsy entries are skipped; no items renders nothing.
+  const MENU_DATA_NAME = /^[a-z][a-z0-9-]*$/;
+
+  function menuItemHtml(item) {
+    if (item.separator) return '<div class="gs-menu-sep" role="separator"></div>';
+    const data = item.data || {};
+    const attrs = Object.keys(data).filter(function (k) { return MENU_DATA_NAME.test(k); }).map(function (k) { return ' data-' + k + '="' + esc(data[k]) + '"'; }).join('');
+    const common = ' class="gs-menu-item' + (item.danger ? ' is-danger' : '') + '" role="menuitem" tabindex="-1"' + attrs + (item.key ? ' data-key="' + esc(item.key) + '"' : '');
+    if (item.href) return '<a' + common + ' href="' + esc(item.href) + '">' + esc(item.label) + '</a>';
+    return '<button type="button"' + common + '>' + esc(item.label) + '</button>';
+  }
+
+  ui.menuHtml = function (opts) {
+    const o = opts || {};
+    const items = (Array.isArray(o.items) ? o.items : []).filter(Boolean);
+    if (!o.id || !items.some(function (i) { return !i.separator; })) return '';
+    const iconOnly = !!o.icon;
+    const content = iconOnly ? G.icons.icon(o.icon, 18) : '<span>' + esc(o.label) + '</span>' + G.icons.icon('chevronDown', 16);
+    const trigger = '<button type="button" class="' + esc(o.triggerClass || 'gs-btn') + ' gs-menu-trigger' + (iconOnly ? ' is-icon' : '') + '" id="' + esc(o.id) + '" data-action="menu-toggle" data-key="' + esc(o.key || o.id) + '"' +
+      ' aria-haspopup="menu" aria-expanded="false" aria-controls="' + esc(o.id) + '-list"' + (o.ariaLabel ? ' aria-label="' + esc(o.ariaLabel) + '"' : '') + '>' + content + '</button>';
+    const list = '<div class="gs-menu gs-menu-list' + (o.align === 'left' ? ' is-left' : '') + '" id="' + esc(o.id) + '-list" role="menu" aria-labelledby="' + esc(o.id) + '" hidden>' + items.map(menuItemHtml).join('') + '</div>';
+    return '<div class="gs-menu-wrap" data-menu>' + trigger + list + '</div>';
+  };
+
   // ── roster helpers: class colours, trial copy, status, sign-in, calendar days ──
   const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
   const STATUS_LABELS = { raider: 'Raider', trial: 'Trial', reserve: 'Reserve', inactive: 'Inactive' };
@@ -261,12 +293,105 @@
     return false;
   };
 
+  // ── menu behaviour (the markup is ui.menuHtml; app.js wires keydown and the two clicks) ──
+  function menuParts(root) {
+    return { button: root.querySelector('[aria-haspopup="menu"]'), list: root.querySelector('[role="menu"]') };
+  }
+
+  function menuItems(root) {
+    const list = menuParts(root).list;
+    return list ? Array.prototype.slice.call(list.querySelectorAll('[role="menuitem"]')) : [];
+  }
+
+  function openMenuRoots() {
+    if (typeof document === 'undefined' || !document.querySelectorAll) return [];
+    return Array.prototype.slice.call(document.querySelectorAll('[data-menu] [aria-haspopup="menu"][aria-expanded="true"]')).map(function (b) { return b.closest('[data-menu]'); }).filter(Boolean);
+  }
+
+  function menuRootOf(el) { return el && el.closest ? el.closest('[data-menu]') : null; }
+
+  ui.menu = {
+    isOpen: function (root) {
+      const button = root ? menuParts(root).button : null;
+      return !!button && button.getAttribute('aria-expanded') === 'true';
+    },
+    // at: 'last' focuses the last item, anything else the first.
+    open: function (root, at) {
+      const p = root ? menuParts(root) : null;
+      if (!p || !p.button || !p.list) return;
+      ui.menu.closeAll(root);
+      p.list.hidden = false;
+      p.button.setAttribute('aria-expanded', 'true');
+      const items = menuItems(root);
+      const first = at === 'last' ? items[items.length - 1] : items[0];
+      if (first && first.focus) first.focus();
+    },
+    close: function (root, refocus) {
+      const p = root ? menuParts(root) : null;
+      if (!p || !p.button || !p.list) return;
+      p.list.hidden = true;
+      p.button.setAttribute('aria-expanded', 'false');
+      if (refocus && p.button.focus) p.button.focus();
+    },
+    closeAll: function (except) {
+      openMenuRoots().forEach(function (root) { if (root !== except) ui.menu.close(root, false); });
+    },
+    toggle: function (button) {
+      const root = menuRootOf(button);
+      if (!root) return;
+      if (ui.menu.isOpen(root)) ui.menu.close(root, true);
+      else ui.menu.open(root, 'first');
+    },
+    // Returns true when the key was a menu key (the caller then stops).
+    keydown: function (ev) {
+      if (!ev) return false;
+      const key = ev.key;
+      const target = ev.target;
+      const root = menuRootOf(target);
+      const stop = function () { if (ev.preventDefault) ev.preventDefault(); return true; };
+      if (key === 'Escape') {
+        const open = openMenuRoots();
+        if (!open.length) return false;
+        open.forEach(function (r) { ui.menu.close(r, r === root); });
+        return stop();
+      }
+      if (!root) return false;
+      const onButton = !!target.getAttribute && target.getAttribute('aria-haspopup') === 'menu';
+      if (onButton && (key === 'ArrowDown' || key === 'ArrowUp')) { ui.menu.open(root, key === 'ArrowUp' ? 'last' : 'first'); return stop(); }
+      if (!ui.menu.isOpen(root)) return false;
+      if (key === 'Tab') { ui.menu.close(root, false); return false; }
+      const items = menuItems(root);
+      const at = items.indexOf(target);
+      if (at < 0) return false;
+      const move = { ArrowDown: (at + 1) % items.length, ArrowUp: at <= 0 ? items.length - 1 : at - 1, Home: 0, End: items.length - 1 };
+      if (Object.prototype.hasOwnProperty.call(move, key)) { items[move[key]].focus(); return stop(); }
+      // Space does not follow a link on its own.
+      if (key === ' ' && target.tagName === 'A' && target.click) { target.click(); return stop(); }
+      return false;
+    },
+    // A click anywhere except inside the menu it belongs to closes the open menus.
+    outsideClick: function (ev) { ui.menu.closeAll(menuRootOf(ev && ev.target)); },
+    // Choosing an item closes its menu and puts focus on the button first: a dialog or a re-render the item causes then returns there.
+    itemClick: function (ev) {
+      const t = ev && ev.target;
+      const item = t && t.closest ? t.closest('[role="menuitem"]') : null;
+      const root = menuRootOf(item);
+      if (root) ui.menu.close(root, true);
+    },
+  };
+
+  G.handlers.click['menu-toggle'] = function (button) { ui.menu.toggle(button); };
+
   // Opens a native modal <dialog>. Escape closes it; focus returns to the opener (or its data-key after a re-render).
+  // An item of a menu is hidden again by then: focus goes back to the menu's button.
   ui.openDialog = function (html, opts) {
     const o = opts || {};
     const host = document.getElementById('guild-dialogs');
     if (!host || typeof HTMLDialogElement === 'undefined') return null;
-    const opener = (G.app && G.app.lastActionEl && G.app.lastActionEl.isConnected) ? G.app.lastActionEl : document.activeElement;
+    let opener = (G.app && G.app.lastActionEl && G.app.lastActionEl.isConnected) ? G.app.lastActionEl : document.activeElement;
+    const menuRoot = menuRootOf(opener);
+    const menuButton = menuRoot ? menuParts(menuRoot).button : null;
+    if (menuButton) opener = menuButton;
     const returnKey = o.returnKey || (opener && opener.getAttribute ? opener.getAttribute('data-key') : null);
     const dlg = document.createElement('dialog');
     dlg.className = 'gs-dialog';

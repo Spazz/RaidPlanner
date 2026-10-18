@@ -1156,8 +1156,8 @@ function withState(fn) {
   await check('calendar: the Raids header offers the button to everyone who sees the list (before New raid for officers), and not without a team', () => {
     const list = (can, teamId) => G.pages.raids.raidsHtml({ guildData: gd(can), teamId, data: { raids: [], upcoming: [] } });
     const member = list(MEMBER_CAN, 't1');
-    assert(/<button type="button" class="gs-btn" data-action="cal-open" data-key="cal-open"><svg[^>]*>.*<\/svg><span>Subscribe in your calendar<\/span><\/button>/.test(member));
-    assert(member.includes('<div class="gs-roster-actions"><button') && !member.includes('raids-fill') && !member.includes('New raid'));
+    assert(/<button type="button" class="gs-menu-item" role="menuitem" tabindex="-1" data-action="cal-open" data-key="mi-cal-open">Subscribe in your calendar<\/button>/.test(member), 'a menu item of the More menu');
+    assert(member.includes('<div class="gs-roster-actions gs-raids-actions"><div class="gs-menu-wrap" data-menu><button') && !member.includes('raids-fill') && !member.includes('New raid'));
     const officer = list(OFFICER_CAN, 't1');
     assert(officer.includes('Backfill from Warcraft Logs') && officer.includes('>Raid schedule<') && officer.indexOf('data-action="cal-open"') > officer.indexOf('Raid schedule') && officer.indexOf('data-action="cal-open"') < officer.indexOf('>New raid<'));
     assert(!list(MEMBER_CAN, null).includes('cal-open'));

@@ -1159,6 +1159,7 @@
     if (!t || !t.closest) return;
     if (!t.closest('.gs-import-menu')) closeImportMenu();
     if (t.closest('.gs-menu a')) closeMenu(false);
+    G.ui.menu.itemClick(ev);
     const link = t.closest('a[href]');
     if (link && isPlainClick(ev)) lastNavClickAt = Date.now();
     if (t.closest('.gs-drawer a')) G.handlers.click['close-drawer']();
@@ -1171,9 +1172,11 @@
     const t = ev.target;
     if (!t || !t.closest) return;
     if (!t.closest('.gs-account')) closeMenu(false);
+    G.ui.menu.outsideClick(ev);
   }
 
   function onKeydown(ev) {
+    if (G.ui.menu.keydown(ev)) return;
     const menu = byId('gs-account-menu');
     if (!menu || menu.hidden) return;
     if (ev.key === 'Escape') { ev.preventDefault(); closeMenu(true); return; }

@@ -480,11 +480,11 @@ function teamData(over) {
   }
   const raidPage = (data, over) => G.pages.raid.raidHtml(Object.assign({ guildData: gd(OFFICER_CAN), data }, over || {}));
 
-  await check('raid detail: header, state pill, three source cards with actions, summary, flagged rows first under "Needs review"', () => {
+  await check('raid detail: header with one summary line, state pill, three source chips with their actions, flagged rows first under "Needs review"', () => {
     const out = raidPage(detail());
     assert(out.includes('Sat Oct 10 - BT / Hyjal') && out.includes('1 kill, 1 wipe') && out.includes('3 to review'));
     assert(out.includes('Sat BT') && out.includes('28 sign-ups') && out.includes('data-op="event-refresh"') && out.includes('data-op="event-replace"') && out.includes('data-op="event-remove"'));
-    assert(out.includes('Warcraft Logs reports (2)') && out.includes('WaghkY9zwDyvLX7m') && out.includes('data-op="report-refresh"') && out.includes('data-code="h8VAwCFa79Jk1cvf"') && out.includes('data-op="report-add"'));
+    assert(out.includes('Warcraft Logs') && out.includes('>2 reports<') && out.includes('17 boss pulls') && out.includes('WaghkY9zwDyvLX7m') && out.includes('data-op="report-refresh"') && out.includes('data-code="h8VAwCFa79Jk1cvf"') && out.includes('data-op="report-add"'));
     assert(out.includes('BT run') && out.includes('25 players') && out.includes('data-op="plan-replace"') && out.includes('data-op="plan-remove"'));
     assert(/aria-pressed="true">Needs review/.test(out), 'defaults to Needs review when flags exist');
     const body = out.slice(out.indexOf('<tbody>'), out.indexOf('</tbody>'));
@@ -950,9 +950,9 @@ function teamData(over) {
     const closed = prow('p_c', 'Closed', { outcome: 'late', credit: 0.5, pending: false, needsReview: false, flags: ['late'], decision: { reason: 'ok', by: 'Officer', at: 1, applied: true } });
     const noCredit = prow('p_n', 'Unpaid', { outcome: 'missed', credit: 0, pending: false, needsReview: true, flags: ['no_show'] });
     const out = raidPage(detail({ people: [open, closed, noCredit] }), { filter: 'all' });
-    const row = n => out.slice(out.indexOf('<tbody>')).split('<tr>').find(r => r.includes('>' + n + '<'));
-    assert(row('Opened').includes('>Decide<') && row('Unpaid').includes('>Decide<') && row('Closed').includes('>Change<'));
-    assert(/Needs review <span class="gs-seg-count">2</.test(out) && out.includes('<dt>To review</dt><dd>2</dd>'));
+    const row = n => out.slice(out.indexOf('<tbody>')).split('<tr>').find(r => r.includes('>' + n + '<')).split('</tr>')[0];
+    assert(row('Opened').includes('>Decide<') && row('Unpaid').includes('>Decide<') && row('Closed').includes('aria-label="Change outcome for Closed"') && !row('Closed').includes('>Decide<'));
+    assert(!row('Opened').includes('Change outcome for') && /Needs review <span class="gs-seg-count">2</.test(out) && out.includes('class="gs-tally"'));
   });
 
   await check('fix: paging uses hasMore from the reply, not the length of the page', async () => {
@@ -1142,7 +1142,7 @@ function teamData(over) {
     assertEscaped(raidPage(up, panel(hostile)), 'upcoming signups');
   });
 
-  await check('Plan in Planner: a button on each upcoming row and card for those who may edit (event or not), and on the upcoming raid page next to Refresh sign-ups; never for a member or a past raid', () => {
+  await check('Plan in Planner: a button on each upcoming row and card for those who may edit (event or not), and Open in Planner in the Actions menu of the raid page (never for a member); Refresh sign-ups lives on the Raid-Helper chip', () => {
     const out = withUp();
     assert.equal(out.split('data-action="raids-plan"').length - 1, 4, 'two raids, a table row and a card each');
     assert(/data-action="raids-plan" data-rid="u1"/.test(out) && /data-action="raids-plan" data-rid="u2"/.test(out));
@@ -1155,12 +1155,12 @@ function teamData(over) {
       people: [], unmatched: [], pulls: [], signups: [],
     });
     const page = raidPage(up);
-    assert(page.includes('data-op="plan-in-planner"') && page.includes('>Plan in Planner<'));
-    assert(page.indexOf('data-op="plan-in-planner"') < page.indexOf('data-op="event-refresh"'), 'Plan in Planner leads, Refresh sign-ups follows');
+    assert(page.includes('data-op="plan-in-planner"') && page.includes('>Open in Planner<'));
+    assert(page.indexOf('id="raid-actions"') < page.indexOf('data-op="plan-in-planner"') && page.indexOf('data-op="plan-in-planner"') < page.indexOf('data-src="event"') + 2000, 'Open in Planner is in the Actions menu, the Raid-Helper chip has its own menu');
     const noEvent = raidPage(Object.assign({}, up, { sources: { event: null, reports: [], plan: null } }));
     assert(noEvent.includes('data-op="plan-in-planner"') && !noEvent.includes('Refresh sign-ups'));
     assert(!raidPage(Object.assign({}, up, { can: { edit: false, review: false, seeAttendance: false, seeNicknames: false } }), { guildData: gd(MEMBER_CAN) }).includes('plan-in-planner'));
-    assert(!raidPage(detail()).includes('plan-in-planner'), 'a past raid has no Plan in Planner');
+    assert(raidPage(detail()).includes('data-op="plan-in-planner"'), 'a past raid can be opened in the Planner too');
   });
 
   await check('Plan in Planner: an event raid takes its sign-ups from Raid-Helper first, then the address becomes #/planner?raid=; a failed refresh stays here; a raid without an event goes straight there', async () => {

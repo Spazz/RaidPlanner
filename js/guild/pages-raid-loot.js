@@ -34,6 +34,11 @@
     return x && x.gid === gid && x.rid === rid ? x : null;
   }
 
+  // Whether the card offers "Import from Gargul" now (the raid page's Actions menu offers the same): loaded, allowed to edit, panel not open yet.
+  function canImport(x) {
+    return !!(x && x.status === 'ok' && x.data && x.data.canEdit && x.ui && !x.ui.open);
+  }
+
   function cur() {
     const gd = currentGd();
     const r = a().raid;
@@ -130,7 +135,7 @@
     const unmatched = awards.filter(function (w) { return w.match && w.match.kind === 'unmatched'; }).length;
     const review = L().allows(gd, 'attendance.review', teamId);
     const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot</h2><span class="gs-head-tools"><span class="gs-fine">' + esc(plural(awards.length, 'item', 'items')) + '</span>' +
-      (edit && !x.ui.open ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-import-open" data-key="loot-import-open">Import from Gargul</button>' : '') + '</span></div>';
+      (canImport(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-import-open" data-key="loot-import-open">Import from Gargul</button>' : '') + '</span></div>';
     const list = awards.length
       ? '<ul class="gs-loot-list" aria-label="Loot awarded on this raid">' + awards.map(function (w) { return L().awardRowHtml(gd, w, { edit: edit, when: 'time' }); }).join('') + '</ul>'
       : '<p class="gs-empty">' + (edit ? 'No loot is recorded for this raid yet. Import a Gargul export to add it.' : 'No loot is recorded for this raid yet.') + '</p>';
@@ -425,6 +430,7 @@
   G.pages.raidLoot = {
     STATUS: STATUS,
     stateFor: stateFor,
+    canImport: canImport,
     cardHtml: cardHtml,
     importPanelHtml: importPanelHtml,
     resultLine: resultLine,

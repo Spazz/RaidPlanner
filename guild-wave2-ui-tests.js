@@ -1124,7 +1124,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
   await check('Raids page: "My away notices" links to the page for everyone; the card is drawn under the list for officers', () => {
     for (const can of [MEMBER_CAN, OFFICER_CAN]) {
       const out = ws(G.pages.raids.raidsHtml({ guildData: gd(can), teamId: 't1', data: LIST({ can: { edit: can === OFFICER_CAN, signup: true } }), tab: 'upcoming' }));
-      assert(out.includes('<a class="gs-btn" href="#/g/g1/away">My away notices</a>'));
+      assert(/<a class="gs-menu-item" role="menuitem" tabindex="-1" href="#\/g\/g1\/away">My away notices<\/a>/.test(out), 'a menu item of the More menu');
     }
     const withCard = ws(G.pages.raids.raidsHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', data: LIST({ can: { edit: true, signup: false } }), tab: 'upcoming', awayHtml: teamCard({ gid: 'g1', teamId: 't1', status: 'ok', data: TEAMDATA() }) }));
     assert(withCard.indexOf('Away, next 4 weeks') > withCard.indexOf('Upcoming raids'));

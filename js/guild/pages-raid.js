@@ -1,7 +1,8 @@
 // ── PAGE: RAID DETAIL ───────────────────────────────────────────
-// One raid: header and status, the three source cards (Raid-Helper event, Warcraft Logs reports, plan), the people
-// table with sign-up / plan / log / outcome side by side, the unmatched characters, and the dialogs that change
-// the raid (event, report, plan, manual attendance, delete). GET /raids/:rid; every write answers with the detail.
+// One raid: the header (title, one summary line, one Actions menu), the source strip (one slim chip each for the Raid-Helper event, Warcraft Logs
+// reports and plan, with a "..." menu of that source's actions), the people table (class badge, sign-up tag, plan, boss-pull bar, outcome pill, Change
+// button; stacked cards on a phone), the unmatched characters, and the dialogs that change the raid (event, report, plan, manual attendance, delete).
+// The menus are ui.menuHtml / ui.menu. GET /raids/:rid; every write answers with the detail.
 // The Decide and Unmatched dialogs live in pages-review.js and work here too (where = 'raid').
 // A raid that has not started (raid.upcoming) shows its start time ("Time not set" for a date-only raid), sign-ups, event and plan instead, with
 // a note that attendance starts after the raid. The title carries the zone and the raid's size; officers get a Raid settings card (the raid's own
@@ -73,27 +74,93 @@
   function planText(p) { return p === 'bench' ? 'Bench' : p ? String(p) : '-'; }
 
   // ── people table and cards ──
-  function signupCellHtml(row, signups) {
-    if (!row.signup) return '<span class="gs-muted">-</span>';
-    const label = A().KIND_LABELS[row.signup] || row.signup;
-    const s = signups[row.playerId];
-    return '<span class="gs-chip gs-chip-signup">' + esc(label) + '</span>' + (s && s.nickname ? '<span class="gs-char-sub">' + esc(s.nickname) + '</span>' : '');
+  // One row, two shapes built from the same cell pieces: the table (fixed column widths) and, on a phone, stacked cards. Colour is never the only
+  // signal: every chip carries its words (and the outcome its letter), and the tones differ in lightness (guild.css, --gs-tone-*).
+  const CLASS_CODES = { WARRIOR: 'WR', PALADIN: 'PL', HUNTER: 'HN', ROGUE: 'RG', PRIEST: 'PR', SHAMAN: 'SH', MAGE: 'MG', WARLOCK: 'WL', DRUID: 'DR' };
+  const SIGNUP_TONES = { signed: 'signed', late: 'late', tentative: 'tentative', standby: 'tentative', bench: 'tentative', absence: 'absence' };
+  const PULL_SEGMENTS = 12;
+
+  function tagHtml(tone, text) { return '<span class="gs-tag gs-tag-' + tone + '">' + esc(text) + '</span>'; }
+
+  // The spec each person signed up with, by player id: the Sign-ups panel's list has it normalised ("Protection" for Raid-Helper's "Protection1").
+  function specIndex(signupState) {
+    const view = signupState && signupState.status === 'ok' ? signupState.data : null;
+    const out = {};
+    (view && Array.isArray(view.entries) ? view.entries : []).forEach(function (e) { if (e && e.personId && e.spec && !out[e.personId]) out[e.personId] = e.spec; });
+    return out;
   }
 
-  function logCellHtml(row) {
+  // The spec line under a name: the class and the spec the player signed up with, else the class alone. Without the panel's list the raid's own
+  // sign-up row gives it (Raid-Helper's name without its trailing digit), and only when that row names the same class: Raid-Helper's Late /
+  // Bench / Absence rows carry a meta class instead.
+  function specLineHtml(row, signup, specs) {
+    if (!row.class) return '';
+    let spec = specs[row.playerId] || '';
+    if (!spec && signup && signup.specName && String(signup.className || '').toUpperCase() === String(row.class).toUpperCase()) spec = String(signup.specName).replace(/\d+$/, '');
+    return G.ui.specLineHtml(row.class, spec);
+  }
+
+  function playerCellHtml(gid, row, see, signups, specs) {
+    const code = Object.prototype.hasOwnProperty.call(CLASS_CODES, row.class) ? CLASS_CODES[row.class] : '?';
+    const spec = specLineHtml(row, signups[row.playerId], specs);
+    return '<span class="gs-who"><span class="gs-classbadge ' + G.ui.classClass(row.class) + '" aria-hidden="true">' + esc(code) + '</span><span class="gs-who-text">' + personLinkHtml(gid, row, see) +
+      (spec ? '<span class="gs-char-sub">' + spec + '</span>' : '') + '</span></span>';
+  }
+
+  // The sign-up kind as a coloured chip (Signed green, Late amber, Tentative / Standby / Bench muted, Absence red); no sign-up is grey.
+  function signupCellHtml(row, signups) {
+    if (!row.signup) return tagHtml('none', 'No sign-up');
+    const s = signups[row.playerId];
+    const tone = Object.prototype.hasOwnProperty.call(SIGNUP_TONES, row.signup) ? SIGNUP_TONES[row.signup] : 'tentative';
+    return tagHtml(tone, A().KIND_LABELS[row.signup] || row.signup) + (s && s.nickname ? '<span class="gs-char-sub">' + esc(s.nickname) + '</span>' : '');
+  }
+
+  function planCellHtml(plan) {
+    if (!plan) return '<span class="gs-muted">-</span>';
+    return '<span class="gs-plan' + (plan === 'bench' ? ' is-bench' : '') + '">' + esc(planText(plan)) + '</span>';
+  }
+
+  // A bar of up to PULL_SEGMENTS cells, the first ones filled: present of total (a long night is scaled down, never to 0 or full unless it is).
+  function pullBarHtml(p) {
+    const segs = Math.min(p.total, PULL_SEGMENTS);
+    let on = p.total <= PULL_SEGMENTS ? p.present : Math.round(p.present / p.total * PULL_SEGMENTS);
+    if (p.present > 0) on = Math.max(on, 1);
+    if (p.present < p.total) on = Math.min(on, segs - 1);
+    let cells = '';
+    for (let i = 0; i < segs; i++) cells += '<span' + (i < on ? ' class="is-on"' : '') + '></span>';
+    return '<span class="gs-pullbar" aria-hidden="true">' + cells + '</span>';
+  }
+
+  function pullsCellHtml(row) {
     const p = row.pulls || {};
     if (!(p.total > 0)) return '<span class="gs-muted">-</span>';
-    return '<span class="gs-nowrap">' + esc(p.present) + '/' + esc(p.total) + '</span>' + (p.present > 0 && p.missedFirst ? '<span class="gs-chip gs-chip-flag">missed first</span>' : '') + (p.present > 0 && p.missedLast ? '<span class="gs-chip gs-chip-flag">missed last</span>' : '');
+    return '<span class="gs-pulls">' + pullBarHtml(p) + '<span class="gs-nowrap gs-pull-num">' + esc(p.present) + '/' + esc(p.total) + '</span></span>' +
+      (p.present > 0 && p.missedFirst ? '<span class="gs-chip gs-chip-flag">missed first</span>' : '') + (p.present > 0 && p.missedLast ? '<span class="gs-chip gs-chip-flag">missed last</span>' : '');
   }
 
-  function outcomeCellHtml(row, canReview, rid) {
+  // The outcome as a pill: its letter box (the Attendance colours) and its words.
+  function outcomePillHtml(outcome, pending) {
+    const known = Object.prototype.hasOwnProperty.call(A().LETTERS, outcome);
+    const id = known ? outcome : 'none';
+    const label = known ? A().OUTCOME_LABELS[outcome] : String(outcome == null ? '' : outcome);
+    return '<span class="gs-opill gs-opill-' + id + '"><span class="gs-cell gs-out-' + id + (pending ? ' is-pending' : '') + '" aria-hidden="true">' + esc(known ? A().LETTERS[outcome] : '?') + (pending ? '?' : '') + '</span>' +
+      '<span>' + esc(label) + (pending ? ' (awaiting review)' : '') + '</span></span>';
+  }
+
+  function outcomeCellHtml(row, canReview) {
     // A stored decision whose flags no longer match is not applied: no "Decided" note, only a muted hint for reviewers.
     let decided = '';
     if (row.decision && row.decision.applied) decided = '<span class="gs-char-sub">Decided' + (row.decision.reason ? ': ' + esc(row.decision.reason) : '') + (row.decision.by ? ' (' + esc(row.decision.by) + ')' : '') + '</span>';
     else if (row.decision && canReview) decided = '<span class="gs-char-sub gs-muted">An earlier decision no longer applies</span>';
-    const button = canReview && row.outcome
-      ? '<button type="button" class="gs-btn gs-btn-sm" data-action="decide-open" data-rid="' + esc(rid) + '" data-pid="' + esc(row.playerId) + '" data-where="raid" data-key="decide-' + esc(row.playerId) + '">' + (needsReview(row) ? 'Decide' : 'Change') + '</button>' : '';
-    return '<div class="gs-outcell">' + A().outcomeChipHtml(row.outcome, row.pending) + '<span class="gs-fine">' + esc(A().creditText(row.credit, row.pending)) + '</span>' + A().flagChipsHtml(row.flags) + button + '</div>' + decided;
+    return '<div class="gs-outcell">' + outcomePillHtml(row.outcome, row.pending) + '<span class="gs-fine">' + esc(A().creditText(row.credit, row.pending)) + '</span>' + A().flagChipsHtml(row.flags) + '</div>' + decided;
+  }
+
+  // Reviewers: "Decide" (words) on a flagged row, a compact pencil button on the others.
+  function changeButtonHtml(row, canReview, rid) {
+    if (!canReview || !row.outcome) return '';
+    const attrs = ' data-action="decide-open" data-rid="' + esc(rid) + '" data-pid="' + esc(row.playerId) + '" data-where="raid" data-key="decide-' + esc(row.playerId) + '"';
+    if (needsReview(row)) return '<button type="button" class="gs-btn gs-btn-sm"' + attrs + '>Decide</button>';
+    return '<button type="button" class="gs-iconbtn"' + attrs + ' aria-label="Change outcome for ' + esc(row.name) + '" title="Change outcome">' + G.icons.icon('edit', 16) + '</button>';
   }
 
   function personLinkHtml(gid, row, seeAttendance) {
@@ -101,31 +168,45 @@
     return '<a class="gs-char-link ' + G.ui.classClass(row.class) + '" href="' + esc(G.router.format({ name: 'personatt', gid: gid, pid: row.playerId })) + '">' + esc(row.name) + '</a>';
   }
 
-  function peopleTableHtml(gid, data, rows) {
+  function peopleTableHtml(gid, data, rows, signupState) {
     const signups = signupOf(data);
+    const specs = specIndex(signupState);
     const rid = data.raid.id;
     const canReview = !!(data.can && data.can.review);
     const see = !!(data.can && data.can.seeAttendance);
     const body = rows.map(function (row) {
-      return '<tr><th scope="row" class="gs-cell-strong">' + personLinkHtml(gid, row, see) + '</th><td>' + signupCellHtml(row, signups) + '</td><td>' + esc(planText(row.plan)) + '</td><td>' + logCellHtml(row) + '</td><td>' + outcomeCellHtml(row, canReview, rid) + '</td></tr>';
+      return '<tr><th scope="row" class="gs-cell-strong">' + playerCellHtml(gid, row, see, signups, specs) + '</th><td>' + signupCellHtml(row, signups) + '</td><td>' + planCellHtml(row.plan) + '</td><td>' + pullsCellHtml(row) +
+        '</td><td>' + outcomeCellHtml(row, canReview) + '</td><td class="gs-col-act">' + changeButtonHtml(row, canReview, rid) + '</td></tr>';
     }).join('');
     const cards = rows.map(function (row) {
-      return '<li class="gs-roster-card"><div class="gs-card-top"><span class="gs-char-cell"><span class="gs-char-text">' + personLinkHtml(gid, row, see) + '</span></span>' + signupCellHtml(row, signups) + '</div>' +
-        '<div class="gs-card-meta"><span class="gs-fine">Plan: ' + esc(planText(row.plan)) + '</span><span class="gs-fine">Log: ' + logCellHtml(row) + '</span></div>' + outcomeCellHtml(row, canReview, rid) + '</li>';
+      return '<li class="gs-roster-card gs-pcard"><div class="gs-pcard-top">' + playerCellHtml(gid, row, see, signups, specs) + changeButtonHtml(row, canReview, rid) + '</div>' +
+        '<div class="gs-pcard-meta"><span class="gs-pcard-su">' + signupCellHtml(row, signups) + '</span>' + (row.plan ? '<span class="gs-pcard-plan"><span class="gs-fine">Plan</span>' + planCellHtml(row.plan) + '</span>' : '') + pullsCellHtml(row) + '</div>' +
+        outcomeCellHtml(row, canReview) + '</li>';
     }).join('');
-    return '<div class="gs-table-wrap gs-raid-people"><table class="gs-table gs-table-raidpeople" aria-label="People on this raid"><thead><tr><th scope="col">Player</th><th scope="col">Sign-up</th><th scope="col">Plan</th><th scope="col">Log</th><th scope="col">Outcome</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
+    return '<div class="gs-table-wrap gs-raid-people"><table class="gs-table gs-table-raidpeople" aria-label="People on this raid"><thead><tr><th scope="col" class="gs-col-player">Player</th><th scope="col" class="gs-col-signup">Sign-up</th><th scope="col" class="gs-col-plan">Plan</th>' +
+      '<th scope="col" class="gs-col-pulls">Boss pulls</th><th scope="col">Outcome</th><th scope="col" class="gs-col-act"><span class="gs-sr">Change</span></th></tr></thead><tbody>' + body + '</tbody></table></div>' +
       '<ul class="gs-roster-cards gs-raid-cards" aria-label="People on this raid">' + cards + '</ul>';
   }
 
-  function summaryHtml(people) {
+  // Present (fill-ins too), Bench and Missed (with notice too), counted from the people list.
+  function countsOf(people) {
     const count = function (f) { return people.filter(f).length; };
-    const items = [
-      ['Present', count(function (p) { return p.outcome === 'present' || p.outcome === 'fill_in'; })],
-      ['Bench', count(function (p) { return p.outcome === 'bench'; })],
-      ['Missed', count(function (p) { return p.outcome === 'missed' || p.outcome === 'missed_notice'; })],
-      ['To review', count(needsReview)],
-    ];
-    return '<dl class="gs-summary">' + items.map(function (i) { return '<div class="gs-summary-item"><dt>' + esc(i[0]) + '</dt><dd>' + esc(i[1]) + '</dd></div>'; }).join('') + '</dl>';
+    return {
+      present: count(function (p) { return p.outcome === 'present' || p.outcome === 'fill_in'; }),
+      bench: count(function (p) { return p.outcome === 'bench'; }),
+      missed: count(function (p) { return p.outcome === 'missed' || p.outcome === 'missed_notice'; }),
+    };
+  }
+
+  function countsText(c) { return c.present + ' present, ' + c.bench + ' bench, ' + c.missed + ' missed'; }
+
+  // The Needs review / Everyone switch on the left, the totals in their colours on the right.
+  function peopleToolbarHtml(people, filter) {
+    const c = countsOf(people);
+    const segs = '<div class="gs-segs" role="group" aria-label="Show"><button type="button" class="gs-seg" data-action="raid-filter" data-filter="review" data-key="rf-review" aria-pressed="' + (filter === 'review' ? 'true' : 'false') + '">Needs review <span class="gs-seg-count">' + people.filter(needsReview).length + '</span></button>' +
+      '<button type="button" class="gs-seg" data-action="raid-filter" data-filter="all" data-key="rf-all" aria-pressed="' + (filter === 'all' ? 'true' : 'false') + '">Everyone <span class="gs-seg-count">' + people.length + '</span></button></div>';
+    const tally = '<p class="gs-tally"><span class="gs-tally-present"><b>' + c.present + '</b> present</span><span class="gs-tally-bench"><b>' + c.bench + '</b> bench</span><span class="gs-tally-missed"><b>' + c.missed + '</b> missed</span></p>';
+    return '<div class="gs-ptoolbar">' + segs + tally + '</div>';
   }
 
   function unmatchedBlockHtml(data) {
@@ -143,42 +224,68 @@
     return G.pages.raidLoot ? G.pages.raidLoot.cardHtml({ guildData: gd, data: data, state: loot }) : '';
   }
 
-  // ── source cards ──
+  // ── source strip ──
+  // One slim chip per source (Raid-Helper event, Warcraft Logs reports, Raidsmith plan), all the same height: a status dot, the source, one line of
+  // what it holds and, for those who may edit, a "..." menu with that source's actions. A source with nothing linked is a dashed chip whose one
+  // action ("Link an event", "Add report", "Link a plan") is a button. Every action is still a raid-op: the dialogs are the ones they always were.
   function btn(op, label, extra, key) {
     return '<button type="button" class="gs-btn gs-btn-sm" data-action="raid-op" data-op="' + op + '"' + (extra || '') + ' data-key="' + esc(key || op) + '">' + esc(label) + '</button>';
   }
 
-  function eventCardHtml(data, edit) {
-    const ev = data.sources && data.sources.event;
-    let body;
-    if (ev) {
-      body = '<p class="gs-source-title">' + esc(ev.title || 'Raid-Helper event') + '</p><p class="gs-fine">' + esc(plural(ev.signups || 0, 'sign-up', 'sign-ups')) + (ev.syncedAt ? ' &middot; synced ' + esc(G.ui.relativeTime(ev.syncedAt).toLowerCase()) : '') + (ev.otherServer ? ' &middot; from another Discord server' : '') + '</p>' +
-        (edit ? '<div class="gs-row-actions">' + btn('event-refresh', 'Refresh') + btn('event-replace', 'Replace') + btn('event-remove', 'Remove') + '</div>' : '');
-    } else {
-      body = '<p class="gs-fine">No Raid-Helper event linked.</p>' + (edit ? '<div class="gs-row-actions">' + btn('event-replace', 'Link an event') + '</div>' : '');
-    }
-    return '<section class="gs-card-sec gs-source" aria-labelledby="src-event-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="src-event-h">Raid-Helper event</h2></div><div class="gs-card-sec-body">' + body + '</div></section>';
+  function opItem(op, label, extra, danger) {
+    return { label: label, danger: !!danger, key: 'mi-' + op + (extra && extra.code ? '-' + extra.code : ''), data: Object.assign({ action: 'raid-op', op: op }, extra || {}) };
   }
 
-  function reportsCardHtml(data, edit) {
+  function sourceMenuHtml(id, ariaLabel, items) {
+    return G.ui.menuHtml({ id: 'src-' + id, icon: 'more', ariaLabel: ariaLabel, triggerClass: 'gs-btn gs-btn-sm', items: items });
+  }
+
+  // o: { id, name, title, detail, linked, actions (html) }
+  function sourceChipHtml(o) {
+    return '<div class="gs-src' + (o.linked ? '' : ' is-empty') + '" data-src="' + o.id + '"><span class="gs-src-dot" aria-hidden="true"></span><span class="gs-src-name">' + esc(o.name) + '</span>' +
+      '<span class="gs-src-title">' + esc(o.title) + '</span>' + (o.detail ? '<span class="gs-src-detail">' + esc(o.detail) + '</span>' : '') + (o.actions || '') + '</div>';
+  }
+
+  function eventChipHtml(data, edit) {
+    const ev = data.sources && data.sources.event;
+    if (!ev) {
+      return sourceChipHtml({ id: 'event', name: 'Raid-Helper', title: 'none', linked: false, actions: edit ? btn('event-replace', 'Link an event') : '' });
+    }
+    const detail = plural(ev.signups || 0, 'sign-up', 'sign-ups') + (ev.syncedAt ? ', synced ' + G.ui.relativeTime(ev.syncedAt).toLowerCase() : '') + (ev.otherServer ? ', from another Discord server' : '');
+    return sourceChipHtml({ id: 'event', name: 'Raid-Helper', title: ev.title || 'Raid-Helper event', detail: detail, linked: true,
+      actions: edit ? sourceMenuHtml('event', 'Raid-Helper event actions', [opItem('event-refresh', 'Refresh sign-ups'), opItem('event-replace', 'Replace event'), { separator: true }, opItem('event-remove', 'Remove event', null, true)]) : '' });
+  }
+
+  function reportsChipHtml(data, edit) {
     const list = data.sources && Array.isArray(data.sources.reports) ? data.sources.reports : [];
     const manual = isManual(data);
-    const rows = list.map(function (r) {
-      return '<li class="gs-source-row"><div><span class="gs-code">' + esc(r.code) + '</span><span class="gs-fine"> ' + esc(plural(r.pulls || 0, 'boss pull', 'boss pulls')) + (r.startedAt ? ' &middot; ' + esc(G.ui.formatDateTime(r.startedAt)) : '') + '</span></div>' +
-        (edit ? '<div class="gs-row-actions">' + btn('report-refresh', 'Refresh', ' data-code="' + esc(r.code) + '"', 'rr-' + r.code) + btn('report-remove', 'Remove', ' data-code="' + esc(r.code) + '"', 'rd-' + r.code) + '</div>' : '') + '</li>';
-    }).join('');
-    const add = edit && !manual ? '<div class="gs-row-actions">' + btn('report-add', 'Add report') + '</div>' : '';
-    const note = edit && manual ? '<p class="gs-fine">This raid has attendance entered by hand. Remove that first to add a log.</p>' : '';
-    return '<section class="gs-card-sec gs-source" aria-labelledby="src-logs-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="src-logs-h">Warcraft Logs reports (' + list.length + ')</h2></div><div class="gs-card-sec-body">' +
-      (rows ? '<ul class="gs-source-list">' + rows + '</ul>' : '<p class="gs-fine">No report added.</p>') + add + note + '</div></section>';
+    if (!list.length) {
+      return sourceChipHtml({ id: 'logs', name: 'Warcraft Logs', title: 'none', detail: manual ? 'attendance entered by hand' : '', linked: false, actions: edit && !manual ? btn('report-add', 'Add report') : '' });
+    }
+    const pulls = list.reduce(function (sum, r) { return sum + (r.pulls || 0); }, 0);
+    const items = [];
+    list.forEach(function (r, i) {
+      if (i) items.push({ separator: true });
+      items.push(opItem('report-refresh', 'Refresh ' + r.code, { code: r.code }));
+      items.push(opItem('report-remove', 'Remove ' + r.code, { code: r.code }, true));
+    });
+    if (!manual) items.push({ separator: true }, opItem('report-add', 'Add report'));
+    return sourceChipHtml({ id: 'logs', name: 'Warcraft Logs', title: plural(list.length, 'report', 'reports'), detail: plural(pulls, 'boss pull', 'boss pulls'), linked: true,
+      actions: edit ? sourceMenuHtml('logs', 'Warcraft Logs actions', items) : '' });
   }
 
-  function planCardHtml(data, edit) {
+  function planChipHtml(data, edit) {
     const p = data.sources && data.sources.plan;
-    const body = p
-      ? '<p class="gs-source-title">' + esc(p.label || 'Plan') + '</p><p class="gs-fine">' + esc(plural(p.players || 0, 'player', 'players')) + '</p>' + (edit ? '<div class="gs-row-actions">' + btn('plan-replace', 'Replace') + btn('plan-remove', 'Remove') + '</div>' : '')
-      : '<p class="gs-fine">No plan linked.</p>' + (edit ? '<div class="gs-row-actions">' + btn('plan-replace', 'Link a plan') + '</div>' : '');
-    return '<section class="gs-card-sec gs-source" aria-labelledby="src-plan-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="src-plan-h">Raidsmith plan</h2></div><div class="gs-card-sec-body">' + body + '</div></section>';
+    if (!p) {
+      return sourceChipHtml({ id: 'plan', name: 'Plan', title: 'none', linked: false, actions: edit ? btn('plan-replace', 'Link a plan') : '' });
+    }
+    return sourceChipHtml({ id: 'plan', name: 'Plan', title: p.label || 'Plan', detail: plural(p.players || 0, 'player', 'players'), linked: true,
+      actions: edit ? sourceMenuHtml('plan', 'Plan actions', [opItem('plan-replace', 'Replace plan'), { separator: true }, opItem('plan-remove', 'Remove plan', null, true)]) : '' });
+  }
+
+  // A raid that has not started has no log: the event and the plan only.
+  function sourceStripHtml(data, edit, upcoming) {
+    return '<div class="gs-srcstrip" role="group" aria-label="Sources">' + eventChipHtml(data, edit) + (upcoming ? '' : reportsChipHtml(data, edit)) + planChipHtml(data, edit) + '</div>';
   }
 
   function manualLineHtml(data, edit) {
@@ -191,27 +298,46 @@
       (edit ? '<span class="gs-row-actions">' + btn('manual-edit', 'Edit') + btn('manual-remove', 'Remove') + '</span>' : '') + '</div>';
   }
 
-  function headHtml(gd, data) {
+  // The one Actions menu of the page, for those who may edit the raid. Every action of the old button row and the cards is in it or on a source chip;
+  // Delete raid (the only destructive one) is set apart at the bottom. ctx: { loot, roster } (the loot and roster card states).
+  function actionsMenuHtml(data, ctx) {
+    if (!(data.can && data.can.edit)) return '';
+    const upcoming = isUpcoming(data);
+    const loot = G.pages.raidLoot;
+    const roster = G.pages.raidRoster;
+    const items = [];
+    if (!upcoming) {
+      items.push({ label: 'Recalculate attendance', key: 'mi-recompute', data: { action: 'raid-op', op: 'recompute' } });
+      if (!isManual(data) && !hasReports(data)) items.push({ label: 'Mark as No log', key: 'mi-manual-open', data: { action: 'raid-op', op: 'manual-open' } });
+      if (loot && loot.canImport(ctx.loot)) items.push({ label: 'Import loot from Gargul', key: 'mi-loot-import', data: { action: 'loot-import-open' } });
+    }
+    items.push({ label: 'Open in Planner', key: 'mi-plan-in-planner', data: { action: 'raid-op', op: 'plan-in-planner' } });
+    if (roster && roster.canPublish(data, ctx.roster)) items.push({ label: 'Publish roster', key: 'mi-ro-publish', data: { action: 'roster-publish', op: 'publish' } });
+    items.push({ separator: true }, { label: 'Delete raid', key: 'mi-raid-delete', danger: true, data: { action: 'raid-op', op: 'raid-delete' } });
+    return G.ui.menuHtml({ id: 'raid-actions', label: 'Actions', key: 'raid-actions', items: items });
+  }
+
+  // Title, one summary line (team, bosses, present / bench / missed or the start time, status chips) and the Actions menu.
+  function headHtml(gd, data, ctx) {
     const r = data.raid;
-    const edit = !!(data.can && data.can.edit);
     const team = A().teamOf(gd, idOf(r.team));
     const several = G.shell.activeTeams(gd.teams).length > 1;
-    const b = bossCounts(data);
-    const bosses = G.pages.raids.bossesText(b);
     const upcoming = isUpcoming(data);
-    const ev = data.sources && data.sources.event;
-    const tools = edit && upcoming
-      ? '<div class="gs-roster-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="raid-op" data-op="plan-in-planner" data-key="plan-in-planner">Plan in Planner</button>' +
-        (ev ? btn('event-refresh', 'Refresh sign-ups', '', 'event-refresh-top') : '') +
-        '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="raid-op" data-op="raid-delete" data-key="raid-delete">Delete raid</button></div>'
-      : edit
-      ? '<div class="gs-roster-actions">' + (!isManual(data) && !hasReports(data) ? btn('manual-open', 'Mark as No log') : '') + btn('recompute', 'Recalculate') +
-        '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="raid-op" data-op="raid-delete" data-key="raid-delete">Delete raid</button></div>' : '';
+    const people = Array.isArray(data.people) ? data.people : null;
     const where = G.pages.raids.zoneSizeText(r.zone, r.size);
-    const starts = 'Starts ' + esc(G.pages.raids.whenText(r, gd)) + (r.timeKnown === false ? ' &middot; <span class="gs-time-unset">Time not set</span>' : '');
-    return '<div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + (where ? ' - ' + esc(where) : '') + '</h1>' +
-      '<p class="gs-sub">' + (several && team ? esc(team.name) + ' &middot; ' : '') + (upcoming ? (r.title ? esc(r.title) + ' &middot; ' : '') + starts : esc(bosses)) + '</p><div class="gs-chips">' + statePill(data) +
-      (upcoming ? G.pages.raids.planPillHtml({ planned: !!(data.sources && data.sources.plan) }) : '') + '</div></div>' + tools + '</div>';
+    const parts = [];
+    if (several && team) parts.push(esc(team.name));
+    if (upcoming) {
+      parts.push((r.title ? esc(r.title) + ' &middot; ' : '') + 'Starts ' + esc(G.pages.raids.whenText(r, gd)) + (r.timeKnown === false ? ' &middot; <span class="gs-time-unset">Time not set</span>' : ''));
+    } else {
+      const bosses = G.pages.raids.bossesText(bossCounts(data));
+      if (bosses !== '-') parts.push(esc(bosses));
+      if (people && people.length) parts.push(esc(countsText(countsOf(people))));
+    }
+    const line = parts.map(function (p) { return '<span>' + p + '</span>'; }).join('<span class="gs-sumsep" aria-hidden="true"></span>');
+    const chips = '<span class="gs-sumchips">' + statePill(data) + (upcoming ? G.pages.raids.planPillHtml({ planned: !!(data.sources && data.sources.plan) }) : '') + '</span>';
+    return '<div class="gs-roster-head gs-raidhead"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + (where ? ' - ' + esc(where) : '') + '</h1>' +
+      '<div class="gs-sub gs-sumline">' + line + (line ? '<span class="gs-sumsep" aria-hidden="true"></span>' : '') + chips + '</div></div>' + actionsMenuHtml(data, ctx) + '</div>';
   }
 
   // ── Raid settings (officers): the raid's own size and sign-up deadline ──
@@ -282,9 +408,9 @@
     const edit = !!(data.can && data.can.edit);
     const people = Array.isArray(data.people) ? data.people : null;
     if (isUpcoming(data)) {
-      return '<div class="gs-page gs-raid-page">' + headHtml(gd, data) + G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
+      return '<div class="gs-page gs-raid-page">' + headHtml(gd, data, opts) + G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + sourceStripHtml(data, edit, true) +
         seatHtml(gd, data, opts.roster) + '<div class="gs-notice" role="status"><span>Attendance starts after the raid.</span></div>' +
-        signupsPanelHtml(gd, data, opts.signups) + rosterCardHtml(gd, data, opts.roster) + '<div class="gs-sources">' + eventCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' + settingsCardHtml(gd, data) + '</div>';
+        signupsPanelHtml(gd, data, opts.signups) + rosterCardHtml(gd, data, opts.roster) + settingsCardHtml(gd, data) + '</div>';
     }
     let people_html;
     if (people === null) {
@@ -295,15 +421,12 @@
       const anyFlag = people.some(needsReview);
       const filter = opts.filter || (anyFlag ? 'review' : 'all');
       const shown = sortedPeople(filter === 'review' ? people.filter(needsReview) : people);
-      people_html = summaryHtml(people) +
-        '<div class="gs-segs" role="group" aria-label="Show"><button type="button" class="gs-seg" data-action="raid-filter" data-filter="review" data-key="rf-review" aria-pressed="' + (filter === 'review' ? 'true' : 'false') + '">Needs review <span class="gs-seg-count">' + people.filter(needsReview).length + '</span></button>' +
-        '<button type="button" class="gs-seg" data-action="raid-filter" data-filter="all" data-key="rf-all" aria-pressed="' + (filter === 'all' ? 'true' : 'false') + '">Everyone <span class="gs-seg-count">' + people.length + '</span></button></div>' +
-        (shown.length ? peopleTableHtml(gid, data, shown) : '<p class="gs-empty">Nothing needs review on this raid.</p>');
+      people_html = peopleToolbarHtml(people, filter) +
+        (shown.length ? peopleTableHtml(gid, data, shown, opts.signups) : '<p class="gs-empty">Nothing needs review on this raid.</p>');
     }
-    return '<div class="gs-page gs-raid-page">' + headHtml(gd, data) + G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
+    return '<div class="gs-page gs-raid-page">' + headHtml(gd, data, opts) + G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       A().staleBannerHtml(data.raid.stale ? 1 : 0, edit, opts.progress).replace('data-action="att-recalc"', 'data-action="raid-op" data-op="recompute"') +
-      manualLineHtml(data, edit) +
-      '<div class="gs-sources">' + eventCardHtml(data, edit) + reportsCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' +
+      manualLineHtml(data, edit) + sourceStripHtml(data, edit, false) +
       '<section class="gs-card-sec" aria-labelledby="ppl-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="ppl-h">People</h2></div><div class="gs-card-sec-body">' + people_html + '</div></section>' +
       signupsPanelHtml(gd, data, opts.signups) + rosterCardHtml(gd, data, opts.roster) + lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + settingsCardHtml(gd, data) + '</div>';
   }
@@ -490,7 +613,7 @@
       case 'event-refresh': if (ev) runDirect(el, G.pages.raids.putEvent(c.gid, c.rid, ev.id, ev.otherServer), c); break;
       case 'plan-in-planner':
         el.disabled = true;
-        G.pages.raids.planInPlanner(c.gid, c.rid, ev).then(function (opened) { if (!opened) el.disabled = false; }, function (err) { el.disabled = false; pageError(err); });
+        G.pages.raids.planInPlanner(c.gid, c.rid, isUpcoming(c.data) ? ev : null).then(function (opened) { if (!opened) el.disabled = false; }, function (err) { el.disabled = false; pageError(err); });
         break;
       case 'report-refresh': runDirect(el, G.api.put(base + '/reports', { source: code }), c); break;
       case 'event-replace':

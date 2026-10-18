@@ -936,7 +936,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const selectors = [...css.matchAll(/(^|\})\s*([^{}@][^{}]*)\{/g)].map(m => m[2]).join(',').split(',').map(x => x.trim());
     const planner = selectors.filter(x => /(^|[\s>+~])#planner-root|#shell-topbar-plan|\.planner-|\.title-bar|\.landing\b|\.addon-frame/.test(x) && !/#planner-root\[hidden\]/.test(x));
     assert.deepEqual(planner, [], 'guild.css must not style planner markup');
-    assert(!/--[\w-]+\s*:/.test(css.replace(/var\(--[\w-]+/g, '').replace(/--gs-out-[a-z_]+(-ink)?\s*:/g, '')), 'no custom properties (but the attendance outcome colours)');
+    assert(!/--[\w-]+\s*:/.test(css.replace(/var\(--[\w-]+/g, '').replace(/--gs-out-[a-z_]+(-ink)?\s*:/g, '').replace(/--gs-tone-[a-z]+(-bg)?\s*:/g, '')), 'no custom properties (but the attendance outcome colours and the Raids tones)');
   });
 
   await check('guild.css: phone A2 - menu button 44px on every page, drawer for everyone, tabs only with a guild, signed-out sign-in shortens', () => {

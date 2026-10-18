@@ -82,6 +82,12 @@
     return (x.confirmed || 0) + ' confirmed, ' + (x.pending || 0) + ' waiting, ' + (x.declined || 0) + ' can\'t make it';
   }
 
+  // Whether the roster can be published now (the raid page's Actions menu offers it too): an officer, a raid that has not started, a plan, nothing published yet.
+  function canPublish(data, state) {
+    if (!data || !data.can || !data.can.edit || !state || state.status !== 'ok' || !state.data || state.data.published) return false;
+    return !!(data.raid && data.raid.upcoming && data.sources && data.sources.plan);
+  }
+
   // opts: { guildData, data (the raid detail), state }. Hidden without raids.edit; before a plan exists nothing to publish; after the start the list only.
   function cardHtml(opts) {
     const gd = opts.guildData;
@@ -298,6 +304,7 @@
     seatText: seatText,
     seatHtml: seatHtml,
     cardHtml: cardHtml,
+    canPublish: canPublish,
     listChipHtml: listChipHtml,
     countsText: countsText,
     confirmDialogHtml: confirmDialogHtml,

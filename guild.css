@@ -668,14 +668,12 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-summary-item dt { font: 600 12px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
 .gs-summary-item dd { margin: 2px 0 0; font: 700 24px/1.1 var(--font-cond); color: var(--text-primary); }
 .gs-table-raids { min-width: 760px; }
-.gs-table-raidpeople { min-width: 820px; }
+.gs-table-raidpeople { min-width: 830px; table-layout: fixed; }
 .gs-table-history { min-width: 640px; }
 .gs-table-backfill { min-width: 720px; }
 .gs-tick-cell { width: 52px; }
 .gs-outcell { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 
-.gs-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; }
-.gs-source-title { margin: 0; font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
 .gs-source-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .gs-source-row { display: flex; flex-direction: column; gap: 6px; }
 .gs-code { font-family: ui-monospace, Consolas, monospace; color: var(--text-primary); }
@@ -716,10 +714,129 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-att-cards, .gs-raids-cards, .gs-pa-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
   .gs-att-card { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .gs-bf-table { overflow-x: auto; }
-  .gs-sources { grid-template-columns: 1fr; }
   .gs-review-item { padding: 12px; }
   .gs-credit-row .gs-input { width: 100%; }
   .gs-run-status { min-width: 0; flex-basis: 100%; }
+}
+
+/* ── Raids UX: menus, source strip, people table, tones, stacked bars ─────────────── */
+/* Tones: each ink passes 4.5:1 on its own background, and the five sign-up inks (and the three tally inks) differ in CIE L* by at least 6, so no
+   two are told apart by hue alone. The words always ride along; guild-raidsux-ui-tests.js checks both numbers. */
+:root {
+  --gs-tone-signed: #b4e7ae;     --gs-tone-signed-bg: #1c2a1b;
+  --gs-tone-late: #ffb86b;       --gs-tone-late-bg: #2e2414;
+  --gs-tone-tentative: #aeb3b0;  --gs-tone-tentative-bg: #262a2d;
+  --gs-tone-absence: #e98479;    --gs-tone-absence-bg: #2e1c1a;
+  --gs-tone-none: #8d918e;       --gs-tone-none-bg: #202325;
+  --gs-tone-bench: #9ec6ee;
+}
+
+/* One menu button + list (ui.menuHtml). */
+.gs-menu-wrap { position: relative; display: inline-flex; }
+.gs-menu-trigger { gap: var(--sp-2); }
+.gs-menu-trigger[aria-expanded="true"] { background: var(--bg-card-hover); border-color: var(--accent-gold); }
+.gs-menu-trigger.is-icon { width: 34px; padding: 0; }
+.gs-menu-list { width: 240px; padding: 4px 0; }
+.gs-menu-list[hidden] { display: none; }
+.gs-menu-list.is-left { left: 0; right: auto; }
+.gs-menu-sep { margin: 4px 0; }
+.guild-page .gs-menu-item.is-danger { color: var(--danger-bright); }
+.gs-btn-eq { min-width: 128px; }
+.gs-menu-wrap > .gs-btn-eq { flex: 1 1 auto; }
+
+/* Raid page header: title, one summary line, the Actions menu. */
+.gs-raidhead .gs-menu-wrap { flex: none; }
+.gs-sumline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--text-secondary); }
+.gs-sumsep { flex: none; width: 1px; height: 14px; background: var(--border-strong); }
+.gs-sumchips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+
+/* Source strip: one row of equal-height chips. */
+.gs-srcstrip { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.gs-src { display: flex; align-items: center; gap: 10px; box-sizing: border-box; height: 44px; min-width: 0; max-width: 100%; padding: 0 6px 0 12px; background: var(--bg-panel); border: 1px solid var(--border-subtle); }
+.gs-src.is-empty { border-style: dashed; border-color: var(--border-medium); }
+.gs-src-dot { flex: none; width: 8px; height: 8px; background: var(--gs-tone-signed); }
+.gs-src.is-empty .gs-src-dot { background: var(--gs-tone-none); }
+.gs-src-name { flex: none; font-size: 13px; color: var(--text-muted); }
+.gs-src-title, .gs-src-detail { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-src-title { font-weight: 600; color: var(--text-primary); }
+.gs-src.is-empty .gs-src-title { font-weight: 400; color: var(--text-muted); }
+.gs-src-detail { font-size: 13px; color: var(--text-muted); }
+.gs-src .gs-btn-sm { flex: none; min-height: 30px; padding: 0 10px; }
+.gs-src .gs-menu-trigger.is-icon { width: 30px; }
+
+/* People: toolbar, fixed columns, class badge, sign-up tags, plan, boss-pull bar, outcome pill, change button. */
+.gs-ptoolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.gs-tally { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; color: var(--text-muted); }
+.gs-tally b { font: 700 18px/1 var(--font-cond); }
+.gs-tally-present b { color: var(--gs-tone-signed); }
+.gs-tally-bench b { color: var(--gs-tone-bench); }
+.gs-tally-missed b { color: var(--gs-tone-absence); }
+.gs-table-raidpeople th, .gs-table-raidpeople td { padding-left: 12px; padding-right: 12px; }
+.gs-table-raidpeople th[scope="row"] { white-space: normal; }
+.gs-table-raidpeople .gs-col-player { width: 240px; }
+.gs-table-raidpeople .gs-col-signup { width: 150px; }
+.gs-table-raidpeople .gs-col-plan { width: 80px; }
+.gs-table-raidpeople .gs-col-pulls { width: 160px; }
+.gs-table-raidpeople .gs-col-act { width: 108px; text-align: right; }
+.gs-who { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.gs-who-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gs-classbadge { flex: none; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 28px; height: 28px; background: var(--bg-deepest); border: 1px solid currentColor; color: var(--text-secondary); font: 700 11px/1 var(--font-cond); letter-spacing: 0.04em; }
+.gs-tag { display: inline-block; box-sizing: border-box; padding: 3px 8px; border: 1px solid; font: 600 13px/1.2 var(--font-body); white-space: nowrap; }
+.gs-tag-signed { color: var(--gs-tone-signed); background: var(--gs-tone-signed-bg); border-color: color-mix(in srgb, var(--gs-tone-signed) 35%, var(--gs-tone-signed-bg)); }
+.gs-tag-late { color: var(--gs-tone-late); background: var(--gs-tone-late-bg); border-color: color-mix(in srgb, var(--gs-tone-late) 35%, var(--gs-tone-late-bg)); }
+.gs-tag-tentative { color: var(--gs-tone-tentative); background: var(--gs-tone-tentative-bg); border-color: color-mix(in srgb, var(--gs-tone-tentative) 35%, var(--gs-tone-tentative-bg)); }
+.gs-tag-absence { color: var(--gs-tone-absence); background: var(--gs-tone-absence-bg); border-color: color-mix(in srgb, var(--gs-tone-absence) 35%, var(--gs-tone-absence-bg)); }
+.gs-tag-none { color: var(--gs-tone-none); background: var(--gs-tone-none-bg); border-style: dashed; border-color: var(--border-medium); }
+.gs-plan { display: inline-block; padding: 2px 8px; background: var(--bg-card); border: 1px solid var(--border-medium); color: var(--text-primary); font: 700 14px/1.2 var(--font-cond); letter-spacing: 0.04em; }
+.gs-plan.is-bench { color: var(--gs-tone-bench); border-color: color-mix(in srgb, var(--gs-tone-bench) 35%, var(--bg-card)); }
+.gs-pulls { display: flex; align-items: center; gap: 8px; }
+.gs-pullbar { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 5px; gap: 2px; }
+.gs-pullbar span { height: 8px; background: var(--border-strong); }
+.gs-pullbar span.is-on { background: var(--gs-tone-signed); }
+.gs-pull-num { font-size: 13px; color: var(--text-secondary); }
+.gs-pulls + .gs-chip-flag { margin-top: 4px; }
+.gs-opill { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; max-width: 100%; padding: 2px 10px 2px 3px; color: var(--text-primary); font-size: 14px; font-weight: 600; line-height: 1.2; border: 1px solid; }
+.gs-opill .gs-cell { flex: none; }
+.gs-opill-present { background: color-mix(in srgb, var(--gs-out-present) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-present) 50%, var(--bg-panel)); }
+.gs-opill-bench { background: color-mix(in srgb, var(--gs-out-bench) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-bench) 50%, var(--bg-panel)); }
+.gs-opill-missed { background: color-mix(in srgb, var(--gs-out-missed) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-missed) 50%, var(--bg-panel)); }
+.gs-opill-missed_notice { background: color-mix(in srgb, var(--gs-out-missed_notice) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-missed_notice) 50%, var(--bg-panel)); }
+.gs-opill-late { background: color-mix(in srgb, var(--gs-out-late) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-late) 50%, var(--bg-panel)); }
+.gs-opill-left_early { background: color-mix(in srgb, var(--gs-out-left_early) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-left_early) 50%, var(--bg-panel)); }
+.gs-opill-late_left { background: color-mix(in srgb, var(--gs-out-late_left) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-late_left) 50%, var(--bg-panel)); }
+.gs-opill-fill_in { background: color-mix(in srgb, var(--gs-out-fill_in) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-fill_in) 50%, var(--bg-panel)); }
+.gs-opill-tentative { background: color-mix(in srgb, var(--gs-out-tentative) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-tentative) 50%, var(--bg-panel)); }
+.gs-opill-no_signup { background: color-mix(in srgb, var(--gs-out-no_signup) 16%, var(--bg-panel)); border-color: color-mix(in srgb, var(--gs-out-no_signup) 50%, var(--bg-panel)); }
+.gs-opill-none { background: var(--bg-card); border-color: var(--border-medium); }
+.gs-iconbtn { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 32px; height: 32px; margin: 0; padding: 0; background: transparent; border: 1px solid var(--border-medium); border-radius: 0; color: var(--text-secondary); cursor: pointer; }
+.gs-iconbtn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.gs-pcard-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.gs-pcard-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.gs-pcard-su { display: inline-flex; flex-direction: column; gap: 2px; }
+.gs-pcard-plan { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Raids list: present / bench / missed as a stacked bar beside the numbers. */
+.gs-stack { display: inline-flex; align-items: center; gap: 10px; }
+.gs-stackbar { flex: none; display: block; width: 96px; height: 8px; }
+.gs-sb-present { fill: var(--gs-tone-signed); }
+.gs-sb-bench { fill: var(--gs-tone-bench); }
+.gs-sb-missed { fill: var(--gs-tone-absence); }
+.gs-stack-num { font-size: 14px; color: var(--text-secondary); }
+
+@media (max-width: 600px) {
+  .gs-raidhead .gs-menu-wrap, .gs-raids-actions .gs-menu-wrap { flex: 1 1 0; }
+  .gs-raidhead .gs-menu-trigger, .gs-raids-actions .gs-menu-trigger { width: 100%; }
+  .gs-raids-actions > .gs-btn-eq { flex: 1 1 0; min-width: 0; }
+  .gs-menu-trigger.is-icon, .gs-src .gs-menu-trigger.is-icon { width: 44px; }
+  .gs-menu-list { width: min(260px, calc(100vw - 32px)); }
+  .gs-srcstrip { flex-direction: column; }
+  .gs-src { width: 100%; padding-right: 4px; }
+  .gs-src .gs-btn-sm { min-height: 36px; }
+  .gs-iconbtn { width: 44px; height: 44px; }
+  .gs-ptoolbar { flex-direction: column; align-items: stretch; }
+  .gs-pcard-top .gs-who { flex: 1 1 auto; }
+  .gs-pcard-top .gs-iconbtn, .gs-pcard-top .gs-btn { flex: none; }
+  .gs-stack { gap: 8px; }
 }
 
 /* ── Future enhancements (#/roadmap) ────────────────────────── */

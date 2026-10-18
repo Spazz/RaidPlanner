@@ -850,11 +850,12 @@ function assertEscaped(out, label) {
   await check('guild.css: every var(--x) is defined in app.css, with no fallback tricks and no new custom properties', () => {
     const defined = new Set([...appCss.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
     for (const m of css.matchAll(/(--gs-out-[a-z_]+(?:-ink)?)\s*:/g)) defined.add(m[1]); // the attendance outcome colours are guild.css's own
+    for (const m of css.matchAll(/(--gs-tone-[a-z]+(?:-bg)?)\s*:/g)) defined.add(m[1]); // so are the Raids tones (sign-up tags, tally, bars)
     const used = [...css.matchAll(/var\(\s*(--[\w-]+)\s*([,)])/g)];
     assert(used.length > 50, 'expected the stylesheet to use the tokens');
     assert.deepEqual([...new Set(used.filter(m => !defined.has(m[1])).map(m => m[1]))], [], 'undefined tokens');
-    // The only tokens guild.css owns are the attendance outcome colours (--gs-out-<outcome> and its -ink text colour).
-    assert.deepEqual([...css.matchAll(/(^|[;{\s])(--[\w-]+)\s*:/g)].map(m => m[2]).filter(n => !/^--gs-out-[a-z_]+(-ink)?$/.test(n)), [], 'guild.css must not define custom properties');
+    // The only tokens guild.css owns are the attendance outcome colours (--gs-out-<outcome> and its -ink text colour) and the Raids tones (--gs-tone-<tone> and its -bg).
+    assert.deepEqual([...css.matchAll(/(^|[;{\s])(--[\w-]+)\s*:/g)].map(m => m[2]).filter(n => !/^--gs-out-[a-z_]+(-ink)?$/.test(n) && !/^--gs-tone-[a-z]+(-bg)?$/.test(n)), [], 'guild.css must not define custom properties');
   });
 
   await check('guild.css: dark flat design, phone breakpoint at 600px, visible focus ring, 44px touch targets', () => {

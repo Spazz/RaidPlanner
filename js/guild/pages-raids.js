@@ -69,16 +69,37 @@
     return (c.present || 0) + ' / ' + (c.bench || 0) + ' / ' + (c.missed || 0);
   }
 
+  // Present / bench / missed as one stacked bar (an SVG: widths are attributes, the page allows no inline style) beside the numbers. Decorative: the numbers say it.
+  function stackBarHtml(c) {
+    const present = c.present || 0;
+    const bench = c.bench || 0;
+    const missed = c.missed || 0;
+    const total = present + bench + missed;
+    if (!total) return '';
+    const share = function (n) { return Math.round(n / total * 1000) / 10; };
+    const benchW = share(bench);
+    const missedW = share(missed);
+    const presentW = Math.round((100 - benchW - missedW) * 10) / 10;
+    return '<svg class="gs-stackbar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false">' +
+      '<rect class="gs-sb-present" x="0" y="0" width="' + presentW + '" height="8"/><rect class="gs-sb-bench" x="' + presentW + '" y="0" width="' + benchW + '" height="8"/>' +
+      '<rect class="gs-sb-missed" x="' + Math.round((presentW + benchW) * 10) / 10 + '" y="0" width="' + missedW + '" height="8"/></svg>';
+  }
+
+  function countsCellHtml(c) {
+    if (!c) return '<td class="gs-nowrap">-</td>';
+    return '<td class="gs-nowrap"><span class="gs-stack">' + stackBarHtml(c) + '<span class="gs-stack-num">' + esc(countsText(c)) + '</span></span></td>';
+  }
+
   function rowHtml(gid, r) {
     return '<tr><th scope="row" class="gs-cell-strong gs-nowrap"><a href="' + esc(raidHref(gid, r.id)) + '">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + '</a></th>' +
       '<td>' + (zoneSizeText(r.zone, r.size) ? esc(zoneSizeText(r.zone, r.size)) : '<span class="gs-muted">-</span>') + '</td><td class="gs-nowrap">' + esc(bossesText(r.bosses)) + '</td><td>' + sourceChipsHtml(r.sources) + '</td>' +
-      '<td class="gs-nowrap">' + esc(countsText(r.counts)) + '</td><td>' + statePillsHtml(r) + '</td></tr>';
+      countsCellHtml(r.counts) + '<td>' + statePillsHtml(r) + '</td></tr>';
   }
 
   function cardHtml(gid, r) {
     return '<li class="gs-roster-card"><div class="gs-card-top"><a class="gs-raid-link" href="' + esc(raidHref(gid, r.id)) + '">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + '</a>' + statePillsHtml(r) + '</div>' +
       '<div class="gs-card-line">' + (zoneSizeText(r.zone, r.size) ? esc(zoneSizeText(r.zone, r.size)) + ' &middot; ' : '') + esc(bossesText(r.bosses)) + '</div>' +
-      '<div class="gs-card-meta">' + sourceChipsHtml(r.sources) + (r.counts ? '<span class="gs-fine">Present ' + esc(r.counts.present || 0) + ' &middot; Bench ' + esc(r.counts.bench || 0) + ' &middot; Missed ' + esc(r.counts.missed || 0) + '</span>' : '') + '</div></li>';
+      '<div class="gs-card-meta">' + sourceChipsHtml(r.sources) + (r.counts ? '<span class="gs-stack">' + stackBarHtml(r.counts) + '<span class="gs-fine">Present ' + esc(r.counts.present || 0) + ' &middot; Bench ' + esc(r.counts.bench || 0) + ' &middot; Missed ' + esc(r.counts.missed || 0) + '</span></span>' : '') + '</div></li>';
   }
 
   // ── upcoming ──
@@ -273,14 +294,18 @@
       ? esc(plural(upcoming.length, 'upcoming raid', 'upcoming raids')) + ', soonest first' : esc(plural(raids.length, 'raid', 'raids')) + ', newest first');
     const staleCount = raids.filter(function (r) { return r.stale; }).length;
     const hasSlots = !!(data.schedule && data.schedule.slots > 0);
-    // Everyone who sees the list may subscribe to the team's calendar (the link is theirs); the officers' buttons come with it.
-    const subscribe = opts.teamId && G.pages.calendar ? G.pages.calendar.buttonHtml() : '';
-    const editorActions = canEdit ? '<a class="gs-btn" href="' + esc(G.router.format({ name: 'backfill', gid: gid })) + '">Backfill from Warcraft Logs</a>' +
-      '<a class="gs-btn" href="' + esc(G.router.format({ name: 'settings', gid: gid, tab: 'schedule' })) + '">Raid schedule</a>' +
-      (hasSlots ? '<button type="button" class="gs-btn" data-action="raids-fill" data-key="raids-fill">Create upcoming raids</button>' : '') : '';
-    const newRaid = canEdit ? '<a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'raidnew', gid: gid })) + '">New raid</a>' : '';
-    const mineAway = '<a class="gs-btn" href="' + esc(G.router.format({ name: 'away', gid: gid })) + '">My away notices</a>';
-    const actions = '<div class="gs-roster-actions">' + editorActions + subscribe + mineAway + newRaid + '</div>';
+    // One primary button (New raid, officers) and a More menu with the rest, both the same size. Everyone who sees the list may subscribe to the
+    // team's calendar (the link is theirs) and reach their away notices; the officers' pages and the weekly fill come with it.
+    const more = [];
+    if (canEdit) {
+      more.push({ label: 'Backfill from Warcraft Logs', href: G.router.format({ name: 'backfill', gid: gid }) });
+      more.push({ label: 'Raid schedule', href: G.router.format({ name: 'settings', gid: gid, tab: 'schedule' }) });
+      if (hasSlots) more.push({ label: 'Create upcoming raids', key: 'mi-raids-fill', data: { action: 'raids-fill' } });
+    }
+    if (opts.teamId && G.pages.calendar) more.push({ label: 'Subscribe in your calendar', key: 'mi-cal-open', data: { action: 'cal-open' } });
+    more.push({ label: 'My away notices', href: G.router.format({ name: 'away', gid: gid }) });
+    const newRaid = canEdit ? '<a class="gs-btn gs-btn-molten gs-btn-eq" href="' + esc(G.router.format({ name: 'raidnew', gid: gid })) + '">New raid</a>' : '';
+    const actions = '<div class="gs-roster-actions gs-raids-actions">' + G.ui.menuHtml({ id: 'raids-more', label: 'More', key: 'raids-more', triggerClass: 'gs-btn gs-btn-eq', items: more }) + newRaid + '</div>';
     let body;
     if (!raids.length && !upcoming.length) {
       body = emptyHtml(gd, canEdit);
