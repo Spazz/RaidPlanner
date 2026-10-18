@@ -86,16 +86,31 @@
 
   // "Name-Realm" -> { name, realm } with the name in its display form (first letter upper case, the rest lower case);
   // realm is null without one. null when the name is not a character name (letters only, 2 to 12 of them).
-  function parseWinner(raw) {
+  // surname (a Forever guild): "Thrall Stormrage-Realm" - one or two such words.
+  function nameWord(part) {
+    if (!NAME_PATTERN.test(part)) return null;
+    const letters = Array.from(part);
+    const name = (letters[0].toUpperCase() + letters.slice(1).join('').toLowerCase()).normalize('NFC');
+    const len = Array.from(name).length;
+    return len < 2 || len > 12 || !NAME_PATTERN.test(name) ? null : name;
+  }
+
+  function parseWinner(raw, surname) {
     if (typeof raw !== 'string') return null;
     const text = raw.trim();
     const dash = text.indexOf('-');
     const namePart = (dash < 0 ? text : text.slice(0, dash)).normalize('NFC').trim();
-    if (!NAME_PATTERN.test(namePart)) return null;
-    const letters = Array.from(namePart);
-    const name = (letters[0].toUpperCase() + letters.slice(1).join('').toLowerCase()).normalize('NFC');
-    const len = Array.from(name).length;
-    if (len < 2 || len > 12 || !NAME_PATTERN.test(name)) return null;
+    let name;
+    if (surname) {
+      const words = namePart.split(' ').filter(Boolean);
+      if (words.length < 1 || words.length > 2) return null;
+      const done = words.map(nameWord);
+      if (!done.every(Boolean)) return null;
+      name = done.join(' ');
+    } else {
+      name = nameWord(namePart);
+      if (!name) return null;
+    }
     const realm = dash < 0 ? '' : clean(text.slice(dash + 1), 40);
     // A realm with nothing left once spaces, hyphens and brackets go has no key: the Worker would refuse the row, so it is read as no realm.
     return { name: name, realm: realm && realmKey(realm) ? realm : null };
@@ -135,7 +150,7 @@
 
   // One export entry -> { award } or { reason }. The checks run in a fixed order, so a row with several problems always
   // reports the first.
-  function normalizeRow(row, fallbackChecksum) {
+  function normalizeRow(row, fallbackChecksum, surname) {
     if (!isPlain(row)) return { reason: 'Not an award entry' };
     const rawChecksum = has(row, 'checksum') ? row.checksum : fallbackChecksum;
     if (rawChecksum == null || rawChecksum === '') return { reason: 'Missing checksum' };
@@ -148,7 +163,7 @@
 
     if (typeof row.awardedTo !== 'string' || !row.awardedTo.trim()) return { reason: 'Missing winner' };
     const disenchanted = row.awardedTo.trim() === DISENCHANT_MARK;
-    const winner = disenchanted ? { name: null, realm: null } : parseWinner(row.awardedTo);
+    const winner = disenchanted ? { name: null, realm: null } : parseWinner(row.awardedTo, surname);
     if (!winner) return { reason: 'Winner name is not a character name' };
 
     const awardedAt = timeOf(row.timestamp);
@@ -194,7 +209,8 @@
 
   // text -> { ok, error, rows (number of entries read), awards: [normalized], awardRows: [row number of each award], skipped: [{ index, label, reason }] }.
   // index is the 1-based position of the entry in the export. ok is false only when no list of entries can be found.
-  function parse(text) {
+  function parse(text, opts) {
+    const surname = !!(opts && opts.surname);
     const fail = function (error) { return { ok: false, error: error, rows: 0, awards: [], awardRows: [], skipped: [] }; };
     if (typeof text !== 'string') return fail('Paste the Gargul export first.');
     const body = text.replace(/^\uFEFF/, '').trim();
@@ -211,7 +227,7 @@
     const skipped = [];
     const seen = {};
     found.rows.forEach(function (row, i) {
-      const r = normalizeRow(row, found.keys ? found.keys[i] : null);
+      const r = normalizeRow(row, found.keys ? found.keys[i] : null, surname);
       if (r.award && seen[r.award.checksum]) {
         skipped.push({ index: i + 1, label: labelOf(row), reason: 'Duplicate checksum in this paste' });
       } else if (r.award) {

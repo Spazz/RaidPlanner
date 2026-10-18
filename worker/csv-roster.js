@@ -8,7 +8,7 @@
 //   owner (player, member, username, discord, account): the person a character belongs to; rows sharing an owner are one person's characters
 // A file with no recognised header row is read in that order: name, class, spec, realm, team, main/alt, status, joined.
 // ThatsMyBIS "characters" exports are accepted by these names (name, class, spec, is_alt, raid_group, username / discord_username, created_at).
-import { CLASSES, SPECS, cleanCharacterName } from './roster-data.js';
+import { CLASSES, SPECS, allowsSurname, cleanCharacterName } from './roster-data.js';
 
 export const CSV_MAX_ROWS = 500;
 export const CSV_MAX_CHARS = 200 * 1024;
@@ -177,7 +177,7 @@ function altOfText(text, style) {
 // Rows
 
 // records: the data records (header dropped). layout: findColumns' result. context: { defaultTeam: { id, name }, teams: [{ id, name }], realmGuild: boolean,
-// defaultStatus }. -> [{ line, name, class, spec, realm, teamId, teamName, isAlt, status, joinedOn, owner, problems: [], notes: [] }]
+// defaultStatus, gameVersion }. -> [{ line, name, class, spec, realm, teamId, teamName, isAlt, status, joinedOn, owner, problems: [], notes: [] }]
 export function mapRows(records, layout, context, firstLine) {
   const teamByName = new Map(context.teams.map((team) => [team.name.trim().toLowerCase(), team]));
   return records.map((record, i) => {
@@ -188,9 +188,9 @@ export function mapRows(records, layout, context, firstLine) {
     const problems = [];
     const notes = [];
     const rawName = cell('name');
-    const name = rawName ? cleanCharacterName(rawName) : null;
+    const name = rawName ? cleanCharacterName(rawName, context.gameVersion) : null;
     if (!rawName) problems.push('The character has no name.');
-    else if (!name) problems.push(`"${rawName.slice(0, 20)}" is not a character name (2 to 12 letters).`);
+    else if (!name) problems.push(`"${rawName.slice(0, 20)}" is not a character name (2 to 12 letters${allowsSurname(context.gameVersion) ? ', or a first name and a surname' : ''}).`);
 
     const rawClass = cell('class');
     const classId = rawClass ? classOfText(rawClass) : null;

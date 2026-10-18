@@ -2,7 +2,8 @@
 // award from the raid's day" test and the comparison with a stored award. No D1, no fetch, no clock.
 import { addDays, localDate } from './attendance-calendar.js';
 import { HttpError } from './http.js';
-import { CLASS_IDS, SINGLE_LINE_STRIP, cleanCharacterName, nameKey, realmKey } from './roster-data.js';
+import { resolveName } from './name-resolve.js';
+import { CLASS_IDS, SINGLE_LINE_STRIP, allowsSurname, cleanCharacterName, nameKey, realmKey } from './roster-data.js';
 
 export const MAX_AWARDS = 500;
 // Gargul's flags, in the order they are stored.
@@ -39,7 +40,7 @@ export function autoTag(flags, rollType) {
 //       nameKey, storedRealm, realmKey, tag }]  (nameKey / storedRealm / realmKey / tag are what the Worker adds)
 // A disenchanted item (disenchanted: true, which Gargul writes as the winner "||de||") has NO winner: winnerName / winnerRealm /
 // winnerClass must be null or absent, nameKey and storedRealm are null, realmKey is '' and the tag is DE. Any other award needs a winner.
-export function readAwards(list, guild) {
+export function readAwards(list, guild, surnames = null) {
   if (!Array.isArray(list)) throw new HttpError(400, 'bad_request', 'Send the awards as a list.', { field: 'awards' });
   if (!list.length) throw new HttpError(400, 'bad_request', 'Send at least one award.', { field: 'awards' });
   if (list.length > MAX_AWARDS) throw new HttpError(400, 'bad_request', `Send at most ${MAX_AWARDS} awards at a time.`, { field: 'awards' });
@@ -63,8 +64,8 @@ export function readAwards(list, guild) {
         if (raw[field] !== undefined && raw[field] !== null) throw invalid(index, field, 'a disenchanted item has no winner.');
       }
     } else {
-      name = cleanCharacterName(raw.winnerName);
-      if (!name) throw invalid(index, 'winnerName', 'the winner needs a character name (2 to 12 letters).');
+      name = cleanCharacterName(raw.winnerName, guild.game_version);
+      if (!name) throw invalid(index, 'winnerName', allowsSurname(guild.game_version) ? 'the winner needs a character name (a first name and optional surname, 2 to 12 letters each).' : 'the winner needs a character name (2 to 12 letters).');
       winnerClass = raw.winnerClass === undefined ? null : raw.winnerClass;
       if (winnerClass !== null && !(typeof winnerClass === 'string' && CLASS_IDS.includes(winnerClass))) throw invalid(index, 'winnerClass', 'winnerClass must be a class.');
     }
@@ -78,6 +79,8 @@ export function readAwards(list, guild) {
     const storedRealm = isRealmGuild && !disenchanted ? (winnerRealm || guild.realm) : null;
     const realmKeyValue = storedRealm === null ? '' : realmKey(storedRealm);
     if (storedRealm !== null && !realmKeyValue) throw invalid(index, 'winnerRealm', 'the winner\'s realm is not valid.');
+
+    if (name !== null) name = resolveName(surnames, name, realmKeyValue); // Forever: Gargul prints "Thrall", the roster has "Thrall Stormrage"
 
     if (seen.has(raw.checksum)) return;
     seen.add(raw.checksum);

@@ -9,6 +9,7 @@ import {
 } from '../attendance-store.js';
 import { displayCharacter, loadRaidDetail, raidState, isStale } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
+import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { RAID_SIZES, isRaidSize, raidSizeFields, zonesFor } from '../raid-zones.js';
@@ -16,7 +17,7 @@ import {
   WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, WCL_RAID_LIMIT, WCL_RAID_WINDOW_MS, enforceRateLimit,
 } from '../ratelimit.js';
 import {
-  cleanCharacterName, cleanNickname, isRealDate, nameKey, realmKey, SINGLE_LINE_STRIP,
+  allowsSurname, cleanCharacterName, cleanNickname, isRealDate, nameKey, realmKey, SINGLE_LINE_STRIP,
 } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
 import { reconcileStanding, removeStandingOverRaidHelper } from '../standing.js';
@@ -160,18 +161,19 @@ function eventSignupStatements(db, guild, raidId, event, guard) {
 }
 
 // A Warcraft Logs pull list -> presence rows keyed by character name + realm. Names that are not WoW names are skipped.
-function presenceRows(guild, pulls) {
+function presenceRows(guild, pulls, surnames) {
   const isRealmGuild = guild.realm_kind !== 'ruleset';
   const rows = [];
   for (const pull of pulls) {
     const seen = new Set();
     for (const player of pull.players) {
-      const name = cleanCharacterName(player.name);
-      if (!name) continue;
+      const cleaned = cleanCharacterName(player.name, guild.game_version);
+      if (!cleaned) continue;
       // A realm guild reads a missing server as the guild's own realm.
       const realm = isRealmGuild ? (player.server || guild.realm) : null;
       const realmKeyValue = isRealmGuild ? realmKey(realm) : '';
       if (isRealmGuild && !realmKeyValue) continue;
+      const name = resolveName(surnames, cleaned, realmKeyValue); // Forever: a log that prints only the first word still meets "First Surname"
       const key = `${nameKey(name)}|${realmKeyValue}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -183,11 +185,11 @@ function presenceRows(guild, pulls) {
 
 // The statements that add (or refresh) one report on a raid. Only derived data is written: the report row, its boss pulls and
 // who was in each pull. `guard` makes them conditional on the raid being there.
-function reportStatements(db, guild, raidId, report, flavour, code, now, guard) {
+function reportStatements(db, guild, raidId, report, flavour, code, now, guard, surnames = null) {
   const pulls = report.pulls.map((pull) => ({
     fightId: pull.fightId, encounterId: pull.encounterId, name: pull.name, kill: pull.kill ? 1 : 0, startedAt: pull.startedAt, endedAt: pull.endedAt,
   }));
-  const presence = presenceRows(guild, report.pulls);
+  const presence = presenceRows(guild, report.pulls, surnames);
   const statements = [
     db.prepare('DELETE FROM raid_reports WHERE raid_id = ? AND code = ?').bind(raidId, code),
     db.prepare(
@@ -505,8 +507,9 @@ export async function createRaid(ctx) {
     statements.push(...built.statements);
     eventCount = built.count;
   }
+  const surnames = await loadSurnameIndex(db, guild);
   for (const entry of fetched) {
-    const built = reportStatements(db, guild, raidId, entry.report, entry.flavour, entry.code, now, guard);
+    const built = reportStatements(db, guild, raidId, entry.report, entry.flavour, entry.code, now, guard, surnames);
     statements.push(...built.statements);
   }
   const reportCount = fetched.length;
@@ -683,7 +686,7 @@ export async function putReport(ctx) {
   }
   const now = ctx.now();
   const guard = { sql: "EXISTS (SELECT 1 FROM raids WHERE id = ? AND log_mode = 'log')", params: [raid.id] };
-  const built = reportStatements(db, guild, raid.id, report, flavour, code, now, guard);
+  const built = reportStatements(db, guild, raid.id, report, flavour, code, now, guard, await loadSurnameIndex(db, guild));
   try {
     await db.batch([
       ...built.statements,
@@ -724,7 +727,7 @@ export async function deleteReport(ctx) {
 // ---------------------------------------------------------------------------
 // Plan
 
-function readPlan(body) {
+function readPlan(body, guild, surnames) {
   const label = cleanText(body.label, 'label', { min: 1, max: 80 });
   const players = body.players;
   if (!Array.isArray(players) || !players.length || players.length > MAX_PLAN_PLAYERS) {
@@ -734,8 +737,9 @@ function readPlan(body) {
   const rows = players.map((entry, index) => {
     const fail = (message) => new HttpError(400, 'plan_invalid', message, { field: 'players', index });
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw fail('Each player must be an object.');
-    const name = cleanCharacterName(entry.name);
-    if (!name) throw fail('A character name is 2 to 12 letters.');
+    const cleaned = cleanCharacterName(entry.name, guild.game_version);
+    if (!cleaned) throw fail(allowsSurname(guild.game_version) ? 'A character name is 2 to 12 letters, or a first name and a surname.' : 'A character name is 2 to 12 letters.');
+    const name = resolveName(surnames, cleaned, guild.realm_kind !== 'ruleset' ? realmKey(guild.realm) : ''); // Forever: "Thrall" in a plan is the roster's "Thrall Stormrage" when only one has that first name
     if (!Number.isInteger(entry.group) || entry.group < 0 || entry.group > 8) throw fail('A group is 0 (bench) to 8.');
     if (seen.has(nameKey(name))) throw fail(`${name} is in the plan twice.`);
     seen.add(nameKey(name));
@@ -749,8 +753,8 @@ function readPlan(body) {
 
 export async function putPlan(ctx) {
   const { db } = ctx;
-  const { label, rows, live } = readPlan(ctx.body);
   const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const { label, rows, live } = readPlan(ctx.body, guildContext.guild, await loadSurnameIndex(db, guildContext.guild));
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const now = ctx.now();
   const guard = raidExists(raid.id);
@@ -812,7 +816,7 @@ export async function getPlanner(ctx) {
   const upcoming = raid.starts_at > ctx.now();
   const statements = [
     ctx.db.prepare(
-      `SELECT s.source, s.signup_id, s.nickname, s.kind, s.standby, s.class_name, s.spec_name, s.position, s.player_id, s.character_id FROM raid_signups s
+      `SELECT s.source, s.signup_id, s.nickname, s.kind, s.standby, s.guest, s.class_name, s.spec_name, s.position, s.player_id, s.character_id FROM raid_signups s
         WHERE s.raid_id = ? AND ${MERGED_ROWS} ORDER BY s.position, s.source, s.signup_id`,
     ).bind(raid.id),
     ctx.db.prepare(
@@ -899,13 +903,15 @@ export async function getPlanner(ctx) {
     if (row.source === 'raidsmith') {
       const chosen = (characters || []).find((character) => character.id === row.character_id);
       const shown = chosen || displayCharacter(characters || [], raid.team_id);
+      const guest = row.guest === 1; // a guest from a sign-up link: the name the guest typed, no person
       // A volunteer standby is worded as signed (its class and spec) and says 'standby' in kind.
       const kind = row.kind === 'signed' && row.standby === 1 ? 'standby' : row.kind;
       return withMarker({
         key: `rs${row.signup_id}`,
-        name: shown ? shown.name : 'Unknown',
+        name: guest ? row.nickname : (shown ? shown.name : 'Unknown'),
         discordName: null,
         personId: row.player_id,
+        ...(guest ? { guest: true } : {}),
         className: kind === 'signed' || kind === 'standby' ? row.class_name : META_CLASS[kind],
         specName: row.spec_name,
         kind,
@@ -983,8 +989,19 @@ export async function putManual(ctx) {
     const found = await db.prepare('SELECT COUNT(*) AS n FROM players WHERE guild_id = ? AND id IN (SELECT value FROM json_each(?))').bind(guild.id, JSON.stringify(ids)).first('n');
     if (found !== ids.length) throw bad('Someone in that list is not on this guild\'s roster.', 'presentPlayerIds');
   }
+  await saveManual(ctx, guildContext, raid, { ids, reason });
+  return recomputeAndReply(ctx, guildContext, raid.id);
+}
+
+// Puts the raid in hand-entered attendance with these people present (the whole list is replaced). names (wave 8, a pasted roster): the names that matched
+// nobody, [{ name, realm, realmKey }], replace the raid's earlier ones; left out (null), the raid keeps the names it has. 409 raid_has_log when a report
+// arrived in between. The caller has checked the raid has started and has no report, and recomputes after.
+export async function saveManual(ctx, guildContext, raid, { ids, reason, names = null }) {
+  const { db } = ctx;
+  const guild = guildContext.guild;
   const now = ctx.now();
-  const results = await db.batch([
+  const guard = { sql: "EXISTS (SELECT 1 FROM raids WHERE id = ? AND log_mode = 'manual')", params: [raid.id] };
+  const statements = [
     db.prepare(
       `UPDATE raids SET log_mode = 'manual', manual_reason = ?, manual_by = ?, manual_at = ?, updated_at = ?, version = version + 1, policy_fp = ''
         WHERE id = ? AND guild_id = ? AND NOT EXISTS (SELECT 1 FROM raid_reports WHERE raid_id = raids.id)`,
@@ -992,13 +1009,26 @@ export async function putManual(ctx) {
     db.prepare('DELETE FROM raid_manual WHERE raid_id = ?').bind(raid.id),
     db.prepare(
       `INSERT INTO raid_manual (raid_id, guild_id, player_id)
-       SELECT ?, ?, value FROM json_each(?) WHERE EXISTS (SELECT 1 FROM raids WHERE id = ? AND log_mode = 'manual')`,
-    ).bind(raid.id, guild.id, JSON.stringify(ids), raid.id),
-    raidAudit(ctx, guildContext, 'raid.manual', raid.id, { manual: raid.log_mode === 'manual' }, { manual: true, present: ids.length, reason },
-      { sql: "EXISTS (SELECT 1 FROM raids WHERE id = ? AND log_mode = 'manual' AND manual_at = ?)", params: [raid.id, now] }),
-  ]);
+       SELECT ?, ?, value FROM json_each(?) WHERE ${guard.sql}`,
+    ).bind(raid.id, guild.id, JSON.stringify(ids), ...guard.params),
+  ];
+  if (names) {
+    statements.push(
+      db.prepare('DELETE FROM raid_manual_names WHERE raid_id = ?').bind(raid.id),
+      db.prepare(
+        `INSERT OR IGNORE INTO raid_manual_names (raid_id, guild_id, name, name_key, realm, realm_key)
+         SELECT ?, ?, json_extract(value, '$.name'), json_extract(value, '$.nameKey'), json_extract(value, '$.realm'), json_extract(value, '$.realmKey')
+           FROM json_each(?) WHERE ${guard.sql}`,
+      ).bind(raid.id, guild.id, JSON.stringify(names.map((entry) => ({ ...entry, nameKey: nameKey(entry.name) }))), ...guard.params),
+    );
+  }
+  statements.push(raidAudit(
+    ctx, guildContext, 'raid.manual', raid.id, { manual: raid.log_mode === 'manual' },
+    { manual: true, present: ids.length, reason, ...(names ? { paste: true, unmatched: names.length } : {}) },
+    { sql: "EXISTS (SELECT 1 FROM raids WHERE id = ? AND log_mode = 'manual' AND manual_at = ?)", params: [raid.id, now] },
+  ));
+  const results = await db.batch(statements);
   if (results[0].meta.changes !== 1) throw new HttpError(409, 'raid_has_log', 'This raid has a report. Remove it before entering attendance by hand.');
-  return recomputeAndReply(ctx, guildContext, raid.id);
 }
 
 export async function deleteManual(ctx) {
@@ -1013,6 +1043,7 @@ export async function deleteManual(ctx) {
         WHERE id = ? AND guild_id = ?`,
     ).bind(ctx.now(), raid.id, guildContext.guild.id),
     db.prepare('DELETE FROM raid_manual WHERE raid_id = ?').bind(raid.id),
+    db.prepare('DELETE FROM raid_manual_names WHERE raid_id = ?').bind(raid.id),
     raidAudit(ctx, guildContext, 'raid.manual', raid.id, { manual: true }, { manual: false, reason }),
   ]);
   return recomputeAndReply(ctx, guildContext, raid.id);

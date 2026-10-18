@@ -39,16 +39,26 @@
     return typeof n === 'number' && isFinite(n) && n > 0 && n <= MAX_ITEM_ID && Math.floor(n) === n ? n : null;
   }
 
-  // "thornwick" / "Thornwick-Realm" -> "Thornwick"; null when it is not a character name (letters only, 2 to 12 of them).
-  function displayName(raw) {
-    if (typeof raw !== 'string') return null;
-    const dash = raw.indexOf('-');
-    const part = (dash < 0 ? raw : raw.slice(0, dash)).normalize('NFC').trim();
+  // One name word -> its display form, or null (letters only, 2 to 12 of them).
+  function nameWord(part) {
     if (!NAME_PATTERN.test(part)) return null;
     const letters = Array.from(part);
     const name = (letters[0].toUpperCase() + letters.slice(1).join('').toLowerCase()).normalize('NFC');
     const len = Array.from(name).length;
     return len >= 2 && len <= 12 && NAME_PATTERN.test(name) ? name : null;
+  }
+
+  // "thornwick" / "Thornwick-Realm" -> "Thornwick"; null when it is not a character name (letters only, 2 to 12 of them).
+  // surname (a Forever guild): one or two such words, "thrall stormrage-Realm" -> "Thrall Stormrage".
+  function displayName(raw, surname) {
+    if (typeof raw !== 'string') return null;
+    const dash = raw.indexOf('-');
+    const part = (dash < 0 ? raw : raw.slice(0, dash)).normalize('NFC').trim();
+    if (!surname) return nameWord(part);
+    const words = part.split(' ').filter(Boolean);
+    if (words.length < 1 || words.length > 2) return null;
+    const done = words.map(nameWord);
+    return done.every(Boolean) ? done.join(' ') : null;
   }
 
   // ── decoding (also used by softres.js) ──
@@ -113,7 +123,7 @@
   // ── TMB rows ──
   // One entry of a wishlists list -> { name, prio, kind } or { reason }. A string "name|order|type|group" (or the doubled-pipe form), or an object
   // with name / character, prio / order and type.
-  function readEntry(entry) {
+  function readEntry(entry, surname) {
     let name;
     let order;
     let type;
@@ -130,7 +140,7 @@
     } else {
       return { reason: 'Not a character entry' };
     }
-    const shown = displayName(name);
+    const shown = displayName(name, surname);
     if (!shown) return { reason: 'Name is not a character name' };
     const n = typeof order === 'string' && /^\s*\d{1,5}\s*$/.test(order) ? Number(order) : order;
     const prio = typeof n === 'number' && isFinite(n) && n >= 0 && n <= MAX_PRIO && Math.floor(n) === n ? n : null;
@@ -138,7 +148,8 @@
   }
 
   // The decoded JSON -> { rows (entries read), entries, skipped, stats } or { error }.
-  function normalize(value) {
+  function normalize(value, opts) {
+    const surname = !!(opts && opts.surname);
     if (!isPlain(value) || !isPlain(value.wishlists)) {
       return { error: 'No wishlists were found in this text. On ThatsMyBIS use the Gargul export ("Export Gargul") and paste the text exactly as it is.' };
     }
@@ -154,7 +165,7 @@
       list.forEach(function (raw) {
         read += 1;
         if (!itemId) { skipped.push({ label: 'item ' + key, reason: 'Item ID is not valid' }); return; }
-        const r = readEntry(raw);
+        const r = readEntry(raw, surname);
         if (r.reason) { skipped.push({ label: 'item ' + itemId, reason: r.reason }); return; }
         const id = itemId + '|' + r.name + '|' + r.kind + '|' + r.prio;
         if (seen[id]) return;
@@ -187,11 +198,11 @@
   }
 
   // text -> Promise of { ok, error, rows, entries: [{ name, itemId, kind, prio }], skipped: [{ label, reason }], stats }.
-  function parse(text) {
+  function parse(text, opts) {
     const empty = function (error) { return { ok: false, error: error, rows: 0, entries: [], skipped: [], stats: null }; };
     return decodePaste(text, 'TMB', 'In ThatsMyBIS open the Gargul export ("Export Gargul") and paste the text exactly as it is.').then(function (decoded) {
       if (!decoded.ok) return empty(decoded.error);
-      const n = normalize(decoded.value);
+      const n = normalize(decoded.value, opts);
       if (n.error) return empty(n.error);
       if (n.entries.length > MAX_ROWS) return empty('This export holds ' + n.entries.length + ' rows; at most ' + MAX_ROWS + ' fit on one raid.');
       return { ok: true, error: null, rows: n.rows, entries: n.entries, skipped: n.skipped.slice(0, SHOWN_SKIPPED), skippedCount: n.skipped.length, stats: n.stats };

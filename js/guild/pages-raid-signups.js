@@ -169,6 +169,11 @@
   }
 
   function toolsHtml(entry, edit) {
+    // A guest (signed up from a guest link, no person): an officer can take the sign-up away.
+    if (edit && entry.guest && entry.signupId != null) {
+      return '<span class="gs-row-actions gs-su-tools"><button type="button" class="gs-btn gs-btn-sm" data-action="su-guest-remove" data-sid="' + esc(entry.signupId) + '" data-key="su-guest-' + esc(entry.signupId) +
+        '" aria-label="' + esc('Remove the guest ' + (entry.name || '')) + '">Remove</button></span>';
+    }
     if (!edit || !entry.personId || entry.source === 'away') return ''; // an away notice is not a sign-up to change: a real sign-up replaces it
     return '<span class="gs-row-actions gs-su-tools"><button type="button" class="gs-btn gs-btn-sm" data-action="su-edit" data-pid="' + esc(entry.personId) + '" data-key="su-edit-' + esc(entry.personId) + '">Edit</button>' +
       (entry.source === 'raidsmith' ? '<button type="button" class="gs-btn gs-btn-sm" data-action="su-remove" data-pid="' + esc(entry.personId) + '" data-key="su-remove-' + esc(entry.personId) + '">Remove</button>' : '') + '</span>';
@@ -182,6 +187,7 @@
       (specText ? '<span class="gs-su-spec">' + esc(specText) + '</span>' : '') +
       (entry.kind === 'late' ? '<span class="gs-chip gs-chip-signup">Late</span>' : '') +
       (entry.source === 'away' ? '<span class="gs-chip gs-chip-signup">Away (notice)</span>' : '') +
+      (entry.guest ? '<span class="gs-chip gs-chip-src">Guest</span>' : '') +
       (entry.standing ? '<span class="gs-chip gs-chip-src">standing</span>' : '') +
       (entry.notice && noticeNote(entry.notice) ? '<span class="gs-chip gs-chip-signup">' + esc(noticeNote(entry.notice)) + '</span>' : '') +
       (entry.source === 'raid_helper' ? '<span class="gs-chip gs-chip-src">Raid-Helper</span>' : '') +
@@ -479,6 +485,16 @@
     const c = cur();
     if (!c) return;
     return G.ui.runDialog(form, G.api.signups.removePerson(c.gid, c.rid, form.getAttribute('data-pid')), function (view) { setView(c, view); });
+  };
+
+  G.handlers.click['su-guest-remove'] = function (el) {
+    const c = cur();
+    if (!c || el.disabled) return;
+    el.disabled = true;
+    G.api.joinLinks.removeGuest(c.gid, c.rid, el.getAttribute('data-sid')).then(function (view) { setView(c, view); }, function (err) {
+      el.disabled = false;
+      G.app.handleError(err, { pageAlert: true });
+    });
   };
 
   G.pages.raidSignups = {

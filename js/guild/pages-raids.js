@@ -770,7 +770,7 @@
       line.status = 'skipped';
       return Promise.resolve();
     } else if (line.id === 'plan') {
-      promise = G.planSource.read(f.plan, {}).then(function (read) {
+      promise = G.planSource.read(f.plan, { surname: !!currentGd() && currentGd().guild.gameVersion === 'forever' }).then(function (read) {
         if (!read.ok) { const e = new Error(read.error); e.planError = true; throw e; }
         return G.api.put(base + '/raids/' + encodeURIComponent(run.raidId) + '/plan', { label: read.label, players: read.players, live: read.live }).then(function () {
           if (read.skippedText) line.message = read.skippedText;

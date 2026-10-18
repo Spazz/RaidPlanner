@@ -60,6 +60,7 @@
     rolesList: {},     // gid -> GET /api/guild/:gid/roles, for the People page's "Other roles" (loaded with the People tab for people who can manage roles)
     view: null,        // the read-only guest / public page: { kind, gid, data, error } (see pages-view.js); null while it loads
     apply: null,       // the application form: { gid, status, data, draft, busy, error, done } (see pages-apply.js); null until it is opened
+    join: null,        // a raid's guest sign-up page: { token, status, data, draft, busy, error, done } (see pages-join.js); null until it is opened
   };
   const app = G.app = { state: state, started: false };
   // The Guild settings tabs of Phase 7: the state key each keeps its { gid, data, notice } in, and the page module in G.pages that loads and draws it.
@@ -72,7 +73,7 @@
     notifications: { state: 'notifySettings', page: 'settingsNotify' },
   };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
-  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'applications' };
+  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'applications', launch: 'launch' };
   function attPageKey(r) {
     if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : (r.section === 'home' ? 'attention' : null)));
     if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : (r.tab === 'activity' ? 'settingsActivity' : (r.tab === 'applications' ? 'settingsApply' : null))));
@@ -332,6 +333,7 @@
     state.rolesList = {};
     state.view = null;
     state.apply = null;
+    state.join = null;
     state.imports = {};
     state.failure = null;
     state.notice = '';
@@ -493,7 +495,7 @@
     render();
     ensureSession(true).then(function () { if (token === routeToken) render(); });
     // The application form is for people with and without an account; the account only travels with the application.
-    const loading = r.name === 'apply' ? G.pages.apply.load(r) : G.pages.view.load(r);
+    const loading = r.name === 'apply' ? G.pages.apply.load(r) : (r.name === 'join' ? G.pages.join.load(r) : G.pages.view.load(r));
     return loading.then(function () {
       if (token !== routeToken) return;
       // A redeemed guest link moved the address to #/view without a navigation: it is the current address now.
@@ -693,6 +695,8 @@
     else if (r.name === 'guest' || r.name === 'view') page = 'Guest view';
     else if (r.name === 'public') page = 'Public page';
     else if (r.name === 'apply') page = 'Apply';
+    else if (r.name === 'join') page = 'Join a raid';
+    else if (r.name === 'launch') page = 'Launch';
     else if (r.name === 'intent') page = 'Intent';
     else if (r.name === 'recruiting') page = 'Recruiting';
     else if (r.name === 'applications') page = 'Applications';
@@ -739,7 +743,7 @@
         if (r.section === 'attendance') return P.attendance.main(r, gd, ctx);
         if (r.section === 'loot') return P.loot.main(r, gd, ctx);
         return P.signin.messageHtml('Page not found', 'That address does not match a Raidsmith guild page.', {});
-      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson': case 'away': case 'intent': case 'recruiting': case 'applications':
+      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson': case 'away': case 'intent': case 'recruiting': case 'applications': case 'launch':
         if (!gd) return P.signin.loadingHtml();
         return P[attPageKey(r)].main(r, gd, ctx);
       case 'person': {
@@ -838,6 +842,10 @@
       if (r.name === 'apply') {
         const form = state.apply && state.apply.gid === r.gid ? state.apply : null;
         return { html: G.pages.apply.applyHtml({ state: form }), center: !!(form && (form.status === 'closed' || form.status === 'error')), title: titleFor(r, null) };
+      }
+      if (r.name === 'join') {
+        const form = state.join && state.join.token === r.token ? state.join : null;
+        return { html: G.pages.join.joinHtml({ state: form }), center: !!(form && (form.status === 'gone' || form.status === 'error')), title: titleFor(r, null) };
       }
       const v = state.view;
       return { html: G.pages.view.viewHtml({ data: v ? v.data : null, kind: v ? v.kind : (r.name === 'public' ? 'public' : 'guest'), error: v ? v.error : null }), center: !!(v && v.error), title: titleFor(r, null) };
@@ -1170,7 +1178,7 @@
     if (state.section !== 'guild') { render(); return; }
     const r = G.router.parse(window.location.hash);
     if (r.name === 'section' && r.section === 'roster') { go(G.router.format({ name: 'section', gid: gid, section: 'roster' })); return; }
-    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance' || r.section === 'loot')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill' || r.name === 'intent' || r.name === 'recruiting') { routeAll({ force: true }); return; }
+    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance' || r.section === 'loot')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill' || r.name === 'intent' || r.name === 'recruiting' || r.name === 'launch') { routeAll({ force: true }); return; }
     render();
   };
 

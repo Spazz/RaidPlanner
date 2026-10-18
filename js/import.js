@@ -1043,8 +1043,14 @@ const Import = {
       // race/level/filler words are stripped before searching for a spec).
       const tokens = line.replace(/[^\w\s@'-]/g, ' ').trim().split(/\s+/).filter(Boolean);
       if (tokens.length < 2) { unparsed.push(rawLine); continue; }
-      const name = cleanName(tokens[0]);
-      const rest = tokens.slice(1).filter(t => !RACE_WORDS.has(t.toLowerCase()) && !FILLER_WORDS.has(t.toLowerCase()) && !ROLE_WORDS.has(t.toLowerCase()) && !/^\d+$/.test(t));
+      // WoW Forever: a character may be "First Surname", so a second word that is not a class, spec, race, role or number belongs to the name.
+      let nameWords = 1;
+      if (version === 'forever' && tokens.length >= 3) {
+        const second = tokens[1].toLowerCase();
+        if (!classAlias[second] && !specAlias[second] && !RACE_WORDS.has(second) && !FILLER_WORDS.has(second) && !ROLE_WORDS.has(second) && !/^\d+$/.test(second)) nameWords = 2;
+      }
+      const name = cleanName(tokens.slice(0, nameWords).join(' '));
+      const rest = tokens.slice(nameWords).filter(t => !RACE_WORDS.has(t.toLowerCase()) && !FILLER_WORDS.has(t.toLowerCase()) && !ROLE_WORDS.has(t.toLowerCase()) && !/^\d+$/.test(t));
       const { class:cls, spec, role } = findClassAndSpec(rest);
       if (!name || !cls) { unparsed.push(rawLine); continue; }
       addEntry(name, cls, spec, role);

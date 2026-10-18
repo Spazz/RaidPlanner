@@ -2,7 +2,7 @@
 // or team lead sees on the guild home page. Each item carries the fields its sentence needs and a `link` (a pages route without the guild id).
 // Which items a viewer gets follows their rights per team: `allowsTeam(action, teamId)` and `granted(action)` come from the permission check.
 
-export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
+export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'log_missing', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
 export const INFO_KINDS = ['unlocked'];  // listed, but not part of the open-work count
 export const TRIAL_DAYS = 7;
@@ -27,6 +27,7 @@ function daysBetween(from, to) {
 //   applications: [{ team_id, n }]   (applications still marked New, per team)
 //   rosterDeclined: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids with a published roster: n seats said "can't make it")
 //   rosterPending: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids that start within CONFIRM_HOURS with a published roster: n seats have not answered)
+//   logMissing: [{ id, team_id, raid_on, zone, title, event_title, logger_name }]   (PM wave 8: past raids whose Logger has not uploaded a log, 5 hours after the start)
 //   eventMoved: [{ id, team_id, raid_on, starts_at, zone, title, event_title, event_moved_on }]   (upcoming raids whose Raid-Helper event is on another day: the refresh does not move a raid)
 //   webhooksOff: [{ team_id, disabled_status }]   (teams whose Discord webhook Discord refused: the Worker switched it off)
 //   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in, size (the raid's effective size; the team's when left out),
@@ -119,6 +120,10 @@ export function buildAttention(input) {
   for (const row of input.rosterPending || []) {
     if (!here('raids.edit', row.team_id)) continue;
     add('roster_pending', { ...base('roster_pending', row.team_id), ...raidFields(row), startsAt: row.starts_at, count: row.n, id: `roster_pending:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+  }
+  for (const row of input.logMissing || []) {
+    if (!here('raids.edit', row.team_id)) continue;
+    add('log_missing', { ...base('log_missing', row.team_id), ...raidFields(row), loggerName: row.logger_name || null, id: `log_missing:${row.id}`, link: { name: 'raid', rid: row.id } }, [-dateNumber(row.raid_on)]);
   }
   for (const row of input.eventMoved || []) {
     if (!here('raids.edit', row.team_id)) continue;

@@ -7,6 +7,7 @@
   'use strict';
 
   const NAME_HINT = 'Your character\'s name, 2 to 12 letters.';
+  const NAME_HINT_FOREVER = 'Your character\'s name: a first name, then a surname if it has one, 2 to 12 letters each.';
 
   function st() { return G.app.state; }
   function optionsOf(data) { return G.ui.rosterOptions({ rosterOptions: data.rosterOptions }); }
@@ -45,7 +46,7 @@
       : '';
     return '<form class="gs-apply-form" data-submit="apply-form" novalidate aria-describedby="ap-intro">' +
       '<div class="gs-field"><label class="gs-label" for="ap-name">Character name</label><input class="gs-input" type="text" id="ap-name" name="name" maxlength="40" autocomplete="off" required aria-describedby="ap-name-hint" value="' + esc(d.name || '') + '">' +
-      '<p class="gs-fine" id="ap-name-hint">' + esc(NAME_HINT) + '</p>' + fieldError('name') + '</div>' +
+      '<p class="gs-fine" id="ap-name-hint">' + esc(data.guild.gameVersion === 'forever' ? NAME_HINT_FOREVER : NAME_HINT) + '</p>' + fieldError('name') + '</div>' +
       '<div class="gs-field"><label class="gs-label" for="ap-class">Class</label><select class="gs-input" id="ap-class" name="class" data-change="apply-class" required>' + G.ui.classOptionsHtml(options, d.class || '', 'Choose a class') + '</select>' + fieldError('class') + '</div>' +
       '<div class="gs-field"><label class="gs-label" for="ap-spec">Spec</label><select class="gs-input" id="ap-spec" name="spec" required>' + G.ui.specOptionsHtml(options, d.class || '', d.spec || '', 'Choose a spec') + '</select>' + fieldError('spec') + '</div>' +
       (realmGuild ? '<div class="gs-field"><label class="gs-label" for="ap-realm">Realm</label><input class="gs-input" type="text" id="ap-realm" name="realm" maxlength="40" autocomplete="off" value="' + esc(d.realm === undefined ? data.guild.realm : d.realm) + '">' + fieldError('realm') + '</div>' : '') +

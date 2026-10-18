@@ -3,6 +3,7 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { isId, newId } from '../ids.js';
+import { loadSurnameIndex, resolveName } from '../name-resolve.js';
 import { memberSql } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { IMPORT_LIMIT, IMPORT_WINDOW_MS, WCL_GLOBAL_KEY, WCL_GLOBAL_LIMIT, enforceRateLimit } from '../ratelimit.js';
@@ -349,9 +350,9 @@ export async function writeImport(ctx, guildContext, team, plan) {
 // ---------------------------------------------------------------------------
 // Raid-Helper commit
 
-function readCharacterPart(raw, index, field, { withSpec }) {
+function readCharacterPart(raw, index, field, { withSpec, gameVersion }) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw bad('That character is missing.', field, indexed(index));
-  const name = readName(raw.name, `${field}.name`, indexed(index));
+  const name = readName(raw.name, `${field}.name`, indexed(index), gameVersion);
   const classId = readClass(raw.class, `${field}.class`, indexed(index));
   let mainSpec = null;
   if (withSpec && raw.spec !== undefined && raw.spec !== null) {
@@ -406,7 +407,7 @@ export async function commitRaidHelper(ctx) {
   };
   for (const { row, index, signUp } of resolvedRows) {
     const existing = signUp.userId ? people.get(signUp.userId) : null;
-    const alts = (row.alts || []).map((alt) => readCharacterPart(alt, index, 'alts', { withSpec: false }));
+    const alts = (row.alts || []).map((alt) => readCharacterPart(alt, index, 'alts', { withSpec: false, gameVersion: guild.game_version }));
     const nickname = cleanNickname(signUp.name);
     if (existing) {
       if (row.main !== undefined && row.main !== null) {
@@ -420,7 +421,7 @@ export async function commitRaidHelper(ctx) {
       continue;
     }
     if (row.main === undefined || row.main === null) throw bad('Every new person needs a Main.', 'main', indexed(index));
-    const main = readCharacterPart(row.main, index, 'main', { withSpec: true });
+    const main = readCharacterPart(row.main, index, 'main', { withSpec: true, gameVersion: guild.game_version });
     const playerId = newId('p', ctx.randomBytes);
     plan.people.push({ id: playerId, status, discord: signUp.userId, nickname });
     newCharacter(playerId, main, true, index);
@@ -475,14 +476,14 @@ export async function previewWcl(ctx) {
 
   const isRealmGuild = guild.realm_kind !== 'ruleset';
   const guildRealmKey = isRealmGuild ? realmKey(guild.realm) : '';
-  const [keys, nicknames] = await Promise.all([loadGuildKeys(db, guild.id), loadNicknameIndex(db, guildContext, team)]);
+  const [keys, nicknames, surnames] = await Promise.all([loadGuildKeys(db, guild.id), loadNicknameIndex(db, guildContext, team), loadSurnameIndex(db, guild)]);
   const matched = [];
   const toDecide = [];
   const seen = new Set();
   for (const actor of report.actors) {
     const classId = ownValue(WCL_CLASS, actor.subType);
-    const name = classId ? cleanCharacterName(actor.name) : null;
-    if (!name) continue;
+    const cleaned = classId ? cleanCharacterName(actor.name, guild.game_version) : null;
+    if (!cleaned) continue;
     // A realm the commit would accept is shown in its canonical spelling; any other realm is shown as sent (cleaned)
     // and counts as another realm, which the commit refuses.
     const resolved = isRealmGuild ? resolveRealm(guild, actor.server || null) : null;
@@ -490,6 +491,7 @@ export async function previewWcl(ctx) {
     const realmText = isRealmGuild ? (resolved ? resolved.realm : rawRealm) : null;
     const actorRealmKey = isRealmGuild ? (resolved ? resolved.key : realmKey(rawRealm)) : '';
     if (isRealmGuild && !actorRealmKey) continue;
+    const name = resolveName(surnames, cleaned, actorRealmKey); // Forever: a log's "Thrall" is the roster's "Thrall Stormrage" when only one has that first name
     const key = `${nameKey(name)}|${actorRealmKey}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -543,7 +545,7 @@ export async function commitWcl(ctx) {
   const created = [];
   for (const { decision, index } of actions) {
     if (decision.action === 'skip') continue;
-    const name = readName(decision.name, 'name', indexed(index));
+    const name = readName(decision.name, 'name', indexed(index), guild.game_version);
     const classId = readClass(decision.class, 'class', indexed(index));
     // A ruleset guild ignores `realm`; a realm guild accepts only its own realm or one on its realm list.
     const realm = resolveRealm(guild, decision.realm);

@@ -5,13 +5,13 @@
 //   #/g/:gid  #/g/:gid/home  (Home: the needs-attention list; the shell sends viewers without officer actions on to Roster)
 //   #/g/:gid/{roster,raids,attendance,loot}  #/g/:gid/settings[/{teams,schedule,people,roles,discord,guests,dataaccess,public,attendance,loot,battlenet,activity,data}]
 //   #/guest/<token>  (a guest link: the page redeems it and moves to #/view)  #/view  (the guest view)  #/public/:gid  (a guild's public page)
-//   #/apply/:gid  (a guild's application form)
+//   #/apply/:gid  (a guild's application form)  #/join/<token>  (a raid's guest sign-up link: sign up as a Guest, no account)
 //   These four work signed out; the first three show a read-only view and never ask for a sign-in, the form lets a signed-in applicant's account come along.
 //   #/g/:gid/away  (my away notices)
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
 //   #/g/:gid/loot[?view=raids|items]  #/g/:gid/loot/p/:pid  (Balance is the default view)
 //   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl,bnet,csv}
-//   #/g/:gid/roster/{intent,recruiting,applications}  (the Roster's other tabs: the class and spec intent board, recruitment needs, the applications inbox)
+//   #/g/:gid/roster/{intent,recruiting,applications,launch}  (the Roster's other tabs: the class and spec intent board, recruitment needs, the applications inbox, the Launch funnel)
 //   (?team= only opens an archived team's roster; the shell's team picker decides otherwise)
 (function (G) {
   'use strict';
@@ -20,7 +20,7 @@
   const SECTIONS = ['home', 'roster', 'raids', 'attendance', 'loot'];
   const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'dataaccess', 'public', 'applications', 'notifications', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
   // The Roster's tabs after the roster list itself; each is a route of its own.
-  const ROSTER_TABS = ['intent', 'recruiting', 'applications'];
+  const ROSTER_TABS = ['intent', 'recruiting', 'applications', 'launch'];
   const LOOT_VIEWS = ['raids', 'items'];
   const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet', 'csv'];
   // Why a sign-in came back without signing in (/auth/callback and /auth/bnet/callback redirect to #/signin?error=..).
@@ -84,6 +84,7 @@
     }
     if (head === 'guest' && parts.length === 2) return GUEST_TOKEN.test(parts[1]) ? { name: 'guest', token: parts[1] } : { name: 'notfound' };
     if (head === 'public' && parts.length === 2) return ID.test(parts[1]) ? { name: 'public', gid: parts[1] } : { name: 'notfound' };
+    if (head === 'join' && parts.length === 2) return GUEST_TOKEN.test(parts[1]) ? { name: 'join', token: parts[1] } : { name: 'notfound' };
     if (head === 'apply' && parts.length === 2) return ID.test(parts[1]) ? { name: 'apply', gid: parts[1] } : { name: 'notfound' };
     if (head !== 'g' || !ID.test(parts[1])) return { name: 'notfound' };
     const gid = parts[1];
@@ -131,7 +132,8 @@
       case 'guest': return typeof r.token === 'string' && GUEST_TOKEN.test(r.token) ? '#/guest/' + r.token : '#/';
       case 'public': return isId(r.gid) ? '#/public/' + encodeURIComponent(r.gid) : '#/';
       case 'apply': return isId(r.gid) ? '#/apply/' + encodeURIComponent(r.gid) : '#/';
-      case 'intent': case 'recruiting': case 'applications': return '#/g/' + encodeURIComponent(r.gid) + '/roster/' + r.name;
+      case 'join': return typeof r.token === 'string' && GUEST_TOKEN.test(r.token) ? '#/join/' + r.token : '#/';
+      case 'intent': case 'recruiting': case 'applications': case 'launch': return '#/g/' + encodeURIComponent(r.gid) + '/roster/' + r.name;
       case 'planner': return '#/planner' + (isId(r.gid) && isId(r.rid) ? '?raid=' + r.gid + '.' + r.rid : '');
       case 'section': {
         const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';
@@ -156,7 +158,7 @@
 
   // The routes that work without an account (a guest link, the guest view, a public page, an application form).
   function isViewerRoute(route) {
-    return !!route && (route.name === 'guest' || route.name === 'view' || route.name === 'public' || route.name === 'apply');
+    return !!route && (route.name === 'guest' || route.name === 'view' || route.name === 'public' || route.name === 'apply' || route.name === 'join');
   }
 
   G.router = { SECTIONS: SECTIONS, TABS: TABS, ROSTER_TABS: ROSTER_TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN, parse: parse, format: format, isViewerRoute: isViewerRoute };

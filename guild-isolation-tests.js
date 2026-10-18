@@ -34,7 +34,7 @@ const ACCOUNT_ROUTES = new Set([
 const OPEN_ROUTES = new Set([
   'GET /guild', 'GET /guild/', 'GET /auth/login', 'GET /auth/callback', 'GET /auth/providers', 'GET /auth/bnet/login', 'GET /auth/bnet/callback',
   'POST /auth/guest', 'DELETE /auth/guest', 'GET /api/guest', 'GET /api/public/:gid', 'GET /cal/:cal', 'GET /api/apply/:gid', 'POST /api/apply/:gid',
-  'GET /api/v1/:dataset',
+  'GET /api/v1/:dataset', 'POST /api/join/view', 'POST /api/join',
 ]);
 // Account routes that read and are safe to call for the "never lists the other guild" check.
 const ACCOUNT_READS = ['GET /auth/me', 'GET /auth/bnet', 'GET /api/roadmap/ideas'];
@@ -68,6 +68,13 @@ const VALID_BODIES = {
   'POST /api/guild/:gid/raids/:rid/decisions': (ids) => ({ playerId: ids.pid, reason: REASON, outcome: 'present', expectedFlags: [] }),
   'DELETE /api/guild/:gid/raids/:rid/decisions/:pid': () => ({ reason: REASON }),
   'POST /api/guild/:gid/raids/:rid/unmatched': () => ({ key: 'somebody|nightslayer', action: 'guest' }),
+  // PM wave 8
+  'PUT /api/guild/:gid/raids/:rid/duties': () => ({ duties: [] }),
+  'PUT /api/guild/:gid/launch/:pid': (ids) => ({ teamId: ids.tid, ready: true }),
+  'PUT /api/guild/:gid/teams/:tid/launch': () => ({ enabled: true }),
+  'POST /api/guild/:gid/raids/:rid/join-links': () => ({ maxUses: 2 }),
+  'POST /api/guild/:gid/raids/:rid/manual/paste/preview': () => ({ text: 'Somebody' }),
+  'POST /api/guild/:gid/raids/:rid/manual/paste': () => ({ text: 'Somebody' }),
 };
 // A read gets ?team=<the team id>, a write the valid body of its route if it has one, else a body naming the ids it might look for. Fields a
 // route does not know are ignored by it.
@@ -110,6 +117,12 @@ async function seedGuild(w, { label, serverId, gm, member, publicOn }) {
   const rolid = role.roles.find((entry) => entry.name === `${label} council`).id;
   const link = await need(await w.call(jars.gm, 'POST', `${path}/guest-links`, { roleId: 'guest', expiresIn: '7d', label: `${label} link` }), 'guest link');
   const lid = link.created.id;
+  // PM wave 8: a guest sign-up link on the upcoming raid, and one guest who used it (sign-up number 1).
+  const join = await need(await w.call(jars.gm, 'POST', `${path}/raids/${soon.raid.id}/join-links`, { maxUses: 3 }), 'join link');
+  const jid = join.created.id;
+  const joiner = newJar();
+  await need(await w.call(joiner, 'POST', '/api/join/view', { token: join.created.token }), 'join view');
+  await need(await w.call(joiner, 'POST', '/api/join', { token: join.created.token, name: `${label}guest`, class: 'MAGE', spec: 'Fire', note: `${label} guest note` }), 'guest sign-up');
   const cal = await need(await w.call(jars.gm, 'POST', `${path}/calendar`, { teamId: tid }), 'calendar link');
   const calFile = new URL(cal.url).pathname.replace('/cal/', '');
   // PM wave 7: a read-only API key that reads all four datasets of the whole guild.
@@ -137,12 +150,12 @@ async function seedGuild(w, { label, serverId, gm, member, publicOn }) {
       VALUES ('${apid}', '${gid}', '${tid}', 'new', '${label}hopeful', '${label.toLowerCase()}hopeful', 'Nightslayer', 'nightslayer', 'MAGE', 'Fire', '${label} contact', '[{"label":"${label} question","type":"short","answer":"${label} answer"}]', 1, 1);`);
   if (publicOn) await need(await w.call(jars.gm, 'PUT', `${path}/applications/settings`, { enabled: true, questions: [{ label: `${label} open question`, type: 'short', required: false }] }), 'applications on');
   return {
-    label, serverId, gid, jars, ids: { gid, tid, uid, pid, cid, rid, rolid, lid, code, aid, clid, nid, iid, apid, kid, cal: calFile },
-    guestToken: link.created.token, calFile, apiToken: apiKey.created.token,
+    label, serverId, gid, jars, ids: { gid, tid, uid, pid, cid, rid, rolid, lid, code, aid, clid, nid, iid, apid, kid, jid, sid: 1, cal: calFile },
+    guestToken: link.created.token, joinToken: join.created.token, calFile, apiToken: apiKey.created.token,
     // Words that only this guild's data contains. A response to anyone else must not carry one.
     words: [`Guild ${label}`, `${label}person`, `${label}title`, `${label}past`, `${label} council`, `${label} link`, `${label} officer note`, `${label} loot note`,
       `${label} Trinket`, `${label}claimant`, `${label} away reason`, `${label}uploader`, `${label} intent title`, `${label} intent note`, `${label}hopeful`, `${label} contact`,
-      `${label} question`, `${label} answer`, `${label} open question`, `${label} key`, apiKey.created.token, code, gid, tid, pid, cid, rid, rolid, lid, aid, clid, nid, iid, apid, kid],
+      `${label} question`, `${label} answer`, `${label} open question`, `${label} key`, `${label}guest`, `${label} guest note`, join.created.token, jid, apiKey.created.token, code, gid, tid, pid, cid, rid, rolid, lid, aid, clid, nid, iid, apid, kid],
   };
 }
 
@@ -461,6 +474,45 @@ check('the apply routes (open): only a guild that takes applications answers, th
   const fourth = await w.call(jar, 'POST', `/api/apply/${alpha.gid}`, body({ name: 'Alphafive' }));
   assert.equal(fourth.status, 429, fourth.text);
   assert(fourth.json.retryAfter > 0);
+});
+
+check('the join routes (open): a link shows only its own raid, the form needs its cookie, a guest lands on that raid only, and a turned-off link stops at once', async () => {
+  const f = await fixture();
+  const { w, alpha, beta } = f;
+  const guestsOf = (gid) => w.rows("SELECT raid_id, nickname FROM raid_signups WHERE guild_id = ? AND source = 'raidsmith' AND guest = 1 ORDER BY signup_id", gid);
+  const jar = newJar();
+  const view = await w.call(jar, 'POST', '/api/join/view', { token: alpha.joinToken });
+  assert.equal(view.status, 200, view.text);
+  assert.equal(view.json.guild.name, 'Guild Alpha');
+  assert.equal(view.json.raid.title, 'Alphatitle');
+  for (const word of beta.words) assert(!view.text.includes(word), `the join view leaked ${word}`);
+  for (const word of ['Alphaperson', 'Alpha officer note', 'Alphaguest']) assert(!view.text.includes(word), `the join view carries nothing of the roster or the other guests: ${word}`);
+  assert(Object.keys(jar).includes('__Host-rs_join'), 'the view hands out its cookie');
+  assert.equal((await w.call(newJar(), 'POST', '/api/join/view', { token: 'x'.repeat(43) })).status, 404, 'a token nobody made');
+  assert.equal((await w.call(newJar(), 'POST', '/api/join/view', { token: 'short' })).status, 404);
+  const body = (extra = {}) => ({ token: alpha.joinToken, name: 'Alphajoiner', class: 'MAGE', spec: 'Frost', ...extra });
+  const alphaBefore = await guestsOf(alpha.gid);
+  const betaBefore = await guestsOf(beta.gid);
+  const bare = await w.call(newJar(), 'POST', '/api/join', body());
+  assert.deepEqual([bare.status, bare.json.error], [400, 'cookies_required']);
+  const trap = await w.call(jar, 'POST', '/api/join', body({ website: 'http://spam.example' }));
+  assert.equal(trap.status, 201);
+  assert.deepEqual(await guestsOf(alpha.gid), alphaBefore, 'the honeypot stores nothing');
+  const sent = await w.call(jar, 'POST', '/api/join', body());
+  assert.equal(sent.status, 201, sent.text);
+  const after = await guestsOf(alpha.gid);
+  assert.equal(after.length, alphaBefore.length + 1);
+  assert.equal(after[after.length - 1].nickname, 'Alphajoiner');
+  const link = (await w.rows('SELECT id, raid_id FROM raid_join_links WHERE guild_id = ?', alpha.gid))[0];
+  assert.equal(after[after.length - 1].raid_id, link.raid_id, 'on the raid the link names');
+  assert.deepEqual(await guestsOf(beta.gid), betaBefore, 'Beta is untouched');
+  // Turned off, the very next request fails: the view and the sign-up alike.
+  assert.equal((await w.call(alpha.jars.gm, 'DELETE', `/api/guild/${alpha.gid}/raids/${link.raid_id}/join-links/${link.id}`, {})).status, 200);
+  assert.equal((await w.call(newJar(), 'POST', '/api/join/view', { token: alpha.joinToken })).status, 410);
+  assert.equal((await w.call(jar, 'POST', '/api/join', body({ name: 'Alphaother' }))).status, 410);
+  assert.equal((await guestsOf(alpha.gid)).length, after.length, 'nothing stored after it was turned off');
+  // Beta's link still works, for Beta only.
+  assert.equal((await w.call(newJar(), 'POST', '/api/join/view', { token: beta.joinToken })).json.guild.name, 'Guild Beta');
 });
 
 check('the walker catches a leaky route: one that answers the other guild\'s data to any member', async () => {

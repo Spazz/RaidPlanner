@@ -18,6 +18,7 @@
     { id: 'rank', severity: 'action', heading: 'Rank suggestions', chip: 'Rank' },
     { id: 'no_loot', severity: 'action', heading: 'Raids without loot', chip: 'No loot' },
     { id: 'low_signups', severity: 'action', heading: 'Raids short on sign-ups', chip: 'Low sign-ups' },
+    { id: 'log_missing', severity: 'action', heading: 'Raids waiting for a log', chip: 'Log' },
     { id: 'roster_declined', severity: 'action', heading: 'Rostered players who can\'t make it', chip: 'Roster' },
     { id: 'roster_pending', severity: 'action', heading: 'Rostered players who haven\'t confirmed', chip: 'Roster' },
     { id: 'event_moved', severity: 'action', heading: 'Raid-Helper events on another day', chip: 'Event' },
@@ -40,6 +41,7 @@
     low_signups: { name: 'section', section: 'raids' },
     roster_declined: { name: 'section', section: 'raids' },
     roster_pending: { name: 'section', section: 'raids' },
+    log_missing: { name: 'section', section: 'raids' },
     event_moved: { name: 'section', section: 'raids' },
     webhook_off: { name: 'settings', tab: 'notifications' },
     unlocked: { name: 'section', section: 'raids' },
@@ -94,6 +96,7 @@
       case 'low_signups': return dayOf(it.date) + ': ' + num(it.expected) + ' of ' + num(it.size) + ' signed up';
       case 'roster_declined': return dayOf(it.date) + ': ' + plural(n, 'rostered person', 'rostered people') + ' can\'t make it';
       case 'roster_pending': return dayOf(it.date) + ': ' + plural(n, 'rostered person hasn\'t', 'rostered people haven\'t') + ' confirmed';
+      case 'log_missing': return 'Upload the log for ' + dayOf(it.date) + (it.loggerName ? ' (Logger: ' + String(it.loggerName) + ')' : '');
       case 'event_moved': return dayOf(it.date) + ': Raid-Helper has the event on ' + dayOf(it.eventDate) + '; the raid was not moved';
       case 'webhook_off': return 'The Discord webhook of ' + String(it.teamName == null ? 'a team' : it.teamName) + ' was switched off' + (it.status ? ' (Discord answered ' + num(it.status) + ')' : '');
       case 'unlocked': return 'Sign-ups for ' + dayOf(it.date) + ' are still open and the raid starts in ' + plural(Math.round(num(it.minutes)), 'minute', 'minutes');

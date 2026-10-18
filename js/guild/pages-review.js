@@ -70,7 +70,7 @@
 
   function unmatchedEvidence(u) {
     const cls = u.class ? G.ui.className(u.class) + (u.realm ? ' on ' + u.realm : '') : (u.realm || '');
-    const pulls = typeof u.pullsPresent === 'number' ? 'in ' + plural(u.pullsPresent, 'pull', 'pulls') : (typeof u.awards === 'number' ? 'won ' + plural(u.awards, 'item', 'items') : '');
+    const pulls = typeof u.pullsPresent === 'number' ? (u.pullsPresent === 0 ? 'on the pasted roster' : 'in ' + plural(u.pullsPresent, 'pull', 'pulls')) : (typeof u.awards === 'number' ? 'won ' + plural(u.awards, 'item', 'items') : '');
     return [cls, pulls, 'no linked person'].filter(Boolean).join(', ');
   }
 

@@ -144,7 +144,7 @@ const DAY_CTE = `WITH day AS (
 
 export async function loadDay(db, guildId, raidId) {
   const bind = (sql) => db.prepare(DAY_CTE + ' ' + sql).bind(guildId, raidId);
-  const [, raidResult, policyResult, signupResult, planResult, pullResult, presenceResult, manualResult, guestResult, decisionResult, characterResult, noticeResult] = await db.batch([
+  const [, raidResult, policyResult, signupResult, planResult, pullResult, presenceResult, manualResult, guestResult, decisionResult, characterResult, noticeResult, manualNameResult] = await db.batch([
     // Sign-ups whose Discord ID had no person at ingest are linked now if one has appeared since.
     bind(`UPDATE raid_signups SET player_id = (SELECT p.id FROM players p WHERE p.guild_id = raid_signups.guild_id AND p.discord_user_id = raid_signups.discord_user_id)
            WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM day) AND source = 'raid_helper' AND player_id IS NULL AND discord_user_id IS NOT NULL
@@ -167,6 +167,7 @@ export async function loadDay(db, guildId, raidId) {
     bind(`, who_by_character AS (
             SELECT player_id FROM characters WHERE guild_id = ?1 AND team_id IN (SELECT team_id FROM raids WHERE id IN (SELECT id FROM day))
             UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_presence WHERE raid_id IN (SELECT id FROM day))
+            UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_manual_names WHERE raid_id IN (SELECT id FROM day))
             UNION SELECT player_id FROM characters WHERE guild_id = ?1 AND name_key IN (SELECT name_key FROM raid_plan WHERE raid_id IN (SELECT id FROM day))),
           who_by_row AS (
             SELECT player_id FROM raid_signups WHERE raid_id IN (SELECT id FROM day) AND player_id IS NOT NULL
@@ -180,6 +181,8 @@ export async function loadDay(db, guildId, raidId) {
     bind(`SELECT id, player_id, kind, at_time, starts_on, ends_on, weekday, created_at FROM away_notices
            WHERE guild_id = ?1 AND kind = 'away' AND starts_on <= (SELECT raid_on FROM raids WHERE id = ?2 AND guild_id = ?1)
              AND (ends_on IS NULL OR ends_on >= (SELECT raid_on FROM raids WHERE id = ?2 AND guild_id = ?1))`),
+    // The names of a pasted roster that matched nobody when it was pasted (wave 8).
+    bind('SELECT raid_id, name, name_key, realm, realm_key FROM raid_manual_names WHERE raid_id IN (SELECT id FROM day)'),
   ]);
   return {
     raids: raidResult.results,
@@ -193,6 +196,7 @@ export async function loadDay(db, guildId, raidId) {
     decisions: decisionResult.results,
     characters: characterResult.results,
     notices: noticeResult.results.map(noticeOfRow),
+    manualNames: manualNameResult.results,
   };
 }
 
@@ -243,6 +247,7 @@ export function consolidateDay(guild, loaded) {
   const planBy = group(loaded.plan);
   const pullsBy = group(loaded.pulls);
   const manualBy = group(loaded.manual);
+  const manualNamesBy = group(loaded.manualNames || []);
   const decisionsBy = group(loaded.decisions);
   const keysByPull = new Map();
   const logPlayersByRaid = new Map();
@@ -266,6 +271,9 @@ export function consolidateDay(guild, loaded) {
       ...plan.map((row) => ({ playerId: row.playerId, kind: row.kind, source: 'plan' })),
       ...attendanceAwaySignups(loaded.notices || [], { raidOn: raid.raid_on, teamId: raid.team_id, startsAt: raid.starts_at }, [...people.values()]),
     ];
+    const pasted = raid.log_mode === 'manual' ? (manualNamesBy.get(raid.id) || []) : [];
+    const logPlayers = { ...(logPlayersByRaid.get(raid.id) || {}) };
+    for (const row of pasted) logPlayers[keyOf(row.name_key, row.realm_key)] = { name: row.name, realm: row.realm, class: null };
     const evidence = {
       raid: { id: raid.id, teamId: raid.team_id, raidOn: raid.raid_on, hasLog: raid.reports > 0, manual: raid.log_mode === 'manual' },
       people: [...people.values()],
@@ -274,7 +282,8 @@ export function consolidateDay(guild, loaded) {
       manualPresent: (manualBy.get(raid.id) || []).map((row) => row.player_id),
       guests,
       decisions,
-      logPlayers: logPlayersByRaid.get(raid.id) || {},
+      logPlayers,
+      manualKeys: pasted.map((row) => keyOf(row.name_key, row.realm_key)),
     };
     const result = consolidateRaid(evidence, resolver.resolved(raid.team_id));
     return { raid, rows: result.rows, unmatched: result.unmatched, planSignups: plan, fingerprint: resolver.fingerprint(raid.team_id) };

@@ -213,11 +213,15 @@ export async function getReview(ctx) {
             AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)`),
     bind(`SELECT player_id, name, class, team_id, is_main FROM characters
            WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM attendance WHERE guild_id = ?1 AND team_id = ?2 AND needs_review = 1)`),
+    // The log's names, then the names of a pasted roster that matched nobody (wave 8; pulls 0 tells them apart).
     bind(`SELECT raid_id, name, name_key, realm, realm_key, class, COUNT(*) AS pulls FROM raid_presence
            WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)
-           GROUP BY raid_id, name_key, realm_key`),
+           GROUP BY raid_id, name_key, realm_key
+          UNION ALL SELECT raid_id, name, name_key, realm, realm_key, NULL, 0 FROM raid_manual_names
+           WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)`),
     bind(`SELECT name_key, realm_key FROM characters WHERE guild_id = ?1 AND name_key IN
-            (SELECT name_key FROM raid_presence WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0))`),
+            (SELECT name_key FROM raid_presence WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0)
+             UNION SELECT name_key FROM raid_manual_names WHERE guild_id = ?1 AND raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?2 AND open_flags > 0))`),
     ctx.db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, team_id, policy_fp, log_mode, open_flags, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id = ?2`),
@@ -394,7 +398,9 @@ export async function postUnmatched(ctx) {
     `SELECT name, realm, class FROM (
        SELECT name, realm, class, 0 AS source FROM raid_presence WHERE raid_id = ?1 AND guild_id = ?2 AND name_key = ?3 AND realm_key = ?4
        UNION ALL
-       SELECT winner_name, winner_realm, winner_class, 1 FROM loot_awards WHERE raid_id = ?1 AND guild_id = ?2 AND winner_name_key = ?3 AND winner_realm_key = ?4)
+       SELECT winner_name, winner_realm, winner_class, 1 FROM loot_awards WHERE raid_id = ?1 AND guild_id = ?2 AND winner_name_key = ?3 AND winner_realm_key = ?4
+       UNION ALL
+       SELECT name, realm, NULL, 2 FROM raid_manual_names WHERE raid_id = ?1 AND guild_id = ?2 AND name_key = ?3 AND realm_key = ?4)
      ORDER BY (class IS NULL), source LIMIT 1`,
   ).bind(raid.id, guild.id, keyName, keyRealm).first();
   if (!presence) throw new HttpError(404, 'not_found', 'That name is not in this raid\'s log or loot.');
@@ -415,7 +421,7 @@ export async function postUnmatched(ctx) {
   } else if (body.action === 'person') {
     if (!allows(guildContext.can, 'roster.edit', raid.team_id)) throw forbidden();
     const team = await requireTarget(db, guild.id, raid.team_id, 'team');
-    const name = cleanCharacterName(presence.name);
+    const name = cleanCharacterName(presence.name, guild.game_version);
     const realm = resolveRealm(guild, presence.realm);
     if (!name) throw bad('That name cannot be added as a character.', 'key');
     if (!characterClass) throw bad('Pick this character\'s class.', 'class');
@@ -458,7 +464,7 @@ export async function postUnmatched(ctx) {
     ).bind(body.personId, guild.id).first();
     if (!home) throw new HttpError(404, 'not_found', 'That person was not found.');
     if (!allows(guildContext.can, 'roster.edit', home.team_id)) throw forbidden();
-    const name = cleanCharacterName(presence.name);
+    const name = cleanCharacterName(presence.name, guild.game_version);
     const realm = resolveRealm(guild, presence.realm);
     if (!name) throw bad('That name cannot be added as a character.', 'key');
     if (!characterClass) throw bad('Pick this character\'s class.', 'class');
@@ -497,7 +503,7 @@ export async function postUnmatched(ctx) {
   } catch (error) {
     const kind = constraintOf(error);
     if (LIMIT_KINDS.includes(kind)) throw limitError(kind);
-    if (kind === 'character_name') throw nameTaken(cleanCharacterName(presence.name) || presence.name, null);
+    if (kind === 'character_name') throw nameTaken(cleanCharacterName(presence.name, guild.game_version) || presence.name, null);
     if (kind === 'foreign_key') throw new HttpError(404, 'not_found', 'That person no longer exists.');
     throw error;
   }

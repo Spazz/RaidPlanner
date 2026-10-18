@@ -60,6 +60,10 @@ import { createApiKey, listApiKeys, revokeApiKey } from './routes/api-keys.js';
 import { getApiData } from './routes/api-v1.js';
 import { getTeamProgress } from './routes/progress.js';
 import { dismissRankSuggestion, putPersonRank } from './routes/ranks.js';
+import { getDuties, putDuties } from './routes/duties.js';
+import { createJoinLink, deleteGuestSignup, listJoinLinks, revokeJoinLink, submitJoin, viewJoin } from './routes/join.js';
+import { getLaunch, putLaunchStatus, putLaunchTeam } from './routes/launch.js';
+import { commitPaste, previewPaste } from './routes/paste.js';
 
 const COMMIT_MAX_BODY = 64 * 1024;
 const PLAN_MAX_BODY = 32 * 1024;
@@ -258,6 +262,21 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/teams/:tid/progress', auth: true, handler: getTeamProgress },
   { method: 'PUT', path: '/api/guild/:gid/roster/:pid/rank', auth: true, handler: putPersonRank },
   { method: 'POST', path: '/api/guild/:gid/roster/:pid/rank/dismiss', auth: true, handler: dismissRankSuggestion },
+  // PM wave 8 (WoW Forever launch readiness): raid duties, the Launch funnel, guest sign-up links (the two /api/join routes need no session; they are classified
+  // in the isolation suite) and a pasted raid roster. The literal /manual/paste/preview is registered before /manual/paste.
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/duties', auth: true, handler: getDuties },
+  { method: 'PUT', path: '/api/guild/:gid/raids/:rid/duties', auth: true, handler: putDuties },
+  { method: 'GET', path: '/api/guild/:gid/launch', auth: true, handler: getLaunch },
+  { method: 'PUT', path: '/api/guild/:gid/launch/:pid', auth: true, handler: putLaunchStatus },
+  { method: 'PUT', path: '/api/guild/:gid/teams/:tid/launch', auth: true, handler: putLaunchTeam },
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/join-links', auth: true, handler: listJoinLinks },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/join-links', auth: true, handler: createJoinLink },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/join-links/:jid', auth: true, handler: revokeJoinLink },
+  { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/guests/:sid', auth: true, handler: deleteGuestSignup },
+  { method: 'POST', path: '/api/join/view', auth: false, handler: viewJoin, maxBody: APPLY_MAX_BODY },
+  { method: 'POST', path: '/api/join', auth: false, handler: submitJoin, maxBody: APPLY_MAX_BODY },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/manual/paste/preview', auth: true, handler: previewPaste, maxBody: COMMIT_MAX_BODY },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/manual/paste', auth: true, handler: commitPaste, maxBody: COMMIT_MAX_BODY },
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },

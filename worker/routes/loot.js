@@ -7,6 +7,7 @@ import { isPlainObject, makePolicyResolver, policyRowsStatement } from '../atten
 import { displayCharacter, groupBy } from '../attendance-view.js';
 import { isId, newId } from '../ids.js';
 import { classifyAward, normalizedOf, readAwards } from '../loot-import.js';
+import { loadSurnameIndex } from '../name-resolve.js';
 import { lootBalance } from '../loot-metrics.js';
 import { DEFAULT_LOOT_POLICY, LOOT_TAGS, validateLootOverride } from '../loot-policy.js';
 import {
@@ -93,7 +94,7 @@ const countStatuses = (rows) => {
 
 export async function previewLoot(ctx) {
   const { guildContext, raid } = await loadImportTarget(ctx);
-  const awards = readAwards(ctx.body.awards, guildContext.guild);
+  const awards = readAwards(ctx.body.awards, guildContext.guild, await loadSurnameIndex(ctx.db, guildContext.guild));
   const rows = await planImport(ctx, guildContext, raid, awards);
   return jsonResponse({
     rows: rows.map((row) => ({ ...normalizedOf(row.award), status: row.status, match: row.matched.match, tag: row.tag })),
@@ -138,7 +139,7 @@ export async function commitLoot(ctx) {
   const guild = guildContext.guild;
   if (body.includeOtherDay !== undefined && typeof body.includeOtherDay !== 'boolean') throw bad('includeOtherDay must be true or false.', 'includeOtherDay');
   const includeOtherDay = body.includeOtherDay === true;
-  const awards = readAwards(body.awards, guild);
+  const awards = readAwards(body.awards, guild, await loadSurnameIndex(db, guild));
   const rows = await planImport(ctx, guildContext, raid, awards);
 
   const toInsert = rows.filter((row) => row.status === 'new' || (row.status === 'otherDay' && includeOtherDay));

@@ -12,7 +12,8 @@
 // ('elsewhere') or was disenchanted.
 import { HttpError } from './http.js';
 import { EXPECTED_KINDS, effectiveKind } from './signups-data.js';
-import { cleanCharacterName, nameKey } from './roster-data.js';
+import { resolveName } from './name-resolve.js';
+import { allowsSurname, cleanCharacterName, nameKey } from './roster-data.js';
 
 export const LIST_SOURCES = Object.freeze(['tmb', 'softres']);
 export const MAX_LIST_ROWS = 5000;
@@ -43,15 +44,15 @@ export function isListSource(value) {
 // the source). TMB rows: { name, itemId, kind: 'prio' | 'wish', prio?: whole number | null, itemName? }. Softres rows: { name, itemId, copies?, itemName? }.
 // The same person on the same item twice is one row (TMB: the best order; softres: the copies added up, at most 20).
 // -> [{ source, kind, name, nameKey, itemId, itemName, prio, copies }]
-export function readListRows(source, list) {
+export function readListRows(source, list, names = {}) {
   if (!isListSource(source)) throw new HttpError(400, 'bad_request', 'Pick TMB or softres.', { field: 'source' });
   if (!Array.isArray(list)) throw new HttpError(400, 'bad_request', 'Send the rows as a list.', { field: 'rows' });
   if (list.length > MAX_LIST_ROWS) throw new HttpError(400, 'bad_request', `Send at most ${MAX_LIST_ROWS} rows at a time.`, { field: 'rows' });
   const merged = new Map();
   list.forEach((raw, index) => {
     if (!isPlainObject(raw)) throw invalid(index, 'row', 'each row must be an object.');
-    const name = cleanCharacterName(raw.name);
-    if (!name) throw invalid(index, 'name', 'the character needs a name (2 to 12 letters).');
+    const name = resolveName(names.surnames || null, cleanCharacterName(raw.name, names.gameVersion), names.realmKey || '');
+    if (!name) throw invalid(index, 'name', allowsSurname(names.gameVersion) ? 'the character needs a name (a first name and optional surname, 2 to 12 letters each).' : 'the character needs a name (2 to 12 letters).');
     if (!Number.isInteger(raw.itemId) || raw.itemId < 1 || raw.itemId > MAX_ITEM_ID) throw invalid(index, 'itemId', 'itemId must be a positive whole number.');
     let kind = 'sr';
     let prio = null;

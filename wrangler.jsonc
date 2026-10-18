@@ -5,7 +5,7 @@
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
-    "run_worker_first": ["/guild", "/guild/", "/api/guild", "/api/guild/*", "/api/roadmap/*", "/api/me", "/api/guest", "/api/public/*", "/api/apply/*", "/api/v1/*", "/auth/*", "/cal/*"]
+    "run_worker_first": ["/guild", "/guild/", "/api/guild", "/api/guild/*", "/api/roadmap/*", "/api/me", "/api/guest", "/api/public/*", "/api/apply/*", "/api/join", "/api/join/*", "/api/v1/*", "/auth/*", "/cal/*"]
   },
   // Two triggers, dispatched by worker/scheduler.js. Daily at 04:17 UTC: the 30-day rule for Battle.net data (worker/bnet-purge.js). Every 15 minutes: the
   // Raid-Helper refresh of upcoming raids and the Discord channel posts and reminders. The dev tool starts Wrangler with --test-scheduled, so locally:

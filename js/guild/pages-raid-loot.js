@@ -309,7 +309,7 @@
     const ui = c.x.ui;
     const live = pastedText();
     if (live != null) ui.text = live;
-    const parsed = G.gargul.parse(ui.text);
+    const parsed = G.gargul.parse(ui.text, { surname: c.gd.guild.gameVersion === 'forever' });
     if (!parsed.ok) { ui.error = parsed.error; G.app.render(); return; }
     if (!parsed.awards.length) {
       ui.error = parsed.rows ? 'None of the ' + plural(parsed.rows, 'row', 'rows') + ' can be imported.' + (parsed.skipped.length ? ' First problem: ' + parsed.skipped[0].reason + '.' : '') : 'The export holds no awards.';

@@ -96,7 +96,7 @@ export async function submitApplication(ctx) {
     team = teams.find((entry) => entry.id === body.teamId) || null;
     if (!team) throw bad('Pick a team.', 'teamId');
   }
-  const name = readName(body.name);
+  const name = readName(body.name, 'name', {}, guild.game_version);
   const classId = readClass(body.class);
   if (typeof body.spec !== 'string' || !isSpecOf(classId, body.spec)) throw bad('Pick a spec of that class.', 'spec');
   const realm = resolveRealm(guild, body.realm === '' ? undefined : body.realm);

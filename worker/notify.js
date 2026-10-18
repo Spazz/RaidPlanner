@@ -5,7 +5,7 @@
 import { apiBase } from './discord.js';
 import { HOUR_MS, closesAtOf } from './signup-window.js';
 
-export const NOTIFY_KINDS = ['roster', 'loot', 'remind_24h', 'remind_2h', 'no_reply', 'confirm'];
+export const NOTIFY_KINDS = ['roster', 'loot', 'remind_24h', 'remind_2h', 'no_reply', 'confirm', 'log_nudge'];
 export const NOREPLY_HOURS = [6, 12, 24, 48];
 export const DEFAULT_NOREPLY_HOURS = 24;
 export const CONFIRM_HOURS = 6;            // the unconfirmed-roster reminder and its Needs attention count open this long before the raid
@@ -220,7 +220,10 @@ export function confirmBody(raid, info) {
   });
 }
 
-// seats: [{ name, group (0 = bench), className, spec }] in roster order.
+// duties: [{ label, name }] (worker/duties.js dutiesView) -> the lines of the "Duties" field, in the same safe form as every name.
+const dutyLines = (duties) => (duties || []).map((entry) => `${safeText(entry.label, 40) || 'Duty'}: ${safeName(entry.name)}`);
+
+// seats: [{ name, group (0 = bench), className, spec }] in roster order; info.duties (optional): the raid's duties.
 export function rosterBody(raid, info) {
   const groups = new Map();
   for (const seat of info.seats) {
@@ -228,11 +231,13 @@ export function rosterBody(raid, info) {
     groups.get(seat.group).push(seat);
   }
   const order = [...groups.keys()].sort((a, b) => (a === 0) - (b === 0) || a - b);
-  const fields = order.slice(0, FIELD_LIMIT).map((group) => ({
+  const duties = dutyLines(info.duties);
+  const fields = order.slice(0, FIELD_LIMIT - 1).map((group) => ({
     name: group === 0 ? 'Bench' : `Group ${group}`,
     value: clip(groups.get(group).map((seat) => safeName(seat.name)).join(', '), FIELD_VALUE_MAX),
     inline: false,
   }));
+  if (duties.length) fields.unshift({ name: 'Duties', value: clip(duties.join('\n'), FIELD_VALUE_MAX), inline: false });
   return bodyOf({
     roleId: info.roleId,
     embed: {
@@ -240,6 +245,21 @@ export function rosterBody(raid, info) {
       url: info.link || undefined,
       description: `${info.seats.length} ${info.seats.length === 1 ? 'player' : 'players'}. The raid starts ${stamp(raid.starts_at)}. Open the raid page to confirm your seat.`,
       fields,
+    },
+  });
+}
+
+// The Logger has not uploaded the raid's log: raid.raid_on (guild-local YYYY-MM-DD); info: { teamName, link, roleId, day ('Tue Oct 21'), logger: { name, discordId, optedOut } }.
+// The Logger is named, and pinged when they have a Discord ID and have not opted out of reminders.
+export function logNudgeBody(raid, info) {
+  const { users, names } = splitPeople([info.logger]);
+  return bodyOf({
+    roleId: info.roleId,
+    users,
+    embed: {
+      title: `Upload the log for ${safeText(info.day, 20)}: ${raidLabel(raid, info.teamName)}`,
+      url: info.link || undefined,
+      description: clip(`No Warcraft Logs report is on this raid yet. ${names[0]}, you are the Logger: please upload the log, or an officer can mark the raid as No log.`, EMBED_DESCRIPTION_MAX),
     },
   });
 }

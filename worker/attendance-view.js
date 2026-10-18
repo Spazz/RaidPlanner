@@ -3,6 +3,7 @@
 import { HttpError } from './http.js';
 import { allows } from './permissions.js';
 import { findUnmatched, makePolicyResolver, presenceKey } from './attendance-store.js';
+import { DUTIES_SQL, dutiesView } from './duties.js';
 import { raidSizeFields } from './raid-zones.js';
 import { SLOT_TIME_SQL, closeHoursOf, closesAtOf, windowFieldsOf } from './signup-window.js';
 
@@ -49,7 +50,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
   const guild = guildContext.guild;
   const bind = (sql) => db.prepare(sql).bind(guild.id, raidId);
   const [raidResult, reportResult, pullResult, signupResult, planResult, attendanceResult, characterResult, presenceResult, guestResult,
-    policyResult, userResult, teamResult, flagResult, decisionResult, manualResult] = await db.batch([
+    policyResult, userResult, teamResult, flagResult, decisionResult, manualResult, dutyResult] = await db.batch([
     bind(`SELECT r.*, t.name AS team_name, t.size AS team_size, t.signup_close_hours AS team_close_hours, (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
                  ${SLOT_TIME_SQL} AS slot_time
             FROM raids r JOIN teams t ON t.id = r.team_id AND t.guild_id = r.guild_id WHERE r.guild_id = ?1 AND r.id = ?2`),
@@ -63,9 +64,12 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     bind(`SELECT c.player_id, c.name, c.name_key, c.realm_key, c.class, c.team_id, c.is_main FROM characters c
            WHERE c.guild_id = ?1 AND (c.player_id IN (SELECT player_id FROM attendance WHERE raid_id = ?2)
               OR c.name_key IN (SELECT name_key FROM raid_presence WHERE raid_id = ?2)
+              OR c.name_key IN (SELECT name_key FROM raid_manual_names WHERE raid_id = ?2)
               OR c.name_key IN (SELECT name_key FROM raid_plan WHERE raid_id = ?2))`),
+    // The log's names, then the names of a pasted roster that matched nobody (wave 8; pulls 0 tells them apart).
     bind(`SELECT name, name_key, realm, realm_key, class, COUNT(*) AS pulls FROM raid_presence
-           WHERE raid_id = ?2 AND guild_id = ?1 GROUP BY name_key, realm_key`),
+           WHERE raid_id = ?2 AND guild_id = ?1 GROUP BY name_key, realm_key
+          UNION ALL SELECT name, name_key, realm, realm_key, NULL, 0 FROM raid_manual_names WHERE raid_id = ?2 AND guild_id = ?1`),
     db.prepare('SELECT name_key, realm_key FROM attendance_guests WHERE guild_id = ?').bind(guild.id),
     db.prepare('SELECT id, team_id, policy, version FROM attendance_policies WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, username, global_name, display_name FROM users WHERE id IN (SELECT decided_by FROM attendance_decisions WHERE raid_id = ?2 AND decided_by IS NOT NULL)
@@ -74,6 +78,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     db.prepare('SELECT team_id, COUNT(*) AS n FROM raids WHERE guild_id = ? AND open_flags > 0 GROUP BY team_id').bind(guild.id),
     bind('SELECT player_id, reason, flags, decided_by, decided_at FROM attendance_decisions WHERE raid_id = ?2 AND guild_id = ?1'),
     bind('SELECT player_id FROM raid_manual WHERE raid_id = ?2 AND guild_id = ?1 ORDER BY player_id'),
+    bind(DUTIES_SQL),
   ]);
   const raid = raidResult.results[0];
   if (!raid) throw new HttpError(404, 'not_found', 'That raid does not exist.');
@@ -198,5 +203,6 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
     unmatched,
     signups,
     attendanceFlags: flagTeams,
+    duties: dutiesView(dutyResult.results),
   };
 }

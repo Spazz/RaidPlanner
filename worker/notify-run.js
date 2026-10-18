@@ -4,8 +4,9 @@
 // ctx: { db, env, fetch, now, randomBytes, log }. Nothing here throws.
 import { raidAwayEffects, readNotices, teamNoticesStatement } from './away-store.js';
 import { canonicalOrigin } from './discord.js';
+import { LOG_NUDGE_LOOKBACK_DAYS, RAID_DURATION_HOURS, LOG_GRACE_HOURS, loadDuties, shortDay } from './duties.js';
 import {
-  MAX_GUILDS_PER_RUN, MAX_MESSAGES_PER_RUN, NOREPLY_HOURS, confirmBody, dedupeKeyOf, dueKinds, lootBody, noReplyBody, raidLink, reminderBody, rosterBody,
+  MAX_GUILDS_PER_RUN, MAX_MESSAGES_PER_RUN, NOREPLY_HOURS, confirmBody, dedupeKeyOf, dueKinds, logNudgeBody, lootBody, noReplyBody, raidLink, reminderBody, rosterBody,
 } from './notify.js';
 import { loadTeamNotify, notifyOnce, usable } from './notify-store.js';
 import { effectiveRaidSize } from './raid-zones.js';
@@ -144,9 +145,67 @@ export async function runNotifications(ctx, { maxMessages = MAX_MESSAGES_PER_RUN
         if (outcome.result === 'disabled') { dead.add(row.team_id); break; }
       }
     }
+    // The Logger's nudge for raids that are over (they are not in the query above: it reads raids that have not started).
+    const nudges = await runLogNudges(ctx, { budget: maxMessages - messages, guilds, maxGuilds });
+    for (const key of ['sent', 'retry', 'failed', 'disabled']) totals[key] += nudges[key];
     totals.guilds = guilds.size;
   } catch (error) {
     try { ctx.log(`notifications failed: ${error && error.message}`); } catch { /* logging must not throw */ }
+  }
+  return totals;
+}
+
+// ---------------------------------------------------------------------------
+// The Logger's nudge (wave 8)
+
+// Raids that started long enough ago for the log to be due (RAID_DURATION_HOURS + LOG_GRACE_HOURS), not longer ago than the look-back, with a Logger named, no
+// report and no hand-entered attendance, whose team has a usable webhook. The Logger comes with the mention columns.
+async function nudgeCandidates(ctx, now, limit) {
+  const dueBefore = now - (RAID_DURATION_HOURS + LOG_GRACE_HOURS) * HOUR_MS;
+  const since = now - LOG_NUDGE_LOOKBACK_DAYS * 24 * HOUR_MS;
+  return (await ctx.db.prepare(
+    `SELECT r.id, r.guild_id, r.team_id, r.raid_on, r.starts_at, r.zone, COALESCE(r.title, r.event_title) AS title, t.name AS team_name, n.webhook_url, n.role_mention,
+            ${MENTION_COLUMNS},
+            (SELECT c.name FROM characters c WHERE c.player_id = p.id ORDER BY c.is_main DESC, c.name_key LIMIT 1) AS name
+       FROM raids r
+       JOIN raid_duties d ON d.raid_id = r.id AND d.guild_id = r.guild_id AND d.duty = 'logger'
+       JOIN players p ON p.id = d.player_id
+       JOIN team_notifications n ON n.team_id = r.team_id AND n.webhook_url IS NOT NULL AND n.webhook_state = 'ok'
+       JOIN teams t ON t.id = r.team_id AND t.archived = 0
+      WHERE r.time_known = 1 AND r.log_mode = 'log' AND r.starts_at <= ? AND r.starts_at > ?
+        AND NOT EXISTS (SELECT 1 FROM raid_reports x WHERE x.raid_id = r.id)
+      ORDER BY r.starts_at, r.id LIMIT ?`,
+  ).bind(dueBefore, since, limit).all()).results;
+}
+
+// One post per raid, once (notification_log). -> { sent, retry, failed, disabled, guilds } like runNotifications; budget: how many messages may still go out.
+export async function runLogNudges(ctx, { budget = MAX_MESSAGES_PER_RUN, guilds = new Set(), maxGuilds = MAX_GUILDS_PER_RUN } = {}) {
+  const totals = { sent: 0, retry: 0, failed: 0, disabled: 0 };
+  try {
+    if (budget <= 0) return totals;
+    const rows = await nudgeCandidates(ctx, ctx.now(), CANDIDATES);
+    const origin = canonicalOrigin(ctx.env);
+    const dead = new Set();
+    let messages = 0;
+    for (const row of rows) {
+      if (messages >= budget) break;
+      if (!guilds.has(row.guild_id)) {
+        if (guilds.size >= maxGuilds) continue;
+        guilds.add(row.guild_id);
+      }
+      if (dead.has(row.team_id)) continue;
+      const outcome = await notifyOnce(ctx, {
+        guildId: row.guild_id, teamId: row.team_id, raidId: row.id, kind: 'log_nudge', dedupeKey: dedupeKeyOf('log_nudge', row.id), webhookUrl: row.webhook_url,
+        build: async () => ({
+          body: logNudgeBody(row, { teamName: row.team_name, link: raidLink(origin, row.guild_id, row.id), roleId: row.role_mention, day: shortDay(row.raid_on), logger: personOf(row) }),
+          people: 1,
+        }),
+      });
+      if (Object.prototype.hasOwnProperty.call(totals, outcome.result)) { totals[outcome.result]++; messages++; }
+      if (outcome.result === 'disabled') dead.add(row.team_id);
+    }
+  } catch (error) {
+    try { ctx.log(`log nudges failed: ${error && error.message}`); } catch { /* logging must not throw */ }
   }
   return totals;
 }
@@ -171,7 +230,8 @@ export async function announceRoster(ctx, raid) {
       build: async () => {
         const seats = await rosterSeats(ctx.db, raid.id);
         if (!seats.length) return null;
-        return { body: rosterBody(raid, { teamName: name, link: raidLink(origin, raid.guild_id, raid.id), roleId: settings.role_mention, seats }), people: seats.length };
+        const duties = await loadDuties(ctx.db, raid.guild_id, raid.id);
+        return { body: rosterBody(raid, { teamName: name, link: raidLink(origin, raid.guild_id, raid.id), roleId: settings.role_mention, seats, duties }), people: seats.length };
       },
     });
   } catch (error) {
