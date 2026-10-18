@@ -524,7 +524,7 @@ function withState(fn) {
     const empty = okState();
     empty.data.awards = [];
     const e = raidPage(empty);
-    assert(e.includes('No loot is recorded for this raid yet. Import a Gargul export to add it.') && e.includes('0 items'));
+    assert(e.includes('No loot is recorded for this raid yet. Import a Gargul export to add it, or add an award by hand.') && e.includes('0 items'));
     const v = raidPage(Object.assign(okState({}, false), { data: { awards: [], canEdit: false } }), MEMBER_CAN);
     assert(v.includes('No loot is recorded for this raid yet.') && !v.includes('Import a Gargul'));
     assert(!raidPage(null).includes('id="loot-h"'), 'not loaded');
@@ -875,9 +875,9 @@ function withState(fn) {
     const gdata = gd(OFFICER_CAN);
     S.guilds.g1 = gdata; S.currentGid = 'g1';
     const SIGNUPS = { raid: { id: 'r1', teamId: 't1', startsAt: 1, upcoming: false, locked: false, closed: 'started' }, can: { edit: true, self: false, seeList: true, seeNicknames: true }, me: null, counts: null, entries: [], roster: [] };
-    const s = stub((m, url) => Promise.resolve(/loot$/.test(url) ? { awards: AWARDS, canEdit: true } : /signups$/.test(url) ? SIGNUPS : DETAIL));
+    const s = stub((m, url) => /loot-board$/.test(url) ? Promise.reject(Object.assign(new Error('not found'), { status: 404 })) : Promise.resolve(/loot$/.test(url) ? { awards: AWARDS, canEdit: true } : /signups$/.test(url) ? SIGNUPS : DETAIL));
     await G.pages.raid.load({ name: 'raid', gid: 'g1', rid: 'r1' }, gdata);
-    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/raids/r1', '/api/guild/g1/raids/r1/signups', '/api/guild/g1/raids/r1/loot']);
+    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/raids/r1', '/api/guild/g1/raids/r1/signups', '/api/guild/g1/raids/r1/loot', '/api/guild/g1/raids/r1/loot-board']);
     const out = G.pages.raid.main({ name: 'raid', gid: 'g1', rid: 'r1' }, gdata);
     assert(out.includes('id="loot-h"') && out.includes('Nathrezim Mindblade'));
     s.restore();

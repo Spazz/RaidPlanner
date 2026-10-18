@@ -340,6 +340,9 @@ check('the loot routes are exactly the contract list, literal paths before :aid'
     'GET /api/guild/:gid/raids/:rid/loot',
     'POST /api/guild/:gid/raids/:rid/loot/preview',
     'POST /api/guild/:gid/raids/:rid/loot',
+    'GET /api/guild/:gid/raids/:rid/loot-board',
+    'PUT /api/guild/:gid/raids/:rid/loot-lists',
+    'POST /api/guild/:gid/raids/:rid/loot/manual',
     'GET /api/guild/:gid/loot/balance',
     'GET /api/guild/:gid/loot/raids',
     'GET /api/guild/:gid/loot/items',
@@ -1455,7 +1458,9 @@ check('migration 0011: an existing 0008 database is rebuilt in place -- rows, in
     const rebuild = '0011_loot_disenchant.sql';
     assert(fs.existsSync(path.join(migrations, rebuild)));
     // Every migration but the one under test: the Worker needs the later account columns (0012) to sign anyone in, and 0011 touches only loot_awards.
-    for (const name of fs.readdirSync(migrations)) if (name.endsWith('.sql') && name !== rebuild) fs.copyFileSync(path.join(migrations, name), path.join(dir, name));
+    // 0019 (PM wave 5) adds a column to loot_awards, so it is held back too and applied after the rebuild below, in the order a real database sees them.
+    const later = '0019_wave5.sql';
+    for (const name of fs.readdirSync(migrations)) if (name.endsWith('.sql') && name !== rebuild && name !== later) fs.copyFileSync(path.join(migrations, name), path.join(dir, name));
     const s = await lootWorld({ migrationsDir: dir });
     const columns = async () => s.w.rows('SELECT name, type, "notnull" AS nn, dflt_value, pk FROM pragma_table_info(\'loot_awards\') ORDER BY cid');
     const indexes = async () => s.w.rows('SELECT name, sql FROM sqlite_master WHERE type = \'index\' AND tbl_name = \'loot_awards\' AND sql IS NOT NULL ORDER BY name');
@@ -1484,6 +1489,10 @@ check('migration 0011: an existing 0008 database is rebuilt in place -- rows, in
     assert.equal(pragma('PRAGMA foreign_keys')[0].foreign_keys, 1);
     assert.equal(pragma('PRAGMA defer_foreign_keys')[0].defer_foreign_keys, 0, 'the deferral is switched off again');
     assert.deepEqual((await s.call('bob', 'GET', s.loot(s.r1))).json, apiBefore, 'the pages read the same answer');
+    // 0019 then adds the manual flag to the rebuilt table: every row is "not manual" and the answer is still the same.
+    exec(s.w, fs.readFileSync(path.join(migrations, later), 'utf8'));
+    assert.deepEqual(await s.w.rows('SELECT DISTINCT manual FROM loot_awards'), [{ manual: 0 }]);
+    assert.deepEqual((await s.call('bob', 'GET', s.loot(s.r1))).json, apiBefore, 'a stored award has no manual key');
 
     // The old rules still hold on the new table, and the new one lets a disenchant in.
     exec(s.w, `INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, awarded_at, tag, created_at, updated_at)
@@ -1568,9 +1577,11 @@ check('audit: every loot action is written and holds counts and ids only', async
   const { AUDIT_ACTIONS } = await load('worker/audit.js');
   await s.call('bob', 'PUT', '/loot/policy', { teamId: null, override: { balance: { mode: 'count' } }, version: 0 });
   await s.call('bob', 'DELETE', `/loot/${s.awardId[9]}`, {});
+  assert.equal((await s.call('bob', 'PUT', `/raids/${s.r1}/loot-lists`, { source: 'tmb', rows: [{ name: 'Aldric', itemId: 28770, kind: 'prio', prio: 1 }] })).status, 200);
+  assert.equal((await s.call('bob', 'POST', `/raids/${s.r1}/loot/manual`, { itemId: 28770, winnerName: 'Aldric' })).status, 201);
   const written = (await s.w.rows("SELECT DISTINCT action FROM audit_log WHERE action LIKE 'loot.%'")).map((r) => r.action).sort();
   const expected = AUDIT_ACTIONS.filter((a) => a.startsWith('loot.')).sort();
-  assert.deepEqual(expected, ['loot.delete', 'loot.import', 'loot.policy', 'loot.update']);
+  assert.deepEqual(expected, ['loot.add', 'loot.delete', 'loot.import', 'loot.list', 'loot.policy', 'loot.update']);
   assert.deepEqual(written, expected);
   const rows = await s.w.rows("SELECT before, after FROM audit_log WHERE action LIKE 'loot.%'");
   const dump = rows.map((r) => `${r.before} ${r.after}`).join('\n');

@@ -240,7 +240,7 @@ check('audit-view: every audited action has a group, the groups are the seven of
   assert.equal(settings.not, true);
   assert(!settings.actions.includes('roles.set') && settings.actions.includes('person.update'));
   assert.equal(view.groupFilter('loot').not, false);
-  assert.deepEqual(view.groupFilter('loot').actions.sort(), ['loot.delete', 'loot.import', 'loot.policy', 'loot.update']);
+  assert.deepEqual(view.groupFilter('loot').actions.sort(), ['loot.add', 'loot.delete', 'loot.import', 'loot.list', 'loot.policy', 'loot.update']);
 });
 
 check('audit-view: a sentence for every action, from the names looked up (exact text)', async () => {
@@ -338,6 +338,9 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('loot.update', 'loot', 'lo_1', { tag: 'MS' }, { tag: 'OS' }), 'Tagged Girdle of Mighty Resolve as OS'],
     [row('loot.update', 'loot', 'lo_1', { tag: 'MS' }, { tag: 'MS', noteChanged: true }), 'Edited Girdle of Mighty Resolve'],
     [row('loot.delete', 'loot', 'lo_gone', { itemId: 32235, tag: 'MS' }), 'Deleted a loot award (item 32235)'],
+    [row('loot.list', 'raid', 'r_1', null, { source: 'tmb', rows: 12, items: 4, people: 3 }), 'Pasted the TMB loot prios for the raid on Tue Oct 21 (Alpha) (12 rows for 4 items)'],
+    [row('loot.list', 'raid', 'r_1', null, { source: 'softres', rows: 0, items: 0, people: 0 }), 'Cleared the soft-reserves of the raid on Tue Oct 21 (Alpha)'],
+    [row('loot.add', 'loot', 'lo_1', null, { raidId: 'r_1', itemId: 32235, tag: 'MS', manual: true }), 'Added Girdle of Mighty Resolve by hand to the raid on Tue Oct 21 (Alpha)'],
     [row('loot.policy', 'policy', 'lp_1', {}, { scope: 'guild', changed: ['balance'] }), 'Changed the loot policy of the whole guild: balance'],
     [row('signup.set', 'raid', 'r_1', null, { personId: 'p_kael', kind: 'late' }), 'Signed Kaelith up as Late on Tue Oct 21 (Alpha)'],
     [row('signup.remove', 'raid', 'r_1', { personId: 'p_kael' }), 'Removed the sign-up of Kaelith from Tue Oct 21 (Alpha)'],

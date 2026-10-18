@@ -145,6 +145,7 @@ export function awardView(row, matched) {
     rollType: row.roll_type,
     note: row.note,
     awardedBy: row.awarded_by,
+    ...(row.manual === 1 ? { manual: true } : {}), // made by hand (PM wave 5); the key is only there then
   };
 }
 

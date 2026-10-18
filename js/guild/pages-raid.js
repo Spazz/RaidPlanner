@@ -224,6 +224,12 @@
     return G.pages.raidLoot ? G.pages.raidLoot.cardHtml({ guildData: gd, data: data, state: loot }) : '';
   }
 
+  // The Loot board card (PM wave 5) of an upcoming or a past raid; nothing while its data is not loaded, when the loot visibility keeps the viewer out, or
+  // when nothing was pasted and the viewer cannot paste.
+  function boardCardHtml(gd, data, board) {
+    return G.pages.raidBoard ? G.pages.raidBoard.cardHtml({ guildData: gd, data: data, state: board }) : '';
+  }
+
   // ── source strip ──
   // One slim chip per source (Raid-Helper event, Warcraft Logs reports, Raidsmith plan), all the same height: a status dot, the source, one line of
   // what it holds and, for those who may edit, a "..." menu with that source's actions. A source with nothing linked is a dashed chip whose one
@@ -310,6 +316,12 @@
       items.push({ label: 'Recalculate attendance', key: 'mi-recompute', data: { action: 'raid-op', op: 'recompute' } });
       if (!isManual(data) && !hasReports(data)) items.push({ label: 'Mark as No log', key: 'mi-manual-open', data: { action: 'raid-op', op: 'manual-open' } });
       if (loot && loot.canImport(ctx.loot)) items.push({ label: 'Import loot from Gargul', key: 'mi-loot-import', data: { action: 'loot-import-open' } });
+      if (loot && loot.canAdd(ctx.loot)) items.push({ label: 'Add loot award', key: 'mi-loot-add', data: { action: 'loot-add-open' } });
+    }
+    const board = G.pages.raidBoard;
+    if (board) {
+      if (board.canPaste(ctx.board, 'tmb')) items.push({ label: board.LISTS.tmb.label, key: 'mi-board-tmb', data: { action: 'board-open', list: 'tmb' } });
+      if (board.canPaste(ctx.board, 'softres')) items.push({ label: board.LISTS.softres.label, key: 'mi-board-softres', data: { action: 'board-open', list: 'softres' } });
     }
     items.push({ label: 'Open in Planner', key: 'mi-plan-in-planner', data: { action: 'raid-op', op: 'plan-in-planner' } });
     if (roster && roster.canPublish(data, ctx.roster)) items.push({ label: 'Publish roster', key: 'mi-ro-publish', data: { action: 'roster-publish', op: 'publish' } });
@@ -410,7 +422,7 @@
     if (isUpcoming(data)) {
       return '<div class="gs-page gs-raid-page">' + headHtml(gd, data, opts) + G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + sourceStripHtml(data, edit, true) +
         seatHtml(gd, data, opts.roster) + '<div class="gs-notice" role="status"><span>Attendance starts after the raid.</span></div>' +
-        signupsPanelHtml(gd, data, opts.signups) + rosterCardHtml(gd, data, opts.roster) + settingsCardHtml(gd, data) + '</div>';
+        signupsPanelHtml(gd, data, opts.signups) + rosterCardHtml(gd, data, opts.roster) + boardCardHtml(gd, data, opts.board) + settingsCardHtml(gd, data) + '</div>';
     }
     let people_html;
     if (people === null) {
@@ -428,7 +440,7 @@
       A().staleBannerHtml(data.raid.stale ? 1 : 0, edit, opts.progress).replace('data-action="att-recalc"', 'data-action="raid-op" data-op="recompute"') +
       manualLineHtml(data, edit) + sourceStripHtml(data, edit, false) +
       '<section class="gs-card-sec" aria-labelledby="ppl-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="ppl-h">People</h2></div><div class="gs-card-sec-body">' + people_html + '</div></section>' +
-      signupsPanelHtml(gd, data, opts.signups) + rosterCardHtml(gd, data, opts.roster) + lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + settingsCardHtml(gd, data) + '</div>';
+      signupsPanelHtml(gd, data, opts.signups) + rosterCardHtml(gd, data, opts.roster) + boardCardHtml(gd, data, opts.board) + lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + settingsCardHtml(gd, data) + '</div>';
   }
 
   // ── dialogs ──
@@ -542,7 +554,7 @@
     a().note = '';
     return fetchDetail(gd.guild.id, r.rid).then(function (data) {
       const signups = G.pages.raidSignups ? G.pages.raidSignups.loadFor(gd, data) : Promise.resolve(null);
-      return signups.then(function () { return G.pages.raidLoot ? G.pages.raidLoot.loadFor(gd, data) : null; });
+      return signups.then(function () { return G.pages.raidLoot ? G.pages.raidLoot.loadFor(gd, data) : null; }).then(function () { return G.pages.raidBoard ? G.pages.raidBoard.loadFor(gd, data) : null; });
     }).then(function () { return null; });
   }
 
@@ -556,7 +568,7 @@
   function main(r, gd) {
     const x = a().raid;
     if (!x || x.gid !== gd.guild.id || x.rid !== r.rid) return G.pages.signin.loadingHtml();
-    return raidHtml({ guildData: gd, data: x.data, filter: x.filter, alert: st().pageAlert, note: a().note, progress: a().recalc, loot: G.pages.raidLoot ? G.pages.raidLoot.stateFor(gd.guild.id, r.rid) : null, signups: G.pages.raidSignups ? G.pages.raidSignups.stateFor(gd.guild.id, r.rid) : null, roster: G.pages.raidRoster ? G.pages.raidRoster.stateFor(gd.guild.id, r.rid) : null });
+    return raidHtml({ guildData: gd, data: x.data, filter: x.filter, alert: st().pageAlert, note: a().note, progress: a().recalc, loot: G.pages.raidLoot ? G.pages.raidLoot.stateFor(gd.guild.id, r.rid) : null, board: G.pages.raidBoard ? G.pages.raidBoard.stateFor(gd.guild.id, r.rid) : null, signups: G.pages.raidSignups ? G.pages.raidSignups.stateFor(gd.guild.id, r.rid) : null, roster: G.pages.raidRoster ? G.pages.raidRoster.stateFor(gd.guild.id, r.rid) : null });
   }
 
   function openManualDialog(c) {

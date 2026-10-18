@@ -136,7 +136,7 @@
     const a1 = award || {};
     const when = o.when === 'date'
       ? (o.raidLink && a1.raidId ? '<a href="' + esc(G.router.format({ name: 'raid', gid: gid, rid: a1.raidId })) + '">' + esc(G.ui.weekdayDay(a1.raidOn) || a1.raidOn || '') + '</a>' : esc(G.ui.weekdayDay(a1.raidOn) || a1.raidOn || ''))
-      : esc(o.when === 'datetime' ? dateTimeText(a1.awardedAt, gd.guild.timeZone) : timeText(a1.awardedAt, gd.guild.timeZone));
+      : (a1.manual ? '' : esc(o.when === 'datetime' ? dateTimeText(a1.awardedAt, gd.guild.timeZone) : timeText(a1.awardedAt, gd.guild.timeZone))); // an award by hand has no time of its own
     const rollNote = a1.rollType && a1.rollType !== 'MS' && a1.rollType !== 'OS' ? '<span class="gs-char-sub">Roll: ' + esc(a1.rollType) + '</span>' : '';
     const noteLine = a1.note ? '<span class="gs-char-sub">Note: ' + esc(a1.note) + '</span>' : '';
     const actions = o.edit
@@ -147,7 +147,7 @@
       '<span class="gs-loot-who"><span class="gs-sr">Winner: </span>' + (o.character ? characterHtml(a1) : winnerHtml(gid, a1.winner, a1.match)) + '</span>' +
       // Nobody won a disenchanted item, so it stays DE: officers get the chip, not the tag select.
       '<span class="gs-loot-tag"><span class="gs-sr">Tag: </span>' + (o.edit && !isDisenchanted(a1) ? tagSelectHtml(a1) : tagChipHtml(a1.tag, a1.tagSetBy)) + '</span>' +
-      '<span class="gs-loot-flags">' + (o.status || '') + flagChipsHtml(a1.flags) + '</span>' + actions + '</li>';
+      '<span class="gs-loot-flags">' + (o.status || '') + (a1.manual ? '<span class="gs-chip gs-chip-src" title="Added by an officer, not imported from Gargul">Manual</span>' : '') + flagChipsHtml(a1.flags) + '</span>' + actions + '</li>';
   }
 
   function totalsHtml(totals) {

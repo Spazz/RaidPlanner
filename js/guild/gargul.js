@@ -70,6 +70,20 @@
     return { itemId: positiveInt(m[2]), itemName: name || null, quality: has(QUALITY_BY_COLOR, color) ? QUALITY_BY_COLOR[color] : null };
   }
 
+  // What an officer types into an "Item" box: an item id, a Wowhead link ("https://www.wowhead.com/tbc/item=28770/name", also ".../item/28770/..." and
+  // "?item=28770") or a chat item link -> { itemId, itemName } (the name only when a chat link carries it), or null.
+  function parseItemRef(text) {
+    if (typeof text !== 'string') return null;
+    const t = text.trim();
+    if (!t) return null;
+    if (/^\d{1,10}$/.test(t)) { const id = positiveInt(t); return id ? { itemId: id, itemName: null } : null; }
+    const link = parseItemLink(t);
+    if (link && link.itemId) return { itemId: link.itemId, itemName: link.itemName };
+    const m = /(?:[?&#\/]item=|\/item\/)(\d{1,10})(?!\d)/i.exec(t);
+    const id = m ? positiveInt(m[1]) : null;
+    return id ? { itemId: id, itemName: null } : null;
+  }
+
   // "Name-Realm" -> { name, realm } with the name in its display form (first letter upper case, the rest lower case);
   // realm is null without one. null when the name is not a character name (letters only, 2 to 12 of them).
   function parseWinner(raw) {
@@ -224,6 +238,7 @@
     FLAG_KEYS: FLAG_KEYS,
     parse: parse,
     parseItemLink: parseItemLink,
+    parseItemRef: parseItemRef,
     parseWinner: parseWinner,
     chunk: chunk,
   };

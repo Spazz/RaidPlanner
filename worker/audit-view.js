@@ -30,7 +30,7 @@ export const ACTION_GROUP = Object.freeze({
   'away.set': 'signups', 'away.remove': 'signups',
   'attendance.decide': 'attendance', 'attendance.undo': 'attendance', 'attendance.link': 'attendance', 'attendance.guest': 'attendance',
   'policy.update': 'attendance', 'wcl.settings': 'attendance',
-  'loot.import': 'loot', 'loot.update': 'loot', 'loot.delete': 'loot', 'loot.policy': 'loot',
+  'loot.import': 'loot', 'loot.update': 'loot', 'loot.delete': 'loot', 'loot.policy': 'loot', 'loot.list': 'loot', 'loot.add': 'loot',
   'signup.set': 'signups', 'signup.remove': 'signups', 'signup.lock': 'signups',
   'bnet.link': 'bnet', 'bnet.unlink': 'bnet', 'bnet.settings': 'bnet',
   'claim.create': 'bnet', 'claim.withdraw': 'bnet', 'claim.approve': 'bnet', 'claim.reject': 'bnet',
@@ -293,6 +293,13 @@ export function describeRow(row, names = {}) {
       return `Edited ${item}`;
     }
     case 'loot.delete': return `Deleted ${get('award', ent, before.itemId ? `a loot award (item ${before.itemId})` : 'a loot award')}`;
+    case 'loot.list': {
+      const what = after.source === 'softres' ? 'soft-reserves' : 'TMB loot prios';
+      return Number(after.rows) > 0
+        ? `Pasted the ${what} for ${onRaid(ent)} (${plural(Number(after.rows), 'row', 'rows')} for ${plural(Number(after.items) || 0, 'item', 'items')})`
+        : `Cleared the ${what} of ${onRaid(ent)}`;
+    }
+    case 'loot.add': return `Added ${get('award', ent, after.itemId ? `a loot award (item ${after.itemId})` : 'a loot award')} by hand to ${onRaid(after.raidId)}`;
     case 'loot.policy': {
       const keys = Array.isArray(after.changed) ? after.changed : [];
       return `Changed the loot policy of ${scopeText(after.scope)}${keys.length ? `: ${list(keys)}` : ''}`;

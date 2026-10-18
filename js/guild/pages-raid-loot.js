@@ -39,6 +39,11 @@
     return !!(x && x.status === 'ok' && x.data && x.data.canEdit && x.ui && !x.ui.open);
   }
 
+  // Whether the card (and the raid page's Actions menu) offers "Add award" now: loaded and allowed to edit.
+  function canAdd(x) {
+    return !!(x && x.status === 'ok' && x.data && x.data.canEdit);
+  }
+
   function cur() {
     const gd = currentGd();
     const r = a().raid;
@@ -135,10 +140,11 @@
     const unmatched = awards.filter(function (w) { return w.match && w.match.kind === 'unmatched'; }).length;
     const review = L().allows(gd, 'attendance.review', teamId);
     const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot</h2><span class="gs-head-tools"><span class="gs-fine">' + esc(plural(awards.length, 'item', 'items')) + '</span>' +
-      (canImport(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-import-open" data-key="loot-import-open">Import from Gargul</button>' : '') + '</span></div>';
+      (canImport(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-import-open" data-key="loot-import-open">Import from Gargul</button>' : '') +
+      (canAdd(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-add-open" data-key="loot-add-open">Add award</button>' : '') + '</span></div>';
     const list = awards.length
       ? '<ul class="gs-loot-list" aria-label="Loot awarded on this raid">' + awards.map(function (w) { return L().awardRowHtml(gd, w, { edit: edit, when: 'time' }); }).join('') + '</ul>'
-      : '<p class="gs-empty">' + (edit ? 'No loot is recorded for this raid yet. Import a Gargul export to add it.' : 'No loot is recorded for this raid yet.') + '</p>';
+      : '<p class="gs-empty">' + (edit ? 'No loot is recorded for this raid yet. Import a Gargul export to add it, or add an award by hand.' : 'No loot is recorded for this raid yet.') + '</p>';
     const note = unmatched > 0
       ? '<div class="gs-notice" role="status"><span>' + esc(plural(unmatched, 'award goes', 'awards go')) + ' to a winner who is not on the roster. ' + (review ? 'Link them in the Review queue so the loot counts for the right person.' : 'An officer can link them.') + '</span>' +
         (review ? '<a class="gs-btn gs-btn-sm" href="' + esc(G.router.format({ name: 'review', gid: gid })) + '">Review queue</a>' : '') + '</div>' : '';
@@ -363,6 +369,76 @@
   };
 
   // ── per-award edits ──
+  // ── add an award by hand (PM wave 5) ──
+  const ADD_TAGS = ['MS', 'OS', 'DE', 'BANK'];
+
+  // The names of the raid team's roster (any character of any person there), for the winner box's suggestions. [] when the roster cannot be read.
+  function rosterNames(gid, teamId) {
+    return G.api.teamRoster(gid, teamId).then(function (res) {
+      const seen = {};
+      (res && Array.isArray(res.people) ? res.people : []).forEach(function (p) {
+        (Array.isArray(p.names) ? p.names : []).concat([p.shown && p.shown.name, p.main && p.main.name]).forEach(function (n) { if (typeof n === 'string' && n) seen[n] = true; });
+      });
+      return Object.keys(seen).sort(function (x, y) { return x.localeCompare(y, 'en'); });
+    }, function () { return []; });
+  }
+
+  function addDialogHtml(names) {
+    const tags = ADD_TAGS.map(function (t) { return '<option value="' + t + '"' + (t === 'MS' ? ' selected' : '') + '>' + esc(L().TAG_NAMES[t]) + '</option>'; }).join('');
+    return '<form class="gs-dialog-form" data-submit="loot-add-form" novalidate>' +
+      '<h2 class="gs-dialog-title" id="dlg-title">Add a loot award</h2>' +
+      '<p class="gs-fine" id="dlg-help">For an item that was handed out without Gargul. It counts in the balance like any other award.</p>' +
+      '<div class="gs-field"><label class="gs-label" for="dlg-item">Item (id or Wowhead link)</label><input class="gs-input" type="text" id="dlg-item" name="itemRef" autocomplete="off" spellcheck="false" data-field="itemId" aria-describedby="dlg-help">' +
+      '<p class="gs-field-error" id="dlg-err-itemId" role="alert" hidden></p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="dlg-itemname">Item name (optional)</label><input class="gs-input" type="text" id="dlg-itemname" name="itemName" maxlength="100" autocomplete="off" data-field="itemName">' +
+      '<p class="gs-field-error" id="dlg-err-itemName" role="alert" hidden></p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="dlg-winner">Winner</label><input class="gs-input" type="text" id="dlg-winner" name="winner" list="dlg-winners" autocomplete="off" spellcheck="false" data-field="winnerName" aria-describedby="dlg-winner-help">' +
+      '<datalist id="dlg-winners">' + names.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist>' +
+      '<p class="gs-fine" id="dlg-winner-help">Pick a roster character or type any name; a name that is not on the roster goes to the Review queue. Leave it empty for an item nobody won (tag it Disenchanted).</p>' +
+      '<p class="gs-field-error" id="dlg-err-winnerName" role="alert" hidden></p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="dlg-tag">Tag</label><select class="gs-input" id="dlg-tag" name="tag" data-field="tag">' + tags + '</select>' +
+      '<p class="gs-field-error" id="dlg-err-tag" role="alert" hidden></p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="dlg-note">Note (optional, up to ' + NOTE_MAX + ' characters)</label><input class="gs-input" type="text" id="dlg-note" name="note" maxlength="' + NOTE_MAX + '" autocomplete="off" data-field="note">' +
+      '<p class="gs-field-error" id="dlg-err-note" role="alert" hidden></p></div>' +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Add award</button></div></form>';
+  }
+
+  G.handlers.click['loot-add-open'] = function () {
+    const c = cur();
+    if (!c || !canAdd(c.x) || !c.raid) return;
+    rosterNames(c.gid, idOf(c.raid.team)).then(function (names) {
+      if (!G.ui.openDialog(addDialogHtml(names), { labelledBy: 'dlg-title', describedBy: 'dlg-help' })) return;
+      const input = document.getElementById('dlg-item');
+      if (input) input.focus();
+    });
+  };
+
+  G.handlers.submit['loot-add-form'] = function (form) {
+    const c = cur();
+    if (!c) return;
+    const field = function (name) { return String(form.elements[name].value || '').trim(); };
+    ['itemId', 'itemName', 'winnerName', 'tag', 'note'].forEach(function (f) { G.ui.setText('dlg-err-' + f, ''); });
+    const ref = G.gargul.parseItemRef(field('itemRef'));
+    if (!ref) { G.ui.setText('dlg-err-itemId', 'Enter the item id (a number), or paste its Wowhead link.'); form.elements.itemRef.focus(); return; }
+    const tag = field('tag');
+    const winner = field('winner');
+    if (!winner && tag !== 'DE') { G.ui.setText('dlg-err-winnerName', 'Pick the winner, or tag the item Disenchanted when nobody won it.'); form.elements.winner.focus(); return; }
+    const note = field('note');
+    if (note.length > NOTE_MAX) { G.ui.setText('dlg-err-note', 'Keep the note to ' + NOTE_MAX + ' characters.'); form.elements.note.focus(); return; }
+    const body = { itemId: ref.itemId, tag: tag };
+    const name = field('itemName') || ref.itemName;
+    if (name) body.itemName = name;
+    if (winner) body.winnerName = winner;
+    if (note) body.note = note;
+    G.ui.runDialog(form, G.api.loot.manual(c.gid, c.rid, body), function (res) {
+      if (res && res.award && c.x.data && Array.isArray(c.x.data.awards)) c.x.data.awards = c.x.data.awards.concat([res.award]);
+      st().pageAlert = '';
+      G.app.render();
+      if (G.pages.raidBoard && G.pages.raidBoard.refresh) G.pages.raidBoard.refresh(); // the board compares what was awarded with who was in line
+    });
+  };
+
   G.handlers.change['loot-tag'] = function (sel) {
     const c = cur();
     if (!c) return;
@@ -411,7 +487,7 @@
     if (!award) return;
     G.ui.openDialog('<form class="gs-dialog-form" data-submit="loot-delete-form" data-aid="' + esc(award.id) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Delete this award?</h2>' +
-      '<p class="gs-confirm-text" id="dlg-text">' + esc((award.itemName || 'This item') + (L().isDisenchanted(award) ? ' (disenchanted)' : ' awarded to ' + L().winnerText(award.winner))) + ' is removed from the raid and from the balance. Importing the same Gargul export again adds it back.</p>' +
+      '<p class="gs-confirm-text" id="dlg-text">' + esc((award.itemName || 'This item') + (L().isDisenchanted(award) ? ' (disenchanted)' : ' awarded to ' + L().winnerText(award.winner))) + ' is removed from the raid and from the balance.' + (award.manual ? '' : ' Importing the same Gargul export again adds it back.') + '</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Delete award</button></div></form>', { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
   };
@@ -431,7 +507,9 @@
     STATUS: STATUS,
     stateFor: stateFor,
     canImport: canImport,
+    canAdd: canAdd,
     cardHtml: cardHtml,
+    addDialogHtml: addDialogHtml,
     importPanelHtml: importPanelHtml,
     resultLine: resultLine,
     previewAward: previewAward,

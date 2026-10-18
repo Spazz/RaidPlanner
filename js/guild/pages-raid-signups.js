@@ -329,6 +329,8 @@
     G.app.render();
     // A past raid's results depend on its sign-ups: the page's own detail is read again.
     if (c.detail && c.detail.raid && !c.detail.raid.upcoming && G.pages.raid && G.pages.raid.reload) G.pages.raid.reload();
+    // The loot board lines up the people signed up for the raid: it is read again behind the page.
+    if (G.pages.raidBoard && G.pages.raidBoard.refresh) G.pages.raidBoard.refresh();
   }
 
   function showError(c, err) {

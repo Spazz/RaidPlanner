@@ -55,6 +55,7 @@ import {
   LOOT_MAX_BODY, commitLoot, deleteLoot, getBalance, getLootItems, getLootPolicy, getLootRaids, getPersonLoot, getRaidLoot, patchLoot,
   previewLoot, putLootPolicy,
 } from './routes/loot.js';
+import { getLootBoard, postManualAward, putLootList } from './routes/loot-board.js';
 
 const COMMIT_MAX_BODY = 64 * 1024;
 const PLAN_MAX_BODY = 32 * 1024;
@@ -188,6 +189,10 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/raids/:rid/loot', auth: true, handler: getRaidLoot },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/loot/preview', auth: true, handler: previewLoot, maxBody: LOOT_MAX_BODY },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/loot', auth: true, handler: commitLoot, maxBody: LOOT_MAX_BODY },
+  // PM wave 5: the pasted TMB / softres lists and the board built from them, and an award made by hand (a literal path, so never read as an award id).
+  { method: 'GET', path: '/api/guild/:gid/raids/:rid/loot-board', auth: true, handler: getLootBoard },
+  { method: 'PUT', path: '/api/guild/:gid/raids/:rid/loot-lists', auth: true, handler: putLootList, maxBody: LOOT_MAX_BODY },
+  { method: 'POST', path: '/api/guild/:gid/raids/:rid/loot/manual', auth: true, handler: postManualAward },
   // Literal paths are registered before `:aid`, so "balance", "raids", "items", "person" and "policy" are never read as an award id.
   { method: 'GET', path: '/api/guild/:gid/loot/balance', auth: true, handler: getBalance },
   { method: 'GET', path: '/api/guild/:gid/loot/raids', auth: true, handler: getLootRaids },

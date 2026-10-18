@@ -929,6 +929,40 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-loot-subrow > a { min-width: 0; flex-basis: 100%; }
 }
 
+/* ── Loot board (PM wave 5): who is in line for each item of a raid, from the pasted TMB prios and softres.it reserves ── */
+.gs-board-sec .gs-notice { margin: 0; }
+.gs-board-sources { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 24px; font-size: 14px; color: var(--text-secondary); }
+.gs-board-source { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.gs-board-filters .gs-field-inline { display: flex; align-items: center; gap: 8px; margin: 0; }
+.gs-board-list { list-style: none; display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border-subtle); }
+.gs-board-row { display: flex; flex-direction: column; gap: 8px; padding: 12px var(--sp-4); }
+.gs-board-row + .gs-board-row { border-top: 1px solid var(--border-subtle); }
+.gs-board-row.is-contested { box-shadow: inset 3px 0 0 var(--warning); }
+.gs-board-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
+.gs-board-line { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.gs-board-entry { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; padding: 3px 8px; background: var(--bg-card); border: 1px solid var(--border-subtle); font-size: 15px; }
+.gs-board-entry.is-top { border-color: var(--border-accent); }
+.gs-board-entry.is-wish { background: transparent; }
+.gs-board-entry.is-received { background: transparent; border-style: dashed; color: var(--text-muted); }
+.gs-board-entry.is-received .gs-char-name { text-decoration: line-through; text-decoration-color: var(--text-muted); }
+.gs-board-tag { font: 600 12px/1.4 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.gs-board-results { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
+.gs-board-results .is-match { color: var(--success); }
+.gs-board-results .is-miss { color: var(--warning); }
+@media (max-width: 600px) {
+  .gs-board-row { padding: 12px var(--sp-3); }
+  .gs-board-filters .gs-field-inline { flex-direction: column; align-items: stretch; }
+}
+/* The printable board: written into #print-sheet (app.css shows only that on paper), so it uses fixed colours. */
+@media print {
+  #print-sheet .ps-board { font-family: Arial, Helvetica, sans-serif; color: var(--print-ink); }
+  #print-sheet .ps-board h1 { margin: 0 0 2px; font-size: 20px; color: var(--print-ink); }
+  #print-sheet .ps-board .ps-meta { margin: 0 0 10px; font-size: 11px; color: var(--print-soft); }
+  #print-sheet .ps-board table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  #print-sheet .ps-board th, #print-sheet .ps-board td { padding: 4px 6px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--print-line); color: var(--print-ink); }
+  #print-sheet .ps-board tr { break-inside: avoid; }
+}
+
 /* ── Battle.net (Phase 5): Linked accounts, My characters, character claims, the guild roster import, Guild settings ── */
 .gs-table-bnet { min-width: 640px; }
 .gs-table-bnet-import { min-width: 760px; }

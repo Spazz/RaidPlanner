@@ -307,7 +307,7 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     const out = raidPage(detail(), { loot: lootState(), roster: rosterState() });
     const menu = out.slice(out.indexOf('id="raid-actions-list"'), out.indexOf('</div></div>', out.indexOf('id="raid-actions-list"')));
     const labels = [...menu.matchAll(/role="menuitem"[^>]*>([^<]+)</g)].map(m => m[1]);
-    assert.deepEqual(labels, ['Recalculate attendance', 'Import loot from Gargul', 'Open in Planner', 'Delete raid']);
+    assert.deepEqual(labels, ['Recalculate attendance', 'Import loot from Gargul', 'Add loot award', 'Open in Planner', 'Delete raid']);
     assert(menu.indexOf('gs-menu-sep') > menu.indexOf('Open in Planner') && menu.indexOf('gs-menu-sep') < menu.indexOf('Delete raid'), 'Delete raid sits after a rule');
     assert(/class="gs-menu-item is-danger"[^>]*data-op="raid-delete"/.test(menu));
     assert(menu.includes('data-action="loot-import-open"') && menu.includes('data-op="plan-in-planner"') && menu.includes('data-op="recompute"'));

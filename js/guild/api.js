@@ -90,6 +90,9 @@
     del: function (path, body) { return request('DELETE', path, body); },
   };
 
+  // A team's roster (GET /roster?team=): the manual loot award dialog suggests its character names (PM wave 5).
+  G.api.teamRoster = function (gid, teamId) { return G.api.get('/api/guild/' + encodeURIComponent(gid) + '/roster?team=' + encodeURIComponent(teamId)); };
+
   // Every loot call in one place (Phase 4 spec, section 5). They go through G.api.get / post / ... at call time, so a
   // test that replaces those methods sees them.
   function guildPath(gid, tail) { return '/api/guild/' + encodeURIComponent(gid) + tail; }
@@ -102,6 +105,10 @@
     commit: function (gid, rid, awards, includeOtherDay) {
       return G.api.post(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot'), { awards: awards, includeOtherDay: !!includeOtherDay });
     },
+    // PM wave 5: an award made by hand, the pasted TMB / softres lists of a raid and the board built from them.
+    manual: function (gid, rid, body) { return G.api.post(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot/manual'), body); },
+    board: function (gid, rid) { return G.api.get(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot-board')); },
+    saveList: function (gid, rid, source, rows) { return G.api.put(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot-lists'), { source: source, rows: rows }); },
     update: function (gid, aid, body) { return G.api.patch(guildPath(gid, '/loot/' + encodeURIComponent(aid)), body); },
     remove: function (gid, aid) { return G.api.del(guildPath(gid, '/loot/' + encodeURIComponent(aid)), {}); },
     balance: function (gid, teamId, weeks) { return G.api.get(guildPath(gid, '/loot/balance' + teamQuery(teamId, weeks))); },

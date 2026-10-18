@@ -40,6 +40,8 @@ export const AUDIT_ACTIONS = [
   'loot.import',
   'loot.update',
   'loot.delete',
+  'loot.list',
+  'loot.add',
   'loot.policy',
   'bnet.link',
   'bnet.unlink',
