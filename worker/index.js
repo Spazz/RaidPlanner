@@ -12,7 +12,11 @@ import { approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
 import { runScheduled } from './bnet-purge.js';
 import { claimGuild, createGuild, getGuild } from './routes/guild.js';
-import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles } from './routes/people.js';
+import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
+import { createRole, deleteRole, getRoles, resetRole, updateRole } from './routes/roles.js';
+import { getDiscord, putMaps, syncEveryone } from './routes/discord.js';
+import { createGuestLink, getGuestView, leaveGuest, listGuestLinks, redeemGuestLink, revokeGuestLink } from './routes/guests.js';
+import { getPublicSettings, getPublicView, putPublicSettings } from './routes/public.js';
 import { createTeam, patchTeam } from './routes/teams.js';
 import { createScheduledRaids, getSchedule, putSchedule } from './routes/schedule.js';
 import {
@@ -66,8 +70,27 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/people', auth: true, handler: getPeople },
   { method: 'PUT', path: '/api/guild/:gid/people/:uid/roles', auth: true, handler: setRoles },
   { method: 'POST', path: '/api/guild/:gid/people/:uid/guild-master', auth: true, handler: makeGuildMaster },
+  { method: 'POST', path: '/api/guild/:gid/people/:uid/sync', auth: true, handler: syncPerson },
   { method: 'POST', path: '/api/guild/:gid/people/:uid/block', auth: true, handler: blockPerson },
   { method: 'DELETE', path: '/api/guild/:gid/people/:uid/block', auth: true, handler: restorePerson },
+  // Roles, Discord role mapping, guest links and the public page (Phase 7). The guest and public routes need no account: they answer read-only views.
+  { method: 'GET', path: '/api/guild/:gid/roles', auth: true, handler: getRoles },
+  { method: 'POST', path: '/api/guild/:gid/roles', auth: true, handler: createRole },
+  { method: 'PUT', path: '/api/guild/:gid/roles/:rolid', auth: true, handler: updateRole },
+  { method: 'DELETE', path: '/api/guild/:gid/roles/:rolid', auth: true, handler: deleteRole },
+  { method: 'POST', path: '/api/guild/:gid/roles/:rolid/reset', auth: true, handler: resetRole },
+  { method: 'GET', path: '/api/guild/:gid/discord', auth: true, handler: getDiscord },
+  { method: 'PUT', path: '/api/guild/:gid/discord/maps', auth: true, handler: putMaps },
+  { method: 'POST', path: '/api/guild/:gid/discord/sync', auth: true, handler: syncEveryone },
+  { method: 'GET', path: '/api/guild/:gid/guest-links', auth: true, handler: listGuestLinks },
+  { method: 'POST', path: '/api/guild/:gid/guest-links', auth: true, handler: createGuestLink },
+  { method: 'DELETE', path: '/api/guild/:gid/guest-links/:lid', auth: true, handler: revokeGuestLink },
+  { method: 'GET', path: '/api/guild/:gid/public', auth: true, handler: getPublicSettings },
+  { method: 'PUT', path: '/api/guild/:gid/public', auth: true, handler: putPublicSettings },
+  { method: 'POST', path: '/auth/guest', auth: false, handler: redeemGuestLink },
+  { method: 'DELETE', path: '/auth/guest', auth: false, handler: leaveGuest },
+  { method: 'GET', path: '/api/guest', auth: false, handler: getGuestView },
+  { method: 'GET', path: '/api/public/:gid', auth: false, handler: getPublicView },
   { method: 'GET', path: '/api/guild/:gid/roster', auth: true, handler: getRoster },
   { method: 'POST', path: '/api/guild/:gid/roster', auth: true, handler: createPerson },
   // Literal paths are registered before `:pid`, so "linkable" and "import" are never read as a person id.

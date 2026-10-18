@@ -99,7 +99,7 @@ check('wrangler.jsonc: Worker entry, assets, run_worker_first, D1 binding, and n
   assert.equal(config.main, 'worker/index.js');
   assert.match(config.compatibility_date, /^\d{4}-\d{2}-\d{2}$/);
   assert.deepEqual(config.assets, {
-    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/guild/', '/api/guild', '/api/guild/*', '/api/roadmap/*', '/api/me', '/auth/*'],
+    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/guild/', '/api/guild', '/api/guild/*', '/api/roadmap/*', '/api/me', '/api/guest', '/api/public/*', '/auth/*'],
   });
   assert.deepEqual(config.d1_databases, [{ binding: 'DB', database_name: 'raidsmith', database_id: 'local-raidsmith', migrations_dir: 'migrations' }]);
   assert.equal(config.vars, undefined);
@@ -112,7 +112,7 @@ check('.env.example lists names only and covers every secret the Worker reads', 
   assert(entries.length >= 5);
   for (const entry of entries) assert.match(entry, /^[A-Z][A-Z0-9_]*=$/, `names only: ${entry}`);
   const names = entries.map((entry) => entry.slice(0, -1));
-  for (const name of ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_REDIRECT_URI', 'GUILD_CREATOR_ALLOWLIST', 'WCL_CLIENT_ID', 'WCL_CLIENT_SECRET', 'BNET_CLIENT_ID', 'BNET_CLIENT_SECRET', 'BNET_REDIRECT_URI']) {
+  for (const name of ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_REDIRECT_URI', 'DISCORD_BOT_TOKEN', 'GUILD_CREATOR_ALLOWLIST', 'WCL_CLIENT_ID', 'WCL_CLIENT_SECRET', 'BNET_CLIENT_ID', 'BNET_CLIENT_SECRET', 'BNET_REDIRECT_URI']) {
     assert(names.includes(name), name);
   }
   assert(!names.includes('DISCORD_API_BASE'));
@@ -135,6 +135,7 @@ check('every guild-tracker file is whitelisted in .gitignore (so it can be commi
     'guild-roadmap-tests.js', 'guild-roadmap-worker-tests.js', 'tools/roadmap-ideas.js', 'js/guild/roadmap-data.js', 'js/guild/pages-roadmap.js',
     'guild-bnet-worker-tests.js', 'guild-bnet-ui-tests.js', 'tools/fake-battlenet.js', 'js/guild/pages-bnet.js', 'js/guild/pages-import-bnet.js', 'js/guild/pages-settings-bnet.js', 'migrations/0009_battlenet.sql',
     'guild-accounts-worker-tests.js', 'guild-accounts-ui-tests.js', 'js/guild/pages-accounts.js', 'migrations/0012_accounts.sql',
+    'guild-roles-worker-tests.js', 'guild-roles-ui-tests.js', 'guild-roles-contract-tests.js', 'migrations/0014_roles.sql',
     'migrations/0001_foundation.sql', 'worker/package.json',
     ...walk('worker'), ...walk('migrations'),
   ]);
@@ -324,7 +325,7 @@ check('Worker SQL binds values and never concatenates them into SQL text', () =>
       const placeholders = [...match[1].matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]);
       for (const expression of placeholders) {
         // The membership helpers (worker/membership.js, identities.js) take fixed column expressions in quotes, never request data.
-        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|pending.sql|linked.sql|cleared\.sql|clash\.sql|member\.sql|onHomeTeam\.sql|userId\.sql|here\.sql|free|userSql|COLUMNS|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|AWARD_SELECT|MERGED_ROWS|CHARACTER_COLUMNS|(?:memberSql|reachesGuildSql|inServerSql|rosterLinkSql|blockedSql|memberCandidatesSql|ownPlayerSql|othersSql|successorSql|hasDiscordSql|hasBnetSql)\('[^']*'(?:, '[^']*')*\)|teamId \? [^}]*)$/.test(expression.trim()),
+        assert(/^(userByDiscordId|guard\.sql|targetIsMaster\.sql|stillBlocked\.sql|inserted.sql|pending.sql|linked.sql|cleared\.sql|clash\.sql|member\.sql|onHomeTeam\.sql|userId\.sql|here\.sql|free|created\.sql|still\.sql|teamCheck|roleCheck|userSql|COLUMNS|ACTIVE_TEAM_COUNT|MAX_ACTIVE_TEAMS|AWARD_SELECT|MERGED_ROWS|CHARACTER_COLUMNS|(?:memberSql|reachesGuildSql|inServerSql|rosterLinkSql|blockedSql|memberCandidatesSql|ownPlayerSql|othersSql|successorSql|hasDiscordSql|hasBnetSql)\('[^']*'(?:, '[^']*')*\)|teamId \? [^}]*)$/.test(expression.trim()),
           `${file}: interpolated SQL ${expression}`);
       }
     }

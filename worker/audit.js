@@ -56,6 +56,15 @@ export const AUDIT_ACTIONS = [
   'signup.lock',
   'schedule.update',
   'schedule.fill',
+  'role.create',
+  'role.update',
+  'role.delete',
+  'role.reset',
+  'discord.maps',
+  'roles.discord_sync',
+  'guest.create',
+  'guest.revoke',
+  'public.update',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

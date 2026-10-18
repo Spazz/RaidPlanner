@@ -545,9 +545,15 @@ export async function getTeamAttendance(ctx) {
   const params = new URL(ctx.request.url).searchParams;
   const team = await requireTeam(ctx.db, guild.id, params.get('team'));
   if (!allows(guildContext.can, 'attendance.view', team.id)) throw forbidden();
-  const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, team.id);
-  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult] = await ctx.db.batch([
-    policyRowsStatement(ctx.db, guild.id),
+  return jsonResponse(await teamAttendanceData(ctx.db, guild, team, params, ctx.now(), viewerOf(ctx)));
+}
+
+// The team page's data: one team's weeks, people and metrics over the window in `params` (?window=). viewer: { userId, discordId } marks the viewer's own row
+// (isMe); null for someone with no account (a guest link, the public page). Callers check attendance.view for the team first.
+export async function teamAttendanceData(db, guild, team, params, nowMs, viewer) {
+  const bind = (sql) => db.prepare(sql).bind(guild.id, team.id);
+  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult] = await db.batch([
+    policyRowsStatement(db, guild.id),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
                  (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
             FROM raids WHERE guild_id = ?1 AND team_id = ?2 ORDER BY raid_on, id`),
@@ -558,7 +564,7 @@ export async function getTeamAttendance(ctx) {
              AND (p.id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR p.id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
     bind(`SELECT player_id, name, class, team_id, is_main FROM characters WHERE guild_id = ?1
              AND (player_id IN (SELECT player_id FROM characters WHERE team_id = ?2) OR player_id IN (SELECT player_id FROM attendance WHERE team_id = ?2))`),
-    ctx.db.prepare('SELECT id, name FROM teams WHERE guild_id = ?').bind(guild.id),
+    db.prepare('SELECT id, name FROM teams WHERE guild_id = ?').bind(guild.id),
     bind(`SELECT id, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT via_raid_id FROM attendance WHERE guild_id = ?1 AND team_id = ?2 AND via_raid_id IS NOT NULL)`),
   ]);
   const teamNames = new Map(teamResult.results.map((row) => [row.id, row.name]));
@@ -567,7 +573,7 @@ export async function getTeamAttendance(ctx) {
   const resolver = makePolicyResolver(guild, policyResult.results);
   const policy = resolver.resolved(team.id);
   const resetDay = resolver.resetDay();
-  const today = guildToday(guild, ctx.now());
+  const today = guildToday(guild, nowMs);
   const weeks = readWindow(params, policy);
   const windowStart = windowStartFor(today, resetDay, weeks);
   const inWindow = (date) => (windowStart === null || date >= windowStart) && date <= today;
@@ -592,7 +598,7 @@ export async function getTeamAttendance(ctx) {
       name: character ? character.name : 'Unknown',
       class: character ? character.class : null,
       status: row.status,
-      isMe: isOwnPlayer(row, viewerOf(ctx)),
+      isMe: viewer ? isOwnPlayer(row, viewer) : false,
     };
   }).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 
@@ -603,7 +609,7 @@ export async function getTeamAttendance(ctx) {
     if (!weekMap.has(start)) weekMap.set(start, []);
     weekMap.get(start).push({ id: raid.id, raidOn: raid.raid_on, zone: raid.zone });
   }
-  return jsonResponse({
+  return {
     team: { id: team.id, name: team.name },
     today,
     window: weeks,
@@ -612,8 +618,9 @@ export async function getTeamAttendance(ctx) {
     people,
     awaitingReview: raids.filter((raid) => raid.open_flags > 0).length,
     staleRaids: raids.filter((raid) => isStale(raidState(raid, raid.reports, resolver))).length,
-  });
+  };
 }
+
 
 // A stored decision answers a row only while the row still has the flags it was made against.
 const decisionApplies = (decision, row) => !!decision && !!row

@@ -379,10 +379,11 @@ const sqlFails = (fn, pattern) => assert.throws(fn, pattern);
 check('migration 0003: nights.* became raids.*, attendance.policy is seeded for Guild Master and Officer only, and the tables are there', async () => {
   const w = await makeWorld();
   const rows = await w.rows('SELECT role_id, action, scope FROM role_permissions WHERE action LIKE ? OR action LIKE ? OR action = ? ORDER BY role_id, action', 'raids.%', 'nights.%', 'attendance.policy');
+  // guest and public (Phase 7, migration 0014) hold raids.view too: read-only roles for a guest link and the public page.
   assert.deepEqual(rows.map((r) => `${r.role_id}:${r.action}:${r.scope}`), [
-    'guild_master:attendance.policy:guild', 'guild_master:raids.edit:guild', 'guild_master:raids.view:guild',
+    'guest:raids.view:guild', 'guild_master:attendance.policy:guild', 'guild_master:raids.edit:guild', 'guild_master:raids.view:guild',
     'member:raids.view:guild', 'officer:attendance.policy:guild', 'officer:raids.edit:guild', 'officer:raids.view:guild',
-    'team_lead:raids.edit:team',
+    'public:raids.view:guild', 'team_lead:raids.edit:team',
   ]);
   const tables = (await w.rows("SELECT name FROM sqlite_master WHERE type = 'table'")).map((r) => r.name);
   for (const t of ['attendance_policies', 'raids', 'raid_reports', 'raid_pulls', 'raid_presence', 'raid_signups', 'raid_manual', 'raid_plan', 'attendance', 'attendance_guests']) assert(tables.includes(t), t);

@@ -764,9 +764,12 @@ check('permissions: every role x action x scope matches the plan table', async (
   assert(!permissions.allows(lead, 'roster.edit'), 'a team scope needs a team');
   assert(!permissions.allows(lead, 'guild.teams'));
   assert(permissions.allows(memberCan, 'roster.view'));
-  // Seed shape: scopes are only the four allowed ones and Public (no role) holds nothing.
+  // Seed shape: scopes are only the four allowed ones. Phase 7 (migration 0014) deliberately changed "Public holds nothing": Guest and Public are
+  // built-in roles now, seeded with read actions only (the public page stays off until a Guild Master turns it on).
   assert(seeded.every((row) => ['guild', 'team', 'own_teams', 'own'].includes(row.scope)));
-  assert.deepEqual(seeded.filter((row) => !['guild_master', 'officer', 'team_lead', 'member'].includes(row.role_id)), []);
+  assert.deepEqual(seeded.filter((row) => !['guild_master', 'officer', 'team_lead', 'member', 'guest', 'public'].includes(row.role_id)), []);
+  assert(seeded.filter((row) => ['guest', 'public'].includes(row.role_id)).every((row) => permissions.ACTION_INFO[row.action].view), 'Guest and Public are read-only');
+  assert.deepEqual(resolve([{ role_id: 'guest', team_id: null }, { role_id: 'public', team_id: null }]).can, memberCan, 'a Guest or Public row on a person grants nothing');
 });
 
 check('permissions over HTTP: Member, Team Lead, Officer and Guild Master are each held to their actions', async () => {
@@ -1184,11 +1187,13 @@ check('audit: exactly the audited actions are written, once each, in the writes\
   const SIGNUP_ACTIONS = ['signup.set', 'signup.remove', 'signup.lock', 'schedule.update', 'schedule.fill'];
   // The account actions (Phase 7a) are driven and pinned in guild-accounts-worker-tests.js.
   const ACCOUNT_ACTIONS = ['discord.link', 'discord.unlink', 'person.account_link', 'person.account_unlink'];
-  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action) && !SIGNUP_ACTIONS.includes(action) && !ACCOUNT_ACTIONS.includes(action)).sort());
+  // The role editor, Discord role mapping, guest link and public page actions (Phase 7) are driven and pinned in guild-roles-worker-tests.js.
+  const ROLES_ACTIONS = ['role.create', 'role.update', 'role.delete', 'role.reset', 'discord.maps', 'roles.discord_sync', 'guest.create', 'guest.revoke', 'public.update'];
+  assert.deepEqual([...new Set(written)].sort(), AUDIT_ACTIONS.filter((action) => !ROSTER_ACTIONS.includes(action) && !ATTENDANCE_ACTIONS.includes(action) && !LOOT_ACTIONS.includes(action) && !BNET_ACTIONS.includes(action) && !SIGNUP_ACTIONS.includes(action) && !ACCOUNT_ACTIONS.includes(action) && !ROLES_ACTIONS.includes(action)).sort());
   assert.deepEqual(AUDIT_ACTIONS.slice().sort(), [
     'access.remove', 'access.restore', 'account.delete', 'guild.claim', 'guild.create', 'guild.delete',
     'guild_master.auto_promote', 'guild_master.transfer', 'roles.set', 'team.archive', 'team.create', 'team.rename', 'team.restore',
-    ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...LOOT_ACTIONS, ...BNET_ACTIONS, ...SIGNUP_ACTIONS, ...ACCOUNT_ACTIONS,
+    ...ROSTER_ACTIONS, ...ATTENDANCE_ACTIONS, ...LOOT_ACTIONS, ...BNET_ACTIONS, ...SIGNUP_ACTIONS, ...ACCOUNT_ACTIONS, ...ROLES_ACTIONS,
   ].sort());
   const rows = await w.rows("SELECT guild_id, actor_user_id, entity_type, entity_id, created_at FROM audit_log WHERE action IN ('account.delete', 'guild.delete')");
   assert(rows.every((row) => row.guild_id === null));
@@ -1311,7 +1316,9 @@ check('people: response contract (signedInCount, people, roster null, removed) a
   await s.w.call(s.alice, 'POST', `${s.peoplePath('erin')}/block`, { reason: 'no show' });
   const response = await s.w.call(s.alice, 'GET', `${s.guildPath}/people`);
   assert.equal(response.status, 200);
-  assert.deepEqual(Object.keys(response.json).sort(), ['people', 'removed', 'signedInCount']);
+  // Phase 7 added `discord` ({ configured, mapped }: whether Sync everyone can run); the rest of the contract is unchanged.
+  assert.deepEqual(Object.keys(response.json).sort(), ['discord', 'people', 'removed', 'signedInCount']);
+  assert.deepEqual(response.json.discord, { configured: false, mapped: false });
   assert.equal(response.json.signedInCount, 4);
   assert.deepEqual(response.json.people.map((entry) => entry.person.username), ['alice', 'bob', 'carol', 'dave']);
   const first = response.json.people[0];
@@ -1502,7 +1509,7 @@ check('set roles: roles can be removed from anyone who holds one (left the serve
 check('races: a concurrent duplicate grant answers with the fresh people list, not a 500', async () => {
   const s = await scenario();
   hookBatch(s.w.db, /INSERT INTO audit_log/, () => {
-    s.w.db.sqlite.exec(`INSERT INTO role_assignments VALUES ('ra_race','${s.guildId}','${s.ids.carol}','officer',NULL,NULL,1)`);
+    s.w.db.sqlite.exec(`INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at) VALUES ('ra_race','${s.guildId}','${s.ids.carol}','officer',NULL,NULL,1)`);
   });
   const response = await s.setRoles('carol', { officer: true, teamLeadTeamIds: [] });
   assert.equal(response.status, 200, JSON.stringify(response.json));
@@ -1514,7 +1521,7 @@ check('races: set roles by someone who stopped being Guild Master mid-request wr
   const s = await scenario();
   hookBatch(s.w.db, /INSERT INTO audit_log/, () => {
     s.w.db.sqlite.exec(`UPDATE role_assignments SET user_id = '${s.ids.bob}' WHERE role_id = 'guild_master' AND guild_id = '${s.guildId}';
-                        INSERT INTO role_assignments VALUES ('ra_z','${s.guildId}','${s.ids.alice}','officer',NULL,NULL,1)`);
+                        INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at) VALUES ('ra_z','${s.guildId}','${s.ids.alice}','officer',NULL,NULL,1)`);
   });
   const response = await s.setRoles('carol', { officer: true, teamLeadTeamIds: [] });
   assert.equal(response.status, 409);
@@ -1527,7 +1534,7 @@ check('races: an Officer cannot remove access from someone who became an Officer
   const s = await scenario();
   await s.setRoles('bob', { officer: true, teamLeadTeamIds: [] });
   hookBatch(s.w.db, /INSERT INTO guild_blocks/, () => {
-    s.w.db.sqlite.exec(`INSERT INTO role_assignments VALUES ('ra_y','${s.guildId}','${s.ids.carol}','officer',NULL,NULL,1)`);
+    s.w.db.sqlite.exec(`INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at) VALUES ('ra_y','${s.guildId}','${s.ids.carol}','officer',NULL,NULL,1)`);
   });
   const raced = await s.w.call(s.jars.bob, 'POST', `${s.peoplePath('carol')}/block`, { reason: '' });
   assert.equal(raced.status, 409);
@@ -1746,7 +1753,7 @@ check('claim: a Guild Master who appears between the check and the write wins (g
   const frank = (await signIn(s.w, PEOPLE.frank, [manageable(SERVER_A)])).jar;
   s.w.db.sqlite.exec(`DELETE FROM user_servers WHERE user_id = (SELECT id FROM users WHERE discord_id = '1006')`);
   hookBatch(s.w.db, /INSERT INTO role_assignments/, () => {
-    s.w.db.sqlite.exec(`INSERT INTO role_assignments VALUES ('ra_late','${s.guildId}','${s.ids.bob}','guild_master',NULL,NULL,1)`);
+    s.w.db.sqlite.exec(`INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at) VALUES ('ra_late','${s.guildId}','${s.ids.bob}','guild_master',NULL,NULL,1)`);
   });
   const lost = await s.w.call(frank, 'POST', `${s.guildPath}/claim`, {});
   assert.equal(lost.status, 409);

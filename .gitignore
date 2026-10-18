@@ -173,3 +173,7 @@
 # Phase 7a accounts with linked sign-ins: the Worker suite (flows, membership rule, migration 0012 on a populated database) and the pages suite (the Worker files, the migration and the pages are covered by the globs above)
 !guild-accounts-worker-tests.js
 !guild-accounts-ui-tests.js
+# Phase 7 Discord role mapping, role editor, guest links and the public page: Worker, pages and contract suites (the Worker files, migration 0014 and the pages are covered by the globs above)
+!guild-roles-worker-tests.js
+!guild-roles-ui-tests.js
+!guild-roles-contract-tests.js

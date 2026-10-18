@@ -14,6 +14,9 @@ const PATTERNS = {
   lp: /^lp_[A-Za-z0-9_-]{22}$/,
   cl: /^cl_[A-Za-z0-9_-]{22}$/,
   ts: /^ts_[A-Za-z0-9_-]{22}$/,
+  // A custom role (Phase 7) and a guest link.
+  cr: /^cr_[A-Za-z0-9_-]{22}$/,
+  gl: /^gl_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {
@@ -46,6 +49,9 @@ export const PARAM_SOURCE = {
   aid: 'lo_[A-Za-z0-9_-]{22}',
   // A character claim (Battle.net, Phase 5).
   clid: 'cl_[A-Za-z0-9_-]{22}',
+  // A role: one of the guild's own (cr_...) or a built-in id; a guest link.
+  rolid: '(?:cr_[A-Za-z0-9_-]{22}|guild_master|officer|team_lead|member|guest|public)',
+  lid: 'gl_[A-Za-z0-9_-]{22}',
   // A Warcraft Logs report code (DELETE /raids/:rid/reports/:code).
   code: '[A-Za-z0-9]{16}',
 };

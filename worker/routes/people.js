@@ -2,12 +2,16 @@ import { HttpError, cleanText, isUniqueViolation, jsonResponse } from '../http.j
 import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';
 import { boundMember, memberCandidatesSql, reachesGuildSql } from '../membership.js';
-import { ROLE_RANK, loadGuildContext, requireAction, requireAnyAction, shapeRoles } from '../permissions.js';
+import { botConfigured } from '../discord-bot.js';
+import { discordProblem, syncMember } from '../discord-sync.js';
+import { assertMayGrant, loadRolesData } from '../roles-store.js';
+import { ROLE_RANK, isCustomRole, loadGuildContext, rankOf, requireAction, requireAnyAction, shapeRoles } from '../permissions.js';
 import { toPerson } from '../person.js';
 
 const MAX_TEAM_LEAD_TEAMS = 20;
 const TEAM_ID = /^t_[A-Za-z0-9_-]{22}$/;
 const MAX_REASON = 200;
+const MAX_EXTRA_ROLES = 40;
 
 // ---------------------------------------------------------------------------
 // The people model: everyone who is a member (in the guild's Discord server or linked to one of its people), holds a role, or is blocked.
@@ -15,7 +19,7 @@ const MAX_REASON = 200;
 async function loadModel(db, guildContext) {
   const guildId = guildContext.guild.id;
   const serverId = guildContext.guild.discord_server_id;
-  const [userResult, assignmentResult, blockResult, rosterResult] = await db.batch([
+  const [userResult, assignmentResult, blockResult, rosterResult, mapResult] = await db.batch([
     // is_member: in the Discord server or linked to a person (the block is read from guild_blocks below, not folded in here).
     db.prepare(
       `SELECT u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar, u.last_seen_at,
@@ -27,7 +31,10 @@ async function loadModel(db, guildContext) {
           UNION SELECT user_id FROM guild_blocks WHERE guild_id = gc.gid
           UNION SELECT blocked_by FROM guild_blocks WHERE guild_id = gc.gid AND blocked_by IS NOT NULL)`,
     ).bind(guildId, serverId),
-    db.prepare('SELECT user_id, role_id, team_id FROM role_assignments WHERE guild_id = ?').bind(guildId),
+    db.prepare(
+      `SELECT ra.user_id, ra.role_id, ra.team_id, ra.source, r.name AS role_name
+         FROM role_assignments ra JOIN roles r ON r.id = ra.role_id WHERE ra.guild_id = ?`,
+    ).bind(guildId),
     db.prepare('SELECT user_id, blocked_by, reason, created_at FROM guild_blocks WHERE guild_id = ?').bind(guildId),
     // The roster entry (the Main) of each person linked to an account (by an officer's link, or by the Discord ID they carry).
     db.prepare(
@@ -35,6 +42,7 @@ async function loadModel(db, guildContext) {
          JOIN characters m ON m.player_id = p.id AND m.is_main = 1
         WHERE p.guild_id = ? AND (p.discord_user_id IS NOT NULL OR p.user_id IS NOT NULL)`,
     ).bind(guildId),
+    db.prepare('SELECT COUNT(*) AS n FROM discord_role_maps WHERE guild_id = ?').bind(guildId),
   ]);
   const entryOf = (row) => ({ personId: row.person_id, name: row.name, class: row.class });
   const rosterByUser = new Map(rosterResult.results.filter((row) => row.user_id).map((row) => [row.user_id, entryOf(row)]));
@@ -57,9 +65,11 @@ async function loadModel(db, guildContext) {
   }
   for (const entry of byId.values()) {
     entry.roles = shapeRoles(entry.assignments);
-    entry.rank = entry.roles.length ? ROLE_RANK[entry.roles[0].role] : ROLE_RANK.member;
+    // What an officer set by hand: the Edit roles dialog changes these and only these (a role Discord gives is changed in Discord).
+    entry.manualRoles = shapeRoles(entry.assignments.filter((assignment) => assignment.source !== 'discord'));
+    entry.rank = rankOf(entry.assignments);
   }
-  return { byId };
+  return { byId, hasMaps: mapResult.results[0].n > 0 };
 }
 
 // Never yourself, never the Guild Master; strictly junior to the viewer (an Officer cannot act on an Officer).
@@ -69,7 +79,7 @@ function hierarchyAllows(guildContext, entry) {
   return guildContext.rank < entry.rank;
 }
 
-function actionsFor(guildContext, entry) {
+function actionsFor(guildContext, entry, sync = false) {
   const canAccess = guildContext.can['guild.access'] === 'guild';
   const canRoles = guildContext.can['guild.roles'] === 'guild';
   if (entry.block) return { restoreAccess: canAccess && hierarchyAllows(guildContext, entry) };
@@ -78,6 +88,8 @@ function actionsFor(guildContext, entry) {
     editRoles: editable,
     makeGuildMaster: editable && guildContext.isGuildMaster,
     removeAccess: canAccess && hierarchyAllows(guildContext, entry),
+    // Only present when true: Sync now (apply the Discord role mapping to this person) needs the bot, a mapping and a person who has Discord.
+    ...(sync && canAccess && entry.isMember && !!entry.row.discord_id && entry.rank !== ROLE_RANK.guild_master ? { syncDiscord: true } : {}),
   };
 }
 
@@ -87,7 +99,9 @@ function byRankThenName(a, b) {
     || a.id.localeCompare(b.id);
 }
 
-function peopleResponse(model, guildContext) {
+function peopleResponse(model, guildContext, env) {
+  // sync: the person's Discord roles can be read (the bot token is set) and there is a mapping to apply.
+  const sync = botConfigured(env) && model.hasMaps;
   const entries = [...model.byId.values()];
   const people = entries
     .filter((entry) => !entry.block && (entry.isMember || entry.roles.length))
@@ -98,7 +112,7 @@ function peopleResponse(model, guildContext) {
       roster: entry.roster,
       lastSeenAt: entry.row.last_seen_at,
       isMe: entry.id === guildContext.userId,
-      actions: actionsFor(guildContext, entry),
+      actions: actionsFor(guildContext, entry, sync),
     }));
   const removed = entries
     .filter((entry) => entry.block)
@@ -114,11 +128,11 @@ function peopleResponse(model, guildContext) {
         actions: actionsFor(guildContext, entry),
       };
     });
-  return { signedInCount: people.length, people, removed };
+  return { signedInCount: people.length, people, removed, discord: { configured: botConfigured(env), mapped: model.hasMaps } };
 }
 
 async function peopleReply(ctx, guildContext) {
-  return jsonResponse(peopleResponse(await loadModel(ctx.db, guildContext), guildContext));
+  return jsonResponse(peopleResponse(await loadModel(ctx.db, guildContext), guildContext, ctx.env));
 }
 
 function conflict() {
@@ -159,7 +173,7 @@ const and = (...guards) => ({
 // True while the acting user still holds a role that grants the action guild-wide.
 function actorHolds(action, guildId, actorId) {
   return {
-    sql: `EXISTS (SELECT 1 FROM role_assignments ra JOIN role_permissions rp ON rp.role_id = ra.role_id
+    sql: `EXISTS (SELECT 1 FROM role_assignments ra JOIN effective_role_permissions rp ON rp.guild_id = ra.guild_id AND rp.role_id = ra.role_id
             WHERE ra.guild_id = ? AND ra.user_id = ? AND rp.action = ? AND rp.scope = 'guild')`,
     params: [guildId, actorId, action],
   };
@@ -191,12 +205,18 @@ function memberGuard(guildContext, userId) {
   };
 }
 
+// What the Edit roles dialog edits: the roles an officer set by hand (a role only Discord gives is changed in Discord).
 function summarize(entry) {
+  const manual = entry.manualRoles;
   return {
-    officer: entry.roles.some((role) => role.role === 'officer'),
-    teamLeadTeamIds: entry.roles.filter((role) => role.role === 'team_lead').map((role) => role.teamId).sort(),
+    officer: manual.some((role) => role.role === 'officer'),
+    teamLeadTeamIds: manual.filter((role) => role.role === 'team_lead').map((role) => role.teamId).sort(),
+    extra: manual.filter((role) => isCustomRole(role.role)).map((role) => ({ roleId: role.role, teamId: role.teamId || null })).sort(byPairKey),
   };
 }
+
+const pairKey = (pair) => `${pair.roleId}|${pair.teamId || ''}`;
+const byPairKey = (a, b) => pairKey(a).localeCompare(pairKey(b));
 
 // ---------------------------------------------------------------------------
 // Handlers
@@ -217,7 +237,16 @@ function parseRolesBody(body) {
   if (unique.length > MAX_TEAM_LEAD_TEAMS) {
     throw new HttpError(400, 'bad_request', `A person can lead at most ${MAX_TEAM_LEAD_TEAMS} teams.`, { field: 'teamLeadTeamIds' });
   }
-  return { officer: body.officer, teamLeadTeamIds: unique };
+  // roles (optional): the guild's own roles the person holds by hand, [{ roleId, teamId | null }]. Left out = the person's custom roles stay as they are.
+  let extra;
+  if (body.roles !== undefined) {
+    const list = body.roles;
+    const bad = !Array.isArray(list) || list.length > MAX_EXTRA_ROLES || list.some((entry) => !entry || typeof entry !== 'object'
+      || !isCustomRole(entry.roleId) || (entry.teamId !== null && entry.teamId !== undefined && !(typeof entry.teamId === 'string' && TEAM_ID.test(entry.teamId))));
+    if (bad) throw new HttpError(400, 'bad_request', 'roles must be a list of { roleId, teamId } for this guild\'s own roles.', { field: 'roles' });
+    extra = [...new Map(list.map((entry) => [pairKey({ roleId: entry.roleId, teamId: entry.teamId }), { roleId: entry.roleId, teamId: entry.teamId || null }])).values()].sort(byPairKey);
+  }
+  return { officer: body.officer, teamLeadTeamIds: unique, extra };
 }
 
 export async function setRoles(ctx) {
@@ -226,14 +255,23 @@ export async function setRoles(ctx) {
   const wanted = parseRolesBody(ctx.body);
   const model = await loadModel(ctx.db, guildContext);
   const target = findRoleTarget(model, ctx.params.uid, guildContext);
+  const rolesData = await loadRolesData(ctx.db, guildContext.guild.id);
 
+  // The guild's own roles must be this guild's, and be given with a team exactly when they hold a team-scoped permission.
+  for (const pair of wanted.extra || []) {
+    if (!rolesData.isCustom(pair.roleId)) throw new HttpError(400, 'bad_request', 'That role does not exist in this guild.', { field: 'roles' });
+    if (rolesData.needsTeam(pair.roleId) !== (pair.teamId !== null)) {
+      throw new HttpError(400, 'bad_request', rolesData.needsTeam(pair.roleId) ? 'That role is given for one team: pick the team.' : 'That role is for the whole guild: leave the team out.', { field: 'roles' });
+    }
+  }
   // Every team must belong to this guild and be active; any other id makes the request a 400.
-  if (wanted.teamLeadTeamIds.length) {
+  const wantedTeamIds = [...new Set([...wanted.teamLeadTeamIds, ...(wanted.extra || []).map((pair) => pair.teamId).filter(Boolean)])];
+  if (wantedTeamIds.length) {
     const valid = await ctx.db.prepare(
       'SELECT id FROM teams WHERE guild_id = ? AND archived = 0 AND id IN (SELECT value FROM json_each(?))',
-    ).bind(guildContext.guild.id, JSON.stringify(wanted.teamLeadTeamIds)).all();
-    if (valid.results.length !== wanted.teamLeadTeamIds.length) {
-      throw new HttpError(400, 'bad_request', 'One of those teams does not exist or is archived.', { field: 'teamLeadTeamIds' });
+    ).bind(guildContext.guild.id, JSON.stringify(wantedTeamIds)).all();
+    if (valid.results.length !== wantedTeamIds.length) {
+      throw new HttpError(400, 'bad_request', 'One of those teams does not exist or is archived.', { field: wanted.teamLeadTeamIds.length ? 'teamLeadTeamIds' : 'roles' });
     }
   }
 
@@ -241,10 +279,17 @@ export async function setRoles(ctx) {
   const removedTeams = before.teamLeadTeamIds.filter((id) => !wanted.teamLeadTeamIds.includes(id));
   const addedTeams = wanted.teamLeadTeamIds.filter((id) => !before.teamLeadTeamIds.includes(id));
   const officerChange = before.officer !== wanted.officer;
-  if (!officerChange && !removedTeams.length && !addedTeams.length) return peopleReply(ctx, guildContext);
+  const heldExtra = new Set(before.extra.map(pairKey));
+  const wantedExtra = new Set((wanted.extra || []).map(pairKey));
+  const removedExtra = wanted.extra ? before.extra.filter((pair) => !wantedExtra.has(pairKey(pair))) : [];
+  const addedExtra = (wanted.extra || []).filter((pair) => !heldExtra.has(pairKey(pair)));
+  if (!officerChange && !removedTeams.length && !addedTeams.length && !removedExtra.length && !addedExtra.length) return peopleReply(ctx, guildContext);
   // Grants need a current, unblocked member; removing roles works for anyone who holds one.
-  const grants = (officerChange && wanted.officer) || addedTeams.length > 0;
+  const grants = (officerChange && wanted.officer) || addedTeams.length > 0 || addedExtra.length > 0;
   if (grants && !isCurrentMember(target)) throw notFound();
+  if (officerChange && wanted.officer) assertMayGrant(guildContext, rolesData, 'officer', null);
+  for (const teamId of addedTeams) assertMayGrant(guildContext, rolesData, 'team_lead', teamId);
+  for (const pair of addedExtra) assertMayGrant(guildContext, rolesData, pair.roleId, pair.teamId);
 
   const guildId = guildContext.guild.id;
   const userId = target.id;
@@ -255,29 +300,41 @@ export async function setRoles(ctx) {
     actorHolds('guild.roles', guildId, actorId),
     actorOutranks(guildId, actorId, userId),
   );
+  // The audit rows keep the old shape (officer, teamLeadTeamIds) and add roles only when the request set the guild's own roles.
+  const shown = (summary) => ({ officer: summary.officer, teamLeadTeamIds: summary.teamLeadTeamIds, ...(wanted.extra ? { roles: summary.extra } : {}) });
   // The audit row goes first: it is evaluated against the state the guard was built for, before the
   // deletes below remove the very roles the guard looks at.
   const statements = [auditStatement(ctx, {
-    guildId, actorUserId: actorId, action: 'roles.set', entityType: 'user', entityId: userId, before, after: wanted,
+    guildId, actorUserId: actorId, action: 'roles.set', entityType: 'user', entityId: userId, before: shown(before), after: shown(wanted),
   }, guard)];
-  const insert = (teamId, role) => ctx.db.prepare(
-    `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, assigned_by, assigned_at)
-     SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}${teamId ? ' AND EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)' : ''}`,
-  ).bind(newId('ra', ctx.randomBytes), guildId, userId, role, teamId, actorId, now, ...guard.params, ...(teamId ? [teamId, guildId] : []));
+  // Only what an officer set by hand is touched (source 'manual'): a role Discord gives is the sync's.
+  const insert = (teamId, role) => {
+    const roleCheck = isCustomRole(role) ? ' AND EXISTS (SELECT 1 FROM roles WHERE id = ? AND guild_id = ?)' : '';
+    return ctx.db.prepare(
+      `INSERT INTO role_assignments (id, guild_id, user_id, role_id, team_id, source, assigned_by, assigned_at)
+       SELECT ?, ?, ?, ?, ?, 'manual', ?, ? WHERE ${guard.sql}${teamId ? ' AND EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)' : ''}${roleCheck}`,
+    ).bind(newId('ra', ctx.randomBytes), guildId, userId, role, teamId, actorId, now, ...guard.params, ...(teamId ? [teamId, guildId] : []), ...(isCustomRole(role) ? [role, guildId] : []));
+  };
 
   if (officerChange && !wanted.officer) {
     statements.push(ctx.db.prepare(
-      `DELETE FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = 'officer' AND ${guard.sql}`,
+      `DELETE FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = 'officer' AND source = 'manual' AND ${guard.sql}`,
     ).bind(guildId, userId, ...guard.params));
   }
   if (removedTeams.length) {
     statements.push(ctx.db.prepare(
-      `DELETE FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = 'team_lead'
+      `DELETE FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = 'team_lead' AND source = 'manual'
          AND team_id IN (SELECT value FROM json_each(?)) AND ${guard.sql}`,
     ).bind(guildId, userId, JSON.stringify(removedTeams), ...guard.params));
   }
+  for (const pair of removedExtra) {
+    statements.push(ctx.db.prepare(
+      `DELETE FROM role_assignments WHERE guild_id = ? AND user_id = ? AND role_id = ? AND COALESCE(team_id, '') = ? AND source = 'manual' AND ${guard.sql}`,
+    ).bind(guildId, userId, pair.roleId, pair.teamId || '', ...guard.params));
+  }
   if (officerChange && wanted.officer) statements.push(insert(null, 'officer'));
   for (const teamId of addedTeams) statements.push(insert(teamId, 'team_lead'));
+  for (const pair of addedExtra) statements.push(insert(pair.teamId, pair.roleId));
 
   let results;
   try {
@@ -289,6 +346,22 @@ export async function setRoles(ctx) {
   }
   if (results[0].meta.changes !== 1) throw conflict();
   return peopleReply(ctx, guildContext);
+}
+
+// Sync now: apply the Discord role mapping to one person, then answer with the people list and what changed.
+export async function syncPerson(ctx) {
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  requireAction(guildContext, 'guild.access');
+  const model = await loadModel(ctx.db, guildContext);
+  const target = findTarget(model, ctx.params.uid);
+  if (!isCurrentMember(target)) throw notFound();
+  if (!target.row.discord_id) throw new HttpError(409, 'no_discord', 'That person has not connected Discord, so there are no Discord roles to read.');
+  if (!botConfigured(ctx.env)) throw discordProblem('not_configured');
+  if (!model.hasMaps) throw new HttpError(409, 'no_mapping', 'Map a Discord role to a Raidsmith role first (Guild settings > Discord roles).');
+  const result = await syncMember(ctx, guildContext.guild, target.id, { actorId: guildContext.userId });
+  if (result.status === 'failed') throw discordProblem(result.reason);
+  const fresh = peopleResponse(await loadModel(ctx.db, guildContext), guildContext, ctx.env);
+  return jsonResponse({ ...fresh, sync: { status: result.status, reason: result.reason || null, added: result.added || 0, removed: result.removed || 0 } });
 }
 
 export async function makeGuildMaster(ctx) {

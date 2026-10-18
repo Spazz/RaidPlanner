@@ -19,7 +19,7 @@ export async function loadTeams(db, guildId) {
   const [teamResult, leadResult, countResult] = await db.batch([
     db.prepare('SELECT id, name, size, archived FROM teams WHERE guild_id = ? ORDER BY created_at, id').bind(guildId),
     db.prepare(
-      `SELECT ra.team_id, u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar
+      `SELECT DISTINCT ra.team_id, u.id, u.discord_id, u.username, u.global_name, u.display_name, u.avatar
          FROM role_assignments ra JOIN users u ON u.id = ra.user_id
         WHERE ra.guild_id = ? AND ra.role_id = 'team_lead'
           AND NOT EXISTS (SELECT 1 FROM guild_blocks b WHERE b.guild_id = ra.guild_id AND b.user_id = ra.user_id)
