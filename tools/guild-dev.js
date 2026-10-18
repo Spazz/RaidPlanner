@@ -105,6 +105,7 @@ function main(argv) {
     cwd: path.join(__dirname, '..'),
     stdio: 'inherit',
     shell: plan.shell,
+    windowsHide: true, // no console window for cmd.exe/npx when run from a background shell
     env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
   });
   child.on('error', (error) => { console.error(`could not start Wrangler: ${error.message}`); process.exit(1); });
