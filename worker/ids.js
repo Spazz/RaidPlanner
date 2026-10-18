@@ -14,6 +14,7 @@ const PATTERNS = {
   lp: /^lp_[A-Za-z0-9_-]{22}$/,
   cl: /^cl_[A-Za-z0-9_-]{22}$/,
   ts: /^ts_[A-Za-z0-9_-]{22}$/,
+  ct: /^ct_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {
@@ -48,4 +49,6 @@ export const PARAM_SOURCE = {
   clid: 'cl_[A-Za-z0-9_-]{22}',
   // A Warcraft Logs report code (DELETE /raids/:rid/reports/:code).
   code: '[A-Za-z0-9]{16}',
+  // A calendar feed file name (GET /cal/:cal): a 43-character token and ".ics". The feed route checks it itself (it has no session).
+  cal: '[A-Za-z0-9_-]{43}\\.ics',
 };

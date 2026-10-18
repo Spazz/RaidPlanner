@@ -99,7 +99,7 @@ check('wrangler.jsonc: Worker entry, assets, run_worker_first, D1 binding, and n
   assert.equal(config.main, 'worker/index.js');
   assert.match(config.compatibility_date, /^\d{4}-\d{2}-\d{2}$/);
   assert.deepEqual(config.assets, {
-    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/guild/', '/api/guild', '/api/guild/*', '/api/roadmap/*', '/api/me', '/auth/*'],
+    directory: '.', binding: 'ASSETS', run_worker_first: ['/guild', '/guild/', '/api/guild', '/api/guild/*', '/api/roadmap/*', '/api/me', '/auth/*', '/cal/*'],
   });
   assert.deepEqual(config.d1_databases, [{ binding: 'DB', database_name: 'raidsmith', database_id: 'local-raidsmith', migrations_dir: 'migrations' }]);
   assert.equal(config.vars, undefined);

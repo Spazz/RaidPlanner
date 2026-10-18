@@ -45,6 +45,7 @@
     const blocked = hand.length > 0;
     const intro = paragraphs([
       'Deletes your account, the name you chose and every sign-in linked to it, and all Discord data Raidsmith holds: your Discord ID, username and avatar, the Discord ID and nickname on your Raid-Helper sign-ups, and the notes you wrote on sign-ups made in Raidsmith. It also deletes your Battle.net link and character list, and the character claims you made.',
+      'It deletes the calendar links you made too, so those calendar subscriptions stop updating.',
       'Delete my data also lifts any access block on you.',
       'If you are the only Guild Master of a guild, hand over first. If nobody else has joined, the guild is deleted too.',
       'Roster records stay with the guild, unlinked, once the guild keeps them: your roster entry, characters, attendance and officer notes would no longer be linked to your Discord account. To remove those, ask your guild\'s officers.',

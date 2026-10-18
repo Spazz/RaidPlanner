@@ -1,7 +1,7 @@
 // ── PAGES: RAIDS LIST and NEW RAID ──────────────────────────────
 // The list of one team's raids (GET /raids?team=): Upcoming (raids that have not started, soonest first, with the sign-up counts, the
 // viewer's own sign-up and a one-click Sign up) and Past (newest first, with status pills) tabs, "Create upcoming raids" from the team's
-// weekly schedule (also run by itself when the team's schedule says so), and the New raid page, which
+// weekly schedule (also run by itself when the team's schedule says so), "Subscribe in your calendar" (pages-calendar.js), and the New raid page, which
 // runs its calls in order (create raid, event, each report, plan) with a status line per source. A failure stops that
 // source only: the raid exists, the page links to it and offers Retry. Dates are the guild's calendar dates.
 (function (G) {
@@ -220,10 +220,13 @@
       ? esc(plural(upcoming.length, 'upcoming raid', 'upcoming raids')) + ', soonest first' : esc(plural(raids.length, 'raid', 'raids')) + ', newest first');
     const staleCount = raids.filter(function (r) { return r.stale; }).length;
     const hasSlots = !!(data.schedule && data.schedule.slots > 0);
-    const actions = canEdit ? '<div class="gs-roster-actions"><a class="gs-btn" href="' + esc(G.router.format({ name: 'backfill', gid: gid })) + '">Backfill from Warcraft Logs</a>' +
+    // Everyone who sees the list may subscribe to the team's calendar (the link is theirs); the officers' buttons come with it.
+    const subscribe = opts.teamId && G.pages.calendar ? G.pages.calendar.buttonHtml() : '';
+    const editorActions = canEdit ? '<a class="gs-btn" href="' + esc(G.router.format({ name: 'backfill', gid: gid })) + '">Backfill from Warcraft Logs</a>' +
       '<a class="gs-btn" href="' + esc(G.router.format({ name: 'settings', gid: gid, tab: 'schedule' })) + '">Raid schedule</a>' +
-      (hasSlots ? '<button type="button" class="gs-btn" data-action="raids-fill" data-key="raids-fill">Create upcoming raids</button>' : '') +
-      '<a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'raidnew', gid: gid })) + '">New raid</a></div>' : '';
+      (hasSlots ? '<button type="button" class="gs-btn" data-action="raids-fill" data-key="raids-fill">Create upcoming raids</button>' : '') : '';
+    const newRaid = canEdit ? '<a class="gs-btn gs-btn-molten" href="' + esc(G.router.format({ name: 'raidnew', gid: gid })) + '">New raid</a>' : '';
+    const actions = editorActions || subscribe || newRaid ? '<div class="gs-roster-actions">' + editorActions + subscribe + newRaid + '</div>' : '';
     let body;
     if (!raids.length && !upcoming.length) {
       body = emptyHtml(gd, canEdit);

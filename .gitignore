@@ -173,3 +173,7 @@
 # Phase 7a accounts with linked sign-ins: the Worker suite (flows, membership rule, migration 0012 on a populated database) and the pages suite (the Worker files, the migration and the pages are covered by the globs above)
 !guild-accounts-worker-tests.js
 !guild-accounts-ui-tests.js
+# PM wave 1 (officer tools): activity log, attendance watch list, Needs attention home, trial review card, calendar feed - Worker, pages and contract suites
+!guild-wave1-worker-tests.js
+!guild-wave1-ui-tests.js
+!guild-wave1-contract-tests.js

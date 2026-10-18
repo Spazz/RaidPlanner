@@ -1,5 +1,5 @@
 // ── PAGE: PERSON RECORD (R1 A, a full page) ─────────────────────
-// Header and chips, the trial bar, Characters, Attendance (the card from pages-person-attendance.js), Loot (pages-person-loot.js), Details (with the Discord
+// Header and chips, the trial bar (text only), the Trial review card (pages-person-trial.js, trial editors only), Characters, Attendance (the card from pages-person-attendance.js), Loot (pages-person-loot.js), Details (with the Discord
 // and Raidsmith account fields: an officer links the person to an account, found by a character claim or an exact BattleTag or name), Officer notes, Delete person.
 // Editors get the forms; a member gets a read-only record. The dialogs (Add / Edit character, Extend trial,
 // Delete) live here too. Every mutation answers with the whole person record, which replaces the page's copy;
@@ -116,6 +116,12 @@
     return G.pages.personAtt.cardHtml({ gid: gid, pid: record.person.id, record: record, state: state });
   }
 
+  // The Trial review card (pages-person-trial.js): it decides for itself whether this person gets one.
+  function trialCardHtml(opts) {
+    if (!G.pages.personTrial) return '';
+    return G.pages.personTrial.cardHtml({ guildData: opts.guildData, gid: opts.guildData.guild.id, pid: opts.record.person.id, record: opts.record, state: opts.trial });
+  }
+
   // ── details form ──
   function detailsHtml(record, linkable) {
     const p = record.person;
@@ -189,7 +195,7 @@
       '<p class="gs-fine">Removes ' + esc(name) + ' and their characters from the roster. Their Discord sign-in is not affected. Once they have attendance, set them to Inactive instead.</p></div>';
   }
 
-  // opts: { guildData, record (GET /roster/p_...), linkable: [person] | null, alert }
+  // opts: { guildData, record (GET /roster/p_...), linkable: [person] | null, alert, attendance (card state), trial (Trial review card state) }
   function personHtml(opts) {
     const record = opts.record;
     const can = Object.assign({ edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false }, record.can || {});
@@ -198,6 +204,7 @@
     return '<div class="gs-page gs-person-page">' + headHtml(record, can) +
       G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
       trialBarHtml(record, can) +
+      trialCardHtml(opts) +
       (readOnly && record.person.isMe ? '<p class="gs-fine gs-member-note">' + esc(MEMBER_NOTE) + '</p>' : '') +
       '<div class="gs-person-cols"><div class="gs-person-main">' + charactersHtml(record, can, showTeam) + attendanceHtml(record, opts.guildData.guild.id, opts.attendance) + G.pages.personLoot.cardFor(opts.guildData, record, record.person.id) + '</div>' +
       '<div class="gs-person-side">' + (can.edit ? detailsHtml(record, opts.linkable) : readOnlyDetailsHtml(record)) + notesHtml(record, can) + '</div></div>' +
@@ -578,6 +585,8 @@
   };
 
   G.pages.person = {
+    // The open record and the ways to change it, for the Trial review card (its buttons patch the same record with the same conflict handling).
+    ops: { cur: cur, applyRecord: applyRecord, conflict: conflict },
     CONFLICT_TEXT: CONFLICT_TEXT,
     MEMBER_NOTE: MEMBER_NOTE,
     NOTES_HINT: NOTES_HINT,

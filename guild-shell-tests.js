@@ -246,10 +246,10 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(!s.sidebar.includes('Guild settings'));
   });
 
-  await check('nav matrix: officer / GM gets Guild settings (separated) before the help group; tabs stay five', () => {
+  await check('nav matrix: officer / GM gets Home first and Guild settings (separated) before the help group; tabs stay five (no Home tab)', () => {
     const { G } = makeEnv();
     const ctx = { section: 'guild', page: 'app', me: meBody(), route: { name: 'section', gid: 'g1', section: 'roster' }, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
+    assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep', 'whats-new|sep', 'roadmap', 'how-it-works', 'faq']);
     assert.deepEqual(plain(keysOf(G.shell.tabItems(ctx))), ['roster', 'raids', 'attendance', 'loot', 'planner']);
   });
 
@@ -257,7 +257,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const { G } = makeEnv();
     for (const section of ['planner', 'page']) {
       const ctx = { section, page: section === 'page' ? 'faq' : 'app', me: meBody(), route: null, guildData: guildBody(OFFICER_CAN), teamId: 't1' };
-      assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))).slice(0, 6), ['roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep'], section);
+      assert.deepEqual(plain(keysOf(G.shell.sidebarItems(ctx))).slice(0, 7), ['home', 'roster', 'raids', 'attendance', 'loot', 'planner', 'settings|sep'], section);
       assert.equal(G.shell.slots(ctx).tabs, '', section + ': no tabs');
     }
   });
@@ -797,13 +797,16 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
   await check('guild data on the planner section: the last guild is fetched once and Roster / Guild settings appear; a failure is silent', async () => {
     const env = makeEnv({ url: '/', hint: true, routes: signedInRoutes(OFFICER_CAN) });
     await settle();
-    assert.equal(env.fetched('/api/guild/g1'), 1);
+    const guildReads = () => env.fetchCalls.filter(c => c.url === '/api/guild/g1').length; // the guild itself (not /attention, which officers also read for the Home badge)
+    assert.equal(guildReads(), 1);
+    assert.equal(env.fetched('/api/guild/g1/attention'), 1, 'officers read the Home count once, in the background');
     const side = env.html('shell-sidebar');
     assert(side.includes('Roster') && side.includes('Guild settings') && side.includes('gs-side-head'));
     env.G.app.render();
     env.loc.hash = '#how-it-works';
     await settle();
-    assert.equal(env.fetched('/api/guild/g1'), 1, 'once per page load');
+    assert.equal(guildReads(), 1, 'once per page load');
+    assert.equal(env.fetched('/api/guild/g1/attention'), 1, 'a failed Home count is not asked again within the minute');
     const bad = makeEnv({ url: '/', hint: true, routes: signedInRoutes(OFFICER_CAN, { '/api/guild/g1': { status: 500, body: {} } }) });
     await settle();
     assert(!bad.html('shell-sidebar').includes('Guild settings') && bad.html('shell-sidebar').includes('gs-brand-row'));
@@ -1408,6 +1411,188 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const teamLeadOnly = makeEnv({ url: '/#/g/g1/attendance/review', routes: signedInRoutes({ 'roster.view': 'guild', 'attendance.review': ['t1'], 'attendance.view': ['t1'] }, { '/api/guild/g1/attendance/review?team=t1': review }) });
     await settle();
     assert.equal(teamLeadOnly.fetched('/claims'), 0, 'no roster.edit, no claims read');
+  });
+
+  // ── PM wave 1: Home, the Activity tab, the trial card, the calendar button and the watch list through the real router ──
+  const HOME_CAN = Object.assign({}, OFFICER_CAN, { 'raids.view': 'guild', 'raids.edit': 'guild', 'attendance.view': 'guild', 'attendance.review': 'guild' });
+  const ATTENTION_BODY = { today: '2026-10-17', total: 2, more: {}, items: [
+    { id: 'review:r1', kind: 'review', severity: 'action', teamId: 't1', teamName: 'Main', raidId: 'r1', date: '2026-10-17', zone: 'BT', title: null, count: 3, link: { name: 'raid', rid: 'r1' } },
+    { id: 'claims', kind: 'claims', severity: 'action', teamId: null, teamName: null, count: 1, link: { name: 'review' } },
+  ] };
+  const attentionRoute = { '/api/guild/g1/attention': { status: 200, body: ATTENTION_BODY } };
+  const replaces = env => env.history.calls.filter(c => c[0] === 'replace').map(c => c[1]);
+
+  await check('Home route: #/g/:gid (and /home) opens the needs-attention list for officers, with the Home nav item first, current, and counting the open work', async () => {
+    const env = makeEnv({ url: '/#/g/g1', routes: signedInRoutes(HOME_CAN, attentionRoute) });
+    await settle();
+    const main = env.html('gs-main');
+    assert(main.includes('<h1 class="gs-h1" tabindex="-1">Home</h1>') && main.includes('Review Sat Oct 17: 3 to decide') && main.includes('3 character claims') === false && main.includes('1 character claim is waiting'));
+    assert.equal(env.loc.hash, '#/g/g1', 'no redirect for an officer');
+    assert.equal(env.documentFake.title, 'Home - Ravens - Raidsmith guild');
+    assert(env.html('shell-topbar-lead').includes('>Home<'));
+    const side = env.html('shell-sidebar');
+    assert(side.indexOf('href="#/g/g1"') > 0 && side.indexOf('href="#/g/g1"') < side.indexOf('href="#/g/g1/roster"'), 'Home first');
+    assert(side.includes('aria-label="Home, 2 items need attention" aria-current="page"') && /gs-nav-badge" aria-hidden="true">2</.test(side));
+    assert(env.html('shell-rail').includes('class="gs-tile is-active" href="#/g/g1"'), 'the rail tile goes to Home');
+    assert(!env.html('shell-tabs').includes('Home'), 'no Home tab');
+    assert.equal(env.fetched('/api/guild/g1/attention'), 1, 'the page reads it once; no second background read');
+    assert.equal(env.G.app.state.attention.g1.data.total, 2);
+    const alias = makeEnv({ url: '/#/g/g1/home', routes: signedInRoutes(HOME_CAN, attentionRoute) });
+    await settle();
+    assert(alias.html('gs-main').includes('Review Sat Oct 17: 3 to decide') && alias.loc.hash === '#/g/g1/home');
+  });
+
+  await check('Home route: members (and anyone without an officer action) are sent to Roster by a replaced address; they never ask for the list', async () => {
+    const env = makeEnv({ url: '/#/g/g1', routes: signedInRoutes(MEMBER_CAN, attentionRoute) });
+    await settle();
+    assert.equal(env.loc.hash, '#/g/g1/roster');
+    assert.deepEqual(replaces(env), ['/#/g/g1/roster']);
+    assert(env.documentFake.title.startsWith('Roster - Ravens'));
+    assert.equal(env.fetched('/attention'), 0);
+    assert(!env.html('shell-sidebar').includes('>Home<') && !env.html('gs-main').includes('Needs attention'));
+    const lead = makeEnv({ url: '/#/g/g1/home', routes: signedInRoutes({ 'roster.view': 'guild', 'raids.view': 'guild', 'audit.view': 'guild' }, attentionRoute) });
+    await settle();
+    assert.equal(lead.loc.hash, '#/g/g1/roster', 'audit.view alone is not an item action');
+  });
+
+  await check('Home route: the sign-in landing (#/ and #/signin) goes to #/g/:gid first; officers stay on Home, members move on to Roster', async () => {
+    const officer = makeEnv({ url: '/#/', routes: signedInRoutes(HOME_CAN, attentionRoute) });
+    await settle();
+    assert.equal(officer.loc.hash, '#/g/g1');
+    assert.deepEqual(replaces(officer), ['/#/g/g1']);
+    assert(officer.html('gs-main').includes('Review Sat Oct 17: 3 to decide'));
+    const member = makeEnv({ url: '/#/signin', routes: signedInRoutes(MEMBER_CAN, attentionRoute) });
+    await settle();
+    assert.equal(member.loc.hash, '#/g/g1/roster');
+    assert.deepEqual(replaces(member), ['/#/g/g1', '/#/g/g1/roster']);
+  });
+
+  await check('Home count: read in the background on a guild page without redrawing it, shown on the nav, not asked again within a minute, asked again after', async () => {
+    const env = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(HOME_CAN, attentionRoute) });
+    await settle();
+    assert.equal(env.fetched('/api/guild/g1/attention'), 1);
+    assert(env.html('shell-sidebar').includes('aria-label="Home, 2 items need attention"'), 'the badge arrives');
+    // a later answer redraws the nav slots only
+    env.G.app.state.attention = {};
+    const mainWrites = env.els['gs-main'].writes;
+    const sideWrites = env.els['shell-sidebar'].writes;
+    await env.G.app.ensureAttention('g1', true);
+    await settle();
+    assert.equal(env.els['gs-main'].writes, mainWrites, 'the page itself is not rewritten (typed input survives)');
+    assert(env.els['shell-sidebar'].writes > sideWrites);
+    assert.equal(env.fetched('/api/guild/g1/attention'), 2);
+    env.loc.hash = '#/g/g1/roster?team=t1';
+    await settle();
+    assert.equal(env.fetched('/api/guild/g1/attention'), 2, 'a route change within the minute');
+    env.G.app.state.attention.g1.at -= 61000;
+    env.loc.hash = '#/g/g1/roster';
+    await settle();
+    assert.equal(env.fetched('/api/guild/g1/attention'), 3, 'older than a minute: read again');
+    // a guild switch to a viewer without actions never asks
+    const member = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(MEMBER_CAN, attentionRoute) });
+    await settle();
+    assert.equal(member.fetched('/attention'), 0);
+    // a failing Worker is silent and is not hammered
+    const bad = makeEnv({ url: '/#/g/g1/roster', routes: signedInRoutes(HOME_CAN, { '/api/guild/g1/attention': { status: 500, body: {} } }) });
+    await settle();
+    bad.loc.hash = '#/g/g1/roster?team=t1';
+    await settle();
+    assert.equal(bad.fetched('/attention'), 1);
+    assert(bad.html('shell-sidebar').includes('>Home<') && !bad.html('shell-sidebar').includes('items need attention'));
+    // the sign-out forgets it
+    env.G.app.state.attention.g1 = { data: { total: 9 }, at: Date.now() };
+    env.click({ 'data-action': 'sign-out' });
+    await settle();
+    assert.deepEqual(plain(env.G.app.state.attention), {});
+  });
+
+  await check('Home route: opening a review item selects its team first (state and storage), then the link navigates', async () => {
+    const two = can => {
+      const body = guildBody(can);
+      body.teams = [{ id: 't1', name: 'Main', size: 25, archived: false, lead: null }, { id: 't2', name: 'Weekend', size: 25, archived: false, lead: null }];
+      return body;
+    };
+    const attn = { today: '2026-10-17', total: 1, more: {}, items: [{ id: 'review:r9', kind: 'review', severity: 'action', teamId: 't2', teamName: 'Weekend', raidId: 'r9', date: '2026-10-17', zone: null, title: null, count: 2, link: { name: 'review' } }] };
+    const env = makeEnv({ url: '/#/g/g1', routes: signedInRoutes(HOME_CAN, { '/api/guild/g1': { status: 200, body: two(HOME_CAN) }, '/api/guild/g1/attention': { status: 200, body: attn } }) });
+    await settle();
+    assert(env.html('gs-main').includes('data-action="attn-open" data-team="t2"') && env.html('gs-main').includes('Weekend'), 'the team shows with two teams');
+    env.click({ 'data-action': 'attn-open', 'data-team': 't2', href: '#/g/g1/attendance/review' });
+    assert.equal(env.G.app.state.teamByGuild.g1, 't2');
+    assert.equal(env.store['raidsmith.guild.team.g1'], 't2');
+  });
+
+  const AUDIT_BODY = { timeZone: 'America/New_York', rows: [{ id: 'a1', at: Date.UTC(2026, 9, 18, 0, 15), actor: { id: 'u1', displayName: 'Alice' }, action: 'person.update', group: 'roster', text: 'Moved Thoren to Reserve', entityType: 'person', entityId: 'p1', before: { status: 'raider' }, after: { status: 'reserve' } }],
+    next: null, types: [{ id: 'roster', label: 'Roster' }, { id: 'loot', label: 'Loot' }], actors: [{ id: 'u1', displayName: 'Alice' }] };
+
+  await check('Activity tab: audit.view opens Guild settings > Activity (list read, tab strip, title); a viewer without it gets the role message; a 403 is the message page', async () => {
+    const can = Object.assign({}, OFFICER_CAN, { 'audit.view': 'guild' });
+    const env = makeEnv({ url: '/#/g/g1/settings/activity', routes: signedInRoutes(can, { '/api/guild/g1/audit': { status: 200, body: AUDIT_BODY } }) });
+    await settle();
+    const main = env.html('gs-main').replace(/[  ]/g, ' ');
+    assert(main.includes('Moved Thoren to Reserve') && main.includes('Oct 17, 8:15 PM') && main.includes('href="#/g/g1/settings/activity" aria-current="page">Activity<'), 'list and tab');
+    assert(main.includes('href="/api/guild/g1/audit?format=csv" download'));
+    assert.equal(env.documentFake.title, 'Guild settings - Ravens - Raidsmith guild');
+    assert(env.html('shell-topbar-lead').includes('Activity'));
+    // a filter change through the delegated change listener reads the list again
+    env.fire('document', 'change', { target: Object.assign(target({ 'data-change': 'audit-filter', 'data-filter': 'type' }), { value: 'loot' }) });
+    await settle();
+    assert(env.fetchCalls.some(c => c.url === '/api/guild/g1/audit?type=loot'));
+    const none = makeEnv({ url: '/#/g/g1/settings/activity', routes: signedInRoutes(OFFICER_CAN, { '/api/guild/g1/audit': { status: 200, body: AUDIT_BODY } }) });
+    await settle();
+    assert(none.html('gs-main').includes('Your role does not include this part of Guild settings.'));
+    assert.equal(none.fetched('/audit'), 0);
+    const only = makeEnv({ url: '/#/g/g1/settings', routes: signedInRoutes({ 'roster.view': 'guild', 'audit.view': 'guild' }, { '/api/guild/g1/audit': { status: 200, body: AUDIT_BODY } }) });
+    await settle();
+    assert.equal(only.loc.hash, '#/g/g1/settings/activity', 'audit.view alone lands on its only tab');
+    const denied = makeEnv({ url: '/#/g/g1/settings/activity', routes: signedInRoutes(can, { '/api/guild/g1/audit': { status: 403, body: { error: 'forbidden', message: 'No.' } } }) });
+    await settle();
+    assert(denied.html('gs-main').includes('You cannot open this'));
+  });
+
+  const TRIAL_RECORD = status => ({ today: '2026-10-17', can: { edit: true, notesView: true, notesEdit: true, delete: false, addCharacter: true },
+    person: { id: 'p1', status, joinedOn: '2026-09-19', trialStart: '2026-10-03', trialEnd: '2026-10-24', trialFlag: status === 'trial' ? { kind: 'ends', days: 7 } : null, isMe: false, version: 4, discord: { signIn: 'not_yet', user: null, nickname: null }, homeTeam: { id: 't1', name: 'Main' } },
+    characters: [{ id: 'c1', name: 'Thoren', realm: null, class: 'PALADIN', mainSpec: 'Protection', offSpec: null, role: 'tank', isMain: true, team: { id: 't1', name: 'Main', archived: false } }], notes: { text: 'Likes fire', version: 2 } });
+  const TRIAL_BODY = { today: '2026-10-17', person: { id: 'p1', name: 'Thoren', status: 'trial', trialStart: '2026-10-03', trialEnd: '2026-10-24', trialFlag: { kind: 'ends', days: 7 }, joinedOn: '2026-09-19', version: 4 }, since: '2026-10-03',
+    attendance: { team: { id: 't1', name: 'Main' }, raids: 6, pct: 83.3, present: 5, missed: 1, missedNotice: 1, late: 1, leftEarly: 0, fillIns: 1, pending: 0 },
+    loot: { total: 1, ms: 1, os: 0, de: 0, bank: 0, items: [{ itemId: 28770, itemName: 'Nathrezim Mindblade', tag: 'MS', raidOn: '2026-10-10' }] }, notes: { excerpt: 'Likes fire', truncated: false } };
+
+  await check('Trial card route: a Trial the viewer edits reads GET /roster/:pid/trial and shows the card; a raider, a 403 and a 404 leave the page without a card or an error', async () => {
+    const base = { '/api/guild/g1/attendance/person/p1': { status: 403, body: { error: 'forbidden' } }, '/api/guild/g1/loot/person/p1': { status: 403, body: { error: 'forbidden' } }, '/api/guild/g1/roster/linkable': { status: 200, body: { people: [] } } };
+    const env = makeEnv({ url: '/#/g/g1/roster/p/p1', routes: signedInRoutes(HOME_CAN, Object.assign({ '/api/guild/g1/roster/p1': { status: 200, body: TRIAL_RECORD('trial') }, '/api/guild/g1/roster/p1/trial': { status: 200, body: TRIAL_BODY } }, base)) });
+    await settle();
+    const main = env.html('gs-main');
+    assert(main.includes('id="trial-card-h">Trial review</h2>') && main.includes('Nathrezim Mindblade') && main.includes('Loot received: 1 (1 main spec)') && main.includes('data-action="trial-promote"'));
+    assert(main.indexOf('gs-trial-bar') < main.indexOf('id="trial-card-h"') && main.indexOf('id="trial-card-h"') < main.indexOf('id="characters-h"'));
+    assert.equal(env.fetched('/roster/p1/trial'), 1);
+    const raider = makeEnv({ url: '/#/g/g1/roster/p/p1', routes: signedInRoutes(HOME_CAN, Object.assign({ '/api/guild/g1/roster/p1': { status: 200, body: TRIAL_RECORD('raider') }, '/api/guild/g1/roster/p1/trial': { status: 200, body: TRIAL_BODY } }, base)) });
+    await settle();
+    assert(!raider.html('gs-main').includes('trial-card-h') && raider.html('gs-main').includes('id="characters-h"'));
+    assert.equal(raider.fetched('/roster/p1/trial'), 0, 'no request for a raider');
+    for (const status of [403, 404]) {
+      const gone = makeEnv({ url: '/#/g/g1/roster/p/p1', routes: signedInRoutes(HOME_CAN, Object.assign({ '/api/guild/g1/roster/p1': { status: 200, body: TRIAL_RECORD('trial') }, '/api/guild/g1/roster/p1/trial': { status, body: { error: 'forbidden' } } }, base)) });
+      await settle();
+      assert(gone.html('gs-main').includes('id="characters-h"') && !gone.html('gs-main').includes('trial-card-h') && !gone.html('gs-main').includes('Could not load this page'), 'status ' + status);
+    }
+    const member = makeEnv({ url: '/#/g/g1/roster/p/p1', routes: signedInRoutes(MEMBER_CAN, Object.assign({ '/api/guild/g1/roster/p1': { status: 200, body: Object.assign(TRIAL_RECORD('trial'), { can: { edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false } }) } }, base)) });
+    await settle();
+    assert.equal(member.fetched('/roster/p1/trial'), 0, 'a viewer who cannot edit never asks');
+    assert(!member.html('gs-main').includes('trial-card-h'));
+  });
+
+  await check('Raids and Attendance routes: the Raids header carries Subscribe in your calendar for members too; the team attendance page shows the Watch list card above the grid', async () => {
+    const can = Object.assign({}, MEMBER_CAN, { 'raids.view': 'guild', 'attendance.view': ['t1'] });
+    const rt = { '/api/guild/g1/raids?team=t1': { status: 200, body: { team: 't1', raids: [], upcoming: [] } } };
+    const raids = makeEnv({ url: '/#/g/g1/raids', routes: signedInRoutes(can, rt) });
+    await settle();
+    assert(raids.html('gs-main').includes('data-action="cal-open"') && raids.html('gs-main').includes('Subscribe in your calendar'));
+    const watch = { below: 0.75, dropBy: 0.15, window: 8, previousFrom: '2026-07-21', entries: [{ playerId: 'p1', name: 'Thoren', class: 'PALADIN', status: 'raider', pct: 62, previousPct: 82, drop: 20, counted: 8, missed: 3, missedNotice: 1, reasons: ['below', 'drop'] }] };
+    const team = { team: 't1', window: 8, policy: { switchWeeks: [8, 12] }, weeks: [], people: [], awaitingReview: 0, staleRaids: 0, watch };
+    const att = makeEnv({ url: '/#/g/g1/attendance', routes: signedInRoutes(HOME_CAN, { '/api/guild/g1/attendance/team?team=t1': { status: 200, body: team }, '/api/guild/g1/attendance/policy': { status: 200, body: { defaults: {}, guild: {}, teams: {}, resolved: {}, versions: { guild: 0, teams: {} }, wcl: { guildId: null, uploaders: {} } } } }) });
+    await settle();
+    assert(att.html('gs-main').includes('id="att-watch-h">Watch list</h2>') && att.html('gs-main').includes('href="#/g/g1/attendance/p/p1"') && att.html('gs-main').includes('Below 75% or down 15+ points against the previous 8 weeks'));
+    const none = makeEnv({ url: '/#/g/g1/attendance', routes: signedInRoutes(HOME_CAN, { '/api/guild/g1/attendance/team?team=t1': { status: 200, body: Object.assign({}, team, { watch: null }) }, '/api/guild/g1/attendance/policy': { status: 200, body: { defaults: {}, guild: {}, teams: {}, resolved: {}, versions: { guild: 0, teams: {} }, wcl: { guildId: null, uploaders: {} } } } }) });
+    await settle();
+    assert(!none.html('gs-main').includes('att-watch-h'));
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

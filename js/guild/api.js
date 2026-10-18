@@ -129,4 +129,38 @@
     saveSchedule: function (gid, tid, body) { return G.api.put(schedulePath(gid, tid), body); },
     fill: function (gid, tid, weeks) { return G.api.post(schedulePath(gid, tid, '/raids'), weeks == null ? {} : { weeks: weeks }); },
   };
+
+  // PM wave 1 (officer tools): the Activity log, the Home (needs attention) list, the Trial review card and the calendar link. Same rule as
+  // the groups above: pages call these, never a raw path, and they go through G.api.get / post / ... at call time.
+  // Activity log filters are { type, actor, from, to }; blank means no filter. The CSV link keeps the same order as the list call.
+  const AUDIT_FILTERS = ['type', 'actor', 'from', 'to'];
+  function auditQuery(filters, extra) {
+    const f = filters || {};
+    const parts = [];
+    AUDIT_FILTERS.forEach(function (k) { if (typeof f[k] === 'string' && f[k]) parts.push(k + '=' + encodeURIComponent(f[k])); });
+    (extra || []).forEach(function (pair) { parts.push(pair[0] + '=' + encodeURIComponent(pair[1])); });
+    return parts.length ? '?' + parts.join('&') : '';
+  }
+  G.api.audit = {
+    FILTERS: AUDIT_FILTERS,
+    query: auditQuery,
+    list: function (gid, filters, before) { return G.api.get(guildPath(gid, '/audit' + auditQuery(filters, before ? [['before', before]] : []))); },
+    // A plain download link (the browser sends the session cookie); the Worker caps it at 5000 rows and ignores `before`.
+    csvUrl: function (gid, filters) { return guildPath(gid, '/audit' + auditQuery(filters, [['format', 'csv']])); },
+  };
+  G.api.attention = {
+    get: function (gid) { return G.api.get(guildPath(gid, '/attention')); },
+  };
+  function rosterPath(gid, pid, tail) { return guildPath(gid, '/roster/' + encodeURIComponent(pid) + (tail || '')); }
+  G.api.trial = {
+    get: function (gid, pid) { return G.api.get(rosterPath(gid, pid, '/trial')); },
+    // The card's three buttons are PATCH /roster/:pid (status or trialEnd) and, for End trial with a note, PUT /roster/:pid/notes.
+    update: function (gid, pid, body) { return G.api.patch(rosterPath(gid, pid), body); },
+    saveNotes: function (gid, pid, body) { return G.api.put(rosterPath(gid, pid, '/notes'), body); },
+  };
+  G.api.calendar = {
+    status: function (gid, teamId) { return G.api.get(guildPath(gid, '/calendar?team=' + encodeURIComponent(teamId))); },
+    create: function (gid, teamId) { return G.api.post(guildPath(gid, '/calendar'), { teamId: teamId }); },
+    revoke: function (gid, teamId) { return G.api.del(guildPath(gid, '/calendar'), { teamId: teamId }); },
+  };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

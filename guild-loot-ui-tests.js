@@ -135,7 +135,7 @@ function withState(fn) {
     }
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'loot', view: 'balance' }), '#/g/g1/loot');
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'roster', view: 'items' }), '#/g/g1/roster');
-    assert.deepEqual(plain(G.router.TABS), ['teams', 'schedule', 'people', 'attendance', 'loot', 'battlenet']);
+    assert.deepEqual(plain(G.router.TABS), ['teams', 'schedule', 'people', 'attendance', 'loot', 'battlenet', 'activity']);
   });
 
   await check('shell: the Loot settings tab needs loot.policy, and loot.policy alone opens Guild settings', () => {
