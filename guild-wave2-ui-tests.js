@@ -3,6 +3,7 @@
  * Add team select), Settings > Raid schedule (the "Close sign-ups ... hours before the start" field), the Raids list (zone and size, "18 / 20 signed
  * up", "time not set", the deadline beside Sign up, the Raid size select of New raid), the raid page (the title, "Time not set", the officers'
  * Raid settings card) and the Sign-ups panel ("Expected", the Open until / Closed pill, the deadline sentence and the 409 it answers with).
+ * PM wave 2, part 3: standing sign-ups (Raids page card, Skip this week), the published roster (officers' Roster card, Your seat, the Raids list chip) and the Needs attention line.
  * PM wave 2, part 2: the Away notices page, the officers' card and person section, and Standby / away notices in the Sign-ups panel and the Raids list.
  * Run: node guild-wave2-ui-tests.js
  *
@@ -814,7 +815,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.deepEqual(plain(crumbs.map(c => c.label)).slice(-2), ['Raids', 'Away notices']);
     assert(crumbs.find(c => c.label === 'Raids').href.endsWith('#/g/g1/raids'));
     const app = read('js/guild/app.js');
-    assert(/ATT_ROUTE_PAGES = \{[^}]*away: 'away'/.test(app) && /case 'lootperson': case 'away':/.test(app) && /G\.pages\.away\.afterRender\(r\)/.test(app));
+    assert(/ATT_ROUTE_PAGES = \{[^}]*away: 'away'/.test(app) && /case 'lootperson': case 'away':/.test(app) && /\['away', 'standing', 'raidRoster'\]\.forEach/.test(app));
     for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(read(page).includes('<script src="/js/guild/pages-away.js"></script>'), page);
     assert(GUILD_SCRIPTS.includes('/js/guild/pages-away.js') && GUILD_SCRIPTS.indexOf('/js/guild/pages-away.js') < GUILD_SCRIPTS.indexOf('/js/guild/app.js'));
     const menu = G.shell.accountMenuHtml({ me: { user: { displayName: 'A', username: 'a' }, identities: { discord: true } }, guildData: gd(MEMBER_CAN) });
@@ -1345,9 +1346,539 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.equal(row.signups.standby, 2);
   });
 
+  // ═══ 8. Standing sign-ups and the published roster ═══════════════
+  const dec = (s) => String(s).replace(/&#39;/g, '\'');
+  const ST_CHARS = [{ id: 'c_eli', name: 'Eliora', class: 'PRIEST', mainSpec: 'Holy', isMain: true, specs: ['Holy', 'Shadow'] }, { id: 'c_mir', name: 'Mirabel', class: 'HUNTER', mainSpec: 'Marksmanship', isMain: false, specs: ['Marksmanship'] }];
+  const ST_TEAM = (over) => Object.assign({
+    teamId: 't1', teamName: 'Team KJ',
+    slots: [{ weekday: 4, startTime: '20:00', zone: 'Hyjal Summit', title: null }, { weekday: 2, startTime: '20:30', zone: null, title: 'Prog' }],
+    characters: ST_CHARS, mine: [{ weekday: 4, kind: 'late', characterId: 'c_mir' }],
+  }, over || {});
+  const STAND = (over) => Object.assign({ personId: 'p_e', teams: [ST_TEAM()] }, over || {});
+  const stState = (data, over) => Object.assign({ gid: 'g1', teamId: 't1', status: 'ok', data, draft: G.pages.standing.draftFrom(data.teams[0]), busy: false, error: '', note: '', message: '', forList: null }, over || {});
+  const stCard = (state, over) => G.pages.standing.cardHtml(Object.assign({ guildData: gd(MEMBER_CAN), teamId: 't1', canSignUp: true, state }, over || {}));
+
+  await check('standing: times read 12-hour from the schedule\'s own wall clock; a slot is "Every Thursday 8:00 PM - Hyjal Summit" (zone, then title)', () => {
+    const T = G.pages.standing.timeLabel;
+    assert.deepEqual(['00:15', '09:05', '12:00', '13:30', '20:00', '23:59'].map(T), ['12:15 AM', '9:05 AM', '12:00 PM', '1:30 PM', '8:00 PM', '11:59 PM']);
+    const S = G.pages.standing.slotText;
+    assert.equal(S({ weekday: 4, startTime: '20:00', zone: 'Hyjal Summit', title: null }), 'Every Thursday 8:00 PM - Hyjal Summit');
+    assert.equal(S({ weekday: 2, startTime: '20:30', zone: null, title: 'Prog' }), 'Every Tuesday 8:30 PM - Prog');
+    assert.equal(S({ weekday: 0, startTime: '19:00', zone: 'Barrow Deeps', title: 'Clear' }), 'Every Sunday 7:00 PM - Barrow Deeps - Clear');
+    assert.equal(S({ weekday: 1, startTime: '18:00', zone: null, title: null }), 'Every Monday 6:00 PM');
+  });
+
+  await check('standing card: one row per schedule slot with "I\'m in", a Signed up / Late select and (with several characters) a character select; the one-line explanation; one Save', () => {
+    const out = ws(stCard(stState(STAND())));
+    assert(out.includes('<h2 class="gs-h2" id="st-h">Standing sign-ups</h2>'));
+    assert(out.includes('<p class="gs-fine" id="st-explain">You are signed up automatically for new raids on these days. An Away notice wins. Changing a sign-up yourself keeps it as you set it.</p>'));
+    assert(out.includes('>Every Thursday 8:00 PM - Hyjal Summit<') && out.includes('>Every Tuesday 8:30 PM - Prog<'));
+    assert(/<input type="checkbox" id="st-in-4" data-change="st-toggle" data-wd="4" data-key="st-in-4" checked><label for="st-in-4">I'm in<\/label>/.test(out));
+    assert(/<input type="checkbox" id="st-in-2" data-change="st-toggle" data-wd="2" data-key="st-in-2"><label/.test(out), 'Tuesday is not ticked');
+    assert.deepEqual(optionsOf(out, 'st-kind-4'), [{ value: 'signed', selected: false, label: 'Signed up' }, { value: 'late', selected: true, label: 'Late' }]);
+    assert.deepEqual(optionsOf(out, 'st-char-4').map(o => [o.value, o.selected]), [['', false], ['c_eli', false], ['c_mir', true]]);
+    assert.equal(optionsOf(out, 'st-char-4')[0].label, 'My usual character');
+    assert(/id="st-kind-2"[^>]*disabled/.test(out) && /id="st-char-2"[^>]*disabled/.test(out), 'an unticked day has its selects off');
+    assert(!/id="st-kind-4"[^>]*disabled/.test(out));
+    assert(out.includes('<label class="gs-sr" for="st-kind-4">Status for Every Thursday 8:00 PM - Hyjal Summit</label>'));
+    assert(out.includes('role="group" aria-labelledby="st-slot-4"') && out.includes('data-submit="standing-form"') && out.includes('aria-describedby="st-explain"'));
+    assert(/data-key="st-save">Save standing sign-ups<\/button>/.test(out) && out.split('type="submit"').length - 1 === 1, 'one Save');
+    assert(out.includes('id="st-error" role="alert" hidden'));
+    // One character: nothing to choose.
+    assert(!stCard(stState(STAND({ teams: [ST_TEAM({ characters: [ST_CHARS[0]] })] }))).includes('st-char-'));
+    assertNoRawAttrs(out);
+  });
+
+  await check('standing card: nothing for a viewer who cannot sign up, without a person, while loading or when refused; an empty schedule says so; a failed read has Try again; hostile text is escaped', () => {
+    assert.equal(stCard(stState(STAND()), { canSignUp: false }), '');
+    assert.equal(stCard(stState(STAND({ personId: null }))), '');
+    assert.equal(stCard(stState(STAND()), { teamId: 't2' }), '', 'another team on screen');
+    assert.equal(stCard(stState(STAND(), { status: 'loading' })), '');
+    assert.equal(stCard(stState(STAND(), { status: 'denied' })), '');
+    assert.equal(stCard(null), '');
+    const none = stCard(stState(STAND({ teams: [] }), { draft: [] }));
+    assert(none.includes('This team has no raid schedule yet.') && !none.includes('type="submit"'));
+    assert(stCard(stState(STAND({ teams: [ST_TEAM({ slots: [] })] }))).includes('This team has no raid schedule yet.'));
+    const err = stCard(stState(STAND(), { status: 'error', message: 'Could not reach Raidsmith.' }));
+    assert(err.includes('Could not reach Raidsmith.') && err.includes('data-action="st-retry"'));
+    const evil = stCard(stState(STAND({ teams: [ST_TEAM({ slots: [{ weekday: 4, startTime: '20:00', zone: HOSTILE + QUOTES, title: HOSTILE }], characters: [{ id: 'c_x', name: HOSTILE + QUOTES, mainSpec: HOSTILE }, ST_CHARS[0]], mine: [] })] })));
+    assertEscaped(evil, 'standing card');
+    assertEscaped(stCard(stState(STAND(), { note: HOSTILE, error: HOSTILE + QUOTES })), 'standing note and error');
+  });
+
+  await check('standing: the body is only the ticked days - weekday as a number, kind, the character only when one was chosen; nothing ticked is an empty list', () => {
+    const H = G.pages.standing;
+    const draft = H.draftFrom(ST_TEAM());
+    assert.deepEqual(plain(draft), [{ weekday: 4, checked: true, kind: 'late', characterId: 'c_mir' }, { weekday: 2, checked: false, kind: 'signed', characterId: '' }]);
+    assert.deepEqual(plain(H.bodyFrom(draft)), { slots: [{ weekday: 4, kind: 'late', characterId: 'c_mir' }] });
+    draft[1].checked = true;
+    draft[0].characterId = '';
+    const body = H.bodyFrom(draft);
+    assert.deepEqual(plain(body), { slots: [{ weekday: 4, kind: 'late' }, { weekday: 2, kind: 'signed' }] });
+    assert(!('characterId' in body.slots[0]) && typeof body.slots[0].weekday === 'number');
+    draft.forEach(r => { r.checked = false; });
+    assert.deepEqual(plain(H.bodyFrom(draft)), { slots: [] });
+    assert.deepEqual(plain(H.draftFrom(ST_TEAM({ mine: [{ weekday: 2, kind: 'signed', characterId: null }] }))), [{ weekday: 4, checked: false, kind: 'signed', characterId: '' }, { weekday: 2, checked: true, kind: 'signed', characterId: '' }], 'a null character is the usual one');
+  });
+
+  await check('standing: the controls change the draft (ticking redraws so the selects switch on); Save sends the ticked days, shows the Worker\'s answer, says so and reads the Raids list again', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    const list = S.att.raids = { gid: 'g1', teamId: 't1', data: LIST(), more: false, tab: 'upcoming' };
+    const sc = S.att.standing = stState(STAND(), { forList: list });
+    G.handlers.change['st-toggle'](el({ 'data-wd': '2' }, { checked: true }));
+    G.handlers.change['st-kind'](el({ 'data-wd': '2' }, { value: 'late' }));
+    G.handlers.change['st-char'](el({ 'data-wd': '2' }, { value: 'c_eli' }));
+    assert.deepEqual(plain(sc.draft[1]), { weekday: 2, checked: true, kind: 'late', characterId: 'c_eli' });
+    assert(!/id="st-kind-2"[^>]*disabled/.test(stCard(sc)), 'redrawn: Tuesday is on');
+    G.handlers.change['st-toggle'](el({ 'data-wd': '4' }, { checked: false }));
+    assert.equal(sc.draft[0].checked, false);
+    G.handlers.change['st-toggle'](el({ 'data-wd': '4' }, { checked: true }));
+    const saved = ST_TEAM({ mine: [{ weekday: 4, kind: 'late', characterId: 'c_mir' }, { weekday: 2, kind: 'late', characterId: 'c_eli' }] });
+    const s = stub((m, url) => Promise.resolve(m === 'put' ? saved : LIST({ upcoming: [UP({ mine: { kind: 'late', source: 'raidsmith', characterName: 'Eliora', standing: true } })] })));
+    G.handlers.submit['standing-form']();
+    assert.equal(sc.busy, true);
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['put', '/api/guild/g1/teams/t1/standing', { slots: [{ weekday: 4, kind: 'late', characterId: 'c_mir' }, { weekday: 2, kind: 'late', characterId: 'c_eli' }] }], ['get', '/api/guild/g1/raids?team=t1', undefined]]);
+    assert.equal(sc.busy, false);
+    assert.equal(sc.note, 'Standing sign-ups saved.');
+    assert.equal(sc.data.teams.length, 1);
+    assert.equal(sc.data.teams[0], saved);
+    assert.equal(S.att.raids.data.upcoming[0].mine.standing, true, 'the list was read again');
+    assert(stCard(sc).includes('role="status"><span>Standing sign-ups saved.</span>'));
+    s.restore();
+  }));
+
+  await check('standing: the Worker\'s 400 names the day, 409 team_archived shows its sentence, a lost sign-in is routed; nothing else changes', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    const sc = S.att.standing = stState(STAND());
+    sc.draft[1].checked = true;
+    let s = stub(() => Promise.reject(new ApiErr(400, 'bad_request', { message: 'Pick Signed up or Late.', field: 'slots', index: 1, slotField: 'kind' })));
+    G.handlers.submit['standing-form']();
+    await settle();
+    assert.equal(sc.error, 'Tuesday: Pick Signed up or Late.');
+    assert.equal(sc.busy, false);
+    assert(stCard(sc).includes('id="st-error" role="alert">Tuesday: Pick Signed up or Late.</p>'));
+    s.restore();
+    s = stub(() => Promise.reject(new ApiErr(409, 'team_archived', { message: 'That team is archived.' })));
+    G.handlers.submit['standing-form']();
+    await settle();
+    assert.equal(sc.error, 'That team is archived.');
+    s.restore();
+    let out = 0;
+    const realReq = ctx.Guild.app.requireSignin; ctx.Guild.app.requireSignin = () => { out++; };
+    s = stub(() => Promise.reject(new ApiErr(401, 'signed_out', { message: 'Sign in.' })));
+    G.handlers.submit['standing-form']();
+    await settle();
+    assert.equal(out, 1);
+    ctx.Guild.app.requireSignin = realReq;
+    s.restore();
+  }));
+
+  await check('standing: the card loads itself once per list after the Raids page is drawn - for a member who can sign up only; a refused read hides it', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    const route = { name: 'section', gid: 'g1', section: 'raids' };
+    const list = S.att.raids = { gid: 'g1', teamId: 't1', data: LIST(), more: false, tab: 'upcoming' };
+    let s = stub(() => Promise.resolve(STAND()));
+    G.pages.standing.afterRender(route);
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['get', '/api/guild/g1/standing']]);
+    assert.equal(S.att.standing.status, 'ok');
+    assert.deepEqual(plain(S.att.standing.draft.map(r => r.checked)), [true, false]);
+    G.pages.standing.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 1, 'drawn again: not read again');
+    S.att.raids = { gid: 'g1', teamId: 't1', data: LIST(), more: false, tab: 'upcoming' };
+    G.pages.standing.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 2, 'a fresh list reads again');
+    s.restore();
+    S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ can: { edit: true, signup: false } }), more: false, tab: 'upcoming' };
+    s = stub(() => Promise.resolve(STAND()));
+    G.pages.standing.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 0, 'no signups.self: never asked');
+    s.restore();
+    S.att.raids = { gid: 'g1', teamId: 't1', data: LIST(), more: false, tab: 'upcoming' };
+    s = stub(() => Promise.reject(new ApiErr(403, 'forbidden', { message: 'No.' })));
+    G.pages.standing.afterRender(route);
+    await settle();
+    assert.equal(S.att.standing.status, 'denied');
+    assert.equal(stCard(S.att.standing), '');
+    s.restore();
+    // And the Raids page puts the card on the page, before the officers' away card.
+    S.att.raids = { gid: 'g1', teamId: 't1', data: LIST(), more: false, tab: 'upcoming' };
+    S.att.standing = stState(STAND());
+    assert(ws(G.pages.raids.main(route, S.guilds.g1)).includes('Standing sign-ups'));
+  }));
+
+  await check('Raids list: a sign-up that comes from a standing sign-up carries a small "standing" tag; the one-click answer keeps it', () => {
+    const out = listPage(LIST({ upcoming: [UP({ mine: { kind: 'signed', source: 'raidsmith', characterName: 'Eliora', standing: true } }), UP({ id: 'u2', mine: { kind: 'signed', source: 'raidsmith', characterName: 'Eliora' } })] }));
+    assert.equal(out.split('<span class="gs-chip gs-chip-src">standing</span>').length - 1, 2, 'u1 only: table row and card');
+    const row = { id: 'u1', signups: {}, mine: null };
+    G.pages.raids.applySignupView({ data: { upcoming: [row] } }, 'u1', view({ me: Object.assign({}, view().me, { signup: entry({ standing: true, isMe: true }) }) }));
+    assert.equal(row.mine.standing, true);
+    G.pages.raids.applySignupView({ data: { upcoming: [row] } }, 'u1', view());
+    assert(!('standing' in row.mine), 'a plain sign-up has no tag');
+  });
+
+  await check('panel: a standing sign-up says where it comes from and its button reads "Skip this week"; any other keeps "Remove my sign-up"; the list marks the entry', withState(async (S) => {
+    const standingMe = entry({ key: 'p:p_e', personId: 'p_e', name: 'Eliora', classId: 'PRIEST', isMe: true, characterId: 'c_eli', standing: true });
+    const v = view({ me: Object.assign({}, view().me, { signup: standingMe }), entries: [standingMe, entry()] });
+    const out = panel(v);
+    assert(/data-action="su-withdraw" data-key="su-withdraw">Skip this week<\/button>/.test(out) && !out.includes('Remove my sign-up'));
+    assert(out.includes('This sign-up comes from your standing sign-up. Skip this week marks you absent for this raid only.'));
+    assert(out.includes('<span class="gs-chip gs-chip-src">standing</span>'));
+    const plainOne = panel(view());
+    assert(plainOne.includes('>Remove my sign-up</button>') && !plainOne.includes('Skip this week') && !plainOne.includes('standing'));
+    // Pressing it is the same call; the answer (the person's own Absence) is shown as Absent with the usual button.
+    const x = openRaid(S, v);
+    const absent = view({ me: Object.assign({}, view().me, { signup: entry({ kind: 'absence', isMe: true, key: 'p:p_e', personId: 'p_e', name: 'Eliora', classId: 'PRIEST' }) }) });
+    const s = stub(() => Promise.resolve(absent));
+    G.handlers.click['su-withdraw'](el({}));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['del', '/api/guild/g1/raids/u1/signup']]);
+    assert.equal(x.data, absent);
+    const after = panel(absent);
+    assert(/data-kind="absence"[^>]*aria-pressed="true"/.test(after) && after.includes('You are down as <strong>absent</strong>') && !after.includes('Skip this week'));
+    s.restore();
+  }));
+
+  // ── the published roster ──
+  const RENT = (over) => Object.assign({ name: 'Thoren', personId: 'p_t', class: 'PALADIN', spec: 'Protection', group: 1, status: 'confirmed', respondedAt: 1 }, over || {});
+  const ROSTER = (over) => Object.assign({
+    published: true, publishedAt: STARTS - 3 * HOUR, publishedBy: 'Alice',
+    entries: [RENT(), RENT({ name: 'Eliora', personId: 'p_e', class: 'PRIEST', spec: 'Holy', group: 2, status: 'pending' }), RENT({ name: 'Garrosh', personId: 'p_g', class: 'WARRIOR', spec: 'Arms', group: 2, status: 'declined' }), RENT({ name: 'Dorrin', personId: 'p_d', class: 'PRIEST', spec: null, group: 0, status: 'pending' })],
+    counts: { pending: 2, confirmed: 1, declined: 1, total: 4 }, planChanged: false,
+  }, over || {});
+  const roState = (data, over) => Object.assign({ gid: 'g1', rid: 'u1', status: 'ok', data, busy: false, error: '', message: '', forRaid: null }, over || {});
+  const PLANNED = (over, rover) => DETAIL(Object.assign({ sources: { event: null, reports: [], plan: { label: 'Plan', players: 25, unmatched: [] } } }, over || {}), rover);
+  const roCard = (data, state, can) => G.pages.raidRoster.cardHtml({ guildData: gd(can || OFFICER_CAN), data, state });
+
+  await check('Roster card (officers): not published with a plan - "Publish roster" and what it does; without a plan, or for a member, nothing', () => {
+    const out = roCard(PLANNED(), roState({ published: false }));
+    assert(out.includes('<h2 class="gs-h2" id="ro-h">Roster</h2>') && /data-action="roster-publish" data-op="publish" data-key="ro-publish">Publish roster<\/button>/.test(out));
+    assert(dec(out).includes('Members will see their group and can confirm or say they can\'t come.'));
+    assert.equal(roCard(DETAIL(), roState({ published: false })), '', 'no plan yet');
+    assert.equal(roCard(PLANNED({ can: { edit: false } }), roState({ published: false }), MEMBER_CAN), '', 'a member never sees the officers\' card');
+    assert.equal(roCard(PLANNED(), null), '');
+    assert.equal(roCard(PLANNED(), roState(null, { status: 'loading' })), '');
+    assert.equal(roCard(PLANNED(), roState(null, { status: 'denied' })), '');
+    const err = roCard(PLANNED(), roState(null, { status: 'error', message: 'Could not reach Raidsmith.' }));
+    assert(err.includes('Could not reach Raidsmith.') && err.includes('data-action="ro-retry"'));
+    assertNoRawAttrs(out);
+  });
+
+  await check('Roster card (officers): published - when and by whom (guild time zone), "1 confirmed, 2 waiting, 1 can\'t make it", Group 1, Group 2, Bench with status chips; waiting names highlighted, can\'t-make-it in the warning style', () => {
+    const out = ws(roCard(PLANNED(), roState(ROSTER())));
+    const text = dec(stripTags(out));
+    assert(text.includes('Published Sat Oct 24, 5:00 PM by Alice.'), text.slice(0, 300));
+    assert(out.includes('<p class="gs-ro-counts" id="ro-counts">1 confirmed, 2 waiting, 1 can&#39;t make it</p>') || out.includes('<p class="gs-ro-counts" id="ro-counts">1 confirmed, 2 waiting, 1 can\'t make it</p>'));
+    assert(out.indexOf('id="ro-g-1"') < out.indexOf('id="ro-g-2"') && out.indexOf('id="ro-g-2"') < out.indexOf('id="ro-g-0"'), 'Bench last');
+    assert(out.includes('<h3 class="gs-su-group-h" id="ro-g-1">Group 1 <span class="gs-su-count">1</span>') && out.includes('<h3 class="gs-su-group-h" id="ro-g-2">Group 2 <span class="gs-su-count">2</span>') && out.includes('id="ro-g-0">Bench <span class="gs-su-count">1</span>'));
+    assert(/<li class="gs-su-item gs-ro-item is-confirmed"><span class="gs-su-who"><span class="gs-char-name gs-class-paladin">Thoren<\/span><\/span><span class="gs-su-spec">Protection<\/span><span class="gs-pill gs-pill-ok">Confirmed<\/span>/.test(out));
+    assert(/gs-ro-item is-pending"><span class="gs-su-who"><span class="gs-char-name gs-class-priest">Eliora[\s\S]*?gs-pill gs-pill-info">Waiting</.test(out), 'waiting is highlighted');
+    assert(/gs-ro-item is-declined">[\s\S]*?Garrosh[\s\S]*?gs-pill gs-pill-warn">Can(&#39;|')t make it</.test(out), 'declined is a warning');
+    assert(/data-op="republish" data-key="ro-republish">Re-publish roster</.test(out) && /data-op="unpublish" data-key="ro-unpublish">Unpublish</.test(out));
+    assert(!out.includes('The plan changed since you published.'));
+    const changed = ws(roCard(PLANNED(), roState(ROSTER({ planChanged: true }))));
+    assert(changed.includes('<div class="gs-notice" role="status"><span>The plan changed since you published.</span>') && /data-op="republish" data-key="ro-changed">Re-publish</.test(changed));
+    assert(ws(roCard(PLANNED(), roState(ROSTER({ publishedBy: null, publishedAt: null })))).includes('Published.'));
+    assert(ws(roCard(PLANNED(), roState(ROSTER({ entries: [], counts: { pending: 0, confirmed: 0, declined: 0, total: 0 } })))).includes('No one is on the roster.'));
+    assertNoRawAttrs(out);
+    assertEscaped(roCard(PLANNED(), roState(ROSTER({ entries: [RENT({ name: HOSTILE + QUOTES, spec: HOSTILE, class: 'MAGE' })], publishedBy: HOSTILE + QUOTES }))), 'roster card');
+  });
+
+  await check('Roster card: after the start only the list (no Publish, Re-publish or Unpublish), and nothing if it was never published', () => {
+    const started = PLANNED(null, { upcoming: false, state: 'reviewed' });
+    const out = roCard(started, roState(ROSTER({ planChanged: true })));
+    assert(out.includes('id="ro-g-1"') && out.includes('1 confirmed, 2 waiting') && !out.includes('roster-publish') && !out.includes('Re-publish') && !out.includes('The plan changed'));
+    assert.equal(roCard(started, roState({ published: false })), '');
+    assert.equal(roCard(started, roState(null, { status: 'error', message: 'x' })), '');
+  });
+
+  await check('Roster dialogs: Publish says what members will see; Re-publish says what is kept; Unpublish is a danger button; the buttons open them', withState(async (S) => {
+    const C = G.pages.raidRoster.confirmDialogHtml;
+    const pub = C('publish');
+    assert(pub.includes('data-submit="roster-confirm-form" data-op="publish"') && pub.includes('Publish the roster?') && dec(pub).includes('Members will see their group and can confirm or say they can\'t come.') && pub.includes('gs-btn-molten">Publish roster<'));
+    assert(C('republish').includes('Members keep the answer they gave for a seat that did not change.') && C('republish').includes('>Re-publish roster<'));
+    assert(C('unpublish').includes('Unpublish the roster?') && C('unpublish').includes('gs-btn-danger">Unpublish<'));
+    assertNoRawAttrs(pub);
+    openRaid(S, view(), OFFICER_CAN, PLANNED());
+    S.att.raidRoster = roState(ROSTER());
+    const opened = [];
+    const realOpen = G.ui.openDialog; G.ui.openDialog = (html, o) => { opened.push({ html, o }); return null; };
+    G.handlers.click['roster-publish'](el({ 'data-op': 'unpublish' }));
+    G.handlers.click['roster-publish'](el({ 'data-op': 'republish' }));
+    G.handlers.click['roster-publish'](el({ 'data-op': 'publish' }));
+    G.handlers.click['roster-publish'](el({ 'data-op': 'bogus' }));
+    G.ui.openDialog = realOpen;
+    assert.deepEqual(opened.map(o => /data-op="(\w+)"/.exec(o.html)[1]), ['unpublish', 'republish', 'publish', 'publish'], 'an unknown op is a plain publish');
+    assert.equal(opened[0].o.describedBy, 'dlg-text');
+  }));
+
+  await check('Roster: publish and re-publish POST the roster and show the officer view; Unpublish DELETEs and the card goes back to Publish; the Worker\'s 409 (no plan, raid started) stays in the dialog', withState(async (S) => {
+    openRaid(S, view(), OFFICER_CAN, PLANNED());
+    const state0 = S.att.raidRoster = roState({ published: false });
+    const realRun = G.ui.runDialog; G.ui.runDialog = (form, promise, ok) => promise.then(ok);
+    const fm = (op) => ({ getAttribute: k => (k === 'data-op' ? op : null) });
+    let s = stub(() => Promise.resolve(ROSTER()));
+    G.handlers.submit['roster-confirm-form'](fm('publish'));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['post', '/api/guild/g1/raids/u1/roster', {}]]);
+    assert.equal(state0.data.published, true);
+    assert.equal(state0.data.counts.confirmed, 1);
+    s.calls.length = 0;
+    G.handlers.submit['roster-confirm-form'](fm('republish'));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['post', '/api/guild/g1/raids/u1/roster']]);
+    s.restore();
+    s = stub(() => Promise.resolve({ published: false }));
+    G.handlers.submit['roster-confirm-form'](fm('unpublish'));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['del', '/api/guild/g1/raids/u1/roster']]);
+    assert.equal(state0.data.published, false);
+    assert(roCard(PLANNED(), state0).includes('Publish roster'));
+    s.restore();
+    G.ui.runDialog = realRun;
+    // A refusal shows in the dialog.
+    els = {};
+    fakeEl('dlg-error', { hidden: true });
+    const realBusy = G.ui.setBusy, realClose = G.ui.closeDialogOf; G.ui.setBusy = () => {}; G.ui.closeDialogOf = () => {};
+    s = stub(() => Promise.reject(new ApiErr(409, 'no_plan', { message: 'Link a plan first.' })));
+    const form = { getAttribute: k => (k === 'data-op' ? 'publish' : null), querySelector: () => null, querySelectorAll: () => [] };
+    G.handlers.submit['roster-confirm-form'](form);
+    await settle();
+    assert.equal(els['dlg-error'].textContent, 'Link a plan first.');
+    s.restore();
+    G.ui.setBusy = realBusy; G.ui.closeDialogOf = realClose;
+  }));
+
+  await check('Roster: the data loads itself once per raid detail - officers always, members before the start only; a changed raid reads it again; a refused read hides the cards', withState(async (S) => {
+    S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
+    const route = { name: 'raid', gid: 'g1', rid: 'u1' };
+    const x = S.att.raid = { gid: 'g1', rid: 'u1', data: PLANNED(), filter: null };
+    let s = stub(() => Promise.resolve(ROSTER()));
+    G.pages.raidRoster.afterRender(route);
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['get', '/api/guild/g1/raids/u1/roster']]);
+    assert.equal(S.att.raidRoster.status, 'ok');
+    G.pages.raidRoster.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 1);
+    G.pages.raidRoster.invalidate();
+    G.pages.raidRoster.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 2, 'invalidated (a new plan): read again');
+    assert(S.att.raidRoster.data, 'the old copy stays until the new one comes');
+    // Past raid: officers still read it (the list), members do not.
+    S.att.raid = { gid: 'g1', rid: 'u1', data: PLANNED(null, { upcoming: false }), filter: null };
+    G.pages.raidRoster.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 3);
+    S.guilds.g1 = gd(MEMBER_CAN);
+    S.att.raid = { gid: 'g1', rid: 'u1', data: PLANNED({ can: { edit: false } }, { upcoming: false }), filter: null };
+    G.pages.raidRoster.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 3, 'a member after the start: nothing to ask');
+    S.att.raid = { gid: 'g1', rid: 'u1', data: PLANNED({ can: { edit: false } }), filter: null };
+    G.pages.raidRoster.afterRender(route);
+    await settle();
+    assert.equal(s.calls.length, 4, 'a member before the start asks');
+    s.restore();
+    S.att.raid = { gid: 'g1', rid: 'u1', data: PLANNED({ can: { edit: false } }), filter: null };
+    s = stub(() => Promise.reject(new ApiErr(403, 'forbidden', { message: 'No.' })));
+    G.pages.raidRoster.afterRender(route);
+    await settle();
+    assert.equal(S.att.raidRoster.status, 'denied');
+    assert.equal(G.pages.raidRoster.stateFor('g1', 'other'), null);
+    s.restore();
+    // The page draws both cards in place.
+    S.guilds.g1 = gd(OFFICER_CAN);
+    S.att.raid = { gid: 'g1', rid: 'u1', data: PLANNED(), filter: null };
+    S.att.raidRoster = roState(ROSTER());
+    const page = ws(G.pages.raid.main(route, S.guilds.g1));
+    assert(page.includes('id="ro-h">Roster</h2>'));
+  }));
+
+  // ── a member's seat ──
+  const SEAT = (over) => ({ published: true, publishedAt: STARTS - 3 * HOUR, mine: Object.assign({ group: 3, name: 'Gorrim', class: 'PALADIN', spec: 'Holy', status: 'pending' }, over || {}) });
+  const seatCard = (data, detail, can) => ws(G.pages.raidRoster.seatHtml({ guildData: gd(can || MEMBER_CAN), data: detail || DETAIL({ can: { edit: false } }), state: roState(data) }));
+
+  await check('Your seat: "You\'re in Group 3 as Holy Paladin (Gorrim)" with the status and Confirm / Can\'t make it; the bench reads "You\'re on the bench"; confirmed and declined change the buttons and the sentence', () => {
+    const out = seatCard(SEAT());
+    assert(out.includes('<h2 class="gs-h2" id="seat-h">Your seat</h2>') && out.includes('<span class="gs-pill gs-pill-info">Waiting</span>'));
+    assert.equal(dec(stripTags(out)).includes('You\'re in Group 3 as Holy Paladin (Gorrim)'), true, stripTags(out));
+    assert(/data-action="seat-confirm" data-key="seat-confirm">Confirm<\/button>/.test(out) && /data-action="seat-decline" data-key="seat-decline">Can't make it<\/button>/.test(out));
+    assert(out.includes('id="seat-error" role="alert" hidden'));
+    const bench = seatCard(SEAT({ group: 0 }));
+    assert(dec(stripTags(bench)).includes('You\'re on the bench') && dec(stripTags(bench)).includes('As Holy Paladin (Gorrim)') && !bench.includes('Group 0'));
+    const ok = seatCard(SEAT({ status: 'confirmed' }));
+    assert(ok.includes('gs-pill-ok">Confirmed') && !ok.includes('data-action="seat-confirm"') && ok.includes('data-action="seat-decline"'));
+    const no = seatCard(SEAT({ status: 'declined' }));
+    assert(dec(stripTags(no)).includes('You told the officers you can\'t make it.') && no.includes('gs-pill-warn') && /data-action="seat-confirm"[^>]*>Confirm after all</.test(no) && !no.includes('data-action="seat-decline"'));
+    assert(dec(stripTags(seatCard(SEAT({ spec: null })))).includes('You\'re in Group 3 as Paladin (Gorrim)'));
+    assert(dec(stripTags(seatCard(SEAT({ spec: null, class: null, name: null })))).includes('You\'re in Group 3') && !seatCard(SEAT({ spec: null, class: null, name: null })).includes(' as '));
+    assert(seatCard(SEAT(), null).includes('Your seat'));
+    const busy = G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: roState(SEAT(), { busy: true }) });
+    assert(/data-action="seat-confirm"[^>]*disabled/.test(busy) && /data-action="seat-decline"[^>]*disabled/.test(busy));
+    assert(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: roState(SEAT(), { error: HOSTILE + QUOTES }) }).includes('role="alert">&lt;img'));
+    assertEscaped(seatCard(SEAT({ name: HOSTILE + QUOTES, spec: HOSTILE })), 'seat card');
+    assertNoRawAttrs(out);
+  });
+
+  await check('Your seat: nothing when the roster is not published, the viewer has no seat (an officer\'s reply), the raid has started or the data is not there', () => {
+    assert.equal(seatCard({ published: false, mine: null }), '');
+    assert.equal(seatCard({ published: true, publishedAt: 1, mine: null }), '');
+    assert.equal(seatCard(Object.assign(SEAT(), { published: false })), '');
+    assert.equal(seatCard(SEAT(), DETAIL({ can: { edit: false } }, { upcoming: false })), '');
+    assert.equal(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: null }), '');
+    assert.equal(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL(), state: roState(null, { status: 'error' }) }), '');
+    const officer = ws(G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN), data: PLANNED(), signups: null, roster: roState(ROSTER()) }));
+    assert(!officer.includes('Your seat') && officer.includes('id="ro-h"'), 'an officer sees the Roster card, not a seat');
+    const member = ws(G.pages.raid.raidHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), signups: null, roster: roState(SEAT()) }));
+    assert(member.includes('Your seat') && !member.includes('id="ro-h"') && member.indexOf('Your seat') < member.indexOf('Attendance starts after the raid.'), 'the seat is on top, the officers\' card is not there');
+  });
+
+  await check('Your seat: Confirm POSTs and shows the answer, then reads the Sign-ups panel again; a failure is shown in the card; Can\'t make it asks first, then POSTs decline and the card says so', withState(async (S) => {
+    openRaid(S, view(), MEMBER_CAN, DETAIL({ can: { edit: false } }));
+    const sc = S.att.raidRoster = roState(SEAT());
+    let s = stub((m, url) => Promise.resolve(m === 'post' ? SEAT({ status: 'confirmed' }) : view()));
+    G.handlers.click['seat-confirm'](el({}));
+    assert.equal(sc.busy, true);
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['post', '/api/guild/g1/raids/u1/roster/confirm', {}], ['get', '/api/guild/g1/raids/u1/signups', undefined]]);
+    assert.equal(sc.busy, false);
+    assert.equal(sc.data.mine.status, 'confirmed');
+    s.restore();
+    // A failure.
+    s = stub(() => Promise.reject(new ApiErr(409, 'raid_started', { message: 'The raid has started.' })));
+    G.handlers.click['seat-confirm'](el({}));
+    await settle();
+    assert.equal(sc.error, 'The raid has started.');
+    assert.equal(sc.busy, false);
+    assert(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: sc }).includes('id="seat-error" role="alert">The raid has started.</p>'));
+    s.restore();
+    // Can't make it asks first.
+    sc.error = '';
+    const opened = [];
+    const realOpen = G.ui.openDialog; G.ui.openDialog = (html, o) => { opened.push({ html, o }); return null; };
+    s = stub(() => Promise.resolve({}));
+    G.handlers.click['seat-decline'](el({}));
+    G.ui.openDialog = realOpen;
+    assert.equal(s.calls.length, 0, 'nothing sent yet');
+    assert(opened[0].html.includes("Tell the officers you can't make it?") && opened[0].html.includes('Your sign-up for this raid becomes Absent.') && opened[0].html.includes('data-submit="roster-decline-form" data-from="page" data-rid="u1"') && opened[0].html.includes('gs-btn-danger'));
+    s.restore();
+    const realRun = G.ui.runDialog; G.ui.runDialog = (form, promise, ok) => promise.then(ok);
+    s = stub((m) => Promise.resolve(m === 'post' ? SEAT({ status: 'declined' }) : view()));
+    G.handlers.submit['roster-decline-form'](el({ 'data-from': 'page', 'data-rid': 'u1' }));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['post', '/api/guild/g1/raids/u1/roster/decline'], ['get', '/api/guild/g1/raids/u1/signups']]);
+    assert.equal(sc.data.mine.status, 'declined');
+    const card = ws(G.pages.raidRoster.seatHtml({ guildData: gd(MEMBER_CAN), data: DETAIL({ can: { edit: false } }), state: sc }));
+    assert(dec(stripTags(card)).includes('You told the officers you can\'t make it.') && card.includes('Confirm after all'));
+    // Confirm after all: the same call as Confirm.
+    s.calls.length = 0;
+    G.handlers.click['seat-confirm'](el({}));
+    await settle();
+    assert.equal(s.calls[0].url, '/api/guild/g1/raids/u1/roster/confirm');
+    s.restore(); G.ui.runDialog = realRun;
+  }));
+
+  // ── the Raids list ──
+  const mineRoster = (roster, over) => Object.assign({ kind: 'signed', source: 'raidsmith', characterName: 'Eliora', roster }, over || {});
+
+  await check('Raids list: a seat shows as "Group 3 - confirm?" / "Group 3 - confirmed" / "Bench - confirm?" with Confirm and Can\'t make it right there; a seat with no sign-up still shows and can sign up', () => {
+    const out = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'pending' }) })] }));
+    assert(out.includes('<span class="gs-chip gs-chip-signup">Group 3 - confirm?</span>'));
+    assert(/data-action="raids-roster" data-do="confirm" data-rid="u1" data-key="rc-u1">Confirm<\/button>/.test(out) && /data-action="raids-roster" data-do="decline" data-rid="u1" data-key="rd-u1">Can't make it<\/button>/.test(out));
+    assert.equal(out.split('data-do="confirm"').length - 1, 2, 'table row and card');
+    const ok = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'confirmed' }) })] }));
+    assert(ok.includes('Group 3 - confirmed') && !ok.includes('data-do="confirm"') && ok.includes('data-do="decline"'));
+    const bench = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 0, status: 'pending' }) })] }));
+    assert(bench.includes('Bench - confirm?') && !bench.includes('Group 0'));
+    const no = listPage(LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'declined' }) })] }));
+    assert(dec(no).includes('Group 3 - can\'t make it') && no.includes('gs-chip-flag') && />Confirm after all</.test(no) && !no.includes('data-do="decline"'));
+    const bare = listPage(LIST({ upcoming: [UP({ mine: { kind: null, source: null, characterName: null, roster: { group: 2, status: 'pending' } } })] }));
+    assert(bare.includes('Group 2 - confirm?') && !bare.includes('null') && /data-action="raids-signup"/.test(bare), 'no sign-up chip, Sign up stays');
+    const closed = listPage(LIST({ upcoming: [UP({ signupsOpen: false, mine: { kind: null, source: null, characterName: null, roster: { group: 2, status: 'pending' } } })] }));
+    assert(closed.includes('Group 2 - confirm?') && !closed.includes('Sign-ups closed'), 'a seat is not "closed"');
+    assert(!listPage(LIST()).includes('raids-roster'));
+    assertNoRawAttrs(out);
+  });
+
+  await check('Raids list: Confirm POSTs and reads the list again; Can\'t make it asks first (then POSTs decline and reads the list); a started raid or a taken-down roster re-reads the list and says why', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    const x = S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'pending' }) })] }), more: false, tab: 'upcoming' };
+    const confirmed = LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'confirmed' }) })] });
+    let s = stub((m) => Promise.resolve(m === 'post' ? SEAT({ status: 'confirmed' }) : confirmed));
+    const b = el({ 'data-rid': 'u1', 'data-do': 'confirm' });
+    G.handlers.click['raids-roster'](b);
+    assert.equal(b.disabled, true);
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['post', '/api/guild/g1/raids/u1/roster/confirm', {}], ['get', '/api/guild/g1/raids?team=t1', undefined]]);
+    assert.equal(x.data.upcoming[0].mine.roster.status, 'confirmed');
+    s.restore();
+    // Decline: the question, then the call.
+    const opened = [];
+    const realOpen = G.ui.openDialog; G.ui.openDialog = (html) => { opened.push(html); return null; };
+    s = stub(() => Promise.resolve({}));
+    G.handlers.click['raids-roster'](el({ 'data-rid': 'u1', 'data-do': 'decline' }));
+    G.ui.openDialog = realOpen;
+    assert.equal(s.calls.length, 0);
+    assert(opened[0].includes('data-from="list" data-rid="u1"'));
+    s.restore();
+    const realRun = G.ui.runDialog; G.ui.runDialog = (form, promise, ok) => promise.then(ok);
+    const declined = LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'declined' }) })] });
+    s = stub((m) => Promise.resolve(m === 'post' ? SEAT({ status: 'declined' }) : declined));
+    G.handlers.submit['roster-decline-form'](el({ 'data-from': 'list', 'data-rid': 'u1' }));
+    await settle();
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['post', '/api/guild/g1/raids/u1/roster/decline'], ['get', '/api/guild/g1/raids?team=t1']]);
+    assert.equal(x.data.upcoming[0].mine.roster.status, 'declined');
+    s.restore(); G.ui.runDialog = realRun;
+    // The raid started meanwhile.
+    const started = LIST({ upcoming: [] });
+    s = stub((m) => (m === 'post' ? Promise.reject(new ApiErr(409, 'raid_started', { message: 'The raid has started.' })) : Promise.resolve(started)));
+    const b2 = el({ 'data-rid': 'u1', 'data-do': 'confirm' });
+    G.handlers.click['raids-roster'](b2);
+    await settle();
+    assert.equal(b2.disabled, false);
+    assert.equal(S.pageAlert, 'The raid has started.');
+    assert.equal(S.att.raids.data.upcoming.length, 0, 'the list as it is now');
+    s.restore();
+  }));
+
+  // ── Needs attention ──
+  await check('Needs attention: "Sat Oct 24: 2 rostered people can\'t make it" links the raid; one person reads "1 rostered person"; an unknown future kind is skipped without breaking the list', () => {
+    const A = G.pages.attention;
+    const item = (over) => Object.assign({ id: 'rd:u1', kind: 'roster_declined', severity: 'action', teamId: 't1', teamName: 'Team KJ', raidId: 'u1', date: '2026-10-24', zone: 'Hyjal Summit', title: null, startsAt: STARTS, count: 2, link: { name: 'raid', rid: 'u1' } }, over || {});
+    assert.equal(A.itemText(item()), 'Sat Oct 24: 2 rostered people can\'t make it');
+    assert.equal(A.itemText(item({ count: 1 })), 'Sat Oct 24: 1 rostered person can\'t make it');
+    assert.equal(A.itemHref('g1', item()), '#/g/g1/raids/r/u1');
+    assert(A.KINDS.some(k => k.id === 'roster_declined' && k.severity === 'action' && k.chip === 'Roster'));
+    const data = { today: '2026-10-18', total: 3, items: [item(), { id: 'x:1', kind: 'from_the_future', severity: 'action', teamId: 't1', teamName: 'Team KJ', date: '2026-10-24', link: { name: 'raid', rid: 'u1' } }, item({ id: 'rd:u2', raidId: 'u2', count: 1, date: '2026-10-31', link: { name: 'raid', rid: 'u2' } })], more: { roster_declined: 2 } };
+    const out = ws(A.attentionHtml({ guildData: gd(OFFICER_CAN), data }));
+    assert(out.includes('id="attn-h-roster_declined">Rostered players who can&#39;t make it</h3>') || out.includes('id="attn-h-roster_declined">Rostered players who can\'t make it</h3>'));
+    assert(dec(out).includes('Sat Oct 24: 2 rostered people can\'t make it') && dec(out).includes('Sat Oct 31: 1 rostered person can\'t make it'));
+    assert(out.includes('href="#/g/g1/raids/r/u1"') && out.includes('<span class="gs-chip gs-chip-attn">Roster</span>'));
+    assert(!out.includes('from_the_future') && !out.includes('from the future'), 'the unknown kind is skipped');
+    assert(out.includes('and 2 more'), 'the hidden ones link on');
+    assertNoRawAttrs(out);
+    assertEscaped(A.attentionHtml({ guildData: gd(OFFICER_CAN), data: { items: [item({ date: HOSTILE, teamName: HOSTILE + QUOTES, zone: HOSTILE })], more: {}, total: 1 } }), 'attention item');
+  });
+
+  await check('scripts: the standing and roster pieces are in the guild script list and the three pages, after the raid page they sit on', () => {
+    for (const name of ['pages-standing', 'pages-raid-roster']) {
+      const src = '/js/guild/' + name + '.js';
+      assert(GUILD_SCRIPTS.includes(src), name);
+      for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(read(page).includes('<script src="' + src + '"></script>'), name + ' in ' + page);
+      assert(GUILD_SCRIPTS.indexOf(src) < GUILD_SCRIPTS.indexOf('/js/guild/app.js'));
+    }
+    assert(GUILD_SCRIPTS.indexOf('/js/guild/pages-raid-roster.js') > GUILD_SCRIPTS.indexOf('/js/guild/pages-raid.js'));
+  });
+
   // ═══ 6. The code itself ══════════════════════════════════════════
   await check('safety: ASCII in code and copy, no inline styles or handlers, no browser-zone date formatting in the changed pages (ui.js keeps its own older helpers), the sign-ups panel and schedule go through G.api.signups', () => {
-    const files = ['pages-settings-teams.js', 'pages-settings-schedule.js', 'pages-raids.js', 'pages-raid.js', 'pages-raid-signups.js', 'pages-away.js', 'ui.js'];
+    const files = ['pages-settings-teams.js', 'pages-settings-schedule.js', 'pages-raids.js', 'pages-raid.js', 'pages-raid-signups.js', 'pages-away.js', 'pages-standing.js', 'pages-raid-roster.js', 'ui.js'];
     for (const f of files) {
       const src = read('js/guild/' + f);
       assert(!/[^\x00-\x7f]/.test(src.split('\n').filter(line => !/^\s*\/\//.test(line)).join('\n')), f + ' is ASCII outside the comment lines');

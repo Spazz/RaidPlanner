@@ -165,12 +165,14 @@
   function mineHtml(r, canSignUp, gd) {
     if (!canSignUp) return '';
     const m = r.mine;
-    const label = m ? (m.source === 'away' ? 'Away (notice)' : A().KIND_LABELS[m.kind] || m.kind) : '';
-    const chip = m ? '<span class="gs-chip gs-chip-signup">' + esc(label) + (m.characterName ? ' - ' + esc(m.characterName) : '') + '</span>' : '';
+    const label = m && m.kind ? (m.source === 'away' ? 'Away (notice)' : A().KIND_LABELS[m.kind] || m.kind) : '';
+    // A seat on a published roster can come without any sign-up (kind null): the roster chip is then the whole row.
+    const chip = (m && m.kind ? '<span class="gs-chip gs-chip-signup">' + esc(label) + (m.characterName ? ' - ' + esc(m.characterName) : '') + '</span>' + (m.standing ? '<span class="gs-chip gs-chip-src">standing</span>' : '') : '') +
+      (G.pages.raidRoster ? G.pages.raidRoster.listChipHtml(r) : '');
     if (r.signupsOpen && !(m && m.kind === 'signed')) {
       return chip + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>' + deadlineHtml(r, gd);
     }
-    if (!r.signupsOpen && !m) return '<span class="gs-fine">Sign-ups closed</span>';
+    if (!r.signupsOpen && !(m && (m.kind || m.roster))) return '<span class="gs-fine">Sign-ups closed</span>';
     return chip + deadlineHtml(r, gd);
   }
 
@@ -201,7 +203,10 @@
     const row = ((x.data && x.data.upcoming) || []).filter(function (r) { return r.id === rid; })[0];
     if (!row || !view) return;
     const sig = view.me && view.me.signup;
+    const seat = row.mine && row.mine.roster ? row.mine.roster : null;
     row.mine = sig ? { kind: sig.kind, source: sig.source, characterName: sig.source === 'raidsmith' ? sig.name : null } : null;
+    if (row.mine && sig.standing) row.mine.standing = true;
+    if (seat) row.mine = Object.assign(row.mine || { kind: null, source: null, characterName: null }, { roster: seat });
     if (view.counts) row.signups = { signed: view.counts.signed, late: view.counts.late, standby: view.counts.standby || 0, tentative: view.counts.tentative, bench: view.counts.bench, absence: view.counts.absence };
     row.locked = !!(view.raid && view.raid.locked);
     row.signupsOpen = !(view.raid && view.raid.closed);
@@ -335,7 +340,8 @@
     if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
     if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
     return raidsHtml({ guildData: gd, teamId: x.teamId, data: x.data, more: x.more, tab: x.tab, progress: a().recalc, alert: st().pageAlert, note: x.note,
-      awayHtml: G.pages.away ? G.pages.away.teamCardHtml({ guildData: gd, teamId: x.teamId, state: a().awayTeam }) : '' });
+      awayHtml: (G.pages.standing ? G.pages.standing.cardHtml({ guildData: gd, teamId: x.teamId, canSignUp: !!(x.data && x.data.can && x.data.can.signup), state: a().standing }) : '') +
+        (G.pages.away ? G.pages.away.teamCardHtml({ guildData: gd, teamId: x.teamId, state: a().awayTeam }) : '') });
   }
 
   G.handlers.click['raids-tab'] = function (el) {
@@ -828,7 +834,7 @@
 
   G.pages.raids = {
     raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, timeNotSetHtml: timeNotSetHtml, momentText: momentText, zoneSizeText: zoneSizeText, signupsText: signupsText, planPillHtml: planPillHtml,
-    planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, mineHtml: mineHtml, fillText: fillText, applySignupView: applySignupView, load: loadList, main: mainList,
+    planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, mineHtml: mineHtml, fillText: fillText, applySignupView: applySignupView, reloadList: reloadList, load: loadList, main: mainList,
   };
   G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

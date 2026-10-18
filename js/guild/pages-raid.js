@@ -265,7 +265,16 @@
       '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm gs-btn-molten" data-key="rs-save">Save settings</button></div></form></div></section>';
   }
 
-  // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress, loot (G.pages.raidLoot.stateFor), signups (G.pages.raidSignups.stateFor) }
+  // "Your seat" (members) and the Roster card (officers) of the published roster (pages-raid-roster.js); nothing while its data is not loaded.
+  function seatHtml(gd, data, roster) {
+    return G.pages.raidRoster ? G.pages.raidRoster.seatHtml({ guildData: gd, data: data, state: roster }) : '';
+  }
+
+  function rosterCardHtml(gd, data, roster) {
+    return G.pages.raidRoster ? G.pages.raidRoster.cardHtml({ guildData: gd, data: data, state: roster }) : '';
+  }
+
+  // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress, loot (G.pages.raidLoot.stateFor), signups (G.pages.raidSignups.stateFor), roster (G.pages.raidRoster.stateFor) }
   function raidHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
@@ -274,8 +283,8 @@
     const people = Array.isArray(data.people) ? data.people : null;
     if (isUpcoming(data)) {
       return '<div class="gs-page gs-raid-page">' + headHtml(gd, data) + G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
-        '<div class="gs-notice" role="status"><span>Attendance starts after the raid.</span></div>' +
-        signupsPanelHtml(gd, data, opts.signups) + '<div class="gs-sources">' + eventCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' + settingsCardHtml(gd, data) + '</div>';
+        seatHtml(gd, data, opts.roster) + '<div class="gs-notice" role="status"><span>Attendance starts after the raid.</span></div>' +
+        signupsPanelHtml(gd, data, opts.signups) + rosterCardHtml(gd, data, opts.roster) + '<div class="gs-sources">' + eventCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' + settingsCardHtml(gd, data) + '</div>';
     }
     let people_html;
     if (people === null) {
@@ -296,7 +305,7 @@
       manualLineHtml(data, edit) +
       '<div class="gs-sources">' + eventCardHtml(data, edit) + reportsCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' +
       '<section class="gs-card-sec" aria-labelledby="ppl-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="ppl-h">People</h2></div><div class="gs-card-sec-body">' + people_html + '</div></section>' +
-      signupsPanelHtml(gd, data, opts.signups) + lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + settingsCardHtml(gd, data) + '</div>';
+      signupsPanelHtml(gd, data, opts.signups) + rosterCardHtml(gd, data, opts.roster) + lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + settingsCardHtml(gd, data) + '</div>';
   }
 
   // ── dialogs ──
@@ -390,6 +399,7 @@
     if (res && res.raid && res.sources) c.x.data = res;
     a().note = note || '';
     st().pageAlert = '';
+    if (G.pages.raidRoster) G.pages.raidRoster.invalidate(); // a new plan: the roster is read again after the draw ("The plan changed since you published")
     G.app.render();
     // The event, the plan or the results changed: the sign-ups panel reads its list again.
     if (G.pages.raidSignups && res && res.raid) {
@@ -423,7 +433,7 @@
   function main(r, gd) {
     const x = a().raid;
     if (!x || x.gid !== gd.guild.id || x.rid !== r.rid) return G.pages.signin.loadingHtml();
-    return raidHtml({ guildData: gd, data: x.data, filter: x.filter, alert: st().pageAlert, note: a().note, progress: a().recalc, loot: G.pages.raidLoot ? G.pages.raidLoot.stateFor(gd.guild.id, r.rid) : null, signups: G.pages.raidSignups ? G.pages.raidSignups.stateFor(gd.guild.id, r.rid) : null });
+    return raidHtml({ guildData: gd, data: x.data, filter: x.filter, alert: st().pageAlert, note: a().note, progress: a().recalc, loot: G.pages.raidLoot ? G.pages.raidLoot.stateFor(gd.guild.id, r.rid) : null, signups: G.pages.raidSignups ? G.pages.raidSignups.stateFor(gd.guild.id, r.rid) : null, roster: G.pages.raidRoster ? G.pages.raidRoster.stateFor(gd.guild.id, r.rid) : null });
   }
 
   function openManualDialog(c) {

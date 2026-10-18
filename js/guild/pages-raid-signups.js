@@ -111,7 +111,8 @@
       return '<p class="gs-fine">You are down as ' + esc(String(KIND_LABELS[sig.kind] || sig.kind).toLowerCase()) + ' on Raid-Helper. Choosing a status here saves a sign-up in Raidsmith that replaces it.</p>' + own;
     }
     return '<p class="gs-fine">You are down as <strong>' + esc(String(KIND_LABELS[sig.kind] || sig.kind).toLowerCase()) + '</strong>' +
-      (sig.name ? ' with ' + esc(sig.name) : '') + (sig.spec ? ' (' + esc(sig.spec) + ')' : '') + '.</p>' + own;
+      (sig.name ? ' with ' + esc(sig.name) : '') + (sig.spec ? ' (' + esc(sig.spec) + ')' : '') + '.</p>' +
+      (sig.standing ? '<p class="gs-fine">This sign-up comes from your standing sign-up. Skip this week marks you absent for this raid only.</p>' : '') + own;
   }
 
   // The viewer's own part: four status buttons, then the character / spec / note form.
@@ -140,7 +141,7 @@
     const noteField = '<div class="gs-field"><label class="gs-label" for="su-note">Note (optional)</label><input class="gs-input" type="text" id="su-note" data-input="su-note" data-key="su-note" maxlength="' + NOTE_MAX + '" autocomplete="off" value="' + esc(form.note) + '"' + (open ? '' : ' disabled') + '></div>';
     const save = sig && sig.source !== 'away' && open
       ? '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm" data-key="su-save"' + (ui.busy ? ' disabled' : '') + '>Save details</button>' +
-        (sig.source === 'raidsmith' ? '<button type="button" class="gs-btn gs-btn-sm" data-action="su-withdraw" data-key="su-withdraw"' + (ui.busy ? ' disabled' : '') + '>Remove my sign-up</button>' : '') + '</div>'
+        (sig.source === 'raidsmith' ? '<button type="button" class="gs-btn gs-btn-sm" data-action="su-withdraw" data-key="su-withdraw"' + (ui.busy ? ' disabled' : '') + '>' + (sig.standing ? 'Skip this week' : 'Remove my sign-up') + '</button>' : '') + '</div>'
       : '';
     return '<div class="gs-su-me" role="group" aria-labelledby="su-me-h"><h3 class="gs-h3" id="su-me-h">Your sign-up</h3>' + sourceNoteHtml(sig, me.notice) +
       (open ? '' : '<p class="gs-notice" role="status">' + esc(closedText(view)) + '</p>') +
@@ -177,6 +178,7 @@
       (specText ? '<span class="gs-su-spec">' + esc(specText) + '</span>' : '') +
       (entry.kind === 'late' ? '<span class="gs-chip gs-chip-signup">Late</span>' : '') +
       (entry.source === 'away' ? '<span class="gs-chip gs-chip-signup">Away (notice)</span>' : '') +
+      (entry.standing ? '<span class="gs-chip gs-chip-src">standing</span>' : '') +
       (entry.notice && noticeNote(entry.notice) ? '<span class="gs-chip gs-chip-signup">' + esc(noticeNote(entry.notice)) + '</span>' : '') +
       (entry.source === 'raid_helper' ? '<span class="gs-chip gs-chip-src">Raid-Helper</span>' : '') +
       (entry.nickname ? '<span class="gs-fine">' + esc(entry.nickname) + '</span>' : '') + toolsHtml(entry, edit) +

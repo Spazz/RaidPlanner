@@ -880,6 +880,19 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-an-what { font-weight: 600; color: var(--text-primary); }
 .gs-an-who { font-weight: 600; }
 .gs-an-reason { overflow-wrap: anywhere; }
+/* Standing sign-ups (the Raids page card), the published roster (Your seat, the officers' Roster card) */
+.gs-st-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.gs-st-row { padding: var(--sp-3); background: var(--bg-card); border: 1px solid var(--border-subtle); }
+.gs-st-slot { display: grid; grid-template-columns: minmax(180px, 1.6fr) auto minmax(130px, 1fr) minmax(150px, 1fr); gap: var(--sp-3); align-items: center; }
+.gs-st-name { font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-st-form { display: flex; flex-direction: column; gap: var(--sp-3); }
+.gs-seat { border-color: var(--accent-gold); }
+.gs-seat-line { margin: 0; font: 700 22px/1.25 var(--font-cond); letter-spacing: 0.02em; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-seat-actions { justify-content: flex-start; }
+.gs-seat .gs-alert, .gs-ro .gs-alert { margin: 0; }
+.gs-ro-counts { margin: 0; font-weight: 600; color: var(--text-primary); }
+.gs-ro-item.is-pending { background: var(--bg-card-hover); border-left: 3px solid var(--accent-gold); padding-left: var(--sp-2); }
+.gs-ro-item.is-declined { border-left: 3px solid var(--warning); padding-left: var(--sp-2); }
 
 @media (max-width: 600px) {
   .gs-su-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -891,6 +904,8 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-sched-remove { justify-self: start; }
   .gs-sched-weeks, .gs-sched-hours { width: 100%; }
   .gs-an-item .gs-row-actions { justify-content: flex-start; }
+  .gs-st-slot { grid-template-columns: minmax(0, 1fr); }
+  .gs-seat-actions .gs-btn { flex: 1 1 140px; justify-content: center; }
 }
 
 /* ── Accounts with linked sign-ins (Phase 7a) ──────────────── */
