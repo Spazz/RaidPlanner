@@ -13,6 +13,7 @@ import {
   MAX_NOTICES, TEAM_WINDOW_DAYS, coveredDates, noticeCovers, noticeOfRow, validateNotice,
 } from '../away.js';
 import { isId, newId } from '../ids.js';
+import { reconcileStanding } from '../standing.js';
 import { ownPersonStatement, ownPlayerSql } from '../membership.js';
 import { allows, loadGuildContext } from '../permissions.js';
 import { guildToday } from '../roster-view.js';
@@ -107,6 +108,8 @@ function bumpStatement(db, guildId, affected, guard) {
 // The ONE place that follows a notice write: the newest affected dates are recalculated now (one raid per date recalculates the whole date); older ones keep
 // the stale mark the bump gave them. The standing sign-up reconcile of a person's raids belongs here too.
 export async function afterAwayChange(ctx, guildContext, personId, affected) {
+  // A standing sign-up gives way to an Away notice that covers its raid, and comes back when the notice goes; first, so the recalculation below reads the result.
+  await reconcileStanding(ctx, guildContext.guild, { personId });
   const dates = new Set();
   for (const raid of affected) {
     if (dates.has(raid.raid_on)) continue;

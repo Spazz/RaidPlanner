@@ -170,6 +170,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       closesAt: closesAtOf(raid), // when members' sign-ups close: the start less the deadline (the raid's own, else the team's)
       closeHours: closeHoursOf(raid),
       closeHoursOverride: raid.signup_close_hours,
+      teamCloseHours: raid.team_close_hours, // the team's default, for the page that edits the raid's own
       manual: raid.log_mode === 'manual'
         ? {
           reason: review ? raid.manual_reason : null, by: review && manualBy ? userName(manualBy) : null, at: raid.manual_at,

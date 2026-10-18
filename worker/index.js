@@ -33,6 +33,7 @@ import {
   putWclSettings,
 } from './routes/attendance.js';
 import { getAttention } from './routes/attention.js';
+import { getStanding, putStanding } from './routes/standing.js';
 import { getAudit } from './routes/audit.js';
 import { createCalendarLink, getCalendarFeed, getCalendarStatus, revokeCalendarLink } from './routes/calendar.js';
 import { getTrialReview } from './routes/trial.js';
@@ -122,6 +123,9 @@ const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/teams/:tid/schedule', auth: true, handler: getSchedule },
   { method: 'PUT', path: '/api/guild/:gid/teams/:tid/schedule', auth: true, handler: putSchedule },
   { method: 'POST', path: '/api/guild/:gid/teams/:tid/schedule/raids', auth: true, handler: createScheduledRaids },
+  // Standing sign-ups (PM wave 2): a member's own weekday entries, which become sign-ups on the team's upcoming raids.
+  { method: 'GET', path: '/api/guild/:gid/standing', auth: true, handler: getStanding },
+  { method: 'PUT', path: '/api/guild/:gid/teams/:tid/standing', auth: true, handler: putStanding },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/decisions', auth: true, handler: postDecision },
   { method: 'DELETE', path: '/api/guild/:gid/raids/:rid/decisions/:pid', auth: true, handler: deleteDecision },
   { method: 'POST', path: '/api/guild/:gid/raids/:rid/unmatched', auth: true, handler: postUnmatched },

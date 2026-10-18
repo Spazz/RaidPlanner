@@ -133,6 +133,7 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
       matched: !!row.player_id,
       isMe: !!opts.myPlayerId && row.player_id === opts.myPlayerId,
       nickname: opts.seeNicknames && row.source === 'raid_helper' ? row.nickname : null,
+      ...(row.source === 'raidsmith' && row.standing === 1 ? { standing: true } : {}), // made by a standing sign-up and not edited since (the key is only there then)
     });
   }
   const listed = new Set(entries.map((entry) => entry.personId).filter(Boolean));

@@ -19,6 +19,7 @@ import {
   cleanCharacterName, cleanNickname, isRealDate, nameKey, realmKey, SINGLE_LINE_STRIP,
 } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
+import { reconcileStanding, removeStandingOverRaidHelper } from '../standing.js';
 import { MAX_CLOSE_HOURS, closedReason, closesAtOf, isCloseHours, plannerName } from '../signups-data.js';
 import {
   fetchRaidHelperEvent, fetchWclPulls, parseRaidHelperSource, parseWclSource, requireWclConfigured,
@@ -266,7 +267,7 @@ export async function listRaids(ctx) {
     ).bind(guild.id, teamId, now),
     // The viewer's own sign-up on each upcoming raid (their Raidsmith one wins over their Raid-Helper one, as in the merged list).
     ctx.db.prepare(
-      `SELECT s.raid_id, s.source, CASE WHEN s.kind = 'signed' AND s.standby = 1 THEN 'standby' ELSE s.kind END AS kind, c.name AS character_name
+      `SELECT s.raid_id, s.source, CASE WHEN s.kind = 'signed' AND s.standby = 1 THEN 'standby' ELSE s.kind END AS kind, s.standing, c.name AS character_name
          FROM raid_signups s LEFT JOIN characters c ON c.id = s.character_id
         WHERE s.player_id IN (SELECT id FROM players WHERE guild_id = ? AND ${ownPlayerSql('players', '?')}) AND s.source IN ('raid_helper', 'raidsmith')
           AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND starts_at > ?)`,
@@ -285,7 +286,7 @@ export async function listRaids(ctx) {
   const canSelf = allows(guildContext.can, 'signups.self', team.id);
   const mine = new Map();
   for (const row of mineResult.results) {
-    if (!mine.has(row.raid_id) || row.source === 'raidsmith') mine.set(row.raid_id, { kind: row.kind, source: row.source, characterName: row.source === 'raidsmith' ? row.character_name : null });
+    if (!mine.has(row.raid_id) || row.source === 'raidsmith') mine.set(row.raid_id, { kind: row.kind, source: row.source, characterName: row.source === 'raidsmith' ? row.character_name : null, ...(row.source === 'raidsmith' && row.standing === 1 ? { standing: true } : {}) });
   }
   const scheduleRow = scheduleResult.results[0];
   const notices = readNotices(noticeResult.results);
@@ -505,6 +506,8 @@ export async function createRaid(ctx) {
     throw error;
   }
   if (results[0].meta.changes !== 1) throw bad('That team does not exist in this guild.', 'teamId');
+  // An upcoming raid starts with the standing sign-ups of its team's weekday (people with a Raid-Helper row from the event keep that).
+  if (startsAt > now) await reconcileStanding(ctx, guild, { raidIds: [raidId] });
   if (!event && !reportCount) return raidReply(ctx, guildContext, raidId, 201);
   // The raid and its evidence are saved. A recompute that fails leaves the raid stale ("needs recalculation"), never half-created.
   let recomputeFailed = false;
@@ -569,6 +572,7 @@ export async function putEvent(ctx) {
       ).bind(eventId, event.title, event.serverId, now, retime ? 1 : 0, event.startTime, event.startTime, retime ? 1 : 0, event.startTime, otherDay ? 1 : 0, eventDate, now, raid.id, guild.id),
       ...neighbours,
       ...built.statements,
+      removeStandingOverRaidHelper(db, raid.id, guard), // a real Raid-Helper sign-up wins over a standing one
       raidAudit(
         ctx, guildContext, 'raid.event', raid.id,
         otherDay ? { event: raid.event_id !== null, raidOn: raid.raid_on } : { event: raid.event_id !== null },
@@ -586,6 +590,8 @@ export async function putEvent(ctx) {
     if (kind) throw otherConflict();
     throw error;
   }
+  // The raid may have moved to another weekday, and people the event dropped have no Raid-Helper row any more: the standing sign-ups follow.
+  await reconcileStanding(ctx, guild, { raidIds: [raid.id] });
   // The old date's other raids lose this one as a neighbour: recalculate their day too (the new date is recalculated by the reply below).
   if (otherDay) {
     const sibling = await db.prepare('SELECT id FROM raids WHERE guild_id = ? AND raid_on = ? ORDER BY id LIMIT 1').bind(guild.id, raid.raid_on).first();
@@ -608,6 +614,7 @@ export async function deleteEvent(ctx) {
       db.prepare("DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper'").bind(raid.id),
       raidAudit(ctx, guildContext, 'raid.event', raid.id, { event: true }, { event: false }),
     ]);
+    await reconcileStanding(ctx, guildContext.guild, { raidIds: [raid.id] }); // with the Raid-Helper rows gone the standing sign-ups apply again
   }
   return recomputeAndReply(ctx, guildContext, raid.id);
 }

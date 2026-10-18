@@ -3644,6 +3644,357 @@ check('away attendance: a notice change recomputes the 20 newest dates and leave
   assert.deepEqual((await s.att(ids[0])).Brindle, ['no_signup', null, null, []]);
 });
 
+// ---------------------------------------------------------------------------
+// WAVE 2 / LANE C: standing sign-ups (B8) and the published roster (B9)
+
+// Alpha (A) raids Tuesday and Thursday at 20:00, Bravo (B) on Tuesday. Eliora (Erin) is on Alpha with an alt Mirabel and on Bravo as Wanderfell; Gorrim (Gina) is
+// on Alpha. The clock is Saturday 2027-01-16 12:00Z (07:00 in New York): two weeks of Alpha's slots are 01-19 (Tue), 01-21, 01-26 and 01-28.
+async function standingWorld() {
+  const s = await laneWorld();
+  s.p = {};
+  s.c = {};
+  const idOf = async (name) => (await s.w.rows('SELECT id FROM characters WHERE name = ?', name))[0].id;
+  const person = async (key, teamId, name, classId, spec, discord) => {
+    const made = await addPerson(s, 'bob', teamId, name, { class: classId, mainSpec: spec, offSpec: null });
+    s.p[key] = made.person.id;
+    exec(s.w, `UPDATE players SET discord_user_id = '${discord}' WHERE id = '${made.person.id}'`);
+    s.c[key] = await idOf(name);
+  };
+  const alt = async (key, pid, teamId, name, classId, spec) => {
+    assert.equal((await addAlt(s, 'bob', pid, teamId, name, { class: classId, mainSpec: spec })).status, 201, name);
+    s.c[key] = await idOf(name);
+  };
+  await person('eliora', s.A, 'Eliora', 'PRIEST', 'Holy', PEOPLE.erin.id);
+  await alt('mirabel', s.p.eliora, s.A, 'Mirabel', 'HUNTER', 'Marksmanship');
+  await alt('wanderfell', s.p.eliora, s.B, 'Wanderfell', 'DRUID', 'Restoration');
+  await person('gorrim', s.A, 'Gorrim', 'PALADIN', 'Protection', PEOPLE.gina.id);
+  const schedule = async (team, slots) => assert.equal((await s.call('bob', 'PUT', `/teams/${team}/schedule`, { slots, weeks: 2 })).status, 200);
+  await schedule(s.A, [{ weekday: 2, startTime: '20:00' }, { weekday: 4, startTime: '20:00' }]);
+  await schedule(s.B, [{ weekday: 2, startTime: '20:00' }]);
+  s.fillSchedule = async (team, weeks) => {
+    const r = await s.call('bob', 'POST', `/teams/${team}/schedule/raids`, weeks ? { weeks } : {});
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    return r.json;
+  };
+  s.stand = (who, team, slots) => s.call(who, 'PUT', `/teams/${team}/standing`, { slots });
+  s.raidOn = async (date, team = s.A) => (await s.w.rows('SELECT id FROM raids WHERE team_id = ? AND raid_on = ?', team, date))[0].id;
+  // Every Raidsmith sign-up with the date and team of its raid, oldest raid first.
+  s.signups = async (where = '1 = 1') => s.w.rows(
+    `SELECT r.raid_on AS date, r.team_id AS team, s.player_id AS person, s.kind, s.standby, s.standing, s.character_id AS character, s.class_name, s.spec_name, s.signup_id, s.updated_by, s.updated_at
+       FROM raid_signups s JOIN raids r ON r.id = s.raid_id WHERE s.source = 'raidsmith' AND ${where} ORDER BY r.raid_on, r.team_id, s.player_id`,
+  );
+  s.reconcile = async (scope = {}) => (await load('worker/standing.js')).reconcileStanding({ db: s.w.db, now: () => s.w.clock.now, randomBytes: s.w.randomBytes }, { id: s.guildId }, scope);
+  return s;
+}
+
+check('standing: GET lists the teams the viewer can sign up for that have a schedule, with their slots, characters and set; PUT checks the weekdays, kinds and characters and is the viewer\'s own', async () => {
+  const s = await standingWorld();
+  const mine = await s.call('erin', 'GET', '/standing');
+  assert.equal(mine.status, 200, JSON.stringify(mine.json));
+  assert.deepEqual(Object.keys(mine.json).sort(), ['personId', 'teams']);
+  assert.equal(mine.json.personId, s.p.eliora);
+  assert.deepEqual(mine.json.teams.map((team) => [team.teamId, team.teamName]), [[s.A, 'Alpha'], [s.B, 'Bravo']]);
+  const alpha = mine.json.teams[0];
+  assert.deepEqual(Object.keys(alpha).sort(), ['characters', 'mine', 'slots', 'teamId', 'teamName']);
+  assert.deepEqual(alpha.slots, [{ weekday: 2, startTime: '20:00', zone: null, title: null }, { weekday: 4, startTime: '20:00', zone: null, title: null }]);
+  assert.deepEqual(alpha.characters.map((c) => [c.name, c.class, c.mainSpec, c.isMain]), [['Eliora', 'PRIEST', 'Holy', true], ['Mirabel', 'HUNTER', 'Marksmanship', false]], 'only the characters on that team, the Main first');
+  assert.deepEqual(Object.keys(alpha.characters[0]).sort(), ['class', 'id', 'isMain', 'mainSpec', 'name', 'specs']);
+  assert(alpha.characters[0].specs.includes('Holy') && alpha.characters[0].specs[0] === 'Holy');
+  assert.deepEqual(alpha.mine, []);
+  assert.deepEqual(mine.json.teams[1].characters.map((c) => c.name), ['Wanderfell']);
+  // Gina is only on Alpha; Hank and Dave have no roster person; a team without a schedule is not listed.
+  assert.deepEqual((await s.call('gina', 'GET', '/standing')).json.teams.map((team) => team.teamName), ['Alpha']);
+  for (const who of ['hank', 'dave']) assert.deepEqual((await s.call(who, 'GET', '/standing')).json, { personId: null, teams: [] }, who);
+  assert.equal((await s.call('bob', 'PUT', `/teams/${s.B}/schedule`, { slots: [] })).status, 200);
+  assert.deepEqual((await s.call('erin', 'GET', '/standing')).json.teams.map((team) => team.teamName), ['Alpha']);
+  assert.equal((await s.w.call(newJar(), 'GET', `${s.guildPath}/standing`)).status, 401);
+
+  // PUT: the team entry comes back with the set.
+  const put = await s.stand('erin', s.A, [{ weekday: 4, kind: 'late', characterId: s.c.mirabel }, { weekday: 2, kind: 'signed' }]);
+  assert.equal(put.status, 200, JSON.stringify(put.json));
+  assert.deepEqual(put.json.mine, [{ weekday: 2, kind: 'signed', characterId: null }, { weekday: 4, kind: 'late', characterId: s.c.mirabel }]);
+  assert.deepEqual([put.json.teamId, put.json.teamName, put.json.slots.length, put.json.characters.length], [s.A, 'Alpha', 2, 2]);
+  assert.deepEqual((await s.call('erin', 'GET', '/standing')).json.teams[0].mine, put.json.mine);
+
+  // Validation: 400 with the field, the index and the slot field; nothing changes.
+  const before = JSON.stringify((await s.w.rows('SELECT team_id, player_id, weekday, kind, character_id FROM standing_signups ORDER BY weekday')));
+  const bads = [
+    [{ weekday: 3, kind: 'signed' }, 'weekday'], [{ weekday: 'Tuesday', kind: 'signed' }, 'weekday'], [{ weekday: 7, kind: 'signed' }, 'weekday'], [{ kind: 'signed' }, 'weekday'],
+    [{ weekday: 2, kind: 'tentative' }, 'kind'], [{ weekday: 2, kind: 'absence' }, 'kind'], [{ weekday: 2, kind: 'standby' }, 'kind'], [{ weekday: 2 }, 'kind'],
+    [{ weekday: 2, kind: 'signed', characterId: s.c.gorrim }, 'characterId'],   // someone else's character
+    [{ weekday: 2, kind: 'signed', characterId: s.c.wanderfell }, 'characterId'], // mine, but on the other team
+    [{ weekday: 2, kind: 'signed', characterId: 'nope' }, 'characterId'],
+  ];
+  for (const [slot, field] of bads) {
+    const r = await s.stand('erin', s.A, [slot]);
+    assert.deepEqual([r.status, r.json.error, r.json.field, r.json.index, r.json.slotField], [400, 'bad_request', 'slots', 0, field], JSON.stringify(slot));
+  }
+  const twice = await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }, { weekday: 2, kind: 'late' }]);
+  assert.deepEqual([twice.status, twice.json.index, twice.json.slotField], [400, 1, 'weekday'], 'one entry per weekday');
+  const second = await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }, 'x']);
+  assert.deepEqual([second.status, second.json.index], [400, 1]);
+  for (const slots of [undefined, null, 'x', {}, Array.from({ length: 8 }, () => ({ weekday: 2, kind: 'signed' }))]) {
+    const r = await s.call('erin', 'PUT', `/teams/${s.A}/standing`, slots === undefined ? {} : { slots });
+    assert.deepEqual([r.status, r.json.field], [400, 'slots'], JSON.stringify(slots));
+  }
+  assert.equal(JSON.stringify((await s.w.rows('SELECT team_id, player_id, weekday, kind, character_id FROM standing_signups ORDER BY weekday'))), before, 'a refused body writes nothing');
+
+  // Who: someone with a character on the team. Gina has none on Bravo, Hank no person, Dave leads Bravo but is no member of Alpha's roster.
+  assert.equal((await s.stand('gina', s.B, [])).status, 403);
+  assert.equal((await s.stand('hank', s.A, [])).status, 403);
+  assert.equal((await s.stand('dave', s.A, [])).status, 403);
+  assert.equal((await s.stand('erin', 't_AAAAAAAAAAAAAAAAAAAAAA', [])).status, 404);
+  assert.equal((await s.w.call(newJar(), 'PUT', `${s.guildPath}/teams/${s.A}/standing`, { slots: [] })).status, 401);
+  // The set is the viewer's own: an officer's PUT is their own set (they have none on Alpha), never Erin's.
+  assert.equal((await s.stand('bob', s.A, [])).status, 403);
+  assert.equal(await s.w.count('standing_signups'), 2);
+  // An archived team is refused.
+  assert.equal((await s.call('alice', 'PATCH', `/teams/${s.B}`, { archived: true })).status, 200);
+  assert.equal((await s.stand('erin', s.B, [])).status, 409);
+  // Turning every weekday off empties the set.
+  assert.deepEqual((await s.stand('erin', s.A, [])).json.mine, []);
+  assert.equal(await s.w.count('standing_signups'), 0);
+});
+
+check('standing: it creates the sign-ups - on a set, on a schedule fill and on a new raid - for the team\'s upcoming raids of that weekday only', async () => {
+  const s = await standingWorld();
+  const { raidHelperSpecKey } = await load('worker/signups-data.js');
+  await s.fillSchedule(s.A);
+  await s.fillSchedule(s.B);
+  assert.equal(await s.w.count('raids'), 6);
+  // A set creates them on the raids that exist: Tuesdays of Alpha only (not Thursdays, not Bravo's Tuesdays).
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  let rows = await s.signups();
+  assert.deepEqual(rows.map((r) => [r.date, r.team, r.person, r.kind, r.standing, r.standby]), [['2027-01-19', s.A, s.p.eliora, 'signed', 1, 0], ['2027-01-26', s.A, s.p.eliora, 'signed', 1, 0]]);
+  // The columns a member's own sign-up fills: the Main and its main spec in Raid-Helper words, no Discord data, nobody as the writer.
+  assert.deepEqual([rows[0].character, rows[0].class_name, rows[0].spec_name, rows[0].signup_id, rows[0].updated_by], [s.c.eliora, 'Priest', raidHelperSpecKey('PRIEST', 'Holy'), 1, null]);
+  assert.deepEqual((await s.w.rows("SELECT discord_user_id, nickname, note, position FROM raid_signups WHERE source = 'raidsmith' ORDER BY raid_id LIMIT 1"))[0].position, 1);
+  // Another weekday with another kind and character.
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }, { weekday: 4, kind: 'late', characterId: s.c.mirabel }])).status, 200);
+  rows = await s.signups();
+  assert.deepEqual(rows.map((r) => [r.date, r.kind, r.class_name]), [['2027-01-19', 'signed', 'Priest'], ['2027-01-21', 'late', 'Hunter'], ['2027-01-26', 'signed', 'Priest'], ['2027-01-28', 'late', 'Hunter']]);
+  // Gina in too, on the same raids: the sign-up ids go on counting.
+  assert.equal((await s.stand('gina', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  const tuesday = await s.signups(`r.raid_on = '2027-01-19'`);
+  assert.deepEqual(tuesday.map((r) => [r.person === s.p.gorrim ? 'gorrim' : 'eliora', r.signup_id]).sort(), [['eliora', 1], ['gorrim', 2]]);
+
+  // The viewer sees it: the Raids list says "standing", the panel marks the entry, the counts include it.
+  const tue = await s.raidOn('2027-01-19');
+  const list = (await s.call('erin', 'GET', `/raids?team=${s.A}`)).json.upcoming;
+  assert.deepEqual(list.find((row) => row.id === tue).mine, { kind: 'signed', source: 'raidsmith', characterName: 'Eliora', standing: true });
+  const view = (await s.call('erin', 'GET', `/raids/${tue}/signups`)).json;
+  assert.deepEqual([view.entries.find((e) => e.isMe).standing, view.counts.signed, view.me.signup.standing], [true, 2, true]);
+  assert.equal(list.find((row) => row.id === tue).signups.signed, 2);
+
+  // A schedule fill creates the sign-ups of the new raids (4 weeks: two more weeks of Tuesdays and Thursdays).
+  const filled = await s.fillSchedule(s.A, 4);
+  assert.equal(filled.created.length, 4, JSON.stringify(filled));
+  rows = await s.signups(`s.player_id = '${s.p.eliora}'`);
+  assert.deepEqual(rows.map((r) => r.date), ['2027-01-19', '2027-01-21', '2027-01-26', '2027-01-28', '2027-02-02', '2027-02-04', '2027-02-09', '2027-02-11']);
+  assert(rows.every((r) => r.standing === 1));
+
+  // A hand-made upcoming raid on a Tuesday gets them; on a Wednesday, or in the past, it does not.
+  const tuesdayRaid = await s.makeRaid({ teamId: s.A, raidOn: '2027-03-02', startTime: '20:00' });
+  const wednesday = await s.makeRaid({ teamId: s.A, raidOn: '2027-03-03', startTime: '20:00' });
+  const past = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-12', startTime: '20:00' }); // a Tuesday that has passed
+  const dateOnly = await s.makeRaid({ teamId: s.A, raidOn: '2027-03-09' });                  // a Tuesday with only its date
+  const onRaid = async (raid) => (await s.w.rows("SELECT player_id FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' ORDER BY player_id", raid.id)).map((r) => r.player_id).sort();
+  assert.deepEqual(await onRaid(tuesdayRaid), [s.p.eliora, s.p.gorrim].sort());
+  assert.deepEqual(await onRaid(wednesday), []);
+  assert.deepEqual(await onRaid(past), []);
+  assert.deepEqual(await onRaid(dateOnly), [s.p.eliora, s.p.gorrim].sort(), 'a raid whose time is not set yet is still upcoming');
+  // Bravo's Tuesdays were never touched, and a started raid is never touched by a set.
+  assert.equal(await s.w.count('raid_signups', "raid_id IN (SELECT id FROM raids WHERE team_id = ?)", s.B), 0);
+  s.w.clock.now = Date.parse('2027-01-27T12:00:00Z');
+  const started = await s.w.count('raid_signups', "source = 'raidsmith'");
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'late' }])).status, 200);
+  const after = await s.signups(`s.player_id = '${s.p.eliora}'`);
+  assert.deepEqual(after.filter((r) => r.date <= '2027-01-27').map((r) => [r.date, r.kind]), [['2027-01-19', 'signed'], ['2027-01-21', 'late'], ['2027-01-26', 'signed']], 'raids that started keep what they had (no update, no delete)');
+  assert.deepEqual(after.filter((r) => r.date > '2027-01-27' && r.date.endsWith('-02-02')).map((r) => r.kind), ['late'], 'the upcoming ones follow the new kind');
+  assert(started > 0);
+});
+
+check('standing: reconciling again changes nothing; it never replaces a sign-up of either source, and a Raid-Helper row wins', async () => {
+  const s = await standingWorld();
+  await s.fillSchedule(s.A);
+  // Gorrim has signed up herself on the first Tuesday (an Absence); Eliora has a Raid-Helper row on the second.
+  const first = await s.raidOn('2027-01-19');
+  const second = await s.raidOn('2027-01-26');
+  assert.equal((await s.call('gina', 'PUT', `/raids/${first}/signup`, { kind: 'absence' })).status, 200);
+  exec(s.w, `INSERT INTO raid_signups (raid_id, source, signup_id, kind, class_name, spec_name, position, guild_id, player_id, discord_user_id, nickname)
+             VALUES ('${second}', 'raid_helper', 1, 'tentative', 'Tentative', NULL, 1, '${s.guildId}', '${s.p.eliora}', '${PEOPLE.erin.id}', 'Eliora')`);
+  assert.equal((await s.stand('gina', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  const rows = await s.signups();
+  assert.deepEqual(rows.map((r) => [r.date, r.person === s.p.gorrim ? 'gorrim' : 'eliora', r.kind, r.standing]), [
+    ['2027-01-19', 'eliora', 'signed', 1], ['2027-01-19', 'gorrim', 'absence', 0], ['2027-01-26', 'gorrim', 'signed', 1],
+  ], 'Gorrim\'s own Absence stays, Eliora\'s Raid-Helper row keeps her out of the second raid');
+  // Idempotent: run it again, and again from every angle - the rows are the very same rows.
+  const snapshot = JSON.stringify(await s.w.rows('SELECT * FROM raid_signups ORDER BY raid_id, source, signup_id'));
+  for (const scope of [{}, { personId: s.p.eliora }, { teamIds: [s.A] }, { raidIds: [first, second] }]) {
+    assert.deepEqual(await s.reconcile(scope), { created: 0, updated: 0, deleted: 0 }, JSON.stringify(scope));
+  }
+  assert.equal(JSON.stringify(await s.w.rows('SELECT * FROM raid_signups ORDER BY raid_id, source, signup_id')), snapshot);
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  assert.equal(JSON.stringify(await s.w.rows('SELECT * FROM raid_signups ORDER BY raid_id, source, signup_id')), snapshot, 'saving the same set again changes no row');
+  // Deleting the rows and reconciling puts back exactly them, once.
+  exec(s.w, "DELETE FROM raid_signups WHERE source = 'raidsmith' AND standing = 1");
+  assert.deepEqual(await s.reconcile({}), { created: 2, updated: 0, deleted: 0 });
+  assert.deepEqual(await s.reconcile({}), { created: 0, updated: 0, deleted: 0 });
+  // Two reconciles racing for the same raid cannot make a second row (the partial unique index and the conditional insert).
+  exec(s.w, "DELETE FROM raid_signups WHERE source = 'raidsmith' AND standing = 1");
+  await Promise.all([s.reconcile({}), s.reconcile({})]);
+  assert.equal(await s.w.count('raid_signups', "source = 'raidsmith' AND standing = 1"), 2);
+});
+
+check('standing: an Away notice wins both ways - a notice added later takes the row away, a notice removed later brings it back, one filed first stops it', async () => {
+  const s = await standingWorld();
+  await s.fillSchedule(s.A);
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }, { weekday: 4, kind: 'signed' }])).status, 200);
+  assert.deepEqual((await s.signups()).map((r) => r.date), ['2027-01-19', '2027-01-21', '2027-01-26', '2027-01-28']);
+  // A notice for one date takes that Tuesday's row away and nothing else.
+  const made = await s.call('erin', 'POST', '/away', { kind: 'away', from: '2027-01-19', to: '2027-01-19' });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  assert.deepEqual((await s.signups()).map((r) => r.date), ['2027-01-21', '2027-01-26', '2027-01-28']);
+  // Removing it brings the row back.
+  assert.equal((await s.call('erin', 'DELETE', `/away/${made.json.notice.id}`, {})).status, 200);
+  assert.deepEqual((await s.signups()).map((r) => r.date), ['2027-01-19', '2027-01-21', '2027-01-26', '2027-01-28']);
+  // A repeating notice on Thursdays keeps every Thursday clear; a change of the notice moves the gap.
+  const thursdays = await s.call('erin', 'POST', '/away', { kind: 'away', from: '2027-01-20', weekday: 4 });
+  assert.equal(thursdays.status, 201, JSON.stringify(thursdays.json));
+  assert.deepEqual((await s.signups()).map((r) => r.date), ['2027-01-19', '2027-01-26']);
+  const moved = await s.call('erin', 'PUT', `/away/${thursdays.json.notice.id}`, { kind: 'away', from: '2027-01-27', weekday: 4 });
+  assert.equal(moved.status, 200, JSON.stringify(moved.json));
+  assert.deepEqual((await s.signups()).map((r) => r.date), ['2027-01-19', '2027-01-21', '2027-01-26'], 'the first Thursday is free again, the second is not');
+  // Late and Leaving notices do not stop a sign-up.
+  assert.equal((await s.call('erin', 'POST', '/away', { kind: 'late', from: '2027-01-19', to: '2027-01-26', atTime: '21:00' })).status, 201);
+  assert.deepEqual((await s.signups()).map((r) => r.date), ['2027-01-19', '2027-01-21', '2027-01-26']);
+  // A notice filed BEFORE the standing entry exists stops the row from being made.
+  assert.equal((await s.stand('erin', s.A, [])).status, 200);
+  assert.deepEqual(await s.signups(), []);
+  assert.equal((await s.call('erin', 'POST', '/away', { kind: 'away', from: '2027-01-26', to: '2027-01-26' })).status, 201);
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  assert.deepEqual((await s.signups()).map((r) => r.date), ['2027-01-19']);
+  // An officer's notice for the person counts the same.
+  const officer = await s.call('bob', 'POST', '/away', { personId: s.p.eliora, kind: 'away', from: '2027-01-19', to: '2027-01-19' });
+  assert.equal(officer.status, 201, JSON.stringify(officer.json));
+  assert.deepEqual(await s.signups(), []);
+  // A sign-up the member edited is theirs: an Away notice replaces nothing of it.
+  assert.equal((await s.call('bob', 'DELETE', `/away/${officer.json.notice.id}`, {})).status, 200);
+  const tue = await s.raidOn('2027-01-19');
+  assert.equal((await s.call('erin', 'PUT', `/raids/${tue}/signup`, { kind: 'late' })).status, 200);
+  assert.equal((await s.call('erin', 'POST', '/away', { kind: 'away', from: '2027-01-19', to: '2027-01-19' })).status, 201);
+  assert.deepEqual((await s.signups()).map((r) => [r.date, r.kind, r.standing]), [['2027-01-19', 'late', 0]]);
+});
+
+check('standing: editing a row freezes it; turning a weekday off removes only the unedited future rows; other teams, other people and past raids stay', async () => {
+  const s = await standingWorld();
+  await s.fillSchedule(s.A);
+  await s.fillSchedule(s.B);
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }, { weekday: 4, kind: 'signed' }])).status, 200);
+  assert.equal((await s.stand('erin', s.B, [{ weekday: 2, kind: 'late' }])).status, 200);
+  assert.equal((await s.stand('gina', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  assert.equal(await s.w.count('raid_signups', "source = 'raidsmith' AND standing = 1"), 4 + 2 + 2);
+  // A Thursday row in the past (a raid that started) with the flag: the system never touches a started raid.
+  const pastRaid = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-14', startTime: '20:00' });
+  exec(s.w, `INSERT INTO raid_signups (raid_id, source, signup_id, kind, class_name, position, guild_id, player_id, standing, created_at, updated_at)
+             VALUES ('${pastRaid.id}', 'raidsmith', 1, 'signed', 'Priest', 1, '${s.guildId}', '${s.p.eliora}', 1, 1, 1)`);
+  // Erin edits the second Tuesday: it is hers now (the flag is gone in the table and in the views).
+  const tue2 = await s.raidOn('2027-01-26');
+  assert.equal((await s.call('erin', 'PUT', `/raids/${tue2}/signup`, { kind: 'tentative', note: 'maybe' })).status, 200);
+  const edited = (await s.signups(`s.raid_id = '${tue2}' AND s.player_id = '${s.p.eliora}'`))[0];
+  assert.deepEqual([edited.kind, edited.standing], ['tentative', 0]);
+  const view = (await s.call('erin', 'GET', `/raids/${tue2}/signups`)).json;
+  assert.equal('standing' in view.entries.find((e) => e.isMe), false, 'the key is only there for a standing sign-up');
+  const listed = (await s.call('erin', 'GET', `/raids?team=${s.A}`)).json.upcoming.find((row) => row.id === tue2);
+  assert.deepEqual(listed.mine, { kind: 'tentative', source: 'raidsmith', characterName: 'Eliora' });
+  // An officer's edit freezes it the same way.
+  const thu = await s.raidOn('2027-01-21');
+  assert.equal((await s.call('bob', 'PUT', `/raids/${thu}/signups/${s.p.eliora}`, { kind: 'late' })).status, 200);
+  assert.equal((await s.signups(`s.raid_id = '${thu}' AND s.player_id = '${s.p.eliora}'`))[0].standing, 0);
+
+  // Turning Tuesday off (keeping Thursday) removes the unedited Tuesday of Alpha only.
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 4, kind: 'signed' }])).status, 200);
+  const eliora = (rows) => rows.filter((r) => r.person === s.p.eliora).map((r) => [r.date, r.team === s.A ? 'A' : 'B', r.kind, r.standing]).sort((a, b) => (a.join() < b.join() ? -1 : 1));
+  assert.deepEqual(eliora(await s.signups()), [
+    ['2027-01-14', 'A', 'signed', 1],   // the started raid
+    ['2027-01-19', 'B', 'late', 1],     // Bravo's Tuesday: another team
+    ['2027-01-21', 'A', 'late', 0],     // the officer's edit
+    ['2027-01-26', 'A', 'tentative', 0], // her edit
+    ['2027-01-26', 'B', 'late', 1],
+    ['2027-01-28', 'A', 'signed', 1],
+  ]);
+  assert.equal((await s.signups()).filter((r) => r.person === s.p.gorrim).length, 2, 'another person\'s rows stay');
+  // Turning everything off leaves only the edited rows (and the started raid).
+  assert.equal((await s.stand('erin', s.A, [])).status, 200);
+  assert.deepEqual(eliora(await s.signups(`r.team_id = '${s.A}'`)).map((r) => r.slice(0, 1).concat(r.slice(2))), [['2027-01-14', 'signed', 1], ['2027-01-21', 'late', 0], ['2027-01-26', 'tentative', 0]]);
+  assert.equal(await s.w.count('standing_signups', "player_id = ?", s.p.eliora), 1, 'Bravo\'s entry is still there');
+});
+
+check('standing: a character change - the unedited rows follow the entry (kind, character, class, spec); an inactive person or a lost character is signed out', async () => {
+  const s = await standingWorld();
+  await s.fillSchedule(s.A);
+  const { raidHelperSpecKey } = await load('worker/signups-data.js');
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  const before = await s.signups();
+  assert.equal(before.length, 2);
+  // Edit the second one, then change the entry to Mirabel / late.
+  const tue2 = await s.raidOn('2027-01-26');
+  assert.equal((await s.call('erin', 'PUT', `/raids/${tue2}/signup`, { kind: 'signed', note: 'mine' })).status, 200);
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'late', characterId: s.c.mirabel }])).status, 200);
+  const rows = await s.signups();
+  assert.deepEqual([rows[0].kind, rows[0].character, rows[0].class_name, rows[0].spec_name, rows[0].standing, rows[0].signup_id], ['late', s.c.mirabel, 'Hunter', raidHelperSpecKey('HUNTER', 'Marksmanship'), 1, before[0].signup_id], 'the same row, changed');
+  assert.deepEqual([rows[1].kind, rows[1].character, rows[1].standing], ['signed', s.c.eliora, 0], 'the edited one is left alone');
+  assert.equal(await s.w.count('standing_signups'), 1);
+  // Back to the usual character.
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed', characterId: null }])).status, 200);
+  assert.deepEqual([(await s.signups())[0].character, (await s.signups())[0].kind], [s.c.eliora, 'signed']);
+  // The usual character follows the roster: the Main changes, the NULL entry follows it at the next reconcile.
+  exec(s.w, `UPDATE characters SET is_main = 0 WHERE id = '${s.c.eliora}'`);
+  exec(s.w, `UPDATE characters SET is_main = 1 WHERE id = '${s.c.mirabel}'`);
+  assert.deepEqual(await s.reconcile({ personId: s.p.eliora }), { created: 0, updated: 1, deleted: 0 });
+  assert.equal((await s.signups())[0].character, s.c.mirabel);
+  // An inactive person is signed out of the rows the system made; a person with no character left on the team too.
+  exec(s.w, `UPDATE players SET status = 'inactive' WHERE id = '${s.p.eliora}'`);
+  assert.deepEqual(await s.reconcile({ personId: s.p.eliora }), { created: 0, updated: 0, deleted: 1 });
+  assert.deepEqual((await s.signups()).map((r) => r.standing), [0], 'only the edited row is left');
+  exec(s.w, `UPDATE players SET status = 'raider' WHERE id = '${s.p.eliora}'`);
+  assert.deepEqual(await s.reconcile({ personId: s.p.eliora }), { created: 1, updated: 0, deleted: 0 });
+  exec(s.w, `UPDATE characters SET team_id = '${s.B}' WHERE id IN ('${s.c.eliora}', '${s.c.mirabel}')`);
+  assert.deepEqual(await s.reconcile({ personId: s.p.eliora }), { created: 0, updated: 0, deleted: 1 });
+});
+
+check('standing: a Raid-Helper sign-up wins - linking an event removes the standing row of the people in it, taking the event off brings it back', async () => {
+  const s = await standingWorld();
+  await s.fillSchedule(s.A);
+  assert.equal((await s.stand('erin', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  assert.equal((await s.stand('gina', s.A, [{ weekday: 2, kind: 'signed' }])).status, 200);
+  const tue = await s.raidOn('2027-01-19');
+  const startsAt = (await s.w.rows('SELECT starts_at FROM raids WHERE id = ?', tue))[0].starts_at;
+  assert.equal((await s.signups(`s.raid_id = '${tue}'`)).length, 2);
+  const EVENT = '666666666666666661';
+  s.w.sources.events.set(EVENT, rhEvent(EVENT, SERVER_A, [signUp(1, PEOPLE.erin.id, 'Eliora', 'Priest', 'Holy1'), signUp(2, '299999999999999999', 'Stranger', 'Rogue', 'Combat')], { startTime: startsAt / 1000 }));
+  const link = await s.call('bob', 'PUT', `/raids/${tue}/event`, { source: EVENT });
+  assert.equal(link.status, 200, JSON.stringify(link.json));
+  const left = await s.signups(`s.raid_id = '${tue}'`);
+  assert.deepEqual(left.map((r) => r.person), [s.p.gorrim], 'Eliora is in the event now: her standing row went, Gorrim\'s stays');
+  assert.equal(await s.w.count('raid_signups', `raid_id = '${tue}' AND source = 'raid_helper' AND player_id = '${s.p.eliora}'`), 1);
+  // The same event, refreshed, changes nothing.
+  assert.equal((await s.call('bob', 'PUT', `/raids/${tue}/event`, { source: EVENT })).status, 200);
+  assert.equal((await s.signups(`s.raid_id = '${tue}'`)).length, 1);
+  // Taking the event off puts the standing row back.
+  assert.equal((await s.call('bob', 'DELETE', `/raids/${tue}/event`, {})).status, 200);
+  assert.deepEqual((await s.signups(`s.raid_id = '${tue}'`)).map((r) => [r.person === s.p.eliora ? 'eliora' : 'gorrim', r.standing]).sort(), [['eliora', 1], ['gorrim', 1]]);
+  // A new raid made from an event: the people in it keep their Raid-Helper row, the others get the standing one.
+  const EVENT2 = '666666666666666662';
+  const second = Date.parse('2027-03-03T01:00:00Z'); // Tuesday 2027-03-02 20:00 in New York
+  s.w.sources.events.set(EVENT2, rhEvent(EVENT2, SERVER_A, [signUp(1, PEOPLE.gina.id, 'Gorrim', 'Paladin', 'Protection1')], { startTime: second / 1000 }));
+  const made = await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: EVENT2 });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const rows = await s.signups(`s.raid_id = '${made.json.raid.id}'`);
+  assert.deepEqual(rows.map((r) => r.person), [s.p.eliora], 'Gorrim is in the event; Eliora gets her standing sign-up');
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';

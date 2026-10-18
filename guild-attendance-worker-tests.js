@@ -1567,7 +1567,7 @@ check('request budgets: D1 calls (session, central write limiter, fail-closed wi
   await measure('POST /raids (no event)', async () => { id = (await s.call('bob', 'POST', '/raids', { teamId: s.B, raidOn: '2027-01-02' })).json.raid.id; }, 6, 0);
   let aId;
   await measure('POST /raids with an event', async () => { aId = (await s.call('bob', 'POST', '/raids', { teamId: s.A, eventSource: EVENT_ID })).json.raid.id; }, 8, 1);
-  await measure('PUT .../event', async () => { assert.equal((await s.call('bob', 'PUT', s.raid(aId, '/event'), { source: EVENT_ID })).status, 200); }, 9, 1);
+  await measure('PUT .../event', async () => { assert.equal((await s.call('bob', 'PUT', s.raid(aId, '/event'), { source: EVENT_ID })).status, 200); }, 10, 1); // 10: the standing sign-ups of the raid are reconciled (one read)
   await measure('PUT .../reports', async () => { assert.equal((await s.call('bob', 'PUT', s.raid(aId, '/reports'), { source: R1 })).status, 200); }, 11, 2);
   await measure('PUT .../plan', async () => { assert.equal((await s.call('bob', 'PUT', s.raid(aId, '/plan'), { label: 'Plan', players: [{ name: 'Aldric', group: 1 }] })).status, 200); }, 8, 0);
   const brindle = byName((await s.call('bob', 'GET', s.raid(aId))).json).Brindle.playerId;

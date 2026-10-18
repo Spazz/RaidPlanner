@@ -10,6 +10,7 @@ import { zonesFor } from '../raid-zones.js';
 import { SINGLE_LINE_STRIP } from '../roster-data.js';
 import { guildToday } from '../roster-view.js';
 import { MAX_CLOSE_HOURS, isCloseHours } from '../signups-data.js';
+import { reconcileStanding } from '../standing.js';
 import { MAX_SCHEDULE_WEEKS, MAX_SLOTS, START_TIME, planScheduledRaids } from '../schedule-plan.js';
 import { bad } from './roster.js';
 
@@ -172,6 +173,8 @@ export async function createScheduledRaids(ctx) {
     ]);
     const made = (await db.prepare('SELECT id FROM raids WHERE id IN (SELECT value FROM json_each(?))').bind(JSON.stringify(ids)).all()).results.map((row) => row.id);
     created = toCreate.filter((row) => made.includes(row.id)).map((row) => ({ raidId: row.id, raidOn: row.raidOn, startsAt: row.startsAt, zone: row.zone, title: row.title }));
+    // The new raids start with the standing sign-ups of their weekday.
+    if (created.length) await reconcileStanding(ctx, guild, { teamIds: [team.id], raidIds: created.map((row) => row.raidId) });
     // A date another request created first: the team has a raid there now.
     for (const row of toCreate.filter((entry) => !made.includes(entry.id))) skipped.push({ raidOn: row.raidOn, reason: 'exists' });
   }
