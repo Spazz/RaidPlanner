@@ -6,11 +6,11 @@ import { checkRateLimit, rateLimitMessage } from './ratelimit.js';
 import { createRouter, paramsAreValid } from './router.js';
 import { loadSession } from './session.js';
 import { callback, deleteMe, guildPageRedirect, login, logout, me, providers, updatePrefs } from './routes/auth.js';
-import { lookupAccounts, patchMe, setPersonAccount, unlinkDiscord } from './routes/accounts.js';
+import { lookupAccounts, patchMe, putReminderOptOut, setPersonAccount, unlinkDiscord } from './routes/accounts.js';
 import { bnetCallback, bnetLogin, createClaims, disconnectBnet, getBnet, withdrawClaim } from './routes/bnet.js';
 import { approveClaim, listClaims, rejectClaim } from './routes/bnet-claims.js';
 import { commitBnetRoster, getBnetSettings, previewBnetRoster, putBnetSettings } from './routes/bnet-import.js';
-import { runScheduled } from './bnet-purge.js';
+import { runCron } from './scheduler.js';
 import { claimGuild, createGuild, getGuild } from './routes/guild.js';
 import { deleteGuild, dismissOnboarding, exportGuild } from './routes/guild-data.js';
 import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles, syncPerson } from './routes/people.js';
@@ -47,6 +47,7 @@ import { getAttention } from './routes/attention.js';
 import { getStanding, putStanding } from './routes/standing.js';
 import { confirmSeat, declineSeat, getPublishedRoster, publishRoster, unpublishRoster } from './routes/roster-publish.js';
 import { getAudit } from './routes/audit.js';
+import { getNotifications, putTeamNotifications } from './routes/notifications.js';
 import { createCalendarLink, getCalendarFeed, getCalendarStatus, revokeCalendarLink } from './routes/calendar.js';
 import { getTrialReview } from './routes/trial.js';
 import { deleteNotice, getMyNotices, getNotices, postNotice, putNotice } from './routes/away.js';
@@ -73,6 +74,8 @@ export const ROUTES = [
   // Accounts (Phase 7a): the name the account shows, and Discord as a linked sign-in (/auth/login?mode=link connects it, this disconnects it).
   { method: 'PATCH', path: '/api/me', auth: true, handler: patchMe },
   { method: 'DELETE', path: '/auth/discord', auth: true, handler: unlinkDiscord },
+  // PM wave 4: "Don't mention me in reminders" (the Discord channel reminders list this account by name only).
+  { method: 'PUT', path: '/auth/reminders', auth: true, handler: putReminderOptOut },
   // Battle.net link (Phase 5). login and callback are browser navigations: they read the session themselves and redirect instead of answering JSON.
   { method: 'GET', path: '/auth/bnet/login', auth: false, handler: bnetLogin },
   { method: 'GET', path: '/auth/bnet/callback', auth: false, handler: bnetCallback },
@@ -233,6 +236,9 @@ export const ROUTES = [
   { method: 'PATCH', path: '/api/guild/:gid/applications/:apid', auth: true, handler: patchApplication },
   { method: 'POST', path: '/api/guild/:gid/applications/:apid/accept', auth: true, handler: acceptApplication },
   { method: 'DELETE', path: '/api/guild/:gid/applications/:apid', auth: true, handler: deleteApplication },
+  // PM wave 4: the Discord channel webhook of a team and what is posted to it. The webhook address is never sent back.
+  { method: 'GET', path: '/api/guild/:gid/notifications', auth: true, handler: getNotifications },
+  { method: 'PUT', path: '/api/guild/:gid/teams/:tid/notifications', auth: true, handler: putTeamNotifications },
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },
@@ -301,8 +307,11 @@ export default {
   fetch(request, env) {
     return createApp({ db: env.DB, env }).handle(request);
   },
-  // The daily Cron Trigger (wrangler.jsonc triggers.crons): the 30-day rule for Battle.net data.
+  // The Cron Triggers (wrangler.jsonc triggers.crons): daily the 30-day rule for Battle.net data, every 15 minutes the Raid-Helper refresh and the Discord
+  // posts (worker/scheduler.js picks by event.cron).
   scheduled(event, env, ctx) {
-    ctx.waitUntil(runScheduled({ db: env.DB, now: Date.now, log: (message) => console.log(message) }));
+    ctx.waitUntil(runCron({
+      cron: event.cron, db: env.DB, env, fetch: (...args) => fetch(...args), now: Date.now, randomBytes: defaultRandomBytes, log: (message) => console.log(message),
+    }));
   },
 };

@@ -83,6 +83,8 @@ export const AUDIT_ACTIONS = [
   'application.update',
   'application.accept',
   'application.delete',
+  'notify.update',
+  'notify.disabled',
 ];
 
 const COLUMNS = 'id, guild_id, actor_user_id, action, entity_type, entity_id, before, after, created_at';

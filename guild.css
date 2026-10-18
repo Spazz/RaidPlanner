@@ -1239,3 +1239,13 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-app-item { padding: var(--sp-3); }
   .gs-app-item .gs-row-actions .gs-btn, .gs-intent-actions .gs-btn { flex: 1 1 auto; }
 }
+/* PM wave 4: Settings > Notifications (one card per team) and the "Sign-ups refreshed" line of an upcoming raid. */
+.gs-notify-teams { display: flex; flex-direction: column; gap: var(--sp-4); }
+.gs-notify-form { max-width: 760px; }
+.gs-notify-hours { margin-left: 32px; max-width: 280px; }
+.gs-refreshed { display: block; margin-top: 2px; }
+.gs-refreshed-warn { color: var(--warning); }
+@media (max-width: 600px) {
+  .gs-notify-hours { margin-left: 0; max-width: none; }
+  .gs-notify-form .gs-actions .gs-btn { flex: 1 1 auto; }
+}

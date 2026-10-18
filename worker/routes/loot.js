@@ -14,6 +14,8 @@ import {
   ownPersonStatement, viewAwards,
 } from '../loot-store.js';
 import { isOwnPlayer } from '../membership.js';
+import { announceLoot } from '../notify-run.js';
+import { teamNotifyStatement } from '../notify-store.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
 import { guildToday, viewerOf } from '../roster-view.js';
 import { windowStartFor } from './attendance.js';
@@ -163,13 +165,17 @@ export async function commitLoot(ctx) {
     guildId: guild.id, actorUserId: userId, action: 'loot.import', entityType: 'raid', entityId: raid.id,
     after: { ...result, includeOtherDay },
   }));
+  statements.push(teamNotifyStatement(db, raid.team_id)); // the team's Discord channel settings ride in the same round trip
+  let written;
   try {
-    await db.batch(statements);
+    written = await db.batch(statements);
   } catch (error) {
     if (isUniqueViolation(error)) throw new HttpError(409, 'conflict', 'Someone else imported some of these awards. Reload and try again.');
     if (/FOREIGN KEY constraint failed/i.test(errorText(error))) throw new HttpError(404, 'not_found', 'That raid does not exist.');
     throw error;
   }
+  // The team's Discord channel hears about the new awards when an officer set that up (a failed post never fails the import).
+  await announceLoot(ctx, raid, toInsert.map((row) => ({ itemName: row.award.itemName, winnerName: row.award.winnerName, tag: row.award.tag })), written[written.length - 1].results[0] || null);
   const stored = await raidAwardsStatement(db, guild.id, raid.id).all();
   return jsonResponse({ ...result, awards: await viewAwards(db, guild.id, stored.results) });
 }

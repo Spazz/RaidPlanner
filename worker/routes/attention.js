@@ -9,6 +9,7 @@ import { displayCharacter, groupBy } from '../attendance-view.js';
 import { LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, buildAttention } from '../attention.js';
 import { onboardingStatement, shapeOnboarding } from '../onboarding.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
+import { CONFIRM_HOURS } from '../notify.js';
 import { effectiveRaidSize } from '../raid-zones.js';
 import { guildToday } from '../roster-view.js';
 import { MERGED_ROWS } from './raids.js';
@@ -41,7 +42,7 @@ export async function getAttention(ctx) {
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, applications, onboarding] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -118,6 +119,22 @@ export async function getAttention(ctx) {
     ),
     // Applications nobody has looked at yet, per team.
     bind("SELECT team_id, COUNT(*) AS n FROM applications WHERE guild_id = ? AND status = 'new' GROUP BY team_id"),
+    // Upcoming raids with a published roster that start within CONFIRM_HOURS and still have seats nobody has answered.
+    bind(
+      `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.title, r.event_title, COUNT(*) AS n
+         FROM raid_roster rr JOIN raids r ON r.id = rr.raid_id
+        WHERE r.guild_id = ? AND r.starts_at > ? AND r.starts_at <= ? AND r.roster_published_at IS NOT NULL AND rr.status = 'pending'
+        GROUP BY r.id ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
+      now, now + CONFIRM_HOURS * 3600000,
+    ),
+    // Upcoming raids whose Raid-Helper event the automatic refresh found on another day (it never moves a raid).
+    bind(
+      `SELECT id, team_id, raid_on, starts_at, zone, title, event_title, event_moved_on FROM raids
+        WHERE guild_id = ? AND starts_at > ? AND event_moved_on IS NOT NULL ORDER BY starts_at, id LIMIT ${READ_CAP}`,
+      now,
+    ),
+    // Teams whose Discord webhook Discord refused (404/401): the Worker switched it off.
+    bind("SELECT team_id, disabled_status FROM team_notifications WHERE guild_id = ? AND webhook_url IS NOT NULL AND webhook_state = 'disabled'"),
     // The setup checklist's flags, for the people who set the guild up (no statement for anyone else: `onboarding` is then undefined).
     ...[onboardingStatement(db, guildContext)].filter(Boolean),
   ]);
@@ -168,6 +185,9 @@ export async function getAttention(ctx) {
     watch,
     rosterDeclined: rosterDeclined.results,
     applications: applications.results,
+    rosterPending: rosterPending.results,
+    eventMoved: eventMoved.results,
+    webhooksOff: webhooksOff.results,
   });
   // The setup checklist (null for anyone who does not set the guild up, once dismissed, and once every step is done); it never counts toward `total`.
   return jsonResponse({ today, ...built, onboarding: shapeOnboarding(onboarding) });

@@ -538,7 +538,7 @@ check('Battle.net sign-up: an unknown Battle.net account becomes a NEW account (
   assert.equal(me.json.user.username, 'Holly');
   assert.equal(me.json.user.avatarUrl, null);
   assert.deepEqual(me.json.identities, { discord: null, bnet: { battletag: 'Holly#1111', linkedAt: w.clock.now, refreshedAt: w.clock.now } });
-  assert.deepEqual(me.json.account, { customName: null, available: { discord: true, bnet: true } });
+  assert.deepEqual(me.json.account, { customName: null, available: { discord: true, bnet: true }, reminderOptOut: false });
   assert.deepEqual(me.json.guilds, []);
   assert.deepEqual(me.json.create, { allowed: false, reason: 'needs_discord' }, 'a guild belongs to a Discord server: Battle.net alone cannot create one');
   assert.deepEqual(me.json.deleteImpact, { handOverFirst: [], guildsDeleted: [], autoPromote: [] });

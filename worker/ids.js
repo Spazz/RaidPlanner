@@ -23,6 +23,8 @@ const PATTERNS = {
   // PM wave 3: an intent round and an application.
   ir: /^ir_[A-Za-z0-9_-]{22}$/,
   am: /^am_[A-Za-z0-9_-]{22}$/,
+  // PM wave 4: a notification log row.
+  nl: /^nl_[A-Za-z0-9_-]{22}$/,
 };
 
 export function defaultRandomBytes(length) {

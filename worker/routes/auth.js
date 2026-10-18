@@ -284,7 +284,7 @@ async function createPayload(ctx) {
 export async function me(ctx) {
   const { db, session, env } = ctx;
   const userId = session.user.id;
-  const [guildResult, assignmentResult, removedResult] = await db.batch([
+  const [guildResult, assignmentResult, removedResult, optOutResult] = await db.batch([
     db.prepare(
       `SELECT g.id, g.name, g.realm, g.region FROM guilds g, (SELECT ? AS uid) c
         WHERE ${memberSql('c.uid', 'g.id', 'g.discord_server_id')}
@@ -298,6 +298,7 @@ export async function me(ctx) {
       `SELECT g.id, g.name FROM guild_blocks b JOIN guilds g ON g.id = b.guild_id
         WHERE b.user_id = ? ORDER BY g.name, g.id`,
     ).bind(userId),
+    db.prepare('SELECT 1 AS found FROM reminder_optouts WHERE user_id = ?').bind(userId),
   ]);
   const guilds = guildResult.results.map((guild) => ({
     id: guild.id,
@@ -317,7 +318,11 @@ export async function me(ctx) {
     // The sign-ins linked to this account (null = not linked), and what the Linked accounts page needs besides: the name the person chose
     // (null = none) and which providers this server is set up for. Nothing here is a token, a secret or another person's data.
     identities: { discord: identities.discord, bnet: identities.bnet },
-    account: { customName: identities.customName, available: { discord: isConfigured(env), bnet: bnetConfigured(env) } },
+    account: {
+      customName: identities.customName, available: { discord: isConfigured(env), bnet: bnetConfigured(env) },
+      // "Don't mention me in reminders" (Discord channel reminders list this account by name only).
+      reminderOptOut: optOutResult.results.length > 0,
+    },
     guilds,
     create,
     deleteImpact: { handOverFirst: impact.handOverFirst, guildsDeleted: impact.guildsDeleted, autoPromote: impact.autoPromote },

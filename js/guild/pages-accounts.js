@@ -80,10 +80,25 @@
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Disconnect Discord</button></div></form>';
   }
 
+  // "Don't mention me in reminders" (PM wave 4): the Discord channel reminders of a guild list people who haven't answered a raid or confirmed a roster, and ping
+  // those with a Discord ID. Opting out lists this account by name only. /auth/me: account.reminderOptOut.
+  function reminderOptOutOf(me) {
+    return !!(me && me.account && me.account.reminderOptOut);
+  }
+
+  function reminderCardHtml(me) {
+    return '<section class="gs-card-sec" aria-labelledby="linked-reminders"><div class="gs-card-sec-head"><h2 class="gs-h2" id="linked-reminders">Discord reminders</h2></div>' +
+      '<div class="gs-card-sec-body"><p>When your officers switch on reminders, Raidsmith posts in your team\'s Discord channel who hasn\'t signed up for a raid or confirmed a roster seat, and pings the people whose Discord account it knows.</p>' +
+      '<div class="gs-check"><input type="checkbox" id="reminder-optout" name="reminderOptOut" data-change="reminder-optout"' + (reminderOptOutOf(me) ? ' checked' : '') + '>' +
+      '<label for="reminder-optout">Don\'t mention me in reminders</label></div>' +
+      '<p class="gs-fine" id="reminder-optout-help">You are still listed by name, without a ping.</p>' +
+      '<p class="gs-alert" id="reminder-optout-error" role="alert" hidden></p></div></section>';
+  }
+
   // The cards above Battle.net on the Linked accounts page. '' when the page has no /auth/me answer (older callers).
   function profileCardsHtml(me) {
     if (!me || !me.user) return '';
-    return nameCardHtml(me) + discordCardHtml(me);
+    return nameCardHtml(me) + discordCardHtml(me) + reminderCardHtml(me);
   }
 
   // ── behaviour ──
@@ -115,6 +130,22 @@
     saveName(String(form.elements.displayName.value || '').trim(), form);
   };
 
+  G.handlers.change['reminder-optout'] = function (el) {
+    const want = !!el.checked;
+    el.disabled = true;
+    G.ui.setText('reminder-optout-error', '');
+    G.api.reminders.optOut(want).then(function () {
+      return refresh(want ? 'You won\'t be pinged in reminders.' : 'Reminders may ping you again.');
+    }, function (err) {
+      el.disabled = false;
+      el.checked = !want;
+      const c = G.api.classify(err);
+      if (c.view === 'signin') { G.app.requireSignin(); return; }
+      if (c.view === 'message') { G.app.showFailure(c.title, c.text); return; }
+      G.ui.setText('reminder-optout-error', c.text);
+    });
+  };
+
   G.handlers.click['account-name-reset'] = function (el) {
     if (el.disabled) return;
     el.disabled = true;
@@ -141,6 +172,8 @@
     discordCardHtml: discordCardHtml,
     disconnectDiscordDialogHtml: disconnectDiscordDialogHtml,
     profileCardsHtml: profileCardsHtml,
+    reminderCardHtml: reminderCardHtml,
+    reminderOptOutOf: reminderOptOutOf,
     refresh: refresh,
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

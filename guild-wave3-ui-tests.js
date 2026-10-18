@@ -165,7 +165,7 @@ class ApiErr extends Error {
 
   await check('shell: Guild settings shows Applications to guild.teams; the Roster tabs hang under Roster in the breadcrumbs, the back link and the sidebar; Import offers a CSV file', () => {
     const tabs = can => plain(G.shell.settingsTabs(can, []).map(t => t.tab));
-    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams', 'applications', 'battlenet']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams', 'applications', 'notifications', 'battlenet']);
     assert.deepEqual(tabs({ 'roster.edit': 'guild' }), [], 'roster.edit alone does not open Guild settings');
     const crumbs = (route) => plain(G.shell.breadcrumbItems({ route, guildData: gd(OFFICER_CAN), signedOut: false, section: 'guild', teamId: 't1', me: { user: { id: 'u' } } }).map(c => c.label));
     assert.deepEqual(crumbs({ name: 'intent', gid: 'g1' }).slice(-2), ['Roster', 'Intent']);

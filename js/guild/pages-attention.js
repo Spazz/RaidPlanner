@@ -18,10 +18,13 @@
     { id: 'no_loot', severity: 'action', heading: 'Raids without loot', chip: 'No loot' },
     { id: 'low_signups', severity: 'action', heading: 'Raids short on sign-ups', chip: 'Low sign-ups' },
     { id: 'roster_declined', severity: 'action', heading: 'Rostered players who can\'t make it', chip: 'Roster' },
+    { id: 'roster_pending', severity: 'action', heading: 'Rostered players who haven\'t confirmed', chip: 'Roster' },
+    { id: 'event_moved', severity: 'action', heading: 'Raid-Helper events on another day', chip: 'Event' },
+    { id: 'webhook_off', severity: 'action', heading: 'Discord webhooks switched off', chip: 'Discord' },
     { id: 'unlocked', severity: 'info', heading: 'Sign-ups still open', chip: 'Open' },
   ];
   // Route names an item link may use (an address built from anything else falls back to the Roster).
-  const LINK_NAMES = ['raid', 'review', 'person', 'personatt', 'applications'];
+  const LINK_NAMES = ['raid', 'review', 'person', 'personatt', 'applications', 'settings'];
   // Where "and N more" goes for each kind: the page where that kind of work is done.
   const MORE_LINKS = {
     review: { name: 'review' },
@@ -34,6 +37,9 @@
     no_loot: { name: 'section', section: 'raids' },
     low_signups: { name: 'section', section: 'raids' },
     roster_declined: { name: 'section', section: 'raids' },
+    roster_pending: { name: 'section', section: 'raids' },
+    event_moved: { name: 'section', section: 'raids' },
+    webhook_off: { name: 'settings', tab: 'notifications' },
     unlocked: { name: 'section', section: 'raids' },
   };
 
@@ -79,6 +85,9 @@
       case 'no_loot': return 'No loot imported for ' + dayOf(it.date);
       case 'low_signups': return dayOf(it.date) + ': ' + num(it.expected) + ' of ' + num(it.size) + ' signed up';
       case 'roster_declined': return dayOf(it.date) + ': ' + plural(n, 'rostered person', 'rostered people') + ' can\'t make it';
+      case 'roster_pending': return dayOf(it.date) + ': ' + plural(n, 'rostered person hasn\'t', 'rostered people haven\'t') + ' confirmed';
+      case 'event_moved': return dayOf(it.date) + ': Raid-Helper has the event on ' + dayOf(it.eventDate) + '; the raid was not moved';
+      case 'webhook_off': return 'The Discord webhook of ' + String(it.teamName == null ? 'a team' : it.teamName) + ' was switched off' + (it.status ? ' (Discord answered ' + num(it.status) + ')' : '');
       case 'unlocked': return 'Sign-ups for ' + dayOf(it.date) + ' are still open and the raid starts in ' + plural(Math.round(num(it.minutes)), 'minute', 'minutes');
       default: return String(it.kind == null ? 'Needs attention' : it.kind).replace(/_/g, ' ');
     }

@@ -45,7 +45,12 @@ export const ACTION_GROUP = Object.freeze({
   // PM wave 3: the intent board and recruitment needs and the applications inbox sit with the roster; the application switch and questions are settings.
   'intent.open': 'roster', 'intent.close': 'roster', 'intent.pick': 'roster', 'intent.unpick': 'roster', 'recruiting.targets': 'roster',
   'application.submit': 'roster', 'application.update': 'roster', 'application.accept': 'roster', 'application.delete': 'roster', 'apply.settings': 'settings',
+  // PM wave 4: the Discord notification settings, and the Worker switching a dead webhook off (which has no actor).
+  'notify.update': 'settings', 'notify.disabled': 'settings',
 });
+
+// Actions the Worker writes itself (no actor): the Activity log names "Raidsmith" for them instead of a former member.
+export const SYSTEM_ACTIONS = Object.freeze(['notify.disabled']);
 
 export const groupOf = (action) => (Object.prototype.hasOwnProperty.call(ACTION_GROUP, action) ? ACTION_GROUP[action] : 'settings');
 
@@ -100,6 +105,10 @@ const APPLICATION_STATUS_LABEL = { new: 'New', reviewing: 'Reviewing', accepted:
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const BUILTIN_ROLE_LABEL = { guild_master: 'Guild Master', officer: 'Officer', team_lead: 'Team Lead', member: 'Member', guest: 'Guest', public: 'Public' };
+const NOTIFY_LABEL = {
+  webhook: 'webhook', roleMention: 'mentioned role', roster: 'roster posts', loot: 'loot posts', reminders: 'raid reminders', noreply: 'no-reply reminders',
+  noreplyHours: 'no-reply lead time', confirm: 'roster confirm reminders',
+};
 const CHANGED_LABEL = {
   status: 'status', joinedOn: 'join date', trialStart: 'trial start', trialEnd: 'trial end', leftOn: 'left date', leftReason: 'reason for leaving',
   link: 'Discord link', teamId: 'team', class: 'class', mainSpec: 'main spec', offSpec: 'off spec',
@@ -319,6 +328,12 @@ export function describeRow(row, names = {}) {
     }
     case 'application.accept': return `Accepted an application: ${person(after.personId)} joined ${team(after.teamId)} on trial`;
     case 'application.delete': return `Deleted an application for ${team(before.teamId)}`;
+
+    case 'notify.update': {
+      const changed = [...new Set((Array.isArray(after.changed) ? after.changed : []).map((key) => NOTIFY_LABEL[key] || key))];
+      return `Changed the Discord notifications of ${team(after.teamId || ent)}${changed.length ? `: ${list(changed)}` : ''}`;
+    }
+    case 'notify.disabled': return `Turned off the Discord webhook of ${team(after.teamId || ent)}: Discord answered ${Number(after.status) || 'with an error'}`;
 
     case 'bnet.link': return 'Linked a Battle.net account';
     case 'bnet.unlink': return 'Disconnected a Battle.net account';

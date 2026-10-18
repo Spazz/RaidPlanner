@@ -367,6 +367,10 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('application.update', 'application', 'am_1', null, { teamId: 't_b', status: 'new', changed: ['notes'] }), 'Edited the notes of an application for Bravo'],
     [row('application.accept', 'application', 'am_1', null, { personId: 'p_thoren', teamId: 't_a', linked: true }), 'Accepted an application: Thoren joined Alpha on trial'],
     [row('application.delete', 'application', 'am_1', { teamId: 't_b', status: 'declined' }), 'Deleted an application for Bravo'],
+    // PM wave 4: the Discord notification settings, and the Worker switching a dead webhook off.
+    [row('notify.update', 'team', 't_a', { teamId: 't_a' }, { teamId: 't_a', changed: ['webhook', 'reminders', 'noreplyHours'] }), 'Changed the Discord notifications of Alpha: webhook, raid reminders and no-reply lead time'],
+    [row('notify.update', 'team', 't_a', null, { teamId: 't_a', changed: [] }), 'Changed the Discord notifications of Alpha'],
+    [row('notify.disabled', 'team', 't_b', null, { teamId: 't_b', status: 404 }), 'Turned off the Discord webhook of Bravo: Discord answered 404'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {

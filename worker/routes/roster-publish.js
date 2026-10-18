@@ -6,6 +6,7 @@ import { HttpError, jsonResponse } from '../http.js';
 import { effectiveKind } from '../signups-data.js';
 import { ownPersonStatement } from '../membership.js';
 import { allows, loadGuildContext, requireAction } from '../permissions.js';
+import { announceRoster } from '../notify-run.js';
 import { buildSeats, keptSeats, planChanged, rosterCounts } from '../roster-publish.js';
 import { loadRaid, raidAudit } from './raids.js';
 import { writeSignup } from './signups.js';
@@ -96,6 +97,8 @@ export async function publishRoster(ctx) {
     raidAudit(ctx, guildContext, 'roster.publish', raid.id, null, { players: seats.length, kept }, { sql: 'changes() = 1', params: [] }),
   ]);
   if (results[2].meta.changes !== 1) throw started();
+  // The team's Discord channel hears about it when an officer set that up (worker/notify-run.js; a failed post never fails the publish).
+  await announceRoster(ctx, { ...raid, roster_published_at: now });
   return jsonResponse(await rosterReply(ctx, guildContext, { ...raid, roster_published_at: now, roster_published_by: ctx.session.user.id }));
 }
 

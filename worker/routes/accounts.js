@@ -38,6 +38,22 @@ export async function patchMe(ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// PUT /auth/reminders { optOut: boolean }: "Don't mention me in reminders". A reminder that names people in a guild's Discord channel (people who have not
+// answered, rostered people who have not confirmed) lists an opted-out account by name only, without pinging its Discord ID. One row per account
+// (reminder_optouts); it goes with the account.
+
+export async function putReminderOptOut(ctx) {
+  const { db, session, body } = ctx;
+  if (typeof body.optOut !== 'boolean') throw bad('optOut must be true or false.', 'optOut');
+  if (body.optOut) {
+    await db.prepare('INSERT OR IGNORE INTO reminder_optouts (user_id, created_at) VALUES (?, ?)').bind(session.user.id, ctx.now()).run();
+  } else {
+    await db.prepare('DELETE FROM reminder_optouts WHERE user_id = ?').bind(session.user.id).run();
+  }
+  return jsonResponse({ optOut: body.optOut });
+}
+
+// ---------------------------------------------------------------------------
 // DELETE /auth/discord: disconnect Discord from the account.
 
 export async function unlinkDiscord(ctx) {

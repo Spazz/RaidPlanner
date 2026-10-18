@@ -27,7 +27,7 @@ const STEP_MS = 30_000; // between requests, so no per-minute write limit or imp
 
 // Routes that need a session but name no guild or other record: they act on the caller's own account (or the app-wide idea box). Listed by hand.
 const ACCOUNT_ROUTES = new Set([
-  'GET /auth/me', 'DELETE /auth/me', 'PATCH /auth/prefs', 'PATCH /api/me', 'DELETE /auth/discord', 'GET /auth/bnet', 'DELETE /auth/bnet',
+  'GET /auth/me', 'DELETE /auth/me', 'PATCH /auth/prefs', 'PATCH /api/me', 'PUT /auth/reminders', 'DELETE /auth/discord', 'GET /auth/bnet', 'DELETE /auth/bnet',
   'POST /auth/logout', 'POST /api/guild', 'GET /api/roadmap/ideas', 'POST /api/roadmap/ideas',
 ]);
 // Routes that need no session. Each has a contract below (checked by name); anything else open fails until it is classified here.

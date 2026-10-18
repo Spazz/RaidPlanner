@@ -55,6 +55,7 @@
     discordSettings: null, // Guild settings > Discord roles: { gid, data: GET /api/guild/:gid/discord, notice } (see pages-settings-discord.js)
     guestSettings: null, // Guild settings > Guest links: { gid, data: GET /api/guild/:gid/guest-links, notice }; the token is never kept here (see pages-settings-guests.js)
     publicSettings: null, // Guild settings > Public page: { gid, data: GET /api/guild/:gid/public, notice } (see pages-settings-public.js)
+    notifySettings: null, // Guild settings > Notifications: { gid, data: GET /api/guild/:gid/notifications, notice } (see pages-settings-notifications.js)
     rolesList: {},     // gid -> GET /api/guild/:gid/roles, for the People page's "Other roles" (loaded with the People tab for people who can manage roles)
     view: null,        // the read-only guest / public page: { kind, gid, data, error } (see pages-view.js); null while it loads
     apply: null,       // the application form: { gid, status, data, draft, busy, error, done } (see pages-apply.js); null until it is opened
@@ -66,6 +67,7 @@
     discord: { state: 'discordSettings', page: 'settingsDiscord' },
     guests: { state: 'guestSettings', page: 'settingsGuests' },
     public: { state: 'publicSettings', page: 'settingsPublic' },
+    notifications: { state: 'notifySettings', page: 'settingsNotify' },
   };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
   const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'applications' };
@@ -323,6 +325,7 @@
     state.discordSettings = null;
     state.guestSettings = null;
     state.publicSettings = null;
+    state.notifySettings = null;
     state.rolesList = {};
     state.view = null;
     state.apply = null;

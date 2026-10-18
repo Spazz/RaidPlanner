@@ -1,7 +1,8 @@
 // A small world for the Phase 8 suites (guild-guilds-worker-tests.js, guild-isolation-tests.js): the Worker over the node:sqlite D1 stand-in, Discord
 // faked by an injected fetch, cookie jars, and sign-in helpers. Nothing here touches the network or a real database.
-//   makeWorld({ allowlist, env, routes })  allowlist: array of Discord ids (omit it for NO allowlist: creation is open to server administrators);
-//                                          routes: replaces worker/index.js ROUTES (the isolation suite's leaky canary)
+//   makeWorld({ allowlist, env, routes, wrapFetch })  allowlist: array of Discord ids (omit it for NO allowlist: creation is open to server administrators);
+//                                          routes: replaces worker/index.js ROUTES (the isolation suite's leaky canary);
+//                                          wrapFetch(discordFetch) -> the fetch the Worker gets (the wave 4 suites answer webhooks and Raid-Helper events and hand the rest on)
 //   world.call(jar, method, path, body)    -> { status, json, text, headers }   world.rows(sql, ...values)   world.count(table, where, ...values)
 //   signIn(world, person, servers, jar)    Discord sign-in through the fake; the jar then carries the session cookie
 const path = require('node:path');
@@ -50,7 +51,7 @@ function absorbCookies(jar, response) {
   }
 }
 
-async function makeWorld({ allowlist, env = {}, routes } = {}) {
+async function makeWorld({ allowlist, env = {}, routes, wrapFetch } = {}) {
   const { createApp } = await load('worker/index.js');
   const db = createD1Fake();
   const discord = makeDiscord();
@@ -70,9 +71,10 @@ async function makeWorld({ allowlist, env = {}, routes } = {}) {
     ...(allowlist === undefined ? {} : { GUILD_CREATOR_ALLOWLIST: allowlist.join(',') }),
     ...env,
   };
-  const app = createApp({ db, env: fullEnv, fetch: discord.fetch, now: () => clock.now, randomBytes, log: (message) => logs.push(message), routes });
+  const appFetch = wrapFetch ? wrapFetch(discord.fetch) : discord.fetch;
+  const app = createApp({ db, env: fullEnv, fetch: appFetch, now: () => clock.now, randomBytes, log: (message) => logs.push(message), routes });
   const world = {
-    db, discord, clock, logs, env: fullEnv,
+    db, discord, clock, logs, env: fullEnv, fetch: appFetch, randomBytes,
     advance(ms) { clock.now += ms; },
     async req(method, urlPath, { jar, body, headers = {}, rawBody } = {}) {
       const init = { method, headers: { ...headers } };

@@ -62,6 +62,16 @@
     return ui.formatDate(ms);
   };
 
+  // How long ago a moment was, to the minute (relativeTime above counts calendar days): "just now", "12 min ago", "3 h ago", "2 days ago". '' without a moment.
+  ui.agoText = function (ms, now) {
+    if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    const minutes = Math.max(0, Math.floor(((typeof now === 'number' ? now : Date.now()) - ms) / 60000));
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return minutes + ' min ago';
+    const hours = Math.floor(minutes / 60);
+    return hours < 48 ? hours + ' h ago' : Math.floor(hours / 24) + ' days ago';
+  };
+
   // "A", "A and B", "A, B and C" as escaped <strong> names.
   ui.joinNames = function (items) {
     const names = (Array.isArray(items) ? items : []).map(function (g) { return '<strong>' + esc(g && g.name) + '</strong>'; });

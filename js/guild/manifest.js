@@ -23,6 +23,7 @@
     '/js/guild/pages-settings-guests.js',
     '/js/guild/pages-settings-public.js',
     '/js/guild/pages-settings-applications.js',
+    '/js/guild/pages-settings-notifications.js',
     '/js/guild/pages-view.js',
     '/js/guild/pages-apply.js',
     '/js/guild/coverage.js',

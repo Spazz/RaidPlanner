@@ -4,7 +4,7 @@
 import { SECURITY_HEADERS, jsonResponse } from '../http.js';
 import { localTimeToMs } from '../attendance-calendar.js';
 import {
-  AUDIT_GROUPS, GROUP_IDS, auditCsv, collectRefs, dayLabel, describeRow, groupFilter, groupOf, rangeMs,
+  AUDIT_GROUPS, GROUP_IDS, SYSTEM_ACTIONS, auditCsv, collectRefs, dayLabel, describeRow, groupFilter, groupOf, rangeMs,
 } from '../audit-view.js';
 import { isId } from '../ids.js';
 import { loadGuildContext, requireAction } from '../permissions.js';
@@ -126,7 +126,8 @@ export async function getAudit(ctx) {
   const rows = parsed.map((row) => ({
     id: row.id,
     at: row.at,
-    actor: row.actor && names.users.has(row.actor) ? { id: row.actor, displayName: names.users.get(row.actor) } : null,
+    actor: row.actor && names.users.has(row.actor) ? { id: row.actor, displayName: names.users.get(row.actor) }
+      : (SYSTEM_ACTIONS.includes(row.action) ? { id: null, displayName: 'Raidsmith' } : null),
     action: row.action,
     group: groupOf(row.action),
     text: describeRow(row, names),

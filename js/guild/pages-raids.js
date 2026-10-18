@@ -159,10 +159,20 @@
   }
 
   // The title, then the zone with the raid's size ('Prog night - Hyjal Summit - 20'); '-' when there is nothing to say.
-  function eventCellHtml(r) {
+  // The sign-ups of a raid with a Raid-Helper event say how fresh they are: the automatic refresh reads them every 12 h, every 2 h inside the last 48 h before the
+  // start. An officer also sees when Raid-Helper has the event on another day (the refresh never moves a raid; Needs attention lists it too).
+  function refreshedHtml(r, now) {
+    if (!r.eventSourced) return '';
+    let html = '';
+    if (typeof r.eventSyncedAt === 'number') html += '<span class="gs-fine gs-refreshed">Sign-ups refreshed ' + esc(G.ui.agoText(r.eventSyncedAt, now)) + '</span>';
+    if (r.eventMovedOn) html += '<span class="gs-fine gs-refreshed gs-refreshed-warn">Raid-Helper has this event on ' + esc(G.ui.weekdayDay(r.eventMovedOn) || r.eventMovedOn) + '. The raid was not moved.</span>';
+    return html;
+  }
+
+  function eventCellHtml(r, now) {
     const where = zoneSizeText(r.zone, r.size);
     const name = [r.title ? '<span class="gs-ev-title">' + esc(r.title) + '</span>' : '', where ? esc(where) : ''].filter(Boolean).join(' &middot; ');
-    return (name || '<span class="gs-muted">-</span>') + (r.eventSourced ? ' <span class="gs-fine">(Raid-Helper)</span>' : '');
+    return (name || '<span class="gs-muted">-</span>') + (r.eventSourced ? ' <span class="gs-fine">(Raid-Helper)</span>' : '') + refreshedHtml(r, now);
   }
 
   function planPillHtml(r) { return r.planned ? pillHtml('ok', 'Planned') : pillHtml('muted', 'Not planned'); }

@@ -19,6 +19,13 @@
  *   --members '{"<serverId>":{"<userId>":["1","2"]}}'                                         each member's role ids (anyone else is Unknown Member, 404)
  * Change them at runtime: GET /__fake/roles?server=ID&roles=<url-encoded JSON array>, GET /__fake/member?server=ID&user=ID&roles=1,2 (roles= empty keeps
  * the member with no roles; &gone=1 removes the member), GET /__fake/bot?server=ID&in=1|0, GET /__fake/state.
+ *
+ * Channel webhooks (PM wave 4, Discord notifications). The Worker posts  POST /api/webhooks/:id/:token  (JSON body: content, embeds, allowed_mentions) to a webhook
+ * address saved in Guild settings > Notifications; with DISCORD_API_BASE pointing here that address is  http://127.0.0.1:<port>/api/webhooks/<id>/<token>.
+ * Every post is RECORDED, never sent anywhere, and answered 204 like Discord. Read and steer it:
+ *   GET /__fake/webhook-posts            -> { posts: [{ n, id, token, body }] } (n counts from 1)      GET /__fake/webhook-posts?clear=1   also empties the list
+ *   GET /__fake/webhook-mode?status=404  answer every post with that status from now on (Discord answers a deleted webhook 404, a changed token 401);
+ *                                        add &id=<webhook id> to steer one webhook only; no status goes back to 204.
  */
 const http = require('node:http');
 
@@ -48,6 +55,8 @@ function createFakeDiscord(options = {}) {
     roles: new Map(Object.entries(options.roles || {})),
     members: new Map(Object.entries(options.members || {}).map(([server, byUser]) => [server, new Map(Object.entries(byUser))])),
     botCalls: [],
+    webhookPosts: [],
+    webhookStatus: new Map(), // webhook id (or '*') -> the status to answer with
   };
   const botIn = (server) => state.botServers === 'all' || state.botServers.has(server);
 
@@ -126,6 +135,29 @@ function createFakeDiscord(options = {}) {
         if (!roleIds) return send(res, 404, { message: 'Unknown Member', code: 10007 });
         return send(res, 200, { user: { id: botRoute[3], username: 'member' + botRoute[3].slice(-4) }, roles: roleIds, nick: null });
       }
+      const webhook = /^\/api\/webhooks\/(\d+)\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
+      if (req.method === 'POST' && webhook) {
+        const chunks = [];
+        for await (const chunk of req) chunks.push(chunk);
+        let body = null;
+        try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { body = null; }
+        const status = state.webhookStatus.get(webhook[1]) || state.webhookStatus.get('*') || 204;
+        state.webhookPosts.push({ n: state.webhookPosts.length + 1, id: webhook[1], token: webhook[2], status, body });
+        if (status === 204) { res.writeHead(204); return res.end(); }
+        return send(res, status, { message: status === 404 ? 'Unknown Webhook' : status === 401 ? 'Invalid Webhook Token' : 'Error', code: status === 404 ? 10015 : 0 });
+      }
+      if (req.method === 'GET' && url.pathname === '/__fake/webhook-posts') {
+        const posts = state.webhookPosts.slice();
+        if (url.searchParams.get('clear')) state.webhookPosts.length = 0;
+        return send(res, 200, { posts });
+      }
+      if (req.method === 'GET' && url.pathname === '/__fake/webhook-mode') {
+        const status = Number(url.searchParams.get('status'));
+        const key = url.searchParams.get('id') || '*';
+        if (Number.isInteger(status) && status >= 200 && status < 600) state.webhookStatus.set(key, status);
+        else state.webhookStatus.delete(key);
+        return send(res, 200, { ok: true, modes: Object.fromEntries(state.webhookStatus) });
+      }
       if (req.method === 'GET' && url.pathname === '/__fake/roles') {
         state.roles.set(url.searchParams.get('server'), JSON.parse(url.searchParams.get('roles') || '[]'));
         return send(res, 200, { ok: true });
@@ -148,7 +180,7 @@ function createFakeDiscord(options = {}) {
         return send(res, 200, {
           botServers: state.botServers === 'all' ? 'all' : [...state.botServers],
           roles: Object.fromEntries(state.roles), members: Object.fromEntries([...state.members].map(([server, byUser]) => [server, Object.fromEntries(byUser)])),
-          botCalls: state.botCalls.length,
+          botCalls: state.botCalls.length, webhookPosts: state.webhookPosts.length,
         });
       }
       if (req.method === 'GET' && url.pathname === '/__fake/set') {

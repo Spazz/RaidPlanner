@@ -18,7 +18,7 @@
 
   // 'home' is the guild's landing section: it has no path segment of its own (#/g/:gid); #/g/:gid/home is only an alias.
   const SECTIONS = ['home', 'roster', 'raids', 'attendance', 'loot'];
-  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'applications', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
+  const TABS = ['teams', 'schedule', 'people', 'roles', 'discord', 'guests', 'public', 'applications', 'notifications', 'attendance', 'loot', 'battlenet', 'activity', 'data'];
   // The Roster's tabs after the roster list itself; each is a route of its own.
   const ROSTER_TABS = ['intent', 'recruiting', 'applications'];
   const LOOT_VIEWS = ['raids', 'items'];

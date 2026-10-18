@@ -49,6 +49,7 @@
     { tab: 'guests', label: 'Guest links', needs: ['guild.access'] },
     { tab: 'public', label: 'Public page', needs: ['guild.roles'] },
     { tab: 'applications', label: 'Applications', needs: ['guild.teams'] },
+    { tab: 'notifications', label: 'Notifications', needs: ['guild.teams'] },
     { tab: 'attendance', label: 'Attendance', needs: ['attendance.policy'] },
     { tab: 'loot', label: 'Loot', needs: ['loot.policy'] },
     { tab: 'battlenet', label: 'Battle.net', needs: ['guild.teams'] },

@@ -255,7 +255,7 @@ export async function listRaids(ctx) {
     policyRowsStatement(ctx.db, guild.id),
     // Raids that have not started: all of them, soonest first, outside the paging of the past ones.
     ctx.db.prepare(
-      `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.signup_close_hours, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live, r.signups_locked,
+      `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.signup_close_hours, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.event_moved_on, r.plan_synced, r.plan_live, r.signups_locked,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'signed' AND s.standby = 0) AS n_signed,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'late') AS n_late,
               (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = 'signed' AND s.standby = 1) AS n_standby,
@@ -327,6 +327,8 @@ export async function listRaids(ctx) {
       title: row.title || row.event_title || null,
       eventSourced: row.event_id !== null,
       eventId: row.event_id,
+      eventSyncedAt: row.event_id !== null ? row.event_synced : null, // when the sign-ups were last read from Raid-Helper (an officer's refresh or the automatic one)
+      eventMovedOn: canEdit ? row.event_moved_on : null, // the date Raid-Helper has the event on when that is not the raid's (the automatic refresh never moves a raid)
       otherServer: row.event_server !== null && row.event_server !== guild.discord_server_id,
       signups: seeCounts ? Object.fromEntries(SIGNUP_KINDS.map((kind) => [kind, row[`n_${kind}`] + (kind === 'absence' ? awayOf(row).length : 0)])) : null,
       locked: row.signups_locked === 1,
@@ -533,6 +535,36 @@ export async function createRaid(ctx) {
 // ---------------------------------------------------------------------------
 // Raid-Helper event
 
+// The writes that put an event on a raid: its details, the sign-ups it carries and the standing sign-ups that give way to them (one db.batch, in this order;
+// the audit row, when there is one, goes last). `otherDay` / `eventDate` come from putEvent: an officer asked for the raid to move to the event's date.
+// The automatic refresh (worker/event-refresh.js) passes otherDay false: it never moves a raid. A raid WITHOUT a log follows its event's start time while the
+// event stays on the raid's date (an upcoming raid, or one that never had an anchor). Clears the "event is on another day" flag and stamps the check.
+export function eventLinkStatements(ctx, guild, raid, event, eventId, { otherDay = false, eventDate = null, audit = null } = {}) {
+  const { db } = ctx;
+  const now = ctx.now();
+  const anchorless = raid.event_synced === null && raid.reports === 0;
+  // An upcoming raid follows its event's start time while the event stays on the raid's date (a re-import after a reschedule).
+  const retime = otherDay || anchorless || (raid.starts_at > now && event.startTime && eventDate === raid.raid_on);
+  const guard = raidExists(raid.id);
+  const built = eventSignupStatements(db, guild, raid.id, event, guard);
+  // The raids of the two dates keep their fill-ins honest: the old date loses this raid, the new date gains it.
+  const neighbours = otherDay ? [bumpDayStatement(db, guild.id, raid.raid_on, raid.id, guard), bumpDayStatement(db, guild.id, eventDate, raid.id, guard)] : [];
+  const statements = [
+    db.prepare(
+      `UPDATE raids SET event_id = ?, event_title = ?, event_server = ?, event_synced = ?, event_checked_at = ?, event_moved_on = NULL,
+              starts_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE starts_at END,
+              time_known = CASE WHEN ? = 1 AND ? IS NOT NULL THEN 1 ELSE time_known END,
+              raid_on = CASE WHEN ? = 1 THEN ? ELSE raid_on END, updated_at = ?, version = version + 1, policy_fp = ''
+        WHERE id = ? AND guild_id = ?`,
+    ).bind(eventId, event.title, event.serverId, now, now, retime ? 1 : 0, event.startTime, event.startTime, retime ? 1 : 0, event.startTime, otherDay ? 1 : 0, eventDate, now, raid.id, guild.id),
+    ...neighbours,
+    ...built.statements,
+    removeStandingOverRaidHelper(db, raid.id, guard), // a real Raid-Helper sign-up wins over a standing one
+  ];
+  if (audit) statements.push(audit(built.count, guard));
+  return { statements, count: built.count };
+}
+
 // Link, replace or refresh the raid's Raid-Helper event. A raid without a log follows its event: on the same guild-local day the start time
 // follows (an upcoming raid, or one that never had an anchor); on ANOTHER day the raid is asked to move, and only moveRaid: true moves
 // BOTH starts_at and raid_on (409 event_other_day carries the two dates for the page to ask with). The team's one-raid-per-day rule (the
@@ -550,7 +582,6 @@ export async function putEvent(ctx) {
   if (event.serverId !== guild.discord_server_id && body.acceptOtherServer !== true) {
     throw new HttpError(409, 'other_server', 'That event was posted in a different Discord server.');
   }
-  const now = ctx.now();
   const eventDate = event.startTime ? localDate(event.startTime, guild.time_zone) : null;
   const otherDay = raid.reports === 0 && eventDate !== null && eventDate !== raid.raid_on;
   if (otherDay && body.moveRaid !== true) {
@@ -564,32 +595,18 @@ export async function putEvent(ctx) {
     const taken = await db.prepare('SELECT id FROM raids WHERE guild_id = ? AND team_id = ? AND raid_on = ? AND id != ?').bind(guild.id, raid.team_id, eventDate, raid.id).first();
     if (taken) throw new HttpError(409, 'raid_date_taken', `That team already has a raid on ${eventDate}, so this raid cannot move there.`, { raidId: taken.id, eventDate });
   }
-  const anchorless = raid.event_synced === null && raid.reports === 0;
-  // An upcoming raid follows its event's start time while the event stays on the raid's date (a re-import after a reschedule).
-  const retime = otherDay || anchorless || (raid.starts_at > now && event.startTime && eventDate === raid.raid_on);
-  const guard = raidExists(raid.id);
-  const built = eventSignupStatements(db, guild, raid.id, event, guard);
-  // The raids of the two dates keep their fill-ins honest: the old date loses this raid, the new date gains it.
-  const neighbours = otherDay ? [bumpDayStatement(db, guild.id, raid.raid_on, raid.id, guard), bumpDayStatement(db, guild.id, eventDate, raid.id, guard)] : [];
+  const built = eventLinkStatements(ctx, guild, raid, event, eventId, {
+    otherDay,
+    eventDate,
+    audit: (count, guard) => raidAudit(
+      ctx, guildContext, 'raid.event', raid.id,
+      otherDay ? { event: raid.event_id !== null, raidOn: raid.raid_on } : { event: raid.event_id !== null },
+      otherDay ? { eventId, signups: count, raidOn: eventDate } : { eventId, signups: count },
+      guard,
+    ),
+  });
   try {
-    await db.batch([
-      db.prepare(
-        `UPDATE raids SET event_id = ?, event_title = ?, event_server = ?, event_synced = ?,
-                starts_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE starts_at END,
-                time_known = CASE WHEN ? = 1 AND ? IS NOT NULL THEN 1 ELSE time_known END,
-                raid_on = CASE WHEN ? = 1 THEN ? ELSE raid_on END, updated_at = ?, version = version + 1, policy_fp = ''
-          WHERE id = ? AND guild_id = ?`,
-      ).bind(eventId, event.title, event.serverId, now, retime ? 1 : 0, event.startTime, event.startTime, retime ? 1 : 0, event.startTime, otherDay ? 1 : 0, eventDate, now, raid.id, guild.id),
-      ...neighbours,
-      ...built.statements,
-      removeStandingOverRaidHelper(db, raid.id, guard), // a real Raid-Helper sign-up wins over a standing one
-      raidAudit(
-        ctx, guildContext, 'raid.event', raid.id,
-        otherDay ? { event: raid.event_id !== null, raidOn: raid.raid_on } : { event: raid.event_id !== null },
-        otherDay ? { eventId, signups: built.count, raidOn: eventDate } : { eventId, signups: built.count },
-        guard,
-      ),
-    ]);
+    await db.batch(built.statements);
   } catch (error) {
     const kind = uniqueKind(error);
     if (kind === 'event') throw await conflictFor(ctx, guild, 'event', { eventId });
@@ -618,7 +635,7 @@ export async function deleteEvent(ctx) {
     const now = ctx.now();
     await db.batch([
       db.prepare(
-        `UPDATE raids SET event_id = NULL, event_title = NULL, event_server = NULL, event_synced = NULL, updated_at = ?, version = version + 1, policy_fp = ''
+        `UPDATE raids SET event_id = NULL, event_title = NULL, event_server = NULL, event_synced = NULL, event_checked_at = NULL, event_moved_on = NULL, updated_at = ?, version = version + 1, policy_fp = ''
           WHERE id = ? AND guild_id = ?`,
       ).bind(now, raid.id, guildContext.guild.id),
       db.prepare("DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raid_helper'").bind(raid.id),

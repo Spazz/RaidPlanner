@@ -251,6 +251,14 @@
     preview: function (gid, body) { return G.api.post(guildPath(gid, '/roster/import/csv/preview'), body); },
     commit: function (gid, body) { return G.api.post(guildPath(gid, '/roster/import/csv/commit'), body); },
   };
+  // PM wave 4: a team's Discord channel posts (the webhook address goes in and never comes back) and "Don't mention me in reminders".
+  G.api.notifications = {
+    get: function (gid) { return G.api.get(guildPath(gid, '/notifications')); },
+    save: function (gid, teamId, body) { return G.api.put(guildPath(gid, '/teams/' + enc(teamId) + '/notifications'), body); },
+  };
+  G.api.reminders = {
+    optOut: function (optOut) { return G.api.put('/auth/reminders', { optOut: !!optOut }); },
+  };
   G.api.publicPage = {
     get: function (gid) { return G.api.get(guildPath(gid, '/public')); },
     save: function (gid, body) { return G.api.put(guildPath(gid, '/public'), body); },

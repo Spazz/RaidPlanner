@@ -46,6 +46,7 @@
     const intro = paragraphs([
       'Deletes your account, the name you chose and every sign-in linked to it, and all Discord data Raidsmith holds: your Discord ID, username and avatar, the Discord ID and nickname on your Raid-Helper sign-ups, and the notes you wrote on sign-ups made in Raidsmith. It also deletes your Battle.net link and character list, and the character claims you made.',
       'It deletes the calendar links you made too, so those calendar subscriptions stop updating.',
+      'It deletes your Don\'t mention me in reminders setting too.',
       'It deletes the applications you sent to a guild while signed in, and the notes you wrote on intent picks.',
       'Delete my data also lifts any access block on you.',
       'If you are the only Guild Master of a guild, hand over first. If nobody else has joined, the guild is deleted too.',
@@ -96,6 +97,7 @@
         'Officer notes: only officers and team leads see them.',
         'Your attendance for each raid.',
         'The sign-ups you make in Raidsmith: the raid, your status, the character and spec you chose, and an optional note.',
+        'Discord channel posts, only when an officer switches them on: the roster, loot and raid reminders, and reminders that list the people who haven\'t answered a raid or confirmed a seat, by character name. Raidsmith pings those whose Discord account it knows unless they chose Don\'t mention me in reminders on Linked accounts. It keeps a log of which posts it sent (no text, no names) for 90 days. The channel\'s webhook address is a secret: Raidsmith never shows it again, and officers can only replace or remove it.',
       ])) +
       section('privacy-comes-from', 'Where it comes from', bullets([
         'Raid-Helper sign-ups: Discord ID, nickname and sign-up status.',

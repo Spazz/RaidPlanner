@@ -7,9 +7,11 @@
     "binding": "ASSETS",
     "run_worker_first": ["/guild", "/guild/", "/api/guild", "/api/guild/*", "/api/roadmap/*", "/api/me", "/api/guest", "/api/public/*", "/api/apply/*", "/auth/*", "/cal/*"]
   },
-  // Daily at 04:17 UTC: the 30-day rule for Battle.net data (worker/bnet-purge.js). The dev tool starts Wrangler with --test-scheduled, so locally:
-  //   curl "http://localhost:8787/__scheduled?cron=17+4+*+*+*"
-  "triggers": { "crons": ["17 4 * * *"] },
+  // Two triggers, dispatched by worker/scheduler.js. Daily at 04:17 UTC: the 30-day rule for Battle.net data (worker/bnet-purge.js). Every 15 minutes: the
+  // Raid-Helper refresh of upcoming raids and the Discord channel posts and reminders. The dev tool starts Wrangler with --test-scheduled, so locally:
+  //   curl "http://127.0.0.1:8787/__scheduled?cron=17+4+*+*+*"       (daily)
+  //   curl "http://127.0.0.1:8787/__scheduled?cron=*/15+*+*+*+*"     (every 15 minutes)
+  "triggers": { "crons": ["17 4 * * *", "*/15 * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",

@@ -1273,10 +1273,10 @@ check('30-day purge: the Worker\'s scheduled handler runs it through waitUntil a
   assert.deepEqual(logged, ['bnet purge failed: D1 is down']);
 });
 
-check('wrangler.jsonc: a daily cron trigger runs the purge', () => {
+check('wrangler.jsonc: a daily cron trigger runs the purge (and a 15-minute one the Discord posts, worker/scheduler.js)', () => {
   const raw = read('wrangler.jsonc');
   const config = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
-  assert.deepEqual(config.triggers, { crons: ['17 4 * * *'] });
+  assert.deepEqual(config.triggers, { crons: ['17 4 * * *', '*/15 * * * *'] });
   assert.match(read('tools/guild-dev.js'), /dev: \['dev', '--test-scheduled'\]/);
 });
 

@@ -161,7 +161,7 @@ class ApiErr extends Error {
     assert.deepEqual(tabs({ 'raids.edit': ['t1'] }), ['schedule']);
     assert.deepEqual(tabs({ 'raids.edit': [] }), []);
     assert.deepEqual(tabs({ 'raids.view': 'guild' }), []);
-    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'guild.access': 'guild', 'raids.edit': 'guild', 'attendance.policy': 'guild' }), ['teams', 'schedule', 'people', 'guests', 'applications', 'attendance', 'battlenet']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'guild.access': 'guild', 'raids.edit': 'guild', 'attendance.policy': 'guild' }), ['teams', 'schedule', 'people', 'guests', 'applications', 'notifications', 'attendance', 'battlenet']);
     assert.equal(G.shell.settingsTabs({ 'raids.edit': 'guild' })[0].label, 'Raid schedule');
     assert.equal(G.shell.canSeeSettings({ 'raids.edit': ['t1'] }), false, 'a Team Lead alone does not get the Guild settings item: the Raids page links to the tab');
     const frame = G.shell.settingsFrameHtml({ guildData: gd(OFFICER_CAN) }, 'schedule', '<p>x</p>');

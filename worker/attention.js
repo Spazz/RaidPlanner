@@ -2,7 +2,7 @@
 // or team lead sees on the guild home page. Each item carries the fields its sentence needs and a `link` (a pages route without the guild id).
 // Which items a viewer gets follows their rights per team: `allowsTeam(action, teamId)` and `granted(action)` come from the permission check.
 
-export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'no_loot', 'low_signups', 'roster_declined', 'unlocked'];
+export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'no_loot', 'low_signups', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
 export const INFO_KINDS = ['unlocked'];  // listed, but not part of the open-work count
 export const TRIAL_DAYS = 7;
@@ -26,6 +26,9 @@ function daysBetween(from, to) {
 //   noLoot: [{ id, team_id, raid_on, zone, title, event_title }],
 //   applications: [{ team_id, n }]   (applications still marked New, per team)
 //   rosterDeclined: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids with a published roster: n seats said "can't make it")
+//   rosterPending: [{ id, team_id, raid_on, starts_at, zone, title, event_title, n }]   (upcoming raids that start within CONFIRM_HOURS with a published roster: n seats have not answered)
+//   eventMoved: [{ id, team_id, raid_on, starts_at, zone, title, event_title, event_moved_on }]   (upcoming raids whose Raid-Helper event is on another day: the refresh does not move a raid)
+//   webhooksOff: [{ team_id, disabled_status }]   (teams whose Discord webhook Discord refused: the Worker switched it off)
 //   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in, size (the raid's effective size; the team's when left out),
 //                close_hours (the sign-up deadline in hours before the start; 0 or left out = at the start) }],
 //   watch: [{ teamId, entries: [{ playerId, name, class, pct, previousPct, drop, reasons }] }] }
@@ -101,6 +104,19 @@ export function buildAttention(input) {
   for (const row of input.rosterDeclined || []) {
     if (!here('raids.edit', row.team_id)) continue;
     add('roster_declined', { ...base('roster_declined', row.team_id), ...raidFields(row), startsAt: row.starts_at, count: row.n, id: `roster_declined:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+  }
+
+  for (const row of input.rosterPending || []) {
+    if (!here('raids.edit', row.team_id)) continue;
+    add('roster_pending', { ...base('roster_pending', row.team_id), ...raidFields(row), startsAt: row.starts_at, count: row.n, id: `roster_pending:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+  }
+  for (const row of input.eventMoved || []) {
+    if (!here('raids.edit', row.team_id)) continue;
+    add('event_moved', { ...base('event_moved', row.team_id), ...raidFields(row), startsAt: row.starts_at, eventDate: row.event_moved_on, id: `event_moved:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+  }
+  for (const row of input.webhooksOff || []) {
+    if (!here('guild.teams', row.team_id)) continue;
+    add('webhook_off', { ...base('webhook_off', row.team_id), status: row.disabled_status, id: `webhook_off:${row.team_id}`, link: { name: 'settings', tab: 'notifications' } }, [0]);
   }
 
   const items = [];
