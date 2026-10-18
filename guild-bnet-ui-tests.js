@@ -130,9 +130,9 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
   await check('shell: the Battle.net settings tab follows guild.teams; the crumbs and the import menu know the new pages', () => {
     const tabs = can => plain(G.shell.settingsTabs(can).map(t => t.tab));
     assert.deepEqual(tabs({ 'guild.teams': 'guild' }), ['teams', 'battlenet']);
-    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people']);
+    assert.deepEqual(tabs({ 'guild.access': 'guild' }), ['people', 'guests']);
     assert.deepEqual(tabs({ 'attendance.policy': 'guild' }), ['attendance']);
-    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'guild.access': 'guild', 'attendance.policy': 'guild' }), ['teams', 'people', 'attendance', 'battlenet']);
+    assert.deepEqual(tabs({ 'guild.teams': 'guild', 'guild.access': 'guild', 'attendance.policy': 'guild' }), ['teams', 'people', 'guests', 'attendance', 'battlenet']);
     const gd = guildData();
     const crumbs = (route, extra) => plain(G.shell.breadcrumbItems(Object.assign({ section: 'guild', page: 'app', me: { user: {} }, route, guildData: gd, teamId: 't1' }, extra)).map(c => c.label));
     assert.deepEqual(crumbs({ name: 'linked' }), ['Linked accounts']);

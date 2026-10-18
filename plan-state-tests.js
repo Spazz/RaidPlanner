@@ -912,7 +912,7 @@ async function check(name, fn) {
     for (const file of fs.readdirSync(root, { recursive: true }).filter(f => f.endsWith('.js'))) {
       const src = fs.readFileSync(path.join(root, file), 'utf8');
       const direct = src.split('\n').filter(l => /clipboard\.writeText|clipboard\.write\(/.test(l) && !/^\s*\/\//.test(l));
-      const allowed = file === 'modals.js' ? 1 : (file === 'app.js' ? 2 : 0); // copyText itself, and copyShareLink's own Safari path
+      const allowed = file === 'modals.js' ? 1 : (file === 'app.js' ? 2 : (file.replace(/\\/g, '/') === 'guild/ui.js' ? 1 : 0)); // copyText itself, copyShareLink's own Safari path, and the guild shell's copyInput (the address of a guest link or public page, with a status line)
       assert.equal(direct.length, allowed, `${file}: ${direct.join(' | ')}`);
     }
     const appSrc = fs.readFileSync(path.join(root, 'app.js'), 'utf8');

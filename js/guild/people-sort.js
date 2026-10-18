@@ -1,7 +1,7 @@
 // ── PEOPLE SORT (pure) ──────────────────────────────────────────
 // Sorting, filtering and role labels for the People and roles table. No DOM.
 //   Columns: person | roster | roles | lastSeen, direction asc | desc.
-//   Default: Roles asc = Guild Master, Officer, Team Lead, Member, then display name.
+//   Default: Roles asc = Guild Master, Officer, Team Lead, the guild's own roles, Member, then display name.
 //   Not linked (roster null) and Never seen (lastSeenAt null) sort last in either direction.
 //   Last seen: asc = newest first, so the first click on that header shows who was here most recently.
 (function (G) {
@@ -11,11 +11,21 @@
   const DEFAULT_SORT = { column: 'roles', dir: 'asc' };
   const ROLE_RANK = { guild_master: 0, officer: 1, team_lead: 2 };
   const MEMBER_RANK = 3;
+  // A role the guild made itself (id cr_...) ranks between Team Lead and Member: it never moves someone up the hierarchy, but it is listed.
+  const CUSTOM_RANK = 2.5;
   const ROLE_NAMES = { guild_master: 'Guild Master', officer: 'Officer', team_lead: 'Team Lead', member: 'Member' };
 
+  function isCustomRoleId(id) { return typeof id === 'string' && id.indexOf('cr_') === 0; }
+
+  // { role, teamId } plus `name` (a custom role's own name) and `fromDiscord: true` (only Discord gives it) when the server sent them.
   function normalizeRole(r) {
     if (typeof r === 'string') return { role: r, teamId: null };
-    if (r && typeof r === 'object' && typeof r.role === 'string') return { role: r.role, teamId: r.teamId == null ? null : String(r.teamId) };
+    if (r && typeof r === 'object' && typeof r.role === 'string') {
+      const out = { role: r.role, teamId: r.teamId == null ? null : String(r.teamId) };
+      if (typeof r.name === 'string') out.name = r.name;
+      if (r.fromDiscord === true) out.fromDiscord = true;
+      return out;
+    }
     return null;
   }
 
@@ -27,13 +37,17 @@
   function roleRank(roles) {
     let best = MEMBER_RANK;
     normalizeRoles(roles).forEach(function (r) {
-      const rank = Object.prototype.hasOwnProperty.call(ROLE_RANK, r.role) ? ROLE_RANK[r.role] : MEMBER_RANK;
+      let rank = MEMBER_RANK;
+      if (Object.prototype.hasOwnProperty.call(ROLE_RANK, r.role)) rank = ROLE_RANK[r.role];
+      else if (isCustomRoleId(r.role)) rank = CUSTOM_RANK;
       if (rank < best) best = rank;
     });
     return best;
   }
 
   // [{ kind, label }] for the Roles cell; empty roles display as Member. teams: the guild's team list (active and archived).
+  // A custom role shows its own name (kind 'custom', "Name - Team" when it is given for a team); a role only Discord gives ends in " (Discord)"
+  // and carries fromDiscord: true.
   function roleLabels(roles, teams) {
     const byId = {};
     (Array.isArray(teams) ? teams : []).forEach(function (t) { if (t && t.id != null) byId[String(t.id)] = t; });
@@ -41,16 +55,24 @@
     // A guild with exactly one active team shows a bare "Team Lead" (the team is implied).
     const oneTeam = (Array.isArray(teams) ? teams : []).filter(function (t) { return t && !t.archived; }).length === 1;
     normalizeRoles(roles).forEach(function (r) {
-      if (r.role === 'guild_master') out.push({ kind: 'guild_master', label: ROLE_NAMES.guild_master });
-      else if (r.role === 'officer') out.push({ kind: 'officer', label: ROLE_NAMES.officer });
+      let entry = null;
+      if (r.role === 'guild_master') entry = { kind: 'guild_master', label: ROLE_NAMES.guild_master };
+      else if (r.role === 'officer') entry = { kind: 'officer', label: ROLE_NAMES.officer };
       else if (r.role === 'team_lead') {
         const team = r.teamId != null ? byId[r.teamId] : null;
-        out.push({ kind: 'team_lead', label: team && !oneTeam ? ROLE_NAMES.team_lead + ': ' + team.name : ROLE_NAMES.team_lead });
+        entry = { kind: 'team_lead', label: team && !oneTeam ? ROLE_NAMES.team_lead + ': ' + team.name : ROLE_NAMES.team_lead };
+      } else if (isCustomRoleId(r.role)) {
+        const team = r.teamId != null ? byId[r.teamId] : null;
+        const name = r.name || 'Custom role';
+        entry = { kind: 'custom', label: team ? name + ' - ' + team.name : name };
       }
+      if (!entry) return;
+      if (r.fromDiscord) { entry.label += ' (Discord)'; entry.fromDiscord = true; }
+      out.push(entry);
     });
     if (!out.length) out.push({ kind: 'member', label: ROLE_NAMES.member });
     out.sort(function (a, b) {
-      const order = { guild_master: 0, officer: 1, team_lead: 2, member: 3 };
+      const order = { guild_master: 0, officer: 1, team_lead: 2, custom: 3, member: 4 };
       return order[a.kind] - order[b.kind];
     });
     return out;
@@ -135,6 +157,7 @@
     COLUMNS: COLUMNS,
     DEFAULT_SORT: DEFAULT_SORT,
     ROLE_NAMES: ROLE_NAMES,
+    isCustomRoleId: isCustomRoleId,
     normalizeRoles: normalizeRoles,
     roleRank: roleRank,
     roleLabels: roleLabels,

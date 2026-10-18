@@ -32,12 +32,16 @@
   }
 
   // The Guild settings tabs this viewer may open (People and roles needs access or roles; Raid schedule is for whoever edits raids, and a Team Lead
-  // reaches it from the Raids page: canSeeSettings below, and so the sidebar item, is unchanged).
+  // reaches it from the Raids page: canSeeSettings below, and so the sidebar item, is unchanged). Roles, Discord roles and Public page need guild.roles,
+  // Guest links needs guild.access.
   function settingsTabs(can) {
     const tabs = [];
     if (hasAction(can, 'guild.teams')) tabs.push({ tab: 'teams', label: 'Teams' });
     if (hasAction(can, 'raids.edit')) tabs.push({ tab: 'schedule', label: 'Raid schedule' });
     if (hasAction(can, 'guild.access') || hasAction(can, 'guild.roles')) tabs.push({ tab: 'people', label: 'People and roles' });
+    if (hasAction(can, 'guild.roles')) tabs.push({ tab: 'roles', label: 'Roles' }, { tab: 'discord', label: 'Discord roles' });
+    if (hasAction(can, 'guild.access')) tabs.push({ tab: 'guests', label: 'Guest links' });
+    if (hasAction(can, 'guild.roles')) tabs.push({ tab: 'public', label: 'Public page' });
     if (hasAction(can, 'attendance.policy')) tabs.push({ tab: 'attendance', label: 'Attendance' });
     if (hasAction(can, 'loot.policy')) tabs.push({ tab: 'loot', label: 'Loot' });
     if (hasAction(can, 'guild.teams')) tabs.push({ tab: 'battlenet', label: 'Battle.net' });
@@ -55,6 +59,8 @@
   function baseOf(ctx) { return ctx && ctx.page && ctx.page !== 'app' ? '/' : ''; }
   function signedIn(ctx) { return !!(ctx && ctx.me && ctx.me.user); }
   function guildOf(ctx) { return ctx && ctx.guildData && ctx.guildData.guild ? ctx.guildData : null; }
+  // A guest link, the guest view and a public page are standalone read-only pages: no guild rail, whoever is looking.
+  function viewerPage(ctx) { return !!(ctx && G.router.isViewerRoute(ctx.route)); }
 
   // Flagged trials for the selected team, for officers and team leads only (a member's guild payload carries none).
   function rosterBadge(gd, teamId) {
@@ -229,14 +235,14 @@
 
   // The guild rail: the logo (a Planner link) and one tile per guild. Nothing when the viewer has no tiles.
   function railHtml(ctx) {
-    if (!signedIn(ctx) || !hasTiles(ctx.me)) return '';
+    if (!signedIn(ctx) || !hasTiles(ctx.me) || viewerPage(ctx)) return '';
     return '<aside class="gs-rail" aria-label="Guilds"><a class="gs-rail-logo" href="/" data-action="open-planner" aria-label="Raidsmith planner">' + G.icons.logo + '</a><div class="gs-rail-line" aria-hidden="true"></div>' +
       tilesHtml(ctx.me, activeGid(ctx), ctx.route, baseOf(ctx)) + '</aside>';
   }
 
   // The phone drawer, for every viewer: rail tiles when there are any, the guild or brand head, the full sidebar list.
   function drawerHtml(ctx) {
-    const tiles = signedIn(ctx) && hasTiles(ctx.me) ? tilesHtml(ctx.me, activeGid(ctx), ctx.route, baseOf(ctx)) : '';
+    const tiles = signedIn(ctx) && hasTiles(ctx.me) && !viewerPage(ctx) ? tilesHtml(ctx.me, activeGid(ctx), ctx.route, baseOf(ctx)) : '';
     const rail = tiles ? '<div class="gs-drawer-rail">' + G.icons.logo + tiles + '</div>' : '';
     return '<dialog class="gs-drawer" id="gs-drawer" aria-label="Main menu">' + rail +
       '<div class="gs-drawer-panel"><div class="gs-drawer-top"><button type="button" class="gs-icon-btn" data-action="close-drawer" aria-label="Close menu">' + ic('close', 20) + '</button></div>' +
@@ -273,6 +279,8 @@
     if (r.name === 'new') return [{ label: 'Create a guild' }];
     if (r.name === 'privacy') return [{ label: 'Privacy & my data' }];
     if (r.name === 'roadmap') return [{ label: 'Future enhancements' }];
+    if (r.name === 'guest' || r.name === 'view') return [{ label: 'Guest view' }];
+    if (r.name === 'public') return [{ label: 'Public page' }];
     if (ctx.signedOut) return [{ label: 'Sign in' }];
     if (r.name === 'linked') return [{ label: 'Linked accounts' }];
     if (r.name === 'characters') return [{ label: 'My characters' }];

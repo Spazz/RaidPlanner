@@ -312,6 +312,54 @@
     });
   };
 
+  // Like runDialog, but every error except a lost race or a sign-out stays in the form, a 403 included (the role editor's "You cannot give a role
+  // more than you can do yourself" is a message for the form, not a page).
+  ui.runDialogInline = function (form, promise, onOk, onConflict) {
+    ui.setBusy(form, true);
+    return promise.then(function (res) {
+      ui.closeDialogOf(form);
+      if (onOk) onOk(res);
+    }, function (err) {
+      ui.setBusy(form, false);
+      if (err && err.code === 'conflict') {
+        ui.closeDialogOf(form);
+        if (onConflict) onConflict(err); else G.app.handleError(err);
+        return;
+      }
+      if (G.api.classify(err).view === 'signin') { ui.closeDialogOf(form); G.app.requireSignin(); return; }
+      ui.showFormError(form, err);
+    });
+  };
+
+  // The address the page is served from ('' where there is no location, as in the tests); links to share are origin + path.
+  ui.pageOrigin = function () {
+    try {
+      return typeof location !== 'undefined' && location && typeof location.origin === 'string' && location.origin !== 'null' ? location.origin : '';
+    } catch (e) {
+      return '';
+    }
+  };
+
+  // Copies the text of a read-only input: the clipboard API where the page may use it, else the text is selected and the browser's copy command runs.
+  // Resolves true when it copied; false leaves the text selected so the person can press Ctrl+C.
+  ui.copyInput = function (input) {
+    if (!input) return Promise.resolve(false);
+    const text = String(input.value == null ? '' : input.value);
+    const fallback = function () {
+      try {
+        if (input.focus) input.focus();
+        if (input.select) input.select();
+        return !!(typeof document !== 'undefined' && document.execCommand && document.execCommand('copy'));
+      } catch (e) {
+        return false;
+      }
+    };
+    // Like copyText in modals.js: a missing or refused clipboard is a rejection, and the fallback runs.
+    let written;
+    try { written = navigator.clipboard.writeText(text); } catch (err) { written = Promise.reject(err); }
+    return Promise.resolve(written).then(function () { return true; }, function () { return fallback(); });
+  };
+
   ui.setBusy = function (form, busy) {
     const btns = form.querySelectorAll('button');
     for (let i = 0; i < btns.length; i++) {

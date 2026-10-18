@@ -49,8 +49,21 @@
     providers: null,   // GET /auth/providers: which sign-in buttons the sign-in page shows ({ discord, bnet }), read once while signed out
     bnet: null,        // Linked accounts / My characters: { data: GET /auth/bnet, notice, alert } (see pages-bnet.js)
     bnetSettings: null, // Guild settings > Battle.net: { gid, data: GET /api/guild/:gid/bnet, notice } (see pages-settings-bnet.js)
+    rolesSettings: null, // Guild settings > Roles: { gid, data: GET /api/guild/:gid/roles, notice } (see pages-settings-roles.js)
+    discordSettings: null, // Guild settings > Discord roles: { gid, data: GET /api/guild/:gid/discord, notice } (see pages-settings-discord.js)
+    guestSettings: null, // Guild settings > Guest links: { gid, data: GET /api/guild/:gid/guest-links, notice }; the token is never kept here (see pages-settings-guests.js)
+    publicSettings: null, // Guild settings > Public page: { gid, data: GET /api/guild/:gid/public, notice } (see pages-settings-public.js)
+    rolesList: {},     // gid -> GET /api/guild/:gid/roles, for the People page's "Other roles" (loaded with the People tab for people who can manage roles)
+    view: null,        // the read-only guest / public page: { kind, gid, data, error } (see pages-view.js); null while it loads
   };
   const app = G.app = { state: state, started: false };
+  // The Guild settings tabs of Phase 7: the state key each keeps its { gid, data, notice } in, and the page module in G.pages that loads and draws it.
+  const ROLE_TABS = {
+    roles: { state: 'rolesSettings', page: 'settingsRoles' },
+    discord: { state: 'discordSettings', page: 'settingsDiscord' },
+    guests: { state: 'guestSettings', page: 'settingsGuests' },
+    public: { state: 'publicSettings', page: 'settingsPublic' },
+  };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
   const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot' };
   function attPageKey(r) {
@@ -251,6 +264,12 @@
     state.roadmap = null;
     state.bnet = null;
     state.bnetSettings = null;
+    state.rolesSettings = null;
+    state.discordSettings = null;
+    state.guestSettings = null;
+    state.publicSettings = null;
+    state.rolesList = {};
+    state.view = null;
     state.imports = {};
     state.failure = null;
     state.notice = '';
@@ -387,6 +406,7 @@
     state.currentGid = r.gid || null;
     if (!(r.name === 'settings' && r.tab === 'people')) state.notice = '';
     if (!(r.name === 'section' && r.section === 'roster')) state.rosterNotice = '';
+    if (G.router.isViewerRoute(r)) return routeViewer(r, token);
 
     // A visit that skipped the session question (an anonymous planner view) asks it now.
     if (!state.asked) state.loaded = false;
@@ -399,6 +419,22 @@
     }).then(function () {
       if (token !== routeToken) return;
       closeOverlays(); // a dialog opened while this route loaded (or restored by Back) must not outlive it
+      render(true);
+    });
+  }
+
+  // A guest link, the guest view and a public page: read-only pages for people with no account. The page never waits for the sign-in question and
+  // never sends anyone to the sign-in card: the visitor gets the view at once, and /auth/me is asked quietly so a signed-in member's avatar shows.
+  function routeViewer(r, token) {
+    state.currentGid = null;
+    state.view = null;
+    render();
+    ensureSession(true).then(function () { if (token === routeToken) render(); });
+    return G.pages.view.load(r).then(function () {
+      if (token !== routeToken) return;
+      // A redeemed guest link moved the address to #/view without a navigation: it is the current address now.
+      lastHref = String(window.location.href);
+      closeOverlays();
       render(true);
     });
   }
@@ -460,11 +496,14 @@
       if (tab === 'loot') return loadAttendance('settingsLoot', r, gd);
       if (tab === 'battlenet') return G.pages.settingsBnet.load(r.gid).then(function () { return null; });
       if (tab === 'schedule') return loadAttendance('settingsSchedule', r, gd);
+      if (Object.prototype.hasOwnProperty.call(ROLE_TABS, tab)) return G.pages[ROLE_TABS[tab].page].load(r.gid).then(function () { return null; });
       if (tab !== 'people') return null;
-      return G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) {
-        state.people[r.gid] = res;
-        return null;
-      });
+      const jobs = [G.api.get('/api/guild/' + encodeURIComponent(r.gid) + '/people').then(function (res) { state.people[r.gid] = res; })];
+      // The Edit roles dialog lists the guild's own roles; a failed read only leaves them out of the dialog.
+      if (G.shell.hasAction(gd.me && gd.me.can, 'guild.roles')) {
+        jobs.push(G.api.roles.list(r.gid).then(function (res) { state.rolesList[r.gid] = res; }, function () { /* the dialog shows no Other roles */ }));
+      }
+      return Promise.all(jobs).then(function () { return null; });
     }).catch(function (err) {
       if (token !== routeToken) return null;
       handleLoadError(err);
@@ -569,7 +608,10 @@
     else if (r.name === 'person') page = 'Roster';
     else if (r.name === 'import') page = { wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net' }[r.source] || 'Import from Raid-Helper';
     else if (r.name === 'settings') page = 'Guild settings';
+    else if (r.name === 'guest' || r.name === 'view') page = 'Guest view';
+    else if (r.name === 'public') page = 'Public page';
     if (gd && gd.guild && page) page += ' - ' + gd.guild.name;
+    else if (G.router.isViewerRoute(r) && state.view && state.view.data && state.view.data.guild) page += ' - ' + state.view.data.guild.name;
     return page ? page + ' - ' + base : base;
   }
 
@@ -643,6 +685,11 @@
           return G.shell.settingsFrameHtml(ctx, 'battlenet', P.settingsBnet.settingsHtml({ guildData: gd, data: x.data, alert: state.pageAlert, notice: x.notice }));
         }
         if (tab === 'schedule') return P.settingsSchedule.main(r, gd, ctx);
+        if (Object.prototype.hasOwnProperty.call(ROLE_TABS, tab)) {
+          const x = state[ROLE_TABS[tab].state];
+          if (!x || x.gid !== gd.guild.id) return P.signin.loadingHtml();
+          return G.shell.settingsFrameHtml(ctx, tab, P[ROLE_TABS[tab].page].settingsHtml({ guildData: gd, data: x.data, alert: state.pageAlert, notice: x.notice }));
+        }
         if (tab === 'people') {
           if (!state.people[gd.guild.id]) return P.signin.loadingHtml();
           return G.shell.settingsFrameHtml(ctx, 'people', P.people.peopleHtml({ guildData: gd, data: state.people[gd.guild.id], sort: state.peopleSort, query: state.peopleQuery, notice: state.notice, alert: state.pageAlert, now: Date.now() }));
@@ -670,7 +717,8 @@
   function buildCtx(r) {
     const me = state.me;
     let gd = null;
-    if (me) {
+    // The read-only pages (guest link, guest view, public page) draw no guild nav, whoever is looking.
+    if (me && !G.router.isViewerRoute(r)) {
       // The roadmap has no guild of its own: like the planner and the help pages it draws the nav of the viewer's last guild.
       const own = r && (r.name === 'roadmap' || r.name === 'linked' || r.name === 'characters') ? chromeGuildId() : (r && r.gid);
       const gid = state.section === 'guild' ? own : chromeGuildId();
@@ -687,6 +735,11 @@
 
   // What the guild section shows in #gs-main: { html, center, title }.
   function guildView(r, ctx) {
+    // The read-only pages come first: they do not wait for the sign-in question, and a visitor never sees the sign-in card.
+    if (G.router.isViewerRoute(r)) {
+      const v = state.view;
+      return { html: G.pages.view.viewHtml({ data: v ? v.data : null, kind: v ? v.kind : (r.name === 'public' ? 'public' : 'guest'), error: v ? v.error : null }), center: !!(v && v.error), title: titleFor(r, null) };
+    }
     if (!state.loaded) return { html: G.pages.signin.loadingHtml(), center: false, title: titleFor(r, null) };
     if (state.bootError) return { html: G.pages.signin.messageHtml('Could not load Raidsmith', state.bootError, { retry: true }), center: true, title: titleFor(r, null) };
     if (!state.me) {

@@ -890,3 +890,81 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-account-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .gs-account-ambiguous { flex: 0 1 14em; text-align: right; }
 .gs-account-name { font-weight: 600; font-size: 16px; line-height: 1.3; color: var(--text-primary); overflow-wrap: anywhere; }
+
+/* -- Roles, Discord roles, guest links, public page and the read-only view (Phase 7) ------------- */
+.gs-chip-custom { background: color-mix(in srgb, var(--accent-gold) 6%, var(--bg-deepest)); border-color: var(--border-accent); color: var(--text-primary); }
+
+/* Settings > Roles: a card per role, and the permission grid in a wide dialog */
+.gs-role-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.gs-role-card { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3) var(--sp-4); padding: 14px var(--sp-4); background: var(--bg-panel); border: 1px solid var(--border-subtle); }
+.gs-role-main { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-role-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.gs-role-name { overflow-wrap: anywhere; }
+.gs-role-note { overflow-wrap: anywhere; }
+.gs-role-counts { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.gs-dialog:has(.gs-dialog-role) { width: min(680px, calc(100vw - 32px)); }
+.gs-perm-grid { display: flex; flex-direction: column; gap: var(--sp-4); }
+.gs-perm-group { display: flex; flex-direction: column; }
+.gs-perm-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, 240px); gap: 4px var(--sp-4); align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); }
+.gs-perm-label { font-size: 15px; line-height: 1.3; color: var(--text-primary); }
+.gs-perm-control { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gs-perm-select { height: 36px; font-size: 15px; }
+.gs-perm-select[disabled] { opacity: 0.6; }
+.gs-perm-why { font-size: 13px; line-height: 1.3; }
+.gs-role-reset { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding-top: var(--sp-4); border-top: 1px solid var(--border-subtle); }
+.gs-role-reset [id="dlg-reset-confirm"] { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+.gs-role-reset [hidden] { display: none; }
+
+/* People page: the guild's own roles and the roles only Discord gives */
+.gs-other-roles .gs-check { min-height: 36px; }
+.gs-from-discord { color: var(--text-muted); overflow-wrap: anywhere; }
+
+/* Settings > Discord roles */
+.gs-discord-status { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.gs-discord-line { margin: 0; font-size: 16px; line-height: 1.4; color: var(--text-primary); }
+.gs-discord-link { text-decoration: underline; }
+.gs-dmap-form { max-width: none; margin: 0; }
+.gs-table-dmap { min-width: 520px; }
+.gs-dmap-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.gs-dmap-pick > .gs-input { width: auto; min-width: 200px; max-width: 100%; }
+.gs-dmap-team { display: inline-flex; align-items: center; gap: 8px; }
+.gs-dmap-team[hidden] { display: none; }
+.gs-dmap-team .gs-input { width: auto; min-width: 140px; }
+.gs-dmap-teamlabel { font-size: 14px; color: var(--text-secondary); white-space: nowrap; }
+
+/* Settings > Guest links */
+.gs-table-guests { min-width: 860px; }
+.gs-guest-title, .gs-guest-role { display: block; font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-guest-by, .gs-guest-team, .gs-guest-sections, .gs-guest-last { display: block; margin-top: 2px; font-weight: 400; overflow-wrap: anywhere; }
+
+/* Settings > Public page */
+.gs-public-form { max-width: 640px; margin: 0; }
+.gs-public-why { margin: -4px 0 4px 32px; }
+.gs-public-url { max-width: 640px; display: flex; flex-direction: column; gap: 8px; }
+.gs-copy-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gs-copy-row .gs-input { flex: 1 1 260px; width: auto; min-width: 0; }
+
+/* The read-only view (guest link, public page) */
+.gs-view { gap: var(--sp-6); }
+.gs-view-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 16px; }
+.gs-view-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.gs-view-meta { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 15px; line-height: 1.4; color: var(--text-secondary); }
+.gs-view-section { min-width: 0; }
+.gs-view-team { display: flex; flex-direction: column; gap: var(--sp-3); }
+.gs-view-sub { margin: var(--sp-2) 0 0; font: 600 14px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.gs-view-window { margin: 0; }
+.gs-table-view { min-width: 480px; }
+
+@media (max-width: 600px) {
+  .gs-role-card .gs-row-actions { justify-content: flex-start; }
+  .gs-perm-row { grid-template-columns: minmax(0, 1fr); }
+  .gs-perm-select { height: 44px; }
+  .gs-other-roles .gs-check { min-height: 44px; }
+  .gs-table-dmap, .gs-table-guests, .gs-table-view { min-width: 0; }
+  .gs-dmap-pick > .gs-input { width: 100%; min-width: 0; }
+  .gs-dmap-team { width: 100%; }
+  .gs-dmap-team .gs-input { flex: 1 1 auto; min-width: 0; }
+  .gs-view-head { flex-direction: column; }
+  .gs-copy-row .gs-btn { width: 100%; }
+  .gs-public-why { margin-left: 32px; }
+}
