@@ -569,10 +569,22 @@ function assertEscaped(out, label) {
   });
 
   // ── other pages ────────────────────────────────────────────────
-  await check('sign in: a plain link to /auth/login, no button handler needed', () => {
+  await check('sign in: plain links to /auth/login (and the Battle.net sign-in where the server has it), no button handler needed', () => {
     const out = G.pages.signin.signinHtml({});
     assert(/<a class="gs-btn gs-btn-molten[^"]*" href="\/auth\/login">/.test(out));
-    assert(out.includes('Sign in with Discord') && out.includes('href="#/privacy"') && out.includes('Open the planner'));
+    assert(out.includes('Continue with Discord') && out.includes('href="#/privacy"') && out.includes('Open the planner'));
+    assert(!out.includes('Battle.net') && !out.includes('/auth/bnet/login'), 'until the server says Battle.net is set up only Discord is offered');
+    const both = G.pages.signin.signinHtml({ providers: { discord: true, bnet: true } });
+    assert(/<a class="gs-btn gs-btn-molten[^"]*" href="\/auth\/login">/.test(both) && /<a class="gs-btn gs-btn-block" href="\/auth\/bnet\/login\?mode=signin">/.test(both));
+    assert(both.includes('Continue with Battle.net') && both.indexOf('Continue with Discord') < both.indexOf('Continue with Battle.net'));
+    assert(both.includes('New here? Either one makes your account'));
+    const bnetOnly = G.pages.signin.signinHtml({ providers: { discord: false, bnet: true } });
+    assert(!bnetOnly.includes('Continue with Discord') && /<a class="gs-btn gs-btn-molten gs-btn-block" href="\/auth\/bnet\/login\?mode=signin">/.test(bnetOnly));
+    assert(!G.pages.signin.signinHtml({ providers: { discord: true, bnet: false } }).includes('Battle.net'));
+    for (const key of G.router.parse('#/signin').error === null ? ['denied', 'state', 'discord', 'bnet', 'not_configured'] : []) {
+      assert(G.pages.signin.signinHtml({ error: key }).includes('role="alert"'), key);
+      assert.equal(G.router.parse('#/signin?error=' + key).error, key);
+    }
     assert(G.pages.signin.signinHtml({ error: 'denied' }).includes('cancelled'));
     assert(!G.pages.signin.signinHtml({ error: 'nope' }).includes('role="alert"'));
   });

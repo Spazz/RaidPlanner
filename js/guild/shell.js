@@ -350,7 +350,8 @@
   function accountMenuHtml(ctx) {
     const u = ctx.me.user;
     const gd = ctx.guildData;
-    let sub = '@' + u.username;
+    // A Discord username reads @name; an account made with Battle.net has only its BattleTag name.
+    let sub = ctx.me.identities && !ctx.me.identities.discord ? u.username : '@' + u.username;
     if (gd && gd.guild) {
       const roles = G.peopleSort.roleLabels(gd.me && gd.me.roles, gd.teams);
       sub = roles[0].label + ' - ' + gd.guild.name;
@@ -367,9 +368,9 @@
       '</div></div>';
   }
 
-  // Signed out: "Sign in with Discord" (desktop) / "Sign in" (phone), both /auth/login.
-  function signinButtonHtml() {
-    return '<a class="gs-btn gs-btn-molten gs-signin-btn" href="/auth/login">' + ic('login', 18) + '<span class="gs-signin-full">Sign in with Discord</span><span class="gs-signin-short">Sign in</span></a>';
+  // Signed out: "Sign in or sign up" (desktop) / "Sign in" (phone). It opens the sign-in page, where Discord and Battle.net are offered.
+  function signinButtonHtml(ctx) {
+    return '<a class="gs-btn gs-btn-molten gs-signin-btn" href="' + esc(baseOf(ctx) + G.router.format({ name: 'signin' })) + '">' + ic('login', 18) + '<span class="gs-signin-full">Sign in or sign up</span><span class="gs-signin-short">Sign in</span></a>';
   }
 
   // #shell-topbar-account: a divider on the planner section, then the avatar menu or the sign-in button.
@@ -377,7 +378,7 @@
   function accountSlotHtml(ctx) {
     if (ctx.pending) return '';
     const divider = sectionOf(ctx) === 'planner' ? '<span class="gs-topbar-divider" aria-hidden="true"></span>' : '';
-    return divider + (signedIn(ctx) ? accountMenuHtml(ctx) : signinButtonHtml());
+    return divider + (signedIn(ctx) ? accountMenuHtml(ctx) : signinButtonHtml(ctx));
   }
 
   // ── Guild settings frame: title, tab strip, then the tab's content ──

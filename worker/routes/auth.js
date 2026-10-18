@@ -101,7 +101,7 @@ export async function callback(ctx) {
     if (mode === 'signin') return await finishSignin(ctx, discordUser, servers, manageable, clear);
     return await finishLink(ctx, session, discordUser, servers, manageable, clear, fail);
   } catch (error) {
-    if (mode === 'link' && isUniqueViolation(error)) return fail('taken');
+    if (mode === 'link' && isUniqueViolation(error)) return fail('discord_taken');
     ctx.log(`${mode === 'link' ? 'link' : 'sign-in'}: saving failed: ${error && error.message}`);
     return fail('discord');
   }
@@ -144,7 +144,7 @@ async function finishLink(ctx, session, discordUser, servers, manageable, clear,
   const userId = session.user.id;
   const now = ctx.now();
   const holder = await findUserByDiscord(db, discordUser.id);
-  if (holder && holder !== userId) return fail('taken');
+  if (holder && holder !== userId) return fail('discord_taken');
   if (session.user.discordId && session.user.discordId !== discordUser.id) return fail('has_discord');
   const clash = {
     sql: `NOT EXISTS (SELECT 1 FROM players a JOIN players b ON b.guild_id = a.guild_id AND b.id != a.id

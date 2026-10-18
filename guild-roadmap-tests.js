@@ -238,7 +238,7 @@ const me = { user: { id: 'u1', username: 'alice', displayName: 'Alice' }, guilds
   // ── page: signed out / signed in ───────────────────────────────
   await check('signed out: a sign-in link replaces the form, and there is no ideas list', () => {
     const out = P.roadmapHtml({ me: null });
-    assert(out.includes('<a href="/auth/login">Sign in to suggest an idea</a>'));
+    assert(out.includes('<a href="#/signin">Sign in to suggest an idea</a>'));
     for (const gone of ['<form', 'data-submit="roadmap-idea"', 'Submitted ideas', 'id="rm-ideas"', 'id="rm-title"']) assert(!out.includes(gone), gone);
     assert.equal(P.roadmapHtml({ me: {} }).includes('<form'), false, 'a me without a user is signed out');
   });

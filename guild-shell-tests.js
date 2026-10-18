@@ -219,7 +219,8 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(s.sidebar.includes('class="gs-nav-sep"'));
     assert(s.sidebar.includes('gs-brand-row') && s.sidebar.includes('Raidsmith') && !s.sidebar.includes('gs-side-head'), 'brand head without a guild');
     assert(s.drawer.includes('<dialog class="gs-drawer"') && s.drawer.includes('data-action="open-planner"') && s.drawer.includes('href="/faq.html"'), 'the drawer exists for signed-out people');
-    assert(s.account.includes('href="/auth/login"') && s.account.includes('Sign in with Discord') && s.account.includes('>Sign in<'), 'both sign-in labels');
+    assert(s.account.includes('href="#/signin"') && s.account.includes('Sign in or sign up') && s.account.includes('>Sign in<'), 'both sign-in labels, opening the sign-in page');
+    assert(!s.account.includes('/auth/login'), 'the top bar no longer goes straight to Discord');
   });
 
   await check('nav matrix: signed in without a guild = the signed-out items; the rail only when they can create', () => {
@@ -688,7 +689,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
       assert.deepEqual(env.fetchCalls, [], `${page} ${url}`);
       assert(!env.body.classList.contains('shell-pending'));
       assert(env.body.classList.contains('is-signed-out'));
-      assert(env.html('shell-topbar-account').includes('/auth/login'));
+      assert(env.html('shell-topbar-account').includes('#/signin'));
     }
   });
 
@@ -724,7 +725,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     await settle();
     assert(!env.body.classList.contains('shell-pending'));
     assert(env.body.classList.contains('is-signed-out'));
-    assert(env.html('shell-topbar-account').includes('/auth/login'));
+    assert(env.html('shell-topbar-account').includes('#/signin'));
     assert(!env.html('planner-notice').includes('Could not'));
     assert.equal(env.els['gs-main'].innerHTML, '', 'no error message on the planner section');
   });
@@ -737,7 +738,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const page = makeEnv({ page: 'faq', url: '/faq.html', hint: true, routes: { '/auth/me': { status: 500, body: {} } } });
     await settle();
     assert.equal(page.els['gs-main'].innerHTML, '');
-    assert(page.html('shell-topbar-account').includes('/auth/login'));
+    assert(page.html('shell-topbar-account').includes('/#/signin'));
   });
 
   await check('session: a guild route reached from an anonymous planner visit asks the question then', async () => {
@@ -835,9 +836,9 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(!noGuild.els['gs-main'].classList.contains('gs-main-center') || true);
     const out = makeEnv({ url: '/#/', routes: { '/auth/me': { status: 401, body: { error: 'signed_out' } } } });
     await settle();
-    assert(out.html('gs-main').includes('Sign in with Discord') && out.html('gs-main').includes('/auth/login'));
+    assert(out.html('gs-main').includes('Continue with Discord') && out.html('gs-main').includes('/auth/login'));
     assert(out.els['gs-main'].classList.contains('gs-main-center'));
-    assert(out.html('shell-topbar-account').includes('Sign in with Discord'));
+    assert(out.html('shell-topbar-account').includes('Sign in or sign up'));
     assert(!out.html('shell-tabs'));
     assert(out.html('shell-sidebar').includes('gs-brand-row'));
     const priv = makeEnv({ url: '/#/privacy', routes: { '/auth/me': { status: 401, body: { error: 'signed_out' } } } });
@@ -845,7 +846,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(priv.html('gs-main').includes('Privacy') && !priv.els['gs-main'].classList.contains('gs-main-center'));
     const err = makeEnv({ url: '/#/signin?error=denied', routes: { '/auth/me': { status: 401, body: {} } } });
     await settle();
-    assert(err.html('gs-main').includes('Discord sign-in was cancelled'));
+    assert(err.html('gs-main').includes('Sign-in was cancelled'));
   });
 
   // ── overlays and sign-out ──────────────────────────────────────
@@ -882,7 +883,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert.equal(env.fetchCalls.filter(c => c.url === '/auth/logout').length, 1);
     assert.equal(env.G.app.state.section, 'planner');
     assert(env.body.classList.contains('is-signed-out'));
-    assert(env.html('shell-topbar-account').includes('/auth/login'));
+    assert(env.html('shell-topbar-account').includes('#/signin'));
     assert.equal(env.store['raidsmith.shell.signedIn'], undefined);
     assert.equal(env.loc.pathname, '/tbc/abc1234');
     assert.equal(env.loc.hash, '');
@@ -898,13 +899,13 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     await settle();
     assert.equal(env.loc.hash, '#/');
     assert.equal(env.G.app.state.section, 'guild');
-    assert(env.html('gs-main').includes('Sign in with Discord'));
+    assert(env.html('gs-main').includes('Continue with Discord'));
     const page = makeEnv({ page: 'faq', url: '/faq.html', hint: true, routes: signedInRoutes() });
     await settle();
     page.click({ 'data-action': 'sign-out' });
     await settle();
     assert.equal(page.G.app.state.section, 'page');
-    assert(page.html('shell-topbar-account').includes('/auth/login'));
+    assert(page.html('shell-topbar-account').includes('/#/signin'));
     assert.equal(page.loc.pathname, '/faq.html');
   });
 
@@ -1148,13 +1149,13 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const env = makeEnv({ url: '/#/roadmap', routes: { '/auth/me': { status: 401, body: { error: 'signed_out' } } } });
     await settle();
     const main = env.html('gs-main');
-    assert(main.includes('Future enhancements') && main.includes('<a href="/auth/login">Sign in to suggest an idea</a>'));
+    assert(main.includes('Future enhancements') && main.includes('<a href="#/signin">Sign in to suggest an idea</a>'));
     assert(main.includes('Loot history') && !main.includes('data-submit="roadmap-idea"'));
     assert(!env.els['gs-main'].classList.contains('gs-main-center'));
     assert.equal(env.documentFake.title, 'Future enhancements - Raidsmith guild');
     assert.equal(env.fetched('/api/roadmap'), 0);
     assert(env.html('shell-sidebar').includes('href="#/roadmap" aria-label="Future enhancements" aria-current="page"'));
-    assert(env.html('shell-topbar-account').includes('Sign in with Discord'));
+    assert(env.html('shell-topbar-account').includes('Sign in or sign up'));
     assert(env.html('shell-topbar-lead').includes('Future enhancements'));
   });
 
@@ -1336,7 +1337,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(env.html('gs-main').includes('id="bnet-link-error"') && env.html('gs-main').includes('Connect Battle.net'));
     const out = makeEnv({ url: '/#/characters', routes: { '/auth/me': { status: 401, body: { error: 'signed_out' } } } });
     await settle();
-    assert(out.html('gs-main').includes('Sign in with Discord') && !out.html('gs-main').includes('My characters</h1>'));
+    assert(out.html('gs-main').includes('Continue with Discord') && !out.html('gs-main').includes('My characters</h1>'));
     assert.equal(out.fetched('/auth/bnet'), 0);
     const down = makeEnv({ url: '/#/characters', routes: signedInRoutes(MEMBER_CAN, { '/auth/bnet': { status: 500, body: {} } }) });
     await settle();
