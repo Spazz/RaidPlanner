@@ -145,20 +145,6 @@
         area: 'roster', status: 'idea', source: 'pm', added: '2026-10-17',
       },
       {
-        id: 'attendance-watch-list',
-        title: 'Attendance watch list',
-        summary: 'A short list of people whose attendance fell below a line officers set, or dropped by N points, with their reason counts (notice vs unexplained).',
-        why: 'Attendance exists so officers can act on it; a pure read of existing metrics. Inspired by: WoW Guild Tools minimum threshold; Guild Order dropping-attendance flag.',
-        area: 'attendance', status: 'idea', source: 'pm', added: '2026-10-17',
-      },
-      {
-        id: 'needs-attention-home',
-        title: '\'Needs attention\' home for officers',
-        summary: 'One page listing open work: raids not reviewed, trials ending, unmatched sign-ups, raids with no loot import, people on the watch list, upcoming raids with few sign-ups.',
-        why: 'Counts are spread across nav badges; a single list is easier to act on. Inspired by: LootList+ overview; oxm.gg Launch HQ and task board.',
-        area: 'platform', status: 'idea', source: 'pm', added: '2026-10-17',
-      },
-      {
         id: 'no-reply-reminders',
         title: 'Reminders to people who have not answered',
         summary: 'Before a raid, the Discord bot pings or DMs team members who have not signed up, at times officers set, with a per-person opt-out.',
@@ -180,25 +166,11 @@
         area: 'roster', status: 'idea', source: 'pm', added: '2026-10-17',
       },
       {
-        id: 'calendar-feed',
-        title: 'Calendar feed for raids',
-        summary: 'A private, revocable link that subscribes Google, Apple or Outlook calendars to a team\'s raids.',
-        why: 'Time-zone mistakes make people miss raids, and every scheduling tool offers a feed. Inspired by: Sesh iCal sync; Guild Order calendar.',
-        area: 'raids', status: 'idea', source: 'pm', added: '2026-10-17',
-      },
-      {
         id: 'signup-deadline',
         title: 'Sign-up deadline with auto-lock',
         summary: 'A raid can close sign-ups automatically a set number of hours before the start, so the plan works from a stable list.',
         why: 'Phase 6 has manual lock and unlock only. Inspired by: oxm.gg sign-up deadlines; softres.it auto-lock.',
         area: 'signups', status: 'idea', source: 'pm', added: '2026-10-17',
-      },
-      {
-        id: 'trial-review',
-        title: 'Trial review card',
-        summary: 'When a trial ends, officers get one card with attendance, no-shows, fill-ins, loot and notes, plus Promote, Extend and End buttons.',
-        why: 'Trials are where attendance data matters most. Inspired by: LootList+ trial auto-promote; WowUtils trials.',
-        area: 'roster', status: 'idea', source: 'pm', added: '2026-10-17',
       },
       {
         id: 'standby-volunteer',
@@ -229,13 +201,6 @@
         area: 'raids', status: 'idea', source: 'pm', added: '2026-10-17',
       },
       {
-        id: 'activity-log-page',
-        title: 'Activity log page',
-        summary: 'A page where officers read who changed what and when, with filters and CSV export.',
-        why: 'The audit data is already written but no page shows it. Inspired by: TMB audit log; LootList+ activity feed; Raidify loot audit log.',
-        area: 'platform', status: 'idea', source: 'pm', added: '2026-10-17',
-      },
-      {
         id: 'api-keys-csv-exports',
         title: 'Read-only API keys and CSV links',
         summary: 'Officers create read-only keys or CSV links for attendance, roster and loot so Google Sheets and bots can read live data.',
@@ -244,6 +209,36 @@
       },
 
       // ── Shipped ──
+      {
+        id: 'activity-log-page',
+        title: 'Activity log page',
+        summary: 'Guild settings > Activity lists who changed what and when, newest first, with filters for the kind of change, the person and a date range, a plain sentence for each change and a Details toggle with the before and after. Download CSV exports up to 5,000 rows of the filtered list. Only the Guild Master can open it, and officer notes are never shown.',
+        area: 'platform', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-17',
+      },
+      {
+        id: 'attendance-watch-list',
+        title: 'Attendance watch list',
+        summary: 'The team attendance page has a Watch list card above the grid: people whose rolling attendance is below a line officers set (75% by default) or fell by 15 points or more against the previous window of the same length, with their missed and missed-with-notice counts. Both lines are set per guild or team in Attendance settings, and either can be turned off.',
+        area: 'attendance', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-17',
+      },
+      {
+        id: 'needs-attention-home',
+        title: '\'Needs attention\' home for officers',
+        summary: 'Officers and team leads land on a Home page that lists open work in one place: raids to review, unmatched loot winners and sign-ups, character claims, trials ending within 7 days, people on the watch list, raids with no loot import, upcoming raids with fewer sign-ups than the team\'s raid size, and sign-ups still open an hour before the start. A badge on Home counts it; members still open on Roster.',
+        area: 'platform', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-17',
+      },
+      {
+        id: 'trial-review',
+        title: 'Trial review card',
+        summary: 'A trial\'s person page shows a Trial review card: attendance since the trial started (raids, percent, missed, missed with notice, late and left early), loot received, fill-ins and an excerpt of the officer notes, with Promote to Raider, Extend trial (14 days by default) and End trial buttons.',
+        area: 'roster', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-17',
+      },
+      {
+        id: 'calendar-feed',
+        title: 'Calendar feed for raids',
+        summary: 'Raids has Subscribe in your calendar: a private link per person and team that adds the team\'s raids (30 days back, 60 ahead) to Google, Apple or Outlook Calendar, with the sign-up counts and your own sign-up in each event. The link is shown once, can be replaced or turned off, stops working when you leave the guild or lose access, and is deleted with your data.',
+        area: 'raids', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-17',
+      },
       {
         id: 'event-move-updates-raid-date',
         title: 'Moving a raid\'s event to another day updates its date',
