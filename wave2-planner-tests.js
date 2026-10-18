@@ -12,8 +12,8 @@
  *   - The re-sync: diff.marked carries a marker change, a marker alone is no report line (hasRaidHelperChanges false,
  *     describeRaidHelperChanges empty) but applyMarkers sets, changes and clears it.
  *   - The marker is transient: not in the share code, the saved roster or the local save, and setting it is no plan change.
- *   - Standby: with 27 candidates for 25 seats the Standby players are benched first (Optimizer.sortedPool); the role
- *     floors still seat a Standby tank and healers; with no marker the order is the one it always was.
+ *   - Standby: with more candidates than seats the Standby players are held out of the first pass as far as the overflow
+ *     needs (Optimizer.holdStandby), never below the role floors; the bench refinement can still pull one back in.
  *   - The tag: getMarkerTag, the spoken slot label and the tray slots show it.
  */
 const assert = require('node:assert/strict');
@@ -221,8 +221,13 @@ check('transient: Undo and a rebuilt copy keep the markers of the same plan, ano
 });
 
 // ── Standby ──────────────────────────────────────────────────────
+// A Standby player (the guild's "happy to sit out if needed") is held out of the first pass of Optimizer.selectSeated as far
+// as the overflow (candidates - seats) needs (Optimizer.holdStandby), never below the tank/healer floors, and joins the
+// overflow list of the bench refinement (refineBench). That trade still pulls a held player back in when seating them raises
+// the raid total by more than its threshold (0.5): buff providers come back, a player who adds next to nothing stays out.
 // T50's 25 primary sign-ups (2 tanks, 6 healers, 17 DPS) plus two more Destruction Warlocks named to sort first: 27 candidates.
 const T50 = Scenarios.scenarios.find(s => s.id === 'T50').entries.filter(e => !e[2]);
+const E27 = [...T50, ['destro', 'Aaa'], ['destro', 'Aab']];
 function runEntries(entries, standbyNames) {
   reset();
   const signUps = entries.map(([key, name, status], i) => {
@@ -233,57 +238,102 @@ function runEntries(entries, standbyNames) {
   assert.equal(State.groups.flat().length, 25);
   return benchedNames();
 }
+const standbySeated = () => State.groups.flat().filter(p => SignupMarker.isStandby(p)).length;
 
-check('Standby: with 27 candidates for 25 seats the two Standby players are benched, whoever else is interchangeable with them', () => {
-  const entries = [...T50, ['destro', 'Aaa'], ['destro', 'Aab']];
-  // Without a marker the two the optimizer leaves out are the last by name among the Warlocks.
-  same(runEntries(entries, []), ['Rainoffire', 'Voidcaller']);
-  // Standby on two that would have been seated: they are the ones benched.
-  same(runEntries(entries, ['Aaa', 'Aab']), ['Aaa', 'Aab']);
-  same(runEntries(entries, ['Immolator', 'Rainoffire']), ['Immolator', 'Rainoffire']);
-  // One Standby among the twins: it is benched first, the other bench slot falls as before.
-  same(runEntries(entries, ['Aaa']), ['Aaa', 'Voidcaller']);
-  assert.equal(named('Aaa').marker.kind, 'standby', 'the benched player keeps the tag');
+check('Standby: holdStandby holds at most the overflow, only Standby players, and never below a role floor or a locked player', () => {
+  const floors = { tank: 2, healer: 5 };
+  const mk = (name, role, extra) => ({ name, class: 'X', spec: 'Y', role, ...extra });
+  const standby = { marker: MARKS.standby };
+  const dps = n => Array.from({ length: n }, (_, i) => mk('d' + i, 'melee_dps'));
+  const heldNames = (pool, seats) => Optimizer.holdStandby(pool, seats, floors).map(p => p.name).sort();
+  // 3 Standby DPS among 26 candidates for 25 seats: one is held (the other two sit); 27 -> two; 28 or more -> all three.
+  const three = [mk('s1', 'melee_dps', standby), mk('s2', 'melee_dps', standby), mk('s3', 'melee_dps', standby)];
+  assert.equal(heldNames([...three, ...dps(23)], 25).length, 1);
+  assert.equal(heldNames([...three, ...dps(24)], 25).length, 2);
+  assert.equal(heldNames([...three, ...dps(25)], 25).length, 3);
+  assert.equal(heldNames([...three, ...dps(40)], 25).length, 3, 'never more than the Standby players there are');
+  same(heldNames([...three, ...dps(22)], 25), [], 'a raid that is not over-full holds nobody');
+  same(heldNames([...dps(30)], 25), [], 'no marker, no hold');
+  // Tanks and healers are held only beyond the floors, counted on the pool that remains.
+  const tanks = [mk('t1', 'tank', standby), mk('t2', 'tank', standby), mk('t3', 'tank')];
+  const healers = Array.from({ length: 6 }, (_, i) => mk('h' + i, 'healer', standby));
+  assert.equal(heldNames([...tanks, ...dps(22)], 24).length, 1, 'three tanks, floor two, two of them Standby: one may be held');
+  assert.equal(heldNames([tanks[0], tanks[1], ...dps(23)], 24).length, 0, 'the only two tanks are both Standby: neither is held');
+  assert.equal(heldNames([...healers, ...dps(21)], 25).length, 1, 'six Standby healers, floor five: one may be held');
+  assert.equal(heldNames([...healers.slice(0, 5), ...dps(22)], 25).length, 0, 'five Standby healers are the floor');
+  // A comp-template lock keeps the seat.
+  same(heldNames([mk('s1', 'melee_dps', { ...standby, locked: true }), ...dps(25)], 25), []);
 });
 
-check('Standby: the role floors still win - a Standby tank and Standby healers stay seated, and the bench is two DPS', () => {
+check('Standby: a unique-spec Standby player is benched when the raid is over-full (unmarked he is seated); a second Optimize keeps the board', () => {
+  same(runEntries(E27, []), ['Rainoffire', 'Voidcaller']);
+  assert(seatedNames().includes('Plaguebringer'), 'the only Affliction Warlock sits when nobody volunteers');
+  const benched = runEntries(E27, ['Plaguebringer']);
+  assert(benched.includes('Plaguebringer') && benched.length === 2, benched.join(','));
+  assert.equal(standbySeated(), 0);
+  assert.equal(named('Plaguebringer').marker.kind, 'standby', 'the benched player keeps the tag');
+  const before = seatedNames().sort().join();
+  Optimizer.optimize();
+  assert.equal(seatedNames().sort().join(), before, 'Optimize again changes nothing');
+});
+
+check('Standby: twins of the other seated players are benched whoever sorts first; only as many are held as the overflow needs', () => {
+  same(runEntries(E27, ['Aaa', 'Aab']), ['Aaa', 'Aab']);
+  same(runEntries(E27, ['Immolator', 'Rainoffire']), ['Immolator', 'Rainoffire']);
+  same(runEntries(E27, ['Aaa']), ['Aaa', 'Voidcaller'], 'one Standby: it is benched, the other bench place falls as it always did');
+  // 26 candidates, three Standby Warlocks: one bench place, so two of them sit.
+  const benched = runEntries([...T50, ['destro', 'Aaa']], ['Aaa', 'Immolator', 'Rainoffire']);
+  same(benched, ['Aaa']);
+  assert.equal(standbySeated(), 2);
+});
+
+check('Standby: the role floors win - Standby tank and healers at the floor stay seated, and the bench is DPS', () => {
   const t49 = Scenarios.scenarios.find(s => s.id === 'T49').entries.filter(e => e[1] !== 'Waterwalker' && e[1] !== 'Cindermaw'); // 2 tanks, 5 healers, 20 DPS
   const support = ['Ramparts', 'Ironbulwark', 'Soulmend', 'Everbloom', 'Thornwhisper', 'Painless', 'Chantress'];
   const plainBench = runEntries(t49, []);
   const benched = runEntries(t49, support);
   assert.equal(State.groups.flat().filter(p => support.includes(p.name)).length, 7, 'benching one of them would drop below the floors');
   same(benched, plain(plainBench));
-  assert(benched.every(name => !support.includes(name)));
   // Standby DPS beside them: the floors fill first, then the Standby twin of a benched DPS is the one left out.
   same(plainBench, ['Mutilator', 'Swashbuck']);
   same(runEntries(t49, [...support, 'Shivster']), ['Mutilator', 'Shivster'], 'Shivster is the Combat Rogue twin of Swashbuck');
   assert.equal(State.groups.flat().filter(p => support.includes(p.name)).length, 7);
+  // Six healers (floor five): a Standby one beyond the floor can be held, the floor ones stay.
+  const healers = ['Soulmend', 'Everbloom', 'Thornwhisper', 'Painless', 'Chantress', 'Waterwalker'];
+  runEntries(Scenarios.scenarios.find(s => s.id === 'T49').entries.filter(e => e[1] !== 'Cindermaw' && e[1] !== 'Mutilator'), healers);
+  assert(State.groups.flat().filter(p => p.role === 'healer').length >= 5, 'at least the floor of healers sits');
 });
 
-check('Standby: with nobody over capacity a Standby player is seated like anyone else; and sortedPool without markers keeps its old order', () => {
+check('Standby: the bench refinement pulls a held Standby player back in when seating them is worth more than its threshold (buff providers, valuable healers); one who adds next to nothing stays out', () => {
+  // Elemental Shaman, Enhancement Shaman (Windfury), Restoration Shaman, Shadow Priest and a Holy Priest beyond the healer floor: each
+  // is held first, then traded back in (the raid total rises by 3 to 60 points against the 0.5 threshold), and two non-Standby players sit out.
+  for (const name of ['Stormcaller', 'Thunderfist', 'Spiritlink', 'Dreamless', 'Seraphine']) {
+    const benched = runEntries(E27, [name]);
+    assert(seatedNames().includes(name), name + ' is seated again');
+    assert.equal(benched.length, 2);
+    assert.equal(State.bench.filter(p => SignupMarker.isStandby(p)).length, 0, name);
+  }
+  // The only Affliction Warlock adds nothing the refinement can use: he stays out (test above).
+});
+
+check('Standby: nobody over capacity means nobody is held, and a Standby player is seated like anyone else', () => {
   reset();
   assert(importSignUps([su('Aldric', 'Warrior', 'Protection'), su('Brindle', 'Mage', 'Fire', MARKS.standby), su('Cassia', 'Priest', 'Holy')]).success);
   assert(seatedNames().includes('Brindle') && State.bench.length === 0);
-  const players = [['b', 'MAGE', 'Fire', 'caster_dps'], ['a', 'MAGE', 'Fire', 'caster_dps'], ['c', 'MAGE', 'Arcane', 'caster_dps'], ['d', 'PRIEST', 'Holy', 'healer'], [undefined, 'MAGE', 'Fire', 'caster_dps']]
-    .map(([name, cls, spec, role]) => ({ name, class: cls, spec, role }));
-  const expected = players.slice().sort((x, y) => {
-    const kx = x.role + '|' + x.class + '|' + x.spec + '|' + (x.name || '');
-    const ky = y.role + '|' + y.class + '|' + y.spec + '|' + (y.name || '');
-    return kx < ky ? -1 : kx > ky ? 1 : 0;
-  });
-  assert.deepEqual(Optimizer.sortedPool(players).map(p => p.name), expected.map(p => p.name));
-  // Standby sorts after its twins only.
-  const twins = [{ name: 'a', class: 'MAGE', spec: 'Fire', role: 'caster_dps', marker: MARKS.standby }, { name: 'z', class: 'MAGE', spec: 'Fire', role: 'caster_dps' }, { name: 'b', class: 'MAGE', spec: 'Arcane', role: 'caster_dps', marker: MARKS.standby }];
-  assert.deepEqual(Optimizer.sortedPool(twins).map(p => p.name), ['b', 'z', 'a']);
 });
 
 // ── The tag ──────────────────────────────────────────────────────
-check('tag: getMarkerTag shows the kind label with the text as its tooltip, escaped; nothing without a marker', () => {
+check('tag: getMarkerTag shows a short label with the text as its tooltip (Late and Leaving show the text itself), escaped; nothing without a marker', () => {
   assert.equal(getMarkerTag({}), '');
   assert.equal(getMarkerTag({ marker: { kind: 'nope', text: 'x' } }), '');
   const html = getMarkerTag({ marker: MARKS.also });
   assert.match(html, /^<span class="marker-tag marker-also" title="Also in: Team B raid">Also in<\/span>$/);
-  assert(!/<script/.test(getMarkerTag({ marker: { kind: 'away', text: '"><script>' } })), 'the text is cleaned and escaped');
+  assert.match(getMarkerTag({ marker: MARKS.late }), /^<span class="marker-tag marker-late" title="Late: 21:00">Late: 21:00<\/span>$/);
+  assert.match(getMarkerTag({ marker: MARKS.leaving }), /^<span class="marker-tag marker-leaving" title="Leaves: 22:00">Leaves: 22:00<\/span>$/);
+  for (const kind of ['away', 'also', 'standby']) assert.equal(SignupMarker.tagText(MARKS[kind]), SignupMarker.label(MARKS[kind]), kind + ' keeps its short label');
+  assert.equal(SignupMarker.tagText(undefined), '');
+  assert(!/<script/.test(getMarkerTag({ marker: { kind: 'away', text: '"><script>' } })), 'the text is escaped');
+  assert(!/<script/.test(getMarkerTag({ marker: { kind: 'late', text: '"><script>' } })), 'also on Late, which shows the text');
   assert(/\.marker-tag\b/.test(app.css) && Object.keys(MARKS).every(kind => new RegExp(`\\.marker-${kind}\\b`).test(app.css)), 'app.css styles every kind');
 });
 

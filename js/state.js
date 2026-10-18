@@ -622,6 +622,8 @@ const SignupMarker = {
     return { kind: marker.kind, text: text || this.LABELS[marker.kind] };
   },
   label(marker) { return marker ? this.LABELS[marker.kind] || '' : ''; },
+  // What the tag shows: the kind's short label, or the whole text for Late and Leaving, whose time is the point.
+  tagText(marker) { return marker && (marker.kind === 'late' || marker.kind === 'leaving') ? marker.text : this.label(marker); },
   same(a, b) { return !a || !b ? !a && !b : a.kind === b.kind && a.text === b.text; },
   isStandby(player) { return !!player && !!player.marker && player.marker.kind === 'standby'; },
 

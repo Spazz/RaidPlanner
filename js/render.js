@@ -233,11 +233,12 @@ function getStatusTag(status) {
   return `<span class="status-tag status-${esc(status)}" title="Marked ${esc(label)} on Raid-Helper">${esc(label)}</span>`;
 }
 
-// The guild's note on a sign-up (SignupMarker: away, also in another raid, late, leaving, standby) as a small tag; its text is the tooltip.
+// The guild's note on a sign-up (SignupMarker: away, also in another raid, late, leaving, standby) as a small tag: a short
+// label with the text as its tooltip, or the text itself for Late and Leaving (their time; long texts end in an ellipsis).
 function getMarkerTag(p) {
-  const label = SignupMarker.label(p && p.marker);
-  if (!label) return '';
-  return `<span class="marker-tag marker-${esc(p.marker.kind)}" title="${esc(p.marker.text)}">${esc(label)}</span>`;
+  const shown = SignupMarker.tagText(p && p.marker);
+  if (!shown) return '';
+  return `<span class="marker-tag marker-${esc(p.marker.kind)}" title="${esc(p.marker.text)}">${esc(shown)}</span>`;
 }
 
 function getDragHandle() {
