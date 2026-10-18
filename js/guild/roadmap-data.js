@@ -46,7 +46,7 @@
         title: 'Refresh sign-ups automatically',
         summary: 'Sign-ups refresh when a page loads or on a schedule, instead of waiting for the Refresh button.',
         why: 'Today an officer has to press Refresh to see new sign-ups.',
-        area: 'signups', status: 'idea', source: 'backlog', added: '2026-10-17',
+        area: 'signups', status: 'done', source: 'backlog', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'raid-zone-sets-planner-size',
@@ -143,7 +143,7 @@
         title: 'Reminders to people who have not answered',
         summary: 'Before a raid, the Discord bot pings or DMs team members who have not signed up, at times officers set, with a per-person opt-out.',
         why: 'Free in Raid-Helper and expected by raiders. Inspired by: Raid-Helper; WoWAudit reminders; Sesh.',
-        area: 'discord', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'discord', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'applications-inbox',
@@ -185,7 +185,7 @@
         title: 'Post loot awards and rosters to a Discord channel',
         summary: 'Officers paste a channel webhook URL. Raidsmith posts the finished roster and loot awards to that channel.',
         why: 'Gets results where raiders already look; webhooks need no bot permissions. Inspired by: LootList+ award posts; oxm.gg announcements; Raidify.',
-        area: 'discord', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'discord', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'team-progress-board',
@@ -238,7 +238,19 @@
         id: 'roster-confirm-reminder',
         title: 'Remind raiders who have not confirmed their seat',
         summary: 'After a roster is published, unconfirmed raiders get a reminder (Discord bot or on their next visit) before the raid.',
-        area: 'raids', status: 'idea', source: 'backlog', added: '2026-10-18',
+        area: 'raids', status: 'done', source: 'backlog', added: '2026-10-18', shipped: '2026-10-18',
+      },
+      {
+        id: 'webhook-test-post',
+        title: 'Send a test post to a Discord webhook',
+        summary: 'A button on Guild settings > Notifications that posts a short test message, so officers know the webhook works before the first real post.',
+        area: 'discord', status: 'idea', source: 'backlog', added: '2026-10-18',
+      },
+      {
+        id: 'discord-dm-reminders',
+        title: 'Reminders by Discord direct message',
+        summary: 'Send sign-up and roster reminders as direct messages instead of a channel post. Needs a full Discord bot connection, so it waits until the move to Cloudflare.',
+        area: 'discord', status: 'idea', source: 'backlog', added: '2026-10-18',
       },
       // ── Shipped ──
       {
