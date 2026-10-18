@@ -2177,7 +2177,7 @@ check('planner seed: an Alt of the signed-up class, else the Main, else the Disc
   assert.deepEqual(res.json.signups.map((x) => x.personId === null), [false, false, false, false, false, true, false, false, false]);
   assert.equal(res.json.signups[0].personId, s.p.aldric);
   assert.deepEqual(res.json.raid, {
-    id, raidOn: made.json.raid.raidOn, startsAt: made.json.raid.startsAt, title: 'Test Raid', zone: null, eventId, teamId: s.A, size: 25, sizeOverride: null, gameVersion: 'tbc', timeZone: NY,
+    id, raidOn: made.json.raid.raidOn, startsAt: made.json.raid.startsAt, title: 'Test Raid', zone: null, eventId, teamId: s.A, timeKnown: true, size: 25, sizeOverride: null, gameVersion: 'tbc', timeZone: NY,
   });
   assert.equal(res.json.livePlan, null);
   // A raid made by hand has no sign-ups and no event.

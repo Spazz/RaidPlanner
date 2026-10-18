@@ -4,6 +4,7 @@
 // roster person, and not blocked) and may see the team's raids.
 // The feed itself is reached with no cookie, so GET /cal/:cal is the one route here without a session; everything else is a normal guild route.
 import { HttpError, SECURITY_HEADERS, jsonResponse } from '../http.js';
+import { addDays } from '../attendance-calendar.js';
 import { buildIcs, countsLine, FEED_AHEAD_DAYS, FEED_PAST_DAYS, raidEnd, signupKindLabel } from '../calendar-feed.js';
 import { isId, newId } from '../ids.js';
 import { ownPersonStatement } from '../membership.js';
@@ -95,7 +96,7 @@ export async function getCalendarFeed(ctx) {
   const [teamResult, raidResult, countResult, mineResult] = await db.batch([
     db.prepare('SELECT name FROM teams WHERE id = ? AND guild_id = ?').bind(link.team_id, guild.id),
     db.prepare(
-      `SELECT r.id, r.starts_at, r.zone, r.title, r.event_title, (SELECT MAX(p.ended_at) FROM raid_pulls p WHERE p.raid_id = r.id) AS last_pull_end
+      `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.title, r.event_title, (SELECT MAX(p.ended_at) FROM raid_pulls p WHERE p.raid_id = r.id) AS last_pull_end
          FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND r.starts_at >= ? AND r.starts_at <= ? ORDER BY r.starts_at, r.id`,
     ).bind(guild.id, link.team_id, from, to),
     db.prepare(
@@ -124,6 +125,9 @@ export async function getCalendarFeed(ctx) {
   const events = raidResult.results.map((raid) => {
     const page = `${origin}/#/g/${guild.id}/raids/r/${raid.id}`;
     const lines = [];
+    // time_known 0 = only the date is known (starts_at is noon UTC): an all-day event on the raid's own date. NULL is a raid from before the column: timed.
+    const allDay = raid.time_known === 0;
+    if (allDay) lines.push('Start time not set yet');
     const countText = seeCounts ? countsLine(counts.get(raid.id) || Object.fromEntries(KINDS.map((kind) => [kind, 0]))) : null;
     if (countText) lines.push(countText);
     if (mine.has(raid.id)) lines.push(`Your sign-up: ${signupKindLabel(mine.get(raid.id))}`);
@@ -131,8 +135,9 @@ export async function getCalendarFeed(ctx) {
     lines.push(page);
     return {
       uid: `${raid.id}@raidsmith`,
-      start: raid.starts_at,
-      end: raidEnd(raid.starts_at, raid.last_pull_end),
+      ...(allDay
+        ? { allDay: true, startDate: raid.raid_on, endDate: addDays(raid.raid_on, 1) }
+        : { start: raid.starts_at, end: raidEnd(raid.starts_at, raid.last_pull_end) }),
       summary: raid.title || raid.event_title || raid.zone || 'Raid',
       description: lines.join('\n'),
       url: page,

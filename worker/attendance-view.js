@@ -156,6 +156,7 @@ export async function loadRaidDetail(ctx, guildContext, raidId) {
       teamId: raid.team_id,
       raidOn: raid.raid_on,
       startsAt: raid.starts_at,
+      timeKnown: raid.time_known !== 0, // false: only the date is known and startsAt is noon UTC
       upcoming: raid.starts_at > ctx.now(),
       title: raid.title || raid.event_title || null,
       zone: raid.zone,

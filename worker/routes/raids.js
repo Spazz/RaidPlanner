@@ -239,7 +239,7 @@ export async function listRaids(ctx) {
   const [teamResult, raidResult, policyResult, upcomingResult, mineResult, scheduleResult] = await ctx.db.batch([
     ctx.db.prepare('SELECT id, name, archived, size, signup_close_hours FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guild.id),
     ctx.db.prepare(
-      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.size, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
+      `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.log_mode, r.open_flags, r.policy_fp, r.team_id, r.event_synced, r.plan_synced,
               (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = r.id) AS reports,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id) AS pulls,
               (SELECT COUNT(*) FROM raid_pulls p WHERE p.raid_id = r.id AND p.kill = 1) AS kills,
@@ -252,7 +252,7 @@ export async function listRaids(ctx) {
     policyRowsStatement(ctx.db, guild.id),
     // Raids that have not started: all of them, soonest first, outside the paging of the past ones.
     ctx.db.prepare(
-      `SELECT r.id, r.raid_on, r.starts_at, r.zone, r.size, r.signup_close_hours, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live, r.signups_locked,
+      `SELECT r.id, r.raid_on, r.starts_at, r.time_known, r.zone, r.size, r.signup_close_hours, r.title, r.event_title, r.event_id, r.event_server, r.event_synced, r.plan_synced, r.plan_live, r.signups_locked,
 ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s WHERE s.raid_id = r.id AND ${MERGED_ROWS} AND s.kind = '${kind}') AS n_${kind}`).join(',\n')}
          FROM raids r WHERE r.guild_id = ? AND r.team_id = ? AND r.starts_at > ?
         ORDER BY r.starts_at, r.id`,
@@ -290,6 +290,7 @@ ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s
       id: row.id,
       raidOn: row.raid_on,
       startsAt: row.starts_at,
+      timeKnown: row.time_known !== 0, // 0 = only the date is known (starts_at is noon UTC); NULL = a raid from before the column, read as timed
       upcoming: true,
       zone: row.zone,
       ...raidSizeFields(row, team.size, guild.game_version),
@@ -312,6 +313,7 @@ ${SIGNUP_KINDS.map((kind) => `              (SELECT COUNT(*) FROM raid_signups s
         id: row.id,
         raidOn: row.raid_on,
         startsAt: row.starts_at,
+        timeKnown: row.time_known !== 0,
         upcoming: false,
         zone: row.zone,
         ...raidSizeFields(row, team.size, guild.game_version),
@@ -439,6 +441,7 @@ export async function createRaid(ctx) {
   const raidOn = anchorMs !== null ? localDate(anchorMs, guild.time_zone) : raidOnInput;
   if (!raidOn) throw bad('Say which date this raid was on.', 'raidOn');
   if (raidOn < EARLIEST_RAID_DATE) throw bad('That date is before World of Warcraft existed.', 'raidOn');
+  const timeKnown = anchorMs !== null || startTimeInput !== null ? 1 : 0; // otherwise only the date is known and starts_at is noon UTC
   let startsAt = anchorMs !== null ? anchorMs : noonUtc(raidOn);
   // No event or report to say when: the typed start time (guild-local) on the raid's date.
   if (anchorMs === null && startTimeInput !== null) {
@@ -452,11 +455,11 @@ export async function createRaid(ctx) {
   const statements = [
     db.prepare(
       `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, event_id, event_title, title, event_server, event_synced,
-                          log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at, size)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'log', 0, '', 1, ?, ?, ?, ?
+                          log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at, size, time_known)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'log', 0, '', 1, ?, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)`,
     ).bind(raidId, guild.id, teamId, raidOn, startsAt, zoneInput || (firstReport ? firstReport.zone : null), event ? eventId : null, event ? event.title : null, titleInput,
-      event ? event.serverId : null, event ? now : null, ctx.session.user.id, now, now, sizeInput, teamId, guild.id),
+      event ? event.serverId : null, event ? now : null, ctx.session.user.id, now, now, sizeInput, timeKnown, teamId, guild.id),
   ];
   let eventCount = 0;
   if (event) {
@@ -541,9 +544,10 @@ export async function putEvent(ctx) {
       db.prepare(
         `UPDATE raids SET event_id = ?, event_title = ?, event_server = ?, event_synced = ?,
                 starts_at = CASE WHEN ? = 1 AND ? IS NOT NULL THEN ? ELSE starts_at END,
+                time_known = CASE WHEN ? = 1 AND ? IS NOT NULL THEN 1 ELSE time_known END,
                 raid_on = CASE WHEN ? = 1 THEN ? ELSE raid_on END, updated_at = ?, version = version + 1, policy_fp = ''
           WHERE id = ? AND guild_id = ?`,
-      ).bind(eventId, event.title, event.serverId, now, retime ? 1 : 0, event.startTime, event.startTime, otherDay ? 1 : 0, eventDate, now, raid.id, guild.id),
+      ).bind(eventId, event.title, event.serverId, now, retime ? 1 : 0, event.startTime, event.startTime, retime ? 1 : 0, event.startTime, otherDay ? 1 : 0, eventDate, now, raid.id, guild.id),
       ...neighbours,
       ...built.statements,
       raidAudit(
@@ -625,9 +629,10 @@ export async function putReport(ctx) {
     await db.batch([
       ...built.statements,
       db.prepare(
-        `UPDATE raids SET zone = COALESCE(zone, ?), starts_at = CASE WHEN ? = 1 THEN ? ELSE starts_at END, updated_at = ?, version = version + 1, policy_fp = ''
+        `UPDATE raids SET zone = COALESCE(zone, ?), starts_at = CASE WHEN ? = 1 THEN ? ELSE starts_at END, time_known = CASE WHEN ? = 1 THEN 1 ELSE time_known END,
+                updated_at = ?, version = version + 1, policy_fp = ''
           WHERE id = ? AND guild_id = ? AND log_mode = 'log'`,
-      ).bind(report.zone, anchored ? 0 : 1, first, now, raid.id, guild.id),
+      ).bind(report.zone, anchored ? 0 : 1, first, anchored ? 0 : 1, now, raid.id, guild.id),
       raidAudit(ctx, guildContext, 'raid.report', raid.id, { refreshed: refreshing }, { code, flavour, pulls: built.pulls }, guard),
     ]);
   } catch (error) {
@@ -756,6 +761,7 @@ export async function getPlanner(ctx) {
       zone: raid.zone,
       eventId: raid.event_id,
       teamId: raid.team_id,
+      timeKnown: raid.time_known !== 0, // false: only the date is known and startsAt is noon UTC
       ...raidSizeFields(raid, raid.team_size, guild.game_version),
       gameVersion: guild.game_version,
       timeZone: guild.time_zone,

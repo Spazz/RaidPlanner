@@ -2389,6 +2389,244 @@ check('deadline: Needs attention (route) - the "unlocked" hint follows the team\
   assert.deepEqual(await kinds(), ['low_signups', 'unlocked'], 'the raid\'s own 0 reopens the hint');
 });
 
+// ---------------------------------------------------------------------------
+// Date-only raids (B3): raids.time_known, and the calendar feed's all-day events
+
+const WAVE2_REPORT = 'Wave2Rpt00000001';
+const oneBossReport = (startTime) => wclReport({ startTime, actors: [[1, 'Aldric', 'Warrior']], fights: [[1, 'Gruul', 650, true, 0, 100, [1]]] });
+const rhStart = (iso) => Date.parse(iso) / 1000; // Raid-Helper start times are in seconds
+const setEventStart = (s, id, iso, extra = {}) => s.w.sources.events.set(id, rhEvent(id, SERVER_A, [], { startTime: iso === null ? 0 : rhStart(iso), ...extra }));
+// The reply of a create, whole (the detail), where s.makeRaid keeps only .raid.
+const makeFull = async (s, body) => {
+  const r = await s.call('bob', 'POST', '/raids', body);
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  return r.json;
+};
+const storedTime = async (s, id) => (await s.w.rows('SELECT time_known, starts_at FROM raids WHERE id = ?', id))[0];
+
+check('time_known: a raid made with only a date is date-only (noon UTC); a typed time, an event with a start or a report make the time known', async () => {
+  const s = await laneWorld();
+
+  const dateOnly = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-10' });
+  assert.deepEqual([dateOnly.timeKnown, dateOnly.startsAt], [false, Date.parse('2027-02-10T12:00:00Z')]);
+  assert.deepEqual(await storedTime(s, dateOnly.id), { time_known: 0, starts_at: Date.parse('2027-02-10T12:00:00Z') });
+
+  const typed = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-11', startTime: '20:00' });
+  assert.deepEqual([typed.timeKnown, typed.startsAt], [true, Date.parse('2027-02-12T01:00:00Z')]);
+  assert.equal((await storedTime(s, typed.id)).time_known, 1);
+
+  // An event with a start time anchors the raid on it.
+  setEventStart(s, '777777777777777771', '2027-02-13T01:00:00Z');
+  const linked = await makeFull(s, { teamId: s.A, eventSource: '777777777777777771' });
+  assert.deepEqual([linked.raid.timeKnown, linked.raid.startsAt, linked.raid.raidOn], [true, Date.parse('2027-02-13T01:00:00Z'), '2027-02-12']);
+  assert.equal((await storedTime(s, linked.raid.id)).time_known, 1);
+  // An event without one gives the raid only the date typed with it.
+  setEventStart(s, '777777777777777772', null);
+  const noStart = await makeFull(s, { teamId: s.A, eventSource: '777777777777777772', raidOn: '2027-02-14' });
+  assert.deepEqual([noStart.sources.event !== null, noStart.raid.timeKnown, noStart.raid.startsAt], [true, false, Date.parse('2027-02-14T12:00:00Z')]);
+  assert.equal((await storedTime(s, noStart.raid.id)).time_known, 0);
+  // ... and a typed time with it is a known time.
+  setEventStart(s, '777777777777777773', null);
+  const noStartTyped = await makeFull(s, { teamId: s.A, eventSource: '777777777777777773', raidOn: '2027-02-15', startTime: '19:30' });
+  assert.deepEqual([noStartTyped.raid.timeKnown, noStartTyped.raid.startsAt], [true, Date.parse('2027-02-16T00:30:00Z')]);
+
+  // A report anchors it on its first pull.
+  s.w.sources.reports.set(WAVE2_REPORT, oneBossReport(Date.parse('2027-01-10T01:00:00Z')));
+  const logged = await makeFull(s, { teamId: s.A, reportSource: WAVE2_REPORT });
+  assert.deepEqual([logged.raid.timeKnown, logged.raid.startsAt, logged.raid.raidOn], [true, Date.parse('2027-01-10T01:00:00Z'), '2027-01-09']);
+  assert.equal((await storedTime(s, logged.raid.id)).time_known, 1);
+  // A date typed next to a report loses to the report, which says when.
+  s.w.sources.reports.set('Wave2Rpt00000002', oneBossReport(Date.parse('2027-01-11T01:00:00Z')));
+  const both = await makeFull(s, { teamId: s.B, reportSource: 'Wave2Rpt00000002', raidOn: '2027-03-01' });
+  assert.equal(both.raid.timeKnown, true);
+});
+
+check('time_known: the detail, both lists, the sign-ups view and the planner seed say so; a NULL (a raid from before the column) is timed', async () => {
+  const s = await laneWorld();
+  const dateOnly = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-10' });
+  const typed = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-11', startTime: '20:00' });
+  const past = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-05' }); // a past raid with only its date
+  const known = async (id) => ({
+    detail: (await s.call('erin', 'GET', s.raid(id))).json.raid.timeKnown,
+    view: (await s.call('erin', 'GET', s.raid(id, '/signups'))).json.raid.timeKnown,
+    seed: (await s.call('bob', 'GET', s.raid(id, '/planner'))).json.raid.timeKnown,
+  });
+  assert.deepEqual(await known(dateOnly.id), { detail: false, view: false, seed: false });
+  assert.deepEqual(await known(typed.id), { detail: true, view: true, seed: true });
+  const list = (await s.call('erin', 'GET', `/raids?team=${s.A}`)).json;
+  assert.deepEqual(list.upcoming.map((row) => [row.id, row.timeKnown]), [[dateOnly.id, false], [typed.id, true]]);
+  assert.deepEqual(list.raids.map((row) => [row.id, row.timeKnown]), [[past.id, false]], 'a past row says it too');
+  // The unknown (NULL) reads as a real time everywhere.
+  exec(s.w, 'UPDATE raids SET time_known = NULL');
+  assert.deepEqual(await known(dateOnly.id), { detail: true, view: true, seed: true });
+  const nulls = (await s.call('erin', 'GET', `/raids?team=${s.A}`)).json;
+  assert.deepEqual([...nulls.upcoming, ...nulls.raids].map((row) => row.timeKnown), [true, true, true]);
+  // The stored 1 is not touched by a size or deadline change (PATCH only writes its own keys).
+  exec(s.w, `UPDATE raids SET time_known = 0 WHERE id = '${dateOnly.id}'`);
+  assert.equal((await s.call('bob', 'PATCH', s.raid(dateOnly.id), { size: 10, signupCloseHours: 3 })).json.raid.timeKnown, false);
+  assert.equal((await storedTime(s, dateOnly.id)).time_known, 0);
+});
+
+check('time_known: linking an event or a report to a date-only raid makes the time known; one without a time does not', async () => {
+  const s = await laneWorld();
+  // An event with a start time, on the raid's day: the raid takes its time.
+  const raid = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-10' });
+  assert.equal(raid.timeKnown, false);
+  setEventStart(s, '777777777777777771', '2027-02-11T01:00:00Z'); // 20:00 on the 10th in New York
+  const linked = await s.call('bob', 'PUT', s.raid(raid.id, '/event'), { source: '777777777777777771' });
+  assert.equal(linked.status, 200, JSON.stringify(linked.json));
+  assert.deepEqual([linked.json.raid.timeKnown, linked.json.raid.startsAt, linked.json.raid.raidOn], [true, Date.parse('2027-02-11T01:00:00Z'), '2027-02-10']);
+  assert.deepEqual(await storedTime(s, raid.id), { time_known: 1, starts_at: Date.parse('2027-02-11T01:00:00Z') });
+  // An event without a start time leaves a date-only raid date-only.
+  const second = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-17' });
+  setEventStart(s, '777777777777777772', null);
+  const timeless = await s.call('bob', 'PUT', s.raid(second.id, '/event'), { source: '777777777777777772' });
+  assert.equal(timeless.status, 200, JSON.stringify(timeless.json));
+  assert.deepEqual([timeless.json.raid.timeKnown, timeless.json.raid.startsAt], [false, Date.parse('2027-02-17T12:00:00Z')]);
+  assert.equal((await storedTime(s, second.id)).time_known, 0);
+  // ... until an event that has one is linked (a re-link replaces the event).
+  setEventStart(s, '777777777777777773', '2027-02-18T01:00:00Z');
+  const relinked = await s.call('bob', 'PUT', s.raid(second.id, '/event'), { source: '777777777777777773' });
+  assert.deepEqual([relinked.json.raid.timeKnown, relinked.json.raid.startsAt], [true, Date.parse('2027-02-18T01:00:00Z')]);
+  // A move to the event's day (the event is on another day): known too.
+  const third = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-24' });
+  setEventStart(s, '777777777777777774', '2027-02-26T01:00:00Z');
+  const moved = await s.call('bob', 'PUT', s.raid(third.id, '/event'), { source: '777777777777777774', moveRaid: true });
+  assert.deepEqual([moved.status, moved.json.raid.timeKnown, moved.json.raid.raidOn], [200, true, '2027-02-25']);
+  // Removing the event keeps the time the raid has.
+  const unlinked = await s.call('bob', 'DELETE', s.raid(third.id, '/event'), {});
+  assert.deepEqual([unlinked.json.raid.timeKnown, unlinked.json.raid.startsAt], [true, Date.parse('2027-02-26T01:00:00Z')]);
+
+  // A report on a date-only raid takes the first pull as the start.
+  const logged = await s.makeRaid({ teamId: s.B, raidOn: '2027-01-09' });
+  assert.equal(logged.timeKnown, false);
+  s.w.sources.reports.set(WAVE2_REPORT, oneBossReport(Date.parse('2027-01-10T01:00:00Z')));
+  const report = await s.call('bob', 'PUT', s.raid(logged.id, '/reports'), { source: WAVE2_REPORT });
+  assert.equal(report.status, 200, JSON.stringify(report.json));
+  assert.deepEqual([report.json.raid.timeKnown, report.json.raid.startsAt], [true, Date.parse('2027-01-10T01:00:00Z')]);
+  assert.equal((await storedTime(s, logged.id)).time_known, 1);
+  // A raid that is timed already stays so when a report comes.
+  const timed = await s.makeRaid({ teamId: s.B, raidOn: '2027-01-12', startTime: '20:00' });
+  s.w.sources.reports.set('Wave2Rpt00000003', oneBossReport(Date.parse('2027-01-13T01:30:00Z')));
+  const again = await s.call('bob', 'PUT', s.raid(timed.id, '/reports'), { source: 'Wave2Rpt00000003' });
+  assert.deepEqual([again.status, again.json.raid.timeKnown], [200, true]);
+});
+
+check('time_known: raids filled from the weekly schedule have a real start time', async () => {
+  const s = await laneWorld();
+  // Saturday 2027-01-16 12:00Z is 07:00 in New York: slots on Tuesday and Thursday at 20:00.
+  const put = await s.call('bob', 'PUT', `/teams/${s.A}/schedule`, { slots: [{ weekday: 2, startTime: '20:00' }, { weekday: 4, startTime: '20:30' }], weeks: 2 });
+  assert.equal(put.status, 200, JSON.stringify(put.json));
+  const fill = await s.call('bob', 'POST', `/teams/${s.A}/schedule/raids`, {});
+  assert.equal(fill.status, 200, JSON.stringify(fill.json));
+  assert.equal(fill.json.created.length, 4);
+  assert.deepEqual((await s.w.rows('SELECT time_known FROM raids ORDER BY raid_on')).map((r) => r.time_known), [1, 1, 1, 1]);
+  const list = (await s.call('erin', 'GET', `/raids?team=${s.A}`)).json;
+  assert.deepEqual(list.upcoming.map((row) => row.timeKnown), [true, true, true, true]);
+});
+
+// ---- the calendar feed
+
+// An ICS the way a calendar app reads it: unfold, split; every VEVENT as { 'DTSTART;VALUE=DATE': ..., UID: ... } keyed by the property WITH its parameters.
+function readIcs(text) {
+  assert(text.endsWith('\r\n'), 'ends with CRLF');
+  assert(!/(^|[^\r])\n/.test(text), 'every line break is CRLF');
+  for (const physical of text.split('\r\n')) assert(Buffer.byteLength(physical, 'utf8') <= 75, `a physical line over 75 octets: ${physical.slice(0, 40)}`);
+  const lines = text.replace(/\r\n[ \t]/g, '').split('\r\n');
+  assert.equal(lines.pop(), '');
+  assert.equal(lines[0], 'BEGIN:VCALENDAR');
+  assert.equal(lines[lines.length - 1], 'END:VCALENDAR');
+  const events = [];
+  let current = null;
+  for (const line of lines.slice(1, -1)) {
+    if (line === 'BEGIN:VEVENT') { assert.equal(current, null); current = {}; continue; }
+    if (line === 'END:VEVENT') { events.push(current); current = null; continue; }
+    const colon = line.indexOf(':');
+    assert(colon > 0, `a content line: ${line}`);
+    if (current) current[line.slice(0, colon)] = line.slice(colon + 1).replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1');
+  }
+  assert.equal(current, null, 'VEVENTs are closed');
+  assert.equal(new Set(events.map((e) => e.UID)).size, events.length, 'UIDs are unique');
+  for (const event of events) {
+    assert(event.UID && event.DTSTAMP && event.SUMMARY, 'UID, DTSTAMP and SUMMARY');
+    const timed = 'DTSTART' in event;
+    const allDay = 'DTSTART;VALUE=DATE' in event;
+    assert.equal(timed !== allDay, true, 'exactly one kind of DTSTART');
+    if (timed) assert(/^\d{8}T\d{6}Z$/.test(event.DTSTART) && /^\d{8}T\d{6}Z$/.test(event.DTEND) && event.DTEND > event.DTSTART && !('DTEND;VALUE=DATE' in event), `a timed event: ${JSON.stringify(event)}`);
+    if (allDay) assert(/^\d{8}$/.test(event['DTSTART;VALUE=DATE']) && /^\d{8}$/.test(event['DTEND;VALUE=DATE']) && event['DTEND;VALUE=DATE'] > event['DTSTART;VALUE=DATE'] && !('DTEND' in event), `an all-day event: ${JSON.stringify(event)}`);
+  }
+  return events;
+}
+
+check('calendar-feed: an all-day event is DTSTART;VALUE=DATE and DTEND;VALUE=DATE (the next day) with no time; a timed one is unchanged', async () => {
+  const { buildIcs, formatDate } = await load('worker/calendar-feed.js');
+  const STAMP = Date.parse('2026-10-17T10:00:00Z');
+  assert.equal(formatDate('2026-10-17'), '20261017');
+  for (const bad of ['2026-1-17', '20261017', '', null, undefined, 20261017, '2026-10-17T00:00:00Z']) assert.throws(() => formatDate(bad), RangeError, String(bad));
+  const text = buildIcs({
+    name: 'Ember - Alpha',
+    stamp: STAMP,
+    events: [
+      { uid: 'r_day@raidsmith', allDay: true, startDate: '2026-10-17', endDate: '2026-10-18', summary: 'Karazhan, "night"; bring flasks', description: 'Start time not set yet\nSigned 21', url: 'https://raidsmith.test/#/g/g_1/raids/r/r_day' },
+      { uid: 'r_end@raidsmith', allDay: true, startDate: '2026-12-31', endDate: '2027-01-01', summary: 'New year' },
+      { uid: 'r_timed@raidsmith', start: Date.parse('2026-10-17T23:30:00Z'), end: Date.parse('2026-10-18T02:30:00Z'), summary: 'Timed', description: 'x', url: 'https://raidsmith.test/y' },
+    ],
+  });
+  const lines = text.replace(/\r\n[ \t]/g, '').split('\r\n');
+  assert(lines.includes('DTSTART;VALUE=DATE:20261017') && lines.includes('DTEND;VALUE=DATE:20261018'));
+  assert(lines.includes('DTSTART;VALUE=DATE:20261231') && lines.includes('DTEND;VALUE=DATE:20270101'), 'across the year');
+  assert(lines.includes('DTSTART:20261017T233000Z') && lines.includes('DTEND:20261018T023000Z'), 'a timed event is as before');
+  assert.equal(lines.filter((line) => /^DTSTART:/.test(line)).length, 1, 'an all-day event writes no UTC DTSTART');
+  assert.equal(lines.filter((line) => /^DTEND:/.test(line)).length, 1);
+  const events = readIcs(text);
+  assert.equal(events.length, 3);
+  const day = events[0];
+  assert.deepEqual([day.UID, day.DTSTAMP, day.SUMMARY, day.DESCRIPTION, day.URL], ['r_day@raidsmith', '20261017T100000Z', 'Karazhan, "night"; bring flasks', 'Start time not set yet\nSigned 21', 'https://raidsmith.test/#/g/g_1/raids/r/r_day']);
+  assert.equal('DESCRIPTION' in events[1] || 'URL' in events[1], false, 'optional properties stay optional');
+  assert.equal(events[1].STATUS, 'CONFIRMED');
+  // A malformed date is refused loudly, never written as junk.
+  assert.throws(() => buildIcs({ name: 'x', stamp: STAMP, events: [{ uid: 'a', allDay: true, startDate: 'soon', endDate: '2026-10-18', summary: 's' }] }), RangeError);
+  // The text rules still hold with all-day events in the document: a long summary folds, a comma and a semicolon are escaped.
+  const long = buildIcs({ name: 'x', stamp: STAMP, events: [{ uid: 'a', allDay: true, startDate: '2026-10-17', endDate: '2026-10-18', summary: 'Café night, '.repeat(12) }] });
+  assert.equal(readIcs(long)[0].SUMMARY, 'Café night, '.repeat(12));
+});
+
+check('calendar-feed: a date-only raid is an all-day event on its own date, a timed or unknown-time raid a timed one - through the route', async () => {
+  const s = await laneWorld({ guildBody: { timeZone: 'Pacific/Auckland' } }); // UTC+13 in January: noon UTC is already the NEXT day there
+  const dateOnly = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-20' });
+  const timed = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-21', startTime: '20:00' });
+  const legacy = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-22', startTime: '19:00' });
+  exec(s.w, `UPDATE raids SET time_known = NULL WHERE id = '${legacy.id}'`); // a raid from before the column
+  const monthEnd = await s.makeRaid({ teamId: s.A, raidOn: '2027-02-28' });  // the next day is in the next month (2027 is not a leap year)
+  const past = await s.makeRaid({ teamId: s.A, raidOn: '2027-01-10' });
+  assert.deepEqual([dateOnly.timeKnown, timed.timeKnown, legacy.timeKnown, monthEnd.timeKnown, past.timeKnown], [false, true, true, false, false]);
+  // Erin follows Alpha through a calendar link; the feed needs no cookie.
+  const made = await s.call('erin', 'POST', '/calendar', { teamId: s.A });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const response = await s.w.req('GET', new URL(made.json.url).pathname);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /^text\/calendar/);
+  const events = readIcs(await response.text());
+  const by = Object.fromEntries(events.map((event) => [event.UID, event]));
+  const day = by[`${dateOnly.id}@raidsmith`];
+  assert.deepEqual([day['DTSTART;VALUE=DATE'], day['DTEND;VALUE=DATE'], 'DTSTART' in day], ['20270120', '20270121', false], 'the raid\'s own date, not the UTC date of noon');
+  assert.match(day.DESCRIPTION, /^Start time not set yet\n/);
+  assert(day.URL.endsWith(`/raids/r/${dateOnly.id}`));
+  assert.deepEqual([by[`${monthEnd.id}@raidsmith`]['DTSTART;VALUE=DATE'], by[`${monthEnd.id}@raidsmith`]['DTEND;VALUE=DATE']], ['20270228', '20270301']);
+  assert.deepEqual([by[`${past.id}@raidsmith`]['DTSTART;VALUE=DATE'], by[`${past.id}@raidsmith`]['DTEND;VALUE=DATE']], ['20270110', '20270111'], 'a past raid inside the 30 days');
+  // A typed time is a UTC time as before: 20:00 on the 21st in Auckland (UTC+13) is 07:00Z.
+  const t = by[`${timed.id}@raidsmith`];
+  assert.deepEqual([t.DTSTART, 'DTSTART;VALUE=DATE' in t, /^Start time not set/.test(t.DESCRIPTION)], ['20270121T070000Z', false, false]);
+  // A raid from before the column (NULL) is timed too.
+  const l = by[`${legacy.id}@raidsmith`];
+  assert.deepEqual([l.DTSTART, 'DTSTART;VALUE=DATE' in l], ['20270122T060000Z', false]);
+  // The feed follows the raid: a time set later turns the all-day event into a timed one on the next fetch.
+  setEventStart(s, '777777777777777771', '2027-01-20T06:00:00Z'); // 19:00 on the 20th in Auckland
+  assert.equal((await s.call('bob', 'PUT', s.raid(dateOnly.id, '/event'), { source: '777777777777777771' })).status, 200);
+  const after = readIcs(await (await s.w.req('GET', new URL(made.json.url).pathname)).text()).find((event) => event.UID === `${dateOnly.id}@raidsmith`);
+  assert.deepEqual([after.DTSTART, 'DTSTART;VALUE=DATE' in after], ['20270120T060000Z', false]);
+});
+
 // ---- runner (keep last): add new checks ABOVE this line ----
 async function main() {
   const filter = process.argv[2] || '';

@@ -149,11 +149,12 @@ export async function createScheduledRaids(ctx) {
     const ids = toCreate.map((row) => row.id);
     const dates = toCreate.map((row) => row.raidOn);
     await db.batch([
-      // Each insert is conditional on the team still having no raid that date (two officers pressing the button at once create it once).
+      // A slot has a start time, so the raid's time is known (time_known 1). Each insert is conditional on the team still having no raid that date
+      // (two officers pressing the button at once create it once).
       db.prepare(
-        `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, title, log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at)
+        `INSERT INTO raids (id, guild_id, team_id, raid_on, starts_at, zone, title, log_mode, open_flags, policy_fp, version, created_by, created_at, updated_at, time_known)
          SELECT json_extract(j.value, '$.id'), ?, ?, json_extract(j.value, '$.raidOn'), json_extract(j.value, '$.startsAt'), json_extract(j.value, '$.zone'),
-                json_extract(j.value, '$.title'), 'log', 0, '', 1, ?, ?, ?
+                json_extract(j.value, '$.title'), 'log', 0, '', 1, ?, ?, ?, 1
            FROM json_each(?) j
           WHERE EXISTS (SELECT 1 FROM teams WHERE id = ? AND guild_id = ? AND archived = 0)
             AND NOT EXISTS (SELECT 1 FROM raids x WHERE x.team_id = ? AND x.raid_on = json_extract(j.value, '$.raidOn'))`,

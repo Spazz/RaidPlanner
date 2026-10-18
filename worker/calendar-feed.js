@@ -55,7 +55,15 @@ export function raidEnd(startsAt, lastPullEnd) {
   return startsAt + DEFAULT_RAID_MS;
 }
 
+// 20261017 (the DATE form of an all-day event) from '2026-10-17'.
+export function formatDate(date) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new RangeError(`not a YYYY-MM-DD date: ${date}`);
+  return date.replace(/-/g, '');
+}
+
 // input: { name, stamp (epoch ms: DTSTAMP of every event), events: [{ uid, start, end (epoch ms), summary, description, url }] }
+// An event with allDay: true has no time: it carries startDate and endDate ('YYYY-MM-DD'; endDate is the day AFTER, as RFC 5545 reads a DATE end)
+// instead of start / end, and is written as DTSTART;VALUE=DATE and DTEND;VALUE=DATE (a raid whose start time nobody has set yet).
 export function buildIcs(input) {
   const lines = [
     'BEGIN:VCALENDAR',
@@ -74,8 +82,9 @@ export function buildIcs(input) {
       'BEGIN:VEVENT',
       `UID:${event.uid}`,
       `DTSTAMP:${stamp}`,
-      `DTSTART:${formatUtc(event.start)}`,
-      `DTEND:${formatUtc(event.end)}`,
+      ...(event.allDay
+        ? [`DTSTART;VALUE=DATE:${formatDate(event.startDate)}`, `DTEND;VALUE=DATE:${formatDate(event.endDate)}`]
+        : [`DTSTART:${formatUtc(event.start)}`, `DTEND:${formatUtc(event.end)}`]),
       `SUMMARY:${escapeText(event.summary)}`,
     );
     if (event.description) lines.push(`DESCRIPTION:${escapeText(event.description)}`);

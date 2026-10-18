@@ -130,7 +130,7 @@ export async function buildView(ctx, guildContext, raid) {
 
   return {
     raid: {
-      id: raid.id, teamId, startsAt: raid.starts_at, upcoming: raid.starts_at > ctx.now(), locked: raid.signups_locked === 1, closed,
+      id: raid.id, teamId, startsAt: raid.starts_at, timeKnown: raid.time_known !== 0, upcoming: raid.starts_at > ctx.now(), locked: raid.signups_locked === 1, closed,
       closesAt: closesAtOf(raid, closeHours), closeHours, closeHoursOverride: raid.signup_close_hours,
       ...raidSizeFields(raid, raid.team_size, guild.game_version),
     },
