@@ -57,6 +57,8 @@ export async function putPublicSettings(ctx) {
   }
   const sections = SECTIONS.filter((section) => body.sections.includes(section));
   const before = await settingsPayload(ctx.db, guildContext);
+  // Nothing changes: nothing to write (and nothing for the audit log).
+  if (before.enabled === body.enabled && JSON.stringify(before.sections) === JSON.stringify(sections)) return jsonResponse(before);
   const closed = sections.filter((section) => !before.allowed[section]);
   if (closed.length) {
     throw new HttpError(400, 'bad_request', `The Public role does not allow ${closed.join(', ')}. Change it in Roles first.`, { field: 'sections' });

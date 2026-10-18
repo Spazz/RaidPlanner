@@ -131,6 +131,7 @@ export async function syncEveryone(ctx) {
   const has = await ctx.db.prepare('SELECT COUNT(*) AS n FROM discord_role_maps WHERE guild_id = ?').bind(guildContext.guild.id).first('n');
   if (!has) throw new HttpError(409, 'no_mapping', 'Map a Discord role to a Raidsmith role first (Guild settings > Discord roles).');
   const summary = await syncGuildMembers(ctx, guildContext.guild, { actorId: guildContext.userId, after });
-  if (summary.problem && summary.processed === summary.failed) throw discordProblem(summary.problem);
+  // A problem that stopped the run before anyone was read is the answer; after some were, the counts and the problem go back together.
+  if (summary.problem && summary.changed + summary.unchanged === 0) throw discordProblem(summary.problem);
   return jsonResponse(summary);
 }

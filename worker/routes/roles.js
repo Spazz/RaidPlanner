@@ -203,6 +203,8 @@ export async function updateRole(ctx) {
 
   const before = await currentPermissions(ctx.db, guildId, roleId);
   const beforeMap = asMap(before);
+  // Nothing changed: nothing to write (and nothing for the audit log).
+  if (JSON.stringify(before) === JSON.stringify(pairs) && name === (custom ? custom.name : BUILTIN_NAMES[roleId])) return reply(ctx, guildContext);
   // An editor who is not the Guild Master may only add or widen what they hold, and may only touch a role that holds nothing beyond them.
   assertMayHandOut(guildContext, pairs.filter(([action, scope]) => beforeMap[action] !== scope));
   if (!guildContext.isGuildMaster) assertMayHandOut(guildContext, before);
@@ -280,6 +282,7 @@ export async function deleteRole(ctx) {
   requireAction(guildContext, 'guild.roles');
   const guildId = guildContext.guild.id;
   const roleId = ctx.params.rolid;
+  if (roleId === 'guild_master') throw new HttpError(400, 'fixed_role', 'The Guild Master role always holds every action and cannot be changed.');
   if (BUILTIN_ROLES.includes(roleId)) throw new HttpError(400, 'builtin_role', 'A built-in role cannot be deleted.');
   const role = await findCustomRole(ctx.db, guildId, roleId);
   const permissions = await currentPermissions(ctx.db, guildId, roleId);
