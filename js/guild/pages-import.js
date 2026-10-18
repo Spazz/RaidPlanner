@@ -146,12 +146,11 @@
   function mainCellHtml(row, ui, ro) {
     const id = sid(row);
     const spec = row.main && row.main.class && ui.class === row.main.class ? row.main.spec : null;
-    const dot = G.ui.roleDotHtml(G.ui.roleOfSpec(ro, ui.class, spec));
     const classPart = row.main && row.main.class
       ? '<span class="gs-fine">' + G.ui.specLineHtml(row.main.class, spec, null) + '</span>'
       : '<select class="gs-input gs-input-sm" id="rh-class-' + esc(id) + '" data-change="rh-class" data-signup="' + esc(id) + '" data-key="rh-class-' + esc(id) + '" aria-label="Class for ' + esc(ui.name || 'this sign-up') + '"' + (ui.ticked && !ui.class ? ' aria-invalid="true"' : '') + '>' +
         G.ui.classOptionsHtml(ro, ui.class, 'Pick a class') + '</select>';
-    return '<div class="gs-main-cell">' + dot + '<div class="gs-main-fields"><input class="gs-input gs-input-sm" type="text" id="rh-name-' + esc(id) + '" data-input="rh-name" data-signup="' + esc(id) + '" data-key="rh-name-' + esc(id) + '" maxlength="40" autocomplete="off" aria-label="Main name for ' + esc(row.nickname) + '" value="' + esc(ui.name) + '">' + classPart + '</div></div>';
+    return '<div class="gs-main-cell"><div class="gs-main-fields"><input class="gs-input gs-input-sm" type="text" id="rh-name-' + esc(id) + '" data-input="rh-name" data-signup="' + esc(id) + '" data-key="rh-name-' + esc(id) + '" maxlength="40" autocomplete="off" aria-label="Main name for ' + esc(row.nickname) + '" value="' + esc(ui.name) + '">' + classPart + '</div></div>';
   }
 
   function newRowHtml(row, ui, ro, rowError) {

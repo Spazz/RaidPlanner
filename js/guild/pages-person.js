@@ -64,7 +64,7 @@
 
   function contextHtml(record) {
     const main = mainOf(record) || {};
-    return '<span>Main: ' + G.ui.roleDotHtml(main.role) + ' ' + G.ui.specLineHtml(main.class, main.mainSpec, main.offSpec) + '</span>' + SEP +
+    return '<span>Main: ' + G.ui.specLineHtml(main.class, main.mainSpec, main.offSpec) + '</span>' + SEP +
       '<span>' + altsHtml(record) + '</span>' + SEP + '<span class="gs-person-discord">' + discordLineHtml(record) + '</span>';
   }
 

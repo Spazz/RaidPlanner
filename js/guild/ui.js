@@ -301,10 +301,6 @@
   };
   ui.signInLabel = function (s) { return Object.prototype.hasOwnProperty.call(SIGN_IN_LABELS, s) ? SIGN_IN_LABELS[s] : ''; };
   ui.roleLabel = function (r) { return Object.prototype.hasOwnProperty.call(ROLE_LABELS, r) ? ROLE_LABELS[r] : ''; };
-  ui.roleDotHtml = function (role) {
-    if (!Object.prototype.hasOwnProperty.call(ROLE_LABELS, role)) return '';
-    return '<span class="gs-role-dot gs-role-' + role + '" role="img" aria-label="' + ROLE_LABELS[role] + '"></span>';
-  };
 
   // trialFlag = { kind: 'ends' | 'ended', days } from the Worker: 0 "Ends today", 1 "Ends tomorrow", n "Ends in n days",
   // -1 "Ended yesterday", -n "Ended n days ago". null means no flag, so no words.

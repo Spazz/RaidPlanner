@@ -271,10 +271,10 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(!plainRow.includes('Alt of'));
   });
 
-  await check('roster page: the character name links to the record, in the class colour, with the role dot', () => {
+  await check('roster page: the character name links to the record, in the class colour', () => {
     const out = rosterPage(guildData(), rosterData());
     assert(out.includes('<a class="gs-char-link gs-class-paladin" href="#/g/g1/roster/p/p_8">Sølvhand</a>'));
-    assert(out.includes('<span class="gs-role-dot gs-role-tank" role="img" aria-label="Tank"></span>'));
+    assert(!out.includes('gs-role-dot'), 'no role dot');
     assert(out.includes('Warlock &middot; Destruction'), 'the spec text always names the class');
     assert(out.includes('<span class="gs-muted gs-dash">-</span>'), 'no off spec shows a dash');
   });
@@ -751,7 +751,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(out.includes('aria-label="Offer Thornpaw as an Alt"') && !/aria-label="Offer Thornpaw as an Alt"[^>]*checked/.test(out));
     assert(/aria-label="Offer Sunny as an Alt"[^>]*disabled/.test(out), 'a taken Alt name is disabled');
     assert(out.includes('aria-label="Class for Thornpaw"'));
-    assert(out.includes('<span class="gs-role-dot gs-role-tank"'));
+    assert(!out.includes('gs-role-dot'), 'no role dot');
   });
 
   await check('Raid-Helper import: only the first 8 rows show until "Show all"', () => {

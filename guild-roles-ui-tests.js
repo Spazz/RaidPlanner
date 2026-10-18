@@ -1096,7 +1096,7 @@ const rejectWith = (status, body) => Promise.reject(new G.api.ApiError(status, b
     assert.deepEqual([...out.matchAll(/<h2 class="gs-h2" id="view-[a-z]+-h">([^<]*)</g)].map(m => m[1]), ['Roster', 'Raids', 'Attendance', 'Loot']);
     // roster
     assert(out.includes('<span class="gs-char-name gs-class-paladin">Thoren</span>') && out.includes('<span class="gs-char-name gs-class-rogue">Kaelith</span>'));
-    assert(/<td class="" data-label="Class">Paladin<\/td>/.test(out) && out.includes('aria-label="Tank"') && out.includes('aria-label="DPS"'));
+    assert(/<td class="" data-label="Class">Paladin<\/td>/.test(out) && !out.includes('gs-role-dot') && />Tank</.test(out) && />DPS</.test(out));
     assert(t.includes('No one on the roster yet.'));
     // raids
     assert(out.includes('>Upcoming</h4>') && out.includes('>Recent</h4>') && out.indexOf('>Upcoming</h4>') < out.indexOf('>Recent</h4>'));

@@ -77,7 +77,7 @@
     if (!people.length) return '<p class="gs-empty">No one on the roster yet.</p>';
     return tableHtml('Roster of ' + teamName(entry), [{ key: 'name', label: 'Name', primary: true }, { key: 'class', label: 'Class' }, { key: 'role', label: 'Role' }], people.map(function (p) {
       const role = G.ui.roleLabel(p.role);
-      return { mark: p.class, cells: { name: G.ui.classNameHtml(p.name, p.class), class: esc(G.ui.className(p.class)), role: role ? G.ui.roleDotHtml(p.role) + ' ' + esc(role) : '<span class="gs-muted gs-dash">-</span>' } };
+      return { mark: p.class, cells: { name: G.ui.classNameHtml(p.name, p.class), class: esc(G.ui.className(p.class)), role: role ? esc(role) : '<span class="gs-muted gs-dash">-</span>' } };
     }), 'people');
   }
 

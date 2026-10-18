@@ -478,10 +478,6 @@ a.gs-signin-link:hover { color: var(--accent-gold-bright); }
 .gs-char-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .gs-char-sub { display: block; font: 400 13px/1.3 var(--font-body); color: var(--text-muted); overflow-wrap: anywhere; }
 
-.gs-role-dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; }
-.gs-role-tank { background: var(--role-tank); }
-.gs-role-healer { background: var(--role-healer); }
-.gs-role-dps { background: var(--role-dps); }
 
 .gs-chip-status { background: var(--bg-card-hover); border-color: var(--bg-card-hover); color: var(--text-secondary); }
 .gs-status-raider, .gs-status-trial, .gs-status-reserve { color: var(--text-secondary); }

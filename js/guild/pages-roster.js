@@ -82,7 +82,7 @@
   function nameCellHtml(gid, p) {
     const s = p.shown;
     const link = '<a class="gs-char-link ' + G.ui.classClass(s.class) + '" href="' + esc(personHref(gid, p.id)) + '">' + esc(s.name) + '</a>';
-    return '<span class="gs-char-cell">' + G.ui.roleDotHtml(s.role) + '<span class="gs-char-text">' + link + altTagHtml(p) + '</span></span>';
+    return '<span class="gs-char-cell">' + '<span class="gs-char-text">' + link + altTagHtml(p) + '</span></span>';
   }
 
   // Trial flag chips are for officers: shown when the viewer can edit this team and it is the person's home team.
