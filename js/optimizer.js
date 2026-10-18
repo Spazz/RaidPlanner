@@ -350,10 +350,14 @@ const Optimizer = {
   // happened to be arranged before the click — otherwise every Optimize
   // lands in a different local optimum and the second click reshuffles
   // a layout the first one just produced.
+  // Standby players (the guild's marker, SignupMarker) sort after their otherwise identical twins (same role, class and
+  // spec): greedy placement takes the first of equal candidates, so when the pool exceeds the seats the standby players
+  // are the ones left over. It decides only among equal candidates, so the role floors still seat tanks and healers first.
   sortedPool(players) {
+    const rank = p => (SignupMarker.isStandby(p) ? 1 : 0);
     return players.slice().sort((a, b) => {
-      const ka = a.role + '|' + a.class + '|' + a.spec + '|' + (a.name || '');
-      const kb = b.role + '|' + b.class + '|' + b.spec + '|' + (b.name || '');
+      const ka = a.role + '|' + a.class + '|' + a.spec + '|' + rank(a) + '|' + (a.name || '');
+      const kb = b.role + '|' + b.class + '|' + b.spec + '|' + rank(b) + '|' + (b.name || '');
       return ka < kb ? -1 : ka > kb ? 1 : 0;
     });
   },

@@ -1,6 +1,8 @@
 // ── IMPORT ──────────────────────────────────────────────────────
 const Import = {
-  importRaidHelper(jsonStr) {
+  // opts.fixedRaid: State.selectedRaid was chosen by the caller (a guild raid names its size or zone), so the sign-up
+  // count below does not pick a smaller raid. An event's sign-ups alone say nothing about its size.
+  importRaidHelper(jsonStr, opts) {
     let data;
     try { data = JSON.parse(jsonStr); } catch(e) { return { success:false, error:'Invalid JSON: '+e.message }; }
     if (PreferredSlots.hasManual() && (Array.isArray(data.signUps) || Array.isArray(data.slots))) {
@@ -15,7 +17,7 @@ const Import = {
         preferredImport:true, filledCount:counts.filled, benchCount:State.bench.length, unplacedCount:State.unplaced.length};
     }
     if (Array.isArray(data.slots)) { const result = this._importRaidHelperSlots(data); if (result.success) State.campfires = Campfires.empty(); return result; }
-    if (Array.isArray(data.signUps)) { const result = this._importRaidHelperSignUps(data); if (result.success) State.campfires = Campfires.empty(); return result; }
+    if (Array.isArray(data.signUps)) { const result = this._importRaidHelperSignUps(data, opts); if (result.success) State.campfires = Campfires.empty(); return result; }
     return { success:false, error:"No 'slots' or 'signUps' array found in JSON" };
   },
 
@@ -25,16 +27,20 @@ const Import = {
   _readRaidHelperEntry(entry, fallbackName) {
     const status = SignupStatus.fromRaidHelper(entry && entry.className);
     const { classFile, specName, role, needsReview, reviewReason } = this._resolveRaidHelperEntry(entry);
+    const marker = SignupMarker.clean(entry && entry.marker);
     return {
       name: entry.name || fallbackName, status,
       class: classFile || null, spec: classFile ? specName : null, role: classFile ? role : null,
-      category: SignupStatus.categoryFor(status, classFile),
+      category: SignupStatus.categoryFor(status, classFile, marker),
       needsReview: !!classFile && needsReview, reviewReason,
+      ...(marker ? { marker } : {}),
     };
   },
 
   _makeUnplaced(entry) {
-    return { uid: nextUid(), name: entry.name, signupStatus: entry.status, class: entry.class, spec: entry.spec, role: entry.role };
+    const player = { uid: nextUid(), name: entry.name, signupStatus: entry.status, class: entry.class, spec: entry.spec, role: entry.role };
+    if (entry.marker) player.marker = entry.marker;
+    return player;
   },
 
   // Resolve a Raid-Helper slot/signup entry (className + specName) to a class/spec/role.
@@ -116,6 +122,7 @@ const Import = {
         signupStatus: entry.status,
       };
       if (entry.needsReview) { player.needsReview = true; player.reviewReason = entry.reviewReason; }
+      if (entry.marker) player.marker = entry.marker;
 
       if (entry.category === 'bench') { bench.push(player); continue; }
 
@@ -161,7 +168,7 @@ const Import = {
     return { entries };
   },
 
-  _importRaidHelperSignUps(data) {
+  _importRaidHelperSignUps(data, opts) {
     const roster = [];
     const bench = [];
     const unplaced = [];
@@ -174,6 +181,7 @@ const Import = {
         imported: true, signupStatus: entry.status,
       };
       if (entry.needsReview) { player.needsReview = true; player.reviewReason = entry.reviewReason; }
+      if (entry.marker) player.marker = entry.marker;
       if (entry.category === 'bench') { player.groupNumber = 0; bench.push(player); }
       else roster.push(player);
     }
@@ -181,13 +189,15 @@ const Import = {
     State.unplaced = unplaced;
 
     // Auto-detect raid. An all-Tentative list still sizes the raid by how many
-    // people signed, so they land on a bench that matches the event.
+    // people signed, so they land on a bench that matches the event. A raid the
+    // caller already chose (opts.fixedRaid) keeps its size.
     const raiders = roster.length || bench.length;
-    if (State.gameVersion === 'tbc' && raiders <= 10) {
+    const fixedRaid = !!(opts && opts.fixedRaid);
+    if (!fixedRaid && State.gameVersion === 'tbc' && raiders <= 10) {
       for (const key of Config.RaidOrder) {
         if (Config.Raids[key].size === 10) { State.selectedRaid = key; break; }
       }
-    } else if (State.gameVersion === 'classic' && raiders <= 20) {
+    } else if (!fixedRaid && State.gameVersion === 'classic' && raiders <= 20) {
       for (const key of Config.RaidOrder) {
         if (Config.Raids[key].size === 20) { State.selectedRaid = key; break; }
       }
@@ -230,6 +240,8 @@ const Import = {
   //   demoted:  seated player newly marked Bench/Tentative/Late/Absent -> unseated
   //   promoted: benched player now confirmed        -> reported, left on the bench
   //   claimed:  hand-added players that now have a sign-up -> become sign-up players (no report)
+  //   marked:   same person, new or cleared marker (SignupMarker) -> {player, marker|null}; applied with every diff
+  //             (applyMarkers), never a report line by itself
   // A status on a player saved before statuses existed is a silent `backfill`,
   // never reported as a change by itself.
   diffRaidHelperSignUps(jsonStr) {
@@ -245,7 +257,7 @@ const Import = {
       if (!current.has(key(p.name))) current.set(key(p.name), p);
     }
 
-    const diff = { success:true, added:[], removed:[], changed:[], restatus:[], demoted:[], promoted:[], claimed:[] };
+    const diff = { success:true, added:[], removed:[], changed:[], restatus:[], demoted:[], promoted:[], claimed:[], marked:[] };
     // A rescheduled event moves the date exports show; absent from the response, the stored one stays.
     const eventStartTime = PlanStore.eventStart(data);
     if (eventStartTime) diff.eventStartTime = eventStartTime;
@@ -257,6 +269,7 @@ const Import = {
       const player = current.get(k);
       if (!player) { diff.added.push(entry); continue; }
       if (player.handAdded) diff.claimed.push(player);
+      if (!SignupMarker.same(player.marker, entry.marker)) diff.marked.push({ player, marker: entry.marker || null });
       // An entry without a class (an Absence, usually) says nothing about spec.
       if (entry.class && (player.class !== entry.class || player.spec !== entry.spec || player.role !== entry.role)) {
         diff.changed.push({ player, class:entry.class, spec:entry.spec, role:entry.role, needsReview:entry.needsReview, reviewReason:entry.reviewReason });
@@ -275,6 +288,15 @@ const Import = {
   // A hand-added player who now has a sign-up is a sign-up player from here on: leaving the sign-ups removes them.
   claimHandAdded(diff) {
     for (const player of (diff && diff.claimed) || []) delete player.handAdded;
+  },
+
+  // The sign-ups' markers (SignupMarker) are set, changed or cleared whenever a diff is applied, also when nothing else
+  // changed: hasRaidHelperChanges and describeRaidHelperChanges leave them out, so a marker alone raises no banner.
+  applyMarkers(diff) {
+    for (const { player, marker } of (diff && diff.marked) || []) {
+      if (marker) player.marker = marker;
+      else delete player.marker;
+    }
   },
 
   hasRaidHelperChanges(diff) {
@@ -328,6 +350,7 @@ const Import = {
       clearOverrides(change.player); // an override for the old spec's buff no longer applies
     }
     this.claimHandAdded(diff);
+    this.applyMarkers(diff);
     for (const { player, status } of (diff.restatus || [])) player.signupStatus = status;
     for (const player of diff.demoted) {
       if (player.groupNumber >= 1) vacated.push({ name: player.name, groupNumber: player.groupNumber, gone: false });
@@ -351,6 +374,7 @@ const Import = {
         groupNumber: 0, imported: true, signupStatus: entry.status,
       };
       if (entry.needsReview) { player.needsReview = true; player.reviewReason = entry.reviewReason; }
+      if (entry.marker) player.marker = entry.marker;
       if (entry.category !== 'bench' && PreferredSlots.seat(player)) filled++;
       else State.bench.push(player);
     }

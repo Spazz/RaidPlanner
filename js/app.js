@@ -1359,7 +1359,10 @@ const RaidContext = {
       State.buffOverrides = {};
     }
     State.rosterName = RaidLink.planLabel(raid);
-    const result = Import.importRaidHelper(c.seedJson);
+    // The raid's own size (or zone) picks the raid template; only a seed that names neither lets the sign-up count size it.
+    const raidKey = RaidLink.raidKeyFor(raid, version);
+    if (raidKey) State.selectedRaid = raidKey;
+    const result = Import.importRaidHelper(c.seedJson, { fixedRaid: !!raidKey });
     this.adopt(c, raid);
     RaidHelperSync.hideBanner();
     ChangeLog.clear();
@@ -1368,11 +1371,12 @@ const RaidContext = {
     return (result.success ? `Started from the raid's ${result.playerCount + result.benchCount + result.unplacedCount} sign-ups.` : 'The raid has no sign-ups yet. Add players here, or import them on the raid page and open it again.') + caveat;
   },
 
-  // What makes the plan on screen this raid's plan: its id, the event it follows and its start.
+  // What makes the plan on screen this raid's plan: its id, the event it follows and its start (none for a raid that has
+  // a date but no start time: its startsAt is a placeholder noon UTC).
   adopt(c, raid) {
     State.planId = c.planId;
     State.sourceEventId = raid.eventId || null;
-    State.eventStartTime = PlanStore.cleanEventStart(raid.startsAt);
+    State.eventStartTime = raid.timeKnown === false ? null : PlanStore.cleanEventStart(raid.startsAt);
   },
 
   // A commit that left the raid's plan (another plan opened, an import) ends the raid context.

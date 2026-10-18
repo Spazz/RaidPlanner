@@ -577,9 +577,10 @@ const SignupStatus = {
   // Where a sign-up lands on import: confirmed people go to the optimizer,
   // Bench/Tentative/Late wait on the bench, and anyone Absent or without a
   // class is held as unplaced.
-  categoryFor(status, classFile) {
+  categoryFor(status, classFile, marker) {
     if (status === 'absent' || !classFile) return 'unplaced';
-    return status === 'confirmed' ? 'raider' : 'bench';
+    // Someone who is also in another raid of the guild that night waits on the bench like a Bench sign-up until the leader seats them.
+    return status === 'confirmed' && !(marker && marker.kind === 'also') ? 'raider' : 'bench';
   },
 
   // The tray tab a benched or unplaced player is filed under.
@@ -599,6 +600,44 @@ const SignupStatus = {
         role: known && PlayerIdentity.isRole(p.role) ? p.role : null,
       };
     });
+  },
+};
+
+// ── SIGN-UP MARKER ──────────────────────────────────────────────
+// The guild tracker's note on a sign-up in the planner seed, { kind, text } (RaidLink.seedToRaidHelper): Away, also in
+// another raid that night, Late, Leaving early, Standby. Kept on the player as `marker` and shown as a tag; the seed
+// sets, changes and clears it again on every raid open and Refresh (Import.applyMarkers). It is not part of the plan:
+// no share code, live link, saved roster or Undo step carries it (PlanStore.capture leaves it out, so setting or
+// clearing it is no plan change). Two kinds act: 'also' files a new sign-up like a Bench one (SignupStatus.categoryFor)
+// and 'standby' is benched first (Optimizer.sortedPool); the rest are information only.
+const SignupMarker = {
+  KINDS: ['away', 'also', 'late', 'leaving', 'standby'],
+  LABELS: { away:'Away', also:'Also in', late:'Late', leaving:'Leaves', standby:'Standby' },
+  MAX_TEXT: 60,
+
+  // The marker as stored ({ kind, text }: printable ASCII, at most MAX_TEXT characters, a default text when empty), or undefined.
+  clean(marker) {
+    if (!marker || typeof marker !== 'object' || !this.KINDS.includes(marker.kind)) return undefined;
+    const text = typeof marker.text === 'string' ? marker.text.replace(/[^\x20-\x7e]/g, '').trim().slice(0, this.MAX_TEXT) : '';
+    return { kind: marker.kind, text: text || this.LABELS[marker.kind] };
+  },
+  label(marker) { return marker ? this.LABELS[marker.kind] || '' : ''; },
+  same(a, b) { return !a || !b ? !a && !b : a.kind === b.kind && a.text === b.text; },
+  isStandby(player) { return !!player && !!player.marker && player.marker.kind === 'standby'; },
+
+  // name -> marker of every player on the board, bench or unplaced list, for an update that rebuilds the players
+  // (Undo, a live-link update); reapply() puts the markers back on the rebuilt players of the same name.
+  snapshot() {
+    const map = new Map();
+    for (const p of [...(State.groups || []).flat(), ...(State.bench || []), ...(State.unplaced || [])]) if (p && p.marker) map.set(p.name, p.marker);
+    return map;
+  },
+  reapply(map) {
+    if (!map || !map.size) return;
+    for (const p of [...(State.groups || []).flat(), ...(State.bench || []), ...(State.unplaced || [])]) {
+      const marker = p && map.get(p.name);
+      if (marker) p.marker = { ...marker };
+    }
   },
 };
 

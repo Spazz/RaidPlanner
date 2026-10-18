@@ -233,6 +233,13 @@ function getStatusTag(status) {
   return `<span class="status-tag status-${esc(status)}" title="Marked ${esc(label)} on Raid-Helper">${esc(label)}</span>`;
 }
 
+// The guild's note on a sign-up (SignupMarker: away, also in another raid, late, leaving, standby) as a small tag; its text is the tooltip.
+function getMarkerTag(p) {
+  const label = SignupMarker.label(p && p.marker);
+  if (!label) return '';
+  return `<span class="marker-tag marker-${esc(p.marker.kind)}" title="${esc(p.marker.text)}">${esc(label)}</span>`;
+}
+
 function getDragHandle() {
   return '<div class="drag-handle"><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div><div class="drag-dot-row"><span class="drag-dot"></span><span class="drag-dot"></span></div></div>';
 }
@@ -244,7 +251,7 @@ function playerSlotLabel(p, where) {
   const cls = p.class ? p.class.charAt(0) + p.class.slice(1).toLowerCase() : '';
   const status = p.signupStatus && p.signupStatus !== 'confirmed' && p.signupStatus !== 'bench' ? SignupStatus.label(p.signupStatus) : '';
   const change = ChangeLog.highlightFor(p);
-  return [name, [p.spec, cls].filter(Boolean).join(' '), where, status, p.needsReview ? 'needs review' : '',
+  return [name, [p.spec, cls].filter(Boolean).join(' '), where, status, p.marker ? p.marker.text : '', p.needsReview ? 'needs review' : '',
     change ? 'changed: ' + change.word.toLowerCase() : '']
     .filter(Boolean).join(', ');
 }
@@ -337,6 +344,7 @@ function seatedSlotHTML(p, gi, si) {
     ${changedTag(p)}
     ${reviewBadge}
     ${p.signupStatus && p.signupStatus !== 'confirmed' ? getStatusTag(p.signupStatus) : ''}
+    ${getMarkerTag(p)}
     ${lockBadge}
     ${constraintBadge}
     ${backupBadge}
@@ -1929,6 +1937,7 @@ const SignupTray = {
         </div>
         ${changedTag(p)}
         ${tag}
+        ${getMarkerTag(p)}
         ${getDragHandle()}
       </div>`;
     }
@@ -1947,6 +1956,7 @@ const SignupTray = {
       </div>
       ${changedTag(p)}
       ${tag}
+      ${getMarkerTag(p)}
       ${reviewBadge}
       ${backupBadge}
       ${getDragHandle()}
