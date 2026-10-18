@@ -330,7 +330,8 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert(t.includes("Brindle is already on the roster on Brindle's record. Approving links Erin E's Discord account to Brindle."));
     assert(t.includes("Dunmar is already on Erin E's record. Approving only closes the claim."));
     assert(t.includes('Merge them by hand.') && out.includes('gs-cclaim-plan is-blocked'));
-    assert(t.includes('Claimed by Erin E 3 days ago') && t.includes('Paladin, level 61, Dreamscythe'));
+    // relativeTime reads the real clock when the page does not pass one, so the expected words come from the same helper (the day rolls over).
+    assert(t.includes('Claimed by Erin E ' + G.ui.relativeTime(T0 - 3 * DAY).toLowerCase()) && t.includes('Paladin, level 61, Dreamscythe'));
     const item = id => out.split('<li class="gs-review-item gs-cclaim-item">').slice(1).find(x => x.includes('data-claim="' + id + '"'));
     assert(item('cl_a').includes('name="teamId"') && !item('cl_a').includes('name="status"') && item('cl_a').includes('data-kind="add_alt"'));
     assert(item('cl_b').includes('name="teamId"') && item('cl_b').includes('name="status"') && /<option value="trial" selected>/.test(item('cl_b')));
