@@ -78,7 +78,7 @@
         id: 'rank-progression',
         title: 'Rank progression',
         summary: 'An optional policy module that moves people up a ladder (for example Member, Raider, Core) based on their attendance.',
-        area: 'attendance', status: 'idea', source: 'backlog', added: '2026-10-17',
+        area: 'attendance', status: 'done', source: 'backlog', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'bolder-suggestion-stacks',
@@ -192,14 +192,14 @@
         title: 'Team progress board',
         summary: 'Per team and phase: which bosses are dead, first-kill dates, wipes before kill and clear time per night.',
         why: 'Shows progress to the guild and recruits from data already fetched (check Warcraft Logs terms first). Inspired by: WowUtils clear speed; oxm.gg progress; GuildOS.',
-        area: 'raids', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'raids', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
       {
         id: 'api-keys-csv-exports',
         title: 'Read-only API keys and CSV links',
         summary: 'Officers create read-only keys or CSV links for attendance, roster and loot so Google Sheets and bots can read live data.',
         why: 'Guilds keep spreadsheets; this lets them keep their reports. Inspired by: Raidify API keys; WoWAudit API; TMB CSV exports.',
-        area: 'platform', status: 'idea', source: 'pm', added: '2026-10-17',
+        area: 'platform', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-18',
       },
 
       {
