@@ -3,8 +3,9 @@
 // table with sign-up / plan / log / outcome side by side, the unmatched characters, and the dialogs that change
 // the raid (event, report, plan, manual attendance, delete). GET /raids/:rid; every write answers with the detail.
 // The Decide and Unmatched dialogs live in pages-review.js and work here too (where = 'raid').
-// A raid that has not started (raid.upcoming) shows its start time, sign-ups, event and plan instead, with a note that attendance
-// starts after the raid. Every raid carries the Sign-ups panel (pages-raid-signups.js; a past raid's only for officers or when there
+// A raid that has not started (raid.upcoming) shows its start time ("Time not set" for a date-only raid), sign-ups, event and plan instead, with
+// a note that attendance starts after the raid. The title carries the zone and the raid's size; officers get a Raid settings card (the raid's own
+// size and sign-up deadline, PATCH /raids/:rid). Every raid carries the Sign-ups panel (pages-raid-signups.js; a past raid's only for officers or when there
 // are sign-ups) and a past raid also the Loot card (pages-raid-loot.js), both loaded with the detail.
 (function (G) {
   'use strict';
@@ -206,9 +207,62 @@
       : edit
       ? '<div class="gs-roster-actions">' + (!isManual(data) && !hasReports(data) ? btn('manual-open', 'Mark as No log') : '') + btn('recompute', 'Recalculate') +
         '<button type="button" class="gs-btn gs-btn-danger-outline" data-action="raid-op" data-op="raid-delete" data-key="raid-delete">Delete raid</button></div>' : '';
-    return '<div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + (r.zone ? ' - ' + esc(r.zone) : '') + '</h1>' +
-      '<p class="gs-sub">' + (several && team ? esc(team.name) + ' &middot; ' : '') + (upcoming ? (r.title ? esc(r.title) + ' &middot; ' : '') + 'Starts ' + esc(G.pages.raids.whenText(r, gd)) : esc(bosses)) + '</p><div class="gs-chips">' + statePill(data) +
+    const where = G.pages.raids.zoneSizeText(r.zone, r.size);
+    const starts = 'Starts ' + esc(G.pages.raids.whenText(r, gd)) + (r.timeKnown === false ? ' &middot; <span class="gs-time-unset">Time not set</span>' : '');
+    return '<div class="gs-roster-head"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + (where ? ' - ' + esc(where) : '') + '</h1>' +
+      '<p class="gs-sub">' + (several && team ? esc(team.name) + ' &middot; ' : '') + (upcoming ? (r.title ? esc(r.title) + ' &middot; ' : '') + starts : esc(bosses)) + '</p><div class="gs-chips">' + statePill(data) +
       (upcoming ? G.pages.raids.planPillHtml({ planned: !!(data.sources && data.sources.plan) }) : '') + '</div></div>' + tools + '</div>';
+  }
+
+  // ── Raid settings (officers): the raid's own size and sign-up deadline ──
+  const MAX_CLOSE_HOURS = 72;
+  const AUTO_SIZE = 'Automatic - from the zone, else the team\'s size';
+
+  function hoursText(n) { return plural(n, 'hour', 'hours'); }
+
+  // The team's own deadline: the raid's when it has no override of its own; else the Raids list's copy of the team (it carries it), else unknown.
+  function teamCloseHours(data) {
+    const r = data.raid;
+    if (r.closeHoursOverride == null) return typeof r.closeHours === 'number' ? r.closeHours : null;
+    const list = a().raids;
+    const team = list && list.data && list.data.team;
+    return team && team.id === idOf(r.team) && typeof team.signupCloseHours === 'number' ? team.signupCloseHours : null;
+  }
+
+  // What is in effect now, in a sentence each.
+  function sizeInEffectText(r) {
+    if (typeof r.size !== 'number') return '';
+    return 'In effect: ' + plural(r.size, 'player', 'players') + (r.sizeOverride != null ? ', set for this raid.' : ', picked from the zone, else the team\'s size.');
+  }
+
+  function deadlineInEffectText(r, gd) {
+    if (typeof r.closeHours !== 'number') return '';
+    const own = r.closeHoursOverride != null;
+    const source = own ? ', set for this raid.' : ', the team\'s setting.';
+    if (!(r.closeHours > 0)) return 'In effect: members can change their sign-up until the raid starts' + source;
+    const when = typeof r.closesAt === 'number' ? G.pages.raids.momentText(r.closesAt, gd) : '';
+    return 'In effect: members can change their sign-up until ' + hoursText(r.closeHours) + ' before the start' + (when ? ' (' + when + ')' : '') + source;
+  }
+
+  function settingsCardHtml(gd, data) {
+    const r = data.raid;
+    if (!(data.can && data.can.edit)) return '';
+    const own = r.closeHoursOverride != null;
+    const teamHours = teamCloseHours(data);
+    const sizeField = '<div class="gs-field"><label class="gs-label" for="rs-size">Raid size</label><select class="gs-input" id="rs-size" name="size" data-key="rs-size" aria-describedby="rs-size-help">' +
+      G.ui.optionsHtml(G.ui.sizeChoices(AUTO_SIZE), r.sizeOverride == null ? '' : r.sizeOverride) + '</select>' +
+      '<p class="gs-fine" id="rs-size-help">' + esc(sizeInEffectText(r)) + '</p><p class="gs-field-error" id="rs-err-size" role="alert" hidden></p></div>';
+    // The deadline only means something until the raid starts.
+    const hoursField = !isUpcoming(data) ? '' :
+      '<div class="gs-field"><label class="gs-label" for="rs-hours-mode">Sign-up deadline</label><select class="gs-input" id="rs-hours-mode" name="hoursMode" data-change="rs-hours-mode" data-key="rs-hours-mode" aria-describedby="rs-hours-help">' +
+      G.ui.optionsHtml([{ value: '', label: 'Team default' + (teamHours == null ? '' : ' (' + hoursText(teamHours) + ')') }, { value: 'custom', label: 'Set for this raid' }], own ? 'custom' : '') + '</select>' +
+      '<div class="gs-field" id="rs-hours-field"' + (own ? '' : ' hidden') + '><label class="gs-label" for="rs-hours">Hours before the start (0 = when the raid starts)</label>' +
+      '<input class="gs-input" type="number" id="rs-hours" name="hours" data-key="rs-hours" min="0" max="' + MAX_CLOSE_HOURS + '" step="1" inputmode="numeric" autocomplete="off" value="' + (own ? esc(r.closeHoursOverride) : '') + '"></div>' +
+      '<p class="gs-fine" id="rs-hours-help">' + esc(deadlineInEffectText(r, gd)) + '</p><p class="gs-field-error" id="rs-err-hours" role="alert" hidden></p></div>';
+    return '<section class="gs-card-sec gs-rs" aria-labelledby="rs-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="rs-h">Raid settings</h2></div><div class="gs-card-sec-body">' +
+      '<form class="gs-su-form" data-submit="raid-settings-form" novalidate><div class="gs-su-fields">' + sizeField + hoursField + '</div>' +
+      '<p class="gs-alert" id="rs-error" role="alert" hidden></p>' +
+      '<div class="gs-row-actions"><button type="submit" class="gs-btn gs-btn-sm gs-btn-molten" data-key="rs-save">Save settings</button></div></form></div></section>';
   }
 
   // opts: { guildData, data (GET /raids/:rid), filter: 'review'|'all'|null, alert, note, progress, loot (G.pages.raidLoot.stateFor), signups (G.pages.raidSignups.stateFor) }
@@ -221,7 +275,7 @@
     if (isUpcoming(data)) {
       return '<div class="gs-page gs-raid-page">' + headHtml(gd, data) + G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') +
         '<div class="gs-notice" role="status"><span>Attendance starts after the raid.</span></div>' +
-        signupsPanelHtml(gd, data, opts.signups) + '<div class="gs-sources">' + eventCardHtml(data, edit) + planCardHtml(data, edit) + '</div></div>';
+        signupsPanelHtml(gd, data, opts.signups) + '<div class="gs-sources">' + eventCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' + settingsCardHtml(gd, data) + '</div>';
     }
     let people_html;
     if (people === null) {
@@ -242,7 +296,7 @@
       manualLineHtml(data, edit) +
       '<div class="gs-sources">' + eventCardHtml(data, edit) + reportsCardHtml(data, edit) + planCardHtml(data, edit) + '</div>' +
       '<section class="gs-card-sec" aria-labelledby="ppl-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="ppl-h">People</h2></div><div class="gs-card-sec-body">' + people_html + '</div></section>' +
-      signupsPanelHtml(gd, data, opts.signups) + lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + '</div>';
+      signupsPanelHtml(gd, data, opts.signups) + lootCardHtml(gd, data, opts.loot) + unmatchedBlockHtml(data) + settingsCardHtml(gd, data) + '</div>';
   }
 
   // ── dialogs ──
@@ -467,6 +521,53 @@
     if (input) input.focus();
   }
 
+  // The deadline's mode select shows the hours box only for "Set for this raid" (in place: a re-render could swallow the click on Save).
+  G.handlers.change['rs-hours-mode'] = function (el) {
+    if (typeof document === 'undefined') return;
+    const custom = el.value === 'custom';
+    const field = document.getElementById('rs-hours-field');
+    if (field) field.hidden = !custom;
+    const input = document.getElementById('rs-hours');
+    if (custom && input) input.focus();
+  };
+
+  // Raid settings: only what changed is sent (a key left out is kept by the Worker, so two officers changing different settings do not undo each other);
+  // Automatic and Team default send null, which clears the raid's own value.
+  G.handlers.submit['raid-settings-form'] = function (form) {
+    const c = cur();
+    if (!c) return;
+    const r = c.data.raid;
+    ['rs-err-size', 'rs-err-hours', 'rs-error'].forEach(function (id) { G.ui.setText(id, ''); });
+    const body = {};
+    const size = form.elements.size.value === '' ? null : Number(form.elements.size.value);
+    if (size !== null && G.ui.RAID_SIZES.indexOf(size) < 0) { G.ui.setText('rs-err-size', 'Choose Automatic or one of the sizes.'); form.elements.size.focus(); return; }
+    if (size !== (r.sizeOverride == null ? null : r.sizeOverride)) body.size = size;
+    if (form.elements.hoursMode) {
+      let hours = null;
+      if (form.elements.hoursMode.value === 'custom') {
+        const text = String(form.elements.hours.value == null ? '' : form.elements.hours.value).trim();
+        if (!/^\d{1,2}$/.test(text) || Number(text) > MAX_CLOSE_HOURS) { G.ui.setText('rs-err-hours', 'Enter whole hours from 0 to ' + MAX_CLOSE_HOURS + '.'); form.elements.hours.focus(); return; }
+        hours = Number(text);
+      }
+      if (hours !== (r.closeHoursOverride == null ? null : r.closeHoursOverride)) body.signupCloseHours = hours;
+    }
+    if (!Object.keys(body).length) { G.ui.setText('rs-error', 'Nothing to save: the settings are already as shown.'); return; }
+    G.ui.setBusy(form, true);
+    G.api.patch(raidBase(c.gid, c.rid), body).then(function (res) {
+      setDetail(c, res, 'Raid settings saved.');
+    }, function (err) {
+      G.ui.setBusy(form, false);
+      const cl = G.api.classify(err);
+      if (cl.view === 'signin') { G.app.requireSignin(); return; }
+      if (cl.view === 'message') { G.app.showFailure(cl.title, cl.text); return; }
+      if (err && err.code === 'conflict') { G.app.handleError(err); return; }
+      const sink = err && err.field === 'size' ? 'rs-err-size' : err && err.field === 'signupCloseHours' ? 'rs-err-hours' : 'rs-error';
+      G.ui.setText(sink, cl.text);
+      const input = sink === 'rs-err-size' ? form.elements.size : sink === 'rs-err-hours' ? (form.elements.hours || form.elements.hoursMode) : null;
+      if (input && input.focus) input.focus();
+    });
+  };
+
   G.handlers.submit['raid-confirm-form'] = function (form) {
     const c = cur();
     if (!c) return;
@@ -588,6 +689,7 @@
 
   G.pages.raid = {
     raidHtml: raidHtml,
+    settingsCardHtml: settingsCardHtml,
     manualDialogHtml: manualDialogHtml,
     manualCandidates: manualCandidates,
     manualTicked: manualTicked,

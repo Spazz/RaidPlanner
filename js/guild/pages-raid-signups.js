@@ -2,7 +2,8 @@
 // Native Raidsmith sign-ups. GET /raids/:rid/signups answers with the merged list (a person's Raidsmith sign-up replaces their
 // Raid-Helper row), the viewer's own part (`me`) and, for officers, the team's people (`roster`). A member signs themselves up with
 // four big buttons (Sign up, Late, Tentative, Can't come) and a small form for the character, spec and a note, until the raid starts or
-// an officer closes sign-ups; officers edit or remove anyone's, add one for someone without Discord, and close or reopen sign-ups.
+// an officer closes sign-ups or the team's deadline (hours before the start) passes; officers edit or remove anyone's, add one for someone without
+// Discord, and close or reopen sign-ups. The counts read "expected / size" against the raid's size.
 // pages-raid.js draws the panel and loads its data; the state lives in the attendance state bag (a().raidSignups).
 (function (G) {
   'use strict';
@@ -70,19 +71,27 @@
   // ── view helpers ──
   function whenOf(detail, gd) {
     const r = detail && detail.raid ? detail.raid : {};
-    return G.pages.raids.whenText({ raidOn: r.raidOn, startsAt: r.startsAt }, gd);
+    return G.pages.raids.whenText({ raidOn: r.raidOn, startsAt: r.startsAt, timeKnown: r.timeKnown }, gd);
   }
 
+  function hoursText(n) { return plural(n, 'hour', 'hours'); }
+
+  // The pill text is long once a deadline is in it, so it may wrap (gs-su-status) instead of running off a phone's edge.
   function statusPillHtml(view, detail, gd) {
-    if (view.raid.closed === 'locked') return '<span class="gs-pill gs-pill-warn">Closed by an officer</span>';
-    if (view.raid.closed === 'started') return '<span class="gs-pill gs-pill-muted">The raid has started</span>';
-    return '<span class="gs-pill gs-pill-ok">Open until ' + esc(whenOf(detail, gd)) + '</span>';
+    const v = view.raid;
+    if (v.closed === 'locked') return '<span class="gs-pill gs-pill-warn gs-su-status">Closed by an officer</span>';
+    if (v.closed === 'started') return '<span class="gs-pill gs-pill-muted gs-su-status">The raid has started</span>';
+    if (v.closed === 'deadline') return '<span class="gs-pill gs-pill-warn gs-su-status">Closed' + (typeof v.closesAt === 'number' ? ' ' + esc(G.pages.raids.momentText(v.closesAt, gd)) : '') + '</span>';
+    if (v.closeHours > 0 && typeof v.closesAt === 'number') {
+      return '<span class="gs-pill gs-pill-ok gs-su-status">Open until ' + esc(G.pages.raids.momentText(v.closesAt, gd)) + ' (sign-ups close ' + esc(hoursText(v.closeHours)) + ' before the start)</span>';
+    }
+    return '<span class="gs-pill gs-pill-ok gs-su-status">Open until ' + esc(whenOf(detail, gd)) + '</span>';
   }
 
   function closedText(view) {
-    return view.raid.closed === 'locked'
-      ? 'An officer has closed sign-ups. Ask an officer if you need to change yours.'
-      : 'The raid has started, so sign-ups can no longer be changed here. Ask an officer if you need to change yours.';
+    if (view.raid.closed === 'locked') return 'An officer has closed sign-ups. Ask an officer if you need to change yours.';
+    if (view.raid.closed === 'deadline') return 'Sign-ups closed ' + hoursText(view.raid.closeHours) + ' before the start. Ask an officer if you need to change yours.';
+    return 'The raid has started, so sign-ups can no longer be changed here. Ask an officer if you need to change yours.';
   }
 
   function sourceNoteHtml(sig) {
@@ -131,7 +140,9 @@
   function countsHtml(view) {
     const c = view.counts;
     if (!c) return '';
-    const items = [['Signed', c.signed], ['Late', c.late], ['Tentative', c.tentative], ['Bench', c.bench], ['Absent', c.absence]];
+    // The people expected (signed up and late) against the raid's size, first.
+    const sized = typeof view.raid.size === 'number' && view.raid.size > 0 && typeof c.expected === 'number';
+    const items = (sized ? [['Expected', c.expected + ' / ' + view.raid.size]] : []).concat([['Signed', c.signed], ['Late', c.late], ['Tentative', c.tentative], ['Bench', c.bench], ['Absent', c.absence]]);
     const classes = CLASS_IDS.filter(function (id) { return c.byClass && c.byClass[id] > 0; }).map(function (id) {
       return '<li class="gs-su-class">' + G.ui.classNameHtml(G.ui.className(id), id) + ' <span class="gs-su-count">' + esc(c.byClass[id]) + '</span></li>';
     }).join('');

@@ -1,6 +1,7 @@
 // ── PAGES: RAIDS LIST and NEW RAID ──────────────────────────────
-// The list of one team's raids (GET /raids?team=): Upcoming (raids that have not started, soonest first, with the sign-up counts, the
-// viewer's own sign-up and a one-click Sign up) and Past (newest first, with status pills) tabs, "Create upcoming raids" from the team's
+// The list of one team's raids (GET /raids?team=): Upcoming (raids that have not started, soonest first, with the zone and size, the
+// sign-up count against the size, the viewer's own sign-up with the sign-up deadline and a one-click Sign up; a date-only raid says "time
+// not set") and Past (newest first, with status pills) tabs, "Create upcoming raids" from the team's
 // weekly schedule (also run by itself when the team's schedule says so), "Subscribe in your calendar" (pages-calendar.js), and the New raid page, which
 // runs its calls in order (create raid, event, each report, plan) with a status line per source. A failure stops that
 // source only: the raid exists, the page links to it and offers Retry. Dates are the guild's calendar dates.
@@ -18,6 +19,13 @@
   function plural(n, one, many) { return A().plural(n, one, many); }
   function currentGd() { const s = st(); return s.currentGid ? s.guilds[s.currentGid] : null; }
   function raidHref(gid, rid) { return G.router.format({ name: 'raid', gid: gid, rid: rid }); }
+
+  // "Hyjal Summit - 20"; "20-player" when the raid has no zone; the zone alone when no size came with it (an older reply); '' when neither.
+  function zoneSizeText(zone, size) {
+    const n = typeof size === 'number' && size > 0 ? size : null;
+    if (zone) return n ? zone + ' - ' + n : zone;
+    return n ? n + '-player' : '';
+  }
 
   // ── list ──
   function pillHtml(kind, text) { return '<span class="gs-pill gs-pill-' + kind + '">' + esc(text) + '</span>'; }
@@ -63,13 +71,13 @@
 
   function rowHtml(gid, r) {
     return '<tr><th scope="row" class="gs-cell-strong gs-nowrap"><a href="' + esc(raidHref(gid, r.id)) + '">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + '</a></th>' +
-      '<td>' + (r.zone ? esc(r.zone) : '<span class="gs-muted">-</span>') + '</td><td class="gs-nowrap">' + esc(bossesText(r.bosses)) + '</td><td>' + sourceChipsHtml(r.sources) + '</td>' +
+      '<td>' + (zoneSizeText(r.zone, r.size) ? esc(zoneSizeText(r.zone, r.size)) : '<span class="gs-muted">-</span>') + '</td><td class="gs-nowrap">' + esc(bossesText(r.bosses)) + '</td><td>' + sourceChipsHtml(r.sources) + '</td>' +
       '<td class="gs-nowrap">' + esc(countsText(r.counts)) + '</td><td>' + statePillsHtml(r) + '</td></tr>';
   }
 
   function cardHtml(gid, r) {
     return '<li class="gs-roster-card"><div class="gs-card-top"><a class="gs-raid-link" href="' + esc(raidHref(gid, r.id)) + '">' + esc(G.ui.weekdayDay(r.raidOn) || r.raidOn) + '</a>' + statePillsHtml(r) + '</div>' +
-      '<div class="gs-card-line">' + (r.zone ? esc(r.zone) + ' &middot; ' : '') + esc(bossesText(r.bosses)) + '</div>' +
+      '<div class="gs-card-line">' + (zoneSizeText(r.zone, r.size) ? esc(zoneSizeText(r.zone, r.size)) + ' &middot; ' : '') + esc(bossesText(r.bosses)) + '</div>' +
       '<div class="gs-card-meta">' + sourceChipsHtml(r.sources) + (r.counts ? '<span class="gs-fine">Present ' + esc(r.counts.present || 0) + ' &middot; Bench ' + esc(r.counts.bench || 0) + ' &middot; Missed ' + esc(r.counts.missed || 0) + '</span>' : '') + '</div></li>';
   }
 
@@ -79,28 +87,59 @@
     try { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timeZone || undefined }); } catch (e) { return ''; }
   }
 
-  // 'Sat Oct 17, 8:00 PM': the raid's guild-local date and its start time in the guild's time zone.
+  // 'Sat Oct 17, 8:00 PM': the raid's guild-local date and its start time in the guild's time zone. A date-only raid (timeKnown === false: its
+  // startsAt is a placeholder noon) is the day alone, never a made-up time; callers add "time not set" (timeNotSetHtml).
   function whenText(r, gd) {
     const day = G.ui.weekdayDay(r.raidOn) || r.raidOn;
+    if (r.timeKnown === false) return day;
     const time = timeText(r.startsAt, gd && gd.guild ? gd.guild.timeZone : '');
     return time ? day + ', ' + time : day;
   }
 
-  // '23 signed, 2 bench' (late counts as signed); '-' when the viewer may not see counts.
-  function signupsText(s) {
+  function timeNotSetHtml(r) {
+    return r.timeKnown === false ? ' <span class="gs-muted gs-time-unset">time not set</span>' : '';
+  }
+
+  // The guild's calendar date (YYYY-MM-DD; en-CA writes it so) of a moment; '' when the time zone is unusable.
+  function dateOf(ms, timeZone) {
+    if (typeof ms !== 'number' || !isFinite(ms)) return '';
+    try { return new Intl.DateTimeFormat('en-CA', { timeZone: timeZone || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms)); } catch (e) { return ''; }
+  }
+
+  // A moment that is not a raid's start (the sign-up deadline) written like one, in the guild's time zone: 'Thu Oct 15, 7:30 PM'.
+  function momentText(ms, gd) {
+    const zone = gd && gd.guild ? gd.guild.timeZone : '';
+    const day = G.ui.weekdayDay(dateOf(ms, zone));
+    const time = timeText(ms, zone);
+    return day && time ? day + ', ' + time : day || time;
+  }
+
+  // The same, short, for the Raids list: 'Thu 7:30 PM'.
+  function momentShortText(ms, gd) {
+    const zone = gd && gd.guild ? gd.guild.timeZone : '';
+    const weekday = (G.ui.weekdayDay(dateOf(ms, zone)) || '').split(' ')[0];
+    const time = timeText(ms, zone);
+    return weekday && time ? weekday + ' ' + time : weekday || time;
+  }
+
+  // '18 / 20 signed up, 2 bench' (the expected players against the raid's size; late counts as signed up); '23 signed, 2 bench' when no size came with
+  // the row; '-' when the viewer may not see counts.
+  function signupsText(s, size) {
     if (!s) return '-';
     const signed = (s.signed || 0) + (s.late || 0);
     if (!signed && !s.bench && !s.tentative && !s.absence) return 'No sign-ups yet';
-    const parts = [signed + ' signed'];
+    const parts = [typeof size === 'number' && size > 0 ? (typeof s.expected === 'number' ? s.expected : signed) + ' / ' + size + ' signed up' : signed + ' signed'];
     if (s.bench) parts.push(s.bench + ' bench');
     if (s.tentative) parts.push(s.tentative + ' tentative');
     if (s.absence) parts.push(s.absence + ' absent');
     return parts.join(', ');
   }
 
+  // The title, then the zone with the raid's size ('Prog night - Hyjal Summit - 20'); '-' when there is nothing to say.
   function eventCellHtml(r) {
-    const name = r.title || r.zone;
-    return (name ? esc(name) : '<span class="gs-muted">-</span>') + (r.eventSourced ? ' <span class="gs-fine">(Raid-Helper)</span>' : '');
+    const where = zoneSizeText(r.zone, r.size);
+    const name = [r.title ? '<span class="gs-ev-title">' + esc(r.title) + '</span>' : '', where ? esc(where) : ''].filter(Boolean).join(' &middot; ');
+    return (name || '<span class="gs-muted">-</span>') + (r.eventSourced ? ' <span class="gs-fine">(Raid-Helper)</span>' : '');
   }
 
   function planPillHtml(r) { return r.planned ? pillHtml('ok', 'Planned') : pillHtml('muted', 'Not planned'); }
@@ -112,31 +151,38 @@
     return plan + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-refresh" data-rid="' + esc(r.id) + '" data-key="rr-' + esc(r.id) + '">Refresh sign-ups</button>';
   }
 
-  // The viewer's own sign-up on an upcoming row: what they are down as, and a Sign up button while they may and are not already signed.
-  // canSignUp: the viewer has a character on the team (the Worker's can.signup).
-  function mineHtml(r, canSignUp) {
+  // "Sign-ups close Thu 7:30 PM" while the window is open and the team (or the raid) has a deadline; nothing otherwise.
+  function deadlineHtml(r, gd) {
+    if (!r.signupsOpen || !(r.closeHours > 0) || typeof r.closesAt !== 'number') return '';
+    const when = momentShortText(r.closesAt, gd);
+    return when ? '<span class="gs-fine">Sign-ups close ' + esc(when) + '</span>' : '';
+  }
+
+  // The viewer's own sign-up on an upcoming row: what they are down as, and a Sign up button while they may and are not already signed, and
+  // when the window closes. canSignUp: the viewer has a character on the team (the Worker's can.signup). gd: for the deadline's time zone.
+  function mineHtml(r, canSignUp, gd) {
     if (!canSignUp) return '';
     const m = r.mine;
     const label = m ? (A().KIND_LABELS[m.kind] || m.kind) : '';
     const chip = m ? '<span class="gs-chip gs-chip-signup">' + esc(label) + (m.characterName ? ' - ' + esc(m.characterName) : '') + '</span>' : '';
     if (r.signupsOpen && !(m && m.kind === 'signed')) {
-      return chip + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>';
+      return chip + '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>' + deadlineHtml(r, gd);
     }
     if (!r.signupsOpen && !m) return '<span class="gs-fine">Sign-ups closed</span>';
-    return chip;
+    return chip + deadlineHtml(r, gd);
   }
 
   function upcomingRowHtml(gd, r, canEdit, canSignUp) {
-    return '<tr><th scope="row" class="gs-cell-strong gs-nowrap"><a href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a></th>' +
-      '<td>' + eventCellHtml(r) + '</td><td>' + esc(signupsText(r.signups)) + '</td>' + (canSignUp ? '<td><div class="gs-su-cell">' + mineHtml(r, canSignUp) + '</div></td>' : '') +
+    return '<tr><th scope="row" class="gs-cell-strong gs-nowrap"><a href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a>' + timeNotSetHtml(r) + '</th>' +
+      '<td>' + eventCellHtml(r) + '</td><td>' + esc(signupsText(r.signups, r.size)) + '</td>' + (canSignUp ? '<td><div class="gs-su-cell">' + mineHtml(r, canSignUp, gd) + '</div></td>' : '') +
       '<td>' + planPillHtml(r) + '</td><td><div class="gs-row-actions">' + upcomingActionsHtml(r, canEdit) + '</div></td></tr>';
   }
 
   function upcomingCardHtml(gd, r, canEdit, canSignUp) {
     const actions = upcomingActionsHtml(r, canEdit);
-    const mine = mineHtml(r, canSignUp);
-    return '<li class="gs-roster-card"><div class="gs-card-top"><a class="gs-raid-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a>' + planPillHtml(r) + '</div>' +
-      '<div class="gs-card-line">' + eventCellHtml(r) + '</div><div class="gs-card-meta"><span class="gs-fine">' + esc(signupsText(r.signups)) + '</span></div>' +
+    const mine = mineHtml(r, canSignUp, gd);
+    return '<li class="gs-roster-card"><div class="gs-card-top"><span class="gs-raid-when"><a class="gs-raid-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '">' + esc(whenText(r, gd)) + '</a>' + timeNotSetHtml(r) + '</span>' + planPillHtml(r) + '</div>' +
+      '<div class="gs-card-line">' + eventCellHtml(r) + '</div><div class="gs-card-meta"><span class="gs-fine">' + esc(signupsText(r.signups, r.size)) + '</span></div>' +
       (mine ? '<div class="gs-su-cell">' + mine + '</div>' : '') + (actions ? '<div class="gs-row-actions">' + actions + '</div>' : '') + '</li>';
   }
 
@@ -462,18 +508,16 @@
   function newState() { return a().nr || null; }
 
   function freshForm(gd) {
-    return { teamId: G.app.teamFor(gd) || '', event: '', reports: [''], plan: '', mode: 'log', date: '', time: DEFAULT_START, zone: '', title: '' };
+    return { teamId: G.app.teamFor(gd) || '', event: '', reports: [''], plan: '', mode: 'log', date: '', time: DEFAULT_START, zone: '', title: '', size: '' };
   }
 
   function editableTeams(gd) {
     return G.shell.activeTeams(gd.teams).filter(function (t) { return G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', t.id); });
   }
 
-  // The guild's calendar date today (en-CA writes YYYY-MM-DD); '' when the time zone is unusable.
+  // The guild's calendar date today; '' when the time zone is unusable.
   function guildTodayOf(gd) {
-    try {
-      return new Intl.DateTimeFormat('en-CA', { timeZone: gd && gd.guild && gd.guild.timeZone ? gd.guild.timeZone : undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    } catch (e) { return ''; }
+    return dateOf(Date.now(), gd && gd.guild && gd.guild.timeZone ? gd.guild.timeZone : undefined);
   }
 
   // The raid names of the guild's game version (the planner's raid list, planning templates left out) for the Zone select.
@@ -549,6 +593,9 @@
     const whenFields = '<div class="gs-field" id="nr-time-field"' + (flags.showTime ? '' : ' hidden') + '><label class="gs-label" for="nr-time">Start time</label><input class="gs-input" type="time" id="nr-time" data-key="nr-time" value="' + esc(f.time == null ? DEFAULT_START : f.time) + '" aria-describedby="nr-time-help"><p class="gs-fine" id="nr-time-help">The guild\'s local time.</p></div>' +
       '<div class="gs-field" id="nr-zone-field"' + (flags.showWhen ? '' : ' hidden') + '><label class="gs-label" for="nr-zone">Zone (optional)</label><select class="gs-input" id="nr-zone" data-key="nr-zone">' + G.ui.optionsHtml([{ value: '', label: 'No zone yet' }].concat(zones.map(function (z) { return { value: z, label: z }; })), f.zone || '') + '</select></div>' +
       '<div class="gs-field" id="nr-title-field"' + (flags.showWhen ? '' : ' hidden') + '><label class="gs-label" for="nr-title">Title (optional)</label><input class="gs-input" type="text" id="nr-title" data-key="nr-title" maxlength="100" autocomplete="off" value="' + esc(f.title || '') + '"></div>';
+    const sizeField = '<div class="gs-field"><label class="gs-label" for="nr-size">Raid size</label><select class="gs-input" id="nr-size" data-key="nr-size" aria-describedby="nr-size-help">' +
+      G.ui.optionsHtml(G.ui.sizeChoices('Automatic - from the zone, else the team\'s size'), f.size == null ? '' : f.size) + '</select>' +
+      '<p class="gs-fine" id="nr-size-help">How many players the raid is for. Sign-ups are counted against it. It can be changed on the raid page.</p></div>';
     const teamField = teams.length > 1
       ? '<div class="gs-field"><label class="gs-label" for="nr-team">Team</label><select class="gs-input" id="nr-team" data-key="nr-team">' + G.ui.optionsHtml(teams.map(function (t) { return { value: t.id, label: t.name }; }), f.teamId) + '</select></div>' : '';
     const done = run && !run.running;
@@ -564,7 +611,7 @@
       '<div class="gs-field"><label class="gs-label" for="nr-event">Raid-Helper event (optional)</label><input class="gs-input" type="text" id="nr-event" data-key="nr-event" data-input="nr-when" placeholder="Event link or ID" autocomplete="off" value="' + esc(f.event) + '" aria-describedby="nr-event-help">' +
       '<p class="gs-fine" id="nr-event-help">The sign-ups. The event\'s start time also sets the raid date and time. A future event is fine.</p></div>' +
       '<div class="gs-field"><label class="gs-label" for="nr-date">Raid date' + (f.event.trim() || (!manual && f.reports.some(function (v) { return v.trim(); })) ? ' (optional)' : '') + '</label><input class="gs-input" type="date" id="nr-date" data-key="nr-date" data-input="nr-when" value="' + esc(f.date) + '" aria-describedby="nr-date-help">' +
-      '<p class="gs-fine" id="nr-date-help">Needed unless a Raid-Helper event or a Warcraft Logs report gives the date. The guild\'s calendar date. A date from today on can be a raid that has not happened yet.</p></div>' + whenFields +
+      '<p class="gs-fine" id="nr-date-help">Needed unless a Raid-Helper event or a Warcraft Logs report gives the date. The guild\'s calendar date. A date from today on can be a raid that has not happened yet.</p></div>' + whenFields + sizeField +
       (manual ? '<p class="gs-fine" data-future-hide' + hideFuture + '>After the raid is created you tick who was present and give a reason.</p>'
         : '<fieldset class="gs-fieldset" id="nr-reports" data-future-hide' + hideFuture + '><legend class="gs-legend">Warcraft Logs reports (optional)</legend>' + f.reports.map(function (v, i) { return reportRowHtml(v, i, f.reports.length); }).join('') +
           '<div><button type="button" class="gs-btn gs-btn-sm" data-action="nr-add-report" data-key="nr-add-report">Add another report</button></div></fieldset>') +
@@ -610,6 +657,7 @@
     if (val('nr-time') != null) f.time = val('nr-time');
     if (val('nr-zone') != null) f.zone = val('nr-zone');
     if (val('nr-title') != null) f.title = val('nr-title');
+    if (val('nr-size') != null) f.size = val('nr-size');
     const reports = document.querySelectorAll('.nr-report');
     if (reports.length) f.reports = Array.prototype.map.call(reports, function (el) { return el.value; });
     const mode = document.querySelector('input[name="nr-mode"]:checked');
@@ -727,6 +775,7 @@
       if (f.zone) body.zone = f.zone;
       if (String(f.title || '').trim()) body.title = String(f.title).trim();
     }
+    if (f.size !== '' && f.size != null) body.size = Number(f.size); // Automatic sends nothing: the Worker picks the zone's size, else the team's
     if (acceptOtherServer) body.acceptOtherServer = true;
     return body;
   }
@@ -774,7 +823,7 @@
   };
 
   G.pages.raids = {
-    raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, signupsText: signupsText, planPillHtml: planPillHtml,
+    raidsHtml: raidsHtml, statePillsHtml: statePillsHtml, sourceChipsHtml: sourceChipsHtml, bossesText: bossesText, whenText: whenText, timeNotSetHtml: timeNotSetHtml, momentText: momentText, zoneSizeText: zoneSizeText, signupsText: signupsText, planPillHtml: planPillHtml,
     planInPlanner: planInPlanner, putEvent: putEvent, MOVE_CANCELLED: MOVE_CANCELLED, moveDialogHtml: moveDialogHtml, mineHtml: mineHtml, fillText: fillText, applySignupView: applySignupView, load: loadList, main: mainList,
   };
   G.pages.raidNew = { raidNewHtml: raidNewHtml, buildLines: buildLines, createBody: createBody, runLinesHtml: runLinesHtml, load: loadNew, main: mainNew, syncForm: syncForm };
