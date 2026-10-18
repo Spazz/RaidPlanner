@@ -265,7 +265,7 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('raid.report', 'raid', 'r_1', { code: 'x' }, { removed: true }), 'Removed a Warcraft Logs report from the raid on Tue Oct 21 (Alpha)'],
     [row('raid.plan', 'raid', 'r_1', { plan: false }, { players: 25, live: true }), 'Attached a plan of 25 players to the raid on Tue Oct 21 (Alpha)'],
     [row('raid.plan', 'raid', 'r_1', { plan: true }, { plan: false }), 'Removed the plan from the raid on Tue Oct 21 (Alpha)'],
-    [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 20, reason: 'x' }), 'Entered attendance by hand for the raid on Tue Oct 21 (Alpha) (20 present)'],
+    [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 20, reason: 'x' }), 'Entered attendance by hand for the raid on Tue Oct 21 (Alpha): 20 present'],
     [row('raid.manual', 'raid', 'r_1', { manual: true }, { manual: false, reason: 'x' }), 'Went back from hand-entered attendance on the raid on Tue Oct 21 (Alpha)'],
     [row('schedule.update', 'team', 't_a'), 'Changed the weekly raid schedule of Alpha'],
     [row('schedule.fill', 'team', 't_a', null, { weeks: 2, dates: ['2026-10-21', '2026-10-28'] }), 'Created 2 upcoming raids for Alpha from its schedule'],
@@ -733,7 +733,7 @@ check('audit route: newest first, a plain sentence from live names, the actor, d
   const latest = r.json.rows.slice(0, 6);
   assert.deepEqual(texts(latest), [
     'Changed the attendance policy of the whole guild: watch',
-    'Entered attendance by hand for the raid on Tue Jan 12 (Alpha) (1 present)',
+    'Entered attendance by hand for the raid on Tue Jan 12 (Alpha): 1 present',
     'Created the raid on Tue Jan 12 (Alpha)',
     'Edited the officer notes of Thoren',
     'Moved Thoren to Reserve',
@@ -1393,13 +1393,13 @@ check('calendar: a malformed or unknown feed address is a 404 and reads nothing 
   assert.equal((await s.w.req('DELETE', `/cal/${token}.ics`, { body: {} })).status, 405);
 });
 
-check('calendar: last use is stamped (at most every ten minutes) and a feed fetch is three or four D1 calls', async () => {
+check('calendar: last use is stamped (at most every ten minutes) and a feed fetch is four or five D1 calls', async () => {
   const s = await calWorld();
   const made = await s.create();
-  assert.equal(await counted(s.w, () => s.feed(made.url)), 4, 'link, guild context, rows, last-used stamp');
+  assert.equal(await counted(s.w, () => s.feed(made.url)), 5, 'link, guild context, who the viewer is, rows, last-used stamp');
   assert.equal((await s.call('erin', 'GET', `/calendar?team=${s.A}`)).json.lastUsedAt, NOW);
   s.w.advance(5 * 60000);
-  assert.equal(await counted(s.w, () => s.feed(made.url)), 3, 'inside ten minutes there is no write');
+  assert.equal(await counted(s.w, () => s.feed(made.url)), 4, 'inside ten minutes there is no write');
   assert.equal((await s.call('erin', 'GET', `/calendar?team=${s.A}`)).json.lastUsedAt, NOW);
   s.w.advance(6 * 60000);
   await s.feed(made.url);

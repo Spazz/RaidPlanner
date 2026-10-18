@@ -25,6 +25,12 @@ async function readTeam(ctx, guildContext, raw) {
   return team;
 }
 
+// The roster person this user is in a guild (their Discord link), or none. The feed's ONE lookup of "me": every other read here goes by the
+// person's id, so changing how a user maps to a person (the accounts work) is a change to this function alone.
+const ownPersonStatement = (db, guildId, userId) => db.prepare(
+  'SELECT id FROM players WHERE guild_id = ? AND discord_user_id = (SELECT discord_id FROM users WHERE id = ?)',
+).bind(guildId, userId);
+
 const statusOf = (team, row) => ({ team: { id: team.id, name: team.name }, subscribed: !!row, createdAt: row ? row.created_at : null, lastUsedAt: row ? row.last_used_at : null });
 
 export async function getCalendarStatus(ctx) {
@@ -88,6 +94,7 @@ export async function getCalendarFeed(ctx) {
   const from = now - FEED_PAST_DAYS * DAY_MS;
   const to = now + FEED_AHEAD_DAYS * DAY_MS;
   const seeCounts = allows(can, 'attendance.view', link.team_id);
+  const own = await ownPersonStatement(db, guild.id, link.user_id).first();
   const [teamResult, raidResult, countResult, mineResult] = await db.batch([
     db.prepare('SELECT name FROM teams WHERE id = ? AND guild_id = ?').bind(link.team_id, guild.id),
     db.prepare(
@@ -102,10 +109,9 @@ export async function getCalendarFeed(ctx) {
     // The viewer's own sign-up on each raid (their Raidsmith one wins over their Raid-Helper one, as in the merged list).
     db.prepare(
       `SELECT s.raid_id, s.source, s.kind FROM raid_signups s
-        WHERE s.player_id = (SELECT id FROM players WHERE guild_id = ?1 AND discord_user_id = (SELECT discord_id FROM users WHERE id = ?2))
-          AND s.source IN ('raid_helper', 'raidsmith')
-          AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ?1 AND team_id = ?3 AND starts_at >= ?4 AND starts_at <= ?5)`,
-    ).bind(guild.id, link.user_id, link.team_id, from, to),
+        WHERE s.player_id = ?1 AND s.source IN ('raid_helper', 'raidsmith')
+          AND s.raid_id IN (SELECT id FROM raids WHERE guild_id = ?2 AND team_id = ?3 AND starts_at >= ?4 AND starts_at <= ?5)`,
+    ).bind(own ? own.id : null, guild.id, link.team_id, from, to),
   ]);
   const counts = new Map();
   for (const row of countResult.results) {

@@ -186,7 +186,7 @@ export function describeRow(row, names = {}) {
       return `Attached a plan of ${plural(Number(after.players) || 0, 'player', 'players')} to ${onRaid(ent)}`;
     case 'raid.manual':
       if (after.manual === false) return `Went back from hand-entered attendance on ${onRaid(ent)}`;
-      return `Entered attendance by hand for ${onRaid(ent)} (${Number(after.present) || 0} present)`;
+      return `Entered attendance by hand for ${onRaid(ent)}: ${Number(after.present) || 0} present`;
     case 'schedule.update': return `Changed the weekly raid schedule of ${team(ent)}`;
     case 'schedule.fill': {
       const dates = Array.isArray(after.dates) ? after.dates.length : 0;
