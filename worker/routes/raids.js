@@ -2,7 +2,7 @@
 // plan, or officer-entered attendance). Every write recomputes the date's attendance through attendance-store.js.
 import { HttpError, cleanText, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
-import { raidAwayEffects, readNotices, realSignupsStatement, teamNoticesStatement } from '../away-store.js';
+import { raidAwayEffects, readNotices, realSignupsStatement, teamCharactersStatement, teamNoticesStatement } from '../away-store.js';
 import { localDate, localTimeToMs } from '../attendance-calendar.js';
 import {
   bumpDayStatement, loadAttendanceFlags, makePolicyResolver, policyRowsStatement, recomputeRaid,
@@ -752,25 +752,132 @@ export async function deletePlan(ctx) {
 // class otherwise, and the spec key), so the Planner's existing Raid-Helper code reads it unchanged; its name is the character chosen.
 const META_CLASS = { late: 'Late', bench: 'Bench', tentative: 'Tentative', absence: 'Absence' };
 
+// The guild's note on a sign-up in the seed (js/state.js SignupMarker): { kind, text } with printable ASCII only, at most 60 characters.
+// 'away' (an Away notice: a virtual Absence row), 'also' (signed up for another raid of the guild starting within four hours), 'late' / 'leaving'
+// (the person's Late / Leaving notice), 'standby' (a volunteer standby). A row carries the strongest of its markers, in that order.
+const MARKER_MAX = 60;
+const ALSO_WINDOW_MS = 4 * 60 * 60 * 1000;
+const marker = (kind, text) => ({ kind, text: text.replace(/[^\x20-\x7e]/g, '').trim().slice(0, MARKER_MAX) });
+
 export async function getPlanner(ctx) {
   const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const guild = guildContext.guild;
-  const [signupResult, characterResult] = await ctx.db.batch([
+  // The notices only matter for a raid that has not started; "also in another raid" also needs a known start time on this raid (and, in the query, the other).
+  const upcoming = raid.starts_at > ctx.now();
+  const statements = [
     ctx.db.prepare(
-      `SELECT s.source, s.signup_id, s.nickname, s.kind, s.class_name, s.spec_name, s.position, s.player_id, s.character_id FROM raid_signups s
+      `SELECT s.source, s.signup_id, s.nickname, s.kind, s.standby, s.class_name, s.spec_name, s.position, s.player_id, s.character_id FROM raid_signups s
         WHERE s.raid_id = ? AND ${MERGED_ROWS} ORDER BY s.position, s.source, s.signup_id`,
     ).bind(raid.id),
     ctx.db.prepare(
       `SELECT id, player_id, name, class, is_main, team_id FROM characters
         WHERE guild_id = ? AND player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ? AND source IN ('raid_helper', 'raidsmith') AND player_id IS NOT NULL)`,
     ).bind(guild.id, raid.id),
-  ]);
+  ];
+  const noticesAt = statements.length;
+  if (upcoming) {
+    statements.push(
+      teamNoticesStatement(ctx.db, guild.id, raid.team_id, ctx.session.user.id, raid.raid_on, raid.raid_on),
+      teamCharactersStatement(ctx.db, guild.id, raid.team_id, raid.raid_on, raid.raid_on),
+    );
+  }
+  const alsoAt = statements.length;
+  if (upcoming && raid.time_known !== 0) {
+    // The people of this raid who are also signed up (signed, late or standby) for another raid of the guild that starts within four hours of it.
+    statements.push(ctx.db.prepare(
+      `SELECT s.player_id, r.starts_at, t.name AS team_name FROM raid_signups s JOIN raids r ON r.id = s.raid_id JOIN teams t ON t.id = r.team_id
+        WHERE r.guild_id = ?1 AND r.id != ?2 AND r.time_known IS NOT 0 AND r.starts_at >= ?3 - ?4 AND r.starts_at <= ?3 + ?4
+          AND ${MERGED_ROWS} AND s.kind IN ('signed', 'late') AND s.player_id IN (SELECT player_id FROM raid_signups WHERE raid_id = ?2 AND player_id IS NOT NULL)`,
+    ).bind(guild.id, raid.id, raid.starts_at, ALSO_WINDOW_MS));
+  }
+  const results = await ctx.db.batch(statements);
+  const [signupResult, characterResult] = results;
   const charactersByPlayer = new Map();
   for (const row of characterResult.results) {
     if (!charactersByPlayer.has(row.player_id)) charactersByPlayer.set(row.player_id, []);
     charactersByPlayer.get(row.player_id).push(row);
   }
+  let effects = { away: [], notes: new Map() };
+  const also = new Map(); // personId -> the team of the nearest other raid (the earlier team name when two are as near)
+  if (upcoming) {
+    const known = new Set(characterResult.results.map((row) => row.id));
+    for (const row of results[noticesAt + 1].results) {
+      if (known.has(row.id)) continue;
+      if (!charactersByPlayer.has(row.player_id)) charactersByPlayer.set(row.player_id, []);
+      charactersByPlayer.get(row.player_id).push(row);
+    }
+    effects = raidAwayEffects(readNotices(results[noticesAt].results), raid.raid_on, new Set(signupResult.results.map((row) => row.player_id).filter(Boolean)));
+    const nearest = new Map();
+    for (const row of results[alsoAt] ? results[alsoAt].results : []) {
+      const gap = Math.abs(row.starts_at - raid.starts_at);
+      const have = nearest.get(row.player_id);
+      if (!have || gap < have.gap || (gap === have.gap && row.team_name < have.team)) nearest.set(row.player_id, { gap, team: row.team_name });
+    }
+    for (const [personId, { team }] of nearest) also.set(personId, team);
+  }
+
+  // The marker of a real row: the strongest that applies (an 'away' marker belongs to the virtual row below).
+  const markerOf = (personId, kind) => {
+    if (personId && also.has(personId) && (kind === 'signed' || kind === 'late' || kind === 'standby')) {
+      const team = marker('also', also.get(personId)).text; // the team name as the Planner can print it
+      return marker('also', team ? `Also in: ${team} raid` : 'Also in: another team raid');
+    }
+    const note = personId ? effects.notes.get(personId) : null;
+    if (note) return marker(note.kind, `${note.kind === 'late' ? 'Late' : 'Leaves'}: ${note.atTime}`);
+    return kind === 'standby' ? marker('standby', 'Standby') : null;
+  };
+  const withMarker = (row) => {
+    const found = markerOf(row.personId, row.kind);
+    return found ? { ...row, marker: found } : row;
+  };
+
+  const signups = signupResult.results.map((row) => {
+    const characters = row.player_id ? charactersByPlayer.get(row.player_id) : null;
+    if (row.source === 'raidsmith') {
+      const chosen = (characters || []).find((character) => character.id === row.character_id);
+      const shown = chosen || displayCharacter(characters || [], raid.team_id);
+      // A volunteer standby is worded as signed (its class and spec) and says 'standby' in kind.
+      const kind = row.kind === 'signed' && row.standby === 1 ? 'standby' : row.kind;
+      return withMarker({
+        key: `rs${row.signup_id}`,
+        name: shown ? shown.name : 'Unknown',
+        discordName: null,
+        personId: row.player_id,
+        className: kind === 'signed' || kind === 'standby' ? row.class_name : META_CLASS[kind],
+        specName: row.spec_name,
+        kind,
+        position: row.position,
+      });
+    }
+    return withMarker({
+      key: row.signup_id,
+      name: plannerName(row, characters),
+      discordName: row.nickname,
+      personId: row.player_id,
+      className: row.class_name,
+      specName: row.spec_name,
+      kind: row.kind,
+      position: row.position,
+    });
+  });
+  // The people an Away notice covers who have no sign-up: one virtual Absence row each, after every real row.
+  effects.away.forEach(({ personId }, index) => {
+    const shown = displayCharacter(charactersByPlayer.get(personId) || [], raid.team_id);
+    signups.push({
+      key: `aw${personId}`,
+      name: shown ? shown.name : 'Unknown',
+      discordName: null,
+      personId,
+      source: 'away',
+      className: 'Absence',
+      specName: null,
+      kind: 'absence',
+      position: 1000 + index,
+      marker: marker('away', 'Away: notice'),
+    });
+  });
+
   return jsonResponse({
     raid: {
       id: raid.id,
@@ -786,33 +893,7 @@ export async function getPlanner(ctx) {
       timeZone: guild.time_zone,
     },
     livePlan: raid.plan_live,
-    signups: signupResult.results.map((row) => {
-      const characters = row.player_id ? charactersByPlayer.get(row.player_id) : null;
-      if (row.source === 'raidsmith') {
-        const chosen = (characters || []).find((character) => character.id === row.character_id);
-        const shown = chosen || displayCharacter(characters || [], raid.team_id);
-        return {
-          key: `rs${row.signup_id}`,
-          name: shown ? shown.name : 'Unknown',
-          discordName: null,
-          personId: row.player_id,
-          className: row.kind === 'signed' ? row.class_name : META_CLASS[row.kind],
-          specName: row.spec_name,
-          kind: row.kind,
-          position: row.position,
-        };
-      }
-      return {
-        key: row.signup_id,
-        name: plannerName(row, characters),
-        discordName: row.nickname,
-        personId: row.player_id,
-        className: row.class_name,
-        specName: row.spec_name,
-        kind: row.kind,
-        position: row.position,
-      };
-    }),
+    signups,
   });
 }
 

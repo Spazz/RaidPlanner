@@ -2942,8 +2942,8 @@ check('away (pure): a member cannot edit a notice to cover days that have passed
 
 // Alpha (A) and Bravo (B); Bob (Officer), Carol (leads A), Dave (leads B), Erin / Gina / Hank (Members) whose persons are Eliora (A), Gorrim (A) and
 // Wanderfell (B); Nodisc (A) has no Discord ID. The clock is 2027-01-16 12:00Z, a Saturday, 07:00 in New York.
-async function awayWorld() {
-  const s = await laneWorld();
+async function awayWorld(opts = {}) {
+  const s = await laneWorld(opts);
   s.p = {};
   const person = async (key, name, classId, spec, team, discord) => {
     const made = await addPerson(s, 'bob', team, name, { class: classId, mainSpec: spec, offSpec: null });
@@ -3213,8 +3213,8 @@ check('away: notices go with the person (delete cascades), stay when the account
 // Away notices in the views (B5a / B5b): the virtual Absence, the Late / Leaving notes, the counts, `mine`, the calendar feed
 
 // awayWorld plus an upcoming Alpha raid on Thursday 2027-01-21 20:00 and a past one on Thursday 2027-01-14.
-async function awayRaidWorld() {
-  const s = await awayWorld();
+async function awayRaidWorld(opts = {}) {
+  const s = await awayWorld(opts);
   s.up = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-21', startTime: '20:00' })).id;
   s.past = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-14', startTime: '20:00' })).id;
   s.view = async (who, rid = s.up) => (await s.call(who, 'GET', s.raid(rid, '/signups'))).json;
@@ -3340,6 +3340,109 @@ check('away views: the calendar feed counts them ("Can\'t come 1") and tells the
   assert.equal((await s.sign('erin', { kind: 'late' })).status, 200);
   lines = await feed();
   assert.deepEqual(lines[`${s.up}@raidsmith`].slice(0, 2), ['Late 1, Can\'t come 1', 'Your sign-up: Late']);
+});
+
+// ---------------------------------------------------------------------------
+// The Planner seed (B6): markers for Away, "also in another raid", Late, Leaving and Standby; the Planner's own reader accepts every one
+
+// The Planner's sandbox: its Raid-Helper importer reads what RaidLink.seedToRaidHelper writes from a seed.
+const plannerReader = () => {
+  const ctx = require('./tests/load-app').sandbox(['Import', 'RaidLink', 'Config', 'SignupMarker']);
+  return { clean: (marker) => JSON.parse(JSON.stringify(ctx.api.SignupMarker.clean(marker))), entries: (seed) => ctx.api.Import.parseRaidHelperSignUps(JSON.parse(ctx.api.RaidLink.seedToRaidHelper(seed))).entries };
+};
+
+check('seed markers: Away, Also in, Late, Leaving and Standby - the strongest one per row, ASCII, and the Planner\'s own reader accepts every kind', async () => {
+  const s = await awayRaidWorld({ teams: 3 });
+  s.C = s.teams[2];
+  const persons = {};
+  for (const [key, name, classId, spec] of [['hestia', 'Hestia', 'PRIEST', 'Shadow'], ['cassia', 'Cassia', 'MAGE', 'Frost'], ['brindle', 'Brindle', 'MAGE', 'Fire'], ['fenwick', 'Fenwick', 'ROGUE', 'Combat'], ['dunmar', 'Dunmar', 'WARRIOR', 'Fury']]) {
+    persons[key] = (await addPerson(s, 'bob', s.A, name, { class: classId, mainSpec: spec, offSpec: null })).person.id;
+  }
+  const pid = { ...s.p, ...persons };
+  const officer = async (rid, key, kind) => assert.equal((await s.call('bob', 'PUT', s.raid(rid, `/signups/${pid[key]}`), { kind })).status, 200, `${key} ${kind}`);
+  const notice = (key, body) => s.file('bob', { personId: pid[key], from: '2027-01-21', to: '2027-01-21', ...body });
+  // The other raids of the night: Bravo at 22:00 (two hours after Alpha's 20:00), Charlie at 00:00 on the 22nd (exactly four hours), Bravo again at 00:01 (four hours and a minute).
+  const bravo = (await s.makeRaid({ teamId: s.B, raidOn: '2027-01-21', startTime: '22:00' })).id;
+  const charlie = (await s.makeRaid({ teamId: s.C, raidOn: '2027-01-22', startTime: '00:00' })).id;
+  const bravoLate = (await s.makeRaid({ teamId: s.B, raidOn: '2027-01-22', startTime: '00:01' })).id;
+
+  await notice('eliora', { kind: 'away' });                                         // Away, no sign-up: a virtual Absence row
+  await officer(s.up, 'dunmar', 'tentative'); await notice('dunmar', { kind: 'away' }); await officer(bravo, 'dunmar', 'signed'); // a real sign-up outranks the notice; tentative is not "coming"
+  await officer(s.up, 'gorrim', 'signed'); await notice('gorrim', { kind: 'late', atTime: '21:00' });
+  await officer(s.up, 'hestia', 'signed'); await notice('hestia', { kind: 'leaving', atTime: '22:30' });
+  await officer(s.up, 'cassia', 'standby');
+  await officer(s.up, 'nodisc', 'standby'); await notice('nodisc', { kind: 'late', atTime: '21:00' }); await officer(bravo, 'nodisc', 'signed'); // also > late > standby
+  await officer(s.up, 'brindle', 'signed'); await officer(charlie, 'brindle', 'late');         // exactly four hours: still "also"
+  await officer(s.up, 'fenwick', 'signed'); await officer(bravoLate, 'fenwick', 'signed');      // four hours and a minute: not
+
+  const seed = (await s.call('bob', 'GET', s.raid(s.up, '/planner'))).json;
+  const by = Object.fromEntries(seed.signups.map((row) => [row.name, row]));
+  assert.deepEqual(Object.keys(by).sort(), ['Brindle', 'Cassia', 'Dunmar', 'Eliora', 'Fenwick', 'Gorrim', 'Hestia', 'Nodisc']);
+  assert.deepEqual(by.Eliora, {
+    key: `aw${pid.eliora}`, name: 'Eliora', discordName: null, personId: pid.eliora, source: 'away', className: 'Absence', specName: null, kind: 'absence', position: 1000,
+    marker: { kind: 'away', text: 'Away: notice' },
+  });
+  assert.equal(seed.signups[seed.signups.length - 1].name, 'Eliora', 'the virtual rows come after the real ones');
+  assert.deepEqual([by.Dunmar.kind, by.Dunmar.className, 'marker' in by.Dunmar], ['tentative', 'Tentative', false], 'a real sign-up: no virtual row, no away marker, and tentative is not "also"');
+  assert.deepEqual([by.Gorrim.kind, by.Gorrim.className, by.Gorrim.marker], ['signed', 'Paladin', { kind: 'late', text: 'Late: 21:00' }]);
+  assert.deepEqual([by.Hestia.kind, by.Hestia.marker], ['signed', { kind: 'leaving', text: 'Leaves: 22:30' }]);
+  const { raidHelperSpecKey } = await load('worker/signups-data.js');
+  assert.deepEqual([by.Cassia.kind, by.Cassia.className, by.Cassia.specName, by.Cassia.marker], ['standby', 'Mage', raidHelperSpecKey('MAGE', 'Frost'), { kind: 'standby', text: 'Standby' }]);
+  assert.deepEqual([by.Nodisc.kind, by.Nodisc.className, by.Nodisc.marker], ['standby', 'Rogue', { kind: 'also', text: 'Also in: Bravo raid' }]);
+  assert.deepEqual([by.Brindle.kind, by.Brindle.marker], ['signed', { kind: 'also', text: 'Also in: Charlie raid' }]);
+  assert.equal('marker' in by.Fenwick, false);
+  assert.equal(seed.signups.filter((row) => row.source === 'away').length, 1, 'Dunmar has a sign-up, so only Eliora is a virtual row');
+
+  // The other direction: on Bravo's raid Nodisc is "also in" Alpha's.
+  const bravoSeed = (await s.call('bob', 'GET', s.raid(bravo, '/planner'))).json;
+  assert.deepEqual(bravoSeed.signups.map((row) => [row.name, row.marker && row.marker.text]).sort(), [['Dunmar', undefined], ['Nodisc', 'Also in: Alpha raid']]);
+
+  // The Planner reads every kind of marker: its importer keeps the marker as sent (SignupMarker.clean) and files nothing for review.
+  const reader = plannerReader();
+  const entries = reader.entries(seed);
+  const entry = Object.fromEntries(entries.map((e) => [e.name, e]));
+  for (const row of seed.signups) {
+    if (!row.marker) { assert.equal(entry[row.name].marker, undefined, `${row.name} has none`); continue; }
+    assert.deepEqual(JSON.parse(JSON.stringify(entry[row.name].marker)), reader.clean(row.marker), `${row.name}: the Planner accepts the ${row.marker.kind} marker`);
+    assert.deepEqual(reader.clean(row.marker), row.marker, `${row.name}: and keeps it exactly`);
+  }
+  assert.deepEqual(['away', 'also', 'late', 'leaving', 'standby'].filter((kind) => !seed.signups.some((row) => row.marker && row.marker.kind === kind)), [], 'every kind was exercised');
+  assert(entries.every((e) => !e.needsReview), 'nothing was guessed');
+  assert.equal(entry.Eliora.status, 'absent', 'the virtual Absence arrives as Absent');
+  assert.equal(entry.Cassia.status, 'confirmed', 'a standby arrives as signed up');
+});
+
+check('seed markers: text is printable ASCII of at most 60 characters whatever the other team is called; a notice or a sign-up that does not apply gives none', async () => {
+  const s = await awayRaidWorld({ teams: 3 });
+  s.C = s.teams[2];
+  const other = (await s.makeRaid({ teamId: s.C, raidOn: '2027-01-21', startTime: '21:00' })).id;
+  for (const key of ['eliora', 'gorrim']) {
+    for (const rid of [s.up, other]) assert.equal((await s.call('bob', 'PUT', s.raid(rid, `/signups/${s.p[key]}`), { kind: 'signed' })).status, 200);
+  }
+  const alsoText = async (who) => (await s.call('bob', 'GET', s.raid(s.up, '/planner'))).json.signups.find((row) => row.name === who).marker.text;
+  exec(s.w, `UPDATE teams SET name = 'Équipe Ünï' WHERE id = '${s.C}'`);
+  assert.equal(await alsoText('Eliora'), 'Also in: quipe n raid', 'characters outside printable ASCII are dropped');
+  exec(s.w, `UPDATE teams SET name = '${'x'.repeat(80)}' WHERE id = '${s.C}'`);
+  const long = await alsoText('Eliora');
+  assert.deepEqual([long.length, /^[\x20-\x7e]+$/.test(long), long.startsWith('Also in: xxx')], [60, true, true]);
+  exec(s.w, `UPDATE teams SET name = 'ÉÜ' WHERE id = '${s.C}'`);
+  assert.equal(await alsoText('Eliora'), 'Also in: another team raid', 'a name with nothing printable left');
+  // A raid that has started has nothing to plan: no virtual rows or notes.
+  const started = (await s.call('bob', 'GET', s.raid(s.past, '/planner'))).json;
+  assert.deepEqual(started.signups, []);
+});
+
+check('seed markers: no "also in another raid" when either start time is unknown (date-only raids)', async () => {
+  const s = await awayRaidWorld({ teams: 3 });
+  s.C = s.teams[2];
+  const timed = (await s.makeRaid({ teamId: s.A, raidOn: '2027-01-22', startTime: '06:30' })).id;
+  const dateOnly = (await s.makeRaid({ teamId: s.C, raidOn: '2027-01-22' })).id;            // noon UTC = 07:00 New York: half an hour away, but nobody knows the time
+  const morning = (await s.makeRaid({ teamId: s.B, raidOn: '2027-01-22', startTime: '08:00' })).id;
+  for (const rid of [timed, dateOnly, morning]) assert.equal((await s.call('bob', 'PUT', s.raid(rid, `/signups/${s.p.eliora}`), { kind: 'signed' })).status, 200);
+  const marked = async (rid) => (await s.call('bob', 'GET', s.raid(rid, '/planner'))).json.signups.map((row) => row.marker && row.marker.text);
+  assert.deepEqual(await marked(timed), ['Also in: Bravo raid'], 'the timed raid sees the other timed raid only');
+  assert.deepEqual(await marked(dateOnly), [undefined], 'a date-only raid has no start to compare');
+  assert.deepEqual(await marked(morning), ['Also in: Alpha raid']);
 });
 
 // ---- runner (keep last): add new checks ABOVE this line ----
