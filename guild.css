@@ -8,8 +8,8 @@
 
 /* ── Design framework tokens (Wave 0) ──────────────────────────
    Colour roles, the type scale with its 12 px floor, spacing, control sizes and the focus ring. app.css owns the surfaces, edges and text
-   greys; these add what the design framework (tasks/design-framework-spec.md) names on top. Molten orange is for the one primary button
-   only; the gold carries titles, links, the active marker, count badges and the focus ring. */
+   greys; these add what the design spec (tasks/design-spec.md) names on top. Molten orange is for the one primary button only; gold is
+   for count badges only (design spec section 2.2). */
 :root {
   --border-field: #6b6f72;                 /* input, select, checkbox edges: 3.4:1 on the field fill */
   --sp-12: 48px;                           /* centred card top margin */
@@ -1380,7 +1380,8 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 }
 
 /* ══ Design framework (Wave 0): components and templates ═════════════════════════════
-   Built by js/guild/ui-kit.js and ui-templates.js. Tokens are at the top of this file; the boards are in tasks/design-framework-spec.md.
+   Built by js/guild/ui-kit.js and ui-templates.js. Tokens are at the top of this file; the rules are in tasks/design-spec.md (the page look is
+   the Forge section below).
    Radius 0 everywhere; status is icon + word + tint; the molten orange is for the one primary button only; the gold carries titles, links,
    the active marker, count badges and the focus ring. Text never goes under 12 px. Phone: every control 44 px, tables become cards. */
 
@@ -1680,7 +1681,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-nextstep-text { margin: 0; max-width: 640px; font-size: 16px; line-height: 1.45; color: var(--text-secondary); }
 .gs-nextstep-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 
-/* Data table: 52 px rows, the viewer's row pinned first; cards below 760 px */
+/* Data table: 52 px rows, the viewer's row tinted in its sorted place; cards below 760 px */
 .gs-dtable-wrap { background: var(--bg-panel); border: 1px solid var(--border-subtle); }
 .gs-dtable { width: 100%; border-collapse: collapse; font-size: 16px; line-height: 1.4; }
 .gs-dtable th { padding: 10px 16px; text-align: left; background: var(--bg-frame); border-bottom: 1px solid var(--border-medium); font: 600 12px/1.2 var(--font-cond); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
@@ -1801,7 +1802,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 }
 
 /* ══ Design framework (Wave 2): list pages on T1, imports on T5 ═════════════════════════
-   Attendance and Loot (the viewer's own row pinned, legend folded, the matrix at the page's full width with a sticky name column), the Raids list and the
+   Attendance and Loot (the viewer's own row tinted in place, legend folded, the matrix at the page's full width with a sticky name column), the Raids list and the
    Roster on the data table, the import flows (stepper, preview, commit bar), the phone More tab. */
 
 /* Attendance: the matrix is the one page that uses the whole column; the name column stays while the weeks scroll */
@@ -1814,7 +1815,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-att-card.is-you { background: var(--you-bg); box-shadow: inset 3px 0 0 var(--text-primary); }
 .gs-legend-box > summary { min-height: 32px; display: flex; align-items: center; }
 
-/* Loot: the viewer's own row first, same gold edge as Attendance and the data table */
+/* Loot: the viewer's own row tinted in its sorted place, same tint as Attendance and the data table */
 .gs-table-loot tr.is-you td, .gs-table-loot tr.is-you th[scope="row"] { background: var(--you-bg); }
 .gs-table-loot tr.is-you th[scope="row"] { box-shadow: inset 3px 0 0 var(--text-primary); }
 .gs-loot-card.is-you { background: var(--you-bg); box-shadow: inset 3px 0 0 var(--text-primary); }
