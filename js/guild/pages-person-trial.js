@@ -7,9 +7,7 @@
   'use strict';
 
   const NOTE_MAX = 300;
-  const LOOT_LISTED = 10;
   const EXTEND_DAYS = 14;
-  const TAG_LABELS = { MS: 'Main spec', OS: 'Off spec', DE: 'Disenchanted', BANK: 'Bank' };
   const NOTE_FAILED = 'The trial was ended, but the note could not be saved.';
 
   function st() { return G.app.state; }
@@ -25,86 +23,69 @@
   }
 
   // ── view ──
-  // "Trial Oct 3, 2026 - Oct 24, 2026", from the record (it follows an Extend without another read of the card).
-  function datesText(p) {
+  // "Oct 8 - Oct 23" from the record (it follows an Extend without another read of the card).
+  function rangeText(p) {
     const start = G.ui.formatDay(p.trialStart);
     const end = G.ui.formatDay(p.trialEnd);
-    if (start && end) return 'Trial ' + start + ' - ' + end;
-    if (start) return 'Trial started ' + start + '. No end date is set.';
-    if (end) return 'Trial ends ' + end + '.';
+    if (start && end) return start + ' - ' + end;
+    if (start) return 'Started ' + start + '. No end date is set.';
+    if (end) return 'Ends ' + end;
     return 'No trial dates are set.';
   }
 
-  function tileHtml(label, value) {
-    return '<div class="gs-summary-item"><dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd></div>';
+  // One figure of the decision panel: a caps label, a big value, an optional small note.
+  function figureHtml(label, value, note) {
+    return '<div class="gs-pr-fig"><span class="gs-pr-cap">' + esc(label) + '</span><span class="gs-pr-numrow"><span class="gs-pr-num">' + esc(value) + '</span>' +
+      (note ? '<span class="gs-pr-mut">' + esc(note) + '</span>' : '') + '</span></div>';
   }
 
-  function attendanceHtml(att, showTeam) {
-    if (!att) return '<p class="gs-fine">Attendance is not available for this person yet.</p>';
-    return (showTeam && att.team && att.team.name ? '<p class="gs-fine">Attendance on ' + esc(att.team.name) + '</p>' : '') +
-      '<dl class="gs-summary gs-trial-stats">' +
-      tileHtml('Raids counted', num(att.raids)) + tileHtml('Attendance', G.ui.percent(att.pct)) + tileHtml('Missed', num(att.missed)) +
-      tileHtml('Missed with notice', num(att.missedNotice)) + tileHtml('Late / left early', num(att.late) + ' / ' + num(att.leftEarly)) +
-      tileHtml('Filled in elsewhere', num(att.fillIns)) + '</dl>' +
-      (num(att.pending) > 0 ? '<p class="gs-fine">' + esc(plural(num(att.pending), 'raid is', 'raids are')) + ' awaiting review and not counted yet.</p>' : '');
+  // "1 MS", "2 MS, 1 OS": the loot the trial has received, by tag.
+  function lootFigure(loot) {
+    if (!loot || !num(loot.total)) return '0';
+    return [[loot.ms, 'MS'], [loot.os, 'OS'], [loot.de, 'DE'], [loot.bank, 'Bank']].filter(function (x) { return num(x[0]) > 0; }).map(function (x) { return num(x[0]) + ' ' + x[1]; }).join(', ');
   }
 
-  // "2 main spec, 1 off spec": the tags that have any.
-  function lootSplit(loot) {
-    return [[loot.ms, 'main spec'], [loot.os, 'off spec'], [loot.de, 'disenchanted'], [loot.bank, 'bank']]
-      .filter(function (x) { return num(x[0]) > 0; }).map(function (x) { return num(x[0]) + ' ' + x[1]; }).join(', ');
+  function figuresHtml(d) {
+    const att = d.attendance;
+    const loot = d.loot ? figureHtml('Loot', lootFigure(d.loot)) : '';
+    if (!att) return '<p class="gs-fine">Attendance is not available for this person yet.</p>' + (loot ? '<div class="gs-pr-figs is-five">' + loot + '</div>' : '');
+    return '<div class="gs-pr-figs is-five">' + figureHtml('Raids', num(att.raids)) + figureHtml('Attendance', G.ui.percent(att.pct), num(att.raids) > 0 ? num(att.present) + ' of ' + num(att.raids) : '') +
+      figureHtml('Missed', num(att.missed), num(att.missedNotice) > 0 ? num(att.missedNotice) + ' with notice' : '') + figureHtml('Late or left early', num(att.late) + num(att.leftEarly)) + loot + '</div>' +
+      (num(att.pending) > 0 ? '<p class="gs-pr-mut">' + esc(plural(num(att.pending), 'raid is', 'raids are')) + ' awaiting review and not counted yet.</p>' : '');
   }
 
-  // gameVersion: the guild's, for the Wowhead item link (G.ui.itemLinkHtml); the trial payload has no quality, so Wowhead colours the link.
-  function lootRowHtml(it, gameVersion) {
-    const tag = String(it && it.tag == null ? '' : it.tag);
-    const label = Object.prototype.hasOwnProperty.call(TAG_LABELS, tag) ? TAG_LABELS[tag] : tag;
-    return '<li class="gs-trial-loot-row">' + G.ui.itemLinkHtml({ itemId: it.itemId, itemName: it.itemName }, gameVersion) + (label ? '<span class="gs-chip gs-chip-tag' + (tag && tag !== 'MS' ? ' is-' + esc(tag.toLowerCase()) : '') + '">' + esc(label) + '</span>' : '') +
-      (it.raidOn ? '<span class="gs-fine">' + esc(G.ui.shortDay(it.raidOn) || it.raidOn) + '</span>' : '') + '</li>';
-  }
-
-  function lootHtml(loot, gameVersion) {
-    if (!loot) return '';
-    const total = num(loot.total);
-    const items = Array.isArray(loot.items) ? loot.items : [];
-    if (!total) return '<div class="gs-trial-block"><h3 class="gs-h3">Loot</h3><p class="gs-fine">No loot yet</p></div>';
-    const split = lootSplit(loot);
-    const shown = items.slice(0, LOOT_LISTED);
-    return '<div class="gs-trial-block"><h3 class="gs-h3">Loot</h3><p class="gs-trial-sum">Loot received: ' + esc(total) + (split ? ' (' + esc(split) + ')' : '') + '</p>' +
-      (shown.length ? '<ul class="gs-trial-loot" aria-label="Loot received">' + shown.map(function (it) { return lootRowHtml(it, gameVersion); }).join('') + '</ul>' : '') +
-      (total > shown.length ? '<p class="gs-fine">and ' + esc(total - shown.length) + ' more</p>' : '') + '</div>';
-  }
-
-  function notesHtml(notes) {
-    if (!notes) return '';
-    return '<div class="gs-trial-block"><h3 class="gs-h3">Officer notes</h3>' +
-      (notes.excerpt ? '<p class="gs-trial-note">' + esc(notes.excerpt) + '</p>' : '<p class="gs-fine">No notes yet.</p>') +
-      (notes.truncated ? '<p class="gs-fine">Shortened. The full text is under Officer notes on this page.</p>' : '') + '</div>';
+  // The officer note excerpt as a quote, with who wrote it and when when the record carries the notes.
+  function noteHtml(notes, record) {
+    if (!notes || !notes.excerpt) return '';
+    const n = record && record.notes;
+    const by = n && n.updatedBy && n.updatedBy.displayName ? n.updatedBy.displayName : '';
+    const when = n && n.updatedAt ? G.ui.formatDateTime(n.updatedAt, G.ui.guildZone()) : '';
+    return '<p class="gs-pr-quote">&quot;' + esc(notes.excerpt) + '&quot;' + (by || when ? ' <span class="gs-pr-mut">- ' + esc([by, when].filter(Boolean).join(', ')) + '</span>' : '') + '</p>';
   }
 
   function actionsHtml() {
-    return '<div class="gs-actions gs-trial-actions">' + G.ui.buttonHtml({ label: 'Promote to Raider', variant: 'primary', attrs: { 'data-action': 'trial-promote', 'data-key': 'trial-card-promote' } }) +
+    return '<div class="gs-pr-decide">' + G.ui.buttonHtml({ label: 'Promote to Raider', variant: 'primary', attrs: { 'data-action': 'trial-promote', 'data-key': 'trial-card-promote' } }) +
       G.ui.buttonHtml({ label: 'Extend trial', attrs: { 'data-action': 'trial-extend', 'data-key': 'trial-card-extend' } }) +
-      G.ui.buttonHtml({ label: 'End trial', variant: 'danger-outline', attrs: { 'data-action': 'trial-end', 'data-key': 'trial-card-end' } }) + '</div>';
+      G.ui.buttonHtml({ label: 'End trial', variant: 'ghost', attrs: { 'data-action': 'trial-end', 'data-key': 'trial-card-end' } }) + '</div>';
   }
 
-  // opts: { guildData, gid, pid, record (GET /roster/p_...), state: { data, error } | null }  ->  the Trial review section of the person page, or null
+  // opts: { guildData, gid, pid, record (GET /roster/p_...), state: { data, error } | null }  ->  the decision panel at the top of the person page, or null
   function sectionOf(opts) {
     const s = opts.state;
     const record = opts.record;
     if (!s || s.none || !shows(record)) return null;
     const p = record.person;
+    const flag = G.ui.trialCopy(p.trialFlag).toLowerCase();
+    const sub = esc(rangeText(p)) + (flag ? ' &middot; ' + esc(flag) : '');
     let body;
     if (s.error || !s.data) {
       body = '<p class="gs-alert" role="alert">' + esc(s.error || 'Could not load the trial review.') + '</p><div class="gs-actions">' + G.ui.buttonHtml({ label: 'Try again', attrs: { 'data-action': 'trial-retry', 'data-key': 'trial-card-retry' } }) + '</div>';
     } else {
-      const d = s.data;
-      const showTeam = G.shell.activeTeams(opts.guildData && opts.guildData.teams).length > 1;
-      body = '<p class="gs-trial-dates">' + esc(datesText(p)) + '</p>' +
-        '<p class="gs-fine">' + (d.since ? 'Since ' + esc(G.ui.formatDay(d.since)) + ' (trial start)' : 'No trial start date is set.') + '</p>' +
-        attendanceHtml(d.attendance, showTeam) + lootHtml(d.loot, opts.guildData && opts.guildData.guild ? opts.guildData.guild.gameVersion : null) + notesHtml(d.notes) + actionsHtml();
+      body = figuresHtml(s.data) + noteHtml(s.data.notes, record);
     }
-    return { id: 'trial-card', title: 'Trial review', chipHtml: G.ui.trialChipHtml(p.trialFlag), bodyHtml: body };
+    const html = '<section class="gs-hd-panel gs-pr-trial" aria-labelledby="trial-card-h"><div class="gs-pr-trialhead"><div class="gs-pr-trialtitle"><h2 class="gs-pr-h" id="trial-card-h">Trial review</h2><span class="gs-pr-sub">' + sub + '</span></div>' +
+      (s.error || !s.data ? '' : actionsHtml()) + '</div>' + body + '</section>';
+    return { id: 'trial-card', bare: true, bodyHtml: html };
   }
 
   function cardHtml(opts) {
@@ -118,12 +99,13 @@
     return G.ui.dialogHtml({ kind: 'confirm', title: 'Promote ' + name + ' to Raider?', text: name + ' becomes a Raider and the trial is over.', primary: { label: 'Promote to Raider' }, formAttrs: { 'data-submit': 'trial-promote-form' } });
   }
 
-  // The date starts 14 days after the later of the current end and today; it must be after today.
-  function extendDialogHtml(record, today) {
+  // The date starts `days` (the team's trial length, 14 when unknown) after the later of the current end and today; it must be after today.
+  function extendDialogHtml(record, today, days) {
     const p = record.person;
+    const length = Number.isInteger(days) && days >= 1 ? days : EXTEND_DAYS;
     const t = today || record.today || '';
     const start = p.trialEnd && p.trialEnd > t ? p.trialEnd : t;
-    const body = '<div class="gs-field"><label class="gs-label" for="dlg-tend">New trial end date</label><input class="gs-input" type="date" id="dlg-tend" name="trialEnd" data-field="trialEnd" min="' + esc(G.ui.addDays(t, 1)) + '" value="' + esc(G.ui.addDays(start, EXTEND_DAYS)) + '" aria-describedby="dlg-tend-help">' +
+    const body = '<div class="gs-field"><label class="gs-label" for="dlg-tend">New trial end date</label><input class="gs-input" type="date" id="dlg-tend" name="trialEnd" data-field="trialEnd" min="' + esc(G.ui.addDays(t, 1)) + '" value="' + esc(G.ui.addDays(start, length)) + '" aria-describedby="dlg-tend-help">' +
       '<p class="gs-fine" id="dlg-tend-help">The date must be after today. Officers get a flag 7 days before it.</p><p class="gs-field-error" id="dlg-err-trialEnd" role="alert" hidden></p></div>';
     return G.ui.dialogHtml({ kind: 'form', title: 'Extend ' + nameOf(record) + '\'s trial', bodyHtml: body, primary: { label: 'Extend trial' }, formAttrs: { 'data-submit': 'trial-extend-form' } });
   }
@@ -173,6 +155,14 @@
     return (s && s.data && s.data.today) || c.rec.today || '';
   }
 
+  // The person's home team's trial length (Guild settings > Teams); 14 when the team is not in the guild data.
+  function teamTrialDays(gd, record) {
+    const home = record && record.person && record.person.homeTeam;
+    const team = home && gd && Array.isArray(gd.teams) ? gd.teams.filter(function (t) { return t.id === home.id; })[0] : null;
+    const n = Number(team && team.trialDays);
+    return Number.isInteger(n) && n >= 1 ? n : EXTEND_DAYS;
+  }
+
   function focusId(id) {
     const el = typeof document !== 'undefined' && document.getElementById ? document.getElementById(id) : null;
     if (el && el.focus) el.focus();
@@ -194,7 +184,7 @@
   G.handlers.click['trial-extend'] = function () {
     const c = openTrial();
     if (!c) return;
-    G.ui.openDialog(extendDialogHtml(c.rec, todayOf(c)), { labelledBy: 'dlg-title' });
+    G.ui.openDialog(extendDialogHtml(c.rec, todayOf(c), teamTrialDays(c.gd, c.rec)), { labelledBy: 'dlg-title' });
     focusId('dlg-tend');
   };
 
@@ -260,6 +250,7 @@
     loadCard: loadCard,
     promoteDialogHtml: promoteDialogHtml,
     extendDialogHtml: extendDialogHtml,
+    teamTrialDays: teamTrialDays,
     endDialogHtml: endDialogHtml,
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

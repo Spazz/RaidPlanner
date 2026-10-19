@@ -23,6 +23,7 @@
   //   context / contextHtml   the one line under it: team, schedule, counts (contextHtml is trusted markup, e.g. with a time and its zone)
   //   chipsHtml        a state chip next to the title (ui.chipHtml)
   //   back             { href, label } a back link above the title
+  //   iconHtml         markup before the title block (a person's spec icon)      titleClass   a class on the h1 (a character's class colour)
   //   more             { id, items } for ui.menuHtml (label "More")
   //   primary          ui.buttonHtml options for the page's one primary action
   ui.pageHeadHtml = function (opts) {
@@ -32,8 +33,8 @@
     const more = o.more ? ui.menuHtml(Object.assign({ label: 'More', phoneIcon: true, triggerClass: 'gs-btn' }, o.more)) : '';
     const primary = o.primary ? ui.buttonHtml(Object.assign({ variant: 'primary' }, o.primary)) : '';
     const context = o.contextHtml || (o.context ? esc(o.context) : '');
-    return '<header class="gs-pagehead">' + back + '<div class="gs-pagehead-row"><div class="gs-pagehead-title">' +
-      '<div class="gs-pagehead-h"><h1 class="gs-h1" id="' + esc(titleId) + '" tabindex="-1">' + esc(o.title) + '</h1>' + (o.chipsHtml || '') + '</div>' +
+    return '<header class="gs-pagehead">' + back + '<div class="gs-pagehead-row">' + (o.iconHtml ? '<span class="gs-pagehead-icon">' + o.iconHtml + '</span>' : '') + '<div class="gs-pagehead-title">' +
+      '<div class="gs-pagehead-h"><h1 class="gs-h1' + (o.titleClass ? ' ' + esc(o.titleClass) : '') + '" id="' + esc(titleId) + '" tabindex="-1">' + esc(o.title) + '</h1>' + (o.chipsHtml || '') + '</div>' +
       (context ? '<p class="gs-sub gs-pagehead-context">' + context + '</p>' : '') + '</div>' +
       (more || primary ? '<div class="gs-pagehead-actions">' + more + primary + '</div>' : '') + '</div></header>';
   };

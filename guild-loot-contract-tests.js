@@ -327,7 +327,9 @@ check('person loot: GET /loot/person/:pid draws the page grouped by raid and the
   await G.pages.personLoot.loadCard(s.gid, pid);
   const record = await G.api.get(`${s.base}/roster/${pid}`);
   const card = stripTags(G.pages.personLoot.cardFor(s.guildData, record, pid));
-  assert(/Main spec/.test(card) && /Nathrezim Mindblade/.test(card) && /All loot/.test(card), card);
+  assert(/Nathrezim Mindblade/.test(card) && /All loot/.test(card), card);
+  const section = G.pages.personLoot.sectionFor(s.guildData, record, pid);
+  assert(/^MS \d+ &middot; OS \d+ &middot; DE \d+ &middot; Bank \d+$/.test(section.metaHtml), section.metaHtml);
 });
 
 check('loot policy: GET / PUT /loot/policy round-trip through the settings page helpers; a stale version is a 409 carrying the current view', async () => {

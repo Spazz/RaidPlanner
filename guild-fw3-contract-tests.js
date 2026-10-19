@@ -26,7 +26,7 @@ const PEOPLE = {
 const NOW = Date.parse('2026-10-17T16:00:00Z');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
 const stripTags = (html) => String(html).replace(/<[^>]*>/g, ' ').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&middot;/g, '-').replace(/\s+/g, ' ');
-const sectionIds = (html) => [...html.matchAll(/<section class="gs-osection[^"]*" id="([a-z0-9-]+)"/g)].map((m) => m[1]);
+const sectionIds = (html) => [...html.matchAll(/<(?:section|div) class="(?:gs-osection[^"]*|gs-hd-panel gs-pr-panel)" id="([a-z0-9-]+)"|<div class="gs-osection-bare" id="([a-z0-9-]+)"/g)].map((m) => m[1] || m[2]).filter((id) => id !== 'person-cols');
 
 async function makeWorld() {
   const { createApp } = await import(pathToFileURL(path.join(ROOT, 'worker/index.js')).href);
@@ -165,10 +165,10 @@ check('the person pages from the real answers: an officer sees Thornwick\'s reco
   };
   const officer = await open(s.A);
   assert(officer.includes('gs-object-page') && !officer.includes('gs-youline'));
-  assert.deepEqual(sectionIds(officer), ['characters', 'attendance', 'details', 'notes']);
-  assert(stripTags(officer).includes('Main: Warrior - Arms') && stripTags(officer).includes('Alts: Thornalt'));
+  assert.deepEqual(sectionIds(officer), ['attendance', 'characters', 'details', 'notes']);
+  assert(stripTags(officer).includes('Warrior - Arms') && stripTags(officer).includes('Alt: Thornalt'));
   const own = await open(s.B);
-  assert(own.includes('<div class="gs-youline">') && own.includes('<span class="gs-you">You</span>') && stripTags(own).includes('Who can see this page'));
+  assert(own.includes('<div class="gs-youline">') && own.includes('<span class="gs-hd-chip is-grey">You</span>') && stripTags(own).includes('Who can see this page'));
   assert(own.indexOf('id="attendance"') < own.indexOf('id="characters"'), 'your own page leads with attendance');
   assert(!own.includes('person-details-form') && !own.includes('id="notes"'), 'a member gets no forms and no officer notes');
   const loot = await s.B.api.get(`${s.base}/loot/person/${s.pid}`);

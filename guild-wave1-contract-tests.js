@@ -417,7 +417,7 @@ check('trial review: the card draws the real numbers, the buttons PATCH the pers
   const state = G.pages.personTrial.cardState(s.gid, s.p.Veyla);
   assert(state && state.data && !state.error, 'the card loaded');
   const text = stripTags(G.pages.personTrial.cardHtml({ guildData: gd, gid: s.gid, pid: s.p.Veyla, record, state }));
-  for (const wanted of ['Trial review', 'Since Jan 5, 2027 (trial start)', 'Raids counted', 'Attendance', 'Missed with notice', 'Late / left early', 'Filled in elsewhere', 'Loot received: 1 (1 main spec)', 'Girdle of Mighty Resolve', 'Promote to Raider', 'Extend trial', 'End trial', 'Ends in 3 days']) {
+  for (const wanted of ['Trial review', 'Jan 5, 2027 - Jan 19, 2027', 'ends in 3 days', 'Raids', 'Attendance', 'Missed', 'Late or left early', 'Loot 1 MS', 'Promote to Raider', 'Extend trial', 'End trial']) {
     assert(text.includes(wanted), `the card says "${wanted}": ${text.slice(0, 300)}`);
   }
   assert(!/undefined|null|NaN/.test(text));
@@ -428,7 +428,7 @@ check('trial review: the card draws the real numbers, the buttons PATCH the pers
   assert.equal(s.pages.erin.pages.personTrial.shows(erin), false);
 
   // Extend: the dialog's default date is later than the end; the PATCH the card sends is accepted and the record comes back with it.
-  const extendHtml = G.pages.personTrial.extendDialogHtml(record, state.data.today);
+  const extendHtml = G.pages.personTrial.extendDialogHtml(record, state.data.today, G.pages.personTrial.teamTrialDays(gd, record));
   const defaultEnd = /name="trialEnd"[^>]*value="([0-9-]+)"/.exec(extendHtml)[1];
   assert.equal(defaultEnd, '2027-02-02', '14 days after the end that is still ahead');
   record = await G.api.trial.update(s.gid, s.p.Veyla, { expectedVersion: record.person.version, trialEnd: defaultEnd });

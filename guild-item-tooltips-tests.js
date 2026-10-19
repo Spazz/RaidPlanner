@@ -111,7 +111,7 @@ const QUOTES = '"\' onfocus="alert(1)" x=\'';
     assert(board.includes('data-wowhead="item=28770&amp;domain=tbc"') && board.includes('>Item 28770</a>'), 'a board item with no stored name');
   });
 
-  await check('the public / guest view and the trial card link their items too, with the guild\'s game version', () => {
+  await check('the public / guest view links its items, and the trial card shows loot as a figure, with the guild\'s game version', () => {
     const data = {
       guild: { name: 'Ember', realm: 'Dreamscythe', realmKind: 'realm', region: 'US', gameVersion: 'classic', timeZone: 'America/New_York' },
       viewer: { kind: 'public' }, teams: [{ id: 't1', name: 'Alpha' }],
@@ -123,7 +123,8 @@ const QUOTES = '"\' onfocus="alert(1)" x=\'';
       guildData: gd, record: { person: { status: 'trial', trialFlag: 'trial', trialStartedOn: '2026-10-01', trialEndsOn: '2026-10-31' }, can: { edit: true } },
       state: { data: { since: '2026-10-01', loot: { total: 1, ms: 1, os: 0, de: 0, bank: 0, items: [{ itemId: 28770, itemName: 'Nathrezim Mindblade', tag: 'MS', raidOn: '2026-10-10' }] } } },
     });
-    assert(trial && trial.bodyHtml.includes('data-wowhead="item=28770&amp;domain=tbc"'), 'trial card');
+    // The decision panel keeps the figures ("1 MS"); the items and their links are the record's Loot panel (the award rows above).
+    assert(trial && trial.bodyHtml.includes('>1 MS<') && !trial.bodyHtml.includes('Nathrezim'), 'trial card');
   });
 
   // ── the lazy loader ──

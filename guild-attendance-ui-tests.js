@@ -864,8 +864,8 @@ function teamData(over) {
   await check('person attendance: card shows window and all-time %, the last 8 cells and a Full history link; placeholders and denied states', () => {
     const P = G.pages.personAtt;
     const out = P.cardHtml({ gid: 'g1', pid: 'p_aa', record: { person: { isMe: true } }, state: { data: PERSON_BIG } });
-    assert(out.includes('8-week attendance') && out.includes('100%') && out.includes('All-time attendance') && out.includes('96%') && out.includes('Sign-up rate'));
-    assert((out.match(/class="gs-cell gs-out-present"/g) || []).length === 8, 'last 8 cells');
+    assert(out.includes('>8 weeks<') && out.includes('100%') && out.includes('>All time<') && out.includes('96%') && out.includes('>Sign-ups<'));
+    assert((out.match(/class="gs-pr-row gs-pr-raid"/g) || []).length === 8 && (out.match(/is-green">Attended</g) || []).length === 8, 'last 8 raids as rows with a tinted word');
     assert(out.includes('href="#/g/g1/attendance/p/p_aa"') && out.includes('Full history'));
     assert(P.cardHtml({ gid: 'g1', pid: 'p', record: { person: { isMe: true } }, state: null }).includes('Your attendance shows here after the first raid.'));
     assert(P.cardHtml({ gid: 'g1', pid: 'p', record: { person: {} }, state: null }).includes('Attendance shows here after the first raid.'));
@@ -876,7 +876,7 @@ function teamData(over) {
   await check('person attendance: the person page renders the real card in place of the placeholder', () => {
     const rec = { person: { id: 'p_aa', status: 'raider', isMe: true, joinedOn: null, discord: { signIn: 'not_yet' }, version: 1 }, characters: [{ id: 'c1', name: 'Aimersmay', class: 'HUNTER', isMain: true, role: 'dps', team: { id: 't1', name: 'Team KJ' } }], can: {}, notes: null };
     const out = G.pages.person.personHtml({ guildData: gd(MEMBER_CAN), record: rec, linkable: null, attendance: { data: PERSON_BIG } });
-    assert(out.includes('8-week attendance') && out.includes('Full history'));
+    assert(out.includes('>8 weeks<') && out.includes('Full history'));
     assert(G.pages.person.personHtml({ guildData: gd(MEMBER_CAN), record: rec, linkable: null }).includes('Your attendance shows here after the first raid.'));
   });
 
@@ -946,8 +946,8 @@ function teamData(over) {
     two.teams.push({ team: { id: 't2', name: 'Weekend team' }, window: 'all', metrics: { pct: 50, pctAll: 50, signupRate: 50 }, cells: [] });
     two.teams[0].window = 4;
     const out = P.cardHtml({ gid: 'g1', pid: 'p_aa', record: { person: {} }, state: { data: two } });
-    assert(out.includes('4-week attendance') && !out.includes('8-week attendance') && out.includes('Recent attendance'));
-    assert((out.match(/class="gs-cell gs-out-present"/g) || []).length === 8);
+    assert(out.includes('>4 weeks<') && !out.includes('>8 weeks<') && out.includes('>Recent<'));
+    assert((out.match(/class="gs-pr-row gs-pr-raid"/g) || []).length === 8);
     assert(!P.cardHtml({ gid: 'g1', pid: 'p_aa', record: { person: {} }, state: { data: Object.assign(plain(PERSON_BIG), { window: 12 }) } }).includes('12-week'), 'no top-level window');
   });
 

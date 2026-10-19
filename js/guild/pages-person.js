@@ -1,20 +1,23 @@
-// ── PAGE: PERSON RECORD (T2 object page: the header, the You line, then the sections) ─────────────────────
-// Header: name, You, status chip (and the trial flag for editors), the Main and the Alts, the Discord line. Sections in a fixed order: Trial review (trial editors
-// only, pages-person-trial.js), Characters, Attendance (the card from pages-person-attendance.js), Loot (pages-person-loot.js), Away notices (officers), Details
-// (an editor's form with the Save bar and the Discord and Raidsmith account fields, a member's read-only dates), Officer notes (only when the Worker sends them),
-// then Delete person. On the viewer's own page the You line leads, says who can see the page, and Attendance and Loot come before Characters.
-// Editors get the forms; a member gets a read-only record. The dialogs (Add / Edit character, Extend trial, Delete) live here too. Every mutation answers
-// with the whole person record, which replaces the page's copy; a 409 conflict re-renders from ApiError.body.current.
+// ── PAGE: PERSON RECORD (T2 object page, the Roster redesign "record") ─────────────────────────────────────
+// Head: spec icon, the name in its class colour, ONE chip (the exception only: a trial to decide, Trial, Reserve, Inactive, else You), the context line
+// "Class - Spec / Off - Alts - Joined - Account", and More (Edit details, Add character, Add an away notice, then Delete person). A Trial an editor may
+// decide leads with the decision panel (pages-person-trial.js). Below: two columns from 1024 px (2fr / 1fr): left Attendance (pages-person-attendance.js),
+// Loot (pages-person-loot.js), Characters; right Details, Officer notes, Away notices. Details and the notes are read-only until Edit (the Save bar holds
+// the changes); the trial dates show only while the status is Trial. Account is ONE row: who the person is on Raidsmith, with one action (Link account or
+// Unlink). On the viewer's own page the You line leads (with a "Who can see this page" disclosure). A member gets the read-only record.
+// The dialogs (Add / Edit character, Extend trial, Delete) live here too. Every mutation answers with the whole person record, which replaces the page's
+// copy; a 409 conflict re-renders from ApiError.body.current.
 (function (G) {
   'use strict';
 
   const CONFLICT_TEXT = 'Someone else changed this person. The page now shows their version.';
   const MEMBER_NOTE = 'Officers keep your status and characters up to date. Ask one of them if something is wrong.';
   const NOTES_HINT = 'Only officers and team leads see notes.';
-  const CHANGE_NOTE = 'The flag clears when the status changes or the trial end date moves.';
   const OWN_SEES = 'Who can see this page: everyone in the guild sees your name, characters and status. Your team and your officers see your attendance, and your guild\'s loot setting decides who sees your loot. Only officers and team leads see officer notes.';
   const ALTS_SHOWN = 4;
-  const SEP = '<span class="gs-sumsep" aria-hidden="true"></span>';
+
+  // Which parts of the open record are in edit mode: { gid, pid, details, notes }. A page change or a saved edit puts it back to read-only.
+  let editing = null;
 
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
   function mainOf(record) {
@@ -30,46 +33,74 @@
     (record.characters || []).forEach(function (c) { if (c.team) ids[c.team.id] = true; });
     return G.shell.activeTeams(gd && gd.teams).length > 1 || Object.keys(ids).length > 1;
   }
-  function sectionOf(s) { return G.ui.objectSectionHtml(s); }
-
-  // ── header ──
-  function discordLineHtml(record) {
-    const d = record.person.discord || {};
-    const a = record.person.account || {};
-    let line;
-    if (d.signIn === 'signed_in') {
-      const u = d.user || {};
-      line = 'Discord: ' + esc(u.username || u.displayName || '') + ' &middot; Signed in';
-    } else if (d.signIn === 'not_yet') {
-      line = 'Discord: ' + (d.nickname ? esc(d.nickname) + ' &middot; ' : '') + 'Not signed in yet';
-    } else {
-      line = 'No Discord account';
-    }
-    // An account an officer linked (it may have no Discord at all) gets its own words, unless it is the Discord account already named.
-    const sameAsDiscord = d.signIn === 'signed_in' && d.user && a.user && d.user.id === a.user.id;
-    if (a.user && a.via === 'link' && !sameAsDiscord) {
-      const account = 'Account: ' + esc(a.user.displayName) + ' &middot; Signed in';
-      return d.signIn === 'no_discord' ? account : line + ' &middot; ' + account;
-    }
-    return line;
+  function isEditing(gd, record, part) {
+    return !!editing && editing.gid === gd.guild.id && editing.pid === record.person.id && !!editing[part];
+  }
+  function setEditing(gid, pid, part, on) {
+    const same = editing && editing.gid === gid && editing.pid === pid;
+    editing = same ? editing : { gid: gid, pid: pid, details: false, notes: false };
+    editing[part] = !!on;
   }
 
-  // "Main: Shaman - Enhancement / Restoration" and "Alts: Foo, Bar and 2 more" (or "No alts"), then the Discord line: the one context line under the name.
+  // ── the account row (D6): one row, one action ──
+  // "Mendra (via Discord)" (the Discord ID matches), "Name (linked by an officer)" (an officer or an approved claim linked it), or "Not linked".
+  function accountText(record) {
+    const a = (record.person && record.person.account) || {};
+    if (!a.user) return 'Not linked';
+    return a.user.displayName + (a.via === 'link' ? ' (linked by an officer)' : ' (via Discord)');
+  }
+
+  function accountActionHtml(record, can) {
+    if (!can.edit) return '';
+    const a = (record.person && record.person.account) || {};
+    return a.user
+      ? G.ui.buttonHtml({ label: 'Unlink', variant: 'ghost', ariaLabel: 'Unlink ' + a.user.displayName, attrs: { 'data-action': 'account-unlink-open', 'data-key': 'account-unlink' } })
+      : G.ui.buttonHtml({ label: 'Link account', variant: 'ghost', attrs: { 'data-action': 'account-link-open', 'data-key': 'account-link' } });
+  }
+
+  // ── panels (the record's one section recipe: .gs-hd-panel with a head row) ──
+  // s: { id, title, metaHtml (muted text in the head), actionsHtml, bodyHtml, flush (the body draws its own rows), bare (the section draws itself) }
+  function panelHtml(s) {
+    if (!s) return '';
+    if (s.bare) return G.ui.objectSectionHtml(s);
+    const id = esc(s.id);
+    return '<section class="gs-hd-panel gs-pr-panel" id="' + id + '" tabindex="-1" aria-labelledby="' + id + '-h"><div class="gs-pr-ph"><h2 class="gs-pr-h" id="' + id + '-h">' + esc(s.title) + '</h2>' +
+      (s.metaHtml ? '<span class="gs-pr-mut">' + s.metaHtml + '</span>' : '') + (s.actionsHtml ? '<span class="gs-pr-acts">' + s.actionsHtml + '</span>' : '') + '</div>' +
+      (s.flush ? s.bodyHtml || '' : '<div class="gs-pr-body">' + (s.bodyHtml || '') + '</div>') + '</section>';
+  }
+
+  // ── header ──
+  // "Alt: Foo" / "Alts: Foo, Bar and 2 more" / "No alts": the alts' names in their class colours.
   function altsHtml(record) {
     const alts = altsOf(record);
     if (!alts.length) return 'No alts';
     const shown = alts.slice(0, ALTS_SHOWN).map(function (c) { return G.ui.classNameHtml(c.name, c.class); }).join(', ');
-    return 'Alts: ' + shown + (alts.length > ALTS_SHOWN ? ' and ' + (alts.length - ALTS_SHOWN) + ' more' : '');
+    return (alts.length === 1 ? 'Alt: ' : 'Alts: ') + shown + (alts.length > ALTS_SHOWN ? ' and ' + (alts.length - ALTS_SHOWN) + ' more' : '');
   }
 
-  function contextHtml(record) {
+  // The one context line: "Warlock - Affliction - No alts - Joined Oct 8, 2026 - Account: Not linked". The account only for the person and their editors.
+  function contextHtml(record, can) {
     const main = mainOf(record) || {};
-    return '<span>Main: ' + G.ui.specLineHtml(main.class, main.mainSpec, main.offSpec) + '</span>' + SEP +
-      '<span>' + altsHtml(record) + '</span>' + SEP + '<span class="gs-person-discord">' + discordLineHtml(record) + '</span>';
+    const p = record.person;
+    const parts = [G.ui.specLineHtml(main.class, main.mainSpec, main.offSpec), altsHtml(record)];
+    if (p.joinedOn) parts.push('Joined ' + esc(G.ui.formatDay(p.joinedOn)));
+    if (p.isMe || (can && can.edit)) parts.push('Account: ' + esc(accountText(record)));
+    return parts.map(function (x) { return '<span>' + x + '</span>'; }).join('<span class="gs-sumsep" aria-hidden="true"></span>');
   }
 
-  // The head options every person page uses (this page, the attendance history and the loot history): the name with You, the status chip, a back link.
-  //   opts: { name, status, person (for an inactive person's reason and day), isMe, trialFlag (editors), joinedOn, contextHtml, back: { href, label } }
+  // ONE chip, only for the exception: rose = a trial to decide, blue = Trial, grey = Reserve, Inactive, or You on your own page.
+  function headChipHtml(o) {
+    const chip = function (tone, label) { return '<span class="gs-hd-chip is-' + tone + '">' + esc(label) + '</span>'; };
+    if (o.trialFlag && G.ui.trialCopy(o.trialFlag)) return chip('rose', G.ui.trialCopy(o.trialFlag));
+    if (o.status === 'trial') return chip('blue', 'Trial');
+    if (o.status === 'reserve') return chip('grey', 'Reserve');
+    if (o.status === 'inactive') return chip('grey', 'Inactive');
+    if (o.isMe) return chip('grey', 'You');
+    return '';
+  }
+
+  // The head options of the attendance and loot history pages: the name with You, the status chip, a back link.
+  //   opts: { name, status, person (for an inactive person's reason and day), isMe, trialFlag, joinedOn, contextHtml, back: { href, label } }
   function headOpts(opts) {
     const o = opts || {};
     const chips = (o.isMe ? '<span class="gs-you">You</span>' : '') + (o.status ? G.ui.statusChipHtml(o.status, o.person) : '') + (o.trialFlag ? G.ui.trialChipHtml(o.trialFlag) : '') +
@@ -77,209 +108,181 @@
     return { title: o.name || 'Person', back: o.back, chipsHtml: chips ? '<span class="gs-sumchips">' + chips + '</span>' : '', contextHtml: o.contextHtml };
   }
 
+  // The head options of the record itself.
+  //   opts: { name, status, isMe, trialFlag (editors), contextHtml, back: { href, label }, more, mainChar ({ class, mainSpec }: the icon and the colour) }
+  function recordHeadOpts(opts) {
+    const o = opts || {};
+    const chip = headChipHtml(o);
+    const m = o.mainChar || null;
+    return { title: o.name || 'Person', back: o.back, chipsHtml: chip, contextHtml: o.contextHtml, more: o.more || null,
+      iconHtml: m ? G.ui.specIconHtml(m.class, m.mainSpec, 28) : '', titleClass: m ? G.ui.classClass(m.class) : '' };
+  }
+
+  // More: Edit details, Add character, Add an away notice, a rule, Delete person (each only for who may).
+  function moreOf(gd, record, can) {
+    const pid = record.person.id;
+    const away = G.pages.away && G.pages.away.canEditPerson ? G.pages.away.canEditPerson(gd, record) : can.edit;
+    const items = [
+      can.edit ? { label: 'Edit details', key: 'mi-edit-details', data: { action: 'person-edit-open' } } : null,
+      can.addCharacter ? { label: 'Add character', key: 'mi-char-add', data: { action: 'char-add' } } : null,
+      can.edit && away ? { label: 'Add an away notice', key: 'mi-away-add', data: { action: 'away-add', ctx: 'person', pid: pid } } : null,
+    ].filter(Boolean);
+    if (can.delete) items.push(items.length ? { separator: true } : null, { label: 'Delete person', key: 'person-delete', danger: true, data: { action: 'person-delete' } });
+    return items.length ? { id: 'person-more', key: 'person-more', items: items.filter(Boolean) } : null;
+  }
+
   function headOf(gd, record, can) {
     const main = mainOf(record) || {};
     const p = record.person;
-    return headOpts({
-      name: main.name, status: p.status, person: p, isMe: p.isMe, trialFlag: can.edit ? p.trialFlag : null, joinedOn: can.edit ? '' : p.joinedOn,
-      contextHtml: contextHtml(record), back: { href: G.router.format({ name: 'section', gid: gd.guild.id, section: 'roster' }), label: 'Roster' },
+    return recordHeadOpts({
+      name: main.name, status: p.status, isMe: p.isMe, trialFlag: can.edit && p.status === 'trial' ? p.trialFlag : null, mainChar: main,
+      contextHtml: contextHtml(record, can), back: { href: G.router.format({ name: 'section', gid: gd.guild.id, section: 'roster' }), label: 'Roster' },
+      more: moreOf(gd, record, can),
     });
   }
 
-  // The You line of the viewer's own page: a plain sentence, who can see it, and the link to their away notices.
+  // The You line of the viewer's own page: a plain sentence, the link to their away notices, and "Who can see this page" as a disclosure.
   function youOf(gd, record, can) {
     const p = record.person;
     if (!p.isMe) return '';
     const away = G.ui.buttonHtml({ label: 'Away notices', href: G.router.format({ name: 'away', gid: gd.guild.id }), attrs: { 'data-key': 'you-away' } });
+    const see = G.ui.buttonHtml({ label: 'Who can see this page', variant: 'ghost', attrs: { 'data-action': 'you-sees-toggle', 'data-key': 'you-sees', 'aria-expanded': 'false', 'aria-controls': 'you-sees' } });
     return '<span class="gs-youline-label">You</span> This is your own record.' + (can.edit ? '' : ' ' + esc(MEMBER_NOTE)) +
-      ' <span class="gs-youline-act">' + away + '</span><span class="gs-youline-sub">' + esc(OWN_SEES) + '</span>';
-  }
-
-  // ── trial bar ──
-  function trialWhen(flag) {
-    const days = Math.abs(Number(flag.days));
-    if (flag.kind === 'ended') return days === 1 ? 'yesterday' : days + ' days ago';
-    if (days === 0) return 'today';
-    if (days === 1) return 'tomorrow';
-    return 'in ' + days + ' days';
-  }
-
-  function trialBarHtml(record, can) {
-    const p = record.person;
-    if (!can.edit || !p.trialFlag || p.status !== 'trial') return '';
-    const main = mainOf(record) || {};
-    const flag = p.trialFlag;
-    const verb = flag.kind === 'ended' ? 'ended' : 'ends';
-    const text = esc(main.name) + '\'s trial ' + verb + ' on ' + esc(G.ui.formatDay(p.trialEnd)) + ' (' + esc(trialWhen(flag)) + ').';
-    // Text only: Promote / Extend / End live on the Trial review section below (pages-person-trial.js), the one set of trial buttons.
-    return '<div class="gs-trial-bar ' + (flag.kind === 'ended' ? 'is-ended' : 'is-ends') + '" role="status"><p class="gs-trial-bar-text">' + text + '</p></div>' +
-      '<p class="gs-fine">' + esc(CHANGE_NOTE) + '</p>';
+      ' <span class="gs-youline-act">' + away + see + '</span><span class="gs-youline-sub" id="you-sees" hidden>' + esc(OWN_SEES) + '</span>';
   }
 
   // ── characters ──
-  function typeChipHtml(c) {
-    return c.isMain ? G.ui.tagHtml('Main', 'gold') : G.ui.tagHtml('Alt');
-  }
-
   // One inline action (Edit) and the rest behind a More icon named for the character; a Main cannot be removed or made Main again, so it has Edit only.
   function charActionsHtml(c, can) {
     if (!can.edit) return '';
-    const edit = G.ui.buttonHtml({ label: 'Edit', size: 'sm', ariaLabel: 'Edit ' + c.name, attrs: { 'data-action': 'char-edit', 'data-cid': c.id, 'data-key': 'char-edit-' + c.id } });
-    if (c.isMain) return '<div class="gs-row-actions">' + edit + '</div>';
+    const edit = G.ui.buttonHtml({ label: 'Edit', ariaLabel: 'Edit ' + c.name, attrs: { 'data-action': 'char-edit', 'data-cid': c.id, 'data-key': 'char-edit-' + c.id } });
+    if (c.isMain) return edit;
     const more = G.ui.menuHtml({ id: 'char-more-' + c.id, icon: 'more', ariaLabel: 'More actions for ' + c.name, key: 'char-more-' + c.id, items: [
       { label: 'Make Main', key: 'char-main-' + c.id, data: { action: 'char-main', cid: c.id } },
       { separator: true },
       { label: 'Remove character', key: 'char-remove-' + c.id, danger: true, data: { action: 'char-remove', cid: c.id } },
     ] });
-    return '<div class="gs-row-actions">' + edit + more + '</div>';
+    return edit + more;
+  }
+
+  function characterRowHtml(c, can, showTeam) {
+    const team = showTeam && c.team ? ' &middot; ' + esc(c.team.name) + (c.team.archived ? ' (archived)' : '') : '';
+    return '<div class="gs-pr-row gs-pr-char" data-cid="' + esc(c.id) + '">' + G.ui.specIconHtml(c.class, c.mainSpec, 20) + '<span class="gs-pr-cname">' + G.ui.classNameHtml(c.name, c.class) + '</span>' +
+      '<span class="gs-pr-what">' + G.ui.specLineHtml(c.class, c.mainSpec, c.offSpec) + team + (c.realm ? ' &middot; ' + esc(c.realm) : '') + '</span>' +
+      '<span class="gs-hd-chip is-grey">' + (c.isMain ? 'Main' : 'Alt') + '</span>' + (can.edit ? '<span class="gs-pr-end">' + charActionsHtml(c, can) + '</span>' : '') + '</div>';
   }
 
   function charactersBodyHtml(record, can, showTeam) {
     const list = Array.isArray(record.characters) ? record.characters : [];
-    const columns = [
-      { key: 'name', label: 'Name', primary: true },
-      { key: 'class', label: 'Class' },
-      { key: 'mainSpec', label: 'Main spec' },
-      { key: 'offSpec', label: 'Off spec' },
-    ];
-    if (showTeam) columns.push({ key: 'team', label: 'Team' });
-    columns.push({ key: 'type', label: 'Type' });
-    if (can.edit) columns.push({ key: 'actions', label: 'Row actions', srLabel: true, hideLabel: true });
-    const dash = '<span class="gs-muted gs-dash">-</span>';
-    const rows = list.map(function (c) {
-      return {
-        id: c.id, mark: c.class, ariaLabel: c.name,
-        cells: {
-          name: G.ui.classNameHtml(c.name, c.class) + (c.realm ? '<span class="gs-char-sub">' + esc(c.realm) + '</span>' : ''),
-          class: esc(G.ui.className(c.class)), mainSpec: c.mainSpec ? esc(c.mainSpec) : dash, offSpec: c.offSpec ? esc(c.offSpec) : dash,
-          team: esc(c.team && c.team.name) + (c.team && c.team.archived ? ' (archived)' : ''), type: typeChipHtml(c), actions: charActionsHtml(c, can),
-        },
-      };
-    });
-    return G.ui.dataTableHtml({ label: 'Characters', columns: columns, rows: rows, limit: 50, noun: 'characters' });
+    return list.map(function (c) { return characterRowHtml(c, can, showTeam); }).join('');
   }
 
   function charactersSection(record, can, showTeam) {
-    const add = can.addCharacter ? G.ui.buttonHtml({ label: 'Add character', size: 'sm', attrs: { 'data-action': 'char-add', 'data-key': 'char-add' } }) : '';
-    return { id: 'characters', title: 'Characters', actionsHtml: add, bodyHtml: charactersBodyHtml(record, can, showTeam) };
+    const add = can.addCharacter ? G.ui.buttonHtml({ label: 'Add character', variant: 'ghost', attrs: { 'data-action': 'char-add', 'data-key': 'char-add' } }) : '';
+    return { id: 'characters', title: 'Characters', flush: true, actionsHtml: add, bodyHtml: charactersBodyHtml(record, can, showTeam) };
   }
 
-  // The Attendance card (pages-person-attendance.js): window and all-time %, the last raids, a link to the full history.
+  // The Attendance card (pages-person-attendance.js): figures and the last raids, a link to the full history.
   function attendanceSection(record, gid, state) {
     return G.pages.personAtt.sectionOf({ gid: gid, pid: record.person.id, record: record, state: state });
   }
 
-  // The Trial review section (pages-person-trial.js): it decides for itself whether this person gets one ('' when not).
+  // The Trial review panel (pages-person-trial.js): it decides for itself whether this person gets one (null when not).
   function trialSection(opts) {
     if (!G.pages.personTrial || !G.pages.personTrial.sectionOf) return null;
     return G.pages.personTrial.sectionOf({ guildData: opts.guildData, gid: opts.guildData.guild.id, pid: opts.record.person.id, record: opts.record, state: opts.trial });
   }
 
-  // ── details form (one Save bar for the fields) ──
-  function detailsSection(record, linkable, saved, zone) {
-    const p = record.person;
-    const d = p.discord || {};
-    const users = [];
-    if (d.user && d.user.id) users.push(d.user);
-    (Array.isArray(linkable) ? linkable : []).forEach(function (u) { if (!d.user || u.id !== d.user.id) users.push(u); });
-    const inactive = p.status === 'inactive';
-    const reasonOpts = [{ value: '', label: 'No reason' }].concat(Object.keys(G.ui.LEFT_REASONS).map(function (k) { return { value: k, label: G.ui.LEFT_REASONS[k] }; }));
-    const linkHelp = (d.nickname ? 'Nickname on the Raid-Helper sign-up: ' + d.nickname + '. ' : '') + 'Lists members who have signed in to Raidsmith and are not on the roster yet.';
-    const body = '<form class="gs-details-form" data-submit="person-details-form" id="details-form" novalidate' + G.ui.dirtyFormAttrs() + '>' +
-      G.ui.fieldHtml({ id: 'det-status', name: 'status', label: 'Status', kind: 'select', value: p.status, attrs: { 'data-change': 'person-status-change' },
-        options: ['raider', 'trial', 'reserve', 'inactive'].map(function (s) { return { value: s, label: G.ui.statusLabel(s) }; }) }) +
-      '<div id="det-reason-field"' + (inactive ? '' : ' hidden') + '>' + G.ui.fieldHtml({ id: 'det-reason', name: 'leftReason', label: 'Reason', kind: 'select', value: p.leftReason || '', options: reasonOpts }) + '</div>' +
-      '<div id="det-lefton-field"' + (inactive ? '' : ' hidden') + '>' + G.ui.fieldHtml({ id: 'det-lefton', name: 'leftOn', label: 'Left on', kind: 'date', value: inactive ? p.leftOn || '' : record.today || '' }) + '</div>' +
-      G.ui.fieldHtml({ id: 'det-joined', name: 'joinedOn', label: 'Joined', kind: 'date', value: p.joinedOn || '' }) +
-      G.ui.fieldHtml({ id: 'det-tstart', name: 'trialStart', label: 'Trial start', kind: 'date', value: p.trialStart || '' }) +
-      G.ui.fieldHtml({ id: 'det-tend', name: 'trialEnd', label: 'Trial end', kind: 'date', value: p.trialEnd || '' }) +
-      '<div class="gs-field"><label class="gs-label" for="det-link">Discord account</label><select class="gs-input" id="det-link" name="linkUserId" aria-describedby="det-link-help">' + G.pages.roster.linkOptionsHtml(users, d.user ? d.user.id : '') + '</select>' +
-      '<p class="gs-fine" id="det-link-help">' + esc(linkHelp) + '</p></div>' +
-      accountFieldHtml(record) +
-      '<p class="gs-alert" id="det-error" role="alert" hidden></p>' +
-      G.ui.saveBarHtml({ saveLabel: 'Save details' }) + '</form>';
-    return { id: 'details', title: 'Details', actionsHtml: savedHtml(saved, zone), bodyHtml: body };
+  // ── details: read-only key-values, the form after Edit ──
+  function kvHtml(label, valueHtml, actionHtml) {
+    return '<div class="gs-pr-kv"><span class="gs-pr-k">' + esc(label) + '</span><span class="gs-pr-v">' + valueHtml + '</span>' + (actionHtml ? '<span class="gs-pr-end">' + actionHtml + '</span>' : '') + '</div>';
   }
 
-  // "Saved at 8:14 PM ET" in the section head after a save (the guild's zone); nothing before.
+  // "Saved at 8:14 PM ET" in the panel head after a save (the guild's zone); nothing before.
   function savedHtml(saved, zone) {
     if (!saved || typeof saved.ms !== 'number') return G.ui.savedStatusHtml('');
     const when = G.ui.timeInZone(saved.ms, zone);
     return G.ui.savedStatusHtml(when ? 'Saved at ' + when : 'Saved', 'saved');
   }
 
-  // The Raidsmith account field: who this person is on Raidsmith besides the Discord account above. An officer's link can be changed here; one that
-  // comes through the Discord account is changed on the Discord field.
-  function accountFieldHtml(record) {
-    const a = (record.person && record.person.account) || {};
-    let body;
-    if (a.user && a.via === 'link') {
-      body = '<p class="gs-account-line" id="det-account-current"><strong>' + esc(a.user.displayName) + '</strong> <span class="gs-muted">linked by an officer</span></p>' +
-        '<div class="gs-row-actions">' + G.ui.buttonHtml({ label: 'Unlink account', size: 'sm', attrs: { 'data-action': 'account-unlink-open', 'data-key': 'account-unlink' } }) + '</div>';
-    } else if (a.user) {
-      body = '<p class="gs-account-line" id="det-account-current"><strong>' + esc(a.user.displayName) + '</strong> <span class="gs-muted">through the Discord account above</span></p>';
-    } else {
-      body = '<p class="gs-account-line gs-muted" id="det-account-current">Not linked</p>' +
-        '<div class="gs-row-actions">' + G.ui.buttonHtml({ label: 'Link account', size: 'sm', attrs: { 'data-action': 'account-link-open', 'data-key': 'account-link' } }) + '</div>';
+  function readDetailsRows(record, can) {
+    const p = record.person;
+    const rows = [kvHtml('Status', esc(G.ui.statusText(p)))];
+    if (p.joinedOn) rows.push(kvHtml('Joined', esc(G.ui.formatDay(p.joinedOn))));
+    if (p.status === 'trial' && (p.trialStart || p.trialEnd)) {
+      rows.push(kvHtml('Trial', esc(p.trialStart && p.trialEnd ? G.ui.formatDay(p.trialStart) + ' - ' + G.ui.formatDay(p.trialEnd) : G.ui.formatDay(p.trialStart || p.trialEnd))));
     }
-    return '<div class="gs-field" id="det-account-field"><span class="gs-label" id="det-account-label">Raidsmith account</span>' + body +
-      '<p class="gs-fine" id="det-account-help">For a member who signs in with Battle.net, or is not in the Discord server: linking their account lets them in to this guild and shows them their own record.</p></div>';
+    if (p.isMe || can.edit) rows.push(kvHtml('Account', esc(accountText(record)), accountActionHtml(record, can)));
+    return rows.join('');
   }
 
-  // A member's read-only Details: the dates, no form.
-  function readOnlyDetailsSection(record) {
+  function detailsFormHtml(record, can) {
     const p = record.person;
-    const rows = [['Joined', p.joinedOn], ['Trial start', p.trialStart], ['Trial end', p.trialEnd]].filter(function (r) { return !!r[1]; });
-    if (!rows.length) return null;
-    return { id: 'details', title: 'Details', bodyHtml: '<dl class="gs-dates">' +
-      rows.map(function (r) { return '<div class="gs-date-row"><dt>' + esc(r[0]) + '</dt><dd>' + esc(G.ui.formatDay(r[1])) + '</dd></div>'; }).join('') + '</dl>' };
+    const inactive = p.status === 'inactive';
+    const reasonOpts = [{ value: '', label: 'No reason' }].concat(Object.keys(G.ui.LEFT_REASONS).map(function (k) { return { value: k, label: G.ui.LEFT_REASONS[k] }; }));
+    const a = p.account || {};
+    return '<form class="gs-details-form gs-pr-form" data-submit="person-details-form" id="details-form" novalidate' + G.ui.dirtyFormAttrs() + '>' +
+      G.ui.fieldHtml({ id: 'det-status', name: 'status', label: 'Status', kind: 'select', value: p.status, attrs: { 'data-change': 'person-status-change' },
+        options: ['raider', 'trial', 'reserve', 'inactive'].map(function (s) { return { value: s, label: G.ui.statusLabel(s) }; }) }) +
+      '<div id="det-reason-field"' + (inactive ? '' : ' hidden') + '>' + G.ui.fieldHtml({ id: 'det-reason', name: 'leftReason', label: 'Reason', kind: 'select', value: p.leftReason || '', options: reasonOpts }) + '</div>' +
+      '<div id="det-lefton-field"' + (inactive ? '' : ' hidden') + '>' + G.ui.fieldHtml({ id: 'det-lefton', name: 'leftOn', label: 'Left on', kind: 'date', value: inactive ? p.leftOn || '' : record.today || '' }) + '</div>' +
+      G.ui.fieldHtml({ id: 'det-joined', name: 'joinedOn', label: 'Joined', kind: 'date', value: p.joinedOn || '' }) +
+      '<div id="det-trial-fields" class="gs-pr-trialfields"' + (p.status === 'trial' ? '' : ' hidden') + '>' +
+      G.ui.fieldHtml({ id: 'det-tstart', name: 'trialStart', label: 'Trial start', kind: 'date', value: p.trialStart || '' }) +
+      G.ui.fieldHtml({ id: 'det-tend', name: 'trialEnd', label: 'Trial end', kind: 'date', value: p.trialEnd || '' }) + '</div>' +
+      '<div class="gs-field" id="det-account-field"><span class="gs-label" id="det-account-label">Account</span><div class="gs-pr-acct" role="group" aria-labelledby="det-account-label">' +
+      '<span class="gs-pr-acctname' + (a.user ? '' : ' is-none') + '" id="det-account-current">' + esc(accountText(record)) + '</span>' + accountActionHtml(record, can) + '</div></div>' +
+      '<p class="gs-alert" id="det-error" role="alert" hidden></p>' +
+      G.ui.saveBarHtml({ saveLabel: 'Save details' }) + '</form>';
+  }
+
+  function detailsSection(record, can, gd, saved) {
+    const edit = can.edit && isEditing(gd, record, 'details');
+    const toggle = can.edit ? G.ui.buttonHtml(edit ? { label: 'Cancel', variant: 'ghost', attrs: { 'data-action': 'person-edit-close', 'data-key': 'details-cancel' } }
+      : { label: 'Edit', variant: 'ghost', ariaLabel: 'Edit details', attrs: { 'data-action': 'person-edit-open', 'data-key': 'details-edit' } }) : '';
+    return { id: 'details', title: 'Details', flush: true, actionsHtml: (edit ? '' : savedHtml(saved, gd.guild.timeZone)) + toggle,
+      bodyHtml: edit ? '<div class="gs-pr-body">' + detailsFormHtml(record, can) + '</div>' : readDetailsRows(record, can) };
   }
 
   // ── notes (only when the Worker sent them: officers and team leads) ──
-  function notesSection(record, can) {
+  function notesSection(record, can, gd) {
     const n = record.notes;
     if (!n) return null;
     const by = n.updatedBy && n.updatedBy.displayName ? n.updatedBy.displayName : '';
     const when = n.updatedAt ? G.ui.formatDateTime(n.updatedAt, G.ui.guildZone()) : '';
-    const edited = by || when ? '<p class="gs-fine" id="notes-edited">Last edited' + (by ? ' by ' + esc(by) : '') + (when ? ' on ' + esc(when) : '') + '</p>' : '';
-    const body = '<form data-submit="person-notes-form" novalidate><p class="gs-fine">' + esc(NOTES_HINT) + '</p>' +
-      G.ui.fieldHtml({ id: 'officer-note', name: 'text', label: 'Officer notes', kind: 'textarea', value: n.text, rows: 4, maxlength: 4000, readonly: !can.notesEdit,
-        reason: can.notesEdit ? '' : 'You can read the notes but not change them.' }) +
-      edited + '<p class="gs-alert" id="notes-error" role="alert" hidden></p>' +
-      (can.notesEdit ? '<div class="gs-actions">' + G.ui.buttonHtml({ label: 'Save note', type: 'submit' }) + '</div>' : '') + '</form>';
-    return { id: 'notes', title: 'Officer notes', bodyHtml: body };
+    const edited = by || when ? '<p class="gs-fine" id="notes-edited">Edited' + (by ? ' by ' + esc(by) : '') + (when ? ', ' + esc(when) : '') + '</p>' : '';
+    const edit = can.notesEdit && isEditing(gd, record, 'notes');
+    const toggle = can.notesEdit ? G.ui.buttonHtml(edit ? { label: 'Cancel', variant: 'ghost', attrs: { 'data-action': 'person-notes-close', 'data-key': 'notes-cancel' } }
+      : { label: 'Edit', variant: 'ghost', ariaLabel: 'Edit officer notes', attrs: { 'data-action': 'person-notes-edit', 'data-key': 'notes-edit' } }) : '';
+    const body = edit
+      ? '<form data-submit="person-notes-form" novalidate><p class="gs-fine">' + esc(NOTES_HINT) + '</p>' +
+        G.ui.fieldHtml({ id: 'officer-note', name: 'text', label: 'Officer notes', kind: 'textarea', value: n.text, rows: 4, maxlength: 4000 }) +
+        edited + '<p class="gs-alert" id="notes-error" role="alert" hidden></p><div class="gs-actions">' + G.ui.buttonHtml({ label: 'Save note', type: 'submit' }) + '</div></form>'
+      : (n.text ? '<p class="gs-pr-note" id="officer-note-text">' + esc(n.text) + '</p>' : '<p class="gs-fine">No notes yet.</p>') + edited;
+    return { id: 'notes', title: 'Officer notes', actionsHtml: toggle, bodyHtml: body };
   }
 
-  function deleteHtml(record, can) {
-    if (!can.delete) return '';
-    const name = (mainOf(record) || {}).name;
-    return '<div class="gs-delete-row">' + G.ui.buttonHtml({ label: 'Delete person', variant: 'danger-outline', attrs: { 'data-action': 'person-delete', 'data-key': 'person-delete' } }) +
-      '<p class="gs-fine">Removes ' + esc(name) + ' and their characters from the roster. Their Discord sign-in is not affected. Once they have attendance, set them to Inactive instead.</p></div>';
-  }
-
-  // opts: { guildData, record (GET /roster/p_...), linkable: [person] | null, alert, attendance (card state), trial (Trial review card state), away (the officers' Away notices section: { id, title, ... } or ''),
+  // opts: { guildData, record (GET /roster/p_...), alert, attendance (card state), trial (Trial review state), away (the officers' Away notices section: { id, title, ... } or ''),
   //         saved ({ ms }: the details were just saved) }
   function personHtml(opts) {
     const record = opts.record;
     const gd = opts.guildData;
     const can = Object.assign({ edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false }, record.can || {});
-    const showTeam = severalTeams(gd, record);
-    const own = !!record.person.isMe;
     const gid = gd.guild.id;
+    if (editing && (editing.gid !== gid || editing.pid !== record.person.id)) editing = null; // another person: back to read-only
     const attendance = attendanceSection(record, gid, opts.attendance);
     const loot = G.pages.personLoot.sectionFor(gd, record, record.person.id);
-    const characters = charactersSection(record, can, showTeam);
+    const characters = charactersSection(record, can, severalTeams(gd, record));
     const away = opts.away && typeof opts.away === 'object' ? opts.away : null;
-    // Your own page leads with what a member comes for (attendance, loot); somebody else's leads with who they are.
-    const ordered = own ? [attendance, loot, characters, away] : [characters, attendance, loot, away];
-    const sections = [trialSection(opts)].concat(ordered, [can.edit ? detailsSection(record, opts.linkable, opts.saved, gd.guild.timeZone) : readOnlyDetailsSection(record), notesSection(record, can)]).filter(Boolean);
+    const left = [attendance, loot, characters].filter(Boolean).map(panelHtml).join('');
+    const right = [detailsSection(record, can, gd, opts.saved), notesSection(record, can, gd), away].filter(Boolean).map(panelHtml).join('');
+    const cols = '<div class="gs-pr-cols"><div class="gs-pr-left">' + left + '</div><div class="gs-pr-right">' + right + '</div></div>';
     return G.ui.objectPageHtml({
       head: headOf(gd, record, can),
-      noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + trialBarHtml(record, can),
+      noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + panelHtml(trialSection(opts)),
       youHtml: youOf(gd, record, can),
-      pageClass: 'gs-person-page gs-forge' + (own ? ' is-own' : ''),
-      sections: sections,
-      footHtml: deleteHtml(record, can),
+      pageClass: 'gs-person-page gs-forge gs-pr' + (record.person.isMe ? ' is-own' : ''),
+      sections: [{ id: 'person-cols', bare: true, bodyHtml: cols }],
     });
   }
 
@@ -363,13 +366,17 @@
     });
   }
 
+  // An officer's link (PUT /account) or the Discord link (PATCH linkUserId null) is what gets cleared; data-via tells the submit which.
   function accountUnlinkDialogHtml(record) {
     const a = (record.person && record.person.account) || {};
     const name = (mainOf(record) || {}).name;
+    const who = a.user ? a.user.displayName : 'this account';
+    const text = a.via === 'link'
+      ? 'Unlink ' + who + ' from ' + name + '? They keep their Raidsmith account, but they can no longer open this guild unless they are in its Discord server, and ' + name + ' is no longer theirs.'
+      : 'Unlink ' + who + ' from ' + name + '? They keep their Raidsmith account, and ' + name + ' is no longer theirs.';
     return G.ui.dialogHtml({
-      kind: 'destructive', title: 'Unlink account',
-      text: 'Unlink ' + (a.user ? a.user.displayName : 'this account') + ' from ' + name + '? They keep their Raidsmith account, but they can no longer open this guild unless they are in its Discord server, and ' + name + ' is no longer theirs.',
-      primary: { label: 'Unlink account' }, formAttrs: { 'data-submit': 'account-unlink-form' },
+      kind: 'destructive', title: 'Unlink account', text: text,
+      primary: { label: 'Unlink account' }, formAttrs: { 'data-submit': 'account-unlink-form', 'data-via': a.via === 'link' ? 'link' : 'discord' },
     });
   }
 
@@ -378,7 +385,7 @@
     const n = (record.characters || []).length;
     return G.ui.dialogHtml({
       kind: 'destructive', title: 'Delete person',
-      text: 'Delete ' + name + '? This removes them and their ' + plural(n, 'character', 'characters') + ' from the roster. It can\'t be undone.',
+      text: 'Delete ' + name + '? This removes them and their ' + plural(n, 'character', 'characters') + ' from the roster. It can\'t be undone. Their account is not affected. Once they have attendance, set them to Inactive instead.',
       primary: { label: 'Delete person' }, formAttrs: { 'data-submit': 'delete-person-form' },
     });
   }
@@ -417,11 +424,11 @@
     G.app.handleError(err, { pageAlert: true });
   }
 
-  // The Reason and Left on fields belong to Inactive only.
+  // The Reason and Left on fields belong to Inactive only; the trial dates to Trial only.
   G.handlers.change['person-status-change'] = function (el) {
-    ['det-reason-field', 'det-lefton-field'].forEach(function (id) {
-      const field = document.getElementById(id);
-      if (field) field.hidden = el.value !== 'inactive';
+    [['det-reason-field', 'inactive'], ['det-lefton-field', 'inactive'], ['det-trial-fields', 'trial']].forEach(function (pair) {
+      const field = document.getElementById(pair[0]);
+      if (field) field.hidden = el.value !== pair[1];
     });
     // The select has its own change handler, so the form's own (the Save bar) is told here.
     const form = el && el.closest ? el.closest('form') : null;
@@ -435,7 +442,7 @@
     const body = {};
     const date = function (name) { return form.elements[name].value || null; };
     if (form.elements.status.value !== p.status) body.status = form.elements.status.value;
-    ['joinedOn', 'trialStart', 'trialEnd'].forEach(function (k) {
+    (form.elements.status.value === 'trial' ? ['joinedOn', 'trialStart', 'trialEnd'] : ['joinedOn']).forEach(function (k) {
       if (date(k) !== (p[k] || null)) body[k] = date(k);
     });
     if (form.elements.status.value === 'inactive' && form.elements.leftOn && form.elements.leftReason) {
@@ -443,13 +450,11 @@
       if (entering || date('leftOn') !== (p.leftOn || null)) body.leftOn = date('leftOn');
       if (entering || date('leftReason') !== (p.leftReason || null)) body.leftReason = date('leftReason');
     }
-    const linked = p.discord && p.discord.user ? p.discord.user.id : '';
-    if (form.elements.linkUserId.value !== linked) body.linkUserId = form.elements.linkUserId.value || null;
     G.ui.setText('det-error', '');
     if (!Object.keys(body).length) { G.ui.setText('det-error', 'Nothing to save: no detail was changed.'); return; }
     G.ui.setBusy(form, true);
     G.api.patch(base(c), Object.assign({ expectedVersion: p.version }, body)).then(function (res) {
-      if (st().linkable) delete st().linkable[c.gid];
+      setEditing(c.gid, c.pid, 'details', false);
       st().personSaved = { gid: c.gid, pid: c.pid, ms: Date.now() }; // the Details head says "Saved at 8:14 PM ET" on the page that comes next
       applyRecord(c, res);
     }, function (err) {
@@ -470,6 +475,7 @@
     G.api.put(base(c) + '/notes', { text: form.elements.text.value, expectedNotesVersion: c.rec.notes.version }).then(function (res) {
       G.app.applyFlags(c.gid, res);
       if (res && res.notes) c.rec.notes = res.notes;
+      setEditing(c.gid, c.pid, 'notes', false);
       st().pageAlert = '';
       G.app.render();
     }, function (err) {
@@ -533,7 +539,30 @@
   G.handlers.submit['account-unlink-form'] = function (form) {
     const c = cur();
     if (!c) return;
-    G.ui.runDialog(form, G.api.put(base(c) + '/account', { userId: null }), function (res) { applyRecord(c, res); }, function (err) { conflict(c, err); });
+    const viaDiscord = form.getAttribute('data-via') === 'discord';
+    const call = viaDiscord ? G.api.patch(base(c), { expectedVersion: c.rec.person.version, linkUserId: null }) : G.api.put(base(c) + '/account', { userId: null });
+    G.ui.runDialog(form, call, function (res) { applyRecord(c, res); }, function (err) { conflict(c, err); });
+  };
+
+  // Edit / Cancel on Details and Officer notes, and the You line's "Who can see this page" disclosure.
+  function toggleEdit(part, on) {
+    const c = cur();
+    if (!c) return;
+    setEditing(c.gid, c.pid, part, on);
+    G.app.render();
+    const first = document.getElementById(part === 'notes' ? 'officer-note' : 'det-status');
+    if (on && first && first.focus) first.focus();
+  }
+  G.handlers.click['person-edit-open'] = function () { toggleEdit('details', true); };
+  G.handlers.click['person-edit-close'] = function () { toggleEdit('details', false); };
+  G.handlers.click['person-notes-edit'] = function () { toggleEdit('notes', true); };
+  G.handlers.click['person-notes-close'] = function () { toggleEdit('notes', false); };
+  G.handlers.click['you-sees-toggle'] = function (el) {
+    const box = document.getElementById('you-sees');
+    if (!box) return;
+    const open = box.hidden;
+    box.hidden = !open;
+    el.setAttribute('aria-expanded', open ? 'true' : 'false');
   };
 
   // characters
@@ -627,23 +656,23 @@
     mainOf: mainOf,
     altsOf: altsOf,
     headOpts: headOpts,
+    headChipHtml: headChipHtml,
+    accountText: accountText,
+    panelHtml: panelHtml,
+    setEditing: setEditing,
     contextHtml: contextHtml,
     youOf: youOf,
     OWN_SEES: OWN_SEES,
     personHtml: personHtml,
     characterDialogHtml: characterDialogHtml,
     deleteDialogHtml: deleteDialogHtml,
-    accountFieldHtml: accountFieldHtml,
     accountLinkDialogHtml: accountLinkDialogHtml,
     accountResultsHtml: accountResultsHtml,
     accountUnlinkDialogHtml: accountUnlinkDialogHtml,
     removeCharDialogHtml: removeCharDialogHtml,
-    readOnlyDetailsSection: readOnlyDetailsSection,
-    trialBarHtml: trialBarHtml,
     charactersBodyHtml: charactersBodyHtml,
     charactersSection: charactersSection,
     detailsSection: detailsSection,
     notesSection: notesSection,
-    deleteHtml: deleteHtml,
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

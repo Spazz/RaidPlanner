@@ -454,92 +454,122 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   }
   const personPage = (rec, gd, linkable, alert) => G.pages.person.personHtml({ guildData: gd || guildData(), record: rec, linkable: linkable || [], alert: alert || '' });
 
-  await check('person record: header, chips, Discord line, trial bar (text only, the decision buttons are on the Trial review card) and the clearing note', () => {
+  const text = html => html.replace(/<[^>]*>/g, ' ').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&middot;/g, '').replace(/\s+/g, ' ');
+  const headOf = out => out.match(/<header class="gs-pagehead">[\s\S]*?<\/header>/)[0];
+  const editing = (rec, on) => { G.pages.person.setEditing('g1', rec.person.id, 'details', on); G.pages.person.setEditing('g1', rec.person.id, 'notes', on); };
+
+  await check('person record: the head is the spec icon, the name in its class colour, ONE chip and the context line; no trial banner or fine print', () => {
     const out = personPage(record());
-    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Sølvhand</h1>'));
-    assert(out.includes('Paladin &middot; Protection / Holy'));
-    assert(out.includes('gs-status-trial">Trial</span>') && out.includes('gs-trial-ended">Ended 2 days ago</span>'));
-    assert(out.includes('Discord: solvhand &middot; Signed in'));
-    assert(out.includes('Sølvhand\'s trial ended on Oct 13, 2026 (2 days ago).'));
-    const bar = out.match(/<div class="gs-trial-bar[\s\S]*?<\/div>/)[0];
-    assert(!bar.includes('<button') && !/>Make Raider<|>Extend trial<|>Set Inactive<|data-action="person-(status|extend)"/.test(out), 'one set of trial buttons: the Trial review card has them, the banner is text');
-    assert(out.includes('The flag clears when the status changes or the trial end date moves.'));
+    const head = headOf(out);
+    assert(head.includes('class="gs-spec-icon"') && head.includes('<h1 class="gs-h1 gs-class-paladin" id="page-title" tabindex="-1">Sølvhand</h1>'));
+    assert.equal((head.match(/gs-hd-chip/g) || []).length, 1, 'one chip in the head');
+    assert(head.includes('<span class="gs-hd-chip is-rose">Ended 2 days ago</span>'), 'a trial to decide: the rose flag is the one chip');
+    const context = text(head.match(/<p class="gs-sub gs-pagehead-context">[\s\S]*?<\/p>/)[0]);
+    assert(context.includes('Paladin Protection / Holy') && context.includes('Alt: Glimmerkin') && context.includes('Joined Sep 15, 2026') && context.includes('Account: Not linked'));
+    assert(!out.includes('gs-trial-bar') && !out.includes('The flag clears when the status changes') && !out.includes('gs-status-trial'));
     const ends = personPage(record({ person: { trialFlag: { kind: 'ends', days: 5 }, trialEnd: '2026-10-20' } }));
-    assert(ends.includes('trial ends on Oct 20, 2026 (in 5 days).'));
-    const noFlag = personPage(record({ person: { trialFlag: null } }));
-    assert(!noFlag.includes('gs-trial-bar'));
+    assert(headOf(ends).includes('is-rose">Ends in 5 days<'));
+    const quiet = headOf(personPage(record({ person: { trialFlag: null } })));
+    assert(quiet.includes('is-blue">Trial<') && (quiet.match(/gs-hd-chip/g) || []).length === 1, 'a Trial with nothing to decide: the blue Trial chip');
+    assert(!headOf(personPage(record({ person: { status: 'raider', trialFlag: null } }))).includes('gs-hd-chip'), 'a Raider has no chip');
+    assert(headOf(personPage(record({ person: { status: 'reserve', trialFlag: null } }))).includes('is-grey">Reserve<'));
+    assert(headOf(personPage(record({ person: { status: 'inactive', trialFlag: null } }))).includes('is-grey">Inactive<'));
   });
 
-  await check('person record: Discord line variants (not signed in yet, no Discord account)', () => {
-    const notYet = personPage(record({ person: { discord: { signIn: 'not_yet', user: null, nickname: 'Sølvhand/Glimmerkin' } } }));
-    assert(notYet.includes('Discord: Sølvhand/Glimmerkin &middot; Not signed in yet'));
-    const bare = personPage(record({ person: { discord: { signIn: 'no_discord', user: null, nickname: null } } }));
-    assert(bare.includes('No Discord account'));
+  await check('person record: More holds Edit details, Add character, Add an away notice and, after a rule, Delete person; the head never repeats the account label of the form', () => {
+    const out = personPage(record(), guildData({ can: { 'roster.edit': 'guild', 'roster.notes.view': 'guild', 'roster.notes.edit': 'guild', 'raids.edit': 'guild' } }));
+    const more = out.match(/<div class="gs-menu gs-menu-list[^"]*" id="person-more-list"[\s\S]*?<\/div>\s*<\/div>/)[0];
+    assert(more.includes('data-action="person-edit-open"') && more.includes('data-action="char-add"') && more.includes('data-action="away-add"') && more.includes('data-pid="p_8"'));
+    assert(more.indexOf('role="separator"') > more.indexOf('away-add') && more.indexOf('data-action="person-delete"') > more.indexOf('role="separator"') && more.includes('>Delete person<'));
+    assert(!out.includes('gs-delete-row') && !out.includes('Their Discord sign-in is not affected.'), 'Delete person is only in More');
+    const noDelete = personPage(record({ top: { can: { edit: true, notesView: true, notesEdit: true, delete: false, addCharacter: true } } }));
+    assert(!noDelete.includes('person-delete') && noDelete.includes('person-edit-open'));
   });
 
-  await check('person record: characters card lists Main first, Edit / Make Main / remove per character, and Add character', () => {
+  await check('person record: Characters are rows - spec icon, class-coloured name, class and spec, Main / Alt chip, one Edit and the Alt\'s More', () => {
     const out = personPage(record());
     assert(out.includes('data-action="char-add"') && out.includes('>Add character<'));
-    const table = out.match(/<table class="gs-dtable" aria-label="Characters"[\s\S]*?<\/table>/)[0];
-    assert(table.indexOf('Sølvhand') < table.indexOf('Glimmerkin'));
-    assert(table.includes('gs-tag-mark is-gold') && table.includes('Main</span>') && table.includes('gs-tag gs-tag-plain">Alt</span>'));
-    assert(table.includes('aria-label="Edit Sølvhand"') && table.includes('aria-label="Edit Glimmerkin"'), 'one inline action: Edit');
-    assert(table.includes('aria-label="More actions for Glimmerkin"') && table.includes('data-action="char-main" data-cid="') && table.includes('data-action="char-remove" data-cid="'), 'Make Main and Remove sit in the row\'s More menu');
-    assert(!table.includes('More actions for Sølvhand') && !table.includes('data-action="char-remove" data-cid="c_8"'), 'the Main cannot be removed or made Main again');
-    assert(!table.includes('>Team</th>'), 'no Team column with one team');
+    const rows = out.match(/<section class="gs-hd-panel gs-pr-panel" id="characters"[\s\S]*?<\/section>/)[0];
+    assert(rows.indexOf('Sølvhand') < rows.indexOf('Glimmerkin'));
+    assert(rows.includes('is-grey">Main</span>') && rows.includes('is-grey">Alt</span>') && !rows.includes('gs-tag-mark is-gold'));
+    assert(rows.includes('class="gs-spec-icon"') && rows.includes('gs-char-name gs-class-paladin') && rows.includes('gs-char-name gs-class-priest'));
+    assert(rows.includes('aria-label="Edit Sølvhand"') && rows.includes('aria-label="Edit Glimmerkin"'), 'one inline action: Edit');
+    assert(rows.includes('aria-label="More actions for Glimmerkin"') && rows.includes('data-action="char-main" data-cid="') && rows.includes('data-action="char-remove" data-cid="'), 'Make Main and Remove sit in the row\'s More menu');
+    assert(!rows.includes('More actions for Sølvhand') && !rows.includes('data-action="char-remove" data-cid="c_8"'), 'the Main cannot be removed or made Main again');
+    assert(!rows.includes('Weekend team') && !rows.includes('Main team'), 'no team name with one team');
     assert(out.includes('Attendance shows here after the first raid.'));
   });
 
-  await check('person record: a Team column appears with several teams', () => {
+  await check('person record: the team name joins a character row with several teams', () => {
     const gd = guildData({ teams: [TEAM_MAIN, TEAM_WEEKEND] });
     const rec = record({ characters: [charRec(8, 'Sølvhand', 'PALADIN', 'Protection', 'Holy', true), charRec('8b', 'Glimmerkin', 'PRIEST', 'Holy', 'Discipline', false, TEAM_WEEKEND)] });
-    const out = personPage(rec, gd);
-    assert(out.includes('>Team</th>') && out.includes('data-label="Team">Weekend team</td>') && out.includes('data-label="Team">Main team</td>'));
+    const rows = personPage(rec, gd).match(/<section class="gs-hd-panel gs-pr-panel" id="characters"[\s\S]*?<\/section>/)[0];
+    assert(rows.includes('&middot; Weekend team') && rows.includes('&middot; Main team'));
   });
 
-  await check('person record: Details form for editors (status, joined, trial dates, Discord from linkable) and Save changes', () => {
-    const out = personPage(record(), guildData(), [{ id: 'u_9', username: 'newbie', displayName: 'Newbie' }]);
-    assert(out.includes('data-submit="person-details-form"') && out.includes('data-savebar') && out.includes('>Save details<'), 'the fields share one Save bar');
-    assert(/<option value="trial" selected>Trial<\/option>/.test(out));
-    assert(/name="joinedOn"[^>]* value="2026-09-15"/.test(out) && /name="trialStart"[^>]* value="2026-09-15"/.test(out) && /name="trialEnd"[^>]* value="2026-10-13"/.test(out));
-    assert(/<option value="u_8" selected>Solvhand \(@solvhand\)<\/option>/.test(out) && out.includes('<option value="u_9">Newbie (@newbie)</option>') && out.includes('<option value="">Not linked</option>'));
-    assert(out.includes('Nickname on the Raid-Helper sign-up: Sølvhand/Glimmerkin.'));
-  });
-
-  await check('person record: notes with "Last edited by ... on ...", Save note, the Delete person block', () => {
+  await check('person record: Details are read-only key-values until Edit; the trial dates show for a Trial only; Edit opens the form with one Save bar', () => {
+    editing(record(), false);
     const out = personPage(record());
-    assert(out.includes('Only officers and team leads see notes.'));
-    assert(out.includes('<textarea') && out.includes('Holds threat well on trash.'));
-    assert(out.includes('Last edited by Thornvald on Oct 10, 2026'));
-    assert(out.includes('>Save note<'));
-    assert(out.includes('data-action="person-delete"') && out.includes('>Delete person<'));
-    assert(out.includes('Their Discord sign-in is not affected.'));
+    const read = out.match(/<section class="gs-hd-panel gs-pr-panel" id="details"[\s\S]*?<\/section>/)[0];
+    assert(!read.includes('<form') && !read.includes('<input') && !read.includes('<select'), 'read-only');
+    assert(text(read).includes('Status Trial') && text(read).includes('Joined Sep 15, 2026') && text(read).includes('Trial Sep 15, 2026 - Oct 13, 2026') && text(read).includes('Account Not linked'));
+    assert(read.includes('data-action="person-edit-open"') && read.includes('>Edit<'));
+    const raider = personPage(record({ person: { status: 'raider', trialFlag: null } }));
+    assert(!text(raider.match(/<section class="gs-hd-panel gs-pr-panel" id="details"[\s\S]*?<\/section>/)[0]).includes('Trial Sep 15'), 'no trial dates for a Raider');
+    editing(record(), true);
+    const form = personPage(record());
+    editing(record(), false);
+    assert(form.includes('data-submit="person-details-form"') && form.includes('data-savebar') && form.includes('>Save details<'), 'the fields share one Save bar');
+    assert(form.includes('data-action="person-edit-close"') && form.includes('>Cancel<'));
+    assert(/<option value="trial" selected>Trial<\/option>/.test(form));
+    assert(/name="joinedOn"[^>]* value="2026-09-15"/.test(form) && /name="trialStart"[^>]* value="2026-09-15"/.test(form) && /name="trialEnd"[^>]* value="2026-10-13"/.test(form));
+    assert(/<div id="det-trial-fields" class="gs-pr-trialfields">/.test(form), 'the trial dates are visible for a Trial');
+    editing(record(), true);
+    const rf = personPage(record({ person: { status: 'raider', trialFlag: null } }));
+    editing(record(), false);
+    assert(/<div id="det-trial-fields" class="gs-pr-trialfields" hidden>/.test(rf), 'hidden for a Raider');
+    assert(!form.includes('name="linkUserId"') && !form.includes('det-link'));
+  });
+
+  await check('person record: Officer notes are read-only text with Edit (editors); Edit opens the textarea and Save note; a viewer without notes.edit has no Edit', () => {
+    editing(record(), false);
+    const out = personPage(record());
+    const read = out.match(/<section class="gs-hd-panel gs-pr-panel" id="notes"[\s\S]*?<\/section>/)[0];
+    assert(read.includes('Holds threat well on trash.') && !read.includes('<textarea') && read.includes('data-action="person-notes-edit"'));
+    assert(read.includes('Edited by Thornvald, Oct 10, 2026'));
+    editing(record(), true);
+    const form = personPage(record());
+    editing(record(), false);
+    assert(form.includes('Only officers and team leads see notes.') && form.includes('<textarea') && form.includes('>Save note<') && form.includes('data-action="person-notes-close"'));
     const viewOnly = personPage(record({ top: { can: { edit: true, notesView: true, notesEdit: false, delete: false, addCharacter: true } } }));
-    assert(viewOnly.includes('readonly') && !viewOnly.includes('>Save note<') && !viewOnly.includes('person-delete'));
+    assert(viewOnly.includes('Holds threat well on trash.') && !viewOnly.includes('person-notes-edit') && !viewOnly.includes('>Save note<'));
     const noNotes = personPage(record({ notes: null }));
     assert(!noNotes.includes('Officer notes'));
   });
 
-  await check('person record: the delete confirm names the person and counts their characters', () => {
+  await check('person record: the delete confirm names the person, counts their characters and says their account is not affected', () => {
     const out = G.pages.person.deleteDialogHtml(record());
-    assert(out.includes('Delete Sølvhand? This removes them and their 2 characters from the roster. It can&#39;t be undone.'));
+    assert(out.includes('Delete Sølvhand? This removes them and their 2 characters from the roster. It can&#39;t be undone. Their account is not affected.'));
+    assert(!out.includes('Discord sign-in'));
     assert(out.includes('data-submit="delete-person-form"') && out.includes('>Delete person<'));
     const one = G.pages.person.deleteDialogHtml(record({ characters: [charRec(8, 'Sølvhand', 'PALADIN', 'Protection', 'Holy', true)] }));
     assert(one.includes('their 1 character from') || one.includes('their 1 character '), one);
   });
 
-  await check('person record: a member gets a read-only record, no notes, no buttons, and the note on their own record only', () => {
-    const memberRec = (isMe) => record({ person: { isMe, status: 'raider', trialFlag: null, discord: { signIn: 'signed_in', user: { id: 'u_8', username: 'solvhand', displayName: 'Solvhand', avatarUrl: null, initials: 'SO' }, nickname: null } },
+  await check('person record: a member gets a read-only record, no notes, no More, no Edit, and the You line on their own record only', () => {
+    const memberRec = (isMe) => record({ person: { isMe, status: 'raider', trialFlag: null, account: { user: { id: 'u_8', username: 'solvhand', displayName: 'Solvhand', avatarUrl: null, initials: 'SO' }, via: 'discord', linked: false } },
       top: { can: { edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false } }, notes: null });
     const mine = personPage(memberRec(true), guildData({ can: MEMBER_CAN, flags: {} }));
-    assert(mine.includes('<span class="gs-you">You</span>'));
+    assert(mine.includes('<span class="gs-youline-label">You</span>') && headOf(mine).includes('is-grey">You<'));
     assert(mine.includes('Officers keep your status and characters up to date. Ask one of them if something is wrong.'));
     assert(mine.includes('Your attendance shows here after the first raid.'));
-    assert(mine.includes('Joined Sep 15, 2026'));
-    for (const banned of ['<button', '<form', '<textarea', 'Officer notes', 'Delete person', 'data-action=']) assert(!mine.includes(banned), banned);
+    assert(mine.includes('Joined Sep 15, 2026') && text(mine).includes('Account Solvhand (via Discord)'));
+    assert(mine.includes('id="you-sees" hidden') && mine.includes('aria-controls="you-sees"') && mine.includes('Who can see this page'));
+    for (const banned of ['<form', '<textarea', 'Officer notes', 'Delete person', 'person-more', 'person-edit-open', 'account-link-open', 'account-unlink-open']) assert(!mine.includes(banned), banned);
+    assert(!mine.replace(/<button type="button" class="gs-btn gs-btn-ghost" data-action="you-sees-toggle"[\s\S]*?<\/button>/, '').includes('<button'), 'the only button is the disclosure');
     const theirs = personPage(memberRec(false), guildData({ can: MEMBER_CAN, flags: {} }));
-    assert(!theirs.includes('gs-you') && !theirs.includes('Officers keep your status'));
-    assert(!theirs.includes('<button'));
+    assert(!theirs.includes('gs-youline') && !theirs.includes('Officers keep your status') && !theirs.includes('<button'));
+    assert(!text(headOf(theirs)).includes('Account:'), 'another member\'s account is not in the head');
   });
 
   await check('person record: names, nickname, notes and the author are escaped', () => {
@@ -607,7 +637,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.equal(s.person.record.person.version, 4);
     assert.equal(s.pageAlert, 'Someone else changed this person. The page now shows their version.');
     const out = G.pages.person.personHtml({ guildData: s.guilds.g1, record: s.person.record, linkable: [], alert: s.pageAlert });
-    assert(out.includes('Someone else changed this person. The page now shows their version.') && out.includes('gs-status-raider">Raider</span>') && !out.includes('gs-trial-bar'));
+    assert(out.includes('Someone else changed this person. The page now shows their version.') && !headOf(out).includes('gs-hd-chip') && !out.includes('gs-trial-bar'), 'the Raider the server sent: no chip, no trial banner');
   });
 
   await check('conflict: a stale notes save takes only { notes } from current', async () => {
@@ -687,12 +717,12 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const base = '/api/guild/g1/roster/p_8';
     await withApi({ patch: rec('patch'), post: rec('post'), del: rec('del') }, async () => {
       // details: only the changed fields go, an emptied date clears with null
-      G.handlers.submit['person-details-form'](form({ status: field('raider'), joinedOn: field('2026-09-15'), trialStart: field(''), trialEnd: field('2026-10-13'), linkUserId: field('u_8') }));
+      G.handlers.submit['person-details-form'](form({ status: field('raider'), joinedOn: field('2026-09-15'), trialStart: field(''), trialEnd: field('2026-10-13') }));
       await tick();
-      assert.deepEqual(calls[0], { verb: 'patch', url: base, body: { expectedVersion: 3, status: 'raider', trialStart: null } });
+      assert.deepEqual(calls[0], { verb: 'patch', url: base, body: { expectedVersion: 3, status: 'raider' } }, 'the trial dates only go with a Trial');
       // nothing changed: no request
       const before = calls.length;
-      G.handlers.submit['person-details-form'](form({ status: field('trial'), joinedOn: field('2026-09-15'), trialStart: field('2026-09-15'), trialEnd: field('2026-10-13'), linkUserId: field('u_8') }));
+      G.handlers.submit['person-details-form'](form({ status: field('trial'), joinedOn: field('2026-09-15'), trialStart: field('2026-09-15'), trialEnd: field('2026-10-13') }));
       await tick();
       assert.equal(calls.length, before, 'unchanged details send nothing');
       // add a character as the new Main
@@ -713,10 +743,18 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
       G.handlers.submit['remove-char-form'](form({}, { 'data-cid': 'c_8b' }));
       await tick();
       assert.deepEqual(calls[4], { verb: 'del', url: base + '/characters/c_8b', body: {} });
+      // a Trial's changed date goes on its own
+      G.handlers.submit['person-details-form'](form({ status: field('trial'), joinedOn: field('2026-09-15'), trialStart: field('2026-09-15'), trialEnd: field('2026-10-20') }));
+      await tick();
+      assert.deepEqual(calls[5], { verb: 'patch', url: base, body: { expectedVersion: 8, trialEnd: '2026-10-20' } });
+      // Unlink on the Discord kind clears the Discord link with a PATCH; the officer kind keeps its PUT /account
+      G.handlers.submit['account-unlink-form'](form({}, { 'data-via': 'discord' }));
+      await tick();
+      assert.deepEqual(calls[6], { verb: 'patch', url: base, body: { expectedVersion: 9, linkUserId: null } });
       // delete the person: back to the roster with a notice and the new badge count
       G.handlers.submit['delete-person-form'](form({}));
       await tick();
-      assert.deepEqual(calls[5], { verb: 'del', url: base, body: {} });
+      assert.deepEqual(calls[7], { verb: 'del', url: base, body: {} });
     });
     assert.equal(s.guilds.g1.rosterFlags.t_main, 1);
     assert.equal(s.person, null);
@@ -1266,25 +1304,32 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
 
   await check('inactive: the Reason and Left on fields show only for Inactive (default today, or the stored values) and the status reads "Inactive - Kicked, left Oct 12, 2026"', async () => {
     // A trial: fields present but hidden, the date defaults to today.
+    editing(record(), true);
     const trial = personPage(record());
+    editing(record(), false);
     assert(/<select class="gs-input" id="det-status" name="status"[^>]*data-change="person-status-change">/.test(trial));
     assert(/id="det-reason-field" hidden>/.test(trial) && /id="det-lefton-field" hidden>/.test(trial));
     assert(/name="leftOn"[^>]* value="2026-10-15"/.test(trial));
     assert(trial.includes('<option value="" selected>No reason</option>') && ['Left guild', 'Kicked', 'Break', 'Other'].every(t => trial.includes('>' + t + '</option>')));
     // An inactive person: fields shown with the stored values.
-    const gone = personPage(record({ person: { status: 'inactive', trialFlag: null, leftReason: 'kicked', leftOn: '2026-10-12' } }));
+    const goneRec = record({ person: { status: 'inactive', trialFlag: null, leftReason: 'kicked', leftOn: '2026-10-12' } });
+    assert(personPage(goneRec).includes('Inactive - Kicked, left Oct 12, 2026'), 'read-only Details say the reason and the day');
+    editing(goneRec, true);
+    const gone = personPage(goneRec);
+    editing(goneRec, false);
     assert(/id="det-reason-field">/.test(gone) && /id="det-lefton-field">/.test(gone));
     assert(gone.includes('<option value="kicked" selected>Kicked</option>') && /name="leftOn"[^>]* value="2026-10-12"/.test(gone));
-    assert(gone.includes('gs-status-inactive">Inactive - Kicked, left Oct 12, 2026<'));
     // The select toggles the fields.
-    const fields = { 'det-reason-field': { hidden: true }, 'det-lefton-field': { hidden: true } };
+    const fields = { 'det-reason-field': { hidden: true }, 'det-lefton-field': { hidden: true }, 'det-trial-fields': { hidden: false } };
     const saved = ctx.document;
     ctx.document = { getElementById: id => fields[id] || null };
     try {
       G.handlers.change['person-status-change']({ value: 'inactive' });
-      assert(!fields['det-reason-field'].hidden && !fields['det-lefton-field'].hidden);
+      assert(!fields['det-reason-field'].hidden && !fields['det-lefton-field'].hidden && fields['det-trial-fields'].hidden, 'the trial dates belong to Trial only');
       G.handlers.change['person-status-change']({ value: 'raider' });
       assert(fields['det-reason-field'].hidden && fields['det-lefton-field'].hidden);
+      G.handlers.change['person-status-change']({ value: 'trial' });
+      assert(!fields['det-trial-fields'].hidden);
     } finally { ctx.document = saved; }
   });
 
@@ -1307,7 +1352,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const reply = () => Promise.resolve(Object.assign(record({ person: { version: s.person.record.person.version + 1 } }), { rosterFlags: { t_main: 2 } }));
     const field = v => ({ value: v, focus() {}, select() {}, setAttribute() {} });
     const form = extra => ({ elements: extra, getAttribute: () => null, querySelector: () => null, querySelectorAll: () => [] });
-    const base = { joinedOn: field('2026-09-15'), trialStart: field('2026-09-15'), trialEnd: field('2026-10-13'), linkUserId: field('u_8') };
+    const base = { joinedOn: field('2026-09-15'), trialStart: field('2026-09-15'), trialEnd: field('2026-10-13') };
     await withApi({ patch: (url, body) => { calls.push(plain(body)); return reply(); } }, async () => {
       G.handlers.submit['person-details-form'](form(Object.assign({ status: field('inactive'), leftReason: field(''), leftOn: field('2026-10-15') }, base)));
       await tick();
@@ -1321,11 +1366,11 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
   await check('trial flags are for officers: a member\'s record has no chip or trial bar, but read-only Details with the dates', () => {
     const rec = record({ top: { can: { edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false } }, notes: null });
     const out = personPage(rec, guildData({ can: MEMBER_CAN, flags: {} }));
-    assert(!out.includes('Ended 2 days ago') && !out.includes('gs-trial-bar') && out.includes('gs-status-trial">Trial<'));
-    assert(out.includes('<h2 class="gs-h2" id="details-h">Details</h2>') && out.includes('<dt>Joined</dt><dd>Sep 15, 2026</dd>') && out.includes('<dt>Trial start</dt>') && out.includes('<dt>Trial end</dt><dd>Oct 13, 2026</dd>'));
+    assert(!out.includes('Ended 2 days ago') && !out.includes('gs-trial-bar') && headOf(out).includes('is-blue">Trial<'));
+    assert(out.includes('id="details-h">Details</h2>') && text(out).includes('Joined Sep 15, 2026') && text(out).includes('Trial Sep 15, 2026 - Oct 13, 2026'));
     assert(!out.includes('<form') && !out.includes('<input'));
     const officer = personPage(record());
-    assert(officer.includes('Ended 2 days ago') && officer.includes('gs-trial-bar'));
+    assert(headOf(officer).includes('is-rose">Ended 2 days ago<') && !officer.includes('gs-trial-bar'));
   });
 
   // ── hygiene ────────────────────────────────────────────────────

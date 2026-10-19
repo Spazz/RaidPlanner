@@ -19,12 +19,19 @@
     return L().awardRowHtml(gd, award, { when: 'date', raidLink: true, character: true });
   }
 
+  // "MS 1 - OS 0 - DE 0 - Bank 0": the totals as one line in the panel head.
+  function totalsText(totals) {
+    const t = totals || {};
+    return ['MS', 'OS', 'DE', 'BANK'].map(function (k) { return (k === 'BANK' ? 'Bank' : k) + ' ' + esc(Number(t[k]) || 0); }).join(' &middot; ');
+  }
+
   // opts: { guildData, pid, record (the roster record), state: { data, denied } | null }  ->  the section of the person page (T2)
   function sectionOf(opts) {
     const s = opts.state;
     const gd = opts.guildData;
     const isMe = !!(opts.record && opts.record.person && opts.record.person.isMe);
     let body;
+    let meta = '';
     if (!s) {
       body = '<p class="gs-fine">' + esc(emptyLine(isMe)) + '</p>';
     } else if (s.denied || !s.data) {
@@ -32,11 +39,12 @@
     } else {
       const awards = Array.isArray(s.data.awards) ? s.data.awards : [];
       body = awards.length
-        ? L().totalsHtml(s.data.totals) + '<ul class="gs-loot-list" aria-label="Latest loot">' + awards.slice(0, CARD_AWARDS).map(function (w) { return rowHtml(gd, w); }).join('') + '</ul>' +
-          '<p class="gs-fine"><a href="' + esc(G.router.format({ name: 'lootperson', gid: gd.guild.id, pid: opts.pid })) + '">All loot</a></p>'
+        ? '<ul class="gs-loot-list" aria-label="Latest loot">' + awards.slice(0, CARD_AWARDS).map(function (w) { return rowHtml(gd, w); }).join('') + '</ul>' +
+          '<p class="gs-fine"><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'lootperson', gid: gd.guild.id, pid: opts.pid })) + '">All loot</a></p>'
         : '<p class="gs-fine">' + esc(emptyLine(isMe)) + '</p>';
+      if (awards.length) meta = totalsText(s.data.totals);
     }
-    return { id: 'loot-card', title: 'Loot', bodyHtml: body };
+    return { id: 'loot-card', title: 'Loot', metaHtml: meta, bodyHtml: body };
   }
 
   function cardHtml(opts) { return G.ui.objectSectionHtml(sectionOf(opts)); }

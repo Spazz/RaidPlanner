@@ -290,30 +290,32 @@ function withApi(stubs, fn) {
   const holly = person('u2', 'Holly');
   const gd = { guild: { id: 'g1', name: 'Ember', realm: 'Dreamscythe', realmKind: 'realm', region: 'US', gameVersion: 'tbc' }, teams: [{ id: 't1', name: 'Alpha', size: 25, archived: false }], me: { roles: [{ role: 'officer' }], can: { 'roster.edit': 'guild' } } };
 
-  await check('person page: the header names a linked account, and the Details field shows Not linked + Link, an officer\'s link + Unlink, or the Discord one without a button', () => {
+  await check('person page (D6): ONE Account row - "Not linked" + Link account, "<name> (linked by an officer)" + Unlink, "<name> (via Discord)" + Unlink; no "Discord account" label; a member page has no button', () => {
+    const accountRow = html => (html.match(/<div class="gs-pr-kv"><span class="gs-pr-k">Account<\/span>[\s\S]*?<\/div>/) || [''])[0];
     const none = record();
-    assert.equal(text(G.pages.person.personHtml({ guildData: gd, record: none, linkable: [] }).match(/<span class="gs-person-discord">[\s\S]*?<\/span>/)[0]).trim(), 'No Discord account');
     const html0 = G.pages.person.personHtml({ guildData: gd, record: none, linkable: [] });
-    assert(html0.includes('id="det-account-field"') && html0.includes('Not linked') && html0.includes('data-action="account-link-open"') && !html0.includes('account-unlink-open'));
-    assert(html0.includes('Raidsmith account'));
+    assert(text(html0.match(/<p class="gs-sub gs-pagehead-context">[\s\S]*?<\/p>/)[0]).trim().endsWith('Account: Not linked'));
+    assert(text(accountRow(html0)).includes('Not linked') && accountRow(html0).includes('data-action="account-link-open"') && !html0.includes('account-unlink-open'));
+    assert(!/Discord account/i.test(text(html0)) && !html0.includes('det-link') && !html0.includes('linkUserId'));
+    assert.equal((html0.match(/>Account</g) || []).length, 1, 'one Account row');
     const linked = record({ account: { user: holly, via: 'link', linked: true } });
     const html1 = G.pages.person.personHtml({ guildData: gd, record: linked, linkable: [] });
-    assert.equal(text(html1.match(/<span class="gs-person-discord">[\s\S]*?<\/span>/)[0]).trim(), 'Account: Holly - Signed in');
-    assert(text(html1).includes('Holly linked by an officer') && html1.includes('data-action="account-unlink-open"') && !html1.includes('data-action="account-link-open"'));
-    // A Discord member whose account also carries the officer's link: the Discord line is not repeated as an account.
-    const both = record({ discord: { signIn: 'signed_in', user: person('u9', 'Gale'), nickname: null }, account: { user: person('u9', 'Gale'), via: 'link', linked: true } });
-    assert.equal(text(G.pages.person.personHtml({ guildData: gd, record: both, linkable: [] }).match(/<span class="gs-person-discord">[\s\S]*?<\/span>/)[0]).trim(), 'Discord: gale - Signed in');
-    // Through the Discord ID: shown, with no Unlink (that is the Discord field's).
+    assert(text(accountRow(html1)).includes('Holly (linked by an officer)') && accountRow(html1).includes('data-action="account-unlink-open"') && !accountRow(html1).includes('account-link-open'));
+    assert(text(html1.match(/<p class="gs-sub gs-pagehead-context">[\s\S]*?<\/p>/)[0]).includes('Account: Holly (linked by an officer)'));
+    // The Discord ID matches: one row too, with its own Unlink (it clears the Discord link).
     const viaDiscord = record({ discord: { signIn: 'signed_in', user: person('u9', 'Gale'), nickname: null }, account: { user: person('u9', 'Gale'), via: 'discord', linked: false } });
     const html2 = G.pages.person.personHtml({ guildData: gd, record: viaDiscord, linkable: [] });
-    assert(text(html2).includes('Gale through the Discord account above') && !html2.includes('account-unlink-open') && !html2.includes('account-link-open'));
-    // Discord not signed in yet, plus an account an officer linked: both lines.
-    const mixed = record({ discord: { signIn: 'not_yet', user: null, nickname: 'Ally' }, account: { user: holly, via: 'link', linked: true } });
-    assert.equal(text(G.pages.person.personHtml({ guildData: gd, record: mixed, linkable: [] }).match(/<span class="gs-person-discord">[\s\S]*?<\/span>/)[0]).trim(), 'Discord: Ally - Not signed in yet - Account: Holly - Signed in');
+    assert(text(accountRow(html2)).includes('Gale (via Discord)') && accountRow(html2).includes('data-action="account-unlink-open"'));
+    assert(G.pages.person.accountUnlinkDialogHtml(viaDiscord).includes('data-via="discord"') && G.pages.person.accountUnlinkDialogHtml(linked).includes('data-via="link"'));
+    // The edit form carries the same single row, not a select.
+    G.pages.person.setEditing('g1', 'p1', 'details', true);
+    const edit = G.pages.person.personHtml({ guildData: gd, record: none, linkable: [] });
+    G.pages.person.setEditing('g1', 'p1', 'details', false);
+    assert(edit.includes('id="det-account-field"') && edit.includes('id="det-account-current"') && !edit.includes('name="linkUserId"') && !/Discord account/i.test(text(edit)));
     // A member's read-only record has no field and no buttons.
     const member = record({ isMe: true }, { can: { edit: false, notesView: false, notesEdit: false, delete: false, addCharacter: false } });
     const html3 = G.pages.person.personHtml({ guildData: gd, record: member, linkable: null });
-    assert(!html3.includes('det-account-field') && !html3.includes('account-link-open'));
+    assert(!html3.includes('det-account-field') && !html3.includes('account-link-open') && !html3.includes('account-unlink-open'));
     assertEscaped(G.pages.person.personHtml({ guildData: gd, record: record({ account: { user: person('u5', HOSTILE + QUOTES), via: 'link', linked: true } }), linkable: [] }), 'account name');
     assertNoRawAttrs(html1);
   });
@@ -385,7 +387,7 @@ function withApi(stubs, fn) {
       assert.equal(s.person.record.person.account.user.displayName, 'Holly');
       assert.equal(closed.length, 1);
       // Unlink
-      G.handlers.submit['account-unlink-form']({ querySelectorAll: () => [] });
+      G.handlers.submit['account-unlink-form']({ querySelectorAll: () => [], getAttribute: () => 'link' });
       await tick(); await tick();
       assert.equal(s.person.record.person.account.user, null);
     });

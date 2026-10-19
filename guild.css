@@ -2042,6 +2042,99 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-rs-cols, .gs-rs-cols.has-other { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+/* ── Person record (Roster redesign A3 / R2): spec icon head, decision panel, two columns, read-only Details ───────────────────
+   Panels are .gs-hd-panel; headings use the condensed face like Home; chips are .gs-hd-chip; orange stays on the one primary (Promote to Raider). */
+.gs-pagehead-icon { align-self: center; flex: none; display: inline-flex; }
+.gs-pagehead-icon .gs-spec-icon { width: 28px; height: 28px; }
+.gs-forge .gs-h1.gs-class-warrior { color: var(--class-warrior); } .gs-forge .gs-h1.gs-class-paladin { color: var(--class-paladin); } .gs-forge .gs-h1.gs-class-hunter { color: var(--class-hunter); }
+.gs-forge .gs-h1.gs-class-rogue { color: var(--class-rogue); } .gs-forge .gs-h1.gs-class-priest { color: var(--class-priest); } .gs-forge .gs-h1.gs-class-shaman { color: var(--class-shaman-text); }
+.gs-forge .gs-h1.gs-class-mage { color: var(--class-mage); } .gs-forge .gs-h1.gs-class-warlock { color: var(--class-warlock); } .gs-forge .gs-h1.gs-class-druid { color: var(--class-druid); }
+.gs-pr { gap: 24px; }
+.gs-pr .gs-pagehead-h { align-items: center; }
+.gs-pr .gs-youline { padding: 0; background: none; border: 0; font-size: 14px; color: var(--text-secondary); }
+.gs-pr .gs-youline-act { margin-left: 8px; align-items: center; flex-wrap: wrap; gap: 8px; }
+.gs-pr .gs-youline-sub[hidden] { display: none; }
+.gs-pr-h { margin: 0; font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--hd-white); }
+.gs-pr-mut { font-size: 13px; line-height: 1.4; color: var(--text-muted); }
+.gs-pr-cap { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.gs-pr-num { font-size: 22px; line-height: 1.1; font-weight: 700; color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-pr-sub { font-size: 14px; color: var(--text-secondary); }
+.gs-pr-cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.gs-pr-left, .gs-pr-right { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.gs-pr-panel { overflow: hidden; }
+.gs-pr-ph { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 8px 12px 8px 20px; }
+.gs-pr-ph .gs-pr-mut { margin-left: auto; text-align: right; }
+.gs-pr-acts { display: inline-flex; align-items: center; gap: 8px; }
+.gs-pr-ph .gs-pr-mut + .gs-pr-acts { margin-left: 0; }
+.gs-pr-ph .gs-saved-status { font-size: 13px; }
+.gs-pr-body { padding: 12px 20px 16px; border-top: 1px solid var(--hd-hair); display: flex; flex-direction: column; gap: 10px; }
+.gs-pr-body > .gs-fine, .gs-pr-pad > .gs-fine { margin: 0; }
+.gs-pr-pad { padding: 12px 20px 16px; border-top: 1px solid var(--hd-hair); }
+.gs-pr-row { display: flex; align-items: center; gap: 16px; min-height: 52px; padding: 0 12px 0 20px; border-top: 1px solid var(--hd-hair); font-size: 14px; }
+.gs-pr-date { width: 110px; flex: none; color: var(--text-primary); }
+.gs-pr-what { flex: 1; min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+.gs-pr-end { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
+.gs-pr-raid .gs-pr-end { gap: 10px; }
+.gs-pr-char { min-height: 56px; gap: 12px; }
+.gs-pr-char .gs-pr-what { flex: 1; }
+.gs-pr-cname { font-size: 15px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.gs-pr-char .gs-hd-chip { align-self: center; }
+.gs-pr-linkrow { padding: 4px 12px 8px; border-top: 1px solid var(--hd-hair); }
+.gs-pr-figs { display: grid; gap: 16px; padding: 4px 20px 16px; border-top: 1px solid var(--hd-hair); padding-top: 16px; }
+.gs-pr-figs.is-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.gs-pr-figs.is-five { grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 16px 0 0; }
+.gs-pr-fig { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.gs-pr-numrow { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.gs-pr-team { margin: 0; padding: 12px 20px 0; font: 700 15px/1.2 var(--font-cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-primary); }
+.gs-pr-kv { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px 0 20px; border-top: 1px solid var(--hd-hair); font-size: 14px; }
+.gs-pr-k { width: 96px; flex: none; font-size: 13px; color: var(--text-muted); }
+.gs-pr-v { flex: 1; min-width: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-pr-note { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-primary); white-space: pre-line; overflow-wrap: anywhere; }
+.gs-pr-form { gap: 14px; }
+.gs-pr-form .gs-savebar { margin: 4px -20px -16px; }
+.gs-pr-acct { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.gs-pr-acctname { font-size: 14px; color: var(--text-primary); overflow-wrap: anywhere; }
+.gs-pr-acctname.is-none { color: var(--text-secondary); }
+.gs-pr-trialfields { display: flex; flex-direction: column; gap: 14px; }
+.gs-pr-trialfields[hidden] { display: none; }
+.gs-pr-trial { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; }
+.gs-pr-trialhead { display: flex; align-items: center; gap: 16px; }
+.gs-pr-trialtitle { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-pr-trialtitle .gs-pr-h { font-size: 22px; }
+.gs-pr-decide { display: flex; align-items: center; gap: 8px; }
+.gs-forge:not(.gs-home) .gs-pr-decide .gs-btn:not(.gs-btn-molten) { min-height: 44px; }
+.gs-forge:not(.gs-home) .gs-pr-decide .gs-btn-ghost { color: #f7a1b3; }
+.gs-pr-trial .gs-pr-figs.is-five { border-top: 1px solid var(--hd-panel-edge); }
+.gs-pr-quote { margin: 0; padding-top: 16px; border-top: 1px solid var(--hd-panel-edge); font-size: 15px; line-height: 1.5; color: var(--text-primary); }
+
+@media (max-width: 1023px) {
+  .gs-pr-cols { grid-template-columns: minmax(0, 1fr); }
+  .gs-pr-figs.is-five { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+}
+@media (max-width:600px) {
+  .gs-pr { gap: 20px; }
+  .gs-pr-trial { padding: 16px; gap: 14px; }
+  .gs-pr-trialhead { flex-direction: column; align-items: stretch; gap: 12px; }
+  .gs-pr-trialtitle .gs-pr-h { font-size: 20px; }
+  .gs-pr-decide { flex-direction: column; align-items: stretch; }
+  .gs-forge:not(.gs-home) .gs-pr-decide .gs-btn { width: 100%; justify-content: center; }
+  .gs-forge:not(.gs-home) .gs-pr-decide .gs-btn-molten { min-height: 48px; }
+  .gs-pr-ph { padding-left: 16px; }
+  .gs-pr-row { padding-left: 16px; gap: 10px; flex-wrap: wrap; min-height: 56px; padding-top: 6px; padding-bottom: 6px; }
+  .gs-pr-date { width: auto; }
+  .gs-pr-raid .gs-pr-what { flex: 1 1 0; }
+  .gs-pr-char .gs-pr-what { flex-basis: 100%; order: 5; padding-left: 30px; margin-top: -4px; }
+  .gs-pr-kv { padding-left: 16px; min-height: 48px; }
+  .gs-pr-k { width: 80px; }
+  .gs-pr-figs { padding-left: 16px; padding-right: 16px; }
+  .gs-pr-body, .gs-pr-pad { padding-left: 16px; padding-right: 16px; }
+  .gs-pr-form .gs-savebar { margin-left: -16px; margin-right: -16px; }
+  .gs-pr-linkrow .gs-fg-u, .gs-pr-pad .gs-fg-u, .gs-pr-body .gs-fg-u { display: inline-flex; align-items: center; min-height: 44px; }
+  .gs-pr .gs-youline-act .gs-btn { width: auto; }
+  .gs-pr .gs-back-link { min-height: 44px; }
+}
+
+
 /* Written without a space after the colon on purpose, like Home's: the suites slice guild.css at the last spaced phone media query to find the shared phone block. */
 @media (max-width:600px) {
   .gs-roster-page { gap: 16px; }

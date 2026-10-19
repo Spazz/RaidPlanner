@@ -921,10 +921,12 @@ function withState(fn) {
     const gdata = gd(OFFICER_CAN);
     const record = { person: { id: 'p_th', isMe: false } };
     const out = P.cardHtml({ guildData: gdata, pid: 'p_th', record, state: { data: PERSON_LOOT, denied: false } });
-    assert(out.includes('<h2 class="gs-h2" id="loot-card-h">Loot</h2>') && out.includes('<dt>Main spec</dt><dd>5</dd>'));
+    assert(out.includes('<h2 class="gs-h2" id="loot-card-h">Loot</h2>'));
+    // The totals are one line in the record panel's head: "MS 5 - OS ... - DE ... - Bank ...".
+    assert(/^MS 5 &middot; OS \d+ &middot; DE \d+ &middot; Bank \d+$/.test(P.sectionOf({ guildData: gdata, pid: 'p_th', record, state: { data: PERSON_LOOT, denied: false } }).metaHtml));
     assert.equal((out.match(/<li class="gs-loot-row"/g) || []).length, 5, 'the last 5 of 6');
     assert(!out.includes('Dragonspine Trophy') && out.includes('Brutality Blade'));
-    assert(out.includes('<a href="#/g/g1/loot/p/p_th">All loot</a>'));
+    assert(out.includes('<a class="gs-fg-u" href="#/g/g1/loot/p/p_th">All loot</a>'));
     assert(out.includes('href="#/g/g1/raids/r/r2"'), 'each award names its raid');
     const mine = { person: { id: 'p_th', isMe: true } };
     assert(P.cardHtml({ guildData: gdata, pid: 'p_th', record: mine, state: { data: { awards: [], totals: {} } } }).includes('Your loot shows here after your first award is imported.'));

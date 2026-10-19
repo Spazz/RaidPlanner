@@ -31,29 +31,55 @@
       '<div class="gs-summary-item"><dt>Sign-up rate</dt><dd>' + esc(G.ui.percent(metrics.signupRate)) + '</dd></div></dl>';
   }
 
-  function stripHtml(cells) {
-    const last = cells.slice().sort(function (x, y) { return dateOfCell(x) < dateOfCell(y) ? -1 : 1; }).slice(-CARD_CELLS);
-    if (!last.length) return '<p class="gs-fine">No raids yet.</p>';
-    return '<div class="gs-att-strip">' + last.map(function (c) { return A().cellHtml(c, dateOfCell(c)); }).join('') + '</div>';
+  // The Roster record's figures: three numbers over a hairline, each a caps label and a big value ("8 weeks" / "All time" / "Sign-ups").
+  function figuresHtml(m, team) {
+    const metrics = m || {};
+    const weeks = team && typeof team.window === 'number' ? team.window + ' weeks' : 'Recent';
+    const one = function (label, value) { return '<div class="gs-pr-fig"><span class="gs-pr-cap">' + esc(label) + '</span><span class="gs-pr-num">' + esc(G.ui.percent(value)) + '</span></div>'; };
+    return '<div class="gs-pr-figs is-three">' + one(weeks, metrics.pct) + one('All time', metrics.pctAll) + one('Sign-ups', metrics.signupRate) + '</div>';
+  }
+
+  // One raid as a row: the day, the zone, a tinted outcome word (and "with notice" / "no notice" on a miss).
+  const OUTCOME_CHIP = { present: ['green', 'Attended'], bench: ['grey', 'Bench'], fill_in: ['grey', 'Other team'], late: ['blue', 'Late'], left_early: ['blue', 'Left early'], late_left: ['blue', 'Late, left early'],
+    missed: ['rose', 'Missed'], missed_notice: ['rose', 'Missed'], tentative: ['grey', 'Tentative'], no_signup: ['grey', 'No sign-up'] };
+  function raidRowHtml(c) {
+    const date = dateOfCell(c);
+    const r = c.raid && typeof c.raid === 'object' ? c.raid : {};
+    const pair = Object.prototype.hasOwnProperty.call(OUTCOME_CHIP, c.outcome) ? OUTCOME_CHIP[c.outcome] : ['grey', A().labelOf(c.outcome)];
+    const note = c.outcome === 'missed' ? 'no notice' : c.outcome === 'missed_notice' ? 'with notice' : '';
+    return '<div class="gs-pr-row gs-pr-raid"><span class="gs-pr-date">' + esc(G.ui.weekdayDay(date) || date) + '</span><span class="gs-pr-what">' + esc(r.zone || r.title || '') + '</span>' +
+      '<span class="gs-pr-end">' + (note ? '<span class="gs-pr-mut">' + note + '</span>' : '') + '<span class="gs-hd-chip is-' + pair[0] + '">' + esc(pair[1] + (c.credit == null && LATE_TYPES.indexOf(c.outcome) >= 0 ? ' (awaiting review)' : '')) + '</span></span></div>';
+  }
+  function rowsOf(cells, max) {
+    return cells.filter(function (c) { return c && c.outcome && !c.preStart; }).sort(function (x, y) { return dateOfCell(x) < dateOfCell(y) ? 1 : -1; }).slice(0, max);
   }
 
   // opts: { gid, pid, record (the roster record), state: { data, denied } | null }  ->  the section of the person page (T2)
   function sectionOf(opts) {
     const s = opts.state;
-    const isMe = !!(opts.record && opts.record.person && opts.record.person.isMe);
-    let body;
-    if (!s) {
-      body = '<p class="gs-fine">' + esc(isMe ? 'Your attendance shows here after the first raid.' : 'Attendance shows here after the first raid.') + '</p>';
-    } else if (s.denied || !s.data) {
-      body = '<p class="gs-fine">Attendance for this person is visible to the members of their team.</p>';
-    } else {
-      const teams = Array.isArray(s.data.teams) ? s.data.teams : [];
-      body = teams.length ? teams.map(function (t) {
-        return '<div class="gs-att-teamblock">' + (teams.length > 1 ? '<h3 class="gs-h3">' + esc(nameOfTeam(t.team)) + '</h3>' : '') + tilesHtml(t.metrics, t) + stripHtml(metricCells(t)) + '</div>';
-      }).join('') + '<p class="gs-fine"><a href="' + esc(G.router.format({ name: 'personatt', gid: opts.gid, pid: opts.pid })) + '">Full history</a></p>'
-        : '<p class="gs-fine">' + esc(isMe ? 'Your attendance shows here after the first raid.' : 'Attendance shows here after the first raid.') + '</p>';
+    const p = (opts.record && opts.record.person) || {};
+    const isMe = !!p.isMe;
+    const trial = p.status === 'trial' && !!(opts.record.can && opts.record.can.edit);
+    const none = '<p class="gs-fine">' + esc(isMe ? 'Your attendance shows here after the first raid.' : 'Attendance shows here after the first raid.') + '</p>';
+    const link = function () { return '<div class="gs-pr-linkrow"><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'personatt', gid: opts.gid, pid: opts.pid })) + '">Full history</a></div>'; };
+    if (!s) return { id: 'attendance', title: 'Attendance', bodyHtml: none };
+    if (s.denied || !s.data) return { id: 'attendance', title: 'Attendance', bodyHtml: '<p class="gs-fine">Attendance for this person is visible to the members of their team.</p>' };
+    const teams = Array.isArray(s.data.teams) ? s.data.teams : [];
+    if (!teams.length) return { id: 'attendance', title: 'Attendance', bodyHtml: none };
+    if (trial) {
+      // A Trial: the figures are in the decision panel above, so only the raids since the trial started are listed here.
+      const since = p.trialStart || '';
+      const all = [].concat.apply([], teams.map(metricCells)).filter(function (c) { return !since || dateOfCell(c) >= since; });
+      const rows = rowsOf(all, CARD_CELLS);
+      return { id: 'attendance', title: 'Attendance', flush: true, metaHtml: since ? 'Since trial start &middot; ' + esc(rows.length === 1 ? '1 raid counted' : rows.length + ' raids counted') : '',
+        bodyHtml: (rows.length ? rows.map(raidRowHtml).join('') : '<div class="gs-pr-pad"><p class="gs-fine">No raids since the trial started.</p></div>') + link() };
     }
-    return { id: 'attendance', title: 'Attendance', bodyHtml: body };
+    const body = teams.map(function (t) {
+      const rows = rowsOf(metricCells(t), CARD_CELLS);
+      return '<div class="gs-att-teamblock">' + (teams.length > 1 ? '<h3 class="gs-pr-team">' + esc(nameOfTeam(t.team)) + '</h3>' : '') + figuresHtml(t.metrics, t) +
+        (rows.length ? rows.map(raidRowHtml).join('') : '<div class="gs-pr-pad"><p class="gs-fine">No raids yet.</p></div>') + '</div>';
+    }).join('') + link();
+    return { id: 'attendance', title: 'Attendance', flush: true, bodyHtml: body };
   }
 
   function cardHtml(opts) { return G.ui.objectSectionHtml(sectionOf(opts)); }

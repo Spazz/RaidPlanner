@@ -853,55 +853,57 @@ function withState(fn) {
     loot: { total: 3, ms: 2, os: 1, de: 0, bank: 0, items: LOOT_ITEMS.slice(0, 3) },
     notes: { excerpt: 'Likes fire. Late twice.', truncated: true },
   }, over || {});
+  const stripTags = h => h.replace(/<[^>]*>/g, ' ').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&middot;/g, '-').replace(/\s+/g, ' ');
+  const count = (h, re) => (h.match(re) || []).length;
   const card = (data, rec, extra) => G.pages.personTrial.cardHtml(Object.assign({ guildData: gd(OFFICER_CAN), gid: 'g1', pid: 'p_t', record: rec || record(), state: { gid: 'g1', pid: 'p_t', data, error: '' } }, extra || {}));
 
-  await check('trial card: the review (dates and chip, since line, six tiles, loot, notes excerpt, three buttons) from the contract answer', () => {
+  await check('trial card: the decision panel (title, dates and words, five figures, the note as a quote, Promote / Extend / End trial) from the contract answer', () => {
     const out = card(TRIAL());
-    assert(out.includes('<h2 class="gs-h2" id="trial-card-h">Trial review</h2>') && out.includes('>Ends in 7 days<'));
-    assert(out.includes('Trial Oct 3, 2026 - Oct 24, 2026') && out.includes('Since Oct 3, 2026 (trial start)'));
-    const tile = (label, value) => assert(out.includes('<div class="gs-summary-item"><dt>' + label + '</dt><dd>' + value + '</dd></div>'), label + ' ' + value);
-    tile('Raids counted', 6); tile('Attendance', '83%'); tile('Missed', 1); tile('Missed with notice', 1); tile('Late / left early', '1 / 0'); tile('Filled in elsewhere', 1);
-    assert(out.includes('Loot received: 3 (2 main spec, 1 off spec)'));
-    assert(out.includes('data-wowhead="item=100&amp;domain=tbc" target="_blank" rel="noopener noreferrer">Item 1</a>') && out.includes('<span class="gs-chip gs-chip-tag is-os">Off spec</span>') && out.includes('<span class="gs-chip gs-chip-tag">Main spec</span>') && out.includes('Oct 10'));
-    assert(out.includes('<p class="gs-trial-note">Likes fire. Late twice.</p>') && out.includes('Shortened.'));
+    assert(out.includes('<h2 class="gs-pr-h" id="trial-card-h">Trial review</h2>') && !out.includes('gs-hd-chip') && !out.includes('gs-chip-trial'), 'the one trial chip is in the page head, not here');
+    assert(stripTags(out).includes('Oct 3, 2026 - Oct 24, 2026 - ends in 7 days'));
+    const fig = (label, value, note) => assert(out.includes('<span class="gs-pr-cap">' + label + '</span><span class="gs-pr-numrow"><span class="gs-pr-num">' + value + '</span>' + (note ? '<span class="gs-pr-mut">' + note + '</span>' : '</span>')), label + ' ' + value);
+    fig('Raids', 6); fig('Attendance', '83%', '5 of 6'); fig('Missed', 1, '1 with notice'); fig('Late or left early', 1); fig('Loot', '2 MS, 1 OS');
+    assert(!out.includes('Item 1') && !out.includes('Loot received'), 'the items are the Loot panel\'s');
+    assert(out.includes('<p class="gs-pr-quote">&quot;Likes fire. Late twice.&quot;'));
     for (const [action, label] of [['trial-promote', 'Promote to Raider'], ['trial-extend', 'Extend trial'], ['trial-end', 'End trial']]) {
       assert(new RegExp('<button type="button" class="gs-btn[^"]*" data-action="' + action + '" data-key="[^"]+"><span>' + label + '</span></button>').test(out), action);
     }
-    {
-      assert(out.includes('class="gs-btn gs-btn-molten" data-action="trial-promote"') && out.includes('class="gs-btn gs-btn-danger-outline" data-action="trial-end"'), 'Promote is the one primary, End trial a danger outline');
-    }
-    assert(out.includes('Attendance on Team KJ'), 'the guild has two teams, so the card names the one it counted');
+    assert(out.includes('class="gs-btn gs-btn-molten" data-action="trial-promote"') && out.includes('class="gs-btn gs-btn-ghost" data-action="trial-end"') && count(out, /gs-btn-molten/g) === 1, 'Promote is the one primary');
     assertNoRawAttrs(out);
+    // The author and day of the note come from the record's notes.
+    const attributed = card(TRIAL(), record({ notes: { text: 'Likes fire', version: 2, updatedBy: { displayName: 'Alice' }, updatedAt: Date.UTC(2026, 9, 15, 1, 14) } }));
+    assert(stripTags(attributed).includes('Likes fire. Late twice.&quot; - Alice,') || stripTags(attributed).includes('- Alice,'));
   });
 
-  await check('trial card: loot is capped at 10 names, "No loot yet" for zero, hidden for null; notes hidden for null; attendance null says so; open raids are noted', () => {
-    const many = card(TRIAL({ loot: { total: 12, ms: 11, os: 1, de: 0, bank: 0, items: LOOT_ITEMS } }));
-    assert((many.match(/gs-trial-loot-row/g) || []).length === 10 && many.includes('Item 10') && !many.includes('Item 11') && many.includes('and 2 more'));
-    assert(many.includes('Loot received: 12 (11 main spec, 1 off spec)'));
-    assert(card(TRIAL({ loot: { total: 4, ms: 1, os: 1, de: 1, bank: 1, items: [] } })).includes('(1 main spec, 1 off spec, 1 disenchanted, 1 bank)'));
-    const zero = card(TRIAL({ loot: { total: 0, ms: 0, os: 0, de: 0, bank: 0, items: [] } }));
-    assert(zero.includes('>Loot</h3>') && zero.includes('No loot yet') && !zero.includes('Loot received'));
+  await check('trial card: figures with no loot or note leave their part out; attendance null says so; open raids are noted; Extend uses the team trial length', () => {
+    assert(card(TRIAL({ loot: { total: 4, ms: 1, os: 1, de: 1, bank: 1, items: [] } })).includes('1 MS, 1 OS, 1 DE, 1 Bank'));
+    assert(card(TRIAL({ loot: { total: 0, ms: 0, os: 0, de: 0, bank: 0, items: [] } })).includes('<span class="gs-pr-num">0</span>'));
     const noLoot = card(TRIAL({ loot: null }));
-    assert(!noLoot.includes('>Loot</h3>') && !noLoot.includes('No loot yet') && !noLoot.includes('Loot received'));
+    assert(!noLoot.includes('>Loot<'), 'no loot figure when the Worker sent none');
     const noNotes = card(TRIAL({ notes: null }));
-    assert(!noNotes.includes('Officer notes') && !noNotes.includes('gs-trial-note'));
-    assert(card(TRIAL({ notes: { excerpt: 'Short.', truncated: false } })).includes('Short.') && !card(TRIAL({ notes: { excerpt: 'Short.', truncated: false } })).includes('Shortened.'));
-    assert(card(TRIAL({ notes: { excerpt: '', truncated: false } })).includes('No notes yet.'));
+    assert(!noNotes.includes('gs-pr-quote'));
+    assert(!card(TRIAL({ notes: { excerpt: '', truncated: false } })).includes('gs-pr-quote'));
     const noAtt = card(TRIAL({ attendance: null }));
-    assert(noAtt.includes('Attendance is not available for this person yet.') && !noAtt.includes('Raids counted') && noAtt.includes('data-action="trial-promote"'), 'the decision buttons stay');
+    assert(noAtt.includes('Attendance is not available for this person yet.') && !noAtt.includes('>Raids<') && noAtt.includes('data-action="trial-promote"'), 'the decision buttons stay');
     assert(card(TRIAL({ attendance: Object.assign({}, TRIAL().attendance, { pending: 2, pct: null }) })).includes('2 raids are awaiting review and not counted yet.'));
-    assert(card(TRIAL({ attendance: Object.assign({}, TRIAL().attendance, { pending: 1, pct: null }) })).includes('<dt>Attendance</dt><dd>-</dd>'));
-    assert(card(TRIAL({ since: null })).includes('No trial start date is set.'));
+    assert(card(TRIAL({ attendance: Object.assign({}, TRIAL().attendance, { pending: 1, pct: null }) })).includes('<span class="gs-pr-cap">Attendance</span><span class="gs-pr-numrow"><span class="gs-pr-num">-</span>'));
+    const P = G.pages.personTrial;
+    // The Extend date starts the team's trial length after the later of the current end and today (14 when the team has none).
+    const date = html => html.match(/name="trialEnd"[^>]*value="([^"]+)"/)[1];
+    assert.equal(date(P.extendDialogHtml(record(), '2026-10-17')), '2026-11-07', 'default 14 days after Oct 24');
+    assert.equal(date(P.extendDialogHtml(record(), '2026-10-17', 21)), '2026-11-14');
+    assert.equal(date(P.extendDialogHtml(record({ person: Object.assign({}, record().person, { trialEnd: '2026-10-01' }) }), '2026-10-17', 7)), '2026-10-24', 'from today when the end has passed');
+    assert.equal(P.teamTrialDays({ teams: [{ id: 't1', trialDays: 21 }] }, record()), 21);
+    assert.equal(P.teamTrialDays({ teams: [{ id: 't1' }] }, record()), 14);
+    assert.equal(P.teamTrialDays({ teams: [] }, record()), 14);
   });
 
-  await check('trial card: the dates and chip follow the record (a trial with no end date still gets the card); the team shows with several teams only', () => {
+  await check('trial card: the dates and words follow the record (a trial with no end date still gets the card)', () => {
     const noEnd = card(TRIAL(), record({ person: Object.assign({}, record().person, { trialEnd: null, trialFlag: null }) }));
-    assert(noEnd.includes('Trial started Oct 3, 2026. No end date is set.') && !noEnd.includes('gs-chip-trial') && noEnd.includes('data-action="trial-extend"'));
+    assert(stripTags(noEnd).includes('Started Oct 3, 2026. No end date is set.') && noEnd.includes('data-action="trial-extend"'));
     const ended = card(TRIAL(), record({ person: Object.assign({}, record().person, { trialEnd: '2026-10-10', trialFlag: { kind: 'ended', days: -7 } }) }));
-    assert(ended.includes('Ended 7 days ago'));
+    assert(stripTags(ended).includes('ended 7 days ago'));
     assert(card(TRIAL(), record({ person: Object.assign({}, record().person, { trialStart: null, trialEnd: null, trialFlag: null }) })).includes('No trial dates are set.'));
-    assert(card(TRIAL()).includes('Attendance on Team KJ'));
-    assert(!card(TRIAL(), null, { guildData: gd(OFFICER_CAN, null, ONE_TEAM) }).includes('Attendance on'));
   });
 
   await check('trial card: only for a Trial the viewer edits; no card without state, for "none", for other statuses, or without can.edit; an error shows Try again', () => {
@@ -929,14 +931,13 @@ function withState(fn) {
     for (const html of [G.pages.personTrial.promoteDialogHtml(rec), G.pages.personTrial.extendDialogHtml(rec, '2026-10-17'), G.pages.personTrial.endDialogHtml(rec)]) { assertEscaped(html, 'dialog'); assertNoRawAttrs(html); }
   });
 
-  await check('trial card: the person page puts it after the trial bar and before Characters, only when its state is passed', () => {
+  await check('trial card: the person page puts it under the head and before Characters, only when its state is passed', () => {
     const g = gd(OFFICER_CAN);
     const state = { gid: 'g1', pid: 'p_t', data: TRIAL(), error: '' };
     const out = G.pages.person.personHtml({ guildData: g, record: record(), linkable: null, alert: '', attendance: null, trial: state });
-    assert(out.indexOf('gs-trial-bar') > 0 && out.indexOf('gs-trial-bar') < out.indexOf('id="trial-card-h"') && out.indexOf('id="trial-card-h"') < out.indexOf('id="characters-h"'));
-    // ONE set of trial buttons: the card's. The banner above it is text only.
-    const bar = out.match(/<div class="gs-trial-bar[\s\S]*?<\/div>/)[0];
-    assert(bar.includes('trial ') && !bar.includes('<button'), 'the banner keeps its sentence, no buttons');
+    assert(!out.includes('gs-trial-bar') && out.indexOf('id="trial-card-h"') > out.indexOf('</header>') && out.indexOf('id="trial-card-h"') < out.indexOf('id="characters-h"'), 'no banner; the panel is under the head and above Characters');
+    assert(out.slice(0, out.indexOf('</header>')).includes('is-rose">Ends in 7 days<'), 'the head carries the one trial chip');
+    // ONE set of trial buttons: the panel's.
     const buttons = (out.match(/<button[^>]*><span>(Promote to Raider|Extend trial|End trial|Make Raider|Set Inactive)<\/span>/g) || []).map((b) => b.replace(/^[\s\S]*<span>([^<]+)<\/span>$/, '$1'));
     assert.deepEqual(buttons, ['Promote to Raider', 'Extend trial', 'End trial'], 'the card\'s three buttons and no others');
     assert(!/data-action="person-(status|extend)"/.test(out));

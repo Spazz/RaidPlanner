@@ -78,7 +78,8 @@ const RECORD = (over, can, extra) => Object.assign({
   notes: { text: 'Reliable', version: 1, updatedBy: { displayName: 'Alice' }, updatedAt: Date.UTC(2026, 9, 15, 1, 14) },
 }, extra || {});
 const page = (record, can, extra) => G.pages.person.personHtml(Object.assign({ guildData: gd(can || OFFICER_CAN), record, linkable: [], alert: '', attendance: null, trial: null, away: null }, extra || {}));
-const sectionIds = html => [...html.matchAll(/<section class="gs-osection[^"]*" id="([a-z0-9-]+)"/g)].map(m => m[1]);
+// The record's sections: its panels (gs-hd-panel gs-pr-panel), the Trial review's bare jump target, and the other pages' gs-osection sections; person-cols is the grid around them.
+const sectionIds = html => [...html.matchAll(/<(?:section|div) class="(?:gs-osection[^"]*|gs-hd-panel gs-pr-panel)" id="([a-z0-9-]+)"|<div class="gs-osection-bare" id="([a-z0-9-]+)"/g)].map(m => m[1] || m[2]).filter(id => id !== 'person-cols');
 
 const ATT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'raider', isMe: true }, teams: [{ team: { id: 't1', name: 'Main team' }, window: 8, metrics: { pct: 90, pctAll: 88, signupRate: 95 },
   cells: [{ raid: { id: 'r1', raidOn: '2026-10-10', zone: 'Gruul' }, outcome: 'present', credit: 1 }, { raid: { id: 'r2', raidOn: '2026-10-03', zone: 'Gruul' }, outcome: 'absent', credit: 0 }] }] };
@@ -89,14 +90,15 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
   // ═══ 9. Person pages on T2 ═══
   await check('9. the roster record is a T2 object page: header with Main and Alts and the status chip, no stage strip, sections in a fixed order', () => {
     const out = page(RECORD());
-    assert(out.includes('gs-object-page') && out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Thoren</h1>'));
+    assert(out.includes('gs-object-page') && out.includes('<h1 class="gs-h1 gs-class-shaman" id="page-title" tabindex="-1">Thoren</h1>'));
     assert(!out.includes('gs-stages') && !out.includes('gs-nextstep'), 'a person has no stage strip');
     const head = out.slice(out.indexOf('<header class="gs-pagehead">'), out.indexOf('</header>'));
-    assert(head.includes('gs-status-raider') && head.includes('href="#/g/g1/roster"') && head.includes('>Roster<'), 'status chip and the way back');
+    assert(!head.includes('gs-hd-chip') && head.includes('class="gs-spec-icon"') && head.includes('href="#/g/g1/roster"') && head.includes('>Roster<'), 'a Raider has no chip; the spec icon and the way back');
     const t = stripTags(head);
-    assert(t.includes('Main: Shaman - Enhancement / Restoration') && t.includes('Alts: Thorenalt') && t.includes('Discord: thoren - Signed in'), t);
-    assert.deepEqual(sectionIds(out), ['characters', 'attendance', 'details', 'notes']);
-    assert(out.indexOf('id="characters"') < out.indexOf('id="attendance"') && out.indexOf('id="attendance"') < out.indexOf('id="details"'));
+    assert(t.includes('Shaman - Enhancement / Restoration') && t.includes('Alt: Thorenalt') && t.includes('Joined Sep 1, 2026') && !t.includes('Discord'), t);
+    assert.deepEqual(sectionIds(out), ['attendance', 'characters', 'details', 'notes']);
+    assert(out.indexOf('id="attendance"') < out.indexOf('id="characters"') && out.indexOf('id="characters"') < out.indexOf('id="details"'));
+    assert(out.includes('class="gs-pr-cols"') && out.indexOf('class="gs-pr-left"') < out.indexOf('id="attendance"') && out.indexOf('class="gs-pr-right"') > out.indexOf('id="characters"') && out.indexOf('class="gs-pr-right"') < out.indexOf('id="details"'), 'history left, Details and notes right');
     assert(!out.includes('gs-youline'), 'somebody else\'s page has no You line');
   });
 
@@ -115,7 +117,8 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     assert(stripTags(out).includes('Who can see this page: everyone in the guild sees your name, characters and status.') && out.includes(G.pages.person.OWN_SEES.slice(0, 40)));
     assert(out.includes('Officers keep your status and characters up to date.'), 'a member is told who keeps the record');
     assert(/<a class="gs-btn" href="#\/g1\/away"|href="#\/g\/g1\/away"/.test(out) && out.includes('data-key="you-away"') && out.includes('>Away notices<'));
-    assert(out.includes('<span class="gs-you">You</span>'), 'You beside the name');
+    assert(out.includes('<span class="gs-hd-chip is-grey">You</span>'), 'You beside the name (the one chip)');
+    assert(out.includes('id="you-sees" hidden') && out.includes('data-action="you-sees-toggle"'), 'who can see the page is a disclosure');
     assert.deepEqual(sectionIds(out), ['attendance', 'characters', 'details'].filter(id => id !== 'details' || out.includes('id="details"')));
     assert(out.indexOf('id="attendance"') < out.indexOf('id="characters"'), 'what a member comes for comes first');
     // An officer on their own page gets the You line too, without the member sentence.
@@ -125,7 +128,7 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
 
   await check('9. a member\'s record is read-only: dates as a list, no forms, no Save bar, no Delete, no notes unless the Worker sent them', () => {
     const out = page(RECORD({ isMe: false }, NO_CAN, { notes: null }), MEMBER_CAN);
-    assert(out.includes('<dl class="gs-dates">') && out.includes('Joined') && out.includes('Sep 1, 2026'));
+    assert(out.includes('id="details"') && stripTags(out).includes('Joined Sep 1, 2026') && !out.includes('data-action="person-edit-open"'));
     assert(!out.includes('person-details-form') && !out.includes('data-savebar') && !out.includes('person-delete') && !out.includes('id="notes"'));
     assert(!out.includes('data-action="char-edit"') && !out.includes('data-action="char-add"'));
   });
@@ -133,19 +136,28 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
   await check('9. notes are permission-gated: absent without the Worker\'s notes, read-only with a reason without notesEdit, a form with Save note with it', () => {
     assert(!page(RECORD({}, null, { notes: null })).includes('id="notes"'));
     const ro = page(RECORD({}, { notesEdit: false }));
-    assert(ro.includes('id="notes"') && /<textarea[^>]* readonly/.test(ro) && stripTags(ro).includes('You can read the notes but not change them.') && !ro.includes('Save note'));
+    assert(ro.includes('id="notes"') && ro.includes('Reliable') && !/<textarea/.test(ro) && !ro.includes('person-notes-edit') && !ro.includes('Save note'), 'read-only text and no Edit without notes.edit');
     S.currentGid = 'g1'; S.guilds.g1 = gd(OFFICER_CAN);
+    const rd = page(RECORD());
+    assert(rd.includes('data-action="person-notes-edit"') && !/<textarea/.test(rd), 'read-only text with Edit until Edit is pressed');
+    assert(stripTags(rd).includes('Edited by Alice, Wed Oct 14, 9:14 PM ET'), 'the edit time carries the guild zone: ' + stripTags(rd).match(/Edited[^.]*/));
+    G.pages.person.setEditing('g1', 'p_x', 'notes', true);
     const rw = page(RECORD());
-    assert(rw.includes('data-submit="person-notes-form"') && rw.includes('<span>Save note</span>') && !/<textarea[^>]* readonly/.test(rw));
-    assert(stripTags(rw).includes('Last edited by Alice on Wed Oct 14, 9:14 PM ET'), 'the edit time carries the guild zone: ' + stripTags(rw).match(/Last edited[^.]*/));
+    G.pages.person.setEditing('g1', 'p_x', 'notes', false);
+    assert(rw.includes('data-submit="person-notes-form"') && rw.includes('<span>Save note</span>') && /<textarea/.test(rw));
   });
 
   await check('9. the details form has one Save bar for its fields (Save details), and "Saved at 8:14 PM ET" in the guild zone after a save', () => {
     const out = page(RECORD(), null, { saved: { gid: 'g1', pid: 'p_x', ms: Date.UTC(2026, 9, 17, 0, 14) } });
-    const form = out.slice(out.indexOf('<form class="gs-details-form"'), out.indexOf('</form>', out.indexOf('<form class="gs-details-form"')));
+    assert(!out.includes('<form class="gs-details-form'), 'read-only until Edit');
+    G.pages.person.setEditing('g1', 'p_x', 'details', true);
+    const edit = page(RECORD());
+    G.pages.person.setEditing('g1', 'p_x', 'details', false);
+    const form = edit.slice(edit.indexOf('<form class="gs-details-form'), edit.indexOf('</form>', edit.indexOf('<form class="gs-details-form')));
     assert(form.includes('data-dirty-form') && form.includes('data-input="dirty-form"') && form.includes('data-savebar') && /<div class="gs-savebar"[^>]* hidden>/.test(form), 'the bar is in the form and starts hidden');
     assert(form.includes('<span>Save details</span>') && form.includes('<span>Discard</span>') && !form.includes('Save changes'));
-    for (const name of ['status', 'joinedOn', 'trialStart', 'trialEnd', 'linkUserId']) assert(form.includes('name="' + name + '"'), name);
+    for (const name of ['status', 'joinedOn', 'trialStart', 'trialEnd']) assert(form.includes('name="' + name + '"'), name);
+    assert(!form.includes('linkUserId'), 'the Account is one row, not a select');
     assert(out.includes('data-saved-status') && stripTags(out).includes('Saved at 8:14 PM ET'));
     assert(!page(RECORD()).includes('Saved at'), 'nothing before a save');
     assert(count(form, /gs-field-error/g) >= 5, 'every field has its message slot for inline validation');
@@ -155,22 +167,23 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     const rec = RECORD({ status: 'trial', trialStart: '2026-10-03', trialEnd: '2026-10-20', trialFlag: { kind: 'ends', days: 3 } });
     const trial = { gid: 'g1', pid: 'p_x', error: '', data: { today: '2026-10-17', person: { id: 'p_x', name: 'Thoren', status: 'trial' }, since: '2026-10-03', attendance: null, loot: null, notes: null } };
     const out = page(rec, null, { trial });
-    assert.deepEqual(sectionIds(out).slice(0, 2), ['trial-card', 'characters']);
-    assert(out.indexOf('gs-trial-bar') < out.indexOf('id="trial-card"'), 'the sentence first, the review after it');
-    assert(out.includes('gs-chip-trial gs-trial-ends">Ends in 3 days<'));
+    assert.deepEqual(sectionIds(out).slice(0, 2), ['trial-card', 'attendance'], 'the decision panel leads');
+    assert(!out.includes('gs-trial-bar') && !out.includes('gs-chip-trial'));
+    const head = out.slice(out.indexOf('<header class="gs-pagehead">'), out.indexOf('</header>'));
+    assert(head.includes('is-rose">Ends in 3 days<') && count(head, /gs-hd-chip/g) === 1, 'one trial chip, in the head');
     assert.equal(molten(out), 1, 'Promote to Raider is the one primary');
-    assert(out.includes('class="gs-btn gs-btn-danger-outline" data-action="trial-end"'));
+    assert(out.includes('data-action="trial-end"') && out.includes('data-action="trial-extend"'));
     assert.equal(molten(page(RECORD())), 0, 'a raider\'s page has no orange');
   });
 
   await check('9. characters: one inline Edit, the rest in the row\'s More menu named for the character; the Main has no menu', () => {
     const out = page(RECORD());
-    const table = out.match(/<table class="gs-dtable"[\s\S]*?<\/table>/)[0];
+    const table = out.match(/<section class="gs-hd-panel gs-pr-panel" id="characters"[\s\S]*?<\/section>/)[0];
     assert.equal(count(table, /data-action="char-edit"/g), 2);
     assert.equal(count(table, /aria-haspopup="menu"/g), 1);
     assert(table.includes('aria-label="More actions for Thorenalt"') && table.includes('data-action="char-main"') && table.includes('data-action="char-remove"') && table.includes('is-danger'));
     assert(!table.includes('More actions for Thoren"'));
-    assert(/<table class="gs-dtable" aria-label="Characters"/.test(table) && count(table, /<tr class="gs-dtable-row/g) === 2);
+    assert(count(table, /class="gs-pr-row gs-pr-char"/g) === 2, 'one row per character');
   });
 
   await check('9. ids on the page are unique with every section drawn (trial, attendance, loot, away), and the sections are jump targets', () => {
@@ -183,7 +196,7 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     const out = page(rec, null, { trial, attendance: { data: ATT, denied: false }, away });
     const all = ids(out);
     assert.deepEqual(all.filter((x, i) => all.indexOf(x) !== i), [], 'no id twice');
-    assert.deepEqual(sectionIds(out), ['trial-card', 'characters', 'attendance', 'loot-card', 'away', 'details', 'notes']);
+    assert.deepEqual(sectionIds(out), ['trial-card', 'attendance', 'loot-card', 'characters', 'details', 'notes', 'away']);
     for (const id of sectionIds(out)) assert(out.includes('aria-labelledby="' + id + '-h"') && out.includes('id="' + id + '-h"'), id);
   });
 
