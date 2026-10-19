@@ -308,23 +308,42 @@
       .map(function (r) { return '<span class="gs-chip gs-chip-flag">' + esc(labels[r]) + '</span>'; }).join('');
   }
 
+  // "Reviewed by Kezzik, Oct 16. Comes back if attendance drops 5 more points or a raid is missed." (the Worker's rule: WATCH_RETURN_POINTS)
+  function reviewedText(e) {
+    const by = e.reviewed && e.reviewed.by && e.reviewed.by.name ? String(e.reviewed.by.name) : 'an officer';
+    const day = e.reviewed && typeof e.reviewed.at === 'number' ? G.ui.dayInZone(e.reviewed.at, G.ui.guildZone()).replace(/^\S+\s+/, '') : '';
+    return 'Reviewed by ' + by + (day ? ', ' + day : '') + '. Comes back if attendance drops 5 more points or a raid is missed.';
+  }
+
+  // The button of an entry: "Reviewed" on an open one, "Undo" on a reviewed one. Only entries that carry an itemId (the Worker sends it) get one.
+  function watchActionHtml(e) {
+    if (!e.itemId) return '';
+    const reviewed = !!e.reviewed;
+    return '<div class="gs-watch-act">' + G.ui.buttonHtml({
+      label: reviewed ? 'Undo' : 'Reviewed', variant: 'secondary', size: 'sm', ariaLabel: (reviewed ? 'Undo Reviewed for ' : 'Mark Reviewed for ') + String(e.name == null ? '' : e.name),
+      attrs: { 'data-action': reviewed ? 'att-watch-undo' : 'att-watch-review', 'data-item': e.itemId, 'data-key': 'att-watch-' + e.itemId },
+    }) + '</div>';
+  }
+
   function watchEntryHtml(gid, w, e) {
     const cls = G.ui.classClass(e.class);
     const drop = typeof e.drop === 'number' && e.drop > 0 ? Math.round(e.drop) : 0;
     const was = typeof e.previousPct === 'number' ? '<span class="gs-watch-was">was ' + esc(G.ui.percent(e.previousPct)) + (drop ? ', down ' + esc(plural(drop, 'point', 'points')) : '') + '</span>' : '';
     const who = e.playerId ? '<a class="gs-char-link' + (cls ? ' ' + cls : '') + '" href="' + esc(G.router.format({ name: 'personatt', gid: gid, pid: e.playerId })) + '">' + esc(e.name) + '</a>' : G.ui.classNameHtml(e.name, e.class);
-    return '<li class="gs-watch-item"><div class="gs-watch-who">' + who +
+    const rowClass = e.reviewed ? 'gs-watch-item is-reviewed' : 'gs-watch-item';
+    return '<li class="' + rowClass + '"><div class="gs-watch-who">' + who +
       '<span class="gs-char-sub">' + esc(G.ui.statusLabel(e.status)) + '</span></div>' +
       '<div class="gs-watch-pct"><span class="gs-watch-num">' + esc(G.ui.percent(e.pct)) + '</span>' + was + '</div>' +
       '<div class="gs-watch-counts">Missed ' + esc(e.missed || 0) + ', with notice ' + esc(e.missedNotice || 0) + (typeof e.counted === 'number' ? '<span class="gs-fine"> of ' + esc(plural(e.counted, 'raid', 'raids')) + '</span>' : '') + '</div>' +
-      '<div class="gs-pills">' + watchReasonChips(w, e.reasons) + '</div></li>';
+      '<div class="gs-pills">' + watchReasonChips(w, e.reasons) + '</div>' + watchActionHtml(e) +
+      (e.reviewed ? '<p class="gs-fine gs-watch-reviewed">' + esc(reviewedText(e)) + '</p>' : '') + '</li>';
   }
 
   // The card is there only when somebody is on the list; an empty watch list is one phrase in the page's context line ("0 on the watch list"), so the
   // feature stays visible without taking the first screen (F11). No card and no phrase when watch is null (the viewer cannot review the team).
   function watchCountText(watch) {
     if (!watch || typeof watch !== 'object') return '';
-    return (Array.isArray(watch.entries) ? watch.entries.length : 0) + ' on the watch list';
+    return (Array.isArray(watch.entries) ? watch.entries.filter(function (e) { return !(e && e.reviewed); }).length : 0) + ' on the watch list';
   }
 
   function watchHtml(gid, watch) {
@@ -511,6 +530,20 @@
     recalcTeams(gid, [G.app.teamFor(gd)].filter(Boolean));
   };
 
+  // Reviewed / Undo on a watch entry: the same shared dismissal Home uses (POST / DELETE /attention/dismissals). The Worker decides when the entry comes back
+  // (a further drop of 5 points or a newly missed raid); the page reads the team again so the entry shows its new state, and the Home badge is read again.
+  function watchCall(el, call) {
+    const gid = st().currentGid;
+    const itemId = el.getAttribute('data-item');
+    if (!gid || !itemId) return null;
+    return call(gid, itemId).then(function () {
+      if (G.app.ensureAttention) G.app.ensureAttention(gid, true);
+      return G.app.routeAll({ force: true });
+    }, function (err) { G.app.handleError(err, { pageAlert: true }); });
+  }
+  G.handlers.click['att-watch-review'] = function (el) { return watchCall(el, G.api.attention.dismiss); };
+  G.handlers.click['att-watch-undo'] = function (el) { return watchCall(el, G.api.attention.restore); };
+
   G.handlers.click['att-sort'] = function (el) {
     const v = attView();
     v.sort = nextSort(v.sort, el.getAttribute('data-col'));
@@ -556,6 +589,7 @@
     staleBannerHtml: staleBannerHtml,
     watchHtml: watchHtml,
     watchRuleText: watchRuleText,
+    watchCountText: watchCountText,
     attendanceHtml: attendanceHtml,
     apiBase: apiBase,
     attState: attState,

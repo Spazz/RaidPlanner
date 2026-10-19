@@ -227,7 +227,7 @@
     const attrs = Object.keys(data).filter(function (k) { return MENU_DATA_NAME.test(k); }).map(function (k) { return ' data-' + k + '="' + esc(data[k]) + '"'; }).join('');
     const common = ' class="gs-menu-item' + (item.danger ? ' is-danger' : '') + '" role="menuitem" tabindex="-1"' + attrs + (item.key ? ' data-key="' + esc(item.key) + '"' : '');
     if (item.href) return '<a' + common + ' href="' + esc(item.href) + '">' + esc(item.label) + '</a>';
-    return '<button type="button"' + common + '>' + esc(item.label) + '</button>';
+    return '<button type="button"' + common + '>' + esc(item.label) + (item.note ? '<small class="gs-menu-note">' + esc(item.note) + '</small>' : '') + '</button>';
   }
 
   ui.menuHtml = function (opts) {

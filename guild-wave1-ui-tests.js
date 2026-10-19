@@ -646,7 +646,7 @@ function withState(fn) {
   const attnHtml = (data, extra, g) => G.pages.attention.attentionHtml(Object.assign({ guildData: g || gd(OFFICER_CAN), data }, extra || {}));
   const textOf = (kind, over) => G.pages.attention.itemText(item(kind, over));
 
-  await check('Home: each kind reads as the contract sentence (singular and plural, trials by days, watch with or without a drop)', () => {
+  await check('Home: each kind reads as the contract sentence (singular and plural, trials by days)', () => {
     assert.equal(textOf('review', { date: '2026-10-17', count: 3 }), 'Review Sat Oct 17: 3 to decide');
     assert.equal(textOf('loot_unmatched', { date: '2026-10-17', count: 3 }), '3 loot winners on Sat Oct 17 match nobody');
     assert.equal(textOf('loot_unmatched', { date: '2026-10-17', count: 1 }), '1 loot winner on Sat Oct 17 matches nobody');
@@ -660,9 +660,6 @@ function withState(fn) {
     assert.equal(textOf('trial', { name: 'Thoren', days: 2, ended: true }), 'Thoren\'s trial ended 2 days ago');
     assert.equal(textOf('trial', { name: 'Thoren', days: -2, ended: true }), 'Thoren\'s trial ended 2 days ago', 'a negative day count reads the same');
     assert.equal(textOf('trial', { name: 'Thoren', days: 1, ended: true }), 'Thoren\'s trial ended yesterday');
-    assert.equal(textOf('watch', { name: 'Kaelith', pct: 62, drop: 20 }), 'Kaelith: 62% attendance, down 20 points');
-    assert.equal(textOf('watch', { name: 'Kaelith', pct: 61.6, drop: 1 }), 'Kaelith: 62% attendance, down 1 point');
-    assert.equal(textOf('watch', { name: 'Kaelith', pct: 62, drop: null }), 'Kaelith: 62% attendance');
     assert.equal(textOf('no_loot', { date: '2026-10-10' }), 'No loot imported for Sat Oct 10');
     assert.equal(textOf('low_signups', { date: '2026-10-21', expected: 18, size: 25 }), 'Wed Oct 21: 18 of 25 signed up');
     assert.equal(textOf('unlocked', { date: '2026-10-21', minutes: 45 }), 'Sign-ups for Wed Oct 21 are still open and the raid starts in 45 minutes');
@@ -680,79 +677,64 @@ function withState(fn) {
     assert.equal(href(item('review', { link: { name: 'raid', rid: 'r_1', gid: 'g_evil' } })), '#/g/g1/raids/r/r_1', 'the item cannot name another guild');
   });
 
-  await check('Home: action items are rows in the contract order (a sentence, a muted line, one secondary button named for the kind), the info items follow under "For your information"', () => {
-    const out = attnHtml(ATTN(FULL));
-    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Home</h1>'));
-    const order = ['Review Sat Oct 17: 3 to decide', '3 loot winners on Sat Oct 17 match nobody', '2 sign-ups on Sat Oct 17 are not linked to a person', '3 character claims are waiting', 'trial ends in 3 days',
-      'Kaelith: 62% attendance, down 20 points', 'No loot imported for Sat Oct 10', 'Wed Oct 21: 18 of 25 signed up', 'Sign-ups for Wed Oct 21 are still open'];
-    let at = -1;
-    for (const sentence of order) { const i = out.indexOf(sentence); assert(i > at, sentence + ' in order'); at = i; }
-    const needs = out.indexOf('id="attn-h">Needs attention</h2>');
-    assert(needs > 0 && needs < out.indexOf(order[0]), 'Needs attention leads');
-    assert(out.indexOf('>For your information</h2>') > out.indexOf('Wed Oct 21: 18 of 25 signed up') && out.indexOf('>For your information</h2>') < out.indexOf('the raid starts in 45 minutes'), 'the info card is last');
-    assert(out.includes('<a class="gs-btn" href="#/g/g1/raids/r/r_1" aria-label="Review (Review Sat Oct 17: 3 to decide)"><span>Review</span></a>'), 'a secondary button per row, named for the kind and for the row');
-    assert(out.includes('Thoren&#39;s trial ends in 3 days') && out.includes('href="#/g/g1/roster/p/p_t"') && out.includes('href="#/g/g1/attendance/p/p_k"'));
-    assert.equal((out.match(/class="gs-btn gs-btn-molten/g) || []).length, 0, 'no primary on Home: the orange is for a primary action');
-    assert(out.includes('8 items need attention') && out.includes('gs-cbadge'), 'the gold count');
-    assert(/<button type="button" class="gs-btn" data-action="attn-refresh" data-key="attn-refresh"><span>Refresh<\/span><\/button>/.test(out));
-    assert(out.includes('Ravens - 8 items need you'));
-    assert(out.includes('id="attn-status" role="status"'), 'a live region for the refresh result');
-    assert(!out.includes('Nothing needs you right now'));
+  await check('Home (round 4): the to-dos without a raid, the Guild box, Earlier raids and the buttons named for the kind; no Needs attention list, no watch or rank rows', () => {
+    const items = FULL.filter(i => i.kind !== 'watch' && i.kind !== 'low_signups' && i.kind !== 'unlocked');
+    const out = attnHtml(ATTN(items, { total: items.length }));
+    assert(out.includes('<h1 class="gs-h1 gs-hd-h1" id="page-title" tabindex="-1">This week</h1>'));
+    assert(!out.includes('Needs attention') && !out.includes('For your information') && !out.includes('attendance watch'), 'the old lists are gone');
+    const guild = out.slice(out.indexOf('aria-label="Guild"'), out.indexOf('<nav class="gs-hd-more"'));
+    assert(guild.includes('3 character claims are waiting') && guild.includes('Thoren&#39;s trial ends in 3 days'), 'to-dos without a raid');
+    const earlier = guild.slice(guild.indexOf('Earlier raids'));
+    assert(earlier.includes('Review Sat Oct 17: 3 to decide') && earlier.includes('No loot imported for Sat Oct 10'), 'raid to-dos older than yesterday');
+    assert(!guild.slice(0, guild.indexOf('Earlier raids')).includes('Review Sat Oct 17'), 'not above the Earlier raids label');
+    assert(out.includes('<a class="gs-btn gs-btn-sm" href="#/g/g1/raids/r/r_1" aria-label="Review (Review Sat Oct 17: 3 to decide)"><span>Review</span></a>'), 'a secondary button named for the kind and for the row');
+    assert(out.includes('aria-label="Open roster (Thoren&#39;s trial ends in 3 days)"') && out.includes('href="#/g/g1/roster/p/p_t"'));
+    assert.equal((out.match(/gs-btn-molten/g) || []).length, 2, 'no raid this week: the one primary ("Add raid") once per variant');
+    assert(out.includes('id="attn-status" role="status"'), 'a live region for the results');
     assertNoRawAttrs(out);
   });
 
-  await check('Home: the team name shows as a muted line only when the guild has several active teams; zone and title join it', () => {
-    const several = attnHtml(ATTN(FULL));
-    assert(several.includes('<p class="gs-attn2-line">Team KJ - Black Temple - Prog night</p>'));
-    assert(several.includes('<p class="gs-attn2-line">Team KJ - Karazhan</p>'));
-    const one = attnHtml(ATTN(FULL), {}, gd(OFFICER_CAN, null, ONE_TEAM));
-    assert(!one.includes('Team KJ'), 'a one-team guild never names the team');
-    assert(one.includes('<p class="gs-attn2-line">Black Temple - Prog night</p>') && one.includes('<p class="gs-attn2-line">Karazhan</p>'));
-    assert(!one.includes('<p class="gs-attn2-line"></p>'));
-    const same = attnHtml(ATTN([item('no_loot', { date: '2026-10-10', zone: 'Karazhan', title: 'Karazhan' })]), {}, gd(OFFICER_CAN, null, ONE_TEAM));
-    assert.equal((same.match(/Karazhan/g) || []).length, 1, 'a title equal to the zone is shown once');
+  await check('Home (round 4): the team shows as a muted line on a to-do only when the guild has several active teams', () => {
+    const items = [item('no_loot', { raidId: 'r_9', date: '2026-10-10', zone: 'Karazhan', title: null })];
+    assert(attnHtml(ATTN(items)).includes('<span class="gs-hd-todo-meta">Team KJ</span>'));
+    assert(!attnHtml(ATTN(items), {}, gd(OFFICER_CAN, null, ONE_TEAM)).includes('Team KJ'), 'a one-team guild never names the team');
   });
 
   await check('Home: review items select their team first (data-action + data-team); other items are plain links', () => {
     const out = attnHtml(ATTN(FULL));
     assert(out.includes('href="#/g/g1/attendance/review" aria-label="Link winners (3 loot winners on Sat Oct 17 match nobody)" data-action="attn-open" data-team="t1"><span>Link winners</span></a>'));
-    assert((out.match(/data-action="attn-open"/g) || []).length === 1, 'only the item whose link is the review queue AND has a team');
-    assert(!/href="#\/g\/g1\/raids\/r\/r_1"[^>]* data-action/.test(out));
-    const claims = out.slice(out.indexOf('3 character claims are waiting'), out.indexOf('trial ends in 3 days'));
+    assert(!/href="#\/g\/g1\/raids\/r\/r_1"[^>]* data-action="attn-open"/.test(out));
+    const claims = out.slice(out.indexOf('3 character claims are waiting'), out.indexOf('Thoren&#39;s trial ends'));
     assert(!claims.includes('data-action="attn-open"'), 'a claim has no team to pick');
   });
 
-  await check('Home: empty state is one good-news line; info items still list below it; "and N more" rows link to the page where the work is done', () => {
+  await check('Home (round 4): nothing to do says so in the Guild box; "and N more" lines link to the page where the work is done; readiness facts are no to-dos', () => {
     const empty = attnHtml(ATTN([]));
-    assert(empty.includes('<div class="gs-empty-good" role="status">') && empty.includes('Nothing needs you right now') && empty.includes('Ravens - Nothing is waiting for you'));
-    assert(!empty.includes('>Needs attention</h2>') && !empty.includes('For your information'));
-    const infoOnly = attnHtml(ATTN([FULL[8]]));
-    assert(infoOnly.includes('Nothing needs you right now') && infoOnly.includes('>For your information</h2>') && infoOnly.includes('the raid starts in 45 minutes'));
-    assert(infoOnly.indexOf('Nothing needs you right now') < infoOnly.indexOf('For your information'));
-    const counts = { review: 4, trial: 2, loot_unmatched: 1, claims: 5, watch: 1, signup_unmatched: 2, no_loot: 1, low_signups: 3, unlocked: 2 };
+    assert(empty.includes('Nothing to do.') && empty.includes('Hidden (0)') && empty.includes('No raid this week'));
+    const counts = { review: 4, trial: 2, loot_unmatched: 1, claims: 5, signup_unmatched: 2, no_loot: 1 };
     const more = attnHtml(ATTN(FULL, { more: counts }));
-    const want = { review: '#/g/g1/attendance/review', loot_unmatched: '#/g/g1/attendance/review', signup_unmatched: '#/g/g1/raids', claims: '#/g/g1/attendance/review', trial: '#/g/g1/roster', watch: '#/g/g1/attendance', no_loot: '#/g/g1/raids', low_signups: '#/g/g1/raids', unlocked: '#/g/g1/raids' };
+    const want = { review: '#/g/g1/attendance/review', loot_unmatched: '#/g/g1/attendance/review', signup_unmatched: '#/g/g1/raids', claims: '#/g/g1/attendance/review', trial: '#/g/g1/roster', no_loot: '#/g/g1/raids' };
     for (const k of Object.keys(want)) {
       const kind = G.pages.attention.KINDS.filter(x => x.id === k)[0];
       const text = 'and ' + counts[k] + ' more: ' + kind.heading.charAt(0).toLowerCase() + kind.heading.slice(1);
-      assert(more.includes('<p class="gs-attn2-title">' + text + '</p>'), k);
-      assert(more.includes('<a class="gs-btn" href="' + want[k] + '" aria-label="See all (' + text + ')"><span>See all</span></a>'), k + ' link');
+      assert(more.includes('<span class="gs-hd-todo-title">' + text + '</span>'), k);
+      assert(more.includes('href="' + want[k] + '" aria-label="See all (' + text + ')"><span>See all</span></a>'), k + ' link');
     }
-    const onlyMore = attnHtml(ATTN([], { total: 4, more: { review: 4 } }));
-    assert(onlyMore.includes('and 4 more: raids to review') && onlyMore.includes('4 items need attention'), 'hidden items alone still get their row and the badge counts them');
     assert(!attnHtml(ATTN(FULL, { more: { review: 0 } })).includes('and 0 more'));
+    assert(!attnHtml(ATTN([], { more: { low_signups: 3, unlocked: 2 } })).includes('and 3 more'), 'readiness facts are no to-dos');
   });
 
-  await check('Home: refreshing disables the button and a failed refresh shows the message; hostile strings in every field are escaped', () => {
-    assert(/aria-busy="true" disabled data-action="attn-refresh" data-key="attn-refresh"><span>Refreshing\.\.\.<\/span>/.test(attnHtml(ATTN(FULL), { refreshing: true })));
-    assert(attnHtml(ATTN(FULL), { error: 'Could not reach Raidsmith.' }).includes('Could not reach Raidsmith.'));
+  await check('Home: a failed refresh shows the message with Try again and keeps what loaded; hostile strings in every field are escaped', () => {
+    const failedOut = attnHtml(ATTN(FULL), { error: 'Could not reach Raidsmith.', refreshing: true });
+    assert(failedOut.includes('Could not reach Raidsmith.') && failedOut.includes('role="alert"') && failedOut.includes('Review Sat Oct 17: 3 to decide'));
+    assert(/aria-busy="true" disabled data-action="attn-refresh" data-key="attn-refresh"><span>Trying again\.\.\.<\/span>/.test(failedOut));
     const bad = ATTN([
       item('review', { date: HOSTILE, count: HOSTILE, zone: HOSTILE + QUOTES, title: QUOTES, teamName: HOSTILE + QUOTES, link: { name: 'raid', rid: HOSTILE + QUOTES } }),
       item('trial', { name: HOSTILE + QUOTES, days: HOSTILE, ended: false, link: { name: 'person', pid: QUOTES } }),
-      item('watch', { name: HOSTILE, pct: HOSTILE, drop: QUOTES, link: { name: 'personatt', pid: HOSTILE } }),
       item('claims', { count: HOSTILE, teamId: QUOTES, link: { name: 'review' } }),
-    ], { more: { review: HOSTILE } });
-    const out = attnHtml(bad, {}, gd(OFFICER_CAN, { guild: Object.assign({}, gd(OFFICER_CAN).guild, { name: HOSTILE + QUOTES }) }));
+    ], { more: { review: HOSTILE }, week: [{ raidId: HOSTILE, teamId: 't1', teamName: HOSTILE + QUOTES, date: '2026-10-17', startsAt: 1, zone: HOSTILE + QUOTES, title: QUOTES, size: HOSTILE, signed: HOSTILE, status: 'short' }],
+      hidden: [{ item: item('no_loot', { id: QUOTES, date: HOSTILE }), mode: 'dismiss', until: null, by: { name: HOSTILE + QUOTES }, at: 1 }] });
+    const out = attnHtml(bad, { hiddenOpen: true }, gd(OFFICER_CAN, { guild: Object.assign({}, gd(OFFICER_CAN).guild, { name: HOSTILE + QUOTES }) }));
     assertEscaped(out, 'Home');
     assertNoRawAttrs(out);
     assert(!attnHtml({ total: 1, items: [{ id: 'x', kind: HOSTILE, severity: 'action', link: { name: 'raid', rid: 'r' } }, null], more: {} }).includes('<img'), 'an unknown kind or a null item draws nothing');
@@ -761,7 +743,7 @@ function withState(fn) {
   await check('Home: load() reads fresh and keeps the nav count; main() is loading until then; Refresh re-reads, updates both copies, and reports a failure', withState(async (S) => {
     const g = gd(OFFICER_CAN);
     S.guilds.g1 = g; S.currentGid = 'g1';
-    assert(G.pages.attention.main({ name: 'section', section: 'home' }, g, {}).includes('Loading...'));
+    assert(G.pages.attention.main({ name: 'section', section: 'home' }, g, {}).includes('Loading this week'));
     let s = stub(() => Promise.resolve(ATTN(FULL)));
     await G.pages.attention.load({ name: 'section', gid: 'g1', section: 'home' }, g);
     assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['get', '/api/guild/g1/attention']]);

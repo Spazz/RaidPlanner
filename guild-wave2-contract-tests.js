@@ -816,7 +816,10 @@ check('published line-up: Can\'t come asks, makes the sign-up Absent and reaches
   pageState(s, A);
   const home = { name: 'attention', gid: s.gid };
   await A.pages.attention.load(home, A.guildData);
-  assert(stripTags(A.pages.attention.main(home, A.guildData)).includes('Sat Oct 24: 1 line-up player can\'t come'));
+  // Round 4: the declined seat is a fact about the raid, not a to-do: it reads in the raid's sentence ("... 1 Can't come ...").
+  const homeData = A.app.state.att.attention.data;
+  assert(homeData.items.some((i) => i.kind === 'roster_declined' && i.readiness === true), 'the Worker marks it as a readiness fact');
+  assert(!/line-up player can't come/.test(stripTags(A.pages.attention.main(home, A.guildData))), 'no row for it; the raid (Sat Oct 24) is past the 7-day strip, so its sentence is not drawn yet');
 
   // The officer's card counts the answers; the plan changes (Mirabel comes off the bench) and Re-publish keeps the answers of unchanged seats.
   page = await openRaidWithRoster(s, A, s.rid);

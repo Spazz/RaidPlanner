@@ -1438,7 +1438,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     const env = makeEnv({ url: '/#/g/g1', routes: signedInRoutes(HOME_CAN, attentionRoute) });
     await settle();
     const main = env.html('gs-main');
-    assert(main.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Home</h1>') && main.includes('Review Sat Oct 17: 3 to decide') && main.includes('3 character claims') === false && main.includes('1 character claim is waiting'));
+    assert(main.includes('<h1 class="gs-h1 gs-hd-h1" id="page-title" tabindex="-1">This week</h1>') && main.includes('Review Sat Oct 17: 3 to decide') && main.includes('3 character claims') === false && main.includes('1 character claim is waiting'));
     assert.equal(env.loc.hash, '#/g/g1', 'no redirect for an officer');
     assert.equal(env.documentFake.title, 'Home - Ravens - Raidsmith guild');
     assert(env.html('shell-topbar-lead').includes('>Home<'));

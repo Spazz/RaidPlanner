@@ -31,6 +31,15 @@
   --status-none-ink: #8d918e;    --status-none-bg: #202325;    --status-none-edge: #34383a;
   --next-bg: #1b1a12;                      /* the current stage tile and the next-step bar */
   --seg-on-bg: #2a2512;                    /* selected segment / step */
+  /* Officer Home (Week and Briefing): the one panel recipe and the one raised recipe (menus, toast) */
+  --hd-panel: linear-gradient(#1d1f21, #191b1d);
+  --hd-panel-edge: rgba(255, 255, 255, 0.08);
+  --hd-panel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), inset 0 -2px 8px rgba(0, 0, 0, 0.25);
+  --hd-raised: linear-gradient(#272a2c, #212426);
+  --hd-raised-edge: rgba(255, 255, 255, 0.14);
+  --hd-raised-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --hd-hair: rgba(255, 255, 255, 0.07);
+  --hd-white: #fff;
 }
 
 /* ── Page frame ─────────────────────────────────────────────── */
@@ -1861,3 +1870,196 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
 
 /* An away notice row (the officers' card and the person page) keeps its text and its two buttons on one line when there is room */
 .gs-an-item .gs-row-actions { flex: none; }
+
+/* ── Officer Home, round 4: the Week (desktop) and the Briefing (phone) ─────────────────────────────
+   Scoped to .gs-home so no other page changes. Both variants are in the markup; at 600 px and below only the Briefing shows.
+   Rules: ONE panel recipe (.gs-hd-panel) and ONE raised recipe (menus, toast); molten orange on the one primary button only; gold is not used here
+   (the setup checklist keeps its own look); 12 px text floor; 44 px targets on a phone; a status is colour AND a word. */
+.gs-home {
+  gap: 32px;
+}
+.gs-home .gs-hd-h1 { font-size: 28px; line-height: 1.1; letter-spacing: 0.03em; color: var(--text-primary); }
+.gs-home .gs-hd-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; }
+.gs-home .gs-hd-muted { color: var(--text-muted); font-size: 13px; }
+.gs-home .gs-hd-center { text-align: center; padding: 8px 0; margin: 0; }
+.gs-home a:focus-visible, .gs-home button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+
+.gs-hd-panel { box-sizing: border-box; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
+.gs-hd-desk { display: flex; flex-direction: column; gap: 32px; }
+.gs-hd-weeksec { display: flex; flex-direction: column; gap: 8px; }
+.gs-hd-phone { display: none; }
+
+/* Section label: small caps with a rule on both sides */
+.gs-hd-sl { display: flex; align-items: center; gap: 12px; margin: 0; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+.gs-hd-sl::before, .gs-hd-sl::after { content: ""; flex: 1; height: 1px; background: var(--hd-panel-edge); }
+.gs-hd-sl-sub { margin-top: 12px; }
+.gs-hd-slb { width: 100%; min-height: 36px; padding: 0; background: none; border: 0; cursor: pointer; }
+.gs-hd-slb:hover { color: var(--text-secondary); }
+.gs-hd-caps { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.gs-hd-today { display: block; min-height: 16px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--hd-white); }
+
+/* Buttons inside the Week and the Briefing: Barlow, sentence case, small radius; the primary is the one molten button */
+.gs-home :is(.gs-hd-desk, .gs-hd-phone, .gs-hd-toastwrap) .gs-btn { font: 600 13px/1 var(--font-body); letter-spacing: 0; text-transform: none; border-radius: 4px; border-color: var(--border-medium); background: rgba(255, 255, 255, 0.04); color: var(--text-primary); min-height: 36px; padding: 0 14px; }
+.gs-home :is(.gs-hd-desk, .gs-hd-phone, .gs-hd-toastwrap) .gs-btn:hover { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); }
+.gs-home :is(.gs-hd-desk, .gs-hd-phone, .gs-hd-toastwrap) .gs-btn-ghost { background: transparent; border-color: transparent; color: var(--text-secondary); padding: 0 10px; }
+.gs-home :is(.gs-hd-desk, .gs-hd-phone) .gs-btn-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: transparent; }
+.gs-home :is(.gs-hd-desk, .gs-hd-phone) .gs-menu-trigger[aria-expanded="true"] { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); }
+.gs-home :is(.gs-hd-desk, .gs-hd-phone) .gs-btn-molten, .gs-home :is(.gs-hd-desk, .gs-hd-phone) a.gs-btn-molten { min-height: 44px; padding: 0 28px; border-radius: 6px; border-color: var(--molten); background: var(--molten); color: var(--text-on-molten); font: 700 15px/1 var(--font-body); }
+.gs-home :is(.gs-hd-desk, .gs-hd-phone) .gs-btn-molten:hover { background: var(--molten-hover); border-color: var(--molten-hover); }
+.guild-page .gs-home a.gs-btn-molten { color: var(--text-on-molten); }
+
+/* Menus and the toast: the one raised recipe */
+.gs-home .gs-menu-list { min-width: 220px; padding: 6px; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
+.gs-home .gs-menu-list .gs-menu-item { height: auto; min-height: 44px; padding: 6px 12px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; border-radius: 4px; font: 600 14px/1.2 var(--font-body); }
+.gs-home .gs-menu-note { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+
+/* Status chip: tint + word */
+.gs-hd-chip { display: inline-flex; align-items: center; justify-content: center; align-self: flex-start; flex: none; height: 24px; padding: 0 8px; border: 1px solid; border-radius: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.gs-hd-chip.is-done { background: transparent; border-color: var(--border-subtle); color: var(--text-muted); }
+.gs-hd-chip.is-todo { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.24); color: var(--text-primary); }
+.gs-hd-chip.is-short { background: rgba(244, 63, 94, 0.14); border-color: rgba(244, 63, 94, 0.4); color: #fda4af; }
+.gs-hd-chip.is-ready { background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.4); color: #86efac; }
+.gs-hd-chip.is-open { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); color: var(--text-secondary); }
+
+/* Zone tiles */
+.gs-hd-tiles { display: inline-flex; gap: 4px; }
+.gs-hd-tile { display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; height: 32px; min-width: 46px; padding: 0 4px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; background: #2a2d2f; color: #f2f3f1; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.gs-hd-tile.is-big { height: 40px; min-width: 56px; }
+.gs-hd-tile.is-more { min-width: 36px; }
+.gs-hd-tile.is-kara { background: linear-gradient(135deg, #5a4690, #1c1632); }
+.gs-hd-tile.is-gruul { background: linear-gradient(135deg, #566a2c, #1d2611); }
+.gs-hd-tile.is-mag { background: linear-gradient(135deg, #8a3026, #2c110e); }
+.gs-hd-tile.is-ssc { background: linear-gradient(135deg, #1f6f8a, #0c2a36); }
+.gs-hd-tile.is-tk { background: linear-gradient(135deg, #4a5fc0, #151b3d); }
+.gs-hd-tile.is-hyjal { background: linear-gradient(135deg, #2f7a4a, #0f2a1a); }
+.gs-hd-tile.is-bt { background: linear-gradient(135deg, #7b3a8c, #220f2a); }
+.gs-hd-tile.is-za { background: linear-gradient(135deg, #a0702a, #2e1e0a); }
+.gs-hd-tile.is-swp { background: linear-gradient(135deg, #b8862c, #33230a); }
+
+/* The strip */
+.gs-hd-strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
+.gs-hd-day { flex: 1 1 120px; min-width: 120px; box-sizing: border-box; display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: 8px; background: rgba(255, 255, 255, 0.02); }
+.gs-hd-day.is-empty { border-style: dashed; border-color: var(--border-medium); min-height: 90px; }
+.gs-hd-day.is-selected { background: linear-gradient(#2a2d2f, #232628); border-color: rgba(255, 255, 255, 0.36); box-shadow: var(--hd-panel-shadow); }
+.gs-hd-pick { box-sizing: border-box; width: 100%; flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin: 0; padding: 12px; background: none; border: 0; border-radius: 8px; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.gs-hd-pick:hover { background: rgba(255, 255, 255, 0.04); }
+.gs-hd-pick.is-stacked { border-top: 1px solid var(--hd-hair); border-radius: 0 0 8px 8px; }
+.gs-hd-pick[aria-pressed="true"].is-stacked, .gs-hd-pick[aria-pressed="true"] { background: rgba(255, 255, 255, 0.05); }
+.gs-hd-daybody { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.gs-hd-team { font-size: 14px; font-weight: 600; }
+.gs-hd-cnt { font-size: 14px; font-weight: 700; color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-hd-den { font-weight: 500; color: var(--text-muted); }
+
+/* Selected day and Guild box */
+.gs-hd-cols { display: flex; align-items: flex-start; gap: 32px; }
+.gs-hd-main { flex: 1; min-width: 0; padding: 24px 28px; display: flex; flex-direction: column; }
+.gs-hd-side { width: 340px; flex: none; padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+.gs-hd-sel-head { display: flex; align-items: center; gap: 16px; }
+.gs-hd-sel-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-hd-h2 { margin: 0; font: 700 26px/1.15 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-primary); }
+.gs-hd-sub { font-size: 15px; color: var(--text-secondary); }
+.gs-hd-bigcnt { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.gs-hd-bignum { font-size: 30px; line-height: 1; font-weight: 700; color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-hd-bignum .gs-hd-den { font-size: 20px; }
+.gs-hd-sentence { margin: 8px 0 0; max-width: 640px; font-size: 17px; line-height: 1.5; color: var(--text-primary); }
+.gs-hd-cta { margin-top: 16px; }
+.gs-hd-todosec { margin-top: 28px; display: flex; flex-direction: column; gap: 4px; }
+
+/* To-dos */
+.gs-hd-todos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.gs-hd-todo { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-height: 56px; padding: 8px 0; border-top: 1px solid var(--hd-hair); }
+.gs-hd-todos > .gs-hd-todo:first-child { border-top: 0; }
+.gs-hd-todo-title { flex: 1 1 200px; min-width: 0; font-size: 15px; overflow-wrap: anywhere; }
+.gs-hd-todo-meta { flex: 0 0 100%; order: 3; font-size: 13px; color: var(--text-muted); }
+.gs-hd-todo-acts { display: flex; align-items: center; gap: 8px; }
+.gs-hd-side .gs-hd-todo { flex-direction: column; align-items: flex-start; padding: 12px 0; }
+.gs-hd-side .gs-hd-todo-title { flex: none; }
+.gs-hd-side .gs-hd-todo-meta { flex: none; order: 0; }
+.gs-hd-earlier { display: flex; flex-direction: column; }
+.gs-hd-error { padding: 12px; margin-bottom: 4px; border: 1px solid var(--status-danger-edge); border-radius: 6px; background: var(--status-danger-bg); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.gs-hd-error-title { margin: 0; font-size: 16px; font-weight: 600; }
+.gs-hd-error-text { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
+
+/* Hidden */
+.gs-hd-hiddenbox { display: flex; flex-direction: column; padding-top: 4px; }
+.gs-hd-hiddenlist { list-style: none; margin: 0; padding: 0; }
+.gs-hd-hidden { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px 0; border-top: 1px solid var(--hd-hair); }
+.gs-hd-hiddenlist > .gs-hd-hidden:first-child { border-top: 0; }
+.gs-hd-hidden-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gs-hd-hidden-title { font-size: 14px; color: var(--text-secondary); overflow-wrap: anywhere; }
+
+/* More links */
+.gs-hd-more { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+.gs-hd-links { list-style: none; margin: 0; padding: 0; }
+.gs-home a.gs-hd-link { display: flex; align-items: center; min-height: 40px; padding: 0 4px; border-top: 1px solid var(--hd-hair); color: var(--text-secondary); font-size: 14px; text-decoration: none; }
+.gs-home a.gs-hd-link:hover { color: var(--text-primary); text-decoration: underline; }
+
+/* Briefing */
+.gs-hd-nextcard { padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.gs-hd-nextrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gs-hd-nextcard .gs-hd-caps { margin-top: 4px; }
+.gs-hd-nextcard .gs-hd-sentence { margin-top: 4px; font-size: 16px; }
+.gs-hd-cta.is-block { margin-top: 8px; }
+.gs-hd-cta.is-block .gs-btn { width: 100%; min-height: 48px; font-size: 16px; }
+.gs-hd-todosec, .gs-hd-comingsec { display: flex; flex-direction: column; gap: 8px; }
+.gs-hd-phone .gs-hd-todosec { margin-top: 0; }
+.gs-hd-listpanel { padding: 0 16px; }
+.gs-hd-coming { list-style: none; margin: 0; padding: 0 12px; }
+.gs-hd-comingrow { display: flex; align-items: center; gap: 10px; min-height: 68px; padding: 10px 0; border-top: 1px solid var(--hd-hair); }
+.gs-hd-coming > .gs-hd-comingrow:first-child { border-top: 0; }
+.gs-hd-comingtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gs-hd-when { font-size: 14px; font-weight: 600; }
+.gs-hd-comingend { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+/* Undo toast */
+.gs-hd-toastwrap { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+.gs-hd-toastwrap:empty { display: none; }
+.gs-hd-toast { pointer-events: auto; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 18px; font-size: 14px; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
+.gs-hd-toast-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gs-hd-toast-main { font-weight: 600; }
+.gs-hd-toast-x { flex: none; min-height: 36px; min-width: 36px; padding: 0 10px; background: transparent; border: 0; border-radius: 4px; color: var(--text-secondary); font: 600 13px/1 var(--font-body); cursor: pointer; }
+.gs-hd-toast-x:hover { background: rgba(255, 255, 255, 0.06); }
+
+/* Loading skeleton */
+.gs-hd-sk { display: block; border-radius: 4px; background: linear-gradient(90deg, #1f2224 0, #2a2d2f 50%, #1f2224 100%); background-size: 200% 100%; animation: gs-hd-sweep 1.4s linear infinite; }
+.gs-hd-sk.is-sm { width: 84px; height: 12px; }
+.gs-hd-sk.is-tile { width: 100%; max-width: 112px; height: 32px; }
+.gs-hd-sk.is-line { width: 70%; height: 16px; margin-top: 8px; }
+.gs-hd-sk.is-chip { width: 48px; height: 24px; margin-top: 8px; }
+.gs-hd-sk.is-btn { width: 132px; height: 44px; margin-top: 12px; }
+.gs-hd-sk.is-wide { width: 60%; height: 26px; }
+.gs-hd-day.is-skel { padding: 12px; gap: 8px; }
+@keyframes gs-hd-sweep { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .gs-hd-sk { animation: none; } }
+
+/* Written without a space after the colon on purpose: the suites slice guild.css at the last spaced phone media query to find the shared phone block. */
+@media (max-width:600px) {
+  .gs-home { gap: 24px; }
+  .gs-home .gs-hd-head { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .gs-hd-desk { display: none; }
+  .gs-hd-phone { display: flex; flex-direction: column; gap: 32px; }
+  .gs-home :is(.gs-hd-phone, .gs-hd-toastwrap) .gs-btn { min-height: 44px; font-size: 14px; }
+  .gs-home .gs-hd-phone .gs-btn-ghost { min-width: 56px; justify-content: center; }
+  .gs-home .gs-hd-phone .gs-btn-molten { min-height: 48px; font-size: 16px; }
+  .gs-hd-phone .gs-hd-h2 { font-size: 28px; line-height: 1.1; }
+  .gs-hd-phone .gs-hd-todo { flex-direction: column; align-items: stretch; flex-wrap: nowrap; padding: 12px 0; }
+  .gs-hd-phone .gs-hd-todo-title { flex: none; font-size: 16px; }
+  .gs-hd-phone .gs-hd-todo-meta { order: 0; flex: none; }
+  .gs-hd-phone .gs-hd-todo-acts > .gs-btn:first-child, .gs-hd-phone .gs-hd-todo-acts > a.gs-btn:first-child { flex: 1; }
+  .gs-hd-phone .gs-hd-slb { min-height: 44px; }
+  .gs-hd-phone .gs-hd-hidden { min-height: 60px; }
+  .gs-home a.gs-hd-link { min-height: 44px; font-size: 15px; color: var(--text-primary); }
+  .gs-hd-links { padding: 0 12px; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
+  .gs-hd-links > li:first-child a.gs-hd-link { border-top: 0; }
+  .gs-hd-more { margin-top: 0; }
+  .gs-home .gs-menu-list.is-left { left: auto; right: 0; }
+  .gs-hd-toastwrap { left: 12px; right: 12px; bottom: 76px; transform: none; }
+  .gs-hd-toast { padding: 6px 6px 6px 14px; }
+  .gs-hd-toast-text { flex: 1; }
+  .gs-hd-toast-x { min-height: 44px; min-width: 44px; }
+}
+
+/* Watch list: Reviewed / Undo on an entry; a reviewed entry stays listed, muted, with who reviewed it and when it comes back */
+.gs-watch-act { grid-column: 1 / -1; justify-self: start; }
+.gs-watch-reviewed { grid-column: 1 / -1; margin: 0; }
+.gs-watch-item.is-reviewed .gs-watch-num, .gs-watch-item.is-reviewed .gs-watch-was, .gs-watch-item.is-reviewed .gs-watch-counts { color: var(--text-muted); }

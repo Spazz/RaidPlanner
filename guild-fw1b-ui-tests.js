@@ -110,22 +110,19 @@ function withState(fn) {
 
 (async () => {
   // ═══ 1. Officer Home ═══
-  await check('officer Home: Needs attention leads whenever it has items, then For your information, then the setup checklist', () => {
-    const info = item('unlocked', { severity: 'info', raidId: 'r_1', date: '2026-10-21', minutes: 45 });
-    const out = attnHtml(ATTN([LOW, info], { total: 1, onboarding: onboarding(['teams']) }));
-    const at = (s) => out.indexOf(s);
-    assert(at('id="attn-h">Needs attention</h2>') > 0 && at('id="attn-h">Needs attention</h2>') < at('9 of 25 signed up'));
-    assert(at('9 of 25 signed up') < at('>For your information</h2>') && at('>For your information</h2>') < at('id="setup"'), 'attention, then the info card, then Setup');
-    assert(out.includes('1 item needs attention'));
-    assert(out.includes('<a class="gs-btn" href="#/g/g1/raids/r/r_1" aria-label="Open raid: Wed Oct 23: 9 of 25 signed up'.replace('Wed', 'Fri')) || out.includes('<span>Open raid</span>'));
+  await check('officer Home: the Week and the Briefing first, then the setup checklist; readiness facts are not to-dos', () => {
+    const info = item('unlocked', { severity: 'info', raidId: 'r_1', date: '2026-10-21', minutes: 45, readiness: true });
+    const out = attnHtml(ATTN([Object.assign({}, LOW, { readiness: true }), info], { total: 0, onboarding: onboarding(['teams']) }));
+    assert(out.indexOf('class="gs-hd-desk"') > 0 && out.indexOf('class="gs-hd-desk"') < out.indexOf('class="gs-hd-phone"') && out.indexOf('class="gs-hd-phone"') < out.indexOf('id="setup"'));
+    assert(!out.includes('9 of 25 signed up') && !out.includes('Sign-ups for'), 'the facts feed the raid sentence, they are no rows');
     assertNoRawAttrs(out);
   });
 
-  await check('officer Home: with nothing to do the list is one good-news line and the checklist comes straight after it', () => {
+  await check('officer Home: with nothing to do there is one primary (Add raid) per variant and the checklist comes after the Week', () => {
     const out = attnHtml(ATTN([], { onboarding: onboarding(['teams']) }));
-    assert(out.includes('<div class="gs-empty-good" role="status">') && !out.includes('id="attn-h"'));
-    assert(out.indexOf('gs-empty-good') < out.indexOf('id="setup"') && out.includes('Set up your guild'));
-    assert.equal(count(out, /gs-btn-molten/g), 0, 'the orange is for a primary button; Home has none');
+    assert(out.includes('Nothing to do.') && out.includes('No raid this week'));
+    assert(out.indexOf('No raid this week') < out.indexOf('id="setup"') && out.includes('Set up your guild'));
+    assert.equal(count(out, /gs-btn-molten/g), 2, 'one primary in the Week, one in the Briefing (guild.css shows one of them)');
   });
 
   await check('setup checklist: the whole list until the guild has a raid, one line after ("Setup 4 of 6 steps done. Next: ..."); All steps / Hide steps fold it', () => {
@@ -233,7 +230,7 @@ function withState(fn) {
     S.guilds.g1 = gd(OFFICER_CAN);
     await G.pages.attention.load({ name: 'section', gid: 'g1', section: 'home' }, S.guilds.g1);
     assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/attention']);
-    assert(G.pages.attention.main({}, S.guilds.g1, {}).includes('id="attn-h"'));
+    assert(G.pages.attention.main({}, S.guilds.g1, {}).includes('This week'));
     s.restore();
     s = await loadMember(memberApi({ raids: seatRaid('pending') }));
     assert(!s.calls.some(c => c.url.endsWith('/attention')), 'a member never asks for the list');

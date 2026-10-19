@@ -362,10 +362,15 @@ check('needs attention: the real answer draws every item with a sentence and a l
     assert(kinds.has(kind), `the scenario produced ${kind}`);
   }
   assert(!kinds.has('watch') && data.counts[s.A].watchOpen >= 1, 'the watch list left Home (round 2): it is only counted per team');
-  const html = G.pages.attention.main(view, gd);
+  // The selected day shows its raid's to-dos: draw the page once per raid that has one (and once with the default selection) and read them all.
+  const raidIds = [...new Set(data.items.filter((i) => i.raidId).map((i) => i.raidId))];
+  const pages = [G.pages.attention.main(view, gd)];
+  for (const raidId of raidIds) { G.app.state.att.attention.sel = raidId; pages.push(G.pages.attention.main(view, gd)); }
+  delete G.app.state.att.attention.sel;
+  const html = pages.join(' ');
   const text = stripTags(html);
-  assert(/Needs attention/.test(text) && !/Nothing needs you right now/.test(text));
-  for (const item of data.items) {
+  assert(/This week/.test(text) && !/Needs attention/.test(text));
+  for (const item of data.items.filter((i) => !i.readiness)) {
     const sentence = G.pages.attention.itemText(item);
     assert(sentence && !/undefined|null|NaN/.test(sentence), `${item.kind}: ${sentence}`);
     assert(text.includes(sentence), `the page shows "${sentence}"`);
@@ -378,7 +383,7 @@ check('needs attention: the real answer draws every item with a sentence and a l
   }
   assert(/Review .* 3 to decide/.test(text) && /Veyla's trial ends in 3 days/.test(text), text.slice(0, 600));
   assert(/1 loot winner on .* matches nobody/.test(text) && /1 sign-up on .* is not linked to a person/.test(text));
-  assert(/No loot imported for/.test(text) && /of 25 signed up/.test(text));
+  assert(/No loot imported for/.test(text) && /\d+ of 25 signed\./.test(text), 'the sign-up facts are in the week sentence');
   assert(/Alpha/.test(text), 'the team shows with several teams');
 
   // The Home badge is the Worker's total, and only attention viewers get the count (the same rule the Worker enforces); everyone else has a Home page without one.

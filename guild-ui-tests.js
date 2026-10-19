@@ -871,7 +871,9 @@ function assertEscaped(out, label) {
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
     assert(/\.gs-btn, \.gs-btn-sm \{ min-height: 44px; \}/.test(phone));
     assert(/\.gs-input, \.gs-input-search \{ height: 44px; \}/.test(phone));
-    const radii = [...css.matchAll(/border-radius:\s*([^;]+);/g)].map(m => m[1].trim());
+    // The officer Home (round 4, user-approved mockup) has its own recipe with small radii; every other rule stays flat.
+    const flatCss = css.slice(0, css.indexOf('Officer Home, round 4')) + css.slice(css.indexOf('Watch list: Reviewed'));
+    const radii = [...flatCss.matchAll(/border-radius:\s*([^;]+);/g)].map(m => m[1].trim());
     assert(radii.length > 0 && radii.every(r => r === '0' || r === '50%'), 'only avatars are round: ' + radii.join(','));
     assert(!/prefers-color-scheme\s*:\s*light/.test(css));
   });

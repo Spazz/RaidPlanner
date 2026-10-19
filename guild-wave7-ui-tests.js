@@ -462,19 +462,15 @@ function keyData(extra) {
     assertNoRawAttrs(out);
   });
 
-  await check('Home: a Rank suggestions group after the watch list, a sentence per suggestion that links to the person\'s attendance', () => {
+  await check('Home (round 4): rank suggestions are no to-do kind any more; the Guild box counts them ("N rank suggestions" -> Attendance, where the Ranks card is)', () => {
     const A = G.pages.attention;
     const kinds = A.KINDS.map(k => k.id);
-    assert(kinds.indexOf('rank') === kinds.indexOf('watch') + 1);
-    const promote = { id: 'rank:t1:p_1', kind: 'rank', severity: 'action', teamId: 't1', teamName: 'Alpha', personId: 'p_1', name: 'Bran', suggestion: 'promote', from: { id: 'raider', name: 'Raider' }, to: { id: 'core', name: 'Core' }, reasons: [], link: { name: 'personatt', pid: 'p_1' } };
-    const review = Object.assign({}, promote, { id: 'rank:t1:p_2', name: 'Cora', suggestion: 'review', to: { id: 'member', name: 'Member' }, link: { name: 'personatt', pid: 'p_2' } });
-    assert.equal(A.itemText(promote), 'Bran: suggested promotion to Core');
-    assert.equal(A.itemText(review), 'Cora: suggested review (below Raider)');
-    assert.equal(A.itemHref('g1', promote), '#/g/g1/attendance/p/p_1');
-    const out = A.attentionHtml({ guildData: guildData(), data: { today: '2027-01-15', total: 2, items: [promote, review], more: { rank: 3 } } });
-    assert(text(out).includes('Bran: suggested promotion to Core') && text(out).includes('Cora: suggested review (below Raider)') && text(out).includes('and 3 more: rank suggestions'));
-    assert(/href="#\/g\/g1\/attendance\/p\/p_1" aria-label="Open \(Bran: suggested promotion to Core\)"><span>Open<\/span>/.test(out), 'a button per suggestion');
-    assert(/<a class="gs-btn" href="#\/g\/g1\/attendance" aria-label="See all \(and 3 more: rank suggestions\)"><span>See all<\/span>/.test(out), 'where the rest is');
+    assert(!kinds.includes('rank') && !kinds.includes('watch'), 'the watch list and the rank suggestions left Home');
+    const out = A.attentionHtml({ guildData: guildData(), data: { today: '2027-01-15', total: 0, items: [], more: {}, counts: { t1: { watchOpen: 0, rankOpen: 2 }, t2: { watchOpen: 0, rankOpen: 1 } }, week: [], hidden: [] } });
+    assert(text(out).includes('3 rank suggestions'), 'summed over the teams');
+    assert(out.includes('href="#/g/g1/attendance" aria-label="Open Ranks (3 rank suggestions)"><span>Open Ranks</span>'), 'a button to where they are handled');
+    const none = A.attentionHtml({ guildData: guildData(), data: { today: '2027-01-15', total: 0, items: [], more: {}, counts: { t1: { watchOpen: 1, rankOpen: 0 } }, week: [], hidden: [] } });
+    assert(!text(none).includes('rank suggestion'), 'no suggestions, no row');
   });
 
   // ladder editor on Guild settings > Attendance

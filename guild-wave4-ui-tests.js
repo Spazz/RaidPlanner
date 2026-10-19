@@ -292,13 +292,13 @@ function formFor(teamId, values) {
     assert(out.includes('href="#/g/g1/settings/notifications"'), 'the webhook line opens the Notifications tab');
     const t = stripTags(out);
     assert(t.includes('3 line-up players haven') && t.includes('Raid-Helper has the event on') && t.includes('The Discord webhook of Team KJ was switched off'));
-    assert(out.includes('<span>Open settings</span>') && out.includes('<span>Open raid</span>'));
+    assert(out.includes('<span>Open notifications</span>') && out.includes('<span>Open raid</span>') && out.includes('<span>Re-link event</span>'));
     assert(t.includes('and 2 more: discord webhooks switched off'), 'the hidden ones name their kind');
     assert(out.includes(G.router.format({ name: 'settings', gid: 'g1', tab: 'notifications' })) && t.includes('and 2 more'), 'and N more goes to the same place');
     // The page lists exactly the kinds the Worker produces.
     const kinds = plain(G.pages.attention.KINDS.map(k => k.id));
     const worker = fs.readFileSync(path.join(ROOT, 'worker/attention.js'), 'utf8');
-    const listed = /ATTENTION_KINDS = \[([^\]]*)\]/.exec(worker)[1].match(/'([a-z_]+)'/g).map(s => s.slice(1, -1));
+    const listed = /ATTENTION_KINDS = \[([^\]]*)\]/.exec(worker)[1].match(/'([a-z_]+)'/g).map(s => s.slice(1, -1)).filter(k => k !== 'watch' && k !== 'rank'); // the watch list and rank suggestions are no Home to-dos any more (OFF_HOME_KINDS)
     assert.deepEqual(kinds, listed, 'KINDS in pages-attention.js and ATTENTION_KINDS in worker/attention.js agree, in order');
   }));
 

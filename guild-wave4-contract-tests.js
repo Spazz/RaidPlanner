@@ -246,13 +246,17 @@ check('Home and Raids: what the scheduler found - an event on another day, a web
   const data = S.att.attention.data;
   const kinds = plain(data.items.map((item) => item.kind));
   assert.deepEqual(kinds.filter((k) => ['roster_pending', 'event_moved', 'webhook_off'].includes(k)), ['roster_pending', 'event_moved', 'webhook_off']);
+  // Round 4: the seats nobody confirmed are a readiness fact (they read in the raid's sentence); the event on another day is a to-do of its raid (shown on its
+  // day), the webhook one of the Guild box.
+  S.att.attention.sel = rid;
   const html = A.pages.attention.main(view, A.guildData);
   const text = stripTags(html);
   const day = A.ui.weekdayDay;
-  assert(text.includes(`${day('2026-10-18')}: 2 line-up players haven't confirmed`), text.slice(0, 500));
+  assert(/2 no answer./.test(text), text.slice(0, 800));
   assert(text.includes(`${day('2026-10-18')}: Raid-Helper has the event on ${day('2026-10-19')}; the raid was not moved`));
   assert(text.includes('The Discord webhook of Alpha was switched off (Discord answered 404)'));
-  for (const item of data.items.filter((i) => ['roster_pending', 'event_moved', 'webhook_off'].includes(i.kind))) {
+  assert(!text.includes("haven't confirmed"), 'the pending seats are no to-do row');
+  for (const item of data.items.filter((i) => ['event_moved', 'webhook_off'].includes(i.kind))) {
     const href = A.pages.attention.itemHref(s.gid, item);
     assert(html.includes(`href="${href}"`), href);
     assert.notEqual(href, A.router.format({ name: 'section', gid: s.gid, section: 'roster' }), 'a link of its own, not the Roster fallback');

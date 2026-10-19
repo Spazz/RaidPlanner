@@ -157,6 +157,9 @@
   };
   G.api.attention = {
     get: function (gid) { return G.api.get(guildPath(gid, '/attention')); },
+    // Hide / snooze / mark Reviewed for every officer (the Worker picks the mode from the item's kind) and Restore. itemId is the item's `id`.
+    dismiss: function (gid, itemId) { return G.api.post(guildPath(gid, '/attention/dismissals'), { itemId: itemId }); },
+    restore: function (gid, itemId) { return G.api.del(guildPath(gid, '/attention/dismissals/' + encodeURIComponent(itemId)), {}); },
   };
   // Phase 8 (other guilds): the Guild Master's copy of the guild's data and deleting the guild, and hiding the setup checklist on Home.
   // exportUrl is a plain download link (the browser sends the session cookie; the Worker answers with a file).

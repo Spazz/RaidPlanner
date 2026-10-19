@@ -1,32 +1,35 @@
 // ── PAGE: HOME (T4: what needs attention) ───────────────────────
-// The guild's landing page, in two variants. The officer variant (anyone who can act on one of the items; GET /attention) leads with "Needs attention" whenever
-// it has items, one secondary button per row, then "For your information", then the setup checklist: the whole list until the guild has a raid, one line
-// ("Setup 4 of 6 steps done. Next: ...") after, with "All steps" to open it again. The member variant (everyone else) is pages-home-member.js; this file picks
-// between them in load() and main().
-// GET /attention -> { today, total, items: [ { id, kind, severity, teamId, teamName, link, ...kind fields } ], more: { <kind>: <n hidden by the cap> }, onboarding }:
-// the open work across the viewer's teams in one list, each item a link to the page where it gets done. Items with severity 'action' come first,
-// grouped by kind in a fixed order; the 'info' items follow under "For your information". The count in the sidebar's Home badge is `total`; app.js keeps
-// the last answer per guild.
+// The guild's landing page, in two variants. The officer variant (anyone who can act on one of the items; GET /attention) is the Week on a screen wider than
+// 600 px and the Briefing on a phone (home redesign, round 4: both are in the markup, guild.css shows one); the setup checklist stays below them: the whole
+// list until the guild has a raid, one line ("Setup 4 of 6 steps done. Next: ...") after, with "All steps" to open it again. The member variant (everyone else)
+// is pages-home-member.js; this file picks between them in load() and main().
+// GET /attention -> { today, total, items, more, hidden, counts, week, onboarding }:
+//   items   the open, unhidden to-dos ({ id, kind, teamId, teamName, link, raidId?, ...kind fields }); items with `readiness: true` are facts about a raid,
+//           not to-dos (they feed the raid's sentence through `week`), `more` counts what the per-kind cap left out
+//   week    every raid from yesterday to today + 5 with its readiness facts and a status (done | todo | short | ready | open): the strip, the selected day, the
+//           sentence and the Coming up rows are built from it and from nothing else
+//   hidden  what a shared Hide / Snooze hides now, with who did it (Restore); counts { teamId: { watchOpen, rankOpen } } feed the Guild box and More links
+// The count in the sidebar's Home badge is `total`; app.js keeps the last answer per guild. Hide / Snooze (More menu) and Restore go through
+// POST / DELETE /attention/dismissals: the client names the item, the Worker decides what hiding it means.
 (function (G) {
   'use strict';
 
   // Display order, with the heading of each group (the "and N more" line names it) and the label of the button on each row. 'unlocked' is the one info kind.
+  // The attendance watch list and the rank suggestions are not Home to-dos (they live on the Attendance and Ranks pages; Home only counts them).
   const KINDS = [
     { id: 'review', severity: 'action', heading: 'Raids to review', action: 'Review' },
     { id: 'loot_unmatched', severity: 'action', heading: 'Loot winners nobody matches', action: 'Link winners' },
     { id: 'signup_unmatched', severity: 'action', heading: 'Sign-ups not linked to a person', action: 'Link sign-ups' },
     { id: 'claims', severity: 'action', heading: 'Character claims', action: 'Review claims' },
     { id: 'applications', severity: 'action', heading: 'New applications', action: 'Review' },
-    { id: 'trial', severity: 'action', heading: 'Trials', action: 'Open' },
-    { id: 'watch', severity: 'action', heading: 'Attendance watch list', action: 'Open' },
-    { id: 'rank', severity: 'action', heading: 'Rank suggestions', action: 'Open' },
+    { id: 'trial', severity: 'action', heading: 'Trials', action: 'Open roster' },
     { id: 'no_loot', severity: 'action', heading: 'Raids without loot', action: 'Add loot' },
     { id: 'low_signups', severity: 'action', heading: 'Raids short on sign-ups', action: 'Open raid' },
     { id: 'log_missing', severity: 'action', heading: 'Raids waiting for a log', action: 'Open raid' },
     { id: 'roster_declined', severity: 'action', heading: 'Line-up players who can\'t come', action: 'Open raid' },
     { id: 'roster_pending', severity: 'action', heading: 'Line-up players who haven\'t confirmed', action: 'Open raid' },
-    { id: 'event_moved', severity: 'action', heading: 'Raid-Helper events on another day', action: 'Open raid' },
-    { id: 'webhook_off', severity: 'action', heading: 'Discord webhooks switched off', action: 'Open settings' },
+    { id: 'event_moved', severity: 'action', heading: 'Raid-Helper events on another day', action: 'Re-link event' },
+    { id: 'webhook_off', severity: 'action', heading: 'Discord webhooks switched off', action: 'Open notifications' },
     { id: 'unlocked', severity: 'info', heading: 'Sign-ups still open', action: 'Open raid' },
   ];
   // Route names an item link may use (an address built from anything else falls back to the Roster).
@@ -39,8 +42,6 @@
     claims: { name: 'review' },
     applications: { name: 'applications' },
     trial: { name: 'section', section: 'roster' },
-    watch: { name: 'section', section: 'attendance' },
-    rank: { name: 'section', section: 'attendance' },
     no_loot: { name: 'section', section: 'raids' },
     low_signups: { name: 'section', section: 'raids' },
     roster_declined: { name: 'section', section: 'raids' },
@@ -86,16 +87,6 @@
         const copy = G.ui.trialCopy({ kind: it.ended ? 'ended' : 'ends', days: days });
         return String(it.name == null ? '' : it.name) + '\'s trial ' + lowerFirst(copy);
       }
-      case 'watch': {
-        const drop = num(it.drop);
-        return String(it.name == null ? '' : it.name) + ': ' + G.ui.percent(it.pct) + ' attendance' + (drop > 0 ? ', down ' + plural(Math.round(drop), 'point', 'points') : '');
-      }
-      case 'rank': {
-        const who = String(it.name == null ? '' : it.name);
-        const from = it.from && it.from.name ? it.from.name : 'the current rank';
-        const to = it.to && it.to.name ? it.to.name : 'the next rank';
-        return who + ': ' + (it.suggestion === 'review' ? 'suggested review (below ' + from + ')' : 'suggested promotion to ' + to);
-      }
       case 'no_loot': return 'No loot imported for ' + dayOf(it.date);
       case 'low_signups': return dayOf(it.date) + ': ' + num(it.expected) + ' of ' + num(it.size) + ' signed up';
       case 'roster_declined': return dayOf(it.date) + ': ' + plural(n, 'line-up player', 'line-up players') + ' can\'t come';
@@ -115,53 +106,9 @@
     return G.router.format(Object.assign({}, link, { gid: gid }));
   }
 
-  // The muted line under the sentence: the team (only when the guild has several), and the raid's zone and title where there are any.
-  function metaParts(item, showTeam) {
-    const parts = [];
-    if (showTeam && item.teamName) parts.push(String(item.teamName));
-    if (item.zone) parts.push(String(item.zone));
-    if (item.title && item.title !== item.zone) parts.push(String(item.title));
-    return parts;
-  }
-
   // A link whose page works on the SELECTED team (the review queue) first selects the item's team: see the attn-open handler.
   function needsTeam(item) { return !!(item && item.link && item.link.name === 'review' && item.teamId); }
 
-  // One row of the list: the sentence, the muted line, one secondary button named for the kind. The button's accessible name starts with its label.
-  function rowOf(gid, item, kind, showTeam) {
-    const title = itemText(item);
-    return {
-      tone: kind.severity === 'info' ? 'info' : 'warning',
-      title: title,
-      text: metaParts(item, showTeam).join(' - '),
-      action: {
-        label: kind.action, href: itemHref(gid, item), ariaLabel: kind.action + ' (' + title + ')',
-        attrs: needsTeam(item) ? { 'data-action': 'attn-open', 'data-team': item.teamId } : null,
-      },
-    };
-  }
-
-  function moreRowOf(gid, kind, count) {
-    const text = 'and ' + count + ' more: ' + lowerFirst(kind.heading);
-    return {
-      tone: kind.severity === 'info' ? 'info' : 'warning', title: text, text: '',
-      action: { label: 'See all', href: G.router.format(Object.assign({ gid: gid }, MORE_LINKS[kind.id])), ariaLabel: 'See all (' + text + ')' },
-    };
-  }
-
-  // The rows of one severity, in KINDS order. An item says its own severity; the hidden counts (data.more) have none, so a kind's own counts.
-  function rowsOf(gid, severity, data, showTeam) {
-    const items = Array.isArray(data.items) ? data.items : [];
-    const more = data.more && typeof data.more === 'object' ? data.more : {};
-    const rows = [];
-    KINDS.forEach(function (kind) {
-      items.filter(function (it) { return it && it.kind === kind.id && (it.severity === 'info' || it.severity === 'action' ? it.severity : kind.severity) === severity; })
-        .forEach(function (it) { rows.push(rowOf(gid, it, kind, showTeam)); });
-      const hidden = kind.severity === severity ? Math.floor(num(more[kind.id])) : 0;
-      if (hidden > 0) rows.push(moreRowOf(gid, kind, hidden));
-    });
-    return rows;
-  }
 
   // ── the setup checklist ──
   function onboardingStepOf(onboarding, id) {
@@ -240,31 +187,384 @@
     return onboardingLineHtml(gid, onboarding);
   }
 
+  // ── Home, round 4: the Week (desktop) and the Briefing (phone) ──
+  // Both are drawn from the same GET /attention answer and both are in the markup: guild.css shows the Week above 600 px and the Briefing at 600 px and
+  // below. Only the one primary button of the visible variant counts: "Open raid" (or "Add raid" with no raid this week).
+
+  // Which to-dos can be hidden, and what the More menu says. The Worker decides the mode and the snooze length (DISMISS_RULES in worker/attention.js);
+  // the numbers of days below only word the menu, they are never sent.
+  const HIDE_MENU = {
+    loot_unmatched: { note: 'Ignore these names' },
+    signup_unmatched: { note: 'Leave them unlinked' },
+    event_moved: { note: 'The date is right' },
+    no_loot: { note: 'No loot for this raid' },
+    log_missing: { note: 'No log for this raid' },
+    trial: { snoozeDays: 3 },
+    webhook_off: { snoozeDays: 7 },
+  };
+
+  // Raid zones: the short name on a tile and its tint class (guild.css, .gs-hd-tile.is-<tint>). Any other zone gets the first letters and a neutral tile.
+  const ZONE_TILES = {
+    'karazhan': { abbr: 'KARA', tint: 'kara' },
+    'gruul\'s lair': { abbr: 'GRUUL', tint: 'gruul' },
+    'magtheridon\'s lair': { abbr: 'MAG', tint: 'mag' },
+    'serpentshrine cavern': { abbr: 'SSC', tint: 'ssc' },
+    'tempest keep': { abbr: 'TK', tint: 'tk' },
+    'hyjal summit': { abbr: 'HYJAL', tint: 'hyjal' },
+    'black temple': { abbr: 'BT', tint: 'bt' },
+    'zul\'aman': { abbr: 'ZA', tint: 'za' },
+    'sunwell plateau': { abbr: 'SWP', tint: 'swp' },
+  };
+  const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const DAY_MS = 86400000;
+  const UPCOMING = ['short', 'ready', 'open'];
+  const PHONE_TODOS = 3;
+  const COMING_UP = 2;
+  const TOAST_MS = 8000;
+  const STATUS_LABELS = { done: 'Done', todo: 'To do', short: 'Short', ready: 'Ready', open: 'Open' };
+
+  function splitZones(zone) {
+    return String(zone == null ? '' : zone).split(/\s*(?:\+|&|\/|;)\s*|,\s+/).map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+
+  function tileOf(name) {
+    const known = ZONE_TILES[String(name).toLowerCase()];
+    if (known) return known;
+    const words = String(name).split(/[^A-Za-z0-9]+/).filter(Boolean);
+    const abbr = words.length > 1 ? words.slice(0, 4).map(function (w) { return w.charAt(0); }).join('') : (words[0] || '').slice(0, 3);
+    return { abbr: abbr.toUpperCase() || '?', tint: 'other' };
+  }
+
+  function tileHtml(name, big) {
+    const t = tileOf(name);
+    return '<span class="gs-hd-tile is-' + t.tint + (big ? ' is-big' : '') + '" aria-hidden="true">' + esc(t.abbr) + '</span>';
+  }
+
+  // The tiles of a raid: every zone (the panel and the Briefing) or the first one plus "+N" (the strip and the Coming up rows).
+  function tilesHtml(zone, mode) {
+    const names = splitZones(zone);
+    if (!names.length) return '';
+    if (mode === 'short' && names.length > 1) return '<span class="gs-hd-tiles">' + tileHtml(names[0], false) + '<span class="gs-hd-tile is-more" aria-hidden="true">+' + (names.length - 1) + '</span></span>';
+    return '<span class="gs-hd-tiles">' + names.map(function (n) { return tileHtml(n, mode === 'big'); }).join('') + '</span>';
+  }
+
+  // ── dates (a guild day is a plain YYYY-MM-DD) ──
+  function dateParts(date) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date == null ? '' : date));
+    if (!m) return null;
+    const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const d = new Date(t);
+    return { t: t, weekday: WEEKDAYS[d.getUTCDay()], month: MONTHS[d.getUTCMonth()], day: d.getUTCDate() };
+  }
+  function shiftDay(date, n) { const p = dateParts(date); return p ? new Date(p.t + n * DAY_MS).toISOString().slice(0, 10) : ''; }
+  function dayText(date) { const p = dateParts(date); return p ? p.weekday + ' ' + p.month + ' ' + p.day : String(date == null ? '' : date); }
+  function capsText(date) { const p = dateParts(date); return p ? p.weekday + ' - ' + p.month + ' ' + p.day : String(date == null ? '' : date); }
+
+  // "Oct 16" of a moment, in the guild's zone.
+  function monthDay(ms, tz) {
+    const text = G.ui.dayInZone(ms, tz);
+    return text ? text.replace(/^\S+\s+/, '') : '';
+  }
+
+  // ── the model: everything the two variants show, worked out once ──
+  function zoneOfGuild(gd) { return (gd && gd.guild && typeof gd.guild.timeZone === 'string' && gd.guild.timeZone) || G.ui.guildZone(); }
+
+  function sumCounts(counts, field) {
+    const c = counts && typeof counts === 'object' ? counts : {};
+    return Object.keys(c).reduce(function (n, k) { return n + Math.max(0, Math.floor(num(c[k] && c[k][field]))); }, 0);
+  }
+
+  // The week's raids, by start. opts.sel: a raid id, 'day:YYYY-MM-DD' or nothing (the next upcoming raid).
+  function modelOf(opts) {
+    const gd = opts.guildData;
+    const data = opts.data || {};
+    const tz = zoneOfGuild(gd);
+    const now = typeof opts.now === 'number' ? opts.now : Date.now();
+    const today = typeof data.today === 'string' && dateParts(data.today) ? data.today : (G.ui.dayKeyInZone(now, tz) || '');
+    const raids = (Array.isArray(data.week) ? data.week : []).filter(function (w) { return w && w.raidId; })
+      .sort(function (p, q) { return (num(p.startsAt) - num(q.startsAt)) || (String(p.raidId) < String(q.raidId) ? -1 : 1); });
+    const items = (Array.isArray(data.items) ? data.items : []).filter(function (it) { return it && !it.readiness && !!kindOf(it.kind); });
+    const weekIds = {};
+    raids.forEach(function (w) { weekIds[w.raidId] = true; });
+    const todosOf = function (raidId) { return items.filter(function (it) { return it.raidId === raidId; }); };
+    const upcoming = raids.filter(function (w) { return UPCOMING.indexOf(w.status) >= 0; });
+    const next = upcoming[0] || null;
+    const past = raids.filter(function (w) { return UPCOMING.indexOf(w.status) < 0; });
+    const sel = typeof opts.sel === 'string' ? opts.sel : '';
+    const selDay = sel.indexOf('day:') === 0 ? sel.slice(4) : '';
+    let selected = null;
+    if (!selDay) selected = raids.filter(function (w) { return w.raidId === sel; })[0] || next || raids[raids.length - 1] || null;
+    const days = [];
+    for (let i = -1; i <= 5; i++) {
+      const date = today ? shiftDay(today, i) : '';
+      days.push({ date: date, isToday: i === 0, raids: raids.filter(function (w) { return w.date === date; }) });
+    }
+    const hidden = (Array.isArray(data.hidden) ? data.hidden : []).filter(function (h) { return h && h.item; });
+    const counts = data.counts && typeof data.counts === 'object' ? data.counts : {};
+    const nextTodos = next ? todosOf(next.raidId) : [];
+    const phoneList = nextTodos.concat(items.filter(function (it) { return nextTodos.indexOf(it) < 0; }));
+    return {
+      gd: gd, gid: gd.guild.id, data: data, tz: tz, now: now, today: today, raids: raids, days: days, next: next, selected: selected,
+      selDay: selDay || (selected ? selected.date : ''), items: items, todosOf: todosOf, hidden: hidden,
+      guildTodos: items.filter(function (it) { return !it.raidId; }),
+      earlier: items.filter(function (it) { return it.raidId && !weekIds[it.raidId]; }),
+      phoneList: phoneList,
+      coming: upcoming.filter(function (w) { return w !== next; }).slice(0, COMING_UP),
+      lastRaid: past[past.length - 1] || null,
+      rankCount: sumCounts(counts, 'rankOpen'),
+      watchCount: sumCounts(counts, 'watchOpen'),
+      hasCounts: Object.keys(counts).length > 0,
+      total: Math.max(0, Math.floor(num(data.total))),
+      more: data.more && typeof data.more === 'object' ? data.more : {},
+      showTeam: G.shell.activeTeams(gd.teams).length > 1,
+      opts: opts,
+    };
+  }
+
+  // ── pieces ──
+  function statusLabel(w, nTodos) { return w.status === 'todo' && nTodos > 0 ? 'To do ' + nTodos : (STATUS_LABELS[w.status] || 'Open'); }
+  function statusChipHtml(w, nTodos) {
+    const tone = STATUS_LABELS[w.status] ? w.status : 'open';
+    return '<span class="gs-hd-chip is-' + tone + '">' + esc(statusLabel(w, nTodos)) + '</span>';
+  }
+  function countHtml(w, cls) {
+    const size = num(w.size);
+    return '<span class="' + cls + '">' + esc(num(w.signed)) + (size > 0 ? '<span class="gs-hd-den"> / ' + esc(size) + '</span>' : '') + '</span>';
+  }
+  function raidTitle(w) { return String(w.zone || w.title || ''); }
+  function raidLine(w) { return [w.teamName, raidTitle(w)].filter(Boolean).join(' - '); }
+  function raidHref(m, w) { return G.router.format({ name: 'raid', gid: m.gid, rid: w.raidId }); }
+  function headingOf(m, w) { return G.ui.dateTimeInZone(w.startsAt, m.tz, { year: 'auto', now: m.now }) || dayText(w.date); }
+
+  // The sentence under the heading, built only from facts the payload carries: signed of size, whether the line-up is published, how it stands (confirmed,
+  // Can't come, no answer) and when sign-ups close. A raid that is over says how many to-dos are left on it.
+  function sentenceOf(m, w) {
+    const todos = m.todosOf(w.raidId).length;
+    if (UPCOMING.indexOf(w.status) < 0) {
+      const what = w.zone ? 'The ' + String(w.zone) + ' raid' : 'The raid';
+      return what + ' is over. ' + (todos > 0 ? todos + (todos === 1 ? ' thing is' : ' things are') + ' left to review.' : 'Nothing is left to do.');
+    }
+    const size = num(w.size);
+    const parts = [size > 0 ? num(w.signed) + ' of ' + size + ' signed.' : num(w.signed) + ' signed.'];
+    if (w.lineupPublished) {
+      parts.push('Line-up published.');
+      parts.push(num(w.confirmed) + ' confirmed, ' + num(w.cantCome) + ' Can\'t come, ' + num(w.noAnswer) + ' no answer.');
+    } else {
+      parts.push('Line-up not published.');
+    }
+    if (w.signupsLocked) {
+      parts.push('Sign-ups are locked.');
+    } else if (typeof w.signupsCloseAt === 'number') {
+      if (w.signupsCloseAt <= m.now) {
+        parts.push('Sign-ups are closed.');
+      } else {
+        const time = G.ui.timeInZone(w.signupsCloseAt, m.tz);
+        const sameDay = G.ui.dayKeyInZone(w.signupsCloseAt, m.tz) === m.today;
+        parts.push('Sign-ups close ' + (sameDay ? '' : String(G.ui.dayInZone(w.signupsCloseAt, m.tz)).split(' ')[0] + ' ') + time + '.');
+      }
+    }
+    return parts.join(' ');
+  }
+
+  function safeId(s) { return String(s).replace(/[^A-Za-z0-9_-]+/g, '-'); }
+
+  // The More menu of a to-do: "Hide for all officers" (with what hiding it means) or "Snooze N days". '' for the kinds that clear when handled.
+  function moreMenuHtml(item, title, prefix) {
+    const rule = HIDE_MENU[item.kind];
+    if (!rule || !item.id) return '';
+    const entry = rule.snoozeDays
+      ? { label: 'Snooze ' + rule.snoozeDays + ' days', data: { action: 'home-hide', item: item.id } }
+      : { label: 'Hide for all officers', note: rule.note, data: { action: 'home-hide', item: item.id } };
+    return G.ui.menuHtml({ id: prefix + '-more-' + safeId(item.id), label: 'More', ariaLabel: 'More for ' + title, triggerClass: 'gs-btn gs-btn-ghost gs-btn-sm', align: 'left', items: [entry] });
+  }
+
+  // One to-do: the sentence, its action button and (where it can be hidden) More.
+  function todoHtml(m, item, prefix) {
+    const kind = kindOf(item.kind) || { action: 'Open' };
+    const title = itemText(item);
+    const meta = m.showTeam && item.teamName ? '<span class="gs-hd-todo-meta">' + esc(item.teamName) + '</span>' : '';
+    const action = G.ui.buttonHtml({
+      label: kind.action, variant: 'secondary', size: 'sm', href: itemHref(m.gid, item), ariaLabel: kind.action + ' (' + title + ')',
+      attrs: needsTeam(item) ? { 'data-action': 'attn-open', 'data-team': item.teamId } : null,
+    });
+    return '<li class="gs-hd-todo"><span class="gs-hd-todo-title">' + esc(title) + '</span>' + meta + '<div class="gs-hd-todo-acts">' + action + moreMenuHtml(item, title, prefix) + '</div></li>';
+  }
+
+  function todoListHtml(m, items, prefix, label) {
+    return items.length ? '<ul class="gs-hd-todos" aria-label="' + esc(label) + '">' + items.map(function (it) { return todoHtml(m, it, prefix); }).join('') + '</ul>' : '';
+  }
+
+  // "and 3 more: raids without loot" for the to-dos a kind's cap left out of the list.
+  function moreLinesHtml(m) {
+    return KINDS.filter(function (k) { return k.severity === 'action' && num(m.more[k.id]) > 0 && k.id !== 'low_signups' && k.id !== 'roster_declined' && k.id !== 'roster_pending'; }).map(function (k) {
+      const text = 'and ' + Math.floor(num(m.more[k.id])) + ' more: ' + lowerFirst(k.heading);
+      return '<li class="gs-hd-todo"><span class="gs-hd-todo-title">' + esc(text) + '</span><div class="gs-hd-todo-acts">' +
+        G.ui.buttonHtml({ label: 'See all', variant: 'secondary', size: 'sm', href: G.router.format(Object.assign({ gid: m.gid }, MORE_LINKS[k.id])), ariaLabel: 'See all (' + text + ')' }) + '</div></li>';
+    }).join('');
+  }
+
+  function errorPanelHtml(opts) {
+    if (!opts.error) return '';
+    return '<div class="gs-hd-error" role="alert"><p class="gs-hd-error-title">' + esc(opts.errorTitle || 'Could not update Home') + '</p><p class="gs-hd-error-text">' + esc(opts.error) +
+      ' What loaded is still shown.</p>' + G.ui.buttonHtml({ label: 'Try again', variant: 'secondary', size: 'sm', busy: !!opts.refreshing, busyLabel: 'Trying again...', attrs: { 'data-action': 'attn-refresh', 'data-key': 'attn-refresh' } }) + '</div>';
+  }
+
+  // Hidden (N) and, when open, what is hidden with Restore. A hidden row says who hid it and when, or how long it is snoozed.
+  function hiddenHtml(m, prefix) {
+    const open = !!m.opts.hiddenOpen;
+    const toggle = '<button type="button" class="gs-hd-sl gs-hd-slb" data-action="home-hidden-toggle" data-key="home-hidden-' + prefix + '" aria-expanded="' + (open ? 'true' : 'false') + '">Hidden (' + m.hidden.length + ')</button>';
+    if (!open) return toggle;
+    const rows = m.hidden.map(function (h) {
+      const title = itemText(h.item);
+      const how = h.mode === 'snooze' && typeof h.until === 'number'
+        ? 'Snoozed until ' + (monthDay(h.until, m.tz) || '')
+        : 'Hidden by ' + String(h.by && h.by.name ? h.by.name : 'an officer') + (typeof h.at === 'number' ? ', ' + monthDay(h.at, m.tz) : '');
+      return '<li class="gs-hd-hidden"><span class="gs-hd-hidden-text"><span class="gs-hd-hidden-title">' + esc(title) + '</span><span class="gs-hd-muted">' + esc(how) + '</span></span>' +
+        G.ui.buttonHtml({ label: 'Restore', variant: 'secondary', size: 'sm', ariaLabel: 'Restore ' + title, busy: m.opts.busyItem === h.item.id, busyLabel: 'Restoring...', attrs: { 'data-action': 'home-restore', 'data-item': h.item.id, 'data-key': 'home-restore-' + prefix + '-' + safeId(h.item.id) } }) + '</li>';
+    }).join('');
+    return toggle + '<div class="gs-hd-hiddenbox">' + (rows ? '<ul class="gs-hd-hiddenlist">' + rows + '</ul>' : '<p class="gs-hd-muted gs-hd-center">Nothing is hidden.</p>') + '</div>';
+  }
+
+  // The links to the pages that hold the rest: a number or a summary only where the payload already has it.
+  function moreNavHtml(m) {
+    const links = [];
+    const last = m.lastRaid;
+    links.push({
+      label: last ? 'Last raid: ' + (dateParts(last.date) ? dateParts(last.date).weekday : '') + (raidTitle(last) ? ', ' + raidTitle(last) : '') : 'Last raid',
+      href: last ? raidHref(m, last) : G.router.format({ name: 'section', gid: m.gid, section: 'raids' }),
+    });
+    links.push({
+      label: m.hasCounts ? 'Attendance: ' + (m.watchCount ? m.watchCount + ' on the watch list' : 'nobody on the watch list') : 'Attendance',
+      href: G.router.format({ name: 'section', gid: m.gid, section: 'attendance' }),
+    });
+    links.push({ label: 'Recruiting needs', href: G.router.format({ name: 'recruiting', gid: m.gid }) });
+    links.push({ label: 'Progress', href: G.router.format({ name: 'section', gid: m.gid, section: 'raids' }) });
+    if (m.opts.phone && m.rankCount > 0) links.push({ label: plural(m.rankCount, 'rank suggestion', 'rank suggestions'), href: G.router.format({ name: 'section', gid: m.gid, section: 'attendance' }) });
+    return '<nav class="gs-hd-more" aria-label="More"><h2 class="gs-hd-sl">More</h2><ul class="gs-hd-links">' +
+      links.map(function (l) { return '<li><a class="gs-hd-link" href="' + esc(l.href) + '">' + esc(l.label) + '</a></li>'; }).join('') + '</ul></nav>';
+  }
+
+  // The primary button: Open raid for a raid, Add raid when the week has none.
+  function openRaidHtml(m, w) {
+    return G.ui.buttonHtml({ label: 'Open raid', variant: 'primary', href: raidHref(m, w), ariaLabel: 'Open raid (' + headingOf(m, w) + ')' });
+  }
+  function addRaidHtml(m) {
+    return G.ui.buttonHtml({ label: 'Add raid', variant: 'primary', href: G.router.format({ name: 'raidnew', gid: m.gid }) });
+  }
+
+  // ── desktop: the Week ──
+  function dayCardHtml(m, day) {
+    const selected = day.raids.some(function (w) { return m.selected && w.raidId === m.selected.raidId; }) || (!m.selected && m.selDay === day.date);
+    const caps = '<span class="gs-hd-caps">' + esc(capsText(day.date)) + '</span><span class="gs-hd-today">' + (day.isToday ? 'Today' : '') + '</span>';
+    let body;
+    if (!day.raids.length) {
+      body = '<button type="button" class="gs-hd-pick" data-action="home-select" data-day="' + esc(day.date) + '" data-key="home-day-' + esc(day.date) + '" aria-pressed="' + (selected ? 'true' : 'false') + '" aria-label="' +
+        esc(dayText(day.date) + ', no raid') + '">' + caps + '<span class="gs-hd-muted">No raid</span></button>';
+    } else {
+      body = day.raids.map(function (w, i) {
+        const n = m.todosOf(w.raidId).length;
+        const on = !!m.selected && m.selected.raidId === w.raidId;
+        const label = [headingOf(m, w), w.teamName, raidTitle(w), statusLabel(w, n)].filter(Boolean).join(', ');
+        return '<button type="button" class="gs-hd-pick' + (i > 0 ? ' is-stacked' : '') + '" data-action="home-select" data-raid="' + esc(w.raidId) + '" data-key="home-raid-' + esc(w.raidId) + '" aria-pressed="' + (on ? 'true' : 'false') + '" aria-label="' + esc(label) + '">' +
+          (i === 0 ? caps : '') + '<span class="gs-hd-daybody">' + tilesHtml(w.zone, 'short') + '<span class="gs-hd-team">' + esc(w.teamName || '') + '</span>' + countHtml(w, 'gs-hd-cnt') + statusChipHtml(w, n) + '</span></button>';
+      }).join('');
+    }
+    return '<div class="gs-hd-day' + (selected ? ' is-selected' : '') + (day.raids.length ? '' : ' is-empty') + '">' + body + '</div>';
+  }
+
+  function selectedPanelHtml(m) {
+    const w = m.selected;
+    if (!w) {
+      const empty = !m.raids.length;
+      return '<section class="gs-hd-panel gs-hd-main" aria-label="Selected day"><h2 class="gs-hd-h2">' + esc(empty ? 'No raid this week' : dayText(m.selDay)) + '</h2>' +
+        '<p class="gs-hd-sentence">' + esc(empty ? 'No raid is scheduled from ' + dayText(m.days[0].date) + ' to ' + dayText(m.days[m.days.length - 1].date) + '.' : 'No raid on this day.') + '</p>' +
+        (empty ? '<div class="gs-hd-cta">' + addRaidHtml(m) + '</div>' : '') + '</section>';
+    }
+    const n = m.todosOf(w.raidId);
+    return '<section class="gs-hd-panel gs-hd-main" aria-label="Selected day"><div class="gs-hd-sel-head">' + tilesHtml(w.zone, 'big') +
+      '<div class="gs-hd-sel-title"><h2 class="gs-hd-h2">' + esc(headingOf(m, w)) + '</h2><span class="gs-hd-sub">' + esc(raidLine(w)) + '</span></div>' +
+      '<div class="gs-hd-bigcnt">' + countHtml(w, 'gs-hd-bignum') + '<span class="gs-hd-caps">Signed</span></div>' + statusChipHtml(w, n.length) + '</div>' +
+      '<p class="gs-hd-sentence">' + esc(sentenceOf(m, w)) + '</p><div class="gs-hd-cta">' + openRaidHtml(m, w) + '</div>' +
+      '<div class="gs-hd-todosec"><h2 class="gs-hd-sl">To do</h2>' + (n.length ? todoListHtml(m, n, 'd', 'To do for this raid') : '<p class="gs-hd-muted gs-hd-center">Nothing to do.</p>') + '</div></section>';
+  }
+
+  function guildBoxHtml(m, opts) {
+    const rank = m.rankCount > 0
+      ? '<li class="gs-hd-todo"><span class="gs-hd-todo-title">' + esc(plural(m.rankCount, 'rank suggestion', 'rank suggestions')) + '</span><div class="gs-hd-todo-acts">' +
+        G.ui.buttonHtml({ label: 'Open Ranks', variant: 'secondary', size: 'sm', href: G.router.format({ name: 'section', gid: m.gid, section: 'attendance' }), ariaLabel: 'Open Ranks (' + plural(m.rankCount, 'rank suggestion', 'rank suggestions') + ')' }) + '</div></li>'
+      : '';
+    const guild = todoListHtml(m, m.guildTodos, 'g', 'Guild to-dos');
+    const earlier = m.earlier.length ? '<div class="gs-hd-earlier"><h3 class="gs-hd-sl gs-hd-sl-sub">Earlier raids</h3>' + todoListHtml(m, m.earlier, 'e', 'Earlier raids') + '</div>' : '';
+    const rest = moreLinesHtml(m);
+    const none = !m.guildTodos.length && !rank && !m.earlier.length && !rest;
+    return '<section class="gs-hd-panel gs-hd-side" aria-label="Guild"><h2 class="gs-hd-sl">Guild</h2>' + errorPanelHtml(opts) +
+      (none ? '<p class="gs-hd-muted gs-hd-center">Nothing to do.</p>' : '') + guild + (rank || rest ? '<ul class="gs-hd-todos">' + rank + rest + '</ul>' : '') + earlier +
+      hiddenHtml(m, 'd') + moreNavHtml(m) + '</section>';
+  }
+
+  function weekHtml(m, opts) {
+    const first = m.days[0].date;
+    const last = m.days[m.days.length - 1].date;
+    return '<div class="gs-hd-desk"><section class="gs-hd-weeksec" aria-label="This week"><div class="gs-hd-strip gs-hd-panel">' +
+      m.days.map(function (d) { return dayCardHtml(m, d); }).join('') + '</div></section>' +
+      '<div class="gs-hd-cols">' + selectedPanelHtml(m) + guildBoxHtml(m, opts) + '</div></div>';
+  }
+
+  // ── phone: the Briefing ──
+  function briefingHtml(m, opts) {
+    const w = m.next;
+    const card = w
+      ? '<section class="gs-hd-panel gs-hd-nextcard" aria-label="Next raid"><div class="gs-hd-nextrow">' + tilesHtml(w.zone, 'big') + statusChipHtml(w, m.todosOf(w.raidId).length) + '</div>' +
+        '<span class="gs-hd-caps">Next raid</span><h2 class="gs-hd-h2">' + esc(headingOf(m, w)) + '</h2><span class="gs-hd-sub">' + esc(raidLine(w)) + '</span>' +
+        '<p class="gs-hd-sentence">' + esc(sentenceOf(m, w)) + '</p><div class="gs-hd-cta is-block">' + openRaidHtml(m, w) + '</div></section>'
+      : '<section class="gs-hd-panel gs-hd-nextcard" aria-label="Next raid"><h2 class="gs-hd-h2">No raid this week</h2><p class="gs-hd-sentence">' +
+        esc('No raid is scheduled from ' + dayText(m.days[0].date) + ' to ' + dayText(m.days[m.days.length - 1].date) + '.') + '</p><div class="gs-hd-cta is-block">' + addRaidHtml(m) + '</div></section>';
+    const all = !!opts.seeAll;
+    const shown = all ? m.phoneList : m.phoneList.slice(0, PHONE_TODOS);
+    const rest = moreLinesHtml(m);
+    const hasMore = m.phoneList.length > PHONE_TODOS;
+    const todo = '<section class="gs-hd-todosec" aria-label="To do"><h2 class="gs-hd-sl">To do</h2>' + errorPanelHtml(opts) +
+      (m.phoneList.length || (all && rest) ? '<div class="gs-hd-panel gs-hd-listpanel">' + todoListHtml(m, shown, 'p', 'To do') + (all && rest ? '<ul class="gs-hd-todos">' + rest + '</ul>' : '') + '</div>'
+        : '<p class="gs-hd-muted gs-hd-center">Nothing to do.</p>') +
+      (hasMore ? G.ui.buttonHtml({ label: all ? 'Show fewer' : 'See all ' + Math.max(m.total, m.phoneList.length), variant: 'secondary', block: true, attrs: { 'data-action': 'home-seeall', 'data-key': 'home-seeall' } }) : '') +
+      hiddenHtml(m, 'p') + '</section>';
+    const coming = '<section class="gs-hd-comingsec" aria-label="Coming up"><h2 class="gs-hd-sl">Coming up</h2>' + (m.coming.length
+      ? '<ul class="gs-hd-panel gs-hd-coming">' + m.coming.map(function (c) {
+        return '<li class="gs-hd-comingrow">' + tilesHtml(c.zone, 'short') + '<span class="gs-hd-comingtext"><span class="gs-hd-when">' + esc(headingOf(m, c)) + '</span><span class="gs-hd-muted">' + esc(c.teamName || '') + '</span></span>' +
+          '<span class="gs-hd-comingend">' + countHtml(c, 'gs-hd-cnt') + statusChipHtml(c, m.todosOf(c.raidId).length) + '</span></li>';
+      }).join('') + '</ul>' : '<p class="gs-hd-muted gs-hd-center">No other raid this week.</p>') + '</section>';
+    return '<div class="gs-hd-phone">' + card + todo + coming + moreNavHtml(Object.assign({}, m, { opts: Object.assign({}, m.opts, { phone: true }) })) + '</div>';
+  }
+
+  // The undo toast. It lives in a polite live region that is always in the page, so its arrival is announced.
+  function toastHtml(toast) {
+    const inner = toast ? '<div class="gs-hd-toast"><span class="gs-hd-toast-text"><span class="gs-hd-toast-main">Hidden for everyone</span><span class="gs-hd-muted">' + esc(toast.title) + '</span></span>' +
+      G.ui.buttonHtml({ label: 'Undo', variant: 'secondary', size: 'sm', attrs: { 'data-action': 'home-undo', 'data-key': 'home-undo' } }) +
+      '<button type="button" class="gs-hd-toast-x" data-action="home-toast-close" data-key="home-toast-close" aria-label="Close message">Close</button></div>' : '';
+    return '<div class="gs-hd-toastwrap" role="status" aria-live="polite">' + inner + '</div>';
+  }
+
+  // ── states ──
+  function skeletonHtml() {
+    const sk = function (cls) { return '<span class="gs-hd-sk ' + cls + '"></span>'; };
+    const days = [0, 1, 2, 3, 4, 5, 6].map(function () { return '<div class="gs-hd-day is-skel">' + sk('is-sm') + sk('is-tile') + sk('is-line') + sk('is-chip') + '</div>'; }).join('');
+    return '<div class="gs-page gs-home-page gs-home" aria-busy="true"><p class="gs-sr" role="status">Loading this week</p>' +
+      '<div class="gs-hd-desk"><div class="gs-hd-strip gs-hd-panel">' + days + '</div><div class="gs-hd-cols"><div class="gs-hd-panel gs-hd-main">' + sk('is-wide') + sk('is-line') + sk('is-btn') + '</div>' +
+      '<div class="gs-hd-panel gs-hd-side">' + sk('is-line') + sk('is-btn') + sk('is-line') + '</div></div></div>' +
+      '<div class="gs-hd-phone"><div class="gs-hd-panel gs-hd-nextcard">' + sk('is-tile') + sk('is-wide') + sk('is-line') + sk('is-btn') + '</div><div class="gs-hd-panel gs-hd-listpanel">' + sk('is-line') + sk('is-line') + sk('is-line') + '</div></div></div>';
+  }
+
   // ── the page ──
-  // opts: { guildData, data (GET /attention), refreshing, error, dismissing, setupOpen }
+  // opts: { guildData, data (GET /attention), now, refreshing, error, errorTitle, dismissing, setupOpen, sel, hiddenOpen, seeAll, toast, busyItem }
   function attentionHtml(opts) {
     const gd = opts.guildData;
-    const gid = gd.guild.id;
-    const data = opts.data || { items: [], more: {}, total: 0 };
-    const showTeam = G.shell.activeTeams(gd.teams).length > 1;
-    const total = Math.max(0, Math.floor(num(data.total)));
-    const actionRows = rowsOf(gid, 'action', data, showTeam);
-    const infoRows = rowsOf(gid, 'info', data, showTeam);
-    const context = gd.guild.name + ' - ' + (total ? plural(total, 'item needs', 'items need') + ' you' : 'Nothing is waiting for you');
-    const head = {
-      title: 'Home', context: context,
-      primary: { variant: 'secondary', label: 'Refresh', busy: !!opts.refreshing, busyLabel: 'Refreshing...', attrs: { 'data-action': 'attn-refresh', 'data-key': 'attn-refresh' } },
-    };
-    const below = [];
-    if (infoRows.length) below.push({ id: 'attn-info', title: 'For your information', bodyHtml: G.ui.attentionRowsHtml(infoRows) });
-    const setup = onboardingHtml(gid, data.onboarding, !!opts.dismissing, opts.setupOpen);
-    if (setup) below.push({ html: setup });
-    return G.ui.homePageHtml({
-      head: head,
-      noticesHtml: G.ui.alertHtml(opts.error || '', 'gs-page-alert') + '<p class="gs-sr" id="attn-status" role="status"></p><p class="gs-sr" id="invite-status" role="status"></p>',
-      attention: { title: 'Needs attention', items: actionRows, count: total, goodText: 'Nothing needs you right now.' },
-      cards: below,
-    });
+    const m = modelOf(opts);
+    const range = dayText(m.days[0].date) + ' to ' + dayText(m.days[m.days.length - 1].date);
+    const head = '<header class="gs-hd-head"><h1 class="gs-h1 gs-hd-h1" id="page-title" tabindex="-1">This week</h1><span class="gs-hd-muted">' + esc(range) + '</span></header>';
+    const setup = onboardingHtml(gd.guild.id, m.data.onboarding, !!opts.dismissing, opts.setupOpen);
+    return '<div class="gs-page gs-home-page gs-home">' + head + '<p class="gs-sr" id="attn-status" role="status"></p><p class="gs-sr" id="invite-status" role="status"></p>' +
+      weekHtml(m, opts) + briefingHtml(m, opts) + setup + toastHtml(opts.toast) + '</div>';
   }
 
   // ── data ──
@@ -284,35 +584,150 @@
   function main(r, gd, ctx) {
     if (!isOfficerHome(gd)) return G.pages.homeMember.main(r, gd, ctx);
     const x = a().attention;
-    if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
-    return attentionHtml({ guildData: gd, data: x.data, refreshing: x.refreshing, error: x.error, dismissing: x.dismissing, setupOpen: x.setupOpen });
+    if (!x || x.gid !== gd.guild.id) return skeletonHtml();
+    return attentionHtml({
+      guildData: gd, data: x.data, refreshing: x.refreshing, error: x.error, errorTitle: x.errorTitle, dismissing: x.dismissing, setupOpen: x.setupOpen,
+      sel: x.sel, hiddenOpen: x.hiddenOpen, seeAll: x.seeAll, toast: x.toast, busyItem: x.busyItem,
+    });
   }
 
   // ── handlers ──
+  // A failed call: a sign-in or a full-page message goes where it always goes; anything else is the error panel of the page, with what loaded kept.
+  function failed(x, err, title, focusKey) {
+    const c = G.api.classify(err);
+    if (c.view === 'signin') { G.app.requireSignin(); return null; }
+    if (c.view === 'message') { G.app.showFailure(c.title, c.text); return null; }
+    x.error = c.text;
+    x.errorTitle = title || '';
+    G.app.render();
+    if (focusKey) G.ui.focusByKey(focusKey, { preventScroll: true });
+    return null;
+  }
+
+  function reread(x) {
+    return G.api.attention.get(x.gid).then(function (data) {
+      x.data = data;
+      G.app.setAttention(x.gid, data);
+      return data;
+    });
+  }
+
+  function itemById(x, id) {
+    const items = x && x.data && Array.isArray(x.data.items) ? x.data.items : [];
+    return items.filter(function (it) { return it && it.id === id; })[0] || null;
+  }
+
+  function armToast(x, toast) {
+    x.toast = toast;
+    if (typeof setTimeout !== 'function') return;
+    const timer = setTimeout(function () {
+      if (x.toast !== toast) return;
+      x.toast = null;
+      if (a().attention === x) G.app.render();
+    }, TOAST_MS);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+  }
+
   G.handlers.click['attn-refresh'] = function () {
     const x = a().attention;
     if (!x || x.refreshing) return null;
     x.refreshing = true;
     x.error = '';
     G.app.render();
-    return G.api.attention.get(x.gid).then(function (data) {
-      x.data = data;
+    return reread(x).then(function (data) {
       x.refreshing = false;
-      G.app.setAttention(x.gid, data);
       G.app.render();
       G.ui.focusByKey('attn-refresh', { preventScroll: true }); // the button was disabled while it ran, so the keyboard had left it
       G.ui.announce('attn-status', num(data && data.total) > 0 ? 'Updated. ' + plural(Math.floor(num(data.total)), 'item needs', 'items need') + ' you.' : 'Updated. Nothing needs you right now.');
       return null;
     }, function (err) {
       x.refreshing = false;
-      const c = G.api.classify(err);
-      if (c.view === 'signin') { G.app.requireSignin(); return null; }
-      if (c.view === 'message') { G.app.showFailure(c.title, c.text); return null; }
-      x.error = c.text;
-      G.app.render();
-      G.ui.focusByKey('attn-refresh', { preventScroll: true });
-      return null;
+      return failed(x, err, 'Could not refresh Home', 'attn-refresh');
     });
+  };
+
+  // A day or a raid of the strip becomes the selected one.
+  G.handlers.click['home-select'] = function (el) {
+    const x = a().attention;
+    if (!x) return null;
+    const raid = el.getAttribute('data-raid');
+    const day = el.getAttribute('data-day');
+    x.sel = raid || (day ? 'day:' + day : '');
+    G.app.render();
+    G.ui.focusByKey(raid ? 'home-raid-' + raid : 'home-day-' + day, { preventScroll: true });
+    return null;
+  };
+
+  G.handlers.click['home-hidden-toggle'] = function (el) {
+    const x = a().attention;
+    if (!x) return null;
+    x.hiddenOpen = !x.hiddenOpen;
+    G.app.render();
+    G.ui.focusByKey(el.getAttribute('data-key'), { preventScroll: true });
+    return null;
+  };
+
+  G.handlers.click['home-seeall'] = function () {
+    const x = a().attention;
+    if (!x) return null;
+    x.seeAll = !x.seeAll;
+    G.app.render();
+    G.ui.focusByKey('home-seeall', { preventScroll: true });
+    return null;
+  };
+
+  // More -> Hide / Snooze: the Worker decides the mode and the length; the page names the item, reads the list again and offers Undo.
+  G.handlers.click['home-hide'] = function (el) {
+    const x = a().attention;
+    const id = el.getAttribute('data-item');
+    if (!x || !id || x.busyItem) return null;
+    const found = itemById(x, id);
+    const title = found ? itemText(found) : 'This to-do';
+    x.busyItem = id;
+    x.error = '';
+    return G.api.attention.dismiss(x.gid, id).then(function () { return reread(x); }).then(function () {
+      x.busyItem = null;
+      armToast(x, { itemId: id, title: title });
+      G.app.render();
+      G.ui.focusByKey('home-undo', { preventScroll: true });
+      G.ui.announce('attn-status', 'Hidden for everyone. ' + title);
+      return null;
+    }, function (err) {
+      x.busyItem = null;
+      return failed(x, err, 'Could not hide that to-do');
+    });
+  };
+
+  function restore(x, id, fromToast) {
+    if (!x || !id || x.busyItem) return null;
+    x.busyItem = id;
+    x.error = '';
+    if (fromToast) G.app.render();
+    return G.api.attention.restore(x.gid, id).then(function () { return reread(x); }).then(function () {
+      x.busyItem = null;
+      if (x.toast && x.toast.itemId === id) x.toast = null;
+      G.app.render();
+      G.ui.announce('attn-status', 'Restored.');
+      return null;
+    }, function (err) {
+      x.busyItem = null;
+      return failed(x, err, 'Could not restore that to-do');
+    });
+  }
+
+  G.handlers.click['home-restore'] = function (el) { return restore(a().attention, el.getAttribute('data-item'), false); };
+
+  G.handlers.click['home-undo'] = function () {
+    const x = a().attention;
+    return x && x.toast ? restore(x, x.toast.itemId, true) : null;
+  };
+
+  G.handlers.click['home-toast-close'] = function () {
+    const x = a().attention;
+    if (!x) return null;
+    x.toast = null;
+    G.app.render();
+    return null;
   };
 
   // Hides the checklist for everyone who sets the guild up (the Worker keeps it; the card does not come back).
@@ -380,6 +795,8 @@
     inviteMessage: inviteMessage,
     inviteButtonHtml: inviteButtonHtml,
     attentionHtml: attentionHtml,
+    skeletonHtml: skeletonHtml,
+    zoneTile: tileOf,
     load: load,
     main: main,
   };
