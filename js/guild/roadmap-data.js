@@ -418,6 +418,18 @@
         area: 'platform', status: 'done', source: 'user', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
+        id: 'officer-home-raid-art-roles',
+        title: 'Officer Home: raid art, sign-ups by role, reset week',
+        summary: 'Each raid on officer Home shows its raid art with the initials on top, and the selected raid lists who signed up by role (Tanks, Healers, Melee, Ranged) with confirmed, no answer, late and Can\'t come marks and the open seats. The week follows the guild\'s raid reset, with Previous and Next, and moves to next week by itself when this week has no raid left.',
+        area: 'platform', status: 'done', source: 'user', added: '2026-10-18', shipped: '2026-10-18',
+      },
+      {
+        id: 'discord-optional',
+        title: 'Run a guild without Discord',
+        summary: 'A guild can use Raidsmith on its own, with no Discord server: create the guild, invite and sign in members, plan and track raids. Connecting Discord stays optional and unlocks the extras: sign-ups in Discord, reminders and DMs, channel posts and role sync.',
+        area: 'platform', status: 'next', source: 'user', added: '2026-10-18',
+      },
+      {
         id: 'trial-review',
         title: 'Trial review card',
         summary: 'A trial\'s person page shows a Trial review card: attendance since the trial started (raids, percent, missed, missed with notice, late and left early), loot received, fill-ins and an excerpt of the officer notes, with Promote to Raider, Extend trial (14 days by default) and End trial buttons.',
