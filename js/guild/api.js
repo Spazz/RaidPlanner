@@ -115,6 +115,12 @@
     raids: function (gid, teamId) { return G.api.get(guildPath(gid, '/loot/raids' + teamQuery(teamId))); },
     items: function (gid, teamId) { return G.api.get(guildPath(gid, '/loot/items' + teamQuery(teamId))); },
     person: function (gid, pid) { return G.api.get(guildPath(gid, '/loot/person/' + encodeURIComponent(pid))); },
+    // The loot page redesign (lane W's contract): the hub, one item, one award record, Needs fixing and its Keep both.
+    hub: function (gid, teamId) { return G.api.get(guildPath(gid, '/loot/hub' + teamQuery(teamId))); },
+    item: function (gid, teamId, itemId) { return G.api.get(guildPath(gid, '/loot/items/' + encodeURIComponent(itemId) + teamQuery(teamId))); },
+    award: function (gid, aid) { return G.api.get(guildPath(gid, '/loot/a/' + encodeURIComponent(aid))); },
+    fix: function (gid, teamId) { return G.api.get(guildPath(gid, '/loot/fix' + teamQuery(teamId))); },
+    keep: function (gid, raidId, itemId, winnerKey) { return G.api.post(guildPath(gid, '/loot/fix/keep'), { raidId: raidId, itemId: itemId, winnerKey: winnerKey }); },
     policy: function (gid) { return G.api.get(guildPath(gid, '/loot/policy')); },
     savePolicy: function (gid, teamId, override, version) {
       return G.api.put(guildPath(gid, '/loot/policy'), { teamId: teamId, override: override, version: version });

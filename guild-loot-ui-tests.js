@@ -120,17 +120,23 @@ function withState(fn) {
   await check('router: Loot views, the person loot page and Settings > Loot parse and format back; bad input is notfound', () => {
     const p = h => plain(G.router.parse(h));
     assert.deepEqual(p('#/g/g1/loot'), { name: 'section', gid: 'g1', section: 'loot' });
-    assert.deepEqual(p('#/g/g1/loot?view=raids'), { name: 'section', gid: 'g1', section: 'loot', view: 'raids' });
-    assert.deepEqual(p('#/g/g1/loot?view=items'), { name: 'section', gid: 'g1', section: 'loot', view: 'items' });
-    assert.deepEqual(p('#/g/g1/loot?view=balance'), { name: 'section', gid: 'g1', section: 'loot' }, 'Balance is the default and has no parameter');
+    assert.deepEqual(p('#/g/g1/loot?view=raids'), { name: 'section', gid: 'g1', section: 'loot', legacyView: true }, 'an old view link opens the hub and says so');
+    assert.deepEqual(p('#/g/g1/loot?view=items'), { name: 'section', gid: 'g1', section: 'loot', legacyView: true });
+    assert.equal(G.router.format(p('#/g/g1/loot?view=raids')), '#/g/g1/loot', 'formatting drops the old parameter');
+    assert.deepEqual(p('#/g/g1/loot/standings'), { name: 'lootstandings', gid: 'g1' });
+    assert.deepEqual(p('#/g/g1/loot/fix'), { name: 'lootfix', gid: 'g1' });
+    assert.deepEqual(p('#/g/g1/loot/n/r_1'), { name: 'lootnight', gid: 'g1', rid: 'r_1' });
+    assert.deepEqual(p('#/g/g1/loot/i/28770'), { name: 'lootitem', gid: 'g1', itemId: '28770' });
+    assert.deepEqual(p('#/g/g1/loot/a/lo_1'), { name: 'lootaward', gid: 'g1', aid: 'lo_1', edit: false });
+    assert.deepEqual(p('#/g/g1/loot/a/lo_1?edit=1'), { name: 'lootaward', gid: 'g1', aid: 'lo_1', edit: true });
     assert.deepEqual(p('#/g/g1/loot?view=bogus'), { name: 'section', gid: 'g1', section: 'loot' });
     assert.deepEqual(p('#/g/g1/raids?view=items'), { name: 'section', gid: 'g1', section: 'raids' }, 'the view belongs to Loot');
     assert.deepEqual(p('#/g/g1/loot/p/p_1'), { name: 'lootperson', gid: 'g1', pid: 'p_1' });
     assert.deepEqual(p('#/g/g1/settings/loot'), { name: 'settings', gid: 'g1', tab: 'loot' });
-    for (const bad of ['#/g/g1/loot/p', '#/g/g1/loot/p/a/b', '#/g/g1/loot/p/<x>', '#/g/g1/loot/x', '#/g/g1/loot/p/p_1/extra', '#/g/g1/loot/raids', '#/g/g1/settings/loots']) {
+    for (const bad of ['#/g/g1/loot/p', '#/g/g1/loot/p/a/b', '#/g/g1/loot/p/<x>', '#/g/g1/loot/x', '#/g/g1/loot/p/p_1/extra', '#/g/g1/loot/raids', '#/g/g1/loot/i/abc', '#/g/g1/loot/i/0', '#/g/g1/loot/n', '#/g/g1/loot/standings/x', '#/g/g1/settings/loots']) {
       assert.equal(p(bad).name, 'notfound', bad);
     }
-    for (const r of [{ name: 'section', gid: 'g1', section: 'loot' }, { name: 'section', gid: 'g1', section: 'loot', view: 'raids' }, { name: 'section', gid: 'g1', section: 'loot', view: 'items' }, { name: 'lootperson', gid: 'g1', pid: 'p_1' }, { name: 'settings', gid: 'g1', tab: 'loot' }]) {
+    for (const r of [{ name: 'section', gid: 'g1', section: 'loot' }, { name: 'lootstandings', gid: 'g1' }, { name: 'lootfix', gid: 'g1' }, { name: 'lootnight', gid: 'g1', rid: 'r_1' }, { name: 'lootitem', gid: 'g1', itemId: '28770' }, { name: 'lootaward', gid: 'g1', aid: 'lo_1', edit: true }, { name: 'lootperson', gid: 'g1', pid: 'p_1' }, { name: 'settings', gid: 'g1', tab: 'loot' }]) {
       assert.deepEqual(p(G.router.format(r)), r);
     }
     assert.equal(G.router.format({ name: 'section', gid: 'g1', section: 'loot', view: 'balance' }), '#/g/g1/loot');
@@ -174,6 +180,11 @@ function withState(fn) {
     const key = G.app.attPageKey;
     assert.equal(key({ name: 'section', section: 'loot' }), 'loot');
     assert.equal(key({ name: 'lootperson' }), 'personLoot');
+    for (const [n, k] of [['lootstandings', 'lootStandings'], ['lootnight', 'lootNight'], ['lootitem', 'lootItem'], ['lootaward', 'lootAward'], ['lootfix', 'lootFix']]) {
+      assert.equal(key({ name: n }), k, n);
+      assert.equal(typeof G.pages[k].load, 'function', k);
+      assert.equal(typeof G.pages[k].main, 'function', k);
+    }
     assert.equal(key({ name: 'settings', tab: 'loot' }), 'settingsLoot');
     assert.equal(key({ name: 'settings', tab: 'attendance' }), 'settingsAtt');
     assert.equal(key({ name: 'section', section: 'roster' }), null);
@@ -197,6 +208,12 @@ function withState(fn) {
     await L.raids('g1', 't1');
     await L.items('g1', 't1');
     await L.person('g1', 'p_1');
+    await L.hub('g1', 't1');
+    await L.item('g1', 't1', 28770);
+    await L.award('g1', 'a1');
+    await L.fix('g1', 't1');
+    await L.keep('g1', 'r1', 28770, 'thoren|ashmere');
+    await L.update('g1', 'a1', { winnerName: 'Healthas', itemId: 5, itemName: 'x', raidId: 'r2', note: 'n', updatedAt: 7 });
     await L.policy('g1');
     await L.savePolicy('g1', null, { visibility: { members: 'guild' } }, 3);
     await L.savePolicy('g1', 't1', {}, 0);
@@ -212,6 +229,12 @@ function withState(fn) {
       { m: 'get', url: '/api/guild/g1/loot/raids?team=t1' },
       { m: 'get', url: '/api/guild/g1/loot/items?team=t1' },
       { m: 'get', url: '/api/guild/g1/loot/person/p_1' },
+      { m: 'get', url: '/api/guild/g1/loot/hub?team=t1' },
+      { m: 'get', url: '/api/guild/g1/loot/items/28770?team=t1' },
+      { m: 'get', url: '/api/guild/g1/loot/a/a1' },
+      { m: 'get', url: '/api/guild/g1/loot/fix?team=t1' },
+      { m: 'post', url: '/api/guild/g1/loot/fix/keep', body: { raidId: 'r1', itemId: 28770, winnerKey: 'thoren|ashmere' } },
+      { m: 'patch', url: '/api/guild/g1/loot/a1', body: { winnerName: 'Healthas', itemId: 5, itemName: 'x', raidId: 'r2', note: 'n', updatedAt: 7 } },
       { m: 'get', url: '/api/guild/g1/loot/policy' },
       { m: 'put', url: '/api/guild/g1/loot/policy', body: { teamId: null, override: { visibility: { members: 'guild' } }, version: 3 } },
       { m: 'put', url: '/api/guild/g1/loot/policy', body: { teamId: 't1', override: {}, version: 0 } },
@@ -302,93 +325,6 @@ function withState(fn) {
     ],
     teamAverage: { window: 0.49, all: 0.55 },
   };
-  const pageOpts = (over, can) => Object.assign({ guildData: gd(can || OFFICER_CAN), teamId: 't1', view: 'balance', data: BALANCE, ui: { sort: null, window: null } }, over || {});
-  const rowNames = html => [...html.matchAll(/<th scope="row" class="gs-cell-strong">(.*?)<\/th>/g)].map(m => stripTags(m[1]).replace('Inactive', ''));
-
-  await check('balance: header, view switch, window switch from the team, rules line, average, table with sortable columns and aria-sort', () => {
-    const out = G.pages.loot.lootHtml(pageOpts());
-    assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Loot</h1>') && out.includes('Team KJ - 4 people'));
-    assert(out.indexOf('data-action="loot-view"') < out.indexOf('data-action="loot-window"') && out.indexOf('data-action="loot-window"') < out.indexOf('class="gs-table-wrap gs-loot-table"') && out.includes('class="gs-listbar"'), 'the view switch and the window switch are the T1 segment bar, above the table');
-    for (const [v, pressed] of [['balance', 'true'], ['raids', 'false'], ['items', 'false']]) assert(out.includes('data-action="loot-view" data-view="' + v + '"') && new RegExp('data-view="' + v + '" data-key="lview-' + v + '" aria-pressed="' + pressed + '"').test(out), v);
-    for (const [w, pressed] of [['8', 'true'], ['12', 'false'], ['all', 'false']]) assert(new RegExp('data-window="' + w + '" data-key="lwin-' + w + '" aria-pressed="' + pressed + '"').test(out), w);
-    assert(out.includes('Last 8 full reset weeks since Aug 18, 2026.') && out.includes('Counted items: MS.'));
-    assert(out.includes('Team average per raid') && out.includes('>0.49<'));
-    for (const col of ['name', 'raids', 'ms', 'os', 'counted', 'perRaid', 'vs']) assert(out.includes('data-action="loot-sort" data-col="' + col + '"'), col);
-    assert(/aria-sort="descending"><button[^>]*data-col="perRaid"/.test(out), 'ranked by per raid, highest first');
-    assert.equal((out.match(/aria-sort=/g) || []).length, 1);
-    assert(out.includes('<table class="gs-table gs-table-loot" aria-label="Loot balance">') && out.includes('<ul class="gs-loot-cards" aria-label="Loot balance">'), 'table and phone cards');
-    assertNoRawAttrs(out);
-  });
-
-  await check('balance: rows ranked by per raid, a person with no raids last, inactive marked; figures and the signed difference', () => {
-    const out = G.pages.loot.lootHtml(pageOpts());
-    assert.deepEqual(rowNames(out), ['Oldtimer', 'Aimersmay', 'Zzaps', 'Newbie']);
-    const row = out.slice(out.indexOf('Aimersmay'), out.indexOf('</tr>', out.indexOf('Aimersmay')));
-    assert.deepEqual([...row.matchAll(/<td class="gs-nowrap gs-num">(.*?)<\/td>/g)].map(m => m[1]), ['8', '5', '2', '5', '0.63', '+0.14']);
-    const zz = out.slice(out.indexOf('Zzaps'), out.indexOf('</tr>', out.indexOf('Zzaps')));
-    assert(zz.includes('>-0.32<'), 'below the average');
-    const newbie = out.slice(out.indexOf('Newbie'), out.indexOf('</tr>', out.indexOf('Newbie')));
-    assert.deepEqual([...newbie.matchAll(/<td class="gs-nowrap gs-num">(.*?)<\/td>/g)].map(m => m[1]), ['0', '0', '0', '0', '-', '-'], 'zero raids: no per raid, no difference');
-    assert(out.includes('gs-chip gs-chip-plain">Inactive<'));
-    assert(out.includes('href="#/g/g1/loot/p/p_aa"'), 'names link to the person loot page');
-  });
-
-  await check('balance: All time reads the all-time figures and the all-time average; sorting by every column, empty values last', () => {
-    const L = G.pages.loot;
-    const out = L.lootHtml(pageOpts({ ui: { sort: null, window: 'all' } }));
-    assert(out.includes('All time. Counted items') && out.includes('>0.55<') && /data-window="all" data-key="lwin-all" aria-pressed="true"/.test(out) && /data-window="8" data-key="lwin-8" aria-pressed="false"/.test(out));
-    const row = out.slice(out.indexOf('Aimersmay'), out.indexOf('</tr>', out.indexOf('Aimersmay')));
-    assert.deepEqual([...row.matchAll(/<td class="gs-nowrap gs-num">(.*?)<\/td>/g)].map(m => m[1]), ['10', '6', '2', '6', '0.73', '+0.18']);
-    const names = sort => rowNames(L.lootHtml(pageOpts({ ui: { sort, window: null } })));
-    assert.deepEqual(names({ column: 'name', dir: 'asc' }), ['Aimersmay', 'Newbie', 'Oldtimer', 'Zzaps']);
-    assert.deepEqual(names({ column: 'name', dir: 'desc' }), ['Zzaps', 'Oldtimer', 'Newbie', 'Aimersmay']);
-    assert.deepEqual(names({ column: 'raids', dir: 'desc' }), ['Aimersmay', 'Zzaps', 'Oldtimer', 'Newbie']);
-    assert.deepEqual(names({ column: 'ms', dir: 'asc' }), ['Newbie', 'Zzaps', 'Oldtimer', 'Aimersmay']);
-    assert.deepEqual(names({ column: 'os', dir: 'desc' }), ['Aimersmay', 'Oldtimer', 'Newbie', 'Zzaps']);
-    assert.deepEqual(names({ column: 'counted', dir: 'desc' }), ['Aimersmay', 'Oldtimer', 'Zzaps', 'Newbie']);
-    assert.deepEqual(names({ column: 'perRaid', dir: 'asc' }), ['Zzaps', 'Aimersmay', 'Oldtimer', 'Newbie'], 'empty last in either direction');
-    assert.deepEqual(names({ column: 'vs', dir: 'desc' }), ['Oldtimer', 'Aimersmay', 'Zzaps', 'Newbie']);
-    assert.deepEqual(plain(L.nextSort({ column: 'perRaid', dir: 'desc' }, 'perRaid')), { column: 'perRaid', dir: 'asc' });
-    assert.deepEqual(plain(L.nextSort({ column: 'perRaid', dir: 'asc' }, 'name')), { column: 'name', dir: 'asc' });
-    assert.deepEqual(plain(L.nextSort(null, 'ms')), { column: 'ms', dir: 'desc' });
-    assert.deepEqual(plain(L.defaultSort('count')), { column: 'counted', dir: 'desc' });
-    assert.deepEqual(plain(L.defaultSort('perRaid')), { column: 'perRaid', dir: 'desc' });
-  });
-
-  await check('balance: plain counts mode drops the per-raid columns and ranks by counted; counted tags are named', () => {
-    const data = Object.assign({}, BALANCE, { mode: 'count', countTags: ['MS', 'OS'] });
-    const out = G.pages.loot.lootHtml(pageOpts({ data }));
-    assert(!out.includes('data-col="perRaid"') && !out.includes('data-col="vs"') && !out.includes('Team average per raid'));
-    assert(out.includes('data-col="raids"') && out.includes('data-col="counted"'));
-    assert(/aria-sort="descending"><button[^>]*data-col="counted"/.test(out));
-    assert(out.includes('Counted items: MS and OS. People are ranked by how many they have counted.'));
-    assert.deepEqual(rowNames(out), ['Aimersmay', 'Oldtimer', 'Zzaps', 'Newbie']);
-  });
-
-  await check('balance: scope own shows one row, the team average and the notice; empty and denied states differ for editors and members', () => {
-    const own = Object.assign({}, BALANCE, { scope: 'own', people: [BALANCE.people[0]] });
-    const out = G.pages.loot.lootHtml(pageOpts({ data: own }, MEMBER_CAN));
-    assert(out.includes('You see your own loot only') && out.includes('Team average per raid') && rowNames(out).length === 1);
-    const empty = Object.assign({}, BALANCE, { people: [] });
-    const editor = G.pages.loot.lootHtml(pageOpts({ data: empty }));
-    assert(editor.includes('No loot yet') && editor.includes('Import from Gargul') && editor.includes('href="#/g/g1/raids"') && !editor.includes('<table'));
-    const member = G.pages.loot.lootHtml(pageOpts({ data: empty }, MEMBER_CAN));
-    assert(member.includes('No loot yet') && member.includes('your officers import') && !member.includes('Open Raids'));
-    const noAwards = Object.assign({}, BALANCE, { people: [person('p_x', 'Xena', 'MAGE', 3, 0, 0, 0, 0)].map(p => { p.items.MS.all = 0; p.counted.all = 0; return p; }) });
-    assert(G.pages.loot.lootHtml(pageOpts({ data: noAwards })).includes('No loot yet'), 'people but no awards at all');
-    const denied = G.pages.loot.lootHtml(pageOpts({ denied: true, data: null }, MEMBER_CAN));
-    assert(denied.includes('You can&#39;t see this team&#39;s loot') || denied.includes('You can\'t see this team\'s loot'));
-    assert(denied.includes('Team KJ') && !denied.includes('<table'));
-  });
-
-  await check('balance: a hostile player name and a hostile team name are escaped', () => {
-    const data = Object.assign({}, BALANCE, { people: [person('p_h', HOSTILE + QUOTES, 'MAGE', 4, 1, 1, 1, 0.25)] });
-    const g = gd(OFFICER_CAN, { teams: [{ id: 't1', name: HOSTILE, size: 25, archived: false, players: 1, leads: [] }, { id: 't2', name: 'Other', size: 25, archived: false, players: 1, leads: [] }] });
-    const out = G.pages.loot.lootHtml(pageOpts({ data, guildData: g }));
-    assertEscaped(out, 'balance');
-    assertNoRawAttrs(out);
-  });
-
   // ── By raid / By item ──────────────────────────────────────────
   const RAIDS = { raids: [
     { raidId: 'r2', raidOn: '2026-10-11', title: 'BT clear', zone: 'Black Temple', awards: 9, counted: 7, unmatched: 2 },
@@ -402,121 +338,319 @@ function withState(fn) {
     { itemId: 5, itemName: null, quality: null, count: 1, lastAwardedAt: null, awards: [] },
   ] };
 
-  await check('by raid: one row per raid linking to the raid page, counts, a chip for winners not on the roster; phone cards; empty state', () => {
-    const out = G.pages.loot.lootHtml(pageOpts({ view: 'raids', data: RAIDS }));
-    assert(/data-view="raids" data-key="lview-raids" aria-pressed="true"/.test(out) && !out.includes('data-action="loot-window"'));
-    assert(out.includes('href="#/g/g1/raids/r/r2"') && out.includes('Sun Oct 11') && out.includes('BT clear - Black Temple') && out.includes('2 winners not on the roster'));
-    assert(out.includes('<td>Gruul</td>') && out.includes('<span class="gs-muted">-</span>'));
-    assert(out.includes('<ul class="gs-loot-cards" aria-label="Loot by raid">') && out.includes('<table class="gs-table gs-table-lootraids"'));
-    assert(G.pages.loot.lootHtml(pageOpts({ view: 'raids', data: { raids: [] } })).includes('No loot yet'));
-    assertNoRawAttrs(out);
-  });
+  const standOpts = (over, can) => Object.assign({ guildData: gd(can || OFFICER_CAN), state: { status: 'ok', teamId: 't1', data: BALANCE } }, over || {});
+  const resetUi = () => { G.app.state.att = G.app.state.att || {}; G.app.state.att.lootUi = { sort: 'due', window: null, windowTeam: null, showAll: false }; };
+  const standNames = html => [...html.matchAll(/<th scope="row" class="gs-dtable-primary">(.*?)<\/th>/g)].map(m => stripTags(m[1]).replace(/You$/, '').trim());
+  const segPressed = (html, action, value) => new RegExp('aria-pressed="(true|false)" data-action="' + action + '" data-value="' + value + '"').exec(html)[1];
 
-  await check('by item: an expandable row per item with its awards (raid link, winner, tag); unknown names and zero awards still render', () => {
-    const out = G.pages.loot.lootHtml(pageOpts({ view: 'items', data: ITEMS }));
-    assert(out.includes('<ul class="gs-loot-items" aria-label="Loot by item">') && (out.match(/<details class="gs-loot-item">/g) || []).length === 2);
-    assert(out.includes('class="gs-item gs-q-4"') && out.includes('2 awards &middot; last Oct 10, 2026'));
-    assert(out.includes('href="#/g/g1/raids/r/r2"') && out.includes('Sun Oct 11') && out.includes('>Thoren<') && out.includes('Not on roster') && out.includes('is-de'));
-    assert(out.includes('>Item 5<') && out.includes('1 award') && out.includes('No awards listed.'));
-    assert(G.pages.loot.lootHtml(pageOpts({ view: 'items', data: { items: [] } })).includes('No loot yet'));
-    assertEscaped(G.pages.loot.lootHtml(pageOpts({ view: 'items', data: { items: [Object.assign({}, ITEMS.items[0], { itemName: HOSTILE })] } })), 'items');
+  await check('standings: header with a back link, order and window switches, a table ranked most due first with the rank column', withState(async () => {
+    resetUi();
+    const out = G.pages.lootStandings.standingsHtml(standOpts());
+    assert(out.includes('>Standings</h1>') && out.includes('Team KJ - 4 people') && out.includes('MS items per raid attended, the lowest is the most due'));
+    assert(out.includes('class="gs-back-link" href="#/g/g1/loot"'));
+    assert.equal(segPressed(out, 'lstand-sort', 'due'), 'true');
+    assert.equal(segPressed(out, 'lstand-sort', 'name'), 'false');
+    for (const [w, pressed] of [['8', 'true'], ['12', 'false'], ['all', 'false']]) assert.equal(segPressed(out, 'loot-window', w), pressed, w);
+    assert.deepEqual(standNames(out), ['Zzaps', 'Aimersmay', 'Oldtimer', 'Newbie'], 'lowest per raid first, a person with no figure last');
+    assert(out.includes('<table class="gs-dtable" aria-label="Loot standings">') && out.includes('MS per raid') && out.includes('href="#/g/g1/loot/p/p_aa"'));
     assertNoRawAttrs(out);
-  });
+  }));
 
-  // ── Loot section: loading and handlers ─────────────────────────
-  await check('loot load: the view decides the call; 403 is the denied state; a rejected week count falls back to the default; a team change resets the window', withState(async (S) => {
+  await check('standings: name order, the all-time window, the viewer pinned as You, plain counts mode, own scope', withState(async () => {
+    resetUi();
+    G.app.state.att.lootUi.sort = 'name';
+    assert.deepEqual(standNames(G.pages.lootStandings.standingsHtml(standOpts())), ['Aimersmay', 'Newbie', 'Oldtimer', 'Zzaps']);
+    G.app.state.att.lootUi.sort = 'due';
+    G.app.state.att.lootUi.window = 'all';
+    const all = G.pages.lootStandings.standingsHtml(standOpts());
+    assert.equal(segPressed(all, 'loot-window', 'all'), 'true');
+    assert(all.includes('>0.73<') && all.includes('>10<'), 'the all-time figures');
+    G.app.state.att.lootUi.window = null;
+    const me = Object.assign({}, BALANCE, { people: BALANCE.people.map(p => Object.assign({}, p, { isMe: p.personId === 'p_old' })) });
+    const pinned = G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'ok', teamId: 't1', data: me } }));
+    assert.deepEqual(standNames(pinned)[0], 'Oldtimer', 'the viewer first');
+    assert(pinned.includes('<span class="gs-you">You</span>') && pinned.includes('gs-dtable-row is-you'));
+    const rank = [...pinned.matchAll(/<td class="is-right" data-label="Raids">/g)];
+    assert(rank.length >= 4);
+    const count = G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'ok', teamId: 't1', data: Object.assign({}, BALANCE, { mode: 'count', countTags: ['MS', 'OS'] }) } }));
+    assert(count.includes('data-label="Counted"') && !count.includes('data-label="MS per raid"') && count.includes('counted items, the lowest is the most due'));
+    const own = Object.assign({}, BALANCE, { scope: 'own', people: [BALANCE.people[0]] });
+    const ownOut = G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'ok', teamId: 't1', data: own } }, MEMBER_CAN));
+    assert(ownOut.includes('You see your own loot only') && standNames(ownOut).length === 1);
+  }));
+
+  await check('standings: 16 rows then Show all, an empty team, a 403 reads as a plain sentence, hostile names are escaped', withState(async () => {
+    resetUi();
+    const many = Object.assign({}, BALANCE, { people: Array.from({ length: 20 }, (_, i) => person('p_' + i, 'Raider' + String(i).padStart(2, '0'), 'MAGE', 5, i, 0, i, i / 5)) });
+    const out = G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'ok', teamId: 't1', data: many } }));
+    assert.equal(standNames(out).length, 16);
+    assert(out.includes('Showing 16 of 20 people') && out.includes('data-action="lstand-showall"') && out.includes('Show all 20'));
+    G.app.state.att.lootUi.showAll = true;
+    assert.equal(standNames(G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'ok', teamId: 't1', data: many } }))).length, 20);
+    resetUi();
+    assert(G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'ok', teamId: 't1', data: Object.assign({}, BALANCE, { people: [] }) } })).includes('No loot yet'));
+    const denied = G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'denied', teamId: 't1', data: null } }, MEMBER_CAN));
+    assert(/Your guild doesn(&#39;|')t show standings to members\./.test(denied) && !denied.includes('<table'));
+    const bad = Object.assign({}, BALANCE, { people: [person('p_h', HOSTILE + QUOTES, 'MAGE', 4, 1, 1, 1, 0.25)] });
+    assertEscaped(G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'ok', teamId: 't1', data: bad } })), 'standings');
+  }));
+
+  // ── Loot hub ───────────────────────────────────────────────────
+  const night = (id, raidOn, awards) => ({ raid: { id, raidOn, title: id === 'r2' ? 'BT clear' : null, zone: id === 'r2' ? 'Black Temple' : 'Gruul' }, awards });
+  const NIGHTS = [night('r2', '2026-10-11', [award('h1', { raidId: 'r2', raidOn: '2026-10-11' }), award('h2', { raidId: 'r2', raidOn: '2026-10-11', itemId: 30311, itemName: 'Warp Slicer', tag: 'OS' }), award('h3', { raidId: 'r2', raidOn: '2026-10-11', itemId: 30311, itemName: 'Warp Slicer', winner: { name: 'Kaelith', realm: 'Ashmere', class: 'ROGUE' }, match: { kind: 'character', personId: 'p_kn', personName: 'Kaelith', characterName: 'Kaelith', isMain: true } })]),
+    night('r1', '2026-10-10', [award('h4', { raidId: 'r1', raidOn: '2026-10-10', itemId: 28823, itemName: 'Eye of Gruul', editedFields: ['winner'] })])];
+  const hubData = (over) => Object.assign({
+    team: { id: 't1', name: 'Team KJ' }, level: 'full', can: { edit: false, rules: false, standings: false, itemLookup: false },
+    me: { personId: 'p_th', totals: { MS: 2, OS: 1, DE: 0, BANK: 0 }, byNight: [NIGHTS[0].awards.slice(0, 2), NIGHTS[1].awards].map((aw, i) => ({ raid: NIGHTS[i].raid, awards: aw })) },
+    nights: NIGHTS, standingsTop: null, fix: null,
+  }, over || {});
+  const hubState = (hub, over) => Object.assign({ gid: 'g1', teamId: 't1', status: 'ok', hub, raids: RAIDS.raids, balance: null, items: ITEMS.items, ui: { allNights: false, query: '' } }, over || {});
+  const hubPage = (hub, can, over) => G.pages.lootHub.hubHtml({ guildData: gd(can || MEMBER_CAN), state: hubState(hub, over) });
+  const OFFICER_HUB = () => hubData({ level: 'full', can: { edit: true, rules: true, standings: true, itemLookup: true }, me: null, fix: { duplicates: 3, unknown: 0 } });
+  const cardIds = html => [...html.matchAll(/<section class="gs-card-sec gs-lhub-card" id="(lhub-[a-z]+)"/g)].map(m => m[1]);
+
+  await check('hub: an officer gets Who is due, Latest raid nights, Look up an item and Needs fixing, and the Loot rules link', withState(async () => {
+    const out = hubPage(OFFICER_HUB(), OFFICER_CAN, { balance: BALANCE });
+    assert.deepEqual(cardIds(out), ['lhub-due', 'lhub-nights', 'lhub-items', 'lhub-fix']);
+    assert(out.includes('>Loot</h1>') && out.includes('Team KJ - 13 awards from 2 raid nights'));
+    assert(out.includes('href="#/g/g1/settings/loot"') && out.includes('>Loot rules<'), 'the rules link for loot.policy');
+    assert(out.includes('Who is due') && out.includes('The lowest figure is the most due') && out.includes('Full standings, 4 people') && out.includes('href="#/g/g1/loot/standings"'));
+    const dueCard = out.slice(out.indexOf('id="lhub-due"'), out.indexOf('id="lhub-nights"'));
+    assert(dueCard.indexOf('Zzaps') < dueCard.indexOf('Aimersmay') && dueCard.indexOf('Aimersmay') > 0, 'most due first');
+    assert(!dueCard.includes('Oldtimer'), 'inactive people are left off the card');
+    assert(out.includes('href="#/g/g1/loot/n/r2"') && out.includes('3 awards - BT clear - Black Temple') && out.includes('All 2 raid nights'));
+    assert(out.includes('Item name or ID') && out.includes('Dropped more than once on Sun Oct 11') && out.includes('href="#/g/g1/loot/i/30311"') && out.includes('2 awards on that night'));
+    assert(out.includes('Needs fixing') && out.includes('3 found') && out.includes('Review the 3 possible duplicates') && out.includes('href="#/g/g1/loot/fix"'));
+    assert(!out.includes('My loot'), 'officers have no My loot card');
+    assertNoRawAttrs(out);
+  }));
+
+  await check('hub: a Team Lead has no Loot rules link; the cards follow what the Worker allows (can.standings, can.itemLookup, fix)', withState(async () => {
+    const lead = hubData({ can: { edit: true, rules: false, standings: true, itemLookup: true }, me: null, fix: { duplicates: 0, unknown: 0 } });
+    const out = hubPage(lead, LEAD_CAN, { balance: BALANCE });
+    assert(!out.includes('>Loot rules<') && !out.includes('settings/loot'));
+    assert(out.includes('Needs fixing') && out.includes('None') && !out.includes('Review the'), 'nothing to fix: no button');
+    const noItems = hubPage(hubData({ can: { edit: true, rules: false, standings: false, itemLookup: false }, me: null, fix: { duplicates: 1, unknown: 1 } }), LEAD_CAN);
+    assert.deepEqual(cardIds(noItems), ['lhub-nights', 'lhub-fix']);
+  }));
+
+  await check('hub: a member sees My loot on the left (first) and the latest raid nights on the right, with who received what; standings and look-up only when on', withState(async () => {
+    const out = hubPage(hubData());
+    assert.deepEqual(cardIds(out), ['lhub-mine', 'lhub-nights']);
+    assert(out.indexOf('id="lhub-mine"') < out.indexOf('id="lhub-nights"'), 'My loot LEFT, nights RIGHT');
+    assert(out.includes('the latest raid nights and your own loot'));
+    const mine = out.slice(out.indexOf('id="lhub-mine"'), out.indexOf('id="lhub-nights"'));
+    assert(mine.includes('2 MS') && mine.includes('1 OS') && mine.includes('Open my loot page') && mine.includes('href="#/g/g1/loot/p/p_th"') && mine.includes('>Edited<'));
+    const nights = out.slice(out.indexOf('id="lhub-nights"'));
+    assert(nights.includes('Newest first - who received what') && (nights.match(/<details class="gs-loot-item"/g) || []).length === 2);
+    assert(/<details class="gs-loot-item" open>/.test(nights) && nights.indexOf(' open>') < nights.indexOf('Sat Oct 10') , 'the newest night is open, the older one folded');
+    assert(nights.includes('<span class="gs-you">You</span>') && nights.includes('>Kaelith<'), 'who received what, with You');
+    assert(!nights.includes('All 2 raid nights'));
+    const earlier = hubPage(hubData(), MEMBER_CAN, { raids: RAIDS.raids.concat([{ raidId: 'r0', raidOn: '2026-10-03', title: null, zone: 'SSC', awards: 6 }]) });
+    assert(earlier.includes('Earlier raid nights') && !earlier.includes('id="lhub-all"'));
+    assert(!out.includes('Who is due') && !out.includes('Look up an item') && !out.includes('Needs fixing') && !out.includes('Loot rules'));
+    const on = hubPage(hubData({ can: { edit: false, rules: false, standings: true, itemLookup: true } }), MEMBER_CAN, { balance: BALANCE });
+    assert.deepEqual(cardIds(on), ['lhub-mine', 'lhub-nights', 'lhub-due', 'lhub-items']);
+    const half = hubPage(hubData({ can: { edit: false, rules: false, standings: true, itemLookup: false } }), MEMBER_CAN, { balance: BALANCE });
+    assert.deepEqual(cardIds(half), ['lhub-mine', 'lhub-nights', 'lhub-due']);
+    const other = hubPage(hubData({ can: { edit: false, rules: false, standings: false, itemLookup: true } }), MEMBER_CAN);
+    assert.deepEqual(cardIds(other), ['lhub-mine', 'lhub-nights', 'lhub-items']);
+    assert(!on.includes('Who is due') === false && on.includes('Look up an item'));
+  }));
+
+  await check('hub: level own shows My loot only; a member without a roster entry and an empty team get their own wording', withState(async () => {
+    const own = hubPage(hubData({ level: 'own' }), MEMBER_CAN, { raids: null, items: null });
+    assert.deepEqual(cardIds(own), ['lhub-mine']);
+    assert(own.includes('your own loot') && !own.includes('Earlier raid nights') && !own.includes('Latest raid nights'));
+    const none = hubPage(hubData({ me: null }));
+    assert(none.includes('You are not on this team\'s roster, so there is no loot to list for you.') === false ? none.includes('no loot to list for you') : true);
+    const fresh = hubPage(hubData({ me: { personId: 'p_th', totals: { MS: 0, OS: 0, DE: 0, BANK: 0 }, byNight: [] }, nights: [] }), MEMBER_CAN, { raids: [] });
+    assert(fresh.includes('Your loot shows here after your first award is imported.') && fresh.includes('No loot is recorded for this team yet.'));
+    const emptyOfficer = hubPage(hubData({ can: { edit: true, rules: false, standings: false, itemLookup: false }, me: null, nights: [], fix: { duplicates: 0, unknown: 0 } }), OFFICER_CAN, { raids: [] });
+    assert(emptyOfficer.includes('No loot yet') && emptyOfficer.includes('Import from Gargul'));
+    const denied = G.pages.lootHub.hubHtml({ guildData: gd(MEMBER_CAN), state: { gid: 'g1', teamId: 't1', status: 'denied' } });
+    assert(/You can(&#39;|')t see this team(&#39;|')s loot/.test(denied));
+  }));
+
+  await check('hub: All N raid nights expands the card in place from the raid list; members get Earlier raid nights', withState(async () => {
+    const closed = hubPage(OFFICER_HUB(), OFFICER_CAN, { balance: BALANCE });
+    assert(closed.includes('data-action="lhub-nights"') && closed.includes('aria-expanded="false"') && !closed.includes('id="lhub-all"'));
+    const open = hubPage(OFFICER_HUB(), OFFICER_CAN, { balance: BALANCE, ui: { allNights: true, query: '' } });
+    assert(open.includes('id="lhub-all"') && open.includes('href="#/g/g1/loot/n/r1"') && open.includes('Show fewer') && open.includes('9 awards'));
+    const member = hubPage(hubData(), MEMBER_CAN, { raids: RAIDS.raids.concat([{ raidId: 'r0', raidOn: '2026-10-03', title: null, zone: 'SSC', awards: 6 }]), ui: { allNights: true, query: '' } });
+    const list = member.slice(member.indexOf('id="lhub-all"'));
+    assert(list.includes('href="#/g/g1/loot/n/r0"') && !list.includes('href="#/g/g1/loot/n/r2"'), 'only the nights not shown above');
+  }));
+
+  await check('hub: Look up an item searches the item list by name or id and links to the item page; hostile text is escaped', withState(async () => {
+    const found = G.pages.lootHub.searchMatches(ITEMS.items, 'mind');
+    assert.deepEqual(plain(found.map(i => i.itemId)), [28770]);
+    assert.deepEqual(plain(G.pages.lootHub.searchMatches(ITEMS.items, '5').map(i => i.itemId)), [5], 'an id matches exactly');
+    assert.deepEqual(plain(G.pages.lootHub.searchMatches(ITEMS.items, '')), []);
+    const out = hubPage(OFFICER_HUB(), OFFICER_CAN, { balance: BALANCE, ui: { allNights: false, query: 'mind' } });
+    assert(out.includes('value="mind"') && out.includes('href="#/g/g1/loot/i/28770"') && out.includes('2 awards'));
+    const unknown = hubPage(OFFICER_HUB(), OFFICER_CAN, { balance: BALANCE, ui: { allNights: false, query: '99999' } });
+    assert(unknown.includes('Open item 99999') && unknown.includes('href="#/g/g1/loot/i/99999"'));
+    const nothing = hubPage(OFFICER_HUB(), OFFICER_CAN, { balance: BALANCE, ui: { allNights: false, query: 'zzzz' } });
+    assert(nothing.includes('No item with that name has been awarded.'));
+    const evil = hubPage(OFFICER_HUB(), OFFICER_CAN, { balance: BALANCE, ui: { allNights: false, query: HOSTILE + QUOTES }, items: [{ itemId: 7, itemName: HOSTILE, quality: 4, count: 1 }] });
+    assertEscaped(evil, 'hub search');
+    const hostileNight = hubData({ nights: [night('r9', '2026-10-12', [award('x1', { raidId: 'r9', itemName: HOSTILE, winner: { name: HOSTILE, realm: null, class: 'MAGE' }, match: { kind: 'unmatched' } })])] });
+    assertEscaped(hubPage(hostileNight, MEMBER_CAN), 'hub nights');
+  }));
+
+  // ── hub and standings data ─────────────────────────────────────
+  await check('hub load: reads the hub, then the raid list, the balance and the items as the hub allows; level own reads the hub only; 403 is the denied state', withState(async (S) => {
     const gdata = gd(OFFICER_CAN);
     S.guilds.g1 = gdata; S.currentGid = 'g1';
     const realTeamFor = ctx.Guild.app.teamFor;
     ctx.Guild.app.teamFor = () => 't1';
-    const L = G.pages.loot;
-    let s = stub((m, url) => Promise.resolve(/balance/.test(url) ? BALANCE : /raids/.test(url) ? RAIDS : ITEMS));
-    await L.load({ name: 'section', gid: 'g1', section: 'loot' }, gdata);
-    await L.load({ name: 'section', gid: 'g1', section: 'loot', view: 'raids' }, gdata);
-    await L.load({ name: 'section', gid: 'g1', section: 'loot', view: 'items' }, gdata);
-    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/loot/balance?team=t1', '/api/guild/g1/loot/raids?team=t1', '/api/guild/g1/loot/items?team=t1']);
-    assert.equal(G.app.state.att.loot.view, 'items');
-    assert(L.main({ name: 'section', gid: 'g1', section: 'loot' }, gdata).includes('Loading'), 'the data is for another view: loading');
-    assert(L.main({ name: 'section', gid: 'g1', section: 'loot', view: 'items' }, gdata).includes('Loot by item'));
+    const route = { name: 'section', gid: 'g1', section: 'loot' };
+    let reply = OFFICER_HUB();
+    let s = stub((m, url) => Promise.resolve(/hub/.test(url) ? reply : /balance/.test(url) ? BALANCE : /loot\/raids/.test(url) ? RAIDS : ITEMS));
+    await G.pages.loot.load(route, gdata);
+    assert.deepEqual(s.calls.map(c => c.url).sort(), ['/api/guild/g1/loot/balance?team=t1', '/api/guild/g1/loot/hub?team=t1', '/api/guild/g1/loot/items?team=t1', '/api/guild/g1/loot/raids?team=t1']);
+    const x = G.app.state.att.lootHub;
+    assert.equal(x.status, 'ok'); assert.equal(x.raids.length, 2); assert.equal(x.items.length, 2); assert.equal(x.balance.people.length, 4);
+    assert(G.pages.loot.main(route, gdata).includes('id="lhub-due"'));
     s.restore();
+    reply = hubData({ level: 'own' });
+    s = stub((m, url) => Promise.resolve(reply));
+    await G.pages.loot.load(route, gdata);
+    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/loot/hub?team=t1'], 'level own: nothing else is read');
+    s.restore();
+    reply = hubData({ can: { edit: false, rules: false, standings: false, itemLookup: false } });
+    s = stub((m, url) => Promise.resolve(/hub/.test(url) ? reply : RAIDS));
+    await G.pages.loot.load(route, gdata);
+    assert.deepEqual(s.calls.map(c => c.url).sort(), ['/api/guild/g1/loot/hub?team=t1', '/api/guild/g1/loot/raids?team=t1'], 'a member with both settings off reads the hub and the raid list');
+    s.restore();
+    s = stub((m, url) => (/hub/.test(url) ? Promise.resolve(OFFICER_HUB()) : Promise.reject(new G.api.ApiError(500, { error: 'boom' }))));
+    await G.pages.loot.load(route, gdata);
+    assert.equal(G.app.state.att.lootHub.status, 'ok', 'the extras may fail without losing the hub');
+    assert.equal(G.app.state.att.lootHub.balance, null);
+    s.restore();
+    s = stub(() => Promise.reject(new G.api.ApiError(403, { error: 'forbidden' })));
+    await G.pages.loot.load(route, gdata);
+    assert.equal(G.app.state.att.lootHub.status, 'denied');
+    s.restore();
+    s = stub(() => Promise.reject(new G.api.ApiError(500, { error: 'boom' })));
+    await assert.rejects(G.pages.loot.load(route, gdata), err => err.status === 500);
+    s.restore();
+    assert(G.pages.loot.main(route, Object.assign({}, gdata, { guild: Object.assign({}, gdata.guild, { id: 'other' }) })).includes('Loading'), 'the data is for another guild: loading');
+    ctx.Guild.app.teamFor = realTeamFor;
+  }));
 
+  await check('hub load: an old ?view= link tidies the address to the plain hub', withState(async (S) => {
+    const gdata = gd(OFFICER_CAN);
+    S.guilds.g1 = gdata; S.currentGid = 'g1';
+    const realTeamFor = ctx.Guild.app.teamFor;
+    ctx.Guild.app.teamFor = () => null;
+    const replaced = [];
+    ctx.window = { history: { replaceState: (a, b, url) => replaced.push(url) }, location: { pathname: '/guild.html', search: '' } };
+    await G.pages.loot.load({ name: 'section', gid: 'g1', section: 'loot', legacyView: true }, gdata);
+    await G.pages.loot.load({ name: 'section', gid: 'g1', section: 'loot' }, gdata);
+    delete ctx.window;
+    ctx.Guild.app.teamFor = realTeamFor;
+    assert.deepEqual(replaced, ['/guild.html#/g/g1/loot']);
+  }));
+
+  await check('standings load: reads the balance, falls back when a week count is refused, 403 is the denied state, a team change resets the window', withState(async (S) => {
+    const gdata = gd(OFFICER_CAN);
+    S.guilds.g1 = gdata; S.currentGid = 'g1';
+    resetUi();
+    const realTeamFor = ctx.Guild.app.teamFor;
+    ctx.Guild.app.teamFor = () => 't1';
+    const L = G.pages.lootStandings;
+    const route = { name: 'lootstandings', gid: 'g1' };
+    let s = stub(() => Promise.resolve(BALANCE));
+    await L.load(route, gdata);
+    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/loot/balance?team=t1']);
+    assert(L.main(route, gdata).includes('>Standings</h1>'));
+    s.restore();
     G.app.state.att.lootUi.window = 12;
     s = stub((m, url) => (/weeks=12/.test(url) ? Promise.reject(new G.api.ApiError(400, { error: 'invalid', field: 'weeks' })) : Promise.resolve(BALANCE)));
-    await L.load({ name: 'section', gid: 'g1', section: 'loot' }, gdata);
+    await L.load(route, gdata);
     assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/loot/balance?team=t1&weeks=12', '/api/guild/g1/loot/balance?team=t1']);
     assert.equal(G.app.state.att.lootUi.window, null);
     s.restore();
-
     s = stub(() => Promise.reject(new G.api.ApiError(403, { error: 'forbidden' })));
-    await L.load({ name: 'section', gid: 'g1', section: 'loot' }, gdata);
-    assert.equal(G.app.state.att.loot.denied, true);
-    assert(/You can(&#39;|')t see this team(&#39;|')s loot/.test(L.main({ name: 'section', gid: 'g1', section: 'loot' }, gdata)));
+    await L.load(route, gdata);
+    assert.equal(G.app.state.att.lootStand.status, 'denied');
+    assert(/Your guild doesn(&#39;|')t show standings to members\./.test(L.main(route, gdata)));
     s.restore();
-
     s = stub(() => Promise.reject(new G.api.ApiError(500, { error: 'boom' })));
-    await assert.rejects(L.load({ name: 'section', gid: 'g1', section: 'loot' }, gdata), err => err.status === 500);
+    await assert.rejects(L.load(route, gdata), err => err.status === 500);
     s.restore();
-
     G.app.state.att.lootUi.window = 12;
     ctx.Guild.app.teamFor = () => 't2';
     s = stub(() => Promise.resolve(BALANCE));
-    await L.load({ name: 'section', gid: 'g1', section: 'loot' }, gdata);
+    await L.load(route, gdata);
     assert.equal(s.calls[0].url, '/api/guild/g1/loot/balance?team=t2', 'a window belongs to one team');
     s.restore();
     ctx.Guild.app.teamFor = realTeamFor;
   }));
 
-  await check('loot handlers: the view buttons navigate, the window buttons refetch (All time does not), sort toggles', withState(async (S) => {
+  await check('hub and standings handlers: the nights card toggles, the search redraws only its results, order and window switch', withState(async (S) => {
     S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
-    const went = [];
-    const realGo = G.app.go, realRoute = G.app.routeAll, realRender = G.app.render;
+    resetUi();
+    const realRoute = G.app.routeAll, realRender = G.app.render;
     let routed = 0, rendered = 0;
-    G.app.go = h => went.push(h); G.app.routeAll = () => { routed++; return Promise.resolve(); }; G.app.render = () => { rendered++; };
-    G.handlers.click['loot-view'](el({ 'data-view': 'raids' }));
-    G.handlers.click['loot-view'](el({ 'data-view': 'items' }));
-    G.handlers.click['loot-view'](el({ 'data-view': 'balance' }));
-    assert.deepEqual(went, ['#/g/g1/loot?view=raids', '#/g/g1/loot?view=items', '#/g/g1/loot']);
-    G.handlers.click['loot-window'](el({ 'data-window': '12' }));
+    G.app.routeAll = () => { routed++; return Promise.resolve(); }; G.app.render = () => { rendered++; };
+    G.app.state.att.lootHub = hubState(OFFICER_HUB());
+    G.handlers.click['lhub-nights']();
+    assert.equal(G.app.state.att.lootHub.ui.allNights, true);
+    G.handlers.click['lhub-nights']();
+    assert.equal(G.app.state.att.lootHub.ui.allNights, false);
+    const box = { innerHTML: '' };
+    ctx.document = { getElementById: id => (id === 'lhub-results' ? box : null), querySelector: () => null, querySelectorAll: () => [] };
+    G.handlers.input['lhub-search']({ value: 'mind' });
+    assert.equal(G.app.state.att.lootHub.ui.query, 'mind');
+    assert(box.innerHTML.includes('href="#/g/g1/loot/i/28770"'));
+    assert.equal(rendered, 2, 'typing does not redraw the page');
+    ctx.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
+    G.handlers.click['lstand-sort'](el({ 'data-value': 'name' }));
+    assert.equal(G.app.state.att.lootUi.sort, 'name');
+    G.handlers.click['lstand-sort'](el({ 'data-value': 'due' }));
+    assert.equal(G.app.state.att.lootUi.sort, 'due');
+    G.handlers.click['lstand-showall']();
+    assert.equal(G.app.state.att.lootUi.showAll, true);
+    rendered = 0;
+    G.handlers.click['loot-window'](el({ 'data-value': '12' }));
     assert.equal(G.app.state.att.lootUi.window, 12);
     assert.equal(routed, 1);
-    G.handlers.click['loot-window'](el({ 'data-window': 'all' }));
+    G.handlers.click['loot-window'](el({ 'data-value': 'all' }));
     assert.equal(G.app.state.att.lootUi.window, 'all');
     assert.equal(routed, 1, 'All time needs no request');
     assert.equal(rendered, 1);
-    G.app.state.att.loot = { gid: 'g1', data: BALANCE };
-    G.handlers.click['loot-sort'](el({ 'data-col': 'name' }));
-    assert.deepEqual(plain(G.app.state.att.lootUi.sort), { column: 'name', dir: 'asc' });
-    G.handlers.click['loot-sort'](el({ 'data-col': 'name' }));
-    assert.deepEqual(plain(G.app.state.att.lootUi.sort), { column: 'name', dir: 'desc' });
-    G.handlers.click['loot-sort'](el({ 'data-col': 'ms' }));
-    assert.deepEqual(plain(G.app.state.att.lootUi.sort), { column: 'ms', dir: 'desc' });
-    G.app.go = realGo; G.app.routeAll = realRoute; G.app.render = realRender;
+    G.app.routeAll = realRoute; G.app.render = realRender;
   }));
 
   // ── the Loot card of a raid ────────────────────────────────────
-  await check('raid card: award rows with time in the guild zone, quality item link, winner chips, tag select for editors, flag chips, note, delete', () => {
+  await check('raid card: a compact summary - counts by tag, the first awards read-only, and a link to the loot page of the night', () => {
     const out = raidPage(okState());
     assert(out.includes('<h2 class="gs-h2" id="loot-h">Loot awards</h2>') && out.includes('4 items'));
-    assert(out.includes('<ul class="gs-loot-list" aria-label="Loot awarded on this raid">') && (out.match(/<li class="gs-loot-row"/g) || []).length === 4);
-    assert(out.includes('8:12 PM CT') && out.includes('8:20 PM CT'), 'times in America/Chicago, with the zone written');
+    assert(out.includes('<p class="gs-fine" id="loot-counts">3 MS &middot; 1 OS</p>'), 'counts by tag');
+    assert(out.includes('<ul class="gs-loot-sublist" aria-label="Loot awarded on this raid">') && (out.match(/<li class="gs-loot-subrow"/g) || []).length === 4);
+    assert(out.includes('id="loot-open-night" href="#/g/g1/loot/n/r1">Open the night\'s loot</a>'));
     assert(out.includes('class="gs-item gs-q-4"') && out.includes('href="https://www.wowhead.com/tbc/item=28770"') && out.includes('class="gs-item gs-q-3"'));
-    assert(out.includes('data-change="loot-tag" data-aid="a3"') && !/<span class="gs-loot-tag"><span class="gs-sr">Tag: <\/span><span class="gs-chip gs-chip-tag"/.test(out), 'editors get selects');
-    assert(out.includes('Prio') && out.includes('Soft-res') && out.includes('Off-spec roll') && !/>TMB</.test(out.slice(out.indexOf('a1')).split('a2')[0]));
-    assert(out.includes('Note: Rolled off-spec') && out.includes('>Edit note<') && out.includes('>Add note<'));
-    assert(out.includes('data-action="loot-delete" data-aid="a1"') && out.includes('aria-label="Delete the award of Nathrezim Mindblade"'));
-    assert(out.includes('>Guest<') && out.includes('Not on roster'));
+    assert(out.includes('>Guest<') && out.includes('Not on roster') && out.includes('gs-chip gs-chip-tag is-os'));
+    assert(!out.includes('data-change="loot-tag"') && !out.includes('loot-delete') && !out.includes('loot-note') && !out.includes('gs-loot-row'), 'changes happen on the night page');
     assert(out.indexOf('Loot awards</h2>') > out.indexOf('People</h2>'), 'after the People card');
+    const many = okState();
+    many.data.awards = Array.from({ length: 8 }, (_, i) => award('m' + i));
+    const long = raidPage(many);
+    assert((long.match(/<li class="gs-loot-subrow"/g) || []).length === 5 && long.includes('And 3 more.'));
     assertNoRawAttrs(out);
   });
 
-  await check('raid card: editors get Import from Gargul; viewers get chips and no edit controls; the review link needs attendance.review', () => {
+  await check('raid card: editors keep Import from Gargul and Add award; viewers get no edit buttons; the review link needs attendance.review', () => {
     const editor = raidPage(okState());
-    assert(editor.includes('data-action="loot-import-open"') && editor.includes('Import from Gargul'));
+    assert(editor.includes('data-action="loot-import-open"') && editor.includes('Import from Gargul') && editor.includes('data-action="loot-add-open"'));
     assert(editor.includes('1 award goes to a winner who is not on the roster. Link them in the Review queue') && editor.includes('href="#/g/g1/attendance/review"'));
     const viewerState = okState({}, false);
     const viewer = raidPage(viewerState, MEMBER_CAN, { data: Object.assign({}, DETAIL, { can: { edit: false, review: false, seeAttendance: true } }) });
-    assert(!viewer.includes('loot-import-open') && !viewer.includes('data-change="loot-tag"') && !viewer.includes('loot-delete') && !viewer.includes('loot-note'));
-    assert(viewer.includes('gs-chip gs-chip-tag is-os') && viewer.includes('Off-spec roll'), 'a tag chip with the officer-set look');
+    assert(!viewer.includes('loot-import-open') && !viewer.includes('loot-add-open') && !viewer.includes('data-change="loot-tag"') && !viewer.includes('loot-delete') && !viewer.includes('loot-note'));
+    assert(viewer.includes('id="loot-open-night"'), 'members can read the night too');
     assert(viewer.includes('An officer can link them.') && !viewer.includes('Review queue'));
     const lead = raidPage(okState(), LEAD_CAN);
     assert(lead.includes('Review queue'));
@@ -756,7 +890,6 @@ function withState(fn) {
     const win = L.balanceRows(data, 'window')[0];
     assert.equal(win.vs, 0.135, 'the Worker\'s own number');
     assert.equal(L.balanceRows(data, 'all')[0].vs.toFixed(2), '0.15');
-    assert(L.lootHtml(pageOpts({ data })).includes('>+0.14<'), 'shown with two decimals');
     assert.equal(L.balanceRows(Object.assign({}, data, { people: [Object.assign({}, data.people[0], { perRaid: { window: null, all: null }, vsTeam: null })] }), 'window')[0].vs, null);
   });
 
@@ -901,19 +1034,32 @@ function withState(fn) {
     totals: { MS: 5, OS: 1, DE: 0, BANK: 0 },
   };
 
-  await check('person loot page: header, totals, awards grouped by raid newest first with the character name and no self link', () => {
+  await check('person loot page: header, figures, one table of awards newest first with the night link, the character name and a More menu for edit holders', () => {
     const out = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_th', data: PERSON_LOOT });
     assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Thoren</h1>') && out.includes('Loot history') && out.includes('href="#/g/g1/roster/p/p_th"'));
-    assert(out.includes('<dt>Main spec</dt><dd>5</dd>') && out.includes('<dt>Off-spec</dt><dd>1</dd>'));
-    assert.deepEqual([...out.matchAll(/<h2 class="gs-h2" id="pl-raid-\d+-h">([^<]*)</g)].map(m => m[1]), ['Sun Oct 11', 'Sat Oct 10', 'Sat Oct 3']);
-    assert.deepEqual([...out.matchAll(/href="([^"]*)">Open raid</g)].map(m => m[1]), ['#/g/g1/raids/r/r2', '#/g/g1/raids/r/r1', '#/g/g1/raids/r/r0']);
-    assert(out.includes('Thorenalt') && !out.includes('href="#/g/g1/loot/p/p_th"'), 'the character, not a link to this page');
-    assert.deepEqual(plain(G.pages.personLoot.groupByRaid(PERSON_LOOT.awards).map(g => g.awards.length)), [2, 2, 2]);
-    assert.deepEqual(plain(G.pages.personLoot.groupByRaid(null)), []);
+    assert(out.includes('<dt>Main spec</dt><dd>5</dd>') && out.includes('<dt>Off spec</dt><dd>1</dd>') && !out.includes('Due order'), 'no standings figures without the balance');
+    assert(out.includes('6 awards, newest first') && out.includes('<table class="gs-dtable" aria-label="Loot awards">'));
+    assert.deepEqual([...out.matchAll(/href="(#\/g\/g1\/loot\/n\/[^"]*)"/g)].map(m => m[1]), ['r2', 'r2', 'r1', 'r1', 'r0', 'r0'].map(r => '#/g/g1/loot/n/' + r));
+    assert(!out.includes('href="#/g/g1/loot/p/p_th"'), 'no link to this page');
+    assert((out.match(/id="lm-b[0-9]" data-action="menu-toggle"/g) || []).length === 6 && out.includes('href="#/g/g1/loot/a/b1?edit=1"'), 'edit holders get More on every row');
+    assert(!out.includes('Awards are read-only for members'));
     assertNoRawAttrs(out);
+    const member = G.pages.personLoot.personLootHtml({ guildData: gd(MEMBER_CAN), pid: 'p_th', data: Object.assign({}, PERSON_LOOT, { person: Object.assign({}, PERSON_LOOT.person, { isMe: true }) }) });
+    assert(!member.includes('menu-toggle') && member.includes('Awards are read-only for members. Ask an officer if something looks wrong.') && member.includes('This is your loot'));
     const empty = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_th', data: { person: { id: 'p_th', name: HOSTILE, status: 'raider' }, awards: [], totals: { MS: 0, OS: 0, DE: 0, BANK: 0 } } });
-    assert(empty.includes('No loot yet') && empty.includes('No loot is recorded for this person yet.'));
+    assert(empty.includes('No loot is recorded for this person yet.'));
     assertEscaped(empty, 'person loot');
+  });
+
+  await check('person loot page: with the team balance it adds Raids, Main spec per raid and the due order, and a link to the standings', () => {
+    const bal = Object.assign({}, BALANCE, { people: BALANCE.people.map(p => Object.assign({}, p, { personId: p.personId === 'p_aa' ? 'p_th' : p.personId })) });
+    const standing = G.pages.personLoot.standingOf(bal, 'p_th');
+    assert.deepEqual(plain(standing), { raids: 10, perRaid: 0.73, counted: 6, mode: 'perRaid', rank: 2, of: 3 });
+    const out = G.pages.personLoot.personLootHtml({ guildData: gd(MEMBER_CAN), pid: 'p_th', data: PERSON_LOOT, balance: bal });
+    assert(out.includes('<dt>Raids</dt><dd>10</dd>') && out.includes('<dt>Main spec per raid</dt><dd>0.73</dd>') && out.includes('<dt>Due order</dt><dd>2nd of 3</dd>'));
+    assert(out.includes('See where you stand') && out.includes('href="#/g/g1/loot/standings"'));
+    assert.equal(G.pages.personLoot.standingOf(bal, 'p_nobody'), null);
+    assert.equal(G.pages.personLoot.standingOf(null, 'p_th'), null);
   });
 
   await check('person loot card: totals, the last five awards and an All loot link; empty, own and denied wording', () => {
@@ -975,12 +1121,17 @@ function withState(fn) {
     assert.equal(G.pages.personLoot.nameFor({ pid: 'p_other' }), '');
     assert(G.pages.personLoot.main({ name: 'lootperson', gid: 'g1', pid: 'p_th' }, g1).includes('Loot history'));
     assert(G.pages.personLoot.main({ name: 'lootperson', gid: 'g1', pid: 'p_other' }, g1).includes('Loading'));
+    assert.equal(s.calls[1].url, '/api/guild/g1/loot/balance?team=t1', 'the team balance is read for the figures');
     s.restore();
+    const s3 = stub((m, url) => (/balance/.test(url) ? Promise.reject(new G.api.ApiError(403, { error: 'forbidden' })) : Promise.resolve(PERSON_LOOT)));
+    await G.pages.personLoot.load({ name: 'lootperson', gid: 'g1', pid: 'p_th' }, g1);
+    assert.equal(G.app.state.att.personLoot.balance, null, 'standings the guild keeps from members just leave the figures out');
+    s3.restore();
     await assert.rejects(Promise.resolve().then(() => { const s2 = stub(() => Promise.reject(new G.api.ApiError(403, { error: 'forbidden' }))); return G.pages.personLoot.load({ pid: 'p_x' }, g1).finally(() => s2.restore()); }), err => err.status === 403);
   }));
 
   // ── Settings > Loot ────────────────────────────────────────────
-  const LOOT_DEFAULTS = { visibility: { members: 'ownTeams' }, balance: { mode: 'perRaid', countTags: ['MS'] } };
+  const LOOT_DEFAULTS = { visibility: { members: 'ownTeams', standings: false, itemLookup: false }, balance: { mode: 'perRaid', countTags: ['MS'] } };
   const LOOT_VIEW = { defaults: LOOT_DEFAULTS, guild: { balance: { countTags: ['MS', 'OS'] } }, teams: { t1: { visibility: { members: 'own' } } }, resolved: {}, versions: { guild: 2, teams: { t1: 5 } } };
   const S0 = (over) => Object.assign({ gid: 'g1', view: LOOT_VIEW, scope: 'guild', draft: { balance: { countTags: ['MS', 'OS'] } } }, over || {});
 
@@ -1005,6 +1156,47 @@ function withState(fn) {
     assert(S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0(), alert: 'Nope.', notice: 'Loot rules saved.' }).includes('Loot rules saved.'));
   });
 
+  await check('settings: What members see has two switches (standings, item look-up), off by default, guild default and team override with Inherited / Overridden', () => {
+    const S = G.pages.settingsLoot;
+    const out = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0() });
+    assert(out.includes('What members see') && out.includes('Members always see the latest raid nights and their own loot by raid day. These two are extra.'));
+    assert(out.indexOf('Who sees loot') < out.indexOf('What members see') && out.indexOf('What members see') < out.indexOf('>Balance<'));
+    assert(/<input type="checkbox" id="lp-visibility-standings" value="1" data-change="lpol-change" data-type="bool" data-path="visibility.standings"/.test(out) && !/id="lp-visibility-standings"[^>]*checked/.test(out));
+    assert(/<input type="checkbox" id="lp-visibility-itemLookup" value="1" data-change="lpol-change" data-type="bool" data-path="visibility.itemLookup"/.test(out) && !/id="lp-visibility-itemLookup"[^>]*checked/.test(out));
+    assert(out.includes('Who is due (standings)') && out.includes('Shows members the standings and the Who is due card. Off by default.') && out.includes('Lets members search an item and see who received it. Off by default.'));
+    const guildOn = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0({ draft: { visibility: { standings: true } } }) });
+    assert(/id="lp-visibility-standings"[^>]*checked/.test(guildOn) && !/id="lp-visibility-itemLookup"[^>]*checked/.test(guildOn));
+    const team = S.settingsHtml({ guildData: gd(OFFICER_CAN), s: S0({ scope: 't1', view: Object.assign({}, LOOT_VIEW, { guild: { visibility: { itemLookup: true } } }), draft: { visibility: { standings: true } } }) });
+    assert(/id="lpf-visibility-standings"[\s\S]*?Overridden[\s\S]*?data-path="visibility.standings" data-key="lpol-reset/.test(team));
+    assert(/id="lpf-visibility-itemLookup"[\s\S]*?Inherited/.test(team) && /id="lp-visibility-itemLookup"[^>]*checked/.test(team), 'the guild default shows through');
+    assertNoRawAttrs(out);
+  });
+
+  await check('settings switches: a switch writes a boolean into the draft, saves as a pruned override, and Reset puts a team back to the guild default', withState(async (S) => {
+    S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
+    S.att.settingsLoot = S0({ draft: {} });
+    const done = countRenders();
+    const sw = (path, checked) => ({ getAttribute: k => ({ 'data-path': path, 'data-type': 'bool' })[k], checked });
+    G.handlers.change['lpol-change'](sw('visibility.standings', true));
+    G.handlers.change['lpol-change'](sw('visibility.itemLookup', true));
+    assert.deepEqual(plain(S.att.settingsLoot.draft), { visibility: { standings: true, itemLookup: true } });
+    G.handlers.change['lpol-change'](sw('visibility.itemLookup', false));
+    assert.deepEqual(plain(S.att.settingsLoot.draft), { visibility: { standings: true, itemLookup: false } });
+    const origBusy = G.ui.setBusy;
+    G.ui.setBusy = () => {};
+    const form = { querySelectorAll: () => [], querySelector: () => null };
+    let s = stub(() => Promise.resolve(Object.assign({}, LOOT_VIEW, { guild: { visibility: { standings: true } }, versions: { guild: 3, teams: {} } })));
+    G.handlers.submit['lpol-form'](form);
+    await tick();
+    assert.deepEqual(s.calls[0].body, { teamId: null, override: { visibility: { standings: true } }, version: 2 }, 'a value equal to the built-in default is not stored');
+    assert.deepEqual(plain(S.att.settingsLoot.draft), { visibility: { standings: true } }, 'the saved override is the new draft');
+    s.restore();
+    S.att.settingsLoot = S0({ scope: 't1', draft: { visibility: { standings: true } } });
+    G.handlers.click['lpol-reset'](el({ 'data-path': 'visibility.standings' }));
+    assert.deepEqual(plain(S.att.settingsLoot.draft), {});
+    G.ui.setBusy = origBusy; done();
+  }));
+
   await check('settings handlers: edits go into the draft override, Reset and Reset all clear it, tags need one box', withState(async (S) => {
     const SL = G.pages.settingsLoot;
     S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
@@ -1024,7 +1216,7 @@ function withState(fn) {
     assert.deepEqual(plain(S.att.settingsLoot.draft), { balance: { countTags: ['MS', 'OS'] } }, 'the guild override loads into the draft');
     G.handlers.change['lpol-scope']({ value: 't1' });
     assert.deepEqual(plain(S.att.settingsLoot.draft), { visibility: { members: 'own' } });
-    assert.equal(SL.GROUPS.length, 2);
+    assert.deepEqual(plain(SL.GROUPS.map(g => g.id)), ['visibility', 'members', 'balance']);
     done();
   }));
 
@@ -1224,8 +1416,8 @@ function withState(fn) {
     const state = okState();
     state.data.awards = AWARDS.concat([DE_AWARD]);
     const out = raidPage(state);
-    assert(out.includes('5 items') && (out.match(/<li class="gs-loot-row"/g) || []).length === 5);
-    assert(stripTags(out.slice(out.indexOf('id="loot-d1"'))).includes('Disenchanted'));
+    assert(out.includes('5 items') && (out.match(/<li class="gs-loot-subrow"/g) || []).length === 5 && out.includes('3 MS &middot; 1 OS &middot; 1 DE'));
+    assert(stripTags(out).includes('Disenchanted'));
     assert(out.includes('1 award goes to a winner who is not on the roster'), 'only Veyla; the disenchant is nobody\'s');
     assert(!out.includes('2 awards go to a winner'));
     // The delete dialog does not say "awarded to null".
@@ -1247,31 +1439,176 @@ function withState(fn) {
     assert(!/null/.test(R.describeError(new G.api.ApiError(400, { message: 'Award 2: x', field: 'awards', index: 1 }), parsed)));
   }));
 
-  await check('disenchants: By raid has a Disenchanted column and card figure; By item names the item\'s disenchant; an older reply without the count still renders', () => {
-    const L = G.pages.loot;
-    const raids = { raids: [
-      { raidId: 'r2', raidOn: '2026-10-11', title: 'BT clear', zone: 'Black Temple', awards: 9, counted: 7, unmatched: 2, disenchanted: 3 },
-      { raidId: 'r1', raidOn: '2026-10-10', title: null, zone: 'Gruul', awards: 4, counted: 4, unmatched: 0, disenchanted: 0 },
-    ] };
-    const out = L.lootHtml(pageOpts({ view: 'raids', data: raids }));
-    assert(out.includes('<th scope="col">Disenchanted</th>'));
-    const rows = out.split('<tr>').filter(r => r.includes('gs-raid-link'));
-    assert(rows[0].includes('<td class="gs-num">3</td>') && rows[1].includes('<span class="gs-muted">-</span>'), 'a count, or a dash for none');
-    assert.equal((out.match(/<dt>Disenchanted<\/dt><dd>3<\/dd>/g) || []).length, 1, 'the phone card shows it only when there is one');
-    assert(!out.includes('<dt>Disenchanted</dt><dd>0</dd>'));
-    const old = L.lootHtml(pageOpts({ view: 'raids', data: { raids: [{ raidId: 'r2', raidOn: '2026-10-11', title: null, zone: 'Gruul', awards: 1, counted: 1, unmatched: 0 }] } }));
-    assert(old.includes('href="#/g/g1/raids/r/r2"') && !old.includes('undefined') && !old.includes('NaN'));
-    const items = { items: [{ itemId: 22520, itemName: "The Phylactery of Kel'Thuzad", quality: 4, count: 2, lastAwardedAt: 1791774300000, awards: [
-      { id: 'd1', raidId: 'r2', raidOn: '2026-10-11', awardedAt: 1791774300000, tag: 'DE', tagSetBy: null, winner: { name: null, realm: null, class: null }, match: { kind: 'disenchanted' } },
-      { id: 'a5', raidId: 'r1', raidOn: '2026-10-10', awardedAt: 1791681160000, tag: 'MS', tagSetBy: null, winner: AWARDS[0].winner, match: AWARDS[0].match },
-    ] }] };
-    const byItem = L.lootHtml(pageOpts({ view: 'items', data: items }));
-    const subrows = [...byItem.matchAll(/<li class="gs-loot-subrow">([\s\S]*?)<\/li>/g)].map(m => stripTags(m[1]));
-    assert.equal(subrows.length, 2);
-    assert(subrows[0].includes('Disenchanted') && subrows[0].includes('DE') && !subrows[0].includes('Not on roster') && !subrows[0].includes('Guest'));
-    assert(subrows[1].includes('Thoren'));
-    assertNoRawAttrs(byItem);
+  // ── Raid night, item, More menu ────────────────────────────────
+  const nightState = (over, canEdit) => Object.assign({ gid: 'g1', rid: 'r1', teamId: 't1', status: 'ok', awards: AWARDS.concat([DE_AWARD]).map(a => Object.assign({}, a)), canEdit: canEdit !== false,
+    raid: { raidOn: '2026-10-10', title: 'Gruul run', zone: 'Gruul' }, saved: {} }, over || {});
+  const nightPage = (state, can) => G.pages.lootNight.nightHtml({ guildData: gd(can || OFFICER_CAN), state });
+  const menuLabels = html => [...html.matchAll(/class="gs-menu-item[^"]*"[^>]*>([^<]*)</g)].map(m => m[1]);
+
+  await check('raid night: header with counts, a table of awards, a tag select and a More menu per row for edit holders', () => {
+    const out = nightPage(nightState());
+    assert(out.includes('>Sat Oct 10</h1>') && out.includes('Gruul run - Gruul - Team KJ - 5 awards - 3 main spec, 1 off spec, 1 disenchanted'));
+    assert(out.includes('class="gs-back-link" href="#/g/g1/loot"'));
+    assert(out.includes('<table class="gs-dtable" aria-label="Loot awarded on Sat Oct 10">') && (out.match(/data-row="/g) || []).length === 5);
+    assert((out.match(/data-change="ln-tag"/g) || []).length === 4, 'a select per row except the disenchant');
+    assert(out.includes('data-change="ln-tag" data-aid="a3"') && out.includes('Officer tag') && out.includes('>Guest<') && out.includes('Not on roster') && out.includes('Disenchanted'));
+    assert((out.match(/id="lm-[a-z0-9]+" data-action="menu-toggle"/g) || []).length === 5 && out.includes('aria-label="More for Nathrezim Mindblade"'));
+    assert(out.includes('href="#/g/g1/loot/a/a1"') && out.includes('href="#/g/g1/loot/a/a1?edit=1"') && out.includes('data-action="ln-delete" data-aid="a1"'));
+    assert.deepEqual(plain(menuLabels(out).slice(2, 5)), ['Open award', 'Edit details', 'Delete award']);
+    assert(out.includes('href="#/g/g1/raids/r/r1"') && out.includes('Open the raid page') && out.includes('Import from Gargul'));
+    assert(out.includes('All 5 awards, in the order they were awarded.'));
+    assertNoRawAttrs(out);
   });
+
+  await check('raid night: members read it; no select, no More menu, no import link; the raid page link stays', () => {
+    const out = nightPage(nightState({ canEdit: false }), MEMBER_CAN);
+    assert(!out.includes('data-change="ln-tag"') && !out.includes('id="lm-') && !out.includes('Delete award') && !out.includes('Import from Gargul'));
+    assert(out.includes('Open the raid page') && out.includes('gs-chip-tag') && out.includes('Disenchanted'));
+  });
+
+  await check('raid night: nothing recorded, a 403 and a 404 each have their own wording; hostile text is escaped', () => {
+    const empty = nightPage(nightState({ awards: [] }));
+    assert(empty.includes('No loot recorded') && empty.includes('Import a Gargul export on the raid page'));
+    assert(nightPage(nightState({ awards: [], canEdit: false }), MEMBER_CAN).includes('Nothing was awarded on this night.'));
+    assert(/You can(&#39;|')t see this loot/.test(nightPage({ status: 'denied' }, MEMBER_CAN)));
+    assert(nightPage({ status: 'none' }).includes('No loot on this night'));
+    const bad = nightState({ awards: [award('x1', { itemName: HOSTILE, note: HOSTILE + QUOTES, winner: { name: HOSTILE, realm: null, class: 'MAGE' }, match: { kind: 'unmatched' } })], raid: { raidOn: '2026-10-10', title: HOSTILE, zone: HOSTILE } });
+    assertEscaped(nightPage(bad), 'night');
+  });
+
+  await check('raid night load: the awards, then the night\'s date and title from the raid list; 403 and 404 are states; other errors surface', withState(async (S) => {
+    const gdata = gd(OFFICER_CAN);
+    S.guilds.g1 = gdata; S.currentGid = 'g1';
+    const route = { name: 'lootnight', gid: 'g1', rid: 'r1' };
+    let s = stub((m, url) => Promise.resolve(/\/raids\/r1\/loot$/.test(url) ? { awards: AWARDS, canEdit: true } : RAIDS));
+    await G.pages.lootNight.load(route, gdata);
+    assert.deepEqual(s.calls.map(c => c.url), ['/api/guild/g1/raids/r1/loot', '/api/guild/g1/loot/raids?team=t1']);
+    assert.equal(G.pages.lootNight.nameFor(route), 'Sat Oct 10');
+    assert(G.pages.lootNight.main(route, gdata).includes('Gruul'));
+    assert(G.pages.lootNight.main({ name: 'lootnight', gid: 'g1', rid: 'other' }, gdata).includes('Loading'));
+    s.restore();
+    s = stub((m, url) => (/loot\/raids/.test(url) ? Promise.reject(new G.api.ApiError(500, { error: 'x' })) : Promise.resolve({ awards: AWARDS, canEdit: false })));
+    await G.pages.lootNight.load(route, gdata);
+    assert.equal(G.app.state.att.lootNight.status, 'ok', 'the page works without the raid list');
+    s.restore();
+    s = stub(() => Promise.reject(new G.api.ApiError(403, { error: 'forbidden' })));
+    await G.pages.lootNight.load(route, gdata);
+    assert.equal(G.app.state.att.lootNight.status, 'denied');
+    s.restore();
+    s = stub(() => Promise.reject(new G.api.ApiError(404, { error: 'not_found' })));
+    await G.pages.lootNight.load(route, gdata);
+    assert.equal(G.app.state.att.lootNight.status, 'none');
+    s.restore();
+    s = stub(() => Promise.reject(new G.api.ApiError(500, { error: 'boom' })));
+    await assert.rejects(G.pages.lootNight.load(route, gdata), err => err.status === 500);
+    s.restore();
+  }));
+
+  await check('raid night tag select: a tag-only PATCH, the row shows Saved, a failure shows the page alert', withState(async (S) => {
+    const gdata = gd(OFFICER_CAN);
+    S.guilds.g1 = gdata; S.currentGid = 'g1';
+    S.att.lootNight = nightState();
+    const realRender = G.app.render, realHandle = G.app.handleError;
+    let rendered = 0;
+    const handled = [];
+    G.app.render = () => { rendered++; };
+    G.app.handleError = (err, o) => handled.push([err.status, o]);
+    let s = stub((m, url, body) => Promise.resolve({ award: Object.assign({}, AWARDS[1], { tag: body.tag, tagSetBy: 'officer' }) }));
+    const sel = Object.assign(el({ 'data-aid': 'a2' }), { value: 'OS' });
+    G.handlers.change['ln-tag'](sel);
+    assert.equal(sel.disabled, true);
+    await tick();
+    assert.deepEqual(s.calls[0], { m: 'patch', url: '/api/guild/g1/loot/a2', body: { tag: 'OS' } });
+    assert.equal(S.att.lootNight.awards[1].tag, 'OS');
+    assert.deepEqual(plain(S.att.lootNight.saved), { a2: true });
+    const out = nightPage(S.att.lootNight);
+    assert(/data-aid="a2"[\s\S]*?<span class="gs-ln-saved" role="status">Saved<\/span>/.test(out) && (out.match(/>Saved</g) || []).length === 1);
+    s.restore();
+    s = stub(() => Promise.reject(new G.api.ApiError(409, { error: 'stale' })));
+    G.handlers.change['ln-tag'](Object.assign(el({ 'data-aid': 'a1' }), { value: 'DE' }));
+    await tick();
+    assert.equal(handled.length, 1); assert.equal(handled[0][1].pageAlert, true);
+    s.restore();
+    G.app.render = realRender; G.app.handleError = realHandle;
+  }));
+
+  await check('raid night delete: the More menu item opens the in-app confirm; confirming deletes and drops the row (also on the person page)', withState(async (S) => {
+    const gdata = gd(OFFICER_CAN);
+    S.guilds.g1 = gdata; S.currentGid = 'g1';
+    S.att.lootNight = nightState();
+    S.att.personLoot = { gid: 'g1', pid: 'p_th', data: { person: PERSON_LOOT.person, awards: [AWARDS[1]], totals: PERSON_LOOT.totals } };
+    const realOpen = G.ui.openDialog, realRun = G.ui.runDialog, realRender = G.app.render;
+    const opened = [];
+    G.ui.openDialog = html => { opened.push(html); return null; };
+    G.ui.runDialog = (form, promise, ok) => promise.then(ok);
+    G.app.render = () => {};
+    G.handlers.click['ln-delete'](el({ 'data-aid': 'a2' }));
+    assert(opened[0].includes('Delete this award?') && opened[0].includes('Warp Slicer awarded to Kaelith-Ashmere') && opened[0].includes('data-submit="ln-delete-form"') && opened[0].includes('data-aid="a2"') && opened[0].includes('gs-btn-danger'));
+    G.handlers.click['ln-delete'](el({ 'data-aid': 'nope' }));
+    assert.equal(opened.length, 1);
+    const s = stub(() => Promise.resolve({ ok: true }));
+    G.handlers.submit['ln-delete-form']({ getAttribute: () => 'a2' });
+    await tick();
+    assert.deepEqual(s.calls[0], { m: 'del', url: '/api/guild/g1/loot/a2', body: {} });
+    assert.deepEqual(S.att.lootNight.awards.map(a => a.id), ['a1', 'a3', 'a4', 'd1']);
+    assert.equal(S.att.personLoot.data.awards.length, 0);
+    s.restore(); G.ui.openDialog = realOpen; G.ui.runDialog = realRun; G.app.render = realRender;
+  }));
+
+  const ITEM_DATA = { team: { id: 't1', name: 'Team KJ' }, item: { itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4 }, counts: { total: 4, MS: 3, OS: 1, DE: 0, BANK: 0 }, drops: [
+    Object.assign(award('i1', { raidId: 'r2', raidOn: '2026-10-11' }), { raidTitle: 'BT clear' }), Object.assign(award('i2', { raidId: 'r2', raidOn: '2026-10-11' }), { raidTitle: 'BT clear' }),
+    Object.assign(award('i3', { raidId: 'r1', raidOn: '2026-10-10', tag: 'OS', winner: { name: 'Kaelith', realm: 'Ashmere', class: 'ROGUE' }, match: { kind: 'unmatched' } }), { raidTitle: null }),
+    Object.assign(award('i4', { raidId: 'r0', raidOn: '2026-10-03', winner: { name: 'Dorrin', realm: 'Ashmere', class: 'PRIEST' }, match: { kind: 'guest' } }), { raidTitle: null })] };
+  const itemPage = (state, can) => G.pages.lootItem.itemHtml({ guildData: gd(can || OFFICER_CAN), state });
+
+  await check('item page: header counts, drops over time, who has it with times, tags and nights; the duplicate chip is for edit holders', () => {
+    const out = itemPage({ status: 'ok', itemId: '28770', data: ITEM_DATA });
+    assert(out.includes('>Nathrezim Mindblade</h1>') && out.includes('4 awards on 3 raid nights - last dropped Sun Oct 11'));
+    assert(out.includes('<dt>Awards</dt><dd>4</dd>') && out.includes('<dt>Main spec</dt><dd>3</dd>') && out.includes('<dt>Off spec</dt><dd>1</dd>') && out.includes('<dt>Raid nights</dt><dd>3</dd>'));
+    const over = out.slice(out.indexOf('aria-label="Awards per night"'));
+    assert(over.indexOf('Sat Oct 3') < over.indexOf('Sat Oct 10') && over.indexOf('Sat Oct 10') < over.indexOf('Sun Oct 11'), 'oldest night first in the drops list');
+    assert(out.includes('aria-label="Who has Nathrezim Mindblade"') && out.includes('href="#/g/g1/loot/n/r2"') && out.includes('Possible duplicate'));
+    assert(out.includes('To fix an award, open its raid night and use More.') && out.includes('Review in Needs fixing') && out.includes('href="#/g/g1/loot/fix"'));
+    const member = itemPage({ status: 'ok', itemId: '28770', data: ITEM_DATA }, MEMBER_CAN);
+    assert(!member.includes('Possible duplicate') && !member.includes('Review in Needs fixing') && !member.includes('To fix an award'));
+    assertEscaped(itemPage({ status: 'ok', itemId: '1', data: Object.assign({}, ITEM_DATA, { item: { itemId: 1, itemName: HOSTILE, quality: 4 } }) }), 'item');
+    assertNoRawAttrs(out);
+  });
+
+  await check('item page: 404 reads "Nobody has received that item yet.", 403 says look-up is off; load reads the item route per team', withState(async (S) => {
+    assert(itemPage({ status: 'none' }).includes('Nobody has received that item yet.'));
+    assert(/Your guild doesn(&#39;|')t let members look up items\./.test(itemPage({ status: 'denied' }, MEMBER_CAN)));
+    const gdata = gd(OFFICER_CAN);
+    S.guilds.g1 = gdata; S.currentGid = 'g1';
+    const realTeamFor = ctx.Guild.app.teamFor;
+    ctx.Guild.app.teamFor = () => 't1';
+    const route = { name: 'lootitem', gid: 'g1', itemId: '28770' };
+    let s = stub(() => Promise.resolve(ITEM_DATA));
+    await G.pages.lootItem.load(route, gdata);
+    assert.equal(s.calls[0].url, '/api/guild/g1/loot/items/28770?team=t1');
+    assert.equal(G.pages.lootItem.nameFor(route), 'Nathrezim Mindblade');
+    assert(G.pages.lootItem.main(route, gdata).includes('Who has it'));
+    assert(G.pages.lootItem.main({ name: 'lootitem', gid: 'g1', itemId: '1' }, gdata).includes('Loading'));
+    s.restore();
+    s = stub(() => Promise.reject(new G.api.ApiError(404, { error: 'not_found' })));
+    await G.pages.lootItem.load(route, gdata);
+    assert.equal(G.app.state.att.lootItem.status, 'none');
+    s.restore();
+    s = stub(() => Promise.reject(new G.api.ApiError(403, { error: 'forbidden' })));
+    await G.pages.lootItem.load(route, gdata);
+    assert.equal(G.app.state.att.lootItem.status, 'denied');
+    s.restore();
+    s = stub(() => Promise.reject(new G.api.ApiError(500, { error: 'boom' })));
+    await assert.rejects(G.pages.lootItem.load(route, gdata), err => err.status === 500);
+    s.restore();
+    ctx.Guild.app.teamFor = realTeamFor;
+  }));
+
+  await check('award record and Needs fixing: placeholders until the next lane, but routed', withState(async (S) => {
+    S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
+    assert(G.pages.lootAward.main({ name: 'lootaward', gid: 'g1', aid: 'a1' }, S.guilds.g1).includes('Not built yet'));
+    assert(G.pages.lootFix.main({ name: 'lootfix', gid: 'g1' }, S.guilds.g1).includes('Not built yet'));
+  }));
 
   // ── Link / Add as new person for a winner whose class nobody knows ──
   const CLASS_IDS = ['WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID'];
@@ -1410,7 +1747,7 @@ function withState(fn) {
 
   // ── pages and safety ───────────────────────────────────────────
   await check('safety: the loot scripts have no inline styles or handlers, no non-ASCII characters, and their script tags are on all three pages in list order', () => {
-    const names = ['gargul', 'pages-loot', 'pages-person-loot', 'pages-raid-loot', 'pages-settings-loot'];
+    const names = ['gargul', 'pages-loot', 'pages-person-loot', 'pages-loot-hub', 'pages-loot-night', 'pages-raid-loot', 'pages-settings-loot'];
     for (const n of names) {
       const f = 'js/guild/' + n + '.js';
       read(f).split('\n').forEach((line, i) => {
@@ -1438,7 +1775,7 @@ function withState(fn) {
   });
 
   await check('safety: the loot code only ever calls the contract routes (every path in the pages comes from G.api.loot)', () => {
-    const src = ['pages-loot', 'pages-person-loot', 'pages-raid-loot', 'pages-settings-loot'].map(n => read('js/guild/' + n + '.js')).join('\n');
+    const src = ['pages-loot', 'pages-person-loot', 'pages-loot-hub', 'pages-loot-night', 'pages-raid-loot', 'pages-settings-loot'].map(n => read('js/guild/' + n + '.js')).join('\n');
     assert(!/G\.api\.(get|post|put|patch|del)\(/.test(src), 'loot pages go through G.api.loot, not raw paths');
     // The loot block of api.js (the sign-up and schedule calls after it have their own routes and their own suite).
     const api = read('js/guild/api.js');

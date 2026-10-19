@@ -248,7 +248,7 @@
     if (item.key === 'roster' && (route.name === 'person' || route.name === 'import' || route.name === 'intent' || route.name === 'recruiting' || route.name === 'applications' || route.name === 'launch')) return true;
     if (item.key === 'raids' && (route.name === 'raidnew' || route.name === 'raid' || route.name === 'away')) return true;
     if (item.key === 'attendance' && (route.name === 'review' || route.name === 'backfill' || route.name === 'personatt')) return true;
-    if (item.key === 'loot' && route.name === 'lootperson') return true;
+    if (item.key === 'loot' && /^loot(person|standings|night|item|award|fix)$/.test(route.name)) return true;
     return route.name === 'section' && route.section === item.key; // Home included: its key is the 'home' section
   }
 
@@ -391,6 +391,11 @@
     backfill: { parent: 'attendance', parentLabel: 'Attendance', label: 'Backfill from Warcraft Logs' },
     personatt: { parent: 'attendance', parentLabel: 'Attendance', label: 'Person' },
     lootperson: { parent: 'loot', parentLabel: 'Loot', label: 'Person' },
+    lootstandings: { parent: 'loot', parentLabel: 'Loot', label: 'Standings' },
+    lootnight: { parent: 'loot', parentLabel: 'Loot', label: 'Night' },
+    lootitem: { parent: 'loot', parentLabel: 'Loot', label: 'Item' },
+    lootaward: { parent: 'loot', parentLabel: 'Loot', label: 'Award' },
+    lootfix: { parent: 'loot', parentLabel: 'Loot', label: 'Needs fixing' },
     intent: { parent: 'roster', parentLabel: 'Roster', label: 'Spec poll' },
     recruiting: { parent: 'roster', parentLabel: 'Roster', label: 'Recruiting' },
     applications: { parent: 'roster', parentLabel: 'Roster', label: 'Recruiting' },

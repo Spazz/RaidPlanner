@@ -134,6 +134,23 @@
     });
   }
 
+  // The post-raid Loot card is a summary: the counts by tag and the first few awards (read-only), with a link to the night's loot page where awards are changed.
+  const SUMMARY_ROWS = 5;
+  function summaryHtml(gd, awards, rid) {
+    const gid = gd.guild.id;
+    const counts = L().TAGS.map(function (t) {
+      return [t, awards.filter(function (w) { return w.tag === t; }).length];
+    }).filter(function (c) { return c[1] > 0; });
+    const countLine = '<p class="gs-fine" id="loot-counts">' + counts.map(function (c) { return esc(c[1] + ' ' + L().TAG_LABELS[c[0]]); }).join(' &middot; ') + '</p>';
+    const rows = awards.slice(0, SUMMARY_ROWS).map(function (w) {
+      return '<li class="gs-loot-subrow"><span class="gs-loot-item">' + L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span>' +
+        '<span class="gs-loot-who">' + L().winnerHtml(gid, w.winner, w.match) + '</span>' + L().tagChipHtml(w.tag, w.tagSetBy) + '</li>';
+    }).join('');
+    const more = awards.length > SUMMARY_ROWS ? '<p class="gs-fine">' + esc('And ' + (awards.length - SUMMARY_ROWS) + ' more.') + '</p>' : '';
+    return countLine + '<ul class="gs-loot-sublist" aria-label="Loot awarded on this raid">' + rows + '</ul>' + more +
+      '<p><a class="gs-btn gs-btn-sm" id="loot-open-night" href="' + esc(G.router.format({ name: 'lootnight', gid: gid, rid: rid })) + '">Open the night\'s loot</a></p>';
+  }
+
   // opts: { guildData, data (the raid detail), state (stateFor) }
   function cardHtml(opts) {
     const gd = opts.guildData;
@@ -150,9 +167,7 @@
     const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot awards</h2><span class="gs-head-tools"><span class="gs-fine">' + esc(plural(awards.length, 'item', 'items')) + '</span>' +
       (canImport(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-import-open" data-key="loot-import-open">Import from Gargul</button>' : '') +
       (canAdd(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-add-open" data-key="loot-add-open">Add award</button>' : '') + '</span></div>';
-    const list = awards.length
-      ? '<ul class="gs-loot-list" aria-label="Loot awarded on this raid">' + awards.map(function (w) { return L().awardRowHtml(gd, w, { edit: edit, when: 'time' }); }).join('') + '</ul>'
-      : '<p class="gs-empty">' + (edit ? 'No loot is recorded for this raid yet. Import a Gargul export to add it, or add an award by hand.' : 'No loot is recorded for this raid yet.') + '</p>';
+    const list = awards.length ? summaryHtml(gd, awards, opts.data.raid.id) : '<p class="gs-empty">' + (edit ? 'No loot is recorded for this raid yet. Import a Gargul export to add it, or add an award by hand.' : 'No loot is recorded for this raid yet.') + '</p>';
     const note = unmatched > 0
       ? '<div class="gs-notice" role="status"><span>' + esc(plural(unmatched, 'award goes', 'awards go')) + ' to a winner who is not on the roster. ' + (review ? 'Link them in the Review queue so the loot counts for the right person.' : 'An officer can link them.') + '</span>' +
         (review ? '<a class="gs-btn gs-btn-sm" href="' + esc(G.router.format({ name: 'review', gid: gid })) + '">Review queue</a>' : '') + '</div>' : '';
@@ -489,15 +504,20 @@
     });
   };
 
+  // The confirm dialog for deleting an award (the raid night and person pages use it too, with their own submit handler).
+  function deleteDialogHtml(award, submit) {
+    return '<form class="gs-dialog-form" data-submit="' + esc(submit || 'loot-delete-form') + '" data-aid="' + esc(award.id) + '" novalidate>' +
+      '<h2 class="gs-dialog-title" id="dlg-title">Delete this award?</h2>' +
+      '<p class="gs-confirm-text" id="dlg-text">' + esc((award.itemName || 'This item') + (L().isDisenchanted(award) ? ' (disenchanted)' : ' awarded to ' + L().winnerText(award.winner))) + ' is removed from the raid and from the balance.' + (award.manual ? '' : ' Importing the same Gargul export again asks before it adds it back.') + '</p>' +
+      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
+      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Delete award</button></div></form>';
+  }
+
   G.handlers.click['loot-delete'] = function (el) {
     const c = cur();
     const award = c ? awardOf(c, el.getAttribute('data-aid')) : null;
     if (!award) return;
-    G.ui.openDialog('<form class="gs-dialog-form" data-submit="loot-delete-form" data-aid="' + esc(award.id) + '" novalidate>' +
-      '<h2 class="gs-dialog-title" id="dlg-title">Delete this award?</h2>' +
-      '<p class="gs-confirm-text" id="dlg-text">' + esc((award.itemName || 'This item') + (L().isDisenchanted(award) ? ' (disenchanted)' : ' awarded to ' + L().winnerText(award.winner))) + ' is removed from the raid and from the balance.' + (award.manual ? '' : ' Importing the same Gargul export again adds it back.') + '</p>' +
-      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Delete award</button></div></form>', { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+    G.ui.openDialog(deleteDialogHtml(award), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
   };
 
   G.handlers.submit['loot-delete-form'] = function (form) {
@@ -518,6 +538,8 @@
     canAdd: canAdd,
     cardHtml: cardHtml,
     addDialogHtml: addDialogHtml,
+    deleteDialogHtml: deleteDialogHtml,
+    summaryHtml: summaryHtml,
     importPanelHtml: importPanelHtml,
     resultLine: resultLine,
     previewAward: previewAward,

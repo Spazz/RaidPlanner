@@ -1,9 +1,7 @@
 // ── PAGE: LOOT (+ the award vocabulary every loot page shares) ──
 // The tag / flag / item / winner builders live here; pages-raid-loot, pages-person-loot and pages-review use them.
-// The page itself (#/g/:gid/loot): header, view switch (Balance / By raid / By item), then
-//   Balance  - GET /loot/balance?team=&weeks= : a sortable table of people (phone: cards), window switch like Attendance
-//   By raid  - GET /loot/raids?team= : one row per raid with awards, each linking to the raid page
-//   By item  - GET /loot/items?team= : one expandable row per item with its awards
+// The Loot section (#/g/:gid/loot) is the hub in pages-loot-hub.js (which also draws Standings); the raid night and item pages are in
+// pages-loot-night.js. This module also keeps the balance maths (balanceRows, sortRows) the standings use.
 // See the Phase 4 spec (tasks/guild-phase4-spec.md, sections 5 and 6). This file is safe to load alone: nothing here
 // runs at load time.
 (function (G) {
@@ -16,7 +14,6 @@
   const TAG_LABELS = { MS: 'MS', OS: 'OS', DE: 'DE', BANK: 'Bank' };
   const TAG_NAMES = { MS: 'Main spec', OS: 'Off-spec', DE: 'Disenchanted', BANK: 'Guild bank' };
   const FLAG_LABELS = { OS: 'Off-spec roll', SR: 'Soft-res', WL: 'Wishlist', PL: 'Prio', TMB: 'TMB' };
-  const VIEWS = [{ value: 'balance', label: 'Balance' }, { value: 'raids', label: 'By raid' }, { value: 'items', label: 'By item' }];
   const COLUMNS = ['name', 'raids', 'ms', 'os', 'counted', 'perRaid', 'vs'];
   const COLUMN_LABELS = { name: 'Player', raids: 'Raids', ms: 'MS', os: 'OS', counted: 'Counted', perRaid: 'Per raid', vs: 'Vs team' };
 
@@ -62,8 +59,9 @@
     return '<span class="gs-chip gs-chip-tag' + (tag === 'MS' ? '' : ' is-' + String(tag).toLowerCase()) + '" title="' + esc(has(TAG_NAMES, tag) ? TAG_NAMES[tag] : tag) + '">' + esc(tagLabel(tag)) + by + '</span>';
   }
 
-  function tagSelectHtml(award) {
-    return '<label class="gs-sr" for="tag-' + esc(award.id) + '">Tag for ' + esc(award.itemName || 'this item') + '</label><select class="gs-input gs-input-sm gs-loot-tagsel" id="tag-' + esc(award.id) + '" data-change="loot-tag" data-aid="' + esc(award.id) + '" data-key="tag-' + esc(award.id) + '">' +
+  // action: the data-change handler (the raid card's 'loot-tag' by default; the raid night page uses 'ln-tag').
+  function tagSelectHtml(award, action) {
+    return '<label class="gs-sr" for="tag-' + esc(award.id) + '">Tag for ' + esc(award.itemName || 'this item') + '</label><select class="gs-input gs-input-sm gs-loot-tagsel" id="tag-' + esc(award.id) + '" data-change="' + esc(action || 'loot-tag') + '" data-aid="' + esc(award.id) + '" data-key="tag-' + esc(award.id) + '">' +
       TAGS.map(function (t) { return '<option value="' + t + '"' + (t === award.tag ? ' selected' : '') + '>' + esc(TAG_NAMES[t]) + '</option>'; }).join('') + '</select>';
   }
 
@@ -202,61 +200,6 @@
     return list.map(tagLabel).join(' and ');
   }
 
-  // ── page pieces ──
-  function viewSwitchHtml(view) {
-    return '<div class="gs-segs" role="group" aria-label="Loot view">' + VIEWS.map(function (v) {
-      return '<button type="button" class="gs-seg" data-action="loot-view" data-view="' + v.value + '" data-key="lview-' + v.value + '" aria-pressed="' + (view === v.value ? 'true' : 'false') + '">' + esc(v.label) + '</button>';
-    }).join('') + '</div>';
-  }
-
-  function windowSwitchHtml(data, ui) {
-    const w = data.window || {};
-    const weeks = Array.isArray(w.switchWeeks) && w.switchWeeks.length ? w.switchWeeks : [8, 12];
-    const items = weeks.map(function (n) { return { value: n, label: n + ' weeks' }; }).concat([{ value: 'all', label: 'All time' }]);
-    const current = ui.window === 'all' ? 'all' : (typeof w.weeks === 'number' ? w.weeks : null);
-    return '<div class="gs-segs" role="group" aria-label="Time window">' + items.map(function (it) {
-      return '<button type="button" class="gs-seg" data-action="loot-window" data-window="' + esc(it.value) + '" data-key="lwin-' + esc(it.value) + '" aria-pressed="' + (String(current) === String(it.value) ? 'true' : 'false') + '">' + esc(it.label) + '</button>';
-    }).join('') + '</div>';
-  }
-
-  function sortHeaderHtml(col, sort) {
-    const aria = A().ariaSort(sort, col);
-    const dir = aria === 'descending' ? 'desc' : aria === 'ascending' ? 'asc' : '';
-    return '<th scope="col"' + (aria ? ' aria-sort="' + aria + '"' : '') + '><button type="button" class="gs-sort" data-action="loot-sort" data-col="' + col + '" data-key="lsort-' + col + '"' + (dir ? ' data-dir="' + dir + '"' : '') + '>' +
-      esc(COLUMN_LABELS[col]) + '<span class="gs-sort-ind" aria-hidden="true"></span></button></th>';
-  }
-
-  function nameCellHtml(gid, r) {
-    const link = r.id
-      ? '<a class="gs-char-link ' + G.ui.classClass(r.class) + '" href="' + esc(G.router.format({ name: 'lootperson', gid: gid, pid: r.id })) + '">' + esc(r.name) + '</a>'
-      : G.ui.classNameHtml(r.name, r.class);
-    return '<span class="gs-att-name">' + link + (r.isMe ? '<span class="gs-you">You</span>' : '') + (r.status === 'inactive' ? '<span class="gs-chip gs-chip-plain">Inactive</span>' : '') + '</span>';
-  }
-
-  function balanceTableHtml(gid, rows, columns, sort) {
-    const cell = function (c, r) {
-      switch (c) {
-        case 'raids': return count(r.raids);
-        case 'ms': return count(r.ms);
-        case 'os': return count(r.os);
-        case 'counted': return count(r.counted);
-        case 'perRaid': return fixed(r.perRaid, 2);
-        default: return signed(r.vs);
-      }
-    };
-    const head = columns.map(function (c) { return sortHeaderHtml(c, sort); }).join('');
-    const body = rows.map(function (r) {
-      return '<tr' + (r.isMe ? ' class="is-you"' : '') + '><th scope="row" class="gs-cell-strong">' + nameCellHtml(gid, r) + '</th>' +
-        columns.slice(1).map(function (c) { return '<td class="gs-nowrap gs-num">' + esc(cell(c, r)) + '</td>'; }).join('') + '</tr>';
-    }).join('');
-    const cards = rows.map(function (r) {
-      return '<li class="gs-loot-card' + (r.isMe ? ' is-you' : '') + '"><div class="gs-card-top">' + nameCellHtml(gid, r) + '</div><dl class="gs-att-stats">' +
-        columns.slice(1).map(function (c) { return '<div><dt>' + esc(COLUMN_LABELS[c]) + '</dt><dd>' + esc(cell(c, r)) + '</dd></div>'; }).join('') + '</dl></li>';
-    }).join('');
-    return '<div class="gs-table-wrap gs-loot-table"><table class="gs-table gs-table-loot" aria-label="Loot balance"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
-      '<ul class="gs-loot-cards" aria-label="Loot balance">' + cards + '</ul>';
-  }
-
   function emptyHtml(gd, teamId) {
     const edit = allows(gd, 'loot.edit', teamId);
     return '<section class="gs-empty-card" aria-labelledby="loot-empty-h"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('loot', 28) + '</span>' +
@@ -268,177 +211,18 @@
   function noAccessHtml(gd, teamId) {
     const team = teamOf(gd, teamId);
     return '<div class="gs-page"><div class="gs-page-head"><h1 class="gs-h1" tabindex="-1">Loot</h1></div><section class="gs-empty-card"><span class="gs-empty-icon" aria-hidden="true">' + G.icons.icon('loot', 28) + '</span>' +
-      '<h2 class="gs-h2 gs-h2-lg">You can\'t see this team\'s loot</h2><p class="gs-lead gs-lead-sm">Who sees the loot of ' + esc(team ? team.name : 'this team') + ' is set by the guild\'s officers in Guild settings.</p></section></div>';
+      '<h2 class="gs-h2 gs-h2-lg">You can\'t see this team\'s loot</h2><p class="gs-fine">Who sees the loot of ' + esc(team ? team.name : 'this team') + ' is set by the guild\'s officers in Guild settings.</p></section></div>';
   }
 
-  // The Balance view's window switch sits in the page's segment bar, and only when the table does (an empty view keeps just the view switch).
-  function balanceBarHtml(gd, teamId, data, ui) {
-    const rows = balanceRows(data, ui.window === 'all' ? 'all' : 'window');
-    return rows.length && totalAwards(data) > 0 ? windowSwitchHtml(data, ui) : '';
-  }
-
-  function balanceBodyHtml(gd, teamId, data, ui) {
-    const gid = gd.guild.id;
-    const w = ui.window === 'all' ? 'all' : 'window';
-    const mode = data.mode === 'count' ? 'count' : 'perRaid';
-    const columns = mode === 'count' ? ['name', 'raids', 'ms', 'os', 'counted'] : COLUMNS;
-    const rows = balanceRows(data, w);
-    const sorted = pinMine(sortRows(rows, ui.sort || defaultSort(mode))); // the viewer's own row first ("You"), whatever the sort
-    const avg = figure(data.teamAverage, w);
-    const own = data.scope === 'own';
-    const since = data.window && typeof data.window.from === 'string' && G.ui.formatDay(data.window.from) ? ' since ' + G.ui.formatDay(data.window.from) : '';
-    const rules = mode === 'count'
-      ? 'Counted items: ' + countedText(data.countTags) + '. People are ranked by how many they have counted.'
-      : 'Counted items: ' + countedText(data.countTags) + '. Per raid is the counted items divided by the raids the person attended; Vs team is the difference from the team average.';
-    const averageLine = mode === 'perRaid'
-      ? '<dl class="gs-summary"><div class="gs-summary-item"><dt>Team average per raid</dt><dd>' + esc(fixed(avg, 2)) + '</dd></div></dl>' : '';
-    if (!rows.length || !(totalAwards(data) > 0)) return emptyHtml(gd, teamId);
-    const span = ui.window === 'all' ? 'All time. ' : (data.window && typeof data.window.weeks === 'number' ? 'Last ' + plural(data.window.weeks, 'full reset week', 'full reset weeks') + since + '. ' : '');
-    return (own ? '<div class="gs-notice" role="status"><span>You see your own loot only. The team average is for comparison. Officers choose who sees what in Guild settings.</span></div>' : '') +
-      '<p class="gs-fine" id="loot-rules">' + esc(span + rules) + '</p>' +
-      averageLine + balanceTableHtml(gid, sorted, columns, ui.sort || defaultSort(mode));
-  }
-
-  function raidsBodyHtml(gd, teamId, data) {
-    const gid = gd.guild.id;
-    const list = Array.isArray(data.raids) ? data.raids : [];
-    if (!list.length) return emptyHtml(gd, teamId);
-    const href = function (x) { return G.router.format({ name: 'raid', gid: gid, rid: x.raidId }); };
-    const title = function (x) { return [x.title, x.zone].filter(Boolean).join(' - '); };
-    const body = list.map(function (x) {
-      return '<tr><th scope="row" class="gs-cell-strong"><a class="gs-raid-link" href="' + esc(href(x)) + '">' + esc(G.ui.weekdayDay(x.raidOn) || x.raidOn) + '</a></th><td>' + (title(x) ? esc(title(x)) : '<span class="gs-muted">-</span>') + '</td>' +
-        '<td class="gs-num">' + esc(count(num(x.awards))) + '</td><td class="gs-num">' + esc(count(num(x.counted))) + '</td><td class="gs-num">' + disenchantedCell(x.disenchanted) + '</td><td>' + unmatchedChip(x.unmatched) + '</td></tr>';
-    }).join('');
-    const cards = list.map(function (x) {
-      return '<li class="gs-loot-card"><div class="gs-card-top"><a class="gs-raid-link" href="' + esc(href(x)) + '">' + esc(G.ui.weekdayDay(x.raidOn) || x.raidOn) + '</a>' + unmatchedChip(x.unmatched) + '</div>' +
-        (title(x) ? '<p class="gs-fine">' + esc(title(x)) + '</p>' : '') + '<dl class="gs-att-stats"><div><dt>Awards</dt><dd>' + esc(count(num(x.awards))) + '</dd></div><div><dt>Counted</dt><dd>' + esc(count(num(x.counted))) + '</dd></div>' +
-        (num(x.disenchanted) > 0 ? '<div><dt>Disenchanted</dt><dd>' + esc(count(num(x.disenchanted))) + '</dd></div>' : '') + '</dl></li>';
-    }).join('');
-    return '<div class="gs-table-wrap gs-loot-table"><table class="gs-table gs-table-lootraids" aria-label="Loot by raid"><thead><tr><th scope="col">Raid</th><th scope="col">Zone</th><th scope="col">Awards</th><th scope="col">Counted</th><th scope="col">Disenchanted</th><th scope="col">Winners not on the roster</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
-      '<ul class="gs-loot-cards" aria-label="Loot by raid">' + cards + '</ul>';
-  }
-
-  // Items nobody won (Gargul's disenchants) on a raid; a dash when there are none.
-  function disenchantedCell(n) {
-    return num(n) > 0 ? esc(count(num(n))) : '<span class="gs-muted">-</span>';
-  }
-
-  function unmatchedChip(n) {
-    return num(n) > 0 ? '<span class="gs-chip gs-chip-flag">' + esc(plural(n, 'winner', 'winners')) + ' not on the roster</span>' : '<span class="gs-muted">-</span>';
-  }
-
-  function itemsBodyHtml(gd, teamId, data) {
-    const gid = gd.guild.id;
-    const list = Array.isArray(data.items) ? data.items : [];
-    if (!list.length) return emptyHtml(gd, teamId);
-    return '<ul class="gs-loot-items" aria-label="Loot by item">' + list.map(function (it) {
-      const awards = Array.isArray(it.awards) ? it.awards : [];
-      const rows = awards.map(function (x) {
-        return '<li class="gs-loot-subrow"><a href="' + esc(G.router.format({ name: 'raid', gid: gid, rid: x.raidId })) + '">' + esc(G.ui.weekdayDay(x.raidOn) || x.raidOn) + '</a>' +
-          '<span class="gs-loot-who">' + winnerHtml(gid, x.winner, x.match) + '</span>' + tagChipHtml(x.tag, x.tagSetBy) + '</li>';
-      }).join('');
-      return '<li class="gs-loot-itemrow"><details class="gs-loot-item"><summary><span class="gs-loot-item-name">' + itemHtml({ itemId: it.itemId, itemName: it.itemName, quality: it.quality }, gd.guild.gameVersion) + '</span>' +
-        '<span class="gs-fine">' + esc(plural(num(it.count) == null ? awards.length : it.count, 'award', 'awards')) + (it.lastAwardedAt ? ' &middot; last ' + esc(dateText(it.lastAwardedAt, gd.guild.timeZone)) : '') + '</span></summary>' +
-        (rows ? '<ul class="gs-loot-sublist" aria-label="Awards of this item">' + rows + '</ul>' : '<p class="gs-fine">No awards listed.</p>') + '</details></li>';
-    }).join('') + '</ul>';
-  }
-
-  // opts: { guildData, teamId, view, data, denied, ui: { sort, window }, alert }
-  function lootHtml(opts) {
-    const gd = opts.guildData;
-    const teamId = opts.teamId;
-    if (opts.denied) return noAccessHtml(gd, teamId);
-    const view = opts.view || 'balance';
-    const data = opts.data || {};
-    const several = G.shell.activeTeams(gd.teams).length > 1;
-    const team = teamOf(gd, teamId);
-    const people = Array.isArray(data.people) ? data.people : null;
-    const context = (several && team ? team.name : gd.guild.name) + (view === 'balance' && people ? ' - ' + plural(people.length, 'person', 'people') : '');
-    const pageUi = opts.ui || { sort: null, window: null };
-    let body;
-    if (view === 'raids') body = raidsBodyHtml(gd, teamId, data);
-    else if (view === 'items') body = itemsBodyHtml(gd, teamId, data);
-    else body = balanceBodyHtml(gd, teamId, data, pageUi);
-    return G.ui.listPageHtml({
-      head: { title: 'Loot', context: context }, pageClass: 'gs-loot-page',
-      noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'),
-      barHtml: viewSwitchHtml(view) + (view === 'balance' ? balanceBarHtml(gd, teamId, data, pageUi) : ''), bodyHtml: body,
-    });
-  }
-
-  // ── data ──
-  function ui() {
-    const s = a();
-    if (!s.lootUi) s.lootUi = { sort: null, window: null, windowTeam: null };
-    return s.lootUi;
-  }
-
-  function viewOf(r) { return r && r.view === 'raids' ? 'raids' : (r && r.view === 'items' ? 'items' : 'balance'); }
-
-  function load(r, gd) {
-    const gid = gd.guild.id;
-    const teamId = G.app.teamFor(gd);
-    const view = viewOf(r);
-    if (!teamId) { a().loot = { gid: gid, teamId: null, view: view, data: null }; return null; }
-    const u = ui();
-    // A window belongs to one team (each team has its own offered weeks): a team change goes back to its default.
-    if (u.windowTeam !== teamId) { u.window = null; u.windowTeam = teamId; }
-    let call;
-    if (view === 'raids') call = G.api.loot.raids(gid, teamId);
-    else if (view === 'items') call = G.api.loot.items(gid, teamId);
-    else {
-      const weeks = typeof u.window === 'number' ? u.window : null;
-      // A week count the team does not offer is a 400: fall back to its default.
-      call = G.api.loot.balance(gid, teamId, weeks).catch(function (err) {
-        if (weeks != null && err && err.status === 400) { u.window = null; return G.api.loot.balance(gid, teamId, null); }
-        throw err;
-      });
-    }
-    return call.then(function (data) {
-      a().loot = { gid: gid, teamId: teamId, view: view, data: data, denied: false };
-      return null;
-    }, function (err) {
-      if (err && err.status === 403) { a().loot = { gid: gid, teamId: teamId, view: view, data: null, denied: true }; return null; }
-      throw err;
-    });
-  }
-
-  function main(r, gd) {
-    const x = a().loot;
-    if (!x || x.gid !== gd.guild.id || x.view !== viewOf(r)) return G.pages.signin.loadingHtml();
-    if (!x.teamId) return G.pages.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
-    return lootHtml({ guildData: gd, teamId: x.teamId, view: x.view, data: x.data, denied: x.denied, ui: ui(), alert: st().pageAlert });
-  }
-
-  // ── handlers ──
-  G.handlers.click['loot-view'] = function (el) {
-    const gd = currentGd();
-    if (!gd) return;
-    const v = el.getAttribute('data-view');
-    G.app.go(G.router.format({ name: 'section', gid: gd.guild.id, section: 'loot', view: v === 'raids' || v === 'items' ? v : undefined }));
-  };
-
-  G.handlers.click['loot-window'] = function (el) {
-    const raw = el.getAttribute('data-window');
-    ui().window = raw === 'all' ? 'all' : Number(raw);
-    // All time is already in the answer (every figure comes as window and all); a week count needs its own answer.
-    if (raw === 'all') G.app.render(); else G.app.routeAll({ force: true });
-  };
-
-  G.handlers.click['loot-sort'] = function (el) {
-    const x = a().loot;
-    const mode = x && x.data && x.data.mode === 'count' ? 'count' : 'perRaid';
-    const u = ui();
-    u.sort = nextSort(u.sort || defaultSort(mode), el.getAttribute('data-col'));
-    G.app.render();
-  };
+  // The Loot section is the hub (pages-loot-hub.js); this module keeps the vocabulary and the balance maths the other loot pages share.
+  function load(r, gd) { return G.pages.lootHub.load(r, gd); }
+  function main(r, gd) { return G.pages.lootHub.main(r, gd); }
 
   G.pages.loot = {
     TAGS: TAGS,
     TAG_LABELS: TAG_LABELS,
     TAG_NAMES: TAG_NAMES,
     FLAG_LABELS: FLAG_LABELS,
-    VIEWS: VIEWS,
     COLUMNS: COLUMNS,
     itemUrl: itemUrl,
     itemHtml: itemHtml,
@@ -455,12 +239,20 @@
     defaultSort: defaultSort,
     nextSort: nextSort,
     sortRows: sortRows,
-    lootHtml: lootHtml,
     emptyHtml: emptyHtml,
+    noAccessHtml: noAccessHtml,
+    countedText: countedText,
+    pinMine: pinMine,
+    fixed: fixed,
+    count: count,
+    signed: signed,
+    figure: figure,
+    totalAwards: totalAwards,
+    num: num,
+    dateText: dateText,
     plural: plural,
     allows: allows,
     apiBase: apiBase,
-    viewOf: viewOf,
     load: load,
     main: main,
   };

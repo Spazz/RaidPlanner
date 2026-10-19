@@ -51,6 +51,8 @@
     '/js/guild/pages-ranks.js',
     '/js/guild/pages-loot.js',
     '/js/guild/pages-person-loot.js',
+    '/js/guild/pages-loot-hub.js',
+    '/js/guild/pages-loot-night.js',
     '/js/guild/pages-person-trial.js',
     '/js/guild/pages-raids.js',
     '/js/guild/pages-planner-landing.js',

@@ -815,7 +815,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.deepEqual(plain(crumbs.map(c => c.label)).slice(-2), ['Raids', 'Away notices']);
     assert(crumbs.find(c => c.label === 'Raids').href.endsWith('#/g/g1/raids'));
     const app = read('js/guild/app.js');
-    assert(/ATT_ROUTE_PAGES = \{[^}]*away: 'away'/.test(app) && /case 'lootperson': case 'away':/.test(app) && /\['away', 'standing', 'raidRoster'\]\.forEach/.test(app));
+    assert(/ATT_ROUTE_PAGES = \{[^}]*away: 'away'/.test(app) && /case 'lootperson': case 'lootstandings': case 'lootnight': case 'lootitem': case 'lootaward': case 'lootfix': case 'away':/.test(app) && /\['away', 'standing', 'raidRoster'\]\.forEach/.test(app));
     for (const page of ['index.html', 'faq.html', 'whats-new.html']) assert(guildScriptsOf(read(page)).includes('/js/guild/pages-away.js'), page);
     assert(GUILD_SCRIPTS.includes('/js/guild/pages-away.js') && GUILD_SCRIPTS.indexOf('/js/guild/pages-away.js') < GUILD_SCRIPTS.indexOf('/js/guild/app.js'));
     const menu = G.shell.accountMenuHtml({ me: { user: { displayName: 'A', username: 'a' }, identities: { discord: true } }, guildData: gd(MEMBER_CAN) });

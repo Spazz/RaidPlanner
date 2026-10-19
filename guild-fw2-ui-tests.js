@@ -161,16 +161,15 @@ const keys = items => plain(items.map(i => i.key));
   const lootPerson = (personId, name, isMe, perRaid) => ({ personId, name, class: 'DRUID', status: 'raider', isMe, raids: { window: 4, all: 6 }, items: { MS: { window: 1, all: 2 }, OS: { window: 0, all: 0 } },
     counted: { window: 1, all: 2 }, perRaid: { window: perRaid, all: perRaid }, vsTeam: 0 });
   const LOOT = people => ({ team: { id: 't1', name: 'Main team' }, window: { weeks: 8, switchWeeks: [8, 12], from: '2026-08-18' }, mode: 'perRaid', countTags: ['MS'], scope: 'team', people, teamAverage: { window: 0.4, all: 0.4 } });
-  const lootHtml = (data, can) => G.pages.loot.lootHtml({ guildData: gd(can || OFFICER_CAN), teamId: 't1', view: 'balance', data, ui: { sort: null, window: null } });
+  const standHtml = (data, can) => G.pages.lootStandings.standingsHtml({ guildData: gd(can || OFFICER_CAN), state: { status: 'ok', teamId: 't1', data } });
 
-  await check('loot: the viewer\'s row is first in the table and the cards with You; the view and window switches are the T1 segment bar', () => {
-    const out = lootHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9), lootPerson('p_m', 'Me', true, 0.1), lootPerson('p_z', 'Zed', false, 0.5)]));
-    assert.deepEqual([...out.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-att-name">(?:<a[^>]*>)?(?:<span[^>]*>)?([A-Za-z]+)/g)].map(m => [m[2], !!m[1]]), [['Me', true], ['Aimer', false], ['Zed', false]], 'You first although Me has the lowest per raid');
-    assert(out.includes('<span class="gs-you">You</span>') && count(out, /<li class="gs-loot-card is-you">/g) === 1);
-    assert(out.indexOf('class="gs-listbar"') < out.indexOf('data-action="loot-window"') && out.indexOf('data-action="loot-window"') < out.indexOf('<table class="gs-table gs-table-loot"'));
-    assert(/\.gs-table-loot tr\.is-you th\[scope="row"\] \{[^}]*text-primary/.test(css));
-    assert(!lootHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9)])).includes('is-you'));
-    assert(G.pages.loot.lootHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', view: 'balance', data: LOOT([]), ui: {} }).includes('No loot yet'), 'the empty view keeps only the view switch (no window switch over nothing)');
+  await check('loot: the viewer row is first in the standings table and the cards with You; the order and window switches are the T1 segment bar', () => {
+    const out = standHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9), lootPerson('p_m', 'Me', true, 0.1), lootPerson('p_z', 'Zed', false, 0.5)]));
+    assert.deepEqual([...out.matchAll(/<tr class="gs-dtable-row( is-you)?[^"]*"[^>]*><td[^>]*>[^<]*<\/td><th scope="row" class="gs-dtable-primary"><a[^>]*>([A-Za-z]+)/g)].map(m => [m[2], !!m[1]]), [['Me', true], ['Zed', false], ['Aimer', false]], 'You first although Me has the lowest per raid; the rest most due first');
+    assert(out.includes('<span class="gs-you">You</span>'));
+    assert(out.indexOf('class="gs-listbar"') < out.indexOf('data-action="loot-window"') && out.indexOf('data-action="loot-window"') < out.indexOf('<table class="gs-dtable"'));
+    assert(!standHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9)])).includes('is-you'));
+    assert(standHtml(LOOT([])).includes('No loot yet'), 'the empty view has no switches over nothing');
   });
 
   // ═══ one flag count ═══

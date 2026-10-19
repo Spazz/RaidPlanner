@@ -7,10 +7,15 @@
   'use strict';
 
   const RADIO = 'radio';
+  const BOOL = 'bool';
   const GROUPS = [
     { id: 'visibility', title: 'Who sees loot', fields: [
       { path: 'visibility.members', type: RADIO, label: 'Members see', options: [['own', 'Their own loot only'], ['ownTeams', 'The loot of their teams'], ['guild', 'The loot of the whole guild']],
         help: 'Officers and team leads always see the loot of their teams, and they are the only ones who import, re-tag or delete.' },
+    ] },
+    { id: 'members', title: 'What members see', intro: 'Members always see the latest raid nights and their own loot by raid day. These two are extra.', fields: [
+      { path: 'visibility.standings', type: BOOL, label: 'Who is due (standings)', help: 'Shows members the standings and the Who is due card. Off by default.' },
+      { path: 'visibility.itemLookup', type: BOOL, label: 'Look up an item', help: 'Lets members search an item and see who received it. Off by default.' },
     ] },
     { id: 'balance', title: 'Balance', fields: [
       { path: 'balance.mode', type: RADIO, label: 'The balance ranks people by', options: [['perRaid', 'Counted items per raid attended'], ['count', 'Plain item counts']] },
@@ -37,6 +42,12 @@
     const eff = S().effective(view, scope, draft, field.path);
     const id = fid(field.path);
     const set = Array.isArray(eff.value) ? eff.value : [];
+    if (field.type === BOOL) {
+      return '<fieldset class="gs-fieldset gs-pol-field" id="lpf-' + id + '"><legend class="gs-sr">' + esc(field.label) + '</legend><div class="gs-pol-markers">' + chipsOf(scope, eff, field) + '</div>' +
+        '<div class="gs-check"><input type="checkbox" id="lp-' + id + '" value="1"' + (eff.value === true ? ' checked' : '') + ' data-change="lpol-change" data-type="' + BOOL + '" data-path="' + esc(field.path) + '" data-key="lp-' + id + '"' +
+        ' aria-describedby="lphelp-' + id + '"><label for="lp-' + id + '">' + esc(field.label) + '</label></div>' +
+        (field.help ? '<p class="gs-fine" id="lphelp-' + id + '">' + esc(field.help) + '</p>' : '') + '<p class="gs-field-error" id="lperr-' + id + '" role="alert" hidden></p></fieldset>';
+    }
     const inner = '<div class="gs-radios">' + field.options.map(function (o, i) {
       const on = field.type === RADIO ? eff.value === o[0] : set.indexOf(o[0]) >= 0;
       return '<div class="gs-check"><input type="' + (field.type === RADIO ? 'radio' : 'checkbox') + '" id="lp-' + id + '-' + i + '"' + (field.type === RADIO ? ' name="lp-' + id + '"' : '') + ' value="' + esc(o[0]) + '"' + (on ? ' checked' : '') +
@@ -49,7 +60,7 @@
 
   function groupHtml(g, scope, draft, view) {
     return '<section class="gs-card-sec" aria-labelledby="lpg-' + g.id + '"><div class="gs-card-sec-head"><h2 class="gs-h2" id="lpg-' + g.id + '">' + esc(g.title) + '</h2></div><div class="gs-card-sec-body">' +
-      g.fields.map(function (f) { return fieldHtml(f, scope, draft, view); }).join('') + '</div></section>';
+      (g.intro ? '<p class="gs-fine">' + esc(g.intro) + '</p>' : '') + g.fields.map(function (f) { return fieldHtml(f, scope, draft, view); }).join('') + '</div></section>';
   }
 
   // How many settings differ from what is saved at this level (the Save bar's count). The guild default stores only what differs from the built-in rules.
@@ -113,7 +124,8 @@
     if (!s) return;
     const path = el.getAttribute('data-path');
     let v;
-    if (el.getAttribute('data-type') === RADIO) v = el.value;
+    if (el.getAttribute('data-type') === BOOL) v = !!el.checked;
+    else if (el.getAttribute('data-type') === RADIO) v = el.value;
     else {
       const boxes = el.closest('fieldset').querySelectorAll('input[type="checkbox"]');
       v = Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return b.value; });

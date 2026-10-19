@@ -465,7 +465,7 @@ check('loot card: Add award for an editor, a Manual chip with no time on a hand-
   const lootCard = (awards, can, edit) => G.pages.raidLoot.cardHtml({ guildData: gd(can || OFFICER_CAN), data: PAST(), state: { gid: 'g1', rid: 'r4', status: 'ok', data: { awards, canEdit: edit !== false }, ui: G.pages.raidLoot.freshUi() } });
   const out = lootCard([AWARD, Object.assign({}, AWARD, { id: 'lo_g', manual: undefined, awardedAt: Date.UTC(2026, 9, 18, 1, 30) })]);
   assert(out.includes('data-action="loot-add-open"') && out.includes('>Add award<'));
-  const rows = out.split('<li class="gs-loot-row').slice(1);
+  const rows = [AWARD, Object.assign({}, AWARD, { id: 'lo_g', manual: undefined, awardedAt: Date.UTC(2026, 9, 18, 1, 30) })].map(w => G.pages.loot.awardRowHtml(gd(OFFICER_CAN), w, { when: 'time' }));
   assert(rows[0].includes('>Manual<') && rows[0].includes('<span class="gs-loot-when"></span>'));
   assert(!rows[1].includes('>Manual<') && /gs-loot-when">\d+:\d\d/.test(rows[1]));
   assert(!lootCard([], MEMBER_CAN, false).includes('loot-add-open'));
@@ -554,7 +554,7 @@ check('add award: no roster (the call fails) still opens the dialog; a viewer wh
   assert(opened[0].includes('<datalist id="dlg-winners"></datalist>'));
   G.handlers.click['loot-delete'](el({ 'data-aid': 'lo_m' }));
   G.handlers.click['loot-delete'](el({ 'data-aid': 'lo_g' }));
-  assert(!opened[1].includes('Importing the same Gargul export again') && opened[2].includes('Importing the same Gargul export again adds it back.'));
+  assert(!opened[1].includes('Importing the same Gargul export again') && opened[2].includes('Importing the same Gargul export again asks before it adds it back.'));
   S.att.raidLoot.data.canEdit = false;
   G.handlers.click['loot-add-open']();
   await settle();

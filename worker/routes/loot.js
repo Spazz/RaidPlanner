@@ -722,7 +722,7 @@ export async function getLootHub(ctx) {
     const found = findFixes(entries, new Set(dismissalResult.results.map((row) => row.item_id)));
     fix = { duplicates: found.duplicates.length, unknown: found.unknown.length };
   }
-  return jsonResponse({ team: { id: team.id, name: team.name }, can, me, nights: nightsOf(visible).slice(0, HUB_NIGHTS), standingsTop, fix });
+  return jsonResponse({ team: { id: team.id, name: team.name }, can, me, nights: nightsOf(visible).slice(0, HUB_NIGHTS), standingsTop, fix, level: access.level });
 }
 
 // GET /loot/items/:lootitem?team=  -> { team, item: { itemId, itemName, quality }, counts: { total, MS, OS, DE, BANK }, drops: [award view + raidTitle] }

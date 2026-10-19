@@ -1694,7 +1694,8 @@ check('loot hub: the shape per role and per setting; My loot by night; latest 3 
   const hub = (who, team = s.A) => s.call(who, 'GET', `/loot/hub?team=${team}`);
   const editor = await hub('bob');
   assert.equal(editor.status, 200, JSON.stringify(editor.json));
-  assert.deepEqual(Object.keys(editor.json), ['team', 'can', 'me', 'nights', 'standingsTop', 'fix']);
+  assert.deepEqual(Object.keys(editor.json), ['team', 'can', 'me', 'nights', 'standingsTop', 'fix', 'level']);
+  assert.equal(editor.json.level, 'full');
   assert.deepEqual(editor.json.can, { edit: true, rules: true, standings: true, itemLookup: true });
   assert.equal(editor.json.me, null, 'Bob has no person on the roster');
   assert.deepEqual(editor.json.nights.map((n) => n.raid.raidOn), ['2027-01-12', '2027-01-05', '2026-11-03'], 'newest night first, the latest 3');
