@@ -199,13 +199,24 @@ export function summarizeCells(cells, opts) {
   return out;
 }
 
+// The raid id of the newest counted missed cell in [from, to] (cells run oldest first), or null.
+function latestMissedRaid(cells, policy, from, to) {
+  let found = null;
+  for (const cell of cells || []) {
+    if (cell.preStart || cell.date > to || (from !== null && from !== undefined && cell.date < from)) continue;
+    if ((cell.outcome === 'missed' || cell.outcome === 'missed_notice') && cellCounts(cell, policy)) found = cell.raidId;
+  }
+  return found;
+}
+
 // A drop is only judged when the previous window counted at least this many raids (one raid at 100% then one at 0% is noise).
 export const WATCH_MIN_PREVIOUS = 2;
 
 // Who is on a team's watch list: the rolling % under policy.watch.below, or fallen by policy.watch.dropBy or more against the previous window
 // of the same length (the windowWeeks reset weeks that end the day before this window starts). input is teamMetrics' input, plus
 // statuses (default raider and trial: a reserve or an inactive person is not expected to come). No window ('all') has no previous window.
-// -> { below, dropBy, windowWeeks, previousFrom, entries: [{ playerId, pct, previousPct, drop, counted, missed, missedNotice, reasons }] },
+// -> { below, dropBy, windowWeeks, previousFrom, entries: [{ playerId, pct, previousPct, drop, counted, missed, missedNotice, reasons, latestMissedRaidId }] },
+// latestMissedRaidId: the newest raid of the window the person missed (outcome missed or missed_notice, counted), or null: a Reviewed mark comes back when it changes.
 // lowest % first. Thresholds are fractions (0.75 is 75%); null is off, and with both off the list is empty.
 export function watchList(input) {
   const policy = input.policy;
@@ -239,7 +250,7 @@ export function watchList(input) {
     const counts = summarizeCells(mine.cells, { policy, from: current.windowStart, to: input.today });
     result.entries.push({
       playerId: person.id, pct: mine.pct, previousPct, drop: fall > 0 ? fall : null, counted: mine.counted,
-      missed: counts.missed, missedNotice: counts.missedNotice, reasons,
+      missed: counts.missed, missedNotice: counts.missedNotice, reasons, latestMissedRaidId: latestMissedRaid(mine.cells, policy, current.windowStart, input.today),
     });
   }
   result.entries.sort((a, b) => a.pct - b.pct || byText(a.playerId, b.playerId));

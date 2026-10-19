@@ -96,6 +96,8 @@ export const AUDIT_ACTIONS = [
   'duties.set',
   'launch.update',
   'launch.team',
+  'attention.dismiss',
+  'attention.restore',
   'join.create',
   'join.revoke',
   'signup.guest',

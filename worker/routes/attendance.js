@@ -4,6 +4,7 @@ import { HttpError, cleanText, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { addDays, localDate, weekStart } from '../attendance-calendar.js';
 import { DEFAULT_POLICY, REGION_RESET_DAY, resolvePolicy, validateOverride } from '../attendance-policy.js';
+import { watchStaysReviewed } from '../attention.js';
 import { teamMetrics, watchList } from '../attendance-metrics.js';
 import { ladderOf, rankReview } from '../rank-ladder.js';
 import {
@@ -561,7 +562,7 @@ export async function getTeamAttendance(ctx) {
 // options.includeWatch: add the Watch list (the caller has checked attendance.review on the team); off by default.
 export async function teamAttendanceData(db, guild, team, params, nowMs, viewer, options = {}) {
   const bind = (sql) => db.prepare(sql).bind(guild.id, team.id);
-  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult, dismissalResult] = await db.batch([
+  const [policyResult, raidResult, rowResult, borrowedResult, peopleResult, characterResult, teamResult, hostResult, dismissalResult, reviewedResult] = await db.batch([
     policyRowsStatement(db, guild.id),
     bind(`SELECT id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode, team_id,
                  (SELECT COUNT(*) FROM raid_reports x WHERE x.raid_id = raids.id) AS reports
@@ -577,6 +578,11 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
     bind(`SELECT id, team_id FROM raids WHERE guild_id = ?1 AND id IN (SELECT via_raid_id FROM attendance WHERE guild_id = ?1 AND team_id = ?2 AND via_raid_id IS NOT NULL)`),
     // PM wave 7: the rank suggestions an officer dismissed for 30 days (only the ones still hidden).
     db.prepare('SELECT player_id, kind, to_rank, until FROM rank_dismissals WHERE guild_id = ? AND until > ?').bind(guild.id, nowMs),
+    // Home redesign: the watch entries an officer marked Reviewed (shared; only read for viewers who get the watch list).
+    ...(options.includeWatch ? [db.prepare(
+      `SELECT d.item_id, d.kind, d.mode, d.until, d.fingerprint, d.created_at, COALESCE(u.display_name, u.global_name, u.username) AS by_name
+         FROM attention_dismissals d LEFT JOIN users u ON u.id = d.dismissed_by WHERE d.guild_id = ?1 AND d.team_id = ?2 AND d.kind = 'watch'`,
+    ).bind(guild.id, team.id)] : []),
   ]);
   const teamNames = new Map(teamResult.results.map((row) => [row.id, row.name]));
   const hostTeamOf = new Map(hostResult.results.map((row) => [row.id, row.team_id]));
@@ -645,7 +651,7 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
       rows: rowResult.results.map((row) => metricsRow(row, hostTeamOf)),
       borrowed: borrowedResult.results.map((row) => ({ raidId: row.raid_id, raidOn: row.raid_on, playerId: row.player_id, teamId: row.host_team_id })),
       policy, today, resetDay, windowWeeks: weeks,
-    }), people)
+    }), people, team.id, reviewedResult ? reviewedResult.results : [], nowMs)
     : null;
   return {
     team: { id: team.id, name: team.name },
@@ -663,9 +669,12 @@ export async function teamAttendanceData(db, guild, team, params, nowMs, viewer,
 
 // The watch list as the team page draws it: the entries get their name, class and status. null while the policy has both thresholds off
 // (the page shows no card); an empty list when it is on and nobody qualifies.
-function watchView(list, people) {
+// Each entry also carries latestMissedRaidId, itemId (the Needs attention id, for the Reviewed route) and reviewed: { by: { name }, at } | null (a
+// Reviewed mark that still holds: the % is above the reviewed % - 5 points and no newer raid was missed; otherwise the entry is open again).
+function watchView(list, people, teamId, reviewedRows, nowMs) {
   if (list.below === null && list.dropBy === null) return null;
   const byId = new Map(people.map((person) => [person.id, person]));
+  const reviewedBy = new Map(reviewedRows.map((row) => [row.item_id, row]));
   return {
     below: list.below,
     dropBy: list.dropBy,
@@ -673,7 +682,13 @@ function watchView(list, people) {
     previousFrom: list.previousFrom,
     entries: list.entries.map((entry) => {
       const person = byId.get(entry.playerId) || {};
-      return { ...entry, name: person.name || 'Unknown', class: person.class || null, status: person.status || null };
+      const itemId = `watch:${teamId}:${entry.playerId}`;
+      const row = reviewedBy.get(itemId);
+      const holds = !!row && (row.until === null || row.until > nowMs) && watchStaysReviewed(row.fingerprint, entry.pct, entry.latestMissedRaidId);
+      return {
+        ...entry, name: person.name || 'Unknown', class: person.class || null, status: person.status || null, itemId,
+        reviewed: holds ? { by: { name: row.by_name || 'Former member' }, at: row.created_at } : null,
+      };
     }),
   };
 }

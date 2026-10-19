@@ -1,14 +1,70 @@
 // Needs attention, the pure half (no I/O, no clock): turns the rows worker/routes/attention.js read into the one list of open work an officer
 // or team lead sees on the guild home page. Each item carries the fields its sentence needs and a `link` (a pages route without the guild id).
 // Which items a viewer gets follows their rights per team: `allowsTeam(action, teamId)` and `granted(action)` come from the permission check.
+//
+// Home redesign, round 2 (Week on desktop, Briefing on phones): to-dos can be dismissed, snoozed or (the watch list) marked Reviewed, SHARED by every
+// officer of the guild. The dismissals come in as input (`attention_dismissals` rows, newest state wins) and `now` is input too, so this stays pure.
+// What a dismissal does is decided here, never by the client: see DISMISS_RULES (mode, snooze length, the fingerprint a hidden item is compared with).
 
 export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'log_missing', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
-export const INFO_KINDS = ['unlocked'];  // listed, but not part of the open-work count
+export const INFO_KINDS = ['unlocked'];  // listed with severity 'info'
+// Readiness FACTS about a raid: the Week view builds the raid's sentence from them (or from `week`). They stay in `items`, marked `readiness: true`,
+// but are not to-dos and are never counted in `total`.
+export const READINESS_KINDS = ['low_signups', 'roster_declined', 'roster_pending', 'unlocked'];
+// `watch` and `rank` are no Home to-dos any more (they live on the Attendance and Ranks pages): never in `items`, only counted in `counts`.
+export const OFF_HOME_KINDS = ['watch', 'rank'];
+export const ATTENTION_VIEW_ACTIONS = ['attendance.review', 'roster.edit', 'raids.edit', 'loot.edit'];
 export const TRIAL_DAYS = 7;
 export const LOOT_LOOKBACK_DAYS = 14;
 export const SIGNUP_LOOKAHEAD_DAYS = 7;
 export const UNLOCKED_MINUTES = 60;
+export const WEEK_DAYS_BACK = 1;         // the week block runs from yesterday ...
+export const WEEK_DAYS_AHEAD = 5;        // ... to today + 5, in the guild's days
+export const WATCH_RETURN_POINTS = 5;    // a reviewed watch entry comes back after a further drop of this many points
+const DAY_MS = 86400000;
+
+// The dismiss / snooze / reviewed policy per kind. The SERVER decides all of it; a client only names the item.
+//   mode: 'dismiss' (hidden until its fingerprint changes) | 'snooze' (hidden for `days`, or until its fingerprint changes) | 'reviewed' (watch only)
+//   actions: every right the viewer needs for the item's team, to dismiss it and to restore it
+//   fingerprint (what a hidden item is compared with; built in collect() below):
+//     loot_unmatched: the sorted unmatched winner keys (the count when the keys were not read) | signup_unmatched: the count
+//     event_moved: the Raid-Helper event's date | no_loot, log_missing: the raid id (so they never come back) | trial: the trial end date
+//     webhook_off: Discord's disabled status | watch: JSON { pct, raidId } (the % and the newest missed raid id when it was reviewed)
+export const DISMISS_RULES = Object.freeze({
+  loot_unmatched: Object.freeze({ mode: 'dismiss', actions: ['loot.edit', 'attendance.review'] }),
+  signup_unmatched: Object.freeze({ mode: 'dismiss', actions: ['roster.edit'] }),
+  event_moved: Object.freeze({ mode: 'dismiss', actions: ['raids.edit'] }),
+  no_loot: Object.freeze({ mode: 'dismiss', actions: ['loot.edit'] }),
+  log_missing: Object.freeze({ mode: 'dismiss', actions: ['raids.edit'] }),
+  trial: Object.freeze({ mode: 'snooze', days: 3, actions: ['roster.edit'] }),
+  webhook_off: Object.freeze({ mode: 'snooze', days: 7, actions: ['guild.teams'] }),
+  watch: Object.freeze({ mode: 'reviewed', actions: ['attendance.review'] }),
+});
+
+// The `until` (ms; null = until the fingerprint changes) a new dismissal of this kind gets.
+export function dismissalUntil(kind, now) {
+  const rule = DISMISS_RULES[kind];
+  return rule && rule.days ? now + rule.days * DAY_MS : null;
+}
+
+export const watchFingerprint = (pct, latestMissedRaidId) => JSON.stringify({ pct, raidId: latestMissedRaidId || null });
+
+// A reviewed watch entry stays hidden while the % is above (the stored % - 5 points) and no newer raid was missed.
+export function watchStaysReviewed(storedFingerprint, pct, latestMissedRaidId) {
+  let stored;
+  try { stored = JSON.parse(storedFingerprint); } catch { return false; }
+  if (!stored || typeof stored.pct !== 'number' || typeof pct !== 'number') return false;
+  return pct > stored.pct - WATCH_RETURN_POINTS && (stored.raidId || null) === (latestMissedRaidId || null);
+}
+
+// Whether a stored dismissal row still hides a collected entry at `now`: same kind, not expired, and the fingerprint still matches.
+export function dismissalHides(row, entry, now) {
+  if (!row || row.kind !== entry.item.kind) return false;
+  if (row.until !== null && row.until !== undefined && row.until <= now) return false;
+  if (entry.item.kind === 'watch') return watchStaysReviewed(row.fingerprint, entry.item.pct, entry.item.latestMissedRaidId);
+  return row.fingerprint === entry.fingerprint;
+}
 
 const byText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -17,10 +73,14 @@ function daysBetween(from, to) {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 }
 
+function shiftDate(date, days) {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+}
+
 // input: {
 //   today, now, teams: [{ id, name, size, archived }], allowsTeam(action, teamId), granted(action),
 //   flaggedRaids: [{ id, team_id, raid_on, zone, title, event_title, open_flags }],
-//   lootUnmatched: [{ raid_id, team_id, raid_on, zone, title, event_title, names }],
+//   lootUnmatched: [{ raid_id, team_id, raid_on, zone, title, event_title, names, keys (the unmatched winners' keys, comma separated; optional) }],
 //   signupUnmatched: [{ raid_id, team_id, raid_on, zone, title, event_title, n }],
 //   claims: number, trials: [{ id, trial_end, name, class, team_id }],
 //   noLoot: [{ id, team_id, raid_on, zone, title, event_title }],
@@ -32,10 +92,93 @@ function daysBetween(from, to) {
 //   webhooksOff: [{ team_id, disabled_status }]   (teams whose Discord webhook Discord refused: the Worker switched it off)
 //   upcoming: [{ id, team_id, raid_on, starts_at, zone, title, event_title, signups_locked, n_in, size (the raid's effective size; the team's when left out),
 //                close_hours (the sign-up deadline in hours before the start; 0 or left out = at the start) }],
-//   watch: [{ teamId, entries: [{ playerId, name, class, pct, previousPct, drop, reasons }] }],
-//   ranks: [{ teamId, entries: [{ playerId, name, class, kind ('promote' | 'review'), from: { id, name }, to: { id, name }, reasons: [text] }] }]   (PM wave 7: the rank ladder's suggestions) }
-// -> { items, more: { kind: n }, total } (total counts the 'action' items only, hidden ones included)
+//   watch: [{ teamId, entries: [{ playerId, name, class, pct, previousPct, drop, reasons, latestMissedRaidId }] }],
+//   ranks: [{ teamId, entries: [{ playerId, name, class, kind ('promote' | 'review'), from: { id, name }, to: { id, name }, reasons: [text] }] }]   (PM wave 7: the rank ladder's suggestions),
+//   dismissals: [{ item_id, kind, team_id, mode, until, fingerprint, dismissed_by, created_at, by_name }]   (attention_dismissals: shared by every officer),
+//   weekRaids: [{ id, team_id, raid_on, starts_at, zone, size (effective), title, event_title, signups_locked, roster_published_at, close_hours, n_in,
+//                 confirmed, declined, pending, event_moved_on }]   (raids around today; the window is applied here, in the guild's days) }
+// -> {
+//   items:  the open, unhidden Home items (never `watch` or `rank`): { kind, severity, teamId, teamName, id, link, raidId?, ..., readiness?: true },
+//   more:   { kind: n }   open items the per-kind cap leaves out of `items`,
+//   total:  open, unhidden to-dos only (readiness facts are not counted; items beyond the cap are),
+//   hidden: [{ item, mode: 'dismiss' | 'snooze', until: ms | null, by: { name }, at: ms }]   (what a dismissal hides now: the Hidden list with Restore; newest first),
+//   counts: { [teamId]: { watchOpen, rankOpen } }   (watch entries still open after "Reviewed", and rank suggestions, per team the viewer may review),
+//   week:   [{ raidId, teamId, teamName, date, startsAt, zone, title, size, signed, lineupPublished, confirmed, cantCome, noAnswer, signupsCloseAt,
+//              signupsLocked (the raid's own lock flag), eventMovedOn, status }]
+//           every raid of a live team the viewer can see (any of ATTENTION_VIEW_ACTIONS), from yesterday to today + 5, by start time. status:
+//           a raid that has started: 'done' (no open to-do tied to it) | 'todo'; an upcoming one: 'short' (signed < size) | 'ready' (full and the line-up
+//           is published) | 'open'. Every raid to-do keeps its `raidId`, so a page can attach it to its day.
+// }
 export function buildAttention(input) {
+  const { groups, counts, teamById } = collect(input);
+  const now = input.now;
+  const byItem = new Map((input.dismissals || []).map((row) => [row.item_id, row]));
+  const items = [];
+  const more = {};
+  const hidden = [];
+  const openTodoRaids = new Set();
+  let total = 0;
+  for (const kind of ATTENTION_KINDS) {
+    if (OFF_HOME_KINDS.includes(kind)) continue;
+    const open = [];
+    const list = (groups[kind] || []).sort((a, b) => compareOrder(a.order, b.order) || byText(a.item.id, b.item.id));
+    for (const entry of list) {
+      const row = byItem.get(entry.item.id);
+      if (dismissalHides(row, entry, now)) {
+        hidden.push({ item: entry.item, mode: row.mode, until: row.until === undefined ? null : row.until, by: { name: row.by_name || 'Former member' }, at: row.created_at });
+      } else {
+        open.push(entry);
+      }
+    }
+    if (open.length > KIND_CAP) more[kind] = open.length - KIND_CAP;
+    for (const entry of open.slice(0, KIND_CAP)) items.push(entry.item);
+    if (READINESS_KINDS.includes(kind)) continue;
+    total += open.length;
+    for (const entry of open) if (entry.item.raidId) openTodoRaids.add(entry.item.raidId); // uncapped: the cap must not turn a raid "done"
+  }
+  hidden.sort((a, b) => b.at - a.at || byText(a.item.id, b.item.id));
+  for (const entry of groups.watch || []) {
+    if (!dismissalHides(byItem.get(entry.item.id), entry, now)) counts[entry.item.teamId].watchOpen++;
+  }
+  return { items, more, total, hidden, counts, week: buildWeek(input, teamById, openTodoRaids) };
+}
+
+// What the dismissal routes act on: { entry: { item, fingerprint }, rule } for an item this viewer sees (watch, rank and the readiness kinds included,
+// hidden or not, uncapped); rule is undefined for a kind that cannot be dismissed. null when the viewer sees no such item.
+export function findAttentionItem(input, itemId) {
+  const { groups } = collect(input);
+  for (const kind of Object.keys(groups)) {
+    for (const entry of groups[kind]) if (entry.item.id === itemId) return { entry, rule: DISMISS_RULES[kind] };
+  }
+  return null;
+}
+
+function buildWeek(input, teamById, openTodoRaids) {
+  const from = shiftDate(input.today, -WEEK_DAYS_BACK);
+  const to = shiftDate(input.today, WEEK_DAYS_AHEAD);
+  const week = [];
+  for (const row of input.weekRaids || []) {
+    const team = teamById.get(row.team_id);
+    if (!team || team.archived !== 0 || !ATTENTION_VIEW_ACTIONS.some((action) => input.allowsTeam(action, row.team_id))) continue;
+    if (row.raid_on < from || row.raid_on > to) continue;
+    const signed = row.n_in || 0;
+    const size = row.size ?? team.size;
+    const lineupPublished = row.roster_published_at !== null && row.roster_published_at !== undefined;
+    let status;
+    if (row.starts_at <= input.now) status = openTodoRaids.has(row.id) ? 'todo' : 'done';
+    else if (signed < size) status = 'short';
+    else status = lineupPublished ? 'ready' : 'open';
+    week.push({
+      raidId: row.id, teamId: row.team_id, teamName: team.name, date: row.raid_on, startsAt: row.starts_at, zone: row.zone || null,
+      title: row.title || row.event_title || null, size, signed, lineupPublished, confirmed: row.confirmed || 0, cantCome: row.declined || 0, noAnswer: row.pending || 0,
+      signupsCloseAt: row.starts_at - (row.close_hours || 0) * 3600000, signupsLocked: row.signups_locked === 1, eventMovedOn: row.event_moved_on || null, status,
+    });
+  }
+  return week.sort((a, b) => a.startsAt - b.startsAt || byText(a.raidId, b.raidId));
+}
+
+// Every item the viewer may see, uncapped and unfiltered: { groups: { kind: [{ item, order, fingerprint }] }, counts, teamById }
+function collect(input) {
   const teamById = new Map(input.teams.map((team) => [team.id, team]));
   const live = (teamId) => {
     const team = teamById.get(teamId);
@@ -45,7 +188,9 @@ export function buildAttention(input) {
   const base = (kind, teamId, severity = 'action') => ({ kind, severity, teamId: teamId || null, teamName: teamId && teamById.has(teamId) ? teamById.get(teamId).name : null });
   const raidFields = (row) => ({ raidId: row.id || row.raid_id, date: row.raid_on, zone: row.zone || null, title: row.title || row.event_title || null });
   const groups = {};
-  const add = (kind, item, order) => { (groups[kind] = groups[kind] || []).push({ item, order }); };
+  const counts = {};
+  const countsOf = (teamId) => (counts[teamId] = counts[teamId] || { watchOpen: 0, rankOpen: 0 });
+  const add = (kind, item, order, fingerprint = null) => { (groups[kind] = groups[kind] || []).push({ item, order, fingerprint }); };
 
   for (const row of input.flaggedRaids) {
     if (!here('attendance.review', row.team_id)) continue;
@@ -53,11 +198,12 @@ export function buildAttention(input) {
   }
   for (const row of input.lootUnmatched) {
     if (!(here('loot.edit', row.team_id) && here('attendance.review', row.team_id))) continue;
-    add('loot_unmatched', { ...base('loot_unmatched', row.team_id), ...raidFields(row), count: row.names, id: `loot_unmatched:${row.raid_id}`, link: { name: 'review' } }, [-dateNumber(row.raid_on)]);
+    const keys = typeof row.keys === 'string' && row.keys ? row.keys.split(',').sort().join(',') : String(row.names);
+    add('loot_unmatched', { ...base('loot_unmatched', row.team_id), ...raidFields(row), count: row.names, id: `loot_unmatched:${row.raid_id}`, link: { name: 'review' } }, [-dateNumber(row.raid_on)], keys);
   }
   for (const row of input.signupUnmatched) {
     if (!here('roster.edit', row.team_id)) continue;
-    add('signup_unmatched', { ...base('signup_unmatched', row.team_id), ...raidFields(row), count: row.n, id: `signup_unmatched:${row.raid_id}`, link: { name: 'raid', rid: row.raid_id } }, [dateNumber(row.raid_on)]);
+    add('signup_unmatched', { ...base('signup_unmatched', row.team_id), ...raidFields(row), count: row.n, id: `signup_unmatched:${row.raid_id}`, link: { name: 'raid', rid: row.raid_id } }, [dateNumber(row.raid_on)], String(row.n));
   }
   if (input.claims > 0 && input.granted('roster.edit')) {
     add('claims', { ...base('claims', null), count: input.claims, id: 'claims', link: { name: 'review' } }, [0]);
@@ -73,19 +219,22 @@ export function buildAttention(input) {
     add('trial', {
       ...base('trial', row.team_id), personId: row.id, name: row.name, class: row.class, trialEnd: row.trial_end, days, ended: days < 0,
       id: `trial:${row.id}`, link: { name: 'person', pid: row.id },
-    }, [days]);
+    }, [days], row.trial_end);
   }
   for (const list of input.watch) {
     if (!here('attendance.review', list.teamId)) continue;
+    countsOf(list.teamId);
     for (const entry of list.entries) {
       add('watch', {
         ...base('watch', list.teamId), personId: entry.playerId, name: entry.name, class: entry.class, pct: entry.pct, previousPct: entry.previousPct,
-        drop: entry.drop, reasons: entry.reasons, id: `watch:${list.teamId}:${entry.playerId}`, link: { name: 'personatt', pid: entry.playerId },
-      }, [entry.pct]);
+        drop: entry.drop, reasons: entry.reasons, latestMissedRaidId: entry.latestMissedRaidId || null, id: `watch:${list.teamId}:${entry.playerId}`,
+        link: { name: 'personatt', pid: entry.playerId },
+      }, [entry.pct], watchFingerprint(entry.pct, entry.latestMissedRaidId));
     }
   }
   for (const list of input.ranks || []) {
     if (!here('attendance.review', list.teamId)) continue;
+    countsOf(list.teamId).rankOpen += list.entries.length;
     for (const entry of list.entries) {
       add('rank', {
         ...base('rank', list.teamId), personId: entry.playerId, name: entry.name, class: entry.class, suggestion: entry.kind, from: entry.from, to: entry.to,
@@ -95,7 +244,7 @@ export function buildAttention(input) {
   }
   for (const row of input.noLoot) {
     if (!here('loot.edit', row.team_id)) continue;
-    add('no_loot', { ...base('no_loot', row.team_id), ...raidFields(row), id: `no_loot:${row.id}`, link: { name: 'raid', rid: row.id } }, [-dateNumber(row.raid_on)]);
+    add('no_loot', { ...base('no_loot', row.team_id), ...raidFields(row), id: `no_loot:${row.id}`, link: { name: 'raid', rid: row.id } }, [-dateNumber(row.raid_on)], row.id);
   }
   for (const row of input.upcoming) {
     if (!here('raids.edit', row.team_id)) continue;
@@ -103,47 +252,37 @@ export function buildAttention(input) {
     const fields = { ...raidFields(row), startsAt: row.starts_at };
     const size = row.size ?? team.size;
     if (row.n_in < size) {
-      add('low_signups', { ...base('low_signups', row.team_id), ...fields, expected: row.n_in, size, id: `low_signups:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+      add('low_signups', { ...base('low_signups', row.team_id), ...fields, expected: row.n_in, size, readiness: true, id: `low_signups:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
     }
     const minutes = Math.ceil((row.starts_at - input.now) / 60000);
     const deadlinePassed = (row.close_hours || 0) > 0 && row.starts_at - row.close_hours * 3600000 <= input.now; // members are shut out already
     if (row.signups_locked === 0 && !deadlinePassed && minutes > 0 && minutes <= UNLOCKED_MINUTES) {
-      add('unlocked', { ...base('unlocked', row.team_id, 'info'), ...fields, minutes, id: `unlocked:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+      add('unlocked', { ...base('unlocked', row.team_id, 'info'), ...fields, minutes, readiness: true, id: `unlocked:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
     }
   }
 
   for (const row of input.rosterDeclined || []) {
     if (!here('raids.edit', row.team_id)) continue;
-    add('roster_declined', { ...base('roster_declined', row.team_id), ...raidFields(row), startsAt: row.starts_at, count: row.n, id: `roster_declined:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+    add('roster_declined', { ...base('roster_declined', row.team_id), ...raidFields(row), startsAt: row.starts_at, count: row.n, readiness: true, id: `roster_declined:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
   }
 
   for (const row of input.rosterPending || []) {
     if (!here('raids.edit', row.team_id)) continue;
-    add('roster_pending', { ...base('roster_pending', row.team_id), ...raidFields(row), startsAt: row.starts_at, count: row.n, id: `roster_pending:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+    add('roster_pending', { ...base('roster_pending', row.team_id), ...raidFields(row), startsAt: row.starts_at, count: row.n, readiness: true, id: `roster_pending:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
   }
   for (const row of input.logMissing || []) {
     if (!here('raids.edit', row.team_id)) continue;
-    add('log_missing', { ...base('log_missing', row.team_id), ...raidFields(row), loggerName: row.logger_name || null, id: `log_missing:${row.id}`, link: { name: 'raid', rid: row.id } }, [-dateNumber(row.raid_on)]);
+    add('log_missing', { ...base('log_missing', row.team_id), ...raidFields(row), loggerName: row.logger_name || null, id: `log_missing:${row.id}`, link: { name: 'raid', rid: row.id } }, [-dateNumber(row.raid_on)], row.id);
   }
   for (const row of input.eventMoved || []) {
     if (!here('raids.edit', row.team_id)) continue;
-    add('event_moved', { ...base('event_moved', row.team_id), ...raidFields(row), startsAt: row.starts_at, eventDate: row.event_moved_on, id: `event_moved:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at]);
+    add('event_moved', { ...base('event_moved', row.team_id), ...raidFields(row), startsAt: row.starts_at, eventDate: row.event_moved_on, id: `event_moved:${row.id}`, link: { name: 'raid', rid: row.id } }, [row.starts_at], row.event_moved_on);
   }
   for (const row of input.webhooksOff || []) {
     if (!here('guild.teams', row.team_id)) continue;
-    add('webhook_off', { ...base('webhook_off', row.team_id), status: row.disabled_status, id: `webhook_off:${row.team_id}`, link: { name: 'settings', tab: 'notifications' } }, [0]);
+    add('webhook_off', { ...base('webhook_off', row.team_id), status: row.disabled_status, id: `webhook_off:${row.team_id}`, link: { name: 'settings', tab: 'notifications' } }, [0], String(row.disabled_status ?? ''));
   }
-
-  const items = [];
-  const more = {};
-  for (const kind of ATTENTION_KINDS) {
-    const list = (groups[kind] || []).sort((a, b) => compareOrder(a.order, b.order) || byText(a.item.id, b.item.id));
-    if (list.length > KIND_CAP) more[kind] = list.length - KIND_CAP;
-    for (const entry of list.slice(0, KIND_CAP)) items.push(entry.item);
-  }
-  // The count is of everything open, including what the per-kind cap leaves out of the list.
-  const hidden = Object.keys(more).filter((kind) => !INFO_KINDS.includes(kind)).reduce((sum, kind) => sum + more[kind], 0);
-  return { items, more, total: items.filter((item) => item.severity === 'action').length + hidden };
+  return { groups, counts, teamById };
 }
 
 function dateNumber(date) {

@@ -1886,7 +1886,8 @@ check('review: a bot call that stalls cannot hold a sign-in for long, and the si
 // PM wave 1 x roles: the officer tools read permissions through the same resolution (custom, Discord-given and manual roles), and a guest or public
 // visitor reaches none of them.
 
-const watchIds = (items) => items.filter((item) => item.kind === 'watch').map((item) => item.id);
+// The watch list left Home's items (round 2): Needs attention only counts the open entries per team.
+const watchOpen = (payload, teamId) => (payload.counts[teamId] || {}).watchOpen || 0;
 
 check('wave 1 x roles: a custom role with attendance.review on a team gets that team\'s watch list and Needs attention items - by hand or from Discord - and nothing else', async () => {
   const s = await scenario();
@@ -1900,7 +1901,8 @@ check('wave 1 x roles: a custom role with attendance.review on a team gets that 
   assert(gm.json.watch && gm.json.watch.entries.some((entry) => entry.name === 'Kaelith'), 'Kaelith is on the watch list');
   const gmAttention = await s.call('alice', 'GET', '/attention');
   assert.equal(gmAttention.status, 200, gmAttention.text);
-  assert(watchIds(gmAttention.json.items).includes(`watch:${s.A}:${data.people.kaelith}`));
+  assert(watchOpen(gmAttention.json, s.A) >= 1);
+  assert(!gmAttention.json.items.some((item) => item.kind === 'watch'));
 
   const clerk = await s.makeRole('Attendance clerk', { 'attendance.view': 'team', 'attendance.review': 'team' });
   const reader = await s.makeRole('Attendance reader', { 'attendance.view': 'team' });
@@ -1914,7 +1916,8 @@ check('wave 1 x roles: a custom role with attendance.review on a team gets that 
   assert(dave.json.watch && dave.json.watch.entries.some((entry) => entry.name === 'Kaelith'));
   const daveAttention = await s.call('dave', 'GET', '/attention');
   assert.equal(daveAttention.status, 200, daveAttention.text);
-  assert(watchIds(daveAttention.json.items).includes(`watch:${s.A}:${data.people.kaelith}`));
+  assert(watchOpen(daveAttention.json, s.A) >= 1);
+  assert.deepEqual(Object.keys(daveAttention.json.counts), [s.A], 'only the team the role covers');
   assert(daveAttention.json.items.every((item) => item.teamId === s.A), 'every item is Alpha\'s: no Bravo, no guild-wide claims');
   assert.equal((await s.call('dave', 'GET', `/attendance/team?team=${s.B}`)).status, 403, 'Bravo\'s page needs attendance.view there');
 
@@ -1931,7 +1934,7 @@ check('wave 1 x roles: a custom role with attendance.review on a team gets that 
   await s.signInAgain('gina');
   const gina = await s.call('gina', 'GET', '/attention');
   assert.equal(gina.status, 200, gina.text);
-  assert(watchIds(gina.json.items).includes(`watch:${s.A}:${data.people.kaelith}`));
+  assert(watchOpen(gina.json, s.A) >= 1);
   assert((await s.call('gina', 'GET', base)).json.watch.entries.length > 0);
   // Discord takes the role back: the next sign-in takes the pages with it.
   s.discordRoles('gina', []);

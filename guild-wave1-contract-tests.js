@@ -357,10 +357,11 @@ check('needs attention: the real answer draws every item with a sentence and a l
   await G.pages.attention.load(view, gd);
   const data = G.app.state.att.attention.data;
   const kinds = new Set(data.items.map((item) => item.kind));
-  for (const kind of ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'trial', 'watch', 'no_loot', 'low_signups']) {
+  for (const kind of ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'trial', 'no_loot', 'low_signups']) {
     if (kind === 'claims') continue; // no claim in this scenario
     assert(kinds.has(kind), `the scenario produced ${kind}`);
   }
+  assert(!kinds.has('watch') && data.counts[s.A].watchOpen >= 1, 'the watch list left Home (round 2): it is only counted per team');
   const html = G.pages.attention.main(view, gd);
   const text = stripTags(html);
   assert(/Needs attention/.test(text) && !/Nothing needs you right now/.test(text));
@@ -375,7 +376,7 @@ check('needs attention: the real answer draws every item with a sentence and a l
     if (item.link.pid) assert.equal(parsed.pid, item.link.pid);
     assert(html.includes(`href="${href}"`));
   }
-  assert(/Review .* 3 to decide/.test(text) && /Veyla's trial ends in 3 days/.test(text) && /Kaelith: \d+% attendance, down \d+ points/.test(text), text.slice(0, 600));
+  assert(/Review .* 3 to decide/.test(text) && /Veyla's trial ends in 3 days/.test(text), text.slice(0, 600));
   assert(/1 loot winner on .* matches nobody/.test(text) && /1 sign-up on .* is not linked to a person/.test(text));
   assert(/No loot imported for/.test(text) && /of 25 signed up/.test(text));
   assert(/Alpha/.test(text), 'the team shows with several teams');

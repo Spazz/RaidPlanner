@@ -53,6 +53,8 @@ export const ACTION_GROUP = Object.freeze({
   'apikey.create': 'settings', 'apikey.revoke': 'settings', 'person.rank': 'attendance', 'rank.dismiss': 'attendance',
   // PM wave 8: raid duties, the Launch funnel, and the guest sign-up link (a guest signing up has no actor: the log names Raidsmith).
   'duties.set': 'raids', 'launch.update': 'roster', 'launch.team': 'settings',
+  // Home redesign: a to-do hidden for every officer (dismissed, snoozed, or a watch entry marked Reviewed), and brought back.
+  'attention.dismiss': 'raids', 'attention.restore': 'raids',
   'join.create': 'signups', 'join.revoke': 'signups', 'signup.guest': 'signups', 'signup.guest_remove': 'signups',
 });
 
@@ -137,6 +139,23 @@ const list = (items) => (items.length < 2 ? items.join('') : `${items.slice(0, -
 const stableJson = (value) => JSON.stringify(value, (key, v) => (v && typeof v === 'object' && !Array.isArray(v)
   ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, v[k]])) : v));
 const humanChanged = (changed) => [...new Set((Array.isArray(changed) ? changed : []).map((key) => CHANGED_LABEL[key] || key))];
+
+const ATTENTION_LABEL = {
+  loot_unmatched: 'unmatched loot winners', signup_unmatched: 'unmatched Raid-Helper sign-ups', event_moved: 'moved Raid-Helper event', no_loot: 'no loot imported',
+  log_missing: 'missing log', trial: 'trial ending', webhook_off: 'Discord webhook switched off', watch: 'attendance watch',
+};
+// 'Dismissed the to-do "missing log" for the raid on Tue Oct 21', 'Snoozed ... for 3 days', 'Marked Mira as reviewed on the attendance watch list', 'Restored ...'.
+function attentionSentence(side, restored, { person, team, onRaid }) {
+  const label = ATTENTION_LABEL[side.kind] || 'item';
+  let where = '';
+  if (side.raidId) where = ` for ${onRaid(side.raidId)}`;
+  else if (side.personId) where = ` for ${person(side.personId)}`;
+  else if (side.teamId) where = ` for ${team(side.teamId)}`;
+  if (side.mode === 'reviewed') return `${restored ? 'Took' : 'Marked'} ${person(side.personId)} ${restored ? 'off Reviewed' : 'as reviewed'} on the attendance watch list`;
+  if (restored) return `Restored the to-do "${label}"${where}`;
+  const days = side.mode === 'snooze' && typeof side.days === 'number' ? ` for ${plural(side.days, 'day', 'days')}` : '';
+  return `${side.mode === 'snooze' ? 'Snoozed' : 'Dismissed'} the to-do "${label}"${where}${days}`;
+}
 
 // names: { person(id), character(id), team(id), raid(id), user(id), award(id), claim(id) } -> a display string or null. Each is optional.
 export function describeRow(row, names = {}) {
@@ -290,7 +309,9 @@ export function describeRow(row, names = {}) {
     case 'signup.guest': return `A guest signed up for ${onRaid(ent)}${after.class ? ` (${CLASS_LABEL[after.class] || after.class})` : ''}`;
     case 'signup.guest_remove': return `Removed a guest sign-up from ${onRaid(ent)}`;
     case 'launch.update': return `Updated the launch status of ${person(ent)}${after.teamId ? ` on ${team(after.teamId)}` : ''}`;
-    case 'launch.team': return `${after.launchTeam ? 'Turned on' : 'Turned off'} the Launch funnel for ${team(ent)}`;
+    case 'attention.dismiss': return attentionSentence(after, false, { person, team, onRaid });
+    case 'attention.restore': return attentionSentence(before, true, { person, team, onRaid });
+    case 'launch.team': return`${after.launchTeam ? 'Turned on' : 'Turned off'} the Launch funnel for ${team(ent)}`;
     case 'raid.settings': {
       const parts = [];
       if (after.size !== undefined && after.size !== before.size) parts.push(`raid size ${after.size === null ? 'automatic' : after.size}`);

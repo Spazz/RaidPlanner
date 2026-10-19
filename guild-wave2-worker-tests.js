@@ -4333,7 +4333,7 @@ check('roster: the Raids list tells the viewer their seat on a published roster;
   const found = await item('bob');
   assert.deepEqual([found.kind, found.severity, found.teamId, found.teamName, found.raidId, found.date, found.count, found.id, found.link, found.startsAt],
     ['roster_declined', 'action', s.A, 'Alpha', s.rid, '2027-01-19', 1, `roster_declined:${s.rid}`, { name: 'raid', rid: s.rid }, s.startsAt]);
-  assert.deepEqual(Object.keys(found).sort(), ['count', 'date', 'id', 'kind', 'link', 'raidId', 'severity', 'startsAt', 'teamId', 'teamName', 'title', 'zone']);
+  assert.deepEqual(Object.keys(found).sort(), ['count', 'date', 'id', 'kind', 'link', 'raidId', 'readiness', 'severity', 'startsAt', 'teamId', 'teamName', 'title', 'zone']);
   assert.equal((await item('carol')).count, 1, 'the Team Lead of the team sees it');
   assert.equal(await item('dave'), undefined, 'the Team Lead of another team does not');
   assert.equal((await s.call('erin', 'GET', '/attention')).status, 403);
@@ -4367,7 +4367,7 @@ check('roster: the pure Needs attention builder lists roster_declined items for 
   const row = (id, team, day, n) => ({ id, team_id: team, raid_on: `2027-01-${day}`, starts_at: NOW + day * 86400000, zone: 'Karazhan', title: null, event_title: 'Night', n });
   const built = buildAttention({ ...base, rosterDeclined: [row('r_late', 't_a', 25, 1), row('r_soon', 't_a', 19, 3), row('r_bravo', 't_b', 20, 2), row('r_old', 't_c', 18, 1)] });
   assert.deepEqual(built.items.map((item) => [item.id, item.count]), [['roster_declined:r_soon', 3], ['roster_declined:r_late', 1]]);
-  assert.deepEqual([built.items[0].title, built.items[0].zone, built.items[0].date, built.total], ['Night', 'Karazhan', '2027-01-19', 2]);
+  assert.deepEqual([built.items[0].title, built.items[0].zone, built.items[0].date, built.total], ['Night', 'Karazhan', '2027-01-19', 0], 'a readiness fact, not a to-do: it is not counted');
   assert.deepEqual(buildAttention({ ...base }).items, [], 'the input is optional');
 });
 

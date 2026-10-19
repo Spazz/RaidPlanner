@@ -44,7 +44,7 @@ import {
   deleteDecision, getBackfillReports, getPersonAttendance, getPolicy, getReview, getTeamAttendance, postDecision, postUnmatched, putPolicy,
   putWclSettings,
 } from './routes/attendance.js';
-import { getAttention } from './routes/attention.js';
+import { deleteDismissal, getAttention, postDismissal } from './routes/attention.js';
 import { getStanding, putStanding } from './routes/standing.js';
 import { confirmSeat, declineSeat, getPublishedRoster, publishRoster, unpublishRoster } from './routes/roster-publish.js';
 import { getAudit } from './routes/audit.js';
@@ -225,6 +225,8 @@ export const ROUTES = [
   // the unguessable token in its address is the credential (worker/routes/calendar.js).
   { method: 'GET', path: '/api/guild/:gid/audit', auth: true, handler: getAudit },
   { method: 'GET', path: '/api/guild/:gid/attention', auth: true, handler: getAttention },
+  { method: 'POST', path: '/api/guild/:gid/attention/dismissals', auth: true, handler: postDismissal },
+  { method: 'DELETE', path: '/api/guild/:gid/attention/dismissals/:itemid', auth: true, handler: deleteDismissal },
   { method: 'GET', path: '/api/guild/:gid/calendar', auth: true, handler: getCalendarStatus },
   { method: 'POST', path: '/api/guild/:gid/calendar', auth: true, handler: createCalendarLink },
   { method: 'DELETE', path: '/api/guild/:gid/calendar', auth: true, handler: revokeCalendarLink },

@@ -830,26 +830,21 @@ check('ladder (a person on two teams): judged on the team of their Main; the per
   }
 });
 
-check('ladder (Needs attention): the suggestions are listed for the teams the viewer reviews, in the open-work count, and a dismissed one is gone', async () => {
+check('ladder (Needs attention): the suggestions are counted per team for the Guild box (not listed, not in the open-work count), and a dismissed one is gone', async () => {
   const s = await ladderWorld();
   const home = await s.ok('gm', 'GET', '/attention');
-  const ranks = home.items.filter((item) => item.kind === 'rank');
-  assert.deepEqual(ranks.map((item) => [item.name, item.suggestion, item.from.name, item.to.name]), [
-    ['Aria', 'promote', 'Member', 'Raider'], ['Bran', 'promote', 'Raider', 'Core'], ['Cora', 'review', 'Raider', 'Member'],
-  ]);
-  assert.deepEqual(Object.keys(ranks[0]).sort(), ['class', 'from', 'id', 'kind', 'link', 'name', 'personId', 'reasons', 'severity', 'suggestion', 'teamId', 'teamName', 'to']);
-  assert.deepEqual(ranks[0].link, { name: 'personatt', pid: s.ppl.Aria });
-  assert.equal(ranks[0].severity, 'action');
-  assert(home.total >= 3);
+  assert.deepEqual(home.items.filter((item) => item.kind === 'rank'), [], 'rank suggestions left Home: they live on the Ranks page');
+  assert.deepEqual(home.counts[s.tid], { watchOpen: home.counts[s.tid].watchOpen, rankOpen: 3 }, 'Aria, Bran and Cora');
+  const totalBefore = home.total;
   await s.call('gm', 'POST', `/roster/${s.ppl.Bran}/rank/dismiss`, { teamId: s.tid, kind: 'promote', to: 'core' });
   const after = await s.ok('gm', 'GET', '/attention');
-  assert.deepEqual(after.items.filter((item) => item.kind === 'rank').map((item) => item.name), ['Aria', 'Cora']);
-  assert.equal(after.total, home.total - 1);
+  assert.equal(after.counts[s.tid].rankOpen, 2);
+  assert.equal(after.total, totalBefore, 'rank suggestions are no to-dos');
   // A member has no Home list at all.
   assert.equal((await s.call('m1', 'GET', '/attention')).status, 403);
-  // No ladder: no items.
+  // No ladder: no suggestions.
   await s.setPolicy({ ladder: { ranks: [] } });
-  assert.deepEqual((await s.ok('gm', 'GET', '/attention')).items.filter((item) => item.kind === 'rank'), []);
+  assert.equal((await s.ok('gm', 'GET', '/attention')).counts[s.tid].rankOpen, 0);
 });
 
 check('ladder: the Vindicated tracker\'s ladder (Member -> Raider after 2 attended raid weeks -> Core Raider after 8 attended nights since the promotion) is expressible and works end to end', async () => {

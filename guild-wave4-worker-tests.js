@@ -827,9 +827,9 @@ check('Needs attention (pure): the three wave 4 kinds come after the declined se
   });
   const officer = buildAttention(input({ 'raids.edit': 'guild', 'guild.teams': 'guild' }));
   assert.deepEqual(officer.items.map((i) => i.id), ['roster_pending:r_1', 'roster_pending:r_2', 'event_moved:r_1', 'event_moved:r_2', 'webhook_off:t_a', 'webhook_off:t_b'], 'an archived team shows nothing');
-  assert.equal(officer.total, 6);
+  assert.equal(officer.total, 4, 'the unconfirmed seats are a readiness fact (not counted); the moved events and the webhooks are to-dos');
   assert.deepEqual(officer.items[0], {
-    kind: 'roster_pending', severity: 'action', teamId: 't_a', teamName: 'Alpha', raidId: 'r_1', date: '2027-01-16', zone: 'Karazhan', title: null, startsAt: NOW + 5 * HOUR, count: 3,
+    kind: 'roster_pending', severity: 'action', teamId: 't_a', teamName: 'Alpha', raidId: 'r_1', date: '2027-01-16', zone: 'Karazhan', title: null, startsAt: NOW + 5 * HOUR, count: 3, readiness: true,
     id: 'roster_pending:r_1', link: { name: 'raid', rid: 'r_1' },
   });
   assert.deepEqual(officer.items[2].eventDate, '2027-01-18');

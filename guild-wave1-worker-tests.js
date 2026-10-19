@@ -397,6 +397,13 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('person.rank', 'person', 'p_thoren', { rank: 'core', rankName: 'Core' }, { rank: null, rankName: null, via: 'manual', teamId: 't_a' }), 'Cleared the rank of Thoren'],
     [row('rank.dismiss', 'person', 'p_kael', null, { kind: 'promote', to: 'core', toName: 'Core', until: 1, teamId: 't_a' }), 'Dismissed the suggestion to promote Kaelith to Core for 30 days'],
     [row('rank.dismiss', 'person', 'p_kael', null, { kind: 'review', to: 'raider', toName: 'Raider', until: 1, teamId: 't_a' }), 'Dismissed the suggestion to review Kaelith for 30 days'],
+    // Home redesign: a to-do hidden for every officer, and brought back.
+    [row('attention.dismiss', 'attention', 'no_loot:r_1', null, { itemId: 'no_loot:r_1', kind: 'no_loot', mode: 'dismiss', until: null, teamId: 't_a', raidId: 'r_1' }), 'Dismissed the to-do "no loot imported" for the raid on Tue Oct 21 (Alpha)'],
+    [row('attention.dismiss', 'attention', 'trial:p_kael', null, { itemId: 'trial:p_kael', kind: 'trial', mode: 'snooze', until: 1, days: 3, teamId: 't_a', personId: 'p_kael' }), 'Snoozed the to-do "trial ending" for Kaelith for 3 days'],
+    [row('attention.dismiss', 'attention', 'webhook_off:t_b', null, { itemId: 'webhook_off:t_b', kind: 'webhook_off', mode: 'snooze', until: 1, days: 7, teamId: 't_b' }), 'Snoozed the to-do "Discord webhook switched off" for Bravo for 7 days'],
+    [row('attention.dismiss', 'attention', 'watch:t_a:p_kael', null, { itemId: 'watch:t_a:p_kael', kind: 'watch', mode: 'reviewed', until: null, teamId: 't_a', personId: 'p_kael' }), 'Marked Kaelith as reviewed on the attendance watch list'],
+    [row('attention.restore', 'attention', 'log_missing:r_1', { itemId: 'log_missing:r_1', kind: 'log_missing', mode: 'dismiss', until: null, teamId: 't_a', raidId: 'r_1' }, null), 'Restored the to-do "missing log" for the raid on Tue Oct 21 (Alpha)'],
+    [row('attention.restore', 'attention', 'watch:t_a:p_kael', { itemId: 'watch:t_a:p_kael', kind: 'watch', mode: 'reviewed', until: null, teamId: 't_a', personId: 'p_kael' }, null), 'Took Kaelith off Reviewed on the attendance watch list'],
   ];
   const seen = new Set();
   for (const [input, expected] of cases) {
@@ -694,7 +701,7 @@ check('policy.watch: defaults, validation (null or a fraction with at most three
 // PURE: worker/attention.js
 
 check('buildAttention: scoping by team right, archived teams, kind order, trial window, thresholds, caps (hidden still counted), info outside the count', async () => {
-  const { buildAttention, KIND_CAP } = await load('worker/attention.js');
+  const { buildAttention, findAttentionItem, KIND_CAP } = await load('worker/attention.js');
   const teams = [{ id: 't_a', name: 'Alpha', size: 25, archived: 0 }, { id: 't_b', name: 'Bravo', size: 10, archived: 0 }, { id: 't_old', name: 'Old', size: 25, archived: 1 }];
   const raid = (id, team, on, extra = {}) => ({ id, team_id: team, raid_on: on, zone: 'Gruul\'s Lair', title: null, event_title: null, ...extra });
   const base = {
@@ -734,7 +741,7 @@ check('buildAttention: scoping by team right, archived teams, kind order, trial 
     ],
   });
   assert.deepEqual(everything.items.map((i) => i.id), [
-    'review:r1', 'loot_unmatched:r1', 'signup_unmatched:r9', 'claims', 'trial:p_t2', 'trial:p_t1', 'trial:p_t4', 'watch:t_a:p_w', 'no_loot:r5',
+    'review:r1', 'loot_unmatched:r1', 'signup_unmatched:r9', 'claims', 'trial:p_t2', 'trial:p_t1', 'trial:p_t4', 'no_loot:r5',
     'low_signups:u4', 'low_signups:u1', 'unlocked:u2',
   ]);
   const byId = Object.fromEntries(everything.items.map((i) => [i.id, i]));
@@ -747,9 +754,11 @@ check('buildAttention: scoping by team right, archived teams, kind order, trial 
   });
   assert.deepEqual(byId.claims.link, { name: 'review' });
   assert.deepEqual(byId['trial:p_t1'].link, { name: 'person', pid: 'p_t1' });
-  assert.deepEqual(byId['watch:t_a:p_w'].link, { name: 'personatt', pid: 'p_w' });
+  assert.equal(byId['watch:t_a:p_w'], undefined, 'the watch list left Home: it lives on the Attendance page');
+  assert.deepEqual(findAttentionItem({ ...base, watch: [{ teamId: 't_a', entries: [{ playerId: 'p_w', name: 'Kaelith', class: 'ROGUE', pct: 62, reasons: ['below'] }] }] }, 'watch:t_a:p_w').entry.item.link, { name: 'personatt', pid: 'p_w' });
   assert.equal(byId['loot_unmatched:r1'].title, 'Event', 'a Raid-Helper title stands in when the raid has none');
-  assert.equal(everything.total, 11, 'eleven open items; the information item is not counted');
+  assert.equal(everything.total, 8, 'eight open to-dos; the readiness facts (low sign-ups, unlocked) and the watch list are not counted');
+  assert.equal(byId['low_signups:u1'].readiness, true);
 
   // Rights are per kind: a viewer without roster.edit gets no claims, trials or unmatched sign-ups, but the rest.
   const noRoster = buildAttention({
@@ -1085,7 +1094,7 @@ check('watch list (team attendance): who is flagged and why, with the previous w
   assert.equal(thoren.playerId, s.p.Thoren);
   assert.deepEqual([thoren.pct, thoren.previousPct, thoren.drop, thoren.counted, thoren.missed, thoren.missedNotice], [25, 100, 75, 8, 6, 0]);
   assert.deepEqual(thoren.reasons, ['below', 'drop']);
-  assert.deepEqual(Object.keys(thoren).sort(), ['class', 'counted', 'drop', 'missed', 'missedNotice', 'name', 'pct', 'playerId', 'previousPct', 'reasons', 'status']);
+  assert.deepEqual(Object.keys(thoren).sort(), ['class', 'counted', 'drop', 'itemId', 'latestMissedRaidId', 'missed', 'missedNotice', 'name', 'pct', 'playerId', 'previousPct', 'reasons', 'reviewed', 'status']);
   assert.deepEqual(r.json.people.map((p) => p.name).sort(), ['Dorrin', 'Kaelith', 'Mirabel', 'Thoren'], 'the page itself is unchanged');
   assert(Array.isArray(r.json.weeks) && r.json.policy.switchWeeks.length);
   assert.equal(await counted(s.w, () => s.team('bob')), 4, 'one batch more than the context; the watch list costs no extra call');
@@ -1680,13 +1689,15 @@ check('attention: every kind of open work for the Guild Master - fields, links, 
     id('signup_unmatched', s.r.soon),
     'claims',
     id('trial', s.p.Tanis), id('trial', s.p.Veyla),
-    `watch:${s.A}:${s.p.Kaelith}`,
     id('no_loot', s.r.noLoot),
     id('low_signups', s.r.unlocked), id('low_signups', s.r.bravoSoon), id('low_signups', s.r.soon),
     id('unlocked', s.r.unlocked),
   ]);
   assert.deepEqual(r.json.more, {});
-  assert.equal(r.json.total, 12, 'twelve open items; the information item is not counted');
+  assert.equal(r.json.total, 8, 'eight open to-dos: the readiness facts (low sign-ups, unlocked) and the watch list are not counted');
+  assert.deepEqual(r.json.counts[s.A], { watchOpen: 1, rankOpen: 0 }, 'the watch list is counted per team, not listed');
+  assert.deepEqual(r.json.hidden, []);
+  assert.ok(r.json.items.filter((i) => ['low_signups', 'unlocked'].includes(i.kind)).every((i) => i.readiness === true));
   const item = (key) => r.json.items.find((i) => i.id === key);
   assert.deepEqual(item(id('review', s.r.flag)), {
     kind: 'review', severity: 'action', teamId: s.A, teamName: 'Alpha', raidId: s.r.flag, date: '2027-01-13', zone: null, title: null, count: 3,
@@ -1702,8 +1713,7 @@ check('attention: every kind of open work for the Guild Master - fields, links, 
   );
   assert.deepEqual(item(id('trial', s.p.Veyla)).link, { name: 'person', pid: s.p.Veyla });
   assert(!r.json.items.some((i) => i.personId === s.p.Later), 'a trial ending in 10 days is not yet');
-  const watch = item(`watch:${s.A}:${s.p.Kaelith}`);
-  assert.deepEqual([watch.name, watch.class, watch.pct, watch.previousPct, watch.drop, watch.reasons, watch.link], ['Kaelith', 'WARRIOR', 12.5, 100, 87.5, ['below', 'drop'], { name: 'personatt', pid: s.p.Kaelith }]);
+  assert.equal(item(`watch:${s.A}:${s.p.Kaelith}`), undefined, 'the watch list left Home');
   assert.deepEqual([item(id('no_loot', s.r.noLoot)).date, item(id('no_loot', s.r.noLoot)).teamName], ['2027-01-15', 'Alpha']);
   const ids = r.json.items.map((i) => i.id);
   for (const left of [s.r.old, s.r.noLog, s.r.loot]) assert(!ids.includes(id('no_loot', left)), 'no_loot leaves out an old raid, a raid with no log and one with loot');
@@ -1723,13 +1733,13 @@ check('attention: each viewer sees the teams they hold the matching right for; m
   const id = (kind, key) => `${kind}:${key}`;
   const carol = await s.attention('carol');
   assert.deepEqual(carol.json.items.map((i) => i.id), [
-    id('review', s.r.flag), id('loot_unmatched', s.r.loot), id('signup_unmatched', s.r.soon), 'claims', id('trial', s.p.Veyla), `watch:${s.A}:${s.p.Kaelith}`,
+    id('review', s.r.flag), id('loot_unmatched', s.r.loot), id('signup_unmatched', s.r.soon), 'claims', id('trial', s.p.Veyla),
     id('no_loot', s.r.noLoot), id('low_signups', s.r.unlocked), id('low_signups', s.r.soon), id('unlocked', s.r.unlocked),
   ], 'Alpha only');
-  assert.equal(carol.json.total, 9);
+  assert.equal(carol.json.total, 6);
   const dave = await s.attention('dave');
   assert.deepEqual(dave.json.items.map((i) => i.id), [id('review', s.r.bravoFlag), 'claims', id('trial', s.p.Tanis), id('low_signups', s.r.bravoSoon)], 'Bravo only (the claim is the guild\'s)');
-  assert.equal(dave.json.total, 4);
+  assert.equal(dave.json.total, 3);
   for (const who of ['erin', 'gina']) {
     const r = await s.attention(who);
     assert.equal(r.status, 403, who);
