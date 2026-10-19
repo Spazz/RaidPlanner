@@ -356,7 +356,7 @@ function withState(fn) {
     assertNoRawAttrs(out);
   }));
 
-  await check('standings: name order, the all-time window, the viewer pinned as You, plain counts mode, own scope', withState(async () => {
+  await check('standings: name order, the all-time window, the viewer keeps their place as You, plain counts mode, own scope', withState(async () => {
     resetUi();
     G.app.state.att.lootUi.sort = 'name';
     assert.deepEqual(standNames(G.pages.lootStandings.standingsHtml(standOpts())), ['Aimersmay', 'Newbie', 'Oldtimer', 'Zzaps']);
@@ -368,7 +368,8 @@ function withState(fn) {
     G.app.state.att.lootUi.window = null;
     const me = Object.assign({}, BALANCE, { people: BALANCE.people.map(p => Object.assign({}, p, { isMe: p.personId === 'p_old' })) });
     const pinned = G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'ok', teamId: 't1', data: me } }));
-    assert.deepEqual(standNames(pinned)[0], 'Oldtimer', 'the viewer first');
+    assert.deepEqual(standNames(pinned), standNames(G.pages.lootStandings.standingsHtml(standOpts())), 'the viewer is not moved: same order as without a You row');
+    assert.notEqual(standNames(pinned).indexOf('Oldtimer'), 0, 'Oldtimer is not first');
     assert(pinned.includes('<span class="gs-you">You</span>') && pinned.includes('gs-dtable-row is-you'));
     const rank = [...pinned.matchAll(/<td class="is-right" data-label="Raids">/g)];
     assert(rank.length >= 4);
@@ -1729,6 +1730,32 @@ function withState(fn) {
     const contract = ['/raids/', '/loot/', '/loot/balance', '/loot/raids', '/loot/items', '/loot/person/', '/loot/policy'];
     for (const p of paths) assert(contract.some(c => p.startsWith(c)), 'unknown route ' + p);
   });
+
+  // ── Fix batch 1: unpinned You row, Standings tie-break ──
+  await check('F1: the viewer\'s row in Standings keeps its sorted place with the tint and the You tag', withState(async () => {
+    resetUi();
+    const me = Object.assign({}, BALANCE, { people: BALANCE.people.map(p => Object.assign({}, p, { isMe: p.personId === 'p_aa' })) });
+    const out = G.pages.lootStandings.standingsHtml(standOpts({ state: { status: 'ok', teamId: 't1', data: me } }));
+    assert.deepEqual(standNames(out), ['Zzaps', 'Aimersmay', 'Oldtimer', 'Newbie'], 'lowest per raid first; the viewer (Aimersmay) is second, not first');
+    assert(out.includes('gs-dtable-row is-you') && (out.match(/class="gs-you"/g) || []).length === 1);
+    assert(/is-you[^>]*data-row="p_aa"/.test(out), 'the tint is on the viewer\'s own row');
+  }));
+
+  await check('F4: Most due first = lowest per raid, then MORE raids attended first, then name; the reverse sort mirrors it', withState(async () => {
+    const L = G.pages.loot;
+    const rows = [
+      person('a', 'Cara', 'MAGE', 4, 1, 0, 2, 0.5), person('b', 'Abel', 'MAGE', 9, 1, 0, 2, 0.5), person('c', 'Bree', 'MAGE', 9, 1, 0, 2, 0.5),
+      person('d', 'Dina', 'MAGE', 2, 1, 0, 1, 0.1), person('e', 'Emil', 'MAGE', 0, 0, 0, 0, null),
+    ];
+    const bal = L.balanceRows({ people: rows }, 'window');
+    const names = list => list.map(r => r.name);
+    assert.deepEqual(names(G.pages.lootHub.dueOrder(bal, 'perRaid')), ['Dina', 'Abel', 'Bree', 'Cara', 'Emil'], 'Dina lowest; the 0.5 tie: 9 raids (Abel, Bree by name) before 4; no figure last');
+    assert.deepEqual(names(L.sortRows(bal, { column: 'perRaid', dir: 'desc' })), ['Cara', 'Abel', 'Bree', 'Dina', 'Emil'], 'mirrored: highest first, then the FEWEST raids, then name; no figure still last');
+    assert.deepEqual(names(L.sortRows(bal, { column: 'perRaid', dir: 'asc' })), names(G.pages.lootHub.dueOrder(bal, 'perRaid')), 'ascending is the due order');
+    assert.deepEqual(names(L.sortRows(bal, { column: 'counted', dir: 'asc' })), ['Emil', 'Dina', 'Abel', 'Bree', 'Cara'], 'counted: the same tie rule (equal counts: more raids first)');
+    const standing = G.pages.personLoot.standingOf({ mode: 'perRaid', countTags: ['MS'], window: { weeks: 8 }, people: rows }, 'a');
+    assert.equal(standing.rank, 4, 'the person page\'s due rank follows the same order');
+  }));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

@@ -85,13 +85,7 @@
     const rows = L().balanceRows(balance, 'all').filter(function (r) { return r.status !== 'inactive' || r.id === pid; });
     const mine = rows.filter(function (r) { return r.id === pid; })[0];
     if (!mine) return null;
-    const key = function (r) { return mode === 'count' ? r.counted : r.perRaid; };
-    const ordered = rows.slice().sort(function (p, q) {
-      const vp = key(p);
-      const vq = key(q);
-      if ((vp == null) !== (vq == null)) return vp == null ? 1 : -1;
-      return (vp == null ? 0 : vp - vq) || String(p.name || '').localeCompare(String(q.name || ''), 'en');
-    });
+    const ordered = rows.slice().sort(function (p, q) { return L().compareDue(p, q, mode, 'asc'); });
     return { raids: mine.raids, perRaid: mine.perRaid, counted: mine.counted, mode: mode, rank: ordered.indexOf(mine) + 1, of: ordered.length };
   }
 

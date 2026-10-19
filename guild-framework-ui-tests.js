@@ -304,13 +304,13 @@ function assertNoRawAttrs(out) {
     { key: 'updated', label: 'Updated', align: 'right' },
   ];
   const row = (id, name, extra) => Object.assign({ id: id, cells: { name: '<a href="#/p/' + id + '">' + name + '</a>', role: 'DPS', status: ui.signupChipHtml('signed'), updated: 'Tue 7:12 PM ET' } }, extra || {});
-  await check('data table: head with aria-sort, first column is the row header and link, the viewer\'s row pinned first with a YOU tag, cells carry data-label for the phone card', () => {
+  await check('data table: head with aria-sort, first column is the row header and link, the viewer\'s row keeps its place with a YOU tag, cells carry data-label for the phone card', () => {
     const out = ui.dataTableHtml({ label: 'Sign-ups', columns: COLS, rows: [row('a', 'Ironvale', { mark: 'WARRIOR' }), row('me', 'Thornwick', { you: true, mark: 'DRUID' }), row('c', 'Mirelle')] });
     assert(out.startsWith('<div class="gs-dtable-wrap"><table class="gs-dtable" aria-label="Sign-ups">'));
     assert(out.includes('<th scope="col" class="" aria-sort="ascending"><button type="button" class="gs-sort" data-action="table-sort" data-sort="name" data-key="sort-name" data-dir="asc">Character'));
     assert(out.includes('<th scope="col" class="is-right">Updated</th>'));
     const firstRow = out.slice(out.indexOf('<tbody>'));
-    assert(firstRow.indexOf('Thornwick') < firstRow.indexOf('Ironvale'), 'You first');
+    assert(firstRow.indexOf('Ironvale') < firstRow.indexOf('Thornwick') && firstRow.indexOf('Thornwick') < firstRow.indexOf('Mirelle'), 'You keep the given order, not first');
     assert(firstRow.includes('<th scope="row" class="gs-dtable-primary"><a href="#/p/me">Thornwick</a> <span class="gs-you">You</span></th>'));
     assert(out.includes('<tr class="gs-dtable-row is-you has-mark is-druid" data-row="me">') && out.includes('has-mark is-warrior'));
     assert(out.includes('<td class="" data-label="Role">DPS</td>') && out.includes('<td class="is-right" data-label="Updated">Tue 7:12 PM ET</td>'));

@@ -35,14 +35,9 @@
   // ── Who is due ──
   function dueKey(row, mode) { return mode === 'count' ? row.counted : row.perRaid; }
 
-  // Lowest figure first (the most due); a person with no figure last; ties by name.
+  // Lowest figure first (the most due); a person with no figure last; ties: more raids attended first, then name (pages-loot.js compareDue).
   function dueOrder(rows, mode) {
-    return rows.slice().sort(function (x, y) {
-      const vx = dueKey(x, mode);
-      const vy = dueKey(y, mode);
-      if ((vx == null) !== (vy == null)) return vx == null ? 1 : -1;
-      return (vx == null ? 0 : vx - vy) || String(x.name || '').localeCompare(String(y.name || ''), 'en');
-    });
+    return rows.slice().sort(function (x, y) { return L().compareDue(x, y, mode, 'asc'); });
   }
 
   function dueFigure(row, mode) {

@@ -63,7 +63,7 @@
     { tab: 'dataaccess', label: 'Data access', group: 'Sharing', needs: ['guild.access'],
       purpose: 'Read-only keys that let a spreadsheet or a script read your guild\'s data.' },
     { tab: 'attendance', label: 'Attendance', group: 'Raid rules', needs: ['attendance.policy'],
-      purpose: 'What counts as present, how late and bench are treated, and when someone is on the watch list.' },
+      purpose: 'What counts as attended, how late and bench are treated, and when someone is on the watch list.' },
     { tab: 'loot', label: 'Loot', group: 'Raid rules', needs: ['loot.policy'],
       purpose: 'Who sees loot and how the balance counts.' },
     { tab: 'notifications', label: 'Notifications', group: 'Raid rules', needs: ['guild.teams'],
@@ -458,6 +458,13 @@
   // ── top bar ──
   // The back link on the person record, the import pages and Guild settings (phone top bar).
   function backLinkHtml(ctx) {
+    const fixed = fixedBackLinkHtml(ctx);
+    const prev = fixed && G.router.previous ? G.router.previous() : null;
+    // The previous in-app page replaces the fixed parent (a plain click calls history.back()); a direct link has none.
+    return prev ? '<a class="gs-back" href="' + esc(baseOf(ctx) + prev.hash) + '" data-action="back-prev" aria-label="Back to ' + esc(prev.name) + '">&lsaquo; ' + esc(prev.name) + '</a>' : fixed;
+  }
+
+  function fixedBackLinkHtml(ctx) {
     const gd = guildOf(ctx);
     const r = ctx.route || {};
     if (!gd || sectionOf(ctx) !== 'guild') return '';

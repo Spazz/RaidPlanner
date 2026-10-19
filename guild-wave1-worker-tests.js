@@ -315,7 +315,7 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('raid.report', 'raid', 'r_1', { code: 'x' }, { removed: true }), 'Removed a Warcraft Logs report from the raid on Tue Oct 21 (Alpha)'],
     [row('raid.plan', 'raid', 'r_1', { plan: false }, { players: 25, live: true }), 'Attached a plan of 25 players to the raid on Tue Oct 21 (Alpha)'],
     [row('raid.plan', 'raid', 'r_1', { plan: true }, { plan: false }), 'Removed the plan from the raid on Tue Oct 21 (Alpha)'],
-    [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 20, reason: 'x' }), 'Entered attendance by hand for the raid on Tue Oct 21 (Alpha): 20 present'],
+    [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 20, reason: 'x' }), 'Entered attendance by hand for the raid on Tue Oct 21 (Alpha): 20 attended'],
     [row('raid.manual', 'raid', 'r_1', { manual: true }, { manual: false, reason: 'x' }), 'Went back from hand-entered attendance on the raid on Tue Oct 21 (Alpha)'],
     [row('team.size', 'team', 't_a', { size: 25 }, { size: 20 }), 'Set the raid size of Alpha to 20'],
     [row('team.trial_days', 'team', 't_a', { trialDays: 14 }, { trialDays: 21 }), 'Set the trial length of Alpha to 21 days'],
@@ -388,7 +388,7 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('signup.guest_remove', 'raid', 'r_1', { guest: true }), 'Removed a guest sign-up from the raid on Tue Oct 21 (Alpha)'],
     [row('launch.update', 'person', 'p_kael', null, { teamId: 't_a', levelBand: '40-59', ready: false }), 'Updated the launch status of Kaelith on Alpha'],
     [row('launch.team', 'team', 't_a', { launchTeam: false }, { launchTeam: true }), 'Turned on the Launch funnel for Alpha'],
-    [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 18, unmatched: 2, paste: true }), 'Entered attendance from a pasted roster for the raid on Tue Oct 21 (Alpha): 18 present, 2 names to review'],
+    [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 18, unmatched: 2, paste: true }), 'Entered attendance from a pasted roster for the raid on Tue Oct 21 (Alpha): 18 attended, 2 names to review'],
     // PM wave 7: data keys and the rank ladder.
     [row('apikey.create', 'api_key', 'ak_1', null, { teamId: 't_a', datasets: ['roster', 'loot'], expiresAt: 1790000000000 }), 'Made a data key for Alpha (roster and loot)'],
     [row('apikey.create', 'api_key', 'ak_2', null, { teamId: null, datasets: ['attendance'], expiresAt: null }), 'Made a data key for the whole guild (attendance) that does not expire'],
@@ -854,7 +854,7 @@ check('audit route: newest first, a plain sentence from live names, the actor, d
   const latest = r.json.rows.slice(0, 6);
   assert.deepEqual(texts(latest), [
     'Changed the attendance policy of the whole guild: watch',
-    'Entered attendance by hand for the raid on Tue Jan 12 (Alpha): 1 present',
+    'Entered attendance by hand for the raid on Tue Jan 12 (Alpha): 1 attended',
     'Created the raid on Tue Jan 12 (Alpha)',
     'Edited the officer notes of Thoren',
     'Moved Thoren to Reserve',

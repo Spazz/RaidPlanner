@@ -503,7 +503,7 @@ check('import rules: readAwards cleans and refuses, the automatic tag, the raid-
     'an award already on this raid stays on it, whatever its day');
 });
 
-check('balance maths: raids attended (fill-in cells and misses do not count, bench does), tags, perRaid, average, vsTeam, windows, inactive', async () => {
+check('balance maths: raids where the person could have won loot (attended, late, left early count; bench, misses and fill-in cells do not), tags, perRaid, average, vsTeam, windows, inactive', async () => {
   const { lootBalance, attendedForLoot } = await load('worker/loot-metrics.js');
   const raids = [
     { id: 'old', raidOn: '2026-10-01' }, { id: 'a', raidOn: '2027-01-05' }, { id: 'b', raidOn: '2027-01-12' }, { id: 'c', raidOn: '2027-01-14' },
@@ -542,8 +542,8 @@ check('balance maths: raids attended (fill-in cells and misses do not count, ben
   assert.deepEqual(zed.counted, { window: 2, all: 3 });
   assert.deepEqual(zed.perRaid, { window: 0.667, all: 0.75 });
   const amy = get('Amy');
-  assert.deepEqual(amy.raids, { window: 2, all: 2 }, 'a miss does not count; a bench cell with credit does');
-  assert.deepEqual(amy.perRaid, { window: 0.5, all: 0.5 });
+  assert.deepEqual(amy.raids, { window: 1, all: 1 }, 'a miss does not count; neither does a bench cell, even with credit');
+  assert.deepEqual(amy.perRaid, { window: 1, all: 1 });
   const bob = get('Bob');
   assert.deepEqual(bob.raids, { window: 1, all: 1 }, 'Other-team cells do not count, replaced home cell or host cell; only the present one does');
   assert.deepEqual(bob.perRaid, { window: 0, all: 0 });
@@ -552,8 +552,8 @@ check('balance maths: raids attended (fill-in cells and misses do not count, ben
   assert.equal(get('Cat').vsTeam, null, 'no raids, no comparison');
   assert.deepEqual(get('Old').items.MS, { window: 1, all: 1 });
   assert.deepEqual(get('Old').perRaid, { window: 1, all: 1 });
-  assert.deepEqual(result.teamAverage, { window: 0.542, all: 0.563 }, 'mean of the people with at least one raid (Zed, Amy, Bob, Old)');
-  assert.deepEqual([zed.vsTeam, amy.vsTeam, bob.vsTeam, get('Old').vsTeam], [0.125, -0.042, -0.542, 0.458]);
+  assert.deepEqual(result.teamAverage, { window: 0.667, all: 0.688 }, 'mean of the people with at least one raid (Zed, Amy, Bob, Old)');
+  assert.deepEqual([zed.vsTeam, amy.vsTeam, bob.vsTeam, get('Old').vsTeam], [0, 0.333, -0.667, 0.333]);
   const { people: unrounded } = run({ countTags: ['MS', 'OS'] });
   const zed2 = unrounded.find((p) => p.name === 'Zed');
   assert.deepEqual([zed2.counted, zed2.perRaid], [{ window: 3, all: 4 }, { window: 1, all: 1 }]);
@@ -565,9 +565,19 @@ check('balance maths: raids attended (fill-in cells and misses do not count, ben
   run();
   assert.equal(JSON.stringify({ people, raids, rows, awards }), input, 'the input is never mutated');
   assert.equal(attendedForLoot(att('a', 'x', 'present', 0, 0.5)), true);
+  for (const outcome of ['present', 'late', 'left_early', 'late_left']) assert.equal(attendedForLoot(att('a', 'x', outcome, 0, null)), true, outcome);
+  for (const outcome of ['bench', 'missed', 'missed_notice']) assert.equal(attendedForLoot(att('a', 'x', outcome, 0, outcome === 'bench' ? 1 : 0)), false, outcome);
   assert.equal(attendedForLoot(att('a', 'x', 'no_signup', 0, null)), false);
   assert.equal(attendedForLoot(att('a', 'x', 'tentative', 0, null)), false);
   assert.equal(attendedForLoot(att('a', 'x', 'fill_in', 1, 1)), false);
+});
+
+check('standings order (hub standingsTop): lowest figure, then MORE raids attended first, then name; no figure last; inactive left out', async () => {
+  const { mostDue } = await load('worker/routes/loot.js');
+  const p = (name, raids, perRaid, status = 'raider') => ({ name, status, raids: { window: raids, all: raids }, perRaid: { window: perRaid, all: perRaid }, counted: { window: perRaid === null ? null : 2, all: 2 } });
+  const people = [p('Cara', 4, 0.5), p('Bree', 9, 0.5), p('Abel', 9, 0.5), p('Dina', 2, 0.1), p('Emil', 0, null), p('Gone', 30, 0, 'inactive')];
+  assert.deepEqual(mostDue(people, 'perRaid').map((x) => x.name), ['Dina', 'Abel', 'Bree', 'Cara', 'Emil']);
+  assert.deepEqual(mostDue(people, 'count').map((x) => x.name), ['Abel', 'Bree', 'Cara', 'Dina', 'Emil'], 'count mode: equal counts, more raids first');
 });
 
 // ---------------------------------------------------------------------------

@@ -543,7 +543,7 @@ check('attendance: a covering away notice filed before the raid makes a missed r
   assert(text.includes("Thoren Paladin Can't come - - N Missed with notice 0%"), text.slice(text.indexOf('Everyone'), text.indexOf('Everyone') + 500));
   let row = (await s.rows("SELECT outcome, credit, signup_kind FROM attendance WHERE raid_id = ? AND player_id = ?", withNotice, s.people.Thoren))[0];
   assert.deepEqual(row, { outcome: 'missed_notice', credit: 0, signup_kind: 'absence' });
-  assert(text.includes('Kaelith Rogue No sign-up - - P Present 100%'), 'the ticked player is present');
+  assert(text.includes('Kaelith Rogue No sign-up - - A Attended 100%'), 'the ticked player is present');
 
   const second = await enterByHand(s, A, await openRaid(s, A, withSignup), ['Kaelith']);
   text = stripTags(second);

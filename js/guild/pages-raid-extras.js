@@ -138,7 +138,7 @@
     return '<form class="gs-dialog-form gs-dialog-wide" data-submit="paste-form" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Paste raid roster</h2><div id="pr-steps">' + G.ui.stepperHtml({ steps: G.ui.IMPORT_STEPS, current: 1, label: 'Import steps' }) + '</div>' +
       '<p class="gs-fine" id="dlg-help">Paste who was in the raid: one name per line or separated by commas, the in-game /who list, or a raid frame copied from an addon. Names are matched like the ones in a Warcraft Logs report. ' +
-      (replacing ? 'This replaces who is marked present on the raid now.' : 'The raid becomes hand-entered attendance with these people present.') + ' Names that match nobody wait in the review queue.</p>' +
+      (replacing ? 'This replaces who is marked attended on the raid now.' : 'The raid becomes hand-entered attendance with these people attended.') + ' Names that match nobody wait in the review queue.</p>' +
       '<div class="gs-field"><label class="gs-label" for="pr-text">Names</label><textarea class="gs-input gs-textarea gs-paste-box" id="pr-text" name="text" rows="8" data-input="paste-text" data-field="text" autocomplete="off" spellcheck="false"></textarea>' +
       '<p class="gs-field-error" id="dlg-err-text" role="alert" hidden></p></div>' +
       '<div id="pr-result" aria-live="polite"></div><p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
@@ -157,8 +157,8 @@
       ? '<p class="gs-fine">' + esc(plural(res.ignoredCount, 'line was', 'lines were') + ' not a name and ' + (res.ignoredCount === 1 ? 'is' : 'are') + ' left out' +
         (res.ignored && res.ignored.length ? ': ' + res.ignored.map(function (i) { return '"' + i.text + '"'; }).join(', ') + (res.ignoredCount > res.ignored.length ? ' and more' : '') : '') + '.') + '</p>' : '';
     const sum = res.matched.length || res.unmatched.length
-      ? '<p class="gs-commit-line"><strong>' + esc(plural(res.matched.length, 'person', 'people') + ' will be marked present.') + '</strong> <span class="gs-fine">Nothing is saved yet.</span></p>' : '';
-    return sum + chips(res.matched, 'Present', 'Nobody matched a person on the roster.') +
+      ? '<p class="gs-commit-line"><strong>' + esc(plural(res.matched.length, 'person', 'people') + ' will be marked attended.') + '</strong> <span class="gs-fine">Nothing is saved yet.</span></p>' : '';
+    return sum + chips(res.matched, 'Attended', 'Nobody matched a person on the roster.') +
       chips(res.unmatched, 'Matched nobody (they go to the review queue)') + chips(res.guests, 'Known guests (not counted)') + lines +
       (res.tooLong ? '<p class="gs-fine">Only the first 80 names are read.</p>' : '');
   }

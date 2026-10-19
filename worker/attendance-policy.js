@@ -51,7 +51,7 @@ const FALLBACK_RESET_DAY = REGION_RESET_DAY.US;
 // Every outcome a row can carry. letter: the grid cell; fixedCredit: the credit the outcome always has
 // (null = decided by an officer or not counted).
 export const OUTCOMES = Object.freeze({
-  present: Object.freeze({ letter: 'P', label: 'Present', fixedCredit: 1 }),
+  present: Object.freeze({ letter: 'A', label: 'Attended', fixedCredit: 1 }),
   bench: Object.freeze({ letter: 'B', label: 'Bench', fixedCredit: 1 }),
   missed: Object.freeze({ letter: 'M', label: 'Missed', fixedCredit: 0 }),
   missed_notice: Object.freeze({ letter: 'N', label: 'Missed with notice', fixedCredit: 0 }),

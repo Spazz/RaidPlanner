@@ -255,7 +255,7 @@
   G.handlers.change['jump-select'] = function (el) { jumpTo(el.value); };
 
   // ── DATA TABLE ──
-  // Head: 12 px caps muted; a sortable column says so (aria-sort) and its head is a button. Rows 52 high. The viewer's own row is pinned first, gold
+  // Head: 12 px caps muted; a sortable column says so (aria-sort) and its head is a button. Rows 52 high. The viewer's own row keeps its place in the page's sort order (never moved to the top): tinted, gold
   // edge and the tag YOU. The first column is the row's link. Numbers right-aligned, at most 7 columns. Over 10 rows show 10 and "Show all N"
   // (no pagination). Below 760 px the table becomes cards (every cell carries its column name in data-label; an empty cell is dropped), with no
   // text under 12 px and no sideways scroll.
@@ -270,7 +270,7 @@
     const all = (Array.isArray(o.rows) ? o.rows : []).filter(Boolean);
     if (!columns.length) return '';
     if (!all.length) return o.emptyHtml || '';
-    const sorted = all.filter(function (r) { return r.you; }).concat(all.filter(function (r) { return !r.you; }));
+    const sorted = all;
     const limit = o.limit > 0 ? o.limit : 10;
     const shown = o.showAll || sorted.length <= limit ? sorted : sorted.slice(0, limit);
     const primaryKey = (columns.filter(function (c) { return c.primary; })[0] || columns[0]).key;

@@ -301,7 +301,7 @@ check('policy: the fingerprint changes only for the keys that change stored resu
 check('policy: the outcome, letter and flag tables, and the outcomes a decision may pick', async () => {
   const { policy } = await modules();
   assert.deepEqual(Object.fromEntries(Object.entries(policy.OUTCOMES).map(([id, entry]) => [id, entry.letter])), {
-    present: 'P', bench: 'B', missed: 'M', missed_notice: 'N', late: 'L', left_early: 'E', late_left: 'LE', fill_in: 'F', tentative: 'T', no_signup: '-',
+    present: 'A', bench: 'B', missed: 'M', missed_notice: 'N', late: 'L', left_early: 'E', late_left: 'LE', fill_in: 'F', tentative: 'T', no_signup: '-',
   });
   assert.equal(policy.OUTCOMES.fill_in.label, 'Other team');
   assert.deepEqual(policy.LETTERS, Object.fromEntries(Object.entries(policy.OUTCOMES).map(([id, entry]) => [id, entry.letter])));
@@ -872,7 +872,7 @@ check('metrics: % is credit over counted cells; uncounted outcomes stay out; nul
   // counted: present 1, missed 0, bench 1, missed_notice 0, late 0.5 = 5 cells, 2.5 credit; the pending left_early is not counted.
   assert.deepEqual([result.pct, result.pctAll, result.counted, result.pending], [50, 50, 5, 1]);
   const letters = result.cells.map((cell) => cell.letter);
-  assert.deepEqual(letters, ['P', 'M', 'B', 'N', 'T', '-', 'L', 'E?']);
+  assert.deepEqual(letters, ['A', 'M', 'B', 'N', 'T', '-', 'L', 'E?']);
   assert.deepEqual(result.cells.map((cell) => cell.pending), [false, false, false, false, false, false, false, true]);
   // absence: excused and bench: excluded take those cells out of the % (credit and denominator).
   const excluded = metrics.teamMetrics(metricsInput({ policy: policy.resolvePolicy({ absence: 'excused', bench: 'excluded' }, null, 'US'), raids, rows, windowWeeks: 'all' })).people.a;
@@ -898,7 +898,7 @@ check('metrics: effective start (later of join and first attended raid, or join 
   let result = run({ people: [{ id: 'a', joinedOn: '2026-08-01' }] });
   assert.equal(result.start, '2026-09-15');
   assert.deepEqual(result.cells.map((cell) => cell.preStart), [true, true, false, false]);
-  assert.deepEqual(result.cells.map((cell) => cell.letter), ['', '', 'P', 'M']);
+  assert.deepEqual(result.cells.map((cell) => cell.letter), ['', '', 'A', 'M']);
   assert.deepEqual([result.pct, result.counted], [50, 2]);
   // joinDate only: nothing is pre-start.
   result = run({ people: [{ id: 'a', joinedOn: '2026-08-01' }] }, { effectiveStart: 'joinDate' });
@@ -942,7 +942,7 @@ check('metrics: pending cells are left out of the % and counted separately; awai
   const result = metrics.teamMetrics(metricsInput({ policy: p, raids, rows, people, windowWeeks: 8 }));
   assert.deepEqual([result.people.a.pct, result.people.a.counted, result.people.a.pending], [100, 1, 2]);
   assert.deepEqual([result.people.b.pct, result.people.b.counted, result.people.b.pending], [50, 1, 1]);
-  assert.deepEqual(result.people.a.cells.map((cell) => cell.letter), ['P', 'L?', 'LE?']);
+  assert.deepEqual(result.people.a.cells.map((cell) => cell.letter), ['A', 'L?', 'LE?']);
   assert.equal(result.awaitingReview, 2, 'the 10-03 and 10-09 raids each have a pending cell');
 });
 
@@ -1006,7 +1006,7 @@ check('metrics: borrowed fill-ins are extra counted cells on the host date; a re
     borrowed: [{ playerId: 'a', raidId: 'hostR2', raidOn: '2026-10-03', teamId: 'T3' }],
   })).people.a;
   assert.deepEqual(result.cells.map((cell) => [cell.date, cell.outcome, cell.letter, cell.via, cell.credit]), [
-    ['2026-09-25', 'present', 'P', null, 1], ['2026-10-02', 'missed', 'M', null, 0], ['2026-10-03', 'fill_in', 'F', 'T3', 1], ['2026-10-09', 'fill_in', 'F', 'T2', 1],
+    ['2026-09-25', 'present', 'A', null, 1], ['2026-10-02', 'missed', 'M', null, 0], ['2026-10-03', 'fill_in', 'F', 'T3', 1], ['2026-10-09', 'fill_in', 'F', 'T2', 1],
   ]);
   assert.deepEqual([result.pct, result.counted, result.lastAttended], [75, 4, '2026-10-09']);
   assert.equal(result.cells[2].weekStart, '2026-09-29');

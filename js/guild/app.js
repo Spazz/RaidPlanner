@@ -91,6 +91,7 @@
   let lastHref = null;
   let sessionPromise = null;
   let originalTitle = '';
+  let replaceNext = false;    // go(hash, true) replaced the history entry: the previous-page trail swaps its top instead of adding one
   let lastNavClickAt = 0;     // a plain click on a link just happened (its popstate is a navigation, not Back / Forward)
   let lastCollapseContext = null;
   let sessionGen = 0;         // bumped by resetSession: an answer that arrives after a sign-out is dropped
@@ -315,6 +316,7 @@
     if (window.location.hash === hash) { routeAll({ force: true }); return; }
     if (replace && window.history && window.history.replaceState) {
       window.history.replaceState(null, '', window.location.pathname + window.location.search + hash);
+      replaceNext = true;
       routeAll({ force: true });
       return;
     }
@@ -391,6 +393,8 @@
     const href = String(window.location.href);
     if (!o.force && href === lastHref) return Promise.resolve();
     lastHref = href;
+    G.router.visit(String(window.location.hash || ''), { replace: replaceNext, history: !!o.history });
+    replaceNext = false;
     G.ui.unsaved.clear(); // the address changed (the person chose to leave): a held-back form is gone with its page
     const prev = state.section;
     const section = sectionFor();
@@ -966,6 +970,8 @@
         G.ui.refreshItemTooltips(main); // a page that shows item links loads Wowhead's tooltip script (once); any other page loads nothing
         if (main.querySelectorAll) main.querySelectorAll('[data-scroll-key]').forEach(function (el) { const t = scrolls[el.getAttribute('data-scroll-key')]; if (t) el.scrollTop = t; });
         document.title = v.title;
+        const h1 = main.querySelector ? main.querySelector('h1') : null;
+        G.router.rendered(window.location.hash, h1 ? h1.textContent : '');
       } else if (main.innerHTML) {
         main.innerHTML = '';
       }
@@ -1179,6 +1185,14 @@
   G.handlers.click['open-drawer'] = function () {
     const d = byId('gs-drawer');
     if (d && !d.open && d.showModal) d.showModal();
+  };
+
+  // A back link that has a previous in-app page behind it: a plain click goes back one history entry (no new entry); a modified click opens the address.
+  G.handlers.click['back-prev'] = function (el, ev) {
+    if (!isPlainClick(ev) || !window.history || typeof window.history.back !== 'function') return;
+    if (!G.router.back()) return;
+    if (ev && ev.preventDefault) ev.preventDefault();
+    window.history.back();
   };
 
   G.handlers.click['close-drawer'] = function () {
@@ -1395,6 +1409,11 @@
     // A page restored from the back/forward cache re-checks the What's new pill.
     window.addEventListener('pageshow', function (ev) { if (ev && ev.persisted) render(); });
     // Whatever goes wrong on the first pass, the page must leave its pending look: signed-out chrome.
+    // A load that is not a reload or Back / Forward (a typed address, a link from another site, a new tab) has no previous in-app page.
+    try {
+      const nav = typeof performance !== 'undefined' && performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+      if (nav && nav.type === 'navigate') G.router.resetTrail();
+    } catch (err) { /* no navigation timing: the saved trail stays */ }
     try {
       const first = routeAll({ force: true });
       if (first && first.catch) first.catch(failSafeStart);

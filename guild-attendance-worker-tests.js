@@ -988,7 +988,7 @@ check('team page: windows (default, a switch value, all, a bad value), weeks, me
   assert.equal(people.Cassia.pct, null, 'a pending Late cell is not counted');
   assert.equal(people.Cassia.pending, 1);
   assert.equal(people.Aldric.cells.length, 1);
-  assert.deepEqual([people.Aldric.cells[0].letter, people.Brindle.cells[0].letter, people.Cassia.cells[0].letter], ['P', 'M', 'L?']);
+  assert.deepEqual([people.Aldric.cells[0].letter, people.Brindle.cells[0].letter, people.Cassia.cells[0].letter], ['A', 'M', 'L?']);
   assert.equal(people.Aldric.isMe, false);
   assert.equal((await s.call('carol', 'GET', `/attendance/team?team=${s.A}&window=12`)).json.window, 12);
   assert.equal((await s.call('carol', 'GET', `/attendance/team?team=${s.A}&window=all`)).json.window, 'all');

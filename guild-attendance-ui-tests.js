@@ -210,7 +210,7 @@ function teamData(over) {
   // ── outcome vocabulary, letters and colours ────────────────────
   await check('letters: ten outcomes, one letter each; the legend names them all; cells carry letter + aria-label', () => {
     const P = G.pages.attendance;
-    assert.deepEqual(plain(P.LETTERS), { present: 'P', bench: 'B', missed: 'M', missed_notice: 'N', late: 'L', left_early: 'E', late_left: 'LE', fill_in: 'F', tentative: 'T', no_signup: '-' });
+    assert.deepEqual(plain(P.LETTERS), { present: 'A', bench: 'B', missed: 'M', missed_notice: 'N', late: 'L', left_early: 'E', late_left: 'LE', fill_in: 'F', tentative: 'T', no_signup: '-' });
     assert.deepEqual(plain(P.OUTCOMES), Object.keys(P.LETTERS));
     assert.equal(P.OUTCOME_LABELS.fill_in, 'Other team');
     const legend = P.legendHtml();
@@ -348,7 +348,7 @@ function teamData(over) {
   await check('raids list: columns, kills/wipes, source chips, counts, one status pill per state, stale pill', () => {
     const out = raidsHtml();
     assert(out.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Raids</h1>'));
-    for (const col of ['Date', 'Zone', 'Bosses', 'Sources', 'Present / Bench / Missed', 'Status']) assert(out.includes('>' + col + '<'), col);
+    for (const col of ['Date', 'Zone', 'Bosses', 'Sources', 'Attended / Bench / Missed', 'Status']) assert(out.includes('>' + col + '<'), col);
     assert(out.includes('1 kill, 16 wipes') && out.includes('>Sign-ups<') && out.includes('Log x2') && out.includes('>Plan<'));
     assert(out.includes('24 / 1 / 3') && out.includes('href="#/g/g1/raids/r/r4"') && out.includes('Sat Oct 10'));
     assert(out.includes('5 to review') && out.includes('Awaiting log') && out.includes('>Needs recalculation<') && !out.includes('>Reviewed<') && !out.includes('>Recalculate<</span>') && out.includes('No log - by hand') && out.includes('1 to review'));
@@ -362,7 +362,7 @@ function teamData(over) {
   await check('raids list: a member has no actions or counts column data; empty states for officers and members', () => {
     const member = raidsHtml({ guildData: gd(MEMBER_CAN), data: { team: 't1', raids: RAIDS.map(r => Object.assign({}, r, { counts: null })) } });
     assert(!member.includes('New raid') && !member.includes('open flags') && !member.includes('att-recalc'));
-    assert(member.includes('data-label="Present / Bench / Missed"><span class="gs-muted">-</span>'));
+    assert(member.includes('data-label="Attended / Bench / Missed"><span class="gs-muted">-</span>'));
     // Officer-only parts are not drawn for a member: the Sources column, the review and recalculation chips.
     const memberFull = raidsHtml({ guildData: gd(MEMBER_CAN) });
     assert(!memberFull.includes('>Sources<') && !memberFull.includes('Log x2') && !memberFull.includes('to review') && !memberFull.includes('Needs recalculation') && !memberFull.includes('No log - by hand'));
@@ -410,9 +410,9 @@ function teamData(over) {
     // The segment bar of the T1 list: Upcoming / Past with counts (the same pressed-button group as the other lists).
     assert(out.includes('Upcoming <span class="gs-seg-count">2</span>') && out.includes('Past <span class="gs-seg-count">4</span>'));
     assert(/aria-pressed="true" data-action="raids-tab" data-value="upcoming"/.test(out) && /aria-pressed="false" data-action="raids-tab" data-value="past"/.test(out));
-    assert(out.includes('Upcoming raids') && !out.includes('Present / Bench / Missed') && out.includes('2 upcoming, 4 past'));
+    assert(out.includes('Upcoming raids') && !out.includes('Attended / Bench / Missed') && out.includes('2 upcoming, 4 past'));
     const past = withUp({ tab: 'past' });
-    assert(/aria-pressed="true" data-action="raids-tab" data-value="past"/.test(past) && past.includes('Present / Bench / Missed') && !past.includes('Refresh sign-ups'));
+    assert(/aria-pressed="true" data-action="raids-tab" data-value="past"/.test(past) && past.includes('Attended / Bench / Missed') && !past.includes('Refresh sign-ups'));
     const none = raidsHtml();
     assert(none.includes('Upcoming <span class="gs-seg-count">0</span>') && /aria-pressed="true" data-action="raids-tab" data-value="past"/.test(none));
     assert(raidsHtml({ tab: 'upcoming' }).includes('No upcoming raids'));
@@ -859,7 +859,7 @@ function teamData(over) {
 
   const PERSON_BIG = (() => {
     const big = plain(PERSON);
-    big.teams[0].cells = Array.from({ length: 10 }, (_, i) => ({ raid: { id: 'r' + i, raidOn: '2026-10-' + String(i + 1).padStart(2, '0'), zone: 'BT' }, outcome: 'present', letter: 'P', credit: 1, pending: false, preStart: false, via: null, reason: null }));
+    big.teams[0].cells = Array.from({ length: 10 }, (_, i) => ({ raid: { id: 'r' + i, raidOn: '2026-10-' + String(i + 1).padStart(2, '0'), zone: 'BT' }, outcome: 'present', letter: 'A', credit: 1, pending: false, preStart: false, via: null, reason: null }));
     return big;
   })();
 

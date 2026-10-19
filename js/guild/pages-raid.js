@@ -192,7 +192,7 @@
       '<ul class="gs-roster-cards gs-raid-cards" aria-label="People on this raid">' + cards + '</ul>';
   }
 
-  // Present (fill-ins too), Bench and Missed (with notice too), counted from the people list.
+  // Attended (fill-ins too), Bench and Missed (with notice too), counted from the people list.
   function countsOf(people) {
     const count = function (f) { return people.filter(f).length; };
     return {
@@ -202,7 +202,7 @@
     };
   }
 
-  function countsText(c) { return c.present + ' present, ' + c.bench + ' bench, ' + c.missed + ' missed'; }
+  function countsText(c) { return c.present + ' attended, ' + c.bench + ' bench, ' + c.missed + ' missed'; }
 
   // The Needs review / Everyone switch on the left, the totals in their colours on the right. `people` is Everyone (the people on the roster that day), `all` every row.
   function peopleToolbarHtml(people, filter, all) {
@@ -210,7 +210,7 @@
     const flagged = (all || people).filter(needsReview).length;
     const segs = '<div class="gs-segs" role="group" aria-label="Show"><button type="button" class="gs-seg" data-action="raid-filter" data-filter="review" data-key="rf-review" aria-pressed="' + (filter === 'review' ? 'true' : 'false') + '">Needs review <span class="gs-seg-count">' + flagged + '</span></button>' +
       '<button type="button" class="gs-seg" data-action="raid-filter" data-filter="all" data-key="rf-all" aria-pressed="' + (filter === 'all' ? 'true' : 'false') + '">Everyone <span class="gs-seg-count">' + people.length + '</span></button></div>';
-    const tally = '<p class="gs-tally"><span class="gs-tally-present"><b>' + c.present + '</b> present</span><span class="gs-tally-bench"><b>' + c.bench + '</b> bench</span><span class="gs-tally-missed"><b>' + c.missed + '</b> missed</span></p>';
+    const tally = '<p class="gs-tally"><span class="gs-tally-present"><b>' + c.present + '</b> attended</span><span class="gs-tally-bench"><b>' + c.bench + '</b> bench</span><span class="gs-tally-missed"><b>' + c.missed + '</b> missed</span></p>';
     return '<div class="gs-ptoolbar">' + segs + tally + '</div>';
   }
 

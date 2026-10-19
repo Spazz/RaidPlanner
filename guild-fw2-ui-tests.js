@@ -109,7 +109,7 @@ const keys = items => plain(items.map(i => i.key));
   });
 
   // ═══ 5. Attendance ═══
-  const cell = (raidId, date, weekStart, outcome) => ({ raidId, date, weekStart, outcome, letter: outcome === 'present' ? 'P' : 'M', pending: false });
+  const cell = (raidId, date, weekStart, outcome) => ({ raidId, date, weekStart, outcome, letter: outcome === 'present' ? 'A' : 'M', pending: false });
   const person = (id, name, isMe, pct) => ({ id, name, class: 'DRUID', status: 'raider', isMe, pct, pctAll: pct, signupRate: 100, streak: 0, streakFlag: false, lastAttended: '2026-10-09', pending: 0,
     cells: [cell('r1', '2026-10-02', '2026-09-29', 'present'), cell('r2', '2026-10-09', '2026-10-06', 'present')] });
   const ATT = over => Object.assign({
@@ -120,17 +120,17 @@ const keys = items => plain(items.map(i => i.key));
   }, over || {});
   const attHtml = (data, can, view) => G.pages.attendance.attendanceHtml({ guildData: gd(can || OFFICER_CAN, { attendanceFlags: { t1: 2 } }), teamId: 't1', data, view: Object.assign({ sort: G.pages.attendance.DEFAULT_SORT, includeInactive: false }, view || {}) });
 
-  await check('attendance: the viewer\'s own row is first in the matrix and in the phone cards, whatever the sort, with the You tag; the rest keep the sorted order', () => {
+  await check('attendance: the viewer\'s own row keeps its sorted place in the matrix and in the phone cards (never pinned), with the You tag and the tint', () => {
     const out = attHtml(ATT());
     const rows = [...out.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => [m[2], !!m[1]]);
-    assert.deepEqual(rows, [['Me', true], ['Aimer', false], ['Zed', false]], 'You first, then A-Z');
+    assert.deepEqual(rows, [['Aimer', false], ['Me', true], ['Zed', false]], 'A-Z, You in place');
     assert(out.includes('<span class="gs-you">You</span>'));
     const cards = [...out.matchAll(/<li class="gs-att-card( is-you)?">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[2]);
-    assert.deepEqual(cards, ['Me', 'Aimer', 'Zed']);
+    assert.deepEqual(cards, ['Aimer', 'Me', 'Zed']);
     const desc = attHtml(ATT(), OFFICER_CAN, { sort: { column: 'pct', dir: 'desc' } });
-    assert.deepEqual([...desc.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[2]), ['Me', 'Aimer', 'Zed'], 'pinned although Me has the lowest %');
-    assert.deepEqual(plain(G.pages.attendance.pinMine([{ n: 1 }, { n: 2, isMe: true }, { n: 3 }])).map(p => p.n), [2, 1, 3]);
-    assert(!attHtml(ATT({ people: [person('p_a', 'Aimer', false, 100)] })).includes('class="is-you"'), 'a viewer with no row pins nothing');
+    assert.deepEqual([...desc.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[2]), ['Aimer', 'Zed', 'Me'], 'Me has the lowest %, so Me is last');
+    assert.equal(G.pages.attendance.pinMine, undefined, 'the pin helper is gone');
+    assert(!attHtml(ATT({ people: [person('p_a', 'Aimer', false, 100)] })).includes('class="is-you"'), 'a viewer with no row tints nothing');
   });
 
   await check('attendance: the legend is folded behind a Legend toggle; the page is one list page with the viewer\'s facts in a context line', () => {
@@ -360,8 +360,8 @@ const keys = items => plain(items.map(i => i.key));
     const dialog = G.pages.raidExtras.pasteDialogHtml({ raid: { state: 'awaiting_log' }, sources: { reports: [] } });
     assert.deepEqual(stepsOf(dialog), ['current:Source', 'later:Preview', 'later:Import']);
     assert(dialog.includes('Check names') && /id="pr-steps"/.test(dialog));
-    assert(/gs-commit-line/.test(read('js/guild/pages-raid-extras.js')) && /\.gs-commit-line \{/.test(css), 'the preview opens with "N will be marked present. Nothing is saved yet."');
-    assert(G.pages.raidExtras.previewHtml({ matched: [{ name: 'A' }, { name: 'B' }], unmatched: [], guests: [], ignoredCount: 0 }).includes('2 people will be marked present.'));
+    assert(/gs-commit-line/.test(read('js/guild/pages-raid-extras.js')) && /\.gs-commit-line \{/.test(css), 'the preview opens with "N will be marked attended. Nothing is saved yet."');
+    assert(G.pages.raidExtras.previewHtml({ matched: [{ name: 'A' }, { name: 'B' }], unmatched: [], guests: [], ignoredCount: 0 }).includes('2 people will be marked attended.'));
   });
 
   await check('T5: the commit bar and the result are the shared helpers; the result is an inline banner, never a toast, and Back keeps what was typed', () => {

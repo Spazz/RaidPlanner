@@ -163,8 +163,17 @@
     });
   }
 
-  function pinMine(rows) {
-    return rows.filter(function (r) { return r.isMe; }).concat(rows.filter(function (r) { return !r.isMe; }));
+  // The one "most due first" comparator of the balance rows (hub card, Standings, person page; the Worker's mostDue is the same rule): the lowest
+  // figure first (counted or per raid, by mode), a row without a figure last, then MORE raids attended first, then name. dir 'desc' mirrors the
+  // figure and the raids (highest figure first, then fewest raids); the name always runs A-Z and a row without a figure stays last.
+  function compareDue(x, y, mode, dir) {
+    const vx = mode === 'count' ? x.counted : x.perRaid;
+    const vy = mode === 'count' ? y.counted : y.perRaid;
+    if ((vx == null) !== (vy == null)) return vx == null ? 1 : -1;
+    const sign = dir === 'desc' ? -1 : 1;
+    const byFigure = vx == null ? 0 : sign * (vx - vy);
+    const byRaids = -sign * ((Number(x.raids) || 0) - (Number(y.raids) || 0));
+    return byFigure || byRaids || String(x.name == null ? '' : x.name).localeCompare(String(y.name == null ? '' : y.name), 'en');
   }
 
   function defaultSort(mode) { return { column: mode === 'count' ? 'counted' : 'perRaid', dir: 'desc' }; }
@@ -176,6 +185,7 @@
 
   // Empty values (a dash) sort last in either direction; ties fall back to the name.
   function sortRows(rows, sort) {
+    if (sort.column === 'perRaid' || sort.column === 'counted') return rows.slice().sort(function (x, y) { return compareDue(x, y, sort.column === 'counted' ? 'count' : 'perRaid', sort.dir); });
     const dir = sort.dir === 'desc' ? -1 : 1;
     const key = function (r) { return sort.column === 'name' ? String(r.name == null ? '' : r.name) : r[sort.column]; };
     return rows.slice().sort(function (x, y) {
@@ -242,10 +252,10 @@
     defaultSort: defaultSort,
     nextSort: nextSort,
     sortRows: sortRows,
+    compareDue: compareDue,
     emptyHtml: emptyHtml,
     noAccessHtml: noAccessHtml,
     countedText: countedText,
-    pinMine: pinMine,
     fixed: fixed,
     count: count,
     signed: signed,

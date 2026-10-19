@@ -33,7 +33,7 @@
   const RADIO = 'radio';
   // The page is three sections with anchors (design framework T3) and one Save bar; every group sits in one of them.
   const SECTIONS = [
-    { id: 'att-present', title: 'What counts as present', blurb: 'Who is expected at a raid, and how sign-ups and fill-ins count.' },
+    { id: 'att-present', title: 'What counts as attended', blurb: 'Who is expected at a raid, and how sign-ups and fill-ins count.' },
     { id: 'att-late', title: 'Late and bench rules', blurb: 'How late and early leavers and the bench are credited.' },
     { id: 'att-review', title: 'Review and watch list', blurb: 'The windows attendance is worked out over, who is flagged, ranks and the weekly reset.' },
   ];

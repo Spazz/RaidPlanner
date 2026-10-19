@@ -413,7 +413,7 @@ check('paste dialog: the first press checks the names and shows who matched, the
   await settle();
   assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['post', '/api/guild/g1/raids/r4/manual/paste/preview', { text: box.value }]]);
   const shown = text(result.innerHTML);
-  assert(shown.includes('Present (1)') && shown.includes('Aldric') && shown.includes('Matched nobody') && shown.includes('Stranger') && shown.includes('Known guests') && shown.includes('1 line was not a name'));
+  assert(shown.includes('Attended (1)') && shown.includes('Aldric') && shown.includes('Matched nobody') && shown.includes('Stranger') && shown.includes('Known guests') && shown.includes('1 line was not a name'));
   assert.equal(go.textContent, 'Save attendance');
   // Typing again drops the preview.
   G.handlers.input['paste-text']();

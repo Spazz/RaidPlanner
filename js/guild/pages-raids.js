@@ -99,7 +99,7 @@
       { key: 'zone', label: 'Zone' },
       { key: 'bosses', label: 'Bosses' },
       officer ? { key: 'sources', label: 'Sources' } : null,
-      { key: 'counts', label: 'Present / Bench / Missed' },
+      { key: 'counts', label: 'Attended / Bench / Missed' },
       { key: 'status', label: 'Status' },
     ].filter(Boolean);
     const rows = raids.map(function (r) {
