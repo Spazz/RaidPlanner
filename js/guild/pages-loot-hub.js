@@ -237,21 +237,21 @@
     const hub = x.hub;
     const edit = !!hub.can.edit;
     const own = hub.level === 'own';
-    const cards = [];
+    const hubCards = [];
     if (edit) {
-      if (hub.can.standings && x.balance) cards.push(dueCardHtml(gd, x.balance));
-      cards.push(nightsCardHtml(gd, x));
-      if (hub.can.itemLookup) cards.push(lookupCardHtml(gd, x));
-      if (hub.fix) cards.push(fixCardHtml(gd, hub));
+      if (hub.can.standings && x.balance) hubCards.push(dueCardHtml(gd, x.balance));
+      hubCards.push(nightsCardHtml(gd, x));
+      if (hub.can.itemLookup) hubCards.push(lookupCardHtml(gd, x));
+      if (hub.fix) hubCards.push(fixCardHtml(gd, hub));
     } else {
-      cards.push(myLootCardHtml(gd, hub));
-      if (!own) cards.push(nightsCardHtml(gd, x));
-      if (!own && hub.can.standings && x.balance) cards.push(dueCardHtml(gd, x.balance));
-      if (!own && hub.can.itemLookup) cards.push(lookupCardHtml(gd, x));
+      hubCards.push(myLootCardHtml(gd, hub));
+      if (!own) hubCards.push(nightsCardHtml(gd, x));
+      if (!own && hub.can.standings && x.balance) hubCards.push(dueCardHtml(gd, x.balance));
+      if (!own && hub.can.itemLookup) hubCards.push(lookupCardHtml(gd, x));
     }
     const rules = hub.can.rules ? { id: 'lhub-more', label: 'Loot rules', items: [{ label: 'Loot rules', href: href({ name: 'settings', gid: gd.guild.id, tab: 'loot' }), key: 'lhub-rules' }] } : null;
     const hasAnything = (hub.nights && hub.nights.length) || (hub.me && hub.me.byNight && hub.me.byNight.length);
-    const bodyHtml = !hasAnything && edit && !(x.raids && x.raids.length) ? L().emptyHtml(gd, x.teamId) : '<div class="gs-lhub' + (edit ? ' is-officer' : ' is-member') + '">' + cards.join('') + '</div>';
+    const bodyHtml = !hasAnything && edit && !(x.raids && x.raids.length) ? L().emptyHtml(gd, x.teamId) : '<div class="gs-lhub' + (edit ? ' is-officer' : ' is-member') + '">' + hubCards.join('') + '</div>';
     return G.ui.listPageHtml({
       head: { title: 'Loot', context: contextOf(gd, x), more: rules }, pageClass: 'gs-loot-page gs-loot-hub',
       noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'), bodyHtml: bodyHtml,
