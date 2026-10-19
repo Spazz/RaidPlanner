@@ -1879,7 +1879,17 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
   gap: 32px;
 }
 .gs-home .gs-hd-h1 { font-size: 28px; line-height: 1.1; letter-spacing: 0.03em; color: var(--text-primary); }
-.gs-home .gs-hd-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; }
+.gs-home .gs-hd-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.gs-hd-headtxt { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; }
+.gs-hd-range { font-size: 15px; color: var(--text-secondary); }
+.gs-hd-weeknav { display: flex; align-items: center; gap: 8px; }
+.gs-hd-sq, .gs-hd-back { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: 36px; margin: 0; font: 600 13px/1 var(--font-body); cursor: pointer; }
+.gs-hd-sq { width: 36px; padding: 0; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-medium); border-radius: 4px; color: var(--text-primary); }
+.gs-hd-sq:hover { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); }
+.gs-hd-back { padding: 0 10px; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--text-secondary); white-space: nowrap; }
+.gs-hd-back:hover { background: rgba(255, 255, 255, 0.06); }
+.gs-hd-sq[aria-disabled="true"], .gs-hd-back[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+.gs-hd-strip.is-loading { opacity: 0.6; }
 .gs-home .gs-hd-muted { color: var(--text-muted); font-size: 13px; }
 .gs-home .gs-hd-center { text-align: center; padding: 8px 0; margin: 0; }
 .gs-home a:focus-visible, .gs-home button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
@@ -1938,13 +1948,15 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
 
 /* The strip */
 .gs-hd-strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
-.gs-hd-day { flex: 1 1 120px; min-width: 120px; box-sizing: border-box; display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: 8px; background: rgba(255, 255, 255, 0.02); }
+.gs-hd-day { flex: 1 1 120px; min-width: 120px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 8px; background: rgba(255, 255, 255, 0.02); }
 .gs-hd-day.is-empty { border-style: dashed; border-color: var(--border-medium); min-height: 90px; }
 .gs-hd-day.is-selected { background: linear-gradient(#2a2d2f, #232628); border-color: rgba(255, 255, 255, 0.36); box-shadow: var(--hd-panel-shadow); }
-.gs-hd-pick { box-sizing: border-box; width: 100%; flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin: 0; padding: 12px; background: none; border: 0; border-radius: 8px; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.gs-hd-pick { box-sizing: border-box; width: 100%; flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 0; margin: 0; padding: 0; background: none; border: 0; border-radius: 8px; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
 .gs-hd-pick:hover { background: rgba(255, 255, 255, 0.04); }
 .gs-hd-pick.is-stacked { border-top: 1px solid var(--hd-hair); border-radius: 0 0 8px 8px; }
 .gs-hd-pick[aria-pressed="true"].is-stacked, .gs-hd-pick[aria-pressed="true"] { background: rgba(255, 255, 255, 0.05); }
+.gs-hd-pick:focus-visible { outline-offset: -2px; }
+.gs-hd-pickbody { box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; }
 .gs-hd-daybody { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .gs-hd-team { font-size: 14px; font-weight: 600; }
 .gs-hd-cnt { font-size: 14px; font-weight: 700; color: var(--hd-white); font-variant-numeric: tabular-nums; }
@@ -1952,7 +1964,9 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
 
 /* Selected day and Guild box */
 .gs-hd-cols { display: flex; align-items: flex-start; gap: 32px; }
-.gs-hd-main { flex: 1; min-width: 0; padding: 24px 28px; display: flex; flex-direction: column; }
+.gs-hd-main { flex: 1; min-width: 0; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.gs-hd-selbody { padding: 24px 28px; display: flex; flex-direction: column; }
+.gs-hd-art + .gs-hd-selbody { padding-top: 16px; }
 .gs-hd-side { width: 340px; flex: none; padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 8px; }
 .gs-hd-sel-head { display: flex; align-items: center; gap: 16px; }
 .gs-hd-sel-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -1995,7 +2009,9 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
 .gs-home a.gs-hd-link:hover { color: var(--text-primary); text-decoration: underline; }
 
 /* Briefing */
-.gs-hd-nextcard { padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.gs-hd-nextcard { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.gs-hd-nextbody { padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.gs-hd-art + .gs-hd-nextbody { padding-top: 12px; }
 .gs-hd-nextrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .gs-hd-nextcard .gs-hd-caps { margin-top: 4px; }
 .gs-hd-nextcard .gs-hd-sentence { margin-top: 4px; font-size: 16px; }
@@ -2010,6 +2026,44 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
 .gs-hd-comingtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .gs-hd-when { font-size: 14px; font-weight: 600; }
 .gs-hd-comingend { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+/* Raid art (round 6): 16:9 loading-screen crops, centred; a two-zone night is two halves. Text on art sits on a scrim; the chip on an opaque backing. */
+.gs-hd-art { position: relative; display: flex; flex: none; box-sizing: border-box; width: 100%; overflow: hidden; background: #101113; }
+.gs-hd-art.is-strip { height: 64px; }
+.gs-hd-art.is-panel { height: 160px; }
+.gs-hd-art.is-card { height: 170px; }
+.gs-hd-art.is-thumb { width: 64px; height: 36px; border-radius: 4px; }
+.gs-hd-artimg { flex: 1 1 0; min-width: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; display: block; }
+.gs-hd-artimg.is-fill { background: #2a2d2f; }
+.gs-hd-artimg + .gs-hd-artimg { border-left: 2px solid #1d1f21; }
+.gs-hd-art.is-thumb .gs-hd-artimg + .gs-hd-artimg { border-left-width: 1px; }
+.gs-hd-artlabel { position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px); box-sizing: border-box; height: 19px; padding: 2px 6px; overflow: hidden; border-radius: 4px; background: rgba(19, 20, 22, 0.62); color: #f2f3f1; font-size: 12px; font-weight: 700; line-height: 16px; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.gs-hd-scrim { position: absolute; inset: 0; background: linear-gradient(rgba(19, 20, 22, 0) 0%, rgba(19, 20, 22, 0.55) 45%, rgba(19, 20, 22, 0.92) 100%); }
+.gs-hd-arttext { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 28px 16px; display: flex; align-items: flex-end; gap: 16px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.gs-hd-arttext .gs-hd-h2 { color: #fff; }
+.gs-hd-arttext .gs-hd-sub, .gs-hd-arttext .gs-hd-caps { color: var(--text-primary); }
+.gs-hd-chipbox { display: inline-flex; flex: none; border-radius: 4px; background: #131416; text-shadow: none; }
+.gs-hd-art.is-card .gs-hd-arttext { padding: 0 16px 12px; flex-direction: column; align-items: stretch; gap: 6px; }
+.gs-hd-art.is-card .gs-hd-nextrow { justify-content: space-between; }
+
+/* Roles grid: names in class colours; a mark says what is not a plain yes (?, x, clock, S); every name is a button */
+.gs-hd-roles { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.gs-hd-nextbody .gs-hd-roles { margin-top: 4px; }
+.gs-hd-rolegrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.gs-hd-rolegrid.has-other { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.gs-hd-rolecol { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.gs-hd-gh { align-self: stretch; padding-bottom: 4px; border-bottom: 1px solid var(--hd-panel-edge); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.gs-hd-gh b { color: var(--hd-white); font-weight: 700; font-variant-numeric: tabular-nums; }
+.gs-hd-gn { display: flex; align-items: center; gap: 6px; max-width: 100%; min-height: 24px; margin: 0; padding: 0 4px; background: none; border: 0; border-radius: 3px; font: 600 13px/1.2 var(--font-body); text-align: left; cursor: pointer; }
+.gs-hd-gn[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); }
+.gs-hd-gn:hover { background: rgba(255, 255, 255, 0.06); }
+.gs-hd-gn.is-muted .gs-char-name { color: var(--text-muted); }
+.gs-hd-gn.is-out .gs-char-name { text-decoration: line-through; }
+.gs-hd-mk { display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box; width: 14px; height: 14px; border: 1px solid currentColor; border-radius: 50%; color: var(--text-primary); font-size: 12px; font-weight: 700; line-height: 12px; }
+.gs-hd-mk.is-x { color: #fda4af; }
+.gs-hd-mk.is-s { color: var(--text-muted); }
+.gs-hd-openline, .gs-hd-cap { font-size: 13px; color: var(--text-secondary); }
+.gs-hd-cap { min-height: 18px; }
 
 /* Undo toast */
 .gs-hd-toastwrap { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 60; pointer-events: none; }
@@ -2036,6 +2090,10 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
 @media (max-width:600px) {
   .gs-home { gap: 24px; }
   .gs-home .gs-hd-head { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .gs-hd-weeknav { display: none; }
+  .gs-hd-rolegrid, .gs-hd-rolegrid.has-other { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  .gs-hd-gn { gap: 4px; padding: 0 2px; }
+  .gs-hd-art.is-card .gs-hd-h2 { font-size: 28px; }
   .gs-hd-desk { display: none; }
   .gs-hd-phone { display: flex; flex-direction: column; gap: 32px; }
   .gs-home :is(.gs-hd-phone, .gs-hd-toastwrap) .gs-btn { min-height: 44px; font-size: 14px; }

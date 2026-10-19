@@ -6,8 +6,9 @@
 // GET /attention -> { today, total, items, more, hidden, counts, week, onboarding }:
 //   items   the open, unhidden to-dos ({ id, kind, teamId, teamName, link, raidId?, ...kind fields }); items with `readiness: true` are facts about a raid,
 //           not to-dos (they feed the raid's sentence through `week`), `more` counts what the per-kind cap left out
-//   week    every raid from yesterday to today + 5 with its readiness facts and a status (done | todo | short | ready | open): the strip, the selected day, the
-//           sentence and the Coming up rows are built from it and from nothing else
+//   week    { offset, start, end, resetDay, autoAdvanced, raids }: the guild's reset week (7 days from `start`); each raid has its readiness facts, a status
+//           (done | todo | short | ready | open) and the Roles grid's `people` + `openSeats`: the strip, the selected day, the sentence and the Coming up rows are
+//           built from it and from nothing else. The arrows read GET /attention/week?offset=N ({ week }); that answer replaces `week` on the page until it is left.
 //   hidden  what a shared Hide / Snooze hides now, with who did it (Restore); counts { teamId: { watchOpen, rankOpen } } feed the Guild box and More links
 // The count in the sidebar's Home badge is `total`; app.js keeps the last answer per guild. Hide / Snooze (More menu) and Restore go through
 // POST / DELETE /attention/dismissals: the client names the item, the Worker decides what hiding it means.
@@ -203,18 +204,25 @@
     webhook_off: { snoozeDays: 7 },
   };
 
-  // Raid zones: the short name on a tile and its tint class (guild.css, .gs-hd-tile.is-<tint>). Any other zone gets the first letters and a neutral tile.
+  // Raid zones: the short name on a tile and its tint class (guild.css, .gs-hd-tile.is-<tint>), and `art`: the key of the loading-screen crop in
+  // icons/raids/<art>-sm.webp (192x108) and -md.webp (480x270). Any other zone gets the first letters, a neutral tile and no art.
   const ZONE_TILES = {
-    'karazhan': { abbr: 'KARA', tint: 'kara' },
-    'gruul\'s lair': { abbr: 'GRUUL', tint: 'gruul' },
-    'magtheridon\'s lair': { abbr: 'MAG', tint: 'mag' },
-    'serpentshrine cavern': { abbr: 'SSC', tint: 'ssc' },
-    'tempest keep': { abbr: 'TK', tint: 'tk' },
-    'hyjal summit': { abbr: 'HYJAL', tint: 'hyjal' },
-    'black temple': { abbr: 'BT', tint: 'bt' },
-    'zul\'aman': { abbr: 'ZA', tint: 'za' },
-    'sunwell plateau': { abbr: 'SWP', tint: 'swp' },
+    'karazhan': { abbr: 'KARA', tint: 'kara', art: 'kara' },
+    'gruul\'s lair': { abbr: 'GRUUL', tint: 'gruul', art: 'gruul' },
+    'magtheridon\'s lair': { abbr: 'MAG', tint: 'mag', art: 'mag' },
+    'serpentshrine cavern': { abbr: 'SSC', tint: 'ssc', art: 'ssc' },
+    'tempest keep': { abbr: 'TK', tint: 'tk', art: 'tk' },
+    'hyjal summit': { abbr: 'HYJAL', tint: 'hyjal', art: 'hyjal' },
+    'black temple': { abbr: 'BT', tint: 'bt', art: 'bt' },
+    'zul\'aman': { abbr: 'ZA', tint: 'za', art: 'za' },
+    'sunwell plateau': { abbr: 'SWP', tint: 'swp', art: 'swp' },
   };
+  const ART_SIZES = { sm: { w: 192, h: 108 }, md: { w: 480, h: 270 } };
+  // The Roles grid: columns in order; people whose role is null go to a fifth "Other" column that exists only when it has someone.
+  const ROLE_COLS = [['tank', 'Tanks'], ['healer', 'Healers'], ['melee', 'Melee'], ['ranged', 'Ranged']];
+  const STATE_TEXT = { confirmed: 'Confirmed', no_answer: 'No answer', cant_come: 'Can\'t come', signed: 'Signed up', late: 'Late', tentative: 'Tentative', standby: 'Standby', listed: 'In the raid' };
+  const MUTED_STATES = ['no_answer', 'cant_come', 'standby'];
+  const MAX_OFFSET = 8;
   const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const DAY_MS = 86400000;
@@ -247,6 +255,22 @@
     if (!names.length) return '';
     if (mode === 'short' && names.length > 1) return '<span class="gs-hd-tiles">' + tileHtml(names[0], false) + '<span class="gs-hd-tile is-more" aria-hidden="true">+' + (names.length - 1) + '</span></span>';
     return '<span class="gs-hd-tiles">' + names.map(function (n) { return tileHtml(n, mode === 'big'); }).join('') + '</span>';
+  }
+
+  // The art of a raid: up to two halves side by side (a raid in two zones), centred crops. '' when no zone of the raid has art (the caller then uses the
+  // tiles). A zone without art among zones with art gets a plain filler half. opts: { size: 'sm' | 'md', lazy, label (the initials on the art) }.
+  function artZones(zone) { return splitZones(zone).slice(0, 2).map(function (name) { return { name: name, tile: tileOf(name) }; }); }
+  function hasArt(zone) { return artZones(zone).some(function (z) { return !!z.tile.art; }); }
+  function artImagesHtml(zone, size, lazy) {
+    const dim = ART_SIZES[size];
+    return artZones(zone).map(function (z) {
+      return z.tile.art
+        ? '<img class="gs-hd-artimg" src="/icons/raids/' + z.tile.art + '-' + size + '.webp" alt="' + esc(z.name) + '" width="' + dim.w + '" height="' + dim.h + '"' + (lazy ? ' loading="lazy"' : '') + '>'
+        : '<span class="gs-hd-artimg is-fill" aria-hidden="true"></span>';
+    }).join('');
+  }
+  function artLabelHtml(zone) {
+    return '<span class="gs-hd-artlabel" aria-hidden="true">' + esc(artZones(zone).map(function (z) { return z.tile.abbr; }).join(' + ')) + '</span>';
   }
 
   // ── dates (a guild day is a plain YYYY-MM-DD) ──
@@ -282,7 +306,10 @@
     const tz = zoneOfGuild(gd);
     const now = typeof opts.now === 'number' ? opts.now : Date.now();
     const today = typeof data.today === 'string' && dateParts(data.today) ? data.today : (G.ui.dayKeyInZone(now, tz) || '');
-    const weekRaids = Array.isArray(data.week) ? data.week : (data.week && Array.isArray(data.week.raids) ? data.week.raids : []); // round 6: week is { ..., raids }
+    const shown = opts.week && typeof opts.week === 'object' ? opts.week : (data.week && typeof data.week === 'object' ? data.week : {}); // an arrow's answer wins
+    const weekRaids = Array.isArray(shown.raids) ? shown.raids : [];
+    const offset = Math.floor(num(shown.offset));
+    const start = dateParts(shown.start) ? shown.start : (today ? shiftDay(today, -1) : '');
     const raids = weekRaids.filter(function (w) { return w && w.raidId; })
       .sort(function (p, q) { return (num(p.startsAt) - num(q.startsAt)) || (String(p.raidId) < String(q.raidId) ? -1 : 1); });
     const items = (Array.isArray(data.items) ? data.items : []).filter(function (it) { return it && !it.readiness && !!kindOf(it.kind); });
@@ -297,9 +324,9 @@
     let selected = null;
     if (!selDay) selected = raids.filter(function (w) { return w.raidId === sel; })[0] || next || raids[raids.length - 1] || null;
     const days = [];
-    for (let i = -1; i <= 5; i++) {
-      const date = today ? shiftDay(today, i) : '';
-      days.push({ date: date, isToday: i === 0, raids: raids.filter(function (w) { return w.date === date; }) });
+    for (let i = 0; i < 7; i++) {
+      const date = start ? shiftDay(start, i) : '';
+      days.push({ date: date, isToday: !!date && date === today, raids: raids.filter(function (w) { return w.date === date; }) });
     }
     const hidden = (Array.isArray(data.hidden) ? data.hidden : []).filter(function (h) { return h && h.item; });
     const counts = data.counts && typeof data.counts === 'object' ? data.counts : {};
@@ -307,6 +334,8 @@
     const phoneList = nextTodos.concat(items.filter(function (it) { return nextTodos.indexOf(it) < 0; }));
     return {
       gd: gd, gid: gd.guild.id, data: data, tz: tz, now: now, today: today, raids: raids, days: days, next: next, selected: selected,
+      offset: offset, autoAdvanced: !!shown.autoAdvanced, resetDay: typeof shown.resetDay === 'number' && WEEKDAYS[shown.resetDay] ? shown.resetDay : null,
+      busy: !!opts.weekBusy, pick: typeof opts.pick === 'string' ? opts.pick : '',
       selDay: selDay || (selected ? selected.date : ''), items: items, todosOf: todosOf, hidden: hidden,
       guildTodos: items.filter(function (it) { return !it.raidId; }),
       earlier: items.filter(function (it) { return it.raidId && !weekIds[it.raidId]; }),
@@ -337,6 +366,67 @@
   function raidLine(w) { return [w.teamName, raidTitle(w)].filter(Boolean).join(' - '); }
   function raidHref(m, w) { return G.router.format({ name: 'raid', gid: m.gid, rid: w.raidId }); }
   function headingOf(m, w) { return G.ui.dateTimeInZone(w.startsAt, m.tz, { year: 'auto', now: m.now }) || dayText(w.date); }
+
+  // "This week" / "Last week" / "Next week" (further away: "3 weeks ago" / "In 3 weeks").
+  function weekTitle(offset) {
+    if (offset === 0) return 'This week';
+    if (offset === -1) return 'Last week';
+    if (offset === 1) return 'Next week';
+    return offset < 0 ? (-offset) + ' weeks ago' : 'In ' + offset + ' weeks';
+  }
+
+  // ── the Roles grid (desktop panel and phone card) ──
+  const MARK_SVG = {
+    x: '<svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1 1l6 6M7 1L1 7"></path></svg>',
+    clock: '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="5" cy="5" r="4"></circle><path d="M5 2.8V5l1.6 1"></path></svg>',
+  };
+  function markOf(p) {
+    if (p.state === 'cant_come') return 'x';
+    if (p.state === 'late' || typeof p.lateAt === 'number') return 'clock';
+    if (p.state === 'no_answer' || p.state === 'tentative') return 'q';
+    if (p.state === 'standby') return 's';
+    return '';
+  }
+  function markHtml(kind) {
+    if (!kind) return '';
+    const inner = kind === 'q' ? '?' : kind === 's' ? 'S' : MARK_SVG[kind];
+    return '<span class="gs-hd-mk is-' + kind + '" aria-hidden="true">' + inner + '</span>';
+  }
+  // "Confirmed", "Late 9:00 PM ET", "Confirmed, Late 9:00 PM ET": the state as words (the guild's zone for the time).
+  function stateTextOf(m, p) {
+    const base = STATE_TEXT[p.state] || '';
+    const late = typeof p.lateAt === 'number' ? 'Late' + (G.ui.timeInZone(p.lateAt, m.tz) ? ' ' + G.ui.timeInZone(p.lateAt, m.tz) : '') : '';
+    if (p.state === 'late') return late || base;
+    return [base, late].filter(Boolean).join(', ');
+  }
+  function personWho(p) { return [p.name, G.ui.className(p.classId), p.spec].filter(Boolean); }
+
+  function rolesHtml(m, w, prefix) {
+    const people = Array.isArray(w.people) ? w.people : []; // indexes are the pick keys: no filtering, bad entries are skipped below
+    const valid = function (p) { return !!(p && p.name); };
+    const known = ROLE_COLS.map(function (c) { return c[0]; });
+    const cols = ROLE_COLS.map(function (c) { return { id: c[0], title: c[1] }; });
+    if (people.some(function (p) { return valid(p) && known.indexOf(p.role) < 0; })) cols.push({ id: 'other', title: 'Other' });
+    const key = function (i) { return w.raidId + ':' + i; };
+    const colsHtml = cols.map(function (c) {
+      const mine = people.map(function (p, i) { return { p: p, i: i }; }).filter(function (e) { return valid(e.p) && (c.id === 'other' ? known.indexOf(e.p.role) < 0 : e.p.role === c.id); });
+      const names = mine.map(function (e) {
+        const p = e.p;
+        const state = stateTextOf(m, p);
+        const mark = markOf(p);
+        const cls = 'gs-hd-gn' + (MUTED_STATES.indexOf(p.state) >= 0 ? ' is-muted' : '') + (p.state === 'cant_come' ? ' is-out' : '');
+        return '<button type="button" class="' + cls + '" data-action="home-pick" data-pick="' + esc(key(e.i)) + '" data-key="home-pick-' + prefix + '-' + safeId(w.raidId) + '-' + e.i + '" aria-pressed="' + (m.pick === key(e.i) ? 'true' : 'false') +
+          '" aria-label="' + esc(personWho(p).concat(state ? [state] : []).join(', ')) + '">' + G.ui.classNameHtml(p.name, p.classId) + markHtml(mark) + '</button>';
+      }).join('');
+      return '<div class="gs-hd-rolecol"><span class="gs-hd-gh">' + esc(c.title) + ' <b>' + mine.length + '</b></span>' + (mine.length ? names : '<span class="gs-hd-muted">None</span>') + '</div>';
+    }).join('');
+    const open = Math.max(0, Math.floor(num(w.openSeats)));
+    const picked = people.filter(function (p, i) { return valid(p) && m.pick === key(i); })[0];
+    const caption = picked ? personWho(picked).join(', ') + (stateTextOf(m, picked) ? ' - ' + stateTextOf(m, picked) : '') : 'Select a name for spec and state.';
+    return '<div class="gs-hd-roles"><div class="gs-hd-rolegrid' + (cols.length > 4 ? ' has-other' : '') + '" role="group" aria-label="Sign-ups by role">' + colsHtml + '</div>' +
+      (open > 0 ? '<span class="gs-hd-openline">' + plural(open, 'open seat', 'open seats') + '</span>' : '') +
+      '<span class="gs-hd-cap" aria-live="polite">' + esc(caption) + '</span></div>';
+  }
 
   // The sentence under the heading, built only from facts the payload carries: signed of size, whether the line-up is published, how it stands (confirmed,
   // Can't come, no answer) and when sign-ups close. A raid that is over says how many to-dos are left on it.
@@ -461,14 +551,16 @@
     let body;
     if (!day.raids.length) {
       body = '<button type="button" class="gs-hd-pick" data-action="home-select" data-day="' + esc(day.date) + '" data-key="home-day-' + esc(day.date) + '" aria-pressed="' + (selected ? 'true' : 'false') + '" aria-label="' +
-        esc(dayText(day.date) + ', no raid') + '">' + caps + '<span class="gs-hd-muted">No raid</span></button>';
+        esc(dayText(day.date) + ', no raid') + '"><span class="gs-hd-pickbody">' + caps + '<span class="gs-hd-muted">No raid</span></span></button>';
     } else {
       body = day.raids.map(function (w, i) {
         const n = m.todosOf(w.raidId).length;
         const on = !!m.selected && m.selected.raidId === w.raidId;
         const label = [headingOf(m, w), w.teamName, raidTitle(w), statusLabel(w, n)].filter(Boolean).join(', ');
+        const art = hasArt(w.zone);
         return '<button type="button" class="gs-hd-pick' + (i > 0 ? ' is-stacked' : '') + '" data-action="home-select" data-raid="' + esc(w.raidId) + '" data-key="home-raid-' + esc(w.raidId) + '" aria-pressed="' + (on ? 'true' : 'false') + '" aria-label="' + esc(label) + '">' +
-          (i === 0 ? caps : '') + '<span class="gs-hd-daybody">' + tilesHtml(w.zone, 'short') + '<span class="gs-hd-team">' + esc(w.teamName || '') + '</span>' + countHtml(w, 'gs-hd-cnt') + statusChipHtml(w, n) + '</span></button>';
+          (art ? '<span class="gs-hd-art is-strip">' + artImagesHtml(w.zone, 'sm', true) + artLabelHtml(w.zone) + '</span>' : '') +
+          '<span class="gs-hd-pickbody">' + (i === 0 ? caps : '') + '<span class="gs-hd-daybody">' + (art ? '' : tilesHtml(w.zone, 'short')) + '<span class="gs-hd-team">' + esc(w.teamName || '') + '</span>' + countHtml(w, 'gs-hd-cnt') + statusChipHtml(w, n) + '</span></span></button>';
       }).join('');
     }
     return '<div class="gs-hd-day' + (selected ? ' is-selected' : '') + (day.raids.length ? '' : ' is-empty') + '">' + body + '</div>';
@@ -478,16 +570,21 @@
     const w = m.selected;
     if (!w) {
       const empty = !m.raids.length;
-      return '<section class="gs-hd-panel gs-hd-main" aria-label="Selected day"><h2 class="gs-hd-h2">' + esc(empty ? 'No raid this week' : dayText(m.selDay)) + '</h2>' +
+      return '<section class="gs-hd-panel gs-hd-main" aria-label="Selected day"><div class="gs-hd-selbody"><h2 class="gs-hd-h2">' + esc(empty ? (m.offset === 0 ? 'No raid this week' : 'No raid that week') : dayText(m.selDay)) + '</h2>' +
         '<p class="gs-hd-sentence">' + esc(empty ? 'No raid is scheduled from ' + dayText(m.days[0].date) + ' to ' + dayText(m.days[m.days.length - 1].date) + '.' : 'No raid on this day.') + '</p>' +
-        (empty ? '<div class="gs-hd-cta">' + addRaidHtml(m) + '</div>' : '') + '</section>';
+        (empty ? '<div class="gs-hd-cta">' + addRaidHtml(m) + '</div>' : '') + '</div></section>';
     }
     const n = m.todosOf(w.raidId);
-    return '<section class="gs-hd-panel gs-hd-main" aria-label="Selected day"><div class="gs-hd-sel-head">' + tilesHtml(w.zone, 'big') +
-      '<div class="gs-hd-sel-title"><h2 class="gs-hd-h2">' + esc(headingOf(m, w)) + '</h2><span class="gs-hd-sub">' + esc(raidLine(w)) + '</span></div>' +
-      '<div class="gs-hd-bigcnt">' + countHtml(w, 'gs-hd-bignum') + '<span class="gs-hd-caps">Signed</span></div>' + statusChipHtml(w, n.length) + '</div>' +
-      '<p class="gs-hd-sentence">' + esc(sentenceOf(m, w)) + '</p><div class="gs-hd-cta">' + openRaidHtml(m, w) + '</div>' +
-      '<div class="gs-hd-todosec"><h2 class="gs-hd-sl">To do</h2>' + (n.length ? todoListHtml(m, n, 'd', 'To do for this raid') : '<p class="gs-hd-muted gs-hd-center">Nothing to do.</p>') + '</div></section>';
+    const title = '<div class="gs-hd-sel-title"><h2 class="gs-hd-h2">' + esc(headingOf(m, w)) + '</h2><span class="gs-hd-sub">' + esc(raidLine(w)) + '</span></div>' +
+      '<div class="gs-hd-bigcnt">' + countHtml(w, 'gs-hd-bignum') + '<span class="gs-hd-caps">Signed</span></div>';
+    const chip = statusChipHtml(w, n.length);
+    // With art the header is the picture, a scrim and the text on it (the chip on an opaque backing); without, the tile row of round 4.
+    const head = hasArt(w.zone)
+      ? '<div class="gs-hd-art is-panel">' + artImagesHtml(w.zone, 'md', false) + '<div class="gs-hd-scrim"></div><div class="gs-hd-arttext">' + title + '<span class="gs-hd-chipbox">' + chip + '</span></div></div><div class="gs-hd-selbody">'
+      : '<div class="gs-hd-selbody"><div class="gs-hd-sel-head">' + tilesHtml(w.zone, 'big') + title + chip + '</div>';
+    return '<section class="gs-hd-panel gs-hd-main" aria-label="Selected day">' + head +
+      '<p class="gs-hd-sentence">' + esc(sentenceOf(m, w)) + '</p>' + rolesHtml(m, w, 'd') + '<div class="gs-hd-cta">' + openRaidHtml(m, w) + '</div>' +
+      '<div class="gs-hd-todosec"><h2 class="gs-hd-sl">To do</h2>' + (n.length ? todoListHtml(m, n, 'd', 'To do for this raid') : '<p class="gs-hd-muted gs-hd-center">Nothing to do.</p>') + '</div></div></section>';
   }
 
   function guildBoxHtml(m, opts) {
@@ -505,22 +602,30 @@
   }
 
   function weekHtml(m, opts) {
-    const first = m.days[0].date;
-    const last = m.days[m.days.length - 1].date;
-    return '<div class="gs-hd-desk"><section class="gs-hd-weeksec" aria-label="This week"><div class="gs-hd-strip gs-hd-panel">' +
+    return '<div class="gs-hd-desk"><section class="gs-hd-weeksec" aria-label="' + esc(weekTitle(m.offset)) + '"><div class="gs-hd-strip gs-hd-panel' + (m.busy ? ' is-loading' : '') + '">' +
       m.days.map(function (d) { return dayCardHtml(m, d); }).join('') + '</div></section>' +
       '<div class="gs-hd-cols">' + selectedPanelHtml(m) + guildBoxHtml(m, opts) + '</div></div>';
   }
 
   // ── phone: the Briefing ──
+  // The top of the next-raid card, up to the opening of its body (the caller closes it): art with the label, chip, heading and team line over it, or the round 4 tile row.
+  function nextHeadHtml(m, w) {
+    const chip = statusChipHtml(w, m.todosOf(w.raidId).length);
+    const heading = '<h2 class="gs-hd-h2">' + esc(headingOf(m, w)) + '</h2><span class="gs-hd-sub">' + esc(raidLine(w)) + '</span>';
+    if (hasArt(w.zone)) {
+      return '<div class="gs-hd-art is-card">' + artImagesHtml(w.zone, 'md', false) + '<div class="gs-hd-scrim"></div><div class="gs-hd-arttext"><div class="gs-hd-nextrow"><span class="gs-hd-caps">Next raid</span>' +
+        '<span class="gs-hd-chipbox">' + chip + '</span></div>' + heading + '</div></div><div class="gs-hd-nextbody">';
+    }
+    return '<div class="gs-hd-nextbody"><div class="gs-hd-nextrow">' + tilesHtml(w.zone, 'big') + chip + '</div><span class="gs-hd-caps">Next raid</span>' + heading;
+  }
+
   function briefingHtml(m, opts) {
     const w = m.next;
     const card = w
-      ? '<section class="gs-hd-panel gs-hd-nextcard" aria-label="Next raid"><div class="gs-hd-nextrow">' + tilesHtml(w.zone, 'big') + statusChipHtml(w, m.todosOf(w.raidId).length) + '</div>' +
-        '<span class="gs-hd-caps">Next raid</span><h2 class="gs-hd-h2">' + esc(headingOf(m, w)) + '</h2><span class="gs-hd-sub">' + esc(raidLine(w)) + '</span>' +
-        '<p class="gs-hd-sentence">' + esc(sentenceOf(m, w)) + '</p><div class="gs-hd-cta is-block">' + openRaidHtml(m, w) + '</div></section>'
-      : '<section class="gs-hd-panel gs-hd-nextcard" aria-label="Next raid"><h2 class="gs-hd-h2">No raid this week</h2><p class="gs-hd-sentence">' +
-        esc('No raid is scheduled from ' + dayText(m.days[0].date) + ' to ' + dayText(m.days[m.days.length - 1].date) + '.') + '</p><div class="gs-hd-cta is-block">' + addRaidHtml(m) + '</div></section>';
+      ? '<section class="gs-hd-panel gs-hd-nextcard' + (hasArt(w.zone) ? ' has-art' : '') + '" aria-label="Next raid">' + nextHeadHtml(m, w) +
+        '<p class="gs-hd-sentence">' + esc(sentenceOf(m, w)) + '</p>' + rolesHtml(m, w, 'p') + '<div class="gs-hd-cta is-block">' + openRaidHtml(m, w) + '</div></div></section>'
+      : '<section class="gs-hd-panel gs-hd-nextcard" aria-label="Next raid"><div class="gs-hd-nextbody"><h2 class="gs-hd-h2">No raid this week</h2><p class="gs-hd-sentence">' +
+        esc('No raid is scheduled from ' + dayText(m.days[0].date) + ' to ' + dayText(m.days[m.days.length - 1].date) + '.') + '</p><div class="gs-hd-cta is-block">' + addRaidHtml(m) + '</div></div></section>';
     const all = !!opts.seeAll;
     const shown = all ? m.phoneList : m.phoneList.slice(0, PHONE_TODOS);
     const rest = moreLinesHtml(m);
@@ -532,7 +637,7 @@
       hiddenHtml(m, 'p') + '</section>';
     const coming = '<section class="gs-hd-comingsec" aria-label="Coming up"><h2 class="gs-hd-sl">Coming up</h2>' + (m.coming.length
       ? '<ul class="gs-hd-panel gs-hd-coming">' + m.coming.map(function (c) {
-        return '<li class="gs-hd-comingrow">' + tilesHtml(c.zone, 'short') + '<span class="gs-hd-comingtext"><span class="gs-hd-when">' + esc(headingOf(m, c)) + '</span><span class="gs-hd-muted">' + esc(c.teamName || '') + '</span></span>' +
+        return '<li class="gs-hd-comingrow">' + (hasArt(c.zone) ? '<span class="gs-hd-art is-thumb">' + artImagesHtml(c.zone, 'sm', true) + '</span>' : tilesHtml(c.zone, 'short')) + '<span class="gs-hd-comingtext"><span class="gs-hd-when">' + esc(headingOf(m, c)) + '</span><span class="gs-hd-muted">' + esc(c.teamName || '') + '</span></span>' +
           '<span class="gs-hd-comingend">' + countHtml(c, 'gs-hd-cnt') + statusChipHtml(c, m.todosOf(c.raidId).length) + '</span></li>';
       }).join('') + '</ul>' : '<p class="gs-hd-muted gs-hd-center">No other raid this week.</p>') + '</section>';
     return '<div class="gs-hd-phone">' + card + todo + coming + moreNavHtml(Object.assign({}, m, { opts: Object.assign({}, m.opts, { phone: true }) })) + '</div>';
@@ -556,13 +661,28 @@
       '<div class="gs-hd-phone"><div class="gs-hd-panel gs-hd-nextcard">' + sk('is-tile') + sk('is-wide') + sk('is-line') + sk('is-btn') + '</div><div class="gs-hd-panel gs-hd-listpanel">' + sk('is-line') + sk('is-line') + sk('is-line') + '</div></div></div>';
   }
 
+  // The title of the reset week, its dates, the day it resets, "Back to this week" (any other week, and the week opened by the auto-jump) and the square arrows.
+  // An arrow stays in the page while a week loads (aria-disabled, not removed) so the keyboard keeps its place; the buttons are desktop only.
+  function headHtml(m) {
+    const chevron = function (d) { return '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"></path></svg>'; };
+    const arrow = function (dir, label, d) {
+      const target = m.offset + dir;
+      const off = m.busy || Math.abs(target) > MAX_OFFSET;
+      return '<button type="button" class="gs-hd-sq" data-action="home-week" data-offset="' + target + '" data-key="home-week-' + (dir < 0 ? 'prev' : 'next') + '" aria-label="' + label + '" aria-disabled="' + (off ? 'true' : 'false') + '">' + chevron(d) + '</button>';
+    };
+    const range = m.days[0].date ? dayText(m.days[0].date) + ' - ' + dayText(m.days[m.days.length - 1].date) : '';
+    return '<header class="gs-hd-head"><div class="gs-hd-headtxt"><h1 class="gs-h1 gs-hd-h1" id="page-title" tabindex="-1">' + esc(weekTitle(m.offset)) + '</h1>' +
+      '<span class="gs-hd-range">' + esc(range) + '</span>' + (m.resetDay === null ? '' : '<span class="gs-hd-muted">Resets ' + WEEKDAYS[m.resetDay] + '</span>') + '</div>' +
+      '<div class="gs-hd-weeknav">' + (m.offset !== 0 ? '<button type="button" class="gs-hd-back" data-action="home-week" data-offset="0" data-key="home-week-back" aria-disabled="' + (m.busy ? 'true' : 'false') + '">Back to this week</button>' : '') +
+      arrow(-1, 'Previous week', 'M15 5l-7 7 7 7') + arrow(1, 'Next week', 'M9 5l7 7-7 7') + '</div></header>';
+  }
+
   // ── the page ──
-  // opts: { guildData, data (GET /attention), now, refreshing, error, errorTitle, dismissing, setupOpen, sel, hiddenOpen, seeAll, toast, busyItem }
+  // opts: { guildData, data (GET /attention), week (an arrow's answer), weekBusy, pick, now, refreshing, error, errorTitle, dismissing, setupOpen, sel, hiddenOpen, seeAll, toast, busyItem }
   function attentionHtml(opts) {
     const gd = opts.guildData;
     const m = modelOf(opts);
-    const range = dayText(m.days[0].date) + ' to ' + dayText(m.days[m.days.length - 1].date);
-    const head = '<header class="gs-hd-head"><h1 class="gs-h1 gs-hd-h1" id="page-title" tabindex="-1">This week</h1><span class="gs-hd-muted">' + esc(range) + '</span></header>';
+    const head = headHtml(m);
     const setup = onboardingHtml(gd.guild.id, m.data.onboarding, !!opts.dismissing, opts.setupOpen);
     return '<div class="gs-page gs-home-page gs-home">' + head + '<p class="gs-sr" id="attn-status" role="status"></p><p class="gs-sr" id="invite-status" role="status"></p>' +
       weekHtml(m, opts) + briefingHtml(m, opts) + setup + toastHtml(opts.toast) + '</div>';
@@ -587,7 +707,7 @@
     const x = a().attention;
     if (!x || x.gid !== gd.guild.id) return skeletonHtml();
     return attentionHtml({
-      guildData: gd, data: x.data, refreshing: x.refreshing, error: x.error, errorTitle: x.errorTitle, dismissing: x.dismissing, setupOpen: x.setupOpen,
+      guildData: gd, data: x.data, week: x.weekOverride, weekBusy: x.weekBusy, pick: x.pick, refreshing: x.refreshing, error: x.error, errorTitle: x.errorTitle, dismissing: x.dismissing, setupOpen: x.setupOpen,
       sel: x.sel, hiddenOpen: x.hiddenOpen, seeAll: x.seeAll, toast: x.toast, busyItem: x.busyItem,
     });
   }
@@ -657,6 +777,54 @@
     G.app.render();
     G.ui.focusByKey(raid ? 'home-raid-' + raid : 'home-day-' + day, { preventScroll: true });
     return null;
+  };
+
+  // A name of the Roles grid becomes the picked one; the caption says who it is. The caption is a live region, but the page is drawn again, so the status line says it too.
+  // (pick = "<raidId>:<index into the raid's people>")
+  G.handlers.click['home-pick'] = function (el) {
+    const x = a().attention;
+    const pick = el.getAttribute('data-pick');
+    if (!x || !pick) return null;
+    x.pick = pick;
+    G.app.render();
+    G.ui.focusByKey(el.getAttribute('data-key'), { preventScroll: true });
+    const shown = x.weekOverride || (x.data && x.data.week) || {};
+    const cut = pick.lastIndexOf(':');
+    const raidOf = (Array.isArray(shown.raids) ? shown.raids : []).filter(function (w) { return w && w.raidId === pick.slice(0, cut); })[0];
+    const person = raidOf && Array.isArray(raidOf.people) ? raidOf.people[Number(pick.slice(cut + 1))] : null;
+    if (person && person.name) {
+      const state = stateTextOf({ tz: zoneOfGuild(st().guilds[x.gid]) }, person);
+      G.ui.announce('attn-status', personWho(person).join(', ') + (state ? ' - ' + state : ''));
+    }
+    return null;
+  };
+
+  // The arrows and "Back to this week": read another reset week. The week on the page stays until the answer is in; a failure keeps it (and says so).
+  G.handlers.click['home-week'] = function (el) {
+    const x = a().attention;
+    const target = Number(el.getAttribute('data-offset'));
+    if (!x || x.weekBusy || !isFinite(target) || target % 1 !== 0 || Math.abs(target) > MAX_OFFSET) return null;
+    const key = el.getAttribute('data-key') || 'home-week-next';
+    x.weekBusy = true;
+    x.error = '';
+    G.app.render();
+    G.ui.focusByKey(key, { preventScroll: true });
+    G.ui.announce('attn-status', 'Loading the week.');
+    return G.api.attention.week(x.gid, target).then(function (res) {
+      x.weekBusy = false;
+      const week = res && res.week;
+      if (!week || !Array.isArray(week.raids)) return failed(x, new Error('Unexpected answer'), 'Could not load that week', key);
+      x.weekOverride = week;
+      x.sel = '';
+      x.pick = '';
+      G.app.render();
+      if (!G.ui.focusByKey(key, { preventScroll: true })) G.ui.focusByKey('home-week-next', { preventScroll: true });
+      G.ui.announce('attn-status', weekTitle(Math.floor(num(week.offset))) + '.');
+      return null;
+    }, function (err) {
+      x.weekBusy = false;
+      return failed(x, err, 'Could not load that week', key);
+    });
   };
 
   G.handlers.click['home-hidden-toggle'] = function (el) {

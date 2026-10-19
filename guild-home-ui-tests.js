@@ -87,6 +87,8 @@ const WEEK = [
   raid('r_sat', { date: '2026-10-24', startsAt: Date.UTC(2026, 9, 24, 23, 0), teamId: 't2', teamName: 'Kara A', zone: 'Karazhan', size: 10, signed: 6, lineupPublished: false, confirmed: 0, cantCome: 0, noAnswer: 0, signupsCloseAt: Date.UTC(2026, 9, 24, 21, 0), status: 'short' }),
   raid('r_sun', { date: '2026-10-25', startsAt: Date.UTC(2026, 9, 26, 0, 0), signed: 14, lineupPublished: false, signupsCloseAt: null, status: 'open' }),
 ];
+// Round 6: GET /attention sends the week as an object (the guild's reset week; Tue reset: Tue Oct 20 .. Mon Oct 26)
+const WK = (raids, over) => Object.assign({ offset: 0, start: '2026-10-20', end: '2026-10-26', resetDay: 2, autoAdvanced: false, raids }, over || {});
 const todo = (kind, over) => Object.assign({ id: kind + ':1', kind, severity: 'action', teamId: 't1', teamName: 'Main 25', link: { name: 'raid', rid: 'r_wed' } }, over || {});
 const ITEMS = [
   todo('review', { id: 'review:r_tue', raidId: 'r_tue', teamId: 't2', teamName: 'Kara A', date: '2026-10-20', zone: 'Karazhan', count: 2, link: { name: 'raid', rid: 'r_tue' } }),
@@ -103,7 +105,7 @@ const HIDDEN = [
   { item: todo('webhook_off', { id: 'webhook_off:t2', teamId: 't2', teamName: 'Kara A', status: 404 }), mode: 'snooze', until: Date.UTC(2026, 9, 25, 16, 0), by: { name: 'Kezzik' }, at: Date.UTC(2026, 9, 18, 16, 0) },
 ];
 const ATTN = over => Object.assign({
-  today: '2026-10-21', total: 7, items: ITEMS, more: {}, hidden: HIDDEN, counts: { t1: { watchOpen: 2, rankOpen: 1 }, t2: { watchOpen: 1, rankOpen: 0 } }, week: WEEK, onboarding: null,
+  today: '2026-10-21', total: 7, items: ITEMS, more: {}, hidden: HIDDEN, counts: { t1: { watchOpen: 2, rankOpen: 1 }, t2: { watchOpen: 1, rankOpen: 0 } }, week: WK(WEEK), onboarding: null,
 }, over || {});
 const html = (data, extra, g) => G.pages.attention.attentionHtml(Object.assign({ guildData: g || gd(), data, now: NOW }, extra || {}));
 const desk = out => out.slice(out.indexOf('class="gs-hd-desk"'), out.indexOf('class="gs-hd-phone"'));
@@ -144,14 +146,14 @@ function withState(fn) {
   await check('Week: every status has its chip word: done (quiet), to do N, short, ready, open - and a raid with a to-do count of 0 reads "To do"', () => {
     const week = [raid('a', { date: '2026-10-20', startsAt: 1, status: 'done' }), raid('b', { date: '2026-10-21', status: 'ready' }), raid('c', { date: '2026-10-22', startsAt: Date.UTC(2026, 9, 23, 0, 0), status: 'open' }),
       raid('d', { date: '2026-10-23', startsAt: Date.UTC(2026, 9, 24, 0, 0), status: 'todo' })];
-    const d = desk(html(ATTN({ week, items: [] })));
+    const d = desk(html(ATTN({ week: WK(week), items: [] })));
     const chips = [...d.matchAll(/<span class="gs-hd-chip is-(\w+)">([^<]*)<\/span>/g)].map(m => m[1] + ':' + m[2]);
     assert.deepEqual(chips.slice(0, 4), ['done:Done', 'ready:Ready', 'open:Open', 'todo:To do']);
   });
 
   await check('Week: several raids on one day stack inside the day card, each selectable', () => {
     const week = WEEK.concat([raid('r_wed2', { teamId: 't2', teamName: 'Kara A', zone: 'Karazhan', size: 10, signed: 10, status: 'ready', startsAt: Date.UTC(2026, 9, 22, 1, 0) })]);
-    const d = desk(html(ATTN({ week })));
+    const d = desk(html(ATTN({ week: WK(week) })));
     assert.equal(count(d, /class="gs-hd-day[ "]/g), 7, 'still seven cards');
     assert.equal(count(d, /data-action="home-select" data-raid="/g), 5);
     const wedCard = d.slice(d.indexOf('data-raid="r_wed"'), d.indexOf('Thu - Oct 22'));
@@ -165,11 +167,12 @@ function withState(fn) {
     assert.deepEqual(plain(G.pages.attention.zoneTile('Molten Core')), { abbr: 'MC', tint: 'other' });
     assert.deepEqual(plain(G.pages.attention.zoneTile('Naxxramas')), { abbr: 'NAX', tint: 'other' });
     const out = html(ATTN());
-    const wedStrip = desk(out).slice(desk(out).indexOf('Wed - Oct 21'), desk(out).indexOf('Thu - Oct 22'));
-    assert(wedStrip.includes('is-gruul') && wedStrip.includes('>+1</span>') && !wedStrip.includes('is-mag'), 'the strip: first tile + "+1"');
-    const panel = desk(out).slice(desk(out).indexOf('aria-label="Selected day"'), desk(out).indexOf('aria-label="Guild"'));
-    assert(panel.includes('is-gruul is-big') && panel.includes('is-mag is-big'), 'the panel: both tiles');
-    assert(panel.includes('>GRUUL</span>') && panel.includes('>MAG</span>'));
+    const noArt = html(ATTN({ week: WK([raid('r_wed', { zone: 'Molten Core + Naxxramas' })]) }));
+    const wedStrip = desk(noArt).slice(desk(noArt).indexOf('Wed - Oct 21'), desk(noArt).indexOf('Thu - Oct 22'));
+    assert(wedStrip.includes('gs-hd-tile is-other') && wedStrip.includes('>+1</span>') && !wedStrip.includes('gs-hd-art'), 'no art: the strip keeps the first tile + "+1"');
+    const panel = desk(noArt).slice(desk(noArt).indexOf('aria-label="Selected day"'), desk(noArt).indexOf('aria-label="Guild"'));
+    assert(panel.includes('is-other is-big') && panel.includes('>MC</span>') && panel.includes('>NAX</span>') && !panel.includes('gs-hd-art'), 'no art: the panel keeps both tiles');
+    assert(out.length > 0);
   });
 
   // ═══ 2. The selected day ═══
@@ -195,15 +198,16 @@ function withState(fn) {
     assert(!sat.includes('confirmed'));
     const sun = textOf(desk(html(ATTN(), { sel: 'r_sun' })));
     assert(sun.includes('14 of 25 signed. Line-up not published.') && !sun.includes('Sign-ups close') && !sun.includes('Sign-ups are'), 'no close time in the payload, no sentence about it');
-    const locked = textOf(desk(html(ATTN({ week: [raid('r_wed', { signupsLocked: true })] }))));
+    const locked = textOf(desk(html(ATTN({ week: WK([raid('r_wed', { signupsLocked: true })]) }))));
     assert(locked.includes('Sign-ups are locked.'));
-    const closed = textOf(desk(html(ATTN({ week: [raid('r_wed', { signupsCloseAt: NOW - 1000 })] }))));
+    const closed = textOf(desk(html(ATTN({ week: WK([raid('r_wed', { signupsCloseAt: NOW - 1000 })]) }))));
     assert(closed.includes('Sign-ups are closed.'));
     const past = textOf(desk(html(ATTN(), { sel: 'r_tue' })));
     assert(past.includes('The Karazhan raid is over. 2 things are left to review.'), past);
-    const done = textOf(desk(html(ATTN({ week: [raid('r_wed', { status: 'done', zone: 'Karazhan' })], items: [] }))));
+    const done = textOf(desk(html(ATTN({ week: WK([raid('r_wed', { status: 'done', zone: 'Karazhan' })]), items: [] }))));
     assert(done.includes('The Karazhan raid is over. Nothing is left to do.'));
-    for (const text of [wed, sat, sun, past]) assert(!/healer|tank|short of|attendance %|\d+%/i.test(text), 'no role shortfall or percentage: those are not in the data');
+    const sentences = out => [...out.matchAll(/<p class="gs-hd-sentence">([^<]*)<\/p>/g)].map(m => m[1]).join(' ');
+    for (const out of [html(ATTN()), html(ATTN(), { sel: 'r_sat' }), html(ATTN(), { sel: 'r_sun' }), html(ATTN(), { sel: 'r_tue' })]) assert(!/healer|tank|short of|attendance %|\d+%/i.test(sentences(desk(out))), 'no role shortfall or percentage in the sentence: those are not in the data');
   });
 
   await check('Selected day: a raid\'s to-dos have their action button; the kinds that can be hidden get a More menu (Hide for all officers + the kind line, or Snooze N days), the others do not', () => {
@@ -341,7 +345,7 @@ function withState(fn) {
     let last = -1;
     for (const s of order) { const i = at(s); assert(i > last, s); last = i; }
     assert(p.includes('class="gs-hd-cta is-block"'), 'full-width');
-    assert(p.slice(0, at('aria-label="To do"')).includes('is-gruul is-big') && p.slice(0, at('aria-label="To do"')).includes('is-short'), 'tiles and the chip on the card');
+    assert(p.slice(0, at('aria-label="To do"')).includes('gs-hd-art is-card') && p.slice(0, at('aria-label="To do"')).includes('is-short'), 'art and the chip on the card');
     assertNoRawAttrs(p);
   });
 
@@ -363,14 +367,14 @@ function withState(fn) {
     const coming = p.slice(p.indexOf('aria-label="Coming up"'), p.indexOf('aria-label="More"'));
     assert.equal(count(coming, /class="gs-hd-comingrow"/g), 2);
     assert(coming.includes('Sat Oct 24, 7:00 PM ET') && coming.includes('Sun Oct 25, 8:00 PM ET') && !coming.includes('Wed Oct 21'));
-    assert(coming.includes('>+1</span>') && coming.includes('<span class="gs-hd-chip is-open">Open</span>'));
+    assert(count(coming, /gs-hd-art is-thumb/g) === 2 && coming.includes('<span class="gs-hd-chip is-open">Open</span>'));
     const more = p.slice(p.indexOf('aria-label="More"'));
     assert(more.includes('Last raid: Tue, Karazhan') && more.includes('1 rank suggestion') && more.includes('Recruiting needs'));
   });
 
   // ═══ 6. States ═══
   await check('Empty week: "No raid this week" + the primary Add raid, Guild box "Nothing to do.", Hidden (0); the strip still shows seven dashed days', () => {
-    const out = html(ATTN({ week: [], items: [], total: 0, hidden: [], counts: {} }));
+    const out = html(ATTN({ week: WK([]), items: [], total: 0, hidden: [], counts: {} }));
     const d = desk(out);
     assert.equal(count(d, /class="gs-hd-day is-empty"/g), 7);
     assert(d.includes('<h2 class="gs-hd-h2">No raid this week</h2>') && d.includes('No raid is scheduled from Tue Oct 20 to Mon Oct 26.'));
@@ -470,6 +474,181 @@ function withState(fn) {
   await check('Attendance Watch list: the page\'s "N on the watch list" counts the open entries only', () => {
     const A = G.pages.attendance;
     assert.equal(A.watchCountText(WATCH([ENTRY(), ENTRY({ itemId: 'watch:t1:p_k', reviewed: { by: { name: 'M' }, at: 1 } })])), '1 on the watch list');
+  });
+
+  // ═══ 7. Round 6: raid art, the Roles grid, the reset week ═══
+  const P = (name, classId, spec, role, state, extra) => Object.assign({ name, classId, spec, role, state }, extra || {});
+  const LATE_AT = Date.UTC(2026, 9, 22, 1, 0); // 9:00 PM ET
+  const WED_PEOPLE = [
+    P('Brakkus', 'WARRIOR', 'Protection', 'tank', 'confirmed'), P('Lumeria', 'PRIEST', 'Holy', 'healer', 'confirmed'), P('Vexa', 'ROGUE', 'Combat', 'melee', 'no_answer'),
+    P('Gorrik', 'WARRIOR', 'Fury', 'melee', 'cant_come'), P('Kaldur', 'SHAMAN', 'Enhancement', 'melee', 'confirmed', { lateAt: LATE_AT }), P('Ilvane', 'MAGE', 'Fire', 'ranged', 'tentative'),
+    P('Malvek', 'WARLOCK', 'Destruction', 'ranged', 'standby'), P('Mystery', 'HUNTER', 'Beast Mastery', null, 'signed'),
+  ];
+  const withPeople = (people, openSeats, over) => ATTN({ week: WK([raid('r_wed', Object.assign({ people, openSeats }, over || {}))]) });
+  const panelOf = out => desk(out).slice(desk(out).indexOf('aria-label="Selected day"'), desk(out).indexOf('aria-label="Guild"'));
+  const gnOf = (s, name) => (s.match(new RegExp('<button type="button" class="gs-hd-gn[^>]*data-action="home-pick"[^>]*>(?:(?!</button>)[^])*>' + name + '</span>(?:(?!</button>)[^])*</button>')) || [''])[0];
+
+  await check('Art: the files and the whitelist; a day card has the 64 px art strip (-sm, lazy, width/height, alt = the zone), split halves for two zones, and the initials label', () => {
+    for (const key of ['kara', 'gruul', 'mag', 'ssc', 'tk', 'hyjal', 'bt', 'za', 'swp']) for (const size of ['sm', 'md']) assert(fs.existsSync(path.join(ROOT, 'icons', 'raids', key + '-' + size + '.webp')), key + '-' + size);
+    assert(read('.gitignore').includes('!icons/raids/*.webp'));
+    const d = desk(html(ATTN()));
+    const wed = d.slice(d.indexOf('data-raid="r_wed"'), d.indexOf('Thu - Oct 22'));
+    assert(wed.includes('<span class="gs-hd-art is-strip"><img class="gs-hd-artimg" src="/icons/raids/gruul-sm.webp" alt="Gruul&#39;s Lair" width="192" height="108" loading="lazy"><img class="gs-hd-artimg" src="/icons/raids/mag-sm.webp" alt="Magtheridon&#39;s Lair" width="192" height="108" loading="lazy">'), wed);
+    assert(wed.includes('<span class="gs-hd-artlabel" aria-hidden="true">GRUUL + MAG</span>'), 'the initials label over the art');
+    const tue = d.slice(d.indexOf('data-raid="r_tue"'), d.indexOf('data-raid="r_wed"'));
+    assert.equal(count(tue, /<img /g), 1, 'one zone, one image');
+    assert(tue.includes('>KARA</span>') && !tue.includes('gs-hd-tile'), 'art replaces the tile');
+    assert(wed.indexOf('gs-hd-art') < wed.indexOf('Wed - Oct 21') && wed.indexOf('Wed - Oct 21') < wed.indexOf('gs-hd-team'), 'art, then the date, then team / count / chip');
+    assert(!wed.includes('Gruul&#39;s Lair + Magtheridon&#39;s Lair</span>'), 'no raid-name line below the art');
+    const css = read('guild.css');
+    assert(/\.gs-hd-artlabel[^}]*rgba\(19, 20, 22, 0\.62\)/.test(css) && /\.gs-hd-art\.is-strip \{ height: 64px/.test(css) && /\.gs-hd-artimg \{[^}]*object-fit: cover; object-position: 50% 50%/.test(css));
+  });
+
+  await check('Art fallback: a zone with no art keeps the initials + tint tile; a half with no art among two fills in; the panel and the card fall back too', () => {
+    const none = html(ATTN({ week: WK([raid('r_wed', { zone: 'Molten Core' })]) }));
+    assert(!desk(none).includes('<img') && desk(none).includes('gs-hd-tile is-other') && desk(none).includes('>MC</span>'));
+    assert(!phone(none).includes('<img') && phone(none).includes('is-other is-big'));
+    const mixed = desk(html(ATTN({ week: WK([raid('r_wed', { zone: 'Karazhan + Molten Core' })]) })));
+    assert(mixed.includes('kara-sm.webp') && mixed.includes('gs-hd-artimg is-fill') && mixed.includes('>KARA + MC</span>'));
+  });
+
+  await check('Header: This week + the range + "Resets <Day>" (from resetDay), no Back on this week; Last / Next week + Back; square Previous / Next buttons with aria-labels', () => {
+    const d = html(ATTN());
+    const head = d.slice(d.indexOf('<header'), d.indexOf('</header>'));
+    assert(head.includes('id="page-title" tabindex="-1">This week</h1>') && head.includes('Tue Oct 20 - Mon Oct 26') && head.includes('Resets Tue') && !head.includes('Back to this week'));
+    assert(head.includes('aria-label="Previous week"') && head.includes('data-offset="-1"') && head.includes('aria-label="Next week"') && head.includes('data-offset="1"'));
+    const last = html(ATTN({ week: WK([], { offset: -1, start: '2026-10-13', end: '2026-10-19' }) }));
+    assert(last.includes('>Last week</h1>') && last.includes('Tue Oct 13 - Mon Oct 19') && last.includes('data-action="home-week" data-offset="0"') && last.includes('>Back to this week</button>'));
+    const next = html(ATTN({ week: WK([], { offset: 1, start: '2026-10-27', end: '2026-11-02', resetDay: 3 }) }));
+    assert(next.includes('>Next week</h1>') && next.includes('Resets Wed') && next.includes('Back to this week'));
+    assert(html(ATTN({ week: WK([], { offset: 3 }) })).includes('>In 3 weeks</h1>'));
+    const edge = html(ATTN({ week: WK([], { offset: 8 }) }));
+    assert(/aria-label="Next week" aria-disabled="true"/.test(edge) && /aria-label="Previous week" aria-disabled="false"/.test(edge), 'the bound disables the arrow');
+    const css = read('guild.css');
+    assert(/\.gs-hd-sq \{ width: 36px;/.test(css) && /\.gs-hd-weeknav \{ display: none; \}/.test(css.slice(css.lastIndexOf('@media (max-width:600px)'))), 'square 36 px; desktop only');
+  });
+
+  await check('Auto-advanced: the page opens on "Next week" with Back to this week, the days of that week and no Today', () => {
+    const next = raid('r_next', { date: '2026-10-27', startsAt: Date.UTC(2026, 9, 28, 0, 0), status: 'open', signed: 3, lineupPublished: false });
+    const out = html(ATTN({ week: WK([next], { offset: 1, autoAdvanced: true, start: '2026-10-27', end: '2026-11-02' }) }));
+    assert(out.includes('>Next week</h1>') && out.includes('Back to this week'));
+    const d = desk(out);
+    assert(d.includes('Tue - Oct 27') && d.includes('Mon - Nov 2') && !d.includes('>Today<'));
+    assert(d.includes('aria-pressed="true"') && panelOf(out).includes('Tue Oct 27, 8:00 PM ET'), 'the first raid of that week is selected');
+  });
+
+  await check('Arrows: GET /attention/week?offset=N, the answer replaces the week (selection cleared); Back calls offset 0; a bad answer or a failure keeps the old week and says so; the bound and a busy call do nothing', withState(async () => {
+    S.att.attention = { gid: 'g1', data: ATTN(), refreshing: false, error: '', sel: 'r_sat', pick: 'r_wed:1' };
+    const nextWeek = WK([raid('r_n1', { date: '2026-10-27', startsAt: Date.UTC(2026, 9, 28, 0, 0), status: 'open', zone: 'Tempest Keep' })], { offset: 1, start: '2026-10-27', end: '2026-11-02' });
+    let s = stub(() => ({ week: nextWeek }));
+    const pending = G.handlers.click['home-week'](el({ 'data-offset': '1', 'data-key': 'home-week-next' }));
+    assert.equal(S.att.attention.weekBusy, true);
+    assert(/aria-label="Next week" aria-disabled="true"/.test(G.pages.attention.main({}, S.guilds.g1, {})), 'busy: the arrows are disabled');
+    assert(G.pages.attention.main({}, S.guilds.g1, {}).includes('>This week</h1>'), 'loading: the old week stays');
+    assert.equal(G.handlers.click['home-week'](el({ 'data-offset': '1' })), null, 'a second click while busy does nothing');
+    await pending;
+    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['get', '/api/guild/g1/attention/week?offset=1']]);
+    let out = G.pages.attention.main({}, S.guilds.g1, {});
+    assert(out.includes('>Next week</h1>') && out.includes('Tue Oct 27 - Mon Nov 2') && out.includes('/icons/raids/tk-sm.webp') && out.includes('Back to this week'));
+    assert.equal(S.att.attention.sel, '');
+    s.restore();
+    s = stub(() => ({ week: WK([], { offset: 0 }) }));
+    await G.handlers.click['home-week'](el({ 'data-offset': '0', 'data-key': 'home-week-back' }));
+    assert.equal(s.calls[0].url, '/api/guild/g1/attention/week?offset=0');
+    assert(G.pages.attention.main({}, S.guilds.g1, {}).includes('>This week</h1>'));
+    s.restore();
+    s = stub(() => { throw ApiErr(500, 'error'); });
+    await G.handlers.click['home-week'](el({ 'data-offset': '-1', 'data-key': 'home-week-prev' }));
+    out = G.pages.attention.main({}, S.guilds.g1, {});
+    assert(out.includes('role="alert"') && out.includes('Could not load that week') && out.includes('>This week</h1>'), 'the old week stays visible, with the error');
+    assert.equal(S.att.attention.weekBusy, false);
+    s.restore();
+    s = stub(() => ({ nope: 1 }));
+    await G.handlers.click['home-week'](el({ 'data-offset': '1', 'data-key': 'home-week-next' }));
+    assert(G.pages.attention.main({}, S.guilds.g1, {}).includes('Could not load that week'), 'an answer without a week is a failure');
+    s.restore();
+    s = stub(() => ({ week: nextWeek }));
+    assert.equal(G.handlers.click['home-week'](el({ 'data-offset': '9' })), null);
+    assert.equal(G.handlers.click['home-week'](el({ 'data-offset': '1.5' })), null);
+    assert.equal(s.calls.length, 0, 'out of range: no call');
+    s.restore();
+  }));
+
+  await check('Roles grid: Tanks / Healers / Melee / Ranged with counts, class-coloured names that are buttons, "Other" only when someone has no role, "N open seats"', () => {
+    const p = panelOf(html(withPeople(WED_PEOPLE, 3)));
+    for (const h of ['Tanks <b>1</b>', 'Healers <b>1</b>', 'Melee <b>3</b>', 'Ranged <b>2</b>', 'Other <b>1</b>']) assert(p.includes(h), h);
+    assert(p.includes('class="gs-hd-rolegrid has-other" role="group" aria-label="Sign-ups by role"'));
+    assert(p.indexOf('Tanks') < p.indexOf('Healers') && p.indexOf('Healers') < p.indexOf('Melee') && p.indexOf('Melee') < p.indexOf('Ranged') && p.indexOf('Ranged') < p.indexOf('Other'));
+    assert.equal(count(p, /data-action="home-pick"/g), 8, 'every name is a button');
+    assert(gnOf(p, 'Brakkus').includes('gs-class-warrior') && gnOf(p, 'Kaldur').includes('gs-class-shaman') && gnOf(p, 'Lumeria').includes('gs-class-priest'), 'class colours');
+    assert(p.includes('<span class="gs-hd-openline">3 open seats</span>'));
+    assert(!panelOf(html(withPeople(WED_PEOPLE.slice(0, 7), 0))).includes('Other'), 'no Other column without a role-less person');
+    assert(!panelOf(html(withPeople(WED_PEOPLE.slice(0, 7), 0))).includes('gs-hd-openline'), 'no open-seat line at 0');
+    assert(panelOf(html(withPeople(WED_PEOPLE.slice(0, 2), 1))).includes('1 open seat<'), 'singular');
+    const empty = panelOf(html(withPeople([], 0)));
+    assert(empty.includes('Tanks <b>0</b>') && empty.includes('None'));
+    assertNoRawAttrs(p);
+  });
+
+  await check('Roles grid marks: ? (no answer, tentative), rose x + strikethrough + muted (can\'t come), a clock with the guild-zone time (late), a muted S (standby), neutral for a past raid', () => {
+    const p = panelOf(html(withPeople(WED_PEOPLE, 0)));
+    assert(gnOf(p, 'Vexa').includes('gs-hd-mk is-q') && gnOf(p, 'Vexa').includes('is-muted') && gnOf(p, 'Vexa').includes('No answer'));
+    assert(gnOf(p, 'Ilvane').includes('gs-hd-mk is-q') && !gnOf(p, 'Ilvane').includes('is-muted') && gnOf(p, 'Ilvane').includes('Tentative'));
+    assert(gnOf(p, 'Gorrik').includes('gs-hd-gn is-muted is-out') && gnOf(p, 'Gorrik').includes('gs-hd-mk is-x') && gnOf(p, 'Gorrik').includes('Can&#39;t come'));
+    assert(gnOf(p, 'Kaldur').includes('gs-hd-mk is-clock') && gnOf(p, 'Kaldur').includes('aria-label="Kaldur, Shaman, Enhancement, Confirmed, Late 9:00 PM ET"'), gnOf(p, 'Kaldur'));
+    assert(gnOf(p, 'Malvek').includes('gs-hd-mk is-s') && gnOf(p, 'Malvek').includes('is-muted') && gnOf(p, 'Malvek').includes('Standby'));
+    assert(!gnOf(p, 'Brakkus').includes('gs-hd-mk') && !gnOf(p, 'Brakkus').includes('is-muted'), 'confirmed: no mark');
+    const late = panelOf(html(withPeople([P('Soon', 'MAGE', 'Arcane', 'ranged', 'late', { lateAt: LATE_AT }), P('Vague', 'MAGE', 'Fire', 'ranged', 'late')], 0)));
+    assert(gnOf(late, 'Soon').includes('Soon, Mage, Arcane, Late 9:00 PM ET') && gnOf(late, 'Vague').includes('gs-hd-mk is-clock') && gnOf(late, 'Vague').includes('Vague, Mage, Fire, Late"'));
+    const past = panelOf(html(withPeople([P('Brakkus', 'WARRIOR', 'Protection', 'tank', 'listed')], 0, { status: 'done' })));
+    assert(!past.includes('gs-hd-mk') && past.includes('Brakkus, Warrior, Protection, In the raid'));
+    const css = read('guild.css');
+    assert(/\.gs-hd-gn\.is-out \.gs-char-name \{ text-decoration: line-through/.test(css) && /\.gs-hd-mk\.is-x \{ color: #fda4af/.test(css) && !/hd-gn[^}]*:hover[^}]*display/.test(css), 'strikethrough and rose; nothing appears only on hover');
+  });
+
+  await check('Roles grid caption: a name selects it (aria-pressed) and the aria-live caption reads "Name, Class, Spec - State"; the default asks for a selection; another raid keeps its own', withState(async () => {
+    S.att.attention = { gid: 'g1', data: withPeople(WED_PEOPLE, 0), refreshing: false, error: '' };
+    let out = G.pages.attention.main({}, S.guilds.g1, {});
+    assert(panelOf(out).includes('<span class="gs-hd-cap" aria-live="polite">Select a name for spec and state.</span>'));
+    const said = [];
+    G.ui.announce = (id, text) => said.push([id, text]);
+    const kaldur = out.match(/data-action="home-pick" data-pick="(r_wed:4)" data-key="(home-pick-d-r_wed-4)"/);
+    assert(kaldur, 'the desktop button carries pick + key');
+    G.handlers.click['home-pick'](el({ 'data-pick': kaldur[1], 'data-key': kaldur[2] }));
+    out = G.pages.attention.main({}, S.guilds.g1, {});
+    assert(panelOf(out).includes('<span class="gs-hd-cap" aria-live="polite">Kaldur, Shaman, Enhancement - Confirmed, Late 9:00 PM ET</span>'));
+    assert(gnOf(panelOf(out), 'Kaldur').includes('aria-pressed="true"') && gnOf(panelOf(out), 'Brakkus').includes('aria-pressed="false"'));
+    assert.deepEqual(said, [['attn-status', 'Kaldur, Shaman, Enhancement - Confirmed, Late 9:00 PM ET']]);
+    G.handlers.click['home-pick'](el({ 'data-pick': 'r_wed:3', 'data-key': 'home-pick-d-r_wed-3' }));
+    assert(panelOf(G.pages.attention.main({}, S.guilds.g1, {})).includes('Gorrik, Warrior, Fury - Can&#39;t come'));
+  }));
+
+  await check('Selected-day panel: the art header (-md, 160 px) holds the heading, team + raid line, big count + SIGNED and the chip on an opaque backing; below it the sentence, the Roles grid, Open raid, TO DO', () => {
+    const p = panelOf(html(withPeople(WED_PEOPLE, 3)));
+    const at = s => p.indexOf(s);
+    assert(p.includes('<img class="gs-hd-artimg" src="/icons/raids/gruul-md.webp" alt="Gruul&#39;s Lair" width="480" height="270">') && !p.includes('loading="lazy"'), 'full-size crops, not lazy (above the fold)');
+    const order = ['gs-hd-art is-panel', 'gs-hd-scrim', 'gs-hd-arttext', '<h2 class="gs-hd-h2">Wed Oct 21, 8:00 PM ET</h2>', 'gs-hd-sub', 'gs-hd-bignum', '>Signed<', 'gs-hd-chipbox', 'gs-hd-chip is-short', 'gs-hd-selbody', 'gs-hd-sentence', 'gs-hd-rolegrid', 'Open raid', '>To do</h2>'];
+    let last = -1;
+    for (const s of order) { const i = at(s); assert(i > last, s); last = i; }
+    assert(!/<section[^>]*>\s*<div class="gs-hd-sel-head"/.test(p), 'the tile row is only the fallback');
+    const css = read('guild.css');
+    assert(/\.gs-hd-art\.is-panel \{ height: 160px/.test(css) && /\.gs-hd-chipbox \{[^}]*background: #131416/.test(css) && /\.gs-hd-scrim \{[^}]*rgba\(19, 20, 22, 0\.92\)/.test(css));
+  });
+
+  await check('Briefing (phone): the next-raid card has the art header (170 px) with the Next raid label, chip, heading and team line over it; then the sentence, the Roles grid (2 x 2) and Open raid; Coming up rows get 64 x 36 -sm thumbs', () => {
+    const out = html(withPeople(WED_PEOPLE, 3));
+    const p = phone(out);
+    const card = p.slice(p.indexOf('aria-label="Next raid"'), p.indexOf('aria-label="To do"'));
+    const order = ['gs-hd-art is-card', 'gs-hd-scrim', '>Next raid</span>', 'gs-hd-chipbox', '<h2 class="gs-hd-h2">Wed Oct 21, 8:00 PM ET</h2>', 'Main 25 - Gruul', 'gs-hd-nextbody', 'gs-hd-sentence', 'gs-hd-rolegrid', 'gs-hd-openline', 'Open raid'];
+    let last = -1;
+    for (const s of order) { const i = card.indexOf(s); assert(i > last, s); last = i; }
+    assert(card.includes('gruul-md.webp') && card.includes('data-key="home-pick-p-r_wed-0"'), 'phone keys differ from desktop keys');
+    const css = read('guild.css');
+    const phoneCss = css.slice(css.lastIndexOf('@media (max-width:600px)'));
+    assert(/\.gs-hd-rolegrid[^{]*\{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(phoneCss), '2 x 2 at 600 px and below');
+    assert(/\.gs-hd-art\.is-thumb \{ width: 64px; height: 36px/.test(css) && /\.gs-hd-art\.is-card \{ height: 170px/.test(css));
+    const pAll = phone(html(ATTN())); const coming = pAll.slice(pAll.indexOf('aria-label="Coming up"'), pAll.indexOf('aria-label="More"'));
+    assert(coming.includes('<span class="gs-hd-art is-thumb"><img class="gs-hd-artimg" src="/icons/raids/kara-sm.webp" alt="Karazhan" width="192" height="108" loading="lazy">'));
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

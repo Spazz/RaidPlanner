@@ -314,6 +314,49 @@ check('Home: the week block draws the strip, the selected day and the Briefing f
   assert.equal(routed, 2);
 });
 
+check('Home round 6: the Roles grid draws the real `people` of the selected raid; the arrows read the real /attention/week route (Last week, Next week, Back) and keep the old week on a bad offset', async () => {
+  const s = await scenario();
+  const G = s.pages.alice;
+  const gd = await s.guildData('alice');
+  pageState(s, G, gd);
+  const view = { name: 'section', gid: s.gid, section: 'home' };
+  G.app.render = () => {};
+  G.ui.announce = () => {};
+  G.ui.focusByKey = () => true;
+  await G.pages.attention.load(view, gd);
+  const x = G.app.state.att.attention;
+  let html = G.pages.attention.main(view, gd, frame(gd));
+  // the test clock is Saturday noon and the week's last raid is behind it: the Worker jumps to the next reset week on its own
+  assert(x.data.week.autoAdvanced === true && x.data.week.offset === 1, JSON.stringify(x.data.week).slice(0, 200));
+  assert(html.includes('>Next week</h1>') && html.includes('Resets Tue') && html.includes('Back to this week'), 'the title, the reset day and Back come from the real week block');
+  const raids = x.data.week.raids;
+  assert(raids.length && raids.every((w) => Array.isArray(w.people) && typeof w.openSeats === 'number'), 'every raid carries people + openSeats');
+  const withPeople = raids.filter((w) => w.people.length);
+  assert(withPeople.length, 'the scenario has sign-ups: ' + JSON.stringify(raids.map((w) => [w.raidId, w.people.length])));
+  html = G.pages.attention.main(view, gd, frame(gd));
+  const panel = desk(html).slice(desk(html).indexOf('aria-label="Selected day"'), desk(html).indexOf('aria-label="Guild"'));
+  const shown = x.data.week.raids.filter((w) => panel.includes(`data-key="home-pick-d-${w.raidId}-0"`))[0] || withPeople[0];
+  for (const person of shown.people) assert(panel.includes('>' + person.name + '</span>'), 'the grid names ' + person.name);
+
+  // the arrows: the real route
+  const click = (offset, key) => G.handlers.click['home-week'](stubEl({ 'data-offset': String(offset), 'data-key': key }));
+  await click(0, 'home-week-back');
+  assert.equal(x.weekOverride.offset, 0);
+  html = G.pages.attention.main(view, gd, frame(gd));
+  assert(html.includes('>This week</h1>') && !html.includes('Back to this week') && !html.includes('role="alert"'));
+  assert.equal(x.weekOverride.end, new Date(Date.parse(x.data.week.start) - DAY).toISOString().slice(0, 10), 'this week ends the day before the auto-advanced week starts');
+  await click(-1, 'home-week-prev');
+  assert.equal(x.weekOverride.offset, -1);
+  html = G.pages.attention.main(view, gd, frame(gd));
+  assert(html.includes('>Last week</h1>') && html.includes('Back to this week') && !html.includes('role="alert"'));
+  await click(2, 'home-week-next');
+  assert.equal(x.weekOverride.offset, 2);
+  assert(G.pages.attention.main(view, gd, frame(gd)).includes('In 2 weeks</h1>'));
+  // a bad offset never leaves the page (the page refuses it before the call); the Worker's own refusal is the same
+  const bad = await G.api.get(`${s.base}/attention/week?offset=99`).then(() => null, (error) => error);
+  assert(bad && bad.status === 400, 'the Worker answers 400 for an offset out of range');
+});
+
 // ---------------------------------------------------------------------------
 
 async function main() {

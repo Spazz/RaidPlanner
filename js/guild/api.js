@@ -157,6 +157,8 @@
   };
   G.api.attention = {
     get: function (gid) { return G.api.get(guildPath(gid, '/attention')); },
+    // Another reset week for the Home arrows: { week } for `offset` whole weeks from the current one (an integer -8..8, never auto-jumps).
+    week: function (gid, offset) { return G.api.get(guildPath(gid, '/attention/week?offset=' + encodeURIComponent(offset))); },
     // Hide / snooze / mark Reviewed for every officer (the Worker picks the mode from the item's kind) and Restore. itemId is the item's `id`.
     dismiss: function (gid, itemId) { return G.api.post(guildPath(gid, '/attention/dismissals'), { itemId: itemId }); },
     restore: function (gid, itemId) { return G.api.del(guildPath(gid, '/attention/dismissals/' + encodeURIComponent(itemId)), {}); },

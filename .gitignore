@@ -33,6 +33,8 @@
 # Self-hosted spec/class/role/buff/debuff icons (one <slug>.jpg each, fetched once from the Wowhead CDN); icons-tests.js checks every slug the rule tables name is here
 !icons/
 !icons/*.jpg
+!icons/raids/
+!icons/raids/*.webp
 # Vercel config (/<version>/<id> rewrite to index.html) and the short-share-link function
 !vercel.json
 !api/

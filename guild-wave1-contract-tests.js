@@ -369,7 +369,7 @@ check('needs attention: the real answer draws every item with a sentence and a l
   delete G.app.state.att.attention.sel;
   const html = pages.join(' ');
   const text = stripTags(html);
-  assert(/This week/.test(text) && !/Needs attention/.test(text));
+  assert(/(This|Next) week/.test(text) && !/Needs attention/.test(text));
   for (const item of data.items.filter((i) => !i.readiness)) {
     const sentence = G.pages.attention.itemText(item);
     assert(sentence && !/undefined|null|NaN/.test(sentence), `${item.kind}: ${sentence}`);
