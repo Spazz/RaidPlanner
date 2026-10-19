@@ -1404,6 +1404,12 @@ function withState(fn) {
     assert(out.includes('Open the raid page') && out.includes('gs-chip-tag') && out.includes('Disenchanted'));
   });
 
+  await check('raid label: a title that already ends with the zone is not followed by the zone again', () => {
+    assert.equal(G.pages.loot.raidLabel({ title: 'Team KJ Saturday - Black Temple', zone: 'Black Temple' }), 'Team KJ Saturday - Black Temple');
+    assert.equal(G.pages.loot.raidLabel({ title: 'Gruul run', zone: 'Gruul' }), 'Gruul run - Gruul');
+    assert.equal(G.pages.loot.raidLabel({ title: null, zone: 'Gruul' }), 'Gruul');
+  });
+
   await check('raid night: nothing recorded, a 403 and a 404 each have their own wording; hostile text is escaped', () => {
     const empty = nightPage(nightState({ awards: [] }));
     assert(empty.includes('No loot recorded') && empty.includes('Import a Gargul export on the raid page'));

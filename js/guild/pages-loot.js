@@ -82,6 +82,12 @@
     return !!award && !!award.match && award.match.kind === 'disenchanted';
   }
 
+  // "Title - Zone", or the title alone when it already ends with the zone ("Team KJ Saturday - Black Temple").
+  function raidLabel(raid) {
+    const r = raid || {};
+    return r.title && r.zone && r.title.endsWith(r.zone) ? r.title : [r.title, r.zone].filter(Boolean).join(' - ');
+  }
+
   // The winner of an award: the person (a link to their loot) when a roster character matched, else the Gargul name with a
   // chip saying why there is no person; "Disenchanted" for an item nobody won. `match` is the Worker's { kind, personId, personName, characterName, ... }.
   function winnerHtml(gid, winner, match) {
@@ -228,6 +234,7 @@
     flagChipsHtml: flagChipsHtml,
     winnerText: winnerText,
     isDisenchanted: isDisenchanted,
+    raidLabel: raidLabel,
     winnerHtml: winnerHtml,
     awardRowHtml: awardRowHtml,
     totalsHtml: totalsHtml,

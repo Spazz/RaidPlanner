@@ -65,7 +65,7 @@
     const title = dayText(raid.raidOn || (awards[0] && awards[0].raidOn));
     const several = G.shell.activeTeams(gd.teams).length > 1;
     const team = x.teamId ? G.pages.attendance.teamOf(gd, x.teamId) : null;
-    const context = [[raid.title, raid.zone].filter(Boolean).join(' - '), several && team ? team.name : '', plural(awards.length, 'award', 'awards') + (awards.length ? ' - ' + countsText(awards) : '')].filter(Boolean).join(' - ');
+    const context = [L().raidLabel(raid), several && team ? team.name : '', plural(awards.length, 'award', 'awards') + (awards.length ? ' - ' + countsText(awards) : '')].filter(Boolean).join(' - ');
     const raidHref = href({ name: 'raid', gid: gid, rid: x.rid });
     const more = { id: 'ln-more', label: 'More', items: [{ label: 'Open the raid page', href: raidHref, key: 'ln-raid' }, edit ? { label: 'Import from Gargul', href: raidHref, key: 'ln-import' } : null] };
     const columns = [{ key: 'item', label: 'Item', primary: true }, { key: 'winner', label: 'Winner' }, { key: 'tag', label: 'Tag' }];

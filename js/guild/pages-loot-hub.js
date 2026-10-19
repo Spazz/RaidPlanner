@@ -77,8 +77,7 @@
 
   // ── Latest raid nights ──
   function nightMeta(night) {
-    const r = night.raid || {};
-    return [r.title, r.zone].filter(Boolean).join(' - ');
+    return L().raidLabel(night.raid);
   }
 
   function receivedHtml(gd, hub, night) {
@@ -119,7 +118,7 @@
       if (x.ui.allNights) {
         body += '<ul class="gs-lhub-links" id="lhub-all" aria-label="' + esc(label) + '">' + rest.map(function (r) {
           return '<li><a class="gs-lhub-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: r.raidId })) + '"><span class="gs-lhub-main"><strong>' + esc(dayText(r.raidOn)) + '</strong>' +
-            '<span class="gs-fine">' + esc(plural(Number(r.awards) || 0, 'award', 'awards') + ([r.title, r.zone].filter(Boolean).length ? ' - ' + [r.title, r.zone].filter(Boolean).join(' - ') : '')) + '</span></span></a></li>';
+            '<span class="gs-fine">' + esc(plural(Number(r.awards) || 0, 'award', 'awards') + (L().raidLabel(r) ? ' - ' + L().raidLabel(r) : '')) + '</span></span></a></li>';
         }).join('') + '</ul><p><button type="button" class="gs-linkbtn" data-action="lhub-nights" data-key="lhub-nights" aria-expanded="true">Show fewer</button></p>';
       } else {
         body += '<p><button type="button" class="gs-linkbtn" data-action="lhub-nights" data-key="lhub-nights" aria-expanded="false" aria-controls="lhub-all">' + esc(label) + '</button></p>';
