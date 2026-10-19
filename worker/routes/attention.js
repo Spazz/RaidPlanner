@@ -308,7 +308,8 @@ export async function postDismissal(ctx) {
 // Restore: the row goes and the item is open again. Needs the kind's rights for the row's team (the item itself may be gone by now, so the row decides).
 export async function deleteDismissal(ctx) {
   const guildContext = await viewerContext(ctx);
-  const itemId = decodeURIComponent(ctx.params.itemid);
+  let itemId;
+  try { itemId = decodeURIComponent(ctx.params.itemid); } catch { throw new HttpError(404, 'not_found', 'That item is not hidden.'); } // a malformed % escape
   const guild = guildContext.guild;
   const row = await ctx.db.prepare('SELECT item_id, kind, team_id, mode, until FROM attention_dismissals WHERE guild_id = ? AND item_id = ?').bind(guild.id, itemId).first();
   if (!row) throw new HttpError(404, 'not_found', 'That item is not hidden.');
