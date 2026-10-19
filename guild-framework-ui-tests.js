@@ -61,7 +61,7 @@ function assertNoRawAttrs(out) {
     assert(block.includes('--border-field: #6b6f72;') && block.includes('--danger-text: #e98479;') && block.includes('--class-shaman-text: #4a9bff;'));
     assert(/--t-micro: 12px;/.test(block) && /--t-meta: 14px;/.test(block) && /--t-body: 16px;/.test(block) && /--t-h1-phone: 24px;/.test(block));
     assert(/--control-h: 40px;/.test(block) && /--control-h-phone: 44px;/.test(block) && /--control-h-sm: 34px;/.test(block) && /--control-h-lg: 48px;/.test(block));
-    assert(/--focus-ring: 2px solid var\(--accent-gold\);/.test(block) && /--focus-offset: 2px;/.test(block));
+    assert(/--focus-ring: 2px solid var\(--text-primary\);/.test(block) && /--focus-offset: 2px;/.test(block));
     for (const tone of ['success', 'warning', 'danger', 'info', 'neutral', 'none']) {
       for (const part of ['ink', 'bg', 'edge']) assert(new RegExp('--status-' + tone + '-' + part + ': #[0-9a-f]{6};').test(block), tone + ' ' + part);
     }
@@ -81,7 +81,7 @@ function assertNoRawAttrs(out) {
   });
 
   await check('tokens: field edges are #6b6f72 (a gold edge on focus), DPS and Shaman text colours, a 12 px text floor, 44 px phone controls', () => {
-    assert(/\.gs-input \{[^}]*border: 1px solid var\(--border-field\)/.test(css) && /\.gs-input:focus \{ border-color: var\(--accent-gold\); \}/.test(css));
+    assert(/\.gs-input \{[^}]*border: 1px solid var\(--border-field\)/.test(css) && /\.gs-input:focus \{ border-color: var\(--text-primary\); \}/.test(css));
     assert(/\.gs-class-shaman, \.guild-page a\.gs-class-shaman \{ color: var\(--class-shaman-text\); \}/.test(css) && /\.cc-shaman \{ color: var\(--class-shaman-text\); \}/.test(css));
     // No font size under 12 px anywhere in guild.css but the printed loot sheet (paper, not screen).
     const screen = css.replace(/@media print \{[\s\S]*?\n\}\n/, '');

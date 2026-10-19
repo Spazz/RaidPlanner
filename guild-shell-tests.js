@@ -935,8 +935,8 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     for (const bare of [/(^|\n)\.guild-page a\s*[,{:]/, /(^|\n)\.guild-page a:hover/, /\.guild-page (button|input|select|textarea|\[tabindex\]):focus-visible/, /\.guild-page \.gs-h1:focus/, /\.guild-page input::placeholder/]) {
       assert(!bare.test(css), 'page-wide rule left: ' + bare);
     }
-    assert(/\.gs-scope a \{ color: var\(--accent-gold\); \}/.test(css));
-    assert(/\.gs-scope a:focus-visible,[\s\S]*?\{ outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\); \}/.test(css) && /--focus-ring: 2px solid var\(--accent-gold\);/.test(css) && /--focus-offset: 2px;/.test(css));
+    assert(/:where\(\.gs-scope a\) \{ color: var\(--text-secondary\); \}/.test(css));
+    assert(/\.gs-scope a:focus-visible,[\s\S]*?\{ outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\); \}/.test(css) && /--focus-ring: 2px solid var\(--text-primary\);/.test(css) && /--focus-offset: 2px;/.test(css));
     assert(/\.gs-scope \.gs-h1:focus \{ outline: none; \}/.test(css) && /\.gs-scope input::placeholder/.test(css));
     assert(/#shell-rail, #shell-sidebar, #shell-banner, #shell-tabs, #shell-drawer \{ display: contents; \}/.test(css));
     assert(/#planner-root\[hidden\], #gs-main\[hidden\] \{ display: none !important; \}/.test(css));

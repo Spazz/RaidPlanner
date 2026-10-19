@@ -154,7 +154,7 @@ const keys = items => plain(items.map(i => i.key));
     assert(/\.gs-att-page \.gs-table-att \{ width: 100%/.test(css));
     assert(/\.gs-table-att th\[scope="row"\] \{[^}]*position: sticky; left: 0/.test(css), 'sticky name column');
     assert(/\.gs-table-att thead th:first-child \{ position: sticky; left: 0/.test(css), 'its head too');
-    assert(/\.gs-table-att tr\.is-you th\[scope="row"\] \{[^}]*accent-gold/.test(css) && /\.gs-att-card\.is-you \{[^}]*accent-gold/.test(css));
+    assert(/\.gs-table-att tr\.is-you th\[scope="row"\] \{[^}]*text-primary/.test(css) && /\.gs-att-card\.is-you \{[^}]*text-primary/.test(css));
   });
 
   // ═══ 5. Loot ═══
@@ -168,7 +168,7 @@ const keys = items => plain(items.map(i => i.key));
     assert.deepEqual([...out.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-att-name">(?:<a[^>]*>)?(?:<span[^>]*>)?([A-Za-z]+)/g)].map(m => [m[2], !!m[1]]), [['Me', true], ['Aimer', false], ['Zed', false]], 'You first although Me has the lowest per raid');
     assert(out.includes('<span class="gs-you">You</span>') && count(out, /<li class="gs-loot-card is-you">/g) === 1);
     assert(out.indexOf('class="gs-listbar"') < out.indexOf('data-action="loot-window"') && out.indexOf('data-action="loot-window"') < out.indexOf('<table class="gs-table gs-table-loot"'));
-    assert(/\.gs-table-loot tr\.is-you th\[scope="row"\] \{[^}]*accent-gold/.test(css));
+    assert(/\.gs-table-loot tr\.is-you th\[scope="row"\] \{[^}]*text-primary/.test(css));
     assert(!lootHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9)])).includes('is-you'));
     assert(G.pages.loot.lootHtml({ guildData: gd(OFFICER_CAN), teamId: 't1', view: 'balance', data: LOOT([]), ui: {} }).includes('No loot yet'), 'the empty view keeps only the view switch (no window switch over nothing)');
   });

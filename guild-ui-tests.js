@@ -867,7 +867,7 @@ function assertEscaped(out, label) {
 
   await check('guild.css: dark flat design, phone breakpoint at 600px, visible focus ring, 44px touch targets', () => {
     assert(/@media \(max-width: 600px\)/.test(css));
-    assert(/outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\)/.test(css) && /--focus-ring: 2px solid var\(--accent-gold\)/.test(css));
+    assert(/outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\)/.test(css) && /--focus-ring: 2px solid var\(--text-primary\)/.test(css));
     const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
     assert(/\.gs-btn, \.gs-btn-sm \{ min-height: 44px; \}/.test(phone));
     assert(/\.gs-input, \.gs-input-search \{ height: 44px; \}/.test(phone));
