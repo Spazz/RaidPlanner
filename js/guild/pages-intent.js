@@ -30,18 +30,31 @@
     const teamId = G.app.teamFor(gd);
     if (!teamId) { a().intent = { gid: gid, teamId: null, board: null }; return Promise.resolve(null); }
     const prev = a().intent;
-    const keep = prev && prev.gid === gid && prev.teamId === teamId && prev.viewRound ? prev.viewRound : null;
-    return G.api.intent.get(gid, teamId, keep).then(function (board) {
-      a().intent = makeState(gid, teamId, board, keep);
-      return null;
-    }, function (err) {
-      if (keep && err && err.status === 404) return G.api.intent.get(gid, teamId, null).then(function (board) { a().intent = makeState(gid, teamId, board, null); return null; });
+    let keep = prev && prev.gid === gid && prev.teamId === teamId && prev.viewRound ? prev.viewRound : null;
+    const board = G.api.intent.get(gid, teamId, keep).then(null, function (err) {
+      if (keep && err && err.status === 404) return G.api.intent.get(gid, teamId, null).then(function (b) { keep = null; return b; });
       throw err;
+    });
+    // The Launch readiness panel's numbers, only for a team that follows a launch; a failed read just leaves the panel out.
+    const launch = launchOn(gd, teamId) ? G.api.launch.get(gid, teamId).then(null, function () { return null; }) : Promise.resolve(null);
+    return Promise.all([board, launch]).then(function (res) {
+      const prev2 = prev && prev.gid === gid && prev.teamId === teamId ? prev : null;
+      a().intent = makeState(gid, teamId, res[0], keep);
+      a().intent.launch = res[1];
+      a().intent.showCov = !!(prev2 && prev2.showCov);
+      return null;
     });
   }
 
+  // Whether the Launch readiness panel can show for the team: a WoW Forever guild always, any other guild for a team marked as a launch team.
+  function launchOn(gd, teamId) {
+    if (!gd || !gd.guild) return false;
+    if (gd.guild.gameVersion === 'forever') return true;
+    return (gd.teams || []).some(function (t) { return t && t.id === teamId && t.launchTeam === true && !t.archived; });
+  }
+
   function makeState(gid, teamId, board, viewRound) {
-    const x = { gid: gid, teamId: teamId, board: board, viewRound: viewRound, note: '', busy: false };
+    const x = { gid: gid, teamId: teamId, board: board, viewRound: viewRound, note: '', busy: false, launch: null, showCov: false };
     x.cov = coverageOf(board);
     return x;
   }
@@ -57,12 +70,22 @@
   }
 
   // ── the page ──
+  function myMainPick(board) {
+    return board.picks.filter(function (p) { return p.mine && p.kind === 'main'; })[0] || null;
+  }
+
+  // "Opened Oct 18, closes Oct 25 - 7 of 23 picked - Your pick: Mage Fire" (the last part for people who can pick).
   function roundLine(board) {
     const r = board.round;
-    const parts = ['Opened ' + G.ui.formatDate(r.createdAt)];
-    if (r.status === 'closed' && r.closedAt) parts.push('closed ' + G.ui.formatDate(r.closedAt));
-    else if (r.closesOn) parts.push('closes ' + G.ui.formatDay(r.closesOn));
-    return parts.join(', ') + '.';
+    const mains = mainPicks(board).length;
+    const total = mains + board.undecided.length;
+    const parts = ['Opened ' + G.ui.formatDate(r.createdAt) + (r.status === 'closed' && r.closedAt ? ', closed ' + G.ui.formatDate(r.closedAt) : (r.closesOn ? ', closes ' + G.ui.formatDay(r.closesOn) : ''))];
+    parts.push(r.status === 'open' && total > mains ? mains + ' of ' + total + ' picked' : plural(mains, 'main pick', 'main picks'));
+    if (board.canPick) {
+      const mine = myMainPick(board);
+      parts.push('Your pick: ' + (mine ? G.ui.className(mine.class) + ' ' + mine.spec : 'not set'));
+    }
+    return parts.join(' - ');
   }
 
   function historyHtml(board) {
@@ -81,80 +104,85 @@
       (edit ? '<div class="gs-actions"><button type="button" class="gs-btn gs-btn-molten" data-action="intent-open" data-key="intent-open">Open a spec poll</button></div>' : '') + '</section>';
   }
 
-  function roundHtml(board, x) {
-    const r = board.round;
-    const open = r.status === 'open';
-    const mains = mainPicks(board).length;
-    const total = mains + board.undecided.length;
-    const acts = [];
-    if (board.canPick) acts.push('<button type="button" class="gs-btn gs-btn-molten" data-action="intent-edit" data-pid="' + esc(board.myPersonId) + '" data-key="intent-mine">' + (board.picks.some(function (p) { return p.mine; }) ? 'Change my pick' : 'Set my pick') + '</button>');
-    if (board.canEdit && open) acts.push('<button type="button" class="gs-btn" data-action="intent-close" data-key="intent-close">Close round</button>');
-    if (board.canEdit && !open && !board.team.archived && !board.rounds.some(function (e) { return e.status === 'open'; })) acts.push('<button type="button" class="gs-btn" data-action="intent-open" data-key="intent-open">Open a new round</button>');
-    return '<section class="gs-card-sec gs-intent-round" aria-labelledby="intent-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="intent-h">' + esc(r.title) + '</h2>' +
-      '<span class="gs-pill gs-pill-' + (open ? 'ok' : 'muted') + '">' + (open ? 'Open' : 'Closed') + '</span></div>' +
-      '<div class="gs-card-sec-body"><p class="gs-fine">' + esc(roundLine(board)) + ' ' + esc(open
-        ? plural(mains, 'main pick', 'main picks') + (total > mains ? ', ' + plural(board.undecided.length, 'person has', 'people have') + ' not picked yet' : '') + '.'
-        : plural(mains, 'main pick', 'main picks') + '.') + '</p>' +
-      (open && !board.canPick && !board.canEdit ? '<p class="gs-fine">Only people on this team can pick. Ask an officer if you should be here.</p>' : '') +
-      (acts.length || board.rounds.length > 1 ? '<div class="gs-actions gs-intent-actions">' + acts.join('') + historyHtml(board) + '</div>' : '') + '</div></section>';
-  }
-
-  function totalsHtml(board) {
+  function tilesHtml(board) {
     const t = board.totals;
-    const size = board.team.size;
-    const rows = ROLE_ORDER.map(function (role) {
+    return '<div class="gs-sp-tiles" role="group" aria-label="Main picks against the targets">' + ROLE_ORDER.map(function (role) {
       const want = board.targets ? board.targets[role] : null;
       const have = t.byRole[role] || 0;
       const diff = want === null ? '' : (have < want ? 'Need ' + (want - have) : have > want ? (have - want) + ' over' : 'Full');
-      return '<tr><th scope="row" class="gs-cell-strong">' + esc(ROLE_LABELS[role]) + '</th><td class="gs-num" data-label="Picked">' + esc(have) + '</td>' +
-        '<td class="gs-num" data-label="Target">' + (want === null ? '-' : esc(want)) + '</td><td data-label="Gap">' + esc(diff) + '</td></tr>';
-    }).join('');
-    const classes = Object.keys(t.byClass).filter(function (id) { return t.byClass[id] > 0; }).sort(function (x, y) { return t.byClass[y] - t.byClass[x] || (x < y ? -1 : 1); });
-    return '<section class="gs-card-sec" aria-labelledby="intent-totals-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="intent-totals-h">Against a ' + esc(size) + '-man raid</h2>' +
-      '<span class="gs-fine">' + esc(t.mains + ' of ' + size + ' spots picked') + '</span></div><div class="gs-card-sec-body">' +
-      '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="Main picks by role"><thead><tr><th scope="col">Role</th><th scope="col">Picked</th><th scope="col">Target</th><th scope="col">Gap</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<h3 class="gs-h3">By class</h3>' +
-      (classes.length ? '<ul class="gs-intent-classes" aria-label="Main picks by class">' + classes.map(function (id) {
-        return '<li><span class="gs-chip ' + esc(G.ui.classClass(id)) + '">' + esc(G.ui.className(id)) + ' ' + esc(t.byClass[id]) + '</span></li>';
-      }).join('') + '</ul>' : '<p class="gs-empty">No picks yet.</p>') + '</div></section>';
+      return '<div class="gs-sp-tile"><span class="gs-fg-gh">' + esc(ROLE_LABELS[role]) + '</span><span class="gs-sp-tilerow"><span class="gs-sp-num">' + esc(have) +
+        (want === null ? '' : '<span class="gs-sp-den"> / ' + esc(want) + '</span>') + '</span><span class="gs-fg-mut">' + esc(diff) + '</span></span></div>';
+    }).join('') + '</div>';
   }
 
-  function pickText(p) {
-    return G.ui.classNameHtml(G.ui.className(p.class) + ' ' + p.spec, p.class) + ' <span class="gs-fine">' + esc(ROLE_ONE[p.role] || '') + '</span>';
+  function coverageLineHtml(x) {
+    const cov = x.cov;
+    if (!cov || !cov.seated) return '';
+    const s = G.coverage.summary(cov);
+    return '<p class="gs-fg-mut">Picks cover ' + esc(s.buffs + ' of ' + s.buffsTotal + ' buffs and ' + s.debuffs + ' of ' + s.debuffsTotal + ' debuffs') + '. ' +
+      '<button type="button" class="gs-fg-linkbtn" data-action="intent-cov" data-key="intent-cov" aria-expanded="' + (x.showCov ? 'true' : 'false') + '" aria-controls="intent-cov">' + (x.showCov ? 'Hide coverage' : 'See coverage') + '</button></p>';
   }
 
-  function personRows(board) {
-    const by = {};
-    const order = [];
-    board.picks.forEach(function (p) {
-      if (!by[p.personId]) { by[p.personId] = { personId: p.personId, name: p.name, main: null, alt: null }; order.push(p.personId); }
-      by[p.personId][p.kind] = p;
-    });
-    return order.map(function (id) { return by[id]; }).sort(function (x, y) { return x.name < y.name ? -1 : x.name > y.name ? 1 : 0; });
+  // The round panel: title and state, the one primary (Set my pick), Close round, the picks against the targets and a coverage line.
+  function roundHtml(board, x) {
+    const r = board.round;
+    const open = r.status === 'open';
+    const acts = [];
+    if (board.canPick) acts.push('<button type="button" class="gs-btn gs-btn-molten" data-action="intent-edit" data-pid="' + esc(board.myPersonId) + '" data-key="intent-mine">' + (myMainPick(board) ? 'Change my pick' : 'Set my pick') + '</button>');
+    if (board.canEdit && open) acts.push('<button type="button" class="gs-btn gs-btn-ghost gs-sp-close" data-action="intent-close" data-key="intent-close">Close round</button>');
+    if (board.canEdit && !open && !board.team.archived && !board.rounds.some(function (e) { return e.status === 'open'; })) acts.push('<button type="button" class="gs-btn" data-action="intent-open" data-key="intent-open">Open a new round</button>');
+    return '<section class="gs-hd-panel gs-sp-round" aria-labelledby="intent-h"><div class="gs-sp-top"><div class="gs-sp-title"><div class="gs-sp-h"><h2 class="gs-rc-h2 gs-sp-h2" id="intent-h">' + esc(r.title) + '</h2>' +
+      '<span class="gs-hd-chip is-' + (open ? 'green' : 'grey') + '">' + (open ? 'Open' : 'Closed') + '</span></div><p class="gs-sp-sub">' + esc(roundLine(board)) + '</p>' +
+      (open && !board.canPick && !board.canEdit ? '<p class="gs-fg-mut">Only people on this team can pick. Ask an officer if you should be here.</p>' : '') + '</div>' +
+      (acts.length ? '<div class="gs-sp-acts">' + acts.join('') + '</div>' : '') + '</div>' + historyHtml(board) + tilesHtml(board) + coverageLineHtml(x) + '</section>';
   }
 
-  function picksHtml(board) {
-    const people = personRows(board);
+  function picksByRoleHtml(board) {
     const open = board.round.status === 'open';
     const editCol = board.canEdit && open;
-    const rows = people.map(function (p) {
-      const note = [p.main && p.main.note, p.alt && p.alt.note].filter(Boolean);
-      return '<tr><th scope="row" class="gs-cell-strong">' + esc(p.name) + (p.main && p.main.mine ? ' <span class="gs-fine">(you)</span>' : '') + '</th>' +
-        '<td data-label="Main">' + (p.main ? pickText(p.main) : '<span class="gs-muted">-</span>') + '</td>' +
-        '<td data-label="Alt">' + (p.alt ? pickText(p.alt) : '<span class="gs-muted">-</span>') + '</td>' +
-        '<td data-label="Note">' + (note.length ? esc(note.join(' / ')) : '<span class="gs-muted">-</span>') + '</td>' +
-        (editCol ? '<td><button type="button" class="gs-btn gs-btn-sm" data-action="intent-edit" data-pid="' + esc(p.personId) + '" data-key="intent-edit-' + esc(p.personId) + '" aria-label="Change the pick of ' + esc(p.name) + '">Change</button></td>' : '') + '</tr>';
+    const alts = {};
+    board.picks.forEach(function (p) { if (p.kind === 'alt') alts[p.personId] = p; });
+    const cols = ROLE_ORDER.map(function (role) {
+      const picks = mainPicks(board).filter(function (p) { return p.role === role; }).sort(function (x, y) { return x.name < y.name ? -1 : x.name > y.name ? 1 : 0; });
+      const want = board.targets ? board.targets[role] : null;
+      const rows = picks.map(function (p) {
+        const alt = alts[p.personId];
+        return '<div class="gs-rs-row gs-sp-row">' + G.ui.specIconHtml(p.class, p.spec, 20) + '<span class="gs-rs-id"><span class="gs-rs-name ' + esc(G.ui.classClass(p.class)) + '">' + esc(p.name) + (p.mine ? ' <span class="gs-rs-alt">(you)</span>' : '') + '</span>' +
+          '<span class="gs-rs-sub"><span class="gs-rs-spec">' + esc(p.spec) + '</span>' + (alt ? '<span class="gs-rs-alt" title="' + esc(G.ui.className(alt.class) + ' ' + alt.spec) + '">1 alt</span>' : '') + '</span>' +
+          (p.note ? '<span class="gs-rs-alt gs-sp-note">' + esc(p.note) + '</span>' : '') + '</span>' +
+          (editCol ? '<button type="button" class="gs-btn gs-btn-ghost gs-sp-change" data-action="intent-edit" data-pid="' + esc(p.personId) + '" data-key="intent-edit-' + esc(p.personId) + '" aria-label="Change the pick of ' + esc(p.name) + '">Change</button>' : '') + '</div>';
+      }).join('');
+      return '<div class="gs-hd-panel gs-rs-col"><h3 class="gs-rs-colhead gs-fg-gh">' + esc(ROLE_LABELS[role]) + ' <b>' + picks.length + '</b>' + (want === null ? '' : '<span class="gs-rs-den">/ ' + esc(want) + '</span>') + '</h3>' +
+        (rows || '<p class="gs-rs-none">Nobody yet</p>') + '</div>';
     }).join('');
-    const undecided = board.undecided;
-    return '<section class="gs-card-sec" aria-labelledby="intent-picks-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="intent-picks-h">Picks</h2></div><div class="gs-card-sec-body">' +
-      (people.length
-        ? '<div class="gs-table-wrap"><table class="gs-table gs-table-stack" aria-label="Picks"><thead><tr><th scope="col">Player</th><th scope="col">Main</th><th scope="col">Alt</th><th scope="col">Note</th>' +
-          (editCol ? '<th scope="col"><span class="gs-sr">Actions</span></th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
-        : '<p class="gs-empty">Nobody has picked yet.</p>') +
-      (open && undecided.length
-        ? '<h3 class="gs-h3">Not picked yet (' + esc(undecided.length) + ')</h3><ul class="gs-intent-undecided">' + undecided.map(function (u) {
-          return '<li>' + G.ui.classNameHtml(u.name, u.class) + (board.canEdit ? ' <button type="button" class="gs-btn gs-btn-sm" data-action="intent-edit" data-pid="' + esc(u.personId) + '" data-key="intent-edit-' + esc(u.personId) + '" aria-label="Set the pick of ' + esc(u.name) + '">Set pick</button>' : '') + '</li>';
-        }).join('') + '</ul>' : '') + '</div></section>';
+    return '<section aria-label="Picks" class="gs-sp-picks"><h2 class="gs-hd-sl">Picks by role</h2><div class="gs-rs-cols gs-sp-cols">' + cols + '</div></section>';
+  }
+
+  function notPickedHtml(board) {
+    const open = board.round.status === 'open';
+    const list = board.undecided;
+    if (!open || !list.length) return '';
+    const names = list.map(function (u) {
+      const name = G.ui.classNameHtml(u.name, u.class);
+      return board.canEdit
+        ? '<li><button type="button" class="gs-fg-linkbtn gs-sp-name" data-action="intent-edit" data-pid="' + esc(u.personId) + '" data-key="intent-edit-' + esc(u.personId) + '" aria-label="Set the pick of ' + esc(u.name) + '">' + name + '</button></li>'
+        : '<li>' + name + '</li>';
+    }).join('');
+    return '<section aria-label="Not picked yet" class="gs-sp-undecided"><h2 class="gs-hd-sl">Not picked yet <b>' + esc(list.length) + '</b></h2><ul class="gs-intent-undecided">' + names + '</ul></section>';
+  }
+
+  // The Launch readiness panel (the team follows a launch): the four stages as counts and the way to the launch list.
+  function launchHtml(gd, x) {
+    const d = x.launch;
+    if (!d || !d.enabled || !d.totals) return '';
+    const t = d.totals;
+    const people = t.people || 0;
+    const steps = [['Picked', 'intent'], ['Character made', 'character'], ['Level band', 'level'], ['Ready', 'ready']].map(function (s, i) {
+      return '<li class="gs-sp-step">' + (i ? '<span class="gs-sp-chev" aria-hidden="true">' + G.icons.icon('arrow', 18) + '</span>' : '') + '<span class="gs-sp-stepbody"><span class="gs-fg-gh">' + esc(s[0]) + '</span>' +
+        '<span class="gs-sp-stepnum">' + esc(t.stages[s[1]] || 0) + '<span class="gs-sp-stepden"> / ' + esc(people) + '</span></span></span></li>';
+    }).join('');
+    return '<section aria-label="Launch readiness" class="gs-sp-launch"><h2 class="gs-hd-sl">Launch readiness</h2><div class="gs-hd-panel gs-sp-launchbox"><ol class="gs-sp-steps">' + steps + '</ol>' +
+      '<a class="gs-btn" href="' + esc(G.router.format({ name: 'launch', gid: gd.guild.id })) + '" data-key="intent-launch">Open launch list</a></div></section>';
   }
 
   // opts: { guildData, state: a().intent, alert }
@@ -164,9 +192,10 @@
     const board = x.board;
     const head = G.pages.rosterTabs.headHtml(gd, 'intent', board.team.name);
     const alert = G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '');
-    if (!board.round) return '<div class="gs-page gs-forge">' + head + alert + emptyHtml(board, gd) + '</div>';
-    return '<div class="gs-page gs-forge">' + head + alert + roundHtml(board, x) + totalsHtml(board) +
-      G.coverage.panelHtml(x.cov, { id: 'intent-cov', heading: 'Buffs and debuffs of the planned raid', intro: 'What the main picks would cover.' }) + picksHtml(board) + '</div>';
+    if (!board.round) return '<div class="gs-page gs-forge gs-sp-page">' + head + alert + emptyHtml(board, gd) + launchHtml(gd, x) + '</div>';
+    return '<div class="gs-page gs-forge gs-sp-page">' + head + alert + roundHtml(board, x) +
+      (x.showCov ? '<div id="intent-cov">' + G.coverage.panelHtml(x.cov, { id: 'intent-cov-panel', heading: 'Buffs and debuffs of the planned raid', intro: 'What the main picks would cover.' }) + '</div>' : '') +
+      picksByRoleHtml(board) + notPickedHtml(board) + launchHtml(gd, x) + '</div>';
   }
 
   function main(r, gd) {
@@ -246,6 +275,13 @@
       c.x.note = 'The round is open.';
       G.app.render();
     });
+  };
+
+  G.handlers.click['intent-cov'] = function () {
+    const c = cur();
+    if (!c) return;
+    c.x.showCov = !c.x.showCov;
+    G.app.render();
   };
 
   G.handlers.click['intent-close'] = function () {

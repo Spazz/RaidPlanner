@@ -2175,6 +2175,111 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-rs-stateacts { flex-direction: column; align-items: stretch; width: 100%; }
 }
 
+/* Recruiting tab (A4) and Spec poll tab (A5): panels are .gs-hd-panel, chips .gs-hd-chip, buttons the forge look; orange only on Set my pick (Spec poll), none on Recruiting.
+   Written without a space after the colon in the phone queries on purpose (see the note above the Roster's phone block). */
+.gs-rc-page, .gs-sp-page { gap: 32px; }
+.gs-rc-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+.gs-rc-apps { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.gs-rc-apps .gs-fg-segs { align-self: flex-start; }
+.gs-rc-apps .gs-notice { margin: 0; }
+.gs-rc-apps .gs-app-list { gap: 12px; }
+.gs-rc-app { padding: 16px 20px; gap: 12px; }
+.gs-rc-apphead { display: flex; align-items: flex-start; gap: 16px; }
+.gs-rc-apphead .gs-spec-icon { margin-top: 3px; }
+.gs-rc-appwho { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.gs-rc-appname { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 10px; font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+.gs-rc-appspec { font-size: 14px; font-weight: 400; color: var(--text-secondary); }
+.gs-rc-appmeta { font-size: 14px; color: var(--text-secondary); }
+.gs-rc-appside { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.gs-rc-appside .gs-hd-chip { align-self: flex-end; }
+.gs-rc-appacts { display: flex; align-items: center; gap: 8px; }
+.gs-rc-app .gs-app-answers, .gs-rc-app .gs-app-notes, .gs-rc-app .gs-notice { margin: 0; }
+.gs-rc-side { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.gs-rc-panel { overflow: hidden; }
+.gs-rc-ph { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 8px 12px 8px 20px; }
+.gs-rc-h2 { margin: 0; font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--hd-white); }
+.gs-rc-need { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 20px; border-top: 1px solid var(--hd-hair); }
+.gs-rc-role { flex: 1; font-size: 14px; color: var(--text-primary); }
+.gs-rc-n { font-size: 14px; font-weight: 700; color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-rc-d { font-weight: 500; color: var(--text-muted); }
+.gs-rc-need .gs-hd-chip { width: 76px; }
+.gs-rc-note { padding: 8px 20px 0; }
+.gs-rc-foot { display: flex; flex-direction: column; gap: 4px; padding: 12px 20px 16px; border-top: 1px solid var(--hd-hair); }
+.gs-rc-foot .gs-check { margin: 0; }
+.gs-rc-body { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 12px 20px 16px; border-top: 1px solid var(--hd-hair); }
+.gs-rc-miss { font-size: 13px; font-weight: 600; color: #f7a1b3; padding-right: 8px; }
+.gs-rc-grp { display: flex; flex-direction: column; gap: 4px; }
+.gs-rc-names { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
+.gs-rc-covered summary { display: flex; align-items: center; min-height: 36px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.gs-rc-covered[open] summary { margin-bottom: 8px; }
+.gs-rc-covered .gs-rc-grp + .gs-rc-grp { margin-top: 12px; }
+.gs-rc-post { box-sizing: border-box; width: 100%; min-height: 0; padding: 12px 14px; background: #131416; border: 1px solid var(--hd-panel-edge); border-radius: 6px; font: 400 13px/1.45 var(--font-body); color: var(--text-primary); resize: vertical; }
+.gs-rc-postacts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+
+.gs-sp-round { display: flex; flex-direction: column; gap: 20px; padding: 20px 24px; }
+.gs-sp-top { display: flex; align-items: center; gap: 16px; }
+.gs-sp-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.gs-sp-h { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.gs-sp-h2 { font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+.gs-sp-sub { margin: 0; font-size: 14px; color: var(--text-secondary); }
+.gs-sp-acts { display: flex; align-items: center; gap: 8px; }
+.gs-sp-close { min-height: 44px; }
+.gs-sp-round .gs-intent-history { max-width: 360px; }
+.gs-sp-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding-top: 20px; border-top: 1px solid var(--hd-panel-edge); }
+.gs-sp-tile { display: flex; flex-direction: column; gap: 4px; }
+.gs-sp-tilerow { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 12px; }
+.gs-sp-num { font-size: 28px; line-height: 1.1; font-weight: 700; color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-sp-den { font-size: 18px; font-weight: 500; color: var(--text-muted); }
+.gs-sp-picks, .gs-sp-undecided, .gs-sp-launch { display: flex; flex-direction: column; gap: 12px; }
+.gs-sp-cols { align-items: start; }
+.gs-sp-row .gs-sp-note { overflow-wrap: anywhere; }
+.gs-sp-change { flex: none; min-height: 36px; padding: 0 8px; }
+.gs-sp-undecided .gs-hd-sl b { color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-sp-undecided .gs-intent-undecided { flex-direction: row; flex-wrap: wrap; gap: 0 20px; }
+.gs-sp-undecided .gs-intent-undecided li { font-size: 14px; line-height: 1.6; }
+.gs-sp-undecided .gs-fg-linkbtn { min-height: 36px; padding: 0; font-size: 14px; text-decoration: none; }
+.gs-sp-launchbox { display: flex; align-items: center; gap: 16px; padding: 16px 24px; }
+.gs-sp-steps { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; margin: 0; padding: 0; list-style: none; }
+.gs-sp-step { display: flex; align-items: center; gap: 16px; }
+.gs-sp-chev { display: inline-flex; color: var(--text-muted); }
+.gs-sp-stepbody { display: flex; flex-direction: column; gap: 4px; }
+.gs-sp-stepnum { font-size: 22px; line-height: 1.1; font-weight: 700; color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-sp-stepden { font-size: 16px; font-weight: 500; color: var(--text-muted); }
+@media (max-width:1023px) {
+  .gs-rc-grid { grid-template-columns: minmax(0, 1fr); }
+  .gs-sp-cols.gs-rs-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width:600px) {
+  .gs-rc-page, .gs-sp-page { gap: 24px; }
+  .gs-pagehead .gs-back-link { min-height: 44px; }
+  .gs-rc-apps .gs-fg-segs { align-self: stretch; }
+  .gs-rc-apps .gs-fg-seg { flex: 1; height: 44px; }
+  .gs-rc-app { padding: 16px; }
+  .gs-rc-apphead { flex-wrap: wrap; gap: 8px 12px; }
+  .gs-rc-appwho { flex-basis: calc(100% - 40px); }
+  .gs-rc-appside { flex-basis: 100%; flex-direction: row; justify-content: space-between; align-items: center; }
+  .gs-rc-appside .gs-hd-chip { align-self: center; order: 2; }
+  .gs-rc-appacts { flex: 1; }
+  .gs-rc-appacts .gs-btn:first-child { flex: 1; }
+  .gs-rc-ph { padding-left: 16px; }
+  .gs-rc-need, .gs-rc-note, .gs-rc-foot, .gs-rc-body { padding-left: 16px; padding-right: 16px; }
+  .gs-rc-foot .gs-check, .gs-rc-covered summary { min-height: 44px; }
+  .gs-rc-postacts .gs-btn { flex: 1; }
+  .gs-sp-round { padding: 16px; gap: 16px; }
+  .gs-sp-top { flex-direction: column; align-items: stretch; gap: 12px; }
+  .gs-sp-acts { flex-direction: column; align-items: stretch; }
+  .gs-sp-acts .gs-btn { width: 100%; justify-content: center; }
+  .gs-sp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-top: 16px; }
+  .gs-sp-cols.gs-rs-cols { grid-template-columns: minmax(0, 1fr); }
+  .gs-sp-change { min-height: 44px; min-width: 56px; }
+  .gs-sp-round .gs-fg-linkbtn, .gs-sp-undecided .gs-fg-linkbtn { min-height: 44px; }
+  .gs-sp-undecided .gs-intent-undecided { gap: 0 16px; }
+  .gs-sp-launchbox { flex-direction: column; align-items: stretch; padding: 16px; }
+  .gs-sp-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .gs-sp-chev { display: none; }
+  .gs-sp-launchbox .gs-btn { width: 100%; justify-content: center; }
+}
+
 /* ── Officer Home, round 4: the Week (desktop) and the Briefing (phone) ─────────────────────────────
    Scoped to .gs-home so no other page changes. Both variants are in the markup; at 600 px and below only the Briefing shows.
    Rules: ONE panel recipe (.gs-hd-panel) and ONE raised recipe (menus, toast); molten orange on the one primary button only; gold is not used here
@@ -2404,3 +2509,4 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-watch-act { grid-column: 1 / -1; justify-self: start; }
 .gs-watch-reviewed { grid-column: 1 / -1; margin: 0; }
 .gs-watch-item.is-reviewed .gs-watch-num, .gs-watch-item.is-reviewed .gs-watch-was, .gs-watch-item.is-reviewed .gs-watch-counts { color: var(--text-muted); }
+

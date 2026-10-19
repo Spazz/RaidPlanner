@@ -768,7 +768,7 @@ function assertNoRawAttrs(out) {
   const code = text => text.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n').replace(/\s\/\/ [^'"\n]*$/gm, '');
   await check('glossary: the retired words are gone from the screens, posts and sentences - Publish roster, Your seat, Can\'t make it, Loot board, Plan actions, Actions menu, People and roles', () => {
     const retired = [/Publish roster/, /Re-publish roster/, /Your seat/, /Can\\?'t make it/, /can\\?'t make it/, /cannot make it/, /Loot board/, /Plan actions/, /label: 'Actions'/, /People and roles/, /Roster published/, /published roster/i,
-      /label: 'Intent'/, /label: 'Recruiting'/, /Rostered /, /rostered people/, /Open an intent round/, /No intent round yet/];
+      /label: 'Intent'/, /Rostered /, /rostered people/, /Open an intent round/, /No intent round yet/];
     const hits = [];
     for (const [file, text] of sources) for (const re of retired) if (re.test(code(text))) hits.push(file + ' ' + re);
     assert.deepEqual(hits, []);
@@ -780,7 +780,7 @@ function assertNoRawAttrs(out) {
     assert(all['js/guild/pages-raid-roster.js'].includes('Can\\\'t come'));
     assert(all['js/guild/pages-raid-board.js'].includes('Loot prios') && all['js/guild/pages-raid-loot.js'].includes('Loot awards'));
     assert(all['js/guild/pages-roster-tabs.js'].includes("intent: 'Spec poll'") && all['js/guild/pages-roster-tabs.js'].includes("recruiting: 'Recruiting'"));
-    assert(all['js/guild/shell.js'].includes("label: 'Spec poll'") && all['js/guild/shell.js'].includes("label: 'Recruiting needs'") && all['js/guild/shell.js'].includes("label: 'Accounts'"));
+    assert(all['js/guild/shell.js'].includes("label: 'Spec poll'") && all['js/guild/shell.js'].includes("label: 'Recruiting'") && all['js/guild/shell.js'].includes("label: 'Accounts'"));
     assert(all['js/guild/pages-raid.js'].includes("label: 'More', key: 'raid-actions'") && all['js/guild/pages-raid.js'].includes("sourceMenuHtml('plan', 'Plan settings'"));
     assert(all['js/guild/pages-raid-signups.js'].includes("absence: 'Can\\'t come'"));
     assert(all['worker/notify.js'].includes('Line-up published:') && all['worker/notify.js'].includes('Please confirm your group, or say you can\'t come.'));

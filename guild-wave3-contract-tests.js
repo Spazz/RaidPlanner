@@ -217,7 +217,7 @@ check('intent board: an officer opens a round, a member picks (main and alt) wit
   // Erin (Thoren) sees the open round and picks: a Prot Warrior main and a Fire Mage alt.
   member = await open(s, E, 'intent');
   let text = stripTags(member());
-  assert(text.includes('WoW Forever launch') && text.includes('Set my pick') && text.includes('Not picked yet (4)'), text.slice(0, 700));
+  assert(text.includes('WoW Forever launch') && text.includes('Set my pick') && text.includes('Not picked yet 4'), text.slice(0, 700));
   E.handlers.click['intent-edit'](el({ 'data-pid': s.people.Thoren }));
   const dialog = E.dialogs[E.dialogs.length - 1];
   assert(dialog.includes('Your pick for WoW Forever launch'));
@@ -233,12 +233,13 @@ check('intent board: an officer opens a round, a member picks (main and alt) wit
     mainClass: ctrl('PRIEST'), mainSpec: ctrl('Holy'), mainNote: ctrl(''), altClass: ctrl(''), altSpec: ctrl(''), altNote: ctrl('') } });
   await settle();
   page = await open(s, A, 'intent');
+  A.handlers.click['intent-cov'](el({}));
   const out = page();
   text = stripTags(out);
-  assert(text.includes('2 of 20 spots picked') && text.includes('Against a 20-man raid') && text.includes('Not picked yet (2)'), text.slice(0, 900));
-  const rows = [...out.matchAll(/<tr><th scope="row" class="gs-cell-strong">([^<]+)<\/th><td class="gs-num" data-label="Picked">(\d+)<\/td><td class="gs-num" data-label="Target">(\d+)<\/td><td data-label="Gap">([^<]*)<\/td><\/tr>/g)].map((m) => [m[1], +m[2], +m[3], m[4]]);
+  assert(text.includes('2 of 4 picked') && text.includes('Picks by role') && text.includes('Not picked yet 2'), text.slice(0, 900));
+  const rows = [...out.matchAll(/<span class="gs-fg-gh">([^<]+)<\/span><span class="gs-sp-tilerow"><span class="gs-sp-num">(\d+)<span class="gs-sp-den"> \/ (\d+)<\/span><\/span><span class="gs-fg-mut">([^<]*)<\/span>/g)].map((m) => [m[1], +m[2], +m[3], m[4]]);
   assert.deepEqual(rows, [['Tanks', 1, 2, 'Need 1'], ['Healers', 1, 5, 'Need 4'], ['Melee DPS', 0, 7, 'Need 7'], ['Ranged DPS', 0, 6, 'Need 6']], 'forever 20-man defaults');
-  assert(text.includes('Tanking at launch') && text.includes('Warrior Protection') && text.includes('Mage Fire') && text.includes('Priest Holy'));
+  assert(text.includes('Tanking at launch') && text.includes('Protection') && text.includes('1 alt') && text.includes('Holy'));
   // The coverage panel is the Planner's own answer for the two main picks.
   const expected = plannerApi.rosterBuffCoverage([{ class: 'WARRIOR', spec: 'Protection' }, { class: 'PRIEST', spec: 'Holy' }], 'forever', 20);
   const covered = (entries) => entries.filter((e) => e.covered).map((e) => e.name);
@@ -264,9 +265,9 @@ check('recruitment needs: the counts from the real roster, the targets saved and
   const page = await open(s, A, 'recruiting');
   let out = page();
   let text = stripTags(out);
-  assert(text.includes('Roles against the targets') && text.includes('Main team') && text.includes('Recruiting'));
+  assert(text.includes('Recruiting needs') && text.includes('Main team') && text.includes('Recruiting') && text.includes('Applications'));
   // Thoren is the tank, Gorrim a healer, Kaelith (Trial) melee, Mirabel ranged: gaps against the 25-man defaults 3 / 6 / 8 / 8.
-  const rows = [...out.matchAll(/<tr><th scope="row" class="gs-cell-strong">([^<]+)<\/th><td class="gs-num" data-label="On the roster">(\d+)<\/td>/g)].map((m) => [m[1], +m[2]]);
+  const rows = [...out.matchAll(/<div class="gs-rc-need"><span class="gs-rc-role">([^<]+)<\/span><span class="gs-rc-n">(\d+)</g)].map((m) => [m[1], +m[2]]);
   assert.deepEqual(rows, [['Tanks', 1], ['Healers', 1], ['Melee DPS', 1], ['Ranged DPS', 1]]);
   const post = out.match(/<textarea[^>]*id="rt-post"[^>]*>([\s\S]*?)<\/textarea>/)[1].replace(/&#39;/g, "'").replace(/&amp;/g, '&');
   assert(post.startsWith('Ember is recruiting for Main team!\nTBC Anniversary - Nightslayer (US)\nRaid days: Tue 8:00 PM, Thu 8:30 PM (America/New_York)\nLooking for: 2 Tanks, 5 Healers, 7 Melee DPS, 7 Ranged DPS\n'), post);
@@ -276,12 +277,16 @@ check('recruitment needs: the counts from the real roster, the targets saved and
   const again = await open(s, A, 'recruiting');
   assert(again().match(/<textarea[^>]*id="rt-post"[^>]*>([\s\S]*?)<\/textarea>/)[1].includes(`Apply: /#/apply/${s.gid}`));
   // Targets: save, see the new gap, reset.
+  A.handlers.click['recruiting-edit'](el({}));
+  assert(A.dialogs[A.dialogs.length - 1].includes('Recruiting targets') && A.dialogs[A.dialogs.length - 1].includes('name="tank" value="3"'), 'the dialog starts from the 25-man defaults');
   await A.handlers.submit['recruiting-form']({ elements: { tank: ctrl('1'), healer: ctrl('1'), melee: ctrl('1'), ranged: ctrl('1') } });
   await settle();
   assert.equal((await s.rows('SELECT recruit_targets AS t FROM teams'))[0].t, '{"tank":1,"healer":1,"melee":1,"ranged":1}');
   out = A.pages.recruiting.main({ name: 'recruiting', gid: s.gid }, A.guildData);
-  assert(stripTags(out).includes('Targets saved.') && out.includes('data-action="recruiting-reset"') && !stripTags(out).includes('against the usual targets'));
-  await A.handlers.click['recruiting-reset']();
+  assert(stripTags(out).includes('Targets saved.') && !stripTags(out).includes('The usual targets'));
+  A.handlers.click['recruiting-edit'](el({}));
+  assert(A.dialogs[A.dialogs.length - 1].includes('data-action="recruiting-reset"'), 'custom targets offer the defaults back');
+  await A.handlers.click['recruiting-reset']({ closest: () => ({ elements: {} }) });
   await settle();
   assert.equal((await s.rows('SELECT recruit_targets AS t FROM teams'))[0].t, null);
   // A plain member cannot open it: the Worker refuses the load.
@@ -332,15 +337,13 @@ check('applications: a signed-out and a signed-in applicant use the apply form, 
   await A.pages.attention.load({ name: 'section', gid: s.gid, section: 'home' }, A.guildData);
   const home = stripTags(A.pages.attention.main({}, A.guildData));
   assert(home.includes('2 new applications waiting') && home.includes('Review'), home.slice(0, 500));
-  const inbox = await open(s, A, 'applications');
+  const inbox = await open(s, A, 'recruiting'); // the inbox is the Recruiting tab's left column
   page = inbox();
   text = stripTags(page);
-  assert(text.includes('Walkin') && text.includes('Hopeful') && text.includes('We raid late') && text.includes('Veteran') && text.includes('Signed in as Hank H') && text.includes('Contact: Walkin#1'), text.slice(0, 900));
-  // Accept Hopeful (signed in): the dialog, then a Trial person with the account linked.
+  assert(text.includes('Walkin') && text.includes('Hopeful') && text.includes('We raid late') && text.includes('Veteran') && text.includes('signed in as Hank H') && text.includes('Contact: Walkin#1') && text.includes('Recruiting needs') && text.includes('Accept as Trial'), text.slice(0, 900));
+  // Accept Hopeful (signed in) with the one button: a Trial person for the team's trial length (14 by default) with the account linked.
   const hopeful = (await A.api.get(`${s.base}/applications`)).applications.find((a) => a.name === 'Hopeful');
-  A.handlers.click['app-accept'](el({ 'data-apid': hopeful.id }));
-  assert(A.dialogs[A.dialogs.length - 1].includes('Accept Hopeful'));
-  await A.handlers.submit['app-accept-form']({ getAttribute: () => hopeful.id, elements: { teamId: ctrl(s.teamId), trialDays: ctrl('14') } });
+  A.handlers.click['app-accept-trial'](el({ 'data-apid': hopeful.id }));
   await settle();
   const person = (await s.rows("SELECT p.status, p.trial_end, p.user_id, c.team_id, c.is_main FROM players p JOIN characters c ON c.player_id = p.id WHERE c.name = 'Hopeful'"))[0];
   assert.deepEqual([person.status, person.trial_end, person.user_id !== null, person.team_id, person.is_main], ['trial', '2026-10-31', true, s.teamId, 1]);

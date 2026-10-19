@@ -169,8 +169,8 @@ class ApiErr extends Error {
     assert.deepEqual(tabs({ 'roster.edit': 'guild' }), [], 'roster.edit alone does not open Guild settings');
     const crumbs = (route) => plain(G.shell.breadcrumbItems({ route, guildData: gd(OFFICER_CAN), signedOut: false, section: 'guild', teamId: 't1', me: { user: { id: 'u' } } }).map(c => c.label));
     assert.deepEqual(crumbs({ name: 'intent', gid: 'g1' }).slice(-2), ['Roster', 'Spec poll']);
-    assert.deepEqual(crumbs({ name: 'recruiting', gid: 'g1' }).slice(-2), ['Roster', 'Recruiting needs']);
-    assert.deepEqual(crumbs({ name: 'applications', gid: 'g1' }).slice(-2), ['Roster', 'Applications']);
+    assert.deepEqual(crumbs({ name: 'recruiting', gid: 'g1' }).slice(-2), ['Roster', 'Recruiting']);
+    assert.deepEqual(crumbs({ name: 'applications', gid: 'g1' }).slice(-2), ['Roster', 'Recruiting']);
     assert.deepEqual(crumbs({ name: 'import', gid: 'g1', source: 'csv' }).slice(-2), ['Roster', 'Import from a CSV file']);
     assert.deepEqual(crumbs({ name: 'apply', gid: 'g1' }), ['Apply']);
     for (const name of ['intent', 'recruiting', 'applications', 'launch']) {
@@ -235,17 +235,19 @@ class ApiErr extends Error {
     assertEscaped(out, 'intent page');
     assertNoRawAttrs(out);
     const text = stripTags(out);
-    assert(text.includes('2 of 20 spots picked'), text.slice(0, 600));
-    assert(out.includes('Against a 20-man raid'));
-    // The role table: picked vs target with the gap.
-    const rows = [...out.matchAll(/<tr><th scope="row" class="gs-cell-strong">([^<]+)<\/th><td class="gs-num" data-label="Picked">(\d+)<\/td><td class="gs-num" data-label="Target">(\d+)<\/td><td data-label="Gap">([^<]*)<\/td><\/tr>/g)].map(m => [m[1], +m[2], +m[3], m[4]]);
-    assert.deepEqual(rows, [['Tanks', 1, 2, 'Need 1'], ['Healers', 1, 5, 'Need 4'], ['Melee DPS', 0, 7, 'Need 7'], ['Ranged DPS', 0, 6, 'Need 6']]);
-    assert(out.includes('Warrior 1') && out.includes('Priest 1') && !out.includes('Mage 0'));
-    assert(out.includes('Buffs and debuffs of the planned raid') && out.includes('Windfury Totem'));
-    assert(text.includes('Not picked yet (1)') && text.includes('Quillfeather'));
+    assert(text.includes('2 of 3 picked') && text.includes('Your pick: Warrior Protection'), text.slice(0, 600));
+    // The role tiles: picked / target with the gap.
+    const tiles = [...out.matchAll(/<span class="gs-fg-gh">([^<]+)<\/span><span class="gs-sp-tilerow"><span class="gs-sp-num">(\d+)<span class="gs-sp-den"> \/ (\d+)<\/span><\/span><span class="gs-fg-mut">([^<]*)<\/span>/g)].map(m => [m[1], +m[2], +m[3], m[4]]);
+    assert.deepEqual(tiles, [['Tanks', 1, 2, 'Need 1'], ['Healers', 1, 5, 'Need 4'], ['Melee DPS', 0, 7, 'Need 7'], ['Ranged DPS', 0, 6, 'Need 6']]);
+    assert(out.includes('Picks by role') && out.includes('gs-rs-colhead gs-fg-gh">Tanks <b>1</b>') && out.includes('gs-rs-colhead gs-fg-gh">Healers <b>1</b>') && out.includes('Mendra'));
+    assert(!out.includes('Windfury Totem') && out.includes('data-action="intent-cov"') && text.includes('Picks cover 1 of 2 buffs and 1 of 2 debuffs'), 'coverage is one line until it is opened');
+    x.showCov = true;
+    const opened = G.pages.intent.intentHtml({ guildData: S.guilds.g1, state: x, alert: '' });
+    assert(opened.includes('Buffs and debuffs of the planned raid') && opened.includes('Windfury Totem') && opened.includes('Hide coverage'));
+    assert(text.includes('Not picked yet 1') && text.includes('Quillfeather'));
     assert(out.includes('data-action="intent-edit" data-pid="p_c"'), 'an officer can set a pick for somebody who has not');
     assert(out.includes('data-action="intent-close"') && out.includes('data-action="intent-edit" data-pid="p_a"'));
-    assert(out.includes('Change my pick'));
+    assert(out.includes('Change my pick') && out.includes('gs-btn gs-btn-molten" data-action="intent-edit"') && (out.match(/gs-btn-molten/g) || []).length === 1, 'Set my pick is the one primary');
   }));
 
   await check('intent: a member sees the same board without the officers\' buttons; no round, a closed round and a person who cannot pick read plainly', withState(async (S) => {
@@ -253,7 +255,7 @@ class ApiErr extends Error {
     const html = (b) => { const x = G.pages.intent.makeState('g1', 't1', b, null); x.cov = null; return G.pages.intent.intentHtml({ guildData: S.guilds.g1, state: x, alert: '' }); };
     const member = html(board({ canEdit: false }));
     assert(!member.includes('intent-close') && !member.includes('Set pick') && member.includes('Change my pick'));
-    assert(member.includes('Buff coverage is not available'), 'no Planner, no coverage, said plainly');
+    assert(!member.includes('intent-cov'), 'no Planner, no coverage line');
     const bystander = html(board({ canEdit: false, canPick: false, myPersonId: null }));
     assert(!bystander.includes('data-action="intent-edit"'));
     assert(stripTags(bystander).includes('Only people on this team can pick'));
@@ -262,12 +264,24 @@ class ApiErr extends Error {
     const none2 = html(board({ round: null, rounds: [], picks: [], undecided: [], canPick: false, canEdit: true }));
     assert(none2.includes('data-action="intent-open"') && stripTags(none2).includes('No spec poll yet'));
     const closed = html(board({ canPick: false, canEdit: false, round: Object.assign(board().round, { status: 'closed', closedAt: Date.UTC(2026, 10, 5) }), rounds: board().rounds.map(r => Object.assign({}, r, { status: 'closed' })), undecided: [] }));
-    assert(closed.includes('gs-pill gs-pill-muted">Closed') && !closed.includes('intent-close') && !closed.includes('Not picked yet'));
+    assert(closed.includes('gs-hd-chip is-grey">Closed') && !closed.includes('intent-close') && !closed.includes('Not picked yet'));
     assert(closed.includes('data-action="intent-open"') === false, 'a member cannot open a new round');
     const officerClosed = G.pages.intent.intentHtml({ guildData: gd(OFFICER_CAN), state: Object.assign(G.pages.intent.makeState('g1', 't1', board({ canPick: false, round: Object.assign(board().round, { status: 'closed' }), rounds: board().rounds.map(r => Object.assign({}, r, { status: 'closed' })) }), null), { cov: null }), alert: '' });
     assert(officerClosed.includes('Open a new round'));
     const history = html(board({ rounds: [board().rounds[0], { id: 'ir_0', title: 'Old round', status: 'closed', closesOn: null, createdAt: 1, closedAt: 2, mains: 5 }] }));
     assert.deepEqual(optionsOf(history, 'intent-round').map(o => [o.value, o.selected]), [['ir_1', true], ['ir_0', false]]);
+  }));
+
+  await check('intent: the Launch readiness panel shows the four stages and opens the launch list, only while the launch is on', withState(async (S) => {
+    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
+    const render = (launch) => { const x = G.pages.intent.makeState('g1', 't1', board({ canEdit: false }), null); x.launch = launch; return G.pages.intent.intentHtml({ guildData: S.guilds.g1, state: x, alert: '' }); };
+    assert(!render(null).includes('Launch readiness') && !render({ enabled: false, totals: null }).includes('Launch readiness'));
+    const out = render({ enabled: true, totals: { people: 23, stages: { intent: 7, character: 23, level: 0, ready: 0 } } });
+    const text = stripTags(out);
+    assert(text.includes('Launch readiness') && text.includes('Picked 7 / 23') && text.includes('Character made 23 / 23') && text.includes('Level band 0 / 23') && text.includes('Ready 0 / 23'), text.slice(-300));
+    assert(out.includes('href="#/g/g1/roster/launch"') && out.includes('>Open launch list</a>'));
+    const same = G.pages.intent.intentHtml({ guildData: S.guilds.g1, state: Object.assign(G.pages.intent.makeState('g1', 't1', board({ round: null, rounds: [], picks: [], undecided: [], canPick: false, canEdit: false }), null), { launch: { enabled: true, totals: { people: 2, stages: { intent: 0, character: 1, level: 0, ready: 0 } } } }), alert: '' });
+    assert(same.includes('Launch readiness'), 'also before a round is open');
   }));
 
   await check('intent: opening a round sends the title and date; the pick dialog sends the main, then the alt, and clears what was emptied', withState(async (S, opened) => {
@@ -363,10 +377,11 @@ class ApiErr extends Error {
     const out = G.pages.recruiting.recruitingHtml({ guildData: S.guilds.g1, state: x, alert: '' });
     assertNoRawAttrs(out);
     assert(out.includes('aria-label="Roster sections"') && stripTags(out).includes('Recruiting'));
-    const rows = [...out.matchAll(/<tr><th scope="row" class="gs-cell-strong">([^<]+)<\/th><td class="gs-num" data-label="On the roster">(\d+)<\/td><td data-label="Target"><label[^>]*>[^<]*<\/label><input[^>]*value="(\d+)"[^>]*><\/td><td data-label="Gap"><span class="gs-pill gs-pill-(\w+)">([^<]+)<\/span>/g)].map(m => [m[1], +m[2], +m[3], m[4], m[5]]);
-    assert.deepEqual(rows, [['Tanks', 1, 2, 'warn', 'Need 1'], ['Healers', 5, 5, 'ok', 'Full'], ['Melee DPS', 7, 7, 'ok', 'Full'], ['Ranged DPS', 6, 6, 'ok', 'Full']]);
-    assert(stripTags(out).includes('2 mains have no spec set and are not counted') && stripTags(out).includes('against the usual targets for a 20-man raid'));
-    assert(out.includes('Buffs and debuffs the roster misses'));
+    const rows = [...out.matchAll(/<div class="gs-rc-need"><span class="gs-rc-role">([^<]+)<\/span><span class="gs-rc-n">(\d+)<span class="gs-rc-d"> \/ (\d+)<\/span><\/span><span class="gs-hd-chip is-(\w+)">([^<]+)<\/span>/g)].map(m => [m[1], +m[2], +m[3], m[4], m[5]]);
+    assert.deepEqual(rows, [['Tanks', 1, 2, 'rose', 'Need 1'], ['Healers', 5, 5, 'green', 'Full'], ['Melee DPS', 7, 7, 'green', 'Full'], ['Ranged DPS', 6, 6, 'green', 'Full']]);
+    assert(out.includes('>Recruiting needs</h2>') && out.includes('data-action="recruiting-edit"') && !out.includes('name="tank"'), 'targets are edited in a dialog, not inline');
+    assert(stripTags(out).includes('2 mains have no spec set and are not counted') && stripTags(out).includes('The usual targets for a 20-man raid'));
+    assert(out.includes('Missing buffs and debuffs') && stripTags(out).includes('2 missing') && stripTags(out).includes('Buffs 1 of 2') && stripTags(out).includes('Windfury Totem') && out.includes('<details class="gs-rc-covered">') && !out.includes('gs-btn-molten'), 'no orange on the Recruiting tab');
     const text = G.pages.recruiting.postText(data, COVERAGE, 'https://raidsmith.example', { realmLine: 'Normal', timeZone: 'America/Chicago' });
     assert.equal(text, [
       'Ravens is recruiting for Team KJ!',
@@ -393,7 +408,7 @@ class ApiErr extends Error {
     const x = S.att.recruiting = G.pages.recruiting.makeState('g1', 't1', data, null);
     assert.equal(x.useIntent, true, 'on by default while a round is open');
     let out = G.pages.recruiting.recruitingHtml({ guildData: S.guilds.g1, state: x, alert: '' });
-    assert(out.includes('With spec poll picks') && stripTags(out).includes('3 mains replaced by a spec poll pick') && out.includes('Count the open spec poll (Launch)'));
+    assert(stripTags(out).includes('3 mains replaced by a spec poll pick') && out.includes('Count the open spec poll (Launch)'));
     assert(out.includes('Need 1') && out.includes('1 over'));
     G.handlers.change['recruiting-intent'](control('', { checked: false }));
     assert.equal(x.useIntent, false);
@@ -402,24 +417,27 @@ class ApiErr extends Error {
     // Save: four whole numbers.
     const saved = Object.assign(RECRUIT(), { targets: { tank: 3, healer: 6, melee: 8, ranged: 3 }, customTargets: true });
     const api = stub(() => Promise.resolve(saved));
+    const realRun = G.ui.runDialog; G.ui.runDialog = (f, promise, onOk) => promise.then(res => { if (onOk) onOk(res); });
     try {
+      const dlgError = fakeEl('dlg-error');
+      const realRun = G.ui.runDialog; G.ui.runDialog = (f, promise, onOk) => promise.then(res => { if (onOk) onOk(res); });
       const form = (v) => ({ elements: { tank: control(v[0]), healer: control(v[1]), melee: control(v[2]), ranged: control(v[3]) } });
       await G.handlers.submit['recruiting-form'](form(['3', '6', '8', '3']));
       await settle();
       assert.deepEqual(api.calls.map(c => [c.m, c.url, c.body]), [['put', '/api/guild/g1/teams/t1/recruiting', { targets: { tank: 3, healer: 6, melee: 8, ranged: 3 } }]]);
       assert.equal(S.att.recruiting.note, 'Targets saved.');
       assert.equal(S.att.recruiting.data.customTargets, true);
-      assert(G.pages.recruiting.recruitingHtml({ guildData: S.guilds.g1, state: S.att.recruiting, alert: '' }).includes('data-action="recruiting-reset"'));
+      assert(G.pages.recruiting.targetsDialogHtml(S.att.recruiting.data).includes('data-action="recruiting-reset"') && !G.pages.recruiting.targetsDialogHtml(RECRUIT()).includes('recruiting-reset'));
       api.calls.length = 0;
       for (const bad of [['', '1', '1', '1'], ['1.5', '1', '1', '1'], ['-1', '1', '1', '1'], ['100', '1', '1', '1'], ['x', '1', '1', '1']]) {
         await G.handlers.submit['recruiting-form'](form(bad));
-        assert(S.att.recruiting.error.includes('whole number from 0 to 99'), bad.join());
+        assert(dlgError.textContent.includes('whole number from 0 to 99'), bad.join());
       }
       assert.equal(api.calls.length, 0, 'nothing was sent');
-      await G.handlers.click['recruiting-reset']();
+      await G.handlers.click['recruiting-reset']({ closest: () => ({}) });
       await settle();
       assert.deepEqual(api.calls.map(c => c.body), [{ targets: null }]);
-    } finally { api.restore(); }
+    } finally { G.ui.runDialog = realRun; api.restore(); }
   }));
 
   // ═══ Applications inbox ═════════════════════════════════════════
@@ -428,35 +446,39 @@ class ApiErr extends Error {
     answers: [{ label: 'Why us?', type: 'long', answer: 'Line one\nLine two' }], notes: null, createdAt: Date.UTC(2026, 9, 18, 12), updatedAt: 1,
     applicant: { displayName: 'Hopeful Account' }, onRoster: null, personId: null,
   }, over || {});
-  const inboxState = (apps, counts, filter) => ({ gid: 'g1', filter: filter || 'open', data: { applications: apps, counts: counts || { new: apps.length, reviewing: 0, accepted: 0, declined: 0 } }, note: '' });
+  const inboxState = (apps, counts, seg) => ({ gid: 'g1', seg: seg || 'new', data: { applications: apps, counts: counts || { new: apps.length, reviewing: 0, accepted: 0, declined: 0 } }, note: '' });
 
-  await check('applications inbox: each application shows its character, answers, contact and account; filters carry counts; hostile text is escaped; decided ones lose their buttons', withState(async (S) => {
+  await check('applications inbox: each application shows its character, answers, contact and account; segments carry counts; hostile text is escaped; decided ones lose their buttons', withState(async (S) => {
     S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
     const x = inboxState([APP(), APP({ id: 'am_2', status: 'accepted', name: 'Done', personId: 'p_x', applicant: null, notes: 'Good one' }), APP({ id: 'am_3', name: HOSTILE, contact: QUOTES, answers: [{ label: HOSTILE, type: 'short', answer: QUOTES }], onRoster: { personId: 'p_y', name: 'Thornwick' } })],
       { new: 2, reviewing: 1, accepted: 1, declined: 4 });
-    const out = G.pages.applications.applicationsHtml({ guildData: S.guilds.g1, state: x, alert: '' });
+    const out = G.pages.applications.sectionHtml(S.guilds.g1, x);
     assertEscaped(out, 'inbox');
     assertNoRawAttrs(out);
     const text = stripTags(out);
-    assert(text.includes('Open 3') && text.includes('New 2') && text.includes('Declined 4') && text.includes('All 8'), text.slice(0, 300));
-    assert(out.includes('aria-pressed="true"') && /data-filter="open"[^>]*aria-pressed="true"/.test(out));
-    assert(text.includes('Hopeful') && text.includes('Mage - Frost') && text.includes('Contact: Hopeful#1234') && text.includes('Signed in as Hopeful Account'));
+    assert(text.includes('New 2') && text.includes('Reviewing 1') && text.includes('Closed 5') && !text.includes('Open 3') && !text.includes('All 8'), text.slice(0, 300));
+    assert(/data-filter="new"[^>]*aria-pressed="true"/.test(out) && /data-filter="closed"[^>]*aria-pressed="false"/.test(out));
+    assert(text.includes('Hopeful') && text.includes('Mage - Frost') && text.includes('Contact: Hopeful#1234') && text.includes('signed in as Hopeful Account'));
     assert(out.includes('Line one<br>Line two'));
-    assert(text.includes('Wants Team KJ'), 'two teams: the team is named');
+    assert(text.includes('wants Team KJ'));
     assert(text.includes('is on the roster already') && out.includes('href="#/g/g1/roster/p/p_y"'));
-    const accepted = out.split('<li class="gs-app-item"').filter(s => s.includes('id="app-am_2"'))[0];
-    assert(!accepted.includes('app-accept') && !accepted.includes('app-status-declined') && accepted.includes('Open the person') && accepted.includes('Officer notes'));
-    const fresh = out.split('<li class="gs-app-item"').filter(s => s.includes('id="app-am_1"'))[0];
-    assert(['app-accept', 'app-status-reviewing', 'app-status-declined', 'app-notes', 'app-delete'].every(a => fresh.includes('data-action="' + a + '"')));
-    assert(stripTags(G.pages.applications.applicationsHtml({ guildData: S.guilds.g1, state: inboxState([], { new: 0, reviewing: 0, accepted: 0, declined: 0 }), alert: '' })).includes('No applications yet.'));
-    assert(stripTags(G.pages.applications.applicationsHtml({ guildData: S.guilds.g1, state: inboxState([], { new: 0, reviewing: 0, accepted: 1, declined: 0 }, 'declined'), alert: '' })).includes('Nothing in this list.'));
-    assert.deepEqual(plain(G.pages.applications.FILTERS.map(f => f[0])), ['open', 'new', 'reviewing', 'accepted', 'declined', 'all']);
-    assert.equal(G.pages.applications.countFor({ new: 2, reviewing: 1, accepted: 1, declined: 4 }, 'open'), 3);
+    assert(!out.includes('id="app-am_2"'), 'the accepted one is in Closed');
+    assert(out.includes('gs-hd-chip is-grey">New') && !out.includes('gs-btn-molten'), 'a neutral New chip, no orange');
+    const fresh = out.split('<li class="gs-hd-panel gs-app-item gs-rc-app"').filter(s => s.includes('id="app-am_1"'))[0];
+    assert(fresh.includes('data-action="app-accept-trial"') && fresh.includes('>Accept as Trial</button>') && fresh.includes('aria-label="More for Hopeful"'));
+    assert(['app-accept', 'app-status-reviewing', 'app-status-declined', 'app-notes', 'app-delete'].every(a => fresh.includes('data-action="' + a + '"')), 'the rest sits under More');
+    const closedList = G.pages.applications.sectionHtml(S.guilds.g1, Object.assign({}, x, { seg: 'closed' }));
+    const accepted = closedList.split('<li class="gs-hd-panel gs-app-item gs-rc-app"').filter(s => s.includes('id="app-am_2"'))[0];
+    assert(!accepted.includes('app-accept') && !accepted.includes('app-status-declined') && accepted.includes('Open the person') && accepted.includes('Officer notes') && accepted.includes('gs-hd-chip is-green">Accepted'));
+    assert(stripTags(G.pages.applications.sectionHtml(S.guilds.g1, inboxState([], { new: 0, reviewing: 0, accepted: 0, declined: 0 }))).includes('No applications yet.'));
+    assert(stripTags(G.pages.applications.sectionHtml(S.guilds.g1, inboxState([APP({ status: 'accepted' })], { new: 0, reviewing: 0, accepted: 1, declined: 0 }, 'new'))).includes('Nothing in this list.'));
+    assert.deepEqual(plain(G.pages.applications.SEGMENTS.map(f => f[0])), ['new', 'reviewing', 'closed']);
+    assert.equal(G.pages.applications.countFor({ new: 2, reviewing: 1, accepted: 1, declined: 4 }, 'closed'), 5);
   }));
 
-  await check('applications inbox: Decline and Reopen are one PATCH, Accept asks for the team and trial length, notes and delete have dialogs; every request is the real route', withState(async (S, opened) => {
+  await check('applications inbox: Accept as Trial is one POST with the team, Decline and Reopen are one PATCH, Accept with options asks for the team and the team\'s trial length, notes and delete have dialogs; every request is the real route', withState(async (S, opened) => {
     S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
-    const x = S.att.applications = inboxState([APP()], null, 'open');
+    const x = S.att.applications = inboxState([APP()], null, 'new');
     const api = stub((m, url) => {
       if (m === 'get') return Promise.resolve({ applications: [APP({ status: 'declined' })], counts: { new: 0, reviewing: 0, accepted: 0, declined: 1 } });
       if (url.endsWith('/accept')) return Promise.resolve({ application: APP({ status: 'accepted' }), person: { id: 'p_n', name: 'Hopeful', teamId: 't1', trialEnd: '2026-11-01' }, accountLinked: true, accountSkipped: false });
@@ -466,30 +488,37 @@ class ApiErr extends Error {
     const refreshed = []; const realRefresh = G.app.refreshGuild; G.app.refreshGuild = (gid) => { refreshed.push(gid); };
     try {
       const btn = el({ 'data-apid': 'am_1' });
+      // One click: the application's own team, no length (the Worker uses the team's).
+      G.handlers.click['app-accept-trial'](btn);
+      await settle();
+      assert.deepEqual(api.calls.map(c => [c.m, c.url, c.body]), [['post', '/api/guild/g1/applications/am_1/accept', { teamId: 't1' }], ['get', '/api/guild/g1/applications', undefined]]);
+      assert(x.note.includes('joined on Trial until') && x.note.includes('Their account is linked.'));
+      assert.deepEqual(refreshed, ['g1'], 'the guild (team counts, the Roster badge) is read again');
+      api.calls.length = 0;
       G.handlers.click['app-status-declined'](btn);
       await settle();
-      assert.deepEqual(api.calls.map(c => [c.m, c.url, c.body]), [['patch', '/api/guild/g1/applications/am_1', { status: 'declined' }], ['get', '/api/guild/g1/applications?status=open', undefined]]);
+      assert.deepEqual(api.calls.map(c => [c.m, c.url, c.body]), [['patch', '/api/guild/g1/applications/am_1', { status: 'declined' }], ['get', '/api/guild/g1/applications', undefined]]);
       assert(x.note.includes('was declined'));
-      // Filter chips reload with the status ('all' sends none).
+      // Segments only filter what was read; nothing is sent.
       api.calls.length = 0;
-      G.handlers.click['apps-filter'](el({ 'data-filter': 'declined' }));
-      G.handlers.click['apps-filter'](el({ 'data-filter': 'all' }));
+      G.handlers.click['apps-filter'](el({ 'data-filter': 'closed' }));
+      assert.equal(x.seg, 'closed');
       G.handlers.click['apps-filter'](el({ 'data-filter': 'nonsense' }));
-      await settle();
-      assert.deepEqual(api.calls.map(c => c.url), ['/api/guild/g1/applications?status=declined', '/api/guild/g1/applications']);
-      // Accept: the dialog lists the teams the officer may edit and a 14-day default.
+      assert.equal(x.seg, 'closed');
+      assert.equal(api.calls.length, 0);
+      // Accept with options: the dialog lists the teams the officer may edit and the team's own trial length.
       x.data = { applications: [APP()], counts: { new: 1, reviewing: 0, accepted: 0, declined: 0 } };
       G.handlers.click['app-accept'](btn);
       const dlg = opened[opened.length - 1].html;
       assert.deepEqual(optionsOf(dlg, 'aa-team').map(o => [o.value, o.selected]), [['t1', true], ['t2', false]]);
-      assert(dlg.includes('value="14"') && dlg.includes('Their account is linked to them.'));
+      assert(dlg.includes('value="' + G.pages.applications.trialDaysOf(S.guilds.g1, 't1') + '"') && dlg.includes('Their account is linked to them.'));
+      S.guilds.g1.teams[0].trialDays = 21;
+      assert(G.pages.applications.acceptDialogHtml(S.guilds.g1, APP()).includes('name="trialDays" value="21"'), 'the team\'s trial length is the default');
       assertNoRawAttrs(dlg);
       api.calls.length = 0;
       await G.handlers.submit['app-accept-form']({ getAttribute: () => 'am_1', elements: { teamId: control('t2'), trialDays: control('30') } });
       await settle();
       assert.deepEqual(api.calls[0], { m: 'post', url: '/api/guild/g1/applications/am_1/accept', body: { teamId: 't2', trialDays: 30 } });
-      assert(x.note.includes('joined on Trial until') && x.note.includes('Their account is linked.'));
-      assert.deepEqual(refreshed, ['g1'], 'the guild (team counts, the Roster badge) is read again');
       const bad = fakeEl('dlg-err-trialDays');
       api.calls.length = 0;
       await G.handlers.submit['app-accept-form']({ getAttribute: () => 'am_1', elements: { teamId: control('t1'), trialDays: control('0') } });

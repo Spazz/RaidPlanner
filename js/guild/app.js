@@ -77,7 +77,7 @@
     notifications: { state: 'notifySettings', page: 'settingsNotify' },
   };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
-  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'applications', launch: 'launch' };
+  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'recruiting', launch: 'launch' };
   function attPageKey(r) {
     if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : (r.section === 'home' ? 'attention' : null)));
     if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : (r.tab === 'activity' ? 'settingsActivity' : (r.tab === 'applications' ? 'settingsApply' : null))));
@@ -732,8 +732,8 @@
     else if (r.name === 'join') page = 'Join a raid';
     else if (r.name === 'launch') page = 'Launch';
     else if (r.name === 'intent') page = 'Spec poll';
-    else if (r.name === 'recruiting') page = 'Recruiting needs';
-    else if (r.name === 'applications') page = 'Applications';
+    else if (r.name === 'recruiting') page = 'Recruiting';
+    else if (r.name === 'applications') page = 'Recruiting';
     if (gd && gd.guild && page) page += ' - ' + gd.guild.name;
     else if (G.router.isViewerRoute(r) && state.view && state.view.data && state.view.data.guild) page += ' - ' + state.view.data.guild.name;
     return page ? page + ' - ' + base : base;
@@ -1290,7 +1290,7 @@
     if (state.section !== 'guild') { render(); return; }
     const r = G.router.parse(window.location.hash);
     if (r.name === 'section' && r.section === 'roster') { go(G.router.format({ name: 'section', gid: gid, section: 'roster' })); return; }
-    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance' || r.section === 'loot')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill' || r.name === 'intent' || r.name === 'recruiting' || r.name === 'launch') { routeAll({ force: true }); return; }
+    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance' || r.section === 'loot')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill' || r.name === 'intent' || r.name === 'recruiting' || r.name === 'applications' || r.name === 'launch') { routeAll({ force: true }); return; }
     render();
   };
 

@@ -392,8 +392,8 @@
     personatt: { parent: 'attendance', parentLabel: 'Attendance', label: 'Person' },
     lootperson: { parent: 'loot', parentLabel: 'Loot', label: 'Person' },
     intent: { parent: 'roster', parentLabel: 'Roster', label: 'Spec poll' },
-    recruiting: { parent: 'roster', parentLabel: 'Roster', label: 'Recruiting needs' },
-    applications: { parent: 'roster', parentLabel: 'Roster', label: 'Applications' },
+    recruiting: { parent: 'roster', parentLabel: 'Roster', label: 'Recruiting' },
+    applications: { parent: 'roster', parentLabel: 'Roster', label: 'Recruiting' },
     launch: { parent: 'roster', parentLabel: 'Roster', label: 'Launch' },
   };
   const IMPORT_LABELS = { 'raid-helper': 'Import from Raid-Helper', wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net', csv: 'Import from a CSV file' };

@@ -1,44 +1,48 @@
-// ── PAGE: ROSTER > APPLICATIONS (the inbox) ─────────────────────
-// What people sent through the guild's apply page (#/apply/:gid), for officers and team leads (roster.edit): a list with New / Reviewing / Accepted /
-// Declined, each application's character, answers and contact, notes the officers write, and the decisions. Accept makes a person on Trial (14 days
-// unless the officer says otherwise) whose Main is the applicant's character on the chosen team, and links the applicant's account when they signed in.
+// ── PAGE PIECE: RECRUITING > APPLICATIONS (the inbox, the left column of the Recruiting tab) ─────────────────────
+// What people sent through the guild's apply page (#/apply/:gid), for officers and team leads (roster.edit): segments New | Reviewing | Closed (accepted
+// and declined), a card per application with the character, what it wants, when it came and the contact, and the decisions. "Accept as Trial" makes a person
+// on Trial for the team's trial length (Guild settings > Teams) whose Main is the applicant's character, and links the applicant's account when they signed
+// in; the rest (Mark reviewing, Accept with options, notes, Decline, Delete) sits under More. The page around it is pages-recruiting.js.
 // GET /applications?status=&team=, PATCH /applications/:apid, POST /applications/:apid/accept, DELETE /applications/:apid. The switch and the
 // questions are Guild settings > Applications (pages-settings-applications.js).
 (function (G) {
   'use strict';
 
-  const FILTERS = [['open', 'Open'], ['new', 'New'], ['reviewing', 'Reviewing'], ['accepted', 'Accepted'], ['declined', 'Declined'], ['all', 'All']];
+  const SEGMENTS = [['new', 'New'], ['reviewing', 'Reviewing'], ['closed', 'Closed']];
   const STATUS_LABELS = { new: 'New', reviewing: 'Reviewing', accepted: 'Accepted', declined: 'Declined' };
-  const STATUS_KIND = { new: 'info', reviewing: 'warn', accepted: 'ok', declined: 'muted' };
+  const STATUS_TONE = { new: 'grey', reviewing: 'blue', accepted: 'green', declined: 'grey' };
   const NOTES_MAX = 2000;
 
   function a() { return G.pages.attendance.attState(); }
   function currentGd() { const s = G.app.state; return s.currentGid ? s.guilds[s.currentGid] : null; }
-  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
-  function countFor(counts, filter) {
+  // The number beside a segment: Closed is the accepted and the declined together.
+  function countFor(counts, seg) {
     const c = counts || {};
-    if (filter === 'open') return (c.new || 0) + (c.reviewing || 0);
-    if (filter === 'all') return (c.new || 0) + (c.reviewing || 0) + (c.accepted || 0) + (c.declined || 0);
-    return c[filter] || 0;
+    if (seg === 'closed') return (c.accepted || 0) + (c.declined || 0);
+    return c[seg] || 0;
   }
 
-  // ── data ──
+  function inSegment(app, seg) {
+    return seg === 'closed' ? app.status === 'accepted' || app.status === 'declined' : app.status === seg;
+  }
+
+  // ── data: every application of the guild once; the segments filter it here ──
   function load(r, gd) {
     const gid = gd.guild.id;
     const prev = a().applications;
-    const filter = prev && prev.gid === gid ? prev.filter : 'open';
-    return G.api.applications.list(gid, filter === 'all' ? null : filter, null).then(function (data) {
-      a().applications = { gid: gid, filter: filter, data: data, note: '' };
+    const seg = prev && prev.gid === gid ? prev.seg : 'new';
+    return G.api.applications.list(gid, null, null).then(function (data) {
+      a().applications = { gid: gid, seg: seg, data: data, note: '' };
       return null;
     });
   }
 
   function reload(x) {
-    return G.api.applications.list(x.gid, x.filter === 'all' ? null : x.filter, null).then(function (data) { x.data = data; return data; });
+    return G.api.applications.list(x.gid, null, null).then(function (data) { x.data = data; return data; });
   }
 
-  // ── the page ──
+  // ── the section ──
   function answersHtml(answers) {
     const list = Array.isArray(answers) ? answers : [];
     if (!list.length) return '';
@@ -48,74 +52,74 @@
   }
 
   function actionsHtml(app) {
-    const attrs = ' data-apid="' + esc(app.id) + '"';
-    const btn = function (action, label, extra) {
-      return '<button type="button" class="gs-btn gs-btn-sm' + (extra || '') + '" data-action="' + action + '"' + attrs + ' data-key="' + action + '-' + esc(app.id) + '" aria-label="' + esc(label + ': ' + app.name) + '">' + esc(label) + '</button>';
-    };
+    const data = function (action) { return { action: action, apid: app.id }; };
     const open = app.status === 'new' || app.status === 'reviewing';
-    return '<div class="gs-row-actions">' +
-      (open ? btn('app-accept', 'Accept') : '') +
-      (app.status === 'new' ? btn('app-status-reviewing', 'Mark reviewing') : '') +
-      (open ? btn('app-status-declined', 'Decline') : '') +
-      (app.status === 'declined' ? btn('app-status-reviewing', 'Reopen') : '') +
-      btn('app-notes', app.notes ? 'Edit notes' : 'Add notes') + btn('app-delete', 'Delete') + '</div>';
+    const items = [
+      app.status === 'new' ? { label: 'Mark reviewing', data: data('app-status-reviewing'), key: 'app-status-reviewing-' + app.id } : null,
+      app.status === 'declined' ? { label: 'Reopen', data: data('app-status-reviewing'), key: 'app-reopen-' + app.id } : null,
+      open ? { label: 'Accept with options', data: data('app-accept'), key: 'app-accept-' + app.id } : null,
+      { label: app.notes ? 'Edit notes' : 'Add notes', data: data('app-notes'), key: 'app-notes-' + app.id },
+      open ? { label: 'Decline', data: data('app-status-declined'), key: 'app-status-declined-' + app.id } : null,
+      { separator: true },
+      { label: 'Delete', data: data('app-delete'), key: 'app-delete-' + app.id, danger: true },
+    ];
+    return '<div class="gs-rc-appacts">' + (open ? '<button type="button" class="gs-btn" data-action="app-accept-trial" data-apid="' + esc(app.id) + '" data-key="app-accept-trial-' + esc(app.id) +
+      '" aria-label="' + esc('Accept as Trial: ' + app.name) + '">Accept as Trial</button>' : '') +
+      G.ui.menuHtml({ id: 'app-more-' + app.id, key: 'app-more-' + app.id, label: 'More', ariaLabel: 'More for ' + app.name, align: 'left', items: items }) + '</div>';
   }
 
-  function itemHtml(gd, app, showTeam) {
-    const meta = [];
-    if (showTeam) meta.push('Wants ' + app.teamName);
+  function itemHtml(gd, app) {
+    const meta = ['wants ' + (app.teamName || 'the team')];
     if (app.realm) meta.push(app.realm);
-    meta.push('Sent ' + G.ui.formatDateTime(app.createdAt, G.ui.guildZone()));
-    if (app.applicant) meta.push('Signed in as ' + app.applicant.displayName);
-    return '<li class="gs-app-item" id="app-' + esc(app.id) + '"><div class="gs-app-head"><span class="gs-app-who">' + G.ui.classNameHtml(app.name, app.class) +
-      ' <span class="gs-fine">' + esc(G.ui.className(app.class) + (app.spec ? ' - ' + app.spec : '')) + '</span></span>' +
-      '<span class="gs-pill gs-pill-' + STATUS_KIND[app.status] + '">' + esc(STATUS_LABELS[app.status]) + '</span></div>' +
-      '<p class="gs-fine">' + esc(meta.join(' - ')) + '</p>' +
-      (app.contact ? '<p class="gs-app-contact">Contact: ' + esc(app.contact) + '</p>' : '') +
+    meta.push('sent ' + G.ui.formatDateTime(app.createdAt, G.ui.guildZone()));
+    if (app.applicant) meta.push('signed in as ' + app.applicant.displayName);
+    return '<li class="gs-hd-panel gs-app-item gs-rc-app" id="app-' + esc(app.id) + '"><div class="gs-rc-apphead">' + G.ui.specIconHtml(app.class, app.spec, 20) +
+      '<div class="gs-rc-appwho"><div class="gs-rc-appname">' + G.ui.classNameHtml(app.name, app.class) +
+      ' <span class="gs-rc-appspec">' + esc(G.ui.className(app.class) + (app.spec ? ' - ' + app.spec : '')) + '</span></div>' +
+      '<span class="gs-rc-appmeta">' + esc(meta.join(' - ')) + '</span>' +
+      (app.contact ? '<span class="gs-fg-mut gs-app-contact">Contact: ' + esc(app.contact) + '</span>' : '') + '</div>' +
+      '<div class="gs-rc-appside"><span class="gs-hd-chip is-' + STATUS_TONE[app.status] + '">' + esc(STATUS_LABELS[app.status]) + '</span>' + actionsHtml(app) + '</div></div>' +
       (app.onRoster ? '<p class="gs-notice gs-app-onroster" role="status"><span>' + esc(app.name) + ' is on the roster already, as a character of <a href="' + esc(G.router.format({ name: 'person', gid: gd.guild.id, pid: app.onRoster.personId })) + '">' + esc(app.onRoster.name) + '</a>.</span></p>' : '') +
       answersHtml(app.answers) +
-      (app.notes ? '<p class="gs-app-notes"><span class="gs-fine">Officer notes</span><br>' + esc(app.notes).replace(/\n/g, '<br>') + '</p>' : '') +
-      (app.status === 'accepted' && app.personId ? '<p class="gs-fine"><a href="' + esc(G.router.format({ name: 'person', gid: gd.guild.id, pid: app.personId })) + '">Open the person</a></p>' : '') +
-      actionsHtml(app) + '</li>';
+      (app.notes ? '<p class="gs-app-notes"><span class="gs-fg-gh">Officer notes</span><br>' + esc(app.notes).replace(/\n/g, '<br>') + '</p>' : '') +
+      (app.status === 'accepted' && app.personId ? '<p class="gs-fg-mut"><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'person', gid: gd.guild.id, pid: app.personId })) + '">Open the person</a></p>' : '') +
+      '</li>';
   }
 
-  function filtersHtml(x) {
-    return '<div class="gs-segs" role="group" aria-label="Filter applications">' + FILTERS.map(function (f) {
-      return '<button type="button" class="gs-seg" data-action="apps-filter" data-filter="' + f[0] + '" data-key="apps-' + f[0] + '" aria-pressed="' + (x.filter === f[0] ? 'true' : 'false') + '">' +
-        esc(f[1]) + ' <span class="gs-seg-count">' + esc(countFor(x.data.counts, f[0])) + '</span></button>';
+  function segmentsHtml(x) {
+    return '<div class="gs-fg-segs" role="group" aria-label="Application status">' + SEGMENTS.map(function (f) {
+      return '<button type="button" class="gs-fg-seg" data-action="apps-filter" data-filter="' + f[0] + '" data-key="apps-' + f[0] + '" aria-pressed="' + (x.seg === f[0] ? 'true' : 'false') + '">' +
+        esc(f[1]) + ' <span class="gs-fg-segn">' + esc(countFor(x.data.counts, f[0])) + '</span></button>';
     }).join('') + '</div>';
   }
 
-  // opts: { guildData, state: a().applications, alert }
-  function applicationsHtml(opts) {
-    const gd = opts.guildData;
-    const x = opts.state;
-    const list = Array.isArray(x.data.applications) ? x.data.applications : [];
-    const showTeam = G.shell.activeTeams(gd.teams).length > 1;
-    const head = G.pages.rosterTabs.headHtml(gd, 'applications', gd.guild.name);
+  // The left column of the Recruiting tab. x: a().applications.
+  function sectionHtml(gd, x) {
+    const all = Array.isArray(x.data.applications) ? x.data.applications : [];
+    const list = all.filter(function (app) { return inSegment(app, x.seg); });
     const canSettings = G.shell.hasAction(gd.me && gd.me.can, 'guild.teams');
-    const settingsLink = canSettings ? ' <a href="' + esc(G.router.format({ name: 'settings', gid: gd.guild.id, tab: 'applications' })) + '">Applications settings</a>' : '';
-    const empty = x.filter === 'open' && !countFor(x.data.counts, 'all')
+    const settingsLink = canSettings ? ' <a class="gs-fg-u" href="' + esc(G.router.format({ name: 'settings', gid: gd.guild.id, tab: 'applications' })) + '">Applications settings</a>' : '';
+    const empty = !all.length
       ? '<p class="gs-empty">No applications yet.' + settingsLink + '</p>'
       : '<p class="gs-empty">Nothing in this list.</p>';
-    return '<div class="gs-page gs-forge">' + head + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '') +
-      '<div class="gs-roster-filters">' + filtersHtml(x) + '</div>' +
-      (list.length ? '<ul class="gs-app-list" aria-label="Applications">' + list.map(function (app) { return itemHtml(gd, app, showTeam); }).join('') + '</ul>' : empty) + '</div>';
-  }
-
-  function main(r, gd) {
-    const x = a().applications;
-    if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
-    return applicationsHtml({ guildData: gd, state: x, alert: G.app.state.pageAlert });
+    return '<section class="gs-rc-apps" aria-label="Applications"><h2 class="gs-hd-sl">Applications</h2>' + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '') + segmentsHtml(x) +
+      (list.length ? '<ul class="gs-app-list" aria-label="Applications">' + list.map(function (app) { return itemHtml(gd, app); }).join('') + '</ul>' : empty) + '</section>';
   }
 
   // ── dialogs ──
+  // The team's trial length (Guild settings > Teams); 14 for a team the guild data does not list.
+  function trialDaysOf(gd, teamId) {
+    const team = ((gd && gd.teams) || []).filter(function (t) { return t.id === teamId; })[0];
+    const n = Number(team && team.trialDays);
+    return n >= 1 && n <= 90 ? Math.floor(n) : 14;
+  }
+
   function acceptDialogHtml(gd, app) {
     const teams = G.shell.activeTeams(gd.teams).filter(function (t) { return G.shell.allowsTeam(gd.me && gd.me.can, 'roster.edit', t.id); });
     return '<form class="gs-dialog-form" data-submit="app-accept-form" data-apid="' + esc(app.id) + '" novalidate><h2 class="gs-dialog-title" id="dlg-title">Accept ' + esc(app.name) + '</h2>' +
       '<p class="gs-fine" id="dlg-text">' + esc(app.name) + ' joins the roster on Trial with ' + esc(G.ui.className(app.class)) + (app.spec ? ' ' + esc(app.spec) : '') + ' as their Main.' + (app.applicant ? ' Their account is linked to them.' : '') + '</p>' +
       '<div class="gs-field"><label class="gs-label" for="aa-team">Team</label><select class="gs-input" id="aa-team" name="teamId" data-field="teamId">' + G.ui.optionsHtml(teams.map(function (t) { return { value: t.id, label: t.name }; }), app.teamId) + '</select><p class="gs-field-error" id="dlg-err-teamId" role="alert" hidden></p></div>' +
-      '<div class="gs-field"><label class="gs-label" for="aa-days">Trial length (days)</label><input class="gs-input gs-input-num" type="number" inputmode="numeric" min="1" max="90" step="1" id="aa-days" name="trialDays" value="14" data-field="trialDays"><p class="gs-field-error" id="dlg-err-trialDays" role="alert" hidden></p></div>' +
+      '<div class="gs-field"><label class="gs-label" for="aa-days">Trial length (days)</label><input class="gs-input gs-input-num" type="number" inputmode="numeric" min="1" max="90" step="1" id="aa-days" name="trialDays" value="' + esc(trialDaysOf(gd, app.teamId)) + '" data-field="trialDays"><p class="gs-field-error" id="dlg-err-trialDays" role="alert" hidden></p></div>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Accept</button></div></form>';
   }
@@ -147,11 +151,11 @@
   G.handlers.click['apps-filter'] = function (el) {
     const c = cur();
     if (!c) return;
-    const filter = el.getAttribute('data-filter');
-    if (!FILTERS.some(function (f) { return f[0] === filter; })) return;
-    c.x.filter = filter;
+    const seg = el.getAttribute('data-filter');
+    if (!SEGMENTS.some(function (f) { return f[0] === seg; })) return;
+    c.x.seg = seg;
     c.x.note = '';
-    reload(c.x).then(function () { G.app.render(); }, function (err) { G.app.handleError(err, { pageAlert: true }); });
+    G.app.render();
   };
 
   function setStatus(el, status) {
@@ -161,7 +165,8 @@
     if (!app) return;
     el.disabled = true;
     G.api.applications.update(c.x.gid, app.id, { status: status }).then(function () {
-      c.x.note = status === 'declined' ? app.name + ' was declined.' : app.name + ' is back in the open list.';
+      c.x.note = status === 'declined' ? app.name + ' was declined.' : app.name + ' is under review.';
+      G.app.refreshGuild(c.x.gid);
       return reload(c.x);
     }).then(function () { G.app.render(); }, function (err) { el.disabled = false; G.app.handleError(err, { pageAlert: true }); });
   }
@@ -172,6 +177,17 @@
     const c = cur();
     const app = c ? appOf(c, el.getAttribute('data-apid')) : null;
     if (app) G.ui.openDialog(acceptDialogHtml(c.gd, app), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
+  };
+  // One click: the application's own team and that team's trial length (the Worker's defaults).
+  G.handlers.click['app-accept-trial'] = function (el) {
+    const c = cur();
+    const app = c ? appOf(c, el.getAttribute('data-apid')) : null;
+    if (!app) return;
+    el.disabled = true;
+    G.api.applications.accept(c.x.gid, app.id, { teamId: app.teamId }).then(function (res) {
+      acceptedNote(c, app, res);
+      return reload(c.x);
+    }).then(function () { G.app.render(); }, function (err) { el.disabled = false; G.app.handleError(err, { pageAlert: true }); });
   };
   G.handlers.click['app-notes'] = function (el) {
     const c = cur();
@@ -184,6 +200,13 @@
     if (app) G.ui.openDialog(deleteDialogHtml(app), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
   };
 
+  function acceptedNote(c, app, res) {
+    c.x.note = app.name + ' joined on Trial' + (res.person && res.person.trialEnd ? ' until ' + G.ui.formatDay(res.person.trialEnd) : '') + '.' +
+      (res.accountLinked ? ' Their account is linked.' : res.accountSkipped ? ' Their account already belongs to a person of this guild, so it was not linked.' : '');
+    G.app.refreshGuild(c.x.gid);
+    if (G.pages.recruiting && G.pages.recruiting.refresh) G.pages.recruiting.refresh();
+  }
+
   G.handlers.submit['app-accept-form'] = function (form) {
     const c = cur();
     const app = c ? appOf(c, form.getAttribute('data-apid')) : null;
@@ -191,9 +214,7 @@
     const days = Number(form.elements.trialDays.value);
     if (!isFinite(days) || days < 1 || days > 90 || Math.floor(days) !== days) { G.ui.setText('dlg-err-trialDays', 'The trial is 1 to 90 days.'); return; }
     G.ui.runDialog(form, G.api.applications.accept(c.x.gid, app.id, { teamId: form.elements.teamId.value, trialDays: days }), function (res) {
-      c.x.note = app.name + ' joined on Trial' + (res.person && res.person.trialEnd ? ' until ' + G.ui.formatDay(res.person.trialEnd) : '') + '.' +
-        (res.accountLinked ? ' Their account is linked.' : res.accountSkipped ? ' Their account already belongs to a person of this guild, so it was not linked.' : '');
-      G.app.refreshGuild(c.x.gid);
+      acceptedNote(c, app, res);
       reload(c.x).then(function () { G.app.render(); }, function () { G.app.render(); });
     });
   };
@@ -221,7 +242,7 @@
   };
 
   G.pages.applications = {
-    FILTERS: FILTERS, countFor: countFor, load: load, main: main, applicationsHtml: applicationsHtml, itemHtml: itemHtml,
+    SEGMENTS: SEGMENTS, countFor: countFor, load: load, sectionHtml: sectionHtml, itemHtml: itemHtml, trialDaysOf: trialDaysOf,
     acceptDialogHtml: acceptDialogHtml, notesDialogHtml: notesDialogHtml, deleteDialogHtml: deleteDialogHtml,
   };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));
