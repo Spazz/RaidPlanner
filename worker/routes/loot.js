@@ -627,6 +627,17 @@ export async function getPersonLoot(ctx) {
 
 const HUB_NIGHTS = 3;
 const HUB_STANDINGS = 5;
+
+// The Standings page's "Most due first" order over the window figures: the lowest figure first, nobody-without-a-figure last, ties by name. Inactive people are left out.
+function mostDue(people, mode) {
+  const key = (person) => { const figure = mode === 'count' ? person.counted : person.perRaid; return figure && typeof figure.window === 'number' ? figure.window : null; };
+  return people.filter((person) => person.status !== 'inactive').sort((x, y) => {
+    const vx = key(x);
+    const vy = key(y);
+    if ((vx === null) !== (vy === null)) return vx === null ? 1 : -1;
+    return (vx === null ? 0 : vx - vy) || String(x.name || '').localeCompare(String(y.name || ''), 'en');
+  });
+}
 const FIX_DISMISS_KIND = 'loot_dupe';
 const dupeKey = (raidId, itemId, winnerKey) => `loot-dupe:${raidId}:${itemId}:${winnerKey}`;
 const raidSummary = (raid) => ({ id: raid.id, raidOn: raid.raid_on, title: raid.title || raid.event_title || null, zone: raid.zone });
@@ -667,7 +678,8 @@ const raidsWithAwardsStatement = (bind) => bind(`SELECT id, raid_on, title, even
 // GET /loot/hub?team=  -> { team, can: { edit, rules, standings, itemLookup }, me, nights, standingsTop, fix }
 //   me: { personId, totals: { MS, OS, DE, BANK }, byNight: [{ raid, awards }] } | null (the viewer has no person); every award to the viewer's person on this team, newest night first.
 //   nights: the latest 3 nights with loot, [{ raid: { id, raidOn, title, zone }, awards: [award view] }], awards filtered to the viewer's level.
-//   standingsTop: the first 5 rows of the balance (isMe marks the viewer's) or null when the viewer may not see standings.
+//   standingsTop: the 5 most due rows of the balance, in the Standings page's order (isMe marks the viewer's), or null when the viewer may not see standings.
+//   standingsCount: how many people the full Standings list holds; standingsInfo: { mode, countTags, weeks } of that list (both null with standingsTop).
 //   fix: { duplicates, unknown } (counts) for an editor, else null.
 export async function getLootHub(ctx) {
   const loaded = await loadTeamLoot(ctx, (bind, db, guild) => [
@@ -712,17 +724,22 @@ export async function getLootHub(ctx) {
     me = { personId: loaded.ownPersonId, totals: Object.fromEntries(LOOT_TAGS.map((tag) => [tag, awards.filter((award) => award.tag === tag).length])), byNight };
   }
   let standingsTop = null;
+  let standingsCount = null;
+  let standingsInfo = null;
   if (can.standings && !(access.level === 'own' && !allows(guildContext.can, 'loot.view', team.id))) {
     const bind = (sql) => ctx.db.prepare(sql).bind(guild.id, team.id);
     const balanceResults = await ctx.db.batch(balanceStatements(bind, ctx.db, guild));
-    standingsTop = buildBalance(ctx, loaded, balanceResults).people.slice(0, HUB_STANDINGS);
+    const balance = buildBalance(ctx, loaded, balanceResults);
+    standingsTop = mostDue(balance.people, balance.mode).slice(0, HUB_STANDINGS);
+    standingsCount = balance.people.length;
+    standingsInfo = { mode: balance.mode, countTags: balance.countTags, weeks: balance.window.weeks };
   }
   let fix = null;
   if (access.canEdit) {
     const found = findFixes(entries, new Set(dismissalResult.results.map((row) => row.item_id)));
     fix = { duplicates: found.duplicates.length, unknown: found.unknown.length };
   }
-  return jsonResponse({ team: { id: team.id, name: team.name }, can, me, nights: nightsOf(visible).slice(0, HUB_NIGHTS), standingsTop, fix, level: access.level });
+  return jsonResponse({ team: { id: team.id, name: team.name }, can, me, nights: nightsOf(visible).slice(0, HUB_NIGHTS), standingsTop, standingsCount, standingsInfo, fix, level: access.level });
 }
 
 // GET /loot/items/:lootitem?team=  -> { team, item: { itemId, itemName, quality }, counts: { total, MS, OS, DE, BANK }, drops: [award view + raidTitle] }

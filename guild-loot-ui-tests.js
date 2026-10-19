@@ -296,7 +296,7 @@ function withState(fn) {
     assert(L.tagChipHtml('BANK').includes('>Bank<') && L.tagChipHtml('BANK').includes('is-bank'));
     assert(L.tagChipHtml('DE').includes('>DE<'));
     const select = L.tagSelectHtml(AWARDS[2]);
-    assert(select.includes('data-change="loot-tag"') && select.includes('data-aid="a3"'));
+    assert(select.includes('data-change="ln-tag"') && select.includes('data-aid="a3"'));
     for (const t of ['MS', 'OS', 'DE', 'BANK']) assert(select.includes('<option value="' + t + '"' + (t === 'OS' ? ' selected' : '') + '>'), t);
     assert(/<label class="gs-sr" for="tag-a3">/.test(select), 'labelled');
     const flags = stripTags(L.flagChipsHtml(['OS', 'SR', 'WL', 'PL', 'TMB']));
@@ -406,7 +406,8 @@ function withState(fn) {
   }, over || {});
   const hubState = (hub, over) => Object.assign({ gid: 'g1', teamId: 't1', status: 'ok', hub, raids: RAIDS.raids, balance: null, items: ITEMS.items, ui: { allNights: false, query: '' } }, over || {});
   const hubPage = (hub, can, over) => G.pages.lootHub.hubHtml({ guildData: gd(can || MEMBER_CAN), state: hubState(hub, over) });
-  const OFFICER_HUB = () => hubData({ level: 'full', can: { edit: true, rules: true, standings: true, itemLookup: true }, me: null, fix: { duplicates: 3, unknown: 0 } });
+  const OFFICER_HUB = () => hubData({ level: 'full', can: { edit: true, rules: true, standings: true, itemLookup: true }, me: null, fix: { duplicates: 3, unknown: 0 },
+    standingsTop: BALANCE.people.slice(0, 3), standingsCount: 4, standingsInfo: { mode: 'perRaid', countTags: ['MS'], weeks: 8 } });
   const cardIds = html => [...html.matchAll(/<section class="gs-card-sec gs-lhub-card" id="(lhub-[a-z]+)"/g)].map(m => m[1]);
 
   await check('hub: an officer gets Who is due, Latest raid nights, Look up an item and Needs fixing, and the Loot rules link', withState(async () => {
@@ -500,7 +501,7 @@ function withState(fn) {
   }));
 
   // ── hub and standings data ─────────────────────────────────────
-  await check('hub load: reads the hub, then the raid list, the balance and the items as the hub allows; level own reads the hub only; 403 is the denied state', withState(async (S) => {
+  await check('hub load: reads the hub, then the raid list and the items as the hub allows (Who is due comes from the hub itself); level own reads the hub only; 403 is the denied state', withState(async (S) => {
     const gdata = gd(OFFICER_CAN);
     S.guilds.g1 = gdata; S.currentGid = 'g1';
     const realTeamFor = ctx.Guild.app.teamFor;
@@ -509,10 +510,11 @@ function withState(fn) {
     let reply = OFFICER_HUB();
     let s = stub((m, url) => Promise.resolve(/hub/.test(url) ? reply : /balance/.test(url) ? BALANCE : /loot\/raids/.test(url) ? RAIDS : ITEMS));
     await G.pages.loot.load(route, gdata);
-    assert.deepEqual(s.calls.map(c => c.url).sort(), ['/api/guild/g1/loot/balance?team=t1', '/api/guild/g1/loot/hub?team=t1', '/api/guild/g1/loot/items?team=t1', '/api/guild/g1/loot/raids?team=t1']);
+    assert.deepEqual(s.calls.map(c => c.url).sort(), ['/api/guild/g1/loot/hub?team=t1', '/api/guild/g1/loot/items?team=t1', '/api/guild/g1/loot/raids?team=t1'], 'no second balance fetch');
     const x = G.app.state.att.lootHub;
-    assert.equal(x.status, 'ok'); assert.equal(x.raids.length, 2); assert.equal(x.items.length, 2); assert.equal(x.balance.people.length, 4);
-    assert(G.pages.loot.main(route, gdata).includes('id="lhub-due"'));
+    assert.equal(x.status, 'ok'); assert.equal(x.raids.length, 2); assert.equal(x.items.length, 2); assert.equal(x.balance.people.length, 3); assert.equal(x.balance.count, 4);
+    const page = G.pages.loot.main(route, gdata);
+    assert(page.includes('id="lhub-due"') && page.includes('Full standings, 4 people'), 'the card uses standingsTop and standingsCount');
     s.restore();
     reply = hubData({ level: 'own' });
     s = stub((m, url) => Promise.resolve(reply));
@@ -527,7 +529,7 @@ function withState(fn) {
     s = stub((m, url) => (/hub/.test(url) ? Promise.resolve(OFFICER_HUB()) : Promise.reject(new G.api.ApiError(500, { error: 'boom' }))));
     await G.pages.loot.load(route, gdata);
     assert.equal(G.app.state.att.lootHub.status, 'ok', 'the extras may fail without losing the hub');
-    assert.equal(G.app.state.att.lootHub.balance, null);
+    assert.equal(G.app.state.att.lootHub.balance.people.length, 3, 'Who is due needs nothing but the hub');
     s.restore();
     s = stub(() => Promise.reject(new G.api.ApiError(403, { error: 'forbidden' })));
     await G.pages.loot.load(route, gdata);
@@ -734,7 +736,9 @@ function withState(fn) {
     assert.equal(R.resultLine({ inserted: 0, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 0 }), 'Nothing new was imported.');
     const out = panel({ stage: 'done', result: { inserted: 2, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 1 } });
     assert(out.includes('id="gl-result"') && out.includes('Imported 2 new awards.') && out.includes('Import another export') && !out.includes('gl-paste'));
-    assert.deepEqual(plain(R.mergeCommit({ inserted: 1, updated: 1, unchanged: 1, skippedOtherRaid: 1, skippedOtherDay: 1 }, { inserted: 2, updated: 0, unchanged: 5 })), { inserted: 3, updated: 1, unchanged: 6, skippedOtherRaid: 1, skippedOtherDay: 1 });
+    assert.deepEqual(plain(R.mergeCommit({ inserted: 1, updated: 1, unchanged: 1, skippedOtherRaid: 1, skippedOtherDay: 1 }, { inserted: 2, updated: 0, unchanged: 5 })), { inserted: 3, updated: 1, unchanged: 6, skippedOtherRaid: 1, skippedOtherDay: 1, conflicts: { kept: 0, exported: 0 }, deleted: { kept: 0, readded: 0 } });
+    assert.deepEqual(plain(R.mergeCommit({ inserted: 0, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 0, conflicts: { kept: 1, exported: 0 }, deleted: { kept: 0, readded: 1 } }, { conflicts: { kept: 2, exported: 3 }, deleted: { kept: 4, readded: 5 } })).conflicts, { kept: 3, exported: 3 });
+    assert.equal(R.resultLine({ inserted: 1, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 0, conflicts: { kept: 2, exported: 1 }, deleted: { kept: 1, readded: 1 } }), "Imported 1 new award. Conflicts: 2 kept as the officer's, 1 taken from the export. Deleted awards: 1 kept deleted, 1 added back.");
     const merged = R.mergePreview({ rows: [{ a: 1 }], counts: { new: 1 } }, { rows: [{ a: 2 }], counts: { new: 2, same: 1 } });
     assert.deepEqual(plain(merged), { rows: [{ a: 1 }, { a: 2 }], counts: { new: 3, same: 1 } });
     assert.deepEqual(plain(R.mergePreview({ rows: [], counts: {} }, null)), { rows: [], counts: {} });
@@ -820,7 +824,7 @@ function withState(fn) {
     await tick();
     const posts = s.calls.filter(c => c.m === 'post');
     assert.deepEqual(posts.map(c => [c.url, c.body.awards.length, c.body.includeOtherDay]), [['/api/guild/g1/raids/r1/loot', 500, true], ['/api/guild/g1/raids/r1/loot', 500, true], ['/api/guild/g1/raids/r1/loot', 201, true]]);
-    assert.deepEqual(plain(x.ui.result), { inserted: 1201, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 3 });
+    assert.deepEqual(plain(x.ui.result), { inserted: 1201, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 3, conflicts: { kept: 0, exported: 0 }, deleted: { kept: 0, readded: 0 } });
     assert.equal(x.ui.stage, 'done');
     assert.equal(s.calls[s.calls.length - 1].m, 'get', 'the awards are read again after the import');
     assert.equal(x.data.awards.length, 4);
@@ -842,7 +846,7 @@ function withState(fn) {
     await tick();
     assert.equal(s.calls[0].body.includeOtherDay, false);
     assert.equal(s.calls[0].body.awards.length, 14);
-    assert.deepEqual(plain(x.ui.result), { inserted: 6, updated: 1, unchanged: 2, skippedOtherRaid: 1, skippedOtherDay: 3 });
+    assert.deepEqual(plain(x.ui.result), { inserted: 6, updated: 1, unchanged: 2, skippedOtherRaid: 1, skippedOtherDay: 3, conflicts: { kept: 0, exported: 0 }, deleted: { kept: 0, readded: 0 } });
     assert.equal(x.data.awards.length, 1);
     s.restore();
 
@@ -919,61 +923,6 @@ function withState(fn) {
   }));
 
   // ── per-award edits ────────────────────────────────────────────
-  await check('edit: a tag change sends only the tag, replaces the award from the reply, and a failure shows the page alert', withState(async (S) => {
-    const x = raidSetup(S);
-    const done = countRenders();
-    let s = stub(() => Promise.resolve({ award: Object.assign({}, AWARDS[0], { tag: 'DE', tagSetBy: 'officer' }) }));
-    const sel = { value: 'DE', disabled: false, getAttribute: k => ({ 'data-aid': 'a1' })[k] };
-    G.handlers.change['loot-tag'](sel);
-    await tick();
-    assert.deepEqual(s.calls[0], { m: 'patch', url: '/api/guild/g1/loot/a1', body: { tag: 'DE' } });
-    assert.deepEqual([x.data.awards[0].tag, x.data.awards[0].tagSetBy, x.data.awards.length], ['DE', 'officer', 4]);
-    s.restore();
-    s = stub(() => Promise.reject(new G.api.ApiError(403, { error: 'forbidden', message: 'No.' })));
-    const realHandle = G.app.handleError;
-    let handled = null;
-    G.app.handleError = (err, o) => { handled = [err.status, o]; };
-    G.handlers.change['loot-tag'](Object.assign({}, sel, { disabled: false }));
-    await tick();
-    assert.deepEqual(plain(handled), [403, { pageAlert: true }]);
-    G.app.handleError = realHandle; s.restore(); done();
-  }));
-
-  await check('edit: the note dialog is filled from the award, trims, caps at 200 characters and clears with an empty note; delete asks first', withState(async (S) => {
-    const x = raidSetup(S);
-    const done = countRenders();
-    const opened = [];
-    const realOpen = G.ui.openDialog, realRun = G.ui.runDialog, realSet = G.ui.setText;
-    G.ui.openDialog = html => { opened.push(html); return null; };
-    G.ui.runDialog = (form, promise, ok) => promise.then(ok);
-    const errs = {};
-    G.ui.setText = (id, text) => { errs[id] = text; };
-    G.handlers.click['loot-note'](el({ 'data-aid': 'a3' }));
-    assert(opened[0].includes('data-submit="loot-note-form"') && opened[0].includes('data-aid="a3"') && opened[0].includes('value="Rolled off-spec"') && opened[0].includes('maxlength="200"'));
-    assert(opened[0].includes('Note on Eye of Gruul'));
-    const form = (note, aid) => ({ getAttribute: k => ({ 'data-aid': aid || 'a3' })[k], elements: { note: { value: note, focus() {} } } });
-    const s = stub((m, url, body) => Promise.resolve({ award: Object.assign({}, AWARDS[2], { note: body.note || null }) }));
-    G.handlers.submit['loot-note-form'](form('x'.repeat(201)));
-    assert(/200 characters/.test(errs['dlg-err-note']) && !s.calls.length);
-    G.handlers.submit['loot-note-form'](form('  Kept for the alt  '));
-    await tick();
-    assert.deepEqual(s.calls[0], { m: 'patch', url: '/api/guild/g1/loot/a3', body: { note: 'Kept for the alt' } });
-    assert.equal(x.data.awards[2].note, 'Kept for the alt');
-    G.handlers.submit['loot-note-form'](form('   '));
-    await tick();
-    assert.deepEqual(s.calls[1].body, { note: '' }, 'an empty note clears it');
-
-    G.handlers.click['loot-delete'](el({ 'data-aid': 'a2' }));
-    assert(opened[1].includes('Delete this award?') && opened[1].includes('Warp Slicer awarded to Kaelith-Ashmere') && opened[1].includes('data-submit="loot-delete-form"') && opened[1].includes('gs-btn-danger'));
-    s.restore();
-    const s2 = stub(() => Promise.resolve({ ok: true }));
-    G.handlers.submit['loot-delete-form'](form('', 'a2'));
-    await tick();
-    assert.deepEqual(s2.calls[0], { m: 'del', url: '/api/guild/g1/loot/a2', body: {} });
-    assert.deepEqual(x.data.awards.map(a => a.id), ['a1', 'a3', 'a4']);
-    s2.restore(); G.ui.openDialog = realOpen; G.ui.runDialog = realRun; G.ui.setText = realSet; done();
-  }));
-
   await check('raid card data: loaded with the raid; upcoming raids and viewers without access get no card; other errors keep a retry', withState(async (S) => {
     const gdata = gd(OFFICER_CAN);
     const R = G.pages.raidLoot;
@@ -1397,19 +1346,16 @@ function withState(fn) {
     const winner = L.winnerHtml('g1', DE_AWARD.winner, DE_AWARD.match);
     assert.equal(stripTags(winner), 'Disenchanted');
     assert(!winner.includes('href') && !winner.includes('gs-chip') && !winner.includes('null'));
-    const editor = L.awardRowHtml(gd(OFFICER_CAN), DE_AWARD, { edit: true, when: 'time' });
+    const editor = L.awardRowHtml(gd(OFFICER_CAN), DE_AWARD, { when: 'time' });
     assert(stripTags(editor).includes('Disenchanted') && editor.includes('>DE<'));
-    assert(!editor.includes('data-change="loot-tag"') && !editor.includes('<select'), 'an officer cannot re-tag a disenchant: no select, the chip stays');
-    assert(editor.includes('data-action="loot-note" data-aid="d1"') && editor.includes('data-action="loot-delete" data-aid="d1"'), 'a note and delete still work');
+    assert(!editor.includes('<select') && !editor.includes('data-action'), 'the row builder is read-only: awards change on the night and award pages');
     assert(editor.includes('href="https://www.wowhead.com/tbc/item=22520"') && editor.includes('Kel&#39;Thuzad'), 'the item is still linked and escaped');
     const viewer = L.awardRowHtml(gd(MEMBER_CAN), DE_AWARD, { when: 'time' });
     assert(stripTags(viewer).includes('Disenchanted') && viewer.includes('>DE<') && !viewer.includes('data-action'));
     // The person pages show a character, never a disenchant, but the row builder must not break on one.
     assert(stripTags(L.awardRowHtml(gd(OFFICER_CAN), DE_AWARD, { character: true, when: 'date' })).includes('Disenchanted'));
-    // A normal award keeps its select.
-    assert(L.awardRowHtml(gd(OFFICER_CAN), AWARDS[0], { edit: true }).includes('data-change="loot-tag"'));
     // Hostile text in the item name stays escaped on a disenchant.
-    assertEscaped(L.awardRowHtml(gd(OFFICER_CAN), Object.assign({}, DE_AWARD, { itemName: HOSTILE, note: HOSTILE + QUOTES }), { edit: true }), 'disenchant');
+    assertEscaped(L.awardRowHtml(gd(OFFICER_CAN), Object.assign({}, DE_AWARD, { itemName: HOSTILE, note: HOSTILE + QUOTES }), {}), 'disenchant');
   });
 
   await check('disenchants: the raid card lists them, counts them as items and not as winners off the roster; the delete dialog names the item; the preview labels the row', withState(async (S) => {
@@ -1421,16 +1367,8 @@ function withState(fn) {
     assert(out.includes('1 award goes to a winner who is not on the roster'), 'only Veyla; the disenchant is nobody\'s');
     assert(!out.includes('2 awards go to a winner'));
     // The delete dialog does not say "awarded to null".
-    const gdata = gd(OFFICER_CAN);
-    S.guilds.g1 = gdata; S.currentGid = 'g1';
-    S.att.raid = { gid: 'g1', rid: 'r1', data: DETAIL };
-    S.att.raidLoot = state;
-    const opened = [];
-    const realOpen = G.ui.openDialog;
-    G.ui.openDialog = html => { opened.push(html); return null; };
-    G.handlers.click['loot-delete'](el({ 'data-aid': 'd1' }));
-    G.ui.openDialog = realOpen;
-    assert(opened[0].includes('Delete this award?') && opened[0].includes("The Phylactery of Kel&#39;Thuzad (disenchanted) is removed") && !opened[0].includes('awarded to'), opened[0]);
+    const del = G.pages.raidLoot.deleteDialogHtml(DE_AWARD, 'x');
+    assert(del.includes('Delete this award?') && del.includes("The Phylactery of Kel&#39;Thuzad (disenchanted) is removed") && !del.includes('awarded to'), del);
     // A refused row of a paste is named as a disenchant, not "to null".
     const R = G.pages.raidLoot;
     const parsed = { awards: [{ itemName: 'Warp Slicer', itemId: 9, winnerName: null, disenchanted: true }, { itemName: null, itemId: 10, winnerName: null, disenchanted: true }], awardRows: [3, 5] };
@@ -1604,10 +1542,10 @@ function withState(fn) {
     ctx.Guild.app.teamFor = realTeamFor;
   }));
 
-  await check('award record and Needs fixing: placeholders until the next lane, but routed', withState(async (S) => {
+  await check('award record and Needs fixing: routed to their own pages (guild-loot-award-tests.js covers them)', withState(async (S) => {
     S.guilds.g1 = gd(OFFICER_CAN); S.currentGid = 'g1';
-    assert(G.pages.lootAward.main({ name: 'lootaward', gid: 'g1', aid: 'a1' }, S.guilds.g1).includes('Not built yet'));
-    assert(G.pages.lootFix.main({ name: 'lootfix', gid: 'g1' }, S.guilds.g1).includes('Not built yet'));
+    assert(!G.pages.lootAward.main({ name: 'lootaward', gid: 'g1', aid: 'a1' }, S.guilds.g1).includes('Not built yet'));
+    assert(!G.pages.lootFix.main({ name: 'lootfix', gid: 'g1' }, S.guilds.g1).includes('Not built yet'));
   }));
 
   // ── Link / Add as new person for a winner whose class nobody knows ──

@@ -2,8 +2,8 @@
 // Raid night (T2): GET /raids/:rid/loot gives the awards and canEdit; the night's date, title and zone come from GET /loot/raids?team=. Edit holders get a
 // tag select per row (a tag-only PATCH, saved at once, the row says "Saved") and a More menu: Open award, Edit details, Delete award. Members read.
 // Item (T2): GET /loot/items/:itemId?team= (404: nobody has it yet; 403: the item lookup is off for members).
-// The More menu and its Delete are shared with the person loot page (moreMenuHtml). The award record and Needs fixing (lootAward / lootFix) are
-// placeholders here until the next lane replaces them. Safe to load alone: nothing here runs at load time.
+// The More menu and its Delete are shared with the person loot page (moreMenuHtml). The award record and Needs fixing are in pages-loot-award.js /
+// pages-loot-fix.js. Safe to load alone: nothing here runs at load time.
 (function (G) {
   'use strict';
 
@@ -262,13 +262,6 @@
     G.app.render();
   };
 
-  // ── pages the next lane builds ──
-  function notBuiltHtml(title) {
-    return G.ui.listPageHtml({ head: { title: title, back: { href: href({ name: 'section', gid: (currentGd() || { guild: {} }).guild.id, section: 'loot' }), label: 'Loot' } }, bodyHtml: '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">Not built yet</h2><p class="gs-lead gs-lead-sm">This page is coming next.</p></section>' });
-  }
-
   G.pages.lootNight = { moreMenuHtml: moreMenuHtml, nightHtml: nightHtml, countsText: countsText, load: loadNight, main: mainNight, nameFor: nightNameFor };
   G.pages.lootItem = { itemHtml: itemHtml, load: loadItem, main: mainItem, nameFor: itemNameFor };
-  G.pages.lootAward = { load: function () { return null; }, main: function () { return notBuiltHtml('Award'); } };
-  G.pages.lootFix = { load: function () { return null; }, main: function () { return notBuiltHtml('Needs fixing'); } };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

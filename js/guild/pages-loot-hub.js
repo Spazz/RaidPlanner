@@ -3,7 +3,7 @@
 //   edit holders (Team Lead and above)  Who is due, Latest raid nights, Look up an item, Needs fixing, and a Loot rules link for loot.policy
 //   members                             My loot by raid day (left), Latest raid nights with who received what (right); Who is due and
 //                                       Look up an item only when the team's loot rules switch them on (hub.can); level "own": My loot only
-// "Who is due" reads GET /loot/balance (the hub's standingsTop is the first five rows by NAME, not the most due), the item search reads
+// "Who is due" reads the hub's standingsTop / standingsCount / standingsInfo (the 5 most due, in the Standings order), the item search reads
 // GET /loot/items, and "All N raid nights" / "Earlier raid nights" expand in place from GET /loot/raids. Standings is the T1 list of the balance.
 // Safe to load alone: nothing here runs at load time.
 (function (G) {
@@ -67,7 +67,7 @@
       }).join('') + '</ol>'
       : '<p class="gs-fine">Nobody has a loot figure yet.</p>';
     return card({ id: 'lhub-due', title: 'Who is due', sub: weeks, bodyHtml: '<p class="gs-fine">' + esc(note) + '</p>' + body +
-      '<p class="gs-fine"><a class="gs-fg-u" href="' + esc(href({ name: 'lootstandings', gid: gid })) + '">Full standings, ' + esc(plural((balance.people || []).length, 'person', 'people')) + '</a></p>' });
+      '<p class="gs-fine"><a class="gs-fg-u" href="' + esc(href({ name: 'lootstandings', gid: gid })) + '">Full standings, ' + esc(plural(typeof balance.count === 'number' ? balance.count : (balance.people || []).length, 'person', 'people')) + '</a></p>' });
   }
 
   function card(o) {
@@ -271,6 +271,13 @@
     return Object.assign({ gid: gid, teamId: teamId, ui: ui0 }, x);
   }
 
+  // The Who is due card's data: the hub's own standingsTop (the 5 most due, in the Standings order), standingsCount and standingsInfo. null when the hub sent none.
+  function balanceOfHub(hub, own) {
+    if (own || !hub.can || !hub.can.standings || !Array.isArray(hub.standingsTop)) return null;
+    const info = hub.standingsInfo || {};
+    return { people: hub.standingsTop, count: typeof hub.standingsCount === 'number' ? hub.standingsCount : hub.standingsTop.length, mode: info.mode, countTags: info.countTags, window: { weeks: info.weeks } };
+  }
+
   function load(r, gd) {
     const gid = gd.guild.id;
     tidyAddress(r, gd);
@@ -282,11 +289,10 @@
       const quiet = function () { return null; };
       const jobs = [
         !own ? G.api.loot.raids(gid, teamId).then(function (res) { return res && Array.isArray(res.raids) ? res.raids : null; }, quiet) : Promise.resolve(null),
-        can.standings && !own ? G.api.loot.balance(gid, teamId, null).then(function (b) { return b; }, quiet) : Promise.resolve(null),
         can.itemLookup && !own ? G.api.loot.items(gid, teamId).then(function (res) { return res && Array.isArray(res.items) ? res.items : null; }, quiet) : Promise.resolve(null),
       ];
       return Promise.all(jobs).then(function (res) {
-        a().lootHub = fresh({ status: 'ok', hub: hub, raids: res[0], balance: res[1], items: res[2] }, gid, teamId);
+        a().lootHub = fresh({ status: 'ok', hub: hub, raids: res[0], balance: balanceOfHub(hub, own), items: res[1] }, gid, teamId);
         return null;
       });
     }, function (err) {

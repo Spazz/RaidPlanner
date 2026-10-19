@@ -59,9 +59,9 @@
     return '<span class="gs-chip gs-chip-tag' + (tag === 'MS' ? '' : ' is-' + String(tag).toLowerCase()) + '" title="' + esc(has(TAG_NAMES, tag) ? TAG_NAMES[tag] : tag) + '">' + esc(tagLabel(tag)) + by + '</span>';
   }
 
-  // action: the data-change handler (the raid card's 'loot-tag' by default; the raid night page uses 'ln-tag').
+  // action: the data-change handler (the raid night page's 'ln-tag').
   function tagSelectHtml(award, action) {
-    return '<label class="gs-sr" for="tag-' + esc(award.id) + '">Tag for ' + esc(award.itemName || 'this item') + '</label><select class="gs-input gs-input-sm gs-loot-tagsel" id="tag-' + esc(award.id) + '" data-change="' + esc(action || 'loot-tag') + '" data-aid="' + esc(award.id) + '" data-key="tag-' + esc(award.id) + '">' +
+    return '<label class="gs-sr" for="tag-' + esc(award.id) + '">Tag for ' + esc(award.itemName || 'this item') + '</label><select class="gs-input gs-input-sm gs-loot-tagsel" id="tag-' + esc(award.id) + '" data-change="' + esc(action || 'ln-tag') + '" data-aid="' + esc(award.id) + '" data-key="tag-' + esc(award.id) + '">' +
       TAGS.map(function (t) { return '<option value="' + t + '"' + (t === award.tag ? ' selected' : '') + '>' + esc(TAG_NAMES[t]) + '</option>'; }).join('') + '</select>';
   }
 
@@ -107,7 +107,7 @@
     return '<span class="gs-char-text">' + G.ui.classNameHtml(m.characterName || winnerText(award.winner), (award.winner || {}).class) + '</span>';
   }
 
-  // One award as a row. opts: { edit (select + note + delete), character (show the character, not the person), when: 'time' | 'datetime' | 'date', status (html chip), raidLink }.
+  // One award as a row (read-only; awards are changed on the raid night and award pages). opts: { character (show the character, not the person), when: 'time' | 'datetime' | 'date', status (html chip), raidLink }.
   function awardRowHtml(gd, award, opts) {
     const o = opts || {};
     const gid = gd.guild.id;
@@ -117,15 +117,11 @@
       : (a1.manual ? '' : esc(o.when === 'datetime' ? dateTimeText(a1.awardedAt, gd.guild.timeZone) : timeText(a1.awardedAt, gd.guild.timeZone))); // an award by hand has no time of its own
     const rollNote = a1.rollType && a1.rollType !== 'MS' && a1.rollType !== 'OS' ? '<span class="gs-char-sub">Roll: ' + esc(a1.rollType) + '</span>' : '';
     const noteLine = a1.note ? '<span class="gs-char-sub">Note: ' + esc(a1.note) + '</span>' : '';
-    const actions = o.edit
-      ? '<span class="gs-loot-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="loot-note" data-aid="' + esc(a1.id) + '" data-key="note-' + esc(a1.id) + '">' + (a1.note ? 'Edit note' : 'Add note') + '</button>' +
-        '<button type="button" class="gs-icon-btn gs-icon-btn-danger" data-action="loot-delete" data-aid="' + esc(a1.id) + '" data-key="del-' + esc(a1.id) + '" aria-label="' + esc('Delete the award of ' + (a1.itemName || 'this item')) + '">' + G.icons.icon('trash', 18) + '</button></span>' : '';
     return '<li class="gs-loot-row" id="loot-' + esc(a1.id) + '"><span class="gs-loot-when">' + when + '</span>' +
       '<span class="gs-loot-item">' + itemHtml({ itemId: a1.itemId, itemName: a1.itemName, quality: a1.quality }, gd.guild.gameVersion) + rollNote + noteLine + '</span>' +
       '<span class="gs-loot-who"><span class="gs-sr">Winner: </span>' + (o.character ? characterHtml(a1) : winnerHtml(gid, a1.winner, a1.match)) + '</span>' +
-      // Nobody won a disenchanted item, so it stays DE: officers get the chip, not the tag select.
-      '<span class="gs-loot-tag"><span class="gs-sr">Tag: </span>' + (o.edit && !isDisenchanted(a1) ? tagSelectHtml(a1) : tagChipHtml(a1.tag, a1.tagSetBy)) + '</span>' +
-      '<span class="gs-loot-flags">' + (o.status || '') + (a1.manual ? '<span class="gs-chip gs-chip-src" title="Added by an officer, not imported from Gargul">Manual</span>' : '') + flagChipsHtml(a1.flags) + '</span>' + actions + '</li>';
+          '<span class="gs-loot-tag"><span class="gs-sr">Tag: </span>' + tagChipHtml(a1.tag, a1.tagSetBy) + '</span>' +
+      '<span class="gs-loot-flags">' + (o.status || '') + (a1.manual ? '<span class="gs-chip gs-chip-src" title="Added by an officer, not imported from Gargul">Manual</span>' : '') + flagChipsHtml(a1.flags) + '</span></li>';
   }
 
   function totalsHtml(totals) {

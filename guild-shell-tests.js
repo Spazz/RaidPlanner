@@ -417,7 +417,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
       '/api/guild/g1/loot/balance?team=t1&weeks=12': { status: 200, body: Object.assign({}, balance, { window: Object.assign({}, balance.window, { weeks: 12 }) }) },
       '/api/guild/g1/loot/raids?team=t1': { status: 200, body: { raids: [{ raidId: 'r1', raidOn: '2026-10-10', title: null, zone: 'BT', awards: 1, counted: 1, unmatched: 0 }] } },
       '/api/guild/g1/loot/hub?team=t1': { status: 200, body: { team: { id: 't1', name: 'Main' }, level: 'full', can: { edit: true, rules: true, standings: true, itemLookup: true }, me: null,
-        nights: [{ raid: { id: 'r1', raidOn: '2026-10-10', title: null, zone: 'BT' }, awards: [aw] }], standingsTop: null, fix: { duplicates: 0, unknown: 0 } } },
+        nights: [{ raid: { id: 'r1', raidOn: '2026-10-10', title: null, zone: 'BT' }, awards: [aw] }], standingsTop: balance.people, standingsCount: balance.people.length, standingsInfo: { mode: 'perRaid', countTags: ['MS'], weeks: 8 }, fix: { duplicates: 0, unknown: 0 } } },
       '/api/guild/g1/loot/items/28770?team=t1': { status: 200, body: { team: { id: 't1', name: 'Main' }, item: { itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4 }, counts: { total: 1, MS: 1, OS: 0, DE: 0, BANK: 0 }, drops: [Object.assign({}, aw, { raidTitle: null })] } },
       '/api/guild/g1/loot/items?team=t1': { status: 200, body: { items: [{ itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4, count: 1, lastAwardedAt: 1791681160000, awards: [{ id: 'a1', raidId: 'r1', raidOn: '2026-10-10', awardedAt: 1791681160000, tag: 'MS', match: aw.match, winner: aw.winner }] }] } },
       '/api/guild/g1/loot/person/p1': { status: 200, body: { person: { id: 'p1', name: 'Thoren', status: 'raider' }, awards: [aw], totals: { MS: 1, OS: 0, DE: 0, BANK: 0 } } },
@@ -434,7 +434,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(env.documentFake.title.startsWith('Loot - Ravens'));
     assert(/href="#\/g\/g1\/loot"[^>]*aria-current="page"/.test(env.html('shell-sidebar')), 'Loot is the current nav item');
     assert(!env.html('gs-main').includes('coming next'));
-    assert(['hub?team=t1', 'balance?team=t1', 'raids?team=t1', 'items?team=t1'].every(t => env.fetchCalls.some(c => c.url === '/api/guild/g1/loot/' + t)), 'the hub reads the hub, the balance, the raid list and the items');
+    assert(['hub?team=t1', 'raids?team=t1', 'items?team=t1'].every(t => env.fetchCalls.some(c => c.url === '/api/guild/g1/loot/' + t)) && !env.fetchCalls.some(c => c.url === '/api/guild/g1/loot/balance?team=t1'), 'the hub reads the hub, the raid list and the items; Who is due comes from the hub itself');
     env.loc.hash = '#/g/g1/loot/standings';
     await settle();
     assert(env.html('gs-main').includes('>Standings</h1>') && env.html('gs-main').includes('Thoren') && env.html('gs-main').includes('class="gs-dtable"'));

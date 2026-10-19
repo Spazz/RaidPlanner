@@ -857,6 +857,7 @@
     if (r.name === 'lootperson') return G.pages.personLoot.nameFor(r);
     if (r.name === 'lootnight') return G.pages.lootNight.nameFor(r);
     if (r.name === 'lootitem') return G.pages.lootItem.nameFor(r);
+    if (r.name === 'lootaward') return G.pages.lootAward.nameFor(r);
     return '';
   }
 

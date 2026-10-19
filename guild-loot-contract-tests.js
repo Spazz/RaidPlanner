@@ -519,7 +519,7 @@ check('loot page routes (lane W): hub, item, award record, Needs fixing and the 
   const committed = await importNight(s);
   const lootBase = `${s.base}/loot`;
   const hub = await G.api.get(`${lootBase}/hub?team=${encodeURIComponent(s.teamId)}`);
-  assert.deepEqual(Object.keys(hub), ['team', 'can', 'me', 'nights', 'standingsTop', 'fix', 'level']);
+  assert.deepEqual(Object.keys(hub), ['team', 'can', 'me', 'nights', 'standingsTop', 'standingsCount', 'standingsInfo', 'fix', 'level']);
   assert.equal(hub.level, 'full');
   assert.deepEqual(hub.can, { edit: true, rules: true, standings: true, itemLookup: true });
   assert.equal(hub.nights[0].awards.length, committed.awards.length);
@@ -543,6 +543,91 @@ check('loot page routes (lane W): hub, item, award record, Needs fixing and the 
   const preview = await G.api.loot.preview(s.gid, s.raid, s.awards);
   const row = preview.rows.find((r) => r.awardId === first.id);
   assert.deepEqual([row.status, row.conflicts.map((c) => c.field), preview.counts.conflict], ['conflict', ['winner'], 1]);
+});
+
+check('award page and Needs fixing (lane U2): the real pages draw the record, save Edit details, keep a duplicate group, and the import preview asks about the conflict', async () => {
+  const s = await scenario();
+  const { G } = s;
+  const committed = await importNight(s);
+  const first = committed.awards[0];
+  const gd = s.guildData;
+  const S = pageState(s, G, gd);
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+  const el = (value, extra) => Object.assign({ value, checked: false, getAttribute: () => null }, extra || {});
+  G.app.render = () => {};
+
+  // The record: the real answer draws the details, the origin line and the history.
+  const route = { name: 'lootaward', gid: s.gid, aid: first.id, edit: false };
+  await G.pages.lootAward.load(route, gd);
+  let html = G.pages.lootAward.main(route, gd);
+  let text = stripTags(html);
+  assert(text.includes(first.itemName) && text.includes('Imported from Gargul') && text.includes('History'), text.slice(0, 300));
+  G.handlers.click['la-edit-open']();
+  await tick();
+  html = G.pages.lootAward.main(route, gd);
+  assert(html.includes('data-submit="la-form"') && html.includes('<option value="' + s.raid + '"'), 'Edit details lists the raid night');
+  // Edit details: the winner and the note in one PATCH.
+  G.handlers.input['la-winner'](el('Wanderfell'));
+  G.handlers.input['la-note'](el('Corrected by hand'));
+  assert.equal(G.pages.lootAward.changeCount(S.att.lootAward), 2);
+  G.handlers.submit['la-form']();
+  await tick();
+  const saved = S.att.lootAward;
+  assert.deepEqual([saved.editing, saved.data.award.winner.name, saved.data.award.note, plain(saved.data.award.editedFields)], [false, 'Wanderfell', 'Corrected by hand', ['winner']]);
+  assert(stripTags(G.pages.lootAward.main(route, gd)).includes('Winner changed from'), 'the new history row is on the page');
+  // A second editor saved first: the stale save is the page's Reload state.
+  G.handlers.click['la-edit-open']();
+  await tick();
+  const staleVersion = S.att.lootAward.data.award.updatedAt;
+  await G.api.loot.update(s.gid, first.id, { note: 'Changed by someone else' });
+  G.handlers.input['la-note'](el('Mine'));
+  S.att.lootAward.data.award.updatedAt = staleVersion - 1; // what the page read before the other editor saved
+  G.handlers.submit['la-form']();
+  await tick();
+  assert(stripTags(G.pages.lootAward.main(route, gd)).includes('Someone changed this award. Reload to see it.'));
+  G.handlers.click['la-reload']();
+  await tick();
+  assert.equal(S.att.lootAward.data.award.note, 'Changed by someone else');
+
+  // A member never opens an award.
+  const memberG = loadPages(s.world, s.memberJar);
+  const memberS = pageState(s, memberG, s.guildData);
+  await memberG.pages.lootAward.load({ name: 'lootaward', gid: s.gid, aid: first.id, edit: false }, s.guildData);
+  assert(stripTags(memberG.pages.lootAward.main({ aid: first.id }, s.guildData)).includes('Only Team Leads and above can open an award.'), JSON.stringify(Object.keys(memberS.att)));
+
+  // Needs fixing: a manual twin is a possible duplicate; Keep both makes the group leave the list for good.
+  const dupe = { itemId: 29999, itemName: 'Twin Blade', winnerName: 'Thoren', tag: 'MS' };
+  await G.api.loot.manual(s.gid, s.raid, dupe);
+  await G.api.loot.manual(s.gid, s.raid, dupe);
+  const fixRoute = { name: 'lootfix', gid: s.gid };
+  await G.pages.lootFix.load(fixRoute, gd);
+  html = G.pages.lootFix.main(fixRoute, gd);
+  assert(stripTags(html).includes('Twin Blade') && html.includes('data-action="lf-keep"') && html.includes('data-action="lf-delete"'));
+  const group = S.att.lootFix.data.duplicates[0];
+  G.handlers.click['lf-keep']({ getAttribute: () => group.key, disabled: false });
+  await tick();
+  assert.equal(S.att.lootFix.data.duplicates.length, 0);
+  await G.pages.lootFix.load(fixRoute, gd);
+  assert.equal(S.att.lootFix.data.duplicates.length, 0, 'the dismissal is stored');
+
+  // Import preview: the edited winner is a conflict row with Keep officer's selected; choosing the export sends a resolution and the result line counts it.
+  const preview = await G.api.loot.preview(s.gid, s.raid, s.awards);
+  assert.equal(preview.counts.conflict, 1);
+  S.att.raid = { gid: s.gid, rid: s.raid, data: { raid: { id: s.raid, team: { id: s.teamId } } } };
+  const ui = Object.assign(G.pages.raidLoot.freshUi(), { open: true, stage: 'preview', parsed: s.parsed, preview });
+  S.att.raidLoot = { gid: s.gid, rid: s.raid, status: 'ok', data: { awards: [], canEdit: true }, ui };
+  html = G.pages.raidLoot.importPanelHtml(ui, gd);
+  text = stripTags(html).replace(/&#39;/g, "'");
+  assert(text.includes('1 award needs your decision') && text.includes("Keep officer's (Wanderfell)") && text.includes('Keep all officer changes'), text.slice(0, 400));
+  const checksum = preview.rows.find((r) => r.status === 'conflict').checksum;
+  assert(new RegExp('id="gl-res-' + checksum + '-officer"[^>]*checked').test(html));
+  G.handlers.change['loot-resolve']({ checked: true, value: 'export', getAttribute: (k) => (k === 'data-checksum' ? checksum : 'k') });
+  G.handlers.click['loot-commit']();
+  await tick(); await tick();
+  assert.deepEqual(plain(ui.result.conflicts), { kept: 0, exported: 1 });
+  assert(G.pages.raidLoot.resultLine(ui.result).includes('1 taken from the export'));
+  const back = await G.api.loot.award(s.gid, first.id);
+  assert.notEqual(back.award.winner.name, 'Wanderfell', 'the export winner is back');
 });
 
 // ---------------------------------------------------------------------------

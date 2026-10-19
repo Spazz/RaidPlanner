@@ -2533,3 +2533,36 @@ a.gs-lhub-link:hover { background: var(--bg-card-hover); }
   .gs-lhub { grid-template-columns: minmax(0, 1fr); }
   .gs-lhub-card .gs-card-sec-body { padding: 12px 16px; }
 }
+
+/* ── Loot page redesign: the award record, Edit details, Needs fixing, the import's decision rows, phones ── */
+.gs-loot-award .gs-la-form .gs-check { padding: 2px 0; }
+.gs-la-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.gs-la-hrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0; min-width: 0; }
+.gs-la-hrow + .gs-la-hrow { border-top: 1px solid var(--border-subtle); }
+.gs-la-htext { min-width: 0; overflow-wrap: anywhere; }
+.gs-lf-groups { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.gs-lf-group { box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gs-lf-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.gs-lf-awards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.gs-lf-award { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 8px 0; min-width: 0; }
+.gs-lf-award + .gs-lf-award { border-top: 1px solid var(--border-subtle); }
+.gs-lf-n { display: flex; flex-direction: column; min-width: 120px; }
+.gs-lf-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.gs-lf-keep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.gs-lf-sec + .gs-lf-sec { margin-top: var(--sp-4); }
+.gs-loot-decisions { display: flex; flex-direction: column; gap: 8px; margin: var(--sp-3) 0; padding: 12px 16px; border: 1px solid var(--border-medium); background: var(--bg-card); min-width: 0; }
+.gs-loot-decisions-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.gs-loot-decisions-head .gs-h3 { margin: 0; }
+.gs-loot-decide { grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) auto; }
+.gs-loot-choice { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; border: 0; min-width: 0; }
+@media screen and (max-width: 600px) {
+  .gs-lf-group { padding: 12px; }
+  .gs-lf-award { flex-direction: column; align-items: stretch; }
+  .gs-lf-acts { margin-left: 0; }
+  .gs-lf-acts .gs-btn { flex: 1 1 auto; }
+  .gs-la-hrow { flex-direction: column; gap: 2px; }
+  .gs-loot-decide { grid-template-columns: minmax(0, 1fr); }
+  .gs-loot-decisions { padding: 12px; }
+  .gs-loot-choice { flex-direction: column; }
+  .gs-loot-page .gs-pagehead-actions { flex-wrap: wrap; }
+}

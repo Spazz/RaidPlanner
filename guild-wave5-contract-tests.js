@@ -336,7 +336,8 @@ check('Loot board after the raid: the Gargul import is compared with the line, a
 
   // Deleting a manual award says nothing about re-importing.
   const row = (await s.rows('SELECT id FROM loot_awards WHERE item_id = 30313'))[0];
-  A.handlers.click['loot-delete'](el({ 'data-aid': row.id }));
+  await A.pages.lootNight.load({ name: 'lootnight', gid: A.guildData.guild.id, rid: page.S.att.raid.rid }, A.guildData); // the night page lists the award the dialog deletes
+  A.handlers.click['ln-delete'](el({ 'data-aid': row.id }));
   const confirm = A.dialogs[A.dialogs.length - 1];
   assert(confirm.includes('is removed from the raid and from the balance.') && !confirm.includes('Importing the same Gargul export'));
 });

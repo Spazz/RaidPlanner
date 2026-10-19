@@ -102,8 +102,11 @@
   G.api.loot = {
     raid: function (gid, rid) { return G.api.get(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot')); },
     preview: function (gid, rid, awards) { return G.api.post(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot/preview'), { awards: awards }); },
-    commit: function (gid, rid, awards, includeOtherDay) {
-      return G.api.post(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot'), { awards: awards, includeOtherDay: !!includeOtherDay });
+    // resolutions: { [checksum]: 'export' } for the conflict / deleted rows the officer chose to take from the export (every other row keeps the officer's).
+    commit: function (gid, rid, awards, includeOtherDay, resolutions) {
+      const body = { awards: awards, includeOtherDay: !!includeOtherDay };
+      if (resolutions && Object.keys(resolutions).length) body.resolutions = resolutions;
+      return G.api.post(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot'), body);
     },
     // PM wave 5: an award made by hand, the pasted TMB / softres lists of a raid and the board built from them.
     manual: function (gid, rid, body) { return G.api.post(guildPath(gid, '/raids/' + encodeURIComponent(rid) + '/loot/manual'), body); },

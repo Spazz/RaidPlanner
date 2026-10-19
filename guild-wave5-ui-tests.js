@@ -552,8 +552,7 @@ check('add award: no roster (the call fails) still opens the dialog; a viewer wh
   await settle();
   assert.equal(opened.length, 1);
   assert(opened[0].includes('<datalist id="dlg-winners"></datalist>'));
-  G.handlers.click['loot-delete'](el({ 'data-aid': 'lo_m' }));
-  G.handlers.click['loot-delete'](el({ 'data-aid': 'lo_g' }));
+  for (const id of ['lo_m', 'lo_g']) opened.push(G.pages.raidLoot.deleteDialogHtml(S.att.raidLoot.data.awards.find(w => w.id === id)));
   assert(!opened[1].includes('Importing the same Gargul export again') && opened[2].includes('Importing the same Gargul export again asks before it adds it back.'));
   S.att.raidLoot.data.canEdit = false;
   G.handlers.click['loot-add-open']();

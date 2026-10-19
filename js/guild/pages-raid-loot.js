@@ -14,8 +14,11 @@
     same: { label: 'Same', cls: 'gs-pill-muted' },
     otherRaid: { label: 'Other raid', cls: 'gs-pill-warn' },
     otherDay: { label: 'Other day', cls: 'gs-pill-warn' },
+    conflict: { label: 'Conflict', cls: 'gs-pill-warn' },
+    deleted: { label: 'Deleted', cls: 'gs-pill-warn' },
   };
-  const COUNT_LABELS = [['new', 'New'], ['update', 'Updated'], ['same', 'Unchanged'], ['otherRaid', 'On other raids'], ['otherDay', 'On other days']];
+  const COUNT_LABELS = [['new', 'New'], ['update', 'Updated'], ['same', 'Unchanged'], ['otherRaid', 'On other raids'], ['otherDay', 'On other days'], ['conflict', 'Conflicts'], ['deleted', 'Deleted by an officer']];
+  const FIELD_NAMES = { winner: 'Winner', item: 'Item', raid: 'Raid night' };
 
   function L() { return G.pages.loot; }
   function st() { return G.app.state; }
@@ -25,7 +28,7 @@
   function currentGd() { const s = st(); return s.currentGid ? s.guilds[s.currentGid] : null; }
 
   function freshUi() {
-    return { open: false, stage: 'input', text: '', error: '', busy: false, parsed: null, preview: null, includeOtherDay: false, result: null };
+    return { open: false, stage: 'input', text: '', error: '', busy: false, parsed: null, preview: null, includeOtherDay: false, result: null, resolutions: {} };
   }
 
   // The state of the card on the open raid page, or null while it is not loaded for that raid.
@@ -92,21 +95,74 @@
     const summary = '<dl class="gs-summary">' + COUNT_LABELS.map(function (c) {
       return '<div class="gs-summary-item"><dt>' + esc(c[1]) + '</dt><dd>' + esc(counts[c[0]] || 0) + '</dd></div>';
     }).join('') + '</dl>';
-    const rows = (Array.isArray(p.rows) ? p.rows : []).map(function (row) {
+    const all = Array.isArray(p.rows) ? p.rows : [];
+    const needs = all.filter(isDecision);
+    const rows = all.filter(function (row) { return !isDecision(row); }).map(function (row) {
       return L().awardRowHtml(gd, previewAward(row), { when: 'datetime', status: statusChip(row.status) });
     }).join('');
     return '<p class="gs-fine" id="gl-read">' + esc(plural(parsed.awards.length, 'award', 'awards') + ' read from ' + plural(parsed.rows, 'row', 'rows') + '.') + '</p>' + skippedHtml(parsed.skipped) + summary + other +
+      decisionsHtml(needs, ui, gd) +
       '<div class="gs-loot-preview" data-scroll-key="loot-preview"><ul class="gs-loot-list" aria-label="Preview of the import">' + rows + '</ul></div>';
+  }
+
+  // ── rows that need a decision: an award an officer changed (conflict) or deleted (deleted) since the first import, listed first ──
+  function isDecision(row) { return row.status === 'conflict' || row.status === 'deleted'; }
+  function choiceOf(ui, row) { return ui.resolutions && ui.resolutions[row.checksum] === 'export' ? 'export' : 'officer'; }
+
+  function radioHtml(row, value, label, checked) {
+    const id = 'gl-res-' + row.checksum + '-' + value;
+    return '<span class="gs-check"><input type="radio" id="' + esc(id) + '" name="gl-res-' + esc(row.checksum) + '" value="' + value + '" data-change="loot-resolve" data-checksum="' + esc(row.checksum) + '" data-key="' + esc(id) + '"' + (checked ? ' checked' : '') + '>' +
+      '<label for="' + esc(id) + '">' + esc(label) + '</label></span>';
+  }
+
+  function decisionRowHtml(row, ui, gd) {
+    const choice = choiceOf(ui, row);
+    const item = L().itemHtml({ itemId: row.itemId, itemName: row.itemName, quality: row.quality }, gd.guild.gameVersion);
+    let detail;
+    let officerLabel;
+    let exportLabel;
+    if (row.status === 'deleted') {
+      detail = '<span class="gs-char-sub">An officer deleted this award after it was imported. The export has it again.</span>';
+      officerLabel = 'Keep deleted';
+      exportLabel = 'Add back';
+    } else {
+      const list = Array.isArray(row.conflicts) ? row.conflicts : [];
+      detail = list.map(function (c) { return '<span class="gs-char-sub">' + esc((FIELD_NAMES[c.field] || c.field) + ': an officer set ' + c.officer + ', the export says ' + c.export + '.') + '</span>'; }).join('');
+      officerLabel = "Keep officer's (" + list.map(function (c) { return c.officer; }).join(', ') + ')';
+      exportLabel = 'Use export (' + list.map(function (c) { return c.export; }).join(', ') + ')';
+    }
+    return '<li class="gs-loot-row gs-loot-decide" data-checksum="' + esc(row.checksum) + '"><span class="gs-loot-item">' + item + detail + '</span>' +
+      '<span class="gs-loot-who"><span class="gs-sr">Winner in the export: </span>' + L().winnerHtml(gd.guild.id, { name: row.winnerName, realm: row.winnerRealm, class: row.winnerClass }, row.match) + '</span>' +
+      '<span class="gs-loot-flags">' + statusChip(row.status) + '</span>' +
+      '<fieldset class="gs-loot-choice"><legend class="gs-sr">' + esc('What to do with ' + (row.itemName || 'this award')) + '</legend>' + radioHtml(row, 'officer', officerLabel, choice === 'officer') + radioHtml(row, 'export', exportLabel, choice === 'export') + '</fieldset></li>';
+  }
+
+  function decisionsHtml(needs, ui, gd) {
+    if (!needs.length) return '';
+    return '<div class="gs-loot-decisions" id="gl-decisions"><div class="gs-loot-decisions-head"><h3 class="gs-h3" id="gl-decisions-h">' + esc(plural(needs.length, 'award needs', 'awards need') + ' your decision') + '</h3>' +
+      '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-keep-all" data-key="loot-keep-all">Keep all officer changes</button></div>' +
+      '<p class="gs-fine">An officer changed or deleted these after the first import. Nothing is overwritten unless you choose the export.</p>' +
+      '<ul class="gs-loot-list" aria-labelledby="gl-decisions-h">' + needs.map(function (row) { return decisionRowHtml(row, ui, gd); }).join('') + '</ul></div>';
+  }
+
+  // The rows the officer set to the export, { checksum: 'export' }: the only resolutions the Worker needs (every other row keeps the officer's).
+  function exportChoices(ui) {
+    const out = {};
+    ((ui.preview && ui.preview.rows) || []).filter(isDecision).forEach(function (row) { if (choiceOf(ui, row) === 'export') out[row.checksum] = 'export'; });
+    return out;
   }
 
   // The T5 commit bar of the Gargul preview: how many awards will be imported, Back (keeps the paste), Close, and the Primary.
   function previewCommit(ui) {
     const counts = (ui.preview && ui.preview.counts) || {};
-    const importable = (counts.new || 0) + (counts.update || 0) + (ui.includeOtherDay ? counts.otherDay || 0 : 0);
+    const fromExport = Object.keys(exportChoices(ui)).length;
+    const importable = (counts.new || 0) + (counts.update || 0) + (ui.includeOtherDay ? counts.otherDay || 0 : 0) + fromExport;
+    const kept = (counts.conflict || 0) + (counts.deleted || 0) - fromExport;
+    const text = (importable > 0 ? plural(importable, 'award', 'awards') + ' will be imported.' : 'There is nothing new to import.') + (kept > 0 ? ' ' + plural(kept, 'changed or deleted award keeps', 'changed or deleted awards keep') + ' the officer\'s version.' : '');
     return {
-      text: importable > 0 ? plural(importable, 'award', 'awards') + ' will be imported.' : 'There is nothing new to import.',
+      text: text,
       back: { attrs: { 'data-action': 'loot-back', 'data-key': 'loot-back' } }, cancel: { label: 'Close', attrs: { 'data-action': 'loot-import-close', 'data-key': 'loot-import-close' } },
-      commit: { label: ui.busy ? 'Importing...' : 'Import ' + plural(importable, 'award', 'awards'), disabled: !(importable > 0 && !ui.busy), attrs: { 'data-action': 'loot-commit', 'data-key': 'loot-commit' } },
+      commit: { label: ui.busy ? 'Importing...' : 'Import ' + plural(importable, 'award', 'awards'), disabled: !((importable > 0 || (counts.conflict || 0) > 0) && !ui.busy), attrs: { 'data-action': 'loot-commit', 'data-key': 'loot-commit' } },
     };
   }
 
@@ -118,6 +174,10 @@
     if (r.unchanged) text += ' ' + plural(r.unchanged, 'was', 'were') + ' already here.';
     if (r.skippedOtherRaid) text += ' ' + plural(r.skippedOtherRaid, 'award', 'awards') + ' on other raids ' + (r.skippedOtherRaid === 1 ? 'was' : 'were') + ' left out.';
     if (r.skippedOtherDay) text += ' ' + plural(r.skippedOtherDay, 'award', 'awards') + ' from other days ' + (r.skippedOtherDay === 1 ? 'was' : 'were') + ' left out.';
+    const c = r.conflicts || {};
+    if (c.kept || c.exported) text += ' Conflicts: ' + (c.kept || 0) + ' kept as the officer\'s, ' + (c.exported || 0) + ' taken from the export.';
+    const d = r.deleted || {};
+    if (d.kept || d.readded) text += ' Deleted awards: ' + (d.kept || 0) + ' kept deleted, ' + (d.readded || 0) + ' added back.';
     return text;
   }
 
@@ -209,13 +269,6 @@
       '<div><button type="button" class="gs-btn gs-btn-sm" data-action="loot-reload" data-key="loot-reload">Try again</button></div></div></section>';
   }
 
-  function replaceAward(x, award) {
-    if (!award || !x.data || !Array.isArray(x.data.awards)) return;
-    x.data.awards = x.data.awards.map(function (w) { return w.id === award.id ? award : w; });
-  }
-
-  function fail(err) { G.app.handleError(err, { pageAlert: true }); }
-
   function reloadAwards(c) {
     return G.api.loot.raid(c.gid, c.rid).then(function (res) { c.x.data = res; }, function () { /* the old list stays */ });
   }
@@ -272,6 +325,8 @@
     return {
       inserted: acc.inserted + (r.inserted || 0), updated: acc.updated + (r.updated || 0), unchanged: acc.unchanged + (r.unchanged || 0),
       skippedOtherRaid: acc.skippedOtherRaid + (r.skippedOtherRaid || 0), skippedOtherDay: acc.skippedOtherDay + (r.skippedOtherDay || 0),
+      conflicts: { kept: ((acc.conflicts || {}).kept || 0) + ((r.conflicts || {}).kept || 0), exported: ((acc.conflicts || {}).exported || 0) + ((r.conflicts || {}).exported || 0) },
+      deleted: { kept: ((acc.deleted || {}).kept || 0) + ((r.deleted || {}).kept || 0), readded: ((acc.deleted || {}).readded || 0) + ((r.deleted || {}).readded || 0) },
     };
   }
 
@@ -363,6 +418,26 @@
     G.app.render();
   };
 
+  // A conflict or deleted row's choice: the officer's version (the default) or the export's.
+  G.handlers.change['loot-resolve'] = function (el) {
+    const c = cur();
+    if (!c || !el.checked) return;
+    const ui = c.x.ui;
+    ui.resolutions = ui.resolutions || {};
+    if (el.value === 'export') ui.resolutions[el.getAttribute('data-checksum')] = 'export'; else delete ui.resolutions[el.getAttribute('data-checksum')];
+    G.app.render();
+    G.ui.focusByKey(el.getAttribute('data-key'));
+  };
+
+  // One action puts every conflict and deleted row back to the officer's version.
+  G.handlers.click['loot-keep-all'] = function () {
+    const c = cur();
+    if (!c) return;
+    c.x.ui.resolutions = {};
+    G.app.render();
+    G.ui.focusByKey('loot-keep-all');
+  };
+
   G.handlers.click['loot-commit'] = function () {
     const c = cur();
     if (!c || c.x.ui.busy || !c.x.ui.parsed) return;
@@ -371,8 +446,9 @@
     ui.error = '';
     G.app.render();
     const include = !!ui.includeOtherDay;
-    const start = { inserted: 0, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 0 };
-    inChunks(ui.parsed.awards, function (part) { return G.api.loot.commit(c.gid, c.rid, part, include); }, mergeCommit, start).then(function (result) {
+    const resolutions = exportChoices(ui);
+    const start = { inserted: 0, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 0, conflicts: { kept: 0, exported: 0 }, deleted: { kept: 0, readded: 0 } };
+    inChunks(ui.parsed.awards, function (part) { return G.api.loot.commit(c.gid, c.rid, part, include, resolutions); }, mergeCommit, start).then(function (result) {
       return reloadAwards(c).then(function () {
         ui.busy = false;
         ui.result = result;
@@ -462,48 +538,6 @@
     });
   };
 
-  G.handlers.change['loot-tag'] = function (sel) {
-    const c = cur();
-    if (!c) return;
-    sel.disabled = true;
-    G.api.loot.update(c.gid, sel.getAttribute('data-aid'), { tag: sel.value }).then(function (res) {
-      replaceAward(c.x, res && res.award);
-      st().pageAlert = '';
-      G.app.render();
-    }, function (err) { fail(err); });
-  };
-
-  function awardOf(c, aid) {
-    return (c.x.data.awards || []).filter(function (w) { return w.id === aid; })[0] || null;
-  }
-
-  G.handlers.click['loot-note'] = function (el) {
-    const c = cur();
-    const award = c ? awardOf(c, el.getAttribute('data-aid')) : null;
-    if (!award) return;
-    G.ui.openDialog('<form class="gs-dialog-form" data-submit="loot-note-form" data-aid="' + esc(award.id) + '" novalidate>' +
-      '<h2 class="gs-dialog-title" id="dlg-title">Note on ' + esc(award.itemName || 'this award') + '</h2>' +
-      '<div class="gs-field"><label class="gs-label" for="dlg-note">Note (optional, up to ' + NOTE_MAX + ' characters)</label><input class="gs-input" type="text" id="dlg-note" name="note" maxlength="' + NOTE_MAX + '" autocomplete="off" data-field="note" value="' + esc(award.note || '') + '">' +
-      '<p class="gs-field-error" id="dlg-err-note" role="alert" hidden></p></div>' +
-      '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
-      '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">Save note</button></div></form>', { labelledBy: 'dlg-title' });
-    const input = document.getElementById('dlg-note');
-    if (input) input.focus();
-  };
-
-  G.handlers.submit['loot-note-form'] = function (form) {
-    const c = cur();
-    if (!c) return;
-    const note = String(form.elements.note.value || '').trim();
-    G.ui.setText('dlg-err-note', '');
-    if (note.length > NOTE_MAX) { G.ui.setText('dlg-err-note', 'Keep the note to ' + NOTE_MAX + ' characters.'); form.elements.note.focus(); return; }
-    G.ui.runDialog(form, G.api.loot.update(c.gid, form.getAttribute('data-aid'), { note: note }), function (res) {
-      replaceAward(c.x, res && res.award);
-      st().pageAlert = '';
-      G.app.render();
-    });
-  };
-
   // The confirm dialog for deleting an award (the raid night and person pages use it too, with their own submit handler).
   function deleteDialogHtml(award, submit) {
     return '<form class="gs-dialog-form" data-submit="' + esc(submit || 'loot-delete-form') + '" data-aid="' + esc(award.id) + '" novalidate>' +
@@ -513,24 +547,6 @@
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Delete award</button></div></form>';
   }
 
-  G.handlers.click['loot-delete'] = function (el) {
-    const c = cur();
-    const award = c ? awardOf(c, el.getAttribute('data-aid')) : null;
-    if (!award) return;
-    G.ui.openDialog(deleteDialogHtml(award), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
-  };
-
-  G.handlers.submit['loot-delete-form'] = function (form) {
-    const c = cur();
-    if (!c) return;
-    const aid = form.getAttribute('data-aid');
-    G.ui.runDialog(form, G.api.loot.remove(c.gid, aid), function () {
-      c.x.data.awards = (c.x.data.awards || []).filter(function (w) { return w.id !== aid; });
-      st().pageAlert = '';
-      G.app.render();
-    });
-  };
-
   G.pages.raidLoot = {
     STATUS: STATUS,
     stateFor: stateFor,
@@ -539,6 +555,7 @@
     cardHtml: cardHtml,
     addDialogHtml: addDialogHtml,
     deleteDialogHtml: deleteDialogHtml,
+    rosterNames: rosterNames,
     summaryHtml: summaryHtml,
     importPanelHtml: importPanelHtml,
     resultLine: resultLine,

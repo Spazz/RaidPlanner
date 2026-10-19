@@ -53,6 +53,8 @@
     '/js/guild/pages-person-loot.js',
     '/js/guild/pages-loot-hub.js',
     '/js/guild/pages-loot-night.js',
+    '/js/guild/pages-loot-award.js',
+    '/js/guild/pages-loot-fix.js',
     '/js/guild/pages-person-trial.js',
     '/js/guild/pages-raids.js',
     '/js/guild/pages-planner-landing.js',
