@@ -1874,7 +1874,7 @@ check('sizes: a team\'s size is editable (10 / 20 / 25 / 40), alone or with the 
   assert.equal((await s.audits('team.size')).length, before);
   assert.equal((await s.w.rows('SELECT size FROM teams WHERE id = ?', s.A))[0].size, 25);
   const empty = await patch('alice', {});
-  assert.deepEqual([empty.status, empty.json.message], [400, 'Send a name, archived, size, or any of them.']);
+  assert.deepEqual([empty.status, empty.json.message], [400, 'Send a name, archived, size, trialDays, or any of them.']);
   // A bad size next to a good name writes neither.
   assert.equal((await patch('alice', { name: 'Should not stick', size: 15 })).status, 400);
   assert.equal((await s.w.rows('SELECT name FROM teams WHERE id = ?', s.A))[0].name, 'Alpha Prime');

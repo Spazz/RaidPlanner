@@ -70,6 +70,7 @@ export const AUDIT_ACTIONS = [
   'guest.revoke',
   'public.update',
   'team.size',
+  'team.trial_days',
   'raid.settings',
   'roster.publish',
   'roster.unpublish',

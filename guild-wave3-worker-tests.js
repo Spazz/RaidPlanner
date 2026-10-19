@@ -645,6 +645,72 @@ check('applications accept: a Trial person with the character as Main, trial dat
   assert.equal((await s.call('gm', 'POST', `/applications/${taken.id}/accept`, {})).json.error, 'already_decided');
 });
 
+check('lane W: team trial length (PATCH trialDays, accept default), roster raidRole and team.trialDays, applicationFlags in the guild context', async () => {
+  const s = await scenario({ version: 'tbc', teams: 2, members: ['m1'], leads: ['lead'] });
+  const teamOf = async (who, tid) => (await s.ok(who, 'GET', '')).teams.find((t) => t.id === tid);
+  // Default 14 everywhere a team is sent; nothing applied yet: flags are 0 per team for the officer, {} for the member.
+  assert.equal((await teamOf('gm', s.tids[0])).trialDays, 14);
+  const ctx0 = await s.ok('gm', 'GET', '');
+  assert.deepEqual(ctx0.applicationFlags, { [s.tids[0]]: 0, [s.tids[1]]: 0 });
+  assert.deepEqual((await s.ok('m1', 'GET', '')).applicationFlags, {});
+  assert.deepEqual((await s.ok('lead', 'GET', '')).applicationFlags, { [s.tids[0]]: 0 }, 'a lead only counts their own team');
+  // PATCH validation, permission, audit.
+  for (const bad of [0, 91, 1.5, '14', null]) {
+    const res = await s.call('gm', 'PATCH', `/teams/${s.tids[0]}`, { trialDays: bad });
+    assert.equal(res.status, 400, String(bad));
+    assert.deepEqual([res.json.field, res.json.message], ['trialDays', 'Trial length is 1 to 90 days.']);
+  }
+  assert.equal((await s.call('lead', 'PATCH', `/teams/${s.tids[0]}`, { trialDays: 7 })).status, 403);
+  assert.equal((await s.call('gm', 'PATCH', `/teams/${s.tids[0]}`, {})).status, 400);
+  const patched = await s.ok('gm', 'PATCH', `/teams/${s.tids[0]}`, { trialDays: 21 }, 200);
+  assert.equal(patched.team.trialDays, 21);
+  await s.ok('gm', 'PATCH', `/teams/${s.tids[0]}`, { trialDays: 21 }, 200);
+  assert.equal(await s.w.count('audit_log', "action = 'team.trial_days'"), 1, 'an unchanged value is not audited');
+  assert.equal((await teamOf('m1', s.tids[0])).trialDays, 21);
+  assert.equal((await teamOf('m1', s.tids[1])).trialDays, 14, 'the other team keeps its own');
+  // Applications: the flag counts New ones for the wanted team only.
+  await s.ok('gm', 'PUT', '/applications/settings', { enabled: true, questions: [] }, 200);
+  const send = async (teamId, name, cls, spec) => {
+    const a = applicant(s);
+    await a.form();
+    assert.equal((await a.send({ teamId, name, class: cls, spec })).status, 201);
+  };
+  await send(s.tids[0], 'Flagone', 'MAGE', 'Fire');
+  await send(s.tids[0], 'Flagtwo', 'PRIEST', 'Holy');
+  await send(s.tids[1], 'Flagthree', 'ROGUE', 'Combat');
+  assert.deepEqual((await s.ok('gm', 'GET', '')).applicationFlags, { [s.tids[0]]: 2, [s.tids[1]]: 1 });
+  assert.deepEqual((await s.ok('lead', 'GET', '')).applicationFlags, { [s.tids[0]]: 2 });
+  assert.deepEqual((await s.ok('m1', 'GET', '')).applicationFlags, {});
+  const list = (await s.ok('gm', 'GET', '/applications')).applications;
+  const two = list.find((x) => x.name === 'Flagtwo');
+  await s.ok('gm', 'PATCH', `/applications/${two.id}`, { status: 'reviewing' }, 200);
+  assert.deepEqual((await s.ok('gm', 'GET', '')).applicationFlags, { [s.tids[0]]: 1, [s.tids[1]]: 1 }, 'only status new counts');
+  // Accept uses the chosen team's length; an explicit trialDays still wins; the team chosen in the body decides.
+  const one = list.find((x) => x.name === 'Flagone');
+  const acc = await s.ok('lead', 'POST', `/applications/${one.id}/accept`, {}, 201);
+  assert.equal(acc.person.trialEnd, '2027-02-05', '2027-01-15 + 21');
+  const three = list.find((x) => x.name === 'Flagthree');
+  assert.equal((await s.ok('gm', 'POST', `/applications/${three.id}/accept`, {}, 201)).person.trialEnd, '2027-01-29', 'Bravo is still 14');
+  await send(s.tids[1], 'Moved', 'MAGE', 'Frost');
+  const moved = (await s.ok('gm', 'GET', '/applications?status=open')).applications.find((x) => x.name === 'Moved');
+  assert.equal((await s.ok('gm', 'POST', `/applications/${moved.id}/accept`, { teamId: s.tids[0] }, 201)).person.trialEnd, '2027-02-05', 'placed on Alpha: its 21 days');
+  await send(s.tids[0], 'Explicit', 'MAGE', 'Arcane');
+  const explicit = (await s.ok('gm', 'GET', '/applications?status=open')).applications.find((x) => x.name === 'Explicit');
+  assert.equal((await s.ok('gm', 'POST', `/applications/${explicit.id}/accept`, { trialDays: 5 }, 201)).person.trialEnd, '2027-01-20');
+  // GET /roster?team=: team.trialDays and a raidRole per person from the shown character (null without a spec).
+  await s.person({ name: 'Tanky', spec: 'Protection' });
+  await s.person({ name: 'Healy', cls: 'PRIEST', spec: 'Holy' });
+  await s.person({ name: 'Stabby', cls: 'ROGUE', spec: 'Combat' });
+  await s.person({ name: 'Zappy', cls: 'MAGE', spec: 'Fire' });
+  const bare = await s.ok('gm', 'POST', '/roster', { teamId: s.tids[0], name: 'Specless', class: 'MAGE', mainSpec: null, offSpec: null, status: 'raider' });
+  const roster = await s.ok('m1', 'GET', `/roster?team=${s.tids[0]}`);
+  assert.equal(roster.team.trialDays, 21);
+  const roleOf = (name) => roster.people.find((p) => p.shown.name === name).raidRole;
+  assert.deepEqual(['Tanky', 'Healy', 'Stabby', 'Zappy', 'Specless'].map(roleOf), ['tank', 'healer', 'melee', 'ranged', null]);
+  assert(bare.person.id);
+  assert.equal((await s.ok('gm', 'GET', `/roster?team=${s.tids[1]}`)).team.trialDays, 14);
+});
+
 check('applications accept: an account that already belongs to a person of the guild is not linked a second time', async () => {
   const s = await scenario({ version: 'tbc', members: ['m1'] });
   await s.person({ name: 'Existing', link: 'm1' });

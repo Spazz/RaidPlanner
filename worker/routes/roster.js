@@ -63,7 +63,7 @@ export function requireEdit(guildContext, teamId, extra = {}) {
 // A target team (create, import, add, move-to) must be active and in this guild.
 export async function requireTarget(db, guildId, teamId, field = 'teamId') {
   if (!isId('t', teamId)) throw bad('Pick a team.', field);
-  const team = await db.prepare('SELECT id, name, archived FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guildId).first();
+  const team = await db.prepare('SELECT id, name, archived, trial_days FROM teams WHERE id = ? AND guild_id = ?').bind(teamId, guildId).first();
   if (!team) throw bad('That team does not exist in this guild.', field);
   if (team.archived === 1) throw bad('That team is archived.', field);
   return team;
@@ -217,13 +217,13 @@ export async function getRoster(ctx) {
   requireAction(guildContext, 'roster.view');
   const teamId = new URL(ctx.request.url).searchParams.get('team');
   if (!isId('t', teamId)) throw bad('Pick a team.', 'team');
-  const team = await ctx.db.prepare('SELECT id, name, archived FROM teams WHERE id = ? AND guild_id = ?')
+  const team = await ctx.db.prepare('SELECT id, name, archived, trial_days FROM teams WHERE id = ? AND guild_id = ?')
     .bind(teamId, guildContext.guild.id).first();
   if (!team) throw bad('That team does not exist in this guild.', 'team');
   const today = guildToday(guildContext.guild, ctx.now());
   const people = await loadRosterRows(ctx.db, guildContext, team, today, viewerOf(ctx));
   return jsonResponse({
-    team: { id: team.id, name: team.name, archived: team.archived === 1 },
+    team: { id: team.id, name: team.name, archived: team.archived === 1, trialDays: team.trial_days },
     today,
     can: { edit: allows(guildContext.can, 'roster.edit', team.id) },
     people,

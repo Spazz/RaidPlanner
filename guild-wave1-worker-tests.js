@@ -318,6 +318,7 @@ check('audit-view: a sentence for every action, from the names looked up (exact 
     [row('raid.manual', 'raid', 'r_1', { manual: false }, { manual: true, present: 20, reason: 'x' }), 'Entered attendance by hand for the raid on Tue Oct 21 (Alpha): 20 present'],
     [row('raid.manual', 'raid', 'r_1', { manual: true }, { manual: false, reason: 'x' }), 'Went back from hand-entered attendance on the raid on Tue Oct 21 (Alpha)'],
     [row('team.size', 'team', 't_a', { size: 25 }, { size: 20 }), 'Set the raid size of Alpha to 20'],
+    [row('team.trial_days', 'team', 't_a', { trialDays: 14 }, { trialDays: 21 }), 'Set the trial length of Alpha to 21 days'],
     [row('raid.settings', 'raid', 'r_1', { size: null, signupCloseHours: null }, { size: 20, signupCloseHours: null }), 'Changed the settings of the raid on Tue Oct 21 (Alpha): raid size 20'],
     [row('raid.settings', 'raid', 'r_1', { size: 20, signupCloseHours: null }, { size: null, signupCloseHours: 24 }), 'Changed the settings of the raid on Tue Oct 21 (Alpha): raid size automatic and sign-ups close 24 hours before the start'],
     [row('raid.settings', 'raid', 'r_1', { size: null, signupCloseHours: 1 }, { size: null, signupCloseHours: null }), 'Changed the settings of the raid on Tue Oct 21 (Alpha): sign-up deadline back to the team default'],

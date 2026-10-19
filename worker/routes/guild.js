@@ -9,7 +9,7 @@ import { defaultTeamSize } from '../raid-zones.js';
 import { readManageable } from '../session.js';
 import { FOREVER_RULESETS, REGIONS, findRealm, isVersion } from '../realms.js';
 import { rosterOptions } from '../roster-data.js';
-import { guildToday, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
+import { guildToday, loadApplicationFlags, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
 import { loadAttendanceFlags } from '../attendance-store.js';
 import { loadTeams } from './teams.js';
 import { devPayload } from './dev-view-as.js';
@@ -51,6 +51,7 @@ export async function guildPayload(db, guildContext, nowMs = Date.now()) {
     },
     rosterOptions: rosterOptions(),
     rosterFlags: await loadRosterFlags(db, guildContext, guildToday(guildContext.guild, nowMs)),
+    applicationFlags: await loadApplicationFlags(db, guildContext),
     attendanceFlags: await loadAttendanceFlags(db, guildContext),
     pendingClaims: await loadPendingClaims(db, guildContext),
   };

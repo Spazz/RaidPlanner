@@ -35,7 +35,6 @@ export const APPLY_PER_COOKIE = 3;
 export const APPLY_COOKIE_WINDOW_MS = 60 * 60 * 1000;
 export const APPLY_PER_GUILD_DAY = 20;
 export const DAY_MS = 24 * 60 * 60 * 1000;
-export const ACCEPT_TRIAL_DAYS = 14;
 const COOKIE_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const forbidden = () => new HttpError(403, 'forbidden', 'You do not have permission to do that.');
 
@@ -335,7 +334,7 @@ export async function acceptApplication(ctx) {
   if (row.status !== 'new' && row.status !== 'reviewing') throw new HttpError(409, 'already_decided', 'That application was decided already.');
   const team = await requireTarget(db, guild.id, body.teamId === undefined || body.teamId === null ? row.team_id : body.teamId);
   requireEdit(guildContext, team.id);
-  const days = body.trialDays === undefined || body.trialDays === null ? ACCEPT_TRIAL_DAYS : body.trialDays;
+  const days = body.trialDays === undefined || body.trialDays === null ? team.trial_days : body.trialDays;
   if (!Number.isInteger(days) || days < 1 || days > 90) throw bad('The trial is 1 to 90 days.', 'trialDays');
   const now = ctx.now();
   const today = guildToday(guild, now);

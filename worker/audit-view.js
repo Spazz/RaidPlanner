@@ -36,7 +36,7 @@ export const ACTION_GROUP = Object.freeze({
   'claim.create': 'bnet', 'claim.withdraw': 'bnet', 'claim.approve': 'bnet', 'claim.reject': 'bnet',
   'guild.create': 'settings', 'guild.update': 'settings', 'guild.claim': 'settings', 'guild.delete': 'settings', 'guild.export': 'settings', 'team.create': 'settings', 'team.rename': 'settings',
   'team.archive': 'settings', 'team.restore': 'settings', 'roles.set': 'settings', 'guild_master.transfer': 'settings',
-  'guild_master.auto_promote': 'settings', 'access.remove': 'settings', 'access.restore': 'settings', 'account.delete': 'settings', 'team.size': 'settings',
+  'guild_master.auto_promote': 'settings', 'access.remove': 'settings', 'access.restore': 'settings', 'account.delete': 'settings', 'team.size': 'settings', 'team.trial_days': 'settings',
   // Written with no guild (the account's own sign-ins), so they never reach a guild's log; mapped so the action list stays complete.
   'discord.link': 'settings', 'discord.unlink': 'settings',
   // Phase 7: the role editor, the Discord role mapping and sync, guest links and the public page. Settings, like roles.set and access.*.
@@ -191,6 +191,7 @@ export function describeRow(row, names = {}) {
     case 'team.rename': return `Renamed a team to ${team(ent)}`;
     case 'team.archive': return `Archived the team ${team(ent)}`;
     case 'team.restore': return `Restored the team ${team(ent)}`;
+    case 'team.trial_days': return `Set the trial length of ${team(ent)} to ${after.trialDays === undefined ? 'a new length' : after.trialDays + ' days'}`;
     case 'team.size': return `Set the raid size of ${team(ent)} to ${after.size === undefined ? 'a new size' : after.size}`;
     case 'roles.set': {
       const parts = [];

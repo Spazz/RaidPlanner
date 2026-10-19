@@ -4,6 +4,7 @@
 import { isOwnPlayer, memberSql } from './membership.js';
 import { allows, isGranted } from './permissions.js';
 import { toPerson } from './person.js';
+import { raidRoleOf } from './recruit-data.js';
 import { roleOf, todayIn, trialFlag } from './roster-data.js';
 
 // Avatar URLs carry the user's Discord ID, so only the people who can open People and roles (where avatars are
@@ -173,6 +174,20 @@ export async function loadRosterFlags(db, guildContext, today) {
   return flags;
 }
 
+// { [teamId]: n }: New applications wanting each active team, for the teams the viewer can edit; {} for everyone else. One query.
+export async function loadApplicationFlags(db, guildContext) {
+  if (!isGranted(guildContext.can['roster.edit'])) return {};
+  const result = await db.prepare(
+    `SELECT t.id, (SELECT COUNT(*) FROM applications a WHERE a.guild_id = t.guild_id AND a.team_id = t.id AND a.status = 'new') AS n
+       FROM teams t WHERE t.guild_id = ? AND t.archived = 0`,
+  ).bind(guildContext.guild.id).all();
+  const flags = {};
+  for (const team of result.results) {
+    if (allows(guildContext.can, 'roster.edit', team.id)) flags[team.id] = team.n;
+  }
+  return flags;
+}
+
 // The pending character claims of the guild, for the Attendance nav badge (the Review queue lists them): the same count the Needs attention item shows.
 // Only for people who can decide claims (roster.edit anywhere); 0 for everyone else.
 export async function loadPendingClaims(db, guildContext) {
@@ -229,6 +244,7 @@ export async function loadRosterRows(db, guildContext, team, today, viewer) {
       leftReason: player.left_reason,
       trialFlag: trialFlag(player.status, player.trial_end, today),
       version: player.version,
+      raidRole: shown.mainSpec ? raidRoleOf(shown.class, shown.mainSpec) : null,
       shown: { id: shown.id, name: shown.name, class: shown.class, mainSpec: shown.mainSpec, offSpec: shown.offSpec, role: shown.role, isMain: shown.isMain },
       main: { id: main.view.id, name: main.view.name, class: main.view.class, team: { id: main.view.team.id, name: main.view.team.name } },
       names: onTeam.map((entry) => entry.view.name).sort((a, b) => a.localeCompare(b)),

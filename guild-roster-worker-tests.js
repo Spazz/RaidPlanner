@@ -857,7 +857,7 @@ check('GET /roster: one row per person with a character on the team, the shown c
 
   const alphaList = await s.call('erin', 'GET', `/roster?team=${alpha}`);
   assert.equal(alphaList.status, 200, JSON.stringify(alphaList.json));
-  assert.deepEqual(alphaList.json.team, { id: alpha, name: 'Alpha', archived: false });
+  assert.deepEqual(alphaList.json.team, { id: alpha, name: 'Alpha', archived: false, trialDays: 14 });
   assert.equal(alphaList.json.today, '2027-01-15');
   assert.deepEqual(alphaList.json.can, { edit: false });
   const [first, second] = alphaList.json.people;
@@ -1229,7 +1229,7 @@ check('archived teams: the roster opens read/edit, but nothing new can target th
   assert.equal((await s.call('alice', 'PATCH', `/teams/${B}`, { archived: true })).status, 200);
   const list = await s.call('erin', 'GET', `/roster?team=${B}`);
   assert.equal(list.status, 200);
-  assert.deepEqual(list.json.team, { id: B, name: 'Bravo', archived: true });
+  assert.deepEqual(list.json.team, { id: B, name: 'Bravo', archived: true, trialDays: 14 });
   assert.equal(list.json.people.length, 1);
   assert.equal((await s.call('bob', 'GET', `/roster/${person.person.id}`)).json.characters[0].team.archived, true);
   assert.equal((await s.call('bob', 'POST', '/roster', mainBody(B, 'Cassia'))).json.field, 'teamId');

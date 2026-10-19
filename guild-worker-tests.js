@@ -545,11 +545,11 @@ check('create guild: 201 returns the guild payload; the servers list drops the t
   const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A), manageable(SERVER_B)]);
   const created = await w.call(jar, 'POST', '/api/guild', GUILD_BODY);
   assert.equal(created.status, 201);
-  assert.deepEqual(Object.keys(created.json).sort(), ['attendanceFlags', 'guild', 'me', 'pendingClaims', 'rosterFlags', 'rosterOptions', 'teams']);
+  assert.deepEqual(Object.keys(created.json).sort(), ['applicationFlags', 'attendanceFlags', 'guild', 'me', 'pendingClaims', 'rosterFlags', 'rosterOptions', 'teams']);
   assert.deepEqual(Object.keys(created.json.guild).sort(), ['createdAt', 'discordServerId', 'gameVersion', 'id', 'name', 'realm', 'realmKind', 'realmSlug', 'region', 'timeZone'], 'the Guild Master also gets the Discord server id (Guild settings > General shows it)');
   assert.equal(created.json.guild.gameVersion, 'tbc');
   assert(ID.guild.test(created.json.guild.id));
-  assert.deepEqual(created.json.teams.map(({ id, ...rest }) => rest), [{ name: 'Main team', size: 25, archived: false, players: 0, leads: [] }]);
+  assert.deepEqual(created.json.teams.map(({ id, ...rest }) => rest), [{ name: 'Main team', size: 25, archived: false, trialDays: 14, players: 0, leads: [] }]);
   assert.deepEqual(created.json.me.roles, [{ role: 'guild_master' }]);
   assert.equal(created.json.me.can['guild.roles'], 'guild');
   const me = (await w.call(jar, 'GET', '/auth/me')).json;
@@ -616,7 +616,7 @@ check('create guild v2: one team is "Main team" and teamNames is ignored', async
   const { jar } = await signIn(w, PEOPLE.alice, [manageable(SERVER_A)]);
   const created = await w.call(jar, 'POST', '/api/guild', { ...GUILD_BODY, multipleTeams: false, teamNames: ['Ignored', 'Also ignored'], teamName: 'Old field' });
   assert.equal(created.status, 201, JSON.stringify(created.json));
-  assert.deepEqual(created.json.teams.map(({ id, ...rest }) => rest), [{ name: 'Main team', size: 25, archived: false, players: 0, leads: [] }]);
+  assert.deepEqual(created.json.teams.map(({ id, ...rest }) => rest), [{ name: 'Main team', size: 25, archived: false, trialDays: 14, players: 0, leads: [] }]);
   assert.equal(await w.count('teams'), 1);
 });
 
@@ -1023,7 +1023,7 @@ check('teams: create, rename, archive and restore; payload shape; case-insensiti
   const created = await s.w.call(s.alice, 'POST', `${s.guildPath}/teams`, { name: 'Gruul Run' });
   assert.equal(created.status, 201);
   assert.deepEqual(Object.keys(created.json), ['team']);
-  assert.deepEqual(Object.keys(created.json.team).sort(), ['archived', 'id', 'leads', 'name', 'players', 'size']);
+  assert.deepEqual(Object.keys(created.json.team).sort(), ['archived', 'id', 'leads', 'name', 'players', 'size', 'trialDays']);
   assert(ID.team.test(created.json.team.id));
   const teamPath = `${s.guildPath}/teams/${created.json.team.id}`;
   assert.equal((await s.w.call(s.alice, 'PATCH', teamPath, {})).status, 400);
@@ -1725,7 +1725,7 @@ check('claim: an allowlisted manager takes a guild that has no Guild Master (no 
   assert.equal((await w.call(fresh, 'GET', '/auth/me')).json.create.claimable.length, 1);
   const done = await claim(fresh);
   assert.equal(done.status, 200, JSON.stringify(done.json));
-  assert.deepEqual(Object.keys(done.json).sort(), ['attendanceFlags', 'guild', 'me', 'pendingClaims', 'rosterFlags', 'rosterOptions', 'teams']);
+  assert.deepEqual(Object.keys(done.json).sort(), ['applicationFlags', 'attendanceFlags', 'guild', 'me', 'pendingClaims', 'rosterFlags', 'rosterOptions', 'teams']);
   assert.deepEqual(done.json.me.roles, [{ role: 'guild_master' }]);
   assert.equal(done.json.me.can['guild.roles'], 'guild');
   assert.equal(await w.count('user_servers', 'user_id = (SELECT id FROM users WHERE discord_id = ?) AND server_id = ?', PEOPLE.frank.id, SERVER_A), 1);
