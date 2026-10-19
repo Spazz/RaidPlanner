@@ -282,7 +282,8 @@
     const tz = zoneOfGuild(gd);
     const now = typeof opts.now === 'number' ? opts.now : Date.now();
     const today = typeof data.today === 'string' && dateParts(data.today) ? data.today : (G.ui.dayKeyInZone(now, tz) || '');
-    const raids = (Array.isArray(data.week) ? data.week : []).filter(function (w) { return w && w.raidId; })
+    const weekRaids = Array.isArray(data.week) ? data.week : (data.week && Array.isArray(data.week.raids) ? data.week.raids : []); // round 6: week is { ..., raids }
+    const raids = weekRaids.filter(function (w) { return w && w.raidId; })
       .sort(function (p, q) { return (num(p.startsAt) - num(q.startsAt)) || (String(p.raidId) < String(q.raidId) ? -1 : 1); });
     const items = (Array.isArray(data.items) ? data.items : []).filter(function (it) { return it && !it.readiness && !!kindOf(it.kind); });
     const weekIds = {};

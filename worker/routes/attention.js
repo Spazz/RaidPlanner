@@ -3,8 +3,15 @@
 // each kind of item is limited to the teams the viewer holds the matching right for.
 //
 // Home redesign (round 2): the payload also carries `hidden` (what a shared dismissal hides now), `counts` (open watch entries and rank suggestions per
-// team), the `week` block (every raid from yesterday to today + 5 with its readiness facts and a status word) and `readiness: true` on the items
-// that are facts about a raid, not to-dos; `total` counts open, unhidden to-dos only. The shapes are documented at the top of worker/attention.js.
+// team), the `week` block and `readiness: true` on the items that are facts about a raid, not to-dos; `total` counts open, unhidden to-dos only. The shapes are
+// documented at the top of worker/attention.js.
+//
+// Home round 6: `week` is an OBJECT, { offset, start, end, resetDay, autoAdvanced, raids }: the guild's reset week (the policy's reset day, else the region's), each
+// raid with its readiness facts, a status word, the roles grid's `people` and `openSeats`. GET /attention opens on the current week and jumps to the next one when
+// the current has no raid left to start and the next has one (autoAdvanced true). The week arrows read:
+//   GET    /api/guild/:gid/attention/week?offset=N    -> { week }   N = whole reset weeks from the current one, an integer -8..8 (absent = 0), never auto-jumps
+// Same rights as /attention. 400 bad_request with `field: 'offset'` for anything else. The week's raids, sign-ups, seats, characters and Late notices are read in the
+// same ONE batch as the rest (no per-raid queries).
 //   POST   /api/guild/:gid/attention/dismissals          { itemId }   dismiss / snooze / mark Reviewed (watch) the item for every officer
 //   DELETE /api/guild/:gid/attention/dismissals/:itemid               Restore it
 // The server decides the mode, the snooze length (`until`) and the fingerprint from the item's kind (DISMISS_RULES); a client sends the item id only.
@@ -12,12 +19,12 @@
 import { HttpError, jsonResponse } from '../http.js';
 import { auditStatement } from '../audit.js';
 import { newId } from '../ids.js';
-import { addDays } from '../attendance-calendar.js';
+import { addDays, weekStart } from '../attendance-calendar.js';
 import { watchList } from '../attendance-metrics.js';
 import { ladderOf, rankReview } from '../rank-ladder.js';
 import { makePolicyResolver, policyRowsStatement } from '../attendance-store.js';
 import { displayCharacter, groupBy } from '../attendance-view.js';
-import { ATTENTION_VIEW_ACTIONS, LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, WEEK_DAYS_AHEAD, WEEK_DAYS_BACK, DISMISS_RULES, buildAttention, dismissalUntil, findAttentionItem } from '../attention.js';
+import { ATTENTION_VIEW_ACTIONS, LOOT_LOOKBACK_DAYS, SIGNUP_LOOKAHEAD_DAYS, TRIAL_DAYS, WEEK_OFFSET_MAX, DISMISS_RULES, buildAttention, dismissalUntil, findAttentionItem } from '../attention.js';
 import { onboardingStatement, shapeOnboarding } from '../onboarding.js';
 import { allows, isGranted, loadGuildContext } from '../permissions.js';
 import { LOG_GRACE_HOURS, LOG_NUDGE_LOOKBACK_DAYS, RAID_DURATION_HOURS } from '../duties.js';
@@ -30,6 +37,7 @@ import { metricsRaid, metricsRow } from './attendance.js';
 const DAY_MS = 86400000;
 const VIEW_ACTIONS = ATTENTION_VIEW_ACTIONS;
 const READ_CAP = 200;
+const WEEK_ROW_CAP = 4000;
 
 // Everyone who gets the page: the viewer holds at least one of the editing rights somewhere.
 export const canSeeAttention = (can) => VIEW_ACTIONS.some((action) => isGranted(can[action]));
@@ -50,8 +58,21 @@ export async function getAttention(ctx) {
   return jsonResponse({ today, ...buildAttention(input), onboarding: shapeOnboarding(onboarding) });
 }
 
-// Reads everything buildAttention takes, in ONE batch. -> { input, onboarding, today }
-async function readAttentionInput(ctx, guildContext) {
+// GET /attention/week?offset=N -> { week }: another reset week for the arrows (no auto-jump). Same rights as /attention.
+export async function getAttentionWeek(ctx) {
+  const guildContext = await viewerContext(ctx);
+  const raw = new URL(ctx.request.url).searchParams.get('offset');
+  const offset = raw === null ? 0 : /^-?\d{1,2}$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isInteger(offset) || Math.abs(offset) > WEEK_OFFSET_MAX) {
+    throw new HttpError(400, 'bad_request', `Send a whole number of weeks from -${WEEK_OFFSET_MAX} to ${WEEK_OFFSET_MAX}.`, { field: 'offset' });
+  }
+  const { input } = await readAttentionInput(ctx, guildContext, offset);
+  return jsonResponse({ week: buildAttention(input).week });
+}
+
+// Reads everything buildAttention takes, in ONE batch (after one tiny read of the teams and the policy, which the week window needs). `weekOffset`: an integer
+// = that reset week only; left out = this week and the next (buildAttention picks, see the auto-jump). -> { input, onboarding, today }
+async function readAttentionInput(ctx, guildContext, weekOffset) {
   const { db } = ctx;
   const can = guildContext.can;
   const guild = guildContext.guild;
@@ -62,14 +83,21 @@ async function readAttentionInput(ctx, guildContext) {
 
   // The teams whose attendance the watch list reads: the ones the viewer may review. Teams come first (one tiny read) so the big reads are
   // limited to them; a Guild Master's list is every team.
-  const teamResult = await db.prepare('SELECT id, name, size, archived FROM teams WHERE guild_id = ?').bind(guild.id).all();
+  const [teamResult, policyResult] = await db.batch([db.prepare('SELECT id, name, size, archived FROM teams WHERE guild_id = ?').bind(guild.id), policyRowsStatement(db, guild.id)]);
   const teams = teamResult.results;
+  const resolver = makePolicyResolver(guild, policyResult.results);
+  const resetDay = resolver.resetDay();
+  // The reset weeks the week block reads: the one asked for, else this one and the next (the auto-jump looks at both).
+  const hasOffset = Number.isInteger(weekOffset);
+  const weekFrom = addDays(weekStart(today, resetDay), hasOffset ? 7 * weekOffset : 0);
+  const weekTo = addDays(weekFrom, hasOffset ? 6 : 13);
+  const weekRaidIds = 'SELECT id FROM raids WHERE guild_id = ?1 AND raid_on >= ?2 AND raid_on <= ?3';
   const teamSizes = new Map(teams.map((team) => [team.id, team.size]));
   const watchTeams = teams.filter((team) => team.archived === 0 && allows(can, 'attendance.review', team.id)).map((team) => team.id);
   const watchJson = JSON.stringify(watchTeams);
   const bind = (sql, ...values) => db.prepare(sql).bind(guild.id, ...values);
 
-  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, policyRows, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, onboarding] = await db.batch([
+  const [flagged, lootUnmatched, signupUnmatched, claims, trials, noLoot, upcoming, raids, rows, borrowed, people, characters, rosterDeclined, applications, rosterPending, eventMoved, webhooksOff, dismissals, logMissing, attentionDismissals, weekRaids, weekSignups, weekRoster, weekCharacters, weekLate, onboarding] = await db.batch([
     bind(`SELECT id, team_id, raid_on, zone, title, event_title, open_flags FROM raids WHERE guild_id = ? AND open_flags > 0 ORDER BY raid_on DESC LIMIT ${READ_CAP}`),
     // Loot winners who match no character and no guest (a disenchant has no winner), per raid.
     bind(
@@ -114,7 +142,6 @@ async function readAttentionInput(ctx, guildContext) {
          FROM raids r WHERE r.guild_id = ?1 AND r.starts_at > ?2 AND r.starts_at <= ?3 ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
       now, now + SIGNUP_LOOKAHEAD_DAYS * DAY_MS,
     ),
-    policyRowsStatement(db, guild.id),
     // The watch list's inputs, for the teams the viewer may review (the whole team history: a window's first-attended date needs it).
     bind(
       `SELECT id, team_id, raid_on, zone, event_synced, plan_synced, open_flags, policy_fp, log_mode,
@@ -181,7 +208,7 @@ async function readAttentionInput(ctx, guildContext) {
          FROM attention_dismissals d LEFT JOIN users u ON u.id = d.dismissed_by WHERE d.guild_id = ? AND (d.until IS NULL OR d.until > ?)`,
       now,
     ),
-    // Home redesign: the Week block's raids (yesterday to today + 5 in the guild's days; archived teams and teams the viewer cannot see are dropped in
+    // Home redesign: the Week block's raids (the reset week(s) in the guild's days; archived teams and teams the viewer cannot see are dropped in
     // buildAttention), with the sign-up count and the line-up answers. The sign-up count is the same merged count as `upcoming`'s.
     bind(
       `SELECT r.id, r.team_id, r.raid_on, r.starts_at, r.zone, r.size, r.title, r.event_title, r.signups_locked, r.roster_published_at, r.event_moved_on,
@@ -191,15 +218,35 @@ async function readAttentionInput(ctx, guildContext) {
               (SELECT COUNT(*) FROM raid_roster rr WHERE rr.raid_id = r.id AND rr.status = 'declined') AS declined,
               (SELECT COUNT(*) FROM raid_roster rr WHERE rr.raid_id = r.id AND rr.status = 'pending') AS pending
          FROM raids r WHERE r.guild_id = ?1 AND r.raid_on >= ?2 AND r.raid_on <= ?3 ORDER BY r.starts_at, r.id LIMIT ${READ_CAP}`,
-      addDays(today, -WEEK_DAYS_BACK), addDays(today, WEEK_DAYS_AHEAD),
+      weekFrom, weekTo,
+    ),
+    // Round 6 (the roles grid): the merged sign-ups, the published seats (the bench is group 0: left out), the people's characters and the Late notices of
+    // those raids, one statement each for ALL of the window's raids.
+    bind(
+      `SELECT s.raid_id, s.source, s.signup_id, s.nickname, s.kind, s.standby, s.guest, s.class_name, s.spec_name, s.position, s.player_id, s.character_id
+         FROM raid_signups s WHERE s.raid_id IN (${weekRaidIds}) AND ${MERGED_ROWS} ORDER BY s.raid_id, s.position, s.source, s.signup_id LIMIT ${WEEK_ROW_CAP}`,
+      weekFrom, weekTo,
+    ),
+    bind(
+      `SELECT raid_id, name, player_id, group_number, class, spec, status FROM raid_roster
+        WHERE guild_id = ?1 AND group_number > 0 AND raid_id IN (${weekRaidIds}) ORDER BY raid_id, group_number, seq LIMIT ${WEEK_ROW_CAP}`,
+      weekFrom, weekTo,
+    ),
+    bind(
+      `SELECT id, player_id, name, class, is_main, team_id FROM characters
+        WHERE guild_id = ?1 AND player_id IN (SELECT player_id FROM raid_signups WHERE player_id IS NOT NULL AND raid_id IN (${weekRaidIds})) LIMIT ${WEEK_ROW_CAP}`,
+      weekFrom, weekTo,
+    ),
+    bind(
+      `SELECT id, player_id, kind, at_time, starts_on, ends_on, weekday, created_at FROM away_notices
+        WHERE guild_id = ?1 AND kind = 'late' AND starts_on <= ?3 AND (ends_on IS NULL OR ends_on >= ?2) LIMIT ${READ_CAP}`,
+      weekFrom, weekTo,
     ),
     // The setup checklist's flags, for the people who set the guild up (no statement for anyone else: `onboarding` is then undefined).
     ...[onboardingStatement(db, guildContext)].filter(Boolean),
   ]);
 
   // The watch list of each team: its people are those with a character on it or a row in its attendance.
-  const resolver = makePolicyResolver(guild, policyRows.results);
-  const resetDay = resolver.resetDay();
   const charactersByPlayer = groupBy(characters.results, 'player_id');
   const rowsByTeam = groupBy(rows.results, 'team_id');
   const raidsByTeam = groupBy(raids.results, 'team_id');
@@ -264,6 +311,10 @@ async function readAttentionInput(ctx, guildContext) {
     logMissing: logMissing.results,
     dismissals: attentionDismissals.results,
     weekRaids: weekRaids.results.map((row) => ({ ...row, size: effectiveRaidSize(row, teamSizes.get(row.team_id), guild.game_version) })),
+    resetDay,
+    weekOffset: hasOffset ? weekOffset : undefined,
+    timeZone: guild.time_zone,
+    weekData: { signups: weekSignups.results, roster: weekRoster.results, characters: weekCharacters.results, lateNotices: weekLate.results },
   };
   return { input, onboarding, today };
 }

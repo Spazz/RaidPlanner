@@ -5,6 +5,12 @@
 // Home redesign, round 2 (Week on desktop, Briefing on phones): to-dos can be dismissed, snoozed or (the watch list) marked Reviewed, SHARED by every
 // officer of the guild. The dismissals come in as input (`attention_dismissals` rows, newest state wins) and `now` is input too, so this stays pure.
 // What a dismissal does is decided here, never by the client: see DISMISS_RULES (mode, snooze length, the fingerprint a hidden item is compared with).
+//
+// Home round 6: the `week` block is the guild's RESET week, an object (see the buildAttention doc below), and each raid carries the roles grid's `people` and
+// `openSeats`. The window, the clock and every row come in as input; this file does no I/O.
+import { addDays, localTimeToMs, weekStart } from './attendance-calendar.js';
+import { noticeOfRow, raidNoticeEffects } from './away.js';
+import { EXPECTED_KINDS, mergeSignups, roleGroup } from './signups-data.js';
 
 export const ATTENTION_KINDS = ['review', 'loot_unmatched', 'signup_unmatched', 'claims', 'applications', 'trial', 'watch', 'rank', 'no_loot', 'low_signups', 'log_missing', 'roster_declined', 'roster_pending', 'event_moved', 'webhook_off', 'unlocked'];
 export const KIND_CAP = 10;              // items shown per kind; the rest are counted in `more`
@@ -19,8 +25,8 @@ export const TRIAL_DAYS = 7;
 export const LOOT_LOOKBACK_DAYS = 14;
 export const SIGNUP_LOOKAHEAD_DAYS = 7;
 export const UNLOCKED_MINUTES = 60;
-export const WEEK_DAYS_BACK = 1;         // the week block runs from yesterday ...
-export const WEEK_DAYS_AHEAD = 5;        // ... to today + 5, in the guild's days
+export const WEEK_OFFSET_MAX = 8;        // GET /attention/week?offset=N: whole reset weeks from the current one, -8 .. 8
+const DEFAULT_RESET_DAY = 2;             // Tuesday (the US reset), when the input carries none
 export const WATCH_RETURN_POINTS = 5;    // a reviewed watch entry comes back after a further drop of this many points
 const DAY_MS = 86400000;
 
@@ -73,10 +79,6 @@ function daysBetween(from, to) {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 }
 
-function shiftDate(date, days) {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
-}
-
 // input: {
 //   today, now, teams: [{ id, name, size, archived }], allowsTeam(action, teamId), granted(action),
 //   flaggedRaids: [{ id, team_id, raid_on, zone, title, event_title, open_flags }],
@@ -96,18 +98,35 @@ function shiftDate(date, days) {
 //   ranks: [{ teamId, entries: [{ playerId, name, class, kind ('promote' | 'review'), from: { id, name }, to: { id, name }, reasons: [text] }] }]   (PM wave 7: the rank ladder's suggestions),
 //   dismissals: [{ item_id, kind, team_id, mode, until, fingerprint, dismissed_by, created_at, by_name }]   (attention_dismissals: shared by every officer),
 //   weekRaids: [{ id, team_id, raid_on, starts_at, zone, size (effective), title, event_title, signups_locked, roster_published_at, close_hours, n_in,
-//                 confirmed, declined, pending, event_moved_on }]   (raids around today; the window is applied here, in the guild's days) }
+//                 confirmed, declined, pending, event_moved_on }]   (raids of the weeks the route read; the reset week is cut out here, in the guild's days),
+//   resetDay: 0 (Sunday) .. 6, the guild's raid reset day (the policy's override, else the region's; 2 when left out),
+//   weekOffset: whole reset weeks from the current one (an integer), or left out = the current one, jumping to the next when it is over (see `week`),
+//   timeZone: the guild's IANA zone (turns a Late notice's HH:MM into `lateAt`),
+//   weekData: { signups: [raid_signups rows of the week's raids: raid_id, source, signup_id, nickname, kind, standby, guest, class_name, spec_name, position, player_id, character_id],
+//               characters: [{ id, player_id, name, class, is_main, team_id }] (of those sign-ups' people), roster: [raid_roster rows: raid_id, name, player_id, group_number,
+//               class, spec, status], lateNotices: [away_notices rows of kind 'late' that can touch the week] }   (optional: no people without it) }
 // -> {
 //   items:  the open, unhidden Home items (never `watch` or `rank`): { kind, severity, teamId, teamName, id, link, raidId?, ..., readiness?: true },
 //   more:   { kind: n }   open items the per-kind cap leaves out of `items`,
 //   total:  open, unhidden to-dos only (readiness facts are not counted; items beyond the cap are),
 //   hidden: [{ item, mode: 'dismiss' | 'snooze', until: ms | null, by: { name }, at: ms }]   (what a dismissal hides now: the Hidden list with Restore; newest first),
 //   counts: { [teamId]: { watchOpen, rankOpen } }   (watch entries still open after "Reviewed", and rank suggestions, per team the viewer may review),
-//   week:   [{ raidId, teamId, teamName, date, startsAt, zone, title, size, signed, lineupPublished, confirmed, cantCome, noAnswer, signupsCloseAt,
-//              signupsLocked (the raid's own lock flag), eventMovedOn, status }]
-//           every raid of a live team the viewer can see (any of ATTENTION_VIEW_ACTIONS), from yesterday to today + 5, by start time. status:
-//           a raid that has started: 'done' (no open to-do tied to it) | 'todo'; an upcoming one: 'short' (signed < size) | 'ready' (full and the line-up
+//   week:   { offset, start, end, resetDay, autoAdvanced, raids }
+//           the guild's RESET week: `start` is the guild date of the reset day on or before today (+ 7 x offset) and `end` is start + 6. `offset` is 0 for the
+//           current week. With no explicit `weekOffset`: when no raid of the current week starts after `now` and the next week has a raid, the next week comes
+//           back with offset 1 and autoAdvanced true (the offset route never does that). `raids` is every raid of a live team the viewer can see (any of
+//           ATTENTION_VIEW_ACTIONS) whose guild date is in start..end, by start time:
+//           { raidId, teamId, teamName, date, startsAt, zone, title, size, signed, lineupPublished, confirmed, cantCome, noAnswer, signupsCloseAt,
+//             signupsLocked (the raid's own lock flag), eventMovedOn, status, people, openSeats }
+//           status: a raid that has started: 'done' (no open to-do tied to it) | 'todo'; an upcoming one: 'short' (signed < size) | 'ready' (full and the line-up
 //           is published) | 'open'. Every raid to-do keeps its `raidId`, so a page can attach it to its day.
+//           people: [{ name, classId, spec, role ('tank' | 'healer' | 'melee' | 'ranged'; null when neither the spec nor the class says), state, lateAt? }],
+//           grouped tank, healer, melee, ranged, null last, and by name inside a group. The source and the states:
+//             line-up published: the SEATED players (the bench, group 0, is left out); state 'confirmed' | 'no_answer' | 'cant_come' from the seat's answer;
+//             not published: the merged sign-ups; state 'signed' | 'late' | 'tentative' | 'standby' | 'cant_come' (an Absence); a Bench entry is left out;
+//             a raid that has started: the same source, but only the people who were expected (seated, or signed / late / standby), all with state 'listed'.
+//           lateAt (epoch ms, guild zone): only on an upcoming raid, for a person whose sign-up is Late and who has a Late notice with a time that covers the day.
+//           openSeats: max(0, size - counted), counted = the seated players (published) or the signed / late / standby sign-ups (not published).
 // }
 export function buildAttention(input) {
   const { groups, counts, teamById } = collect(input);
@@ -153,28 +172,96 @@ export function findAttentionItem(input, itemId) {
   return null;
 }
 
+const ROLE_RANK = { tank: 0, healer: 1, melee: 2, ranged: 3 };
+const SEAT_STATE = { confirmed: 'confirmed', pending: 'no_answer', declined: 'cant_come' };
+const SIGNUP_STATE = { signed: 'signed', late: 'late', tentative: 'tentative', standby: 'standby', absence: 'cant_come' };
+
+function groupRows(rows, key) {
+  const map = new Map();
+  for (const row of rows || []) {
+    if (!map.has(row[key])) map.set(row[key], []);
+    map.get(row[key]).push(row);
+  }
+  return map;
+}
+
+// The roles grid of one raid: { people, openSeats } (the shape documented above). `data` is the week's rows, grouped.
+function raidPeople(row, size, lineupPublished, started, data, timeZone) {
+  const entries = mergeSignups(data.signups.get(row.id) || [], data.charactersByPlayer, { teamId: row.team_id, seeNicknames: true });
+  const kindOf = new Map(entries.filter((entry) => entry.personId).map((entry) => [entry.personId, entry.kind]));
+  const notes = started ? new Map() : raidNoticeEffects(data.lateNotices, row.raid_on, new Set(kindOf.keys())).notes;
+  const lateAtOf = (personId) => {
+    const note = personId ? notes.get(personId) : null;
+    if (!note || note.kind !== 'late' || !note.atTime || kindOf.get(personId) !== 'late' || !timeZone) return undefined;
+    const at = localTimeToMs(row.raid_on, note.atTime, timeZone);
+    return at === null ? undefined : at;
+  };
+  let people;
+  let counted;
+  if (lineupPublished) {
+    const seats = (data.roster.get(row.id) || []).filter((seat) => seat.group_number > 0);
+    counted = seats.length;
+    people = seats.map((seat) => ({
+      name: seat.name, classId: seat.class || null, spec: seat.spec || null, role: roleGroup(seat.class, seat.spec) || null,
+      state: started ? 'listed' : SEAT_STATE[seat.status] || 'no_answer', lateAt: started ? undefined : lateAtOf(seat.player_id),
+    }));
+  } else {
+    const expected = entries.filter((entry) => EXPECTED_KINDS.includes(entry.kind));
+    counted = expected.length;
+    people = (started ? expected : entries.filter((entry) => SIGNUP_STATE[entry.kind])).map((entry) => ({
+      name: entry.name || 'Unknown', classId: entry.classId || null, spec: entry.spec || null, role: entry.role || null,
+      state: started ? 'listed' : SIGNUP_STATE[entry.kind], lateAt: entry.kind === 'late' ? lateAtOf(entry.personId) : undefined,
+    }));
+  }
+  people = people.map(({ lateAt, ...person }) => (lateAt === undefined ? person : { ...person, lateAt }));
+  people.sort((a, b) => (a.role === null ? 9 : ROLE_RANK[a.role]) - (b.role === null ? 9 : ROLE_RANK[b.role]) || byText(a.name, b.name));
+  return { people, openSeats: Math.max(0, size - counted) };
+}
+
 function buildWeek(input, teamById, openTodoRaids) {
-  const from = shiftDate(input.today, -WEEK_DAYS_BACK);
-  const to = shiftDate(input.today, WEEK_DAYS_AHEAD);
-  const week = [];
-  for (const row of input.weekRaids || []) {
+  const resetDay = Number.isInteger(input.resetDay) ? input.resetDay : DEFAULT_RESET_DAY;
+  const current = weekStart(input.today, resetDay);
+  const visible = (input.weekRaids || []).filter((row) => {
     const team = teamById.get(row.team_id);
-    if (!team || team.archived !== 0 || !ATTENTION_VIEW_ACTIONS.some((action) => input.allowsTeam(action, row.team_id))) continue;
-    if (row.raid_on < from || row.raid_on > to) continue;
+    return team && team.archived === 0 && ATTENTION_VIEW_ACTIONS.some((action) => input.allowsTeam(action, row.team_id));
+  });
+  const window = (offset) => ({ start: addDays(current, 7 * offset), end: addDays(current, 7 * offset + 6) });
+  const rowsOf = (offset) => {
+    const { start, end } = window(offset);
+    return visible.filter((row) => row.raid_on >= start && row.raid_on <= end);
+  };
+  const explicit = Number.isInteger(input.weekOffset);
+  let offset = explicit ? input.weekOffset : 0;
+  let autoAdvanced = false;
+  if (!explicit && !rowsOf(0).some((row) => row.starts_at > input.now) && rowsOf(1).length) {
+    offset = 1;
+    autoAdvanced = true;
+  }
+  const weekData = input.weekData || {};
+  const data = {
+    signups: groupRows(weekData.signups, 'raid_id'), roster: groupRows(weekData.roster, 'raid_id'), lateNotices: (weekData.lateNotices || []).map(noticeOfRow),
+    charactersByPlayer: groupRows(weekData.characters, 'player_id'),
+  };
+  const raids = [];
+  for (const row of rowsOf(offset)) {
+    const team = teamById.get(row.team_id);
     const signed = row.n_in || 0;
     const size = row.size ?? team.size;
     const lineupPublished = row.roster_published_at !== null && row.roster_published_at !== undefined;
+    const started = row.starts_at <= input.now;
     let status;
-    if (row.starts_at <= input.now) status = openTodoRaids.has(row.id) ? 'todo' : 'done';
+    if (started) status = openTodoRaids.has(row.id) ? 'todo' : 'done';
     else if (signed < size) status = 'short';
     else status = lineupPublished ? 'ready' : 'open';
-    week.push({
+    raids.push({
       raidId: row.id, teamId: row.team_id, teamName: team.name, date: row.raid_on, startsAt: row.starts_at, zone: row.zone || null,
       title: row.title || row.event_title || null, size, signed, lineupPublished, confirmed: row.confirmed || 0, cantCome: row.declined || 0, noAnswer: row.pending || 0,
       signupsCloseAt: row.starts_at - (row.close_hours || 0) * 3600000, signupsLocked: row.signups_locked === 1, eventMovedOn: row.event_moved_on || null, status,
+      ...raidPeople(row, size, lineupPublished, started, data, input.timeZone),
     });
   }
-  return week.sort((a, b) => a.startsAt - b.startsAt || byText(a.raidId, b.raidId));
+  raids.sort((a, b) => a.startsAt - b.startsAt || byText(a.raidId, b.raidId));
+  return { offset, ...window(offset), resetDay, autoAdvanced, raids };
 }
 
 // Every item the viewer may see, uncapped and unfiltered: { groups: { kind: [{ item, order, fingerprint }] }, counts, teamById }
