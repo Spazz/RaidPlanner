@@ -779,7 +779,7 @@ function assertNoRawAttrs(out) {
     assert(all['js/guild/pages-raid-roster.js'].includes('Publish line-up') && all['js/guild/pages-raid-roster.js'].includes('>Line-up</h2>') && all['js/guild/pages-raid-roster.js'].includes('Your group'));
     assert(all['js/guild/pages-raid-roster.js'].includes('Can\\\'t come'));
     assert(all['js/guild/pages-raid-board.js'].includes('Loot prios') && all['js/guild/pages-raid-loot.js'].includes('Loot awards'));
-    assert(all['js/guild/pages-roster-tabs.js'].includes("intent: 'Spec poll'") && all['js/guild/pages-roster-tabs.js'].includes("recruiting: 'Recruiting needs'"));
+    assert(all['js/guild/pages-roster-tabs.js'].includes("intent: 'Spec poll'") && all['js/guild/pages-roster-tabs.js'].includes("recruiting: 'Recruiting'"));
     assert(all['js/guild/shell.js'].includes("label: 'Spec poll'") && all['js/guild/shell.js'].includes("label: 'Recruiting needs'") && all['js/guild/shell.js'].includes("label: 'Accounts'"));
     assert(all['js/guild/pages-raid.js'].includes("label: 'More', key: 'raid-actions'") && all['js/guild/pages-raid.js'].includes("sourceMenuHtml('plan', 'Plan settings'"));
     assert(all['js/guild/pages-raid-signups.js'].includes("absence: 'Can\\'t come'"));

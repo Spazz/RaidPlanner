@@ -149,14 +149,15 @@ check('api: duties, launch, join links, the guest page and the pasted roster hit
   s.restore();
 });
 
-check('Roster tabs: Launch for a WoW Forever guild or when a team is marked a launch team - and nowhere else', () => {
+check('Roster tabs: Launch is not a tab (roster redesign, lane U1): the Launch list is a page opened from the Spec poll, which stays the lit tab on it', () => {
   const labels = (data) => [...G.pages.rosterTabs.html(data, 'roster').matchAll(/>([A-Za-z ]+)<\/a>/g)].map(m => m[1]);
-  assert.deepEqual(labels(gd(MEMBER, 'forever')), ['Roster', 'Spec poll', 'Launch']);
-  assert.deepEqual(labels(gd(OFFICER, 'forever')), ['Roster', 'Spec poll', 'Launch', 'Recruiting needs', 'Applications']);
+  assert.deepEqual(labels(gd(MEMBER, 'forever')), ['Roster', 'Spec poll']);
+  assert.deepEqual(labels(gd(OFFICER, 'forever')), ['Roster', 'Spec poll', 'Recruiting']);
   assert.deepEqual(labels(gd(MEMBER, 'tbc')), ['Roster', 'Spec poll']);
-  assert.deepEqual(labels(gd(MEMBER, 'tbc', [Object.assign({}, TEAMS[0], { launchTeam: true })])), ['Roster', 'Spec poll', 'Launch']);
-  assert.deepEqual(labels(gd(MEMBER, 'tbc', [Object.assign({}, TEAMS[0], { launchTeam: true, archived: true })])), ['Roster', 'Spec poll'], 'an archived launch team does not count');
-  assert(G.pages.rosterTabs.html(gd(MEMBER, 'forever'), 'launch').includes('href="#/g/g1/roster/launch" aria-current="page">Launch'));
+  assert.deepEqual(labels(gd(MEMBER, 'tbc', [Object.assign({}, TEAMS[0], { launchTeam: true })])), ['Roster', 'Spec poll']);
+  const onLaunch = G.pages.rosterTabs.html(gd(MEMBER, 'forever'), 'launch');
+  assert(onLaunch.includes('href="#/g/g1/roster/intent" aria-current="page">Spec poll') && !onLaunch.includes('roster/launch'), 'the Spec poll tab is lit on the launch page');
+  assert(G.pages.rosterTabs.html(gd(OFFICER, 'forever'), 'applications').includes('href="#/g/g1/roster/recruiting" aria-current="page">Recruiting'), 'the old Applications address lights Recruiting');
 });
 
 // ---------------------------------------------------------------------------

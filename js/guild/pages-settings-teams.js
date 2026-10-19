@@ -1,10 +1,17 @@
 // ── PAGE: GUILD SETTINGS > TEAMS ────────────────────────────────
-// Add team (name and raid size), Rename, change the raid Size (10 / 20 / 25 / 40; PATCH /teams/:tid { size }), Archive, Restore. Archived teams are
+// Add team (name and raid size), Rename, change the raid Size (10 / 20 / 25 / 40; PATCH /teams/:tid { size }), set the Trial length (1-90 days, default 14; PATCH
+// { trialDays }; the Add person form, Accept as Trial and Extend start from it), Archive, Restore. Archived teams are
 // listed apart. Buttons show only with guild.teams.
 (function (G) {
   'use strict';
 
   const NOTE = 'Each character is locked to one team. Archived teams keep their history.';
+
+  const DEFAULT_TRIAL_DAYS = 14;
+  function trialDaysOf(team) {
+    const n = Number(team && team.trialDays);
+    return Number.isInteger(n) && n >= 1 ? n : DEFAULT_TRIAL_DAYS;
+  }
 
   function leadsText(team) {
     const leads = Array.isArray(team.leads) ? team.leads : [];
@@ -22,6 +29,7 @@
     if (!canEdit) return '';
     return '<button type="button" class="gs-btn gs-btn-sm" data-action="team-rename" data-team="' + esc(team.id) + '" data-key="rename-' + esc(team.id) + '" aria-label="Rename ' + esc(team.name) + '">Rename</button>' +
       '<button type="button" class="gs-btn gs-btn-sm" data-action="team-size" data-team="' + esc(team.id) + '" data-key="size-' + esc(team.id) + '" aria-label="Change the raid size of ' + esc(team.name) + '">Size</button>' +
+      '<button type="button" class="gs-btn gs-btn-sm" data-action="team-trial" data-team="' + esc(team.id) + '" data-key="trial-' + esc(team.id) + '" aria-label="Change the trial length of ' + esc(team.name) + ' (now ' + esc(trialDaysOf(team)) + ' days)">Trial length</button>' +
       launchToggleHtml(team) +
       '<button type="button" class="gs-btn gs-btn-sm" data-action="team-archive" data-team="' + esc(team.id) + '" data-key="archive-' + esc(team.id) + '" aria-label="Archive ' + esc(team.name) + '">Archive</button>';
   }
@@ -90,17 +98,27 @@
       '<p class="gs-field-error" id="dlg-err-size" role="alert" hidden></p></div>';
   }
 
-  // mode: 'add' (name and size), 'rename' (name), 'size' (size).
+  // The Trial length field: whole days, 1 to 90.
+  function trialFieldHtml(days) {
+    return '<div class="gs-field"><label class="gs-label" for="dlg-team-trial">Trial length (days)</label>' +
+      '<input class="gs-input gs-input-num" type="number" inputmode="numeric" min="1" max="90" step="1" id="dlg-team-trial" name="trialDays" data-field="trialDays" data-key="dlg-team-trial" aria-describedby="dlg-team-trial-help" value="' + esc(days) + '">' +
+      '<p class="gs-fine" id="dlg-team-trial-help">How long a new Trial lasts: Add person, Accept as Trial and Extend start from this. 1 to 90 days.</p>' +
+      '<p class="gs-field-error" id="dlg-err-trialDays" role="alert" hidden></p></div>';
+  }
+
+  // mode: 'add' (name and size), 'rename' (name), 'size' (size), 'trial' (trial length).
   function teamDialogHtml(mode, team, gid, gameVersion) {
     const rename = mode === 'rename';
     const size = mode === 'size';
-    const add = !rename && !size;
-    return '<form class="gs-dialog-form" data-submit="team-form" data-mode="' + (rename ? 'rename' : size ? 'size' : 'add') + '" data-gid="' + esc(gid) + '"' + (add ? '' : ' data-team="' + esc(team.id) + '"') + ' novalidate>' +
-      '<h2 class="gs-dialog-title" id="dlg-title">' + (rename ? 'Rename ' + esc(team.name) : size ? 'Raid size of ' + esc(team.name) : 'Add team') + '</h2>' +
-      (size ? '' : '<div class="gs-field"><label class="gs-label" for="dlg-team-name">Team name</label>' +
+    const trial = mode === 'trial';
+    const add = !rename && !size && !trial;
+    return '<form class="gs-dialog-form" data-submit="team-form" data-mode="' + (rename ? 'rename' : size ? 'size' : trial ? 'trial' : 'add') + '" data-gid="' + esc(gid) + '"' + (add ? '' : ' data-team="' + esc(team.id) + '"') + ' novalidate>' +
+      '<h2 class="gs-dialog-title" id="dlg-title">' + (rename ? 'Rename ' + esc(team.name) : size ? 'Raid size of ' + esc(team.name) : trial ? 'Trial length of ' + esc(team.name) : 'Add team') + '</h2>' +
+      (trial ? trialFieldHtml(trialDaysOf(team)) : '') +
+      (size || trial ? '' : '<div class="gs-field"><label class="gs-label" for="dlg-team-name">Team name</label>' +
         '<input class="gs-input" type="text" id="dlg-team-name" name="name" autocomplete="off" required value="' + (rename ? esc(team.name) : '') + '">' +
         '<p class="gs-field-error" id="dlg-team-name-error" role="alert" hidden></p></div>') +
-      (rename ? '' : sizeFieldHtml(add ? G.ui.defaultTeamSize(gameVersion) : team.size)) +
+      (rename || trial ? '' : sizeFieldHtml(add ? G.ui.defaultTeamSize(gameVersion) : team.size)) +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-molten">' + (add ? 'Add team' : 'Save') + '</button></div></form>';
   }
@@ -118,7 +136,7 @@
     const gd = currentGuildData();
     if (!gd) return;
     G.ui.openDialog(teamDialogHtml(mode, team, gd.guild.id, gd.guild.gameVersion), { labelledBy: 'dlg-title' });
-    const input = document.getElementById(mode === 'size' ? 'dlg-team-size' : 'dlg-team-name');
+    const input = document.getElementById(mode === 'size' ? 'dlg-team-size' : mode === 'trial' ? 'dlg-team-trial' : 'dlg-team-name');
     if (input) { input.focus(); if (input.select) input.select(); }
   }
 
@@ -130,6 +148,10 @@
   G.handlers.click['team-size'] = function (el) {
     const team = findTeam(currentGuildData(), el.getAttribute('data-team'));
     if (team) openTeamDialog('size', team);
+  };
+  G.handlers.click['team-trial'] = function (el) {
+    const team = findTeam(currentGuildData(), el.getAttribute('data-team'));
+    if (team) openTeamDialog('trial', team);
   };
   G.handlers.click['dialog-cancel'] = function (el) { G.ui.closeDialogOf(el); };
   G.handlers.click['team-launch'] = function (el) {
@@ -177,19 +199,25 @@
   G.handlers.submit['team-form'] = function (form) {
     const gid = form.getAttribute('data-gid');
     const mode = form.getAttribute('data-mode');
-    const named = mode !== 'size';
-    const sized = mode !== 'rename';
+    const trial = mode === 'trial';
+    const named = mode !== 'size' && !trial;
+    const sized = mode !== 'rename' && !trial;
     const name = named ? form.elements.name.value.trim() : '';
     const size = sized ? Number(form.elements.size.value) : null;
     G.ui.setText('dlg-team-name-error', '');
     G.ui.setText('dlg-err-size', '');
     G.ui.setText('dlg-error', '');
+    G.ui.setText('dlg-err-trialDays', '');
+    const trialDays = trial ? Number(form.elements.trialDays.value) : null;
+    if (trial && (String(form.elements.trialDays.value).trim() === '' || !Number.isInteger(trialDays) || trialDays < 1 || trialDays > 90)) { G.ui.setText('dlg-err-trialDays', 'Enter a whole number of days from 1 to 90.'); form.elements.trialDays.focus(); return; }
     if (named && !name) { G.ui.setText('dlg-team-name-error', 'Enter a team name.'); form.elements.name.focus(); return; }
     if (sized && G.ui.RAID_SIZES.indexOf(size) < 0) { G.ui.setText('dlg-err-size', 'Choose a size.'); form.elements.size.focus(); return; }
     const done = function () { G.ui.closeDialogOf(form); };
     // The size the team has already needs no call.
     const current = mode === 'size' ? findTeam(G.app.state.guilds[gid], form.getAttribute('data-team')) : null;
     if (current && current.size === size) { done(); return; }
+    const trialTeam = trial ? findTeam(G.app.state.guilds[gid], form.getAttribute('data-team')) : null;
+    if (trialTeam && trialDaysOf(trialTeam) === trialDays) { done(); return; }
     G.ui.setBusy(form, true);
     const fail = function (err) {
       G.ui.setBusy(form, false);
@@ -198,6 +226,7 @@
       if (c.view === 'signin') { G.ui.closeDialogOf(form); G.app.requireSignin(); return; }
       if (c.view === 'message') { G.ui.closeDialogOf(form); G.app.showFailure(c.title, c.text); return; }
       if (err.code === 'team_name_taken' && form.elements.name) { G.ui.setText('dlg-team-name-error', c.text); form.elements.name.setAttribute('aria-invalid', 'true'); form.elements.name.focus(); return; }
+      if (err.field === 'trialDays' && form.elements.trialDays) { G.ui.setText('dlg-err-trialDays', c.text); form.elements.trialDays.setAttribute('aria-invalid', 'true'); form.elements.trialDays.focus(); return; }
       if (err.field === 'size' && form.elements.size) { G.ui.setText('dlg-err-size', c.text); form.elements.size.setAttribute('aria-invalid', 'true'); form.elements.size.focus(); return; }
       G.ui.setText('dlg-error', c.text);
     };
@@ -205,6 +234,8 @@
       patchTeam(gid, form.getAttribute('data-team'), { name: name }, fail).then(function (ok) { if (ok) done(); });
     } else if (mode === 'size') {
       patchTeam(gid, form.getAttribute('data-team'), { size: size }, fail).then(function (ok) { if (ok) done(); });
+    } else if (trial) {
+      patchTeam(gid, form.getAttribute('data-team'), { trialDays: trialDays }, fail).then(function (ok) { if (ok) done(); });
     } else {
       G.api.post('/api/guild/' + encodeURIComponent(gid) + '/teams', { name: name, size: size }).then(function (res) {
         const gd = G.app.state.guilds[gid];

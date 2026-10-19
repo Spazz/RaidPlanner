@@ -164,8 +164,8 @@
     const board = x.board;
     const head = G.pages.rosterTabs.headHtml(gd, 'intent', board.team.name);
     const alert = G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '');
-    if (!board.round) return '<div class="gs-page">' + head + alert + emptyHtml(board, gd) + '</div>';
-    return '<div class="gs-page">' + head + alert + roundHtml(board, x) + totalsHtml(board) +
+    if (!board.round) return '<div class="gs-page gs-forge">' + head + alert + emptyHtml(board, gd) + '</div>';
+    return '<div class="gs-page gs-forge">' + head + alert + roundHtml(board, x) + totalsHtml(board) +
       G.coverage.panelHtml(x.cov, { id: 'intent-cov', heading: 'Buffs and debuffs of the planned raid', intro: 'What the main picks would cover.' }) + picksHtml(board) + '</div>';
   }
 

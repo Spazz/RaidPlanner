@@ -111,12 +111,12 @@
     const gd = opts.guildData;
     const x = opts.state;
     const data = x.data;
-    const head = G.pages.rosterTabs.headHtml(gd, 'launch', data.team.name);
+    const head = G.pages.rosterTabs.headHtml(gd, 'launch', data.team.name, { back: { href: G.router.format({ name: 'intent', gid: gd.guild.id }), label: 'Spec poll' } });
     const alert = G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '');
-    if (!data.enabled) return '<div class="gs-page">' + head + alert + offHtml(data) + '</div>';
+    if (!data.enabled) return '<div class="gs-page gs-forge">' + head + alert + offHtml(data) + '</div>';
     const off = data.gameVersion !== 'forever' && data.canMark && !data.team.archived
       ? '<div class="gs-actions"><button type="button" class="gs-btn" data-action="launch-team" data-enabled="false" data-key="launch-off">Turn the funnel off for this team</button></div>' : '';
-    return '<div class="gs-page">' + head + alert + summaryHtml(data) + rolesHtml(data) +
+    return '<div class="gs-page gs-forge">' + head + alert + summaryHtml(data) + rolesHtml(data) +
       '<section class="gs-card-sec" aria-labelledby="launch-rows-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="launch-rows-h">People</h2></div><div class="gs-card-sec-body">' +
       '<p class="gs-fine">' + (data.round ? 'The spec poll is "' + esc(data.round.title) + '". ' : 'No spec poll yet: open one on the Spec poll tab. ') +
       (data.canEdit ? 'You can set every row.' : 'You can set your own row.') + ' A level band set here wins over a Battle.net level.</p>' + rowsHtml(data) + off + '</div></section></div>';

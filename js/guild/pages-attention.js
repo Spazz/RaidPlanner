@@ -655,7 +655,7 @@
   function skeletonHtml() {
     const sk = function (cls) { return '<span class="gs-hd-sk ' + cls + '"></span>'; };
     const days = [0, 1, 2, 3, 4, 5, 6].map(function () { return '<div class="gs-hd-day is-skel">' + sk('is-sm') + sk('is-tile') + sk('is-line') + sk('is-chip') + '</div>'; }).join('');
-    return '<div class="gs-page gs-home-page gs-home" aria-busy="true"><p class="gs-sr" role="status">Loading this week</p>' +
+    return '<div class="gs-page gs-home-page gs-home gs-forge" aria-busy="true"><p class="gs-sr" role="status">Loading this week</p>' +
       '<div class="gs-hd-desk"><div class="gs-hd-strip gs-hd-panel">' + days + '</div><div class="gs-hd-cols"><div class="gs-hd-panel gs-hd-main">' + sk('is-wide') + sk('is-line') + sk('is-btn') + '</div>' +
       '<div class="gs-hd-panel gs-hd-side">' + sk('is-line') + sk('is-btn') + sk('is-line') + '</div></div></div>' +
       '<div class="gs-hd-phone"><div class="gs-hd-panel gs-hd-nextcard">' + sk('is-tile') + sk('is-wide') + sk('is-line') + sk('is-btn') + '</div><div class="gs-hd-panel gs-hd-listpanel">' + sk('is-line') + sk('is-line') + sk('is-line') + '</div></div></div>';
@@ -684,7 +684,7 @@
     const m = modelOf(opts);
     const head = headHtml(m);
     const setup = onboardingHtml(gd.guild.id, m.data.onboarding, !!opts.dismissing, opts.setupOpen);
-    return '<div class="gs-page gs-home-page gs-home">' + head + '<p class="gs-sr" id="attn-status" role="status"></p><p class="gs-sr" id="invite-status" role="status"></p>' +
+    return '<div class="gs-page gs-home-page gs-home gs-forge">' + head + '<p class="gs-sr" id="attn-status" role="status"></p><p class="gs-sr" id="invite-status" role="status"></p>' +
       weekHtml(m, opts) + briefingHtml(m, opts) + setup + toastHtml(opts.toast) + '</div>';
   }
 

@@ -413,7 +413,9 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
       const src = read('js/guild/' + f);
       for (const m of src.matchAll(/menuHtml\(\{([^}]*)\}/g)) {
         const label = /label: '([^']*)'/.exec(m[1].split('items:')[0]);
-        if (label) assert.equal(label[1], 'More', f + ': ' + m[0].slice(0, 80));
+        // The empty roster's chooser is the board's "Import" button (R2-7), not an overflow menu.
+        const importChooser = f === 'pages-roster.js' && /id: 'roster-import'/.test(m[1]);
+        if (label) assert.equal(label[1], importChooser ? 'Import' : 'More', f + ': ' + m[0].slice(0, 80));
       }
     }
     const retired = ['Actions menu', 'Plan actions', 'Options menu'];

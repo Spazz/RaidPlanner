@@ -277,7 +277,7 @@
       head: headOf(gd, record, can),
       noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + trialBarHtml(record, can),
       youHtml: youOf(gd, record, can),
-      pageClass: 'gs-person-page' + (own ? ' is-own' : ''),
+      pageClass: 'gs-person-page gs-forge' + (own ? ' is-own' : ''),
       sections: sections,
       footHtml: deleteHtml(record, can),
     });

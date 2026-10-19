@@ -98,7 +98,7 @@
     const empty = x.filter === 'open' && !countFor(x.data.counts, 'all')
       ? '<p class="gs-empty">No applications yet.' + settingsLink + '</p>'
       : '<p class="gs-empty">Nothing in this list.</p>';
-    return '<div class="gs-page">' + head + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '') +
+    return '<div class="gs-page gs-forge">' + head + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + (x.note ? '<div class="gs-notice" role="status"><span>' + esc(x.note) + '</span></div>' : '') +
       '<div class="gs-roster-filters">' + filtersHtml(x) + '</div>' +
       (list.length ? '<ul class="gs-app-list" aria-label="Applications">' + list.map(function (app) { return itemHtml(gd, app, showTeam); }).join('') + '</ul>' : empty) + '</div>';
   }

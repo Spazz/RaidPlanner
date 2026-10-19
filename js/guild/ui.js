@@ -260,6 +260,28 @@
   ui.STATUS_LABELS = STATUS_LABELS;
   ui.LEFT_REASONS = LEFT_REASONS;
 
+  // The spec icon for a character: the Planner's own table (Rulesets.tbc.specIcons, icons/<slug>.jpg) so both sites show the same art; a spec the table does
+  // not know (or none) shows the class crest, and anything else renders nothing. Decorative (alt=""): the name beside it says who it is. size in px.
+  function specIconTable() {
+    if (typeof Rulesets !== 'undefined' && Rulesets && Rulesets.tbc && Rulesets.tbc.specIcons) return Rulesets.tbc.specIcons;
+    if (typeof RulesData !== 'undefined' && RulesData && RulesData.catalog && RulesData.catalog.specIcons) return RulesData.catalog.specIcons;
+    return {};
+  }
+  ui.specIconSrc = function (classId, spec) {
+    const cls = String(classId == null ? '' : classId).toUpperCase();
+    if (CLASS_IDS.indexOf(cls) < 0) return '';
+    const table = specIconTable();
+    const key = String(spec == null ? '' : spec).replace(/\s*\(.*\)\s*$/, ''); // "Feral (Tank)" is the Feral tree
+    const slug = table[cls] && Object.prototype.hasOwnProperty.call(table[cls], key) ? table[cls][key] : 'classicon_' + cls.toLowerCase();
+    return '/icons/' + slug + '.jpg';
+  };
+  ui.specIconHtml = function (classId, spec, size) {
+    const src = ui.specIconSrc(classId, spec);
+    if (!src) return '';
+    const n = Number(size) > 0 ? Math.floor(Number(size)) : 20;
+    return '<img class="gs-spec-icon" src="' + esc(src) + '" alt="" width="' + n + '" height="' + n + '" loading="lazy">';
+  };
+
   // "WARRIOR" -> "Warrior"; anything else is shown as given.
   ui.className = function (id) {
     const s = String(id == null ? '' : id);

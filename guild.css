@@ -497,8 +497,7 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-chip-status.gs-status-reserve { background: var(--status-info-bg); border-color: var(--status-info-edge); color: var(--status-info-ink); }
 .gs-chip-status.gs-status-inactive { background: var(--status-neutral-bg); border-color: var(--status-neutral-edge); color: var(--status-neutral-ink); }
 .gs-chip-trial { white-space: nowrap; }
-.gs-trial-ends { background: #4a4228; border-color: #4a4228; color: #f2e3b0; }
-.gs-trial-ended { background: #3a2510; border-color: #6b4318; color: #ffb86b; }
+.gs-trial-ends, .gs-trial-ended { background: rgba(242, 113, 138, 0.12); border-color: rgba(242, 113, 138, 0.4); color: #fda4af; } /* a trial to decide: the rose attention tint (ends within 7 days or ended) */
 .gs-chip-main { background: var(--status-neutral-bg); border-color: var(--status-neutral-edge); color: var(--status-neutral-ink); }
 .gs-chip-plain { background: transparent; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 14px; }
 .gs-status-cell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
@@ -509,8 +508,6 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 
 .gs-roster-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 24px; }
 .gs-roster-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.gs-trial-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; box-sizing: border-box; padding: 12px 16px; background: #2a1d10; border: 1px solid #6b4318; }
-.gs-trial-strip-text { margin: 0; font-size: 16px; line-height: 1.4; color: var(--text-primary); overflow-wrap: anywhere; }
 .gs-roster-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
 .gs-segs { display: flex; flex-wrap: wrap; }
 .gs-seg { box-sizing: border-box; min-height: var(--control-h); margin: 0 -1px 0 0; padding: 0 14px; background: transparent; border: 1px solid var(--border-medium); border-radius: 0; color: var(--text-secondary); font: 600 16px/1 var(--font-cond); letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; }
@@ -606,7 +603,6 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
   .gs-roster-head { flex-direction: column; align-items: stretch; }
   .gs-roster-actions { width: 100%; }
   .gs-roster-actions > .gs-btn { flex: 1 1 0; }
-  .gs-trial-strip .gs-btn { width: 100%; }
   .gs-roster-filters { flex-direction: column; align-items: stretch; }
   .gs-segs { width: 100%; }
   .gs-seg { flex: 1 1 0; min-height: 44px; padding: 0 6px; }
@@ -1873,6 +1869,219 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 /* An away notice row (the officers' card and the person page) keeps its text and its two buttons on one line when there is room */
 .gs-an-item .gs-row-actions { flex: none; }
 
+/* ── Forge: the shared look of Home and the Roster pages (Home round 6 recipes) ─────────────────────
+   One page scope class, .gs-forge. The recipes that every page shares live here and are named gs-hd-*: .gs-hd-panel (the one panel), .gs-hd-sl (section
+   label with a rule on both sides), .gs-hd-chip (status chip: tint + word), .gs-hd-sk (skeleton). The raised recipe (menus, dialogs) is --hd-raised.
+   Rules: orange only on the one primary button; gold only on count badges; class colour on character names only; no row edges, no role dots; chips only for
+   an exception; 12 px text floor; 44 px phone targets. Home keeps its own button sizes (it styles .gs-hd-desk / .gs-hd-phone), so the page-wide button
+   recipe below skips .gs-home (its setup checklist keeps its own look). */
+.gs-hd-panel { box-sizing: border-box; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
+
+/* Section label: small caps with a rule on both sides */
+.gs-hd-sl { display: flex; align-items: center; gap: 12px; margin: 0; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+.gs-hd-sl::before, .gs-hd-sl::after { content: ""; flex: 1; height: 1px; background: var(--hd-panel-edge); }
+
+/* Status chip: tint + word. Tints: rose = attention, blue = Trial, green = Full, grey = Reserve, Inactive, New, You. */
+.gs-hd-chip { display: inline-flex; align-items: center; justify-content: center; align-self: flex-start; flex: none; height: 24px; padding: 0 8px; border: 1px solid; border-radius: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.gs-hd-chip.is-done { background: transparent; border-color: var(--border-subtle); color: var(--text-muted); }
+.gs-hd-chip.is-todo { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.24); color: var(--text-primary); }
+.gs-hd-chip.is-short { background: rgba(244, 63, 94, 0.14); border-color: rgba(244, 63, 94, 0.4); color: #fda4af; }
+.gs-hd-chip.is-ready { background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.4); color: #86efac; }
+.gs-hd-chip.is-open { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); color: var(--text-secondary); }
+.gs-hd-chip.is-rose { background: rgba(242, 113, 138, 0.12); border-color: rgba(242, 113, 138, 0.4); color: #fda4af; }
+.gs-hd-chip.is-blue { background: rgba(158, 198, 238, 0.12); border-color: rgba(158, 198, 238, 0.4); color: #9ec6ee; }
+.gs-hd-chip.is-green { background: rgba(180, 231, 174, 0.12); border-color: rgba(180, 231, 174, 0.4); color: #b4e7ae; }
+.gs-hd-chip.is-grey { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); color: #aeb3b0; }
+
+/* Loading skeleton */
+.gs-hd-sk { display: block; border-radius: 4px; background: linear-gradient(90deg, #1f2224 0, #2a2d2f 50%, #1f2224 100%); background-size: 200% 100%; animation: gs-hd-sweep 1.4s linear infinite; }
+.gs-hd-sk.is-sm { width: 84px; height: 12px; }
+.gs-hd-sk.is-tile { width: 100%; max-width: 112px; height: 32px; }
+.gs-hd-sk.is-line { width: 70%; height: 16px; margin-top: 8px; }
+.gs-hd-sk.is-chip { width: 48px; height: 24px; margin-top: 8px; }
+.gs-hd-sk.is-btn { width: 132px; height: 44px; margin-top: 12px; }
+.gs-hd-sk.is-wide { width: 60%; height: 26px; }
+@keyframes gs-hd-sweep { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .gs-hd-sk { animation: none; } }
+
+/* Buttons: Barlow, sentence case, 4 px radius, 36 px; the one primary is the 44 px molten button */
+.gs-forge:not(.gs-home) .gs-btn { font: 600 13px/1 var(--font-body); letter-spacing: 0; text-transform: none; border-radius: 4px; border-color: var(--border-medium); background: rgba(255, 255, 255, 0.04); color: var(--text-primary); min-height: 36px; padding: 0 14px; }
+.gs-forge:not(.gs-home) .gs-btn:hover { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); }
+.gs-forge:not(.gs-home) .gs-btn-ghost { background: transparent; border-color: transparent; color: var(--text-secondary); padding: 0 10px; }
+.gs-forge:not(.gs-home) .gs-btn-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: transparent; }
+.gs-forge:not(.gs-home) .gs-menu-trigger[aria-expanded="true"] { border-color: var(--border-field); background: rgba(255, 255, 255, 0.08); }
+.gs-forge:not(.gs-home) .gs-btn-molten, .gs-forge:not(.gs-home) a.gs-btn-molten { min-height: 44px; padding: 0 28px; border-radius: 6px; border-color: var(--molten); background: var(--molten); color: var(--text-on-molten); font: 700 15px/1 var(--font-body); }
+.gs-forge:not(.gs-home) .gs-btn-molten:hover { background: var(--molten-hover); border-color: var(--molten-hover); }
+.gs-forge:not(.gs-home) .gs-btn[disabled], .gs-forge:not(.gs-home) .gs-btn[aria-disabled="true"] { background: transparent; border-style: dashed; border-color: var(--border-medium); color: var(--text-muted); }
+.gs-forge:not(.gs-home) .gs-btn-molten[disabled] { background: var(--bg-card-hover); border-style: solid; }
+.guild-page .gs-forge:not(.gs-home) a.gs-btn-molten { color: var(--text-on-molten); }
+.guild-page .gs-forge:not(.gs-home) a.gs-btn:not(.gs-btn-molten) { color: var(--text-primary); }
+.guild-page .gs-forge:not(.gs-home) a.gs-btn-ghost { color: var(--text-secondary); }
+
+/* Head, context line and the tab strip */
+.gs-forge .gs-pagehead { gap: 16px; }
+.gs-forge .gs-pagehead-row { align-items: flex-start; gap: 12px; }
+.gs-forge .gs-pagehead-actions { gap: 12px; }
+.gs-forge .gs-pagehead-context { margin: 0; font-size: 15px; color: var(--text-secondary); }
+.gs-forge .gs-subtabs { flex-wrap: nowrap; gap: 0 28px; margin-bottom: 0; border-bottom-color: var(--hd-panel-edge); }
+.gs-forge .gs-subtab { gap: 8px; height: auto; min-height: 44px; padding: 0 2px; border-bottom-width: 2px; font: 600 15px/1 var(--font-body); letter-spacing: 0; text-transform: none; }
+.guild-page .gs-forge a.gs-subtab { color: var(--text-muted); }
+.guild-page .gs-forge a.gs-subtab:hover { color: var(--text-primary); text-decoration: none; }
+.guild-page .gs-forge a.gs-subtab.is-active { color: var(--hd-white); border-bottom-color: var(--hd-white); }
+.gs-forge .gs-tab-count, .gs-fg-cnt { display: inline-block; box-sizing: border-box; min-width: 22px; height: 22px; margin: 0; padding: 0 6px; border-radius: 6px; background: var(--accent-gold); color: #131416; font: 700 12px/22px var(--font-body); text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Small shared parts */
+.gs-fg-mut { margin: 0; font-size: 13px; color: var(--text-muted); }
+.gs-forge a.gs-fg-u, .gs-fg-u { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+.gs-forge a.gs-fg-u:hover { color: var(--text-primary); }
+.gs-fg-gh { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.gs-fg-gh b { color: var(--hd-white); font-weight: 700; font-variant-numeric: tabular-nums; }
+.gs-fg-linkbtn { display: inline-flex; align-items: center; min-height: 36px; padding: 0 2px; background: none; border: 0; color: var(--text-secondary); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.gs-fg-linkbtn:hover { color: var(--text-primary); }
+.gs-spec-icon { display: block; flex: none; border-radius: 3px; }
+/* Segments: a selected one is the neutral fill; a count beside it is muted until selected */
+.gs-fg-segs { display: inline-flex; border: 1px solid var(--border-medium); border-radius: 4px; overflow: hidden; }
+.gs-fg-seg { display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 38px; margin: 0; padding: 0 16px; background: transparent; border: 0; border-left: 1px solid var(--border-medium); color: var(--text-secondary); font: 600 14px/1 var(--font-body); cursor: pointer; }
+.gs-fg-seg:first-child { border-left: 0; }
+.gs-fg-seg[aria-pressed="true"] { background: var(--seg-on-bg); color: var(--hd-white); }
+.gs-fg-segn { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.gs-fg-seg[aria-pressed="true"] .gs-fg-segn, .gs-fg-pill[aria-pressed="true"] .gs-fg-segn { color: var(--hd-white); }
+.gs-fg-pills { display: flex; gap: 8px; }
+.gs-fg-pill { display: inline-flex; align-items: center; gap: 8px; flex: none; box-sizing: border-box; min-height: 44px; margin: 0; padding: 0 16px; background: transparent; border: 1px solid var(--border-medium); border-radius: 6px; color: var(--text-secondary); font: 600 15px/1 var(--font-body); white-space: nowrap; cursor: pointer; }
+.gs-fg-pill[aria-pressed="true"] { background: var(--seg-on-bg); border-color: var(--border-field); color: var(--hd-white); }
+.gs-fg-selw { position: relative; }
+.gs-fg-selw .gs-icon { position: absolute; right: 12px; top: 50%; margin-top: -7px; pointer-events: none; color: var(--text-secondary); }
+.gs-fg-selw .gs-input { padding-right: 34px; -webkit-appearance: none; appearance: none; }
+
+/* The Roster page */
+.gs-roster-page { gap: 32px; }
+.gs-roster-page .gs-pagehead + nav .gs-subtabs { margin-top: 0; }
+.gs-rs-note { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px; border: 1px solid rgba(174, 179, 176, 0.4); background: rgba(174, 179, 176, 0.12); border-radius: 6px; font-size: 14px; color: var(--text-primary); }
+.gs-rs-note .gs-icon { flex: none; color: #aeb3b0; }
+.gs-rs-shape { display: flex; flex-direction: column; gap: 12px; }
+.gs-rs-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.gs-rs-tile { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.gs-rs-tilehead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gs-rs-tilehead .gs-hd-chip { align-self: center; }
+.gs-rs-tilenum { font-size: 32px; line-height: 1.1; font-weight: 700; color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-rs-tileden { font-size: 20px; font-weight: 500; color: var(--text-muted); }
+.gs-rs-needs { display: flex; align-items: center; gap: 24px; padding: 0 20px; min-height: 56px; }
+.gs-rs-needlist { flex: 1; display: flex; align-items: center; flex-wrap: wrap; font-size: 14px; color: var(--text-primary); }
+.gs-rs-need { display: inline-flex; align-items: center; min-height: 44px; }
+.gs-rs-vsep { width: 1px; height: 20px; margin: 0 24px; background: rgba(255, 255, 255, 0.14); }
+.gs-rs-you { display: flex; align-items: center; gap: 16px; padding: 0 20px; min-height: 60px; }
+.gs-rs-youspec { font-size: 14px; color: var(--text-secondary); }
+.gs-rs-grow { flex: 1; }
+.gs-rs-you a.gs-fg-u { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; }
+.gs-rs-people { display: flex; flex-direction: column; gap: 12px; }
+.gs-rs-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.gs-rs-search { position: relative; width: 340px; max-width: 100%; }
+.gs-rs-search .gs-icon { position: absolute; left: 12px; top: 12px; color: var(--text-muted); pointer-events: none; }
+.gs-rs-input { box-sizing: border-box; width: 100%; height: 40px; padding: 0 12px 0 36px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-medium); border-radius: 4px; color: var(--text-primary); font: 400 14px/1 var(--font-body); -webkit-appearance: none; appearance: none; }
+.gs-rs-input::placeholder { color: var(--text-muted); }
+.gs-rs-input:focus { border-color: var(--border-field); }
+.gs-rs-results { min-width: 0; }
+.gs-rs-psegs { display: none; }
+.gs-rs-phone { display: none; }
+.gs-rs-cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.gs-rs-cols.has-other { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.gs-rs-col { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.gs-rs-colhead { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; }
+.gs-rs-den { font-weight: 500; }
+.gs-rs-sep { min-height: 32px; padding: 0 12px; border-top: 1px solid var(--hd-hair); }
+.gs-rs-none { margin: 0; padding: 12px; font-size: 13px; color: var(--text-muted); }
+.gs-rs-row { display: flex; align-items: center; gap: 10px; box-sizing: border-box; min-height: 44px; padding: 4px 12px; border-top: 1px solid var(--hd-hair); text-decoration: none; color: var(--text-primary); }
+.gs-rs-colhead + .gs-rs-row { border-top-color: var(--hd-hair); }
+.guild-page a.gs-rs-row:hover { background: rgba(255, 255, 255, 0.05); text-decoration: none; }
+.gs-rs-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gs-rs-name { font-size: 14px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.gs-rs-sub { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; line-height: 1.25; }
+.gs-rs-spec { font-size: 13px; color: var(--text-secondary); }
+.gs-rs-alt { font-size: 12px; color: var(--text-muted); }
+.gs-rs-row .gs-hd-chip { align-self: center; }
+.gs-rs-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.gs-rs-card, .gs-rs-state { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 32px 24px; text-align: center; border: 1px solid var(--hd-panel-edge); border-radius: 8px; background: rgba(255, 255, 255, 0.02); }
+.gs-rs-state { background: var(--hd-panel); box-shadow: var(--hd-panel-shadow); padding: 40px 24px; }
+.gs-rs-cardtitle { margin: 0; font: 700 22px/1.15 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--hd-white); }
+.gs-rs-statetext { margin: 0; max-width: 500px; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
+.gs-rs-stateacts { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.gs-rs-tilebox { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--border-medium); border-radius: 8px; background: rgba(255, 255, 255, 0.04); color: var(--text-secondary); }
+.gs-rs-skel { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.gs-rs-skel .gs-hd-sk.is-line { width: 100%; margin-top: 0; }
+.gs-rs-skel .gs-hd-sk.is-line:nth-child(odd) { width: 80%; }
+
+/* Add person: a raised dialog; on a phone the existing sheet (bottom, full width) */
+.gs-dialog:has(.gs-dialog-add) { width: min(560px, calc(100vw - 32px)); background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
+.gs-dialog-add { padding: 28px; gap: 16px; }
+.gs-dialog-add .gs-dialog-head { display: flex; flex-direction: column; gap: 6px; }
+.gs-dialog-add .gs-dialog-title { font: 700 26px/1.1 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; }
+.gs-dialog-add .gs-label { font-size: 13px; color: var(--text-secondary); }
+.gs-dialog-add .gs-input { height: 40px; padding: 0 12px; background: #131416; border: 1px solid var(--border-medium); border-radius: 4px; font: 400 15px/1 var(--font-body); }
+.gs-dialog-add .gs-input[type="date"] { padding-right: 8px; }
+.gs-dialog-add .gs-fg-selw .gs-input { padding-right: 34px; }
+.gs-dialog-add .gs-field-error { font-size: 13px; }
+.gs-rs-pair { display: flex; gap: 16px; align-items: flex-start; }
+.gs-rs-pair > * { flex: 1; min-width: 0; }
+.gs-rs-pair > .gs-field:only-child { flex: 0 1 calc(50% - 8px); }
+.gs-rs-role { margin-top: -8px; }
+.gs-rs-status { display: flex; flex-direction: column; gap: 6px; }
+.gs-rs-statusseg { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border-medium); border-radius: 6px; background: rgba(255, 255, 255, 0.03); overflow: visible; }
+.gs-rs-statusseg .gs-fg-seg { flex: 1; height: 36px; border: 0; border-radius: 4px; cursor: pointer; }
+.gs-fg-radio { position: absolute; width: 1px; height: 1px; margin: -1px; opacity: 0; overflow: hidden; clip: rect(0 0 0 0); }
+.gs-fg-radio:checked + .gs-fg-seg { background: var(--seg-on-bg); color: var(--hd-white); }
+.gs-fg-radio:focus-visible + .gs-fg-seg { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-rs-more { display: flex; flex-direction: column; gap: 12px; }
+.gs-rs-morebtn { align-self: flex-start; gap: 6px; padding: 0 10px 0 4px; color: var(--text-primary); }
+.gs-rs-morebtn[aria-expanded="true"] .gs-icon { transform: rotate(180deg); }
+.gs-rs-morebox { display: flex; flex-direction: column; gap: 16px; padding: 16px; border: 1px solid var(--hd-panel-edge); border-radius: 6px; background: rgba(255, 255, 255, 0.02); }
+.gs-rs-morebox[hidden] { display: none; }
+.gs-dialog-add .gs-dialog-actions { padding-top: 8px; border-top: 1px solid var(--hd-panel-edge); }
+
+@media (max-width: 1000px) {
+  .gs-rs-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gs-rs-cols, .gs-rs-cols.has-other { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Written without a space after the colon on purpose, like Home's: the suites slice guild.css at the last spaced phone media query to find the shared phone block. */
+@media (max-width:600px) {
+  .gs-roster-page { gap: 16px; }
+  .gs-forge .gs-pagehead-title { flex: 1 1 0; }
+  .gs-forge .gs-pagehead-row { flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
+  .gs-forge .gs-pagehead-actions { display: flex; align-items: center; gap: 4px; }
+  .gs-forge:not(.gs-home) .gs-pagehead-actions > .gs-btn-molten { order: 0; flex: none; width: auto; min-height: 48px; margin-top: 0; padding: 0 20px; font-size: 16px; }
+  .gs-forge .gs-h1 { font-size: 28px; }
+  .gs-forge .gs-pagehead-context { font-size: 14px; }
+  .gs-forge .gs-subtab { font-size: 16px; }
+  .gs-forge .gs-subtabs { gap: 0 24px; }
+  .gs-forge:not(.gs-home) .gs-btn { min-height: 44px; font-size: 14px; }
+  .gs-forge:not(.gs-home) .gs-btn-ghost { min-width: 56px; justify-content: center; }
+  .gs-rs-shape, .gs-rs-needs, .gs-rs-you, .gs-rs-desk, .gs-rs-dsegs { display: none; }
+  .gs-rs-phone { display: block; }
+  .gs-rs-bar { flex-direction: column; align-items: stretch; gap: 16px; }
+  .gs-rs-psegs { display: block; order: -1; }
+  .gs-rs-psegs.is-scroll { margin-right: -16px; overflow-x: auto; scrollbar-width: none; }
+  .gs-rs-psegs.is-scroll .gs-fg-pills { width: max-content; padding-right: 16px; }
+  .gs-rs-psegs:not(.is-scroll) .gs-fg-pill { flex: 1; justify-content: center; }
+  .gs-rs-search { width: 100%; }
+  .gs-rs-input { height: 44px; padding-left: 40px; font-size: 15px; }
+  .gs-rs-search .gs-icon { top: 14px; left: 14px; }
+  .gs-rs-plist { padding: 4px 8px 0; }
+  .gs-rs-plist .gs-rs-row { min-height: 56px; gap: 12px; padding: 0 8px; border-top: 0; border-radius: 4px; }
+  .gs-rs-plist .gs-rs-name { font-size: 16px; }
+  .gs-rs-plist .gs-rs-spec { font-size: 13px; color: var(--text-muted); }
+  .gs-rs-pgroup { min-height: 44px; }
+  .gs-rs-foot { display: none; }
+  .gs-rs-pair { flex-direction: column; gap: 12px; }
+  .gs-rs-pair > .gs-field:only-child { flex: 1 1 auto; }
+  .gs-dialog-add { padding: 8px 16px 16px; gap: 12px; }
+  .gs-dialog:has(.gs-dialog-add) { width: 100%; border-radius: 12px 12px 0 0; }
+  .gs-dialog-add .gs-input { height: 44px; font-size: 16px; }
+  .gs-rs-statusseg .gs-fg-seg { height: 44px; font-size: 15px; }
+  .gs-rs-morebtn { min-height: 44px; }
+  .gs-rs-card, .gs-rs-state { padding: 24px 16px; }
+  .gs-rs-stateacts { flex-direction: column; align-items: stretch; width: 100%; }
+}
+
 /* ── Officer Home, round 4: the Week (desktop) and the Briefing (phone) ─────────────────────────────
    Scoped to .gs-home so no other page changes. Both variants are in the markup; at 600 px and below only the Briefing shows.
    Rules: ONE panel recipe (.gs-hd-panel) and ONE raised recipe (menus, toast); molten orange on the one primary button only; gold is not used here
@@ -1894,16 +2103,12 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-hd-strip.is-loading { opacity: 0.6; }
 .gs-home .gs-hd-muted { color: var(--text-muted); font-size: 13px; }
 .gs-home .gs-hd-center { text-align: center; padding: 8px 0; margin: 0; }
-.gs-home a:focus-visible, .gs-home button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-forge a:focus-visible, .gs-forge button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 
-.gs-hd-panel { box-sizing: border-box; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
 .gs-hd-desk { display: flex; flex-direction: column; gap: 32px; }
 .gs-hd-weeksec { display: flex; flex-direction: column; gap: 8px; }
 .gs-hd-phone { display: none; }
 
-/* Section label: small caps with a rule on both sides */
-.gs-hd-sl { display: flex; align-items: center; gap: 12px; margin: 0; font: 600 12px/1.2 var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
-.gs-hd-sl::before, .gs-hd-sl::after { content: ""; flex: 1; height: 1px; background: var(--hd-panel-edge); }
 .gs-hd-sl-sub { margin-top: 12px; }
 .gs-hd-slb { width: 100%; min-height: 36px; padding: 0; background: none; border: 0; cursor: pointer; }
 .gs-hd-slb:hover { color: var(--text-secondary); }
@@ -1921,17 +2126,10 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .guild-page .gs-home a.gs-btn-molten { color: var(--text-on-molten); }
 
 /* Menus and the toast: the one raised recipe */
-.gs-home .gs-menu-list { min-width: 220px; padding: 6px; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
-.gs-home .gs-menu-list .gs-menu-item { height: auto; min-height: 44px; padding: 6px 12px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; border-radius: 4px; font: 600 14px/1.2 var(--font-body); }
-.gs-home .gs-menu-note { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.gs-forge .gs-menu-list { min-width: 220px; padding: 6px; background: var(--hd-raised); border: 1px solid var(--hd-raised-edge); border-radius: 8px; box-shadow: var(--hd-raised-shadow); }
+.gs-forge .gs-menu-list .gs-menu-item { height: auto; min-height: 44px; padding: 6px 12px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; border-radius: 4px; font: 600 14px/1.2 var(--font-body); }
+.gs-forge .gs-menu-note { font-size: 12px; font-weight: 500; color: var(--text-muted); }
 
-/* Status chip: tint + word */
-.gs-hd-chip { display: inline-flex; align-items: center; justify-content: center; align-self: flex-start; flex: none; height: 24px; padding: 0 8px; border: 1px solid; border-radius: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
-.gs-hd-chip.is-done { background: transparent; border-color: var(--border-subtle); color: var(--text-muted); }
-.gs-hd-chip.is-todo { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.24); color: var(--text-primary); }
-.gs-hd-chip.is-short { background: rgba(244, 63, 94, 0.14); border-color: rgba(244, 63, 94, 0.4); color: #fda4af; }
-.gs-hd-chip.is-ready { background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.4); color: #86efac; }
-.gs-hd-chip.is-open { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); color: var(--text-secondary); }
 
 /* Zone tiles */
 .gs-hd-tiles { display: inline-flex; gap: 4px; }
@@ -2076,17 +2274,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-hd-toast-x { flex: none; min-height: 36px; min-width: 36px; padding: 0 10px; background: transparent; border: 0; border-radius: 4px; color: var(--text-secondary); font: 600 13px/1 var(--font-body); cursor: pointer; }
 .gs-hd-toast-x:hover { background: rgba(255, 255, 255, 0.06); }
 
-/* Loading skeleton */
-.gs-hd-sk { display: block; border-radius: 4px; background: linear-gradient(90deg, #1f2224 0, #2a2d2f 50%, #1f2224 100%); background-size: 200% 100%; animation: gs-hd-sweep 1.4s linear infinite; }
-.gs-hd-sk.is-sm { width: 84px; height: 12px; }
-.gs-hd-sk.is-tile { width: 100%; max-width: 112px; height: 32px; }
-.gs-hd-sk.is-line { width: 70%; height: 16px; margin-top: 8px; }
-.gs-hd-sk.is-chip { width: 48px; height: 24px; margin-top: 8px; }
-.gs-hd-sk.is-btn { width: 132px; height: 44px; margin-top: 12px; }
-.gs-hd-sk.is-wide { width: 60%; height: 26px; }
 .gs-hd-day.is-skel { padding: 12px; gap: 8px; }
-@keyframes gs-hd-sweep { to { background-position: -200% 0; } }
-@media (prefers-reduced-motion: reduce) { .gs-hd-sk { animation: none; } }
 
 /* Written without a space after the colon on purpose: the suites slice guild.css at the last spaced phone media query to find the shared phone block. */
 @media (max-width:600px) {

@@ -41,7 +41,9 @@
     peopleSort: { column: G.peopleSort.DEFAULT_SORT.column, dir: G.peopleSort.DEFAULT_SORT.dir },
     peopleQuery: '',
     roster: null,      // { gid, teamId, data } - GET /roster?team= for the open roster page
-    rosterUi: { sort: { column: G.rosterSort.DEFAULT_SORT.column, dir: G.rosterSort.DEFAULT_SORT.dir }, role: 'all', status: 'active', query: '' },
+    rosterUi: { status: 'active', query: '' },
+    rosterShape: null, // { gid, teamId, status: loading | ready | error, data, cov } - GET /recruiting?team= for the officers' team shape
+    rosterApps: null,  // { gid, teamId, status, list } - the New applications, read when the phone's Applicants segment is picked
     rosterNotice: '',
     person: null,      // { gid, pid, record } - GET /roster/p_... for the open person record
     linkable: {},      // gid -> [person] from GET /roster/linkable
@@ -641,11 +643,18 @@
     const teamId = r.team || teamFor(gd);
     if (!teamId) { state.roster = { gid: gid, teamId: null, data: null }; return null; }
     if (state.roster && state.roster.teamId !== teamId) {
-      state.rosterUi.role = 'all'; state.rosterUi.status = 'active'; state.rosterUi.query = '';
+      state.rosterUi.status = 'active'; state.rosterUi.query = '';
     }
-    return fetchRoster(gid, teamId).then(function () { return null; }).catch(function (err) {
+    return fetchRoster(gid, teamId).then(function (data) {
+      // The officers' team shape is read beside the list and drawn when it answers.
+      if (data && data.can && data.can.edit) G.pages.roster.loadShape(gd, teamId, token, function (t) { return t === routeToken; });
+      return null;
+    }).catch(function (err) {
       if (token !== routeToken) return null;
-      handleLoadError(err);
+      const c = G.api.classify(err);
+      // A failed read of the list itself is the page's own error state (Try again); sign-in and access problems keep their messages.
+      if (c.view === 'signin' || c.view === 'message') { handleLoadError(err); return null; }
+      state.roster = { gid: gid, teamId: teamId, data: null, error: c.text };
       return null;
     });
   }
@@ -738,9 +747,12 @@
   function rosterMain(gd) {
     const P = G.pages;
     const rs = state.roster;
-    if (!rs || rs.gid !== gd.guild.id) return P.signin.loadingHtml();
+    if (!rs || rs.gid !== gd.guild.id) return P.roster.skeletonHtml();
+    if (rs.error) return P.roster.errorHtml(rs.error);
     if (!rs.data) return P.roster.noTeamHtml(G.shell.hasAction(gd.me && gd.me.can, 'guild.teams'), gd.guild.id);
-    return P.roster.rosterHtml({ guildData: gd, data: rs.data, view: state.rosterUi, notice: state.rosterNotice, alert: state.pageAlert });
+    const shape = state.rosterShape && state.rosterShape.gid === gd.guild.id && state.rosterShape.teamId === rs.teamId ? state.rosterShape : null;
+    const apps = state.rosterApps && state.rosterApps.gid === gd.guild.id && state.rosterApps.teamId === rs.teamId ? state.rosterApps : null;
+    return P.roster.rosterHtml({ guildData: gd, data: rs.data, view: state.rosterUi, notice: state.rosterNotice, alert: state.pageAlert, shape: shape, apps: apps });
   }
 
   function mainFor(r, gd, ctx) {

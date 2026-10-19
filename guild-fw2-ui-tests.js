@@ -241,17 +241,15 @@ const keys = items => plain(items.map(i => i.key));
   const ROSTER = people => ({ team: { id: 't1', name: 'Main team', archived: false }, today: '2026-10-18', can: { edit: true, addCharacter: true }, people });
   const rosterHtml = (people, can, over) => G.pages.roster.rosterHtml(Object.assign({ guildData: gd(can || OFFICER_CAN), data: ROSTER(people), view: { sort: G.rosterSort.DEFAULT_SORT, role: 'all', status: 'active', query: '' } }, over || {}));
 
-  await check('roster: Sign-in says "Not signed in" in grey with the count in the head; "No Discord" and "Not yet" are gone; the viewer is first with YOU', () => {
-    const people = [rp('p1', 'Aimer', 'signed_in'), rp('p2', 'Brew', 'no_discord'), rp('p3', 'Cass', 'not_yet'), rp('p4', 'Dun', 'no_discord'), rp('p5', 'Eve', 'not_yet', true)];
+  await check('roster: no Sign-in column and no "Not signed in" anywhere (Roster redesign, lane U1); the viewer is first in their role column with the grey You chip', () => {
+    const melee = { raidRole: 'melee' };
+    const people = [rp('p1', 'Aimer', 'signed_in', false, melee), rp('p2', 'Brew', 'no_discord', false, melee), rp('p3', 'Cass', 'not_yet', false, melee), rp('p4', 'Dun', 'no_discord', false, melee), rp('p5', 'Eve', 'not_yet', true, melee)];
     const out = rosterHtml(people);
-    assert(!out.includes('No Discord') && !out.includes('>Not yet<') && !out.includes('Sign-in: Not yet'));
-    assert.equal(count(out, /<span class="gs-muted">Not signed in<\/span>/g), 4, 'grey, for each of the four');
-    assert(out.includes('data-label="Sign-in">Signed in<'), 'a signed-in person is plain');
-    assert(out.includes('<span class="gs-th-note">4 not signed in</span>'), 'the count sits in the column head');
-    assert(!rosterHtml([rp('p1', 'Aimer', 'signed_in')]).includes('not signed in</span>'), 'no count when everyone has signed in');
-    const names = [...out.matchAll(/<th scope="row" class="gs-dtable-primary">.*?gs-char-link[^>]*>([^<]*)</g)].map(m => m[1]);
-    assert.deepEqual(names, ['Eve', 'Aimer', 'Brew', 'Cass', 'Dun'], 'the viewer\'s row is first');
-    assert(out.includes('<tr class="gs-dtable-row is-you has-mark is-druid"') && out.includes('<span class="gs-you">You</span>'));
+    assert(!/Sign-in|Not signed in|No Discord|Not yet/.test(stripTags(out)), 'the sign-in words are gone');
+    const desk = out.slice(0, out.indexOf('class="gs-rs-phone"'));
+    const names = [...desk.matchAll(/<span class="gs-rs-name [^"]*">([^<]*)</g)].map(m => m[1]);
+    assert.deepEqual(names, ['Eve', 'Aimer', 'Brew', 'Cass', 'Dun'], 'the viewer row is first');
+    assert(desk.includes('class="gs-rs-row is-you"') && desk.includes('data-you="true"') && desk.includes('<span class="gs-hd-chip is-grey">You</span>'));
     assert.equal(G.ui.signInLabel('no_discord'), 'Not signed in');
     assert.equal(G.ui.signInLabel('not_yet'), 'Not signed in');
   });
@@ -261,7 +259,7 @@ const keys = items => plain(items.map(i => i.key));
     assert(out.includes('<header class="gs-pagehead">') && out.includes('<span>Add person</span>') && count(out, /gs-btn-molten/g) === 1 && out.includes('id="roster-more"'));
     for (const label of ['Import from a Raid-Helper event', 'Import from a Warcraft Logs report', 'Import from the Battle.net guild roster', 'Import from a CSV file']) assert(out.includes(label), label);
     const tabs = plain(G.pages.rosterTabs.tabsFor(gd(OFFICER_CAN)).map(t => t.label));
-    assert.deepEqual(tabs, ['Roster', 'Spec poll', 'Recruiting needs', 'Applications']);
+    assert.deepEqual(tabs, ['Roster', 'Spec poll', 'Recruiting']);
     const head = G.pages.rosterTabs.headHtml(gd(OFFICER_CAN), 'intent', 'Main team');
     assert(head.includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Roster</h1>') && head.includes('Main team - Spec poll') && head.includes('aria-current="page">Spec poll'));
     assert(!/\bIntent\b/.test(stripTags(head)) && !stripTags(rosterHtml([])).includes('Recruiting<'));

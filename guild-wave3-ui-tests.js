@@ -183,12 +183,12 @@ class ApiErr extends Error {
     assertNoRawAttrs(menu);
   });
 
-  await check('Roster tabs: everyone gets Roster and Spec poll, roster editors also Recruiting needs and Applications; the open tab is marked; a count sits beside Applications', () => {
+  await check('Roster tabs: everyone gets Roster and Spec poll, roster editors also Recruiting; the open tab is marked; a count sits beside Recruiting', () => {
     const member = G.pages.rosterTabs.html(gd(MEMBER_CAN), 'intent');
-    assert.deepEqual([...member.matchAll(/>([A-Za-z ]+)<\/a>/g)].map(m => m[1]), ['Roster', 'Spec poll', 'Launch'], 'a Forever guild also has Launch');
+    assert.deepEqual([...member.matchAll(/>([A-Za-z ]+)<\/a>/g)].map(m => m[1]), ['Roster', 'Spec poll'], 'Launch is a page opened from the Spec poll, not a tab');
     assert(/<a class="gs-subtab is-active" href="#\/g\/g1\/roster\/intent" aria-current="page">Spec poll<\/a>/.test(member));
     const officer = G.pages.rosterTabs.html(gd(OFFICER_CAN), 'roster', 3);
-    assert.deepEqual([...officer.matchAll(/class="gs-subtab[^"]*" href="([^"]+)"/g)].map(m => m[1]), ['#/g/g1/roster', '#/g/g1/roster/intent', '#/g/g1/roster/launch', '#/g/g1/roster/recruiting', '#/g/g1/roster/applications']);
+    assert.deepEqual([...officer.matchAll(/class="gs-subtab[^"]*" href="([^"]+)"/g)].map(m => m[1]), ['#/g/g1/roster', '#/g/g1/roster/intent', '#/g/g1/roster/recruiting']);
     assert(officer.includes('aria-label="3 new applications">3</span>'));
     assert(!G.pages.rosterTabs.html(gd(OFFICER_CAN), 'roster', 0).includes('gs-tab-count'));
     assert(G.pages.roster.rosterHtml({ guildData: gd(OFFICER_CAN), data: { team: { id: 't1', name: 'Team KJ' }, people: [], can: { edit: true } }, view: {}, notice: '', alert: '' }).includes('aria-label="Roster sections"'), 'the roster page carries the strip');
@@ -362,7 +362,7 @@ class ApiErr extends Error {
     x.cov = COVERAGE;
     const out = G.pages.recruiting.recruitingHtml({ guildData: S.guilds.g1, state: x, alert: '' });
     assertNoRawAttrs(out);
-    assert(out.includes('aria-label="Roster sections"') && stripTags(out).includes('Recruiting needs'));
+    assert(out.includes('aria-label="Roster sections"') && stripTags(out).includes('Recruiting'));
     const rows = [...out.matchAll(/<tr><th scope="row" class="gs-cell-strong">([^<]+)<\/th><td class="gs-num" data-label="On the roster">(\d+)<\/td><td data-label="Target"><label[^>]*>[^<]*<\/label><input[^>]*value="(\d+)"[^>]*><\/td><td data-label="Gap"><span class="gs-pill gs-pill-(\w+)">([^<]+)<\/span>/g)].map(m => [m[1], +m[2], +m[3], m[4], m[5]]);
     assert.deepEqual(rows, [['Tanks', 1, 2, 'warn', 'Need 1'], ['Healers', 5, 5, 'ok', 'Full'], ['Melee DPS', 7, 7, 'ok', 'Full'], ['Ranged DPS', 6, 6, 'ok', 'Full']]);
     assert(stripTags(out).includes('2 mains have no spec set and are not counted') && stripTags(out).includes('against the usual targets for a 20-man raid'));
