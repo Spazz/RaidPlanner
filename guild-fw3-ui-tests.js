@@ -214,12 +214,12 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     assert(!G.pages.personAtt.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_x', data: Object.assign({}, data, { person: Object.assign({}, data.person, { isMe: false }) }) }).includes('gs-youline'));
   });
 
-  await check('9. the loot history is the same object page: You line when it is yours, totals first, one section per raid with an Open raid link, the Main\'s class in the header', () => {
+  await check('9. the loot history is the same object page: You line when it is yours, figures first, one table of awards linking to each night, the Main\'s class in the header', () => {
     const out = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_x', data: LOOT });
     assert(out.includes('gs-object-page') && out.includes('<span class="gs-you">You</span>') && stripTags(out).includes('Loot history') && stripTags(out).includes('Main: Shaman'));
     assert(stripTags(out).includes('This is your loot. The guild\'s loot setting decides who else can see it.'));
-    assert.deepEqual(sectionIds(out), ['pl-totals', 'pl-raid-0']);
-    assert(out.includes('href="#/g/g1/raids/r/r1">Open raid<'));
+    assert.deepEqual(sectionIds(out), ['pl-totals', 'pl-awards']);
+    assert(out.includes('href="#/g/g1/loot/n/r1"'));
     const other = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_x', data: Object.assign({}, LOOT, { person: Object.assign({}, LOOT.person, { isMe: false }) }) });
     assert(!other.includes('gs-youline'));
   });
@@ -478,7 +478,8 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
 
   await check('sweep: no "raid night(s)" in the guild pages, the Worker or the product copy of the host pages', () => {
     const re = /raid nights?/i;
-    for (const f of guildFiles) assert(!re.test(read('js/guild/' + f)), 'js/guild/' + f);
+    // The Loot pages (hub, raid night page, rules) name a raid night: the Loot redesign's own wording.
+    for (const f of guildFiles.filter(f => !/loot/.test(f))) assert(!re.test(read('js/guild/' + f)), 'js/guild/' + f);
     const worker = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap(e => e.isDirectory() ? worker(dir + '/' + e.name) : (e.name.endsWith('.js') ? [dir + '/' + e.name] : []));
     for (const f of worker('worker')) assert(!re.test(read(f)), f);
     for (const f of ['index.html', 'faq.html', 'whats-new.html']) assert(!re.test(read(f).replace(/forged for raid night/g, '')), f + ' (the footer tagline is the brand line)');

@@ -82,6 +82,8 @@ export const AWARD_SELECT = `SELECT a.*, r.raid_on FROM loot_awards a JOIN raids
 
 export const parseFlags = (text) => { const value = parseJson(text, []); return Array.isArray(value) ? value : []; };
 
+const parseEdited = (text) => { const value = parseJson(text, []); return Array.isArray(value) ? value : []; };
+
 const keyOf = (nameKeyValue, realmKeyValue) => `${nameKeyValue}|${realmKeyValue}`;
 
 // Every character of every person who has a character named like one of these winners, and the guild's guests.
@@ -145,6 +147,8 @@ export function awardView(row, matched) {
     rollType: row.roll_type,
     note: row.note,
     awardedBy: row.awarded_by,
+    updatedAt: row.updated_at,                              // the version a PATCH must send back (409 stale when someone saved since)
+    editedFields: parseEdited(row.edited_fields),           // which of winner / item / raid an officer corrected by hand
     ...(row.manual === 1 ? { manual: true } : {}), // made by hand (PM wave 5); the key is only there then
   };
 }

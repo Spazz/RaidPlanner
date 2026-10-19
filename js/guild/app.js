@@ -77,7 +77,7 @@
     notifications: { state: 'notifySettings', page: 'settingsNotify' },
   };
   // Attendance pages by route: the module in G.pages that loads (load(r, gd) -> Promise|null) and draws (main(r, gd, ctx)) it.
-  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'recruiting', launch: 'launch' };
+  const ATT_ROUTE_PAGES = { raidnew: 'raidNew', raid: 'raid', review: 'review', backfill: 'backfill', personatt: 'personAtt', lootperson: 'personLoot', lootstandings: 'lootStandings', lootnight: 'lootNight', lootitem: 'lootItem', lootaward: 'lootAward', lootfix: 'lootFix', away: 'away', intent: 'intent', recruiting: 'recruiting', applications: 'recruiting', launch: 'launch' };
   function attPageKey(r) {
     if (r.name === 'section') return r.section === 'raids' ? 'raids' : (r.section === 'attendance' ? 'attendance' : (r.section === 'loot' ? 'loot' : (r.section === 'home' ? 'attention' : null)));
     if (r.name === 'settings') return r.tab === 'attendance' ? 'settingsAtt' : (r.tab === 'loot' ? 'settingsLoot' : (r.tab === 'schedule' ? 'settingsSchedule' : (r.tab === 'activity' ? 'settingsActivity' : (r.tab === 'applications' ? 'settingsApply' : null))));
@@ -722,6 +722,11 @@
     else if (r.name === 'backfill') page = 'Backfill from Warcraft Logs';
     else if (r.name === 'personatt') page = 'Attendance history';
     else if (r.name === 'lootperson') page = 'Loot history';
+    else if (r.name === 'lootstandings') page = 'Loot standings';
+    else if (r.name === 'lootnight') page = 'Night loot';
+    else if (r.name === 'lootitem') page = 'Item loot';
+    else if (r.name === 'lootaward') page = 'Loot award';
+    else if (r.name === 'lootfix') page = 'Loot needs fixing';
     else if (r.name === 'person') page = 'Roster';
     else if (r.name === 'import') page = { wcl: 'Import from Warcraft Logs', bnet: 'Import from Battle.net', csv: 'Import from a CSV file' }[r.source] || 'Import from Raid-Helper';
     else if (r.name === 'settings') page = 'Guild settings';
@@ -780,7 +785,7 @@
         if (r.section === 'attendance') return P.attendance.main(r, gd, ctx);
         if (r.section === 'loot') return P.loot.main(r, gd, ctx);
         return P.signin.messageHtml('Page not found', 'That address does not match a Raidsmith guild page.', {});
-      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson': case 'away': case 'intent': case 'recruiting': case 'applications': case 'launch':
+      case 'raidnew': case 'raid': case 'review': case 'backfill': case 'personatt': case 'lootperson': case 'lootstandings': case 'lootnight': case 'lootitem': case 'lootaward': case 'lootfix': case 'away': case 'intent': case 'recruiting': case 'applications': case 'launch':
         if (!gd) return P.signin.loadingHtml();
         return P[attPageKey(r)].main(r, gd, ctx);
       case 'person': {
@@ -850,6 +855,9 @@
     }
     if (r.name === 'personatt') return G.pages.personAtt.nameFor(r);
     if (r.name === 'lootperson') return G.pages.personLoot.nameFor(r);
+    if (r.name === 'lootnight') return G.pages.lootNight.nameFor(r);
+    if (r.name === 'lootitem') return G.pages.lootItem.nameFor(r);
+    if (r.name === 'lootaward') return G.pages.lootAward.nameFor(r);
     return '';
   }
 
@@ -1290,7 +1298,7 @@
     if (state.section !== 'guild') { render(); return; }
     const r = G.router.parse(window.location.hash);
     if (r.name === 'section' && r.section === 'roster') { go(G.router.format({ name: 'section', gid: gid, section: 'roster' })); return; }
-    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance' || r.section === 'loot')) || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill' || r.name === 'intent' || r.name === 'recruiting' || r.name === 'applications' || r.name === 'launch') { routeAll({ force: true }); return; }
+    if (r.name === 'import' || (r.name === 'section' && (r.section === 'raids' || r.section === 'attendance' || r.section === 'loot')) || r.name === 'lootstandings' || r.name === 'lootitem' || r.name === 'lootfix' || r.name === 'raidnew' || r.name === 'review' || r.name === 'backfill' || r.name === 'intent' || r.name === 'recruiting' || r.name === 'applications' || r.name === 'launch') { routeAll({ force: true }); return; }
     render();
   };
 

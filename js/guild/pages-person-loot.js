@@ -78,52 +78,87 @@
   }
 
   // ── full page ──
-  // Awards (newest first) in runs of one raid.
-  function groupByRaid(awards) {
-    const groups = [];
-    (Array.isArray(awards) ? awards : []).forEach(function (w) {
-      const last = groups[groups.length - 1];
-      if (last && last.raidId === w.raidId) last.awards.push(w);
-      else groups.push({ raidId: w.raidId, raidOn: w.raidOn, awards: [w] });
+  // The standing of this person in the team's balance (all time): { raids, perRaid, rank, of, mode } or null when the balance does not list them.
+  function standingOf(balance, pid) {
+    if (!balance || !Array.isArray(balance.people)) return null;
+    const mode = balance.mode === 'count' ? 'count' : 'perRaid';
+    const rows = L().balanceRows(balance, 'all').filter(function (r) { return r.status !== 'inactive' || r.id === pid; });
+    const mine = rows.filter(function (r) { return r.id === pid; })[0];
+    if (!mine) return null;
+    const key = function (r) { return mode === 'count' ? r.counted : r.perRaid; };
+    const ordered = rows.slice().sort(function (p, q) {
+      const vp = key(p);
+      const vq = key(q);
+      if ((vp == null) !== (vq == null)) return vp == null ? 1 : -1;
+      return (vp == null ? 0 : vp - vq) || String(p.name || '').localeCompare(String(q.name || ''), 'en');
     });
-    return groups;
+    return { raids: mine.raids, perRaid: mine.perRaid, counted: mine.counted, mode: mode, rank: ordered.indexOf(mine) + 1, of: ordered.length };
   }
 
-  // opts: { guildData, pid, data (GET /loot/person/:pid) }  ->  T2: the person's header, the You line, the totals, one section per raid
+  function ordinal(n) {
+    const m = n % 100;
+    if (m >= 11 && m <= 13) return n + 'th';
+    return n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+  }
+
+  function statsHtml(totals, standing) {
+    const t = totals || {};
+    const stat = function (label, value) { return '<div class="gs-summary-item"><dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd></div>'; };
+    return '<dl class="gs-summary">' + stat('Main spec', Number(t.MS) || 0) + stat('Off spec', Number(t.OS) || 0) +
+      (standing ? stat('Raids', L().count(standing.raids)) + (standing.mode === 'perRaid' ? stat('Main spec per raid', L().fixed(standing.perRaid, 2)) : '') + stat('Due order', ordinal(standing.rank) + ' of ' + standing.of) : '') + '</dl>';
+  }
+
+  // opts: { guildData, pid, data (GET /loot/person/:pid), balance (the team's balance, or null) }  ->  T2: the person's header, the You line, the figures, one table of awards (newest first)
   function personLootHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
     const data = opts.data || {};
     const p = data.person || {};
     const awards = Array.isArray(data.awards) ? data.awards : [];
-    const sections = [];
-    if (awards.length) sections.push({ id: 'pl-totals', title: 'Loot received', bodyHtml: L().totalsHtml(data.totals) });
-    groupByRaid(awards).forEach(function (g, i) {
-      sections.push({ id: 'pl-raid-' + i, title: G.ui.weekdayDay(g.raidOn) || g.raidOn || 'Raid', chipHtml: '<span class="gs-fine">' + esc(L().plural(g.awards.length, 'item', 'items')) + '</span>',
-        actionsHtml: g.raidId ? '<a class="gs-linkbtn" href="' + esc(G.router.format({ name: 'raid', gid: gid, rid: g.raidId })) + '">Open raid</a>' : '',
-        bodyHtml: '<ul class="gs-loot-list" aria-label="Loot of this raid">' + g.awards.map(function (w) { return L().awardRowHtml(gd, w, { when: 'time', character: true }); }).join('') + '</ul>' });
+    const standing = standingOf(opts.balance, opts.pid);
+    const edit = awards.some(function (w) { return L().allows(gd, 'loot.edit', w.teamId); });
+    const columns = [{ key: 'item', label: 'Item', primary: true }, { key: 'night', label: 'Raid night' }, { key: 'tag', label: 'Tag' }];
+    if (edit) columns.push({ key: 'actions', label: 'More', srLabel: true, hideLabel: true });
+    const rows = awards.map(function (w) {
+      const mayEdit = L().allows(gd, 'loot.edit', w.teamId);
+      return { id: w.id, cells: {
+        item: L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + (w.note ? '<span class="gs-char-sub">Note: ' + esc(w.note) + '</span>' : ''),
+        night: w.raidId ? '<a href="' + esc(G.router.format({ name: 'lootnight', gid: gid, rid: w.raidId })) + '">' + esc(G.ui.weekdayDay(w.raidOn) || w.raidOn || 'Raid night') + '</a>' : esc(G.ui.weekdayDay(w.raidOn) || w.raidOn || ''),
+        tag: '<span class="gs-ln-tag">' + L().tagChipHtml(w.tag, w.tagSetBy) + (Array.isArray(w.editedFields) && w.editedFields.length ? '<span class="gs-chip gs-chip-plain" title="An officer corrected this award">Edited</span>' : '') + '</span>',
+        actions: mayEdit && G.pages.lootNight ? G.pages.lootNight.moreMenuHtml(gd, w) : '' } };
     });
-    if (!awards.length) sections.push({ id: 'pl-none', title: 'No loot yet', bodyHtml: '<p class="gs-fine">' + esc(emptyLine(!!p.isMe)) + '</p>' });
+    const none = '<p class="gs-fine">' + esc(emptyLine(!!p.isMe)) + '</p>';
+    const foot = (edit ? '' : '<p class="gs-fine">Awards are read-only for members. Ask an officer if something looks wrong.</p>') +
+      (standing ? '<p class="gs-fine"><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'lootstandings', gid: gid })) + '">See where you stand</a></p>' : '');
+    const sections = [{ id: 'pl-totals', title: 'Loot received', bodyHtml: statsHtml(data.totals, standing) },
+      { id: 'pl-awards', title: 'Loot awards', chipHtml: '<span class="gs-fine">' + esc(L().plural(awards.length, 'award', 'awards')) + ', newest first</span>',
+        bodyHtml: awards.length ? G.ui.dataTableHtml({ label: 'Loot awards', columns: columns, rows: rows, limit: 1000, showAll: true, noun: 'awards' }) + foot : none }];
     return G.ui.objectPageHtml({
       head: G.pages.personAtt.subHead({ gd: gd, pid: opts.pid, person: p, kind: 'loot' }),
       youHtml: G.pages.personAtt.subYou(!!p.isMe, 'This is your loot. The guild\'s loot setting decides who else can see it.'),
-      pageClass: 'gs-person-page' + (p.isMe ? ' is-own' : ''),
+      pageClass: 'gs-person-page gs-loot-person' + (p.isMe ? ' is-own' : ''),
       sections: sections,
     });
   }
 
+  // The team whose balance ranks this person: the team of their newest award, else the team the viewer has picked.
   function load(r, gd) {
     const gid = gd.guild.id;
     return G.api.loot.person(gid, r.pid).then(function (data) {
-      a().personLoot = { gid: gid, pid: r.pid, data: data };
-      return null;
+      const state = { gid: gid, pid: r.pid, data: data, balance: null };
+      a().personLoot = state;
+      const awards = Array.isArray(data && data.awards) ? data.awards : [];
+      const teamId = awards.length ? awards[0].teamId : G.app.teamFor(gd);
+      if (!teamId || !G.api.loot.balance) return null;
+      // The standings are optional: a 403 (the guild keeps them from members) or any other failure just leaves the figures out.
+      return Promise.resolve().then(function () { return G.api.loot.balance(gid, teamId, null); }).then(function (b) { state.balance = b; return null; }, function () { return null; });
     });
   }
 
   function main(r, gd) {
     const x = a().personLoot;
     if (!x || x.gid !== gd.guild.id || x.pid !== r.pid) return G.pages.signin.loadingHtml();
-    return personLootHtml({ guildData: gd, pid: r.pid, data: x.data });
+    return personLootHtml({ guildData: gd, pid: r.pid, data: x.data, balance: x.balance });
   }
 
   function nameFor(r) {
@@ -138,7 +173,7 @@
     cardHtml: cardHtml,
     cardFor: cardFor,
     cardState: cardState,
-    groupByRaid: groupByRaid,
+    standingOf: standingOf,
     personLootHtml: personLootHtml,
     loadCard: loadCard,
     nameFor: nameFor,

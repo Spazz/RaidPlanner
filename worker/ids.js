@@ -61,6 +61,8 @@ export const PARAM_SOURCE = {
   cid: 'c_[A-Za-z0-9_-]{22}',
   rid: 'r_[A-Za-z0-9_-]{22}',
   aid: 'lo_[A-Za-z0-9_-]{22}',
+  // An item id (GET /loot/items/:lootitem): digits only, the Worker range-checks it.
+  lootitem: '[0-9]{1,10}',
   // A character claim (Battle.net, Phase 5).
   clid: 'cl_[A-Za-z0-9_-]{22}',
   // A role: one of the guild's own (cr_...) or a built-in id; a guest link.

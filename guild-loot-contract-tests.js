@@ -165,7 +165,7 @@ check('import: the pages\' parsed awards go through preview and commit; the prev
   const s = await scenario();
   const { G } = s;
   const preview = await G.api.loot.preview(s.gid, s.raid, s.awards);
-  assert.deepEqual(Object.keys(preview.counts).sort(), ['new', 'otherDay', 'otherRaid', 'same', 'update']);
+  assert.deepEqual(Object.keys(preview.counts).sort(), ['conflict', 'deleted', 'new', 'otherDay', 'otherRaid', 'same', 'update']);
   assert.equal(preview.counts.new, 8);
   assert.equal(preview.counts.otherDay, 6);
   assert.equal(preview.rows.length, 14);
@@ -212,7 +212,7 @@ check('import: a bad award is a 400 naming the award (field "awards", index) and
   assert(error && error.status === 409 && error.code === 'raid_not_started', 'an upcoming raid takes no loot');
 });
 
-check('raid loot card: GET /raids/:rid/loot draws every winner by name (person, guest, not on roster), the tag select for an editor, and the review hint', async () => {
+check('raid loot card and raid night page: the card summarises (counts, first awards, link); the night page draws every winner by name (person, guest, not on roster), the tag select and More menu for an editor', async () => {
   const s = await scenario();
   const { G } = s;
   await importNight(s, true);
@@ -223,20 +223,30 @@ check('raid loot card: GET /raids/:rid/loot draws every winner by name (person, 
   const state = G.pages.raidLoot.stateFor(s.gid, s.raid);
   assert(state && state.status === 'ok', 'the card loaded');
   assert.equal(state.data.canEdit, true);
-  const html = G.pages.raidLoot.cardHtml({ guildData: s.guildData, data: detail, state });
-  const text = stripTags(html);
-  for (const name of ['Thoren', 'Kaelith', 'Mirabel', 'Dorrin', 'Veyla', 'Brogan', 'Sylwen', 'Ruvik', 'Ysolde', 'Tarn', 'Nimue']) assert(text.includes(name), `the card names ${name}`);
-  assert(/data-change="loot-tag"/.test(html), 'an editor gets the tag select');
-  assert(/Review queue/.test(text), 'the card points at the review queue');
-  const offRoster = state.data.awards.filter((award) => award.match.kind === 'unmatched').length;
-  const noted = /(\d+) awards? go(?:es)? to a winner who is not on the roster/.exec(text);
-  assert(noted && Number(noted[1]) === offRoster && state.data.awards.some((award) => award.match.kind === 'disenchanted'), 'the disenchant has no winner, so it is not one of the winners off the roster');
-  const rowOf = (needle) => html.split('<li class="gs-loot-row"').filter((row) => row.includes(needle));
-  const deRows = rowOf('<span class="gs-muted">Disenchanted</span>');   // the tag selects also say Disenchanted, as an option
-  assert.equal(deRows.length, 1);
-  assert(!/data-change="loot-tag"/.test(deRows[0]) && />DE</.test(deRows[0]) && /loot-delete/.test(deRows[0]), 'no tag select on a disenchant, the chip and the delete button stay');
-  assert(!/null|undefined/.test(text), 'nothing reads null or undefined');
+  const card = G.pages.raidLoot.cardHtml({ guildData: s.guildData, data: detail, state });
+  const cardText = stripTags(card);
+  assert(/\d+ MS/.test(cardText) && /And 9 more\./.test(cardText) && card.includes(`href="#/g/${s.gid}/loot/n/${s.raid}"`), cardText);
+  assert(/Review queue/.test(cardText), 'the card points at the review queue');
+  assert(!/data-change="loot-tag"/.test(card) && /loot-import-open/.test(card), 'the card edits nothing but keeps the import');
   assert(S.att.raidLoot === state, 'the state sits in the attendance bag');
+  // The night page.
+  const route = { name: 'lootnight', gid: s.gid, rid: s.raid };
+  await G.pages.lootNight.load(route, s.guildData);
+  const html = G.pages.lootNight.main(route, s.guildData);
+  const text = stripTags(html);
+  for (const name of ['Thoren', 'Kaelith', 'Mirabel', 'Dorrin', 'Veyla', 'Brogan', 'Sylwen', 'Ruvik', 'Ysolde', 'Tarn', 'Nimue']) assert(text.includes(name), `the night names ${name}`);
+  assert(/Sat Oct 10/.test(text) && /14 awards/.test(text), text.slice(0, 400));
+  const awards = G.app.state.att.lootNight.awards;
+  assert.equal(awards.length, 14);
+  assert.equal((html.match(/data-change="ln-tag"/g) || []).length, 13, 'a select per award except the disenchant');
+  assert.equal((html.match(/id="lm-[^"]+" data-action="menu-toggle"/g) || []).length, 14, 'a More menu on every row');
+  const offRoster = awards.filter((award) => award.match.kind === 'unmatched').length;
+  assert(offRoster > 0 && awards.some((award) => award.match.kind === 'disenchanted'));
+  const deRow = html.split('<tr class="gs-dtable-row').filter((row) => row.includes('<span class="gs-muted">Disenchanted</span>'));
+  assert.equal(deRow.length, 1);
+  assert(!/data-change="ln-tag"/.test(deRow[0]) && />DE</.test(deRow[0]) && /Delete award/.test(deRow[0]), 'no tag select on a disenchant, the chip and the delete stay');
+  assert(!/null|undefined/.test(text), 'nothing reads null or undefined');
+  assert.equal(G.pages.lootNight.nameFor(route), 'Sat Oct 10');
 });
 
 check('tag, note, delete: PATCH answers { award }, DELETE { ok }; the row shows the officer tag and the note', async () => {
@@ -258,59 +268,69 @@ check('tag, note, delete: PATCH answers { award }, DELETE { ok }; the row shows 
   assert.equal(left.awards.length, 7);
 });
 
-check('balance: GET /loot/balance draws one row per person with raids, MS, OS, counted, per raid and vs team; the window switch reads the server\'s weeks', async () => {
+check('standings and hub: GET /loot/balance draws the standings table (rank, raids, MS, OS, per raid) and the hub reads hub, raid list, balance and items; the window switch reads the server\'s weeks', async () => {
   const s = await scenario();
   const { G } = s;
   await importNight(s);
   pageState(s, G, s.guildData);
-  const view = { name: 'section', gid: s.gid, section: 'loot' };
-  await G.pages.loot.load(view, s.guildData);
-  const x = G.app.state.att.loot;
-  assert(x && x.data && !x.denied, 'the balance loaded');
+  const view = { name: 'lootstandings', gid: s.gid };
+  await G.pages.lootStandings.load(view, s.guildData);
+  const x = G.app.state.att.lootStand;
+  assert(x && x.status === 'ok' && x.data, 'the balance loaded');
   assert.equal(x.data.scope, 'team');
-  assert.deepEqual(x.data.window.switchWeeks.length > 0, true);
-  const html = G.pages.loot.main(view, s.guildData);
+  assert.equal(x.data.window.switchWeeks.length > 0, true);
+  const html = G.pages.lootStandings.main(view, s.guildData);
   const text = stripTags(html);
-  for (const name of ['Thoren', 'Kaelith', 'Mirabel']) assert(text.includes(name), `the balance lists ${name}`);
-  assert(/Team average per raid/.test(text));
-  assert(/Last \d+ full reset weeks since/.test(text), 'the window line');
+  for (const name of ['Thoren', 'Kaelith', 'Mirabel']) assert(text.includes(name), `the standings list ${name}`);
+  assert(/Standings/.test(text) && /Most due first/.test(text) && /MS per raid/.test(text) && /Last \d+ weeks|8 weeks/.test(text), text);
   const rows = G.pages.loot.balanceRows(x.data, 'window');
   const thoren = rows.find((row) => row.name === 'Thoren');
-  assert.equal(thoren.raids, 1);
-  assert.equal(thoren.ms, 1);
-  assert.equal(thoren.counted, 1);
-  assert.equal(thoren.perRaid, 1);
-  assert(thoren.vs !== null, 'vs team is a number');
-  // A week count the server offers is accepted by the server.
+  assert.deepEqual([thoren.raids, thoren.ms, thoren.counted, thoren.perRaid], [1, 1, 1, 1]);
   const weeks = x.data.window.switchWeeks[x.data.window.switchWeeks.length - 1];
   const other = await G.api.loot.balance(s.gid, s.teamId, weeks);
   assert.equal(other.window.weeks, weeks);
+  // The hub of an officer.
+  const hubRoute = { name: 'section', gid: s.gid, section: 'loot' };
+  await G.pages.loot.load(hubRoute, s.guildData);
+  const hub = G.app.state.att.lootHub;
+  assert(hub.status === 'ok' && hub.balance && hub.raids.length === 1 && hub.items.length > 0 && hub.hub.can.edit, 'hub, balance, raids and items all arrived');
+  const hubHtml = G.pages.loot.main(hubRoute, s.guildData);
+  const hubText = stripTags(hubHtml);
+  assert(/Who is due/.test(hubText) && /Latest raid nights/.test(hubText) && /Look up an item/.test(hubText) && /Needs fixing/.test(hubText) && /Loot rules/.test(hubText), hubText);
+  assert(/8 awards from 1 raid night/.test(hubText) && hubHtml.includes(`href="#/g/${s.gid}/loot/n/${s.raid}"`));
+  assert.deepEqual(['Mirabel', 'Thoren'].map((n) => hubText.indexOf(n) > 0), [true, true]);
 });
 
-check('by raid and by item: the lists name every winner, also the ones not on the roster and the guests', async () => {
+check('hub, item and night: the item page and the look-up draw from the real routes; a 404 is "Nobody has received that item yet."', async () => {
   const s = await scenario();
   const { G } = s;
   await importNight(s, true);
+  await G.api.post(`${s.base}/raids/${s.raid}/unmatched`, { key: 'dorrin|nightslayer', action: 'guest' });
   pageState(s, G, s.guildData);
-  const guest = await G.api.post(`${s.base}/raids/${s.raid}/unmatched`, { key: 'dorrin|nightslayer', action: 'guest' });
-  assert(guest.raid, 'Dorrin is marked a guest');
-  await G.pages.loot.load({ name: 'section', gid: s.gid, section: 'loot', view: 'raids' }, s.guildData);
-  const raidsText = stripTags(G.pages.loot.main({ name: 'section', gid: s.gid, section: 'loot', view: 'raids' }, s.guildData));
-  assert(/14/.test(raidsText) && /winners? not on the roster/.test(raidsText), raidsText);
-  assert(/Disenchanted/.test(raidsText), 'the By raid table has a Disenchanted column');
+  const hubRoute = { name: 'section', gid: s.gid, section: 'loot' };
+  await G.pages.loot.load(hubRoute, s.guildData);
+  const items = G.app.state.att.lootHub.items;
+  const mind = items.find((item) => item.itemName === 'Nathrezim Mindblade');
+  assert(mind, 'the look-up list holds the item');
+  assert(G.pages.lootHub.searchMatches(items, 'nathrezim').some((item) => item.itemId === mind.itemId), 'the search finds it by name');
+  const route = { name: 'lootitem', gid: s.gid, itemId: String(mind.itemId) };
+  await G.pages.lootItem.load(route, s.guildData);
+  const html = G.pages.lootItem.main(route, s.guildData);
+  const text = stripTags(html);
+  assert(/Nathrezim Mindblade/.test(text) && /Who has it/.test(text) && /Drops over time/.test(text), text);
+  assert(html.includes(`href="#/g/${s.gid}/loot/n/${s.raid}"`));
+  assert.equal(G.pages.lootItem.nameFor(route), 'Nathrezim Mindblade');
+  const none = { name: 'lootitem', gid: s.gid, itemId: '1' };
+  await G.pages.lootItem.load(none, s.guildData);
+  assert(/Nobody has received that item yet\./.test(stripTags(G.pages.lootItem.main(none, s.guildData))));
+  // Every winner of the imported night is named, a guest next to the Guest chip.
+  const night = { name: 'lootnight', gid: s.gid, rid: s.raid };
+  await G.pages.lootNight.load(night, s.guildData);
+  const nightText = stripTags(G.pages.lootNight.main(night, s.guildData));
+  for (const name of ['Dorrin', 'Veyla', 'Brogan', 'Ruvik', 'Ysolde', 'Tarn', 'Nimue']) assert(nightText.includes(name), `the night names ${name}`);
+  assert(/Dorrin Guest|Guest Dorrin/.test(nightText) || /Dorrin/.test(nightText) && /Guest/.test(nightText));
   const raidsRow = (await G.api.loot.raids(s.gid, s.teamId)).raids[0];
   assert.deepEqual([raidsRow.awards, raidsRow.disenchanted], [14, 1]);
-  await G.pages.loot.load({ name: 'section', gid: s.gid, section: 'loot', view: 'items' }, s.guildData);
-  const itemsHtml = G.pages.loot.main({ name: 'section', gid: s.gid, section: 'loot', view: 'items' }, s.guildData);
-  const names = [...itemsHtml.matchAll(/<li class="gs-loot-subrow">([\s\S]*?)<\/li>/g)].map((m) => stripTags(m[1]));
-  assert.equal(names.length, 14, 'every award is listed under its item');
-  assert(names.some((line) => /Disenchanted/.test(line) && /DE/.test(line)), 'the disenchant is named as one');
-  assert(names.every((line) => !/null|undefined/.test(line)));
-  // Every sub-row names its winner: a person, a guest or a name the roster does not know.
-  for (const name of ['Dorrin', 'Veyla', 'Brogan', 'Ruvik', 'Ysolde', 'Tarn', 'Nimue']) {
-    assert(names.some((line) => line.includes(name)), `the by-item list names ${name}`);
-  }
-  assert(names.some((line) => /Guest/.test(line) && line.includes('Dorrin')), 'a guest keeps his name next to the Guest chip');
 });
 
 check('person loot: GET /loot/person/:pid draws the page grouped by raid and the card on the roster record', async () => {
@@ -396,24 +416,31 @@ check('review queue: loot winners nobody matches arrive as lootUnmatched; Link /
 check('visibility: a member under "own" gets scope "own" (one row and the team average); somebody else\'s person page is a 403 the pages tell as a note', async () => {
   const s = await scenario();
   await importNight(s);
-  await s.G.api.loot.savePolicy(s.gid, null, { visibility: { members: 'own' } }, 0);
+  await s.G.api.loot.savePolicy(s.gid, null, { visibility: { members: 'own', standings: true } }, 0);
   const M = loadPages(s.world, s.memberJar);
   const gd = await M.api.get(s.base);
   pageState(s, M, gd);
   assert.equal(M.shell.allowsTeam(gd.me.can, 'loot.edit', s.teamId), false, 'a member cannot edit');
-  const view = { name: 'section', gid: s.gid, section: 'loot' };
-  await M.pages.loot.load(view, gd);
-  const data = M.app.state.att.loot.data;
+  const view = { name: 'lootstandings', gid: s.gid };
+  await M.pages.lootStandings.load(view, gd);
+  const data = M.app.state.att.lootStand.data;
   assert.equal(data.scope, 'own');
   assert.equal(data.people.length, 1);
   assert.equal(data.people[0].name, 'Thoren');
-  const text = stripTags(M.pages.loot.main(view, gd));
-  assert(/own loot only/.test(text) && /Team average per raid/.test(text), text);
+  const text = stripTags(M.pages.lootStandings.main(view, gd));
+  assert(/own loot only/.test(text) && /Thoren/.test(text), text);
+  const hubRoute = { name: 'section', gid: s.gid, section: 'loot' };
+  await M.pages.loot.load(hubRoute, gd);
+  const memberHub = M.app.state.att.lootHub;
+  assert.equal(memberHub.hub.level, 'own');
+  assert(memberHub.raids === null && memberHub.balance === null && memberHub.items === null, 'level own reads the hub only');
+  const hubText = stripTags(M.pages.loot.main(hubRoute, gd));
+  assert(/My loot/.test(hubText) && /your own loot/.test(hubText) && !/Latest raid nights|Who is due/.test(hubText), hubText);
   // Raid card: the member sees only their own awards and no editing controls.
   const detail = await M.api.get(`${s.base}/raids/${s.raid}`);
   await M.pages.raidLoot.loadFor(gd, detail);
   const card = M.pages.raidLoot.cardHtml({ guildData: gd, data: detail, state: M.pages.raidLoot.stateFor(s.gid, s.raid) });
-  assert(!/data-change="loot-tag"/.test(card) && !/loot-import-open/.test(card), 'no editing controls for a member');
+  assert(!/data-change="loot-tag"/.test(card) && !/loot-import-open/.test(card) && !/loot-delete/.test(card), 'no editing controls for a member');
   assert(/Thoren/.test(stripTags(card)) && !/Kaelith/.test(stripTags(card)), 'only their own awards');
   await M.pages.personLoot.loadCard(s.gid, s.people.Kaelith);
   const denied = M.pages.personLoot.cardFor(gd, { person: { isMe: false } }, s.people.Kaelith);
@@ -439,9 +466,9 @@ check('disenchants: the Worker refuses another tag on a no-winner award (400 on 
   const gone = await G.api.loot.remove(s.gid, de.id);
   assert.deepEqual(gone, { ok: true });
   assert.equal((await G.api.loot.raid(s.gid, s.raid)).awards.length, 13);
-  // The same export again brings it back (its checksum is free) as a disenchant.
+  // The delete left a tombstone: the same export does not bring it back unasked.
   const back = await importNight(s, true);
-  assert.deepEqual([back.inserted, back.awards.filter((award) => award.match.kind === 'disenchanted').length], [1, 1]);
+  assert.deepEqual([back.inserted, back.deleted.kept, back.awards.filter((award) => award.match.kind === 'disenchanted').length], [0, 1, 0]);
 });
 
 check('review queue: a loot winner with no class gets the class select, and the class picked there is what the Worker needs to add or link the character', async () => {
@@ -484,6 +511,123 @@ check('review queue: a loot winner with no class gets the class select, and the 
   assert.deepEqual([roamerAward.match.personName, roamerAward.winner.class], ['Thoren', 'MAGE']);
   const after = await G.api.get(`${s.base}/attendance/review?team=${encodeURIComponent(s.teamId)}`);
   assert(!after.lootUnmatched[0].items.some((item) => ['Nomad', 'Roamer'].includes(item.name)), 'both are out of the queue');
+});
+
+check('loot page routes (lane W): hub, item, award record, Needs fixing and the PATCH edit answer through G.api with the shapes the pages read; a stale save is a 409 with `current`', async () => {
+  const s = await scenario();
+  const { G } = s;
+  const committed = await importNight(s);
+  const lootBase = `${s.base}/loot`;
+  const hub = await G.api.get(`${lootBase}/hub?team=${encodeURIComponent(s.teamId)}`);
+  assert.deepEqual(Object.keys(hub), ['team', 'can', 'me', 'nights', 'standingsTop', 'standingsCount', 'standingsInfo', 'fix', 'level']);
+  assert.equal(hub.level, 'full');
+  assert.deepEqual(hub.can, { edit: true, rules: true, standings: true, itemLookup: true });
+  assert.equal(hub.nights[0].awards.length, committed.awards.length);
+  assert.deepEqual(Object.keys(hub.nights[0]), ['raid', 'awards']);
+
+  const first = committed.awards[0];
+  const record = await G.api.get(`${lootBase}/a/${encodeURIComponent(first.id)}`);
+  assert.deepEqual([Object.keys(record), record.canEdit, record.award.id, record.raid.teamId], [['award', 'raid', 'origin', 'history', 'canEdit'], true, first.id, s.teamId]);
+  const item = await G.api.get(`${lootBase}/items/${first.itemId}?team=${encodeURIComponent(s.teamId)}`);
+  assert.deepEqual([Object.keys(item), item.item.itemId, item.drops.some((drop) => drop.id === first.id)], [['team', 'item', 'counts', 'drops'], first.itemId, true]);
+  const fix = await G.api.get(`${lootBase}/fix?team=${encodeURIComponent(s.teamId)}`);
+  assert.deepEqual(Object.keys(fix), ['team', 'duplicates', 'unknown']);
+
+  // Edit details: the winner and the tag in one PATCH; the answer is the new award view with a new updatedAt.
+  const edited = await G.api.loot.update(s.gid, first.id, { winnerName: 'Wanderfell', tag: 'OS', updatedAt: record.award.updatedAt });
+  assert.deepEqual([edited.award.winner.name, edited.award.tag, edited.award.editedFields], ['Wanderfell', 'OS', ['winner']]);
+  let stale = null;
+  try { await G.api.loot.update(s.gid, first.id, { winnerName: 'Aldric', updatedAt: record.award.updatedAt - 1 }); } catch (e) { stale = e; }
+  assert.deepEqual([stale && stale.status, stale && stale.code, stale && stale.body.current.id], [409, 'stale', first.id]);
+  // Re-importing the same export: the edited winner is a conflict row the preview describes, and the result counts it.
+  const preview = await G.api.loot.preview(s.gid, s.raid, s.awards);
+  const row = preview.rows.find((r) => r.awardId === first.id);
+  assert.deepEqual([row.status, row.conflicts.map((c) => c.field), preview.counts.conflict], ['conflict', ['winner'], 1]);
+});
+
+check('award page and Needs fixing (lane U2): the real pages draw the record, save Edit details, keep a duplicate group, and the import preview asks about the conflict', async () => {
+  const s = await scenario();
+  const { G } = s;
+  const committed = await importNight(s);
+  const first = committed.awards[0];
+  const gd = s.guildData;
+  const S = pageState(s, G, gd);
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+  const el = (value, extra) => Object.assign({ value, checked: false, getAttribute: () => null }, extra || {});
+  G.app.render = () => {};
+
+  // The record: the real answer draws the details, the origin line and the history.
+  const route = { name: 'lootaward', gid: s.gid, aid: first.id, edit: false };
+  await G.pages.lootAward.load(route, gd);
+  let html = G.pages.lootAward.main(route, gd);
+  let text = stripTags(html);
+  assert(text.includes(first.itemName) && text.includes('Imported from Gargul') && text.includes('History'), text.slice(0, 300));
+  G.handlers.click['la-edit-open']();
+  await tick();
+  html = G.pages.lootAward.main(route, gd);
+  assert(html.includes('data-submit="la-form"') && html.includes('<option value="' + s.raid + '"'), 'Edit details lists the raid night');
+  // Edit details: the winner and the note in one PATCH.
+  G.handlers.input['la-winner'](el('Wanderfell'));
+  G.handlers.input['la-note'](el('Corrected by hand'));
+  assert.equal(G.pages.lootAward.changeCount(S.att.lootAward), 2);
+  G.handlers.submit['la-form']();
+  await tick();
+  const saved = S.att.lootAward;
+  assert.deepEqual([saved.editing, saved.data.award.winner.name, saved.data.award.note, plain(saved.data.award.editedFields)], [false, 'Wanderfell', 'Corrected by hand', ['winner']]);
+  assert(stripTags(G.pages.lootAward.main(route, gd)).includes('Winner changed from'), 'the new history row is on the page');
+  // A second editor saved first: the stale save is the page's Reload state.
+  G.handlers.click['la-edit-open']();
+  await tick();
+  const staleVersion = S.att.lootAward.data.award.updatedAt;
+  await G.api.loot.update(s.gid, first.id, { note: 'Changed by someone else' });
+  G.handlers.input['la-note'](el('Mine'));
+  S.att.lootAward.data.award.updatedAt = staleVersion - 1; // what the page read before the other editor saved
+  G.handlers.submit['la-form']();
+  await tick();
+  assert(stripTags(G.pages.lootAward.main(route, gd)).includes('Someone changed this award. Reload to see it.'));
+  G.handlers.click['la-reload']();
+  await tick();
+  assert.equal(S.att.lootAward.data.award.note, 'Changed by someone else');
+
+  // A member never opens an award.
+  const memberG = loadPages(s.world, s.memberJar);
+  const memberS = pageState(s, memberG, s.guildData);
+  await memberG.pages.lootAward.load({ name: 'lootaward', gid: s.gid, aid: first.id, edit: false }, s.guildData);
+  assert(stripTags(memberG.pages.lootAward.main({ aid: first.id }, s.guildData)).includes('Only Team Leads and above can open an award.'), JSON.stringify(Object.keys(memberS.att)));
+
+  // Needs fixing: a manual twin is a possible duplicate; Keep both makes the group leave the list for good.
+  const dupe = { itemId: 29999, itemName: 'Twin Blade', winnerName: 'Thoren', tag: 'MS' };
+  await G.api.loot.manual(s.gid, s.raid, dupe);
+  await G.api.loot.manual(s.gid, s.raid, dupe);
+  const fixRoute = { name: 'lootfix', gid: s.gid };
+  await G.pages.lootFix.load(fixRoute, gd);
+  html = G.pages.lootFix.main(fixRoute, gd);
+  assert(stripTags(html).includes('Twin Blade') && html.includes('data-action="lf-keep"') && html.includes('data-action="lf-delete"'));
+  const group = S.att.lootFix.data.duplicates[0];
+  G.handlers.click['lf-keep']({ getAttribute: () => group.key, disabled: false });
+  await tick();
+  assert.equal(S.att.lootFix.data.duplicates.length, 0);
+  await G.pages.lootFix.load(fixRoute, gd);
+  assert.equal(S.att.lootFix.data.duplicates.length, 0, 'the dismissal is stored');
+
+  // Import preview: the edited winner is a conflict row with Keep officer's selected; choosing the export sends a resolution and the result line counts it.
+  const preview = await G.api.loot.preview(s.gid, s.raid, s.awards);
+  assert.equal(preview.counts.conflict, 1);
+  S.att.raid = { gid: s.gid, rid: s.raid, data: { raid: { id: s.raid, team: { id: s.teamId } } } };
+  const ui = Object.assign(G.pages.raidLoot.freshUi(), { open: true, stage: 'preview', parsed: s.parsed, preview });
+  S.att.raidLoot = { gid: s.gid, rid: s.raid, status: 'ok', data: { awards: [], canEdit: true }, ui };
+  html = G.pages.raidLoot.importPanelHtml(ui, gd);
+  text = stripTags(html).replace(/&#39;/g, "'");
+  assert(text.includes('1 award needs your decision') && text.includes("Keep officer's (Wanderfell)") && text.includes('Keep all officer changes'), text.slice(0, 400));
+  const checksum = preview.rows.find((r) => r.status === 'conflict').checksum;
+  assert(new RegExp('id="gl-res-' + checksum + '-officer"[^>]*checked').test(html));
+  G.handlers.change['loot-resolve']({ checked: true, value: 'export', getAttribute: (k) => (k === 'data-checksum' ? checksum : 'k') });
+  G.handlers.click['loot-commit']();
+  await tick(); await tick();
+  assert.deepEqual(plain(ui.result.conflicts), { kept: 0, exported: 1 });
+  assert(G.pages.raidLoot.resultLine(ui.result).includes('1 taken from the export'));
+  const back = await G.api.loot.award(s.gid, first.id);
+  assert.notEqual(back.award.winner.name, 'Wanderfell', 'the export winner is back');
 });
 
 // ---------------------------------------------------------------------------

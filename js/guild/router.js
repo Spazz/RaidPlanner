@@ -10,7 +10,8 @@
 //   These four work signed out; the first three show a read-only view and never ask for a sign-in, the form lets a signed-in applicant's account come along.
 //   #/g/:gid/away  (my away notices)
 //   #/g/:gid/raids/new  #/g/:gid/raids/r/:rid  #/g/:gid/attendance/{review,backfill}  #/g/:gid/attendance/p/:pid
-//   #/g/:gid/loot[?view=raids|items]  #/g/:gid/loot/p/:pid  (Balance is the default view)
+//   #/g/:gid/loot (the hub)  #/g/:gid/loot/{standings,fix}  #/g/:gid/loot/n/:rid (one night)  #/g/:gid/loot/i/:itemId  #/g/:gid/loot/p/:pid  #/g/:gid/loot/a/:aid[?edit=1]
+//   (the old ?view=raids|items links open the hub: the route carries legacyView so the page can tidy the address)
 //   #/g/:gid/roster[?team=t_..]  #/g/:gid/roster/p/:pid  #/g/:gid/roster/import/{raid-helper,wcl,bnet,csv}
 //   #/g/:gid/roster/{intent,recruiting,applications,launch}  (the Roster's other tabs: the class and spec intent board, recruitment needs, the applications inbox, the Launch funnel)
 //   (?team= only opens an archived team's roster; the shell's team picker decides otherwise)
@@ -25,6 +26,7 @@
   const TAB_ALIASES = { accounts: 'people' };
   const ROSTER_TABS = ['intent', 'recruiting', 'applications', 'launch'];
   const LOOT_VIEWS = ['raids', 'items'];
+  const ITEM_ID = /^[1-9][0-9]{0,9}$/;
   const IMPORT_SOURCES = ['raid-helper', 'wcl', 'bnet', 'csv'];
   // Why a sign-in came back without signing in (/auth/callback and /auth/bnet/callback redirect to #/signin?error=..).
   const SIGNIN_ERRORS = ['denied', 'state', 'discord', 'bnet', 'not_configured'];
@@ -97,7 +99,7 @@
     if (parts.length === 3 && SECTIONS.indexOf(parts[2]) >= 0) {
       const section = { name: 'section', gid: gid, section: parts[2] };
       if (parts[2] === 'roster' && typeof query.team === 'string' && ID.test(query.team)) section.team = query.team;
-      if (parts[2] === 'loot' && LOOT_VIEWS.indexOf(query.view) >= 0) section.view = query.view;
+      if (parts[2] === 'loot' && LOOT_VIEWS.indexOf(query.view) >= 0) section.legacyView = true;
       return section;
     }
     if (parts[2] === 'roster') {
@@ -115,7 +117,14 @@
       if (parts.length === 4 && parts[3] === 'backfill') return { name: 'backfill', gid: gid };
       if (parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'personatt', gid: gid, pid: parts[4] };
     }
-    if (parts[2] === 'loot' && parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'lootperson', gid: gid, pid: parts[4] };
+    if (parts[2] === 'loot') {
+      if (parts.length === 4 && parts[3] === 'standings') return { name: 'lootstandings', gid: gid };
+      if (parts.length === 4 && parts[3] === 'fix') return { name: 'lootfix', gid: gid };
+      if (parts.length === 5 && parts[3] === 'p' && ID.test(parts[4])) return { name: 'lootperson', gid: gid, pid: parts[4] };
+      if (parts.length === 5 && parts[3] === 'n' && ID.test(parts[4])) return { name: 'lootnight', gid: gid, rid: parts[4] };
+      if (parts.length === 5 && parts[3] === 'i' && ITEM_ID.test(parts[4])) return { name: 'lootitem', gid: gid, itemId: parts[4] };
+      if (parts.length === 5 && parts[3] === 'a' && ID.test(parts[4])) return { name: 'lootaward', gid: gid, aid: parts[4], edit: query.edit === '1' };
+    }
     if (parts[2] === 'settings') {
       if (parts.length === 3) return { name: 'settings', gid: gid, tab: null };
       if (parts.length === 4 && TAB_ALIASES.hasOwnProperty(parts[3])) return { name: 'settings', gid: gid, tab: TAB_ALIASES[parts[3]] };
@@ -145,9 +154,8 @@
       case 'section': {
         const section = SECTIONS.indexOf(r.section) >= 0 ? r.section : 'roster';
         const team = section === 'roster' && typeof r.team === 'string' && ID.test(r.team) ? '?team=' + encodeURIComponent(r.team) : '';
-        const view = section === 'loot' && LOOT_VIEWS.indexOf(r.view) >= 0 ? '?view=' + r.view : '';
         if (section === 'home') return '#/g/' + encodeURIComponent(r.gid);
-        return '#/g/' + encodeURIComponent(r.gid) + '/' + section + team + view;
+        return '#/g/' + encodeURIComponent(r.gid) + '/' + section + team;
       }
       case 'person': return '#/g/' + encodeURIComponent(r.gid) + '/roster/p/' + encodeURIComponent(r.pid);
       case 'import': return '#/g/' + encodeURIComponent(r.gid) + '/roster/import/' + (IMPORT_SOURCES.indexOf(r.source) >= 0 ? r.source : 'raid-helper');
@@ -157,6 +165,11 @@
       case 'review': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/review';
       case 'backfill': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/backfill';
       case 'personatt': return '#/g/' + encodeURIComponent(r.gid) + '/attendance/p/' + encodeURIComponent(r.pid);
+      case 'lootstandings': return '#/g/' + encodeURIComponent(r.gid) + '/loot/standings';
+      case 'lootfix': return '#/g/' + encodeURIComponent(r.gid) + '/loot/fix';
+      case 'lootnight': return '#/g/' + encodeURIComponent(r.gid) + '/loot/n/' + encodeURIComponent(r.rid);
+      case 'lootitem': return '#/g/' + encodeURIComponent(r.gid) + '/loot/i/' + encodeURIComponent(r.itemId);
+      case 'lootaward': return '#/g/' + encodeURIComponent(r.gid) + '/loot/a/' + encodeURIComponent(r.aid) + (r.edit ? '?edit=1' : '');
       case 'lootperson': return '#/g/' + encodeURIComponent(r.gid) + '/loot/p/' + encodeURIComponent(r.pid);
       case 'settings': return '#/g/' + encodeURIComponent(r.gid) + '/settings' + (TABS.indexOf(r.tab) >= 0 ? '/' + r.tab : '');
       default: return '#/';

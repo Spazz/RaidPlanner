@@ -191,7 +191,7 @@ const award = (n, over = {}) => ({
 // Two teams (A = Alpha, B = Bravo), five people, six raids, and every award the balance tests count. Erin is linked to Brindle.
 //   A 2027-01-05 r1 (Aldric, Brindle, Cassia, and Wanderfell as a fill-in), B 2027-01-05 rb (nobody ticked), A 2027-01-12 r2
 //   (Aldric, Brindle), A 2026-11-03 r0 (Aldric), A 2027-02-02 up (not started).
-async function lootWorld({ imported = true, migrationsDir } = {}) {
+async function lootWorld({ imported = true, migrationsDir, retag = true } = {}) {
   const s = await scenario({ teams: 2, migrationsDir });
   const [A, B] = s.teams;
   s.A = A; s.B = B;
@@ -241,9 +241,11 @@ async function lootWorld({ imported = true, migrationsDir } = {}) {
     }
     s.awardId = {};
     for (const row of await s.w.rows('SELECT id, checksum FROM loot_awards')) s.awardId[Number(row.checksum.slice(4))] = row.id;
-    // Cassia's award is re-tagged a disenchant; Visitor is marked a guest from the loot alone (no log names him).
-    const retag = await s.call('bob', 'PATCH', `/loot/${s.awardId[4]}`, { tag: 'DE' });
-    assert.equal(retag.status, 200, JSON.stringify(retag.json));
+    // Cassia's award is re-tagged a disenchant (not on a database that is held back before 0026: a PATCH writes its columns); Visitor is marked a guest from the loot alone (no log names him).
+    if (retag) {
+      const retagged = await s.call('bob', 'PATCH', `/loot/${s.awardId[4]}`, { tag: 'DE' });
+      assert.equal(retagged.status, 200, JSON.stringify(retagged.json));
+    }
     const guest = await s.call('bob', 'POST', `/raids/${s.r1}/unmatched`, { key: 'visitor|nightslayer', action: 'guest' });
     assert.equal(guest.status, 200, JSON.stringify(guest.json));
   }
@@ -346,6 +348,11 @@ check('the loot routes are exactly the contract list, literal paths before :aid'
     'GET /api/guild/:gid/loot/balance',
     'GET /api/guild/:gid/loot/raids',
     'GET /api/guild/:gid/loot/items',
+    'GET /api/guild/:gid/loot/hub',
+    'GET /api/guild/:gid/loot/items/:lootitem',
+    'GET /api/guild/:gid/loot/a/:aid',
+    'GET /api/guild/:gid/loot/fix',
+    'POST /api/guild/:gid/loot/fix/keep',
     'GET /api/guild/:gid/loot/person/:pid',
     'GET /api/guild/:gid/loot/policy',
     'PUT /api/guild/:gid/loot/policy',
@@ -360,7 +367,7 @@ check('the loot routes are exactly the contract list, literal paths before :aid'
 
 check('policy: defaults, validation (unknown keys, other values, empty or foreign countTags), per-key merge', async () => {
   const { DEFAULT_LOOT_POLICY, validateLootOverride, resolveLootPolicy } = await load('worker/loot-policy.js');
-  assert.deepEqual(DEFAULT_LOOT_POLICY, { visibility: { members: 'ownTeams' }, balance: { mode: 'perRaid', countTags: ['MS'] } });
+  assert.deepEqual(DEFAULT_LOOT_POLICY, { visibility: { members: 'ownTeams', standings: false, itemLookup: false }, balance: { mode: 'perRaid', countTags: ['MS'] } });
   assert(Object.isFrozen(DEFAULT_LOOT_POLICY) && Object.isFrozen(DEFAULT_LOOT_POLICY.balance.countTags));
   const ok = (value, scope) => assert.deepEqual(validateLootOverride(value, scope), { ok: true, errors: [] }, JSON.stringify(value));
   ok({}); ok({}, 'team');
@@ -393,7 +400,7 @@ check('policy: defaults, validation (unknown keys, other values, empty or foreig
   bad({}, '', 'nope');
   assert.deepEqual(resolveLootPolicy(null, null), DEFAULT_LOOT_POLICY);
   const merged = resolveLootPolicy({ balance: { countTags: ['MS', 'OS'] } }, { visibility: { members: 'own' }, balance: { mode: 'count' } });
-  assert.deepEqual(merged, { visibility: { members: 'own' }, balance: { mode: 'count', countTags: ['MS', 'OS'] } });
+  assert.deepEqual(merged, { visibility: { members: 'own', standings: false, itemLookup: false }, balance: { mode: 'count', countTags: ['MS', 'OS'] } });
   merged.balance.countTags.push('x');
   assert.deepEqual(DEFAULT_LOOT_POLICY.balance.countTags, ['MS'], 'the resolved policy is a fresh copy');
 });
@@ -575,7 +582,7 @@ check('preview: classifies new / update / same / otherRaid / otherDay, matches w
   const preview = await s.call('bob', 'POST', s.loot(s.r1, '/preview'), { awards: paste });
   assert.equal(preview.status, 200, JSON.stringify(preview.json));
   assert.deepEqual(Object.keys(preview.json), ['rows', 'counts']);
-  assert.deepEqual(preview.json.counts, { new: 3, update: 0, same: 0, otherRaid: 0, otherDay: 1 });
+  assert.deepEqual(preview.json.counts, { new: 3, update: 0, same: 0, otherRaid: 0, otherDay: 1, conflict: 0, deleted: 0 });
   assert.deepEqual(preview.json.rows.map((r) => [r.checksum, r.status, r.tag]), [
     [paste[0].checksum, 'new', 'MS'], [paste[1].checksum, 'new', 'OS'], [paste[2].checksum, 'new', 'MS'], [paste[3].checksum, 'otherDay', 'MS'],
   ]);
@@ -590,10 +597,10 @@ check('preview: classifies new / update / same / otherRaid / otherDay, matches w
   assert.equal((await s.import('bob', s.r1, paste.slice(0, 3))).status, 200);
   // Second look: two are on this raid already (one changed), one is new, one is on another raid.
   const again = await s.call('bob', 'POST', s.loot(s.r1, '/preview'), { awards: [paste[0], { ...paste[1], itemName: 'Renamed' }, award(5)] });
-  assert.deepEqual(again.json.counts, { new: 1, update: 1, same: 1, otherRaid: 0, otherDay: 0 });
+  assert.deepEqual(again.json.counts, { new: 1, update: 1, same: 1, otherRaid: 0, otherDay: 0, conflict: 0, deleted: 0 });
   assert.deepEqual(again.json.rows.map((r) => r.status), ['same', 'update', 'new']);
   const elsewhere = await s.call('bob', 'POST', s.loot(s.r2, '/preview'), { awards: [{ ...paste[0], awardedAt: at('2027-01-12', '20:00') }] });
-  assert.deepEqual(elsewhere.json.counts, { new: 0, update: 0, same: 0, otherRaid: 1, otherDay: 0 });
+  assert.deepEqual(elsewhere.json.counts, { new: 0, update: 0, same: 0, otherRaid: 1, otherDay: 0, conflict: 0, deleted: 0 });
   assert.equal(elsewhere.json.rows[0].tag, 'MS', 'an award on another raid shows the tag it has there');
 });
 
@@ -602,16 +609,16 @@ check('commit: inserts with the automatic tag, answers the contract shape, one a
   const paste = [award(2, { winnerName: 'Brindle', awardedAt: at('2027-01-05', '20:40'), flags: ['OS', 'SR'], rollType: 'SR' }), award(1, { awardedAt: at('2027-01-05', '20:10') })];
   const done = await s.import('bob', s.r1, paste);
   assert.equal(done.status, 200, JSON.stringify(done.json));
-  assert.deepEqual(Object.keys(done.json), ['inserted', 'updated', 'unchanged', 'skippedOtherRaid', 'skippedOtherDay', 'awards']);
+  assert.deepEqual(Object.keys(done.json), ['inserted', 'updated', 'unchanged', 'skippedOtherRaid', 'skippedOtherDay', 'conflicts', 'deleted', 'awards']);
   assert.deepEqual([done.json.inserted, done.json.updated, done.json.unchanged, done.json.skippedOtherRaid, done.json.skippedOtherDay], [2, 0, 0, 0, 0]);
   const a = done.json.awards;
   assert.deepEqual(a.map((x) => x.winner.name), ['Aldric', 'Brindle'], 'ordered by awardedAt');
-  assert.deepEqual(Object.keys(a[0]), ['id', 'raidId', 'raidOn', 'teamId', 'itemId', 'itemName', 'quality', 'awardedAt', 'winner', 'match', 'tag', 'tagSetBy', 'flags', 'rollType', 'note', 'awardedBy']);
+  assert.deepEqual(Object.keys(a[0]), ['id', 'raidId', 'raidOn', 'teamId', 'itemId', 'itemName', 'quality', 'awardedAt', 'winner', 'match', 'tag', 'tagSetBy', 'flags', 'rollType', 'note', 'awardedBy', 'updatedAt', 'editedFields']);
   assert.deepEqual(a[0], {
     id: a[0].id, raidId: s.r1, raidOn: '2027-01-05', teamId: s.A, itemId: 30001, itemName: 'Item 1', quality: 4, awardedAt: at('2027-01-05', '20:10'),
     winner: { name: 'Aldric', realm: 'Nightslayer', class: 'WARRIOR' },
     match: { kind: 'character', personId: s.p.aldric, personName: 'Aldric', characterId: a[0].match.characterId, characterName: 'Aldric', isMain: true },
-    tag: 'MS', tagSetBy: null, flags: [], rollType: 'MS', note: null, awardedBy: 'Bobby-Nightslayer',
+    tag: 'MS', tagSetBy: null, flags: [], rollType: 'MS', note: null, awardedBy: 'Bobby-Nightslayer', updatedAt: a[0].updatedAt, editedFields: [],
   });
   assert.match(a[0].id, /^lo_[A-Za-z0-9_-]{22}$/);
   assert.deepEqual([a[1].tag, a[1].tagSetBy, a[1].flags, a[1].rollType], ['OS', null, ['OS', 'SR'], 'SR'], 'Gargul\'s off-spec flag tags the award OS');
@@ -622,7 +629,7 @@ check('commit: inserts with the automatic tag, answers the contract shape, one a
   const audit = await s.w.rows("SELECT * FROM audit_log WHERE action = 'loot.import'");
   assert.equal(audit.length, 1);
   assert.deepEqual([audit[0].entity_type, audit[0].entity_id, audit[0].actor_user_id, audit[0].guild_id], ['raid', s.r1, s.ids.bob, s.guildId]);
-  assert.deepEqual(JSON.parse(audit[0].after), { inserted: 2, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 0, includeOtherDay: false });
+  assert.deepEqual(JSON.parse(audit[0].after), { inserted: 2, updated: 0, unchanged: 0, skippedOtherRaid: 0, skippedOtherDay: 0, conflicts: { kept: 0, exported: 0 }, deleted: { kept: 0, readded: 0 }, includeOtherDay: false });
 
   const again = await s.import('bob', s.r1, paste);
   assert.deepEqual([again.json.inserted, again.json.updated, again.json.unchanged], [0, 0, 2]);
@@ -680,10 +687,10 @@ check('commit: the same checksum on another raid is skipped; awards from another
   assert.deepEqual([all.json.inserted, all.json.updated, all.json.unchanged, all.json.skippedOtherRaid, all.json.skippedOtherDay], [2, 0, 2, 1, 0]);
   assert.deepEqual(all.json.awards.map((x) => x.itemId), [30003, 30002, 30004, 30005]);
   const audit = await s.w.rows("SELECT after FROM audit_log WHERE action = 'loot.import' ORDER BY created_at, rowid");
-  assert.deepEqual(JSON.parse(audit[audit.length - 1].after), { inserted: 2, updated: 0, unchanged: 2, skippedOtherRaid: 1, skippedOtherDay: 0, includeOtherDay: true });
+  assert.deepEqual(JSON.parse(audit[audit.length - 1].after), { inserted: 2, updated: 0, unchanged: 2, skippedOtherRaid: 1, skippedOtherDay: 0, conflicts: { kept: 0, exported: 0 }, deleted: { kept: 0, readded: 0 }, includeOtherDay: true });
   // An award that was let in from another day stays on its raid on the next look.
   const preview = await s.call('bob', 'POST', s.loot(s.r2, '/preview'), { awards: other });
-  assert.deepEqual(preview.json.counts, { new: 0, update: 0, same: 4, otherRaid: 1, otherDay: 0 });
+  assert.deepEqual(preview.json.counts, { new: 0, update: 0, same: 4, otherRaid: 1, otherDay: 0, conflict: 0, deleted: 0 });
   assert.equal((await s.import('bob', s.r2, other, { includeOtherDay: 'yes' })).status, 400);
 });
 
@@ -854,9 +861,11 @@ check('PATCH: a tag set by hand, a note, both; validation; permissions; audit wi
   assert.deepEqual([removed.status, removed.json], [200, { ok: true }]);
   assert.equal(await s.w.count('loot_awards', 'id = ?', id), 0);
   assert.equal((await s.call('carol', 'DELETE', `/loot/${id}`, {})).status, 404);
-  // The checksum is free again: the same award can be imported a second time.
-  const back = await s.import('bob', s.r1, [s.awards.r1[2]]);
-  assert.deepEqual([back.json.inserted, back.json.awards.find((a) => a.itemId === 30003).tagSetBy], [1, null]);
+  // The delete left a tombstone: the same award is not imported again unasked (a "deleted" row in the preview), only when the officer says "export".
+  const gone = await s.import('bob', s.r1, [s.awards.r1[2]]);
+  assert.deepEqual([gone.json.inserted, gone.json.deleted], [0, { kept: 1, readded: 0 }]);
+  const back = await s.import('bob', s.r1, [s.awards.r1[2]], { resolutions: { [s.awards.r1[2].checksum]: 'export' } });
+  assert.deepEqual([back.json.inserted, back.json.deleted, back.json.awards.find((a) => a.itemId === 30003).tagSetBy], [1, { kept: 0, readded: 1 }, null]);
 
   const audits = await s.w.rows("SELECT action, entity_type, entity_id, before, after FROM audit_log WHERE action IN ('loot.update', 'loot.delete') ORDER BY created_at, rowid");
   assert(audits.some((a) => a.action === 'loot.update') && audits.some((a) => a.action === 'loot.delete'));
@@ -1127,7 +1136,7 @@ check('person: awards newest first with totals by tag; the viewer\'s access deci
 
 check('visibility "own": a member sees only their own person\'s awards everywhere, the balance returns their row and the team average, others\' pages are 403', async () => {
   const s = await lootWorld();
-  assert.equal((await s.call('bob', 'PUT', '/loot/policy', { teamId: null, override: { visibility: { members: 'own' } }, version: 0 })).status, 200);
+  assert.equal((await s.call('bob', 'PUT', '/loot/policy', { teamId: null, override: { visibility: { members: 'own', standings: true } }, version: 0 })).status, 200);
   // Erin is Brindle.
   const raid = await s.call('erin', 'GET', s.loot(s.r1));
   assert.equal(raid.status, 200);
@@ -1163,7 +1172,7 @@ check('visibility "own": a member sees only their own person\'s awards everywher
 check('visibility "guild": every member sees every team; a team override can narrow one team back', async () => {
   const s = await lootWorld();
   assert.equal((await s.call('erin', 'GET', s.loot(s.rb))).status, 403, 'default: their teams only');
-  assert.equal((await s.call('bob', 'PUT', '/loot/policy', { teamId: null, override: { visibility: { members: 'guild' } }, version: 0 })).status, 200);
+  assert.equal((await s.call('bob', 'PUT', '/loot/policy', { teamId: null, override: { visibility: { members: 'guild', standings: true } }, version: 0 })).status, 200);
   assert.equal((await s.call('erin', 'GET', s.loot(s.rb))).json.awards.length, 1);
   const b = (await s.call('erin', 'GET', `/loot/balance?team=${s.B}`)).json;
   assert.deepEqual([b.scope, b.people.map((p) => p.name)], ['team', ['Wanderfell']]);
@@ -1185,7 +1194,7 @@ check('policy: GET shape for any member, PUT needs loot.policy, validation names
   const s = await lootWorld({ imported: false });
   const get = async (who = 'erin') => (await s.call(who, 'GET', '/loot/policy')).json;
   const first = await get();
-  const DEF = { visibility: { members: 'ownTeams' }, balance: { mode: 'perRaid', countTags: ['MS'] } };
+  const DEF = { visibility: { members: 'ownTeams', standings: false, itemLookup: false }, balance: { mode: 'perRaid', countTags: ['MS'] } };
   assert.deepEqual(first, { defaults: DEF, guild: {}, teams: {}, resolved: { [s.A]: DEF, [s.B]: DEF }, versions: { guild: 0, teams: {} } });
   assert.equal((await s.w.call(newJar(), 'GET', `${s.guildPath}/loot/policy`)).status, 401);
 
@@ -1209,8 +1218,8 @@ check('policy: GET shape for any member, PUT needs loot.policy, validation names
   const team = await put('bob', { teamId: s.A, override: { visibility: { members: 'own' }, balance: { countTags: ['OS'] } }, version: 0 });
   assert.equal(team.status, 200);
   assert.deepEqual(team.json.versions, { guild: 2, teams: { [s.A]: 1 } });
-  assert.deepEqual(team.json.resolved[s.A], { visibility: { members: 'own' }, balance: { mode: 'count', countTags: ['OS'] } });
-  assert.deepEqual(team.json.resolved[s.B], { visibility: { members: 'ownTeams' }, balance: { mode: 'count', countTags: ['MS'] } }, 'a save replaces the whole override of its level');
+  assert.deepEqual(team.json.resolved[s.A], { visibility: { members: 'own', standings: false, itemLookup: false }, balance: { mode: 'count', countTags: ['OS'] } });
+  assert.deepEqual(team.json.resolved[s.B], { visibility: { members: 'ownTeams', standings: false, itemLookup: false }, balance: { mode: 'count', countTags: ['MS'] } }, 'a save replaces the whole override of its level');
   assert.deepEqual(team.json.teams, { [s.A]: { visibility: { members: 'own' }, balance: { countTags: ['OS'] } } });
   // Clearing an override is saving an empty one.
   const cleared = await put('bob', { teamId: s.A, override: {}, version: 1 });
@@ -1318,7 +1327,7 @@ check('disenchants: previewed and imported with no winner and the tag DE; listed
 
   const preview = await s.call('bob', 'POST', s.loot(s.r1, '/preview'), { awards: [de, award(31, { awardedAt: at('2027-01-05', '21:20') })] });
   assert.equal(preview.status, 200, JSON.stringify(preview.json));
-  assert.deepEqual(preview.json.counts, { new: 2, update: 0, same: 0, otherRaid: 0, otherDay: 0 });
+  assert.deepEqual(preview.json.counts, { new: 2, update: 0, same: 0, otherRaid: 0, otherDay: 0, conflict: 0, deleted: 0 });
   const row0 = preview.json.rows[0];
   assert.deepEqual([row0.status, row0.tag, row0.match, row0.disenchanted, row0.winnerName, row0.winnerRealm, row0.winnerClass], ['new', 'DE', { kind: 'disenchanted' }, true, null, null, null]);
   assert.equal(preview.json.rows[1].disenchanted, false);
@@ -1330,7 +1339,7 @@ check('disenchants: previewed and imported with no winner and the tag DE; listed
   const view = done.json.awards.find((a) => a.itemId === 28830);
   assert.deepEqual(view, {
     id: view.id, raidId: s.r1, raidOn: '2027-01-05', teamId: s.A, itemId: 28830, itemName: 'Dragonspine Trophy', quality: 4, awardedAt: at('2027-01-05', '21:10'),
-    winner: { name: null, realm: null, class: null }, match: { kind: 'disenchanted' }, tag: 'DE', tagSetBy: null, flags: [], rollType: null, note: null, awardedBy: 'Bobby-Nightslayer',
+    winner: { name: null, realm: null, class: null }, match: { kind: 'disenchanted' }, tag: 'DE', tagSetBy: null, flags: [], rollType: null, note: null, awardedBy: 'Bobby-Nightslayer', updatedAt: view.updatedAt, editedFields: [],
   });
   const stored = (await s.w.rows('SELECT * FROM loot_awards WHERE checksum = ?', de.checksum))[0];
   assert.deepEqual([stored.winner_name, stored.winner_name_key, stored.winner_realm, stored.winner_realm_key, stored.winner_class, stored.tag, stored.tag_set_by, stored.tag_set_at],
@@ -1462,8 +1471,11 @@ check('migration 0011: an existing 0008 database is rebuilt in place -- rows, in
     // 0023 (PM wave 8) rebuilds raid_loot_lists, which 0019 makes, so it waits for 0019 as well.
     const later = '0019_wave5.sql';
     const afterLater = '0023_wave8_forever_names.sql';
-    for (const name of fs.readdirSync(migrations)) if (name.endsWith('.sql') && name !== rebuild && name !== later && name !== afterLater) fs.copyFileSync(path.join(migrations, name), path.join(dir, name));
-    const s = await lootWorld({ migrationsDir: dir });
+    const lootPage = '0026_loot_page.sql'; // adds columns to loot_awards too, so it waits for the rebuild as well
+    for (const name of fs.readdirSync(migrations)) if (name.endsWith('.sql') && name !== rebuild && name !== later && name !== afterLater && name !== lootPage) fs.copyFileSync(path.join(migrations, name), path.join(dir, name));
+    // The Worker's import reads the tombstone table of 0026, so a stand-in table exists until the real migration runs below.
+    fs.writeFileSync(path.join(dir, '0026_stub.sql'), 'CREATE TABLE loot_award_deletions (guild_id TEXT, checksum TEXT, raid_id TEXT, deleted_at INTEGER);');
+    const s = await lootWorld({ migrationsDir: dir, retag: false });
     const columns = async () => s.w.rows('SELECT name, type, "notnull" AS nn, dflt_value, pk FROM pragma_table_info(\'loot_awards\') ORDER BY cid');
     const indexes = async () => s.w.rows('SELECT name, sql FROM sqlite_master WHERE type = \'index\' AND tbl_name = \'loot_awards\' AND sql IS NOT NULL ORDER BY name');
     const foreignKeys = async () => s.w.rows('SELECT "table", "from", "to", on_update, on_delete FROM pragma_foreign_key_list(\'loot_awards\') ORDER BY id, seq');
@@ -1494,6 +1506,8 @@ check('migration 0011: an existing 0008 database is rebuilt in place -- rows, in
     // 0019 then adds the manual flag to the rebuilt table: every row is "not manual" and the answer is still the same.
     exec(s.w, fs.readFileSync(path.join(migrations, later), 'utf8'));
     exec(s.w, fs.readFileSync(path.join(migrations, afterLater), 'utf8'));
+    exec(s.w, 'DROP TABLE loot_award_deletions');
+    exec(s.w, fs.readFileSync(path.join(migrations, lootPage), 'utf8'));
     assert.deepEqual(await s.w.rows('SELECT DISTINCT manual FROM loot_awards'), [{ manual: 0 }]);
     assert.deepEqual((await s.call('bob', 'GET', s.loot(s.r1))).json, apiBefore, 'a stored award has no manual key');
 
@@ -1607,6 +1621,432 @@ check('privacy: awards hold no Discord data, and Delete my data leaves them (the
   assert.equal(await s.w.count('loot_awards'), before);
   assert.equal(await s.w.count('loot_awards', 'created_by IS NULL'), before, 'created_by is SET NULL, the awards stay');
   assert.equal((await s.call('alice', 'GET', s.loot(s.r1))).json.awards[3].tagSetBy, 'officer', 'a tag set by hand stays set by hand');
+});
+
+// ---------------------------------------------------------------------------
+// Loot page redesign (lane W): policy keys, gates, hub, item, award record, Needs fixing, award edits, tombstones, re-import conflicts
+
+const putPolicy = async (s, override, teamId = null, version = 0) => {
+  const r = await s.call('bob', 'PUT', '/loot/policy', { teamId, override, version });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  return r.json;
+};
+const aldricAward = (s) => s.awardId[1]; // Tier Token, Aldric, r1 (team A)
+const getAward = async (s, id) => (await s.call('bob', 'GET', `/loot/a/${id}`)).json;
+
+check('loot page policy: visibility.standings / itemLookup default off, accept only booleans, round-trip and merge guild <- team', async () => {
+  const { DEFAULT_LOOT_POLICY, validateLootOverride, resolveLootPolicy } = await load('worker/loot-policy.js');
+  assert.deepEqual(DEFAULT_LOOT_POLICY.visibility, { members: 'ownTeams', standings: false, itemLookup: false });
+  assert.equal(validateLootOverride({ visibility: { standings: true, itemLookup: false } }).ok, true);
+  assert.equal(validateLootOverride({ visibility: { standings: true } }, 'team').ok, true);
+  for (const value of ['yes', 1, null]) {
+    const result = validateLootOverride({ visibility: { itemLookup: value } });
+    assert.deepEqual([result.ok, result.errors[0].path], [false, 'visibility.itemLookup'], String(value));
+  }
+  assert.deepEqual(resolveLootPolicy({ visibility: { standings: true } }, { visibility: { itemLookup: true } }).visibility, { members: 'ownTeams', standings: true, itemLookup: true });
+
+  const s = await lootWorld();
+  const rejected = await s.call('bob', 'PUT', '/loot/policy', { teamId: null, override: { visibility: { standings: 'on' } }, version: 0 });
+  assert.deepEqual([rejected.status, rejected.json.error, rejected.json.field], [400, 'policy_invalid', 'visibility.standings']);
+  await putPolicy(s, { visibility: { standings: true } });
+  await putPolicy(s, { visibility: { itemLookup: true } }, s.A);
+  const read = (await s.call('erin', 'GET', '/loot/policy')).json;
+  assert.deepEqual(read.guild, { visibility: { standings: true } });
+  assert.deepEqual([read.resolved[s.A].visibility, read.resolved[s.B].visibility], [
+    { members: 'ownTeams', standings: true, itemLookup: true }, { members: 'ownTeams', standings: true, itemLookup: false },
+  ]);
+});
+
+check('loot page gates: standings (balance) need loot.edit or visibility.standings; the item page needs loot.edit or visibility.itemLookup', async () => {
+  const s = await lootWorld();
+  const balance = (who, team = s.A) => s.call(who, 'GET', `/loot/balance?team=${team}`);
+  const item = (who, team = s.A) => s.call(who, 'GET', `/loot/items/28770?team=${team}`);
+  // Editors always; the member (Erin, Brindle on team A) only with the switch.
+  for (const who of ['alice', 'bob', 'carol']) assert.equal((await balance(who)).status, 200, `${who} standings`);
+  assert.equal((await balance('erin')).status, 403, 'members: off by default');
+  assert.equal((await item('erin')).status, 403, 'members: off by default');
+  assert.equal((await balance('dave')).status, 403, 'Team Lead of another team');
+  assert.equal((await item('dave')).status, 403, 'Team Lead of another team');
+  assert.equal((await item('carol', s.B)).status, 403, 'Team Lead of team A on team B');
+  assert.equal((await s.call('bob', 'GET', `/loot/items/30010?team=${s.B}`)).status, 200, 'an Officer is guild-wide');
+  assert.equal((await item('bob', s.B)).status, 404, 'no drops of that item on team B');
+
+  await putPolicy(s, { visibility: { standings: true } });
+  assert.equal((await balance('erin')).status, 200);
+  assert.equal((await item('erin')).status, 403, 'itemLookup is its own switch');
+  await putPolicy(s, { visibility: { standings: true, itemLookup: true } }, null, 1);
+  const seen = await item('erin');
+  assert.equal(seen.status, 200);
+  assert.deepEqual([seen.json.item, seen.json.counts.total, seen.json.drops.length], [{ itemId: 28770, itemName: 'Tier Token', quality: 4 }, 3, 3], 'Tier Token dropped three times on team A (r1, r2, r0)');
+  assert.equal((await item('erin', s.B)).status, 403, 'ownTeams: a team she is not on stays closed');
+  // Level own: only her own drops (Brindle won nothing of item 28770; she won 30003 and 30008).
+  await putPolicy(s, { visibility: { members: 'own', standings: true, itemLookup: true } }, null, 2);
+  assert.equal((await item('erin')).status, 404, 'none of her own drops of that item: nothing to show');
+  assert.deepEqual((await s.call('erin', 'GET', `/loot/items/30003?team=${s.A}`)).json.drops.map((d) => d.winner.name), ['Brindle']);
+  // Bad input.
+  assert.equal((await s.call('bob', 'GET', `/loot/items/0?team=${s.A}`)).status, 400);
+  assert.equal((await s.call('bob', 'GET', `/loot/items/28770`)).status, 400, 'team is required');
+  assert.equal((await s.call('bob', 'GET', `/loot/items/abc?team=${s.A}`)).status, 404, 'a malformed id never reaches the handler');
+});
+
+check('loot hub: the shape per role and per setting; My loot by night; latest 3 nights; standings only when allowed; the fix counts for editors', async () => {
+  const s = await lootWorld();
+  const hub = (who, team = s.A) => s.call(who, 'GET', `/loot/hub?team=${team}`);
+  const editor = await hub('bob');
+  assert.equal(editor.status, 200, JSON.stringify(editor.json));
+  assert.deepEqual(Object.keys(editor.json), ['team', 'can', 'me', 'nights', 'standingsTop', 'standingsCount', 'standingsInfo', 'fix', 'level']);
+  assert.equal(editor.json.level, 'full');
+  assert.deepEqual(editor.json.can, { edit: true, rules: true, standings: true, itemLookup: true });
+  assert.equal(editor.json.me, null, 'Bob has no person on the roster');
+  assert.deepEqual(editor.json.nights.map((n) => n.raid.raidOn), ['2027-01-12', '2027-01-05', '2026-11-03'], 'newest night first, the latest 3');
+  assert.deepEqual(Object.keys(editor.json.nights[0].raid), ['id', 'raidOn', 'title', 'zone']);
+  assert.deepEqual([editor.json.standingsTop.length > 0, editor.json.standingsTop.length <= 5], [true, true]);
+  const full = (await s.call('bob', 'GET', `/loot/balance?team=${s.A}`)).json.people;
+  assert.equal(editor.json.standingsCount, full.length, 'standingsCount = the people on the full Standings list');
+  const figures = editor.json.standingsTop.map((p) => p.perRaid.window);
+  assert.deepEqual(figures.filter((v) => v !== null), figures.filter((v) => v !== null).slice().sort((x, y) => x - y), 'the most due first (lowest per-raid figure)');
+  const lowest = full.filter((p) => p.status !== 'inactive' && p.perRaid.window !== null).map((p) => p.perRaid.window).sort((x, y) => x - y)[0];
+  assert.equal(figures[0], lowest === undefined ? null : lowest, 'the first row is the most due of the whole team, not the first by name');
+  assert.deepEqual(editor.json.fix, { duplicates: 0, unknown: 1 }, 'Zorgax is on no roster and no guest list');
+  assert.equal((await hub('carol')).json.can.rules, false, 'a Team Lead has no loot.policy');
+  assert.equal((await hub('alice')).json.can.rules, true);
+
+  // A member: My loot (her own awards by night) and the nights; no standings, lookup, fix.
+  const member = await hub('erin');
+  assert.equal(member.status, 200);
+  assert.deepEqual(member.json.can, { edit: false, rules: false, standings: false, itemLookup: false });
+  assert.deepEqual([member.json.standingsTop, member.json.fix], [null, null]);
+  assert.equal(member.json.me.personId, s.p.brindle);
+  assert.deepEqual(member.json.me.totals, { MS: 2, OS: 0, DE: 0, BANK: 0 });
+  assert.deepEqual(member.json.me.byNight.map((n) => [n.raid.raidOn, n.awards.map((a) => a.itemId)]), [['2027-01-12', [30008]], ['2027-01-05', [30003]]]);
+  assert.equal(member.json.nights[0].awards.length, 2, 'ownTeams: everybody\'s awards of the night');
+  // The switches turn the cards on.
+  await putPolicy(s, { visibility: { standings: true, itemLookup: true } });
+  const open = await hub('erin');
+  assert.deepEqual(open.json.can, { edit: false, rules: false, standings: true, itemLookup: true });
+  assert.equal(open.json.standingsTop.length > 0, true);
+  // Level own: the nights hold only her awards.
+  await putPolicy(s, { visibility: { members: 'own' } }, null, 1);
+  const own = await hub('erin');
+  assert.deepEqual(own.json.nights.map((n) => [n.raid.raidOn, n.awards.map((a) => a.winner.name)]), [['2027-01-12', ['Brindle']], ['2027-01-05', ['Brindle']]]);
+  assert.equal((await hub('erin', s.B)).status, 200, '"own" is not tied to a team, like the night page');
+  // No access at all: a Team Lead of another team under ownTeams.
+  await putPolicy(s, { visibility: { members: 'ownTeams' } }, null, 2);
+  assert.equal((await hub('dave')).status, 403);
+  assert.equal((await s.call('bob', 'GET', '/loot/hub')).status, 400);
+  assert.equal((await s.call('erin', 'GET', `/loot/hub?team=${s.A}`)).status, 200);
+});
+
+check('loot award record: edit holders only; origin and history lines; the history reads "Winner changed from ... to ..."', async () => {
+  const s = await lootWorld();
+  const id = aldricAward(s);
+  const record = await s.call('bob', 'GET', `/loot/a/${id}`);
+  assert.equal(record.status, 200, JSON.stringify(record.json));
+  assert.deepEqual(Object.keys(record.json), ['award', 'raid', 'origin', 'history', 'canEdit']);
+  assert.deepEqual([record.json.canEdit, record.json.award.id, record.json.raid.raidOn, record.json.raid.teamId, record.json.raid.teamName, record.json.raid.title], [true, id, '2027-01-05', s.A, 'Alpha', 'Gruul night']);
+  assert.deepEqual([record.json.origin.kind, record.json.history], ['gargul', []]);
+  assert.match(record.json.origin.text, /^Imported from Gargul \(awarded by Bobby-Nightslayer\)$/);
+  assert.equal((await s.call('carol', 'GET', `/loot/a/${id}`)).status, 200, 'Team Lead of the award\'s team');
+  assert.equal((await s.call('dave', 'GET', `/loot/a/${id}`)).status, 403, 'Team Lead of another team');
+  assert.equal((await s.call('erin', 'GET', `/loot/a/${id}`)).status, 403, 'a member never opens an award');
+  assert.equal((await s.call('bob', 'GET', '/loot/a/lo_AAAAAAAAAAAAAAAAAAAAAA')).status, 404);
+
+  const done = await s.call('bob', 'PATCH', `/loot/${id}`, { winnerName: 'Brindle', updatedAt: record.json.award.updatedAt });
+  assert.equal(done.status, 200, JSON.stringify(done.json));
+  s.w.clock.now += 1000;
+  const second = await s.call('carol', 'PATCH', `/loot/${id}`, { tag: 'OS', updatedAt: done.json.award.updatedAt });
+  assert.equal(second.status, 200, JSON.stringify(second.json));
+  const after = await getAward(s, id);
+  assert.deepEqual(after.history.map((h) => h.text), [
+    'Tagged Tier Token as OS',
+    'Winner changed from Aldric to Brindle (Tier Token)',
+  ]);
+  assert.deepEqual(after.history.map((h) => h.by.displayName), ['Carol C', 'bob']);
+  assert.deepEqual(after.award.editedFields, ['winner']);
+  // The Activity log (audit-view) tells the same sentence.
+  const log = await s.w.call(s.alice, 'GET', `${s.guildPath}/audit?type=loot`);
+  assert(log.json.rows.some((row) => row.text === 'Winner changed from Aldric to Brindle (Tier Token)'), JSON.stringify(log.json.rows.map((r) => r.text)));
+});
+
+check('PATCH award: winner, item, disenchant both ways, move across teams; edited_fields, edited_by/at, one audit row with every change', async () => {
+  const s = await lootWorld();
+  const id = aldricAward(s);
+  const patch = (who, body, target = id) => s.call(who, 'PATCH', `/loot/${target}`, body);
+  const version = async (target = id) => (await getAward(s, target)).award.updatedAt;
+
+  // A winner change needs updatedAt.
+  assert.deepEqual([(await patch('bob', { winnerName: 'Brindle' })).status, (await patch('bob', { winnerName: 'Brindle' })).json.field], [400, 'updatedAt']);
+  assert.equal((await patch('bob', { itemId: 1, updatedAt: 'x' })).status, 400);
+  // Winner: cleaned like the import (name case, guild realm); the class of the old winner is dropped.
+  s.w.clock.now += 1000;
+  const won = await patch('bob', { winnerName: ' brindle ', updatedAt: await version() });
+  assert.equal(won.status, 200, JSON.stringify(won.json));
+  assert.deepEqual([won.json.award.winner.name, won.json.award.winner.realm, won.json.award.match.personId, won.json.award.winner.class, won.json.award.editedFields], ['Brindle', 'Nightslayer', s.p.brindle, 'WARRIOR', ['winner']]);
+  const stored = (await s.w.rows('SELECT * FROM loot_awards WHERE id = ?', id))[0];
+  assert.deepEqual([stored.winner_name_key, stored.winner_class, stored.edited_fields, stored.edited_by, stored.edited_at, stored.tag_set_at], ['brindle', null, '["winner"]', s.ids.bob, s.w.clock.now, null]);
+  // The same winner again is no change (no write, no audit row).
+  const rows = await s.w.count('audit_log', "action = 'loot.update'");
+  const same = await patch('bob', { winnerName: 'Brindle', updatedAt: await version() });
+  assert.deepEqual([same.status, await s.w.count('audit_log', "action = 'loot.update'")], [200, rows]);
+  assert.equal((await patch('bob', { winnerName: 'x', updatedAt: await version() })).json.field, 'winnerName');
+  assert.equal((await patch('bob', { winnerName: 'Brindle', disenchanted: true, updatedAt: await version() })).status, 400, 'a winner or a disenchant, not both');
+  assert.equal((await patch('bob', { disenchanted: false, updatedAt: await version() })).status, 200, 'false with a winner already there changes nothing');
+
+  // Disenchant: no winner, tag DE (set by hand). A tag other than DE is refused.
+  s.w.clock.now += 1000;
+  assert.equal((await patch('bob', { disenchanted: true, tag: 'MS', updatedAt: await version() })).json.field, 'tag');
+  const de = await patch('bob', { disenchanted: true, updatedAt: await version() });
+  assert.equal(de.status, 200, JSON.stringify(de.json));
+  assert.deepEqual([de.json.award.tag, de.json.award.tagSetBy, de.json.award.winner.name, de.json.award.match, de.json.award.editedFields], ['DE', 'officer', null, { kind: 'disenchanted' }, ['winner']]);
+  // A winner on the DE award needs a non-DE tag, MS by default.
+  assert.equal((await patch('bob', { winnerName: 'Aldric', tag: 'DE', updatedAt: await version() })).json.field, 'tag');
+  s.w.clock.now += 1000;
+  const back = await patch('bob', { winnerName: 'Aldric', updatedAt: await version() });
+  assert.deepEqual([back.status, back.json.award.tag, back.json.award.winner.name, back.json.award.tagSetBy], [200, 'MS', 'Aldric', 'officer']);
+  const withTag = await patch('bob', { disenchanted: true, updatedAt: await version() });
+  assert.equal(withTag.status, 200);
+  s.w.clock.now += 1000;
+  const bank = await patch('bob', { winnerName: 'Cassia', tag: 'BANK', updatedAt: await version() });
+  assert.deepEqual([bank.json.award.tag, bank.json.award.winner.name], ['BANK', 'Cassia']);
+
+  // Item: a new id clears the quality and the old name; a name alone keeps the quality.
+  s.w.clock.now += 1000;
+  const item = await patch('bob', { itemId: 28830, itemName: 'Dragonspine Trophy', updatedAt: await version() });
+  assert.deepEqual([item.status, item.json.award.itemId, item.json.award.itemName, item.json.award.quality], [200, 28830, 'Dragonspine Trophy', null]);
+  s.w.clock.now += 1000;
+  const named = await patch('bob', { itemName: 'Dragonspine Trophy II', updatedAt: await version() });
+  assert.deepEqual([named.json.award.itemId, named.json.award.itemName], [28830, 'Dragonspine Trophy II']);
+  const noName = await patch('bob', { itemId: 28831, updatedAt: await version() });
+  assert.deepEqual([noName.json.award.itemName, noName.json.award.editedFields], [null, ['winner', 'item']]);
+  assert.equal((await patch('bob', { itemId: 0, updatedAt: await version() })).json.field, 'itemId');
+  assert.equal((await patch('bob', { itemName: 5, updatedAt: await version() })).json.field, 'itemName');
+
+  // Raid: a started raid on a team the viewer edits; the team follows; the upcoming raid, an unknown raid and a foreign team are refused.
+  assert.equal((await patch('bob', { raidId: s.up, updatedAt: await version() })).json.error, 'raid_not_started');
+  assert.equal((await patch('bob', { raidId: 'r_AAAAAAAAAAAAAAAAAAAAAA', updatedAt: await version() })).status, 404);
+  assert.equal((await patch('bob', { raidId: 'nope', updatedAt: await version() })).json.field, 'raidId');
+  assert.equal((await patch('carol', { raidId: s.rb, updatedAt: await version() })).status, 403, 'Carol edits team A only');
+  s.w.clock.now += 1000;
+  const moved = await patch('bob', { raidId: s.rb, updatedAt: await version() });
+  assert.deepEqual([moved.status, moved.json.award.raidId, moved.json.award.teamId, moved.json.award.raidOn, moved.json.award.editedFields], [200, s.rb, s.B, '2027-01-05', ['winner', 'item', 'raid']]);
+  assert.equal((await patch('carol', { tag: 'OS' })).status, 403, 'it is on team B now: Carol lost it');
+  assert.equal((await s.call('dave', 'GET', `/loot/a/${id}`)).status, 200, 'and Dave (Team Lead of B) gained it');
+
+  // One audit row per PATCH, with the before/after of every changed field.
+  const audits = (await s.w.rows("SELECT before, after FROM audit_log WHERE action = 'loot.update' AND entity_id = ? ORDER BY created_at DESC, rowid DESC", id)).map((r) => [JSON.parse(r.before), JSON.parse(r.after)]);
+  const [lastBefore, lastAfter] = audits[0];
+  assert.deepEqual([lastBefore.raidId, lastBefore.teamId, lastAfter.raidId, lastAfter.teamId, lastAfter.changed], [s.r1, s.A, s.rb, s.B, ['raid']]);
+  const multi = await patch('bob', { winnerName: 'Dunmar', itemId: 30001, itemName: 'Item 1', note: 'Fixed by hand', updatedAt: await version() });
+  assert.equal(multi.status, 200, JSON.stringify(multi.json));
+  const row = (await s.w.rows("SELECT before, after FROM audit_log WHERE action = 'loot.update' AND entity_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1", id))[0];
+  const [before, afterRow] = [JSON.parse(row.before), JSON.parse(row.after)];
+  assert.deepEqual([afterRow.changed, before.winnerName, afterRow.winnerName, before.itemId, afterRow.itemId, afterRow.noteChanged], [['winner', 'item', 'note'], 'Cassia', 'Dunmar', 28831, 30001, true]);
+  assert.equal(JSON.stringify(row).includes('Fixed by hand'), false, 'no note text in the log');
+});
+
+check('PATCH award: a stale updatedAt is a 409 `stale` with the current award; two editors cannot overwrite each other', async () => {
+  const s = await lootWorld();
+  const id = aldricAward(s);
+  const first = (await getAward(s, id)).award;
+  s.w.clock.now += 5000;
+  assert.equal((await s.call('bob', 'PATCH', `/loot/${id}`, { winnerName: 'Brindle', updatedAt: first.updatedAt })).status, 200);
+  const stale = await s.call('carol', 'PATCH', `/loot/${id}`, { winnerName: 'Cassia', updatedAt: first.updatedAt });
+  assert.deepEqual([stale.status, stale.json.error, stale.json.message], [409, 'stale', 'Someone changed this award. Reload to see it.']);
+  assert.equal(stale.json.current.winner.name, 'Brindle');
+  assert.equal(stale.json.current.updatedAt > first.updatedAt, true);
+  assert.equal((await s.w.rows('SELECT winner_name FROM loot_awards WHERE id = ?', id))[0].winner_name, 'Brindle');
+  // A tag change may send updatedAt too and is checked the same way; without it the old behaviour stays.
+  assert.equal((await s.call('carol', 'PATCH', `/loot/${id}`, { tag: 'OS', updatedAt: first.updatedAt })).status, 409);
+  assert.equal((await s.call('carol', 'PATCH', `/loot/${id}`, { tag: 'OS' })).status, 200);
+  assert.equal((await s.call('carol', 'PATCH', `/loot/${id}`, {})).status, 400);
+});
+
+check('DELETE award: a Gargul award leaves a tombstone, a manual one does not, a raid delete takes the tombstones along', async () => {
+  const s = await lootWorld();
+  const made = await s.call('bob', 'POST', `/raids/${s.r1}/loot/manual`, { itemId: 29999, winnerName: 'Aldric' });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  assert.equal((await s.call('bob', 'DELETE', `/loot/${made.json.award.id}`, {})).status, 200);
+  assert.equal(await s.w.count('loot_award_deletions'), 0, 'a manual award leaves no tombstone');
+
+  const id = s.awardId[2];
+  s.w.clock.now += 5000;
+  assert.equal((await s.call('carol', 'DELETE', `/loot/${id}`, {})).status, 200);
+  const tomb = await s.w.rows('SELECT * FROM loot_award_deletions');
+  assert.deepEqual(tomb, [{
+    guild_id: s.guildId, checksum: s.awards.r1[1].checksum, raid_id: s.r1, team_id: s.A, item_id: 30002, winner_name: 'Aldric', deleted_by: s.ids.carol, deleted_at: s.w.clock.now,
+  }]);
+  assert.equal((await s.call('dave', 'DELETE', `/loot/${s.awardId[3]}`, {})).status, 403);
+  // Deleting the raid takes its tombstones along (the FK cascades).
+  exec(s.w, `DELETE FROM raids WHERE id = '${s.r1}'`);
+  assert.equal(await s.w.count('loot_award_deletions'), 0);
+});
+
+check('Needs fixing: possible duplicates (same raid + item + winner) and unknown winners; "Keep both" sticks; gates', async () => {
+  const s = await lootWorld();
+  const fix = (who, team = s.A) => s.call(who, 'GET', `/loot/fix?team=${team}`);
+  const first = await fix('bob');
+  assert.equal(first.status, 200, JSON.stringify(first.json));
+  assert.deepEqual(Object.keys(first.json), ['team', 'duplicates', 'unknown']);
+  assert.deepEqual([first.json.duplicates, first.json.unknown.map((a) => a.winner.name)], [[], ['Zorgax']], 'Visitor is a guest, Zorgax is unknown');
+  // A hand-made twin of Brindle's item 30003 on the same raid is a possible duplicate.
+  const twin = await s.call('bob', 'POST', `/raids/${s.r1}/loot/manual`, { itemId: 30003, winnerName: 'Brindle' });
+  assert.equal(twin.status, 201);
+  const dupes = (await fix('carol')).json.duplicates;
+  assert.equal(dupes.length, 1);
+  assert.deepEqual([dupes[0].key, dupes[0].raidId, dupes[0].raidOn, dupes[0].itemId, dupes[0].winnerKey, dupes[0].winnerName, dupes[0].awards.length],
+    [`loot-dupe:${s.r1}:30003:brindle`, s.r1, '2027-01-05', 30003, 'brindle', 'Brindle', 2]);
+  assert.deepEqual((await s.call('bob', 'GET', `/loot/hub?team=${s.A}`)).json.fix, { duplicates: 1, unknown: 1 });
+  // A different winner or a no-winner award is no duplicate.
+  assert.equal((await s.call('bob', 'POST', `/raids/${s.r1}/loot/manual`, { itemId: 30003, winnerName: 'Aldric' })).status, 201);
+  assert.equal((await fix('bob')).json.duplicates.length, 1);
+
+  // Gates.
+  assert.equal((await fix('erin')).status, 403);
+  assert.equal((await fix('dave')).status, 403, 'Team Lead of another team');
+  assert.equal((await fix('bob', s.B)).status, 200);
+  assert.equal((await s.call('bob', 'GET', '/loot/fix')).status, 400);
+
+  // Keep both.
+  const keep = (who, body) => s.call(who, 'POST', '/loot/fix/keep', body);
+  const body = { raidId: s.r1, itemId: 30003, winnerKey: 'brindle' };
+  assert.equal((await keep('erin', body)).status, 403);
+  assert.equal((await keep('dave', body)).status, 403);
+  assert.equal((await keep('bob', { ...body, winnerKey: '' })).json.field, 'winnerKey');
+  assert.equal((await keep('bob', { ...body, itemId: 0 })).json.field, 'itemId');
+  assert.equal((await keep('bob', { ...body, raidId: 'x' })).json.field, 'raidId');
+  assert.equal((await keep('bob', { ...body, winnerKey: 'aldric', itemId: 30001 })).status, 404, 'a single award is no duplicate group');
+  const kept = await keep('carol', body);
+  assert.deepEqual([kept.status, kept.json], [200, { ok: true, key: `loot-dupe:${s.r1}:30003:brindle` }]);
+  assert.deepEqual((await fix('bob')).json.duplicates, [], 'dismissed for every officer');
+  assert.deepEqual((await s.call('bob', 'GET', `/loot/hub?team=${s.A}`)).json.fix, { duplicates: 0, unknown: 1 });
+  // The shared dismissal store is used (no new table); Keep both twice is fine; the log says it.
+  const stored = await s.w.rows("SELECT item_id, kind, team_id, mode, until, dismissed_by FROM attention_dismissals");
+  assert.deepEqual(stored, [{ item_id: `loot-dupe:${s.r1}:30003:brindle`, kind: 'loot_dupe', team_id: s.A, mode: 'dismiss', until: null, dismissed_by: s.ids.carol }]);
+  assert.equal((await keep('bob', body)).status, 200);
+  assert.equal(await s.w.count('attention_dismissals'), 1);
+  const log = await s.w.call(s.alice, 'GET', `${s.guildPath}/audit`);
+  assert(log.json.rows.some((row) => /Dismissed the to-do "possible duplicate loot award" for the raid on Tue Jan 5/.test(row.text)), JSON.stringify(log.json.rows.map((r) => r.text)));
+});
+
+check('re-import rules (pure): conflict on an edited field, deleted, otherRaid for an award nobody moved; edited fields are not overwritten', async () => {
+  const { classifyAward, readAwards, parseEditedFields } = await load('worker/loot-import.js');
+  const guild = { realm: 'Nightslayer', realm_kind: 'realm', game_version: 'tbc' };
+  const [incoming] = readAwards([award(1)], guild);
+  const raid = { id: 'r_this', raid_on: '2027-01-05' };
+  const stored = (over = {}) => ({
+    id: 'lo_x', raid_id: 'r_this', team_id: 't_a', raid_on: '2027-01-05', checksum: incoming.checksum, item_id: 30001, item_name: 'Item 1', item_quality: 4,
+    awarded_at: incoming.awardedAt, winner_name: 'Aldric', winner_name_key: 'aldric', winner_realm: 'Nightslayer', winner_realm_key: 'nightslayer', winner_class: 'WARRIOR',
+    roll_type: 'MS', flags: '[]', tag: 'MS', tag_set_at: null, awarded_by: 'Bobby-Nightslayer', edited_fields: '[]', ...over,
+  });
+  const run = (existing, deleted = null) => classifyAward(incoming, existing, raid, 'America/New_York', deleted);
+  assert.deepEqual(parseEditedFields('["winner","bogus","raid"]'), ['winner', 'raid']);
+  assert.deepEqual(parseEditedFields('nonsense'), []);
+  assert.deepEqual(run(stored()), { status: 'same', tag: 'MS' });
+  // An edited winner the export disagrees with is a conflict (values as display text); the other fields still compare.
+  const winner = run(stored({ winner_name: 'Brindle', winner_name_key: 'brindle', edited_fields: '["winner"]' }));
+  assert.deepEqual([winner.status, winner.conflicts, winner.changed], ['conflict', [{ field: 'winner', export: 'Aldric', officer: 'Brindle' }], false]);
+  assert.equal(run(stored({ winner_name: 'Brindle', winner_name_key: 'brindle', item_id: 1, edited_fields: '["winner"]' })).changed, true, 'item is not edited: it would update');
+  // An edited field that still equals the export is no conflict; the officer's value is left out of the "update" comparison.
+  assert.equal(run(stored({ edited_fields: '["winner"]' })).status, 'same');
+  assert.equal(run(stored({ winner_name: 'Brindle', winner_name_key: 'brindle', edited_fields: '["winner"]', roll_type: 'OS' })).status, 'conflict');
+  const item = run(stored({ item_id: 28830, item_name: null, edited_fields: '["item"]' }));
+  assert.deepEqual(item.conflicts, [{ field: 'item', export: 'Item 1', officer: 'item 28830' }]);
+  // Moved award: it sits on another raid; the export (for this raid) disagrees on the raid.
+  const moved = run(stored({ raid_id: 'r_other', raid_on: '2027-01-12', edited_fields: '["raid"]' }));
+  assert.deepEqual([moved.status, moved.conflicts], ['conflict', [{ field: 'raid', export: '2027-01-05', officer: '2027-01-12' }]]);
+  // Not moved by an officer: the old otherRaid.
+  assert.equal(run(stored({ raid_id: 'r_other', edited_fields: '["winner"]' })).status, 'otherRaid');
+  assert.equal(run(stored({ raid_id: 'r_other' })).status, 'otherRaid');
+  // A disenchant-winner edit is not overwritten by the plain update either.
+  assert.equal(run(stored({ winner_name: null, winner_name_key: null, winner_realm: null, winner_realm_key: '', winner_class: null, tag: 'DE', tag_set_at: 5, edited_fields: '["winner"]' })).status, 'conflict');
+  // Tombstone.
+  const gone = run(null, { raid_id: 'r_this', deleted_at: 99 });
+  assert.deepEqual(gone, { status: 'deleted', tag: 'MS', deleted: { at: 99, raidId: 'r_this' } });
+  assert.equal(run(null).status, 'new');
+});
+
+check('re-import: preview shows conflict / deleted rows and counts; commit keeps the officer by default, `export` resolves per checksum', async () => {
+  const s = await lootWorld();
+  const patch = (body, id) => s.call('bob', 'PATCH', `/loot/${id}`, body);
+  const stamp = async (id) => (await getAward(s, id)).award.updatedAt;
+  const exportOf = (n) => s.awards.r1[n - 1];
+  // 1: winner edited (Aldric -> Cassia). 2: item edited. 3: moved to the other raid of team A (r2). 5 (Zorgax) deleted. 4 untouched.
+  s.w.clock.now += 1000;
+  assert.equal((await patch({ winnerName: 'Cassia', updatedAt: await stamp(s.awardId[1]) }, s.awardId[1])).status, 200);
+  s.w.clock.now += 1000;
+  assert.equal((await patch({ itemId: 28830, itemName: 'Dragonspine Trophy', updatedAt: await stamp(s.awardId[2]) }, s.awardId[2])).status, 200);
+  s.w.clock.now += 1000;
+  assert.equal((await patch({ raidId: s.r2, updatedAt: await stamp(s.awardId[3]) }, s.awardId[3])).status, 200);
+  assert.equal((await s.call('bob', 'DELETE', `/loot/${s.awardId[5]}`, {})).status, 200);
+
+  const paste = s.awards.r1;
+  const preview = await s.call('bob', 'POST', s.loot(s.r1, '/preview'), { awards: paste });
+  assert.equal(preview.status, 200, JSON.stringify(preview.json));
+  assert.deepEqual(preview.json.counts, { new: 0, update: 0, same: 2, otherRaid: 0, otherDay: 0, conflict: 3, deleted: 1 });
+  const byChecksum = new Map(preview.json.rows.map((r) => [r.checksum, r]));
+  assert.deepEqual(byChecksum.get(exportOf(1).checksum).conflicts, [{ field: 'winner', export: 'Aldric', officer: 'Cassia' }]);
+  assert.deepEqual(byChecksum.get(exportOf(2).checksum).conflicts, [{ field: 'item', export: 'Item 2', officer: 'Dragonspine Trophy' }]);
+  assert.deepEqual(byChecksum.get(exportOf(3).checksum).conflicts, [{ field: 'raid', export: '2027-01-05', officer: '2027-01-12' }]);
+  assert.equal(byChecksum.get(exportOf(1).checksum).awardId, s.awardId[1]);
+  assert.equal(byChecksum.get(exportOf(5).checksum).status, 'deleted');
+  assert.deepEqual(Object.keys(byChecksum.get(exportOf(5).checksum).deleted), ['at', 'raidId']);
+  assert.equal(byChecksum.get(exportOf(4).checksum).status, 'same');
+  assert.equal('conflicts' in byChecksum.get(exportOf(4).checksum), false);
+
+  // Default: the officer's values stay; nothing is added back; a changed non-edited field still updates.
+  const before = await s.w.rows('SELECT id, winner_name, item_id, raid_id, edited_fields FROM loot_awards ORDER BY id');
+  const kept = await s.import('bob', s.r1, paste);
+  assert.deepEqual([kept.status, kept.json.inserted, kept.json.updated, kept.json.conflicts, kept.json.deleted], [200, 0, 0, { kept: 3, exported: 0 }, { kept: 1, readded: 0 }], JSON.stringify(kept.json));
+  assert.deepEqual(await s.w.rows('SELECT id, winner_name, item_id, raid_id, edited_fields FROM loot_awards ORDER BY id'), before);
+  const changedRoll = [{ ...exportOf(1), rollType: 'OS', flags: ['OS'] }];
+  s.w.clock.now += 1000;
+  const roll = await s.import('bob', s.r1, changedRoll);
+  assert.deepEqual([roll.json.conflicts.kept, roll.json.updated], [1, 0]);
+  const rollRow = (await s.w.rows('SELECT winner_name, roll_type, flags, tag FROM loot_awards WHERE id = ?', s.awardId[1]))[0];
+  assert.deepEqual([rollRow.winner_name, rollRow.roll_type, rollRow.flags, rollRow.tag], ['Cassia', 'OS', '["OS"]', 'OS'], 'roll data follows the export, the officer\'s winner stays, the automatic tag follows');
+
+  // Per checksum: export for 1 (winner) and 3 (raid back to this raid) and the deleted one (Add back); 2 stays the officer's.
+  const resolutions = { [exportOf(1).checksum]: 'export', [exportOf(3).checksum]: 'export', [exportOf(5).checksum]: 'export', [exportOf(2).checksum]: 'officer', unknownsum123: 'export' };
+  s.w.clock.now += 1000;
+  const mixed = await s.import('bob', s.r1, paste, { resolutions });
+  assert.deepEqual([mixed.status, mixed.json.inserted, mixed.json.conflicts, mixed.json.deleted], [200, 1, { kept: 1, exported: 2 }, { kept: 0, readded: 1 }], JSON.stringify(mixed.json));
+  const rows = Object.fromEntries((await s.w.rows('SELECT checksum, winner_name, winner_class, item_id, raid_id, team_id, edited_fields FROM loot_awards')).map((r) => [r.checksum, r]));
+  assert.deepEqual([rows[exportOf(1).checksum].winner_name, rows[exportOf(1).checksum].winner_class, rows[exportOf(1).checksum].edited_fields], ['Aldric', 'WARRIOR', '[]']);
+  assert.deepEqual([rows[exportOf(3).checksum].raid_id, rows[exportOf(3).checksum].team_id, rows[exportOf(3).checksum].edited_fields], [s.r1, s.A, '[]']);
+  assert.deepEqual([rows[exportOf(2).checksum].item_id, rows[exportOf(2).checksum].edited_fields], [28830, '["item"]']);
+  assert.equal(rows[exportOf(5).checksum].winner_name, 'Zorgax');
+  assert.equal(await s.w.count('loot_award_deletions'), 0, 'the tombstone went');
+  assert.equal(mixed.json.awards.length, 6);
+  // Bad resolutions are refused.
+  assert.equal((await s.import('bob', s.r1, paste, { resolutions: { a: 'both' } })).json.field, 'resolutions');
+  assert.equal((await s.import('bob', s.r1, paste, { resolutions: [] })).json.field, 'resolutions');
+  // A normal re-import is quiet again.
+  assert.deepEqual((await s.call('bob', 'POST', s.loot(s.r1, '/preview'), { awards: paste })).json.counts, { new: 0, update: 0, same: 5, otherRaid: 0, otherDay: 0, conflict: 1, deleted: 0 });
+});
+
+check('re-import: an export resolved to the export on a moved award needs loot.edit on the award\'s team; otherwise it stays the officer\'s', async () => {
+  const s = await lootWorld();
+  const id = s.awardId[3];
+  s.w.clock.now += 1000;
+  const stamp = (await getAward(s, id)).award.updatedAt;
+  assert.equal((await s.call('bob', 'PATCH', `/loot/${id}`, { raidId: s.rb, updatedAt: stamp })).status, 200); // moved to team B
+  const exported = s.awards.r1[2];
+  const asCarol = await s.import('carol', s.r1, [exported], { resolutions: { [exported.checksum]: 'export' } });
+  assert.deepEqual([asCarol.status, asCarol.json.conflicts], [200, { kept: 1, exported: 0 }], JSON.stringify(asCarol.json));
+  assert.equal((await s.w.rows('SELECT raid_id FROM loot_awards WHERE id = ?', id))[0].raid_id, s.rb);
+  const asBob = await s.import('bob', s.r1, [exported], { resolutions: { [exported.checksum]: 'export' } });
+  assert.deepEqual(asBob.json.conflicts, { kept: 0, exported: 1 });
+  assert.equal((await s.w.rows('SELECT raid_id FROM loot_awards WHERE id = ?', id))[0].raid_id, s.r1);
+});
+
+check('loot page: the new GET routes are read-only on the award, answer 401 without a session and 404 for another guild\'s award', async () => {
+  const s = await lootWorld();
+  const other = await secondGuild(s);
+  for (const route of ['/loot/hub?team=' + s.A, '/loot/fix?team=' + s.A, `/loot/a/${s.awardId[1]}`, `/loot/items/28770?team=${s.A}`]) {
+    assert.equal((await s.w.call(newJar(), 'GET', `${s.guildPath}${route}`)).status, 401, route);
+  }
+  assert.equal((await s.w.call(other.frank, 'GET', `${other.path}/loot/a/${s.awardId[1]}`)).status, 404, 'an award of another guild is not found');
+  assert.equal((await s.w.call(other.frank, 'GET', `${s.guildPath}/loot/hub?team=${s.A}`)).status, 403, 'not a member of this guild');
 });
 
 // ---------------------------------------------------------------------------

@@ -15,12 +15,12 @@ export const AUDIT_PAGE = 50;
 export const AUDIT_CSV_MAX = 5000;
 const CURSOR = /^(\d{10,15}):(al_[A-Za-z0-9_-]{22})$/;
 
-const parseJson = (text) => {
+export const parseJson = (text) => {
   if (text === null || text === undefined) return null;
   try { return JSON.parse(text); } catch { return null; }
 };
 // The name an account shows: the one it chose (users.display_name, Phase 7a accounts), else its Discord or Battle.net name.
-const userName = (row) => row.display_name || row.global_name || row.username;
+export const userName = (row) => row.display_name || row.global_name || row.username;
 const idsOf = (set) => JSON.stringify([...set]);
 
 // -> { group, actor, from, to, cursor, csv } or a 400 naming the field.
@@ -64,7 +64,7 @@ function rowsStatement(db, guildId, filters, limit) {
 }
 
 // The names the sentences of these rows need, in one batch. -> the `names` object describeRow reads.
-async function loadNames(db, guildId, refs, teams) {
+export async function loadNames(db, guildId, refs, teams) {
   const [personResult, characterResult, raidResult, userResult, awardResult, claimResult] = await db.batch([
     db.prepare(
       `SELECT player_id, name FROM characters WHERE guild_id = ?1 AND player_id IN (SELECT value FROM json_each(?2)) ORDER BY is_main DESC, name`,

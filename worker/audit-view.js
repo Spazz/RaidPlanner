@@ -142,7 +142,7 @@ const humanChanged = (changed) => [...new Set((Array.isArray(changed) ? changed 
 
 const ATTENTION_LABEL = {
   loot_unmatched: 'unmatched loot winners', signup_unmatched: 'unmatched Raid-Helper sign-ups', event_moved: 'moved Raid-Helper event', no_loot: 'no loot imported',
-  log_missing: 'missing log', trial: 'trial ending', webhook_off: 'Discord webhook switched off', watch: 'attendance watch',
+  log_missing: 'missing log', loot_dupe: 'possible duplicate loot award', trial: 'trial ending', webhook_off: 'Discord webhook switched off', watch: 'attendance watch',
 };
 // 'Dismissed the to-do "missing log" for the raid on Tue Oct 21', 'Snoozed ... for 3 days', 'Marked Mira as reviewed on the attendance watch list', 'Restored ...'.
 function attentionSentence(side, restored, { person, team, onRaid }) {
@@ -346,6 +346,18 @@ export function describeRow(row, names = {}) {
     }
     case 'loot.update': {
       const item = get('award', ent, 'a loot award');
+      const changed = Array.isArray(after.changed) ? after.changed : [];
+      const parts = [];
+      if (changed.includes('winner')) parts.push(`Winner changed from ${before.winnerName || 'disenchanted'} to ${after.winnerName || 'disenchanted'}`);
+      if (changed.includes('item')) {
+        const itemText = (id, name) => name || (id ? `item ${id}` : 'an item');
+        parts.push(`Item changed from ${itemText(before.itemId, before.itemName)} to ${itemText(after.itemId, after.itemName)}`);
+      }
+      if (changed.includes('raid')) parts.push(`Moved from ${onRaid(before.raidId)} to ${onRaid(after.raidId)}`);
+      if (parts.length) {
+        if (after.tag && after.tag !== before.tag) parts.push(`tag changed from ${before.tag} to ${after.tag}`);
+        return `${parts.join('; ')} (${item})`;
+      }
       if (after.tag && after.tag !== before.tag) return `Tagged ${item} as ${after.tag}`;
       return `Edited ${item}`;
     }

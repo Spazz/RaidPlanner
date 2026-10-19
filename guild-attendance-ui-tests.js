@@ -120,7 +120,9 @@ function teamData(over) {
     assert.equal(raids.short, 'Raids');
     assert.equal(raids.href, '#/g/g1/raids');
     assert(!items.some(i => i.key === 'nights'));
-    for (const f of GUILD_SCRIPTS.filter(s => s.startsWith('/js/guild/'))) assert(!/raid nights?/i.test(read(f.slice(1))), f);
+    // The Loot pages (hub, raid night page, rules) are the one place a raid night is named: that is the Loot redesign's own wording.
+    const lootWording = /loot/;
+    for (const f of GUILD_SCRIPTS.filter(s => s.startsWith('/js/guild/') && !lootWording.test(s))) assert(!/raid nights?/i.test(read(f.slice(1))), f);
   });
 
   await check('nav: Attendance carries the open-flag count with an aria-label, on the sidebar and the phone tab; members never see it', () => {

@@ -67,6 +67,8 @@ check('the Loot balance marks the viewer\'s own row with isMe (the page pins it 
   const p1 = await mk('Aimer');
   const p2 = await mk('Brew', 'bob');
   const p3 = await mk('Cass', 'carol');
+  // Members see the standings only when the team's loot rules switch them on.
+  assert.equal((await s.call('alice', 'PUT', '/loot/policy', { teamId: null, override: { visibility: { standings: true } }, version: 0 })).status, 200);
   // The balance needs raids with awards to list anyone; the people list itself is what carries isMe, so read it for the three viewers.
   let read = 0;
   for (const [who, mine] of [['alice', null], ['bob', p2], ['carol', p3]]) {

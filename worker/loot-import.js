@@ -128,29 +128,71 @@ const sameFlags = (stored, flags) => {
   try { return JSON.stringify(JSON.parse(stored)) === JSON.stringify(flags); } catch { return false; }
 };
 
-// The stored award row has the item / winner fields this award would write (the tag is compared by the caller).
-function sameFields(row, award) {
-  return row.item_id === award.itemId && row.item_name === award.itemName && row.item_quality === award.quality
-    && row.awarded_at === award.awardedAt && row.winner_name === award.winnerName && row.winner_name_key === award.nameKey
-    && row.winner_realm === award.storedRealm && row.winner_realm_key === award.realmKey && row.winner_class === award.winnerClass
-    && row.roll_type === award.rollType && row.awarded_by === award.awardedBy && sameFlags(row.flags, award.flags);
+// The fields an officer can correct by hand on an award (loot_awards.edited_fields). An import never overwrites one of these.
+export const EDITABLE_FIELDS = Object.freeze(['winner', 'item', 'raid']);
+
+export function parseEditedFields(text) {
+  try {
+    const value = JSON.parse(text);
+    return Array.isArray(value) ? EDITABLE_FIELDS.filter((field) => value.includes(field)) : [];
+  } catch {
+    return [];
+  }
+}
+
+// The stored award row has the item / winner fields this award would write. The columns of a field the officer edited are left out
+// (an import does not write them); the tag is compared by the caller.
+function sameFields(row, award, edited) {
+  const winnerOk = edited.includes('winner') || (row.winner_name === award.winnerName && row.winner_name_key === award.nameKey
+    && row.winner_realm === award.storedRealm && row.winner_realm_key === award.realmKey && row.winner_class === award.winnerClass);
+  const itemOk = edited.includes('item') || (row.item_id === award.itemId && row.item_name === award.itemName && row.item_quality === award.quality);
+  return winnerOk && itemOk && row.awarded_at === award.awardedAt && row.roll_type === award.rollType && row.awarded_by === award.awardedBy
+    && sameFlags(row.flags, award.flags);
 }
 
 // True when an award gains or loses its winner between the stored row and the incoming one (a Gargul award edited to or from a
 // disenchant). The tag of a no-winner award is DE by rule, not an officer's choice, so such a change drops the officer's tag.
-const winnerStateChanged =(existing, award) => (existing.winner_name === null) !== (award.winnerName === null);
+// Never when the officer edited the winner: then the import does not touch the winner at all.
+const winnerStateChanged = (existing, award, edited) => !edited.includes('winner') && (existing.winner_name === null) !== (award.winnerName === null);
+
+const winnerText = (name) => (name === null || name === undefined ? 'Disenchanted' : name);
+const itemText = (name, id) => (name ? `${name}` : `item ${id}`);
+
+// The edited fields on which the export disagrees with the stored award: [{ field, export, officer }] (display texts).
+// `raid` is the raid being imported onto: an award an officer moved sits on another raid, and the export says it belongs here.
+function findConflicts(award, existing, raid, edited) {
+  const conflicts = [];
+  if (edited.includes('winner') && (existing.winner_name_key !== award.nameKey || existing.winner_realm_key !== award.realmKey)) {
+    conflicts.push({ field: 'winner', export: winnerText(award.winnerName), officer: winnerText(existing.winner_name) });
+  }
+  if (edited.includes('item') && existing.item_id !== award.itemId) {
+    conflicts.push({ field: 'item', export: itemText(award.itemName, award.itemId), officer: itemText(existing.item_name, existing.item_id) });
+  }
+  if (edited.includes('raid') && existing.raid_id !== raid.id) {
+    conflicts.push({ field: 'raid', export: raid.raid_on, officer: existing.raid_on });
+  }
+  return conflicts;
+}
 
 // What an import does with one award. existing: the stored row with the award's checksum in this guild, or null.
-// raid: { id, raid_on }. -> { status: 'new' | 'update' | 'same' | 'otherRaid' | 'otherDay', tag }
-//   otherRaid: the checksum is on another raid (skipped); same / update: it is on THIS raid (an update keeps the officer's tag and note,
-//   unless the award gained or lost its winner); otherDay: new, but not from the raid's day (written only when the officer ticks them in);
-//   new: written.
-export function classifyAward(award, existing, raid, timeZone) {
-  if (existing && existing.raid_id !== raid.id) return { status: 'otherRaid', tag: existing.tag };
+// raid: { id, raid_on }. deleted: the loot_award_deletions row of this checksum, or null.
+// -> { status: 'new' | 'update' | 'same' | 'otherRaid' | 'otherDay' | 'conflict' | 'deleted', tag, conflicts?, edited?, deleted? }
+//   otherRaid: the checksum is on another raid nobody moved (skipped); same / update: it is on THIS raid (an update keeps the officer's tag and note,
+//   and the fields the officer edited, unless the award gained or lost its winner); otherDay: new, but not from the raid's day (written only when
+//   the officer ticks them in); new: written.
+//   conflict: the stored award (on this raid, or on another because an officer moved it) has fields in edited_fields that the export disagrees with;
+//   `conflicts` lists them, `changed` says whether any other field differs. The fields nobody edited update as in "update" either way.
+//   deleted: an officer deleted this award (a tombstone); it is not brought back unless the officer asks.
+export function classifyAward(award, existing, raid, timeZone, deleted = null) {
   if (existing) {
-    const tag = existing.tag_set_at === null || winnerStateChanged(existing, award) ? award.tag : existing.tag;
-    const changed = !sameFields(existing, award) || tag !== existing.tag;
+    const edited = parseEditedFields(existing.edited_fields);
+    if (existing.raid_id !== raid.id && !edited.includes('raid')) return { status: 'otherRaid', tag: existing.tag };
+    const conflicts = findConflicts(award, existing, raid, edited);
+    if (conflicts.length) return { status: 'conflict', tag: existing.tag, conflicts, changed: !sameFields(existing, award, edited) };
+    const tag = existing.tag_set_at === null || winnerStateChanged(existing, award, edited) ? award.tag : existing.tag;
+    const changed = !sameFields(existing, award, edited) || tag !== existing.tag;
     return { status: changed ? 'update' : 'same', tag };
   }
+  if (deleted) return { status: 'deleted', tag: award.tag, deleted: { at: deleted.deleted_at, raidId: deleted.raid_id } };
   return { status: onRaidDay(award.awardedAt, raid.raid_on, timeZone) ? 'new' : 'otherDay', tag: award.tag };
 }

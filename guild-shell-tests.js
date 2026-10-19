@@ -405,7 +405,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     assert(env.documentFake.title.startsWith('Review queue - Ravens'));
   });
 
-  await check('loot routes: Balance, By raid and By item, the window switch, a person\'s loot, Settings > Loot and the raid page card load through the real router', async () => {
+  await check('loot routes: the hub, Standings with its window switch, a raid night, an item, a person\'s loot, Settings > Loot and the raid page summary load through the real router', async () => {
     const can = Object.assign({}, OFFICER_CAN, { 'guild.roles': 'guild', 'raids.view': 'guild', 'raids.edit': 'guild', 'attendance.view': 'guild', 'attendance.review': 'guild', 'loot.view': 'guild', 'loot.edit': 'guild', 'loot.policy': 'guild' });
     const aw = { id: 'a1', raidId: 'r1', raidOn: '2026-10-10', teamId: 't1', itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4, awardedAt: 1791681160000, winner: { name: 'Thoren', realm: 'Ashmere', class: 'PALADIN' }, match: { kind: 'character', personId: 'p1', personName: 'Thoren', characterName: 'Thoren' }, tag: 'MS', tagSetBy: null, flags: [], rollType: 'MS', note: null, awardedBy: 'Lead' };
     const balance = { team: { id: 't1', name: 'Main' }, window: { weeks: 8, switchWeeks: [8, 12], from: '2026-08-18' }, mode: 'perRaid', countTags: ['MS'], scope: 'team',
@@ -416,6 +416,9 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
       '/api/guild/g1/loot/balance?team=t1': { status: 200, body: balance },
       '/api/guild/g1/loot/balance?team=t1&weeks=12': { status: 200, body: Object.assign({}, balance, { window: Object.assign({}, balance.window, { weeks: 12 }) }) },
       '/api/guild/g1/loot/raids?team=t1': { status: 200, body: { raids: [{ raidId: 'r1', raidOn: '2026-10-10', title: null, zone: 'BT', awards: 1, counted: 1, unmatched: 0 }] } },
+      '/api/guild/g1/loot/hub?team=t1': { status: 200, body: { team: { id: 't1', name: 'Main' }, level: 'full', can: { edit: true, rules: true, standings: true, itemLookup: true }, me: null,
+        nights: [{ raid: { id: 'r1', raidOn: '2026-10-10', title: null, zone: 'BT' }, awards: [aw] }], standingsTop: balance.people, standingsCount: balance.people.length, standingsInfo: { mode: 'perRaid', countTags: ['MS'], weeks: 8 }, fix: { duplicates: 0, unknown: 0 } } },
+      '/api/guild/g1/loot/items/28770?team=t1': { status: 200, body: { team: { id: 't1', name: 'Main' }, item: { itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4 }, counts: { total: 1, MS: 1, OS: 0, DE: 0, BANK: 0 }, drops: [Object.assign({}, aw, { raidTitle: null })] } },
       '/api/guild/g1/loot/items?team=t1': { status: 200, body: { items: [{ itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4, count: 1, lastAwardedAt: 1791681160000, awards: [{ id: 'a1', raidId: 'r1', raidOn: '2026-10-10', awardedAt: 1791681160000, tag: 'MS', match: aw.match, winner: aw.winner }] }] } },
       '/api/guild/g1/loot/person/p1': { status: 200, body: { person: { id: 'p1', name: 'Thoren', status: 'raider' }, awards: [aw], totals: { MS: 1, OS: 0, DE: 0, BANK: 0 } } },
       '/api/guild/g1/loot/policy': { status: 200, body: { defaults: { visibility: { members: 'ownTeams' }, balance: { mode: 'perRaid', countTags: ['MS'] } }, guild: {}, teams: {}, resolved: {}, versions: { guild: 0, teams: {} } } },
@@ -427,21 +430,32 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     });
     const env = makeEnv({ url: '/#/g/g1/loot', routes });
     await settle();
-    assert(env.html('gs-main').includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Loot</h1>') && env.html('gs-main').includes('Thoren') && env.html('gs-main').includes('data-col="perRaid"'));
+    assert(env.html('gs-main').includes('<h1 class="gs-h1" id="page-title" tabindex="-1">Loot</h1>') && env.html('gs-main').includes('Thoren') && env.html('gs-main').includes('Who is due') && env.html('gs-main').includes('Latest raid nights'));
     assert(env.documentFake.title.startsWith('Loot - Ravens'));
     assert(/href="#\/g\/g1\/loot"[^>]*aria-current="page"/.test(env.html('shell-sidebar')), 'Loot is the current nav item');
     assert(!env.html('gs-main').includes('coming next'));
-    env.click({ 'data-action': 'loot-window', 'data-window': '12' });
+    assert(['hub?team=t1', 'raids?team=t1', 'items?team=t1'].every(t => env.fetchCalls.some(c => c.url === '/api/guild/g1/loot/' + t)) && !env.fetchCalls.some(c => c.url === '/api/guild/g1/loot/balance?team=t1'), 'the hub reads the hub, the raid list and the items; Who is due comes from the hub itself');
+    env.loc.hash = '#/g/g1/loot/standings';
+    await settle();
+    assert(env.html('gs-main').includes('>Standings</h1>') && env.html('gs-main').includes('Thoren') && env.html('gs-main').includes('class="gs-dtable"'));
+    assert(/href="#\/g\/g1\/loot"[^>]*aria-current="page"/.test(env.html('shell-sidebar')), 'Standings keeps Loot current');
+    env.click({ 'data-action': 'loot-window', 'data-value': '12' });
     await settle();
     assert(env.fetchCalls.some(c => c.url === '/api/guild/g1/loot/balance?team=t1&weeks=12'), 'the window switch asks for that many weeks');
-    assert(/data-window="12" data-key="lwin-12" aria-pressed="true"/.test(env.html('gs-main')));
-    env.click({ 'data-action': 'loot-view', 'data-view': 'raids' });
+    assert(/aria-pressed="true" data-action="loot-window" data-value="12"/.test(env.html('gs-main')));
+    env.loc.hash = '#/g/g1/loot?view=raids';
     await settle();
-    assert.equal(env.loc.hash, '#/g/g1/loot?view=raids');
-    assert(env.html('gs-main').includes('href="#/g/g1/raids/r/r1"') && env.html('gs-main').includes('Loot by raid'));
-    env.loc.hash = '#/g/g1/loot?view=items';
+    assert(env.html('gs-main').includes('Latest raid nights') && !env.html('gs-main').includes('Loot by raid'), 'an old view link opens the hub');
+    assert.equal(env.loc.hash, '#/g/g1/loot', 'and the address is tidied');
+    env.loc.hash = '#/g/g1/loot/n/r1';
     await settle();
-    assert(env.html('gs-main').includes('Loot by item') && env.html('gs-main').includes('<details class="gs-loot-item">'));
+    assert(env.html('gs-main').includes('>Sat Oct 10</h1>') && env.html('gs-main').includes('Nathrezim Mindblade') && env.html('gs-main').includes('data-change="ln-tag"'));
+    assert(env.html('shell-topbar-lead').includes('Sat Oct 10') && env.html('shell-topbar-lead').includes('Loot'), 'the crumb names the night');
+    assert(env.documentFake.title.startsWith('Night loot - Ravens'));
+    env.loc.hash = '#/g/g1/loot/i/28770';
+    await settle();
+    assert(env.html('gs-main').includes('>Nathrezim Mindblade</h1>') && env.html('gs-main').includes('Who has it'));
+    assert(env.fetchCalls.some(c => c.url === '/api/guild/g1/loot/items/28770?team=t1'));
     env.loc.hash = '#/g/g1/loot/p/p1';
     await settle();
     assert(env.html('gs-main').includes('Loot history') && env.html('gs-main').includes('Sat Oct 10'));
@@ -456,15 +470,17 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     await settle();
     assert(env.html('gs-main').includes('Who sees loot') && env.html('gs-main').includes('href="#/g/g1/settings/loot" aria-current="page">Loot<'));
     assert(env.fetchCalls.some(c => c.url === '/api/guild/g1/loot/policy'));
+    const lootReads = () => env.fetchCalls.filter(c => c.url === '/api/guild/g1/raids/r1/loot').length;
+    const readsBefore = lootReads();
     env.loc.hash = '#/g/g1/raids/r/r1';
     await settle();
-    assert(env.html('gs-main').includes('id="loot-h"') && env.html('gs-main').includes('Nathrezim Mindblade') && env.html('gs-main').includes('Import from Gargul'));
-    assert(env.fetchCalls.filter(c => c.url === '/api/guild/g1/raids/r1/loot').length === 1, 'one loot request per raid page load');
+    assert(env.html('gs-main').includes('id="loot-h"') && env.html('gs-main').includes('Nathrezim Mindblade') && env.html('gs-main').includes('Import from Gargul') && env.html('gs-main').includes('href="#/g/g1/loot/n/r1"'));
+    assert.equal(lootReads() - readsBefore, 1, 'one loot request per raid page load');
   });
 
   await check('loot routes: a member sees the Loot section without editor controls, a 403 is a note, and the Loot settings tab stays away', async () => {
     const memberCan = Object.assign({}, MEMBER_CAN, { 'raids.view': 'guild', 'attendance.view': ['t1'], 'loot.view': ['t1'] });
-    const routes = signedInRoutes(memberCan, { '/api/guild/g1/loot/balance?team=t1': { status: 403, body: { error: 'forbidden', message: 'No.' } } });
+    const routes = signedInRoutes(memberCan, { '/api/guild/g1/loot/hub?team=t1': { status: 403, body: { error: 'forbidden', message: 'No.' } } });
     const env = makeEnv({ url: '/#/g/g1/loot', routes });
     await settle();
     assert(/You can(&#39;|')t see this team(&#39;|')s loot/.test(env.html('gs-main')));

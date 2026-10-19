@@ -305,8 +305,11 @@ check('Loot board after the raid: the Gargul import is compared with the line, a
   const award = (await s.rows('SELECT * FROM loot_awards WHERE manual = 1'))[0];
   assert.deepEqual([award.item_id, award.item_name, award.winner_name, award.tag, award.note, award.source, award.checksum.length], [30311, 'The Staff', 'Brindle', 'MS', 'Handed out after the raid', 'gargul', 38]);
   const listHtml = A.pages.raidLoot.cardHtml({ guildData: A.guildData, data: page.S.att.raid.data, state: page.S.att.raidLoot });
-  const loot = stripTags(listHtml);
-  assert(loot.includes('The Staff') && loot.includes('Manual') && loot.includes('Handed out after the raid') && loot.includes('2 items'), loot.slice(0, 400));
+  assert(stripTags(listHtml).includes('The Staff') && stripTags(listHtml).includes('2 items'), stripTags(listHtml).slice(0, 400));
+  const nightRoute = { name: 'lootnight', gid: A.guildData.guild.id, rid: page.S.att.raid.rid };
+  await A.pages.lootNight.load(nightRoute, A.guildData);
+  const loot = stripTags(A.pages.lootNight.main(nightRoute, A.guildData));
+  assert(loot.includes('The Staff') && loot.includes('Manual') && loot.includes('Handed out after the raid') && loot.includes('2 awards'), loot.slice(0, 400));
   await settle();
   text = boardText(page.html());
   assert(text.includes('Went to prio #1: Brindle'), 'the board read again: Brindle was first in line for the staff');
@@ -333,7 +336,8 @@ check('Loot board after the raid: the Gargul import is compared with the line, a
 
   // Deleting a manual award says nothing about re-importing.
   const row = (await s.rows('SELECT id FROM loot_awards WHERE item_id = 30313'))[0];
-  A.handlers.click['loot-delete'](el({ 'data-aid': row.id }));
+  await A.pages.lootNight.load({ name: 'lootnight', gid: A.guildData.guild.id, rid: page.S.att.raid.rid }, A.guildData); // the night page lists the award the dialog deletes
+  A.handlers.click['ln-delete'](el({ 'data-aid': row.id }));
   const confirm = A.dialogs[A.dialogs.length - 1];
   assert(confirm.includes('is removed from the raid and from the balance.') && !confirm.includes('Importing the same Gargul export'));
 });
