@@ -451,7 +451,7 @@ const hrefsOf = html => [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
     await settle();
     assert(env.html('gs-main').includes('>Sat Oct 10</h1>') && env.html('gs-main').includes('Nathrezim Mindblade') && env.html('gs-main').includes('data-change="ln-tag"'));
     assert(env.html('shell-topbar-lead').includes('Sat Oct 10') && env.html('shell-topbar-lead').includes('Loot'), 'the crumb names the night');
-    assert(env.documentFake.title.startsWith('Raid night loot - Ravens'));
+    assert(env.documentFake.title.startsWith('Night loot - Ravens'));
     env.loc.hash = '#/g/g1/loot/i/28770';
     await settle();
     assert(env.html('gs-main').includes('>Nathrezim Mindblade</h1>') && env.html('gs-main').includes('Who has it'));
