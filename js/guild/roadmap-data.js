@@ -430,6 +430,19 @@
         area: 'roster', status: 'done', source: 'user', added: '2026-10-19', shipped: '2026-10-19',
       },
       {
+        id: 'loot-page-redesign',
+        title: 'Loot page redesign and officer loot fixes',
+        summary: 'Loot opens on a hub: Team Leads and above see who is due, the latest raids, an item lookup and a Needs fixing list; members see their own loot and the latest raids, plus standings and item lookup when Loot rules allow. Team Leads and above can correct any award (winner, item, raid, tag, note), and a re-import asks before it undoes a correction or brings back a deleted award.',
+        area: 'loot', status: 'done', source: 'user', added: '2026-10-19', shipped: '2026-10-19',
+      },
+      {
+        id: 'loot-import-whole-list',
+        title: 'Import a whole loot list at once',
+        summary: 'Officers import one Gargul or TMB export that covers many raids, and Raidsmith puts each award on the raid of its date, with one preview for the whole list.',
+        why: 'Loading past loot today means one import per raid.',
+        area: 'loot', status: 'next', source: 'user', added: '2026-10-19',
+      },
+      {
         id: 'discord-optional',
         title: 'Run a guild without Discord',
         summary: 'A guild can use Raidsmith on its own, with no Discord server: create the guild, invite and sign in members, plan and track raids. Connecting Discord stays optional and unlocks the extras: sign-ups in Discord, reminders and DMs, channel posts and role sync.',
