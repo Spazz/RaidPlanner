@@ -412,6 +412,12 @@
         area: 'platform', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-17',
       },
       {
+        id: 'officer-home-week',
+        title: 'Officer Home: the raid week',
+        summary: 'Officer Home shows the raid week: a 7-day strip with one status per raid, the selected raid\'s sign-ups and line-up in one sentence, and its to-dos; guild to-dos sit beside it. A phone leads with the next raid. To-dos can be hidden for all officers or snoozed, with Undo and a Hidden list. The watch list moved to Attendance with Reviewed: a person comes back after a further 5-point drop or a missed raid.',
+        area: 'platform', status: 'done', source: 'user', added: '2026-10-18', shipped: '2026-10-18',
+      },
+      {
         id: 'trial-review',
         title: 'Trial review card',
         summary: 'A trial\'s person page shows a Trial review card: attendance since the trial started (raids, percent, missed, missed with notice, late and left early), loot received, fill-ins and an excerpt of the officer notes, with Promote to Raider, Extend trial (14 days by default) and End trial buttons.',
