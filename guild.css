@@ -247,7 +247,7 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 
 .gs-alert { margin: 12px 0 0; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--danger); color: var(--text-primary); font-size: 15px; line-height: 1.4; }
 .gs-form .gs-alert, .gs-section .gs-alert, .gs-dialog-form .gs-alert { margin: 0; }
-.gs-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 12px 0 0; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border-accent); color: var(--text-primary); font-size: 15px; line-height: 1.4; }
+.gs-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 12px 0 0; padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border-strong); color: var(--text-primary); font-size: 15px; line-height: 1.4; }
 .gs-section .gs-notice { margin: 0; }
 .gs-noguild-notice { align-items: flex-start; margin: 0 0 var(--sp-4); max-width: 760px; box-sizing: border-box; }
 .gs-notice-body { flex: 1 1 320px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -499,7 +499,7 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-chip-trial { white-space: nowrap; }
 .gs-trial-ends { background: #4a4228; border-color: #4a4228; color: #f2e3b0; }
 .gs-trial-ended { background: #3a2510; border-color: #6b4318; color: #ffb86b; }
-.gs-chip-main { background: #4a4228; border-color: #4a4228; color: #f2e3b0; }
+.gs-chip-main { background: var(--status-neutral-bg); border-color: var(--status-neutral-edge); color: var(--status-neutral-ink); }
 .gs-chip-plain { background: transparent; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 14px; }
 .gs-status-cell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 
@@ -530,8 +530,8 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-person-h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .gs-person-h1 .gs-you { margin-left: 0; }
 .gs-person-discord { margin: 0; font-size: 15px; line-height: 1.4; color: var(--text-secondary); overflow-wrap: anywhere; }
-.gs-trial-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; box-sizing: border-box; padding: 16px 20px; border: 1px solid var(--border-accent); background: #2a2616; }
-.gs-trial-bar.is-ended { background: #2a1d10; border-color: #6b4318; }
+.gs-trial-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; box-sizing: border-box; padding: 16px 20px; border: 1px solid var(--status-neutral-edge); background: var(--status-neutral-bg); }
+.gs-trial-bar.is-ended { background: var(--status-danger-bg); border-color: var(--status-danger-edge); }
 .gs-trial-bar-text { margin: 0; font-size: 16px; line-height: 1.4; color: var(--text-primary); overflow-wrap: anywhere; }
 .gs-member-note { max-width: 640px; }
 .gs-person-cols { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px; }
@@ -939,7 +939,7 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-num { font-variant-numeric: tabular-nums; }
 
 .gs-chip-tag { background: var(--bg-card-hover); }
-.gs-chip-tag.is-os { background: #4a4228; border-color: #4a4228; color: #f2e3b0; }
+.gs-chip-tag.is-os { background: var(--status-neutral-bg); border-color: var(--status-neutral-edge); color: var(--status-neutral-ink); }
 .gs-chip-tag.is-de, .gs-chip-tag.is-bank { background: var(--bg-frame); color: var(--text-muted); }
 
 .gs-loot-list { list-style: none; display: flex; flex-direction: column; }
@@ -995,7 +995,7 @@ body.shell-section-guild #shell-topbar-lead, body.shell-section-page #shell-topb
 .gs-board-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
 .gs-board-line { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 8px; }
 .gs-board-entry { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; padding: 3px 8px; background: var(--bg-card); border: 1px solid var(--border-subtle); font-size: 15px; }
-.gs-board-entry.is-top { border-color: var(--border-accent); }
+.gs-board-entry.is-top { border-color: var(--border-strong); }
 .gs-board-entry.is-wish { background: transparent; }
 .gs-board-entry.is-received { background: transparent; border-style: dashed; color: var(--text-muted); }
 .gs-board-entry.is-received .gs-char-name { text-decoration: line-through; text-decoration-color: var(--text-muted); }
