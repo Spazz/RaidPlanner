@@ -12,6 +12,7 @@ import { rosterOptions } from '../roster-data.js';
 import { guildToday, loadPendingClaims, loadRosterFlags } from '../roster-view.js';
 import { loadAttendanceFlags } from '../attendance-store.js';
 import { loadTeams } from './teams.js';
+import { devPayload } from './dev-view-as.js';
 
 const SINGLE_TEAM_NAME = 'Main team';
 const MAX_TEAMS_AT_CREATE = LIMITS.teams;
@@ -56,8 +57,11 @@ export async function guildPayload(db, guildContext, nowMs = Date.now()) {
 }
 
 export async function getGuild(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
-  return jsonResponse(await guildPayload(ctx.db, guildContext, ctx.now()));
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
+  const payload = await guildPayload(ctx.db, guildContext, ctx.now());
+  // Dev "View as": the option lists and the current stand-in, only on a local run with the flag, to a real Guild Master.
+  const dev = await devPayload(ctx, guildContext);
+  return jsonResponse(dev ? { ...payload, dev } : payload);
 }
 
 // IANA names only (Area/Location, UTC, Etc/GMT+5); offsets like "+05:00" are not names.
@@ -192,7 +196,7 @@ const FIXED_FIELDS = Object.freeze({
 
 export async function patchGuild(ctx) {
   const { db, body, session } = ctx;
-  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid, session.viewAs);
   if (!guildContext.isGuildMaster) {
     throw new HttpError(403, 'forbidden', 'Only the Guild Master can change the name, realm or time zone of the guild.');
   }
@@ -230,7 +234,7 @@ export async function patchGuild(ctx) {
       auditStatement(ctx, { guildId: guild.id, actorUserId: session.user.id, action: 'guild.update', entityType: 'guild', entityId: guild.id, before, after }),
     ]);
   }
-  const fresh = await loadGuildContext(db, session.user.id, guild.id);
+  const fresh = await loadGuildContext(db, session.user.id, guild.id, session.viewAs);
   return jsonResponse(await guildPayload(db, fresh, ctx.now()));
 }
 

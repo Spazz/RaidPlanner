@@ -87,6 +87,8 @@
     }
     if (head === 'guest' && parts.length === 2) return GUEST_TOKEN.test(parts[1]) ? { name: 'guest', token: parts[1] } : { name: 'notfound' };
     if (head === 'public' && parts.length === 2) return ID.test(parts[1]) ? { name: 'public', gid: parts[1] } : { name: 'notfound' };
+    // Dev "View as" previews (the Guild Master on a local run): #/dev/viewer/:gid/guest|public
+    if (head === 'dev' && parts.length === 4 && parts[1] === 'viewer' && ID.test(parts[2]) && (parts[3] === 'guest' || parts[3] === 'public')) return { name: 'devview', gid: parts[2], role: parts[3] };
     if (head === 'join' && parts.length === 2) return GUEST_TOKEN.test(parts[1]) ? { name: 'join', token: parts[1] } : { name: 'notfound' };
     if (head === 'apply' && parts.length === 2) return ID.test(parts[1]) ? { name: 'apply', gid: parts[1] } : { name: 'notfound' };
     if (head !== 'g' || !ID.test(parts[1])) return { name: 'notfound' };
@@ -135,6 +137,7 @@
       case 'view': return '#/view';
       case 'guest': return typeof r.token === 'string' && GUEST_TOKEN.test(r.token) ? '#/guest/' + r.token : '#/';
       case 'public': return isId(r.gid) ? '#/public/' + encodeURIComponent(r.gid) : '#/';
+      case 'devview': return isId(r.gid) && (r.role === 'guest' || r.role === 'public') ? '#/dev/viewer/' + encodeURIComponent(r.gid) + '/' + r.role : '#/';
       case 'apply': return isId(r.gid) ? '#/apply/' + encodeURIComponent(r.gid) : '#/';
       case 'join': return typeof r.token === 'string' && GUEST_TOKEN.test(r.token) ? '#/join/' + r.token : '#/';
       case 'intent': case 'recruiting': case 'applications': case 'launch': return '#/g/' + encodeURIComponent(r.gid) + '/roster/' + r.name;
@@ -162,7 +165,7 @@
 
   // The routes that work without an account (a guest link, the guest view, a public page, an application form).
   function isViewerRoute(route) {
-    return !!route && (route.name === 'guest' || route.name === 'view' || route.name === 'public' || route.name === 'apply' || route.name === 'join');
+    return !!route && (route.name === 'guest' || route.name === 'view' || route.name === 'public' || route.name === 'apply' || route.name === 'join' || route.name === 'devview');
   }
 
   G.router = { SECTIONS: SECTIONS, TABS: TABS, TAB_ALIASES: TAB_ALIASES, ROSTER_TABS: ROSTER_TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN, parse: parse, format: format, isViewerRoute: isViewerRoute };

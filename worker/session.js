@@ -1,5 +1,6 @@
 import { base64url } from './ids.js';
 import { parseCookies, safeEqual, serializeCookie } from './http.js';
+import { readViewAs } from './view-as.js';
 
 export const SESSION_COOKIE = '__Host-rs_session';
 export const STATE_COOKIE = '__Host-rs_state';
@@ -39,9 +40,9 @@ export function presentedToken(request) {
   return typeof token === 'string' && TOKEN_PATTERN.test(token) ? token : null;
 }
 
-// -> { tokenHash, user, manageableServers, manageableUntil } or null when signed out or expired. user.discordId is null for an account
+// -> { tokenHash, user, manageableServers, manageableUntil, viewAs } or null when signed out or expired. user.discordId is null for an account
 // that has not linked Discord (it signed in with Battle.net).
-export async function loadSession({ db, request, now }) {
+export async function loadSession({ db, env, request, now }) {
   const token = presentedToken(request);
   if (!token) return null;
   const tokenHash = await hashToken(token);
@@ -84,6 +85,8 @@ export async function loadSession({ db, request, now }) {
     },
     manageableServers,
     manageableUntil,
+    // Dev "View as" (worker/view-as.js): null unless DEV_VIEW_AS is on, the host is local and the cookie is well formed.
+    viewAs: readViewAs(env, request),
   };
 }
 

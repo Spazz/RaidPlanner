@@ -206,7 +206,10 @@ export const effectivePermissionsStatement = (db, guildId) =>
 // One DB.batch loads everything a guild route needs. Order of checks:
 // guild exists (404) -> blocked (403 access_removed) -> a member: in the guild's Discord server or linked to one of its people (403 not_member).
 // The membership rule is worker/membership.js's. The guild id always comes from the URL.
-export async function loadGuildContext(db, userId, guildId) {
+// viewAs (dev only, from session.viewAs; see worker/view-as.js): { guildId, roleId, teamId } or null. Honoured ONLY for this guild and ONLY when the
+// person's real rank is Guild Master; then can / roles / rank / isGuildMaster are those of ONE stand-in assignment (a stale role or team: real rights).
+// Route code passes `session.viewAs` as the 4th argument on every call made for the signed-in user (a test pins it); system lookups for another user omit it.
+export async function loadGuildContext(db, userId, guildId, viewAs = null) {
   const [guildResult, standingResult, assignmentResult, permissionResult, ownTeamResult] = await db.batch([
     db.prepare(
       `SELECT id, name, realm, realm_kind, realm_slug, region, discord_server_id, time_zone, game_version, wcl_guild_id, created_at
@@ -237,15 +240,59 @@ export async function loadGuildContext(db, userId, guildId) {
     throw new HttpError(403, 'access_removed', 'An officer has removed your access to this guild.');
   }
   if (membership !== 'member') {
-    throw new HttpError(403, 'not_member', 'You are not in this guild\'s Discord server, and no roster entry is linked to your account. Sign in again if you just joined the server, or ask an officer to link your account to your roster entry.');
+    throw new HttpError(403, 'not_member', "You are not in this guild's Discord server, and no roster entry is linked to your account. Sign in again if you just joined the server, or ask an officer to link your account to your roster entry.");
   }
-  const resolved = resolvePermissions(assignmentResult.results, permissionResult.results, ownTeamResult.results.map((row) => row.team_id));
-  return {
+  const ownTeamIds = ownTeamResult.results.map((row) => row.team_id);
+  const resolved = resolvePermissions(assignmentResult.results, permissionResult.results, ownTeamIds);
+  const real = {
     userId,
     guild,
     roles: resolved.roles,
     can: resolved.can,
     rank: resolved.rank,
     isGuildMaster: resolved.rank === ROLE_RANK.guild_master,
+  };
+  if (!viewAs || viewAs.guildId !== guildId || !real.isGuildMaster) return real;
+  const standIn = await standInFor(db, guildId, viewAs);
+  if (!standIn) return real;
+  const viewed = resolvePermissions(standIn.assignments, permissionResult.results, ownTeamIds);
+  return {
+    ...real,
+    roles: viewed.roles,
+    can: viewed.can,
+    rank: viewed.rank,
+    isGuildMaster: viewed.rank === ROLE_RANK.guild_master,
+    realRank: real.rank,
+    viewAs: { roleId: viewAs.roleId, roleName: standIn.roleName, teamId: standIn.teamId, teamName: standIn.teamName },
+  };
+}
+
+const VIEW_AS_NAMES = { officer: 'Officer', team_lead: 'Team Lead', member: 'Member' };
+
+// The ONE assignment a viewed role stands for, with the names the dev bar shows; null when the role or team no longer exists in this guild (stale cookie).
+// Member is held by everyone, so it stands for no assignment at all.
+async function standInFor(db, guildId, { roleId, teamId }) {
+  const builtin = Object.prototype.hasOwnProperty.call(VIEW_AS_NAMES, roleId);
+  if (!builtin && !isCustomRole(roleId)) return null;
+  let roleName = VIEW_AS_NAMES[roleId];
+  if (!builtin) {
+    const role = await db.prepare('SELECT name FROM roles WHERE id = ? AND guild_id = ?').bind(roleId, guildId).first();
+    if (!role) return null;
+    roleName = role.name;
+  }
+  let teamName = null;
+  if (teamId) {
+    const team = await db.prepare('SELECT name FROM teams WHERE id = ? AND guild_id = ? AND archived = 0').bind(teamId, guildId).first();
+    if (!team) return null;
+    teamName = team.name;
+  }
+  if (roleId === 'team_lead' && !teamId) return null;
+  // Officer and Member are held without a team.
+  const scopedTeam = roleId === 'officer' || roleId === 'member' ? null : teamId || null;
+  return {
+    roleName,
+    teamId: scopedTeam,
+    teamName: scopedTeam ? teamName : null,
+    assignments: roleId === 'member' ? [] : [{ role_id: roleId, team_id: scopedTeam, source: 'manual', role_name: roleName }],
   };
 }

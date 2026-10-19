@@ -53,13 +53,13 @@ async function keysPayload(db, guildContext, nowMs) {
 }
 
 export async function listApiKeys(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   return jsonResponse(await keysPayload(ctx.db, guildContext, ctx.now()));
 }
 
 export async function createApiKey(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   const guildId = guildContext.guild.id;
   const { body } = ctx;
@@ -121,7 +121,7 @@ export async function createApiKey(ctx) {
 }
 
 export async function revokeApiKey(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   const guildId = guildContext.guild.id;
   const now = ctx.now();

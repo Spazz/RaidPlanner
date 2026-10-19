@@ -17,7 +17,7 @@ function requireGuildMaster(guildContext) {
 
 export async function exportGuild(ctx) {
   const { db, session } = ctx;
-  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid, session.viewAs);
   requireGuildMaster(guildContext);
   const guild = guildContext.guild;
   // A whole-guild read: a few a quarter hour is plenty.
@@ -35,7 +35,7 @@ export async function exportGuild(ctx) {
 // The Discord server of a deleted guild keeps no membership rows (blocked people included), exactly like when an account deletes its last guild.
 export async function deleteGuild(ctx) {
   const { db, session, body } = ctx;
-  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid, session.viewAs);
   requireGuildMaster(guildContext);
   const guild = guildContext.guild;
   const typed = typeof body.confirmName === 'string' ? body.confirmName.trim() : '';
@@ -53,7 +53,7 @@ export async function deleteGuild(ctx) {
 }
 
 export async function dismissOnboarding(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   if (!sees(guildContext)) throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
   await ctx.db.prepare('UPDATE guilds SET onboarding_dismissed_at = ? WHERE id = ? AND onboarding_dismissed_at IS NULL')
     .bind(ctx.now(), guildContext.guild.id).run();

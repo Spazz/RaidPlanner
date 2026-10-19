@@ -222,7 +222,7 @@ const byPairKey = (a, b) => pairKey(a).localeCompare(pairKey(b));
 // Handlers
 
 export async function getPeople(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAnyAction(guildContext, ['guild.access', 'guild.roles']);
   return peopleReply(ctx, guildContext);
 }
@@ -250,7 +250,7 @@ function parseRolesBody(body) {
 }
 
 export async function setRoles(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const wanted = parseRolesBody(ctx.body);
   const model = await loadModel(ctx.db, guildContext);
@@ -350,7 +350,7 @@ export async function setRoles(ctx) {
 
 // Sync now: apply the Discord role mapping to one person, then answer with the people list and what changed.
 export async function syncPerson(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   const model = await loadModel(ctx.db, guildContext);
   const target = findTarget(model, ctx.params.uid);
@@ -365,7 +365,7 @@ export async function syncPerson(ctx) {
 }
 
 export async function makeGuildMaster(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   if (!guildContext.isGuildMaster) throw new HttpError(403, 'forbidden', 'Only the Guild Master can hand over the guild.');
   const model = await loadModel(ctx.db, guildContext);
@@ -422,7 +422,7 @@ function parseReason(body) {
 }
 
 export async function blockPerson(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   const reason = parseReason(ctx.body);
   const model = await loadModel(ctx.db, guildContext);
@@ -460,7 +460,7 @@ export async function blockPerson(ctx) {
 }
 
 export async function restorePerson(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   const model = await loadModel(ctx.db, guildContext);
   const target = findTarget(model, ctx.params.uid);

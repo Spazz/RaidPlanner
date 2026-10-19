@@ -34,6 +34,7 @@
     currentGid: null,
     failure: null,     // { title, text, retry }
     notice: '',
+    devNotice: '',     // dev "View as": the sentence the bar's live region says once after a switch (see switchViewAs)
     pageAlert: '',
     privacyMessage: '',
     signinNotice: '',
@@ -318,8 +319,9 @@
     window.location.hash = hash;
   }
 
-  function resetSession() {
-    state.me = null;
+  // Everything read for one signed-in person's guilds, forgotten. resetSession() adds the account; the dev "View as" switch calls it alone, so every page
+  // is read again with the new rights.
+  function dropGuildData() {
     state.guilds = {};
     state.people = {};
     state.chromeTried = {};
@@ -345,6 +347,11 @@
     state.failure = null;
     state.notice = '';
     setHint(false);
+  }
+
+  function resetSession() {
+    state.me = null;
+    dropGuildData();
   }
 
   function failWith(title, text, retry) {
@@ -711,6 +718,7 @@
     else if (r.name === 'settings') page = 'Guild settings';
     else if (r.name === 'guest' || r.name === 'view') page = 'Guest view';
     else if (r.name === 'public') page = 'Public page';
+    else if (r.name === 'devview') page = r.role === 'public' ? 'Public page preview' : 'Guest view preview';
     else if (r.name === 'apply') page = 'Apply';
     else if (r.name === 'join') page = 'Join a raid';
     else if (r.name === 'launch') page = 'Launch';
@@ -848,6 +856,7 @@
       section: state.section || 'guild', page: state.page, me: me, signedOut: state.loaded && !me, pending: !state.loaded,
       route: r || null, guildData: gd, teamId: gd ? teamFor(gd) : null, collapsed: collapsedFor(collapseContext()),
       whatsNewUnseen: whatsNewUnseen(),
+      devNotice: state.devNotice || '',
       attentionCount: gd ? attentionCountFor(gd.guild.id) : 0,
       personName: r && r.name === 'person' && state.person && state.person.pid === r.pid && state.person.record ? (G.pages.person.mainOf(state.person.record) || {}).name : '',
       leafName: leafNameFor(r),
@@ -868,7 +877,7 @@
         return { html: G.pages.join.joinHtml({ state: form }), center: !!(form && (form.status === 'gone' || form.status === 'error')), title: titleFor(r, null) };
       }
       const v = state.view;
-      return { html: G.pages.view.viewHtml({ data: v ? v.data : null, kind: v ? v.kind : (r.name === 'public' ? 'public' : 'guest'), error: v ? v.error : null }), center: !!(v && v.error), title: titleFor(r, null) };
+      return { html: G.pages.view.viewHtml({ data: v ? v.data : null, kind: v ? v.kind : (r.name === 'public' ? 'public' : 'guest'), error: v ? v.error : null, gid: r.gid }), center: !!(v && v.error), title: titleFor(r, null) };
     }
     if (!state.loaded) return { html: G.pages.signin.loadingHtml(), center: false, title: titleFor(r, null) };
     if (state.bootError) return { html: G.pages.signin.messageHtml('Could not load Raidsmith', state.bootError, { retry: true }), center: true, title: titleFor(r, null) };
@@ -908,6 +917,8 @@
     writeSlot('shell-sidebar', s.sidebar);
     writeSlot('shell-topbar-lead', s.lead);
     writeSlot('shell-topbar-account', s.account);
+    writeSlot('shell-devbar', s.devbar);
+    if (s.devbar) state.devNotice = ''; // said once: later redraws keep the live region quiet
     writeSlot('shell-banner', s.banner);
     writeSlot('shell-tabs', s.tabs);
     // The drawer is a modal <dialog> the rewrite destroys: an open one (phone) is opened again on the new markup.
@@ -1213,6 +1224,48 @@
     }
     routeAll({ force: true });
   };
+
+  // Dev-only "View as" (the bar in shell.js): set or clear the stand-in role on the Worker, forget every guild read and load the page again, so every page
+  // follows the new gd.me.can. The sentence for the live region survives the redraw in state.devNotice.
+  function switchViewAs(roleId, teamId, label) {
+    const gid = state.currentGid;
+    if (!gid) return null;
+    const call = roleId ? G.api.dev.setViewAs(gid, roleId, teamId) : G.api.dev.clearViewAs();
+    return call.then(function () {
+      dropGuildData();
+      state.devNotice = roleId ? 'Now viewing as ' + label + '.' : 'Back to Guild Master.';
+      routeAll({ force: true });
+    }, function (err) {
+      state.devNotice = 'Could not switch: ' + G.api.classify(err).text;
+      render();
+    });
+  }
+
+  function devOf() {
+    const gd = state.currentGid ? state.guilds[state.currentGid] : null;
+    return gd && gd.dev ? gd.dev : null;
+  }
+
+  G.handlers.change['devbar-role'] = function (sel) {
+    const dev = devOf();
+    if (!dev) return;
+    if (!sel.value) { switchViewAs(null, null, ''); return; }
+    const def = (dev.roles || []).filter(function (r) { return r.id === sel.value; })[0];
+    if (!def) return;
+    const teams = dev.teams || [];
+    const keep = dev.viewAs && dev.viewAs.teamId && teams.some(function (t) { return t.id === dev.viewAs.teamId; }) ? dev.viewAs.teamId : (teams[0] ? teams[0].id : null);
+    if (def.teamScoped && !keep) { state.devNotice = 'The ' + def.name + ' role needs a team, and this guild has none.'; render(); return; }
+    switchViewAs(def.id, def.teamScoped ? keep : null, def.name);
+  };
+
+  G.handlers.change['devbar-team'] = function (sel) {
+    const dev = devOf();
+    if (!dev || !dev.viewAs || !sel.value) return;
+    const team = (dev.teams || []).filter(function (t) { return t.id === sel.value; })[0];
+    switchViewAs(dev.viewAs.roleId, sel.value, dev.viewAs.roleName + (team ? ' of ' + team.name : ''));
+  };
+
+  G.handlers.click['devbar-reset'] = function () { switchViewAs(null, null, ''); };
 
   G.handlers.change['team-pick'] = function (sel) {
     // The guild the picker belongs to: the open guild page's, else the one the planner / help-page chrome shows

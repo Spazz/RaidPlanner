@@ -46,7 +46,7 @@ function view(guildContext, team, slotRows) {
 }
 
 export async function getSchedule(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'raids.view');
   const team = await loadTeam(ctx, guildContext, false);
   return jsonResponse(view(guildContext, team, await readSlots(ctx.db, team.id)));
@@ -87,7 +87,7 @@ function readSlotBody(body, guild) {
 // PUT .../schedule: replaces the slots; `weeks`, `auto` and `signupCloseHours` (the team's sign-up deadline) are kept when left out.
 export async function putSchedule(ctx) {
   const { body, db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const team = await loadTeam(ctx, guildContext, true);
   const slots = readSlotBody(body, guildContext.guild);
   const weeks = body.weeks === undefined ? team.schedule_weeks : readWeeks(body.weeks, 'weeks');
@@ -122,7 +122,7 @@ export async function putSchedule(ctx) {
 // reason: 'exists' (the team has a raid that date), 'past' (today's slot has started), 'no_such_time' (the clocks skip that wall time).
 export async function createScheduledRaids(ctx) {
   const { body, db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const team = await loadTeam(ctx, guildContext, true);
   const guild = guildContext.guild;
   const weeks = body.weeks === undefined ? team.schedule_weeks : readWeeks(body.weeks, 'weeks');

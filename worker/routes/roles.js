@@ -151,13 +151,13 @@ async function findCustomRole(db, guildId, roleId) {
 // Handlers
 
 export async function getRoles(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   return reply(ctx, guildContext);
 }
 
 export async function createRole(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const name = readName(ctx.body.name);
   const pairs = readPermissions(ctx.body.permissions, null, true);
@@ -189,7 +189,7 @@ export async function createRole(ctx) {
 }
 
 export async function updateRole(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const guildId = guildContext.guild.id;
   const roleId = ctx.params.rolid;
@@ -265,7 +265,7 @@ export async function updateRole(ctx) {
 
 // A built-in role goes back to the system defaults.
 export async function resetRole(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const guildId = guildContext.guild.id;
   const roleId = ctx.params.rolid;
@@ -284,7 +284,7 @@ export async function resetRole(ctx) {
 
 // Deleting a custom role takes it from everyone who holds it and removes the Discord mappings and guest links that used it.
 export async function deleteRole(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const guildId = guildContext.guild.id;
   const roleId = ctx.params.rolid;

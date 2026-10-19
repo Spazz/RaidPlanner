@@ -181,7 +181,7 @@ const viewReply = async (ctx, guildContext, raid) => jsonResponse(await buildVie
 // Reads
 
 export async function getSignups(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'raids.view');
   const raid = await loadRaid(ctx, guildContext);
   return jsonResponse(await buildView(ctx, guildContext, raid));
@@ -189,7 +189,7 @@ export async function getSignups(ctx) {
 
 // GET .../signup: the viewer's own part of the view (403 for someone with no character on the raid's team).
 export async function getMySignup(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'signups.self', raid.team_id)) throw forbidden();
   const view = await buildView(ctx, guildContext, raid);
@@ -303,7 +303,7 @@ async function recomputeIfEvidence(ctx, guild, raid) {
 
 // The viewer's own person on a raid they may sign up for: 403 when they have no character on the raid's team.
 async function mySignupContext(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'signups.self', raid.team_id)) throw forbidden();
   const person = await ownPersonStatement(ctx.db, guildContext.guild.id, ctx.session.user.id).first();
@@ -349,14 +349,14 @@ export async function deleteMySignup(ctx) {
 
 export async function putPersonSignup(ctx) {
   const input = readBody(ctx.body, true);
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   await writeSignup(ctx, guildContext, raid, ctx.params.pid, input, false);
   return viewReply(ctx, guildContext, raid);
 }
 
 export async function deletePersonSignup(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const guildId = guildContext.guild.id;
   // A standing sign-up becomes the person's Absence instead of going (see TO_ABSENCE_SQL); either way it is the same audited signup.remove.
@@ -375,7 +375,7 @@ export async function deletePersonSignup(ctx) {
 
 // Close or reopen sign-ups for members. Officers can still edit while it is closed.
 async function setLocked(ctx, locked) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   await ctx.db.batch([
     ctx.db.prepare('UPDATE raids SET signups_locked = ?, updated_at = ? WHERE id = ? AND guild_id = ?').bind(locked ? 1 : 0, ctx.now(), raid.id, guildContext.guild.id),

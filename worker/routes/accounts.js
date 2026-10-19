@@ -127,7 +127,7 @@ const mayAdmitAccounts = (can) => can['roster.edit'] === 'guild' && can['guild.a
 
 export async function lookupAccounts(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   if (!isGranted(guildContext.can['roster.edit'])) throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
   const guildId = guildContext.guild.id;
   const raw = new URL(ctx.request.url).searchParams.get('q');
@@ -174,7 +174,7 @@ export async function lookupAccounts(ctx) {
 // the Discord ID a person carries are separate (PATCH /roster/:pid { linkUserId }). Answers with the whole person record.
 export async function setPersonAccount(ctx) {
   const { db, body } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guildId = guildContext.guild.id;
   const data = await loadPersonData(db, guildId, ctx.params.pid);
   const home = data ? homeTeamOf(data) : null;

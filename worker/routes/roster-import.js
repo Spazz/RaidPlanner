@@ -39,7 +39,7 @@ async function wclRate(ctx) {
 
 // The body-shape checks that need no database run before this; this is the first read.
 export async function startImport(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const team = await requireTarget(ctx.db, guildContext.guild.id, ctx.body.teamId);
   requireEdit(guildContext, team.id);
   return { guildContext, team };

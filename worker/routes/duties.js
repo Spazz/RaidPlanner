@@ -9,7 +9,7 @@ import { loadRaid, raidAudit, raidReply } from './raids.js';
 import { bad } from './roster.js';
 
 export async function getDuties(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const guildId = guildContext.guild.id;
   const [duties, earlier] = await Promise.all([
@@ -25,7 +25,7 @@ export async function getDuties(ctx) {
 export async function putDuties(ctx) {
   const { db } = ctx;
   const rows = readDuties(ctx.body.duties);
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const ids = [...new Set(rows.map((row) => row.personId))];

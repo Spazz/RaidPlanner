@@ -1749,6 +1749,23 @@ a.gs-pl-when:hover { color: var(--accent-gold-bright); }
 }
 
 /* Design framework: phone controls are 44 px, the title is 24, dialogs are bottom sheets, the page-head More is a dots icon */
+/* ── Dev "View as" bar (local runs with DEV_VIEW_AS=1 only; blue info tones, never the primary orange) ── */
+.gs-devbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; box-sizing: border-box; padding: 8px 16px; background: var(--status-info-bg); border-bottom: 1px solid var(--status-info-edge); color: var(--status-info-ink); font-size: 14px; }
+.gs-devbar-tag { padding: 2px 8px; border: 1px solid var(--status-info-edge); font: 700 12px/1.4 var(--font-cond); letter-spacing: 0.08em; text-transform: uppercase; }
+.gs-devbar-field { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gs-devbar-select { min-height: var(--control-h-sm); max-width: 100%; box-sizing: border-box; padding: 0 10px; background: var(--bg-card); border: 1px solid var(--status-info-edge); border-radius: 0; color: var(--text-primary); font: 600 14px/1 var(--font-body); color-scheme: dark; }
+.gs-devbar-btn { min-height: var(--control-h-sm); padding: 0 12px; background: transparent; border: 1px solid var(--status-info-ink); border-radius: 0; color: var(--status-info-ink); font: 600 14px/1 var(--font-body); cursor: pointer; }
+.gs-devbar-btn:hover { background: var(--bg-card-hover); }
+.gs-devbar-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.guild-page .gs-devbar-links a { display: inline-flex; align-items: center; min-height: var(--control-h-sm); color: var(--status-info-ink); text-decoration: underline; }
+.gs-preview-banner { background: var(--status-info-bg); border-color: var(--status-info-edge); color: var(--status-info-ink); }
+@media (max-width: 600px) {
+  .gs-devbar { padding: 8px 12px; }
+  .gs-devbar-field { flex: 1 1 100%; flex-wrap: wrap; }
+  .gs-devbar-select, .gs-devbar-btn, .guild-page .gs-devbar-links a { min-height: var(--control-h-phone); }
+  .gs-devbar-select { flex: 1 1 160px; }
+}
+
 @media (max-width: 600px) {
   .gs-h1, .gs-h1-lg { font-size: var(--t-h1-phone); }
   .gs-btn-lg { min-height: var(--control-h-lg); }

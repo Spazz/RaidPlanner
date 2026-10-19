@@ -28,7 +28,7 @@ const STEP_MS = 30_000; // between requests, so no per-minute write limit or imp
 // Routes that need a session but name no guild or other record: they act on the caller's own account (or the app-wide idea box). Listed by hand.
 const ACCOUNT_ROUTES = new Set([
   'GET /auth/me', 'DELETE /auth/me', 'PATCH /auth/prefs', 'PATCH /api/me', 'PUT /auth/reminders', 'DELETE /auth/discord', 'GET /auth/bnet', 'DELETE /auth/bnet',
-  'POST /auth/logout', 'POST /api/guild', 'GET /api/roadmap/ideas', 'POST /api/roadmap/ideas',
+  'POST /auth/logout', 'POST /api/guild', 'GET /api/roadmap/ideas', 'POST /api/roadmap/ideas', 'PUT /api/dev/view-as', 'DELETE /api/dev/view-as',
 ]);
 // Routes that need no session. Each has a contract below (checked by name); anything else open fails until it is classified here.
 const OPEN_ROUTES = new Set([
@@ -314,6 +314,7 @@ check('every route of ROUTES: another guild\'s ids, a guest cookie and no sessio
   const expectedOdd = [
     'GET /api/guild/:gid/raids/:rid/signup -> 403',                    // the caller's OWN sign-up: the Guild Master is no roster person here
     'GET /api/guild/:gid/attendance/backfill/reports -> 502',          // asks Warcraft Logs, which the fixture cannot reach
+    'GET /api/dev/guild/:gid/viewer -> 404',                           // dev "View as": the flag is off here, so it is a plain 404
   ];
   assert.deepEqual(control.notOk.filter((entry) => !expectedOdd.some((pattern) => entry.startsWith(pattern))), [], 'GET routes on the member\'s own guild that did not answer 200');
 

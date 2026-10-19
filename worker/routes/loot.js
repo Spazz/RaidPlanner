@@ -41,7 +41,7 @@ const raidAwardsStatement = (db, guildId, raidId) => db.prepare(`${AWARD_SELECT}
 
 export async function getRaidLoot(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext);
   const [policyResult, awardResult, ownResult] = await db.batch([
@@ -79,7 +79,7 @@ async function planImport(ctx, guildContext, raid, awards) {
 
 // The raid, the viewer's loot.edit on its team (403), a started raid (409): what a preview and an import both need.
 async function loadImportTarget(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'loot.edit', raid.team_id)) throw forbidden();
   if (raid.starts_at > ctx.now()) throw new HttpError(409, 'raid_not_started', 'That raid has not started yet. Import its loot afterwards.');
@@ -193,7 +193,7 @@ async function loadAward(ctx, guildContext) {
 
 export async function patchLoot(ctx) {
   const { db, body } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const award = await loadAward(ctx, guildContext);
   const hasTag = body.tag !== undefined;
@@ -231,7 +231,7 @@ export async function patchLoot(ctx) {
 
 export async function deleteLoot(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const award = await loadAward(ctx, guildContext);
   const results = await db.batch([
@@ -251,7 +251,7 @@ export async function deleteLoot(ctx) {
 // The statements every team view reads, then `extra`. -> the parsed results, the access, the matcher.
 async function loadTeamLoot(ctx, extra = () => []) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const params = new URL(ctx.request.url).searchParams;
   const teamId = params.get('team');
@@ -409,7 +409,7 @@ export async function getLootItems(ctx) {
 
 export async function getPersonLoot(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const personId = ctx.params.pid;
   const bind = (sql) => db.prepare(sql).bind(guild.id, personId);
@@ -460,13 +460,13 @@ async function readPolicy(ctx, guildId) {
 }
 
 export async function getLootPolicy(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   return jsonResponse((await readPolicy(ctx, guildContext.guild.id)).view);
 }
 
 export async function putLootPolicy(ctx) {
   const { body, db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'loot.policy');
   const guild = guildContext.guild;
   const teamId = body.teamId === undefined ? null : body.teamId;

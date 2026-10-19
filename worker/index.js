@@ -17,6 +17,7 @@ import { blockPerson, getPeople, makeGuildMaster, restorePerson, setRoles, syncP
 import { createRole, deleteRole, getRoles, resetRole, updateRole } from './routes/roles.js';
 import { getDiscord, putMaps, syncEveryone } from './routes/discord.js';
 import { createGuestLink, getGuestView, leaveGuest, listGuestLinks, redeemGuestLink, revokeGuestLink } from './routes/guests.js';
+import { deleteViewAs, getViewerPreview, putViewAs } from './routes/dev-view-as.js';
 import { getPublicSettings, getPublicView, putPublicSettings } from './routes/public.js';
 import { createTeam, patchTeam } from './routes/teams.js';
 import { createScheduledRaids, getSchedule, putSchedule } from './routes/schedule.js';
@@ -282,6 +283,10 @@ export const ROUTES = [
   // App-wide (no guild): the idea box on the Future enhancements page.
   { method: 'GET', path: '/api/roadmap/ideas', auth: true, handler: listIdeas },
   { method: 'POST', path: '/api/roadmap/ideas', auth: true, handler: createIdea },
+  // Dev-only "View as" (worker/view-as.js): 404 unless DEV_VIEW_AS=1 on a local host, and Guild Master only. a signed-in caller on a closed gate gets the plain 404.
+  { method: 'PUT', path: '/api/dev/view-as', auth: true, handler: putViewAs },
+  { method: 'DELETE', path: '/api/dev/view-as', auth: true, handler: deleteViewAs },
+  { method: 'GET', path: '/api/dev/guild/:gid/viewer', auth: true, handler: getViewerPreview },
 ];
 
 // deps: { db, env, fetch, now, randomBytes, log, routes? } -> { handle(request) }. routes replaces ROUTES (the isolation suite adds a deliberately leaky route to see its walker catch it).

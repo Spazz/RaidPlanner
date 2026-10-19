@@ -138,6 +138,8 @@ function workerVars(workerPort, fakes, gmDiscordId, open = false) {
     DISCORD_REDIRECT_URI: `http://127.0.0.1:${workerPort}/auth/callback`,
     DISCORD_BOT_TOKEN: 'fake-bot-token',
     GUILD_CREATOR_ALLOWLIST: open ? ',' : gmDiscordId,
+    // Dev "View as": off unless the caller asks (GUILD_SMOKE_VIEW_AS=1); never filled from a local .env.
+    DEV_VIEW_AS: process.env.GUILD_SMOKE_VIEW_AS === '1' ? '1' : '0',
     RAID_HELPER_API_BASE: base('sources'),
     WCL_API_BASE: base('sources'),
     WCL_CLIENT_ID: 'smoke-client',

@@ -583,9 +583,40 @@
     return '<div class="gs-notice gs-claim-banner" role="status"><span>This guild has no Guild Master. You can claim it.</span><a href="' + esc(baseOf(ctx) + '#/new') + '">Claim it on Create guild</a></div>';
   }
 
+  // Dev-only "View as" bar (GET /api/guild/:gid carries `dev` only for a real Guild Master on a local run with DEV_VIEW_AS=1). Blue "info" tones, never the
+  // orange of the primary button. The live region says what the switch did; app.js keeps the sentence in ctx.devNotice across the redraw.
+  function devBarHtml(ctx) {
+    const gd = guildOf(ctx);
+    if (!gd || !gd.dev || sectionOf(ctx) !== 'guild') return '';
+    const dev = gd.dev;
+    const cur = dev.viewAs || null;
+    const roles = Array.isArray(dev.roles) ? dev.roles : [];
+    const teams = Array.isArray(dev.teams) ? dev.teams : [];
+    const def = cur ? roles.filter(function (r) { return r.id === cur.roleId; })[0] : null;
+    const base = baseOf(ctx);
+    const gid = gd.guild.id;
+    const roleOptions = '<option value=""' + (cur ? '' : ' selected') + '>Guild Master (me)</option>' + roles.map(function (r) {
+      return '<option value="' + esc(r.id) + '"' + (cur && cur.roleId === r.id ? ' selected' : '') + '>' + esc(r.name) + '</option>';
+    }).join('');
+    const teamField = def && def.teamScoped && teams.length
+      ? '<label class="gs-devbar-field"><span>Team</span><select class="gs-devbar-select" id="devbar-team" data-change="devbar-team" data-key="devbar-team">' +
+        teams.map(function (t) { return '<option value="' + esc(t.id) + '"' + (cur && cur.teamId === t.id ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select></label>'
+      : '';
+    return '<section class="gs-devbar" role="region" aria-label="View as (development only)">' +
+      '<span class="gs-devbar-tag">Dev</span>' +
+      '<label class="gs-devbar-field"><span>Viewing as</span><select class="gs-devbar-select" id="devbar-role" data-change="devbar-role" data-key="devbar-role">' + roleOptions + '</select></label>' +
+      teamField +
+      (cur ? '<button type="button" class="gs-devbar-btn" data-action="devbar-reset" data-key="devbar-reset">Back to Guild Master</button>' : '') +
+      '<span class="gs-devbar-links"><a href="' + esc(base + G.router.format({ name: 'devview', gid: gid, role: 'guest' })) + '">Guest link (preview)</a>' +
+      '<a href="' + esc(base + G.router.format({ name: 'devview', gid: gid, role: 'public' })) + '">Public page (preview)</a></span>' +
+      '<span class="gs-sr" id="devbar-live" role="status" aria-live="polite">' + esc(ctx.devNotice || '') + '</span>' +
+      '</section>';
+  }
+
   // The HTML for every slot of the page skeleton.
   function slots(ctx) {
     return {
+      devbar: devBarHtml(ctx),
       rail: railHtml(ctx),
       sidebar: sidebarHtml(ctx),
       lead: leadHtml(ctx),
@@ -637,6 +668,7 @@
     sidebarHtml: sidebarHtml,
     phonePickHtml: phonePickHtml,
     claimNoticeHtml: claimNoticeHtml,
+    devBarHtml: devBarHtml,
     slots: slots,
     render: render,
   };

@@ -57,7 +57,7 @@ async function announcesToDiscord(ctx, raid) {
 }
 
 export async function getPublishedRoster(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'raids.view');
   const raid = await loadRaid(ctx, guildContext);
   return jsonResponse(await rosterReply(ctx, guildContext, raid));
@@ -67,7 +67,7 @@ export async function getPublishedRoster(ctx) {
 // name and group keeps its answer, a new or moved seat is pending, a name no longer planned goes.
 export async function publishRoster(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const now = ctx.now();
@@ -117,7 +117,7 @@ export async function publishRoster(ctx) {
 // DELETE .../roster: takes the published roster back (the answers go with it; sign-ups that "can't make it" turned into Absences stay as they are).
 export async function unpublishRoster(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   if (raid.roster_published_at !== null) {
     await db.batch([
@@ -135,7 +135,7 @@ export async function unpublishRoster(ctx) {
 // The viewer's seat on a raid whose roster is published, with the person and their effective sign-up on the raid.
 async function answerContext(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'signups.self', raid.team_id)) throw forbidden();
   const person = await ownPersonStatement(db, guildContext.guild.id, ctx.session.user.id).first();

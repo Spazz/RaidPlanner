@@ -60,7 +60,7 @@ async function linksPayload(ctx, raid) {
 }
 
 export async function listJoinLinks(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   return jsonResponse(await linksPayload(ctx, raid));
 }
@@ -72,7 +72,7 @@ export async function createJoinLink(ctx) {
     if (!Number.isInteger(body.maxUses) || body.maxUses < 1 || body.maxUses > MAX_USES_LIMIT) throw bad(`Allow 1 to ${MAX_USES_LIMIT} guest sign-ups.`, 'maxUses');
     maxUses = body.maxUses;
   }
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const now = ctx.now();
@@ -96,7 +96,7 @@ export async function createJoinLink(ctx) {
 
 export async function revokeJoinLink(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const now = ctx.now();
   const link = await db.prepare('SELECT id, revoked_at FROM raid_join_links WHERE id = ? AND guild_id = ? AND raid_id = ?').bind(ctx.params.jid, guildContext.guild.id, raid.id).first();
@@ -112,7 +112,7 @@ export async function revokeJoinLink(ctx) {
 
 export async function deleteGuestSignup(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const results = await db.batch([
     db.prepare("DELETE FROM raid_signups WHERE raid_id = ? AND source = 'raidsmith' AND guest = 1 AND signup_id = ? RETURNING signup_id").bind(raid.id, Number(ctx.params.sid)),

@@ -53,6 +53,14 @@
     return '<ul class="gs-view-meta" aria-label="About this link"><li>Role: ' + esc(role) + '</li><li>' + esc(team) + '</li><li>' + esc(until) + '</li></ul>';
   }
 
+  // The dev "View as" preview: what the guest link / the public page shows, drawn for the Guild Master. Nothing here is a real link or page.
+  function previewNoticeHtml(viewer, data, gid) {
+    const kind = viewer.kind === 'public' ? 'the public page' : 'a guest link (the Guest role)';
+    const off = viewer.kind === 'public' && data.publicEnabled === false ? ' The public page is switched off, so visitors see nothing yet; this shows what it would show.' : '';
+    const back = gid ? '<a href="' + esc(G.router.format({ name: 'section', gid: gid, section: 'home' })) + '">Back to the guild</a>' : '';
+    return '<div class="gs-notice gs-preview-banner" role="status"><span>Preview: this is what ' + kind + ' shows.' + esc(off) + '</span>' + back + '</div>';
+  }
+
   // The head: the guild, where it plays, the Read-only chip and what kind of page this is; a guest's Leave is behind More.
   function headOf(data, kind) {
     const viewer = data.viewer || {};
@@ -60,7 +68,7 @@
     return {
       title: data.guild && data.guild.name, contextHtml: esc(whereText(data.guild)),
       chipsHtml: '<span class="gs-sumchips">' + G.ui.readOnlyChipHtml() + G.ui.tagHtml(guest ? BADGES.guest : BADGES.public) + '</span>',
-      more: guest ? { id: 'view-actions', label: 'More', key: 'view-actions', items: [{ label: 'Leave this link', key: 'view-leave', data: { action: 'view-leave' } }] } : null,
+      more: guest && !viewer.preview ? { id: 'view-actions', label: 'More', key: 'view-actions', items: [{ label: 'Leave this link', key: 'view-leave', data: { action: 'view-leave' } }] } : null,
     };
   }
 
@@ -138,7 +146,7 @@
       : '<p class="gs-empty">Nothing to show here yet.</p>' };
   }
 
-  // opts: { data (GET /api/guest or /api/public/:gid, or null while loading), kind ('guest' | 'public'), error }
+  // opts: { data (GET /api/guest or /api/public/:gid, or null while loading), kind ('guest' | 'public'), error, gid (the dev preview's guild) }
   function viewHtml(opts) {
     const o = opts || {};
     const kind = o.kind || (o.data && o.data.viewer && o.data.viewer.kind) || 'guest';
@@ -155,7 +163,7 @@
     return G.ui.listPageHtml({
       pageClass: 'gs-view',
       head: headOf(data, kind),
-      noticesHtml: guest ? guestMetaHtml(viewer) + '<p class="gs-alert" id="view-alert" role="alert" hidden></p>' : '',
+      noticesHtml: viewer.preview ? previewNoticeHtml(viewer, data, o.gid) : guest ? guestMetaHtml(viewer) + '<p class="gs-alert" id="view-alert" role="alert" hidden></p>' : '',
       bodyHtml: shown.length ? shown.map(function (k) { return G.ui.objectSectionHtml(sectionOf(k, sections[k], zone, gameVersion)); }).join('') : '<p class="gs-empty" id="view-empty">' + esc(NOTHING) + '</p>',
       footHtml: 'A read-only copy: nothing on this page can be changed.' + (zone ? ' Times are in ' + esc(G.ui.zoneLabel(zone)) + ', the guild\'s zone.' : ''),
     });
@@ -174,9 +182,9 @@
   // { kind, gid, data, error } - the answer, or the error as { status, code, message } for viewHtml to word.
   function load(route) {
     const r = route || {};
-    const kind = r.name === 'public' ? 'public' : 'guest';
+    const kind = r.name === 'public' || (r.name === 'devview' && r.role === 'public') ? 'public' : 'guest';
     const done = function (data, err) {
-      const view = { kind: kind, gid: r.name === 'public' ? r.gid : null, data: data, error: err ? { status: err.status, code: err.code, message: err.message } : null };
+      const view = { kind: kind, gid: r.name === 'public' || r.name === 'devview' ? r.gid : null, data: data, error: err ? { status: err.status, code: err.code, message: err.message } : null };
       st().view = view;
       return view;
     };
@@ -186,6 +194,8 @@
         dropToken();
         return G.api.guests.view();
       });
+    } else if (r.name === 'devview') {
+      call = G.api.dev.viewerPreview(r.gid, r.role);
     } else if (r.name === 'public') {
       call = G.api.publicPage.view(r.gid);
     } else {

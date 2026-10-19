@@ -56,7 +56,7 @@ const ownPersonId = async (ctx, guildContext) => {
 
 // GET /standing: the viewer's standing sign-ups on every team they can sign up for that has a weekly schedule.
 export async function getStanding(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const personId = await ownPersonId(ctx, guildContext);
   if (!personId) return jsonResponse({ personId: null, teams: [] });
   return jsonResponse({ personId, teams: await readTeams(ctx, guildContext, personId) });
@@ -66,7 +66,7 @@ export async function getStanding(ctx) {
 // days, used once; kind is signed or late; characterId one of the viewer's characters on the team (left out / null = their usual one). -> the team's entry.
 export async function putStanding(ctx) {
   const { body, db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const team = await db.prepare('SELECT id, name, archived FROM teams WHERE id = ? AND guild_id = ?').bind(ctx.params.tid, guild.id).first();
   if (!team) throw new HttpError(404, 'not_found', 'That team does not exist.');

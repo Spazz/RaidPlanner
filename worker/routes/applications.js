@@ -176,13 +176,13 @@ async function settingsPayload(db, guildContext) {
 }
 
 export async function getApplySettings(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.teams');
   return jsonResponse(await settingsPayload(ctx.db, guildContext));
 }
 
 export async function putApplySettings(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.teams');
   const { body, db } = ctx;
   if (typeof body.enabled !== 'boolean') throw bad('enabled must be true or false.', 'enabled');
@@ -246,7 +246,7 @@ async function loadApplication(db, guildId, id) {
 }
 
 export async function listApplications(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const scope = inboxScope(guildContext);
   if (!scope) throw forbidden();
   const params = new URL(ctx.request.url).searchParams;
@@ -277,7 +277,7 @@ async function ownApplication(ctx, guildContext) {
 }
 
 export async function patchApplication(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const row = await ownApplication(ctx, guildContext);
   const { body, db } = ctx;
   if (body.status === undefined && body.notes === undefined) throw bad('Send a status, notes, or both.', 'status');
@@ -313,7 +313,7 @@ export async function patchApplication(ctx) {
 }
 
 export async function deleteApplication(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const row = await ownApplication(ctx, guildContext);
   await ctx.db.batch([
     ctx.db.prepare('DELETE FROM applications WHERE id = ? AND guild_id = ?').bind(row.id, guildContext.guild.id),
@@ -328,7 +328,7 @@ export async function deleteApplication(ctx) {
 // Accept: a Trial person (trial from today, 14 days unless the officer says otherwise) whose Main is the applicant's character on the chosen team.
 // The applicant's account is linked to the new person when it has one and is not on the roster of this guild already.
 export async function acceptApplication(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const row = await ownApplication(ctx, guildContext);
   const { body, db } = ctx;
   const guild = guildContext.guild;

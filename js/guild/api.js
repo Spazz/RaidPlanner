@@ -305,6 +305,12 @@
     preview: function (gid, rid, text) { return G.api.post(raidPath(gid, rid, '/manual/paste/preview'), { text: text }); },
     save: function (gid, rid, text, reason) { return G.api.post(raidPath(gid, rid, '/manual/paste'), reason ? { text: text, reason: reason } : { text: text }); },
   };
+  // Dev-only "View as" (the Guild Master on a local run with DEV_VIEW_AS=1; every call is a 404 elsewhere).
+  G.api.dev = {
+    setViewAs: function (gid, roleId, teamId) { return G.api.put('/api/dev/view-as', teamId ? { gid: gid, roleId: roleId, teamId: teamId } : { gid: gid, roleId: roleId }); },
+    clearViewAs: function () { return G.api.del('/api/dev/view-as', {}); },
+    viewerPreview: function (gid, role) { return G.api.get('/api/dev/guild/' + encodeURIComponent(gid) + '/viewer?role=' + encodeURIComponent(role)); },
+  };
   G.api.publicPage = {
     get: function (gid) { return G.api.get(guildPath(gid, '/public')); },
     save: function (gid, body) { return G.api.put(guildPath(gid, '/public'), body); },

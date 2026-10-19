@@ -76,14 +76,14 @@ async function makeWorld({ allowlist, env = {}, routes, wrapFetch } = {}) {
   const world = {
     db, discord, clock, logs, env: fullEnv, fetch: appFetch, randomBytes,
     advance(ms) { clock.now += ms; },
-    async req(method, urlPath, { jar, body, headers = {}, rawBody } = {}) {
+    async req(method, urlPath, { jar, body, headers = {}, rawBody, origin = ORIGIN } = {}) {
       const init = { method, headers: { ...headers } };
       if (jar && Object.keys(jar).length) init.headers.Cookie = Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
       if (method !== 'GET') {
         if (!('Content-Type' in init.headers)) init.headers['Content-Type'] = 'application/json';
         init.body = rawBody !== undefined ? rawBody : JSON.stringify(body === undefined ? {} : body);
       }
-      const response = await app.handle(new Request(`${ORIGIN}${urlPath}`, init));
+      const response = await app.handle(new Request(`${origin}${urlPath}`, init));
       if (jar) absorbCookies(jar, response);
       return response;
     },

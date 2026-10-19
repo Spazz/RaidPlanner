@@ -26,7 +26,7 @@ export const canSeeAttention = (can) => VIEW_ACTIONS.some((action) => isGranted(
 
 export async function getAttention(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const can = guildContext.can;
   if (!canSeeAttention(can)) throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
   const guild = guildContext.guild;

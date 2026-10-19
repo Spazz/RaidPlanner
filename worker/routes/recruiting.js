@@ -72,7 +72,7 @@ async function recruitingPayload(ctx, guildContext, team) {
 }
 
 export async function getRecruiting(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const teamId = new URL(ctx.request.url).searchParams.get('team');
   if (!isId('t', teamId)) throw bad('Pick a team.', 'team');
   const team = await loadTeam(ctx.db, guildContext.guild.id, teamId);
@@ -81,7 +81,7 @@ export async function getRecruiting(ctx) {
 }
 
 export async function putRecruitTargets(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const team = await loadTeam(ctx.db, guild.id, ctx.params.tid);
   if (!allows(guildContext.can, 'roster.edit', team.id)) throw forbidden();

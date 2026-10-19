@@ -44,7 +44,7 @@ async function loadPendingClaim(db, guildId, claimId) {
 }
 
 export async function listClaims(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   if (!isGranted(guildContext.can['roster.edit'])) throw forbidden();
   const guild = guildContext.guild;
   const result = await ctx.db.prepare(
@@ -75,7 +75,7 @@ const JOIN_GUARD_ERRORS = {
 // Body: { expectedKind, teamId (add_alt and new_person), status (new_person: raider | trial | reserve) }.
 export async function approveClaim(ctx) {
   const { db, body } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   if (!isGranted(guildContext.can['roster.edit'])) throw forbidden();
   const guild = guildContext.guild;
   if (typeof body.expectedKind !== 'string') throw bad('Send what the page showed for this claim.', 'expectedKind');
@@ -165,7 +165,7 @@ export async function approveClaim(ctx) {
 
 export async function rejectClaim(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   if (!isGranted(guildContext.can['roster.edit'])) throw forbidden();
   const claim = await loadPendingClaim(db, guildContext.guild.id, ctx.params.clid);
   const now = ctx.now();

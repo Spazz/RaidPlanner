@@ -295,7 +295,7 @@ export async function getBnet(ctx) {
 
 export async function createClaims(ctx) {
   const { db, body, session } = ctx;
-  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid, session.viewAs);
   const guild = guildContext.guild;
   const wanted = body.characters;
   if (!Array.isArray(wanted) || wanted.length < 1 || wanted.length > CLAIM_BATCH_MAX) {
@@ -372,7 +372,7 @@ export async function createClaims(ctx) {
 
 export async function withdrawClaim(ctx) {
   const { db, session } = ctx;
-  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, session.user.id, ctx.params.gid, session.viewAs);
   if (!isId('cl', ctx.params.clid)) throw new HttpError(404, 'not_found', 'That claim was not found.');
   const results = await db.batch([
     db.prepare("DELETE FROM character_claims WHERE id = ? AND guild_id = ? AND user_id = ? AND status = 'pending'")

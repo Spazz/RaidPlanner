@@ -103,7 +103,7 @@ async function loadNames(db, guildId, refs, teams) {
 export const slugOf = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'guild';
 
 export async function getAudit(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'audit.view');
   const guild = guildContext.guild;
   const filters = readFilters(new URL(ctx.request.url).searchParams, guild.time_zone);

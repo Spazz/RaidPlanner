@@ -213,7 +213,7 @@ async function nameConflict(ctx, guildContext, name, realm) {
 // Reads
 
 export async function getRoster(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'roster.view');
   const teamId = new URL(ctx.request.url).searchParams.get('team');
   if (!isId('t', teamId)) throw bad('Pick a team.', 'team');
@@ -231,7 +231,7 @@ export async function getRoster(ctx) {
 }
 
 export async function getLinkable(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   if (!isGranted(guildContext.can['roster.edit'])) throw forbidden();
   // Members with a Discord account who belong to no person of this guild yet (neither by Discord ID nor by an officer's account link).
   const guildId = guildContext.guild.id;
@@ -247,7 +247,7 @@ export async function getLinkable(ctx) {
 }
 
 export async function getPerson(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'roster.view');
   const record = await personRecordFor(ctx, guildContext, ctx.params.pid);
   if (!record) throw notFound();
@@ -258,7 +258,7 @@ export async function getPerson(ctx) {
 // People
 
 export async function createPerson(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
   const guild = guildContext.guild;
   const team = await requireTarget(db, guild.id, body.teamId);
@@ -326,7 +326,7 @@ function readDateField(body, key, field = key) {
 }
 
 export async function patchPerson(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
   const { data, home } = await loadEditable(ctx, guildContext);
   requireEdit(guildContext, home.id);
@@ -430,7 +430,7 @@ function cleanNotes(raw) {
 }
 
 export async function saveNotes(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
   const { data, home } = await loadEditable(ctx, guildContext);
   if (!allows(guildContext.can, 'roster.notes.edit', home.id)) throw forbidden();
@@ -459,7 +459,7 @@ export async function saveNotes(ctx) {
 }
 
 export async function deletePerson(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { db } = ctx;
   const { data, home } = await loadEditable(ctx, guildContext);
   const teamIds = [...new Set(data.characters.map((entry) => entry.view.team.id))];
@@ -508,7 +508,7 @@ async function characterMoved(ctx, guildContext, personId, characterId) {
 }
 
 export async function addCharacter(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
   const guild = guildContext.guild;
   const { data, home } = await loadEditable(ctx, guildContext);
@@ -553,7 +553,7 @@ export async function addCharacter(ctx) {
 }
 
 export async function patchCharacter(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { body, db } = ctx;
   const guild = guildContext.guild;
   const { data } = await loadEditable(ctx, guildContext);
@@ -613,7 +613,7 @@ export async function patchCharacter(ctx) {
 }
 
 export async function makeMain(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { db } = ctx;
   const { data, home } = await loadEditable(ctx, guildContext);
   const entry = findCharacter(data, ctx.params.cid);
@@ -633,7 +633,7 @@ export async function makeMain(ctx) {
 }
 
 export async function removeCharacter(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { db } = ctx;
   const { data } = await loadEditable(ctx, guildContext);
   const entry = findCharacter(data, ctx.params.cid);

@@ -28,7 +28,7 @@ export function excerptOf(text) {
 
 export async function getTrialReview(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const data = await loadPersonData(db, guild.id, ctx.params.pid);
   if (!data) throw new HttpError(404, 'not_found', 'That person was not found.');

@@ -85,7 +85,7 @@ export async function funnelPayload(ctx, guildContext, team) {
 }
 
 export async function getLaunch(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'roster.view');
   const teamId = new URL(ctx.request.url).searchParams.get('team');
   if (!isId('t', teamId)) throw bad('Pick a team.', 'team');
@@ -100,7 +100,7 @@ export async function putLaunchStatus(ctx) {
   if (body.levelBand !== undefined && body.levelBand !== null && !LEVEL_BANDS.includes(body.levelBand)) throw bad(`Pick a level band: ${LEVEL_BANDS.join(', ')}.`, 'levelBand');
   if (body.ready !== undefined && typeof body.ready !== 'boolean') throw bad('ready must be true or false.', 'ready');
   if (body.levelBand === undefined && body.ready === undefined) throw bad('Send a level band, the ready tick, or both.', 'levelBand');
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const team = await loadTeam(db, guild.id, body.teamId);
   if (!launchEnabled(guild, team)) throw new HttpError(409, 'launch_off', 'The Launch funnel is not on for this team.');
@@ -130,7 +130,7 @@ export async function putLaunchStatus(ctx) {
 export async function putLaunchTeam(ctx) {
   const { db, body } = ctx;
   if (typeof body.enabled !== 'boolean') throw bad('enabled must be true or false.', 'enabled');
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const team = await loadTeam(db, guild.id, ctx.params.tid);
   if (!allows(guildContext.can, 'guild.teams', team.id)) throw forbidden();

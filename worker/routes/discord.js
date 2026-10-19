@@ -51,7 +51,7 @@ function targetsOf(rolesData) {
 }
 
 export async function getDiscord(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const guild = guildContext.guild;
   const [maps, rolesData] = await Promise.all([loadMaps(ctx.db, guild.id), loadRolesData(ctx.db, guild.id)]);
@@ -88,7 +88,7 @@ function readMaps(body) {
 }
 
 export async function putMaps(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const guild = guildContext.guild;
   const maps = readMaps(ctx.body);
@@ -141,7 +141,7 @@ export async function putMaps(ctx) {
 }
 
 export async function syncEveryone(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   if (!botConfigured(ctx.env)) throw discordProblem('not_configured');
   const after = ctx.body.after === undefined || ctx.body.after === null ? '' : ctx.body.after;

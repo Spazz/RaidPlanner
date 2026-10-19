@@ -140,7 +140,7 @@ function readInput(ctx, today, access, current = null) {
 
 // GET /away/mine -> { today, timeZone, personId | null, notices: [notice], max }. Anyone in the guild; a viewer with no roster person has none.
 export async function getMyNotices(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const personId = await ownPersonId(ctx, guildContext);
   const rows = personId ? await listFor(ctx, guildContext, personId) : [];
@@ -200,7 +200,7 @@ async function getPersonNotices(ctx, guildContext, personId) {
 }
 
 export async function getNotices(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const query = new URL(ctx.request.url).searchParams;
   const team = query.get('team');
   const person = query.get('person');
@@ -219,7 +219,7 @@ const awayAudit = (ctx, guildContext, action, personId, before, after, guard) =>
 // POST /away { personId?, kind, from, to?, weekday?, atTime?, reason? } -> 201 { notice, notices }
 export async function postNotice(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const requested = ctx.body && typeof ctx.body === 'object' ? ctx.body.personId : undefined;
   if (requested !== undefined && requested !== null && !isId('p', requested)) throw bad('personId must be a person id.', 'personId');
@@ -269,7 +269,7 @@ async function loadOwnedNotice(ctx, guildContext) {
 // PUT /away/:nid replaces kind, from, to, weekday, atTime and reason -> { notice, notices }
 export async function putNotice(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const { row, access } = await loadOwnedNotice(ctx, guildContext);
   const before = noticeOfRow(row);
@@ -300,7 +300,7 @@ export async function putNotice(ctx) {
 // DELETE /away/:nid -> { deleted: true, notices }
 export async function deleteNotice(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const { row, access } = await loadOwnedNotice(ctx, guildContext);
   const before = noticeOfRow(row);

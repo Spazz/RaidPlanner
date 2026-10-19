@@ -16,7 +16,7 @@ const bad = (message, field) => new HttpError(400, 'bad_request', message, { fie
 
 // The person, the team they are being ranked from and the guild's ladder, all checked. -> { guildContext, guild, person, team, ranks }
 async function loadTarget(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const teamId = ctx.body.teamId;
   if (!isId('t', teamId)) throw bad('Pick a team.', 'teamId');

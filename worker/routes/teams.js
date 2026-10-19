@@ -50,7 +50,7 @@ export async function loadTeams(db, guildId) {
 }
 
 export async function createTeam(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.teams');
   const name = cleanText(ctx.body.name, 'name', { max: MAX_TEAM_NAME });
   const size = ctx.body.size === undefined ? defaultTeamSize(guildContext.guild.game_version) : readSize(ctx.body.size);
@@ -77,7 +77,7 @@ export async function createTeam(ctx) {
 }
 
 export async function patchTeam(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.teams');
   const current = await ctx.db.prepare('SELECT id, name, size, archived FROM teams WHERE id = ? AND guild_id = ?')
     .bind(ctx.params.tid, guildContext.guild.id).first();

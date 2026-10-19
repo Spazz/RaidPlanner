@@ -51,14 +51,14 @@ async function payload(db, guildId) {
 }
 
 export async function getNotifications(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.teams');
   return jsonResponse(await payload(ctx.db, guildContext.guild.id));
 }
 
 export async function putTeamNotifications(ctx) {
   const { db, body, env } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.teams');
   const guild = guildContext.guild;
   const team = await db.prepare('SELECT id, name FROM teams WHERE id = ? AND guild_id = ? AND archived = 0').bind(ctx.params.tid, guild.id).first();
@@ -126,7 +126,7 @@ export async function putTeamNotifications(ctx) {
 // the reply never repeats. 409 no_webhook / webhook_off when there is nothing to post to (those do not use up one of the five an hour), 429 past the limit.
 export async function postTestNotification(ctx) {
   const { db, env } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.teams');
   const guild = guildContext.guild;
   const team = await db.prepare('SELECT id, name FROM teams WHERE id = ? AND guild_id = ? AND archived = 0').bind(ctx.params.tid, guild.id).first();

@@ -140,7 +140,7 @@ async function pickRound(db, guildId, teamId, roundId) {
 }
 
 export async function getIntent(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'roster.view');
   const params = new URL(ctx.request.url).searchParams;
   const teamId = params.get('team');
@@ -153,7 +153,7 @@ export async function getIntent(ctx) {
 }
 
 export async function openIntent(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const team = await loadTeam(ctx.db, guild.id, ctx.params.tid);
   if (!allows(guildContext.can, 'roster.edit', team.id)) throw forbidden();
@@ -192,7 +192,7 @@ export async function openIntent(ctx) {
 }
 
 export async function closeIntent(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const round = await loadRound(ctx.db, guild.id, ctx.params.iid);
   const team = await loadTeam(ctx.db, guild.id, round.team_id);
@@ -224,7 +224,7 @@ async function loadPickPerson(ctx, guildContext, round, team) {
 }
 
 export async function putIntentPick(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const round = await loadRound(ctx.db, guild.id, ctx.params.iid);
   const team = await loadTeam(ctx.db, guild.id, round.team_id);
@@ -258,7 +258,7 @@ export async function putIntentPick(ctx) {
 }
 
 export async function deleteIntentPick(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const round = await loadRound(ctx.db, guild.id, ctx.params.iid);
   const team = await loadTeam(ctx.db, guild.id, round.team_id);

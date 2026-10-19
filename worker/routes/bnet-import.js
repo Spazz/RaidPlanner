@@ -62,7 +62,7 @@ function settingsView(guildContext, settings, env) {
 }
 
 export async function getBnetSettings(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   if (!isGranted(guildContext.can['roster.edit']) && !isGranted(guildContext.can['guild.teams'])) {
     throw new HttpError(403, 'forbidden', 'You do not have permission to do that.');
   }
@@ -72,7 +72,7 @@ export async function getBnetSettings(ctx) {
 // Body: { guildName: text | null, realmSlug: slug | null (ruleset guilds only), rankLabels: [ten texts, '' for none] }.
 export async function putBnetSettings(ctx) {
   const { db, body } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.teams');
   const guild = guildContext.guild;
 

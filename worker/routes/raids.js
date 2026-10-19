@@ -234,7 +234,7 @@ const noonUtc = (date) => Date.parse(`${date}T12:00:00Z`);
 // Reads
 
 export async function listRaids(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'raids.view');
   const params = new URL(ctx.request.url).searchParams;
   const teamId = params.get('team');
@@ -369,7 +369,7 @@ export async function listRaids(ctx) {
 }
 
 export async function getRaid(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'raids.view');
   return raidReply(ctx, guildContext, ctx.params.rid);
 }
@@ -456,7 +456,7 @@ export async function createRaid(ctx) {
   const titleInput = readTitle(body.title);
   const sizeInput = readRaidSize(body.size);
   if (body.acceptOtherServer !== undefined && typeof body.acceptOtherServer !== 'boolean') throw bad('acceptOtherServer must be true or false.', 'acceptOtherServer');
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const teamId = body.teamId;
   if (!allows(guildContext.can, 'raids.edit', teamId)) throw forbidden();
@@ -583,7 +583,7 @@ export async function putEvent(ctx) {
   const eventId = parseRaidHelperSource(body.source);
   if (body.acceptOtherServer !== undefined && typeof body.acceptOtherServer !== 'boolean') throw bad('acceptOtherServer must be true or false.', 'acceptOtherServer');
   if (body.moveRaid !== undefined && typeof body.moveRaid !== 'boolean') throw bad('moveRaid must be true or false.', 'moveRaid');
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   await raidFetchRate(ctx, { wcl: false });
@@ -638,7 +638,7 @@ export async function putEvent(ctx) {
 
 export async function deleteEvent(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   if (raid.event_id !== null) {
     const now = ctx.now();
@@ -661,7 +661,7 @@ export async function deleteEvent(ctx) {
 export async function putReport(ctx) {
   const { body, db } = ctx;
   if (body.confirmFar !== undefined && typeof body.confirmFar !== 'boolean') throw bad('confirmFar must be true or false.', 'confirmFar');
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const { flavour, code } = await readReport(ctx, guild, body.source);
@@ -712,7 +712,7 @@ export async function putReport(ctx) {
 
 export async function deleteReport(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const results = await db.batch([
     db.prepare('DELETE FROM raid_reports WHERE raid_id = ? AND code = ? RETURNING code').bind(raid.id, ctx.params.code),
@@ -753,7 +753,7 @@ function readPlan(body, guild, surnames) {
 
 export async function putPlan(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const { label, rows, live } = readPlan(ctx.body, guildContext.guild, await loadSurnameIndex(db, guildContext.guild));
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const now = ctx.now();
@@ -773,7 +773,7 @@ export async function putPlan(ctx) {
 
 export async function deletePlan(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   if (raid.plan_synced !== null) {
     const now = ctx.now();
@@ -809,7 +809,7 @@ const RECENT_RAIDS_SQL = `SELECT id FROM raids WHERE guild_id = ? AND team_id = 
 const marker = (kind, text) => ({ kind, text: text.replace(/[^\x20-\x7e]/g, '').trim().slice(0, MARKER_MAX) });
 
 export async function getPlanner(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const guild = guildContext.guild;
   // The notices only matter for a raid that has not started; "also in another raid" also needs a known start time on this raid (and, in the query, the other).
@@ -980,7 +980,7 @@ export async function putManual(ctx) {
   if (!Array.isArray(ids) || ids.length > MAX_MANUAL_PLAYERS || ids.some((id) => !isId('p', id)) || new Set(ids).size !== ids.length) {
     throw bad(`Send at most ${MAX_MANUAL_PLAYERS} different people.`, 'presentPlayerIds');
   }
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   if (raid.starts_at > ctx.now()) throw new HttpError(409, 'raid_not_started', 'Enter attendance by hand once the raid has happened.');
@@ -1034,7 +1034,7 @@ export async function saveManual(ctx, guildContext, raid, { ids, reason, names =
 export async function deleteManual(ctx) {
   const { body, db } = ctx;
   const reason = cleanText(body.reason, 'reason', { min: 3, max: 200 });
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   if (raid.log_mode !== 'manual') throw new HttpError(409, 'conflict', 'This raid has no manual attendance.');
   await db.batch([
@@ -1061,7 +1061,7 @@ export async function patchRaid(ctx) {
   if (!hasSize && !hasHours) throw new HttpError(400, 'bad_request', 'Send size, signupCloseHours, or both.');
   const size = hasSize ? readRaidSize(body.size) : null;
   const hours = hasHours ? readRaidCloseHours(body.signupCloseHours) : null;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const nextSize = hasSize ? size : raid.size;
   const nextHours = hasHours ? hours : raid.signup_close_hours;
@@ -1085,14 +1085,14 @@ export async function patchRaid(ctx) {
 // Recompute, delete
 
 export async function recomputeRoute(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   return recomputeAndReply(ctx, guildContext, raid.id);
 }
 
 export async function deleteRaid(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext, { edit: true });
   const results = await db.batch([
     raidAudit(ctx, guildContext, 'raid.delete', raid.id, { teamId: raid.team_id, raidOn: raid.raid_on, reports: raid.reports }, null, raidExists(raid.id)),

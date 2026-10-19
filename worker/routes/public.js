@@ -42,13 +42,13 @@ async function settingsPayload(db, guildContext) {
 }
 
 export async function getPublicSettings(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   return jsonResponse(await settingsPayload(ctx.db, guildContext));
 }
 
 export async function putPublicSettings(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.roles');
   const { body } = ctx;
   if (typeof body.enabled !== 'boolean') throw new HttpError(400, 'bad_request', 'enabled must be true or false.', { field: 'enabled' });
@@ -86,10 +86,15 @@ export async function getPublicView(ctx) {
   if (!isId('g', ctx.params.gid)) throw notFound();
   const guild = await loadGuildRow(ctx.db, ctx.params.gid);
   if (!guild || guild.public_enabled !== 1) throw notFound();
-  const teams = (await ctx.db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guild.id).all()).results.map((team) => team.id);
-  const ceiling = await publicCan(ctx.db, guild.id, teams);
-  // The chosen sections, each only if the Public role holds its read action.
+  return jsonResponse({ viewer: { kind: 'public' }, ...(await publicViewFor(ctx.db, guild, ctx.now())) });
+}
+
+// What the public page shows for a guild row: the chosen sections, each only if the Public role holds its read action. Shared by the real page and the
+// dev "View as" preview (which ignores the on/off switch).
+export async function publicViewFor(db, guild, nowMs) {
+  const teams = (await db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guild.id).all()).results.map((team) => team.id);
+  const ceiling = await publicCan(db, guild.id, teams);
   const chosen = parseSections(guild.public_sections);
   const can = Object.fromEntries(chosen.map((section) => [VIEW_SECTIONS[section], ceiling[VIEW_SECTIONS[section]]]).filter(([, scope]) => scope));
-  return jsonResponse({ viewer: { kind: 'public' }, ...(await buildView(ctx.db, guild, can, ctx.now(), { only: chosen })) });
+  return buildView(db, guild, can, nowMs, { only: chosen });
 }

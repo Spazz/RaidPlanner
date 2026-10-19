@@ -72,13 +72,13 @@ async function linksPayload(db, guildContext, nowMs) {
 }
 
 export async function listGuestLinks(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   return jsonResponse(await linksPayload(ctx.db, guildContext, ctx.now()));
 }
 
 export async function createGuestLink(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   const guildId = guildContext.guild.id;
   const { body } = ctx;
@@ -137,7 +137,7 @@ export async function createGuestLink(ctx) {
 }
 
 export async function revokeGuestLink(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'guild.access');
   const guildId = guildContext.guild.id;
   const now = ctx.now();
@@ -196,17 +196,22 @@ export async function leaveGuest() {
   return jsonResponse({ ok: true }, 200, {}, [serializeCookie(GUEST_COOKIE, '', { maxAge: 0, path: '/' })]);
 }
 
+// What a guest holding `roleId` (for one team, or the whole guild) sees: the read-only view. Shared by the real guest view and the dev "View as" preview.
+export async function guestViewFor(db, guild, roleId, teamId, nowMs) {
+  const [permissionResult, teamResult] = await db.batch([
+    db.prepare('SELECT role_id, action, scope FROM effective_role_permissions WHERE guild_id = ? AND role_id = ?').bind(guild.id, roleId),
+    db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guild.id),
+  ]);
+  const can = resolveViewerPermissions(permissionResult.results, roleId, { teamId, activeTeamIds: teamResult.results.map((row) => row.id) });
+  return buildView(db, guild, can, nowMs);
+}
+
 // GET /api/guest: the guest cookie's link, looked up now, and what its role may see.
 export async function getGuestView(ctx) {
   const link = await findWorkingLink(ctx, presentedGuestToken(ctx.request));
   const guild = await loadGuildRow(ctx.db, link.guild_id);
   if (!guild) throw new HttpError(404, 'link_invalid', 'This guest link is not valid. Ask the officer who sent it for a new one.');
-  const [permissionResult, teamResult] = await ctx.db.batch([
-    ctx.db.prepare('SELECT role_id, action, scope FROM effective_role_permissions WHERE guild_id = ? AND role_id = ?').bind(guild.id, link.role_id),
-    ctx.db.prepare('SELECT id FROM teams WHERE guild_id = ? AND archived = 0').bind(guild.id),
-  ]);
-  const can = resolveViewerPermissions(permissionResult.results, link.role_id, { teamId: link.team_id, activeTeamIds: teamResult.results.map((row) => row.id) });
-  const view = await buildView(ctx.db, guild, can, ctx.now());
+  const view = await guestViewFor(ctx.db, guild, link.role_id, link.team_id, ctx.now());
   return jsonResponse({
     viewer: { kind: 'guest', role: { id: link.role_id, name: link.role_name }, team: link.team_id ? { id: link.team_id, name: link.team_name } : null, expiresAt: link.expires_at },
     ...view,

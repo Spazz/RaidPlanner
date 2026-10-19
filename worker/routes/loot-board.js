@@ -87,7 +87,7 @@ async function boardFor(ctx, guildContext, raid, access) {
 // Who may read the board: whoever may see this team's loot in full (the loot visibility setting; an editor always). 403 for the rest.
 async function boardTarget(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const raid = await loadRaid(ctx, guildContext);
   const policy = await lootPolicyRowsStatement(db, guildContext.guild.id).all();
   const access = lootAccess(guildContext, makeLootPolicyResolver(policy.results), raid.team_id);
@@ -111,7 +111,7 @@ const INSERT_ROWS = `INSERT INTO raid_loot_lists (raid_id, guild_id, source, pos
 // PUT .../loot-lists { source: 'tmb' | 'softres', rows: [...] }: replaces the raid's rows of that source; an empty list clears it. loot.edit on the raid's team.
 export async function putLootList(ctx) {
   const { db, body } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'loot.edit', raid.team_id)) throw forbidden();
@@ -166,7 +166,7 @@ function manualChecksum(randomBytes) {
 // is a disenchant (tag DE). -> 201 { award } (the award view of GET /raids/:rid/loot, with manual: true).
 export async function postManualAward(ctx) {
   const { db, body } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'loot.edit', raid.team_id)) throw forbidden();

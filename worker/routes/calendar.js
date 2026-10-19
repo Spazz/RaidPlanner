@@ -33,7 +33,7 @@ async function readTeam(ctx, guildContext, raw) {
 const statusOf = (team, row) => ({ team: { id: team.id, name: team.name }, subscribed: !!row, createdAt: row ? row.created_at : null, lastUsedAt: row ? row.last_used_at : null });
 
 export async function getCalendarStatus(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const team = await readTeam(ctx, guildContext, new URL(ctx.request.url).searchParams.get('team'));
   const row = await ctx.db.prepare('SELECT created_at, last_used_at FROM calendar_tokens WHERE user_id = ? AND team_id = ? AND guild_id = ?')
     .bind(ctx.session.user.id, team.id, guildContext.guild.id).first();
@@ -42,7 +42,7 @@ export async function getCalendarStatus(ctx) {
 
 // Makes the link, or replaces the old one (the old URL stops working at once). The only time the URL is ever in an answer.
 export async function createCalendarLink(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const team = await readTeam(ctx, guildContext, ctx.body.teamId);
   const token = newSessionToken(ctx.randomBytes);
   const now = ctx.now();
@@ -60,7 +60,7 @@ export async function createCalendarLink(ctx) {
 
 // Turning it off deletes the row; asking twice is fine.
 export async function revokeCalendarLink(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const team = await readTeam(ctx, guildContext, ctx.body.teamId);
   await ctx.db.prepare('DELETE FROM calendar_tokens WHERE user_id = ? AND team_id = ? AND guild_id = ?').bind(ctx.session.user.id, team.id, guildContext.guild.id).run();
   return jsonResponse(statusOf(team, null));

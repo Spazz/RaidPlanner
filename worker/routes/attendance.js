@@ -69,7 +69,7 @@ function buildPolicyView(guild, policyRows, teams) {
 const publicPolicyView = (view) => { const { _resolver, ...rest } = view; return rest; };
 
 export async function getPolicy(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'raids.view');
   return jsonResponse(publicPolicyView(await policyView(ctx, guildContext)));
 }
@@ -94,7 +94,7 @@ function changedKeys(before, after) {
 
 export async function putPolicy(ctx) {
   const { body, db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'attendance.policy');
   const guild = guildContext.guild;
   const teamId = body.teamId === undefined ? null : body.teamId;
@@ -158,7 +158,7 @@ export async function putPolicy(ctx) {
 
 export async function putWclSettings(ctx) {
   const { body, db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   requireAction(guildContext, 'attendance.policy');
   const guild = guildContext.guild;
   if (body.wclGuildId !== undefined && body.wclGuildId !== null && !(Number.isInteger(body.wclGuildId) && body.wclGuildId > 0 && body.wclGuildId < 2147483648)) {
@@ -202,7 +202,7 @@ export async function putWclSettings(ctx) {
 // Review queue
 
 export async function getReview(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const team = await requireTeam(ctx.db, guild.id, new URL(ctx.request.url).searchParams.get('team'));
   if (!allows(guildContext.can, 'attendance.review', team.id)) throw forbidden();
@@ -305,7 +305,7 @@ export async function postDecision(ctx) {
   if (typeof body.outcome !== 'string') throw decisionInvalid('Pick an outcome.', 'outcome');
   if (!Array.isArray(body.expectedFlags) || body.expectedFlags.some((flag) => typeof flag !== 'string')) throw bad('Send the flags you last saw.', 'expectedFlags');
   if (body.creditId !== undefined && body.creditId !== null && typeof body.creditId !== 'string') throw decisionInvalid('Pick a credit.', 'creditId');
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'attendance.review', raid.team_id)) throw forbidden();
@@ -358,7 +358,7 @@ export async function postDecision(ctx) {
 export async function deleteDecision(ctx) {
   const { body, db } = ctx;
   const reason = cleanText(body.reason, 'reason', { min: 3, max: 200 });
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'attendance.review', raid.team_id)) throw forbidden();
@@ -388,7 +388,7 @@ export async function postUnmatched(ctx) {
   // the loot knows wins over it.
   if (body.class !== undefined && body.class !== null && !(typeof body.class === 'string' && CLASS_IDS.includes(body.class))) throw bad('Pick one of the nine classes.', 'class');
   if (body.action === 'person' && body.joinedOn !== undefined && body.joinedOn !== null && !isRealDate(body.joinedOn)) throw bad('Joined needs a date.', 'joinedOn');
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const raid = await loadRaid(ctx, guildContext);
   if (!allows(guildContext.can, 'attendance.review', raid.team_id)) throw forbidden();
@@ -547,7 +547,7 @@ export const metricsRow = (row, hostTeamOf = new Map()) => ({
 });
 
 export async function getTeamAttendance(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const params = new URL(ctx.request.url).searchParams;
   const team = await requireTeam(ctx.db, guild.id, params.get('team'));
@@ -684,7 +684,7 @@ const decisionApplies = (decision, row) => !!decision && !!row
   && JSON.stringify([...parseFlags(decision.flags)].sort()) === JSON.stringify([...parseFlags(row.flags)].sort());
 
 export async function getPersonAttendance(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const params = new URL(ctx.request.url).searchParams;
   const personId = ctx.params.pid;
@@ -794,7 +794,7 @@ export async function getPersonAttendance(ctx) {
 
 export async function getBackfillReports(ctx) {
   const { db } = ctx;
-  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const params = new URL(ctx.request.url).searchParams;
   const team = await requireTeam(db, guild.id, params.get('team'));

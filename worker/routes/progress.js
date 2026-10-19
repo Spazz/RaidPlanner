@@ -6,7 +6,7 @@ import { allows, loadGuildContext } from '../permissions.js';
 import { loadProgress } from '../progress-store.js';
 
 export async function getTeamProgress(ctx) {
-  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid);
+  const guildContext = await loadGuildContext(ctx.db, ctx.session.user.id, ctx.params.gid, ctx.session.viewAs);
   const guild = guildContext.guild;
   const team = await ctx.db.prepare('SELECT id, name FROM teams WHERE id = ? AND guild_id = ?').bind(ctx.params.tid, guild.id).first();
   if (!team) throw new HttpError(404, 'not_found', 'That team does not exist in this guild.');
