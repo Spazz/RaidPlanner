@@ -16,7 +16,7 @@
   'use strict';
 
   G.roadmap = {
-    updated: '2026-10-18',
+    updated: '2026-10-19',
     items: [
       // ── In progress ──
 
@@ -424,6 +424,12 @@
         area: 'platform', status: 'done', source: 'user', added: '2026-10-18', shipped: '2026-10-18',
       },
       {
+        id: 'roster-redesign',
+        title: 'Roster redesign: team sheet, record page, Recruiting',
+        summary: 'The Roster opens on the team\'s shape: role tiles against the targets, who needs a decision, and Tank, Healer, Melee and Ranged columns with spec icons; phones get a searchable list. A person\'s page leads with the trial decision and shows one Account line. Applications, recruiting needs and the post share one Recruiting tab; Launch readiness sits on Spec poll. Each team sets its trial length (14 days by default).',
+        area: 'roster', status: 'done', source: 'user', added: '2026-10-19', shipped: '2026-10-19',
+      },
+      {
         id: 'discord-optional',
         title: 'Run a guild without Discord',
         summary: 'A guild can use Raidsmith on its own, with no Discord server: create the guild, invite and sign in members, plan and track raids. Connecting Discord stays optional and unlocks the extras: sign-ups in Discord, reminders and DMs, channel posts and role sync.',
@@ -432,7 +438,7 @@
       {
         id: 'trial-review',
         title: 'Trial review card',
-        summary: 'A trial\'s person page shows a Trial review card: attendance since the trial started (raids, percent, missed, missed with notice, late and left early), loot received, fill-ins and an excerpt of the officer notes, with Promote to Raider, Extend trial (14 days by default) and End trial buttons.',
+        summary: 'A trial\'s person page shows a Trial review card: attendance since the trial started (raids, percent, missed, missed with notice, late and left early), loot received, fill-ins and an excerpt of the officer notes, with Promote to Raider, Extend trial (the team\'s trial length by default) and End trial buttons.',
         area: 'roster', status: 'done', source: 'pm', added: '2026-10-17', shipped: '2026-10-17',
       },
       {
