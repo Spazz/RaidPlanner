@@ -53,8 +53,8 @@ import { createCalendarLink, getCalendarFeed, getCalendarStatus, revokeCalendarL
 import { getTrialReview } from './routes/trial.js';
 import { deleteNotice, getMyNotices, getNotices, postNotice, putNotice } from './routes/away.js';
 import {
-  LOOT_MAX_BODY, commitLoot, deleteLoot, getBalance, getLootItems, getLootPolicy, getLootRaids, getPersonLoot, getRaidLoot, patchLoot,
-  previewLoot, putLootPolicy,
+  LOOT_MAX_BODY, commitLoot, deleteLoot, getBalance, getLootAward, getLootFix, getLootHub, getLootItem, getLootItems, getLootPolicy, getLootRaids,
+  getPersonLoot, getRaidLoot, patchLoot, postLootFixKeep, previewLoot, putLootPolicy,
 } from './routes/loot.js';
 import { getLootBoard, postManualAward, putLootList } from './routes/loot-board.js';
 import { createApiKey, listApiKeys, revokeApiKey } from './routes/api-keys.js';
@@ -208,6 +208,11 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:gid/loot/balance', auth: true, handler: getBalance },
   { method: 'GET', path: '/api/guild/:gid/loot/raids', auth: true, handler: getLootRaids },
   { method: 'GET', path: '/api/guild/:gid/loot/items', auth: true, handler: getLootItems },
+  { method: 'GET', path: '/api/guild/:gid/loot/hub', auth: true, handler: getLootHub },
+  { method: 'GET', path: '/api/guild/:gid/loot/items/:lootitem', auth: true, handler: getLootItem },
+  { method: 'GET', path: '/api/guild/:gid/loot/a/:aid', auth: true, handler: getLootAward },
+  { method: 'GET', path: '/api/guild/:gid/loot/fix', auth: true, handler: getLootFix },
+  { method: 'POST', path: '/api/guild/:gid/loot/fix/keep', auth: true, handler: postLootFixKeep },
   { method: 'GET', path: '/api/guild/:gid/loot/person/:pid', auth: true, handler: getPersonLoot },
   { method: 'GET', path: '/api/guild/:gid/loot/policy', auth: true, handler: getLootPolicy },
   { method: 'PUT', path: '/api/guild/:gid/loot/policy', auth: true, handler: putLootPolicy },

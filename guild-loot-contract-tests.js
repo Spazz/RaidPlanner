@@ -165,7 +165,7 @@ check('import: the pages\' parsed awards go through preview and commit; the prev
   const s = await scenario();
   const { G } = s;
   const preview = await G.api.loot.preview(s.gid, s.raid, s.awards);
-  assert.deepEqual(Object.keys(preview.counts).sort(), ['new', 'otherDay', 'otherRaid', 'same', 'update']);
+  assert.deepEqual(Object.keys(preview.counts).sort(), ['conflict', 'deleted', 'new', 'otherDay', 'otherRaid', 'same', 'update']);
   assert.equal(preview.counts.new, 8);
   assert.equal(preview.counts.otherDay, 6);
   assert.equal(preview.rows.length, 14);
@@ -396,7 +396,7 @@ check('review queue: loot winners nobody matches arrive as lootUnmatched; Link /
 check('visibility: a member under "own" gets scope "own" (one row and the team average); somebody else\'s person page is a 403 the pages tell as a note', async () => {
   const s = await scenario();
   await importNight(s);
-  await s.G.api.loot.savePolicy(s.gid, null, { visibility: { members: 'own' } }, 0);
+  await s.G.api.loot.savePolicy(s.gid, null, { visibility: { members: 'own', standings: true } }, 0);
   const M = loadPages(s.world, s.memberJar);
   const gd = await M.api.get(s.base);
   pageState(s, M, gd);
@@ -439,9 +439,9 @@ check('disenchants: the Worker refuses another tag on a no-winner award (400 on 
   const gone = await G.api.loot.remove(s.gid, de.id);
   assert.deepEqual(gone, { ok: true });
   assert.equal((await G.api.loot.raid(s.gid, s.raid)).awards.length, 13);
-  // The same export again brings it back (its checksum is free) as a disenchant.
+  // The delete left a tombstone: the same export does not bring it back unasked.
   const back = await importNight(s, true);
-  assert.deepEqual([back.inserted, back.awards.filter((award) => award.match.kind === 'disenchanted').length], [1, 1]);
+  assert.deepEqual([back.inserted, back.deleted.kept, back.awards.filter((award) => award.match.kind === 'disenchanted').length], [0, 1, 0]);
 });
 
 check('review queue: a loot winner with no class gets the class select, and the class picked there is what the Worker needs to add or link the character', async () => {
@@ -484,6 +484,37 @@ check('review queue: a loot winner with no class gets the class select, and the 
   assert.deepEqual([roamerAward.match.personName, roamerAward.winner.class], ['Thoren', 'MAGE']);
   const after = await G.api.get(`${s.base}/attendance/review?team=${encodeURIComponent(s.teamId)}`);
   assert(!after.lootUnmatched[0].items.some((item) => ['Nomad', 'Roamer'].includes(item.name)), 'both are out of the queue');
+});
+
+check('loot page routes (lane W): hub, item, award record, Needs fixing and the PATCH edit answer through G.api with the shapes the pages read; a stale save is a 409 with `current`', async () => {
+  const s = await scenario();
+  const { G } = s;
+  const committed = await importNight(s);
+  const lootBase = `${s.base}/loot`;
+  const hub = await G.api.get(`${lootBase}/hub?team=${encodeURIComponent(s.teamId)}`);
+  assert.deepEqual(Object.keys(hub), ['team', 'can', 'me', 'nights', 'standingsTop', 'fix']);
+  assert.deepEqual(hub.can, { edit: true, rules: true, standings: true, itemLookup: true });
+  assert.equal(hub.nights[0].awards.length, committed.awards.length);
+  assert.deepEqual(Object.keys(hub.nights[0]), ['raid', 'awards']);
+
+  const first = committed.awards[0];
+  const record = await G.api.get(`${lootBase}/a/${encodeURIComponent(first.id)}`);
+  assert.deepEqual([Object.keys(record), record.canEdit, record.award.id, record.raid.teamId], [['award', 'raid', 'origin', 'history', 'canEdit'], true, first.id, s.teamId]);
+  const item = await G.api.get(`${lootBase}/items/${first.itemId}?team=${encodeURIComponent(s.teamId)}`);
+  assert.deepEqual([Object.keys(item), item.item.itemId, item.drops.some((drop) => drop.id === first.id)], [['team', 'item', 'counts', 'drops'], first.itemId, true]);
+  const fix = await G.api.get(`${lootBase}/fix?team=${encodeURIComponent(s.teamId)}`);
+  assert.deepEqual(Object.keys(fix), ['team', 'duplicates', 'unknown']);
+
+  // Edit details: the winner and the tag in one PATCH; the answer is the new award view with a new updatedAt.
+  const edited = await G.api.loot.update(s.gid, first.id, { winnerName: 'Wanderfell', tag: 'OS', updatedAt: record.award.updatedAt });
+  assert.deepEqual([edited.award.winner.name, edited.award.tag, edited.award.editedFields], ['Wanderfell', 'OS', ['winner']]);
+  let stale = null;
+  try { await G.api.loot.update(s.gid, first.id, { winnerName: 'Aldric', updatedAt: record.award.updatedAt - 1 }); } catch (e) { stale = e; }
+  assert.deepEqual([stale && stale.status, stale && stale.code, stale && stale.body.current.id], [409, 'stale', first.id]);
+  // Re-importing the same export: the edited winner is a conflict row the preview describes, and the result counts it.
+  const preview = await G.api.loot.preview(s.gid, s.raid, s.awards);
+  const row = preview.rows.find((r) => r.awardId === first.id);
+  assert.deepEqual([row.status, row.conflicts.map((c) => c.field), preview.counts.conflict], ['conflict', ['winner'], 1]);
 });
 
 // ---------------------------------------------------------------------------

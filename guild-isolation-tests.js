@@ -141,7 +141,7 @@ async function seedGuild(w, { label, serverId, gm, member, publicOn }) {
   w.db.sqlite.exec(`
     INSERT INTO raid_reports (raid_id, guild_id, code, flavour, started_at, ended_at, owner, synced_at) VALUES ('${rid}', '${gid}', '${code}', 'classic', 1, 2, '${label}uploader', 3);
     INSERT INTO loot_awards (id, guild_id, raid_id, team_id, checksum, item_id, item_name, awarded_at, winner_name, winner_name_key, winner_realm_key, winner_class, tag, note, created_at, updated_at)
-      VALUES ('${aid}', '${gid}', '${rid}', '${tid}', '${label}sum0001', 28830, '${label} Trinket', 5, '${label}person', '${label.toLowerCase()}person', 'nightslayer', 'WARRIOR', 'MS', '${label} loot note', 1, 1);
+      VALUES ('${aid}', '${gid}', '${rid}', '${tid}', '${label}sum0001', ${label === 'Alpha' ? 28830 : 28831}, '${label} Trinket', 5, '${label}person', '${label.toLowerCase()}person', 'nightslayer', 'WARRIOR', 'MS', '${label} loot note', 1, 1);
     INSERT INTO character_claims (id, guild_id, user_id, name, name_key, realm, realm_key, class, status, created_at)
       VALUES ('${clid}', '${gid}', '${uid}', '${label}claimant', '${label.toLowerCase()}claimant', 'Nightslayer', 'nightslayer', 'MAGE', 'pending', 1);
     INSERT INTO away_notices (id, guild_id, player_id, kind, starts_on, ends_on, reason, created_at, updated_at)
@@ -150,7 +150,7 @@ async function seedGuild(w, { label, serverId, gm, member, publicOn }) {
       VALUES ('${apid}', '${gid}', '${tid}', 'new', '${label}hopeful', '${label.toLowerCase()}hopeful', 'Nightslayer', 'nightslayer', 'MAGE', 'Fire', '${label} contact', '[{"label":"${label} question","type":"short","answer":"${label} answer"}]', 1, 1);`);
   if (publicOn) await need(await w.call(jars.gm, 'PUT', `${path}/applications/settings`, { enabled: true, questions: [{ label: `${label} open question`, type: 'short', required: false }] }), 'applications on');
   return {
-    label, serverId, gid, jars, ids: { gid, tid, uid, pid, cid, rid, rolid, lid, code, aid, clid, nid, iid, apid, kid, jid, itemid: `no_loot:${rid}`, sid: 1, cal: calFile },
+    label, serverId, gid, jars, ids: { gid, tid, uid, pid, cid, rid, rolid, lid, code, aid, clid, nid, iid, apid, kid, jid, itemid: `no_loot:${rid}`, lootitem: label === 'Alpha' ? 28830 : 28831, sid: 1, cal: calFile },
     guestToken: link.created.token, joinToken: join.created.token, calFile, apiToken: apiKey.created.token,
     // Words that only this guild's data contains. A response to anyone else must not carry one.
     words: [`Guild ${label}`, `${label}person`, `${label}title`, `${label}past`, `${label} council`, `${label} link`, `${label} officer note`, `${label} loot note`,

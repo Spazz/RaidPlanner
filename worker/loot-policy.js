@@ -9,7 +9,8 @@ export const LOOT_TAGS = Object.freeze(['MS', 'OS', 'DE', 'BANK']);
 export const COUNT_TAGS = Object.freeze(['MS', 'OS']);
 
 export const DEFAULT_LOOT_POLICY = deepFreeze({
-  visibility: { members: 'ownTeams' },
+  // standings: members may open "Who is due"; itemLookup: members may use "Look up an item" (both off for a new guild).
+  visibility: { members: 'ownTeams', standings: false, itemLookup: false },
   balance: { mode: 'perRaid', countTags: ['MS'] },
 });
 
@@ -25,8 +26,10 @@ function checkCountTags(value) {
 }
 
 // The schema: a function is a leaf validator (returns an error message or null), an object is a nested section.
+const isBoolean = (value) => (typeof value === 'boolean' ? null : 'must be true or false');
+
 const SCHEMA = {
-  visibility: { members: oneOf(['own', 'ownTeams', 'guild']) },
+  visibility: { members: oneOf(['own', 'ownTeams', 'guild']), standings: isBoolean, itemLookup: isBoolean },
   balance: { mode: oneOf(['perRaid', 'count']), countTags: checkCountTags },
 };
 
