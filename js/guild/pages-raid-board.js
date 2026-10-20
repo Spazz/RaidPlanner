@@ -10,11 +10,11 @@
 
   const LISTS = {
     tmb: {
-      label: 'Loot prio (TMB)', short: 'TMB prios', paste: 'Paste TMB prios', parser: 'tmb', name: 'ThatsMyBIS',
+      short: 'TMB prios', paste: 'Paste TMB prios', parser: 'tmb', name: 'ThatsMyBIS',
       help: 'On ThatsMyBIS open the Gargul export ("Export Gargul") and copy the text. Paste it here or pick the saved file. Prios and wishlists are kept for this raid; pasting again replaces them.',
     },
     softres: {
-      label: 'Soft-reserves (softres)', short: 'Soft-reserves', paste: 'Paste soft-reserves', parser: 'softres', name: 'softres.it',
+      short: 'Soft-reserves', paste: 'Paste soft-reserves', parser: 'softres', name: 'softres.it',
       help: 'On softres.it open the raid, use "Gargul Export" and copy the text. Paste it here or pick the saved file. Pasting again replaces the soft-reserves of this raid.',
     },
   };
@@ -182,7 +182,7 @@
     const list = ui.list;
     if (!list || !has(LISTS, list)) return '';
     return G.ui.importPanelHtml({
-      id: 'bd-title', title: LISTS[list].label, step: ui.stage === 'preview' ? 'preview' : (ui.stage === 'done' ? 'result' : 'source'),
+      id: 'bd-title', title: LISTS[list].paste, step: ui.stage === 'preview' ? 'preview' : (ui.stage === 'done' ? 'result' : 'source'),
       helpHtml: '<p class="gs-fine" id="bd-help">' + esc(LISTS[list].help) + '</p>', alertHtml: G.ui.alertHtml(ui.error, 'bd-error'),
       sourceHtml: inputStageHtml(ui, list), previewHtml: ui.stage === 'preview' ? previewStageHtml(ui, x.data) : '',
       resultHtml: ui.stage === 'done' ? G.ui.importResultHtml({ id: 'bd-result', title: ui.note, next: [{ label: 'Close', attrs: { 'data-action': 'board-close', 'data-key': 'board-close' } }] }) : '',

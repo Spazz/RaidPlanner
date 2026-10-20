@@ -1,6 +1,6 @@
 // ── UI KIT: the design framework's components ───────────────────
 // Escaped-HTML builders (and the little runtime behind some of them) for the parts every page is made of, so a page picks a part instead of
-// writing markup: buttons, status chips and tags, count and "New" badges, segmented controls, the stage strip, the next-step bar, the data table
+// writing markup: buttons, status chips and tags, count and "New" badges, segmented controls, the next-step bar, the data table
 // (cards on a phone), form fields with inline validation, the sticky Save bar with its unsaved-changes guard, inline banners and toasts, the empty /
 // loading / error states and the dialog layout. The page templates that put them together are in ui-templates.js. Rules: tasks/design-spec.md;
 // the classes are styled in guild.css under "Design framework", and the page look under "Forge".
@@ -14,7 +14,7 @@
 //   ui.readOnlyChipHtml()                                                                           the "Read-only" chip of the guest, public and other reading pages
 //   ui.countBadgeHtml(n, label)  /  ui.newBadgeHtml()  /  ui.badgeHtml({ count, label, isNew })     gold count (gone at 0) vs neutral "New" (never both)
 //   ui.segmentsHtml({ label, items, selected, action })                                              joined buttons that change which rows show
-//   ui.stageStripHtml({ stages, ariaLabel, id })  /  ui.nextStepHtml({ title, text, primary, secondary })
+//   ui.nextStepHtml({ title, text, primary, secondary })
 //   ui.dataTableHtml({ label, columns, rows, limit, showAll, noun, showAllAction, emptyHtml })        a table that turns into cards on a phone
 //   ui.fieldHtml({ id, name, label, kind, value, required, help, error, readonly, options, ... })  /  ui.checkFieldHtml(...)  /  ui.fieldErrorHtml(id, text)
 //   ui.setFieldError(root, id, text) / ui.clearFieldError / ui.focusFirstInvalid / ui.validateValues(values, rules) / ui.validateForm(form, rules)
@@ -176,59 +176,7 @@
     }).join('') + '</div>';
   };
 
-  // ── STAGE STRIP ──
-  // The raid's workflow in a fixed order and with fixed names: Sign-ups, Plan, Publish, Log, Loot. Four tile states: done (check and a summary),
-  // current (gold top edge, NEXT), later (muted, says what unlocks it), skipped (dash, "Skipped"). At most one current; its action is the page's one
-  // primary and sits in the next-step bar under the strip. Tiles link to their section (a click scrolls to it: data-action="jump", data-target = the
-  // section's id). On a phone the strip becomes "Step 2 of 5: Plan", five 4 px segments and a Jump select. role: the strip is read-only for members.
-  ui.STAGES = [
-    { key: 'signups', label: 'Sign-ups' },
-    { key: 'plan', label: 'Plan' },
-    { key: 'publish', label: 'Publish' },
-    { key: 'log', label: 'Log' },
-    { key: 'loot', label: 'Loot' },
-  ];
-  const STAGE_STATES = ['done', 'current', 'later', 'skipped'];
-  const STAGE_STATE_WORD = { done: 'Done', current: 'Current step', later: 'Later', skipped: 'Skipped' };
-
-  // Normalises the input: known keys in the fixed order, label from STAGES, at most one current (the first), an unknown state is "later".
-  ui.normalizeStages = function (stages) {
-    const input = Array.isArray(stages) ? stages : [];
-    let seenCurrent = false;
-    return ui.STAGES.map(function (def, i) {
-      const given = input.filter(function (s) { return s && s.key === def.key; })[0] || {};
-      let state = STAGE_STATES.indexOf(given.state) >= 0 ? given.state : 'later';
-      if (state === 'current') { if (seenCurrent) state = 'later'; else seenCurrent = true; }
-      return { key: def.key, label: given.label || def.label, no: i + 1, state: state, line: given.line || '', target: given.target || 's-' + def.key };
-    });
-  };
-
-  ui.stageStripHtml = function (opts) {
-    const o = opts || {};
-    const stages = ui.normalizeStages(o.stages);
-    const idBase = esc(o.id || 'stages');
-    const cur = stages.filter(function (s) { return s.state === 'current'; })[0];
-    const next = cur ? stages.filter(function (s) { return s.no > cur.no && s.state !== 'skipped'; })[0] : null;
-    const tiles = stages.map(function (s) {
-      const mark = s.state === 'done' ? icon('check', 14) : s.state === 'skipped' ? '<span aria-hidden="true">-</span>' : '<span aria-hidden="true">' + s.no + '</span>';
-      const line = s.state === 'skipped' ? 'Skipped' : s.line;
-      return '<li class="gs-stage is-' + s.state + '"><a class="gs-stage-link" href="#' + esc(s.target) + '" data-action="jump" data-target="' + esc(s.target) + '"' + (s.state === 'current' ? ' aria-current="step"' : '') + '>' +
-        '<span class="gs-stage-top"><span class="gs-stage-no" aria-hidden="true">' + mark + '</span><span class="gs-stage-name">' + esc(s.label) + '</span>' +
-        (s.state === 'current' ? '<span class="gs-stage-next" aria-hidden="true">NEXT</span>' : '') + '</span>' +
-        '<span class="gs-stage-line">' + esc(line) + '</span><span class="gs-sr">' + STAGE_STATE_WORD[s.state] + '</span></a></li>';
-    }).join('');
-    const segs = stages.map(function (s) { return '<span class="gs-stages-seg is-' + s.state + '"></span>'; }).join('');
-    const stepNo = cur ? cur.no : stages.filter(function (s) { return s.state === 'done'; }).length;
-    const heading = cur ? 'Step ' + cur.no + ' of ' + stages.length + ': ' + cur.label : stepNo + ' of ' + stages.length + ' steps done';
-    const options = stages.map(function (s) { return '<option value="' + esc(s.target) + '"' + (cur && s.key === cur.key ? ' selected' : '') + '>Jump to: ' + esc(s.label) + '</option>'; }).join('');
-    return '<div class="gs-stages" id="' + idBase + '">' +
-      '<nav class="gs-stages-strip" aria-label="' + esc(o.ariaLabel || 'Raid stages') + '"><ol class="gs-stage-list">' + tiles + '</ol></nav>' +
-      '<div class="gs-stages-phone"><p class="gs-stages-head"><span class="gs-stages-step">' + esc(heading) + '</span>' + (next ? '<span class="gs-stages-nextname">Next: ' + esc(next.label) + '</span>' : '') + '</p>' +
-      '<div class="gs-stages-bar" aria-hidden="true">' + segs + '</div>' + (cur && cur.line ? '<p class="gs-stages-phone-line">' + esc(cur.line) + '</p>' : '') +
-      '<label class="gs-sr" for="' + idBase + '-jump">Jump to a stage</label><select class="gs-input gs-stages-jump" id="' + idBase + '-jump" data-change="jump-select">' + options + '</select></div></div>';
-  };
-
-  // The next-step bar: the page's one primary action, directly under the stage strip. A member's strip is read-only, so the bar names what the
+  // The next-step bar: the page's one primary action, directly under the page head. A bar without a primary names what the
   // officers are waiting for and carries no buttons. opts: { title, text, primary: buttonOpts, secondary: buttonOpts }.
   ui.nextStepHtml = function (opts) {
     const o = opts || {};
@@ -252,7 +200,6 @@
     if (ev && ev.preventDefault) ev.preventDefault();
     jumpTo(el.getAttribute('data-target'));
   };
-  G.handlers.change['jump-select'] = function (el) { jumpTo(el.value); };
 
   // ── DATA TABLE ──
   // Head: 12 px caps muted; a sortable column says so (aria-sort) and its head is a button. Rows 52 high. The viewer's own row keeps its place in the page's sort order (never moved to the top): tinted, gold

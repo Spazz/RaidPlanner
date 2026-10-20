@@ -576,36 +576,20 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
   function contrast(a, b) { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
   const token = name => { const m = new RegExp('--' + name + ':\\s*(#[0-9a-fA-F]{6})').exec(css); assert(m, 'missing --' + name); return m[1]; };
 
-  await check('tone colours: every sign-up tag passes 4.5:1 on its own background, and the five inks differ in lightness (CIE L*) by at least 6', () => {
+  await check('tone colours: every sign-up tone passes 4.5:1 on its own background, and the five inks differ in lightness (CIE L*) by at least 6', () => {
     const tones = ['signed', 'late', 'tentative', 'absence', 'none'].map(t => ({ t, ink: token('gs-tone-' + t), bg: token('gs-tone-' + t + '-bg') }));
     for (const r of tones) assert(contrast(r.ink, r.bg) >= 4.5, `${r.t} ${contrast(r.ink, r.bg).toFixed(2)}`);
     const sorted = tones.map(r => ({ t: r.t, l: lstar(r.ink) })).sort((a, b) => a.l - b.l);
     for (let i = 1; i < sorted.length; i++) assert(sorted[i].l - sorted[i - 1].l >= 6, `${sorted[i - 1].t} vs ${sorted[i].t}: ${(sorted[i].l - sorted[i - 1].l).toFixed(1)}`);
-    for (const r of tones) assert(new RegExp('\\.gs-tag-' + r.t + ' \\{[^}]*color: var\\(--gs-tone-' + r.t + '\\)[^}]*background: var\\(--gs-tone-' + r.t + '-bg\\)').test(css), r.t + ' tag rule uses its tokens');
+    for (const r of tones) assert(!new RegExp('\\.gs-tag-' + r.t + '[\\s{,]').test(css), r.t + ' tag rule is gone (nothing renders it)');
   });
 
-  await check('tone colours: the totals and the stacked bars (present, bench, missed) pass 4.5:1 on the panel and differ in lightness by at least 6; the pull bar and bars use the same tokens', () => {
-    const panel = '#191b1d';
-    assert(new RegExp('--bg-panel:\\s*' + panel).test(read('app.css')), 'the panel background this test assumes');
-    const inks = [['present', token('gs-tone-signed')], ['bench', token('gs-tone-bench')], ['missed', token('gs-tone-absence')]];
-    for (const [n, ink] of inks) assert(contrast(ink, panel) >= 4.5, `${n} ${contrast(ink, panel).toFixed(2)}`);
-    const sorted = inks.map(([n, ink]) => ({ n, l: lstar(ink) })).sort((a, b) => a.l - b.l);
-    for (let i = 1; i < sorted.length; i++) assert(sorted[i].l - sorted[i - 1].l >= 6, `${sorted[i - 1].n} vs ${sorted[i].n}`);
-    assert(/\.gs-sb-present \{ fill: var\(--gs-tone-signed\); \}/.test(css) && /\.gs-sb-bench \{ fill: var\(--gs-tone-bench\); \}/.test(css) && /\.gs-sb-missed \{ fill: var\(--gs-tone-absence\); \}/.test(css));
-    assert(/\.gs-tally-present b \{ color: var\(--gs-tone-signed\); \}/.test(css) && /\.gs-tally-missed b \{ color: var\(--gs-tone-absence\); \}/.test(css));
-  });
-
-  await check('outcome pills: every outcome has a pill rule on its Attendance colour; the pill text is the page text colour (so it passes on every tint)', () => {
-    for (const o of G.pages.attendance.OUTCOMES) assert(new RegExp('\\.gs-opill-' + o + ' \\{ background: color-mix\\(in srgb, var\\(--gs-out-' + o + '\\) 16%').test(css), o);
-    assert(/\.gs-opill-none \{/.test(css));
-    assert(/\.gs-opill \{[^}]*color: var\(--text-primary\)/.test(css));
-    // The text colour over the lightest tint (16% of the lightest outcome colour over the panel) still passes.
-    const mix = (hex, p, over) => {
-      const a = parseInt(hex.slice(1), 16), b = parseInt(over.slice(1), 16);
-      const ch = s => Math.round(((a >> s) & 255) * p + ((b >> s) & 255) * (1 - p));
-      return '#' + [16, 8, 0].map(s => ch(s).toString(16).padStart(2, '0')).join('');
-    };
-    for (const o of G.pages.attendance.OUTCOMES) assert(contrast('#e4e6e3', mix(token('gs-out-' + o), 0.16, '#191b1d')) >= 4.5, o);
+  await check('Past table bar: neutral greys (design-spec 2.1), present > bench > missed in strength, no tone colours; the old tally, pull bar and outcome pill rules are gone', () => {
+    const rule = c => { const m = new RegExp('\\.gs-sb-' + c + ' \\{ fill: var\\(--text-primary\\); fill-opacity: ([0-9.]+); \\}').exec(css); assert(m, c + ' bar rule is a neutral grey'); return Number(m[1]); };
+    const [present, bench, missed] = ['present', 'bench', 'missed'].map(rule);
+    assert(present > bench && bench > missed && missed > 0, 'three distinct strengths');
+    assert(!/\.gs-sb-[a-z]+ \{[^}]*--gs-tone/.test(css), 'no tone colour on the bar');
+    for (const gone of ['gs-tally', 'gs-pullbar', 'gs-opill', 'gs-pulls']) assert(!new RegExp('\\.' + gone + '[\\s{,.-]').test(css), gone + ' rule is gone');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

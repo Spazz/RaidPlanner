@@ -97,10 +97,9 @@ function assertNoRawAttrs(out) {
     assert(/\.gs-menu-trigger\.has-phone-icon \{ width: var\(--control-h-phone\)/.test(phone), 'More is a 44 px dots button');
   });
 
-  await check('tokens: the table cards, the settings panes and the stage strip switch below 760 px; the skip link is off-screen until focused', () => {
+  await check('tokens: the table cards, and the settings panes switch below 760 px; the skip link is off-screen until focused', () => {
     const wide = css.slice(css.indexOf('Design framework: below 760 px'), css.indexOf('Design framework: phone controls'));
     assert(/@media \(max-width: 760px\)/.test(wide));
-    assert(/\.gs-stages-strip \{ display: none; \}/.test(wide) && /\.gs-stages-phone \{ display: flex;/.test(wide));
     assert(/\.gs-dtable td\[data-label\]::before \{ content: attr\(data-label\)/.test(wide) && /\.gs-dtable thead \{ position: absolute;/.test(wide));
     assert(/\.gs-settings-page\.is-view-list \.gs-sdetail \{ display: none; \}/.test(wide) && /\.gs-settings-page\.is-view-detail \.gs-slist \{ display: none; \}/.test(wide));
     assert(/\.gs-skip \{ position: absolute; left: 8px; top: -64px;/.test(css) && /\.gs-skip:focus \{ top: 8px; \}/.test(css));
@@ -251,42 +250,7 @@ function assertNoRawAttrs(out) {
     assertNoRawAttrs(out);
   });
 
-  // ═══ 4. Stage strip and next-step bar ═══
-  const STAGES = [
-    { key: 'signups', state: 'done', line: '23 signed up, 2 bench' },
-    { key: 'plan', state: 'current', line: 'Not planned yet' },
-    { key: 'publish', state: 'later', line: 'After Plan' },
-    { key: 'log', state: 'later', line: 'After the raid' },
-    { key: 'loot', state: 'later', line: 'After the raid' },
-  ];
-  await check('stage strip: five fixed stages in order, exactly one current (aria-current="step", NEXT), done / later / skipped states, tiles that jump to their sections', () => {
-    const out = ui.stageStripHtml({ stages: STAGES });
-    assert.deepEqual(plain(ui.STAGES.map(s => s.label)), ['Sign-ups', 'Plan', 'Publish', 'Log', 'Loot']);
-    const names = [...out.matchAll(/class="gs-stage-name">([^<]+)</g)].map(m => m[1]);
-    assert.deepEqual(names, ['Sign-ups', 'Plan', 'Publish', 'Log', 'Loot']);
-    assert.equal(count(out, /aria-current="step"/g), 1);
-    assert(/<li class="gs-stage is-current"><a class="gs-stage-link" href="#s-plan" data-action="jump" data-target="s-plan" aria-current="step">/.test(out));
-    assert(out.includes('gs-stage-next') && count(out, /NEXT/g) === 1);
-    assert(out.includes('is-done') && out.includes('is-later') && out.includes('<nav class="gs-stages-strip" aria-label="Raid stages">'));
-    assert(out.includes('<span class="gs-sr">Done</span>') && out.includes('<span class="gs-sr">Current step</span>') && out.includes('<span class="gs-sr">Later</span>'), 'the state is words too');
-    // Two currents: only the first counts. Unknown state = later. Skipped says so.
-    const two = ui.stageStripHtml({ stages: [{ key: 'signups', state: 'current' }, { key: 'plan', state: 'current' }, { key: 'publish', state: 'skipped' }, { key: 'log', state: 'weird' }] });
-    assert.equal(count(two, /aria-current="step"/g), 1);
-    assert(two.includes('is-skipped') && two.includes('>Skipped<') && !two.includes('is-weird'));
-    assertNoRawAttrs(out);
-  });
-
-  await check('stage strip: the phone form says "Step 2 of 5: Plan", shows five segments and a Jump select; with nothing current it counts what is done', () => {
-    const out = ui.stageStripHtml({ stages: STAGES, id: 'raid-stages' });
-    assert(out.includes('<span class="gs-stages-step">Step 2 of 5: Plan</span>') && out.includes('<span class="gs-stages-nextname">Next: Publish</span>'));
-    assert.equal(count(out, /gs-stages-seg is-/g), 5);
-    assert(out.includes('<label class="gs-sr" for="raid-stages-jump">Jump to a stage</label>') && out.includes('<select class="gs-input gs-stages-jump" id="raid-stages-jump" data-change="jump-select">'));
-    assert(out.includes('<option value="s-plan" selected>Jump to: Plan</option>') && out.includes('<option value="s-loot">Jump to: Loot</option>'));
-    const none = ui.stageStripHtml({ stages: STAGES.map(s => Object.assign({}, s, { state: 'done' })) });
-    assert(none.includes('5 of 5 steps done') && !none.includes('aria-current'));
-    assert(typeof G.handlers.click.jump === 'function' && typeof G.handlers.change['jump-select'] === 'function');
-  });
-
+  // ═══ 4. Next-step bar (the stage strip left with the raids revamp: the bar and the Raid facts carry the stages) ═══
   await check('next-step bar: the one primary sits rightmost after at most one secondary; a member\'s bar names what the officers wait for and has no buttons', () => {
     const out = ui.nextStepHtml({ title: 'Plan this raid', text: '23 signed up, 2 on the bench.', primary: { label: 'Plan in Planner', attrs: { 'data-action': 'plan' } }, secondary: { label: 'Skip planning' } });
     assert(out.startsWith('<section class="gs-nextstep" aria-labelledby="nextstep-t">') && out.includes('<h2 class="gs-nextstep-title" id="nextstep-t">Plan this raid</h2>'));
@@ -634,17 +598,19 @@ function assertNoRawAttrs(out) {
     assert(!ui.listPageHtml({ head: { title: 'X' } }).includes('gs-listbar'));
   });
 
-  await check('T2 object page: head (no primary), the stage strip, the next-step bar with the one primary, the You line, then the sections in order; a locked section says when it opens', () => {
+  await check('T2 object page: head (no primary), the next-step bar with the one primary, the You line, then the sections in order; a locked section says when it opens', () => {
     const out = ui.objectPageHtml({
       head: { title: 'Wed Oct 21 - Gruul\'s Lair', context: 'Main team - 8:00 PM ET', more: { id: 'raid-more', items: [{ label: 'Open in Planner', href: '#/planner' }] } },
-      stages: { stages: STAGES }, nextStep: { title: 'Plan this raid', text: 'x', primary: { label: 'Plan in Planner' } }, youHtml: 'You are in <strong>Group 2</strong> as Enhancement Shaman.',
+      nextStep: { title: 'Plan this raid', text: 'x', primary: { label: 'Plan in Planner' } }, youHtml: 'You are in <strong>Group 2</strong> as Enhancement Shaman.',
       sections: [{ id: 's-signups', title: 'Sign-ups', chipHtml: ui.chipHtml({ tone: 'success', label: 'Open' }), bodyHtml: '<p>list</p>' }, { id: 's-plan', title: 'Plan and line-up', bodyHtml: '<p>plan</p>' }, { id: 's-log', title: 'After the raid', locked: 'Opens when the raid starts.' }],
     });
-    assert(out.indexOf('gs-pagehead') < out.indexOf('gs-stages') && out.indexOf('gs-stages') < out.indexOf('gs-nextstep') && out.indexOf('gs-nextstep') < out.indexOf('gs-youline') && out.indexOf('gs-youline') < out.indexOf('<section class="gs-osection'));
+    assert(out.indexOf('gs-pagehead') < out.indexOf('gs-nextstep') && !out.includes('gs-stages') && out.indexOf('gs-nextstep') < out.indexOf('gs-youline') && out.indexOf('gs-youline') < out.indexOf('<section class="gs-osection'));
     assert.equal(count(out, /gs-btn-molten/g), 1, 'one primary on the page, and it is in the next-step bar');
     assert(out.indexOf('gs-btn-molten') > out.indexOf('gs-nextstep'));
     assert(out.includes('<section class="gs-osection" id="s-signups" tabindex="-1" aria-labelledby="s-signups-h">') && out.includes('<section class="gs-osection is-locked" id="s-log"') && out.includes('Opens when the raid starts.'));
-    assert(out.includes('data-target="s-plan"') && out.includes('id="s-plan"'), 'every stage tile points at a section that exists');
+    assert(out.includes('id="s-plan"'));
+    assert(!('stageStripHtml' in ui) && !('STAGES' in ui) && !('normalizeStages' in ui), 'the stage strip helpers are gone');
+    assert(typeof G.handlers.click.jump === 'function' && G.handlers.change['jump-select'] === undefined, 'the jump link stays, the phone select left with the strip');
     assertNoRawAttrs(out);
   });
 
@@ -693,7 +659,7 @@ function assertNoRawAttrs(out) {
     for (const m of files.matchAll(/(?:class="|')(gs-[a-z0-9-]+-)'?\s*\+/g)) used.delete(m[1]); // a prefix that is completed at run time (gs-schip-<tone>, ...)
     const defined = new Set([...css.matchAll(/\.(gs-[a-z0-9_-]+)/g)].map(m => m[1]));
     assert.deepEqual([...used].filter(c => !defined.has(c)), [], 'classes with no CSS');
-    for (const c of ['gs-schip-success', 'gs-banner-warning', 'gs-dialog-confirm', 'gs-dialog-destructive', 'gs-stage', 'gs-settings-page', 'gs-hcard']) assert(defined.has(c), c);
+    for (const c of ['gs-schip-success', 'gs-banner-warning', 'gs-dialog-confirm', 'gs-dialog-destructive', 'gs-settings-page', 'gs-hcard']) assert(defined.has(c), c);
     assert(!/[^\x00-\x7f]/.test(files.replace(/[\u2500-\u257f]/g, '')), 'ASCII (WoW fonts and the boards: no Unicode in copy)');
   });
 

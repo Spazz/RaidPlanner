@@ -50,15 +50,6 @@
 
   function hasReports(data) { return !!(data.sources && Array.isArray(data.sources.reports) && data.sources.reports.length); }
 
-  // Flagged rows first (they need a decision), then by name.
-  function sortedPeople(people) {
-    return people.slice().sort(function (x, y) {
-      const fx = needsReview(x) ? 0 : 1;
-      const fy = needsReview(y) ? 0 : 1;
-      return fx - fy || String(x.name).localeCompare(String(y.name), 'en');
-    });
-  }
-
   // The Worker sends needsReview; decided rows keep their flags, so flags alone do not mean "open".
   function needsReview(row) { return !!(row && (row.needsReview || row.pending)); }
 
@@ -323,8 +314,8 @@
   }
 
   // The more menu of the page, for those who may edit the raid: page-level items only (what belongs to the event, plan, line-up, log or duties is a Change menu in the
-  // Raid facts panel; the loot and prio actions live in the Loot and Loot prios panels). ctx is unused now.
-  function moreItemsOf(data, ctx) {
+  // Raid facts panel; the loot and prio actions live in the Loot and Loot prios panels).
+  function moreItemsOf(data) {
     if (!(data.can && data.can.edit)) return [];
     const upcoming = isUpcoming(data);
     const extras = G.pages.raidExtras ? G.pages.raidExtras.menuItems(data) : []; // Guest sign-up link (before) / Paste raid roster (after, no WCL report)
@@ -398,11 +389,11 @@
   }
 
   // The header: back link, "<Fri Oct 23> - <title, else zone, else size>", the one chip, the context line and the More menu. No primary here.
-  function headOf(gd, data, parts, model, ctx) {
+  function headOf(gd, data, parts, model) {
     const r = data.raid;
     const size = typeof r.size === 'number' && r.size > 0 ? r.size + '-player' : '';
     const what = r.title || r.zone || size;
-    const items = moreItemsOf(data, ctx);
+    const items = moreItemsOf(data);
     return {
       title: (G.ui.weekdayDay(r.raidOn) || r.raidOn) + (what ? ' - ' + what : ''),
       back: { href: G.router.format({ name: 'section', gid: gd.guild.id, section: 'raids' }), label: 'Raids' },
@@ -424,7 +415,7 @@
     const notices = G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + staleNoticeHtml(data, edit, opts.progress);
     const you = G.pages.raidYou ? G.pages.raidYou.youBarHtml({ guildData: gd, data: data, parts: parts, nextHasPrimary: !!(next && next.primary) }) : '';
     return G.ui.objectPageHtml({
-      head: headOf(gd, data, parts, model, opts),
+      head: headOf(gd, data, parts, model),
       noticesHtml: notices,
       nextStep: officer ? next : null, // a member's next step is the You bar
       afterYouHtml: you,
@@ -866,7 +857,6 @@
     manualTicked: manualTicked,
     sourceDialogHtml: sourceDialogHtml,
     confirmDialogHtml: confirmDialogHtml,
-    sortedPeople: sortedPeople,
     needsReview: needsReview,
     reload: reload,
     setDetail: setDetail,

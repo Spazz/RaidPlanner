@@ -170,7 +170,7 @@
   }
 
   function rowHtml(entry, edit) {
-    const name = entry.name ? G.ui.classNameHtml(entry.name, entry.classId) : '<span class="gs-muted">Unmatched sign-up</span>';
+    const name = entry.name ? G.ui.classNameHtml(entry.name, entry.classId || entry.nameClassId) : '<span class="gs-muted">Unmatched sign-up</span>';
     const specText = entry.name ? (entry.spec || '') : [entry.className, entry.spec].filter(Boolean).join(' - ');
     const nick = entry.nickname && entry.nickname !== entry.name ? entry.nickname : '';
     const text = '<span class="gs-rb-nm">' + name + '</span>' + (specText ? '<span class="gs-rb-sp">' + esc(specText) + '</span>' : '') +
@@ -192,7 +192,7 @@
 
   // One name inside a group line: a button for an officer, plain text otherwise (class colour on the name only).
   function lineNameHtml(entry, edit) {
-    const name = entry.name ? G.ui.classNameHtml(entry.name, entry.classId) : '<span class="gs-muted">Unmatched sign-up</span>';
+    const name = entry.name ? G.ui.classNameHtml(entry.name, entry.classId || entry.nameClassId) : '<span class="gs-muted">Unmatched sign-up</span>';
     const act = nameActionOf(entry, edit);
     const away = entry.source === 'away' ? ' <span class="gs-rb-mut">(away notice)</span>' : '';
     return '<li>' + (act

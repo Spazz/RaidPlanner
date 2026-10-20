@@ -1106,6 +1106,24 @@ const BUDGET = { view: 4, put: 8, del: 7, officer: 7, list: 3, lock: 6, sched: 4
 
 // ---------------------------------------------------------------------------
 
+check('mergeSignups: a Raid-Helper Absence (no class) that shows a roster name carries that character\'s class as nameClassId; a sign-up with a class does not', async () => {
+  const { mergeSignups } = await load('worker/signups-data.js');
+  const absence = { source: 'raid_helper', signup_id: 's1', player_id: 'p_al', class_name: 'Absence', spec_name: 'Absence', kind: 'absence', standby: 0, nickname: 'Alliesha', note: null, updated_at: 1 };
+  const signed = { source: 'raid_helper', signup_id: 's2', player_id: 'p_th', class_name: 'Paladin', spec_name: 'Protection1', kind: 'signed', standby: 0, nickname: 'Thoren', note: null, updated_at: 1 };
+  const characters = new Map([
+    ['p_al', [{ id: 'c_al', name: 'Alliesha', class: 'DRUID', is_main: 1, main_spec: 'Feral' }]],
+    ['p_th', [{ id: 'c_th', name: 'Thoren', class: 'PALADIN', is_main: 1, main_spec: 'Protection' }]],
+  ]);
+  const entries = mergeSignups([absence, signed], characters, { teamId: 't1', seeNicknames: false });
+  const al = entries.find((e) => e.personId === 'p_al');
+  const th = entries.find((e) => e.personId === 'p_th');
+  assert.equal(al.name, 'Alliesha');
+  assert.equal(al.classId, null, 'the sign-up itself has no class (counts and spec icons are unchanged)');
+  assert.equal(al.nameClassId, 'DRUID');
+  assert.equal(th.classId, 'PALADIN');
+  assert.equal('nameClassId' in th, false, 'a sign-up with a class needs no fallback');
+});
+
 async function main() {
   const filter = process.argv[2] || '';
   let failed = 0;

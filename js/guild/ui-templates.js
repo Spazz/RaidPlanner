@@ -6,7 +6,7 @@
 //
 //   ui.pageHeadHtml({ title, context, contextHtml, chipsHtml, back, more, primary })      the header every template starts with
 //   ui.listPageHtml({ head, barHtml, bodyHtml, footHtml })                                  T1 list page: head, segment / filter bar, table, footer line
-//   ui.objectPageHtml({ head, stages, nextStep, youHtml, sections })                        T2 object page: head, stage strip, next-step bar, You line, sections
+//   ui.objectPageHtml({ head, nextStep, youHtml, sections })                        T2 object page: head, next-step bar, You line, sections
 //   ui.formPageHtml({ head, noticesHtml, bodyHtml, pageClass })  /  ui.docPageHtml(...)             T3 form page (one form, 760 wide) and the reading page
 //   ui.settingsPageHtml({ groups, activeKey, view, listHref, title, purpose, savedHtml, bodyHtml, saveBarHtml })   T3 settings: group list + detail
 //   ui.homePageHtml({ head, noticesHtml, attention, cards, pageClass })  /  ui.attentionRowsHtml(items)   T4 home: needs-attention list first, then cards
@@ -61,17 +61,17 @@
       '<div class="gs-osection-body">' + (s.locked ? '<p class="gs-fine">' + esc(s.locked) + '</p>' : (s.bodyHtml || '')) + '</div></section>';
   };
 
-  // T2 - object page (a raid, a person). Header (no primary there), the stage strip, the next-step bar (the page's one primary), the viewer's own line
+  // T2 - object page (a raid, a person). Header (no primary there), the next-step bar (the page's one primary), the viewer's own line
   // ("You are in Group 2 as Enhancement Shaman"), then the sections in the same order for every object. A locked section says when it opens.
-  //   stages     ui.stageStripHtml options          nextStep   ui.nextStepHtml options (omit for none)
-  //   noticesHtml  banners and notes between the header and the stage strip      afterYouHtml  a card that belongs right under the You line (a member's seat)
+  //   nextStep   ui.nextStepHtml options (omit for none)
+  //   noticesHtml  banners and notes between the header and the next-step bar      afterYouHtml  a card that belongs right under the You line (a member's seat)
   //   pageClass  an extra class on the page      footHtml  what closes the page after the last section (a person's Delete row)
-  //   sections   [{ id, title, chipHtml, bodyHtml, locked (text: when it opens), actionsHtml, bare }]; the id is the stage tile's jump target. A bare section is
+  //   sections   [{ id, title, chipHtml, bodyHtml, locked (text: when it opens), actionsHtml, bare }]; the id is a jump target. A bare section is
   //              only the jump target around bodyHtml, for a card that draws its own heading and tools.
   ui.objectPageHtml = function (opts) {
     const o = opts || {};
     const sections = (Array.isArray(o.sections) ? o.sections : []).filter(Boolean).map(ui.objectSectionHtml).join('');
-    return '<div class="gs-page gs-object-page' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + (o.stages ? ui.stageStripHtml(o.stages) : '') + (o.nextStep ? ui.nextStepHtml(o.nextStep) : '') +
+    return '<div class="gs-page gs-object-page' + (o.pageClass ? ' ' + esc(o.pageClass) : '') + '">' + ui.pageHeadHtml(o.head) + (o.noticesHtml || '') + (o.nextStep ? ui.nextStepHtml(o.nextStep) : '') +
       (o.youHtml ? '<div class="gs-youline">' + o.youHtml + '</div>' : '') + (o.afterYouHtml || '') + sections + (o.footHtml || '') + '</div>';
   };
 

@@ -139,6 +139,16 @@ const cardOf = (out, id) => out.split('<li class="gs-up">').filter(c => c.includ
     assert(m.includes('is-grey">Reviewed<') && m.includes('is-grey">Awaiting log<') && !m.includes('to review') && !m.includes('Needs recalculation') && !m.includes('No log - by hand') && !m.includes('Upcoming</span>'));
   });
 
+  await check('Past table bar: the stacked bar has the three segments in neutral greys (no green / amber / red), widths from the counts', () => {
+    const o = page(LIST({ raids: [PAST('r1', { counts: { present: 24, bench: 1, missed: 5 } })] }), OFFICER_CAN, { tab: 'past' });
+    assert(/<svg class="gs-stackbar"[^>]*><rect class="gs-sb-present"[^>]*\/><rect class="gs-sb-bench"[^>]*\/><rect class="gs-sb-missed"/.test(o), 'three segments');
+    assert(o.includes('24 / 1 / 5'));
+    for (const c of ['present', 'bench', 'missed']) {
+      const rule = css.split('\n').find(l => l.startsWith('.gs-sb-' + c + ' '));
+      assert(rule && rule.includes('fill: var(--text-primary)') && rule.includes('fill-opacity') && !rule.includes('--gs-tone'), c + ': ' + rule);
+    }
+  });
+
   await check('Past table: 10 rows then "Showing 10 of N" + Show all; Show older raids when the API has more', () => {
     const raids = Array.from({ length: 14 }, (_, i) => PAST('r' + i));
     const o = page(LIST({ raids }), null, { tab: 'past', more: true });
@@ -192,6 +202,11 @@ const cardOf = (out, id) => out.split('<li class="gs-up">').filter(c => c.includ
       assert(/class="gs-char-link gs-class-druid"[^>]*>Zzaps</.test(o) && o.includes('data-action="away-add" data-ctx="team"') && o.includes('data-action="away-edit"') && o.includes('data-action="away-remove"'));
       assert(o.includes('data-action="raids-fill" data-key="rail-raids-fill">Create upcoming raids</button>'));
       assert(!o.includes('Add an away notice'), 'the member line is the member\'s');
+      // Lane 5 item 4: both rail panels share the Forge panel head (gs-pr-ph / gs-pr-h); the away head carries its Add button at the right of the title.
+      assert(o.includes('<div class="gs-pr-ph"><h2 class="gs-pr-h" id="st-h">Your standing sign-ups</h2></div>'), 'standing head');
+      assert(/<div class="gs-pr-ph"><h2 class="gs-pr-h" id="an-team-h">Away in the next 4 weeks<\/h2><button[^>]*data-action="away-add" data-ctx="team"/.test(o), 'away head: title, then the Add a notice button');
+      assert(!o.includes('gs-rl-head') && !o.includes('class="gs-hd-sl" id="st-h"') && !o.includes('class="gs-hd-sl" id="an-team-h"'), 'the old rail head is gone');
+      assert(/\.gs-rl-panel \.gs-pr-h \{ white-space: nowrap; \}/.test(css) && /\.gs-rl-panel \.gs-pr-ph \{ flex-wrap: wrap;/.test(css), 'the title never wraps; the action drops below it in a narrow rail');
     });
     withRail(OFFICER_CAN, { can: { edit: true, signup: false }, schedule: { slots: 0, weeks: 2, auto: false } }, () => {
       S.att.awayTeam = { gid: 'g1', teamId: 't1', status: 'ok', data: AWAY, message: '', forList: null };

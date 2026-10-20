@@ -534,33 +534,6 @@
     });
   }
 
-  // Refresh sign-ups: the event is imported again (PUT .../event with the raid's own event id), then the upcoming list is read again. A raid
-  // that moved to its event's day is read with the past list too (it may have left Upcoming).
-  G.handlers.click['raids-refresh'] = function (el) {
-    const x = a().raids;
-    if (!x || !x.data) return;
-    const row = (x.data.upcoming || []).filter(function (r) { return r.id === el.getAttribute('data-rid'); })[0];
-    if (!row || !row.eventId) return;
-    el.disabled = true;
-    putEvent(x.gid, row.id, row.eventId, row.otherServer).then(function (res) {
-      if (res === MOVE_CANCELLED) { el.disabled = false; return null; }
-      G.app.applyFlags(x.gid, res);
-      const moved = !!(res && res.raid && res.raid.raidOn && res.raid.raidOn !== row.raidOn);
-      if (moved) {
-        return reloadList(x).then(function () {
-          x.note = 'Moved the raid to ' + dayOf(res.raid.raidOn) + '.';
-          st().pageAlert = '';
-          G.app.render();
-        });
-      }
-      return G.api.get(A().apiBase(x.gid) + '/raids?team=' + encodeURIComponent(x.teamId)).then(function (list) {
-        x.data.upcoming = Array.isArray(list.upcoming) ? list.upcoming : [];
-        st().pageAlert = '';
-        G.app.render();
-      });
-    }).then(null, function (err) { el.disabled = false; G.app.handleError(err, { pageAlert: true }); });
-  };
-
   // Plan in Planner: an event-sourced raid takes its sign-ups from Raid-Helper again first (the call Refresh sign-ups makes, with the same
   // question when the event is on another day), then the Planner opens on the raid (#/planner?raid=<gid>.<rid>, which survives a reload).
   // event: { id, otherServer } or null. A failed refresh keeps the officer on this page with the error. Resolves true when the Planner was
@@ -575,20 +548,6 @@
       return true;
     });
   }
-
-  G.handlers.click['raids-plan'] = function (el) {
-    const x = a().raids;
-    if (!x || !x.data) return;
-    const row = (x.data.upcoming || []).filter(function (r) { return r.id === el.getAttribute('data-rid'); })[0];
-    if (!row) return;
-    el.disabled = true;
-    planInPlanner(x.gid, row.id, row.eventSourced && row.eventId ? { id: row.eventId, otherServer: !!row.otherServer } : null).then(function (opened) {
-      if (!opened) el.disabled = false;
-    }, function (err) {
-      el.disabled = false;
-      G.app.handleError(err, { pageAlert: true });
-    });
-  };
 
   // One-click Sign up: the viewer's default character and main spec, as signed up. The row then shows what the Worker answered.
   G.handlers.click['raids-signup'] = function (el) {

@@ -240,6 +240,18 @@ class ApiErr extends Error {
     assert(!none.includes('No role yet') && !none.includes('Notices'));
   });
 
+  await check('panel: a Can\'t come name without a sign-up class takes the roster person\'s class colour (nameClassId); with a class, the sign-up class wins', () => {
+    const v = OFFICER_VIEW({ entries: [
+      entry({ key: 'p:p_al', personId: 'p_al', name: 'Alliesha', classId: null, className: null, nameClassId: 'DRUID', spec: null, role: null, kind: 'absence', source: 'raid_helper' }),
+      entry({ key: 'p:p_dk', personId: 'p_dk', name: 'Dorrin', classId: 'PRIEST', nameClassId: 'MAGE', spec: null, role: null, kind: 'absence', source: 'raid_helper' }),
+      entry({ key: 'p:p_xx', personId: 'p_xx', name: 'Nobody', classId: null, className: null, spec: null, role: null, kind: 'absence', source: 'raid_helper' }),
+    ] });
+    const out = panel(v, { guildData: gd(OFFICER_CAN) });
+    assert(/gs-char-name gs-class-druid">Alliesha</.test(out), 'Alliesha is druid-coloured');
+    assert(/gs-char-name gs-class-priest">Dorrin</.test(out), 'the sign-up class wins');
+    assert(/gs-char-name">Nobody</.test(out), 'no class anywhere: uncoloured');
+  });
+
   await check('panel: row extras only when they apply - Late, Guest, the notice chip - and an away entry has no name button', () => {
     const base = { classId: 'MAGE', className: 'Mage', spec: 'Fire', role: 'ranged' };
     const v = OFFICER_VIEW({ entries: [

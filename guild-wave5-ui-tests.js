@@ -240,9 +240,9 @@ check('panel: input stage has a paste box, a file picker, Read and Close; the he
   assert.equal(R.panelHtml(okState()), '');
   const tmb = R.panelHtml(okState({ ui: Object.assign(R.freshUi(), { list: 'tmb' }) }));
   assert(tmb.includes('id="bd-paste"') && tmb.includes('data-input="board-paste"') && tmb.includes('id="bd-file"') && tmb.includes('data-action="board-read"') && tmb.includes('data-action="board-close"'));
-  assert(stripTags(tmb).includes('Loot prio (TMB)') && stripTags(tmb).includes('Export Gargul') && tmb.includes('aria-describedby="bd-help"'));
+  assert(stripTags(tmb).includes('Paste TMB prios') && !stripTags(tmb).includes('Loot prio (TMB)') && stripTags(tmb).includes('Export Gargul') && tmb.includes('aria-describedby="bd-help"'));
   const sr = R.panelHtml(okState({ ui: Object.assign(R.freshUi(), { list: 'softres', text: HOSTILE, error: 'Bad.' }) }));
-  assert(stripTags(sr).includes('Soft-reserves (softres)') && stripTags(sr).includes('Gargul Export') && sr.includes('Bad.'));
+  assert(stripTags(sr).includes('Paste soft-reserves') && !stripTags(sr).includes('softres)') && stripTags(sr).includes('Gargul Export') && sr.includes('Bad.'));
   assertEscaped(sr, 'paste text');
   assertNoRawAttrs(tmb + sr);
   // The panel is drawn by the page at the top of the main column, for editors only; the list and the summary never hold it.

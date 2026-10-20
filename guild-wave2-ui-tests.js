@@ -1099,7 +1099,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids page (officers): "Away, next 4 weeks" lists name in class colour, what, the dates of a weekly one and the reason, with Edit / Remove and Add; nothing for members or while loading', () => {
     const out = teamCard({ gid: 'g1', teamId: 't1', status: 'ok', data: TEAMDATA() });
-    assert(out.includes('<h2 class="gs-hd-sl" id="an-team-h">Away in the next 4 weeks</h2>') && out.includes('data-action="away-add" data-ctx="team" data-key="an-team-add"><span>Add a notice<') && out.includes('class="gs-hd-panel gs-rl-panel gs-an-team"'));
+    assert(out.includes('<h2 class="gs-pr-h" id="an-team-h">Away in the next 4 weeks</h2>') && out.includes('data-action="away-add" data-ctx="team" data-key="an-team-add"><span>Add a notice<') && out.includes('class="gs-hd-panel gs-pr-panel gs-rl-panel gs-an-team"'));
     assert(/class="gs-btn gs-btn-sm"[^>]*data-action="away-remove"/.test(out) && !/gs-btn-ghost[^>]*data-action="away-remove"/.test(out), 'Edit and Remove are both small secondary buttons here');
     assert(/<a class="gs-char-link gs-class-paladin" href="#\/g\/g1\/roster\/p\/p_x">Thoren<\/a>/.test(out) && /gs-class-rogue" href="#\/g\/g1\/roster\/p\/p_y">Kaelith</.test(out));
     assert(out.includes('Away Oct 20 - Oct 27') && out.includes('Reason: Wedding'));
@@ -1369,7 +1369,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('standing card: a rail panel with one row per schedule slot - name, On / Off toggle (aria-pressed), under an On row the status, character and Change - the help sentence and one Save', () => {
     const out = ws(stCard(stState(STAND())));
-    assert(out.includes('<h2 class="gs-hd-sl" id="st-h">Your standing sign-ups</h2>') && out.includes('class="gs-hd-panel gs-rl-panel gs-st"'));
+    assert(out.includes('<h2 class="gs-pr-h" id="st-h">Your standing sign-ups</h2>') && out.includes('class="gs-hd-panel gs-pr-panel gs-rl-panel gs-st"'));
     assert(out.includes('<p class="gs-fine" id="st-explain">You are signed up automatically for new raids on these days. An Away notice wins. Changing a sign-up yourself keeps it as you set it.</p>'));
     assert(out.includes('>Every Thursday 8:00 PM ET<') && out.includes('>Every Tuesday 8:30 PM ET<') && !out.includes('Hyjal Summit') && !out.includes('Prog<'), 'the slot reads like the mockup, ET and no zone');
     assert(/<button type="button" class="gs-rl-tog is-on" aria-pressed="true" aria-label="Every Thursday 8:00 PM ET" data-action="st-toggle" data-wd="4" data-key="st-in-4">On<\/button>/.test(out));
@@ -1846,47 +1846,6 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.equal(out.split('gs-hd-chip').length - 1, 1, 'ONE status item');
     assertNoRawAttrs(out);
   });
-
-  await check('Raids list: Confirm POSTs and reads the list again; Can\'t come asks first (then POSTs decline and reads the list); a started raid or a taken-down roster re-reads the list and says why', withState(async (S) => {
-    S.guilds.g1 = gd(MEMBER_CAN); S.currentGid = 'g1';
-    const x = S.att.raids = { gid: 'g1', teamId: 't1', data: LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'pending' }) })] }), more: false, tab: 'upcoming' };
-    const confirmed = LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'confirmed' }) })] });
-    let s = stub((m) => Promise.resolve(m === 'post' ? SEAT({ status: 'confirmed' }) : confirmed));
-    const b = el({ 'data-rid': 'u1', 'data-do': 'confirm' });
-    G.handlers.click['raids-roster'](b);
-    assert.equal(b.disabled, true);
-    await settle();
-    assert.deepEqual(s.calls.map(c => [c.m, c.url, c.body]), [['post', '/api/guild/g1/raids/u1/roster/confirm', {}], ['get', '/api/guild/g1/raids?team=t1', undefined]]);
-    assert.equal(x.data.upcoming[0].mine.roster.status, 'confirmed');
-    s.restore();
-    // Decline: the question, then the call.
-    const opened = [];
-    const realOpen = G.ui.openDialog; G.ui.openDialog = (html) => { opened.push(html); return null; };
-    s = stub(() => Promise.resolve({}));
-    G.handlers.click['raids-roster'](el({ 'data-rid': 'u1', 'data-do': 'decline' }));
-    G.ui.openDialog = realOpen;
-    assert.equal(s.calls.length, 0);
-    assert(opened[0].includes('data-from="list" data-rid="u1"'));
-    s.restore();
-    const realRun = G.ui.runDialog; G.ui.runDialog = (form, promise, ok) => promise.then(ok);
-    const declined = LIST({ upcoming: [UP({ mine: mineRoster({ group: 3, status: 'declined' }) })] });
-    s = stub((m) => Promise.resolve(m === 'post' ? SEAT({ status: 'declined' }) : declined));
-    G.handlers.submit['roster-decline-form'](el({ 'data-from': 'list', 'data-rid': 'u1' }));
-    await settle();
-    assert.deepEqual(s.calls.map(c => [c.m, c.url]), [['post', '/api/guild/g1/raids/u1/roster/decline'], ['get', '/api/guild/g1/raids?team=t1']]);
-    assert.equal(x.data.upcoming[0].mine.roster.status, 'declined');
-    s.restore(); G.ui.runDialog = realRun;
-    // The raid started meanwhile.
-    const started = LIST({ upcoming: [] });
-    s = stub((m) => (m === 'post' ? Promise.reject(new ApiErr(409, 'raid_started', { message: 'The raid has started.' })) : Promise.resolve(started)));
-    const b2 = el({ 'data-rid': 'u1', 'data-do': 'confirm' });
-    G.handlers.click['raids-roster'](b2);
-    await settle();
-    assert.equal(b2.disabled, false);
-    assert.equal(S.pageAlert, 'The raid has started.');
-    assert.equal(S.att.raids.data.upcoming.length, 0, 'the list as it is now');
-    s.restore();
-  }));
 
   // ── Needs attention ──
   await check('Needs attention: "Sat Oct 24: 2 line-up players can\'t come" links the raid; one person reads "1 line-up player"; an unknown future kind is skipped without breaking the list', () => {

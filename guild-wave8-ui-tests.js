@@ -571,7 +571,7 @@ check('names in the browser: a Forever guild\'s plans, Gargul winners, TMB and s
 });
 
 check('guild.css styles the new pieces (funnel, duties line and rows, the paste list and box, the sign-up link rows)', () => {
-  for (const cls of ['gs-funnel', 'gs-funnel-row', 'gs-funnel-bar', 'gs-funnel-n', 'gs-duties-line', 'gs-duty-row', 'gs-paste-box', 'gs-paste-list', 'gs-join-rows']) {
+  for (const cls of ['gs-funnel', 'gs-funnel-row', 'gs-funnel-bar', 'gs-funnel-n', 'gs-duty-row', 'gs-paste-box', 'gs-paste-list', 'gs-join-rows']) {
     assert(new RegExp('\\.' + cls + '\\b').test(css), cls + ' has a rule');
   }
 });

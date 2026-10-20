@@ -35,19 +35,6 @@
     return 'You\'re in Group ' + m.group + (who ? ' as ' + who : '');
   }
 
-  // ── the Raids list row ──
-  // "Group 3 - confirm?" / "Group 3 - confirmed" / "Bench - confirm?" with Confirm and Can't come. r.mine.roster = { group, status }.
-  function listChipHtml(r) {
-    const ro = r && r.mine && r.mine.roster;
-    if (!ro) return '';
-    const where = ro.group ? 'Group ' + ro.group : 'Bench';
-    const text = ro.status === 'confirmed' ? where + ' - confirmed' : ro.status === 'declined' ? where + ' - can\'t come' : where + ' - confirm?';
-    const attrs = ' data-rid="' + esc(r.id) + '"';
-    const confirm = ro.status === 'confirmed' ? '' : '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-roster" data-do="confirm"' + attrs + ' data-key="rc-' + esc(r.id) + '">' + (ro.status === 'declined' ? 'Confirm after all' : 'Confirm') + '</button>';
-    const decline = ro.status === 'declined' ? '' : '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-roster" data-do="decline"' + attrs + ' data-key="rd-' + esc(r.id) + '">Can\'t come</button>';
-    return '<span class="gs-chip gs-chip-' + (ro.status === 'declined' ? 'flag' : 'signup') + '">' + esc(text) + '</span>' + confirm + decline;
-  }
-
   // ── the officers' card ──
   function groupsOf(entries) {
     const by = {};
@@ -243,7 +230,7 @@
   };
 
   function declineDialogHtml(from, rid) {
-    return '<form class="gs-dialog-form" data-submit="roster-decline-form" data-from="' + (from === 'list' || from === 'home' ? from : 'page') + '" data-rid="' + esc(rid) + '" novalidate>' +
+    return '<form class="gs-dialog-form" data-submit="roster-decline-form" data-from="' + (from === 'home' ? from : 'page') + '" data-rid="' + esc(rid) + '" novalidate>' +
       '<h2 class="gs-dialog-title" id="dlg-title">Tell the officers you can\'t come?</h2><p class="gs-confirm-text" id="dlg-text">' + esc(DECLINE_TEXT) + '</p>' +
       '<p class="gs-alert" id="dlg-error" role="alert" hidden></p>' +
       '<div class="gs-dialog-actions"><button type="button" class="gs-btn" data-action="dialog-cancel">Cancel</button><button type="submit" class="gs-btn gs-btn-danger">Can\'t come</button></div></form>';
@@ -260,9 +247,6 @@
     if (!gd) return;
     const gid = gd.guild.id;
     const rid = form.getAttribute('data-rid');
-    if (form.getAttribute('data-from') === 'list') {
-      return G.ui.runDialog(form, G.api.raidRoster.decline(gid, rid), function () { return refreshList(gid); });
-    }
     if (form.getAttribute('data-from') === 'home') {
       return G.ui.runDialog(form, G.api.raidRoster.decline(gid, rid), function () { return G.pages.homeMember.afterDecline(); });
     }
@@ -271,38 +255,11 @@
     return G.ui.runDialog(form, G.api.raidRoster.decline(c.gid, c.rid), function (res) { afterAnswer(c, res); });
   };
 
-  // ── the Raids list: the same answers from the row ──
-  function refreshList(gid) {
-    const x = a().raids;
-    if (!x || x.gid !== gid || !G.pages.raids.reloadList) return null;
-    return G.pages.raids.reloadList(x).then(function () { G.app.state.pageAlert = ''; G.app.render(); return null; }, function (err) { G.app.handleError(err, { pageAlert: true }); });
-  }
-
-  G.handlers.click['raids-roster'] = function (el) {
-    const gd = currentGd();
-    const x = a().raids;
-    if (!gd || !x) return;
-    const rid = el.getAttribute('data-rid');
-    if (el.getAttribute('data-do') === 'decline') {
-      G.ui.openDialog(declineDialogHtml('list', rid), { labelledBy: 'dlg-title', describedBy: 'dlg-text' });
-      return;
-    }
-    el.disabled = true;
-    return G.api.raidRoster.confirm(gd.guild.id, rid).then(function () { return refreshList(gd.guild.id); }, function (err) {
-      el.disabled = false;
-      // The raid started or the line-up was taken down since the list was read: show the list as it is now, with the reason.
-      const show = function () { G.app.handleError(err, { pageAlert: true }); };
-      if (err && (err.code === 'raid_started' || err.code === 'roster_not_published' || err.code === 'not_on_roster')) { G.pages.raids.reloadList(x).then(show, show); return; }
-      show();
-    });
-  };
-
   G.pages.raidRoster = {
     STATUS_LABELS: STATUS_LABELS,
     seatText: seatText,
     cardHtml: cardHtml,
     canPublish: canPublish,
-    listChipHtml: listChipHtml,
     countsText: countsText,
     confirmDialogHtml: confirmDialogHtml,
     declineDialogHtml: declineDialogHtml,

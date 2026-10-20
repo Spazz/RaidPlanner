@@ -377,6 +377,32 @@ const labelsOf = (out, id) => {
     assert(/\.gs-dialog-form\.gs-forge \.gs-su-kind\[aria-pressed="true"\][^{]*\{[^}]*background: var\(--seg-on-bg\)/.test(css));
   });
 
+  await check('Raid facts rows (lane 5 item 6): label left, value right-aligned taking the rest, the officer\'s Change on the SAME row at the right (inside the dd, after the value, not stacked under it)', () => {
+    const o = page(up(), { signups: sState(view()), roster: rState() });
+    const css = read('guild.css');
+    const row = factRow(o, 'Plan');
+    assert(/<dd><span class="gs-rpg-v">[^<]*<\/span>(<div class="gs-rpg-sub">[^]*?<\/div>)?<div class="gs-rpg-chg">/.test(row) || /<dd><span class="gs-rpg-v">.*<\/span><div class="gs-rpg-chg">/.test(row), 'value then Change inside one dd');
+    const rule = sel => (css.split('\n').find(l => l.startsWith(sel + ' {')) || '');
+    assert(/display: flex; justify-content: space-between;/.test(rule('.gs-rpg-fact')), 'the row is a flex row, space between');
+    const dd = rule('.gs-rpg-fact dd');
+    assert(dd.includes('flex: 1') && dd.includes('justify-content: flex-end') && dd.includes('text-align: right') && dd.includes('flex-wrap: wrap'), 'the value cell takes the rest and aligns right: ' + dd);
+    assert(/\.gs-rpg-chg \{ flex: none; order: 1;/.test(css) && /\.gs-rpg-sub \{[^}]*flex-basis: 100%/.test(css), 'Change stays on the value row; a note drops below');
+    assert(!/\.gs-rpg-fact \{ display: grid/.test(css) && !/grid-template-columns: 9\d?px minmax\(0, 1fr\)/.test(css), 'the old label/value grid is gone');
+  });
+
+  await check('Anchors (lane 5 item 2): every id a raid link can jump to exists on the page in its state; the retired stage-tile ids have no link left anywhere', () => {
+    const before = page(up(), { signups: sState(view()), roster: rState() });
+    const after = page(past(), { signups: sState(view()), loot: lState([]) });
+    for (const id of ['su-me', 's-signups', 's-plan', 's-publish', 'raid-facts']) assert(before.includes(' id="' + id + '"'), id + ' before');
+    for (const id of ['s-signups', 's-plan', 's-publish', 's-loot', 'raid-facts', 'raid-people']) assert(after.includes(' id="' + id + '"'), id + ' after');
+    const sources = ['js/guild', 'worker'].flatMap(dir => fs.readdirSync(path.join(ROOT, dir), { recursive: true }).filter(f => /\.js$/.test(f) && !/roadmap-data/.test(f)).map(f => dir + '/' + f));
+    for (const f of sources) {
+      const src = read(f);
+      assert(!/["'#]s-(log|settings)["'&]/.test(src), f + ' links to a retired raid anchor (s-log / s-settings)');
+      for (const m of src.matchAll(/data-target="(s-[a-z-]+|su-me)"/g)) assert(before.includes(' id="' + m[1] + '"') || after.includes(' id="' + m[1] + '"'), f + ' targets ' + m[1]);
+    }
+  });
+
   console.log(`\nRaid page shell UI tests: ${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;
 })();

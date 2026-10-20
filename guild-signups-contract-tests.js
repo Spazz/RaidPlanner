@@ -456,32 +456,23 @@ check('event on another day: the real pages ask with the Worker\'s dates; Cancel
   const detail = A.app.state.att.raid.data;
   assert.deepEqual([detail.raid.startsAt, detail.raid.upcoming, detail.sources.event.id], [Date.parse('2026-10-28T00:00:00Z'), true, eventId]);
 
-  // The Raids list: the event moved again, to Friday; Refresh sign-ups asks and the list shows the new day.
+  // The event moved again, to Friday; the same call (putEvent, which the raid page's Refresh sign-ups makes) asks and moves the raid.
   setEvent('2026-10-31T00:00:00Z'); // Fri 2026-10-30 20:00 New York
-  pageState(s, A);
-  await A.pages.raids.load({ name: 'section', section: 'raids', gid: s.gid }, A.guildData);
-  const x = A.app.state.att.raids;
-  assert.deepEqual(x.data.upcoming.map((r) => [r.id, r.raidOn]), [[s.rid, '2026-10-27']]);
-  const refresh = el({ 'data-rid': s.rid });
-  A.handlers.click['raids-refresh'](refresh);
+  const friday = A.pages.raids.putEvent(s.gid, s.rid, eventId, false);
   await until(() => A.dialogs.length === 3);
   assert(stripTags(A.dialogs[2]).includes('This event is on Fri Oct 30, the raid is on Tue Oct 27. Move the raid to Fri Oct 30?'), stripTags(A.dialogs[2]));
   A.handlers.submit['raid-move-form']({ closest: () => null });
-  await until(() => x.data.upcoming[0].raidOn === '2026-10-30');
-  assert.equal(x.note, 'Moved the raid to Fri Oct 30.');
+  assert.equal((await friday).raid.raidOn, '2026-10-30');
   assert.equal((await raidRow()).raid_on, '2026-10-30');
 
-  // The team has a raid on 2026-11-06 already: moving there is refused, and the page says which day.
+  // The team has a raid on 2026-11-06 already: moving there is refused, and the error says which day.
   await A.api.post(s.base + '/raids', { teamId: s.teamId, raidOn: '2026-11-06', startTime: '20:00' });
   setEvent('2026-11-07T01:00:00Z'); // Fri 2026-11-06 20:00 New York
-  refresh.disabled = false;
-  A.handlers.click['raids-refresh'](refresh);
+  const refused = A.pages.raids.putEvent(s.gid, s.rid, eventId, false);
   await until(() => A.dialogs.length === 4);
   A.handlers.submit['raid-move-form']({ closest: () => null });
-  await until(() => errors.length === 1);
-  assert.deepEqual([errors[0].code, errors[0].message], ['raid_date_taken', 'This team already has a raid on Fri Nov 6, so this raid cannot move there.']);
+  await assert.rejects(refused, (e) => e.code === 'raid_date_taken' && e.message === 'This team already has a raid on Fri Nov 6, so this raid cannot move there.');
   assert.equal((await raidRow()).raid_on, '2026-10-30', 'the raid stayed where it was');
-  assert.equal(refresh.disabled, false, 'the button is back');
 });
 
 check('Planner: the Worker\'s seed, read by the Planner\'s own Raid-Helper code, gives each Raidsmith sign-up the class, spec, role and status it was made with', async () => {

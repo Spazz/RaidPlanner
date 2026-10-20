@@ -83,19 +83,19 @@
     const gd = opts.guildData;
     const s = opts.state;
     if (!opts.canSignUp || !s || s.gid !== gd.guild.id || s.teamId !== opts.teamId || s.status === 'loading' || s.status === 'denied') return '';
-    const head = '<div class="gs-rl-head"><h2 class="gs-hd-sl" id="st-h">Your standing sign-ups</h2></div>';
+    const head = '<div class="gs-pr-ph"><h2 class="gs-pr-h" id="st-h">Your standing sign-ups</h2></div>';
     if (s.status === 'error') {
-      return '<section class="gs-hd-panel gs-rl-panel gs-st" aria-labelledby="st-h">' + head + '<div class="gs-rl-body"><p class="gs-alert" role="alert">' + esc(s.message || 'Could not load your standing sign-ups.') +
+      return '<section class="gs-hd-panel gs-pr-panel gs-rl-panel gs-st" aria-labelledby="st-h">' + head + '<div class="gs-rl-body"><p class="gs-alert" role="alert">' + esc(s.message || 'Could not load your standing sign-ups.') +
         '</p><div class="gs-row-actions"><button type="button" class="gs-btn gs-btn-sm" data-action="st-retry" data-key="st-retry">Try again</button></div></div></section>';
     }
     if (!s.data || !s.data.personId) return '';
     const entry = teamEntry(s.data, opts.teamId);
     if (!entry || !entry.slots.length) {
-      return '<section class="gs-hd-panel gs-rl-panel gs-st" aria-labelledby="st-h">' + head + '<div class="gs-rl-body"><p class="gs-fine">This team has no raid schedule yet. When your officers set one, you can sign up for its days here.</p></div></section>';
+      return '<section class="gs-hd-panel gs-pr-panel gs-rl-panel gs-st" aria-labelledby="st-h">' + head + '<div class="gs-rl-body"><p class="gs-fine">This team has no raid schedule yet. When your officers set one, you can sign up for its days here.</p></div></section>';
     }
     const draft = s.draft || draftFrom(entry);
     const rows = entry.slots.map(function (slot, i) { return rowHtml(slot, draft[i] || { weekday: slot.weekday, checked: false, kind: 'signed', characterId: '' }, entry.characters || []); }).join('');
-    return '<section class="gs-hd-panel gs-rl-panel gs-st" aria-labelledby="st-h">' + head + '<div class="gs-rl-body">' +
+    return '<section class="gs-hd-panel gs-pr-panel gs-rl-panel gs-st" aria-labelledby="st-h">' + head + '<div class="gs-rl-body">' +
       (s.note ? '<div class="gs-notice" role="status"><span>' + esc(s.note) + '</span></div>' : '') +
       '<form class="gs-st-form" data-submit="standing-form" novalidate aria-describedby="st-explain"><ul class="gs-st-list" aria-label="Days of the weekly schedule">' + rows + '</ul>' +
       '<p class="gs-alert" id="st-error" role="alert"' + (s.error ? '' : ' hidden') + '>' + esc(s.error || '') + '</p>' +

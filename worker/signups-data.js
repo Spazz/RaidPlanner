@@ -106,6 +106,7 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
     else if (row.player_id && characters.length) name = plannerName(row, characters);
     else name = opts.seeNicknames ? row.nickname : null;
     const group = signUpRole(row);
+    const nameClassId = classId || guest || !name ? null : ((characters.find((character) => character.name === name) || {}).class || null);
     entries.push({
       key: row.player_id ? `p:${row.player_id}` : `x:${row.source}:${row.signup_id}`,
       personId: row.player_id || null,
@@ -123,6 +124,7 @@ export function mergeSignups(rows, charactersByPlayer, opts) {
       isMe: !!opts.myPlayerId && row.player_id === opts.myPlayerId,
       nickname: opts.seeNicknames && row.source === 'raid_helper' ? row.nickname : null,
       ...(guest ? { guest: true, signupId: row.signup_id } : {}),
+      ...(nameClassId ? { nameClassId } : {}), // colour for a name whose sign-up has no class (a Can't come has none)
       ...(row.source === 'raidsmith' && row.standing === 1 ? { standing: true } : {}), // made by a standing sign-up and not edited since (the key is only there then)
     });
   }

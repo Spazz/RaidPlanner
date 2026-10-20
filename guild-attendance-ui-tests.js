@@ -406,6 +406,8 @@ function teamData(over) {
     { id: 'u1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, zone: 'Black Temple', title: null, eventSourced: true, eventId: '1483258698854826006', otherServer: false, signups: { signed: 21, late: 2, bench: 2, tentative: 0, absence: 1 }, planned: true },
     { id: 'u2', raidOn: '2026-10-31', startsAt: Date.UTC(2026, 10, 1, 0, 30), upcoming: true, zone: 'Karazhan', title: 'Prog night', eventSourced: false, eventId: null, otherServer: false, signups: { signed: 0, late: 0, bench: 0, tentative: 0, absence: 0 }, planned: false },
   ];
+  // The Raids list no longer has a Plan in Planner button (the raid page's Open in Planner calls this); the helper runs the same planInPlanner call for a list row.
+  const planOf = (rid) => { const row = UP.find((r) => r.id === rid); return G.pages.raids.planInPlanner('g1', rid, row.eventSourced && row.eventId ? { id: row.eventId, otherServer: !!row.otherServer } : null).catch((err) => G.app.handleError(err)); };
   const withUp = (over) => raidsHtml(Object.assign({ data: { team: 't1', today: '2026-10-17', raids: RAIDS, upcoming: UP } }, over || {}));
 
   await check('raids tabs: Upcoming (n) and Past (n) buttons, opens on Upcoming when there is one, else Past; the chosen tab wins', () => {
@@ -1187,7 +1189,7 @@ function teamData(over) {
     G.app.applyFlags = () => {};
     G.app.handleError = (err) => errors.push(err);
     G.pages.attendance.attState().raids = { gid: 'g1', teamId: 't1', data: { upcoming: UP, raids: [] } };
-    const click = (rid) => { const el = { disabled: false, getAttribute: k => (k === 'data-rid' ? rid : null) }; G.handlers.click['raids-plan'](el); return el; };
+    const click = (rid) => planOf(rid);
     const tick = () => new Promise(r => setTimeout(r, 0));
     try {
       G.api.put = (url, body) => { calls.push([url, plain(body)]); return Promise.resolve({}); };
@@ -1202,9 +1204,9 @@ function teamData(over) {
       assert.deepEqual([calls.length, ctx.window.location.hash], [0, '#/planner?raid=g1.u2'], 'no event: no refresh');
       ctx.window.location.hash = '';
       G.api.put = () => Promise.reject(new G.api.ApiError(500, null));
-      const el = click('u1');
+      click('u1');
       await tick();
-      assert.deepEqual([ctx.window.location.hash, el.disabled, errors.length], ['', false, 1], 'a failed refresh does not open the Planner');
+      assert.deepEqual([ctx.window.location.hash, errors.length], ['', 1], 'a failed refresh does not open the Planner');
     } finally {
       Object.assign(G.api, { put: saved.put });
       Object.assign(G.app, { handleError: saved.handleError, applyFlags: saved.applyFlags });
@@ -1306,43 +1308,18 @@ function teamData(over) {
     const s = fakeDialogs();
     try {
       G.pages.attendance.attState().raids = { gid: 'g1', teamId: 't1', data: { upcoming: UP, raids: [] } };
-      const click = (rid) => { const el = { disabled: false, getAttribute: (k) => (k === 'data-rid' ? rid : null) }; G.handlers.click['raids-plan'](el); return el; };
+      const click = (rid) => planOf(rid);
       G.api.put = (url, body) => { s.puts.push(plain(body)); return body.moveRaid ? Promise.resolve({}) : Promise.reject(OTHER_DAY()); };
-      const el = click('u1');
+      click('u1');
       await settle();
-      assert.equal(el.disabled, true, 'busy while the question is open');
       s.answerCancel();
       await settle();
-      assert.deepEqual([s.hash, el.disabled, s.errors.length, s.puts.length], ['', false, 0, 1]);
-      const again = click('u1');
+      assert.deepEqual([s.hash, s.errors.length, s.puts.length], ['', 0, 1]);
+      click('u1');
       await settle();
       s.answerYes();
       await settle();
       assert.deepEqual([s.hash, s.errors.length, s.puts[s.puts.length - 1].moveRaid], ['#/planner?raid=g1.u1', 0, true]);
-      assert.equal(again.disabled, true, 'the page is leaving: the button stays busy');
-    } finally { s.restore(); }
-  });
-
-  await check('Refresh sign-ups on the Raids list: Cancel changes nothing; Move raid reads the whole list again and says where the raid went', async () => {
-    const s = fakeDialogs();
-    try {
-      const x = { gid: 'g1', teamId: 't1', data: { upcoming: UP, raids: RAIDS } };
-      G.pages.attendance.attState().raids = x;
-      const click = () => { const el = { disabled: false, getAttribute: (k) => (k === 'data-rid' ? 'u1' : null) }; G.handlers.click['raids-refresh'](el); return el; };
-      G.api.put = (url, body) => { s.puts.push(plain(body)); return body.moveRaid ? Promise.resolve({ raid: { id: 'u1', raidOn: '2026-10-29' }, sources: {} }) : Promise.reject(OTHER_DAY()); };
-      G.api.get = (url) => { s.gets.push(url); return Promise.resolve({ team: { id: 't1' }, today: '2026-10-17', upcoming: [UP[1]], raids: RAIDS, hasMore: false }); };
-      const el = click();
-      await settle();
-      s.answerCancel();
-      await settle();
-      assert.deepEqual([el.disabled, s.gets.length, s.errors.length, x.data.upcoming.length], [false, 0, 0, 2]);
-      click();
-      await settle();
-      s.answerYes();
-      await settle();
-      await settle();
-      assert.deepEqual([s.gets.length, x.data.upcoming.map((r) => r.id), x.data.raids.map((r) => r.id), x.note], [1, ['u2'], RAIDS.map((r) => r.id), 'Moved the raid to Thu Oct 29.']);
-      assert.equal(s.errors.length, 0);
     } finally { s.restore(); }
   });
 

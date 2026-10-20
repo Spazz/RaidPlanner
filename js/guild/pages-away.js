@@ -157,7 +157,7 @@
     const foot = opts.footHtml || '';
     const ready = s && s.gid === gd.guild.id && s.teamId === opts.teamId && s.status !== 'loading';
     const panel = function (headExtra, body) {
-      return '<section class="gs-hd-panel gs-rl-panel gs-an-team" aria-labelledby="an-team-h"><div class="gs-rl-head"><h2 class="gs-hd-sl" id="an-team-h">Away in the next 4 weeks</h2>' + headExtra + '</div><div class="gs-rl-body">' + body + foot + '</div></section>';
+      return '<section class="gs-hd-panel gs-pr-panel gs-rl-panel gs-an-team" aria-labelledby="an-team-h"><div class="gs-pr-ph"><h2 class="gs-pr-h" id="an-team-h">Away in the next 4 weeks</h2>' + headExtra + '</div><div class="gs-rl-body">' + body + foot + '</div></section>';
     };
     if (!ready) return foot ? panel('', '') : '';
     const add = G.ui.buttonHtml({ label: 'Add a notice', size: 'sm', attrs: { 'data-action': 'away-add', 'data-ctx': 'team', 'data-key': 'an-team-add' } });
