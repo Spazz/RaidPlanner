@@ -326,6 +326,25 @@ function withState(fn) {
     failing.restore();
   }));
 
+  await check('member Home loot: one head per raid night with the true night total; rows stay the newest 3; no raidId gives a span title', withState(async () => {
+    const lootOf = (awards) => () => ({ person: { id: 'p_me', name: 'Brewmaw' }, awards, totals: {} });
+    const A = (id, extra) => Object.assign({ id, itemId: 100 + Number(id.slice(1)), itemName: 'Item ' + id, quality: 4, raidOn: '2026-10-14' }, extra);
+    const loot = async (awards) => { await loadMember(memberApi({ raids: seatRaid('pending'), loot: lootOf(awards) })); const o = G.pages.attention.main({}, S.guilds.g1, {}); return o.slice(o.indexOf('id="home-loot"'), o.indexOf('id="home-away"')); };
+    let out = await loot([A('a1', { raidId: 'r1' }), A('a2', { raidId: 'r2', raidOn: '2026-10-07' }), A('a3', { raidId: 'r3', raidOn: '2026-09-30' })]);
+    assert.equal(count(out, /<h3 class="gs-fg-gh">/g), 3);
+    assert(out.includes('<a class="gs-fg-ght" href="#/g/g1/loot/night/r1">') || /<a class="gs-fg-ght" href="[^"]*r1">/.test(out), 'night link');
+    out = await loot([A('a1', { raidId: 'r1' }), A('a2', { raidId: 'r1' })]);
+    assert.equal(count(out, /<h3 class="gs-fg-gh">/g), 1);
+    assert(out.includes('<span class="gs-fg-ghn">2 items</span>') && count(out, /<li>/g) === 2);
+    out = await loot([A('a1', { raidId: 'r1' }), A('a2', { raidId: 'r2', raidOn: '2026-10-07' }), A('a3', { raidId: 'r3', raidOn: '2026-09-30' }), A('a4', { raidId: 'r3', raidOn: '2026-09-30' })]);
+    assert.equal(count(out, /<li>/g), 3, 'only the newest 3 rows');
+    assert(out.includes('<span class="gs-fg-ghn">2 items</span>') && count(out, /<span class="gs-fg-ghn">1 item<\/span>/g) === 2, 'the 4th counts toward the head');
+    out = await loot([A('a1')]);
+    assert(/<h3 class="gs-fg-gh"><span class="gs-fg-ght">[^<]+<\/span><span class="gs-fg-ghn">1 item<\/span><\/h3>/.test(out), 'no raidId: span title');
+    const css = fs.readFileSync(path.join(ROOT, 'guild.css'), 'utf8');
+    assert(/\.gs-mloot-nights \{/.test(css) && /\.gs-mloot-night \{/.test(css) && /\.gs-mloot-night \.gs-mlist > li \{/.test(css));
+  }));
+
   await check('member Home: hostile names, titles and items are escaped everywhere', withState(async () => {
     await loadMember(memberApi({
       raids: RAIDS([RAID({ title: HOSTILE + QUOTES, zone: HOSTILE, mine: { kind: 'signed', source: 'raidsmith', characterName: HOSTILE + QUOTES } })]),

@@ -1622,6 +1622,8 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-mnext { border-left: 3px solid var(--text-primary); background: var(--next-bg); gap: 8px; }
 .gs-mnext-rel { font-weight: 600; color: var(--text-secondary); text-transform: none; letter-spacing: 0; }
 .gs-mnext-when { margin: 0; font: 700 24px/1.15 var(--font-cond); letter-spacing: 0.02em; }
+.guild-page .gs-mnext-when > a { color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.03em; text-decoration: none; }
+.guild-page .gs-mnext-when > a:hover { color: var(--accent-gold); text-decoration: underline; text-underline-offset: 4px; }
 .gs-mnext-you { margin: 4px 0 0; font-size: 17px; line-height: 1.4; }
 .gs-mnext-status { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .gs-mnext-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
@@ -1632,6 +1634,9 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-mlist > li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--border-subtle); }
 .gs-mlist > li:first-child { border-top: 0; padding-top: 0; }
 .gs-mlist-main { min-width: 0; overflow-wrap: anywhere; }
+.gs-mloot-nights { display: flex; flex-direction: column; gap: 12px; }
+.gs-mloot-night { display: flex; flex-direction: column; gap: 4px; }
+.gs-mloot-night .gs-mlist > li { padding: 4px 0; border-top: 0; }
 .gs-mcal { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 @media (max-width: 900px) {
   .gs-mgrid { grid-template-columns: minmax(0, 1fr); }
@@ -2319,6 +2324,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-hd-slb { width: 100%; min-height: 36px; padding: 0; background: none; border: 0; cursor: pointer; }
 .gs-hd-slb:hover { color: var(--text-secondary); }
 .gs-hd-caps { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.gs-hd-daydate { font: 700 15px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); }
 .gs-hd-today { display: block; min-height: 16px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--hd-white); }
 
 /* Buttons inside the Week and the Briefing: Barlow, sentence case, small radius; the primary is the one molten button */
@@ -2458,8 +2464,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-hd-rolegrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .gs-hd-rolegrid.has-other { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .gs-hd-rolecol { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
-.gs-hd-gh { align-self: stretch; padding-bottom: 4px; border-bottom: 1px solid var(--hd-panel-edge); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.gs-hd-gh b { color: var(--hd-white); font-weight: 700; font-variant-numeric: tabular-nums; }
+.gs-hd-gh { align-self: stretch; padding-bottom: 4px; border-bottom: 1px solid var(--hd-panel-edge); }
 .gs-hd-gn { display: flex; align-items: center; gap: 6px; max-width: 100%; min-height: 24px; margin: 0; padding: 0 4px; background: none; border: 0; border-radius: 3px; font: 600 13px/1.2 var(--font-body); text-align: left; cursor: pointer; }
 .gs-hd-gn[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); }
 .gs-hd-gn:hover { background: rgba(255, 255, 255, 0.06); }

@@ -211,10 +211,24 @@
     else if (!s || s.denied) body = '<p class="gs-fine">Your loot is not shared with you in this guild.</p>';
     else if (s.error) body = '<p class="gs-fine">' + esc(s.error) + '</p>';
     else {
-      const awards = Array.isArray(s.data && s.data.awards) ? s.data.awards.slice(0, LOOT_ROWS) : [];
-      body = awards.length ? '<ul class="gs-mlist">' + awards.map(function (w) {
-        return '<li><span class="gs-mlist-main">' + G.pages.loot.itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span><span class="gs-fine">' + esc(G.ui.weekdayDay(w.raidOn) || w.raidOn || '') + '</span></li>';
-      }).join('') + '</ul>' + link : '<p class="gs-fine">No loot yet. Awards show here after a raid.</p>';
+      const all = Array.isArray(s.data && s.data.awards) ? s.data.awards : [];
+      const nightKey = function (w) { return w.raidId ? 'r:' + w.raidId : 'd:' + (w.raidOn || ''); };
+      const nights = [];
+      all.slice(0, LOOT_ROWS).forEach(function (w) {
+        const key = nightKey(w);
+        let n = nights.find(function (x) { return x.key === key; });
+        if (!n) { n = { key: key, raidId: w.raidId || null, raidOn: w.raidOn, rows: [] }; nights.push(n); }
+        n.rows.push(w);
+      });
+      body = nights.length ? '<div class="gs-mloot-nights">' + nights.map(function (n) {
+        const day = G.ui.weekdayDay(n.raidOn) || n.raidOn || 'Raid';
+        const total = all.filter(function (w) { return nightKey(w) === n.key; }).length;
+        const title = n.raidId ? '<a class="gs-fg-ght" href="' + esc(G.router.format({ name: 'lootnight', gid: gd.guild.id, rid: n.raidId })) + '">' + esc(day) + '</a>' : '<span class="gs-fg-ght">' + esc(day) + '</span>';
+        return '<div class="gs-mloot-night"><h3 class="gs-fg-gh">' + title + '<span class="gs-fg-ghn">' + plural(total, 'item', 'items') + '</span></h3><ul class="gs-mlist" aria-label="' + esc('My loot on ' + day) + '">' +
+          n.rows.map(function (w) {
+            return '<li><span class="gs-mlist-main">' + G.pages.loot.itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span></li>';
+          }).join('') + '</ul></div>';
+      }).join('') + '</div>' + link : '<p class="gs-fine">No loot yet. Awards show here after a raid.</p>';
     }
     return cardOf('home-loot', 'My loot', body);
   }

@@ -131,7 +131,7 @@ function withState(fn) {
   await check('Week: 7 days from yesterday to today + 5, tiny-caps dates, Today, a zone tile, the team, signed / size and a chip per raid', () => {
     const d = desk(html(ATTN()));
     assert.equal(count(d, /class="gs-hd-day[ "]/g), 7);
-    const caps = [...d.matchAll(/<span class="gs-hd-caps">([^<]*)<\/span><span class="gs-hd-today">/g)].map(m => m[1]);
+    const caps = [...d.matchAll(/<span class="gs-hd-daydate">([^<]*)<\/span><span class="gs-hd-today">/g)].map(m => m[1]);
     assert.deepEqual(caps, ['Tue - Oct 20', 'Wed - Oct 21', 'Thu - Oct 22', 'Fri - Oct 23', 'Sat - Oct 24', 'Sun - Oct 25', 'Mon - Oct 26']);
     assert.equal(count(d, /<span class="gs-hd-today">Today<\/span>/g), 1);
     assert(d.indexOf('Wed - Oct 21') < d.indexOf('>Today<') && d.indexOf('>Today<') < d.indexOf('Thu - Oct 22'), 'Today sits on Wed');
@@ -240,7 +240,7 @@ function withState(fn) {
     assert.equal(count(desk(out), /gs-btn-molten/g), 1);
     assert.equal(count(phone(out), /gs-btn-molten/g), 1);
     const css = read('guild.css');
-    const block = css.slice(css.indexOf('Officer Home, round 4'));
+    const block = css.slice(css.indexOf('Officer Home, round 4')).replace(/^\.gs-hd-daydate [^\n]*\n/m, ''); // day dates are gold by the 2026-10-19 group-head decision
     assert(!/accent-gold|#e0b53d/i.test(block.slice(0, block.indexOf('Watch list: Reviewed'))), 'orange only on the primary and no gold: the badge and logo are the shell\'s');
     assert(/\.gs-btn-molten[^{]*\{[^}]*var\(--molten\)/.test(block));
   });
@@ -336,6 +336,20 @@ function withState(fn) {
     G.handlers.click['home-seeall'](el({}));
     assert.equal(S.att.attention.seeAll, true);
   }));
+
+  await check('group heads: role columns use the Forge head (desktop and phone), day dates are gold, Signed stays muted', () => {
+    const out = html(ATTN());
+    for (const part of [desk(out), phone(out)]) {
+      assert(count(part, /<h3 class="gs-fg-gh gs-hd-gh"><span class="gs-fg-ght">[^<]+<\/span><span class="gs-fg-ghn">\d+<\/span><\/h3>/g) >= 3, 'role heads');
+      assert(!part.includes('<span class="gs-hd-gh">'));
+    }
+    assert(count(desk(out), /<span class="gs-hd-daydate">/g) === 7);
+    assert(desk(out).includes('<span class="gs-hd-caps">Signed</span>') && !/gs-hd-daydate">Signed/.test(out));
+    const css = read('guild.css');
+    assert(/\.gs-hd-daydate \{[^}]*color: var\(--accent-gold\)/.test(css), 'gold day date');
+    assert(/\.gs-mnext-when > a \{[^}]*color: var\(--accent-gold\)[^}]*uppercase/.test(css), 'gold next-raid link');
+    assert(!/\.gs-hd-gh b/.test(css) && /\.gs-hd-gh \{[^}]*border-bottom[^}]*\}/.test(css) && !/\.gs-hd-gh \{[^}]*color/.test(css));
+  });
 
   // ═══ 5. The Briefing (phone) ═══
   await check('Briefing: Next raid card (tile, chip, "Next raid", heading, sentence, full-width Open raid), TO DO, COMING UP, MORE - in that order', () => {
@@ -576,7 +590,7 @@ function withState(fn) {
 
   await check('Roles grid: Tanks / Healers / Melee / Ranged with counts, class-coloured names that are buttons, "Other" only when someone has no role, "N open seats"', () => {
     const p = panelOf(html(withPeople(WED_PEOPLE, 3)));
-    for (const h of ['Tanks <b>1</b>', 'Healers <b>1</b>', 'Melee <b>3</b>', 'Ranged <b>2</b>', 'Other <b>1</b>']) assert(p.includes(h), h);
+    for (const [t, n] of [['Tanks', 1], ['Healers', 1], ['Melee', 3], ['Ranged', 2], ['Other', 1]]) assert(p.includes('<h3 class="gs-fg-gh gs-hd-gh"><span class="gs-fg-ght">' + t + '</span><span class="gs-fg-ghn">' + n + '</span></h3>'), t);
     assert(p.includes('class="gs-hd-rolegrid has-other" role="group" aria-label="Sign-ups by role"'));
     assert(p.indexOf('Tanks') < p.indexOf('Healers') && p.indexOf('Healers') < p.indexOf('Melee') && p.indexOf('Melee') < p.indexOf('Ranged') && p.indexOf('Ranged') < p.indexOf('Other'));
     assert.equal(count(p, /data-action="home-pick"/g), 8, 'every name is a button');
@@ -586,7 +600,7 @@ function withState(fn) {
     assert(!panelOf(html(withPeople(WED_PEOPLE.slice(0, 7), 0))).includes('gs-hd-openline'), 'no open-seat line at 0');
     assert(panelOf(html(withPeople(WED_PEOPLE.slice(0, 2), 1))).includes('1 open seat<'), 'singular');
     const empty = panelOf(html(withPeople([], 0)));
-    assert(empty.includes('Tanks <b>0</b>') && empty.includes('None'));
+    assert(empty.includes('<span class="gs-fg-ght">Tanks</span><span class="gs-fg-ghn">0</span>') && empty.includes('None'));
     assertNoRawAttrs(p);
   });
 

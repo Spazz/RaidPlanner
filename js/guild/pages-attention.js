@@ -418,7 +418,7 @@
         return '<button type="button" class="' + cls + '" data-action="home-pick" data-pick="' + esc(key(e.i)) + '" data-key="home-pick-' + prefix + '-' + safeId(w.raidId) + '-' + e.i + '" aria-pressed="' + (m.pick === key(e.i) ? 'true' : 'false') +
           '" aria-label="' + esc(personWho(p).concat(state ? [state] : []).join(', ')) + '">' + G.ui.classNameHtml(p.name, p.classId) + markHtml(mark) + '</button>';
       }).join('');
-      return '<div class="gs-hd-rolecol"><span class="gs-hd-gh">' + esc(c.title) + ' <b>' + mine.length + '</b></span>' + (mine.length ? names : '<span class="gs-hd-muted">None</span>') + '</div>';
+      return '<div class="gs-hd-rolecol"><h3 class="gs-fg-gh gs-hd-gh"><span class="gs-fg-ght">' + esc(c.title) + '</span><span class="gs-fg-ghn">' + mine.length + '</span></h3>' + (mine.length ? names : '<span class="gs-hd-muted">None</span>') + '</div>';
     }).join('');
     const open = Math.max(0, Math.floor(num(w.openSeats)));
     const picked = people.filter(function (p, i) { return valid(p) && m.pick === key(i); })[0];
@@ -547,7 +547,7 @@
   // ── desktop: the Week ──
   function dayCardHtml(m, day) {
     const selected = day.raids.some(function (w) { return m.selected && w.raidId === m.selected.raidId; }) || (!m.selected && m.selDay === day.date);
-    const caps = '<span class="gs-hd-caps">' + esc(capsText(day.date)) + '</span><span class="gs-hd-today">' + (day.isToday ? 'Today' : '') + '</span>';
+    const caps = '<span class="gs-hd-daydate">' + esc(capsText(day.date)) + '</span><span class="gs-hd-today">' + (day.isToday ? 'Today' : '') + '</span>';
     let body;
     if (!day.raids.length) {
       body = '<button type="button" class="gs-hd-pick" data-action="home-select" data-day="' + esc(day.date) + '" data-key="home-day-' + esc(day.date) + '" aria-pressed="' + (selected ? 'true' : 'false') + '" aria-label="' +
