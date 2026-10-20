@@ -2045,6 +2045,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 /* ── Person record (Roster redesign A3 / R2): spec icon head, decision panel, two columns, read-only Details ───────────────────
    Panels are .gs-hd-panel; headings use the condensed face like Home; chips are .gs-hd-chip; orange stays on the one primary (Promote to Raider). */
 .gs-pagehead-icon { align-self: center; flex: none; display: inline-flex; }
+.gs-pagehead-icon + .gs-pagehead-title { flex: 1 1 auto; } /* the name sits next to its icon; the row's space-between would float it away */
 .gs-pagehead-icon .gs-spec-icon { width: 28px; height: 28px; }
 .gs-forge .gs-h1.gs-class-warrior { color: var(--class-warrior); } .gs-forge .gs-h1.gs-class-paladin { color: var(--class-paladin); } .gs-forge .gs-h1.gs-class-hunter { color: var(--class-hunter); }
 .gs-forge .gs-h1.gs-class-rogue { color: var(--class-rogue); } .gs-forge .gs-h1.gs-class-priest { color: var(--class-priest); } .gs-forge .gs-h1.gs-class-shaman { color: var(--class-shaman-text); }
@@ -2548,7 +2549,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-lt-tablepanel { overflow: hidden; }
 .gs-loot-page .gs-dtable-wrap { background: none; border: 0; }
 .gs-loot-page .gs-pr-panel .gs-dtable-wrap { border-top: 1px solid var(--hd-hair); }
-.gs-loot-page .gs-dtable th { background: transparent; border-bottom-color: var(--hd-hair); font: 600 12px/1.2 var(--font-body); letter-spacing: 0.1em; }
+.gs-loot-page .gs-dtable thead th { background: transparent; border-bottom-color: var(--hd-hair); font: 600 12px/1.2 var(--font-body); letter-spacing: 0.1em; }
 .gs-loot-page .gs-dtable td, .gs-loot-page .gs-dtable th[scope="row"] { border-bottom-color: var(--hd-hair); }
 .gs-loot-page .gs-dtable-row.is-you { background: var(--you-bg); box-shadow: none; }
 @media (min-width: 1024px) {

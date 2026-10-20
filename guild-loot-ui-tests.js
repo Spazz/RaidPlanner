@@ -263,6 +263,12 @@ function withState(fn) {
     assertEscaped(hostile, 'item');
   });
 
+  await check('look: the column-head style never reaches the row-header cells (item names), and a head icon keeps the name beside it', () => {
+    const css = read('guild.css');
+    assert(css.includes('.gs-loot-page .gs-dtable thead th {') && !css.includes('.gs-loot-page .gs-dtable th {'), 'the Loot column-head rule is scoped to thead th (a row-header th is an item name)');
+    assert(css.includes('.gs-pagehead-icon + .gs-pagehead-title { flex: 1 1 auto; }'), 'the title grows next to its icon on every width');
+  });
+
   await check('quality colours: each passes 4.5:1 on the panel, card and hover backgrounds', () => {
     const css = read('guild.css');
     const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };

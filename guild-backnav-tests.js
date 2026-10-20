@@ -57,6 +57,7 @@ check('a previous in-app page: the page head shows its name and points at it; a 
   assert(out.includes('href="#/g/g1/loot/standings?sort=due"') && out.includes('data-action="back-prev"') && out.includes('aria-label="Back to Standings"') && out.includes('<span>Standings</span>'));
   assert(!out.includes('<span>Loot</span>'));
   assert(!G.ui.pageHeadHtml({ title: 'Home' }).includes('gs-back-link'), 'a page with no back link keeps none');
+  assert(/r\.section === 'home' \? 'Home'/.test(require('fs').readFileSync(require('path').join(__dirname, 'js/guild/app.js'), 'utf8')), 'Home is named "Home" in the trail, not by its h1 question');
 });
 
 check('a plain click calls history.back() with no new entry; a modified click is left to the browser; back/back does not bounce', () => {

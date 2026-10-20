@@ -971,7 +971,8 @@
         if (main.querySelectorAll) main.querySelectorAll('[data-scroll-key]').forEach(function (el) { const t = scrolls[el.getAttribute('data-scroll-key')]; if (t) el.scrollTop = t; });
         document.title = v.title;
         const h1 = main.querySelector ? main.querySelector('h1') : null;
-        G.router.rendered(window.location.hash, h1 ? h1.textContent : '');
+        // A back link names the page by its h1; Home's h1 is a question ("Next week"), so Home is named "Home".
+        G.router.rendered(window.location.hash, r.name === 'section' && r.section === 'home' ? 'Home' : (h1 ? h1.textContent : ''));
       } else if (main.innerHTML) {
         main.innerHTML = '';
       }
