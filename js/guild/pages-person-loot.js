@@ -143,7 +143,7 @@
         '<ul class="gs-lt-list" aria-label="Awards on ' + esc(day) + '">' + rows + '</ul></section>';
     }).join('');
     const readOnly = edit ? '' : '<p class="gs-fine">Awards are read-only for members. Ask an officer if something looks wrong.</p>';
-    const awardsPanel = awards.length ? nightPanels + readOnly
+    const awardsPanel = awards.length ? '<div class="gs-lt-nights">' + nightPanels + '</div>' + readOnly
       : L().panelHtml({ id: 'pl-awards', title: 'Loot awards', metaHtml: esc(L().plural(0, 'award', 'awards')) + ', newest first', bodyHtml: '<p class="gs-fine">' + esc(emptyLine(!!p.isMe)) + '</p>' });
     const totalsPanel = L().panelHtml({ id: 'pl-totals', title: 'Loot received', flush: true,
       bodyHtml: statsHtml(data.totals, standing) + (standing ? '<p class="gs-pr-linkrow"><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'lootstandings', gid: gid })) + '">See where you stand</a></p>' : '') });

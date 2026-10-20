@@ -1994,7 +1994,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-rs-cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
 .gs-rs-cols.has-other { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .gs-rs-col { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-.gs-rs-colhead { display: flex; align-items: baseline; gap: 0 8px; height: 40px; padding: 0 12px; }
+.gs-rs-colhead { display: flex; align-items: baseline; align-content: center; gap: 0 8px; height: 40px; padding: 0 12px; }
 .gs-rs-sep { min-height: 32px; padding: 0 12px; border-top: 1px solid var(--hd-hair); }
 .gs-rs-none { margin: 0; padding: 12px; font-size: 13px; color: var(--text-muted); }
 .gs-rs-row { display: flex; align-items: center; gap: 10px; box-sizing: border-box; min-height: 44px; padding: 4px 12px; border-top: 1px solid var(--hd-hair); text-decoration: none; color: var(--text-primary); }
@@ -2543,7 +2543,8 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-lt-nighthead { padding: 12px 20px; border-bottom: 1px solid var(--hd-hair); }
 .gs-loot-page .gs-lt-day .gs-loot-sublist { padding: 0 20px; }
 .gs-lt-day .gs-loot-subrow:first-child { border-top: 0; }
-.gs-lt-nightpanel { margin-bottom: 16px; }
+.gs-lt-nights { display: flex; flex-direction: column; gap: 16px; } /* the nights are one group: tighter than the 24 px between page blocks */
+.gs-lt-nightpanel { min-width: 0; }
 .gs-lt-arow { display: grid; grid-template-columns: minmax(0, 1fr) 140px auto 34px; gap: 4px 12px; align-items: center; min-height: 48px; padding: 6px 20px; border-top: 1px solid var(--hd-hair); }
 .gs-lt-arow:first-child { border-top: 0; }
 .gs-lt-aitem { min-width: 0; overflow-wrap: anywhere; }
