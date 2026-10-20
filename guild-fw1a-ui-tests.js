@@ -251,7 +251,8 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
   await check('post-raid mode: the log and the people lead the main column, the sign-ups record sits behind Show sign-ups, the facts and the Loot awards card are the side column; Add a sign-up, Close sign-ups and the status buttons are gone', () => {
     const data = past({ sources: { event: { id: 'e1', title: 'BT', signups: 26, syncedAt: 1, otherServer: false }, reports: [{ code: 'WaghkY9zwDyvLX7m', flavour: 'fresh', startedAt: 1, pulls: 4 }], plan: { label: 'BT run', players: 19 } } });
     const out = page(data, { signups: sState(view({ raid: { id: 'r4', teamId: 't1', startsAt: 1, upcoming: false, locked: false, closed: 'started' }, me: meOf() })), loot: lState([]), roster: rState({ published: true, counts: { confirmed: 17, pending: 2, declined: 0 }, publishedAt: 1760000000000 }) });
-    assert.deepEqual(idsOf(out), ['raid-cols', 's-loot']);
+    assert.deepEqual(idsOf(out), ['raid-cols']);
+    assert(out.includes('class="gs-rpg-sp gs-rpg-sp-loot" id="s-loot"'), 'the Loot panel is the side column anchor s-loot');
     assert(!out.includes('data-action="su-add"') && !out.includes('data-action="su-lock"') && !out.includes('data-action="su-kind"'), 'no Add a sign-up, Close sign-ups or status buttons');
     assert(!out.includes('Opens when the raid starts') && !out.includes('View line-up') && !out.includes('gs-srow-more"><summary>View'), 'nothing is locked, no summary rows');
     assert(out.includes('<details class="gs-srow-more gs-rpg-record" id="s-signups" tabindex="-1"><summary>Show sign-ups</summary>'), 'the sign-ups record opens on demand');
@@ -260,7 +261,7 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const stage = page(past({ sources: { event: null, reports: [], plan: null }, people: [] }), {});
     assert(stage.includes('Awaiting log.') && stage.includes('id="raid-people"'));
     const lootLocked = page(past({ sources: { event: null, reports: [], plan: null }, people: [] }), {});
-    assert(lootLocked.includes('Opens after the log is attached. Then import the Gargul export here.') && lootLocked.includes('class="gs-osection is-locked" id="s-loot"'));
+    assert(lootLocked.includes('Opens after the log is attached. Then import the Gargul export here.') && lootLocked.includes('id="s-loot"') && lootLocked.includes('id="loot-ph-h">Loot</h2>'));
   });
 
   await check('post-raid mode: Everyone lists the people who were on the roster that day - a later joiner is left out unless they signed up, were in the log or were decided on; Needs review keeps every flag', () => {

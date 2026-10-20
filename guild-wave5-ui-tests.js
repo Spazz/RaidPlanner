@@ -93,7 +93,9 @@ const BOARD = (over) => Object.assign({
   unmatched: ['Zed'],
 }, over || {});
 const okState = (over) => Object.assign({ gid: 'g1', rid: 'r4', status: 'ok', data: BOARD(), ui: G.pages.raidBoard.freshUi(), view: G.pages.raidBoard.freshView() }, over || {});
-const card = (state, data, can) => G.pages.raidBoard.cardHtml({ guildData: gd(can || OFFICER_CAN), data: data || PAST(), state });
+// The Loot prios pieces together: the item list (main column) and the summary (side column).
+const card = (state, data, can) => G.pages.raidBoard.listHtml({ guildData: gd(can || OFFICER_CAN), data: data || PAST(), state }) + G.pages.raidBoard.summaryHtml({ guildData: gd(can || OFFICER_CAN), data: data || PAST(), state });
+const flow = (state) => G.pages.raidBoard.pasteFlowHtml({ state });
 
 const el = (attrs, extra) => Object.assign({ getAttribute: k => (k in attrs ? attrs[k] : null), disabled: false }, extra || {});
 function stub(handler) {
@@ -142,7 +144,7 @@ check('api: board, saveList, manual and teamRoster hit the contract paths with t
 check('card: one row per item with the line in order, roll-off and "All have it" pills, SR copies, guest and "Already got it" chips, and where it went', () => {
   const out = card(okState());
   const text = stripTags(out);
-  assert(out.includes('id="board-h"') && text.includes('Loot prios') && text.includes('3 items'));
+  assert(out.includes('id="board-h"') && text.includes('Loot prios') && text.includes('3 items, 1 roll-off'));
   const rows = out.split('<li class="gs-board-row').slice(1);
   assert.equal(rows.length, 3);
   assert(rows[0].includes('is-contested') && rows[0].includes('Roll-off') && !rows[0].includes('All have it'));
@@ -243,10 +245,11 @@ check('panel: input stage has a paste box, a file picker, Read and Close; the he
   assert(stripTags(sr).includes('Soft-reserves (softres)') && stripTags(sr).includes('Gargul Export') && sr.includes('Bad.'));
   assertEscaped(sr, 'paste text');
   assertNoRawAttrs(tmb + sr);
-  // In the card the panel is for editors only.
+  // The panel is drawn by the page at the top of the main column, for editors only; the list and the summary never hold it.
   const open = okState({ ui: Object.assign(R.freshUi(), { list: 'tmb' }) });
-  assert(card(open).includes('id="bd-paste"'));
-  assert(!card(Object.assign(open, { data: BOARD({ canEdit: false }) }), PAST(), MEMBER_CAN).includes('bd-paste'));
+  assert(flow(open).includes('id="bd-paste"') && !card(open).includes('id="bd-paste"'));
+  assert(flow(Object.assign(open, { data: BOARD({ canEdit: false }) })) === '', 'not for a viewer who cannot edit');
+  assert.equal(flow(okState()), '', 'closed: nothing');
 });
 
 check('panel: preview stage counts what was read, says what it replaces, lists the skipped entries and saves N rows; done stage closes', () => {
@@ -268,27 +271,91 @@ check('panel: preview stage counts what was read, says what it replaces, lists t
   assert(done.includes('id="bd-result"') && stripTags(done).includes('Saved 30 rows') && done.includes('data-action="board-close"') && !done.includes('bd-paste'));
 });
 
-check('Actions menu: the two paste entries for an editor on an upcoming and a past raid; none for others, none for a panel that is open; Add loot award only on a past raid', () => {
+const AWARD_OF = (id) => ({ id, raidId: 'r4', raidOn: '2026-10-17', teamId: 't1', itemId: 28770, itemName: 'Nathrezim Mindblade', quality: 4, awardedAt: Date.now(), winner: { name: 'Aldric', realm: 'Firemaw', class: 'WARRIOR' }, match: { kind: 'character', personId: 'p_a', personName: 'Aldric', characterName: 'Aldric' }, tag: 'MS', tagSetBy: null, flags: [], rollType: null, note: null });
+
+check('More holds page-level items only (none of the four loot items); the Loot and Loot prios panels hold the buttons; an open flow hides its button and opens at the top of the main column', () => {
   const labelsOf = (out) => {
     const menu = out.slice(out.indexOf('id="raid-actions-list"'), out.indexOf('</div></div>', out.indexOf('id="raid-actions-list"')));
     return [...menu.matchAll(/role="menuitem"[^>]*>([^<]+)</g)].map(m => m[1]);
   };
-  const lootOk = { gid: 'g1', rid: 'r4', status: 'ok', data: { awards: [], canEdit: true }, ui: G.pages.raidLoot.freshUi() };
+  const lootOk = () => ({ gid: 'g1', rid: 'r4', status: 'ok', data: { awards: [], canEdit: true }, ui: G.pages.raidLoot.freshUi() });
   const page = (data, over) => G.pages.raid.raidHtml(Object.assign({ guildData: gd(OFFICER_CAN), data }, over || {}));
-  const past = page(PAST(), { loot: lootOk, board: okState() });
-  assert.deepEqual(labelsOf(past), ['Open in Planner', 'Recalculate attendance', 'Mark as No log', 'Paste raid roster', 'Raid settings', 'Import loot from Gargul', 'Add loot award', 'Loot prio (TMB)', 'Soft-reserves (softres)', 'Delete raid']);
-  assert(past.includes('data-action="board-open" data-list="tmb"') && past.includes('data-action="loot-add-open"'));
+  const past = page(PAST(), { loot: lootOk(), board: okState() });
+  assert.deepEqual(labelsOf(past), ['Open in Planner', 'Recalculate attendance', 'Mark as No log', 'Paste raid roster', 'Raid settings', 'Delete raid']);
+  for (const gone of ['Import loot from Gargul', 'Add loot award', 'Loot prio (TMB)', 'Soft-reserves (softres)']) assert(!labelsOf(past).includes(gone), gone + ' left the More menu');
+  assert(!past.includes('mi-loot-import') && !past.includes('mi-loot-add') && !past.includes('mi-board-tmb') && !past.includes('mi-board-softres'));
+  // Their homes: the Loot panel head and the Loot prios summary.
+  assert(past.includes('data-action="loot-import-open" data-key="loot-import-open">Import from Gargul<') && past.includes('data-action="loot-add-open" data-key="loot-add-open">Add award<'));
+  assert(past.includes('data-action="board-open" data-list="tmb" data-key="board-open-tmb">Paste TMB prios<') && past.includes('data-action="board-open" data-list="softres" data-key="board-open-softres">Paste soft-reserves<'));
   const up = page(UPCOMING(), { board: okState({ rid: 'u1' }) });
-  assert.deepEqual(labelsOf(up), ['Open in Planner', 'Raid settings', 'Guest sign-up link', 'Loot prio (TMB)', 'Soft-reserves (softres)', 'Delete raid']);
+  assert.deepEqual(labelsOf(up), ['Open in Planner', 'Raid settings', 'Guest sign-up link', 'Delete raid']);
+  assert(up.includes('>Paste TMB prios<') && up.includes('>Paste soft-reserves<') && !up.includes('loot-import-open'), 'before the raid: the prio buttons only');
+  // An open paste: its button is gone and the panel is the first thing in the main column.
   const openTmb = page(UPCOMING(), { board: okState({ rid: 'u1', ui: Object.assign(G.pages.raidBoard.freshUi(), { list: 'tmb' }) }) });
-  assert.deepEqual(labelsOf(openTmb), ['Open in Planner', 'Raid settings', 'Guest sign-up link', 'Soft-reserves (softres)', 'Delete raid']);
+  assert(!openTmb.includes('data-key="board-open-tmb"') && openTmb.includes('data-key="board-open-softres"'));
+  const mainAt = openTmb.indexOf('<div class="gs-rpg-main">') + '<div class="gs-rpg-main">'.length;
+  assert(openTmb.slice(mainAt).startsWith('<div class="gs-loot-import gs-import-panel" role="group" aria-labelledby="bd-title">'), 'the TMB panel opens at the top of the main column');
+  assert(openTmb.indexOf('id="bd-paste"') < openTmb.indexOf('id="s-signups"') || !openTmb.includes('id="s-signups"'));
+  // The Gargul import too (after the raid), above the attendance board; both flows can be open at once.
+  const gOpen = lootOk(); gOpen.ui.open = true;
+  const both = page(PAST(), { loot: gOpen, board: okState({ ui: Object.assign(G.pages.raidBoard.freshUi(), { list: 'softres' }) }) });
+  const bothMain = both.slice(both.indexOf('<div class="gs-rpg-main">'));
+  assert(bothMain.indexOf('id="gl-paste"') > 0 && bothMain.indexOf('id="gl-paste"') < bothMain.indexOf('id="bd-paste"') && bothMain.indexOf('id="bd-paste"') < bothMain.indexOf('id="raid-people"'), 'Gargul, then the paste, then the board');
+  assert(!both.includes('data-key="loot-import-open"'), 'the import button hides while its panel is open');
+  // A viewer who cannot edit gets neither the menu nor any paste button.
   const member = G.pages.raid.raidHtml({ guildData: gd(MEMBER_CAN), data: PAST({ can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), board: okState({ data: BOARD({ canEdit: false }) }) });
   assert(!member.includes('raid-actions'), 'no Actions menu for a viewer who cannot edit');
-  assert(member.includes('id="board-h"') && !member.includes('data-action="board-open"'));
-  assert(!page(UPCOMING(), {}).includes('board-h'), 'not loaded: no card');
-  assert(page(UPCOMING(), { board: okState({ rid: 'u1' }) }).includes('id="board-h"'), 'the board is on an upcoming raid too');
-  // On a past raid the prios are in the main column and the loot awards in the side column; on an upcoming one the prios follow the sign-ups.
-  assert(past.indexOf('id="board-h"') < past.indexOf('id="loot-h"') || !past.includes('id="loot-h"'));
+  assert(member.includes('id="board-h"') && !member.includes('data-action="board-open"') && !member.includes('data-action="board-remove"'));
+  assert(!page(UPCOMING(), {}).includes('board-h'), 'not loaded: no panel');
+  assert(page(UPCOMING(), { board: okState({ rid: 'u1' }) }).includes('id="board-h"'), 'the list is on an upcoming raid too');
+  // On a past raid the prio list is in the main column and the Loot panel in the side column.
+  const lootSome = lootOk(); lootSome.data.awards = [AWARD_OF('a1')];
+  const full = page(PAST(), { loot: lootSome, board: okState() });
+  assert(full.indexOf('id="board-h"') < full.indexOf('id="loot-h"'));
+});
+
+
+check('raid page side column after the raid: Raid facts, Bosses, Loot (5 rows, All N items), then the Loot prios summary; phone order hooks on each panel', () => {
+  const pulls = [
+    { encounter: 'Illidan Stormrage', kill: false, startedAt: 7000 }, { encounter: 'High Warlord Naj\'entus', kill: true, startedAt: 1000 }, { encounter: 'Supremus', kill: true, startedAt: 2000 },
+    { encounter: 'Shade of Akama', kill: false, startedAt: 3000 }, { encounter: 'Shade of Akama', kill: true, startedAt: 4000 }, { encounter: 'Illidan Stormrage', kill: false, startedAt: 8000 }, { encounter: 'Illidan Stormrage', kill: false, startedAt: 9000 },
+  ];
+  const loot = { gid: 'g1', rid: 'r4', status: 'ok', data: { awards: Array.from({ length: 7 }, (_, i) => AWARD_OF('a' + i)), canEdit: true }, ui: G.pages.raidLoot.freshUi() };
+  const out = G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN), data: PAST({ pulls }), loot, board: okState() });
+  const side = out.slice(out.indexOf('<div class="gs-rpg-side">'));
+  const at = (id) => side.indexOf(id);
+  assert(at('id="raid-facts"') >= 0 && at('id="raid-facts"') < at('id="raid-bosses"') && at('id="raid-bosses"') < at('id="s-loot"') && at('id="s-loot"') < at('board-sum-h'), 'facts, Bosses, Loot, Loot prios');
+  assert(side.includes('gs-rpg-sp gs-rpg-sp-bosses') && side.includes('gs-rpg-sp gs-rpg-sp-loot') && side.includes('gs-rpg-sp gs-rpg-sp-prios') && side.includes('gs-rpg-sp gs-rpg-sp-facts'));
+  // Bosses: first-pull order, the three words.
+  const bosses = stripTags(side.slice(side.lastIndexOf('<section', at('id="raid-bosses"')), side.indexOf('<div class="gs-rpg-sp gs-rpg-sp-loot"')));
+  assert.equal(bosses, 'Bosses High Warlord Naj\'entus Kill Supremus Kill Shade of Akama Kill after 1 wipe Illidan Stormrage 3 wipes'); 
+  // Loot: 5 rows and All 7 items.
+  const lootHtml = side.slice(at('id="s-loot"'), at('gs-rpg-sp-prios'));
+  assert.equal((lootHtml.match(/<li class="gs-rpl-row"/g) || []).length, 5);
+  assert(lootHtml.includes('>All 7 items</a>') && lootHtml.includes('href="#/g/g1/loot/n/r4"'));
+  // Loot prios summary lines.
+  const sum = stripTags(side.slice(at('gs-rpg-sp-prios')));
+  assert(/Loot prios TMB prios: 12 rows, pasted .* Remove Soft-reserves: not pasted 3 items, 1 roll-off Paste TMB prios Paste soft-reserves/.test(sum), sum);
+  // No pulls (awaiting log / by hand): no Bosses panel. Before the raid: no Bosses, no Loot.
+  assert(!G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN), data: PAST({ pulls: [] }), loot, board: okState() }).includes('id="raid-bosses"'));
+  const before = G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN), data: UPCOMING({ pulls }), board: okState({ rid: 'u1' }) });
+  assert(!before.includes('raid-bosses') && !before.includes('id="s-loot"') && before.includes('gs-rpg-sp-prios'));
+  // The anchors: s-board is the main list when there is one, else the side summary.
+  assert(out.includes('id="s-board"') && out.indexOf('id="s-board"') < out.indexOf('<div class="gs-rpg-side">'));
+  const noItems = G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN), data: PAST(), board: okState({ data: BOARD({ items: [], unmatched: [] }) }) });
+  assert(noItems.includes('id="s-board"') && noItems.indexOf('id="s-board"') > noItems.indexOf('<div class="gs-rpg-side">') && !noItems.includes('id="board-h"'));
+});
+
+check('Loot prios: the list is a main-column panel with Roll-offs only, Player and Print in its head; a member sees no Remove or paste; nothing pasted and no right to paste draws nothing', () => {
+  const out = G.pages.raid.raidHtml({ guildData: gd(OFFICER_CAN), data: PAST(), board: okState() });
+  const main = out.slice(out.indexOf('<div class="gs-rpg-main">'), out.indexOf('<div class="gs-rpg-side">'));
+  assert(main.includes('id="board-h"') && main.includes('id="bd-contested"') && main.includes('id="bd-player"') && main.includes('data-action="board-print"'), 'filters and Print in the main panel');
+  assert(!main.includes('data-action="board-remove"') && !main.includes('data-action="board-open"'), 'Remove and the paste buttons are the summary\'s');
+  assert(stripTags(main).includes('In line: the 3 people signed up, placed or present on this raid.'));
+  const empty = BOARD({ lists: { tmb: null, softres: null }, items: [], unmatched: [], canEdit: false });
+  const mem = G.pages.raid.raidHtml({ guildData: gd(MEMBER_CAN), data: PAST({ can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), board: okState({ data: empty }) });
+  assert(!mem.includes('board-h') && !mem.includes('board-sum-h'));
+  assert.equal(G.pages.raidBoard.summaryHtml({ state: { gid: 'g1', rid: 'r4', status: 'denied' } }), '');
 });
 
 check('load: the raid page loads the board after the loot; a 403 and a 404 draw nothing; another error shows a retry; coming back starts the panel afresh', withState(async (S) => {
@@ -462,7 +529,7 @@ check('flow: the filters change the view and keep the focus; Print writes the sh
 const AWARD = { id: 'lo_m', raidId: 'r4', raidOn: '2026-10-17', teamId: 't1', itemId: 28770, itemName: 'Nathrezim Mindblade', quality: null, awardedAt: Date.now(), winner: { name: 'Aldric', realm: 'Firemaw', class: 'WARRIOR' }, match: { kind: 'character', personId: 'p_a', personName: 'Aldric', characterId: 'c_a', characterName: 'Aldric', isMain: true }, tag: 'MS', tagSetBy: 'officer', flags: [], rollType: null, note: null, awardedBy: null, manual: true };
 
 check('loot card: Add award for an editor, a Manual chip with no time on a hand-made award, the delete text does not promise a re-import', () => {
-  const lootCard = (awards, can, edit) => G.pages.raidLoot.cardHtml({ guildData: gd(can || OFFICER_CAN), data: PAST(), state: { gid: 'g1', rid: 'r4', status: 'ok', data: { awards, canEdit: edit !== false }, ui: G.pages.raidLoot.freshUi() } });
+  const lootCard = (awards, can, edit) => G.pages.raidLoot.panelHtml({ guildData: gd(can || OFFICER_CAN), data: PAST(), state: { gid: 'g1', rid: 'r4', status: 'ok', data: { awards, canEdit: edit !== false }, ui: G.pages.raidLoot.freshUi() } });
   const out = lootCard([AWARD, Object.assign({}, AWARD, { id: 'lo_g', manual: undefined, awardedAt: Date.UTC(2026, 9, 18, 1, 30) })]);
   assert(out.includes('data-action="loot-add-open"') && out.includes('>Add award<'));
   const rows = [AWARD, Object.assign({}, AWARD, { id: 'lo_g', manual: undefined, awardedAt: Date.UTC(2026, 9, 18, 1, 30) })].map(w => G.pages.loot.awardRowHtml(gd(OFFICER_CAN), w, { when: 'time' }));

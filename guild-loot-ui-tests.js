@@ -651,24 +651,24 @@ function withState(fn) {
   }));
 
   // ── the Loot card of a raid ────────────────────────────────────
-  await check('raid card: a compact summary - counts by tag, the first awards read-only, and a link to the loot page of the night', () => {
+  await check('raid Loot panel: the first five awards read-only with the winner and a tag chip, and All N items linking to the loot page of the night', () => {
     const out = raidPage(okState());
-    assert(out.includes('<h2 class="gs-h2" id="loot-h">Loot awards</h2>') && out.includes('4 items'));
-    assert(out.includes('<p class="gs-fine" id="loot-counts">3 MS &middot; 1 OS</p>'), 'counts by tag');
-    assert(out.includes('<ul class="gs-loot-sublist" aria-label="Loot awarded on this raid">') && (out.match(/<li class="gs-loot-subrow"/g) || []).length === 4);
-    assert(out.includes('id="loot-open-night" href="#/g/g1/loot/n/r1">Open the night\'s loot</a>'));
+    assert(out.includes('<h2 class="gs-pr-h" id="loot-h">Loot</h2>') && out.includes('class="gs-hd-panel gs-rpl gs-rpl-loot"'), 'a Forge side panel titled Loot');
+    assert(!out.includes('id="loot-counts"') && !out.includes('Open the night'), 'the tag count line and the old button are gone');
+    assert(out.includes('<ul class="gs-rpl-list" aria-label="Loot awarded on this raid">') && (out.match(/<li class="gs-rpl-row"/g) || []).length === 4);
+    assert(out.includes('id="loot-open-night" href="#/g/g1/loot/n/r1">All 4 items</a>'));
     assert(out.includes('class="gs-item gs-q-4"') && out.includes('href="https://www.wowhead.com/tbc/item=28770"') && out.includes('class="gs-item gs-q-3"'));
-    assert(out.includes('>Guest<') && out.includes('Not on roster') && out.includes('gs-chip gs-chip-tag is-os'));
+    assert(out.includes('>Guest<') && out.includes('Not on roster') && out.includes('<span class="gs-hd-chip is-grey" title="Off-spec">OS</span>'));
     assert(!out.includes('data-change="loot-tag"') && !out.includes('loot-delete') && !out.includes('loot-note') && !out.includes('gs-loot-row'), 'changes happen on the night page');
-    assert(out.indexOf('Loot awards</h2>') > out.indexOf('People</h2>'), 'after the People card');
+    assert(out.indexOf('id="loot-h"') > out.indexOf('id="raid-people"'), 'the side column comes after the main column');
     const many = okState();
     many.data.awards = Array.from({ length: 8 }, (_, i) => award('m' + i));
     const long = raidPage(many);
-    assert((long.match(/<li class="gs-loot-subrow"/g) || []).length === 5 && long.includes('And 3 more.'));
+    assert((long.match(/<li class="gs-rpl-row"/g) || []).length === 5 && long.includes('>All 8 items</a>') && !long.includes('And 3 more.'));
     assertNoRawAttrs(out);
   });
 
-  await check('raid card: editors keep Import from Gargul and Add award; viewers get no edit buttons; the review link needs attendance.review', () => {
+  await check('raid Loot panel: editors keep Import from Gargul and Add award in its head; viewers get no edit buttons; the review link needs attendance.review', () => {
     const editor = raidPage(okState());
     assert(editor.includes('data-action="loot-import-open"') && editor.includes('Import from Gargul') && editor.includes('data-action="loot-add-open"'));
     assert(editor.includes('1 award goes to a winner who is not on the roster. Link them in the Review queue') && editor.includes('href="#/g/g1/attendance/review"'));
@@ -681,11 +681,11 @@ function withState(fn) {
     assert(lead.includes('Review queue'));
   });
 
-  await check('raid card: empty states, no card for an upcoming raid or without loot access, an error card with a retry', () => {
+  await check('raid Loot panel: empty states, no panel for an upcoming raid or without loot access, an error card with a retry', () => {
     const empty = okState();
     empty.data.awards = [];
     const e = raidPage(empty);
-    assert(e.includes('No loot is recorded for this raid yet. Import a Gargul export to add it, or add an award by hand.') && e.includes('0 items'));
+    assert(e.includes('No loot is recorded for this raid yet. Import a Gargul export to add it, or add an award by hand.') && !e.includes('All 0 items'));
     const v = raidPage(Object.assign(okState({}, false), { data: { awards: [], canEdit: false } }), MEMBER_CAN);
     assert(v.includes('No loot is recorded for this raid yet.') && !v.includes('Import a Gargul'));
     assert(!raidPage(null).includes('id="loot-h"'), 'not loaded');
@@ -1394,7 +1394,7 @@ function withState(fn) {
     const state = okState();
     state.data.awards = AWARDS.concat([DE_AWARD]);
     const out = raidPage(state);
-    assert(out.includes('5 items') && (out.match(/<li class="gs-loot-subrow"/g) || []).length === 5 && out.includes('3 MS &middot; 1 OS &middot; 1 DE'));
+    assert(out.includes('>All 5 items</a>') && (out.match(/<li class="gs-rpl-row"/g) || []).length === 5 && out.includes('>DE</span>'));
     assert(stripTags(out).includes('Disenchanted'));
     assert(out.includes('1 award goes to a winner who is not on the roster'), 'only Veyla; the disenchant is nobody\'s');
     assert(!out.includes('2 awards go to a winner'));

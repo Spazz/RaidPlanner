@@ -172,9 +172,15 @@ const menuLabels = (html) => {
   const menu = html.slice(at, html.indexOf('</div></div>', at));
   return [...menu.matchAll(/role="menuitem"[^>]*>([^<]+)</g)].map((m) => m[1]);
 };
+// The Loot prios summary in the side column (what was pasted, the paste buttons).
+const summaryText = (html) => {
+  const at = html.indexOf('id="board-sum-h"');
+  return at < 0 ? '' : stripTags(html.slice(at, html.indexOf('</section>', at)));
+};
+// The Loot prios item list in the main column, then the summary.
 const boardText = (html) => {
   const at = html.indexOf('id="board-h"');
-  return at < 0 ? '' : stripTags(html.slice(at, html.indexOf('</section>', at)));
+  return (at < 0 ? '' : stripTags(html.slice(at, html.indexOf('</section>', at)))) + ' ' + summaryText(html);
 };
 const paste = (G, list, text) => {
   G.handlers.click['board-open'](el({ 'data-list': list }));
@@ -199,8 +205,8 @@ check('Loot board: an officer pastes the TMB and softres exports through the rea
 
   const page = await openRaid(s, A, up);
   assert.equal(page.S.att.raidBoard.status, 'ok');
-  assert.deepEqual(menuLabels(page.html()), ['Open in Planner', 'Raid settings', 'Guest sign-up link', 'Loot prio (TMB)', 'Soft-reserves (softres)', 'Delete raid']);
-  assert(boardText(page.html()).includes('Paste the ThatsMyBIS prios and the softres.it reserves of this raid'), 'nothing pasted yet');
+  assert.deepEqual(menuLabels(page.html()), ['Open in Planner', 'Raid settings', 'Guest sign-up link', 'Delete raid']);
+  assert(summaryText(page.html()).includes('Paste the ThatsMyBIS prios and the softres.it reserves of this raid'), 'nothing pasted yet');
 
   // TMB: Aldric and Brindle share prio 1 on the sword (Aldric already got it), Brindle is alone on the staff, Cassia (absent) and a stranger are on other items.
   const TMB = encode({ wishlists: {
@@ -280,7 +286,7 @@ check('Loot board after the raid: the Gargul import is compared with the line, a
   const past = (await A.api.post(`${s.base}/raids`, { teamId: s.teamId, raidOn: '2026-10-10', startTime: '20:00', zone: "Gruul's Lair" })).raid.id;
   await A.api.put(`${s.base}/raids/${past}/manual`, { reason: 'No log kept', presentPlayerIds: [aldric, brindle] });
   const page = await openRaid(s, A, past);
-  assert(menuLabels(page.html()).includes('Add loot award'));
+  assert(page.html().includes('data-action="loot-add-open"') && !menuLabels(page.html()).includes('Add loot award'), 'Add award is in the Loot panel, not in More');
   paste(A, 'tmb', encode({ wishlists: { 28770: ['aldric|1|1|1', 'brindle|2|1|1'], 30311: ['brindle|1|1|1'], 30312: ['aldric|1|1|1'] } }));
   A.handlers.click['board-read']();
   await settle();
@@ -304,8 +310,8 @@ check('Loot board after the raid: the Gargul import is compared with the line, a
   await settle();
   const award = (await s.rows('SELECT * FROM loot_awards WHERE manual = 1'))[0];
   assert.deepEqual([award.item_id, award.item_name, award.winner_name, award.tag, award.note, award.source, award.checksum.length], [30311, 'The Staff', 'Brindle', 'MS', 'Handed out after the raid', 'gargul', 38]);
-  const listHtml = A.pages.raidLoot.cardHtml({ guildData: A.guildData, data: page.S.att.raid.data, state: page.S.att.raidLoot });
-  assert(stripTags(listHtml).includes('The Staff') && stripTags(listHtml).includes('2 items'), stripTags(listHtml).slice(0, 400));
+  const listHtml = A.pages.raidLoot.panelHtml({ guildData: A.guildData, data: page.S.att.raid.data, state: page.S.att.raidLoot });
+  assert(stripTags(listHtml).includes('The Staff') && stripTags(listHtml).includes('All 2 items'), stripTags(listHtml).slice(0, 400));
   const nightRoute = { name: 'lootnight', gid: A.guildData.guild.id, rid: page.S.att.raid.rid };
   await A.pages.lootNight.load(nightRoute, A.guildData);
   const loot = stripTags(A.pages.lootNight.main(nightRoute, A.guildData));

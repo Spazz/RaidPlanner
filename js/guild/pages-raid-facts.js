@@ -6,7 +6,7 @@
 //   Line-up        Not published / Published, X of Y  Publish line-up (disabled without a plan) | Re-publish line-up, Unpublish   (before the raid only)
 //   Log            Warcraft Logs / by hand / None     Refresh and Remove per report, Add report | Edit or Remove the hand-entered attendance | Add report, Mark attendance by hand
 //   Duties         who does what                      the Raid duties dialog (pages-raid-extras.js)
-// A finished raid shows Log too and calls the plan "Skipped" when it had none. Every item is an existing handler: raid-op (pages-raid.js) and roster-publish
+// A finished raid shows Log too and calls the plan "Skipped" when it had none; bossesHtml draws the Bosses panel under it. Every item is an existing handler: raid-op (pages-raid.js) and roster-publish
 // (pages-raid-roster.js); this module only draws. The panel carries the phone order hook `gs-rpg-sp-facts` (see guild.css, "Raid page").
 (function (G) {
   'use strict';
@@ -128,5 +128,41 @@
       '<dl class="gs-rpg-dl">' + rows.map(rowHtml).join('') + '</dl></section>';
   }
 
-  G.pages.raidFacts = { factsHtml: factsHtml };
+  // ── Bosses (after the raid, only when the log has pulls): one row per encounter in first-pull order, name left, word right ──
+  // "Kill" (killed with no wipe before the first kill), "Kill after N wipe(s)" (wipes before the first kill), "N wipe(s)" (never killed).
+  function bossRows(pulls) {
+    const order = [];
+    const by = {};
+    pulls.map(function (p, i) { return { p: p, i: i }; }).sort(function (x, y) {
+      const sx = typeof x.p.startedAt === 'number' ? x.p.startedAt : Infinity;
+      const sy = typeof y.p.startedAt === 'number' ? y.p.startedAt : Infinity;
+      return sx === sy ? x.i - y.i : sx - sy;
+    }).forEach(function (e) {
+      const name = e.p && typeof e.p.encounter === 'string' ? e.p.encounter : '';
+      if (!name) return;
+      if (!Object.prototype.hasOwnProperty.call(by, name)) { by[name] = { name: name, killed: false, wipes: 0 }; order.push(by[name]); }
+      const b = by[name];
+      if (b.killed) return;
+      if (e.p.kill) b.killed = true; else b.wipes += 1;
+    });
+    return order;
+  }
+
+  function bossWord(b) {
+    if (!b.killed) return plural(b.wipes, 'wipe', 'wipes');
+    return b.wipes ? 'Kill after ' + plural(b.wipes, 'wipe', 'wipes') : 'Kill';
+  }
+
+  // data: the raid detail. '' when the raid has no pulls (awaiting log, No log - by hand).
+  function bossesHtml(data) {
+    const pulls = Array.isArray(data.pulls) ? data.pulls : [];
+    const rows = bossRows(pulls);
+    if (!rows.length) return '';
+    return '<section class="gs-hd-panel gs-rpl gs-rpl-bosses gs-rpg-sp gs-rpg-sp-bosses" id="raid-bosses" aria-labelledby="raid-bosses-h"><div class="gs-pr-ph"><h2 class="gs-pr-h" id="raid-bosses-h">Bosses</h2></div>' +
+      '<ul class="gs-rpl-bl">' + rows.map(function (b) {
+        return '<li class="gs-rpl-brow"><span class="gs-rpl-bn">' + esc(b.name) + '</span><span class="gs-rpl-bw' + (b.killed ? '' : ' is-wipe') + '">' + esc(bossWord(b)) + '</span></li>';
+      }).join('') + '</ul></section>';
+  }
+
+  G.pages.raidFacts = { factsHtml: factsHtml, bossesHtml: bossesHtml };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

@@ -1,9 +1,9 @@
-// ── PAGE PIECE: THE LOOT CARD OF A RAID (+ the Gargul import panel) ──
+// ── PAGE PIECE: THE LOOT PANEL OF A RAID (+ the Gargul import panel) ──
 // Past raids only. GET /raids/:rid/loot lists the awards; editors re-tag them (PATCH /loot/:aid), add a note, delete one
 // (DELETE /loot/:aid) and import a Gargul "Detailed (JSON)" export: the browser parses the text (js/guild/gargul.js), the
 // Worker previews it against this raid (POST /raids/:rid/loot/preview, nothing is written) and then commits it
-// (POST /raids/:rid/loot). A paste of more than 500 awards goes in several requests of 500. pages-raid.js draws the card
-// and loads its data; the state lives in the attendance state bag (a().raidLoot).
+// (POST /raids/:rid/loot). A paste of more than 500 awards goes in several requests of 500. pages-raid.js draws the Loot side panel (panelHtml) and, while the
+// import is open, importFlowHtml at the top of the main column, and loads the data; the state lives in the attendance state bag (a().raidLoot).
 (function (G) {
   'use strict';
 
@@ -37,12 +37,12 @@
     return x && x.gid === gid && x.rid === rid ? x : null;
   }
 
-  // Whether the card offers "Import from Gargul" now (the raid page's More menu offers the same): loaded, allowed to edit, panel not open yet.
+  // Whether the Loot panel offers "Import from Gargul" now (the next-step bar offers the same): loaded, allowed to edit, panel not open yet.
   function canImport(x) {
     return !!(x && x.status === 'ok' && x.data && x.data.canEdit && x.ui && !x.ui.open);
   }
 
-  // Whether the card (and the raid page's More menu) offers "Add award" now: loaded and allowed to edit.
+  // Whether the Loot panel (and the next-step bar) offers "Add award" now: loaded and allowed to edit.
   function canAdd(x) {
     return !!(x && x.status === 'ok' && x.data && x.data.canEdit);
   }
@@ -194,29 +194,34 @@
     });
   }
 
-  // The post-raid Loot card is a summary: the counts by tag and the first few awards (read-only), with a link to the night's loot page where awards are changed.
+  // The post-raid Loot panel (the side column, Forge): the first few awards (read-only) and "All N items" to the night's loot page, where awards are changed.
   const SUMMARY_ROWS = 5;
   function summaryHtml(gd, awards, rid) {
     const gid = gd.guild.id;
-    const counts = L().TAGS.map(function (t) {
-      return [t, awards.filter(function (w) { return w.tag === t; }).length];
-    }).filter(function (c) { return c[1] > 0; });
-    const countLine = '<p class="gs-fine" id="loot-counts">' + counts.map(function (c) { return esc(c[1] + ' ' + L().TAG_LABELS[c[0]]); }).join(' &middot; ') + '</p>';
     const rows = awards.slice(0, SUMMARY_ROWS).map(function (w) {
-      return '<li class="gs-loot-subrow"><span class="gs-loot-item">' + L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span>' +
-        '<span class="gs-loot-who">' + L().winnerHtml(gid, w.winner, w.match) + '</span>' + L().tagChipHtml(w.tag, w.tagSetBy) + '</li>';
+      return '<li class="gs-rpl-row"><span class="gs-rpl-item">' + L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span>' +
+        '<span class="gs-rpl-who">' + L().winnerHtml(gid, w.winner, w.match) + L().chipHtml('grey', L().TAG_LABELS[w.tag] || String(w.tag == null ? '' : w.tag), L().TAG_NAMES[w.tag]) + (w.tagSetBy ? '<span class="gs-sr"> (set by an officer)</span>' : '') + '</span></li>';
     }).join('');
-    const more = awards.length > SUMMARY_ROWS ? '<p class="gs-fine">' + esc('And ' + (awards.length - SUMMARY_ROWS) + ' more.') + '</p>' : '';
-    return countLine + '<ul class="gs-loot-sublist" aria-label="Loot awarded on this raid">' + rows + '</ul>' + more +
-      '<p><a class="gs-btn gs-btn-sm" id="loot-open-night" href="' + esc(G.router.format({ name: 'lootnight', gid: gid, rid: rid })) + '">Open the night\'s loot</a></p>';
+    return '<ul class="gs-rpl-list" aria-label="Loot awarded on this raid">' + rows + '</ul>' +
+      '<p class="gs-rpl-foot"><a class="gs-linkbtn gs-rpl-all" id="loot-open-night" href="' + esc(G.router.format({ name: 'lootnight', gid: gid, rid: rid })) + '">' + esc('All ' + plural(awards.length, 'item', 'items')) + '</a></p>';
   }
 
-  // opts: { guildData, data (the raid detail), state (stateFor) }
-  function cardHtml(opts) {
+  // One Forge side panel titled Loot: head (title + tools) and body. The wrapper in pages-raid.js carries the id s-loot and the phone order hook.
+  function sidePanelHtml(bodyHtml, toolsHtml, headId) {
+    const id = headId || 'loot-h';
+    return '<section class="gs-hd-panel gs-rpl gs-rpl-loot" aria-labelledby="' + id + '"><div class="gs-rb-ph"><h2 class="gs-pr-h" id="' + id + '">Loot</h2>' +
+      (toolsHtml ? '<span class="gs-rb-acts">' + toolsHtml + '</span>' : '') + '</div><div class="gs-rpl-pb">' + bodyHtml + '</div></section>';
+  }
+
+  // The Loot panel with one muted line (locked until the log is attached, or still reading).
+  function placeholderHtml(text) { return sidePanelHtml('<p class="gs-fine">' + esc(text) + '</p>', '', 'loot-ph-h'); }
+
+  // opts: { guildData, data (the raid detail), state (stateFor) }. The Loot panel; the Gargul import panel opens at the top of the main column (importFlowHtml).
+  function panelHtml(opts) {
     const gd = opts.guildData;
     const x = opts.state;
-    if (x && x.status === 'denied') return deniedCardHtml();
-    if (x && x.status === 'error') return errorCardHtml(x);
+    if (x && x.status === 'denied') return deniedPanelHtml();
+    if (x && x.status === 'error') return errorPanelHtml(x);
     if (!x || x.status !== 'ok' || !x.data) return '';
     const gid = gd.guild.id;
     const awards = Array.isArray(x.data.awards) ? x.data.awards : [];
@@ -224,15 +229,20 @@
     const teamId = idOf(opts.data.raid.team);
     const unmatched = awards.filter(function (w) { return w.match && w.match.kind === 'unmatched'; }).length;
     const review = L().allows(gd, 'attendance.review', teamId);
-    const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot awards</h2><span class="gs-head-tools"><span class="gs-fine">' + esc(plural(awards.length, 'item', 'items')) + '</span>' +
-      (canImport(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-import-open" data-key="loot-import-open">Import from Gargul</button>' : '') +
-      (canAdd(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-add-open" data-key="loot-add-open">Add award</button>' : '') + '</span></div>';
+    const tools = (canImport(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-import-open" data-key="loot-import-open">Import from Gargul</button>' : '') +
+      (canAdd(x) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="loot-add-open" data-key="loot-add-open">Add award</button>' : '');
     const list = awards.length ? summaryHtml(gd, awards, opts.data.raid.id) : '<p class="gs-empty">' + (edit ? 'No loot is recorded for this raid yet. Import a Gargul export to add it, or add an award by hand.' : 'No loot is recorded for this raid yet.') + '</p>';
     const note = unmatched > 0
       ? '<div class="gs-notice" role="status"><span>' + esc(plural(unmatched, 'award goes', 'awards go')) + ' to a winner who is not on the roster. ' + (review ? 'Link them in the Review queue so the loot counts for the right person.' : 'An officer can link them.') + '</span>' +
         (review ? '<a class="gs-btn gs-btn-sm" href="' + esc(G.router.format({ name: 'review', gid: gid })) + '">Review queue</a>' : '') + '</div>' : '';
-    return '<section class="gs-card-sec gs-loot-sec" aria-labelledby="loot-h">' + head + '<div class="gs-card-sec-body">' +
-      (edit && x.ui.open ? importPanelHtml(x.ui, gd) : '') + note + list + '</div></section>';
+    return sidePanelHtml(note + list, tools);
+  }
+
+  // The Gargul import panel, drawn at the top of the main column while it is open (editors only); '' otherwise.
+  function importFlowHtml(opts) {
+    const x = opts.state;
+    if (!x || x.status !== 'ok' || !x.data || !x.data.canEdit || !x.ui || !x.ui.open) return '';
+    return importPanelHtml(x.ui, opts.guildData);
   }
 
   // ── data ──
@@ -258,15 +268,13 @@
   }
 
   // can['loot.view'] does not say who sees loot (the loot policy decides on the Worker), so a 403 is told here, not guessed before.
-  function deniedCardHtml() {
-    return '<section class="gs-card-sec gs-loot-sec" aria-labelledby="loot-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot awards</h2></div><div class="gs-card-sec-body">' +
-      '<p class="gs-fine">You can\'t see this team\'s loot.</p></div></section>';
+  function deniedPanelHtml() {
+    return sidePanelHtml('<p class="gs-fine">You can\'t see this team\'s loot.</p>', '');
   }
 
-  function errorCardHtml(x) {
-    return '<section class="gs-card-sec gs-loot-sec" aria-labelledby="loot-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="loot-h">Loot awards</h2></div><div class="gs-card-sec-body">' +
-      G.ui.alertHtml(x.error || 'Could not load the loot.', 'loot-load-error') +
-      '<div><button type="button" class="gs-btn gs-btn-sm" data-action="loot-reload" data-key="loot-reload">Try again</button></div></div></section>';
+  function errorPanelHtml(x) {
+    return sidePanelHtml(G.ui.alertHtml(x.error || 'Could not load the loot.', 'loot-load-error') +
+      '<div><button type="button" class="gs-btn gs-btn-sm" data-action="loot-reload" data-key="loot-reload">Try again</button></div>', '');
   }
 
   function reloadAwards(c) {
@@ -552,7 +560,9 @@
     stateFor: stateFor,
     canImport: canImport,
     canAdd: canAdd,
-    cardHtml: cardHtml,
+    panelHtml: panelHtml,
+    placeholderHtml: placeholderHtml,
+    importFlowHtml: importFlowHtml,
     addDialogHtml: addDialogHtml,
     deleteDialogHtml: deleteDialogHtml,
     rosterNames: rosterNames,

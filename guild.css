@@ -2845,3 +2845,42 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-rba-acts .gs-btn { flex: 1 1 140px; justify-content: center; }
   .gs-rb-names li.is-you { padding: 0 6px; }
 }
+
+/* -- Raid page loot side (raids revamp lane 4; prefix gs-rpl-): the Bosses and Loot side panels, the Loot prios summary (side) and the Loot prios item list (main). They reuse
+   the gs-pr-ph / gs-rb-ph panel heads of the Raid facts panel and the people board. -- */
+@media (max-width: 1023px) {
+  .gs-rpg-sp-prios { order: 4; }
+}
+.gs-rpl, .gs-rpl-loot, .gs-rpl-sum, .gs-rpl-bosses { min-width: 0; }
+.gs-rpl-pb { display: flex; flex-direction: column; gap: 12px; padding: 12px 20px 16px; border-top: 1px solid var(--hd-hair); min-width: 0; }
+.gs-rpl-pb > .gs-empty, .gs-rpl-pb > .gs-fine, .gs-rpl-pb > .gs-notice, .gs-rpl-pb > .gs-alert, .gs-rpl-pb > .gs-rpl-line { margin: 0; }
+.gs-rpl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.gs-rpl-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 0; min-width: 0; }
+.gs-rpl-row + .gs-rpl-row { border-top: 1px solid var(--hd-hair); }
+.gs-rpl-item { min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.gs-rpl-who { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; font-size: 14px; }
+.gs-rpl-foot { margin: 0; }
+.gs-rpl-all { font-size: 14px; }
+.gs-rpl-line { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.gs-rpl-trow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.gs-rpl-btns { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.gs-rpl-bl { list-style: none; margin: 0; padding: 0; }
+.gs-rpl-brow { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 16px; padding: 10px 20px; border-top: 1px solid var(--hd-hair); font-size: 14px; line-height: 1.4; }
+.gs-rpl-bn { min-width: 0; overflow-wrap: anywhere; color: var(--hd-white); }
+.gs-rpl-bw { flex: none; text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.gs-rpl-bw.is-wipe { color: #fda4af; }
+.gs-rpl-prios .gs-rb-acts { align-items: center; }
+.gs-rpl-prios .gs-board-filters { gap: 8px 16px; }
+.gs-rpl-prios .gs-board-list { background: transparent; border: 0; }
+.gs-rpl-prios .gs-board-row { padding: 12px 0; }
+.gs-rpl-prios .gs-board-row + .gs-board-row { border-top: 1px solid var(--hd-hair); }
+.gs-rpl-prios .gs-board-entry { background: transparent; border-color: var(--hd-hair); }
+@media screen and (max-width: 600px) {
+  .gs-rpl-pb { padding: 12px 16px 16px; }
+  .gs-rpl-brow { padding: 10px 16px; }
+  .gs-rpl-pb .gs-btn, .gs-rpl-prios .gs-board-filters .gs-input { min-height: 44px; }
+  .gs-rpl-pb .gs-notice .gs-btn { justify-content: center; }
+  .gs-rpl-all { display: inline-flex; align-items: center; min-height: 44px; }
+  .gs-rpl-trow .gs-btn { flex: 1 1 100%; justify-content: center; }
+  .gs-rpl-prios .gs-board-row { padding: 12px 0; }
+}

@@ -223,11 +223,11 @@ check('raid loot card and raid night page: the card summarises (counts, first aw
   const state = G.pages.raidLoot.stateFor(s.gid, s.raid);
   assert(state && state.status === 'ok', 'the card loaded');
   assert.equal(state.data.canEdit, true);
-  const card = G.pages.raidLoot.cardHtml({ guildData: s.guildData, data: detail, state });
+  const card = G.pages.raidLoot.panelHtml({ guildData: s.guildData, data: detail, state });
   const cardText = stripTags(card);
-  assert(/\d+ MS/.test(cardText) && /And 9 more\./.test(cardText) && card.includes(`href="#/g/${s.gid}/loot/n/${s.raid}"`), cardText);
+  assert(/All 14 items/.test(cardText) && (card.match(/<li class="gs-rpl-row"/g) || []).length === 5 && card.includes(`href="#/g/${s.gid}/loot/n/${s.raid}"`), cardText);
   assert(/Review queue/.test(cardText), 'the card points at the review queue');
-  assert(!/data-change="loot-tag"/.test(card) && /loot-import-open/.test(card), 'the card edits nothing but keeps the import');
+  assert(!/data-change="loot-tag"/.test(card) && /loot-import-open/.test(card), 'the panel edits nothing but keeps the import');
   assert(S.att.raidLoot === state, 'the state sits in the attendance bag');
   // The night page.
   const route = { name: 'lootnight', gid: s.gid, rid: s.raid };
@@ -439,7 +439,7 @@ check('visibility: a member under "own" gets scope "own" (one row and the team a
   // Raid card: the member sees only their own awards and no editing controls.
   const detail = await M.api.get(`${s.base}/raids/${s.raid}`);
   await M.pages.raidLoot.loadFor(gd, detail);
-  const card = M.pages.raidLoot.cardHtml({ guildData: gd, data: detail, state: M.pages.raidLoot.stateFor(s.gid, s.raid) });
+  const card = M.pages.raidLoot.panelHtml({ guildData: gd, data: detail, state: M.pages.raidLoot.stateFor(s.gid, s.raid) });
   assert(!/data-change="loot-tag"/.test(card) && !/loot-import-open/.test(card) && !/loot-delete/.test(card), 'no editing controls for a member');
   assert(/Thoren/.test(stripTags(card)) && !/Kaelith/.test(stripTags(card)), 'only their own awards');
   await M.pages.personLoot.loadCard(s.gid, s.people.Kaelith);

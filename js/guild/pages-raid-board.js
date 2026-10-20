@@ -3,17 +3,18 @@
 // expected on the raid: one row per item with who is in line (prio order first, then soft-reserve holders and pugs), roll-offs marked, items a player
 // already got on an earlier raid greyed out, and, once the raid is over, where each award went. Editors (loot.edit) paste the export text: the browser
 // decodes and normalizes it (js/guild/tmb.js, softres.js), the Worker keeps the rows (PUT /raids/:rid/loot-lists, a paste replaces that source's rows).
-// pages-raid.js draws the card, offers the same actions in its More menu and loads the data; the state lives in the attendance state bag (a().raidBoard).
+// pages-raid.js draws the side summary (summaryHtml: what was pasted, Remove, the paste buttons), the item list in the main column (listHtml, only once something
+// is pasted) and, while a paste is open, panelHtml at the top of the main column, and loads the data; the state lives in the attendance state bag (a().raidBoard).
 (function (G) {
   'use strict';
 
   const LISTS = {
     tmb: {
-      label: 'Loot prio (TMB)', short: 'TMB prios', parser: 'tmb', name: 'ThatsMyBIS',
+      label: 'Loot prio (TMB)', short: 'TMB prios', paste: 'Paste TMB prios', parser: 'tmb', name: 'ThatsMyBIS',
       help: 'On ThatsMyBIS open the Gargul export ("Export Gargul") and copy the text. Paste it here or pick the saved file. Prios and wishlists are kept for this raid; pasting again replaces them.',
     },
     softres: {
-      label: 'Soft-reserves (softres)', short: 'Soft-reserves', parser: 'softres', name: 'softres.it',
+      label: 'Soft-reserves (softres)', short: 'Soft-reserves', paste: 'Paste soft-reserves', parser: 'softres', name: 'softres.it',
       help: 'On softres.it open the raid, use "Gargul Export" and copy the text. Paste it here or pick the saved file. Pasting again replaces the soft-reserves of this raid.',
     },
   };
@@ -38,7 +39,7 @@
 
   function canEdit(x) { return !!(x && x.status === 'ok' && x.data && x.data.canEdit); }
 
-  // Whether the More menu offers "Loot prio (TMB)" / "Soft-reserves (softres)" now: loaded, allowed to edit, that panel not open yet.
+  // Whether the summary offers "Paste TMB prios" / "Paste soft-reserves" now: loaded, allowed to edit, that panel not open yet.
   function canPaste(x, list) { return canEdit(x) && !!x.ui && x.ui.list !== list; }
 
   function cur() {
@@ -77,8 +78,8 @@
   function entryHtml(e) {
     const cls = 'gs-board-entry' + (e.received ? ' is-received' : '') + (e.top && !e.received ? ' is-top' : '') + (e.kind === 'wish' ? ' is-wish' : '');
     return '<li class="' + cls + '"><span class="gs-board-tag">' + esc(entryLabel(e)) + '</span> ' + G.ui.classNameHtml(e.name, e.class) +
-      (e.guest ? ' <span class="gs-chip gs-chip-flag">Guest</span>' : '') +
-      (e.received ? ' <span class="gs-chip gs-chip-src">Already got it</span>' : '') + '</li>';
+      (e.guest ? ' <span class="gs-hd-chip is-grey">Guest</span>' : '') +
+      (e.received ? ' <span class="gs-hd-chip is-grey">Already got it</span>' : '') + '</li>';
   }
 
   function resultText(r) {
@@ -95,28 +96,28 @@
   }
 
   function rowHtml(gd, item) {
-    const flags = (item.contested ? '<span class="gs-pill gs-pill-warn">Roll-off</span>' : '') + (item.done ? '<span class="gs-pill gs-pill-muted">All have it</span>' : '');
+    const flags = (item.contested ? '<span class="gs-hd-chip is-grey">Roll-off</span>' : '') + (item.done ? '<span class="gs-hd-chip is-grey">All have it</span>' : '');
     const omitted = item.omitted > 0 ? '<span class="gs-fine">' + esc(plural(item.omitted, 'more is', 'more are')) + ' in line but not on this raid.</span>' : '';
     return '<li class="gs-board-row' + (item.contested ? ' is-contested' : '') + (item.done ? ' is-done' : '') + '" id="board-' + esc(item.itemId) + '">' +
       '<div class="gs-board-item">' + L().itemHtml({ itemId: item.itemId, itemName: item.itemName, quality: null }, gd.guild.gameVersion) + flags + '</div>' +
       '<ol class="gs-board-line" aria-label="In line">' + item.line.map(entryHtml).join('') + '</ol>' + omitted + resultsHtml(item) + '</li>';
   }
 
-  // The sources line: what was pasted when, and who the line is built from.
-  function sourcesHtml(data, edit) {
-    const lists = data.lists || {};
-    const parts = LIST_KEYS.map(function (k) {
-      const l = lists[k];
-      const when = l ? plural(l.rows, 'row', 'rows') + ', pasted ' + G.ui.relativeTime(l.importedAt).toLowerCase() : 'not pasted';
-      const remove = l && edit
-        ? ' <button type="button" class="gs-btn gs-btn-sm" data-action="board-remove" data-list="' + k + '" data-key="board-remove-' + k + '" aria-label="Remove the ' + esc(LISTS[k].short) + ' of this raid">Remove</button>' : '';
-      return '<span class="gs-board-source"><strong>' + esc(LISTS[k].short) + '</strong>: ' + esc(when) + remove + '</span>';
-    });
+  // One summary line per list: what was pasted when (with Remove for an editor), or "not pasted".
+  function sourceLineHtml(data, k, edit) {
+    const l = (data.lists || {})[k];
+    if (!l) return '<p class="gs-rpl-line">' + esc(LISTS[k].short + ': not pasted') + '</p>';
+    const remove = edit
+      ? '<button type="button" class="gs-btn gs-btn-sm" data-action="board-remove" data-list="' + k + '" data-key="board-remove-' + k + '" aria-label="Remove the ' + esc(LISTS[k].short) + ' of this raid">Remove</button>' : '';
+    return '<div class="gs-rpl-trow"><span>' + esc(LISTS[k].short + ': ' + plural(l.rows, 'row', 'rows') + ', pasted ' + G.ui.relativeTime(l.importedAt).toLowerCase()) + '</span>' + remove + '</div>';
+  }
+
+  // Who the line is built from.
+  function whoLine(data) {
     const roster = data.roster || {};
-    const who = roster.source === 'team'
+    return roster.source === 'team'
       ? 'Nobody is signed up or placed yet: everyone on the team (' + plural(roster.people || 0, 'person', 'people') + ') counts as coming.'
       : 'In line: the ' + plural(roster.people || 0, 'person', 'people') + ' signed up, placed or present on this raid.';
-    return '<div class="gs-board-sources">' + parts.join('') + '</div><p class="gs-fine">' + esc(who) + '</p>';
   }
 
   function filtersHtml(data, view) {
@@ -175,7 +176,7 @@
     };
   }
 
-  // The TMB / softres paste is the T5 flow inside the raid's Loot prios card: Source (paste or file), Preview (what was read, commit bar), Import (inline result).
+  // The TMB / softres paste is the T5 flow at the top of the raid's main column: Source (paste or file), Preview (what was read, commit bar), Import (inline result).
   function panelHtml(x) {
     const ui = x.ui;
     const list = ui.list;
@@ -189,48 +190,76 @@
     });
   }
 
-  // ── card ──
-  // opts: { guildData, data (the raid detail), state (stateFor) }. Nothing for a viewer the loot visibility keeps out, or when nothing was pasted and
-  // the viewer cannot paste.
-  function cardHtml(opts) {
+  // ── panels ──
+  function pastedOf(data) { return LIST_KEYS.some(function (k) { return data.lists && data.lists[k]; }); }
+
+  // The state of the board when it can show something: { data, edit, pasted }, else null (not loaded, denied, none, error).
+  function readyOf(x) {
+    if (!x || x.status !== 'ok' || !x.data) return null;
+    return { data: x.data, edit: canEdit(x), pasted: pastedOf(x.data) };
+  }
+
+  // The item list in the main column: Loot prios with the filters and Print in its head. Only once something is pasted and some item has a line.
+  // opts: { guildData, data (the raid detail), state (stateFor) }.
+  function listHtml(opts) {
     const gd = opts.guildData;
     const x = opts.state;
-    if (!x || x.status === 'denied' || x.status === 'none') return '';
-    if (x.status === 'error') return errorCardHtml(x);
-    if (x.status !== 'ok' || !x.data) return '';
-    const data = x.data;
-    const edit = canEdit(x);
-    const pasted = LIST_KEYS.some(function (k) { return data.lists && data.lists[k]; });
-    if (!pasted && !edit) return '';
+    const r = readyOf(x);
+    if (!r || !r.pasted || !(r.data.items || []).length) return '';
+    const data = r.data;
     const view = x.view || freshView();
     const shown = visibleItems(data, view);
-    const tools = (pasted && (data.items || []).length ? '<button type="button" class="gs-btn gs-btn-sm" data-action="board-print" data-key="board-print">Print</button>' : '') +
-      (edit ? LIST_KEYS.map(function (k) {
-        return canPaste(x, k) ? '<button type="button" class="gs-btn gs-btn-sm" data-action="board-open" data-list="' + k + '" data-key="board-open-' + k + '">' + esc(LISTS[k].short) + '</button>' : '';
-      }).join('') : '');
-    const head = '<div class="gs-card-sec-head"><h2 class="gs-h2" id="board-h">Loot prios</h2><span class="gs-head-tools">' +
-      (pasted ? '<span class="gs-fine">' + esc(plural((data.items || []).length, 'item', 'items')) + '</span>' : '') + tools + '</span></div>';
+    const head = '<div class="gs-rb-ph"><h2 class="gs-pr-h" id="board-h">Loot prios</h2><div class="gs-rb-acts">' + filtersHtml(data, view) +
+      '<button type="button" class="gs-btn gs-btn-sm" data-action="board-print" data-key="board-print">Print</button></div></div>';
     let list;
-    if (!pasted) {
-      list = '<p class="gs-empty">Paste the ThatsMyBIS prios and the softres.it reserves of this raid to see who is in line for each item and which items need a roll-off.</p>';
-    } else if (!(data.items || []).length) {
-      list = '<p class="gs-empty">Nobody on this raid is in line for an item in the pasted lists.' + ((data.unmatched || []).length ? ' ' + esc(plural(data.unmatched.length, 'name in the TMB prios is', 'names in the TMB prios are')) + ' not on the roster: ' + esc(data.unmatched.join(', ')) + '.' : '') + '</p>';
-    } else if (!shown.length) {
+    if (!shown.length) {
       list = '<p class="gs-empty">No item matches these filters.</p>';
     } else {
       list = '<ul class="gs-board-list" aria-label="Items and who is in line">' + shown.map(function (item) { return rowHtml(gd, item); }).join('') + '</ul>' +
         (shown.length < data.items.length ? '<p class="gs-fine">' + esc('Showing ' + shown.length + ' of ' + data.items.length + ' items.') + '</p>' : '');
     }
-    const unmatched = pasted && (data.items || []).length && (data.unmatched || []).length
+    const unmatched = (data.unmatched || []).length
       ? '<details class="gs-how"><summary>' + esc(plural(data.unmatched.length, 'TMB name is', 'TMB names are')) + ' not on the roster</summary><p class="gs-fine">' + esc(data.unmatched.join(', ')) + '</p></details>' : '';
-    return '<section class="gs-card-sec gs-board-sec" aria-labelledby="board-h">' + head + '<div class="gs-card-sec-body">' +
-      (edit ? panelHtml(x) : '') + (pasted ? sourcesHtml(data, edit) : '') + (pasted ? filtersHtml(data, view) : '') + list + unmatched + '</div></section>';
+    return '<section class="gs-hd-panel gs-rb gs-rpl gs-rpl-prios" aria-labelledby="board-h">' + head + '<div class="gs-rpl-pb">' + list + unmatched + '<p class="gs-fine">' + esc(whoLine(data)) + '</p></div></section>';
   }
 
-  function errorCardHtml(x) {
-    return '<section class="gs-card-sec gs-board-sec" aria-labelledby="board-h"><div class="gs-card-sec-head"><h2 class="gs-h2" id="board-h">Loot prios</h2></div><div class="gs-card-sec-body">' +
-      G.ui.alertHtml(x.error || 'Could not load the loot prios.', 'board-load-error') +
-      '<div><button type="button" class="gs-btn gs-btn-sm" data-action="board-reload" data-key="board-reload">Try again</button></div></div></section>';
+  function sidePanelHtml(bodyHtml) {
+    return '<section class="gs-hd-panel gs-rpl gs-rpl-sum" aria-labelledby="board-sum-h"><div class="gs-pr-ph"><h2 class="gs-pr-h" id="board-sum-h">Loot prios</h2></div><div class="gs-rpl-pb">' + bodyHtml + '</div></section>';
+  }
+
+  // The side summary: what was pasted when (Remove for an editor), the item and roll-off counts, the paste buttons. Nothing for a viewer the loot visibility keeps out,
+  // or when nothing was pasted and the viewer cannot paste. opts: { state }.
+  function summaryHtml(opts) {
+    const x = opts.state;
+    if (x && x.status === 'error') return errorPanelHtml(x);
+    const r = readyOf(x);
+    if (!r || (!r.pasted && !r.edit)) return '';
+    const data = r.data;
+    const items = data.items || [];
+    const lines = LIST_KEYS.map(function (k) { return sourceLineHtml(data, k, r.edit); }).join('');
+    let counts = '';
+    if (!r.pasted) {
+      counts = '<p class="gs-fine">Paste the ThatsMyBIS prios and the softres.it reserves of this raid to see who is in line for each item and which items need a roll-off.</p>';
+    } else if (!items.length) {
+      counts = '<p class="gs-fine">Nobody on this raid is in line for an item in the pasted lists.' + ((data.unmatched || []).length ? ' ' + esc(plural(data.unmatched.length, 'name in the TMB prios is', 'names in the TMB prios are')) + ' not on the roster: ' + esc(data.unmatched.join(', ')) + '.' : '') + '</p>';
+    } else {
+      counts = '<p class="gs-rpl-line">' + esc(plural(items.length, 'item', 'items') + ', ' + plural(items.filter(function (i) { return i.contested; }).length, 'roll-off', 'roll-offs')) + '</p>';
+    }
+    const paste = r.edit ? LIST_KEYS.map(function (k) {
+      return canPaste(x, k) ? '<button type="button" class="gs-btn" data-action="board-open" data-list="' + k + '" data-key="board-open-' + k + '">' + esc(LISTS[k].paste) + '</button>' : '';
+    }).join('') : '';
+    return sidePanelHtml(lines + counts + (paste ? '<div class="gs-rpl-btns">' + paste + '</div>' : ''));
+  }
+
+  // The TMB / softres paste panel, drawn at the top of the main column while it is open (editors only); '' otherwise.
+  function pasteFlowHtml(opts) {
+    const x = opts.state;
+    return canEdit(x) && x.ui ? panelHtml(x) : '';
+  }
+
+  function errorPanelHtml(x) {
+    return sidePanelHtml(G.ui.alertHtml(x.error || 'Could not load the loot prios.', 'board-load-error') +
+      '<div><button type="button" class="gs-btn gs-btn-sm" data-action="board-reload" data-key="board-reload">Try again</button></div>');
   }
 
   // The printable sheet (written into the page's #print-sheet): item, roll-off, who is in line. gd: the guild data; raid: the raid detail's raid.
@@ -456,7 +485,9 @@
     LISTS: LISTS,
     stateFor: stateFor,
     canPaste: canPaste,
-    cardHtml: cardHtml,
+    listHtml: listHtml,
+    summaryHtml: summaryHtml,
+    pasteFlowHtml: pasteFlowHtml,
     panelHtml: panelHtml,
     rowHtml: rowHtml,
     printHtml: printHtml,

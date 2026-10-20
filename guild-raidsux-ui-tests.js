@@ -306,25 +306,27 @@ const reset = () => { doc.nodes.length = 0; doc.activeElement = null; };
     assertNoRawAttrs(out);
   });
 
-  await check('raid page: the More menu holds the page-level items for a past raid - Open in Planner, Recalculate, Raid settings, the loot items - and Delete raid (danger, after a rule)', () => {
+  await check('raid page: the More menu holds the page-level items for a past raid - Open in Planner, Recalculate, Raid settings - and Delete raid (danger, after a rule); the four loot items are gone', () => {
     const out = raidPage(detail(), { loot: lootState(), roster: rosterState() });
     const menu = out.slice(out.indexOf('id="raid-actions-list"'), out.indexOf('</div></div>', out.indexOf('id="raid-actions-list"')));
     const labels = [...menu.matchAll(/role="menuitem"[^>]*>([^<]+)</g)].map(m => m[1]);
-    assert.deepEqual(labels, ['Open in Planner', 'Recalculate attendance', 'Raid settings', 'Import loot from Gargul', 'Add loot award', 'Delete raid'], 'Open in Planner is first');
-    assert(menu.indexOf('gs-menu-sep') > menu.indexOf('Add loot award') && menu.indexOf('gs-menu-sep') < menu.indexOf('Delete raid'), 'Delete raid sits after a rule, alone in its group');
+    assert.deepEqual(labels, ['Open in Planner', 'Recalculate attendance', 'Raid settings', 'Delete raid'], 'Open in Planner is first');
+    assert(menu.indexOf('gs-menu-sep') > menu.indexOf('Raid settings') && menu.indexOf('gs-menu-sep') < menu.indexOf('Delete raid'), 'Delete raid sits after a rule, alone in its group');
     assert(/class="gs-menu-item is-danger"[^>]*data-op="raid-delete"/.test(menu));
-    assert(menu.includes('data-action="loot-import-open"') && menu.includes('data-op="plan-in-planner"') && menu.includes('data-op="recompute"') && menu.includes('data-op="settings"'));
+    assert(!menu.includes('loot-import-open') && !menu.includes('loot-add-open') && !menu.includes('board-open'), 'no loot or prio action in More');
+    assert(menu.includes('data-op="plan-in-planner"') && menu.includes('data-op="recompute"') && menu.includes('data-op="settings"'));
     assert(!menu.includes('Mark as No log'), 'a raid with reports is not marked No log');
     assert(!menu.includes('Publish line-up') && !menu.includes('Set raid duties'), 'Publish line-up and the duties are in the Raid facts panel');
   });
 
-  await check('raid page: Mark as No log is offered only without a log; Import loot only when the loot card would offer it; Publish line-up is no longer in More (it is the next-step primary and in the Line-up Change menu)', () => {
+  await check('raid page: Mark as No log is offered only without a log; the Loot panel offers Import from Gargul only when it can; Publish line-up is no longer in More (it is the next-step primary and in the Line-up Change menu)', () => {
     const awaiting = detail({ raid: Object.assign(detail().raid, { state: 'awaiting_log' }), people: [], sources: { event: null, reports: [], plan: null } });
     assert(raidPage(awaiting, { loot: lootState() }).includes('Mark as No log'));
-    assert(!raidPage(detail(), {}).includes('Import loot from Gargul'), 'loot not loaded: not offered');
-    assert(!raidPage(detail(), { loot: lootState({ data: { awards: [], canEdit: false } }) }).includes('Import loot from Gargul'));
+    assert(!raidPage(detail(), {}).includes('data-key="loot-import-open"'), 'loot not loaded: not offered');
+    assert(!raidPage(detail(), { loot: lootState({ data: { awards: [], canEdit: false } }) }).includes('data-key="loot-import-open"'));
+    assert(raidPage(detail(), { loot: lootState() }).includes('data-key="loot-import-open">Import from Gargul<'), 'the Loot panel head offers it');
     const open = lootState(); open.ui.open = true;
-    assert(!raidPage(detail(), { loot: open }).includes('>Import loot from Gargul<'), 'the import panel is already open');
+    assert(!raidPage(detail(), { loot: open }).includes('data-key="loot-import-open"'), 'the import panel is already open');
     const up = detail({ raid: { id: 'u1', team: 't1', raidOn: '2026-10-24', startsAt: Date.UTC(2026, 9, 25, 0, 0), upcoming: true, title: null, zone: 'Black Temple', state: 'awaiting_log', openFlags: 0, stale: false, version: 1 }, people: [], pulls: [], signups: [] });
     const publish = raidPage(up, { roster: rosterState() });
     assert(!publish.includes('data-key="mi-ro-publish"'), 'not in More');

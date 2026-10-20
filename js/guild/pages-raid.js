@@ -2,14 +2,15 @@
 // One raid on the T2 object template, Forge look (design-spec 2-4; raids revamp round 3, concept A "one board"): the head (back link, "<Fri Oct 23> - <title, zone or
 // size>", ONE chip, one context line, More for raids.edit with page-level items only), the next-step bar with the page's one primary (nextStepOf, the stage model
 // stagesOf stays but no strip is drawn), the You bar (pages-raid-you.js: the viewer's sign-up, seat or result), then two columns from 1024 px (main 2fr, side 1fr).
-// Before the raid the main column holds the Sign-ups panel, the Line-up card (officers, once published) and the Loot prios card; after it, the Attendance board
-// (pages-raid-attendance.js) with the Unmatched characters panel, the sign-ups record behind "Show sign-ups" and Loot prios. The side column is the Raid facts panel (pages-raid-facts.js:
-// event, plan, line-up, log, duties, each with an officer's Change menu) and, after the raid, the Loot awards card. Raid settings is a form dialog from More.
+// Before the raid the main column holds the Sign-ups panel, the Line-up card (officers, once published) and the Loot prios list; after it, the Attendance board
+// (pages-raid-attendance.js) with the Unmatched characters panel, the sign-ups record behind "Show sign-ups" and the Loot prios list. The Gargul import and the TMB / softres
+// paste open at the top of the main column while they are open. The side column is the Raid facts panel (pages-raid-facts.js: event, plan, line-up, log, duties, each with an
+// officer's Change menu), after the raid the Bosses and Loot panels, then the Loot prios summary. Raid settings is a form dialog from More.
 // The dialogs that change the raid (event, report, plan, manual attendance, delete) are as they were. The menus are ui.menuHtml / ui.menu. GET /raids/:rid; every write answers with the detail.
 // The Decide and Unmatched dialogs live in pages-review.js and work here too (where = 'raid').
 // A raid that has not started (raid.upcoming) shows its start time ("Time not set" for a date-only raid); the Raid settings dialog sets the raid's own size and, until
 // it starts, its sign-up deadline (PATCH /raids/:rid). The Sign-ups panel (pages-raid-signups.js; a past raid's only for officers or when there are sign-ups) and a past
-// raid's Loot card (pages-raid-loot.js) are loaded with the detail.
+// raid's Loot panel (pages-raid-loot.js) and the Loot prios (pages-raid-board.js) are loaded with the detail.
 (function (G) {
   'use strict';
 
@@ -71,15 +72,9 @@
     };
   }
 
-  // The Loot card of a past raid; nothing while its data is not loaded (or the viewer does not see loot).
-  function lootCardHtml(gd, data, loot) {
-    return G.pages.raidLoot ? G.pages.raidLoot.cardHtml({ guildData: gd, data: data, state: loot }) : '';
-  }
-
-  // The Loot prios card (PM wave 5) of an upcoming or a past raid; nothing while its data is not loaded, when the loot visibility keeps the viewer out, or
-  // when nothing was pasted and the viewer cannot paste.
-  function boardCardHtml(gd, data, board) {
-    return G.pages.raidBoard ? G.pages.raidBoard.cardHtml({ guildData: gd, data: data, state: board }) : '';
+  // The Loot side panel of a past raid; nothing while its data is not loaded (or the viewer does not see loot).
+  function lootPanelHtml(gd, data, loot) {
+    return G.pages.raidLoot ? G.pages.raidLoot.panelHtml({ guildData: gd, data: data, state: loot }) : '';
   }
 
   // ── Raid settings (officers): the raid's own size and sign-up deadline ──
@@ -273,47 +268,65 @@
   // ── the columns (design-spec 3, T2: main 2fr, side 1fr from 1024 px; one column below, the side panels after the main column) ──
   function bareSection(id, html) { return html ? G.ui.objectSectionHtml({ id: id, bare: true, bodyHtml: html }) : ''; }
 
-  // Before the raid: the Sign-ups panel, the Line-up card (officers, once published), the Loot prios card.
-  function mainBefore(gd, data, opts) {
+  // The import and paste flows (Gargul awards after the raid, TMB / softres prios any time) open at the TOP of the main column while they are open, full width.
+  function flowsHtml(data, opts, model) {
+    const loot = !model.upcoming && G.pages.raidLoot ? G.pages.raidLoot.importFlowHtml({ guildData: opts.guildData, state: opts.loot }) : '';
+    const board = G.pages.raidBoard ? G.pages.raidBoard.pasteFlowHtml({ state: opts.board }) : '';
+    return loot + board;
+  }
+
+  // The Loot prios item list in the main column (only once something is pasted and has items); its anchor is s-board.
+  function prioListHtml(gd, data, opts) {
+    return G.pages.raidBoard ? G.pages.raidBoard.listHtml({ guildData: gd, data: data, state: opts.board }) : '';
+  }
+
+  // Before the raid: the open flows, the Sign-ups panel, the Line-up card (officers, once published), the Loot prios list.
+  function mainBefore(gd, data, opts, model) {
     const roster = rosterViewOf(opts.roster);
     const lineup = rosterCardHtml(gd, data, opts.roster, opts.signups);
-    return bareSection('s-signups', signupsPanelHtml(gd, data, opts.signups)) +
+    return flowsHtml(data, opts, model) + bareSection('s-signups', signupsPanelHtml(gd, data, opts.signups)) +
       bareSection('s-lineup', roster && roster.published ? lineup : (opts.roster && opts.roster.status === 'error' ? lineup : '')) +
-      bareSection('s-board', boardCardHtml(gd, data, opts.board));
+      bareSection('s-board', prioListHtml(gd, data, opts));
   }
 
-  // After the raid: the Attendance board (+ Unmatched characters), the sign-ups record behind "Show sign-ups", the Loot prios card.
-  function mainAfter(gd, data, opts) {
+  // After the raid: the open flows, the Attendance board (+ Unmatched characters), the sign-ups record behind "Show sign-ups", the Loot prios list.
+  function mainAfter(gd, data, opts, model) {
     const signups = signupsPanelHtml(gd, data, opts.signups);
     const record = signups ? '<details class="gs-srow-more gs-rpg-record" id="s-signups" tabindex="-1"><summary>Show sign-ups</summary><div class="gs-srow-body">' + signups + '</div></details>' : '';
-    return attendanceHtml(gd, data, opts) + record + bareSection('s-board', boardCardHtml(gd, data, opts.board));
+    return flowsHtml(data, opts, model) + attendanceHtml(gd, data, opts) + record + bareSection('s-board', prioListHtml(gd, data, opts));
   }
 
-  // The side column: the Raid facts panel; after the raid also the Loot awards card (its own locked / reading placeholders until the log is attached).
-  // Each side panel carries a phone order class (gs-rpg-sp-loot, -bosses, -facts) that guild.css turns into the order on one column.
+  // The side column. Desktop order: Raid facts, then after the raid Bosses and Loot, then the Loot prios summary. Each side panel carries a phone order class
+  // (gs-rpg-sp-loot, -bosses, -facts, -prios) that guild.css turns into the order on one column (Loot, Bosses, Raid facts, prio summary). The Loot panel has its own
+  // locked / reading placeholders until the log is attached. The summary takes the anchor s-board when the main column has no prio list.
   function sideHtml(gd, data, opts, model) {
     const facts = G.pages.raidFacts ? G.pages.raidFacts.factsHtml({ data: data, parts: { roster: opts.roster }, model: model }) : '';
-    if (model.upcoming) return facts;
-    const loot = lootCardHtml(gd, data, opts.loot);
+    const board = G.pages.raidBoard ? G.pages.raidBoard : null;
+    const summary = board ? board.summaryHtml({ state: opts.board }) : '';
+    const anchored = !prioListHtml(gd, data, opts);
+    const prios = summary ? '<div class="gs-rpg-sp gs-rpg-sp-prios"' + (anchored ? ' id="s-board" tabindex="-1"' : '') + '>' + summary + '</div>' : '';
+    if (model.upcoming) return facts + prios;
+    const bosses = G.pages.raidFacts ? G.pages.raidFacts.bossesHtml(data) : '';
+    const loot = lootPanelHtml(gd, data, opts.loot);
     const lootStage = model.stages.filter(function (s) { return s.key === 'loot'; })[0];
+    const placeholder = function (text) { return G.pages.raidLoot ? G.pages.raidLoot.placeholderHtml(text) : ''; };
     let lootHtml;
-    if (loot) lootHtml = G.ui.objectSectionHtml({ id: 's-loot', bare: true, bodyHtml: loot });
-    else if (lootStage.state === 'later') lootHtml = G.ui.objectSectionHtml({ id: 's-loot', title: 'Loot awards', locked: 'Opens after the log is attached. Then import the Gargul export here.' });
-    else lootHtml = G.ui.objectSectionHtml({ id: 's-loot', title: 'Loot awards', bodyHtml: '<p class="gs-fine">Reading the loot awards...</p>' });
-    return facts + '<div class="gs-rpg-sp gs-rpg-sp-loot">' + lootHtml + '</div>';
+    if (loot) lootHtml = loot;
+    else if (lootStage.state === 'later') lootHtml = placeholder('Opens after the log is attached. Then import the Gargul export here.');
+    else lootHtml = placeholder('Reading the loot awards...');
+    return facts + bosses + '<div class="gs-rpg-sp gs-rpg-sp-loot" id="s-loot" tabindex="-1">' + lootHtml + '</div>' + prios;
   }
 
   function columnsHtml(gd, data, opts, model) {
-    const main = model.upcoming ? mainBefore(gd, data, opts) : mainAfter(gd, data, opts);
+    const main = model.upcoming ? mainBefore(gd, data, opts, model) : mainAfter(gd, data, opts, model);
     return '<div class="gs-rpg-cols"><div class="gs-rpg-main">' + main + '</div><div class="gs-rpg-side">' + sideHtml(gd, data, opts, model) + '</div></div>';
   }
 
   // The more menu of the page, for those who may edit the raid: page-level items only (what belongs to the event, plan, line-up, log or duties is a Change menu in the
-  // Raid facts panel). The loot items stay here until the loot side of the page is rebuilt. ctx: { loot, board } (the card states).
+  // Raid facts panel; the loot and prio actions live in the Loot and Loot prios panels). ctx is unused now.
   function moreItemsOf(data, ctx) {
     if (!(data.can && data.can.edit)) return [];
     const upcoming = isUpcoming(data);
-    const loot = G.pages.raidLoot;
     const extras = G.pages.raidExtras ? G.pages.raidExtras.menuItems(data) : []; // Guest sign-up link (before) / Paste raid roster (after, no WCL report)
     const settings = { label: 'Raid settings', key: 'mi-raid-settings', data: { action: 'raid-op', op: 'settings' } };
     const items = [{ label: 'Open in Planner', key: 'mi-plan-in-planner', data: { action: 'raid-op', op: 'plan-in-planner' } }];
@@ -325,13 +338,6 @@
       if (!isManual(data) && !hasReports(data)) items.push({ label: 'Mark as No log', key: 'mi-manual-open', data: { action: 'raid-op', op: 'manual-open' } });
       extras.forEach(function (item) { items.push(item); });
       items.push(settings);
-      if (loot && loot.canImport(ctx.loot)) items.push({ label: 'Import loot from Gargul', key: 'mi-loot-import', data: { action: 'loot-import-open' } });
-      if (loot && loot.canAdd(ctx.loot)) items.push({ label: 'Add loot award', key: 'mi-loot-add', data: { action: 'loot-add-open' } });
-    }
-    const board = G.pages.raidBoard;
-    if (board) {
-      if (board.canPaste(ctx.board, 'tmb')) items.push({ label: board.LISTS.tmb.label, key: 'mi-board-tmb', data: { action: 'board-open', list: 'tmb' } });
-      if (board.canPaste(ctx.board, 'softres')) items.push({ label: board.LISTS.softres.label, key: 'mi-board-softres', data: { action: 'board-open', list: 'softres' } });
     }
     items.push({ separator: true }, { label: 'Delete raid', key: 'mi-raid-delete', danger: true, data: { action: 'raid-op', op: 'raid-delete' } });
     return items;
