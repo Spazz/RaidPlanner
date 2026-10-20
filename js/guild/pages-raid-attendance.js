@@ -192,17 +192,19 @@
     const everyone = people.filter(P().onRosterThatDay);
     const hidden = people.length - everyone.length;
     const flaggedAll = people.filter(needsReview);
-    const filter = o.filter || (flaggedAll.length ? 'review' : 'all');
+    // Review is for officers: members always see Everyone, without the Needs review / Everyone switch.
+    const canReview = !!(data.can && data.can.review);
+    const filter = !canReview ? 'all' : (o.filter || (flaggedAll.length ? 'review' : 'all'));
     const signupView = o.signups && o.signups.status === 'ok' && o.signups.data ? o.signups.data : null;
     const ctx = {
-      gid: gid, rid: data.raid.id, review: !!(data.can && data.can.review), see: !!(data.can && data.can.seeAttendance),
+      gid: gid, rid: data.raid.id, review: canReview, see: !!(data.can && data.can.seeAttendance),
       me: signupView && signupView.me ? signupView.me.personId : null,
       specs: specsOfList(o.signups), signupRows: signupRowOf(data),
     };
     ctx.textHtml = textHtmlOf(ctx);
     const attended = everyone.filter(function (p) { return p.outcome === 'present' || p.outcome === 'fill_in'; }).length;
     const head = '<span class="gs-rb-fig">' + attended + ' <span class="gs-rb-of">attended</span></span>' + (o.summary ? '<span class="gs-rb-mut">' + esc(o.summary) + '</span>' : '') +
-      '<span class="gs-rb-acts">' + segHtml(filter, flaggedAll.length, everyone.length) + '</span>';
+      (canReview ? '<span class="gs-rb-acts">' + segHtml(filter, flaggedAll.length, everyone.length) + '</span>' : '');
     let body;
     if (filter === 'review') body = reviewListHtml(ctx, flaggedAll.slice().sort(byName));
     else {
