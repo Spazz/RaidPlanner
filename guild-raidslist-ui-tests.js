@@ -54,7 +54,7 @@ const UP = (id, over) => Object.assign({
 const PAST = (id, over) => Object.assign({ id, raidOn: '2026-10-10', zone: 'Gruul\'s Lair', size: 25, bosses: { kills: 2, pulls: 3 }, sources: { event: true, reports: 1, plan: true }, counts: { present: 20, bench: 2, missed: 3 }, openFlags: 0, state: 'reviewed', stale: false }, over || {});
 const LIST = (over) => Object.assign({ team: { id: 't1', name: 'Team KJ' }, today: '2026-10-19', can: { edit: false, signup: true }, schedule: null, hasMore: false, upcoming: [UP('u1')], raids: [PAST('r1')] }, over || {});
 const page = (data, can, over) => ws(G.pages.raids.raidsHtml(Object.assign({ guildData: gd(can || MEMBER_CAN), teamId: 't1', data, tab: 'upcoming' }, over || {})));
-const cardOf = (out, id) => out.split('<li class="gs-rc">').filter(c => c.includes('/' + id + '"'))[0].split('</li>')[0];
+const cardOf = (out, id) => out.split('<li class="gs-up">').filter(c => c.includes('/' + id + '"'))[0].split('</li>')[0];
 
 (async () => {
   await check('page root is Forge; the head has the title, the context line and New raid (the one molten) for officers only', () => {
@@ -85,11 +85,11 @@ const cardOf = (out, id) => out.split('<li class="gs-rc">').filter(c => c.includ
     const o = page(LIST());
     const c = cardOf(o, 'u1');
     assert.equal(count(c, '<a '), 1, 'one link');
-    assert(c.startsWith('<a class="gs-rc-link" href="#/g/g1/raids/r/u1">') || c.includes('<a class="gs-rc-link" href="#/g/g1/raids/r/u1">'));
+    assert(c.startsWith('<a class="gs-up-link" href="#/g/g1/raids/r/u1">') || c.includes('<a class="gs-up-link" href="#/g/g1/raids/r/u1">'));
     const link = c.slice(c.indexOf('<a '), c.indexOf('</a>'));
-    assert(link.includes('<span class="gs-hd-daydate gs-rc-date">Fri Oct 23</span>') && link.includes('<span class="gs-rc-time">7:00 PM CT</span>') && link.includes('<span class="gs-rc-title">Black Temple</span>'));
+    assert(link.includes('<span class="gs-hd-daydate gs-up-date">Fri Oct 23</span>') && link.includes('<span class="gs-up-time">7:00 PM CT</span>') && link.includes('<span class="gs-up-title">Black Temple</span>'));
     const after = c.slice(c.indexOf('</a>'));
-    assert(after.includes('gs-rc-fig') && after.includes('<svg class="gs-rc-bar"') && after.includes('gs-rc-status'));
+    assert(after.includes('gs-up-fig') && after.includes('<svg class="gs-up-bar"') && after.includes('gs-up-status'));
     assert(/\.gs-hd-daydate \{[^}]*color: var\(--accent-gold\)/.test(css), 'the date is gold (the week-strip recipe)');
     assert(/\.gs-hd-daydate \{[^}]*text-transform: uppercase/.test(css) && /\.gs-hd-daydate \{[^}]*var\(--font-cond\)/.test(css));
   });
@@ -105,10 +105,10 @@ const cardOf = (out, id) => out.split('<li class="gs-rc">').filter(c => c.includ
       UP('f', { mine: { kind: 'tentative', source: 'raidsmith', characterName: 'Eliora' } }),
     ] }));
     assert(cardOf(o, 'a').includes('data-action="raids-signup" data-rid="a"') && cardOf(o, 'a').includes('>Sign up</span>') === false && cardOf(o, 'a').includes('>Sign up</button>'));
-    assert(cardOf(o, 'b').includes('<span class="gs-hd-chip is-green">Signed up</span>') && cardOf(o, 'b').includes('<span class="gs-rc-note">Standing</span>'));
+    assert(cardOf(o, 'b').includes('<span class="gs-hd-chip is-green">Signed up</span>') && cardOf(o, 'b').includes('<span class="gs-up-note">Standing</span>'));
     assert(cardOf(o, 'c').includes('<span class="gs-hd-chip is-grey">Late</span>'));
     assert(cardOf(o, 'd').includes('<span class="gs-hd-chip is-grey">Group 2</span>') && !cardOf(o, 'd').includes('Signed up'));
-    assert(cardOf(o, 'e').includes('<span class="gs-rc-note">Sign-ups closed</span>'));
+    assert(cardOf(o, 'e').includes('<span class="gs-up-note">Sign-ups closed</span>'));
     assert(cardOf(o, 'f').includes('is-grey">Tentative<'));
     for (const id of ['a', 'c', 'd', 'e', 'f']) assert(items(cardOf(o, id)) <= 1, 'one item on ' + id);
     const off = page(LIST({ can: { edit: true, signup: true }, upcoming: [UP('p'), UP('q', { planned: true }), UP('m', { eventSourced: true, eventMovedOn: '2026-10-24' })] }), OFFICER_CAN);
@@ -120,11 +120,11 @@ const cardOf = (out, id) => out.split('<li class="gs-rc">').filter(c => c.includ
   await check('cards: the first 8, then "Show all N"; showAll draws all of them; the foot line and Edit weekly schedule are gone', () => {
     const many = Array.from({ length: 11 }, (_, i) => UP('u' + i));
     const o = page(LIST({ upcoming: many }));
-    assert.equal(count(o, '<li class="gs-rc">'), 8);
+    assert.equal(count(o, '<li class="gs-up">'), 8);
     assert(o.includes('Showing 8 of 11 raids') && o.includes('data-action="raids-show-all">Show all 11</button>'));
-    assert.equal(count(page(LIST({ upcoming: many }), null, { showAll: true }), '<li class="gs-rc">'), 11);
+    assert.equal(count(page(LIST({ upcoming: many }), null, { showAll: true }), '<li class="gs-up">'), 11);
     assert(!o.includes('11 upcoming raids.') && !o.includes('Edit weekly schedule'));
-    assert(/\.gs-rc-grid \{[^}]*repeat\(auto-fill, minmax\(200px, 1fr\)\)/.test(css) && /\.gs-rc-grid \{ grid-template-columns: minmax\(0, 1fr\)/.test(css.slice(css.indexOf('@media (max-width:600px)', css.indexOf('Raids list on Forge')))), '4 across wide, 1 per row on a phone');
+    assert(/\.gs-up-grid \{[^}]*repeat\(auto-fill, minmax\(176px, 1fr\)\)/.test(css) && /\.gs-up-grid \{ grid-template-columns: minmax\(0, 1fr\)/.test(css.slice(css.indexOf('@media (max-width:600px)', css.indexOf('Raids list on Forge')))), '4 across wide, 1 per row on a phone');
   });
 
   await check('Past table: Date | Raid | Bosses | Attended / bench / missed | Status; no Sources column; one chip word per state; officer-only words', () => {
@@ -227,7 +227,7 @@ const cardOf = (out, id) => out.split('<li class="gs-rc">').filter(c => c.includ
     const o = withRail(OFFICER_CAN, { can: { edit: true, signup: true }, schedule: { slots: 2, weeks: 2, auto: false } }, () => { S.att.awayTeam = { gid: 'g1', teamId: 't1', status: 'ok', data: AWAY, message: '', forList: null }; return mainOf(); });
     assert(!/[^\x00-\x7f]/.test(o.replace(/&[a-z#0-9]+;/g, '')) && !/raid night/i.test(o));
     const phone = css.slice(css.indexOf('Raids list on Forge'));
-    assert(/\.gs-rl-tog \{ min-height: 44px/.test(phone) && /\.gs-rc-status \.gs-btn[^}]*min-height: 44px/.test(phone));
+    assert(/\.gs-rl-tog \{ min-height: 44px/.test(phone) && /\.gs-up-status \.gs-btn[^}]*min-height: 44px/.test(phone));
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

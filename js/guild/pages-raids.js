@@ -227,8 +227,8 @@
     const count = typeof s.expected === 'number' ? s.expected : signed + (s.standby || 0);
     const size = typeof r.size === 'number' && r.size > 0 ? r.size : 0;
     const pct = size ? Math.max(0, Math.min(100, Math.round(count / size * 1000) / 10)) : 0;
-    const bar = size ? '<svg class="gs-rc-bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="gs-rc-bar-track" x="0" y="0" width="100" height="4"/><rect class="gs-rc-bar-fill" x="0" y="0" width="' + pct + '" height="4"/></svg>' : '';
-    return '<div class="gs-rc-signups"><span class="gs-rc-fig">' + esc(count) + (size ? ' <span class="gs-rc-of">/ ' + esc(size) + '</span>' : '') + '<span class="gs-sr"> signed up</span></span>' + bar + '</div>';
+    const bar = size ? '<svg class="gs-up-bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="gs-up-bar-track" x="0" y="0" width="100" height="4"/><rect class="gs-up-bar-fill" x="0" y="0" width="' + pct + '" height="4"/></svg>' : '';
+    return '<div class="gs-up-signups"><span class="gs-up-fig">' + esc(count) + (size ? ' <span class="gs-up-of">/ ' + esc(size) + '</span>' : '') + '<span class="gs-sr"> signed up</span></span>' + bar + '</div>';
   }
 
   // The ONE status item of a card, outside its link.
@@ -240,18 +240,18 @@
     const chip = function (tone, text) { return '<span class="gs-hd-chip is-' + tone + '">' + esc(text) + '</span>'; };
     if (canEdit) {
       return (r.planned ? '' : chip('grey', 'Plan')) +
-        (r.eventMovedOn ? '<p class="gs-rc-note">Raid-Helper has this event on ' + esc(G.ui.weekdayDay(r.eventMovedOn) || r.eventMovedOn) + '. The raid was not moved.</p>' : '');
+        (r.eventMovedOn ? '<p class="gs-up-note">Raid-Helper has this event on ' + esc(G.ui.weekdayDay(r.eventMovedOn) || r.eventMovedOn) + '. The raid was not moved.</p>' : '');
     }
     if (!canSignUp) return '';
     const m = r.mine;
     if (m && m.roster) return chip('grey', m.roster.group ? 'Group ' + m.roster.group : 'Bench');
     if (m && m.kind) {
       if (m.source === 'away') return chip('grey', 'Away');
-      if (m.kind === 'signed') return chip('green', 'Signed up') + (m.standing ? '<span class="gs-rc-note">Standing</span>' : '');
+      if (m.kind === 'signed') return chip('green', 'Signed up') + (m.standing ? '<span class="gs-up-note">Standing</span>' : '');
       return chip('grey', A().KIND_LABELS[m.kind] || m.kind);
     }
     if (r.signupsOpen) return '<button type="button" class="gs-btn gs-btn-sm" data-action="raids-signup" data-rid="' + esc(r.id) + '" data-key="rs-' + esc(r.id) + '">Sign up</button>';
-    return '<span class="gs-rc-note">Sign-ups closed</span>';
+    return '<span class="gs-up-note">Sign-ups closed</span>';
   }
 
   // One upcoming raid as a card: ONE link (to the raid page) around the gold date, the time and the title; the sign-up figure and bar; then the status item.
@@ -260,9 +260,9 @@
     const day = G.ui.weekdayDay(r.raidOn) || r.raidOn;
     const time = r.timeKnown === false ? '' : timeText(r.startsAt, zone);
     const status = cardStatusHtml(r, canEdit, canSignUp);
-    return '<li class="gs-rc"><a class="gs-rc-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '"><span class="gs-hd-daydate gs-rc-date">' + esc(day) + '</span>' +
-      '<span class="gs-rc-time">' + esc(time || 'Time not set') + '</span><span class="gs-rc-title">' + esc(cardTitleText(r)) + '</span></a>' +
-      cardFigureHtml(r) + (status ? '<div class="gs-rc-status">' + status + '</div>' : '') + '</li>';
+    return '<li class="gs-up"><a class="gs-up-link" href="' + esc(raidHref(gd.guild.id, r.id)) + '"><span class="gs-hd-daydate gs-up-date">' + esc(day) + '</span>' +
+      '<span class="gs-up-time">' + esc(time || 'Time not set') + '</span><span class="gs-up-title">' + esc(cardTitleText(r)) + '</span></a>' +
+      cardFigureHtml(r) + (status ? '<div class="gs-up-status">' + status + '</div>' : '') + '</li>';
   }
 
   // Upcoming raids as cards in a grid (one per row on a phone): the first 8, then "Show all N".
@@ -272,9 +272,9 @@
     }
     const shown = showAll || upcoming.length <= CARD_LIMIT ? upcoming : upcoming.slice(0, CARD_LIMIT);
     const foot = shown.length < upcoming.length
-      ? '<div class="gs-dtable-foot gs-rc-foot"><span class="gs-fine">Showing ' + shown.length + ' of ' + upcoming.length + ' raids</span><button type="button" class="gs-linkbtn" data-action="raids-show-all">Show all ' + upcoming.length + '</button></div>'
+      ? '<div class="gs-dtable-foot gs-up-foot"><span class="gs-fine">Showing ' + shown.length + ' of ' + upcoming.length + ' raids</span><button type="button" class="gs-linkbtn" data-action="raids-show-all">Show all ' + upcoming.length + '</button></div>'
       : '';
-    return '<ul class="gs-rc-grid" aria-label="Upcoming raids">' + shown.map(function (r) { return cardHtml(gd, r, canEdit, canSignUp); }).join('') + '</ul>' + foot;
+    return '<ul class="gs-up-grid" aria-label="Upcoming raids">' + shown.map(function (r) { return cardHtml(gd, r, canEdit, canSignUp); }).join('') + '</ul>' + foot;
   }
 
   // A sign-up view (the Worker's answer to a sign-up write) folded into its upcoming row: what the viewer is down as, the counts, whether it is open.

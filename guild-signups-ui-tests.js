@@ -448,7 +448,7 @@ class ApiErr extends Error {
     assert(out.includes('Sign-ups closed') && out.includes('<span class="gs-hd-chip is-grey">Late</span>'));
     assert.equal(out.split('Sign-ups closed').length - 1, 1, 'u4 only');
     const noChar = listPage(LIST({ can: { edit: false, signup: false } }));
-    assert(!noChar.includes('raids-signup') && !noChar.includes('Sign-ups closed') && !noChar.includes('gs-rc-status'), 'a viewer with no character gets no status item');
+    assert(!noChar.includes('raids-signup') && !noChar.includes('Sign-ups closed') && !noChar.includes('gs-up-status'), 'a viewer with no character gets no status item');
     assertNoRawAttrs(out);
   });
 

@@ -2164,22 +2164,22 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 }
 
 /* Upcoming cards: 4 across on a wide desktop, fewer as it narrows, one per row on a phone */
-.gs-rc-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-.gs-rc { position: relative; box-sizing: border-box; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
-.guild-page .gs-rc-link { display: flex; flex-direction: column; gap: 4px; color: var(--text-primary); text-decoration: none; }
-.guild-page .gs-rc-link:hover .gs-rc-title { text-decoration: underline; text-underline-offset: 3px; }
-.gs-rc-time { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.gs-rc-title { font: 600 17px/1.25 var(--font-body); color: var(--hd-white); overflow-wrap: anywhere; }
-.gs-rc-signups { display: flex; flex-direction: column; gap: 6px; }
-.gs-rc-fig { font: 700 22px/1.1 var(--font-cond); color: var(--hd-white); font-variant-numeric: tabular-nums; }
-.gs-rc-of { font: 400 14px/1.1 var(--font-body); color: var(--text-muted); }
-.gs-rc-bar { display: block; width: 100%; height: 4px; overflow: hidden; }
-.gs-rc-bar-track { fill: rgba(255, 255, 255, 0.1); }
-.gs-rc-bar-fill { fill: var(--text-secondary); }
-.gs-rc-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; }
-.gs-rc-status .gs-hd-chip { align-self: center; }
-.gs-rc-note { margin: 0; font-size: 13px; color: var(--text-muted); }
-.gs-rc-foot { padding: 0; }
+.gs-up-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 16px; }
+.gs-up { position: relative; box-sizing: border-box; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
+.guild-page .gs-up-link { display: flex; flex-direction: column; gap: 4px; color: var(--text-primary); text-decoration: none; }
+.guild-page .gs-up-link:hover .gs-up-title { text-decoration: underline; text-underline-offset: 3px; }
+.gs-up-time { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gs-up-title { font: 600 17px/1.25 var(--font-body); color: var(--hd-white); overflow-wrap: anywhere; }
+.gs-up-signups { display: flex; flex-direction: column; gap: 6px; }
+.gs-up-fig { font: 700 22px/1.1 var(--font-cond); color: var(--hd-white); font-variant-numeric: tabular-nums; }
+.gs-up-of { font: 400 14px/1.1 var(--font-body); color: var(--text-muted); }
+.gs-up-bar { display: block; width: 100%; height: 4px; overflow: hidden; }
+.gs-up-bar-track { fill: rgba(255, 255, 255, 0.1); }
+.gs-up-bar-fill { fill: var(--text-secondary); }
+.gs-up-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; }
+.gs-up-status .gs-hd-chip { align-self: center; }
+.gs-up-note { margin: 0; font-size: 13px; color: var(--text-muted); }
+.gs-up-foot { padding: 0; }
 
 /* Past table: Raid cell (zone bold, size muted) and the single status chip */
 .gs-raids-main .gs-dtable-wrap { background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); overflow: hidden; }
@@ -2203,8 +2203,8 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-rl-tog { flex: none; min-width: 52px; min-height: 36px; padding: 0 12px; border: 1px solid var(--border-medium); border-radius: 4px; background: rgba(255, 255, 255, 0.04); color: var(--text-secondary); font: 600 13px/1 var(--font-body); cursor: pointer; }
 .gs-rl-tog:hover { border-color: var(--border-field); }
 .gs-rl-tog.is-on, .gs-rl-tog[aria-pressed="true"] { background: var(--seg-on-bg); border-color: var(--border-field); color: var(--hd-white); }
-.gs-rl-line { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; }
-.gs-rl-link { display: inline; margin: 0; padding: 0; background: none; border: 0; color: var(--text-secondary); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.gs-rl-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; margin: 4px 0 0; font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; }
+.gs-rl-link { display: inline-flex; align-items: center; min-height: 36px; margin: 0; padding: 0; background: none; border: 0; color: var(--text-secondary); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .guild-page .gs-rl-link:hover { color: var(--text-primary); }
 .gs-rl-away { margin: 0; }
 .gs-st-form { gap: 12px; }
@@ -2227,10 +2227,11 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 }
 @media (max-width:600px) {
   .gs-raids-page { gap: 16px; }
-  .gs-rc-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .gs-up-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .gs-rl-tog { min-height: 44px; min-width: 56px; }
-  .gs-rl-link { display: inline-flex; align-items: center; min-height: 44px; }
-  .gs-rc-status .gs-btn, .gs-an-team .gs-row-actions .gs-btn { min-height: 44px; }
+  .gs-rl-link, .gs-raids-main .gs-linkbtn { min-height: 44px; }
+  .gs-raids-main .gs-linkbtn { display: inline-flex; align-items: center; }
+  .gs-up-status .gs-btn, .gs-an-team .gs-row-actions .gs-btn { min-height: 44px; }
 }
 
 

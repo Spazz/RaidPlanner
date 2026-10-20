@@ -391,10 +391,10 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids list: the card title is the event title, else the zone, else "20-player"; an older reply without a size shows the zone only', () => {
     const out = listPage(LIST({ upcoming: [UP(), UP({ id: 'u2', zone: null, size: 20 }), UP({ id: 'u3', title: 'Prog night', zone: 'Onyxia\'s Lair', size: 40 }), UP({ id: 'u4', size: undefined })] }));
-    assert(out.includes('<span class="gs-rc-title">Hyjal Summit</span>'), 'the zone');
-    assert(out.includes('<span class="gs-rc-title">20-player</span>'), 'no zone');
-    assert(out.includes('<span class="gs-rc-title">Prog night</span>'), 'a title first');
-    assert.equal(out.split('<span class="gs-rc-title">Hyjal Summit</span>').length - 1, 2, 'u1 and u4');
+    assert(out.includes('<span class="gs-up-title">Hyjal Summit</span>'), 'the zone');
+    assert(out.includes('<span class="gs-up-title">20-player</span>'), 'no zone');
+    assert(out.includes('<span class="gs-up-title">Prog night</span>'), 'a title first');
+    assert.equal(out.split('<span class="gs-up-title">Hyjal Summit</span>').length - 1, 2, 'u1 and u4');
     assert.equal(G.pages.raids.zoneSizeText('Hyjal Summit', 20), 'Hyjal Summit - 20');
     assert.equal(G.pages.raids.zoneSizeText(null, 10), '10-player');
     assert.equal(G.pages.raids.zoneSizeText('', undefined), '');
@@ -404,12 +404,12 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids list: a date-only raid says "Time not set" and never a made-up 12:00; a timed raid keeps its time', () => {
     const dateOnly = listPage(LIST({ upcoming: [UP({ timeKnown: false, startsAt: NOON_UTC })] }));
-    assert(dateOnly.includes('<span class="gs-hd-daydate gs-rc-date">Sat Oct 24</span><span class="gs-rc-time">Time not set</span>'), 'the gold date, then the time is not set');
+    assert(dateOnly.includes('<span class="gs-hd-daydate gs-up-date">Sat Oct 24</span><span class="gs-up-time">Time not set</span>'), 'the gold date, then the time is not set');
     assert(!/12:00|7:00 AM|\bAM\b|\bPM\b/.test(stripTags(dateOnly)), 'no time at all: ' + stripTags(dateOnly));
     const timed = listPage(LIST());
-    assert(timed.includes('<span class="gs-rc-time">8:00 PM CT</span>') && !timed.includes('Time not set'));
+    assert(timed.includes('<span class="gs-up-time">8:00 PM CT</span>') && !timed.includes('Time not set'));
     const unknown = listPage(LIST({ upcoming: [UP({ timeKnown: undefined })] }));
-    assert(unknown.includes('<span class="gs-rc-time">8:00 PM CT</span>') && !unknown.includes('Time not set'), 'an older reply is read as timed');
+    assert(unknown.includes('<span class="gs-up-time">8:00 PM CT</span>') && !unknown.includes('Time not set'), 'an older reply is read as timed');
     const W = G.pages.raids.whenText;
     assert.equal(ws(W({ raidOn: '2026-10-24', startsAt: STARTS, timeKnown: true }, gd(MEMBER_CAN))), 'Sat Oct 24, 8:00 PM CT');
     assert.equal(W({ raidOn: '2026-10-24', startsAt: NOON_UTC, timeKnown: false }, gd(MEMBER_CAN)), 'Sat Oct 24');
@@ -426,12 +426,12 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert.equal(T(null, 20), '-');
     assert.equal(T({ signed: 4, late: 1, bench: 0, tentative: 0, absence: 0, expected: 7 }, 20), '7 / 20 signed up', 'a Worker that sends expected is believed');
     const out = listPage(LIST());
-    assert(out.includes('<span class="gs-rc-fig">18 <span class="gs-rc-of">/ 20</span><span class="gs-sr"> signed up</span></span>') && out.includes('<svg class="gs-rc-bar"'), 'the card figure and its bar');
-    assert(out.includes('<rect class="gs-rc-bar-fill" x="0" y="0" width="90" height="4"/>'), '18 of 20 is 90 percent');
+    assert(out.includes('<span class="gs-up-fig">18 <span class="gs-up-of">/ 20</span><span class="gs-sr"> signed up</span></span>') && out.includes('<svg class="gs-up-bar"'), 'the card figure and its bar');
+    assert(out.includes('<rect class="gs-up-bar-fill" x="0" y="0" width="90" height="4"/>'), '18 of 20 is 90 percent');
     const noSize = listPage(LIST({ upcoming: [UP({ size: undefined })] }));
-    assert(noSize.includes('<span class="gs-rc-fig">18<span class="gs-sr"> signed up</span></span>') && !noSize.includes('gs-rc-bar'), 'no size: the count alone, no bar');
+    assert(noSize.includes('<span class="gs-up-fig">18<span class="gs-sr"> signed up</span></span>') && !noSize.includes('gs-up-bar'), 'no size: the count alone, no bar');
     const none = listPage(LIST({ can: { edit: false, signup: false }, upcoming: [UP({ signups: null })] }));
-    assert(!none.includes('gs-rc-signups') && !none.includes('gs-rc-fig'), 'a viewer who may not see counts gets none');
+    assert(!none.includes('gs-up-signups') && !none.includes('gs-up-fig'), 'a viewer who may not see counts gets none');
   });
 
   await check('Raids list: a card offers Sign up while the window is open and says "Sign-ups closed" when it is not; the deadline sentence stays for the member Home', () => {
@@ -443,7 +443,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
     assert(signed.includes('<span class="gs-hd-chip is-green">Signed up</span>') && !signed.includes('data-action="raids-signup"'));
     // Closed by the deadline: the muted sentence, no button.
     const closed = listPage(LIST({ upcoming: [UP({ signupsOpen: false, closeHours: 24, closesAt: STARTS - 24 * HOUR })] }));
-    assert(closed.includes('<span class="gs-rc-note">Sign-ups closed</span>') && !closed.includes('Sign-ups close ') && !closed.includes('data-action="raids-signup"'));
+    assert(closed.includes('<span class="gs-up-note">Sign-ups closed</span>') && !closed.includes('Sign-ups close ') && !closed.includes('data-action="raids-signup"'));
     // Officers have the Plan chip as their status item, not a sign-up one.
     const officer = listPage(LIST({ can: { edit: true, signup: false }, upcoming: [UP({ closeHours: 24, closesAt: STARTS - 24 * HOUR })] }), OFFICER_CAN);
     assert(!officer.includes('Sign-ups close') && !officer.includes('raids-signup'));
@@ -1538,7 +1538,7 @@ const control = (value) => ({ value, focused: 0, attrs: {}, focus() { this.focus
 
   await check('Raids list: a sign-up that comes from a standing sign-up carries a small "standing" tag; the one-click answer keeps it', () => {
     const out = listPage(LIST({ upcoming: [UP({ mine: { kind: 'signed', source: 'raidsmith', characterName: 'Eliora', standing: true } }), UP({ id: 'u2', mine: { kind: 'signed', source: 'raidsmith', characterName: 'Eliora' } })] }));
-    assert.equal(out.split('<span class="gs-rc-note">Standing</span>').length - 1, 1, 'u1 only');
+    assert.equal(out.split('<span class="gs-up-note">Standing</span>').length - 1, 1, 'u1 only');
     const row = { id: 'u1', signups: {}, mine: null };
     G.pages.raids.applySignupView({ data: { upcoming: [row] } }, 'u1', view({ me: Object.assign({}, view().me, { signup: entry({ standing: true, isMe: true }) }) }));
     assert.equal(row.mine.standing, true);

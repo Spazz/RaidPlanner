@@ -216,7 +216,7 @@ const keys = items => plain(items.map(i => i.key));
 
   await check('raids list: the row is one tap target on a phone (the date link covers the card), one secondary action plus a More icon named for the row; the page head has New raid as the one primary', () => {
     const out = raidsHtml(OFFICER_CAN);
-    assert(out.includes('<ul class="gs-rc-grid" aria-label="Upcoming raids">') && out.includes('<a class="gs-rc-link" href="#/g/g1/raids/r/u1">'), 'a card is one link');
+    assert(out.includes('<ul class="gs-up-grid" aria-label="Upcoming raids">') && out.includes('<a class="gs-up-link" href="#/g/g1/raids/r/u1">'), 'a card is one link');
     assert(!out.includes('More actions for') && count(out, /Plan in Planner/g) === 0);
     assert(count(out, /gs-btn-molten/g) === 1 && out.includes('<span>New raid</span>'), 'one primary');
     assert(/\.gs-dtable th\[scope="row"\] a::after \{ content: ""; position: absolute; inset: 0; \}/.test(css), 'the stretched link of the data table');

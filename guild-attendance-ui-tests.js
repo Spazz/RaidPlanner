@@ -428,14 +428,14 @@ function teamData(over) {
   await check('raids upcoming: one card per raid (gold date, time, title in ONE link), figure and bar, officer Plan chip, no row actions', () => {
     const out = withUp();
     assert(out.indexOf('/u1"') < out.indexOf('/u2"'), 'soonest first');
-    assert.equal(out.split('class="gs-rc"').length - 1, 2, 'one card per raid');
-    assert(out.includes('class="gs-rc-grid"') && out.includes('<span class="gs-hd-daydate gs-rc-date">Sat Oct 24</span>') && out.includes('<span class="gs-rc-title">Black Temple</span>') && out.includes('<span class="gs-rc-title">Prog night</span>'));
-    const card = out.split('<li class="gs-rc">')[1].split('</li>')[0];
+    assert.equal(out.split('class="gs-up"').length - 1, 2, 'one card per raid');
+    assert(out.includes('class="gs-up-grid"') && out.includes('<span class="gs-hd-daydate gs-up-date">Sat Oct 24</span>') && out.includes('<span class="gs-up-title">Black Temple</span>') && out.includes('<span class="gs-up-title">Prog night</span>'));
+    const card = out.split('<li class="gs-up">')[1].split('</li>')[0];
     assert.equal(card.split('<a ').length - 1, 1, 'ONE link per card');
-    assert(card.includes('href="#/g/g1/raids/r/u1"') && /<a class="gs-rc-link"[^>]*>.*gs-hd-daydate.*gs-rc-time.*gs-rc-title.*<\/a>/.test(card.replace(/\n/g, '')));
+    assert(card.includes('href="#/g/g1/raids/r/u1"') && /<a class="gs-up-link"[^>]*>.*gs-hd-daydate.*gs-up-time.*gs-up-title.*<\/a>/.test(card.replace(/\n/g, '')));
     assert(!/<a [^>]*>[^<]*<\/a>.*<a /.test(card) && !card.split('</a>')[1].includes('<a '), 'the status sits outside the link');
-    assert(card.includes('gs-rc-fig'), 'figure');
-    assert(/<span class="gs-rc-time">\d{1,2}:\d{2} [AP]M [A-Z]{2,4}<\/span>/.test(out), 'time is written with the guild zone');
+    assert(card.includes('gs-up-fig'), 'figure');
+    assert(/<span class="gs-up-time">\d{1,2}:\d{2} [AP]M [A-Z]{2,4}<\/span>/.test(out), 'time is written with the guild zone');
     assert(out.includes('<span class="gs-hd-chip is-grey">Plan</span>'), 'an unplanned raid carries the Plan chip');
     assert.equal(out.split('>Plan<').length - 1, 1, 'the planned raid carries none');
     assert(!out.includes('raids-refresh') && !out.includes('raids-plan') && !out.includes('Plan in Planner') && !out.includes('upcoming raids.') && !out.includes('Edit weekly schedule') && !out.includes('Sign-ups refreshed'));
