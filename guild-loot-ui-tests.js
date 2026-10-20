@@ -276,6 +276,13 @@ function withState(fn) {
     assert(phone.includes('.gs-dtable td .gs-menu-list { left: 0; right: auto; }'), 'on a phone card the More sits at the left edge, so its menu opens rightward');
   });
 
+  await check('look: a raid night date reads like the person page (14 px, regular, sentence case), never a caps group head or bold', () => {
+    const src = read('js/guild/pages-loot-hub.js') + read('js/guild/pages-loot-night.js');
+    assert(!/<strong>' \+ esc\(dayText\(/.test(src) && !/gs-fg-gh"><a/.test(src), 'no date in <strong> or in a caps group head');
+    assert((src.match(/class="gs-lt-date">' \+ esc\(dayText\(/g) || []).length === 3 && src.includes('<h3 class="gs-lt-dayhead"><a class="gs-fg-u"'));
+    assert(read('guild.css').includes('.gs-lt-dayhead { margin: 0 0 4px; font-size: 14px; font-weight: 400; line-height: 1.4; letter-spacing: 0; text-transform: none;'));
+  });
+
   await check('quality colours: each passes 4.5:1 on the panel, card and hover backgrounds', () => {
     const css = read('guild.css');
     const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
