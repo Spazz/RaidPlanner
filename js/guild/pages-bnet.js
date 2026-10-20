@@ -151,12 +151,6 @@
     { key: 'level', label: 'Level', align: 'right' }, { key: 'status', label: 'Status' }, { key: 'actions', label: 'Action', srLabel: true, hideLabel: true },
   ];
 
-  // The viewer's own characters (already on their record) lead; the rest keep Battle.net's order (level, then name).
-  function ownFirst(characters) {
-    const list = Array.isArray(characters) ? characters : [];
-    return list.filter(function (c) { return c.state === 'yours'; }).concat(list.filter(function (c) { return c.state !== 'yours'; }));
-  }
-
   function guildBodyHtml(g) {
     const again = function (label) { return '<div class="gs-actions">' + connectButton(label) + '</div>'; };
     if (g.status === 'unsupported') return '<p class="gs-empty" data-status="unsupported">' + esc(g.message || ('Battle.net doesn\'t offer character data for ' + g.supportLabel + ' yet.')) + '</p>';
@@ -169,7 +163,7 @@
     if (!g.characters.length) {
       return '<p class="gs-empty" data-status="empty">Battle.net lists no ' + esc(g.supportLabel) + ' characters for you. If you made one recently, log out of the game completely and connect again: Battle.net updates this list after a full log out.</p>';
     }
-    return G.ui.dataTableHtml({ label: 'Your ' + g.supportLabel + ' characters', columns: CHARACTER_COLUMNS, rows: ownFirst(g.characters).map(function (c) { return characterRow(g.guildId, c); }), showAll: true, noun: 'characters' });
+    return G.ui.dataTableHtml({ label: 'Your ' + g.supportLabel + ' characters', columns: CHARACTER_COLUMNS, rows: g.characters.map(function (c) { return characterRow(g.guildId, c); }), showAll: true, noun: 'characters' });
   }
 
   function guildCardHtml(g) {

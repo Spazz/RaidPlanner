@@ -284,14 +284,14 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     assert(stripTags(guildCard).includes('You are already on this roster. Adding Battle.net lists your other characters here, so you can claim your alts.') && !/Connect Battle\.net/.test(stripTags(guildCard)));
   });
 
-  await check('10. My characters (connected): your own characters first, status as chips, Claim is a quiet button, no orange, and the intro is an info banner', () => {
+  await check('10. My characters (connected): your own characters keep the delivered order, status as chips, Claim is a quiet button, no orange, and the intro is an info banner', () => {
     const rows = [
       { name: 'Cassia', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'PRIEST', level: 68, state: 'new', claim: null, claimable: true },
       { name: 'Aldric', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'WARRIOR', level: 70, state: 'yours', claim: null, claimable: false },
       { name: 'Eliora', realm: 'Dreamscythe', realmSlug: 'dreamscythe', class: 'PALADIN', level: 61, state: 'new', claim: { id: 'cl_1', status: 'pending' }, claimable: false },
     ];
     const out = chars(BNET({ link: { battletag: 'T#1', linkedAt: 1, fetchedAt: 1, expiresAt: 2e12 }, guilds: [BNET_GUILD({ status: 'ok', onRoster: true, characters: rows })] }));
-    assert(out.indexOf('>Aldric<') < out.indexOf('>Cassia<'), 'yours first');
+    assert(out.indexOf('>Cassia<') < out.indexOf('>Aldric<') && out.indexOf('>Aldric<') < out.indexOf('>Eliora<'), 'delivered order kept, yours not moved first');
     assert(out.includes('gs-schip gs-schip-success') && out.includes('On your record') && out.includes('gs-schip-warning') && out.includes('Waiting for officers'), 'status = tint + icon + word');
     assert(/class="gs-btn gs-btn-sm" aria-label="Claim Cassia" data-action="bnet-claim"/.test(out) && /aria-label="Withdraw the claim on Eliora"/.test(out));
     assert.equal(count(out, /gs-btn-molten/g), 0);

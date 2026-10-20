@@ -240,14 +240,14 @@ const keys = items => plain(items.map(i => i.key));
   const ROSTER = people => ({ team: { id: 't1', name: 'Main team', archived: false }, today: '2026-10-18', can: { edit: true, addCharacter: true }, people });
   const rosterHtml = (people, can, over) => G.pages.roster.rosterHtml(Object.assign({ guildData: gd(can || OFFICER_CAN), data: ROSTER(people), view: { sort: G.rosterSort.DEFAULT_SORT, role: 'all', status: 'active', query: '' } }, over || {}));
 
-  await check('roster: no Sign-in column and no "Not signed in" anywhere (Roster redesign, lane U1); the viewer is first in their role column with the grey You chip', () => {
+  await check('roster: no Sign-in column and no "Not signed in" anywhere (Roster redesign, lane U1); the viewer keeps their A-Z place in the role column with the tint and grey You chip', () => {
     const melee = { raidRole: 'melee' };
     const people = [rp('p1', 'Aimer', 'signed_in', false, melee), rp('p2', 'Brew', 'no_discord', false, melee), rp('p3', 'Cass', 'not_yet', false, melee), rp('p4', 'Dun', 'no_discord', false, melee), rp('p5', 'Eve', 'not_yet', true, melee)];
     const out = rosterHtml(people);
     assert(!/Sign-in|Not signed in|No Discord|Not yet/.test(stripTags(out)), 'the sign-in words are gone');
     const desk = out.slice(0, out.indexOf('class="gs-rs-phone"'));
     const names = [...desk.matchAll(/<span class="gs-rs-name [^"]*">([^<]*)</g)].map(m => m[1]);
-    assert.deepEqual(names, ['Eve', 'Aimer', 'Brew', 'Cass', 'Dun'], 'the viewer row is first');
+    assert.deepEqual(names, ['Aimer', 'Brew', 'Cass', 'Dun', 'Eve'], 'the viewer keeps the A-Z place');
     assert(desk.includes('class="gs-rs-row is-you"') && desk.includes('data-you="true"') && desk.includes('<span class="gs-hd-chip is-grey">You</span>'));
     assert.equal(G.ui.signInLabel('no_discord'), 'Not signed in');
     assert.equal(G.ui.signInLabel('not_yet'), 'Not signed in');
