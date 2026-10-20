@@ -249,18 +249,36 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(out.includes('1 inactive person is hidden.') && out.includes('>Show them<'), 'the footer link says who is hidden');
   });
 
+  await check('group heads and labels (design spec 2.1): CSS of .gs-fg-gh/.gs-fg-ght/.gs-fg-ghn/.gs-fg-lbl, no `.gs-fg-gh b`, every head over rows is title + count, every tile/step/field word is a label', () => {
+    const css = read('guild.css');
+    assert(css.includes('.gs-fg-gh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 0; }'));
+    assert(css.includes('.guild-page .gs-fg-ght, .gs-forge .gs-fg-ght { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }'));
+    assert(css.includes('text-decoration: underline; text-underline-offset: 3px;') && css.includes('a.gs-lt-link:hover .gs-fg-ght'));
+    assert(css.includes('.gs-fg-ghn { font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-variant-numeric: tabular-nums; }'));
+    assert(css.includes('.gs-fg-lbl { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }'));
+    assert(!/\.gs-fg-gh b\b/.test(css) && !css.includes('.gs-rs-den'), 'no white bold count rule');
+    for (const f of ['pages-roster.js', 'pages-intent.js', 'pages-recruiting.js', 'pages-applications.js', 'pages-loot-hub.js', 'pages-loot-night.js', 'pages-person-loot.js']) {
+      const src = read('js/guild/' + f);
+      assert(!/class="(?:[^"]* )?gs-fg-gh(?: [^"]*)?">(?!<span class="gs-fg-ght">|<a class="gs-fg-ght")/.test(src), f + ': a group head is title + count spans');
+      assert(!/gs-fg-gh(?: [^"]*)?">[^<]*<b>/.test(src) && !src.includes('gs-rs-den'), f + ': no bold count');
+    }
+    assert(read('js/guild/pages-recruiting.js').includes('<span class="gs-fg-ghn">') && read('js/guild/pages-intent.js').includes('<span class="gs-fg-ghn">'));
+    const labels = { 'pages-roster.js': 3, 'pages-intent.js': 2, 'pages-applications.js': 1 };
+    for (const f of Object.keys(labels)) assert.equal((read('js/guild/' + f).match(/class="gs-fg-lbl"/g) || []).length, labels[f], f + ' label sites');
+  });
+
   await check('roster page: four role columns by raidRole, You in A-Z place, reserves under a Reserve label, headers "TANKS 2 / 3" for officers (targets from /recruiting) and "TANKS 2" for members', () => {
     const shape = { status: 'ready', cov: null, data: { targets: { tank: 3, healer: 6, melee: 8, ranged: 8 }, roster: { counts: { tank: 2, healer: 1, melee: 3, ranged: 3 }, gaps: { tank: 1, healer: 5, melee: 5, ranged: 5 } } } };
     const out = rosterPage(guildData(), rosterData(), {}, { shape });
     const desk = deskOf(out);
     assert.deepEqual([...desk.matchAll(/data-role="(\w+)"><h3/g)].map(m => m[1]), ['tank', 'healer', 'melee', 'ranged']);
-    const heads = [...desk.matchAll(/<h3 class="gs-fg-gh gs-rs-colhead">([^<]*) <b>(\d+)<\/b>(?:<span class="gs-rs-den">([^<]*)<\/span>)?/g)].map(m => m[1] + ' ' + m[2] + (m[3] ? ' ' + m[3] : ''));
+    const heads = [...desk.matchAll(/<h3 class="gs-fg-gh gs-rs-colhead"><span class="gs-fg-ght">([^<]*)<\/span><span class="gs-fg-ghn">([^<]*)<\/span>/g)].map(m => m[1] + ' ' + m[2]);
     assert.deepEqual(heads, ['Tanks 2 / 3', 'Healers 1 / 6', 'Melee DPS 3 / 8', 'Ranged DPS 3 / 8']);
     const ranged = desk.slice(desk.indexOf('data-role="ranged"'));
     assert(ranged.indexOf('Solder') > ranged.indexOf('>Reserve</h4>') && ranged.indexOf('Sorin') < ranged.indexOf('>Reserve</h4>'), 'a reserve sits under the Reserve label of its column');
     assert.equal(count(desk, /class="gs-rs-row/g), 10, 'the columns hold every active person');
     const member = rosterPage(guildData({ can: MEMBER_CAN, flags: {} }), rosterData({ can: { edit: false } }), {}, { shape });
-    assert.deepEqual([...deskOf(member).matchAll(/<h3 class="gs-fg-gh gs-rs-colhead">([^<]*) <b>(\d+)<\/b>(<span)?/g)].map(m => m[1] + ' ' + m[2] + (m[3] ? ' den' : '')), ['Tanks 2', 'Healers 1', 'Melee DPS 3', 'Ranged DPS 3']);
+    assert.deepEqual([...deskOf(member).matchAll(/<h3 class="gs-fg-gh gs-rs-colhead"><span class="gs-fg-ght">([^<]*)<\/span><span class="gs-fg-ghn">([^<]*)<\/span>/g)].map(m => m[1] + ' ' + m[2]), ['Tanks 2', 'Healers 1', 'Melee DPS 3', 'Ranged DPS 3']);
     const noRole = rosterPage(guildData(), rosterData({ people: [Object.assign(plain(PEOPLE[0]), { raidRole: null })] }));
     assert(deskOf(noRole).includes('data-role="none"') && deskOf(noRole).includes('No spec') && !deskOf(out).includes('No spec'), 'a fifth No spec column only when someone has no role');
     const me = plain(PEOPLE).map(p => (p.shown.name === 'Sorin' ? Object.assign(p, { isMe: true }) : p));

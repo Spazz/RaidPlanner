@@ -278,9 +278,11 @@ function withState(fn) {
 
   await check('look: every raid-night date on the Loot lists is the gold condensed-caps head (design spec 2.2), never <strong> or the grey group head', () => {
     const src = read('js/guild/pages-loot-hub.js') + read('js/guild/pages-loot-night.js');
-    assert(!/<strong>' \+ esc\(dayText\(/.test(src) && !/gs-fg-gh"><a/.test(src), 'no date in <strong> or in a caps group head');
-    assert((src.match(/class="gs-lt-date">' \+ esc\(dayText\(/g) || []).length === 3 && src.includes('<h3 class="gs-lt-dayhead"><a class="gs-lt-date" href='));
-    assert(read('guild.css').includes('.guild-page .gs-lt-date { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }'));
+    assert(!/<strong>' \+ esc\(dayText\(/.test(src) && !/gs-lt-date|gs-lt-dayhead/.test(src), 'no date in <strong>, no old date classes');
+    assert((src.match(/class="gs-fg-ght">' \+ esc\(dayText\(/g) || []).length === 3 && src.includes('<h3 class="gs-fg-gh"><a class="gs-fg-ght" href='));
+    const css = read('guild.css');
+    assert(css.includes('.guild-page .gs-fg-ght, .gs-forge .gs-fg-ght { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }'));
+    assert(!css.includes('gs-lt-date') && !css.includes('gs-lt-dayhead'));
   });
 
   await check('quality colours: each passes 4.5:1 on the panel, card and hover backgrounds', () => {
@@ -1004,18 +1006,27 @@ function withState(fn) {
     totals: { MS: 5, OS: 1, DE: 0, BANK: 0 },
   };
 
-  await check('person loot page: header, figures, one table of awards newest first with the night link, the character name and a More menu for edit holders', () => {
+  await check('person loot page: header, figures, one panel per raid night, newest first, with the night link, the character name and a More menu for edit holders', () => {
     const out = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_th', data: PERSON_LOOT });
     assert(/<h1 class="gs-h1[^"]*" id="page-title" tabindex="-1">Thoren<\/h1>/.test(out) && out.includes('Loot history') && out.includes('href="#/g/g1/roster/p/p_th"'));
     assert(out.includes('<dt class="gs-pr-cap">Main spec</dt><dd class="gs-pr-num">5</dd>') && out.includes('<dt class="gs-pr-cap">Off spec</dt><dd class="gs-pr-num">1</dd>') && !out.includes('Due order'), 'no standings figures without the balance');
-    assert(out.includes('6 awards, newest first') && out.includes('<table class="gs-dtable" aria-label="Loot awards">'));
-    assert.deepEqual([...out.matchAll(/href="(#\/g\/g1\/loot\/n\/[^"]*)"/g)].map(m => m[1]), ['r2', 'r2', 'r1', 'r1', 'r0', 'r0'].map(r => '#/g/g1/loot/n/' + r));
+    assert(!out.includes('<table class="gs-dtable" aria-label="Loot awards">'));
+    assert.deepEqual([...out.matchAll(/<section class="gs-hd-panel gs-lt-nightpanel" aria-labelledby="pl-n-(\w+)"><div class="gs-lt-nighthead"><h3 class="gs-fg-gh" id="pl-n-\w+"><a class="gs-fg-ght" href="(#\/g\/g1\/loot\/n\/\w+)">[^<]+<\/a><span class="gs-fg-ghn">(\d+ items)<\/span>/g)].map(m => m[1] + ' ' + m[2] + ' ' + m[3]),
+      ['r2 #/g/g1/loot/n/r2 2 items', 'r1 #/g/g1/loot/n/r1 2 items', 'r0 #/g/g1/loot/n/r0 2 items'], 'one panel per night, newest first');
+    assert(out.includes('aria-label="Awards on ') && (out.match(/class="gs-lt-arow"/g) || []).length === 6 && out.includes('<span class="gs-char-name') && out.includes('Thorenalt'));
     assert(!out.includes('href="#/g/g1/loot/p/p_th"'), 'no link to this page');
     assert((out.match(/id="lm-b[0-9]" data-action="menu-toggle"/g) || []).length === 6 && out.includes('href="#/g/g1/loot/a/b1?edit=1"'), 'edit holders get More on every row');
     assert(!out.includes('Awards are read-only for members'));
     assertNoRawAttrs(out);
     const member = G.pages.personLoot.personLootHtml({ guildData: gd(MEMBER_CAN), pid: 'p_th', data: Object.assign({}, PERSON_LOOT, { person: Object.assign({}, PERSON_LOOT.person, { isMe: true }) }) });
-    assert(!member.includes('menu-toggle') && member.includes('Awards are read-only for members. Ask an officer if something looks wrong.') && member.includes('This is your loot'));
+    assert(!member.includes('menu-toggle') && member.includes('<p class="gs-fine">Awards are read-only for members. Ask an officer if something looks wrong.</p>') && member.includes('This is your loot'));
+    assert.equal((member.match(/class="gs-hd-panel gs-lt-nightpanel"/g) || []).length, 3, 'members see the night panels too');
+    const hostile = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_th', data: Object.assign({}, PERSON_LOOT, { awards: [
+      award('h1', { raidId: null, raidOn: HOSTILE, itemName: HOSTILE, note: QUOTES, winner: { name: HOSTILE, class: 'PALADIN' }, match: { kind: 'character', characterName: HOSTILE } }),
+      award('h2', { raidId: 'r9', raidOn: '2026-10-09', winner: { name: QUOTES, class: 'MAGE' }, match: { kind: 'character', characterName: QUOTES } })] }) });
+    assertEscaped(hostile, 'person loot nights');
+    assertNoRawAttrs(hostile);
+    assert(hostile.includes('<span class="gs-fg-ght">') && !/<a class="gs-fg-ght" href="[^"]*">&lt;img/.test(hostile), 'an award without a raid has a plain-text head');
     const empty = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_th', data: { person: { id: 'p_th', name: HOSTILE, status: 'raider' }, awards: [], totals: { MS: 0, OS: 0, DE: 0, BANK: 0 } } });
     assert(empty.includes('No loot is recorded for this person yet.'));
     assertEscaped(empty, 'person loot');

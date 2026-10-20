@@ -123,7 +123,7 @@
     const reserve = people.filter(function (p) { return p.status === 'reserve'; });
     const inactive = people.filter(function (p) { return p.status === 'inactive'; });
     const want = m.shape ? (m.shape.roles.filter(function (r) { return r.role === role; })[0] || {}).want : null;
-    const head = '<h3 class="gs-fg-gh gs-rs-colhead">' + esc(ROLE_TITLES[role]) + ' <b>' + main.length + '</b>' + (m.canEdit && want != null ? '<span class="gs-rs-den">/ ' + want + '</span>' : '') + '</h3>';
+    const head = '<h3 class="gs-fg-gh gs-rs-colhead"><span class="gs-fg-ght">' + esc(ROLE_TITLES[role]) + '</span><span class="gs-fg-ghn">' + esc(main.length + (m.canEdit && want != null ? ' / ' + want : '')) + '</span></h3>';
     const label = function (text, list) { return list.length ? '<h4 class="gs-hd-sl gs-rs-sep">' + esc(text) + '</h4>' + list.slice().sort(byName).map(function (p) { return rowHtml(p, m); }).join('') : ''; };
     const body = (main.length ? main.slice().sort(byName).map(function (p) { return rowHtml(p, m); }).join('') : (reserve.length || inactive.length ? '' : '<p class="gs-rs-none">No one</p>')) + label('Reserve', reserve) + label('Inactive', inactive);
     return '<div class="gs-hd-panel gs-rs-col" data-role="' + role + '">' + head + body + '</div>';
@@ -221,7 +221,7 @@
     }
     const tiles = m.shape.roles.map(function (r) {
       const chip = r.gap > 0 ? chipHtml('rose', 'Need ' + r.gap) : r.gap < 0 ? chipHtml('grey', Math.abs(r.gap) + ' over') : chipHtml('green', 'Full');
-      return '<div class="gs-hd-panel gs-rs-tile" data-role="' + r.role + '"><div class="gs-rs-tilehead"><span class="gs-fg-gh">' + esc(ROLE_TITLES[r.role]) + '</span>' + chip + '</div>' +
+      return '<div class="gs-hd-panel gs-rs-tile" data-role="' + r.role + '"><div class="gs-rs-tilehead"><span class="gs-fg-lbl">' + esc(ROLE_TITLES[r.role]) + '</span>' + chip + '</div>' +
         '<span class="gs-rs-tilenum" data-have="' + r.have + '" data-want="' + r.want + '">' + r.have + '<span class="gs-rs-tileden"> / ' + r.want + '</span></span></div>';
     }).join('');
     return '<section class="gs-rs-shape" aria-label="Team shape"><h2 class="gs-hd-sl">Team shape</h2><div class="gs-rs-tiles">' + tiles + '</div>' +
@@ -241,7 +241,7 @@
     });
     if (m.applicationCount > 0) items.push('<a class="gs-fg-u gs-rs-need" href="' + esc(recruitingHref(m.gid)) + '">' + esc(plural(m.applicationCount, 'new application', 'new applications')) + '</a>');
     if (!items.length) return '';
-    return '<section class="gs-hd-panel gs-rs-needs" aria-label="Needs you"><h2 class="gs-fg-gh">Needs you</h2><div class="gs-rs-needlist">' + items.join('<span class="gs-rs-vsep" aria-hidden="true"></span>') + '</div></section>';
+    return '<section class="gs-hd-panel gs-rs-needs" aria-label="Needs you"><h2 class="gs-fg-lbl">Needs you</h2><div class="gs-rs-needlist">' + items.join('<span class="gs-rs-vsep" aria-hidden="true"></span>') + '</div></section>';
   }
 
   // A member's own line above the list: their character and the two places they act (their record, their away notices).
@@ -250,7 +250,7 @@
     const me = m.people.filter(function (p) { return p.isMe; })[0];
     if (!me) return '';
     const s = shownOf(me);
-    return '<section class="gs-hd-panel gs-rs-you" aria-label="You"><h2 class="gs-fg-gh">You</h2>' + G.ui.specIconHtml(s.class, s.mainSpec, 20) +
+    return '<section class="gs-hd-panel gs-rs-you" aria-label="You"><h2 class="gs-fg-lbl">You</h2>' + G.ui.specIconHtml(s.class, s.mainSpec, 20) +
       '<span class="gs-rs-name ' + G.ui.classClass(s.class) + '">' + esc(s.name) + '</span><span class="gs-rs-youspec">' + esc(G.ui.className(s.class) + (s.mainSpec ? ' \u00b7 ' + s.mainSpec : '')) + '</span><span class="gs-rs-grow"></span>' +
       '<a class="gs-fg-u" href="' + esc(personHref(m.gid, me.id)) + '">Your record</a><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'away', gid: m.gid })) + '">Away notices</a></section>';
   }

@@ -1937,8 +1937,13 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-fg-mut { margin: 0; font-size: 13px; color: var(--text-muted); }
 .gs-forge a.gs-fg-u, .gs-fg-u { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
 .gs-forge a.gs-fg-u:hover { color: var(--text-primary); }
-.gs-fg-gh { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-.gs-fg-gh b { color: var(--hd-white); font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Group head (design spec 2.1): the head over a group of rows. Title gold condensed caps, count beside it muted. */
+.gs-fg-gh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 0; }
+.guild-page .gs-fg-ght, .gs-forge .gs-fg-ght { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }
+.guild-page a.gs-fg-ght:hover, .gs-forge a.gs-fg-ght:hover, .guild-page a.gs-lt-link:hover .gs-fg-ght { text-decoration: underline; text-underline-offset: 3px; }
+.gs-fg-ghn { font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* Label (design spec 2.1): a word naming a tile, strip, step or field. */
+.gs-fg-lbl { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .gs-fg-linkbtn { display: inline-flex; align-items: center; min-height: 36px; padding: 0 2px; background: none; border: 0; color: var(--text-secondary); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .gs-fg-linkbtn:hover { color: var(--text-primary); }
 .gs-spec-icon { display: block; flex: none; border-radius: 3px; }
@@ -1989,8 +1994,7 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-rs-cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
 .gs-rs-cols.has-other { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .gs-rs-col { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-.gs-rs-colhead { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; }
-.gs-rs-den { font-weight: 500; }
+.gs-rs-colhead { display: flex; align-items: baseline; gap: 0 8px; height: 40px; padding: 0 12px; }
 .gs-rs-sep { min-height: 32px; padding: 0 12px; border-top: 1px solid var(--hd-hair); }
 .gs-rs-none { margin: 0; padding: 12px; font-size: 13px; color: var(--text-muted); }
 .gs-rs-row { display: flex; align-items: center; gap: 10px; box-sizing: border-box; min-height: 44px; padding: 4px 12px; border-top: 1px solid var(--hd-hair); text-decoration: none; color: var(--text-primary); }
@@ -2535,13 +2539,16 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-lt-figs { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
 .gs-lt-figs dt, .gs-lt-figs dd { margin: 0; }
 .gs-lt-skel { padding: 8px 20px 20px; }
-.gs-lt-day { padding: 12px 20px 4px; border-top: 1px solid var(--hd-hair); }
-/* A raid night's date on the Loot pages: the old night head (condensed caps) in gold - the one gold that is not a count (design spec 2.2, user 2026-10-19). */
-.guild-page .gs-lt-date { font: 700 16px/1.2 var(--font-cond); letter-spacing: 0.03em; text-transform: uppercase; color: var(--accent-gold); text-decoration: none; }
-.guild-page a.gs-lt-date:hover, .guild-page a.gs-lt-link:hover .gs-lt-date { text-decoration: underline; text-underline-offset: 3px; }
-.gs-lt-dayhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 0 0 4px; font-size: 13px; font-weight: 400; line-height: 1.4; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
-.gs-lt-day .gs-loot-sublist { padding: 0; }
+.gs-lt-day { padding: 0; border-top: 1px solid var(--hd-hair); }
+.gs-lt-nighthead { padding: 12px 20px; border-bottom: 1px solid var(--hd-hair); }
+.gs-loot-page .gs-lt-day .gs-loot-sublist { padding: 0 20px; }
 .gs-lt-day .gs-loot-subrow:first-child { border-top: 0; }
+.gs-lt-nightpanel { margin-bottom: 16px; }
+.gs-lt-arow { display: grid; grid-template-columns: minmax(0, 1fr) 140px auto 34px; gap: 4px 12px; align-items: center; min-height: 48px; padding: 6px 20px; border-top: 1px solid var(--hd-hair); }
+.gs-lt-arow:first-child { border-top: 0; }
+.gs-lt-aitem { min-width: 0; overflow-wrap: anywhere; }
+.gs-lt-amore { display: flex; justify-content: flex-end; min-width: 0; }
+.gs-lt-awho { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
 .gs-lt-night > details > summary { list-style: none; cursor: pointer; }
 .gs-lt-night > details > summary::-webkit-details-marker { display: none; }
 .gs-lt-night > details > summary::after { content: ""; flex: none; width: 8px; height: 8px; border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted); transform: rotate(45deg); }
@@ -2573,8 +2580,11 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
   .gs-loot-page .gs-dtable-row.is-you, .gs-loot-page .gs-dtable-row.is-you:hover { background: var(--you-bg); box-shadow: none; }
   .gs-loot-page .gs-pr-panel .gs-dtable tbody tr { margin: 0; border-width: 1px 0 0; border-radius: 0; box-shadow: none; background: none; }
   .gs-loot-page .gs-pr-panel .gs-dtable tbody tr.is-you { background: var(--you-bg); }
-  .gs-lt-pad, .gs-lt-day, .gs-loot-page .gs-loot-sublist { padding-left: 16px; padding-right: 16px; }
-  .gs-lt-day .gs-loot-sublist { padding-left: 0; padding-right: 0; }
+  .gs-lt-pad, .gs-loot-page .gs-loot-sublist { padding-left: 16px; padding-right: 16px; }
+  .gs-lt-nighthead { padding: 12px 16px; }
+  .gs-loot-page .gs-lt-day .gs-loot-sublist { padding-left: 16px; padding-right: 16px; }
+  .gs-lt-arow { grid-template-columns: minmax(0, 1fr) auto 34px; padding: 8px 16px; }
+  .gs-lt-arow > .gs-lt-aitem { grid-column: 1 / -1; }
 }
 
 /* ── Loot page redesign: the award record, Edit details, Needs fixing, the import's decision rows, phones ── */

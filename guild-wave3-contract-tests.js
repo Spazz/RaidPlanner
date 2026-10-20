@@ -237,7 +237,7 @@ check('intent board: an officer opens a round, a member picks (main and alt) wit
   const out = page();
   text = stripTags(out);
   assert(text.includes('2 of 4 picked') && text.includes('Picks by role') && text.includes('Not picked yet 2'), text.slice(0, 900));
-  const rows = [...out.matchAll(/<span class="gs-fg-gh">([^<]+)<\/span><span class="gs-sp-tilerow"><span class="gs-sp-num">(\d+)<span class="gs-sp-den"> \/ (\d+)<\/span><\/span><span class="gs-fg-mut">([^<]*)<\/span>/g)].map((m) => [m[1], +m[2], +m[3], m[4]]);
+  const rows = [...out.matchAll(/<span class="gs-fg-lbl">([^<]+)<\/span><span class="gs-sp-tilerow"><span class="gs-sp-num">(\d+)<span class="gs-sp-den"> \/ (\d+)<\/span><\/span><span class="gs-fg-mut">([^<]*)<\/span>/g)].map((m) => [m[1], +m[2], +m[3], m[4]]);
   assert.deepEqual(rows, [['Tanks', 1, 2, 'Need 1'], ['Healers', 1, 5, 'Need 4'], ['Melee DPS', 0, 7, 'Need 7'], ['Ranged DPS', 0, 6, 'Need 6']], 'forever 20-man defaults');
   assert(text.includes('Tanking at launch') && text.includes('Protection') && text.includes('1 alt') && text.includes('Holy'));
   // The coverage panel is the Planner's own answer for the two main picks.

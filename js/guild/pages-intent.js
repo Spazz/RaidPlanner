@@ -110,7 +110,7 @@
       const want = board.targets ? board.targets[role] : null;
       const have = t.byRole[role] || 0;
       const diff = want === null ? '' : (have < want ? 'Need ' + (want - have) : have > want ? (have - want) + ' over' : 'Full');
-      return '<div class="gs-sp-tile"><span class="gs-fg-gh">' + esc(ROLE_LABELS[role]) + '</span><span class="gs-sp-tilerow"><span class="gs-sp-num">' + esc(have) +
+      return '<div class="gs-sp-tile"><span class="gs-fg-lbl">' + esc(ROLE_LABELS[role]) + '</span><span class="gs-sp-tilerow"><span class="gs-sp-num">' + esc(have) +
         (want === null ? '' : '<span class="gs-sp-den"> / ' + esc(want) + '</span>') + '</span><span class="gs-fg-mut">' + esc(diff) + '</span></span></div>';
     }).join('') + '</div>';
   }
@@ -152,7 +152,7 @@
           (p.note ? '<span class="gs-rs-alt gs-sp-note">' + esc(p.note) + '</span>' : '') + '</span>' +
           (editCol ? '<button type="button" class="gs-btn gs-btn-ghost gs-sp-change" data-action="intent-edit" data-pid="' + esc(p.personId) + '" data-key="intent-edit-' + esc(p.personId) + '" aria-label="Change the pick of ' + esc(p.name) + '">Change</button>' : '') + '</div>';
       }).join('');
-      return '<div class="gs-hd-panel gs-rs-col"><h3 class="gs-rs-colhead gs-fg-gh">' + esc(ROLE_LABELS[role]) + ' <b>' + picks.length + '</b>' + (want === null ? '' : '<span class="gs-rs-den">/ ' + esc(want) + '</span>') + '</h3>' +
+      return '<div class="gs-hd-panel gs-rs-col"><h3 class="gs-rs-colhead gs-fg-gh"><span class="gs-fg-ght">' + esc(ROLE_LABELS[role]) + '</span><span class="gs-fg-ghn">' + esc(picks.length + (want === null ? '' : ' / ' + want)) + '</span></h3>' +
         (rows || '<p class="gs-rs-none">Nobody yet</p>') + '</div>';
     }).join('');
     return '<section aria-label="Picks" class="gs-sp-picks"><h2 class="gs-hd-sl">Picks by role</h2><div class="gs-rs-cols gs-sp-cols">' + cols + '</div></section>';
@@ -178,7 +178,7 @@
     const t = d.totals;
     const people = t.people || 0;
     const steps = [['Picked', 'intent'], ['Character made', 'character'], ['Level band', 'level'], ['Ready', 'ready']].map(function (s, i) {
-      return '<li class="gs-sp-step">' + (i ? '<span class="gs-sp-chev" aria-hidden="true">' + G.icons.icon('arrow', 18) + '</span>' : '') + '<span class="gs-sp-stepbody"><span class="gs-fg-gh">' + esc(s[0]) + '</span>' +
+      return '<li class="gs-sp-step">' + (i ? '<span class="gs-sp-chev" aria-hidden="true">' + G.icons.icon('arrow', 18) + '</span>' : '') + '<span class="gs-sp-stepbody"><span class="gs-fg-lbl">' + esc(s[0]) + '</span>' +
         '<span class="gs-sp-stepnum">' + esc(t.stages[s[1]] || 0) + '<span class="gs-sp-stepden"> / ' + esc(people) + '</span></span></span></li>';
     }).join('');
     return '<section aria-label="Launch readiness" class="gs-sp-launch"><h2 class="gs-hd-sl">Launch readiness</h2><div class="gs-hd-panel gs-sp-launchbox"><ol class="gs-sp-steps">' + steps + '</ol>' +

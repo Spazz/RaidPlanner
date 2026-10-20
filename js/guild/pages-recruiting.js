@@ -111,12 +111,12 @@
     const s = G.coverage.summary(cov);
     const body = groups.map(function (g) {
       const miss = g[1].filter(function (e) { return !e.covered; });
-      return '<div class="gs-rc-grp"><h3 class="gs-fg-gh">' + esc(g[0] + ' ' + miss.length + ' of ' + g[1].length) + '</h3>' +
+      return '<div class="gs-rc-grp"><h3 class="gs-fg-gh"><span class="gs-fg-ght">' + esc(g[0]) + '</span><span class="gs-fg-ghn">' + esc(miss.length + ' of ' + g[1].length + ' missing') + '</span></h3>' +
         '<p class="gs-rc-names">' + (miss.length ? esc(namesOf(miss)) : 'None missing.') + '</p></div>';
     }).join('');
     const covered = groups.map(function (g) {
       const ok = g[1].filter(function (e) { return e.covered; });
-      return ok.length ? '<div class="gs-rc-grp"><h3 class="gs-fg-gh">' + esc(g[0] + ' covered ' + ok.length) + '</h3><p class="gs-rc-names">' + esc(namesOf(ok)) + '</p></div>' : '';
+      return ok.length ? '<div class="gs-rc-grp"><h3 class="gs-fg-gh"><span class="gs-fg-ght">' + esc(g[0]) + '</span><span class="gs-fg-ghn">' + esc(ok.length + ' covered') + '</span></h3><p class="gs-rc-names">' + esc(namesOf(ok)) + '</p></div>' : '';
     }).join('');
     return '<section class="gs-hd-panel gs-rc-panel" id="rt-cov" aria-labelledby="rt-cov-h">' + head('<span class="gs-rc-miss">' + esc(s.missing) + ' missing</span>') +
       '<div class="gs-rc-body"><p class="gs-fg-mut">' + esc(x.useIntent && data.intent ? 'The roster with the spec poll picks laid over it.' : 'The active roster.') + '</p>' + body +

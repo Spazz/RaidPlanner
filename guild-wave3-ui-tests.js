@@ -237,9 +237,9 @@ class ApiErr extends Error {
     const text = stripTags(out);
     assert(text.includes('2 of 3 picked') && text.includes('Your pick: Warrior Protection'), text.slice(0, 600));
     // The role tiles: picked / target with the gap.
-    const tiles = [...out.matchAll(/<span class="gs-fg-gh">([^<]+)<\/span><span class="gs-sp-tilerow"><span class="gs-sp-num">(\d+)<span class="gs-sp-den"> \/ (\d+)<\/span><\/span><span class="gs-fg-mut">([^<]*)<\/span>/g)].map(m => [m[1], +m[2], +m[3], m[4]]);
+    const tiles = [...out.matchAll(/<span class="gs-fg-lbl">([^<]+)<\/span><span class="gs-sp-tilerow"><span class="gs-sp-num">(\d+)<span class="gs-sp-den"> \/ (\d+)<\/span><\/span><span class="gs-fg-mut">([^<]*)<\/span>/g)].map(m => [m[1], +m[2], +m[3], m[4]]);
     assert.deepEqual(tiles, [['Tanks', 1, 2, 'Need 1'], ['Healers', 1, 5, 'Need 4'], ['Melee DPS', 0, 7, 'Need 7'], ['Ranged DPS', 0, 6, 'Need 6']]);
-    assert(out.includes('Picks by role') && out.includes('gs-rs-colhead gs-fg-gh">Tanks <b>1</b>') && out.includes('gs-rs-colhead gs-fg-gh">Healers <b>1</b>') && out.includes('Mendra'));
+    assert(out.includes('Picks by role') && out.includes('gs-rs-colhead gs-fg-gh"><span class="gs-fg-ght">Tanks</span><span class="gs-fg-ghn">1') && out.includes('gs-rs-colhead gs-fg-gh"><span class="gs-fg-ght">Healers</span><span class="gs-fg-ghn">1') && out.includes('Mendra'));
     assert(!out.includes('Windfury Totem') && out.includes('data-action="intent-cov"') && text.includes('Picks cover 1 of 2 buffs and 1 of 2 debuffs'), 'coverage is one line until it is opened');
     x.showCov = true;
     const opened = G.pages.intent.intentHtml({ guildData: S.guilds.g1, state: x, alert: '' });

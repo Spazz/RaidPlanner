@@ -214,11 +214,11 @@ const LOOT = { person: { id: 'p_x', name: 'Thoren', class: 'SHAMAN', status: 'ra
     assert(!G.pages.personAtt.personAttHtml({ guildData: gd(OFFICER_CAN), pid: 'p_x', data: Object.assign({}, data, { person: Object.assign({}, data.person, { isMe: false }) }) }).includes('gs-youline'));
   });
 
-  await check('9. the loot history is the same object page: You line when it is yours, figures first, one table of awards linking to each night, the Main\'s class in the header', () => {
+  await check('9. the loot history is the same object page: You line when it is yours, figures first, one panel per night linking to it, the Main\'s class in the header', () => {
     const out = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_x', data: LOOT });
     assert(out.includes('gs-object-page') && out.includes('<span class="gs-hd-chip is-grey">You</span>') && stripTags(out).includes('Loot history') && stripTags(out).includes('Main: Shaman'));
     assert(stripTags(out).includes('This is your loot. The guild\'s loot setting decides who else can see it.'));
-    assert.deepEqual(sectionIds(out), ['pl-cols', 'pl-totals', 'pl-awards']);
+    assert.deepEqual(sectionIds(out), ['pl-cols', 'pl-totals']);
     assert(out.includes('href="#/g/g1/loot/n/r1"'));
     const other = G.pages.personLoot.personLootHtml({ guildData: gd(OFFICER_CAN), pid: 'p_x', data: Object.assign({}, LOOT, { person: Object.assign({}, LOOT.person, { isMe: false }) }) });
     assert(!other.includes('gs-youline'));

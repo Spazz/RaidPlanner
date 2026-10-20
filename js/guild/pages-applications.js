@@ -81,7 +81,7 @@
       '<div class="gs-rc-appside"><span class="gs-hd-chip is-' + STATUS_TONE[app.status] + '">' + esc(STATUS_LABELS[app.status]) + '</span>' + actionsHtml(app) + '</div></div>' +
       (app.onRoster ? '<p class="gs-notice gs-app-onroster" role="status"><span>' + esc(app.name) + ' is on the roster already, as a character of <a href="' + esc(G.router.format({ name: 'person', gid: gd.guild.id, pid: app.onRoster.personId })) + '">' + esc(app.onRoster.name) + '</a>.</span></p>' : '') +
       answersHtml(app.answers) +
-      (app.notes ? '<p class="gs-app-notes"><span class="gs-fg-gh">Officer notes</span><br>' + esc(app.notes).replace(/\n/g, '<br>') + '</p>' : '') +
+      (app.notes ? '<p class="gs-app-notes"><span class="gs-fg-lbl">Officer notes</span><br>' + esc(app.notes).replace(/\n/g, '<br>') + '</p>' : '') +
       (app.status === 'accepted' && app.personId ? '<p class="gs-fg-mut"><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'person', gid: gd.guild.id, pid: app.personId })) + '">Open the person</a></p>' : '') +
       '</li>';
   }

@@ -120,19 +120,31 @@
     const awards = Array.isArray(data.awards) ? data.awards : [];
     const standing = standingOf(opts.balance, opts.pid);
     const edit = awards.some(function (w) { return L().allows(gd, 'loot.edit', w.teamId); });
-    const columns = [{ key: 'item', label: 'Item', primary: true }, { key: 'night', label: 'Raid night' }, { key: 'tag', label: 'Tag' }];
-    if (edit) columns.push({ key: 'actions', label: 'More', srLabel: true, hideLabel: true });
-    const rows = awards.map(function (w) {
-      const mayEdit = L().allows(gd, 'loot.edit', w.teamId);
-      return { id: w.id, cells: {
-        item: L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + (w.note ? '<span class="gs-lt-sub">Note: ' + esc(w.note) + '</span>' : ''),
-        night: w.raidId ? '<a href="' + esc(G.router.format({ name: 'lootnight', gid: gid, rid: w.raidId })) + '">' + esc(G.ui.weekdayDay(w.raidOn) || w.raidOn || 'Raid night') + '</a>' : esc(G.ui.weekdayDay(w.raidOn) || w.raidOn || ''),
-        tag: '<span class="gs-lt-tagcell">' + L().tagTextHtml(w.tag, w.tagSetBy) + L().editedChipHtml(w) + '</span>',
-        actions: mayEdit && G.pages.lootNight ? G.pages.lootNight.moreMenuHtml(gd, w) : '' } };
+    // One panel per raid night, newest first (the incoming order); an award without a raid groups by its date.
+    const nights = [];
+    awards.forEach(function (w) {
+      const key = w.raidId ? 'r:' + w.raidId : 'd:' + (w.raidOn || '');
+      let n = nights.find(function (x) { return x.key === key; });
+      if (!n) { n = { key: key, raidId: w.raidId || null, raidOn: w.raidOn, awards: [] }; nights.push(n); }
+      n.awards.push(w);
     });
-    const readOnly = edit ? '' : '<p class="gs-lt-pad gs-fine">Awards are read-only for members. Ask an officer if something looks wrong.</p>';
-    const awardsPanel = L().panelHtml({ id: 'pl-awards', title: 'Loot awards', metaHtml: esc(L().plural(awards.length, 'award', 'awards')) + ', newest first', flush: awards.length > 0,
-      bodyHtml: awards.length ? G.ui.dataTableHtml({ label: 'Loot awards', columns: columns, rows: rows, limit: 1000, showAll: true, noun: 'awards' }) + readOnly : '<p class="gs-fine">' + esc(emptyLine(!!p.isMe)) + '</p>' });
+    const nightPanels = nights.map(function (n, i) {
+      const day = G.ui.weekdayDay(n.raidOn) || n.raidOn || 'Raid night';
+      const hid = 'pl-n-' + (n.raidId || 'd' + i);
+      const title = n.raidId ? '<a class="gs-fg-ght" href="' + esc(G.router.format({ name: 'lootnight', gid: gid, rid: n.raidId })) + '">' + esc(day) + '</a>' : '<span class="gs-fg-ght">' + esc(day) + '</span>';
+      const rows = n.awards.map(function (w) {
+        const mayEdit = L().allows(gd, 'loot.edit', w.teamId);
+        return '<li class="gs-lt-arow" id="loot-' + esc(w.id) + '"><span class="gs-lt-aitem">' + L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + (w.note ? '<span class="gs-lt-sub">Note: ' + esc(w.note) + '</span>' : '') + '</span>' +
+          '<span class="gs-lt-awho"><span class="gs-sr">Winner: </span>' + L().characterHtml(w) + '</span>' +
+          '<span class="gs-lt-tagcell">' + L().tagTextHtml(w.tag, w.tagSetBy) + L().editedChipHtml(w) + '</span>' +
+          '<span class="gs-lt-amore">' + (mayEdit && G.pages.lootNight ? G.pages.lootNight.moreMenuHtml(gd, w) : '') + '</span></li>';
+      }).join('');
+      return '<section class="gs-hd-panel gs-lt-nightpanel" aria-labelledby="' + esc(hid) + '"><div class="gs-lt-nighthead"><h3 class="gs-fg-gh" id="' + esc(hid) + '">' + title + '<span class="gs-fg-ghn">' + esc(L().plural(n.awards.length, 'item', 'items')) + '</span></h3></div>' +
+        '<ul class="gs-lt-list" aria-label="Awards on ' + esc(day) + '">' + rows + '</ul></section>';
+    }).join('');
+    const readOnly = edit ? '' : '<p class="gs-fine">Awards are read-only for members. Ask an officer if something looks wrong.</p>';
+    const awardsPanel = awards.length ? nightPanels + readOnly
+      : L().panelHtml({ id: 'pl-awards', title: 'Loot awards', metaHtml: esc(L().plural(0, 'award', 'awards')) + ', newest first', bodyHtml: '<p class="gs-fine">' + esc(emptyLine(!!p.isMe)) + '</p>' });
     const totalsPanel = L().panelHtml({ id: 'pl-totals', title: 'Loot received', flush: true,
       bodyHtml: statsHtml(data.totals, standing) + (standing ? '<p class="gs-pr-linkrow"><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'lootstandings', gid: gid })) + '">See where you stand</a></p>' : '') });
     return G.ui.objectPageHtml({

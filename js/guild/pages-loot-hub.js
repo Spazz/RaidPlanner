@@ -87,7 +87,7 @@
 
   // A night as a link row (edit holders; the all-nights list).
   function nightLinkHtml(gid, rid, raidOn, awards, meta) {
-    return '<li><a class="gs-pr-row gs-lt-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: rid })) + '"><span class="gs-lt-main"><span class="gs-lt-date">' + esc(dayText(raidOn)) + '</span>' +
+    return '<li><a class="gs-pr-row gs-lt-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: rid })) + '"><span class="gs-lt-main"><span class="gs-fg-ght">' + esc(dayText(raidOn)) + '</span>' +
       '<span class="gs-lt-sub">' + esc(plural(awards, 'award', 'awards') + (meta ? ' - ' + meta : '')) + '</span></span></a></li>';
   }
 
@@ -104,7 +104,7 @@
       body = '<ul class="gs-lt-list" aria-label="Latest raid nights">' + nights.map(function (n) { return nightLinkHtml(gid, n.raid.id, n.raid.raidOn, n.awards.length, nightMeta(n)); }).join('') + '</ul>';
     } else {
       body = '<ul class="gs-lt-list" aria-label="Latest raid nights">' + nights.map(function (n, i) {
-        return '<li class="gs-lt-night"><details' + (i === 0 ? ' open' : '') + '><summary class="gs-pr-row"><span class="gs-lt-main"><span class="gs-lt-date">' + esc(dayText(n.raid.raidOn)) + '</span>' +
+        return '<li class="gs-lt-night"><details' + (i === 0 ? ' open' : '') + '><summary class="gs-pr-row"><span class="gs-lt-main"><span class="gs-fg-ght">' + esc(dayText(n.raid.raidOn)) + '</span>' +
           '<span class="gs-lt-sub">' + esc(plural(n.awards.length, 'award', 'awards') + (nightMeta(n) ? ' - ' + nightMeta(n) : '')) + '</span></span></summary>' + receivedHtml(gd, hub, n) +
           '<p class="gs-lt-pad"><a class="gs-fg-u" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '">Open the night</a></p></details></li>';
       }).join('') + '</ul>';
@@ -136,7 +136,7 @@
     const nights = Array.isArray(me.byNight) ? me.byNight : [];
     const body = nights.length
       ? nights.map(function (n) {
-        return '<div class="gs-lt-day"><h3 class="gs-lt-dayhead"><a class="gs-lt-date" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '">' + esc(dayText(n.raid.raidOn)) + '</a><span>' + esc(plural(n.awards.length, 'item', 'items')) + '</span></h3>' +
+        return '<div class="gs-lt-day"><div class="gs-lt-nighthead"><h3 class="gs-fg-gh"><a class="gs-fg-ght" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.raid.id })) + '">' + esc(dayText(n.raid.raidOn)) + '</a><span class="gs-fg-ghn">' + esc(plural(n.awards.length, 'item', 'items')) + '</span></h3></div>' +
           '<ul class="gs-loot-sublist" aria-label="My loot on ' + esc(dayText(n.raid.raidOn)) + '">' + n.awards.map(function (w) {
             return '<li class="gs-loot-subrow"><span class="gs-loot-item">' + L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + '</span>' + L().tagTextHtml(w.tag, w.tagSetBy) + L().editedChipHtml(w) + '</li>';
           }).join('') + '</ul></div>';

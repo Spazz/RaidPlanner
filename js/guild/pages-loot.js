@@ -322,6 +322,7 @@
     raidLabel: raidLabel,
     winnerHtml: winnerHtml,
     awardRowHtml: awardRowHtml,
+    characterHtml: characterHtml,
     totalsHtml: totalsHtml,
     balanceRows: balanceRows,
     defaultSort: defaultSort,

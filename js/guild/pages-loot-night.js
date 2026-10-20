@@ -197,7 +197,7 @@
     const perNight = nightIds.map(function (rid) { return { rid: rid, raidOn: drops.filter(function (w) { return w.raidId === rid; })[0].raidOn, n: nightsOf[rid] }; })
       .sort(function (p, q) { return String(p.raidOn).localeCompare(String(q.raidOn)); });
     const over = '<ul class="gs-lt-list" aria-label="Awards per night">' + perNight.map(function (n) {
-      return '<li><a class="gs-pr-row gs-lt-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.rid })) + '"><span class="gs-lt-main"><span class="gs-lt-date">' + esc(dayText(n.raidOn)) + '</span></span><span class="gs-lt-figure gs-num">' + esc(n.n) + '</span></a></li>';
+      return '<li><a class="gs-pr-row gs-lt-link" href="' + esc(href({ name: 'lootnight', gid: gid, rid: n.rid })) + '"><span class="gs-lt-main"><span class="gs-fg-ght">' + esc(dayText(n.raidOn)) + '</span></span><span class="gs-lt-figure gs-num">' + esc(n.n) + '</span></a></li>';
     }).join('') + '</ul>';
     // Who has it: one row per winner per night.
     const groups = [];
