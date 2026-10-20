@@ -181,5 +181,95 @@
     return !!route && (route.name === 'guest' || route.name === 'view' || route.name === 'public' || route.name === 'apply' || route.name === 'join' || route.name === 'devview');
   }
 
-  G.router = { SECTIONS: SECTIONS, TABS: TABS, TAB_ALIASES: TAB_ALIASES, ROSTER_TABS: ROSTER_TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN, parse: parse, format: format, isViewerRoute: isViewerRoute };
+  // ── PREVIOUS PAGE (the back links) ──
+  // The trail of in-app pages this tab has visited, kept in sessionStorage (a reload of the same tab keeps it; a fresh load of an address, a new tab or a
+  // direct link starts it empty). A page is its address without the query: a sort, a filter or a saved tag that only changes the query is the same page.
+  // previous() is the page before the current one, or null: the back links then keep their fixed parent. A back link click calls history.back() (no
+  // new entry); back() records that so the stack pops instead of growing, and back/back never bounces.
+  const TRAIL_KEY = 'gs-trail';
+  const TRAIL_MAX = 30;
+  let trail = null;
+
+  function trailStore() {
+    try { return typeof window !== 'undefined' && window.sessionStorage ? window.sessionStorage : null; } catch (err) { return null; }
+  }
+  function pathOf(hash) {
+    const h = String(hash || '');
+    const q = h.indexOf('?');
+    return q < 0 ? h : h.slice(0, q);
+  }
+  function trailLoad() {
+    if (trail) return trail;
+    trail = { stack: [], intent: null };
+    const store = trailStore();
+    if (!store) return trail;
+    try {
+      const saved = JSON.parse(store.getItem(TRAIL_KEY));
+      if (saved && Array.isArray(saved.stack)) {
+        trail.stack = saved.stack.filter(function (e) { return e && typeof e.hash === 'string' && typeof e.path === 'string'; }).slice(-TRAIL_MAX);
+        trail.intent = typeof saved.intent === 'string' ? saved.intent : null;
+      }
+    } catch (err) { /* an unreadable trail is an empty one */ }
+    return trail;
+  }
+  function trailSave() {
+    const store = trailStore();
+    if (!store || !trail) return;
+    try { store.setItem(TRAIL_KEY, JSON.stringify(trail)); } catch (err) { /* private window: the trail lives for this load only */ }
+  }
+  // The address changed to `hash`. opts: { replace: the entry was replaced, not added; history: Back / Forward button }
+  function visit(hash, opts) {
+    const o = opts || {};
+    const t = trailLoad();
+    const path = pathOf(hash);
+    const stack = t.stack;
+    const top = stack[stack.length - 1];
+    const intent = t.intent;
+    t.intent = null;
+    if (top && top.path === path) { top.hash = hash; trailSave(); return; } // the same page again (a query change, a retry, a reload)
+    const goingBack = (intent === path || o.history) && stack.length > 1 && stack[stack.length - 2].path === path;
+    if (goingBack) {
+      stack.pop();
+      stack[stack.length - 1].hash = hash;
+    } else {
+      if (o.replace) stack.pop();
+      const below = stack[stack.length - 1];
+      if (below && below.path === path) below.hash = hash;
+      else stack.push({ path: path, hash: hash, name: null });
+      if (stack.length > TRAIL_MAX) stack.shift();
+    }
+    trailSave();
+  }
+  // The page at `hash` is drawn: its name (the h1) and its final address (a redirect may have rewritten it).
+  function rendered(hash, name) {
+    const t = trailLoad();
+    const top = t.stack[t.stack.length - 1];
+    if (!top) return;
+    top.hash = String(hash || top.hash);
+    top.path = pathOf(top.hash);
+    if (typeof name === 'string' && name.trim()) top.name = name.trim();
+    trailSave();
+  }
+  // -> { hash, name } of the page before this one, or null (nothing before it, or it was never named).
+  function previous() {
+    const t = trailLoad();
+    const prev = t.stack.length > 1 ? t.stack[t.stack.length - 2] : null;
+    return prev && prev.name ? { hash: prev.hash, name: prev.name } : null;
+  }
+  // A back link is about to call history.back(): the next address is the previous page.
+  function back() {
+    const prev = previous();
+    if (!prev) return null;
+    trailLoad().intent = pathOf(prev.hash);
+    trailSave();
+    return prev;
+  }
+  // A load that is not a reload or a Back / Forward starts a new trail.
+  function resetTrail() {
+    trail = { stack: [], intent: null };
+    trailSave();
+  }
+
+  G.router = { SECTIONS: SECTIONS, TABS: TABS, TAB_ALIASES: TAB_ALIASES, ROSTER_TABS: ROSTER_TABS, LOOT_VIEWS: LOOT_VIEWS, IMPORT_SOURCES: IMPORT_SOURCES, LINKED_ERRORS: LINKED_ERRORS, GUEST_TOKEN: GUEST_TOKEN, parse: parse, format: format, isViewerRoute: isViewerRoute,
+    visit: visit, rendered: rendered, previous: previous, back: back, resetTrail: resetTrail, pathOf: pathOf };
 })(typeof window !== 'undefined' ? (window.Guild = window.Guild || {}) : (globalThis.Guild = globalThis.Guild || {}));

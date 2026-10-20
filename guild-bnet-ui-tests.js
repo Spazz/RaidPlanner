@@ -224,7 +224,10 @@ const el = attrs => ({ disabled: false, getAttribute: k => (attrs || {})[k] });
     assert(row('Aldric').includes('>70<') && row('Fenwick').includes('>12<'));
     assert(row('Aldric').includes('data-label="Level"') && row('Aldric').includes('data-label="Realm"'), 'phone labels');
     assert(out.includes('gs-dtable') && !out.includes('gs-btn-molten'), 'the data table (cards on a phone); Claim is a quiet button, not orange');
-    assert(out.indexOf('>Aldric</span>') < out.indexOf('>Brindle</span>'), 'the character already on your record is first');
+    const delivered = guildEntry().characters.slice().reverse();
+    const rev = G.pages.bnet.charactersHtml({ data: bnetData({ guilds: [guildEntry({ characters: delivered })] }) });
+    assert(rev.indexOf('>Aldric</span>') > rev.indexOf('>Brindle</span>'), 'your own character keeps the delivered order, it is not moved first');
+    assert(rev.split('<tr class="gs-dtable-row').find(r => r.includes('>Aldric</span>')).includes('On your record'), 'the yours state stays on its row');
     assertNoRawAttrs(out);
   });
 

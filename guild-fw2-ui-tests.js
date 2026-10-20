@@ -109,7 +109,7 @@ const keys = items => plain(items.map(i => i.key));
   });
 
   // ═══ 5. Attendance ═══
-  const cell = (raidId, date, weekStart, outcome) => ({ raidId, date, weekStart, outcome, letter: outcome === 'present' ? 'P' : 'M', pending: false });
+  const cell = (raidId, date, weekStart, outcome) => ({ raidId, date, weekStart, outcome, letter: outcome === 'present' ? 'A' : 'M', pending: false });
   const person = (id, name, isMe, pct) => ({ id, name, class: 'DRUID', status: 'raider', isMe, pct, pctAll: pct, signupRate: 100, streak: 0, streakFlag: false, lastAttended: '2026-10-09', pending: 0,
     cells: [cell('r1', '2026-10-02', '2026-09-29', 'present'), cell('r2', '2026-10-09', '2026-10-06', 'present')] });
   const ATT = over => Object.assign({
@@ -120,17 +120,17 @@ const keys = items => plain(items.map(i => i.key));
   }, over || {});
   const attHtml = (data, can, view) => G.pages.attendance.attendanceHtml({ guildData: gd(can || OFFICER_CAN, { attendanceFlags: { t1: 2 } }), teamId: 't1', data, view: Object.assign({ sort: G.pages.attendance.DEFAULT_SORT, includeInactive: false }, view || {}) });
 
-  await check('attendance: the viewer\'s own row is first in the matrix and in the phone cards, whatever the sort, with the You tag; the rest keep the sorted order', () => {
+  await check('attendance: the viewer\'s own row keeps its sorted place in the matrix and in the phone cards (never pinned), with the You tag and the tint', () => {
     const out = attHtml(ATT());
     const rows = [...out.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => [m[2], !!m[1]]);
-    assert.deepEqual(rows, [['Me', true], ['Aimer', false], ['Zed', false]], 'You first, then A-Z');
+    assert.deepEqual(rows, [['Aimer', false], ['Me', true], ['Zed', false]], 'A-Z, You in place');
     assert(out.includes('<span class="gs-you">You</span>'));
     const cards = [...out.matchAll(/<li class="gs-att-card( is-you)?">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[2]);
-    assert.deepEqual(cards, ['Me', 'Aimer', 'Zed']);
+    assert.deepEqual(cards, ['Aimer', 'Me', 'Zed']);
     const desc = attHtml(ATT(), OFFICER_CAN, { sort: { column: 'pct', dir: 'desc' } });
-    assert.deepEqual([...desc.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[2]), ['Me', 'Aimer', 'Zed'], 'pinned although Me has the lowest %');
-    assert.deepEqual(plain(G.pages.attendance.pinMine([{ n: 1 }, { n: 2, isMe: true }, { n: 3 }])).map(p => p.n), [2, 1, 3]);
-    assert(!attHtml(ATT({ people: [person('p_a', 'Aimer', false, 100)] })).includes('class="is-you"'), 'a viewer with no row pins nothing');
+    assert.deepEqual([...desc.matchAll(/<tr( class="is-you")?><th scope="row" class="gs-cell-strong">.*?gs-char-name[^>]*>([^<]*)</g)].map(m => m[2]), ['Aimer', 'Zed', 'Me'], 'Me has the lowest %, so Me is last');
+    assert.equal(G.pages.attendance.pinMine, undefined, 'the pin helper is gone');
+    assert(!attHtml(ATT({ people: [person('p_a', 'Aimer', false, 100)] })).includes('class="is-you"'), 'a viewer with no row tints nothing');
   });
 
   await check('attendance: the legend is folded behind a Legend toggle; the page is one list page with the viewer\'s facts in a context line', () => {
@@ -163,9 +163,9 @@ const keys = items => plain(items.map(i => i.key));
   const LOOT = people => ({ team: { id: 't1', name: 'Main team' }, window: { weeks: 8, switchWeeks: [8, 12], from: '2026-08-18' }, mode: 'perRaid', countTags: ['MS'], scope: 'team', people, teamAverage: { window: 0.4, all: 0.4 } });
   const standHtml = (data, can) => G.pages.lootStandings.standingsHtml({ guildData: gd(can || OFFICER_CAN), state: { status: 'ok', teamId: 't1', data } });
 
-  await check('loot: the viewer row is first in the standings table and the cards with You; the order and window switches are the T1 segment bar', () => {
-    const out = standHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9), lootPerson('p_m', 'Me', true, 0.1), lootPerson('p_z', 'Zed', false, 0.5)]));
-    assert.deepEqual([...out.matchAll(/<tr class="gs-dtable-row( is-you)?[^"]*"[^>]*><td[^>]*>[^<]*<\/td><th scope="row" class="gs-dtable-primary"><a[^>]*>([A-Za-z]+)/g)].map(m => [m[2], !!m[1]]), [['Me', true], ['Zed', false], ['Aimer', false]], 'You first although Me has the lowest per raid; the rest most due first');
+  await check('loot: the viewer row keeps its sorted place in the standings table, tinted with You; the order and window switches are the T1 segment bar', () => {
+    const out = standHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9), lootPerson('p_m', 'Me', true, 0.5), lootPerson('p_z', 'Zed', false, 0.1)]));
+    assert.deepEqual([...out.matchAll(/<tr class="gs-dtable-row( is-you)?[^"]*"[^>]*><td[^>]*>[^<]*<\/td><th scope="row" class="gs-dtable-primary"><a[^>]*>([A-Za-z]+)/g)].map(m => [m[2], !!m[1]]), [['Zed', false], ['Me', true], ['Aimer', false]], 'most due first; You stays in its sorted place (not moved to the top)');
     assert(out.includes('<span class="gs-you">You</span>'));
     assert(out.indexOf('class="gs-listbar"') < out.indexOf('data-action="loot-window"') && out.indexOf('data-action="loot-window"') < out.indexOf('<table class="gs-dtable"'));
     assert(!standHtml(LOOT([lootPerson('p_a', 'Aimer', false, 0.9)])).includes('is-you'));
@@ -240,14 +240,14 @@ const keys = items => plain(items.map(i => i.key));
   const ROSTER = people => ({ team: { id: 't1', name: 'Main team', archived: false }, today: '2026-10-18', can: { edit: true, addCharacter: true }, people });
   const rosterHtml = (people, can, over) => G.pages.roster.rosterHtml(Object.assign({ guildData: gd(can || OFFICER_CAN), data: ROSTER(people), view: { sort: G.rosterSort.DEFAULT_SORT, role: 'all', status: 'active', query: '' } }, over || {}));
 
-  await check('roster: no Sign-in column and no "Not signed in" anywhere (Roster redesign, lane U1); the viewer is first in their role column with the grey You chip', () => {
+  await check('roster: no Sign-in column and no "Not signed in" anywhere (Roster redesign, lane U1); the viewer keeps their A-Z place in the role column with the tint and grey You chip', () => {
     const melee = { raidRole: 'melee' };
     const people = [rp('p1', 'Aimer', 'signed_in', false, melee), rp('p2', 'Brew', 'no_discord', false, melee), rp('p3', 'Cass', 'not_yet', false, melee), rp('p4', 'Dun', 'no_discord', false, melee), rp('p5', 'Eve', 'not_yet', true, melee)];
     const out = rosterHtml(people);
     assert(!/Sign-in|Not signed in|No Discord|Not yet/.test(stripTags(out)), 'the sign-in words are gone');
     const desk = out.slice(0, out.indexOf('class="gs-rs-phone"'));
     const names = [...desk.matchAll(/<span class="gs-rs-name [^"]*">([^<]*)</g)].map(m => m[1]);
-    assert.deepEqual(names, ['Eve', 'Aimer', 'Brew', 'Cass', 'Dun'], 'the viewer row is first');
+    assert.deepEqual(names, ['Aimer', 'Brew', 'Cass', 'Dun', 'Eve'], 'the viewer keeps the A-Z place');
     assert(desk.includes('class="gs-rs-row is-you"') && desk.includes('data-you="true"') && desk.includes('<span class="gs-hd-chip is-grey">You</span>'));
     assert.equal(G.ui.signInLabel('no_discord'), 'Not signed in');
     assert.equal(G.ui.signInLabel('not_yet'), 'Not signed in');
@@ -360,8 +360,8 @@ const keys = items => plain(items.map(i => i.key));
     const dialog = G.pages.raidExtras.pasteDialogHtml({ raid: { state: 'awaiting_log' }, sources: { reports: [] } });
     assert.deepEqual(stepsOf(dialog), ['current:Source', 'later:Preview', 'later:Import']);
     assert(dialog.includes('Check names') && /id="pr-steps"/.test(dialog));
-    assert(/gs-commit-line/.test(read('js/guild/pages-raid-extras.js')) && /\.gs-commit-line \{/.test(css), 'the preview opens with "N will be marked present. Nothing is saved yet."');
-    assert(G.pages.raidExtras.previewHtml({ matched: [{ name: 'A' }, { name: 'B' }], unmatched: [], guests: [], ignoredCount: 0 }).includes('2 people will be marked present.'));
+    assert(/gs-commit-line/.test(read('js/guild/pages-raid-extras.js')) && /\.gs-commit-line \{/.test(css), 'the preview opens with "N will be marked attended. Nothing is saved yet."');
+    assert(G.pages.raidExtras.previewHtml({ matched: [{ name: 'A' }, { name: 'B' }], unmatched: [], guests: [], ignoredCount: 0 }).includes('2 people will be marked attended.'));
   });
 
   await check('T5: the commit bar and the result are the shared helpers; the result is an inline banner, never a toast, and Back keeps what was typed', () => {

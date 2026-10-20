@@ -14,9 +14,9 @@
   // Outcome ids in legend order, with the one-letter code each cell carries (the letter is never optional: colour is
   // not the only signal). Mirrors worker/attendance-policy.js; guild-attendance-rules-tests.js checks the parity.
   const OUTCOMES = ['present', 'bench', 'missed', 'missed_notice', 'late', 'left_early', 'late_left', 'fill_in', 'tentative', 'no_signup'];
-  const LETTERS = { present: 'P', bench: 'B', missed: 'M', missed_notice: 'N', late: 'L', left_early: 'E', late_left: 'LE', fill_in: 'F', tentative: 'T', no_signup: '-' };
+  const LETTERS = { present: 'A', bench: 'B', missed: 'M', missed_notice: 'N', late: 'L', left_early: 'E', late_left: 'LE', fill_in: 'F', tentative: 'T', no_signup: '-' };
   const OUTCOME_LABELS = {
-    present: 'Present', bench: 'Bench', missed: 'Missed', missed_notice: 'Missed with notice', late: 'Late', left_early: 'Left early',
+    present: 'Attended', bench: 'Bench', missed: 'Missed', missed_notice: 'Missed with notice', late: 'Late', left_early: 'Left early',
     late_left: 'Late and left early', fill_in: 'Other team', tentative: 'Tentative', no_signup: 'No sign-up',
   };
   const KIND_LABELS = { signed: 'Signed up', late: 'Late', standby: 'Standby', bench: 'Bench', tentative: 'Tentative', absence: "Can't come" };
@@ -45,7 +45,7 @@
     return '<span class="gs-cell ' + outClass(outcome) + '" aria-hidden="true">' + esc(letterOf(outcome)) + (pending ? '?' : '') + '</span>';
   }
 
-  // Letter box + word: "P Present". `pending` adds the question mark and the words "awaiting review".
+  // Letter box + word: "A Attended". `pending` adds the question mark and the words "awaiting review".
   function outcomeChipHtml(outcome, pending) {
     return '<span class="gs-outchip">' + swatchHtml(outcome, pending) + '<span>' + esc(labelOf(outcome)) + (pending ? ' (awaiting review)' : '') + '</span></span>';
   }
@@ -112,12 +112,6 @@
       const c = ea ? 0 : dir * compareValues(va, vb);
       return c || String(a.name == null ? '' : a.name).localeCompare(String(b.name == null ? '' : b.name), 'en');
     });
-  }
-
-  // The viewer's own row goes first whatever the sort (design framework: "You" on top); everyone else keeps the sorted order.
-  function pinMine(people) {
-    const list = Array.isArray(people) ? people : [];
-    return list.filter(function (p) { return p && p.isMe; }).concat(list.filter(function (p) { return !(p && p.isMe); }));
   }
 
   function nextSort(sort, column) {
@@ -263,7 +257,7 @@
     lines.push(pol(p, 'tentative', 'asNoSignup') === 'asSignedUp' ? 'A Tentative sign-up counts as signed up.' : 'A Tentative sign-up counts like no sign-up; if they show up they get normal credit.');
     lines.push(pol(p, 'absence', 'missedWithNotice') === 'excused' ? 'A Can\'t come sign-up is left out of the percentage.' : 'A Can\'t come sign-up counts as Missed, tagged "with notice".');
     lines.push(pol(p, 'bench', 'full') === 'excluded' ? 'Bench (sign-up or plan) is left out of the percentage.' : 'Bench (sign-up or plan) gets full credit.');
-    lines.push(pol(p, 'lateSignup', 'fullCreditNoFlag') === 'flagLikeOthers' ? 'A Late sign-up who arrives late is flagged like anyone else.' : 'A Late sign-up who arrives late is Present with full credit and no flag. Leaving early is still flagged.');
+    lines.push(pol(p, 'lateSignup', 'fullCreditNoFlag') === 'flagLikeOthers' ? 'A Late sign-up who arrives late is flagged like anyone else.' : 'A Late sign-up who arrives late is Attended with full credit and no flag. Leaving early is still flagged.');
     lines.push('Late or left early means missing the first or last boss pull of the raid (wipes count, all of the raid\'s logs together). An officer picks the credit: ' + creditListText(pol(p, 'credit.values', null)) + '.');
     const fill = pol(p, 'fillIn', 'always');
     lines.push(fill === 'recordOnly' ? 'Raiding with another team is shown but never counted.'
@@ -408,9 +402,9 @@
     const people = (Array.isArray(data.people) ? data.people : []).filter(function (p) { return view.includeInactive || p.status !== 'inactive'; });
     const canEdit = G.shell.allowsTeam(gd.me && gd.me.can, 'raids.edit', teamId);
     const hasRaids = (Array.isArray(data.weeks) ? data.weeks : []).some(function (w) { return Array.isArray(w.raids) && w.raids.length; });
-    const sorted = pinMine(sortPeople(people, view.sort));
+    const sorted = sortPeople(people, view.sort);
     const empty = !hasRaids && !people.some(function (p) { return Array.isArray(p.cells) && p.cells.length; });
-    // The legend is collapsed behind a "Legend" toggle (the letters are on every cell and carry their word in the aria-label), the viewer's own row is first.
+    // The legend is collapsed behind a "Legend" toggle (the letters are on every cell and carry their word in the aria-label), the viewer's own row keeps its sorted place.
     const body = empty ? emptyHtml(canEdit, gd.guild.id) :
       '<details class="gs-how gs-legend-box"><summary>Legend</summary>' + legendHtml() + '</details>' +
       (data.awaitingReview > 0 ? '<p class="gs-fine" id="att-awaiting">' + esc(plural(data.awaitingReview, 'raid', 'raids')) + ' awaiting review. Their pending cells are marked with a question mark and left out of the percentage.</p>' : '') +
@@ -580,7 +574,6 @@
     creditText: creditText,
     flagChipsHtml: flagChipsHtml,
     sortPeople: sortPeople,
-    pinMine: pinMine,
     nextSort: nextSort,
     ariaSort: ariaSort,
     gridOf: gridOf,

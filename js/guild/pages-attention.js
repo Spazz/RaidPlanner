@@ -58,7 +58,7 @@
   const ONBOARDING = [
     { id: 'teams', title: 'Set up your teams', hint: 'Name your raid teams, or give a team a weekly schedule.', route: { name: 'settings', tab: 'teams' } },
     { id: 'roster', title: 'Import your roster', hint: 'From Raid-Helper, Warcraft Logs or Battle.net, or add people by hand.', route: { name: 'section', section: 'roster' } },
-    { id: 'attendance', title: 'Set the attendance rules', hint: 'What counts as present, late or absent, and when someone is on the watch list.', route: { name: 'settings', tab: 'attendance' } },
+    { id: 'attendance', title: 'Set the attendance rules', hint: 'What counts as attended, late or absent, and when someone is on the watch list.', route: { name: 'settings', tab: 'attendance' } },
     { id: 'raid', title: 'Add your first raid', hint: 'From a Warcraft Logs report, a Raid-Helper event or by hand.', route: { name: 'raidnew' } },
     { id: 'officers', title: 'Invite your officers', hint: 'Give officers their role, by hand or from a Discord role. Send them the invite message first.', route: { name: 'settings', tab: 'people' }, invite: true },
     { id: 'loot', title: 'Import loot', hint: 'Bring in a Gargul export for a raid.', route: { name: 'section', section: 'loot' } },

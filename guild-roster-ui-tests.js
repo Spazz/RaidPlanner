@@ -249,7 +249,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert(out.includes('1 inactive person is hidden.') && out.includes('>Show them<'), 'the footer link says who is hidden');
   });
 
-  await check('roster page: four role columns by raidRole, You first, reserves under a Reserve label, headers "TANKS 2 / 3" for officers (targets from /recruiting) and "TANKS 2" for members', () => {
+  await check('roster page: four role columns by raidRole, You in A-Z place, reserves under a Reserve label, headers "TANKS 2 / 3" for officers (targets from /recruiting) and "TANKS 2" for members', () => {
     const shape = { status: 'ready', cov: null, data: { targets: { tank: 3, healer: 6, melee: 8, ranged: 8 }, roster: { counts: { tank: 2, healer: 1, melee: 3, ranged: 3 }, gaps: { tank: 1, healer: 5, melee: 5, ranged: 5 } } } };
     const out = rosterPage(guildData(), rosterData(), {}, { shape });
     const desk = deskOf(out);
@@ -266,7 +266,9 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     const me = plain(PEOPLE).map(p => (p.shown.name === 'Sorin' ? Object.assign(p, { isMe: true }) : p));
     const meDesk = deskOf(rosterPage(guildData(), rosterData({ people: me })));
     const first = meDesk.slice(meDesk.indexOf('data-role="ranged"'));
-    assert.deepEqual(rowNames(first).slice(0, 3), ['Sorin', 'Ashcaller', 'Frostwhisper'], 'You first, then A-Z');
+    const rangedNames = rowNames(first.slice(0, first.indexOf('>Reserve</h4>')));
+    assert.deepEqual(rangedNames, rangedNames.slice().sort((a, b) => a.localeCompare(b, 'en')), 'A-Z, You is not moved to the top');
+    assert(rangedNames.indexOf('Sorin') > 0, 'You keeps the sorted place');
     assert(first.includes('data-you="true"') && first.includes('<span class="gs-hd-chip is-grey">You</span>'));
   });
 
@@ -376,7 +378,7 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assertNoRawAttrs(out);
   });
 
-  await check('phone roster: the segments (an officer has six, the Applicants one with the gold count; a member Active and Everyone) and the directory list - You first, NEEDS A DECISION, then everyone', () => {
+  await check('phone roster: the segments (an officer has six, the Applicants one with the gold count; a member Active and Everyone) and the directory list - NEEDS A DECISION, then everyone (You sits in the normal groups)', () => {
     const gd = Object.assign(guildData(), { applicationFlags: { t_main: 2 } });
     const out = rosterPage(gd, rosterData());
     const pills = html => [...html.matchAll(/class="gs-fg-pill" data-action="roster-seg" data-seg="(\w+)" data-key="pseg-\w+" aria-pressed="(\w+)">(\w+) <span class="([\w-]+)">(\d+)<\/span>/g)].map(m => m[1] + ':' + m[3] + ':' + m[5] + ':' + m[4] + ':' + m[2]);
@@ -385,7 +387,9 @@ function rosterPage(gd, data, v, extra) { return G.pages.roster.rosterHtml(Objec
     assert.deepEqual([...phone.matchAll(/<h2 class="gs-hd-sl gs-rs-pgroup">([^<]*)</g)].map(m => m[1]), ['Needs a decision', 'Everyone']);
     assert.deepEqual(rowNames(phone), ['Frostwhisper', 'S' + OSLASH + 'lvhand', 'Ashcaller', 'Brightmane', 'Corvane', 'Kaelith', 'Quickshade', 'Solder', 'Sorin', 'Stormjaw']);
     const me = plain(PEOPLE).map(p => (p.shown.name === 'Sorin' ? Object.assign(p, { isMe: true }) : p));
-    assert.equal(rowNames(phoneOf(rosterPage(gd, rosterData({ people: me }))))[0], 'Sorin', 'You first');
+    const mePhone = phoneOf(rosterPage(gd, rosterData({ people: me })));
+    assert.deepEqual(rowNames(mePhone), rowNames(phone), 'You keeps the sorted place in the phone list');
+    assert(mePhone.includes('data-you="true"') && mePhone.includes('<span class="gs-hd-chip is-grey">You</span>'), 'tint + You tag stay');
     assert(phone.includes('gs-rs-plist'), 'one panel of rows');
     const raiders = phoneOf(rosterPage(gd, rosterData(), { status: 'raider' }));
     assert.equal(rowNames(raiders).length, 6);

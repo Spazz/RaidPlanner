@@ -21,10 +21,7 @@
   function shownOf(p) { return (p && p.shown) || {}; }
   function nameOf(p) { return String(shownOf(p).name == null ? '' : shownOf(p).name); }
   function byName(a, b) { return nameOf(a).localeCompare(nameOf(b), 'en') || String(a.id).localeCompare(String(b.id), 'en'); }
-  // You first, then A-Z.
-  function youFirst(list) {
-    return list.slice().sort(function (a, b) { return (b.isMe ? 1 : 0) - (a.isMe ? 1 : 0) || byName(a, b); });
-  }
+  // Every list is plain A-Z: the viewer is never moved to the top, only tinted and tagged You.
 
   // ── numbers ──
   function countsOf(people) {
@@ -127,8 +124,8 @@
     const inactive = people.filter(function (p) { return p.status === 'inactive'; });
     const want = m.shape ? (m.shape.roles.filter(function (r) { return r.role === role; })[0] || {}).want : null;
     const head = '<h3 class="gs-fg-gh gs-rs-colhead">' + esc(ROLE_TITLES[role]) + ' <b>' + main.length + '</b>' + (m.canEdit && want != null ? '<span class="gs-rs-den">/ ' + want + '</span>' : '') + '</h3>';
-    const label = function (text, list) { return list.length ? '<h4 class="gs-hd-sl gs-rs-sep">' + esc(text) + '</h4>' + youFirst(list).map(function (p) { return rowHtml(p, m); }).join('') : ''; };
-    const body = (main.length ? youFirst(main).map(function (p) { return rowHtml(p, m); }).join('') : (reserve.length || inactive.length ? '' : '<p class="gs-rs-none">No one</p>')) + label('Reserve', reserve) + label('Inactive', inactive);
+    const label = function (text, list) { return list.length ? '<h4 class="gs-hd-sl gs-rs-sep">' + esc(text) + '</h4>' + list.slice().sort(byName).map(function (p) { return rowHtml(p, m); }).join('') : ''; };
+    const body = (main.length ? main.slice().sort(byName).map(function (p) { return rowHtml(p, m); }).join('') : (reserve.length || inactive.length ? '' : '<p class="gs-rs-none">No one</p>')) + label('Reserve', reserve) + label('Inactive', inactive);
     return '<div class="gs-hd-panel gs-rs-col" data-role="' + role + '">' + head + body + '</div>';
   }
 
@@ -145,14 +142,13 @@
     const head = function (text) { return '<h2 class="gs-hd-sl gs-rs-pgroup">' + esc(text) + '</h2>'; };
     const rowsOf = function (list) { return list.map(function (p) { return rowHtml(p, m); }).join(''); };
     if (m.canEdit && m.status === 'active') {
-      const me = rows.filter(function (p) { return p.isMe; });
-      const flagged = G.rosterSort.trialsToDecide(rows.filter(function (p) { return !p.isMe; }), m.teamId);
-      const rest = rows.filter(function (p) { return !p.isMe && flagged.indexOf(p) < 0; });
+      const flagged = G.rosterSort.trialsToDecide(rows, m.teamId);
+      const rest = rows.filter(function (p) { return flagged.indexOf(p) < 0; });
       if (flagged.length) {
-        return rowsOf(me) + head('Needs a decision') + rowsOf(flagged.slice().sort(byName)) + (rest.length ? head('Everyone') + rowsOf(rest.slice().sort(byName)) : '');
+        return head('Needs a decision') + rowsOf(flagged.slice().sort(byName)) + (rest.length ? head('Everyone') + rowsOf(rest.slice().sort(byName)) : '');
       }
     }
-    return rowsOf(youFirst(rows));
+    return rowsOf(rows.slice().sort(byName));
   }
 
   // The Applicants segment: the New applications for this team, read when the segment is picked.

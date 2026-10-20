@@ -1,14 +1,15 @@
-// Loot balance (pure): per roster person, the raids they attended and the items they received, over the attendance window and
+// Loot balance (pure): per roster person, the raids they could have won loot in (attendedForLoot) and the items they received, over the attendance window and
 // all-time. No D1, no clock (`today` is passed in), the input is never mutated. Rules: tasks/guild-phase4-spec.md, section 4.
 import { LOOT_TAGS } from './loot-policy.js';
 
 const round3 = (value) => Math.round(value * 1000) / 1000;
 
-// A raid the person attended, for loot: in the log (attended) or credited (bench, a decided Present), but never an Other-team
-// cell (fill_in): raiding for another team does not count for this team's loot.
+// A raid in which the person could have won loot: the effective outcome (the consolidated attendance row, an officer-decided
+// Present included) is Attended (present), late, left early, or late and left early. Bench, every absence, a pending sign-up and an
+// Other-team cell (fill_in: raiding for another team) do not count.
+const LOOT_OUTCOMES = new Set(['present', 'late', 'left_early', 'late_left']);
 export function attendedForLoot(row) {
-  if (row.outcome === 'fill_in') return false;
-  return row.attended === 1 || (typeof row.credit === 'number' && row.credit > 0);
+  return LOOT_OUTCOMES.has(row.outcome);
 }
 
 const emptyItems = () => Object.fromEntries(LOOT_TAGS.map((tag) => [tag, { window: 0, all: 0 }]));

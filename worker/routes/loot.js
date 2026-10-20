@@ -628,14 +628,16 @@ export async function getPersonLoot(ctx) {
 const HUB_NIGHTS = 3;
 const HUB_STANDINGS = 5;
 
-// The Standings page's "Most due first" order over the window figures: the lowest figure first, nobody-without-a-figure last, ties by name. Inactive people are left out.
-function mostDue(people, mode) {
+// The Standings page's "Most due first" order over the window figures: the lowest figure first, nobody-without-a-figure last, then MORE raids
+// attended first (window), then name. The client pages share the same rule (Guild.lootOrder.compareDue). Inactive people are left out.
+export function mostDue(people, mode) {
   const key = (person) => { const figure = mode === 'count' ? person.counted : person.perRaid; return figure && typeof figure.window === 'number' ? figure.window : null; };
+  const raidsOf = (person) => (person.raids && typeof person.raids.window === 'number' ? person.raids.window : 0);
   return people.filter((person) => person.status !== 'inactive').sort((x, y) => {
     const vx = key(x);
     const vy = key(y);
     if ((vx === null) !== (vy === null)) return vx === null ? 1 : -1;
-    return (vx === null ? 0 : vx - vy) || String(x.name || '').localeCompare(String(y.name || ''), 'en');
+    return (vx === null ? 0 : vx - vy) || (raidsOf(y) - raidsOf(x)) || String(x.name || '').localeCompare(String(y.name || ''), 'en');
   });
 }
 const FIX_DISMISS_KIND = 'loot_dupe';

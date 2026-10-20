@@ -173,7 +173,7 @@ check('the person pages from the real answers: an officer sees Thornwick\'s reco
   assert(!own.includes('person-details-form') && !own.includes('id="notes"'), 'a member gets no forms and no officer notes');
   const loot = await s.B.api.get(`${s.base}/loot/person/${s.pid}`);
   const lootPage = s.B.pages.personLoot.personLootHtml({ guildData: s.B.guildData, pid: s.pid, data: loot });
-  assert(lootPage.includes('<span class="gs-you">You</span>') && stripTags(lootPage).includes('This is your loot.') && stripTags(lootPage).includes('Main: Warrior'));
+  assert(lootPage.includes('<span class="gs-hd-chip is-grey">You</span>') && stripTags(lootPage).includes('This is your loot.') && stripTags(lootPage).includes('Main: Warrior'));
   const att = await s.B.api.get(`${s.base}/attendance/person/${s.pid}`);
   const attPage = s.B.pages.personAtt.personAttHtml({ guildData: s.B.guildData, pid: s.pid, data: att });
   assert(attPage.includes('<span class="gs-you">You</span>') && stripTags(attPage).includes('This is your attendance.'));

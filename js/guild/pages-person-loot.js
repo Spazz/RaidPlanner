@@ -85,13 +85,7 @@
     const rows = L().balanceRows(balance, 'all').filter(function (r) { return r.status !== 'inactive' || r.id === pid; });
     const mine = rows.filter(function (r) { return r.id === pid; })[0];
     if (!mine) return null;
-    const key = function (r) { return mode === 'count' ? r.counted : r.perRaid; };
-    const ordered = rows.slice().sort(function (p, q) {
-      const vp = key(p);
-      const vq = key(q);
-      if ((vp == null) !== (vq == null)) return vp == null ? 1 : -1;
-      return (vp == null ? 0 : vp - vq) || String(p.name || '').localeCompare(String(q.name || ''), 'en');
-    });
+    const ordered = rows.slice().sort(function (p, q) { return L().compareDue(p, q, mode, 'asc'); });
     return { raids: mine.raids, perRaid: mine.perRaid, counted: mine.counted, mode: mode, rank: ordered.indexOf(mine) + 1, of: ordered.length };
   }
 
@@ -103,12 +97,21 @@
 
   function statsHtml(totals, standing) {
     const t = totals || {};
-    const stat = function (label, value) { return '<div class="gs-summary-item"><dt>' + esc(label) + '</dt><dd>' + esc(value) + '</dd></div>'; };
-    return '<dl class="gs-summary">' + stat('Main spec', Number(t.MS) || 0) + stat('Off spec', Number(t.OS) || 0) +
-      (standing ? stat('Raids', L().count(standing.raids)) + (standing.mode === 'perRaid' ? stat('Main spec per raid', L().fixed(standing.perRaid, 2)) : '') + stat('Due order', ordinal(standing.rank) + ' of ' + standing.of) : '') + '</dl>';
+    return L().figsHtml([{ label: 'Main spec', value: Number(t.MS) || 0 }, { label: 'Off spec', value: Number(t.OS) || 0 }].concat(standing
+      ? [{ label: 'Raids', value: L().count(standing.raids) }].concat(standing.mode === 'perRaid' ? [{ label: 'Main spec per raid', value: L().fixed(standing.perRaid, 2) }] : []).concat([{ label: 'Due order', value: ordinal(standing.rank) + ' of ' + standing.of }]) : []));
   }
 
-  // opts: { guildData, pid, data (GET /loot/person/:pid), balance (the team's balance, or null) }  ->  T2: the person's header, the You line, the figures, one table of awards (newest first)
+  // The head of the page: the person's name in their class colour with the spec icon, ONE status chip (the person page's rule), a back link to the record.
+  function headOf(gd, pid, p) {
+    const cls = p.class ? G.ui.className(p.class) : '';
+    return G.pages.person.recordHeadOpts({
+      name: p.name || 'Person', status: p.status, isMe: !!p.isMe, mainChar: p.class ? { class: p.class } : null,
+      contextHtml: '<span>Loot history</span>' + (cls ? '<span class="gs-sumsep" aria-hidden="true"></span><span>Main: ' + G.ui.classNameHtml(cls, p.class) + '</span>' : ''),
+      back: { href: G.router.format({ name: 'person', gid: gd.guild.id, pid: pid }), label: 'Roster record' },
+    });
+  }
+
+  // opts: { guildData, pid, data (GET /loot/person/:pid), balance (the team's balance, or null) }  ->  T2: the person's header, the You line, the awards (left) and the figures (right)
   function personLootHtml(opts) {
     const gd = opts.guildData;
     const gid = gd.guild.id;
@@ -122,22 +125,21 @@
     const rows = awards.map(function (w) {
       const mayEdit = L().allows(gd, 'loot.edit', w.teamId);
       return { id: w.id, cells: {
-        item: L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + (w.note ? '<span class="gs-char-sub">Note: ' + esc(w.note) + '</span>' : ''),
+        item: L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion) + (w.note ? '<span class="gs-lt-sub">Note: ' + esc(w.note) + '</span>' : ''),
         night: w.raidId ? '<a href="' + esc(G.router.format({ name: 'lootnight', gid: gid, rid: w.raidId })) + '">' + esc(G.ui.weekdayDay(w.raidOn) || w.raidOn || 'Raid night') + '</a>' : esc(G.ui.weekdayDay(w.raidOn) || w.raidOn || ''),
-        tag: '<span class="gs-ln-tag">' + L().tagChipHtml(w.tag, w.tagSetBy) + (Array.isArray(w.editedFields) && w.editedFields.length ? '<span class="gs-chip gs-chip-plain" title="An officer corrected this award">Edited</span>' : '') + '</span>',
+        tag: '<span class="gs-lt-tagcell">' + L().tagTextHtml(w.tag, w.tagSetBy) + L().editedChipHtml(w) + '</span>',
         actions: mayEdit && G.pages.lootNight ? G.pages.lootNight.moreMenuHtml(gd, w) : '' } };
     });
-    const none = '<p class="gs-fine">' + esc(emptyLine(!!p.isMe)) + '</p>';
-    const foot = (edit ? '' : '<p class="gs-fine">Awards are read-only for members. Ask an officer if something looks wrong.</p>') +
-      (standing ? '<p class="gs-fine"><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'lootstandings', gid: gid })) + '">See where you stand</a></p>' : '');
-    const sections = [{ id: 'pl-totals', title: 'Loot received', bodyHtml: statsHtml(data.totals, standing) },
-      { id: 'pl-awards', title: 'Loot awards', chipHtml: '<span class="gs-fine">' + esc(L().plural(awards.length, 'award', 'awards')) + ', newest first</span>',
-        bodyHtml: awards.length ? G.ui.dataTableHtml({ label: 'Loot awards', columns: columns, rows: rows, limit: 1000, showAll: true, noun: 'awards' }) + foot : none }];
+    const readOnly = edit ? '' : '<p class="gs-lt-pad gs-fine">Awards are read-only for members. Ask an officer if something looks wrong.</p>';
+    const awardsPanel = L().panelHtml({ id: 'pl-awards', title: 'Loot awards', metaHtml: esc(L().plural(awards.length, 'award', 'awards')) + ', newest first', flush: awards.length > 0,
+      bodyHtml: awards.length ? G.ui.dataTableHtml({ label: 'Loot awards', columns: columns, rows: rows, limit: 1000, showAll: true, noun: 'awards' }) + readOnly : '<p class="gs-fine">' + esc(emptyLine(!!p.isMe)) + '</p>' });
+    const totalsPanel = L().panelHtml({ id: 'pl-totals', title: 'Loot received', flush: true,
+      bodyHtml: statsHtml(data.totals, standing) + (standing ? '<p class="gs-pr-linkrow"><a class="gs-fg-u" href="' + esc(G.router.format({ name: 'lootstandings', gid: gid })) + '">See where you stand</a></p>' : '') });
     return G.ui.objectPageHtml({
-      head: G.pages.personAtt.subHead({ gd: gd, pid: opts.pid, person: p, kind: 'loot' }),
+      head: headOf(gd, opts.pid, p),
       youHtml: G.pages.personAtt.subYou(!!p.isMe, 'This is your loot. The guild\'s loot setting decides who else can see it.'),
-      pageClass: 'gs-person-page gs-loot-person' + (p.isMe ? ' is-own' : ''),
-      sections: sections,
+      pageClass: 'gs-forge gs-pr gs-person-page gs-loot-page gs-loot-person' + (p.isMe ? ' is-own' : ''),
+      sections: [{ id: 'pl-cols', bare: true, bodyHtml: '<div class="gs-pr-cols gs-lt-cols-rev"><div class="gs-pr-right">' + totalsPanel + '</div><div class="gs-pr-left">' + awardsPanel + '</div></div>' }], // figures first on a phone; the awards take the wide column from 1024 px
     });
   }
 
@@ -157,7 +159,7 @@
 
   function main(r, gd) {
     const x = a().personLoot;
-    if (!x || x.gid !== gd.guild.id || x.pid !== r.pid) return G.pages.signin.loadingHtml();
+    if (!x || x.gid !== gd.guild.id || x.pid !== r.pid) return L().loadingHtml('Loot history');
     return personLootHtml({ guildData: gd, pid: r.pid, data: x.data, balance: x.balance });
   }
 

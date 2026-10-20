@@ -299,8 +299,8 @@ export function describeRow(row, names = {}) {
       return `Attached a plan of ${plural(Number(after.players) || 0, 'player', 'players')} to ${onRaid(ent)}`;
     case 'raid.manual':
       if (after.manual === false) return `Went back from hand-entered attendance on ${onRaid(ent)}`;
-      if (after.paste) return `Entered attendance from a pasted roster for ${onRaid(ent)}: ${Number(after.present) || 0} present, ${plural(Number(after.unmatched) || 0, 'name', 'names')} to review`;
-      return `Entered attendance by hand for ${onRaid(ent)}: ${Number(after.present) || 0} present`;
+      if (after.paste) return `Entered attendance from a pasted roster for ${onRaid(ent)}: ${Number(after.present) || 0} attended, ${plural(Number(after.unmatched) || 0, 'name', 'names')} to review`;
+      return `Entered attendance by hand for ${onRaid(ent)}: ${Number(after.present) || 0} attended`;
     case 'duties.set': {
       const count = Array.isArray(after.duties) ? after.duties.length : 0;
       return count ? `Set ${plural(count, 'duty', 'duties')} for ${onRaid(ent)}` : `Cleared the duties of ${onRaid(ent)}`;

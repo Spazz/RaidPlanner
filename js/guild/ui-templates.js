@@ -29,7 +29,10 @@
   ui.pageHeadHtml = function (opts) {
     const o = opts || {};
     const titleId = o.titleId || 'page-title';
-    const back = o.back && o.back.href ? '<a class="gs-back-link" href="' + esc(o.back.href) + '">' + icon('arrow', 16) + '<span>' + esc(o.back.label || 'Back') + '</span></a>' : '';
+    // The back link goes to the previous in-app page (named, history.back() on a plain click) when there is one, else to the page's fixed parent.
+    const prev = o.back && o.back.href && G.router && G.router.previous ? G.router.previous() : null;
+    const back = prev ? '<a class="gs-back-link" href="' + esc(prev.hash) + '" data-action="back-prev" aria-label="Back to ' + esc(prev.name) + '">' + icon('arrow', 16) + '<span>' + esc(prev.name) + '</span></a>'
+      : (o.back && o.back.href ? '<a class="gs-back-link" href="' + esc(o.back.href) + '">' + icon('arrow', 16) + '<span>' + esc(o.back.label || 'Back') + '</span></a>' : '');
     const more = o.more ? ui.menuHtml(Object.assign({ label: 'More', phoneIcon: true, triggerClass: 'gs-btn' }, o.more)) : '';
     const primary = o.primary ? ui.buttonHtml(Object.assign({ variant: 'primary' }, o.primary)) : '';
     const context = o.contextHtml || (o.context ? esc(o.context) : '');

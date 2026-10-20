@@ -438,6 +438,43 @@ const routes = (extra) => (m, url) => {
     assert(/\.gs-savebar[^{]*\{[^}]*position:\s*sticky/.test(css) || /\.gs-savebar[^{]*\{[^}]*position:\s*fixed/.test(css), 'the Save bar sticks');
   });
 
+  // F5: the award record, Edit details and Needs fixing are on Forge: gs-forge root, gs-hd-panel sections, the tag a word, chips only for exceptions.
+  await check('F5: award record, Edit details and Needs fixing have a gs-forge root and gs-hd-panel sections; states too', withState(async (S) => {
+    const root = html => (html.match(/^<div class="([^"]*)"/) || [])[1] || '';
+    const s = stub(routes());
+    await G.pages.lootAward.load(route(), S.guilds.g1);
+    const read = page(S);
+    X(S).editing = true;
+    await G.pages.lootAward.load(route({ edit: true }), S.guilds.g1);
+    const edit = page(S);
+    s.restore();
+    S.att.lootAward = { gid: 'g1', aid: 'lo_1', status: 'denied' };
+    const denied = page(S);
+    S.att.lootAward = { gid: 'g1', aid: 'lo_1', status: 'none' };
+    const none = page(S);
+    const realFor = G.app.teamFor; G.app.teamFor = () => 't1';
+    const s2 = stub(() => Promise.resolve(FIX()));
+    await G.pages.lootFix.load(fixRoute, S.guilds.g1);
+    s2.restore(); G.app.teamFor = realFor;
+    const fix = G.pages.lootFix.main(fixRoute, S.guilds.g1);
+    S.att.lootFix.data = { team: { name: 'Team KJ' }, duplicates: [], unknown: [] };
+    const fixEmpty = G.pages.lootFix.main(fixRoute, S.guilds.g1);
+    S.att.lootFix = { gid: 'g1', teamId: 't1', status: 'denied' };
+    const fixDenied = G.pages.lootFix.main(fixRoute, S.guilds.g1);
+    const loading = G.pages.lootAward.main(route({ aid: 'lo_other' }), S.guilds.g1);
+    const all = { read, edit, denied, none, fix, fixEmpty, fixDenied, loading };
+    Object.keys(all).forEach(name => {
+      assert(/\bgs-forge\b/.test(root(all[name])), name + ' root has gs-forge: ' + root(all[name]));
+      assert(!/gs-osection(?!-bare)|gs-empty-card|gs-card-sec|gs-chip-tag|gs-chip-flag/.test(all[name]), name + ' uses no old card, section or chip look');
+    });
+    ['read', 'edit', 'fix'].forEach(name => assert(/<section class="gs-hd-panel gs-pr-panel/.test(all[name]), name + ' sections are gs-hd-panel'));
+    ['denied', 'none', 'fixDenied', 'fixEmpty'].forEach(name => assert(/<section class="gs-hd-panel gs-rs-state/.test(all[name]), name + ' state is a gs-hd-panel'));
+    assert(all.loading.includes('aria-busy="true"') && all.loading.includes('gs-hd-sk'));
+    assert(/class="gs-lt-tag"/.test(read) && !/gs-hd-chip/.test(read), 'the tag is a word and a clean award carries no chip');
+    assert(/<span class="gs-hd-chip is-(rose|grey)">(Not on roster|Guest)<\/span>/.test(fix) || !/Not on roster|Guest/.test(fix), 'a winner chip is a Forge chip');
+    assert(/data-action="la-edit-open"/.test(read) && (read.match(/gs-btn-molten/g) || []).length === 1, 'one primary on the record');
+  }));
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })();

@@ -20,7 +20,7 @@
   function awardRowHtml(gd, w, n) {
     const gid = gd.guild.id;
     const when = w.manual ? 'Added by hand' : 'Awarded ' + L().timeText(w.awardedAt, gd.guild.timeZone);
-    return '<li class="gs-lf-award"><span class="gs-lf-n"><strong>Award ' + esc(n) + '</strong><span class="gs-fine">' + esc(when) + '</span></span>' + L().tagChipHtml(w.tag, w.tagSetBy) +
+    return '<li class="gs-lf-award"><span class="gs-lf-n"><strong>Award ' + esc(n) + '</strong><span class="gs-lt-sub">' + esc(when) + '</span></span>' + L().tagTextHtml(w.tag, w.tagSetBy) +
       '<span class="gs-lf-acts"><a class="gs-btn gs-btn-sm" href="' + esc(href({ name: 'lootaward', gid: gid, aid: w.id })) + '" aria-label="' + esc('Open award ' + n) + '">Open award</a>' +
       '<button type="button" class="gs-btn gs-btn-sm gs-btn-danger-outline" data-action="lf-delete" data-aid="' + esc(w.id) + '" data-key="lf-del-' + esc(w.id) + '" aria-label="' + esc('Delete award ' + n) + '">Delete</button></span></li>';
   }
@@ -28,21 +28,21 @@
   function groupHtml(gd, g) {
     const gid = gd.guild.id;
     const winner = (g.awards[0] && g.awards[0].match) || {};
-    const flag = winner.kind === 'unmatched' ? '<span class="gs-chip gs-chip-flag">Not on roster</span>' : (winner.kind === 'guest' ? '<span class="gs-chip gs-chip-flag">Guest</span>' : '');
+    const flag = winner.kind === 'unmatched' ? L().chipHtml('rose', 'Not on roster') : (winner.kind === 'guest' ? L().chipHtml('grey', 'Guest') : '');
     return '<li class="gs-lf-group" data-group="' + esc(g.key) + '"><div class="gs-lf-head"><span class="gs-lf-title">' +
       L().itemHtml({ itemId: g.itemId, itemName: g.itemName, quality: g.awards[0] && g.awards[0].quality }, gd.guild.gameVersion) +
-      '<span class="gs-fine"><a href="' + esc(href({ name: 'lootnight', gid: gid, rid: g.raidId })) + '">' + esc(dayText(g.raidOn)) + '</a> - ' + esc(g.winnerName) + '</span>' + flag + '</span></div>' +
+      '<span class="gs-lt-sub"><a href="' + esc(href({ name: 'lootnight', gid: gid, rid: g.raidId })) + '">' + esc(dayText(g.raidOn)) + '</a> - ' + esc(g.winnerName) + '</span>' + flag + '</span></div>' +
       '<ul class="gs-lf-awards" aria-label="' + esc('Awards of ' + (g.itemName || 'this item') + ' to ' + g.winnerName) + '">' + g.awards.map(function (w, i) { return awardRowHtml(gd, w, i + 1); }).join('') + '</ul>' +
       '<div class="gs-lf-keep"><button type="button" class="gs-btn gs-btn-sm" data-action="lf-keep" data-group="' + esc(g.key) + '" data-key="lf-keep-' + esc(g.key) + '">Keep both</button>' +
-      '<span class="gs-fine">Both are real. This group stops showing here.</span></div></li>';
+      '<span class="gs-lt-sub">Both are real. This group stops showing here.</span></div></li>';
   }
 
   function unknownHtml(gd, list) {
-    if (!list.length) return '<p class="gs-fine" id="lf-unknown-none">None. Every winner matches a roster character or a guest.</p>';
+    if (!list.length) return '<p class="gs-lt-pad gs-fine" id="lf-unknown-none">None. Every winner matches a roster character or a guest.</p>';
     const rows = list.map(function (w) {
       return { id: w.id, cells: {
         item: L().itemHtml({ itemId: w.itemId, itemName: w.itemName, quality: w.quality }, gd.guild.gameVersion),
-        winner: L().winnerHtml(gd.guild.id, w.winner, w.match),
+        winner: L().winnerHtml(gd.guild.id, w.winner, w.match, true),
         night: '<a href="' + esc(href({ name: 'lootnight', gid: gd.guild.id, rid: w.raidId })) + '">' + esc(dayText(w.raidOn)) + '</a>',
         actions: '<a class="gs-btn gs-btn-sm" href="' + esc(href({ name: 'lootaward', gid: gd.guild.id, aid: w.id, edit: true })) + '" aria-label="' + esc('Edit details of ' + (w.itemName || 'this award')) + '">Edit details</a>' } };
     });
@@ -56,7 +56,7 @@
     const x = opts.state;
     const back = { href: href({ name: 'section', gid: gd.guild.id, section: 'loot' }), label: 'Loot' };
     if (x.status === 'denied') {
-      return G.ui.listPageHtml({ head: { title: 'Needs fixing', back: back }, bodyHtml: '<section class="gs-empty-card"><h2 class="gs-h2 gs-h2-lg">Only Team Leads and above can fix loot.</h2><p class="gs-lead gs-lead-sm">Ask an officer of your team to look at it.</p></section>' });
+      return G.ui.listPageHtml({ head: { title: 'Needs fixing', back: back }, pageClass: 'gs-forge gs-loot-page gs-loot-fix', bodyHtml: L().stateHtml({ title: 'Only Team Leads and above can fix loot.', text: 'Ask an officer of your team to look at it.' }) });
     }
     const d = x.data;
     const dupes = Array.isArray(d.duplicates) ? d.duplicates : [];
@@ -64,13 +64,13 @@
     const team = d.team && d.team.name ? ' for ' + d.team.name : '';
     const empty = !dupes.length && !unknown.length;
     const body = empty
-      ? '<section class="gs-empty-card" id="lf-empty"><h2 class="gs-h2 gs-h2-lg">Nothing needs fixing</h2><p class="gs-lead gs-lead-sm">No possible duplicates and no unknown winner names' + esc(team) + '.</p></section>'
-      : '<section class="gs-osection gs-lf-sec" id="lf-dupes" aria-labelledby="lf-dupes-h"><div class="gs-osection-head"><h2 class="gs-h2" id="lf-dupes-h">Possible duplicates</h2><span class="gs-fine">Same night, same item, same winner</span></div><div class="gs-osection-body">' +
-        (dupes.length ? '<ul class="gs-lf-groups" aria-label="Possible duplicates">' + dupes.map(function (g) { return groupHtml(gd, g); }).join('') + '</ul>' : '<p class="gs-fine" id="lf-dupes-none">None.</p>') + '</div></section>' +
-        '<section class="gs-osection gs-lf-sec" id="lf-unknown" aria-labelledby="lf-unknown-h"><div class="gs-osection-head"><h2 class="gs-h2" id="lf-unknown-h">Unknown winner names</h2><span class="gs-fine">Not on the roster, not a guest</span></div><div class="gs-osection-body">' + unknownHtml(gd, unknown) + '</div></section>';
+      ? '<div id="lf-empty">' + L().stateHtml({ title: 'Nothing needs fixing', text: 'No possible duplicates and no unknown winner names' + team + '.' }) + '</div>'
+      : L().panelHtml({ id: 'lf-dupes', cls: 'gs-lf-sec', title: 'Possible duplicates', metaHtml: 'Same night, same item, same winner', flush: true,
+        bodyHtml: dupes.length ? '<ul class="gs-lf-groups" aria-label="Possible duplicates">' + dupes.map(function (g) { return groupHtml(gd, g); }).join('') + '</ul>' : '<p class="gs-lt-pad gs-fine" id="lf-dupes-none">None.</p>' }) +
+        L().panelHtml({ id: 'lf-unknown', cls: 'gs-lf-sec', title: 'Unknown winner names', metaHtml: 'Not on the roster, not a guest', flush: true, bodyHtml: unknownHtml(gd, unknown) });
     return G.ui.listPageHtml({
       head: { title: 'Needs fixing', context: 'Loot awards that look wrong' + team + '. ' + plural(dupes.length, 'possible duplicate', 'possible duplicates') + ', ' + plural(unknown.length, 'unknown winner', 'unknown winners') + '.', back: back },
-      pageClass: 'gs-loot-page gs-loot-fix', noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'), bodyHtml: body,
+      pageClass: 'gs-forge gs-loot-page gs-loot-fix', noticesHtml: G.ui.alertHtml(opts.alert || '', 'gs-page-alert'), bodyHtml: body,
     });
   }
 
@@ -89,7 +89,7 @@
 
   function main(r, gd) {
     const x = a().lootFix;
-    if (!x || x.gid !== gd.guild.id) return G.pages.signin.loadingHtml();
+    if (!x || x.gid !== gd.guild.id) return L().loadingHtml('Needs fixing');
     return fixHtml({ guildData: gd, state: x, alert: st().pageAlert });
   }
 
