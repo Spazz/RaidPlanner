@@ -190,7 +190,7 @@ const molten = html => count(html, /class="[^"]*gs-btn-molten[^"]*"/g);
     const waitLoot = nextOf(past({ can: { edit: false, review: false, seeAttendance: true, seeNicknames: false } }), { loot: lState([], false) }, member);
     assert.equal(waitLoot.text, 'Waiting for an officer to record the loot.');
     const out = page(memberData(), { signups: sState(view({ can: { edit: false, self: true, seeList: true, seeNicknames: false } })) }, member);
-    assert(out.includes('is-waiting') && molten(out) <= 1 && !out.includes('data-op="plan-in-planner"'));
+    assert(!out.includes('is-waiting') && molten(out) <= 1 && !out.includes('data-op="plan-in-planner"'));
   });
 
   await check('one primary per screen: an officer\'s raid page has at most one molten button in every stage, a member\'s at most one', () => {

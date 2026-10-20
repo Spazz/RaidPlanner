@@ -574,12 +574,14 @@
     const parts = { signups: opts.signups, roster: opts.roster, loot: opts.loot, board: opts.board };
     const model = stagesOf(data, parts);
     const next = nextStepOf(gd, data, parts, model);
+    const lootEdit = !!(G.pages.loot && G.pages.loot.allows && G.pages.loot.allows(gd, 'loot.edit', data.raid && data.raid.team && typeof data.raid.team === 'object' ? data.raid.team.id : data.raid && data.raid.team));
+    const officer = edit || !!(data.can && data.can.review) || lootEdit;
     const notices = G.pages.review.noteHtml(opts.note) + G.ui.alertHtml(opts.alert || '', 'gs-page-alert') + staleNoticeHtml(data, edit, opts.progress);
     const you = G.pages.raidYou ? G.pages.raidYou.youBarHtml({ guildData: gd, data: data, parts: parts, nextHasPrimary: !!(next && next.primary) }) : '';
     return G.ui.objectPageHtml({
       head: headOf(gd, data, parts, model, opts),
       noticesHtml: notices,
-      nextStep: next,
+      nextStep: officer ? next : null, // a member's next step is the You bar
       afterYouHtml: you,
       pageClass: 'gs-raid-page gs-forge gs-rpg ' + (model.upcoming ? 'is-before' : 'is-after'),
       sections: [{ id: 'raid-cols', bare: true, bodyHtml: columnsHtml(gd, data, opts, model) }],

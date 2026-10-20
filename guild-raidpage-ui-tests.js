@@ -363,6 +363,20 @@ const labelsOf = (out, id) => {
     cases.forEach(([data, parts, can], i) => assert(molten(page(data, parts, can)) <= 1, 'case ' + i + ': ' + molten(page(data, parts, can))));
   });
 
+  await check('next-step bar: a member (no raids.edit / attendance.review / loot.edit) gets none, the You bar stays; an officer keeps both', () => {
+    const mine = { signups: sState(view({ me: ME({ signup: SIGNED }) })), roster: rState() };
+    const m = page(up({ can: { edit: false, review: false } }), mine, MEMBER_CAN);
+    assert(!m.includes('class="gs-nextstep') && !m.includes('Waiting for an officer') && m.includes('id="su-me"'), 'member: no next-step bar');
+    const o = page(up({ sources: { event: null, reports: [], plan: PLAN } }), mine, OFFICER_CAN);
+    assert(o.includes('class="gs-nextstep') && o.includes('id="su-me"'), 'officer: both bars');
+  });
+
+  await check('You bar pills: the selected pill has the segment selected rule (--seg-on-bg, white text), in the bar and in the dialogs', () => {
+    const css = read('guild.css');
+    assert(/\.gs-rpg-you \.gs-su-kind\[aria-pressed="true"\][^{]*\{[^}]*background: var\(--seg-on-bg\)[^}]*color: var\(--hd-white\)/.test(css));
+    assert(/\.gs-dialog-form\.gs-forge \.gs-su-kind\[aria-pressed="true"\][^{]*\{[^}]*background: var\(--seg-on-bg\)/.test(css));
+  });
+
   console.log(`\nRaid page shell UI tests: ${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;
 })();

@@ -230,6 +230,16 @@ const cardOf = (out, id) => out.split('<li class="gs-up">').filter(c => c.includ
     assert(/\.gs-rl-tog \{ min-height: 44px/.test(phone) && /\.gs-up-status \.gs-btn[^}]*min-height: 44px/.test(phone));
   });
 
+  await check('card: the one link is a stretched link (::after covers the card), the status item sits above it, hover is neutral and only on hover devices', () => {
+    const c = cardOf(page(LIST()), 'u1');
+    assert.equal(count(c, '<a '), 1);
+    assert(c.indexOf('</a>') < c.indexOf('class="gs-up-status"') && !c.slice(c.indexOf('<a '), c.indexOf('</a>')).includes('<button'), 'Sign up is outside the link');
+    assert(/\.gs-up \{[^}]*position: relative/.test(css));
+    assert(/\.gs-up-link::after \{[^}]*position: absolute; inset: 0/.test(css) && /\.gs-up-link:focus-visible::after \{[^}]*outline: 2px solid var\(--text-primary\); outline-offset: 2px/.test(css));
+    assert(/\.gs-up-status \{ position: relative; z-index: 1/.test(css));
+    assert(/@media \(hover: hover\) \{ \.gs-up:hover \{[^}]*rgba\(255, 255, 255, 0\.03\)/.test(css));
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })();

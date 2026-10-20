@@ -106,7 +106,7 @@
   // A plain page that says why (access removed, not a member, forbidden, load failure). opts.actionsHtml: buttons to put before Back to start.
   function messageHtml(title, text, opts) {
     const o = opts || {};
-    return card('<h1 class="gs-h1 gs-h1-lg" tabindex="-1">' + esc(title) + '</h1><p class="gs-lead">' + esc(text) + '</p>' +
+    return card('<h1 class="gs-h1 gs-h1-lg" tabindex="-1" data-nav-skip="1">' + esc(title) + '</h1><p class="gs-lead">' + esc(text) + '</p>' +
       '<div class="gs-actions">' + (o.actionsHtml || '') + (o.retry ? G.ui.buttonHtml({ label: 'Try again', attrs: { 'data-action': 'retry' } }) : '') +
       G.ui.buttonHtml({ label: 'Back to start', variant: o.retry || o.actionsHtml ? 'secondary' : 'primary', href: '#/' }) + '</div>');
   }

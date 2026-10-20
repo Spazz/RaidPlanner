@@ -2168,6 +2168,14 @@ a.gs-pl-when { font: 700 18px/1.2 var(--font-cond); letter-spacing: 0.03em; colo
 .gs-up { position: relative; box-sizing: border-box; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--hd-panel); border: 1px solid var(--hd-panel-edge); border-radius: 8px; box-shadow: var(--hd-panel-shadow); }
 .guild-page .gs-up-link { display: flex; flex-direction: column; gap: 4px; color: var(--text-primary); text-decoration: none; }
 .guild-page .gs-up-link:hover .gs-up-title { text-decoration: underline; text-underline-offset: 3px; }
+/* Stretched link: the one link's ::after covers the whole card; the status item (Sign up, chips) sits above it. */
+.guild-page .gs-up-link::after { content: ""; position: absolute; inset: 0; border-radius: 8px; }
+.guild-page .gs-up-link:focus-visible { outline: none; }
+.guild-page .gs-up-link:focus-visible::after { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.gs-up-status { position: relative; z-index: 1; }
+@media (hover: hover) { .gs-up:hover { background-image: linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03)), var(--hd-panel); border-color: rgba(255, 255, 255, 0.16); } }
+/* Selected status pill on the raid page You bar and its dialogs: the segment selected state. */
+.gs-forge .gs-su-kind[aria-pressed="true"], .gs-rpg-you .gs-su-kind[aria-pressed="true"], .gs-dialog-form.gs-forge .gs-su-kind[aria-pressed="true"] { background: var(--seg-on-bg); border-color: var(--border-field); color: var(--hd-white); }
 .gs-up-time { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .gs-up-title { font: 600 17px/1.25 var(--font-body); color: var(--hd-white); overflow-wrap: anywhere; }
 .gs-up-signups { display: flex; flex-direction: column; gap: 6px; }

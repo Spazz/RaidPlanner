@@ -241,13 +241,15 @@
     trailSave();
   }
   // The page at `hash` is drawn: its name (the h1) and its final address (a redirect may have rewritten it).
-  function rendered(hash, name) {
+  // opts.skip: an error / not-found page, which never counts as a previous in-app page (the back link keeps its fixed parent).
+  function rendered(hash, name, opts) {
     const t = trailLoad();
     const top = t.stack[t.stack.length - 1];
     if (!top) return;
     top.hash = String(hash || top.hash);
     top.path = pathOf(top.hash);
-    if (typeof name === 'string' && name.trim()) top.name = name.trim();
+    if (opts && opts.skip) top.name = null;
+    else if (typeof name === 'string' && name.trim()) top.name = name.trim();
     trailSave();
   }
   // -> { hash, name } of the page before this one, or null (nothing before it, or it was never named).

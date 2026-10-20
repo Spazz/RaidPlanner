@@ -36,6 +36,16 @@ function open(hash, name, opts) { R.visit(hash, opts); R.rendered(hash, name); }
 const fixedBack = { href: '#/g/g1/loot', label: 'Loot' };
 const head = () => G.ui.pageHeadHtml({ title: 'Standings', back: fixedBack });
 
+check('an error / not-found page is never the previous in-app page: the back link keeps the fixed parent', () => {
+  R.resetTrail();
+  R.visit(B); R.rendered(B, 'Page not found', { skip: true });
+  R.visit(C); R.rendered(C, 'Person');
+  assert.equal(R.previous(), null);
+  const out = G.ui.pageHeadHtml({ title: 'Person', back: fixedBack });
+  assert(out.includes('<span>Loot</span>') && !out.includes('Page not found') && !out.includes('data-action="back-prev"'));
+  assert(G.pages.signin.messageHtml('Page not found', 'x', {}).includes('data-nav-skip="1"'));
+});
+
 check('no previous page (direct link, new tab): both back links keep the fixed parent and its label', () => {
   R.resetTrail();
   open(B, 'Standings');

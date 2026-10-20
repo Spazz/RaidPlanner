@@ -972,7 +972,7 @@
         document.title = v.title;
         const h1 = main.querySelector ? main.querySelector('h1') : null;
         // A back link names the page by its h1; Home's h1 is a question ("Next week"), so Home is named "Home".
-        G.router.rendered(window.location.hash, r.name === 'section' && r.section === 'home' ? 'Home' : (h1 ? h1.textContent : ''));
+        G.router.rendered(window.location.hash, r.name === 'section' && r.section === 'home' ? 'Home' : (h1 ? h1.textContent : ''), { skip: !!(h1 && h1.getAttribute && h1.getAttribute('data-nav-skip')) });
       } else if (main.innerHTML) {
         main.innerHTML = '';
       }
